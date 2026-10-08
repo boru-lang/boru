@@ -1,0 +1,556 @@
+diff --git a/compiler/go/bytecode.go b/compiler/go/bytecode.go
+index e323aabb2..ceb24bd48 100644
+--- a/compiler/go/bytecode.go
++++ b/compiler/go/bytecode.go
+@@ -1690,6 +1690,13 @@ type DynMethodSpec struct {
+ 	// a lambda that could not take the word y — and PLACES a lead that is no
+ 	// fn, the lead then the values, as a paren leaves them (NUR336).
+ 	Paren bool
++	// Forward marks a paren apply whose group feeds a word's forward
++	// collection (EmitRecorder NoteParenForward): the group's survivors are
++	// the word's candidates, never re-stepped at its close, so a lead the
++	// landing before it parked is not applied — `print (m.f y 9)` over a
++	// lambda of two Integers prints the lambda and leaves 42 and 9, where the
++	// paren alone is 33 (NUR336).
++	Forward bool
+ 	// Place marks a paren apply at the program root after which the code only
+ 	// pushes (stampRootRestarts): a data lead with no statement island is
+ 	// placed where the apply stands, the program's residual taking the extra
+diff --git a/compiler/go/call_result_island_test.go b/compiler/go/call_result_island_test.go
+index e92e87652..97621cffc 100644
+--- a/compiler/go/call_result_island_test.go
++++ b/compiler/go/call_result_island_test.go
+@@ -40,10 +40,9 @@ func TestCallResultPointUnplaced(t *testing.T) {
+ // late-start accounting TestNUR336LateStartEdges drives end to end).
+ func TestTypeDeferredUnknownIndex(t *testing.T) {
+ 	es := &EmitState{}
+-	reads := func(string) int { return 1 }
+ 	consumed := func(func(EmitOperand) bool, func(core.Value) bool, int) int { return 0 }
+ 	for _, idx := range []int{-1, 0} {
+-		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, reads, consumed) {
++		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, consumed) {
+ 			t.Errorf("type index %d: an unknown type defers nothing", idx)
+ 		}
+ 	}
+diff --git a/compiler/go/emit.go b/compiler/go/emit.go
+index 26ed20a56..fadf27b6f 100644
+--- a/compiler/go/emit.go
++++ b/compiler/go/emit.go
+@@ -1885,6 +1885,9 @@ type EmitState struct {
+ 	constIDIdx map[string]int
+ 	types      []TypeRef
+ 	typeIdx    map[string]int // type ID → Types index
++	// typeVals is each interned type operand's node by its ID, where it is a
++	// bare node a statement island may seat (typeDeferred).
++	typeVals map[string]core.Value
+ 	// runTypes marks the type nodes a type-run install replaces at run time
+ 	// (recordTypeRun, NUR308): a match over the pass's node proves nothing
+ 	// of the run's (literalMatchSure).
+@@ -11714,6 +11717,19 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
+ 	return true
+ }
+ 
++// NoteParenForward marks the paren apply producing the value id as one whose
++// group feeds a word's forward collection (EmitRecorder; DynMethodSpec.Forward).
++func (es *EmitState) NoteParenForward(id string) {
++	if !es.Active() {
++		return
++	}
++	if pr, ok := es.producedBy[id]; ok {
++		if ev := es.eventBySeq(pr.seq); ev != nil && ev.kind == evCall && ev.call.dynMethod != nil {
++			ev.call.dynMethod.Forward = true
++		}
++	}
++}
++
+ // parenLeadToken is the lead token of the paren a paren apply (word) records
+ // over args, when the lead's value carries another token's position than its
+ // own (moved): a def-bound read's value carries its def's (`def g m.f/v end
+@@ -15964,6 +15980,12 @@ func (es *EmitState) internType(v core.Value) int {
+ 	}
+ 	es.types = append(es.types, TypeRef{Name: v.String(), ID: v.ID})
+ 	es.typeIdx[v.ID] = len(es.types) - 1
++	if core.IsBareTypeNode(v) && !v.Dynamic {
++		if es.typeVals == nil {
++			es.typeVals = map[string]core.Value{}
++		}
++		es.typeVals[v.ID] = v
++	}
+ 	return len(es.types) - 1
+ }
+ 
+@@ -20362,19 +20384,103 @@ func eventDefBound(events []EmitEvent, seq int) bool {
+ // statement wrote or read — its name's tokens and its reads before the
+ // start against its consumptions there — is on the interpreter's stack at
+ // deopt point d's start, where the compiled code pushes it late (`Integer
+-// end (q.f 7)`, NUR336).
+-func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsBefore func(string) int, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
++// end (q.f 7)`, NUR336). A token a def binds (`def z Integer`) is the def's,
++// never the stack's. Where none of them was consumed before the start a
++// unit's statement island seats each at its token or read (d.lits), the
++// node resolved by its ID as the root's seat does (RestartType), and the
++// value is no deferred one.
++func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+ 	if idx < 0 || idx >= len(es.types) {
+ 		return false
+ 	}
+ 	tr := es.types[idx]
+-	n := readsBefore(tr.ID)
+-	for _, t := range rec.body {
+-		if w, err := core.AsWord(t); err == nil && w.Name == tr.Name && t.Pos().Row > 0 && posAfter(d.start, t.Pos()) {
+-			n++
++	var at []core.SrcPos
++	for _, q := range rec.localReads[tr.ID] {
++		if posAfter(d.start, q) {
++			at = append(at, q)
++		}
++	}
++	toks := literalParensFlat(rec.body)
++	for i, t := range toks {
++		w, err := core.AsWord(t)
++		if err != nil || t.Pos().Row == 0 || !posAfter(d.start, t.Pos()) || defValueAt(toks, i) || (i > 0 && isWordNamed(toks[i-1], "def")) {
++			continue
++		}
++		if w.Name == tr.Name {
++			at = append(at, t.Pos())
++		} else if es.typeAliasLike(w.Name) {
++			// A type name this pool does not name may be an alias of the
++			// node (`def T Integer` pushes Integer's node at `T`): which
++			// value its token left cannot be told.
++			return true
+ 		}
+ 	}
+-	return n > consumedBefore(func(o EmitOperand) bool { return o.kind == opType && o.idx == idx }, nil, -1)
++	consumed := consumedBefore(func(o EmitOperand) bool { return o.kind == opType && o.idx == idx }, nil, -1)
++	if len(at) <= consumed {
++		return false
++	}
++	v, known := es.typeVals[tr.ID]
++	if consumed > 0 || !d.restart || !d.frameHeld || !known {
++		return true
++	}
++	for _, q := range at {
++		es.noteSeatLit(rec, d, RestartSrc{Kind: RestartType, Val: v}, q)
++	}
++	return false
++}
++
++// defValueAt reports whether body token i is the value a def binds: the
++// token after `def <name>`.
++func defValueAt(body []core.Value, i int) bool {
++	return i >= 2 && core.IsWord(body[i-1]) && isWordNamed(body[i-2], "def")
++}
++
++// literalParensFlat is body's top-level tokens with each paren that holds
++// literals only — scalars, type names, such parens — written as the tokens
++// it holds: the values such a paren leaves on the interpreter's stack, which
++// the compiled code pushes late as constants (`(3) end (q.f 7)` in a fn
++// body, NUR336). Any other paren's values are its events' results.
++func literalParensFlat(body []core.Value) []core.Value {
++	out := make([]core.Value, 0, len(body))
++	for _, t := range body {
++		if inner, ok := literalParen(t); ok {
++			out = append(out, literalParensFlat(inner)...)
++			continue
++		}
++		out = append(out, t)
++	}
++	return out
++}
++
++// literalParen is paren t's tokens when every one is a stepless literal, an
++// unmodified capitalised word (a type name) or such a paren.
++func literalParen(t core.Value) ([]core.Value, bool) {
++	if !core.IsParenExpr(t) {
++		return nil, false
++	}
++	inner, err := core.AsParenExpr(t)
++	if err != nil || len(inner) == 0 {
++		return nil, false
++	}
++	for _, v := range inner {
++		if _, ok := literalParen(v); ok || core.IsSteplessValue(v) || (isCompoundValue(v) && !core.IsParenExpr(v)) {
++			continue
++		}
++		if w, werr := core.AsWord(v); werr == nil && unmodifiedWordInfo(w) && w.Name != "" && w.Name[0] >= 'A' && w.Name[0] <= 'Z' {
++			continue
++		}
++		return nil, false
++	}
++	return inner, true
++}
++
++// typeAliasLike reports whether name is spelled as a type (capitalised) but
++// names none of the pooled type operands: it may be an alias binding of one.
++func (es *EmitState) typeAliasLike(name string) bool {
++	if name == "" || name[0] < 'A' || name[0] > 'Z' {
++		return false
++	}
++	return !slices.ContainsFunc(es.types, func(tr TypeRef) bool { return tr.Name == name })
+ }
+ 
+ // deoptDeferred is the deferred-operand accounting over the events the
+@@ -20469,7 +20575,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
+ 			return !core.IsWord(v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+ 		}
+ 		tokens := 0
+-		for _, t := range rec.body {
++		for _, t := range literalParensFlat(rec.body) {
+ 			if q := t.Pos(); q.Row > 0 && posAfter(d.start, q) && sameCanon(t) {
+ 				tokens++
+ 			}
+@@ -20491,7 +20597,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
+ 				}
+ 			}
+ 		case opType:
+-			return es.typeDeferred(rec, d, op.idx, readsBefore, consumedBefore)
++			return es.typeDeferred(rec, d, op.idx, consumedBefore)
+ 		case opEvent:
+ 			// A RE-STEP point's own event just left its results on top:
+ 			// they are exactly what the island re-steps.
+@@ -20613,7 +20719,7 @@ func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, co
+ 		return !core.IsWord(v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+ 	}
+ 	var toks []core.SrcPos
+-	for _, t := range rec.body {
++	for _, t := range literalParensFlat(rec.body) {
+ 		q := t.Pos()
+ 		if q.Row > 0 && sameCanon(t) && (compound || core.IsSteplessValue(t)) && posAfter(d.start, q) {
+ 			toks = append(toks, q)
+@@ -20676,13 +20782,31 @@ func deoptAnyDeferred(events []EmitEvent, rec *fnUnitRec, d *deoptPoint, ci int,
+ 		}
+ 	}
+ 	for _, op := range residualAfterRead(rec.outOps, d, ci) {
+-		if op.kind != opEvent && deferred(op) {
++		// A def-bound result the residual holds by a read of its name is
++		// seated by a unit's statement island at each read before the start
++		// (boundReadDeferred) — `def z (1 add 2) end z end for 2 [...]`
++		// returns the z the interpreter held beneath the loop (NUR336).
++		bound := op.kind == opEvent && op.resIdx == 0 && d.restart && d.frameHeld && eventDefBound(events, op.idx)
++		if (op.kind != opEvent || bound) && deferred(op) {
+ 			return true
+ 		}
+ 	}
+ 	return false
+ }
+ 
++// litProds is the producers whose values d seats among its literals from
++// their promoted slots (seatLit.prod): a residual result held so is no frame
++// entry the walk must find (outsBefore).
++func (d *deoptPoint) litProds() []producer {
++	var out []producer
++	for _, l := range d.lits {
++		if l.prod != nil {
++			out = append(out, *l.prod)
++		}
++	}
++	return out
++}
++
+ // residualAfterRead is the residual operands a push-tested point's island
+ // may lack: all of them, unless the read is a capture the residual itself
+ // holds and nothing else consumes (`do [10 j]`, NUR217) — the residual is
+diff --git a/compiler/go/landing_restart.go b/compiler/go/landing_restart.go
+index 04075cfb8..0d3c75ecc 100644
+--- a/compiler/go/landing_restart.go
++++ b/compiler/go/landing_restart.go
+@@ -1735,7 +1735,7 @@ func (es *EmitState) unitRestartPoint(u *emitUnit, rec *fnUnitRec, tree map[int]
+ 	// The residual's earlier results, as the statement's operands
+ 	// (deoptPoint.onFrame): the walk finds each held beneath it, or the
+ 	// unit keeps it in a slot until its RET and the island is not seated.
+-	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.leftovers, d.onFrame)
++	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), append(d.leftovers, d.litProds()...), d.onFrame)
+ 	substs, first, reruns := es.restartReruns(tree, at, seq, rec.body, tok)
+ 	if !reruns {
+ 		return deoptPoint{}, false
+@@ -1752,14 +1752,31 @@ func (es *EmitState) unitRestartPoint(u *emitUnit, rec *fnUnitRec, tree map[int]
+ // there over what it took (an event consumes only earlier events' results),
+ // and the values it left are the frame the island seats. ok is false for a
+ // stop at the statement's first token, one outside the top level, or a
+-// statement whose events interleave (a word that collected the stop's token
+-// forward dispatches after it).
++// statement whose events interleave past every word before the stop's token.
++// A word that collected the stop's token forward (`drop print (q.f 7)`)
++// dispatches after it, so its events interleave there: the island then
++// starts at the run of bare words before that token, where they wait on the
++// stop's token and nothing before them is pending (NUR336) — the words have
++// not run in the compiled code, and the island runs them as the
++// interpreter does.
+ func lateStart(tree map[int]treeEvent, body []core.Value, tok, seq int) (int, bool) {
+-	stop := stopPos(tree[seq].ev)
+-	late := bodyTokenContaining(body, stop)
+-	if late <= tok || late >= len(body) || body[late].Pos().Row == 0 {
+-		return 0, false
++	late := bodyTokenContaining(body, stopPos(tree[seq].ev))
++	for ; late > tok && late < len(body) && body[late].Pos().Row > 0; late-- {
++		if lateStartAt(tree, body, tok, seq, late) {
++			return late, true
++		}
++		if w, err := core.AsWord(body[late-1]); err != nil || !unmodifiedWordInfo(w) {
++			break
++		}
+ 	}
++	return 0, false
++}
++
++// lateStartAt reports whether the statement from body token tok, stopped by
++// event seq, may be taken over from its token late (lateStart): every event
++// written from tok up to late was recorded before every event written at or
++// after it, and none of the statement's events before the stop is unplaced.
++func lateStartAt(tree map[int]treeEvent, body []core.Value, tok, seq, late int) bool {
+ 	first := statementFirstSeq(tree, seq, body[late].Pos())
+ 	begin := statementStart(body, tok)
+ 	stmtFirst := statementFirstSeq(tree, seq, begin)
+@@ -1771,10 +1788,10 @@ func lateStart(tree map[int]treeEvent, body []core.Value, tok, seq int) (int, bo
+ 		unplaced := p.Row == 0 && s < seq && s >= stmtFirst
+ 		interleaved := p.Row > 0 && !posAfter(begin, p) && posAfter(body[late].Pos(), p) && s >= first
+ 		if unplaced || interleaved {
+-			return 0, false
++			return false
+ 		}
+ 	}
+-	return late, true
++	return true
+ }
+ 
+ // lateRootRestart plans a root landing's or shaped apply's statement island
+@@ -1802,11 +1819,18 @@ func (es *EmitState) lateRootRestart(lw *lowerer, tree map[int]treeEvent, at tre
+ }
+ 
+ // parenStackAt is the stack the pass told the paren group at root body token
+-// tok opens over (NoteParenStack): by the token's position or, for a paren
+-// the engine expanded to its markers, its first inner token's (toldAt's
+-// rule).
++// tok opens over (NoteParenStack), by its first inner token's position (the
++// engine expands the paren to its markers before stepping it, toldAt's
++// rule) — or, for a list literal or a word opening a run of words that waits
++// on such a group (the engine's noteWaitingStack), the stack the token is
++// stepped over, by its own position.
+ func (es *EmitState) parenStackAt(tok int) ([]core.Value, bool) {
+-	inner, err := core.AsParenExpr(es.rootBody[tok])
++	t := es.rootBody[tok]
++	if !core.IsParenExpr(t) && t.Pos().Row > 0 {
++		stack, told := es.rootParenStacks[t.Pos()]
++		return stack, told
++	}
++	inner, err := core.AsParenExpr(t)
+ 	if err != nil || len(inner) == 0 {
+ 		return nil, false
+ 	}
+@@ -1898,7 +1922,7 @@ func (es *EmitState) loopContPlan(tree map[int]treeEvent, at treeEvent, seq int,
+ 		return nil, false
+ 	}
+ 	forTok := path[0] - 2
+-	if w, err := core.AsWord(body[forTok]); err != nil || w.Name != "for" || statementToken(body, body[forTok].Pos()) != forTok {
++	if w, err := core.AsWord(body[forTok]); err != nil || w.Name != "for" || !literalLead(body, forTok) {
+ 		return nil, false
+ 	}
+ 	// The stop's statement is the body's first: nothing an earlier statement
+@@ -1915,17 +1939,32 @@ func (es *EmitState) loopContPlan(tree map[int]treeEvent, at treeEvent, seq int,
+ 		loop: &loopCont{elems: elems, after: body[path[0]+1:], forTok: forTok, iterName: lp.iterName, beneath: beneath}}, true
+ }
+ 
++// literalLead reports whether the `for` at body token forTok begins its
++// statement or follows only stepless literals there (`5 for 2 [...]`): the
++// values beneath the loop are the statement's start's and those literals.
++func literalLead(body []core.Value, forTok int) bool {
++	for at := statementToken(body, body[forTok].Pos()); at < forTok; at++ {
++		if !core.IsSteplessValue(body[at]) || body[at].Pos().Row == 0 {
++			return false
++		}
++	}
++	return true
++}
++
+ // rootLoopOuter plans what a per-iteration island seats beneath the loop
+-// whose statement begins at the program root's body token forTok: the
+-// interpreter's stack there — nothing at the program's first token, else the
+-// stack the pass told (stackAtStart), each value where the compiled root
+-// keeps it (seatStack). The walk seats its depth at the loop's statement as
+-// any statement island's (noteRestartDepths).
++// at the program root's body token forTok: the interpreter's stack there —
++// the stack at its statement's start (nothing at the program's first token,
++// else the stack the pass told, stackAtStart), then the literals the
++// statement opens with before the `for` (literalLead) — each value where
++// the compiled root keeps it (seatStack). The walk seats its depth at the
++// loop as any statement island's (noteRestartDepths).
+ func (es *EmitState) rootLoopOuter(lw *lowerer, forTok int) (*landingRestart, bool) {
++	stmt := statementToken(es.rootBody, es.rootBody[forTok].Pos())
+ 	stack, told := es.stackAtStart(forTok)
++	stack = append(append([]core.Value(nil), stack...), es.rootBody[stmt:forTok]...)
+ 	srcs, held, slots, ok := es.seatStack(lw, stack)
+-	r := &landingRestart{token: forTok, start: statementStart(es.rootBody, forTok), depth: -1, srcs: srcs, held: held, heldAt: slots}
+-	return r, (told || forTok == 0) && ok && r.start.Row > 0
++	r := &landingRestart{token: forTok, start: es.rootBody[forTok].Pos(), depth: -1, srcs: srcs, held: held, heldAt: slots}
++	return r, (told || stmt == 0) && ok && r.start.Row > 0
+ }
+ 
+ // unitLoopOuter is rootLoopOuter in a fn unit: the frame region beneath the
+@@ -1935,7 +1974,7 @@ func (es *EmitState) rootLoopOuter(lw *lowerer, forTok int) (*landingRestart, bo
+ func (es *EmitState) unitLoopOuter(u *emitUnit, rec *fnUnitRec, tree map[int]treeEvent, seq, forTok int) (*landingRestart, bool) {
+ 	d := deoptPoint{seq: seq, slot: -1, start: rec.body[forTok].Pos(), token: forTok, restart: true, frameHeld: true}
+ 	ok := d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1)
+-	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), nil, d.onFrame)
++	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.litProds(), d.onFrame)
+ 	return &landingRestart{token: forTok, start: d.start, depth: -1, held: -1, onFrame: d.onFrame, lits: d.lits, posOf: d.posOf}, ok
+ }
+ 
+diff --git a/core/go/emit_recorder.go b/core/go/emit_recorder.go
+index eb7f1c06e..abfa2694b 100644
+--- a/core/go/emit_recorder.go
++++ b/core/go/emit_recorder.go
+@@ -317,6 +317,12 @@ type EmitRecorder interface {
+ 	RecordDynApplyName(name string, args []Value, fn, out Value, pos SrcPos) bool
+ 	DynApplyLeadEligible(v Value) bool
+ 	RecordDynMethod(fn Value, args, outs []Value, word string, pos SrcPos) bool
++	// NoteParenForward marks the paren apply whose result is the value id
++	// (recordParenLeadingApply) as one whose group feeds a word's forward
++	// collection: the group's survivors are that word's candidates, never
++	// re-stepped at its close, so a lead the landing before it parked stays
++	// the data it is (`print (m.f y 9)` prints the lambda, NUR336).
++	NoteParenForward(id string)
+ 	// NoteReStepLanding marks the event that produced v as owing a GUARDED
+ 	// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+ 	// rewinds onto v and re-steps it, dispatching a callable one, so the op
+@@ -821,6 +827,7 @@ func (inactiveEmit) DynApplyLeadEligible(Value) bool { return false }
+ func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) bool {
+ 	return false
+ }
++func (inactiveEmit) NoteParenForward(string)                                  {}
+ func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
+ func (inactiveEmit) NoteDelivery(Value)                                       {}
+ func (inactiveEmit) NoteTakenLanding(Value)                                   {}
+diff --git a/core/go/engine.go b/core/go/engine.go
+index 31b8bbdf1..10fcfc0cb 100644
+--- a/core/go/engine.go
++++ b/core/go/engine.go
+@@ -1792,6 +1792,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
+ 
+ 		switch {
+ 		case IsWord(val):
++			e.noteWaitingStack(e.Pointer)
+ 			if err := e.stepWord(val); err != nil {
+ 				return nil, e.faultReturn(err)
+ 			}
+@@ -1903,6 +1904,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
+ 			if val.Parent == nil && val.Behavior() == nil {
+ 				return nil, e.faultReturn(e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", ""))
+ 			}
++			e.noteWaitingStack(e.Pointer)
+ 			if err := e.stepLiteral(); err != nil {
+ 				return nil, e.faultReturn(err)
+ 			}
+@@ -8713,6 +8715,33 @@ func (e *Engine) noteParenStack(idx int) {
+ 	e.Registry.Check.Recorder().NoteParenStack(e.statementStackPos(idx), stack)
+ }
+ 
++// noteWaitingStack tells the recorder the stack the token at idx is stepped
++// over (EmitRecorder NoteParenStack, by the token's position) when it is a
++// list or map literal, whose groups run where it is evaluated (`drop [(m.f
++// 7)]`), or a word opening a run of bare words that reaches a paren group or
++// such a literal: the words wait on it (`drop 4 print (m.f 7)` — print
++// collects it forward). A statement island stopped inside the group may take
++// the statement over from that token, over exactly that stack (NUR336).
++// noteParenStack's conditions hold.
++func (e *Engine) noteWaitingStack(idx int) {
++	if e.Registry == nil || e.Registry.Check == nil || !e.Registry.analysisActive() {
++		return
++	}
++	j := idx
++	for j < e.Tape.Len() && IsWord(e.Tape.At(j)) {
++		j++
++	}
++	if j < e.Tape.Len() && (j > idx || !IsWord(e.Tape.At(idx))) && holdsGroups(e.Tape.At(j)) {
++		e.noteParenStack(idx)
++	}
++}
++
++// holdsGroups reports whether v is a paren group, or a list or map literal
++// the run evaluates (noteWaitingStack).
++func holdsGroups(v Value) bool {
++	return IsParenExpr(v) || IsOpenParen(v) || ((v.Parent.Equal(TList) || v.Parent.Equal(TMap)) && !v.Quoted && IsConcrete(v))
++}
++
+ // stepMark records the mark's ID in the marks hash table and advances.
+ 
+ // isPendingResidualContainer reports whether v is a pending
+@@ -9352,8 +9381,9 @@ func (e *Engine) stepPastOpenParen(val Value) {
+ // paren-unaware reorder the old compile failure guarded against cannot happen. Only
+ // a CONTAINER MEMBER read models here (memberFnRead provenance); any other
+ // leading dynamic keeps its existing paths, as the old compile failure did. Returns
+-// the possibly-shrunk closeIdx (args spliced out).
+-func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeIdx int) int {
++// the possibly-shrunk closeIdx (args spliced out). forward marks a group whose
++// survivors feed a word's forward collection (NoteParenForward).
++func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeIdx int, forward bool) int {
+ 	fnVal := e.Tape.At(first)
+ 	// This window IS the enclosing paren's re-step: it fires only for a paren
+ 	// with >=2 net values and a DYNAMIC lead, which is exactly the shape whose
+@@ -9389,6 +9419,9 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
+ 	out.ID = GenerateID(IDPrefixForType(TAny))
+ 	out.pos = fnVal.pos
+ 	if es.RecordDynMethod(fnVal, argVals, []Value{out}, "(paren apply)", fnVal.Pos()) {
++		if forward {
++			es.NoteParenForward(out.ID)
++		}
+ 		e.Tape.Set(first, out)
+ 		for j := len(argIdxs) - 1; j >= 0; j-- {
+ 			e.Tape.Remove(argIdxs[j])
+@@ -10249,7 +10282,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
+ 		case first >= 0 && count >= 2:
+ 			// LEADING dynamic apply (COMPILE FAILURE-CLOSURE §9.2e) — extracted to
+ 			// recordParenLeadingApply for the stepCloseParen complexity cap.
+-			closeIdx = e.recordParenLeadingApply(es, first, openIdx, closeIdx)
++			closeIdx = e.recordParenLeadingApply(es, first, openIdx, closeIdx, feedsForward || e.parenFeedsPendingForward(openIdx))
+ 		}
+ 	} else {
+ 		// PLAIN check surface (no active recorder — a bare `check` run, or a
+diff --git a/eng/go/vm.go b/eng/go/vm.go
+index e9e430f99..d9014aa40 100644
+--- a/eng/go/vm.go
++++ b/eng/go/vm.go
+@@ -3090,6 +3090,18 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
+ 		return append(stack[:base], results...), nil, nil
+ 	}
+ 	if spec.Paren && fnVal.Quoted && core.IsAppliableFn(fnVal) {
++		if spec.Forward {
++			// A group feeding a word's forward collection hands its survivors
++			// to the word as they stand — the parked lead first — and never
++			// applies it (`print (m.f y 9)` prints the lambda and leaves 42
++			// and 9): its statement's island takes the survivors, or the
++			// apply defers (NUR336).
++			if spec.Restart && spec.LeadName == "" && n > 0 && survivorParen(spec.Substs) != nil {
++				return restart(true)
++			}
++			return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:paren-forward-parked", "shaped method apply "+spec.Word+
++				": the group feeds a word's forward collection, which takes the lead the landing parked as data, and no statement island takes the survivors; the compiled runtime cannot execute it")
++		}
+ 		// A paren applies its lead over the values after it however the
+ 		// landing before it left the lead: parked, where the lead could not
+ 		// take the word after it (`(m.f y)` over a lambda of one Integer is
+diff --git a/lang/go/nur336_348_remainders_test.go b/lang/go/nur336_348_remainders_test.go
+index 5640c8bd6..84a2eb72c 100644
+--- a/lang/go/nur336_348_remainders_test.go
++++ b/lang/go/nur336_348_remainders_test.go
+@@ -258,16 +258,16 @@ func TestNUR336IslandOverATakenOrLateValue(t *testing.T) {
+ 	} {
+ 		agreeOnBothLanes(t, c.src, c.want)
+ 	}
+-	// The negative half: a word that collected the stop's paren forward
+-	// dispatches after it, so no token of the statement stands where the
+-	// interpreter holds nothing pending (lateStart): loud, never a wrong
+-	// answer.
++	// A word that collected the stop's paren forward dispatches after it, so
++	// the stop's token is no late start; the run of words waiting on it is
++	// (lateStart's back-off, round 6): these were loud and now agree
++	// (TestNUR336ForwardWordLateStart holds the sweep).
+ 	for _, c := range []struct{ src, want string }{
+ 		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop print (q.f 7)]] end g (mk)`, "[7]"},
+ 		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop size [(q.f 7)]]] end g (mk)`, "[2]"},
+ 		{m + `(1 add 2) end drop print (m.f 7)`, "[7]"},
+ 	} {
+-		requireLoudDefer(t, c.src, "not an appliable function", c.want)
++		agreeOnBothLanes(t, c.src, c.want)
+ 	}
+ }
+ 

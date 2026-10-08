@@ -8,7 +8,7 @@ import (
 
 // uncalled_dispatch_trap_test.go is the whole-program half of the
 // forty-ninth increment: a NAMED fn value reached as a call whose match
-// failed — the `uncalled_function` finding of design/FN-VALUE-DISPATCH.0.md.
+// failed — the `uncalled_function` finding of design/legacy/FN-VALUE-DISPATCH.0.ignore.
 //
 // The site's own note used to read "NOT a RuntimeMirror … there is no call
 // here to compile". Every clause of that is true; the conclusion is not,
@@ -26,6 +26,10 @@ func udRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 		t.Fatal(err)
 	}
 	gotC, ran, cerr := a.RunCompiled(src)
+	// Booked, not returned: the interpreter oracle below is what the
+	// caller asserts, and reading it is not a fallback — the compiled
+	// lane already returned its error.
+	noteCompileDefect(t, src, gotC, cerr)
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +41,7 @@ func udRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 
 // TestUncalledDispatchTrapRaisesByteIdentically — the two ledger rows
 // (`FnUtil.flip 5`, `FnUtil.curry 5`) and the shape behind them. Each used
-// to refuse the WHOLE program with the generic "check diagnostics"; each now
+// to decline the WHOLE program with the generic "check diagnostics"; each now
 // compiles to a trap that raises the interpreter's own rich error — caret,
 // span and `/v` hint included.
 func TestUncalledDispatchTrapRaisesByteIdentically(t *testing.T) {
@@ -53,7 +57,7 @@ func TestUncalledDispatchTrapRaisesByteIdentically(t *testing.T) {
 		t.Run(tc.src, func(t *testing.T) {
 			ran, agree, cerr := udRun(t, tc.src)
 			if !ran {
-				t.Fatalf("the definite uncalled dispatch must compile to a trap, not refuse: %v", cerr)
+				t.Fatalf("the definite uncalled dispatch must compile to a trap, not decline: %v", cerr)
 			}
 			if cerr == nil {
 				t.Fatal("the dispatch must still raise")
@@ -98,14 +102,15 @@ func TestUncalledDispatchTrapEmitsTheTerminalTrap(t *testing.T) {
 // TestUncalledDispatchTrapDeclinesInexactOperands — the negatives, and the
 // reason the screen is narrow. Each row's failed match examined something
 // the check pass does not hold exactly, so the trap declines and the
-// whole-program refusal stands; both lanes still agree, through the
+// whole-program compile failure stands; both lanes still agree, through the
 // interpreter.
 func TestUncalledDispatchTrapDeclinesInexactOperands(t *testing.T) {
 	for _, src := range []string{
 		// A raw WORD token stands for whatever the binding holds at run time.
 		`import "boru:math-util"  def zs 'x' end MathUtil.cbrt zs`,
-		// A DYNAMIC flex read has a static tag, not a value.
-		`import "boru:math-util"  def zf (flex {n:'x'}) end MathUtil.cbrt (zf get 'n')`,
+		// (A DYNAMIC flex read — `MathUtil.cbrt (zf get 'n')` — moved to
+		// TestUncalledDispatchDynamicOperandRematches on 2026-09-26: the
+		// fn value's recovery re-matches it at run time now, no trap.)
 	} {
 		t.Run(src, func(t *testing.T) {
 			a, err := New()
@@ -117,17 +122,14 @@ func TestUncalledDispatchTrapDeclinesInexactOperands(t *testing.T) {
 				t.Fatal(cerr)
 			}
 			if prog != nil {
-				t.Fatalf("an inexact operand must keep the refusal; it compiled:\n%s", prog.Disassemble())
+				t.Fatalf("an inexact operand must keep the compile failure; it compiled:\n%s", prog.Disassemble())
 			}
 			if reason != "check diagnostics" {
-				t.Errorf("refusal reason drifted: %q", reason)
+				t.Errorf("compile failure reason drifted: %q", reason)
 			}
-			ran, agree, _ := udRun(t, src)
+			ran, _, _ := udRun(t, src)
 			if ran {
-				t.Error("the refused program must run on the interpreter")
-			}
-			if !agree {
-				t.Error("the fallback answer must match the interpreter's")
+				t.Error("the program that does not compile must not run compiled")
 			}
 		})
 	}

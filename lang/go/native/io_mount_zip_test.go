@@ -77,7 +77,7 @@ func TestMountZipArchive(t *testing.T) {
 		t.Errorf("nested zip read = %q (%v)", b, err)
 	}
 	if err := ops.WriteFile("hello.txt", []byte("no"), 0o644); err == nil {
-		t.Error("a read-only zip mount must refuse writes")
+		t.Error("a read-only zip mount must decline writes")
 	}
 	if err := run(`unmount`); err != nil {
 		t.Fatalf("unmount: %v", err)
@@ -120,7 +120,7 @@ func TestMountZipArchive(t *testing.T) {
 
 func TestMountZipErrors(t *testing.T) {
 	_, run := zipMountReg(t)
-	// A Pathon with no zip intent (no ".zip", no {zip:true}) is refused.
+	// A Pathon with no zip intent (no ".zip", no {zip:true}) is declined.
 	if err := run(`mount (make Pathon "plain.txt")`); err == nil {
 		t.Error("a non-zip Pathon mount must error")
 	}

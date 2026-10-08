@@ -24,6 +24,6 @@
 #   which must stay, since it is what parks `f/v` and holds a lambda
 #   in a container — leaves an anonymous 0-arg value inert, so the
 #   program would const-fold to the FUNCTION. apply's check-mode model
-#   refuses instead and the interpreter fallback answers. Compiling the
+#   declines instead and the interpreter fallback answers. Compiling the
 #   shape natively is the follow-up.
-def f ([] => [42])  f/v apply	42	a 0-arg LAMBDA handed to apply — interpreter-correct, compile refused (ledgered)
+def f ([] => [42])  f/v apply	42	a 0-arg LAMBDA handed to apply — interpreter-correct, compile declined (ledgered)

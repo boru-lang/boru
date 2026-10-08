@@ -12,7 +12,7 @@ package lang
 // whole-frame replay over the residual with the binding names, and the VM
 // re-steps a fn-valued read as the WORD through the interpreter's own
 // dispatch (CompiledFn.DynFrameWords). A fn-typed read the replay cannot
-// seat refuses; a gradual one keeps the slot push it always had.
+// seat declines; a gradual one keeps the slot push it always had.
 
 import (
 	"fmt"
@@ -27,6 +27,9 @@ import (
 // code and message agree, the notes name a marker only one side has.
 func requireParityHead(t *testing.T, src string, gotC []any, errC error, gotI []any, errI error) {
 	t.Helper()
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || firstErrLine(errC) != firstErrLine(errI) {
 		t.Errorf("%q: parity: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
 	}
@@ -70,8 +73,9 @@ func TestWordReadDispatchParity(t *testing.T) {
 		{`def mk fn [[k:Integer][Function][([a:Integer b:String] => [k])]]  def f fn [[g:Function][Any][g 1 2]]  [(mk 3)] each [f]`, "cannot call `g` — was [3]"},
 		{`def mk fn [[k:Integer][Function][([a:Integer b:String] => [k])]]  def f fn [[g:Function][Any][g 1 "b"]]  [(mk 3)] each [f]`, "[3]"},
 		{`def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  def f fn [[g:Function x:Integer][Any][x g]]  [(mk 3)] each [f 5]`, "[15] — the closure bridged, collecting the frame's x"},
-		// value deliveries stay values: a Function-expecting forward, `/v`
-		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g]]  f ([] => [42])`, "Function — delivered, not dispatched"},
+		// value deliveries stay values: the `/v` reference, whatever the
+		// slot (a bare `h g` CALLS g — NUR078; the declines below pin it)
+		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g/v]]  f ([] => [42])`, "Function — delivered, not dispatched"},
 		{wrF + `[g/v]]  f ([] => [42]) typeof`, "Function"},
 		{`[1 2] each ([g:Function] => [g])`, "[fn (Function) fn (Function)] — an unmatched lambda stays data"},
 	}
@@ -85,23 +89,26 @@ func TestWordReadDispatchParity(t *testing.T) {
 	}
 }
 
-// TestWordReadDispatchRefuses pins the reads the replay cannot seat: a
+// TestWordReadDispatchFailsToCompile pins the reads the replay cannot seat: a
 // container member, a branch residual, a stack-collected argument, a read
-// mixed with a `/v` read of the same binding — each a sound fallback that
+// mixed with a `/v` read of the same binding — each a compile failure that
 // answers the interpreter's value.
-func TestWordReadDispatchRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+func TestWordReadDispatchFailsToCompile(t *testing.T) {
 	rows := []struct{ src, reason string }{
 		{wrF + `[[g]]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{wrF + `[{a: g}]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{wrF + `[if true [g] [0]]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{`def h fn [[k:Function][Any][k/v]]  def f fn [[g:Function][Any][g h]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
+		// a bare read before a Function-typed slot CALLS (NUR078): the word
+		// is a boundary, so h is left with nothing and raises — a no-match
+		// inside a unit, which has no trap to lower it to
+		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g]]  f ([] => [42])`, "unmatched dispatch recovered at h"},
 		{wrF + `[g drop  g/v]]  f ([] => [42])`, "read both bare and by /v"},
 		{wrF + `[g/v drop  g]]  f ([] => [42])`, "read both bare and by /v"},
 		{wrF + `[g typeof]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		// a GRADUAL param bound to a fn at the call: the pass re-runs the
 		// body under the argument's RUNTIME type (a Function carrier), so
-		// the strict accounting applies — these refuse, they never diverged
+		// the strict accounting applies — these decline, they never diverged
 		// (the map-literal spelling's CHECK pass is the NUR125 pin below).
 		{`def h fn [[k:Any][Any][{a: k}]]  h ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{`def h fn [[k:Any][Any][{a: (k)}]]  h ([] => [42])`, "consumed where the interpreter dispatches it"},
@@ -113,6 +120,10 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// The GENERIC path's pin: a constant fn arg compiles through a
+		// call-site specialised unit instead, where the read IS the
+		// interpreter's word dispatch (TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
@@ -122,9 +133,9 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, _, errC, gotI, errI := runBothEnginesNoSpec(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
 }
@@ -138,9 +149,9 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 // whose DispatchHandler is nil. execMatch now raises internal_error on a
 // nil runner (ADR-005: an error, never a panic), the fold declines on it,
 // and the literal records normally: the check pass is clean, and both lanes
-// answer the interpreter's value (the compiled lane through the refusal
+// answer the interpreter's value (the compiled lane through the compile failure
 // pinned above). Boru.Check is the entry point that reached the fold;
-// CompileCheck never did, so the refusal rows alone could not pin it.
+// CompileCheck never did, so the compile failure rows alone could not pin it.
 func TestGradualFnParamMapLiteralCheckIsClean(t *testing.T) {
 	for _, src := range []string{
 		`def h fn [[k:Any][Any][{a: k}]]  h ([] => [42])`,
@@ -218,19 +229,15 @@ func TestBodyLocalWordReadParity(t *testing.T) {
 		}
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
-	// the top-level spelling has no frame to seat in: the Stage-3 refusal
-	// it always had, and the interpreter's answer
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	a, err := New()
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	// The top-level spelling has no frame to seat in, and declined at the
+	// member's 0-arg landing until 2026-09-26 (NUR207): the read over a
+	// concrete container folds to the lambda itself, so `j` is a def of a
+	// concrete fn and dispatches as the word it is on both lanes.
 	src := `def m {f: ([] => [42])}  def j (m get "f")  j`
-	prog, reason, _, cerr := a.CompileCheck(src)
-	if cerr != nil || prog != nil || !strings.Contains(reason, "fn value read from a container auto-dispatches") {
-		t.Errorf("%q: want the Stage-3 container refusal, got prog=%v reason=%q err=%v", src, prog != nil, reason, cerr)
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled {
+		t.Errorf("%q: must compile natively; err=%v", src, errC)
 	}
-	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	requireParity(t, src, gotC, errC, gotI, errI)
 }
 
@@ -413,36 +420,32 @@ func TestDoBodyCaptureResidualPlainFn(t *testing.T) {
 	}
 }
 
-// The lambda-body deopt's own boundaries, each measured. A read the island
-// cannot seat, and a factory whose result the residual model cannot place,
-// keep the whole-program refusal — a sound interpreter fallback, never a
-// wrong answer. The `if` arm row is the one shape still DIVERGING (pinned
-// as the interpreter's answer via the fallback lane, not as parity on a
-// compiled run): a read inside a branch arm of a lambda body plans no point
-// and keeps its slot push, exactly as it did before this increment.
-func TestLambdaValueBodyDeoptRefusals(t *testing.T) {
+// The lambda-body deopt's own boundaries, each measured. Both rows once
+// declined and now compile with parity; the compile failure each one pinned was a
+// measured gap, not a rule, and the pin moved to parity the increment the gap
+// closed. The `if` arm row is the one shape still DIVERGING (pinned as the
+// interpreter's answer via the fallback lane, not as parity on a compiled
+// run): a read inside a branch arm of a lambda body plans no point and keeps
+// its slot push, exactly as it did before this increment.
+func TestLambdaValueBodyDeoptCompiles(t *testing.T) {
 	const hf = `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any]`
-	refuse := []struct{ src, reason string }{
-		{hf + `[{a: j}]] )]]  def q (h {f: ([] => [42])})  (q 7)`, "body result of unknown provenance"},
-	}
-	for _, c := range refuse {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
+	// The single-container row declined "body result of unknown provenance"
+	// while compileClosureBody analysed every fn-value body as anonymous: a
+	// `fn`-word factory result evaluates its residual container IN-FRAME
+	// (core's EvalResidual rule is `!anonymous || BodyEvalsResidual`), so
+	// the container now records and the row compiles — {a:42}, both engines.
+	{
+		src := hf + `[{a: j}]] )]]  def q (h {f: ([] => [42])})  (q 7)`
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if !compiled {
+			t.Fatalf("%q: must compile now; err=%v", src, errC)
 		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: check: %v", c.src, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%q: want a refusal, got a compiled program", c.src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal = %q, want %q", c.src, reason, c.reason)
+		requireParity(t, src, gotC, errC, gotI, errI)
+		if fmt.Sprint(gotC) != "[{a:42}]" {
+			t.Errorf("%q = %v, want [{a:42}]", src, gotC)
 		}
 	}
-	// The two-factory row refused "fn value precedes residual args" until the
+	// The two-factory row declined "fn value precedes residual args" until the
 	// thirty-sixth increment: the def of a produced closure claims its
 	// shape, so each read models its own dispatch and the row compiles.
 	src := hf + `[j]] )]]  def q (h {f: ([] => [42])})  def r (h {f: 5})  (q 7) (r 1)`

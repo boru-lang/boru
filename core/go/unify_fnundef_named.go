@@ -45,6 +45,12 @@ func (*FnUndefUnifier) ContentMembership() {}
 // itself, not an inhabitant) passes through to the prev/Default walk,
 // mirroring DisjunctUnifier — `IntToStr is Type` must stay true.
 func (f *FnUndefUnifier) Match(v Value, t *Type) bool {
+	return f.matchR(v, t, nil)
+}
+
+// matchR is Match with the enclosing unify chain's registry threaded
+// into the signature rule's Pattern-compatibility unify (see isR).
+func (f *FnUndefUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	if IsBareTypeNode(v) {
 		return baseBehavior(f.prev).Match(v, t)
 	}
@@ -55,7 +61,7 @@ func (f *FnUndefUnifier) Match(v Value, t *Type) bool {
 	if v.Carrier {
 		return v.Parent.ConformsTo(TFunction) || v.Parent.Equal(TAny)
 	}
-	return FnUndefMatchesFnDef(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), v)
+	return fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), v, r)
 }
 
 // Unify admits a concrete function candidate by the same structural
@@ -63,10 +69,13 @@ func (f *FnUndefUnifier) Match(v Value, t *Type) bool {
 // literal — the typed-def swap hazard), and failing definitively on a
 // concrete non-member; a type-level pair defers to the structural rule.
 // The Unify capability every membership kind carries
-// (design/TYPE-REPRESENTATION.1.md §N3): without it, `def f:IntToStr
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N3): without it, `def f:IntToStr
 // fn […]` against the node constraint would fall to unifySameOrSubtype's
 // narrower-literal arm and bind the literal instead of the function.
-func (f *FnUndefUnifier) Unify(a, b Value) (Value, *UnifyError) {
+// r is the enclosing chain's registry: the signature rule's
+// Pattern-compatibility unify runs with it (fnSigSatisfiesSpecR), so a
+// predicate-typed pattern child is decided as at the chain's top level.
+func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// The signature rule decides whenever exactly one side IS this
 	// shape's node; the fn-shape structural unifier handles the
 	// candidate (function value, carrier, or another fn shape) exactly
@@ -88,7 +97,7 @@ func (f *FnUndefUnifier) Unify(a, b Value) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("value is not a "+f.typeName+" function", a, b)
 	}
-	if FnUndefMatchesFnDef(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), candidate) {
+	if fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), candidate, r) {
 		return candidate, nil
 	}
 	return Value{}, unifyFail("function does not satisfy fn shape "+f.typeName, a, b)

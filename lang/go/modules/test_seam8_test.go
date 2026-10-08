@@ -55,7 +55,7 @@ func TestW8ResolveTestExportValueFnDef(t *testing.T) {
 }
 
 // TestW8RunCheckPropBadBodies drives runCheckProp's gen/property
-// RequireConcreteList refusals (test.go:717/721).
+// RequireConcreteList compile failures (test.go:717/721).
 func TestW8RunCheckPropBadBodies(t *testing.T) {
 	r := testRegistry(t)
 	goodList := native.NewList([]native.Value{native.NewInteger(0)})
@@ -72,9 +72,9 @@ func TestW8RunCheckPropBadBodies(t *testing.T) {
 	}
 }
 
-// TestW8TestBadBodies drives the interpreter-path RequireConcreteList refusals
+// TestW8TestBadBodies drives the interpreter-path RequireConcreteList compile failures
 // of Test.describe (251), Test.test (303) and Assert.throws (447): a
-// type-literal List passes the sig but is refused as a body.
+// type-literal List passes the sig but is declined as a body.
 func TestW8TestBadBodies(t *testing.T) {
 	r := testRegistry(t)
 	if err := w8TestErr(t, r, `Test.describe "g" List`); err == nil {

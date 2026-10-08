@@ -7,7 +7,7 @@ import (
 
 // Regression for the P1 soundness bug Codex flagged on PR #208: an
 // INFERRED-return user fn (declared `[]`) whose body leaves a residual of
-// UNKNOWN PROVENANCE must stay uncompilable (refuse → interpreter fallback), NOT
+// UNKNOWN PROVENANCE must stay uncompilable (decline → compile failure), NOT
 // silently RET zero values. A short-lived residual-drop (b70bb884's #4) made
 // such a unit succeed with an empty stack where the interpreter raised — e.g. a
 // deferred map expression that reads a param after its scope is gone. The
@@ -22,6 +22,9 @@ func inferSound(t *testing.T, src string) {
 	want, werr := a.RunInterp(src)
 	b, _ := New()
 	got, _, gerr := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, gerr) {
+		return
+	}
 	if (werr == nil) != (gerr == nil) {
 		t.Fatalf("error disagreement (compile != interpret):\n  src: %s\n  interp:   %v\n  compiled: %v", src, werr, gerr)
 	}

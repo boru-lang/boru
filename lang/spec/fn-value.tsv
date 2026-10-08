@@ -24,8 +24,8 @@ import module [export "X" {f: (fn [[a:Integer][Integer][a add 1]])}]  X.f 5	6	a 
 import module [import "boru:string-util" export "X" {up: (fn [[s:String][String][StringUtil.upper s]])}]  X.up 'ab'	'AB'	the export body runs in MODULE scope (module-private import resolves)
 #
 # §3  negatives — no match leaves the value as data; module scope is sealed
-def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f	fn [[a:Integer][Integer][word(a) word(add) 1]]	bare value, no args: stays data
-def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f 'x'	fn [[a:Integer][Integer][word(a) word(add) 1]] 'x'	type mismatch: no dispatch — the fn stays data, 'x' strands on top
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f	fn [[a:Integer][Integer][a add 1]]	bare value, no args: stays data
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f 'x'	fn [[a:Integer][Integer][a add 1]] 'x'	type mismatch: no dispatch — the fn stays data, 'x' strands on top
 import "boru:string-util"  import module [export "X" {up: (fn [[s:String][String][StringUtil.upper s]])}]  X.up 'ab'	ERROR:undefined_word	an OUTER import does not leak into the module body's scope
 #
 # §4  a paren expression resolving to a FUNCTION WORD never induces a call
@@ -65,7 +65,7 @@ def z fn [[][Integer][42]]  def h fn [[f:Function][Any][f/v]]  typeof ((h z/v))	
 def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an application is ASKED for
 #
 # §5  a failed dispatch is LOUD, wherever the value would have gone
-#     (design/FN-VALUE-DISPATCH.0.md). The old contract marked the value
+#     (design/legacy/FN-VALUE-DISPATCH.0.ignore). The old contract marked the value
 #     and let the end-of-run drain judge it, so any consumer at all — a
 #     `print`, a `def`, an Any slot — silenced a real dispatch failure.
 #     The judgement is now made where the call is, so what happens to the
@@ -85,12 +85,12 @@ def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an
 #     check mode evaluates a code body's parens on its own straight line, so
 #     it reports the call as an error while the run traps it, and a row would
 #     read as a checker false positive. The divergence is pre-existing and
-#     unchanged by this contract (design/FN-VALUE-DISPATCH.0.md §6).
+#     unchanged by this contract (design/legacy/FN-VALUE-DISPATCH.0.ignore §6).
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w "x"	ERROR:uncalled_function	a named export called with a mismatched arg raises AT THE CALL
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  print (M.w "x")	ERROR:uncalled_function	and a consumer around it does not silence it — the old drain never fired here
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def y (M.w "x")  y	ERROR:uncalled_function	nor does binding the result with def
-import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w	fn [[x:Integer][Integer][word(x)]]	a bare reference with no argument is still a VALUE, not a call
-import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w/v	fn [[x:Integer][Integer][word(x)]]	/v means "the function is what I want" — no dispatch, no error
+import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w	fn [[x:Integer][Integer][x]]	a bare reference with no argument is still a VALUE, not a call
+import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w/v	fn [[x:Integer][Integer][x]]	/v means "the function is what I want" — no dispatch, no error
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def g M.w/v  g 5	5	and the parked value is still callable, which is what a caller wanted it for
 #
 # §6  a value-called dispatch SEALS at collection completion (NUR038).
@@ -113,7 +113,7 @@ import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  
 #     the pre-existing check-vs-run class §5 already notes); the
 #     twin-call VALUE rows live in
 #     lang/spec/frontier/frontier-nur038-seal.tsv — semantically green,
-#     compile-refused on the pre-existing residual-ordering limitation
+#     compile-declined on the pre-existing residual-ordering limitation
 #     ("dynamic value precedes residual args"). The EXPLICIT-PAREN row of
 #     that set GRADUATED here 2026-08-27 (Stage 3): each paren applies and
 #     nets one value, and the residual layout no longer reads two placed
@@ -134,32 +134,33 @@ import module [def p fn [[x:Any] [Any] [x]] export "M" {p: p/v}] end M.p 5 M.p 7
 def f fn [[x:Any] [Any] [x]] end def h fn [[y:Any] [Any] [y]] end def m {p: f/v} end m.p 5 h 7	5 7	value call then bare-word call (the word barrier, unchanged)
 def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end m.p 5 end m.p 7	5 7	explicit `end` as the seal (unchanged)
 #
-# §7  fn-local fns as higher-order body words REFUSE compilation (NUR037).
+# §7  fn-local fns as higher-order body words FAIL TO COMPILE compilation (NUR037).
 #     A fn bound by `def … fn` INSIDE another fn and then NAMED as a
 #     code-body word (`for-each [step] xs`) resolves per run through the
 #     def stack, which a compiled program never populates — the enclosing
 #     body's def is compiled away — so every record-time admission that
 #     baked the NAME (the island span, the CALL_NATIVE const-bake, the
 #     closure probe) turned a working program into undefined_word in the
-#     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now refuses
-#     the whole program at compile admission, so the interpreter owns it
-#     ("slow, not wrong"; design/COMPILABLE-SUBSET.md §5). The refusing
+#     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now declines
+#     the whole program at compile admission, and it is then silently
+#     re-run on the interpreter (design/COMPILABLE-SUBSET.md §5) — an open
+#     defect, not a sanctioned outcome. The declining
 #     shapes are pinned in lang/go/test/nur037_fnlocal_test.go — a spec
-#     value row must compile (refusalCeiling 0). The rows here pin the
-#     twins the refusal must NEVER over-match, holding both engines to
+#     value row must compile (failureCeiling 0). The rows here pin the
+#     twins the compile failure must NEVER over-match, holding both engines to
 #     them through the differential gate: module-scope callbacks (the
 #     utils house-rule shape) and a fn-local VALUE read (the closure
 #     path's lexical capture).
 def stp fn [[e:Integer] [Integer] [e add 1]] end each [stp] [1 2]	[2 3]	a module-scope fn named as an each body word keeps compiling
 def acc (flex {}) end def stp fn [[e:String] [Any] [acc set (e) true]] end for-each [stp] ['x' 'y'] end acc	(flex {x:true y:true})	a module-scope fn as a for-each body word keeps compiling
-def g fn [[xs:List] [Any] [def n 10 each [n add] xs]] end g [1 2]	[11 12]	a fn-local VALUE def read by the body is a lexical capture, not a refusal
+def g fn [[xs:List] [Any] [def n 10 each [n add] xs]] end g [1 2]	[11 12]	a fn-local VALUE def read by the body is a lexical capture, not a compile failure
 #
 # §8  chained forward application of Function params — the compose family.
 #     `f (g x)` inside a fn body applies the inner param fn at the paren
 #     and the outer param fn over its result — the canonical HOF chain.
 #     A live MISCOMPILE until 2026-08-02 (the whole-frame replay's flat
 #     window lost the paren structure and compiled the RET count error),
-#     then a sound refusal; GRADUATED 2026-08-03 by the Stage-G single-arg
+#     then a compile failure; GRADUATED 2026-08-03 by the Stage-G single-arg
 #     increment: the leading one-arg apply `(g x)` records the same
 #     RecordDynApply event as the trailing spelling `(x g)` (the two
 #     collections converge at one argument), so the inner group collapses
@@ -170,12 +171,12 @@ def compose fn [[f:Function g:Function x:Integer] [Integer] [f (g x)]] compose (
 def twice fn [[f:Function x:Integer] [Integer] [f (f x)]] twice ([n:Integer] => [n add 1]) 5	7	self-composition — the same fn value read twice, applied at two depths
 def stage fn [[f:Function x:Integer] [Integer] [def r (f x) f r]] stage ([n:Integer] => [n add 1]) 5	7	the def-split idiom: the apply seats in a def, the tail applies over the bound name (replayIsBodyTail's windowReadsID arm)
 def tds fn [[g:Function x:Integer] [Integer] [def r (x g) g r]] tds ([n:Integer] => [n add 1]) 5	7	the trailing-spelling def-split twin — same seating through the trailing RecordDynApply event
-def chain fn [[a:Function b:Function s:Integer][Integer][def r1 (a s) def r2 (b r1) r2]] chain ([n:Integer] => [n add 1]) ([n:Integer] => [n mul 10]) 4	50	CHAINED def-split (NUR087, fixed 2026-08-24): the second def calls through a Function param with the FIRST def's dynamic binding as its argument. The collapse used to require a non-dynamic argument, so this window stalled the pending def and every later read of r2 raised a false undefined_word — refusing a program both engines run
+def chain fn [[a:Function b:Function s:Integer][Integer][def r1 (a s) def r2 (b r1) r2]] chain ([n:Integer] => [n add 1]) ([n:Integer] => [n mul 10]) 4	50	CHAINED def-split (NUR087, fixed 2026-08-24): the second def calls through a Function param with the FIRST def's dynamic binding as its argument. The collapse used to require a non-dynamic argument, so this window stalled the pending def and every later read of r2 raised a false undefined_word — declining a program both engines run
 #
 # §9  gradual-Any into a multi-overload user fn with DIFFERING arm returns.
 #     The checker cannot statically commit an arm, and until 2026-08-03 one
 #     recorded output type would lie for the unselected arm, so the shape
-#     refused ("ambiguous dispatch, no poly re-match"). The §8.2(3)
+#     declined ("ambiguous dispatch, no poly re-match"). The §8.2(3)
 #     return-join graduation records the JOIN of the arms' returns (a
 #     dynamic carrier at the arms' common ancestor) and the VM's
 #     OpCallUserPoly re-match selects the concrete arm — whichever arm
@@ -191,7 +192,7 @@ def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer] [Integer] [1] [a:String] [St
 #     and the value rides as an ordinary const operand. That
 #     name-independence is what deq rides on: the binding a function was
 #     reached through is not part of what it is.
-def f fn x:Integer [Integer] [x add 1] canon (f/v)	'fn [[x:Integer][Integer][word(x) word(add) 1]]'	canon renders the anonymous fn literal — no `fn f`, because the name is how it was reached
+def f fn x:Integer [Integer] [x add 1] canon (f/v)	'fn [[x:Integer][Integer][x add 1]]'	canon renders the anonymous fn literal — no `fn f`, because the name is how it was reached
 def f fn x:Integer [Integer] [x add 1] def a (f/v) (canon (a/v)) eq (canon (f/v))	true	so one function under two names has ONE canon — the name-independence deq rides on
 #
 # §11 UNDER-APPLICATION: a window WIDER than the callee's arity.
@@ -205,7 +206,7 @@ def f fn x:Integer [Integer] [x add 1] def a (f/v) (canon (a/v)) eq (canon (f/v)
 #     or a single-signature concrete callee — so a factory whose branches
 #     return different arities, or an overloaded callee, never reaches the
 #     trim. The narrower window (fewer args than the arity) is the
-#     opposite shape and still refuses: the interpreter leaves the fn
+#     opposite shape and still declines: the interpreter leaves the fn
 #     UNAPPLIED, which nothing here models.
 def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (1 2 (mk 4))	1 6	a 1-arg closure under a 2-wide window: the adder takes the top value, the deeper 1 survives
 def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (1 2 3 (mk 4))	1 2 7	…and two deeper values survive, in order
@@ -222,7 +223,7 @@ def mk2 fn [[n:Integer] [Function] [([a:Integer b:Integer] => [a add b add n])]]
 #     Until the Apply kernel carried the applied value's contract into the
 #     frame it enters, the first row below answered 'str' compiled and raised
 #     interpreted — a silent wrong answer, which is the class this project
-#     ranks strictly above a refusal. The violation is only visible at RUN
+#     ranks strictly above a compile failure. The violation is only visible at RUN
 #     time (the body returns its `n:Any` param), so no static pass can stand
 #     in for the runtime contract.
 def bad fn [[n:Any][Integer][n]] end def mk fn [[][Function][bad/v]] end ((mk) 'str')	ERROR:type_error	an applied fn value's declared return TYPE is enforced on both engines
@@ -244,12 +245,106 @@ def cbad fn [[n:Integer][Boolean][n]] end [1 2] each cbad/v	ERROR:type_error	a c
 def cokr fn [[n:Integer][Boolean][n gt 0]] end [1 2] each cokr/v	[true true]	…and a conforming callback passes through unchanged
 def clit fn [[n:Integer][Boolean][1]] end [1 2] each clit/v	ERROR:type_error	…and a callback whose body is a bare LITERAL is held to it too — no application to strand an operand, no param read to surface a stand-in, so the concrete residual IS the return
 def cstr fn [[n:Integer][Boolean]['s']] end [1 2] each cstr/v	ERROR:type_error	a literal body of any leaf type, not just the Integer one that surfaced it
-def cfit fn [[n:Integer][Integer][1]] end [1 2] each cfit/v	[1 1]	…and a CONFORMING literal body is not rejected, so the arm above is not just a blanket refusal of literal bodies
+def cfit fn [[n:Integer][Integer][1]] end [1 2] each cfit/v	[1 1]	…and a CONFORMING literal body is not rejected, so the arm above is not just a blanket compile failure of literal bodies
 def flitp fn [[1] [1] [dup drop]] end 99	99	a literal PARAM pattern widens to its parent for the generalised body analysis, so the residual must NOT be measured against a literal RETURN pattern — `flitp 1` is 1 on both engines, and checking it against `1` reported a mismatch that does not exist
 # §7  a bare read of a Function-typed PARAM is a CALL (NUR123; ruled 2026-08-15,
 #     ADR-016: a bare name is a call, `/v` asks for the value, arity never
 #     changes how a function behaves). The compiled lane re-steps the read as
 #     the WORD (CompiledFn.DynFrameWords) — graduated 2026-09-05 from
 #     frontier-fnparam-deref.tsv.
-def nought fn [[] [Integer] [7]] def grab fn [[f:Function] [Any] [f]] typeof (grab nought)	Integer	arity-0 Function param read bare: the bare name is a call, so it APPLIES (7 -> Integer) on both lanes
+def nought fn [[] [Integer] [7]] def grab fn [[f:Function] [Any] [f]] typeof (grab nought/v)	Integer	arity-0 Function param read bare: the bare name is a call, so it APPLIES (7 -> Integer) on both lanes
 def dbl fn [[n:Integer] [Integer] [n mul 2]] def hold fn [[c:Function] [Any] [c]] typeof (hold dbl)	ERROR:no signature matches	arity-1 Function param read bare with no argument: the call RAISES on both lanes
+# §8  a member read the pass knows only by its CONTAINER'S TYPE still
+#     dispatches (NUR173). `m.f` lowers to the reach group `( m dot f )`,
+#     whose collapse rewinds onto the one value it leaves and re-steps it —
+#     an unmarked dot-read of a function is a CALL (NUR038). Where the
+#     container arrives as an EVENT RESULT (a fn's return, an `if` arm) the
+#     check pass holds a carrier and cannot resolve the member at all, so the
+#     compiled lane pushed the runtime fn as DATA and answered `fn h` against
+#     the interpreter's 42, silently. The landing is now recorded and the
+#     RUNTIME value decides (OpReStepLanding).
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f	42	a 0-arg member off a fn-returned map dispatches at the landing
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end (mk).f	42	…with the receiver read inline
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end (m.f)	42	…and inside a user paren, which parks the RESULT, not the read
+def h fn [[] [Integer] [42]] end def yes fn [[] [Boolean] [true]] end def m (if (yes) [{f: h/v}] [{f: h/v}]) end m.f	42	an `if` arm is an event result too — the container's provenance, not `set`, is what the pass loses
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f add 1	43	the landing runs BEFORE the following word takes the value
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	5 42	a 0-arg member takes no stack arg, so the value below it stays below it
+def h fn [[] [Integer] [42]] end def mkf fn [[] [Map] [{f: h/v}]] end def use fn [[] [Integer] [def m (mkf) end m.f]] end use	42	…and the same inside a fn body, where the landing rides the unit
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end m.g 21	22	a member that TAKES an argument still collects it
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end 5 m.g	6	…from the stack as well
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end typeof m.g	Function	a member with NO 0-arg overload and nothing to collect stays DATA — the landing raises no no-match, because the interpreter's re-step does not
+def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m.x add 1	8	an ordinary non-fn member read is untouched by the landing
+def mkn fn [[] [Map] [{a: {b: 5}}]] end def m (mkn) end m.a.b	5	…including a chained read, where every link lands
+#
+# §9  THE LANDING IS A PROPERTY OF THE STEP, NOT OF WHO PRODUCED THE VALUE
+#     (NUR174). §8 recorded the landing at the REACH-GROUP COLLAPSE, which
+#     made the model a whitelist of producers — and `m get 'f'` is the same
+#     read written as a word call, so no collapse ever saw it. The fact is
+#     now read where check's model stands: inside stepLiteral, on the branch
+#     whose next act is execFnDefLiteral. A value the loop PARKED never
+#     reaches there, so it is an observation rather than a guess.
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'	42	the get-WORD twin: the same 0-arg member read as a word call
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end (m get 'f')	42	…inside a user paren
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def x (m get 'f') end x	42	…and def-bound, the commonest shape of all
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f' add 1	43	the landing runs before the following word takes the value
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	5 42	…and takes no stack arg
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end m get 'g' 21	22	a member that TAKES an argument still collects it through `get`
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end 5 m get 'g'	6	…from the stack as well
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end typeof (m get 'g')	Function	…and with nothing to collect it stays DATA
+def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m get 'x' add 1	8	an ordinary non-fn member read is untouched
+#
+#     Three rungs the landing must mirror, because execFnDefLiteral decides
+#     them at the very index the model stands on. Each answered WRONGLY while
+#     its rung was missing, and each is the interpreter's own rule.
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/v	Function	a DISPATCH MODIFIER states data intent — the landing declines where execFnDefLiteral quotes
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/q	Function	…the quoting modifier likewise
+def f x:Integer => [add 1 x] end def mkp fn [[g:Function] [Function] [([] => [(g 10)])]] end def p (mkp f/v) end (p)	11	an ANONYMOUS 0-arg value is DATA at a landing (the interpreter's anonymous-0-arg park), so `def p` binds the WRAPPER and the user's own paren is what calls it
+#
+# §10  THE LANDING APPLIES OVER AN EMPTY WINDOW, so it is faithful only where
+#      the interpreter's own match would also be empty (NUR175). It has
+#      neither the live tape nor a way to consume a stack operand: the tokens
+#      after the read compiled into later ops, and taking a stack value would
+#      leave the stack shallower than the lowering predicted. A member with
+#      ANY arg-taking overload can therefore be matched differently there than
+#      here, so ONLY-0-ARG settles it — and a 0-return member is applied for
+#      its effect, which the landing's one-result claim cannot express. Both
+#      stand aside onto the residual apply that answered them all along. The
+#      first two rows of each pair answered WRONGLY on the reach spelling
+#      before this, and the `get` spelling reached them only once the gate
+#      widened.
+def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	6	a stack operand selects the UNARY overload, as the interpreter's own match does
+def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	6	…and the same through `get`
+def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f z	z/q	a `/q` slot CAPTURES the following word: a word is not always a collection barrier
+def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f' z	z/q	…and the same through `get`
+def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	5	a 0-RETURN member is applied for its effect and leaves the stack as it found it
+def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	5	…and the same through `get`
+#
+# §14  A DEF NAMES THE FN VALUE IT BINDS, whatever the value's representation
+#      (NUR168, closed 2026-09-25). installDef sets the bound FnDefInfo's Name
+#      — a factory's capture-free lambda, a closure, a `/v` copy alike — so
+#      the value escaping as data renders under the def's name; a root def
+#      installs ONE entry under the name (the compiled lane's dyn-scope bind
+#      and its write-back are one install, not two unioned by Lookup); and a
+#      bare-word call of the bound value inside a code body is the dispatch
+#      it is on both lanes. `join` renders the display form the pins read.
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end (each f/v [1 2 3]) join ','	'fn f(String),fn f(String),fn f(String)'	a factory's const lambda, def-bound, escapes under the def's name (each's data fork, no element matches)
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end do [[f/v] join ',']	'fn f(String)'	…and read back as a value inside a code body
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end [(do [f/v])] join ','	'fn f(String)'	…and read back inside a code body: ONE entry under the name, one signature
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end def f (mk 2) end [(do [f/v])] join ','	'fn f(String)'	a redefinition replaces the entry — still one signature
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end do [f 'z']	'z'	the bound value called by its bare word inside a code body dispatches
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end for 2 [f 'z']	'z' 'z'	…and inside a loop body
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end [(do [f/v])] join ','	'fn f(Integer)'	the capturing twin was always named — the rule is one for both representations
+#
+# §15  A `/v` ON A MAP MEMBER IS DATA BESIDE ITS ARGUMENTS (NUR277, closed
+#      2026-09-25): the marker qualifies the member read, so the value never
+#      applies over what follows it — the 5 strands on top, on both lanes.
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5	fn [[a:Integer][Integer][a add 1]] 5	the marked member is data; the argument strands
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f 5	6	…the unmarked member applies
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} (m.f/v) 5	fn [[a:Integer][Integer][a add 1]] 5	…and a paren around the marked read parks the same
+#
+# §16  THE WRAP WORDS TAKE A COMPILED CLOSURE (NUR158, closed 2026-09-25): a
+#      capturing lambda read out of a container wraps under `/u` `/s` `/f`
+#      `/N` as any fn does — the words bridge the closure to its definition.
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end m.a/u 10 3	93	usurp over a capturing closure read out of a map
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end 10 3 m.a/s	93	…stack-args
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end m.a/2 10 3	107	…force-arity

@@ -54,7 +54,7 @@ var Natives = []NativeFunc{
 	// `quote (expr)` evaluates expr then quotes the result (the inert-value
 	// idiom); `codequote (expr)` keeps the paren as code — the structural
 	// quotability the macro layer wants. Words → atoms and lists → raw list
-	// behave exactly like `quote`. See design/PAREN-REPRESENTATION.9.md §2.2.
+	// behave exactly like `quote`. See design/legacy/PAREN-REPRESENTATION.9.ignore §2.2.
 	{
 		Name: "codequote",
 		// Like quote: the /q'd-Atom sig bakes its inert symbol + CALL_NATIVE.
@@ -99,6 +99,10 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(reachHandler),
 				Returns:    []*Type{TReach}, BarrierPos: -1,
+				// S2b's declaration: the NoEvalArgs list holds the lens's
+				// get SEGMENTS — keys the handler reads, never code it runs
+				// (CompileQuoteKey).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -118,6 +122,10 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(wordHandler),
 				Returns:    []*Type{TAny}, BarrierPos: -1,
+				// S2b's declaration: the result is the __SP splice marker the
+				// tape re-steps against the live stack — the S2a rule
+				// (CompileResteps).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -251,10 +259,10 @@ var Natives = []NativeFunc{
 	// ---- filter ----
 	{
 		Name:          "filter",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// filter [body] data — the body sees one element and returns a Boolean.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -292,18 +300,20 @@ var Natives = []NativeFunc{
 		Name: "push",
 
 		Signatures: []Signature{
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1},
+			// CompileStoresFn: push STORES its operand and never steps it —
+			// the rule is stated once, at `set` (native_storage.go).
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn | CompileSideEffect},
 			// Returns a List (was undeclared → Any, which widened a fold/scan
 			// accumulator to Any on the second round and then wrongly rejected the
 			// next `push` — `[] fold [push] xs`). Mirrors unshift's List overload.
-			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1},
+			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn},
 		},
 	},
 	{
 		Name: "pop",
 
 		Signatures: []Signature{
-			{Args: []*Type{TFlexList}, Impl: Go(popFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1},
+			{Args: []*Type{TFlexList}, Impl: Go(popFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1, CompileEffect: CompileSideEffect},
 			{Args: []*Type{TList}, Impl: Go(popHandler), Returns: []*Type{TList, TAny}, ReturnsFn: listEdgeElemReturns(true), BarrierPos: -1},
 		},
 	},
@@ -311,15 +321,16 @@ var Natives = []NativeFunc{
 		Name: "unshift",
 
 		Signatures: []Signature{
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1},
-			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1},
+			// CompileStoresFn: unshift STORES its operand — the rule at `set`.
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn | CompileSideEffect},
+			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn},
 		},
 	},
 	{
 		Name: "shift",
 
 		Signatures: []Signature{
-			{Args: []*Type{TFlexList}, Impl: Go(shiftFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1},
+			{Args: []*Type{TFlexList}, Impl: Go(shiftFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1, CompileEffect: CompileSideEffect},
 			{Args: []*Type{TList}, Impl: Go(shiftHandler), Returns: []*Type{TList, TAny}, ReturnsFn: listEdgeElemReturns(false), BarrierPos: -1},
 		},
 	},
@@ -340,6 +351,12 @@ var Natives = []NativeFunc{
 	// happens in the handler. See walk_core.go.
 	{
 		Name: "walk",
+		// CompileDynBody: a hook the closure path cannot compile — a fn VALUE
+		// from a factory, a container member, a module export, or a hook the
+		// pass could not type — lowers to a CALL_NATIVE under DynEnv, the
+		// handler classifying the runtime value exactly as the interpreter's
+		// dispatch does (the S1a rule each/fold/scan/filter follow).
+		CompileEffect: CompileDynBody,
 		// The DESCEND hook (sig position 2) compiles to a closure unit the
 		// handler drives through InvokeBody (walkClassifyHook already
 		// classifies a compiled closure). Visit-only: hook results are
@@ -349,7 +366,7 @@ var Natives = []NativeFunc{
 		// (LambdaSharesTokenShape). The optional ASCEND slot (position 3) is
 		// guarded recorder-side (extraNoEvalHookSlotsOK): only a
 		// provably-empty flex reference rides as a value operand; every other
-		// ascend shape keeps today's refusal/bake behaviour.
+		// ascend shape keeps today's compile failure/bake behaviour.
 		Callable: &CallableSpec{BodyPos: 2, BodyOut: 0, LambdaSharesTokenShape: true, Inputs: func(_ []Value) []Value {
 			return []Value{walkHookArgCarrier()}
 		}},
@@ -628,7 +645,7 @@ func doFolder(p PathonInfo, parents bool, reg *Registry) ([]Value, error) {
 	ops := EffectiveFileOps(reg)
 	pathStr := p.String()
 
-	// C1 effect fence: directory creation mutates the filesystem — noted on
+	// effect ledger: directory creation mutates the filesystem — noted on
 	// the attempt, since MkdirAll can create some parents before failing.
 	reg.NoteEffect()
 	if parents {

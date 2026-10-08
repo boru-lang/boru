@@ -6,7 +6,7 @@ import (
 )
 
 // vmCompiledRuntime is the bytecode runner's CompiledRuntime — the real
-// implementation of core's S4 seam (design/ENG-FOUR-PIECE.0.md). It
+// implementation of core's S4 seam (design/legacy/ENG-FOUR-PIECE.0.ignore). It
 // owns the stamped-ref freshness/JIT-re-stamp dance, the C1 effect
 // fence around the attempt, and the internal-error degrade decision;
 // core's InvokeCallback sees only ran/declined.
@@ -15,44 +15,70 @@ type vmCompiledRuntime struct{}
 func init() { core.InstallCompiledRuntime(vmCompiledRuntime{}) }
 
 func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, false)
+}
+
+// InvokeCompiledStrict is InvokeCompiled for a NAMED fn call: the unit's
+// root RET takes the frame's return contract (NUR191, invokeCompiledUnit's
+// named entry).
+func (vmCompiledRuntime) InvokeCompiledStrict(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, true)
+}
+
+func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, named bool) ([]core.Value, error, bool) {
 	ref := compiler.CompiledRef(sig)
 	if ref != nil && ref.Prog != nil && !ref.DepsFresh(r) {
 		ref = ref.JitRestamp(r)
 	}
-	if ref == nil || ref.Prog == nil {
+	if ref == nil || ref.Prog == nil || ref.RefusesArgs(args) {
+		// No unit — or a fn argument in a slot the unit reads bare, the
+		// interpreter's word dispatch (NUR279): CallBoru answers.
 		return nil, nil, false
 	}
-	// The writer fence is armed around the attempt because a DETACHED
-	// callback fires after the enclosing compiled run disarmed its own
-	// fence: without the wrap, a callback that PRINTS and then bails
-	// would leave the ledger untouched and the interpreter retry would
-	// emit the output a second time. Nested invocations are already
-	// armed; the second wrap only double-counts, and the fence reads
-	// deltas, not magnitudes.
-	disarm := r.ArmEffectFence()
-	effectsAt := r.Effects.Count()
-	res, err, ran := invokeCompiledUnit(r, ref, args)
-	disarm()
+	res, err, ran := invokeCompiledUnit(r, ref, args, named)
 	if !ran {
 		return nil, nil, false
 	}
-	if !core.IsInternalErr(err) {
-		return res, err, true
+	// A soundness bail inside the callback's unit used to ride back with
+	// ran=false so the caller retried the whole body on the interpreter,
+	// guarded by the effect fence so a callback that had written to the peer
+	// and THEN bailed did not write twice. Nothing retries now: the bail is a
+	// compiler defect and it surfaces, effect or no effect.
+	if err == nil && !named {
+		res = trimUnconsumedUnnamed(sig, res)
 	}
-	// C1 effect fence (effects.go): the interpreter retry re-runs the
-	// whole body, so it is sound only while the failed unit emitted NO
-	// observable effect — a callback that wrote to the peer and THEN
-	// bailed must surface the internal_error rather than double its
-	// output.
-	if r.Effects.Count() != effectsAt {
-		return nil, err, true
+	return res, err, true
+}
+
+// trimUnconsumedUnnamed is the callback seam's mirror of CallBoru's
+// unnamed-arg DISCARD (core callBoruNamed): residuals beyond the SIGNATURE's
+// declared return count are unconsumed unnamed params sitting at the bottom
+// of the body's region — call-scoped data, trimmed up to the unnamed-param
+// count. A stored fn's unit is compiled count-agnostic (it declares no
+// returns of its own, so its RET hands back the whole residual), which is
+// why the seam, holding the signature, trims here: `fnpred [[Integer]
+// [true]]` answered ONE verdict interpreted and [candidate true] compiled,
+// which the predicate protocol refuses — `0 is Z` was true on one lane and
+// false on the other (NUR272). A NAMED call's root RET already discards
+// through the frame's own contract (checkReturnContract, NUnnamed).
+func trimUnconsumedUnnamed(sig *core.Signature, res []core.Value) []core.Value {
+	unnamed := 0
+	for _, p := range sig.Params {
+		if p.Name == "" {
+			unnamed++
+		}
 	}
-	// The swallowed internal error rides back WITH ran=false: it is the only
-	// thing that tells the caller its interpreter path is a designed defer's
-	// replay rather than an island (CompiledRuntime.InvokeCompiled's contract).
-	// The caller must not surface it — vmDefer already recorded the bail, and
-	// the interpreter is about to produce the canonical answer.
-	return nil, err, false
+	if len(sig.Returns) == 0 || unnamed == 0 {
+		return res
+	}
+	extra := len(res) - len(sig.Returns)
+	if extra <= 0 {
+		return res
+	}
+	if extra > unnamed {
+		extra = unnamed
+	}
+	return res[extra:]
 }
 
 // ClosureAsFnDef is the VALUE-path twin of closureAsWord (NUR124's payload
@@ -77,8 +103,12 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	// never outlives the run — a parked closure escapes as the payload, not
 	// as a handler bound to this run's context (Codex P2 on PR #444).
 	invoke := r.Invoker
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
-		return invoke(r, v, args)
+	// Applied after the interpreter's dispatch matched the bridged
+	// signature: SigMatched, so the invoker applies the unit positionally
+	// (ClosurePayload.SigMatched).
+	matched := core.ClosureSigMatched(v)
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
+		return invoke(r, matched, args)
 	})
 	if !ok {
 		return v, false
@@ -93,4 +123,15 @@ func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos 
 	if ref, stampOK := compiler.StampDetachedFn(r, fd, pos); stampOK {
 		compiler.StampCompiledRef(fd, ref)
 	}
+}
+
+// LazyStamp is the compiled runtime's first-application stamp — the
+// detached stamp made universal (compiler.LazyStampFnSig): it stamps, or
+// finds the earlier stamp of, the sig a fn VALUE's application matched, and
+// says whether the sig now carries a unit for InvokeCompiled to run.
+func (vmCompiledRuntime) LazyStamp(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) bool {
+	if sig == nil {
+		return false
+	}
+	return compiler.LazyStampFnSig(r, fd, sig, pos) != nil
 }

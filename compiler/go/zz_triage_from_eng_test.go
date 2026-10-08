@@ -706,9 +706,9 @@ func TestOperandConstructors(t *testing.T) {
 // cluster 6): a word that DECLARES the flag bakes its INERT quoted operand —
 // the quote / codequote / raise / timeout family — via the same bypass that
 // exempts get/getr/set, so it compiles as a plain CALL_NATIVE instead of
-// refusing. A QuoteArgs word WITHOUT the flag (a meta word like usurp / ref
+// declining. A QuoteArgs word WITHOUT the flag (a meta word like usurp / ref
 // whose quoted operand drives a re-stepping result the VM cannot reproduce)
-// stays refused, and even a flagged word refuses a NON-inert (carrier) operand.
+// stays declined, and even a flagged word declines a NON-inert (carrier) operand.
 func TestQuoteOperandInertOKFlag(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -741,18 +741,18 @@ func TestQuoteOperandInertOKFlag(t *testing.T) {
 	inertAtom := core.Value{Parent: core.TAtom, Data: core.AtomPayload{Name: "k"}}
 	carrierArg := core.NewCarrier(core.TAtom) // not inert — no concrete payload to bake
 
-	// Flagged + inert operand → bypass the quoted-operand refusal (bakeable).
+	// Flagged + inert operand → bypass the quoted-operand compile failure (bakeable).
 	if !quoteOperandInertOK(r, "probe-qi", ownSig("probe-qi"), []core.Value{inertAtom}) {
-		t.Error("flagged word + inert atom operand: want bakeable, got refused")
+		t.Error("flagged word + inert atom operand: want bakeable, got declined")
 	}
-	// Flagged + NON-inert (carrier) operand → still refuses (nothing to bake).
+	// Flagged + NON-inert (carrier) operand → still declines (nothing to bake).
 	if quoteOperandInertOK(r, "probe-qi", ownSig("probe-qi"), []core.Value{carrierArg}) {
-		t.Error("flagged word + carrier operand: want refused, got bakeable")
+		t.Error("flagged word + carrier operand: want declined, got bakeable")
 	}
-	// NOT flagged → refuses even with an inert operand (and it is not a module
+	// NOT flagged → declines even with an inert operand (and it is not a module
 	// inner native, so the other exemption branch does not apply either).
 	if quoteOperandInertOK(r, "probe-plainq", ownSig("probe-plainq"), []core.Value{inertAtom}) {
-		t.Error("unflagged QuoteArgs word: want refused, got bakeable")
+		t.Error("unflagged QuoteArgs word: want declined, got bakeable")
 	}
 }
 
@@ -849,13 +849,13 @@ func TestNotifyNameReboundBranches(t *testing.T) {
 		t.Error("a ref not reading the rebound name must stay unpoisoned")
 	}
 	if es.Compilable {
-		t.Error("a module-scope rebind of a STORE-SITE ref's dep must refuse the program")
+		t.Error("a module-scope rebind of a STORE-SITE ref's dep must decline the program")
 	}
 
 	// An OPTIONAL ref (stampFnConst's optimisation stamp) poisons the same way
 	// but does NOT escalate: poisoning already restored the apply island, which
 	// is the exact behaviour the program had before anything stamped it.
-	// Refusing the whole program because an optimisation could not survive a
+	// Declining the whole program because an optimisation could not survive a
 	// rebind is strictly worse than declining the optimisation.
 	opt := NewEmitState()
 	optRef := &CompiledFnRef{depNames: map[string]bool{"files": true}, optional: true}
@@ -865,7 +865,7 @@ func TestNotifyNameReboundBranches(t *testing.T) {
 		t.Error("an optional ref reading the rebound name must still be poisoned")
 	}
 	if !opt.Compilable {
-		t.Error("an optional ref must NOT escalate a rebind to a program refusal")
+		t.Error("an optional ref must NOT escalate a rebind to a program compile failure")
 	}
 }
 
@@ -898,7 +898,7 @@ func TestNoteLoopCarriedArms(t *testing.T) {
 		t.Fatal("a fresh carried name should register a slot")
 	}
 
-	// re-resolve path (seen name) whose pre value no longer resolves → refuse.
+	// re-resolve path (seen name) whose pre value no longer resolves → decline.
 	es = NewEmitState()
 	es.loopCarried = []*loopCarriedScope{{
 		unitDepth: 1,
@@ -907,7 +907,7 @@ func TestNoteLoopCarriedArms(t *testing.T) {
 	}}
 	es.NoteLoopCarried("n", core.NewInteger(1), core.NewCarrier(core.TInteger))
 	if es.Compilable {
-		t.Fatal("an unresolvable re-resolved pre value should refuse")
+		t.Fatal("an unresolvable re-resolved pre value should decline")
 	}
 }
 
@@ -937,7 +937,7 @@ func TestFinalizeSkipsPoisonedStoredRef(t *testing.T) {
 
 	// The rebind must happen with a unit OPEN. A module-scope rebind
 	// (openUnitRecs empty) additionally marks the whole program
-	// uncompilable — see NotifyNameRebound's F1 note — so Finalize refuses
+	// uncompilable — see NotifyNameRebound's F1 note — so Finalize declines
 	// and never reaches the skip arm. Only a rebind inside another unit's
 	// analysis (a body-local def, which shadows independently) leaves a
 	// poisoned ref on a program that still finalizes. That asymmetry is why

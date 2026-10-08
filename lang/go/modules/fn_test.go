@@ -50,7 +50,7 @@ func fnAdd1() native.Value {
 }
 
 // fnTwoOut is a 1-param fn returning TWO values — the invokeFnUtilOne
-// pipeline refusal shape, and memoize's multi-return storage shape.
+// pipeline compile failure shape, and memoize's multi-return storage shape.
 func fnTwoOut() native.Value {
 	return fnTestFn(1, func(a []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 		return []native.Value{a[0], a[0]}, nil
@@ -99,7 +99,7 @@ func applyWrapper(t *testing.T, r *native.Registry, w native.Value, args ...nati
 	return gi.Handler(args, nil, nil, r)
 }
 
-// TestFnUtilArgGuards drives every non-function refusal arm the typed
+// TestFnUtilArgGuards drives every non-function decline arm the typed
 // dispatch cannot reach (the TFunction slots reject non-fns before the
 // handler runs — these are the defensive halves).
 func TestFnUtilArgGuards(t *testing.T) {
@@ -126,14 +126,14 @@ func TestFnUtilArgGuards(t *testing.T) {
 	}
 }
 
-// TestFnUtilShapeGuards drives the signature-shape refusals reachable
+// TestFnUtilShapeGuards drives the signature-shape compile failures reachable
 // only with handler-level operands.
 func TestFnUtilShapeGuards(t *testing.T) {
 	r := fnUtilReg(t)
 	// partial: a 0-param fn has nothing to bind.
 	_, err := fnUtilHandler(t, "partial")([]native.Value{fnZeroParam(), native.NewInteger(1)}, nil, nil, r)
 	wantErrContaining(t, err, "nothing to bind")
-	// memoize over a multi-overload fn refuses (the frontier rows pin
+	// memoize over a multi-overload fn declines (the frontier rows pin
 	// curry's twin in-language).
 	two := native.FnDefInfo{Name: "two", Signatures: []core.Signature{
 		fnAdd1().Data.(native.FnDefInfo).Signatures[0],
@@ -146,11 +146,11 @@ func TestFnUtilShapeGuards(t *testing.T) {
 	wantErrContaining(t, err, "exactly one signature")
 }
 
-// TestFnUtilPipelineArity drives invokeFnUtilOne's two refusal arms: an
+// TestFnUtilPipelineArity drives invokeFnUtilOne's two decline arms: an
 // inner fn returning two values, and an inner error propagating.
 func TestFnUtilPipelineArity(t *testing.T) {
 	r := fnUtilReg(t)
-	// compose whose g returns two values → pipeline arity refusal.
+	// compose whose g returns two values → pipeline arity compile failure.
 	out, err := fnUtilHandler(t, "compose")([]native.Value{fnAdd1(), fnTwoOut()}, nil, nil, r)
 	if err != nil {
 		t.Fatal(err)

@@ -1,12 +1,12 @@
 # The twin regime's placement frontier (entered 2026-09-02 with the §6.5
 # DEFAULT FLIP — rollback-and-replay is the only regime; found by the
 # variation lane, test/go/langspec/vary_differential_test.go). Every row
-# is GREEN on the interpreter and refuses to compile at Finalize's
+# is GREEN on the interpreter and fails to compile at Finalize's
 # full-placement gate: the check pass performs a bind transition inside a
 # wrapped body that no compiled op replays or installs, so the rollback
 # would lose it. The old keep-installs default compiled these on the check
 # pass's own leftover install — which is the divergence class the regime
-# exists to eliminate, so the refusal is a lesser defect than a wrong
+# exists to eliminate, so the compile failure is a lesser defect than a wrong
 # answer, not a resting place. It opened with four shapes; two remain, each
 # its own graduation:
 #
@@ -30,7 +30,7 @@
 # [inert inert REGION], which OpSeatBelowMark has seated since the
 # forty-first increment and a body unit has planned since the fifty-fifth;
 # the dispatch simply never reached the lowering, because the whole-residual
-# multi-out EXACTNESS screen refused the body first — on exactly the count
+# multi-out EXACTNESS screen declined the body first — on exactly the count
 # the seating it needed does not use.
 #
 # The narrowing that misled was itself honest work: the fifty-fourth
@@ -38,7 +38,7 @@
 # wrote down what was left, from the code it had just changed. The lesson is
 # narrower than "measure more": a "what remains is…" line inherits the last
 # reader's vantage point, and the next reader should re-derive it from the
-# refusal rather than from the sentence. Row in lang/spec/control.tsv.
+# compile failure rather than from the sentence. Row in lang/spec/control.tsv.
 #
 # SHAPE 2 NARROWED 2026-09-11 (the fifty-third increment). It read "the
 # bridge pairs BindDef twins only (a type twin declines the whole bridge)",

@@ -1,7 +1,7 @@
 # boru Language Specification: the boru:sift module
 # Format: input<TAB>expected<TAB>description
 #
-# boru:sift — the semi-structured-text tier (design/SIFT.0.md), implemented in
+# boru:sift — the semi-structured-text tier (design/legacy/SIFT.0.ignore), implemented in
 # boru (lang/go/modules/sift.boru). Six format families (kv, blocks, columns,
 # dsv, fixed, pattern) drive the Sift namespace (Sift.parse / define / kinds /
 # families / spec / detect / check); a spec-map is a parser expressed as data.
@@ -110,5 +110,5 @@ import "boru:sift"  Sift.parse pattern/q {re:'([bad'} "x"	ERROR:sift_spec_error	
 # §13  spec-map, opts overlay, and blocks table
 import "boru:sift"  Sift.parse {family:'kv' opts:{sep:':'}} {sep:'='} "a=1"	{a:'1'}	call-site opts overlay the spec's opts
 import "boru:sift"  size (Sift.parse blocks/q {table:true} "a: 1\nb: 2\n\na: 3\nb: 4")	2	blocks table:true builds a table (list of unified-column row maps)
-import "boru:sift"  Sift.parse {family:'fn'} "x"	ERROR:sift_spec_error	family:'fn' (the fn escape hatch) is deferred to a follow-up (design/SIFT.0.md §16)
+import "boru:sift"  Sift.parse {family:'fn'} "x"	ERROR:sift_spec_error	family:'fn' (the fn escape hatch) is deferred to a follow-up (design/legacy/SIFT.0.ignore §16)
 do [import "boru:sift"  (Sift.parse kv/q {} "a: 1")]	{a:'1'}	an import AND a call into that module inside one `do` body: the once-run body's twins are adopted, so the whole thing compiles (graduated from frontier-twin-placement.tsv, 2026-09-02)

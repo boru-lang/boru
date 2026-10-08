@@ -27,7 +27,7 @@ func TestRecordWhileRecordsOnTheCountedFrame(t *testing.T) {
 	es, cond, body, cv, out := whileFixture()
 	es.RecordWhile(cond, body, []core.Value{cv}, nil, "it", out, core.SrcPos{})
 	if !es.Compilable {
-		t.Fatalf("a one-value condition over a captured body must record, refused %q", es.Reason)
+		t.Fatalf("a one-value condition over a captured body must record, declined %q", es.Reason)
 	}
 	var lp *emitLoop
 	for _, ev := range es.frames[0] {
@@ -68,7 +68,7 @@ func TestRecordWhileRecordsOnTheCountedFrame(t *testing.T) {
 	}
 }
 
-func TestRecordWhileRefusals(t *testing.T) {
+func TestRecordWhileCompileFailures(t *testing.T) {
 	cases := []struct {
 		name   string
 		record func(es *EmitState, cond, body *EmitFragment, cv, out core.Value)
@@ -94,11 +94,11 @@ func TestRecordWhileRefusals(t *testing.T) {
 		es, cond, body, cv, out := whileFixture()
 		c.record(es, cond, body, cv, out)
 		if es.Compilable {
-			t.Errorf("%s: must refuse", c.name)
+			t.Errorf("%s: must decline", c.name)
 			continue
 		}
 		if !strings.Contains(es.Reason, c.want) {
-			t.Errorf("%s: refused %q, want %q", c.name, es.Reason, c.want)
+			t.Errorf("%s: declined %q, want %q", c.name, es.Reason, c.want)
 		}
 	}
 	// Inactive: nothing is recorded and nothing panics.

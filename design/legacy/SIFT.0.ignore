@@ -1,0 +1,924 @@
+# SIFT — `boru:sift`, semi-structured text parsing (the awk tier)
+
+**Status:** LANDED (2026-07-18) — implemented in boru; see **§0 Landed state**
+for what shipped and the deltas from this record. Originally written as a
+PROPOSAL (2026-07-16) in the house style of `MICRON-FORMATS.0.ignore`,
+distinguishing throughout what was **verified in the code** from what was
+**proposed**. The executable spec is `lang/spec/module-sift.tsv`; the
+canonical word docs come from `boru describe`.
+
+Grounding was done against the tree at the time of writing:
+`lang/go/modules/parselang.go`, `lang/go/modules/register_common.go`,
+`lang/go/native/format.go`, `lang/go/native/fileio.go`,
+`lang/go/native/native_misc.go`, `lang/go/native/tabnas.go`,
+`lang/go/native/io_module.go`, `lang/go/modules/minilang.go`,
+`eng/go/table.go`, `lang/go/policy/builtin.go`, `lang/spec/module-parselang.tsv`,
+and `design/EXTENSION-MODULES.10.md` / `design/STREAM-WORDS.0.md` /
+`design/DATAFRAME-WORDS.3.md` / `design/go-modules/README.10.md`.
+
+**Companion:** [`go-modules/EXEC.10.md`](../go-modules/EXEC.10.md) designs
+`boru:exec`, the capability-gated module that *produces* command output;
+this module *parses* it. The two compose (§13 example 7) but neither
+depends on the other.
+
+---
+
+## 0. Landed state (2026-07-18) — implemented in boru
+
+`boru:sift` has landed as a **core module written in boru**
+(`lang/go/modules/sift.boru`), embedded via `go:embed` and run as a module
+body by a ~90-line Go loader (`sift.go`) — the same pattern `boru:repl` and
+`boru:test` already use. The executable spec is
+[`lang/spec/module-sift.tsv`](../../lang/spec/module-sift.tsv) (~85 rows, green
+in both TCO modes). The six families (§5), the coercion vocabulary (§5.4),
+name normalization (§5.3), the spec-map engine (§6), and the seven `Sift`
+words (§7) are all implemented. Deltas from this design record, all forced
+by the pure-boru implementation choice:
+
+- **Surface is the `Sift.*` namespace only — not the global `parse <kind>`
+  macro (§7/§8).** An imported module's body runs in a *discarded
+  sub-registry*, so it cannot register a `parse <kind>` (or a
+  `read {fmt:…}`) the importing program would see — that state is
+  per-registry and only the Go loader holds the parent. The design assumed
+  parselang-kind registration throughout; the coherent pure-boru form is
+  `Sift.parse kv "…"`, `Sift.define`, etc. This also settles the "parse-kind
+  only for v1" scope decision: the `read {fmt:'…'}` / `{fmt:'auto'}` bridge
+  (§8) and the eager preset catalog (§9) are **deferred**.
+- **Tables are a `List` of row `Map`s, not a schema-carrying `Table`.** Pure
+  boru has no reachable `TableData` constructor; a list-of-maps is
+  behaviourally identical for every sift consumer (`size` / `dot` / `get`),
+  and cells are coerced to real typed values.
+- **`family:'fn'` (the §16 escape hatch) is deferred.** Passing a boru fn
+  *value* as data across the module boundary collides with the
+  strict-forward-barrier and fn-value auto-invoke rules; the spec engine
+  rejects `family:'fn'` with `sift_spec_error` for now.
+- **`pattern` builds named groups on top of positional `mini re`** (the
+  group names are scanned out of the regex source and zipped onto the
+  positional submatches), since boru's regex surface is positional-only.
+
+The rest of this note is the original PROPOSAL, preserved as the design
+rationale; read it in light of the deltas above.
+
+---
+
+## 1. Why — the gap
+
+Unix-family systems publish an enormous amount of state as
+**semi-structured text**: virtual files (`/proc/meminfo` is `Key:  value`
+lines, `/proc/cpuinfo` is blank-line-separated blocks of them,
+`/proc/mounts` and `/etc/passwd` are delimited rows with no header) and
+command output (`ps aux` / `df -P` are whitespace-aligned column tables,
+`env` is `key=value`, `uname -srm` is one positional line). This is awk's
+home turf: line- and field-oriented data whose schema lives in your head,
+not in the bytes.
+
+boru's parsing stack today covers the tiers **around** that turf, but not
+the turf itself (all verified):
+
+- **Rigid, self-describing formats** — `parse <kind>` with the tabnas
+  family `ini json jsonic json5 jsonc csv toml yaml xml zon markdown feed`
+  (`lang/go/native/tabnas.go:71`) plus `aontu`
+  (`lang/go/modules/parselang.go:641`); the same set (plus `text`,
+  `lines`, `tsv`) as `read` formats (`lang/go/native/format.go:397`).
+- **Real grammars** — `boru:parse` (`Parse.grammar`/`Parse.abnf`/
+  `Parse.rule`/`Parse.register`) for recursive, token-level syntax.
+- **Primitives** — `read <path> {fmt:'lines'}` (a `List` of line strings,
+  `format.go:210`), `StringUtil.split`/`trim`/`match`, and regex via
+  `mini re` / `+re/…/` (`lang/go/modules/minilang.go:126`).
+
+None of these parses `ps` output into a queryable table or `meminfo` into
+a typed map. csv/tsv assume clean single-character delimiters and a header
+convention; ini/toml/yaml are configuration syntaxes; a grammar is
+overkill (and a poor fit) for "split on aligned whitespace, last column is
+greedy". And there is no facility at all for *sharing* such a parser as a
+first-class, introspectable thing.
+
+Modern tools increasingly grow `--json` flags (`ip -j`, `lsblk -J`) — when
+JSON is available, `parse json` is the right answer and sift is not
+needed. Sift targets the large remainder that has no JSON mode, plus the
+`/proc` / `/etc` virtual files that never will.
+
+**`boru:sift`** (namespace `Sift`) is the missing tier: a **pure** core
+module — string in, value out, no capabilities — providing
+
+1. six generic **format families** covering the recurring line-oriented
+   shapes (§5),
+2. a declarative **spec-map** format so a parser is *data* — publishable,
+   introspectable, testable (§6),
+3. a builtin **preset catalog** for common Unix sources, shipped as
+   embedded specs (§9), and
+4. registration into the existing `parse` / `read` machinery, so sift
+   parsers are ordinary parse kinds and read formats (§8).
+
+## 2. What exists today (verified) — the machinery sift rides on
+
+Four facts anchor the design; sift adds almost no new plumbing.
+
+### 2.1 The parselang kind registry and its contract
+
+`parse <kind> <opts?> <source>` dispatches to a registered parser whose
+signatures must start with the standard prefix `[source opts:Map …]`
+(enforced by `parseRegisterValidate`, `parselang.go:490`; violation is
+`parse_bad_signature`, pinned in `lang/spec/module-parselang.tsv`). Kind
+names must be lowercase, non-empty, without the `parse_` prefix
+(`parseValidKindName`, `parselang.go:461`); collisions raise
+`parse_kind_exists` whether the duplicate is a builtin
+(`RegisterHostParser`, `parselang.go:244`) or a prior registration
+(`parselang.go:250`). Registration works before **or** after
+`import "boru:parselang"` (`parselang.go:230`), and a
+`ParseLangSpec.Pure: true` parser constant-folds literal-source parses at
+check time (`pureParseFoldReturns`, `parselang.go:358`).
+
+### 2.2 The read/parse bridge
+
+`RegisterFormatParser` (`parselang.go:270`) exposes ONE `Format`
+implementation on BOTH surfaces — `read <path> {fmt:'<name>'}` and
+`parse <name> <text>` — atomically: the parse side (all fallible
+validation) installs first, and the read-side precondition (the `formats`
+capability) is pre-checked at `parselang.go:277` so a rejected bridge
+leaves both registries untouched.
+
+### 2.3 read's format resolution and the Table output shape
+
+`read` resolves its decoder as: explicit `{fmt:…}` → extension map →
+`text` (`native_misc.go:263`; extension map `DefaultExtensions`,
+`fileio.go:26` — **extension only**, so an extensionless path like
+`/proc/meminfo` falls to `text` today). Non-reserved read options forward
+to `DecodeOpts`-aware formats (`fileio.go:129`, `format.go:31`). The
+csv/tsv formats produce a `TableData` — first row headers, each row a Map
+keyed by headers, an **all-String** record schema, short rows padded with
+`""` (`decodeDelimited`, `format.go:267`) — and tables auto-load into
+SQLite when a store is installed (`fileio.go:253`), which is what feeds
+`boru:query`. `TableData{Record, Rows}` is `eng/go/table.go:11`.
+
+### 2.4 Shipping declarative data inside the binary
+
+`lang/go/policy/builtin.go:5` embeds the seven builtin policy profiles as
+`profiles/*.jsonic` via `//go:embed` — the in-tree precedent for a module
+that ships jsonic documents as builtin data. Sift's preset catalog follows
+it exactly (§9).
+
+## 3. Scope decisions (agreed)
+
+1. **Pure module.** Sift performs no I/O and needs no capability. `read`
+   (FileOps-gated) and the future `boru:exec` (process-gated) *acquire*
+   text; sift only transforms strings. Consequence: sift runs unchanged
+   under `sandbox` / `compute` policies and in the wasm playground.
+2. **Parsers as data.** The extension mechanism is a declarative spec-map
+   (§6). Builtin presets are the *same kind of thing* as user extensions —
+   specs — so there is one mental model, and preset packs are ordinary
+   publishable boru modules. A registered fn is the escape hatch, not the
+   primary path.
+3. **Ride the existing registries.** Every sift parser is a parselang
+   kind (and, where the `formats` capability is installed, a read format)
+   via the §2.2 bridge. No parallel dispatch surface; `parse` and `read`
+   stay the two verbs users already know. (This is also the ADR-007
+   posture: no secondary parsing path — spec-maps are plain,
+   macro-constructable Node data, and the text decoding itself goes
+   through the one registered-parser framework.)
+4. **Bare kind names, eager registration.** `parse meminfo …`, not
+   `parse sift:meminfo …` (§7 rationale); all builtin families and
+   presets register at `import "boru:sift"` (lazy registration would make
+   `ParseLang.kinds` output time-dependent, which breaks TSV spec
+   pinning — `module-parselang.tsv` §3 pins the kind list).
+5. **Design RFC only.** No implementation code lands with this note,
+   matching how sibling subsystems were designed first
+   (`../STREAM-WORDS.0.md`, `../PROCESSES.0.md`, `go-modules/*`).
+
+## 4. Naming
+
+`boru:sift`, namespace `Sift`. The id follows the module naming rule
+(`lang/go/CLAUDE.md` "Package layout"): capability / framework / DSL
+modules stay plain (`boru:io`, `boru:net`, `boru:query`, `boru:parselang`);
+`-util` marks pure helper libraries or a builtin-type clash, neither of
+which applies. `Sift` collides with no builtin type, no module namespace,
+and no core word.
+
+> **Naming note — `sift` vs `../DATAFRAME-WORDS.3.md`.** The dataframe
+> proposal (`design/DATAFRAME-WORDS.3.md`, unimplemented) uses `sift` as
+> its table row-filter word (`people sift {city:"Dublin"}`), and
+> `../TEMPORAL-WORDS.9.md` repeats it. A module namespace `Sift` and a
+> lowercase table word `sift` do not collide technically (module words
+> are always dot-qualified; ADR-001 concerns core-word shadowing), but
+> two unrelated meanings of one English word in one language is real
+> confusion. **Recommendation:** if the dataframe proposal proceeds, its
+> filter word should take a different name (`where` reads at least as
+> well there, and matches its own `Query.where` sibling) before either
+> lands. Flagged here so the first to implement makes the call
+> consciously.
+
+## 5. The six format families
+
+Each family is a Go-implemented parser (proposed) installed as a parse
+kind and a read format through the §2.2 bridge, with the standard
+`[source opts:Map …]` signature prefix and `Pure: true` (a sift family
+is a pure function of `(source, opts)`, so literal parses fold at check
+time exactly like the tabnas kinds). Family names are structural, not
+tool-named:
+
+| kind | input shape | output | canonical example |
+|---|---|---|---|
+| `kv` | one `key SEP value` per line | Map | `/proc/meminfo`, `/etc/os-release`, `env` |
+| `blocks` | blank-line-separated kv blocks | List of Maps (opt. Table) | `/proc/cpuinfo` |
+| `columns` | whitespace-aligned table **with** header row | Table | `ps aux`, `df -P`, `free` |
+| `dsv` | delimited rows, **no** header; caller names fields | Table | `/etc/passwd`, `/proc/mounts`, `/etc/fstab` |
+| `fixed` | fixed-width column positions | Table | legacy/mainframe-style exports |
+| `pattern` | regex with named captures | Map (or Table with `per:'line'`) | `/proc/loadavg`, `uname -srm` |
+
+Rejected names, for the record: `records` for the blocks family (`Record`
+is a core type; "parse records" begs "records of what?" — and
+`parse markdown` already returns "a List of blocks", `tabnas.go:62`, so
+the vocabulary exists); `table` for dsv (collides conceptually with the
+`Table` type and `Report.table`); `grok`/`extract` for pattern (`extract`
+already names `BinUtil.extract` and `TypeUtil.extract` exports — legal,
+different registries, but needlessly confusing in prose; `grok` is
+imported jargon). There is deliberately **no `lines` family**: the
+`lines` read format (`format.go:210`) and `StringUtil.split` own the
+tier below sift — sift begins where per-line *structure* begins.
+
+### 5.1 Shared preprocessing options (every family)
+
+> **Spelling note (applies to every option table below).** Enumerated
+> option values are written as quoted names — `{strict:'error'}`,
+> `{vtype:'size'}` — the spelling the tested spec suite uses throughout
+> (`{scope:'all'}`, `{kind:'api'}` in `lang/spec/*.tsv`; the unclosed
+> `'error` form does not lex in data context). The implementation
+> accepts String or Atom for every enumerated value and normalizes via
+> `ValToString`.
+
+| key | default | meaning |
+|---|---|---|
+| `skip:Integer` | 0 | drop the first N physical lines before anything else |
+| `chop:Integer` | 0 | drop the last N physical lines (footers: `du -c`'s total, `last`'s "wtmp begins" line) |
+| `comment:String` | none | drop lines whose first non-whitespace text starts with this prefix (full-line comments only; inline comments are deliberately out of scope in v1 — values legitimately contain `#`) |
+| `strict:'error' \| 'skip'` | `'error'` | malformed-line policy: `'error'` raises `sift_parse_error` naming the 1-based line number; `'skip'` drops the line silently |
+
+Two rejected alternatives, with reasons: a third `'keep'` mode collecting
+rejects under a `$raw` key was cut because it changes the output *shape*
+conditionally, which poisons static typing and downstream query code for
+a debugging convenience (re-parse with `'skip'` and diff line counts
+instead). A separate `strip` preprocessing *word* was cut because a spec
+must remain one self-contained jsonic value — a preprocessing pipeline
+outside the spec would make presets non-portable.
+
+### 5.2 Per-family options (atom keys, the Options pattern)
+
+**`kv` → Map**
+
+| key | default | meaning |
+|---|---|---|
+| `sep:String` | `":"` | first occurrence splits key from value |
+| `trim:Boolean` | `true` | trim whitespace around key and value |
+| `unquote:Boolean` | `false` | strip one matched pair of surrounding `"…"`/`'…'` from the value (os-release) |
+| `names:'keep' \| 'normalize'` | `'keep'` | key normalization (§5.3) |
+| `repeat:'last' \| 'first' \| 'error' \| 'list'` | `'last'` | repeated-key policy; `'list'` makes **every** value a List (the only sound way to keep duplicates without conditional value types); `'error'` for formats where a duplicate proves corruption |
+| `vtype:<type atom>` | `'string'` | one coercion (§5.4) applied to every value |
+| `types:Map` | `{}` | per-key coercion overrides; keys matched **after** normalization |
+
+**`blocks` → List of Maps** — all `kv` options (each block parses as kv),
+plus:
+
+| key | default | meaning |
+|---|---|---|
+| `table:Boolean` | `false` | build a Table instead: record schema = union of keys across blocks in first-seen order; a block missing a field gets `None` — absent ≠ empty string, a deliberate divergence from csv's `""` padding (`format.go:340`), stated here so the asymmetry is on record |
+| `sep:'blank' \| 'indent'` | `'blank'` | block boundary. `'blank'` splits on blank lines; `'indent'` starts a new block at each line with **no leading whitespace** and folds indented lines into the current block — the BSD-ifconfig / `lsblk`-lite shape. *(Added by the §16 exercise: without it, indent-delimited block formats were inexpressible by any spec, which broke the §9 BSD preset-pack story.)* |
+
+**`columns` → Table**
+
+| key | default | meaning |
+|---|---|---|
+| `header:Boolean` | `true` | first (post-skip/comment) line is the header |
+| `fields:List \| Map` | none | supply field names (required when `header:false`). **When both `header:true` and `fields:` are given, the header line is consumed but its names are ignored** — this one rule solves `df`'s two-token "Mounted on" header with no per-field rename machinery |
+| `names:'normalize' \| 'keep'` | `'normalize'` | header-name normalization (§5.3) — raw headers like `%CPU`, `1K-blocks` are not usable field names |
+| `label:Atom` | none | row-label mode for `free`-style tables: each data row's first token becomes the named field (trailing `:` stripped); header names apply to the remaining tokens |
+| `types:Map` | `{}` | per-field coercion (§5.4) |
+
+Splitting rule (fixed, not optional): with N field names, each data row
+splits on whitespace runs into **at most N fields — the last field is
+greedy** (absorbs the remaining text: `ps`'s COMMAND). Rows with fewer
+than N tokens pad trailing fields with `""` (the csv precedent,
+`format.go:340`). A `greedy:'none'` opt-out was rejected — exact-count
+splitting is just `dsv {sep:'ws'}`. Header-offset column slicing
+(`ruler:'header'`) was rejected for v1: right-aligned numeric columns
+(`ps` PID) extend *left* of their header's start offset, so offset
+slicing silently corrupts; split-count semantics are the correct default.
+Recorded as a v2 idea under `fixed`.
+
+**`dsv` → Table**
+
+| key | default | meaning |
+|---|---|---|
+| `sep:String \| 'ws'` | `'ws'` | `'ws'` = any run of spaces/tabs; a String is a literal separator (`":"` for passwd) |
+| `fields:List \| Map` | `c1…cN` | field names; default auto-names sized from the first data row |
+| `limit:Integer` | 0 (exact) | when > 0, split into at most `limit` fields, last greedy (`du` paths with spaces; crontab command tails). Mirrors `StringUtil.split` `{limit}` |
+| `types:Map` | `{}` | per-field coercion |
+
+**`fixed` → Table**
+
+| key | default | meaning |
+|---|---|---|
+| `cols:List` | — | `[start end]` pairs, 0-based, end-exclusive, `-1` = end of line |
+| `widths:List` | — | consecutive Integer spans; exactly one of `cols`/`widths` required |
+| `fields:List \| Map` | `c1…cN` | field names |
+| `trim:Boolean` | `true` | trim each cell |
+| `types:Map` | `{}` | per-field coercion |
+
+**`pattern` → Map (default) or Table**
+
+| key | default | meaning |
+|---|---|---|
+| `re:String` | — | required. Go/RE2 syntax — the same engine and semantics as `mini re` (`minilang.go`); **named capture groups become fields**, and at least one named group is required (else `sift_spec_error`) |
+| `per:'source' \| 'line'` | `'source'` | `'source'`: first match over the whole source → Map of captures (no match raises `sift_parse_error` under `strict:'error'`, returns `None` under `'skip'` — reusing the shared knob rather than minting a new one). `'line'`: one row per matching line → Table; non-matching lines follow `strict` |
+| `names:'normalize' \| 'keep'` | `'normalize'` | RE2 group names are `[A-Za-z0-9_]+`, so `last_pid` → `last-pid` |
+| `vtype:<type name>` | `'string'` | one coercion (§5.4) applied to every named group; `types:` overrides per group *(added by the §16 exercise — counter-line patterns otherwise repeat `'integer'` five times)* |
+| `types:Map` | `{}` | per-field coercion |
+
+Two rules pinned by the §16 validation exercise:
+
+- **Unmatched groups yield `None`.** A named group that does not
+  *participate* in the match (an unexercised optional branch) yields
+  `None` regardless of declared type — participation, not emptiness, is
+  the test; a participating empty match yields the §5.4 empty-cell value
+  (`""` for `'string'`, `None` for typed fields). Keys are therefore
+  **always present**, so the output shape is match-independent. (Load
+  bearing: `inet` lines carry an optional `broadcast` group; without
+  this rule a consumer cannot distinguish "absent", `''`, and a missing
+  key.)
+- **`fields:` sugar × pattern.** In a `pattern` spec, top-level `fields`
+  must be the Map form and its keys must be declared (post-normalization)
+  group names; it merges to `opts.types` only. The List form, unknown
+  names, and the per-field `re:` extended form (circular here) are
+  `sift_spec_error`.
+
+### 5.3 Name normalization — one rule, stated once
+
+`'normalize'`: split on lower→upper case boundaries and on runs of
+non-alphanumerics; lowercase; join with `-`; a leading digit gets an `f-`
+prefix (bare words cannot start with digits in boru source, so
+`m.f-1k-blocks` stays dot-accessible). Post-normalization collisions
+append `-2`, `-3`, … deterministically. Pinned examples (these become
+spec rows):
+
+| raw | normalized |
+|---|---|
+| `MemTotal` | `mem-total` |
+| `HugePages_Total` | `huge-pages-total` |
+| `%CPU` | `cpu` |
+| `1K-blocks` | `f-1k-blocks` |
+| `Mounted on` | *(two header tokens — which is why the `df` preset supplies `fields:` instead)* |
+
+### 5.4 Typing — the coercion vocabulary
+
+Values for `vtype:` / `types:` entries:
+
+| atom | result |
+|---|---|
+| `'string'` | the raw cell (default; empty cell → `""`) |
+| `'integer'` | Integer |
+| `'float'` | Float |
+| `'boolean'` | Boolean (`true/false/yes/no/on/off/1/0`, case-insensitive) |
+| `'percent'` | strips a trailing `%` → Float on the 0–100 scale |
+| `'size'` | **Integer bytes**: `<number><ws?><unit>` with binary multipliers (B/K/KB/KiB/M/MB/MiB/G/GB/GiB/T/…, case-insensitive); a bare number passes through unscaled — so `meminfo`'s unitless counts stay numerically correct |
+| `'auto'` | Integer, else Float, else Boolean literal, else String |
+
+- A missing/empty cell under any non-`'string'` type yields `None`
+  (mirroring the value-or-None refinement style of
+  `go-modules/OS.10.md`'s `getenv`).
+- A coercion failure raises `sift_type_error` under `strict:'error'`,
+  yields `None` under `'skip'`.
+- Typed Table columns carry the real types (Integer/Float/Boolean) in the
+  record schema — a deliberate step past csv's all-String schema
+  (`format.go:321`); untyped columns stay String, matching csv.
+- **Decision:** `'size'` scales to a plain Integer of bytes. The
+  "number + separate unit field" alternative was rejected — it doubles
+  field count and pushes arithmetic onto every consumer; anyone wanting
+  the raw text types the field `'string'`. Decimal (SI, 1000×) multipliers
+  are rejected in v1 — `/proc` and the targeted tools are
+  binary-multiplier; a future `'size10'` can exist if demand appears.
+- Micron-typed coercions (`'path'` → Pathon for mount points and shells)
+  are the named v2 refinement (§12), not v1 — they would pull micron
+  constructors into the coercion path.
+
+## 6. The spec-map — parsers as data
+
+A **spec** is a parser expressed as a jsonic-friendly Map. It is the unit
+of extension, publication, and introspection; the builtin presets (§9)
+are these same maps, embedded.
+
+```
+{
+  family: 'kv'                        # REQUIRED — one of the six family atoms
+  opts:   {sep:':' vtype:'size'}      # family options (§5), default {}
+  fields: {pid:'integer' …}           # OPTIONAL sugar — see below
+  detect: {path:["/proc/meminfo"]    # OPTIONAL auto-detection metadata (§8.2)
+           cmd:{match:["free"] argv:["free"]}}
+  doc:    "one-line description"     # OPTIONAL — stamped as the kind's describe doc
+}
+```
+
+- **`fields` sugar.** A List (`[user pass uid gid gecos home shell]`)
+  merges to `opts.fields`. An ordered Map (`{uid:'integer' …}`) merges to
+  `opts.fields` (key order) plus `opts.types`. A Map value may be the
+  extended form `{type:'integer' re:'…'}`, where `re:` extracts capture 1
+  (or the whole match) from the raw cell before coercion — the per-field
+  regex escape valve that keeps whole formats out of the `pattern`
+  family. Supplying both top-level `fields` and `opts.fields` is a
+  `sift_spec_error`.
+- **Strict schema.** Unknown top-level keys are `sift_spec_error` —
+  typos must surface, the same philosophy that makes option keys atoms
+  (`EXPLANATION.md`, "The Options pattern").
+- **`detect`.** `path:` is a list of path globs matched against the
+  cleaned absolute path (the same trailing-`*` glob dialect policy
+  `where` values use — see `profiles/read-only.jsonic`'s `"BORU_*"`).
+  `cmd:` carries `match:` (the argv0 **basenames** this preset claims)
+  and `argv:` (the ONE canonical, portability-pinned invocation, e.g.
+  `["df" "-P"]` — see §8.2 and `EXEC.10.md` §4.1). At most one registered
+  spec may claim a given path glob or basename; a second claim is
+  `sift_detect_conflict` at define time. Richer argv matching (flag
+  subsets) was rejected for v1: ambiguity resolution costs more than
+  variant preset names.
+- **The escape-hatch spec form — `family:'fn'`** *(added by the §16
+  exercise)*. A seventh pseudo-family makes fn-backed parsers first-class
+  spec citizens:
+
+  ```
+  { family:'fn'  fn:<Function>          # the [source opts:Map …] fn
+    opts:{…defaults…}                   # optional — opts defaults (merged
+                                        #   with call-site opts; unknown
+                                        #   call-site keys then error)
+    detect:{path:[…] cmd:{…}}           # optional — same claims as any spec
+    doc:"one-liner" }                   # optional — same describe stamping
+  ```
+
+  `Sift.define <name> <fn>` remains sugar for `{family:'fn' fn:<fn>}`.
+  The framework validates the fn's signature prefix exactly as before,
+  registers `detect:` claims and stamps `doc:` identically to declarative
+  specs, applies the shared §5.1 preprocessing (skip/chop/comment/strict,
+  merged spec + call-site) to the text **before** invoking the fn, and
+  `Sift.spec` returns the full map minus `fn:`. Without this form, fn
+  kinds were second-class on every discovery surface — no `Exec.parse` /
+  `{fmt:'auto'}` detection, no doc, hand-rolled preprocessing — which
+  §16's ifconfig exercise showed is untenable for exactly the ragged
+  formats (§9 cuts, BSD variants) that need fn kinds most.
+- **Rejected for v1: a `transform:` post-reshape hook.** One escape
+  hatch, not two — arbitrary reshaping is what fn registration is for,
+  and a registered fn can call `StructUtil.transform`
+  (`lang/go/native/transform.go:19`) itself. Keeping the spec purely
+  declarative preserves the "spec ≡ family + opts" equivalence that makes
+  specs introspectable and publishable. Recorded in §14 with the
+  voxgig-transform spec as the obvious candidate schema if demand
+  appears.
+- **ADR-007 note.** Spec-maps are plain Node data — Maps, Lists, atoms —
+  macro-constructable and jsonic-file-friendly. No secondary syntax is
+  introduced anywhere in this design.
+
+Two full examples (these ship as embedded presets, §9):
+
+```
+# siftspecs/meminfo.jsonic
+{
+  family: 'kv'
+  opts:   {sep:':' names:'normalize' vtype:'size'}
+  detect: {path:["/proc/meminfo"]}
+  doc:    "Linux /proc/meminfo — `Key:  N kB` lines to a Map of Integer bytes"
+}
+# "MemTotal:  16297200 kB" → {mem-total: 16688332800 …}; unitless
+# counts (huge-pages-total) pass through as plain Integers.
+```
+
+```
+# siftspecs/ps.jsonic
+{
+  family: 'columns'
+  fields: {user:'string' pid:'integer' cpu:'percent' mem:'percent'
+           vsz:'integer' rss:'integer' tty:'string' stat:'string'
+           start:'string' time:'string' command:'string'}
+  opts:   {header:true}
+  detect: {cmd:{match:["ps"] argv:["ps" "aux"]}}
+  doc:    "BSD-style `ps aux` (Linux procps contract) — one row per process; command is greedy-last"
+}
+# fields given + header:true → the header line is consumed, its names
+# ignored. vsz/rss stay 'integer' — the text carries no unit suffix
+# ('size' cannot know); the KiB unit is documented per-preset.
+```
+
+## 7. The `Sift` namespace — seven exports
+
+Signatures are top-first, sig order. The words are minted parselang-style
+(hand-built exports with forward-eligible sigs — the pattern
+`ParseLang.register` demonstrates in `module-parselang.tsv`, whose rows
+call `ParseLang.register calc (fn …) end` in full forward form), so the
+examples below read forward. Every export gets a one-liner in
+`docs_sift.go` and positive + `ERROR:` rows in `module-sift.tsv`
+(ADR-003).
+
+| word | signature (top-first) | returns | summary |
+|---|---|---|---|
+| `define` | `[name:Atom/q spec:Map]` / `[name:Atom/q fn:Function]` | nothing | Validate + register a spec (or fn) as parse kind `<name>` (and read format, §8.1). The fn form is sugar for a `{family:'fn' fn:…}` spec (§6) — carry `detect:`/`doc:`/`opts:` by passing the spec form. |
+| `parse` | `[kind:Atom/q source]` / `[kind:Atom/q opts:Map source]` / `[spec:Map source]` / `[spec:Map opts:Map source]` | `Any` | Parse with a named kind **or an inline spec, without registering**. Call-site `opts` overlay the spec's `opts` (call site wins). |
+| `kinds` | `[]` | `List` | Atoms of every sift-registered kind (families + presets + user defines), registration order. |
+| `families` | `[]` | `List` | The six family atoms. |
+| `spec` | `[name:Atom/q]` | `Map` | Introspection: a deep copy of the registered spec, fully merged (`fields` sugar folded into `opts`), plus `name:`. Fn-registered kinds return `{name:<n> family:'fn'}`. Unknown name → `sift_unknown_kind`. |
+| `detect` | `[path:String]` / `[argv:List]` | `Atom\|None` | Pure lookup in the detection table (§8.2): path → preset via path globs; argv → preset via the argv0 basename. |
+| `check` | `[spec:Map]` | `List` | Validate a spec without registering; returns `[{code detail}…]`, empty when valid. Gives spec authors (and preset-pack CI) a pure validation surface, and lets `module-sift.tsv` pin schema errors positively. |
+
+Notes:
+
+- **`define`, not `register`.** Avoids echoing the live core actor word
+  `register` (`lang/go/native/native_process.go`) in prose and examples,
+  and "define" reads better for installing *data*. `Sift.define` follows
+  `ParseLang.register`'s contract wherever the two overlap: same kind-name
+  rules (`parselang.go:461`), same duplicate behaviour
+  (`sift_kind_exists`, mirroring `parse_kind_exists` and the compiled-path
+  idempotency discipline of `register_common.go:50`), and the fn form
+  enforces the same `[source opts:Map …]` signature prefix
+  (`parselang.go:490`).
+- **`Sift.parse` vs core `parse`.** A registered sift kind is an ordinary
+  parse kind, so `parse meminfo <text>` is the normal call. `Sift.parse`
+  earns its place with the **inline-spec** form — try a spec without
+  registering — and works without `boru:parselang` imported. (Namespaced
+  reuse of the name `parse` is established: `StructUtil.parse`,
+  `TimeUtil.parse`, per `design/legacy/PARSING.10.ignore`.)
+- **Bare kind names.** Presets register as `meminfo`, `ps`, … not
+  `sift:meminfo` (a colon inside a kind atom fights the lexer) nor
+  `sift-meminfo` (prefix noise). The parse-kind registry's duplicate
+  guard makes any collision loud at define time, and the micro-format
+  design already claims bare kinds (`email`, `vcard` —
+  `../EXTENSION-MODULES.10.md` §5), so bare names are the established
+  convention.
+- **Fn-kind call semantics** *(pinned by the §16 exercise)*. A bare fn
+  kind (`{family:'fn'}` with no `opts:`) receives call-site opts
+  **verbatim** (`{}` when omitted) — no overlay, no unknown-key
+  validation (the parselang precedent, `module-parselang.tsv`). Declaring
+  `opts:` defaults in the spec form opts into framework merging and
+  unknown-key `sift_spec_error` — restoring the §6 typo protection.
+  Sift resolves the **source to a String** before invoking an fn kind
+  (so user fns need not call `ParseLang.source` to handle `{src:…}`
+  sources; sift controls the wrapper it registers, so the parselang
+  registry contract is untouched).
+- **Trailing-Map source rule** *(pinned by the §16 exercise)*. In
+  `Sift.parse` (and `parse <kind>`), a **lone** trailing Map after the
+  kind/spec is the *source* and must carry `src:` (else the
+  `parse_bad_source` analog); a Map followed by a further collectable
+  value is *opts + source*. Examples end a Map-source statement with
+  `end` where ambiguity could arise.
+
+## 8. Integration with `parse`, `read`, and detection
+
+### 8.1 One definition, both surfaces — and graceful degradation
+
+`BuildSiftModule` installs every family and preset through
+`RegisterFormatParser` (§2.2): reachable as `parse <kind> …` (once
+`boru:parselang` is imported) AND as `IO.read <path> {fmt:'<kind>'}` (once
+`boru:io` is imported; `read` remains FileOps-gated — sift adds no I/O of
+its own). Because the bridge pre-checks the `formats` capability
+(`parselang.go:277`), a policy that sets `formats install:false` degrades
+sift **to parse-only**: registration falls back to `RegisterHostParser`,
+and the read-format side is skipped. This is documented behaviour, not an
+import error. Re-import is idempotent via a per-registry state slot (the
+`capParseLangHost` pattern, `parselang.go:203`), so a second
+`import "boru:sift"` is a no-op rather than a duplicate-kind error.
+
+### 8.2 `{fmt:'auto'}` — path detection (the one new native hook)
+
+`/proc/meminfo` has no extension, so `read`'s extension map can never
+route it (§2.3). Proposed: a host **detection table** in `native` —
+`SetHostFormatDetect` / `HostFormatDetect`, following the
+`SetHostFormats` accessor pattern — holding `(path-glob → kind)` and
+`(argv0-basename → kind)` entries. Sift populates it from the `detect:`
+blocks of registered specs — **including `family:'fn'` specs (§6)**, so
+fn-backed kinds detect like any preset; the table is pure data.
+
+- `IO.read "/proc/meminfo" {fmt:'auto'}` resolves the format through the
+  table; a miss raises `sift_no_preset`. A silent fallback to `text` was
+  rejected — it hides typos and makes the output *type* depend on what
+  happens to be registered.
+- `'auto'` becomes a reserved format name (`RegisterFormat`,
+  `format.go:421`, refuses it — a one-line guard).
+- **Rejected: implicit detection** on bare `IO.read "/proc/meminfo"`.
+  An `import "boru:sift"` anywhere in the program would silently change
+  the type of an existing read from String to Map — action-at-a-distance
+  for both the checker and the human reader. Detection stays opt-in via
+  `{fmt:'auto'}`.
+- **Rejected: a `Sift.load` word.** Sift is pure (§3.1); `IO.read` is
+  the one door to the filesystem. The detection *table* is data; `read`
+  does the reading.
+- The same table serves `Exec.parse`'s command→preset lookup
+  (`EXEC.10.md` §4.1) — which is how exec composes with sift **without a
+  hard module dependency** in either direction.
+
+### 8.3 `parse … {file:…}` stays deferred
+
+The parselang source resolver accepts a String or `{src:…}` map and
+raises `parse_file_unsupported` for `{file:…}` — verified deferred at
+`parselang.go:444` and pinned in `module-parselang.tsv`. Sift does NOT
+light this hook up: doing so would make parse kinds capability-touching,
+which breaks the `Pure` fold contract (§2.1) and re-blurs the read/parse
+split the §2.2 bridge exists to manage. Recommendation: the hook stays
+deferred; acquisition composes through `read` and `Exec`.
+
+## 9. The builtin preset catalog (v1: 15 presets)
+
+Shipped as `lang/go/modules/siftspecs/*.jsonic` via `//go:embed`
+(precedent: `policy/builtin.go:5`), validated and registered at import. A
+ratchet test asserts every embedded spec passes `Sift.check`, registers
+cleanly, carries a `doc:`, and makes no conflicting `detect` claims.
+
+| preset | family | output | detect | contract / caveats |
+|---|---|---|---|---|
+| `meminfo` | kv | Map (Integer bytes) | path `/proc/meminfo` | `vtype:'size'`; unitless counts pass through |
+| `cpuinfo` | blocks | List of Maps | path `/proc/cpuinfo` | `{vtype:'auto' names:'normalize'}`; one Map per processor block |
+| `mounts` | dsv | Table | path `/proc/mounts`, `/etc/mtab` | fields `[device mount fstype options dump pass]`; dump/pass `'integer'`; octal escapes (`\040`) left as-is, documented |
+| `passwd` | dsv | Table | path `/etc/passwd` | `sep:":"`; fields `[user pass uid gid gecos home shell]`; uid/gid `'integer'` |
+| `group` | dsv | Table | path `/etc/group` | `sep:":"`; `members` stays a comma-joined String — documented v1 limitation (no per-field list splitting) |
+| `fstab` | dsv | Table | path `/etc/fstab` | `comment:"#"`; same field names as `mounts` |
+| `os-release` | kv | Map | path `/etc/os-release`, `/usr/lib/os-release` | `sep:"="`, `unquote:true`, `names:'keep'` (ID, NAME stay verbatim) |
+| `proc-uptime` | pattern | Map `{up idle}` Floats | path `/proc/uptime` | the FILE, not the `uptime` command |
+| `loadavg` | pattern | Map `{m1 m5 m15 runnable total last-pid}` | path `/proc/loadavg` | RE2 group names use `_`, normalized to kebab |
+| `ps` | columns | Table | cmd `["ps"]`, argv `["ps" "aux"]` | Linux procps `ps aux` contract; greedy-last `command` |
+| `df` | columns | Table | cmd `["df"]`, argv `["df" "-P"]` | POSIX `-P` output; explicit fields `[filesystem blocks used available capacity mount]` defeat the "Mounted on" header; capacity `'percent'` |
+| `free` | columns | Table | cmd `["free"]`, argv `["free"]` | `label:'kind'` row-label mode; KiB integers |
+| `env` | kv | Map | cmd `["env" "printenv"]` | `sep:"="`, `repeat:'last'`; values containing newlines break line-orientation — documented limitation |
+| `du` | dsv | Table | cmd `["du"]`, argv `["du" "-k"]` | `limit:2` greedy path; size `'integer'` (KiB) |
+| `uname` | pattern | Map `{sysname release machine}` | cmd `["uname"]`, argv `["uname" "-srm"]` | pinned flag set; `uname -a` deliberately NOT parsed (unstable across systems) |
+
+**Cuts, with reasons on record:** the `uptime` *command* (its
+"3 days, 2:04" segment is locale- and duration-format-variable; the
+`loadavg` + `proc-uptime` files carry the same data stably); `lsblk` /
+`ip addr` (tree glyphs and nested indentation are grammar territory —
+`boru:parse` — and both tools have `--json`); `lscpu` (needs no preset:
+`parse kv <text>` works as-is — it is the worked "a family covers it"
+example, §13); `/etc/shadow` (**deliberate**: a builtin preset should not
+be an attractive nuisance; `dsv` handles it for whoever has legitimate
+root reasons); `/proc/stat`, `/proc/net/dev`, `crontab`, `id` (ragged /
+multi-header shapes, v2 candidates).
+
+**Portability stance (v1).** Presets target **Linux procfs + POSIX-locked
+command output**; each command preset pins its canonical argv in
+`detect.cmd.argv` (that is the argv `Exec.parse` runs — `EXEC.10.md`
+§4.1) and states its contract in `doc:`. BSD/macOS variants (ps column
+drift: TT/STARTED; indent-delimited ifconfig blocks) are the province of
+**preset packs**: ordinary publishable boru modules whose body calls
+`Sift.define`, distributed with the existing toolchain (`boru prep` /
+`pack` / `publish` / `install`, `CLI.md`). The §16 exercise closed the
+two gaps that made this story hollow: `blocks {sep:'indent'}` (§5.2)
+expresses indent-delimited blocks declaratively, and `family:'fn'` specs
+(§6) let a pack's fn kinds carry `detect:` claims. Redefining an existing
+kind stays an error — variant packs use variant names (`ps-bsd`); a
+`{replace:true}` define option was rejected for v1 (silent behaviour
+swaps across imports).
+
+## 10. Errors
+
+Codes are snake_case, matching the neighborhood sift surfaces through —
+the `parse` word's `parse_kind_exists` / `parse_bad_name` /
+`parse_file_unsupported` family (`module-parselang.tsv`) — rather than
+the kebab codes of the go-modules family (which `EXEC.10.md` uses; each
+matches its neighbors).
+
+| code | raised by | when |
+|---|---|---|
+| `sift_spec_error` | define / parse / check | bad spec: unknown key, missing family, bad type atom, `fields`+`opts.fields` conflict, `pattern` without a named group |
+| `sift_bad_name` | define | name violates the kind-name rules (lowercase, non-empty, no `parse_` prefix) |
+| `sift_kind_exists` | define | duplicate kind (builtin, preset, or prior define) |
+| `sift_unknown_kind` | spec / parse | no such registered kind |
+| `sift_parse_error` | any family | malformed line under `strict:'error'` — detail carries the 1-based line number |
+| `sift_type_error` | any family | coercion failure under `strict:'error'` |
+| `sift_detect_conflict` | define | a `detect` path glob or argv0 basename already claimed |
+| `sift_no_preset` | `read {fmt:'auto'}` | detection table miss |
+
+Every code gets `ERROR:` rows in `module-sift.tsv` beside the positive
+rows (test discipline, `lang/go/CLAUDE.md`).
+
+Fn-registered kinds SHOULD raise `sift_parse_error` / `sift_type_error`
+(with a 1-based line number in the detail where applicable) so
+`do […] error […]` handling is uniform across declarative and fn kinds
+*(added by the §16 exercise — codes are open atoms, so this is
+convention, not enforcement)*.
+
+## 11. Overlap — dividing lines
+
+- **`boru:parselang`** — rigid, self-describing formats (json/yaml/toml/…)
+  where the schema is in the bytes; sift is line-oriented text whose
+  schema lives in the *spec*. Sift implements *against* parselang's
+  registry (`RegisterHostParser` / `RegisterFormatParser`) rather than
+  beside it.
+- **`boru:parse`** — real grammars: recursive, nested, token-level syntax
+  (`ip addr`'s indented sections). Sift families are flat and
+  line-oriented by design; when a format outgrows them, graduate to
+  `Parse.grammar` — the user-facing surface (`parse <kind>`) is identical
+  either way.
+- **`boru:minilang`** — one-shot value-producing minilangs (`mini re`,
+  `+re/…/`, gex/jp/jq/xp). Sift's `pattern` family shares the RE2 engine
+  and semantics with `mini re` but returns shaped Maps/Tables and
+  participates in the spec/preset ecosystem.
+- **`boru:string-util`** — the primitives (`split`/`trim`/`match`) sift is
+  built from. A one-off split does not need sift.
+- **`boru:report` / `boru:emitlang`** — the encode direction. Sift is
+  decode-only **permanently**: a sift spec is not invertible (whitespace
+  alignment, comments, and blank-line structure are lost), so emit stays
+  with `Report.table` / `emit csv`. (Same stance as tabnas formats, which
+  are read-only on the read side — `format.go:40`.)
+- **`boru:query`** — the consumer: sift Tables are ordinary `TableData`
+  (`table.go:11`), so `from`/`where`/`group` and the SQLite auto-load
+  (`fileio.go:253`) apply unchanged. `../DATAFRAME-WORDS.3.md`'s proposed
+  table words would apply equally.
+- **`boru:struct-util`** — downstream reshaping (`getpath`, `transform`,
+  `selector`) of sift output; also the fn escape hatch's toolkit.
+- **`boru:micro-format` (designed, `../EXTENSION-MODULES.10.md` §5)** —
+  Internet *message* micro-formats (RFC-822 email, vCard, iCal): domain
+  records with their own RFCs, registered through the same parselang
+  seam. No name overlap; sift owns OS-flavored line formats. (One
+  citation correction in passing: that note's "RegisterFormatEmitter" is
+  actually `RegisterHostEmitter`, `lang/go/modules/emitlang.go:185`.)
+- **`boru:exec` (companion, [`go-modules/EXEC.10.md`](../go-modules/EXEC.10.md))**
+  — produces the command output sift parses. The bridge word
+  (`Exec.parse`) lives in exec so sift stays pure; the shared detection
+  table (§8.2) is the only coupling, and it is data.
+
+## 12. Gap analysis & roadmap
+
+- **Streaming.** v1 is whole-string, like every existing Format and parse
+  kind (`read` slurps via the FileOps seam before decoding). For
+  huge inputs the future options are a streaming decode seam riding the
+  lazy-table `Materializer` interface (`table.go:22`) or `boru:stream`'s
+  `from-lines` (`../STREAM-WORDS.0.md`) — named here, not designed.
+- **Typed refinement (v2).** Micron coercions (`'path'` → Pathon), and
+  per-preset exported Record types (`Sift.Meminfo` for `is` checks),
+  mirroring micro-format's typed-accessor direction.
+- **Locale/encoding.** Presets assume C-locale-ish UTF-8 output. `read`'s
+  encoding options own transport; `Exec.parse` pins `LC_ALL=C` on the
+  producing side (`EXEC.10.md` §4.1).
+- **The `columns` family cannot express** multi-line records, ragged
+  multi-header tables (`/proc/net/dev`), or position-critical alignment —
+  `fixed` and `boru:parse` are the escape routes; presets for those files
+  wait for v2.
+
+## 13. Worked examples
+
+All examples are **proposed surface** (nothing below runs today) except
+where marked verified. Forward form; `# returns` shows results.
+
+```
+import "boru:io"  import "boru:sift"  import "boru:parselang"
+
+# 1. meminfo → Map. Two steps: read is FileOps-gated; sift is pure.
+def mem (parse meminfo ("/proc/meminfo" IO.read))
+mem.mem-available                     # returns 12464893952 (Integer bytes)
+
+# 2. One step via the read bridge + auto-detection (§8.2).
+def mem2 ("/proc/meminfo" IO.read {fmt:'auto'})   # returns the same Map
+
+# 3. cpuinfo → List of Maps.
+def cpus (parse cpuinfo ("/proc/cpuinfo" IO.read))
+cpus size                             # returns 8 — one Map per processor block
+(cpus get 0) .model-name              # returns 'AMD EPYC 7B13'
+
+# 4. mounts → Table → SQL. Sift tables are ordinary TableData, so the
+#    query pipeline applies unchanged (Query.from resolves its table by
+#    name from the context store — lang/spec/module-query.tsv).
+import "boru:query"
+context set mounts ("/proc/mounts" IO.read {fmt:'mounts'})
+Query.select [device mount] Query.from mounts Query.where [fstype eq "ext4"]
+                                      # returns the ext4 rows (Table)
+
+# 5. Command output piped in on stdin — works TODAY up to the parse:
+#    $ ps aux | boru script.boru
+context set procs (parse ps (IO.stdin IO.read))
+Query.select [pid command] Query.from procs Query.where [cpu gt 50.0]
+
+# 6. A user teaches sift their own tool's format — inline first,
+#    then registered, then published.
+def myspec {family:'dsv' opts:{sep:'ws' limit:2}
+            fields:{size:'integer' path:'string'}}
+Sift.check myspec                     # returns [] — valid
+Sift.parse myspec "4096 ./a\n8192 ./b c"   # returns a 2-row Table (unregistered)
+Sift.define mytool myspec
+parse mytool "4096 ./a"               # returns a Table — a first-class kind
+Sift.spec mytool                      # returns the merged spec map back
+# To share it: put the Sift.define in a module body and
+# `boru prep && boru pack && boru publish` (CLI.md).
+
+# 7. With the companion module (EXEC.10.md), acquisition folds in:
+import "boru:exec"
+Exec.parse df                         # runs ["df" "-P"], parses with the df preset
+# returns a Table; the equivalent long form:
+def r (["df" "-P"] Exec.run)
+parse df r.out
+```
+
+(Example 5's shell pipe + `IO.stdin IO.read` is the verified acquisition
+path that exists today — `io_module.go`; only `parse ps` is proposed.)
+
+## 14. Open questions
+
+1. **`repeat` default** — `'last'` (chosen: ordinary map-assignment
+   intuition) vs `'error'` (safer for corruption detection, hostile for
+   exploration). Revisit with real preset experience.
+2. **`'percent'` scale** — 0–100 (chosen: matches the source text) vs 0–1
+   (composes with arithmetic). A `'ratio'` alias could serve the latter.
+3. **`transform:` in specs** — deliberately cut (§6); if preset packs
+   keep reimplementing the same reshapes in fn form, revisit with the
+   voxgig-transform spec as the schema.
+4. **Doc stamping** — preset `doc:` strings should surface in
+   `describe`; proposed mechanism is stamping the installed wrapper's
+   `FnDefInfo.Doc` (the `stampExportProvenance` machinery), with
+   `docs_sift.go` covering only the seven `Sift.*` exports. Confirm at
+   implementation time.
+5. **Detect-glob linting** — should `Sift.check` also validate `detect`
+   glob syntax and cross-preset conflicts (it can only see one spec)?
+   Leaning: `check` validates shape; conflicts stay a define-time error.
+
+## 15. Implementation sketch (wiring checklist — no code)
+
+Follow `parselang.go` (the framework precedent) and the shared module
+conventions (`go-modules/README.10.md`):
+
+1. `lang/go/modules/sift.go` — `BuildSiftModule(parent)`: the six family
+   handlers (pure Go over strings + `regexp`), spec validation/merge, the
+   preset loader (`//go:embed siftspecs/*.jsonic`, decoded with the
+   engine's jsonic data parser), registration through
+   `RegisterFormatParser` with `RegisterHostParser` fallback (§8.1),
+   detection-table population, and a per-registry state slot for
+   idempotent re-import.
+2. `lang/go/modules/siftspecs/*.jsonic` — the 15 preset files (§9).
+3. `lang/go/native` — the one new hook: `SetHostFormatDetect` /
+   `HostFormatDetect`, `'auto'` resolution in read's format selection
+   (`native_misc.go:263` area), and the reserved-name guard in
+   `RegisterFormat`.
+4. `lang/go/modules/modules.go` — add `"sift": BuildSiftModule`.
+5. `lang/go/modules/docs_sift.go` — one-liners for the seven exports
+   (the `TestModuleExportDocs` ratchet); preset docs ride spec `doc:`
+   stamping (§14.4). Catalog row in `help/help_render.go`'s
+   `moduleCatalog` (pinned by `catalog_sync_test.go`).
+6. `lang/spec/module-sift.tsv` — positive + `ERROR:` rows per export,
+   per family, per preset (ADR-003); no-panic tests for type-literal
+   args (ADR-005); budget for 100% coverage (ADR-008) — the family
+   handlers are pure string code, the cheapest kind to cover.
+7. No ADR edits. No policy-package changes (sift is pure; the read-side
+   gating rides the existing `formats` capability).
+
+## 16. Validation exercise — a user ifconfig parser (DX probe)
+
+To pressure-test the extension mechanism before implementation, the user
+code for an `ifconfig` parser (Linux net-tools 2.x) was written
+speculatively against this RFC:
+[`examples/sift/ifconfig.boru`](../examples/sift/ifconfig.boru). ifconfig was
+chosen *because* it defeats the declarative families: a block is a
+structured header line plus keyword-dispatched detail lines, repeated
+`inet`/`inet6` lines accumulate into Lists, and the RX/TX counter-line
+pairs deep-merge into nested `rx:`/`tx:` maps — so the exercise drives
+the fn escape hatch end-to-end, with every *line* shape still parsed by
+an inline `pattern` spec (specs-as-data inside user code). Everything in
+the probe that uses today's machinery (`join`/`fold`/`filter`/`push`/
+`set`/`raise`, `StringUtil`, `mini re`) was validated against the
+executable spec suite and the live binary; only the `Sift.*` surface is
+speculative.
+
+**What held.** The layering worked as designed: `Sift.parse` with inline
+(unregistered) pattern specs is the workhorse — a Map of
+keyword→pattern-spec entries reads like a grammar while staying plain
+jsonic data; `Sift.check` gives spec authors a pure validation surface;
+a registered fn kind is an ordinary `parse` kind; and named-group fields
+proved their worth against the verified-today alternative (`mini re` is
+positional-only). The Options pattern threaded per-call strictness
+through cleanly *once the fn implemented it* (which is the first
+finding).
+
+**What the exercise changed** (each edit is marked "added/pinned by the
+§16 exercise" in place):
+
+1. **`family:'fn'` spec form (§6, §7, §8.2)** — fn kinds were
+   second-class on every discovery surface: no `detect:` claims (so
+   `Exec.parse ifconfig` and `read {fmt:'auto'}` could not resolve
+   them), no `doc:`, no framework preprocessing, and the §9 preset-pack
+   story collapsed for exactly the ragged formats that need fn kinds.
+   The spec form fixes all four at once; `Sift.define <name> <fn>`
+   stays sugar.
+2. **Unmatched named groups yield `None` (§5.2)** — previously
+   unspecified and load-bearing: the `inet` line's optional `broadcast`
+   group would otherwise be `''`, `None`, or an absent key depending on
+   implementation choice, and per-line shape drift is exactly what
+   §5.1's strict-schema philosophy exists to prevent. It is also why
+   the probe keeps RX/TX packet- and error-line patterns as separate
+   dispatch entries rather than one alternation.
+3. **`blocks {sep:'indent'}` (§5.2)** — BSD/macOS ifconfig emits no
+   blank lines (a new block starts at an unindented line); without an
+   indent mode, indent-delimited blocks were inexpressible by any spec
+   and BSD packs were impossible-by-construction.
+4. **Fn-kind semantics pinned (§7)** — call-site opts pass through
+   verbatim for bare fn kinds (declaring `opts:` in the spec form opts
+   into merging + unknown-key errors), and sift resolves the source to
+   a String before invoking fn kinds (the probe's `ParseLang.source`
+   call becomes redundant).
+5. **Trailing-Map source rule (§7)**, **`pattern` `vtype` (§5.2)**,
+   **`fields:`×pattern restriction (§5.2)**, **fn-kind error-code
+   guidance (§10)** — smaller pins the probe forced.
+
+**Residual friction, accepted.** A hand-rolled fn kind still owns its
+own inner strictness semantics (the probe's `'skip'` drops unknown
+*keywords* but stays loud on malformed *known* lines — defensible, and
+now documented in the probe rather than hidden); and heterogeneous
+block formats remain fn territory by design — the exercise confirmed
+the families/fn boundary is in the right place rather than suggesting a
+seventh line-shape family.

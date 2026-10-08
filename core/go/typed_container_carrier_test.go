@@ -5,7 +5,7 @@ import "testing"
 func TestUnifyTypedContainerCarrierGuard(t *testing.T) {
 	child := NewTypeLiteral(TInteger)
 	lc := NewCarrier(TFlexList)
-	out, uerr := unifyTypedListWithConcrete(lc, child)
+	out, uerr := unifyTypedListWithConcrete(lc, child, nil)
 	if uerr != nil {
 		t.Fatalf("list carrier: %v", uerr)
 	}
@@ -13,7 +13,7 @@ func TestUnifyTypedContainerCarrierGuard(t *testing.T) {
 		t.Errorf("list carrier not tagged with [:Integer]")
 	}
 	mc := NewCarrier(TFlexMap)
-	outm, merr := unifyTypedMapWithConcrete(mc, child)
+	outm, merr := unifyTypedMapWithConcrete(mc, child, nil)
 	if merr != nil {
 		t.Fatalf("map carrier: %v", merr)
 	}

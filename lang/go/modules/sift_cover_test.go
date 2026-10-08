@@ -14,7 +14,7 @@ import (
 // battery (modules_seam6d_test.go). Mirrors repl_cover_test.go — boru:sift is
 // loaded the same way (embedded sift.boru parsed once, run as a module body).
 
-// A parent with no parser configured is refused before any work.
+// A parent with no parser configured is declined before any work.
 func TestBuildSiftModuleRequiresParser(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {

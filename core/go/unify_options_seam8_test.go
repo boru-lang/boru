@@ -20,7 +20,7 @@ func w8opts(pairs ...Value) Value {
 func TestW8UnifyOptionsPairSuccess(t *testing.T) {
 	a := w8opts(NewString("x"), NewTypeLiteral(TInteger))
 	b := w8opts(NewString("x"), NewTypeLiteral(TInteger))
-	got, err := unifyOptionsFamily(a, Shape(a), b, Shape(b))
+	got, err := unifyOptionsFamily(a, Shape(a), b, Shape(b), nil)
 	if err != nil {
 		t.Fatalf("two compatible Options must unify: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestW8UnifyOptionsPairFieldBagError(t *testing.T) {
 	// missing on the right (also covers unify_map.go's missing-key arm).
 	a := w8opts(NewString("x"), NewTypeLiteral(TInteger))
 	b := w8opts(NewString("y"), NewTypeLiteral(TInteger))
-	if _, err := unifyOptionsFamily(a, Shape(a), b, Shape(b)); err == nil {
+	if _, err := unifyOptionsFamily(a, Shape(a), b, Shape(b), nil); err == nil {
 		t.Fatal("Options with mismatched keys must fail to unify")
 	}
 }
@@ -43,7 +43,7 @@ func TestW8UnifyOptionsBareMapLiteral(t *testing.T) {
 	// Options vs a bare Map type literal preserves the Options schema.
 	opts := w8opts(NewString("x"), NewTypeLiteral(TInteger))
 	lit := NewTypeLiteral(TMap)
-	got, err := unifyOptionsFamily(opts, Shape(opts), lit, Shape(lit))
+	got, err := unifyOptionsFamily(opts, Shape(opts), lit, Shape(lit), nil)
 	if err != nil {
 		t.Fatalf("Options vs Map literal: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestW8UnifyOptionsRejectsStructuralMap(t *testing.T) {
 	if !IsConcrete(rec) {
 		t.Fatal("precondition: record type value must be concrete for this arm")
 	}
-	if _, err := unifyOptionsFamily(opts, Shape(opts), rec, Shape(rec)); err == nil {
+	if _, err := unifyOptionsFamily(opts, Shape(opts), rec, Shape(rec), nil); err == nil {
 		t.Fatal("Options must not unify with a Record")
 	}
 }
@@ -73,7 +73,7 @@ func TestW8UnifyOptionsConcreteOnRight(t *testing.T) {
 	cm := NewOrderedMap()
 	cm.Set("x", NewInteger(7))
 	concrete := NewMap(cm)
-	got, err := unifyOptionsFamily(opts, Shape(opts), concrete, Shape(concrete))
+	got, err := unifyOptionsFamily(opts, Shape(opts), concrete, Shape(concrete), nil)
 	if err != nil {
 		t.Fatalf("Options vs concrete map: %v", err)
 	}

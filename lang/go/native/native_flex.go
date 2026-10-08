@@ -58,57 +58,66 @@ var flexNatives = []NativeFunc{
 			// than the Any sig, so it wins whenever the argument is a
 			// list (including another FlexList, which conforms to List).
 			{
-				Args:      []*Type{TList, TFlexList},
-				Impl:      Go(appendListHandler),
-				Returns:   []*Type{TFlexList},
-				ReturnsFn: appendListReturns, BarrierPos: -1,
+				Args:          []*Type{TList, TFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendListHandler),
+				Returns:       []*Type{TFlexList},
+				ReturnsFn:     appendListReturns, BarrierPos: -1,
 			},
-			// Any other value: append as a single element.
+			// Any other value: append as a single element. CompileStoresFn:
+			// the element is STORED, never stepped — the rule at `set`
+			// (native_storage.go).
 			{
 				Args:      []*Type{TAny, TFlexList},
 				Impl:      Go(appendElemHandler),
 				Returns:   []*Type{TFlexList},
 				ReturnsFn: flexGrowReturns("append"), BarrierPos: -1,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 			},
 			// WeakFlexList: append ONE element, classified per the weak
 			// value domain (scalar → strong, handle → weak, immutable
-			// Node → refused with weak_value_error). No list-splice
-			// form: an immutable List argument is exactly the refused
+			// Node → declined with weak_value_error). No list-splice
+			// form: an immutable List argument is exactly the declined
 			// kind, and the refusal is the teachable path. The TList
 			// twin exists so a list-valued argument (immutable → the
 			// refusal; a flex handle → one weak element) reaches THIS
 			// classify path instead of the FlexList concatenate sig,
 			// which sorts first on position 0 otherwise.
 			{
-				Args:      []*Type{TList, TWeakFlexList},
-				Impl:      Go(appendWeakElemHandler),
-				Returns:   []*Type{TWeakFlexList},
-				ReturnsFn: weakAppendListReturns, BarrierPos: -1,
+				Args:          []*Type{TList, TWeakFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakElemHandler),
+				Returns:       []*Type{TWeakFlexList},
+				ReturnsFn:     weakAppendListReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAny, TWeakFlexList},
-				Impl:      Go(appendWeakElemHandler),
-				Returns:   []*Type{TWeakFlexList},
-				ReturnsFn: weakAppendListReturns, BarrierPos: -1,
+				Args:          []*Type{TAny, TWeakFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakElemHandler),
+				Returns:       []*Type{TWeakFlexList},
+				ReturnsFn:     weakAppendListReturns, BarrierPos: -1,
 			},
 			// WeakFlexXml: append one child, same classification.
 			{
-				Args:      []*Type{TAny, TWeakFlexXml},
-				Impl:      Go(appendWeakXmlChildHandler),
-				Returns:   []*Type{TWeakFlexXml},
-				ReturnsFn: weakAppendXmlReturns, BarrierPos: -1,
+				Args:          []*Type{TAny, TWeakFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakXmlChildHandler),
+				Returns:       []*Type{TWeakFlexXml},
+				ReturnsFn:     weakAppendXmlReturns, BarrierPos: -1,
 			},
 			// FlexXml: append child nodes (elements or text) in place.
 			// A List splices its elements; any other value is one child.
 			{
-				Args:    []*Type{TList, TFlexXml},
-				Impl:    Go(appendXmlListHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TList, TFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendXmlListHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:    []*Type{TAny, TFlexXml},
-				Impl:    Go(appendXmlChildHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAny, TFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendXmlChildHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 		},
 	},
@@ -123,7 +132,7 @@ var flexNatives = []NativeFunc{
 // still matches optimistically rather than failing on a strict supertype.
 //
 // In PLAIN check mode a concrete map source additionally mints the
-// container's abstract StoreShapeInfo (design/checker-precision-fronts.0.md
+// container's abstract StoreShapeInfo (design/legacy/checker-precision-fronts.0.ignore
 // §2 stage 1 — `flex` is a store-creating word: one shape per creation
 // site), so downstream `set`/`get`/`dot` over the result read/write ITS
 // key types instead of degrading to dynamic(Any). A flex-of-flex source
@@ -154,6 +163,14 @@ func flexReturns(args []Value, r *Registry) []Value {
 		}
 		return []Value{d2RetainElem(NewCarrier(TFlexMap), args[0])}
 	case p.ConformsTo(TList):
+		// A concrete plain list mints an element-join shape
+		// (check.MintFlexListShapeCarrier), the list twin of the map shape
+		// above; a typed / computed source keeps the bare carrier.
+		if shapes {
+			if v, ok := check.MintFlexListShapeCarrier(args[0], 0); ok {
+				return []Value{d2RetainElem(v, args[0])}
+			}
+		}
 		return []Value{d2RetainElem(NewCarrier(TFlexList), args[0])}
 	case p.ConformsTo(TXml):
 		return []Value{NewCarrier(TFlexXml)}
@@ -333,7 +350,12 @@ func appendListReturns(args []Value, r *Registry) []Value {
 		if src, err := RequireConcreteList(args[0], "append"); err == nil {
 			for i := 0; i < src.Len(); i++ {
 				d2CheckWrite(r, args[1], src.Get(i), "append", args[0].Pos())
+				flexListShapeWrite(args[1], src.Get(i))
 			}
+		} else {
+			// A computed source splices elements the shape cannot see: widen
+			// the element join to dynamic(Any), the unshaped read's own answer.
+			flexListShapeWrite(args[1], NewDynamicCarrier(TAny))
 		}
 		res = d2RetainElem(res, args[1])
 	}

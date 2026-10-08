@@ -22,6 +22,13 @@ type PolyNoMatchSpec struct {
 	// position i, the callPoly layout) to rebuild the two tape tuples.
 	Written    []int
 	StackTuple []int
+	// NFwd counts Written's leading entries the report took from the
+	// operands written after the word; the rest came from the stack
+	// beneath. The interpreter's walk over the written ones stops at a value
+	// that is not concrete, so where one is a type literal or None at run
+	// time its report renders fewer, and the VM keeps its defer (NUR311).
+	// Zero: no written entries to check.
+	NFwd int
 	// NSigs pins the record-time signature-table length: a table that grew or
 	// shrank between the record and the run invalidates the record-time arity
 	// screen (an other-arity overload could now match where this raise claims
@@ -29,6 +36,12 @@ type PolyNoMatchSpec struct {
 	NSigs int
 	// Pos is the word's source position — the interpreter's raise anchor.
 	Pos SrcPos
+	// Uncalled marks the dispatch as a named fn VALUE's (execFnDefLiteral's
+	// no-signature recovery for a module native, Engine.fnValueRecovery):
+	// the interpreter's no-match there raises uncalled_function ("call to
+	// 'w' matched no signature") at Pos, not sigError's signature_error, so
+	// the VM raises that instead. Written / StackTuple are unused for it.
+	Uncalled bool
 }
 
 // FallbackSpan is one interpreter island: a recorded token sequence
@@ -41,6 +54,11 @@ type FallbackSpan struct {
 	Tokens []Value
 	NIn    int
 	Desc   string
+	// CheckOne marks a strip word's island (`error` over a literal handler)
+	// whose run a single-value seat consumes (compiler dyn_body_one.go): the
+	// VM seats it only when it left exactly one value the interpreter would
+	// not re-step, and defers loudly otherwise (vm:dyn-body-one).
+	CheckOne bool
 }
 
 // TypedBindKind selects which of defTypedHandler's refinement branches one
@@ -64,6 +82,17 @@ const (
 	// 10)`, inline or named). Runtime unifies the value against the
 	// self-contained Constraint; the value keeps its base tag (no reparent).
 	TypedBindDepScalar
+	// TypedBindRunMembership: a constraint whose membership only the run
+	// knows — a type over a refinement whose bound the analysis pass did not
+	// know (NUR308): a named node the run installed (RunTypeInstall forwards
+	// it to the run's type) or, with ConsOperand, the inline constraint the
+	// run computed — or a value only the run knows, a dynamic body whose
+	// carrier does not prove it a member of the annotation (NUR290). Runtime
+	// unifies the value against it; the value keeps its tag (a refinement,
+	// union or negation constraint never reparents; an FnUndef annotation,
+	// which does, never records one — only a fn is its member, and a body
+	// that may hold a fn declines).
+	TypedBindRunMembership
 )
 
 // TypedBindSpec describes one OpBindTyped: the typed-def name (for the error
@@ -81,4 +110,18 @@ type TypedBindSpec struct {
 	Describe string
 	Def      *Type  // reparent target: TypedBindRefine always; TypedBindPredicate when the interpreter reparents; nil otherwise
 	Cons     *Value // constraint value: TypedBindPredicate (the fn) and TypedBindDepScalar (the DepScalar); nil for TypedBindRefine
+	// ConsOperand: the constraint is not baked — the run computed it, and it
+	// sits on the stack beneath the value (TypedBindRunMembership over an
+	// inline constraint, NUR308). An empty Describe renders the run's
+	// constraint, as defTypedHandler's describeType renders an inline one.
+	ConsOperand bool
+}
+
+// TypeRunInstallSpec describes one OpBindTypeRun (NUR308): the type name the
+// run installs from the body it computed, and the node the analysis pass
+// minted under that name — the node every compiled reference names, by ID or
+// by *Type, which forwards to the run's (RunTypeInstall).
+type TypeRunInstallSpec struct {
+	Name string
+	Node *Type
 }

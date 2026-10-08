@@ -105,8 +105,9 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 
 	// One *Boru per session over the persistent registry: each line runs
 	// COMPILED-BY-DEFAULT (RunAutoValues — the same CompileTry semantics as
-	// `boru run`), with the interpreter as the sound fallback for refused
-	// lines. Check-pass def/import effects persist across lines on the
+	// `boru run`), and a declined line re-runs on the interpreter —
+	// containment for a compile failure, never a fallback the design
+	// leans on. Check-pass def/import effects persist across lines on the
 	// compiled path by SnapshotForCompile's keep-on-compile contract;
 	// fallback lines interpret against the same registry, so state
 	// persistence is unchanged either way (plan Phase 2).
@@ -170,20 +171,14 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 			continue
 		}
 
+		// One outcome, the same as every other surface: the line compiles
+		// and runs, or it does not compile and the REPL prints the failure.
+		// This used to re-run the line on the interpreter, silently — the
+		// argument being that an interactive line's performance debt was not
+		// worth a per-line warning. It was never about performance: the line
+		// had hit a compiler defect and nothing said so, and a REPL is where
+		// a user is most likely to be the one who can report it.
 		result, _, _, err := boruInst.RunAutoValues(line)
-		// Post-Stage-J a whole-line refusal returns compile_refused instead
-		// of the library silently re-running; this surface performs the
-		// fallback itself (the same CompileTry semantics as `boru run`) —
-		// silently, matching the REPL's historical UX: an interactive line's
-		// performance debt is not worth a per-line warning. Stamping stays
-		// armed across the fallback so callbacks stored by a refused line
-		// keep the VM path for later lines (the compiled mode's contract).
-		var refused *lang.BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_refused" {
-			disarm := boruInst.ArmRuntimeStamping()
-			result, err = boruInst.RunInterpValues(line)
-			disarm()
-		}
 		if err != nil {
 			// `IO.exit N` from a REPL line ENDS THE SESSION, the same way
 			// the bare `exit` word does — the interactive analogue of a

@@ -2,11 +2,10 @@ package lang
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
-// REFUSAL-CLOSURE §9.2d (landed 2026-07-17) — a factory body RETURNING a
+// COMPILE FAILURE-CLOSURE §9.2d (landed 2026-07-17) — a factory body RETURNING a
 // nameless verbose-`fn` construction compiles exactly like the lambda form:
 // tryReturnedClosure's model now admits any NAMELESS fn value (`fn [...]`
 // in a body position constructs Anonymous=false but carries no name; a
@@ -35,39 +34,30 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 	// as one rule rather than two behaviours: no enclosing rewind, so the
 	// carrier is PLACED and the 2 lands beside it.
 	//
-	// GRADUATED 2026-08-27 from a refusal to a parity row (Stage 3): the
+	// GRADUATED 2026-08-27 from a compile failure to a parity row (Stage 3): the
 	// residual-layout loops now skip a placed, unread carrier instead of
-	// refusing it on a closure-render fear that measurement did not support.
+	// declining it on a closure-render fear that measurement did not support.
 	mustCompileWithParity(t,
 		`def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] (mk 1) 2`,
 		"[fn (Integer) 2]")
 
-	// Decline fences, each parity-faithful:
 	// THREE-level currying (a capture threading through two constructions)
-	// keeps the sound refusal.
-	{
-		src := `def mk3 fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [a add b add c]])]])]] (((mk3 1) 2) 3)`
-		a, _ := New()
-		prog, _, _, _ := a.CompileCheck(src)
-		if prog != nil {
-			t.Errorf("three-level currying compiled — graduate this fence to a parity row")
-		}
-		b, _ := New()
-		_, _, errC := b.RunCompiled(src)
-		if !strings.Contains(fmt.Sprint(errC), "compile_refused") {
-			t.Errorf("three-level currying: err=%v, want compile_refused", errC)
-		}
-		c, _ := New()
-		if out, err := c.RunInterp(src); err != nil || fmt.Sprint(out) != "[6]" {
-			t.Errorf("interp = %v (%v), want [6]", out, err)
-		}
-	}
+	// GRADUATED 2026-09-22 from a decline fence to a parity row (the curried
+	// chain, design/FULL-COMPILATION-HANDOFF.0.md): each paren records its
+	// re-stepped produced lead's apply at the collapse, so the chain is
+	// three apply events, not one flattened residual.
+	mustCompileWithParity(t,
+		`def mk3 fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [a add b add c]])]])]] (((mk3 1) 2) 3)`,
+		"[6]")
 	// A def-bound returned closure applies with parity through the fallback
 	// (the def consumer is a different seam; the value is what matters).
 	{
 		src := `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] def f (mk 10) (f 5)`
 		b, _ := New()
 		gotC, _, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(src)
 		if errC != nil || errI != nil || fmt.Sprint(gotC) != "[15]" || fmt.Sprint(gotI) != "[15]" {

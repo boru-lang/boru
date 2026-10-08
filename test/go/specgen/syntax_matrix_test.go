@@ -27,7 +27,7 @@ package main
 //   2. Compiler parity (TestSyntaxMatrixCompilerParity): every non-error
 //      row the bytecode compiler accepts must produce a result IDENTICAL
 //      to the interpreter. A floor on the accepted-row count keeps the
-//      gate honest (a compiler that silently refused everything would
+//      gate honest (a compiler that silently declined everything would
 //      pass vacuously). This is the same differential contract the
 //      langspec suite enforces, applied to the whole combination space.
 //
@@ -151,7 +151,7 @@ func sampleRows(rows []matrixRow, cap int) []matrixRow {
 
 // minCompiledRows is the floor for the compiler-parity gate: at least
 // this many non-error rows must take the bytecode-compiled path, or the
-// parity assertion is vacuous (a compiler that refused everything would
+// parity assertion is vacuous (a compiler that declined everything would
 // pass with zero comparisons). Measured at 29798 over the length-4 matrix
 // (up from 27712 once the multi-output stack-word fix let `dup`/`swap`
 // results above a residual literal compile); pinned a little below the
@@ -306,7 +306,7 @@ func TestSyntaxMatrixCompilerParity(t *testing.T) {
 		ac.SetClock(specClock)
 		gotC, wasCompiled, errC := ac.RunCompiled(r.input)
 		if !wasCompiled {
-			return // outside the compilable subset — interpreter fallback covers it
+			return // outside the compilable subset — compile failure covers it
 		}
 		atomic.AddInt64(&compiled, 1)
 
@@ -332,7 +332,7 @@ func TestSyntaxMatrixCompilerParity(t *testing.T) {
 	sink.report()
 	t.Logf("compiler parity: %d rows compiled (%d error rows skipped), %d mismatches", compiled, errorRows, sink.total())
 	if compiled < minCompiledRows {
-		t.Errorf("only %d rows took the compiled path (floor %d) — the compiler regressed to refusing the matrix",
+		t.Errorf("only %d rows took the compiled path (floor %d) — the compiler regressed to declining the matrix",
 			compiled, minCompiledRows)
 	}
 }
@@ -460,10 +460,10 @@ func hasCheckError(res lang.CheckResult) bool {
 //     error or an error-severity diagnostic) AND the compiler must emit NO
 //     Program for it. The second clause is the contract: a program the
 //     checker rejects is never lowered to bytecode, because CompileCheck
-//     runs the checker first and refuses on any error diagnostic. Any
+//     runs the checker first and declines on any error diagnostic. Any
 //     check-rejected prefix that still produced a Program is a violation.
 //   - Every fail-compile row must PASS THE CHECKER (no error diagnostic)
-//     yet still produce NO Program — a genuine compile-stage refusal,
+//     yet still produce NO Program — a genuine compile-stage compile failure,
 //     disjoint from the check-fail set.
 //   - Every fail-runtime row must PASS THE CHECKER AND COMPILE to a
 //     Program, yet ERROR when interpreted — a runtime fault the static

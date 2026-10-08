@@ -19,6 +19,7 @@ import "testing"
 // that can never satisfy its declaration is a static error wherever it sits
 // — so it is stated as its own claim instead of hidden in a ratchet count.
 func TestCallbackReturnContractIsChecked(t *testing.T) {
+	t.Parallel()
 	const decl = "def cbad fn [[n:Integer][Boolean][n]] end "
 
 	cases := []struct {
@@ -53,6 +54,7 @@ func TestCallbackReturnContractIsChecked(t *testing.T) {
 // application it could not model, or a concrete param stand-in — and the
 // checker must stay silent on all three.
 func TestGeneralisedResidualStaysSilent(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src string }{
 		{
 			"unapplied fn-typed param strands its literal",

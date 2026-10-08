@@ -205,36 +205,37 @@ func TestS7Lang_RunCompiledStrictCompileError(t *testing.T) {
 		t.Fatalf("expected syntax_error, got: %v", err)
 	}
 
-	// Negative sibling: an uncompilable-but-valid program returns the
-	// force-compile refusal (prog==nil arm, boru.go:727-729) — a distinct
-	// path that must NOT be the CompileCheck-error arm.
+	// Negative sibling: a program that does not compile takes the prog==nil
+	// arm — a distinct path that must NOT be the CompileCheck-error arm.
+	// `undefinedword123` is statically INVALID, so its own verdict is the
+	// error: the undefined word, with its position and hints intact.
 	_, err = a.RunCompiledStrict("undefinedword123")
 	if err == nil {
-		t.Fatal("expected force-compile refusal for uncompilable program")
+		t.Fatal("expected an error for an uncompilable program")
 	}
-	if !strings.Contains(err.Error(), "force-compile") {
-		t.Fatalf("expected force-compile refusal, got: %v", err)
+	if !strings.Contains(err.Error(), "undefined word") {
+		t.Fatalf("expected the program's own verdict, got: %v", err)
 	}
 }
 
-// TestS7Lang_ForceCompileReason drives forceCompileReason (boru.go:746-748
+// TestS7Lang_CompileFailureReason drives compileFailureReason (the
 // empty-reason default, plus the pass-through else): the empty reason maps
 // to a generic message; a non-empty reason passes through verbatim.
-func TestS7Lang_ForceCompileReason(t *testing.T) {
-	if got := forceCompileReason(""); got != "program is not compilable" {
-		t.Errorf("forceCompileReason(\"\") = %q, want the generic default", got)
+func TestS7Lang_CompileFailureReason(t *testing.T) {
+	if got := compileFailureReason(""); got != "program is not compilable" {
+		t.Errorf("compileFailureReason(\"\") = %q, want the generic default", got)
 	}
-	if got := forceCompileReason("some reason"); got != "some reason" {
-		t.Errorf("forceCompileReason non-empty = %q, want pass-through", got)
+	if got := compileFailureReason("some reason"); got != "some reason" {
+		t.Errorf("compileFailureReason non-empty = %q, want pass-through", got)
 	}
 }
 
 // TestS7Lang_AmbiguousGradualSplit drives CompileCheck's ambiguous-gradual-
-// split refusal (boru.go:345-347). An `if` join produces a genuinely MIXED
+// split compile failure (boru.go:345-347). An `if` join produces a genuinely MIXED
 // gradual carrier — Disjunct(Integer,Boolean) — and feeding it to `not`
 // (which has a Boolean overload that rejects the mixed carrier at the stack
 // top, plus a forward arm that grabs the trailing 0) makes the static
-// forward/stack split diverge from the runtime one. CompileCheck refuses to
+// forward/stack split diverge from the runtime one. CompileCheck declines to
 // compile (prog==nil) and reports the reason, rather than emitting bytecode
 // that would diverge from the interpreter.
 func TestS7Lang_AmbiguousGradualSplit(t *testing.T) {
@@ -245,13 +246,13 @@ func TestS7Lang_AmbiguousGradualSplit(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil {
-		t.Fatalf("CompileCheck returned an error, want a clean refusal: %v", cerr)
+		t.Fatalf("CompileCheck returned an error, want a clean compile failure: %v", cerr)
 	}
 	if prog != nil {
 		t.Fatalf("expected nil program (uncompilable), got %v", prog)
 	}
 	if !strings.Contains(reason, "gradual operand") {
-		t.Fatalf("expected the gradual-operand refusal reason, got: %q", reason)
+		t.Fatalf("expected the gradual-operand compile failure reason, got: %q", reason)
 	}
 }
 

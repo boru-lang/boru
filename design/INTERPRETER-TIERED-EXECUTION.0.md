@@ -3,7 +3,7 @@
 **Status:** Design / roadmap. The concrete architecture for closing the
 remaining interpreter↔Python gap, grounded in the machinery verified
 during the 2026-07 second-pass optimization series
-(`INTERPRETER-PYTHON-PARITY.10.md`). Not yet implemented.
+(`legacy/INTERPRETER-PYTHON-PARITY.10.ignore`). Not yet implemented.
 
 ## Why this is the path
 
@@ -18,10 +18,19 @@ CPython is not a tree-walker. Its "interpreter" parses to bytecode and
 runs a tight dispatch loop — exactly boru's compiled mode, which already
 runs fib at ~235ms wall (≈10× Python wall, most of it fixed startup) on
 the same fixtures. **"Interpreter performance like Python" means doing
-what Python does: compile transparently, fall back rarely.** The tier
-keeps interpreter mode's semantics and observability (the tree-walker
-remains the reference and the fallback) while hot code runs on the
-existing, differential-tested VM.
+what Python does: compile transparently.** The tier keeps interpreter
+mode's semantics and observability (the tree-walker remains the
+reference) while hot code runs on the existing, differential-tested VM.
+
+> **Scope note (2026-09-16).** This is a tiering design *inside
+> interpreter mode* — which execution engine runs a hot fn body — and it
+> is a different axis from compile mode's refusal contract. Nothing here
+> softens that contract: a program `--compile` refuses is a **failure**,
+> the interpreter is not a fallback for the compiler and is not allowed
+> to be one, and an earlier version of this section set the target at
+> "fall back rarely", which is not a target this project accepts. Within
+> the tier, a body the VM cannot take is a body the tier failed to
+> promote — a performance defect to close, not a resting place.
 
 ## Architecture: fn-level tiering inside interpreter mode
 

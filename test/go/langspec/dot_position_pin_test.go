@@ -21,6 +21,7 @@ import (
 // That symmetry is exactly why the hole survived so long, so the pin here
 // asserts the position is PRESENT rather than merely equal.
 func TestDotAccessKeepsSourcePosition(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string

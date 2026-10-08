@@ -11,7 +11,7 @@ import (
 // server and client whose implementation is WRITTEN IN boru (the
 // replBoruPreamble below), following the boru:test hybrid pattern. It is
 // the first verification app of the networking stack
-// (design/NETWORK-IMPLEMENTATION-PLAN.0.md §1.5): a service over the
+// (design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1.5): a service over the
 // `lines` codec whose handler evaluates each received line and replies
 // with the rendered result.
 //
@@ -126,13 +126,13 @@ def repl-format-err fn [[m:Any] [String] [ join "" ["error: " m] ]]
 # makes defs persist across sandboxed one-shot evaluations).
 def repl-eval-line fn [[st:Any line:String] [String] [
   if (line eq "/reset") [
-    st set history ""
+    st set history "" drop
     "ok: session reset"
   ] [
     def src (if (st.history eq "") [ line ] [ join "\n" [st.history line] ])
     do [
       def out (canon (Vm.run src))
-      st set history src
+      st set history src drop
       out
     ] error [
       dot message

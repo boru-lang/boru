@@ -26,6 +26,65 @@ type BranchRecord struct {
 	ElsValue        *Value // non-nil: the else arm is this already-evaluated VALUE
 	Out             Value
 	Pos             SrcPos
+	// Guard is the signature of the run-time guard (basic's __codeguard,
+	// NUR292) the lowering calls over a value condition, or over a value arm
+	// on the path that takes it, which the pass holds abstractly and which
+	// may be a list at run time — CondGuard / ThenGuard / ElseGuard say
+	// which. The interpreter runs such a list as code; the guard passes any
+	// other value and defers on a list. Nil when no guard is owed.
+	Guard                           *Signature
+	CondGuard, ThenGuard, ElseGuard bool
+	// CondCheck is the condition's guard (basic's __condguard) when
+	// CondGuard is set: the interpreter runs a list condition INLINE and
+	// branches on the last value it leaves, so a list of plain values
+	// answers its last element, an empty one raises the interpreter's "no
+	// value", and any other list defers.
+	CondCheck *Signature
+	// CondCheckPos is where the condition's guard runs: the `if` word's
+	// position, where the interpreter's inline run raises "no value".
+	CondCheckPos SrcPos
+	// Uncaptured says WHY an arm the record leaves nil was not captured —
+	// the clause-list `if` records an element its lowering cannot place
+	// (a condition it cannot decide, an arm the tape would re-step) as an
+	// uncaptured taken arm, so the decline carries the element's own
+	// reason. Empty for every other record.
+	Uncaptured string
+	// Joins are the names the branch left bound PAST its merge — what
+	// InstallJoinedDefs handed back for this `if` — so the recorder can seat
+	// each in a frame slot (the compiler's branch-carried def). Nil when no
+	// arm bound a name, or on a plain check.
+	Joins []BranchJoin
+	// Pending is the observable pending literals the arms' model runs
+	// evaluated at their ends (RunCarrierArmBody), merged over the arms: the
+	// interpreter keeps them pending past the `if`, so the recorder must
+	// prove nothing between the branch and where the interpreter evaluates
+	// them could tell (NUR356).
+	Pending PendingResidue
+	// SweptArms marks a branch whose arms END where the interpreter
+	// evaluates what they leave — the `case` desugar's chain, whose blocks
+	// the interpreter runs in a sub-engine of their own (runCaseBody) — so a
+	// pending literal a nested `if` leaves at an arm's end is evaluated
+	// there. False (the sound default) for an `if`, whose arms are spliced
+	// onto the enclosing tape and evaluate nothing they leave.
+	SweptArms bool
+}
+
+// BranchJoin is one name an `if` left bound past its merge, as
+// InstallJoinedDefs pushed it. Joined is the binding a read after the merge
+// resolves — the carrier the join pushed, whose ID is the compiler's key for
+// the name's frame slot. Pre is the binding that stood before the branch
+// (HasPre false: none — the name is bound only if an arm ran). ThenBinds and
+// ElseBinds say which arms rebound the name; on a constant-condition branch
+// only the taken arm was analysed, and Taken says so — that arm always runs,
+// so the joined binding is unconditionally its own.
+type BranchJoin struct {
+	Name      string
+	Joined    Value
+	Pre       Value
+	HasPre    bool
+	ThenBinds bool
+	ElseBinds bool
+	Taken     bool
 }
 
 // EmitRecorder is the checker-side view of the bytecode recording pass —
@@ -50,6 +109,27 @@ type BranchRecord struct {
 // callable from lang/native; the unexported tail is eng-internal. The
 // unexported methods also mean out-of-package types cannot implement the
 // interface — the recorder contract is owned here, by design.
+// LandingNext classifies the token after a noted re-step landing
+// (EmitRecorder.NoteLandingNext) the way the re-step's forward phase reads
+// it (CollectCandidateScan): a statement or group boundary, a FUNCTION word
+// the phase stops at (a candidate the interpreter counts), the end of the
+// tape, or a token the phase COLLECTS — a word bound to a value (`m.f k`
+// with `def k 2` is g over 2), a literal name — which the residual arms
+// model rather than the landing. LandingNextCollect is a literal the phase
+// collects inside a `def`'s operand group (`def j (5 do [(mk)] 7) end`
+// applies mk's lambda to the 7 before the def takes the 5): the residual
+// arms meet that value only after the def, so the landing guards it
+// (NUR298).
+type LandingNext int
+
+const (
+	LandingNextBoundary LandingNext = iota
+	LandingNextWord
+	LandingNextEnd
+	LandingNextValue
+	LandingNextCollect
+)
+
 type EmitRecorder interface {
 	// --- activity / lifecycle ------------------------------------------
 	// Active / active report that recording is LIVE (armed, compilable,
@@ -60,10 +140,24 @@ type EmitRecorder interface {
 	Active() bool
 	Armed() bool
 	Suspend() func()
-	BindRegistry(r *Registry)
+	// BindRegistry binds the recorder to the registry an engine run is
+	// about to execute on, and returns the restore of the binding it
+	// replaced: a sub-engine run (an inline module's body) binds the
+	// module's sub-registry and the enclosing run's registry comes back
+	// when it returns, so a top-level def after the import records on the
+	// program's check state, where its reads look (2026-09-24).
+	BindRegistry(r *Registry) func()
 	TopFrameOnly() bool
 	SuspendedNow() bool
 	BodyAnalysisGuard() func()
+	// CondBodyGuard is BodyAnalysisGuard for a KEPT CONDITION body run
+	// (RunCarrierCondBodyKeepDefs — an `if` condition or a `case`
+	// scrutinee, which runs unconditionally, exactly once, before the
+	// branch decision, its bindings kept — NUR212): the same capture of the
+	// armed fragment, marked UNCONDITIONAL, so a once-run defs-keeping body
+	// word inside it (`if [do [def x 5] true] …`) may adopt its body's bind
+	// twins there exactly as it would at the root. Inactive: plain no-op.
+	CondBodyGuard() func()
 	// KeepDefsBodyGuard is BodyAnalysisGuard for a KEEP-DEFS body run
 	// (runCarrierBodyDefsAdds keep=true — `do`'s check-mode scoping,
 	// where body defs leak): same suspension, but the recorder may
@@ -96,7 +190,7 @@ type EmitRecorder interface {
 	// §6.5's each-body recovery). bodyID is the body Value's ID — the
 	// latch's identity guard: a nested body's analysis during the outer
 	// unit's compile overwrites the latch, and the mismatched ID makes
-	// the outer bridge decline to a sound refusal instead of pairing
+	// the outer bridge decline — declining instead of pairing
 	// against the wrong run. r is the noting registry, for the
 	// module-registry fence. Inactive: plain no-op.
 	MultiRunBodyGuard(r *Registry, bodyID string) func()
@@ -115,10 +209,10 @@ type EmitRecorder interface {
 	// purely check-time product (the mint happens once and the compiled
 	// stream carries nothing for it), so outside that bracket this records
 	// nothing and no other lane's event stream changes. Inactive: no-op.
-	RecordTypeInstall(name string, pos SrcPos)
+	RecordTypeInstall(name string, entry DefEntry, pos SrcPos)
 	FnBodyGuard() func()
 
-	// --- refusal + site accounting --------------------------------------
+	// --- compile failure + site accounting --------------------------------------
 	MarkUncompilable(reason string)
 	Sites() map[string]int
 
@@ -132,7 +226,7 @@ type EmitRecorder interface {
 	// entry, so a closure unit opened INSIDE the region (a `do` body in a
 	// case arm — bracketed at run time by the VM's enterBodyUnit) is not
 	// attributed to the region while it records. The compiler's dispatch
-	// recorder uses the bracket to refuse a `context` read recorded inline
+	// recorder uses the bracket to decline a `context` read recorded inline
 	// inside a region — the handle would denote the region's own layer,
 	// which has no compiled twin, so every layer-distinguishing consumption
 	// (a write, an alias, an identity probe) would diverge (NUR054).
@@ -150,15 +244,51 @@ type EmitRecorder interface {
 	// consume it keyed to the CompileFallbackBody sig, so it can never leak
 	// onto an unrelated word's event. Plan Phase 5, L-DO. (The mark covers
 	// only the SHRINKING direction; a count that can EXCEED the modeled
-	// seats — await first/any — refuses wholesale instead, NUR067.)
+	// seats — await first/any — declines wholesale instead, NUR067.)
 	SetCatchVariadic(pending bool)
 
 	// --- dispatch / value recording -------------------------------------
 	RecordCall(word string, sig *Signature, args, outs []Value, pos SrcPos, forceDynOut, quoteInertOK bool)
 	RecordPoly(word string)
 	RecordPolyCall(word string, args, outs []Value, pos SrcPos, ownerReg *Registry, noMatch *PolyNoMatchSpec) bool
-	RecordUserCall(unit int, args []Value, outs []Value, pos SrcPos)
-	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos)
+	// RecordUserCall records one committed user-fn call to a compiled unit.
+	// pos is the call's blame position (the first argument's, as the event
+	// has always carried it); word and wordPos are the dispatching WORD
+	// token as the check pass published it (CheckState.CurCallWord /
+	// CurCallPos), the key Phase B claims the call's region capture by.
+	RecordUserCall(unit int, word string, args, outs []Value, pos, wordPos SrcPos)
+	// RecordUserPolyCall records one runtime-re-matched multi-overload
+	// user-fn call. word is the name the VM re-matches in ownerReg; pos is
+	// the call's blame position (the first argument's). callWord and wordPos
+	// are the dispatching WORD token as the check pass published it
+	// (CheckState.CurCallWord / CurCallPos, or the dispatched name and the
+	// engine's own word position at a recovery site) — the key Phase B claims
+	// the call's region capture by, exactly as RecordUserCall's.
+	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos, callWord string, wordPos SrcPos)
+	// HoldRegion takes the Phase-A region offer for the dispatching word
+	// token (word, pos — CheckState.CurCallWord / CurCallPos as read at a
+	// user-fn ReturnsFn's entry) out of the pending pool NOW, before the
+	// callee's body is analysed, and parks it for this call's record to
+	// complete; the returned release is deferred by the caller. The pool is
+	// keyed by row and column only, so a body that dispatches the same word
+	// at the same row and column of ANOTHER source would otherwise re-offer
+	// over this call's capture and consume it. Inactive: a no-op.
+	HoldRegion(word string, pos SrcPos) func()
+	// NoteCallWindow offers the operand window a dispatch's RUNTIME twin
+	// reports when its match fails — the interpreter's attempted window
+	// (attemptedWindowOver), derived over the check pass's own tape at the
+	// dispatch's FIRST step, so a gradual operand stands where the runtime
+	// value will (NUR320). deferred marks a dispatch that goes on to collect
+	// forward; restep marks its force-stack re-step, which keeps a deferred
+	// offer rather than replacing it. Keyed and held exactly as the region
+	// offer is (HoldRegion); a user-fn record claims it for its
+	// param-contract no-match. A nil window offers that no window is known.
+	// nFwd counts the window's leading entries written after the word, and
+	// prefix is the stack prefix beneath it as the run holds it: the
+	// interpreter's report stops its written entries at the first that is no
+	// concrete value at run time and falls to that prefix (NUR311).
+	// Inactive: a no-op.
+	NoteCallWindow(word string, pos SrcPos, window []Value, nFwd int, prefix []Value, deferred, restep bool)
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
 	// TOP of the window (the values nearest the fn). That is normally all of
@@ -168,6 +298,17 @@ type EmitRecorder interface {
 	// suffix of the window and leave the rest on the tape. consumed is
 	// meaningful only when ok is true.
 	RecordDynApply(args []Value, fn, out Value, pos SrcPos) (consumed int, ok bool)
+	// RecordDynApplyLead records the LEADING one-arg window `(g x)` the
+	// paren-lead classifier admitted (parenLeadFnApplyIdx) through the same
+	// event: the lead g is a Function-typed slot of the recording unit and x
+	// the one value it collects. It differs from the trailing record in one
+	// admission: x may itself be a fn VALUE (`(f g/v)`, `(f ([n] => …))`) —
+	// inside a leading window such a value arrived inert, a bare fn word
+	// would have dispatched or raised before the collapse, so the lead binds
+	// it to a Function param exactly as the interpreter's collection does,
+	// where the trailing window keeps declining it (there the value was a
+	// token the interpreter stepped).
+	RecordDynApplyLead(args []Value, fn, out Value, pos SrcPos) (consumed int, ok bool)
 	// RecordDynApplyName is RecordDynApply with the fn resolved through
 	// the NAME's recorded def-site operand (its evDynBind event) — the
 	// §4.3 capture fallback for calls of installed factory closures whose
@@ -176,13 +317,103 @@ type EmitRecorder interface {
 	RecordDynApplyName(name string, args []Value, fn, out Value, pos SrcPos) bool
 	DynApplyLeadEligible(v Value) bool
 	RecordDynMethod(fn Value, args, outs []Value, word string, pos SrcPos) bool
+	// NoteReStepLanding marks the event that produced v as owing a GUARDED
+	// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+	// rewinds onto v and re-steps it, dispatching a callable one, so the op
+	// goes right after the producing event's own op. A value with no producing
+	// event, and a producer whose result is a runtime-variable REGION, are both
+	// shapes no landing op can express: they are left alone, on today's paths.
+	NoteReStepLanding(v Value, pos SrcPos)
+	// NoteDelivery records that the step loop re-steps v where it lands — a
+	// DELIVERY: the one its producer made, and each later one an enclosing
+	// word makes (a `do` splicing its body's results back, NUR313). A value
+	// its producer's own paren placed is placed only while that first
+	// delivery is its only one.
+	NoteDelivery(v Value)
+	// NoteTakenLanding marks v as owing a COLLECTING landing (NUR349): a
+	// value the run may find callable, which a dispatch took off the stack
+	// together with a value written after it — the value the interpreter's
+	// re-step of v collects before that dispatch runs. The landing guards the
+	// value where it lands; a value no landing op can guard declines the
+	// program.
+	NoteTakenLanding(v Value)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
-	RecordDispatchRematchValues(word string, vals []Value, writtenOff, nWritten int, pos SrcPos) bool
+	// RecordUnitTrapErr records a definite runtime raise inside the open
+	// body unit — scoped to that unit, never the program's terminal trap
+	// (NUR134: a module export's no-match inside a `do` body).
+	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
+	// RecordArmTrapErr records a definite runtime raise inside the SEALED
+	// branch arm being recorded (ArmSealedBranchCapture) — scoped to that
+	// arm, which raises only when it runs (NUR332). Inactive: declines.
+	RecordArmTrapErr(ae *BoruError, pos SrcPos) bool
+	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
+	// NoteRematchPrefix attaches to the rematch RecordDispatchRematchValues
+	// just recorded the window indices (top first) of the stack prefix the
+	// interpreter's no-match report reads when a written operand stops its
+	// tuple (DispatchSpec.Prefix, NUR311).
+	NoteRematchPrefix(prefix []int)
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
+	// RecordArgsProjection gives the `args` projection inside a fn unit —
+	// the list of the frame's param carriers — a compiled home: an
+	// OpMakeList over the param locals, assembled per call. An `args.N`
+	// that folds to the element retracts it (tryFoldStaticIndex), so the
+	// common indexed read still lowers to the bare local.
+	RecordArgsProjection(r *Registry, ins []Value, out Value, pos SrcPos) bool
+	// NoteRuntimeBind records that NAME is bound at run time by a native
+	// the program calls (`unpack` over a source the pass cannot read), so
+	// every later read with no compiled home seats LIVE on the registry
+	// (the keep-defs leak's rule) and the program runs under DynEnv, whose
+	// frames unwind the binding as the interpreter's do.
+	NoteRuntimeBind(name string)
+	// NoteRuntimeConstruct records that the check-mode-run constructor
+	// dispatching now built its result over an operand the pass does not
+	// know — a refinement over a computed bound, `Integer gt (size s)`
+	// (NUR308): the result is no const, so the dispatch records as the call
+	// it is and the run builds the value over the real operand.
+	NoteRuntimeConstruct()
+	// NoteRuntimeTypeInstall records that the type installer minted name's
+	// node over a body holding a refinement whose bound the pass does not
+	// know (NUR308): the def's dispatch records the run-time install of the
+	// body the run computes, the node forwarding to the run's.
+	NoteRuntimeTypeInstall(name string, node *Type, body Value)
+	// NoteRuntimeSigForward records that a signature under construction
+	// carries an anonymous node minted over a refinement whose bound the
+	// pass does not know (NUR308): the building word's dispatch records the
+	// run's forward of that node, from the refinement the run computes.
+	NoteRuntimeSigForward(node *Type, body Value)
+	// NoteRuntimeDependent records that the compile-time word now
+	// dispatching has an effect only the run knows, which the compile cannot
+	// record: the dispatch declines as the compile-time word it is (NUR308).
+	NoteRuntimeDependent()
+	// RecordTypedBindRun records a typed def's run-time membership check
+	// over a constraint only the run can decide (TypedBindRunMembership,
+	// NUR308), a concrete value included; with spec.ConsOperand the
+	// constraint the run computed is an operand. ok=false leaves the def to
+	// its caller's decline.
+	RecordTypedBindRun(spec TypedBindSpec, cons, in, out Value, pos SrcPos) (Value, bool)
+	// RecordRuntimeDispatch records the dispatch of a check-mode-run word
+	// whose handler latched a run-time effect in THIS dispatch: a binder's
+	// run-time binds (NoteRuntimeBind — a plain 0-result native call, so the
+	// run performs the bind) or a constructor's run-time value
+	// (NoteRuntimeConstruct — a native call producing outs, which later
+	// operands resolve to). A no-op when no latch is set — the ordinary
+	// elision of a compile-time word stands.
+	RecordRuntimeDispatch(word string, sig *Signature, args, outs []Value, pos SrcPos)
+	// NoteRuntimeDefDispatch records that the check-mode-run binder word now
+	// dispatching could not CONSTRUCT the value it binds under NAME on the
+	// check engine — a def keyword form whose constructor needs an operand's
+	// run-time value (`def T fnsig M.sg`: the spec list a module fn returns)
+	// — and so bound nothing. It arms RecordRuntimeDispatch's bind latch, so
+	// the dispatch is emitted as the call it is and the run constructs and
+	// binds exactly as the interpreter does. Unlike NoteRuntimeBind there is
+	// no stub: the name stays unbound on the check engine, so a later read of
+	// it is the pass's own undefined-word finding and the program declines
+	// rather than bake a guess of the value.
+	NoteRuntimeDefDispatch(name string)
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
@@ -194,22 +425,91 @@ type EmitRecorder interface {
 	// as the paren-bounded apply it is, rather than as a leading dynamic
 	// value (the twenty-seventh increment).
 	ApplyPending(id string) bool
+	// MayBeFn reports whether the value id is a BRANCH result one of whose
+	// arms is a fn VALUE (`if c one/v [2]`) — callable at run time on that
+	// arm, data on the other. The merge widens the fn arm's type to its
+	// lattice parent (Word), so the carrier no longer reads as Function
+	// and the collapse-side gates (the re-step landing's note) would step
+	// past it as data where the interpreter re-steps whatever the branch
+	// returned: `if true one/v [2]` is 1 interpreted (NUR159). Inactive:
+	// no branch, so never.
+	MayBeFn(id string) bool
+	// RegionResult reports whether the value id is the one modelled seat of
+	// a RUNTIME-COUNTED region — a value-producing loop (`for 1 [1]`, whose
+	// seat the pass types `[:Integer]` where the run leaves the loop's
+	// values themselves), a branch whose arms leave different counts, a
+	// variadic native region. Its static type approximates the region; it
+	// is not the run's value, so a dispatch matched over it is matched
+	// optimistically (Engine.optimisticOuter, NUR340). Inactive: never.
+	RegionResult(id string) bool
+	// NoteLandingNext says what the check pass found on the tape right after
+	// a value it noted as a re-step landing (NoteReStepLanding): a FUNCTION
+	// WORD (the interpreter's re-step plans over it — a named fn with no
+	// match RAISES `uncalled_function` rather than staying data, a
+	// zero-argument fallback fires, a `/q` or typed slot claims it; `word`
+	// is that token, so the VM's landing can walk the run-time fn's
+	// overloads over it, NUR190), a word bound to a VALUE the re-step
+	// collects (LandingNextValue; `word` is the zero Value), a statement or
+	// group BOUNDARY (no candidate: the value stays data), or the END of
+	// the tape — at the main program no candidate, inside a fn body the
+	// frame's tail markers, which the interpreter counts (NUR186: `def mk
+	// fn [[][Any][m.f]] end (mk)` raises interpreted). Inactive: no-op.
+	NoteLandingNext(v Value, next LandingNext, beneath bool, word Value)
+	// NoteStatementEnd records the position of a statement boundary (`;` /
+	// `end`) the pass stepped. The residual's fn-value apply arms ask it
+	// (crossesBoundary) so a value is never applied over an entry pushed
+	// past a boundary its re-step did not cross — `7 m.f ; 3` islanded to
+	// `[7 4]` for the interpreter's `[8 3]` (NUR187). Inactive: no-op.
+	NoteStatementEnd(pos SrcPos)
+	// NoteStatementStack records the stack a statement boundary at pos left
+	// for the next statement — told only where the boundary closed nothing
+	// (no pending forward) and the stack beneath it holds values alone. A
+	// statement island seats exactly these beneath the statement it runs
+	// again (NUR335): the interpreter's stack there, including values the
+	// statement then consumes, which the program's residual no longer
+	// shows (`m end drop (m.f 7)`). Inactive: no-op.
+	NoteStatementStack(pos SrcPos, stack []Value)
+	// NoteParenStack records the stack a paren group at pos opens over — told
+	// only where the tape beneath it holds values alone, nothing pending. A
+	// statement island stopped inside the group whose statement ran words
+	// that took values from beneath it (`drop (m.f 7)`) takes the statement
+	// over from the group's token instead, over exactly this stack (NUR336).
+	// Inactive: no-op.
+	NoteParenStack(pos SrcPos, stack []Value)
 	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
 	// application over a closure this pass PRODUCED whose body is `body`
 	// (matched by the body's first token position — one lambda source, one
 	// body), so the check pass's user-fn record site can record the value's
 	// re-step dispatch as the fn-value apply over the closure's producer
-	// operand where a unit call would refuse its construction-scope
+	// operand where a unit call would decline its construction-scope
 	// captures (the twenty-eighth increment).
 	PendingClosureApply(body []Value) (Value, bool)
 	NoteMemberFnRead(id string, member Value)
 	MemberFnRead(id string) bool
+	// ContainerReadResult reports whether id is the result of a recorded
+	// container READ — a get/dot-family dispatch, mono or poly — whose
+	// static type the pass could not narrow (a flex member, a gradual map
+	// field). The paren-bounded leading apply admits such a lead beside
+	// the tagged member-fn read and the fn-typed carrier: the guarded op
+	// applies the runtime value and defers on anything else.
+	ContainerReadResult(id string) bool
 	// NoteCollectionHazard marks the fn-typed value id as an UNAPPLIED lead
 	// a later dispatch collected past (Engine.noteCollectionHazards,
 	// NUR121); CollectionHazard reads the mark. A marked lead is never
 	// lowered as an apply over the values after it.
 	NoteCollectionHazard(id string)
 	CollectionHazard(id string) bool
+	// ProducedLeadApplies reports whether the closure a value this recorder
+	// PRODUCED holds — a compiled factory call's returned closure, or a
+	// recorded fn-value apply's result (the curried chain's next level) —
+	// takes EXACTLY these arguments on every run (their count is its
+	// declared arity and each static type conforms to its param), and the
+	// static type of the one value the apply nets. False for any other
+	// value: a def-read binding (its read is a word dispatch the read model
+	// owns), a param slot, a native result, a window that might no-match.
+	// Engine.parenProducedLeadApplyIdx asks it of a paren's re-stepped lead
+	// over the window after it, and records the apply at the collapse.
+	ProducedLeadApplies(id string, args []Value) (ret *Type, ok bool)
 	// NoteFnResultReStep marks a NATIVE dispatch's result v — a fn-typed
 	// or fn-admitting gradual carrier — that the interpreter re-steps into
 	// a dispatch attempt at the call's position, with a plain body token
@@ -217,13 +517,24 @@ type EmitRecorder interface {
 	// data (Engine.noteFnResultReSteps, NUR124). The recorder plans a
 	// re-step deopt over the call's results for it, or declines the unit.
 	NoteFnResultReStep(v Value, resume SrcPos)
-	// Stage-0b promotions (design/ENG-FOUR-PIECE.0.md): the probes that
+	// Stage-0b promotions (design/legacy/ENG-FOUR-PIECE.0.ignore): the probes that
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
 	InClosureUnit() bool
+	// ArgsReadLive reports the recording of a TOKEN body's own unit in its
+	// run-time stamp, where a bare `args` compiles to the live read of the
+	// args stack rather than projecting the unit's frame (the seam's run
+	// pushes no args frame, as the interpreter's RunResolved does not).
+	ArgsReadLive() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
+	// NoteSpliceFired tells the recorder the splice marker v fired at the
+	// pointer (stepLiteral): the tape replaced it with its payload, so the
+	// marker itself is gone from the stack the pass models — a value the
+	// recorder holds as a call's result (a `do` whose literal body read a
+	// `word` value by value, NUR348) is consumed there. Inactive: no-op.
+	NoteSpliceFired(v Value, pos SrcPos)
 	NoteShapedRead(id string)
 	MemberFnReadValue(id string) (Value, bool)
 	DynInputsProven(sig *Signature, args []Value) bool
@@ -270,16 +581,24 @@ type EmitRecorder interface {
 	// gradual Any/Dynamic one) that lowers as a slot push. Noted only when
 	// no pending forward expects a Function at the read (that arrival
 	// delivers the VALUE on both engines). The compiler counts the reads
-	// per unit and refuses any it cannot re-step as a word (NUR123).
+	// per unit and declines any it cannot re-step as a word (NUR123).
 	NoteWordRead(v Value, name string, pos SrcPos)
 	// NoteValRead records a `/v` read of a binding (stepWordVal): the value
 	// spelling, which the interpreter never dispatches. A binding read BOTH
 	// ways in one unit cannot be told apart in the residual (one value ID),
-	// so the compiler refuses the unit rather than guess (NUR123). name is
+	// so the compiler declines the unit rather than guess (NUR123). name is
 	// the binding read: a fn binding's read is a fresh wrap of the
 	// binding (ResolveRef), so the compiler traces it to the bound value
 	// by name (the thirty-first increment).
 	NoteValRead(id, name string)
+	// NoteValReadLive gives a `/v` read of name the kept-defs discipline a
+	// bare read takes through NoteDefRead and the tag hook (NUR334): after
+	// a computed keep-defs body that may have rebound the name, the read is
+	// seated live at its token (a fresh identity, the live lookup) or the
+	// compile declines, never baked from the check model's stale binding.
+	// Called before NoteValRead, which then notes the read's own identity.
+	// A no-op for every other read, and when inactive.
+	NoteValReadLive(v *Value, name string, pos SrcPos)
 	// NoteFrozenRead's gen is the binding's DefTable generation
 	// (DefTable.Gen) at the read, taken by the caller from the registry the
 	// read resolved in. It is the staleness key of the binding-sensitive
@@ -287,9 +606,60 @@ type EmitRecorder interface {
 	// noted at generation g is reusable at a later call site exactly while
 	// Gen(name) is still g there.
 	NoteFrozenRead(name string, bake FrozenBake, gen int64)
-	RefuseCarriedUndef(name string)
+	DeclineCarriedUndef(name string)
+	// RecordSpeculativeUndef and DeclineSpeculativeUndef are undefHandler's
+	// blocked branch: an `undef` of an ENCLOSING binding — one with a real
+	// pre-region depth — from inside a speculative region
+	// (Registry.SpecUndefBlocked), which the check pass keeps in its model.
+	// The handler passes the fact rather than the recorder re-deriving it:
+	// the recorder's registry is the LAST-BOUND one and can be a module
+	// sub-registry after a module call in the same body (review of #463).
+	// Record is the placeable shape — the model generalised the binding's
+	// value in place (GeneraliseSpecUndef, spec_undef.go), so the recorder
+	// places the pop at its site (OpUndefDynScope) and the name's later
+	// reads go live; it still declines where it cannot place (a suspended
+	// recording, an arm-resident bracket, a carried slot). Decline is the
+	// shape the model declined to generalise: a type or fn-family binding,
+	// a frame binding of an enclosing fn.
+	RecordSpeculativeUndef(name string, pos SrcPos)
+	DeclineSpeculativeUndef(name string)
+	// RecordSpeculativeFnDef places the fn def fn a branch arm the model
+	// cannot decide made (core.NoteSpecFnDef): fresh (a zero outer), or
+	// replacing the overlapping overload outer in place. True when placed:
+	// the def site's RecordDynBind that follows carries the install, the
+	// family's dispatches route with a live lead, and outer's body
+	// compiles to a unit of its own. False when declined — the caller
+	// keeps its model, and the recorder has declined where that model is
+	// known wrong. r is the registry the def installs into: a module's
+	// declines (its fns' bodies are the module's to run).
+	RecordSpeculativeFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool
+	// RecordSpecFnUndef places an `undef` of a speculative fn family made
+	// in the same region (the undef handler's in-region pop): the placed
+	// install would otherwise outlive the arm.
+	RecordSpecFnUndef(name string, pos SrcPos)
+	// NoteLiveRead seats a bare read of a name a PLACED speculative undef
+	// generalised (the tag hook, at the read token): the read gets its own
+	// value identity and a one-result event lowering to the live lookup at
+	// exactly that position, so the lookup — and the undefined_word a miss
+	// raises — executes where the interpreter reads, never delayed to the
+	// consumer or a residual re-push after a later effect (review of #464).
+	// A no-op for every other name, and when inactive.
+	NoteLiveRead(v *Value, name string, pos SrcPos)
+	// NoteInPlaceSlot records that the collection kernel evaluated the
+	// forward-slot token tok IN PLACE (an interpolated template string or XML
+	// literal a viable overload consumes) and result is what it produced. The
+	// result is a fresh value with its own identity, so without the link the
+	// region completion's identity check (compiler slotIsOperand) cannot tell
+	// that the operand came from that written slot, and the recorded claim
+	// stops short of an operand the dispatch did take forward. A no-op when
+	// inactive.
+	NoteInPlaceSlot(tok, result Value)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
+	// NameLocal names the frame local RegisterLocal reserved for id — a loop
+	// variable's name, for the did-you-mean pool of a compiled
+	// undefined_word (NUR146). A local with no name stays anonymous.
+	NameLocal(id, name string)
 	RememberOriginal(v Value)
 	RememberStrippedOriginals(pre, stripped []Value)
 
@@ -302,7 +672,7 @@ type EmitRecorder interface {
 	// cover branching, so the one caller that needed it punched through.
 	TakeFragment() EmitFragmentRef
 	RecordBranch(b BranchRecord)
-	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID string, out Value, regionN int, pos SrcPos)
+	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID, iterName string, out Value, regionN int, pos SrcPos)
 	// RecordWhile is RecordLoop for a CONDITION loop (`while [cond] [body]`,
 	// the thirty-seventh increment): cond and body are the two captured
 	// fragments, condStk / bodyStk their analysed residuals, iterID the
@@ -311,6 +681,10 @@ type EmitRecorder interface {
 	// deciding each iteration. Inactive: no-op.
 	RecordWhile(cond, body EmitFragmentRef, condStk, bodyStk []Value, iterID string, out Value, pos SrcPos)
 	ArmBranchCapture()
+	// ArmSealedBranchCapture is ArmBranchCapture for a SEALED branch arm:
+	// one the interpreter runs over its own tokens alone, so a trap may be
+	// recorded inside it (RecordArmTrapErr). Inactive: no-op.
+	ArmSealedBranchCapture()
 	PeekCaptureArm() bool
 	ArmLoopCapture()
 	ConsumeLoopArm() bool
@@ -320,6 +694,11 @@ type EmitRecorder interface {
 	BeginLoopCarried()
 	EndLoopCarried()
 	NoteLoopCarried(name string, joined, pre Value)
+	// NoteLoopFresh carries a FRESH name — one the body binds with no
+	// pre-loop binding — for a loop that may run zero times (NUR214): a
+	// slot with no init, read bound-checked after the loop. Inactive:
+	// no-op.
+	NoteLoopFresh(name string, joined Value)
 	Checkpoint() EmitCheckpoint
 	Rollback(cp EmitCheckpoint)
 	CanSeatAcrossFragment(v Value) bool
@@ -331,6 +710,12 @@ type EmitRecorder interface {
 	// SetUnitBody seats a fn unit's source body tokens (the sig's Boru body)
 	// — what a per-read deopt hands to the interpreter (compiler DeoptSpec).
 	SetUnitBody(unit int, body []Value)
+	// SetUnitSpecialisation marks unit as a CALL-SITE SPECIALISATION: it was
+	// compiled with param params[i] bound to the constant fn fns[i], so it is
+	// valid only for a call whose runtime arg at that param IS that fn
+	// (ExactEqual — fn identity). The VM checks the guards at CALL_USER entry
+	// and, when one fails, applies fallback — the fn itself — instead.
+	SetUnitSpecialisation(unit int, params []int, fns []Value, fallback Value)
 	SetUnitDecl(unit int, decl DeclSite)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
@@ -374,29 +759,32 @@ func (c *CheckState) Recorder() EmitRecorder {
 }
 
 func (inactiveEmit) InClosureUnit() bool                                    { return false }
+func (inactiveEmit) ArgsReadLive() bool                                     { return false }
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
+func (inactiveEmit) NoteSpliceFired(Value, SrcPos)                          {}
 func (inactiveEmit) NoteShapedRead(string)                                  {}
 func (inactiveEmit) MemberFnReadValue(string) (Value, bool)                 { return Value{}, false }
 func (inactiveEmit) Active() bool                                           { return false }
 func (inactiveEmit) Armed() bool                                            { return false }
 func (inactiveEmit) Suspend() func()                                        { return func() {} }
-func (inactiveEmit) BindRegistry(*Registry)                                 {}
+func (inactiveEmit) BindRegistry(*Registry) func()                          { return func() {} }
 func (inactiveEmit) TopFrameOnly() bool                                     { return true }
 func (inactiveEmit) SuspendedNow() bool                                     { return false }
 func (inactiveEmit) BodyAnalysisGuard() func()                              { return func() {} }
+func (inactiveEmit) CondBodyGuard() func()                                  { return func() {} }
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
-func (inactiveEmit) RecordTypeInstall(string, SrcPos)                       {}
+func (inactiveEmit) RecordTypeInstall(string, DefEntry, SrcPos)             {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
 func (inactiveEmit) RecordBranch(BranchRecord)     {}
 func (inactiveEmit) RecordWhile(EmitFragmentRef, EmitFragmentRef, []Value, []Value, string, Value, SrcPos) {
 }
-func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, Value, int, SrcPos) {
+func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, string, Value, int, SrcPos) {
 }
 
 func (inactiveEmit) MarkUncompilable(string) {}
@@ -417,10 +805,15 @@ func (inactiveEmit) RecordPoly(string)                                          
 func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, *PolyNoMatchSpec) bool {
 	return false
 }
-func (inactiveEmit) RecordUserCall(int, []Value, []Value, SrcPos) {}
-func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos) {
+func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
+func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos, string, SrcPos) {
 }
-func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
+func (inactiveEmit) HoldRegion(string, SrcPos) func()                                 { return func() {} }
+func (inactiveEmit) NoteCallWindow(string, SrcPos, []Value, int, []Value, bool, bool) {}
+func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool)         { return 0, false }
+func (inactiveEmit) RecordDynApplyLead([]Value, Value, Value, SrcPos) (int, bool) {
+	return 0, false
+}
 func (inactiveEmit) RecordDynApplyName(string, []Value, Value, Value, SrcPos) bool {
 	return false
 }
@@ -428,45 +821,81 @@ func (inactiveEmit) DynApplyLeadEligible(Value) bool { return false }
 func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
+func (inactiveEmit) NoteDelivery(Value)                                       {}
+func (inactiveEmit) NoteTakenLanding(Value)                                   {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
-func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, int, SrcPos) bool {
+func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
+func (inactiveEmit) RecordArmTrapErr(*BoruError, SrcPos) bool                 { return false }
+func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteRematchPrefix([]int) {}
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }
-func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool      { return false }
-func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool { return false }
+func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool       { return false }
+func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool  { return false }
+func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool { return false }
+func (inactiveEmit) NoteRuntimeBind(string)                                      {}
+func (inactiveEmit) NoteRuntimeConstruct()                                       {}
+func (inactiveEmit) NoteRuntimeTypeInstall(string, *Type, Value)                 {}
+func (inactiveEmit) NoteRuntimeSigForward(*Type, Value)                          {}
+func (inactiveEmit) NoteRuntimeDependent()                                       {}
+func (inactiveEmit) RecordTypedBindRun(_ TypedBindSpec, _, _, out Value, _ SrcPos) (Value, bool) {
+	return out, false
+}
+func (inactiveEmit) RecordRuntimeDispatch(string, *Signature, []Value, []Value, SrcPos) {}
+func (inactiveEmit) NoteRuntimeDefDispatch(string)                                      {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false
 }
 func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
+func (inactiveEmit) MayBeFn(string) bool                                    { return false }
+func (inactiveEmit) RegionResult(string) bool                               { return false }
+func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
+func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
+func (inactiveEmit) NoteParenStack(SrcPos, []Value)                         {}
+func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
+func (inactiveEmit) ContainerReadResult(string) bool                        { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}
 func (inactiveEmit) CollectionHazard(string) bool                           { return false }
+func (inactiveEmit) ProducedLeadApplies(string, []Value) (*Type, bool)      { return nil, false }
 func (inactiveEmit) NoteFnResultReStep(Value, SrcPos)                       {}
 func (inactiveEmit) DynInputsProven(*Signature, []Value) bool               { return false }
 func (inactiveEmit) Materialise(v Value) (Value, bool)                      { return v, false }
 func (inactiveEmit) ZeroOutProduced(string) bool                            { return false }
 func (inactiveEmit) AlreadyProduced(string) bool                            { return false }
 
-func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)    {}
-func (inactiveEmit) MarkValueDef(Value)                         {}
-func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
-func (inactiveEmit) RefuseCarriedUndef(string)                  {}
+func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry) {}
+func (inactiveEmit) MarkValueDef(Value)                      {}
+func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)   {}
+func (inactiveEmit) DeclineCarriedUndef(string)              {}
+func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)   {}
+func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcPos) bool {
+	return false
+}
+func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
+func (inactiveEmit) DeclineSpeculativeUndef(string)             {}
+func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
+func (inactiveEmit) NoteValReadLive(*Value, string, SrcPos)     {}
+func (inactiveEmit) NoteInPlaceSlot(Value, Value)               {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }
+func (inactiveEmit) NameLocal(string, string)                   {}
 func (inactiveEmit) RememberOriginal(Value)                     {}
 func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
 
 func (inactiveEmit) ArmBranchCapture()                                {}
+func (inactiveEmit) ArmSealedBranchCapture()                          {}
 func (inactiveEmit) PeekCaptureArm() bool                             { return false }
 func (inactiveEmit) ArmLoopCapture()                                  {}
 func (inactiveEmit) ConsumeLoopArm() bool                             { return false }
@@ -478,6 +907,7 @@ func (inactiveEmit) RecordInterpXml(XmlTmpl, []Value, Value, SrcPos) bool { retu
 func (inactiveEmit) BeginLoopCarried()                    {}
 func (inactiveEmit) EndLoopCarried()                      {}
 func (inactiveEmit) NoteLoopCarried(string, Value, Value) {}
+func (inactiveEmit) NoteLoopFresh(string, Value)          {}
 func (inactiveEmit) Checkpoint() EmitCheckpoint           { return nil }
 func (inactiveEmit) Rollback(EmitCheckpoint)              {}
 func (inactiveEmit) CanSeatAcrossFragment(Value) bool     { return false }
@@ -485,14 +915,15 @@ func (inactiveEmit) CanSeatAcrossFragment(Value) bool     { return false }
 func (inactiveEmit) StartFnCompile(string, string, *Registry, []Value, []*Type, []string, []CapturedBinding, bool, SrcPos) (int, func([]Value), bool) {
 	return -1, nil, false
 }
-func (inactiveEmit) SetUnitParamTypes(int, []*Type, []*Value) {}
-func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)      {}
-func (inactiveEmit) SetUnitBody(int, []Value)                 {}
-func (inactiveEmit) SetUnitDecl(int, DeclSite)                {}
-func (inactiveEmit) UnitVariadic(int) bool                    { return false }
-func (inactiveEmit) UnitNetsZero(int) bool                    { return false }
-func (inactiveEmit) UnitTailApply(int) (int, bool)            { return 0, false }
-func (inactiveEmit) ArmTailApply(stk []Value) []Value         { return stk }
+func (inactiveEmit) SetUnitParamTypes(int, []*Type, []*Value)         {}
+func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)              {}
+func (inactiveEmit) SetUnitBody(int, []Value)                         {}
+func (inactiveEmit) SetUnitSpecialisation(int, []int, []Value, Value) {}
+func (inactiveEmit) SetUnitDecl(int, DeclSite)                        {}
+func (inactiveEmit) UnitVariadic(int) bool                            { return false }
+func (inactiveEmit) UnitNetsZero(int) bool                            { return false }
+func (inactiveEmit) UnitTailApply(int) (int, bool)                    { return 0, false }
+func (inactiveEmit) ArmTailApply(stk []Value) []Value                 { return stk }
 
 // EmitCheckpoint is the opaque handle for a recording-pool snapshot: the
 // checker holds and returns it without any knowledge of the compiler's
@@ -564,7 +995,7 @@ const (
 	FrozenBakeCall
 )
 
-// String names the bake in the refusal a rebind produces, so the diagnostic
+// String names the bake in the compile failure a rebind produces, so the diagnostic
 // says which artifact went stale rather than always saying "its value".
 func (b FrozenBake) String() string {
 	switch b {

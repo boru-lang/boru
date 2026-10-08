@@ -129,7 +129,7 @@ be shadowed by a kind. Registration validates the unprefixed name
 ## 4. `mini` is a macro — expansion semantics
 
 Expansion uses the landed macro machinery (MACROS.8.md /
-MACROS-PHASE1.10.md) and adds no new mechanism:
+legacy/MACROS-PHASE1.10.ignore) and adds no new mechanism:
 
 1. **Raw-capture** `kind` (word, kept un-evaluated), `src` (one form),
    `opts` (raw map; absent → `{}`).
@@ -379,7 +379,7 @@ Error contract: kind handlers return errors via
 `r.BoruError`/`BoruErrorHint` with stable codes (`mini_parse_error`,
 `mini_eval_error`, …) carrying `{kind, src, offset}` detail where
 applicable, so `do … error […]` handlers can dispatch on `.code` and
-the report points at the calling site (ERRORS.8.md §7 quality bar).
+the report points at the calling site (legacy/ERRORS.8.ignore §7 quality bar).
 
 ---
 

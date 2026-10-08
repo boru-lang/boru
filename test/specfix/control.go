@@ -73,14 +73,15 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 }
 
 // fixCondFragment captures the condition body as its own fragment when
-// emitting, so the lowering runs it inline before JMP_IF_FALSE.
+// emitting, so the lowering runs it inline before JMP_IF_FALSE. The run
+// KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
 func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
 	es, _ := r.Check.Recorder().(*compiler.EmitState)
 	if !es.Armed() || !core.IsConcrete(cond) || !cond.Parent.ConformsTo(core.TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
-	stk, _ := core.RunCarrierCondBody(r, cond)
+	stk := core.RunCarrierCondBodyKeepDefs(r, cond)
 	return es.TakeFragment(), stk
 }
 
@@ -144,7 +145,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		}
 		if es.Recorder().Active() && !core.IsConcrete(v) && v.Parent != nil && v.Parent.ConformsTo(core.TList) {
 			// A COMPUTED list arm is the interpreter's spliced code body;
-			// the fixture does not model it — refuse the compile.
+			// the fixture does not model it — decline the compile.
 			es.Recorder().MarkUncompilable("fixture if: computed list arm")
 		}
 		vv := v
@@ -261,7 +262,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, "i", out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}
@@ -516,7 +517,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, "i", out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}

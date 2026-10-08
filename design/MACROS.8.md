@@ -4,7 +4,7 @@
 **Scope:** a user-level macro system for boru — `macro` definition, a
 quote-template surface with `unquote`/`splice`, expansion in both
 interpreter and (future) compiled modes, and a staged path to hygiene.
-**Predecessor:** `LISP-ANALYSIS.5.md` §5 + §8 (Tier-1 items #1–3) names
+**Predecessor:** `legacy/LISP-ANALYSIS.5.ignore` §5 + §8 (Tier-1 items #1–3) names
 macros as the single biggest unrealized LISP dividend. This plan turns
 that recommendation into a concrete build order.
 
@@ -279,11 +279,11 @@ other names.
 | Phase | Deliverable | Effort | Depends on | Status |
 |---|---|---|---|---|
 | 0 | `gensym` word | S | — | **LANDED** (1a) |
-| 1 | `macro` definer + `FormArgs` raw capture + `unquote`/`splice` + interpreter expansion + expansion cache | M | 0 | **LANDED** (1a–1e; `MACROS-PHASE1.10.md`) |
+| 1 | `macro` definer + `FormArgs` raw capture + `unquote`/`splice` + interpreter expansion + expansion cache | M | 0 | **LANDED** (1a–1e; `legacy/MACROS-PHASE1.10.ignore`) |
 | 2 | `macroexpand` introspection (recursive / macroexpand-all); loud expansion-error surface | S–M | 1 | **LANDED** |
 | 3 | `` `[ … ] `` quasiquote sugar (InterpString-reuse) | M | 1 | **DEFERRED** |
 | 4 | automatic hygiene — auto-rename template-origin binders (#1) | L | 1 | **LANDED** (#1; #2 free-word capture-pin + teardown deferred — refinements) |
-| 5 | compiled-mode expander (staging) | L | 1; IR backend | **interpreter staging LANDED + tested; compiled-mode BLOCKED on the IR backend** (`MACROS-PHASE5.5.md`) |
+| 5 | compiled-mode expander (staging) | L | 1; IR backend | **interpreter staging LANDED + tested; compiled-mode BLOCKED on the IR backend** (`legacy/MACROS-PHASE5.5.ignore`) |
 
 **Smallest shippable slice:** Phase 0 + Phase 1 — `gensym` plus an
 unhygienic-but-real `macro`. That alone moves all metaprogramming that
@@ -364,7 +364,7 @@ Pair every positive with a negative (per repo test discipline). TSV spec
 
 ---
 
-## 10. Relationship to LISP-ANALYSIS.5.md
+## 10. Relationship to legacy/LISP-ANALYSIS.5.ignore
 
 This plan implements that note's headline Tier-1 recommendation (§8 #1–3)
 and its roadmap rows 1–3 + 9. The key refinement from subsequent design

@@ -104,13 +104,13 @@ func deepConcrete(v Value, depth int) bool {
 // the checked node IS the runtime operand. DeepConcrete rejects one
 // (IsConcrete needs a payload), and rejecting it nested inside a literal
 // throws away a decidable case — `{value: None}` is as statically known
-// as `{value: 5}`, and a validator that demands a String refuses both at
+// as `{value: 5}`, and a validator that demands a String declines both at
 // run time.
 //
 // Use DeepKnown where the model routes on the interior of a literal a
 // call site WRITES OUT; use DeepConcrete where the model needs a real
 // payload to read (a string to parse, bytes to encode). Carriers and
-// dynamic values are refused at every level either way — those are the
+// dynamic values are declined at every level either way — those are the
 // shapes whose runtime value analysis does NOT hold.
 func DeepKnown(v Value) bool {
 	return deepKnown(v, 0)
@@ -344,7 +344,7 @@ func WithPosAt(v Value, p SrcPos) Value {
 // the integer body. Using this helper makes the by-value copy
 // explicit and the mistake unreachable.
 //
-// See `design/TYPE-CANONICALIZATION.10.md`.
+// See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 func ReparentValue(v Value, def *Type) Value {
 	v.Parent = def
 	return v
@@ -365,7 +365,7 @@ func ReparentValue(v Value, def *Type) Value {
 // resolution, refine subtype minting, behave validation — routes
 // through this helper so identity stays canonical at every hop.
 //
-// See `design/TYPE-CANONICALIZATION.10.md`.
+// See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 func CanonicalType(r *Registry, t *Type) *Type {
 	if t == nil || r == nil || t.ID == "" {
 		return t

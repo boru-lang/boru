@@ -45,7 +45,7 @@ func TestPendingViewerReceivesNoBroadcast(t *testing.T) {
 
 	id, ok := hub.admitPending(server)
 	if !ok {
-		t.Fatal("admitPending refused")
+		t.Fatal("admitPending declined")
 	}
 	// Both broadcast paths, while the viewer is pending. Neither may write:
 	// if either did, net.Pipe is unbuffered and the write would block until
@@ -97,7 +97,7 @@ func TestPendingViewerHoldsItsSlot(t *testing.T) {
 	c1, s1 := net.Pipe()
 	defer c1.Close()
 	if _, ok := hub.admitPending(s1); !ok {
-		t.Fatal("first admitPending refused")
+		t.Fatal("first admitPending declined")
 	}
 	c2, s2 := net.Pipe()
 	defer c2.Close()
@@ -116,14 +116,14 @@ func TestGoodbyeSkipsQuitForPendingViewer(t *testing.T) {
 	defer cp.Close()
 	pendingLines := readLines(t, cp, 4)
 	if _, ok := hub.admitPending(sp); !ok {
-		t.Fatal("admitPending refused")
+		t.Fatal("admitPending declined")
 	}
 
 	cl, sl := net.Pipe()
 	defer cl.Close()
 	liveLines := readLines(t, cl, 4)
 	if _, ok := hub.admit(sl); !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 
 	hub.goodbye()
@@ -156,7 +156,7 @@ func TestGoodbyeLeavesPendingForEvictToBalance(t *testing.T) {
 	defer c.Close()
 	id, ok := hub.admitPending(s)
 	if !ok {
-		t.Fatal("admitPending refused")
+		t.Fatal("admitPending declined")
 	}
 
 	hub.goodbye()
@@ -184,7 +184,7 @@ func TestEvictClearsPending(t *testing.T) {
 	defer c.Close()
 	id, ok := hub.admitPending(s)
 	if !ok {
-		t.Fatal("admitPending refused")
+		t.Fatal("admitPending declined")
 	}
 	hub.evict(id)
 	if len(hub.pending) != 0 {
@@ -200,7 +200,7 @@ func TestDropClearsPending(t *testing.T) {
 	defer c.Close()
 	id, ok := hub.admitPending(s)
 	if !ok {
-		t.Fatal("admitPending refused")
+		t.Fatal("admitPending declined")
 	}
 	hub.drop(id)
 	if len(hub.pending) != 0 {

@@ -7,7 +7,7 @@ import (
 
 // Stage-5 coverage for match.go (patternsOk / OpenUnifyMap), resolve.go
 // (the scalar-word cascade and typed-container deep resolution),
-// typed_bind.go (RunTypedBind's happy and refusal arms), typetable.go
+// typed_bind.go (RunTypedBind's happy and decline arms), typetable.go
 // (lookup guards, RegisterType path validation, Clone, MintTestType),
 // and types.go (NewType expansion, ResolveTypePath, the lattice
 // predicates, ValidateTypeNameParts, refreshTypeNames).
@@ -23,7 +23,7 @@ func wt5KindMap(kind string) Value {
 // wt5Predicate builds a single-arg predicate fn whose body is the given
 // token run, declared over the given input type.
 func wt5Predicate(r *Registry, input *Type, body []Value) Value {
-	return NewFunction(FnDefInfo{
+	return MarkPredicateFn(NewFunction(FnDefInfo{
 		Name:     "Wt5Pred",
 		Registry: r,
 		Signatures: []Signature{{
@@ -31,7 +31,7 @@ func wt5Predicate(r *Registry, input *Type, body []Value) Value {
 			Impl:       Boru(body),
 			BarrierPos: 0,
 		}},
-	})
+	}))
 }
 
 // --- match.go: patternsOk -------------------------------------------------
@@ -40,7 +40,7 @@ func TestWt5PatternsOkCarrierPattern(t *testing.T) {
 	// A CARRIER pattern is a check-mode placeholder — never enforced.
 	sig := &Signature{Args: []*Type{TInteger}, Patterns: map[int]Value{0: NewCarrier(TInteger)}}
 	tape := NewTape([]Value{NewInteger(99)}, 0)
-	if !patternsOk(sig, []int{0}, tape, 0, nil) {
+	if !patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Fatal("carrier pattern must be skipped, not enforced")
 	}
 }
@@ -54,14 +54,14 @@ func TestWt5PatternsOkForwardWordResolution(t *testing.T) {
 
 	sig := &Signature{Args: []*Type{TInteger}, Patterns: map[int]Value{0: NewInteger(5)}}
 	tape := NewTape([]Value{NewWord("wt5bound")}, 0)
-	if !patternsOk(sig, []int{0}, tape, 1, r) {
+	if !patternsOk(sig, []int{0}, tape, 1, r, nil) {
 		t.Fatal("forward word bound to the pattern value must match")
 	}
 	// The same word bound to a mismatching value must fail.
 	r.Defs.Push("wt5bound2", NewInteger(7))
 	defer r.Defs.Pop("wt5bound2")
 	tape2 := NewTape([]Value{NewWord("wt5bound2")}, 0)
-	if patternsOk(sig, []int{0}, tape2, 1, r) {
+	if patternsOk(sig, []int{0}, tape2, 1, r, nil) {
 		t.Fatal("forward word bound to a mismatching value must fail")
 	}
 }
@@ -71,16 +71,16 @@ func TestWt5PatternsOkStructuralMapArms(t *testing.T) {
 
 	// Forward position: structural map patterns are stack-only — skip.
 	tape := NewTape([]Value{wt5KindMap("db")}, 0)
-	if !patternsOk(sig, []int{0}, tape, 1, nil) {
+	if !patternsOk(sig, []int{0}, tape, 1, nil, nil) {
 		t.Fatal("structural map pattern must be skipped on forward positions")
 	}
 	// Stack position, mismatching map: OpenUnifyMap rejects.
-	if patternsOk(sig, []int{0}, tape, 0, nil) {
+	if patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Fatal("stack-matched structural map pattern must reject a mismatch")
 	}
 	// Stack position, matching map: continue.
 	tapeOk := NewTape([]Value{wt5KindMap("api")}, 0)
-	if !patternsOk(sig, []int{0}, tapeOk, 0, nil) {
+	if !patternsOk(sig, []int{0}, tapeOk, 0, nil, nil) {
 		t.Fatal("stack-matched structural map pattern must accept a subset match")
 	}
 }
@@ -91,12 +91,12 @@ func TestWt5PatternsOkNegationArms(t *testing.T) {
 
 	// A list operand violates tnot List.
 	tapeList := NewTape([]Value{NewList([]Value{NewInteger(1)})}, 0)
-	if patternsOk(sig, []int{0}, tapeList, 0, nil) {
+	if patternsOk(sig, []int{0}, tapeList, 0, nil, nil) {
 		t.Fatal("tnot List vs a concrete list must reject")
 	}
 	// A non-list operand passes the negation and continues.
 	tapeInt := NewTape([]Value{NewInteger(7)}, 0)
-	if !patternsOk(sig, []int{0}, tapeInt, 0, nil) {
+	if !patternsOk(sig, []int{0}, tapeInt, 0, nil, nil) {
 		t.Fatal("tnot List vs an integer must accept")
 	}
 }
@@ -178,12 +178,12 @@ func TestWt5ResolveWordsDeepTypedContainers(t *testing.T) {
 func TestWt5RunTypedBindPredicateArms(t *testing.T) {
 	r := newTestRegistry(t)
 
-	// A false verdict refuses the binding.
+	// A false verdict declines the binding.
 	predFalse := wt5Predicate(r, TInteger, []Value{NewBoolean(false)})
 	spec := &TypedBindSpec{Kind: TypedBindPredicate, Name: "x", Describe: "Wt5P", Cons: &predFalse}
 	if _, err := RunTypedBind(r, spec, NewInteger(3)); err == nil ||
 		!strings.Contains(err.Error(), "does not satisfy predicate type") {
-		t.Fatalf("false verdict must refuse, got %v", err)
+		t.Fatalf("false verdict must decline, got %v", err)
 	}
 
 	// A true verdict admits; a recorded Def reparents to the named type.
@@ -207,10 +207,10 @@ func TestWt5RunTypedBindRefineArms(t *testing.T) {
 	def := r.Types.MintType("Wt5RefBind", TInteger)
 	spec := &TypedBindSpec{Kind: TypedBindRefine, Name: "x", Describe: "Wt5RefBind", Def: def}
 
-	// A value outside the builtin base is refused.
+	// A value outside the builtin base is declined.
 	if _, err := RunTypedBind(r, spec, NewString("s")); err == nil ||
 		!strings.Contains(err.Error(), "does not unify with declared type") {
-		t.Fatalf("non-conforming value must refuse, got %v", err)
+		t.Fatalf("non-conforming value must decline, got %v", err)
 	}
 	// A conforming value reparents to the newtype.
 	out, err := RunTypedBind(r, spec, NewInteger(4))
@@ -227,10 +227,10 @@ func TestWt5RunTypedBindDepScalarArms(t *testing.T) {
 	cons := NewDepScalar(DepGT, NewInteger(10))
 	spec := &TypedBindSpec{Kind: TypedBindDepScalar, Name: "x", Describe: "(Integer gt 10)", Cons: &cons}
 
-	// Outside the subset: refused.
+	// Outside the subset: declined.
 	if _, err := RunTypedBind(r, spec, NewInteger(5)); err == nil ||
 		!strings.Contains(err.Error(), "does not unify with declared type") {
-		t.Fatalf("out-of-range value must refuse, got %v", err)
+		t.Fatalf("out-of-range value must decline, got %v", err)
 	}
 	// Inside the subset: admitted with the base tag kept.
 	out, err := RunTypedBind(r, spec, NewInteger(20))
@@ -256,11 +256,11 @@ func TestWt5TypeTableLookupAndRegisterGuards(t *testing.T) {
 	tt := NewDynamicTypeTable()
 	if _, err := tt.RegisterType("", 971001, "wt5:test", nil); err == nil ||
 		!strings.Contains(err.Error(), "empty path") {
-		t.Fatalf("empty path must be refused, got %v", err)
+		t.Fatalf("empty path must be declined, got %v", err)
 	}
 	if _, err := tt.RegisterType("A//B", 971002, "wt5:test", nil); err == nil ||
 		!strings.Contains(err.Error(), "empty part") {
-		t.Fatalf("empty part must be refused, got %v", err)
+		t.Fatalf("empty part must be declined, got %v", err)
 	}
 }
 
@@ -337,7 +337,7 @@ func TestWt5LatticePredicates(t *testing.T) {
 func TestWt5ValidateTypeNamePartsConflict(t *testing.T) {
 	err := ValidateTypeNameParts("Wt5A/Wt5B", func(p string) bool { return p == "Wt5B" })
 	if err == nil || !strings.Contains(err.Error(), "conflicts with an existing type name") {
-		t.Fatalf("conflicting part must be refused, got %v", err)
+		t.Fatalf("conflicting part must be declined, got %v", err)
 	}
 	if err := ValidateTypeNameParts("Wt5A", func(string) bool { return false }); err != nil {
 		t.Fatalf("clean name must pass, got %v", err)

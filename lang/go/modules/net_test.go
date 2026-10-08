@@ -273,7 +273,7 @@ func TestNetJSONLinesCodecEndToEnd(t *testing.T) {
 	out, err := runNetSteps(t, []string{
 		`import "boru:net"`,
 		`def svc (service {})`,
-		`add {op:"sum"} ([req:Map state:Any] => [ {result: (add req.a req.b)} ]) svc`,
+		`add {op:"sum"} ([req:Map state:Any] => [ ({result: (add req.a req.b)}) ]) svc`,
 		`def ln (Net.listen {tcp: 0 codec: Net.json-lines} svc)`,
 		`def lna (Net.addr ln)`,
 		`def port lna.port`,
@@ -299,7 +299,7 @@ func TestNetHTTPCodecWithRouteParams(t *testing.T) {
 		`import "boru:net"`,
 		`def api (service {})`,
 		`add {method:"GET" path:"/hello"} ([req:Map state:Any] => [ {greeting: "hi"} ]) api`,
-		`add {method:"GET" path:"/items/:id"} ([req:Map state:Any] => [ {item: req.params.id} ]) api`,
+		`add {method:"GET" path:"/items/:id"} ([req:Map state:Any] => [ ({item: req.params.id}) ]) api`,
 		`def ln (Net.listen {tcp: 0 codec: Net.http} api)`,
 		`def lna (Net.addr ln)`,
 		`def port lna.port`,

@@ -2,17 +2,20 @@ package native
 
 import (
 	"testing"
+
+	compiler "github.com/boru-lang/boru/compiler/go"
+	core "github.com/boru-lang/boru/core/go"
 )
 
 // Coverage for the `parse` macro's ParseLang-value form (parseFnExpand) —
 // the arms a surface program cannot reach through sig dispatch: the matcher
-// refuses a bare Function type literal for a TFunction slot, and a carrier
+// declines a bare Function type literal for a TFunction slot, and a carrier
 // operand only arrives under analysis. Driven directly, mirroring the W9
 // macro seams. See design/TEST-SEAMS.10.md.
 
-// A fn-family value whose payload is not an FnDefInfo is refused: the sig
+// A fn-family value whose payload is not an FnDefInfo is declined: the sig
 // matcher never delivers one from surface syntax (a bare `Function` type
-// literal is parented at Type and refuses every parse sig — pinned by the
+// literal is parented at Type and declines every parse sig — pinned by the
 // module-parselang.tsv §10 signature_error row), so the defensive guard is
 // driven directly with a crafted payload, like the eng fn-value seams.
 func TestParseFnExpandNonFnPayload(t *testing.T) {
@@ -127,6 +130,110 @@ func TestParseFnDispatchRecordThreeArgs(t *testing.T) {
 	}
 	if !out.Dynamic {
 		t.Fatalf("fn-dispatch result should be a dynamic carrier, got %s", out.String())
+	}
+}
+
+// --- the emit / mini fn-dispatch twins (recordMacroFnDispatch) and the
+// lead / fn-dispatch install guards ---
+
+// TestMacroDispatchInstallGuards: a nil registry or a nil dispatcher installs
+// nothing and never panics — for the parse LEAD dispatch as for the emit /
+// mini fn dispatch — so the recorder then finds no dispatcher to record.
+func TestMacroDispatchInstallGuards(t *testing.T) {
+	InstallParseLangLeadDispatch(nil, nil)
+	InstallEmitLangFnDispatch(nil, nil)
+	InstallMiniLangFnDispatch(nil, nil)
+	r := seam5Reg(t)
+	InstallParseLangLeadDispatch(r, nil)
+	InstallEmitLangFnDispatch(r, nil)
+	InstallMiniLangFnDispatch(r, nil)
+	if _, ok, _ := core.Cap[*Signature](r, capParseLangLeadDispatch); ok {
+		t.Error("a nil lead dispatcher must not be installed")
+	}
+	for _, key := range []string{capEmitLangFnDispatch, capMiniLangFnDispatch} {
+		if _, ok, _ := core.Cap[*FnDefInfo](r, key); ok {
+			t.Errorf("%s: a nil fn dispatcher must not be installed", key)
+		}
+	}
+}
+
+// macroDispatchFn is a stand-in for boru:minilang's minilang-fn-dispatch: one
+// Any-typed signature per surface arity (2 and 3), the lead read as data.
+func macroDispatchFn() *FnDefInfo {
+	sig := func(n int) Signature {
+		args := make([]*Type, n)
+		for i := range args {
+			args[i] = TAny
+		}
+		return Signature{
+			Args: args, Returns: []*Type{TAny}, BarrierPos: -1,
+			FnDataArgs: map[int]bool{0: true}, FnInertArgs: map[int]bool{0: true},
+			Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+				return a[:1], nil
+			}),
+		}
+	}
+	return &FnDefInfo{Name: "minilang-fn-dispatch", Signatures: []Signature{sig(2), sig(3)}}
+}
+
+// TestMacroFnDispatchRecordDeclines: the record declines, leaving the macro
+// on its degrade, when no dispatcher is installed — the module that owns it
+// was not imported, so a compiled program has no runtime resolver to call
+// (`emit m.up {a:1}` without boru:emitlang interprets through the value
+// form, and the compile declines rather than guessing) — and for an arity
+// no dispatcher signature takes.
+func TestMacroFnDispatchRecordDeclines(t *testing.T) {
+	r := seam5Reg(t)
+	defer r.Check.BeginCompilePass()()
+	lead := NewCarrier(TFunction)
+	if _, ok := recordMacroFnDispatch(r, capEmitLangFnDispatch, "emitlang-fn-dispatch",
+		[]Value{lead, NewMap(NewOrderedMap())}); ok {
+		t.Error("emit: with no dispatcher installed the record must decline")
+	}
+	InstallMiniLangFnDispatch(r, macroDispatchFn())
+	if _, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch",
+		[]Value{lead, NewString("src"), NewMap(NewOrderedMap()), NewString("extra")}); ok {
+		t.Error("mini: an arity no dispatcher signature takes must decline")
+	}
+}
+
+// TestMacroFnDispatchRecordAnchorsWithoutAWordPosition: the dispatch raises
+// what the macro WORD raises, so its event is stamped at the word
+// (CheckState.CurWordPos); with no word position to read, the event anchors
+// at the last surface operand — the data / source written at the call — so
+// a runtime raise still carries a real location, never 0:0.
+func TestMacroFnDispatchRecordAnchorsWithoutAWordPosition(t *testing.T) {
+	r := seam5Reg(t)
+	defer r.Check.BeginCompilePass()()
+	InstallMiniLangFnDispatch(r, macroDispatchFn())
+	r.Check.CurWordPos = SrcPos{}
+	at := SrcPos{Row: 3, Col: 7}
+	src := core.WithPosAt(NewString("ab"), at)
+	out, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch",
+		[]Value{NewString("lead"), src})
+	if !ok {
+		t.Fatal("mini: an installed dispatcher over a surface arity must record")
+	}
+	es, isES := r.Check.Recorder().(*compiler.EmitState)
+	if !isES {
+		t.Fatal("a compile pass records into the compiler's EmitState")
+	}
+	prog, reason, fin := es.Finalize([]Value{out})
+	if !fin {
+		t.Fatalf("the recorded dispatch must finalize, got %q", reason)
+	}
+	found := false
+	for pc, in := range prog.Code {
+		if in.Op != compiler.OpCallNative || prog.Sigs[in.Arg].Word != "minilang-fn-dispatch" {
+			continue
+		}
+		found = true
+		if got := prog.Debug[pc]; got.Row != at.Row || got.Col != at.Col {
+			t.Errorf("the dispatch is stamped at %d:%d, want the operand's %d:%d", got.Row, got.Col, at.Row, at.Col)
+		}
+	}
+	if !found {
+		t.Fatalf("no minilang-fn-dispatch call in the program:\n%s", prog.Disassemble())
 	}
 }
 

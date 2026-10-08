@@ -56,7 +56,7 @@ Original baseline (before the interpreter-perf work):
 | loopsum  |  ~3,950 ms | 115 ms | 25 ms | 80 ms | 47 ms |
 | nestloop |  ~3,330 ms | 110 ms | 22 ms | 84 ms | 48 ms |
 
-After the six-cause fix series (`design/INTERPRETER-SPEED-PLAN.10.md`):
+After the six-cause fix series (`design/legacy/INTERPRETER-SPEED-PLAN.10.ignore`):
 
 | workload | boru-interp | boru-compiled | python | ruby | node |
 |---|---:|---:|---:|---:|---:|
@@ -64,7 +64,7 @@ After the six-cause fix series (`design/INTERPRETER-SPEED-PLAN.10.md`):
 | loopsum  | ~2,430 ms |  93 ms | 21 ms | 66 ms | 36 ms |
 | nestloop | ~2,160 ms |  86 ms | 18 ms | 65 ms | 37 ms |
 
-After the second-pass series (`design/INTERPRETER-PYTHON-PARITY.10.md` —
+After the second-pass series (`design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore` —
 frame-skeleton memoization, mode-gated ID elision, scratch/buffer reuse,
 trace-gating completion, Equal fast path):
 
@@ -80,7 +80,7 @@ recursion and ~2.5× on loops; the interp↔compiled execution gap is
 second-pass start. The compiled VM also gained (~15–20 %) from the
 ID-elision and type-equality work. Analysis, per-fix notes, and the
 closing assessment of what remains (and why the VM is the performance
-story): `design/INTERPRETER-PYTHON-PARITY.10.md`.
+story): `design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore`.
 
 After the `Type.Equal` interval-label fast path (2026-07, same box;
 best-of-5, wall-clock incl. ~14 ms startup):

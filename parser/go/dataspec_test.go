@@ -8,11 +8,11 @@ package parser_test
 //
 // Two expected forms:
 //
-//   ERR <code>   the number converter refuses a claimed spelling with that
+//   ERR <code>   the number converter declines a claimed spelling with that
 //                BoruError code — the loud half of the contract.
 //   ERR          the underlying jsonic parse itself rejects the source. Its
 //                message is deliberately dependency-native (SafeParseData
-//                returns raw jsonic errors), so only the refusal is pinned.
+//                returns raw jsonic errors), so only the compile failure is pinned.
 //
 // Everything else is the canonical decode render defined in the README:
 // insertion-ordered `{k:v ...}` maps, `[v ...]` lists, `'...'` strings,

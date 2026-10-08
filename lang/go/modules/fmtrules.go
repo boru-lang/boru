@@ -7,7 +7,7 @@ import (
 
 // The declarative rule-table surface of boru:fmt — the completion of the
 // Phase-3 "formatting rules expressed as boru" direction
-// (design/fmt-module-and-xslt.0.md). The formatter's layout decisions live
+// (design/legacy/fmt-module-and-xslt.0.ignore). The formatter's layout decisions live
 // in a RULE TABLE (formatter.Rules); the Go emitter is the generic
 // processor that interprets it, exactly as an XSLT processor interprets a
 // stylesheet. Two words expose the split to boru:

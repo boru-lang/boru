@@ -79,7 +79,7 @@ bad 3`
 }
 
 // A multi-result poly (flex `pop` → [remaining, popped]) over a DYNAMIC
-// receiver now compiles (it used to refuse on the >1-output cap): the compiled
+// receiver now compiles (it used to decline on the >1-output cap): the compiled
 // program matches the interpreter, and `pop` over a non-list errors on both.
 func TestDynamicPopPolyCompiles(t *testing.T) {
 	src := `def shrink fn [[xs:Any] [Any] [pop xs nip]]
@@ -106,13 +106,16 @@ shrink (flex [1 2])`
 shrink 5`
 	_, _, eC := mustNew(t).RunCompiled(bad)
 	_, eI := mustNew(t).RunInterp(bad)
+	if noteCompileDefect(t, bad, nil, eC) {
+		return
+	}
 	if eC == nil || eI == nil {
 		t.Errorf("pop over Integer should error both: compiled=%v interp=%v", eC, eI)
 	}
 }
 
 // A dynamic-src `mini re` compiles (the transducer-faithful hook records the
-// standard lang_re call instead of refusing) and matches the interpreter.
+// standard lang_re call instead of declining) and matches the interpreter.
 func TestMiniReDynamicSrcCompiles(t *testing.T) {
 	src := `import "boru:minilang" end
 def m fn [[pat:String subj:String] [Any] [

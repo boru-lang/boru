@@ -8,11 +8,11 @@ import (
 
 // A `var`-body inside a higher-order code body (`each [var [[i] … ]]`) compiles
 // to its closure unit even when the body REFERENCES AN ENCLOSING BINDING — a fn
-// param/local (a real capture) or a module-global. Both forms used to refuse
+// param/local (a real capture) or a module-global. Both forms used to decline
 // "code-body word each (Stage 2)": the `var` splice's cleanup `undef i` ran with
 // the body's residual still on the stack, and in check mode that dynamic-Any
 // residual gradually matched the 2-arg `undef name fnUndefSpec` overload's
-// TFnUndef slot — so the cleanup mis-dispatched, errored, and (a) refused the
+// TFnUndef slot — so the cleanup mis-dispatched, errored, and (a) declined the
 // body and (b) leaked `i` so the next analysis pass wrongly captured it. Routing
 // the cleanup through the dedicated 1-arg-only `__varundef` removes the ambiguity.
 func TestVarBodyCaptureCompiles(t *testing.T) {
@@ -42,7 +42,7 @@ func TestVarBodyCaptureCompiles(t *testing.T) {
 			a, _ := New()
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {
-				t.Fatalf("expected the var-body to compile, got refusal: %v", err)
+				t.Fatalf("expected the var-body to compile, got compile failure: %v", err)
 			}
 			b, _ := New()
 			want, werr := b.RunInterp(c.src)

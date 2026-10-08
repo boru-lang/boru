@@ -12,7 +12,7 @@ import (
 )
 
 // Runtime stamping of CUSTOM boru codec fns at resolveCodec (Phase 1 of
-// design/RUNTIME-STAMPING.0.md): an armed registry compiles the map's
+// design/legacy/RUNTIME-STAMPING.0.ignore): an armed registry compiles the map's
 // decode/encode bodies to detached units so per-request invokeFn dispatch
 // runs on the VM; an unarmed registry (the -no-compile contract) and the
 // Go-backed built-in codecs are untouched. Positive + negative per
@@ -147,7 +147,7 @@ func TestResolveCodecStampsCustomBoruFns(t *testing.T) {
 func TestCustomCodecStampedDifferential(t *testing.T) {
 	echoSteps := append(append([]string{`import "boru:net"`}, customCodecSteps...),
 		`def svc (service {})`,
-		`add {} ([req:Map state:Any] => [ {line: req.line} ]) svc`,
+		`add {} ([req:Map state:Any] => [ ({line: req.line}) ]) svc`,
 		`def ln (Net.listen {tcp: 0 codec: cdc} svc)`,
 		`def ep (Net.connect {tcp: (join "" ["127.0.0.1:" (convert String (Net.addr ln).port)]) codec: Net.lines})`,
 	)
@@ -183,7 +183,7 @@ func TestCustomCodecStampedDifferential(t *testing.T) {
 func TestCustomCodecStampedSplitWrite(t *testing.T) {
 	serveSteps := append(append([]string{`import "boru:net"`, `import "boru:time-util"`}, customCodecSteps...),
 		`def svc (service {})`,
-		`add {} ([req:Map state:Any] => [ {line: req.line} ]) svc`,
+		`add {} ([req:Map state:Any] => [ ({line: req.line}) ]) svc`,
 		`def ln (Net.listen {tcp: 0 codec: cdc} svc)`,
 	)
 	probeSteps := []string{

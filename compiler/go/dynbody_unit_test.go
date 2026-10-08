@@ -82,7 +82,7 @@ func TestGradualAmbiguityMarksUncompilable(t *testing.T) {
 
 // tryRecordDynBody decline guards: a Callable whose BodyPos exceeds the args
 // (a malformed dispatch shape) and an unresolvable operand both decline,
-// leaving the ordinary refusal path.
+// leaving the ordinary compile failure path.
 func TestTryRecordDynBodyDeclines(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {

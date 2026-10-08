@@ -36,6 +36,9 @@ func TestNestedBodyFnCarrierParity(t *testing.T) {
 		{nbfMk + `def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'`, "4 4 z — a while body"},
 		{nbfMk + `def g fn [[y:Integer][Any][do [(f y) args drop]]] end g 7`, "8 — an args-bearing do body inside a fn (the dyn-body backstop)"},
 		{nbfMk + `do [[1 2] each [(f 1)]]`, "[2 2] — a data-list read inside a do body"},
+		// Since S1a (2026-09-19) each declares CompileDynBody, so the read
+		// inside an each body compiles through the same seat as `do`'s.
+		{nbfMk + `[1 2] each [(f 1)]`, "[2 2] — a carrier-bound read inside an each body"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -100,18 +103,18 @@ func TestNestedBodyFnCarrierPlainCheckClean(t *testing.T) {
 	}
 }
 
-// TestNestedBodyFnCarrierSoundRefusals pins the neighbours that REFUSE: a
+// TestNestedBodyFnCarrierSoundCompileFailures pins the neighbours that DECLINE: a
 // CONCRETE produced closure (a lambda factory's) read inside a code body
 // keeps the gate — without it `do [(h 1)]` compiled and raised the
 // captured param as undefined where the interpreter answers 8.
-func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
+func TestNestedBodyFnCarrierSoundCompileFailures(t *testing.T) {
 	const kk = `def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end `
 	rows := []struct{ src, reason, interp string }{
 		{`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `do [(p 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `if true [(p 1)] [0]`, "code body reads a def-bound compiled closure", "[8]"},
-		// A carrier-bound read the OTHER gates still refuse, soundly.
-		{nbfMk + `[1 2] each [(f 1)]`, "code-body word each (Stage 2)", "[[2 2]]"},
+		// A carrier-bound read the OTHER gates still decline. (The each twin
+		// `[1 2] each [(f 1)]` compiled at S1a and moved to the parity rows.)
 		{nbfMk + `if true [(f 2) (f 3)] [0]`, "then-branch result of unknown provenance", "[3 4]"},
 	}
 	for _, c := range rows {
@@ -124,11 +127,11 @@ func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		got, ierr := a.RunInterp(c.src)
 		if ierr != nil || fmt.Sprint(got) != c.interp {

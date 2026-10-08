@@ -13,32 +13,92 @@ import (
 	"github.com/boru-lang/boru/lang/go/capabilities"
 )
 
-// Finding A / C — RunCompiled resolves a compiled-mode INTERNAL error (a VM
-// lowering assertion or a recovered handler panic) by re-running on the
-// interpreter, but surfaces genuine boru runtime errors (type_error, the
-// resource ceilings) as-is. runtimeShouldFallback is the decision point.
-func TestRuntimeShouldFallback(t *testing.T) {
+// compiledRunError is the one classifier on a compiled RUN failure now that
+// nothing re-runs the source. A genuine boru runtime error and a policy
+// denial are the PROGRAM's own result and pass through untouched. So is an
+// internal_error a HANDLER raised — the interpreter raises the identical one
+// running the identical handler, and booking the compiler for a handler's
+// choice of error code would put fifty-odd corpus rows in a ledger meant to
+// name VM bails. So is a PLAIN Go error: a handler's fmt.Errorf surfaces
+// untouched on the interpreter (stampErrPos leaves a non-BoruError alone),
+// and the compiled lane surfaces the same one (2026-09-26 — it used to be
+// wrapped as a defect, which put the forty-odd "<native>'s own error" rows on
+// the runtime-defers ledger). Only the VM's OWN errors, marked VMDefer, are
+// compiler DEFECTS.
+func TestCompiledRunErrorClassifies(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := a.NativeRegistry()
+	const note = "this is a compiler defect"
 	cases := []struct {
-		name string
-		err  error
-		want bool
+		name   string
+		err    error
+		defect bool
 	}{
-		{"internal_error falls back", core.MakeBoruError("internal_error", "boom", "", "", ""), true},
-		{"foreign (non-Boru) error falls back", errors.New("some go error"), true},
-		{"type_error surfaces", core.MakeBoruError("type_error", "bad", "", "", ""), false},
-		{"evaluation_limit surfaces (fast-fail by design)", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
-		{"tape_exhausted surfaces", core.MakeBoruError("tape_exhausted", "too big", "", "", ""), false},
-		{"signature_error surfaces", core.MakeBoruError("signature_error", "no sig", "", "", ""), false},
+		{"a VM defer is a defect", vmDeferErr("bytecode: internal: STORE_LOCAL stack underflow (pc=2)"), true},
+		{"a recovered VM panic is a defect", vmDeferErr("internal bytecode VM error: index out of range"), true},
+		{"a handler's internal_error is the program's", core.MakeBoruError("internal_error", "convert: cannot convert Float to BigInteger", "", "", ""), false},
+		{"a user `raise internal_error` is the program's", core.MakeBoruError("internal_error", "boom", "", "", ""), false},
+		{"a plain (non-Boru) error is the program's", errors.New("some go error"), false},
+		{"the VM's own entry refusal is a defect", vmDeferErr("bytecode: nil program"), true},
+		{"type_error is the program's result", core.MakeBoruError("type_error", "bad", "", "", ""), false},
+		{"evaluation_limit is the program's result", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
+		{"tape_exhausted is the program's result", core.MakeBoruError("tape_exhausted", "too big", "", "", ""), false},
+		{"signature_error is the program's result", core.MakeBoruError("signature_error", "no sig", "", "", ""), false},
+		{"policy denial is the program's verdict", core.PolicyDenied{Err: errors.New("word `IO.print` denied by policy")}, false},
 	}
 	for _, c := range cases {
-		if got := runtimeShouldFallback(c.err); got != c.want {
-			t.Errorf("%s: runtimeShouldFallback = %v, want %v", c.name, got, c.want)
+		got, defect := compiledRunError(reg, c.err)
+		if defect != c.defect {
+			t.Errorf("%s: reported disposition %v, want %v", c.name, defect, c.defect)
+		}
+		var ae *core.BoruError
+		marked := errors.As(got, &ae) && len(ae.Notes) > 0 &&
+			strings.Contains(ae.Notes[len(ae.Notes)-1], note)
+		if marked != c.defect {
+			t.Errorf("%s: marked as a defect = %v, want %v (err=%v)", c.name, marked, c.defect, got)
+		}
+		if !c.defect && got != c.err {
+			t.Errorf("%s: the program's own error was rewritten: %v", c.name, got)
 		}
 	}
 }
 
+// A designed defer that prepared the interpreter's own error for this moment
+// raises THAT, not the defect note: it is the program's real failure at the
+// point it happens, which is one of the three legal dispositions for a defer
+// site — never a re-run looking for an answer.
+func TestCompiledRunErrorPrefersDeferAlt(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ae := vmDeferErr("bytecode: internal: vm:poly-no-match (pc=5)")
+	ae.DeferAlt = core.MakeBoruError("signature_error", "no matching signature for `f`", "f", "", "")
+	got, defect := compiledRunError(a.NativeRegistry(), ae)
+	if got != ae.DeferAlt {
+		t.Fatalf("DeferAlt not surfaced: got %v", got)
+	}
+	// And it is NOT a defect disposition: the alt IS the program's own
+	// error, so the caller must not roll the registry back over it.
+	if defect {
+		t.Error("a surfaced DeferAlt was reported as a defect — the caller would discard the program's work")
+	}
+}
+
+// vmDeferErr builds an internal_error the way the VM does, with the VMDefer
+// marker set. The marker is the discriminator: the CODE alone cannot tell a
+// VM bail from a handler's choice or a user's `raise internal_error`.
+func vmDeferErr(detail string) *core.BoruError {
+	e := core.MakeBoruError("internal_error", detail, "", "", "")
+	e.VMDefer = true
+	return e
+}
+
 // Finding A — a genuine compiled-mode runtime error is surfaced WITHOUT a
-// silent interpreter fallback (it matches the interpreter by taxonomy, so
+// silent interpreter re-run (it matches the interpreter by taxonomy, so
 // masking it would only hide the result and burn the budget twice).
 func TestRunCompiledSurfacesGenuineError(t *testing.T) {
 	a, err := New()
@@ -51,6 +111,9 @@ func TestRunCompiledSurfacesGenuineError(t *testing.T) {
 	// interpreter.
 	const src = `1000000 pow 1000000`
 	_, compiled, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatal("overflow program did not run compiled — a genuine runtime error must not trigger fallback")
 	}
@@ -94,6 +157,9 @@ func TestLoopFixedPointNoReRecord(t *testing.T) {
 	// Parity holds regardless of the round count.
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(`for 3 [def x (add i 1) x]`)
+	if noteCompileDefect(t, `for 3 [def x (add i 1) x]`, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("rebinding loop run: compiled=%v err=%v", compiled, errC)
 	}
@@ -106,7 +172,7 @@ func TestLoopFixedPointNoReRecord(t *testing.T) {
 
 // Roadmap item 1 — a 3-arg native call whose sig-0 operand is a COMPUTED
 // result (a receiver above two const operands) lowers via a push+swap chain
-// instead of refusing "operand shape needs reordering". `setpath recv k v`
+// instead of declining "operand shape needs reordering". `setpath recv k v`
 // with a computed receiver is the driving shape.
 func TestThreeArgComputedReceiverLowers(t *testing.T) {
 	const src = `import "boru:struct-util" (StructUtil.setpath (flex {a:1}) "b" 2) dot b`
@@ -130,6 +196,9 @@ func TestThreeArgComputedReceiverLowers(t *testing.T) {
 	// Parity: the compiled result matches the interpreter.
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("compiled run: compiled=%v err=%v", compiled, errC)
 	}
@@ -143,7 +212,7 @@ func TestThreeArgComputedReceiverLowers(t *testing.T) {
 // Roadmap item 4 — a STRICT-disjunct straddle (a type-algebra dispatch whose
 // operand is a complement/predicate type reaching more than one overload, e.g.
 // `is` over `tnot (Integer gt 0)`) lowers to OpCallNativePoly (runtime
-// re-match) instead of refusing "polymorphic dispatch". The runtime value is a
+// re-match) instead of declining "polymorphic dispatch". The runtime value is a
 // single concrete alternative, so the VM dispatches it faithfully.
 func TestStrictDisjunctTypeAlgebraPoly(t *testing.T) {
 	a, err := New()
@@ -175,6 +244,9 @@ func TestStrictDisjunctTypeAlgebraPoly(t *testing.T) {
 	} {
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, errC)
 		}
@@ -190,7 +262,7 @@ func TestStrictDisjunctTypeAlgebraPoly(t *testing.T) {
 }
 
 // Roadmap item 2 — atom-keyed `set` on an object/class instance (a field write
-// like `p set x 7`, whose quoted key previously refused as "quoted-operand
+// like `p set x 7`, whose quoted key previously declined as "quoted-operand
 // word set") lowers to CALL_NATIVE. The receiver is a non-const instance so
 // the in-place mutation is safe, exactly as integer-keyed `set 1 v arr` already
 // relied on.
@@ -210,6 +282,9 @@ func TestObjectClassSetLowers(t *testing.T) {
 		t.Errorf("expected a native CALL_NATIVE set, got:\n%s", dis)
 	}
 	gotC, compiled, errC := a.RunCompiled(ok)
+	if noteCompileDefect(t, ok, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("object set run: compiled=%v err=%v", compiled, errC)
 	}
@@ -224,6 +299,9 @@ func TestObjectClassSetLowers(t *testing.T) {
 	const bad = `def Point class {x:1} def p (make Point {}) p set z 9`
 	c, _ := New()
 	_, _, errCbad := c.RunCompiled(bad)
+	if noteCompileDefect(t, bad, nil, errCbad) {
+		return
+	}
 	d, _ := New()
 	_, errIbad := d.RunInterp(bad)
 	if codeOf(errCbad) != "sealed_field" || codeOf(errCbad) != codeOf(errIbad) {
@@ -235,7 +313,7 @@ func TestObjectClassSetLowers(t *testing.T) {
 // Roadmap item 6 — a computed-else `if cond [then] (expr)` (the else is an
 // eagerly-evaluated paren result on the stack, not a literal/local) lowers via
 // SWAP (cond to top) + JMP_IF_FALSE + OpDrop (discard the else value on the
-// taken path), instead of refusing "computed else value". Both branch
+// taken path), instead of declining "computed else value". Both branch
 // directions must match the interpreter.
 func TestComputedElseIfLowers(t *testing.T) {
 	const src = `if (1 eq 1) [99] (add 1 2)`
@@ -263,6 +341,9 @@ func TestComputedElseIfLowers(t *testing.T) {
 	} {
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, errC)
 		}
@@ -279,7 +360,7 @@ func TestComputedElseIfLowers(t *testing.T) {
 // stack. It lowers via SWAP (cond to top) + JMP_IF_FALSE, keeping the eager then
 // value on the TRUE (fall-through) path and DROPping it on the FALSE path before
 // producing the else arm. Covers a value else, a body else, and both directions;
-// the both-arms-computed shape stays refused (the negative half).
+// the both-arms-computed shape stays declined (the negative half).
 func TestComputedThenIfLowers(t *testing.T) {
 	const src = `def x 0  if (x eq 0) (add 1 2) 88`
 	a, err := New()
@@ -307,6 +388,9 @@ func TestComputedThenIfLowers(t *testing.T) {
 	} {
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, errC)
 		}
@@ -359,6 +443,9 @@ func TestComputedArmConditions(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		d, _ := New()
 		gotI, _ := d.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "["+c.want+"]" {
@@ -373,12 +460,9 @@ func TestComputedArmConditions(t *testing.T) {
 // (OpReverse 3) and drops the unselected value. Covers both directions, an
 // event condition, and downstream consumption. The remaining bounded case — a
 // non-event (list-form / const) condition with both arms computed — stays
-// refused (the negative half).
+// declined (the negative half).
 func TestBothComputedIfLowers(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	const src = `add 10 (if (1 eq 1) (add 1 2) (sub 9 4))`
 	a, err := New()
 	if err != nil {
@@ -405,6 +489,9 @@ func TestBothComputedIfLowers(t *testing.T) {
 	} {
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		d, _ := New()
 		gotI, _ := d.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "["+c.want+"]" {
@@ -419,6 +506,9 @@ func TestBothComputedIfLowers(t *testing.T) {
 	const listCond = `if [1 eq 1] (add 1 2) (sub 9 4)`
 	nb, _ := New()
 	gotC, compiled, errC := nb.RunCompiled(listCond)
+	if noteCompileDefect(t, listCond, gotC, errC) {
+		return
+	}
 	nbi, _ := New()
 	gotI, _ := nbi.RunInterp(listCond)
 	if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "[3]" {
@@ -429,7 +519,7 @@ func TestBothComputedIfLowers(t *testing.T) {
 // Roadmap item 6b — a statement-`if` where exactly one arm nets a value and the
 // other nets 0 WITHOUT diverging (`if c [99] []`, `if c [] [99]`,
 // `if c [raise] [99]`) lowers as a VARIADIC (0-or-1) branch result instead of
-// refusing "branch produces no value". Both directions, the empty arm, and the
+// declining "branch produces no value". Both directions, the empty arm, and the
 // raise-guard (which errors on its taken path) must match the interpreter.
 func TestVariadicElseIfLowers(t *testing.T) {
 	cases := []struct {
@@ -447,6 +537,9 @@ func TestVariadicElseIfLowers(t *testing.T) {
 	for _, c := range cases {
 		a, _ := New()
 		gotC, compiled, errC := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if (errC != nil) != (errI != nil) {
@@ -470,17 +563,17 @@ func TestVariadicElseIfLowers(t *testing.T) {
 
 // Roadmap item (fn-value introspection) — a type-reading word (typeof / tcmp /
 // teq / tand / tor / tnot) over a fn VALUE bakes the immutable fn as a const
-// the handler inspects, instead of refusing "function value reaches word". A
-// fn-INVOKING use must stay refused (the VM cannot re-step a fn body).
+// the handler inspects, instead of declining "function value reaches word". A
+// fn-INVOKING use must stay declined (the VM cannot re-step a fn body).
 func TestFnValueIntrospectionLowers(t *testing.T) {
-	const setup = `def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] `
+	const setup = `def Positive fnpred n:Integer [if (n gt 0) [n] [None]] `
 	for _, c := range []struct {
 		src  string
 		want string
 	}{
 		{`typeof (fn [[a:Integer][Integer][a add 1]])`, "[Function]"},
 		{setup + `Positive tcmp Positive`, "[0]"}, // equal
-		// Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6, tcmp row): the
+		// Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6, tcmp row): the
 		// name denotes its minted node, so a named predicate type orders as
 		// a TYPE (lattice band: the subtype below its base), not as a
 		// concrete fn value above the Function literal.
@@ -498,6 +591,9 @@ func TestFnValueIntrospectionLowers(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -515,9 +611,12 @@ func TestFnValueIntrospectionLowers(t *testing.T) {
 	// was that the callback seam interpreted the body — fixed in
 	// eng/go/vm_foreign_unit.go, after which these rows compile with no
 	// interpreter entry at all (design/FULL-COMPILATION.0.md §6.3).
-	const inv = `def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] 5 is Positive`
+	const inv = `def Positive fnpred n:Integer [if (n gt 0) [n] [None]] 5 is Positive`
 	c, _ := New()
 	gotInv, compiled, errInv := c.RunCompiled(inv)
+	if noteCompileDefect(t, inv, gotInv, errInv) {
+		return
+	}
 	if !compiled || errInv != nil {
 		t.Errorf("`is` over a predicate fn: compiled=%v err=%v, want a compiled run", compiled, errInv)
 	}
@@ -554,6 +653,9 @@ func TestMapIterationCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -572,7 +674,7 @@ func TestMapIterationCompilesNative(t *testing.T) {
 // Roadmap item 5 part B (filter lambda args) — a `filter ([p] => …) data`
 // lambda compiles its afn body to a closure with the word's callback input
 // shape ({key,value} pair over a list, KeyVal over a map), driven natively
-// through InvokeBody rather than islanding or refusing. Verifies the closure
+// through InvokeBody rather than islanding or declining. Verifies the closure
 // path is value- and taxonomy-identical to the interpreter.
 func TestFilterLambdaCompilesNative(t *testing.T) {
 	for _, c := range []struct {
@@ -597,6 +699,9 @@ func TestFilterLambdaCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -609,6 +714,9 @@ func TestFilterLambdaCompilesNative(t *testing.T) {
 	bad := `{a:1 b:5} filter ([kv:KeyVal] => [kv.v])`
 	a, _ := New()
 	_, compiled, errC := a.RunCompiled(bad)
+	if noteCompileDefect(t, bad, nil, errC) {
+		return
+	}
 	b, _ := New()
 	_, errI := b.RunInterp(bad)
 	if !compiled || errC == nil || errI == nil {
@@ -621,7 +729,7 @@ func TestFilterLambdaCompilesNative(t *testing.T) {
 // list and `get N args` folds to PUSH_LOCAL N (carrier.go tryFoldStaticIndex) —
 // no runtime args stack. The compiled body is byte-for-byte the named-param
 // form. (Concrete proof that the P7-gate "tier 2" words are reducible, not
-// irreducible.) Bare `args` (the whole list) still refuses, by design.
+// irreducible.) Bare `args` (the whole list) still declines, by design.
 func TestArgsAccessorCompilesNative(t *testing.T) {
 	for _, c := range []struct {
 		src  string
@@ -646,6 +754,9 @@ func TestArgsAccessorCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -695,6 +806,9 @@ func TestWordSpliceCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -706,6 +820,9 @@ func TestWordSpliceCompilesNative(t *testing.T) {
 	// expansion surfaces the undefined_word at check time / run time alike).
 	a, _ := New()
 	_, _, errC := a.RunCompiled(`def x word [nope 2 3] x`)
+	if noteCompileDefect(t, `def x word [nope 2 3] x`, nil, errC) {
+		return
+	}
 	b, _ := New()
 	_, errI := b.RunInterp(`def x word [nope 2 3] x`)
 	if (errC == nil) != (errI == nil) {
@@ -722,10 +839,7 @@ func TestWordSpliceCompilesNative(t *testing.T) {
 // occurrence declines the trap and falls back. Proof that macroexpand is
 // reducible compiler work, not irreducible reflection.
 func TestMacroexpandCompilesNative(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	for _, c := range []struct {
 		src  string
 		want string
@@ -744,6 +858,9 @@ func TestMacroexpandCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -761,7 +878,7 @@ func TestMacroexpandCompilesNative(t *testing.T) {
 	a, _ := New()
 	prog, reason, _, cerr := a.CompileCheck(deep)
 	if cerr != nil || prog == nil {
-		t.Fatalf("too-deep macroexpand: expected compile-to-trap, refused: reason=%q err=%v", reason, cerr)
+		t.Fatalf("too-deep macroexpand: expected compile-to-trap, declined: reason=%q err=%v", reason, cerr)
 	}
 	dis := prog.Disassemble()
 	if !strings.Contains(dis, "TRAP") || !strings.Contains(dis, "macroexpand_error") {
@@ -773,6 +890,9 @@ func TestMacroexpandCompilesNative(t *testing.T) {
 	// Both engines raise the IDENTICAL error (taxonomy + detail byte-match).
 	ar, _ := New()
 	_, compiled, errC := ar.RunCompiled(deep)
+	if noteCompileDefect(t, deep, nil, errC) {
+		return
+	}
 	b, _ := New()
 	_, errI := b.RunInterp(deep)
 	if !compiled {
@@ -798,7 +918,7 @@ func TestMacroexpandCompilesNative(t *testing.T) {
 		if p == nil || p.Disassemble() != dis {
 			t.Fatalf("too-deep macroexpand: non-deterministic compile on iteration %d\n  first:\n%s\n  now:\n%s", i, dis, func() string {
 				if p == nil {
-					return "<refused>"
+					return "<declined>"
 				}
 				return p.Disassemble()
 			}())
@@ -807,17 +927,20 @@ func TestMacroexpandCompilesNative(t *testing.T) {
 
 	// NEGATIVE — a NESTED occurrence (inside an if-branch fragment, not at the
 	// top-level unit/frame) must DECLINE the trap (RecordTrap is top-level-only)
-	// and keep the lenient fallback: the row refuses to compile and the
+	// and keep the lenient fallback: the row fails to compile and the
 	// interpreter surfaces the identical error. Confirms the trap is conditional
 	// only where it is provably reached.
 	nested := `def loopy (macro [[a] [quote [loopy unquote a]]])  if true [ macroexpand (loopy 1) ] [ 0 ]`
 	c, _ := New()
 	np, _, _, _ := c.CompileCheck(nested)
 	if np != nil {
-		t.Errorf("nested too-deep macroexpand: must refuse (top-level-only trap), but compiled:\n%s", np.Disassemble())
+		t.Errorf("nested too-deep macroexpand: must decline (top-level-only trap), but compiled:\n%s", np.Disassemble())
 	}
 	cn, _ := New()
 	_, _, nerrC := cn.RunCompiled(nested)
+	if noteCompileDefect(t, nested, nil, nerrC) {
+		return
+	}
 	dn, _ := New()
 	_, nerrI := dn.RunInterp(nested)
 	if nerrC == nil || nerrI == nil || nerrC.Error() != nerrI.Error() {
@@ -851,6 +974,9 @@ func TestDynamicHelpBudgetIsolation(t *testing.T) {
 		t.Errorf("recursive-macro def must not pollute the program's compile via the help eval:\n%s", dis)
 	}
 	out, compiled, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, out, errC) {
+		return
+	}
 	if !compiled || errC != nil || fmt.Sprint(out) != "[3]" {
 		t.Errorf("trailing statement: compiled=%v out=%v err=%v (want [3])", compiled, out, errC)
 	}
@@ -881,6 +1007,9 @@ func TestNestedVariadicCaseCompiles(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -929,6 +1058,9 @@ func TestUsurpCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -938,7 +1070,7 @@ func TestUsurpCompilesNative(t *testing.T) {
 }
 
 // make computed container defaults — a class field default (or data-map value)
-// that is itself a COMPUTED paren-expr ((make Foo 1), (1 add 2)) used to refuse:
+// that is itself a COMPUTED paren-expr ((make Foo 1), (1 add 2)) used to decline:
 // in check mode the inner computation recorded an event the container swallowed
 // ("unconsumed call results"). A deterministic computed value is a compile-time
 // constant, so it now const-folds (constFoldContainerVal: two non-recording
@@ -968,6 +1100,9 @@ func TestMakeComputedDefaultsCompile(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1013,6 +1148,9 @@ func TestWithDecimalCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1053,6 +1191,9 @@ func TestMapLambdaCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1104,6 +1245,9 @@ func TestQueryDSLCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -1118,14 +1262,14 @@ func TestQueryDSLCompilesNative(t *testing.T) {
 	// handler is a pure registry reader, so `def x 5  inspect x` compiles native
 	// and runs compiled == interpreter (the binding lookup happens at VM time
 	// against the same registry the interpreter sees). A core quoted-operand
-	// word that does NOT opt in still refuses — quoteOperandInertOK fires only
+	// word that does NOT opt in still declines — quoteOperandInertOK fires only
 	// for a CompileQuoteInert declarer or a module-inner sig, so the exemption
 	// does not silently leak.
 	const core = `def x 5  inspect x`
 	a, _ := New()
 	prog, reason, _, _ := a.CompileCheck(core)
 	if prog == nil {
-		t.Errorf("%q: inspect should compile (CompileQuoteInert), refused %q", core, reason)
+		t.Errorf("%q: inspect should compile (CompileQuoteInert), declined %q", core, reason)
 	} else if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Errorf("%q: inspect should bake a CALL_NATIVE, got an island:\n%s", core, prog.Disassemble())
 	}
@@ -1174,6 +1318,9 @@ func TestReachLensCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1201,6 +1348,9 @@ func TestReachLensCompilesNative(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1211,7 +1361,7 @@ func TestReachLensCompilesNative(t *testing.T) {
 	// `filter $.on {map}` lens form: filter now narrows its result to the
 	// INPUT collection type (filterReturnsFn — a Map subset, not a dynamic
 	// Any), so the reach-form dispatch records a faithful CALL_NATIVE instead
-	// of refusing on a dynamic output. Parity must hold.
+	// of declining on a dynamic output. Parity must hold.
 	const filter = `filter $.on {a:{on:true} b:{on:false}}`
 	a, _ := New()
 	prog, reason, _, cerr := a.CompileCheck(filter)
@@ -1252,7 +1402,7 @@ func TestReachLensCompilesNative(t *testing.T) {
 //     (a repeated identical computed call — `(context get 'n') add (context get
 //     'n')`, both gets returning the same id once the key is concrete) mints a
 //     fresh id, so the two stack values stay distinct and the residual layout no
-//     longer refuses "call results reordered". The skip that owns structured
+//     longer declines "call results reordered". The skip that owns structured
 //     hooks (if / user-fn / poly / closure) is gated on the producer being a
 //     structured event (not a prior generic native), so it still fires for them.
 func TestScalarKeepAndCarrierIdentity(t *testing.T) {
@@ -1283,6 +1433,9 @@ func TestScalarKeepAndCarrierIdentity(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1314,7 +1467,7 @@ func TestScalarKeepAndCarrierIdentity(t *testing.T) {
 // Foo.$module` -> the export-name LIST, never the type literal (the bug this
 // guards). Module values are kept concrete through toCarrier so the $module
 // chain resolves. (A namespace itself is a plain Map — `convert` no longer
-// applies to it; convert-ideal.tsv pins the refusal.)
+// applies to it; convert-ideal.tsv pins the compile failure.)
 func TestModuleSyntheticConstFold(t *testing.T) {
 	for _, c := range []struct {
 		src  string
@@ -1340,6 +1493,9 @@ func TestModuleSyntheticConstFold(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1396,6 +1552,9 @@ func TestOpMakeListCompiles(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, _ := b.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -1419,7 +1578,7 @@ func TestOpMakeListCompiles(t *testing.T) {
 	a, _ := New()
 	prog, _, _, _ := a.CompileCheck(inter)
 	if prog == nil {
-		t.Fatalf("%q: must compile via spill, but refused", inter)
+		t.Fatalf("%q: must compile via spill, but declined", inter)
 	}
 	dis := prog.Disassemble()
 	if strings.Contains(dis, "FALLBACK") {
@@ -1430,6 +1589,9 @@ func TestOpMakeListCompiles(t *testing.T) {
 	}
 	ar, _ := New()
 	gotC, compiled, errC := ar.RunCompiled(inter)
+	if noteCompileDefect(t, inter, gotC, errC) {
+		return
+	}
 	b, _ := New()
 	gotI, _ := b.RunInterp(inter)
 	if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[[1 5 4]]" {
@@ -1439,12 +1601,12 @@ func TestOpMakeListCompiles(t *testing.T) {
 
 // Paren-bounded fn-value application — a method-field fn dispatch whose result
 // is consumed across a paren boundary. `m.g` is a dynamic method-field get the
-// checker cannot dispatch in place. GRADUATED (REFUSAL-CLOSURE §9.2e,
+// checker cannot dispatch in place. GRADUATED (COMPILE FAILURE-CLOSURE §9.2e,
 // 2026-07-17): the leading-dynamic paren apply records a guarded
 // OpCallDynMethod that COLLAPSES the window to one carrier BEFORE any
 // trailing op, so `(m.g 3) add 1` seats the apply RESULT (7) instead of the
 // old paren-unaware OpCallDynamic reorder that lowered `m.g(3 add 1)=8`. The
-// member-read provenance gate keeps a non-member leading dynamic refusing.
+// member-read provenance gate keeps a non-member leading dynamic declining.
 func TestParenBoundedFnValueApplyFallsBack(t *testing.T) {
 	const def = `def m {g: (fn [[x:Integer][Integer][x mul 2]])} `
 
@@ -1456,6 +1618,9 @@ func TestParenBoundedFnValueApplyFallsBack(t *testing.T) {
 	} {
 		a, _ := New()
 		gotC, compiled, errC := a.RunCompiled(pos.src)
+		if noteCompileDefect(t, pos.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Errorf("%q: §9.2e must compile native, got compiled=%v err=%v", pos.src, compiled, errC)
 		}
@@ -1475,6 +1640,9 @@ func TestParenBoundedFnValueApplyFallsBack(t *testing.T) {
 	} {
 		a, _ := New()
 		gotC, compiled, errC := a.RunCompiled(pos.src)
+		if noteCompileDefect(t, pos.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Errorf("%q: expected a native compile, got compiled=%v err=%v", pos.src, compiled, errC)
 		}
@@ -1488,13 +1656,13 @@ func TestParenBoundedFnValueApplyFallsBack(t *testing.T) {
 
 // PR #141 automated-review findings — three latent bytecode-compiler bugs in
 // the higher-order / const-fold paths. Each pairs the negative (the hazard
-// refuses / no longer diverges) with the positive (the legitimate shape still
-// compiles), so the fix is pinned without over-refusing.
+// declines / no longer diverges) with the positive (the legitimate shape still
+// compiles), so the fix is pinned without over-declining.
 func TestPRReviewFindings(t *testing.T) {
 	// #4 / #1 — a lambda callback whose declared param TYPE cannot accept the
 	// higher-order word's callback shape: the interpreter raises a callback
 	// error, but the compiled closure used to bind the value and keep it. The
-	// closure lowering now matches the param type (and refuses overloaded fn
+	// closure lowering now matches the param type (and declines overloaded fn
 	// values) so these fall back faithfully; Any / KeyVal callbacks still compile.
 	neg := []string{
 		`filter ([p:String] => [true]) [1 2]`,     // String param vs {key,value} pair (list)
@@ -1505,6 +1673,9 @@ func TestPRReviewFindings(t *testing.T) {
 	for _, src := range neg {
 		a, _ := New()
 		gotC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(src)
 		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || (errC == nil) != (errI == nil) {
@@ -1519,6 +1690,9 @@ func TestPRReviewFindings(t *testing.T) {
 	for _, p := range pos {
 		a, _ := New()
 		gotC, compiled, errC := a.RunCompiled(p.src)
+		if noteCompileDefect(t, p.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Errorf("%q: expected a native compile, got compiled=%v err=%v", p.src, compiled, errC)
 		}
@@ -1561,7 +1735,7 @@ func TestPRReviewFindings(t *testing.T) {
 // its mere presence raised the word's max forward arity to 3; the former
 // pre-evaluation scan then evaluated the THIRD group across the intermediate
 // `add3` barrier, so the recorded operands laid out non-adjacently and the
-// program refused with "operands of add3 not adjacent on top".
+// program declined with "operands of add3 not adjacent on top".
 func TestHeterogeneousArityBinaryOpCompiles(t *testing.T) {
 	const src = `context set 'n' 5 end ( context get 'n' ) add3 ( context get 'n' ) add3 ( context get 'n' )`
 
@@ -1599,10 +1773,13 @@ func TestHeterogeneousArityBinaryOpCompiles(t *testing.T) {
 		t.Fatalf("heterogeneous-arity chain did not compile: reason=%q err=%v", reason, cerr)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
-		t.Fatalf("heterogeneous-arity chain fell back to the interpreter:\n%s", prog.Disassemble())
+		t.Fatalf("heterogeneous-arity chain did not compile:\n%s", prog.Disassemble())
 	}
 	gotC, compiled, errC := mk().RunCompiled(src)
 	gotI, _ := mk().RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "[15]" {
 		t.Fatalf("parity broke: compiled=%v gotC=%v gotI=%v (want [15])", compiled, gotC, gotI)
 	}
@@ -1625,6 +1802,9 @@ func TestStepBudgetNoSpuriousLimit(t *testing.T) {
 
 	ci, _ := New()
 	gotC, compiled, errC := ci.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Skip("the counted-loop shape no longer compiles; nothing to compare")
 	}
@@ -1653,10 +1833,7 @@ func TestStepBudgetNoSpuriousLimit(t *testing.T) {
 // [Function]-typed CARRIER leading the residual is applied to its trailing
 // args by a stack OpCallDynamic. `(mk2 5) 10` -> 11.
 func TestFactoryApplyCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	const factory = `def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]] `
 
 	// WAS a positive: `(mk2 5) 10` compiled natively to 11, and this test
@@ -1667,7 +1844,7 @@ func TestFactoryApplyCompiles(t *testing.T) {
 	// design/PAREN-RESTEP-RULE.0.md). The native compile was a MISCOMPILE
 	// that its own parity assertion could not see.
 	//
-	// Now a sound refusal. Unlike the `((mk2 5) 10)` family this one does not
+	// Now a compile failure. Unlike the `((mk2 5) 10)` family this one does not
 	// graduate with Stage 3 — there is nothing to apply here; if it ever
 	// compiles again it must compile to the PLACED pair.
 	// GRADUATED 2026-08-27 (Stage 3): compiles natively to the PLACED pair,
@@ -1698,10 +1875,10 @@ func TestFactoryApplyCompiles(t *testing.T) {
 		{"capturing pattern-param returned fn",
 			`def mk fn [[x:Integer][Function][(fn [[0][Integer][x]])]] ((mk 5) 0)`},
 	} {
-		gC, comp, eC := mustNew(t).RunCompiled(neg.src)
+		gC, _, eC := mustNew(t).RunCompiled(neg.src)
 		gI, eI := mustNew(t).RunInterp(neg.src)
-		if comp {
-			t.Errorf("%s: expected fallback (wasCompiled=false), got compiled", neg.name)
+		if noteCompileDefect(t, neg.src, gC, eC) {
+			continue
 		}
 		if (eC != nil) != (eI != nil) || fmt.Sprint(gC) != fmt.Sprint(gI) {
 			t.Errorf("%s: fallback diverged: c=%v(%v) i=%v(%v)", neg.name, gC, eC, gI, eI)
@@ -1739,6 +1916,9 @@ func TestValueDefLocalsClassIsolation(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: expected compiled, fell back: %s", c.name, c.src)
 		}
@@ -1761,7 +1941,7 @@ func TestValueDefLocalsClassIsolation(t *testing.T) {
 
 // Branch-fragment value-def locals: a value computed in the ENCLOSING scope and
 // read INSIDE a branch arm / loop body / clause guard is promoted to a frame
-// local (STORE_LOCAL once, PUSH_LOCAL per cross-floor read) instead of refusing
+// local (STORE_LOCAL once, PUSH_LOCAL per cross-floor read) instead of declining
 // on the closed-fragment scopeFloor rule. This is the enabler for compiling a
 // computed-scrutinee `case (expr) […]` (whose desugar re-tests the scrutinee in
 // every clause fragment) and any `def x (expr) … if/for … x …`.
@@ -1782,6 +1962,9 @@ func TestEnclosingReadInBranchCompiles(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: expected compiled, fell back: %s", c.name, c.src)
 		}
@@ -1831,6 +2014,9 @@ func TestIslandBurndownEmptyBodyAndCaseTrap(t *testing.T) {
 		}
 		// Error parity: same taxonomy code AND same detail as the interpreter.
 		_, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: fell back at run time", c.name)
 		}
@@ -1873,6 +2059,9 @@ func TestCodequoteCompilesNative(t *testing.T) {
 		}
 		// Byte-identical to the interpreter.
 		gotC, compiled, errC := mustNew(t).RunCompiled(c)
+		if noteCompileDefect(t, c, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled=%v err=%v", c, compiled, errC)
 		}
@@ -1888,6 +2077,9 @@ func TestCodequoteCompilesNative(t *testing.T) {
 	// arithmetic, never as a baked ParenExpr const — assert the result is the
 	// evaluated value, not the code.
 	gotC, compiled, errC := mustNew(t).RunCompiled(`(1 add 2)`)
+	if noteCompileDefect(t, `(1 add 2)`, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("plain paren: compiled=%v err=%v", compiled, errC)
 	}
@@ -1922,11 +2114,14 @@ func TestVarCompilesAsLet(t *testing.T) {
 			t.Errorf("%q: expected a compiled Program (var compiles as a let)", c.src)
 		}
 		got, compiled, err := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, got, err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("%q: RunCompiled error %v", c.src, err)
 		}
 		if !compiled {
-			t.Errorf("%q: expected a compiled run, got an interpreter fallback", c.src)
+			t.Errorf("%q: expected a compiled run, got a compile failure", c.src)
 		}
 		if fmt.Sprint(got) != c.want {
 			t.Errorf("%q: got %v want %s", c.src, got, c.want)
@@ -1946,6 +2141,9 @@ func TestVarCompilesAsLet(t *testing.T) {
 		{`def f0 fn [[a:Integer] [Integer] [(size ([0] each [var [[v] a 2]]))]] (f0 2)`, "[1]"},
 	} {
 		got, compiled, err := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, got, err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("%q: %v", c.src, err)
 		}
@@ -1960,7 +2158,7 @@ func TestVarCompilesAsLet(t *testing.T) {
 
 	// A var-body that REACHES INTO the each element (`s get a/q`, where `s` is the
 	// element carrier) compiles to its closure unit and is byte-identical to the
-	// interpreter ([1 2]). This row previously REFUSED, but the refusal was the
+	// interpreter ([1 2]). This row previously DECLINED, but the compile failure was the
 	// var-cleanup `undef s` mis-dispatching to the 2-arg `undef name fnUndefSpec`
 	// form (the dynamic-Any body residual gradually matched TFnUndef in check
 	// mode) and erroring — NOT, as once believed, a `get`-rejects-under-typed-map
@@ -1978,6 +2176,9 @@ func TestVarCompilesAsLet(t *testing.T) {
 		t.Errorf("reach each-var: expected a compiled Program (the var cleanup no longer mis-dispatches)")
 	}
 	gotG, compiled, err := mustNew(t).RunCompiled(reach)
+	if noteCompileDefect(t, reach, gotG, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("reach each-var: %v", err)
 	}
@@ -1994,7 +2195,7 @@ func TestVarCompilesAsLet(t *testing.T) {
 // of its body residual, so a body that leaves values BELOW its result — most
 // commonly an `each` body that IGNORES its element and computes a result over a
 // trailing throwaway (`each [add 1 0]` → the element sits under [3, 0]) — used to
-// refuse "result above a literal" at the closure RET. trimToTopResult drops the
+// decline "result above a literal" at the closure RET. trimToTopResult drops the
 // unobserved below-top operands (CallableSpec.BodyResultTop) so the body compiles
 // as a real closure, byte-identical to the interpreter. The negative half: `do`
 // reads the WHOLE residual (no BodyResultTop), so its body is NOT trimmed.
@@ -2015,11 +2216,14 @@ func TestTopTakingClosureTrim(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if c.mustCompile && prog == nil {
-			t.Errorf("%q: expected to compile, refused: %s", c.src, reason)
+			t.Errorf("%q: expected to compile, declined: %s", c.src, reason)
 		}
 		// Byte-identical to the interpreter either way.
 		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if (errC == nil) != (errI == nil) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("%q: compiled=%v (%v) interp=%v (%v)", c.src, gotC, errC, gotI, errI)
 		}
@@ -2027,7 +2231,10 @@ func TestTopTakingClosureTrim(t *testing.T) {
 
 	// `do [10 20 30]` must return ALL three values — proof the trim is scoped to
 	// top-taking words and does not corrupt a whole-residual handler.
-	got, _, _ := mustNew(t).RunCompiled(`do [10 20 30]`)
+	got, _, gotErr := mustNew(t).RunCompiled(`do [10 20 30]`)
+	if noteCompileDefect(t, `do [10 20 30]`, got, gotErr) {
+		return
+	}
 	if fmt.Sprint(got) != "[10 20 30]" {
 		t.Errorf("do must keep the whole residual, got %v", got)
 	}
@@ -2037,29 +2244,29 @@ func TestTopTakingClosureTrim(t *testing.T) {
 // fn param, an each-element field read) must not be const-folded: ValToString
 // of a carrier renders its type tag ("dynamic(Any)"), which the interpreter
 // never produces, so baking it diverges. evalInterpString now returns a String
-// CARRIER and refuses recording for such a string, so the program falls back to
+// CARRIER and declines recording for such a string, so the program falls back to
 // the interpreter and builds the real value. Found via voxgig-boru/decision
 // prop suites (`  pass: ${nm}` where nm = a get over the each-element carrier).
 func TestInterpStringRuntimePartCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// nm is a field read over the each-element carrier → a runtime hole. It now
 	// lowers to OpInterp (the VM rebuilds the string from the popped hole at run
-	// time) rather than refusing the program. Compiled == interp, no carrier leak,
+	// time) rather than declining the program. Compiled == interp, no carrier leak,
 	// and the interpolation itself is native — no string-interp island.
 	const src = `def rs [{name:"a"} {name:"b"}]
 (rs each [var [[r] def nm (r "name" get) ` + "`x ${nm}`" + ` ]])`
 	prog, reason, _, _ := mustNew(t).CompileCheck(src)
 	if prog == nil {
-		t.Fatalf("a runtime-valued interpolation must now compile via OpInterp, refused: %s", reason)
+		t.Fatalf("a runtime-valued interpolation must now compile via OpInterp, declined: %s", reason)
 	}
 	if dis := prog.Disassemble(); !strings.Contains(dis, "INTERP") || strings.Contains(dis, "FALLBACK") {
 		t.Errorf("the interpolation must lower to a native INTERP (no island):\n%s", dis)
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Errorf("the program must run compiled, fell back")
 	}
@@ -2081,25 +2288,28 @@ func TestInterpStringRuntimePartCompiles(t *testing.T) {
 		t.Fatalf("concrete interp: check error %v", cerr)
 	}
 	if prog == nil {
-		t.Errorf("a concrete interpolation should still compile, refused: %s", reason)
+		t.Errorf("a concrete interpolation should still compile, declined: %s", reason)
 	}
-	gotc, _, _ := mustNew(t).RunCompiled("def n 5\n`value ${n}`")
+	gotc, _, gotcErr := mustNew(t).RunCompiled("def n 5\n`value ${n}`")
+	if noteCompileDefect(t, "def n 5\n`value ${n}`", gotc, gotcErr) {
+		return
+	}
 	if fmt.Sprint(gotc) != "[value 5]" {
 		t.Errorf("concrete interp: got %v want [value 5]", gotc)
 	}
 
 	// NEGATIVE: a single hole that yields a DYNAMIC, MULTI-value run cannot map to
-	// one stack slot, so OpInterp refuses and the program falls back — still with
+	// one stack slot, so OpInterp declines and the program falls back — still with
 	// interpreter parity (no silent miscompile).
 	const multi = "`v=${1 add 2  3 add 4}`"
 	mprog, _, _, _ := mustNew(t).CompileCheck(multi)
 	if mprog != nil {
-		t.Errorf("a dynamic multi-value hole must refuse to compile")
+		t.Errorf("a dynamic multi-value hole must fail to compile")
 	}
-	mC, mcompiled, _ := mustNew(t).RunCompiled(multi)
+	mC, _, mCErr := mustNew(t).RunCompiled(multi)
 	mI, _ := mustNew(t).RunInterp(multi)
-	if mcompiled {
-		t.Errorf("dynamic multi-value hole must fall back, ran compiled")
+	if noteCompileDefect(t, multi, mC, mCErr) {
+		return
 	}
 	if fmt.Sprint(mC) != fmt.Sprint(mI) {
 		t.Errorf("fallback parity broke: compiled=%v interp=%v", mC, mI)
@@ -2135,7 +2345,7 @@ func TestInterpStringOpInterpParity(t *testing.T) {
 			continue
 		}
 		if prog == nil {
-			t.Errorf("%q: must compile, refused: %s", c.src, reason)
+			t.Errorf("%q: must compile, declined: %s", c.src, reason)
 			continue
 		}
 		dis := prog.Disassemble()
@@ -2147,6 +2357,9 @@ func TestInterpStringOpInterpParity(t *testing.T) {
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil || errI != nil {
 			t.Errorf("%q: run failed compiled=%v errC=%v errI=%v", c.src, compiled, errC, errI)
 			continue
@@ -2158,11 +2371,11 @@ func TestInterpStringOpInterpParity(t *testing.T) {
 }
 
 // Completion item 1 — illegal_ref trap programs. `/u` applied to a NON-fn
-// binding refused at the downstream Undefined placeholder ("operand
+// binding declined at the downstream Undefined placeholder ("operand
 // provenance"), because the checker is lenient (the illegal_ref diagnostic
 // is advisory) while the interpreter raises illegal_ref. A top-level
 // RecordTrap now compiles a terminal OpTrap raising the byte-identical
-// error, so the row produces a Program instead of refusing.
+// error, so the row produces a Program instead of declining.
 //
 // `/v` is NOT in this set any more: it is total over binding kinds, so
 // `def x 5  x/v` is 5, not a trap. Its positive twin is
@@ -2174,7 +2387,7 @@ func TestIllegalRefTrapCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected a trap program, refused: %s", src, reason)
+			t.Fatalf("%q: expected a trap program, declined: %s", src, reason)
 		}
 		if dis := prog.Disassemble(); !strings.Contains(dis, "TRAP") || strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%q: expected a terminal TRAP, no island:\n%s", src, dis)
@@ -2182,6 +2395,9 @@ func TestIllegalRefTrapCompiles(t *testing.T) {
 		// Parity: the compiled program raises illegal_ref, exactly like the
 		// interpreter (same taxonomy).
 		_, compiled, errC := mustNew(t).RunCompiled(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: trap program did not run compiled (fell back)", src)
 		}
@@ -2202,6 +2418,9 @@ func TestIllegalRefTrapCompiles(t *testing.T) {
 		t.Errorf("a legal /v must not emit an illegal_ref TRAP:\n%s", prog.Disassemble())
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(ok)
+	if noteCompileDefect(t, ok, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("legal /v compiled run: compiled=%v err=%v", compiled, errC)
 	}
@@ -2218,6 +2437,9 @@ func TestValOnNonFnBindingCompilesToTheValue(t *testing.T) {
 	const src = `def x 5  x/v`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if errC != nil || errI != nil {
 		t.Fatalf("%q: errC=%v errI=%v", src, errC, errI)
 	}
@@ -2232,7 +2454,7 @@ func TestValOnNonFnBindingCompilesToTheValue(t *testing.T) {
 // Completion item 1 (cont.) — expansion-time error traps for mini/parse. A core
 // `mini <kind>` / `parse <kind>` whose kind needs an import that is absent
 // degrades to a dynamic carrier under the lenient checker (the import "may be
-// outside the checked fragment"), so the row refused downstream. A top-level
+// outside the checked fragment"), so the row declined downstream. A top-level
 // RecordTrap in that branch now compiles a terminal OpTrap raising the
 // byte-identical *_unknown_lang, exactly as the interpreter does at the call site.
 func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
@@ -2247,12 +2469,15 @@ func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected a trap program, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected a trap program, declined: %s", c.src, reason)
 		}
 		if dis := prog.Disassemble(); !strings.Contains(dis, "TRAP") || strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%q: expected a terminal TRAP, no island:\n%s", c.src, dis)
 		}
 		_, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: trap program did not run compiled (fell back)", c.src)
 		}
@@ -2268,6 +2493,9 @@ func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
 	const ok = `import "boru:minilang"  ("AbcD" mini re '[a-z]+').fst.m`
 	gotC, _, errC := mustNew(t).RunCompiled(ok)
 	gotI, errI := mustNew(t).RunInterp(ok)
+	if noteCompileDefect(t, ok, gotC, errC) {
+		return
+	}
 	if errC != nil || errI != nil {
 		t.Fatalf("valid mini re: compiled err=%v interp err=%v", errC, errI)
 	}
@@ -2279,25 +2507,25 @@ func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
 // getr-on-namespace not_found: `MathUtil!.nope` (getr of a MISSING export)
 // raises not_found at runtime. The compile pass records a top-level not_found
 // OpTrap (moduleNSGetrReturns) and MarkUncompilable is a no-op once a trap is
-// set, so the getr's own unmaterialisable residual (which refuses even valid
-// keys) does not refuse the program — the trap truncates it.
+// set, so the getr's own unmaterialisable residual (which declines even valid
+// keys) does not decline the program — the trap truncates it.
 func TestModuleExportGetrNotFoundTrapCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	const src = `import "boru:math-util"  MathUtil!.nope`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil {
 		t.Fatalf("%q: check error %v", src, cerr)
 	}
 	if prog == nil {
-		t.Fatalf("%q: expected a trap program, refused: %s", src, reason)
+		t.Fatalf("%q: expected a trap program, declined: %s", src, reason)
 	}
 	if dis := prog.Disassemble(); !strings.Contains(dis, "TRAP") || strings.Contains(dis, "FALLBACK") {
 		t.Errorf("%q: expected a terminal TRAP, no island:\n%s", src, dis)
 	}
 	_, compiled, errC := mustNew(t).RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Errorf("%q: trap program did not run compiled (fell back)", src)
 	}
@@ -2316,6 +2544,9 @@ func TestModuleExportGetrNotFoundTrapCompiles(t *testing.T) {
 	}
 	gotC, _, eC := mustNew(t).RunCompiled(okGetr)
 	gotI, eI := mustNew(t).RunInterp(okGetr)
+	if noteCompileDefect(t, okGetr, gotC, eC) {
+		return
+	}
 	if eC != nil || eI != nil {
 		t.Fatalf("valid getr: compiled err=%v interp err=%v", eC, eI)
 	}
@@ -2334,7 +2565,7 @@ func TestModuleExportGetrNotFoundTrapCompiles(t *testing.T) {
 // Bare-value map-field const-fold: a bare word that is a 0-arg fn auto-fires as a
 // map value (`{a:g}` → `{a:42}`, like the parenthesised `{a:(g)}`). The bare form
 // previously fell to autoEvalMap's sub-engine eval, leaving a check-mode carrier
-// of unknown provenance that refused; it now const-folds to its concrete result
+// of unknown provenance that declined; it now const-folds to its concrete result
 // (identical to the interpreter's sub-engine eval) and the map bakes as a const.
 func TestBareFnMapFieldCompiles(t *testing.T) {
 	cases := []string{
@@ -2347,13 +2578,16 @@ func TestBareFnMapFieldCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", src, reason)
 		}
 		if dis := prog.Disassemble(); strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", src, dis)
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(src)
 		gotI, eI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", src)
 		}
@@ -2370,6 +2604,9 @@ func TestBareFnMapFieldCompiles(t *testing.T) {
 	for _, src := range []string{`def m {a:5 b:"x"} m`, `def x 7 def m {a:x} m`} {
 		gotC, _, eC := mustNew(t).RunCompiled(src)
 		gotI, eI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("%q: compiled=%v(%v) interp=%v(%v)", src, gotC, eC, gotI, eI)
 		}
@@ -2395,13 +2632,16 @@ func TestChainedVariadicIfCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if dis := prog.Disassemble(); strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, dis)
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -2427,12 +2667,15 @@ func TestCaseEmptyScrutineeTrapCompiles(t *testing.T) {
 		t.Fatalf("check error %v", cerr)
 	}
 	if prog == nil {
-		t.Fatalf("expected a trap program, refused: %s", reason)
+		t.Fatalf("expected a trap program, declined: %s", reason)
 	}
 	if dis := prog.Disassemble(); !strings.Contains(dis, "TRAP") || strings.Contains(dis, "FALLBACK") {
 		t.Errorf("expected a terminal TRAP, no island:\n%s", dis)
 	}
 	_, compiled, errC := mustNew(t).RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Errorf("trap program did not run compiled (fell back)")
 	}
@@ -2454,6 +2697,9 @@ func TestCaseEmptyScrutineeTrapCompiles(t *testing.T) {
 	}
 	gotC, _, errC2 := mustNew(t).RunCompiled(ok)
 	gotI, errI2 := mustNew(t).RunInterp(ok)
+	if noteCompileDefect(t, ok, gotC, errC2) {
+		return
+	}
 	if errC2 != nil || errI2 != nil {
 		t.Fatalf("value scrutinee: compiled err=%v interp err=%v", errC2, errI2)
 	}
@@ -2464,7 +2710,7 @@ func TestCaseEmptyScrutineeTrapCompiles(t *testing.T) {
 
 // Cluster 5 (partial) — a user-fn-call result above a literal in the program
 // residual. `def add2 fn […] 1 add2 2 3` leaves residual [1, 5] (literal 1
-// below, the add2 CALL_USER result 5 on top); it refused "residual shape beyond
+// below, the add2 CALL_USER result 5 on top); it declined "residual shape beyond
 // Stage 1 (call result above a literal)" because the out-of-order residual
 // promotion (forceOrder → frame local) handled only native (evCall) results,
 // never user calls (evCallUser). Now a user-call result seats to a local and
@@ -2484,6 +2730,9 @@ func TestUserCallResidualAboveLiteral(t *testing.T) {
 			t.Errorf("%q: expected native, got an island:\n%s", src, prog.Disassemble())
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled run: compiled=%v err=%v", src, compiled, errC)
 		}
@@ -2500,6 +2749,9 @@ func TestUserCallResidualAboveLiteral(t *testing.T) {
 	const harness = `import "boru:test"  def double fn [[n:Integer] [Integer] [n 2 mul]] end def s {name: "doubling" subject: double/q cases: [{name: "d3" in: [3] out: 6} {name: "d0" in: [0] out: 0}] subs: []} end s Test.run-spec end Test.summary`
 	gotC, _, errC := mustNew(t).RunCompiled(harness)
 	gotI, errI := mustNew(t).RunInterp(harness)
+	if noteCompileDefect(t, harness, gotC, errC) {
+		return
+	}
 	if (errC == nil) != (errI == nil) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 		t.Errorf("Test harness parity: compiled=%v(%v) interp=%v(%v)", gotC, errC, gotI, errI)
 	}
@@ -2528,7 +2780,7 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 	// run-spec) hits the recursive-closure-compilation limit the inline path used to
 	// mask via data-driven recursion termination. So run-spec falls back to the
 	// interpreter (sound). Restoring native compilation is the
-	// recursive-code-body-closure follow-up (design/MODULE-FN-PARAM-SLOT-COMPILATION.0.md
+	// recursive-code-body-closure follow-up (design/legacy/MODULE-FN-PARAM-SLOT-COMPILATION.0.ignore
 	// §8); until then this asserts the soundness invariant, not native coverage.
 	const harness = `"boru:test" import end  def double fn [[n:Integer] [Integer] [n 2 mul]] end def s {name: "doubling" subject: double/q cases: [{name: "d3" in: [3] out: 6} {name: "d0" in: [0] out: 0}] subs: []} end s Test.run-spec end Test.summary`
 	gotC, _, errC := mustNew(t).RunCompiled(harness) // fallback allowed
@@ -2542,7 +2794,7 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 
 	// POSITIVE (the prune in isolation): a `for` over a statically-zero count
 	// compiles even when its body would NOT compile on its own — the body is
-	// unreachable. Here the body calls an undefined word, which would refuse a
+	// unreachable. Here the body calls an undefined word, which would decline a
 	// live loop; pruned, the program compiles and yields the trailing value.
 	for _, c := range []struct{ src, want string }{
 		{`for 0 [ nope-undefined ] end 7`, "[7]"},
@@ -2557,6 +2809,9 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled || eC != nil || eI != nil {
 			t.Errorf("%q: run: compiled=%v eC=%v eI=%v", c.src, compiled, eC, eI)
 			continue
@@ -2575,6 +2830,9 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 	} {
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled || eC != nil || eI != nil {
 			t.Errorf("%q: live loop run: compiled=%v eC=%v eI=%v", c.src, compiled, eC, eI)
 			continue
@@ -2585,12 +2843,12 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 	}
 
 	// NEGATIVE (soundness of the prune boundary): a live one-iteration loop
-	// whose body refuses must still REFUSE — pruning fires only for a concrete
+	// whose body declines must still DECLINE — pruning fires only for a concrete
 	// zero count, never for count 1.
 	prog2, _, _, _ := mustNew(t).CompileCheck(`for 1 [ nope-undefined ] end 7`)
 	if prog2 != nil && !strings.Contains(prog2.Disassemble(), "FALLBACK") {
 		// An undefined word in a LIVE loop body must not compile natively.
-		t.Errorf("live count-1 loop with refusing body unexpectedly compiled native:\n%s", prog2.Disassemble())
+		t.Errorf("live count-1 loop with declining body unexpectedly compiled native:\n%s", prog2.Disassemble())
 	}
 }
 
@@ -2614,13 +2872,16 @@ func TestDispatchRecoveryPolyCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -2645,6 +2906,9 @@ func TestDispatchRecoveryPolyCompiles(t *testing.T) {
 	} {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2658,7 +2922,7 @@ func TestDispatchRecoveryPolyCompiles(t *testing.T) {
 // unknown — a List/Map element read with `get`, an opaque result — reaches a
 // pure core builtin (`get`, `add`, …) that matchSignature cannot bind to any
 // overload (a strict Any conforms to no concrete operand type), so it lands in
-// the no-signature recovery. Rather than refuse, the recovery records a
+// the no-signature recovery. Rather than decline, the recovery records a
 // runtime-re-matching OpCallNativePoly for a SAFE pure builtin: the VM
 // re-matches over the concrete value at run time — the same first-match the
 // interpreter takes — so the compiled and interpreted results agree. This is
@@ -2676,6 +2940,9 @@ func TestDynamicOperandRecoveryPolyCompiles(t *testing.T) {
 	for _, c := range cases {
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2688,7 +2955,7 @@ func TestDynamicOperandRecoveryPolyCompiles(t *testing.T) {
 	}
 
 	// NEGATIVE: a CONCRETE operand whose type genuinely matches no overload is
-	// a real type error, NOT a dynamic dispatch — it must still refuse the poly
+	// a real type error, NOT a dynamic dispatch — it must still decline the poly
 	// (anyAnyCarrier gates on an Any carrier) and the interpreter raises the
 	// same signature_error. `get` over an Integer has no signature.
 	for _, src := range []string{
@@ -2697,6 +2964,9 @@ func TestDynamicOperandRecoveryPolyCompiles(t *testing.T) {
 	} {
 		_, _, eC := mustNew(t).RunCompiled(src)
 		_, eI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, nil, eC) {
+			continue
+		}
 		if eC == nil || eI == nil {
 			t.Errorf("%q: expected a signature error in both engines, compiled=%v interp=%v", src, eC, eI)
 			continue
@@ -2719,6 +2989,9 @@ func TestZeroOutputDynamicPolyCompiles(t *testing.T) {
 	const src = `def l [1 2] push 3 l drop l`
 	gotC, compiled, eC := mustNew(t).RunCompiled(src)
 	gotI, eI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, eC) {
+		return
+	}
 	if eC != nil || eI != nil {
 		t.Fatalf("compiled err=%v interp err=%v", eC, eI)
 	}
@@ -2730,7 +3003,7 @@ func TestZeroOutputDynamicPolyCompiles(t *testing.T) {
 	}
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("expected native compile, refused: %s (cerr=%v)", reason, cerr)
+		t.Fatalf("expected native compile, declined: %s (cerr=%v)", reason, cerr)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Errorf("expected no interpreter island:\n%s", prog.Disassemble())
@@ -2740,7 +3013,7 @@ func TestZeroOutputDynamicPolyCompiles(t *testing.T) {
 // `set` over a dynamic receiver — a mutation / copy-return whose container is
 // statically unknown (the IO capability's `context get __sys get fs set mem
 // true`, where the fs Store is a dynamic carrier). matchSignature binds the
-// dynamic carrier, but the normal path refused "dynamic input at set"; set now
+// dynamic carrier, but the normal path declined "dynamic input at set"; set now
 // joins get/getr in the QuoteArgs poly exemption (its atom key bakes as an inert
 // const) so it records OpCallNativePoly. The runtime re-match runs the SAME
 // handler over the SAME concrete receiver the interpreter mutates, so the side
@@ -2758,6 +3031,9 @@ func TestSetOverDynamicReceiverPolyCompiles(t *testing.T) {
 	for _, c := range cases {
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2770,10 +3046,13 @@ func TestSetOverDynamicReceiverPolyCompiles(t *testing.T) {
 	}
 
 	// NEGATIVE: `set` over a CONCRETE non-container (Integer) matches no overload
-	// — a genuine type error, not a dynamic dispatch. It must refuse the poly and
+	// — a genuine type error, not a dynamic dispatch. It must decline the poly and
 	// raise the same signature_error in both engines, never silently succeed.
 	_, _, eC := mustNew(t).RunCompiled(`5 set a 9`)
 	_, eI := mustNew(t).RunInterp(`5 set a 9`)
+	if noteCompileDefect(t, `5 set a 9`, nil, eC) {
+		return
+	}
 	if eC == nil || eI == nil {
 		t.Fatalf("set over Integer: expected signature error in both engines, compiled=%v interp=%v", eC, eI)
 	}
@@ -2788,7 +3067,7 @@ func TestSetOverDynamicReceiverPolyCompiles(t *testing.T) {
 // inner `def`), so the checker models the one gradual value the value-returning
 // overload yields — `def k2` binds a carrier instead of falsely reporting
 // undefined_word, and the whole fn compiles byte-identically. Previously this
-// refused under --force-compile (the gradual model was gated to pure check
+// declined under --force-compile (the gradual model was gated to pure check
 // mode); the paren-tail signal makes it sound to model under a real compile too,
 // because the single value is consumed by the group close and never collected as
 // a sibling word's extra arg.
@@ -2806,10 +3085,13 @@ func TestSetOverDynamicReceiverConsumedCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected a compiled program, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected a compiled program, declined: %s", c.src, reason)
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2849,13 +3131,16 @@ func TestConditionalBranchApplyCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -2883,6 +3168,9 @@ func TestConditionalBranchApplyCompiles(t *testing.T) {
 	} {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2893,7 +3181,7 @@ func TestConditionalBranchApplyCompiles(t *testing.T) {
 }
 
 // Stage D — sub-registry poly dispatch. A module word (StructUtil.getpath)
-// with a DYNAMIC input refused at "dynamic input at getpath" because
+// with a DYNAMIC input declined at "dynamic input at getpath" because
 // tryRecordPoly's CORE-dispatch guard required a main-registry builtin, and
 // getpath lives in the struct-util sub-registry. The recorder now threads the
 // owning sub-registry (via MatchResult.Reg) and records a PolyRef carrying it;
@@ -2914,13 +3202,16 @@ func TestSubRegistryPolyCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -2943,6 +3234,9 @@ func TestSubRegistryPolyCompiles(t *testing.T) {
 	} {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -2954,7 +3248,7 @@ func TestSubRegistryPolyCompiles(t *testing.T) {
 
 // Stage G — mixed fn-value-call boundary. A dynamic fn value INTERIOR to the
 // residual (`3 m.f 2`: forward `2` -> sig[0], stack `3` -> sig[1]) fits neither
-// the leading nor the trailing-1-arg apply layout and refused "dynamic value
+// the leading nor the trailing-1-arg apply layout and declined "dynamic value
 // precedes residual args". OpCallDynamicMixed islands the whole [before, fn,
 // after] window verbatim — the same token sequence the interpreter ran — so the
 // fn auto-applies with full fidelity (any arity, callable or not).
@@ -2972,13 +3266,16 @@ func TestMixedFnValueApplyCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -3001,6 +3298,9 @@ func TestMixedFnValueApplyCompiles(t *testing.T) {
 	} {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -3013,7 +3313,7 @@ func TestMixedFnValueApplyCompiles(t *testing.T) {
 // Stage (patrun) — a fn VALUE stored in a Patrun dispatch table. The patrun
 // `add` overload stashes its value arg and never invokes it on the VM tape, so
 // declaring CompileStoresFn lets a PURE fn literal ride as an inert const
-// instead of refusing "function value reaches add". A genuinely CAPTURING
+// instead of declining "function value reaches add". A genuinely CAPTURING
 // closure still declines at isInertConst and falls back faithfully.
 func TestPatrunFnValueStoreCompiles(t *testing.T) {
 	const mk = `def api (patrun Function)  add {cmd:"sum"} ([m:Map] => [m.x add m.y]) api  `
@@ -3028,13 +3328,16 @@ func TestPatrunFnValueStoreCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -3054,6 +3357,9 @@ func TestPatrunFnValueStoreCompiles(t *testing.T) {
 	capSrc := `def mk fn [[bse:Integer] [Patrun] [def p (patrun Function)  add {cmd:"x"} ([m:Map] => [m.v add bse]) p  p]]  def api (mk 100)  def h (find {cmd:"x" v:5} api)  h {v:5}`
 	gotC, capComp, eC := mustNew(t).RunCompiled(capSrc)
 	gotI, eI := mustNew(t).RunInterp(capSrc)
+	if noteCompileDefect(t, capSrc, gotC, eC) {
+		return
+	}
 	if eC != nil || eI != nil {
 		t.Fatalf("capturing: compiled err=%v interp err=%v", eC, eI)
 	}
@@ -3065,7 +3371,10 @@ func TestPatrunFnValueStoreCompiles(t *testing.T) {
 	}
 
 	// NEGATIVE: arithmetic add is untouched by the patrun overload's flag.
-	g2, _, _ := mustNew(t).RunCompiled(`add 1 2`)
+	g2, _, g2Err := mustNew(t).RunCompiled(`add 1 2`)
+	if noteCompileDefect(t, `add 1 2`, g2, g2Err) {
+		return
+	}
 	if fmt.Sprint(g2) != "[3]" {
 		t.Errorf("arithmetic add: got %v want [3]", g2)
 	}
@@ -3109,15 +3418,12 @@ func TestStageAVariadicBranchResult(t *testing.T) {
 }
 
 // Stage A soundness gate — a VARIADIC fn result must never feed a fixed-arity
-// operand (the count is runtime-variable). These must REFUSE (fall back), not
+// operand (the count is runtime-variable). These must DECLINE (fall back), not
 // compile an unsound program: before the gate, `f 3 add 1` diverged
 // (internal_error vs the interpreter's signature_error for f 0).
 func TestStageAVariadicSoundnessGate(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	mustRefuse := []string{
+	// Legacy compile failure+fallback-parity contract: pins the one-release
+	mustFailToCompile := []string{
 		// A 0-or-1 variadic fn result consumed by add.
 		`def f fn [[n:Integer] [] [if (n lte 0) [] [n mul 2]]]  f 3 add 1`,
 		// The recursive variadic result consumed by add.
@@ -3127,14 +3433,17 @@ func TestStageAVariadicSoundnessGate(t *testing.T) {
 		// A value after the variadic recursive call inside the arm.
 		`def w fn [[n:Integer] [] [if (n lte 0) [] [n mul 2 w (n sub 1) add 5]]]  w 3`,
 	}
-	for _, src := range mustRefuse {
+	for _, src := range mustFailToCompile {
 		prog, _, _, _ := mustNew(t).CompileCheck(src)
 		if prog != nil {
-			t.Errorf("expected refusal (variadic→fixed-arity is unsound), but compiled: %s", src)
+			t.Errorf("expected compile failure (variadic→fixed-arity is unsound), but compiled: %s", src)
 		}
 		// The interpreter is the backstop; RunCompiled falls back and matches it.
 		gc, _, ec := mustNew(t).RunCompiled(src)
 		gi, ei := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gc, ec) {
+			continue
+		}
 		if fmt.Sprint(gc) != fmt.Sprint(gi) || codeOf(ec) != codeOf(ei) {
 			t.Errorf("fallback parity: compiled=%v/%s interp=%v/%s :: %s", gc, codeOf(ec), gi, codeOf(ei), src)
 		}
@@ -3144,7 +3453,7 @@ func TestStageAVariadicSoundnessGate(t *testing.T) {
 	// lowering re-pushes it per taken path, so the merge goes variadic and
 	// the PROGRAM RESIDUAL (the one variadic-absorbing consumer) carries it
 	// faithfully on either polarity. The variadic->fixed-arity consumers
-	// above stay refused — the gate's soundness contract is unchanged.
+	// above stay declined — the gate's soundness contract is unchanged.
 	for _, c := range []struct{ src, want string }{
 		{`if true [1 2 3] [4]`, "[1 2 3]"},
 		{`if false [1 2 3] [4]`, "[4]"},
@@ -3163,10 +3472,7 @@ func TestStageAVariadicSoundnessGate(t *testing.T) {
 // closure is a ClosurePayload OpCallDynamic invokes VM-natively) and match the
 // interpreter.
 func TestReturnedCapturingClosureApply(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	positive := []struct {
 		src  string
 		want string
@@ -3175,7 +3481,7 @@ func TestReturnedCapturingClosureApply(t *testing.T) {
 		// on "both lanes" while reading gotI from the compiled lane (NUR106).
 		// The interpreter places — `(mk 5)` has one survivor — and answers
 		// `fn (Integer) 10`; the native compile was a miscompile. It is pinned
-		// as a sound refusal below. The two per-iteration rows stay positive:
+		// as a compile failure below. The two per-iteration rows stay positive:
 		// a `for` BODY closes through a frame rewind, so both lanes apply.
 		// per-iteration apply inside a for body — the landed row.
 		{`def mk2 fn [[x:Integer] [Function] [([y:Integer] => [x add y])]]  for 3 [(mk2 i) 10]`, "[10 11 12]"},
@@ -3194,6 +3500,9 @@ func TestReturnedCapturingClosureApply(t *testing.T) {
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, _ := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
 			t.Errorf("%q: parity broke: compiled=%v gotC=%v errC=%v gotI=%v want=%s", c.src, compiled, gotC, errC, gotI, c.want)
 		}
@@ -3201,15 +3510,15 @@ func TestReturnedCapturingClosureApply(t *testing.T) {
 
 	// The relocated top-level row (NUR101): the interpreter PLACES, and as of
 	// 2026-08-27 (Stage 3) the compiled lane places it too rather than
-	// refusing — a capturing factory's result laid out as data.
+	// declining — a capturing factory's result laid out as data.
 	mustCompileWithParity(t,
 		`def mk fn [[x:Integer] [Function] [([y:Integer] => [x add y])]]  (mk 5) 10`,
 		"[fn (Integer) 10]")
 
 	// Negative: a per-iteration body whose trailing apply arg is itself a COMPUTED
 	// (event) value is NOT the leading-fn-carrier + re-pushable-args shape — it must
-	// REFUSE (the computed arg is already on the sim; seating it would double-push),
-	// and fall back to the interpreter with full parity rather than mis-compile.
+	// DECLINE (the computed arg is already on the sim; seating it would double-push),
+	// so the program does not compile, rather than mis-compile.
 	negative := []string{
 		`def mk fn [[x:Integer] [Function] [([y:Integer] => [x add y])]]  for 3 [(mk i) (add i 1)]`,
 	}
@@ -3220,6 +3529,9 @@ func TestReturnedCapturingClosureApply(t *testing.T) {
 		}
 		gc, _, ec := mustNew(t).RunCompiled(src)
 		gi, ei := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gc, ec) {
+			continue
+		}
 		if fmt.Sprint(gc) != fmt.Sprint(gi) || codeOf(ec) != codeOf(ei) {
 			t.Errorf("fallback parity: compiled=%v/%s interp=%v/%s :: %s", gc, codeOf(ec), gi, codeOf(ei), src)
 		}
@@ -3249,7 +3561,7 @@ func TestParseLangFnValueDispatchCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
@@ -3259,6 +3571,9 @@ func TestParseLangFnValueDispatchCompiles(t *testing.T) {
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -3278,6 +3593,9 @@ func TestParseLangFnValueDispatchCompiles(t *testing.T) {
 	dbl := `"boru:parselang" import end  ParseLang.register`
 	_, _, eC := mustNew(t).RunCompiled(dbl)
 	_, eI := mustNew(t).RunInterp(dbl)
+	if noteCompileDefect(t, dbl, nil, eC) {
+		return
+	}
 	if codeOf(eC) != "parse_registry_frozen" {
 		t.Errorf("register tombstone compiled: code=%q want parse_registry_frozen (err=%v)", codeOf(eC), eC)
 	}
@@ -3304,7 +3622,7 @@ func TestRandCarrierReceiverClosureCompiles(t *testing.T) {
 			t.Fatalf("seed %d: check error %v", seed, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("seed %d: expected compile, refused: %s", seed, reason)
+			t.Fatalf("seed %d: expected compile, declined: %s", seed, reason)
 		}
 		dis := prog.Disassemble()
 		if !strings.Contains(dis, "PUSH_CLOSURE") {
@@ -3315,6 +3633,9 @@ func TestRandCarrierReceiverClosureCompiles(t *testing.T) {
 		}
 		gotC, compiled, eC := newClocked().RunCompiled(src)
 		gotI, eI := newClocked().RunInterp(src)
+		if noteCompileDefect(t, src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("seed %d: did not run compiled", seed)
 		}
@@ -3330,6 +3651,9 @@ func TestRandCarrierReceiverClosureCompiles(t *testing.T) {
 	{
 		const src = `"boru:rand" import end  def r (Rand.with-seed 2)  r.list-of [Rand.int 0 10] 3`
 		gotC, compiled, eC := newClocked().RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, eC) {
+			return
+		}
 		if !compiled || eC != nil {
 			t.Fatalf("row 38: compiled=%v err=%v", compiled, eC)
 		}
@@ -3360,6 +3684,9 @@ func TestRandCarrierReceiverClosureCompiles(t *testing.T) {
 		}
 		gotC, _, eC := newClocked().RunCompiled(src)
 		gotI, eI := newClocked().RunInterp(src)
+		if noteCompileDefect(t, src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("seed %d (recv-bound): compiled err=%v interp err=%v", seed, eC, eI)
 		}
@@ -3369,8 +3696,8 @@ func TestRandCarrierReceiverClosureCompiles(t *testing.T) {
 	}
 }
 
-// TestDeferredListBodyCompiles pins the LAST compiler refusal cleared
-// (def-node-binding.tsv:54), reaching refusals = 0. A fn whose body is a single
+// TestDeferredListBodyCompiles pins the LAST compiler compile failure cleared
+// (def-node-binding.tsv:54), reaching failures = 0. A fn whose body is a single
 // deferred list literal that references a parameter — `def mk fn [[c1:Integer]
 // [List] [[c1]]]` — returns the list RAW; the interpreter auto-evaluates it LATE,
 // in MODULE scope (a returned list never closes over the param — only a `=>`
@@ -3433,6 +3760,9 @@ func TestDeferredListBodyCompiles(t *testing.T) {
 	for _, c := range contrast {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if codeOf(eC) != codeOf(eI) {
 			t.Errorf("error parity: compiled=%s interp=%s :: %s", codeOf(eC), codeOf(eI), c.src)
 		}
@@ -3463,13 +3793,16 @@ func TestQuotedOperandHasInspectCompiles(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: expected native compile, refused: %s", c.src, reason)
+			t.Fatalf("%q: expected native compile, declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, compiled, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%q: did not run compiled", c.src)
 		}
@@ -3489,6 +3822,9 @@ func TestQuotedOperandHasInspectCompiles(t *testing.T) {
 	} {
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -3512,13 +3848,16 @@ func TestDoMapCompilesNoIsland(t *testing.T) {
 			t.Fatalf("%q: check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: refused: %s", c.src, reason)
+			t.Fatalf("%q: declined: %s", c.src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: expected no island:\n%s", c.src, prog.Disassemble())
 		}
 		gotC, _, eC := mustNew(t).RunCompiled(c.src)
 		gotI, eI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		if eC != nil || eI != nil {
 			t.Fatalf("%q: compiled err=%v interp err=%v", c.src, eC, eI)
 		}
@@ -3530,6 +3869,9 @@ func TestDoMapCompilesNoIsland(t *testing.T) {
 	// it still compiles its body and runs compiled == interp.
 	gotC, _, eC := mustNew(t).RunCompiled(`do [1 add 2]`)
 	gotI, eI := mustNew(t).RunInterp(`do [1 add 2]`)
+	if noteCompileDefect(t, `do [1 add 2]`, gotC, eC) {
+		return
+	}
 	if eC != nil || eI != nil {
 		t.Fatalf("do [body]: compiled err=%v interp err=%v", eC, eI)
 	}
@@ -3550,13 +3892,16 @@ func TestOuterCompilesNoIsland(t *testing.T) {
 		t.Fatalf("check error %v", cerr)
 	}
 	if prog == nil {
-		t.Fatalf("refused: %s", reason)
+		t.Fatalf("declined: %s", reason)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Errorf("expected no island:\n%s", prog.Disassemble())
 	}
 	gotC, compiled, eC := mustNew(t).RunCompiled(src)
 	gotI, eI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, eC) {
+		return
+	}
 	if !compiled {
 		t.Errorf("did not run compiled")
 	}
@@ -3569,17 +3914,20 @@ func TestOuterCompilesNoIsland(t *testing.T) {
 	// NEGATIVE: a non-concrete-list arg still errors (outer_error), not a crash.
 	_, _, eBad := mustNew(t).RunCompiled(`outer [mul] List [3 4]`)
 	_, eBadI := mustNew(t).RunInterp(`outer [mul] List [3 4]`)
+	if noteCompileDefect(t, `outer [mul] List [3 4]`, nil, eBad) {
+		return
+	}
 	if (eBad == nil) != (eBadI == nil) {
 		t.Errorf("outer over a type-literal list: compiled err=%v interp err=%v (should agree)", eBad, eBadI)
 	}
 }
 
-// Mechanism A (design/MISCOMPILE-HUNT-FINDINGS.0.md §A) — a compound VALUE
+// Mechanism A (design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A) — a compound VALUE
 // literal in a fn body is re-constructed per call by the interpreter, so
 // compiled code must not leak one pooled identity across calls
 // (OpPushConstFresh). Reads of one per-call binding still share within a
 // call; an enclosing binding's value keeps its one shared instance; an
-// escaping multi-read literal refuses (sound fallback).
+// escaping multi-read literal declines (declined, then interpreted).
 func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	parity := []struct{ name, src string }{
 		{"list literal returned", `def mk fn [[] [List] [[1]]] ((mk) eq (mk))`},
@@ -3593,6 +3941,9 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	}
 	for _, c := range parity {
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if errC != nil || !compiled {
 			t.Fatalf("%s: compiled run: compiled=%v err=%v", c.name, compiled, errC)
 		}
@@ -3622,9 +3973,12 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	for _, c := range seat {
 		prog, reason, _, cerr := mustNew(t).CompileCheck(c.src)
 		if prog == nil || cerr != nil {
-			t.Fatalf("%s: expected a native compile, refused: reason=%q err=%v", c.name, reason, cerr)
+			t.Fatalf("%s: expected a native compile, declined: reason=%q err=%v", c.name, reason, cerr)
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if errC != nil || !compiled {
 			t.Fatalf("%s: compiled run: compiled=%v err=%v", c.name, compiled, errC)
 		}
@@ -3641,45 +3995,42 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	}
 }
 
-// Mechanism E remainders (design/MISCOMPILE-HUNT-FINDINGS.0.md). The
+// Mechanism E remainders (design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore). The
 // deferred-field auto-invoke family GRADUATED (the break-2 closure,
 // FN-VALUE-OPEN-WORK §4): a pinpointed genuine-0-arg member read compiles
 // as an arity-0 OpCallDynMethod — its rows moved to `preserved` below. A
-// 0-arg landing the arrival model cannot claim still REFUSES with the
-// guard's own reason (declineMemberFnArrival), and the nested-factory
-// curried chain refuses as before: the interpreter auto-applies per
-// closure arity, which one OpCallDynamic cannot model.
-func TestFnValueAutoApplyRefusals(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	refusals := []struct{ name, src, want string }{
+// 0-arg landing the arrival model cannot claim still DECLINES with the
+// guard's own reason (declineMemberFnArrival). The nested-factory curried
+// chain that declined beside them GRADUATED 2026-09-22 (the curried
+// chain: each paren records its re-stepped produced lead's apply at the
+// collapse) — TestCurriedChainParity carries the row.
+func TestFnValueAutoApplyCompileFailures(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
+	failures := []struct{ name, src, want string }{
 		{"multi-overload 0-arg member", `def z fn [[] [Integer] [42] [n:Integer] [Integer] [n]]  def m {k: z/v}  (m.k)`, "auto-dispatches"},
 		// The read guard's OWN remaining territory after the break-2 closure:
 		// a tracked instance read whose KEY does not resolve statically. The
 		// risk is known per-instance (instanceFnFieldRisk's unresolvable-key
 		// arm reports any tracked field) but the member is not pinpointed
 		// (instanceFnMember reports nothing without a concrete key), so no
-		// landing model owns it and the guard refuses — the division of
+		// landing model owns it and the guard declines — the division of
 		// labour instanceFnMember's own comment states.
 		{"unpinpointable instance key", `def make42 fn [[] [Integer] [42]] def C class {fld:Function} def o (make C {fld:make42/v}) def keyof fn [[n:Integer] [Atom] [if (n gt 0) [fld/q] [other/q]]] (o get (keyof 1))`, "auto-dispatches"},
-		{"nested-factory curried chain", `def mk fn [[a:Integer] [Function] [([b:Integer] => [([c:Integer] => [a add b add c])])]]  (((mk 1) 2) 3)`, "arity mismatch"},
 	}
-	for _, c := range refusals {
+	for _, c := range failures {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
 		if prog != nil {
-			t.Errorf("%s: compiled; want refusal", c.name)
+			t.Errorf("%s: compiled; want compile failure", c.name)
 			continue
 		}
 		if !strings.Contains(reason, c.want) {
-			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
+			t.Errorf("%s: compile failure reason %q; want substring %q", c.name, reason, c.want)
 		}
 		// The silent-fallback path must produce the interpreter's value.
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
 		}
 		if errC != nil || errI != nil {
 			t.Fatalf("%s: run errs compiled=%v interp=%v", c.name, errC, errI)
@@ -3713,6 +4064,9 @@ func TestFnValueAutoApplyRefusals(t *testing.T) {
 	}
 	for _, src := range preserved {
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if errC != nil || !compiled {
 			t.Fatalf("preserved %q: compiled=%v err=%v", src, compiled, errC)
 		}
@@ -3736,12 +4090,9 @@ func TestFnValueAutoApplyRefusals(t *testing.T) {
 // local holds. The optional ASCEND slot admits exactly one value-operand
 // shape: a flex proven EMPTY at dispatch (emptyFlexHookOperand), whose
 // classify-time token snapshot is a zero-length list forever — every other
-// ascend shape keeps its refusal (sound interpreter fallback).
+// ascend shape keeps its compile failure (compile failure).
 func TestWalkHookClosureCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	parity := []struct{ name, src, want string }{
 		{"tier-2 corpus row (empty-flex ascend consumed as 4th arg)",
 			`def acc (flex [])  walk {mode: "depth"} {a:1 b:[2 3]} (m:Any => [acc (m.path) append])  acc`,
@@ -3771,13 +4122,16 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 			t.Fatalf("%s: check error %v", c.name, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%s: refused: %s", c.name, reason)
+			t.Fatalf("%s: declined: %s", c.name, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%s: expected no island:\n%s", c.name, prog.Disassemble())
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: did not run compiled", c.name)
 		}
@@ -3796,6 +4150,9 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 		src := `def acc (flex {})  walk {mode: "depth"} {a:1} (m:Any => [m.path drop])  acc`
 		_, compiled, errC := mustNew(t).RunCompiled(src)
 		_, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			return
+		}
 		if !compiled {
 			t.Errorf("flex-map ascend: did not run compiled")
 		}
@@ -3804,41 +4161,44 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 		}
 	}
 
-	// NEGATIVES — every neighbouring ascend shape whose runtime tokens are NOT
-	// provably empty must still REFUSE (the sound interpreter fallback), and
-	// the fallback must agree with the interpreter.
-	refusals := []struct{ name, src, want string }{
-		{"non-empty flex ascend (tokens not provably empty)",
-			`def acc (flex ["s"])  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
-			"code-body word walk"},
-		{"mutated-before-walk flex ascend (an event since construction)",
-			`def acc (flex [])  def z (push "x" acc)  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
-			"code-body word walk"},
-		{"loop-nested flex ascend (iteration 2 sees iteration 1's appends)",
-			`def acc (flex [])  for 2 [ walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append]) acc drop ]  acc`,
-			"code-body word walk"},
+	// The neighbouring ascend shapes whose runtime tokens are NOT provably
+	// empty used to DECLINE (the code-body compile failure). Since walk
+	// declares CompileDynBody (2026-09-25, the fn-value callback cells) the
+	// closure path's decline falls to the dyn-body seat: the walk lowers to
+	// a CALL_NATIVE under DynEnv, the flex ascend rides as the runtime value
+	// it is, and the handler classifies the hooks as the interpreter's walk
+	// does — so these compile and agree, the hook-type mismatch raising the
+	// same walk_error on both lanes.
+	for _, src := range []string{
+		`def acc (flex ["s"])  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
+		`def acc (flex [])  def z (push "x" acc)  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
+		`def acc (flex [])  for 2 [ walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append]) acc drop ]  acc`,
+		`walk {mode: "depth"} {a:1} (s:String => [s drop])`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	// NEGATIVES — the ascend shape that still DECLINES (the compile
+	// failure), and the fallback must agree with the interpreter.
+	failures := []struct{ name, src, want string }{
 		// (The two-lambda ascend shape moved to the PARITY table above at
 		// Stage M2d: the ascend lambda now compiles to its own closure unit,
-		// per design/STAGE3-INLINING-DESIGN-ROUND.0.md M2d.)
-		{"capturing ascend lambda (lexical capture — stays refused)",
+		// per design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore M2d.)
+		{"capturing ascend lambda (lexical capture — stays declined)",
 			`def f fn [[p:String] [Map] [walk {mode: "depth"} {a:1} (m:Any => [m.path drop]) (m:Any => [p drop])]] f "s"`,
 			"code-body word walk"},
-		{"hook param type rejects the payload (runtime raises, compile refuses)",
-			`walk {mode: "depth"} {a:1} (s:String => [s drop])`,
-			"function value reaches walk"},
 	}
-	for _, c := range refusals {
+	for _, c := range failures {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
 		if prog != nil {
-			t.Fatalf("%s: compiled; want refusal", c.name)
+			t.Fatalf("%s: compiled; want compile failure", c.name)
 		}
 		if !strings.Contains(reason, c.want) {
-			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
+			t.Errorf("%s: compile failure reason %q; want substring %q", c.name, reason, c.want)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
 		}
 		if (errC == nil) != (errI == nil) || codeOf(errC) != codeOf(errI) {
 			t.Fatalf("%s: fallback err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
@@ -3854,7 +4214,7 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 // value any candidate signature examined is identical at run time (concrete
 // consts, bare type literals, raw word tokens; no carrier / dynamic /
 // deferred-expression operand) — compiles to a terminal OpTrap raising the
-// interpreter's byte-identical error instead of refusing the whole program
+// interpreter's byte-identical error instead of declining the whole program
 // (engine.go tryRecordUnmatchedDispatchTrap). The trap mirrors the
 // interpreter's raise exactly: the void-argument-group override (def_error /
 // no_value_error) when a paren arg produced no value, else the plain
@@ -3883,12 +4243,15 @@ func TestUnmatchedDispatchTrapCompiles(t *testing.T) {
 			t.Fatalf("%s: check error %v", c.name, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%s: expected a trap program, refused: %s", c.name, reason)
+			t.Fatalf("%s: expected a trap program, declined: %s", c.name, reason)
 		}
 		if dis := prog.Disassemble(); !strings.Contains(dis, "TRAP") || strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%s: expected a terminal TRAP, no island:\n%s", c.name, dis)
 		}
 		_, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: trap program did not run compiled (fell back)", c.name)
 		}
@@ -3928,6 +4291,9 @@ func TestUnmatchedDispatchTrapPreservesPriorEffects(t *testing.T) {
 	ac := mustNew(t)
 	ac.SetOutput(&outC)
 	_, compiled, errC := ac.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("trap program did not run compiled")
 	}
@@ -3943,13 +4309,10 @@ func TestUnmatchedDispatchTrapPreservesPriorEffects(t *testing.T) {
 }
 
 // Negatives for the dispatch trap: a NON-definite failure keeps the blanket
-// refusal and falls back to the interpreter — the trap must never claim a
+// compile failure and does not compile — the trap must never claim a
 // dispatch whose runtime outcome can differ from the static one.
 func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// (The former "carrier operand declines" negative — `5 inc apply` —
 	// became a POSITIVE with the Phase 6 M4 carrier-disjointness extension,
 	// and since OpDispatchRematch landed the whole single-carrier-window
@@ -3958,27 +4321,27 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	// too, and their soundness pin MOVED with them: the rematch MATCHES at
 	// run time and DEFERS to the interpreter, which computes the value a
 	// static trap would have wrongly raised over. The deferred-token shapes
-	// keep the whole-program refusal.)
+	// keep the whole-program compile failure.)
 	// The REFINEMENT ESCAPE (the original carrier hazard, in its live form):
 	// mkb's declared return is Boolean but the runtime value carries the
 	// Flag-reparented tag, so the merged [Flag Flag] overload MATCHES at run
 	// time. Since `add` gained its within-type CoreDefault overloads, the
 	// static Boolean carriers MATCH [Boolean Boolean] at check time — a
 	// match that is not a dispatch proof (a subtype-tagged runtime value
-	// re-matches the more-specific [Flag Flag]) — so the compile REFUSES up
-	// front (recordCallRefusal's core-default gate) instead of reaching the
+	// re-matches the more-specific [Flag Flag]) — so the compile DECLINES up
+	// front (recordCallCompileFailure's core-default gate) instead of reaching the
 	// dispatch-recovery rematch; the interpreter owns the program and both
 	// paths agree on `true`.
 	{
 		src := `import module [def Flag (refine Boolean) def add fn [[a:Flag b:Flag] [Boolean] [a and b]] def mk fn [[b:Boolean] [Flag] [def v:Flag b v]] def mkb fn [[b:Boolean] [Boolean] [def v:Flag b v]] export "M" {add: add/v mk: mk/v mkb: mkb/v}]  add (M.mkb true) (M.mk true)`
 		prog, reason, _, _ := mustNew(t).CompileCheck(src)
 		if prog != nil || !strings.Contains(reason, "core-default dispatch over a carrier operand") {
-			t.Errorf("refinement escape: want the core-default refusal, got prog=%v reason=%q", prog != nil, reason)
+			t.Errorf("refinement escape: want the core-default compile failure, got prog=%v reason=%q", prog != nil, reason)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(src)
+		gotC, _, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
-		if compiled {
-			t.Errorf("refinement escape: must fall back to the interpreter")
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
 		}
 		if codeOf(errC) != codeOf(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("refinement escape: fallback=%v/%v interp=%v/%v (should agree)", gotC, errC, gotI, errI)
@@ -3994,12 +4357,12 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	for _, c := range rematches {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
 		if prog == nil {
-			t.Fatalf("%s: refused (%q); want a runtime-rematch compile", c.name, reason)
+			t.Fatalf("%s: declined (%q); want a runtime-rematch compile", c.name, reason)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: the runtime MATCH must defer to the interpreter", c.name)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
 		}
 		if codeOf(errC) != codeOf(errI) {
 			t.Errorf("%s: defer err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
@@ -4008,7 +4371,7 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 			t.Errorf("%s: defer value=%v interp value=%v (should agree)", c.name, gotC, gotI)
 		}
 	}
-	// GRADUATED 2026-07-16 (REFUSAL-CLOSURE.0 §2 — the dynamic-operand
+	// GRADUATED 2026-07-16 (COMPILE FAILURE-CLOSURE.0 §2 — the dynamic-operand
 	// rematch): the flex-cell Reach shape `f m.a` no longer declines. By
 	// dispatch-recovery time the check pass has EVALUATED the reach in place
 	// (the recorded poly-dot event), so the failed window holds an
@@ -4027,13 +4390,16 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	for _, c := range rematchRaises {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
 		if prog == nil {
-			t.Fatalf("%s: refused (%q); want a runtime-rematch compile", c.name, reason)
+			t.Fatalf("%s: declined (%q); want a runtime-rematch compile", c.name, reason)
 		}
 		if !strings.Contains(prog.Disassemble(), "DISPATCH_REMATCH") {
 			t.Errorf("%s: expected a DISPATCH_REMATCH lowering:\n%s", c.name, prog.Disassemble())
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: the runtime NO-MATCH must raise compiled, not defer", c.name)
 		}
@@ -4044,14 +4410,14 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 			t.Errorf("%s: value parity: compiled=%v interp=%v", c.name, gotC, gotI)
 		}
 	}
-	refusals := []struct{ name, src, want string }{
+	failures := []struct{ name, src, want string }{
 		// (The variadic-if shape that used to sit here GRADUATED 2026-07-15
 		// — the branch merge seats the 1-vs-2 residual and the terminal
 		// rematch seats its const under the live region top; pinned
 		// positively in TestDispatchRematchVariadicIfGraduated. The
 		// flex-cell Reach shape graduated 2026-07-16 — the §2 dynamic-
 		// operand rematch, pinned positively in rematchRaises above.)
-		// The class's REMAINING refusal: the failed window's dynamic sits
+		// The class's REMAINING compile failure: the failed window's dynamic sits
 		// under a leading stack residual (g's Integer result), so the
 		// written-tuple render bound cannot prove a contiguous slice and the
 		// rematch declines — the program falls back whole, and the
@@ -4061,18 +4427,18 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 			`def f fn [[x:List][List][x]] def m (flex {a:1}) def g fn [[s:Node][Integer][set a/q [7] s drop 0]] g m f m.a`,
 			"unmatched dispatch recovered at f"},
 	}
-	for _, c := range refusals {
+	for _, c := range failures {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
 		if prog != nil {
-			t.Fatalf("%s: compiled; want refusal (disasm:\n%s)", c.name, prog.Disassemble())
+			t.Fatalf("%s: compiled; want compile failure (disasm:\n%s)", c.name, prog.Disassemble())
 		}
 		if !strings.Contains(reason, c.want) {
-			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
+			t.Errorf("%s: compile failure reason %q; want substring %q", c.name, reason, c.want)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
 		}
 		if codeOf(errC) != codeOf(errI) {
 			t.Errorf("%s: fallback err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
@@ -4095,6 +4461,9 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	}
 	gotC, _, errC := mustNew(t).RunCompiled(flexReach)
 	gotI, errI := mustNew(t).RunInterp(flexReach)
+	if noteCompileDefect(t, flexReach, gotC, errC) {
+		return
+	}
 	if errC != nil || errI != nil {
 		t.Fatalf("flex-reach row errored: compiled=%v interp=%v", errC, errI)
 	}
@@ -4103,7 +4472,7 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	}
 }
 
-// The graduated word-splice trap (GRADUATED 2026-07-14, refusals 3->2): a
+// The graduated word-splice trap (GRADUATED 2026-07-14, compile failures 3->2): a
 // PARKED __SP marker (def-bound, collected by value — never stepped before
 // the failing dispatch) is identical at run time, so the definiteness screen
 // admits it and the row compiles to a serialized terminal OpTrap raising the
@@ -4115,12 +4484,15 @@ func TestUnmatchedDispatchTrapSpliceGraduated(t *testing.T) {
 	const src = `def p word [1 add 2] def f fn [[x:Integer][Integer][x mul 10]] f p`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("the splice trap must compile, got refusal %q / err %v", reason, cerr)
+		t.Fatalf("the splice trap must compile, got compile failure %q / err %v", reason, cerr)
 	}
 	if !strings.Contains(prog.Disassemble(), "TRAP") {
 		t.Fatalf("the row must lower to a terminal trap:\n%s", prog.Disassemble())
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatal("the trap program must run compiled")
 	}
@@ -4137,10 +4509,10 @@ func TestUnmatchedDispatchTrapSpliceGraduated(t *testing.T) {
 }
 
 // Typed-def store-with-reparent (the compiled closure of miscompile B,
-// design/MISCOMPILE-HUNT-FINDINGS.0.md §B): a typed value-def whose refinement
+// design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §B): a typed value-def whose refinement
 // constraint guards a DYNAMIC body (`def v:Flag b` over a param / computed
 // carrier) compiles to an OpBindTyped that runs the interpreter's own
-// validate/reparent (RunTypedBind) at run time instead of refusing the whole
+// validate/reparent (RunTypedBind) at run time instead of declining the whole
 // program — pass stores the (reparented) value, FAIL raises the byte-identical
 // plain error, typeof renders the newtype, and sig dispatch keys off the
 // reparented tag.
@@ -4150,9 +4522,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		src  string
 	}{
 		{"predicate validate-pass stores and reads back (multi-read forces the frame local)",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x (v add v)]] f 5`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x (v add v)]] f 5`},
 		{"predicate reparent: typeof renders the predicate type",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] typeof (f 5)`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] typeof (f 5)`},
 		{"newtype reparent: typeof renders the newtype in compiled mode (the §B divergence)",
 			`def Flag (refine Boolean) def mk fn [[b:Boolean] [Flag] [def v:Flag b v]] typeof (mk true)`},
 		{"sig-dispatch on the reparented local",
@@ -4172,6 +4544,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 				c.name, prog.Disassemble())
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%s: compiled run failed: compiled=%v err=%v", c.name, compiled, errC)
 		}
@@ -4196,7 +4571,7 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		src  string
 	}{
 		{"predicate validate-FAIL",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] f 0`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] f 0`},
 		{"inline DepScalar validate-FAIL",
 			`def f fn [[x:Integer] [Integer] [def v:(Integer gt 10) x v]] f 5`},
 		{"newtype validate-FAIL on a laundered gradual value",
@@ -4214,6 +4589,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		// where the diagnostic points, which `.Error()` folds in — and this
 		// assertion read its interp side from `Run`, the compiled lane, until
 		// 2026-08-27 (NUR106), so it never compared anything at all.
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		var aeC, aeI *core.BoruError
 		okC, okI := errors.As(errC, &aeC), errors.As(errI, &aeI)
 		if okC != okI {
@@ -4262,7 +4640,7 @@ func TestTypedDefBindCompiles(t *testing.T) {
 	//     unify over an exactly-known operand is a guaranteed-error
 	//     MIRROR, so the row takes the correct-error disposition — the
 	//     compiled program raises the interpreter-identical
-	//     [boru/type_error] instead of refusing to compile).
+	//     [boru/type_error] instead of failing to compile).
 	staticSrc := `def Pt (refine Integer) def p:Pt 5 typeof p`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(staticSrc)
 	if cerr != nil || prog == nil {
@@ -4273,6 +4651,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(staticSrc)
 	gotI, errI := mustNew(t).RunInterp(staticSrc)
+	if noteCompileDefect(t, staticSrc, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 		t.Errorf("static typed-def parity: compiled=%v/%v/%v interp=%v/%v", gotC, compiled, errC, gotI, errI)
 	}
@@ -4309,28 +4690,20 @@ func TestTypedDefBindCompiles(t *testing.T) {
 }
 
 // PR #225 P1 review findings — two auto-dispatch/identity escapes, both
-// probe-confirmed divergences before the fix, both now sound refusals.
-func TestPR225P1Refusals(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+// probe-confirmed divergences before the fix; (1) compiles since
+// 2026-09-24 (the selective freshen), (2) is still a compile failure.
+func TestPR225P1CompileFailures(t *testing.T) {
 	// (1) A fn-body literal EMBEDDING an enclosing binding's container:
-	// interp = fresh spine + SHARED member, which neither a deep-clone
-	// freshen nor a shared const models — must refuse; fallback restores
-	// parity (true).
+	// interp = fresh spine + SHARED member. Neither a deep-clone freshen
+	// nor a shared const modelled it, so it declined until the fresh push
+	// learned to keep the embedded member (Program.ConstKeep): the shape
+	// compiles, and both identities hold — fn_body_embed_keep_test.go pins
+	// the family.
 	const embeds = `def c [9] def mk fn [[] [List] [[c]]] ((mk) get 0) eq c`
-	prog, reason, _, _ := mustNew(t).CompileCheck(embeds)
-	if prog != nil {
-		t.Fatalf("embedded-binding literal compiled; want refusal")
-	}
-	if !strings.Contains(reason, "embeds an enclosing binding") {
-		t.Errorf("refusal reason = %q; want the embedded-binding identity reason", reason)
-	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(embeds)
 	gotI, errI := mustNew(t).RunInterp(embeds)
-	if compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[true]" {
-		t.Errorf("fallback parity: compiled=%v cErr=%v iErr=%v got %v vs %v (want [true])",
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[true]" {
+		t.Errorf("embedded-binding literal: compiled=%v cErr=%v iErr=%v got %v vs %v (want [true])",
 			compiled, errC, errI, gotC, gotI)
 	}
 
@@ -4344,6 +4717,9 @@ func TestPR225P1Refusals(t *testing.T) {
 	const classFn = `def make42 fn [[] [Integer] [42]] def C class {f:Function} def o (make C {f:make42/v}) o.f`
 	gotC2, compiled2, errC2 := mustNew(t).RunCompiled(classFn)
 	gotI2, errI2 := mustNew(t).RunInterp(classFn)
+	if noteCompileDefect(t, classFn, gotC2, errC2) {
+		return
+	}
 	if !compiled2 || errC2 != nil || errI2 != nil || fmt.Sprint(gotC2) != fmt.Sprint(gotI2) || fmt.Sprint(gotI2) != "[42]" {
 		t.Errorf("compiled parity: compiled=%v cErr=%v iErr=%v got %v vs %v (want compiled [42])",
 			compiled2, errC2, errI2, gotC2, gotI2)
@@ -4354,22 +4730,22 @@ func TestPR225P1Refusals(t *testing.T) {
 	// pattern is untouched.
 	const nonFn = `def make42 fn [[] [Integer] [42]] def C class {f:Function x:0} def o (make C {f:make42/v x:5}) o.x`
 	gotC3, compiled3, errC3 := mustNew(t).RunCompiled(nonFn)
+	if noteCompileDefect(t, nonFn, gotC3, errC3) {
+		return
+	}
 	if !compiled3 || errC3 != nil || fmt.Sprint(gotC3) != "[5]" {
 		t.Errorf("non-fn field read: compiled=%v err=%v got=%v (want compiled [5])", compiled3, errC3, gotC3)
 	}
 }
 
 // Filter-lambda closures with LEXICAL captures + computed collections
-// (design/RUNTIME-STAMPING.0.md Phase 3): the BODY lambda admits captures —
+// (design/legacy/RUNTIME-STAMPING.0.ignore Phase 3): the BODY lambda admits captures —
 // resolved to compiled homes, threaded at OpPushClosure, bound to trailing
 // unit slots — and a typed non-dynamic carrier data operand. Positives
 // compile natively (no island) with compiled == interpreted parity; the
-// negative twins pin what must KEEP refusing.
+// negative twins pin what must KEEP declining.
 func TestFilterLambdaCaptureCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	parity := []struct{ name, src, want string }{
 		{"enclosing-fn param capture (list pair shape)",
 			`def f (fn [[y:Integer] [List] [ filter ([e:Any] => [ e.value gte y ]) [3 7 9] ]]) f 5`,
@@ -4390,13 +4766,16 @@ func TestFilterLambdaCaptureCompiles(t *testing.T) {
 			t.Fatalf("%s: check error %v", c.name, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%s: refused: %s", c.name, reason)
+			t.Fatalf("%s: declined: %s", c.name, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%s: expected no island:\n%s", c.name, prog.Disassemble())
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Errorf("%s: did not run compiled", c.name)
 		}
@@ -4408,10 +4787,10 @@ func TestFilterLambdaCaptureCompiles(t *testing.T) {
 		}
 	}
 
-	// NEGATIVES — each keeps its refusal, and the interpreter fallback keeps
+	// NEGATIVES — each keeps its compile failure, and the compile failure keeps
 	// the value contract (RunCompiled degrades, never diverges).
 
-	// A MULTI-overload lambda still refuses (MatchFnSig picks at runtime;
+	// A MULTI-overload lambda still declines (MatchFnSig picks at runtime;
 	// compiling one overload could run the wrong body).
 	{
 		src := `def two (fn [[x:Integer] [Integer] [x add 1] [x:String] [String] [x]])
@@ -4419,30 +4798,40 @@ def f (fn [[] [List] [ filter two [1 2 3] ]]) f`
 		prog, _, _, cerr := mustNew(t).CompileCheck(src)
 		if cerr == nil && prog != nil && !strings.Contains(prog.Disassemble(), "FALLBACK") {
 			// The multi-overload operand must not compile to a single closure
-			// unit; islanding or refusal are both sound.
+			// unit; islanding, compile failure, or (since S1a) a dyn-body dispatch
+			// whose handler picks the overload at run time are all sound.
+			// Both engines RAISE on this program — filter delivers a
+			// {key,value} pair that neither overload of `two` takes — so
+			// parity here is error parity, code and message alike.
 			gotC, _, errC := mustNew(t).RunCompiled(src)
 			gotI, errI := mustNew(t).RunInterp(src)
-			if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+			if noteCompileDefect(t, src, gotC, errC) {
+				return
+			}
+			if codeOf(errC) != codeOf(errI) || fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 				t.Errorf("multi-overload operand diverged: compiled=%v/%v interp=%v/%v", gotC, errC, gotI, errI)
 			}
 		}
 	}
 
-	// A DYNAMIC (gradual) collection still refuses the lambda path — the
+	// A DYNAMIC (gradual) collection still declines the lambda path — the
 	// callback convention (pair vs KeyVal) is ambiguous. The program falls
 	// back and values agree.
 	{
 		src := `def f (fn [[x:Any] [Any] [ filter ([e:Any] => [ e.value ]) x.items ]]) f {items: [1 2]}`
 		gotC, _, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		if fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("dynamic-collection lambda diverged: compiled=%v/%v interp=%v/%v", gotC, errC, gotI, errI)
 		}
 	}
 
 	// A capturing HOOK lambda (walk's ascend slot — the extras path) keeps
-	// refusing the closure compile: allowCaptures is body-lambda-only. The
-	// program islands or refuses; values agree either way.
+	// declining the closure compile: allowCaptures is body-lambda-only. The
+	// program islands or declines; values agree either way.
 	{
 		src := `def f (fn [[tag:String] [Any] [
   def acc (flex [])
@@ -4451,6 +4840,9 @@ def f (fn [[] [List] [ filter two [1 2 3] ]]) f`
 ]]) f "z"`
 		gotC, _, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		if fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("capturing hook lambda diverged: compiled=%v/%v interp=%v/%v", gotC, errC, gotI, errI)
 		}

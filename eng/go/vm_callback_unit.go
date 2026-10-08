@@ -22,15 +22,26 @@ import (
 // a runtime-stamped body reached mid-run stamped successfully and then ran on
 // the interpreter anyway (eng/go/vm_foreign_unit.go). handled=false now means
 // only a ref this seam genuinely cannot run.
-func invokeCompiledUnit(r *core.Registry, ref *compiler.CompiledFnRef, args []core.Value) (res []core.Value, err error, ran bool) {
+func invokeCompiledUnit(r *core.Registry, ref *compiler.CompiledFnRef, args []core.Value, named bool) (res []core.Value, err error, ran bool) {
 	if r.CanHostVM() {
-		res, err = RunUnit(ref, r, args)
+		res, err = runUnit(ref, r, args, named)
 		return res, err, true
 	}
 	if r.NestedRunner != nil {
-		if res, handled, err := r.NestedRunner(ref, args); handled {
+		var h any = ref
+		if named {
+			h = namedUnitRef{ref}
+		}
+		if res, handled, err := r.NestedRunner(h, args); handled {
 			return res, err, true
 		}
 	}
 	return nil, nil, false
 }
+
+// namedUnitRef is a CompiledFnRef handed to the nested runner for a NAMED
+// fn call (InvokeCompiledStrict): the unit's root RET takes the frame's
+// return contract rather than the fn-value seam's trim (NUR191). The
+// registry's NestedRunner takes the ref as `any`, so the named entry rides
+// as this wrapper and runUnitNested unwraps it.
+type namedUnitRef struct{ ref *compiler.CompiledFnRef }

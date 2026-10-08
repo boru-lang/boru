@@ -32,7 +32,7 @@ func rrRun(t *testing.T, src string) string {
 		t.Fatalf("RunCompiled(%q): %v", src, cerr)
 	}
 	if !compiled {
-		t.Fatalf("RunCompiled(%q): fell back to the interpreter", src)
+		t.Fatalf("RunCompiled(%q): did not compile", src)
 	}
 	return fmt.Sprintf("%v", out)
 }
@@ -51,7 +51,7 @@ func TestResidualRebuildCompilesWithParity(t *testing.T) {
 		// A DROPPED call result: the value is computed (its call still runs)
 		// and simply not pushed back.
 		{`(1 add 2) (3 add 4) drop`, "[3]"},
-		// An INERT value beneath a call result — the shape whose refusal read
+		// An INERT value beneath a call result — the shape whose compile failure read
 		// "call result above a literal".
 		{`(1 add 2) 9 swap`, "[9 3]"},
 		{`(1 add 2) (3 add 4) 'x' 2 roll`, "[7 x 3]"},
@@ -94,7 +94,7 @@ func TestResidualRebuildOnlyWhenNeeded(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%q: refused %q err=%v", src, reason, cerr)
+			t.Fatalf("%q: declined %q err=%v", src, reason, cerr)
 		}
 		if strings.Contains(prog.Disassemble(), "STORE_LOCAL") {
 			t.Errorf("%q: an in-order residual must not spill:\n%s", src, prog.Disassemble())
@@ -107,7 +107,7 @@ func TestResidualRebuildOnlyWhenNeeded(t *testing.T) {
 // RESIDUAL reconciliation, which runs after the event lowering; a frame
 // count written back before it left every temp outside the frame, and the
 // program then failed its first STORE_LOCAL at run time and fell back to the
-// interpreter silently — right answer, no refusal reason, no compiled run.
+// interpreter silently — right answer, no compile failure reason, no compiled run.
 func TestResidualRebuildFrameCountsTheSpills(t *testing.T) {
 	const src = `(1 add 2) (3 add 4) (5 add 6) 2 roll`
 	a, err := New()
@@ -116,7 +116,7 @@ func TestResidualRebuildFrameCountsTheSpills(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("refused %q err=%v", reason, cerr)
+		t.Fatalf("declined %q err=%v", reason, cerr)
 	}
 	dis := prog.Disassemble()
 	if !strings.Contains(dis, "STORE_LOCAL l2") {
@@ -135,7 +135,7 @@ func TestResidualRebuildFrameCountsTheSpills(t *testing.T) {
 // closure, the value both guards below are about.
 const mkClosure = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end `
 
-// TestShuffledClosureRefusesAndTheInterpreterApplies pins NUR131 from the
+// TestShuffledClosureDoesNotLowerAndTheInterpreterApplies pins NUR131 from the
 // side that matters: a full-stack shuffle over a PRODUCED closure must not
 // compile, because the interpreter re-steps what the shuffle re-pushes and
 // the compiled lane would leave it as data.
@@ -143,8 +143,8 @@ const mkClosure = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] e
 // The first four rows COMPILED TO WRONG ANSWERS before this guard, and they
 // did so on the merge base too — the defect is the fold's, not the residual
 // rebuild's, and it was found reviewing the rebuild. Each row's `want` is
-// the interpreter's answer, which is what the refusal preserves.
-func TestShuffledClosureRefusesAndTheInterpreterApplies(t *testing.T) {
+// the interpreter's answer, which is what the compile failure preserves.
+func TestShuffledClosureDoesNotLowerAndTheInterpreterApplies(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		// The closure is duplicated onto the top and fires twice: 5*3*3.
 		{mkClosure + `5 (mk 3) 0 pick`, "[45]"},
@@ -155,8 +155,9 @@ func TestShuffledClosureRefusesAndTheInterpreterApplies(t *testing.T) {
 		// A pick that copies the closure over a value further down.
 		{mkClosure + `7 (mk 3) 1 pick`, "[7 21]"},
 		// The residual REBUILD's own screen (a different guard, same rule):
-		// a literal beneath a produced closure, and two of them permuted.
-		{mkClosure + `5 (mk 3)`, "[5 fn (Integer)]"},
+		// two produced closures permuted. (A literal beneath ONE produced
+		// closure, `5 (mk 3)`, seats as the parked pair since NUR181's fix —
+		// TestDefBoundClosureParkParity, def_bound_closure_park_test.go.)
 		{mkClosure + `(mk 3) (mk 4) 1 roll`, "[fn (Integer) fn (Integer)]"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
@@ -175,10 +176,10 @@ func TestShuffledClosureRefusesAndTheInterpreterApplies(t *testing.T) {
 				t.Fatalf("check: %v", cerr)
 			}
 			if prog != nil {
-				t.Fatalf("a shuffled produced closure must refuse — the interpreter re-steps it")
+				t.Fatalf("a shuffled produced closure must decline — the interpreter re-steps it")
 			}
 			if reason == "" {
-				t.Error("a refusal must carry a reason")
+				t.Error("a compile failure must carry a reason")
 			}
 			b, err := New()
 			if err != nil {

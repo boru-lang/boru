@@ -1,7 +1,7 @@
 package check
 
 // Seam-6a wave B: direct in-package unit tests for the previously
-// unreached guard / refusal arms in carrier.go (the check-mode compile
+// unreached guard / decline arms in carrier.go (the check-mode compile
 // helpers). Per design/TEST-SEAMS.10.md these are driven by direct calls
 // with synthetic Values and, where a recorder gate applies, an armed
 // EmitState (r.Check.Emit = NewEmitState()). No package globals are

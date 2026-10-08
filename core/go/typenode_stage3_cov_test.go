@@ -70,17 +70,17 @@ func TestS3DisjunctUnifierNodeArms(t *testing.T) {
 		t.Fatalf("disjunct node must carry a DisjunctUnifier, got %T", e.TypeDef.Behavior())
 	}
 	// Same-node pair settles structurally.
-	if _, err := u.Unify(node, node); err != nil {
+	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
 	// Candidate on either side of the node.
-	if out, err := u.Unify(NewInteger(5), node); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(NewInteger(5), node, nil); err != nil || !IsConcrete(out) {
 		t.Errorf("5 must unify through the Integer alternative (candidate left): %v", err)
 	}
-	if out, err := u.Unify(node, NewInteger(5)); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(out) {
 		t.Errorf("5 must unify through the Integer alternative (candidate right): %v", err)
 	}
-	if _, err := u.Unify(NewString("x"), node); err == nil {
+	if _, err := u.Unify(NewString("x"), node, nil); err == nil {
 		t.Error("a non-member must fail definitively")
 	}
 }
@@ -119,14 +119,14 @@ func TestS3NegationUnifierNodeArms(t *testing.T) {
 	if !ok {
 		t.Fatalf("negation node must carry a NegationUnifier, got %T", e.TypeDef.Behavior())
 	}
-	if _, err := u.Unify(node, node); err != nil {
+	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
-	if out, err := u.Unify(node, NewInteger(5)); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(out) {
 		t.Errorf("a non-String is a member of the complement (candidate right): %v", err)
 	}
-	if _, err := u.Unify(NewString("x"), node); err == nil {
-		t.Error("a String must be refused by tnot String (candidate left)")
+	if _, err := u.Unify(NewString("x"), node, nil); err == nil {
+		t.Error("a String must be declined by tnot String (candidate left)")
 	}
 }
 
@@ -147,15 +147,15 @@ func TestS3FnUndefUnifierNodeArms(t *testing.T) {
 	if !ok {
 		t.Fatalf("fn-shape node must carry an FnUndefUnifier, got %T", e.TypeDef.Behavior())
 	}
-	if _, err := u.Unify(node, node); err != nil {
+	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
 	// Carrier over-approximation: a Function carrier is admissible, a
 	// String carrier provably is not.
-	if out, err := u.Unify(node, NewCarrier(TFunction)); err != nil || !out.Carrier {
+	if out, err := u.Unify(node, NewCarrier(TFunction), nil); err != nil || !out.Carrier {
 		t.Errorf("a Function carrier is admissible against the shape node: %v", err)
 	}
-	if _, err := u.Unify(NewCarrier(TString), node); err == nil {
+	if _, err := u.Unify(NewCarrier(TString), node, nil); err == nil {
 		t.Error("a String carrier can never be a function")
 	}
 	// Concrete candidates through the structural signature check.
@@ -164,7 +164,7 @@ func TestS3FnUndefUnifierNodeArms(t *testing.T) {
 		Params:  []FnParam{{Name: "x", Type: TInteger}},
 		Returns: []*Type{TString},
 	}}})
-	if _, err := u.Unify(match, node); err != nil {
+	if _, err := u.Unify(match, node, nil); err != nil {
 		t.Errorf("a shape-conforming fn must be admitted: %v", err)
 	}
 	mismatch := NewFunction(FnDefInfo{Name: "s3no", Signatures: []Signature{{
@@ -172,8 +172,8 @@ func TestS3FnUndefUnifierNodeArms(t *testing.T) {
 		Params:  []FnParam{{Name: "x", Type: TBoolean}},
 		Returns: []*Type{TBoolean},
 	}}})
-	if _, err := u.Unify(node, mismatch); err == nil {
-		t.Error("a non-conforming fn must be refused")
+	if _, err := u.Unify(node, mismatch, nil); err == nil {
+		t.Error("a non-conforming fn must be declined")
 	}
 }
 
@@ -194,25 +194,25 @@ func TestS3SurfaceUnifierNodeArms(t *testing.T) {
 	exposer := r.Types.MintType("Class/S3Circle", TClass)
 	info.Conform[exposer.ID] = true
 
-	if _, err := u.Unify(node, node); err != nil {
+	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
 	// Type-level containment: the conformance-set walk, both orderings.
-	if _, err := u.Unify(node, NewTypeLiteral(exposer)); err != nil {
+	if _, err := u.Unify(node, NewTypeLiteral(exposer), nil); err != nil {
 		t.Errorf("an exposer's node satisfies the bound: %v", err)
 	}
-	if _, err := u.Unify(NewTypeLiteral(exposer), node); err != nil {
+	if _, err := u.Unify(NewTypeLiteral(exposer), node, nil); err != nil {
 		t.Errorf("an exposer's node satisfies the bound (swapped): %v", err)
 	}
-	if _, err := u.Unify(node, NewTypeLiteral(TString)); err == nil {
+	if _, err := u.Unify(node, NewTypeLiteral(TString), nil); err == nil {
 		t.Error("a non-exposer node must fail the containment walk")
 	}
 	// Value-level candidates route through Match's parent-chain walk.
-	if _, err := u.Unify(node, NewCarrier(exposer)); err != nil {
+	if _, err := u.Unify(node, NewCarrier(exposer), nil); err != nil {
 		t.Errorf("a carrier tagged at an exposer conforms: %v", err)
 	}
-	if _, err := u.Unify(node, NewCarrier(TString)); err == nil {
-		t.Error("a carrier outside the conformance set must be refused")
+	if _, err := u.Unify(node, NewCarrier(TString), nil); err == nil {
+		t.Error("a carrier outside the conformance set must be declined")
 	}
 }
 
@@ -237,11 +237,11 @@ func (d s3DelegateWrap) DelegatesMatchTo() TypeBehavior { return d.to }
 
 func TestS3IsPredicateTypeNodeShapes(t *testing.T) {
 	r := newTestRegistry(t)
-	pred := NewFunction(FnDefInfo{Name: "s3p", Signatures: []Signature{{
+	pred := MarkPredicateFn(NewFunction(FnDefInfo{Name: "s3p", Signatures: []Signature{{
 		Args:    []*Type{TInteger},
 		Params:  []FnParam{{Name: "x", Type: TInteger}},
 		Returns: []*Type{TBoolean},
-	}}})
+	}}}))
 	if err := InstallType(r, "S3Pos", pred); err != nil {
 		t.Fatalf("install predicate: %v", err)
 	}
@@ -271,14 +271,14 @@ func TestS3IsPredicateTypeNodeShapes(t *testing.T) {
 }
 
 // The Any-input predicate mints under Function itself — a dispatch
-// category with no concrete base (design/TYPE-REPRESENTATION.1.md §N3).
+// category with no concrete base (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
 func TestS3AnyInputPredicateMintsUnderFunction(t *testing.T) {
 	r := newTestRegistry(t)
-	pred := NewFunction(FnDefInfo{Name: "s3any", Signatures: []Signature{{
+	pred := MarkPredicateFn(NewFunction(FnDefInfo{Name: "s3any", Signatures: []Signature{{
 		Args:    []*Type{TAny},
 		Params:  []FnParam{{Name: "x", Type: TAny}},
 		Returns: []*Type{TBoolean},
-	}}})
+	}}}))
 	if err := InstallType(r, "S3Gate", pred); err != nil {
 		t.Fatalf("install any-input predicate: %v", err)
 	}
@@ -342,12 +342,12 @@ func TestS3NodeContentConsumerArms(t *testing.T) {
 	}
 
 	// MakeFieldValueR: a constraint node with a Unify capability runs
-	// its rule — admitting a member, refusing a non-member.
+	// its rule — admitting a member, declining a non-member.
 	if out, err := MakeFieldValueR(NewInteger(50), bigLit, r); err != nil || !IsConcrete(out) {
 		t.Errorf("50 satisfies the refinement field constraint: %v", err)
 	}
 	if _, err := MakeFieldValueR(NewInteger(5), bigLit, r); err == nil {
-		t.Error("5 must be refused by the refinement field constraint")
+		t.Error("5 must be declined by the refinement field constraint")
 	}
 
 	// MakeClassFieldValue: a class-content node resolves to its schema
@@ -360,7 +360,7 @@ func TestS3NodeContentConsumerArms(t *testing.T) {
 	src := NewOrderedMap()
 	src.Set("a", NewInteger(1))
 	// The nested-class rule wants an INSTANCE, not a raw map — the
-	// refusal naming the class proves the node resolved to its schema.
+	// compile failure naming the class proves the node resolved to its schema.
 	if _, err := MakeClassFieldValue(NewMap(src), NewTypeLiteral(cdef), r); err == nil ||
 		!strings.Contains(err.Error(), "S3CC") {
 		t.Errorf("the class-content node must resolve to its schema for the nested-class probe, got %v", err)

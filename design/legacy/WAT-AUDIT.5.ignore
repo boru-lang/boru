@@ -1,0 +1,708 @@
+# WAT Audit — Surprising Behaviours of the Reference Implementation
+
+Status: **observational + suggested remediations**. This records
+behaviours of the `boru` reference implementation (as built from this
+tree) that are likely to surprise a user, contradict the prose
+documentation, or both, and proposes a fix for each. No remediation
+here has been applied to engine behaviour; the only committed change is
+the companion documentation pass, which makes the prose match what the
+binary actually does.
+
+Every entry below was reproduced against `cmd/go/bin/boru` built at the
+audit commit. Commands are shown exactly as run. `=>` in this document
+means "evaluates to" (a human annotation — see Exhibit U for why that
+matters), not literal syntax.
+
+> **Post-audit note.** The float64 type was since renamed `Decimal` →
+> `Float` (Exhibit L, resolved). Exhibit transcripts below predate that
+> rename and still show `Decimal`; read it as `Float`. The name
+> `Decimal` is now reserved for a future exact base-10 type.
+
+## How to read this
+
+Each exhibit is tagged with a disposition:
+
+| Tag | Meaning |
+| --- | --- |
+| **doc** | The implementation is defensible; the *docs* were wrong. Fixed in the documentation pass. |
+| **bug** | A clear implementation defect (wrong answer, nonsensical error, or crash). Left unfixed by request; recorded here. |
+| **design** | A deliberate-looking choice with sharp edges. Needs an owner to confirm or revise. Documented as-is. |
+
+The documentation pass that accompanies this audit touches only **doc**
+items plus accuracy notes for **design** items. No **bug** was fixed.
+
+Each exhibit ends with a **Fix** — a concrete remediation (the change,
+where it lands in the tree, and the compatibility risk). These are
+recommendations, not yet applied; see
+[Suggested remediation priority](#suggested-remediation-priority) for
+sequencing. ⭐ marks unambiguous, low-risk correctness wins.
+
+---
+
+## A. The flagship infix example does not exist — `doc`
+
+The README, EXPLANATION, and TUTORIAL all sell infix reading with
+`"hello" upper`. There is no `upper` word in the base environment.
+
+```
+$ boru -e '"hello" upper'
+error: [boru/undefined_word]: undefined word: upper
+```
+
+The real word is `StringUtil.upper`, behind `import "boru:string-util"
+end`. More broadly, `boru describe` documents **159** words; **90** of
+them report `undefined word` when invoked, because `describe` lists
+module words (`abs`, `changecase`, `split`, `trim`, …) under bare names
+with no import hint. `describe abs` shows docs for a word that
+`boru do -- '-1 abs'` cannot call.
+
+> **Fix.** Done in docs (examples now use `StringUtil.upper` with the
+> import shown). Code follow-up: make `boru describe` annotate module
+> words with their import path and qualified name (a small change in
+> `genhelp` / the `describe` handler) so the help system stops listing
+> words bare that the base environment can't call.
+
+## B. The CLI cannot evaluate a leading negative number — `bug`
+
+```
+$ boru do '-7 0 add'
+flag provided but not defined: -7 0 add
+$ boru do -- '-7 0 add'
+-7
+```
+
+A leading `-7` is parsed as an unknown flag. The `--` separator works
+but is undocumented.
+
+> **Fix.** ⭐ `cmd/go/internal/do/do.go:29` uses
+> `flag.NewFlagSet(…, ContinueOnError)` + `fs.Parse(args)`; Go's flag
+> package rejects `-7`. Since all perms flags are `--`-prefixed, split
+> argv at the first token that isn't a recognized `--flag` (or is `--`),
+> `Parse` only that head, and join the tail as the expression. Apply the
+> same to the `-e` path in `run`/`main.go`. Low risk — only widens what
+> is accepted; add a regression test for `-7 0 add`. (`--` is now
+> documented in CLI.md as the interim workaround.)
+
+## C. Forward collection breaks composition — `design`
+
+```
+$ boru do '3 4 add 2 mul'        => 18      # naive reading: 14
+$ boru do -- '1 lt 2 lt 3'       => 1 false 2
+```
+
+`add` collects the `2` that visually belongs to `mul`, computing
+`4+2=6`, leaving `3 6` for `mul`. Comparisons don't chain; they leave
+debris. The "reads naturally" claim holds only for a single isolated
+operation.
+
+> **Fix.** This is the language's defining mechanic — do **not** change
+> the semantics. Remediate with tooling: add a `boru check` warning when
+> a value computed by one word is stranded because a following word
+> forward-collected past it (the `a b op c op2` shape). That catches the
+> trap at author time without altering behaviour. Already documented;
+> teaching the `/s` (stack-only) modifier (`mul/s`) gives readers an
+> explicit escape. See also AD.
+
+## D. "Keep each step on its own line" is false; the REPL resets the stack — `doc`
+
+EXPLANATION says you can avoid Exhibit C by keeping each step on its own
+line. Newlines are **not** barriers in a file:
+
+```
+$ printf '3 4 add\n2 mul\n' > t.boru && boru t.boru   => 18
+```
+
+The advice appears to work in the REPL only because the REPL **wipes the
+stack between lines**:
+
+```
+$ printf '3 4 add\n2 mul\n' | boru repl
+7
+error: no matching signature for mul   (stack: 2)
+```
+
+So the same two lines give `18` in a file and `7` + a crash in the REPL.
+
+> **Fix.** Done in docs (the "own line" advice was corrected and the
+> REPL's per-line stack reset is now documented). No code change needed;
+> the file/REPL split is intentional behaviour, it was just mis-described.
+
+## E. String truthiness: only `""` and exactly `"false"` are falsy — `design`
+
+```
+$ boru do -- 'if "false" ["T"] ["F"]'   => F
+$ boru do -- 'if "FALSE" ["T"] ["F"]'   => T
+$ boru do -- 'if "0"     ["T"] ["F"]'   => T
+$ boru do -- 'if "no"    ["T"] ["F"]'   => T
+```
+
+Source: `eng/go/core_helpers.go:494` (`case "false", "":`). A non-empty
+string is truthy unless it is exactly the lowercase word `"false"`.
+`if []` is a separate inconsistency: it errors (`condition produced no
+value`) rather than being falsy like `""`.
+
+> **Fix.** Remove the string-content special case in
+> `CoerceBoolean` (`eng/go/core_helpers.go:494`): a non-empty string is
+> truthy, full stop (only `""` falsy). Stringly truthiness with one
+> magic lowercase token is indefensible. Keep the number / `none` /
+> empty-collection rules. Risk: changes `if "false"`; grep `lang/spec`
+> for dependents first.
+
+## F. `and` / `or` return operands, not booleans — `design`
+
+```
+$ boru do -- '1 2 and'      => 2
+$ boru do -- 'true 5 and'   => 5
+$ boru do -- '0 9 or'       => 9
+```
+
+`describe and` says "Logical AND of two booleans." The implementation is
+Python-style operand-returning short-circuit over any type.
+
+> **Fix.** In `lang/go/native/native_boolean.go`, either (a) make `and`/
+> `or` strict `Boolean × Boolean → Boolean` and add separate coalescing
+> words if the truthy-pick behaviour is wanted, or (b) keep the current
+> behaviour but correct the declared signature and `describe` text so
+> they stop claiming "two booleans". (a) is the right call for a typed
+> language; (b) is the cheap honesty fix (partly done in the doc pass).
+
+## G. `add` of a boolean and an int is a string; the checker approves — `design`
+
+```
+$ boru do -- 'true 1 add'     => true1
+$ boru check -e 'true 1 add'  => check: 0 error(s), 0 warning(s)
+```
+
+Boolean stringifies and concatenates with the number. The static
+checker reports no problem.
+
+> **Fix.** Tighten the `Scalar Scalar` concat signature of `add`
+> (`native_math.go`, `addConcatHandler`) so it requires both operands be
+> `String`/`Atom` rather than any `Scalar`. A `Boolean`/`Number` mix then
+> becomes a type error the checker can see, instead of silently
+> stringifying. Risk: medium — `"a" add "b"` still works, but
+> `true 1 add` becomes an error (which is the point).
+
+## H. Equal values that are not substitutable — `design`
+
+```
+$ boru do '1 1.0 eq'    => true
+$ boru do '1 1.0 cmp'   => 0
+$ boru do '1 2 div'     => 0      # integer division
+$ boru do '1.0 2 div'   => 0.5    # real division
+```
+
+`1` and `1.0` are equal by both `eq` and `cmp`, yet not interchangeable.
+`1 2 div` silently truncates with no remainder warning.
+
+> **Fix.** The root is that integer `div` truncates while `1 eq 1.0` is
+> true. Cleanest: make `div` **always** produce a `Decimal` (real
+> division) and add an explicit `idiv`/`quot` for truncating integer
+> division — then equal numbers behave equally. Alternative: make
+> `1 eq 1.0` false (strict by type). The first is friendlier, the second
+> more honest; either removes the trap. Risk: high — `div` is pervasive;
+> this is a genuine language decision.
+
+## I. "Any word, any position" is selectively false — `doc`
+
+```
+$ boru do '1 dup'    => 1 1
+$ boru do 'dup 1'    => error: no matching signature for dup
+$ boru do 'reverse [1 2 3]'  => [3 2 1]   # but this forward-collects fine
+```
+
+`reverse`/`add` collect forward; `dup`/`swap` don't. The universal
+prefix/infix/suffix claim does not hold for stack-shuffling words.
+
+> **Fix.** Done in docs (README now qualifies the claim: stack-shuffling
+> words take their args from the stack only). No code change recommended
+> — forward-collecting `dup`/`swap` would be ambiguous; the honest fix
+> is the qualified claim already shipped.
+
+## J. `boru fmt -w` is documented everywhere and always errors — `doc` (+ `bug`-adjacent)
+
+```
+$ boru fmt -w script.boru
+error: open -w: no such file or directory
+$ boru fmt -h
+error: open -h: no such file or directory
+```
+
+`cmd/go/internal/fmt/fmt.go` treats every argument as a filename
+(`files = args`). There is no flag parsing: no `-w`, no `-h`, no
+stdout/diff mode. Formatting is always in place. `boru fmt` with **no**
+args reformats every `.boru` file in the working tree — convenient and
+dangerous. CLI.md (×3) and README all show the non-existent `-w` flag.
+
+> **Fix.** Done in docs (`boru fmt -w` → `boru fmt`; the always-in-place /
+> no-arg-walks-tree reality stated). Optional code follow-up for
+> familiarity: give `cmd/go/internal/fmt/fmt.go` a real `flag.FlagSet`
+> matching the `gofmt` contract — default to stdout, `-w` to rewrite,
+> `-l` to list — so muscle memory works and `-h` prints usage instead of
+> trying to open a file named `-h`.
+
+## K. Integer overflow has two contradictory silent behaviours — `bug`
+
+```
+$ boru do '9223372036854775807 1 add'      => 9223372036854776000.0
+$ boru do '2 63 pow'                        => -9223372036854775808
+$ boru do '4000000000 4000000000 mul'       => -2446744073709551616
+```
+
+Two distinct defects hide here. The first line is a **lexer** problem:
+`9223372036854775807` parses as a `Decimal`, not an `Integer`
+(`typeof` confirms), so the float result comes from the literal, not
+from `add`. The other two are **runtime** wraps: `pow` and `mul` do raw
+int64 arithmetic that silently overflows two's-complement. Neither path
+flags anything.
+
+> **Fix.** ✅ **Phase 0 done** (see
+> [INTEGER-OVERFLOW-STRATEGY](../INTEGER-OVERFLOW-STRATEGY.5.md), which also
+> documents that the lexer defect was worse than recorded — sub-2⁵³
+> literals were silently *value-corrupted*, not just floated). (1) Lexer:
+> plain decimal integer literals are now parsed from their exact digits
+> with `strconv.ParseInt`; an out-of-int64-range literal raises
+> `[boru/integer_overflow]` instead of silently degrading to `Float`.
+> (2) Runtime: `numericBinaryHandler`'s `intFn` and the `pow` loop use
+> checked arithmetic and raise `[boru/integer_overflow]` **uniformly**
+> across `add`/`sub`/`mul`/`pow` instead of wrapping. Phase 1 (adopt
+> `big.Int` for true bignums so overflow *promotes* rather than errors)
+> is proposed in the strategy doc and planned alongside the numeric
+> tower.
+
+## L. The type named `Decimal` is binary float64 — `doc`/`design`
+
+```
+$ boru do '0.1 0.2 add'            => 0.30000000000000004
+$ boru do -- '0.1 0.2 add 0.3 eq'  => false
+```
+
+`typeof 0.1` is `Decimal`, a name that implies base-10 exactness. It is
+IEEE-754 binary float with the standard `0.1 + 0.2 ≠ 0.3` behaviour.
+
+> **Fix.** ✅ **Done** — the float64 type was renamed `Decimal` →
+> `Float` across the kernel, docs, spec TSVs, and the FixedID stability
+> snapshot (the type keeps FixedID 9 under the new path
+> `Scalar/Number/Float`, so the wire format is unchanged). `typeof 3.14`
+> now returns `Float`; `Decimal` is undefined and **reserved** for a
+> future *true* arbitrary-precision base-10 type (likely an `apd`-style
+> coefficient+exponent decimal, with `big.Rat` for exact rationals if
+> ever needed). No new numeric type was added in this pass — that is the
+> separate numeric-tower work.
+
+## M. Core literals and builtins are unprotected mutable bindings — `design`
+
+```
+$ boru do -- 'def true fn [[] [Number] [42]] true'                      => 42
+$ boru do -- 'def add fn [[x:Number y:Number] [Number] [x sub y]] 5 3 add'  => -2
+```
+
+`def true` shadows the boolean literal; `def add` redefines addition. No
+warning.
+
+> **Fix.** ✅ **Done.** Redefining a core word is now illegal everywhere.
+> The registry records every name registered via `Register` (all native /
+> kernel words, plus host words added through `(*Boru).Register`) in a
+> `builtinWords` set; `r.IsBuiltinWord` also covers the reserved literals
+> `true`/`false`/`none`. The `def` and `undef` handlers reject any such
+> name with `[boru/reserved_word]`. User `def`s install through
+> `InstallFnDef`/`DefTable.Push` and never reach `Register`, so user words
+> (and re-`def` shadowing of user words) are unaffected. Built-in TYPE
+> names (`Integer`, …) and `none` were already unredefinable — they parse
+> as type/value literals, not nameable tokens. `def add` / `def true` /
+> `undef add` now error; extend the language with a NEW word instead.
+
+## N. "Errors are values, not exceptions" — only inside `do [...]` — `doc`
+
+EXPLANATION: *"When `1 div 0` fails, it doesn't unwind the stack — it
+produces an Error value that sits on the stack like any other."*
+
+```
+$ boru do -- '1 div 0 dup'    => error: division by zero    # unwinds; never reaches dup
+$ boru do -- 'do [1 div 0]'   => error(division by zero)    # value — but only here
+```
+
+Errors become values only when a `do [...]` (or the `error` handler)
+captures them. Bare operations unwind.
+
+> **Fix.** Done in docs (the "Errors as values" section now says the
+> reification happens at a `do [...]` boundary; bare operations
+> propagate). This is coherent design once described correctly — no code
+> change recommended.
+
+## O. Schrödinger's quotation — `[...]` evaluates or defers by receiver — `design`
+
+```
+$ boru do -- '[1 2 add]'     => [3]      # eager
+$ boru do -- 'do [1 2 add]'  => 3        # deferred
+$ boru do -- '[1 0 div]'     => error: division by zero      # eager → throws
+$ boru do -- 'do [1 0 div]'  => error(division by zero)      # deferred → caught
+```
+
+The same `[code]` syntax is eagerly-evaluated data in most positions and
+a deferred block when consumed by a word like `do`/`each`. There is no
+lexical way to tell which. (Note: `eval` does not exist; the evaluator
+is the overloaded word `do`.)
+
+> **Fix.** Done in docs (the Reference now explains list literals
+> evaluate, `quote` defers, and block-arg positions are held by their
+> receiver). This is the homoiconic core — no semantic change
+> recommended; the remediation is the accurate description already
+> shipped, plus an earlier tutorial example contrasting `[…]` and `do […]`.
+
+## P. `lt`/`gt` compare across any types and never error — `design`
+
+```
+$ boru do -- '1 "a" lt'   => true
+$ boru do -- '"a" 1 lt'   => false
+$ boru do -- 'true 1 lt'  => true
+$ boru do '[3 "a" 1 true] sort'   => [true 1 3 'a']
+```
+
+A universal total order `bool < number < string` means cross-type
+comparison silently succeeds; heterogeneous lists sort without error.
+
+> **Fix.** ✅ **Done.** `CompareValues` (`eng/go/compare.go`) is
+> unchanged — it stays the total order that `sort` and the collection
+> words use — and is now surfaced by a new word **`tcmp`** (compares any
+> two values, -1/0/1). The ordering words `cmp`/`lt`/`lte`/`gt`/`gte`
+> gained a shallow family guard (`orderedCompare`): they accept a pair
+> only when it is the same type or shares a same-family comparer
+> (Integer↔Float, two Dates, the instant-bearing Time leaves), and
+> otherwise raise `[boru/incomparable]` pointing at `tcmp`. Equality
+> (`eq`/`neq`/`deq`) was left total (cross-type → not-equal, never an
+> error). The Time leaves Date/DateTime/Instant were additionally
+> unified to compare chronologically (a new comparer on `Scalar/Time`).
+> Specs: `lang/spec/compare.tsv` now exercises the total order via
+> `tcmp`, and `lang/spec/compare-restrict.tsv` pins the restriction both
+> ways. `1 lt "a"` is now an error; `1 tcmp "a"` is `-1`.
+
+## Q/W. `convert Integer` takes a string but refuses a number — `bug`
+
+```
+$ boru do '"4" convert Integer'   => 4
+$ boru do '3.9 convert Integer'   => error: convert: cannot convert "3.9" to number
+$ boru do '3.0 convert Integer'   => error: convert: cannot convert "3.0" to number
+```
+
+Text-to-int works; number-to-int fails — even for whole-valued floats.
+The error message stringifies the float (`"3.0"`) and then claims it is
+not a number.
+
+> **Fix.** ⭐ The convert handler (`lang/go/native/native_type.go:723`,
+> `MakeConvert`) builds the target via `ValToString(src)` →
+> `strconv.ParseInt`, so a numeric `src` is stringified and then fails to
+> reparse. Add a numeric-source branch *before* stringifying: if `src` is
+> already a `Number`, convert numerically (`Decimal`/`Float`→`Integer` by
+> truncation, `Integer`→float by `float64()`), and fix the error message.
+> Low risk — only adds conversions that currently error. (See also V:
+> this is a *different* `MakeConvert` from the one `make` uses — unify
+> them.)
+
+## R. Missing data is `None` in some places and a crash in others — `design`
+
+```
+$ boru do '{a: 1} . b'          => None        # missing key: silent
+$ boru do '[10 20 30] 5 get'    => None        # out of range: silent
+$ boru do -- '[10 20 30] -1 get'  => None        # negative index: silent (no end-indexing)
+$ boru do '{a: 1} . a . b'      => error: no matching signature for get   # field on a scalar
+```
+
+Silent `None` from bad indices means off-by-one and accidental-negative
+bugs vanish until a downstream stage chokes.
+
+> **Fix.** Pick one rule and apply it symmetrically. Recommended: keep
+> lenient `get`/`.` → `none` (the strict `getr`/`!.` already exists for
+> fail-loud), and make scalar member-access *also* return `none` instead
+> of a signature error. Separately decide negative list indices —
+> implement Python-style end-indexing or make a negative index an error;
+> silent `none` is the worst of the three. Risk: low-medium.
+
+## S. `"${...}"` interpolation works only in backtick strings — `doc`/`design`
+
+```
+$ boru do -- '"sum is ${1 add 2}"'   => sum is ${1 add 2}   # double quotes: literal
+$ boru do -- '`sum is ${1 add 2}`'   => sum is 3            # backticks: interpolated
+```
+
+A `${}` in a double-quoted string is emitted verbatim with no
+diagnostic.
+
+> **Fix.** Documented (interpolation is a backtick-string feature).
+> Optional safety net: have the lexer emit a check-time warning when an
+> un-escaped `${` appears in a double-quoted string, since that is almost
+> always a mistyped template. Low risk.
+
+## T. Duplicate map-literal keys collapse silently — `design`
+
+```
+$ boru do '{a: 1, a: 2}'   => {a:2}
+```
+
+Last write wins; no duplicate-key warning.
+
+> **Fix.** ⭐ In the map-literal construction path (parser / `OrderedMap`
+> builder), raise a parse/build error on a duplicate literal key (or at
+> least a check-time warning). Cheap, high-value for a query language
+> where map literals describe records and config. Low risk — a duplicate
+> literal key is essentially always a typo.
+
+## U. The `=>` in every doc example is the anonymous-function arrow — `doc`
+
+The docs annotate results as `expr => value` on ~360 lines. `=>` is also
+a real operator: the `afn` (lambda) arrow (`eng` grammar maps `=>` →
+`afn`).
+
+```
+$ boru do -- 'def square fn [[x:Number][Number][x mul x]] 4 square => 16'    => fn (Integer)
+$ boru do -- 'def square fn [[x:Number][Number][x mul x]] 4 square => 9999'  => fn (Integer)
+```
+
+Pasting a whole doc line (annotation included) builds a function and
+silently discards the computed value — the false claim `=> 9999` raises
+no error. The doc-test harness (`test/go/docexamples`) split on `=>`
+and evaluated only the left side, so CI never saw this; a human pasting
+into the REPL did.
+
+**Resolution.** The `=>` result annotation was retired from the prose
+docs entirely. Code examples now show results as a trailing comment —
+`4 square  # returns 16` — and prose says "`4 square` returns `16`".
+The doc-test harness was updated to parse the `# returns …` form (an
+optional ` — description` after the value is ignored), so every example
+stays CI-verified. `=>` now appears in the docs only where the docs
+*describe* the `afn` operator itself.
+
+> **Fix.** ✅ Resolved (see Resolution above). The convention change and
+> harness update are committed.
+
+## V. `:Number` record fields launder strings into numbers — `design`/`bug`
+
+```
+$ boru do -- 'def Point refine Record [x:Number y:Number] end make Point ["1" "2"]'  => {x:1 y:2}
+$ boru do -- 'def Point refine Record [x:Number y:Number] end make Point [3 "4"]'    => {x:3 y:4}
+$ boru do -- 'def P refine Record [x:Number] end make P [true]'   => error: cannot convert "true" to number
+```
+
+A `:Number` field coerces by stringify-then-reparse rather than
+rejecting non-numbers. `make P [true]` exposes the mechanism. Note this
+contradicts Exhibit Q/W: `make` coerces freely while `convert` refuses.
+
+> **Fix.** `make` uses its own `MakeConvert` (`eng/go/core_make.go:680`)
+> that stringifies the source and `ParseInt`/`ParseFloat`s it. Make field
+> construction **strict** — a `:Number` field rejects a non-`Number`
+> rather than coercing a numeric-looking string — and **unify** with the
+> `convert` path (Q/W) so the two agree on what "to a number" means.
+> Risk: medium — anyone relying on string→number coercion in `make`
+> breaks, but the type annotation should mean what it says.
+
+## X. Moving `if` one position turns a 3-step countdown into a 1 GB stack blowup — `design`/`bug`
+
+```
+# prefix if — works:
+$ boru do -- 'def cd fn [[n:Integer][Integer][if (n 0 eq) [0] [n 1 sub cd]]] 3 cd'  => 0
+# suffix if — same logic, if written last:
+$ boru do -- 'def cd fn [[n:Integer][Integer][n 0 eq [0] [n 1 sub cd] if]] 3 cd'
+   => runtime: goroutine stack exceeds 1000000000-byte limit
+```
+
+In suffix position, forward collection mis-binds `if`'s arguments so the
+base case never fires.
+
+> **Fix.** Add a call-depth (or step) counter to the engine step loop
+> with a configurable limit that raises a clean `[boru/recursion_limit]`
+> error *before* the Go stack is exhausted. That bounds this case and
+> Y's `runaway`. Separately, the suffix-`if` mis-binding is the
+> forward-collection trap (C) striking a control word — the depth guard
+> turns the symptom from a 1 GB crash into a clear diagnostic. Risk:
+> low-medium; choose a generous default depth.
+
+## Y. Stack overflow is reported with two wrong names — `bug`
+
+```
+$ boru do -- 'def runaway fn [[n:Integer][Integer][n 1 add runaway]] 0 runaway'
+   => error: [boru/syntax_error]: unmatched opening parenthesis
+```
+
+Genuine infinite recursion is reported as a `syntax_error` about
+parentheses (which are balanced). The other overflow path (Exhibit X)
+reports `runtime: goroutine stack exceeds 1GB`. Neither says "recursion
+too deep."
+
+> **Fix.** Same depth guard as X (front-runs the overflow with a clean
+> `[boru/recursion_limit]`). Additionally, the `recover()` in
+> `eng/go/engine.go:361` should map a Go stack-overflow panic to that
+> error instead of falling through to the `unmatched opening parenthesis`
+> message (`engine.go:562`), which is unrelated. Risk: low.
+
+## Z. Two distinct "nothing" values that are not equal — `design`
+
+```
+$ boru do -- '[1,,2] 1 get'   => null
+$ boru do 'none'              => None({})
+$ boru do -- 'null none eq'     => false
+```
+
+`null` (list gap-filler) and `none` (`None({})`) are different bottom
+values and compare unequal.
+
+> **Fix.** ⭐ Unify on a single nothing: eliminate the separate `null`
+> value (the empty-slot gap-filler — see AA — should be a parse error,
+> not a `null`), so `none` is the only bottom. If `null` must remain for
+> some interop reason, make it `eq none`. Low risk once AA is fixed,
+> since `null` then has no way to enter a program.
+
+## AA. A double comma fabricates a `null` element — `design`/`bug`
+
+```
+$ boru do -- '[1, 2, 3]'   => [1 2 3]      # commas optional
+$ boru do -- '1 , 2'       => 1 2          # bare comma is a no-op word
+$ boru do -- '[1,,2]'      => [1 null 2]   # double comma invents an element
+```
+
+Commas are decorative no-ops everywhere except an empty slot between
+two, which materialises a `null` and lengthens the list.
+
+> **Fix.** ✅ **Done.** An empty list element — a leading or repeated
+> comma (`[,1]`, `[1,,2]`, `[1,,,2]`) — is now an `[boru/syntax_error]`
+> rather than a fabricated `null`. An empty slot reaches the parser as
+> an untyped-nil element (an explicit `null` token comes through as the
+> `jsonic.Text` "null", so it is unaffected), so the `case nil:` arm of
+> `convertTopLevelValue` / `convertDataValue`
+> (`eng/go/parser/parse.go`) returns `emptyElementError()`. A trailing
+> comma (`[1,]`) is still fine; explicit `null` (for JSON data) still
+> works. This also shrinks Z: `null` can no longer enter a program via a
+> comma typo.
+
+## AB. A typo'd float yields a signature error about `get` — `design`
+
+```
+$ boru do '1.2.3'   => error: [boru/signature_error]: no matching signature for get
+```
+
+`1.2.3` lexes as `1.2` then `.` (field access) then `3`. The diagnostic
+points at an accessor the user never wrote.
+
+> **Fix.** ✅ **Done** (via the general rule). A `.`-access (reach)
+> receiver must be a container `get` can index into — `get`'s receiver
+> is only ever a Map / List / Store / Object / ModuleExport / Module, so
+> a **number can never be a reach receiver**. The parser now rejects a
+> numeric-literal receiver before a `.` at parse time
+> (`convertTopLevelItems` in `eng/go/parser/parse.go`,
+> `numberReceiverError`): `1.2.3` (the malformed-number case), `1 . 2`,
+> and `5 . foo` all raise `[boru/syntax_error]: a number has no members
+> to access with .` with a source position, instead of the runtime "no
+> matching signature for get". `5.0` (a plain Float) and real reaches
+> (`{a:1} . a`, `[1 2 3] . 0`) are unaffected.
+
+## AC. Strings are not indexable and have no built-in length; maps are not `each`-able — `design`
+
+```
+$ boru do '"hello" 0 get'   => error: no matching signature for get
+$ boru do '"hello" len'     => error: undefined word: len
+$ boru do '{a:1 b:2} each [dup mul]'   => error: no matching signature for each
+```
+
+String index and length (`len`/`length`) are absent from the base
+vocabulary (length is an unimported module word); `each` iterates lists
+but not maps.
+
+> **Fix.** Additive, low risk: give `get`/`.` a `String × Integer →
+> String` signature (grapheme index), extend the existing `size` to
+> strings (and surface it / `len` in the base vocabulary), and add an
+> `each` signature for `Map` that iterates entries.
+
+## AD. Two fields of the same record cannot be added inline — `design`
+
+```
+$ boru do -- '{first: 1 second: 2} . first add . second'
+   => error: [boru/signature_error]: no matching signature for add
+```
+
+Forward collection has `add` reach past the `. second` accessor word.
+`record.first + record.second` requires parentheses or stack juggling.
+
+> **Fix.** Same root as C — forward collection. No semantic change
+> recommended; the stranded-value `boru check` warning proposed in C would
+> flag this pattern, and the docs show the parenthesised form. A dotted
+> `.`-chain already binds tightly; the trap is purely `add` reaching
+> forward past it.
+
+---
+
+## Disposition summary
+
+| Exhibit | Subject | Tag |
+| --- | --- | --- |
+| A | `upper` / `describe` list 90 undefined-bare words | doc |
+| B | leading negative number → flag error | bug |
+| C | forward collection breaks composition | design |
+| D | newline ≠ barrier; REPL resets stack | doc |
+| E | only `""`/`"false"` are falsy | design |
+| F | `and`/`or` return operands | design |
+| G | `bool add int` → String; checker passes | design |
+| H | `1 eq 1.0` but not substitutable | design |
+| I | "any position" false for `dup`/`swap` | doc |
+| J | `fmt -w` / `-h` never implemented | doc |
+| K | two int-overflow behaviours | bug |
+| L | `Decimal` is binary float | doc/design |
+| M | redefine `true`/builtins silently | design |
+| N | errors-as-values only in `do [...]` | doc |
+| O | `[...]` eager vs deferred by receiver | design |
+| P | cross-type `lt` never errors | design |
+| Q/W | `convert Integer` rejects numbers, accepts text | bug |
+| R | missing data: `None` vs crash | design |
+| S | `${}` only in backticks | doc/design |
+| T | duplicate map keys collapse | design |
+| U | `=>` is the `afn` arrow | doc |
+| V | `:Number` fields launder strings | design/bug |
+| X | suffix `if` → unbounded recursion | design/bug |
+| Y | stack overflow → wrong error names | bug |
+| Z | `null` ≠ `none` | design |
+| AA | `[1,,2]` fabricates `null` | design/bug |
+| AB | `1.2.3` → `get` signature error | design |
+| AC | strings not indexable; no `len`; maps not `each` | design |
+| AD | `rec.a add rec.b` fails | design |
+
+## What the documentation pass changed
+
+Only **doc**-tagged items (and accuracy notes for **design** items where
+the docs already discuss the topic) were edited:
+
+- `upper` examples → `StringUtil.upper` with the import shown (A).
+- `boru fmt -w` → `boru fmt` everywhere; the in-place / no-arg / no-stdout
+  reality stated (J).
+- The "keep each step on its own line" advice corrected; the REPL
+  stack-reset behaviour documented (D).
+- The "any word, any position" claim qualified for stack words (I).
+- The "Errors as values" section reworded to require `do [...]` (N).
+- The `=>` result annotation retired across all prose docs in favour of
+  `# returns …` comments / "returns" in prose; the doc-test harness
+  updated to parse the new form so examples stay CI-verified; a
+  **Notation** note added to each doc (U).
+- Accuracy notes added for truthiness (E), `and`/`or` (F),
+  `Decimal`/float (L), `convert` limits (Q/W), `null` vs `none` (Z), and
+  string indexing (AC) where the relevant section already exists.
+
+No engine behaviour was changed *by the documentation pass*. Engine
+fixes have since landed for several items under their own changes —
+including **K** (integer overflow, Phase 0: see
+[INTEGER-OVERFLOW-STRATEGY](../INTEGER-OVERFLOW-STRATEGY.5.md)) — as noted
+in each exhibit's ✅ markers above.
+
+## Suggested remediation priority
+
+Sequenced by value-to-risk. The first column is unambiguous correctness
+with near-zero compatibility cost; the second needs an owner to commit
+to what boru's types *mean*; the third is documentation/lint or additive.
+
+| Do now (cheap, clearly-right) | Decide then do (behavioural) | Docs / lint / additive |
+| --- | --- | --- |
+| Q/W convert numeric ⭐ · B `-7` flag ⭐ · T duplicate keys ⭐ · AA/Z empty-slot → `null` ⭐ · AB `1.2.3` lexer · X/Y recursion-depth guard · A `describe` import hint | E truthiness · F `and`/`or` · G `add` concat · V `make` strict (unify with `convert`) · P cross-type compare · H `div`/`eq` · L `Decimal`→`Float` + numeric tower · M reserved names | C / AD forward-collection `check` warning · N · O · R policy · S `${}` warning · AC string index / `len` / map `each` |
+
+Most of the middle column traces to one root the audit kept hitting:
+**coercion is doing the type system's job** (E, F, G, V, H). They are
+best resolved as a single coherent "numeric/coercion" proposal rather
+than piecemeal. L (rename `Decimal` → `Float`, reserve `Decimal` for a
+true arbitrary-precision type) is the anchor of that proposal.
+
+These remain recommendations; no fix here is applied.

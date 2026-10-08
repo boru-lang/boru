@@ -2,7 +2,7 @@ package core
 
 import "fmt"
 
-// Binding inference for generic fns (design/GENERICS.10.md §9.2.2,
+// Binding inference for generic fns (design/legacy/GENERICS.10.ignore §9.2.2,
 // Phase 4): at each call of a generic fn, the type parameters bind
 // from the actual arguments' types — a placeholder param slot binds
 // typeof(arg); a typed-list pattern over a placeholder binds the
@@ -167,7 +167,7 @@ func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
 // EXPRESSION — `{a:(Integer tor String)}`, `{b:(Box of [Integer])}`. In the
 // inline spelling the paren span is inert data inside the fn-spec list, so
 // the field kept a ParenExpr the dispatcher could never match: `fn
-// [[o:{a:(Integer tor String)}] …]` refused `{a:7}` outright, where the same
+// [[o:{a:(Integer tor String)}] …]` declined `{a:7}` outright, where the same
 // field written through `refine Record [{a:(Integer tor String)}]` — which
 // dispatches, and so evaluates — admits it. Same asymmetry as the bare type
 // word, one level up.
@@ -237,6 +237,12 @@ func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
 		return v, fmt.Errorf("child type expression must produce one type, got %d values", len(out))
 	}
 	child := out[0]
+	if r.analysisActive() && AnnotationRunDependent(child) {
+		// A child only the run computes (`[:(typeof x)]`, `[:(1 add 2)]`):
+		// the container the pass builds is not the run's, and the bind twin
+		// would replay it — the building word declines (NUR325, NUR327).
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
 	if IsTypedMap(v) {
 		if len(ci.Entries) > 0 {
 			return NewTypedMapWithEntries(child, ci.Entries), nil
@@ -270,13 +276,14 @@ func typeParamLitNode(v Value) *Type {
 // structural patterns — a generic fn's `xs:[:T]` param unifies each
 // list element against the placeholder — and the standard narrowing
 // rule (ConformsTo) has no admission path from a concrete value into
-// a Type/TypeParam node.
-func unifyTypeParam(lit Value, node *Type, other Value) (Value, *UnifyError) {
+// a Type/TypeParam node. r is the enclosing chain's registry, threaded
+// into the bound walk (isR).
+func unifyTypeParam(lit Value, node *Type, other Value, r *Registry) (Value, *UnifyError) {
 	// The same placeholder on both sides (memo keys, `[T] vs [T]`).
 	if IsBareTypeNode(other) && other.ID == node.ID {
 		return lit, nil
 	}
-	if other.Is(node) {
+	if isR(other, node, r) {
 		return other, nil
 	}
 	return Value{}, unifyFail("value does not satisfy the type parameter's bound", lit, other)
@@ -285,7 +292,7 @@ func unifyTypeParam(lit Value, node *Type, other Value) (Value, *UnifyError) {
 // genBinder accumulates type-parameter bindings during call-site and
 // schema inference. Both InferGenBindings and InferSchemaBindings share
 // it: an isParam gate (only declared parameters bind) and a merge that
-// tor-unions repeated evidence (design/GENERICS.10.md §9.2.2 — runtime
+// tor-unions repeated evidence (design/legacy/GENERICS.10.ignore §9.2.2 — runtime
 // calls are never rejected for parameter inconsistency).
 type genBinder struct {
 	bindings map[string]Value

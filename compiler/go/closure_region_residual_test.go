@@ -58,7 +58,7 @@ func TestClosureResidualRegionAdmitsThePrefixShape(t *testing.T) {
 	// content is an inner one of the prefix shape has exactly this residual,
 	// and without the arm the relaxation stops one level short: `do [def b
 	// true  do [1 2 (if b [] [9 9])]]` compiles its inner body, declines its
-	// outer one, and refuses at the twin-placement gate the outer body's def
+	// outer one, and declines at the twin-placement gate the outer body's def
 	// needs.
 	if !closureResidualRegion(es, crrUnit(es, 0, 1)) {
 		t.Error("a residual that IS the region must be admitted")
@@ -69,7 +69,7 @@ func TestClosureResidualRegionAdmitsThePrefixShape(t *testing.T) {
 }
 
 // TestClosureResidualRegionAdmitsTheSuffixShape is the fifty-ninth increment,
-// and it is the arm that reads like the one the refusal message names. An
+// and it is the arm that reads like the one the compile failure message names. An
 // inert value ABOVE the run does NOT have to be seated on top of a length
 // nothing knows — it is PUSHED after the run rather than indexed past it, so
 // it lands on top of however many values the run really left. What cannot be
@@ -77,7 +77,7 @@ func TestClosureResidualRegionAdmitsThePrefixShape(t *testing.T) {
 // above, which pays for itself with a mark.
 //
 // `do [for 3 [1] 7]` is the residual, and it had been reading as the same
-// refusal as `do [7 for 3 [1]]` for exactly as long as the two shapes were
+// compile failure as `do [7 for 3 [1]]` for exactly as long as the two shapes were
 // described by one sentence.
 func TestClosureResidualRegionAdmitsTheSuffixShape(t *testing.T) {
 	es := rpState(t)

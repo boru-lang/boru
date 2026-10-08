@@ -7,7 +7,7 @@ package basic_test
 // renders the residual independently, exactly as core/spec's and
 // parser/spec's pairs do. That independence is the point: shared
 // scaffolding can hide the same bug from both engines
-// (design/CORE-GO-TS-DEFECTS.0.md, blind spot 9).
+// (design/legacy/CORE-GO-TS-DEFECTS.0.ignore, blind spot 9).
 //
 // This is a SPEC, not a differential: the `expected` column is the
 // documented contract, so a row can legitimately fail on BOTH engines —
@@ -81,7 +81,7 @@ func basicSpecToken(tok string) core.Value {
 		return core.NewString(tok[1 : len(tok)-1])
 	}
 	// A capitalised builtin name is that type's LITERAL, so a row can pass
-	// a bare type where a word expects a concrete value — the refusal path
+	// a bare type where a word expects a concrete value — the compile failure path
 	// is otherwise unreachable from the corpus.
 	switch tok {
 	case "List":

@@ -32,6 +32,13 @@ linked source — it is authoritative, this page is just the index.
 > bytes). `make -C kg verify` tells you whether it is current without
 > rebuilding, and names the files that moved: the `generated_at` stamp
 > is pinned and is NOT a freshness signal, the input digest is.
+>
+> **The kg gate is active again (2026-09-28).** From 2026-09-20 `make -C kg
+> graph` died compiled (`DISPATCH_GENERIC at ev`) and the `kg-verify` CI
+> step and commit-gate lane were off; the failure and the two behind it are
+> fixed, the compiled pipeline's output is byte-identical to the
+> interpreter's, and both lanes run again — a change to a digested input
+> needs the rebuilt graph committed.
 
 
 ## First: let the tool document itself (`boru describe` / `boru help`)
@@ -133,19 +140,41 @@ Full REPL reference: [CLI.md → REPL meta-commands](CLI.md#repl-meta-commands).
 
 ## Build, test, verify
 
-From the repo root, the **pre-commit checklist** (run all five before every
-commit — `make lint` catches what `vet` and `test` miss):
+From the repo root, the **commit gate** — three minutes or less, on what
+the change touched — before every commit:
 
 ```bash
-make fmt && make vet && make lint && make test && make cover-gate
+make commit-gate
 ```
+
+It runs gofmt, vet and golangci-lint on the touched modules (in parallel),
+the touched modules' unit tests (for `lang/go` and `cmd/go` the changed
+packages only — their full suites are CI's), the langspec gates over a
+smoke corpus plus every spec file the change touched, and the knowledge
+graph when docs or tooling changed; `scripts/commit-gate.sh` is the
+definition and prints each lane's time against the ceiling. Before a
+push, `make ci-local` runs exactly the steps CI runs, in CI's order
+(`scripts/ci-steps.sh` is the one definition both share); CI runs the same
+steps as parallel jobs, each under the same three-minute ceiling, and
+renders the gate table into every run's summary from the langspec shards.
+Two switches make iteration fast: `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv`
+restricts every corpus walk in `test/go/langspec` to the named spec files
+(the ten gates over one family run in seconds; the per-file compile-failure
+ledger `test/go/langspec/compile_failures.tsv` still asserts on every
+selected file, so a compile regression in that family fails the filtered
+run), and `BORU_DIRECTION_GATES=1`
+arms the direction lane — the gates against their END STATE, red by design
+until full compilation is done (`make test-direction`; the default lane
+asserts only the regression ceilings and is what blocks). `make gate-status`
+prints every gate's live value against both numbers.
 
 `make cover-gate` enforces **ADR-008**: 100% unit-test coverage of every
 reachable Go statement, the sole exclusions being provably-unreachable
 guards carrying a proof-carrying `//covergate:allow <reason>` comment on the
-guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). It is the
-slowest of the five and the one most often skipped; skipping it is how a
-merged PR turns CI red.
+guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). It is cached per
+module and takes about half an hour cold, so it runs nightly
+(`cover-gate.yml`) and before a merge, not on every commit — skipping it
+before a merge is how a merged PR turns CI red.
 
 Faster, scoped iteration:
 
@@ -154,6 +183,23 @@ cd lang/go && go test ./native/ -run TestSomething -v
 cd cmd/go  && make build        # builds cmd/go/bin/boru
 cd wpg     && make wasm          # builds the docs/ wasm playground
 ```
+
+### Transient tasks report progress
+
+Every transient task — a corpus walk, a coverage run, a generator, a
+sweep, a benchmark, a script an agent starts and waits on — produces
+status output while it runs, even if minimal, **at least every 30
+seconds**, and gives a **percentage-complete estimate** whenever one can
+be made (rows walked of the total, files done of the list, the phase
+reached of the phases known). A task that goes quiet for longer than
+that is indistinguishable from one that has hung, and the person or
+agent watching it has to guess whether to wait or kill it. When the work
+has no natural unit to count, print the phase and the elapsed time; when
+it runs under `go test`, log through `t.Logf` under `-v` (the langspec
+gates print their per-gate lines this way) or write a progress line to
+stderr. This applies to new tools and to the tasks an agent runs by hand:
+a long command an agent backgrounds still owes the log it watches a
+heartbeat.
 
 
 ## Working in the code — module deep guides

@@ -4,7 +4,7 @@
 // they read the same files and each implements the tiny expression notation
 // independently. That independence is the point: shared scaffolding can hide
 // the same bug from both engines, which is exactly how eng/ts's spec-fixture
-// papered over unported mechanisms (design/CORE-GO-TS-DEFECTS.0.md, blind
+// papered over unported mechanisms (design/legacy/CORE-GO-TS-DEFECTS.0.ignore, blind
 // spot 9).
 //
 // This is a SPEC, not a differential. The `expected` column is written from

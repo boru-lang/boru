@@ -54,7 +54,7 @@ func TestRecordDynBindNameGate(t *testing.T) {
 }
 
 // The two region-split gates share RecordDynBind's name premise through the
-// same predicate, and refuse an empty or capitalised name outright before
+// same predicate, and decline an empty or capitalised name outright before
 // consulting it — pinned directly, with the producer/event setup each split
 // needs to reach its gate. The nil receiver answers "records nothing".
 func TestRegionSplitNameGates(t *testing.T) {
@@ -93,5 +93,35 @@ func TestRegionSplitNameGates(t *testing.T) {
 	}
 	if _, ok := es.SplitEventRegionBind("Big", v); ok {
 		t.Fatal("a capitalised name must not split an event region")
+	}
+}
+
+// TestBindRegistryRestores: BindRegistry returns the restore of the binding
+// it replaced — the engine defers it at every run's start, so a sub-engine's
+// registry (an inline module's body) is bound for that run only and the
+// enclosing registry comes back when it returns — while the FIRST bind
+// outlives its run (the program's lowering reads it after the engine
+// returns) and its program registry (progReg) is captured once.
+func TestBindRegistryRestores(t *testing.T) {
+	var nilES *EmitState
+	nilES.BindRegistry(nil)() // nil-receiver safe, restore a no-op
+	es := NewEmitState()
+	prog := covRegistry(t, nil)
+	sub := covRegistry(t, nil)
+	restoreProg := es.BindRegistry(prog)
+	if es.reg != prog || es.progReg != prog {
+		t.Fatal("the first bind names the program registry")
+	}
+	restoreSub := es.BindRegistry(sub)
+	if es.reg != sub || es.progReg != prog {
+		t.Fatal("a sub-engine's bind replaces reg and leaves progReg")
+	}
+	restoreSub()
+	if es.reg != prog {
+		t.Error("the sub-engine's restore brings the enclosing registry back")
+	}
+	restoreProg()
+	if es.reg != prog || es.progReg != prog {
+		t.Error("the outermost bind outlives its run (Finalize reads reg after the engine returns)")
 	}
 }

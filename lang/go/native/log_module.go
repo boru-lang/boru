@@ -546,7 +546,7 @@ func LogModuleNativeFuncs(lsr *LogSinkRegistry) []NativeFunc {
 	} {
 		funcs = append(funcs, levelNative(lsr, lvl.word, lvl.level))
 	}
-	return funcs
+	return SideEffecting(funcs)
 }
 
 // emitRecord builds and fans out a top-level (un-named-logger) record.

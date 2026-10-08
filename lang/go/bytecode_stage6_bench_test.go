@@ -8,7 +8,7 @@ import (
 	parser "github.com/boru-lang/boru/parser/go"
 )
 
-// Stage-6 measurement harness (design/boru-bytecode-plan.0.md Stage 6):
+// Stage-6 measurement harness (design/legacy/boru-bytecode-plan.0.ignore Stage 6):
 // compare compiled-mode EXECUTION against the interpreter on the
 // Stage-0 baseline shapes, with parse/compile cost amortised out so the
 // numbers isolate the dispatch machinery the bytecode VM eliminates.

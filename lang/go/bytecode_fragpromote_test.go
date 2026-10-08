@@ -9,11 +9,11 @@ import (
 // TestFragmentValueDefPromotion pins Leaf-3: a def-chain nested in an `if` arm
 // must get value-def promotion just like a top-level chain, so its computed
 // producers seat as frame locals instead of interleaving on the closed
-// fragment's simulated stack — which refused "operands of <op> not adjacent on
+// fragment's simulated stack — which declined "operands of <op> not adjacent on
 // top" (the bloom-count `def md … def xd … (md sub xd div md)` shape, where the
 // chain lives in an `if` else-arm). Asserts native compile (no FALLBACK island)
 // AND RunCompiledStrict==Run: a parity test alone is insufficient because
-// --compile silently falls back to the interpreter, so it would pass on the
+// --compile used to fall back silently, so a parity test would pass on the
 // interpreter and hide the coverage gap.
 func TestFragmentValueDefPromotion(t *testing.T) {
 	cases := []struct{ name, src string }{
@@ -31,7 +31,7 @@ func TestFragmentValueDefPromotion(t *testing.T) {
 		},
 		{
 			// a dead def (kd unused) nested in the arm — promoted then dropped;
-			// must still compile and match (it previously refused "not adjacent").
+			// must still compile and match (it previously declined "not adjacent").
 			"if else-arm with an unused def",
 			`def f fn [[m:Integer x:Integer] [Float] [
 			  if (m lt 1) [(0 convert Float)] [
@@ -49,7 +49,7 @@ func TestFragmentValueDefPromotion(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile (fragment value-def promotion), refused: %q", reason)
+				t.Fatalf("must compile (fragment value-def promotion), declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("must compile native — no FALLBACK island:\n%s", prog.Disassemble())
@@ -57,7 +57,7 @@ func TestFragmentValueDefPromotion(t *testing.T) {
 			b, _ := New()
 			got, err := b.RunCompiledStrict(c.src)
 			if err != nil {
-				t.Fatalf("RunCompiledStrict refused: %v", err)
+				t.Fatalf("RunCompiledStrict declined: %v", err)
 			}
 			d, _ := New()
 			want, werr := d.RunInterp(c.src)

@@ -231,10 +231,16 @@ type sweepCompiledRuntime struct{}
 func (sweepCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value, error, bool) {
 	return []Value{NewInteger(99)}, nil, true
 }
+
+func (sweepCompiledRuntime) InvokeCompiledStrict(*Registry, *Signature, []Value) ([]Value, error, bool) {
+	return []Value{NewInteger(99)}, nil, true
+}
 func (sweepCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
 func (sweepCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 	return v, false
 }
+
+func (sweepCompiledRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool { return false }
 
 func TestSweepInvokeBodyRouting(t *testing.T) {
 	// Invoker installed: the VM seam owns body execution.
@@ -410,7 +416,7 @@ func TestSweepInstallWordExtensionRegisterHook(t *testing.T) {
 func TestSweepTransplantSourceCloneAuthorDefault(t *testing.T) {
 	// A SOURCE clone (no ExtOwner) onto a BUILTIN word: the author
 	// defaults to the exporting module's owner, and the unanchored
-	// kernel-typed tuple is refused.
+	// kernel-typed tuple is declined.
 	r := covRegistry(t, nil)
 	ext := NewWordExtension("", "cadd", []Signature{sweepGoSig(TBoolean, TBoolean)})
 	if ext.ExtOwner != "" {

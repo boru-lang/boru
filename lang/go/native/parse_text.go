@@ -8,7 +8,7 @@ import (
 )
 
 // parseTextHandler implements `StructUtil.parse` — jsonic/JSON text →
-// data, the decode complement of jsonify (design/PARSING.10.md §2).
+// data, the decode complement of jsonify (design/legacy/PARSING.10.ignore §2).
 // The input parses in DATA context, the way a map literal's interior
 // parses: unquoted text becomes strings, numbers become numbers,
 // true/false booleans. Nothing is evaluated and nothing dispatches —

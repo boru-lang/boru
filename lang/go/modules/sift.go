@@ -9,7 +9,7 @@ import (
 )
 
 // The boru:sift module — the Sift namespace, the semi-structured-text tier of
-// the parsing stack (design/SIFT.0.md). Between StringUtil / read {fmt:'lines'}
+// the parsing stack (design/legacy/SIFT.0.ignore). Between StringUtil / read {fmt:'lines'}
 // (primitives) and parse json / boru:parse (rigid formats / grammars), sift
 // parses the loose line- and field-oriented text Unix tools and /proc files
 // emit.

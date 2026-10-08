@@ -70,6 +70,18 @@ func FnSigMatchesSpec(sig FnSig, spec FnSigSpec) bool {
 // structural shape), so the type system can't declare a barrier
 // requirement. Candidates may have any BarrierPos.
 func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
+	return fnSigSatisfiesSpecR(sig, spec, nil)
+}
+
+// fnSigSatisfiesSpecR is FnSigSatisfiesSpec with the registry of an
+// enclosing unify chain threaded into the Pattern-compatibility unify.
+// The fn-shape unifiers (unifyFnUndefShape, FnUndefUnifier) run this
+// check from INSIDE unifyInner, so a pattern pair such as `[:Pos]`
+// against `[:Pos]` is decided with the chain's registry — a
+// predicate-typed child resolves exactly as it would at the chain's
+// top level. The exported entry, called from outside any unify, passes
+// nil and stays unarmed.
+func fnSigSatisfiesSpecR(sig FnSig, spec FnSigSpec, r *Registry) bool {
 	if len(sig.Params) != len(spec.Params) {
 		return false
 	}
@@ -97,7 +109,7 @@ func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
 				// still satisfies the spec's narrower demand.
 				continue
 			}
-			if _, ok := Unify(*sp.Pattern, *sg.Pattern); !ok {
+			if _, uerr := unifyWithin(*sp.Pattern, *sg.Pattern, r); uerr != nil {
 				return false
 			}
 		}
@@ -118,6 +130,13 @@ func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
 // (TFunction wrapping FnDefInfo) satisfies every FnSigSpec
 // declared by the FnUndef constraint.
 func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
+	return fnUndefMatchesFnDefR(undef, fnVal, nil)
+}
+
+// fnUndefMatchesFnDefR is FnUndefMatchesFnDef with the enclosing unify
+// chain's registry threaded through to the Pattern-compatibility unify
+// (see fnSigSatisfiesSpecR).
+func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 	uInfo, ok := undef.Data.(FnUndefInfo)
 	if !ok {
 		return false
@@ -133,7 +152,7 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 		return true
 	}
 	for _, want := range uInfo.Sigs {
-		if !FnDefHasSig(fnDef, want) {
+		if !fnDefHasSigR(fnDef, want, r) {
 			return false
 		}
 	}
@@ -146,12 +165,44 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 // fallback excluded) so both boru fns and Go-implemented words are
 // considered. The variance rule is delegated to FnSigSatisfiesSpec.
 func FnDefHasSig(fnDef FnDefInfo, want FnSigSpec) bool {
+	return fnDefHasSigR(fnDef, want, nil)
+}
+
+// fnDefHasSigR is FnDefHasSig with the enclosing unify chain's registry
+// threaded through (see fnSigSatisfiesSpecR).
+func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
 	for _, s := range fnDef.OwnSigs() {
-		if FnSigSatisfiesSpec(s, want) {
+		if fnSigSatisfiesSpecR(s, want, r) {
 			return true
 		}
 	}
 	return false
+}
+
+// ProvenWindowMatch reports whether fn's own signatures PROVABLY admit a
+// fn-value apply's window, given in signature order (the top argument
+// first): no argument is gradual, some own signature matches them
+// (MatchFnSig), and every value pattern of that signature holds over a
+// CONCRETE argument — over a carrier the match is a run-time question. The
+// one proof both halves of a paren-bounded apply ask for: the compiler's
+// applyWindowFits (NUR246's count) and the collapse's bind-time evaluation
+// of a pending container argument (NUR337).
+func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
+	for _, a := range sigArgs {
+		if a.Dynamic {
+			return false
+		}
+	}
+	sig := MatchFnSig(fn, sigArgs)
+	if sig == nil {
+		return false
+	}
+	for i, p := range sig.Params {
+		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(sigArgs[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // MatchFnSig finds the first OWN signature of a fn VALUE whose params admit
@@ -181,7 +232,12 @@ func MatchFnSig(fn Value, args []Value) *FnSig {
 		}
 		match := true
 		for j, p := range sig.Params {
-			if !args[j].Parent.ConformsTo(p.Type) {
+			// The matcher's own per-slot rule (stackSlotAdmits): a bare
+			// type node's Parent is its SUPERTYPE, so the ConformsTo this
+			// used to ask refused `Integer` at a `t:Type` slot the
+			// interpreter's dispatch fills, and a type literal at a
+			// concrete slot is refused by the rule, not by accident (NUR248).
+			if !stackSlotAdmits(sig, j, args[j]) {
 				match = false
 				break
 			}

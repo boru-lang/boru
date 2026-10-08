@@ -238,7 +238,7 @@ func requireOwnedAnchor(r *Registry, name, word string, sigs []Signature, owner 
 	for i := range sigs {
 		// A ZERO-ARITY sig is provably additive-only — it can claim
 		// nothing but the bare application, and an exact 0-arg locked
-		// tuple is still replacement-refused — so, like a fallback, it
+		// tuple is still replacement-declined — so, like a fallback, it
 		// needs no anchor (`def outer fn [[] …]` colliding with the
 		// higher-order `outer` word is everyday code, not an override).
 		if sigs[i].Fallback || sigs[i].TotalArgs() == 0 || sigHasOwnedAnchor(&sigs[i], owner) {
@@ -315,7 +315,7 @@ func NewWordExtension(owner, name string, sigs []Signature) FnDefInfo {
 // dispatches exactly like an installed fn's — and binds it through the
 // ordinary DefTable shadow stack. Scope (fn body / module body / top
 // level), `undef`, and closure capture all fall out of the def
-// machinery. Sealed words refuse.
+// machinery. Sealed words decline.
 func InstallWordExtension(r *Registry, name string, ext FnDefInfo) error {
 	if IsSealedWord(name) {
 		return r.BoruError("reserved_word",
@@ -331,7 +331,7 @@ func InstallWordExtension(r *Registry, name string, ext FnDefInfo) error {
 	// extending a CORE word — from ANY scope, top level included —
 	// requires every added signature to be anchored by a nominal type
 	// this scope owns. Enforced at def time so the author sees the
-	// refusal immediately. Module-provided words (wrapper rebindings —
+	// compile failure immediately. Module-provided words (wrapper rebindings —
 	// locked but not builtin here) are exempt: they are versioned with
 	// the module dependency that owns them.
 	if r.IsBuiltinWord(name) {

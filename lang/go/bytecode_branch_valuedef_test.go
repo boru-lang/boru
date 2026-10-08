@@ -53,7 +53,7 @@ def _ (bcount set bi ((bcount get bi) add 1)) end
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -80,7 +80,7 @@ def _ (bcount set bi ((bcount get bi) add 1)) end
 // `set` argument and the arm's returned value. planValueDefLocals USED to skip
 // promotion for every fragment-internal arm result (assuming it stays on the
 // arm's simulated stack); but the intra-arm `set` consumed t2's single sim slot,
-// so nothing was left to seat as the result and the arm refused "branch leaves
+// so nothing was left to seat as the result and the arm declined "branch leaves
 // extra values" (out=opEvent, vm=0). Such a self-consumed arm-result value-def is
 // now promoted to a frame local (stored once inside the arm, re-pushed for the
 // operand use AND re-resolved as the arm out). compile == interpret MUST hold.
@@ -109,7 +109,7 @@ out`, "[[10 20 30]]"},
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -165,7 +165,7 @@ out`, "[15]"},
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {
@@ -183,19 +183,18 @@ out`, "[15]"},
 	}
 }
 
-// TestBranchArmEnclosingLoopStillRefuses is the NEGATIVE guard for the Stage-3
+// TestBranchArmEnclosingLoopStillFailsToCompile is the NEGATIVE guard for the Stage-3
 // scopeFloor fix: skipping PROMOTED enclosing operands must NOT silence a genuine
 // enclosing read that CANNOT be promoted. A nested `if` arm reading an enclosing
-// LOOP result (variadic — never promoted) still refuses "branch reads enclosing
-// computation (Stage 3)" and falls back to the interpreter, which runs correctly
-// (compile == interpret). Proves precision, not blanket suppression.
-func TestBranchArmEnclosingLoopStillRefuses(t *testing.T) {
+// LOOP result (variadic — never promoted) still declines "branch reads enclosing
+// computation (Stage 3)", so the program does not compile. Proves precision, not blanket suppression.
+func TestBranchArmEnclosingLoopStillFailsToCompile(t *testing.T) {
 	src := `def f fn [[n:Integer] [Any] [ def xs (for 1 [ 7 ]) if (n gt 0) [ if (n gt 1) [ xs ] [ 0 ] ] [ 0 ] ]] 2 f`
 	a, _ := New()
 	prog, reason, _, _ := a.CompileCheck(src)
-	refused := prog == nil || strings.Contains(prog.Disassemble(), "FALLBACK")
-	if !refused {
-		t.Errorf("expected the enclosing loop-variadic read to refuse native compile; reason=%q", reason)
+	declined := prog == nil || strings.Contains(prog.Disassemble(), "FALLBACK")
+	if !declined {
+		t.Errorf("expected the enclosing loop-variadic read to decline native compile; reason=%q", reason)
 	}
 	got, err := a.RunInterp(src)
 	if err != nil {

@@ -117,7 +117,7 @@ func TestTouchOwnerGroupXattr(t *testing.T) {
 		t.Errorf("touch xattr raw = %v (%v)", v, err)
 	}
 
-	// A non-scalar xattr value refuses.
+	// A non-scalar xattr value declines.
 	if err := runBoruError(t, r, []Value{
 		NewWord("touch"), pathV("t.txt"),
 		wrapMap(func(om *OrderedMap) {
@@ -129,18 +129,18 @@ func TestTouchOwnerGroupXattr(t *testing.T) {
 		t.Errorf("list-valued xattr: err = %v", err)
 	}
 
-	// Chown refusal surfaces through touch (non-root, real id change).
+	// Chown compile failure surfaces through touch (non-root, real id change).
 	mem.SetIdentity(func() int { return 1000 }, func() int { return 1000 })
 	if err := runBoruError(t, r, []Value{
 		NewWord("touch"), pathV("t.txt"),
 		wrapMap(func(om *OrderedMap) { om.Set("owner", NewInteger(0)) }),
 	}); err == nil {
-		t.Error("non-root touch {owner} should refuse")
+		t.Error("non-root touch {owner} should decline")
 	}
 }
 
 func TestStatXattrErrorBranches(t *testing.T) {
-	// A backend refusing xattrs turns {xattr:true} into a loud stat error
+	// A backend declining xattrs turns {xattr:true} into a loud stat error
 	// (support-absence must not read as attribute-absence).
 	r, err := DefaultRegistry()
 	if err != nil {
@@ -152,10 +152,10 @@ func TestStatXattrErrorBranches(t *testing.T) {
 		NewWord("stat"), pathV("x"),
 		wrapMap(func(om *OrderedMap) { om.Set("xattr", NewBoolean(true)) }),
 	}); err == nil {
-		t.Error("stat {xattr} over a refusing backend should error")
+		t.Error("stat {xattr} over a declining backend should error")
 	}
 
-	// XattrGet failing mid-attach (list succeeds, get refuses) propagates.
+	// XattrGet failing mid-attach (list succeeds, get declines) propagates.
 	r2, err := DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestHostXattrNameMapping(t *testing.T) {
 }
 
 func TestPermissionedFileOpsGatesMetadata(t *testing.T) {
-	// Sandbox (default-deny) refuses all five new ops; trusted passes
+	// Sandbox (default-deny) declines all five new ops; trusted passes
 	// them through to the inner backend.
 	r, err := DefaultRegistryWithPolicy(loadPolicy(t, "sandbox"))
 	if err != nil {
@@ -267,7 +267,7 @@ func TestPermissionedFileOpsGatesMetadata(t *testing.T) {
 }
 
 func TestMountMetadataBridge(t *testing.T) {
-	// A mount WITHOUT the metadata handlers refuses each op cleanly.
+	// A mount WITHOUT the metadata handlers declines each op cleanly.
 	bare := HostFileOps(mountFixture(t, `mount { read: (p:Pathon => ['x']) }`))
 	if err := bare.Chown("f", 1, 1, true); err == nil || !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("unbridged chown: %v", err)

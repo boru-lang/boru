@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	lang "github.com/boru-lang/boru/lang/go"
 )
@@ -144,7 +145,7 @@ func TestOutcomeString(t *testing.T) {
 		Pass:         "pass",
 		InterpReject: "interp-reject",
 		CheckReject:  "check-reject",
-		Refused:      "refused",
+		Declined:     "declined",
 		Islanded:     "islanded",
 		Diverged:     "DIVERGED",
 	}
@@ -156,7 +157,7 @@ func TestOutcomeString(t *testing.T) {
 }
 
 // TestClassifyRealArms — the classifier arms a healthy build CAN reach:
-// pass, interpreter rejection, and a genuine compile refusal.
+// pass, interpreter rejection, and a genuine compile failure.
 func TestClassifyRealArms(t *testing.T) {
 	if r := Classify("1 add 2"); r.Outcome != Pass || r.Detail != "" {
 		t.Errorf("1 add 2: %v %q, want pass", r.Outcome, r.Detail)
@@ -164,14 +165,14 @@ func TestClassifyRealArms(t *testing.T) {
 	if r := Classify("zzvnosuchword"); r.Outcome != InterpReject {
 		t.Errorf("undefined word: %v %q, want interp-reject", r.Outcome, r.Detail)
 	}
-	// A def-PROMOTED do-catch read — a stable refusal (the result leaves the
+	// A def-PROMOTED do-catch read — a stable compile failure (the result leaves the
 	// stack for a frame slot, so neither the mark window nor the paren apply
 	// reproduces it). Earlier fixtures graduated to corpus-native: `for 3
 	// [1 2]` at net drivers, the bare do-catch region `do [(zf 5) 2] error
 	// [dot code]` at the mark-window island (L-DO part 2b).
 	r := Classify(`def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg`)
-	if r.Outcome != Refused || r.Detail == "" {
-		t.Errorf("promoted do-catch read: %v %q, want a refusal", r.Outcome, r.Detail)
+	if r.Outcome != Declined || r.Detail == "" {
+		t.Errorf("promoted do-catch read: %v %q, want a compile failure", r.Outcome, r.Detail)
 	}
 }
 
@@ -224,14 +225,40 @@ func TestClassifySeamArms(t *testing.T) {
 		}
 	})
 
+	t.Run("a program that does not answer by the deadline is hung", func(t *testing.T) {
+		swap(t)
+		prev := Deadline
+		Deadline = 10 * time.Millisecond
+		t.Cleanup(func() { Deadline = prev })
+		block := make(chan struct{})
+		disasm = func(*lang.Program) string { <-block; return "" }
+		r := Classify("1 add 2")
+		// The abandoned classification still reads the seams: let it run to
+		// its end before the swap's cleanup restores them.
+		close(block)
+		inflight.Wait()
+		if r.Outcome != Hung || !strings.Contains(r.Detail, "HUNG: no answer within 10ms") || r.Outcome.String() != "HUNG" {
+			t.Errorf("%v %q, want hung", r.Outcome, r.Detail)
+		}
+	})
+
+	t.Run("a panic in an engine is recovered, named by its phase", func(t *testing.T) {
+		swap(t)
+		disasm = func(*lang.Program) string { panic("boom") }
+		r := Classify("1 add 2")
+		if r.Outcome != Panicked || r.Detail != "PANIC in disassemble: boom" || r.Outcome.String() != "PANIC" {
+			t.Errorf("%v %q, want the recovered panic", r.Outcome, r.Detail)
+		}
+	})
+
 	t.Run("runtime bail", func(t *testing.T) {
 		swap(t)
 		runCompiled = func(*lang.Boru, string) ([]any, bool, error) {
 			return nil, false, errors.New("bailed")
 		}
 		r := Classify("1 add 2")
-		if r.Outcome != Refused || !strings.Contains(r.Detail, "runtime bail") {
-			t.Errorf("%v %q, want runtime-bail refusal", r.Outcome, r.Detail)
+		if r.Outcome != Declined || !strings.Contains(r.Detail, "runtime bail") {
+			t.Errorf("%v %q, want runtime-bail compile failure", r.Outcome, r.Detail)
 		}
 	})
 

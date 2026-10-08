@@ -5,7 +5,7 @@ import "testing"
 // Unit battery for the tail-call detection probe on synthetic tapes.
 // Each accepting shape is paired with the rejecting shapes that differ
 // from it by one token class — the probe is default-deny, so the
-// negative cases are the contract (design/TCO-STAGED.10.md Stage 2).
+// negative cases are the contract (design/legacy/TCO-STAGED.10.ignore Stage 2).
 
 type probeFixture struct {
 	r    *Registry

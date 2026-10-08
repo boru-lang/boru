@@ -71,7 +71,7 @@ func TestRunInterpValues(t *testing.T) {
 
 	if _, err := a.RunInterpValues(`zz-missing-word-xyz`); err == nil {
 		t.Fatalf("undefined word must error")
-	} else if codeOf(err) == "compile_refused" {
-		t.Fatalf("RunInterpValues must never report compile_refused: %v", err)
+	} else if codeOf(err) == "compile_failed" {
+		t.Fatalf("RunInterpValues must never report compile_failed: %v", err)
 	}
 }

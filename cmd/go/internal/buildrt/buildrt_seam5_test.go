@@ -18,7 +18,7 @@ func TestSeam5EvalInitError(t *testing.T) {
 	langNew = func(...lang.Options) (*lang.Boru, error) { return nil, boom }
 	t.Cleanup(func() { langNew = orig })
 
-	err := Eval(io.Discard, "1 2 +", lang.Options{}, CompileOff)
+	err := Eval(io.Discard, "1 2 +", lang.Options{})
 	if err == nil || !strings.Contains(err.Error(), "init error: init boom") {
 		t.Fatalf("Eval = %v, want init error wrapping %v", err, boom)
 	}

@@ -9,7 +9,7 @@ import (
 // The fn-frame tape protocol (fn_frame.go) is what every body-splice
 // path builds frames from; these tests pin the marked open paren's
 // predicates and the canonical tail shape so a probe scanning frames
-// (design/TCO-STAGED.10.md Stage 2) has an asserted contract to match.
+// (design/legacy/TCO-STAGED.10.ignore Stage 2) has an asserted contract to match.
 
 func TestFrameOpenPredicates(t *testing.T) {
 	meta := &core.FnFrameMeta{Name: "f"}

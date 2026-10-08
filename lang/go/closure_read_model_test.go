@@ -52,9 +52,9 @@ func TestClosureReadModelParity(t *testing.T) {
 	}
 }
 
-// TestClosureReadModelSoundRefusals pins the neighbours that REFUSE, with
+// TestClosureReadModelSoundCompileFailures pins the neighbours that DECLINE, with
 // the interpreter's own answer.
-func TestClosureReadModelSoundRefusals(t *testing.T) {
+func TestClosureReadModelSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// the token past the arity stays inside the paren with the result
 		{crmMk + `(h 5 9)`, "bounded by a paren", "[12 9]"},
@@ -69,11 +69,11 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {
@@ -101,7 +101,7 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, "the statement ends short of the wrapper's arity") {
-			t.Errorf("%q: refused %q", src, reason)
+			t.Errorf("%q: declined %q", src, reason)
 		}
 		d, err := New()
 		if err != nil {
@@ -113,10 +113,15 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 	}
 }
 
-// TestClosureReadModelFilterBodyIslanded pins the filter-body twin as
-// measured: it compiles and agrees (the filter_error on both lanes) but the
-// filter body islands, so it stays ledgered as islanded.
-func TestClosureReadModelFilterBodyIslanded(t *testing.T) {
+// TestClosureReadModelBodiesNative pins the filter-body twin and the
+// each-body forward form as measured since S1a (2026-09-19,
+// design/FULL-COMPILATION-REPLAN.0.md): each and filter declare
+// CompileDynBody, so the call over the computed-closure read lowers to a poly
+// re-match over the word's own overloads — no island — and agrees with the
+// interpreter (the filter_error on both lanes for the filter twin). Until
+// S1a both compiled with an island and were ledgered as islanded
+// (frontier-hof-audit.tsv:148, :166); the ledger entries are graduated.
+func TestClosureReadModelBodiesNative(t *testing.T) {
 	for _, src := range []string{
 		crmMk + `filter [1 2] [gt 0 (h 5)]`,
 		`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`,
@@ -125,8 +130,8 @@ func TestClosureReadModelFilterBodyIslanded(t *testing.T) {
 		if !compiled {
 			t.Fatalf("%q: not compiled", src)
 		}
-		if len(islands) == 0 {
-			t.Errorf("%q: runs VM-native now — graduate it from the ledger", src)
+		if len(islands) != 0 {
+			t.Errorf("%q: islands again (%v) — S1a's poly re-match must hold", src, islands)
 		}
 		d, err := New()
 		if err != nil {

@@ -10,10 +10,10 @@ together). No code has been written against this.
 > plan. Where it cites line numbers (`carrier.go:2324`, …) they are anchors at
 > time of writing and may drift — re-grep before relying on them.
 
-Related prior art (read alongside): `CARRIER-STATIC-TYPECHECK-REPORT.10.md` (the
-carrier abstract-interpretation foundation), `checker-compiler-architecture-review.0.md`
+Related prior art (read alongside): `legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore` (the
+carrier abstract-interpretation foundation), `legacy/checker-compiler-architecture-review.0.ignore`
 (the checker↔compiler coupling, largely landed), `COMPILABLE-SUBSET.md` (the
-compiler's refusal contract), `checker-accuracy-review.10.md` (loop/guard/fn
+compiler's refusal contract), `legacy/checker-accuracy-review.10.ignore` (loop/guard/fn
 analysis), `REFINE-NEWTYPE-VS-SUBSET.10.md` (the one-predicate `v.Is(t)` boundary
 rule).
 
@@ -68,7 +68,7 @@ the type here" is answered differently in every context:
   (`JoinCarriers`).
 - **Widening / fixpoint** — `AnalyseLoopBody` re-runs a loop body up to a fixed
   number of rounds joining carriers until "stable" (a hand-rolled widening; see
-  the separate item in `checker-accuracy-review.10.md`).
+  the separate item in `legacy/checker-accuracy-review.10.ignore`).
 - **Inference for unannotated bodies** — `AnalyseFnBody` re-analyses an
   anonymous lambda's body against bound carrier args because the lambda's static
   `Returns` is the conservative `[Any]` (see `lang/go/CLAUDE.md` "Lambda
@@ -241,7 +241,7 @@ may legitimately stop after any stage: the value is monotonic.
 |---|---|---|
 | Type-directed dispatch leaks in (§5) | **Critical** — soundness | Review invariant + a gate asserting the checker selects the *same* signature the interpreter does for every spec row (extend the differential gate to compare *selected sig*, not just result). |
 | Recorder traversal order diverges under checking mode (§6.1) | High | Keep the recorder hooked to the evaluation walk; checking mode supplies an expected-type *context* only. Property-fuzz `RunCompiled` vs `Run` (already exists) catches order divergence as a result mismatch. |
-| `carrier.go` rewrite (Stage 4) destabilises the loop fixpoint / guards | High | Defer Stage 4 until 1–3 are green; treat it as a separate proposal with its own baseline. The widening rework is already tracked in `checker-accuracy-review.10.md` and could land first/independently. |
+| `carrier.go` rewrite (Stage 4) destabilises the loop fixpoint / guards | High | Defer Stage 4 until 1–3 are green; treat it as a separate proposal with its own baseline. The widening rework is already tracked in `legacy/checker-accuracy-review.10.ignore` and could land first/independently. |
 | Volume "win" evaporates after counting new rule scaffolding | Medium | Stage 0 baseline + per-stage LOC measurement; abandon a stage that doesn't pay. (Honest precedent: the lattice-encoding and unify-dedup work in this branch came out net-neutral on LOC — efficiency/consolidation, not raw reduction. Hold this proposal to the same honesty.) |
 | Conflict with verbatim-reuse invariant blocks Stage 1 | Medium | That is the *point* of making Stage 1 the gate: if return-checking can't be expressed as a `⇐` over the shared boundary without forking from runtime, the proposal is not viable and we learn it cheaply. |
 
@@ -306,7 +306,7 @@ If (2) cannot be met, the proposal is rejected regardless of the other metrics.
   2021. The survey; design principles and the synthesis/checking discipline.
 - Pierce & Turner, *Local Type Inference*, 1998. The origin of the modern
   checking/synthesis split.
-- Internal: `CARRIER-STATIC-TYPECHECK-REPORT.10.md`,
-  `checker-compiler-architecture-review.0.md`, `COMPILABLE-SUBSET.md`,
-  `checker-accuracy-review.10.md`, `REFINE-NEWTYPE-VS-SUBSET.10.md`,
+- Internal: `legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`,
+  `legacy/checker-compiler-architecture-review.0.ignore`, `COMPILABLE-SUBSET.md`,
+  `legacy/checker-accuracy-review.10.ignore`, `REFINE-NEWTYPE-VS-SUBSET.10.md`,
   `FORWARD-COLLECTION-PHASES.10.md`.

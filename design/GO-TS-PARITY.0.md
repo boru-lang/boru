@@ -6,9 +6,9 @@ functionality parity go and ts on modules core, parser and basic, with
 approach — "use shared tsv spec files as much as possible to establish
 parity".
 
-Sibling notes: [TS-PARITY-AUDIT.0.md](TS-PARITY-AUDIT.0.md) (the audit
-that built the parser stream oracle), [CORE-TS-COVERAGE.0.md](CORE-TS-COVERAGE.0.md),
-[BASIC-CHECK-CUT.0.md](BASIC-CHECK-CUT.0.md) (the dependency cut that
+Sibling notes: [legacy/TS-PARITY-AUDIT.0.ignore](legacy/TS-PARITY-AUDIT.0.ignore) (the audit
+that built the parser stream oracle), [legacy/CORE-TS-COVERAGE.0.ignore](legacy/CORE-TS-COVERAGE.0.ignore),
+[legacy/BASIC-CHECK-CUT.0.ignore](legacy/BASIC-CHECK-CUT.0.ignore) (the dependency cut that
 preceded this).
 
 ## The measurement, and why the obvious one misleads
@@ -75,10 +75,10 @@ same day measured 55 divergences (~2.1%) on inputs OUTSIDE the corpus —
 trailing-`=>` fold loss, two accept/reject splits, recovery-token detail,
 error precedence, and an internal type-name leak — and follow-up probing
 found an empty-`${}` template-fold class the sweep's seed missed. The
-ledger now carries one representative row per class found so far (9
-rows; measured, not proven exhaustive), both runners re-measure every
-row on every run, and 50 probe-AGREED neighbors were promoted into
-`parse.tsv`. The safe DATA-decode seam had two asymmetries no shared row
+ledger carried one representative row per class (9 rows) and 50
+probe-AGREED neighbors were promoted into `parse.tsv`. **All nine classes
+are fixed in both ports (NUR060, 2026-09-26)**: each row moved to
+`parse.tsv` with neighbours, and the ledger is empty again. The safe DATA-decode seam had two asymmetries no shared row
 could express — TS reordering integer-like map keys, and Go alone wrapping
 sign+separator runs like `+_1` as numbers — and both were DEPENDENCY
 defects, fixed upstream in jsonic v0.6.0 / parser v0.8.0 (ADR-014) and now
@@ -327,7 +327,7 @@ subset (the port is faithful where it is implemented) and 23 of 35 differed
 the moment a constructor appeared. Then a 980-source sweep opened the
 ENGINE surface: **136 verified divergences, 131 distinct sources, not one
 covered by an eng/spec row** — 102 wrong answers, 26 gaps, 3 code diffs.
-[ENGINE-BLIND-SPOT.0.md](ENGINE-BLIND-SPOT.0.md) is the account.
+[legacy/ENGINE-BLIND-SPOT.0.ignore](legacy/ENGINE-BLIND-SPOT.0.ignore) is the account.
 
 Three things from it are worth carrying even if the tables are never read:
 

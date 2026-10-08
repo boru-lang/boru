@@ -33,12 +33,38 @@ func InstallDef(r *Registry, name string, body Value, stackOnly ...bool) {
 // REDEFINITION (it must drop the colliding overload); a param entering
 // a new scope must not, or it destroys the caller's binding (e.g. a
 // fn-valued arg whose param name collides with a live caller param —
-// design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md).
+// design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore).
 func InstallFrameBinding(r *Registry, name string, body Value) {
 	installDef(r, name, body, true)
 }
 
+// UninstallFrameBinding pops a binding InstallFrameBinding pushed — a
+// param or a capture at a frame's teardown. The push was a SHADOWING
+// install that noted no bind transition (a frame binding is scoped to one
+// call, never a transition that outlives the pass), so its pop notes none
+// either: UninstallDef's BindUndef note here ledgered a root-depth undef of
+// a callee's param whenever a fn ran through CallBoru at FnBodyDepth 0 (a
+// module fn applied inside a re-matched `each` body), a twin no op could
+// place, and the program declined "twin regime" (each-variants.tsv L206,
+// 2026-09-25). The rebind notification is skipped for the same reason the
+// push skipped it.
+func UninstallFrameBinding(r *Registry, name string) {
+	r.Defs.Pop(name)
+}
+
 func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...bool) {
+	// A root-level def under the check pass — not a frame binding, not a
+	// def inside a fn body's analysis — is a late-binding site for the
+	// hint (NUR097).
+	// The site is the def-NAME token InstallAndRecordDef staged for the bind
+	// ledger (PendingBindPos) — a fn value carries no position of its own.
+	if !shadow && r != nil && r.Check.IsActive() && len(r.Check.FnNameStack) == 0 {
+		pos := r.Check.PendingBindPos
+		if pos.Row == 0 {
+			pos = body.Pos()
+		}
+		r.Check.NoteRootDefSite(name, pos)
+	}
 	// The rebind notification, seated with the operation rather than with the
 	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every
 	// twin note below makes: a SHADOWING install is InstallFrameBinding's —
@@ -85,48 +111,15 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if reg := fnDef.Registry; reg != nil && reg != r {
-			own := fnDef.OwnSigs()
-			// EVERY own sig must be a trivial delegation to the SAME
-			// inner native — a multi-overload wrapper (e.g. IO.write)
-			// carries one delegation FnSig per overload. Requiring only
-			// a single sig here used to drop multi-sig wrappers onto the
-			// body-splice path below, where the wrapper's own UNLOCKED
-			// FnSigs were installed — so a later overlapping `def` could
-			// silently replace a module word instead of raising
-			// locked_signature (the inner native's sigs are locked).
-			innerName := ""
-			allTrivial := len(own) > 0
-			for i := range own {
-				target, ok := trivialDelegationTarget(&own[i])
-				if !ok || (innerName != "" && target != innerName) {
-					allTrivial = false
-					break
-				}
-				innerName = target
+		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
+			r.Defs.Push(name, rebound)
+			if !shadow {
+				r.NoteBindTransition(BindDef, name, body.Pos())
 			}
-			if allTrivial {
-				if inner := reg.Lookup(innerName); inner != nil && len(inner.Signatures) > 0 {
-					rebound := FnDefInfo{
-						Name:           name,
-						Signatures:     append([]Signature(nil), inner.Signatures...),
-						MaxForwardArgs: inner.MaxForwardArgs,
-						Registry:       reg,
-						// A trivial-delegation rebind is the inner word under
-						// another name — the record's own case — so it inherits
-						// the inner word's identity token (NUR031).
-						ident: inner.ident,
-					}
-					r.Defs.Push(name, NewFunction(rebound))
-					if !shadow {
-						r.NoteBindTransition(BindDef, name, body.Pos())
-					}
-					if !shadow && r.ready && r.OnRegisterHook != nil {
-						r.OnRegisterHook(name)
-					}
-					return
-				}
+			if !shadow && r.ready && r.OnRegisterHook != nil {
+				r.OnRegisterHook(name)
 			}
+			return
 		}
 
 		// Remove any previous DefStack entries whose signatures overlap
@@ -139,7 +132,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// that collides with an outer same-named binding must SHADOW it (a
 		// fresh entry the teardown pops to restore the outer), not drop it.
 		// Dropping the outer entry here is the per-call cleanup over-pop bug
-		// (design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md): the colliding outer
+		// (design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore): the colliding outer
 		// param vanishes, then the frame's undef tail pops the wrong level.
 		// Entries carrying LOCKED signatures (native registrations, module-
 		// wrapper rebindings) are never dropped: locked sigs can never be
@@ -147,7 +140,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// path (BuildWordExtension) intercepts fn defs over locked-bearing
 		// words before InstallDef, so this guard is defence in depth for
 		// direct InstallDef callers.
+		// A FRESH def (no standing entry) inside a rolled-back conditional
+		// body is speculative exactly as an overlapping redefinition is
+		// (below): bound at run time only if the arm runs.
+		fresh := !shadow && len(r.Defs.Stack(name)) == 0
 		replaced := false
+		var dropped Value
 		if stack := r.Defs.Stack(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
@@ -155,6 +153,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				oldFn, ok := entry.Data.(FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
 					changed = true
+					dropped = entry
 					continue
 				}
 				filtered = append(filtered, entry)
@@ -168,10 +167,11 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// depth growth) cannot revert it, and compiled resolution bakes
 				// the conditional shadow. The interpreter keeps the outer fn
 				// when the branch is not taken (or the loop runs zero times), so
-				// the two diverge. Refuse — MarkUncompilable is a no-op off the
+				// the two diverge. Decline — MarkUncompilable is a no-op off the
 				// compile pass, so plain check and the interpreter are unaffected
-				// and the program runs correctly (slow, not wrong). An
-				// UNCONDITIONAL redefinition (top level or inside `do`) is sound
+				// and the program runs correctly — silently, which is why this
+				// failure has to stay on the books as a defect. An UNCONDITIONAL
+				// redefinition (top level or inside `do`) has no such divergence
 				// and keeps compiling: CondBodyDepth is 0 there.
 				//
 				// A redefinition inside a FN BODY by a CAPTURING fn value — a
@@ -183,15 +183,48 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// the compiled program keeps the outer closure's bake (`g (p 3)`
 				// answered 10 for the interpreter's 12 — the thirty-first
 				// increment). A capture-free literal takes the compiled twin and
-				// agrees; the closure's payload has no twin, so it refuses.
-				refusal := ""
-				if r.analysisInCondBody() {
-					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
+				// agrees; the closure's payload has no twin, so it declines.
+				failure := ""
+				if r.analysisInSpecArm() && len(fnDef.Captured) == 0 && NoteSpecFnDef(r, name, dropped, body, body.Pos()) {
+					// The seventieth increment: a CAPTURE-FREE replace inside
+					// a branch arm the model cannot decide is SPECULATIVE —
+					// placed at its site, the family's dispatches routed with
+					// a live lead (NoteSpecFnDef). The recorder declines what
+					// it cannot place (a loop or each body around the arm, a
+					// fn body, a signature with no declaration site), and a
+					// capturing closure's value is not a const the placement
+					// can bake: those keep the failure below.
+				} else if r.analysisInCondBody() {
+					failure = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
-					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
+					failure = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
+				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) == 0 && specFnJoin(r, name) && specFamilyAtFnBaseline(r, name) {
+					// NUR149: a CAPTURE-FREE redefinition inside a fn body of a
+					// SPECULATIVE-FAMILY name (a fn defined in a branch arm the
+					// model could not decide — SpecFnNames, the seventieth
+					// increment) whose standing binding existed at the enclosing
+					// fn's BASELINE — i.e., a MODULE-scope family. A capture-free
+					// replace normally takes the compiled BindDefReplace twin and
+					// agrees, so it is not declined above; but the family's
+					// dispatches ROUTE with a live lead (the routed op resolves
+					// the word in the running registry), and this in-place
+					// replace of a MODULE family is the family-L leak — the
+					// drop-then-push leaves the frame's def depth unchanged, so
+					// the interpreter keeps the shadow past the call (the module
+					// binding never restored) while the compiled def lowered to
+					// nothing. The live lead then resolves the arm's binding
+					// (whose unit no call site compiled) or an unbound name,
+					// diverging from the interpreter. No compiled twin reproduces
+					// a shadow the interpreter does not tear down, so decline. That
+					// keeps a wrong answer out and leaves the shape uncompiled —
+					// an open defect, owed the model that reproduces the shadow.
+					// An IN-FUNCTION family (created inside this fn, above the
+					// baseline) is popped by RET and has no such divergence, so it
+					// is NOT declined (the baseline gate; Codex P2 on #469).
+					failure = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
 				}
-				if refusal != "" {
-					r.analysisRecorder().MarkUncompilable(refusal)
+				if failure != "" {
+					r.analysisRecorder().MarkUncompilable(failure)
 				}
 				r.Defs.Set(name, filtered)
 				replaced = true
@@ -202,12 +235,19 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
+			// A FRESH capture-free def inside a branch arm the model cannot
+			// decide is speculative too (bound at run time only if the arm
+			// runs); declined, it keeps the join's model — the recorder
+			// declines where that model is known wrong.
+			NoteSpecFnDef(r, name, Value{}, body, body.Pos())
+		}
 		if !shadow {
 			// A REDEFINITION whose overlap filter dropped the colliding entry
 			// is a drop-then-push: the net depth is unchanged, so a twin that
 			// replays it as a plain push lands one level too deep and a later
 			// `undef` exposes the wrong binding — the hazard §6.5 names and the
-			// one family L's refusal exists for. Recorded as its own kind so
+			// one family L's failure exists for. Recorded as its own kind so
 			// the twin can reproduce the replace rather than infer it.
 			kind := BindDef
 			if replaced {
@@ -280,6 +320,48 @@ func UninstallDef(r *Registry, name string) {
 	r.NoteBindTransition(BindUndef, name, SrcPos{})
 }
 
+// WrapperUnderName is the module-wrapper rebinding (installDef's own case)
+// as a value: a FOREIGN trivial-delegation wrapper — what `import` produces
+// for each export — bound under name is the INNER native's overloads under
+// that name, exactly as dot-access dispatches it. The compiled frame binds a
+// wrapper for a named param the same way (eng's nameFrameFns), so `(f
+// MathUtil.sqrt/v) 16.0` renders the param's name over the inner overloads
+// on both lanes (NUR123). ok is false for anything else.
+func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
+	if !FnHomeForeign(r, &fnDef) {
+		return Value{}, false
+	}
+	reg := fnDef.Registry
+	own := fnDef.OwnSigs()
+	innerName := ""
+	allTrivial := len(own) > 0
+	for i := range own {
+		target, ok := trivialDelegationTarget(&own[i])
+		if !ok || (innerName != "" && target != innerName) {
+			allTrivial = false
+			break
+		}
+		innerName = target
+	}
+	if !allTrivial {
+		return Value{}, false
+	}
+	inner := reg.Lookup(innerName)
+	if inner == nil || len(inner.Signatures) == 0 {
+		return Value{}, false
+	}
+	return NewFunction(FnDefInfo{
+		Name:           name,
+		Signatures:     append([]Signature(nil), inner.Signatures...),
+		MaxForwardArgs: inner.MaxForwardArgs,
+		Registry:       reg,
+		// A trivial-delegation rebind is the inner word under another
+		// name — the record's own case — so it inherits the inner word's
+		// identity token (NUR031).
+		ident: inner.ident,
+	}), true
+}
+
 // buildFnBodyHandler produces the dispatch Handler for one boru fn
 // signature. Rather than computing a final result, the handler returns
 // a PAREN-WRAPPED TOKEN SEQUENCE — `( unnamed-args… body DefCleanup __pa
@@ -307,7 +389,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// leaf-fn / recursion case (fib, a tail-accumulator) — every call skips
 	// BOTH per-call DefTable.Snapshot maps (each O(all bound names)) and the
 	// def-cleanup name scan, the dominant term behind the ~340 allocs/frame
-	// (design/INTERPRETER-SPEED-PLAN.10.md #5). Stack balance is preserved:
+	// (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). Stack balance is preserved:
 	// the fn baseline still pushes/pops (a nil entry) and the DefCleanup
 	// marker still rides the tape (carrying SkipCleanup).
 	needsFrameState := fnDefCopy.Gen != nil || bodyNeedsFrameState(r, s.Body())
@@ -317,7 +399,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// pairs, zero-Pos ReturnCheck) never vary between calls. Build that
 	// skeleton ONCE here and per call only copy it with the arg values
 	// patched in — the old per-call rebuild minted ~7 ID-stamped tokens
-	// per frame (design/INTERPRETER-SPEED-PLAN.10.md #5). The per-call
+	// per frame (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). The per-call
 	// COPY is mandatory: execMatch's stampResultPos mutates the returned
 	// slice (ReturnCheck Pos, fn-value pos), and ForkConcurrent engines
 	// share this handler. Nothing keys on the shared tokens' Value.IDs —
@@ -325,8 +407,6 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	var (
 		skeleton   []Value
 		unnamedIdx []int // param positions whose args splice into the frame head
-		emptyArgs  Value
-		refsArgs   bool
 	)
 	if !needsFrameState {
 		for i, p := range s.Params {
@@ -351,16 +431,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   u,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		skeleton = append(skeleton, NewCloseParen())
-		// When the body provably never reads `args` (sound under the
-		// !needsFrameState gate — see bodyReferencesArgs), push a shared
-		// empty list per call instead of copying the args into a fresh
-		// one; __pa only needs an entry to pop, and nothing else reads
-		// the list contents.
-		refsArgs = bodyReferencesArgs(r, s.Body())
-		emptyArgs = NewList(nil)
 	}
 	return func(args []Value, _ map[string]Value, _ []Value, callReg *Registry) ([]Value, error) {
 		// Reached from a FOREIGN registry (callReg != the install registry r) — a
@@ -385,7 +458,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			if callReg.AnalysisScopeID() == r.AnalysisScopeID() {
 				target = callReg
 			}
-			return target.CallBoruNamed(&s, args, fnDefCopy.Captured, fnDefCopy.Name)
+			// A named call: the frame's return count on this path too
+			// (NUR191, CallBoruStrict).
+			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, fnDefCopy.Name, SrcPos{})
 		}
 		// Retag typed-container args up front so EVERY access path in the body —
 		// named binding, the args stack (args.N), and unnamed body-token pushes —
@@ -397,13 +472,18 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// (see the construction-time comment above).
 		if !needsFrameState {
 			r.PushFnBaseline(nil)
-			argsList := emptyArgs
-			if refsArgs {
-				argsCopy := make([]Value, len(args))
-				copy(argsCopy, args)
-				argsList = NewList(argsCopy)
-			}
-			if err := r.Args.Push(argsList); err != nil {
+			// ONE allocation holds the frame's tokens and, past them, its
+			// args copy, pushed lazily (ArgsStack.PushLazy): the list a
+			// reader sees is built only when code the frame runs reads
+			// `args` — a literal read, a word macro bound after the fn, a
+			// computed body — and is always the call's real list (NUR350).
+			// The token slice handed back is capped at the skeleton, so no
+			// append to it can reach the args.
+			n := len(skeleton)
+			buf := make([]Value, n+len(args))
+			argsCopy := buf[n:]
+			copy(argsCopy, args)
+			if err := r.Args.PushLazy(argsCopy); err != nil {
 				r.PopFnBaseline()
 				return nil, err
 			}
@@ -421,7 +501,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				}
 			}
-			out := make([]Value, len(skeleton))
+			out := buf[:n:n]
 			copy(out, skeleton)
 			for k, i := range unnamedIdx {
 				out[1+k] = args[i]
@@ -502,7 +582,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// the body (`of [T]`, `make (Box of [T])`). AFTER the snapshot,
 		// so the existing DefCleanup truncation tears them down — the
 		// undef tail's capitalised path would Retire the bound type's
-		// canonical node (design/GENERICS.10.md Phase 4).
+		// canonical node (design/legacy/GENERICS.10.ignore Phase 4).
 		if fnDefCopy.Gen != nil {
 			InstallGenCallBindings(r, fnDefCopy.Gen, s.Params, args)
 		}
@@ -510,7 +590,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// Append the body tokens directly: append COPIES them into result's
 		// backing array and s.Body() (the shared BoruImpl.Body) is never
 		// mutated here, so the previous intermediate make+copy was a
-		// redundant per-call allocation (design/INTERPRETER-SPEED-PLAN.10.md #5).
+		// redundant per-call allocation (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
 		result = append(result, s.Body()...)
 		// The canonical cleanup tail: DefCleanup (undoes body-local
 		// defs), __pa (pops Args + FnBaseline), the undef pairs for
@@ -525,7 +605,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   unnamedCount,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		result = append(result, NewCloseParen())
 		return result, nil
@@ -768,7 +848,8 @@ func compileFnSigs(r *Registry, name string, fnDef FnDefInfo, isStackOnly bool) 
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, name, s, fnDefCopy, meta),
 			}
-			cs.ReturnsFn = r.analysisReturnsFn(name, s, fnDefCopy)
+			// The installed sig, with its frame identity.
+			cs.ReturnsFn = r.analysisReturnsFn(name, cs, fnDefCopy)
 		}
 		cs.BarrierPos = barrier
 		NormalizeSig(&cs)
@@ -860,7 +941,7 @@ func CoerceBoolean(v Value) bool {
 		b, _ := AsBoolean(v)
 		return b
 	case ValueType(v).ConformsTo(TNumber):
-		// AsNumber REFUSES the arbitrary-precision leaves rather than
+		// AsNumber DECLINES the arbitrary-precision leaves rather than
 		// projecting them (value.go: "use AsFloatApprox for a lossy
 		// float64"), so its error must not be dropped here — the
 		// accompanying zero would read as a real magnitude and make
@@ -1044,7 +1125,7 @@ func IsHostTypeBody(v Value) bool {
 func IsTypeBody(v Value) bool {
 	// A bare lattice node IS a type; everything else asks its sealed
 	// payload through the one recognition seam (Payload.IsTypeContent,
-	// design/TYPE-REPRESENTATION.1.md §N4). The 18-arm shape
+	// design/legacy/TYPE-REPRESENTATION.1.ignore §N4). The 18-arm shape
 	// enumeration this replaced is pinned as the equivalence oracle in
 	// TestIsTypeContentMirrorsLegacy.
 	if IsBareTypeNode(v) {
@@ -1061,12 +1142,16 @@ func IsTypeBody(v Value) bool {
 	return v.Data != nil && v.Data.IsTypeContent(&v)
 }
 
-// PredicateInputType returns the concrete input type of a
-// predicate-shaped fn body (a Function whose first sig
-// takes exactly one argument with a declared type other than Any).
-// Returns nil if v isn't a predicate type or the input type is Any
-// or unset — those bodies stay parented at TFunction, the
-// pre-existing behavior.
+// PredicateInputType returns the concrete input type of a declared
+// predicate (`fnpred`): the type EVERY overload declares for the value it
+// tests. Returns nil if v isn't a declared predicate, or the input type is
+// Any or unset, or the overloads declare different inputs — those bodies
+// stay parented at TFunction, the pre-existing behavior.
+//
+// Membership consults the whole overload set (RunPredicate's one-value
+// application, NUR100), so an input type read off ONE overload would be a
+// pre-filter refusing a value another overload takes: the type is the
+// overloads' common input or nothing.
 //
 // Used by InstallType to mint user-defined predicate types with the
 // declared input type as their parent so values rewrapped by the
@@ -1085,20 +1170,23 @@ func PredicateInputType(v Value) *Type {
 	if !ok {
 		return nil
 	}
-	sig, ok := info.FirstOwnSig()
-	if !ok || len(sig.Params) == 0 {
+	// Only a DECLARED predicate (`fnpred`) has an input type: the
+	// parameter-count route that inferred one from a fn's shape was ADR-016's
+	// arity-keyed exception and is gone (NUR099).
+	if !info.Predicate {
 		return nil
 	}
-	// The parameter-COUNT test is the DEPRECATED route (NUR099/NUR100):
-	// ADR-016 forbids arity deciding how a function behaves. A `fnpred`
-	// declaration carries the fact explicitly and is believed whatever its
-	// shape; the count is consulted only for a body that never said so.
-	if !info.Predicate && len(sig.Params) != 1 {
-		return nil
-	}
-	t := sig.Params[0].Type
-	if t == nil || t.Equal(TAny) {
-		return nil
+	var t *Type
+	for _, sig := range info.OwnSigs() {
+		params := sig.Params
+		if len(params) == 0 {
+			return nil
+		}
+		in := params[0].Type
+		if in == nil || in.Equal(TAny) || (t != nil && !t.Equal(in)) {
+			return nil
+		}
+		t = in
 	}
 	return t
 }
@@ -1421,7 +1509,7 @@ func ExpandOptionalSigs(name string, sigs []FnSig) []FnSig {
 
 // bigNumIsZero reports whether an arbitrary-precision numeric leaf is
 // exactly zero. Split out of CoerceBoolean so the truthiness test never
-// routes a Big value through the float64 channel: AsNumber refuses them
+// routes a Big value through the float64 channel: AsNumber declines them
 // outright, and AsFloatApprox would flatten a sufficiently small
 // BigDecimal to 0.0. A value whose accessor fails is not provably zero,
 // so it stays truthy — the same direction the non-Big arm takes for an

@@ -7,7 +7,7 @@ import (
 )
 
 // codequote is quote's code-capturing sibling (paren-nesting Step 4,
-// design/PAREN-REPRESENTATION.9.md): it captures a forward paren RAW as a
+// design/legacy/PAREN-REPRESENTATION.9.ignore): it captures a forward paren RAW as a
 // ParenExpr value instead of evaluating it. `quote (expr)` keeps its
 // evaluate-then-quote semantics; codequote is the structural-quotability
 // form the macro layer wants.

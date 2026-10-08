@@ -1,0 +1,139 @@
+# compile_failures.tsv — the per-file compile-failure ratchets
+# (design/FULL-COMPILATION-REPLAN.0.md §3, P0; compile_failure_ledger_test.go).
+#
+# One line per lang/spec file that has rows which FAIL to compile:
+#
+#   <spec file> TAB <compile failures> TAB <what moved it>
+#
+# sorted by file name; a file not listed has none. TestCompiledCoverage
+# asserts every line against the live count of every file the run walks —
+# under BORU_SPEC_FILES too, so a filtered run over one family catches a
+# regression in that family in seconds — and the corpus-wide "compile
+# failures" ceiling is the sum of the second column.
+#
+# Every count is a RATCHET ON A BUG COUNT, never a budget: a row that does
+# not compile is a defect in the compiler (design/COMPILABLE-SUBSET.md §5),
+# not a decision it made. A line moves DOWN with the change that compiles
+# its rows (deleted at zero), and only UP with the rows that regressed named
+# in the third column — that is the record of debt put back, never a fix.
+# Lowering a line by deleting a corpus row is not allowed. Nothing
+# regenerates this file: edit it by hand, in the change that moved it.
+#
+# History of the sum: 0 until 2026-09-17, when the corpus expansion (707
+# rows of the idioms real programs use — a callback not written at the call
+# site, code bodies, fn-locals, module composition) exposed 113 compile
+# failures the old one-liner corpus could not see; that 0 was thin
+# coverage, not an achievement. 113 on 2026-09-18, when the ledger was
+# taken per file (P0) on main 4ed08d2, the head that merged PR #471.
+# 113 -> 60 on 2026-09-19 (S1a): each/fold/scan/filter declare
+# CompileDynBody, so a callback or code body the check pass cannot type
+# (a container read, a factory result, a quoted list from a flex) lowers
+# to a poly re-match over the word's own overloads instead of failing —
+# the interpreter's own dispatch, made at run time by the live value.
+# 60 -> 53 on 2026-09-19 (S1b-2): a computed fn value def-bound at the
+# top level — a factory's result, a module factory's, a branch-chosen one,
+# FnUtil.compose's — has no Defs binding under analysis (the fn-carrier
+# side table holds it), and the forward-collection scans consulted only
+# Defs, so the dispatch saw a bare WORD at the Function slot; the
+# collection seat and the /v read now resolve the table.
+# 53 -> 62 on 2026-09-21: nine paired FALSE-PATH witnesses for the
+# fn-locals-scope §6 arm-binding cluster. No new defect — every one of
+# the eight existing rows ran the THEN path, so the cluster could not
+# tell a real arm-binding join from a lowering that always picks the
+# then-arm. The pairs make the cluster able to prove what it claims;
+# the count rose because the bug was always this big.
+# 62 -> 45 on 2026-09-22: the branch-carried def (compiler/go/
+# branch_carried.go) — the fn-locals-scope §6 cluster, seventeen rows,
+# compiles with parity on both paths; NUR110 (a def in an untaken arm
+# bound anyway) closes by the same mechanism.
+# 45 -> 39 on 2026-09-22 (S1b-3 re-landed): set, push, unshift and append's
+# element form declare CompileStoresFn — a fn value a word STORES is inert
+# to the recorder. Built and reverted on 2026-09-19 because it unmasked
+# NUR169; NUR173 closed that on 2026-09-20, and the two witnesses now
+# answer as the interpreter does or fail to compile loudly. fn-locals-scope
+# leaves the ledger (its last two rows: a body-local fn pushed into a list).
+# 39 -> 32 on 2026-09-22 (S1b's apply shapes): the leading one-arg
+# fn-carrier window `(f x)` records wherever the lead is a slot of the
+# recording unit — a branch arm, a loop body, a callback lambda — and its
+# argument may be a typed gradual value or an inert fn value; a callback
+# lambda's declared param types narrow the callback's Any element carrier.
+# callbacks.tsv L129–L133, L139, L140.
+# 32 -> 27 on 2026-09-22 (the dynamic-lead group): the `apply` WORD at the
+# main program over a lead the check cannot type — a gradual lead (a map
+# member, a fetched export) records the apply EVENT at the program level
+# too, and a produced fn-typed carrier (a declared-Function factory's
+# result) is the program unit's pending apply, lowered as the whole-residual
+# OpCallDynApplyTop. callbacks.tsv L40, L41, L50, L51; module-composition
+# L100.
+# 23 -> 20 on 2026-09-22 (the quotation-body container reads): a fn-valued
+# container member read as the LAST token of a code body — `each [ops.inc]
+# xs` — is re-stepped by the reach's collapse over the element beneath on
+# the interpreter, and a code-body closure unit now takes the whole-frame
+# replay (OpCallDynFrame) a named fn unit already took for the identical
+# residual (compiler's noteClosureBodyReplay); a paren-PLACED value is data
+# inside any unit (NUR182, the fn-unit replay used to re-step it) —
+# each-variants L205, fold-map-filter L215, module-composition L98.
+# 24 -> 23 on 2026-09-22 (the curried chain): a paren over a PRODUCED
+# closure — a compiled factory call's result, or an earlier apply's — is
+# re-stepped by the paren's rewind, and the collapse now records that apply
+# as the same event the trailing spelling seats (core's
+# parenProducedLeadApplyIdx over the recorder's ProducedLeadApplies seam),
+# so `(((mk3 1) 2) 3)` is three apply events instead of one flattened
+# residual the classifier declined as a curried chain — callbacks L151. The
+# same landing closed NUR178 (the window LEAKED to a later word:
+# `((mk 1) 2) mul 10` compiled 21 for 30, silent) and NUR179 (a two-param
+# fn-value closure under every fn-value-call op bound backwards).
+# 27 -> 24 on 2026-09-22 (the container-member calls): a fn-valued
+# container member applied through a paren-bounded call, `(fs.b 10)` — a
+# map literal's computed closure member is no longer const-folded (a
+# closure's captures are nothing a const can carry; OpMakeMap assembles
+# the map at run time as the list literal always did), a fn-typed carrier
+# member tags the read as a member-fn read, `each` over a fn VALUE callback
+# types its result by the fn's declared return, and the paren lead admits
+# a statically fn-typed value beside the member tag. callbacks.tsv L60,
+# L73; module-composition L96. L61 (a flex registry's fn field) stays: the
+# flex shape is not threaded on the compile pass.
+# callbacks leaves the ledger on 2026-09-25 (its last row, L125: `x f/v apply
+# f/v apply` inside a fn body — a CHAIN of apply-word applications over
+# inert operands lowers as interleaved pushes and applies, every step but
+# the last committed to one result, the last the tail apply the RET counts).
+# code-bodies KEEPS its last row (L141, `for 3 (mk 0)`, a COMPUTED for body):
+# an attempt on 2026-09-25 to host the loop over the InvokeBody seam under
+# a compiled run (for declaring CompileDynBody) was withdrawn the same day
+# on a Codex review of #508 that measured four divergences the host cannot
+# close — the spliced body reads the caller's stack (`9 for 1 (mk)` over
+# `[i add]`), its defs and undefs leak into the enclosing scope (`for 3
+# (mk)` over `[def x i]`, x read after), a caught body error leaves the
+# iterator installed, and the zero-out event seats a residual beneath the
+# loop AFTER the loop's values. A computed for body is the interpreter's
+# inline splice, which no body activation models; the row declines loud.
+# L141 leaves the ledger on 2026-09-26 (main's #512: 1 -> 0 there; merged
+# with the reverse-order NUR run, whose L142 declines, code-bodies 2 -> 1): L141
+# compiles as a HOSTED SPLICE — `for` declares CompileDynBody again, but the
+# VM now runs the handler's own loop tokens (the interpreter's splice, whole)
+# on its interpreter island (SigRef.HostSplice), where the withdrawn host ran
+# the body per iteration. The recorder admits it only where the island and
+# the inline splice cannot be told apart — the program's top level, as its
+# LAST statement, its one result the WHOLE residual — so the four measured
+# shapes are declines, not divergences: nothing sits beneath the loop for the
+# body to read or to be seated around, and nothing compiled after it reads a
+# binding the body changed or runs after its error.
+# each-variants leaves the ledger on 2026-09-25 (its last row, L206: `import
+# module [export "M" {dbl: (fn …)}] end each [M.dbl] [1 2]` — a module fn
+# applied inside a re-matched each body runs through CallBoru at
+# FnBodyDepth 0, and its frame teardown ledgered the PARAM's pop as a
+# root-depth BindUndef no op could place; a frame binding's pop now notes
+# no transition, as its shadowing push never did — core.UninstallFrameBinding).
+# module-composition leaves the ledger on 2026-09-25 (its last row, L93:
+# `for-each [StringUtil.upper acc swap append drop] ['a' 'b'] end join ','
+# (valof acc)` — valof's check-mode read is a def read like the bare word's,
+# so the module-scope flex the multi-run body mutated, a homeless carrier
+# under the pass, seats LIVE on the registry's cell (NoteLiveRead) instead
+# of leaving `join` an operand of unknown provenance).
+# fold-map-filter leaves the ledger on 2026-09-25 (its last row, L249: a
+# CompileDynBody word over a STRICT Any operand — a declared `xs:Any` param
+# under fold — recovers to the dyn-body poly re-match over the word's WIDEST
+# satisfiable overload instead of declining "unmatched dispatch recovered";
+# the same rule runs the three class-field rows L246–L248 natively where
+# they bailed at the rematch trap).
+code-bodies.tsv	1	2 -> 1 on 2026-09-26 (the merge of main's #512 with the reverse-order NUR run): main's row 141 (`for 3 (mk 0)`) compiles as the hosted splice, and this branch's row 142 (`case 1 (mk 0)`, NUR154's sound decline) keeps the ledger. Before: 1 -> 2 on 2026-09-26 (the merge of main's #508 with the reverse-order NUR run): the two sides' rows compose — main's row 141 (`for 3 (mk 0)`, the hosted for body withdrawn) and this branch's row 142 (`case 1 (mk 0)`, NUR154's sound decline) both decline; callbacks.tsv leaves the ledger (main's apply chain compiles its last row, L125). Main's history: 0 -> 1 on 2026-09-25 (the hosted for body withdrawn: row 141, `for 3 (mk 0)` over a computed body, declines again — the host over the InvokeBody seam diverged from the interpreter's inline splice on four measured shapes, see the header); before: 2 -> 1 on 2026-09-25 (row 173, `fn [[d:Map][Integer][unpack [a b] d end a add b]]` — an unpack over an UNPROVEN source no longer latches the check pass's suppressed-error flag (nor records the trap that had compiled the top-level spelling to an unpack_error the interpreter never raised, a live miscompile): the names are run-time binds — the handler's NoteRuntimeBind — whose dispatch is emitted as the plain CALL_NATIVE it is, whose stub installs record no def or twin, and whose reads seat live as gradual values); before: 4 -> 2 on 2026-09-25 (row 152, `do [raise oops 'x'] error b` over a List param — `error` declares CompileDynBody, so a computed handler body lowers to the plain CALL_NATIVE under DynEnv as `do`'s does; row 174, `fn [[a b][List][args]]` — the bare `args` projection in a fn unit is assembled per call from the param locals, RecordArgsProjection, and an `args.N` fold retracts the assembly); before: 5 -> 4 on 2026-09-25 (behave's quoted behaviour name declared CompileQuoteInert: row 228); before: 6 -> 5 on 2026-09-24 (the keep-defs token body, NUR202 closed: row 189); before: 7 -> 6 on 2026-09-24 (the var splice's token sites: row 197); before: 9 -> 7 on 2026-09-24 (the variadic loop body: rows 181 and 182); before: 11 -> 9 on 2026-09-24 (NUR200 closed: rows 183 and 190); before: 13 -> 11 on 2026-09-24 (NUR199 closed: rows 180 and 186); before: 27 at the corpus expansion of 2026-09-17; 27 -> 13 on 2026-09-19 (S1a) The NUR run's history: 1 -> 2 on 2026-09-25 (the merge with the reverse-order NUR run, NUR154 closed as a sound decline): row 142, `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` — a clause list a fn returns — DECLINES now where it compiled to the case_error hard error the interpreter never raises (the check pass no longer traps a computed clause operand): a wrong answer turned into a compile failure, not new debt; row 141 (`for 3 (mk 0)`, "for: body not captured") is main's own. Before: 2 -> 1 on 2026-09-25 (row 173, `fn [[d:Map][Integer][unpack [a b] d end a add b]]` — an unpack over an UNPROVEN source no longer latches the check pass's suppressed-error flag (nor records the trap that had compiled the top-level spelling to an unpack_error the interpreter never raised, a live miscompile): the names are run-time binds — the handler's NoteRuntimeBind — whose dispatch is emitted as the plain CALL_NATIVE it is, whose stub installs record no def or twin, and whose reads seat live as gradual values); before: 4 -> 2 on 2026-09-25 (row 152, `do [raise oops 'x'] error b` over a List param — `error` declares CompileDynBody, so a computed handler body lowers to the plain CALL_NATIVE under DynEnv as `do`'s does; row 174, `fn [[a b][List][args]]` — the bare `args` projection in a fn unit is assembled per call from the param locals, RecordArgsProjection, and an `args.N` fold retracts the assembly); before: 5 -> 4 on 2026-09-25 (behave's quoted behaviour name declared CompileQuoteInert: row 228, `def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)` — the atom is a table key the handler reads verbatim and the fn operand already baked as an inert stored fn, so the dispatch is a plain CALL_NATIVE that installs the behaviour on the run-time registry's type); before: 6 -> 5 on 2026-09-24 (the keep-defs token body, NUR202 closed: row 189, `def f fn [[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]]  f [1 2 3]` — the each body over a gradual list compiles to its closure, the untouched Any element beneath `t` no longer read as an unapplied fn value); before: 7 -> 6 on 2026-09-24 (the var splice's token sites: row 197, `do [var [[[k 1]] k add 1]]` — the synthesized `def` and `__varundef` tokens carry the declaration name's position now, so the undef twin the root do body leaves for adoption has a site and places; a hand-written `def k 1 … undef k` always compiled); before: 9 -> 7 on 2026-09-24 (the variadic loop body: rows 181 and 182 — `for 2 [if true [def t (t add 1)] [0]]` and its `case` twin, a loop body whose one result is a 0-or-1 branch — compile; the region's count is runtime-variable anyway and only the program residual absorbs it); before: 11 -> 9 on 2026-09-24 (NUR200 closed, the multi-run keep-defs body: rows 183 and 190 — `each [def t (t add 1) t] [1 2 3] drop end t`, whose read after the body seats live on the leaked binding, and `for-each [acc swap append drop] [1 2 3] end acc`, a flex the body mutates read back as a live lookup of the registry's cell — compile); before: 13 -> 11 on 2026-09-24 (NUR199 closed, the keep-defs body: a `do` body's def installs as a kept dynamic-scope binding and the enclosing loop refreshes its carried slot — rows 180 and 186, `for 3 [do [def t (t add 1)]]` and its while twin, compile); before: 27 at the corpus expansion of 2026-09-17; 27 -> 13 on 2026-09-19 (S1a: a runtime code body — a quoted list read from a flex or a map — poly re-matches to the token overload)

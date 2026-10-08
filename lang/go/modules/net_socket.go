@@ -37,7 +37,7 @@ import (
 //	peer-cert <Socket>                   -> the verified peer certificate, or None
 //
 // Passive (pull) reads only — active mode (`set-active`) is a deferred
-// follow-on (design/NETWORK-IMPLEMENTATION-PLAN.0.md §1). Every recv*
+// follow-on (design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1). Every recv*
 // honours an optional `{within: <ms>}` deadline, raising `timeout`, so a
 // slow peer cannot pin an actor forever. Peer disconnect raises `closed`
 // — catch it with `do […] error [ case [ [get code eq "closed"] […] … ] ]`.
@@ -922,7 +922,7 @@ func netAddrMirror(word string, listening bool, result *native.Type) native.Retu
 // socketNatives lists the Tier-1 words BuildNetModule registers.
 func socketNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{Name: "listen", Signatures: []native.Signature{
 			{Args: T(native.TMap), Impl: native.Go(listenHandler), Returns: T(TListener),
 				ReturnsFn: netAddrMirror("listen", true, TListener), BarrierPos: -1},
@@ -976,5 +976,5 @@ func socketNatives() []native.NativeFunc {
 			// bind reads its real port here).
 			{Args: T(TListener), Impl: native.Go(addrHandler), Returns: T(native.TMap), BarrierPos: -1},
 		}},
-	}
+	})
 }

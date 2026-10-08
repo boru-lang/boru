@@ -176,7 +176,7 @@ that appear inside filter / map blocks come from elsewhere in boru and
 are shown here for context: `contains` (string search,
 `lang/go/native/native_string.go`), `eq` (equality,
 `lang/go/native/native_compare.go`), and `.` (record / list field
-access, alias for `get`; see `lang/doc/design/SAMPLES.10.md`).
+access, alias for `get`; see `lang/doc/design/legacy/SAMPLES.10.ignore`).
 Duration literals like `30s` do **not** exist — durations are built
 via `boru:time` constructors (`30 seconds`).
 

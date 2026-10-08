@@ -21,6 +21,7 @@ import (
 //	behave unify/q   (fn [[Foo Foo] [Foo]     [body]])
 //	behave truthy/q  (fn [[Foo]     [Boolean] [body]])
 //	behave deq/q     (fn [[Foo Foo] [Boolean] [body]])
+//	behave eq/q      (fn [[Foo Foo] [Boolean] [body]])
 //	behave size/q    (fn [[Foo]     [Integer] [body]])
 //	behave make/q    (fn [[Any]     [Foo]     [body]])
 //
@@ -30,7 +31,7 @@ import (
 // the body runs whenever the kernel dispatches the corresponding
 // capability (CompareValues for compare, Value.String for canon,
 // NodifyValue for nodify, Unify for unify, CoerceBoolean for truthy,
-// DeepEqual for deq, SizeOf for size, TryMake for make).
+// DeepEqual for deq, ExactEqual for eq, SizeOf for size, TryMake for make).
 //
 // `make` is the one slot whose target comes from the fn's RETURN type
 // rather than its params, because construction has no receiver — only a
@@ -41,30 +42,57 @@ import (
 // accepts new capability slots without losing previously installed
 // ones.
 var behaveNative = NativeFunc{
-	Name: "behave",
+	Name:          "behave",
+	CompileEffect: CompileSideEffect,
 
 	Signatures: []Signature{
 		// behave STORES its fn for later invocation through the type's
 		// Behavior wrapper (never re-stepped on the VM tape) — the store-fn
 		// pattern log/patrun/service already carry, so a capture-free fn
-		// operand bakes as an inert const instead of refusing "function-
+		// operand bakes as an inert const instead of declining "function-
 		// valued operand" (probe-verified: `behave "compare" (… /v)`).
 		{
 			Args:      []*Type{TAtom, TFunction},
 			QuoteArgs: map[int]bool{0: true},
 			Impl:      Go(behaveHandler),
+			ReturnsFn: behaveReturns,
 			Returns:   []*Type{}, BarrierPos:
 
 			// String form for the behavior name (`behave "compare" fn […]`).
 			-1,
-			CompileEffect: CompileStoresFn,
+			// The quoted behaviour NAME is inert data the handler reads
+			// verbatim (a table key: `canon`, `compare`), so the atom form
+			// bakes as a plain CALL_NATIVE once the fn operand is inert too
+			// (S2-line, 2026-09-25): the VM runs the same handler over the
+			// same baked atom and fn, installing the behaviour on the
+			// run-time registry's type exactly as the interpreter does.
+			//
+			// 2026-09-26 (the sweep's `behave` × container cell) adds two
+			// declarations, both for the fn operand. CompileFnHandlerStrict:
+			// the handler reads the fn's raw body TOKENS and its declared
+			// signature (extractFnDefInfo), which a compiled closure does not
+			// carry, so the recorder admits only an operand proven to arrive
+			// as an interpreter fn value (compiler strictFnOperandProven) —
+			// before it, a factory's capturing closure reached the handler as
+			// a ClosurePayload and raised where the interpreter installed the
+			// fn. CompileDynBody: the stored body runs LATER against the
+			// registry (userBehavior's RunPooledTop), resolving its names in
+			// the interpreter's dynamic scope, which compiled code reproduces
+			// only under the DynEnv mirror the declaration arms; and a
+			// GRADUAL fn operand (`m.c`, a member read widened to
+			// dynamic(Any)) records a poly re-match on the dyn-body backstop
+			// when its payload is proven (compiler recordStoredFnDyn).
+			CompileEffect: CompileStoresFn | CompileQuoteInert | CompileDynBody | CompileFnHandlerStrict,
 		},
 
 		{
-			Args:    []*Type{TString, TFunction},
-			Impl:    Go(behaveHandler),
-			Returns: []*Type{}, BarrierPos: -1,
-			CompileEffect: CompileStoresFn,
+			Args:      []*Type{TString, TFunction},
+			Impl:      Go(behaveHandler),
+			ReturnsFn: behaveReturns,
+			Returns:   []*Type{}, BarrierPos: -1,
+			// As the atom form: a strict fn slot and a deferred body run
+			// against the registry's dynamic scope.
+			CompileEffect: CompileStoresFn | CompileDynBody | CompileFnHandlerStrict,
 		},
 	},
 }
@@ -139,6 +167,13 @@ var behaviors = map[string]behaviorEntry{
 		validate: validateDeqSig,
 		install:  func(u *userBehavior, body []core.Value) { u.deqBody = body },
 	},
+	// eq is deq's reference half: a type answers what "the same thing" means
+	// for its own values, consulted where deq's slot is — at the kernel's
+	// terminal verdict (core.ExactEqualer, NUR075).
+	"eq": {
+		validate: validateEqSig,
+		install:  func(u *userBehavior, body []core.Value) { u.eqBody = body },
+	},
 	"size": {
 		validate: validateSizeSig,
 		install:  func(u *userBehavior, body []core.Value) { u.sizeBody = body },
@@ -169,33 +204,9 @@ func knownBehaviorNames() string {
 
 func behaveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	name := defName(args[0])
-	be, ok := behaviors[name]
-	if !ok {
-		return nil, r.BoruError("behave_error",
-			fmt.Sprintf("behave %s: unknown behavior name; known: %s", name, knownBehaviorNames()),
-			"behave")
-	}
-
-	fnVal := args[1]
-	info, err := extractFnDefInfo(fnVal)
+	be, target, sig, err := behaveTarget(name, args[1], r)
 	if err != nil {
-		return nil, fmt.Errorf("behave %s: %w", name, err)
-	}
-	firstSig, ok := info.FirstOwnSig()
-	if !ok {
-		return nil, r.BoruError("behave_error", fmt.Sprintf("behave %s: fn has no signatures", name), "behave")
-	}
-	sig := *firstSig
-
-	target, err := be.validate(sig)
-	if err != nil {
-		return nil, fmt.Errorf("behave %s: %w", name, err)
-	}
-	if target == nil {
-		return nil, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
-	}
-	if target.Origin == core.OriginBuiltin {
-		return nil, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
+		return nil, err
 	}
 
 	body := append([]Value{}, sig.Body()...)
@@ -224,6 +235,95 @@ func behaveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		ub.unifyTarget = target
 	}
 	return nil, nil
+}
+
+// behaveTarget validates a behave call — the behavior name, the fn's first
+// signature against the slot's declared shape — and returns the slot's entry,
+// the TARGET type the capability attaches to, and the signature whose body
+// it runs. Shared by the handler and its check-mode half (behaveReturns), so
+// the analysis notes exactly the capability the run installs.
+func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.Type, core.FnSig, error) {
+	be, ok := behaviors[name]
+	if !ok {
+		return be, nil, core.FnSig{}, r.BoruError("behave_error",
+			fmt.Sprintf("behave %s: unknown behavior name; known: %s", name, knownBehaviorNames()),
+			"behave")
+	}
+	info, err := extractFnDefInfo(fnVal)
+	if err != nil {
+		return be, nil, core.FnSig{}, fmt.Errorf("behave %s: %w", name, err)
+	}
+	firstSig, ok := info.FirstOwnSig()
+	if !ok {
+		return be, nil, core.FnSig{}, r.BoruError("behave_error", fmt.Sprintf("behave %s: fn has no signatures", name), "behave")
+	}
+	sig := *firstSig
+	target, err := be.validate(sig)
+	if err != nil {
+		return be, nil, sig, fmt.Errorf("behave %s: %w", name, err)
+	}
+	if target == nil {
+		return be, nil, sig, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
+	}
+	if target.Origin == core.OriginBuiltin {
+		return be, nil, sig, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
+	}
+	return be, target, sig, nil
+}
+
+// behaveReturns is behave's CHECK-MODE half (NUR076). The pass does not run
+// the handler, so a behave-installed capability was invisible to analysis,
+// and one slot is not invisible in its consequences: `make` VALIDATES a
+// construction against the target's declared schema, so a type whose own
+// constructor ignores its source (`behave make/q (fn Any P [make P {a:
+// 42}])`) was judged against rules that constructor never runs — `make P
+// {bogus: 1}` built Class/P{a:42} and failed `boru check` with two schema
+// errors, and the default pre-flight refused a program that runs. The half
+// validates the call as the handler does and, for `make`, notes the target
+// in the pass's own state (CheckState.NoteBehaveMaker), which HasMaker reads.
+// It installs NOTHING: a wrapper on the type would put user bodies within
+// reach of analysis-time rendering, comparison and construction, and the
+// other seven slots change only what a program computes, which analysis does
+// not evaluate. A call the pass cannot see through — a fn carrier, a
+// computed name — and a call the handler would refuse note nothing; the run
+// raises the refusal where it happens.
+func behaveReturns(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return nil
+	}
+	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) {
+		return nil
+	}
+	fnVal := args[1]
+	if !IsConcrete(fnVal) {
+		// A container member's fn read as a gradual carrier: the pass
+		// tagged the value the read resolved (NoteFnMemberRead), which the
+		// run installs — seen through for the call graph alone (NUR257).
+		member, ok := r.Check.FnMemberRead(fnVal.ID)
+		if !ok {
+			return nil
+		}
+		fnVal = member
+	}
+	name := defName(args[0])
+	_, target, _, err := behaveTarget(name, fnVal, r)
+	if err != nil {
+		return nil
+	}
+	target = core.CanonicalType(r, target)
+	// Every slot's fn runs where a value of the target is handled, so a
+	// frame that handles one reaches it: the dynamic-scope rescue asks the
+	// call graph about it (NUR257).
+	if fd, isFn := fnVal.Data.(core.FnDefInfo); isFn {
+		r.Check.NoteBehaveReader(target, fd)
+	}
+	if name == "make" && IsConcrete(args[1]) {
+		r.Check.NoteBehaveMaker(target)
+	}
+	return nil
 }
 
 // extractFnDefInfo unwraps a TFunction value into its
@@ -354,19 +454,31 @@ func validateTruthySig(sig core.FnSig) (*core.Type, error) {
 // T — the same two-same-type shape `compare` requires, since deep
 // equality is likewise a closed operation on T.
 func validateDeqSig(sig core.FnSig) (*core.Type, error) {
+	return validateEqualitySig("deq", sig)
+}
+
+// validateEqSig enforces deq's shape for the reference half, `[[T T]
+// [Boolean] [body]]`, and returns T (NUR075).
+func validateEqSig(sig core.FnSig) (*core.Type, error) {
+	return validateEqualitySig("eq", sig)
+}
+
+// validateEqualitySig is the one shape both equality slots take: two params
+// of one declared type, a Boolean verdict.
+func validateEqualitySig(slot string, sig core.FnSig) (*core.Type, error) {
 	if len(sig.Params) != 2 {
-		return nil, fmt.Errorf("deq: fn must take 2 args (got %d)", len(sig.Params))
+		return nil, fmt.Errorf("%s: fn must take 2 args (got %d)", slot, len(sig.Params))
 	}
 	if len(sig.Returns) != 1 || !sig.Returns[0].Equal(core.TBoolean) {
-		return nil, fmt.Errorf("deq: fn must return Boolean")
+		return nil, fmt.Errorf("%s: fn must return Boolean", slot)
 	}
 	t0 := sig.Params[0].Type
 	t1 := sig.Params[1].Type
 	if t0 == nil || t1 == nil {
-		return nil, fmt.Errorf("deq: both params must declare a type")
+		return nil, fmt.Errorf("%s: both params must declare a type", slot)
 	}
 	if !t0.Equal(t1) {
-		return nil, fmt.Errorf("deq: both params must be the same type (got %s and %s)", t0, t1)
+		return nil, fmt.Errorf("%s: both params must be the same type (got %s and %s)", slot, t0, t1)
 	}
 	return t0, nil
 }
@@ -406,7 +518,7 @@ func validateMakeSig(sig core.FnSig) (*core.Type, error) {
 	if len(sig.Returns) != 1 {
 		return nil, fmt.Errorf("make: fn must return exactly 1 value")
 	}
-	// One branch for both refusals: a missing return type and an `Any` one
+	// One branch for both compile failures: a missing return type and an `Any` one
 	// fail for the same reason — neither names a type to construct — and
 	// folding them keeps the nil guard (which stops the Equal call below
 	// from dereferencing nothing) without a second arm no fn spelling can
@@ -453,6 +565,7 @@ type userBehavior struct {
 	target     *core.Type
 	truthyBody []Value
 	deqBody    []Value
+	eqBody     []Value
 	sizeBody   []Value
 	makeBody   []Value
 	inRender   bool
@@ -460,6 +573,7 @@ type userBehavior struct {
 	inUnify    bool
 	inTruthy   bool
 	inDeq      bool
+	inEq       bool
 	inSize     bool
 	inMake     bool
 }
@@ -532,8 +646,7 @@ func (u *userBehavior) runCompareBody(a, b Value) (int, error) {
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.compareBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.compareBody)
 	if err != nil {
 		return 0, fmt.Errorf("behave compare %s: %w", u.typeName, err)
 	}
@@ -588,10 +701,10 @@ func (u *userBehavior) Nodify(v Value) (Value, error) {
 // dispatchUnifier walk continues up the parent chain. Re-entrancy is
 // guarded the same way Format/Nodify are — a unifier body that
 // recursively unifies values of the same type would otherwise loop.
-func (u *userBehavior) Unify(a, b Value) (Value, *core.UnifyError) {
+func (u *userBehavior) Unify(a, b Value, r *core.Registry) (Value, *core.UnifyError) {
 	if len(u.unifyBody) == 0 {
 		if next, ok := u.prev.(core.Unifier); ok {
-			return next.Unify(a, b)
+			return next.Unify(a, b, r)
 		}
 		return Value{}, core.ErrNoUnifier
 	}
@@ -600,7 +713,7 @@ func (u *userBehavior) Unify(a, b Value) (Value, *core.UnifyError) {
 		// recursion terminates. Return the structural narrowing
 		// candidate via the prev chain.
 		if next, ok := u.prev.(core.Unifier); ok {
-			return next.Unify(a, b)
+			return next.Unify(a, b, r)
 		}
 		return Value{}, core.ErrNoUnifier
 	}
@@ -621,8 +734,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.unifyBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.unifyBody)
 	if err != nil {
 		return Value{}, &core.UnifyError{
 			Reason: fmt.Sprintf("behave unify %s: %v", u.typeName, err),
@@ -686,8 +798,7 @@ func (u *userBehavior) runNodifyBody(v Value) (Value, error) {
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, u.nodifyBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.nodifyBody)
 	if err != nil {
 		return Value{}, fmt.Errorf("behave nodify %s: %w", u.typeName, err)
 	}
@@ -748,31 +859,50 @@ func (u *userBehavior) DeepEqualValues(a, b Value) (bool, error) {
 	}
 	u.inDeq = true
 	defer func() { u.inDeq = false }()
-	return u.runDeqBody(a, b)
+	return u.runEqualityBody(u.deqBody, "deq", a, b)
 }
 
-func (u *userBehavior) runDeqBody(a, b Value) (bool, error) {
+// ExactEqualValues runs the installed eq body if any, else delegates to
+// prev's ExactEqualer, else declines — DeepEqualValues' shape for the
+// reference half of the two equalities (NUR075).
+func (u *userBehavior) ExactEqualValues(a, b Value) (bool, error) {
+	if len(u.eqBody) == 0 {
+		if ee, ok := u.prev.(core.ExactEqualer); ok {
+			return ee.ExactEqualValues(a, b)
+		}
+		return false, core.ErrNoExactEqualer
+	}
+	if u.inEq {
+		return false, core.ErrNoExactEqualer
+	}
+	u.inEq = true
+	defer func() { u.inEq = false }()
+	return u.runEqualityBody(u.eqBody, "eq", a, b)
+}
+
+// runEqualityBody runs an equality slot's body with the pair bound to `a`
+// and `b` and reads its Boolean verdict — shared by deq and eq.
+func (u *userBehavior) runEqualityBody(body []Value, slot string, a, b Value) (bool, error) {
 	r := u.registry
 	if r == nil {
-		return false, fmt.Errorf("behave deq %s: no registry attached", u.typeName)
+		return false, fmt.Errorf("behave %s %s: no registry attached", slot, u.typeName)
 	}
 	r.Defs.Push("a", a)
 	r.Defs.Push("b", b)
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.deqBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, body)
 	if err != nil {
-		return false, fmt.Errorf("behave deq %s: %w", u.typeName, err)
+		return false, fmt.Errorf("behave %s %s: %w", slot, u.typeName, err)
 	}
 	if len(result) == 0 {
-		return false, fmt.Errorf("behave deq %s: body produced no result", u.typeName)
+		return false, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	top := result[len(result)-1]
 	if !top.Parent.ConformsTo(core.TBoolean) {
-		return false, fmt.Errorf("behave deq %s: body must return Boolean, got %s",
-			u.typeName, top.Parent.String())
+		return false, fmt.Errorf("behave %s %s: body must return Boolean, got %s",
+			slot, u.typeName, top.Parent.String())
 	}
 	return core.AsBoolean(top)
 }
@@ -822,7 +952,7 @@ func (u *userBehavior) Size(v Value) int {
 // `make` raises on failure, so a constructor rejecting its source is a real
 // answer — "a C cannot be built from that" — and falling through to the
 // kernel's coercion would silently produce a value the type's own
-// constructor refused. The result's CONFORMANCE to the target is checked by
+// constructor declined. The result's CONFORMANCE to the target is checked by
 // the kernel (makerCapability), not here: it is a rule about `make`, so a
 // Go-side Maker is held to it too.
 func (u *userBehavior) MakeValue(target *core.Type, src Value) (Value, error) {
@@ -848,8 +978,7 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, body...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, body)
 	if err != nil {
 		return Value{}, fmt.Errorf("behave %s %s: %w", slot, u.typeName, err)
 	}
@@ -857,6 +986,50 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 		return Value{}, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	return result[len(result)-1], nil
+}
+
+// runBehaviorBody runs one installed behaviour body on r — the NewTop regime
+// every capability slot shares: an empty stack, the operands bound as `a` /
+// `b` by the caller, the body's own defs left on the registry, and top-engine
+// semantics (an atom in the body resolves its referent, a pending `gen` spec
+// or an unresolved break/continue raises at the body's end).
+//
+// A STEPLESS body — scalar literals only, no atom, run with no `gen` spec
+// pending — is its own residual under that regime: the top engine places each
+// value and hands the window back, touching nothing else. It is answered
+// without the engine, so a constant behaviour (`behave canon/q (fn
+// [[t:Temp][String]['T']])`) runs no interpreter on a compiled run (the
+// interp-entry census's code-bodies.tsv row). The two exclusions are the
+// ways a top engine's run of scalar literals is NOT the identity:
+// resolveAtomReferents stamps an atom's referent, and the end-of-run gen
+// check raises on a spec some enclosing `gen` left pending. Everything else
+// runs as before.
+//
+// (Hosting a general body on the VM is not this: the fn value's own stamped
+// unit binds the DECLARED params — `t` for `fn [[t:Temp]…]`, an unnamed param
+// on the stack — where the behaviour regime binds `a`/`b` as defs over an
+// empty stack, and it enforces the declared return where the slot reports
+// its own error; and the token-body host models a pooled sub-engine, not a
+// top one, whose escaped break/continue the enclosing run resolves.)
+func runBehaviorBody(r *Registry, body []Value) ([]Value, error) {
+	if behaviorBodyStepless(r, body) {
+		return append([]Value(nil), body...), nil
+	}
+	return core.RunPooledTop(r, append([]Value{}, body...))
+}
+
+// behaviorBodyStepless reports whether runBehaviorBody may answer body
+// without an engine (see its comment for the two exclusions).
+func behaviorBodyStepless(r *Registry, body []Value) bool {
+	if r.PendingGen() != nil || !core.IsSteplessWindow(body) {
+		return false
+	}
+	for _, v := range body {
+		if _, isAtom := v.Data.(core.AtomPayload); isAtom {
+			return false
+		}
+	}
+	return true
 }
 
 func (u *userBehavior) runCanonBody(v Value) (string, error) {
@@ -867,8 +1040,7 @@ func (u *userBehavior) runCanonBody(v Value) (string, error) {
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, u.canonBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.canonBody)
 	if err != nil {
 		return "", err
 	}

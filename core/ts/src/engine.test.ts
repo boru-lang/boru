@@ -1,6 +1,6 @@
 // Unit campaign for engine.ts — the step loop.
 //
-// design/CORE-TS-COVERAGE.0.md stages 4 and 5. engine.ts held 947 of core/ts's
+// design/legacy/CORE-TS-COVERAGE.0.ignore stages 4 and 5. engine.ts held 947 of core/ts's
 // 1,945 uncovered lines across 44 methods, and the corpus could not reach them:
 // core/spec registers ONE fixture word and its notation is deliberately
 // parser-free, so user function definitions, check-mode passes, paren
@@ -197,7 +197,7 @@ describe("Engine.run — containers", () => {
       quoted: true,
     });
     // canon wraps a quoted list so the render round-trips back to a quote.
-    assert.equal(run([l]), "(quote [word(addq) 1 2])");
+    assert.equal(run([l]), "(quote [addq 1 2])");
   });
 
   it("auto-evaluates the values of an EVAL map", () => {
@@ -380,7 +380,7 @@ describe("Engine.run — self-referential def", () => {
     // step-budget refusal — is NOT what happens.
     const r = fixture();
     r.pushDef("loop", newList([newWord("loop")], { eval: true }));
-    assert.equal(run([newWord("loop")], r), "word(loop)");
+    assert.equal(run([newWord("loop")], r), "loop");
   });
 });
 

@@ -37,7 +37,11 @@ var ErrNoUnifier = &UnifyError{Reason: "no unifier in this Behavior"}
 // type's type literal with a value still triggers the type's Unifier.
 // Carriers expose their declared type via Parent — the same walk
 // applies.
-func dispatchUnifier(a, b Value) (Value, *UnifyError, bool) {
+//
+// r is the enclosing chain's registry (nil when unarmed), handed to
+// the Unifier so a rule that re-enters the unifier (a binding body, a
+// disjunct's alternatives) keeps the chain armed.
+func dispatchUnifier(a, b Value, r *Registry) (Value, *UnifyError, bool) {
 	aType := denotedType(a)
 	bType := denotedType(b)
 	if aType == nil || bType == nil {
@@ -77,7 +81,7 @@ func dispatchUnifier(a, b Value) (Value, *UnifyError, bool) {
 			if !ok {
 				continue
 			}
-			v, err := u.Unify(a, b)
+			v, err := u.Unify(a, b, r)
 			if err == ErrNoUnifier {
 				continue
 			}

@@ -45,5 +45,8 @@ func cloneReturnsFn(args []Value, _ *Registry) []Value {
 			return []Value{d2RetainElem(NewCarrier(src.Parent), src)}
 		}
 	}
+	if IsTypeLiteral(src) {
+		return []Value{ValueCarrier(src)} // a type VALUE (NUR323)
+	}
 	return []Value{NewCarrier(src.Parent)}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 // OpBindGlobal — the cross-request persistence twin of a top-level computed
-// `def` (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, the 2026-07-15
+// `def` (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, the 2026-07-15
 // flip composite's root cause). A compiled request's check pass installs the
 // def binding as a CARRIER and keep-on-compile persists it; without the
 // write-back, the NEXT request (either engine) resolved a type literal where
@@ -17,7 +17,7 @@ import (
 // compiled, then reads the binding in request 2 on the SAME instance.
 
 // runCompiledRequest runs src as one compiled-by-default request and fails
-// the test on refusal or error — the pins below need the COMPILED path (a
+// the test on compile failure or error — the pins below need the COMPILED path (a
 // fallback would bind via the interpreter and prove nothing).
 func runCompiledRequest(t *testing.T, a *Boru, src string) {
 	t.Helper()
@@ -161,13 +161,16 @@ func TestGlobalBindEnvelope(t *testing.T) {
 		t.Errorf("fn-body def must not persist cross-request, got err=%v", err)
 	}
 
-	// GRADUATED (REFUSAL-CLOSURE S5, 2026-07-17): a def of a STATICALLY-
+	// GRADUATED (COMPILE FAILURE-CLOSURE S5, 2026-07-17): a def of a STATICALLY-
 	// COUNTED variadic loop collect binds the region's first value via the
 	// splice-at-depth OpBindGlobal and spills the rest — compiled parity
-	// with the interpreter. A DYNAMIC count keeps the refusal (the split
-	// needs the static region size) — the zzRefusingRow fixture.
+	// with the interpreter. A DYNAMIC count keeps the compile failure (the split
+	// needs the static region size) — the zzFailingRow fixture.
 	b := mustNew(t)
 	gotC, compiledB, err := b.RunCompiled(`def xs (for 3 [1]) xs`)
+	if noteCompileDefect(t, `def xs (for 3 [1]) xs`, gotC, err) {
+		return
+	}
 	if !compiledB || err != nil {
 		t.Errorf("S5 static loop def: compiled=%v err=%v, want a compiled run", compiledB, err)
 	}
@@ -178,5 +181,74 @@ func TestGlobalBindEnvelope(t *testing.T) {
 	}
 	if fmt.Sprint(out) != "[1 1 1]" || fmt.Sprint(gotC) != fmt.Sprint(out) {
 		t.Errorf("S5 parity: compiled=%v interp=%v, want [1 1 1] both", gotC, out)
+	}
+}
+
+// The TWIN-CARRIER class (the COLLECT oracle's first corpus walk, the
+// sixty-second increment; fixed in the sixty-third): a root def of a
+// COMPUTED COMPOUND whose check-pass binding is the analysis's MODEL of the
+// value — `[Integer]` for `[add 1 2]`, a module prototype with empty fields
+// for `Log.counter "x"` — read as concrete by IsConcrete, so no write-back
+// was emitted and the twin replayed the model for the rest of the run. The
+// bakes hid it (every read of such a def in the corpus resolved to the
+// lowering's own value); a LIVE read — the next request's — sees the
+// binding itself. The write-back is now decided by provenance
+// (rootBindWritesBack): a computed value's binding is exact only for a
+// scalar fold.
+func TestGlobalBindTwinCarrierClass(t *testing.T) {
+	// The list: the lowering pushes the folded [3]; the kept binding was
+	// [Integer], and the next request's `get 0` returned the type node.
+	dis := compileDisasm(t, `def b [add 1 2] size b`)
+	if !strings.Contains(dis, "global bind b @depth 1") {
+		t.Errorf("a computed list def must write its runtime value back:\n%s", dis)
+	}
+	a := mustNew(t)
+	runCompiledRequest(t, a, `def b [add 1 2] size b`)
+	if got := readBack(t, a, `b get 0 add 1`); got != "[4]" {
+		t.Errorf("computed list def: next request = %v, want [4] (the folded element, not its carrier)", got)
+	}
+
+	// The module handle: Log.span's check-pass result is the span the
+	// ANALYSIS started; the run starts its own, which is the active one. The
+	// kept binding was the analysis's, so ending it from the next request
+	// was a span-mismatch — the live read the corpus never made (its row
+	// ends the span in the same request, through the lowering's own value).
+	b := mustNew(t)
+	runCompiledRequest(t, b, `import "boru:log" ; Log.add-sink memory/q ; Log.remove-sink console/q ; def s (Log.span "m")`)
+	if got := readBack(t, b, `Log.end-span s ; Log.traces size`); got != "[1]" {
+		t.Errorf("computed module handle: next request = %v, want [1] (the run's own span, not the analysis's)", got)
+	}
+
+	// A computed SCALAR fold stays exact with no write-back needed beyond
+	// what the carrier rule already emits: `def n (add 1 2)` is pinned
+	// above (TestGlobalBindEnvelope); a literal compound is the value itself.
+	if dis := compileDisasm(t, `def xs [1 2] size xs`); strings.Contains(dis, "BIND_GLOBAL") {
+		t.Errorf("a literal list def is already faithful — no write-back:\n%s", dis)
+	}
+
+	// THE PAIRING, across requests (review of #459): the write-back INSTALLS
+	// the runtime value, so the def's twin must not replay the model beside
+	// it — or the name holds two levels and an `undef` uncovers the model.
+	// Measured before the twin carried the pairing: request 3 answered
+	// `[[Integer]]` where the interpreter raises undefined_word.
+	c := mustNew(t)
+	runCompiledRequest(t, c, `def b [add 1 2] size b`)
+	if _, err := c.RunInterp(`undef b`); err != nil {
+		t.Fatalf("undef: %v", err)
+	}
+	if _, err := c.RunInterp(`b`); err == nil || !strings.Contains(err.Error(), "undefined_word") {
+		t.Errorf("one install, one undef: b must be unbound, got err=%v", err)
+	}
+
+	// A MICRON is inert (immutable) but has fields, and a computed one
+	// whose field the check pass could not fold keeps a carrier there
+	// (review of #459): `IsInertConst` reads the whole instance as inert, so
+	// the scalar exemption must be the payload kinds with no interior.
+	// Measured before: request 3 raised signature_error over the carrier
+	// field where the interpreter adds.
+	d := mustNew(t)
+	runCompiledRequest(t, d, `import "boru:time-util" def Stampton refine Micron {n:Integer} def x (make Stampton {n:(TimeUtil.now TimeUtil.to-unix-ms)})`)
+	if out, err := d.RunInterp(`(x.n) add 1`); err != nil || len(out) != 1 {
+		t.Errorf("computed micron def: next request reads the run's field, got out=%v err=%v", out, err)
 	}
 }

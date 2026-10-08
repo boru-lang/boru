@@ -7,7 +7,7 @@ import (
 )
 
 // TestDynamicContextGetGradualMatch demonstrates the bounded dynamic(T)
-// modality end to end (design/dynamic-modality-report.10.md): `context
+// modality end to end (design/legacy/dynamic-modality-report.10.ignore): `context
 // get` on a statically-untracked key is an escape hatch that emits
 // dynamic(Any) — optimistically compatible — instead of strict
 // Carry<Any>. That dynamic carrier then matches a typed slot under
@@ -33,8 +33,11 @@ func TestDynamicContextGetGradualMatch(t *testing.T) {
 		}
 	}
 	// The result is itself dynamic (contagion): the modality flows through
-	// add, and the residual stack renders it as dynamic(<bound>).
-	if len(res.Stack) != 1 || (res.Stack[0] != "dynamic(Float)" && res.Stack[0] != "dynamic(Integer)") {
+	// add, and the residual stack renders it as dynamic(<bound>). The bound
+	// is Number, not Integer: the untracked key may hold a Float, and
+	// Integer (the numeric tower's old blanket default) was unsound
+	// (check/go carrier.go ReturnsNumericBinary, 2026-09-27).
+	if len(res.Stack) != 1 || res.Stack[0] != "dynamic(Number)" {
 		t.Fatalf("expected a dynamic numeric result from the gradual match, got stack=%v", res.Stack)
 	}
 }

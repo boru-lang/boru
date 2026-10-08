@@ -40,3 +40,20 @@ func TestIsInternalErr(t *testing.T) {
 		t.Error("nil must classify false")
 	}
 }
+
+// TestIsVMDefer: only a BoruError carrying the VMDefer marker classifies as a
+// designed VM defer — a user `raise internal_error` (same public code, no
+// marker) does not, so the `do` escape hatch catches it (Codex P2 on #469).
+func TestIsVMDefer(t *testing.T) {
+	defer_ := &BoruError{Code: "internal_error", Detail: "bytecode: internal: …", VMDefer: true}
+	if !IsVMDefer(defer_) {
+		t.Error("a VMDefer-marked internal_error classifies as a defer")
+	}
+	userInternal := makeBoruError("internal_error", "boom", "", "", "")
+	if IsVMDefer(userInternal) {
+		t.Error("a user-raised internal_error (no marker) is not a defer")
+	}
+	if IsVMDefer(errors.New("foreign")) || IsVMDefer(nil) {
+		t.Error("a non-BoruError and nil are not defers")
+	}
+}

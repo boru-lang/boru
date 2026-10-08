@@ -291,7 +291,7 @@ a Unix-domain socket instead of `tcp:`.
 > confused deputy, and a credential modelled as bytes cannot express an
 > HSM- or agent-backed key. See [NETWORK-CLIENTS.0.md](NETWORK-CLIENTS.0.md)
 > §4.4 for the full rationale. The server side (phase 6 of
-> [NETWORK-TLS-PLAN.0.md](NETWORK-TLS-PLAN.0.md)) has since landed, using
+> [legacy/NETWORK-TLS-PLAN.0.ignore](legacy/NETWORK-TLS-PLAN.0.ignore)) has since landed, using
 > the same named identities plus `require-client:` for the client CA pool:
 >
 > ```

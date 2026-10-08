@@ -103,7 +103,7 @@ func stylesheetSource(dropKey string) string {
 // TestParseRulesSourceStrict pins the stylesheet loader's contract: a
 // complete table parses; every malformed shape — unparseable source, no
 // table, two tables, a missing top-level key, an incomplete brackets
-// section — is refused with a message naming the problem.
+// section — is declined with a message naming the problem.
 func TestParseRulesSourceStrict(t *testing.T) {
 	if _, err := parseRulesSource(stylesheetSource("")); err != nil {
 		t.Fatalf("complete stylesheet rejected: %v", err)

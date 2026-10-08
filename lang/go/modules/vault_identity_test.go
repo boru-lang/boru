@@ -226,7 +226,7 @@ func TestVaultIdentityFailures(t *testing.T) {
 }
 
 // VaultIdentityName is the hook ParseTLSOpts uses; it must recognise a
-// handle and refuse everything else.
+// handle and decline everything else.
 func TestVaultIdentityNameHook(t *testing.T) {
 	reveals := 0
 	r := vaultIdentReg(t, "acme", "x", &reveals)
@@ -285,7 +285,7 @@ func TestVaultCertificateBackendFailures(t *testing.T) {
 	reveals := 0
 	r := vaultIdentReg(t, "acme", "x", &reveals)
 
-	// The backend refuses the alias.
+	// The backend declines the alias.
 	if _, err := vaultCertificate(r, "not-acme"); err == nil ||
 		!strings.Contains(err.Error(), "not-acme") {
 		t.Errorf("a rejected alias must error and name itself, got %v", err)

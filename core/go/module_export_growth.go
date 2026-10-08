@@ -1,7 +1,7 @@
 package core
 
 // Module export-map growth ledger (Phase 6 M3, minilang:320 —
-// design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 Stage M3).
+// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 Stage M3).
 //
 // tryFoldModuleConst refuses to fold a MISSING-key get over a module export
 // to None because a module's keyspace can GROW at run time: the DSL `register`

@@ -1,0 +1,607 @@
+# One object, one seam — the type-node fusion design
+
+**Status: LANDED (2026-08-20).** All five stages implemented and merged
+via **PR #394**; §9 is the implementation record. Follow-up to the audit
+in [TYPE-REPRESENTATION.0.ignore](TYPE-REPRESENTATION.0.ignore); tracked issue
+**#392** / **NUR090**, and recorded **NUR093** and **NUR094**, which
+surfaced during this pass — all three NURs are now retired (resolved by
+this work). Sections 0-8 are the design as proposed and are kept as
+written; measurements in them describe the tree *before* the flip.
+Evidence standard as in the audit: every claim is a source citation with
+a line reference, or a command run against a binary built from this tree
+with its output quoted verbatim.
+
+The audit answered *what a type name denotes*. This document answers
+the question one level up — the one the issue asks to be settled for
+good:
+
+> All types need to be treated the same algorithmically. There should
+> not be multiple code paths. A type value on the stack should always
+> be operated on in the same manner by all code.
+
+---
+
+## 0. Scope of this pass
+
+Four sweeps over the whole tree, plus targeted probes:
+
+- every non-test call site that discriminates type-value shapes
+  (core, basic, lang, check, compiler, eng, parser, cmd, test/specfix);
+- the Behavior/unifier machinery and the `is`-vs-dispatch mechanics,
+  probed per declaration kind against a built binary;
+- the downstream consumers — checker carriers, compiler encoding,
+  spec TSV pins, canon-roundtrip contract, host Ideals;
+- the design history — every commitment in `design/*.md`, `NUR.md`
+  and `ADR.md` that constrains a representation change.
+
+---
+
+## 1. The finding: a two-object model, paid for at ~500 call sites
+
+The audit's three layers reduce to one structural defect: **every
+structural type exists as two disconnected objects.**
+
+1. The **minted node** — `Data == nil`, `tmeta{Name, Rank, Behavior}`
+   (`core/go/value.go:1383`, `core/go/typetable.go:55` `type Type = Value`).
+2. The **body value** — `Data` = the structural payload, `Parent` = a
+   metatype (`TDisjunct`, `TFnUndef`, `TMap`, …).
+
+Neither object can reach the other from the value alone (the
+strategy-(a) kinds excepted, §2.4), so the *pair* is threaded by hand
+through every layer:
+
+| layer | the pair |
+|---|---|
+| binding | `DefEntry{Body, TypeDef}` (`core/go/deftable.go:6`) |
+| signatures | `FnParam{Type, Pattern}` (`core/go/fn_params.go`) |
+| reads | evaluation pushes `Body` (`core/go/engine.go:2718`); dispatch resolves the same name to `TypeDef` (`core/go/registry.go:1826`) |
+| bytecode | body → `PUSH_CONST` frozen snapshot; node → `OpPushType` by canonical ID (`core/go/value_classify.go:129-161`; `compiler/go/bytecode.go:64-70`) |
+
+And because neither half is self-sufficient, **consumers enumerate
+kinds locally**. The call-site sweep found **~514 non-test sites in
+91 files** forking on type shape, including:
+
+- **four** independent "is this a type?" predicates — `IsTypeBody`
+  (18 arms, `core/go/core_helpers.go:962`), `IsTypeValue`
+  (`core/go/value.go:3858`), `TypeMembership`
+  (`core/go/core_boundedtype.go:81`), `sigTypeMatchesAsType`
+  (`core/go/signature.go:419`);
+- a **second parallel taxonomy** — `Shape()`'s 22-value enum
+  (`core/go/shape.go:16-39`), missing five `IsTypeBody` shapes;
+- **four** membership algebras — the `is` handler (9 RHS arms,
+  `lang/go/native/native_type.go:777-908`), `teq`, `tis`,
+  `IsValueOfType` (`core/go/core_type.go:167`) — with record-shape
+  semantics documented as un-consolidated
+  (`native_type.go:804-811`: subset vs strict-exact, "Real
+  consolidation requires choosing one shape semantic and migrating
+  the loser");
+- `ResolveSigType`'s 12-arm ladder with **two silent `(TAny, nil)`
+  tails** (`core/go/fn_params.go:766`, `:826-834`) — true wildcards —
+  plus the NAMED-type degradation to `(Any, pattern)` the audit's §5
+  measured (distinct from the *anonymous* inline-disjunct
+  `(TAny, pattern)` arm at `:707-714`, which is deliberate and
+  pattern-enforced — see §3, "What collapses");
+- ~24-arm and ~30-arm render switches (`core/go/canon.go:74-297`,
+  `core/go/value.go:3612-3814`); a 10-arm `inspect` switch duplicated
+  byte-for-byte in the spec runner (`lang/go/native/native_inspect.go:183-307`,
+  `test/specfix/words.go:1133-1224`);
+- **eight** unifier Behaviors each repeating the same
+  "bare node → delegate to prev" guard verbatim
+  (`core/go/unify_disjunct.go:31`, `unify_dep.go:31`,
+  `unify_negation.go:85`, `unify_fnundef_named.go:47`,
+  `unify_refine.go:36`, `unify_predicate.go:51`, `surface.go:157`,
+  `generics.go:239`);
+- the node-vs-body denotation question re-derived at least **eight**
+  times (`ValueType` value.go:2257, `denotedType` unify.go:564,
+  `DenotedTypeNode` core_boundedtype.go:94, `tisNode`
+  native_type.go:964, `latticeNode` lang/go/modules/type.go:176,
+  `PathOf` core_type.go:59, `baseHandler` native_type.go:1078,
+  `Shape` shape.go:49).
+
+Even the evaluation pipeline carries shape patch-ups of its own:
+`resolveInertTypeShape` (`core/go/engine.go:4143`) special-cases typed
+lists/maps and disjuncts only, and `stepWord` quotes fn-shape bodies
+as a further special case (`engine.go:2731-2733`).
+
+---
+
+## 2. Findings this pass adds to the audit
+
+### 2.1 Branch 11 is worse than recorded — aliases and singletons are `is`-true but dispatch-dead
+
+The audit's table covers the record shape. The catch-all's other two
+inhabitants have the **reverse** asymmetry, measured:
+
+```
+$ boru do 'def Foo Integer  42 is Foo'                          → true
+$ boru do 'def Foo Integer  def f fn x:Foo Any [1]  f 42'
+error: … candidate `f (Foo)` — argument 1: expected Foo, got 42 (an Integer)
+
+$ boru do 'def One 1  1 is One'                                 → true
+$ boru do 'def One 1  def f fn x:One Any [7]  f 1'
+error: … candidate `f (One)` — argument 1: expected One, got 1 (an Integer)
+```
+
+Worse: for an alias the dispatch category is **uninhabitable** — the
+typed-def route does not tag either, so no value can ever pass an
+`x:Foo` parameter:
+
+```
+$ boru do 'def Foo Integer  def x:Foo 42  typeof x'             → Integer
+```
+
+Branch 11 mints a fresh child node with `DefaultBehavior`
+(`core/go/core_type.go:552-571`); nothing is ever tagged with it and
+no Behavior bridges it, so the lattice walk rejects everything. This
+bites through the **named** `x:T` path — no evaluation involved — so
+it is a distinct defect from NUR090's denotation split. Recorded as
+**NUR093**.
+
+### 2.2 The "dispatch loose / `is` strict" doctrine comment is stale
+
+`core/go/core_type.go:476-487` (the refine branch) still documents a
+deliberate loose-dispatch/strict-`is` split. The loose half was since
+removed: `bareRefineUnifier` is nominal
+(`core/go/unify_refine.go:12-43` — "An earlier revision made Match
+lenient… that asymmetry is exactly what this Behavior now removes";
+`design/REFINE-NEWTYPE-VS-SUBSET.10.md` §5), and
+`lang/spec/user-types.tsv:129-151` pins the one-predicate doctrine:
+`is`, dispatch, and return checks all ask `v.Is(T)` through the RHS
+node's `Behavior.Match` (`core/go/value.go:2287-2295`).
+
+What *survives* of the asymmetry is structural, not semantic: two
+objects consulted by two paths that happen to agree for the bridged
+kinds (5-10) — and disagree loudly for branch 11 (§2.1).
+
+### 2.3 `typeof` of a named type is kind-split
+
+Measured before the flip (§9 landed the uniform Parent hop — every
+named type now answers its Parent, so `typeof C → Class`):
+
+```
+$ boru do 'typeof Integer'                            → Number
+$ boru do 'def P refine Integer  typeof P'            → Integer
+$ boru do 'def M (Integer tor none)  typeof M'        → Disjunct
+$ boru do 'def T fnsig Integer String  typeof T'      → FunctionSignature
+$ boru do 'def Big (Integer gt 10)  typeof Big'       → Integer
+$ boru do 'def C class {a:Integer}  typeof C'         → C          ← itself
+```
+
+Five kinds answer the supertype (`TypeOf`'s documented one-Parent-hop
+contract, `core/go/core_type.go:81-99`); class answers **itself**
+(pinned the other way by `lang/spec/object.tsv:58-59` — "named Type
+reports its own name"). Both answers are pinned, so the surface is
+inconsistent whichever rule is right. The cause is the same two-object
+model: class binds a body parented AT its minted node
+(`core_type.go:366`), so the Parent hop lands on the node itself.
+Recorded as **NUR094**.
+
+### 2.4 Body-pushing was never a decision
+
+No design document argues for evaluating a name to the body.
+`TypeDef` was added for `undef` bookkeeping (`core/go/deftable.go:20`
+— "so `undef` can retire it from the type lattice"); the disjunct
+unifier's install comment and `FnUndefUnifier` (#390) are bridges
+built *because* evaluation yields the body; and the sig-resolution
+layer already states the target rule:
+
+> "the lattice node it points at IS the sig type, regardless of what
+> the body's payload looks like. This works uniformly for every type
+> kind…" — `core/go/fn_params.go:622-654` (`DefEntry.TypeDef`
+> consulted first; Record/Options fall through for their structural
+> Pattern only).
+
+Meanwhile two binding patterns that DO reach the node already coexist:
+
+- **(a-node)** refine binds the renamed node literal itself
+  (`core_type.go:448-491`) — the audit's "proof the target behaviour
+  already exists";
+- **(a-payload)** micron / class / schema / surface bind a
+  node-parented payload whose info carries a node back-pointer
+  (`NewValueRaw(def, info)`; `info.Type = def`), which is why
+  `ResolveSigType` arms 3-5 can recover their nodes.
+
+The refactor below extends a rule the codebase already wrote — from
+signature resolution to evaluation, and then to every consumer.
+
+---
+
+## 3. The design: a type IS its node, and the node carries its content
+
+Five invariants. Together they make "operate on a type value" a single
+algorithm — resolve to the node, ask the node — with per-kind variation
+living in exactly one place per kind (the node's Behavior, installed at
+`InstallType` time). That is capability dispatch, not caller-side
+branching: consumers become kind-blind, kinds become pluggable
+(ADR-012 rule 5, capability over enumeration).
+
+### N1 — a named type is its node; evaluation pushes it
+
+`InstallType` collapses from 11 branches / 3 strategies to **one
+algorithm**: normalize the body into `(parent, payload, behavior)` via
+the kind's constructor capability; mint (or adopt, below) the node;
+attach the Behavior; bind the name to the node. Word evaluation pushes
+`NewTypeLiteral(entry.TypeDef)` for every kind — the by-value copy
+shares the canonical `tmeta` (`core/go/value.go:1392-1405`), so name,
+rank and Behavior travel with it. `DefEntry{Body, TypeDef}` collapses
+to one field once nothing reads `Body`.
+
+Three decisions inside this:
+
+- **Aliases adopt, never mint.** `def Foo Integer` binds the canonical
+  `TInteger` node itself. That fixes NUR093's dead alias dispatch
+  outright, keeps `42 is Foo → true` trivially, and preserves the
+  alias/newtype distinction `TestRefineBareDistinctFromAlias` pins —
+  a newtype *mints*, an alias *adopts*. `undef` needs a guard so
+  popping an alias binding never retires a canonical node the binding
+  did not mint (the hazard GENERICS §15d already dodged by hand).
+- **Singletons get a real Behavior** — `Match` = value equality
+  against the stored inhabitant; `Structure` returns it. (Today
+  `def One 1` is dispatch-dead, §2.1.)
+- **Record shapes get the structural unifier** the audit's §6 step 1
+  calls for — under this model it is simply the Record kind's
+  Behavior, same template as `DisjunctUnifier` / `FnUndefUnifier`.
+
+### N2 — structure is recoverable FROM the node, uniformly
+
+This is what makes N1 safe, and it generalizes machinery that already
+exists piecemeal:
+
+- `SurfaceInfoOf(node)` (`core/go/surface.go:183-190`),
+- `SchemaInfoOf(node)` (`core/go/generics.go:385-393`),
+- micron's schema on the node Behavior, recovered by parent walk
+  (`basic/go/micron.go:96-100`, `:485`),
+- `UnionCarrierForType(node)` — disjunct alternatives recovered from
+  the node's `DisjunctUnifier` (`core/go/carrier_new.go:91-102`),
+- `ResolveTypeLiteralDef` — class/resource schema recovered from the
+  def store (`core/go/registry.go:1459-1481`).
+
+Generalize to one kernel capability — `Structure(t *Type) (Value, bool)`
+on the Behavior — implemented by every kind. The one genuinely new
+piece is the class kind's node→info accessor (`ClassTypeInfo` has a
+body→node back-pointer, `core/go/value.go:2694-2697`, but no inverse).
+Every "body reachability" dependence then dissolves: `make` recovers
+the schema from the node; `inspect` / `describe` / `of` / `exposes` /
+the checker's schema reads / `ResolveSigType`'s Record-Options pattern
+carve-out all switch from `TopTypeBody` to `Structure()`. Rendering
+becomes one rule: a named node canons as its name; an anonymous value
+canons via its structure.
+
+### N3 — membership is one algorithm with two operations, both on the node
+
+`v.Is(t)` → `t.Behavior().Match` stays the single membership question
+(the pinned doctrine, §2.2). The missing half is **`Unify` as a
+uniform Behavior capability**: today `PredicateUnifier` implements it
+(`core/go/unify_predicate.go:78-85`) but `DepScalarUnifier` does not,
+and `unifyInner` compensates with payload-keyed folds — disjunct,
+negation, class, surface fire on the *body's* payload shape
+(`core/go/unify.go:415-439`), invisible when the operand is a node.
+
+Give every kind's Behavior its `Unify`, resolved by the existing
+`dispatchUnifier` parent walk (`core/go/unify_lca.go:40-72`), and the
+folds migrate into the kinds.
+
+This also closes a **soundness hole that node-valued names would
+expose**: with a node constraint, `def x:Big 5` (dependent scalar) and
+the predicate-type twin fall into the typed-def bare-refine reparent
+arm (`basic/go/native_definition.go:1193-1241`, gated on
+`IsBareTypeNode(constraint) && Origin==OriginUserDef`) and would
+**bind without running the constraint**. The fix — `DepScalarUnifier.Unify`
+plus keying the typed-def arm on the Behavior rather than on
+node-bareness — must land *before* the evaluation flip (Stage 0).
+
+### N4 — one type-recognition seam, via the sealed payload
+
+Replace the shape *enumerations* with one recognizer:
+
+```
+IsType(v) := IsBareTypeNode(v) || v.Data.IsTypeContent()
+```
+
+— where `IsTypeContent() bool` is a **method** on the sealed `Payload`
+interface, not a bare marker-interface assertion. The distinction
+matters because two payload variants are shared between types and
+ordinary values, so a Go-type-level marker cannot discriminate them:
+
+- `MapPayload` carries both concrete maps and implicit-map record
+  shapes, told apart only by the `OrderedMap` Implicit flag and the
+  recursive field inspection (`core/go/core_type.go:101-133`
+  `IsRecordShape`); its `IsTypeContent` answers from that value state.
+- `ExtensionPayload` carries both host type bodies and host
+  *instances*, told apart by the nested `Body` implementing the
+  `hostTypeBody()` marker (`core/go/core_helpers.go:941-948`); its
+  `IsTypeContent` delegates to that nested check — which is exactly
+  the `HostTypeBody` protocol (`design/IDEAL.10.md` §13) already in
+  place, kept as is.
+
+Every exclusively-type-shaped payload (`DisjunctInfo`, `FnUndefInfo`,
+`NegationInfo`, `DepScalarInfo`, `ClassTypeInfo`, `RecordTypeInfo`,
+`OptionsTypeInfo`, `TableTypeInfo`, `ChildTypeInfo`, `*TypeSchemaInfo`,
+`*SurfaceInfo`, `MicronTypeInfo`) answers constantly; the two shared
+variants answer from value state. One call site, no enumeration —
+ADR-012 rule 3 (intent by structural marker) and the NUR009 verdict's
+capability-over-enumeration direction, satisfied by the method rather
+than by the assertion.
+
+**The consumer-specific admission rules stay, expressed over the
+seam.** The four predicates are not pure duplicates — two carry
+deliberate policy on top of shape recognition, which `IsType` must not
+absorb:
+
+- `IsTypeValue` recursively accepts a concrete list/map *containing* a
+  type (`core/go/value.go:3856-3896` — `istype [Integer]` is true);
+  that recursion is its caller's rule and remains local, re-expressed
+  as a walk whose leaf test is `IsType`.
+- `sigTypeMatchesAsType` deliberately **rejects** DepScalar bodies at
+  TypeArgs slots (`core/go/signature.go:432-438` — the dep-sig
+  fallthrough would loop on `(Integer gt 10) lt (Integer gt 20)`);
+  that rejection remains at the slot, over the shared recognizer.
+
+What collapses is the redundant *recognition* — `IsTypeBody`'s 18
+arms, `isTypeLike` (`core/go/core_make.go:31-37`), the `Shape()` type
+arms, `TypeMembership`'s shape half — not the per-consumer admission
+policy, which becomes small and visible instead of entangled with
+enumeration.
+
+### N5 — anonymous type values use the same seam, without minting
+
+An inline `(Integer tor none)` or `{x:Integer}` stays a payload-shaped
+value — but it answers the same questions through the same seam:
+`IsType` via the payload marker; its denoted node is its family
+metatype (or the payload's back-pointer where one exists); `Structure`
+is itself; membership routes via the **family root's** Behavior
+reading the payload. Consumers therefore never branch on
+named-vs-anonymous either.
+
+Deliberately **no** per-expression minting:
+`design/TYPED-CONTAINER-TAG-RETENTION.0.md` rejected it for the census
+ripple (Parent/Rank/ID churn across dispatch, ordering,
+serialization) and its R4 exact-node attempt was reverted for
+compiled/interpreted divergence. Algorithmic uniformity lives at the
+seam, not in the bit layout; interned minting (the `const` pattern,
+`design/legacy/CLASS-OBJECT.10.ignore` §3d) can be revisited later without
+touching any consumer.
+
+### What collapses
+
+- `ParseFnParams` element arms → name-to-node (already
+  `TypeDef`-first) / `IsType(v)` / literal-singleton.
+- `ResolveSigType`'s two silent `(TAny, nil)` tails disappear, and the
+  NAMED-type `(Any, pattern)` degradation (audit §5) disappears
+  because the name resolves to its minted node. The *anonymous* inline
+  `(TAny, pattern)` arm (`core/go/fn_params.go:707-714`, enforced
+  through Unify by `core/go/signature.go:198-226`, pinned by
+  `core/go/fnparams_stage5_test.go:282-285`) is NOT a weakening — the
+  pattern is the only copy of an anonymous constraint and must be
+  preserved.
+- `FnParam{Type, Pattern}` collapses to **one type-VALUE field**: the
+  node literal for a named type, the payload-carrying value itself for
+  an anonymous one — matching asks the seam either way. The pattern is
+  *carried*, never reconstructed: an anonymous disjunct's family root
+  holds no alternatives, so deriving the constraint from the node is
+  only possible for named types (`Structure(t)`), and the collapse
+  must keep the anonymous value whole or it would admit `Boolean`
+  through `x:(Integer tor String)`.
+- The checker's `toCarrier` payload-preservation ladder
+  (`check/go/carrier.go:270-416`), the duplicated `inspect` switch,
+  and the `is` handler's body-redirect arms
+  (`native_type.go:793-831`) become deletable. *(Landed note,
+  2026-08-20: none were deleted in the implementation pass — the
+  checker ladder still serves anonymous carriers, and the redirect
+  arms now route node content; deletion remains available follow-up
+  work, not a prerequisite of the flip.)*
+- The compiled encoding unifies on `OpPushType` (canonical-ID,
+  run-time resolution) for named-type operands — which also removes
+  the frozen-body staleness hazard (`behave` after bake; the NUR080
+  hazard class).
+
+---
+
+## 4. Alternatives considered and rejected
+
+1. **Deliver the unevaluated Word to consumers.** Fights forward
+   collection, which "no NoEval can suppress"
+   (`basic/go/native_definition.go:166-174`); already demoted in
+   issue #392.
+2. **Route `ParseFnParams`' default arm through `ResolveSigType`.**
+   Built, measured, reverted (audit §5): degrades to `(Any, pattern)`;
+   a loud refusal traded for a silent weakening.
+3. **Stamp the node onto the pushed body, keep body denotation.**
+   "Necessary but not sufficient" (issue #392): class bodies are
+   node-parented today and still fail; keeps two objects and the
+   ~514-site fork zoo intact.
+4. **Full bit-uniformity — mint a node for every anonymous
+   expression.** Rejected for now per the census-ripple precedent
+   (§N5); the seam achieves the algorithmic uniformity the issue asks
+   for without the mint churn.
+5. **The audit's §6 alone** (re-point 5-10, bridge 11). Correct, and
+   embedded below as Stages 0-2 — but by itself it fixes *denotation*
+   without fixing *representation*: the predicates, the folds, the
+   pattern pair and the consumer-side enumeration all survive. The
+   issue's bar — one code path — requires the seam.
+
+---
+
+## 5. Migration plan — each stage separately observable
+
+**Stage 0 — independent bug fixes, landable now, no denotation change.**
+1. Record-shape structural unifier (audit §6 step 1; flips the
+   wrapped-spelling row: `{x:1} is R` and dispatch agree).
+2. Aliases adopt the canonical node (+ the `undef` retire-guard) —
+   retires half of NUR093.
+3. Singleton Behavior — retires the rest of NUR093.
+4. `DepScalarUnifier.Unify` + Behavior-keyed typed-def constraint
+   dispatch (§N3's soundness hole, closed before it is reachable).
+5. NUR091's silent-strand fix (independent, small).
+
+**Stage 1 — the seam, behavior-neutral.** Introduce `IsType` /
+denoted-node / `Structure` + the `TypePayload` marker; implement per
+kind (class's node→info accessor is the new work); migrate the ~514
+call sites mechanically, module by module, under the merged ADR-008
+gate. Pure refactoring; the spec corpus is the safety net.
+
+**Stage 2 — the flip.** Evaluation (`stepWord`, the forward planner,
+`resolve.go`) pushes `NewTypeLiteral(entry.TypeDef)`. The compiled
+encoding of name-denoted operands shifts **in this same stage**, not
+later: the emitter's existing bare-node arm
+(`compiler/go/emit.go:1723-1729`) interns any `IsBareTypeNode` operand
+with an ID as an `OpPushType` type-table entry, so once evaluation
+yields nodes, those operands stop reaching the `PUSH_CONST` body-bake
+arm automatically — but the emit goldens, `make verify-bytecode`, and
+the interpreter/compiler differential must therefore be re-baselined
+HERE, atomically with the flip, or the two engines would render
+`canon M` differently. Full spec sweep per kind over `canon` /
+`typeof` / `is` / `tis` / `teq` / dispatch / `make` / `of` /
+`inspect` / def-then-use; pin every flip (§6); run both engines'
+differential green before merge. All six rows of NUR090's table
+agree; NUR090 retires with the `fn-triple.tsv` pins its verdict
+names.
+
+**Stage 3 — collapse.** Payload-keyed unify folds move into kind
+Behaviors; `FnParam.Pattern` derived; `DefEntry.Body` reads deleted
+and the entry collapsed; `IsTypeBody`'s enumeration, the duplicate
+inspect switch and the redundant predicates retired.
+
+**Stage 4 — compiled-path cleanup.** The named-operand encoding
+already moved in Stage 2 (above); what remains is deletion and the
+residue: retire the now-unreachable structural-type-body arms of
+`IsInertConst` / `typeBodyConstOK` (`core/go/value_classify.go:129-161`,
+`:369`) with their pinned coverage tests, sweep the remaining
+body-shaped compiled occurrences (anonymous patterns, baked members),
+and re-baseline the frontier ledgers.
+
+---
+
+## 6. Semantic deltas to decide and pin
+
+Membership (`is`, dispatch, returns) does **not** move for branches
+5-10 — the per-kind probes confirmed the node Behaviors give identical
+verdicts — and branch 11's would-be flips are prevented by Stage 0.
+The issue's "membership should be unaffected" holds with exactly those
+two qualifications. What does move:
+
+| surface | before the flip | landed (2026-08-20, §9) | assessment |
+|---|---|---|---|
+| `canon M` / `canon C` / `canon T` / `canon R` | the body | the name | the desired change; `canon P → P` is the precedent, and ADR-015's value-roundtrip already accepts name rendering under a live def |
+| `typeof` of a named type | kind-split (§2.3) | uniformly the supertype: class → parent class or `Class`; predicate → its input base; others unchanged | recommend the uniform Parent-hop rule (`TypeOf`'s contract; `CLASS-OBJECT.10.ignore` §5b's own doctrine); `object.tsv:58-59` flip — NUR094's resolution |
+| `tis` on dependent scalars | `5 tis Big → true` (body reduces to base) | `false` | defensible as a fix — `tis` is tag-only and `5` carries no `Big` tag; aligns with `2 tis Pos → false`; `user-types.tsv:231-232` flip |
+| `teq` named-vs-named structural | structural (`ValuesEqual`) | node identity, unless `teq` consults `Structure()` | genuine decision; nominal matches "identity comes from the binding" (`TYPE-OPERATIONS.8.ignore`); lean nominal for named, structural for anonymous — settle in the Stage-2 sweep |
+| `tcmp` ordering | body's metatype band (`compare.tsv:714` explicit) | the minted node's band | `compare.tsv:700-761` rows flip; deliberate — a named type orders as a type, uniformly |
+| compiled encoding | body frozen in const pool | `OpPushType` by ID | goldens/differential churn; removes the bake-staleness hazard |
+
+---
+
+## 7. Constraints honored
+
+- **One membership predicate** — `v.Is(t)` + per-node `Behavior.Match`
+  stays the sole seam; the REFINE-NEWTYPE §5 net table is treated as a
+  contract (bare refine nominal both ways, predicate refine
+  value-sensitive both ways).
+- **Behaviors installed at `InstallType` time**, so check mode sees
+  them (NUR076's `behave` gap is not widened).
+- **Canonical `*Type` pointer discipline** — node literals share
+  `tmeta`; `OpPushType` resolves by ID at run time (ADR-010's "the
+  emitter interns bare type nodes").
+- **Sealed markers over heuristics** (ADR-012 rule 3) — `TypePayload`
+  follows `RefinePrefab` / `HostTypeBody`.
+- **`InstallType` remains the single install path**; the per-kind
+  logic moves into it as capabilities, never forks of it.
+- **Host Ideals**: `DefineMemberType` already binds
+  `NewTypeLiteral(def)` (`core/go/define_type.go:64-82`) — the model;
+  shaped host types (branch 11 today) get their `Structure` through
+  the same capability their Ideal registers.
+- **Standing obligations**: the Go↔TS twin has no `Body`/`TypeDef`
+  discriminator at all (`design/legacy/CORE-GO-TS-DEFECTS.0.ignore`) — this
+  refactor is the moment to align it; ADR-008 coverage for every new
+  Behavior arm; the kg bundle where the doc set changes.
+
+## 8. Related records
+
+- **NUR090** — the denotation split (retires at Stage 2).
+- **NUR091** — the silent strand (Stage 0 item 5).
+- **NUR093** — aliases and singletons `is`-true but dispatch-dead
+  (this pass; retires at Stage 0 items 2-3).
+- **NUR094** — `typeof` of a named type is kind-split (this pass;
+  retires at Stage 2 with the uniform Parent-hop rule).
+- Issue **#392** — the tracking issue.
+- [TYPE-REPRESENTATION.0.ignore](TYPE-REPRESENTATION.0.ignore) — the audit
+  this builds on; its §6 plan is Stages 0-2 here.
+
+---
+
+## 9. Implementation record (2026-08-20)
+
+All five stages landed on the `claude/go-type-representation-z3alhe`
+branch (PR #394). What each stage delivered, and where the landed shape
+deliberately differs from the §5 sketch:
+
+**Stages 0-2** landed as designed. Evaluation pushes the minted node at
+every consumption point (`DefTable.Top`, `stepWord`, the forward
+planner); the node records its declared content
+(`Value.TypeBody`/`SetTypeBody`, stamped by `installTypeBinding`);
+structure consumers recover it through `TypeContentOf`; membership
+kinds carry `Match` + `Unify` on the node Behavior (predicate,
+DepScalar, disjunct, negation, FnUndef, surface, and the catch-all's
+`BindingBodyUnifier`), consulted by `dispatchUnifier`'s
+subtype-first/dual-denotation walk and `unifyInner`'s constraint-node
+pre-step. The §6 deltas were pinned as predicted: name rendering
+(`canon`/render rows across basic/boolean/structure/types/record/
+surface/generics), the uniform `typeof` Parent hop (object.tsv,
+micron.tsv — NUR094), tag-only `tis` (user-types.tsv:231-232), nominal
+`teq` for named types (edge-types-2), the tcmp type-band flip
+(compare.tsv), and the compiled `OpPushType` encoding (with
+`adoptEscapedTypes` extended to module preambles — `ModuleDesc.Src` on
+`boru:test` — so import-minted nodes resolve by ID in the importer).
+
+Two deltas were settled during the sweep beyond the §6 table:
+
+- **`teq` named-vs-named is NOMINAL** (the table's "lean nominal"
+  option): two declarations mint two nodes even over equal bounds;
+  anonymous-vs-anonymous stays structural (`ValuesEqual`).
+- **The disjunct DIVERGENCE PIN survives representation**
+  (edge-types-2): dispatch through a union param stays loose on the
+  newtype-alternative swap (`42 g` admits through `m:(P tor String)`)
+  while `42 is M` is false — the node's `Match` carries the loose
+  half, and the `is` word routes concrete candidates through the
+  Unify + value-identity path (`IsDisjunctTypeNode`).
+
+**Stage 3** landed as the *one-rule* collapse rather than the full
+struct collapse:
+
+- Each kind's membership/combination logic exists ONCE
+  (`unifyDisjunct`, `unifyNegation`, `unifySurface`, `unifyDepScalar` +
+  `combineDepScalars`, `FnUndefMatchesFnDef`, the class/record folds),
+  consulted from both routers — the node Behavior for named types and
+  the payload fold table for anonymous values. The fold table stays as
+  §N5 requires (anonymous values never mint), and its entries are thin
+  delegations to the per-kind rules; named DepScalar pairs meet
+  through the same intersection (`DepScalarUnifier.Unify` two-content
+  arm), and generic memo keys canonicalise a named argument by its
+  recorded content (`canonTypeArg`), so the named and inline spellings
+  instantiate identically.
+- `DefEntry` keeps its `Body` field: beyond value bindings, three
+  binding shapes carry a body that is NOT the node's declared content
+  — a generic type-PARAM bound to its argument, an instantiation
+  memo's structural body, and an alias's adopted-node literal
+  (`registry.go` `TopTypeBody` documents this). For minted
+  declarations the stored body and the node stamp are the same value,
+  written together by `installTypeBinding`.
+- `FnParam{Type, Pattern}` stays two fields with the Stage-2 meaning:
+  a NAMED type resolves to its node in `Type` (no `(Any, pattern)`
+  degradation), and `Pattern` carries exactly the anonymous
+  constraints §N5 says must be carried, never reconstructed. The
+  single-field re-spelling remains available later without semantic
+  change; it was not taken here because ~18 module-wrapper files
+  construct `FnParam` literals and the two-field spelling now encodes
+  precisely the named/anonymous split the design wants.
+- The consumer-side admission policies named in §N4 (`isTypeLike`'s
+  make-target set, `IsTypeValue`'s container recursion, the DepScalar
+  TypeArgs rejection) remain local per the design's own carve-out.
+
+**Stage 4** landed as the compiled-path residue: named operands emit
+`OpPushType` (Stage 2); a PREDICATE-TYPE node operand at a fn-invoking
+word refuses compilation exactly as the fn value it replaced
+(`RecordCallOperands`); the structural-type-body const arms stay for
+the anonymous bodies that still ride the const pool. NUR090, NUR093
+and NUR094 retire with pins (fn-triple.tsv §8; user-types.tsv's
+retirement section; the typeof re-pins above).

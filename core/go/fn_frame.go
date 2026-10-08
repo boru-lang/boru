@@ -9,7 +9,7 @@ import "fmt"
 // (buildFnBodyHandler, compileFnDef via buildFnBodyHandler, and
 // execFnDefSig's no-captured-registry branch) builds its frame from
 // these pieces, so the on-tape frame shape cannot diverge between
-// dispatch paths. See design/TCO-STAGED.10.md Stage 1.
+// dispatch paths. See design/legacy/TCO-STAGED.10.ignore Stage 1.
 //
 // A frame on the tape is:
 //
@@ -34,7 +34,7 @@ type FnFrameMeta struct {
 	// HasGen marks a generic fn (the handler installs inferred
 	// type-parameter bindings per call). The eager-teardown gate
 	// declines generic frames until the bind/teardown/Retire
-	// interaction is separately proven (design/TCO-STAGED.10.md
+	// interaction is separately proven (design/legacy/TCO-STAGED.10.ignore
 	// Stage 4).
 	HasGen bool
 	// InstallNames are the binding names this overload's handler
@@ -72,7 +72,11 @@ func fnInstallNames(s FnSig, captured []CapturedBinding) []string {
 // value dispatched straight off the tape. No registered Signature
 // carries this meta, so such frames anchor probe scans but never
 // satisfy a sig-identity gate.
-var fnValueFrameMeta = &FnFrameMeta{Name: "<fn>"}
+// FnValueFrameName is the name a nameless fn value's frame carries: its
+// diagnostics (a return-contract error) say `<fn>`.
+const FnValueFrameName = "<fn>"
+
+var fnValueFrameMeta = &FnFrameMeta{Name: FnValueFrameName}
 
 // FrameOpenInfo is the payload on a fn frame's open paren. The token
 // remains an ordinary OpenParen for every structural purpose (IsOpenParen
@@ -89,7 +93,7 @@ type FrameOpenInfo struct {
 	// the skip, an argument with active step semantics (a Function
 	// value, an __SP marker) fires on PLACEMENT, making its behaviour
 	// depend on which siblings happen to sit beside it — the
-	// named/unnamed asymmetry of design/ARG-SEMANTICS-UNIFICATION.0.md.
+	// named/unnamed asymmetry of design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore.
 	ArgSpan int
 }
 
@@ -175,6 +179,22 @@ type FrameTailSpec struct {
 // predicate so the engines cannot disagree about the timing.
 func BodyEvalsResidual(body []Value) bool {
 	return len(body) > 1 || (len(body) == 1 && IsParenExpr(body[0]))
+}
+
+// ResidualEvalsInFrame is THE residual rule (NUR153, ruled 2026-09-18):
+// a fn body's residual pending containers evaluate in the live frame —
+// against the bound params and captures — unless the fn is an anonymous
+// `=>` lambda whose body is a single bare container literal, which
+// DEFERS: the container leaves the frame unevaluated and resolves where
+// its consumer evaluates it (module scope; the pinned no-closures
+// transparency of def-node-binding.tsv §3). One value means one thing
+// wherever it goes (design/FUNCTION-VALUE-SCOPE.0.md §11), so every
+// seam that applies a fn value asks this — the spliced frame tail
+// (AppendFrameTail's EvalResidual), the CallBoru sub-run, and the
+// compiler's residual-recording admission — and none of them may spell
+// the rule for itself.
+func ResidualEvalsInFrame(anonymous bool, body []Value) bool {
+	return !anonymous || BodyEvalsResidual(body)
 }
 
 // AppendFrameTail appends the canonical frame cleanup tail to tokens:
@@ -307,7 +327,7 @@ func (e *Engine) unwindFrameTail(openIdx, to int) {
 				_ = PopFrameArgs(e.Registry)
 			case w.Name == "undef" && w.ForceForward && j+1 < to && IsWord(e.Tape.At(j+1)):
 				nw, _ := AsWord(e.Tape.At(j + 1))
-				UninstallDef(e.Registry, nw.Name)
+				UninstallFrameBinding(e.Registry, nw.Name)
 				j++
 			}
 		}

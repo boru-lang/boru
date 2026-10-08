@@ -22,7 +22,7 @@ import (
 // non-String scalars miss the concat overloads and fall to whatever else
 // is registered for the pair: the [TNumber, TNumber] arm (add 1 2 -> 3),
 // the within-type arms in native_scalar_ops.go (add a/q b/q -> 'ba';
-// including the deliberate [Boolean Boolean] refusal, a
+// including the deliberate [Boolean Boolean] compile failure, a
 // [boru/type_error]), or — a cross-family pair matching nothing — a
 // [boru/signature_error] dispatch miss.
 //
@@ -258,7 +258,7 @@ var (
 			}
 			// MinInt64 / -1 is the single int64 division overflow — Go
 			// wraps it back to MinInt64 (the same pair checkedMulInt
-			// refuses), so guard before dividing.
+			// declines), so guard before dividing.
 			if a == -1 && b == math.MinInt64 {
 				return Value{}, integerOverflowError("div", a, b)
 			}
@@ -354,7 +354,7 @@ var mathNatives = []NativeFunc{
 			// match NEITHER overload and raise a no-signature error — the type
 			// system expresses "string-or-bust" directly rather than
 			// silently stringifying any Scalar pair. See
-			// design/WAT-AUDIT.5.md §G.
+			// design/legacy/WAT-AUDIT.5.ignore §G.
 			{Args: []*Type{TString, TScalar}, Impl: Go(addConcatHandler), ReturnsFn: ReturnsAddConcat(), BarrierPos: -1},
 			{Args: []*Type{TScalar, TString}, Impl: Go(addConcatHandler), ReturnsFn: ReturnsAddConcat(), BarrierPos: -1},
 			// The temporal overloads (Date+CalendarDuration, Instant+ClockDuration, …)
@@ -667,7 +667,7 @@ func clockDurModHandler(tt TemporalModuleTypes) Handler {
 func TemporalArithmeticExtensions(tt TemporalModuleTypes) []FnDefInfo {
 	// Anchored (first-party waiver): the affine POINT − POINT overloads
 	// (Date − Date, DateTime − DateTime, Instant − Instant) are all-builtin
-	// tuples the module-scope user-type rule would otherwise refuse.
+	// tuples the module-scope user-type rule would otherwise decline.
 	// boru:time-util ships with the kernel, so the waiver applies — the same
 	// escape hatch boru:io uses for its Pathon-anchored list/remove.
 	return []FnDefInfo{

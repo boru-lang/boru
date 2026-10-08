@@ -1,0 +1,2315 @@
+# boru Bytecode Compilation — Full Report
+
+**Status:** re-reviewed against main June 2026 — see
+`boru-bytecode-revisions.0.ignore` (what changed underneath this report:
+TCO is now a language guarantee so §5.6 is invalid; §7's baseline
+moved with the gap-buffer tape; locals promotion in §2.6/§9.3 has a
+stricter soundness condition; macros/minilang/generics/closures/
+concurrency post-date this text) and `boru-bytecode-plan.0.ignore` (the
+staged implementation plan). This report is kept as written.
+
+This report evaluates compiling boru to a bytecode for a simple
+stack VM in Go, driven by the existing carrier-based static type
+checker. The shape of the argument: the checker already resolves
+every dispatch decision statically in typed regions, so the same
+pass can record those decisions as bytecode and drop the
+text-stream interpreter's per-token overhead in the compiled
+regions. Dynamic corners (`do` on computed code, unresolvable
+`context get`) are the cases this design does not yet know how to
+lower. Where one survives into a run, the program is handed to the
+interpreter over the same stack representation — no marshalling
+boundary, and no signal at run time that it happened. Read that
+handoff as containment machinery around an unfinished compiler,
+not as a fallback the design rests on: every construct it catches
+is an open defect owed a lowering, because done means a language
+that compiles all valid boru, with no exceptions.
+
+## Contents
+
+1. Carrier-driven compilation
+2. Fixed-arity function calls
+3. Instruction set
+4. Replacing mark/move with static branches
+5. User-defined functions
+6. Interaction with `RunInCheckMode` words
+7. Performance analysis
+8. Gotcha inventory
+9. Severe gotchas expanded
+10. Moderate gotchas expanded
+11. Prior art and comparison
+12. Verdict
+
+---
+
+## 1. Carrier-driven compilation
+
+### 1.1 What the carrier checker already gives us
+
+The static type-check mode described in
+`lang/doc/design/legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore` replaces concrete values
+on the stack with *carrier* values (`Value{Carrier:true, Data:nil}`)
+and runs the same engine. Because the machinery is shared — same
+`matchSignature`, same `SortSignatures`, same forward collection,
+same mark/move — at every point where the runtime engine would have
+called a handler, the checker instead knows:
+
+- the **word name** at the pointer,
+- the **exact signature** selected (`*Signature` from the sorted list),
+- the **arg positions** on the stack, in signature order
+  (`MatchResult.Positions`),
+- the **declared return types** (`Signature.Returns`) or a
+  `ReturnsFn`-computed carrier set,
+- any **disjunct** in the input that forced a widened return.
+
+The checker runs `execMatch` in `engine.go:807` with `CheckMode=true`
+(`engine.go:865`), calls `carrierResults` instead of `match.Sig.Handler`,
+and then reuses `spliceMatchResults` (`engine.go:946`) to replace the
+word and its args with carriers. The stack splicing, pointer moves,
+and forward resolution are **identical** to runtime.
+
+That identity is the key. Every dispatch decision the runtime would
+make has already been made, deterministically, at check time. A
+compilation pass can record those decisions as it goes and emit a
+bytecode stream that hard-codes each one.
+
+### 1.2 Carrier → bytecode as a recording pass
+
+The cleanest way to describe the compilation pass is:
+
+> A **third mode** of the engine, `CompileMode`, runs the same Run()
+> loop as the checker. At every point where the checker would resolve
+> a carrier dispatch, the compiler instead appends instructions to a
+> growing `[]Instr` and also pushes carriers onto its stack (to keep
+> driving the checker forward).
+
+In other words: the compiler is the checker with a recording side
+effect. The carriers it pushes let subsequent dispatches resolve
+normally; the instructions it emits are what will actually execute
+at runtime.
+
+Concretely, for each checker event:
+
+| Checker event                         | Emitted bytecode                    |
+|---------------------------------------|-------------------------------------|
+| Push concrete literal (in check mode, stripped to carrier) | `PUSH_CONST k` — the original literal interned in a constant table |
+| `matchSignature` → `Signature` with fixed `Args` and `Returns` | `CALL_NATIVE sig_id` (fixed arity known from `len(sig.Args)`) |
+| `rearrangeForForward` reorders stack values | A small sequence of `SWAP`/`ROLL`/`PICK` instructions, or — better — choose operand positions at emit time so no reorder is needed |
+| `RunInCheckMode` word (`def`, `fn`, `type`, `import`, `module`) | Execute during compile, update the compile-time registry, emit nothing runtime |
+| `if` mark/move | `JMP_IF_FALSE else; ...; JMP end; ...` with labels resolved at emit time |
+| `for` mark/move | `FOR_SETUP; ...; FOR_NEXT body_start` pattern |
+| Auto-eval list literal consumed as a code body | Compile the list's token stream inline as a sub-program referenced by handle |
+| `CheckFullStackFn` signature | Either compile-time expand (if the full-stack shape is decided at compile time) or emit a specialised opcode |
+
+Because the recording is driven by the checker's actual dispatch,
+forward collection, paren evaluation, and all the other
+text-stream peculiarities are *already resolved* by the time
+`execMatch` fires. The compiler never has to reason about source
+ordering — it reasons about dispatched calls in the order they
+actually execute.
+
+### 1.3 What needs to be captured per call site
+
+For each `execMatch` the compiler needs to know where each arg
+**came from** so it can emit the right operand-sourcing instructions.
+Three cases:
+
+1. **Stack arg** — the value was already on the stack when the word
+   was reached. In the bytecode this maps to a stack value already
+   left there by previous instructions. No explicit operand sourcing
+   is required.
+2. **Forward arg** — the value was a token after the word. The
+   checker already executed those tokens (their literals pushed
+   carriers, their words dispatched) before `execMatch` fired, so
+   by the time the call happens they are **already on the carrier
+   stack in signature order** (via `rearrangeForForward`). In
+   bytecode, we simply emit the forward operands' instructions
+   before the `CALL_NATIVE`, and the reorder step becomes either
+   a no-op or a deterministic `SWAP`/`ROLL` sequence.
+3. **Literal bodies** (lists, maps, quoted atoms) — these are
+   passed without evaluation. The compiler records the body as a
+   nested bytecode program (or an interned value) and emits
+   `PUSH_CONST body_id`.
+
+The upshot: after the pass, the program is a **flat linear sequence
+of fixed-arity operations** with no token-stream left.
+
+### 1.4 Handling `def` and shadowing
+
+`def` binds a name to a value (or a list body) in a per-name stack
+(`DefStacks`). In the runtime engine, looking up `foo` walks its
+DefStack; in the compiler, the same walk happens at compile time
+because `def` is `RunInCheckMode`. So when the compiler reaches a
+`Word("foo")` token and the checker resolves it to "the list body
+defined N steps back", the compiler can:
+
+- **Inline** the body's bytecode at that call site (simple and fast,
+  but grows the program linearly with call sites), or
+- **Emit** a `CALL_USER fn_id` to a single compiled copy, paired
+  with a compile-time symbol table mapping name → fn_id.
+
+The first option is appropriate for tiny bodies (`dup add`, etc.);
+the second handles recursion and larger bodies. The carrier
+checker's per-signature fixed-point analysis (Phase 3 of the
+checker plan) already computes exactly what's needed to decide: if
+a user function has a single concrete input carrier signature and
+a single return signature, emit `CALL_USER`; if multiple
+signatures survive, emit a dispatch table (see §2.4 below).
+
+### 1.5 What the compiler cannot resolve
+
+Two classes of site defeat the compiler as sketched here — at
+each it must either widen to `Any` or refuse the region outright:
+
+1. **Carrier disjuncts at the dispatch point.** If the checker
+   arrives at `add` with inputs `Carrier<Integer|Decimal>`,
+   signature matching still succeeds (the `[TNumber,TNumber]` sig
+   covers both), but the concrete return depends on inputs. Two
+   options: (a) emit a specialised dispatch opcode that inspects
+   the top-of-stack tag at runtime and jumps to one of two
+   implementations, (b) emit a single generic call and let the
+   handler branch internally as it already does.
+2. **Fundamentally dynamic sites.** `do` on a computed list,
+   `context get x` with an unknown key, `def` rebinding inside a
+   conditional branch — the checker already widens these to
+   `Carrier<Any>` and flags them; the compiler has no lowering
+   for them and emits a `FALLBACK_INTERP span_id` opcode that
+   hands the relevant token subsequence back to the text-stream
+   engine. That is a refusal to compile, sitting on the same
+   boundary the checker already defines — an unimplemented case,
+   not a resolution of one.
+
+The first case is *local*: typed regions around it still compile.
+The second is local only in extent, not in consequence. The
+bytecode VM and the interpreter share the `[]Value` stack
+representation, so the handoff costs nothing and announces
+nothing — at run time the program drops into interpretation with
+no sign that it did. Cheap containment for an open defect is
+still an open defect: every site in class 2 is owed a lowering,
+and until it has one the compiler is unfinished there.
+
+### 1.6 Summary of §1
+
+The carrier checker is essentially a dispatch-recording machine.
+Turning it into a compiler requires one new side effect per
+`execMatch` — appending instructions — and one new pass at the end
+— resolving labels and interning constants. Every runtime
+dispatch decision becomes a compile-time decision; every
+`matchSignature` call becomes a single `CALL_NATIVE sig_id`
+in the bytecode.
+
+---
+
+## 2. Fixed-arity function calls
+
+### 2.1 The dispatch cost today
+
+At runtime, every word token triggers:
+
+1. `resolveWordRef` / DefStack lookup — one map probe.
+2. `matchSignature` — an outer loop over sorted candidates, an inner
+   loop over arg positions, with `sigTypeMatches`, pattern unify
+   calls, forward-collection state checks, barrier checks, and
+   specificity scoring short-circuits (`match.go`).
+3. Forward collection state updates if the word waits on future
+   tokens (insert `Forward` marker; advance pointer through
+   subsequent literals that feed it).
+4. `rearrangeForForward` — reorder the resolved values into sig
+   order.
+5. `execMatch` — splice the word and its args out of the stack,
+   potentially allocate a new slice, invoke the handler, splice
+   results back in.
+
+In straight-line numerical code, steps 2, 3, 4, 5 dominate. Each
+one allocates small slices or maps (`skipSet := make(map[int]bool,
+n+1)` at `engine.go:952`, for example). Go's escape analysis
+catches some, but the overhead per token is far larger than the
+actual work for a word like `add [Int,Int] → Int`, which is a
+single i64 addition.
+
+### 2.2 The fixed-arity invariant
+
+After compilation, every `CALL_NATIVE sig_id` has:
+
+- **Fixed N** = `len(sig.Args)`, baked into the opcode's operand.
+- **Known direction of arg consumption**: popped from the stack in
+  signature order. (Forward vs. stack sourcing is resolved at
+  compile time; at runtime they are already on the stack.)
+- **Known return shape**: `len(sig.Returns)` values pushed, typed
+  per the signature.
+- **No type check** on the arguments: the checker has already
+  proven they match. The handler receives exactly the types it
+  declared.
+
+The runtime dispatch loop becomes:
+
+```go
+for pc < len(code) {
+    op := code[pc]
+    switch op.Code {
+    case OpCallNative:
+        sig := sigs[op.Arg]                 // O(1) index
+        n   := sig.Arity                     // baked in
+        args := stack[len(stack)-n:]         // no slice copy needed
+        stack = stack[:len(stack)-n]
+        results, err := sig.Fn(args)         // direct call
+        if err != nil { return err }
+        stack = append(stack, results...)
+        pc++
+    // ... other opcodes
+    }
+}
+```
+
+Five cheap operations per call vs. dozens (plus allocations) in the
+interpreter. The `sig.Fn` itself does the actual work — `int64 +
+int64`, `strings.ToUpper`, etc. — and for monomorphic numeric
+sites the entire loop body compiles to a handful of machine
+instructions.
+
+### 2.3 Handler calling convention
+
+Every compiled native handler takes a fixed-size slice. Because the
+checker has proven the inputs, handlers can be **specialised**
+per `sig_id` rather than per `NativeFunc.Name`. The current
+`Handler` type is:
+
+```go
+type Handler func(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error)
+```
+
+For the compiled VM, three simplifications apply:
+
+1. **`ctx` and `stack` become optional.** Only `FullStack`
+   signatures need `stack`; the compiler emits a different opcode
+   (`OpCallFullStack`) for them, so the common case drops the
+   parameter.
+2. **`r *Registry` stays** but is the VM's runtime registry (which
+   still holds DefStacks, context, type defs).
+3. **Return is `(Value, error)` or a small fixed-size array** for
+   single-value returns. The overwhelmingly common case —
+   arithmetic, comparison, string ops — returns exactly one
+   `Value`. A specialised opcode `OpCallNative1` that returns a
+   single `Value` avoids one `append` and one slice header.
+
+A further optimisation: for words whose arity is 1 or 2 and whose
+return is a single `Value`, emit `OpCallNative1_1` and
+`OpCallNative2_1` opcodes. The dispatch table has three hot
+shapes instead of N, and Go's `switch` can branch-predict cleanly.
+
+### 2.4 Monomorphic vs. polymorphic sites
+
+After the checker runs, call sites fall into three classes:
+
+**Monomorphic.** The checker resolved a single `Signature`.
+`CALL_NATIVE sig_id` — one opcode, direct handler. This is the
+target case; it's where all the speed-up comes from. Expected
+fraction on typed code: 80–95%.
+
+**Polymorphic with small disjunct.** The checker couldn't rule out
+2–3 signatures — for example `add` when its input is
+`Carrier<Integer|Decimal>`. Two compilation strategies:
+
+- *Split*: split the disjunct at a *previous* point (e.g. duplicate
+  the branch that produced it) so each copy reaches a monomorphic
+  `add`. Works well for small disjuncts produced by `if`.
+- *Dispatch opcode*: `CALL_NATIVE_POLY disp_id`. `disp_id` indexes
+  a small table of `(input_tag → sig_id)`. The runtime peeks the
+  top-of-stack `Parent`, indexes the table, calls. Still one map-free
+  branch plus one indirect call.
+
+The second strategy dominates because splitting interacts badly
+with loop bodies (doubles their code size per join).
+
+**Polymorphic with value-dependent return.** The hardest case. A
+single signature matches the inputs but the return type depends on
+the concrete values — `add [Number,Number]` returns `Integer` if
+both inputs are integers, else `Decimal`
+(`native_helpers.go:50-79`). The VM must either:
+
+- **Re-split the signature at compile time.** Produce two sig_ids,
+  one for `[Integer,Integer]→Integer` and one for `[Number,Number]→
+  Decimal`, and use the dispatch opcode.
+- **Leave the runtime branch inside the handler.** The handler's
+  internal tag check is fast (one interface comparison) and
+  preserves the existing implementation. Downstream consumers see
+  `Carrier<Integer|Decimal>`, which falls into the polymorphic
+  case above.
+
+Splitting is preferable because it cascades: a monomorphic producer
+of `Integer` reaches a monomorphic `add[Integer,Integer]→Integer`
+consumer, and the whole chain stays monomorphic. The Phase 0 work
+on `Returns` annotations should be extended to generate these
+split sig_ids automatically from signatures that declare a
+`ReturnsFn`.
+
+### 2.5 Arity larger than 0/1/2
+
+A handful of boru words take 3+ args (list/map builders, `fn`
+definitions, temporal words). These use the generic
+`OpCallNative` opcode with an arity operand. They are rare enough
+on hot paths (arithmetic, comparison, list folds) that a single
+generic opcode suffices; no specialisation needed.
+
+### 2.6 Stack discipline
+
+Because arity is fixed and return count is fixed per `sig_id`, the
+compiler can track the **compile-time stack depth** precisely and
+allocate the runtime `[]Value` stack once at the program's maximum
+observed depth, with no reallocations. This is the pattern used by
+Lua 5 and Python bytecode: compute `max_stack` during emission and
+pre-size the stack.
+
+This also enables **stack-slot assignment** for `def`-bound locals:
+rather than a DefStack map lookup per reference, the compiler
+assigns each local a fixed slot in a local frame, and `PUSH_LOCAL
+slot` is an array index. DefStack shadowing is handled by
+scope-tracked slot reuse (push on entry, pop on exit).
+
+### 2.7 What fixed-arity does NOT eliminate
+
+Three costs remain even with fully compiled fixed-arity calls:
+
+1. **Handler work itself.** `int64 + int64` is still executed;
+   `strings.ToUpper` still scans the string. Fixed-arity removes
+   dispatch overhead, not computation.
+2. **Allocation inside handlers.** List and map operations still
+   allocate. The compiler can help at specific sites (e.g.
+   `MAKE_LIST n` with a pre-sized slice, `LIST_APPEND` for
+   in-place builders) but most allocations are inherent to the
+   semantics.
+3. **Boxing.** boru `Value` is a tagged union (`Parent` + `Data
+   interface{}`). Every int still pays the `interface{}` boxing
+   cost inside `Data`. True un-boxing requires typed opcodes
+   (`IADD`, `FADD`, `SADD`) with a parallel un-boxed value
+   representation — a bigger change, discussed in a later
+   instalment.
+
+### 2.8 Summary of §2
+
+Fixed-arity calls turn every monomorphic site into a one-cycle
+dispatch plus a direct handler call. Forward collection and
+signature matching — the two largest sources of interpreter
+overhead — disappear entirely for the typed portion of the
+program. Polymorphic sites survive with a small table-driven
+dispatch. Value-dependent returns cascade cleanly if the Phase 0
+annotations split them into monomorphic variants.
+
+The next instalment will cover the instruction set sketch, the
+encoding of branches and loops (replacing mark/move), and how
+user-defined functions get compiled with their own frames.
+
+---
+
+## 3. Instruction set
+
+This section sketches the instruction set. It is a proposal, not
+a spec — the exact opcodes will shake out in implementation — but
+it is enumerated here so the remaining sections can refer to
+specific ops.
+
+### 3.1 Design principles
+
+- **Fixed-width, single-word instructions.** Each `Instr` is a
+  small struct `{Code uint8, Arg int32}` so the program is a
+  cache-friendly `[]Instr`. Complex operands (constant table
+  indices, sig_ids, label offsets) fit in the 32-bit `Arg`.
+- **No type tags on opcodes for monomorphic sites.** `CALL_NATIVE`
+  covers every statically-resolved call; the sig_id table holds
+  the arity and handler. This keeps the opcode alphabet small.
+- **Specialised ops only where the shape is ubiquitous.** `PICK`,
+  `ROLL`, `DUP`, `SWAP`, `DROP` already dominate Forth-style
+  execution and deserve native opcodes. `OpCallNative1_1` and
+  `OpCallNative2_1` (arity 1 and 2, one result) cover >90% of
+  arithmetic and comparison sites.
+- **Labels resolved at emit time.** Branches carry absolute PCs;
+  no runtime label lookup.
+- **Constant pool is flat.** A `[]Value` constants table indexed by
+  `PUSH_CONST`. Interning makes literal `1`, `true`, `""` share
+  slots across the program.
+
+### 3.2 Opcodes
+
+**Stack manipulation** (direct Forth heritage):
+
+- `PUSH_CONST k` — push constants[k].
+- `DUP`, `DROP`, `SWAP`, `OVER`, `NIP`, `TUCK`, `ROT`
+- `PICK n`, `ROLL n` — with `n` from the arg field.
+- `2DUP`, `2DROP`, `2SWAP`, `2OVER`
+
+**Locals** (for compiled `def` bindings):
+
+- `PUSH_LOCAL slot` — push frame[slot].
+- `STORE_LOCAL slot` — pop and store into frame[slot].
+- `ENTER_SCOPE n`, `EXIT_SCOPE n` — reserve / release n slots.
+
+**Calls**:
+
+- `CALL_NATIVE sig_id` — arity in sig table.
+- `CALL_NATIVE1_1 sig_id` — 1-in, 1-out fast path.
+- `CALL_NATIVE2_1 sig_id` — 2-in, 1-out fast path.
+- `CALL_NATIVE_FULL sig_id` — for `FullStack` signatures (`depth`,
+  `pick`, `roll`, `stack`). Handler receives the full stack view.
+- `CALL_NATIVE_POLY disp_id` — small table-driven dispatch for
+  residual disjuncts (§2.4).
+- `CALL_USER fn_id` — user-defined fn; arity in fn table.
+- `RET` — return from user fn.
+
+**Control flow**:
+
+- `JMP pc`
+- `JMP_IF_FALSE pc` — pop top, jump if falsy.
+- `JMP_IF_TRUE pc`
+
+**Loop support** (replacing mark/move for `for`, `each`, `fold`,
+`scan`):
+
+- `FOR_SETUP` — pop range spec, push iterator state record.
+- `FOR_NEXT body_pc end_pc` — if iterator exhausted, jump to
+  end_pc; else bind iterator value (into a known local slot) and
+  jump to body_pc.
+- `EACH_SETUP` / `EACH_NEXT` — iterate a list.
+- `FOLD_SETUP` / `FOLD_NEXT` — iterate a list with an accumulator
+  slot.
+
+**Structure builders**:
+
+- `MAKE_LIST n` — pop n values, push a list.
+- `MAKE_MAP n` — pop 2n values (alternating keys/values), push
+  a map.
+- `MAKE_TYPED_LIST t_id n` — same, but with element type fixed.
+- `LIST_APPEND` — in-place append for fold-style builders.
+
+**Type ops**:
+
+- `TYPE_TAG` — push the Parent of top-of-stack as a type literal.
+- `TYPE_CHECK t_id` — assert top-of-stack matches type; emit only
+  at disjunct narrowing points, raise a typed error on mismatch.
+- `TYPE_COERCE t_id` — narrow at a checked boundary (e.g. after
+  a guard `if [x is Integer]`).
+
+**Def / registry plumbing** (rare at runtime, used for runtime
+`def` rebinding):
+
+- `REG_DEF_PUSH name_id, sig_id` — push a compiled fn onto a
+  DefStack at runtime.
+- `REG_DEF_POP name_id` — remove the top binding.
+
+**Fallback island** (containment for a refusal, §1.5 — this
+opcode exists because the compiler has a case it cannot lower,
+not because dropping to interpretation is a sanctioned outcome):
+
+- `FALLBACK_INTERP span_id` — resume interpretation over a
+  recorded token span (§1.5). The VM hands the current stack to
+  an engine instance, lets it run, and resumes with the resulting
+  stack. The switch is silent: nothing in the run tells the user
+  that this span stopped being compiled.
+
+**Halt / errors**:
+
+- `RETURN_TOP` — program's top-level result.
+- `HALT`
+- `RAISE err_id` — raise a structured error with interned
+  message.
+
+That's ~35 opcodes. A 6-bit opcode field with a 26-bit operand
+would leave plenty of room; a byte-wide opcode with a 32-bit
+operand fits Go's `struct{Code uint8; Arg int32}` naturally.
+
+### 3.3 Encoding and layout
+
+The program is a value `Program` with:
+
+```go
+type Program struct {
+    Code      []Instr            // flat instruction stream
+    Constants []Value            // interned literals
+    Sigs      []*Signature       // sig_id → signature
+    PolyDisp  []PolyDispTable    // disp_id → dispatch table
+    UserFns   []CompiledFn       // fn_id → compiled fn
+    DebugInfo []SrcSpan          // pc → source span (optional)
+    MaxStack  int                // pre-size the runtime stack
+    MaxLocals int                // pre-size the locals frame
+}
+```
+
+`CompiledFn` has its own `Code`, `MaxStack`, `MaxLocals`, and
+param/return arity. User-fn call semantics are a classic frame
+push: push return PC, push locals frame pointer, set `pc = fn.Code`
+start. `RET` unwinds.
+
+### 3.4 Example lowering
+
+Source:
+
+```
+def square fn [[Integer] [Integer] [dup mul]]
+5 square
+```
+
+After compile:
+
+```
+; User fn registration runs at compile time (RunInCheckMode).
+; The body is compiled to CompiledFn{Code: [DUP, CALL_NATIVE2_1 mul_i_i, RET], ...}
+; At runtime, only the body below executes.
+
+PUSH_CONST   0          ; constants[0] = Integer(5)
+CALL_USER    square_fn
+RETURN_TOP
+```
+
+The `square` call site is a single `CALL_USER`. `dup mul` inside
+the body is two instructions. Comparable interpreter execution is
+roughly: parse `5` → push; resolve `square` → DefStack lookup →
+splice body tokens → step through `dup` → matchSignature → splice
+→ step through `mul` → matchSignature → splice. The bytecode
+path is 3 ops total.
+
+---
+
+## 4. Replacing mark/move with static branches
+
+Mark/move is the runtime mechanism boru uses for `if`, `for`, and
+similar words that splice new tokens onto the stack for later
+evaluation. `if`'s 3-arg handler (`conditional.go:61-85`) returns
+a token sequence `[Mark, condTokens..., MoveIf{Then, Else}]`;
+the engine loop processes the mark, runs the condition tokens,
+hits the move, evaluates the result, and splices one of the
+branches in place. This is elegant for an interpreter — the main
+loop stays oblivious to control flow — but it relies on mutating
+the token stream, which a bytecode VM cannot do cheaply.
+
+Every mark/move site can be statically lowered because the
+compile-time checker already knows which branches exist, what
+their bodies are, and when they rejoin.
+
+### 4.1 `if` → conditional branch
+
+Source:
+
+```
+if [x lt 10] [x 2 mul] [x 3 mul]
+```
+
+Compile:
+
+```
+PUSH_LOCAL   x_slot
+PUSH_CONST   10                ; 10
+CALL_NATIVE2_1 lt_i_i          ; x < 10
+JMP_IF_FALSE else_label
+
+; then branch
+PUSH_LOCAL   x_slot
+PUSH_CONST   2
+CALL_NATIVE2_1 mul_i_i
+JMP          end_label
+
+else_label:
+PUSH_LOCAL   x_slot
+PUSH_CONST   3
+CALL_NATIVE2_1 mul_i_i
+
+end_label:
+```
+
+Key points:
+
+- **The condition is just code.** Any list body used as an `if`
+  condition becomes a sequence of instructions that leaves one
+  value on the stack. The condition list's `NoEvalArgs` flag at
+  the interpreter becomes implicit in the bytecode lowering —
+  the body's tokens are simply emitted here.
+- **The result type is a disjunct** of the two branches' top-of-
+  stack carrier types, unified by the checker. If the checker
+  widens to `Any`, the compiler may emit a `TYPE_TAG` at the end
+  for downstream dispatchers, but monomorphic joins need no
+  extra op.
+- **2-arg `if` with no else** emits `JMP_IF_FALSE end_label`
+  directly with no `JMP` between branches. If the checker
+  detects that the then-branch produces a value the enclosing
+  context consumes, it must emit a `PUSH_CONST none` on the false
+  path to preserve stack arity.
+
+### 4.2 Condition body with side effects
+
+The condition list may itself contain calls (`if [x is Integer
+and [y gt 0]] ...`). These compile straight: the condition's
+instruction sequence runs, leaves a boolean on top, `JMP_IF_FALSE`
+consumes it. No mark/move bookkeeping is needed because the
+condition's own bytecode already leaves the stack in the expected
+shape — the compiler verifies this against the carrier stack at
+emission time.
+
+### 4.3 `for` → counted loop
+
+Source:
+
+```
+for 10 [i print]
+```
+
+Compile:
+
+```
+PUSH_CONST   10                 ; n
+FOR_SETUP                       ; pops n, pushes iterator state; reserves i_slot
+body_label:
+FOR_NEXT     end_label          ; if exhausted → end_label; else store i into i_slot
+PUSH_LOCAL   i_slot
+CALL_NATIVE1_0 print_any        ; side-effect print; 0 returns
+JMP          body_label
+end_label:
+; iterator state popped by FOR_NEXT when it exits; for-result list
+; is synthesised by FOR_SETUP/FOR_NEXT (they maintain a hidden accum).
+```
+
+A few notes:
+
+- **Iterator state is a hidden slot.** `FOR_SETUP` allocates an
+  iteration record in the locals frame. `FOR_NEXT` increments
+  and checks. The iterator variable `i` is a named local in the
+  scope — the compiler knows its slot from the `for` signature's
+  convention (`ReturnsFn` already binds the iterator name `"i"`
+  during the carrier pass, `forloop.go:60`).
+- **`break` and `continue`** become `JMP end_label` and
+  `JMP body_label` respectively. Their current sentinel-error
+  mechanism in the runtime engine is unnecessary in the bytecode
+  VM.
+- **Range variants** (`for [1,10]`, `for [0,10,2]`) compile to
+  the same opcodes; only the initial values on the stack differ.
+  `FOR_SETUP` pops whatever the range descriptor is and
+  normalises to a `{start, end, step}` record.
+- **The per-iteration accumulator list.** `for` produces a list of
+  per-iteration top-of-stack values. The compiler emits a
+  hidden `LIST_APPEND` into an accumulator slot at each
+  iteration end. `FOR_NEXT`'s exit path leaves the accumulator
+  on the runtime stack. The checker's carrier already types this
+  as a typed-list whose element type is the body's top-of-stack
+  — that type becomes the `MAKE_TYPED_LIST`'s element parameter.
+
+### 4.4 `each` / `fold` / `scan`
+
+These higher-order words take a list and a code body. Because
+the body is a literal list at most call sites (the checker
+already flags non-literal bodies as hard-to-type), the compiler
+can inline the body and emit a small loop:
+
+```
+each [l] [body]   →
+  PUSH_CONST   l_id            ; the list
+  EACH_SETUP                   ; pops list, sets up iter + accum
+body_label:
+  EACH_NEXT    end_label       ; store element into elem_slot; exit if done
+  ; inline body: pushes 0+ results; the last N values (from sig) are accum
+  ...body bytecode...
+  LIST_APPEND                  ; accum.append(top)
+  JMP          body_label
+end_label:
+```
+
+`fold` differs only in that its accumulator is user-visible and
+initialised from an earlier stack value:
+
+```
+fold [[l] [init] [body]]   →
+  ...init bytecode → leaves init on stack...
+  STORE_LOCAL accum_slot
+  PUSH_CONST  l_id
+  FOLD_SETUP
+body_label:
+  FOLD_NEXT   end_label        ; exits when list exhausted
+  PUSH_LOCAL  accum_slot
+  PUSH_LOCAL  elem_slot
+  ...body bytecode...          ; pops two, pushes one new accum
+  STORE_LOCAL accum_slot
+  JMP         body_label
+end_label:
+  PUSH_LOCAL  accum_slot
+```
+
+The checker already computes the body's effect as a function
+from `(accum_type, elem_type) → accum_type'`, iterating to a
+fixed point (`CARRIER-STATIC-TYPECHECK-REPORT.md` §"Loop and
+recursion termination"). At compile time the same fixed-point
+iteration tells us what `accum_slot`'s type is, which in turn
+drives any type tagging the VM needs.
+
+### 4.5 Mark/move → no runtime artefact
+
+Under bytecode compilation the following mechanisms **disappear
+entirely** from runtime:
+
+- `NewMark`, `NewMoveIf`, `NewMoveFor`, `stepMark`, `stepMove`
+- `ForCont`, `IfCont` continuation records
+- The `NextMarkID` counter
+- `handleLoopBreak` / `handleLoopContinue` (replaced by static
+  `JMP` targets)
+- Body token splicing via `spliceArg` (the body is already
+  bytecode)
+
+The interpreter retains all of these for the interpreted mode,
+but the compiled code never touches them. This removes a
+significant slice of per-step engine overhead on branch- or
+loop-heavy code.
+
+### 4.6 What survives: error handling and errors with source
+
+Bytecode branches change what a runtime error looks like.
+Currently, errors pinpoint a token by its `Pos` field. In the
+VM, errors pinpoint a `pc`. The `DebugInfo []SrcSpan` table
+maps pc → source span for exactly this reason. When
+`CALL_NATIVE` returns an error, the VM wraps it with
+`DebugInfo[pc]`, giving error messages identical in precision
+to the interpreter's.
+
+### 4.7 Summary of §§3–4
+
+The instruction set is small (~35 opcodes) and dominated by
+stack manipulation, fixed-arity calls, and conditional branches.
+Mark/move — boru's most interpreter-flavoured mechanism — lowers
+cleanly to static branches and loops because the carrier
+checker has already resolved every branch and every iteration
+shape. `break`/`continue` become `JMP`. Higher-order words with
+literal bodies become inline loops with an accumulator slot.
+
+The next instalment will cover user-defined functions (frame
+discipline, multiple-signature dispatch, recursion), the
+register / constants layout, and how the compiler interacts
+with the `RunInCheckMode` words that already run during the
+carrier pass.
+
+---
+
+## 5. User-defined functions
+
+User-defined functions in boru come from two constructs: `def` —
+installing a literal-substitution body or a fn value under a name
+— and `fn` — building a multi-signature function value. Both are
+`RunInCheckMode` (see `native_definition_def.go:64,72` and
+`native_definition_fn.go:59`), which means the carrier checker
+actually executes them at check time, mutating the registry's
+`DefStacks`. This is exactly the behaviour we want for
+compilation: the compiler shares the same registry and so
+already knows every binding by the time it reaches a call site.
+
+### 5.1 What `def` produces
+
+`def name body` has two shapes that matter for compilation:
+
+1. **Literal substitution.** `def pi 3.14159` or `def doubled [dup
+   add]`. The body is a value (scalar or list). At every call
+   site of `pi` the interpreter splices the body's tokens onto
+   the stack. There is no separate arity or signature — the body
+   is just code.
+2. **Named `fn` value.** `def square fn [[Integer] [Integer] [dup
+   mul]]`. The body is a `FnDefInfo` with a list of signature
+   triples `[input, output, body]`. Each triple has its own
+   input types, output types, and body tokens.
+
+Both shapes get lowered differently by the compiler.
+
+### 5.2 Compiling a literal-substitution `def`
+
+For `def pi 3.14159`:
+
+- The compiler's registry pass (running under `RunInCheckMode`)
+  installs the binding.
+- The compiler records `name → Value` in its *inlining table*.
+- At each `Word("pi")` reference, the compiler emits
+  `PUSH_CONST const_pi`. No call, no dispatch.
+
+For `def doubled [dup add]`:
+
+- Same registry install.
+- The inlining table records `name → []Instr` by compiling the
+  body once as a standalone instruction sequence.
+- At each `Word("doubled")` reference, the compiler chooses
+  between **inlining** (paste the instructions directly, cheap
+  if the body is small) and **emitting a CALL_USER** to a single
+  compiled copy (better for large bodies or recursive defs).
+
+A reasonable heuristic: inline if the body is ≤8 instructions
+and non-recursive; otherwise promote to a `CompiledFn`. This
+mirrors how modern JITs decide inlining, but the threshold is
+small because boru's literal defs are usually terse.
+
+### 5.3 Compiling a `fn` value
+
+`fn [[I] [I] [dup mul]]` is a multi-signature function. For
+each triple, the checker already runs a carrier analysis per
+signature. For the compiler this means:
+
+- Each triple produces its own `CompiledFn` — same body bytecode
+  across signatures if they share one body, specialised if the
+  body references input-typed locals that would differ.
+- The overall fn value becomes a `CompiledFnSet` — a small
+  dispatch table keyed by input type.
+
+The compiled shape of `def square fn [[I] [I] [dup mul]]`:
+
+```
+CompiledFnSet "square" {
+  sigs: [
+    { Args: [Integer], Returns: [Integer], Code: [DUP, CALL_NATIVE2_1 mul_i_i, RET] },
+  ],
+  argCount: 1,
+}
+```
+
+At a call site, `CALL_USER square_id` resolves to this set. If
+the set has exactly one signature — the common case — the call
+is direct: push frame, jump to the body. If multiple signatures
+exist, the VM needs a `CALL_USER_POLY` variant that inspects the
+argument's Parent and indexes into the set.
+
+### 5.4 Multi-signature dispatch at compile time
+
+The carrier checker resolves multi-signature `fn` values
+deterministically: it orders signatures by specificity
+(`SortSignatures`), then applies the same first-match rule as
+runtime. So at compile time, every `CALL_USER` site has a
+definite target signature — *unless* the caller's carrier
+includes a disjunct that straddles two signatures.
+
+Example where the disjunct stays:
+
+```
+def f fn [
+  [Integer] [Integer] [dup mul]       ; sig 0
+  [Decimal] [Decimal] [dup mul]       ; sig 1
+]
+if [cond] [1 f] [1.0 f]
+```
+
+Each branch of the `if` is monomorphic (`f[Integer]` vs.
+`f[Decimal]`), so if the checker propagates the disjunct to the
+join, the downstream site sees `Integer|Decimal`. But *within
+each branch*, the compiler emits a direct `CALL_USER f_sig0` or
+`CALL_USER f_sig1`. No runtime dispatch at the call point.
+
+Where the disjunct *is* the input — e.g. `f x` where `x :
+Integer|Decimal` flowing from a prior `get` — the compiler emits
+`CALL_USER_POLY f_set_id`, and the VM switches on the top-of-
+stack type tag. Still O(1); still no signature scan.
+
+### 5.5 Frames, locals, and named parameters
+
+When a `fn` signature declares named parameters
+(`fn [[x:Integer] [Integer] [x mul x]]`), the parser installs
+each name as a `def` inside the body's scope. The carrier
+checker already models this: it pushes a `DefCleanup` marker on
+entry and pops bindings on exit.
+
+The bytecode VM handles this with a classic **call frame**:
+
+```
+Frame {
+    returnPC  int
+    localsPtr int        // index into a flat locals stack
+    prevFrame *Frame
+}
+```
+
+Each `CompiledFn` declares its `MaxLocals`. `CALL_USER`:
+
+1. Pops N args off the operand stack.
+2. Pushes a new frame; reserves `MaxLocals` slots.
+3. Stores args into the first N local slots (in signature
+   order).
+4. Sets `pc = fn.Code` start.
+
+`RET` unwinds: pops the frame, frees locals, pushes the function's
+declared results onto the caller's operand stack from the
+callee's top-of-stack, and restores `pc`.
+
+Named parameters (`x`) become `PUSH_LOCAL x_slot` references.
+This is one array index vs. a DefStack map probe per reference —
+a significant win for parameter-heavy bodies.
+
+### 5.6 Recursion
+
+Recursion is trivial in this model because user fns are
+addressable by `fn_id`. A recursive `factorial`:
+
+```
+def factorial fn [
+  [Integer] [Integer]
+  [dup 1 lte [drop 1] [dup 1 sub factorial mul] if]
+]
+```
+
+Compiles to a `CompiledFn` whose body contains `CALL_USER
+factorial_id` — a direct reference to itself. The checker's
+fixed-point analysis has already computed the return type;
+registration happens once, before the body is lowered, so the
+self-reference resolves.
+
+What the bytecode VM does *not* need to do for recursion:
+
+- No tail-call optimisation in v1 — user calls push a frame; very
+  deep recursion hits a stack limit. (Forth and Lua take the
+  same approach; TCO can be added later by detecting a `RET` that
+  immediately follows a `CALL_USER` and emitting `TAIL_CALL_USER`
+  instead.)
+- No trampolining — the operand stack and frame stack are
+  separate; frames are small (a return PC, a locals pointer, and
+  a parent pointer).
+
+### 5.7 Polymorphic recursion
+
+`factorial` above is monomorphic (Integer → Integer). A
+polymorphic fn, e.g. a generic `size` over lists of varying
+element types, needs either:
+
+- **Per-instantiation specialisation.** Each observed input type
+  produces its own `CompiledFn`. Works well because typed lists
+  only have a handful of concrete element types per program.
+- **A single generic implementation.** Carry element type as a
+  runtime operand and dispatch inside. Loses some of the
+  fixed-arity benefit.
+
+The first strategy is cleaner and aligns with how the carrier
+checker already operates (it analyses each call-site input
+separately). The number of specialisations is bounded by the
+checker's disjunct widening, so code blow-up is controlled.
+
+### 5.8 Summary of §5
+
+User fns compile cleanly because `def`/`fn` are already
+`RunInCheckMode`: the compiler's checker pass registers them in
+the shared registry, so the compile-side CALL emitter sees every
+binding. Literal defs inline or promote to `CompiledFn`. Multi-
+signature fns become `CompiledFnSet` dispatch tables, with the
+vast majority of call sites resolving to a single signature at
+compile time. Named parameters become slot indices. Recursion is
+a plain `CALL_USER` to the same `fn_id`.
+
+---
+
+## 6. Interaction with `RunInCheckMode` words
+
+`RunInCheckMode` is the escape valve that lets certain words
+execute their side effects during the carrier pass so subsequent
+analysis has complete information. The list today:
+
+- `def` — installs a DefStack binding.
+- `undef` — removes one.
+- `fn` — builds a function value (and installs it when paired
+  with `def`).
+- `type` / `typedef` — adds a type to the registry.
+- `import` / `export` — cross-module linkage.
+- `module` — creates a sub-engine with an isolated registry.
+- `var` — installs a context variable.
+- Possibly `record`, `table`, `object`, `resource` — schema
+  installers.
+
+Every one of these is a **compile-time-only** operation from the
+bytecode VM's perspective. They manipulate the registry that
+drives dispatch; by the time the bytecode is running, the
+registry is frozen (or at most changed by plain runtime-visible
+`def`/`undef` pairs — see §6.4).
+
+### 6.1 Compile-time execution
+
+During the compile pass (which is the checker pass with a
+recording side effect), every `RunInCheckMode` signature runs
+normally. That is:
+
+- `def foo 1` installs `foo → Value(1)` in the registry.
+- `def doubled [dup add]` installs the body.
+- `fn [[I] [I] [dup mul]]` builds and returns an `FnDefInfo`.
+- `def Point (refine Record [x:Number, y:Number])` adds a record type.
+- `import utils` loads and analyses the module.
+
+The compiler sees the result on the carrier stack (where
+applicable) and records whatever it needs into its own tables —
+inlining tables, user-fn tables, type tables, import graphs.
+**No runtime bytecode is emitted for these operations** in the
+monomorphic common case.
+
+### 6.2 Module imports
+
+`import utils` compiles the imported module once. The compiler
+maintains an import cache (already present for the checker) and
+merges the module's exported fn_ids, constants, and type ids
+into the current program's tables with a namespace prefix.
+
+Cross-module `CALL_USER utils.helper_id` is just another entry
+in the `UserFns` table; dispatch cost is identical to in-module
+calls. Modules with cyclic imports need the same fixed-point
+treatment as recursive fns — register stubs for declarations
+first, then compile bodies.
+
+### 6.3 `type`, `record`, `table`
+
+Type installers produce tables entries at compile time. Runtime
+type checks (`TYPE_CHECK t_id`) reference these tables. The
+bytecode program carries its own `Types []Type` table so
+deployed bytecode is self-contained — you don't need the
+original source to know what `Point` is.
+
+### 6.4 Runtime `def`
+
+boru allows a `def` inside a loop body or conditional branch:
+
+```
+for 10 [i dup def current_i ...]
+```
+
+This is a runtime mutation of the DefStack. Under compilation
+there are two sensible strategies:
+
+1. **Promote to a local.** If the checker can prove the binding
+   is used only within the enclosing scope, compile `def x body`
+   to `STORE_LOCAL x_slot`. This is the overwhelmingly common
+   case and should be the default.
+2. **Emit registry ops.** For `def` that leaks to enclosing
+   scopes (possible via `each`/`fold` sub-engines sharing the
+   registry), emit `REG_DEF_PUSH name_id` / `REG_DEF_POP
+   name_id`. The VM mutates the runtime registry on the fly.
+   Slower, but semantically identical to the interpreter.
+
+The compiler picks strategy 1 by default; the carrier checker's
+def-binding state tracks which names are scope-local. Only
+`def`s that the checker had to treat as producing disjuncts
+across scopes fall back to strategy 2.
+
+### 6.5 `do` and the dynamic escape hatch
+
+`do body` evaluates `body` as code. If `body` is a literal list,
+the compiler lowers it inline (it is just another code fragment).
+If `body` is computed — `ops at 0 do` — the compiler as sketched
+here cannot know what code it names, so it refuses the site. The
+checker already widens these to `Carrier<Any>` and logs a
+diagnostic; the compiler emits `FALLBACK_INTERP span_id` and a
+recorded token span, and the runtime hands off to an engine
+instance. The engine runs in pure interpreter mode over the
+computed list, then returns control. Expensive — and silent: the
+run itself gives no sign that this span was never compiled.
+
+The silence is the worse half, not a mercy. Because both modes
+share the same `[]Value` stack representation, the handoff is
+just passing the current stack slice — no marshalling, and no
+friction to make the gap visible. Read the mechanism as
+scaffolding around a defect the compiler owes a fix for: a
+computed `do` with no lowering is a case still to be implemented
+or proven, not a corner of the language that may stay uncompiled.
+
+### 6.6 Registry freezing at runtime
+
+Once compilation is complete, the runtime registry is frozen
+for everything the compiled program will resolve statically:
+fn_ids are fixed, sig_ids are fixed, constant pool is fixed.
+The only runtime-mutable part is DefStacks (for runtime
+`def`/`undef`), context variables, and module load state.
+
+This enables a further optimisation: the VM can memoise parts
+of dispatch (e.g., type tag → sig_id in a `CALL_NATIVE_POLY`
+table) because the mapping is known to be stable for the run.
+
+### 6.7 Summary of §6
+
+`RunInCheckMode` words are compile-time primitives. The
+compiler executes them during the carrier pass, captures their
+effects in compile-time tables, and emits nothing (or almost
+nothing) in the runtime bytecode. Runtime `def`/`undef`
+promote to locals where possible, falling back to registry
+mutation ops otherwise. `do` on computed code is the only
+construct this design still cannot lower at all, and so the one
+open refusal left in §6 — a defect tracked on the same boundary
+the carrier checker already draws, not a licence for the
+interpreter to go on absorbing it.
+
+The next instalment will cover performance analysis — expected
+speed-ups per construct, benchmarking methodology, memory
+behaviour, and the specific costs that fixed-arity cannot
+eliminate (allocation, boxing, I/O).
+
+---
+
+## 7. Performance analysis
+
+This section separates **what bytecode compilation does eliminate**
+from **what it leaves unchanged**. The distinction matters: the
+selling point of compilation is dispatch and control-flow cost,
+not the arithmetic itself. Everything below is an expectation
+against the current interpreter, not a measurement — there is no
+compiled backend to benchmark yet. A benchmarking methodology is
+sketched in §7.5.
+
+### 7.1 Where the current interpreter spends time
+
+To frame expected speed-ups, it's worth cataloguing what each
+token costs today. Per token processed in `engine.Run`:
+
+1. **Pointer advance and dispatch switch** — `engine.go:305-375`.
+   A handful of interface checks (`IsWord`, `IsForward`,
+   `IsMark`, etc.) and a Go `switch`. Low cost.
+2. **Trace hook, if enabled** — off by default.
+3. **Step-budget check in check mode** — off at runtime.
+4. **`stepLiteral` forward collection** — inserts a `Forward`
+   marker into the stack, advances. Allocates if the stack
+   header grows.
+5. **`stepWord`** — resolves the word, runs `matchSignature`,
+   collects forward args, runs `rearrangeForForward`, runs
+   `execMatch`. `matchSignature` iterates sorted signatures;
+   `execMatch` splices the stack (one small allocation for
+   `skipSet`, one for the results splice if net size grows).
+
+Steps 4 and 5 dominate for any program with meaningful control
+flow or forward arg collection. A single `add` in `1 add 2` form
+goes through:
+
+- `add` pushed as a Word.
+- `add`'s `matchSignature` fails (no stack args yet), inserts a
+  forward marker.
+- `1` pushed, stepLiteral collects it as forward arg.
+- `2` pushed, stepLiteral collects it.
+- Now 2 forward args collected; `execMatch` triggers.
+- `rearrangeForForward` swaps order; `execMatch` splices the
+  word and args out and the result in; pointer rewinds.
+
+That's roughly ~20 interface method calls, 3–5 `make`/`append`
+operations, and a handful of slice copies — to compute one
+`int64 + int64`.
+
+### 7.2 Per-construct speed-up estimates
+
+With `CALL_NATIVE2_1 sig_id`, the same `add` becomes:
+
+- `op := code[pc]` — one load.
+- `sig := sigs[op.Arg]` — one load.
+- Pop two values (two slice-header updates), call handler, push
+  one value (one slice-header update or `append`).
+
+That's 3–5 operations. The ratio is 5–15× per arithmetic token
+on straight-line code. Concrete per-construct estimates:
+
+| Construct                         | Expected speed-up | Why                                                    |
+|-----------------------------------|-------------------|--------------------------------------------------------|
+| Arithmetic on known-int chains    | 10–20×            | Fixed arity + direct handler, no sig scan, no splice  |
+| Comparison chains                 | 8–15×             | Same as arithmetic                                     |
+| `if` with scalar condition        | 5–10×             | `JMP_IF_FALSE` vs. mark/move cont                     |
+| `for` tight body                  | 4–10×             | `FOR_NEXT` vs. mark/move per iteration                |
+| `each`/`fold` with typed list     | 3–6×              | Inline body + accum slot vs. sub-engine per step      |
+| String concatenation              | 2–3×              | Handler dominates; dispatch elimination is a small %   |
+| Record field access (known key)   | 3–5×              | Key hash avoided if compile-time key index             |
+| Record field access (unknown key) | 1.2–1.5×          | Handler dominates                                      |
+| `context get` typed site          | 2–4×              | Prototype walk replaced by slot index where possible   |
+| `do` on computed code             | ~1×               | Refused: silently interpreted, not compiled            |
+| I/O-heavy code                    | ~1×               | Dispatch is a rounding error on I/O wait              |
+
+The message: compute-heavy code (numerical loops, comparison
+chains, typed-list folds) gets the big wins. Orchestration-heavy
+code (I/O, dynamic dispatch, context manipulation) gets
+modest-to-negligible wins. One row is not a performance result at
+all: the `do`-on-computed-code line reads ~1× because the compiler
+refuses that site and the interpreter silently takes it — an open
+defect surfacing in a benchmark table rather than a tuning outcome.
+
+Factorial — a canonical boru benchmark in `lang/go/test/factorial_type_scaling_test.go`
+— is the ideal candidate: recursion plus a tight arithmetic body.
+Estimate: 10–15× faster compiled. Record-transform pipelines
+(e.g. map over a list of maps, fold into a summary record) would
+see 3–6×.
+
+### 7.3 Memory behaviour
+
+Current per-call allocations in the interpreter (approximate):
+
+- `skipSet := make(map[int]bool, n+1)` in `spliceMatchResults` —
+  a small heap map per matched call.
+- `resolvedIndicesBefore` can allocate an `indices` slice, though
+  it's small.
+- `stackInsert` / `stackSplice` trigger `append` growth when the
+  stack outgrows its `cap`. With `stackHeadroom=8`, this is rare
+  for small stacks but common for loop bodies that push and pop
+  repeatedly past the headroom boundary.
+- Handler returns: any word returning a new list or map allocates.
+
+Bytecode VM allocations:
+
+- **Zero per-call dispatch allocations.** No `skipSet`, no
+  `indices`, no splice. Fixed-arity pops and pushes touch only
+  the slice header.
+- **Pre-sized operand stack.** `Program.MaxStack` tells the VM
+  to `make([]Value, 0, MaxStack)` once. No reallocation.
+- **Frame stack.** A `[]Frame` pre-sized from user fn depth
+  (observed during compile). Recursive calls grow it; a modest
+  initial capacity (say 64) avoids reallocation in almost all
+  programs.
+- **Locals stack.** A single flat `[]Value` sized to the sum of
+  `MaxLocals` across the deepest call chain (bounded by the
+  frame stack). Locals slots are reused on frame pop.
+
+Net effect on GC pressure: a compiled program that runs a tight
+numerical loop allocates approximately **zero bytes** from the
+dispatch machinery — all remaining allocation is intrinsic to
+the handlers (list builds, string ops, etc.). The interpreter,
+by contrast, allocates several small objects per loop iteration
+from dispatch alone.
+
+### 7.4 What fixed-arity does NOT speed up
+
+1. **The handler's actual work.** `strings.ToUpper` scans the
+   string whether called from a bytecode VM or an interpreter.
+   Any word whose handler is the bottleneck sees a ~1× "speed-up".
+2. **Go interface boxing.** `Value.Data interface{}` boxes every
+   scalar. An `int64 + int64` in boru still involves two `AsInteger()`
+   unboxings and one `NewInteger()` box, whether dispatched or
+   direct. Unboxed arithmetic requires typed opcodes (`IADD`,
+   `IMUL`) and a parallel un-boxed value representation — see
+   §7.6.
+3. **I/O and context.** File reads, HTTP calls, context-store
+   lookups dominate their own runtimes; the dispatch cost saved
+   is negligible.
+4. **Map probes.** Record field access with an unknown key still
+   hashes the key. The only saveable case is when the key is a
+   compile-time literal and the record's shape is known — the
+   compiler can then emit a slot index instead of a hash.
+5. **Reflection-style words.** `typeof`, `dump`, `stack` (the
+   full-stack dump) cannot be optimised much without changing
+   their semantics.
+
+### 7.5 Benchmarking methodology
+
+To validate the estimates above, a benchmarking plan:
+
+**Corpus.** The existing boru tests and the step-by-step programs
+in `lang/go/test/` (factorial scaling, arg order, array ops, fold
+patterns) are the natural starting corpus. Supplement with:
+
+- **Microbenchmarks.** One per dispatch shape: arithmetic chain,
+  comparison chain, `if` with scalar cond, `if` with list cond,
+  `for` counted loop, `each` over typed list, `fold` with int
+  accum, `fold` with list accum, record field access, string
+  op, deep recursion.
+- **Application benchmarks.** A small ETL-style program (read
+  list of records, transform, fold to summary). A recursive
+  algorithm (factorial, fib, tree walk). A mixed orchestration
+  script (module loading, context lookups, `do`-based dynamic
+  dispatch).
+
+**Measurement.** `go test -bench=.` with a bytecode-mode flag on
+each benchmark. Capture both wall-clock time and `-benchmem`
+allocations. The interpreter is the baseline; the compiled VM is
+the candidate. Acceptance criterion: compiled ≥5× on the
+arithmetic/loop benchmarks, ≥2× on the orchestration benchmarks,
+and ≤10% regression on the dynamic-dispatch benchmarks (where
+`do` or context dominates). That last bound measures the VM's
+overhead, not the refusals behind it: those benchmarks sit at ~1×
+only because the compiler has no lowering for computed `do` yet,
+so passing the bound closes nothing — the defect stays open until
+the construct compiles.
+
+**Cross-validation.** Run the same programs in check mode (the
+carrier checker) and ensure compile-time resolution matches the
+bytecode it produces — any mismatch is a compiler bug. A
+differential-execution harness that runs a test suite in both
+modes and asserts identical results is a low-cost correctness
+guarantee.
+
+**Profile hotspots.** Use Go's `pprof` on the interpreter to
+locate its hottest functions (`matchSignature`, `execMatch`,
+`stepLiteral`) and confirm they drop out of the compiled VM's
+profile.
+
+### 7.6 The unboxing ceiling
+
+Fixed-arity calls with boxed `Value` cap the speed-up at the
+boxing cost for simple operations. To go faster:
+
+1. **Typed opcodes.** `IADD` / `IMUL` / `ISUB` for Integer,
+   `FADD` / `FMUL` for Decimal, `SCMP` / `SCAT` for strings.
+   The compiler picks the typed op when the carriers at both
+   operands are concrete.
+2. **Typed stack cells.** A parallel representation where cells
+   are tagged unions in a Go struct (`{Tag uint8; Int int64;
+   Float float64; Ptr unsafe.Pointer}`) avoids `interface{}`
+   boxing. Interop with boxed handlers requires a boundary
+   conversion.
+3. **Specialised loop forms.** A `FOR_INT` opcode that keeps an
+   int64 counter outside the value stack avoids boxing the
+   iterator variable entirely. Classic Forth tightens `DO`/
+   `LOOP` this way.
+
+These are **compound** optimisations beyond the fixed-arity
+baseline. A reasonable project staging:
+
+- **v1**: fixed-arity, boxed values, everything else as sketched.
+  Ships ~5–15× speed-up on typed hot paths.
+- **v2**: add typed opcodes and un-boxed stack cells at typed
+  sites. Ships a further 2–4× on arithmetic-dominated code.
+- **v3**: specialised loop iterators (int-counter, list-index,
+  map-iter). Ships a further 1.5–2× on iteration-heavy code.
+
+v1 is where the carrier checker investment pays off; v2 and v3
+are the usual bytecode-VM follow-ons.
+
+### 7.7 Compilation cost
+
+The compile pass itself has a cost. The carrier checker's cost
+is already known to be polynomial with widening
+(`CARRIER-STATIC-TYPECHECK-REPORT.md`). Compilation adds:
+
+- **Instruction emission.** O(tokens) work per call site — an
+  `append` into a `[]Instr`.
+- **Label resolution.** Two-pass or backpatch approach, both
+  O(branches).
+- **Constant interning.** O(literals) with a `map[value]int`.
+- **User-fn compilation.** Recursive; each fn's body is compiled
+  once, cached by `fn_id`.
+
+Net: compilation is ~2× the checker's cost, i.e. still
+polynomial and small. For typical boru programs this is
+milliseconds — well under the latency a user notices.
+
+A more interesting question is **when to compile**. Three
+strategies:
+
+1. **Ahead-of-time.** A `boru compile` CLI produces a `.boruc`
+   file. Cheap for library loading; adds build-step complexity.
+2. **Eagerly at load.** Every `import` triggers a compile. Most
+   natural for an interpreter-embedded VM; no user-visible
+   build step.
+3. **Lazily on first call.** Compile a fn the first time it's
+   called (and cache the bytecode). Minimises cold-start cost
+   for scripts that don't exercise the whole program.
+
+Given boru programs are generally small, **eager at load** is
+the right default. Lazy compilation introduces concurrent-
+compile hazards for multi-threaded use that aren't worth the
+complexity.
+
+### 7.8 Summary of §7
+
+Dispatch and control-flow costs drop 5–15× for typed hot paths.
+Handler work, allocation, and I/O are unchanged. Memory
+pressure from the dispatch machinery falls to approximately
+zero. The unboxing ceiling can be lifted in later phases with
+typed opcodes and an unboxed stack representation.
+Compilation cost is a small multiple of the carrier checker's
+cost — milliseconds for typical programs. A differential-
+execution harness gives cheap correctness validation and a
+natural benchmarking methodology.
+
+The next instalment will catalogue the gotchas — the specific
+ways in which this approach could misbehave, fail silently, or
+surprise users. Then a final instalment will cover prior art
+in detail and the overall verdict.
+
+---
+
+## 8. Gotcha inventory (headings only)
+
+This section lists the concrete failure modes and surprising
+behaviours the approach has to handle, ranked roughly from
+most-likely-to-bite to least. Each is expanded in a later pass;
+for now the purpose is to fix the scope of §8 so it can be
+reviewed and reordered before any of them are written up.
+
+### Severe (correctness risks)
+
+1. **Interpreter/compiled divergence on checker-unsound sites.**
+   Anywhere the carrier checker had to widen to `Any`, the
+   compiled code might pick a different dispatch path than the
+   interpreter would. Differential-execution is the mitigation,
+   but any unchecked gap is a silent bug.
+2. **Stale bytecode after source edit.** Because forward
+   collection, def resolution, and dispatch are baked into the
+   bytecode, any source edit invalidates the compiled artefact.
+   Caching by source hash is easy; partial recompilation is hard.
+3. **Mutation of the registry at runtime that the compiler
+   assumed frozen.** A runtime `def` that the compiler promoted
+   to a local, but which in fact leaks to a sub-engine, would
+   silently diverge from the interpreter.
+4. **Value-dependent return types that aren't split.** Words
+   like `add [Number,Number]` whose return depends on the inputs
+   propagate a disjunct unless split into monomorphic sig_ids.
+   Forgetting to split cascades the disjunct and loses the
+   speed-up.
+5. **Sub-engine registry sharing.** `each`, `fold`, `do` create
+   sub-engines over the same registry; a `def` in a body mutates
+   state visible to subsequent iterations. Bytecode that assumed
+   per-iteration isolation would be wrong.
+
+### Moderate (implementation hazards)
+
+6. **Forward-collection edge cases.** Optional args, barrier
+   positions (`|` in fn signatures), and `/q` implicit-quote
+   positions all interact with forward collection in subtle
+   ways. The compiler must simulate each exactly or emit
+   wrong-arity calls.
+7. **Auto-evaluation semantics.** Lists with `Eval=true` are
+   auto-evaluated when consumed as non-code args. The compiler
+   must decide at emit time whether a list literal becomes a
+   `PUSH_CONST list_id` (code body) or a compiled eval sequence
+   (data).
+8. **Template string interpolation.** `InterpString` values
+   are evaluated lazily by the engine. The compiler can lower
+   them to a sequence of expression evaluations plus a join,
+   but escape and nesting rules must match the parser exactly.
+9. **Paren groups and inline evaluation.** `(expr)` groups inside
+   maps become `ParenExpr` values for `autoEvalMap`. These need
+   their own compiled sub-programs; one left to `FALLBACK_INTERP`
+   is an unlowered case to fix, not a second option.
+10. **Error positions shifting.** Errors reported by PC → span
+    lookup must match the interpreter's token-position errors
+    byte-for-byte, or user tooling that scrapes error output
+    breaks.
+11. **Break/continue across compiled and interpreted frames.**
+    When a `FALLBACK_INTERP` span contains a `break`, the
+    sentinel error must unwind the compiled frame correctly
+    (currently uses Go error propagation; the bytecode VM needs
+    an equivalent).
+12. **Stack-only vs forward arg collection defaults.** `/s` and `/f`
+    modifiers on word invocations and on word definitions both
+    affect arg collection. Easy to miss on a per-site basis.
+13. **Constant-pool identity.** Interning breaks `===`-style
+    identity semantics if any word cares about value identity
+    rather than equality. Spot-check: `eq`, `is`, map key
+    lookup.
+
+### Low (ops / UX hazards)
+
+14. **Debuggability regression.** Step-through tracing currently
+    tracks the token stream. The compiled VM would need a new
+    tracing mode (PC-level with source mapping).
+15. **Coverage/test instrumentation.** Coverage is currently
+    expressed in terms of tokens and call sites. Bytecode PCs
+    need a parallel notion.
+16. **Worse error messages for disjunct-related bugs.** When
+    the checker widens and the user writes bad code downstream,
+    the bytecode error may surface far from the original
+    ambiguity. The diagnostic needs to carry both PCs.
+17. **Bytecode ABI stability.** `.boruc` files baked across
+    versions risk mismatches. Either version-tag the file and
+    recompile on mismatch, or never persist.
+18. **Cold-start regression for tiny scripts.** A 5-line script
+    that today runs in microseconds would pay compile cost
+    (also microseconds, but relatively larger). Eager
+    compilation default may surprise CLI users.
+19. **GOMAXPROCS / concurrent VMs.** If multiple goroutines run
+    separate VM instances sharing a `Program`, the constants
+    and sig tables must be immutable. Straightforward but easy
+    to regress.
+20. **Tooling needs to understand two modes.** `boru repl`,
+    `boru check`, `boru run` each need to know whether they
+    operate on source, checker carriers, or bytecode, and
+    surface the right diagnostics for each.
+
+### Out-of-scope-for-v1 but worth flagging
+
+21. **Unboxing breaks handler signatures.** Typed opcodes (v2)
+    require dual-call handlers — one for boxed, one for
+    unboxed. Mixing them is where most embedded-VM projects
+    accumulate complexity.
+22. **JIT temptation.** Once bytecode exists, the pressure to
+    add a trace-compiling JIT grows. That's a much larger
+    project and not what the carrier-to-bytecode path buys
+    you on its own.
+
+Next pass: expand each severe and moderate item into a full
+subsection with a concrete failure scenario and the specific
+mitigation. Low-priority items stay as a short checklist in the
+final document.
+
+---
+
+## 9. Severe gotchas expanded
+
+Each of the five severe gotchas is covered with a concrete
+failure scenario, the diagnostic symptom, and the specific
+mitigation. These are the items where getting the design wrong
+produces silent wrong answers (not just slow or annoying ones).
+
+### 9.1 Interpreter/compiled divergence on checker-unsound sites
+
+**Scenario.** A program contains `ops at 0 do` where `ops` is
+built up conditionally earlier. The carrier checker widens the
+result of `ops at 0` to `Carrier<Any>` and the downstream `do`
+is marked as a fallback region. The compiler emits
+`FALLBACK_INTERP span_id` for exactly the `do`. But subtle
+corner: if the value produced by the fallback is consumed by a
+subsequent compiled call, the carrier the compiler assumed for
+the consumer may not match the actual runtime value.
+
+**Symptom.** A compiled `CALL_NATIVE2_1 add_i_i` executes
+against a `Value{Parent: TString, Data: "foo"}` that came out
+of the fallback. `AsInteger()` returns 0 silently (or panics,
+depending on the unbox helper). The interpreter would have
+errored with a dispatch mismatch.
+
+**Mitigation.** Two complementary measures:
+
+1. **Insert a `TYPE_CHECK t_id` at every fallback/compiled
+   boundary**, matching the checker's widened carrier. A
+   `FALLBACK_INTERP` that produced `Carrier<Any>` emits
+   `TYPE_CHECK t_id` for the next consumer's expected type; on
+   mismatch, the VM raises the same dispatch error the
+   interpreter would have.
+2. **Differential-execution harness in CI.** Run every test in
+   both modes, assert byte-identical results, fail the build on
+   any divergence. The carrier checker already defines which
+   sites are "safe to compile"; this harness verifies the
+   definition in practice.
+
+The boundary check is cheap (one Parent compare) and only
+triggers at the (already-slow) fallback frontier.
+
+### 9.2 Stale bytecode after source edit
+
+**Scenario.** A `.boruc` file is cached from a previous run. The
+user edits `foo.boru` — adds a new signature to a user fn, or
+changes a `def` body. They run the program and get behaviour
+from the old compiled fn.
+
+**Symptom.** Old dispatch choices persist; new signatures
+invisible; errors point at source lines that no longer exist.
+
+**Mitigation.**
+
+1. **Hash the full compilation input** into the bytecode file
+   header: source files, import closure, their mtimes (or
+   content hashes), compiler version, Go build tag. On load,
+   re-check; any mismatch triggers recompile.
+2. **Default to eager compile at load, not persist.** Unless
+   the user explicitly opts into `.boruc` files, compile in
+   memory per run. Cheap (milliseconds) and eliminates the
+   staleness class.
+3. **Partial recompilation is out of scope for v1.** Any source
+   change recompiles the whole program. Fine for typical boru
+   sizes; revisit only if compile latency becomes a complaint.
+
+Corollary: the compiler emits a monotonic format-version byte
+in the `.boruc` header. Older CLI versions refuse forward-version
+files rather than silently misinterpret them.
+
+### 9.3 Registry mutation the compiler assumed frozen
+
+**Scenario.** The compiler observes a `def x 1` at top level
+and promotes `x` to a local slot. But inside a later `for` body,
+the code does `def x 2` without ever un-defining it. The
+interpreter's DefStack would end up with two entries — the
+inner `x` shadows the outer — but the compiler promoted the
+outer to a local, so subsequent references to `x` outside the
+`for` body still see the local value `1` (correct), while
+references inside the `for` body that the compiler wired to
+the same slot see `2` (also correct, as long as shadowing was
+recognised).
+
+**Symptom.** If the compiler misses the nested `def`, the inner
+`def` silently overwrites the outer local slot, leaking the new
+value past the body. The interpreter would have popped the
+shadow.
+
+**Mitigation.**
+
+1. **Scope analysis is a prerequisite.** Before emitting
+   `STORE_LOCAL`, the compiler runs a scope pass that matches
+   each `def` to its implicit scope boundary (end of `for`,
+   `each`, `fold`, `fn` body, etc.) and emits `DEF_PUSH` /
+   `DEF_POP` bracketing — either as real registry ops for
+   leaky defs, or as distinct slot allocations per scope for
+   locally-contained defs.
+2. **Conservative fallback.** Any `def` the scope pass cannot
+   statically scope (e.g. inside a fallback span, or inside a
+   computed `do`) falls back to `REG_DEF_PUSH` / `REG_DEF_POP`.
+   Slower but correct.
+3. **Def-leak lint.** A compile-time warning when a `def`'s
+   visibility is unclear, pointing the user at the ambiguity.
+   Turns a silent correctness risk into a visible warning.
+
+### 9.4 Value-dependent return types that aren't split
+
+**Scenario.** `add [Number,Number]` returns `Integer` when
+both inputs are `Integer`, else `Decimal`
+(`native_helpers.go:50-79`). A single `NativeSig` covers both
+cases; the `ReturnsFn` branches on input types.
+
+If the compiler naively emits `CALL_NATIVE2_1 add_num_num`, the
+downstream consumer sees `Carrier<Integer|Decimal>` and cannot
+specialise. Every downstream arithmetic site inherits the
+disjunct, and the speed-up dissolves.
+
+**Symptom.** Performance regression on arithmetic chains. The
+compiled code is no faster than the interpreter because every
+site emits `CALL_NATIVE_POLY` or falls back. Benchmarks miss
+the point because they test a single op in isolation, where the
+disjunct hasn't had room to cascade.
+
+**Mitigation.**
+
+1. **Split at sig-id registration time.** The compiler's sig
+   table generator recognises `ReturnsFn` signatures and
+   auto-generates monomorphic specialised sig_ids: `add_i_i`,
+   `add_i_d`, `add_d_i`, `add_d_d`. Each has a fixed Returns
+   type. The generic `add_num_num` remains for `CALL_NATIVE_POLY`
+   fallback.
+2. **Dispatch by carrier at emit time.** If both operands are
+   monomorphic carriers, emit the specialised sig_id. If either
+   is a disjunct, emit the poly dispatch. This keeps monomorphic
+   chains monomorphic.
+3. **Benchmarks that include chains.** `a add b add c add d`
+   with four integer operands should produce four
+   `CALL_NATIVE2_1 add_i_i` instructions and no disjunct. If it
+   doesn't, the specialisation logic is broken — regression-test
+   for exactly this pattern.
+
+This is the single most important gotcha for hitting the
+predicted speed-ups in §7.
+
+### 9.5 Sub-engine registry sharing
+
+**Scenario.** `each` creates a sub-engine per iteration (`New(reg)`
+in `native_array_higher.go:29`). Sub-engines share the parent's
+registry, including DefStacks. A `def` inside an `each` body
+mutates shared state visible to subsequent iterations and to
+the parent scope after the loop.
+
+A compiler that treats the `each` body as an isolated inner
+function with its own locals would break this: the loop's
+`def total` would go into a per-iteration local, not the
+shared DefStack, and the accumulated total would vanish after
+each iteration.
+
+**Symptom.** Classic shared-accumulator patterns produce wrong
+answers. Tests pass for self-contained body code but fail for
+bodies that use `def` to communicate across iterations or out
+of the loop.
+
+**Mitigation.**
+
+1. **Model `each`/`fold` body scope explicitly in the checker
+   and compiler.** The sub-engine shares the parent registry;
+   a `def` in the body is parent-scoped unless subsequently
+   `undef`'d inside the same body. The compiler's scope pass
+   must match the interpreter's behaviour exactly.
+2. **Promote parent-scoped `def`s to parent locals.** If the
+   checker proves the `def` is still in scope after the loop,
+   the compiler allocates a parent-frame local and emits
+   `STORE_LOCAL` inside the body. If it can't prove, use
+   registry ops.
+3. **Preferred idiom: `fold`.** `fold` has an explicit
+   accumulator; its types are clean and it compiles without
+   registry mutation. The compiler (or a linter) can suggest
+   `fold` where a `def total 0; each [...] total add` pattern
+   appears.
+
+A specific test-case class: "loop-accumulator" patterns with
+both explicit `fold` and implicit-via-`def` variants. Both must
+produce identical results under compilation.
+
+### 9.6 Summary of §9
+
+The five severe gotchas cluster around two themes: **silent
+divergence** between the compiled and interpreted semantics,
+and **missed opportunities** that turn into performance
+regressions (9.4 especially). The mitigations are all
+implementable and most of them are single-commit changes:
+boundary type-checks, hash-based cache invalidation, a scope
+pass, sig-id splitting, and shared-registry modelling. The
+hard work is covering them systematically in a differential-
+execution harness so new dispatches don't reintroduce silent
+divergence as the language grows.
+
+---
+
+## 10. Moderate gotchas expanded
+
+Shorter than §9: these are hazards during implementation rather
+than silent correctness traps. Each is one or two paragraphs
+with the specific shape of the problem and the intended fix.
+
+### 10.1 Forward-collection edge cases (inventory #6)
+
+boru's forward collection handles three wrinkles that the
+compiler must emulate: **optional args** (signatures with
+trailing `Option` types that may or may not be collected),
+**barrier positions** (`|` in fn signatures — `BarrierPos` in
+the Signature struct — halts forward collection at a specific
+arg index), and **`/q` implicit-quote positions** that capture
+Word values as Atoms rather than evaluating.
+
+Each of these is resolved statically by the checker (it picks
+the actual signature chosen, with optional args either present
+or absent). The compiler must read the checker's chosen
+signature, not the declared signature family, to know the exact
+arity to emit. Concretely: `MatchResult.Sig.Args` gives the
+real length and types; `Positions` gives the real source
+indices. Emit `CALL_NATIVE sig_id` with `sig_id` resolving to
+the chosen concrete signature, not the parent family. Regression
+tests: one per optional-arg word (`format`, `slice`, `pad`),
+one per barrier (`fn` with `|`), one per `/q` (`def`, `undef`).
+
+### 10.2 Auto-evaluation semantics (inventory #7)
+
+Lists have an `Eval` flag. A list consumed as a word argument
+is auto-evaluated (elements resolved as a sub-program) unless
+the signature's `NoEvalArgs[i]` is set or the list is `Quoted`.
+Maps auto-evaluate their values similarly.
+
+At the bytecode level, a list in the program must be lowered in
+one of three shapes:
+
+- **Inline bytecode** — the list is a code body (if branch, fn
+  body, for body). The compiler recursively compiles it into a
+  sub-program and emits `PUSH_CONST prog_id` pointing at a
+  `CompiledFn`.
+- **Pre-evaluated value** — `Eval=true` list consumed as data.
+  The compiler emits the list's bytecode followed by a
+  `MAKE_LIST n` to materialise it. Equivalent to running the
+  sub-program at that point.
+- **Literal data** — a list with no `Eval=true` elements. Emit
+  `PUSH_CONST list_id` with the interned list value.
+
+Distinguishing these at emit time is a straightforward walk of
+the list's element types: if any element is a Word that
+resolves to a defined fn or expression, it's case 1 or 2; if
+the consumer's signature has `NoEvalArgs`, it's case 1; else
+case 2. Otherwise case 3.
+
+### 10.3 Template string interpolation (inventory #8)
+
+Template strings (`` `foo ${x} bar` ``) are `InterpString`
+values at parse time, evaluated lazily by the engine
+(`engine.go:343-351`). Compile lowering:
+
+```
+PUSH_CONST "foo "           ; literal segment
+...compile expr for x...
+CALL_NATIVE1_1 to_string    ; coerce top-of-stack to string
+PUSH_CONST " bar"
+STR_CONCAT_N 3              ; concat N strings from the stack
+```
+
+`STR_CONCAT_N` is new — arity in the arg field, pops N, pushes
+one. Nested template strings work automatically because the
+expression inside `${...}` is just compiled code; a nested
+template produces its own `STR_CONCAT_N` on its own stack
+level. Escape-sequence handling happens at parse time as
+today — the compiler sees the parser's decoded output, not raw
+source.
+
+### 10.4 Paren groups and inline evaluation (inventory #9)
+
+`(expr)` groups are already resolved in the parser: top-level
+paren groups expand to engine markers `( ... )`, data-context
+paren groups become `ParenExpr` values inside maps. At runtime,
+the engine either treats `( ... )` as a sub-expression barrier
+(stop forward-collection, evaluate what's inside) or
+`autoEvalMap` evaluates `ParenExpr`.
+
+For compilation, both cases lower identically: compile the
+paren content as a sub-program and emit the result inline.
+Engine-marker parens don't emit anything — they are pure
+structural hints the compiler uses to decide where to emit
+sub-programs. `ParenExpr` inside a map literal becomes an
+emitted expression sequence preceding the map-build, with its
+result stored into the map's value slot.
+
+### 10.5 Error positions shifting (inventory #10)
+
+Runtime errors today carry the token's `Pos`. The compiled VM
+has only a PC. A `DebugInfo []SrcSpan` table (§3.3) maps PC to
+source span. When a `CALL_NATIVE` handler returns an error, the
+VM wraps it with `DebugInfo[pc]` before returning, so the
+user-visible error text looks identical to the interpreter's.
+
+Two risks. First, spans are per-instruction, but a single source
+token can emit multiple instructions (e.g. forward-arg
+rearrangement). The compiler must attach the *token's* pos to
+every emitted instruction, not the rearrangement bookkeeping.
+Second, tools that scrape boru error messages (IDEs, CI) must
+keep working — if the wording changes, tooling breaks. Fix: use
+the same error-format code path for both modes, feed it
+(span, message) tuples, and keep the format stable.
+
+### 10.6 Break/continue across compiled and interpreted frames (inventory #11)
+
+In the interpreter, `break` and `continue` are sentinel errors
+caught by the engine loop. In the compiled VM, they become
+`JMP` instructions to the loop's end/start label.
+
+What happens when a compiled loop body contains a
+`FALLBACK_INTERP` span whose inner code hits a `break`? The
+interpreter returns `errBreak`; the VM host needs to catch that
+and jump to the compiled loop's end label. Concretely: the VM's
+fallback entry point checks for `errBreak`/`errContinue` and
+translates to the surrounding loop's labels from a static table
+maintained per-frame. This is ~20 lines of glue but easy to
+forget.
+
+Analogous concern for `return` from user fns: if a
+`FALLBACK_INTERP` returns, it must unwind the compiled call
+frame, not just the interpreter's sub-engine.
+
+### 10.7 Stack-only vs forward arg collection defaults (inventory #12)
+
+`def/s` (stack-only) and `def/f` (forward-only) modifiers are
+settable both at definition time (per word) and at call site
+(per invocation: `foo/s`, `foo/f`, `foo/1f`, etc.). The parser
+captures these on the `WordInfo`; `matchSignature` reads
+`ForceStack` / `ForceForward` flags.
+
+The checker already handles this — whichever signature it
+matched tells the compiler the actual arg layout. The compiler
+just emits `CALL_NATIVE sig_id` for the selected signature.
+The invocation modifiers don't survive into the bytecode; they
+resolve at compile time. The gotcha is the test matrix: every
+word with forward arg collection needs tests exercising `/s` and
+`/f` invocations to confirm the compiler picks the right
+signature. Mechanical, but easy to miss.
+
+### 10.8 Constant-pool identity (inventory #13)
+
+Interning shares storage for equal values: two `PUSH_CONST 3`
+instructions both reference `Constants[k]`. Most boru words
+compare by value (`eq`, `lt`, etc.), so this is invisible. But
+any word that compares by identity — the `is` type-membership
+word, or a future `same?` identity predicate — would see
+different behaviour: the interpreter gives each parsed `3` its
+own Value; the compiler shares them.
+
+Mitigation: audit the small set of identity-checking words.
+Today `is` compares by type, not identity, so it's safe. If
+an identity word is ever added, either disable interning for
+the affected types or give every interned value a stable "id"
+field the identity check uses. Document the invariant.
+
+### 10.9 Summary of §10
+
+The moderate gotchas are tractable because each has a single
+clear mitigation and a small test-case surface. The implementor
+should write all eight regression tests up front (one per
+subsection) and run them in both interpreter and compiled modes;
+any divergence is a bug in the emit logic. None of these are
+showstoppers; collectively they represent perhaps a week of
+careful work.
+
+---
+
+## 11. Prior art and comparison
+
+The original question asked how this approach compares to other
+languages that compile through similar stages. This section
+surveys the landscape, grouped by structural similarity to boru,
+and highlights what each case teaches about the design choices
+above.
+
+### 11.1 Forth — direct, indirect, and subroutine threaded code
+
+**Structural fit: high.** Forth is the closest analogue. It's a
+concatenative stack language; its words dispatch by name lookup
+in a dictionary; its interpreter executes a token stream one
+word at a time. Every mature Forth implementation replaces the
+naïve interpreter with some form of threaded code, typically:
+
+- **Direct-threaded code (DTC)**: each word's body is a list of
+  pointers to other words' code. The inner interpreter is a
+  tight `*ip++ ; goto *ip;` loop (in C) — in boru terms, a
+  program is a `[]uintptr` and the "VM" is two lines.
+- **Indirect-threaded code (ITC)**: one more level of indirection
+  to handle colon definitions vs. primitives uniformly.
+- **Subroutine-threaded code (STC)**: each word-body slot is a
+  machine `CALL` instruction. Essentially native code, just
+  without inlining.
+
+Forth routinely gets 3–10× over text-stream interpretation from
+threaded code alone (Rodriguez, "Moving Forth", 1993; Ertl &
+Gregg, "Retargeting JIT Compilers by Using C-Compiler Generated
+Executable Code", 2004 — the same Ertl who wrote Gforth). The
+lesson for boru: the baseline win from bytecode is historically
+well-documented at exactly the order of magnitude we're
+projecting in §7.
+
+What Forth does *not* have: signatures, overloading, or static
+type dispatch. So Forth-style threading handles boru's straight-
+line cases but doesn't help with polymorphic dispatch — that's
+where boru's carrier-driven pre-resolution is the value add.
+
+### 11.2 Factor — concatenative with stack checker and optimising compiler
+
+**Structural fit: very high.** Factor is a modern concatenative
+language with a static stack checker (`( a b -- c )` effects)
+and an optimising compiler that goes all the way to machine
+code. The pipeline is:
+
+1. Parser → word definitions.
+2. Stack-effect inference per quotation.
+3. Tree-IR optimisation (inlining, escape analysis).
+4. Low-level IR.
+5. Machine code (x86-64, ARM64).
+
+Factor's stack checker verifies arity and stack balance but does
+not track value types. boru's carrier checker goes one step
+further — it tracks types through dispatch. Structurally, the
+boru-to-bytecode path corresponds to Factor's steps 1–2 plus a
+trivial "lowering to bytecode" step; the full Factor pipeline
+is what v2 and v3 of boru (typed opcodes, JIT) would look like.
+
+Lesson: the approach proposed here is a proven execution model,
+not a novel research effort. Factor has been in production use
+for ~20 years with a stack-effect-driven compiler.
+(factorcode.org; Pestov et al.'s papers on Factor's design.)
+
+### 11.3 Cat and Kitten — HM-typed concatenative
+
+**Structural fit: moderate.** Cat (Diggins, 2006) and Kitten
+(Purdy, ~2013) are concatenative languages with Hindley-Milner
+type inference extended with stack row polymorphism. Both
+eliminate runtime dispatch entirely: once the type check
+passes, every call site has a known static callee and the
+compiler emits direct calls with no dispatch table at all.
+
+Neither language has ad-hoc overloading (multiple signatures
+per name), which is exactly the feature boru couldn't drop
+without a rewrite. So Cat/Kitten represent the ceiling: if
+boru ever required full annotation and gave up first-match
+dispatch, it could compile even more aggressively. The
+carrier-based approach sacrifices some precision (disjuncts,
+widening) in exchange for keeping boru's existing semantics.
+
+Lesson: static-type-driven concatenative compilation is not
+only feasible but can be pushed considerably further than what
+boru's approach needs. The ceiling is well above the floor set
+by §7's estimates.
+
+### 11.4 Lua 5 — register VM from a dynamic stack language
+
+**Structural fit: moderate.** Lua 5 is not concatenative, but
+it's a widely-studied dynamic-language VM implemented in
+portable C, and the design choices map directly:
+
+- **Register-based bytecode**: Lua 5 uses virtual registers
+  rather than a stack; this packs operands into the opcode
+  encoding and reduces instruction count by ~30% vs. a stack
+  machine (Ierusalimschy et al., "The Implementation of Lua
+  5.0", 2005).
+- **Single-pass compile**: source → bytecode in one parser
+  pass. Very fast compilation — usually invisible to users.
+- **Precomputed constants and upvalues**: resolved at compile
+  time, exactly as proposed for boru's constant pool and fn
+  tables.
+
+boru stays stack-based because the language is stack-based;
+moving to registers would fight the source semantics. But Lua
+5's compact opcode encoding (bit-packed 32-bit words) is a
+cheap optimisation boru should consider for v1 rather than v2.
+
+Lesson: stack vs. register is a valid design question, but for
+a *concatenative* source language, stack bytecode is the natural
+choice. The encoding density question is separate and worth
+tightening.
+
+### 11.5 LuaJIT — trace compilation over a bytecode VM
+
+**Structural fit: roadmap signpost.** LuaJIT adds a trace-
+recording JIT on top of Lua's bytecode VM. Hot loops trigger
+recording; recorded traces become native code via Mike Pall's
+extremely efficient SSA IR and backend. Typical speed-ups over
+Lua 5 are 10–100×.
+
+This is what boru v3+ could look like if the bytecode VM
+demonstrates real-world usage. The bytecode layer is a
+prerequisite — you can't trace-compile a text-stream
+interpreter cleanly. The §7 v1 win is a stepping stone toward
+this kind of future optimisation, not an end-state.
+
+Lesson: bytecode is infrastructure, not a destination. If boru
+ever needs JavaScript-class performance, the bytecode VM is
+step zero.
+
+### 11.6 CPython — dispatch still dominates
+
+**Structural fit: cautionary tale.** CPython has had a bytecode
+VM since the beginning, yet until PEP 659 ("Specializing
+Adaptive Interpreter", Python 3.11, 2022) the VM was not
+meaningfully faster than a tight AST walker for many workloads.
+The problem was that every opcode still paid for runtime
+type/attribute lookup inside the handler.
+
+PEP 659 fixes this with **inline caching**: a `LOAD_ATTR`
+opcode mutates itself on first execution to a specialised
+variant that remembers the object shape. Repeated executions
+on the same shape skip the full lookup.
+
+boru doesn't have CPython's runtime flexibility (attributes
+added at runtime, classes redefined) so inline caching is
+less important — the carrier checker already narrows most of
+what IC catches at run time. But for the residual polymorphic
+sites (`CALL_NATIVE_POLY`), inline caching is the right v2
+optimisation.
+
+Lesson: fixed arity alone isn't sufficient if handlers still
+dispatch internally. The §7 estimates assume boru's handlers
+are already reasonably specialised; if they aren't, the win
+shrinks. The `ReturnsFn`-driven signature splitting in §9.4 is
+what keeps handler dispatch flat.
+
+### 11.7 V8 / SpiderMonkey — inline caches for polymorphic sites
+
+**Structural fit: relevant for v2.** Modern JS engines use
+inline caches at every property-access and call site,
+specialised per observed type. Polymorphic sites maintain a
+small (typically ≤4) table of observed shapes. Sites that blow
+past the table fall back to the generic dispatch.
+
+For boru this is directly applicable at `CALL_NATIVE_POLY`: the
+first observed input type tag becomes the fast path; a small
+table grows on further types; beyond the table size, fall back
+to the generic. The lattice in §2.4 described this shape; the
+JS-engine literature gives the detailed design.
+
+Lesson: the polymorphic-site design in §2.4 should follow the
+inline-cache pattern rather than a static switch. Cheap to
+implement on top of an opcode that already carries a table
+index.
+
+### 11.8 Racket / Scheme JITs — continuations and dynamic binding
+
+**Structural fit: interesting for `do` and `context`.** Scheme
+systems (Racket, Chez) have handled compilation in the presence
+of first-class continuations, dynamic-wind, and parameterise
+for decades. The lesson most relevant to boru: **dynamic
+features don't block AOT compilation; they require an explicit
+boundary**. Chez compiles nearly everything and falls back only
+at continuation captures.
+
+boru's `do` on computed code and `context get` play the role
+of Scheme's `eval` and parameterise. What transfers is Chez's
+discipline, not its residue: Chez earns its coverage by
+compiling nearly everything, and boru has to do the same.
+Silently routing a refused span to the interpreter is not a
+strategy — it is the shape of an unfinished compiler, and each
+span it catches is a defect owed a lowering.
+
+Lesson: dynamic constructs are hard to compile, not exempt from
+compilation. Budget the work to lower them — literal-list `do`,
+a static `do`, a typed `context get` — and keep every construct
+still unlowered on the defect list rather than filing it as an
+expected feature.
+
+### 11.9 Comparison table
+
+| System            | Dispatch resolution | Compile target | What boru borrows                          |
+|-------------------|---------------------|----------------|-------------------------------------------|
+| Forth (DTC/STC)   | Dictionary lookup   | Threaded code  | Stack-machine baseline, threading idea    |
+| Factor            | Stack-effect infer  | Machine code   | Closest structural analogue end-to-end    |
+| Cat / Kitten      | HM inference        | Machine code   | Ceiling for typed concatenative compile   |
+| Lua 5             | None (typed ops)    | Register bytecode | Compact encoding, compile-time constants |
+| LuaJIT            | Trace + specialise  | SSA → native   | Roadmap for boru v3                        |
+| CPython (pre-3.11) | Runtime            | Stack bytecode | What to avoid — handler still dispatches  |
+| CPython ≥3.11      | Inline caching     | Adaptive bytecode | Specialisation design for v2             |
+| V8 / SpiderMonkey | Inline caching      | Native + ICs   | Polymorphic-site design                   |
+| Chez Scheme       | Whole-program       | Native         | Dynamic-escape-hatch discipline           |
+
+### 11.10 Where boru sits
+
+boru's position is **Factor-like in shape, Lua-like in scope**:
+the source language is concatenative and dispatch-heavy
+(Factor), but the target is a small embedded VM that needs to
+stay simple and Go-native (Lua). The carrier checker is the
+piece that makes Factor-style pre-resolution tractable without
+an HM inference engine — it uses the existing runtime dispatch
+machinery in reverse.
+
+No existing system combines precisely these ingredients:
+concatenative source, first-match ad-hoc overloading, carrier-
+value pre-resolution, and a bytecode VM. That's not because the
+combination is novel research — it's because each ingredient is
+a specific boru design choice. The overall recipe is standard
+and well-understood; the carrier checker is the one piece that
+makes it work for boru's specific dispatch model.
+
+### 11.11 Summary of §11
+
+Forth establishes the performance baseline (3–10× from
+threading alone). Factor proves the full pipeline works for
+concatenative languages with static stack analysis. Cat/Kitten
+show the ceiling if full HM were viable. Lua 5 and LuaJIT map
+out the v1-to-v3 roadmap. CPython's pre-3.11 history warns
+that dispatch elimination alone is insufficient without handler
+specialisation. V8/SpiderMonkey inform the polymorphic-site
+design. Chez Scheme shows how much of a dynamic language a
+compiler can cover, and how narrow the uncompiled residue must be.
+
+boru's plan sits well within this landscape; the approach is
+neither novel nor risky, it's just applied differently to match
+boru's specific design choices.
+
+---
+
+## 12. Verdict
+
+### 12.1 Is it feasible?
+
+**Yes, conditionally.** The approach is a natural extension of
+the carrier-based static type checker. The checker already
+makes every dispatch decision in typed regions; compilation is
+that same pass with an instruction-emission side effect and a
+label-resolution pass at the end. No new theory is required.
+Nothing proposed here is novel research — the combination is
+boru-specific, but each ingredient is standard.
+
+The main condition is **Phase 0**: the carrier checker's
+return-type annotations must be complete. The bytecode
+compiler's sig table is a direct consumer of that metadata;
+any gap produces either a `Carrier<Any>` cascade (performance
+loss) or a missed signature split (correctness or performance
+loss via §9.4).
+
+### 12.2 Is it worth it?
+
+**Probably, for compute-heavy workloads. Marginal for I/O-
+heavy workloads.** §7 estimates:
+
+- Arithmetic loops, typed folds, counted iteration:
+  **5–15× faster** at v1, potentially 2–4× more at v2 with
+  typed opcodes.
+- Record transforms, typed-list `each`/`fold`: **3–6× faster**.
+- Orchestration (I/O, context, module wiring):
+  **marginal — dispatch is not the bottleneck there.**
+
+Whether this investment is worth making depends on what kinds
+of boru programs dominate usage. If boru is mostly used to
+orchestrate external systems (database queries, HTTP calls,
+file I/O), the speed-up is small and the risk/benefit is
+poor. If boru is used to compute things directly (aggregations,
+transformations, decision logic), the speed-up is meaningful
+and the investment is justified.
+
+### 12.3 What's the scope?
+
+Rough sizing, in phases that deliver value independently:
+
+**Phase 0 — return type annotations.** Already the Phase 0 of
+the checker. Mechanical but touches ~126 native signatures.
+Must be complete for the compiler to resolve dispatch.
+
+**Phase 1 — basic bytecode emitter + VM.** Straight-line code,
+arithmetic, comparisons, `if`/`for`, user fns with a single
+signature. Skip disjunct dispatch, skip higher-order words,
+skip module imports. Ships a working VM for the simplest
+programs. **~2 weeks**.
+
+**Phase 2 — full surface.** Multi-signature `fn`, `each`/
+`fold`/`scan` with inlined bodies, records and tables, module
+imports, polymorphic dispatch (`CALL_NATIVE_POLY`,
+`CALL_USER_POLY`), runtime `def`. Ships complete feature
+parity with the interpreter for typed regions. **~4 weeks**.
+
+**Phase 3 — lowering the dynamic constructs.** `do` on
+computed code, `context get` with unknown keys, plus the
+`FALLBACK_INTERP` glue that silently contains whichever of them
+is not lowered yet. The glue is scaffolding, not the
+deliverable: the phase is done when these constructs compile,
+and any that still route to the interpreter stay on the defect
+list until they do. **~2 weeks**.
+
+**Phase 4 — specialisation (optional).** Sig-id splitting for
+`ReturnsFn` (§9.4), inline caches for polymorphic sites
+(§11.7), compact opcode encoding (§11.4), typed opcodes for
+hot arithmetic (§7.6). Each is independent; prioritise by
+benchmark results. **~4 weeks each.**
+
+**Phase 5 — tooling.** Source-map integration, debugger PC →
+span tracing, coverage instrumentation, `.boruc` caching. Can
+be skipped entirely for v1 and added later. **~2–4 weeks.**
+
+Rough total for a production-ready v1: **~10 weeks** of
+focused work, assuming Phase 0 is already done. Phase 4 and 5
+add more weeks depending on requirements.
+
+### 12.4 What are the risks?
+
+Ranked by likelihood × severity:
+
+1. **§9.4 not fully implemented** — the single biggest risk to
+   the expected speed-ups. Value-dependent return types that
+   don't split into monomorphic sig_ids dissolve the whole
+   benefit. Mitigation: regression-test arithmetic chains
+   explicitly for mono propagation.
+2. **Divergence between interpreter and compiled** — any
+   semantic corner missed by the compiler produces wrong
+   answers silently. Mitigation: differential-execution harness
+   in CI from day one.
+3. **Handler allocation dominates in practice** — if handlers
+   are heap-allocation-heavy, dispatch elimination saves less
+   than §7 predicts. Mitigation: profile first, compile second;
+   attack allocations with Phase 4 typed opcodes if needed.
+4. **`do`-on-computed-code more common than expected** — every
+   such site is a refusal to compile, so a widespread pattern
+   is a widespread open defect, silently absorbed by the
+   interpreter instead of reported. Mitigation: audit real
+   programs; if this pattern is widespread, settle the
+   language-level question first (e.g. a static `do` over
+   literal lists) so the construct has a lowering before the
+   compiler ships.
+5. **Maintenance drag** — two execution modes to keep in sync
+   as the language evolves. Mitigation: the compiler IS the
+   checker plus emission; language changes must go through the
+   checker anyway, so the incremental maintenance is small if
+   the architecture is clean.
+
+### 12.5 Recommendation
+
+**Proceed, but gate Phase 1 on Phase 0 completion.** Do not
+start emitting bytecode until every native signature has a
+`Returns` annotation or `ReturnsFn`. Starting early produces a
+VM that compiles 60% of the language and refuses the other 40%
+— 40% of the language carrying an open defect apiece, each one
+silently handed to the interpreter so that neither the user nor
+the build ever sees the gap. Variable performance is the least
+of it; the refusals are the work still owed.
+
+Once Phase 0 is done, ship Phase 1 as an **opt-in mode**:
+`boru run --compile` or `BORU_COMPILE=1`. Keep the interpreter
+as the default. Measure on real programs; graduate to default
+only when differential-execution has been clean for a
+reasonable sample.
+
+The carrier-to-bytecode path is the right next step after the
+static type checker, but only if the checker is done. It is
+not a substitute for the checker, and it multiplies every
+checker bug into a runtime bug.
+
+### 12.6 Summary of the report
+
+- Compilation via the carrier checker is **feasible** and
+  **structurally sound**: the same pass that types the program
+  records its dispatch decisions as bytecode.
+- **Fixed-arity calls** eliminate boru's single largest
+  interpreter overhead — the combination of `matchSignature`,
+  forward collection, and stack splicing.
+- The **~35-opcode instruction set** is small, with ~5 hot
+  opcodes (`PUSH_CONST`, `CALL_NATIVE1_1`, `CALL_NATIVE2_1`,
+  `JMP_IF_FALSE`, `FOR_NEXT`) covering the common case.
+- **Mark/move** disappears from the runtime; `if`/`for` become
+  `JMP`s.
+- **User fns** compile as `CompiledFn` with call frames;
+  recursion works naturally.
+- **`RunInCheckMode` words** run at compile time and emit
+  nothing at runtime.
+- Expected **speed-up: 5–15× on hot paths**, 2–4× additional
+  with typed opcodes in a later phase. Minimal on I/O-bound
+  code.
+- **Severe gotchas** cluster around silent divergence and
+  missed monomorphisation; mitigations are known and
+  implementable.
+- **Moderate gotchas** are standard implementation hazards
+  with clear fixes.
+- **Prior art** places boru between Forth (baseline threading)
+  and Factor (optimising concatenative compile), with Lua and
+  LuaJIT mapping the later-phase roadmap.
+- **Recommendation**: proceed after Phase 0, ship as opt-in
+  first, graduate to default when differential-execution is
+  clean.
+
+The path from text-stream interpretation to compiled bytecode
+is well-trodden, and the carrier checker makes it straightforward
+for boru specifically. The open question is not "can it be done"
+but "is it worth the ongoing maintenance cost versus the
+real-world workloads boru needs to serve?" — and that's a
+question only usage data can answer.

@@ -47,16 +47,54 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 	if es == nil {
 		return nil
 	}
-	off, ok := es.takePendingRegion(word, pos)
-	d := off.desc
-	if !ok || d == nil || len(d.Slots) == 0 {
+	return es.completeOffer(es.takePendingRegion(word, pos))(args, ops)
+}
+
+// completeHeldRegion is completeRegion for a record that HOLDS its offer — a
+// user-fn call, whose ReturnsFn took the offer out of the pool at entry
+// (HoldRegion). Only such a record may complete a held offer: a native
+// record under the same (word, row, col) — a module arm's `MathUtil.min`
+// beneath a main program's `Lib.min`, both at 2:1 — completes from the pool,
+// where its own offer is, and can never take the outer call's (the review
+// finding on #457). A holder whose hold found nothing completes nothing.
+func (es *EmitState) completeHeldRegion(word string, pos core.SrcPos, args []core.Value, ops []EmitOperand) *RegionDesc {
+	if es == nil {
 		return nil
 	}
+	return es.completeOffer(es.claimHeldRegion(word, pos))(args, ops)
+}
+
+// completeOffer fills the sources of the slots the dispatch actually took
+// forward, over the offer a claim handed back; a miss completes nothing.
+func (es *EmitState) completeOffer(off pendingRegion, ok bool) func(args []core.Value, ops []EmitOperand) *RegionDesc {
+	return func(args []core.Value, ops []EmitOperand) *RegionDesc {
+		d := off.desc
+		if !ok || d == nil || len(d.Slots) == 0 {
+			return nil
+		}
+		return es.fillOffer(off, args, ops)
+	}
+}
+
+// fillOffer is the completion proper: a COPY of the offered descriptor with
+// the claimed prefix's sources filled, NFwd where the claim stopped.
+func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitOperand) *RegionDesc {
+	d := off.desc
 	// The capture is keyed by position and re-offered on every execution, so
 	// completing in place would mutate a descriptor an earlier completion may
 	// already have stamped. Work on a copy; the slots are copied with it.
-	out := &RegionDesc{Lead: d.Lead, Word: d.Word, Pos: d.Pos,
-		Slots: append([]SlotDesc(nil), d.Slots...)}
+	// The lead's reachability is decided here, by the same rule the slots
+	// below use for a word: a binding pushed inside the enclosing fn is one
+	// no live lookup finds where the body runs (found in review of #460 — a
+	// body-local callee routed, and the op looked up a name the run-time
+	// def stack does not hold), and so is a lead the dispatch registry
+	// itself does not hold — a module native reached through its wrapper,
+	// whose inner signature is dispatched from the caller's registry where
+	// only the namespace is bound (review of #461).
+	leadHeld := off.reg != nil && off.reg.Lookup(d.Word) != nil
+	out := &RegionDesc{Lead: d.Lead, Word: d.Word, Pos: d.Pos, Mods: d.Mods, Reg: off.reg,
+		LeadLocal: !leadHeld || fnScopedWord(off.reg, core.NewWord(d.Word)),
+		Slots:     append([]SlotDesc(nil), d.Slots...)}
 	n := len(out.Slots)
 	if len(args) < n {
 		n = len(args)
@@ -70,7 +108,7 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 			break
 		}
 		// A word slot is already finished, and finishing it AGAIN from the
-		// operand is the frozen-class mistake this model exists to refuse:
+		// operand is the frozen-class mistake this model exists to decline:
 		// the operand is the binding the word had during the pass, and the
 		// whole point of SlotWordRef is that the next execution may find a
 		// different one (region_desc.go's `k` pair).
@@ -86,15 +124,23 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 		// A MODULE-scope name read from inside a fn body is not in that class
 		// and must stay live: it is exactly region_desc.go's `k` pair, the
 		// shape OpCollect exists to answer.
+		//
+		// AND a word whose operand is a FRAME SLOT lives in the frame at run
+		// time whatever scope its name has. The fn-scoped test alone missed a
+		// class the COLLECT oracle found on its first corpus run
+		// (eng/go/region_oracle.go): a TOP-LEVEL loop iterator — `for 6 [if
+		// (eq i 3) …]` — is bound by the loop's analysis so it resolves here,
+		// has no enclosing fn so it is not fn-scoped, and is never replayed by
+		// a twin, so the run-time def stack holds no `i` at all; a live
+		// re-derivation would miss where the emitted code reads the slot.
+		// The operand says where the value lives, so the slot says the same.
 		if out.Slots[i].Source == SlotWordRef {
-			if fnScopedWord(off.reg, out.Slots[i].Token) {
-				// A frame-bound name: describable only if the operand says
-				// which slot, which a param or loop iterator does and a
-				// body-local `def` does not.
-				if src != SlotLocal {
-					break
-				}
+			if src == SlotLocal {
 				out.Slots[i].Source, out.Slots[i].Idx, out.Slots[i].ResIdx = src, idx, resIdx
+			} else if fnScopedWord(off.reg, out.Slots[i].Token) {
+				// A frame-bound name whose operand does not say which slot —
+				// a body-local `def`, promoted only after completion: stop.
+				break
 			}
 		} else {
 			out.Slots[i].Source, out.Slots[i].Idx, out.Slots[i].ResIdx = src, idx, resIdx
@@ -129,7 +175,7 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 // defensive. core.NewValueRaw stamps an id only for a payload-less value or
 // one minted inside the check pass, so a value built outside a pass carries
 // "" — and two of those would compare EQUAL, which is the coincidental match
-// this function exists to refuse, in its worst form: it would extend the
+// this function exists to decline, in its worst form: it would extend the
 // claim over a slot the dispatch never took. Tape tokens do carry ids today
 // (the parser stamps them, measured), so the guard costs nothing; what it
 // buys is that the failure mode is an UNDER-claim, which defers, rather than
@@ -146,10 +192,24 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 		if err != nil {
 			return false
 		}
+		// A LIVE READ of the word (NoteLiveRead — a generalised name's read
+		// seated with its own identity) is the slot's operand as surely as
+		// the binding itself: it is a read of exactly this word, minted at
+		// this token.
+		if es.liveReadIDs[arg.ID] && es.defReads[arg.ID] == wi.Name {
+			return true
+		}
 		top, ok := reg.Defs.Top(wi.Name)
 		return ok && top.ID == arg.ID
 	}
-	return s.Token.ID == arg.ID
+	// A token the kernel evaluated in place (an interpolation, an XML
+	// literal) reaches the dispatch as the value it produced, a fresh
+	// identity; the recorder's link (NoteInPlaceSlot) says which token that
+	// value came from. The compiled code has already computed it by the time
+	// the dispatch runs (the interpolation's own event, or a constant), so
+	// the claim covers the slot and the routed op reads it off the stack
+	// rather than asking its host for an evaluation it cannot perform.
+	return s.Token.ID == arg.ID || es.inPlaceFrom[arg.ID] == s.Token.ID
 }
 
 // fnScopedWord reports whether a word token names a binding that lives inside

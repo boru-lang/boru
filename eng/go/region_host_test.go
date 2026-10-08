@@ -123,13 +123,18 @@ func TestRegionHostEvaluationsDecline(t *testing.T) {
 // path.
 func TestRegionHostScratchSpanReuses(t *testing.T) {
 	h, _ := newHost(t)
+	// The span is the interpreter's shape: the items BETWEEN paren markers.
+	// A span without them is what the kernel splices in for a ParenExpr, so
+	// it would never meet an OpenParen on its next step — the first corpus
+	// walk of the COLLECT oracle spun forever on exactly that.
 	first := h.ScratchParenSpan([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if len(first) != 2 {
-		t.Fatalf("span length %d, want 2", len(first))
+	if len(first) != 4 || !core.IsOpenParen(first[0]) || !core.IsCloseParen(first[3]) ||
+		core.CanonValue(first[1]) != "1" || core.CanonValue(first[2]) != "2" {
+		t.Fatalf("span = %v, want ( 1 2 )", first)
 	}
 	second := h.ScratchParenSpan([]core.Value{core.NewInteger(3)})
-	if len(second) != 1 || core.CanonValue(second[0]) != "3" {
-		t.Fatalf("second span = %v", second)
+	if len(second) != 3 || core.CanonValue(second[1]) != "3" {
+		t.Fatalf("second span = %v, want ( 3 )", second)
 	}
 	if &first[:1][0] != &second[0] {
 		t.Error("the span buffer must be reused, not reallocated per call")
@@ -153,6 +158,26 @@ func TestRegionHostFlowInterruptedIsLive(t *testing.T) {
 	reg.FlowCtrl = core.FlowNone
 	if h.FlowInterrupted() {
 		t.Error("clearing the flag must clear the answer")
+	}
+}
+
+// TestRegionHostResolvesFnCarrierUnderAnalysis pins the seat's analysis
+// arm (S1b-2): a name def-bound to a computed fn's CARRIER — held in the
+// per-pass side table, not in Defs — resolves under an analysis pass and
+// only there, exactly as the engine's own seat resolves it.
+func TestRegionHostResolvesFnCarrierUnderAnalysis(t *testing.T) {
+	h, reg := newHost(t, core.NewWord("f"))
+	core.NoteCheckFnCarrierBind(reg, "f", core.NewCarrier(core.TFunction))
+	if _, ok := h.DefTop("f"); ok {
+		t.Fatal("outside analysis the table is not consulted")
+	}
+	end := reg.Check.Begin()
+	defer end()
+	if v, ok := h.DefTop("f"); !ok || !v.Carrier || !v.Parent.ConformsTo(core.TFunction) {
+		t.Errorf("under analysis the table-bound carrier resolves: %v/%v", v, ok)
+	}
+	if _, ok := h.DefTop("zz"); ok {
+		t.Error("an unbound name misses")
 	}
 }
 
@@ -377,9 +402,8 @@ func TestRegionHostReachClassificationsSeeARealFn(t *testing.T) {
 		t.Error("a reach-collapsed fn with a forward sig and a following literal must claim it")
 	}
 
-	viable := []core.ViableSig{{Sig: &fnVal.Data.(core.FnDefInfo).Signatures[0], Barrier: 1}}
-	gotHead := h.IsReachCallHead(fnVal, viable, 0, 0)
-	wantHead := core.ReachCallHeadBarrierOn(h.Window(), h.reg, fnVal, viable, 0, 0)
+	gotHead := h.IsReachCallHead(fnVal, 0)
+	wantHead := core.ReachCallHeadBarrierOn(h.Window(), h.reg, fnVal, 0)
 	if gotHead != wantHead {
 		t.Errorf("IsReachCallHead = %v, want core's own answer %v", gotHead, wantHead)
 	}
@@ -390,7 +414,7 @@ func TestRegionHostReachClassificationsSeeARealFn(t *testing.T) {
 	if h.ReachFnWouldClaim(plain, 1) {
 		t.Error("a plain word is not a reach-collapsed fn and claims nothing")
 	}
-	if h.IsReachCallHead(plain, viable, 0, 0) {
+	if h.IsReachCallHead(plain, 0) {
 		t.Error("a plain word is not a reach call head")
 	}
 }

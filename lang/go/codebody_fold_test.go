@@ -94,10 +94,10 @@ func TestTopLevelFoldUnchanged(t *testing.T) {
 	}
 }
 
-// TestCodeBodyFoldKeepsTheCallableRefusal — NUR131's screen is per-entry, not
+// TestCodeBodyFoldKeepsTheCallableCompileFailure — NUR131's screen is per-entry, not
 // per-unit, so widening the unit gate must not reopen it: a produced closure
-// shuffled inside a body is still data to the fold and still refuses.
-func TestCodeBodyFoldKeepsTheCallableRefusal(t *testing.T) {
+// shuffled inside a body is still data to the fold and still declines.
+func TestCodeBodyFoldKeepsTheCallableCompileFailure(t *testing.T) {
 	const src = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick`
 	a, err := New()
 	if err != nil {
@@ -105,9 +105,9 @@ func TestCodeBodyFoldKeepsTheCallableRefusal(t *testing.T) {
 	}
 	prog, reason, _, _ := a.CompileCheck(src)
 	if prog != nil {
-		t.Fatalf("a produced closure in the shuffle must keep its refusal:\n%s", prog.Disassemble())
+		t.Fatalf("a produced closure in the shuffle must keep its compile failure:\n%s", prog.Disassemble())
 	}
 	if reason == "" {
-		t.Error("the refusal must name a reason")
+		t.Error("the compile failure must name a reason")
 	}
 }

@@ -3,13 +3,14 @@ package core
 // unifyOptionsFamily owns unification when at least one side is an
 // Options type. Options fields can carry concrete defaults, type-
 // literal constraints, or disjuncts — three sub-rules that compose
-// per-field.
-func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *UnifyError) {
+// per-field. r is the enclosing chain's registry, handed to every
+// field unify.
+func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, *UnifyError) {
 	// Two Options → unify field schemas (order-independent).
 	if sa == ShapeOptions && sb == ShapeOptions {
 		aOT, _ := AsOptionsType(a)
 		bOT, _ := AsOptionsType(b)
-		return unifyOptionsPair(aOT, bOT)
+		return unifyOptionsPair(aOT, bOT, r)
 	}
 
 	// Canonicalize: opts on the left, concrete on the right.
@@ -58,7 +59,7 @@ func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, 
 			result.Set(key, defVal)
 			continue
 		}
-		unified, err := unifyOptionsField(optVal, cVal)
+		unified, err := unifyOptionsField(optVal, cVal, r)
 		if err != nil {
 			return Value{}, err.withPath("field:" + key)
 		}
@@ -69,8 +70,8 @@ func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, 
 
 // unifyOptionsPair unifies two options types by unifying their field
 // schemas. Key order is not significant.
-func unifyOptionsPair(a, b OptionsTypeInfo) (Value, *UnifyError) {
-	result, err := unifyFieldBags(a.Fields, b.Fields, false)
+func unifyOptionsPair(a, b OptionsTypeInfo, r *Registry) (Value, *UnifyError) {
+	result, err := unifyFieldBags(a.Fields, b.Fields, false, r)
 	if err != nil {
 		return Value{}, err
 	}
@@ -178,11 +179,13 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 //   - Concrete Options value: accept cVal if same parent type (cVal wins)
 //   - Type literal: standard Unify (type narrowing)
 //   - Disjunct: apply rules to each alternative
-func unifyOptionsField(optVal, cVal Value) (Value, *UnifyError) {
+//
+// r is the enclosing chain's registry, handed to the type-literal arm.
+func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
 	if IsDisjunct(optVal) {
 		disj, _ := AsDisjunct(optVal)
 		for _, alt := range disj.Alternatives {
-			if unified, err := unifyOptionsField(alt, cVal); err == nil {
+			if unified, err := unifyOptionsField(alt, cVal, r); err == nil {
 				return unified, nil
 			}
 		}
@@ -195,7 +198,7 @@ func unifyOptionsField(optVal, cVal Value) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("value does not match field's base type", optVal, cVal)
 	}
-	return unifyInner(optVal, cVal)
+	return unifyInner(optVal, cVal, r)
 }
 
 // optionsBaseType returns the base (non-literal) type for a concrete

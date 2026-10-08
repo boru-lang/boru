@@ -27,6 +27,7 @@ import (
 )
 
 func TestCorpusThreeModes(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
 	files, err := filepath.Glob(filepath.Join(specDir, "corpus-*.tsv"))
 	if err != nil {

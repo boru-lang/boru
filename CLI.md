@@ -86,8 +86,6 @@ Global flags accepted by `boru` (and equivalently by `boru run`):
 | `-r PATH` | Path to a local registry (used by import and install). |
 | `-s INT` | Random seed for ID generation. Default: current time. |
 | `-check` | Run static type-check before execution; abort on error. |
-| `-compile` | **Experimental.** Execute via the bytecode compiler when the program is compilable; silently fall back to the interpreter otherwise (see [Bytecode compilation](#bytecode-compilation)). |
-| `-force-compile` | **Experimental.** Require the bytecode compiler; abort with the refusal reason if the program is not compilable (see [Bytecode compilation](#bytecode-compilation)). |
 | `-options OPTS` | Engine options as a jsonic blob (see below). |
 | `-version` | Print the version and exit. |
 
@@ -128,56 +126,43 @@ entries; crossing 90/95/99% of it warns on stderr and exceeding it fails
 loudly with `[boru/tape_exhausted]` — the engine never consumes unbounded
 space. Raise `tape:initial` (or `tape:grows`) for a legitimately large
 program (deep recursion, huge generated programs); lower it to trip a
-runaway sooner. See `design/TAPE-DATA-STRUCTURE.10.md`.
+runaway sooner. See `design/legacy/TAPE-DATA-STRUCTURE.10.ignore`.
 
 
 ### Bytecode compilation
 
-> **Experimental.** boru ships a bytecode compiler that lowers the
-> statically-typed subset of a program to a compact instruction stream and runs
-> it on a small VM. **Execution defaults to best-effort compilation** — a
-> program that is fully compilable runs on the VM, and anything the emitter
-> refuses falls back to the interpreter silently and soundly, producing
-> identical results. The choice is therefore purely about performance (and
-> about exercising the compiler); use `--no-compile` to pin the interpreter.
+> boru compiles a program to a compact instruction stream and runs it on a
+> small VM. There is **one** execution path and **one** outcome: the program
+> compiles and its bytecode runs, or it does not compile and that is an
+> **error**. A program the emitter cannot lower has hit a compiler
+> **defect** owed a fix — see [design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §1.
 
-There are three modes, selected per run by a flag or an environment variable:
+There are no compile modes and no flags to select between them. Until
+2026-09-19 there were three, because a program that did not compile was
+**silently** re-run on the interpreter: the answer came back and nothing in
+the run said the compile had failed, which is what made the silence bad
+rather than harmless. `--force-compile` existed to make such a failure
+visible and `--no-compile` to pin the interpreter. With the fallback gone
+there is nothing for either to select, and `--compile`, `--force-compile`,
+`--no-compile`, `BORU_COMPILE`, `BORU_FORCE_COMPILE` and `BORU_NO_COMPILE`
+are all retired.
 
-| Flag | Env | Behaviour |
-|------|-----|-----------|
-| `--compile` | `BORU_COMPILE` | **Best-effort.** Compile and run on the VM when the whole program is compilable; **silently fall back** to the interpreter when any part is not. Never changes the result. |
-| `--force-compile` | `BORU_FORCE_COMPILE` | **Strict.** *Require* the bytecode path. If the program is not compilable, abort with the emitter's refusal reason instead of falling back. Use this to *guarantee* a run went through the compiler (verifying the compilable subset, benchmarking the VM, or catching a compiler regression the silent fallback would hide). |
-| `--no-compile` | `BORU_NO_COMPILE` | **Interpreter.** The kill switch: it **overrides** both of the above *and* the default, so a deployment (or a differential run) can pin the interpreter. |
-
-Note that `--compile` / `BORU_COMPILE` select the same best-effort mode the
-default already uses; they remain accepted, and are worth writing when a script
-wants the intent on the record.
-
-Precedence: `--no-compile` / `BORU_NO_COMPILE` wins over everything; otherwise
-`--force-compile` / `BORU_FORCE_COMPILE` wins over `--compile` /
-`BORU_COMPILE`; with none of them set, the mode is best-effort compilation
-(`cmd/go/internal/run/run.go`, `ResolveCompileMode`).
-
-```bash
-boru --compile script.boru              # try the compiler, fall back silently
-boru --force-compile script.boru        # demand the compiler; fail loudly if it can't
-BORU_COMPILE=1 boru script.boru          # same as --compile, via the environment
-boru --no-compile script.boru           # pin the interpreter
-BORU_NO_COMPILE=1 boru --compile s.boru  # kill switch: runs the interpreter anyway
-boru do --force-compile 1 add 2        # the flags work on `boru do` too
-```
-
-A `--force-compile` refusal names the construct the emitter could not lower:
+A compile failure names the construct the emitter could not lower — which is
+to say it names the defect:
 
 ```
-$ boru --force-compile -e '(size (for 5 [i]))'
-error: force-compile: consumes loop results (Stage 2 loops only feed the program residual)
+$ boru -e '(size (for 5 [i]))'
+error: bytecode compilation FAILED: consumes loop results (Stage 2 loops only feed the program residual) — this is a compiler defect, not a policy: valid code must compile.
 ```
 
-Both flags are accepted by `boru` / `boru run` and by `boru do`. Genuine runtime
-errors (e.g. division by zero, a type error) surface identically in every mode;
-only the *uncompilable* outcome differs — silently absorbed by `--compile`,
-reported by `--force-compile`.
+Report it. It is a bug in boru, not a limit you are expected to work around.
+
+Genuine runtime errors (division by zero, a type error) surface as they always
+have; they are the program's own result, not the compiler's.
+
+`boru build` will not ship a binary whose program does not compile, and a
+built binary that meets one fails with the same message rather than running it
+somewhere else.
 
 ## Language execution
 
@@ -331,9 +316,8 @@ expression with `--`:
 boru do -- '-7 0 add'           # leading negative literal needs --   (prints -7)
 ```
 
-`boru do` accepts the same `--compile` / `--force-compile` flags as `boru run`
-(see [Bytecode compilation](#bytecode-compilation)); place them before the
-expression: `boru do --force-compile 1 add 2`.
+`boru do` compiles and runs its expression, exactly as `boru run` does (see
+[Bytecode compilation](#bytecode-compilation)).
 
 ### `boru check`
 
@@ -427,6 +411,11 @@ Flags:
   over a dynamic operand: the points where the checker matched
   optimistically and the runtime re-verifies. The gradual-typing
   migration surface — tighten these and the diagnostics disappear.
+* `--base DIR` — resolve a target's relative imports (`import "./util.boru"`)
+  against `DIR` instead of the target's own directory. `boru check` anchors
+  on the file (what `boru build` needs) where `boru` anchors on the process
+  cwd, so a test file under `tests/` that imports its siblings' parent
+  checks with `--base .` exactly as it runs with `boru tests/x.boru`.
 * `--pedantic` — promote the advisory tiers: exit non-zero when any
   warning- or info-severity diagnostic is reported, not only on errors.
   Without it every non-error run exits 0, so a `warning` cannot fail a
@@ -452,14 +441,16 @@ table):
 * `unreachable_signature` — an `fn` overload that an earlier, more
   general overload already subsumes, so first-match dispatch can never
   reach it.
-* `stranded_type_call` — a capitalised name bound to a **function** body
-  written in call position. `def` on a capitalised name binds a TYPE, so
-  the name never calls: it places its lattice node and leaves the
-  arguments after it unconsumed, and the program still exits 0 with a
-  wrong stack. The combinator names are all capitals, so transcribing
-  `S`, `K`, `I` lands here first; lowercase the name to bind a callable
-  function. The deliberate predicate-type use —
-  `def Even fn n:Integer Boolean [eq 0 (mod 2 n)] end 4 is Even` — stays
+* `stranded_type_call` — a capitalised name bound to a **predicate**
+  (`fnpred`) body written in call position. `def` on a capitalised name
+  binds a TYPE, so the name never calls: it places its lattice node and
+  leaves the arguments after it unconsumed, and the program still exits 0
+  with a wrong stack. (A capitalised name over a plain `fn` body or a
+  lambda is refused at the declaration with `def_error`; the combinator
+  names are all capitals, so transcribing `S`, `K`, `I` lands there
+  first — lowercase the name to bind a callable function.) The deliberate
+  predicate-type use —
+  `def Even fnpred n:Integer [eq 0 (mod 2 n)] end 4 is Even` — stays
   silent, as does any type carried as data.
 * `undefined_word`, `unused_def`, `unreachable_branch`,
   `record_shape_mismatch`, … — typos, dead bindings, constant `if`
@@ -526,12 +517,13 @@ boru test src/ lib/                  # walk several directories
 boru test --coverage sift_test.boru   # add coverage + an HTML report
 ```
 
-Suites run on the **bytecode compiler by default** — the normal, fast
-execution mode — falling back to the interpreter only for a file the
-compiler refuses. Discovery: no arguments walks the current directory
-recursively for `*_test.boru`; a directory argument is walked the same
-way; an explicit file argument is run verbatim (even without the
-`_test.boru` suffix).
+Each suite is compiled and run. A suite that does not compile is an **error**
+that fails the run, naming the construct: it used to be silently re-run on
+the interpreter, so the suite reported green while the compile had failed.
+Discovery: no
+arguments walks the current directory recursively for `*_test.boru`; a
+directory argument is walked the same way; an explicit file argument is run
+verbatim (even without the `_test.boru` suffix).
 
 Flags:
 
@@ -543,10 +535,10 @@ Flags:
   writes a browsable **HTML report** to a `coverage/` folder: an
   `index.html` summary plus one page per module with each source line
   coloured covered (green) or uncovered (red). Because the bytecode VM
-  folds some source positions, compiled coverage is a *subset* of the
-  interpreter's (some folded lines show as falsely uncovered); pair with
-  `--no-compile` for the exact, line-granular set when driving a module
-  to full coverage.
+  folds some source positions, a folded line reads as falsely uncovered:
+  the report **understates** coverage rather than overstating it, which is
+  the safe direction for a number you gate on. Each folded position is one
+  the VM should be carrying, and closing them is compiler work.
 * `--coverage-dir PATH` — where the HTML report is written (default
   `coverage`). Ignored without `--coverage`.
 * `--coverage-min PCT` — fail the run (exit 1) when **aggregate** line
@@ -554,10 +546,8 @@ Flags:
   imported module — is below `PCT`, even if every test passed. Implies
   coverage measurement, so `boru test --coverage-min 80` gates without
   needing `--coverage` (add `--coverage` too if you also want the HTML
-  report). Pair with `--no-compile` so folded compiled positions don't
-  drag the number below the real figure.
-* `--no-compile` / `--force-compile` / `--compile` — select the engine
-  exactly as for [`boru run`](#bytecode-compilation).
+  report). Folded compiled positions can drag the number below the real
+  figure — see `--coverage` above.
 * `-r PATH` — registry path, same as `boru run`. The permission flags
   (`--perms`, `--allow`, `--deny`, …) are accepted too.
 
@@ -705,7 +695,6 @@ Flags:
 | `-o <path>` | Output binary path. Default: source basename without `.boru` (`prog.boru` → `prog`). |
 | `--native` | Use the Go-toolchain path instead of the self-embedding launcher. |
 | `--keep` | (native) Retain the generated temp build directory and print its path. |
-| `--compile` / `--force-compile` | Bake the experimental bytecode compile-mode into the binary (see [Bytecode compilation](#bytecode-compilation)). `--force-compile` makes the produced binary abort on uncompilable input. |
 | `-r <registry>` | Registry path baked into the binary. |
 | `-s <seed>` | Random seed baked into the binary. |
 | `--options <jsonic>` | Engine [`--options`](#--options--engine-options-as-jsonic) baked in (validated at build time). |
@@ -1532,6 +1521,26 @@ Environment fallbacks (consulted when no `--perms*` flag is set):
 BORU_POLICY=sandbox boru do 'add 1 2'
 BORU_POLICY_FILE=./prod.jsonic boru script.boru
 ```
+
+`boru check` takes the same flags, and `boru describe` and the language
+server honour the environment fallbacks: analysis RUNS an imported file
+module's body to learn its exports, so the profile that governs the run
+governs that execution too — and the pre-flight check `boru run` performs
+runs under the run's profile. A top-level import the profile refuses is
+reported by the check as the coded error the run raises
+(`permission_denied` / `capability_not_installed`).
+
+Imports are gated per module. `modules.import` is checked with
+`{module, kind}`: a native module is `module: "boru:<name>", kind:
+"native"`; a file module is keyed by the ref the import names (`module:
+"./lib.boru"`, `kind: "file"`), so `modules.scopes."./lib.boru"` names one
+module for the import gate and its per-export gates alike. The
+restrictive built-ins (`sandbox` and the profiles that extend it,
+`compute`, `gen`) admit file modules with `{ allow: ["import"], where: {
+kind: ["file"] } }` — a module body runs under the importer's profile, so
+the import widens nothing its body could do, and reading the file is still
+the `fileops` scope's call. Refuse them with the mirror rule, or one module
+with `modules.scopes."./lib.boru": { install: false }`.
 
 Examples:
 

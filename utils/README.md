@@ -78,10 +78,11 @@ Learned by writing them, and each one prevents a silent failure:
 - **Prefer declaring callbacks at top level** rather than inside another fn.
   This is now style advice, not a defect workaround: a fn-local callback used
   as a higher-order body word once resolved under the interpreter and died
-  with `undefined_word` under the compiler (NUR037); the compiler now refuses
-  that shape and the interpreter runs the whole program instead — correct,
-  just slower. A module-scope callback keeps the program on the compiled
-  path.
+  with `undefined_word` under the compiler (NUR037); a capture-free local
+  callback now compiles (its def is placed for the frame), and a local
+  callback that CAPTURES an enclosing binding is refused, so the interpreter
+  runs the whole program instead — correct, just slower. A module-scope
+  callback keeps the program on the compiled path either way.
 - **Take argv as a parameter** in anything you want to test — `boru test`
   cannot inject an argument vector. Take the *environment* and the *terminal*
   as parameters too, for the same reason: a fn that reads them can only ever

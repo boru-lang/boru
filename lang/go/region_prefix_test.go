@@ -10,7 +10,7 @@ import (
 // (NUR067's consuming half): a residual shaped [inert…, REGION] — values that
 // must end up BENEATH a run whose length is a runtime value.
 //
-// Before OpSeatBelowMark the shape refused wholesale ("call result above a
+// Before OpSeatBelowMark the shape declined wholesale ("call result above a
 // literal"), because a static lowering has nowhere to put the prefix: pushing
 // it after the region lands it ON TOP of the run, and there is no static
 // offset that reaches past a runtime count. The lowering now opens a mark
@@ -98,7 +98,7 @@ func TestRegionPrefixEmitsTheMarkAndSeat(t *testing.T) {
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("refused: %s", reason)
+		t.Fatalf("declined: %s", reason)
 	}
 	dis := prog.Disassemble()
 	if !strings.HasPrefix(dis, "0000 STACK_MARK") {
@@ -121,7 +121,7 @@ func TestRegionPrefixEmitsTheMarkAndSeat(t *testing.T) {
 // stand aside for, and the reason it exists as a check rather than a hope: the
 // loop's BOUND is a live `get` result, which sits BELOW the mark the plan
 // would open, so the loop would pop from beneath its own mark. Declining
-// keeps the pre-existing refusal and the interpreter's answer.
+// keeps the pre-existing compile failure and the interpreter's answer.
 func TestRegionPrefixDeclinesAStackReadingRegion(t *testing.T) {
 	const src = `def m {n:3} 99 for (m get "n") [i]`
 	_, compiled, err := rpRun(t, src)
@@ -129,7 +129,7 @@ func TestRegionPrefixDeclinesAStackReadingRegion(t *testing.T) {
 		t.Fatal("a region whose operand is live on the enclosing stack must decline the plan")
 	}
 	if err == nil || !strings.Contains(err.Error(), "residual shape beyond Stage 1 (call result above a literal)") {
-		t.Fatalf("refusal reason drifted: %v", err)
+		t.Fatalf("compile failure reason drifted: %v", err)
 	}
 	if got := rpInterp(t, src); got != "[99 0 1 2]" {
 		t.Errorf("interpreter %s, want [99 0 1 2]", got)
@@ -193,7 +193,7 @@ func TestMultiSeatRegionEmitsTheMarkAndSeat(t *testing.T) {
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("refused: %s", reason)
+		t.Fatalf("declined: %s", reason)
 	}
 	dis := prog.Disassemble()
 	// The mark opens before the region's own operands — here after the

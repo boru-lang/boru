@@ -37,7 +37,7 @@ func feRun(t *testing.T, src string) (string, []string) {
 		t.Fatalf("RunCompiled(%q): %v", src, cerr)
 	}
 	if !compiled {
-		t.Fatalf("RunCompiled(%q): fell back to the interpreter", src)
+		t.Fatalf("RunCompiled(%q): did not compile", src)
 	}
 	return fmt.Sprintf("%v", out), islands
 }
@@ -47,7 +47,7 @@ func TestForEachCompilesItsBodyWithParity(t *testing.T) {
 	const acc = `def acc (flex []) end `
 	for _, tc := range []struct{ src, want string }{
 		// The frontier row: the Function form, which the Stage-3 gate used
-		// to refuse outright.
+		// to decline outright.
 		{dbl + `for-each dbl/v [1 2 3]`, "[]"},
 		{acc + dbl + `for-each dbl/v [1 2 3] end acc`, "[[]]"},
 		// A side-effecting fn value driven once per element — the result is
@@ -102,7 +102,7 @@ func TestForEachBodyIsAClosureUnit(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(`[1 2 3] for-each [print]`)
 	if cerr != nil || prog == nil {
-		t.Fatalf("refused %q err=%v", reason, cerr)
+		t.Fatalf("declined %q err=%v", reason, cerr)
 	}
 	dis := prog.Disassemble()
 	if !strings.Contains(dis, "PUSH_CLOSURE") || !strings.Contains(dis, "for-each$body") {
@@ -138,35 +138,26 @@ func TestForEachLambdaConventionMatchesTheInterpreter(t *testing.T) {
 	}
 }
 
-// TestForEachKeepsTheAmbiguousOverloadRefusal is the flag NOT set, and why.
-// CrossCollectionTokenShape licenses committing to the List overload for a
-// statically-ambiguous (gradual-Any) collection, because each's handler
-// delegates to the map iteration when the runtime value turns out to be a
-// map. forEachHandler does not — it reads args[1] as a list — so committing
-// would raise where the interpreter iterates. The refusal is the sound
-// fallback, and `each` compiling the same shape is what makes the
-// difference visible.
-func TestForEachKeepsTheAmbiguousOverloadRefusal(t *testing.T) {
-	const src = `def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
+// TestForEachGradualCollectionReMatches is CrossCollectionTokenShape still
+// NOT set on for-each, and why that no longer costs the compile: the flag
+// licenses committing to the List overload for a statically-ambiguous
+// (gradual-Any) collection because each's handler delegates to the map
+// iteration at run time, and forEachHandler does not (it reads args[1] as
+// a list). Since for-each declares CompileDynBody (2026-09-25) the gradual
+// collection takes the dyn-body seat's POLY re-match instead — the runtime
+// value picks the List or the Map overload exactly as the interpreter's
+// dispatch does — so both branches of the factory compile and agree.
+func TestForEachGradualCollectionReMatches(t *testing.T) {
+	for _, src := range []string{
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk false) end d for-each [drop]`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def acc (flex []) end def d (mk true) end d for-each [acc swap push] end acc`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def acc (flex []) end def d (mk false) end d for-each [acc swap push] end acc`,
+	} {
+		requireEngineParity(t, src, true)
 	}
-	prog, reason, _, cerr := a.CompileCheck(src)
-	if cerr != nil {
-		t.Fatalf("check: %v", cerr)
-	}
-	if prog != nil {
-		t.Fatalf("a gradual collection must refuse, not commit to the List overload:\n%s", prog.Disassemble())
-	}
-	if !strings.Contains(reason, "gradual-Any collection") {
-		t.Errorf("refused %q, want the ambiguous-overload refusal", reason)
-	}
-	b, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ierr := b.RunInterp(src); ierr != nil {
-		t.Errorf("the interpreter must still answer: %v", ierr)
+	dis := compileDisasm(t, `def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`)
+	if !strings.Contains(dis, "for-each/2 (poly)") {
+		t.Errorf("a gradual collection must poly re-match for-each's overloads, not commit to one:\n%s", dis)
 	}
 }

@@ -54,9 +54,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	registry := fs.String("r", "", "registry path baked into the binary")
 	var seed int64
 	fs.Int64Var(&seed, "s", 0, "random seed baked into the binary")
-	compileFlag := fs.Bool("compile", false, "bake best-effort bytecode compilation into the binary (the default)")
-	noCompileFlag := fs.Bool("no-compile", false, "bake interpreter-only execution into the binary; wins over --compile/--force-compile")
-	forceCompileFlag := fs.Bool("force-compile", false, "bake REQUIRED bytecode compilation into the binary")
 	optionsStr := fs.String("options", "", "engine options as jsonic, baked in (e.g. tape:initial:65536)")
 	noCheck := fs.Bool("no-check", false, "skip the static pre-flight check (also: BORU_NO_CHECK=1)")
 	// -perms/-allow/-deny bake the resolved policy into the binary, so a
@@ -79,16 +76,21 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 	srcPath := pathutil.Expand(positionals[0])
 
-	// Validate --options eagerly so a typo fails at build time, not when the
-	// produced binary runs.
+	// Parse --options eagerly so a typo fails at build time, not when the
+	// produced binary runs — and keep the parsed value: the compile preflight
+	// below must answer the compile question under the SAME engine options
+	// the artifact bakes (buildrt.Main applies this blob at launch). A
+	// preflight on default options would pass a program that the baked
+	// `steps:` ceiling makes uncompilable, and ship exactly the silent
+	// fallback the gate exists to close (a Codex review of #471).
+	preflightOpts := lang.Options{Registry: *registry, Seed: seed}
 	if *optionsStr != "" {
-		var probe lang.Options
 		m, err := lang.ParseOptions(*optionsStr)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
-		if err := lang.ApplyOptions(&probe, m); err != nil {
+		if err := lang.ApplyOptions(&preflightOpts, m); err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
@@ -104,26 +106,69 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 		prof = permsflags.ProfileFromPolicy(pol)
 	}
 
-	cfg, err := buildConfig(srcPath, *registry, seed, resolveCompile(*compileFlag, *forceCompileFlag, *noCompileFlag), *optionsStr, prof)
+	cfg, err := buildConfig(srcPath, *registry, seed, *optionsStr, prof)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %s\n", err)
 		return 1
 	}
 
 	// CHECK-BY-DEFAULT (NUR044): the same static pre-flight `boru run`
-	// enforces, so `build` refuses to ship a binary whose first execution
+	// enforces, so `build` declines to ship a binary whose first execution
 	// would abort on a check error. -no-check / BORU_NO_CHECK=1 opt out,
 	// mirroring run's escape hatch. The gate is quiet: diagnostics print
-	// only when the build is about to be refused. Relative file imports
+	// only when the build is about to be declined. Relative file imports
 	// are anchored to cfg.EntryDir — the directory the BUILT binary will
 	// resolve them against (buildrt.Main sets BaseDir to EntryDir) — not
 	// the build-time cwd, so a multi-file program builds from anywhere.
 	// Like `boru check`, the pre-flight executes imported file-module
 	// bodies (with modelled writes) to learn their exports.
-	if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
+	checkSkipped := *noCheck || os.Getenv("BORU_NO_CHECK") != ""
+	if !checkSkipped {
 		color := lang.ResolveColor(nil, stderr, "auto")
-		if cerr := check.PreflightColorAt(stderr, cfg.Source, *registry, seed, false, color, cfg.EntryDir); cerr != nil {
+		if cerr := check.PreflightPolicyAt(stderr, cfg.Source, *registry, seed, false, color, cfg.EntryDir, pol); cerr != nil {
 			fmt.Fprintf(stderr, "%s\n", cerr)
+			return 1
+		}
+	}
+
+	// COMPILE-BY-DEFAULT, ENFORCED AT BUILD TIME. The check gate above
+	// declines to ship a binary whose first execution would abort on a check
+	// error; this is its compile-side twin, and it exists because the
+	// asymmetry was a hole. A program the emitter could not lower used to
+	// build silently: the baked try mode meant the shipped binary dropped to
+	// the interpreter at run time and said nothing. The author shipped a
+	// compile failure and was never told.
+	//
+	// Failure to compile is a failure (design/COMPILABLE-SUBSET.md §1), so
+	// `build` names it and stops. There is no opt-out any more, because there
+	// is no interpreter binary to opt into: the fallback that made one
+	// possible is gone.
+	{
+
+		reason, cerr := compilePreflight(cfg.Source, preflightOpts, cfg.EntryDir)
+		// -no-check / BORU_NO_CHECK opts out of being gated on the CHECKER, and
+		// "check diagnostics" is the checker's verdict reaching the emitter as a
+		// sentinel rather than a named construct. Declining on it here would make
+		// the compile gate a second check gate and defeat the opt-out, which
+		// `build` documents as "must still produce the artefact". A genuine
+		// construct compile failure still stops the build either way.
+		//
+		// In the DEFAULT flow this carve-out is not a loophole: a program whose
+		// checker findings are errors never reaches here, because the gate above
+		// already returned 1. What reaches here with the sentinel has non-error
+		// findings and still does not compile — a real defect, and the single
+		// largest blocker for real programs (TestRealProgramsCompile).
+		if checkSkipped && reason == "check diagnostics" {
+			reason = ""
+		}
+		if cerr != nil {
+			fmt.Fprintf(stderr, "error: %s\n", cerr)
+			return 1
+		} else if reason != "" {
+			fmt.Fprintf(stderr, "error: bytecode compilation FAILED: %s\n", reason)
+			fmt.Fprintf(stderr, "  A program that does not compile is an ERROR in need of fixing, not a\n")
+			fmt.Fprintf(stderr, "  slower run: there is no interpreter for the binary to fall back to.\n")
+			fmt.Fprintf(stderr, "  Fix the construct, or report it as the compiler defect it is.\n")
 			return 1
 		}
 	}
@@ -150,21 +195,37 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// resolveCompile maps the three flags to a CompileMode. The default is
-// best-effort TRY; noCompile wins over everything, then force wins over try
-// (mirrors run.ResolveCompileMode without the env-var rollout knobs, which do
-// not apply to a frozen binary — --no-compile is the only opt-out here).
-func resolveCompile(compile, force, noCompile bool) buildrt.CompileMode {
-	switch {
-	case noCompile:
-		return buildrt.CompileOff
-	case force:
-		return buildrt.CompileForce
-	case compile:
-		return buildrt.CompileTry // the explicit spelling of the default
-	default:
-		return buildrt.CompileTry
+// compilePreflight reports the emitter's compile failure reason for src, or "" when the
+// whole program compiles. It COMPILES ONLY — CompileCheck runs the checker with
+// the recording pass and linearises the trace; it never executes the program, so
+// a build cannot trigger the program's side effects. A non-nil error is an
+// init/parse failure, which is distinct from a compile failure: the first means we could
+// not answer the question, the second is the answer.
+func compilePreflight(source string, o lang.Options, baseDir string) (string, error) {
+	a, err := lang.New(o)
+	if err != nil { //covergate:allow lang.New returns a non-nil error only for an unreadable engine image, not for a bad -r path: a nonexistent or non-registry Registry resolves lazily and New succeeds (verified against /nonexistent and /etc/passwd), so no build invocation can reach this arm; kept because New's signature returns an error and swallowing it would hide a future failure (§misc)
+		return "", fmt.Errorf("init error: %s", err)
 	}
+	if baseDir != "" {
+		a.NativeRegistry().BaseDir = baseDir
+	}
+	prog, reason, _, cerr := a.CompileCheck(source)
+	if cerr != nil {
+		// CompileCheck reserves this for a source it could not PARSE, so we
+		// could not answer the compile question at all. Report it rather than
+		// swallow it: returning "no compile failure" here would let an unparseable
+		// program through the gate under -no-check and ship a binary that
+		// cannot run. In the default flow the check pre-flight has already
+		// returned 1 on such a source, so this arm is the -no-check path.
+		return "", cerr
+	}
+	if prog != nil {
+		return "", nil
+	}
+	if reason == "" { //covergate:allow unreachable trio: CompileCheck returns (nil program, non-empty reason) on every compile failure and (nil, "parse error", err) on a parse failure, which the cerr arm above already took, so a nil program with an empty reason and no error cannot occur; kept as a belt so a future emitter path that forgets to set reason reports something actionable instead of an empty compile failure (§misc)
+		reason = "no program produced (reason not reported)"
+	}
+	return reason, nil
 }
 
 // defaultOutput is the source basename without its extension, in the cwd:
@@ -181,11 +242,15 @@ func defaultOutput(srcPath string) string {
 // assembles the buildrt.Config baked into the binary. Built-in boru: imports
 // are skipped (they are in the runtime); every reachable .boru file is embedded
 // under its absolute path so the in-memory file system resolves it at run time.
-func buildConfig(srcPath, registry string, seed int64, mode buildrt.CompileMode, optionsBlob string, prof *policy.Profile) (buildrt.Config, error) {
-	return buildConfigWithAbs(srcPath, registry, seed, mode, optionsBlob, prof, filepath.Abs)
+func buildConfig(srcPath, registry string, seed int64, optionsBlob string, prof *policy.Profile) (buildrt.Config, error) {
+	return buildConfigWithAbs(srcPath, registry, seed, optionsBlob, prof, filepath.Abs)
 }
 
-func buildConfigWithAbs(srcPath, registry string, seed int64, mode buildrt.CompileMode, optionsBlob string, prof *policy.Profile, abs func(string) (string, error)) (buildrt.Config, error) {
+// buildConfigWithAbs is buildConfig with the absolute-path resolution
+// injected (design/TEST-SEAMS.10.md): its failure arm is driven directly
+// rather than by deleting the process's working directory, which Windows
+// refuses and macOS keeps resolving.
+func buildConfigWithAbs(srcPath, registry string, seed int64, optionsBlob string, prof *policy.Profile, abs func(string) (string, error)) (buildrt.Config, error) {
 	entryAbs, err := abs(srcPath)
 	if err != nil {
 		return buildrt.Config{}, err
@@ -205,7 +270,6 @@ func buildConfigWithAbs(srcPath, registry string, seed int64, mode buildrt.Compi
 		EntryDir:    filepath.Dir(entryAbs),
 		Registry:    registry,
 		Seed:        seed,
-		Compile:     mode,
 		OptionsBlob: optionsBlob,
 		// A policy given at build time is baked in, so the shipped tool
 		// carries the author's declared permissions rather than running

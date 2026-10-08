@@ -12,8 +12,22 @@ import (
 // InvokeCompiled both key their degrade-to-interpreter decision on the
 // internal_error CLASS, so the two guards must not drift apart.
 func vmInternalError(rec any, src string) error {
-	return core.MakeBoruError("internal_error",
+	e := core.MakeBoruError("internal_error",
 		fmt.Sprintf("internal bytecode VM error: %v", rec), "", src, "")
+	e.VMDefer = true
+	return e
+}
+
+// vmEntryError is the VM's refusal to START — a nil program, a nil or
+// out-of-range unit reference — as the same marked class. It used to be a
+// plain fmt.Errorf, and while every plain Go error out of a compiled run was
+// read as a compiler defect that was enough; a plain error is the PROGRAM's
+// own result now (a handler's fmt.Errorf surfaces on both lanes untouched),
+// so the VM's own refusals carry VMDefer like every other error it builds.
+func vmEntryError(msg string) error {
+	e := core.MakeBoruError("internal_error", msg, "", "", "")
+	e.VMDefer = true
+	return e
 }
 
 // Foreign (detached) unit hosting — the half of InvokeCallback's contract that
@@ -62,9 +76,8 @@ func vmInternalError(rec any, src string) error {
 //
 // The panic guard is local rather than borrowed from the enclosing
 // runVMEntry's: a soundness bailout inside ONE callback must degrade THAT
-// callback (InvokeCompiled's C1 fence then retries it on CallBoru), not abort
-// the whole enclosing program and re-run it on the interpreter.
-func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Value) (res []core.Value, handled bool, err error) {
+// callback (InvokeCompiled reports it), not abort the whole enclosing program.
+func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Value, named bool) (res []core.Value, handled bool, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			res, handled, err = nil, true, vmInternalError(rec, vc.r.Source)
@@ -72,10 +85,13 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 	}()
 	// The fn-VALUE seam's foreign arm: the hosted root RET takes the CallBoru
 	// discipline, as enterCallbackUnit's does for an in-program ref.
-	prev := vc.rootRetTrim
-	vc.rootRetTrim = true
-	defer func() { vc.rootRetTrim = prev }()
-	res, err = vc.hostForeign(ref.Prog, vc.r, ref.Unit, args, ref.Captures)
+	prev, prevNamed := vc.rootRetTrim, vc.rootRetNamed
+	vc.rootRetTrim, vc.rootRetNamed = !named, named
+	defer func() { vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed }()
+	// The value's own frame (see pushRootArgs): its call args ride in from
+	// the seam, for the DynEnv unit that reads them.
+	defer pushRootArgs(vc.r, ref.Prog, args)()
+	res, err = vc.hostForeign(ref.Prog, vc.r, ref.Unit, args, ref.Captures, false)
 	return res, true, err
 }
 
@@ -89,20 +105,22 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 // CALLING registry for a closure (invokeClosureOn's contract: a module
 // sub-registry or a per-connection fork resolves names as its own dispatch
 // would).
-func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value) ([]core.Value, error) {
+func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value, flowEscapes bool) ([]core.Value, error) {
 	r := vc.r
 	sub := &vmContext{
-		p:       p,
-		r:       r,
-		ceiling: vc.ceiling,
+		p:           p,
+		r:           r,
+		flowEscapes: flowEscapes,
+		ceiling:     vc.ceiling,
 		// The seam the host was entered through decides the hosted root RET's
 		// return discipline (runForeignUnit: the fn-VALUE seam; invokeClosureOn:
 		// the token seam).
-		rootRetTrim: vc.rootRetTrim,
-		stepLimit:   vc.stepLimit,
-		steps:       vc.steps,
-		argsFloor:   r.Args.Depth(),
-		frameDepth:  vc.frameDepth,
+		rootRetTrim:  vc.rootRetTrim,
+		rootRetNamed: vc.rootRetNamed,
+		stepLimit:    vc.stepLimit,
+		steps:        vc.steps,
+		argsFloor:    r.Args.Depth(),
+		frameDepth:   vc.frameDepth,
 	}
 	// Registered first so it runs last of this function's defers: the budget is
 	// handed back on every path, a bailed body included.
@@ -128,7 +146,20 @@ func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit i
 			fr.Invoker = nil
 		}
 	}()
-	return sub.enterBodyUnit(reg, unit, bindUnitLocals(&p.Fns[unit], inputs, captures))
+	res, err := sub.enterBodyUnit(reg, unit, bindUnitLocals(reg, &p.Fns[unit], inputs, captures))
+	// A KEEP-DEFS unit hosted here (a run-time token body, StampTokenBody:
+	// NUR202) leaves the installs its run made on the sub-context's trail,
+	// for "the enclosing frame" to pop — and that frame is THIS context's
+	// current activation (the native that drove the body runs inside it),
+	// so the entries move to this trail, where the activation's RET, the
+	// run's end at root, or an error unwind truncates them exactly as its
+	// own. Every other unit unwound its trail at its own RET (nothing to
+	// move); a kept unit's raise keeps them too, the interpreter's
+	// leak-then-raise.
+	if len(sub.dynBinds) > 0 {
+		vc.dynBinds = append(vc.dynBinds, sub.dynBinds...)
+	}
+	return res, err
 }
 
 // closureProgram answers whether cl was minted by a program OTHER than the one

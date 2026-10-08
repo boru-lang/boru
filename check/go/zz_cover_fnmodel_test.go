@@ -60,13 +60,13 @@ func (f *fmRec) SetUnitParamTypes(_ int, pts []*core.Type, _ []*core.Value) { f.
 func (f *fmRec) SetUnitReturnPatterns(int, []*core.Value)                   { f.retPats = true }
 func (f *fmRec) SetUnitDecl(int, core.DeclSite)                             { f.declSet = true }
 
-func (f *fmRec) RecordUserCall(unit int, _ []core.Value, outs []core.Value, pos core.SrcPos) {
+func (f *fmRec) RecordUserCall(unit int, _ string, _, outs []core.Value, pos, _ core.SrcPos) {
 	f.userUnits = append(f.userUnits, unit)
 	f.userOuts = append(f.userOuts, outs)
 	f.userPos = append(f.userPos, pos)
 }
 
-func (f *fmRec) RecordUserPolyCall(word string, _ *core.Registry, _, _ []int, _ []core.SigImpl, _ []core.Signature, _ []core.Value, outs []core.Value, _ core.SrcPos) {
+func (f *fmRec) RecordUserPolyCall(word string, _ *core.Registry, _, _ []int, _ []core.SigImpl, _ []core.Signature, _ []core.Value, outs []core.Value, _ core.SrcPos, _ string, _ core.SrcPos) {
 	f.polyWords = append(f.polyWords, word)
 	f.polyOuts = append(f.polyOuts, outs)
 }
@@ -681,7 +681,7 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 			{Name: "c", Type: core.TInteger},               // recovered Any->declared
 			{Name: "d", Type: core.TString},                // disjunct carrier narrow
 			{Name: "e", Type: core.TAny},                   // stored-gradual Any->Any
-			{Name: "g"},                                    // root-node carrier keep
+			{Name: "g"},                                    // root node: its Type carrier
 			{Name: "h", Type: core.TInteger},               // plain generalisation
 		},
 		Returns: []*core.Type{core.TInteger},
@@ -722,8 +722,12 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	if !rec.startArgs[4].Parent.Equal(core.TAny) || !rec.startArgs[4].Dynamic {
 		t.Errorf("genArgs[4] = %+v, want gradual Any (stored-gradual generalisation)", rec.startArgs[4])
 	}
-	if rec.startArgs[5].Parent != nil || !rec.startArgs[5].Carrier || rec.startArgs[5].Data != nil {
-		t.Errorf("genArgs[5] = %+v, want the root-node carrier kept (Carrier set, no payload)", rec.startArgs[5])
+	// A root node (Any here) is a type VALUE: it generalises through
+	// core.ValueCarrier to the carrier of its type, as every type literal
+	// does (NUR323/NUR324) — no longer kept as a type-less carrier.
+	if want := core.ValueCarrier(core.NewTypeLiteral(core.TAny)); rec.startArgs[5].Parent == nil ||
+		!rec.startArgs[5].Parent.Equal(want.Parent) || !rec.startArgs[5].Carrier {
+		t.Errorf("genArgs[5] = %+v, want the root node's type carrier %+v", rec.startArgs[5], want)
 	}
 	if !rec.startArgs[6].Parent.Equal(core.TInteger) || !rec.startArgs[6].Carrier {
 		t.Errorf("genArgs[6] = %+v, want a plain Integer carrier", rec.startArgs[6])

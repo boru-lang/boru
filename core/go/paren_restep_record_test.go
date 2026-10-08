@@ -14,7 +14,7 @@ import "testing"
 // header): core/go is gated by its OWN suite at a 100% floor, so a decision
 // function reached only from above reads as uncovered there. Every negative
 // carries its reason — a record one case too wide makes the compiler APPLY a
-// value the interpreter places, which is a wrong answer rather than a refusal.
+// value the interpreter places, which is a wrong answer rather than a compile failure.
 func TestRecordParenReStep(t *testing.T) {
 	carrier := func() Value {
 		v := NewCarrier(TFunction)
@@ -91,6 +91,11 @@ func TestRecordParenReStep(t *testing.T) {
 			tape: []Value{carrier(), NewInteger(2)}, closeIdx: 3, noCheck: true, want: false,
 			why: "the interpreter runs with no analysis state at all; the record is a check-pass artefact",
 		},
+		{
+			name: "a trailing carrier survivor is re-stepped too",
+			tape: []Value{NewInteger(2), carrier()}, closeIdx: 3, want: true,
+			why: "the main loop steps EVERY survivor after the rewind: `(2 (mk 1)) 10` re-steps the closure over the 10 (NUR184)",
+		},
 	}
 
 	for _, tc := range cases {
@@ -103,8 +108,24 @@ func TestRecordParenReStep(t *testing.T) {
 			}
 			e.recordParenReStep(0, tc.closeIdx, tc.park, tc.reach)
 			got := e.Registry.Check != nil && len(e.Registry.Check.ParenReSteppedFnIDs) > 0
-			if got && len(tc.tape) > 0 && !e.Registry.Check.ParenReSteppedFnIDs[tc.tape[0].ID] {
-				t.Errorf("recorded an ID other than the lead's: %v", e.Registry.Check.ParenReSteppedFnIDs)
+			if got {
+				// Every marked ID is a survivor's, and every fn-valued
+				// survivor is marked (the lead alone left a trailing closure
+				// read as placed, NUR184).
+				for id := range e.Registry.Check.ParenReSteppedFnIDs {
+					found := false
+					for _, v := range tc.tape {
+						found = found || v.ID == id
+					}
+					if !found {
+						t.Errorf("recorded an ID no survivor carries: %s", id)
+					}
+				}
+				for _, v := range tc.tape {
+					if (IsFnTypedCarrier(v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
+						t.Errorf("survivor %s is callable but unmarked: %v", v.ID, e.Registry.Check.ParenReSteppedFnIDs)
+					}
+				}
 			}
 			if got != tc.want {
 				t.Errorf("recorded = %v, want %v — %s", got, tc.want, tc.why)
@@ -122,5 +143,43 @@ func TestRecordParenReStep(t *testing.T) {
 	e.recordParenReStep(0, 3, 0, false)
 	if !e.Registry.Check.ParenReSteppedFnIDs["fnc-1"] || !e.Registry.Check.ParenReSteppedFnIDs["dyn-1"] {
 		t.Errorf("second record replaced the first: %v", e.Registry.Check.ParenReSteppedFnIDs)
+	}
+}
+
+// TestMarkReStepped pins the shared setter both re-step routes use — an
+// enclosing paren's rewind (recordParenReStep) and a `word` splice's
+// expansion (stepLiteral's splice arm, NUR181's `def dbl word (mk) end 5
+// dbl`): the same "might be callable" test, keyed by value ID, quoted and
+// ID-less values and a run with no analysis state recording nothing, and
+// the map reused across marks.
+func TestMarkReStepped(t *testing.T) {
+	carrier := func(id string) Value {
+		v := NewCarrier(TFunction)
+		v.ID = id
+		return v
+	}
+	dynAny := NewCarrier(TAny)
+	dynAny.Dynamic = true
+	dynAny.ID = "dyn-2"
+	quoted := carrier("fnc-q")
+	quoted.Quoted = true
+	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
+	for _, v := range []Value{quoted, carrier(""), NewInteger(1), NewCarrier(TInteger)} {
+		e.markReStepped(v)
+	}
+	if len(e.Registry.Check.ParenReSteppedFnIDs) != 0 {
+		t.Errorf("a quoted, ID-less, concrete or non-callable value records nothing: %v", e.Registry.Check.ParenReSteppedFnIDs)
+	}
+	e.markReStepped(carrier("fnc-2"))
+	e.markReStepped(dynAny)
+	if !e.Registry.Check.ParenReSteppedFnIDs["fnc-2"] || !e.Registry.Check.ParenReSteppedFnIDs["dyn-2"] {
+		t.Errorf("a fn-typed carrier and a fn-admitting dynamic value are marked, the map reused: %v", e.Registry.Check.ParenReSteppedFnIDs)
+	}
+	// No analysis state: nothing to record on, no panic.
+	for _, e := range []*Engine{{}, {Registry: &Registry{}}} {
+		e.markReStepped(carrier("fnc-3"))
+		if e.Registry != nil && e.Registry.Check != nil {
+			t.Error("a run with no check state records nothing")
+		}
 	}
 }

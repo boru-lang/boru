@@ -61,10 +61,10 @@ func TestChildTypeAngleMarkerLowers(t *testing.T) {
 		t.Errorf("got %v, want [1]", out)
 	}
 	// Negative: a child annotation naming the wrong instantiation still
-	// refuses — the lowering must not loosen the unify.
+	// declines — the lowering must not loosen the unify.
 	bad := `def Box<T> class {value:T} def xs:[:Box<String>] [(make Box<Integer> {value:1})] end xs`
 	if _, err := a.RunInterp(bad); err == nil || !strings.Contains(err.Error(), "not unify") {
-		t.Errorf("wrong child instantiation must refuse to bind, got %v", err)
+		t.Errorf("wrong child instantiation must decline to bind, got %v", err)
 	}
 }
 

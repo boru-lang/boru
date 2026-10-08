@@ -10,7 +10,10 @@ import "fmt"
 // sides are in the family, sort by shape rank so the more-general side
 // comes first. This collapses the mirrored "aTyped vs concrete" and
 // "concrete vs bTyped" arms in the prior implementation into one path.
-func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *UnifyError) {
+//
+// r is the enclosing chain's registry (nil when unarmed), handed to
+// every element / child recursion.
+func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, *UnifyError) {
 	// Bare FlexList type literal: nominal-subtype rule — unifies only
 	// with a concrete FlexList (or another FlexList literal). A plain
 	// list is NOT a FlexList; the supertype literal `List` accepts
@@ -66,7 +69,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Un
 		}
 		aTT, _ := AsTableType(a)
 		bTT, _ := AsTableType(b)
-		unified, err := unifyRecordTypes(aTT.Record, bTT.Record)
+		unified, err := unifyRecordTypes(aTT.Record, bTT.Record, r)
 		if err != nil {
 			return Value{}, err
 		}
@@ -78,7 +81,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Un
 	if sa == ShapeTypedList && sb == ShapeTypedList {
 		aCT, _ := AsChildType(a)
 		bCT, _ := AsChildType(b)
-		unified, err := unifyInner(aCT.Child, bCT.Child)
+		unified, err := unifyInner(aCT.Child, bCT.Child, r)
 		if err != nil {
 			return Value{}, err.withPath("child")
 		}
@@ -95,7 +98,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Un
 			typed, concrete = b, a
 		}
 		ct, _ := AsChildType(typed)
-		return unifyTypedListWithConcrete(concrete, ct.Child)
+		return unifyTypedListWithConcrete(concrete, ct.Child, r)
 	}
 
 	// Both concrete lists → element-by-element.
@@ -107,7 +110,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Un
 		return Value{}, unifyFail(
 			fmt.Sprintf("list length mismatch: %d vs %d", len(aElems), len(bElems)), a, b)
 	}
-	result, err := unifyZip(len(aElems), sliceAt(aElems), sliceAt(bElems))
+	result, err := unifyZip(len(aElems), sliceAt(aElems), sliceAt(bElems), r)
 	if err != nil {
 		return Value{}, err
 	}
@@ -129,19 +132,22 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Un
 // replace the element's data with the type name. Return the source
 // element reparented to the canonical minted type instead — the same
 // construction `def x:Foo 42` performs at scalar typed defs.
-// Non-swap results pass through untouched.
-func reparentSwappedElem(src, unified Value) Value {
+// Non-swap results pass through untouched. r is the enclosing chain's
+// registry: when armed, the minted type is resolved to its canonical
+// node (CanonicalType) before the reparent, so a retagged element
+// carries the registry's own *Type pointer.
+func reparentSwappedElem(src, unified Value, r *Registry) Value {
 	if !IsBareTypeNode(unified) || !IsConcrete(src) {
 		return unified
 	}
 	t := ValueType(unified)
-	if r := currentUnifyRegistry(); r != nil {
+	if r != nil {
 		t = CanonicalType(r, t)
 	}
 	return ReparentValue(src, t)
 }
 
-func unifyTypedListWithConcrete(concrete, childType Value) (Value, *UnifyError) {
+func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
 	if !IsConcrete(concrete) {
 		// A carrier (a check-mode abstract list with no readable elements) tags
 		// gradually; its concrete elements are validated at runtime.
@@ -151,12 +157,12 @@ func unifyTypedListWithConcrete(concrete, childType Value) (Value, *UnifyError) 
 	}
 	lst, _ := AsList(concrete) // concrete list-family (plain or flex) → readable
 	elems := lst.Slice()
-	result, err := unifyZip(lst.Len(), constAt(childType), sliceAt(elems))
+	result, err := unifyZip(lst.Len(), constAt(childType), sliceAt(elems), r)
 	if err != nil {
 		return Value{}, err
 	}
 	for i := range result {
-		result[i] = reparentSwappedElem(elems[i], result[i])
+		result[i] = reparentSwappedElem(elems[i], result[i], r)
 	}
 	var out Value
 	if IsFlexList(concrete) {

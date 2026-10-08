@@ -210,7 +210,7 @@ func TestGetNodeReturnsDynamicDisjunctSchema(t *testing.T) {
 func TestIOValidationMirrors(t *testing.T) {
 	r := mirrorReg(t)
 
-	// exit: the RANGE refusal is mirrored; a valid code is NOT — its
+	// exit: the RANGE compile failure is mirrored; a valid code is NOT — its
 	// runtime raise is the boru/exit control error, which is how the
 	// word works, not a program fault.
 	ex := exitCodeMirror()

@@ -7,7 +7,7 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// Per-alternative disjunct dispatch (design/checker-accuracy-review.10.md
+// Per-alternative disjunct dispatch (design/legacy/checker-accuracy-review.10.ignore
 // A1): a strict disjunct input must dispatch as the JOIN of its
 // alternatives' first-match dispatches, never as a single first-match
 // on the whole disjunct.

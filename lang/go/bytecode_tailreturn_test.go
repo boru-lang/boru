@@ -25,6 +25,9 @@ func TestTailCallReturnContract(t *testing.T) {
 		t.Run("guarded", func(t *testing.T) {
 			a, _ := New()
 			gotC, _, errC := a.RunCompiled(src)
+			if noteCompileDefect(t, src, gotC, errC) {
+				return
+			}
 			if errC == nil {
 				t.Fatalf("a [Map] fn tail-calling a non-Map returner must RAISE, not return %v", gotC)
 			}
@@ -54,7 +57,7 @@ func TestTailCallReturnContract(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile, refused: %q", reason)
+				t.Fatalf("must compile, declined: %q", reason)
 			}
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {

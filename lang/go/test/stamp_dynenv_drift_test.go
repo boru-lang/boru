@@ -40,7 +40,7 @@ func stampEventsForNet(t *testing.T, src string) []core.StampEvent {
 // (`do … error …`) that arms the program-wide dynEnv mode. Before the fix
 // the handler's unit was planned BEFORE the arming (no dyn-bind source
 // promotion) and lowered AFTER it (widened — every def needs its
-// OpBindDynScope twin), so Finalize refused "dynamic-scope def `old` of
+// OpBindDynScope twin), so Finalize declined "dynamic-scope def `old` of
 // unpromoted computed value" and the whole detached stamp died ("finalize
 // left the unit unstamped"). The probes now carry their terminal dynEnv
 // back into the real pass, so every unit plans under the widened mode.
@@ -131,7 +131,7 @@ module [
     def ok (do b error [ drop false ])
     if ok [ 1 ] [ 0 ]
   ]]
-  def srv fn [[opts:Map] [Any] [
+  def srv fn [[opts:Map] [Any Any Any] [
     def store (mk-store)
     risky [ call {op:"append" key: "k" chunk: "c"} store drop true ] store
     risky [ call {op:"append" key: "k" chunk: "c"} store drop true ] store
@@ -142,7 +142,10 @@ module [
 `, `DrfT.srv {}`)
 	// Two risky calls (1 each: handled-ok flags) then the size read: 2
 	// iff BOTH appends accumulated through the handler's computed `old`
-	// binding (the dyn-bound def the drift refused).
+	// binding (the dyn-bound def the drift declined). srv declares the
+	// three returns it leaves: a named call's count is the frame's contract
+	// on the stamped path too (NUR191), where a one-return declaration
+	// used to let all three through.
 	if len(out) != 3 {
 		t.Fatalf("srv result stack = %v, want three values", out)
 	}

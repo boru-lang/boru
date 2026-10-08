@@ -12,10 +12,10 @@
 import "boru:serve"
 import "boru:rand" # Rand.uuid for id generation
 
-export "MemStore" {New:New/v}
+export "MemStore" {New:new/v}
 
 # `New {}` -> Service  (mount it on an entity bus; see usage.boru)
-def New fn opts:Map Service [
+def new fn opts:Map Service [
   def svc (service {data:{}}) # data: collection-key -> {id -> row}
   # --- save: id present => update, absent => insert (store-assigned id) ----
   add {role:"entity" cmd:"save"}

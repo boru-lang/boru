@@ -2,7 +2,7 @@
 
 The `parser` module turns boru **source text** into `[]core.Value`. It is
 the front end and nothing else: no evaluation, no analysis, no compilation.
-Cut out of `eng/go/parser` (design/ENG-FOUR-PIECE.0.md's split, extended
+Cut out of `eng/go/parser` (design/legacy/ENG-FOUR-PIECE.0.ignore's split, extended
 below the kernel rather than across it).
 
 Stage 3 of parsing lives here in full — the tabnas/jsonic lexer setup, the

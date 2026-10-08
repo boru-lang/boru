@@ -169,9 +169,9 @@ func TestWatchWordErrors(t *testing.T) {
 	if err := runBoruError(t, r, []Value{NewWord("watch"), pathV("ghost"), body}); err == nil {
 		t.Error("expected watch of an absent path to error")
 	}
-	// A non-concrete body list is refused.
+	// A non-concrete body list is declined.
 	if _, err := doWatchWord([]Value{pathV("d"), NewTypeLiteral(TList)}, r, MintWatcherType(r), Value{}); err == nil {
-		t.Error("expected a type-literal body to be refused")
+		t.Error("expected a type-literal body to be declined")
 	}
 	// unwatch of a non-Watcher is a clean error.
 	if _, err := doUnwatchWord([]Value{NewInteger(1)}, r); err == nil {
@@ -227,8 +227,8 @@ func TestWatchCoverageArms(t *testing.T) {
 	if _, err := doUnwatchWord([]Value{h}, r); err == nil || !strings.Contains(err.Error(), "unwatch") {
 		t.Errorf("failing stop through unwatch = %v", err)
 	}
-	// The not-installed stub refuses Watch.
+	// The not-installed stub declines Watch.
 	if _, _, err := (notInstalledFileOps{}).Watch("p", capabilities.WatchOpts{}); err == nil {
-		t.Error("not-installed Watch must refuse")
+		t.Error("not-installed Watch must decline")
 	}
 }

@@ -3,7 +3,7 @@ package check
 import core "github.com/boru-lang/boru/core/go"
 
 // Store-identity context typing — stage 1 of
-// design/checker-precision-fronts.0.md §2. CheckState.ContextTypes is ONE
+// design/legacy/checker-precision-fronts.0.ignore §2. CheckState.ContextTypes is ONE
 // flat string-keyed namespace for the whole check pass, so two stores'
 // same-named keys JOIN and every store read is answered from a global
 // map. The StoreShapeInfo payload keys the same best-effort typing by
@@ -29,11 +29,19 @@ import core "github.com/boru-lang/boru/core/go"
 //   - writes go to BOTH the shape and the flat map, so unshaped readers
 //     elsewhere in the pass lose nothing.
 //
-// Compile-pass discipline: minting, reads, and writes are all gated to
-// plain (non-Compiling) check passes. Store and flex programs COMPILE
-// natively today through the flat-map typing, and the compiled stream
-// must stay byte-identical — the shape machinery is checker precision,
-// not compile coverage (the CodeEffectInfo discipline).
+// Compile-pass discipline: the CONTEXT / Store shapes (contextReturns,
+// set/get over a Store) are gated to plain (non-Compiling) check passes —
+// store programs compile natively through the flat-map typing and that
+// stream stays byte-identical. The FLEX shapes are not: `flex` mints on
+// both passes, a FlexMap / FlexList write records into its receiver's shape
+// on both (2026-09-26 — a member read then carries the adopted bound, so
+// `set b 9 f.a` commits the FlexMap overload and its one result instead of
+// the dynamic(Any) member's Class overload and none, flex.tsv L228/L230/
+// L236), and the compile pass keeps the legacy fresh result carrier so the
+// recording's operand identities do not move. Every read is GRADUAL, so a
+// compiled consumer re-matches at run time and the VM enforces the result
+// count it committed: a shape a hidden writer invalidated defers loudly,
+// it never runs the wrong overload.
 
 // payloadMarker — see payload.go's catalogue; registered there.
 
@@ -98,6 +106,92 @@ func MintFlexShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	return out, true
 }
 
+// MintFlexListShapeCarrier is MintFlexShapeCarrier's LIST twin: a CONCRETE
+// plain list — the operand of `flex`, or a list written into a shaped flex
+// container — becomes an abstract FlexList carrier whose StoreShapeInfo
+// records the ELEMENT join in Vals (an index is not a stable key: push /
+// unshift / del shift every position, so the shape claims one bound for
+// every element). Each element is adopted the way FlexDeepCopy adopts it
+// (a nested plain map becomes a FlexMap shape, a nested list a FlexList
+// shape), and a dispatch-bearing element poisons the join (RecordVal), so
+// reads keep the dynamic(Any) hatch. The writers (`push` / `unshift` /
+// `append` / indexed `set`) join into the same Vals; a read surfaces the
+// join GRADUAL (ShapeFieldRead), a bound the runtime re-match discharges.
+//
+// ok=false declines (non-concrete, a typed / table list — the D2 element
+// tag owns those — or past the depth cap) and the caller keeps its bare
+// FlexList carrier.
+func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
+	if depth > flexShapeMaxDepth {
+		return core.Value{}, false
+	}
+	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TList) ||
+		core.IsTypedList(src) || core.IsTableType(src) {
+		return core.Value{}, false
+	}
+	l, err := core.AsList(src)
+	if err != nil {
+		return core.Value{}, false
+	}
+	out := core.NewStoreShapeCarrier(core.TFlexList, 0)
+	ss, _ := StoreShapeOf(out)
+	for _, el := range l.Slice() {
+		ss.RecordVal(AdoptShapeValue(el, depth+1))
+	}
+	return out, true
+}
+
+// PoisonFlexShapes poisons the store shape of v and of every shaped
+// container reachable from it — through the shape's own claims and through a
+// concrete list or map holding one — for a writer the shapes cannot see
+// (NUR315): a user fn v is passed to may write through its parameter's alias.
+func PoisonFlexShapes(v core.Value) {
+	poisonShapes(v, map[*core.StoreShapeInfo]bool{}, 0)
+}
+
+func poisonShapes(v core.Value, seen map[*core.StoreShapeInfo]bool, depth int) {
+	if depth > flexShapeMaxDepth {
+		return
+	}
+	var nested []core.Value
+	if ss, ok := StoreShapeOf(v); ok {
+		if seen[ss] {
+			return
+		}
+		seen[ss] = true
+		nested = append(nested, ss.Vals)
+		for _, kv := range ss.KeyTypes {
+			nested = append(nested, kv)
+		}
+		ss.Poison()
+	}
+	switch p := v.Data.(type) {
+	case core.ListPayload:
+		nested = append(nested, p.Elems...)
+	case core.MapPayload:
+		if p.M != nil {
+			for _, k := range p.M.Keys() {
+				el, _ := p.M.Get(k)
+				nested = append(nested, el)
+			}
+		}
+	}
+	for _, n := range nested {
+		poisonShapes(n, seen, depth+1)
+	}
+}
+
+// FlexListShapeOf returns the shape of a store-shaped FlexList CARRIER (the
+// element-join shape MintFlexListShapeCarrier mints), or ok=false for
+// anything else — a FlexMap / patrun / context shape keys its writes, so an
+// element read or write must not reach its Vals.
+func FlexListShapeOf(v core.Value) (*core.StoreShapeInfo, bool) {
+	if v.Parent == nil || !v.Parent.ConformsTo(core.TFlexList) {
+		return nil, false
+	}
+	return StoreShapeOf(v)
+}
+
 // AdoptShapeValue is the static twin of AdoptIntoFlex for a value
 // WRITTEN into a shaped flex container (a `set` value, a minted field):
 // a concrete plain map becomes a nested FlexMap shape, a concrete
@@ -109,6 +203,9 @@ func AdoptShapeValue(v core.Value, depth int) core.Value {
 		return v // flex handles share
 	}
 	if nested, ok := MintFlexShapeCarrier(v, depth); ok {
+		return nested
+	}
+	if nested, ok := MintFlexListShapeCarrier(v, depth); ok {
 		return nested
 	}
 	if core.IsConcrete(v) && v.Parent != nil {

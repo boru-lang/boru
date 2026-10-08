@@ -1,5 +1,7 @@
 package core
 
+import "strings"
+
 // ApplyBindTwin — the runtime half of §6.5's rollback-and-replay regime
 // (design/FULL-COMPILATION.0.md; the rollback half is binding_sandbox.go).
 //
@@ -13,22 +15,51 @@ package core
 // (test/go/langspec/bind_replay_sandbox_test.go) — is exactly the stack
 // the check pass saw at that moment.
 //
-// THE CARRIER-CLASS SKIP is the one deliberate divergence from a verbatim
-// replay, and it is a PAIRING, not an omission. A top-level def of a
-// non-concrete, non-bare-node value (the captured entry is the check
-// pass's CARRIER, not the runtime value) is exactly lowerDynBind's
-// needGlobal class: that def also emitted an OpBindGlobal, which under the
-// regime runs in Push mode (GlobalBindSpec.Push) and installs the RUNTIME
-// value where the interpreter's `def` would. Twin-then-bind is the stream
-// order (InstallDef notes before RecordDynBind stamps), so the skip leaves
-// the push to the op that has the real value — replaying the carrier AND
-// pushing the runtime value would double-install, and replaying the
-// carrier alone would resurrect the very keep-the-installs staleness the
-// flip exists to remove. The same predicate on the same entry decides both
-// sides, so the pair cannot drift apart.
-func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
+// THE WRITE-BACK PAIRING is the one deliberate divergence from a verbatim
+// replay, and it is a PAIRING, not an omission. A top-level def whose kept
+// binding is not the runtime value — a carrier, and since the sixty-third
+// increment any computed compound (rootBindWritesBack, compiler/go/lower.go)
+// — also emitted an OpBindGlobal, which under the regime runs in Push mode
+// (GlobalBindSpec.Push) and installs the RUNTIME value where the
+// interpreter's `def` would. Twin-then-bind is the stream order (InstallDef
+// notes before RecordDynBind stamps), so the skip leaves the push to the op
+// that has the real value — replaying the capture AND pushing the runtime
+// value would double-install (measured in review of #459: `def b [add 1 2]`
+// left two levels, and `undef b` then resolved `b` to the replayed
+// `[Integer]`), and replaying the capture alone would resurrect the very
+// keep-the-installs staleness the flip exists to remove. The pairing is
+// carried on the twin itself (BindTransition.WrittenBack, set by the
+// lowering that emitted the write-back), so the compiler's ONE decision
+// drives both sides where a write-back exists; a predicate re-derived here
+// from the captured entry's shape was how the two drifted apart.
+//
+// THE CARRIER SKIP stands beside it, and it is a different fact: a captured
+// CARRIER is not a value at all — the check pass's placeholder for one —
+// and it is never what the run binds, whether the real install is a
+// write-back, a BIND_DYN_SCOPE inside a loop body (`for 2 [ f  def k 9 ]`,
+// whose body twin captures a carrier and is placed before the loop), or
+// nothing. Replaying it would bind the placeholder; the arm that binds the
+// real value is elsewhere by construction.
+//
+// A TYPE twin is written back too when the def's body holds a refinement
+// over a bound the pass did not know (NUR308): the run installs the type
+// itself (OpBindTypeRun, RunTypeInstall) from the body it computed, so the
+// twin re-installs nothing — neither the pass's node nor its name's parts,
+// which that install reserves.
+//
+// THE TYPE NAME is the one thing a twin re-checks rather than replays. The
+// rollback frees the part reservation the pass made for a type binding it
+// rolls back (BindingSandbox.typeParts), so a type twin reserves its name
+// again here, as InstallType did — and validates it first exactly as
+// InstallType's front door does (a live same-named type binding is a
+// redefinition and skips the check): a RUN-time mint of the same name that
+// ran ahead of the twin's position — a fn-body `def T` the interpreter ran
+// through the callback seam — holds the part, and the interpreter's `def`
+// at this position raises on it. That raise is the returned error; every
+// other transition returns nil.
+func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 	if r == nil {
-		return
+		return nil
 	}
 	switch tr.Kind {
 	case BindUndef:
@@ -36,9 +67,7 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 		// deliberately zero (check_state.go). Retirement mirrors basic's
 		// undef: only a node THIS binding minted; an adopted alias node
 		// stays in the lattice.
-		if e, ok := r.Defs.PopEntry(tr.Name); ok && e.TypeDef != nil && e.Minted {
-			r.Types.Retire(e.TypeDef)
-		}
+		PopLiveBinding(r, tr.Name)
 	case BindSigUndef:
 		applyTwinSigUndef(r, tr.Name, entry.Body)
 	case BindDefReplace:
@@ -48,29 +77,74 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 		// own Push-mode OpBindGlobal via the carrier-class skip above, so
 		// a computed replacement still nets zero: twin pops, bind pushes.
 		r.Defs.PopEntry(tr.Name)
-		applyTwinPush(r, tr.Name, entry)
+		return applyTwinPush(r, tr, entry)
 	default: // BindDef, BindTypeInstall
-		applyTwinPush(r, tr.Name, entry)
+		return applyTwinPush(r, tr, entry)
 	}
+	return nil
 }
 
 // applyTwinPush re-installs one captured push entry, honouring the
-// carrier-class skip documented on ApplyBindTwin. The three install arms
+// write-back pairing documented on ApplyBindTwin. The three install arms
 // are the sandbox harness's proven replay verbatim: a plain value pushes,
 // a minted type binding re-pushes its node (the mint itself was retained
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
-func applyTwinPush(r *Registry, name string, entry DefEntry) {
-	if entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body) {
-		return
+func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
+	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body)) {
+		return nil
 	}
 	switch {
 	case entry.TypeDef == nil:
-		r.Defs.Push(name, entry.Body)
+		r.Defs.Push(tr.Name, entry.Body)
+		return nil
 	case entry.Minted:
-		r.Defs.PushType(name, entry.TypeDef, entry.Body)
+		if err := TypeNameFree(r, tr.Name); err != nil {
+			return err
+		}
+		// The node must be LIVE in the ID index again, not only bound. The
+		// mint normally survives the rollback (readmitRetired leaves mints
+		// in place), but when the check pass ALSO retired it — `def Point
+		// class {…} … undef Point` — the rollback's snapshot predates the
+		// mint, so nothing re-admits it, and every OpPushType between this
+		// twin and the undef twin met an unresolvable type operand where the
+		// interpreter's `make Point` resolved it (class.tsv L98–L101,
+		// 2026-09-26). Adopt is idempotent and keeps the canonical pointer;
+		// the undef twin retires it again at its own position.
+		r.Types.Adopt(entry.TypeDef)
+		r.Defs.PushType(tr.Name, entry.TypeDef, entry.Body)
 	default:
-		r.Defs.PushTypeAdopted(name, entry.TypeDef, entry.Body)
+		if err := TypeNameFree(r, tr.Name); err != nil {
+			return err
+		}
+		r.Defs.PushTypeAdopted(tr.Name, entry.TypeDef, entry.Body)
+	}
+	ReserveTypeParts(r, tr.Name)
+	return nil
+}
+
+// TypeNameFree is the name check a replayed type binding runs before its
+// push — the part-conflict half of validateTypeName, against the parts the
+// run has reserved so far (ApplyBindTwin's doc; a fn unit's per-call bind,
+// eng's OpBindFnType, asks it too). A live same-named type binding is a
+// redefinition and passes, as it does at the front door. The raise carries
+// the front door's own code and detail.
+func TypeNameFree(r *Registry, name string) error {
+	if r.Defs.IsType(name) {
+		return nil
+	}
+	if err := ValidateTypeNameParts(name, r.IsKnownPart); err != nil {
+		return &BoruError{Code: "type_error", Detail: err.Error()}
+	}
+	return nil
+}
+
+// ReserveTypeParts reserves every part of a type binding's name, as
+// InstallTypeBody does after its install — the replay's and the per-call
+// bind's half of the same reservation.
+func ReserveTypeParts(r *Registry, name string) {
+	for _, p := range strings.Split(name, "/") {
+		r.RegisterPart(p)
 	}
 }
 

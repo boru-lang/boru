@@ -31,7 +31,7 @@ func TestCaseInClosure(t *testing.T) {
 		a, _ := New()
 		prog, reason, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (case-in-closure), but refused: %q", c.src, reason)
+			t.Errorf("%q: must compile (case-in-closure), but declined: %q", c.src, reason)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
@@ -39,6 +39,9 @@ func TestCaseInClosure(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -54,6 +57,9 @@ func TestCaseInClosure(t *testing.T) {
 	} {
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {

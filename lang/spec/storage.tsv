@@ -108,7 +108,7 @@ None dot (quote x)	None
 # 5. Type-literal rejection		
 # ====================================================================		
 # `get` rejects bare type literals with the standard signature_error		
-# (the matcher refuses non-concrete containers before the handler		
+# (the matcher declines non-concrete containers before the handler		
 # runs).		
 		
 get 'a' Map	ERROR:signature_error	bare Map type literal cannot be indexed

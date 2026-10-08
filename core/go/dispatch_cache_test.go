@@ -199,7 +199,7 @@ func TestDispatchCacheStateNilReceiver(t *testing.T) {
 
 // TestDispatchCacheCheckModeBypass pins that check mode never serves the
 // cache: it always returns a fresh (uncached) aggregate, so the
-// pointer-identity contracts of the refusal/emit passes hold.
+// pointer-identity contracts of the compile failure/emit passes hold.
 func TestDispatchCacheCheckModeBypass(t *testing.T) {
 	r, err := NewRegistry()
 	if err != nil {

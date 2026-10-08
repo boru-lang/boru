@@ -1,0 +1,539 @@
+# Local Reasoning for Global Properties in boru: Applicability Report
+
+## Scope
+
+Evaluate boru against the thesis of Laurence Tratt's *Local Reasoning for
+Global Properties* (2026-06-30,
+[tratt.net](https://tratt.net/laurie/blog/2026/local_reasoning_for_global_properties.html)):
+that the most valuable thing a programming language can do — especially
+in a world where AI writes locally-excellent but globally-weak code — is
+let a reader establish a **global** property of the program by **local**
+inspection, the way Rust's ownership + `Send`/`Sync` make data-race
+freedom readable off an ordinary function signature.
+
+Two questions:
+
+1. To what extent does boru's existing design already deliver "local
+   representation of global properties"?
+2. What should be added or modified to genuinely achieve it?
+
+**Method.** This report is grounded in the documentation and design
+notes, plus **live probes against the built binary** (`boru 0.1.0-dev`,
+git `d5bcd36`): paired `boru check -e` / `boru do` experiments, policy
+runs under `-deny`/`-perms-inline`, and `await` shared-mutation stress
+tests. Where docs and binary disagree, the binary's behaviour is
+reported. Enforcement levels are used precisely throughout:
+
+- **static** — `boru check` (or def/parse time) rejects before execution;
+- **runtime** — rejected during execution, per boundary crossing;
+- **advisory** — surfaced by tooling, non-gating;
+- **convention** — documented rule only, nothing enforces it.
+
+This is a companion to
+[`effect-oriented-programming-in-boru-report.0.ignore`](effect-oriented-programming-in-boru-report.0.ignore),
+which reached one of the same conclusions (effect rows) from the EOP
+direction.
+
+## The article's claim, compressed
+
+Rust enforces a surprising global property — no data races — through
+purely local rules: ownership moves, `Send` ("may move to another
+thread"), `Sync` ("may be shared"), auto-derived and surfacing in
+ordinary signatures (`T: Send + 'static`). A reader verifies the global
+property from the local signature; violations are comprehensible
+compile-time errors; no sublanguage is needed. Tratt's corollary for AI:
+generators are locally excellent and globally weak, and the visible
+symptom is **unnecessary defensive checks** — which mislead later
+readers about reachable states. He distinguishes *assertions* (abort:
+"if this fails, the programmer misunderstood") from *defensive checks*
+(continue gracefully: "not sure if this can happen"), and names effect
+systems, isolation, non-interference, resource cleanup, and performance
+bounds as candidate global properties. Pony is cited as reaching
+data-race freedom by different means.
+
+## Scorecard
+
+| Mechanism | Global property | Locally visible where | Enforcement |
+|---|---|---|---|
+| Bare-refinement newtypes (`refine Integer`) | Nominal segregation of same-representation domains | Parameter/return annotation | static + runtime, symmetric |
+| Predicate subset types (`Integer gt 10`) | Invariant carried by every value in a typed position | Parameter/return annotation | runtime symmetric; static for literals/concrete carriers; **returns runtime-only** |
+| One membership rule (`v.Is(t)` everywhere) | Boundary coherence: an annotation means one thing program-wide | Any type annotation | runtime (checker mirrors it) |
+| Declared fn returns | Caller reasons from signature, never body | Signature | static for lattice types; runtime for predicate types |
+| Sealed dispatch (imports cannot change builtin overloads) | Dispatch stability under composition | Core signature table | static structure |
+| Generics: invariance + `extends` bounds | No covariant-container unsoundness; bound violations loud | `gen [T: Bound]` signature | static (check) + runtime parity |
+| Sealed classes (`sealed_field`, typed `make`/`set`) | Instance shape/type invariants | `class` declaration | `make` static; `set` runtime |
+| Family-restricted `lt`/`gt`/`cmp` (`[boru/incomparable]`) | No silent cross-family ordering anywhere | Call site | static for literals + runtime |
+| Module isolation (fresh engine, explicit exports, read-only export map) | Module = interface-only unit | `export` statement | by construction |
+| Macro hygiene (gensym-renamed binders) | Call-site bindings untouched by any macro | Macro call site | expansion-time, automatic |
+| `Vm.run-with {policy}` (∩-composed attenuation) | Whole-subprogram effect bound | One call site | runtime |
+| Capability/policy layer (`--perms`, blame chains) | Whole-engine effect bound | The policy artifact (not the code) | runtime |
+| Vault grant tokens (scoped, TTL, hashed, revocable) | Attenuated authority for agents | The token's own description | runtime (ops layer) |
+| TCO guarantee + step budget + tape ceiling | Bounded space/CPU with honest failure taxonomy | Documented conditions; config | runtime |
+| Errors as values at `do […]` boundaries | Failure-handling sites syntactically enumerable | `do`/`error` sites | runtime |
+| Executable TSV spec + accuracy ratchets | Spec–implementation coherence | CI | tooling |
+| **Effects in signatures** | — | **absent** | — |
+| **Send/Sync analogue at `await`** | — | **absent** | — |
+| **Redundant-guard detection** | — | **absent** | — |
+| **Declared error channel** | — | **absent** | — |
+| **Guaranteed finalizers** | — | **absent** (RFC exists) | — |
+
+## What boru already delivers
+
+### 1. Signature-carried value contracts — the genuine Rust analogue
+
+This is boru's strongest instance of the article's pattern, and it is
+better than a casual reading suggests.
+
+**Newtypes are exact.** `def UserId (refine Integer)` makes a raw `42`
+statically *and* dynamically not-a-`UserId` at every boundary —
+parameter, return, `is`, `make` field — with explicit construction the
+only door in. Probe: `f 42` against `[x:UserId]` is a gating
+`no_signature` at check time and `[boru/signature_error]` at runtime;
+static and runtime agree in both directions. A reader seeing `x:UserId`
+knows, from the signature alone, that the value was deliberately
+blessed somewhere. This is the `newtype`/tuple-struct discipline with
+no compile step required to hold it up.
+
+**Predicate subset types make the signature the precondition.** With
+`def Big (Integer gt 10)`, a body with parameter `n:Big` may assume
+`n > 10` with **zero in-body guards**, because every boundary crossing
+anywhere in the program re-ran the predicate — and because
+[`../REFINE-NEWTYPE-VS-SUBSET.10.md`](../REFINE-NEWTYPE-VS-SUBSET.10.md)'s
+symmetry rule means the same is licensed for values coming *out* of
+`Big`-returning words. This is precisely Tratt's "look at the
+signature, know the global fact" — at **runtime-contract strength**
+(per-crossing checks) rather than Rust's static-proof strength. The
+checker adds a static layer where it can decide: literal and concrete
+arguments are evaluated against the predicate at check time (`f 5` vs
+`f 50` are distinguished statically, gating, exit 1).
+
+**The one-question rule is the keystone.** `v.Is(t)` is the same
+predicate at parameter dispatch, return checks, `is`, record/class
+fields, and generic bounds (pinned in `eng/go/CLAUDE.md`). The global
+property is *coherence*: a local `x is T` guard discharges exactly the
+obligation every downstream boundary will impose. Rust has no runtime
+analogue of this because it doesn't need one; among dynamic-checked
+languages this symmetry is rare and load-bearing.
+
+**Verified limits.** Three probe-confirmed asymmetries cap this story:
+
+- **Predicate returns are runtime-only.**
+  `def mkbad fn [[] [Big] [5]] mkbad` passes `boru check` clean (exit 0,
+  even `--strict`) and fails only at the runtime RET boundary. The
+  smart-constructor pattern's invariant is therefore statically
+  verified for lattice returns (`[String]` vs an `Integer` body is
+  caught) but *not* where it matters most.
+- **The checker is guard-blind.** `if (x is Big) [g x] [0]` with
+  `x:Integer` is a **gating check error** (`no_signature`, exit 1)
+  while running it returns `50`, exit 0. The documented "FP = 0"
+  ratchet is corpus-relative (zero false positives *on the pinned spec
+  rows*, `test/go/langspec/check_accuracy_test.go`); the
+  validate-then-call idiom is a live gating-pessimism class outside it.
+- **Containers are out.** Predicate refinement is scalar-only
+  (`eng/go/depscalar.go`), so Tratt's own example — a non-empty-list
+  type — is inexpressible as a predicate type. The idiom today is a
+  nominal newtype plus a raising smart constructor
+  (`def NEL (refine List)` + `nel`), which works but is weaker: probe
+  showed `def ne:NonEmpty []` mints an empty "NonEmpty" with no
+  predicate to stop it.
+
+### 2. Statically checked generic bounds — the closest syntactic analogue
+
+`def first gen [T] fn [[xs:[:T]] [T] …]` with `extends` bounds is the
+nearest thing boru has to Rust's `T: Send` *shape*: a constraint on a
+type parameter, written in the signature, enforced loudly. Bound
+violations (`constraint_violation`, `unbound_param`, `arity_mismatch`)
+are Error-severity **in check mode** (`eng/go/registry.go`), landed per
+[`GENERICS.10.ignore`](GENERICS.10.ignore) §15e; v1 invariance
+(`Box<Integer>` is not a `Box<Number>`) closes the covariant-container
+aliasing hole by construction. What's missing is not the mechanism but
+the *vocabulary*: there is no `Sendable`/`Pure`-style bound worth
+writing yet (see proposals 1–2).
+
+### 3. Boundary-object locality: `Vm.run-with`, policies, vault tokens
+
+boru's strongest genuinely *local* effect reasoning today is not in
+signatures but at engine boundaries. One call site —
+`code Vm.run-with {policy: p}` — is locally sufficient evidence that an
+arbitrary untrusted subprogram runs under **at most** parent∩child
+authority (structural AND-composition, `lang/go/policy/compose.go`)
+with no shared mutable bindings. A vault grant token is the ops-layer
+twin: a self-describing, attenuable, revocable authority artifact —
+read the token, know the bound. Denials are ordinary coded Error values
+with blame chains (`policy "sandbox": global.network (rule #1)`), and
+`boru policy explain` answers "why was this denied?" deterministically.
+This is object-capability discipline done well, and it is the cultural
+seam the proposals below should extend.
+
+### 4. The rest of the positive column
+
+- **Dispatch stability**: importing modules can never change what a
+  call over builtin types means — reader reasons from the core
+  signature table alone, ignoring the import list.
+- **Sealed classes**: unknown-field and wrong-typed `make` are *static*
+  check errors (probe-verified); `sealed_field` and typed `set` guard
+  mutation at runtime. Class instances carry their shape invariant.
+- **Family-restricted comparison**: `1 lt "a"` raises
+  `[boru/incomparable]` (Error-severity in check for literals) rather
+  than silently answering — the JS `"1" < 2` bug class is deleted, with
+  `tcmp` as the explicit total-order escape hatch.
+- **Macro hygiene**: at any macro call site, a reader may conclude
+  their local bindings are untouched without reading the template;
+  deliberate capture requires the caller to write the name as an
+  operand. `macroexpand` renders expansions as inspectable data.
+- **Quantitative guarantees**: TCO under documented conditions, a step
+  budget for CPU and a tape ceiling for space, with an honest failure
+  taxonomy (`evaluation_limit` vs `tape_exhausted`) naming the resource
+  actually consumed.
+- **Coded errors at `do` boundaries**: `raise bad_input …` matched by
+  `.code` at exactly the boundary that can handle it — compositional,
+  enumerable failure handling.
+- **Spec coherence**: the TSV executable spec, checker-accuracy
+  ratchets, and cross-engine/VM differential gates make "the docs are
+  the behaviour" an empirically maintained property.
+
+### The inverse decomposition
+
+The effect story deserves its own frame. Rust distributes effect
+knowledge into every signature; boru concentrates it into **one ambient
+policy artifact**. Both give a global bound; the decompositions are
+inverses. With a policy, you reason locally *about the policy* and
+conclude a bound over all code, known and unknown — which is exactly
+right for running untrusted code. What you cannot do is the article's
+move: look at a *word* and know what it may touch. `boru check` knows
+nothing about effects (probe: a script doing `Net.fetch` + `IO.write`
+checks clean with no effect surface; there is no `--effects`; policy
+gating is explicitly skipped in check mode). A program can check clean
+and die with `permission_denied` under its deployment profile. The two
+systems — checker and sandbox — are disjoint by design today.
+
+## Where boru is the anti-article (verified)
+
+### 1. Concurrency: the showcase property is the biggest hole
+
+The article's motivating property — data-race freedom — is precisely
+where boru currently has **no mechanism at any enforcement level**, and
+the docs overclaim. Probe results against the built binary:
+
+- Name *bindings* are genuinely isolated (`ForkConcurrent` gives each
+  branch a cloned DefTable and a copy-on-write context layer):
+  branch `def x` never leaks to siblings or the parent. This half of
+  the isolation story is real.
+- But `DefTable.Clone` copies values **shallowly** on the stated
+  assumption they are "immutable snapshots"
+  (`eng/go/deftable.go`) — false for every mutable Ideal. A class
+  instance or FlexMap defined outside `await` is a **shared
+  unsynchronized pointer** inside all branches: branches observe each
+  other's writes mid-flight, and parent state reflects both after.
+  `EXPLANATION.md`'s "changes inside a branch don't propagate to the
+  parent" is wrong for exactly the mutable column of the value
+  taxonomy.
+- Two branches incrementing one outer FlexMap 300× each:
+  **`fatal error: concurrent map writes`** — a Go-runtime process
+  kill, exit 2, uncatchable by `do … error`. `boru check` passes the
+  program with 0 errors, 0 warnings, 0 info.
+- `await {mode:'first}`: the losing branch is not cancelled — it keeps
+  running and mutating shared state *after* the parent has resumed
+  (probe: counter kept climbing for hundreds of ms post-await).
+
+So today boru sits *below* the pre-Rust baseline the article describes:
+the docs assert an isolation that the sanctioned mutable types silently
+violate, and the static layer certifies the crashing program clean.
+This is the single most important gap. (See proposal 2; note also that
+the fix is *not* Rust ownership — see "What not to do".)
+
+### 2. Defensive-check economics are inverted
+
+The article's core symptom is unnecessary defensive checks. boru
+currently pushes a code generator toward ceremony and silence in
+exactly the wrong places, in both directions at once:
+
+- **Correct trust is punished.** The guard-blind checker statically
+  rejects validate-then-call (`if (x is Big) [g x]`) — the code that
+  *correctly* narrows before calling — training authors and generators
+  to avoid refinement-typed boundaries or wrap calls in appeasement.
+- **Redundant paranoia is free.** A provably dead guard
+  (`if (n is Big) …` where `n:Big` is already in the signature, or a
+  `size`-check on a smart-constructed non-empty value) produces **zero
+  diagnostics** — probe-verified — even though the checker computes the
+  facts needed to flag it. The misleading residue the article warns
+  about accumulates without pushback.
+- The assertion-vs-defensive distinction is convention-only: there is
+  no core `assert`; `Assert.*` (boru:test) and `Debug.assert`
+  (boru:debug) raise `assertion_failure` as an *ordinary catchable
+  error*, so any coarse `do … error [drop default]` handler silently
+  swallows "the programmer misunderstood" signals.
+- Typo defence is signature-conditional: words with declared Options
+  schemas reject unknown atom keys, but an options map flowing through
+  an `Any`-typed slot ignores typos silently at check *and* runtime
+  (probe: `emit json {prety:true}` — no diagnostic, wrong output).
+
+### 3. Local text under-determines local meaning
+
+Some of boru's foundations cut against the article's premise that local
+code *can* carry the reasoning:
+
+- **Forward collection**: the meaning of `1 2 add 3 mul` depends on
+  stack contents, following tokens (across newlines), and the word's
+  full overload set; result `5`, not `9`. Mitigations exist and are
+  good — type-directed stopping, structure-first collection, `(…)` /
+  `end` / `;` barriers, `/s` `/f` `/N` modifiers, and the
+  `forward_strands_operand` advisory — but the advisory is non-gating
+  `info`, invisible to exit-code-driven workflows.
+- **Dynamic name resolution**: a body's free names resolve against the
+  live call chain; "look at the function, know what it does" fails at
+  the name layer, leaks into TCO eligibility, and forced the checker
+  itself into call-graph heuristics
+  ([`dynamic-modality-report.10.ignore`](dynamic-modality-report.10.ignore)).
+- **Code-as-data**: `do` over computed code is a structural `Any`
+  frontier (measured 11.3%, ratcheted ≤ 12% of spec rows dispatching
+  over dynamic carriers).
+- **Catch-all overloads**: permissive trailing signatures make
+  wrong-looking calls check clean, so signatures under-determine
+  behaviour without per-word lore.
+
+These bound how far *any* static local-reasoning guarantee can go:
+boru's versions must be **gradual with a runtime backstop**, never
+Rust-sound. That is an acceptable position — it is Tratt's point that
+the property need only be *readable locally and enforced somewhere* —
+but it must be stated honestly.
+
+### 4. The static layer is opt-in, and some declared bounds are theater
+
+- Bare `boru run` never checks; every static guarantee above holds only
+  for users who run `boru check` (or `run --check`). Under the
+  article's AI-authors premise, an opt-in gate is a convention.
+- Probe-verified enforcement gaps in the quantitative policy surface:
+  the `limits` block (`maxStepBudget`, `timeoutMs`, `maxOutputBytes`)
+  is parsed, validated, composed, displayed — and **not enforced** in
+  the run path (`maxStepBudget:1` happily evaluates `1 2 add`);
+  `where`-clause byte caps **fail open** (a 51-byte write succeeded
+  under a 10-byte cap, and `policy explain` says ALLOW). A declared
+  bound that does not bind is worse than none — it is exactly the
+  misleading-the-reader failure the article centres on.
+
+## What to add or modify
+
+Ranked by leverage. The first three are the report's core
+recommendation; each builds on machinery that already exists.
+
+### 1. Effect rows on signatures + a checker-computed effect envelope
+
+The capability scopes (`disk.read`, `disk.write`, `network`, `process`,
+`env`, `clock`, `mutate`, …) are already an effect alphabet; native
+words already carry rich signature metadata (and internal purity
+metadata — `CompileEffect`, `CompileIslandPure` — exists but is not
+user-facing). Add a per-signature `Effects []string` facet, populate it
+over the ~200 native words, and let the carrier checker propagate the
+union up the call graph exactly as it already fixpoints return
+summaries (`FnSummaries`). Surface it in three places:
+
+- `describe <word>` prints the effect set — the local signature story;
+- `boru check --effects` prints the program's inferred envelope;
+- `boru check --perms <profile>` diffs envelope against policy
+  **statically**: "this program may perform `network.connect`; profile
+  `sandbox` denies it" — before any runtime denial.
+
+This single feature converts the inverse decomposition into the
+article's decomposition without abandoning it: the policy stays the
+enforcement bound; signatures become the *readable* bound. Purity
+(`Effects: []`) becomes a first-class, inferred, checkable property.
+Dynamic frontiers (`do` over computed code, dynamic resolution) infer
+to the top envelope and are reported as such — gradual, honest,
+runtime-backstopped. Precedent: Koka/Eff effect rows; already ranked
+highest-leverage by the EOP report. (Deliberately *advisory-first*:
+gate only under `--strict` or an agent profile until the FP story is
+settled.)
+
+### 2. A `Sendable` boundary at every fork, with loser cancellation
+
+The Pony comparison matters here: boru's existing taxonomy — immutable
+scalars/nodes vs mutable Ideals — is structurally much closer to Pony's
+`valof`/`ref` reference capabilities than to Rust ownership. The
+design-consistent fix is a **value-class rule at the fork boundary**,
+not an ownership system:
+
+- Define `Sendable` = immutable values + explicitly-snapshotted
+  mutables. At `await`/timer/`Vm` fork time, walk the captured/visible
+  bindings: deep-copy mutable Ideals per branch (snapshot semantics),
+  or reject with a coded error (`[boru/not_sendable]`) naming the value
+  and the fix — matching the existing loud-boundary culture.
+- Fix `DefTable.Clone`'s false "immutable snapshots" assumption either
+  way — today it is the data-race door.
+- Cancel `'first`/`'any` losers (the actor RFC already reserves a
+  `context.Context`); a race loser mutating after the parent resumed
+  is observable non-interference failure.
+- Static layer: an advisory when a branch body's *resolvable* free
+  names include a mutable-Ideal carrier — with the known-incompleteness
+  list stated (names bound through the live call chain, captures via
+  the pointer channel, context Store), since dynamic resolution makes
+  the analysis incomplete in principle. Runtime remains authoritative.
+
+This is the article's own showcase property, purchasable in boru's
+idiom: after it, "no branch observes another's mutation, and `await`
+means what the docs say" is a global property a reader gets from the
+`await` call site alone. Until it lands, `EXPLANATION.md`'s isolation
+claim should be corrected — docs that overclaim isolation are precisely
+the "misleading the reader about reachable states" the article
+condemns.
+
+### 3. Refinement-aware narrowing + `redundant_guard` advisories
+
+Fix both directions of the inverted incentive in one motion, in the
+checker:
+
+- **Legalize the guard.** Inside `if (x is T) […]`, narrow `x`'s
+  carrier to `T` in the then-branch (the one-question rule makes this
+  sound: the guard *is* the boundary predicate). The probe-verified
+  gating rejection of validate-then-call disappears; the FP claim
+  becomes true off-corpus too.
+- **Flag the residue.** When a guard is decidable from carriers —
+  `x is T` where `x`'s carrier already entails `T`, an emptiness check
+  on a value whose type proves non-emptiness — emit
+  `redundant_guard` / `unreachable_branch` advisories (non-gating
+  `info`, like `forward_strands_operand`). This is the article's
+  central residue, deleted by tooling: today the checker computes
+  these facts and says nothing.
+
+Precedent: TypeScript narrowing; Liquid Haskell for the entailment
+step (start with syntactic/interval entailment on DepScalar bounds —
+no SMT needed).
+
+### 4. Close the predicate-return hole
+
+`mkbad` must not check clean. For concrete carriers returned against a
+predicate type, evaluate the predicate at check time (the machinery
+exists — parameters already do it); for abstract carriers, keep the
+runtime RET check and, under `--strict`, surface an `unverified_return`
+info. Symmetry is boru's stated principle; today the static layer is
+asymmetric exactly at the smart-constructor boundary that the whole
+"validate once, trust the tag" story leans on.
+
+### 5. Container refinements + fenced smart constructors
+
+Extend predicate refinement beyond scalars so `NonEmpty`,
+`SortedList`, `NonEmptyMap` are expressible types
+(`def NonEmpty (List (afn [l] [(size l) gt 0]))` or a comparator
+form), checked with the same symmetric per-crossing rule. Where
+predicates are too costly per-crossing, pair the nominal newtype with a
+**constructor fence**: a `refine … via ctor` form where minting outside
+the named constructor raises. Note the fence must be specified as a
+*dynamic-extent* check (is the constructor's frame live?) — dynamic
+resolution means "lexically inside the constructor" is not a parse-time
+fact in boru; only the top-level-literal case (`def ne:NEL []`, the
+probe's empty-"NonEmpty" hole) is def-time detectable.
+
+### 6. Declared raise rows — an advisory error channel
+
+Signatures declare types but not failure: nothing tells a caller `read`
+can raise `'io_error` or that a handler arm matches a code no callee
+can produce. Add an optional `raises ['io_error 'not_found]` facet,
+seeded on native words, union-propagated by the checker like effects
+(they are the same fixpoint), surfaced in `describe`, with two
+advisories: unhandled-code (info) and **impossible handler arm** — the
+error-channel version of the redundant defensive check. Keep it
+advisory: an open error world is settled boru design; the point is
+locality, not checked exceptions.
+
+### 7. `ensure` / `bracket` resource safety
+
+Already specified in [`../RESOURCE-SAFETY.0.md`](../RESOURCE-SAFETY.0.md) and
+endorsed by the EOP report; the article lists resource cleanup among
+its candidate global properties. `do […] error […]` reifies failures
+but guarantees no cleanup. This is the cheapest genuine gap-close on
+the list, and `Sendable`+cancellation (proposal 2) will need it (loser
+cleanup).
+
+### 8. An `assert` word with engine-bounded unrecoverability
+
+Give the article's assertion/defensive distinction a mechanism: a core
+`assert` whose failure is not catchable by ordinary `do … error`
+*within the current engine* — it unwinds to the engine boundary. At
+every sub-engine/trust boundary (`Vm.run-with`, `exec`, `await`
+branches) it **demotes to an ordinary coded Error for the parent**:
+sandboxed code must never be able to take down an embedding engine, or
+the monotone-attenuation story breaks. Migrate `Assert.*` (boru:test)
+and `Debug.assert` (boru:debug) onto it. Then "this cannot happen" and
+"handle this gracefully" are different words with different semantics,
+and a generator can be told which to emit.
+
+### 9. Make declared bounds bind (bug-fix tier)
+
+Enforce the policy `limits` block in the run path (step budget, wall
+clock, output bytes — the engine already has the step/tape machinery);
+make `where`-clause quantitative caps **fail closed**; keep
+`policy explain` truthful against actual enforcement. Quantitative
+bounds are on the article's candidate list, and boru has already done
+the hard part (budgets exist; the taxonomy is honest). A displayed
+limit that doesn't bind is anti-local-reasoning.
+
+### 10. Check-by-default — after proposal 3
+
+Flip `boru run` to preflight-check with `--no-check` opt-out. This is
+what makes every "static" row above an *enforcement* rather than a
+convention under the AI-authors premise. It is deliberately sequenced
+**after** narrowing (proposal 3): today it would refuse to run correct
+validate-then-call programs (probe-verified), and the "FP = 0" license
+is corpus-relative. Ship when the guard-narrowed class is legalized.
+
+### 11. `describe --json` with an accuracy gate
+
+`boru describe` is the sanctioned ground truth for agents — this repo's
+own `AGENTS.md`/`CLAUDE.md` route AI contributors through it — yet it
+has no machine mode, silently ignores unknown flags, and probe-rendered
+at least one wrong return type. Add `--json` (the `check --json`
+pattern already exists), include per-signature effects/raises facets as
+they land (proposals 1, 6), and gate describe-output accuracy in CI
+like the TSV spec. Self-documentation is a spec-coherence property the
+project already relies on; it should be ratcheted like one.
+
+### 12. An agent gating profile
+
+`boru check --profile agent` (or `--strict=agent`): promote the
+locality advisories — `forward_strands_operand`, speculative-commit,
+`redundant_guard`, effect-envelope violations — to errors. Human
+interactive use keeps them as info; exit-code-driven generation loops
+get the discipline the article argues generators need. Cheap, additive,
+and honest about the two audiences.
+
+## What NOT to do
+
+- **No ownership/borrow system.** boru's value taxonomy + fork
+  boundaries fit Pony-style value classes (proposal 2), not Rust moves;
+  retrofitting ownership would fight the Store, dynamic resolution, and
+  the tape.
+- **No monadic IO / Result threading.** Settled: errors are values at
+  boundaries, effects belong as signature *metadata*, and forward
+  collection has no `flatMap` to hang plumbing on (per the EOP report).
+- **No new syntax.** Every proposal above is a word, a signature facet,
+  a checker pass, or a CLI flag — consistent with "new behaviour is a
+  word or a literal, nothing else."
+- **No soundness theater.** Dynamic resolution, `do` over data, and
+  catch-all overloads mean boru's guarantees are gradual with runtime
+  backstops. Say so in `describe`/`check` output (as `--strict` already
+  does with `dynamic_dispatch` infos) rather than implying Rust-class
+  proofs.
+
+## Verdict
+
+**boru already practises the article's discipline at the value layer,
+inverts it at the effect layer, and is missing it entirely at the
+concurrency layer.** Signature-carried contracts — newtypes, predicate
+subset types, one membership question everywhere, declared returns,
+statically-checked generic bounds — are a real, shipping instance of
+"local representation of global properties," at runtime-contract
+strength with a partial gating static layer whose honesty envelope is
+CI-measured. That substrate (plus the carrier checker and the
+capability alphabet) is unusually well-positioned: the three highest-
+leverage additions — **effect rows with a static envelope**, a
+**Sendable fork boundary with cancellation**, and **refinement-aware
+narrowing with redundant-guard advisories** — are each an extension of
+existing machinery, not a new paradigm, and together they would give
+boru local answers to "what can this call touch?", "can these branches
+interfere?", and "is this check dead?" — the three questions the
+article says the next language generation must answer locally. The
+concurrency hole is urgent independently of any of this: today the
+docs claim an isolation the runtime does not provide, the checker
+certifies programs the Go runtime kills, and that combination —
+documentation misleading readers about reachable states — is the exact
+failure mode the article was written about.

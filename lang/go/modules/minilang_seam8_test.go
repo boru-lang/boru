@@ -11,7 +11,7 @@ import (
 // builtin Micron leaves; TestMiniCovMicronTombstone pins the frozen
 // surface.)
 
-// TestW8MicronHandlerSrcError drives miniMicronHandler's src refusal.
+// TestW8MicronHandlerSrcError drives miniMicronHandler's src compile failure.
 func TestW8MicronHandlerSrcError(t *testing.T) {
 	r := mcovReg(t)
 	if _, err := miniMicronHandler([]native.Value{native.NewTypeLiteral(native.TString)}, nil, nil, r); err == nil {

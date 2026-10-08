@@ -18,7 +18,7 @@ import (
 // exact twin of BuildSiftModule. It should have landed with the module; it did
 // not, and the gate caught the four statements.
 
-// A parent with no parser configured is refused before any work.
+// A parent with no parser configured is declined before any work.
 func TestBuildCliModuleRequiresParser(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {

@@ -1,5 +1,5 @@
 // Landing tests for the Phase-4.3 G7 return-annotation sweep
-// (design/CHECKER-BYTECODE-COMPLETION-PLAN.0.md): per-family positive
+// (design/legacy/CHECKER-BYTECODE-COMPLETION-PLAN.0.ignore): per-family positive
 // pins (a precise Returns/ReturnsFn flows downstream, so a former
 // declared-Any frontier row now checks clean with a NARROW residual) and
 // negative pins (the same precision makes a wrong-typed downstream use
@@ -15,6 +15,7 @@ import (
 )
 
 func TestReturnsAnnotationNarrowing(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -119,7 +120,7 @@ func TestReturnsAnnotationNarrowing(t *testing.T) {
 		// are not. voxgigstruct.Select's Go return type is []any.
 		{"selector-container-narrows", `import "boru:struct-util" StructUtil.selector {color:'red'} {a:{color:'red'}}`, false, false},
 		// NEGATIVE: a plain List is not a FlexList, so the narrowed return
-		// makes append REFUSE where the Any residual matched optimistically.
+		// makes append DECLINE where the Any residual matched optimistically.
 		{"selector-into-append-flags", `import "boru:struct-util" append 1 (StructUtil.selector {color:'red'} {a:{color:'red'}})`, true, false},
 		// …and the ELEMENTS stay honest: a selected child is any shape.
 		{"selector-element-stays-frontier", `import "boru:struct-util" (StructUtil.selector {color:'red'} {a:{color:'red'}}) get 0`, false, true},
@@ -175,8 +176,9 @@ func TestReturnsAnnotationNarrowing(t *testing.T) {
 }
 
 // TestDeclaresCheckReturnsPredicate pins the four annotation surfaces the
-// coverage gate accepts — and that an unannotated Go sig is refused.
+// coverage gate accepts — and that an unannotated Go sig is declined.
 func TestDeclaresCheckReturnsPredicate(t *testing.T) {
+	t.Parallel()
 	noop := func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		return nil, nil
 	}

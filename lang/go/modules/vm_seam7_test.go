@@ -44,7 +44,7 @@ func s7aVMHandler(t *testing.T, parent *native.Registry, name string) native.Han
 }
 
 // TestS7A_VMBuildNoParser drives BuildVMModule's parser-not-configured arm: a
-// parent whose ParseFunc is nil cannot run a sub-engine, so the build refuses.
+// parent whose ParseFunc is nil cannot run a sub-engine, so the build declines.
 func TestS7A_VMBuildNoParser(t *testing.T) {
 	r, err := native.DefaultRegistry()
 	if err != nil {
@@ -164,7 +164,7 @@ func TestS7A_VMCheckSynthDiag(t *testing.T) {
 	}
 }
 
-// TestS7A_VMCompileArms drives compileInSubEngine's three refusal arms:
+// TestS7A_VMCompileArms drives compileInSubEngine's three decline arms:
 // runErr (check error), a check diagnostic, and a check-mode-suppressed runtime
 // error — plus hasCheckError's iteration via the check-diagnostics case.
 func TestS7A_VMCompileArms(t *testing.T) {
@@ -198,7 +198,7 @@ func TestS7A_VMSeverityStringEmpty(t *testing.T) {
 	}
 }
 
-// TestS7A_VMPolicyFromMapValueErrors pins policyFromMapValue's two refusal
+// TestS7A_VMPolicyFromMapValueErrors pins policyFromMapValue's two compile failure
 // arms: a non-concrete (carrier) value and a concrete non-map value.
 func TestS7A_VMPolicyFromMapValueErrors(t *testing.T) {
 	if _, err := policyFromMapValue(native.NewDynamicCarrier(native.TMap)); err == nil ||

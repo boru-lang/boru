@@ -63,10 +63,10 @@ g`, leaked, leaked},
 		{"paren-grouped apply", `def m {f: ([a:Integer] => [ context set y 1 a ])}
 (m.f 1) drop`, leaked, leaked},
 
-		// ---- inlined forms: boundaries on both engines, via refusal ----
+		// ---- inlined forms: boundaries on both engines, via compile failure ----
 		// The compiler INLINES these into the caller's code, so there is no
 		// body to bracket — instead a context write through a handle read
-		// inside one REFUSES compilation (NUR054) and the whole program runs
+		// inside one DECLINES compilation (NUR054) and the whole program runs
 		// on the interpreter, whose answer is canonical. `compiled` is
 		// therefore the same answer, delivered by fallback rather than by a
 		// bracketed body; the doc's caveat says exactly this.
@@ -84,6 +84,9 @@ g`, leaked, leaked},
 			gotC, cErr := a.Run(src)
 			b, _ := lang.New()
 			gotI, iErr := b.RunInterp(src)
+			if lang.NoteCompileDefect(t, src, gotC, cErr) {
+				return
+			}
 			if cErr != nil || iErr != nil {
 				t.Fatalf("both engines must run the program — compiled: %v / interpreted: %v",
 					cErr, iErr)

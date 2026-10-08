@@ -15,7 +15,7 @@ package langspec
 // The sweep runs both surfaces over every corpus row (workers bound the
 // wall clock). Plain-surface-only diagnostics are NOT gated: the compile
 // pass legitimately resolves some plain-pass findings (a unit compile
-// binds what the abstract pass could not), and the refusal pipeline
+// binds what the abstract pass could not), and the compile failure pipeline
 // already surfaces anything blocking.
 
 import (
@@ -39,19 +39,27 @@ var diagSurfaceLedger = map[string]string{
 	// the factory's returned-closure event looked un-seated, so the def
 	// read looked unbound and the def unconsumed) is gone — the compile
 	// lane resolves the read through the fn-carrier side table, so no
-	// corpus row shows a compile-only unused_def any more.
-	"undefined_word":       "the Stage 1 `/v` hold: a `/v` read of a name def-bound to a computed fn keeps its compile-lane undefined_word (stepWordVal declines the fn-carrier table — substituting there green-lit lowerings that dropped the operand), where the plain pass constructs the fn concretely and resolves the read. Non-blocking for the program's RESULTS: the refusal keeps the silent interpreter fallback (FnCarrierReadSubstituted). Graduation = a lowering for /v reads of table-bound names.",
-	"macro_not_expandable": "compile-pass-only BY CONSTRUCTION: macro expansion (`parse <kind>` over a parser-fn value) is a compile-pipeline stage — the plain pass has no expansion step to fail. Info-severity; the row falls back soundly. Graduation = none expected (a designed stage asymmetry); revisit if the class grows past its two parselang witnesses.",
-	"type_error":           "one word-splice witness (`def p word [1 add 2] … f p`): the compile pass's splice-body return-count model claims the body nets no value where the plain pass (and the runtime) see the spliced expression's value. Non-blocking on the corpus row (it compiles and runs). Graduation = splice-body return modeling in the unit walk.",
+	// corpus row shows a compile-only unused_def any more. It REAPPEARED
+	// with the 2026-09-17 corpus expansion (a factory's value read at a
+	// higher-order word's forward slot: `each f/v xs`, where the compile
+	// pass declined the dispatch before it ever credited the read) and
+	// graduated again on 2026-09-19 (S1b-2): the collection seat and the
+	// `/v` read resolve the side table, the dispatch matches, and the
+	// read credits its def on both passes.
+	"undefined_word":       "RE-DIAGNOSED 2026-09-19 (S1b-2): the Stage 1 `/v` hold is GONE — a `/v` read of a name def-bound to a computed fn resolves the fn-carrier side table with the bare read's provenance notes, so those rows no longer diverge. Two unrelated witnesses keep the class: `case zed/q [zed \"matched\" \"other\"]` (case.tsv:L97 — the compile pass reads the bare `zed` inside the clause list as a word where the plain pass leaves it an atom-match) and `0 fold [dot value add] bs` over a generic class's field (generics-fn.tsv:L55 — the compile pass reads `value` in the token body as a word rather than the dot's field name). Both are compile-lane token-body reads of a name that is not a binding; non-blocking for RESULTS (the compile failure keeps the silent interpreter re-run). Graduation = a token body's word reads modelled as the interpreter models them, which is S3's runtime compilation.",
+	"macro_not_expandable": "compile-pass-only BY CONSTRUCTION: macro expansion (`parse <kind>` over a parser-fn value) is a compile-pipeline stage — the plain pass has no expansion step to fail. Info-severity; the row declines and is interpreted. Graduation = none expected (a designed stage asymmetry); revisit if the class grows past its two parselang witnesses.",
+	"type_error":           "the return-count mirror on three ERROR rows the plain pass does not see: two module-exported fn values leaving two values under a one-return contract (edge-modules-2.tsv:L97/L99 `M.d1 10`) and a fnsig-typed param handed a non-function (fnsig.tsv:L57); the compile pass's unit analysis reports the frame's count error the runtime raises. Graduation = the plain pass analysing an applied fn VALUE's body against the call. (Graduated witnesses: the word-splice `def p word [1 add 2] … f p` on 2026-09-27 — the assumed dispatch's cascade after a no-match — and the body-local class / fnsig installs fn-locals-scope.tsv:L231/L232 with the fn_body_error class, by main's NUR run; both confirmed on the merge of main e8702ac, 2026-09-28.)",
+	"no_signature":         "2026-09-27, the armed pass reporting its decided no-matches (check_recovery.go, the parity ledger's largest class): two error.tsv witnesses (L32 `def r (f 1)`, L33 `3 add (f 1)` over a declared no-return f) where the compile pass's unit model nets the call's true ZERO values, so the consumer of the void paren group fails there exactly as it does at run time and the trap raises the interpreter's def_error / no_value_error byte-identically, while the plain pass's abstract model hands the consumer a value (L32: no finding at all; L33: a no_signature of different detail). A RuntimeMirror, never blocking. Graduation = the plain pass modelling a declared-zero-return call's void group.",
 	"case_not_exhaustive":  "one case-over-instantiated-scrutinee witness: per-call instantiation makes the compile pass judge exhaustiveness against the narrowed scrutinee type where the plain pass judges the declared one — the same designed call-site asymmetry as redundant_guard. Graduation = §8.4.4, with redundant_guard.",
 }
 
 func TestDiagnosticSurfaceParity(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("diag-surface sweep: skipped in -short")
 	}
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", specDir, err)
 	}
@@ -142,9 +150,13 @@ func TestDiagnosticSurfaceParity(t *testing.T) {
 		t.Errorf("NEW compile-only diagnostic class %q — the compile surface emits a diagnostic the plain `check` surface cannot see:\n  detail: %.100s\n  row:    %.120s\ntriage: unify the surfaces, or adjudicate the class in diagSurfaceLedger (designed asymmetry or named-graduation vestige)",
 			f.code, f.detail, f.row)
 	}
-	for code, why := range diagSurfaceLedger {
-		if observed[code] == 0 {
-			t.Errorf("stale diagSurfaceLedger class %q — no corpus row shows it as compile-only any more; graduate it (delete the entry).\n  was ledgered because: %.140s", code, why)
+	// The stale-entry half of the ledger is a corpus-wide claim: skipped
+	// under BORU_SPEC_FILES, where a class may simply not be in the subset.
+	if !filteredCorpus() {
+		for code, why := range diagSurfaceLedger {
+			if observed[code] == 0 {
+				t.Errorf("stale diagSurfaceLedger class %q — no corpus row shows it as compile-only any more; graduate it (delete the entry).\n  was ledgered because: %.140s", code, why)
+			}
 		}
 	}
 	t.Logf("diag-surface parity: %d rows swept, %d with compile-only diagnostics; per class: %v", len(rows), deltaRows, observed)

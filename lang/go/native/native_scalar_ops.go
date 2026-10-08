@@ -26,7 +26,7 @@ package native
 //     own scalar type), a field present on one side only passes through,
 //     and the result map is rebuilt through the kind's single `make`
 //     validator, so the result is the same kind (a map the validator
-//     refuses is a loud make error). Qion (same-currency money add/sub)
+//     declines is a loud make error). Qion (same-currency money add/sub)
 //     and Pathon (add = join, sub = strip trailing segments) are
 //     hand-written; the other builtin kinds and every user kind use the
 //     default. The Micron default is installed UNLOCKED
@@ -616,7 +616,7 @@ func seqOpReturns(op string, elem *Type, h Handler) ReturnsFunc {
 // pre-empts the default at run time. Only concrete operands' tags are
 // final (PR #292 review — the same reasoning as booleanArithReturns and
 // the compile-side coreDefaultCarrier poly routing). Value-dependent
-// failures (currency mismatch, validator refusals, an absolute
+// failures (currency mismatch, validator compile failures, an absolute
 // right-hand path) stay with the runtime handler either way.
 func micronOpReturns(op string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
@@ -679,7 +679,7 @@ var scalarOpsNatives = func() []NativeFunc {
 // type) wins — which rules out locked native sigs (locked sigs pre-empt
 // every unlocked override — the locked-first ordering theorem).
 // CoreDefault gives exactly that: unlocked overloads that still live on
-// the native definition (so `undef add` refuses) and are skipped by the
+// the native definition (so `undef add` declines) and are skipped by the
 // export transplant (so they never ride a module's word extension into an
 // importer, where their builtin-only tuple would trip the module-scope
 // user-type rule).

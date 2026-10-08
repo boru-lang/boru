@@ -124,7 +124,7 @@ func TestPermissionedFileOpsResolvePathBypasses(t *testing.T) {
 
 func TestPermissionedFileOpsGatesWatch(t *testing.T) {
 	// The watch gate follows the read-like pattern: the sandbox policy's
-	// fileops.default=deny refuses the subscription outright, and the
+	// fileops.default=deny declines the subscription outright, and the
 	// denial arrives before any watcher resources are allocated.
 	r, err := DefaultRegistryWithPolicy(loadPolicy(t, "sandbox"))
 	if err != nil {

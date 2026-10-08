@@ -19,7 +19,15 @@ package core
 //     Tightening it would break callers like `create` whose 1-arg
 //     `(Map) Patterns={kind:"api"}` sig was previously matched on
 //     non-api maps when the handler then routed by stack contents.
-func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registry) bool {
+//
+// A pending container literal at a slot whose pattern reads its contents —
+// `{f: (1 add 1)}` against `m:{f:Integer}`, `[(1 add 1)]` against
+// `xs:[:Integer]` — is matched as the value it evaluates to, the value the
+// callee receives, not as the unevaluated tokens (NUR235). The dispatching
+// engine (pe) evaluates it once, in place on the tape, the first time a
+// candidate's pattern reads it; a host that is not dispatching matches the
+// raw token.
+func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registry, pe patternOperandHost) bool {
 	for idx := 0; idx < sig.TotalArgs(); idx++ {
 		pattern, ok := SigPattern(sig, idx)
 		if !ok {
@@ -86,6 +94,10 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 				// stack positions. See doc comment.
 				continue
 			}
+			var ok bool
+			if val, ok = patternOperand(pe, sig, idx, positions[idx], val); !ok {
+				return false
+			}
 			if !OpenUnifyMap(pattern, val) {
 				return false
 			}
@@ -97,6 +109,12 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		if isForward && !IsConcrete(pattern) {
 			continue
 		}
+		if patternReadsContents(pattern) {
+			var ok bool
+			if val, ok = patternOperand(pe, sig, idx, positions[idx], val); !ok {
+				return false
+			}
+		}
 		// A negation pattern takes the direct unifyNegation path —
 		// skipping Unify's ResolveWordsDeep prepass, which deep-resolves
 		// (and rebuilds) every list operand per call and dominated
@@ -106,7 +124,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// top-level shape, never on nested word resolution, so the
 		// direct path is verdict-identical.
 		if ni, err := AsNegation(pattern); err == nil {
-			if _, uerr := unifyNegation(ni, val); uerr != nil {
+			if _, uerr := unifyNegation(ni, val, nil); uerr != nil {
 				return false
 			}
 			continue
@@ -116,6 +134,45 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		}
 	}
 	return true
+}
+
+// patternOperandHost is the dispatching engine's seat on a pending
+// container operand a signature pattern reads (NUR235): it evaluates the
+// literal at tape index i as the call will — the value the callee receives
+// — writes it back so the evaluation happens once (every later candidate,
+// and the call's own argument evaluation, see the value), and reports false
+// when the evaluation raised or let a break/continue out, which rejects the
+// candidate and abandons the dispatch (the engine raises the error, or its
+// run resolves the signal). Only the dispatch's own host implements it
+// (patternDispatch); every other host of the matcher judges the raw token.
+type patternOperandHost interface {
+	evalPatternOperand(i int, v Value) (Value, bool)
+}
+
+// patternReadsContents reports whether a pattern's verdict reads a
+// container operand's CONTENTS — a map shape, a typed map or list — so a
+// pending literal must be evaluated before it is judged (NUR235).
+func patternReadsContents(pattern Value) bool {
+	return pattern.Data != nil && pattern.Parent != nil &&
+		(pattern.Parent.Equal(TMap) || pattern.Parent.Equal(TList))
+}
+
+// patternOperand is the operand a pattern at sig position idx judges: a
+// pending container literal with active tokens is evaluated by the
+// dispatching host (patternOperandHost) unless the slot takes it raw
+// (NoEvalArgs / NoEvalMapArgs — a code body); anything else is itself.
+func patternOperand(pe patternOperandHost, sig *Signature, idx, at int, val Value) (Value, bool) {
+	if pe == nil || !IsPendingActiveContainer(val) {
+		return val, true
+	}
+	if val.Parent.Equal(TMap) {
+		if sig.NoEvalMapArgs[idx] {
+			return val, true
+		}
+	} else if sig.NoEvalArgs[idx] {
+		return val, true
+	}
+	return pe.evalPatternOperand(at, val)
 }
 
 // forwardPatternRejects reports whether a concrete forward value at sig
@@ -150,7 +207,7 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 	// Direct unifyNegation path for negation patterns — see the twin
 	// fast path in patternsOk: skips ResolveWordsDeep, verdict-identical.
 	if ni, err := AsNegation(pattern); err == nil {
-		_, uerr := unifyNegation(ni, val)
+		_, uerr := unifyNegation(ni, val, nil)
 		return uerr != nil
 	}
 	_, uOk := Unify(val, pattern)
@@ -171,6 +228,14 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 // implements the "? means None or absent" rule via the type system —
 // no out-of-band optional-key metadata required.
 func OpenUnifyMap(pattern, candidate Value) bool {
+	return openUnifyMap(pattern, candidate, nil)
+}
+
+// openUnifyMap is OpenUnifyMap with the enclosing unify chain's
+// registry: the disjunct walk (unifyDisjunct) runs the subset match on
+// a concrete map alternative from INSIDE a unify, so each per-key
+// unify keeps the chain armed. The public entry passes nil.
+func openUnifyMap(pattern, candidate Value, r *Registry) bool {
 	pMap, _ := AsMap(pattern)
 	cMap, _ := AsMap(candidate)
 
@@ -181,8 +246,8 @@ func OpenUnifyMap(pattern, candidate Value) bool {
 	// panicking on pMap.Keys(). Callers' guards vary; this is the
 	// single defensive boundary.
 	if pMap == nil || cMap == nil {
-		_, ok := Unify(pattern, candidate)
-		return ok
+		_, uerr := unifyWithin(pattern, candidate, r)
+		return uerr == nil
 	}
 
 	absentVal := NewTypeLiteral(TAbsent)
@@ -190,12 +255,12 @@ func OpenUnifyMap(pattern, candidate Value) bool {
 		pVal, _ := pMap.Get(key)
 		cVal, ok := cMap.Get(key)
 		if !ok {
-			if _, uOk := Unify(pVal, absentVal); !uOk {
+			if _, uerr := unifyWithin(pVal, absentVal, r); uerr != nil {
 				return false
 			}
 			continue
 		}
-		if _, uOk := Unify(pVal, cVal); !uOk {
+		if _, uerr := unifyWithin(pVal, cVal, r); uerr != nil {
 			return false
 		}
 	}

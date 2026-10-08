@@ -14,6 +14,7 @@ import (
 // instead of islanding. islandGate=0 guards the corpus; this documents the
 // specific shape and the runtime parity.
 func TestValueDivergesCompilesNative(t *testing.T) {
+	t.Parallel()
 	// Positive: a static-zero div/mod inside a `do` body compiles FULLY NATIVE.
 	native := []string{
 		`def e (do [1 div 0]) convert Map e`, // the cleared island (error.tsv:25)
@@ -26,7 +27,7 @@ func TestValueDivergesCompilesNative(t *testing.T) {
 			t.Fatalf("%q: check error: %v", src, err)
 		}
 		if prog == nil {
-			t.Fatalf("%q: refused (reason %q); expected native compile", src, reason)
+			t.Fatalf("%q: declined (reason %q); expected native compile", src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: compiled with an interpreter island; expected fully native:\n%s", src, prog.Disassemble())

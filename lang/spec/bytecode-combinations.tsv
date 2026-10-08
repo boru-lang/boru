@@ -1,5 +1,5 @@
 # Bytecode combination matrix — curated feature crossings for the
-# compiled execution mode (design/boru-bytecode-plan.0.md Stage 6
+# compiled execution mode (design/legacy/boru-bytecode-plan.0.ignore Stage 6
 # follow-on). These rows are run by the production spec runner (pinning
 # the INTERPRETER's canonical output) AND by the compiled differential /
 # whole-corpus gates (pinning compiled == interpreter, value + error
@@ -111,7 +111,7 @@ def P class {a: 0} make P {a: "x"}	ERROR:expected Integer	make enforces the fiel
 5 otherwise 9	5	otherwise yields the value operand
 (3 and "x") add 1	'x1'	join carrier stays polymorphic, not int-specialized
 # Filter-lambda closures with LEXICAL captures + computed data operands
-# (design/RUNTIME-STAMPING.0.md Phase 3): the body lambda admits captures
+# (design/legacy/RUNTIME-STAMPING.0.ignore Phase 3): the body lambda admits captures
 # (threaded at OpPushClosure, bound to trailing unit slots) and a typed
 # non-dynamic carrier collection. Each positive row runs compiled ==
 # interpreted through the differential gates.

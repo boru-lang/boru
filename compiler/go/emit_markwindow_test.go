@@ -36,7 +36,7 @@ func TestMarkWindowShapeFragmentAnchorDeclines(t *testing.T) {
 
 // A STATIC fn value preceding residual args inside an armed window rides the
 // island (auto-apply is exactly what the re-step reproduces); the same shape
-// without the window keeps its refusal.
+// without the window keeps its compile failure.
 func TestResolveDynamicApplyFnValueWindowArm(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, p: &Program{}}
@@ -49,12 +49,12 @@ func TestResolveDynamicApplyFnValueWindowArm(t *testing.T) {
 	es.markWindowSeq = 0
 	_, op, reason = es.resolveDynamicApply(lw, residual)
 	if op != 0 || !strings.Contains(reason, "fn value precedes") {
-		t.Fatalf("unarmed shape must keep the refusal: op=%v reason=%q", op, reason)
+		t.Fatalf("unarmed shape must keep the compile failure: op=%v reason=%q", op, reason)
 	}
 }
 
 // verifyMarkWindow pins residual == lowered sim stack: a slot produced by a
-// DIFFERENT event (same length) and a length drift both refuse; the exact
+// DIFFERENT event (same length) and a length drift both decline; the exact
 // match passes.
 func TestVerifyMarkWindowMismatchArms(t *testing.T) {
 	lw := &lowerer{vm: []vmSlot{{seq: 1, idx: 0}}}
@@ -62,9 +62,9 @@ func TestVerifyMarkWindowMismatchArms(t *testing.T) {
 		t.Fatalf("exact match must pass, got %q", reason)
 	}
 	if reason := lw.verifyMarkWindow([]EmitOperand{EventOperand(2, 0)}); reason == "" {
-		t.Fatal("a slot from a different event must refuse")
+		t.Fatal("a slot from a different event must decline")
 	}
 	if reason := lw.verifyMarkWindow(nil); reason == "" {
-		t.Fatal("a length drift must refuse")
+		t.Fatal("a length drift must decline")
 	}
 }

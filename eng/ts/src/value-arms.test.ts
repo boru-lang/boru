@@ -148,7 +148,7 @@ describe('marker and container renders', () => {
     // core.NewTypedListWithElements(core.NewTypeLiteral(core.TInteger), …)
     // .String() is `[:Integer 1]`. These assertions previously pinned the
     // full path, which is what let the divergence stand
-    // (design/TS-PARITY-AUDIT.0.md).
+    // (design/legacy/TS-PARITY-AUDIT.0.ignore).
     const tl = newTypedList(newTypeLiteral(TInteger), [newInteger(1n)])
     assert.equal(String(tl), '[:Integer 1]')
     const tm = newTypedMap(newTypeLiteral(TString), [{ key: 'k', value: newString('v') }])

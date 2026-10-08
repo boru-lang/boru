@@ -30,7 +30,7 @@ func (i *itemUnifier) Equal(a, b Value) bool {
 	}
 	return DefaultBehavior.Equal(a, b)
 }
-func (i *itemUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (i *itemUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	if i.failOn {
 		return Value{}, &UnifyError{Reason: "item unifier rejected"}
 	}
@@ -161,6 +161,6 @@ func (o *optOutUnifier) Equal(a, b Value) bool {
 	}
 	return DefaultBehavior.Equal(a, b)
 }
-func (o *optOutUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (o *optOutUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	return Value{}, ErrNoUnifier
 }

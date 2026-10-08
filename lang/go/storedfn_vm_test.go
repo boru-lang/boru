@@ -33,7 +33,7 @@ func (s *syncBuf) String() string {
 }
 
 // A spawn body is compiled to a 0-param unit when it is reducible, and left as a
-// raw list (interpreter fallback) when it is empty or refuses.
+// raw list (interpreter fallback) when it is empty or declines.
 func TestSpawnBodyCompilation(t *testing.T) {
 	cases := []struct {
 		src      string
@@ -41,7 +41,7 @@ func TestSpawnBodyCompilation(t *testing.T) {
 	}{
 		{`spawn [print 42]`, true}, // reducible → compiled to a unit + carrier
 		{`spawn []`, false},        // empty body → no unit
-		{`spawn [dup]`, false},     // stack-shuffle refuses → no unit, falls back
+		{`spawn [dup]`, false},     // stack-shuffle declines → no unit, falls back
 	}
 	for _, c := range cases {
 		a, _ := New()
@@ -260,7 +260,7 @@ call {cmd: "inc"} svc`
 }
 
 // A multi-overload handler stamps EVERY own sig to its own unit
-// (REFUSAL-CLOSURE §7b): the invoke seam dispatches through MatchFnSig, so
+// (COMPILE FAILURE-CLOSURE §7b): the invoke seam dispatches through MatchFnSig, so
 // the matched sig's own Impl ref is the sig table — each overload runs its
 // unit on the VM, and a declining sibling would interpret independently.
 func TestStoredFnMultiOverloadStampsPerSig(t *testing.T) {

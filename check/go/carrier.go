@@ -133,7 +133,23 @@ func ElementCarrierFromValue(data core.Value) core.Value {
 			return joined
 		}
 	}
-	return NewElementCarrier(DataListElemTypeFromValue(data))
+	return ElementCarrierOf(data)
+}
+
+// ElementCarrierOf is the carrier of one element of data by its element type
+// alone (NewElementCarrier over DataListElemTypeFromValue), kept GRADUAL where
+// data's element is: a typed list built from gradual values
+// (core.CarrierTypedListOf) hands its body a dynamic element, never the
+// strict type, so a body compiled against it re-matches its dispatch at run
+// time rather than committing a direct op over a value the run may not hold
+// (NUR316: a flex element, a typed container's element read that may be
+// None).
+func ElementCarrierOf(data core.Value) core.Value {
+	c := NewElementCarrier(DataListElemTypeFromValue(data))
+	if ct, ok := data.Data.(core.ChildTypeInfo); ok && ct.Child.Carrier && ct.Child.Dynamic {
+		c.Dynamic = true
+	}
+	return c
 }
 
 // joinedElementCarrier joins the element types of a concrete plain list (or
@@ -171,9 +187,9 @@ func joinedElementCarrier(data core.Value) (core.Value, bool) {
 	if !mixed {
 		return core.Value{}, false
 	}
-	out := core.NewCarrier(elems[0].Parent)
+	out := elementJoinCarrier(elems[0])
 	for i := 1; i < len(elems); i++ {
-		out = core.JoinCarriers(out, core.NewCarrier(elems[i].Parent))
+		out = core.JoinCarriers(out, elementJoinCarrier(elems[i]))
 	}
 	return out, true
 }
@@ -232,6 +248,9 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 		var t *core.Type
 		for _, k := range mp.M.Keys() {
 			v, _ := mp.M.Get(k)
+			if core.IsTypeLiteral(v) {
+				return core.TAny // a type VALUE is no value of its Parent (NUR323)
+			}
 			if t == nil {
 				t = v.Parent
 			} else {
@@ -250,6 +269,14 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 	if err != nil || list.IsNil() || list.Len() == 0 {
 		return core.TAny
 	}
+	// A type literal element is a type VALUE, no value of its Parent: the
+	// element is unknown (TAny — NewElementCarrier makes it gradual), where
+	// its Parent committed a body's `add` over the type (NUR323).
+	for i := 0; i < list.Len(); i++ {
+		if core.IsTypeLiteral(list.Get(i)) {
+			return core.TAny
+		}
+	}
 	t := list.Get(0).Parent
 	for i := 1; i < list.Len(); i++ {
 		t = core.CommonAncestorType(t, list.Get(i).Parent)
@@ -258,6 +285,16 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 		}
 	}
 	return t
+}
+
+// elementJoinCarrier is one concrete element's carrier for the element
+// join: its type's, or core.ValueCarrier's Type carrier for a type literal,
+// which is no value of its Parent (NUR323).
+func elementJoinCarrier(el core.Value) core.Value {
+	if core.IsTypeLiteral(el) {
+		return core.ValueCarrier(el)
+	}
+	return core.NewCarrier(el.Parent)
 }
 
 // toCarrier converts a concrete Value to its carrier form. Control /
@@ -507,7 +544,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 	}
 	narrowDynamicUses(r, word, sig, args)
 	// Per-alternative dispatch for strict disjunct inputs
-	// (design/checker-accuracy-review.10.md A1). matchSignature tested
+	// (design/legacy/checker-accuracy-review.10.ignore A1). matchSignature tested
 	// the disjunct as a single value, so the matched sig may not be
 	// the one runtime dispatch takes for every alternative — e.g.
 	// Integer|String reaches add's [Scalar Scalar]→String catch-all
@@ -516,7 +553,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 	var partOut []core.Value
 	if out, ok := disjunctPartitionReturns(r, word, args, pos); ok {
 		// A strict-disjunct straddle is a runtime-dispatch case, not an
-		// inherent refusal: if the word is a safe poly candidate (core builtin,
+		// inherent compile failure: if the word is a safe poly candidate (core builtin,
 		// no meta/fn-value/code-body sig) and its operands resolve, lower it to
 		// OpCallNativePoly so the VM re-matches the one concrete alternative at
 		// run time — e.g. `5 is (tnot (Integer gt 0))`. A USER FN under an
@@ -526,7 +563,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 		// unit's param contract admits — and the partition-joined carriers
 		// are re-IDed onto the recorded results at the tail, keeping the
 		// per-alternative type precision without orphaning the residual
-		// (the L-JOIN recursive-union refusal). Everything else refuses.
+		// (the L-JOIN recursive-union compile failure). Everything else declines.
 		if r.Check.Recorder().Active() && sig != nil && sig.FnFrame() != nil &&
 			disjunctCombosTakeSig(r, word, args, sig) {
 			partOut = out
@@ -624,13 +661,13 @@ func ScalarFoldOperand(v core.Value) bool {
 // ordinary return resolution: the `args` frame projection, the `word` splice
 // marker, and compile-time `macroexpand` folding. ok=false falls through to
 // the normal path (including macroexpand's error/trap fall-through, which
-// must still resolve returns and refuse).
+// must still resolve returns and decline).
 func specialWordResults(r *core.Registry, word string, args []core.Value, pos core.SrcPos) ([]core.Value, bool) {
 	// `args` inside a compiled fn body projects the frame's params (pushed by
 	// AnalyseFnBody) as a list value with NO recorded event. An `args.N` access
 	// then folds to param N — a frame local — via tryFoldStaticIndex; bare
-	// `args` has no foldable consumer and refuses at its use site. At top level
-	// r.Args is empty so `args` falls through to RecordCall's refusal.
+	// `args` has no foldable consumer and declines at its use site. At top level
+	// r.Args is empty so `args` falls through to RecordCall's compile failure.
 	if word == "args" {
 		// Inside a CLOSURE body compile the projection must DECLINE: the
 		// analysis args frame there holds the CallableSpec inputs (empty for
@@ -640,20 +677,33 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 		// that wrong (often empty) list as an inert const — `do [args]`
 		// inside a fn compiled to PUSH_CONST [] against the interpreter's
 		// [7]. Falling through reaches RecordCall's context-dependent-word
-		// refusal, the closure probe declines, and the program takes the
-		// interpreter fallback with the correct value. A plain (non-
+		// compile failure, the closure probe declines, and the program takes the
+		// compile failure. A plain (non-
 		// recording) check keeps the projection so diagnostics are unchanged.
-		if es := r.Check.Recorder(); es.Active() && es.InClosureUnit() {
+		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive()) {
 			return nil, false
 		}
 		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {
+			// A bare `args` read in a fn unit (`fn [[a b][List][args]]`)
+			// used to leave the projection with no compiled home ("body
+			// result of unknown provenance"); the recorder assembles it per
+			// call from the param locals (RecordArgsProjection), and an
+			// `args.N` fold retracts the assembly (2026-09-25).
+			if es := r.Check.Recorder(); es.Active() {
+				if lst, lerr := core.AsList(top); lerr == nil && !lst.IsNil() {
+					if top.ID == "" {
+						top.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+					}
+					es.RecordArgsProjection(r, lst.Slice(), top, pos)
+				}
+			}
 			// In compile mode `args.N` folds to a frame local (PUSH_LOCAL N)
 			// for named AND unnamed params alike: an unnamed param is a
 			// local re-pushed onto the operand stack at unit entry, and the
 			// copy the body never consumes is discarded by the RET's
 			// NUnnamed trim — the exact __RC frame discipline — so the fold
 			// no longer strands a divergent count (the former "args over a
-			// frame with unnamed params" refusal).
+			// frame with unnamed params" compile failure).
 			return []core.Value{top}, true
 		}
 	}
@@ -669,7 +719,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 	// and its operands are static, so run the expansion NOW and bake the
 	// resulting token list as a const (code-as-data). Only when the expansion
 	// is fully concrete (isInertConst — no carrier from a runtime operand) and
-	// succeeds; a too-deep / erroring expansion falls through to refuse, and the
+	// succeeds; a too-deep / erroring expansion falls through to decline, and the
 	// interpreter surfaces the same error.
 	if word == "macroexpand" && len(args) == 1 {
 		toks, err := core.ExpandMacroForm(r, args[0])
@@ -682,7 +732,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 				// isInertConst accepting the result does not imply determinism (an
 				// unevaluated (now) member is inert). Bake the check-time expansion
 				// only when a second expansion agrees; on mismatch fall through to
-				// refuse so the interpreter expands at its own step. The probe runs
+				// decline so the interpreter expands at its own step. The probe runs
 				// under a def-stack snapshot so it leaves no new side effect beyond
 				// the first expansion's (which is preserved, as before).
 				snap := r.Defs.Snapshot()
@@ -698,10 +748,10 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 			// raises exactly this error at run time. Compile the byte-identical
 			// terminal trap (top-level only — RecordTrap declines a nested
 			// occurrence, which keeps the lenient fallback) so the compiled
-			// program raises it instead of refusing. Mirrors the sibling
+			// program raises it instead of declining. Mirrors the sibling
 			// mini/parse/emit `*_unknown_lang` expansion-time traps. Any OTHER
 			// expansion error (a malformed form, a non-macro head) is not a
-			// runtime error to reproduce — it falls through to refuse, and the
+			// runtime error to reproduce — it falls through to decline, and the
 			// interpreter surfaces it.
 			var ae *core.BoruError
 			if errors.As(err, &ae) && ae.Code == "macroexpand_error" {
@@ -721,8 +771,20 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, args []core.Value, pos core.SrcPos) []core.Value {
 	var out []core.Value
 	switch {
+	case sig.ReturnsFn != nil && len(args) < sig.TotalArgs():
+		// A SHORT window — fewer operands than the signature declares — is
+		// only ever the failed-dispatch recovery's (checkModeAssumeSig), which
+		// assumes a best-fit overload the site cannot supply in full: a real
+		// match always binds every position. A ReturnsFn is the analysis half
+		// of a MATCHED call and reads its operands positionally (`if`'s reads
+		// args[0], NUR332's panic), so it is never called over a window it was
+		// not given. The dispatch is a no-match the recovery has already
+		// reported and decided; its result is the declared Returns, else one
+		// dynamic Any — "type unknown", with no second missing_returns report.
+		out = shortWindowCarriers(sig)
 	case sig.ReturnsFn != nil:
 		r.Check.CurCallPos = pos // expose call site to ReturnsFn (e.g. make Array identity)
+		r.Check.CurCallWord = word
 		raw := sig.ReturnsFn(resolveTypeNameArgs(args), r)
 		out = make([]core.Value, len(raw))
 		for i, v := range raw {
@@ -777,6 +839,23 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 	return out
 }
 
+// shortWindowCarriers is a short-window recovery's result (see
+// declaredReturnCarriers): one fresh carrier per declared Returns type, or a
+// single dynamic Any when the signature declares none (a nil Returns; an
+// empty one declares "returns nothing").
+func shortWindowCarriers(sig *core.Signature) []core.Value {
+	if sig.Returns == nil {
+		return []core.Value{core.NewDynamicCarrier(core.TAny)}
+	}
+	out := make([]core.Value, len(sig.Returns))
+	for i, t := range sig.Returns {
+		c := core.NewCarrier(t)
+		c.Dynamic = t.Equal(core.TAny)
+		out[i] = c
+	}
+	return out
+}
+
 // isConcreteContainerReturn reports whether a declared-return carrier is a
 // fully-determined List/Map container (not the Any root, not a dynamic
 // carrier). Such a return type is fixed by the word's contract independent of
@@ -799,7 +878,7 @@ func isConcreteContainerReturn(v core.Value) bool {
 // value where a value-returning sibling overload is reachable (gated to
 // consumed results under a real compile — see CarrierResults' doc).
 func applyGradualContagion(r *core.Registry, word string, args []core.Value, out []core.Value, pos core.SrcPos, tailConsumed bool) []core.Value {
-	// Gradual contagion (design/dynamic-modality-report.10.md): a result
+	// Gradual contagion (design/legacy/dynamic-modality-report.10.ignore): a result
 	// derived from a dynamic carrier is itself dynamic, so the modality
 	// flows downstream instead of dying after one dispatch. The bound is
 	// the sig's declared return (the first-cut result; the full
@@ -841,7 +920,7 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 		// receiver, so a compiled program never observes a wrongly-typed
 		// result. Keeping such a List/Map output STRICT lets a downstream
 		// `each` / `fold` / accessor commit on the KNOWN container instead of
-		// refusing "dynamic input at each" — the cross-module element-typing
+		// declining "dynamic input at each" — the cross-module element-typing
 		// flip. Scoped to CONTAINER returns on purpose: a downstream
 		// higher-order/accessor word needs the concrete container to derive an
 		// element carrier, whereas keeping a SCALAR return strict has no such
@@ -855,10 +934,26 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 		// (declared Any / a ReturnsFn that produced a dynamic carrier) stays
 		// dynamic — those arrive here already flagged Dynamic and are untouched.
 		var reachable []*core.Type
+		// unknownSibling: fewer than two reachable returns is NOT the single-
+		// reachable-return case when the union was abandoned because a
+		// reachable overload has no single declared return (a ReturnsFn —
+		// dynamicReachableReturns' partially-known bail). `each [body] xs`
+		// over a dynamic xs reaches both the List form (eachReturnsFn) and
+		// the Map form (Returns Map); matching committed to the Map form, and
+		// keepStrict then held a STRICT Map the runtime List contradicts —
+		// kg/ingest.boru's `KgEnt.distinct-sorted (each […] (get-or raw
+		// "aliases" []))` left the xs:List callee uncalled as data, and the
+		// map literal holding both values had no compiled home ("fn call
+		// operand of unknown provenance", 2026-09-26). The committed return
+		// is then no sound static type at all, so it widens to dynamic(Any)
+		// below — the all-unknown case's own answer.
+		unknownSibling := false
 		if len(out) == 1 {
 			reachable = dynamicReachableReturns(r, word, args)
+			unknownSibling = len(reachable) < 2 && reachableUnknownReturnSibling(r, word, args)
 		}
-		keepStrict := len(out) == 1 && len(reachable) < 2
+		keepStrict := len(out) == 1 && len(reachable) < 2 && !unknownSibling
+		widenToAny := unknownSibling && isConcreteContainerReturn(out[0])
 		for i := range out {
 			out[i].Carrier = true
 			if keepStrict && !out[i].Dynamic && isConcreteContainerReturn(out[i]) {
@@ -866,7 +961,7 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 			}
 			out[i].Dynamic = true
 		}
-		// First-match partition (design/dynamic-modality-report.10.md): a
+		// First-match partition (design/legacy/dynamic-modality-report.10.ignore): a
 		// dynamic bound can reach MULTIPLE of the word's overloads, whose
 		// returns may differ. The single matched-sig return is then too
 		// narrow — it would wrongly reject a downstream use of one of the
@@ -888,6 +983,10 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 					alts[i] = core.NewTypeLiteral(t)
 				}
 				out[0] = core.NewDynamicCarrierValue(core.NewDisjunct(alts))
+			} else if widenToAny {
+				// Minted fresh, as the union above is (the residual model
+				// relies on the widening's new identity).
+				out[0] = core.NewDynamicCarrier(core.TAny)
 			}
 		} else if len(out) == 0 && (!r.Check.Compiling || tailConsumed) {
 			// The matched overload returns NOTHING (an in-place mutator) but the
@@ -953,8 +1052,8 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 			// registry's FlowCtrl when the island's sub-engine runs it; the
 			// VM cannot propagate that to an ENCLOSING compiled loop/frame
 			// across the island boundary (the sentinel surfaces as a
-			// tape-coupled island result and the VM rejects it). Refuse so
-			// the whole program falls back, where the interpreter unwinds
+			// tape-coupled island result and the VM rejects it). Decline so
+			// the program does not compile, where the interpreter unwinds
 			// it correctly. (Sentinels targeting a loop WITHIN the body are
 			// rarer than this conservative rule loses; the gate stays
 			// green either way.)
@@ -966,9 +1065,9 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 			// are frame locals). An island's sub-engine inside a compiled fn
 			// would therefore see an EMPTY args stack where the interpreter
 			// sees the enclosing call's list — `do [args]` in a fn islanded
-			// to error(args_error) against the interpreter's [7]. Refuse so
-			// the whole program falls back (the same divergence RecordCall's
-			// context-dependent-word gate refuses for direct dispatches).
+			// to error(args_error) against the interpreter's [7]. Decline so
+			// the program does not compile (the same divergence RecordCall's
+			// context-dependent-word gate declines for direct dispatches).
 			free = false
 			return
 		}
@@ -998,8 +1097,9 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 // CALL_NATIVE const-bake (the body list is inert data to isInertConst),
 // and the closure probe (whose body compile binds the check-time overload)
 // — leaves the VM raising undefined_word on a program the interpreter
-// runs. recordDispatchOutcome therefore refuses the whole program up front
-// ("slow, not wrong" — design/COMPILABLE-SUBSET.md §5).
+// runs. recordDispatchOutcome therefore declines the whole program up front
+// — a compile failure rather than an undefined_word, and an open defect until the
+// callback compiles (design/COMPILABLE-SUBSET.md §5).
 //
 // Scope-matching is deliberately NARROW, mirroring ComputeCaptures:
 //   - module-scope callbacks (TopFnBaseline nil, or Depth ≤ baseline) keep
@@ -1012,36 +1112,53 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 //     events (a fn-local dispatch lowers to CALL_USER by unit ref, no
 //     name bake), so the family gate excludes them.
 func BodyRefsFnLocalFn(r *core.Registry, sig *core.Signature, args []core.Value) (string, bool) {
+	names, _ := BodyRefsFnLocalFns(r, sig, args)
+	if len(names) == 0 {
+		return "", false
+	}
+	return names[0], true
+}
+
+// BodyRefsFnLocalFns is BodyRefsFnLocalFn over EVERY fn-local fn the code
+// bodies name — in walk order, each once — and reports whether any such
+// reference is a VALUE read (`f/v`, `f/u`: the modified word resolves to
+// the fn value instead of dispatching it). The seventy-second increment
+// places each named local for the frame, so a body naming two locals
+// needs both placed, and a value read — whose result the closure returns
+// as data where the interpreter dispatches it (review of #468) — keeps
+// the compile failure.
+func BodyRefsFnLocalFns(r *core.Registry, sig *core.Signature, args []core.Value) (names []string, valueRead bool) {
 	if sig == nil || len(sig.NoEvalArgs) == 0 ||
 		(!sig.CompileEffect.Has(core.CompileFallbackBody) && sig.Callable == nil) {
-		return "", false
+		return nil, false
 	}
 	baseline := r.TopFnBaseline()
 	if baseline == nil {
-		return "", false // module scope: no enclosing fn, nothing is fn-local
+		return nil, false // module scope: no enclosing fn, nothing is fn-local
 	}
+	seen := map[string]bool{}
 	for i := range args {
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		name := ""
 		core.WalkBodyWords([]core.Value{args[i]}, func(w core.WordInfo, _ core.Value) {
-			if name != "" {
-				return
-			}
 			v, bound := r.Defs.Top(w.Name)
 			if !bound || r.Defs.Depth(w.Name) <= baseline[w.Name] {
 				return
 			}
-			if _, isFn := v.Data.(core.FnDefInfo); isFn {
-				name = w.Name
+			if _, isFn := v.Data.(core.FnDefInfo); !isFn {
+				return
+			}
+			if w.ForceVal || w.ForceUsurp {
+				valueRead = true
+			}
+			if !seen[w.Name] {
+				seen[w.Name] = true
+				names = append(names, w.Name)
 			}
 		})
-		if name != "" {
-			return name, true
-		}
 	}
-	return "", false
+	return names, valueRead
 }
 
 // bodyHasSentinel reports whether a code body contains a flow-control
@@ -1050,7 +1167,7 @@ func BodyRefsFnLocalFn(r *core.Registry, sig *core.Signature, args []core.Value)
 // reach across the call boundary, so the whole program must fall back and let
 // the interpreter unwind it. Unlike bodyFreeForFallback this does NOT reject
 // def references — the closure compile bakes a concrete def as a const or
-// threads an enclosing-fn binding as a capture, and the probe compile refuses
+// threads an enclosing-fn binding as a capture, and the probe compile declines
 // anything it cannot resolve.
 func BodyHasSentinel(body core.Value) bool {
 	return valueHasSentinel(body)
@@ -1243,9 +1360,7 @@ func calleeLeaksFlow(r *core.Registry, name string, seen map[string]bool) bool {
 // fnDefLeaksFlow scans every overload body of fd for a leaking
 // break/continue. A module fn's body words resolve in its OWN registry.
 func fnDefLeaksFlow(r *core.Registry, fd *core.FnDefInfo, seen map[string]bool) bool {
-	if fd.Registry != nil {
-		r = fd.Registry
-	}
+	r, _ = core.FnHome(r, fd)
 	for i := range fd.Signatures {
 		for _, t := range fd.Signatures[i].Body() {
 			if calleeValueLeaksFlow(r, t, seen) {
@@ -1319,7 +1434,7 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 	// (alternativeCarriers mints fresh IDs), so under an ARMED recording
 	// they must not record: a user fn's ReturnsFn would RecordUserCall the
 	// fresh-ID copies ("fn call operand of unknown provenance" — the
-	// L-JOIN recursive-union refusal) and compile one unit per combo.
+	// L-JOIN recursive-union compile failure) and compile one unit per combo.
 	// Suspend for the loop (a no-op on a plain check); the caller records
 	// the dispatch ONCE with the original args (CarrierResults' partition
 	// arm). Diagnostics (partial_dispatch) are not gated by suspension.
@@ -1380,7 +1495,7 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 // combo that would first-match a SIBLING overload (a narrow arm ahead of the
 // committed wide one) makes the single baked call a miscompile — the
 // interpreter dispatches the sibling for that alternative — so the caller
-// keeps the refusal. Combo enumeration failure (over the cap) declines.
+// keeps the compile failure. Combo enumeration failure (over the cap) declines.
 func disjunctCombosTakeSig(r *core.Registry, word string, args []core.Value, sig *core.Signature) bool {
 	fn := r.Lookup(word)
 	if fn == nil {
@@ -1517,7 +1632,7 @@ func comboTypeNames(combo []core.Value) string {
 // dynamicReachableOverloadCount counts how many of word's same-arity overloads
 // the (partly-dynamic) arg list could match. ≥2 means the dispatch is AMBIGUOUS:
 // a gradual-Any arg matches every overload optimistically, so the checker's single
-// committed overload may not be the one the RUNTIME value needs. Used to refuse a
+// committed overload may not be the one the RUNTIME value needs. Used to decline a
 // higher-order word (each/fold/scan) over a gradual collection — its List-vs-Map
 // overloads can't be statically chosen and it has no poly re-match (code body).
 // fnPredicateOverloadHazard reports whether word's same-arity overload set
@@ -1527,7 +1642,9 @@ func comboTypeNames(combo []core.Value) string {
 // one arm reachable for these args — the combination where a static arm
 // commit can diverge from the interpreter's runtime predicate fall-through.
 // DepScalar and Go-member types match self-contained in check mode (no
-// leniency), so they carry no hazard.
+// leniency), so they carry no hazard — unless the refinement's bound is one
+// the pass does not know (a computed one, `def T (Integer gt (size s))`):
+// its check-mode match admits every value (NUR308), the same leniency.
 func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value) bool {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {
@@ -1546,6 +1663,12 @@ func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value)
 				if _, ok := t.Behavior().(*core.PredicateUnifier); ok {
 					hasPred = true
 				}
+				if core.HasUnknownRefinement(core.NewTypeLiteral(t)) {
+					hasPred = true
+				}
+			}
+			if p, ok := core.SigPattern(s, j); ok && core.HasUnknownRefinement(p) {
+				hasPred = true
 			}
 			if !core.SigTypeMatches(args[j], t) {
 				reach = false
@@ -1634,6 +1757,41 @@ func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Val
 	return rets
 }
 
+// reachableUnknownReturnSibling reports whether the dispatch's operands reach
+// two or more same-arity overloads of word (dynamicReachableReturns'
+// reachability rule) and at least one of them declares no single return (a
+// ReturnsFn, a zero- or multi-return sig) — the case dynamicReachableReturns
+// abandons for a partially-known call, where the matched overload's return
+// is only one of the runtime's possible result types.
+func reachableUnknownReturnSibling(r *core.Registry, word string, args []core.Value) bool {
+	fn := r.Lookup(word)
+	if fn == nil || len(fn.Signatures) < 2 {
+		return false
+	}
+	reached, unknown := 0, false
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.TotalArgs() != len(args) {
+			continue
+		}
+		reach := true
+		for j := range args {
+			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+				reach = false
+				break
+			}
+		}
+		if !reach {
+			continue
+		}
+		reached++
+		if len(s.Returns) != 1 || s.Returns[0] == nil {
+			unknown = true
+		}
+	}
+	return reached >= 2 && unknown
+}
+
 func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) []*core.Type {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {
@@ -1716,7 +1874,7 @@ func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) [
 }
 
 // narrowDynamicUses implements narrowing-through-use
-// (design/dynamic-modality-report.10.md): when a dynamic carrier resolved
+// (design/legacy/dynamic-modality-report.10.ignore): when a dynamic carrier resolved
 // from a binding is consumed by a typed slot, the binding tightens to
 // dynamic(bound ∩ slot) for downstream uses, so a later provably-disjoint
 // use of the same name fails the match rule and is flagged — no explicit
@@ -1785,7 +1943,7 @@ func narrowDynamicUses(r *core.Registry, word string, sig *core.Signature, args 
 		// which would orphan the binding from its producing event: a
 		// `def nodes (tree get "nodes")` narrowed to List at its first typed
 		// use lost the get event's provenance, so every LATER read of the
-		// name refused ("fn call operand of unknown provenance" — the
+		// name declined ("fn call operand of unknown provenance" — the
 		// decision eval-tree walkers). Re-stamp the current binding's ID so
 		// the recorder's producedBy still resolves the rebound name to its
 		// original producer.
@@ -1848,8 +2006,21 @@ func slotIsPolymorphic(r *core.Registry, word string, args []core.Value, i int, 
 		for j := range args {
 			if j == i {
 				// The dynamic value at i: reachable unless provably disjoint
-				// from this overload's type there.
-				if core.IsNeverShape(core.TandValues(core.NewCarrier(args[j].Parent), core.NewCarrier(st))) {
+				// from this overload's type there — measured against the
+				// value's BOUND, the same operand narrowDynamicUses
+				// intersects. Its Parent alone is not the bound for a
+				// structured one: a dynamic DISJUNCT (`def cur (hashes get
+				// k)` over an Any store, the union of get's reachable
+				// returns) has Parent Disjunct, a node disjoint from every
+				// container type, so every sibling read as unreachable and
+				// the first overload's slot won — mini-redis's `(cur get f)`
+				// narrowed cur to Module, and the later `cur set (f) None`
+				// declined no_signature, taking the `def h2` it fed with it
+				// (a false undefined_word, 2026-09-26).
+				bound := args[j]
+				bound.Dynamic = false
+				bound.SetDynFrom("")
+				if core.IsNeverShape(core.TandValues(bound, core.NewCarrier(st))) {
 					reach = false
 					break
 				}
@@ -1881,7 +2052,7 @@ func AnyDynamicCarrier(vs []core.Value) bool {
 // anyNonConcreteOperand reports whether any value is not a concrete
 // payload-bearing value (a typed carrier or a bare type literal) — the
 // operand shape under which a static CoreDefault match is not a dispatch
-// proof (recordCallRefusal): the runtime tag may be a strict subtype a
+// proof (recordCallCompileFailure): the runtime tag may be a strict subtype a
 // more-specific unlocked overload claims.
 func AnyNonConcreteOperand(vs []core.Value) bool {
 	for _, v := range vs {
@@ -1924,7 +2095,7 @@ func isAnyCarrier(v core.Value) bool {
 // the dispatch reaches the no-signature recovery — but at run time it holds ONE
 // concrete alternative, and the SAME first-match the interpreter takes
 // dispatches it. So a poly-safe word (get/getr) over a union receiver records a
-// runtime-re-matching OpCallNativePoly instead of refusing; a runtime member
+// runtime-re-matching OpCallNativePoly instead of declining; a runtime member
 // that matches no overload routes to the sound OpFallback island. (A bare
 // disjunct carrier carries no DisjunctInfo payload, so IsDisjunct is false here —
 // the carrier's Parent IS the union type, which is what we test.)
@@ -1945,7 +2116,7 @@ func anyDisjunctCarrier(vs []core.Value) bool {
 // mini-redis codec's `join " " reply` — reply lands as a scalar carrier where
 // `join`'s List slot cannot commit). Like an Any / Disjunct carrier it is NOT a
 // concrete value (Carrier=true), so per the no-signature-recovery contract
-// ("Concrete operands are a genuine type error and refuse; carriers recover")
+// ("Concrete operands are a genuine type error and decline; carriers recover")
 // it is eligible for the runtime-re-matching OpCallNativePoly: tryRecordPoly's
 // own poly-safety gates decide whether recovery is faithful, and a runtime
 // value that matches no overload routes to the sound OpFallback island / raises
@@ -2028,7 +2199,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				// A NAMED target evaluates to its minted node (the Stage 2
 				// flip); the structural content the branches below inspect —
 				// a generic schema, a record body — is the node's recorded
-				// declaration (design/TYPE-REPRESENTATION.1.md §N2).
+				// declaration (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 				target := args[m]
 				if content, ok := core.TypeContentOf(target); ok && core.IsBareTypeNode(target) {
 					target = content
@@ -2147,7 +2318,7 @@ func ReturnsStatic(types ...*core.Type) core.ReturnsFunc {
 // ReturnsDynUnion models a declared value-or-sentinel union — env's
 // String-or-none, read-line's line-or-EOF, stat's record-or-absent — as a
 // DYNAMIC disjunct carrier over the alternatives. Dynamic, deliberately:
-// a STRICT union at these words would refuse every gradual call site that
+// a STRICT union at these words would decline every gradual call site that
 // feeds the result straight into a typed slot without a none-guard (the
 // pattern real io code uses everywhere), trading false negatives for
 // false positives. The dynamic bound keeps optimistic matching — the
@@ -2180,6 +2351,27 @@ func ReturnsDynUnion(types ...*core.Type) core.ReturnsFunc {
 // Integer⊕Float mix is Float. A Big⊕Float mix errors at runtime (the
 // exact types never silently become Float); statically it is modelled as
 // the Big leaf so analysis can continue past it.
+//
+// The Integer result needs BOTH operands to be Integers when they are
+// numbers. Any other numeric pair — an operand typed only as Number (a fold
+// accumulator over `[1 2.5 3]`, whose element carrier is the join Number),
+// or a gradual operand — can carry a Float leaf at run time, so the result
+// is a Number: dynamic when an operand is gradual (the optimistic modality
+// flows through, so a later Integer slot still matches), strict otherwise.
+// This was a blanket Integer default, which typed `0 fold [add] [1 2.5 3]`
+// as [Integer] while it returns 6.5 — a type-soundness violation
+// (fold-map-filter.tsv:L53, TestCheckTypeSoundness, 2026-09-27).
+//
+// A STRICT operand that is not a Number at all (a strict Any: an anonymous
+// fn's declared [Any] result) reaches here only through the no-match
+// recovery, whose runtime re-match decides the call; it keeps the
+// historical Integer model. That is still imprecise, and deliberately left:
+// both Number spellings of it cost programs their compilation — a strict
+// Number fails a specialised unit's return contract (`((mk 1) m.x) mul 10`
+// in a shape-specialised fn, TestShapeSpecialisation) and a dynamic one an
+// each body's residual layout (`xs each [(2 lam) mul 10]`,
+// TestUnnamedFrameApplyResultTyped). Typing it needs those consumers to
+// accept a Number bound first.
 func ReturnsNumericBinary() core.ReturnsFunc {
 	return func(args []core.Value, _ *core.Registry) []core.Value {
 		if len(args) != 2 {
@@ -2193,6 +2385,12 @@ func ReturnsNumericBinary() core.ReturnsFunc {
 			return []core.Value{core.NewCarrier(core.TBigInteger)}
 		case a.ConformsTo(core.TFloat) || b.ConformsTo(core.TFloat):
 			return []core.Value{core.NewCarrier(core.TFloat)}
+		case a.ConformsTo(core.TInteger) && b.ConformsTo(core.TInteger):
+			return []core.Value{core.NewCarrier(core.TInteger)}
+		case args[0].Dynamic || args[1].Dynamic:
+			return []core.Value{core.NewDynamicCarrier(core.TNumber)}
+		case a.ConformsTo(core.TNumber) && b.ConformsTo(core.TNumber):
+			return []core.Value{core.NewCarrier(core.TNumber)}
 		default:
 			return []core.Value{core.NewCarrier(core.TInteger)}
 		}
@@ -2268,7 +2466,7 @@ const loopAnalysisRounds = 3
 const FnAnalysisQuota = 64
 
 // AnalyseLoopBody analyses a loop body to a bounded fixed point
-// (design/checker-accuracy-review.10.md A4). Each round binds the
+// (design/legacy/checker-accuracy-review.10.ignore A4). Each round binds the
 // loop's own names (iterator …) as carriers, runs the body, and
 // JOINS the body's net def additions back into the enclosing
 // bindings — "the loop may run zero times" is the join with the
@@ -2297,6 +2495,16 @@ const FnAnalysisQuota = 64
 // `continue` bypassed the bind, `break` kept a discarded iteration's
 // value) breaks. A non-proven loop body still analyses identically — it
 // just declines the split (NestedBodyDepth != LoopBodyDepth).
+// isBindName reports whether name is one of a loop's own bind variables.
+func isBindName(bindNames []string, name string) bool {
+	for _, n := range bindNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value, provenTrips bool) []core.Value {
 	proven := provenTrips && !BodyHasSentinel(body)
 	// Loop-lowering hook (`for`): when armed, register the loop
@@ -2306,14 +2514,17 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	es := r.Check.Recorder()
 	loopCapture := es.ConsumeLoopArm()
 	if loopCapture {
-		for _, v := range bindVals {
+		for i, v := range bindVals {
 			es.RegisterLocal(v.ID)
+			if i < len(bindNames) {
+				es.NameLocal(v.ID, bindNames[i])
+			}
 		}
 		// Loop-carried def rebinds: a pre-loop `def` the body REBINDS gets a
 		// unit frame slot (NoteLoopCarried per round below), a store at each
 		// rebind site (RecordDefRebind, from the def handler), and a slot
 		// resolution for every round's joined binding — so a read on a later
-		// iteration or after the loop compiles instead of refusing "operand
+		// iteration or after the loop compiles instead of declining "operand
 		// of unknown provenance". EndLoopCarried exposes the slot inits to
 		// the RecordLoop that follows this analysis.
 		es.BeginLoopCarried()
@@ -2323,9 +2534,26 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	var installed []string
 	diagBase := len(r.Check.Diagnostics)
 	prev := map[string]core.Value{}
+	// The last two rounds' joined bindings: a module the body binds is
+	// compared across them (declineLoopModuleBinds).
+	var lastJoined, prevJoined map[string]core.Value
 	for round := 0; round < loopAnalysisRounds; round++ {
 		r.Check.TruncateDiagnostics(diagBase)
+		// A speculative undef inside the body generalises an enclosing
+		// binding IN PLACE (core.GeneraliseSpecUndef): no depth grows, so
+		// the join below sees nothing, yet every read of the name recorded
+		// BEFORE the undef in this round baked the value the next iteration
+		// no longer has (`for 2 [ k  undef k ]`). A round that moved the
+		// generation is not stable; the next round reads the carrier from
+		// its first token and re-mints nothing, so it settles.
+		specGen := r.Check.SpecUndefGen
+		// The bind names' pre-push depths: the body may push levels of a bind
+		// name above the loop's own (`for 3 [def i 9]`), and the loop's
+		// lexical scope ends with the round — pop to these depths after it,
+		// not one level (NUR204: the index level survived the analysis too).
+		bindDepths := make([]int, len(bindNames))
 		for i, n := range bindNames {
+			bindDepths[i] = r.Defs.Depth(n)
 			r.Defs.Push(n, bindVals[i])
 		}
 		// Checkpoint the recording pools before an armed round: only the FINAL
@@ -2348,7 +2576,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Check.LoopBodyDepth--
 		}
 		for i := len(bindNames) - 1; i >= 0; i-- {
-			r.Defs.Pop(bindNames[i])
+			for r.Defs.Depth(bindNames[i]) > bindDepths[i] {
+				r.Defs.Pop(bindNames[i])
+			}
 		}
 		// Expose the original pre-loop bindings before re-joining.
 		for i := len(installed) - 1; i >= 0; i-- {
@@ -2366,6 +2596,14 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		sort.Strings(names)
 		for _, k := range names {
 			v := adds[k]
+			// A body def of one of the loop's OWN bind names (its index)
+			// rebinds the iteration's binding and ends with it — the
+			// lexical index scope (NUR204): it is neither joined into the
+			// post-loop binding nor loop-carried (the lowering stores it
+			// into the index slot).
+			if isBindName(bindNames, k) {
+				continue
+			}
 			if pre, ok := r.Defs.Top(k); ok {
 				// An add that is only a NARROWING of the enclosing binding —
 				// narrowDynamicUses preserves the value's ID, so same ID as
@@ -2387,6 +2625,15 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 					// joined ID so the next round's / post-loop reads resolve.
 					es.NoteLoopCarried(k, j, pre)
 				}
+			} else if loopCapture && !proven && loopFreshCarriable(k, v) {
+				// A FRESH name in a loop that may run zero times is bound
+				// after the loop only if the body ran: the post-loop
+				// binding is a carrier with its own identity (no read can
+				// fold the body's value into it), carried in a slot with no
+				// init and read bound-checked (NUR214).
+				j := core.JoinCarriers(v, v)
+				joined[k] = j
+				es.NoteLoopFresh(k, j)
 			} else {
 				joined[k] = v
 			}
@@ -2400,6 +2647,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Defs.Push(k, jv)
 			installed = append(installed, k)
 		}
+		prevJoined, lastJoined = lastJoined, joined
 		// Stabilised when the body adds no bindings (the common single-round
 		// case) or the joined bindings equal the previous round's. The final
 		// round is the one that stabilises, or the last permitted round.
@@ -2416,6 +2664,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				}
 			}
 			prev = joined
+		}
+		if r.Check.SpecUndefGen != specGen {
+			stable = false
 		}
 		if loopCapture && !stable && round < loopAnalysisRounds-1 {
 			es.Rollback(cp)
@@ -2438,10 +2689,67 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	// corpus could not see the gap: like NUR110's branch-arm class, every
 	// loop-body def it holds sits inside a fn body, where FnBodyDepth
 	// suppresses the note; the synthetic while row supplies it.
+	// A module bind the join's one replay cannot stand for is noted with
+	// its placement WITHHELD (the recorder suspended), so the program
+	// declines at the twin regime's full-placement gate (NUR205).
+	resume := func() {}
+	if loopModuleUnplaceable(installed, lastJoined, prevJoined, proven) {
+		resume = es.Suspend()
+	}
 	for _, k := range installed {
 		r.NoteBindTransition(core.BindDef, k, core.SrcPos{})
 	}
+	resume()
 	return stk
+}
+
+// loopFreshCarriable reports whether a fresh name's body value can ride a
+// frame slot: a plain value. A type binding, a fn value or a module keeps
+// its own machinery (their readers read the payload), exactly the classes
+// the branch's condBoundCarrier leaves alone.
+func loopFreshCarriable(name string, v core.Value) bool {
+	return !core.IsCapitalisedName(name) && !core.IsFnValueResidual(v) && !core.IsBareTypeNode(v) &&
+		!core.IsModuleFamilyValue(v) && !(v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
+}
+
+// loopModuleUnplaceable reports whether the loop's body binds a MODULE (an
+// `import` inside the body) that the compiled lane's one replay of the
+// check pass's bind — the join's twin, placed before the loop — does not
+// stand for, where the interpreter imports per iteration (NUR205). Two
+// shapes differ from that replay: a loop that may run ZERO times (the
+// interpreter never binds the name; the replay has already bound it), and
+// a module that is a NEW instance per import — an inline `import module
+// […]` runs its body again each time, so state the body mints (`def acc
+// (flex [])`) is fresh per iteration on the interpreter and shared by every
+// iteration of the compiled loop. A module the loader caches (a `boru:`
+// import) is the same instance every time, so a loop that provably runs
+// keeps its one replay. The last two analysis rounds tell the cases apart:
+// a cached module's namespace shares its export map across them, a re-run
+// inline module's does not.
+func loopModuleUnplaceable(installed []string, last, prev map[string]core.Value, proven bool) bool {
+	for _, k := range installed {
+		v := last[k]
+		if !core.IsModuleFamilyValue(v) {
+			continue
+		}
+		if !proven {
+			return true
+		}
+		if pv, ok := prev[k]; ok && moduleExports(pv) != moduleExports(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// moduleExports is the export map a module namespace value shares with
+// every other namespace of the same loaded module (native.NewModuleNamespace
+// binds the module's own map, not a copy); nil for a value with none.
+func moduleExports(v core.Value) *core.OrderedMap {
+	if mp, ok := v.Data.(core.MapPayload); ok {
+		return mp.M
+	}
+	return nil
 }
 
 // FnAnalysisKey builds the memo key for one fn-body analysis: scope id +
@@ -2459,7 +2767,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 // scopeID is the AnalysisScopeID of the registry whose body is being
 // analysed. It namespaces the key so a module sub-registry's fn cannot
 // alias a same-named, same-positioned parent fn once a check pass is
-// shared across registries (design/module-fn-checkstate-ownership.1.md
+// shared across registries (design/legacy/module-fn-checkstate-ownership.1.ignore
 // §5a) — the position suffix alone does not disambiguate, because parent
 // and module are parsed from independent sources whose positions overlap.
 // core_helpers' compile hook must build the SAME key (its FnSummaries
@@ -2534,7 +2842,7 @@ func FnAnalysisKey(scopeID uint64, name string, args []core.Value, captures []co
 // conflated every higher-order closure in the whole program under one budget,
 // so a module with 64+ distinct `each` loops exhausted the quota and forced
 // later loops to bail to a provenance-less dynamic Any — which the compiler
-// then refused ("code-body word each (Stage 2)"). Keyed by definition site,
+// then declined ("code-body word each (Stage 2)"). Keyed by definition site,
 // each distinct closure gets its own budget while the same body re-analysed
 // under many arg shapes still shares one counter.
 // The name may be empty (a transparent anonymous body); it is written
@@ -2613,10 +2921,44 @@ func refineRecursiveSummary(r *core.Registry, key string, diagBase int, result [
 // baseline so any inner fn/afn construction inside the body sees this scope
 // as its enclosing-fn baseline — without it, ComputeCaptures would treat
 // outer params as if they lived at module/global scope and miss the capture.
+// bindFrameValue binds a param or capture of an analysed fn body the way
+// the run's frame binds it (core.InstallFrameBinding) when the value is a
+// concrete fn: the frame install compiles the value's authored signatures
+// into dispatch-ready ones, so a body that CALLS the name matches exactly as
+// the run's does. An inline lambda's authored signature carries no argument
+// types of its own — it dispatches as a value straight from the authored form
+// — and the raw push left `g x` matching nothing, a no_signature the named
+// `/v` spelling of the same fn never drew (NUR089). Every other value — a
+// carrier, a scalar, a container — is the plain push it always was.
+func bindFrameValue(r *core.Registry, name string, v core.Value) {
+	if _, isFn := v.Data.(core.FnDefInfo); isFn && v.Parent != nil && v.Parent.Equal(core.TFunction) {
+		core.InstallFrameBinding(r, name, v)
+		return
+	}
+	r.Defs.Push(name, v)
+}
+
 func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous bool) []core.Value {
+	return runFnBodyOnce(r, name, paramNames, body, args, captures, anonymous, false)
+}
+
+// runFnBodyOnce is RunFnBodyOnce with the param-binding mode: frameBindFns
+// binds a named param holding a CONCRETE fn the way the interpreter binds it
+// (core.InstallFrameBinding — re-installed under the param's name, so a read
+// dispatches, errors and renders as the binding), where every other analysis
+// pushes the arg as a plain def. Only a call-site specialised unit's analysis
+// sets it (AnalyseFnBody under a SpecKeySuffix): that is the one analysis
+// whose concrete fn params are COMPILED, so the one whose binding must be the
+// interpreter's own.
+func runFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous, frameBindFns bool) []core.Value {
 	snapshot := r.Defs.Snapshot()
 	r.PushFnBaseline(snapshot)
 	defer r.PopFnBaseline()
+	// The type-part reservations a body-local `def T` makes come off with
+	// the body's bindings below (core.ForgetTypePartsSince): the analysis
+	// is not a call, and a reservation it left behind made the run's first
+	// call the conflicting one (NUR167).
+	parts := r.TypePartsSnapshot()
 
 	// Expose the params as the per-call args list so a body that reads
 	// `args` / `args.N` resolves them in check mode. The params ARE the
@@ -2631,17 +2973,29 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// shadow same-named captures — innermost binding wins,
 	// matching runtime dispatch.
 	for _, cb := range captures {
-		r.Defs.Push(cb.Name, cb.Value)
+		bindFrameValue(r, cb.Name, cb.Value)
 	}
 
 	// Bind named parameters as simple defs (carrier-typed).
 	// Unnamed parameters flow through the stack — push them
-	// before the body.
+	// before the body. A specialised analysis's constant-fn params are
+	// published for its duration (CheckState.SpecParamNames).
+	specNames := map[string]bool{}
+	if frameBindFns {
+		saved := r.Check.SpecParamNames
+		r.Check.SpecParamNames = specNames
+		defer func() { r.Check.SpecParamNames = saved }()
+	}
 	var input []core.Value
 	hasUnnamed := false
 	for i, arg := range args {
 		if i < len(paramNames) && paramNames[i] != "" {
-			r.Defs.Push(paramNames[i], arg)
+			if frameBindFns && core.IsConcrete(arg) && arg.Parent.ConformsTo(core.TFunction) {
+				core.InstallFrameBinding(r, paramNames[i], arg)
+				specNames[paramNames[i]] = true
+			} else {
+				bindFrameValue(r, paramNames[i], arg)
+			}
 		} else {
 			// An unnamed FN-VALUE param is inert frame DATA under the
 			// arguments-are-inert unification (the interpreter no longer
@@ -2649,7 +3003,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 			// UNIFICATION.0.md), and the unit model now mirrors the frame
 			// exactly: the value re-pushes at entry, `args.N` folds to its
 			// local, and the RET's NUnnamed trim discards an unconsumed
-			// copy — so the former guard refusal is retired.
+			// copy — so the former guard compile failure is retired.
 			input = append(input, arg)
 			hasUnnamed = true
 		}
@@ -2658,7 +3012,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	input = append(input, body...)
 
 	// Record whether this frame has stack-flowing unnamed params so a body
-	// `args` / `args.N` read can refuse in compile mode (the unnamed input
+	// `args` / `args.N` read can decline in compile mode (the unnamed input
 	// stays live on the body stack; folding args.N over it strands the input
 	// — design/EDGE-SPEC-FINDINGS.0.md §4). Save/restore around the body run
 	// so nested analyses see their own frame's answer.
@@ -2667,6 +3021,9 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	defer func() { r.Check.ArgsFrameUnnamed = prevUnnamed }()
 
 	sub := core.New(r)
+	// The body's engine is the frame's own: its tape opens at the frame's
+	// bottom, where the run seals it (Engine.FrameRoot).
+	sub.FrameRoot = true
 	// The unnamed inputs are the frame's resolved-argument prefix: inert
 	// data the collection-hazard scan must never mark (Engine.InertPrefix —
 	// an unnamed Function param at the frame bottom collects nothing).
@@ -2677,9 +3034,18 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// element-eval-recordable so a residual COMPUTED container it returns
 	// (`{message: (join …)}` / `[a b]`, a bare map/list result) records its
 	// OpMakeMap / OpMakeList assembly instead of leaving an unresolvable
-	// residual that refuses "body result of unknown provenance" (the
+	// residual that declines "body result of unknown provenance" (the
 	// mini-redis catch-all shape). Mirrors the branch arm's treatment
 	// (core.RunCarrierBodyWithDefs, peekCaptureArm).
+	//
+	// The by-NAME admission is the interpreter's CallBoru regime: a native
+	// seam invoking a stored value (service `call`, a spawn) evaluates the
+	// residual in the live frame whatever the value's anonymity, so a stored
+	// `=>` handler's computed map reads its params there. The SAME value
+	// applied on the tape (`find` then `h {z:1}`) takes the lambda rule and
+	// defers — one value, two regimes, recorded as NUR153. The stamp is one
+	// unit and takes the CallBoru regime; the tape apply of a stamped stored
+	// `=>` value diverges until the interpreter has one rule.
 	//
 	// Admitted for CALLBACK bodies and MULTI-TOKEN fn bodies. A callback is
 	// only ever invoked via InvokeCallback / CallBoru, which evaluate the
@@ -2694,7 +3060,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// is the pinned no-closures transparency (`def mk fn [[c1:Integer]
 	// [List] [[c1]]] mk 9` → the MODULE binding, def-node-binding.tsv §3 —
 	// maps behave identically), where in-frame assembly would bake the
-	// param and diverge. Such a body keeps refusing and falls back,
+	// param and diverge. Such a body keeps declining and falls back,
 	// byte-identically. The admission is BodyEvalsResidual — the same
 	// predicate the frame-tail builders use — so a single
 	// paren-expression body (which the interpreter also evaluates
@@ -2703,8 +3069,8 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// residual container is assembled against the live params and records
 	// like any in-frame computation. Only an anonymous lambda keeps the
 	// single-bare-literal transparency (BodyEvalsResidual), where in-frame
-	// assembly would bake the param and diverge — that shape keeps refusing.
-	if r.Check.Recorder().Active() && (isCallbackBodyName(name) || !anonymous || core.BodyEvalsResidual(body)) {
+	// assembly would bake the param and diverge — that shape keeps declining.
+	if r.Check.Recorder().Active() && core.ResidualEvalsInFrame(anonymous, body) {
 		sub.ElemEvalRecordable = true
 	}
 	result, err := sub.Run(input)
@@ -2721,7 +3087,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 		// interpreter (a `var`-let or higher-order body whose check-mode error
 		// is mere imprecision — e.g. `get` on an element carrier — runs fine at
 		// runtime, so the VM's empty closure raises `body produced no result`
-		// where the interpreter succeeds). Refuse so the program falls back to
+		// where the interpreter succeeds). Decline so the program falls back to
 		// the interpreter instead. Only when active: a SUSPENDED (plain) nested
 		// analysis records nothing anyway and must not latch the program.
 		if es := r.Check.Recorder(); es.Active() {
@@ -2730,21 +3096,23 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 		result = nil
 	}
 	r.Defs.Restore(snapshot)
+	r.ForgetTypePartsSince(parts)
 	return result
 }
 
-// isCallbackBodyName reports whether name is a stored-fn / spawn callback
-// body — compileClosureBody builds "storedfn$body" / "spawnbody$body" for the
-// words "storedfn" / "spawnbody" (callable_words.go). Such a body is invoked
-// only via InvokeCallback / CallBoru, which evaluate a residual COMPUTED
-// container (`{message: (join …)}` / `[a b]`) IN the live frame on both
-// engines, so recording its OpMakeMap / OpMakeList assembly is safe (it
-// re-assembles per run, matching the interpreter). A normal user fn applied
-// directly at top level leaves a DEFERRED residual the interpreter evaluates
-// after the frame pops — recording there would diverge, so RunFnBodyOnce gates
-// elemEvalRecordable on this predicate.
-func isCallbackBodyName(name string) bool {
-	return name == "storedfn$body" || name == "spawnbody$body"
+// emptyBodyResidual is an EMPTY body's frame: its unnamed args alone, in
+// order. The interpreter pushes them beneath the body and nothing consumes
+// them, so they are the frame's residual, and its return check takes the
+// declared count off them (`def f fn [[Integer] [Integer] []]` returns its
+// argument). nil when every param is named (NUR258).
+func emptyBodyResidual(paramNames []string, args []core.Value) []core.Value {
+	var out []core.Value
+	for i, a := range args {
+		if i >= len(paramNames) || paramNames[i] == "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // AnalyseFnBody runs a user-defined fn body through a sub-engine in
@@ -2755,7 +3123,7 @@ func isCallbackBodyName(name string) bool {
 //
 // declared is the signature's declared return types (nil =
 // unchecked). It is the induction hypothesis for recursion
-// (design/checker-accuracy-review.10.md A2): an in-flight recursive
+// (design/legacy/checker-accuracy-review.10.ignore A2): an in-flight recursive
 // call yields carriers of the DECLARED returns — the end-of-body
 // return check is the matching proof obligation — instead of the
 // everything-matches Any. For unchecked fns the Any bail-out
@@ -2779,8 +3147,22 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// fragment). Mirrors how captureArm/loopArm are consumed at the top
 	// of their analysis functions.
 	defer r.Check.Recorder().FnBodyGuard()()
+	// A call-site specialisation's key suffix is this analysis's alone: taken
+	// at entry, above every early return, so no nested analysis inherits it.
+	keySuffix := r.Check.SpecKeySuffix
+	r.Check.SpecKeySuffix = ""
+	// A callee's body is its OWN control flow: an undecidable arm the
+	// CALLER is inside (CheckState.SpecArmDepth) says nothing about a def
+	// in the callee — `sift-spec-from-map`'s fn-local `check-keys`, defined
+	// at the top of its body, was taken as conditional because the caller
+	// dispatched it inside `if (v is Map) […]`, and 73 corpus rows declined
+	// (the seventieth increment's corpus finding). The depth is the body's:
+	// zero on entry, the caller's again on exit.
+	savedSpecArm := r.Check.SpecArmDepth
+	r.Check.SpecArmDepth = 0
+	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
-		return nil
+		return emptyBodyResidual(paramNames, args)
 	}
 	// Record the caller→callee edge for the dynamic-scope undefined-word
 	// rescue. The current top of FnNameStack is the fn whose body is executing
@@ -2793,6 +3175,9 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 			r.Check.RecordCallEdge(r.Check.FnNameStack[n-1], name)
 		}
 	}
+	// An anonymous fn value's body entered in a named fn's frame — a callback
+	// or an application run there — is reached from it (NUR257).
+	r.Check.NoteAnonDispatch(body[0].Pos())
 	// A FORWARD-referenced fn name that isn't defined yet leaks into this
 	// per-call-site analysis as a concrete Undefined Atom argument. Gradualize
 	// it to a dynamic Any carrier at the analysis boundary — copy-on-write so
@@ -2816,7 +3201,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 		}
 		args[i] = core.WithPos(c, args[i])
 	}
-	key := FnAnalysisKey(r.AnalysisScopeID(), name, args, captures, body)
+	key := FnAnalysisKey(r.AnalysisScopeID(), name, args, captures, body) + keySuffix
 
 	if r.Check.FnSummaries == nil {
 		r.Check.FnSummaries = map[string][]core.Value{}
@@ -2824,7 +3209,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	if r.Check.FnInflight == nil {
 		r.Check.FnInflight = map[string]bool{}
 	}
-	if cached, ok := r.Check.FnSummaries[key]; ok {
+	if cached, ok := r.Check.FnSummaries[key]; ok && !r.Check.ForceFnReanalysis {
 		return cached
 	}
 	// Per-fn analysis quota (A9): a polymorphic helper reached with
@@ -2847,7 +3232,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// it fabricates a declared-return `declaredReturnBail` carrier that no event
 	// produced. That carrier has no producedBy entry, so a real COMPILE pass —
 	// which must lower the body's true residual to an operand — cannot resolve
-	// it and refuses "fn <name>: body result of unknown provenance" (the trie
+	// it and declines "fn <name>: body result of unknown provenance" (the trie
 	// `match-go` / recursive-collector shape, pushed past the name-keyed count
 	// by the re-entrant Test.test compile scopes). The compiler must see the
 	// real body events, so the quota does not apply while Compiling; recursion
@@ -2947,7 +3332,9 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// body sees this scope as its enclosing-fn baseline — without it,
 	// ComputeCaptures would treat outer params as if they lived at
 	// module/global scope and miss the capture.
-	runOnce := func() []core.Value { return RunFnBodyOnce(r, name, paramNames, body, args, captures, anonymous) }
+	runOnce := func() []core.Value {
+		return runFnBodyOnce(r, name, paramNames, body, args, captures, anonymous, keySuffix != "")
+	}
 
 	bailsBefore := r.Check.InflightBails
 	diagBase := len(r.Check.Diagnostics)
@@ -3010,7 +3397,7 @@ func IsDeferredWordList(v core.Value) bool {
 // never captured (only `=>` lambdas close over params), so its words auto-evaluate
 // in MODULE scope at end-of-run, not the param scope AnalyseFnBody's sub-engine
 // used. Returning the raw list lets the residual fold in module scope downstream
-// (matching the interpreter) instead of refusing on a param-poisoned carrier.
+// (matching the interpreter) instead of declining on a param-poisoned carrier.
 //
 // Deliberately narrow: only a lone, unquoted, parser-evaluated list body that
 // names a parameter qualifies. A body that DOESN'T reference a param already

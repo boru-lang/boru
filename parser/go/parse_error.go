@@ -60,6 +60,14 @@ func parseErrText(te *jsonic.JsonicError) (detail, note, help string) {
 		return "unexpected " + q(te.Src) + " — nothing valid can appear here",
 			"boru's grammar allows no continuation with " + q(te.Src) + " at this position",
 			"check for a missing bracket, quote, or value just before it"
+	case "empty_child":
+		return emptyElementDetail,
+			"a typed list's `:` child needs a value after the colon",
+			"write the element type after the colon, e.g. `[:Integer]`"
+	case "arrow_no_body":
+		return "`=>` has no body",
+			"a lambda's body follows the arrow: nothing does here",
+			"write the body after the arrow, e.g. `x => [ x mul 2 ]`"
 	case "unterminated_string":
 		return "this string is never closed: " + te.Src,
 			"",

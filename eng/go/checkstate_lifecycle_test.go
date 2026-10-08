@@ -19,23 +19,44 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 	resetByBegin := map[string]bool{
 		"Diagnostics": true, "StepCount": true, "BudgetTripped": true,
 		"SuppressedRuntimeError": true, "AmbiguousGradualSplit": true,
-		"DefsInstalled": true, "DefsUsed": true, "FnNameStack": true,
+		"DefsInstalled": true, "DefsDone": true, "DefsUsed": true, "FnNameStack": true,
 		"BindLedger": true, "PendingBindPos": true, "PassEndCleanups": true,
 		"FnBinders": true, "FnCallGraph": true, "ContextTypes": true, "CtxShapes": true,
 		"MethodShapes": true, "PendingMethodApply": true, "FnShapes": true,
 		"InflightBails": true, "FnNameInflight": true, "SuppressBodyErrors": true,
 		"FnAnalysisCounts": true, "FnBodyDepth": true, "CallShapeDepth": true,
+		"FnSpecCounts": true, "SpecKeySuffix": true, "SpecOff": true, "SpecTried": true, "SpecDeclined": true, "SpecParamNames": true,
 		"FnBodyChecked":   true,
 		"PendingFnBodies": true,
-		"CaughtBodyDepth": true, "NestedBodyDepth": true, "CondBodyDepth": true,
+		"BehaveMakers":    true,
+		"AnonFnBodies":    true,
+		"BehaveReaders":   true,
+		"FnMemberReads":   true,
+		"SlotBoundReads":  true,
+		"CaughtBodyDepth": true, "RaiseWatches": true, "ValuelessDoBodies": true, "NestedBodyDepth": true, "CondBodyDepth": true,
 		"RolledBackBodyDepth":      true,
 		"SpecBaselines":            true,
+		"SpecUndefCarriers":        true,
+		"SpecUndefGen":             true,
+		"SpecFnNames":              true,
+		"SpecArmDepth":             true,
+		"UnsealedArmDepth":         true,
+		"ArmResidualSweep":         true,
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,
+		"ProgramEmit":              true,
 		"FnCarrierReadSubstituted": true,
 		"ParenPlacedFnIDs":         true,
+		"ReachSurvivorFnIDs":       true,
+		"ForceFnReanalysis":        true,
+		"RootDefSites":             true,
+		"FnReads":                  true,
 		"ParenReSteppedFnIDs":      true,
+		"WordReadFnIDs":            true,
+		"ForwardLeftoverFnIDs":     true,
+		"TrailingDeferredFnIDs":    true,
+		"StoodAsideLandingIDs":     true,
 		"ArgsFrameUnnamed":         true,
 	}
 	// Fields Begin() resets to a canonical NON-zero per-pass value.
@@ -47,6 +68,24 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"Mode":       "set true by Begin itself; cleared by the returned done()",
 		"StepBudget": "configuration with the -1 sentinel, resolved per run",
 		"CurCallPos": "transient cursor overwritten per dispatch",
+		"CurCallWord": "transient cursor overwritten per dispatch, CurCallPos's twin: written " +
+			"beside it by declaredReturnCarriers and read only at a user-fn ReturnsFn's entry",
+		"CurLayout": "scoped: published around one recovered dispatch's record and " +
+			"restored when it returns (PublishLayout), so it is nil outside a record and " +
+			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
+		"CurFits": "scoped: published by execMatch around one dispatch's carrier " +
+			"results and restored when they return (publishForwardFits), so it is nil " +
+			"outside a record; a reader asks for its own operand slice (FitsFor)",
+		"CurWritten": "scoped: published by execMatch around one dispatch's carrier " +
+			"results, and by a recovery around its record, and restored when they " +
+			"return (PublishWritten), so it is nil outside a record; a reader asks for " +
+			"its own operand slice (WrittenFor)",
+		"BareCallPos": "scoped: published by execMatch around one dispatch's carrier " +
+			"results and restored when they return, so it is zero outside a dispatch " +
+			"and no pass can begin with one set",
+		"OptimisticOuter": "scoped: published by execMatch around one optimistic " +
+			"dispatch's argument evaluation and cleared by its defer when that returns, " +
+			"so it is nil outside the dispatch and no pass can begin with one set",
 		"CurWordPos": "transient cursor overwritten per dispatch, and the write is " +
 			"unconditional and immediately adjacent: execMatch sets it from " +
 			"e.currentPos() on the line above the handler call, and a handler is the " +

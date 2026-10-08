@@ -1,6 +1,10 @@
 package native
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/boru-lang/boru/core/go"
+)
 
 // Map overloads for the higher-order words each / for-each / fold (and the
 // Function form of filter, in filter.go), plus the keys / vals projections.
@@ -27,15 +31,35 @@ type mapBody struct {
 	body    Value      // when closure: the closure value (run via InvokeBody)
 	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
 	tokens  []Value    // when quotation: the body tokens
+	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
+	// FnDefInfo the closure's declared signature is matched under, so the
+	// arm hands it the KeyVal the lambda convention hands and raises the
+	// lambda no-match where the interpreter does (S1b-2). body then carries
+	// the SigMatched mark: the invoker applies the unit positionally.
+	sigFn Value
 }
 
 // newMapBody classifies the body arg: a compiled CLOSURE (the bytecode VM
 // driving each/fold over a map) runs per VALUE via the InvokeBody seam, like a
-// quotation; a (lambda) Function is handed a KeyVal; anything else must be a
-// concrete quotation list (handed the value).
+// quotation — unless it is a fn VALUE (a capturing `fn` / `=>` literal minted
+// at run time: a factory's result, a def-bound one read back), which is a
+// LAMBDA to this arm exactly as it is to the interpreter: handed the KeyVal
+// and matched against its own signature first; a (lambda) Function is handed
+// a KeyVal; anything else must be a concrete quotation list (handed the
+// value). Measured before the fn-value arm (2026-09-19, the S1a head): a
+// factory's `[n:Integer]` closure over `{a:1 b:2}` answered `{a:2 b:3}` for
+// the interpreter's signature_error, and a `[kv:KeyVal]` one raised an
+// internal `dot` no-match over the bare value it was handed.
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	if IsCompiledClosure(body) {
-		return mapBody{closure: true, body: body}, nil
+		mb := mapBody{closure: true, body: body}
+		if ClosureIsFnValue(body) {
+			if fnv, ok := ClosureAsFnDef(reg, body); ok {
+				mb.sigFn = fnv
+				mb.body = ClosureSigMatched(body)
+			}
+		}
+		return mb, nil
 	}
 	if body.Parent.ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
@@ -58,6 +82,15 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 		return mb.callLambda(reg, []Value{NewKeyVal(k, v, i, n)})
 	}
 	if mb.closure {
+		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
+		// against the value's own signature (sigFn) before the unit runs.
+		if mb.sigFn.Data != nil {
+			args := []Value{NewKeyVal(k, v, i, n)}
+			if MatchFnSig(mb.sigFn, args) == nil {
+				return Value{}, false, noLambdaMatch(reg, args)
+			}
+			return invokeBodyTop(reg, mb.body, args)
+		}
 		// A closure compiled from a LAMBDA body expects a KeyVal (its named
 		// param destructures `kv.v`/`kv.i`); one compiled from a token body
 		// sees the bare value, like a quotation. The unit's recorded shape says
@@ -70,6 +103,15 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 	return runQuotationBody(reg, mb.tokens, []Value{v})
 }
 
+// noLambdaMatch is the map arm's lambda no-match: a BoruError, not a bare
+// fmt.Errorf (NUR164), as the compiled-by-default lane reads every non-Boru
+// error off the VM as an internal bail and re-runs the whole program on the
+// interpreter.
+func noLambdaMatch(reg *Registry, args []Value) error {
+	return reg.BoruError("signature_error",
+		fmt.Sprintf("no matching lambda signature for %d argument(s)", len(args)), "")
+}
+
 // fold runs the body for one entry with an accumulator. The quotation form
 // pushes the accumulator first and the value on top (same stack order as list
 // fold: a 2-arg word sees value=top, acc=deeper); the lambda receives
@@ -79,6 +121,14 @@ func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) 
 		return mb.callLambda(reg, []Value{acc, NewKeyVal(k, v, i, n)})
 	}
 	if mb.closure {
+		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
+		if mb.sigFn.Data != nil {
+			args := []Value{acc, NewKeyVal(k, v, i, n)}
+			if MatchFnSig(mb.sigFn, args) == nil {
+				return Value{}, false, noLambdaMatch(reg, args)
+			}
+			return invokeBodyTop(reg, mb.body, args)
+		}
 		// (accumulator, entry): a lambda-derived closure takes the entry as a
 		// KeyVal, a token-derived one as the bare value.
 		if ClosureWantsKeyVal(mb.body) {
@@ -107,7 +157,7 @@ func invokeBodyTop(reg *Registry, body Value, inputs []Value) (Value, bool, erro
 func (mb mapBody) callLambda(reg *Registry, args []Value) (Value, bool, error) {
 	sig := MatchFnSig(mb.fn, args)
 	if sig == nil {
-		return Value{}, false, fmt.Errorf("no matching lambda signature for %d argument(s)", len(args))
+		return Value{}, false, noLambdaMatch(reg, args)
 	}
 	// InvokeCallbackFn, not reg.CallBoru: a lambda passed in from another module
 	// runs on its DEFINING registry (design/FUNCTION-VALUE-SCOPE.0.md), and a
@@ -147,7 +197,21 @@ func runQuotationBody(reg *Registry, tokens []Value, pushed []Value) (Value, boo
 }
 
 // requireConcreteMap unwraps a concrete Map arg or returns a clear error.
+//
+// A CONCRETE value that is neither a Map nor the List the sibling handler
+// takes (an Integer, a String) can only arrive on the compiled
+// committed-overload path (CallableSpec.CrossCollectionTokenShape): the
+// recorder committed this arm for a collection the check pass knew only as
+// `Any` — a fn's declared `Any` result — and the runtime value matches no
+// overload at all. The interpreter's dispatch raises signature_error for
+// it, so this guard does too, with the dispatcher's own detail (NUR165;
+// it used to raise each_error/fold_error/scan_error, an error-code
+// divergence). A NON-concrete value (a Map type literal, a carrier) keeps
+// the word's own error: the interpreter reaches that branch as well.
 func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
+	if IsConcrete(v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
+		return nil, reg.BoruError("signature_error", core.NoMatchDetail(word), word)
+	}
 	if !IsConcrete(v) || !v.Parent.ConformsTo(TMap) {
 		return nil, reg.BoruError(word+"_error", word+": expected a concrete map", word)
 	}

@@ -31,7 +31,7 @@ import (
 // Either way the sound lowering is OpCallUserPoly — bake EVERY same-arity
 // overload's body unit and let the VM re-run MatchSignature at entry (the
 // real predicate runs there) — or, when the poly bake declines any arm, the
-// hazard's refusal, byte-identical to the pre-poly taxonomy. A
+// hazard's compile failure, byte-identical to the pre-poly taxonomy. A
 // single-overload predicate fn is NOT barred: its CALL_USER param guard
 // re-validates at entry and raises exactly the interpreter's no-match error.
 func planUserPolyDispatch(r *core.Registry, es core.EmitRecorder, word string, args []core.Value, declaredReturns []*core.Type) (*userPolyPlan, bool) {

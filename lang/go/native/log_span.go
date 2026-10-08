@@ -200,7 +200,7 @@ func spanExportName(inner string) string { return inner[len("span-"):] }
 // spanNatives builds the span instance methods closing over st (+lsr for
 // end).
 func spanNatives(st *spanState, lsr *LogSinkRegistry) []NativeFunc {
-	return []NativeFunc{
+	return SideEffecting([]NativeFunc{
 		{
 			Name: "span-set-attr",
 			Signatures: []Signature{{
@@ -274,7 +274,7 @@ func spanNatives(st *spanState, lsr *LogSinkRegistry) []NativeFunc {
 				}),
 			}},
 		},
-	}
+	})
 }
 
 func spanAddEvent(lsr *LogSinkRegistry, r *Registry, st *spanState, name, attrs Value) ([]Value, error) {
@@ -528,6 +528,7 @@ func spanShapeReturns(lsr *LogSinkRegistry) func([]Value, *Registry) []Value {
 		if err != nil {
 			return []Value{NewCarrier(TMap)}
 		}
+		MarkShapeModel(inst) // a model span, never the run's
 		return []Value{NewMap(inst)}
 	}
 }

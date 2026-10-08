@@ -126,6 +126,12 @@ func patternRejects(pattern Value, v Value) bool {
 		// value is unknown, so the probe cannot judge it.
 		return false
 	}
+	if patternReadsContents(pattern) && IsPendingActiveContainer(v) {
+		// A pending literal the failed match never evaluated: its value —
+		// what the pattern judges (NUR235) — is unknown here, so the probe
+		// cannot blame the slot.
+		return false
+	}
 	if pattern.Parent.Equal(TMap) && v.Parent.Equal(TMap) &&
 		pattern.Data != nil && v.Data != nil &&
 		!IsOptionsType(pattern) &&
@@ -136,7 +142,7 @@ func patternRejects(pattern Value, v Value) bool {
 	// fast path (the verdict depends only on the operand's top-level
 	// shape).
 	if ni, err := AsNegation(pattern); err == nil {
-		_, uerr := unifyNegation(ni, v)
+		_, uerr := unifyNegation(ni, v, nil)
 		return uerr != nil
 	}
 	_, ok := Unify(v, pattern)

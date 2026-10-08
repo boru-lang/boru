@@ -2,6 +2,7 @@ package stackform
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -35,6 +36,8 @@ func pretty(sb *strings.Builder, form *StackForm, depth int) {
 			writeLiteral(sb, o.V)
 		case Call:
 			sb.WriteString(o.Name)
+		case Apply:
+			sb.WriteString("apply/" + strconv.Itoa(o.Arity))
 		case Quote:
 			sb.WriteByte('[')
 			if o.Body != nil {

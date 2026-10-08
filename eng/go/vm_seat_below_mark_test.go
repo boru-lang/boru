@@ -14,7 +14,7 @@ import (
 // The op's whole point is that it never names the region's length, so what is
 // worth pinning here is exactly that: the same call, the same prefix, three
 // different region lengths — many, one, and (the direction the compile-time
-// refusal used to stand in for) ZERO — all producing the one layout rule,
+// compile failure used to stand in for) ZERO — all producing the one layout rule,
 // prefix at the mark with the run above it and both orders preserved.
 //
 // lang/go/region_prefix_test.go is the whole-program half (the parity rows
@@ -98,13 +98,13 @@ func TestVmSeatBelowMarkErrors(t *testing.T) {
 	}
 	// The prefix reaches BENEATH the mark: the lowering would have to have
 	// pushed fewer values than it claims, so the region boundary is not
-	// recoverable and the op refuses rather than shuffling live values.
+	// recoverable and the op declines rather than shuffling live values.
 	if _, _, err := vmSeatBelowMark(3, []int{2}, sbmStack(8, 9, 99), seam7Dbg, 0); err == nil {
 		t.Error("SEAT_BELOW_MARK past the mark did not error")
 	} else {
 		wantInternal(t, err, "SEAT_BELOW_MARK prefix reaches past the mark")
 	}
-	// A negative prefix length is the same refusal from the other side (a
+	// A negative prefix length is the same compile failure from the other side (a
 	// malformed Arg), and it must not slice with a negative index.
 	if _, _, err := vmSeatBelowMark(-1, []int{0}, sbmStack(99), seam7Dbg, 0); err == nil {
 		t.Error("SEAT_BELOW_MARK with a negative prefix did not error")

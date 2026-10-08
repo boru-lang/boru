@@ -35,14 +35,14 @@ func TestS7B_MathValueListRef(t *testing.T) {
 
 // TestS7B_MathBoruToMvalBadPayloads drives boruToMval's AsInteger / AsFloat
 // error arms: a value whose Parent conforms to Integer/Float but whose
-// payload is not the matching numeric payload is refused (not coerced).
+// payload is not the matching numeric payload is declined (not coerced).
 func TestS7B_MathBoruToMvalBadPayloads(t *testing.T) {
 	badInt := native.NewValueRaw(native.TInteger, native.StrPayload{S: "x"})
 	if _, ok := boruToMval(badInt); ok {
-		t.Error("boruToMval: Integer-typed value with non-int payload should be refused")
+		t.Error("boruToMval: Integer-typed value with non-int payload should be declined")
 	}
 	badFloat := native.NewValueRaw(native.TFloat, native.StrPayload{S: "x"})
 	if _, ok := boruToMval(badFloat); ok {
-		t.Error("boruToMval: Float-typed value with non-float payload should be refused")
+		t.Error("boruToMval: Float-typed value with non-float payload should be declined")
 	}
 }

@@ -7,7 +7,7 @@ import (
 
 // SurfaceInfo is the payload of a surface type — a pure contract: a
 // named set of required operation shapes with no bodies and no state
-// (design/SURFACES.10.md). Required maps each operation name to its
+// (design/legacy/SURFACES.10.ignore). Required maps each operation name to its
 // FnUndef shape Value (the `fnsig` form), with TSelf marking the
 // positions the conforming type must occupy.
 //
@@ -171,11 +171,11 @@ func (s *surfaceUnifier) Match(v Value, t *Type) bool {
 // runs, yielding the CANDIDATE. The membership question applies when
 // exactly one operand is the bare surface node; two type-level or two
 // value-level operands defer to the structural rule. The §N3 Unify
-// capability (design/TYPE-REPRESENTATION.1.md): a surface-typed def
+// capability (design/legacy/TYPE-REPRESENTATION.1.ignore): a surface-typed def
 // (`def x:Shape (make Circle …)`) unifies against the NODE the name
 // now denotes, where it used to unify against the body via the
 // surface fold.
-func (s *surfaceUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// The conformance rule decides whenever exactly one side IS this
 	// surface's node — the candidate may be a concrete value, a
 	// carrier, or a TYPE-level operand (a generic bound check:

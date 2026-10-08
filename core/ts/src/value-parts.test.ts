@@ -1,6 +1,6 @@
 // Unit campaign for value.ts's accessors, the XML-template renderer and
 // ClassTypeInfo, plus coretype.ts's unification arms.
-// design/CORE-TS-COVERAGE.0.md stage 4 tail.
+// design/legacy/CORE-TS-COVERAGE.0.ignore stage 4 tail.
 //
 // The `as*` accessors are the port's narrowing boundary: each throws rather
 // than returning a wrong-shaped payload, and the throwing arm is what a suite

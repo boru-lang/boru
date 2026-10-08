@@ -19,7 +19,7 @@
 # ====================================================================
 def P (refine Integer) 7 is P	false	raw Integer is not a P at `is`
 def P (refine Integer) def g fn [[n:P] [Integer] [n add 1]] 7 g	ERROR:signature	raw Integer rejected at a P param
-# (dropped) predicate/newtype-return type_error caught via do/error compiles-refuses (falls back sound); semantics pinned by user-types.tsv + TestPredicateGuardNarrowing
+# (dropped) predicate/newtype-return type_error caught via do/error compiles-declines (falls back sound); semantics pinned by user-types.tsv + TestPredicateGuardNarrowing
 def P (refine Integer) def S class {x:(make P 1)} make S {x:7}	ERROR:expected P (the default's type)	raw Integer rejected at a P-typed class field (make)
 # (dropped) P-typed class-field set rejection — same disposition as :22
 def P (refine Integer) def S class {x:(make P 1)} (make S {}) dot x typeof	P	the tagged default fills the field AND declares its type
@@ -67,7 +67,7 @@ def P (refine Integer) def Q (refine P) def x:P 3 x is Q	false	the supertype val
 def P (refine Integer) def Q (refine P) 3 is Q	false	a raw base value is not a Q two mints down either
 def P (refine Integer) def Q (refine P) (make Q 3) is P	true	make on the inner newtype widens the same way
 def P (refine Integer) def Q (refine P) def g fn [[n:P] [Integer] [7]] def y:Q 3 y g	7	a Q value dispatches at a P param (subtype admitted)
-def P (refine Integer) def Q (refine P) def g fn [[n:Q] [Integer] [7]] def x:P 3 x g	ERROR:signature	a P value is rejected at a Q param (supertype refused)
+def P (refine Integer) def Q (refine P) def g fn [[n:Q] [Integer] [7]] def x:P 3 x g	ERROR:signature	a P value is rejected at a Q param (supertype declined)
 def P (refine Integer) def Q (refine P) def mk fn [[] [P] [def y:Q 1 y]] mk	1	a Q value satisfies a P return (subtype return)
 def P (refine Integer) def Q (refine P) def mk fn [[] [P] [def y:Q 1 y]] (mk) typeof	Q	…and keeps its own Q tag through the boundary
 
@@ -189,7 +189,7 @@ def Big (Integer gt 10) def W (Big tand (String gt 'm')) W	Never	…including St
 # §9  validate-then-call — an `is` guard proves membership at runtime,
 #     so the guarded branch dispatches and the other branch never errors
 # ====================================================================
-# (dropped) validate-then-call `if (x is Big) [g x]` runs correct but compile-refuses (guard narrowing is a CHECK win, not compile coverage); pinned by TestPredicateGuardNarrowing
+# (dropped) validate-then-call `if (x is Big) [g x]` runs correct but compile-declines (guard narrowing is a CHECK win, not compile coverage); pinned by TestPredicateGuardNarrowing
 def Big (Integer gt 10) def g fn [[n:Big] [Integer] [n]] def x 50 if (x is (tnot Big)) [0] [g x]	50	the complement guard flips the branches — else proves membership
 def P (refine Integer) def g fn [[n:P] [Integer] [n add 1]] def h fn [[v:Integer] [Integer] [if (v is P) [g v] [0]]] h 5	0	newtype guard, false side: a raw base value takes the else branch instead of the call erroring
 def P (refine Integer) def g fn [[n:P] [Integer] [n add 1]] def h fn [[v:Integer] [Integer] [if (v is P) [g v] [0]]] def x:P 5 h x	6	…and a constructed value passes guard AND call through the same wrapper

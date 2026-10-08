@@ -12,7 +12,7 @@ import (
 // whose arity its producing word claimed (`def k (FnUtil.const 7)  (k 99)`)
 // is modelled where the interpreter dispatches it — at the read, over the
 // wrapper's whole arity of evaluation-fixed tokens inside the statement —
-// as one guarded OpCallDynMethod, and every other window REFUSES rather
+// as one guarded OpCallDynMethod, and every other window DECLINES rather
 // than declining to the residual classifier.
 
 // fraFix arms a pass with the recorder double, mints the fn-typed carrier the
@@ -60,7 +60,7 @@ func TestShapedFnReadArrivalSuccess(t *testing.T) {
 		t.Error("the token past the arity stays on the tape (`(k 1 2)` is `7 2`)")
 	}
 	if len(rec.reasons) != 0 {
-		t.Errorf("a consumed window refuses nothing, got %v", rec.reasons)
+		t.Errorf("a consumed window declines nothing, got %v", rec.reasons)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestShapedFnReadArrivalZeroArity(t *testing.T) {
 	}
 }
 
-func TestShapedFnReadArrivalRefusals(t *testing.T) {
+func TestShapedFnReadArrivalCompileFailures(t *testing.T) {
 	cases := []struct {
 		name   string
 		arity  int
@@ -109,16 +109,16 @@ func TestShapedFnReadArrivalRefusals(t *testing.T) {
 				t.Error("the model must not consume this window")
 			}
 			if e.Tape.Len() != len(tape) {
-				t.Error("a refused read must leave the tape untouched")
+				t.Error("a declined read must leave the tape untouched")
 			}
 			if len(rec.reasons) != 1 || !strings.Contains(rec.reasons[0], c.reason) || !strings.Contains(rec.reasons[0], "`k`") {
-				t.Errorf("refusal = %v, want one naming `k` with %q", rec.reasons, c.reason)
+				t.Errorf("compile failure = %v, want one naming `k` with %q", rec.reasons, c.reason)
 			}
 		})
 	}
 }
 
-// Shapes that are not the model's decline SILENTLY — no refusal, nothing
+// Shapes that are not the model's decline SILENTLY — no compile failure, nothing
 // recorded — and the sibling member model declines them too.
 func TestShapedFnReadArrivalDeclines(t *testing.T) {
 	r, rec, carrier, done := fraFix(t, 1)
@@ -239,5 +239,40 @@ func TestShapedFnReadResultShape(t *testing.T) {
 		t.Errorf("the plain check's result of a chain level is a Function carrier, got %v", got)
 	} else if n, ok := r2.Check.FnShapeArity(got.ID); !ok || n != 1 {
 		t.Errorf("the plain check's result carries the next level's claim, got %d/%v", n, ok)
+	}
+}
+
+// TestShapedFnReadArrivalUnfitWrittenArgument: a claim that knows the
+// wrapper's parameter types (FnShape.Params) declines a written token that
+// does not conform — the interpreter's matcher falls back from it to the
+// frame, which the window claim cannot model (NUR194) — and claims one
+// that does; a claim without types keeps the arity-only window.
+func TestShapedFnReadArrivalUnfitWrittenArgument(t *testing.T) {
+	r, rec, carrier, done := fraFix(t, 1)
+	defer done()
+	r.Check.NoteFnShape(carrier, core.FnShape{Arity: 1, Params: []*core.Type{core.TInteger}})
+	e := zzmsEngine(r, []core.Value{carrier, core.NewString("s"), core.NewEnd()})
+	if tryMemberFnArrivalDispatch(e, 0) || len(rec.dynCalls) != 0 {
+		t.Fatal("an unfit written argument must not be claimed")
+	}
+	if len(rec.reasons) != 1 || !strings.Contains(rec.reasons[0], "does not fit the wrapper's parameter") {
+		t.Errorf("the decline names the unfit argument, got %v", rec.reasons)
+	}
+	rec.reasons = nil
+	e = zzmsEngine(r, []core.Value{carrier, core.NewInteger(99), core.NewEnd()})
+	if !tryMemberFnArrivalDispatch(e, 0) || len(rec.dynCalls) != 1 || len(rec.reasons) != 0 {
+		t.Errorf("a fitting written argument is claimed as before: calls %d reasons %v", len(rec.dynCalls), rec.reasons)
+	}
+	// The plain-check half leaves an unfit window as it is.
+	r2, c2, done2 := frwFix(t, 1)
+	defer done2()
+	r2.Check.NoteFnShape(c2, core.FnShape{Arity: 1, Params: []*core.Type{core.TInteger}})
+	e2 := zzmsEngine(r2, []core.Value{c2, core.NewString("s"), core.NewEnd()})
+	if tryShapedFnReadWindow(e2, 0) || e2.Tape.Len() != 3 {
+		t.Error("the plain check does not collapse an unfit window")
+	}
+	e2 = zzmsEngine(r2, []core.Value{c2, core.NewInteger(99), core.NewEnd()})
+	if !tryShapedFnReadWindow(e2, 0) || e2.Tape.Len() != 2 {
+		t.Error("the plain check collapses a fitting window")
 	}
 }

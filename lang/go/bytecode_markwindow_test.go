@@ -21,10 +21,13 @@ func mwParityCompiled(t *testing.T, src string) {
 	t.Helper()
 	a := mustNew(t)
 	if _, reason, _, err := a.CompileCheck(src); err != nil || reason != "" {
-		t.Fatalf("the shape must compile, got refusal %q / err %v\n  src: %s", reason, err, src)
+		t.Fatalf("the shape must compile, got compile failure %q / err %v\n  src: %s", reason, err, src)
 	}
 	b := mustNew(t)
 	outC, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, errC) {
+		return
+	}
 	if !ran {
 		t.Fatalf("the shape must run COMPILED, fell back (err %v)", errC)
 	}
@@ -35,9 +38,9 @@ func mwParityCompiled(t *testing.T, src string) {
 	}
 }
 
-// mwRefusedWithParity asserts the row still refuses and the fallback matches
+// mwFailedToCompileWithParity asserts the row still declines and the fallback matches
 // the interpreter exactly.
-func mwRefusedWithParity(t *testing.T, src, wantReason string) {
+func mwFailedToCompileWithParity(t *testing.T, src, wantReason string) {
 	t.Helper()
 	a := mustNew(t)
 	prog, reason, _, err := a.CompileCheck(src)
@@ -48,18 +51,14 @@ func mwRefusedWithParity(t *testing.T, src, wantReason string) {
 		t.Fatalf("the shape GRADUATED (it now compiles) — move it into the compiles battery and graduate its ledger row\n  src: %s", src)
 	}
 	if wantReason != "" && reason != wantReason {
-		t.Errorf("refusal reason drifted: %q, want %q — re-diagnose", reason, wantReason)
+		t.Errorf("compile failure reason drifted: %q, want %q — re-diagnose", reason, wantReason)
 	}
+	// Nothing re-runs it, so there is no compiled answer to hold beside the
+	// interpreter's: the run books the compile failure as the defect it is
+	// (compile_defect_test.go).
 	b := mustNew(t)
-	outC, ran, errC := b.RunCompiled(src)
-	if ran {
-		t.Fatal("refused program must fall back")
-	}
-	c := mustNew(t)
-	outI, errI := c.RunInterp(src)
-	if (errC == nil) != (errI == nil) || fmt.Sprint(outC) != fmt.Sprint(outI) {
-		t.Errorf("fallback parity: compiled %v/%v != interp %v/%v", outC, errC, outI, errI)
-	}
+	outC, _, errC := b.RunCompiled(src)
+	requireCompileDefect(t, src, outC, errC)
 }
 
 func TestMarkWindowDoCatchCompiles(t *testing.T) {
@@ -73,6 +72,11 @@ func TestMarkWindowDoCatchCompiles(t *testing.T) {
 		mwDocMod + `do [(if true [M.boom 5] [7]) 8] error [dot code]`,
 		// The dry-pass-proven raising constant (the StructUtil chained leaf).
 		`import "boru:struct-util"  def g StructUtil.parse/v  do [(g "") 2] error [dot code]`,
+		// GRADUATED 2026-09-25 (NUR134): the module export's definite
+		// no-match in the region — the do-body unit raises it in place (a
+		// unit-scoped trap) and the do's model is the caught Error, so the
+		// promoted def read compiles and agrees (`uncalled_function`).
+		mwDocMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
 	}
 	for i, src := range rows {
 		t.Run(fmt.Sprintf("row-%d", i), func(t *testing.T) {
@@ -87,28 +91,24 @@ func TestMarkWindowDoCatchCompiles(t *testing.T) {
 // frontier-do-catch.tsv; this pin fires when a later widening graduates it.
 // (The module-export-in-region sibling graduated 2026-07-17 — §9.1.)
 func TestMarkWindowDeclinesKeepParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// Re-diagnosed 2026-07-20 (PR #280 review): the promotion itself is now
-	// the refusal — a variadic catch region's stores would pop success-arity
+	// the compile failure — a variadic catch region's stores would pop success-arity
 	// values the raising run never produced — caught at lowerCall's
 	// store-prologue gate, one stage before the window's own "residual shape
 	// beyond Stage 1 (call result above a literal)" decline this row used to
-	// surface. Same sound refusal, earlier and truer diagnosis.
+	// surface. Same compile failure, earlier and truer diagnosis.
 	//
-	// Re-diagnosed again 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the
+	// Re-diagnosed again 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the
 	// region's `M.dec` call fails dispatch, and that is now an error-severity
 	// check diagnostic in the model-undermining class (dispatch did not
-	// resolve, so there is nothing to compile), so the pipeline refuses on the
+	// resolve, so there is nothing to compile), so the pipeline declines on the
 	// diagnostics before reaching the promotion gate. The gate is still what a
 	// widening would have to graduate — see the ledger note in
 	// frontier-do-catch.tsv — but this row can no longer reach it. Parity is
 	// what this test actually guards, and it holds either way.
-	mwRefusedWithParity(t,
-		mwDocMod+`def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
-		"check diagnostics")
+	// GRADUATED 2026-09-25 (NUR134): the promoted def read above compiles
+	// now — it moved to TestMarkWindowDoCatchCompiles.
 	// GRADUATED 2026-07-17 (§9.1): the module-export-in-region row compiles —
 	// the identity-less ExtensionPayload out mints an ID at the dyn-body
 	// record, restoring its event linkage, so the mark window owns the
@@ -122,14 +122,20 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	//
 	// Re-diagnosed 2026-08-02 (NUR037): this row's `f` is a fn-local fn —
 	// declared inside the `wrap` lambda's body and then named from the `do`
-	// code body — which a compiled unit cannot resolve at all, so the
-	// admission predicate refuses one stage before the mark window ever arms.
-	// Same sound refusal, earlier and truer diagnosis (the third such
-	// re-diagnosis of this row). Parity is what this test guards and it holds:
-	// the program falls back whole and answers exactly as the interpreter does.
-	mwRefusedWithParity(t,
+	// code body — which a compiled unit could not resolve at all, so the
+	// admission predicate declined one stage before the mark window ever
+	// armed. Same compile failure, earlier and truer diagnosis (the third such
+	// re-diagnosis of this row).
+	//
+	// Re-diagnosed 2026-09-16 (the seventy-second increment): the local fn's
+	// def is placed as a registry-visible install for the frame now, so the
+	// body resolves it and this row falls to the SAME compile failure as its hoisted
+	// sibling below (NUR120's count contract) — the fifth diagnosis, one
+	// stage later. Parity is what this test guards and it holds: the program
+	// falls back whole and answers exactly as the interpreter does.
+	mwFailedToCompileWithParity(t,
 		`def wrap ([] => [def f fn [[x:Any] [Any] [raise bad_input "nope"]]  do [(f 5) 2] error [dot code]]) wrap`,
-		"code-body names fn-local fn `f` at `do` (a compiled unit cannot resolve an enclosing fn's local fn binding)")
+		"fn wrap: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)")
 
 	// The same shape with `f` hoisted to MODULE scope: NUR037's admission
 	// predicate does not fire (a module-scope callback compiles fine), so
@@ -139,11 +145,11 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// placeholder's COUNT contract (check.LambdaCountContract — the
 	// interpreter enforces it at the named call), so the unit's finish sees a
 	// 2-value model residual against 1 declared, with a dynamic value that
-	// may be an unapplied fn in it, and refuses on the count path one stage
-	// before the mark window's verify. Same sound refusal, earlier and truer
+	// may be an unapplied fn in it, and declines on the count path one stage
+	// before the mark window's verify. Same compile failure, earlier and truer
 	// diagnosis (the fourth for this row). Parity is what this test guards
 	// and it holds.
-	mwRefusedWithParity(t,
+	mwFailedToCompileWithParity(t,
 		`def f fn [[x:Any] [Any] [raise bad_input "nope"]]  def wrap ([] => [do [(f 5) 2] error [dot code]])  wrap`,
 		"fn wrap: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)")
 
@@ -153,7 +159,7 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// event but the lowered stack is the unit's seated results, not the
 	// window's event slots, so the verify pins the mismatch and the program
 	// falls back whole.
-	mwRefusedWithParity(t,
+	mwFailedToCompileWithParity(t,
 		`def f fn [[x:Any] [Any] [raise bad_input "nope"]]  def wrap fn [[] [] [do [(f 5) 2] error [dot code]]]  wrap`,
 		"mark-window residual does not match the lowered stack")
 }

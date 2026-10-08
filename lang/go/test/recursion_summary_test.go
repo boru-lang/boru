@@ -6,7 +6,7 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// Recursion summaries (design/checker-accuracy-review.10.md A2).
+// Recursion summaries (design/legacy/checker-accuracy-review.10.ignore A2).
 
 // Positive: an UNCHECKED recursive fn's summary is refined past the
 // Any bail-out — the recursive call's result participates in the

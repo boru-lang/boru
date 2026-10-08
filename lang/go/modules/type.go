@@ -29,7 +29,7 @@ import (
 //     written with args[0] = surface-LEFT (top of stack), args[1]
 //     = surface-RIGHT (deeper).
 //
-// See design/TYPE-OPERATIONS.8.md.
+// See design/legacy/TYPE-OPERATIONS.8.ignore.
 func BuildTypeModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg, err := newModuleRegistry("boru:type-util", typeModuleNatives)
 	if err != nil {
@@ -523,9 +523,9 @@ var typeModuleNatives = []native.NativeFunc{
 			// for a concrete fn (the same value the handler computes), so report it
 			// precisely instead of the opaque TAny — that makes the output a
 			// concrete type node (not a dynamic carrier), so the dispatch bakes a
-			// CALL_NATIVE like arityof/typeof rather than refusing as a dynamic
+			// CALL_NATIVE like arityof/typeof rather than declining as a dynamic
 			// output. A non-resolvable (carrier/dynamic) fn falls back to a dynamic
-			// carrier, which still refuses.
+			// carrier, which still declines.
 			ReturnsFn: func(args []native.Value, r *native.Registry) []native.Value {
 				v, err := returnsofResult(args[0], r)
 				if err != nil {

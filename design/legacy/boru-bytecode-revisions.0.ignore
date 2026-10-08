@@ -1,0 +1,311 @@
+# boru Bytecode Compilation — Revisions against main (June 2026)
+
+**Status:** review note — re-reads `boru-bytecode-report.0.ignore` against
+main @ `6fe4b96` (2026-06-12) and records what changed underneath it.
+The original report is kept as written. The companion implementation
+plan is `boru-bytecode-plan.0.ignore`.
+
+**Bottom line:** the design remains feasible, and its foundational
+premise is *stronger* than when the report was written — the carrier
+checker it depends on is now implemented, not proposed
+(`IMPLEMENTATION-STATUS.10.ignore`, `eng/go/check.go`). But four areas of
+the report are stale, one of its explicit v1 simplifications (no TCO)
+is no longer permissible, and one finding from the TCO work
+(dynamic-resolution visibility of frame bindings) tightens a soundness
+condition the report under-specified. The performance case has also
+narrowed: the interpreter the report benchmarked in its head no longer
+exists.
+
+## Contents
+
+- R1. What still holds
+- R2. TCO is a language guarantee — §5.6 is invalid
+- R3. Locals promotion is less sound than §2.6/§9.3 assumed
+- R4. The performance baseline moved — §7 must be re-measured
+- R5. Features the report does not cover
+- R6. Gotcha inventory additions (#23–#30)
+- R7. Stale references
+- R8. Revised verdict
+
+---
+
+## R1. What still holds
+
+The report's central argument — *the compiler is the carrier checker
+with a recording side effect* — survives intact:
+
+- **The checker exists.** `eng/go/check.go` (`CheckState`: `Begin()`,
+  `IsActive()`, `SkipsSideEffect()`, plus `Diagnostics`, `StepCount`,
+  `BudgetTripped`, `DefsInstalled`, `DefsUsed`, `ContextTypes`) and
+  `eng/go/carrier.go` implement the carrier pass described in
+  `CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`, which
+  `IMPLEMENTATION-STATUS.10.ignore` lists as **implemented**. The `boru
+  check` subcommand is the user surface. The report's Phase 0 gate
+  ("return-type annotations must be complete") is substantially met:
+  `ReturnsFn` annotations are pervasive across `lang/go/native`.
+- **The shared dispatch machinery is unchanged in shape.**
+  `matchSignature`, `execMatch`, forward collection, mark/move
+  (`NewMark`/`NewMoveIf`/`MoveFor`), `RunInCheckMode`, and the def
+  table all exist under the same names. Check mode and runtime still
+  share one dispatch path, which is the property the recording pass
+  relies on.
+- **The instruction-set sketch (§3), the lowering tables (§1.2,
+  §4), the fallback boundary (§1.5, §6.5), and the prior-art survey
+  (§11) need no structural change** — only the additions below.
+
+## R2. TCO is a language guarantee — §5.6 is invalid
+
+§5.6 says: *"No tail-call optimisation in v1 — user calls push a
+frame; very deep recursion hits a stack limit. TCO can be added
+later."* That option is gone. Tail-call elimination shipped as a
+**documented language guarantee** (`TCO.10.ignore` status: IMPLEMENTED
+June 2026; `TCO-STAGED.10.ignore` Stages 0–6, commits `92a5931`…`5b1537c`;
+REFERENCE.md "Recursion and tail calls"): self and mutual fn→fn tail
+calls run in O(1) tape and per-call stacks under the documented
+conditions, and the runaway taxonomy is part of the guarantee (tail
+runaway → `evaluation_limit`, non-tail → `tape_exhausted`). The
+default tape ceiling was *tightened* on the strength of it
+(`DefaultTapeMaxGrows` 7→6), and `Registry.TCO.Disable` is demoted to
+a diagnostic because turning it off breaks documented resource
+semantics.
+
+A bytecode VM whose `CALL_USER` always pushes a frame would therefore
+regress the language, not merely defer an optimisation. Consequences
+for the design:
+
+1. **`TAIL_CALL_USER` is a v1 opcode**, not the §5.6 afterthought. In
+   a frame VM this is cheaper than it was in the tape machine: pop
+   (or reuse) the current frame before the jump. The hard part is
+   *eligibility*, not mechanics — and the interpreter already
+   computed it.
+2. **Reuse the interpreter's eligibility analysis at compile time.**
+   The tape probe (`eng/go/fn_frame_probe.go`) and the elision gate
+   (`fn_frame_elide.go`) encode the conditions: tail position by
+   structural scan, identity by `FnFrameMeta` pointer (shared with
+   `Signature.FnFrame`), no generic frames (`FnFrameMeta.HasGen` —
+   the bind/teardown interaction is unproven), name-coverage over the
+   torn frame's bindings, and the Stage 4b `returnsConform` rule that
+   chooses FULL replacement (drop the caller's ReturnCheck — callee
+   declares the same count with callee[k] ⊑ caller[k]) versus SHELL
+   (keep the caller's check). The bytecode equivalents: emit
+   `TAIL_CALL_USER` only where the compile-time probe passes; where
+   `returnsConform` fails, the tail call must keep the caller's
+   return-check — a `TAIL_CALL_CHECKED` variant or a check op before
+   `RET`.
+3. **Parity means matching the *documented conditions*, not
+   exceeding them.** Generic frames are excluded from elision in the
+   interpreter; the compiler may make the same exclusion. The
+   guarantee's conditions in REFERENCE.md are the contract the dual-
+   mode differential gate must hold both modes to.
+4. **Stage-5 residuals carry over.** Module-boundary pins,
+   kill-switch propagation, the foreign-frame guard, and the
+   same-registry `CallBoru` value branch (recorded as non-guarantee
+   residuals in `TCO-STAGED.10.ignore`) need a bytecode answer or an
+   explicit fallback at those boundaries.
+
+## R3. Locals promotion is less sound than §2.6/§9.3 assumed
+
+The single most important *new* correctness fact comes out of TCO
+Stage 4b (`TCO-STAGED.10.ignore`): **eager frame teardown was observable
+through dynamic resolution** — outer frames' params and body-locals
+stay visible to the callee chain until the frame unwinds, innermost
+binding wins. In other words, boru's def table is dynamically scoped
+across call frames: a callee may resolve a name that the *caller's*
+frame installed.
+
+The report's §2.6 ("stack-slot assignment for `def`-bound locals…
+`PUSH_LOCAL slot` is an array index") and §9.3 (scope analysis before
+`STORE_LOCAL`) treat promotion-to-local as a lexical-scoping problem.
+It is not: a name promoted to a frame slot becomes *invisible to
+callees*, which diverges from the interpreter whenever any callee —
+directly, or through a `do`, a higher-order body, or a fallback span —
+resolves that name dynamically.
+
+Revised soundness condition: a `def` may be promoted to a local slot
+only if the checker proves **no dynamically-reached callee resolves
+the name** while the binding is live. The machinery to prove it
+exists — the checker tracks `DefsInstalled`/`DefsUsed`, and the TCO
+name-coverage gate solves the same problem for teardown (it is the
+reason the Stage 2 probe gained "a mandatory frame-interior backward
+scan plus a name-coverage condition"). The conservative fallback is
+the report's own `REG_DEF_PUSH`/`REG_DEF_POP` registry ops, which
+preserve dynamic visibility exactly. Expect the registry-op path to be
+*more* common than §6.4's "overwhelmingly common case" framing
+suggests, especially for fn params referenced from inner bodies; this
+shaves some of the §2.6 win and the plan should benchmark both paths.
+
+## R4. The performance baseline moved — §7 must be re-measured
+
+§7's per-construct estimates were calibrated against an interpreter
+that no longer exists:
+
+- **The gap-buffer tape** (`eng/go/tape.go`,
+  `TAPE-DATA-STRUCTURE.10.ignore`, commit `9903045`) removed the
+  O(depth²) splice cost — 95.9% of a deep recursion's runtime was
+  `runtime.memmove` (`RECURSION-PERFORMANCE.10.ignore`); edits at the
+  cursor are now O(edit size) and recursion is O(depth).
+- **TCO** makes tail recursion constant-space and measurably faster
+  (Stage 4a: s2 2000 ~0.31s → ~0.21s as a side effect).
+
+So the report's flagship example — factorial at "10–15× faster
+compiled" (§7.2) — is overstated; the interpreter has already eaten
+much of that headroom. What did *not* change: the per-token dispatch
+cost the report catalogues in §7.1 — `matchSignature`'s candidate
+scan, the forward-collection state machine, splice bookkeeping, and
+per-call small allocations. Those remain the compiler's target, so
+the straight-line arithmetic and comparison estimates roughly
+survive in *shape*; the multipliers need re-measuring. Two further
+notes:
+
+- The bounded-tape and evaluation-limit machinery (commit `056ed1e`,
+  configurable via `TapeConfig`/`lang.Options`) is now a *semantic*
+  property (loud, bounded failure), not just an implementation
+  detail — see R6 #27.
+- §7.5's methodology stands; the plan makes a Stage-0 re-baseline a
+  hard gate before any emitter work, because the worth-it question
+  in §12.2 is now genuinely closer.
+
+## R5. Features the report does not cover
+
+Everything below post-dates the report. None is fatal; each needs a
+section in the next report revision and a row in the differential
+test matrix.
+
+**Macros** (`eng/go/macro_expand.go`, `MACROS-PHASE1.10.ignore`). FnDefs
+flagged `Macro=true` capture operands as raw forms, run the template,
+resolve `unquote`/`splice`, and splice the expansion via an `__SP`
+marker. Expansion is deterministic and memoised by
+`(name + operand canon)`. Compile-time treatment: the recording pass
+runs the expansion (it is registry-driven and deterministic) and
+lowers the *expanded* tokens; no runtime opcode needed. The new
+wrinkle relative to the report's lowering table is raw-form operand
+capture — the compiler must not pre-lower a macro's operand span.
+
+**Minilang** (`571dfce`: core `mini` word; `boru:minilang` with `re`
+and `bf` kinds; `../MINILANG.5.md`). Same shape as macros: `mini`
+expands source in a registered kind to `MiniLang.lang_<kind> …`
+calls before dispatch. Transparent to bytecode once expanded at
+compile time.
+
+**Generics** (`eng/go/generics.go`, `GENERICS.10.ignore`). `gen [...]`
+mints placeholder type bindings; `of` instantiates with
+constraint-checking, memoised per (schema, canonical args), one
+lattice node per instantiation. This aligns naturally with the
+report's §5.7 per-instantiation specialisation — instantiations are
+already interned, so `CompiledFn` per instantiation is bounded. Open
+design item: generic fn handlers install inferred type-parameter
+bindings per call (`FnFrameMeta.HasGen`), the same interaction that
+excluded generic frames from TCO; the compiler should exclude them
+from `TAIL_CALL_USER` and from aggressive locals promotion until
+proven, mirroring the interpreter.
+
+**Closures / captures** (`eng/go/fn_capture.go`). Fn values compute
+their captures at construction (`WalkBodyWords`/`computeCaptures`);
+the frame protocol installs captures and params as defs with paired
+undef teardown (`fn_frame.go`: `(ₘ … __DC __pa undef n₁…nₖ [__RC] )`).
+§5.5's frame model needs capture slots alongside param slots — and
+captures are *names installed in the def table*, so R3's dynamic-
+visibility condition applies to them too.
+
+**Concurrency** (`eng/go/fork.go`: `ForkConcurrent` for `await`,
+`timeout`, `interval`). Not addressed by the report at all. Each
+concurrent branch gets a forked registry sharing read-mostly
+infrastructure (lattice, ideals, capabilities, modules, natives,
+parser, host hooks) with isolated def/context/args/flow scopes.
+Bytecode consequences: the compiled `Program` (code, constants, sig
+tables, fn tables) must be immutable and shareable across forks —
+already the report's §6.6 intent, now load-bearing; branch bodies
+either compile to per-fork entry points or run as interpreter
+fallbacks in v1 (the plan chooses fallback first).
+
+**Function values dispatch like words** (F4, commit `df920e4`).
+Function *values* now forward-collect args exactly like registered
+words. More call sites have a runtime-valued callee; the checker
+types them, and the compiler's existing answer (`CALL_USER_POLY` or
+fallback) covers it — but the report's claim that callee identity is
+always compile-time-resolvable at typed sites needs the weaker
+phrasing "resolvable where the checker resolves it".
+
+**Evaluation limits** (commit `056ed1e`). The interpreter guarantees
+bounded resource consumption with loud, *taxonomised* failure
+(`evaluation_limit` vs `tape_exhausted`, refined by TCO Stage 6). The
+VM needs an equivalent budget (instruction count + frame depth +
+allocation ceiling) producing the *same* error taxonomy, or compiled
+programs silently lose a safety property.
+
+**Capabilities / policy hooks** (`capability.go`, `policy_hook.go`)
+and the Go bridge (`gobridge.go`) are orthogonal: handlers receive
+the runtime registry either way. No design change; add to the test
+matrix only.
+
+## R6. Gotcha inventory additions (#23–#30)
+
+Continuing the report's §8 numbering:
+
+23. **TCO parity divergence** (severe). A tail call the interpreter
+    elides but the VM frames (or vice versa) changes resource
+    semantics and the runaway taxonomy — a documented guarantee.
+    Mitigation: compile-time probe shares the interpreter's
+    conditions; dual-mode taxonomy tests (the Stage 4a
+    `evaluation_limit`/`tape_exhausted` pair) run in both modes.
+24. **Locals promotion vs dynamic resolution** (severe — supersedes
+    the scoping framing of #3/§9.3). See R3. Mitigation: promote
+    only under a checker proof of no dynamic callee resolution;
+    default to registry ops.
+25. **Macro/mini expansion drift** (moderate). The compiler bakes an
+    expansion; the runtime cache would have produced the same one
+    only if the registry state at expansion matches. Mitigation:
+    expansion is deterministic and memoised by operand canon — hash
+    the expansion inputs into the program like any other compilation
+    input (§9.2's mechanism).
+26. **Generic frames in tail position** (moderate). Excluded from
+    interpreter TCO; the compiler must exclude them identically or
+    prove the bind/teardown interaction. Mitigation: reuse
+    `FnFrameMeta.HasGen` as the gate.
+27. **Budget/taxonomy parity** (moderate). VM step budget must map
+    onto the documented `evaluation_limit` semantics and tape-ceiling
+    behaviour. Mitigation: drive both modes from the same
+    `TapeConfig`-derived limits; pin with the existing runaway
+    taxonomy tests.
+28. **Fork-shared program mutability** (moderate). Any lazily-
+    mutated VM structure (inline caches, memo tables) becomes a data
+    race under `ForkConcurrent`. Mitigation: immutable `Program`;
+    per-registry (per-fork) mutable caches only.
+29. **Raw-form operand spans** (moderate). Macro params are
+    FormArgs raw-capture; the emitter must treat those operand spans
+    as data, not code, before expansion. Mitigation: expansion runs
+    before lowering in checker order, so the lowered stream never
+    contains an unexpanded macro site; assert this invariant.
+30. **Stage-5 residual boundaries** (low). Module-boundary pins,
+    foreign-frame guard, same-registry `CallBoru`: each is a place
+    where the interpreter deliberately declines TCO. The VM declines
+    identically (plain `CALL_USER`) — cheap, but easy to forget.
+
+## R7. Stale references
+
+Cosmetic, but worth fixing in the next report revision so readers
+stop chasing dead line numbers: `execMatch` is near `engine.go:2138`
+(not `:807`); `spliceMatchResults`' cited `:946` no longer holds;
+`engine.go` roughly doubled in size; the checker surface moved into
+`check.go`; the stack the report describes as a flat `[]Value` is now
+the gap-buffer `Tape`; `native_array_higher.go:29` should be
+re-verified before citing. The shared-`[]Value`-stack handoff claim
+(§1.5, §6.5) still holds in substance — the fallback hands over
+values, and the tape/VM boundary conversion is cheap — but the
+sentence "no marshalling" should be re-checked once the VM's stack
+representation is fixed.
+
+## R8. Revised verdict
+
+- **Feasible:** yes — more so than before, because the checker is
+  real. Nothing found on main breaks the recording-pass architecture.
+- **Harder than the report says in two places:** TCO is mandatory in
+  v1 (R2), and locals promotion has a stricter soundness condition
+  (R3). Both have existing interpreter machinery to reuse.
+- **The worth-it case narrowed:** the tape + TCO work already
+  banked much of the recursion win the report showcased. The
+  remaining target — `matchSignature` + forward collection + splice
+  bookkeeping on hot straight-line/loop code — is intact but must be
+  re-measured before committing effort. Hence the plan's Stage 0 is
+  a measurement gate with explicit go/no-go numbers, not emitter
+  work.

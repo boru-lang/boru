@@ -46,7 +46,7 @@ func (b MemberUnifier) Match(v Value, t *Type) bool {
 // definitively (no structural re-admission), a type-level pair defers to
 // the structural rule. The Go predicate yields the candidate unchanged on
 // a match.
-func (b MemberUnifier) Unify(a, c Value) (Value, *UnifyError) {
+func (b MemberUnifier) Unify(a, c Value, _ *Registry) (Value, *UnifyError) {
 	return unifyMembership(a, c, "the member type", func(v Value) (Value, bool, error) {
 		return v, b.member(v), nil
 	})

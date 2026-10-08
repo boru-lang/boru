@@ -22,7 +22,7 @@ import (
 // generator, the r.int→9 miscompile the trie/sort PBT suites tripped over).
 // So the invariance holds only for bodies that genuinely compile; the
 // member-fn gen is ledgered red (p6/check-prop-body-on-vm). The fn-scope
-// ${frame-local} guard (TestCheckPropInterpStringFnScopeRefuses) is the
+// ${frame-local} guard (TestCheckPropInterpStringFnScopeFailsToCompile) is the
 // standing negative: stored-param-body compiles are module-scope only.
 func TestCheckPropIterationsAddNoInterpEntries(t *testing.T) {
 	entryCensus := func(runs int) map[string]int {
@@ -63,6 +63,63 @@ func TestCheckPropIterationsAddNoInterpEntries(t *testing.T) {
 	// per iteration.
 	if few["CallBoru"] != 0 || many["CallBoru"] != 0 {
 		t.Errorf("per-iteration CallBoru entries present (2 runs: %d, 60 runs: %d) — the throwaway-sig path is back", few["CallBoru"], many["CallBoru"])
+	}
+}
+
+// TestCheckPropShrinkAddsNoInterpEntries: a FAILING property's shrink dispatches
+// the property through the same carrier the driver's loop does (checkPropBody —
+// InvokeCallback over the stored-param-body unit), not a throwaway CallBoru
+// frame per candidate, and the gen-program recorder's run reports itself as
+// the observation it is ("stackform-record"). So a compiled check-prop whose
+// bodies compile adds NO unattributed interpreter entry, shrinking included
+// (the interp-entry census's corpus-modules.tsv L164), and the result map —
+// the shrunk input, its source and cost — is the interpreter's.
+func TestCheckPropShrinkAddsNoInterpEntries(t *testing.T) {
+	src := `import "boru:test" end
+def res (Test.check-prop "f" [ 3 4 add ] [ drop false ] 3 1 4)
+res`
+	for _, c := range []struct{ src, want string }{
+		{src, "[{name:'f' ok:false runs:1 failing-input:7 shrunk-input:0 shrunk-source:'0' shrunk-cost:1 error:none}]"},
+		// The corpus row (corpus-modules.tsv L164): a property that leaves its
+		// String input beneath two atoms declines the recorder's Any-typed
+		// carrier and is stamped at run time over the String it meets
+		// (native.StampBodySig), in the loop and in the shrink alike.
+		{`import "boru:test" end Test.check-prop 'a' ['a','b'] ['c','d'] 2 3 4`,
+			`[{name:'a' ok:false runs:1 failing-input:'b' shrunk-input:'b' shrunk-source:'"b"' shrunk-cost:2 error:error(property returned non-Boolean (ProperString))}]`},
+		// Bodies read RAW from a PropertySpec map (`Test.prop`, `run-property`):
+		// no carrier at all, both stamped at run time.
+		{`import "boru:test"  def p (Test.prop "x" [3 4 add] [5 gte]) end (p Test.run-property) get "ok"`, "[true]"},
+	} {
+		seen, gotC := unattributedEntries(t, c.src)
+		if len(seen) != 0 {
+			t.Errorf("%q: unattributed interpreter entries %v — a body is back on the interpreter", c.src, seen)
+		}
+		if fmt.Sprint(gotC) != c.want {
+			t.Errorf("%q: compiled %v, want %s", c.src, gotC, c.want)
+		}
+		a := mustNew(t)
+		a.SetOutput(&bytes.Buffer{})
+		gotI, err := a.RunInterp(c.src)
+		if err != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: interp %v / %v, want %s", c.src, gotI, err, c.want)
+		}
+	}
+	// The recorder's run is attributed, and it happens: the shrink of a
+	// failing gen program records the program once.
+	b := mustNew(t)
+	b.SetOutput(&bytes.Buffer{})
+	recorded := 0
+	disarm := b.ArmInterpEntryHook(func(ev InterpEntry) {
+		if ev.Attribution == "stackform-record" {
+			recorded++
+		}
+	})
+	if _, _, err := b.RunCompiled(src); err != nil {
+		t.Fatal(err)
+	}
+	disarm()
+	if recorded == 0 {
+		t.Error("the gen-program recorder's run reported no stackform-record entry")
 	}
 }
 
@@ -125,6 +182,9 @@ def res (Test.check-prop "gen-raises" [raise bad_input "boom"] [ 0 gte ] 3 1 0)
 		}
 		a.SetOutput(&bytes.Buffer{})
 		gotC, compiled, err := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("RunCompiled: %v\nsrc: %s", err, src)
 		}
@@ -146,12 +206,16 @@ def res (Test.check-prop "gen-raises" [raise bad_input "boom"] [ 0 gte ] 3 1 0)
 	}
 }
 
-// TestCheckPropRefusedBodyFallsBackSound — a gen body the stored-param
-// compile declines (a capitalised type install doesn't lower in a closure
-// unit) falls through to the standing NoEvalArgs replay-hazard gates, which
-// refuse the program: the interpreter fallback runs it with parity — slow,
-// not wrong, exactly the do-registry-replay discipline.
-func TestCheckPropRefusedBodyFallsBackSound(t *testing.T) {
+// TestCheckPropFailedToCompileBodyFallsBackSound — a gen body with a
+// capitalised type install used to decline the stored-param compile (the
+// closure unit dropped the mint) and fall through to the NoEvalArgs
+// replay-hazard gates, which declined the program. Since NUR167's close the
+// unit re-installs the type per call (OpBindFnType — the name checked and
+// reserved, the binding popped with the CallBoru frame runCheckProp opens
+// per trial), so the body compiles natively and the second trial conflicts
+// exactly as the interpreter's does: ok false, the type_error in the
+// report. The name stays for the history; the assertion is parity.
+func TestCheckPropFailedToCompileBodyFallsBackSound(t *testing.T) {
 	const src = `import "boru:test" end
 def res (Test.check-prop "hazard" [def Big Integer 9] [ 0 gte ] 2 1 0)
 res get "ok"`
@@ -161,11 +225,14 @@ res get "ok"`
 	}
 	a.SetOutput(&bytes.Buffer{})
 	gotC, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
-	if compiled {
-		t.Fatal("the replay-hazard gen body must refuse the compile (the interpreter owns it)")
+	if !compiled {
+		t.Fatal("the type-installing gen body compiles natively now (NUR167's per-call type bind)")
 	}
 	b, err := New()
 	if err != nil {

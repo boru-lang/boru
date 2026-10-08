@@ -7,7 +7,7 @@ import (
 )
 
 // TestDynamicCarrierMatch pins the not-disjoint matching rule for the
-// bounded dynamic(T) modality (design/dynamic-modality-report.10.md): a
+// bounded dynamic(T) modality (design/legacy/dynamic-modality-report.10.ignore): a
 // dynamic carrier matches a signature slot unless its bound is PROVABLY
 // disjoint from the slot, the optimistic dual of strict ConformsTo. The
 // contrast block proves the modality is what flips the behaviour — a
@@ -88,7 +88,7 @@ func TestDynamicResultContagion(t *testing.T) {
 	// A dynamic input + a CONCRETE, single-reachable CONTAINER return: the
 	// result type is statically known (List), so it stays STRICT — a
 	// downstream `each` over such a declared-List return can now commit
-	// instead of refusing "dynamic input at each".
+	// instead of declining "dynamic input at each".
 	cont := CarrierResults(r, "w", listSig, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, nil, false)
 	if len(cont) != 1 || cont[0].Dynamic {
 		t.Fatalf("a concrete container return stays strict over a dynamic input, got Dynamic=%v", cont[0].Dynamic)

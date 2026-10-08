@@ -134,7 +134,7 @@ func TestScalarLeafSharedArms(t *testing.T) {
 		t.Errorf("iniScalar(string) = %q, want %q", got, "hi")
 	}
 
-	// None: null in json/yaml; toml must REFUSE it (no null in TOML —
+	// None: null in json/yaml; toml must DECLINE it (no null in TOML —
 	// falling to a string would corrupt the round-trip).
 	none := NewNone()
 	if got := emitScalarText(none); got != "null" {

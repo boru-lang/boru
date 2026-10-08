@@ -174,3 +174,35 @@ func TestNoteInterpExportedSeam(t *testing.T) {
 	var nilReg *Registry
 	nilReg.NoteInterp("vm:island") // must not panic
 }
+
+// The region-oracle seam, same holder discipline as the two above: unarmed
+// emits drop, an armed observer sees every event until disarmed, and a
+// registry without a holder arms nothing.
+func TestRegionOracleHook(t *testing.T) {
+	r := newTestRegistry(t)
+	r.NoteRegionOracle(RegionOracleEvent{Word: "add", Outcome: "unarmed"})
+	var got []RegionOracleEvent
+	disarm := r.ArmRegionOracleHook(func(ev RegionOracleEvent) { got = append(got, ev) })
+	r.NoteRegionOracle(RegionOracleEvent{Word: "add", NFwd: 2, Outcome: "reproduced"})
+	disarm()
+	r.NoteRegionOracle(RegionOracleEvent{Word: "add", Outcome: "after-disarm"})
+	if len(got) != 1 || got[0].Word != "add" || got[0].NFwd != 2 || got[0].Outcome != "reproduced" {
+		t.Errorf("region-oracle events = %+v", got)
+	}
+
+	// A module sub-registry reports to the SAME observer the request armed.
+	child := newTestRegistry(t)
+	child.InheritObserveHooks(r)
+	disarm = r.ArmRegionOracleHook(func(ev RegionOracleEvent) { got = append(got, ev) })
+	child.NoteRegionOracle(RegionOracleEvent{Word: "m", Outcome: "reproduced"})
+	disarm()
+	if len(got) != 2 || got[1].Word != "m" {
+		t.Errorf("a child registry must report through the inherited holder: %+v", got)
+	}
+
+	bare := &Registry{}
+	bare.ArmRegionOracleHook(func(RegionOracleEvent) { t.Fatal("armed on nil holder") })()
+	bare.NoteRegionOracle(RegionOracleEvent{})
+	var nilReg *Registry
+	nilReg.NoteRegionOracle(RegionOracleEvent{}) // must not panic
+}

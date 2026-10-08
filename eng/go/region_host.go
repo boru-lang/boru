@@ -100,6 +100,13 @@ func newRegionHost(reg *core.Registry, d *compiler.RegionDesc) *regionHost {
 	for i := range d.Slots {
 		toks = append(toks, d.Slots[i].Token)
 	}
+	return newRegionHostOver(reg, toks)
+}
+
+// newRegionHostOver seats a host on a window the caller has already built —
+// the oracle's, where a claimed slot presents the operand the lowering
+// pushed rather than its token (region_oracle.go).
+func newRegionHostOver(reg *core.Registry, toks []core.Value) *regionHost {
 	return &regionHost{reg: reg, win: core.NewTape(toks, core.StackHeadroom)}
 }
 
@@ -155,21 +162,44 @@ func (h *regionHost) ExpandSugarAt(core.Value, int, int, []core.ViableSig) (bool
 // real flag costs nothing and cannot go stale if that changes.
 func (h *regionHost) FlowInterrupted() bool { return h.reg.FlowCtrl != core.FlowNone }
 
+// ScratchParenSpan wraps items in paren markers, exactly as the
+// interpreter's expandParenExprScratch does — the kernel splices the span
+// in place of a ParenExpr and expects to meet the OpenParen on its next
+// step. The first draft returned the bare items, and the COLLECT oracle's
+// first corpus walk found what that does: a word bound to a data splice is
+// rewritten to ParenExpr([w]), spliced back to the bare `w`, rewritten
+// again, forever (`def vs word [2,3] add vs`). The seam's contract is the
+// interpreter's shape, marker for marker.
 func (h *regionHost) ScratchParenSpan(items []core.Value) []core.Value {
-	h.span = append(h.span[:0], items...)
+	h.span = append(h.span[:0], core.NewOpenParen())
+	h.span = append(h.span, items...)
+	h.span = append(h.span, core.NewCloseParen())
 	return h.span
 }
 
 // --- classifications: delegated to core's shared implementations ---
 
-func (h *regionHost) DefTop(name string) (core.Value, bool) { return h.reg.Defs.Top(name) }
+// DefTop resolves a name to its active binding — and, under an analysis
+// pass, to the fn carrier a computed fn value's def left in the per-pass
+// side table (core.CheckFnCarrierBind), the binding the engine's own seat
+// resolves (Engine.DefTop, S1b-2), so the descriptor's plan walk and the
+// dispatch it describes claim the same forward slots.
+func (h *regionHost) DefTop(name string) (core.Value, bool) {
+	if top, ok := h.reg.Defs.Top(name); ok {
+		return top, true
+	}
+	if h.reg.Check.IsActive() {
+		return core.CheckFnCarrierBind(h.reg, name)
+	}
+	return core.Value{}, false
+}
 
 func (h *regionHost) IsFnWordBarrier(tok core.Value) bool {
 	return core.FnWordBarrierOn(h.reg, tok)
 }
 
-func (h *regionHost) IsReachCallHead(tok core.Value, viable []core.ViableSig, pos, i int) bool {
-	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, viable, pos, i)
+func (h *regionHost) IsReachCallHead(tok core.Value, i int) bool {
+	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, i)
 }
 
 func (h *regionHost) StaticForwardType(tok core.Value) (core.Value, core.FwdKind) {

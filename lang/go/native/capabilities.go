@@ -350,7 +350,7 @@ func EffectiveFileOps(r *Registry) capabilities.FileOps {
 // suppressive. A write-then-read-back body still sees its own bytes, a
 // remove still hides the file from the rest of the body, and a read of a
 // file the body never touched falls through to the real one — so a module
-// that loads today cannot start failing under check. A blanket refusal
+// that loads today cannot start failing under check. A blanket compile failure
 // cannot promise any of that, which is why "deny-all around the check-pass
 // body" was rejected: denial raises, and the raise aborts the import and
 // loses the exports check needs.
@@ -431,7 +431,7 @@ func HostEnvOps(r *Registry) capabilities.EnvOps {
 
 // SetHostEnvOps installs the environment view, honouring the policy the same
 // way SetHostFileOps does: a profile that uninstalls the `env` scope clears
-// the slot outright, so the capability is absent rather than merely refusing
+// the slot outright, so the capability is absent rather than merely declining
 // — and a configured profile wraps it so per-name rules apply.
 func SetHostEnvOps(r *Registry, ops capabilities.EnvOps) {
 	if r == nil {

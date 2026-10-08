@@ -206,7 +206,7 @@ set from the bottom up.
 >
 > The holding principle: **a certificate is data, a private key is a
 > capability.** Rationale and phasing in
-> [NETWORK-TLS-PLAN.0.md](NETWORK-TLS-PLAN.0.md) §3.
+> [legacy/NETWORK-TLS-PLAN.0.ignore](legacy/NETWORK-TLS-PLAN.0.ignore) §3.
 
 There is deliberately **no `dial-loop` sugar**: a server accepts *many*
 connections (hence `serve-raw`'s loop), a client dials *one*. Dialing many — a

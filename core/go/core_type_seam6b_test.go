@@ -102,7 +102,7 @@ func TestS6b0AsBoundedTypeUndenotingChild(t *testing.T) {
 func TestS6b0BoundedTypeSatisfiedViaIs(t *testing.T) {
 	// A disjunct body denotes no single node, but Is(TDisjunct) holds.
 	d := NewDisjunct([]Value{NewTypeLiteral(TInteger)})
-	if !boundedTypeSatisfied(d, NewTypeLiteral(TDisjunct)) {
+	if !boundedTypeSatisfied(d, NewTypeLiteral(TDisjunct), nil) {
 		t.Error("a disjunct body must satisfy Type of [Disjunct] via Is")
 	}
 }
@@ -111,7 +111,7 @@ func TestS6b0UnifyBoundedTypePairs(t *testing.T) {
 	// Bounded vs bounded: the narrower bound wins.
 	a := NewBoundedType(TInteger)
 	b := NewBoundedType(TNumber)
-	got, err := unifyBoundedType(a, b)
+	got, err := unifyBoundedType(a, b, nil)
 	if err != nil {
 		t.Fatalf("bounded-vs-bounded: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestS6b0UnifyBoundedTypePairs(t *testing.T) {
 		t.Errorf("narrower bound must win, got %v", got)
 	}
 	// Value vs bounded (bok case): the conforming literal wins.
-	got, err = unifyBoundedType(NewTypeLiteral(TInteger), b)
+	got, err = unifyBoundedType(NewTypeLiteral(TInteger), b, nil)
 	if err != nil {
 		t.Fatalf("literal-vs-bounded: %v", err)
 	}

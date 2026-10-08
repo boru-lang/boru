@@ -607,12 +607,14 @@ func TestRunPredicate_BadPayload(t *testing.T) {
 	}
 }
 
+// A predicate with no signature, or none that takes one value, admits
+// nothing: membership is a one-value application, and no parameter count
+// raises (NUR100).
 func TestRunPredicate_ZeroArgPredicate(t *testing.T) {
 	r, _ := NewRegistry()
 	v := Value{Parent: TFunction, Data: FnDefInfo{}}
-	_, _, err := r.RunPredicate(v, NewInteger(42))
-	if err == nil {
-		t.Fatalf("expected error for predicate with no sigs")
+	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
+		t.Fatalf("a sig-less predicate admits nothing: %v %v", matched, err)
 	}
 }
 
@@ -621,9 +623,8 @@ func TestRunPredicate_MultiArgPredicate(t *testing.T) {
 	v := Value{Parent: TFunction, Data: FnDefInfo{
 		Signatures: []FnSig{{Params: []FnParam{{Type: TAny}, {Type: TAny}}, BarrierPos: -1}},
 	}}
-	_, _, err := r.RunPredicate(v, NewInteger(42))
-	if err == nil {
-		t.Fatalf("expected error for predicate with 2 params")
+	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
+		t.Fatalf("a two-param predicate admits nothing: %v %v", matched, err)
 	}
 }
 

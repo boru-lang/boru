@@ -20,10 +20,11 @@
 // signature is one where the recorder is running on the zero value's
 // assumption — which is the substantive claim the triple's C1 exists to
 // stop being silent about, since a tri-state tapeBound that is unset must
-// refuse rather than default permissive.
+// decline rather than default permissive.
 package langspec
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -42,7 +43,63 @@ import (
 // program that imports modules registers more, so this is a floor on the
 // worklist, not its total; it is the part that is always present and can
 // therefore be ratcheted deterministically.
-const undeclaredHandlerCeiling = 114 // 114 (2026-08-25, Stage-1 baseline) -> 0 (Stage 6)
+// History: 114 (2026-08-25, Stage-1 baseline) -> 110 (2026-09-18, the
+// fn-operand pilot of design/HANDLER-MIGRATION-LINE.0.md: the dispatch-
+// modifier VALUE forms — usurp [Function], stack-args [Function],
+// forward-args [Function], force-arity [Integer Function] — declared
+// CompileStoresFn|CompileFnHandlerStrict) -> 94 (2026-09-18, the quoted
+// class's set/del cluster: the sixteen quoted-receiver overloads of `set`
+// and `del` — Store, Map, Class, FlexMap, FlexXml, WeakFlexMap,
+// WeakFlexXml, Micron — declared CompileQuoteKey, which let the
+// recorder's by-name set/del exemption go) -> 59 (2026-09-25, S2a of
+// design/FULL-COMPILATION-REPLAN.0.md: the 35 declaration-only handlers.
+// The quoted class, 28: `def`'s nine forms, `undef` ×2 and `__varundef`
+// declare CompileQuoteKey (the NAME of a registry write or removal);
+// `describe [Atom]` and `unpack all` CompileQuoteInert (a literal the
+// handler consumes verbatim); `xml-attr [Atom Xml]` and `unpack Export
+// 'mod'` CompileQuoteKey (a key the handler reads); the by-name modifier
+// forms — `usurp`, `stack-args`, `forward-args`, `force-arity` — with
+// `valof` and the `mini` ×2 / `parse` ×2 / `emit` ×3 kind forms declare
+// CompileResteps, the NEW flag that names the re-stepping refusal (their
+// result is a wrapper, a parked binding or a splice the tape runs, never
+// a value a CALL_NATIVE could bake). The fn-operand class, 7: `apply
+// [Function]` and the `mini` ×2 / `parse` ×2 / `emit` ×2 value forms
+// declare CompileResteps too (the marked fn / the splice re-stepped on
+// the tape — CompileReadsFn would be a permissive lie). The 59 left are
+// the code-body class, S2b's: `def`'s keyword forms whose constructor
+// takes a raw body or a gen params list (NoEvalArgs) are among them and
+// were deliberately NOT declared by S2a, although they share a
+// synthesizer with the quoted forms) -> 1 (2026-09-26, S2b's
+// declarations: 58 of the 59 code-body signatures, each by the fact true
+// of its handler, none changing a recorded program. CompileOwnLowering,
+// a NEW flag, for the words the recorder lowers from their compile-time
+// half — `if`'s three- and two-operand forms, `for` ×2 and `while`
+// (the structured ReturnsFn: RecordBranch / RecordLoop), and the
+// check-mode constructors and binders `fn` ×2, `afn`, `fnsig` ×2,
+// `fnpred` ×2, `gen`, `macro`, `module`, `import`'s three inline-module
+// forms and `def`'s 32 keyword forms (those beside S2a's quoted-name
+// flag); CompileResteps for the splices the tape re-steps — `var`,
+// `word` and the clause-list `if [c1 b1 … else]`; CompileQuoteKey for a
+// NoEvalArgs list of names or keys — `unpack [names] m`, `import`'s two
+// rename lists, `reach recv [segments]`; CompileQuoteInert for `enum`'s
+// member list. The one left, `receive (List)`, runs a clause body on a
+// sub-engine over the enclosing registry: its true fact is
+// CompileRunsBodyOnRegistry, a flag that CHANGES lowering and was
+// deliberately not added by a declaration-only line — and the word
+// carries a live miscompile the flag's module-scope rule would close
+// (a clause body reading a fn param inside a fn compiles to
+// undefined_word; see the S2b entry of FULL-COMPILATION-HANDOFF.0.md))
+// -> 0 (2026-09-26, the S2b follow-up: `receive (List)` declares
+// CompileRunsBodyOnRegistry. The check pass never runs its clause bodies —
+// no RunInCheck, no ReturnsFn — so the flag's module-scope rule holds for it
+// as for Test.cover, and the rule closes the miscompile: a clause body
+// reading a fn param or a loop iterator, or rebinding a name read after it,
+// declines now; a top-level receive still compiles with parity, and so does
+// a nested one whose clause list names nothing the program or the registry
+// knows (the new registryBodyNamesNothingKnown, which keeps the sweep's
+// receive call forms passing). Stage 6's
+// census reads `none`.)
+const undeclaredHandlerCeiling = 0
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.
@@ -77,6 +134,7 @@ func declared(sig *core.Signature) bool {
 }
 
 func TestDeclarationCensus(t *testing.T) {
+	t.Parallel()
 	reg, err := native.DefaultRegistry()
 	if err != nil {
 		t.Fatalf("DefaultRegistry: %v", err)
@@ -102,6 +160,12 @@ func TestDeclarationCensus(t *testing.T) {
 			if !declared(sig) {
 				undeclared++
 				undeclaredBy[why]++
+				// BORU_LOG_UNDECLARED=1 names every undeclared signature —
+				// the Stage-6 handler-migration worklist (`make
+				// handler-worklist`; design/HANDLER-MIGRATION-LINE.0.md).
+				if os.Getenv("BORU_LOG_UNDECLARED") != "" {
+					t.Logf("UNDECLARED\t%s\t%s\t%s", name, why, sigShape(sig))
+				}
 			}
 		}
 	}
@@ -134,4 +198,18 @@ func TestDeclarationCensus(t *testing.T) {
 		t.Errorf("undeclared declaration-relevant signatures %d exceed ceiling %d — the recorder is assuming a handler contract nobody wrote down: %s",
 			undeclared, undeclaredHandlerCeiling, render(undeclaredBy))
 	}
+}
+
+// sigShape renders a signature's parameter types for the worklist line,
+// `(Integer List)` — the shape a declaration will be written against.
+func sigShape(sig *core.Signature) string {
+	parts := make([]string, len(sig.Args))
+	for i, a := range sig.Args {
+		if a == nil {
+			parts[i] = "?"
+			continue
+		}
+		parts[i] = a.Name()
+	}
+	return "(" + strings.Join(parts, " ") + ")"
 }

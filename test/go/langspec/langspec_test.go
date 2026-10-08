@@ -40,15 +40,17 @@ var specClock = capabilities.FixedClock{T: time.Date(2021, 1, 1, 0, 0, 0, 0, tim
 // Stores, Resource / Entity, …). They sit at lang/spec/ to mirror the
 // engine kernel's eng/spec/ layout.
 func TestSpecProd(t *testing.T) {
+	t.Parallel()
 	runSpecProd(t, false)
 }
 
 // TestSpecProdTCODisabled re-runs the entire production spec suite
 // with tail-call elision switched off (Registry.TCO.Disable). Every
 // row pins an exact output, so green in BOTH modes is the dual-mode
-// differential gate of design/TCO-STAGED.10.md: elision must be
+// differential gate of design/legacy/TCO-STAGED.10.ignore: elision must be
 // observationally invisible row-for-row.
 func TestSpecProdTCODisabled(t *testing.T) {
+	t.Parallel()
 	runSpecProd(t, true)
 }
 

@@ -18,6 +18,7 @@ import (
 // sides. The position mattered: the oracle used to read the spread only at
 // checked[0], and rejected the below-a-fixed-entry shape outright.
 func TestVariadicSpreadOracle(t *testing.T) {
+	t.Parallel()
 	varInt := core.NewVariadicCarrier(core.NewTypeLiteral(core.TInteger))
 	i := core.NewInteger(6)
 	s := core.NewString("x")

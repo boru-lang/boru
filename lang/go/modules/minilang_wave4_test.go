@@ -153,10 +153,10 @@ func TestMiniWave4MathInternals(t *testing.T) {
 		t.Errorf("boruToMval(2.5) = %+v %v", mv, ok)
 	}
 	if _, ok := boruToMval(native.NewString("x")); ok {
-		t.Error("boruToMval(String) must refuse")
+		t.Error("boruToMval(String) must decline")
 	}
 	if _, ok := boruToMval(native.NewTypeLiteral(native.TInteger)); ok {
-		t.Error("boruToMval(type literal) must refuse")
+		t.Error("boruToMval(type literal) must decline")
 	}
 	if got := (mval{i: 3, isInt: true}).asFloat(); got != 3.0 {
 		t.Errorf("asFloat(int 3) = %v", got)
@@ -346,7 +346,7 @@ func TestMiniWave4XPathHandlerGuards(t *testing.T) {
 }
 
 // TestMiniWave4XpNav unit-drives the xpNode mirror and its NodeNavigator —
-// every Move* arm (success and refusal), the attribute cursor, innerText,
+// every Move* arm (success and compile failure), the attribute cursor, innerText,
 // and the scalar projections xpText / xpNumberToValue / xpResultToList.
 func TestMiniWave4XpNav(t *testing.T) {
 	r := mcovReg(t)
@@ -381,22 +381,22 @@ func TestMiniWave4XpNav(t *testing.T) {
 		t.Errorf("attribute NodeType = %v", nav.NodeType())
 	}
 	if nav.MoveToChild() {
-		t.Error("MoveToChild on an attribute must refuse")
+		t.Error("MoveToChild on an attribute must decline")
 	}
 	if nav.MoveToFirst() {
-		t.Error("MoveToFirst on an attribute must refuse")
+		t.Error("MoveToFirst on an attribute must decline")
 	}
 	if nav.MoveToNext() {
-		t.Error("MoveToNext on an attribute must refuse")
+		t.Error("MoveToNext on an attribute must decline")
 	}
 	if nav.MoveToPrevious() {
-		t.Error("MoveToPrevious on an attribute must refuse")
+		t.Error("MoveToPrevious on an attribute must decline")
 	}
 	if !nav.MoveToNextAttribute() || nav.LocalName() != "k" {
 		t.Errorf("second attribute = %q, want k", nav.LocalName())
 	}
 	if nav.MoveToNextAttribute() {
-		t.Error("MoveToNextAttribute past the end must refuse")
+		t.Error("MoveToNextAttribute past the end must decline")
 	}
 	if !nav.MoveToParent() { // attr cursor → back to element
 		t.Fatal("MoveToParent from an attribute failed")
@@ -416,7 +416,7 @@ func TestMiniWave4XpNav(t *testing.T) {
 		t.Fatalf("third child should be the tail text, got %q", nav.Value())
 	}
 	if nav.MoveToNext() {
-		t.Error("MoveToNext past the last sibling must refuse")
+		t.Error("MoveToNext past the last sibling must decline")
 	}
 	if !nav.MoveToPrevious() || nav.LocalName() != "b" {
 		t.Errorf("MoveToPrevious = %q, want b", nav.LocalName())
@@ -425,10 +425,10 @@ func TestMiniWave4XpNav(t *testing.T) {
 		t.Errorf("MoveToFirst = %q, want a", nav.LocalName())
 	}
 	if nav.MoveToPrevious() {
-		t.Error("MoveToPrevious at the first sibling must refuse")
+		t.Error("MoveToPrevious at the first sibling must decline")
 	}
 
-	// Copy / MoveTo round trip; a foreign-root navigator is refused.
+	// Copy / MoveTo round trip; a foreign-root navigator is declined.
 	cp := nav.Copy()
 	if !nav.MoveToParent() || !nav.MoveTo(cp) || nav.LocalName() != "a" {
 		t.Error("MoveTo(copy) should restore the position")
@@ -436,11 +436,11 @@ func TestMiniWave4XpNav(t *testing.T) {
 	other := mcovRun(t, r, `<z/>`)
 	foreign := newXpNav(buildXpTree(other[len(other)-1]))
 	if nav.MoveTo(foreign) {
-		t.Error("MoveTo across trees must refuse")
+		t.Error("MoveTo across trees must decline")
 	}
 	nav.MoveToRoot()
 	if nav.MoveToParent() {
-		t.Error("MoveToParent at the root must refuse")
+		t.Error("MoveToParent at the root must decline")
 	}
 	// Descend twice (root → r → a); both moves have side effects, so
 	// spell them as separate statements.

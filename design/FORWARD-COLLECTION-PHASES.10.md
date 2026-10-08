@@ -56,7 +56,7 @@ structure that has already been stepped away.
 ## Phase 1 — the plan-time walk
 
 `stepWord` → `resolveForwardArgs` (engine.go:902, the structure-first
-lazy scan of `design/LAZY-ARG-RESOLUTION.10.md`) → `matchSignature`.
+lazy scan of `design/legacy/LAZY-ARG-RESOLUTION.10.ignore`) → `matchSignature`.
 The walk looks at the tokens after the word, prunes non-viable
 overloads on concrete literals, pre-evaluates paren groups (and, since
 `00cb7a7`, interpolated template strings) only at positions some
@@ -327,7 +327,7 @@ splices behave identically at binders. `def y (xs)` forces expansion —
 the one place `f w` and `f (w)` differ, by design). Pinned in
 `lang/spec/word-splice.tsv` §7.
 
-Related: `design/LAZY-ARG-RESOLUTION.10.md` (phase 1's structure-first
+Related: `design/legacy/LAZY-ARG-RESOLUTION.10.ignore` (phase 1's structure-first
 scan), `design/FORWARD-COLLECTION-TRAPS.0.md` (zero-value arrivals and
 bare-word keys — other costs of the same architecture),
 `design/FORWARD-STRAND-ADVISORY.10.md` (the check-mode advisory for

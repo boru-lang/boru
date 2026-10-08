@@ -1,0 +1,216 @@
+# CORE-TS-COVERAGE.0 — taking core/ts from 62% to 100%
+
+**Status:** Stages 1-3 DONE, 4 partial, 5 partial — 62.43% -> 87.27% · **Started:** 2026-08-07 (maintainer
+instruction: "Bring ts up to 100%", then — on being told the corpus could not
+do it — "Spec it")
+
+`core/ts` sits at **62.43%** line coverage against `core/go`'s **100%** of
+statements. This note specifies the work that closes it, and starts by
+retiring the assumption that motivated it.
+
+## The corpus is not the instrument
+
+`make test-ts-core`'s Makefile comment says "the corpus is the instrument:
+rows added to core/spec lift both engines at once." That is true of the
+rows' *value* and false of their *reach*. Measured on this commit:
+
+| suite | core/go | core/ts |
+|---|---:|---:|
+| `core/spec` corpus alone | **10.3%** | **58.86%** |
+| the module's full own suite | 100% | 62.43% |
+
+The corpus tops out at 10.3% on the Go side. It is not what took `core/go` to
+100%, and there is no reason to expect it to do more for the twin. The
+asymmetry in the first column is only size: the same 64 rows cover a much
+larger share of a 5,177-line port than of a 44,474-line one.
+
+What actually took `core/go` to 100% is **161 test files, 39,580 lines**.
+`core/ts` has **4 files, 414 lines**.
+
+| | source | test | test per source line |
+|---|---:|---:|---:|
+| core/go | 44,474 | 39,580 | 0.89 |
+| core/ts | 5,177 | 414 | **0.08** |
+
+At the Go ratio, `core/ts` wants ≈ **4,600** test lines. It has 414. That gap
+— roughly **4,200 lines of unit tests** — is the whole of this programme.
+
+### Why growing the notation cannot substitute
+
+The obvious counter-proposal is to widen `core/spec`'s vocabulary: more than
+the one fixture word (`addq`), more than the six value kinds. It does not
+reach, and the work list below is why. The uncovered mass is concentrated in
+`engine.ts` — 947 lines across 44 methods, with the top ten holding 590:
+
+| uncovered | of | method |
+|---:|---:|---|
+| 97 | 172 | `stepWord` |
+| 89 | 99 | `dispatchFnDefCheck` |
+| 74 | 87 | `dispatchFnDef` |
+| 67 | 166 | `preEvalParens` |
+| 60 | 69 | `analyseFnBody` |
+| 49 | 56 | `substituteInterp` |
+| 48 | 101 | `run` |
+| 38 | 40 | `resolveXmlTmpl` |
+| 35 | 58 | `stepLiteral` |
+| 33 | 43 | `fireMarker` |
+
+Reaching those needs user function definitions, check-mode passes, paren
+expressions, interpolation strings, XML templates, and markers/moves. Every
+one of those is a nested value shape. Expressing them in a line-oriented
+notation means writing a parser — inside *both* runners, twice, with no
+shared code — which is exactly what `core/spec/README.md` says the notation
+exists to avoid, and `core` cannot borrow the real one because `parser`
+depends on `core`, not the other way round.
+
+So: **keep growing `core/spec` as a cross-engine spec, and stop treating it
+as a coverage instrument.** Its job is agreement on the documented contract,
+which it does well and which unit tests do not do at all.
+
+## The work list
+
+1,945 uncovered lines, by file, with the `core/go` campaigns to port from:
+
+| file | src | cov | uncov | port from |
+|---|---:|---:|---:|---|
+| `engine.ts` | 1,644 | 42.4% | **947** | `engine_stage5a_test.go` (1704), `engine_stage5b_test.go` (1293), `engine_seam8_test.go` (1271) |
+| `value.ts` | 1,053 | 74.1% | 273 | `value_stage5_test.go` (609) |
+| `coretype.ts` | 249 | 39.4% | 151 | `typealgebra_wave4b_test.go` (734) |
+| `make.ts` | 209 | 38.3% | 129 | `kernel_construct_cov_test.go` (767) |
+| `canon.ts` | 308 | 70.1% | 92 | `compare_wave4b_test.go` (766) |
+| `match.ts` | 317 | 77.0% | 73 | `fnvalue_dispatch_wave4_test.go` (684) |
+| `check-state.ts` | 200 | 65.5% | 69 | `kernel_state_wave4b_test.go` (593) |
+| `resolve.ts` | 115 | 41.7% | 67 | `helpers_stage5_test.go` (662) |
+| `registry.ts` | 255 | 74.1% | 66 | `core_helpers_seam5b_test.go` (576) |
+| `sugar.ts` | 75 | 46.7% | 40 | `sweep_stage5_test.go` (754) |
+| `type.ts` | 304 | 94.4% | 17 | — |
+| `signature.ts` | 147 | 91.8% | 12 | `unify_stage5_test.go` (632) |
+| `capability.ts` | 25 | 84.0% | 4 | — |
+
+The "port from" column is a starting map, not a transcription order: the Go
+tests exercise Go's structure, and several of them cover code that has no TS
+counterpart yet.
+
+### The cheapest tranche first
+
+Five files report **0.00% function coverage** while showing 38–84% lines:
+`make.ts`, `resolve.ts`, `sugar.ts`, `coretype.ts`, `capability.ts`. Their
+module bodies run — imports, tables, constants — but **not one of their 19
+exported functions is ever called by any test**. That is 391 uncovered lines
+behind nineteen direct calls, and it is the highest-yield work in the
+programme.
+
+### The check-mode tranche needs a decision
+
+`dispatchFnDefCheck` (89), `analyseFnBody` (60) and `checkModeAssumeSig` (31)
+— **180 lines** — run only with an `AnalysisImpl` installed. In production
+that comes from `eng/ts`'s `check.ts`, and `core/ts` must not depend on it
+(`core/ts/src/index.ts`: "this package declares no dependency on
+`@boru-lang/eng`, so a core file reaching upward simply fails to resolve").
+
+`core/ts/src/seams.test.ts` already pins the *inactive* defaults. Covering
+the *active* arms needs a **test-side fake `AnalysisImpl`** in the core
+suite — the TS twin of how `core/go` covers the same arms, and the reason
+`installAnalysisImpl` is exported at all. This is a design call to make
+explicitly rather than discover: a fake in the suite, never a dependency.
+
+## Stages
+
+Each lands green and raises `TS_CORE_GATE_LINES`, which is never lowered.
+Targets are computed from the work list above.
+
+| stage | scope | uncovered closed | floor |
+|---|---|---:|---:|
+| 1 | the 19 never-called exported functions (`make`, `resolve`, `sugar`, `coretype`, `capability`) | 391 | 62 → **70** |
+| 2 | `value.ts`, `canon.ts`, `type.ts`, `signature.ts` | 394 | 70 → **78** |
+| 3 | `match.ts`, `registry.ts`, `check-state.ts` | 208 | 78 → **82** |
+| 4 | `engine.ts`, everything but the check-mode arms | 767 | 82 → **96** |
+| 5 | `engine.ts` check-mode arms, behind a fake `AnalysisImpl` | 180 | 96 → **100** |
+
+Stage 1 is worth doing on its own even if the programme stops there: nineteen
+uncovered public entry points is a correctness statement, not a metric.
+
+## Two rules carried from the Go side
+
+**Never lower the floor.** This nearly went wrong already: the disjunction fix
+in `TS-PARITY-AUDIT.0.ignore` added an uncovered arm and dropped core/ts to
+61.88%, under its floor of 62. The fix was to cover the arm, not to re-baseline
+the gate. Re-basing is legitimate only when the measurement *universe* changes
+— as when `--test-coverage-include` scoped the gates to their own module — and
+then the note says so and prints both numbers.
+
+**Line coverage is not statement coverage.** The gates read Go statements ≡ TS
+lines, which is close enough to ratchet against but not identical. Do not read
+`core/ts` at 100% as proving the same thing `cover-gate-core` proves; it
+proves the twin's own contract, measured its own way.
+
+## What this does not cover
+
+The 15 rows in `parser/spec/divergent.tsv` are untouched by this programme.
+Twelve are `canon` divergences that belong to `core` and would be found by
+core-level rows, but coverage and parity are different gates: a fully covered
+`canonValue` can still disagree with `CanonValue`. `TS-PARITY-AUDIT.0.ignore`
+tracks those separately, and `make parser-crossdiff` is what watches the
+render surface.
+
+## Outcome — 62.43% to 87.27%
+
+| stage | scope | target | landed |
+|---|---|---:|---:|
+| 1 | the 19 never-called exported functions | 70 | **71.24** |
+| 2 | render surface, type, signature | 78 | 74.34 |
+| 3 | match, registry, check-state | 82 | **76.45** |
+| 4 | engine.ts, non-check | 96 | 87.27 |
+| 5 | engine.ts check arms, fake AnalysisImpl | 100 | (partial) |
+
+Stages 1 and 3 beat their targets; 2 fell short and 4 stopped at 87.27
+rather than 96. Floor 62 → 87, never lowered. **100% was not reached.**
+
+Per-file, everything except `engine.ts` and `match.ts` is at or near done:
+`analysis-hooks`, `capability`, `check-state`, `emit-recorder`, `error`,
+`index`, `signature`, `sugar` at 100; `canon` 99.35, `type` 99.67, `make`
+98.09, `registry` 96.86, `value` 96.05, `resolve` 95.65, `coretype` 93.98,
+`match` 84.86. **`engine.ts` is 67.46%** and holds ~535 of the ~660 lines
+still uncovered.
+
+### What the last 13 points actually need
+
+The stage-4 estimate assumed engine.ts's methods were reachable by
+constructing programs. Most are; four clusters are not, and they are what
+remains:
+
+- **`substituteInterp` (49 lines)** needs a live `EmitRecorder` on
+  `registry.check.emit` — the bytecode-island path, where a captured binding
+  is baked to a const or its producer's token span is inlined. Reaching it
+  means building an emit fixture, not a program.
+- **`preEvalParens` (49)** has arms keyed on signature shape that the
+  three-word fixture does not produce.
+- **`dispatchFnDefCheck` (39) + `checkModeAssumeSig` (31) + `analyseFnBody`
+  (20)** are covered only at their entry. The fake `AnalysisImpl` returns a
+  fixed carrier; the arms below it branch on carrier shape and on fn-body
+  recursion, so the fake has to model those to go deeper.
+- **`fireMarker` (33) + `beginForward` (25) + `stepLiteral` (35)** are the
+  forward-marker machinery. `barrierPos` stops forward collection at the next
+  word, so the deferral path needs a word declared without a barrier — the
+  fixture words all have one.
+
+### Two contract corrections this work produced
+
+Both were tests written against an assumption and corrected against the code:
+
+- `isValueOfType` does **not** inherit `unifiesValue`'s exact-key-set rule.
+  Maps route through the record-shape/open-subset path at every depth, so
+  `{a:1 b:2}` satisfies `{a:1}` nested or not.
+- `barrierPos` means `addq 1 addq 2 3` is a **signature error**, not
+  `1 + (2+3)`. Nested values must be parenthesised to be collected.
+
+### And a third defect family
+
+Stage 1 turned up six more `Value.toString()` payload kinds with no arm —
+Pathon, Emailon, Urlon, Error, Options, Reach — all rendering the literal
+`[object Object]`. The parser stream oracle could not see them because those
+values are minted by `make`, an engine word, not by parsing. `canonValue`
+already rendered every one correctly, so `toString` now delegates for exactly
+those kinds. The render tests assert against `[object Object]` as a class
+rather than one kind at a time, since this is now the *third* time a missing
+arm has shipped.

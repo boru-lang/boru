@@ -4,7 +4,7 @@
 # `tnot T` is the set-theoretic complement of T: a value satisfies it
 # iff it does NOT satisfy T. Together with `tor` (union) and `tand`
 # (intersection) it closes the type algebra under Boolean operations.
-# See design/elixir-types-in-boru-report.10.md.
+# See design/legacy/elixir-types-in-boru-report.10.ignore.
 #
 # ─────────────────────────────────────────────────────────────────────
 # §1  membership via `is`

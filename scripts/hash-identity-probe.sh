@@ -3,7 +3,7 @@
 #
 # Usage:  scripts/hash-identity-probe.sh
 #
-# `design/unison-in-boru-report.0.md` proposes deriving a content hash from
+# `design/legacy/unison-in-boru-report.0.ignore` proposes deriving a content hash from
 # the ADR-015 canon contract and using it as a definition's identity. This
 # wrapper runs the in-language battery (scripts/hash-identity-probe.boru)
 # and adds the two checks a single boru process cannot make for itself:
@@ -15,7 +15,7 @@
 #   P10 cross-port canon parity — Go and TS must render a value to the
 #       same bytes, or the two engines disagree about identity.
 #
-# Findings are written up in `design/unison-hash-identity-probe.0.md`.
+# Findings are written up in `design/legacy/unison-hash-identity-probe.0.ignore`.
 # A FAIL is not a bug report against canon: canon meets its own contract.
 # It records a property that content hashing needs and ADR-015 does not
 # supply.

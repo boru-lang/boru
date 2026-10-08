@@ -1,0 +1,389 @@
+# Module-fn body compilation: the `CheckState`-ownership refactor — implementation plan
+
+Status: **`.1` plan.** This is the design + implementation plan that the
+`.0` analysis (`design/legacy/module-fn-checkstate-ownership.0.ignore` §8) asked for:
+treat §5 — the `CheckState`-ownership split — as its own task. No engine
+code is changed by this note; it specifies *what* to change, *in what
+order*, and *how each step is gated*, so the implementation starts from a
+settled design rather than re-deriving it.
+
+Read `.0` first — it is the problem statement and the record of why the
+naive fix (thread the whole `CheckState` into `modReg`) breaks. This note
+does not repeat that analysis; it builds on it.
+
+---
+
+## 0. What changed since `.0` (a gate caveat to resolve first)
+
+`.0` mandates one gate above all others:
+
+> **`diverge.sh` against the decision project is a required gate for any
+> module-fn check-path change; the in-repo corpus is not sufficient
+> coverage.**
+
+Since `.0` was written, the `boru:decision` module was **removed from this
+repository** (`a7882da` "remove the boru:decision module (moved to a
+separate repo)"). `diverge.sh` and the `decision_unit_spec` /
+`decision_prop_test` / `decision_prop_spec` suites live in that external
+repo. **The mandated gate is therefore not runnable from a checkout of
+`boru-lang/boru` alone.**
+
+This is the first thing to resolve before writing code, because the whole
+reason `.0` is a negative result is that the in-repo gates (`make test`,
+`TestSpecCompiledOrFallback`, the 5k fuzzer) were **green while the change
+was broken** — the breakage only surfaced under `diverge.sh`. Implementing
+§5 without a decision-grade gate would repeat that trap.
+
+Two ways forward (pick one before step 1):
+
+- **(A) Restore a decision-grade gate.** Vendor a reduced copy of the
+  decision module's generic patterns — `decide gen [...]`,
+  `apply-op gen [...]`, `eval-cond`, the recursive `cond` chains — as an
+  **in-repo fixture** under `lang/go/test/fixtures/` plus a differential
+  test (interpreter vs `--force-compile`, and a clean check-pass error
+  count). §7 specifies exactly what this fixture must exercise. This is
+  the recommended path: it makes the gate part of the repo permanently, so
+  the next attempt cannot regress silently.
+- **(B) Run the external gate out-of-band.** Land §5 behind the in-repo
+  gates only, and have a maintainer run `diverge.sh` from the decision
+  repo against the branch before merge. Acceptable as a stopgap, but it
+  leaves the repo without standing coverage for the exact failure class.
+
+**Recommendation: (A).** The fixture is cheap relative to the refactor and
+closes the coverage hole `.0` calls out. Everything below assumes (A) and
+sequences the fixture *first* (step 1), so every subsequent commit is
+gated by it.
+
+---
+
+## 1. The shape of the fix (recap of `.0` §5, made concrete)
+
+The analysis state must be **split by concern**:
+
+| Concern | Today (per-registry) | Must follow |
+|---|---|---|
+| Resolution scope — which `Defs`/`Types` a word resolves against | `r.Defs`, `r.Types` | the **module's** registry (`modReg`) for the body — *unchanged* |
+| Analysis mode + recording — `Mode`, `Emit`, `Diagnostics`, `Suppressed*`, `ContextTypes`, `Defs{Installed,Used}` | `r.Check` value on each registry | the **outermost compile pass** |
+| Memo / recursion / counters — `FnSummaries`, `FnInflight`, `InflightBails`, `FnAnalysisCounts`, `StepCount`, `BudgetTripped`, `FnBodyDepth` | `r.Check` value on each registry | the outermost pass, but **keyed so cross-registry names cannot collide** |
+
+The crux from `.0` §4 is the last row: `FnSummaries` / `FnInflight` /
+`FnAnalysisCounts` are name-keyed (`name#argTypes@row:col`, see
+`carrier.go::FnAnalysisKey`). The position suffix (`@row:col`) does *not*
+disambiguate across registries — a module preamble and the user program
+are parsed from independent sources, so their positions overlap (both
+start near `1:1`). A module fn's `decide#Word,Map@5:3` can therefore
+collide with a parent fn at the same coordinates, returning a stale
+summary or a spurious in-flight bail for the wrong fn — which is exactly
+the `uncalled_function: call to 'decide' matched no signature` cascade
+`.0` reports.
+
+So the fix has **two independent halves**, and they should land as
+**separate commits** so the risky one is isolable:
+
+- **§5a — registry-discriminated memo keys** (safe in isolation; does not
+  change *which* registry owns `Check`). This is the part that, on its
+  own, *cannot* reproduce the §4 breakage, because it only makes existing
+  same-registry keys strictly more specific.
+- **§5b — pass-global ownership of mode/emit/memos** (the actual threading
+  that lets a module-fn body run *in check mode* under the parent pass).
+  This is the part `.0` §4 proved fragile; it must not land before §5a and
+  the §7 fixture.
+
+---
+
+## 2. §5a — registry-discriminated memo keys (commit 1, after the fixture)
+
+**Goal:** make every memo / in-flight / quota key unambiguous across
+registries, so that when §5b later lets two registries share one
+`CheckState`, their fn analyses cannot alias.
+
+**Change:** thread a stable registry discriminator into `FnAnalysisKey`
+and the two call sites that must build the *same* key
+(`carrier.go::AnalyseFnBody`, `core_helpers.go:381`, `callable_words.go:49`).
+
+- Add a stable per-registry identity. The registry has no id field today;
+  add an unexported monotonic `regID uint64` assigned in `NewRegistry`
+  (and in `DefaultRegistry()` sub-registries via the same constructor), or
+  reuse an existing stable pointer-derived key. **Prefer an explicit
+  `regID`** over `fmt.Sprintf("%p", r)` — pointer reuse after GC is a
+  latent aliasing bug, and an explicit counter is also reproducible in
+  tests. Expose `r.AnalysisScopeID() uint64`.
+- `FnAnalysisKey(scopeID uint64, name string, args, captures, body)` —
+  prepend `scopeID` + `#`. Update the three callers. The doc comment on
+  `FnAnalysisKey` already warns that `core_helpers`' compile hook must
+  build the **same** key (its `FnSummaries` delete relies on the match);
+  keep that invariant — all three callers must pass the **same** scopeID
+  (the registry whose `Check` owns the memo, see §5b).
+
+**Why this is safe alone:** with `Check` still per-registry (no threading
+yet), `modReg.Check` and `parent.Check` are still distinct maps, so the
+scopeID prefix is redundant *today* — it changes no behaviour. The full
+in-repo suite + fixture must stay byte-identical. That green run is the
+proof the key change is inert, which is what makes commit 2 (§5b) safe to
+build on.
+
+**Gate:** `make fmt && make vet && make lint && make test` + the §7
+fixture differential. Expect **zero** diff in compiled/fallback
+classification and zero diff in check diagnostics.
+
+---
+
+## 3. §5b — pass-global ownership (commit 2; the load-bearing change)
+
+This is where module-fn bodies start running *in check mode under the
+parent pass*. Two realizations were considered; this note recommends the
+**threaded-pointer** realization as the smallest sound change.
+
+### 3.1 Recommended realization: `Registry.Check` becomes a shared `*CheckState`
+
+Change the field `Check CheckState` (`registry.go:247` decl,
+`registry.go:454` init) to `Check *CheckState`, allocated in
+`NewRegistry`. Readers (`r.Check.Mode`, `r.Check.FnSummaries`, …) are
+unaffected syntactically — 231 `r.Check.*` sites keep compiling, because a
+pointer auto-derefs for field access and the `CheckState` methods already
+have pointer receivers (`check.go`).
+
+The threading happens at the **one** boundary that crosses registries:
+`engine.go::execFnDefSig` → `capturedReg.CallBoru(sig, args, captures)`
+(`engine.go:4388`) and its stack-match siblings (`engine.go:4067/4115/4150`).
+
+When the **calling** engine is in check mode (`e.registry.IsCheckMode()`)
+and `capturedReg != e.registry`, point the module registry's `Check` at
+the parent's for the duration of the call, then restore:
+
+```
+if e.registry.IsCheckMode() && capturedReg != nil && capturedReg != e.registry {
+    saved := capturedReg.Check
+    capturedReg.Check = e.registry.Check   // share mode+emit+memos+counters
+    defer func() { capturedReg.Check = saved }()
+}
+result, err := capturedReg.CallBoru(sig, args, captures)
+```
+
+Now the body sub-engine (`CallBoru`'s `NewTop(capturedReg)`) sees
+`capturedReg.IsCheckMode() == true`, so:
+
+- side effects gate on `SkipsSideEffect()` (§5c makes `test-record` honour
+  it),
+- the carrier-results intercept (`engine.go:2418`,
+  `e.registry.Check.IsActive()`) fires, so subject results stay carriers
+  instead of concrete-folding,
+- recording threads into the parent's `Emit`,
+- **resolution still uses `capturedReg.Defs`/`.Types`** (word lookup is
+  `r.Lookup` / `r.Defs`, untouched) — so module-private words resolve in
+  the module namespace, which is the property `.0` §4 said the naive
+  whole-`CheckState`-share destroyed.
+
+The memo maps are now shared between parent and module, but **§5a's
+scopeID prefix keeps their keys disjoint** — `<modID>#decide#…` ≠
+`<parentID>#decide#…`. The scopeID passed at each `AnalyseFnBody` /
+compile-hook site must be the registry that is *currently executing the
+body* (`capturedReg` for a module body, `e.registry` otherwise). Audit the
+three `FnAnalysisKey` callers to pass `r.AnalysisScopeID()` of the registry
+whose body is being analysed — which, because `AnalyseFnBody(r, …)` already
+receives that registry, is simply `r.AnalysisScopeID()`. This is the whole
+reason §5a must land first and be proven inert.
+
+### 3.2 The two value-snapshot sites that must keep value semantics
+
+`r.Check` is **copied by value** in exactly two places, both for
+rollback, and both must keep their current "snapshot is an independent
+copy" behaviour after the pointer conversion:
+
+- `util.go::snapshotPredicateState` / `restorePredicateState` —
+  `check: r.Check` then `r.Check = s.check`. The predicate sandbox rolls
+  analysis state back after a unify-time predicate body runs.
+- `compile_sandbox.go::SnapshotForCompile` / `RestoreForCompile` —
+  `check: r.Check`. The compile fallback rolls the whole pass back so the
+  interpreter re-runs on pristine state. (Its doc comment at
+  `compile_sandbox.go:46` explicitly reasons that the value copy is sound
+  *because the check pass only ever replaces, never in-place-mutates, the
+  snapshotted struct* — that reasoning **breaks** once `Check` is a shared
+  pointer and the module path mutates the parent's maps in place.)
+
+After conversion, both sites must **deep-snapshot the pointee**, not the
+pointer. Add `func (c *CheckState) Clone() *CheckState` that copies the
+scalar fields and **clones the maps** (`FnSummaries`, `FnInflight`,
+`FnAnalysisCounts`, `DefsInstalled`, `DefsUsed`, `ContextTypes`) and the
+`Diagnostics` slice. Snapshot = `r.Check.Clone()`; restore = copy fields
+back into the live `*CheckState` (so any shared aliases — e.g. a module
+registry currently pointing at this same `*CheckState` — observe the
+rollback too) rather than swapping the pointer. Pin this with a test that a
+predicate body's fn analyses do not leak into the enclosing pass's memo.
+
+> This is the single subtlest part of the refactor and the place a silent
+> bug will hide. The §7 fixture must include a predicate-refine type whose
+> body calls a module fn, so the sandbox/clone interaction is exercised.
+
+### 3.3 Why not realization (2) — fresh per-call `CheckState`
+
+`.0` §5 option 2 (a fresh `CheckState` per module call, merge diagnostics +
+uncompilable mark back) is **not** recommended: it loses cross-boundary
+recursion detection (a parent fn → module fn → parent fn cycle has no
+shared `FnInflight`), which `.0` flags as needing analysis. The
+shared-pointer realization keeps one `FnInflight`, and §5a's scopeID makes
+it correct across the boundary. Keep option 2 documented as the fallback
+only if the shared-pointer clone semantics (§3.2) prove unworkable.
+
+**Gate:** full in-repo suite + §7 fixture, and — per `.0` — `diverge.sh`
+out-of-band (path B) or the in-repo decision fixture standing in for it
+(path A). The `run-spec` divergence from `.0` §3 (`module-test.tsv:L38`,
+`{total:2 passed:1 failed:1}` vs `{passed:2 failed:0}`) is the specific
+regression this commit must turn green; add it as an explicit asserted row,
+not just corpus coverage.
+
+---
+
+## 4. §5c — side-effect-suppression audit (commit 3, can land with or before §5b)
+
+`.0` §5 closes: "every side-effecting native reachable from a module body
+… must honour `SkipsSideEffect()` so the compile pass cannot mutate
+observable state." This is currently **violated** by the test module:
+
+- `lang/go/modules/test.go::test-record` (`test.go:517`) appends to
+  `run.results` and bumps `run.failures` **with no check-mode guard**.
+  Under §5b the body runs in check mode, so this handler will fire during
+  the compile pass and leak pass/fail counts — the precise §3 mechanism.
+  Add a guard: when `r.SkipsSideEffect()` (the `*Registry` the handler
+  receives), return `nil, nil` without mutating `run`. (Handlers receive
+  the registry as their 4th arg — `test-record`'s is currently `_`; bind
+  it.)
+
+Audit every native reachable from a module body for the same gap. Method:
+grep module + native handlers for state mutation (`run.`, store writes,
+file ops, `append` into capability accumulators) and confirm each either
+sets `RunInCheckMode` deliberately (a prerequisite-for-analysis word like
+`def`) **or** early-returns under `SkipsSideEffect()`. Candidates to check
+explicitly: the `boru:test` accumulators (`test-reset`, `test-skip`),
+`boru:io` writes, store mutation (`set`/`ctx-set`), and any module that
+keeps a per-run accumulator in a capability slot.
+
+**Negative test (per repo discipline):** assert that compiling a 2-case
+spec leaves `Test.results` empty / `Test.summary` untouched after the check
+pass (no side-effect leak), paired with the positive test that the
+*interpreter* run does populate them.
+
+**Gate:** full suite + fixture.
+
+---
+
+## 5. §6 — compile the framework's code-body words (follow-on; only after §5)
+
+`.0` §6 is independent of §5 but gated behind it: without §5 the bodies
+fold unsoundly, so §6 must not be attempted first. The framework words that
+must compile as closures (refuse → Program):
+
+- `test-describe [body] name` — declares a `CallableSpec` (BodyOut 0); its
+  body is `run-cases` → a `for (cases size) [...]` → recursive `run-spec`
+  over `subs`. Hits the Stage-2 code-body / computed-range limits.
+- `test-test name [body]` — imperative form, same shape.
+- `run-cases`' `for (cases size) [...]` — a computed-count loop whose body
+  calls `run-case` (→ `test-invoke` + `test-record`).
+
+This is its own task; scope it after §5 is green under the decision gate.
+Re-attempt the reverted `evCallUser` value-def-local promotion (`.0` §7)
+**only** once §5 makes module-body compilation sound — `.0` notes it is
+sound in isolation and rides the now-fixed concrete-fold path.
+
+Do **not** begin §6 in the same branch as §5; a refusal-count change from
+§6 would mask a soundness regression from §5 in the differential.
+
+---
+
+## 6. Commit sequence (each independently gated)
+
+1. **Fixture + differential test** (§7). Adds standing decision-grade
+   coverage. No engine change. Gate: it passes on the current tree
+   (everything still falls back byte-identically).
+2. **§5a registry-discriminated memo keys.** Inert by construction. Gate:
+   zero diff in classification/diagnostics.
+3. **§5c side-effect-suppression audit** (`test-record` guard + sweep).
+   Gate: side-effect-leak negative test + full suite. (Can precede §5b;
+   makes §5b's first green run honest.)
+4. **§5b pass-global ownership** (pointer `Check` + threading +
+   `CheckState.Clone` for the two snapshot sites). Gate: full suite +
+   fixture + the `module-test.tsv:L38` asserted row + (path A) decision
+   fixture or (path B) external `diverge.sh`.
+5. **§6 framework code-body compilation** — separate branch, after 4 is
+   merged.
+
+If any step past 1 shows a classification or diagnostic diff that isn't the
+*intended* `run-spec`-now-compiles transition, stop and bisect — that diff
+is the §4 breakage resurfacing.
+
+---
+
+## 7. The in-repo decision-grade fixture (closes the gate hole)
+
+`.0` is emphatic that the in-repo corpus missed the breakage because it
+"does not exercise the heavy *generic* module-fn patterns
+(`decide gen [...]`, `apply-op gen [...]`) the decision module leans on."
+The fixture must reproduce that surface. Concretely, a small boru module
+(under `lang/go/test/fixtures/` or a new `lang/spec/*.tsv`) that:
+
+- defines a **native sub-registry module** (the `BuildXxxModule` pattern)
+  whose preamble defines boru fns with **named params + real bodies** (so
+  they take the `CallBoru` path, not the trivial-delegation short-circuit);
+- exercises **generic dispatch** through those fns — `decide gen [...]`,
+  `apply-op gen [...]` shaped calls — so the `FnSummaries`/`FnInflight`
+  memo paths run across the parent/module boundary;
+- includes **same-named fns in parent and module** (`decide` in both) with
+  overlapping source positions, to prove §5a's scopeID actually
+  disambiguates (the exact §4 collision);
+- includes **cross-boundary recursion** (parent fn → module fn → parent
+  fn) to prove `FnInflight` cycle detection survives the share (§3.3);
+- includes a **predicate-refine type whose body calls a module fn**, to
+  exercise the sandbox/`Clone` interaction (§3.2);
+- has a `subject`-style call so the carrier-results intercept path
+  (`engine.go:2418`) runs in the module body.
+
+The differential test runs each program (a) on the interpreter and (b)
+with `--force-compile` / the compiled path, asserts **byte-identical**
+output, **and** asserts the **check-pass diagnostic count is unchanged**
+from a baseline (the §4 breakage manifested as +29 / +39 spurious
+`uncalled_function` errors — a diagnostic-count assertion catches exactly
+that, which a pure output differential would miss when the program falls
+back).
+
+Pair positive with negative (repo discipline): assert the sound program
+compiles **and** that a deliberately-divergent variant (e.g. a side-
+effecting subject) is refused / falls back rather than mis-compiled.
+
+---
+
+## 8. Risks and open questions
+
+- **The gate is the project risk, not the code.** The code change is
+  well-scoped; the danger is shipping it green-but-broken as `.0` did.
+  Step 1 (the fixture) is the mitigation and must not be skipped. If path
+  A's fixture cannot be made to reproduce a *known* §4-style failure when
+  §5a's scopeID is deliberately disabled, it is not yet a real gate —
+  validate the fixture by confirming it goes red without the scopeID.
+- **`CheckState.Clone` correctness** (§3.2) is the subtlest point. Restore
+  must mutate the live pointee in place (not swap the pointer) so a module
+  registry transiently sharing the pointer observes the rollback. A test
+  must pin "predicate body's memo does not leak into the enclosing pass."
+- **`StepCount` / budget under sharing.** With one shared `*CheckState`,
+  module-body steps now count against the parent's `StepBudget` — which is
+  *correct* (one pass, one budget) and was a latent under-count before, but
+  may trip `step_budget_exceeded` on programs that previously slipped
+  under. Watch the fuzzer and corpus for new budget diagnostics; if any
+  appear, they are real (the old separate budgets were the bug), but
+  confirm they are not pathological.
+- **`scopeID` stability across re-parse.** The compile hook and the
+  analyser must agree on the scopeID for the *same* body; since both
+  derive it from the same registry value in hand, this holds — but pin it
+  with the existing `core_helpers`/`callable_words` "same key" invariant
+  extended to include the scope.
+- **Capability accumulator rollback** (`compile_sandbox.go:83`) already
+  rolls back the Test harness's `testRun` slot; confirm the §5c guard and
+  this rollback do not double-correct (guard prevents the write; rollback
+  is then a no-op — fine, but assert it).
+
+## 9. Recommended next action
+
+Implement step 1 (the §7 fixture + differential) on
+`claude/module-fn-checkstate-ownership-*` and confirm it is green on the
+current tree (all-fallback, byte-identical) **and** goes red when §5a's
+scopeID is stubbed out — proving it is a real gate — before writing any
+§5a/§5b code.

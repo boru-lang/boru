@@ -215,7 +215,7 @@ convert Boolean {truthy:'yes'} 'no'	ERROR:option truthy expects Boolean	…and a
 convert String {base:'hex'} 255	'ff'	the SCALAR options form is untouched — it keeps its pattern, since its source slot is Scalar and cannot swallow a map
 convert Integer [1 2]	ERROR:no signature matches	NUR053 widened the BOOLEAN target only: an Integer target has no total presence rule, so a List source still has no signature
 convert String [1 2]	ERROR:no signature matches	…and a String target likewise stays Scalar-sourced
-convert Integer none	ERROR:no signature matches	…none is refused for a non-Boolean target for the same reason
+convert Integer none	ERROR:no signature matches	…none is declined for a non-Boolean target for the same reason
 convert String {truthy:true} 42	'42'	truthy is inert for a non-Boolean target
 convert Integer 3.99	3	Float → Integer truncates toward zero
 convert Integer -3.99	-3	…for negatives too
@@ -225,10 +225,10 @@ convert String nan	'nan'	specials stringify to their parseable literals
 convert String 9223372036854775807	'9223372036854775807'	int64 max stringifies exactly
 '12' convert Integer convert String	'12'	String → Integer → String round-trip
 convert Integer (convert String 42)	42	Integer → String → Integer round-trip
-# (dropped) `convert String none` dispatch-recovers/refuses (falls back sound); out of corpus for gate purity
+# (dropped) `convert String none` dispatch-recovers/declines (falls back sound); out of corpus for gate purity
 do [convert Float ''] error [dot message]	'convert: cannot convert "" to float'	the empty string is not a number
 (do [convert BigInteger 'nope'] error [dot message]) eq 'convert: cannot convert "nope" to BigInteger'	true	malformed Big input errors cleanly (byte-exact message)
-do [0d9223372036854775807 add 0d1 convert Integer] error [dot message]	'convert: 0d9223372036854775808 overflows Integer (int64) range'	a Big above int64 max refuses to narrow
+do [0d9223372036854775807 add 0d1 convert Integer] error [dot message]	'convert: 0d9223372036854775808 overflows Integer (int64) range'	a Big above int64 max declines to narrow
 'abc' get 0	ERROR:signature_error	strings are scalars, not indexable collections
 import "boru:string-util"  StringUtil.upper 5	ERROR:uncalled_function	string words reject non-String subjects
 import "boru:string-util"  StringUtil.split 5 'ab'	ERROR:uncalled_function	…including a non-String separator

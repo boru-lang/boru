@@ -54,6 +54,10 @@ type walkHook struct {
 	body    Value      // when closure: run via InvokeBody
 	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
 	tokens  []Value    // when quotation: the body tokens
+	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
+	// FnDefInfo its declared signature is matched under before the hook runs
+	// (S1b-2); body then carries the SigMatched mark.
+	sigFn Value
 }
 
 // walkEntry is one child of a node: its key (map key, or stringified index for
@@ -129,6 +133,15 @@ func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 	if IsCompiledClosure(body) {
 		h.closure = true
 		h.body = body
+		// A fn-VALUE closure (a capturing `fn` / `=>` literal minted at run
+		// time) is matched against its own signature before it runs, as
+		// the lambda branch matches a lambda (S1b-2).
+		if ClosureIsFnValue(body) {
+			if fnv, ok := ClosureAsFnDef(r, body); ok {
+				h.sigFn = fnv
+				h.body = ClosureSigMatched(body)
+			}
+		}
 		return h, nil
 	}
 	if body.Parent.ConformsTo(TFunction) {
@@ -169,6 +182,9 @@ func callWalkHook(r *Registry, h walkHook, arg Value) error {
 		return err
 	}
 	if h.closure {
+		if h.sigFn.Data != nil && MatchFnSig(h.sigFn, []Value{arg}) == nil {
+			return r.BoruError("walk_error", "walk: no matching hook signature", "walk")
+		}
 		// The fn-VALUE seam: the lambda branch above is InvokeCallbackFn's.
 		_, err := InvokeCallbackBody(r, h.body, []Value{arg})
 		return err

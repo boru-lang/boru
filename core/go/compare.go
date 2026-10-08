@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 )
 
 // ErrNoComparer is returned by Comparer.Compare implementations that
@@ -356,10 +357,10 @@ func ExactEqual(a, b Value) bool {
 	// nodeFamily-normalised comparison would still fail on container
 	// identity (a flex copy is a fresh container), but normalising the
 	// family keeps the dispatch uniform for flex-vs-flex pairs.
-	if nodeFamily(a.Parent).Equal(TList) && nodeFamily(b.Parent).Equal(TList) {
+	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
 		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
 	}
-	if nodeFamily(a.Parent).Equal(TMap) && nodeFamily(b.Parent).Equal(TMap) {
+	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
 		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
 	}
 	// XML elements: identity like Map/List — `eq` is container identity
@@ -391,7 +392,37 @@ func ExactEqual(a, b Value) bool {
 		return eq
 	}
 
+	// Last chance before the terminal verdict: a type that installed the
+	// ExactEqualer capability answers for its own values — DeepEqual's
+	// placement exactly, so it can only turn this `false` into a real
+	// answer (NUR075). See exactequal_capability.go.
+	if eq, handled := exactEqualCapability(a, b); handled {
+		return eq
+	}
+
 	return false
+}
+
+// SameContainer reports whether a and b are ONE container — the same tag
+// and the same underlying store — which is the identity ExactEqual applies
+// to the list, map and XML families. It is exported for a caller that
+// must ask that question of a REFINED container (`def S (refine FlexMap)
+// def w:S (flex {a:1})`): ExactEqual reaches its container arms through
+// nodeFamily, which folds only the kernel's own flex nodes, so a value
+// whose tag is a refine of Map or List falls past them to the terminal
+// false — not eq to itself (NUR142). The COLLECT oracle (eng) asks "is the
+// pushed operand the bound object" and needs the identity test, not the
+// fold, so it reads this. Two values of the container family with
+// different tags are two values (dispatch tells them apart), so the tag
+// is part of the identity; a non-container answers false.
+func SameContainer(a, b Value) bool {
+	if !HasContainerIdentity(a) || !HasContainerIdentity(b) {
+		return false
+	}
+	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) {
+		return false
+	}
+	return sameContainer(a.Data, b.Data)
 }
 
 // sameContainer reports whether two non-scalar payloads refer to the
@@ -569,7 +600,7 @@ func DeepEqual(a, b Value) bool {
 	// with cross-leaf pairs (`[1.0] deq [1 :Integer]`). The render-string
 	// fallback survives only for genuine type-level operands (a list
 	// carrier), which carry no value content.
-	if nodeFamily(a.Parent).Equal(TList) && nodeFamily(b.Parent).Equal(TList) {
+	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
 		aElems, aOk := deqListElems(a)
 		bElems, bOk := deqListElems(b)
 		if !aOk || !bOk {
@@ -591,7 +622,7 @@ func DeepEqual(a, b Value) bool {
 	// lists. The render-string fallback survives only for type-level
 	// operands with no entries to read (a map carrier, a Record/Options
 	// type constructor).
-	if nodeFamily(a.Parent).Equal(TMap) && nodeFamily(b.Parent).Equal(TMap) {
+	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
 		aMap, aOk := deqMapEntries(a)
 		bMap, bOk := deqMapEntries(b)
 		if !aOk || !bOk {
@@ -627,7 +658,7 @@ func DeepEqual(a, b Value) bool {
 	// Point even with equal visible fields — and field-wise deep
 	// equality. The key set is the union of schema fields and own
 	// fields; both instance kinds store a flat Fields map, so a lookup
-	// is a plain map hit. See design/CLASS-OBJECT.10.md.
+	// is a plain map hit. See design/legacy/CLASS-OBJECT.10.ignore.
 	if IsFlatInstance(a) && IsFlatInstance(b) {
 		if !a.Parent.Equal(b.Parent) {
 			return false
@@ -1068,7 +1099,7 @@ func CmpHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 // Unlike cmp, it compares ANY two values via the unified lattice order
 // (the same order sort and the collection words use), returning -1 / 0
 // / 1. Use it when you deliberately want cross-type ordering that cmp
-// refuses (e.g. `1 tcmp "a"`).
+// declines (e.g. `1 tcmp "a"`).
 func TcmpHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	cmp, err := CompareValues(args[1], args[0])
 	if err != nil {
@@ -1144,6 +1175,23 @@ func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 	return 0, false
 }
 
+// FnIdentityKey renders the identity token ExactEqual compares for a fn
+// value as a string — for a memo key that must separate two functions of one
+// type (a call-site specialised fn unit, keyed on the constant fn it was
+// compiled for). Two values with one key are one function by ExactEqual. ok
+// is false for anything that is not an identified FnDefInfo — data, a
+// carrier, a hand-built payload with no token — which has no identity to key.
+func FnIdentityKey(v Value) (string, bool) {
+	fd, isFn := v.Data.(FnDefInfo)
+	if !isFn || fd.ident == nil {
+		return "", false
+	}
+	if fd.ident.closure != 0 {
+		return "c" + strconv.FormatUint(fd.ident.closure, 10), true
+	}
+	return fmt.Sprintf("p%p", fd.ident), true
+}
+
 func sameFnIdentity(a, b FnDefInfo) bool {
 	if a.ident == nil || b.ident == nil {
 		return false
@@ -1177,8 +1225,10 @@ func sameFnIdentity(a, b FnDefInfo) bool {
 // content addressing wholesale the way Unison does: Unison hashes
 // dependencies transitively and has no ambient namespace, while boru keeps
 // one deliberately (module-level dynamic binding is what hot reload rides
-// on). Registry is set only at module-export resolution, so two locally
-// defined fns both carry nil and compare on content alone.
+// on). Every boru-bodied fn carries the registry that minted it, so the
+// comparison is by MODULE (Registry.Home): a fn and the copy of it a
+// concurrent fork sees are the same function, while two identical bodies in
+// two modules are not.
 func fnStructurallyEqual(a, b FnDefInfo) bool {
 	// The same function is trivially deq to itself, and that is the common
 	// case — worth short-circuiting before rendering two canons.
@@ -1186,12 +1236,12 @@ func fnStructurallyEqual(a, b FnDefInfo) bool {
 		return true
 	}
 	// The DEFINING SCOPE is part of the content, and a nil Registry is a
-	// scope like any other — it means "wherever this is running", which is
-	// not the same place as a named module. Admitting a nil/non-nil pair
-	// here (as an earlier `both non-nil` guard did) let a module-owned fn
-	// and a locally defined one with identical text compare deq although
-	// their free words resolve in different registries.
-	if a.Registry != b.Registry {
+	// scope like any other — a Go-built value with no home of its own, which
+	// is not the same place as a module. Admitting a nil/non-nil pair here
+	// (as an earlier `both non-nil` guard did) let a module-owned fn and a
+	// Go-built one with identical text compare deq although their free words
+	// resolve in different registries.
+	if !a.Registry.SameHome(b.Registry) {
 		return false
 	}
 	// CAPTURES are content too. canonFnDef renders params, returns and

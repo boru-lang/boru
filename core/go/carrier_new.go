@@ -30,7 +30,7 @@ func NewCarrier(t *Type) Value {
 
 // NewDynamicCarrier constructs a bounded gradual carrier dynamic(t):
 // a carrier whose Parent is the BOUND t and whose Dynamic flag flips
-// matching to the not-disjoint rule (design/dynamic-modality-report.10.md).
+// matching to the not-disjoint rule (design/legacy/dynamic-modality-report.10.ignore).
 // dynamic(Any) is the classic gradual `any` — compatible with every
 // slot. Use this at an escape hatch where the checker has a best static
 // bound but cannot prove the exact type.
@@ -47,6 +47,31 @@ func NewDynamicCarrier(t *Type) Value {
 func CarrierOfLiteral(lit Value) Value {
 	lt := lit
 	return NewCarrier(&lt)
+}
+
+// ValueCarrier is the carrier a check-mode model widens the value v to: a
+// carrier of v's type, keeping its gradual modality. A type literal (a bare
+// type node, IsTypeLiteral) is the one value whose Parent is not its type:
+// its Parent is its supertype in the lattice (the Integer node's is Number),
+// so a carrier of its Parent claims a Number where the run holds a type, and
+// a dispatch commits over it — `sub m.e 3` over `{e: Integer}` ran sub's
+// Number handler on the type literal, where the interpreter's dispatch
+// refuses a type at a value slot (NUR323). It widens to a Type carrier: the
+// value slots refuse it as they refuse the run's type literal, a Type or Any
+// slot takes it, and `is` / `typeof`, which read the node's own place in the
+// lattice, fold nothing over it (as over typeof's own Type carrier). A
+// gradual Type would reach a Function slot, since Function is a Type. The
+// None literal is a value at dispatch and widens to the None carrier.
+func ValueCarrier(v Value) Value {
+	switch {
+	case IsTypeLiteral(v):
+		return NewCarrier(TType)
+	case IsBareTypeNode(v):
+		return NewCarrier(TNone)
+	}
+	c := NewCarrier(v.Parent)
+	c.Dynamic = v.Dynamic
+	return c
 }
 
 // NewDynamicCarrierValue promotes an existing carrier value (e.g. a
@@ -78,6 +103,30 @@ func NewCarrierTypedListValue(child Value) Value {
 	v := NewTypedList(child)
 	v.Carrier = true
 	return v
+}
+
+// CarrierTypedListOf is the typed-list carrier whose element has v's shape:
+// a disjunct as it stands, a GRADUAL value's type as a dynamic element, and
+// any other value's type strict. A gradual value is one the run may hold
+// something else in place of (a flex element, a typed container's element
+// read at its supertype, a read that may be None); a strict element type
+// lets the next body commit a direct op over it, and the run's value then
+// answers through that op where the interpreter's dispatch raises or picks
+// another overload (NUR316: `ys each [add 1]` over a list `each` built from
+// such a read answered [[1]] for [['s1']]).
+func CarrierTypedListOf(v Value) Value {
+	if IsDisjunct(v) {
+		return NewCarrierTypedListValue(v)
+	}
+	if IsTypeLiteral(v) {
+		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
+	}
+	if v.Dynamic {
+		c := NewCarrier(v.Parent)
+		c.Dynamic = true
+		return NewCarrierTypedListValue(c)
+	}
+	return NewCarrierTypedList(v.Parent)
 }
 
 // UnionCarrierForType returns the DISTRIBUTING carrier for a user-defined
@@ -113,7 +162,7 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 // return the same Value — one Value.ID — for several stack outputs, which
 // the bytecode emitter's per-value provenance (emit.go producedBy) cannot
 // tell apart: a `dup`-bodied higher-order word (`each [dup add]`) records
-// both of add's operands onto the LAST output, so the operand layout refuses
+// both of add's operands onto the LAST output, so the operand layout declines
 // them as "not adjacent." Each output of a repeated source gets a fresh
 // identity (the carrier-identity DUP path) so the N copies stay distinct;
 // the source's own provenance is left untouched (no output keeps its ID).

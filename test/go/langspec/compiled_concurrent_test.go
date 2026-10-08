@@ -1,9 +1,9 @@
-// Stage-5 concurrency gate (design/boru-bytecode-plan.0.md §Stage 5:
+// Stage-5 concurrency gate (design/legacy/boru-bytecode-plan.0.ignore §Stage 5:
 // "Race detector (go test -race) over the concurrent spec rows in
 // compiled mode"). The concurrent words — await (parallel bodies),
 // timeout, interval, cancel — fork an isolated registry per branch
 // (ForkConcurrent). In compiled (v1) mode their bodies run as
-// interpreter fallbacks, so this exercises the fork machinery from the
+// compile failures, so this exercises the fork machinery from the
 // RunCompiled path. Run under `go test -race`: the bodies execute on
 // separate goroutines over forked registries, and the result must match
 // the interpreter with no data race.
@@ -15,6 +15,7 @@ import (
 )
 
 func TestSpecCompiledConcurrentRowsRaceFree(t *testing.T) {
+	t.Parallel()
 	const tu = `import "boru:time-util" `
 	cases := []struct {
 		src  string

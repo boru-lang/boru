@@ -52,8 +52,19 @@ func RunCarrierBodyKeepDefs(r *Registry, body Value) []Value {
 // pushes and pops for the same name, the net change is zero and
 // the name is not in the returned map.
 func RunCarrierBodyWithDefs(r *Registry, body Value) ([]Value, map[string]Value) {
-	stk, adds := runCarrierBodyDefsAdds(r, body, false, false)
+	stk, adds, _ := runCarrierBody(r, body, false, false)
 	return stk, adds
+}
+
+// RunCarrierArmBody is RunCarrierBodyWithDefs for a SPLICED branch arm — an
+// `if` arm, which the interpreter splices onto its enclosing tape as a paren
+// group — reporting also the observable pending literals the run's
+// end-of-run sweep evaluated (PendingResidue). The interpreter leaves such a
+// literal pending past the arm, to be evaluated where a word takes it or
+// where the enclosing run ends; the model evaluated it at the arm, so the
+// recorder must prove nothing between could tell (NUR356).
+func RunCarrierArmBody(r *Registry, body Value) ([]Value, map[string]Value, PendingResidue) {
+	return runCarrierBody(r, body, false, false)
 }
 
 // RunCarrierCondBody is RunCarrierBodyWithDefs for an `if` CONDITION or a
@@ -67,13 +78,36 @@ func RunCarrierCondBody(r *Registry, body Value) ([]Value, map[string]Value) {
 	return stk, adds
 }
 
+// RunCarrierCondBodyKeepDefs is RunCarrierCondBody WITHOUT the def rollback
+// (NUR212): an `if` condition or a `case` code-body scrutinee runs
+// unconditionally, exactly once, BEFORE the branch decision — the
+// interpreter runs it inline (a Mark/Move over the tape) — so every binding
+// it makes is REAL on both engines and stands for the arms and for
+// everything after the construct. The run therefore keeps its defs like
+// `do`'s (RunCarrierBodyKeepDefs), and its installs are ledgered like any
+// straight-line install, but it takes the branch-capture guard, not the
+// keep-defs one: the body records into the condition FRAGMENT the lowering
+// runs inline, so each install's bind twin is placed inside that fragment at
+// its own site rather than adopted after a closure call.
+func RunCarrierCondBodyKeepDefs(r *Registry, body Value) []Value {
+	stk, _ := runCarrierBodyDefsAdds(r, body, true, true)
+	return stk
+}
+
 func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Value, map[string]Value) {
+	stk, adds, _ := runCarrierBody(r, body, keep, condFrag)
+	return stk, adds
+}
+
+// runCarrierBody is the one body runner; residue is the ArmBody run's
+// Engine.armResidue (none for a kept or condition run).
+func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, adds map[string]Value, residue PendingResidue) {
 	if body.Data == nil {
-		return nil, nil
+		return nil, nil, residue
 	}
 	elems, err := AsList(body)
 	if err != nil || elems.IsNil() {
-		return nil, nil
+		return nil, nil, residue
 	}
 
 	// Nested body analysis is not part of the enclosing straight
@@ -94,10 +128,16 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// recorder can bracket the run's bind twins for do-body adoption; every
 	// other body (branch / loop / quotation — conditional or multi-run)
 	// takes the plain guard, which inside a keep run marks its twins as a
-	// tainted sub-range no adoption may place.
-	if keep {
+	// tainted sub-range no adoption may place. A kept CONDITION run (condFrag
+	// — RunCarrierCondBodyKeepDefs) records into the branch's condition
+	// fragment instead: its guard consumes the capture arm and marks that
+	// fragment unconditional.
+	switch {
+	case keep && condFrag:
+		defer r.Check.Recorder().CondBodyGuard()()
+	case keep:
 		defer r.Check.Recorder().KeepDefsBodyGuard(r, body.ID)()
-	} else {
+	default:
 		defer r.Check.Recorder().BodyAnalysisGuard()()
 	}
 
@@ -108,6 +148,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	copy(tokens, elems.Slice())
 	sub := New(r)
 	sub.ElemEvalRecordable = recordable
+	sub.ArmBody = !keep && !condFrag
 	// Every body through here is a NESTED region (branch / loop /
 	// quotation) — reached-conditionally by construction. Mark the depth
 	// so unconditional-only diagnostics (unconditional_raise) stay silent.
@@ -115,7 +156,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// raises CondBodyDepth: unlike `do` (keep=true, which leaks its defs
 	// unconditionally), its bindings are conditional, so an in-place fn
 	// redefinition that clobbers an enclosing overload there is unsound to
-	// compile (installDef consults CondBodyDepth to refuse it). Condition/
+	// compile (installDef consults CondBodyDepth to decline it). Condition/
 	// scrutinee fragments (condFrag — RunCarrierCondBody) are exempt: they
 	// run unconditionally exactly once before the branch decision, so a
 	// redefinition there is not path-dependent.
@@ -123,8 +164,10 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// A keep=false body's def growth is TRUNCATED below, so every install
 	// inside it is SPECULATIVE and the bind ledger must not record it — the
 	// binding the pass actually leaves is whatever InstallJoinedDefs puts
-	// back, or nothing. Wider than raiseCond on purpose: a condition
-	// fragment is truncated too, even though it is not conditional.
+	// back, or nothing. Wider than raiseCond on purpose: a rolled-back
+	// scrutinee run (RunCarrierCondBody) is truncated too, even though it is
+	// not conditional. A KEPT condition (RunCarrierCondBodyKeepDefs) is not
+	// truncated, so its installs are real and ledgered.
 	if !keep {
 		r.Check.RolledBackBodyDepth++
 		defer func() { r.Check.RolledBackBodyDepth-- }()
@@ -156,11 +199,11 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// Keep-defs mode (`do` — leak fidelity): the body's bindings stay,
 	// exactly as the runtime leaves them; nothing to report.
 	if keep {
-		return result, nil
+		return result, nil, residue
 	}
 	// Collect the top of each def stack whose depth grew, then
 	// restore depths back to snapshot.
-	adds := map[string]Value{}
+	adds = map[string]Value{}
 	for _, k := range r.Defs.Names() {
 		before := snapshot[k] // zero for names not present before
 		depth := r.Defs.Depth(k)
@@ -170,5 +213,5 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 			r.Defs.Truncate(k, before)
 		}
 	}
-	return result, adds
+	return result, adds, sub.armResidue
 }

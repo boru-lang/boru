@@ -8,7 +8,7 @@ import (
 
 // TestGradualAnyEachFoldScan pins the voxgig dominant leaf: a higher-order
 // each/fold/scan over a GRADUAL-Any (Dynamic) collection — statically ambiguous
-// between the List and Map overload — used to refuse force-compile ("ambiguous
+// between the List and Map overload — used to decline force-compile ("ambiguous
 // overload (List vs Map), no static commit and no poly re-match"). It is sound to
 // compile after all: the TOKEN body is shape-generic (both overloads present the
 // closure the bare element/value), so the recorder commits the first-reachable
@@ -21,7 +21,7 @@ import (
 // these hand-pinned RunCompiledStrict==Run regressions (incl. one compiled body
 // driven by a List AND a Map) are the soundness gate. mkl returns [Any], so its
 // result is a Dynamic carrier (the param-Any case is NOT Dynamic and already
-// compiled — the refusal needs a fn-result Any).
+// compiled — the compile failure needs a fn-result Any).
 func TestGradualAnyEachFoldScan(t *testing.T) {
 	const pre = `def mkl fn [[x:Any][Any][x]] `
 
@@ -56,7 +56,7 @@ func TestGradualAnyEachFoldScan(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -82,44 +82,30 @@ func TestGradualAnyEachFoldScan(t *testing.T) {
 	// single TFunction overload so the ambiguity gate never fires and it commits
 	// the one matched overload), and an EMPTY collection (the seed/empty paths).
 	sound := []struct{ name, src string }{
-		// NOTE (NUR086's fix, 2026-08-24): "lambda over dynamic map" MOVED to
-		// refusesAndFallsBack below. The invariant the comment above states —
+		// NOTE (NUR086's fix, 2026-08-24): "lambda over dynamic map" MOVED out
+		// of this slice. The invariant the comment above states —
 		// "a TFunction lambda body matches only the single {TFunction,Map}
 		// overload (count 1) — so a lambda never reaches here" — no longer
 		// holds: each/for-each/fold/scan gained {TFunction,List}, so a lambda
 		// over a GRADUAL collection now matches two TFunction overloads and
-		// the ambiguity gate fires. That refusal is CORRECT (a lambda gets the
+		// the ambiguity gate fires. That compile failure is CORRECT (a lambda gets the
 		// ELEMENT over a list and a KeyVal over a map, so a closure compiled
 		// against either shape is wrong for the other), and it is a real, if
 		// narrow, compile-coverage cost of the fix.
+		// S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) closed that
+		// cost: each/fold/scan/filter declare CompileDynBody, so the
+		// ambiguity gate no longer declines — the dispatch lowers to a poly
+		// re-match over the word's own overloads and the LIVE collection
+		// picks the List or the Map form at run time. The row is back here,
+		// compiled with parity (the KeyVal lambda sees each map entry).
+		{"lambda over dynamic map", pre + `[(mkl {a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i]))]`},
 		{"each over dynamic empty list", pre + `[(mkl [] each [dup add])]`},
 		{"each over dynamic empty map", pre + `[(mkl {} each [dup add])]`},
 		{"scan over dynamic empty list", pre + `[(scan [add] (mkl []))]`},
 	}
-	// REFUSES AND FALLS BACK: the compile lane cannot commit, the default lane
-	// runs the program correctly on the interpreter with the loud performance
-	// warning. Asserted through CompileCheck (the refusal is the point) plus
-	// interpreter parity, since RunCompiled surfaces a loud refusal as an error.
-	refusesAndFallsBack := []struct{ name, src, reason string }{
-		{"lambda over dynamic map", pre + `[(mkl {a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i]))]`,
-			"ambiguous overload (List vs Map)"},
-	}
-	for _, c := range refusesAndFallsBack {
-		t.Run("refuses/"+c.name, func(t *testing.T) {
-			a, _ := New()
-			prog, reason, _, _ := a.CompileCheck(c.src)
-			if prog != nil {
-				t.Fatalf("expected a refusal (%s); it compiled — if the shape is now modelled, move it back to sound", c.reason)
-			}
-			if !strings.Contains(reason, c.reason) {
-				t.Errorf("refusal reason %q does not mention %q", reason, c.reason)
-			}
-			b, _ := New()
-			if _, werr := b.RunInterp(c.src); werr != nil {
-				t.Errorf("the interpreter must still run it: %v", werr)
-			}
-		})
-	}
+	// The "declines and falls back" table that held the lambda-over-dynamic-map
+	// row until S1a is gone with the compile failure: every gradual-collection shape
+	// here compiles, and the sound loop below is the whole contract.
 
 	for _, c := range sound {
 		t.Run("sound/"+c.name, func(t *testing.T) {

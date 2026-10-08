@@ -81,6 +81,9 @@ type Registry struct {
 	// InheritObserveHooks. Inert (one atomic load) unless a test arms them.
 	interpHook *interpEntryHook
 	bailHook   *bailHook
+	// regionOracleHook is the arm-able region-oracle seam (interp_entry.go),
+	// the compiled lane's COLLECT check reporting to a lane that counts it.
+	regionOracleHook *regionOracleHook
 	// coverHook is the arm-able boru-source line-coverage seam (coverage.go),
 	// powering boru:test's coverage feature. Pointer-shared into forks and
 	// inherited by module sub-registries via InheritObserveHooks; inert (one
@@ -118,7 +121,10 @@ type Registry struct {
 	// Contexts is the scoped context stack; top = current engine's context Store. See contextstack.go.
 	Contexts *ContextStack
 	// Args is the per-call args list stack. See argsstack.go.
-	Args     *ArgsStack
+	Args *ArgsStack
+	// predMemo memoises RunPredicate's run-time verdicts within one
+	// dispatch (predMemoKey → matched); ClearPredMemo drops it.
+	predMemo map[string]bool
 	Manager  any            // external manager (e.g. UniversalManager) for SDK operations
 	SDKCache map[string]any // cached SDK instances keyed by spec name
 	BaseDir  string         // base directory for resolving relative file paths (set by loadFileModule)
@@ -133,6 +139,14 @@ type Registry struct {
 	// forward compatibility the day core claims the tuple as a locked
 	// signature. See design/OPEN-WORDS.0.md "Implementation notes".
 	ModuleScope bool
+	// ShapeModel marks a registry minted by a check-mode MODEL of a module
+	// instance — the shape-only twin a ReturnsFn builds for Rand.with-seed /
+	// Log.with / Log.span so a dot read resolves its method wrappers
+	// (MarkShapeModel). The model's state is a stand-in, not the run's (a
+	// generator seeded 0, a logger named ""), so a fn value homed here is no
+	// constant a program may bake: the run builds its own instance, and the
+	// value it reads is that one (NUR331).
+	ShapeModel bool
 	// ModuleRef is the resolved import id when this registry is a
 	// MODULE's sub-registry ("boru:time-util", "./lib.boru") — the
 	// module half of the per-export policy identity. Stamped once by
@@ -141,7 +155,16 @@ type Registry struct {
 	// empty). Read by the compiled CALL_USER gate, whose CompiledFn
 	// carries the owning registry but no signature to read a
 	// ModuleCallID from.
-	ModuleRef      string
+	ModuleRef string
+	// home is the canonical registry of the MODULE this registry is an
+	// instance of: nil for a module's own registry (the main program's, a
+	// module body's sub-registry, a sandbox's), the parent's home for a
+	// concurrent fork. Read through Home(): a fn value carries its home
+	// registry, and whether a call is FOREIGN to that fn is a question about
+	// modules, not registry pointers — a fork of the defining module IS the
+	// defining module for that goroutine, with the live state the fork was
+	// made for (a service's per-connection fork, an acceptor's).
+	home           *Registry
 	errs           []error           // registration errors accumulated during setup
 	ready          bool              // true after initial setup; triggers dynamic help generation
 	OnRegisterHook func(name string) // called when a function is registered after startup
@@ -154,7 +177,7 @@ type Registry struct {
 	// module sub-registry can transiently share the parent compile
 	// pass's analysis state (mode/emit/memos/counters) while still
 	// resolving names in its own Defs/Types — the module-fn body
-	// compilation refactor (design/module-fn-checkstate-ownership.1.md
+	// compilation refactor (design/legacy/module-fn-checkstate-ownership.1.ignore
 	// §5b). Snapshot sites deep-clone the pointee (CheckState.Clone)
 	// and restore IN PLACE so a transient sharer observes the rollback.
 	Check *CheckState
@@ -167,8 +190,25 @@ type Registry struct {
 	// returns, without the signal having to ride the error channel.
 	// See flowctrl.go.
 	FlowCtrl FlowCtrl
+	// FlowAt is where a VM ISLAND run stood when a break/continue it could
+	// not resolve ended it (Engine.exitWithFlowCtrl): the position of the
+	// token at its pointer, which the interpreter's `outside loop` report
+	// points at when no loop takes the signal. FlowAtSet is false when the
+	// pointer had run off the island's tape — the report then points past
+	// the island's span, which only the compiled lowering knows
+	// (compiler.FlowExit). The VM takes both with the signal (NUR355).
+	FlowAt    SrcPos
+	FlowAtSet bool
+	// FlowAtHeld reports that FlowAt already records where the pending
+	// signal stood, taken by the INNERMOST run that could not hand its tape
+	// back — an island, or a container literal's element run (NUR358). An
+	// enclosing island keeps it rather than overwriting it with its own
+	// position, and the top of an interpreted run reports it (the literal's
+	// elements stood where the signal escaped, not the run's pointer, which
+	// has moved past the literal). Cleared with the signal.
+	FlowAtHeld bool
 
-	// TCO is the tail-call-optimisation surface (design/TCO-STAGED.10.md).
+	// TCO is the tail-call-optimisation surface (design/legacy/TCO-STAGED.10.ignore).
 	// Lives on the registry (not the engine) so sub-engines sharing the
 	// registry contribute to one count and obey one switch.
 	TCO TCOState
@@ -202,7 +242,7 @@ type Registry struct {
 	// gensymN is the monotonic counter behind the `gensym` word: each call
 	// mints a fresh, never-colliding atom name `tmp$g<n>`. Used for
 	// capture-free temporaries in (hand-written and, later, expanded) macros.
-	// See design/MACROS-PHASE1.10.md §7. The name is lowercase + mixed-`$` so
+	// See design/legacy/MACROS-PHASE1.10.ignore §7. The name is lowercase + mixed-`$` so
 	// it is a LEGAL word name (ValidateWordName: lowercase-only, all-`$`
 	// reserved) — gensyms are used as binders (`def <gensym> …`).
 	gensymN uint64
@@ -213,7 +253,7 @@ type Registry struct {
 	// module-private fn (`decide`, `apply-op`, …) analysed under a shared
 	// check pass must not collide with a same-named, same-positioned
 	// parent fn. FnAnalysisKey prefixes this id; read it via
-	// AnalysisScopeID. See design/module-fn-checkstate-ownership.1.md §5a.
+	// AnalysisScopeID. See design/legacy/module-fn-checkstate-ownership.1.ignore §5a.
 	regID uint64
 
 	// macroCache memoizes macro expansions keyed on (macro name + operand
@@ -251,6 +291,19 @@ type Registry struct {
 	// idle, so InvokeCallback takes the RunUnit path there, not this one).
 	// ref is an opaque *CompiledFnRef (S4 opaque handle) — the VM asserts.
 	NestedRunner func(ref any, args []Value) (result []Value, handled bool, err error)
+
+	// tokenBodyStamps is S3's unit cache for TOKEN bodies applied through
+	// the InvokeBody seam at run time — a quoted list read from a flex, a
+	// fn's result, a List param — which the compiled program could not
+	// lower because the body did not exist until it ran. Keyed by the body
+	// list's value ID and the seam's input count (one body may be applied
+	// under `each` with one input and under `fold` with two), the value a
+	// compiled ref or the VM's declined marker; the VM reads and writes it
+	// (TokenBodyStamp / SetTokenBodyStamp), core only carries it. Per
+	// registry, never shared with a fork (ForkConcurrent resets it): a
+	// stamp is compiled against THIS registry's bindings, and its freshness
+	// (DepSnap) is read against them too.
+	tokenBodyStamps map[string]any
 
 	// vmRunning latches non-zero (via sync/atomic) for the duration of a
 	// RunProgram on this registry. Because RunProgram installs/restores the
@@ -353,7 +406,7 @@ type Registry struct {
 	// aggregateDispatch rebuilds a fresh []Signature + *FnDefInfo on every
 	// word dispatch even in a hot loop where the name's bindings never
 	// change (~14% of interpreter allocations — see
-	// design/INTERPRETER-SPEED-PLAN.10.md #2). Each entry records the
+	// design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #2). Each entry records the
 	// DefTable generation (Defs.Gen(name)) the aggregate was built at; the
 	// cache hits while that generation is unchanged and misses (rebuilds)
 	// the moment any binding for the name changes. Per-execution state,
@@ -500,7 +553,7 @@ func (r *Registry) SetDebugTraceFrom(cb DebugTraceFrom) { r.debugTrace = cb }
 // SetDebugParent links r (a module's captured sub-registry) to the
 // registry that imported it — see the debugParent field. Pass the
 // IMPORTING registry only: the links must form the acyclic import
-// tree. A self-link is refused so resolution always terminates.
+// tree. A self-link is declined so resolution always terminates.
 func (r *Registry) SetDebugParent(p *Registry) {
 	if p != r {
 		r.debugParent = p
@@ -588,6 +641,7 @@ func (r *Registry) PutSubEngine(e *Engine) {
 		return
 	}
 	e.ElemEvalRecordable = false
+	e.ContainerRun = false
 	// Release any Values still held in the forward-collection scratch
 	// buffers before the engine idles in the pool. rearrangeForForward
 	// leaves the last call's collected args (which can be large list/map
@@ -740,7 +794,7 @@ func (r *Registry) NextGensym() string {
 	return fmt.Sprintf("tmp$g%d", r.gensymN)
 }
 
-// macroCache memoizes macro expansions (design/MACROS-PHASE1.10.md §8). A
+// macroCache memoizes macro expansions (design/legacy/MACROS-PHASE1.10.ignore §8). A
 // macro's expansion depends ONLY on its template and the operand FORMS — never
 // on runtime state — so it is deterministic and cacheable. The key is the
 // macro name + the canon of its operands (NOT source Pos, which can collide
@@ -793,22 +847,23 @@ func NewRegistry() (*Registry, error) {
 		return nil, err
 	}
 	r := &Registry{
-		Defs:         NewDefTable(),
-		Contexts:     NewContextStack(),
-		Args:         NewArgsStack(),
-		Types:        NewDynamicTypeTable(),
-		Capabilities: NewCapabilityRegistry(),
-		Ideals:       NewIdealRegistry(),
-		Modules:      NewModuleRegistry(),
-		Output:       os.Stdout,
-		ErrOutput:    os.Stderr,
-		Input:        os.Stdin,
-		Effects:      &EffectLedger{},
-		interpHook:   &interpEntryHook{},
-		bailHook:     &bailHook{},
-		coverHook:    &coverHook{},
-		coverSources: &coverSources{},
-		SDKCache:     make(map[string]any),
+		Defs:             NewDefTable(),
+		Contexts:         NewContextStack(),
+		Args:             NewArgsStack(),
+		Types:            NewDynamicTypeTable(),
+		Capabilities:     NewCapabilityRegistry(),
+		Ideals:           NewIdealRegistry(),
+		Modules:          NewModuleRegistry(),
+		Output:           os.Stdout,
+		ErrOutput:        os.Stderr,
+		Input:            os.Stdin,
+		Effects:          &EffectLedger{},
+		interpHook:       &interpEntryHook{},
+		bailHook:         &bailHook{},
+		regionOracleHook: &regionOracleHook{},
+		coverHook:        &coverHook{},
+		coverSources:     &coverSources{},
+		SDKCache:         make(map[string]any),
 		// StepBudget uses -1 as the "unset, use the project default"
 		// sentinel. The Go zero (0) is honored as "abort on the first
 		// step" so callers who want that have an unambiguous way to
@@ -965,7 +1020,7 @@ func (r *Registry) Register(name string, sigs ...Signature) {
 // builtin — Register must have run first). The sigs dispatch after every
 // more-specific overload (they are unlocked, so a user/module override
 // wins by specificity) yet live on the native definition, so `undef` of
-// the builtin still refuses and no def-clone is created. They carry the
+// the builtin still declines and no def-clone is created. They carry the
 // CoreDefault flag so the export transplant skips them. The word stays in
 // builtinWords — this does NOT introduce a new dispatchable name.
 func (r *Registry) RegisterCoreDefault(name string, sigs ...Signature) {
@@ -1098,12 +1153,12 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	// The dispatchCache serves ONLY the interpreter's runtime-execution
 	// path (Check inactive). Check and compile passes deliberately get a
 	// fresh aggregate every call: their carrier-disjointness /
-	// unmatched-dispatch refusal proofs (carrier.go) and the emitter
+	// unmatched-dispatch compile failure proofs (carrier.go) and the emitter
 	// (callable_words.go, emit.go) compare a matched `*Signature` against
 	// `&Lookup(word).Signatures[i]` by POINTER identity — a contract that
 	// assumes each Lookup yields its own aggregate. A stable cached
 	// aggregate would make those identity tests hold across calls where
-	// they must not, flipping a refusal into a (wrong) compile. Runtime
+	// they must not, flipping a compile failure into a (wrong) compile. Runtime
 	// dispatch does no such identity test, so caching there is sound and
 	// is where the hot-loop win lives.
 	if r.analysisActive() {
@@ -1113,8 +1168,15 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	if fn, ok := r.dispatchCache.get(name, gen); ok {
 		return fn
 	}
-	fn := r.lookupUncached(name)
-	r.dispatchCache.put(name, gen, fn)
+	fn, closureBound := r.lookupUncachedBridged(name)
+	// A name bound to a compiled closure is never cached: a bridged
+	// aggregate captures the RUN's invoker (ClosureAsFnDef's one-dispatch
+	// contract), and a nil computed between runs — no invoker, so no
+	// bridge — would outlive the run that next sets one, at the same
+	// binding generation.
+	if !closureBound {
+		r.dispatchCache.put(name, gen, fn)
+	}
 	return fn
 }
 
@@ -1123,7 +1185,25 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 // dispatchCache; call this directly only when a fresh (uncached) aggregate
 // is required.
 func (r *Registry) lookupUncached(name string) *FnDefInfo {
+	fn, _ := r.lookupUncachedBridged(name)
+	return fn
+}
+
+// lookupUncachedBridged is lookupUncached, saying whether the name's def
+// stack holds a compiled CLOSURE (bridged into the aggregate under a run's
+// invoker, or skipped as data outside one — either way uncacheable). A closure
+// value a compiled program binds by `def` (bindGlobal, bindDynScope) is the
+// interpreter's NAMED fn definition — its word dispatches, its no-match
+// raises `cannot call` — but the def stack holds the payload, which the
+// simple-value substitution used to push as data and the literal chain
+// re-stepped as an anonymous value (parking over an empty frame where the
+// interpreter raises: `7 do [a5]` compiled 12 for the caught `cannot call`,
+// NUR193). Bridged through the compiled runtime's hook (the same view the
+// re-step uses), under the binding's name, whenever a run's invoker can
+// host the dispatch; outside a run the payload stays the data it was.
+func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	stack := r.Defs.Stack(name)
+	closureBound := false
 	// Collect every FnDefInfo binding for the name, newest-first. Each
 	// entry holds only its OWN overloads; the dispatch table is the union
 	// across the stack (overloading across stacked defs of one name).
@@ -1137,6 +1217,23 @@ func (r *Registry) lookupUncached(name string) *FnDefInfo {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
+		if _, isClosure := stack[i].Data.(ClosurePayload); isClosure {
+			closureBound = true
+			// Only under a run's invoker (dispatchesAsWord's own gate, kept
+			// here too rather than trusting the hook to ask): outside a run
+			// the payload is data and the name has no dispatch.
+			if r.Invoker == nil {
+				continue
+			}
+			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
+				if fnDef, ok := bv.Data.(FnDefInfo); ok {
+					fnDef.Name = name
+					fnDef.Anonymous = false
+					entries = append(entries, fnDef)
+				}
+			}
+			continue
+		}
 		if fnDef, ok := stack[i].Data.(FnDefInfo); ok {
 			entries = append(entries, fnDef)
 			if fnDef.Extends != "" {
@@ -1145,9 +1242,23 @@ func (r *Registry) lookupUncached(name string) *FnDefInfo {
 		}
 	}
 	if len(entries) == 0 {
-		return nil
+		return nil, closureBound
 	}
-	return r.aggregateDispatch(name, entries)
+	return r.aggregateDispatch(name, entries), closureBound
+}
+
+// dispatchesAsWord reports whether a def-bound value is a DISPATCHING
+// definition the word step must route through Lookup rather than
+// substitute: a fn definition, a class, or a compiled closure a run's
+// invoker can bridge (lookupUncachedBridged).
+func dispatchesAsWord(v Value, r *Registry) bool {
+	switch v.Data.(type) {
+	case FnDefInfo, *ClassTypeInfo:
+		return true
+	case ClosurePayload:
+		return r != nil && r.Invoker != nil
+	}
+	return false
 }
 
 // aggregateDispatch builds the cross-stack dispatch view for name from the
@@ -1476,6 +1587,52 @@ func (r *Registry) RegisterPart(part string) {
 	r.Types.parts[part] = true
 }
 
+// TypePartsSnapshot copies the registry's dynamic type-part reservations,
+// for ForgetTypePartsSince: the analysis of a fn body takes one before the
+// body runs and forgets what the body reserved once its bindings are
+// unwound. Nil for a registry with no type table.
+func (r *Registry) TypePartsSnapshot() map[string]bool {
+	if r == nil || r.Types == nil {
+		return nil
+	}
+	snap := make(map[string]bool, len(r.Types.parts))
+	for p := range r.Types.parts {
+		snap[p] = true
+	}
+	return snap
+}
+
+// ForgetTypePartsSince drops every type-part reservation made since snap
+// whose type binding is no longer live — the parts a fn body's own `def T`
+// reserved under ANALYSIS, whose binding the body's unwind has popped. The
+// analysis is not a call: the interpreter's first call of the body is what
+// reserves the part for the registry's lifetime (its frame teardown pops
+// the binding and keeps the part, so a second call conflicts on it — the
+// language's rule, both lanes), and a reservation left behind by the pass
+// made the compiled lane's FIRST call the conflicting one (NUR167: `def f
+// fn [[n:Integer] [Integer] [def T (class {}) n]]  each f/v [1 2]` raised
+// at element 0 for the interpreter's element 1, and `each f/v [1]` raised
+// where the interpreter answered). The minted node itself stays in the ID
+// index — the binding sandbox's partition (mints retained, a baked
+// OpPushType may name it); only the NAME comes free, so the run's own mint
+// takes it as the interpreter's does. A part whose binding is still live
+// (a type the body left bound, a reservation the enclosing scope made) is
+// kept. Returns how many were forgotten.
+func (r *Registry) ForgetTypePartsSince(snap map[string]bool) int {
+	if r == nil || r.Types == nil {
+		return 0
+	}
+	n := 0
+	for p := range r.Types.parts {
+		if snap[p] || r.Defs.IsType(p) {
+			continue
+		}
+		delete(r.Types.parts, p)
+		n++
+	}
+	return n
+}
+
 // ResolveTypeLiteralDef checks whether a bare type literal (Data==nil) has
 // a richer definition installed under the same name (e.g. an ClassTypeInfo
 // from RegisterResource or a `type Foo object {…}` binding). If so it
@@ -1491,7 +1648,7 @@ func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
 		return v
 	}
 	// The node records its declared content (Value.TypeBody —
-	// design/TYPE-REPRESENTATION.1.md §N2), so a class / resource /
+	// design/legacy/TYPE-REPRESENTATION.1.ignore §N2), so a class / resource /
 	// record / micron name — which EVALUATES to its node after the
 	// Stage 2 flip — resolves to its schema directly from the node.
 	if body, ok := v.TypeBody(); ok {
@@ -1613,6 +1770,21 @@ func (r *Registry) CallBoru(sig *FnSig, args []Value, captures []CapturedBinding
 // so a debug host's backtrace can name the call — a module fn's frame
 // is Defs-based and leaves no tape marks to reconstruct a name from.
 func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBinding, label string) ([]Value, error) {
+	return r.callBoruNamed(sig, args, captures, label, false, SrcPos{})
+}
+
+// CallBoruStrict is CallBoruNamed for a NAMED fn call — the module-fn
+// dispatch (execFnDefLiteral's cross-registry arm, buildFnBodyHandler's
+// foreign-registry arm) — which enforces the frame's return COUNT before the
+// types, as the spliced frame's ReturnCheck does (NamedFnReturnCount, NUR191);
+// pos is the call site the count error blames, as the frame's does. The
+// callback seams (InvokeCallbackFn, InvokeCallback) keep CallBoru's
+// discipline: the count trimmed, never raised.
+func (r *Registry) CallBoruStrict(sig *FnSig, args []Value, captures []CapturedBinding, label string, pos SrcPos) ([]Value, error) {
+	return r.callBoruNamed(sig, args, captures, label, true, pos)
+}
+
+func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBinding, label string, strict bool, pos SrcPos) ([]Value, error) {
 	// Per-export policy gate: a module fn invoked as a HOST callback
 	// (InvokeCallback → CallBoru on the importer's registry) is a
 	// module-export dispatch like any other and must not slip past the
@@ -1679,7 +1851,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	// The unnamed-arg prefix assembled above is call-site-resolved data;
 	// stepping starts after it (arguments are inert — the sub-engine twin
-	// of FrameOpenInfo.ArgSpan; design/ARG-SEMANTICS-UNIFICATION.0.md).
+	// of FrameOpenInfo.ArgSpan; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 	unnamedCount := len(tokens)
 	body := make([]Value, len(sig.Body()))
 	copy(body, sig.Body())
@@ -1691,9 +1863,20 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	defSnapshot := r.Defs.Snapshot()
 
 	// Evaluate in a sub-engine with higher step limit for complex bodies.
+	//
+	// THE residual rule (ResidualEvalsInFrame, NUR153): an anonymous `=>`
+	// fn's single bare container literal DEFERS past the frame. The
+	// sub-run's end-of-run sweep would evaluate it here, with the params
+	// and captures still bound on r — that was regime 2, the seam reading
+	// a param the tape apply of the same value resolves in module scope.
+	// So a deferring body runs with the sweep held (DeferResidual), and
+	// the pending container is swept below, AFTER the teardown, in the
+	// scope the consumer would have evaluated it in — the tape's answer.
+	deferResidual := !ResidualEvalsInFrame(sig.Anonymous, sig.Body())
 	sub := NewTop(r)
 	sub.StartAt = unnamedCount
 	sub.debugLabel = label
+	sub.DeferResidual = deferResidual
 	result, err := sub.Run(tokens)
 
 	// Cleanup: pop args stack, undef named params + captures, then
@@ -1706,7 +1889,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	r.PopFnBaseline()
 	for i := len(names) - 1; i >= 0; i-- {
-		UninstallDef(r, names[i])
+		UninstallFrameBinding(r, names[i])
 	}
 
 	// Remove defs that were added during body execution.
@@ -1737,6 +1920,25 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		// assertions downstream (decision DX report finding 4).
 		return nil, err
 	}
+	if deferResidual {
+		// The deferred residual's sweep — the frame is torn down, so a
+		// bare param name in the container is exactly as unbound as it
+		// is when the tape apply's consumer evaluates the same literal.
+		sweep := NewTop(r)
+		for i := range result {
+			if result[i], err = sweep.autoEvalResidual(result[i]); err != nil {
+				return nil, err
+			}
+			if sweep.containerEscaped() {
+				// A break/continue escaped the residual literal (NUR358):
+				// the literal is still the call's body — its frame is gone,
+				// no loop of the caller is on it — so the signal raises
+				// `outside loop` there, as one the body's own tokens raised
+				// does (the sweep's top-level exit).
+				return nil, r.RaiseFlowOutsideLoop(SrcPos{}, r.Source)
+			}
+		}
+	}
 
 	// Mirror the frame collapse's unnamed-arg DISCARD (stepCloseParen's
 	// ReturnCheck handling): residuals beyond the declared return count
@@ -1744,7 +1946,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// call-scoped data, trimmed up to unnamedCount. Leaking them into the
 	// caller's stream would let a resolved fn-value argument re-step and
 	// fire there (the inert-arguments invariant,
-	// design/ARG-SEMANTICS-UNIFICATION.0.md).
+	// design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 	// Undeclared returns keep the historical flow-through (the residual
 	// IS the return), matching the frame path, which emits no ReturnCheck
 	// in that case.
@@ -1754,6 +1956,15 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 				extra = unnamedCount
 			}
 			result = result[extra:]
+		}
+	}
+	// A NAMED call enforces the frame's return COUNT first (NUR191), so a
+	// residual that is both the wrong count and the wrong type raises the
+	// count error the frame raises, not the type error the aligned tail
+	// would.
+	if strict {
+		if err := r.NamedFnReturnCount(sig, label, r.Source, result, pos); err != nil {
+			return nil, err
 		}
 	}
 	// …and then ENFORCE the declared contract, which this path did not do
@@ -1855,7 +2066,7 @@ func (r *Registry) ResolveTypedName(name string) (Value, bool) {
 // Post the Stage 2 flip the node records the same declared content
 // (Value.TypeBody, stamped by installTypeBinding), and consumers that
 // operate on a type's STRUCTURE read it from the node via TypeContentOf
-// (design/TYPE-REPRESENTATION.1.md §N2). The entry's stored Body stays
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). The entry's stored Body stays
 // authoritative HERE because three binding shapes carry a body that is
 // deliberately not the node's content: a generic type-PARAM bound to
 // its argument value (the node is the ARGUMENT's — possibly a builtin,
@@ -1944,7 +2155,73 @@ func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, 
 // r.types via `type Foo …` and pushes onto the context stack are
 // rolled back. r.defStacks is already protected by CallBoru's own
 // snapshot.
+// predMemoKey identifies one predicate question at run time: the predicate
+// fn value and the candidate's canonical form.
+func predMemoKey(constraint, candidate Value) string {
+	key := "|" + Canon([]Value{candidate})
+	if constraint.ID != "" {
+		return constraint.ID + key
+	}
+	// The interpreter's predicate fn carries no value ID (the check pass
+	// mints those): its first signature's boru body is the identity.
+	fd, ok := constraint.Data.(FnDefInfo)
+	if !ok {
+		return ""
+	}
+	// An overload-list presence test, not an arity: a predicate with no
+	// signature has no body to key on.
+	own := fd.Signatures
+	if len(own) == 0 {
+		return ""
+	}
+	bi, ok := own[0].Impl.(*BoruImpl)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("impl:%p", bi) + key
+}
+
+// ClearPredMemo forgets every memoised predicate verdict (RunPredicate's
+// run-time memo): called where an effect may have changed a predicate's
+// basis — a dispatch commit and a statement end.
+func (r *Registry) ClearPredMemo() {
+	if r != nil && r.predMemo != nil {
+		r.predMemo = nil
+	}
+}
+
 func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched bool, err error) {
+	// One run per dispatch (NUR102). The interpreter asks a predicate type
+	// the same question at every planning phase of one pending word —
+	// collection, the candidate scan, the arrival, the final match: four
+	// runs of `def Even fnpred n:Integer [print "P" eq 0 (mod 2 n)]` for
+	// `we 4`, where the compiled lane's runtime re-match asks once. The
+	// verdict over the same predicate and the same candidate is memoised
+	// until an effect may have moved its basis (ClearPredMemo at a dispatch
+	// commit and at a statement end), so a predicate body's effects happen
+	// once per dispatch on both lanes. Analysis keeps its own path.
+	memoKey := ""
+	if !r.analysisActive() && IsConcrete(candidate) {
+		memoKey = predMemoKey(constraint, candidate)
+		if memoKey != "" {
+			if hit, ok := r.predMemo[memoKey]; ok {
+				if hit {
+					return candidate, true, nil
+				}
+				return Value{}, false, nil
+			}
+		}
+	}
+	if memoKey != "" {
+		defer func() {
+			if err == nil {
+				if r.predMemo == nil {
+					r.predMemo = map[string]bool{}
+				}
+				r.predMemo[memoKey] = matched
+			}
+		}()
+	}
 	if !constraint.Parent.Equal(TFunction) {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent.String())
 	}
@@ -1952,31 +2229,114 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	if !ok {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data)
 	}
-	predSig, ok := fnDef.FirstOwnSig()
-	if !ok || len(predSig.Params) != 1 {
-		return Value{}, false, fmt.Errorf("RunPredicate: predicate must take exactly one argument")
-	}
-	// CheckMode: accept the binding without running the body. Real
-	// predicate behaviour is asserted at runtime; here we only need
-	// the analyser to keep flowing past the typed slot.
-	if r != nil && r.analysisMode() {
+	// CheckMode: a CARRIER candidate is accepted without running the body —
+	// the analyser's proper optimism, so it keeps flowing past the typed
+	// slot. A CONCRETE candidate over an effect-free body runs the
+	// predicate FOR REAL, with analysis suspended around the run (the const
+	// fold's own discipline, concreteEvalOnce): the check pass's admission
+	// then agrees with the runtime's — `f 5` over `n:Even` is refused
+	// statically as it is at run time, where the pass's plan used to claim
+	// the slot (NUR141). A run that errors admits, as before.
+	analysis := r != nil && r.analysisMode()
+	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate)) {
 		return candidate, true, nil
 	}
-	// Input-type gate: a predicate's declared input type acts as a
-	// pre-filter. `"x" is Pos` for `Pos fn [[n:Integer] …]` rejects
-	// at this gate without running the body, because the predicate
-	// body's behavior on a non-Integer input is undefined (and
-	// cross-type comparators like `gt` produce confusing answers).
-	// Skip the gate for the empty case (input declared as Any or
-	// unset) — those predicates explicitly accept any input.
-	if inputT := predSig.Params[0].Type; inputT != nil && !inputT.Equal(TAny) {
-		if IsBareTypeNode(candidate) {
-			// Bare type literal: skip the gate (the literal IS a type,
-			// not an inhabitant — predicate has no value to test).
-		} else if !candidate.Parent.ConformsTo(inputT) {
-			return candidate, false, nil
+	// Membership is a ONE-VALUE APPLICATION of the predicate: the candidate
+	// is matched against the predicate's signatures by the one matcher every
+	// call takes (MatchFnSig — types in sig order, then value patterns), and
+	// the signature that takes it runs. A candidate no signature takes is not
+	// a member, without running a body: `"x" is Pos` over `n:Integer` answers
+	// false as a call of that fn over "x" would find no overload, because the
+	// body's behaviour on a non-Integer input is undefined (and cross-type
+	// comparators like `gt` give confusing answers). The whole overload set
+	// is consulted, first match first, as for any call.
+	//
+	// This replaced a PARAMETER-COUNT gate — "predicate must take exactly one
+	// argument", raised at the use — which admitted or refused a function as
+	// a predicate on its arity alone (NUR100 §1; ADR-016 forbids exceptions
+	// keyed on arity). A signature that cannot take one value is simply not
+	// the one a one-value application selects, exactly as it would not be
+	// for any call; a predicate none of whose signatures can is a type no
+	// single value inhabits, and every membership question answers so.
+	predSig := MatchFnSig(constraint, []Value{candidate})
+	if predSig == nil {
+		return candidate, false, nil
+	}
+	if analysis && (!predicateBodyPure(r, predSig) || New(r).exprHasEffect(predSig.Body())) {
+		return candidate, true, nil
+	}
+	if analysis {
+		prevMode := r.Check.Mode
+		r.Check.Mode = false
+		defs := r.Defs.Snapshot()
+		restoreAtt := r.SetInterpAttribution("check:predicate")
+		out, matched, err = r.runPredicateBody(fnDef, predSig, candidate)
+		restoreAtt()
+		r.Defs.Restore(defs)
+		r.Check.Mode = prevMode
+		if err != nil {
+			return candidate, true, nil
+		}
+		return out, matched, nil
+	}
+	return r.runPredicateBody(fnDef, predSig, candidate)
+}
+
+// predicateBodyPure reports whether a predicate's body is a function of its
+// parameter alone — every word in it is the parameter or a NATIVE word — so
+// its verdict over a concrete candidate at analysis time is the verdict at
+// run time. A body reading a user def (`n gt limit`) is not: the def may be
+// rebound between the analysis and the call, so the pass keeps its
+// optimism for it (NUR141).
+func predicateBodyPure(r *Registry, predSig *FnSig) bool {
+	// predSig is the signature RunPredicate's one-value application
+	// selected (MatchFnSig over the candidate), so it has the one parameter
+	// the candidate bound.
+	param := predSig.Params[0].Name
+	var pure func(items []Value) bool
+	pure = func(items []Value) bool {
+		for _, it := range items {
+			if w, err := AsWord(it); err == nil {
+				if w.Name == param || !userDefined(r, w.Name) {
+					continue
+				}
+				return false
+			}
+			if lst, err := AsList(it); err == nil && !lst.IsNil() {
+				if !pure(lst.Slice()) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return pure(predSig.Body())
+}
+
+// userDefined reports whether name resolves to a USER definition — a value
+// def, or a fn with a boru body — the bindings a later `def` may move. A
+// native word (a Go implementation) and an unbound name are not.
+func userDefined(r *Registry, name string) bool {
+	v, ok := r.Defs.Top(name)
+	if !ok {
+		return false
+	}
+	fd, isFn := v.Data.(FnDefInfo)
+	if !isFn {
+		return true
+	}
+	for i := range fd.Signatures {
+		if _, boru := fd.Signatures[i].Impl.(*BoruImpl); boru {
+			return true
 		}
 	}
+	return false
+}
+
+// runPredicateBody runs a predicate's body over a candidate and decodes its
+// verdict — the runtime half of RunPredicate, which the check pass shares
+// for a concrete candidate (NUR141).
+func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate Value) (out Value, matched bool, err error) {
 	// Sandbox the call so a mischievous predicate body can't mutate
 	// r.types or the context stack out from under the surrounding
 	// program.
@@ -2097,4 +2457,43 @@ func (r *Registry) enforceCallBoruReturns(sig *FnSig, name string, result []Valu
 		Decl:           sig.Decl,
 	}
 	return validateReturnTypesIn(r, rc, result[extra:extra+n], 0, r.Source)
+}
+
+// NamedFnReturnCount enforces the frame's return COUNT on a named fn's result
+// delivered through the CallBoru seam — the module-fn dispatch
+// (execFnDefLiteral's cross-registry arm, buildFnBodyHandler's foreign-
+// registry arm). The spliced frame's ReturnCheck raises "expected N return
+// value(s), got M" (stepCloseParen); CallBoru only type-checked the aligned
+// tail (enforceCallBoruReturns) and handed the whole residual back, so a
+// module fn `def d1 fn [[x:Integer][Integer][x 3]]` answered `[10 3]` for the
+// main registry's count error, and `[(mk x) 3]` handed its PARKED closure and
+// the 3 to the caller's tape, where the closure re-stepped over the 3 — 13
+// where the frame path and the compiled module fn raise (NUR191). One rule
+// for a named call on every path; the callback seams keep the CallBoru
+// discipline (the count trimmed — RetTrim), a predicate body's residual is
+// its own contract (InPredicateCall), and a check-mode dispatch models the
+// declared returns, so none of those is checked here. The values named are
+// the ones the count is about, as the frame's diagnostic names them.
+func (r *Registry) NamedFnReturnCount(sig *FnSig, name, source string, result []Value, pos SrcPos) error {
+	if len(sig.Returns) == 0 || r.predicateCalls > 0 || r.analysisMode() || len(result) == len(sig.Returns) {
+		return nil
+	}
+	return BuildReturnCountError(source, name, len(sig.Returns), len(result), result, pos, sig.Decl)
+}
+
+// TokenBodyStamp reads the run-time stamp cached for a token body under key
+// (the body's value ID and input count, as the VM keys it); ok=false when the
+// body has not been seen. See tokenBodyStamps.
+func (r *Registry) TokenBodyStamp(key string) (any, bool) {
+	v, ok := r.tokenBodyStamps[key]
+	return v, ok
+}
+
+// SetTokenBodyStamp records a token body's run-time stamp — a compiled ref,
+// or the VM's declined marker so a body that cannot compile pays once.
+func (r *Registry) SetTokenBodyStamp(key string, v any) {
+	if r.tokenBodyStamps == nil {
+		r.tokenBodyStamps = map[string]any{}
+	}
+	r.tokenBodyStamps[key] = v
 }

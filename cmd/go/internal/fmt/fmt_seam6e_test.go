@@ -1,11 +1,14 @@
 package fmt
 
-// fmt_seam6e_test.go — covers Run's walk-error arms (injected callback failure) and the
-// write-failure arm (osWriteFile seam; permissions cannot force it as root).
+// fmt_seam6e_test.go — covers Run's walk-error arm (the walkDir seam: an
+// injected failure, since deleting the working directory is not portable)
+// and the write-failure arm (osWriteFile seam; permissions cannot force it
+// as root).
 
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,11 +17,11 @@ import (
 
 func TestRunWalkError(t *testing.T) {
 	boom := errors.New("directory unavailable")
-	walk := func(root string, visit filepath.WalkFunc) error {
-		return visit(root, nil, boom)
-	}
+	orig := walkDir
+	t.Cleanup(func() { walkDir = orig })
+	walkDir = func(root string, visit fs.WalkDirFunc) error { return visit(root, nil, boom) }
 	var stdout, stderr bytes.Buffer
-	if code := runWithWalk(nil, &stdout, &stderr, walk); code != 1 {
+	if code := Run(nil, &stdout, &stderr); code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), boom.Error()) {

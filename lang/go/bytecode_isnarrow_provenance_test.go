@@ -12,7 +12,7 @@ import (
 // original slot, which already holds the right value (no value-passing half).
 //
 // Before the fix, ApplyGuardNarrowing / ApplyComplementNarrowing minted a FRESH
-// carrier ID, so a narrowed value feeding a user call or a builtin refused
+// carrier ID, so a narrowed value feeding a user call or a builtin declined
 // "fn call operand of unknown provenance" / "...at <w>" (the stats as-summary
 // `if (x is List) [build-summary x] [x]` shape). BOTH the then (guard) and else
 // (complement) branches must carry the true runtime value — pinned with
@@ -38,7 +38,7 @@ func TestIsNarrowOperandProvenance(t *testing.T) {
 			a, _ := New()
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {
-				t.Fatalf("RunCompiledStrict refused (want native compile): %v", err)
+				t.Fatalf("RunCompiledStrict declined (want native compile): %v", err)
 			}
 			b, _ := New()
 			want, werr := b.RunInterp(c.src)

@@ -86,7 +86,7 @@ def t Integer { rows:[ { id:t } { id:t } ] }	{rows:[{id:Integer} {id:Integer}]}
 firstq [ ( enum [ a b ] ) ( enum [ c d ] ) ]	a tor b	
 		
 # type-named enum referenced at depth.		
-def Color (enum [ red green blue ]) { c:Color }	{c:Color}	Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): the name denotes its minted node and renders as the name
+def Color (enum [ red green blue ]) { c:Color }	{c:Color}	Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): the name denotes its minted node and renders as the name
 def Color (enum [ red green blue ]) { palette:[ Color Color ] }	{palette:[Color Color]}	Stage 2 flip (§6): renders as the name
 def Color (enum [ red green blue ]) { deep:{ inner:{ kind:Color } } }	{deep:{inner:{kind:Color}}}	Stage 2 flip (§6): renders as the name
 def Color (enum [ red green blue ]) firstq [ Color ]	Color	Stage 2 flip (§6): the name denotes its minted node

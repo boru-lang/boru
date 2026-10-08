@@ -30,8 +30,10 @@ func TestInactiveCheckBraid(t *testing.T) {
 		t.Fatal("inactive exprRefsCarrier must be false")
 	}
 	inactiveNoteSpeculativeBarrierCommit(nil, ForwardInfo{})
-	inactiveRefuseForwardStackDrift(nil, nil, nil)
-	inactiveRefuseStrandedMemberFn(nil, nil)
+	if inactiveDeclineForwardStackDrift(nil, nil, nil) {
+		t.Fatal("inactive declineForwardStackDrift declines nothing")
+	}
+	inactiveDeclineStrandedMemberFn(nil, nil)
 	inactiveShareCheckState(nil, nil)() // the restore closure is a no-op
 	if err := inactiveSpliceAnonCheckResult(nil, 0, 0, nil, nil, nil); err != nil {
 		t.Fatal("inactive spliceAnon must be nil error")
@@ -40,13 +42,14 @@ func TestInactiveCheckBraid(t *testing.T) {
 	if err := inactiveSpliceFnValueCheckResult(nil, 0, 0, FnDefInfo{}, nil, nil); err != nil {
 		t.Fatal("inactive spliceFnValue must be nil error")
 	}
-	inactiveTagCheckModeDefRead(nil, nil, "x")
+	inactiveTagCheckModeDefRead(nil, nil, "x", SrcPos{})
 	if inactiveTryDynamicFnValueDispatch(nil, 0) {
 		t.Fatal("inactive dynamicFnValue must decline")
 	}
 	if inactiveTryMemberFnArrivalDispatch(nil, 0) {
 		t.Fatal("inactive memberFnArrival must decline")
 	}
+	inactiveNoteReStepLanding(nil, 0)
 	if inactiveParenPlacedFnCarrier(nil, 0) {
 		t.Fatal("inactive parenPlacedFnCarrier must decline")
 	}
@@ -60,7 +63,7 @@ func TestInactiveCheckBraid(t *testing.T) {
 
 // TestInactiveDriftWindowRecorder pins the compiler-less default behind
 // the drift-island hook: with no compiler linked there is nothing to
-// record, so the offer declines and the caller keeps its refusal.
+// record, so the offer declines and the caller keeps its compile failure.
 func TestInactiveDriftWindowRecorder(t *testing.T) {
 	if inactiveDriftWindowRecorder(nil, WordInfo{}, nil, nil) {
 		t.Fatal("inactive drift-window recorder must decline")

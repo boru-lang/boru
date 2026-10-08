@@ -159,7 +159,7 @@ func TestTapePrefixContiguous(t *testing.T) {
 //
 // One simulated call level: splice a 12-token body at the cursor, do 14
 // insert+remove pairs there, then leave 8 tokens pending and move on —
-// the op mix measured from the real engine (design/RECURSION-PERFORMANCE.10.md).
+// the op mix measured from the real engine (design/legacy/RECURSION-PERFORMANCE.10.ignore).
 // The slice variant drags the pending tail on every edit; the Tape keeps
 // the gap at the cursor so the tail never moves.
 
@@ -351,12 +351,12 @@ func TestTapeReload(t *testing.T) {
 		t.Errorf("Reload content = %d, want 9", n)
 	}
 
-	// Negative: a program larger than the backing array refuses reuse.
+	// Negative: a program larger than the backing array declines reuse.
 	big := make([]core.Value, cap0+1)
 	for i := range big {
 		big[i] = core.NewInteger(int64(i))
 	}
 	if tp.Reload(big) {
-		t.Error("Reload of an over-capacity program returned true; must refuse so the caller reallocates")
+		t.Error("Reload of an over-capacity program returned true; must decline so the caller reallocates")
 	}
 }

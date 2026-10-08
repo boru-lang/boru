@@ -150,7 +150,7 @@ func TestTraceWrapDirect(t *testing.T) {
 }
 
 // TestTraceHandlerArms pins the exported handler: a type-literal argument
-// is refused; a concrete list runs under the sub-engine and renders the
+// is declined; a concrete list runs under the sub-engine and renders the
 // trace onto Registry.Output.
 func TestTraceHandlerArms(t *testing.T) {
 	r := stage5Registry(t)
@@ -158,9 +158,9 @@ func TestTraceHandlerArms(t *testing.T) {
 	r.Output = &buf
 
 	if _, err := TraceHandler([]Value{NewTypeLiteral(TList)}, nil, nil, r); err == nil {
-		t.Fatal("a type-literal argument must be refused")
+		t.Fatal("a type-literal argument must be declined")
 	} else if !strings.Contains(err.Error(), "concrete") {
-		t.Errorf("refusal message = %q", err)
+		t.Errorf("compile failure message = %q", err)
 	}
 
 	out, err := TraceHandler([]Value{NewList([]Value{NewInteger(1), NewInteger(2)})}, nil, nil, r)

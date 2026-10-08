@@ -105,6 +105,12 @@ func BuildEmitLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 	// per-kind key is hard-coded at the install site. Installation walks the
 	// companion order slice, keeping EmitLang.kinds pinned to native.EmitKinds
 	// order (module-emitlang.tsv).
+	// ---- out-of-band: fn dispatch (compile-pass seam, NOT exported) ------
+	// The runtime twin of `emit <fn> <opts?> <data>` for a leading operand
+	// the compile pass could not see concretely (macro_fn_dispatch.go).
+	registerMacroFnDispatch(subReg, parent, "emitlang-fn-dispatch", emitFnDispatchHandler,
+		native.InstallEmitLangFnDispatch, 2, 3)
+
 	byName, order := predefinedEmitters()
 	for _, name := range order {
 		if err := installBuiltinEmitter(exports, subReg, byName[name]); err != nil { //covergate:allow the built-in kind set is static and name-disjoint (native.EmitKinds), so the duplicate-key arm cannot fire; the installer's arm itself is driven directly by TestW8InstallBuiltinEmitterDuplicate (§modules)

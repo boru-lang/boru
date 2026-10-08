@@ -92,3 +92,12 @@ import "boru:bin-util" 255 BinUtil.popcount	8	stack dispatch through a bin wrapp
 import "boru:math-util" MathUtil.nextafter 1.0 2.0	1.9999999999999998	GOTCHA sig order: nextafter steps 2.0 TOWARD 1.0 (top-first again)
 import "boru:math-util" MathUtil.abs -5 add 2	7	a wrapper result feeds forward collection like any value
 unpack all "boru:logic-util" nand true true	ERROR:unpack_error	the `all` selector is for maps — module unpack has no such form
+#
+# §12  a module fn's return contract is the frame's (NUR191, closed 2026-09-25)
+import module [def d1 fn [[x:Integer] [Integer] [x 3]] export "M" {d1: d1/v}] M.d1 10	ERROR:expected 1 return value(s), got 2	a module fn leaving two values under a one-return contract raises the frame's count error — the CallBoru seam used to hand both back (`10 3`)
+import module [def d1 fn [[x:Integer] [Integer] []] export "M" {d1: d1/v}] M.d1 10	ERROR:expected 1 return value(s), got 0	…too few raises too
+import module [def d1 fn [[x:Integer] [Integer] [x 'a']] export "M" {d1: d1/v}] M.d1 10	ERROR:expected 1 return value(s), got 2	…and the count is checked before the types, as the frame checks it
+import module [def d1 fn [[x:Integer] [Integer Integer] [x 3]] export "M" {d1: d1/v}] M.d1 10	10 3	a two-return contract met is two values
+import module [def mk fn [[k:Integer] [Function] [([n:Integer] => [n add k])]] def d1 fn [[x:Integer] [Function] [(mk x)]] export "M" {d1: d1/v}] 3 M.d1 10 typeof	3 Function	a module fn's single returned closure is PARKED where it lands, as a frame's return is — it used to re-step over the 3 (13)
+import module [def mk fn [[k:Integer] [Function] [([n:Integer] => [n add k])]] def d1 fn [[x:Integer] [Function] [(mk x)]] export "M" {d1: d1/v}] ((M.d1 10) 3)	13	…and the paren re-step applies it, as it applies any parked value
+import module [def mk fn [[k:Integer] [Function] [([n:Integer] => [n add k])]] def d1 fn [[x:Integer] [Integer] [(mk x) 3]] export "M" {d1: d1/v}] M.d1 10	ERROR:expected 1 return value(s), got 2	a factory's residual of a parked closure and a value is the count error the frame raises — the seam used to re-step the closure over the 3 (13)

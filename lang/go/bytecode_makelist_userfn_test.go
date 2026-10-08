@@ -8,8 +8,8 @@ import (
 
 // TestMakeListUserFnElements pins voxgig leaf L1: a list literal whose elements
 // are USER-FN or MODULE call results (`def specs [(Test.test …) …]`, the voxgig
-// spec-list pattern; minimally `[(mk) (mk)]`) used to refuse force-compile —
-// recordMakeListInner blanket-refused any non-builtin-produced element. They now
+// spec-list pattern; minimally `[(mk) (mk)]`) used to decline force-compile —
+// recordMakeListInner blanket-declined any non-builtin-produced element. They now
 // assemble via OpMakeList (each element's recorded event RE-RUNS at runtime; it is
 // never frozen), exactly as `make` instances and builtin results already did.
 func TestMakeListUserFnElements(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMakeListUserFnElements(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile, refused: %q", reason)
+				t.Fatalf("must compile, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)

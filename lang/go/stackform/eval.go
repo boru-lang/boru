@@ -10,7 +10,7 @@ import (
 // applies a function VALUE rather than calling a word: an inline lambda
 // (`([n:Integer] => [n add 1]) 5`), or a fn read out of a container or a
 // parameter and applied. The engine records these with an empty Call
-// name, which is what this refusal keys on.
+// name, which is what this compile failure keys on.
 //
 // The op vocabulary cannot express them. `Call{Name, Arity}` re-invokes
 // BY NAME and does not consume a receiver, while an application consumes
@@ -18,13 +18,23 @@ import (
 // carries a name, replaying it as a Call would strand that value and
 // produce it twice. It needs an apply-style Op; see NUR077.
 //
-// Refusing is the point. The alternative — what this replaced — is a
+// Declining is the point. The alternative — what this replaced — is a
 // form that silently replays to a different answer than the program it
 // was recorded from, which is how the PBT shrinker came to report
 // counterexamples its own generator cannot produce.
 var ErrUnnamedApply = errors.New(
 	"stackform: cannot replay a function-value application — " +
 		"the op vocabulary can call a word by name but cannot apply a value")
+
+// ErrApplyReStep reports a form carrying the `apply` word's dispatch of a fn
+// value (Call.ReStep): the handler hands the value back for the engine to
+// re-step, and the fn's own dispatch is recorded right after it, so the
+// form holds the same application twice. Replaying it as written applies
+// the fn twice (`5 f/v apply` replayed 7 for 6, measured 2026-09-25), so
+// the form declines instead (NUR077's Hole 2).
+var ErrApplyReStep = errors.New(
+	"stackform: cannot replay the apply word's re-step — " +
+		"the applied fn's own dispatch is recorded a second time")
 
 // Flatten serialises a StackForm into a token sequence the kernel
 // engine can execute. Because the form is already strict-stack, the
@@ -75,6 +85,35 @@ func flattenStamped(form *StackForm) ([]core.Value, map[string]bool) {
 			// with all args already on the stack below it.
 			w := core.NewWordModified(o.Name, o.Arity, true, false)
 			out = append(out, w)
+			// A statement end after every call PARKS a Function-valued
+			// result: re-encountered at the pointer, an unquoted fn value
+			// dispatches at once (stepLiteral's guard), collecting whatever
+			// follows as its window — the arguments the Apply below would
+			// hand it, in the wrong order. Behind an End it stays data on
+			// the stack until the Apply re-steps it (NUR077). After any
+			// other result the End is inert.
+			out = append(out, core.NewEnd())
+		case Apply:
+			// The fn value sits BENEATH its Arity args (the recorder fires
+			// them in stack-replay order, the first param's value on top —
+			// the layout the named forward path records); `apply` wants the
+			// value on TOP of that window, so it is rotated up: [fn a] →
+			// `swap` → [a fn]; [fn b a] → `rot` → [b a fn]. Arity 0 applies
+			// the value in place. Wider arities are declined by Replayable
+			// before this runs (NUR077).
+			// The shuffle re-steps the fn value on top of its window and
+			// the End that follows resolves it from the stack — the
+			// interpreter's own binding rule, top of stack first (the same
+			// engine path `args… (fn) ;` takes). Arity 0 has no window to
+			// rotate; `apply` applies the parked value where it stands.
+			switch o.Arity {
+			case 0:
+				out = append(out, core.NewWord("apply"))
+			case 1:
+				out = append(out, core.NewWord("swap"), core.NewEnd())
+			case 2:
+				out = append(out, core.NewWord("rot"), core.NewEnd())
+			}
 		case Quote:
 			// nested form serialises to a list literal. The list
 			// is marked Quoted so the kernel doesn't auto-eval it
@@ -111,6 +150,13 @@ func Replayable(form *StackForm) error {
 			if o.Name == "" {
 				return ErrUnnamedApply
 			}
+			if o.ReStep {
+				return ErrApplyReStep
+			}
+		case Apply:
+			if o.Arity > 2 {
+				return ErrUnnamedApply
+			}
 		case Quote:
 			if err := Replayable(o.Body); err != nil {
 				return err
@@ -126,11 +172,26 @@ func Replayable(form *StackForm) error {
 // final stack as running `src` directly (modulo PRNG state for
 // non-deterministic programs).
 //
-// A form the recorder could not capture faithfully is REFUSED here
+// A form the recorder could not capture faithfully is DECLINED here
 // rather than replayed to a wrong answer; see Replayable.
+//
+// A form of PLAIN literal pushes alone — the value-level shrinker's
+// candidates (shrinkFailingInput: `[PushLit v]`, v the failing input or one
+// of its shrinks, a scalar or a container) — is its literals: the engine's
+// step of such a literal is the push of that value, unchanged (identity,
+// Quoted, all of it — TestEvalLiteralsOnlyMatchesTheEngine), so Eval answers
+// it without an engine run, and a compiled program's shrink stays off the
+// interpreter (the interp-entry census's corpus-modules.tsv L164). A form
+// with a call, a quote or a do replays on the engine as before, and so does
+// one pushing a Function — the push the engine would DISPATCH, which the
+// replay stamps Quoted — or any literal the engine steps rather than
+// pushes (a paren group, a splice, sugar, a reach).
 func Eval(reg *core.Registry, form *StackForm) ([]core.Value, error) {
 	if err := Replayable(form); err != nil {
 		return nil, err
+	}
+	if lits, only := plainLiterals(form); only {
+		return lits, nil
 	}
 	tokens, stamped := flattenStamped(form)
 	out, err := core.NewTop(reg).Run(tokens)
@@ -138,6 +199,34 @@ func Eval(reg *core.Registry, form *StackForm) ([]core.Value, error) {
 		return out, err
 	}
 	return unstamp(out, stamped), nil
+}
+
+// plainLiterals returns the values of a form made of plain literal pushes
+// alone (see Eval), or ok=false for any other form, an empty one included.
+func plainLiterals(form *StackForm) ([]core.Value, bool) {
+	if form == nil || len(form.Ops) == 0 {
+		return nil, false
+	}
+	out := make([]core.Value, 0, len(form.Ops))
+	for _, op := range form.Ops {
+		lit, isLit := op.(PushLit)
+		if !isLit || !plainLiteral(lit.V) {
+			return nil, false
+		}
+		out = append(out, lit.V)
+	}
+	return out, true
+}
+
+// plainLiteral reports whether the engine's step of v is the push of v
+// itself: a scalar, a list or a map value that is not a form the engine
+// steps (a paren group, a splice, sugar, a reach). A Function is not plain —
+// unquoted it dispatches.
+func plainLiteral(v core.Value) bool {
+	if v.Parent == nil || core.IsParenExpr(v) || core.IsSplice(v) || core.IsSugar(v) || core.IsReach(v) {
+		return false
+	}
+	return v.Parent.ConformsTo(core.TScalar) || v.Parent.ConformsTo(core.TList) || v.Parent.ConformsTo(core.TMap)
 }
 
 // unstamp restores the recorded state of every Function that flattenStamped

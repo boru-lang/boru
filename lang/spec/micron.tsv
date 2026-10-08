@@ -409,7 +409,7 @@ Micron cmp Pathon	-1	literals order by lattice Rank
 Emailon cmp Pathon	1
 Emailon tcmp Urlon	-1
 Micron tcmp Pathon	-1
-# cross-kind concrete pairs: cmp refuses, tcmp orders by Rank
+# cross-kind concrete pairs: cmp declines, tcmp orders by Rank
 (make Emailon 'a@b.c') cmp (make Pathon 'a/b')	ERROR:incomparable
 (make Emailon 'a@b.c') cmp (make Urlon 'https://b.c/a')	ERROR:incomparable
 (make Pathon 'a') tcmp (make Emailon 'a@b.c')	-1

@@ -126,6 +126,18 @@ export function parseErrText(te: JsonicErrorFields): [detail: string, note: stri
         "boru's grammar allows no continuation with " + q(src) + ' at this position',
         'check for a missing bracket, quote, or value just before it',
       ]
+    case 'empty_child':
+      return [
+        'empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)',
+        "a typed list's `:` child needs a value after the colon",
+        'write the element type after the colon, e.g. `[:Integer]`',
+      ]
+    case 'arrow_no_body':
+      return [
+        '`=>` has no body',
+        "a lambda's body follows the arrow: nothing does here",
+        'write the body after the arrow, e.g. `x => [ x mul 2 ]`',
+      ]
     case 'unterminated_string':
       return ['this string is never closed: ' + src, '', 'add the closing quote']
     case 'unterminated_comment':

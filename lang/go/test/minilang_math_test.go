@@ -88,7 +88,7 @@ func TestMiniMathInKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(mImp + `MiniLang.kinds`)
+	res, err := runReference(t, a, mImp+`MiniLang.kinds`)
 	if err != nil {
 		t.Fatalf("kinds: %v", err)
 	}

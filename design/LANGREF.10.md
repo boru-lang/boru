@@ -3553,7 +3553,7 @@ stdout for editor/tooling integration.
 | Code                     | Severity | Meaning                                                                     |
 |--------------------------|----------|-----------------------------------------------------------------------------|
 | `no_signature`           | error    | No signature matched at a call site; assumed best-fit candidate.            |
-| `uncalled_function`      | error    | A named function value (e.g. `Pkg.fn`) was called with args that matched no signature. Raised at the call site in both check and run (design/FN-VALUE-DISPATCH.0.md); `Pkg.fn/r` passes the function as data instead. |
+| `uncalled_function`      | error    | A named function value (e.g. `Pkg.fn`) was called with args that matched no signature. Raised at the call site in both check and run (design/legacy/FN-VALUE-DISPATCH.0.ignore); `Pkg.fn/r` passes the function as data instead. |
 | `undefined_word`         | error    | Word reference with no def; replaced with `Any` carrier to continue.        |
 | `fn_body_error`          | error    | Analysis of a user-defined fn body raised an error.                         |
 | `branch_error`           | error    | A branch (if/each/fold body) raised an error during symbolic analysis.      |

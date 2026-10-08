@@ -54,7 +54,7 @@ func TestModelActionSeesModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	okProg := modelImp + `def m (Model.new {src:'a: 1', actions:{check:([mod:Any] => [{ok: ((mod get 'a') eq 1)}])}}) (Model.run m) get 'ok'`
+	okProg := modelImp + `def m (Model.new {src:'a: 1', actions:{check:([mod:Any] => [({ok: ((mod get 'a') eq 1)})])}}) (Model.run m) get 'ok'`
 	if got := fmt.Sprintf("%v", runLast(t, a, okProg)); got != "true" {
 		t.Errorf("action ok: got %v, want true", got)
 	}
@@ -166,7 +166,7 @@ func TestModelWatchForkNoRace(t *testing.T) {
 			t.Fatalf("foreground boru corrupted during watch: got %v, want 42", got)
 		}
 	}
-	if _, err := a.Run("Model.stop mdl"); err != nil {
+	if _, err := runReference(t, a, "Model.stop mdl"); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 }

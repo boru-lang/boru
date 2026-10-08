@@ -8,7 +8,7 @@ import (
 )
 
 // These tests pin the structure-first, lazy forward-argument resolution
-// behaviour (design/LAZY-ARG-RESOLUTION.10.md). They are the §11 acceptance
+// behaviour (design/legacy/LAZY-ARG-RESOLUTION.10.ignore). They are the §11 acceptance
 // criteria from that proposal, exercised end-to-end against the default
 // language registry (which ships the internal `boru:string-util` module, so
 // no filesystem is involved).

@@ -38,7 +38,7 @@ import (
 // SANCTIONED check-vs-run divergence, not a checker false positive.
 // Triaged: 178 of the 182 contain a case (the exhaustiveness class), the
 // other 4 are the pre-existing if dead-branch residue.
-// -38 July 2026 (design/FN-VALUE-DISPATCH.0.md): a failed fn-value dispatch
+// -38 July 2026 (design/legacy/FN-VALUE-DISPATCH.0.ignore): a failed fn-value dispatch
 // raises at the dispatch site instead of being judged as end-of-run residue,
 // so 38 generated programs the checker flagged and the runtime then ran
 // clean now fail at runtime too — check and run agree where they diverged.
@@ -70,6 +70,7 @@ const pinnedCheckRunDivergent = 161
 // like TestPropertyDifferential (the pin applies only at the default
 // budget — a cranked run reports without gating).
 func TestCheckRunFalsePositive(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("check-run fp fuzz: skipped in -short")
 	}
@@ -126,7 +127,7 @@ func TestCheckRunFalsePositive(t *testing.T) {
 // error-severity diagnostic. A check-run error (parse failure, handler
 // error) is NOT a rejection here — the interpreter fails the same way, so
 // there is nothing to differentiate.
-func checkRejects(t *testing.T, src string) bool {
+func checkRejects(t testing.TB, src string) bool {
 	t.Helper()
 	ac := newDifferentialInstance(t)
 	cr, err := ac.Check(src)

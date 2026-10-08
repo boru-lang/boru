@@ -341,7 +341,7 @@ func TestCarrierJoinHelpers(t *testing.T) {
 	}
 
 	// LiteralCondValue folds a single-element condition list holding a
-	// concrete boolean (or a true/false word); anything else refuses.
+	// concrete boolean (or a true/false word); anything else declines.
 	if v, ok := core.LiteralCondValue(core.NewList([]core.Value{core.NewBoolean(true)})); !ok || !v {
 		t.Error("LiteralCondValue([true]) failed")
 	}

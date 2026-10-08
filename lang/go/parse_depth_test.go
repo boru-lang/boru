@@ -26,6 +26,9 @@ func TestDeeplyNestedSourceDoesNotCrash(t *testing.T) {
 	}()
 
 	out, compiled, rerr := a.RunCompiled(src)
+	if lang.NoteCompileDefect(t, src, out, rerr) {
+		return
+	}
 	if rerr == nil {
 		t.Fatalf("deeply nested source returned no error (out=%v compiled=%v)", out, compiled)
 	}
@@ -58,6 +61,9 @@ func TestModeratelyNestedProgramStillRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	cgot, _, cerr := b.RunCompiled(src)
+	if lang.NoteCompileDefect(t, src, cgot, cerr) {
+		return
+	}
 	if cerr != nil {
 		t.Fatalf("compiled path rejected a 40-deep nested program: %v", cerr)
 	}

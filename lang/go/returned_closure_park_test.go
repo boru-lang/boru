@@ -33,12 +33,12 @@ func TestReturnedClosureParkParity(t *testing.T) {
 		// parked: a Go-impl fn value returned by a user fn
 		{`import "boru:math-util" def f fn [[] [Any] [MathUtil.sqrt/v]]  f 16.0`, "fn sqrt(Number) 16.0 — was 4.0"},
 		// family C: two dynamic results live at once are two placed values
-		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 m.p 7`, "5 7 — was refused"},
+		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 m.p 7`, "5 7 — was declined"},
 		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 7`, "5 7"},
 		// a def-bound factory result applies by its BINDING's read, and its
 		// arity is provable off the baked lambda's own signature (the
 		// eleventh increment) — the paren and the bare read alike
-		{mk1 + `  def h (mk) h 7`, "8 — was refused, the closure shape unknown"},
+		{mk1 + `  def h (mk) h 7`, "8 — was declined, the closure shape unknown"},
 		{mk1 + `  def h (mk) (h 7)`, "8"},
 		// still applies: a paren rewind over two survivors
 		{mk1 + `  (mk 7)`, "8"},
@@ -99,7 +99,6 @@ func TestReturnedClosureParkInFnBodyRaisesTheCountError(t *testing.T) {
 // closure is a bare-name dispatch whose closure shape the compiler cannot
 // recover. Both answer through the interpreter.
 func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
 		{mk1 + `  def g fn [[] [Any Any] [mk 7]] g`, "dynamic value precedes residual args (fn-value-call boundary)"},
 		// A user fn returning a fn it was HANDED: the interpreter renders the
@@ -121,6 +120,10 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// The GENERIC path's pin: the `app` rows with a constant arg compile
+		// through a call-site specialised unit instead, rendered as the
+		// interpreter's frame binding (TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
@@ -130,15 +133,16 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, compiled, errC, _, _ := runBothEnginesNoSpec(t, c.src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", c.src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", c.src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence on the fallback: compiled=%v/%v interp=%v/%v", c.src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it, so there is no compiled answer to compare:
+		// the failure is booked as the defect it is (compile_defect_test.go).
+		requireCompileDefect(t, c.src, gotC, errC)
 	}
 }
 
@@ -150,7 +154,7 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 // Every sibling arm of resolveDynamicApply already consulted the park rule;
 // trailingApply checked only the shape.
 //
-// It stayed open for two increments because the sound fix refused a corpus
+// It stayed open for two increments because the sound fix declined a corpus
 // row: `10 (mk2 5) apply` parks identically and then APPLIES, because the
 // trailing word dispatches the parked value on purpose — and both lower to
 // the same OpCallDynamicTrailing, so the residual cannot separate them. The
@@ -169,45 +173,32 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 	src := mk2 + `10 (mk2 5) apply`
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if !compiled {
-		t.Error("`… apply` must keep compiling — the corpus row the previous attempt refused")
+		t.Error("`… apply` must keep compiling — the corpus row the previous attempt declined")
 	}
 	requireParity(t, src, gotC, errC, gotI, errI)
 	if fmt.Sprint(gotI) != "[11]" {
 		t.Errorf("the apply word applies the parked result: %v", gotI)
 	}
 
-	// Nothing claims it: the arm declines rather than applies. A refusal is
-	// the sound fallback — the default lane then answers on the interpreter.
-	// The forty-third increment's residual rebuild does NOT take this shape:
-	// its callable screen stands aside for a residual that may hold a
-	// Function, because a re-push is a data push where the interpreter
-	// re-steps (NUR131).
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
+	// Nothing claims it: the arm never applies. The shape declined "call
+	// result above a literal" until NUR181's fix (2026-09-23) let the
+	// program residual's ordering treat a PARKED result as the data it is;
+	// it now seats as the parked pair on both lanes.
+	src = mk + `5 (mk 3)`
+	gotC, compiled, errC, gotI, errI = runBothEngines(t, src)
+	if !compiled {
+		t.Error("an unclaimed parked result seats as data (NUR181)")
 	}
-	prog, reason, _, cerr := a.CompileCheck(mk + `5 (mk 3)`)
-	if cerr != nil {
-		t.Fatalf("check: %v", cerr)
-	}
-	if prog != nil {
-		t.Error("an unclaimed parked result must not compile to an apply")
-	}
-	if !strings.Contains(reason, "call result above a literal") {
-		t.Errorf("refusal = %q, want the existing residual-shape site", reason)
-	}
-	// And the value both lanes agree on is the PARKED pair.
-	d, _ := New()
-	gotI2, errI2 := d.RunInterp(mk + `5 (mk 3)`)
-	if errI2 != nil || fmt.Sprint(gotI2) != "[5 fn (Integer)]" {
-		t.Errorf("the park rule leaves both values: %v/%v", gotI2, errI2)
+	requireParity(t, src, gotC, errC, gotI, errI)
+	if errI != nil || fmt.Sprint(gotI) != "[5 fn (Integer)]" {
+		t.Errorf("the park rule leaves both values: %v/%v", gotI, errI)
 	}
 
 	// Shapes the discriminator must leave alone, all previously passing.
 	for _, s := range []string{mk + `(mk 3) 5`, mk + `5 (mk 3) 7`, mk + `1 2 (mk 3)`} {
 		gc, ok, ec, gi, ei := runBothEngines(t, s)
 		if !ok {
-			t.Logf("%q: not compiled (refusal, not a divergence)", s)
+			t.Logf("%q: not compiled (compile failure, not a divergence)", s)
 			continue
 		}
 		requireParity(t, s, gc, ec, gi, ei)
@@ -259,7 +250,7 @@ func TestShuffleRestepTimingDeclines(t *testing.T) {
 	// shuffle and drop empties the body on both lanes.
 	gotC, ok, errC, gotI, errI := runBothEngines(t, g+`[g/v] each [5 swap drop]`)
 	if !ok {
-		t.Fatal("the timing row must still compile — a refusal would hide the defect")
+		t.Fatal("the timing row must still compile — a compile failure would hide the defect")
 	}
 	if errI == nil || !strings.Contains(errI.Error(), "body produced no result") {
 		t.Errorf("the interpreter applies AT the shuffle, so drop empties the body: %v/%v", gotI, errI)

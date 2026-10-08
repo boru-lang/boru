@@ -10,7 +10,7 @@ import (
 // produced_closure_apply_test.go pins the twenty-eighth increment's recorder
 // pieces: the pending-apply lookup by sig body (PendingClosureApply), the
 // produced-fn-value predicate the `apply` word's registration reads
-// (producedFnValue), and Finalize's refusal of a pending application no
+// (producedFnValue), and Finalize's compile failure of a pending application no
 // dispatch consumed.
 
 func TestPendingClosureApply(t *testing.T) {
@@ -74,6 +74,6 @@ func TestFinalizeLeftoverPendingApply(t *testing.T) {
 	es.Compilable = true
 	es.units[0].pendingApply = []pendingApply{{id: "x"}}
 	if p, reason, ok := es.Finalize(nil); ok || p != nil || !strings.Contains(reason, "never dispatched") {
-		t.Fatalf("a pending apply on the program unit must refuse: ok=%v reason=%q", ok, reason)
+		t.Fatalf("a pending apply on the program unit must decline: ok=%v reason=%q", ok, reason)
 	}
 }

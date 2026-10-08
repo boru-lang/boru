@@ -15,8 +15,8 @@ ships: the carrier-based static checker (`eng/go/check.go`,
 `claude/formal-methods-boru-hdubtm` @ `6b6e20d`.
 
 Companion reading: `FORMAL-SPEC.md` (the operational semantics this plan
-mechanizes), `CARRIER-STATIC-TYPECHECK-REPORT.10.md` (the abstract
-interpreter this plan generalizes), `PBT-PLAN.10.md` (the random layer
+mechanizes), `legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore` (the abstract
+interpreter this plan generalizes), `legacy/PBT-PLAN.10.ignore` (the random layer
 this plan sits above), `boru-bytecode-*.md` (the second backend that
 makes compiler-correctness worth proving).
 
@@ -37,7 +37,7 @@ different tools:
 The two halves meet at one mechanism — the **carrier**. boru's static
 checker already runs the *real evaluator* over abstract "carrier" values
 that hold type information instead of concrete data; that is textbook
-**abstract interpretation** (`CARRIER-STATIC-TYPECHECK-REPORT.10.md`).
+**abstract interpretation** (`legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`).
 The central thesis of this document:
 
 > Because boru *runs one evaluator over abstract values*, both program

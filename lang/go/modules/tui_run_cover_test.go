@@ -74,7 +74,7 @@ func TestTuiRunPolicyLazyAndBackendFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, rErr := tuiRunHandler([]native.Value{native.NewMap(native.NewOrderedMap())}, nil, nil, preg)
-	// The gate now codes the refusal, so the scope is no longer a struct
+	// The gate now codes the compile failure, so the scope is no longer a struct
 	// field to read — it rides in the detail, which is the form the user sees.
 	var rAe *native.BoruError
 	if !errors.As(rErr, &rAe) || rAe.Code != "capability_not_installed" ||

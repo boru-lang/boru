@@ -1,0 +1,306 @@
+# Numeric Tower — adding a true `Decimal` to boru
+
+Status: **superseded by [../BIGNUM-0D.10.md](../BIGNUM-0D.10.md)** (the exact
+leaves shipped as `BigInteger`/`BigDecimal` opted into via the `0d`
+literal prefix, rather than the single `Decimal`/`d`-suffix sketched
+here). Retained for the motivation and the units-of-measure interaction.
+
+Original status: **proposal / design-only**. No code. This document
+specifies how boru would grow from two numeric leaves (`Integer`, `Float`)
+to a small *numeric tower* that includes an exact base-10 `Decimal`, and
+how that interacts with the proposed
+[F# units of measure](fsharp-units-in-boru-report.0.ignore).
+
+Notation: examples use the `# returns …` convention (a trailing comment,
+the documentation result form — see REFERENCE).
+
+## Motivation
+
+The WAT audit (Exhibit L) found the float64 leaf was misnamed
+`Decimal`; it has since been renamed **`Float`**, freeing `Decimal` for
+a *real* base-10 type. The gap `Float` leaves open:
+
+```
+0.1 add 0.2                    # returns 0.30000000000000004   (Float, binary)
+```
+
+A query language is where money and aggregates live, so exact base-10
+arithmetic — `0.1 + 0.2 = 0.3` — is the headline feature `Decimal`
+should deliver.
+
+## The tower
+
+Three leaves under `Scalar/Number`, distinguished by *representation*:
+
+| Leaf | Backing | Exact? | Use |
+| --- | --- | --- | --- |
+| `Integer` | `int64` today; `big.Int` proposed | yes (whole) | counts, indices |
+| `Float` | IEEE-754 `float64` | no | science, speed, transcendentals |
+| `Decimal` | `*apd.Decimal` (coefficient `big.Int` + `int32` exp) | yes (base-10, to a context precision) | money, exact fractions, aggregates |
+
+`Decimal` is backed by [`cockroachdb/apd`](https://github.com/cockroachdb/apd)
+(`github.com/cockroachdb/apd/v3`): pure Go, no cgo, wasm-friendly,
+arbitrary precision, with a `Context` carrying precision + rounding.
+
+**Adjacent decision (Exhibit K).** Making `Integer` a `big.Int` (with an
+int64 fast path) removes the silent overflow wrap and the
+large-literal→Float fallback. It is *separable* from Decimal but shares
+the same machinery (parser literal exactness, payload, promotion), so
+the two are best planned together.
+
+## The hard constraint: literals are exact text
+
+A `Decimal` literal **must** be parsed from its digit string, never from
+a `Float`. `convert Decimal 3.14` is lossy — by the time `convert` runs,
+`3.14` is already an inexact `Float`. Every literal option below reads
+the exact characters.
+
+## Literal syntax
+
+### Option A — a suffix (recommended)
+
+The lexer reads the exact digits into an `apd.Decimal`. `Float` keeps
+the bare `.` literal; `Decimal` takes a `d` suffix (mnemonic; `m` for
+"money" is the C# alternative):
+
+```
+typeof 3.14                    # returns Float
+typeof 3.14d                   # returns Decimal
+0.1d add 0.2d                  # returns 0.3        — exact
+19.99d mul 3                   # returns 59.97      — Integer promotes to Decimal
+typeof 100d                    # returns Decimal    — integer-valued decimal is fine
+1.5e3d                         # returns 1500       — scientific is allowed
+```
+
+Lexer grammar (extends `FloatLit`):
+
+```
+DecimalLit ::= [ "-" ] Digit {Digit | "_"} [ "." Digit {Digit | "_"} ]
+               [ ("e"|"E") ["-"|"+"] Digit {Digit} ] ("d" | "m")
+```
+
+Smallest change; `Float` literals are untouched; exactness is captured
+at parse time; the lossy-float trap is impossible to write.
+
+### Option B — decimal-by-default (bolder)
+
+Make a bare fractional literal the exact `Decimal`, and require `f` for
+`Float`:
+
+```
+typeof 3.14                    # returns Decimal    — exact by default
+typeof 3.14f                   # returns Float
+0.1 add 0.2                    # returns 0.3        — "just works"
+```
+
+The "correct common case" for a data language, but it changes what every
+existing `.` literal means — a migration, right after the `Float`
+rename. Choose only if committing to decimal-first semantics.
+
+### Option C — constructor word (no lexer change)
+
+Reuse existing machinery, sourcing from a **string** to stay exact:
+
+```
+Decimal "3.14"                 # returns 3.14
+convert Decimal "19.99"        # returns 19.99
+convert Decimal 3.14           # error — float source already rounded
+```
+
+Zero new syntax, but `Decimal "0.1"` is noisy for a number literal, and
+`convert Decimal <Float>` must be a hard error, not a silent rounding.
+
+**Recommendation: Option A.** It leaves `Float` exactly as is, makes
+decimals explicit and exact at the point of writing, and structurally
+prevents the float-source trap.
+
+## Promotion lattice (mixed arithmetic)
+
+When `add`/`sub`/`mul`/`div`/`mod`/`pow` see two different leaves, the
+result is the *wider* representation:
+
+```
+Integer ⊕ Integer  → Integer
+Integer ⊕ Decimal  → Decimal     (exact)
+Integer ⊕ Float    → Float
+Decimal ⊕ Decimal  → Decimal
+Decimal ⊕ Float    → Float | error   (see below)
+Float   ⊕ Float    → Float
+```
+
+`Decimal ⊕ Float` is the one genuine fork: either let `Float` "infect"
+(inexactness wins, result is `Float`) **or** make the mix a type error
+that forces an explicit `convert`. For a language that markets `Decimal`
+as the exact type, **error** is the safer default — silent
+`Decimal+Float→Float` would quietly throw away the exactness the user
+asked for. Recommend: error, with `19.99d (convert Float x) add` as the
+escape hatch.
+
+## Division and the rounding context
+
+`0.1d add 0.2d` is exact, but `1d div 3d` has no finite base-10 form, so
+`Decimal` division needs a **context** (precision + rounding mode):
+
+```
+1d div 3d                      # returns 0.3333333333333333333333333333  (28 digits, half-even)
+```
+
+boru already has an ambient **context Store** (the `context` word /
+copy-on-write layers). The decimal context lives there, with a block
+word to scope overrides and a sensible default (IEEE decimal128: 34
+significant digits, round-half-even):
+
+```
+with-decimal {precision: 10, rounding: 'half_up} [
+  1d div 3d                    # returns 0.3333333333
+]
+```
+
+`Integer div Integer` stays exact-quotient (truncating) as today — or,
+if Exhibit H is taken up separately, becomes `Decimal`. The two
+decisions are independent.
+
+## convert, make, rendering
+
+```
+convert Decimal "19.99"        # returns 19.99      — exact (string source)
+convert Decimal 5              # returns 5          — Integer source is exact
+convert Float 19.99d           # returns 19.99      — explicit, lossy by request
+convert Integer 19.99d         # returns 19         — truncates (or honour Exhibit Q/W)
+```
+
+**Rendering.** `apd` preserves *scale*, which is exactly what money
+wants:
+
+```
+0.10d add 0.20d                # returns 0.30       — scale 2 preserved
+1.0d                           # returns 1.0
+```
+
+Bare output shows the number; `typeof` / inspect distinguishes the leaf.
+If `3.5` (Float) and `3.5` (Decimal) must be told apart in raw output,
+inspect/verbose mode can suffix the decimal (`3.5d`) — a rendering
+choice, not a semantic one.
+
+## Implementation sketch
+
+Grounded in the kernel conventions (`eng/go/CLAUDE.md`):
+
+- **Payload** (`eng/go/payload.go`, sealed `Payload` interface): add a
+  wrapper variant `DecimalPayload{D *apd.Decimal}` (and, if Integer goes
+  bignum, `BigIntPayload{N *big.Int}` with an int64 fast path).
+- **Lattice / FixedID.** A `Decimal` literal is *parser-emitted*, so by
+  the kernel/domain rule `Decimal` is a **kernel builtin**, declared in
+  `eng/go/typetable.go::builtinDecls` with a `T*` constant in `types.go`
+  and a new FixedID from the reserved kernel range (100–999). It sits as
+  a `Scalar/Number` leaf beside `Integer`/`Float`; give it a positional
+  `Rank`. Update the `fixedid_stability_test` snapshot.
+- **Constructor / accessor** (`value.go`): `NewDecimal(*apd.Decimal)`
+  (the name is now free) and a free function `AsConcreteDecimal`,
+  following the `NewFloat`/`AsConcreteFloat` pattern.
+- **Comparer** (`compare_types.go`): extend the `Number` LCA Comparer so
+  `Decimal` compares against `Decimal` via `apd.Cmp`, and cross-leaf
+  magnitude still holds (`1 cmp 1.0` and `1 cmp 1.00d` → `0`). Compare
+  `Decimal`↔`Float` by converting the `Float` into a decimal (or via
+  `big.Rat`) to avoid reintroducing binary error.
+- **Arithmetic** (`lang/go/native/native_helpers.go::numericBinaryHandler`
+  and `native_math.go`): generalize the `(int64, float64)` pair into a
+  tower dispatch that picks the widest leaf and runs the matching
+  `apd.Context` op. This is also where the `Decimal ⊕ Float` policy
+  lands.
+- **Context** (`context` Store + a `with-decimal` block word): a default
+  `apd.Context` threaded to the decimal ops; the block word pushes a CoW
+  override layer.
+- **Lexer** (`eng/go/parser`): the `DecimalLit` suffix rule (Option A),
+  reading the digit string straight into `apd.Decimal` (no float
+  round-trip).
+
+## Interplay with F# units of measure
+
+This is where the tower pays off. The
+[units proposal](fsharp-units-in-boru-report.0.ignore) tags a number with a
+dimensional unit — `qty 9.81 {m:1, s:-2}`, or the `Number#<unit>` type
+form. **Units and the numeric tower are orthogonal axes:**
+
+- **Axis 1 — representation** (this doc): `Integer` / `Float` / `Decimal`
+  — *how exact* the magnitude is.
+- **Axis 2 — dimension** (units doc): `m`, `s`, `usd`, … — *what the
+  magnitude measures*.
+
+A `Quantity` carries **both**: a magnitude that is some `Number` leaf,
+plus a unit tag. The units doc already says as much — its
+`QuantityData.Value` is "a `Number` (Integer or Float)" — it just
+predates the existence of an exact `Decimal`. Adding `Decimal` makes the
+magnitude slot strictly more useful without touching the unit layer.
+
+### Money is the meeting point
+
+F#'s own canonical money example is `decimal<USD>` — an **exact decimal**
+magnitude with a **currency unit**. boru gets the same thing for free once
+both features exist:
+
+```
+def price (qty 19.99d {usd:1})         # Decimal magnitude, currency unit
+price add (qty 0.01d {usd:1})          # returns 20.00 usd   — exact + dimension-checked
+price add (qty 1 {eur:1})              # error: unit-mismatch (usd vs eur)
+price mul 3                             # returns 59.97 usd   — scalar keeps the unit
+```
+
+Two checks compose, in order:
+1. **Unit algebra** (axis 2) validates/propagates the dimension —
+   `usd add usd → usd`, `usd ≠ eur`.
+2. **Numeric promotion** (axis 1) combines the magnitudes per the
+   lattice above — here `Decimal add Decimal → Decimal`, exact, scale
+   preserved.
+
+So `qty 100 {m:1} add qty 0.5d {m:1}` checks `m = m`, then promotes
+`Integer add Decimal → Decimal`, giving `100.5 m`. The unit layer never
+needs to know which numeric leaf it wraps; it delegates magnitude math
+to the tower.
+
+### Literal composition
+
+Option A's `d`/`m` suffix and the units literal marker are independent
+tokens that stack as `<magnitude-with-numeric-suffix><unit-marker><unit>`:
+
+```
+19.99d : a Decimal literal
+19.99d <unit> : that Decimal, tagged
+```
+
+One caveat for the units team: the units report's Tier-2 marker is `#`,
+which is boru's line-comment character. A money literal `19.99d#usd`
+relies on "`#` glued to a number with no space = unit marker", which is
+fragile next to `# comment`. The *numeric* suffix (`d`) is unaffected
+either way — it binds to the number before any unit marker — so the
+marker choice is the units doc's to make; the tower imposes no new
+constraint on it.
+
+### Currency: unit, not newtype
+
+It is tempting to model `USD` as a `refine` newtype over `Decimal`. The
+units approach is stronger: it gives `usd/item` (unit price), `usd*usd`
+rejection, and a path to FX `convert` — all things a flat newtype can't
+express. Keep the split clean: **`Decimal` is the representation; the
+currency is a unit.** (`refine` is still the right tool for *non*-
+dimensional constraints, e.g. `def Price (Decimal gte 0d)`.)
+
+## Open decisions
+
+1. Literal syntax: **A (`d` suffix)** vs B (decimal-by-default) vs C
+   (constructor). Recommend A.
+2. `Decimal ⊕ Float`: **error** (recommended) vs Float-infects.
+3. Default decimal context: precision (34? 28?) and rounding
+   (`half_even`).
+4. Whether to take `Integer` to `big.Int` in the same pass (fixes
+   Exhibit K) or defer.
+5. Does `Decimal div Decimal` reuse `div`, and does `Integer div`
+   change (Exhibit H), or stay truncating?
+
+## Non-goals (this pass)
+
+- `Rational` (`big.Rat`): exact for *every* fraction including `1/3`, but
+  awkward to display and rarely what "decimal" users want. Reserve the
+  name; don't build it now.
+- Affine units (°C/K) — out of scope in the units doc too.
+- Implicit `Decimal`↔`Float` mixing without an explicit `convert`.

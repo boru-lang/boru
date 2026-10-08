@@ -159,7 +159,7 @@ func TestDescribeRendersInferredUnaryMathReturn(t *testing.T) {
 
 // TestSigReturnNamesPrefersReturnPattern pins the half of SigReturnNames
 // that reads the declared RETURN PATTERN rather than the *Type beside it.
-// A literal return type admits exactly itself (design/FN-OUTPUT-SIG.0.md),
+// A literal return type admits exactly itself (design/legacy/FN-OUTPUT-SIG.0.ignore),
 // so reporting the type alone — Integer for a word that only ever yields 22
 // — names a contract wider than the one the checker enforces.
 func TestSigReturnNamesPrefersReturnPattern(t *testing.T) {

@@ -1,20 +1,35 @@
-# file	piece	note
+# See design/legacy/ENG-FOUR-PIECE.0.ignore.
 # The core, check and compiler pieces now live in their own top-level
+# file	piece	note
 # modules and eng imports them directly; the generated facade that used to
 # stand between them was retired once nothing referenced it. This map now
 # tracks only the eng piece itself — the bytecode VM.
-# See design/ENG-FOUR-PIECE.0.md.
 collect_seam_host_test.go	eng	foreign-host proof for core's exported collection seam (Stage 4)
 compiled_runtime_vm.go	eng	
 region_host.go	eng	
+region_oracle.go	eng	
 vm.go	eng	
 vm_args_debug.go	eng	
 vm_args_release.go	eng	
 vm_callback_unit.go	eng
 vm_defer.go	eng	
+vm_do_restep.go	eng
 vm_dyn_apply.go	eng
+vm_dyn_body_one.go	eng
+vm_dyn_words.go	eng
+vm_list_restep.go	eng
+vm_fnvalue_seam.go	eng	
 vm_foreign_unit.go	eng
+vm_generic.go	eng	
 vm_markwindow.go	eng	
 vm_poly_nomatch.go	eng	
 vm_rematch.go	eng	
-vm_dyn_words.go	eng
+vm_spec_guard.go	eng	call-site specialisation guard (CALL_USER entry)
+vm_poly_cache.go	eng	poly inline cache (CALL_NATIVE_POLY per-site pick keyed on operand tags)
+vm_poly_seed.go	eng	seeded poly pick guard (CALL_NATIVE_POLY checker pick under a tag guard)
+vm_poly_barrier.go	eng	barred poly re-match planned over the recorded layout (NUR362)
+vm_token_body.go	eng	
+vm_fnvalue_park.go	eng	the unmatched fn value park/raise (execFnDefLiteral no-match fork)
+vm_fnvalue_zeroarg.go	eng	a named zero-argument fn value applied over a window (execFnDefLiteral zero-arg dispatch)
+vm_mixed_plan.go	eng	CALL_DYNAMIC_MIXED bound by the interpreter plan (execFnDefLiteral split rule)
+vm_splice_outs.go	eng	a do's fired splice results seated without them (NUR348)

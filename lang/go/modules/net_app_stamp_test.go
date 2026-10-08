@@ -14,7 +14,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/native"
 )
 
-// The LOAD-BEARING app regression (design/RUNTIME-STAMPING.0.md): the REAL
+// The LOAD-BEARING app regression (design/legacy/RUNTIME-STAMPING.0.ignore): the REAL
 // design/examples/apps/mini-redis.boru, imported under an armed registry,
 // must (a) stamp its module callbacks at load, and (b) answer a full driven
 // command battery over real sockets byte-identically to the unarmed

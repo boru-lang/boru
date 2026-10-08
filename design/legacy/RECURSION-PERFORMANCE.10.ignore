@@ -1,0 +1,106 @@
+# Recursion Performance — Investigation
+
+**Status:** Discovery note (not an ADR). Captures a measured performance
+characteristic of the current execution model and the directions a fix
+could take. No behaviour change is proposed here.
+
+## Symptom
+
+Recursive boru functions run in **O(depth²)** time, while the equivalent
+iterative `for` loop is flat. Measured with the reference binary:
+
+| program | n=500 | n=1000 | n=2000 | n=4000 |
+|---|---|---|---|---|
+| `def s fn [[n] [Integer] [if (n lte 0) [0] [n add (s (n sub 1))]]]` | 257 ms | 1 486 ms | 10 128 ms | (hits step limit) |
+| `for [i 1 n] [def acc (acc add i)]` | — | ~9 ms | ~9 ms | ~9 ms (n=16000) |
+
+Doubling the recursion depth roughly quadruples the time — the signature
+of quadratic behaviour. The loop is constant-time per iteration.
+
+## Root cause
+
+The engine executes on a single contiguous tape (`Engine.stack`, a
+`[]Value`). Words, forwards, parens, and function bodies all live on this
+one slice, and the interpreter walks a pointer across it. A function call
+does not push a separate frame onto a call stack — it **splices the
+function body inline into the tape** at the call site (see
+`engine.go::execFnDefSig` / `execFnDefLiteral`, which call
+`stackSplice`/`stackInsert`, and `evalParenGroupAt` for paren groups).
+
+`stackSplice`/`stackInsert`/`stackRemove` (`engine_stack.go`) shift the
+tail of the slice with `copy` (i.e. `runtime.memmove`). Each `Value` is
+**160 bytes**, so every splice moves `160 × (tape length after the splice
+point)` bytes.
+
+During recursion the parent frames have not been consumed yet — their
+parked forward args, open parens, and pending continuations all remain on
+the tape ahead of the pointer. So at depth *d* the tape holds O(*d*)
+live entries, each of the O(*d*) further splice operations memmoves
+O(*d*) entries, and the total work is **O(d² × 160 bytes)**.
+
+A CPU profile of `s 2000` confirms it directly:
+
+```
+  95.88%  runtime.memmove
+   ← stackInsert / stackRemove / stackSplice
+   ← stepLiteral / resolveForwardArgs / insertForward / spliceMatchResults
+```
+
+96% of the entire run is `memmove` inside the tape-splice primitives. The
+iterative loop avoids this because the loop body is re-run in place — the
+tape does not grow with iteration count.
+
+## Why the loop is fine but recursion is not
+
+`for` reuses one body region on the tape and keeps the def-stack depth at
+1 across iterations (see `FOR-LOOP-REVIEW.10.ignore`). Recursion, by
+contrast, nests a fresh spliced body per level and only unwinds them as
+each `add` finally resolves, so the tape (and therefore every memmove)
+grows with depth.
+
+## Secondary issue: misleading error at the depth cliff
+
+Deep-but-valid recursion that exceeds the limits does **not** report a
+clean "recursion/step limit exceeded" error. `s 4000` surfaces:
+
+```
+[boru/syntax_error]: unmatched opening parenthesis
+```
+
+This comes from the inner `evalParenGroupAt` loop giving up at its
+`limit < 2222` cap mid-paren, leaving the tape's parens unbalanced, which
+is then reported as a syntax error. The diagnosis is wrong (the source is
+syntactically fine) and should instead be an explicit evaluation/recursion
+budget error. Tracked separately from the performance characteristic.
+
+## Remediation directions (not yet chosen)
+
+None of these is small; they are recorded so the trade-offs are visible.
+
+1. **Separate call stack for fn invocation.** Instead of splicing the
+   body inline, push a frame (body tokens + a return pointer) onto a
+   distinct call stack and run it there, so the main tape does not grow
+   with call depth. This is the standard fix and removes the quadratic
+   factor, but it is a substantial change to the dispatch model
+   (`execFnDefSig`, `CallBoru`, the `__pa`/cleanup machinery, forward
+   collection across the frame boundary).
+
+2. **Tail-call optimisation.** Detect a body whose final action is a
+   self-call in tail position and reuse the current frame/region instead
+   of nesting a new one. Narrower than (1) — only helps tail-recursive
+   shapes — but covers the common accumulator idiom and is a contained
+   change.
+
+3. **Cheaper tape growth.** Storing `Value` (160 B) inline makes every
+   memmove expensive; a smaller tape element (e.g. an index/handle into a
+   side table) would shrink the constant factor but not the O(d²) class.
+   A palliative, not a cure.
+
+4. **Make the depth cliff explicit.** Independent of the above, give
+   `evalParenGroupAt` / the step loop a real "evaluation limit exceeded"
+   error so deep recursion fails legibly instead of as a phantom syntax
+   error.
+
+Until one of these lands, the practical guidance is: **prefer iterative
+`for` over deep recursion for large N**, and keep recursion to shallow or
+tail-accumulator shapes.

@@ -64,19 +64,19 @@ func TestGradualApplyDefers(t *testing.T) {
 		gaAdd2 + `def w fn [[m:Map x:Integer][Any][x (m get "f") apply]]  w {f: (fn [[a:Integer b:Integer][Integer][a sub b]])} 4`,
 	}
 	for _, src := range rows {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if compiled {
-			t.Errorf("%q: ran compiled — the op must defer this runtime state", src)
-		}
+		gotC, _, errC, gotI, errI := runBothEngines(t, src)
+		// The op used to defer this runtime state to the interpreter and the
+		// two lanes agreed. There is nothing to defer to: the bail is booked
+		// as the defect it is.
 		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 
-// TestGradualApplySoundRefusals pins the neighbour that still REFUSES: a
+// TestGradualApplySoundCompileFailures pins the neighbour that still DECLINES: a
 // body declaring two returns over the one-result model. (The apply word
-// over a produced closure at the MAIN program was pinned here as a refusal
+// over a produced closure at the MAIN program was pinned here as a compile failure
 // until the twenty-eighth increment compiled it — produced_closure_apply_test.go.)
-func TestGradualApplySoundRefusals(t *testing.T) {
+func TestGradualApplySoundCompileFailures(t *testing.T) {
 	rows := []string{
 		gaAdd2 + `def w fn [[m:Map x:Integer][Any Any][x (m get "f") apply]]  w {f: ([] => [42])} 4`,
 	}
@@ -90,7 +90,7 @@ func TestGradualApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", src, cerr)
 		}
 		if prog != nil || reason == "" {
-			t.Errorf("%q: compiled (reason %q) — expected a sound refusal", src, reason)
+			t.Errorf("%q: compiled (reason %q) — expected a compile failure", src, reason)
 		}
 	}
 }

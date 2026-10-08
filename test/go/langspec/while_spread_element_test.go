@@ -17,6 +17,7 @@ import "testing"
 // TestCheckTypeSoundness would catch a regression too, as a nameless "+1
 // violation" over 6,475 rows. This says which row and why.
 func TestWhileSpreadElementCoversEveryResidualValue(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"mixed residual types", `def zc (flex {n:0}) end while [(zc get 'n') lt 2] [ set 'n' ((zc get 'n') add 1) zc end (zc get 'n') ]`},
 		{"the graduated row", `def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`},

@@ -41,7 +41,7 @@ func TestMiniXPathResults(t *testing.T) {
 			if err != nil {
 				t.Fatalf("lang.New: %v", err)
 			}
-			res, err := a.Run(xpImp + c.src)
+			res, err := runReference(t, a, xpImp+c.src)
 			if err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
@@ -66,7 +66,7 @@ func TestMiniXPathDesugar(t *testing.T) {
 }
 
 // TestMiniXPathErrors pins the loud failures: a malformed XPath (parse error)
-// and a non-Xml document (the typed signature refuses to dispatch).
+// and a non-Xml document (the typed signature declines to dispatch).
 func TestMiniXPathErrors(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"bad xpath", `<r/> mini xp '//['`, "mini_parse_error"},
@@ -98,7 +98,7 @@ func TestMiniXPathNonXmlSubject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(xpImp + `{a:1} mini xp '//a' {} typeof`)
+	got, err := runReference(t, a, xpImp+`{a:1} mini xp '//a' {} typeof`)
 	if err != nil {
 		t.Fatalf("expected the partial to stay data, got error: %v", err)
 	}

@@ -3,7 +3,7 @@
 Status: **implemented**. This is the as-built record for the two
 arbitrary-precision numeric leaves added under `Scalar/Number`. It
 supersedes the single-`Decimal`/`d`-suffix sketch in
-[NUMERIC-TOWER.0.md](NUMERIC-TOWER.0.md). User-facing documentation lives
+[legacy/NUMERIC-TOWER.0.ignore](legacy/NUMERIC-TOWER.0.ignore). User-facing documentation lives
 in [REFERENCE.md](../REFERENCE.md) (§ "Arbitrary-precision numbers");
 the executable spec is [`lang/spec/bignum.tsv`](../lang/spec/bignum.tsv).
 

@@ -20,7 +20,7 @@ def E (class {}) convert List (make E {})	[]	an empty class instance → empty L
 #
 # §2  a module namespace IS a plain Map of its exports — no conversion
 # needed (the Ideal/ModuleExport wrapper is retired, NUR038): map words
-# read it directly, and `convert` refuses exactly as it does for any Map.
+# read it directly, and `convert` declines exactly as it does for any Map.
 import module [export "Foo" {a:1 b:2}] Foo size	2	map words work directly on a namespace
 import module [export "Foo" {a:1 b:2}] keys Foo	['a' 'b']	…the export names are plain map keys
 import module [export "Foo" {a:1 b:2}] convert Map Foo	ERROR:no signature matches	nothing to convert — a namespace is already a Map

@@ -40,8 +40,8 @@ by the cited file):
   `receive` (with `after`) / `register` / `whereis`, bounded mailboxes,
   pattern-matched consume-front dispatch (`design/PROCESSES.0.md`; verified by
   `describe spawn` and by run). A hosted machine's event loop is these words.
-  Note: `design/IMPLEMENTATION-STATUS.10.md` still records PROCESSES/SERVICES
-  as "RFC; no code" — that is stale; `design/NETWORK-IMPLEMENTATION-PLAN.0.md`
+  Note: `design/legacy/IMPLEMENTATION-STATUS.10.ignore` still records PROCESSES/SERVICES
+  as "RFC; no code" — that is stale; `design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore`
   §1 is the ground truth for the shipped subset.
 - **The service layer is implemented**: `service` / `add` / `call` / `send` /
   `state-of` — "a value that owns state and answers pattern-matched requests"
@@ -68,7 +68,7 @@ by the cited file):
   log (verified by run: `fold [bump] [{e: 1} {e: 2} {e: 3}] {n: 0}` → `{n:3}`
   with the element bound first, accumulator second); `scan` yields the audit
   trajectory.
-- **TCO is a language guarantee** (`design/TCO.10.md`) — a process host's
+- **TCO is a language guarantee** (`design/legacy/TCO.10.ignore`) — a process host's
   tail-recursive receive loop cannot blow the stack.
 - **Timer machinery at the host layer**: `receive … after <ms>`, plus
   `boru:time-util`'s clock-capability-gated words.
@@ -98,12 +98,12 @@ boundedly, instead of every process reinventing it. A served machine is a
 whose receive loop is the machine's step. The machine itself is neither: it is
 a **value**, host-independent and testable with no concurrency at all.
 
-### Relationship to `case-exhaustiveness.0.md` and `VALUE-PATTERN-DISPATCH.0.md`
+### Relationship to `case-exhaustiveness.0.md` and `legacy/VALUE-PATTERN-DISPATCH.0.ignore`
 
 The exhaustiveness pass is the strongest static asset this design leans on,
 and it is already load-bearing: hand-written machines that encode states as an
 `enum` and dispatch with `case` get gating state×event coverage today (§6.4).
-`VALUE-PATTERN-DISPATCH.0.md` records the precision gap that blocks the
+`legacy/VALUE-PATTERN-DISPATCH.0.ignore` records the precision gap that blocks the
 *overload* encoding of the same idea (enum-state value-pattern overloads fail
 through variable references); this RFC **endorses that fix as an independent
 effort** (§8 item 3) — it is the one language-level investment adjacent to
@@ -612,7 +612,9 @@ arrives here in two forms.
 #### 3.6.1 `classify:` — the function form
 
 A machine-level name in the spec, bound like any other (§3.1), whose role is
-`(raw:Any) -> Map`: **pure**, returning an event map. `State.step` then
+`(raw:Any) -> Atom`: **pure**, returning the CLASS the input belongs to — one
+of the atoms its declaration lists in `yields:` (below; decided 2026-09-26,
+NUR065). `State.step` then
 accepts `{raw: <value>}` where it otherwise takes `{event: <atom>}`. Purity is
 the same documented-not-enforced contract as guards and reducers (§3.2), for
 the same reason — the step must stay replayable — and it is the reason
@@ -633,17 +635,38 @@ visible in the table: a **guard**, which sees `(event ctx)` and can refuse a
 transition the classification alone would have allowed.
 
 The function form is the escape hatch: it handles inputs no partition
-describes — classifying a parsed record by three of its fields, say. Its cost
-is that a fn's output domain is not statically knowable, so none of §3.6.2's
-checks apply and the alphabet-closure guarantee (§3.3.11) stops at the
-machine's edge: an event atom the classifier invents but `events:` never
-declared is a step-time `state_bad_event`, where the table form would have
-caught it at define time. That asymmetry is the whole reason `classes:` is
-the preferred form, and open question #7 asks whether the fn form should
-ship in v1 at all. Because it is one role with two spellings held to
-different standards, it is recorded in the register as **NUR065** (Pending) —
-alphabet closure, payload shape, and diagnostics all diverge — so it cannot
-be silently baselined while that question is open.
+describes — classifying a parsed record by three of its fields, say. It is
+one role with two spellings, so it is held to the table form's standard
+(NUR065, resolved 2026-09-26 by deciding open question #7). A fn's output
+domain is not statically knowable, so the declaration SAYS it:
+
+```boru
+classify: {fn: by-fields  yields: [header row trailer any/q]}
+```
+
+and every guarantee follows from that, the same way for both forms:
+
+- **Alphabet closure at define time.** Every `yields:` atom must be a
+  declared `events:` member (`state_unknown_name`), exactly as every
+  `classes:` key must — so the closure guarantee (§3.3.11) holds through the
+  machine's edge for both spellings. At step time a fn that returns an atom
+  outside its `yields:` has classified the input to no declared class, which
+  is the table form's unmatched input: `state_bad_event`, the same code.
+- **One payload shape.** The fn returns the class ATOM, never an event map,
+  and the machine builds the frozen event of §3.6.2 — `{event: <class>  raw:
+  v}` — so a reducer reaches the input as `ev.raw` whichever form classified
+  it.
+- **The same diagnostics.** `state_bad_class` covers a malformed `classify:`
+  declaration (no `yields:`, an empty or duplicated one, both forms declared)
+  as it covers a malformed table, and `state_class_gap` (Info) flags a
+  classifier with no `any/q` class, in either form: a fn with `any/q` in
+  `yields:` is total by construction, like a table with the catch-all.
+  Disjointness needs no check for a function — each input has one class by
+  construction.
+
+What stays different is only what MUST: the mapping inside the fn is opaque,
+so a `classes:` table is still the form `State.graph` can draw per input and
+the preferred one where a partition describes the inputs.
 
 #### 3.6.2 `classes:` — the table form (preferred)
 
@@ -700,9 +723,9 @@ about: classifying `v` yields `{event: <class-atom>  raw: v}` — the class
 becomes the event and the input survives verbatim under `raw:`, the same key
 `State.step` accepts it under. So a state's reducers reach the original value
 as `ev.raw`, and a classified event's `events:` entry declares `{raw: <type>}`
-like any other payload (§11.2). The fn form has no such rule: it returns the
-whole event map and therefore owns its own payload shape, which is the other
-half of why it cannot be checked.
+like any other payload (§11.2). The fn form produces the same event: its fn
+returns the class atom and the machine builds `{event: <class> raw: v}`
+(§3.6.1), so the payload shape is one rule for both spellings.
 
 #### 3.6.3 Classification and the state-explosion tradeoff
 
@@ -861,11 +884,11 @@ from `State.lint` (phase 2):
 |---|---|---|
 | `state_bad_spec` | Error | malformed shape: no `initial:`, unknown keys, nested `states:` (reserved for phase 2), `final` state with `on:` |
 | `state_unknown_target` | Error | a `to:` names an undeclared state |
-| `state_unknown_name` | Error | an unbound `act:`/`when:`/`entry:`/`exit:`/`classify:` name; or, with a declared alphabet, an event in `on:`/`defer:`/`after:`/`raise`/`catch:`/`classes:` outside `events:` |
+| `state_unknown_name` | Error | an unbound `act:`/`when:`/`entry:`/`exit:`/`classify:` name; or, with a declared alphabet, an event in `on:`/`defer:`/`after:`/`raise`/`catch:`/`classes:`/`yields:` outside `events:` |
 | `state_bad_binding` | Error | a bound value is not a function or does not fit its role — guard: `(Map Map) -> Boolean`; reducer: `(Map Map) ->` a map or the `{ctx raise fx}` record (§3.2); classifier: `(Any) -> Map` (§3.6.1) |
 | `state_conflict` | Error | an unguarded variant that is not last in its state×event variant list, shadowing every variant after it (§3.3.12) |
-| `state_bad_class` | Error | a malformed `classes:` entry: a range that is not `[lo hi]` with `lo` ordered before `hi`, a class overlapping another non-catch-all class, more than one `any/q`, or both `classes:` and `classify:` declared (§3.6.2) |
-| `state_class_gap` | Info | a `classes:` table with no `any/q` catch-all — the input domain has holes that surface only at step time as `state_bad_event` (Noble's `other?` column, §3.6.2) |
+| `state_bad_class` | Error | a malformed classifier: a `classes:` range that is not `[lo hi]` with `lo` ordered before `hi`, a class overlapping another non-catch-all class, more than one `any/q`; a `classify:` with no `yields:` or an empty or duplicated one; or both `classes:` and `classify:` declared (§3.6.1, §3.6.2) |
+| `state_class_gap` | Info | a classifier with no `any/q` class — a `classes:` table with no catch-all, or a `classify:` whose `yields:` lacks it — so the input domain has holes that surface only at step time as `state_bad_event` (Noble's `other?` column, §3.6.2) |
 | `state_unreachable` | Info | a state with no path from `initial:` (advisory per the "gate on wrongness, advise on smell" precedent, `case_unreachable_clause`) |
 | `state_unhandled` | Info | the state×alphabet totality matrix's holes, computed against the machine's declared policy; **Error** iff the spec opts in with `total: true` (open question #2) |
 | `state_no_final_path` | Info | machine declares a final state some state cannot reach — the honest pseudo-liveness check; real liveness is out of scope |
@@ -895,7 +918,7 @@ state-machine logic in plain boru get §6.1's checking for free, today:
   everywhere it was tried).
 
 The module's documentation presents both as the drop-down path when the
-declarative table doesn't fit (HOWTO material), and `VALUE-PATTERN-DISPATCH.0.md`'s
+declarative table doesn't fit (HOWTO material), and `legacy/VALUE-PATTERN-DISPATCH.0.ignore`'s
 precision fixes (§8 item 3) make the second encoding robust through variables.
 
 And a third encoding stays deliberately **unblessed**: *boolean history
@@ -944,8 +967,8 @@ machine could do directly.
 ## 8. Language primitives — considered and declined
 
 The corpus default stands: "new behaviour is a word or a literal, nothing
-else" (`effect-oriented-programming-in-boru-report.0.md`,
-`fsharp-units-in-boru-report.0.md`), and `amop-in-boru-report.0.md` §2.1
+else" (`legacy/effect-oriented-programming-in-boru-report.0.ignore`,
+`legacy/fsharp-units-in-boru-report.0.ignore`), and `legacy/amop-in-boru-report.0.ignore` §2.1
 already recommended library-first for exactly this shape ("Do not change the
 core parser first"). Candidates, with verdicts:
 
@@ -979,7 +1002,7 @@ core parser first"). Candidates, with verdicts:
    RFC's side.
 3. **Value-pattern-dispatch precision fixes** — **endorsed, as an independent
    effort.** The two partition bugs and the variable-reference gap recorded
-   in `VALUE-PATTERN-DISPATCH.0.md` are not state-machine work, but fixing
+   in `legacy/VALUE-PATTERN-DISPATCH.0.ignore` are not state-machine work, but fixing
    them completes §6.4's second encoding (overload-level exhaustiveness
    through variables). This document adds a consumer to that design's
    motivation; it does not depend on it.
@@ -988,11 +1011,12 @@ core parser first"). Candidates, with verdicts:
    it plausible and value semantics makes it sound-ish without linearity, but
    it should be driven by evidence from `state_*` diagnostics in use, not
    designed speculatively.
-5. **Generalizing `receive`-style binding slots** to `add`/machine clauses
-   (healing the route-only vs route+bind asymmetry) — **out of scope here**;
-   it belongs to the processes/services design line. The asymmetry itself is
-   now recorded in the register as **NUR064** (Pending), so it cannot be
-   silently baselined while that line decides.
+5. **Binding slots in machine clauses.** The route-only vs route+bind
+   asymmetry between `add` and `receive` is healed (**NUR064**, resolved
+   2026-09-26): a service `add` pattern is the same two-layer clause pattern
+   a `receive` clause is (`PROCESSES.0.md` §3), so a machine clause built
+   over either inherits one semantics. Whether machine clauses take binding
+   slots at all is this document's own open question, not an asymmetry.
 
 ## 9. Gap analysis
 
@@ -1029,7 +1053,7 @@ transport story is the distribution story).
 
 - **Phase 0 — preconditions.** The VM fallback double-run fix; loader `Procs`
   sharing; (independent, already recorded elsewhere) the
-  `VALUE-PATTERN-DISPATCH.0.md` partition fixes.
+  `legacy/VALUE-PATTERN-DISPATCH.0.ignore` partition fixes.
 - **Phase 1 — the core module.** `define`/`init`/`step`/`can`/`spec`/
   `classify`/`serve`/`start`; the §3.3 semantics complete (RTC, internal
   drain, bounded postpone, entry/exit + explicit self-transition kinds, named
@@ -1371,14 +1395,14 @@ precise about, because it is the whole content of row 21:
 6. **Shallow history in phase 2** — adopt iff it falls out of the SCXML
    algorithm without new semantics; deep history is declined outright.
    (Leaning yes-if-free.)
-7. **Should `classify:` (the fn form, §3.6.1) ship at all in v1?** The
-   `classes:` table earns every check in §6.3; the fn form earns none — its
-   output domain is unknowable, so a machine using it silently loses the
-   alphabet closure that is half the point of §3.6. Shipping both risks the
-   fn form becoming the default because it is the familiar one. (Leaning
-   ship both but document `classes:` as the form with the diagnostics, and
-   have `State.lint` (phase 2) note a machine that classifies by fn — the
-   same posture as `state_class_gap`: visible, not fatal.)
+7. **Should `classify:` (the fn form, §3.6.1) ship at all in v1?**
+   **Decided 2026-09-26 (NUR065): ship both, on ONE set of guarantees.** The
+   fn form declares its output alphabet (`yields:`) and returns a class atom
+   the machine wraps in the frozen `{event raw}` payload, so alphabet
+   closure, payload shape and the `state_*` diagnostics are the table
+   form's for both spellings; only the mapping inside the fn stays opaque.
+   (The question was framed as whether the fn form earns any of §6.3's
+   checks; declaring `yields:` is what makes it earn them.)
 8. **How far does `classes:` range over?** §3.6.2 defines selectors over
    boru's total value order, which makes `[1 9]` over integers and
    `[a-atom z-atom]` over atoms as legal as `["0" "9"]` over single-character

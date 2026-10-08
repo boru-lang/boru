@@ -72,12 +72,12 @@ func TestVMBindResidentTypeArm(t *testing.T) {
 	}
 }
 
-// The TYPE arm RAISES when the installer refuses, rather than installing
+// The TYPE arm RAISES when the installer declines, rather than installing
 // nothing and running on. The check pass ran the same body under the same
-// name, so a refusal here means a malformed program — driven directly with
-// a body whose lattice node is gone, the one refusal a Program can be built
+// name, so a compile failure here means a malformed program — driven directly with
+// a body whose lattice node is gone, the one compile failure a Program can be built
 // to carry.
-func TestVMBindResidentTypeArmInstallerRefusal(t *testing.T) {
+func TestVMBindResidentTypeArmInstallerCompileFailure(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
@@ -98,7 +98,7 @@ func TestVMBindResidentTypeArmInstallerRefusal(t *testing.T) {
 	}
 	out, err := RunProgram(p, r)
 	if err == nil {
-		t.Fatalf("a refused type install must raise, got out=%v", out)
+		t.Fatalf("a declined type install must raise, got out=%v", out)
 	}
 	if !strings.Contains(err.Error(), "BIND_RESIDENT type install") {
 		t.Fatalf("error = %v, want the type-install arm's own wording", err)

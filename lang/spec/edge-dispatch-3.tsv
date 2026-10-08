@@ -57,7 +57,7 @@ def R (refine Record [{pretty:Boolean}]) make R {pretty:1}	{pretty:true}	make CO
 def R (refine Record [{pretty:Boolean}]) make R {pretty:"yes"}	{pretty:true}	…and a yes-string too
 def R (refine Record [{pretty:Boolean}]) make R {pretty:"false"}	{pretty:true}	…even the text "false" — content is not parsed, any non-empty string → true
 def R (refine Record [{n:Integer}]) make R {n:"5"}	ERROR:not a number	but a non-numeric string cannot coerce into an Integer field
-# (dropped) refine-Record predicate field read compiles-refuses (falls back sound); a compiler-coverage gap, not pinned here to keep the frontier gate pure
+# (dropped) refine-Record predicate field read compiles-declines (falls back sound); a compiler-coverage gap, not pinned here to keep the frontier gate pure
 def R (refine Record [{pretty:Boolean}]) def f fn [[o:R][Boolean][o.pretty]] f {pretty:true}	true	a structurally-conforming plain map is admitted at the param
 def R (refine Record [{pretty:Boolean}]) def f fn [[o:R][Boolean][o.pretty]] f {pretty:true extra:1}	true	extra keys are fine STRUCTURALLY at a param slot…
 def R (refine Record [{pretty:Boolean}]) def f fn [[o:R][Boolean][o.pretty]] f {prety:true}	ERROR:no signature matches	…but a missing declared key fails dispatch
@@ -139,7 +139,7 @@ def f fn [[x:Any][Boolean][x is Number]] f 0d1	true	…while a Number test admit
 def f fn [[x:Any][String][if (x is String) [x add "!"] ["?"]]] f "hi"	'hi!'	a narrowed String flows into the concat overload
 def f fn [[x:Any][String][if (x is String) [x add "!"] ["?"]]] f 9	'?'	non-strings never reach the concat
 def f fn [[x:Any][Integer][x add 1]] f 1	2	an UNguarded Any param still dispatches by the runtime value
-# (dropped) `f true` into an [x:Any] fn then arithmetic — Any-operand dispatch recovery refuses (falls back sound); documented-tier shape, out of corpus for gate purity
+# (dropped) `f true` into an [x:Any] fn then arithmetic — Any-operand dispatch recovery declines (falls back sound); documented-tier shape, out of corpus for gate purity
 def f fn [[x:Any][Integer][x add 1]] f "a"	ERROR:expected Integer	a String arg concatenates ('1a') and is then caught by the RETURN check
 #
 # §10  undefined words vs their Atom escapes

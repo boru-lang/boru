@@ -45,8 +45,8 @@ func TestModuleExportedTypesAcrossEngines(t *testing.T) {
 		// checkType is the residual stack type the checker must infer.
 		checkType string
 		// mustCompile requires the bytecode compiler to lower the program
-		// natively (not fall back to the interpreter). Left false for
-		// programs the emitter may legitimately refuse; parity is still
+		// natively (not not compile). Left false for
+		// programs the emitter may legitimately decline; parity is still
 		// asserted in every case.
 		mustCompile bool
 	}{
@@ -120,7 +120,7 @@ func TestModuleExportedTypesAcrossEngines(t *testing.T) {
 				t.Errorf("compiled = %s, want %s (compiled natively = %v)", got, c.want, compiled)
 			}
 			if c.mustCompile && !compiled {
-				t.Errorf("expected the compiler to lower the program natively, but it fell back to the interpreter")
+				t.Errorf("expected the compiler to lower the program natively, but it did not compile")
 			}
 		})
 	}

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// The runaway taxonomy (design/TCO-STAGED.10.md Stage 4a): with full
+// The runaway taxonomy (design/legacy/TCO-STAGED.10.ignore Stage 4a): with full
 // frame replacement, an infinite TAIL loop consumes CPU, not memory —
 // it must trip the step-count guard (evaluation_limit), never the tape
 // ceiling (tape_exhausted). Before TCO the same loop was misclassified

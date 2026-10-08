@@ -654,7 +654,7 @@ module, so a plain name, not `-util` (`lang/go/CLAUDE.md` naming rules).
 | Tier 2 runtime | `run` `serve` `quit` |
 | Pure helpers | `style` `edit` `focusable` |
 | Widget constructors | `text` `rows` `cols` `box` `list-view` `table` `input` `viewport` `spacer` |
-| Standalone utilities | `colorize` `strip-ansi` `text-width` ([TUI-UTILITIES.0.md](TUI-UTILITIES.0.md)) |
+| Standalone utilities | `colorize` `strip-ansi` `text-width` ([legacy/TUI-UTILITIES.0.ignore](legacy/TUI-UTILITIES.0.ignore)) |
 | Type exports | `Terminal` (type literal, so `x is Tui.Terminal` works — the `IO.StreamKind`/`Net.Socket` precedent) |
 
 `Tui.run` app config: `{init update view}` (fn-shaped) **or**
@@ -786,8 +786,8 @@ trivial-delegation wrappers, **inner sigs `BarrierPos:-1`**) · row in the
 ## 10. Phased roadmap
 
 Layered so each phase is independently testable and the cheapest useful
-slice lands first (the `NETWORK-IMPLEMENTATION-PLAN.0.md` discipline; a
-`TUI-IMPLEMENTATION-PLAN.0.md` will track the rollout when implementation
+slice lands first (the `legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore` discipline; a
+`legacy/TUI-IMPLEMENTATION-PLAN.0.ignore` will track the rollout when implementation
 starts):
 
 - **Phase A — `tuikit` + seam + Tier 1.** The leaf package (types, widths,
@@ -808,7 +808,7 @@ starts):
   end to end.
 - **Phase E — polish.** Full TSV coverage, docs catalog, cover-gate to
   100%, examples, keystroke-storm benchmark (see risk below), retro notes
-  into `TUI-IMPLEMENTATION-PLAN.0.md`.
+  into `legacy/TUI-IMPLEMENTATION-PLAN.0.ignore`.
 
 **Known risks, with mitigations**: grapheme/CJK width drift → one width
 source in `tuikit`, goldens pin it; view-in-boru cost per event → the

@@ -19,7 +19,7 @@ import (
 //
 // The whole-program halves are lang/go/bytecode_await_test.go
 // (TestAwaitCompiledBranchParity's three counts and
-// TestAwaitWinnerRegionRefusesFixedArityConsumers' four refusals).
+// TestAwaitWinnerRegionDoesNotLowerFixedArityConsumers' four compile failures).
 
 // vrSpread is the check-side model of "0-or-more values of element type" —
 // what a region-producing word's ReturnsFn hands back on both passes.
@@ -44,7 +44,7 @@ func TestCallVariadicRegionIdentifiesTheOneOutSpread(t *testing.T) {
 	// The count is what makes a region representable: ONE recorded slot for
 	// the whole run. A spread beside other values has no such slot, so it is
 	// deliberately NOT marked — it stays an ordinary fixed-arity residual and
-	// refuses at its consumers rather than being lowered as a region.
+	// declines at its consumers rather than being lowered as a region.
 	if callVariadicRegion([]core.Value{vrSpread(), core.NewInteger(7)}) {
 		t.Error("a spread in a multi-out residual is not a region")
 	}

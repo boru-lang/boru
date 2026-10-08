@@ -142,7 +142,7 @@ type Sizer interface {
 // shared across calls and loop iterations, which is sound exactly when
 // the payload can never be written through. Types with any in-place
 // mutation path (sockets, listeners, timers, module instances, flex
-// containers) must NOT implement it — the extension default is refusal.
+// containers) must NOT implement it — the extension default is compile failure.
 type ConstBakeable interface {
 	// BakeableConst reports whether this specific value may bake. Most
 	// implementors return true unconditionally; the per-value hook exists
@@ -170,8 +170,14 @@ type ConstBakeable interface {
 // slot (the wrapped-Behavior case where compare/canon are installed
 // but unify is not). The kernel walks past such Behaviors to find the
 // next Unifier up the lattice.
+//
+// r is the Registry of the UnifyExplainR chain the call belongs to,
+// nil when the chain started unarmed (Unify / UnifyExplain). An
+// implementation that recurses into the unifier passes it on
+// (unifyWithin, or the family helpers) so the nested walk stays armed;
+// one that decides membership on its own ignores it.
 type Unifier interface {
-	Unify(a, b Value) (Value, *UnifyError)
+	Unify(a, b Value, r *Registry) (Value, *UnifyError)
 }
 
 // HasConstraintUnify reports whether t's Behavior chain carries a

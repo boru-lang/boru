@@ -10,13 +10,13 @@ package lang
 //	def x 1  def f fn [[y:Integer] [Integer] [x add y]]  f 0  def x 2  f 0
 //	interpreter: 1 2      compiled (before the fix): 1 1   ← MISCOMPILE
 //
-// The first fix (2026-09-03/04) REFUSED such programs: NoteFrozenRead
+// The first fix (2026-09-03/04) DECLINED such programs: NoteFrozenRead
 // recorded the read and NotifyNameRebound marked the program uncompilable on
-// a later module-scope rebind — interpreter fallback, correct result. Stage
-// 4b (compiler/go/unit_memo.go) replaced the refusal with a binding-sensitive
+// a later module-scope rebind — compile failure, correct result. Stage
+// 4b (compiler/go/unit_memo.go) replaced the compile failure with a binding-sensitive
 // unit memo: the note now records the binding's generation on the unit, and
 // the call after the rebind re-records the unit instead of reusing the stale
-// one. The refusal survives only for a unit whose reference ESCAPES into a
+// one. The compile failure survives only for a unit whose reference ESCAPES into a
 // value (a returned closure, a stamped fn value), which no later call site
 // can refresh. STORED-REF units (service handlers, spawn bodies) are exempt
 // either way: their rebind safety is the precise per-ref poisoning
@@ -34,18 +34,18 @@ import (
 // compiler/go/frozen_read_test.go (NotifyNameRebound's escaping-unit arm).
 // No end-to-end row pins it here, and that is a measured gap, not an
 // oversight: every returned-closure shape that would reach the latch at top
-// level refuses earlier on its own residual shape (`(mk 1) 2` → "call result
+// level declines earlier on its own residual shape (`(mk 1) 2` → "call result
 // above a literal"; `def h (mk 1)  h 2` → "unconsumed fn-value carrier"), so
 // the first such shape to compile is the one that owes this file its row.
 // MarkUncompilable is FIRST-REASON-WINS, which is why that row must assert
 // the text and not merely `reason != ""`.
 
-// TestModuleReadRebindCompilesWithParity — the rows that REFUSED under the
+// TestModuleReadRebindCompilesWithParity — the rows that DECLINED under the
 // frozen-read latch until Stage 4b, and now compile: the unit memo is
 // binding-sensitive (compiler/go/unit_memo.go), so the call after the rebind
 // re-records the unit against the new binding instead of reusing the one
 // baked before it. Each row was a measured miscompile before its arm of the
-// discipline existed (the "before" column), then a refusal, and is now a
+// discipline existed (the "before" column), then a compile failure, and is now a
 // compiled program that agrees with the interpreter. bound / bake name what
 // the row rebinds and what the unit had baked — the three artifacts the
 // three arms defend, all repaired by the one mechanism.
@@ -108,17 +108,22 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 		// and the memo sees it exactly as it sees a top-level one: the leaked
 		// binding's generation moved.
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [def k 9]  f`, "k", "value", "7 7 for 7 11"},
+		// The MULTI-RUN twin: an each body leaks its LAST iteration's def to
+		// module scope; the rebind re-records the unit (the memo's key), and
+		// the top-level read after the body seats live (NUR200's close).
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, "k", "value", "7 [9] 7 for 7 [9] 11"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, "k", "value", "7 [9 9] 7 for 7 [9 9] 11"},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [def T String]  f`, "T", "type", "true true for true false"},
 		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  ` +
 			`do [def g fn [[][Integer][2]]]  f`, "g", "call target", "1 1 for 1 2"},
 		// The SPLICE twin: the macro payload fires into the unit's tokens at
 		// analysis time, and the re-recorded unit fires the NEW payload. Its
-		// two Any-typed call results were a residual the lowering refused
+		// two Any-typed call results were a residual the lowering declined
 		// ("dynamic value precedes residual args") until a user call's single
 		// result was recognised as PARKED data (callResultPlaced,
 		// design/PAREN-RESTEP-RULE.0.md §2.1); it compiles with parity now.
 		{`def op (quote [1 add 2])  def f fn [[n:Integer] [Any] [do [n drop word op]]]  f 0  def op (quote [10 mul 4])  f 0`,
-			"op", "splice payload", "refused (fn-value-call boundary) for 3 40"},
+			"op", "splice payload", "declined (fn-value-call boundary) for 3 40"},
 	}
 	for _, c := range cases {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -134,40 +139,42 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 // TestModuleReadRebindSoundFallbacks — the rows the memo hands to the
 // interpreter rather than compiling, each pinned with its reason. The UNDEF
 // rows re-analyse the unit against a name that is gone, so the check pass
-// reports undefined_word and the program refuses on check diagnostics — the
+// reports undefined_word and the program declines on check diagnostics — the
 // interpreter then raises the same undefined_word at run time. The MULTI-RUN
 // rows reach the frozen unit through a top-level read after an each body
-// bound the name, which the arm-residency gate refuses (the runtime binding
-// is per-element, or absent at zero iterations). Each refusal's fallback is
+// bound the name, which the arm-residency gate declines (the runtime binding
+// is per-element, or absent at zero iterations). Each compile failure's fallback is
 // parity with the interpreter; a row that starts compiling has graduated and
 // moves to the parity test with its interpreter answer.
+//
+// The `5 is T` rows are ROUTED forward slots since the sixty-fifth
+// increment (`is` dispatches through its descriptor, region_route.go), and
+// they still decline here: routing retires the escaping latch's note, not
+// the memo's key, so the undef re-records the unit and the check pass
+// reports the undefined name exactly as before (review of #461). The
+// routed op meets a live rebind only where no call site can re-record.
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	const armRead = "twin regime: read of `k` after a multi-run body binds it"
-	cases := []struct{ src, reason string }{
+	// Legacy compile failure+fallback-parity contract: pins the one-release
+	// defer names the op's defer site for a row that compiles and hands the
+	// RUN to the interpreter; empty for a row that declines at check.
+	cases := []struct{ src, reason, defer_ string }{
 		// The UNDEF twins: `undef` reaches the same rebind notification as
 		// `def`, and the re-recorded unit reads a name the pass no longer
 		// binds. Before the discipline's arms: `7 7` where the interpreter
 		// raises undefined_word; `true true` for the type; `1 1` for the
 		// sig-undef of a call target.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  undef k  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "check diagnostics"},
-		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  undef g (fnsig [[] [Integer]])  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T/v]]  f  undef T  f`, "check diagnostics"},
-		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics"},
-		// The MULTI-RUN twin of the rebind-site axis: an each body leaks its
-		// LAST iteration's def to module scope, and the top-level read after
-		// it is the arm-residency gate's. Measured `7 [9] 11` interpreted
-		// against `7 [9] 7` compiled before the arm.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, armRead},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, armRead},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  undef k  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "check diagnostics", ""},
+		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  undef g (fnsig [[] [Integer]])  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T/v]]  f  undef T  f`, "check diagnostics", ""},
+		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics", ""},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics", ""},
+		// The MULTI-RUN twin of the rebind-site axis, its VALUE rows moved to
+		// the parity test (NUR200's close): a TYPE the each body installs
+		// per element still declines on the twin regime's placement.
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  [1] each [def T String  1]  f`,
-			"twin regime: a bind transition has no stream placement"},
+			"twin regime: a bind transition has no stream placement", ""},
 	}
 	for _, c := range cases {
 		src := c.src
@@ -179,20 +186,40 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", src, cerr)
 		}
-		if prog != nil {
-			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", src, c.reason, reason)
+		if c.defer_ != "" {
+			if prog == nil {
+				t.Errorf("%q: the routed read compiles; declined with %q", src, reason)
+				continue
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			var bails []string
+			disarm := b.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
+			_, compiled, _ := b.RunCompiled(src)
+			disarm()
+			if compiled || len(bails) != 1 || bails[0] != c.defer_ {
+				t.Errorf("%q: want the run deferred at %s, got compiled=%v bails=%v", src, c.defer_, compiled, bails)
+			}
+		} else {
+			if prog != nil {
+				t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
+				continue
+			}
+			if !strings.Contains(reason, c.reason) {
+				t.Errorf("%q: compile failure drifted: want %q in %q", src, c.reason, reason)
+			}
 		}
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it: a compile failure is booked as the defect
+		// it is (compile_defect_test.go), and anything else the compiled
+		// lane reports is the program's own error and must match.
+		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 
@@ -241,7 +268,7 @@ func TestModuleReadNoRebindStillCompiles(t *testing.T) {
 		// type read in a unit, called twice, must keep compiling.
 		`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  f`,
 		// And the type read that is REBOUND but never read inside a unit —
-		// the other side of the same bound. Nothing froze, so nothing refuses.
+		// the other side of the same bound. Nothing froze, so nothing declines.
 		`def T Integer  5 is T  def T String  5 is T`,
 		// The CALL-TARGET controls, bounding the third arm the same way. A fn
 		// called from a unit and never rebound keeps compiling —
@@ -266,7 +293,7 @@ func TestModuleReadNoRebindStillCompiles(t *testing.T) {
 		// and so must a rebind with no frozen read anywhere.
 		`def k 5  do [def k 9]  k`,
 		// A `do` INSIDE a fn body binds a frame-local, not a module binding,
-		// so it must not refuse: both publication gates test FnBodyDepth, and
+		// so it must not decline: both publication gates test FnBodyDepth, and
 		// this row is what fails if either stops.
 		`def k 5  def f fn [[] [Integer] [k add 2]]  f  ` +
 			`def g fn [[] [Integer] [do [def z 1]  z]]  g  f`,
@@ -341,16 +368,14 @@ func TestStaticSpliceBodiesCompile(t *testing.T) {
 	}
 }
 
-// TestComputedEachBodyStaysRefused — a COMPUTED body on a non-CompileDynBody
-// higher-order word (each) keeps the refusal with fallback parity: the island
-// cannot bake a carrier code body (its tokens carry the island's program), and
-// each declares no dyn-body backstop. Pins the island's non-bakeable
-// NoEvalArgs decline.
-func TestComputedEachBodyStaysRefused(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+// TestComputedEachBodyCompiles — a COMPUTED body on each compiles with parity
+// through the dyn-body backstop: since S1a (2026-09-19,
+// design/FULL-COMPILATION-REPLAN.0.md) each declares CompileDynBody, so the
+// carrier code body no island could bake (its tokens carry the island's
+// program) is handed to the handler at run time, exactly as `do`'s is.
+// Until S1a the shape declined with fallback parity; this pinned the
+// island's non-bakeable NoEvalArgs decline, which the backstop now bypasses.
+func TestComputedEachBodyCompiles(t *testing.T) {
 	src := `def op (quote [mul 2])  def f fn [[b:List] [List] [[1 2 3] each b]]  f op`
 	a, err := New()
 	if err != nil {
@@ -360,12 +385,12 @@ func TestComputedEachBodyStaysRefused(t *testing.T) {
 	if cerr != nil {
 		t.Fatalf("CompileCheck(%q): %v", src, cerr)
 	}
-	if prog != nil || reason == "" {
-		t.Errorf("%q: computed each body must refuse; got prog=%v reason=%q", src, prog != nil, reason)
+	if prog == nil {
+		t.Errorf("%q: the dyn-body backstop must compile a computed each body; reason=%q", src, reason)
 	}
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-		t.Errorf("%q: fallback parity broke: compiled=%v gotC=%v errC=%v gotI=%v errI=%v",
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "[[2 4 6]]" {
+		t.Errorf("%q: want [[2 4 6]] compiled with parity: compiled=%v gotC=%v errC=%v gotI=%v errI=%v",
 			src, compiled, gotC, errC, gotI, errI)
 	}
 }

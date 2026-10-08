@@ -33,7 +33,7 @@ func allocStatsPerOp(fn func()) (allocs, bytes int64) {
 	return int64(m1.Mallocs-m0.Mallocs) / iters, int64(m1.TotalAlloc-m0.TotalAlloc) / iters
 }
 
-// Compiled-mode allocation guard (design/boru-bytecode-plan.0.md Stage 6
+// Compiled-mode allocation guard (design/legacy/boru-bytecode-plan.0.ignore Stage 6
 // verification). Allocations per RunProgram are DETERMINISTIC, so they
 // are the hard regression signal (execution time is GC-noisy and only
 // advisory). Each compute/island shape has a ceiling pinned slightly

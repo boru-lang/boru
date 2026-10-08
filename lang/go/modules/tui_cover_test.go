@@ -126,7 +126,7 @@ func TestTuiPolicyArms(t *testing.T) {
 	}
 	_, oErr := tuiOpenHandler(nil, nil, nil, reg)
 	tcErrContains(t, oErr, "terminal")
-	// Coded by the gate (native/policy_error.go), so the refusal is
+	// Coded by the gate (native/policy_error.go), so the compile failure is
 	// dispatchable from boru rather than an opaque foreign error.
 	var oAe *native.BoruError
 	if !errors.As(oErr, &oAe) || oAe.Code != "capability_not_installed" {
@@ -168,7 +168,7 @@ func TestTuiOpenHandlerArms(t *testing.T) {
 	_, err = tuiOpenHandler([]native.Value{native.NewMap(m2)}, nil, nil, reg)
 	tcErrContains(t, err, "title: must be a String")
 
-	vb.OpenErr = errors.New("backend refused")
+	vb.OpenErr = errors.New("backend declined")
 	_, err = tuiOpenHandler(nil, nil, nil, reg)
 	if got := tcCode(t, err); got != "terminal" {
 		t.Fatalf("backend.Open failure code = %q (%v)", got, err)
@@ -423,7 +423,7 @@ func TestTuiDeliverEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// a non-Pid target is refused before anything starts
+	// a non-Pid target is declined before anything starts
 	if _, dErr := tuiDeliverEventsHandler([]native.Value{term, native.NewString("x")}, nil, nil, reg); dErr == nil ||
 		!strings.Contains(dErr.Error(), "expected a Pid target") {
 		t.Fatalf("non-pid target = %v", dErr)
@@ -443,7 +443,7 @@ func TestTuiDeliverEvents(t *testing.T) {
 		t.Fatalf("delivered event = %v", msg)
 	}
 
-	// the stream is exclusive: a second delivery and read-event refuse
+	// the stream is exclusive: a second delivery and read-event decline
 	if _, dErr := tuiDeliverEventsHandler([]native.Value{term, native.NewPid(proc)}, nil, nil, reg); dErr == nil ||
 		!strings.Contains(dErr.Error(), "already being delivered") {
 		t.Fatalf("double delivery = %v", dErr)
@@ -475,7 +475,7 @@ func TestTuiDeliverEvents(t *testing.T) {
 		t.Fatal("re-delivery received nothing")
 	}
 
-	// closing the terminal ends the pump; a fresh delivery is refused
+	// closing the terminal ends the pump; a fresh delivery is declined
 	// on the closed handle
 	ts, _ := asTerminal(term)
 	if err := ts.close(); err != nil {

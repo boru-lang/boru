@@ -63,17 +63,17 @@ func TestRegisterErrorCodesRejectsABadName(t *testing.T) {
 	RegisterErrorCodes("boru:test", "NotSnakeCase")
 	err := ErrorCodeInitError()
 	if err == nil {
-		t.Fatal("a code that cannot be spelled in a case arm must be refused")
+		t.Fatal("a code that cannot be spelled in a case arm must be declined")
 	}
 	if !strings.Contains(err.Error(), "NotSnakeCase") {
 		t.Errorf("the error must name the offending code, got %v", err)
 	}
 	if _, ok := LookupErrorCode("NotSnakeCase"); ok {
-		t.Error("a refused code must not be registered anyway")
+		t.Error("a declined code must not be registered anyway")
 	}
 }
 
-// TestRegisterErrorCodesRejectsTwoOwners pins the other init-time refusal.
+// TestRegisterErrorCodesRejectsTwoOwners pins the other init-time compile failure.
 // Two layers each believing they define a code is precisely the drift the
 // enumeration exists to catch: whichever registers second would silently
 // inherit the other's meaning.
@@ -95,12 +95,12 @@ func TestRegisterErrorCodesRejectsTwoOwners(t *testing.T) {
 	RegisterErrorCodes("boru:two", "shared_code_probe")
 	err := ErrorCodeInitError()
 	if err == nil {
-		t.Fatal("two owners for one code must be refused")
+		t.Fatal("two owners for one code must be declined")
 	}
 	if !strings.Contains(err.Error(), "boru:one") || !strings.Contains(err.Error(), "boru:two") {
 		t.Errorf("the error must name both claimants, got %v", err)
 	}
-	// The first owner keeps it — a refused second claim must not overwrite.
+	// The first owner keeps it — a declined second claim must not overwrite.
 	if ec, _ := LookupErrorCode("shared_code_probe"); ec.Owner != "boru:one" {
 		t.Errorf("owner = %q, want the first claimant to keep it", ec.Owner)
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/capabilities"
 )
 
-// design/CHECK-FALSE-POSITIVES.0.md — corpus of programs that RUN CORRECTLY yet
+// design/legacy/CHECK-FALSE-POSITIVES.0.ignore — corpus of programs that RUN CORRECTLY yet
 // the static pre-flight check emitted ERROR-severity diagnostics, which blocks
 // `boru run` by default. Each case asserts the plain `Check` pass — the one the
 // run pre-flight gates on — produces no error-level diagnostic (info/warning
@@ -54,7 +54,7 @@ func loadApps(t *testing.T, names ...string) *Boru {
 // errorDiags returns the error-severity diagnostics for src — the ones that
 // abort `boru run`. It runs the SAME pass the run pre-flight gates on: plain
 // `Check` (cmd/go/internal/check.Preflight → a.Check), NOT the stricter compile
-// pass. A false positive here is what actually refuses an otherwise-correct
+// pass. A false positive here is what actually declines an otherwise-correct
 // program by default.
 func errorDiags(t *testing.T, a *Boru, src string) []CheckDiagnostic {
 	t.Helper()

@@ -12,7 +12,7 @@ import (
 // ADR-008 coverage for BuildReplModule's guard arms not reached by the
 // behavioural suite (repl_test.go) or the seam battery (modules_seam6d_test.go).
 
-// A parent with no parser configured is refused before any work.
+// A parent with no parser configured is declined before any work.
 func TestBuildReplModuleRequiresParser(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {

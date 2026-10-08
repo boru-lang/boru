@@ -41,6 +41,9 @@ func TestLensAppliesOnTheVM(t *testing.T) {
 			mu.Unlock()
 		})
 		gotC, compiled, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		disarm()
 		if !compiled {
 			t.Errorf("%q: expected the program to run compiled", src)
@@ -94,11 +97,11 @@ func TestLensDoesNotStampUnarmed(t *testing.T) {
 
 // A stamped lens whose unit DEFERS is a bail, not an island. `5 $.name apply`
 // enters its unit and CALL_NATIVE_POLY finds no `dot` for an Integer receiver,
-// so the VM records the defer and hands back internal_error for the
-// interpreter to raise the canonical signature_error. The chain that follows is
-// that defer's replay: it must carry the same attribution RunCompiled's
-// top-level runtime-bail arm uses, or the one event is counted twice — once as
-// a bail and again as an unattributed interpreter entry.
+// so the VM records the defer and hands back internal_error. There is no
+// replay any more: the top-level runtime-bail arm that re-ran the source is
+// gone, so the bail IS the outcome. What this pins is that the defer is still
+// recorded — the census needs the site — and that the run enters no
+// interpreter at all on its way out.
 func TestLensBailReplayIsAttributed(t *testing.T) {
 	a := mustNew(t)
 	var bails int
@@ -115,25 +118,20 @@ func TestLensBailReplayIsAttributed(t *testing.T) {
 		}
 		attributed = append(attributed, ev.Attribution)
 	})
-	_, _, err := a.RunCompiled(`5 $.name apply`)
+	const src = `5 $.name apply`
+	gotC, _, err := a.RunCompiled(src)
 	disarmEntry()
 	disarmBail()
 
 	if err == nil {
 		t.Fatal("applying a field lens to an Integer must error")
 	}
+	noteCompileDefect(t, src, gotC, err)
 	if bails == 0 {
 		t.Fatal("no defer recorded — the unit did not run, so this test is measuring the wrong thing")
 	}
-	if len(unattributed) != 0 {
-		t.Errorf("bail replay left unattributed entries %v", unattributed)
-	}
-	for _, att := range attributed {
-		if att != "fallback:runtime-bail" {
-			t.Errorf("replay attributed %q, want fallback:runtime-bail", att)
-		}
-	}
-	if len(attributed) == 0 {
-		t.Error("the replay recorded no interpreter entry at all — the lane changed shape")
+	if len(unattributed) != 0 || len(attributed) != 0 {
+		t.Errorf("the bail entered the interpreter: unattributed=%v attributed=%v — "+
+			"a defer is reported now, never replayed", unattributed, attributed)
 	}
 }

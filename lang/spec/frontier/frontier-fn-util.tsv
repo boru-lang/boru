@@ -4,7 +4,7 @@
 # The eight BEHAVIOUR rows that lived here — compose, pipe, const, flip,
 # partial, on (twice), memoize — GRADUATED 2026-09-08 (the thirty-fifth
 # increment, the def-bound computed-fn model) and moved to
-# lang/spec/module-fn.tsv. They refused as
+# lang/spec/module-fn.tsv. They declined as
 #
 #     def-bound computed fn apply (closure shape unknown — Stage 1)
 #
@@ -13,7 +13,7 @@
 # check-mode ReturnsFn claims the wrapper's arity, the check pass models
 # the bound wrapper's WORD DISPATCH at the read (its arity of fixed tokens
 # inside the statement), and the VM applies the wrapper on its own
-# signatures. The refusal's note that "a lowered apply here returned 99 for
+# signatures. The compile failure's note that "a lowered apply here returned 99 for
 # 7" was the VM resolving the wrapper's label `const` through the live
 # registry to the singleton-type maker — not the island it blamed.
 #
@@ -22,7 +22,7 @@
 # level — so `(c 10)` is a shaped Function carrier, `def c10` binds it, and
 # `(c10 3)` models its own dispatch; the row is in lang/spec/module-fn.tsv.
 #
-# THE TWO ROWS LEFT were not that family at all: `FnUtil.flip 5` was refused
+# THE TWO ROWS LEFT were not that family at all: `FnUtil.flip 5` was declined
 # by the strict-lane CHECK, as [uncalled_function] "call to 'flip' matched
 # no signature", before compilation was reached.
 #

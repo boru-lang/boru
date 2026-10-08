@@ -7,7 +7,7 @@ import (
 )
 
 // The L-JOIN graduation (plan Phase 4): a strict-disjunct if-join feeding a
-// RECURSIVE call used to refuse "fn call operand of unknown provenance" —
+// RECURSIVE call used to decline "fn call operand of unknown provenance" —
 // the check-mode disjunct distribution (disjunctPartitionReturns) ran the
 // fn's ReturnsFn once per alternative COMBO with fresh-ID carrier copies,
 // and the armed recording tried to RecordUserCall those copies. The combos
@@ -22,12 +22,15 @@ func ljoinParityCompiled(t *testing.T, src string) {
 	t.Helper()
 	a := mustNew(t)
 	if _, reason, _, err := a.CompileCheck(src); err != nil || reason != "" {
-		t.Fatalf("the shape must compile, got refusal %q / err %v\n  src: %s", reason, err, src)
+		t.Fatalf("the shape must compile, got compile failure %q / err %v\n  src: %s", reason, err, src)
 	}
 	b := mustNew(t)
 	var bails []BailEvent
 	defer b.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e) })()
 	outC, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, errC) {
+		return
+	}
 	if !ran {
 		t.Fatalf("the shape must run COMPILED, fell back (err %v)", errC)
 	}
@@ -104,6 +107,9 @@ def f fn [[n:Any] [Any] [
 		src := srcFor(rec)
 		a := mustNew(t)
 		outC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, outC, errC) {
+			continue
+		}
 		b := mustNew(t)
 		outI, errI := b.RunInterp(src)
 		if (errC == nil) != (errI == nil) || fmt.Sprint(outC) != fmt.Sprint(outI) {

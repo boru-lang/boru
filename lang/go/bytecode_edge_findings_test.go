@@ -8,15 +8,17 @@ import (
 
 // Landing tests for design/EDGE-SPEC-FINDINGS.0.md — four compile≠interpret
 // divergences the edge-spec expansion surfaced. Each was a shape the compiler
-// lowered to a WRONG value; the fix makes the compiler REFUSE (fall back —
-// "slow, not wrong") so the interpreter owns the shape. Every finding is pinned
-// three ways: the reproducer REFUSES with its reason, the reproducer's compiled
+// lowered to a WRONG value; the fix makes the compiler DECLINE (§5), after
+// which the program is silently re-run on the interpreter — scaffolding
+// absorbing an open compile defect, not a path the design owns. Every
+// finding is pinned
+// three ways: the reproducer DECLINES with its reason, the reproducer's compiled
 // run falls back to interpreter PARITY, and a sibling that must keep compiling
-// natively still does (the negative that proves the refusal is not blanket).
+// natively still does (the negative that proves the compile failure is not blanket).
 
-// mustRefuseWithParity asserts src refuses to compile (reason contains want)
-// and that RunCompiled falls back to the interpreter's result.
-func mustRefuseWithParity(t *testing.T, src, want string) {
+// mustFailToCompileWithParity asserts src fails to compile (reason contains want)
+// and that the interpreted run still produces want's answer.
+func mustFailToCompileWithParity(t *testing.T, src, want string) {
 	t.Helper()
 	a, err := New()
 	if err != nil {
@@ -27,36 +29,38 @@ func mustRefuseWithParity(t *testing.T, src, want string) {
 		t.Fatalf("%q: CompileCheck error %v", src, cerr)
 	}
 	if prog != nil {
-		t.Fatalf("%q: expected a refusal, but it compiled", src)
+		t.Fatalf("%q: expected a compile failure, but it compiled", src)
 	}
 	if !strings.Contains(reason, want) {
-		t.Errorf("%q: refusal reason = %q, want it to contain %q", src, reason, want)
+		t.Errorf("%q: compile failure reason = %q, want it to contain %q", src, reason, want)
 	}
-	// Stage J: RunCompiled returns the refusal as compile_refused (no
-	// silent re-run); the program stays fully serviceable via RunInterp.
+	// The compile failure is reported plainly and BOOKED, and the program
+	// stays fully serviceable on the reference engine. Booking must not
+	// short-circuit that second half: every source this helper takes fails
+	// to compile, so an early return here would make the interpreter
+	// assertion below dead code and let a real interpreter regression pass
+	// as long as the defect count held.
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
+	requireCompileDefect(t, src, nil, errC)
 	if compiled {
-		t.Errorf("%q: RunCompiled reported a compiled run; a refused program must not compile", src)
-	}
-	if codeOf(errC) != "compile_refused" {
-		t.Errorf("%q: RunCompiled err=[%s] %v, want compile_refused (Stage J)", src, codeOf(errC), errC)
+		t.Errorf("%q: RunCompiled reported a compiled run; a program that does not compile must not compile", src)
 	}
 	c, _ := New()
-	if _, errI := c.RunInterp(src); errI != nil && codeOf(errI) == "compile_refused" {
-		t.Errorf("%q: RunInterp must never report compile_refused", src)
+	if _, errI := c.RunInterp(src); errI != nil && codeOf(errI) == "compile_failed" {
+		t.Errorf("%q: RunInterp must never report compile_failed", src)
 	}
 }
 
 // mustCompileWithParity asserts src compiles natively (no whole-program
 // fallback island in the reason) and RunCompiled matches the interpreter.
-// interpOnlyWithSoundRefusal asserts the interpreter's answer and TOLERATES a
-// sound compile refusal: since the BROAD park (NUR073 clause 3) a fetched fn
-// reaches `apply` as an untyped carrier, and the record refuses ("apply over
+// interpOnlyWithCompileFailure asserts the interpreter's answer and TOLERATES a
+// sound compile failure: since the BROAD park (NUR073 clause 3) a fetched fn
+// reaches `apply` as an untyped carrier, and the record declines ("apply over
 // a dynamic lead") rather than lower an unprovable overload — the default
-// lane falls back to the interpreter. Graduating the shape re-tightens the
+// lane does not compile. Graduating the shape re-tightens the
 // pin to mustCompileWithParity.
-func interpOnlyWithSoundRefusal(t *testing.T, src, want string) {
+func interpOnlyWithCompileFailure(t *testing.T, src, want string) {
 	t.Helper()
 	c, err := New()
 	if err != nil {
@@ -75,11 +79,14 @@ func interpOnlyWithSoundRefusal(t *testing.T, src, want string) {
 		t.Fatalf("%q: CompileCheck: %v", src, cerr)
 	}
 	if prog == nil {
-		t.Logf("%q: compile refused soundly (%q)", src, reason)
+		t.Logf("%q: compile declined (%q)", src, reason)
 		return
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("%q: compiled run: compiled=%v err=%v", src, compiled, errC)
 	}
@@ -96,10 +103,13 @@ func mustCompileWithParity(t *testing.T, src, want string) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("%q: expected a native compile, refused: reason=%q err=%v", src, reason, cerr)
+		t.Fatalf("%q: expected a native compile, declined: reason=%q err=%v", src, reason, cerr)
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("%q: compiled run: compiled=%v err=%v", src, compiled, errC)
 	}
@@ -121,7 +131,7 @@ func mustCompileWithParity(t *testing.T, src, want string) {
 // narrows the catch result to dynamic(join(pass-through, handler)) — here
 // dynamic(Integer) — so the String overload is disjoint, check mode selects
 // the interpreter's forward collection, and the rows compile natively. A
-// GENUINELY wide join (an Integer|String boundary) keeps the drift refusal —
+// GENUINELY wide join (an Integer|String boundary) keeps the drift compile failure —
 // pinned below. Words whose forward collection was never blocked (`mul`,
 // `sub`, a String forward token) keep compiling as before.
 func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
@@ -129,7 +139,7 @@ func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
 	mustCompileWithParity(t, `5 do [7] error [drop 9] add 1`, "[5 8]")
 	mustCompileWithParity(t, `1 2 3 do [7] error [drop 9] add 1`, "[1 2 3 8]")
 
-	// GRADUATED (REFUSAL-CLOSURE §1, 2026-07-16 — the drift window): the
+	// GRADUATED (COMPILE FAILURE-CLOSURE §1, 2026-07-16 — the drift window): the
 	// genuinely dynamic boundary now compiles as a TERMINAL OpCallDynamicMixed
 	// island. tryRecordDriftWindow records the whole window — [leading
 	// residual, catch-result, the word as an inert const, the forward
@@ -142,19 +152,19 @@ func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
 	mustCompileWithParity(t, `5 do [raise aa 'm'] error ['x'] add 1`, "[5x 1]")
 	mustCompileWithParity(t, `5 do [raise aa 'm'] error ['x'] add 'y'`, "[5 xy]")
 
-	// The window's decline fences keep the sound refusal: a NON-TERMINAL
+	// The window's decline fences keep the compile failure: a NON-TERMINAL
 	// drift site (a downstream consumer would need a result count the island
 	// cannot promise) and BYSTANDER data below the window (the in-order
 	// reconciliation cannot interleave the window's const re-pushes with
 	// values the dispatch never touched).
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`5 do [7] error ["x"] add 1 drop`,
 		"forward operand accounting across a dynamic/island residual")
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`1 2 3 do [7] error ["x"] add 1`,
 		"forward operand accounting across a dynamic/island residual")
 
-	// Negatives — the drift guard must NOT over-refuse: `mul`/`sub` forward-
+	// Negatives — the drift guard must NOT over-decline: `mul`/`sub` forward-
 	// collect their token (fwdCount>0), a String forward token routes to a
 	// different overload, and the no-leading-residual and concrete-`do` forms
 	// have no bystander to reach past.
@@ -183,8 +193,8 @@ func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
 // §2 — an applied member-fn boundary mid-expression. A parked fn read from a
 // container (`m.double`) auto-applies the moment a value lands on it; the
 // compiler previously let a downstream word (`eq`) steal that value, so the
-// shape refused ("member fn value auto-applies mid-expression"). GRADUATED
-// 2026-07-16 (REFUSAL-CLOSURE.0 §3, the arrival-apply model): the member-fn
+// shape declined ("member fn value auto-applies mid-expression"). GRADUATED
+// 2026-07-16 (COMPILE FAILURE-CLOSURE.0 §3, the arrival-apply model): the member-fn
 // read tag now carries the pinpointed member VALUE, and when the member's
 // single plain signature's arity of inert tokens follows the carrier,
 // tryMemberFnArrivalDispatch models the interpreter's auto-dispatch at the
@@ -214,12 +224,12 @@ func TestEdgeFindingMemberFnApplyMidExpression(t *testing.T) {
 
 	// The model's decline fence: a MULTI-overload member cannot claim one
 	// arity window (runtime first-match not modelled) — the shape keeps a
-	// sound whole-program refusal with interpreter parity via the hatch-free
-	// Stage-J contract (RunCompiled refuses; RunInterp owns it).
+	// a compile failure; the interpreted answer is asserted alongside via the hatch-free
+	// Stage-J contract (RunCompiled declines; RunInterp owns it).
 	multi := `def d fn [[n:Integer] [Integer] [n mul 2] [x:String] [Integer] [9]] def m {double: d/v} m.double 21 eq 42`
 	a, _ := New()
 	if prog, _, _, _ := a.CompileCheck(multi); prog != nil {
-		t.Errorf("multi-overload member arrival must keep refusing (sound fence)")
+		t.Errorf("multi-overload member arrival must keep declining (sound fence)")
 	}
 	b, _ := New()
 	if got, errI := b.RunInterp(multi); errI != nil || fmt.Sprint(got) != "[true]" {
@@ -229,9 +239,9 @@ func TestEdgeFindingMemberFnApplyMidExpression(t *testing.T) {
 
 // §3 — a paren-arrived value run as an else body. `(range 2 4)` reaches the
 // compiler as a non-concrete list carrier: the branch value path used to push
-// the LIST while the interpreter's spliceArg EXECUTES it, so the shape refused
+// the LIST while the interpreter's spliceArg EXECUTES it, so the shape declined
 // ("computed branch arm is a spliced list body"). GRADUATED 2026-07-16
-// (REFUSAL-CLOSURE.0 §4): computedArmDoBody synthesizes the equivalent
+// (COMPILE FAILURE-CLOSURE.0 §4): computedArmDoBody synthesizes the equivalent
 // `[do <arm>]` body — probes prove arm-splice ≡ do on every axis (multi-
 // values, def leaking, break/continue via the FlowCtrl escape) — and the arm
 // takes the ordinary body path, with the dyn-body machinery owning the
@@ -276,7 +286,7 @@ func TestEdgeFindingQuotedDoBodyFlowEscapesLoop(t *testing.T) {
 	// outer loop's `i` values survive.
 	mustCompileWithParity(t, `def b (quote [break]) for 2 [ for 3 [do b] i ]`, "[0 1]")
 
-	// Negatives — the fix must not over-refuse a sentinel-free quoted do body.
+	// Negatives — the fix must not over-decline a sentinel-free quoted do body.
 	mustCompileWithParity(t, `def b (quote [7]) for 3 [do b i]`, "[7 0 7 1 7 2]")
 
 	// No ENCLOSING loop: the escaped break has nowhere to unwind to, so the
@@ -290,6 +300,9 @@ func TestEdgeFindingQuotedDoBodyFlowEscapesLoop(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, _, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if iErr == nil || cErr == nil || codeOf(iErr) != codeOf(cErr) {
 			t.Errorf("%q: raise parity — compiled=[%s]%v interp=[%s]%v",
 				src, codeOf(cErr), cErr, codeOf(iErr), iErr)
@@ -301,7 +314,7 @@ func TestEdgeFindingQuotedDoBodyFlowEscapesLoop(t *testing.T) {
 // now bind to frame locals exactly like named ones (CompiledFn.NUnnamed: RET
 // discards the unconsumed frame-bottom copies the interpreter's body splice
 // leaves), so `args.N` folds to PUSH_LOCAL N for EVERY frame shape and these
-// previously-refused rows compile with parity.
+// previously-declined rows compile with parity.
 func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 	mustCompileWithParity(t,
 		`def f fn [[Integer String] [String] [args.1]] f 1 "hi"`, "[hi]")
@@ -326,21 +339,27 @@ func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 // conditional shadow while the interpreter keeps the outer fn when the branch
 // is not taken (or the loop runs zero times), so `if false [def g …] g 1`
 // returned the shadow's value compiled but the ORIGINAL interpreted. The fix
-// refuses to compile the redefinition (CondBodyDepth-gated) so the interpreter
-// owns the shape — slow, not wrong.
-func TestEdgeFindingConditionalFnShadowRefuses(t *testing.T) {
+// fails to compile the redefinition (CondBodyDepth-gated), and the program
+// is silently re-run on the interpreter — contained, not fixed, and the shape
+// is still owed a lowering.
+func TestEdgeFindingConditionalFnShadowFailsToCompile(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
 	want := "redefined inside a conditional body"
 
-	// REFUSE: every conditionally-reached redefinition of an outer fn.
-	mustRefuseWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, want) // branch not taken
-	mustRefuseWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, want)
-	mustRefuseWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want) // taken, still unsound-at-shape
-	mustRefuseWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)   // loop body
-	mustRefuseWithParity(t, `def g `+fnA+` ([1 2] each [def g `+fnB+`]) g 1`, want)
+	// DECLINE: a conditionally-reached redefinition of an outer fn the
+	// compiled program cannot place.
+	mustFailToCompileWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want) // taken, still unsound-at-shape
+	mustFailToCompileWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)   // loop body
+	mustFailToCompileWithParity(t, `def g `+fnA+` ([1 2] each [def g `+fnB+`]) g 1`, want)
 
-	// COMPILE (must NOT over-refuse): the redefinition is UNCONDITIONAL.
+	// COMPILE (NUR244): the arm a DECIDED condition skips is bracketed as
+	// speculative, so its redefinition is placed at its site and the call
+	// routes live — the outer fn answers, on both lanes.
+	mustCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, "[101]") // branch not taken
+	mustCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, "[101]")
+
+	// COMPILE (must NOT over-decline): the redefinition is UNCONDITIONAL.
 	mustCompileWithParity(t, `def g `+fnA+` def g `+fnB+` g 1`, "[2]")      // top-level shadow
 	mustCompileWithParity(t, `def g `+fnA+` do [def g `+fnB+`] g 1`, "[2]") // do leaks unconditionally
 	// COMPILE: no outer overload to clobber — a NEW name defined in a branch.
@@ -351,7 +370,7 @@ func TestEdgeFindingConditionalFnShadowRefuses(t *testing.T) {
 
 // The §3 arrival-apply model's decline fences, each with engine parity: a
 // shape the model cannot claim keeps a SOUND outcome (a native compile of the
-// unaffected form, or a refusal whose interpreter fallback/Stage-J contract
+// unaffected form, or a compile failure whose compile failure/Stage-J contract
 // holds). One table so every fence stays exercised (the cover-gate demands
 // each decline arm).
 func TestMemberFnArrivalDeclineFences(t *testing.T) {
@@ -360,15 +379,16 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		compiles  bool
 		want      string // interp result (fmt.Sprint)
 	}{
-		// A computed key cannot pinpoint the member: the tag rides bool-only,
-		// the model declines — and the fetched fn reaches `apply` as an
-		// untyped carrier, which the record refuses ("apply over a dynamic
-		// lead", the BROAD-era mixed-arity guard) rather than lower an
-		// unprovable overload. Sound refusal; the interpreter owns it.
-		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, false, "[true]"},
+		// A computed key cannot pinpoint the member: the tag rides bool-only
+		// and the arrival model declines — but the fetched fn reaches `apply`
+		// as a GRADUAL lead over one receiver, which the record lowers as
+		// the apply EVENT (OpCallDynApplyOne) at the program level since the
+		// dynamic-lead group (2026-09-22; it was "apply over a dynamic lead
+		// (overload unprovable)" — the event was unit-only before).
+		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, true, "[true]"},
 		// A LIST member pinpoints by concrete index — the arrival model fires.
 		{"list member", `def d fn [[n:Integer][Integer][n mul 2]] def lst [d/v] 21 (lst get 0) apply eq 42`, true, "[true]"},
-		// Anonymous lambda member: no name for the model — sound refusal.
+		// Anonymous lambda member: no name for the model — compile failure.
 		{"anonymous member", `def m {double: ([n:Integer] => [n mul 2])} m.double 21 eq 42`, false, "[true]"},
 		// 0-arg member: the arrival model claims the empty-window arity-0
 		// landing (the break-2 closure, FN-VALUE-OPEN-WORK §4) — the
@@ -379,7 +399,7 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		// now runs it right: the NUR038 arrival path converts the bare
 		// word through the /q slot (`m.q foo` ≡ `q foo` → 9, then 9 eq 9).
 		{"quoted param member", `def q fn [[k:Atom/q][Integer][9]] def m {q: q/v} m.q foo eq 9`, false, "[true]"},
-		// Two-return member: the single-result claim fails — sound refusal.
+		// Two-return member: the single-result claim fails — compile failure.
 		{"two-return member", `def t fn [[n:Integer][Integer Integer][n n]] def m {t: t/v} m.t 3 eq 3`, false, "[3 true]"},
 		// The member read ends the tape: no window — the fn stays data.
 		{"read at tape end", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} m.double`, true, "[fn d(Integer)]"},
@@ -427,11 +447,11 @@ func TestInstanceMemberFnArrival(t *testing.T) {
 	mustCompileWithParity(t,
 		`def d fn [[n:Integer][Integer][n mul 2]] def C class {f: Function} def o (make C {f: d/v}) o.f 21`, "[42]")
 	// A shape the arrival model declines — a WORD right after the carrier —
-	// must now REFUSE via the stranded-fn guard (sound), never miscompile.
+	// must now DECLINE via the stranded-fn guard (sound), never miscompile.
 	declined := `def d fn [[n:Integer][Integer][n mul 2]] def C class {f: Function} def o (make C {f: d/v}) def x 21 o.f x eq 42`
 	a, _ := New()
 	if prog, reason, _, _ := a.CompileCheck(declined); prog != nil {
-		t.Errorf("the declined instance landing must refuse (reason=%q):\n%s", reason, prog.Disassemble())
+		t.Errorf("the declined instance landing must decline (reason=%q):\n%s", reason, prog.Disassemble())
 	}
 	b, _ := New()
 	if got, errI := b.RunInterp(declined); errI != nil || fmt.Sprint(got) != "[true]" {
@@ -499,12 +519,13 @@ func TestEdgeFindingSentinelInInterpolatedParts(t *testing.T) {
 }
 
 // PR #275 review finding (P2) — the CondBodyDepth raise (conditional fn-shadow
-// refusal) over-applied to list-form `if` CONDITIONS and `case` code-body
+// compile failure) over-applied to list-form `if` CONDITIONS and `case` code-body
 // scrutinees, which run unconditionally exactly once BEFORE the branch
 // decision: a same-sig redefinition there is not path-dependent, and the
 // equivalent paren-`do` condition already compiled with parity. The fix routes
-// analyseCondFragment through RunCarrierCondBody (CondBodyDepth-exempt);
-// branch arms and loop bodies keep the raise (TestEdgeFindingConditionalFnShadowRefuses).
+// analyseCondFragment through a CondBodyDepth-exempt condition run (since
+// NUR212's follow-up the KEPT RunCarrierCondBodyKeepDefs);
+// branch arms and loop bodies keep the raise (TestEdgeFindingConditionalFnShadowFailsToCompile).
 func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
@@ -522,14 +543,17 @@ func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	mustCompileWithParity(t,
 		`def g `+fnA+` case [def g `+fnB+` 5] [5 88 99] g 1`, "[88 2]")
 
-	// Negative — a redefinition in an ARM (conditionally reached) must STILL
-	// refuse, even with a non-constant condition.
-	mustRefuseWithParity(t,
-		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`,
-		"redefined inside a conditional body")
+	// A redefinition in an ARM under a condition the model cannot decide
+	// (a code-body condition) is PLACED since the seventieth increment:
+	// the arm's install at its site through the interpreter's own
+	// installer, the dispatch routed on the live lead — parity on the
+	// taken path here, and on the not-taken path in
+	// TestConditionalFnDefIsSpeculative.
+	mustCompileWithParity(t,
+		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`, "[0 2]")
 }
 
-// §5 (REFUSAL-CLOSURE, landed 2026-07-17) — a def of a STATICALLY-COUNTED
+// §5 (COMPILE FAILURE-CLOSURE, landed 2026-07-17) — a def of a STATICALLY-COUNTED
 // variadic loop region binds the region's FIRST value and spills the rest,
 // exactly the interpreter's pending-forward collection (probe-pinned: the
 // first-ARRIVED value satisfies the forward; `def xs (for 2 [7 8]) xs` binds
@@ -566,9 +590,9 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 	// #278 review P1-a: compiled [x 7 x 71] vs interp [x 7 x 8]).
 	mustCompileWithParity(t, `def xs (for 2 [7 "x"]) xs add 1`, "[x 7 x 8]")
 
-	// Decline fences — each keeps the sound refusal with interpreter parity.
+	// Decline fences — each keeps the compile failure, with the interpreted answer asserted alongside.
 	// A DYNAMIC count: the split needs the static region size.
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def m {n: 3} def xs (for (m get "n") [1]) xs`,
 		"consumes loop results")
 	// A FILTERED name splits exactly where RecordDynBind records the event —
@@ -583,7 +607,7 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 	mustCompileWithParity(t, `def _ (for 2 [7 8])`, "[8 7 8]")
 	// A CONDITIONALLY-REACHED split (inside a branch arm) is declined by the
 	// NestedBodyDepth gate, so the branch's analysis-only binding never
-	// leaks: `if false [def xs …] [] xs` refuses and the interpreter's
+	// leaks: `if false [def xs …] [] xs` declines and the interpreter's
 	// undefined_word stands (PR #278 review P1-b).
 	{
 		src := `if false [def xs (for 3 [1])] [] xs`
@@ -591,15 +615,18 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, cCompiled, cErr := b.RunCompiled(src)
-		if cCompiled || codeOf(iErr) != "undefined_word" || codeOf(cErr) != "compile_refused" {
-			t.Errorf("%q: want compiled-refusal + interp undefined_word, got compiled=%v cErr=[%s] iErr=[%s]",
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
+		if cCompiled || codeOf(iErr) != "undefined_word" || codeOf(cErr) != "compile_failed" {
+			t.Errorf("%q: want compiled-compile failure + interp undefined_word, got compiled=%v cErr=[%s] iErr=[%s]",
 				src, cCompiled, codeOf(cErr), codeOf(iErr))
 		}
 	}
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def m {n: 3} def xs (for (m get "n") [1]) xs`,
 		"consumes loop results")
-	// LOOP-CARRIED defs GRADUATED (REFUSAL-CLOSURE §9.2a, 2026-07-17): the
+	// LOOP-CARRIED defs GRADUATED (COMPILE FAILURE-CLOSURE §9.2a, 2026-07-17): the
 	// split now admits NestedBodyDepth == LoopBodyDepth and stamps the
 	// runtime depth (minus the analysis round's shadow — the historical
 	// [5 0 5 0] silent-SetAt-no-op). Pinned compiling in
@@ -609,10 +636,10 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 
 	// Zero-trip loops keep their existing behavior: the region is pruned,
 	// the def forward-collects the NEXT token (compiles), and a read with
-	// no next value is the interpreter's undefined_word (check refusal).
+	// no next value is the interpreter's undefined_word (check compile failure).
 	mustCompileWithParity(t, `def xs (for 0 [1]) 99`, "[]")
 
-	// The read inside a branch arm (the former TestEmitRefusals row): xs is
+	// The read inside a branch arm (the former TestEmitCompileFailures row): xs is
 	// the ELEMENT (Integer 0 here), so `.0` over it raises — byte-identical
 	// signature_error in both engines (error parity, not a value row).
 	{
@@ -621,6 +648,9 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, _, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if iErr == nil || cErr == nil || codeOf(iErr) != codeOf(cErr) {
 			t.Errorf("%q: raise parity — compiled=[%s]%v interp=[%s]%v",
 				src, codeOf(cErr), cErr, codeOf(iErr), iErr)
@@ -633,21 +663,21 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 // waiting frame values: the boru:fmt stylesheet driver
 // `def apply fn [nd:Any Any [nd (rules get (Fmt.kind nd))]]`. Before the
 // noteDynFrameReplay widening the count-mismatched residual [inert-local,
-// dyn-event] refused ("fn apply: result above a literal"); now the recorder
+// dyn-event] declined ("fn apply: result above a literal"); now the recorder
 // arms the whole-frame replay (OpCallDynFrame + RetReplay): the residual
 // re-pushes in exact token order (replayForceOrder) and re-steps at the RET
 // under execFnDefLiteral's own runtime rule — the fn applies exactly as the
 // interpreter's pointer would, and a NON-callable value stays data so the
 // RET raises the interpreter's own count error. The gate is the recorded
 // trace: a body with any event AFTER the window's last producer (its
-// effects would reorder behind the replay) keeps refusing.
+// effects would reorder behind the replay) keeps declining.
 func TestEdgeFindingDynamicFnValueApplyBodyTail(t *testing.T) {
 	// The stylesheet idiom: fn value fetched by a dynamic key, applied to
 	// the waiting nd via `apply` — since the BROAD park (NUR073 clause 3)
 	// the fetched fn is PLACED by its paren, so the explicit apply is the
 	// application act (the pre-BROAD "fn steps first and forward-collects"
 	// variant is the removed idiom).
-	interpOnlyWithSoundRefusal(t,
+	interpOnlyWithCompileFailure(t,
 		`def rules {inc: ([x:Integer] => [x add 1])}
 		 def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]]
 		 app 5 rules`,
@@ -664,6 +694,9 @@ func TestEdgeFindingDynamicFnValueApplyBodyTail(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, compiled, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if !compiled {
 			t.Errorf("%q: the not-callable sibling must still compile", src)
 		}
@@ -677,13 +710,26 @@ func TestEdgeFindingDynamicFnValueApplyBodyTail(t *testing.T) {
 			t.Errorf("%q: count-error text — compiled=%v interp=%v", src, cErr, iErr)
 		}
 	}
-	// A MID-BODY dynamic apply (an event recorded after the window's
-	// producer — its print must run AFTER the apply) cannot replay at the
-	// RET without reordering effects: refuses, the sound interpreter
-	// fallback.
-	mustRefuseWithParity(t,
-		`def rules {inc: ([x:Integer] => [x add 1])}
+	// A paren-PLACED fetched fn with an event after it. This used to decline
+	// ("unapplied fn-value in body residual": a mid-body dynamic apply the
+	// replay could not seat without reordering the print). GRADUATED
+	// 2026-09-22 (NUR182, the quotation-body container reads): the paren
+	// placed the fn and a fn frame never re-steps a placed value, so there
+	// is no apply to seat — the residual is `[5 fn]` on both lanes, the
+	// print runs where it stands, and the RET raises the interpreter's own
+	// count error.
+	{
+		src := `def rules {inc: ([x:Integer] => [x add 1])}
 		 def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") print "after"]]
-		 app 5 rules`,
-		"unapplied fn-value in body residual")
+		 app 5 rules`
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if codeOf(errI) != "type_error" {
+			t.Fatalf("%q: interpreter oracle moved: %v err=[%s]", src, gotI, codeOf(errI))
+		}
+		if !compiled {
+			t.Errorf("%q: not compiled: %v", src, errC)
+		} else {
+			requireParityHead(t, src, gotC, errC, gotI, errI)
+		}
+	}
 }

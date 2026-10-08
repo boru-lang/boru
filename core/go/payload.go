@@ -37,13 +37,13 @@ import (
 // mismatched-shape constructions are rejected at the type-check
 // level. The seal is the kernel guarantee that fulfils the
 // "make illegal values unrepresentable" goal stated in
-// design/TYPE-DECOUPLING.10.md.
+// design/legacy/TYPE-DECOUPLING.10.ignore.
 type Payload interface {
 	payloadMarker()
 	// IsTypeContent reports whether this payload is a TYPE's content —
 	// the structural body of a type declaration — as opposed to an
 	// ordinary value's data. It is the sealed-payload half of the ONE
-	// type-recognition seam (design/TYPE-REPRESENTATION.1.md §N4):
+	// type-recognition seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4):
 	// IsTypeBody asks the payload instead of enumerating shapes, so a
 	// new kind declares itself by answering here rather than by
 	// growing an arm at every consumer. Most payloads answer with a
@@ -416,7 +416,7 @@ func (PathonInfo) payloadMarker()           {} // legacy; replaced by PathonPayl
 // directly. NewNone() now produces NonePayload below.
 func (noneSentinel) payloadMarker() {}
 
-// PayloadBase is the S6 seal extension (design/ENG-FOUR-PIECE.0.md): a
+// PayloadBase is the S6 seal extension (design/legacy/ENG-FOUR-PIECE.0.ignore): a
 // payload variant declared OUTSIDE core embeds PayloadBase to satisfy the
 // sealed Payload interface, since payloadMarker itself is only definable
 // beside the seal. Kernel-declared variants keep their direct markers.
@@ -432,7 +432,7 @@ func (PayloadBase) payloadMarker() {}
 // to a single Boolean carrier result: the group's ORIGINAL tokens,
 // preserved so guard narrowing can see the `x is T` structure that
 // evaluation reduced to a bare Boolean
-// (design/checker-accuracy-review.10.md A3 — without it, the canonical
+// (design/legacy/checker-accuracy-review.10.ignore A3 — without it, the canonical
 // `if (x is T) …` paren form narrowed nothing while the list form
 // `if [x is T] …` narrowed fine). Check-mode only; the runtime never
 // produces carriers.
@@ -475,6 +475,10 @@ type StoreShapeInfo struct {
 	// lambda re-dispatched by the reader) poisons it, and readers keep
 	// the pre-existing dynamic(Any) hatch.
 	ValsPoisoned bool
+	// KeysPoisoned marks every keyed claim unusable (Poison): a writer the
+	// shape cannot see makes each recorded key stale, so LookupKey declines
+	// and readers keep the dynamic(Any) hatch.
+	KeysPoisoned bool
 	// DeclaredVal is the DECLARED element type of a typed container (a
 	// `patrun T` table): nil for an inferred/untyped shape. When set, a
 	// reader (`find`) surfaces `dynamic(DeclaredVal ∪ None)` directly,
@@ -536,7 +540,7 @@ type ClosurePayload struct {
 	// compiled where the interpreter raises type_error. Carrying the contract
 	// on the UNIT instead was built and reverted: it needs a per-fn memo key,
 	// and a distinct key alone (no contract at all) makes a SHARED closure unit
-	// recompile and refuse on operand provenance, islanding conforming
+	// recompile and decline on operand provenance, islanding conforming
 	// callbacks and tripping TestListFoldCallbackOrderPin. Two fns with
 	// identical bodies and inputs SHOULD share a unit; they differ only in what
 	// their results must satisfy, which is a property of the value.
@@ -548,6 +552,14 @@ type ClosurePayload struct {
 	RetPatterns []*Value
 	RetDecl     DeclSite
 	RetName     string
+	// Source is the callback fn VALUE a callback body unit was compiled from
+	// — the lambda or `g/v` a higher-order word was handed — carried on the
+	// value for the one invocation the unit cannot run: an input landing in
+	// a param slot the body reads bare (the unit's FnReadParams), which the
+	// interpreter dispatches as a word when it holds a fn and the unit
+	// pushes as a slot. The VM hands that invocation to the interpreter's
+	// own step of Source (NUR268). Nil for every other closure.
+	Source *Value
 	// RetTrim marks a closure handed through the fn-VALUE seam
 	// (InvokeCallbackBody): the handler would hand a FnDefInfo to
 	// InvokeCallbackFn, whose CallBoru path checks the declared TYPES over
@@ -558,6 +570,20 @@ type ClosurePayload struct {
 	// value is stepped and __RC enforces the count. Set on the VALUE at the
 	// seam, never on the stored closure: the same closure can cross both.
 	RetTrim bool
+	// SigMatched marks a closure whose OWN signature the handing seam has
+	// already matched, with the args in signature order: the closure bridge
+	// (a bridged FnDefInfo's handler — closureAsWord, ClosureAsFnDef — runs
+	// after the interpreter's dispatch matched), and a native seam that
+	// matched the value's contract over the lambda-shaped args it hands (the
+	// map arm's KeyVal, filter's entry, walk's payload). Off, the closure
+	// reached the TOKEN seam (InvokeBody: each over a list, a paren call)
+	// with its inputs in STACK order, and a fn-VALUE closure — one minted
+	// from a `fn` / `=>` literal, a factory's capturing result — is matched
+	// there the way the interpreter matches a stepped value, top down,
+	// before its unit runs, and declines to the stepping path when nothing
+	// matches (S1b-2; eng/go/vm_fnvalue_seam.go). Set on the VALUE at the
+	// seam, never on the stored closure.
+	SigMatched bool
 	// RetPos is where the callback REFERENCE was written (`cbad/v`), which is
 	// the position the interpreter anchors a return-contract error on: its
 	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultPos
@@ -566,6 +592,12 @@ type ClosurePayload struct {
 	// diagnostic agrees in value and taxonomy but loses the position, which
 	// the full-corpus parity gate compares.
 	RetPos SrcPos
+	// Named marks a closure pushed from a NAMED fn value — a `fn` literal;
+	// only `afn` / `=>` make one anonymous. The unit is shared with
+	// anonymous values over the same body, so the push carries it
+	// (compiler ClosureRetSpec.Named): a name always calls, so a nullary
+	// named value fires where an anonymous one parks (NUR321).
+	Named bool
 }
 
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a

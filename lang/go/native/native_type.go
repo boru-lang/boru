@@ -17,7 +17,7 @@ import (
 // typeNatives covers the type-system words: refine, pathof, enum,
 // typeof, is, teq, tpartial, guard, base, tor, tand, tany, tall,
 // convert. New type ops follow the `t`-prefix convention — see
-// design/TYPE-OPERATIONS.8.md.
+// design/legacy/TYPE-OPERATIONS.8.ignore.
 //
 // `Resource` and `Entity` (the builtin object types) are NOT installed
 // via NativeFunc — they are user-typed values pushed onto the type
@@ -25,7 +25,7 @@ import (
 var typeNatives = []NativeFunc{
 	{
 		// refine is the uniform type constructor — see
-		// design/TYPE-UNIFORM.10.md. `refine BaseType arg`
+		// design/legacy/TYPE-UNIFORM.10.ignore. `refine BaseType arg`
 		// builds a (sub)type:
 		//   class {fields}              → class type (see the `class` word)
 		//   refine <classtype> {fields} → class subtype (inheritance)
@@ -68,7 +68,7 @@ var typeNatives = []NativeFunc{
 		// the value's own type). Instances are flat (defaults resolved
 		// eagerly at make) and sealed (writing an undeclared field is a
 		// sealed_field error). Subclassing reuses refine:
-		// `def Bar refine Foo {…}`. See design/CLASS-OBJECT.10.md.
+		// `def Bar refine Foo {…}`. See design/legacy/CLASS-OBJECT.10.ignore.
 		Name: "class",
 
 		Signatures: []Signature{{
@@ -83,7 +83,7 @@ var typeNatives = []NativeFunc{
 		// of operation name → fnsig shape with Self marking the
 		// conforming type's positions. `def Shape surface {…}` mints it
 		// under Ideal/Surface; `<Type> exposes Shape` declares (and
-		// loudly checks) conformance. See design/SURFACES.10.md.
+		// loudly checks) conformance. See design/legacy/SURFACES.10.ignore.
 		Name: "surface",
 
 		Signatures: []Signature{{
@@ -129,6 +129,10 @@ var typeNatives = []NativeFunc{
 			Impl:       Go(enumHandler),
 			Returns:    []*Type{TEnum},
 			ReturnsFn:  enumReturns, BarrierPos: -1,
+			// S2b's declaration: the member list is literal DATA the handler
+			// consumes verbatim (a bare word becomes its atom), never code
+			// it runs — CompileQuoteInert for a NoEvalArgs operand.
+			CompileEffect: CompileQuoteInert,
 		}},
 	},
 	{
@@ -155,11 +159,11 @@ var typeNatives = []NativeFunc{
 			// Membership reads the VALUE slot's lattice tag / runs the type's
 			// own Match predicate over it — a fn value there (`(+re/…/) is
 			// (MiniLang.Re)`, module-minilang.tsv) is DATA, never invoked
-			// (Stage M2d, design/STAGE3-INLINING-DESIGN-ROUND.0.md). The TYPE
+			// (Stage M2d, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The TYPE
 			// slot (position 0) is deliberately NOT inert: a concrete Function
 			// there is a PREDICATE the handler INVOKES via RunPredicate
 			// (`5 is Positive`), so whole-sig CompileReadsFn would miscompile —
-			// the positional map keeps that slot on the refusal path (pinned by
+			// the positional map keeps that slot on the compile failure path (pinned by
 			// TestFnValueIntrospectionLowers' invoke negative).
 			FnInertArgs: map[int]bool{1: true},
 		}},
@@ -325,7 +329,7 @@ var typeNatives = []NativeFunc{
 				Impl:     Go(convert2Handler),
 				// See the Ideal sig above: a VALUE of arg0's type, not the
 				// literal. The wrapper additionally flags the one TYPE-decidable
-				// refusal: a Float source into a Big target always raises.
+				// compile failure: a Float source into a Big target always raises.
 				ReturnsFn: convertScalarReturns, BarrierPos: -1,
 			},
 			// NUR053 — the truthiness DOMAIN. `if` and `make Boolean` accept
@@ -424,7 +428,7 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 	// A NAMED base or argument evaluates to its minted node (the Stage
 	// 2 flip); the kind dispatch and the constructors operate on the
 	// declared structural content, which the node records
-	// (design/TYPE-REPRESENTATION.1.md §N2). Bare bases with no content
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). Bare bases with no content
 	// (refine Integer, refine P) pass through unchanged.
 	if body, ok := TypeContentOf(base); ok && IsBareTypeNode(base) {
 		base = body
@@ -458,7 +462,7 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 // paired `def Name` then mints a fresh subtype parented at BaseType
 // (InstallType → MintType). `def Foo refine List` thus produces a
 // distinct List subtype that can serve as a dispatch surface for
-// `behave` — see design/TYPE-UNIFORM.10.md.
+// `behave` — see design/legacy/TYPE-UNIFORM.10.ignore.
 func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	base := args[0]
 	if !IsTypeBody(base) {
@@ -479,7 +483,7 @@ func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		// predicate constraint), return that content verbatim so the
 		// paired `def` re-enters its branch dispatch exactly as it did
 		// when the name denoted the body — the newtype inherits the
-		// schema (design/TYPE-REPRESENTATION.1.md §N2).
+		// schema (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 		if content, ok := TypeContentOf(base); ok {
 			return []Value{content}, nil
 		}
@@ -506,7 +510,7 @@ func installIdeals(r *Registry) {
 			// An existing class type builds a subtype of it
 			// (`def Bar refine Foo {…}`). The bare-Object form is
 			// REMOVED: classes are defined with the `class` word
-			// (design/CLASS-OBJECT.10.md — no deprecated aliases).
+			// (design/legacy/CLASS-OBJECT.10.ignore — no deprecated aliases).
 			if IsClassType(base) {
 				return objectWithParentHandler([]Value{arg, base}, nil, nil, r)
 			}
@@ -685,7 +689,7 @@ func typeofHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 // asTargetType resolves `as`'s TYPE operand (sig position 0) to its
 // canonical lattice node. Only a bare nominal type literal qualifies —
 // ascription redirects DISPATCH along the nominal lattice, so structural
-// bodies (records, predicates, disjuncts) and plain values refuse with
+// bodies (records, predicates, disjuncts) and plain values decline with
 // as_error rather than silently ascribing something dispatch cannot walk.
 func asTargetType(r *Registry, t Value) (*Type, error) {
 	if !core.IsTypeLiteral(t) {
@@ -705,7 +709,7 @@ func asTargetType(r *Registry, t Value) (*Type, error) {
 // tree lattice) — the runtime step re-runs this validation over the
 // concrete value.
 func asValidate(r *Registry, target *Type, v Value) error {
-	refuse := func() error {
+	decline := func() error {
 		name := target.Leaf()
 		own := "nothing"
 		if v.Parent != nil {
@@ -717,7 +721,7 @@ func asValidate(r *Registry, target *Type, v Value) error {
 			"as", "ascribe an ancestor of the value's own type; to construct a subtype use def x:"+name+" instead")
 	}
 	if core.IsTypeLiteral(v) || v.Parent == nil {
-		return refuse()
+		return decline()
 	}
 	if v.Dynamic {
 		// Tree lattice: two nodes overlap iff one is an ancestor of the
@@ -725,10 +729,10 @@ func asValidate(r *Registry, target *Type, v Value) error {
 		if v.Parent.ConformsTo(target) || target.ConformsTo(v.Parent) {
 			return nil
 		}
-		return refuse()
+		return decline()
 	}
 	if !v.Parent.ConformsTo(target) {
-		return refuse()
+		return decline()
 	}
 	return nil
 }
@@ -761,6 +765,12 @@ func asHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 // as a carrier at the target (the runtime validation proves conformance
 // before any consumer dispatches on it).
 func asReturns(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	degrade := func(err error) []Value {
 		if check.CheckAtUncaughtTopLevel(r) {
 			code, detail := "as_error", err.Error()
@@ -796,10 +806,18 @@ func asReturns(args []Value, r *Registry) []Value {
 
 func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	a, b := args[1], args[0]
+	// A typed container whose child is a paren expression (`[:(Integer tor
+	// None)]`) arrives with the paren unevaluated, as a fn parameter's and a
+	// typed def's do, and they resolve it: every element failed the raw
+	// paren, so `[5 1] is [:(Integer tor None)]` was false (NUR327).
+	b, err := core.ResolveChildTypeExpr(r, b)
+	if err != nil {
+		return nil, err
+	}
 	// A NAMED structural type RHS evaluates to its minted node (the
 	// Stage 2 flip); recover the declared content so the redirect and
 	// Unify arms below see the body shapes they have always answered
-	// (design/TYPE-REPRESENTATION.1.md §N2). The Object/Table/Micron
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). The Object/Table/Micron
 	// redirect kinds resolve unconditionally — their `is` verdict is
 	// the tag-identity redirect below, which only their content shape
 	// selects. Other nodes whose kind enforces membership through the
@@ -943,7 +961,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// its stricter answer by sending a concrete candidate through
 			// the Unify + value-identity path below, where a swap
 			// admission (the unified result being the alternative's bare
-			// node, not the value) is refused: `42 is (P tor String)` is
+			// node, not the value) is declined: `42 is (P tor String)` is
 			// false while `42 g` dispatches.
 			if !core.IsDisjunctTypeNode(b) || !IsConcrete(a) {
 				return []Value{NewBoolean(true)}, nil
@@ -1252,7 +1270,7 @@ func convertOptsPattern() Value {
 	baseOpts := NewOrderedMap()
 	baseOpts.Set("base", NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TNone)}))
 	baseOpts.Set("truthy", NewDisjunct([]Value{NewTypeLiteral(TBoolean), NewTypeLiteral(TNone)}))
-	// accuracy enables (and disambiguates) the otherwise-refused
+	// accuracy enables (and disambiguates) the otherwise-declined
 	// Float → BigDecimal conversion — see floatToBigDecimal.
 	baseOpts.Set("accuracy", NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TNone)}))
 	// places is the companion to accuracy:"round" — the number of
@@ -1286,7 +1304,7 @@ var convertBoolOptsKinds = map[string]*Type{
 // of the two Boolean rows the sorter puts first, a valid call computes
 // the same answer.
 func convertBoolOptsHandler(args []Value, named map[string]Value, body []Value, r *Registry) ([]Value, error) {
-	// Arity guard FIRST, and it refuses rather than delegating: the
+	// Arity guard FIRST, and it declines rather than delegating: the
 	// no-signature recovery can assume a sig with a short arg window, and
 	// convert3Handler indexes args[2] unconditionally — so delegating a
 	// short window would panic, which this codebase does not permit
@@ -1479,7 +1497,7 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 }
 
 // convertScalarReturns wraps the fresh-instance result model for the
-// [Scalar Scalar] convert overload with its one TYPE-decidable refusal:
+// [Scalar Scalar] convert overload with its one TYPE-decidable compile failure:
 // a Float source into a Big target ALWAYS raises (convertToBigInteger /
 // convertToBigDecimal reject exactly by source type — no value can pass),
 // so a source the checker has PROVEN Float (strict, non-dynamic) is
@@ -1507,7 +1525,7 @@ func convertScalarReturns(args []Value, r *Registry) []Value {
 // convertToBigInteger converts a scalar source to BigInteger. Exact
 // sources (Integer, BigInteger) and the truncated integer part of a
 // BigDecimal are accepted; a String is parsed exactly (base-aware). A
-// Float is REFUSED — a binary Float is inexact, so silently absorbing it
+// Float is DECLINED — a binary Float is inexact, so silently absorbing it
 // into an arbitrary-precision exact type would re-introduce the very
 // rounding error the Big types exist to avoid (convert to Integer first
 // if a truncating projection is really wanted).
@@ -1551,7 +1569,7 @@ func convertToBigInteger(src Value, base string) (Value, error) {
 
 // convertToBigDecimal converts a scalar source to BigDecimal. Integer and
 // BigInteger widen exactly; BigDecimal is returned as-is; a String is
-// parsed exactly via apd. A Float is REFUSED for the same reason as
+// parsed exactly via apd. A Float is DECLINED for the same reason as
 // convertToBigInteger (the float is already rounded — WAT Exhibit L).
 func convertToBigDecimal(src Value, base string) (Value, error) {
 	if base != "" {
@@ -1605,7 +1623,7 @@ func bigDecimalToBigIntTrunc(src Value) (*big.Int, error) {
 }
 
 // floatToBigDecimal performs the opt-in Float → BigDecimal conversion
-// that convertToBigDecimal refuses by default. A binary Float is inexact,
+// that convertToBigDecimal declines by default. A binary Float is inexact,
 // so there is no single honest BigDecimal for it; the `accuracy` option
 // forces the caller to state which reading they want:
 //
@@ -1618,7 +1636,7 @@ func bigDecimalToBigIntTrunc(src Value) (*big.Int, error) {
 //     required; e.g. 3.14159 with places 2 becomes 0d3.14).
 //
 // A non-finite Float (NaN / ±Inf) has no decimal expansion and is
-// refused. This is reached only from the 3-arg convert with an accuracy
+// declined. This is reached only from the 3-arg convert with an accuracy
 // option present — without it, Float → BigDecimal stays a hard error.
 //
 // `places` is carried as an int64 so an out-of-range request is caught
@@ -1780,7 +1798,7 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	}
 
 	// `accuracy` is the explicit opt-in that lets a Float become a
-	// BigDecimal (convertToBigDecimal refuses it by default because a
+	// BigDecimal (convertToBigDecimal declines it by default because a
 	// binary Float is inexact). It applies only to a Float → BigDecimal
 	// conversion; for any other source/target it is inert, exactly like
 	// truthy on a non-Boolean target.

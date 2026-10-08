@@ -45,6 +45,48 @@ func TestCheckFnCarrierBindTable(t *testing.T) {
 	}
 }
 
+// TestCheckFnCarrierBindDepth: the table keeps the OUTERMOST fn-body depth
+// a name was bound at (NUR192's shadow test) — a deeper rebind does not
+// hide the enclosing bind, a shallower one lowers it — and the depth goes
+// with the bind on undef and on the pass-scoped reset.
+func TestCheckFnCarrierBindDepth(t *testing.T) {
+	r := covRegistry(t, nil)
+	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
+		t.Error("an unbound name has no depth")
+	}
+	r.Check.FnBodyDepth = 0
+	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
+	r.Check.FnBodyDepth = 1
+	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
+	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
+	if d, bound := CheckFnCarrierBindDepth(r, "a"); !bound || d != 0 {
+		t.Errorf("the outermost depth stays: got %d %v, want 0", d, bound)
+	}
+	if d, bound := CheckFnCarrierBindDepth(r, "b"); !bound || d != 1 {
+		t.Errorf("a name first bound in a fn body records that depth: got %d %v, want 1", d, bound)
+	}
+	r.Check.FnBodyDepth = 0
+	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
+	if d, _ := CheckFnCarrierBindDepth(r, "b"); d != 0 {
+		t.Errorf("a shallower bind lowers the depth: got %d, want 0", d)
+	}
+	DropCheckFnCarrierBind(r, "a")
+	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
+		t.Error("undef drops the depth with the bind")
+	}
+	ResetCheckFnCarrierBinds(r)
+	if _, bound := CheckFnCarrierBindDepth(r, "b"); bound {
+		t.Error("the reset clears the depths with the table")
+	}
+	// A registry without a check state records depth 0.
+	r2 := covRegistry(t, nil)
+	r2.Check = nil
+	NoteCheckFnCarrierBind(r2, "c", NewCarrier(TFunction))
+	if d, bound := CheckFnCarrierBindDepth(r2, "c"); !bound || d != 0 {
+		t.Errorf("no check state: depth 0, got %d %v", d, bound)
+	}
+}
+
 // TestStepWordCompileCarrierSubstitute — a COMPILE pass resolves a plain
 // read of a name def-bound to a Function carrier through the side table:
 // stepWord substitutes the carrier with no undefined_word diagnostic.
@@ -69,12 +111,15 @@ func TestStepWordCompileCarrierSubstitute(t *testing.T) {
 	}
 }
 
-// TestStepWordValCarrierKeepsUndefinedDiag — the `/v` read path must NOT
-// consult the side table, even on a compile pass with the name noted:
-// substituting there green-lights units whose lowering drops the operand
-// (the pmany/pseq miscompile — see stepWordVal). The diagnostic keeps
-// those units refused.
-func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
+// TestStepWordValCarrierSubstitutes — the `/v` read path resolves a
+// carrier-bound name through the side table exactly as the bare read does
+// (S1b-2): the carrier replaces the token, the pass is marked, no
+// undefined_word is reported. This path used to decline the table on
+// purpose (a substituted `/v` read once had no producing event and
+// `(pmany digit/v)` compiled to a 0-arg call); the bare read's provenance
+// notes — the def read and the local read — are what the lowering needs,
+// and the `/v` read now carries the same ones.
+func TestStepWordValCarrierSubstitutes(t *testing.T) {
 	r := compileCheckRegistry(t)
 	NoteCheckFnCarrierBind(r, "hv", NewCarrier(TFunction))
 
@@ -83,11 +128,56 @@ func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
 	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "hv", ArgCount: -1, ForceVal: true}); err != nil {
 		t.Fatalf("/v step errored: %v", err)
 	}
+	got := e.Tape.At(0)
+	if got.Undefined || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+		t.Errorf("a /v read of a carrier-bound name must substitute the carrier: %v", got)
+	}
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("no diagnostics expected, got %v", r.Check.Diagnostics)
+	}
+	if !r.Check.FnCarrierReadSubstituted {
+		t.Error("the substitution must mark the pass (the silent-fallback flag)")
+	}
+	// An UNBOUND name keeps the undefined_word diagnostic and the placeholder.
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{NewWord("nope")}, StackHeadroom)
+	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "nope", ArgCount: -1, ForceVal: true}); err != nil {
+		t.Fatalf("/v step of an unbound name errored: %v", err)
+	}
 	if got := e.Tape.At(0); !got.Undefined {
-		t.Errorf("a /v read of a carrier-bound name must keep the Undefined placeholder: %v", got)
+		t.Errorf("an unbound /v read must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
 		t.Errorf("expected the one undefined_word diagnostic, got %v", r.Check.Diagnostics)
+	}
+}
+
+// TestDefTopResolvesCarrierUnderAnalysis — the collection seat's binding
+// lookup (Engine.DefTop, the plan walk's and the candidate scan's word
+// resolution) reads the side table under an analysis pass, so a forward
+// slot claims a computed fn's carrier where it used to see a bare word
+// (`each f/v [1 2 3]` over `def f (mk 10)` declined "unmatched dispatch
+// recovered at each"). A Defs binding wins; outside analysis the table is
+// never consulted.
+func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
+	r := compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "f", NewCarrier(TFunction))
+	r.Defs.Push("d", NewInteger(7))
+	e := NewTop(r)
+	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
+		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
+	}
+	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
+		t.Errorf("a Defs binding must resolve as itself: %v %v", got, ok)
+	}
+	if _, ok := e.DefTop("zz"); ok {
+		t.Error("an unbound name must miss")
+	}
+
+	plain := covRegistry(t, nil)
+	NoteCheckFnCarrierBind(plain, "f", NewCarrier(TFunction))
+	if _, ok := NewTop(plain).DefTop("f"); ok {
+		t.Error("outside analysis the table must not be consulted")
 	}
 }
 
@@ -200,15 +290,15 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	}
 }
 
-// TestInstallDefRefusesCapturingRedefinitionInFnBody pins installDef's
+// TestInstallDefDoesNotLowerCapturingRedefinitionInFnBody pins installDef's
 // fn-body arm (the thirty-first increment): a CAPTURING fn value — a
 // factory's returned closure — redefining an outer overloading def from
 // inside a fn body outlives the call on the interpreter (the drop-then-push
 // leaves the frame's def depth unchanged, so DefCleanup pops nothing) where
-// the compiled program keeps the outer bake, so the install refuses at the
+// the compiled program keeps the outer bake, so the install declines at the
 // conditional-redefinition site. A capture-free literal in a fn body and a
-// capturing value at the top level are not refused.
-func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
+// capturing value at the top level are not declined.
+func TestInstallDefDoesNotLowerCapturingRedefinitionInFnBody(t *testing.T) {
 	r := compileCheckRegistry(t)
 	es := newS5BEmit()
 	r.Check.Emit = es
@@ -219,14 +309,91 @@ func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
 	r.Check.FnBodyDepth = 1
 	installDef(r, "p", capturing, false)
 	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body by a capturing fn value") {
-		t.Errorf("a capturing redefinition inside a fn body refuses: %v", es.uncompilable)
+		t.Errorf("a capturing redefinition inside a fn body declines: %v", es.uncompilable)
 	}
 	es.uncompilable = nil
 	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
 	r.Check.FnBodyDepth = 0
 	installDef(r, "p", capturing, false)
 	if len(es.uncompilable) != 0 {
-		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not refused: %v", es.uncompilable)
+		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not declined: %v", es.uncompilable)
+	}
+}
+
+// TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody pins installDef's
+// fn-body arm for NUR149 (the seventy-third increment): a CAPTURE-FREE
+// redefinition inside a fn body of a SPECULATIVE-FAMILY name (a fn a branch
+// arm the model could not decide defined — SpecFnNames, the seventieth
+// increment) is the family-L leak. The drop-then-push leaves the frame's def
+// depth unchanged, so the interpreter keeps the shadow past the call while the
+// compiled def lowers to nothing and the family's live-lead dispatch resolves
+// the wrong binding; no compiled twin reproduces it, so it declines. The same
+// capture-free redefinition of a NON-family name takes the compiled replace
+// twin and is not declined.
+func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
+	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
+	lit := func() Value { return NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}) }
+
+	// A MODULE-scope speculative family (p installed, then the fn baseline
+	// snapshotted so p sits AT the baseline) redefined capture-free inside a
+	// fn body is the family-L leak — declined.
+	r := compileCheckRegistry(t)
+	es := newS5BEmit()
+	r.Check.Emit = es
+	installDef(r, "p", lit(), false)
+	r.Check.SpecFnNames = map[string]bool{"p": true}
+	r.PushFnBaseline(r.Defs.Snapshot())
+	r.Check.FnBodyDepth = 1
+	installDef(r, "p", lit(), false)
+	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a module-scope speculative-family overload") {
+		t.Errorf("a module-scope spec-family redefinition inside a fn body declines: %v", es.uncompilable)
+	}
+
+	// An IN-FUNCTION family (p created INSIDE the fn, above the baseline) is
+	// torn down by RET — NOT the leak, so NOT declined (the baseline gate,
+	// Codex P2 on #469).
+	r2 := compileCheckRegistry(t)
+	es2 := newS5BEmit()
+	r2.Check.Emit = es2
+	r2.PushFnBaseline(r2.Defs.Snapshot()) // p absent at the baseline
+	r2.Check.SpecFnNames = map[string]bool{"p": true}
+	r2.Check.FnBodyDepth = 1
+	installDef(r2, "p", lit(), false) // created in-fn
+	installDef(r2, "p", lit(), false) // redefined in-fn
+	if len(es2.uncompilable) != 0 {
+		t.Errorf("an in-function spec family is not declined (the baseline gate): %v", es2.uncompilable)
+	}
+
+	// Not a speculative family: the compiled replace twin agrees, so no compile failure.
+	r3 := compileCheckRegistry(t)
+	es3 := newS5BEmit()
+	r3.Check.Emit = es3
+	installDef(r3, "p", lit(), false)
+	r3.PushFnBaseline(r3.Defs.Snapshot())
+	r3.Check.FnBodyDepth = 1
+	installDef(r3, "p", lit(), false)
+	if len(es3.uncompilable) != 0 {
+		t.Errorf("a non-family capture-free redefinition in a fn body is not declined: %v", es3.uncompilable)
+	}
+
+	// specFamilyAtFnBaseline: false with no enclosing baseline, true when the
+	// binding sits at/below it, false above it.
+	r4 := compileCheckRegistry(t)
+	installDef(r4, "p", lit(), false)
+	if specFamilyAtFnBaseline(r4, "p") {
+		t.Error("no enclosing fn baseline: not baseline-scoped")
+	}
+	r4.PushFnBaseline(r4.Defs.Snapshot())
+	if !specFamilyAtFnBaseline(r4, "p") {
+		t.Error("a binding at the baseline is baseline-scoped")
+	}
+	installDef(r4, "q", lit(), false) // q created above the baseline
+	if specFamilyAtFnBaseline(r4, "q") {
+		t.Error("a binding above the baseline is not baseline-scoped")
+	}
+	var nilR *Registry
+	if specFamilyAtFnBaseline(nilR, "p") {
+		t.Error("a nil registry is not baseline-scoped")
 	}
 }
 
@@ -256,5 +423,64 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 	}
 	if r.Check.FnCarrierReadSubstituted {
 		t.Error("a plain check must not set the compile-only mark")
+	}
+}
+
+// TestCheckFnCarrierBindDepthWithoutDepthTable pins the depth read's second
+// guard: a name the BINDS table holds while its depth twin is absent (the
+// two are separate registry capabilities — a writer that sets one alone, or
+// a partial reset, leaves exactly this state) reads as bound at no depth
+// rather than panicking on a nil map or inventing depth 0.
+func TestCheckFnCarrierBindDepthWithoutDepthTable(t *testing.T) {
+	r := covRegistry(t, nil)
+	if err := r.Capabilities.Set(capCheckFnCarrierBinds, map[string]Value{"solo": NewCarrier(TFunction)}); err != nil {
+		t.Fatalf("Capabilities.Set: %v", err)
+	}
+	if _, bound := CheckFnCarrierBind(r, "solo"); !bound {
+		t.Fatal("the binds table alone resolves the bind")
+	}
+	if d, bound := CheckFnCarrierBindDepth(r, "solo"); bound || d != 0 {
+		t.Errorf("no depth table: the name has no bind depth, got %d %v", d, bound)
+	}
+}
+
+// TestStepWordCarrierFnIsABarrier pins NUR216's barrier: a name def-bound to
+// a FUNCTION carrier is a function word on the run, so its read under an
+// analysis pass is a forward-collection barrier exactly as a registered fn
+// word's is — a parked forward that can fire commits first, one that cannot
+// strands — where the pass used to hand the carrier to the pending word as
+// data. A gradual carrier (it may hold data) is no barrier.
+func TestStepWordCarrierFnIsABarrier(t *testing.T) {
+	setStrict(t, true)
+	// Stranded: the uncommittable parked forward below the read.
+	r := compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("h")}, StackHeadroom)
+	e.Pointer = 3
+	err := e.stepWord(e.Tape.At(3))
+	if err == nil || !strings.Contains(err.Error(), "strict rule") {
+		t.Fatalf("a fn word read under a pending forward strands it, got %v", err)
+	}
+	// Committed: a fully-claimed forward fires first, and the read waits.
+	r = compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{fwdMarker("cadd", 3, 2, 0), NewInteger(3), NewInteger(4), NewWord("cadd"), NewWord("h")}, StackHeadroom)
+	e.Pointer = 4
+	if err := e.stepWord(e.Tape.At(4)); err != nil {
+		t.Fatalf("a committing barrier returns nil, got %v", err)
+	}
+	if IsWord(e.Tape.At(e.Tape.Len()-1)) == false {
+		t.Error("the read stays a word for its own step once the forward fires")
+	}
+	// A gradual carrier is no barrier: it is substituted as before.
+	r = compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "g", NewDynamicCarrier(TAny))
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("g")}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepWord(e.Tape.At(3)); err != nil {
+		t.Errorf("a gradual carrier's read is not a barrier, got %v", err)
 	}
 }

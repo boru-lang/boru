@@ -10,7 +10,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/native"
 )
 
-// Model action stamping (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md
+// Model action stamping (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore
 // Phase 6): buildActions stamps every action fn at model build
 // (stampActionFn), so makeAction's InvokeCallback runs the body on the VM.
 // Paired here: an anonymous spec lambda stamps under its ACTION name and a

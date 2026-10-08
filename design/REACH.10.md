@@ -6,8 +6,8 @@ work (F–J) landed (green)**
 its current flat `get`-chain (a `ParenExpr` after the paren-nesting work) to a
 **first-class, quotable, round-trippable `Reach` value** with per-segment
 operator and literal-or-computed keys.
-**Predecessor:** `PAREN-REPRESENTATION.9.md` §6/§9 (the "dotted access is the
-residual" finding) and `LISP-ANALYSIS.5.md` §2/§8 #5 (uniform code-as-data).
+**Predecessor:** `legacy/PAREN-REPRESENTATION.9.ignore` §6/§9 (the "dotted access is the
+residual" finding) and `legacy/LISP-ANALYSIS.5.ignore` §2/§8 #5 (uniform code-as-data).
 **Decisions (this plan):** first-class runtime value · motivation = code-as-data
 **and** programmatic access · computed keys supported in the node.
 

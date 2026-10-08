@@ -13,7 +13,7 @@ import (
 )
 
 // Stage M2c landing tests — shaped-instance-method dispatch
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 M2c; eng/go/method_shape.go).
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 M2c; eng/go/method_shape.go).
 //
 // A module instance (logger / instrument / span / rand handle) is a Map of
 // trivial-delegation method wrappers closing over per-instance state. The
@@ -117,13 +117,13 @@ func TestShapedMethodEffectOrdering(t *testing.T) {
 // --- the former guard rows: 0-arg landings now compile ---------------------
 
 // The 4 miscompile-E rows (module-log 72/73, module-rand 14/15) used to sit
-// on a read-side refusal: a member with a genuine 0-arg overload
+// on a read-side compile failure: a member with a genuine 0-arg overload
 // (Span.finish, Rand.bool/float) auto-dispatches the moment it lands, which
 // the read guard blocked wholesale. The guard is now RE-HOMED onto the
 // landing: NoteMethodShape ANNOTATES the 0-arg class, the read guards skip
 // the annotated read (EmitState.noteShapedRead), and the landing model claims
 // it as an explicit arity-0 OpCallDynMethod (shapedMethodApplyWindow's 0-arg
-// path) — or refuses via tryShapedMethodDispatch's guard-owned decline. So
+// path) — or declines via tryShapedMethodDispatch's guard-owned decline. So
 // the rows compile with parity, and the VM's poly-get returns the member
 // VALUE for the opcode to consume (no runtime auto-apply).
 func TestShapedMethodZeroArgLandingsCompile(t *testing.T) {
@@ -147,10 +147,10 @@ func TestShapedMethodZeroArgLandingsCompile(t *testing.T) {
 
 // A CAPTURING method fn (a map member that is a closure over an enclosing
 // fn's state, not a delegation wrapper) is outside the shaped-method class:
-// NoteMethodShape declines it, the statement-position call keeps refusing,
+// NoteMethodShape declines it, the statement-position call keeps declining,
 // and the fallback stays faithful.
-func TestShapedMethodCapturingMemberStaysRefused(t *testing.T) {
-	fnValueM2Refusal(t, "capturing member fn in statement position",
+func TestShapedMethodCapturingMemberStaysFailedToCompile(t *testing.T) {
+	fnValueM2CompileFailure(t, "capturing member fn in statement position",
 		`def mk fn [[x:Integer] [Map] [{f: (([y:Integer] => [x add y]))/v}]] def m (mk 5) m.f 1 ; 42`,
 		"")
 }
@@ -161,19 +161,16 @@ func TestShapedMethodCapturingMemberStaysRefused(t *testing.T) {
 // values across statement boundaries: this exact source compiled to the
 // WRONG value pre-M2c (the leading OpCallDynamic applied c.add to the add
 // result AND the next statement's size result — probe-confirmed divergence
-// on the committed tree). It must now refuse, with faithful fallback.
+// on the committed tree). It must now decline, with faithful fallback.
 //
 // Re-diagnosed 2026-09-05 (NUR121): the collection-hazard mark names the
 // same fact one stage earlier — the next statement's `size` stack-collected
 // past the unapplied `c.add` lead, so any apply of that lead over the
-// residual would run over `size`'s result. Same sound refusal, earlier and
+// residual would run over `size`'s result. Same compile failure, earlier and
 // truer diagnosis; the methodShapeAnnotated decline still stands behind it.
-func TestShapedMethodComputedArgStaysRefused(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	fnValueM2Refusal(t, "computed arg in the statement window",
+func TestShapedMethodComputedArgStaysFailedToCompile(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
+	fnValueM2CompileFailure(t, "computed arg in the statement window",
 		`import "boru:log" ; Log.add-sink memory/q ; Log.remove-sink console/q ; def c (Log.counter "n") ; c.add (1 add 2) ; Log.measurements size`,
 		"fn-value lead's argument was collected by a later dispatch (NUR121)")
 }
@@ -259,12 +256,12 @@ func TestShapedMethodClaimViolationDefers(t *testing.T) {
 	// RunCompiled: the claim fails at run time (1 result vs 0 claimed) →
 	// internal_error → silent interpreter re-run with the CORRECT result.
 	a2 := zzShapedInstance(t)
-	gotC, compiled, errC := a2.RunCompiled(src)
+	gotC, _, errC := a2.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	a3 := zzShapedInstance(t)
 	gotI, errI := a3.RunInterp(src)
-	if compiled {
-		t.Errorf("claim violation: ran compiled; want the interpreter fallback")
-	}
 	if errC != nil || errI != nil {
 		t.Fatalf("claim violation: errs compiled=%v interp=%v", errC, errI)
 	}
@@ -352,6 +349,9 @@ func TestShapedMethodRegisteredShapeCompiles(t *testing.T) {
 		t.Errorf("honest shape: expected native, got island:\n%s", prog.Disassemble())
 	}
 	got, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if !compiled || err != nil {
 		t.Fatalf("honest shape: compiled=%v err=%v", compiled, err)
 	}

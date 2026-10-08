@@ -333,7 +333,7 @@ specificity:
    persistent-registry case: `a.Run("…behave…")` installs advice, then
    `a.RunCompiled("(make Uniq [1 2]) push 1")` on the same instance — program
    2 contains no `behave`. A new `anyWordAdviceCarrier(args, outs)` case in
-   `recordCallRefusal` (beside `anyDynamicCarrier`, `emit.go:~2237`) walks
+   `recordCallCompileFailure` (beside `anyDynamicCarrier`, `emit.go:~2237`) walks
    each carrier's non-builtin `Parent` prefix for a `WordInterceptor` with any
    installed slot — this is why the interface must be eng-visible. It works
    because `ReturnsFreshInstance` and `ReturnsPreserveContainerTag` keep the
@@ -428,7 +428,7 @@ and the full pre-commit gate per stage. (The dedup word is `unique`,
   *before* the base op runs (cheaper than build-then-raise).
 - **Native compilation of advice-carrying dispatches** — an interpreter
   island threading the advice body, once the Stage-5 island machinery grows
-  capture support (see `boru-bytecode-capture-threaded-islands.0.md`).
+  capture support (see `legacy/boru-bytecode-capture-threaded-islands.0.ignore`).
 - **Wiring `Hasher`** — set-like dedup at O(n) instead of the O(n²) a naive
   `unique` body implies; also what a real `Set` type would want.
 - **Weak references** — a value-identity/GC axis, unrelated to structural

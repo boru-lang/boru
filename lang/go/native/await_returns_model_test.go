@@ -105,7 +105,7 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	}
 
 	// all is List-or-Error, named as a dynamic union so the claim does not
-	// distribute over dispatch (a strict disjunct refuses `… get 0`).
+	// distribute over dispatch (a strict disjunct declines `… get 0`).
 	all := awaitResidual(nil, "all", nonEmpty)
 	if len(all) != 1 {
 		t.Fatalf("all: got %d residual values, want 1", len(all))
@@ -186,8 +186,8 @@ func TestAwaitRunnerTableMatchesTheMirror(t *testing.T) {
 // returns, and the recorder turns that one out into a runtime-variadic
 // REGION event (callVariadicRegion → eventFlags.variadicRegion). The
 // wholesale MarkUncompilable this used to assert is gone — a region has a
-// representation now, so the fixed-arity consumers refuse individually
-// instead of the whole program refusing up front.
+// representation now, so the fixed-arity consumers decline individually
+// instead of the whole program declining up front.
 func TestAwaitVariadicResultModelsARegionOnBothPasses(t *testing.T) {
 	reg, err := DefaultRegistry()
 	if err != nil {

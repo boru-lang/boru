@@ -59,7 +59,7 @@ func TestW8FormatParseHandler(t *testing.T) {
 }
 
 // TestW8InstallBuiltinParserDuplicate drives installBuiltinParser's
-// duplicate-key refusal — defensive: the fixed built-in set is disjoint, so
+// duplicate-key compile failure — defensive: the fixed built-in set is disjoint, so
 // only a drifted TabnasKinds could collide.
 func TestW8InstallBuiltinParserDuplicate(t *testing.T) {
 	r := mcovReg(t)
@@ -114,18 +114,18 @@ func TestW8ParseFoldableValue(t *testing.T) {
 	if parseFoldableValue(native.NewMap(mBad)) {
 		t.Error("a map with a carrier value is not foldable")
 	}
-	// list-typed value whose payload AsList refuses (405 → return false).
+	// list-typed value whose payload AsList declines (405 → return false).
 	if parseFoldableValue(core.NewExtension(native.TList, "w8")) {
 		t.Error("a list value AsList cannot read is not foldable")
 	}
-	// map-typed value whose payload AsMap refuses (416 → return false).
+	// map-typed value whose payload AsMap declines (416 → return false).
 	if parseFoldableValue(core.NewExtension(native.TMap, "w8")) {
 		t.Error("a map value AsMap cannot read is not foldable")
 	}
 }
 
 // TestW8ResolveParseSourceBad drives resolveParseSource's non-String/non-map
-// refusal (456) and its empty-map arm (441): a TMap-typed value AsMap refuses.
+// compile failure (456) and its empty-map arm (441): a TMap-typed value AsMap declines.
 func TestW8ResolveParseSourceBad(t *testing.T) {
 	r := mcovReg(t)
 	if _, err := resolveParseSource(native.NewInteger(5), r); err == nil {
@@ -138,7 +138,7 @@ func TestW8ResolveParseSourceBad(t *testing.T) {
 }
 
 // TestW8NewParseLangFnValidation drives the value constructor's validation
-// arms: empty name, nil handler, and a name RegisterNativeFunc refuses.
+// arms: empty name, nil handler, and a name RegisterNativeFunc declines.
 func TestW8NewParseLangFnValidation(t *testing.T) {
 	if _, err := NewParseLangFn(ParseLangSpec{Name: "", Handler: w9NopParser}); err == nil {
 		t.Error("NewParseLangFn: empty Name should error")
@@ -191,7 +191,7 @@ func TestW8RegisterTombstone(t *testing.T) {
 // parsers are Parse.parser Function VALUES dispatched through
 // parselang-fn-dispatch, whose arms TestFnDispatchArms drives.)
 
-// TestW8AontuAndTabnasSrcErrors drives the src refusal arms of the aontu (666)
+// TestW8AontuAndTabnasSrcErrors drives the src decline arms of the aontu (666)
 // and tabnas (687) built-in parser handlers.
 func TestW8AontuAndTabnasSrcErrors(t *testing.T) {
 	r := mcovReg(t)

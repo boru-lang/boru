@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// The sugar-role refusal contract (ADR-012 amendment): a registry with
+// The sugar-role compile failure contract (ADR-012 amendment): a registry with
 // no binding for a stepped role fails LOUDLY — the bare kernel (calc)
-// runs with zero bindings, so every marker kind must refuse cleanly
+// runs with zero bindings, so every marker kind must decline cleanly
 // rather than lower to an invented name. These tests pin every
 // unbound-role error arm and the role-table edge cases the language
 // layer never exercises (it always binds).
@@ -55,7 +55,7 @@ func TestSugarExpansionUnboundRoles(t *testing.T) {
 	for _, c := range cases {
 		src := NewSugar(c.info)
 		if _, serr := SugarExpansion(r, c.info, src, c.head); serr == nil {
-			t.Errorf("%s: unbound role must refuse", c.name)
+			t.Errorf("%s: unbound role must decline", c.name)
 		} else if !strings.Contains(serr.Error(), "sugar_unbound") {
 			t.Errorf("%s: want sugar_unbound, got %v", c.name, serr)
 		}
@@ -66,15 +66,15 @@ func TestSugarExpansionUnboundRoles(t *testing.T) {
 		!strings.Contains(serr.Error(), "sugar_unbound") {
 		t.Errorf("nil registry: want sugar_unbound, got %v", serr)
 	}
-	// An unknown kind refuses on both registry shapes.
+	// An unknown kind declines on both registry shapes.
 	bogus := SugarInfo{Kind: SugarKind("bogus")}
 	if _, serr := SugarExpansion(r, bogus, NewSugar(bogus), false); serr == nil ||
 		!strings.Contains(serr.Error(), "unknown sugar kind") {
-		t.Errorf("unknown kind: want refusal, got %v", serr)
+		t.Errorf("unknown kind: want compile failure, got %v", serr)
 	}
 	if _, serr := SugarExpansion(nilR, bogus, NewSugar(bogus), false); serr == nil ||
 		!strings.Contains(serr.Error(), "unknown sugar kind") {
-		t.Errorf("unknown kind (nil registry): want refusal, got %v", serr)
+		t.Errorf("unknown kind (nil registry): want compile failure, got %v", serr)
 	}
 }
 

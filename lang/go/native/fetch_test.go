@@ -40,7 +40,7 @@ func TestFetchFunc(t *testing.T) {
 	}
 }
 
-// C1 effect fence: a fetch that reaches the network counts one effect on the
+// effect ledger: a fetch that reaches the network counts one effect on the
 // registry's ledger (noted on the attempt — once Do runs, the request may
 // have escaped even on error), while a request rejected BEFORE the send (a
 // missing url) provably sent nothing and stays uncounted.

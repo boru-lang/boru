@@ -281,10 +281,14 @@ The checker is registry-driven and follows `def` scoping already, so
 scope-varying signatures work in principle; the diagnostics
 (`extend_conflict`, the 4.2 advisory) are new. The bytecode
 compiler's fold sites for foldable words must consult the **scoped
-binding** rather than any baked signature table, and must refuse to
-fold a call that resolves to a merged clone whose added sig isn't
-compilable — the interpreter-fallback covers it. This remains the
-one real implementation cost outside the registry (same as rev 0).
+binding** rather than any baked signature table; a merged clone whose
+added sig the compiler cannot yet lower is an **open defect** — the
+compiler owes that case a lowering, and the gap is tracked to closure
+rather than designed around. Until it is closed the fold site
+declines and the fallback-island machinery silently routes the call
+to the interpreter, which hides the defect instead of answering it.
+Making every merged clone compile is the one real implementation cost
+outside the registry (same as rev 0).
 
 ### 4.8 Cost
 
@@ -517,10 +521,14 @@ structs, so `BarrierPos`/`QuoteArgs`/`NoEvalArgs`/`RawParens`/
 §4.7 as observed: the checker follows scope through the ordinary
 registry lookup (a merged call type-checks in scope, flags out of
 scope); the bytecode recorder treats an added sig like any boru fn —
-local merges compile with interpreter parity, and a transplanted
-(foreign-registry) sig REFUSES under `-force-compile` ("user fn call")
-and falls back to the interpreter under `-compile`, which is exactly
-the §4.7 contract.
+local merges compile with interpreter parity, but a transplanted
+(foreign-registry) sig still REFUSES under `-force-compile` ("user fn
+call"). That refusal is an **open defect**, not a settled outcome: a
+transplanted signature is valid boru and is owed a lowering like any
+other. Under `-compile` the refused program is silently re-run on the
+interpreter — scaffolding that absorbs the defect and, by being
+silent, conceals it. The §4.7 work item stands until the recorder
+compiles a transplanted sig outright.
 
 §4.8 stands as designed: the clone is rebuilt per `def` execution —
 extend at module/top level rather than in a hot fn body.

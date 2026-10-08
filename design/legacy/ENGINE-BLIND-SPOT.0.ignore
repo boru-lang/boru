@@ -1,0 +1,445 @@
+# ENGINE-BLIND-SPOT.0 — what the shared corpora could not see
+
+**Status:** MEASURED 2026-08-09 · **Method:** 980 candidate sources across
+six lenses, each run through BOTH engines; every claimed divergence
+independently re-derived by a second pass before it was counted.
+
+Sibling notes: [../GO-TS-PARITY.0.md](../GO-TS-PARITY.0.md) (the programme this
+belongs to), [../CORE-TS-DIVERGENCES.1.md](../CORE-TS-DIVERGENCES.1.md) (the
+earlier core-level sweep).
+
+## Why this exists
+
+The question that started it: *the TS unifier is not at parity with the Go
+one — why did the shared TSV specs not reveal that?*
+
+The answer turned out to be structural rather than an oversight, and it
+generalises well past unification. `core/spec` cannot express a type
+CONSTRUCTOR, so no row reached the unifier at all. `basic/spec` covers 17
+ported words, and the main unify client (`case`) is unported *because*
+unify is. `eng/spec` does exercise `is` — 607 rows — and they all agree,
+because the corpus was written from what the engines already did.
+
+Two instruments came out of the answer. `unifyq` plus the `d( )` / `[: ]` /
+`{: }` notation opened the CORE-level unifier to `core/spec` (see
+[core/spec/unify.tsv](../../core/spec/unify.tsv)); this sweep opened the
+ENGINE-level surface. The report below is the second one.
+
+## The one-line summary
+
+The port is faithful across the whole region of *a concrete value tested
+against a type literal or a structural shape at the top level* — exactly
+the region `eng/spec` exercises. Divergence begins one step past that
+boundary, and always at the same step: **one level of composition**, or a
+word whose evaluation the corpus never runs.
+
+---
+
+# GO/TS engine divergences outside the shared corpus
+
+**980 sources probed across six lenses. 149 candidates claimed, 136 independently re-derived, 131 distinct sources. Not one of them is covered by an `eng/spec` row.**
+
+| class | rows | crossdiff disposition |
+|---|---|---|
+| WRONG-ANSWER (both succeed, values differ) | **102** | would hard-fail — if a row existed |
+| CODE-DIFF (both refuse, different codes) | **3** | reported, never fails |
+| GAP (one succeeds, one errors) | **26** | logged and **permitted** |
+
+Of the 102 wrong answers, **Go is right on 92, TS is right on 4, and neither is right on 6.**
+
+---
+
+## 0. Read this first — two harness corrections
+
+Both affect how the table should be read, and both were found independently by several verifiers.
+
+**`./cmd/go/bin/boru run -e` is not the Go half of the crossdiff.** `test/go/engspec/crossdiff_test.go:goValueResult` builds `core.NewRegistry` + `specfix.RegisterSpecWords` + `basic.InstallMicronIdeals` + `InitRootContext` and renders with `core.Canon`. The CLI is the full `lang`/`basic` layer with a *different* `is` (`lang/go/native/native_type.go:147` vs `eng.IsValueOfType` at `eng/go/specfix/words.go:745`). Four verifiers rebuilt `goValueResult` under `/tmp` and re-ran their rows on both paths; where a row is confirmed on only one path it is marked below.
+
+**One of the two seed divergences is withdrawn.** `5 is ( refine Integer )` is `false` under the CLI but **`true`** under the specfix kernel — i.e. on the path the crossdiff actually compares, that row is `true`/`true` = AGREE. It is a CLI-vs-fixture artifact, not an engine divergence. The other seed, `def Pt (refine Record [ { x:Integer } ]) { x:1 } is Pt`, reproduces on **both** Go paths and stands.
+
+Two smaller notes: the shipped `cmd/go/bin/boru` is stale (built 2026-08-08 11:53; 71 newer `.go` files, commit `9e77012` unbuilt) — two verifiers rebuilt and got identical answers, so no finding rests on staleness. And `eng/spec/types.tsv:550` (`def Point { x:Integer y:Integer } { x:1 y:2 z:3 } is Point` → `true`) **passes** under `TestSpecStandalone` but returns `false` via `boru run -e`: a Go-internal lang-vs-kernel disagreement on a committed row, out of scope here but worth filing.
+
+---
+
+## 1. The table
+
+### WRONG-ANSWER — both engines succeed, values differ (102)
+
+#### A. `refine Record` builds a nominal record type in Go and a plain `OrderedMap` in TS — 34 rows, Go right
+
+`eng/go/specfix/words.go:935,939` resolves field types and mints a `RecordTypeInfo`; `eng/ts/src/spec-fixture.ts:793,795` returns `newMap(om)` with field values left as unresolved `Word`s. `core/go/unify_map.go:70-72` then gates `ShapeRecord != ShapeMap`; `core/ts/src/coretype.ts:244` catches the map payload in the *open structural record* arm and subset-matches. `lang/spec/record.tsv:115-116` pins the rule explicitly ("a plain map is not a record") — **but TS never reads `lang/spec`**, only `eng/spec`.
+
+| source | go | ts |
+|---|---|---|
+| `def Pt (refine Record [ { x:Integer } ]) { x:1 } is Pt` | false | true |
+| `{ x:1 } is ( refine Record [ { x:Integer } ] )` | false | true |
+| `def A (refine Record [ { x:Integer } ]) def B (refine Record [ { x:Integer } ]) { x:1 } is B` | false | true |
+| `def Pt (refine Record [ { x:Integer } ]) { x:1 y:2 } is Pt` | false | true |
+| `{ x:1 y:2 } is ( refine Record [ { x:Integer } ] )` | false | true |
+| `def Pt (refine Record [ { x:Integer } { y:String } ]) { x:1 y:'a' } is Pt` | false | true |
+| `def Pt (refine Record [ { x:Integer } { y:Integer } ]) { x:1 y:2 } is Pt` | false | true |
+| `{ x:1 y:2 } is ( refine Record [ { x:Integer } { y:Integer } ] )` | false | true |
+| `def Pt (refine Record [ { x:Integer } { y:Integer } ]) { x:1 y:2 z:3 } is Pt` | false | true |
+| `def Pt (refine Record [ { x:1 } ]) { x:1 } is Pt` | false | true |
+| `{ x:1 } is ( refine Record [ { x:1 } ] )` | false | true |
+| `def Pt (refine Record [ { xs:[:Integer] } ]) { xs:[ 1 2 ] } is Pt` | false | true |
+| `def Pt (refine Record [ { m:Map } ]) { m:{ a:1 } } is Pt` | false | true |
+| `{ m:{ a:1 } } is ( refine Record [ { m:Map } ] )` | false | true |
+| `{ n:"a" } is ( refine Record [ { n:String } ] )` | false | true |
+| `{ c:( quote red ) } is ( refine Record [ { c:Atom } ] )` | false | true |
+| `{ v:1 } is ( refine Record [ { v:Any } ] )` | false | true |
+| `def Pt (refine Record [ { x:Integer } ]) def R (refine Pt) { x:1 } is R` | false | true |
+| `{ x:1 } is ( refine ( refine Record [ { x:Integer } ] ) )` | false | true |
+| `def Pt (…) { x:1 } is ( firstq [ Pt ] )` ¹ | false | true |
+| `def Pt (…) [ { x:1 } ] is [ Pt ]` | false | true |
+| `def Pt (…) { p:{ x:1 } } is { p:Pt }` | false | true |
+| `def Pt (…) def U ( Pt tor Integer ) { x:1 } is U` | false | true |
+| `{ x:1 } is ( ( refine Record [ { x:Integer } ] ) tor Integer )` | false | true |
+| `{ x:1 } is ( refine Record [ { x:Integer } ] ) and true` | false | true |
+| `{ x:1 } is ( refine Record [ { x:Integer } ] ) not` | **true** | **false** |
+| `def Pos (refine Integer) def Pt (refine Record [ { x:Pos } ]) { x:1 } is Pt` | false | true |
+| `def Pt (refine Record [ { x:Integer } ]) Pt` | `record{x:Integer}` | `{x:word(Integer)}` |
+| `( refine ( refine Record [ { x:Integer } ] ) )` | `record{x:Integer}` | `{x:word(Integer)}` |
+| `def Pt (…) def Q (refine Record [ { p:Pt } ]) Q` | `record{p:record{x:Integer}}` | `{p:word(Pt)}` |
+| `def Pt (…) def Q (refine Record [ { p:Pt } ]) inspect Q` | `{name:'Q' type:'Type' struct:'Map' kind:record fields:{p:'Map'}}` | `{name:'Q' kind:defined value:{p:{x:word(Integer)}} signatures:[]}` |
+| `def A (…) def B (refine Record [ { a:A } ]) def C (refine Record [ { b:B } ]) inspect C` | `{name:'C' … fields:{b:'Map'}}` | `{name:'C' kind:defined value:{b:{a:word(A)}} signatures:[]}` |
+| `inspect ( refine Record [ { p:( refine Record [ { x:Integer } ] ) } ] )` | `{type:'Type' struct:'Map' kind:record fields:{p:'Map'}}` | `{type:'Map' kind:literal}` |
+| `def Pt (…) def Q (refine Record [ { p:Pt } ]) Q is Type` | **true** | **false** |
+
+¹ `firstq` is a fixture-only word; the CLI reports `undefined_word`. Confirmed on the specfix path.
+
+The polarity flip (`… not` → go `true` / ts `false`, and `Q is Type` → go `true` / ts `false`) matters: this class is not "Go is merely stricter". It produces a wrong answer in whichever direction the program tests.
+
+The **minimal reproducer for the whole family is `{ x:1 } is ( refine Record [ { x:Integer } ] )`** — no `def`, no extra keys, no nesting. Every other membership row is that bug reached through a wrapper. Note the depth-2 `inspect` rows: `inspect` is where the corpus *does* touch refine (`eng/spec/inspect.tsv:170-171`), and TS matches Go byte-for-byte at depth 1 — it falls off only when a field's type is another user-defined type. The corpus stops exactly one step short.
+
+Caveat on Go's side of this family: Go returns `false` for *every* value against a refine-built record, including one minted by its own constructor (`( make Pt { x:1 } ) is Pt` → `false`). Correct per `lang/spec/record.tsv` for map literals; the `make` case looks like a separate Go bug.
+
+#### B. Scalar `refine` is not a newtype in TS — 11 rows, Go(lang) right
+
+`eng/ts/src/spec-fixture.ts:813-828` returns the base type unchanged ("the paired def mints the fresh subtype") — but TS's `def` never mints one, so `Pos ≡ Integer`. `REFERENCE.md:1497-1503` pins it verbatim: "A plain `Integer` is **not** a `Pos`". **The `eng/go` specfix fixture reproduces TS's wrong answer**, so this family is invisible to the crossdiff even with rows — see §2.
+
+| source | go | ts |
+|---|---|---|
+| `def Pos (refine Integer) 42 is Pos` | false | true |
+| `def Pos (refine Integer) typeof Pos` | `Integer` | `Number` |
+| `def Pos (refine Integer) pathof Pos` | `[Scalar Number Integer Pos]` | `[Scalar Number Integer]` |
+| `def Pos (refine Integer) def x:Pos 42 typeof x` | `Pos` | `Integer` |
+| `def Pos (refine Integer) def Q (refine Pos) typeof Q` | `Pos` | `Number` |
+| `def Pos (refine Integer) def D (Pos tor String) 42 is D` | false | true |
+| `def Pos (refine Integer) [ 1 2 ] is [ Pos Pos ]` | false | true |
+| `def Pos (refine Integer) def L [:Pos] [1] is L` | false | true |
+| `def Pos (refine Integer) 42 is (refine Pos)` | false | true |
+| `def Pos (refine List) [1] is Pos` | false | true |
+| `def Pos (refine Integer) 5 is (Pos tand Integer)` | false | true |
+
+Visible directly through `inspect`: `def Pos (refine Integer) inspect Pos` → go `struct:'Pos'`, ts `struct:'Integer'`.
+
+#### C. Typed container as a **disjunct alternative** — 7 rows, Go right
+
+`core/ts/src/coretype.ts` disjunct arm recurses into `isValueOfType` **only when `alt.data === null`**. A `[:T]` carrier has ChildType data, so it falls to the shallow `unifiesValue`, whose `listElements` unwraps the bare carrier to `[]` and fails on length. The correct predicate already exists in the same file — `isTypeBody` at `coretype.ts:134` — it simply isn't used here.
+
+| source | go | ts |
+|---|---|---|
+| `[1 2] is ( [:Integer] tor String )` | true | false |
+| `[[1]] is ( [:[:Integer]] tor String )` | true | false |
+| `def L ([:Integer] tor String) [1 2] is L` | true | false |
+| `[ 1 ] is ( [ :Integer ] tor [ :String ] )` | true | false |
+| `[ 'x' ] is ( [ :Integer ] tor [ :String ] )` | true | false |
+| `[ 1 ] is ( [ :Integer ] tor Integer )` | true | false |
+| `{ a:[ 1 ] } is { a:( [ :Integer ] tor [ :String ] ) }` | true | false |
+
+Minimal: `[ 1 ] is ( [ :Integer ] tor String )`. Order-independent. Controls agree: `[1] is [:Integer]` true/true, `1 is ( Integer tor String )` true/true, `[ 1 ] is ( List tor Integer )` true/true (bare `List` is data-null and takes the right path).
+
+#### D. Typed container **nested inside a plain list template** — 3 rows, Go right
+
+`unifiesValue` never re-enters `isValueOfType`, so typed-list/typed-map/disjunct semantics are lost below the first plain-list level. A one-way door.
+
+| source | go | ts |
+|---|---|---|
+| `[ 1 [ 2 3 ] ] is [ Integer [ :Integer ] ]` | true | false |
+| `[ [ 1 2 ] ] is [ [ :Integer ] ]` | true | false |
+| `[ [ :Integer 1 ] ] is [ [ :Integer ] ]` | true | false |
+
+Two cases where TS is accidentally right (`[ [ ] ] is [ [ :Integer ] ]` → 0 == 0; `[ [ 1 2 ] ] is [ [ :String ] ]` → 2 ≠ 0) would pass a corpus row while the defect stayed. Any row added here must use a matching, non-empty inner list. The record-shape branch *does* recurse correctly (`{ a:[ 2 3 ] } is { a:[ :Integer ] }` agrees), which confirms the diagnosis: only the plain-list path is broken.
+
+#### E. Bare typed-map carrier as **subject** — 5 rows, Go right
+
+`core/ts/src/coretype.ts:229-241` typed-map arm does `v.asChildType().entries.every(…)` — vacuously true for a bare carrier with zero entries. The typed-**list** arm ten lines above has the guard and even comments "Mirrors the Go `IsConcrete` guard." The map arm omits it.
+
+| source | go | ts |
+|---|---|---|
+| `{ :Integer } is { :String }` | false | true |
+| `{ :Any } is { :Integer }` | false | true |
+| `{ :{ x:Integer } } is { :Integer }` | false | true |
+| `{ a:{ :Integer } } is { a:{ :String } }` | false | true |
+| `[ { :Integer } ] is [ :{ :String } ]` | false | true |
+
+TS answers `true` for *any* typed-map-vs-typed-map pair regardless of child type; `{ :Integer } is { :Integer }` agrees only by accident.
+
+#### F. `tand` is a canon-string equality stub — 5 rows
+
+`eng/ts/src/spec-fixture.ts:1455`: `canon([a]) === canon([b]) ? a : Never`. The comment at line 1361 admits it: "only its sig is inspected by the corpus, so a minimal handler suffices." **The corpus's only `tand` row is `inspect tand` (`eng/spec/inspect.tsv:69`) — the word's evaluation has never been run by the differential, ever.**
+
+| source | go | ts | right |
+|---|---|---|---|
+| `Integer tand Number` | `Integer` | `Never` | GO |
+| `( Integer tor String ) tand Integer` | `Integer` | `Never` | GO |
+| `( Integer tor String ) tand ( String tor Boolean )` | `String` | `Never` | GO |
+| `5 is ( ( Integer tor String ) tand Integer )` | true | false | GO |
+| `(fnsig [ Integer Integer ]) tand (fnsig [ Integer Integer ])` | `Never` | `Integer,Integer` | **neither** — Go breaks idempotence |
+
+Every `tand` whose operands are not textually identical but whose true meet is non-`Never` diverges: `Number tand Integer`, `Integer tand Any`, `Any tand Integer`, `5 tand Integer`, `Number tand Any` all give go=narrower / ts=`Never`.
+
+#### G. `tor` is missing `SimplifyDisjunctAlts` — 17 rows, Go right
+
+`core/go/core_helpers.go:1095-1137` does three things: drop `Never`, dedupe, and **apply subsumption** (a strict subtype drops in favour of its supertype; a concrete value drops if another alternative covers it). `eng/ts/src/spec-fixture.ts:1400` dedupes by canon string and sorts. Its own comment claims it "mirrors eng/go SimplifyDisjunctAlts" — it mirrors the *ordering* half only.
+
+| source | go | ts |
+|---|---|---|
+| `Integer tor Number` | `Number` | `Number tor Integer` |
+| `Number tor Float` | `Number` | `Number tor Float` |
+| `Integer tor Any` | `Any` | `Any tor Integer` |
+| `Never tor Integer` | `Integer` | `Never tor Integer` |
+| `1 tor Number` | `Number` | `Number tor 1` |
+| `Integer tor Float tor Number` | `Number` | `Number tor Integer tor Float` |
+| `( Integer tor Boolean ) tor Number` | `Boolean tor Number` | `Boolean tor Number tor Integer` |
+| `typeof ( Integer tor Number )` | `Scalar` | `Disjunct` |
+| `pathof ( Integer tor Scalar )` | `[Scalar]` | `[Type Disjunct]` |
+| `( Integer tor Number ) is Number` | true | false |
+| `( Integer tor Number ) is Scalar` | true | false |
+| `( Integer tor Number ) is Disjunct` | false | true |
+| `inspect ( Integer tor Number )` | `{type:'Type' struct:'Number' kind:literal}` | `{type:'Type' struct:'Disjunct' kind:disjunct alternatives:['Scalar/Number' 'Scalar/Number/Integer']}` |
+| `def D ( Integer tor Number ) inspect D` | `{name:'D' … struct:'Number' kind:literal}` | `{name:'D' … struct:'Disjunct' kind:disjunct …}` |
+| `{ x:( Integer tor Number ) }` | `{x:Number}` | `{x:(Number tor Integer)}` |
+| `[ ( Integer tor Number ) ]` | `[Number]` | `[(Number tor Integer)]` |
+| `Type tor String` | `String tor Type` | `Type tor String` |
+
+The last row is a **separate second defect**: a sort-key mismatch with no subsumption involved. Go orders by `CompareValues` then `CanonValue`; TS's `compareAlt` falls back to `builtinRank`. Concrete-family-meets-abstract diverges in both directions (`Node tor String`, `Type tor Integer`). Neither input order gives the same canonical form, so the two engines disagree on canonical form outright.
+
+Every `tor` row in the corpus uses pairwise-**incomparable** alternatives (`Integer tor Boolean`, `Integer tor String`, `100 tor 2.0`, `Integer tor 0`, enum atoms), which is precisely the case where both engines agree.
+
+#### H. `Type` as a disjunct alternative — 3 rows, **TS right**
+
+Both engines say `Integer is Type` → true (pinned at `eng/spec/typeof.tsv:137`, `types.tsv:479`). Wrap `Type` in a union and Go drops the metatype rule: `core/go/unify_disjunct.go:81` goes to `unifyInner` and never reaches the `t.Equal(TType)` / `IsTypeBody` branch at `core/go/core_type.go:247`.
+
+| source | go | ts |
+|---|---|---|
+| `Integer is ( Type tor Boolean )` | **false** | true |
+| `[:Integer] is ( Type tor Boolean )` | **false** | true |
+| `( enum [ red green ] ) is ( Type tor Boolean )` | **false** | true |
+
+Ordinary supertype alternatives work fine in Go (`Integer is ( Any tor Boolean )`, `( Scalar tor Boolean )`, `( Number tor Boolean )` all true) — the `Type` alternative specifically is dead. `Integer is ( Type tor String )` is the cleanest witness, since `Type` is the only alternative that could match. TS is not blanket-permissive: `true is ( Type tor String )` and `5 is ( Type tor Boolean )` are false on both.
+
+#### I. Enum against itself — 1 row, **TS right**
+
+| source | go | ts |
+|---|---|---|
+| `( enum [ red green ] ) is ( enum [ red green ] )` | **true** | false |
+
+Structural, not one spelling: `( enum [ red ] ) is ( enum [ red ] )`, reordered members, subset-of-larger, and the `def C … def D … C is D` form all give go=true / ts=false. An enum value is not one of its own atoms; `core/go/unify_disjunct.go:81` says otherwise. Confirmed on the **specfix** path (the CLI returns `false` here — and the CLI also contradicts committed row `eng/spec/types.tsv:413`, worth a separate `cmd/go` ticket).
+
+#### J. `fn` value vs `fnsig` shape — 6 rows, Go right
+
+`core/ts/src/coretype.ts` has **no function-shape arm at all** (grep `FunctionSignature|function_shape` → zero hits), so an fnsig RHS falls through to `unifiesValue` and returns false unconditionally. Go: `core/go/unify_fnsig.go` + `core/go/fnsig.go:120` (contravariant params, covariant returns).
+
+| source | go | ts |
+|---|---|---|
+| `def F (fnsig [ [ Integer ] [ Integer ] ]) (fn [ [ n:Integer ] [ Integer ] [ n ] ]) is F` | true | false |
+| `fn [ [ n:Integer ] [ Integer ] [ n ] ] is (fnsig [ [ Integer ] [ Integer ] ])` | true | false |
+| `fn [ [ n:Number ] [ Integer ] [ n ] ] is (fnsig [ [ Integer ] [ Number ] ])` | true | false |
+| `(fn [ [ n:Integer ] [ Integer ] [ n ] ]) is (fnsig [ [ Integer ] [ Any ] ])` | true | false |
+| `(fn [ [ n:Integer ] [ Integer ] [ n ] ]) is (fnsig [ Integer Integer ])` | true | false |
+| `fn [ …Integer…String… ] is (fnsig [ [ Integer ] [ Integer ] ])` (multi-sig) | true | false |
+
+**All negative cases agree by coincidence** — TS reaches `false` by never matching at all. A row written with a mismatched signature would pass green while the defect remained. `eng/spec/types.tsv` §11l even documents the hole in prose: "the spec runner's local fixtures don't include the unification machinery here, so this section sticks to what the core words alone can demonstrate."
+
+#### K. fnsig payload leaks as a plain list in TS; Go refuses fnsig-as-subject — 5 rows
+
+`core/ts/src/value.ts:940` stores the FnUndef payload as a bare `Value[]`, so `listElements` hands it to `unifiesValue` as an ordinary list. `core/go/unify_fnsig.go:24` requires a `ShapeFunction` on the other side.
+
+| source | go | ts | right |
+|---|---|---|---|
+| `fnsig [ [ Integer ] [ Integer ] ] is (fnsig [ [ Integer ] [ Integer ] ])` | false | true | GO — but reflexivity is broken |
+| `def F (fnsig [ [ Integer ] [ Integer ] ]) F is F` | false | true | GO (same caveat) |
+| `[ [ Integer ] [ Integer ] ] is (fnsig [ [ Integer ] [ Integer ] ])` | false | true | GO |
+| `(fnsig [ [ Integer ] [ Integer ] ]) is [ [ Integer ] [ Integer ] ]` | false | true | GO |
+| `[ (fnsig [ Integer Integer ]) ] is [ (fnsig [ Integer Integer ]) ]` | false | true | GO (same caveat) |
+
+Go makes `X is X` false for an fnsig while `[ Integer ] is [ Integer ]` is true, and `( fnsig … ) is Type` is true — so Go is inconsistent with its own treatment of structural type values. Whichever answer is deemed correct, a row is needed.
+
+#### L. A bare `FunctionSignature` has no canonical rendering in **either** engine — 5 rows, neither right
+
+Go's `core/go/value.go:3694` has explicit `String()` cases for Disjunct, Negation, FnDef, Closure, Map — and none for FunctionSignature, so it hits `fmt.Sprintf("%v(%v)")` and dumps unexported struct fields. TS renders the raw spec lists, and inconsistently: the abbreviated and paired spellings of the *same type* render differently.
+
+| source | go | ts |
+|---|---|---|
+| `fnsig [ [ n:Integer ] [ Integer ] ]` | `FunctionSignature({[{n Integer <nil> false false}] [Integer]}]})` | `[{n:Integer}],[Integer]` |
+| `(fnsig [ Integer Integer ]) tor Integer` | `Integer tor FunctionSignature({[{ Integer <nil> false false}] [Integer]}]})` | `Integer tor Integer,Integer` |
+| `{ a:(fnsig [ Integer Integer ]) }` | `{a:FunctionSignature({…})}` | `{a:Integer,Integer}` |
+| `firstq [ (fnsig [ Integer Integer ]) ]` ¹ | `FunctionSignature({…})` | `Integer,Integer` |
+| `def f (fn […]) undef f (fnsig [ [ Integer ] [ Integer ] ])` ¹ | `FunctionSignature({…})` | `[Integer],[Integer]` |
+
+¹ specfix path only. The last one is the **only** use `boru describe fnsig` documents — targeted `undef` removing one overload — and it diverges. Every one of the corpus's ~30 fnsig rows wraps the value in `typeof`/`is`/`inspect`/`pathof`, nests it in a Map, or expects an error. No row ever lets a well-formed FunctionSignature reach top-of-stack. The corpus systematically avoids the single operation that diverges.
+
+---
+
+### CODE-DIFF — both refuse, different codes (3)
+
+| source | go | ts | right |
+|---|---|---|---|
+| `refine Record [ ]` | `[boru/record_error]` | `[boru/type_error]` | GO — identical message text, code not ported |
+| `{ x:1 } is ( refine Record [ ] )` | `[boru/record_error]` | `[boru/type_error]` | GO |
+| `def Pos (refine Integer) def mk fn [[] [Pos] [7]] mk` | `[boru/type_error]` w/ span 1:47 | bare JS `Error: fn: unknown return type "Pos"` — **no boru code at all** | GO |
+
+The first two also expose a Go-fixture defect: `eng/go/specfix/words.go:922` returns a plain `fmt.Errorf`, not a `BoruError`, so the crossdiff's `errTag` renders it `UNEXPECTED:record: list must have at least one field` rather than a taxonomy code. Same at `:1002` and `:1009`.
+
+---
+
+### GAP — one engine succeeds, the other errors (26). **The crossdiff permits all of these.**
+
+**Nine of them are not refusals at all — they are uncaught raw JS `Error`s escaping the TS engine** (`e instanceof BoruError === false`, `e.code === undefined`). Root cause: `core/ts/src/value.ts:262` defines `isMap()` as `vType.equal(TMap)` alone, while `asMap()` (`:265-269`) additionally demands an `OrderedMap` payload. `core/ts/src/coretype.ts:187-189` guards on `a.isMap() && b.isMap()` and then calls `asMap()`. A `{ :T }` carrier passes the guard and detonates on the next line.
+
+| source | go | ts | right |
+|---|---|---|---|
+| `{a:1} is ( {:Integer} tor String )` | true | **CRASH** `AsMap: not a map value` | GO |
+| `def M ({:Integer} tor String) {a:1} is M` | true | **CRASH** | GO |
+| `[ { a:1 } ] is [ { :Integer } ]` | true | **CRASH** | GO |
+| `[ { } ] is [ { :Integer } ]` | true | **CRASH** | GO |
+| `[ { :Integer } ] is [ { :String } ]` | false | **CRASH** | GO |
+| `[ 1 { a:2 } ] is [ Integer { :Integer } ]` | true | **CRASH** | GO |
+| `{ :Integer } is ( { :Integer } tor { :String } )` | true | **CRASH** | GO |
+| `{ a:1 } is ( Integer tor { :Integer } )` | true | **CRASH** | GO |
+| `{ a:1 } is ( { a:Integer } tor { :Integer } )` | true | **CRASH** | GO |
+
+Note the third row: Go distinguishes conforming from non-conforming (`[ { a:'x' } ] is [ { :Integer } ]` → false) while TS crashes identically on both. TS has no answer at all, not a conservative one.
+
+The remaining 17:
+
+| source | go | ts | right |
+|---|---|---|---|
+| `def C (refine Class { x:Integer }) C is Type` | `[boru/type_error]` refine base must be Record/Table/class | `true` — TS mints a class type Go considers ill-formed (`spec-fixture.ts:800-806`) | GO |
+| `def Pos (refine Integer) def C (refine Class { v:Pos }) inspect C` | `[boru/type_error]` | `{name:'C' … fields:{v:'Word'}}` | GO |
+| `def Ee (refine Emailon)` | `[boru/micron_name]` | `""` — silently binds; TS then mints and uses the illegal micron | GO |
+| `def Pt (refine Record [ { x:Integer } ]) def y:Pt { x:1 }` | `[boru/type_error]` (both check and `-no-check`) | binds silently | disputed |
+| `def U ([:Integer] tor String) def x:U [1 2] x` | `[1 2]` | `[boru/type_error]` | GO |
+| `def U (Type tor Boolean) def x:U Integer x` | `[boru/type_error]` | `Integer` | **TS** |
+| `def Big (Integer gt 10) 50 is Big` | `true` | `[boru/undefined_word]: gt` | GO |
+| `def Pos fn [[x:Integer] [Boolean] [x]] 5 is Pos` | `true` | `[boru/signature_error]` | GO |
+| `def Pos fn [[x:Integer] [Boolean] [x]] def y:Pos 5` | binds | `[boru/type_error]: … declared type [object Object]` | GO |
+| `def Pos (refine Integer) def g fn [[n:Pos] [Integer] [n]] def x:Pos 42 x g` | `42` | bare `Error: fn: unknown type "Pos"` | GO |
+| `Integer is enum [1 2 3]` | `[boru/signature_error]` barrier rule | `true` | GO |
+| `[ 1 ] is enum [ [ :Integer ] ]` | `[boru/signature_error]` barrier rule | `false` | GO |
+| `def Pt (refine Record [ { x:Integer } ]) pathof Pt` | `[Node Map]` | `[boru/signature_error]` | GO |
+| `def Baron (refine Micron { foo:String })` | binds; `pathof` → `[Scalar Micron Baron]` | `[boru/unsupported]` not yet ported | unported |
+| `refine Table ( refine Record [ { x:Integer } ] )` | `table{x:Integer}` (CLI); specfix errors | `[boru/unsupported]` not yet ported | unported |
+| `def Pt (…) ( make Pt { x:1 } ) is Pt` | `false` | `[boru/unsupported]` make/generic | unported |
+| `case 2 [1 "one" 2 "two" "many"]` | `two` | `[boru/undefined_word]: case` | GO |
+
+Three of these (marked *unported*) are excluded per the ground rules. **The other 23 are real capability gaps that the crossdiff will never fail on.**
+
+Two of the barrier rows hide something worse. Go's own error message tells you to parenthesise; do so and both engines succeed and disagree:
+
+- `Integer is ( enum [1 2 3] )` → go `false`, ts `true` — a **WRONG-ANSWER** the GAP was masking.
+- `[ 1 ] is ( enum [ [ :Integer ] ] )` → go `true`, ts `false` — likewise.
+
+---
+
+### Corpus coverage
+
+**None of the 131 sources is covered by an `eng/spec` row.** The structural holes, verified by grep across all 36+ `.tsv` files including `eng/spec/check/`:
+
+- **Zero rows pair `is` with `refine`.** `refine` appears on four lines total: `inspect.tsv:79`, `:170`, `:171` (all `inspect`) and a prose comment at `make.tsv:152`.
+- **Zero rows evaluate `tand`.** The only occurrence is `inspect tand` at `inspect.tsv:69`, which reads the signature and never applies the word.
+- **Zero rows use `Type` as a disjunct alternative.** No `Type tor` / `tor Type` anywhere.
+- **Zero rows put a typed container inside a `tor`.** All 42 union rows use scalar or named-scalar alternatives.
+- **Zero rows pair `tor` alternatives that subsume one another.** Every one is pairwise-incomparable — exactly where the engines agree.
+- **Zero rows put an fnsig on the right of `is`.** All fnsig rows test the fnsig against a *name*.
+- **Zero rows render a bare `FunctionSignature`.**
+- **Zero `case` rows.** All 15 grep hits are English prose.
+- **Zero `gt`/`lt`/`gte`/`lte` rows.** The single hit is `&lt;` inside an XML round-trip.
+- **Zero rows nest a typed container inside a plain list template** (`is [ … [ …`).
+
+Two near-misses worth naming. `lang/spec/record.tsv:115-116` pins the refine-Record rule correctly — but the TS runners (`spec.test.ts`, `corpus.test.ts`, `crossdiff-shared.ts`) consume `eng/spec` only, so a Go-only corpus holds the rule the TS engine violates. And `eng/spec/inspect.tsv:170-171` builds the exact refine-Record types that diverge, then calls `inspect`, which normalises both representations to the same string — coverage that actively masks the defect.
+
+---
+
+## 2. The instrument gap
+
+`test/go/engspec/crossdiff_test.go` fails only when both engines return `ok=true` and the rendered values differ. `codeDiff` is reported. `GAP` — one engine succeeds, the other refuses — is logged and **permitted by design**.
+
+That policy is sound for a port under construction: you don't want a half-built engine to red the build for every word it hasn't reached yet. But it has a specific and severe consequence: **the crossdiff is blind in exactly the direction a missing capability fails.** A capability that is absent doesn't return a wrong value; it refuses, or it isn't dispatched at all. So the better the gap, the quieter the instrument.
+
+Quantified from this sweep:
+
+- **26 of 131 divergences (20%) are GAPs.** 23 of them are genuine capability gaps, not declared-unported words. The crossdiff would report all 26 and fail on none.
+- **9 of those 26 are not refusals but uncaught host-language crashes** — a raw JS `Error: AsMap: not a map value` escaping `Engine.run`, with no `boru/` code, killing the node process. An `ERROR:` expectation row could not even encode it. These are strictly worse than a wrong answer and are the class the harness treats most leniently.
+- **3 CODE-DIFFs** are reported and never fail — including one (`fn: unknown return type`) where the TS side throws outside the error taxonomy entirely.
+
+There is a third failure mode the taxonomy has no name for, and it is the worst of the three: **double-blind AGREE**, where the capability is missing from *both* fixtures, so the differential reports zero.
+
+- `case` is a full native control word in Go (`basic/go/native_control.go:107`, exhaustiveness at `basic/go/case_exhaustive.go:664`). It is absent from `eng/ts/src/spec-fixture.ts` **and from `eng/go/specfix`**. Under true parity both fixtures answer `undefined_word`. Crossdiff: AGREE. The word is unexercised and undetectable.
+- The comparison words `gt`/`lt`/`gte`/`lte`/`eq` are absent from both fixtures, so `core/go/unify_dep.go` — the entire dependent-scalar unifier, Gate 1 base conformance at `:46` and Gate 2 `depScalarCheck` at `:49` — has **no TypeScript counterpart and no probe**. The corpus cannot express a single dependent-scalar program.
+- Scalar `refine` (family B, 11 rows): `eng/go/specfix` reproduces TS's wrong answer. Only the `lang` engine is correct, and the crossdiff does not run it. Eleven wrong answers, permanently invisible.
+- `def Pos fn […]` predicate types: `core/go/unify_predicate.go` is untested against TS in either direction — Go's fixture refuses capitalised def names outright, TS dispatches a call.
+
+So: for a port missing a *whole capability*, the crossdiff's hard-fail is close to useless. It only bites once the capability exists and is subtly wrong. That is precisely why families F (`tand`), G (`tor` simplification), J (fn/fnsig conformance), and L (fnsig rendering) survived — each is a word whose *evaluation* the corpus never runs, only its signature or its name.
+
+The 102 wrong answers are also, today, hypothetical failures: none has a corpus row, so the crossdiff is currently green across all of them. The instrument isn't reporting a clean bill of health; it's reporting on 1,808 rows chosen — reasonably, at the time — to stay inside what both fixtures could already do.
+
+---
+
+## 3. What to do, ordered
+
+**1. Fix the crash. `core/ts/src/value.ts:262` + `core/ts/src/coretype.ts:187-189`.** Nine rows, one line. `isMap()` tests `vType.equal(TMap)`; `asMap()` demands an `OrderedMap`. Either narrow `isMap()` to check the payload, or guard the `unifiesValue` map arm on `data instanceof OrderedMap` before calling `asMap()`. An internal invariant escaping the engine as an uncoded host exception should never be a permitted outcome regardless of the crossdiff policy.
+
+**2. Fix the disjunct-alternative recursion. `core/ts/src/coretype.ts`, disjunct arm (~259-279).** The arm recurses into `isValueOfType` only when `alt.data === null`. Replace that test with the predicate already sitting at `coretype.ts:134` — `isTypeBody(alt)` (`isTypedList || isTypedMap || isDisjunct`) — and add the function-shape case from step 5. This single change closes family C (7 rows), most of the map-crash GAPs, and the `def x:U` binding gap.
+
+**3. Fix the `unifiesValue` one-way door. `core/ts/src/coretype.ts:175-205`.** Element-wise recursion must re-enter `isValueOfType`, not recurse into `unifiesValue`. Closes family D (3 rows). Note the accidental agreements (`[ [ ] ] is [ [ :Integer ] ]`) — do not treat those as regressions passing.
+
+**4. Add the `IsConcrete` guard to the typed-map arm. `core/ts/src/coretype.ts:229-241.`** Copy the shape of the typed-list arm at `:217-225`, including its child-type comparison. Closes family E (5 rows).
+
+**5. Implement function-shape conformance in `core/ts/src/coretype.ts`.** There is no arm at all today. Port `core/go/fnsig.go:120` `FnUndefMatchesFnDef` — contravariant params, covariant returns, "some signature covers it" across `uInfo.Sigs`. Closes family J (6 rows) and unblocks the fnsig branch of step 2.
+
+**6. Replace the `tand` stub. `eng/ts/src/spec-fixture.ts:1455`.** It is canon-string equality; it needs the lattice meet (`core/go/core_boolean.go:106,124` `TandValues`). Whole-word blind spot: 5 confirmed rows and every subtype pair beyond them.
+
+**7. Port the missing half of `SimplifyDisjunctAlts` into the `tor` handler. `eng/ts/src/spec-fixture.ts:1400`.** Add the `Never` drop and the subsumption/absorption pass from `core/go/core_helpers.go:1095-1137`. Separately, align `compareAlt` (`spec-fixture.ts:1376`) with Go's `disjunctAltLess` (`core/go/value.go:2549`: `CompareValues` then `CanonValue`) — `builtinRank` is the wrong key. 17 rows.
+
+**8. Decide what `refine` produces in TS, then fix `eng/ts/src/spec-fixture.ts:775-828`.** Three sub-problems: (a) `refine Record [ … ]` returns `newMap(om)` at `:795` with no counterpart to Go's `eng.ResolveFieldType` at `eng/go/specfix/words.go:935` — fields stay unresolved `Word`s; (b) bare `refine X` returns the base unchanged at `:813-828`, so no newtype is ever minted; (c) the `refine Class` arm at `:800-806` implements a construction **no Go engine has** and should be deleted, not ported. This is 45 rows across families A and B — the largest single cluster — but it needs a spec decision first, because Go's own answers here are not obviously self-consistent (see step 10).
+
+**9. Fix `eng/go/specfix` to emit `BoruError`s.** `eng/go/specfix/words.go:922`, `:1002`, `:1009` return plain `fmt.Errorf`, so the crossdiff renders `UNEXPECTED:…` instead of a code and every error comparison in those paths is meaningless. Also fix the TS code at `eng/ts/src/spec-fixture.ts:781` (`type_error` → `record_error`) and replace the bare `new Error` at `:1589`, `:1603`, `:1615` with coded `BoruError`s.
+
+**10. File the Go-side bugs separately — they are not port defects.**
+- `core/go/unify_disjunct.go:31,81` — `Match` short-circuits bare type nodes and `unifyDisjunct` → `unifyInner` bypasses `core/go/core_type.go:247`, so a `Type` alternative is dead inside a union (3 WRONG-ANSWER rows where **TS is right**, plus one GAP). Go contradicts its own corpus rows `typeof.tsv:137` / `types.tsv:479`.
+- `core/go/unify_disjunct.go:81` — enum-vs-enum membership (`( enum […] ) is ( enum […] )` → true). TS is right.
+- `core/go/unify_fnsig.go:24` — fnsig is not an inhabitant of itself, breaking reflexivity and making `A tand A ≠ A`. Contrast `lang/spec/surface.tsv:43`, which asserts idempotent self-intersection for surfaces.
+- `core/go/value.go:3694` / `core/go/canon.go` — no `FunctionSignature` case in `String()`, so `%v` dumps unexported struct fields into user-visible canonical output. The comment on the adjacent `FnDef` case documents this exact hazard being avoided there.
+- `lang` vs kernel: `eng/spec/types.tsv:550` passes under `TestSpecStandalone` and fails via `boru run -e`; `( enum […] ) is Any` likewise. `lang/go/native/native_type.go:147` `isHandler` and `eng.IsValueOfType` disagree on extra-key record conformance.
+
+**11. Ledger, don't fix (yet).** Three gaps are structural and deserve a written entry rather than a patch: **eng/ts has no check pass at all** (so every check-only diagnostic — `micron_name`, the function-word barrier rule, `no_signature` — is a permanent gap class, and `basic/go/micron.go:57-73` has literally zero TS counterpart); **the comparison words are unimplemented in both fixtures**, so `core/go/unify_dep.go` is untestable by construction; and **`case` is absent from both fixtures**, so `basic/go/native_control.go` and `basic/go/case_exhaustive.go` are untestable. Also ledger `eng/ts/src/spec-fixture.ts:1589,1603,1615`: `fn` resolves param and return type names only against `typeNameTable()`, never the dictionary, so no user-defined type can ever appear in an fn signature.
+
+**12. Add corpus rows only after each fix lands, and choose them carefully.** Rows written naively will pass green while the defect stays. Specifically: fnsig rows must use a **matching** signature (all mismatches agree today); nested-list rows must use a **non-empty, matching** inner list (`[ [ ] ]` and `[ [ 1 2 ] ] is [ [ :String ] ]` agree by arithmetic accident); refine rows must use a **conforming** value (every non-conforming probe agrees); `tor` rows must use **subsuming** alternatives; and prefer the paren form `Integer is ( enum [1 2 3] )` over the bare form, which converts an invisible GAP into a detectable WRONG-ANSWER. Minimal reproducers to seed with: `{ x:1 } is ( refine Record [ { x:Integer } ] )`, `[ 1 ] is ( [ :Integer ] tor String )`, `[ [ 1 2 ] ] is [ [ :Integer ] ]`, `{ :Integer } is { :String }`, `Integer tand Number`, `Integer tor Number`, `Integer is ( Type tor Boolean )`, `fn [ [ n:Integer ] [ Integer ] [ n ] ] is (fnsig [ [ Integer ] [ Integer ] ])`.
+
+**13. Consider tightening the instrument itself.** Promote `codeDiff` and non-`BoruError` failures to hard failures once step 9 lands; and add a parity assertion so that a word registered in one fixture and absent from the other is *reported*, since today that combination registers as AGREE.
+
+---
+
+## 4. Honest negatives
+
+**No lens came back empty.** All six found real divergences, at a rate of roughly one per seven sources probed (136/980). I won't pretend otherwise.
+
+But the negative surface is large, consistent, and tells you something precise about where the port is faithful. Across all six lenses, every one of these agreed on both engines:
+
+- **Structural conformance at top level.** `{ x:1 } is { x:Integer }`, `{ x:1 y:2 } is { x:Integer y:Integer }`, `{ a:1 b:2 } is { :Integer }`, `{ a:1 b:'x' } is { :Integer }`, `{ } is { :Integer }`, `[1 2] is [:Integer]`, `[ 1 2 3 ] is [ Integer Integer Integer ]`, `[ 'x' ] is [ :String ]`, `[ [ 1 2 ] ] is [ [ Integer Integer ] ]`.
+- **The scalar lattice.** `5 is Integer`, `5 is Number`, `Integer is Type`, `Integer is Scalar`, `true is Boolean`, `typeof`/`pathof` over every builtin probed.
+- **Disjuncts with scalar alternatives.** All four `types.tsv:437-440` rows, `5 is ( Integer tor Boolean )`, `1 is ( Integer tor String )`, `def M ( Integer tor String ) …`.
+- **Disjunct construction and ordering for incomparable alternatives.** `Integer tor Boolean` → `Boolean tor Integer`, `100 tor 2.0` → `2.0 tor 100`, `Integer tor 0`, enum atom unions, exact-duplicate dedupe `Integer tor Integer` → `Integer`.
+- **`inspect` and `typeof` over refine-built records with builtin fields** — including both existing corpus rows byte-for-byte.
+- **`fn` with builtin parameter types**, `fn` values against nominal type names, fnsig against `FunctionSignature`/`Type`/`Any`/`Function`/`Disjunct`.
+- **Micron construction with legal names**, arithmetic, `not`, `and`, list/map literal rendering.
+- **Every existing `eng/spec` row that any verifier re-ran** — `inspect.tsv:170-171`, `types.tsv:413/416/437-442/550/657/717-718/749/794/954-956`, `nodes.tsv:100-102`, `typeof.tsv:119/211`, `structure.tsv:97-99`.
+
+And the negative direction is systematically correct: in nearly every family, TS returns the right `false`. `{ x:'s' } is ( refine Record [ { x:Integer } ] )`, `def Pos (refine Integer) "hi" is Pos`, `[ [ 1 2 ] ] is [ [ :String ] ]`, `{ a:1 b:'x' } is { :Integer }`, `fn [Integer→Integer] is (fnsig [String→String])`, `Integer tand String` — all agree. The port's failures are one-directional false positives (or, for typed containers in unions, one-directional false negatives), not noise.
+
+That is a real result, and it draws the boundary sharply. The port is faithful across the entire region of *a concrete value tested against a type literal or a structural shape at the top level* — which is exactly the region `eng/spec` exercises, and exactly what the corpus was built to cover. Divergence begins one step past that boundary, and always at the same step: **one level of composition** (a type inside a container, a type inside a disjunct, a user-defined type in a field slot or an fn signature), or **a word whose evaluation the corpus never runs at all** (`tand`, `case`, `gt`).
+
+`eng/spec/inspect.tsv:171` is the emblem of it. The corpus builds a refine-Record type with builtin fields and inspects it; both engines match byte-for-byte. Add one user-defined field type and TS falls out of its type branch into `kind:defined`. The corpus stops one token short of the failure, in fourteen different places.

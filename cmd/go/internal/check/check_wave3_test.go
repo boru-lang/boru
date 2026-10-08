@@ -194,33 +194,43 @@ func TestRunCLIEmitParseErrorFails(t *testing.T) {
 // --- Emit direct ---
 
 func TestEmitIslandReport(t *testing.T) {
-	// A literal-list each islands (interpreter fallback span), so the
-	// compiled program carries a fallback and Emit prints the island list.
+	// A two-body `inner` islands (interpreter fallback span), so the compiled
+	// program carries a fallback and Emit prints the island list.
 	//
-	// The body is a lambda rather than the `[dup mul]` this used to use: that
-	// spelling does not type-check (dup gets a __FN), and a failed dispatch
-	// inside it is now an error diagnostic that refuses the compile outright
-	// (design/FN-VALUE-DISPATCH.0.md), which is a different report than the
-	// islanding this test is about. A check-clean program is the honest
-	// fixture for "the compiler islanded and Emit said so".
+	// The fixture used to be a literal-list `each` with a lambda body — a
+	// check-clean program, chosen over the `[dup mul]` spelling that does not
+	// type-check (a failed dispatch inside it declines the compile outright,
+	// design/legacy/FN-VALUE-DISPATCH.0.ignore, a different report than the
+	// islanding this test is about). Since S1a of
+	// design/FULL-COMPILATION-REPLAN.0.md (2026-09-19) that each compiles
+	// natively — the corpus's island ceiling is 0 — and `inner`, whose two
+	// code bodies the recorder does not yet lower, is the honest fixture for
+	// "the compiler islanded and Emit said so" (the generated sweep's
+	// `inner × literal` cell, test/go/langspec/SWEEP_STATUS.md).
 	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "each [1,2,3] [(x:Any => [x mul 2])]"); err != nil {
+	if err := Emit(&stdout, &stderr, "inner [add] [mul] [1 2] [3 4]"); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "fallbacks=1") {
 		t.Errorf("stdout = %q, want a fallback", out)
 	}
-	if !strings.Contains(out, "; islands: each") {
+	if !strings.Contains(out, "; islands: inner") {
 		t.Errorf("stdout = %q, want island report", out)
 	}
 }
 
 func TestEmitUncompilableWithSiteCounts(t *testing.T) {
-	// A computed-START range refuses to compile (FOR_SETUP const-bakes
-	// start/step; only a computed END lowers) but still tallies dispatch sites.
+	// A `for` over a COMPUTED body above a value beneath it fails to compile
+	// (the hosted splice is admitted only over an empty stack — the island's
+	// splice and the interpreter's inline one could seat the 9 differently)
+	// but still tallies dispatch sites. The fixture used to be `for 3 (mk)`
+	// alone, code-bodies.tsv L141, which compiles as that hosted splice since
+	// 2026-09-26; before that, a computed-START range, which compiles
+	// natively since the same day (the planner promotes the start's producer
+	// to a frame local and FOR_SETUP re-pushes it).
 	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "for [(1 add 2), 5] [i]"); err != nil {
+	if err := Emit(&stdout, &stderr, "def mk fn [[][List][quote [i]]] end 9 for 3 (mk)"); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	out := stdout.String()
@@ -435,10 +445,10 @@ func TestPreflightColorAtAnchorsRelativeImports(t *testing.T) {
 		t.Fatalf("anchored preflight: %v; stderr: %s", err, stderr.String())
 	}
 	// An empty baseDir keeps the cwd behaviour run/debug rely on: from this
-	// foreign cwd the import misses and the check refuses.
+	// foreign cwd the import misses and the check declines.
 	stderr.Reset()
 	if err := PreflightColorAt(&stderr, source, "", 0, false, false, ""); err == nil {
-		t.Fatal("unanchored preflight resolved ./lib.boru from a foreign cwd; want refusal")
+		t.Fatal("unanchored preflight resolved ./lib.boru from a foreign cwd; want compile failure")
 	}
 }
 

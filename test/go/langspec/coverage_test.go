@@ -74,6 +74,7 @@ var hermeticExempt = map[string]string{
 // TestModuleExportCoverage fails when any native-module export lacks a
 // lang/spec row mentioning its qualified `Namespace.word` name.
 func TestModuleExportCoverage(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
 
 	// Slurp every spec file once into a single haystack — the flat corpus
@@ -82,7 +83,7 @@ func TestModuleExportCoverage(t *testing.T) {
 	// compile status ledgered, so a word whose result cannot yet be
 	// def-bound in a compiling row (the fn-util family) is still genuinely
 	// specced by its frontier rows.
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read spec dir %s: %v", specDir, err)
 	}
@@ -182,6 +183,10 @@ func TestModuleExportCoverage(t *testing.T) {
 		}
 	}
 
+	if len(uncovered) > 0 && filteredCorpus() {
+		t.Logf("%d export(s) unmentioned in the %d selected spec files (BORU_SPEC_FILES: a corpus-wide claim, not asserted)", len(uncovered), len(paths))
+		return
+	}
 	if len(uncovered) > 0 {
 		sort.Strings(uncovered)
 		t.Fatalf("%d native-module export(s) have no lang/spec row "+

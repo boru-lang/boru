@@ -277,7 +277,7 @@ func TestRenderInputForms(t *testing.T) {
 // A masked input paints one narrow bullet per rune — the value itself
 // never reaches the frame — and the cursor advances one cell per rune
 // even for wide-rune values. The placeholder is a hint, not a secret,
-// so it stays unmasked; a wrong-typed mask is refused in paint and in
+// so it stays unmasked; a wrong-typed mask is declined in paint and in
 // measure.
 func TestRenderInputMask(t *testing.T) {
 	res := mustRender(t, w("input", "value", "hunter2", "mask", true), 10, 1)
@@ -302,7 +302,7 @@ func TestRenderInputMask(t *testing.T) {
 	if got := screenOf(res)[0]; got != "passphrase  " {
 		t.Errorf("masked placeholder = %q", got)
 	}
-	// wrong-typed mask: refused in paint and in the measure path
+	// wrong-typed mask: declined in paint and in the measure path
 	if got := renderErr(t, w("input", "mask", 5)); !strings.Contains(got, "mask: must be a Boolean") {
 		t.Errorf("paint mask error = %q", got)
 	}

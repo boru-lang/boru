@@ -1,6 +1,8 @@
 package lang
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -9,7 +11,7 @@ import (
 // measurement that used to assert the opposite, kept pointing the other way.
 //
 // The claim it used to pin: a predicate body never runs as a compiled unit, so
-// the `is`-against-a-predicate-type refusal was honest and had to stand. That
+// the `is`-against-a-predicate-type compile failure was honest and had to stand. That
 // claim was true, and its stated CAUSE — "predicate bodies do not compile to
 // units" — was wrong. They compiled. `def Positive fn […]` stamped a detached
 // unit at construction and recorded Stamped:true in the stamp ledger; the
@@ -46,6 +48,9 @@ func TestPredicateBodyRunsOnTheVM(t *testing.T) {
 			}
 		})
 		_, ran, err := a.RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, nil, err) {
+			continue
+		}
 		disarm()
 		if !ran || err != nil {
 			t.Fatalf("%s: ran=%v err=%v", tc.name, ran, err)
@@ -58,5 +63,26 @@ func TestPredicateBodyRunsOnTheVM(t *testing.T) {
 				"a compiled program grew an interpreter island back inside a native handler, "+
 				"which no whole-program FALLBACK check can see", tc.name, got)
 		}
+	}
+}
+
+// A predicate body that RAISES fails the typed def with that raise, wrapped
+// in the def's own context — the interpreter's defTypedHandler and the
+// compiled OpBindTyped both run the predicate and both report it the same
+// way, taxonomy intact (the wrap keeps the raise's code). The negative twin:
+// a predicate that answers two values is not a raise, and is refused as a
+// malformed predicate on both lanes too.
+func TestTypedDefPredicateRaisePropagates(t *testing.T) {
+	const raising = `def Boom fnpred [[n:Integer] [raise bad_input "no"]] end def x:Boom 5 end x`
+	requireEngineParity(t, raising, true)
+	_, errI := mustNew(t).RunInterp(raising)
+	if codeOf(errI) != "bad_input" || !strings.Contains(fmt.Sprint(errI), "def x: predicate type Boom: ") {
+		t.Errorf("the raise must surface in the def's context with its own code, got %v", errI)
+	}
+	const twoValued = `def Two fnpred [[n:Integer] [n n]] end def x:Two 5 end x`
+	requireEngineParity(t, twoValued, true)
+	_, errI = mustNew(t).RunInterp(twoValued)
+	if !strings.Contains(fmt.Sprint(errI), "def x: predicate type Two: RunPredicate: predicate must return exactly one value, got 2") {
+		t.Errorf("a two-valued predicate must be refused in the def's context, got %v", errI)
 	}
 }

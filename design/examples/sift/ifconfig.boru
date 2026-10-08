@@ -1,7 +1,7 @@
 # ifconfig.boru — Linux `ifconfig` output (net-tools 2.x) → List of interface Maps.
 #
 # DX probe (illustrative, NOT executable — `boru:sift` is a design PROPOSAL).
-# Exists to pressure-test the Sift.define fn escape hatch of design/SIFT.0.md §7
+# Exists to pressure-test the Sift.define fn escape hatch of design/legacy/SIFT.0.ignore §7
 # against a real format; go-modules/EXEC.10.md §4.1 is the acquisition side.
 # The friction this file surfaced is recorded in SIFT.0.md §16.
 #

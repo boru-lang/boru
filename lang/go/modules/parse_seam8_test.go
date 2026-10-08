@@ -17,12 +17,12 @@ func w8ParseGrammar() (native.Value, *parseGrammar) {
 	return core.NewExtension(native.TIdeal, g), g
 }
 
-// w8LitS is a non-concrete String type literal (passes a TString sig, refused
+// w8LitS is a non-concrete String type literal (passes a TString sig, declined
 // by AsConcreteString).
 func w8LitS() native.Value { return native.NewTypeLiteral(native.TString) }
 
 // TestW8ParseBuilderBadGrammar drives every builder handler's asParseGrammar
-// refusal arm: a non-grammar args[0].
+// decline arm: a non-grammar args[0].
 func TestW8ParseBuilderBadGrammar(t *testing.T) {
 	r := mcovReg(t)
 	bad := native.NewInteger(0)
@@ -46,8 +46,8 @@ func TestW8ParseBuilderBadGrammar(t *testing.T) {
 	}
 }
 
-// TestW8ParseBuilderBadArgs drives the AsConcrete* refusal arms of the builder
-// handlers (a type-literal passes the sig but the handler refuses it).
+// TestW8ParseBuilderBadArgs drives the AsConcrete* decline arms of the builder
+// handlers (a type-literal passes the sig but the handler declines it).
 func TestW8ParseBuilderBadArgs(t *testing.T) {
 	r := mcovReg(t)
 	gv, _ := w8ParseGrammar()
@@ -81,7 +81,7 @@ func TestW8ParseBuilderBadArgs(t *testing.T) {
 }
 
 // TestW8ParseParserHandlerArgs drives the parse-parser handler's grammar
-// refusal arm directly.
+// decline arm directly.
 func TestW8ParseParserHandlerArgs(t *testing.T) {
 	r := mcovReg(t)
 	h := parseParserHandlerFor(r)
@@ -90,7 +90,7 @@ func TestW8ParseParserHandlerArgs(t *testing.T) {
 	}
 }
 
-// TestW8ParseHandlerSrcError drives parseHandler's src refusal arm (817).
+// TestW8ParseHandlerSrcError drives parseHandler's src decline arm (817).
 func TestW8ParseHandlerSrcError(t *testing.T) {
 	r := mcovReg(t)
 	_, g := w8ParseGrammar()
@@ -105,7 +105,7 @@ func TestW8ParseHandlerSrcError(t *testing.T) {
 func TestW8ApplySpecMapArms(t *testing.T) {
 	r := mcovReg(t)
 
-	// 461: RequireConcreteMap refusal (a non-concrete spec value).
+	// 461: RequireConcreteMap compile failure (a non-concrete spec value).
 	if _, g := w8ParseGrammar(); applySpecMap(g, native.NewTypeLiteral(native.TMap), r, false) == nil {
 		t.Error("applySpecMap: non-concrete spec should error")
 	}

@@ -30,6 +30,10 @@ func registerBytesType() *core.Type {
 	if err != nil { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 		recordTypeInitErr(fmt.Errorf("types_bytes: register Scalar/Bytes: %w", err))
 	}
+	// Bytes is an ordered scalar leaf (a byte-lexicographic Comparer), so
+	// it declares itself a refinement base: `Bytes gte (convert Bytes "a")`
+	// refines it as `Integer gte 0` refines Integer (NUR009).
+	core.DeclareRefinementBase(t)
 	return t
 }
 
@@ -98,9 +102,11 @@ func (BytesBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.
 // (core.ConstBakeable): Bytes is immutable — no word mutates the backing
 // array in place (BYTES.10.md §4; NewBytes's ownership contract) — and
 // already shares that array zero-copy on clone/fork/send, so a pooled
-// const shares exactly as the interpreter does. This is what lets a
+// const shares exactly as the interpreter does. This is what let a
 // module-scope Bytes binding (mini-s3's s3-crlf delimiter) bake into a
-// stored-fn unit instead of refusing the unit.
+// stored-fn unit instead of declining the unit; since the seventy-first
+// increment a stored unit reads such a binding live instead, and the
+// pool takes Bytes wherever else a const is baked.
 func (BytesBehavior) BakeableConst(_ Value) bool { return true }
 
 // Format renders Bytes as length-capped hex, e.g. Bytes<68 65 6c 6c 6f>.

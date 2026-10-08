@@ -26,7 +26,7 @@ func kwSig(lit string) *Signature {
 func kwPatternsOk(t *testing.T, sig *Signature, tok Value) bool {
 	t.Helper()
 	tape := NewTape([]Value{NewWord("g"), tok}, StackHeadroom)
-	return patternsOk(sig, []int{0, 1}, tape, 2, nil)
+	return patternsOk(sig, []int{0, 1}, tape, 2, nil, nil)
 }
 
 func TestKeywordSlotMatchesLiteralWord(t *testing.T) {
@@ -112,7 +112,7 @@ func TestDispatchSigNoImplementation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A match-only shape (no Impl) must refuse loudly, not panic.
+	// A match-only shape (no Impl) must decline loudly, not panic.
 	if _, err := DispatchSig(&Signature{Args: []*Type{TAny}}, nil, r); err == nil {
 		t.Fatal("a signature with no run implementation must error")
 	}

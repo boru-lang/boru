@@ -8,7 +8,7 @@ import (
 
 // OpDispatchRematch (plan Phase 3): a statically-failed dispatch whose window
 // held CARRIER operands compiles to a terminal runtime rematch instead of
-// refusing the whole program. The six graduated knownRefusals rows (the
+// declining the whole program. The six graduated knownCompileFailures rows (the
 // apply.tsv pair + four generics rows) re-match the live values at run time
 // and raise the shared rich diagnostic BYTE-IDENTICAL to the interpreter's
 // sigError. The corpus differential covers Detail equality; this pin compares
@@ -28,6 +28,9 @@ func TestDispatchRematchRaisesByteIdentical(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, ran, errC := a.RunCompiled(src)
+			if noteCompileDefect(t, src, nil, errC) {
+				return
+			}
 			if !ran {
 				t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 			}
@@ -51,9 +54,13 @@ func TestDispatchRematchRaisesByteIdentical(t *testing.T) {
 
 // TestDispatchRematchMatchDefers — the soundness arm: when the static
 // no-match was WRONG (a fn declared [Integer] returns a Pos-reparented value
-// whose runtime tag matches the Pos param), the rematch MATCHES at run time
-// and defers to the interpreter (the tail was truncated at the terminal op),
-// producing the interpreter's result — slow, not wrong.
+// whose runtime tag matches the Pos param), the rematch MATCHES at run time.
+// The tail was truncated at the terminal op, so the rematch's statement
+// island (compiler planRematchRestart, NUR336) runs the statement — `g` over
+// the `(mk 5)` the compiled code computed, written in its paren's place —
+// and the program after it on the interpreter, and the compiled run
+// completes with the interpreter's result. Where no island was planned the
+// match still defers (TestNUR336RematchWithoutIslandDefers).
 func TestDispatchRematchMatchDefers(t *testing.T) {
 	const src = `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
 	a, err := New()
@@ -69,11 +76,14 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 		t.Fatal(err)
 	}
 	outC, ran, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
-	if ran {
-		t.Error("a runtime MATCH must defer to the interpreter, not keep the truncated compiled run")
+	if !ran {
+		t.Error("a runtime MATCH takes its statement's island and completes compiled")
 	}
 	c, err := New()
 	if err != nil {
@@ -95,9 +105,9 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 // which now MATCH add's within-type [Boolean Boolean] CoreDefault and no
 // longer produce an unmatched dispatch). The record gate proves the written
 // tuple is the window's leading slice by ID and stamps its length as
-// DispatchSpec.NWritten; the compiled rematch re-runs the match over the
-// FULL window and renders over window[:NWritten] — byte-identical to the
-// interpreter, running COMPILED (formerly a whole-program refusal).
+// DispatchSpec.Written; the compiled rematch re-runs the match over the
+// FULL window and renders over the tuple — byte-identical to the
+// interpreter, running COMPILED (formerly a whole-program compile failure).
 func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 	const src = `def Flag (refine Boolean)  def f fn [[x:Flag] [Boolean] [def add fn [[a:Flag b:Flag] [Boolean] [a or b]] add x x]]  def v:Flag true  (f v) add none none`
 	a, err := New()
@@ -116,6 +126,9 @@ func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !ran {
 		t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 	}
@@ -129,7 +142,7 @@ func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 	}
 }
 
-// TestDispatchRematchVariadicIfGraduated — the LAST corpus refusal's
+// TestDispatchRematchVariadicIfGraduated — the LAST corpus compile failure's
 // graduation pin (both polarities): the branch merge seats the 1-vs-2
 // arm-dependent residual (captureInertArmResidual + the variadic merge), and
 // the terminal rematch seats its const operand under the live region top
@@ -157,6 +170,9 @@ func TestDispatchRematchVariadicIfGraduated(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, ran, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			continue
+		}
 		if !ran {
 			t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 		}

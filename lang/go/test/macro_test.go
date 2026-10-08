@@ -7,7 +7,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Phase 0 (design/MACROS-PHASE1.10.md §7): gensym mints fresh, never-colliding
+// Phase 0 (design/legacy/MACROS-PHASE1.10.ignore §7): gensym mints fresh, never-colliding
 // atoms for capture-free temporaries.
 func TestGensymUniqueAndMonotonic(t *testing.T) {
 	res, err := runNativeSteps(t, nil, []string{`[gensym gensym gensym]`})
@@ -135,7 +135,7 @@ func TestMacroAutoHygiene(t *testing.T) {
 // Phase 5 (interpreter staging): a macro is define-before-USE; a macro in a fn
 // body expands at call time (so it need only be defined before the call). The
 // compiled-mode expander (expansion moved to compile time) awaits the IR
-// backend — see design/MACROS-PHASE5.5.md.
+// backend — see design/legacy/MACROS-PHASE5.5.ignore.
 func TestMacroStaging(t *testing.T) {
 	// Use before definition errors.
 	if _, err := runNativeSteps(t, nil, []string{`nope 1`, `def nope (macro [[a] [quote [unquote a]]])`}); err == nil {

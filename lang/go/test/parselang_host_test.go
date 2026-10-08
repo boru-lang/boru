@@ -187,7 +187,7 @@ func TestParseLangHostRegisterAfterImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	if _, err := a.Run(`import "boru:parselang"`); err != nil {
+	if _, err := runReference(t, a, `import "boru:parselang"`); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	v, err := lang.NewParseLangFn(calcParserSpec())
@@ -254,7 +254,7 @@ func TestParseLangHostNoImportValueForm(t *testing.T) {
 	}
 }
 
-// TestParseLangHostRegistrationContract pins what NewParseLangFn refuses.
+// TestParseLangHostRegistrationContract pins what NewParseLangFn declines.
 func TestParseLangHostRegistrationContract(t *testing.T) {
 	t.Run("empty name", func(t *testing.T) {
 		if _, err := lang.NewParseLangFn(lang.ParseLangSpec{Handler: calcParserSpec().Handler}); err == nil {
@@ -279,7 +279,7 @@ func TestParseLangHostRegistrationContract(t *testing.T) {
 			t.Fatal("expected error for an empty value name")
 		}
 		// The full def word-name grammar is enforced — a name source boru
-		// cannot spell must be refused, not silently installed.
+		// cannot spell must be declined, not silently installed.
 		if err := a.DefineValue("1parser", v); err == nil {
 			t.Fatal("expected error for a name failing ValidateWordName")
 		}

@@ -123,6 +123,7 @@ func regionSpans(w core.CollectWindow) (spans [][2]int, delims []int, ok bool) {
 // do. The cases are chosen to exercise the paren-depth logic the corpus walk
 // never reached.
 func TestRegionDescriptorOracle(t *testing.T) {
+	t.Parallel()
 	open, closep, end := core.NewOpenParen(), core.NewCloseParen(), core.NewEnd()
 	w := func(s string) core.Value { return core.NewWord(s) }
 	i := func(n int64) core.Value { return core.NewInteger(n) }
@@ -205,10 +206,11 @@ func TestRegionDescriptorOracle(t *testing.T) {
 }
 
 // TestRegionDescriptorValidateRejects is the negative control: a descriptor
-// that is malformed must be REFUSED, not quietly executed. Without this the
+// that is malformed must be DECLINED, not quietly executed. Without this the
 // suite only ever proves that well-formed input is accepted, which is the
 // half that cannot catch a regression (AGENTS.md, test discipline).
 func TestRegionDescriptorValidateRejects(t *testing.T) {
+	t.Parallel()
 	pos := core.SrcPos{Row: 1, Col: 1}
 	// The invalid zero: a slot nobody gave a source to. NFwd 1 puts it INSIDE
 	// the recorded claim, which is what makes the missing source a defect —
@@ -218,7 +220,7 @@ func TestRegionDescriptorValidateRejects(t *testing.T) {
 	d := &compiler.RegionDesc{Lead: compiler.LeadWord, Word: "add", Pos: pos,
 		NFwd: 1, Slots: []compiler.SlotDesc{{}}}
 	if err := d.Validate(1, 0, 0); err == nil {
-		t.Error("a slot left at SlotNone must be refused — it is the invalid zero, not Consts[0]")
+		t.Error("a slot left at SlotNone must be declined — it is the invalid zero, not Consts[0]")
 	}
 	// …and the relaxation's own boundary: unsourced BEYOND the claim is legal,
 	// unsourced-but-indexed is a lowerer writing past its own claim, and the
@@ -231,30 +233,30 @@ func TestRegionDescriptorValidateRejects(t *testing.T) {
 	d = &compiler.RegionDesc{Lead: compiler.LeadWord, Word: "add", Pos: pos,
 		NFwd: 0, Slots: []compiler.SlotDesc{{Idx: 3}}}
 	if err := d.Validate(1, 0, 0); err == nil {
-		t.Error("an unsourced slot carrying an index must be refused even beyond the claim")
+		t.Error("an unsourced slot carrying an index must be declined even beyond the claim")
 	}
 	d = &compiler.RegionDesc{Lead: compiler.LeadWord, Word: "add", Pos: pos,
 		NFwd: 2, Slots: []compiler.SlotDesc{{Source: compiler.SlotConst}}}
 	if err := d.Validate(1, 0, 0); err == nil {
-		t.Error("a claim bound past the slot count must be refused")
+		t.Error("a claim bound past the slot count must be declined")
 	}
 	// An index that is in the struct but out of the table it addresses.
 	d = &compiler.RegionDesc{Lead: compiler.LeadWord, Word: "add", Pos: pos,
 		Slots: []compiler.SlotDesc{{Source: compiler.SlotConst, Idx: 7}}}
 	if err := d.Validate(1, 0, 0); err == nil {
-		t.Error("a const index past the const table must be refused")
+		t.Error("a const index past the const table must be declined")
 	}
 	// A word lead with no name, and a name on a non-word lead: both malformed.
 	d = &compiler.RegionDesc{Lead: compiler.LeadWord, Pos: pos}
 	if err := d.Validate(0, 0, 0); err == nil {
-		t.Error("LeadWord with no word name must be refused")
+		t.Error("LeadWord with no word name must be declined")
 	}
 	d = &compiler.RegionDesc{Lead: compiler.LeadApply, Word: "add", Pos: pos}
 	if err := d.Validate(0, 0, 0); err == nil {
-		t.Error("a word name on a non-word lead must be refused")
+		t.Error("a word name on a non-word lead must be declined")
 	}
 	// The well-formed case still passes, so the rejections above are not
-	// vacuous — a Validate that refused everything would satisfy them all.
+	// vacuous — a Validate that declined everything would satisfy them all.
 	d = &compiler.RegionDesc{Lead: compiler.LeadWord, Word: "add", Pos: pos,
 		Slots: []compiler.SlotDesc{{Source: compiler.SlotConst, Idx: 0}}}
 	if err := d.Validate(1, 0, 0); err != nil {
@@ -297,8 +299,9 @@ func sameInts(a, b []int) bool {
 // is the tautology this file exists to have stopped making. Boundaries are
 // pinned by the oracle above.
 func TestRegionDescriptorReach(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,8 +449,9 @@ func slotKind(v core.Value) string {
 // its own type rather than land in a silent remainder. A residue that hides
 // is exactly how the previous numbers passed.
 func TestRegionSlotTokenKinds(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,7 @@
 # TRUTHINESS — the One Truthiness Model
 
 > **Status:** Design document (first cut). Commissioned by the NUR
-> uniformity review (`design/NUR-RESOLUTION-PLAN.0.md`): truthiness
+> uniformity review (`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`): truthiness
 > spans several NUR records (NUR000, NUR001, NUR002, NUR003, NUR004,
 > NUR016-as-reviewed), so the model is specified **once, here**, and
 > every record and reference points at this document instead of
@@ -35,7 +35,7 @@ when it is one of:
 
 - `"false"`, `"0"`, `"no"`, `" "` are **true** — a String's characters
   are never inspected. (The historical magic-token rule that made the
-  one string `"false"` falsy was removed — `design/WAT-AUDIT.5.md` §E.)
+  one string `"false"` falsy was removed — `design/legacy/WAT-AUDIT.5.ignore` §E.)
 - `-1`, `0.5`, `nan` are **true** (non-zero magnitude; NaN is not a
   zero).
 - A non-empty container is true regardless of what it contains:
@@ -280,5 +280,5 @@ all [1 "x" {}]                   # → false
 - **NUR004** — no `True`/`False` lattice leaves (value-layer
   machinery, §1).
 - **ADR candidate** — "One Truthiness Model" as a language principle
-  (`design/NUR-RESOLUTION-PLAN.0.md`, ADR candidate 1; to be added to
+  (`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`, ADR candidate 1; to be added to
   ADR.md only on explicit maintainer instruction).

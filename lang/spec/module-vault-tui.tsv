@@ -20,5 +20,5 @@ import "boru:vault-tui" convert List VaultTui.$module	['VaultTui']	import binds 
 # §2  the app map builds headless: init state, update fn, view fn
 import "boru:vault-tui"  join "," (keys (VaultTui.app {}))	'init,update,view'	VaultTui.app is the {init update view} map
 #
-# §3  no terminal backend registered → run refuses with no_backend
+# §3  no terminal backend registered → run declines with no_backend
 import "boru:vault-tui"  VaultTui.run {}	ERROR:no terminal backend registered	VaultTui.run requires a registered terminal backend

@@ -30,7 +30,7 @@ func TestDAPFullSession(t *testing.T) {
 		dapReq(1, "initialize", ""),
 		dapReq(2, "launch", "{}"),
 		dapReq(3, "setBreakpoints", bps),
-		dapReq(4, "evaluate", `{"expression":"1"}`),        // before the run: refused
+		dapReq(4, "evaluate", `{"expression":"1"}`),        // before the run: declined
 		dapReq(5, "variables", `{"variablesReference":1}`), // ditto
 		dapReq(6, "stackTrace", "{}"),                      // ditto
 		dapReq(7, "configurationDone", ""),                 // → entry stop (step)
@@ -42,7 +42,7 @@ func TestDAPFullSession(t *testing.T) {
 		dapReq(13, "variables", `{"variablesReference":2}`),
 		dapReq(14, "evaluate", `{"expression":"n add 9"}`),
 		dapReq(15, "setBreakpoints", bps),                   // while paused: the direct-mutate arm
-		dapReq(16, "pause", ""),                             // honest refusal
+		dapReq(16, "pause", ""),                             // honest compile failure
 		dapReq(17, "customFoo", ""),                         // unsupported
 		dapReq(18, "stepIn", ""),                            // → step stop line 3
 		dapReq(19, "stepOut", ""),                           // top level: runs to the line-4 breakpoint
@@ -74,12 +74,12 @@ func TestDAPFullSession(t *testing.T) {
 		`"exitCode":0`,
 		`"event":"terminated"`,
 		`"command":"disconnect"`)
-	// Negative: the pause request is refused, not silently dropped.
+	// Negative: the pause request is declined, not silently dropped.
 	if !strings.Contains(out, `"command":"pause","request_seq":16,"success":false`) {
-		t.Errorf("pause must be refused:\n%s", out)
+		t.Errorf("pause must be declined:\n%s", out)
 	}
 	if !strings.Contains(out, `"command":"customFoo","request_seq":17,"success":false`) {
-		t.Errorf("unknown requests must be refused:\n%s", out)
+		t.Errorf("unknown requests must be declined:\n%s", out)
 	}
 }
 

@@ -2,11 +2,14 @@ package native
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/boru-lang/boru/lang/go/policy"
 )
 
 // The "module", "import", and "export" words. The "module" and
@@ -69,7 +72,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// KNOWN UNDERCOUNT, deliberate: a module imported from inside a module
 	// body draws no entry. The advisory lands on parent.Check, and a module
 	// sub-registry owns its own CheckState by design
-	// (design/module-fn-checkstate-ownership.1.md §3.2), so a nested body's
+	// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2), so a nested body's
 	// entry would be recorded where nothing reads it. The nested body IS
 	// modelled — only its report is missing.
 	inPureCheck := parent != nil && parent.Check.IsActive() && !parent.Check.Compiling
@@ -183,7 +186,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// sub-registry has no CapPolicy, and HostPolicy(modReg) returns nil —
 	// which every gate that resolves the policy itself reads as
 	// allow-everything. The result was a bypass by relocation: a gated
-	// call refused at top level was permitted one file deeper, defeating
+	// call declined at top level was permitted one file deeper, defeating
 	// the shipped `sandbox` / `read-only` / `compute` profiles and an
 	// explicit `--deny`.
 	//
@@ -194,12 +197,12 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// HostPolicy(r) at dispatch — `modules.import` and the network words
 	// among them — which is why moving an `import "boru:net"` into a file
 	// module let its fetch through while a file write in the same body
-	// stayed refused.
+	// stayed declined.
 	//
 	// Set AFTER the SetHostX inheritance above, deliberately: those hooks
 	// auto-wrap with HostPolicy(r) when one is present, so installing the
 	// policy first would wrap the parent's already-permissioned backend a
-	// second time. One wrap, one decision, one refusal message.
+	// second time. One wrap, one decision, one compile failure message.
 	SetHostPolicy(modReg, HostPolicy(parent))
 	modReg.ParseFunc = parent.ParseFunc
 	modReg.BaseDir = parent.BaseDir
@@ -245,9 +248,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	//     still resolve — a write-then-read-back body sees its own bytes.
 	//   - output — io.Discard in place of the writers copied above, so a
 	//     body that prints at load draws nothing during check. Discarding
-	//     rather than counting is also what keeps the compiled effect fence
-	//     (eng effects.go) honest in the safe direction: nothing escaped, so
-	//     nothing should block a later interpreter fallback.
+	//     rather than counting is also what keeps the effect ledger
+	//     (core effects.go) honest: nothing escaped during check, so nothing
+	//     is counted.
 	//
 	// Input is NOT substituted, and that is the rule not an omission: the
 	// mode models WRITES. Reads stay real so no body that loads today can
@@ -307,7 +310,16 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		resolved := NewOrderedMap()
 		for _, key := range rawMap.Keys() {
 			val, _ := rawMap.Get(key)
-			resolved.Set(key, resolveModuleExport(modReg, val))
+			ev := resolveModuleExport(modReg, val)
+			resolved.Set(key, ev)
+			// An exported fn's body gets the declaration-shaped analysis a
+			// top-level fn gets at construction, on the IMPORTING pass, in
+			// the module registry it was written in (NUR128: a module
+			// body's own check is inactive, so a dead branch in an exported
+			// fn was reported only when someone called it).
+			if fd, isFn := ev.Data.(FnDefInfo); isFn {
+				NoteFnBodyPendingIn(parent, modReg, fd)
+			}
 		}
 		exports[name] = resolved
 	}
@@ -377,14 +389,14 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		return ModuleDesc{}, err
 	}
 
-	// Detached-stamp the module's fn bindings (design/RUNTIME-STAMPING.0.md
+	// Detached-stamp the module's fn bindings (design/legacy/RUNTIME-STAMPING.0.ignore
 	// Phase 4a): every module-scope def holding an eligible capture-free fn
 	// compiles to its own unit here, at load — the ONE pre-publication moment
 	// where the def binding and the export map still share each fn's impl
 	// pointer, so the in-place stamp reaches both. The module-export apply
 	// seam (execFnDefSig) then runs a stamped fn on the VM from any caller.
 	// StampFnValueInPlace declines silently per fn (policy off, capturing,
-	// refusing body), leaving that fn interpreting exactly as before. The
+	// declining body), leaving that fn interpreting exactly as before. The
 	// stamps happen after the whole body ran so cross-fn deps resolve, and
 	// their dep snapshots freeze against the completed module scope.
 	if modReg.RuntimeStampingEnabled() {
@@ -518,6 +530,9 @@ func loadFileModule(parent *Registry, path string) (ModuleDesc, error) {
 	if parent.ParseFunc == nil {
 		return ModuleDesc{}, fmt.Errorf("import: parser not configured for file import")
 	}
+	if err := checkFileModuleImport(parent, path); err != nil {
+		return ModuleDesc{}, err
+	}
 
 	resolved := resolveImportPath(parent, path)
 
@@ -565,6 +580,43 @@ func loadFileModule(parent *Registry, path string) (ModuleDesc, error) {
 	}
 
 	return desc, nil
+}
+
+// checkFileModuleImport applies to a FILE module the three policy checks
+// modules.Resolve applies to a native one (NUR079): the modules scope must be
+// installed, the `import` op allowed for this module, and the module's own
+// subscope not `install: false`. The key is the ref the module is loaded
+// under — the same one its per-export gates carry (StampModuleCallGates), so
+// `modules.scopes."./lib.boru"` names one module for both. The check also
+// carries `kind: "file"`, so a profile can admit source modules as a class
+// (a module body runs under the importer's policy — runModuleBodyCover — so
+// admitting the import widens nothing the body could do). No policy is no
+// gate, as everywhere.
+//
+// A refusal carries its policy code (PolicyRefusal): nothing has run, so the
+// coded error is the whole story, and `do [import …] error [dot code]` can
+// tell a refused import from a broken one. The scope-level install:false is
+// Check's own first step.
+func checkFileModuleImport(r *Registry, ref string) error {
+	pol := HostPolicy(r)
+	if pol == nil {
+		return nil
+	}
+	args := policy.Args{"module": ref, "kind": "file"}
+	if err := pol.Check("modules", "import", args); err != nil {
+		return PolicyRefusal(r, "import", err)
+	}
+	if !pol.Scope("modules").Scopes[ref].Installed() {
+		return PolicyRefusal(r, "import", &policy.Denied{
+			Code:    policy.CodeCapabilityNotInstalled,
+			Scope:   "modules",
+			Op:      "import",
+			Profile: pol.Name(),
+			Blame:   "modules.scopes." + ref + ".install=false",
+			Args:    args,
+		})
+	}
+	return nil
 }
 
 // loadModuleResources checks the module's .boru/boru.json for a "resource"
@@ -627,7 +679,7 @@ func linkModuleDebugParent(r *Registry, desc ModuleDesc) {
 		if exportMap != nil {
 			for _, key := range exportMap.Keys() {
 				if v, ok := exportMap.Get(key); ok {
-					if fn, isFn := FnDefFromValue(v); isFn && fn.Registry != nil {
+					if fn, isFn := FnDefFromValue(v); isFn && fn.HasHome() {
 						fn.Registry.SetDebugParent(r)
 					}
 				}
@@ -838,11 +890,11 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 		// reference form auto-evaluates to the bound fn HERE (as data), so the
 		// name was never stepped through the normal dispatch/ResolveRef use path.
 		modReg.Check.RecordUse(fnDef.Name)
-		if fnDef.Registry == nil {
-			fnDef.Registry = modReg
-			return NewFunction(fnDef)
-		}
-		return v
+		// THIS module's own fn is minted afresh, a Go-built one is adopted,
+		// and one homed ELSEWHERE (imported and re-exported) passes through —
+		// HomeExportedFn holds the rule.
+		homed, _ := HomeExportedFn(v, modReg)
+		return homed
 	}
 	// A bare name (word/string/atom) resolves by lookup in the module
 	// registry. After auto-eval this path is reached mainly in check
@@ -867,24 +919,16 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// types (`export "color" {Color:Color}`) would leave the value
 	// side as an unresolved Word.
 	if tv, ok := modReg.TopTypeBody(name); ok {
-		if fnDef, ok := tv.Data.(FnDefInfo); ok {
-			if fnDef.Registry == nil {
-				fnDef.Registry = modReg
-				return NewFunction(fnDef)
-			}
-		}
-		return tv
+		homed, _ := HomeExportedFn(tv, modReg)
+		return homed
 	}
 	if val, ok := modReg.Defs.Top(name); ok {
-		// Tag FnDef values with the module's registry so they can
-		// execute in the correct context (closure semantics).
-		if fnDef, ok := val.Data.(FnDefInfo); ok {
-			if fnDef.Registry == nil {
-				fnDef.Registry = modReg
-				return NewFunction(fnDef)
-			}
-		}
-		return val
+		// A fn value carries the module's registry so it executes in the
+		// correct context (closure semantics) — stamped at construction for a
+		// boru-bodied fn, adopted here for a Go-built one; a non-fn value is
+		// returned as-is.
+		homed, _ := HomeExportedFn(val, modReg)
+		return homed
 	}
 	return v
 }
@@ -925,6 +969,13 @@ func resolveNativeMod(r *Registry, path string) error {
 	}
 	desc, err := r.Modules.Resolver(name, r)
 	if err != nil {
+		// A policy refusal arrives CODED (modules.Resolve, PolicyRefusal) and
+		// is surfaced as it is, so its code reaches the program; any other
+		// failure keeps the import prefix.
+		var be *BoruError
+		if errors.As(err, &be) {
+			return err
+		}
 		return fmt.Errorf("import: %w", err)
 	}
 	// NUR045: stamp the per-export policy identity before the exports

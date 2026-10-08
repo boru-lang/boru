@@ -112,7 +112,7 @@ func TestRunRefusesProgramFailingCheck(t *testing.T) {
 		t.Errorf("stderr = %q, want the undefined_word diagnostic", stderr)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
-		t.Errorf("refused build must write no artefact; stat %s: %v", out, err)
+		t.Errorf("declined build must write no artefact; stat %s: %v", out, err)
 	}
 }
 

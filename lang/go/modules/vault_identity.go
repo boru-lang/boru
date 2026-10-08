@@ -89,7 +89,7 @@ func validateVaultIdentityAlias(args []native.Value, r *native.Registry) error {
 	return nil
 }
 
-// vaultIdentityMirror reports that refusal statically. Nothing before it
+// vaultIdentityMirror reports that compile failure statically. Nothing before it
 // in the handler can fail and nothing in it touches the vault — minting a
 // handle is lazy (the doc comment above) — so a concrete empty alias is a
 // guaranteed run-time error. The residual stays the declared handle type.

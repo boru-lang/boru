@@ -44,7 +44,7 @@ import (
 // `connect` returns an Endpoint — a Service whose call/send forward over
 // the socket, one in-flight request at a time (synchronous correlation;
 // the RFC's pending-call pump and peer-push handlers are deferred, see
-// design/NETWORK-IMPLEMENTATION-PLAN.0.md §1). `call {req} ep
+// design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1). `call {req} ep
 // {timeout: <ms>}` bounds the reply wait, raising `timeout`.
 
 // ---- Go-backed Function values ----
@@ -1044,7 +1044,7 @@ func jsonReady(v any) any {
 // codecNatives lists the Tier-2 words BuildNetModule registers.
 func codecNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{Name: "listen", Signatures: []native.Signature{
 			// listen {tcp: port codec: c} <service> — expose a service on
 			// the wire (appends to the Tier-1 listen registration).
@@ -1056,5 +1056,5 @@ func codecNatives() []native.NativeFunc {
 			{Args: T(native.TMap), Impl: native.Go(connectHandler), Returns: T(native.TService),
 				ReturnsFn: connectCodecMirror(), BarrierPos: -1},
 		}},
-	}
+	})
 }

@@ -75,8 +75,14 @@ func TestReachWave3TypeBoundKey(t *testing.T) {
 	if len(vals) != 1 || !core.IsReach(vals[0]) {
 		t.Fatalf("a.b/t: expected one Reach, got %v", vals)
 	}
-	if s := vals[0].String(); !strings.Contains(s, "sugar(type-bound") {
-		t.Errorf("a.b/t: rendering %q lacks the type-bound sugar key", s)
+	ri, _ := core.AsReach(vals[0])
+	last := ri.Segments[len(ri.Segments)-1].KeyLit
+	if info, ok := core.AsSugar(last); !ok || info.Kind != core.SugarTypeBound {
+		t.Errorf("a.b/t: the final key is %v, want the type-bound sugar", last)
+	}
+	// …and it renders as the source it came from (NUR072).
+	if s := vals[0].String(); s != "a.b/t" {
+		t.Errorf("a.b/t: rendering %q, want a.b/t", s)
 	}
 }
 
@@ -348,16 +354,13 @@ func TestArrowWave3Degenerate(t *testing.T) {
 	if info, ok := core.AsSugar(vals[1]); !ok || info.Kind != core.SugarLambda {
 		t.Errorf("x =>: second value %v, want the lambda marker", vals[1])
 	}
-	// A pair arrow with no body inside a list also parses (empty fold),
-	// as does a plain-value arrow with no body.
-	for _, src := range []string{"[x:1 =>]", "[1 x =>]"} {
-		if _, err := parseWave3(t, src); err != nil {
-			t.Fatalf("%q: unexpected error: %v", src, err)
-		}
+	// Where the arrow FOLDS — a pair or plain value inside a list, a
+	// paren — a bodiless one is refused on the arrow (NUR060): it used to
+	// vanish (`[1 x =>]` read `[1 x]`) or double its input as the body,
+	// differently in the two ports.
+	for _, src := range []string{"[x:1 =>]", "[1 x =>]", "(1 x =>)"} {
+		wantParseErrWave3(t, src, "`=>` has no body")
 	}
-	// Inside a paren, a bodyless arrow leaves the group unfinished — the
-	// unmatched-paren diagnostic fires (no panic).
-	wantParseErrWave3(t, "(1 x =>)", "unmatched opening parenthesis")
 	// A top-level bare pair with arrow and body parses flat or folded —
 	// never an error.
 	if _, err := parseWave3(t, "x:Integer => [x]"); err != nil {

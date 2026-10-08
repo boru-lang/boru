@@ -38,7 +38,7 @@ var externalModules = map[string]string{
 	// Moved out of this repository (commit a7882da, "remove the boru:decision
 	// module (moved to a separate repo)"). gen.jsonic still names it because
 	// the generator workflow runs against that external module; see
-	// design/module-fn-checkstate-ownership.1.md.
+	// design/legacy/module-fn-checkstate-ownership.1.ignore.
 	"boru:decision": "moved to a separate repository; gen.jsonic names it for hosts that register it",
 }
 

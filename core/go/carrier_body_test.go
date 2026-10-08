@@ -6,10 +6,13 @@ package core
 // The four RunCarrierBody* entries differ only in whether the body's defs
 // roll back (a conditional arm) or leak (`do`), and whether the run raises
 // CondBodyDepth (a condition fragment runs unconditionally exactly once,
-// so it does not). The refusal arms are pinned separately in
+// so it does not). The decline arms are pinned separately in
 // carrier_body_gate_test.go; what is proved here is the RUN.
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // bodyProbeWords registers the two natives the body tests drive: one that
 // pushes a def (so the net-additions accounting has something to report)
@@ -86,6 +89,62 @@ func TestRunCarrierBodyKeepDefsLeaks(t *testing.T) {
 	}
 }
 
+// TestRunCarrierCondBodyKeepDefsKeeps pins the KEPT condition run (NUR212):
+// an `if` condition runs unconditionally, once, before the branch decision,
+// so the binding it makes stands after the run — unlike RunCarrierCondBody,
+// which rolls it back — and, not being truncated, the run does not raise
+// RolledBackBodyDepth (its installs ledger like any straight-line one) nor
+// CondBodyDepth (it is not conditional).
+func TestRunCarrierCondBodyKeepDefsKeeps(t *testing.T) {
+	r := bodyProbeReg(t)
+	defer r.Check.Begin()()
+
+	var sawRolled, sawCond, sawNested int
+	r.RegisterNativeFunc(NativeFunc{
+		Name: "cdepths",
+		Signatures: []Signature{{
+			Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+				sawRolled, sawCond, sawNested = reg.Check.RolledBackBodyDepth, reg.Check.CondBodyDepth, reg.Check.NestedBodyDepth
+				return nil, nil
+			}, RunInCheck()),
+			Returns: []*Type{}, BarrierPos: -1,
+		}},
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+
+	stk := RunCarrierCondBodyKeepDefs(r, NewList([]Value{NewInteger(9), NewWord("cbind"), NewWord("cdepths"), NewBoolean(true)}))
+	if len(stk) != 1 {
+		t.Fatalf("residual = %v, want the one condition value", stk)
+	}
+	v, ok := r.Defs.Top("cbound")
+	if !ok {
+		t.Fatal("a kept condition run must leave its binding installed")
+	}
+	if n, err := AsInteger(v); err != nil || n != 9 {
+		t.Errorf("kept binding = %v (%v), want 9", v, err)
+	}
+	if sawRolled != 0 || sawCond != 0 || sawNested != 1 {
+		t.Errorf("depths inside the kept condition: rolled=%d cond=%d nested=%d, want 0/0/1",
+			sawRolled, sawCond, sawNested)
+	}
+
+	// The negative twin: the rolled-back condition run (the `case`
+	// scrutinee's count run) reports the binding and removes it.
+	r.Defs.Truncate("cbound", 0)
+	_, adds := RunCarrierCondBody(r, NewList([]Value{NewInteger(4), NewWord("cbind"), NewWord("cdepths"), NewBoolean(true)}))
+	if _, still := r.Defs.Top("cbound"); still {
+		t.Error("a rolled-back condition run must not leave its binding installed")
+	}
+	if _, reported := adds["cbound"]; !reported {
+		t.Errorf("adds = %v, want the rolled-back binding reported", adds)
+	}
+	if sawRolled != 1 || sawCond != 0 {
+		t.Errorf("depths inside the rolled-back condition: rolled=%d cond=%d, want 1/0", sawRolled, sawCond)
+	}
+}
+
 func TestRunCarrierCondBodyIsCondDepthExempt(t *testing.T) {
 	r := bodyProbeReg(t)
 	defer r.Check.Begin()()
@@ -154,7 +213,7 @@ func TestRunCarrierBodyEmptyList(t *testing.T) {
 	r := bodyProbeReg(t)
 	defer r.Check.Begin()()
 	// An empty (but concrete) list runs to an empty residual rather than
-	// taking either refusal arm.
+	// taking either decline arm.
 	if stk := RunCarrierBody(r, NewList(nil)); len(stk) != 0 {
 		t.Errorf("empty body residual = %v, want empty", stk)
 	}
@@ -234,21 +293,21 @@ func TestRecordTypedDefMake(t *testing.T) {
 	body := NewMap(NewOrderedMap())
 
 	// A nil registry declines.
-	if _, ok := RecordTypedDefMake(nil, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(nil, "", typeArg, body, SrcPos{}); ok {
 		t.Error("a nil registry must decline")
 	}
 
 	// An INACTIVE recorder declines — outside emit mode the caller binds
 	// the concrete value instead.
 	r := makeWordReg(t, true)
-	if _, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{}); ok {
 		t.Error("an inactive recorder must decline")
 	}
 
 	// Active recorder but NO [Ideal Map] overload to attribute the call to.
 	r = makeWordReg(t, false)
 	r.Check.Emit = &probeEmit{EmitRecorder: TheInactiveEmit}
-	if _, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{}); ok {
 		t.Error("a missing make overload must decline")
 	}
 
@@ -258,7 +317,7 @@ func TestRecordTypedDefMake(t *testing.T) {
 	r = makeWordReg(t, true)
 	pe := &probeEmit{EmitRecorder: TheInactiveEmit}
 	r.Check.Emit = pe
-	carrier, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{Row: 2, Col: 4})
+	carrier, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{Row: 2, Col: 4})
 	if !ok {
 		t.Fatal("an active recorder with a make overload must record")
 	}
@@ -270,5 +329,33 @@ func TestRecordTypedDefMake(t *testing.T) {
 	}
 	if len(pe.outs) != 1 || len(pe.outs[0]) != 1 || !ValuesEqual(pe.outs[0][0], carrier) {
 		t.Errorf("recorded output = %v, want the returned carrier", pe.outs)
+	}
+}
+
+// typedDefMakeSig runs make's own handler and wraps ONLY its failure as the
+// typed-def handler does (`def <name>: <err>`); a success passes through
+// untouched, and the original signature is left as it was.
+func TestTypedDefMakeSigWrapsOnlyTheFailure(t *testing.T) {
+	boom := errors.New("make: missing field \"spec\" for Entity")
+	orig := &Signature{Impl: Go(func(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+		if len(args) == 0 {
+			return nil, boom
+		}
+		return args, nil
+	})}
+	w := typedDefMakeSig(orig, "e")
+	if w == orig {
+		t.Fatal("the wrap must be a copy, not make's own signature")
+	}
+	_, err := w.DispatchHandler()(nil, nil, nil, nil)
+	if err == nil || err.Error() != "def e: "+boom.Error() || !errors.Is(err, boom) {
+		t.Errorf("failure = %v, want the def-wrapped make error", err)
+	}
+	in := []Value{NewInteger(7)}
+	if got, err := w.DispatchHandler()(in, nil, nil, nil); err != nil || len(got) != 1 || !ValuesEqual(got[0], in[0]) {
+		t.Errorf("success = %v / %v, want the handler's own result", got, err)
+	}
+	if _, err := orig.DispatchHandler()(nil, nil, nil, nil); err != boom {
+		t.Errorf("make's own signature changed: %v", err)
 	}
 }

@@ -9,7 +9,7 @@ import (
 // TestRecursionThroughClosure pins the fix for SELF-RECURSION through a closure
 // body — a fn that calls itself inside an each/fold/scan body (the radix-msd
 // `msd-go` recurse-into-each-bucket shape). The closure body is compiled in a
-// throwaway PROBE state (recordClosureDispatch) so a refusal can't pollute the
+// throwaway PROBE state (recordClosureDispatch) so a compile failure can't pollute the
 // real program; that throwaway used a fresh NewEmitState, which LOST the
 // enclosing in-progress fn's unit — so the recursive call MISSED the fn-unit memo
 // and RE-COMPILED the enclosing fn in the throwaway, where it re-hit the same
@@ -54,7 +54,7 @@ func TestRecursionThroughClosure(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)

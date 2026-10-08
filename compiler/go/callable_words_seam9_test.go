@@ -16,7 +16,7 @@ func TestW9CompileClosureBodyInactive(t *testing.T) {
 	// A fresh registry has the inactive (no-op) recorder, so es is a typed-nil
 	// *EmitState and StartFnCompile declines.
 	unit, ok := compileClosureBody(r, "w", 1, false,
-		[]core.Value{core.NewWord("x")}, []core.Value{core.NewInteger(1)}, nil, nil, nil, ClosureInValue, core.SrcPos{})
+		[]core.Value{core.NewWord("x")}, []core.Value{core.NewInteger(1)}, nil, nil, nil, ClosureInValue, false, core.SrcPos{})
 	if ok || unit != -1 {
 		t.Errorf("inactive recorder should decline: unit=%d ok=%v", unit, ok)
 	}
@@ -80,13 +80,13 @@ func TestW9LambdaHookCompatible(t *testing.T) {
 		t.Error("a nil-typed param should be skipped and the lambda accepted")
 	}
 	// The capture gate is caller-selected: the extras/hook path (false)
-	// refuses a capturing lambda; the body-lambda path (true) admits it.
+	// declines a capturing lambda; the body-lambda path (true) admits it.
 	capFd := &core.FnDefInfo{
 		Signatures: []core.Signature{{Params: []core.FnParam{{Name: "a"}}, Impl: body}},
 		Captured:   []core.CapturedBinding{{Name: "kv", Value: core.NewInteger(9)}},
 	}
 	if _, ok := lambdaHookCompatible(r, capFd, []core.Value{core.NewInteger(1)}, ClosureInValue, false, false); ok {
-		t.Error("the hook path must refuse a capturing lambda")
+		t.Error("the hook path must decline a capturing lambda")
 	}
 	if _, ok := lambdaHookCompatible(r, capFd, []core.Value{core.NewInteger(1)}, ClosureInValue, true, false); !ok {
 		t.Error("the body path must admit a capturing lambda")
@@ -118,7 +118,7 @@ func TestW9EmptyContainerConst(t *testing.T) {
 func TestW9RecordClosureDispatchInactive(t *testing.T) {
 	r := newTestRegistry(t)
 	// The inactive recorder is not a *EmitState → the whole path declines.
-	if recordClosureDispatch(r, "w", core.CallableSpec{}, nil, nil, nil, nil, nil, nil, ClosureInValue, nil, nil, nil, nil, core.SrcPos{}, nil) {
+	if recordClosureDispatch(r, "w", core.CallableSpec{}, nil, nil, nil, nil, nil, nil, ClosureInValue, nil, nil, nil, nil, false, core.SrcPos{}, nil) {
 		t.Error("an inactive recorder should decline the closure dispatch")
 	}
 }

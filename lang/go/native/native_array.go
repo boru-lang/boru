@@ -296,7 +296,7 @@ var allArrayNatives = []NativeFunc{
 	// ---- higher-order ----
 	{
 		Name:          "each",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// each [body] data — the body sees one element and returns the mapped value.
 		// A 0-net body is each's own each_error ("body produced no result"), raised
 		// faithfully from InvokeBody, so EmptyBodyErrors compiles it natively rather
@@ -307,7 +307,7 @@ var allArrayNatives = []NativeFunc{
 		// (the parity oracle's measured population) — the twin regime's
 		// arm-residency license; see the field's doc in core.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -348,7 +348,7 @@ var allArrayNatives = []NativeFunc{
 		// throwaway sentinel just to satisfy each's "body produced a
 		// result" rule. See §7.4 in the DX report.
 		Name:          "for-each",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// The body compiles to a per-element closure exactly as each's does
 		// (the forty-fourth increment). Three of each's flags are NOT set
 		// here, and the differences are the word's own:
@@ -364,12 +364,12 @@ var allArrayNatives = []NativeFunc{
 		//     because each's handler cross-delegates to the Map one at run
 		//     time. forEachHandler does not — it reads args[1] as a list —
 		//     so a gradual collection must keep the ambiguous-overload
-		//     refusal rather than commit to a handler that would raise.
+		//     compile failure rather than commit to a handler that would raise.
 		//   - BodyMultiRunKeepsDefs: verified at the handler, which drives
 		//     InvokeBody once per element on the shared registry with no def
 		//     cleanup — the same seam and the same leak eachHandler has.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 0, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -395,7 +395,7 @@ var allArrayNatives = []NativeFunc{
 	},
 	{
 		Name:          "fold",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// fold [body] data init — the body sees (accumulator, element). InvokeBody
 		// supplies [acc, elem]; acc generalises to the init's type, or (no-init
 		// 2-arg form) to the element type, since the accumulator starts as the
@@ -407,11 +407,10 @@ var allArrayNatives = []NativeFunc{
 		// word's family), so a body def installs once per element with that
 		// element's runtime value. Arm-residency's license; see core's field doc.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			elem := DataListElemTypeFromValue(a[1])
 			if len(a) >= 3 {
-				return []Value{foldAccCarrier(a[2]), NewElementCarrier(elem)}
+				return []Value{foldAccCarrier(a[2]), ElementCarrierOf(a[1])}
 			}
-			return []Value{NewElementCarrier(elem), NewElementCarrier(elem)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -456,7 +455,7 @@ var allArrayNatives = []NativeFunc{
 	},
 	{
 		Name:          "scan",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// scan [body] data — the body sees (accumulator, element); the accumulator
 		// starts as the first element, so both inputs carry the element type. A
 		// 0-net body is scan's own scan_error, raised faithfully, so EmptyBodyErrors
@@ -465,8 +464,7 @@ var allArrayNatives = []NativeFunc{
 		// InvokeBody on the shared registry with no cleanup (handler-verified,
 		// like each's) — one leaked install per element, per-element value.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			e := DataListElemTypeFromValue(a[1])
-			return []Value{NewElementCarrier(e), NewElementCarrier(e)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -505,9 +503,7 @@ var allArrayNatives = []NativeFunc{
 		// grid rather than a flat element list, which changes the COUNT the
 		// oracle measures but not the mechanism.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			le := DataListElemTypeFromValue(a[1])
-			re := DataListElemTypeFromValue(a[2])
-			return []Value{NewElementCarrier(le), NewElementCarrier(re)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[2])}
 		}},
 
 		Signatures: []Signature{{
@@ -551,14 +547,14 @@ var allArrayNatives = []NativeFunc{
 		// answer for a shape the call's own arguments decide.
 		// No BodyMultiRunKeepsDefs, deliberately: eachrankHandler does drive
 		// InvokeBody per cell with the same leak its siblings have, but the
-		// word refuses EARLIER as a Stage-2 code-body word, so the flag would
+		// word declines EARLIER as a Stage-2 code-body word, so the flag would
 		// never fire and nothing could measure it. Flag it when eachrank
 		// itself graduates — an unmeasurable graduation is not one.
 		// eachrank alone still carries the structural ReturnsPreserveListAt,
 		// which never analyses its body — the hazard NUR115 named and foldaxis
 		// discharged (foldaxisReturnsFn): a body the check pass never runs
 		// records no bind twins, so the twin regime cannot see its defs. Safe
-		// here ONLY because the early refusal sends the whole program to the
+		// here ONLY because the early compile failure sends the whole program to the
 		// interpreter, the sound direction; the day eachrank graduates, an
 		// analysing ReturnsFn comes first (with its parity-oracle rows), the
 		// flag second.
@@ -590,7 +586,7 @@ var allArrayNatives = []NativeFunc{
 		// reduces every lane through doFold) and MEASURED by the parity
 		// oracle's foldaxis rows: both axes, the elem-valued install order, the
 		// one-element lanes that run the body ZERO times, the empty rank-2
-		// list, and the read-after / nested-multi-run refusals.
+		// list, and the read-after / nested-multi-run compile failures.
 		//
 		// The flag alone was NOT enough, and that is the lesson NUR115 recorded
 		// (resolved 2026-09-02): a body the check pass never RUNS records no
@@ -598,7 +594,7 @@ var allArrayNatives = []NativeFunc{
 		// that exist. The structural ReturnsPreserveListAt this word used to
 		// carry never called analyseHigherOrderBodyVals, so a def in a foldaxis
 		// body installed twice on the interpreter and NOT AT ALL compiled —
-		// silently, because nothing refused. foldaxisReturnsFn analyses the
+		// silently, because nothing declined. foldaxisReturnsFn analyses the
 		// body (fold's accumulator fixed point one rank down), which is what
 		// makes the twins visible — and is the test for any new body word: if
 		// its ReturnsFn does not analyse the body, the twin machinery cannot
@@ -1327,7 +1323,7 @@ func indicesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // (`def S (refine String)`) renders with its quotes, so keying on the
 // render would reintroduce a spelling the content never had.
 //
-// Two costs are deliberate, and the refusal below is what makes them
+// Two costs are deliberate, and the compile failure below is what makes them
 // visible rather than surprising:
 //
 //   - the 1-arg form loses generality — `group [1 2 3]` now needs a
@@ -1516,8 +1512,7 @@ func windowHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 // window yields a TList<TList<sameElem>>: wrap the source-data
 // element carrier twice.
 func windowReturnsFn(args []Value, _ *Registry) []Value {
-	elem := DataListElemTypeFromValue(args[1])
-	inner := NewCarrierTypedList(elem)
+	inner := CarrierTypedListOf(ElementCarrierOf(args[1]))
 	return []Value{NewCarrierTypedListValue(inner)}
 }
 
@@ -1542,8 +1537,7 @@ func pairsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 // pairs yields TList<TList<sameElem>> (2-tuples).
 func pairsReturnsFn(args []Value, _ *Registry) []Value {
-	elem := DataListElemTypeFromValue(args[0])
-	inner := NewCarrierTypedList(elem)
+	inner := CarrierTypedListOf(ElementCarrierOf(args[0]))
 	return []Value{NewCarrierTypedListValue(inner)}
 }
 
@@ -1576,6 +1570,9 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		res, err := InvokeBody(reg, args[0], []Value{elem})
 		if err != nil {
 			return nil, fmt.Errorf("each: element %d: %w", i, err)
+		}
+		if BodyEscaped(reg) {
+			return nil, nil // the body's break/continue ends the each; the run resolves it
 		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("each_error", fmt.Sprintf("each: element %d: body produced no result", i), "each")
@@ -1658,6 +1655,9 @@ func forEachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 		if _, err := InvokeBody(reg, args[0], []Value{elem}); err != nil {
 			return nil, fmt.Errorf("for-each: element %d: %w", i, err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 	}
 	return nil, nil
 }
@@ -1673,11 +1673,23 @@ func forEachReturnsFn(args []Value, r *Registry) []Value {
 // top-of-stack produces. Pass the concrete data list's element
 // carrier into the body so diagnostics fire against realistic types.
 func eachReturnsFn(args []Value, r *Registry) []Value {
+	// A fn VALUE callback (`each mk/v xs`, the list Function form) types the
+	// result by the fn's ONE declared return: a declared-Function factory
+	// makes `[:Function]`, so a member read of the result is a fn-typed lead
+	// the paren-bounded apply admits (`(fs.2 10)` — the container-member
+	// calls, 2026-09-22). An anonymous lambda's placeholder Any, an Any
+	// return and a multi-return fn keep the untyped list, as does a fn-typed
+	// CARRIER callback (the body analysis below finds no list body).
+	if fd, ok := args[0].Data.(FnDefInfo); ok && !fd.Anonymous {
+		if sig, has := fd.FirstOwnSig(); has && len(sig.Returns) == 1 && sig.Returns[0] != nil && !sig.Returns[0].Equal(TAny) {
+			return []Value{NewCarrierTypedList(sig.Returns[0])}
+		}
+	}
 	stk := analyseHigherOrderBodyVals(r, args[0], ElementCarrierFromValue(args[1]))
 	if len(stk) == 0 {
 		return []Value{NewCarrier(TList)}
 	}
-	return []Value{NewCarrierTypedList(stk[len(stk)-1].Parent)}
+	return []Value{CarrierTypedListOf(stk[len(stk)-1])}
 }
 
 // analyseHigherOrderBody runs a literal code-body list through a
@@ -1696,6 +1708,18 @@ func analyseHigherOrderBody(r *Registry, body Value, elems ...*Type) []Value {
 		vals[i] = NewElementCarrier(t)
 	}
 	return analyseHigherOrderBodyVals(r, body, vals...)
+}
+
+// AnalyseMultiRunBody is analyseHigherOrderBodyVals for a word outside this
+// package whose handler runs a code body on the SHARED registry with no def
+// cleanup, any number of times — a module's generator driver
+// (boru:rand's list-of and map-from, NUR330). Its check-mode ReturnsFn runs
+// the body here so the pass sees what the run leaves bound, exactly as each's
+// does: the body's defs stay in the model (a later read is the body's
+// binding, not the one before the call), under the multi-run guard and the
+// conditional-reach depth (the body may run zero times).
+func AnalyseMultiRunBody(r *Registry, body Value, inputs ...Value) []Value {
+	return analyseHigherOrderBodyVals(r, body, inputs...)
 }
 
 // analyseHigherOrderBodyVals is the carrier-Value variant of
@@ -1729,10 +1753,10 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	// A higher-order body (each/fold/scan/outer/inner/…) is CONDITIONALLY
 	// reached — the collection may be empty, so the body runs zero times.
 	// Raise CondBodyDepth (as the branch/loop bodies do) so an in-place fn
-	// redefinition that clobbers an enclosing overload here refuses to compile
+	// redefinition that clobbers an enclosing overload here fails to compile
 	// (installDef): compiled resolution would bake the body's shadow while the
 	// interpreter keeps the outer fn on an empty collection. Balanced around
-	// the body run; Suspend (above) stops recording but still lets the refusal
+	// the body run; Suspend (above) stops recording but still lets the compile failure
 	// latch the program's compilability.
 	r.Check.CondBodyDepth++
 	// The body is a speculative region (zero iterations possible): an
@@ -1753,7 +1777,7 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 }
 
 // foldAccumFixedPoint iterates the fold/scan body analysis until the
-// accumulator type stabilises (design/checker-accuracy-review.10.md
+// accumulator type stabilises (design/legacy/checker-accuracy-review.10.ignore
 // A4): a body like [add 0.5] widens an Integer accumulator to Float
 // on the first round, and the second round must see the widened
 // accumulator or downstream consumers type against the init only.
@@ -1802,9 +1826,11 @@ func foldAccCarrier(init Value) Value {
 	var out Value
 	switch {
 	case init.Parent.ConformsTo(TList):
-		out = NewCarrierTypedList(DataListElemTypeFromValue(init))
+		out = CarrierTypedListOf(ElementCarrierOf(init))
 	case init.Parent.ConformsTo(TMap):
 		out = NewCarrier(TMap)
+	case core.IsTypeLiteral(init):
+		out = core.ValueCarrier(init) // a type VALUE seed (NUR323)
 	default:
 		out = NewCarrier(init.Parent)
 	}
@@ -1840,6 +1866,12 @@ func foldWithInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Regis
 // its accumulator types correctly. The join with the init covers the
 // empty-list case (result IS the init).
 func foldWithInitReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 3 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	acc, ok := foldAccumFixedPoint(r, args[0], args[2], ElementCarrierFromValue(args[1]))
 	if !ok {
 		return []Value{NewCarrier(TAny)}
@@ -1871,6 +1903,12 @@ func foldNoInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 // No init — accumulator type and element type both come from the
 // data list; same bounded fixed point as the init form.
 func foldNoInitReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// A statically-EMPTY collection with no initial value is fold's own
 	// GUARANTEED runtime error (the accumulator has nothing to seed from) —
 	// flag it here with the byte-identical runtime message. Before the
@@ -1957,7 +1995,7 @@ func rank2ElemCarrier(data Value) Value {
 // A statically-EMPTY rank-2 list runs no lane and so no body — the handler
 // answers `[]` — so, as scan does, the body is NOT analysed over it:
 // analysing it would flag operand-starved words (`foldaxis 0 [add add] []`)
-// that can never run, refusing at check a program both engines answer `[]`
+// that can never run, declining at check a program both engines answer `[]`
 // (found in review, 2026-09-02). The bare List carrier is the sound answer.
 func foldaxisReturnsFn(args []Value, r *Registry) []Value {
 	if n, ok := StaticListLen(args[2]); ok && n == 0 {
@@ -1986,10 +2024,7 @@ func foldaxisReturnsFn(args []Value, r *Registry) []Value {
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}
-	if IsDisjunct(acc) {
-		return []Value{NewCarrierTypedListValue(acc)}
-	}
-	return []Value{NewCarrierTypedList(acc.Parent)}
+	return []Value{CarrierTypedListOf(acc)}
 }
 
 // staticEmptyLaneDetail is the runtime error text foldaxis raises over a
@@ -2023,6 +2058,9 @@ func doFold(reg *Registry, acc Value, body Value, data ReadList) ([]Value, error
 		if err != nil {
 			return nil, fmt.Errorf("fold: step %d: %w", i, err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("fold_error", fmt.Sprintf("fold: step %d: body produced no result", i), "fold")
 		}
@@ -2055,6 +2093,9 @@ func scanHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		if err != nil {
 			return nil, fmt.Errorf("scan: step %d: %w", i, err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("scan_error", fmt.Sprintf("scan: step %d: body produced no result", i), "scan")
 		}
@@ -2081,10 +2122,7 @@ func scanReturnsFn(args []Value, r *Registry) []Value {
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}
-	if IsDisjunct(acc) {
-		return []Value{NewCarrierTypedListValue(acc)}
-	}
-	return []Value{NewCarrierTypedList(acc.Parent)}
+	return []Value{CarrierTypedListOf(acc)}
 }
 
 // ---- outer ----
@@ -2108,6 +2146,9 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			if err != nil {
 				return nil, fmt.Errorf("outer: (%d,%d): %w", i, j, err)
 			}
+			if BodyEscaped(reg) {
+				return nil, nil
+			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("outer_error", fmt.Sprintf("outer: (%d,%d): body produced no result", i, j), "outer")
 			}
@@ -2119,6 +2160,12 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 }
 
 func outerReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 3 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	stk := analyseHigherOrderBodyVals(r, args[0],
 		ElementCarrierFromValue(args[1]), ElementCarrierFromValue(args[2]))
 	// outer produces a 2D list: TList<TList<body-result>>.
@@ -2153,6 +2200,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			if err != nil {
 				return nil, fmt.Errorf("inner: pair %d: %w", i, err)
 			}
+			if BodyEscaped(reg) {
+				return nil, nil
+			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair %d: no result", i), "inner")
 			}
@@ -2164,6 +2214,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			res, err := InvokeBody(reg, args[1], []Value{acc, paired[i]})
 			if err != nil {
 				return nil, fmt.Errorf("inner: fold %d: %w", i, err)
+			}
+			if BodyEscaped(reg) {
+				return nil, nil
 			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold %d: no result", i), "inner")
@@ -2194,6 +2247,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 				if err != nil {
 					return nil, err
 				}
+				if BodyEscaped(reg) {
+					return nil, nil
+				}
 				if len(res) == 0 {
 					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair (%d,%d,%d): no result", i, j, k), "inner")
 				}
@@ -2204,6 +2260,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 				res, err := InvokeBody(reg, args[1], []Value{acc, paired[k]})
 				if err != nil {
 					return nil, err
+				}
+				if BodyEscaped(reg) {
+					return nil, nil
 				}
 				if len(res) == 0 {
 					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold (%d,%d,%d): no result", i, j, k), "inner")
@@ -2218,6 +2277,12 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 }
 
 func innerReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 4 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// pair op consumes (left-elem, right-elem); agg consumes
 	// (accumulator, pair-result). Without carrier list element
 	// tracking we use the pair output as TAny for the agg input.
@@ -2311,6 +2376,9 @@ func eachrankWalk(reg *Registry, depth int, body Value, cell Value) ([]Value, er
 		if err != nil {
 			return nil, fmt.Errorf("eachrank: %w", err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("eachrank_error", "eachrank: body produced no result", "eachrank")
 		}
@@ -2325,6 +2393,9 @@ func eachrankWalk(reg *Registry, depth int, body Value, cell Value) ([]Value, er
 		sub, err := eachrankWalk(reg, depth-1, body, list.Get(i))
 		if err != nil {
 			return nil, err
+		}
+		if BodyEscaped(reg) {
+			return nil, nil
 		}
 		out[i] = sub[0]
 	}

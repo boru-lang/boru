@@ -14,7 +14,7 @@ import (
 // CALL_USER_POLY, CALL_DYN_METHOD — consults the SAME WordChecker the
 // interpreter's policyGateWord runs, so a denied word raises the identical
 // error on either engine. Programs are hand-built (the seam7 pattern):
-// production compiles still refuse policy-gated registries, so the gate is
+// production compiles still decline policy-gated registries, so the gate is
 // reached by installing the checker AFTER construction.
 
 var errZzDenied = errors.New("zz-policy: word denied")

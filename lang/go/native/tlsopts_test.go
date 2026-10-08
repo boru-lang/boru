@@ -245,7 +245,7 @@ func TestDefaultHTTPOpsBadRoots(t *testing.T) {
 	}
 }
 
-// verify:false is refused when a policy declares the network scope
+// verify:false is declined when a policy declares the network scope
 // without listing tls-insecure — a declared scope default-denies ops it
 // does not name, so this needs no extra wiring to be a real gate. The
 // matching allow case proves the gate is opt-in, not unconditional.

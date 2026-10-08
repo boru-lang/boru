@@ -17,21 +17,21 @@ import (
 )
 
 // The shared frontier TSV corpus (lang/spec/frontier/*.tsv — the flat corpus
-// glob skips subdirectories, so these rows sit OUTSIDE the live refusal/
+// glob skips subdirectories, so these rows sit OUTSIDE the live compile failure/
 // island ratchets). Each row is an ordinary spec row — `input⇥expected` with
 // the interpreter as the semantics oracle, exactly the format a TS port will
 // run — whose COMPILE status is the frontier: the expected-red ledger below
-// pins which rows the compiler refuses today and why, with the same
+// pins which rows the compiler declines today and why, with the same
 // stale/drift/bootstrap contract as the lang-package frontier ledger
-// (lang/go/frontier_ledger_test.go) and knownRefusals. Graduation = the row
+// (lang/go/frontier_ledger_test.go) and knownCompileFailures. Graduation = the row
 // compiles → delete its ledger entry and (usually) move the row into the
 // main lang/spec corpus so the census owns it.
 //
-// TestFrontierRefusalRowsCompile is the sibling inventory for the 9
-// knownRefusals rows: those already live in the MAIN corpus, so their
-// frontier cases read the sources straight from the knownRefusals map (one
+// TestFrontierCompileFailureRowsCompile is the sibling inventory for the 9
+// knownCompileFailures rows: those already live in the MAIN corpus, so their
+// frontier cases read the sources straight from the knownCompileFailures map (one
 // source of truth) and assert the TARGET (compile + byte-identical
-// error/value parity); graduation is coupled per-row with the knownRefusals
+// error/value parity); graduation is coupled per-row with the knownCompileFailures
 // deletion.
 
 type frontierRow struct {
@@ -114,6 +114,7 @@ func runFrontierInterp(input string) (string, error) {
 // populating a new row's expected column is enforced, exactly like the
 // ledger's failsWith sentinel.
 func TestFrontierSpecInterp(t *testing.T) {
+	t.Parallel()
 	for _, row := range loadFrontierRows(t) {
 		got, err := runFrontierInterp(row.input)
 		if err != nil {
@@ -133,13 +134,8 @@ func TestFrontierSpecInterp(t *testing.T) {
 	}
 }
 
-// docMod is the shared module preamble of the do-catch rows (a value-
-// dependently-raising fn and an always-raising one, reached as M.dec/M.boom).
-// Must match the TSV rows byte-for-byte — the orphan arm catches drift.
-const docMod = `import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end `
-
 // hof* — shared def prefixes of the frontier-hof-audit.tsv rows (the
-// higher-order audit's §1 programs, design/HIGHER-ORDER-FUNCTIONS.0.md).
+// higher-order audit's §1 programs, design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore).
 // Must match the TSV rows byte-for-byte — the orphan arm catches drift.
 const (
 	hofSKI    = `def kk x:Any => [y:Any => [x]] end def ss f:Function => [g:Function => [x:Any => [(f x) (g x)]]] end def ii ((ss kk/v) kk/v) end `
@@ -152,17 +148,17 @@ const (
 	hofPalt   = hofPitem + `def palt fn [[a:Function b:Function][Function][ ( fn s:String Map [ def r (a s) if (r.ok) [ r ] [ (b s) ] ] ) ]] end def ab (palt (psat (c:String => [eq 'a' c])) (psat (c:String => [eq 'b' c]))) end `
 )
 
-// frontierCompileLedger pins the frontier rows the compiler REFUSES today,
-// keyed by exact input (the knownRefusals convention). failsWith pins the
-// refusal reason substring (stable core only); "" is the bootstrap sentinel.
+// frontierCompileLedger pins the frontier rows the compiler DECLINES today,
+// keyed by exact input (the knownCompileFailures convention). failsWith pins the
+// compile failure reason substring (stable core only); "" is the bootstrap sentinel.
 // Signatures transcribed from the 2026-07-13 bootstrap run.
 var frontierCompileLedger = map[string]frontierEntryLS{
 	// NUR098's fix (2026-08-24): apply is stack-only in BOTH overloads, so
 	// the forward-lens spellings are check-time no-matches BY DESIGN
 	// (frontier-apply-stackonly.tsv). The no-match takes the checker's
-	// best-fit recovery, and a recovered dispatch refuses compilation
+	// best-fit recovery, and a recovered dispatch declines compilation
 	// rather than compiling the error-trap program the main corpus's
-	// refusal ceiling (0) requires. Graduation = the unmatched-dispatch
+	// compile-failure ceiling (0) requires. Graduation = the unmatched-dispatch
 	// trap accepting a RECOVERED window; the rows then move to
 	// lang/spec/apply.tsv §4's negatives.
 	// (NUR099's `fnpred` `is` rows were ledgered here and have GRADUATED —
@@ -175,7 +171,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// interpreter island hidden inside the handler. Closed by
 	// eng/go/vm_foreign_unit.go.)
 	// (stampFnConst's container descent briefly added TWO buckets here on
-	// 2026-08-28 — a mount-handler seed refusing with "dynamic-scope def
+	// 2026-08-28 — a mount-handler seed declining with "dynamic-scope def
 	// `files` of unpromoted computed value" and its loop twin with "module
 	// binding files rebound after a stored handler captured it as a dep".
 	// Both were ONE leak: compileStoredFnUnit analyses against the LIVE emit
@@ -198,45 +194,36 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// byte-identical raise; frontier-apply-stackonly.tsv is deleted and the
 	// rows live in lang/spec/apply.tsv §5.
 	// (ADR-016 / NUR077 §5 Hole 1 was ledgered here and has GRADUATED —
-	// `def f ([] => [42])  f/v apply` compiles with parity. The refusal was
+	// `def f ([] => [42])  f/v apply` compiles with parity. The compile failure was
 	// an artefact of applying at the handler: that left the check engine's
 	// re-step to const-fold the program to the FUNCTION. Marking the value
 	// instead (FnDefInfo.Applied) puts both engines on the one gate, so the
-	// check pass models the applied result and there is nothing to refuse.
+	// check pass models the applied result and there is nothing to decline.
 	// Pinned in lang/spec/valof.tsv §5.)
 	// NUR054 — a `context` read inside an inline-lowered body (here an
 	// auto-evaluated def-list): the interpreter gives that body its own
 	// context layer, the inline stream has no layer to hand out, and every
 	// layer-distinguishing consumption of the handle would diverge — so the
-	// mint refuses (recordDispatchOutcome) and the interpreter owns the
+	// mint declines (recordDispatchOutcome) and the interpreter owns the
 	// program. Moved from flex.tsv:304 (its point is flex gradual typing,
 	// not context scoping — the green semantics stay on record here).
 	// Graduation = an emitted context-frame opcode pair bracketing
 	// inline-lowered regions.
 	`context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1`: {why: "NUR054: a context read inside an auto-evaluated list has no compiled context layer", failsWith: "no layer to hand out"},
 
-	// Conditional fn-shadow — a MISCOMPILE (variation sweep,
-	// forward-barrier.tsv:73); now a SOUND REFUSAL: a user fn redefined
-	// inside a conditionally-reached body overlap-removes the enclosing
-	// overload in place, so the branch/loop def rollback cannot restore it and
-	// compiled resolution bakes the shadow while the interpreter keeps the
-	// outer fn on the not-taken / zero-iteration path. Refused CondBodyDepth-
-	// gated (eng/go/core_helpers.go). Full graduation = a runtime dispatch
-	// respecting the conditional binding compiles these rows.
-	`def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1`: {why: "conditional fn redefinition shadows an outer overload; compiled bake would diverge from the interpreter on the not-taken branch", failsWith: "redefined inside a conditional body"},
 	// The FN-BODY twin (the thirty-first increment): a capturing fn value —
 	// a factory's returned closure — redefining an outer overloading def
 	// from inside a fn body outlives the call on the interpreter (the
 	// drop-then-push leaves the frame's def depth unchanged, so DefCleanup
 	// pops nothing) where the compiled program kept the outer closure's
 	// bake: `g (p 3)` answered `1 10` for the interpreter's `1 12`, on the
-	// default lane, before the refusal. A capture-free literal takes the
+	// default lane, before the compile failure. A capture-free literal takes the
 	// compiled twin and agrees. Graduation = a runtime binding for the
 	// closure's payload that the outer read sees after the call.
-	`def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)`: {why: "a fn body's def of a capturing fn value replaces an outer overloading def for good on the interpreter (§6.5's drop-then-push under the frame's cleanup); the compiled bake of the outer read would diverge (1 10 for 1 12 before the refusal)", failsWith: "redefined inside a fn body"},
+	`def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)`: {why: "a fn body's def of a capturing fn value replaces an outer overloading def for good on the interpreter (§6.5's drop-then-push under the frame's cleanup); the compiled bake of the outer read would diverge (1 10 for 1 12 before the compile failure)", failsWith: "redefined inside a fn body"},
 
 	// audit §5.8: Church and (T and F) and or (T or F) — the thirty-second
-	// increment lifted their refusal (a fn value beneath the apply word is
+	// increment lifted their compile failure (a fn value beneath the apply word is
 	// data), and they compile and agree, but a def'd lambda's VALUE (the main
 	// program's `cfalse/v`; `ctrue/v` too in the or row) applied inside a
 	// unit through a carrier lead takes the interpreter island, twice (the
@@ -253,30 +240,31 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// always-raise, value-diverging native, user fn body, bare module-export
 	// value, branch-arm nesting).
 	// L-DO PART 1 LANDED (2026-07-13): fallible multi-value do results now
-	// record VARIADIC (the SetCatchVariadic latch) instead of refusing at the
+	// record VARIADIC (the SetCatchVariadic latch) instead of declining at the
 	// ReturnsFn — the div row graduated to the main corpus, and the remaining
-	// rows drifted to the DOWNSTREAM refusals below: `error` consuming the
+	// rows drifted to the DOWNSTREAM compile failures below: `error` consuming the
 	// variadic region's top needs the part-2 region-top lowering
 	// (strip-input over a variadic region; see the L-DO implementation map
 	// in the completion plan).
 	// Re-diagnosed 2026-07-20 (PR #280 review): the def-bound variadic
-	// region now refuses at lowerCall's store-prologue gate — a promoted
+	// region now declines at lowerCall's store-prologue gate — a promoted
 	// variadic result's stores pop success-arity values the raise path
 	// never delivers — one stage before the "residual shape beyond Stage 1"
-	// decline these rows used to surface. Same sound refusal, earlier and
+	// decline these rows used to surface. Same compile failure, earlier and
 	// truer diagnosis.
-	// Re-diagnosed 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the region's
+	// Re-diagnosed 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the region's
 	// `M.dec` call fails dispatch, which is now an error-severity check
 	// diagnostic in the model-undermining class (dispatch did not resolve, so
-	// there is no call to compile) — the pipeline therefore refuses on the
+	// there is no call to compile) — the pipeline therefore declines on the
 	// diagnostics one stage before the promotion gate these rows used to
 	// reach. The INTERPRETER runs them: the failure raises at the call, inside
 	// the `do`, so the region's own handler catches it (see the note in
 	// frontier-do-catch.tsv, and the check-vs-run divergence recorded in the
 	// design note's §6). The L-DO promotion work below is still what would
 	// graduate the SHAPE; these two rows can no longer witness it.
-	docMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`:  {why: "plan Phase 5 (L-DO part 2): variadic region under a def binding — now check-rejected first (failed fn-value dispatch)", failsWith: "check diagnostics"},
-	docMod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`: {why: "plan Phase 5 (L-DO part 2): same shape, no raise at this input — likewise check-rejected first", failsWith: "check diagnostics"},
+	// GRADUATED 2026-09-25 (NUR134): both rows compile — the do-body unit
+	// raises the definite no-match in place and the do's model is the
+	// caught Error — and moved to lang/spec/bytecode-migrated.tsv.
 	// PR #280 review's promotion-gate representative (the variation
 	// differential's prefix-stack find): a BRANCH-VARIANT multi-out do body
 	// (0-or-2 values per arm) is variadic without any raise in sight, and a
@@ -297,7 +285,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// Chained forward application of Function params (frontier-chained-apply
 	// .tsv) — the compose family, a live MISCOMPILE until 2026-08-02 (the
 	// whole-frame replay's flat window lost the paren structure: compiled
-	// RET count-error, interpreted 14), then a sound refusal
+	// RET count-error, interpreted 14), then a compile failure
 	// (noteDynFrameReplay declines a window with >1 applicable value).
 	// GRADUATED 2026-08-03 in three coordinated steps: (1) the Stage-G
 	// single-arg increment — a leading one-arg fn-carrier apply `(g x)`
@@ -308,10 +296,10 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// replayIsBodyTail windowReadsID widening — a dyn-bind of a value the
 	// window reads is not a reorderable event — armed the def-split body
 	// tail, so the stage row compiles natively too (fn-value.tsv §8). The
-	// family's remaining refusal is the CHAINED MULTI-ARG apply
-	// (`f (g x y)`), ledgered above in the emit-refusal families via
-	// lang/go/bytecode_chained_apply_test.go's TestMultiArgChainedApplyRefuses
-	// (no separate frontier entry: the two-applicable window refusal is the
+	// family's remaining compile failure is the CHAINED MULTI-ARG apply
+	// (`f (g x y)`), ledgered above in the emit-compile failure families via
+	// lang/go/bytecode_chained_apply_test.go's TestMultiArgChainedApplyFailsToCompile
+	// (no separate frontier entry: the two-applicable window compile failure is the
 	// §9.1 class, "unapplied fn-value in body residual").
 
 	// Full-stack words GRADUATED 2026-08-03 (EmitState.FoldFullStack —
@@ -328,7 +316,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// (the fold is gated to the top unit; the body's island machinery owns
 	// the occurrence — sound interpreter re-entry, parity held). Graduation
 	// = per-unit exactness for the fold. Same bucket pinned in
-	// varyRefusalLedger ("islanded").
+	// varyCompileFailureLedger ("islanded").
 	// GRADUATED 2026-09-11 (the fifty-second increment). The fold's
 	// exactness condition is per-UNIT, and the "top unit" half of the gate
 	// was inherited from where the machinery was first needed rather than
@@ -344,7 +332,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// The EVENT-PRODUCED occurrence GRADUATED 2026-09-11 (the fifty-fourth
 	// increment) and frontier-full-stack.tsv is deleted. Its reason was
 	// never exactness: it was that a body unit had no residual REBUILD, so
-	// folding a permutation there turned a sound island into a refusal —
+	// folding a permutation there turned a sound island into a compile failure —
 	// which the fifty-second increment's first cut did to four variation
 	// seeds, and which is how the line came to be drawn at "no
 	// event-produced entry inside a body unit". reconcileResults takes the
@@ -418,10 +406,10 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// strip-input shape screen's want-0 arm admits the empty residual —
 	// the row compiles natively (moved to the main corpus; pinned in
 	// lang/go/bytecode_do_error_arity_test.go). The MAYBE-raising twin
-	// below keeps the refusal: a dynamic Error bound has variable arity
+	// below keeps the compile failure: a dynamic Error bound has variable arity
 	// (pass-through 1 vs caught 0), the true remaining §8.2(6) target
 	// (the variable-arity island via the mark machinery).
-	// The maybe-raising half stopped REFUSING with the forty-eighth increment
+	// The maybe-raising half stopped DECLINING with the forty-eighth increment
 	// (2026-09-10). "No fixed seat" was the right diagnosis and the wrong
 	// conclusion: a run whose length is a runtime value is a REGION, and the
 	// island's ONE simulated slot already IS that representation —
@@ -440,24 +428,16 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	`def xs [1] do [1 div (xs 0 getr)] error [drop] end 2 add 3`: {why: "the same lowering on the input that does not raise: one value, same island", failsWith: "islanded"},
 
 	// NUR038 statement-seal twin-call matrix (frontier-nur038-seal.tsv):
-	// semantically green under the seal + arrival barrier; compile-refused
+	// semantically green under the seal + arrival barrier; compile-declined
 	// on the pre-existing residual-ordering limitation — two dynamic call
 	// results in one program residual exceed the Stage-1 lowering. Sound
-	// interpreter fallback. Graduation = multi-dynamic-result residual
+	// compile failure. Graduation = multi-dynamic-result residual
 	// lowering; the rows then move to lang/spec/fn-value.tsv §6.
 	`def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end 5 m.p m.p 7`:                   {why: "NUR038 seal: stack form then forward form", failsWith: "fn-value-call boundary"},
 	`def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end m.p (1 add 2) m.p 7`:           {why: "NUR038 seal: computed first argument", failsWith: "fn-value-call boundary"},
 	`def m {l: ([x:Any] => [x])} end m.l 5 m.l 7`:                                       {why: "NUR038 seal: lambda twins", failsWith: "fn-value-call boundary"},
 	`def e fn [[] [Integer] [42] [x:Any] [Any] [x]] end def m {e: e/v} end m.e 5 m.e 7`: {why: "NUR038 seal: mixed 0/1-arg overload twins (NUR035 guard)", failsWith: "fn value read from a container auto-dispatches"},
 
-	// Namespace capture at a macro-expanded call site (the NUR038 wrapper
-	// retirement's re-bucketed refusal — see frontier-capture-namespace.tsv):
-	// an inner fn capturing a body-imported module namespace has no bakeable
-	// operand home at the `parse` macro's expanded call site. Successor to
-	// the graduated "closure captures a runtime-minted value" bucket (the
-	// wrapper refused earlier, at capture-slot numbering). Full graduation =
-	// a capture-slot lowering that materialises the namespace binding.
-	`def zzvfn fn [[] [] [import "boru:parselang"  import "boru:string-util"  def calc (fn [[source:Any opts:Map] [List] [StringUtil.split ' ' (ParseLang.source source)]])  end  (parse calc {trace:true} 'x + y') get 1]] zzvfn`: {why: "inner fn captures the body-imported ParseLang namespace; no bakeable operand home at the macro-expanded call site", failsWith: "capture ParseLang of calc unreachable at a call site"},
 	// GRADUATED 2026-07-17 (§9.1): the `do [M 3] error [dot code]` row
 	// compiles — an identity-less dyn-body out (the module-export instance)
 	// now mints a fresh ID at the record, restoring its tape placement and
@@ -470,14 +450,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// islands verbatim through OpCallDynMixedFromMark (rows moved to
 	// lang/spec/bytecode-migrated.tsv; family pinned in
 	// lang/go/bytecode_markwindow_test.go). The def-msg rows above and the
-	// module-export row keep their sound refusals (a PROMOTED def read /
+	// module-export row keep their compile failures (a PROMOTED def read /
 	// a non-event region entry decline the window).
 
 	// The twin regime's placement frontier (frontier-twin-placement.tsv,
 	// entered 2026-09-02 with the §6.5 default flip; the variation lane's
 	// find, pinned there as the "twin regime (unplaced bind transition)"
 	// bucket). Each row performs a bind transition inside a wrapped body
-	// that no compiled op replays or installs — refused at Finalize's
+	// that no compiled op replays or installs — declined at Finalize's
 	// full-placement gate rather than compiled on the check pass's kept
 	// install, which is what the old default did. Sound; the interpreter
 	// owns every row. Graduation per shape: resident module binds / type
@@ -517,7 +497,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// Graduation = an op that REBUILDS the type per element (re-evaluating
 	// the expression against that element) rather than re-installing one
 	// captured body.
-	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
+	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "a type def inside a multi-run body whose bound READS the element: the bound is computed, a type only the run can install, and the run-time install (OpBindTypeRun, NUR308's type half, 2026-09-26) is a root-only op — per element it would forward one node to each element's in turn — so the def declines as the compile-time word it is, the body's unit with it, and the each as the code-body word; behind that the twin placement: each element mints a different node, so no one captured body stands for them", failsWith: "code-body word each (Stage 2)"},
 	// (The third shape — `do [def b true  do [1 2 (if b [] [9 9])]]` —
 	// GRADUATED 2026-09-11 (the fifty-seventh increment) and its entry is
 	// deleted. Rows in lang/spec/control.tsv.
@@ -529,7 +509,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// residual is [inert inert REGION], which OpSeatBelowMark has seated since
 	// the forty-first increment and a body unit has planned since the
 	// fifty-fifth. The dispatch never got that far: the whole-residual
-	// multi-out EXACTNESS screen refused the body before the unit was lowered,
+	// multi-out EXACTNESS screen declined the body before the unit was lowered,
 	// on the same count the seating does not need.
 	//
 	// Three things had to give, and only the first was the screen:
@@ -591,10 +571,10 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// overload is disjoint and check mode selects the interpreter's forward
 	// collection (rows moved to lang/spec/bytecode-migrated.tsv; family
 	// pinned in lang/go/bytecode_edge_findings_test.go with the genuinely
-	// wide-join negative keeping the drift refusal).
+	// wide-join negative keeping the drift compile failure).
 
 	// do-unit registry replay — was a MISCOMPILE (variation sweep,
-	// 2026-07-13); now a SOUND REFUSAL (drift graduated the same day): the
+	// 2026-07-13); now a COMPILE FAILURE (drift graduated the same day): the
 	// bake decision declines a body carrying a capitalised def
 	// (bodyHasReplayHazard), so the interpreter owns the shape with full
 	// parity. Full graduation = the Phase 6 JIT detached-unit cache compiles
@@ -608,7 +588,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// in lang/go/bytecode_replayhazard_test.go).
 
 	// GRADUATED 2026-07-14: the L-JOIN recursive branch-join row — the
-	// refusal was the disjunct-distribution recording per-alternative
+	// compile failure was the disjunct-distribution recording per-alternative
 	// (disjunctPartitionReturns combos under the armed recording); the fix
 	// suspends the combo probes and records ONE CALL_USER with the original
 	// args (carrier.go, gated by disjunctCombosTakeSig). Row moved to
@@ -617,16 +597,15 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// ───────────────────────────────────────────────────────────────────
 	// frontier-hof-audit.tsv — the higher-order audit's §1 programs
-	// (design/HIGHER-ORDER-FUNCTIONS.0.md §1, pinned 2026-08-21). Three
-	// refusal families, all pre-existing and documented in the audit:
+	// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §1, pinned 2026-08-21). Three
+	// compile failure families, all pre-existing and documented in the audit:
 	//
-	// (1) audit §5.8 / COMPILABLE-SUBSET.md "slow, not wrong": a curried
+	// (1) audit §5.8 / COMPILABLE-SUBSET.md §1: a curried
 	//     combinator's body result is an inner fn literal closing over the
-	//     enclosing parameters — unknown provenance, so the mint refuses
+	//     enclosing parameters — unknown provenance, so the mint declines
 	//     and the interpreter owns the program. The CPS rows are the same
 	//     family one step in: the continuation call `(k m)` inside a
 	//     fn-local fn is a fn CALL operand of unknown provenance.
-	`def chainif fn [[a:Function b:Function s:Integer][Any][def r1 (a s) if (r1.ok) [def r2 (b (r1.rest)) (r2.val)] [0]]] chainif ([z:Integer] => [{ok:true rest:8}]) ([z:Integer] => [{ok:true val:50}]) 4`: {why: "NUR087's branch-local def-split: the check pass is clean since the fix, but the branch arm's dispatch through a Function param takes the checker's best-fit recovery, and a recovered dispatch refuses compilation; graduation = a modelled branch-arm param dispatch", failsWith: "unmatched dispatch recovered at dot"},
 	// `for-each dbl/v [1 2 3]` GRADUATED with the forty-fourth increment
 	// (2026-09-10): the word declared no CallableSpec, so its body never
 	// compiled to a closure and its Function form met the Stage-3 gate
@@ -638,36 +617,36 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// programs are respelled with explicit apply, so these keys are the
 	// migrated TSV rows verbatim (literal keys — the shared hof* prefixes no
 	// longer factor cleanly across the staged spellings).
-	`def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint c3/v)`:                                                                                                                                           {why: "RE-DIAGNOSED 2026-09-08 (the thirty-second increment): csucc's inner lambda reads `n` BARE beneath the paren-bounded apply (`(x (n f/v apply) apply)`), a word dispatch of the numeral over `f/v` the window would lower as data — the NUR123 accounting refuses it (it compiled to `f` applied to `n` while the accounting skipped units ending in a tail apply); the `n/v` spelling compiles. Graduation = a bare fn-typed read with a forward argument modelled as the dispatch it is", failsWith: "body result of unknown provenance"},
+	`def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint c3/v)`:                                                                                                                                           {why: "RE-DIAGNOSED 2026-09-08 (the thirty-second increment): csucc's inner lambda reads `n` BARE beneath the paren-bounded apply (`(x (n f/v apply) apply)`), a word dispatch of the numeral over `f/v` the window would lower as data — the NUR123 accounting declines it (it compiled to `f` applied to `n` while the accounting skipped units ending in a tail apply); the `n/v` spelling compiles. Graduation = a bare fn-typed read with a forward argument modelled as the dispatch it is", failsWith: "body result of unknown provenance"},
 	`def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def cplus m:Function => [n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) (m f/v apply) apply]]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint (c3/v (cplus c2/v) apply))`: {why: "audit §5.8: Church addition — csucc's bare `n` read beneath the paren-bounded apply (see the csucc row, the thirty-second increment)", failsWith: "body result of unknown provenance"},
 	`def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def cmult m:Function => [n:Function => [f:Function => [(f/v n/v apply) m/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint (c3/v (cmult c2/v) apply))`:                              {why: "audit §5.8: Church multiplication — csucc's bare `n` read beneath the paren-bounded apply (see the csucc row, the thirty-second increment)", failsWith: "body result of unknown provenance"},
 
 	// (2) the §4.3 capture family: kk's inner lambda captures x, and the
 	//     compiled capture is unreachable at the ((kk 7) 99) call site —
-	//     the same refusal the audit's §4.3 kkA/B/C spellings draw.
+	//     the same compile failure the audit's §4.3 kkA/B/C spellings draw.
 
 	// (3) the def-bound computed-fn family, post the Stage 1 check-model
 	//     fix (2026-08-21): a PLAIN read of a name def-bound to a computed
 	//     fn now resolves through the per-pass fn-carrier side table on the
 	//     compile lane (stepWord's consult — the false undefined_word is
-	//     gone), so these rows refuse one or two stages LATER, each at a
+	//     gone), so these rows decline one or two stages LATER, each at a
 	//     sound emit-land gate. The §5.6 freeze-idiom row graduated
 	//     outright (deleted here — TestFrontierSpecCompiled now requires it
 	//     to compile with parity). A `/v` read of such a name deliberately
 	//     KEEPS the undefined_word diagnostic (stepWordVal declines the
 	//     table): substituting there green-lights lowerings that drop the
-	//     operand (the pmany/pseq shape below refused at the unmatched-
+	//     operand (the pmany/pseq shape below declined at the unmatched-
 	//     dispatch recovery for the same reason — the trap declines a
 	//     window naming a table-bound word, engine.go's
 	//     TryRecordUnmatchedDispatchTrap).
-	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`: {why: "the `/v` read of def-bound computed `h` keeps its undefined_word diagnostic (the deliberate Stage 1 /v hold; audit §5.4's workaround row — its ((mk 1) 2) sibling compiles natively as the unledgered control)", failsWith: "check diagnostics"},
-	hofPitem + `def manyloop fn [[a:Function s:String acc:List][Map][ def r (a s) if (r.ok) [ (manyloop a/v (r.rest) (push (r.val) acc)) ] [ {ok:true val:acc rest:s} ] ]] end def pmany fn a:Function Function [ ( fn s:String Map [ def z [] (manyloop a/v s z) ] ) ] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def digits (pmany digit/v) end (digits '123ab')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): still refused, still the same interpreted answer, but the refusal MOVED EARLIER. psat's inner `if` arm nets a Function-typed carrier LEADING further values, and resolveArm now declines that shape (residualLeadReStepped) instead of merging it as placed data — the arm body closes through a frame rewind, so the interpreter re-steps the lead into a call and the merge would have compiled the placed pair. The pmany trap decline below is still there; it is simply no longer the FIRST refusal. Original diagnosis, still accurate for that later gate: `digit/v` at pmany's Function slot is check-invisible (digit is table-bound), so the dispatch no-match declines the trap and refuses", failsWith: "fn psat: body result of unknown provenance"},
-	hofPalt + `(ab 'bzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
-	hofPalt + `(ab 'zzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
-	hofPitem + `def pseq fn [[a:Function b:Function][Function][ ( fn s:String Map [ def r1 (a s) if (r1.ok) [ def r2 (b (r1.rest)) if (r2.ok) [ {ok:true val:[(r1.val) (r2.val)] rest:(r2.rest)} ] [ {ok:false rest:s val:None} ] ] [ {ok:false rest:s val:None} ] ] ) ]] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def two (pseq digit/v digit/v) end (two '42x')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): the same earlier-refusal move as the pmany row — psat's arm nets a leading fn carrier that resolveArm now declines rather than merge as placed data. `digit/v` at pseq's Function slots is still check-invisible (digit is table-bound) and still declines the trap; it is no longer the first gate reached", failsWith: "fn psat: body result of unknown provenance"},
+	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`: {why: "RE-DIAGNOSED 2026-09-22 (the dynamic-lead group): the apply word's produced-carrier guard stands aside now (`5 (mk 1)/v apply` applies through the program's pending apply), so the decline is the `/v` read's own — a def-bound computed fn read whose statement ends short of the wrapper's arity (the read's statement window, Stage 1) — the same gate val_read_alias_test.go's `def p (mk 1) end 5 p/v apply` names. Earlier: RE-DIAGNOSED 2026-09-19 (S1b-2): the `/v` read of def-bound computed `h` now resolves the fn-carrier side table with the bare read's provenance notes (the Stage 1 /v hold is lifted — `each h/v xs` compiles), so the compile failure moved PAST the read to the apply itself: the `/v` read delivers the carrier inert (deliverValRead — a `/v` read never dispatches), and the `apply` over it is the produced-closure shape the lowering cannot collapse, which is the apply-shape family S1b's lowering half owes. Audit §5.4's workaround row; its ((mk 1) 2) sibling compiles natively as the unledgered control. Was: the deliberate undefined_word hold on the /v read", failsWith: "the statement ends short of the wrapper's arity"},
+	hofPitem + `def manyloop fn [[a:Function s:String acc:List][Map][ def r (a s) if (r.ok) [ (manyloop a/v (r.rest) (push (r.val) acc)) ] [ {ok:true val:acc rest:s} ] ]] end def pmany fn a:Function Function [ ( fn s:String Map [ def z [] (manyloop a/v s z) ] ) ] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def digits (pmany digit/v) end (digits '123ab')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): still declined, still the same interpreted answer, but the compile failure MOVED EARLIER. psat's inner `if` arm nets a Function-typed carrier LEADING further values, and resolveArm now declines that shape (residualLeadReStepped) instead of merging it as placed data — the arm body closes through a frame rewind, so the interpreter re-steps the lead into a call and the merge would have compiled the placed pair. The pmany trap decline below is still there; it is simply no longer the FIRST compile failure. Original diagnosis, still accurate for that later gate: `digit/v` at pmany's Function slot is check-invisible (digit is table-bound), so the dispatch no-match declines the trap and declines", failsWith: "fn psat: body result of unknown provenance"},
+	hofPalt + `(ab 'bzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit declines: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
+	hofPalt + `(ab 'zzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit declines: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
+	hofPitem + `def pseq fn [[a:Function b:Function][Function][ ( fn s:String Map [ def r1 (a s) if (r1.ok) [ def r2 (b (r1.rest)) if (r2.ok) [ {ok:true val:[(r1.val) (r2.val)] rest:(r2.rest)} ] [ {ok:false rest:s val:None} ] ] [ {ok:false rest:s val:None} ] ] ) ]] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def two (pseq digit/v digit/v) end (two '42x')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): the same earlier-compile failure move as the pmany row — psat's arm nets a leading fn carrier that resolveArm now declines rather than merge as placed data. `digit/v` at pseq's Function slots is still check-invisible (digit is table-bound) and still declines the trap; it is no longer the first gate reached", failsWith: "fn psat: body result of unknown provenance"},
 
-	// The §9 Stage-2 refusal rows: the lead-apply admission's witnesses
-	// compile (unledgered), while these two spellings stay sound refusals.
+	// The §9 Stage-2 compile failure rows: the lead-apply admission's witnesses
+	// compile (unledgered), while these two spellings stay compile failures.
 	// §9d — the GRADUAL inner parameter (`x:Any` beside the captured
 	// `g`) GRADUATED 2026-09-07 (the twenty-sixth increment): a lambda
 	// VALUE unit takes the fn path's residual replay, whose applicable
@@ -681,9 +660,9 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// unconsumed argument into the residual — `2 fn (Integer) 3` for the
 	// interpreter's `6`. A regression the Stage 1 read substitution
 	// introduced (before it, the read raised undefined_word and the
-	// program refused); the def site now detects the dropped apply.
+	// program declined); the def site now detects the dropped apply.
 	// §9f — code BODIES over def-bound computed fns. Three regressions found
-	// by a differential sweep, each made a sound refusal on 2026-08-21. The
+	// by a differential sweep, each made a compile failure on 2026-08-21. The
 	// `do [(f 2)]` row left this ledger with the thirty-eighth increment
 	// (2026-09-09): the fn-carrier substitution fires inside a nested body
 	// too, so the row COMPILES and agrees — but `do` reaches the dyn-body
@@ -694,21 +673,26 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// bytecode-migrated.tsv. The concrete-closure row keeps the code-body
 	// gate — a lambda factory's closure read inside the body's unit
 	// resolves to the FnDefInfo itself, whose home is outside the unit.
-	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2 3]` and `[(f 1)]` is the DATA — the read compiles as a typed list literal and the each islands on its three-value body (the interpreter keeps the top). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
-	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`:                {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
+	// GRADUATED 2026-09-19 (S1a of design/FULL-COMPILATION-REPLAN.0.md): the
+	// `each [1 2 3] [(f 1)]` and `filter [1 2] [gt 0 (h 5)]` forward-form rows
+	// (frontier-hof-audit.tsv:148, :166) — each/filter declare CompileDynBody,
+	// so the call over the computed-closure read lowers to a poly re-match
+	// over the word's own overloads instead of islanding on the multi-value
+	// body; both rows now compile natively with parity. The rows stay in
+	// frontier-hof-audit.tsv, asserted compiled by this gate.
+	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`: {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — the emitter has no lowering for one", failsWith: "code body reads a def-bound compiled closure"},
 	// §9g — a computed closure at a WORD's argument slot. Found by a
 	// 690-program generated differential sweep (factory spelling x binding
 	// shape x consumption context); 24 diverged, in exactly two contexts.
 	// The interpreter APPLIES a paren-bounded call of a def-bound compiled
 	// closure; the compiled model could leave the paren uncollapsed, so an
 	// Any-typed slot swallowed the FUNCTION and stranded the argument.
-	// Unmasked by 3d914ad — before the Stage 2 admission these refused.
-	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2]` and `[gt 0 (h 5)]` is the DATA — the read compiles into the data literal and the filter islands on its two-value body (both lanes raise filter's non-Boolean error). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
+	// Unmasked by 3d914ad — before the Stage 2 admission these declined.
 	// §9h — the two binding stores (both P1 findings of the #397 review). A
 	// computed fn is not installed in Defs, so it lives only in the carrier
 	// table and the stores can disagree. Shadowing a live binding leaves the
 	// name with two meanings: compiled bound only the shadowed value, so this
-	// answered `1 2` where the interpreter answers 3. Refuses now.
+	// answered `1 2` where the interpreter answers 3. Declines now.
 	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f 1 end def f (mk 1) end undef f (f 2)`: {why: "audit §5.8/§9h: a computed fn shadowing a live binding — Defs and the carrier table disagree about the name", failsWith: "computed fn shadows a live binding"},
 
 	// ───────────────────────────────────────────────────────────────────
@@ -720,7 +704,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// the check pass models the def-bound wrapper's WORD DISPATCH at the read
 	// over its arity of fixed tokens inside the statement (check's
 	// tryShapedFnReadArrival → OpCallDynMethod), and the VM applies the
-	// self-contained Go-impl wrapper on its OWN signatures. (The refusal's
+	// self-contained Go-impl wrapper on its OWN signatures. (The compile failure's
 	// old note — "a lowered apply here returned 99 for 7" — was the VM
 	// resolving the wrapper's LABEL `const` through the live registry to the
 	// singleton-type maker; the island it blamed applies the value exactly
@@ -735,7 +719,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// — GRADUATED 2026-09-10 (the forty-ninth increment), and NOT by making
 	// the check admit the dispatch: the dispatch really did fail, and the
 	// error IS the program's specified result. execFnDefLiteral's
-	// uncalled_function arm refused the whole program on the grounds that
+	// uncalled_function arm declined the whole program on the grounds that
 	// "there is no call here to compile" — true, and beside the point, since
 	// what a RuntimeMirror needs is something that RAISES IDENTICALLY, not a
 	// call. A DEFINITE failure on the uncaught top line (every operand a
@@ -755,11 +739,11 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// (2026-09-10): a statically-empty condition has no tokens, so the
 	// interpreter's first round provably nets nothing and raises — the
 	// compiled program raises the byte-identical error through a terminal
-	// trap (RecordTrap, top level only) instead of refusing. It lives in
+	// trap (RecordTrap, top level only) instead of declining. It lives in
 	// lang/spec/control.tsv §7.
 	//
 	// The LAST row graduated with the fifty-first increment (2026-09-10),
-	// and frontier-while.tsv is deleted. Its refusal was never the loop's —
+	// and frontier-while.tsv is deleted. Its compile failure was never the loop's —
 	// the earlier note had that much right — and it was not one gate but
 	// two, both in the COMPUTED-ARM lowering of the body's
 	// `if ((c get 'n') eq 2) [continue]`:
@@ -786,9 +770,10 @@ type frontierEntryLS struct {
 
 // TestFrontierSpecCompiled — the compile frontier: an unledgered row must
 // compile NATIVELY (no island) and run with byte-identical parity; a
-// ledgered row must refuse with the pinned reason (stale → graduate; drift →
+// ledgered row must decline with the pinned reason (stale → graduate; drift →
 // re-diagnose).
 func TestFrontierSpecCompiled(t *testing.T) {
+	t.Parallel()
 	for _, row := range loadFrontierRows(t) {
 		err := frontierRowCompiles(row.input)
 		key := row.input
@@ -832,7 +817,7 @@ func frontierRowCompiles(input string) error {
 		return fmt.Errorf("check error: %v", cerr)
 	}
 	if prog == nil {
-		return fmt.Errorf("refused: %s", reason)
+		return fmt.Errorf("declined: %s", reason)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		return fmt.Errorf("islanded: program embeds an OpFallback span")
@@ -880,21 +865,21 @@ func frontierRowCompiles(input string) error {
 	return nil
 }
 
-// refusalRowLedger pins the knownRefusals rows' TARGET failure modes: each
+// failureRowLedger pins the knownCompileFailures rows' TARGET failure modes: each
 // must eventually compile via the sound runtime re-dispatch mechanism (plan
 // Phase 3, OpDispatchRematch) and raise the interpreter-identical error.
-// DERIVED from knownRefusals — the single source of truth for the row
-// sources — so graduation is auto-coupled: deleting a knownRefusals entry
+// DERIVED from knownCompileFailures — the single source of truth for the row
+// sources — so graduation is auto-coupled: deleting a knownCompileFailures entry
 // drops its ledger row here, flipping this test's assertion for that row to
 // the target (compile + byte-identical parity). The failure mode is the
-// LEADING CLAUSE of the knownRefusals reason text ("branch leaves extra
+// LEADING CLAUSE of the knownCompileFailures reason text ("branch leaves extra
 // values (…)" pins "branch leaves extra values"): the remaining row's
-// dispatch half already records an offset-form rematch, so its refusal
+// dispatch half already records an offset-form rematch, so its compile failure
 // signature is the branch-residual seat, not the dispatch recovery — a row
 // developing a different failure mode trips the drift arm.
-var refusalRowLedger = func() map[string]frontierEntryLS {
-	m := make(map[string]frontierEntryLS, len(knownRefusals))
-	for input, why := range knownRefusals {
+var failureRowLedger = func() map[string]frontierEntryLS {
+	m := make(map[string]frontierEntryLS, len(knownCompileFailures))
+	for input, why := range knownCompileFailures {
 		mode := why
 		if i := strings.Index(mode, " ("); i > 0 {
 			mode = mode[:i]
@@ -907,28 +892,29 @@ var refusalRowLedger = func() map[string]frontierEntryLS {
 	return m
 }()
 
-// TestFrontierRefusalRowsCompile asserts the TARGET for every knownRefusals
+// TestFrontierCompileFailureRowsCompile asserts the TARGET for every knownCompileFailures
 // row: CompileCheck yields a Program and RunCompiled matches the
 // interpreter's error byte-for-byte. All 9 are expected-red until Phase 3
-// lands, ratcheting down row-by-row in lockstep with knownRefusals.
-func TestFrontierRefusalRowsCompile(t *testing.T) {
-	for input := range knownRefusals {
+// lands, ratcheting down row-by-row in lockstep with knownCompileFailures.
+func TestFrontierCompileFailureRowsCompile(t *testing.T) {
+	t.Parallel()
+	for input := range knownCompileFailures {
 		err := frontierRowCompiles(input)
-		entry, ledgered := refusalRowLedger[input]
+		entry, ledgered := failureRowLedger[input]
 		switch {
 		case !ledgered && err != nil:
-			t.Errorf("knownRefusals row must COMPILE (not ledgered — did Phase 3 graduate it?): %v\n  input: %.100s", err, input)
+			t.Errorf("knownCompileFailures row must COMPILE (not ledgered — did Phase 3 graduate it?): %v\n  input: %.100s", err, input)
 		case ledgered && err == nil:
-			t.Errorf("stale refusal-ledger entry — the row now compiles; graduate BOTH ledgers (delete here AND in knownRefusals).\n  input: %.100s\n  was red because: %s", input, entry.why)
+			t.Errorf("stale compile failure-ledger entry — the row now compiles; graduate BOTH ledgers (delete here AND in knownCompileFailures).\n  input: %.100s\n  was red because: %s", input, entry.why)
 		case ledgered && entry.failsWith == "":
-			t.Errorf("unpinned refusal-ledger row — record the failure mode. Observed: %v\n  input: %.100s", err, input)
+			t.Errorf("unpinned compile failure-ledger row — record the failure mode. Observed: %v\n  input: %.100s", err, input)
 		case ledgered && !strings.Contains(err.Error(), entry.failsWith):
-			t.Errorf("refusal row failure MODE drifted:\n  got:    %v\n  pinned: %q\n  input: %.100s", err, entry.failsWith, input)
+			t.Errorf("compile failure row failure MODE drifted:\n  got:    %v\n  pinned: %q\n  input: %.100s", err, entry.failsWith, input)
 		}
 	}
-	for input := range refusalRowLedger {
-		if _, ok := knownRefusals[input]; !ok {
-			t.Errorf("orphan refusal-ledger entry (row left knownRefusals): %.80s…", input)
+	for input := range failureRowLedger {
+		if _, ok := knownCompileFailures[input]; !ok {
+			t.Errorf("orphan compile failure-ledger entry (row left knownCompileFailures): %.80s…", input)
 		}
 	}
 }

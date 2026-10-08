@@ -6,9 +6,9 @@ import (
 )
 
 // Interpreter-only pins for two `is`/`exposes` arms the compiled lane
-// deliberately refuses (a fn value reaching a fn-invoking word is the
+// deliberately declines (a fn value reaching a fn-invoking word is the
 // Stage 3 boundary), kept OUT of the spec corpus so the compiled
-// ratchets (compiled_coverage refusalCeiling=0) stay untouched — the
+// ratchets (compiled_coverage failureCeiling=0) stay untouched — the
 // same split fn-triple.tsv documents for computed operands.
 
 // An inline predicate whose body RAISES answers false, not an error —
@@ -35,6 +35,6 @@ func TestExposesAnonymousClassExposer(t *testing.T) {
 	_, err := seam5Run(r, `def Shape surface {area: (fnsig [[Self] [Float]])}
 (class {r:1.0}) exposes Shape`)
 	if err == nil || !strings.Contains(err.Error(), "does not expose") {
-		t.Fatalf("an anonymous exposer without the ops must be refused, got %v", err)
+		t.Fatalf("an anonymous exposer without the ops must be declined, got %v", err)
 	}
 }

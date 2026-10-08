@@ -1,11 +1,11 @@
 package lang
 
-// Three probe-verified gate widenings (the REFUSAL-CLOSURE §9.4 open-site
-// sweep, 2026-07-17), each turning a sound refusal into a compiled shape:
+// Three probe-verified gate widenings (the COMPILE FAILURE-CLOSURE §9.4 open-site
+// sweep, 2026-07-17), each turning a compile failure into a compiled shape:
 //
 //   - a computed range START/STEP that resolves to a frame LOCAL lowers
 //     (computedRangeBounds passes bounds as-is; RecordLoop admits const +
-//     local operands and keeps refusing event-produced ones — opForSetup
+//     local operands and keeps declining event-produced ones — opForSetup
 //     already enforces the runtime Integer/zero-step taxonomy);
 //   - an ALL-0-ARG member's shaped landing skips the statement-window scan
 //     (the member never forward-collects, so following tokens belong to the
@@ -23,10 +23,11 @@ func TestProbeWideningComputedRangeStartStep(t *testing.T) {
 		`def f fn [[n:Integer] [Integer] [def acc 0 for [0 6 n] [def acc (acc add i)] end acc]] f 2`, "[6]")
 	mustCompileWithParity(t,
 		`def s 2 def acc 0 for [s 4] [def acc (acc add i)] end acc`, "[5]")
-	// An EVENT-produced step keeps the refusal (no re-pushable home).
-	mustRefuseWithParity(t,
-		`def f fn [[n:Integer] [Integer] [def acc 0 for [5 1 (0 sub n)] [def acc (acc add i)] end acc]] (f 1)`,
-		"computed range start/step")
+	// An EVENT-produced step compiles too since 2026-09-26: the planner
+	// promotes its producer to a frame local (collectLoopRangeSources) and
+	// FOR_SETUP re-pushes it; before, it kept the failure (no re-pushable home).
+	mustCompileWithParity(t,
+		`def f fn [[n:Integer] [Integer] [def acc 0 for [5 1 (0 sub n)] [def acc (acc add i)] end acc]] (f 1)`, "[14]")
 	// A 4-element range is a runtime for_error in BOTH engines (parseRange
 	// arity 1-3; computedRangeBounds falls through the same arity gate).
 	{
@@ -35,6 +36,9 @@ func TestProbeWideningComputedRangeStartStep(t *testing.T) {
 		_, errI := a.RunInterp(src)
 		b, _ := New()
 		gotC, _, errC2 := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC2) {
+			return
+		}
 		_ = gotC
 		if codeOf(errI) != "for_error" || codeOf(errC2) != "for_error" {
 			t.Errorf("4-elem range: want for_error both, got interp [%s] compiled [%s]", codeOf(errI), codeOf(errC2))
@@ -80,7 +84,7 @@ func TestProbeWideningBothComputedNonEventCond(t *testing.T) {
 // String)` and g has an Integer arm and a String arm — every same-arity arm
 // sharing the committed return bakes to OpCallUserPoly and the VM re-matches
 // the concrete alternative at run time (the §6b machinery reached through
-// the disjunct partition). Divergent-return arm sets keep the refusal.
+// the disjunct partition). Divergent-return arm sets keep the compile failure.
 func TestProbeWideningUnionReturnPoly(t *testing.T) {
 	const mod = `def U (Integer tor String)
 def g fn [[a:Integer] [Integer] [a add 1] [a:String] [Integer] [0]]

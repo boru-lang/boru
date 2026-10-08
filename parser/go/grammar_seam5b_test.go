@@ -242,6 +242,14 @@ func TestS5bEArrowfoldActionsNilParent(t *testing.T) {
 	bo[0](&jsonic.Rule{Parent: jsonic.NoRule}, nil)
 	bc[0](&jsonic.Rule{}, nil)
 	bc[0](&jsonic.Rule{Parent: jsonic.NoRule}, nil)
+	// An undefined body: inert. The grammar refuses a bodiless arrow
+	// before the fold closes (arrowNoBody, NUR060), so only a direct call
+	// reaches this guard.
+	par := &jsonic.Rule{Node: parenGroup{"sig", arrowTag{}}}
+	bc[0](&jsonic.Rule{Parent: par, Child: &jsonic.Rule{Node: jsonic.Undefined}}, nil)
+	if pg, ok := par.Node.(parenGroup); !ok || len(pg) != 2 {
+		t.Errorf("an undefined body must leave the group untouched, got %#v", par.Node)
+	}
 }
 
 func TestS5bEArrowfoldElemBOArms(t *testing.T) {
@@ -289,6 +297,13 @@ func TestS5bEArrowfoldElemBCArms(t *testing.T) {
 	}
 	// No stashed sig: inert.
 	bc[0](&jsonic.Rule{U: map[string]any{}, Parent: &jsonic.Rule{Node: []any{}}}, nil)
+	// A stashed sig but an undefined body: inert (only a direct call reaches
+	// this guard — the grammar refuses a bodiless arrow first, NUR060).
+	undef := &jsonic.Rule{Node: []any{}}
+	bc[0](&jsonic.Rule{U: map[string]any{"af_sig": "sig"}, Parent: undef, Child: &jsonic.Rule{Node: jsonic.Undefined}}, nil)
+	if n, ok := undef.Node.([]any); !ok || len(n) != 0 {
+		t.Errorf("an undefined body must append nothing, got %#v", undef.Node)
+	}
 	// []any parent with a grandparent: the (SIG afn BODY) group is
 	// appended and propagated up.
 	grand := &jsonic.Rule{}

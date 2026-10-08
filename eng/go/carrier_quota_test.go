@@ -11,7 +11,7 @@ import (
 // bodies that share a synthetic "<word>$body" name (each$body across a whole
 // library) must NOT pool one budget. Each distinct source position gets its
 // own counter, so no single site trips the quota and none bails to a
-// provenance-less Any (the "code-body word each (Stage 2)" refusal this fixes).
+// provenance-less Any (the "code-body word each (Stage 2)" compile failure this fixes).
 func TestFnAnalysisQuotaKeyedByDefinitionSite(t *testing.T) {
 	r, _ := core.NewRegistry()
 	done := r.Check.Begin()

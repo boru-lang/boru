@@ -33,6 +33,7 @@ func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
 		Registry:  r,
 		Body:      bodyCopy,
 		WhileCond: condCopy,
+		CondPos:   cond.Pos(),
 	}
 
 	// First region: the condition. Its move fires stepMoveWhile with
@@ -67,6 +68,12 @@ func WhileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 // analysis pass step the spliced regions with carrier conditions — is
 // what keeps a carrier-conditioned `while` from looping the checker.
 func whileReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// RECORDING (the thirty-seventh increment): the condition and the body
 	// are captured as two fragments — each analysis armed like `for`'s — and
 	// recorded through RecordWhile with a scratch iterator slot, since the
@@ -86,7 +93,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// raise instead of staying silent about a certainty. It is stamped a
 	// RuntimeMirror (CheckAddUniqueDiagnostic does that for its callers),
 	// which is what lets the compile pipeline keep compiling the program
-	// to the terminal trap below rather than refusing on an error
+	// to the terminal trap below rather than declining on an error
 	// diagnostic — the finding's model is exact, and the trap raises the
 	// identical error.
 	//
@@ -123,16 +130,16 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		bodyFrag = es.TakeFragment()
 		es.ArmLoopCapture()
 	}
+	var before map[string]int64
+	if recording {
+		before = bindingShape(r)
+	}
 	condStk := AnalyseLoopBody(r, args[0], nil, nil, false)
 	out := NewCarrier(TList)
 	var top Value
 	if len(stk) > 0 {
 		top = stk[len(stk)-1]
-		if IsDisjunct(top) {
-			out = NewCarrierTypedListValue(top)
-		} else {
-			out = NewCarrierTypedList(top.Parent)
-		}
+		out = CarrierTypedListOf(top)
 	}
 	if recording {
 		condFrag := es.TakeFragment()
@@ -142,11 +149,29 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		// has run once. That is a certainty about the SOURCE, not a
 		// check-pass approximation, so the compiled program raises the
 		// byte-identical error through a TERMINAL trap instead of
-		// refusing the whole program. RecordTrap owns it only at the top
+		// declining the whole program. RecordTrap owns it only at the top
 		// level; inside a fn/branch/loop fragment it declines and the
-		// arity refusal below keeps the interpreter's fallback.
+		// arity compile failure below keeps the interpreter's fallback.
 		if emptyWhileCond(args[0]) && es.RecordTrap("runtime_error",
 			"while: condition produced no value", "while", "", args[0].Pos()) {
+			return []Value{out}
+		}
+		// A condition that BINDS a name (NUR223): the body was analysed
+		// first, so its read of that name resolved the pre-loop binding —
+		// `def t 0 end while [def t (t add 1) (t lt 3)] [t]` compiled to
+		// `[0 0 3]` for the interpreter's `[1 2 3]`. Neither order serves a
+		// loop whose condition and body each rebind what the other reads;
+		// that wants the two analyses in one carried scope, run to a joint
+		// fixed point. Until then the loop declines, loudly.
+		if bindingShapeChanged(r, before) {
+			// Declined through the branch record's uncaptured-arm site, as a
+			// binding `if` condition holding a value-less `do` is (NUR212's
+			// follow-up), so no compile-failure site is minted.
+			taken := true
+			recorderState(r.Check).RecordBranch(BranchRecord{
+				ConstCond: &taken, HasElse: true, Pos: args[0].Pos(),
+				Uncaptured: "while: the condition binds a name the body was analysed without (NUR223)",
+			})
 			return []Value{out}
 		}
 		iter := NewCarrier(TInteger)
@@ -163,9 +188,9 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// fn's leak and await's winner-takes-all already use), not the one
 	// typed-List carrier above. That carrier is the recording pass's
 	// stand-in for the loop EVENT's result, where it is never read as a
-	// type: the compile lane refuses every consumption of a loop result
+	// type: the compile lane declines every consumption of a loop result
 	// ("consumes loop results"), and the residual it feeds is the
-	// program's. On the plain-check surface nothing refuses, so the
+	// program's. On the plain-check surface nothing declines, so the
 	// soundness oracle reads this stack directly — and a List where the
 	// runtime leaves N scalars is a false claim (measured: 5 violations
 	// the moment the while rows entered the main corpus, control.tsv §7).

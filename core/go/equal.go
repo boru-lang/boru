@@ -44,6 +44,23 @@ func nodeFamily(t *Type) *Type {
 	return t
 }
 
+// containerFamily is nodeFamily for the EQUALITY arms: a USER-minted
+// refinement of a container (`def S (refine FlexMap)`, `def M (refine
+// Map)`) folds through its nearest kernel ancestor first. A refine is a
+// member of the family — dispatch admits it as one and `is` says so — and
+// a value is eq to itself whatever its tag's ancestry, so `def w:S (flex
+// {a:1})  w eq w` is true, where the exact fold over the minted tag reached
+// no container arm and answered false (NUR142). The walk stops at the first
+// kernel node, so Inspect and Args keep their identity as before. Ordering
+// keeps the exact nodeFamily: a refinement may carry its own Comparer
+// (`behave`), which the LCA walk must reach before any fold.
+func containerFamily(t *Type) *Type {
+	for t != nil && t.Origin == OriginUserDef && t.Parent != nil {
+		t = t.Parent
+	}
+	return nodeFamily(t)
+}
+
 // ValuesEqual compares the data payloads of two values with the same type.
 //
 // Routes through Behavior.Equal for the same-Parent case so types

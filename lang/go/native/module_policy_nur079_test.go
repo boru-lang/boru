@@ -9,14 +9,14 @@ import (
 // the code that imported it.
 //
 // The bypass this guards was reachable by RELOCATION, not by any privileged
-// operation: a gated call refused at top level was permitted verbatim one
+// operation: a gated call declined at top level was permitted verbatim one
 // file deeper, because the module sub-registry carried no CapPolicy and
 // HostPolicy returns nil — which every gate that resolves the policy itself
 // reads as allow-everything.
 //
 // The capability-wrapping gates were never in the hole (they inherit the
 // parent's already-wrapped backend by pointer), so a file write inside a
-// module body stayed refused while a network fetch in the same body went
+// module body stayed declined while a network fetch in the same body went
 // through. That asymmetry is why the assertions below are on the POLICY
 // SLOT and on a policy-resolving gate, not on fileops.
 //
@@ -53,18 +53,18 @@ func TestNUR079ModuleBodyInheritsPolicy(t *testing.T) {
 	}
 	if got := HostPolicy(sub); got == nil {
 		t.Fatal("module body ran with NO policy: the NUR079 bypass is open — " +
-			"a gated call refused at top level would be permitted one file deeper")
+			"a gated call declined at top level would be permitted one file deeper")
 	}
 	// The gate that was actually escaping is one that resolves the policy at
 	// dispatch, so assert through such a gate rather than only on the slot:
-	// read-only denies networking, so the body's fetch must now refuse.
+	// read-only denies networking, so the body's fetch must now decline.
 	if err := checkFetchPolicy(sub, "https://example.com/foo"); err == nil {
 		t.Error("checkFetchPolicy permitted a fetch inside a module body under " +
 			"read-only; the policy is installed but not reaching the gate")
 	} else {
 		var be *BoruError
 		if !errors.As(err, &be) {
-			t.Errorf("refusal should be a coded BoruError, got %T (%v)", err, err)
+			t.Errorf("compile failure should be a coded BoruError, got %T (%v)", err, err)
 		}
 	}
 }

@@ -83,7 +83,7 @@ func TestIOExitCrossesDo(t *testing.T) {
 	}
 	// The same `do` still catches an ordinary raise as data.
 	a, _ := lang.New()
-	res, rerr := a.Run(`import "boru:io"  do [raise {code:'boom' message:'bang'}]`)
+	res, rerr := runReference(t, a, `import "boru:io"  do [raise {code:'boom' message:'bang'}]`)
 	if rerr != nil {
 		t.Fatalf("ordinary raise should still be caught: %v", rerr)
 	}

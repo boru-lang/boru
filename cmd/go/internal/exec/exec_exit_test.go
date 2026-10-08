@@ -20,7 +20,7 @@ func TestExecServedExitDoesNotKillTheServer(t *testing.T) {
 		t.Fatal("a served exit request was silently honoured or ignored")
 	}
 	if !strings.Contains(got.Error, "code 3") || !strings.Contains(got.Error, "cannot exit the server") {
-		t.Errorf("exit report = %q, want the code and the refusal", got.Error)
+		t.Errorf("exit report = %q, want the code and the compile failure", got.Error)
 	}
 
 	var after execResponse

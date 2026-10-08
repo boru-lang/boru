@@ -24,6 +24,8 @@ import (
 // *Type aliases — every exported type from core is re-exported here.
 type (
 	BranchRecord       = core.BranchRecord
+	PendingResidue     = core.PendingResidue
+	BranchJoin         = core.BranchJoin
 	CodeEffectInfo     = core.CodeEffectInfo
 	EmitRecorder       = core.EmitRecorder
 	DeqIndex           = core.DeqIndex
@@ -48,6 +50,8 @@ type (
 	StrPayload           = core.StrPayload
 	BoolPayload          = core.BoolPayload
 	AtomPayload          = core.AtomPayload
+	BigIntPayload        = core.BigIntPayload
+	DecimalPayload       = core.DecimalPayload
 	PathonPayload        = core.PathonPayload
 	MicronPayload        = core.MicronPayload
 	MicronTypeInfo       = core.MicronTypeInfo
@@ -241,21 +245,25 @@ const (
 
 	// Compile-effect classifications (core.CompileEffect) for the bytecode
 	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault          = core.CompileDefault
-	CompileReadsFn          = core.CompileReadsFn
-	CompileStoresFn         = core.CompileStoresFn
-	CompileModuleFold       = core.CompileModuleFold
-	CompileIslandPure       = core.CompileIslandPure
-	CompileScalarFold       = core.CompileScalarFold
-	CompileFallbackBody     = core.CompileFallbackBody
-	CompileQuoteInert       = core.CompileQuoteInert
-	CompileDiverges         = core.CompileDiverges
-	CompileValueDiverges    = core.CompileValueDiverges
-	CompileStoresBody       = core.CompileStoresBody
-	CompileStoresBodyList   = core.CompileStoresBodyList
-	CompileFnHandlerStrict  = core.CompileFnHandlerStrict
-	CompileRunsBodyIsolated = core.CompileRunsBodyIsolated
-	CompileDynBody          = core.CompileDynBody
+	CompileDefault            = core.CompileDefault
+	CompileReadsFn            = core.CompileReadsFn
+	CompileStoresFn           = core.CompileStoresFn
+	CompileModuleFold         = core.CompileModuleFold
+	CompileIslandPure         = core.CompileIslandPure
+	CompileScalarFold         = core.CompileScalarFold
+	CompileFallbackBody       = core.CompileFallbackBody
+	CompileQuoteInert         = core.CompileQuoteInert
+	CompileQuoteKey           = core.CompileQuoteKey
+	CompileDiverges           = core.CompileDiverges
+	CompileValueDiverges      = core.CompileValueDiverges
+	CompileStoresBody         = core.CompileStoresBody
+	CompileStoresBodyList     = core.CompileStoresBodyList
+	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
+	CompileResteps            = core.CompileResteps
+	CompileOwnLowering        = core.CompileOwnLowering
+	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
+	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
+	CompileDynBody            = core.CompileDynBody
 
 	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
 	// the driving handler returns the body's entire residual (`do`).
@@ -331,6 +339,7 @@ var (
 	IsOpenParen              = core.IsOpenParen
 	IsOptionsType            = core.IsOptionsType
 	IsParenExpr              = core.IsParenExpr
+	PendingLiteralSteps      = core.PendingLiteralSteps
 	IsReach                  = core.IsReach
 	AsReach                  = core.AsReach
 	NewReach                 = core.NewReach
@@ -452,7 +461,10 @@ var (
 	IsBareTypeNode           = core.IsBareTypeNode
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsConcrete               = core.IsConcrete
+	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
+	IsFnValueResidual        = core.IsFnValueResidual
+	IsGenMemoName            = core.IsGenMemoName
 	IsRecordShape            = core.IsRecordShape
 	IsTypeBody               = core.IsTypeBody
 	IsTypeLiteral            = core.IsTypeLiteral
@@ -461,6 +473,8 @@ var (
 	FoldVariadicArms         = core.FoldVariadicArms
 	MakeBoruError            = core.MakeBoruError
 	ExitCode                 = core.ExitCode
+	IsInternalError          = core.IsInternalError
+	IsVMDefer                = core.IsVMDefer
 	NewExitError             = core.NewExitError
 	RenderCheckDiagnostic    = core.RenderCheckDiagnostic
 	MapFieldBoolean          = core.MapFieldBoolean
@@ -475,8 +489,11 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
+	RunCarrierArmBody        = core.RunCarrierArmBody
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
+	InstallTakenArmDefs      = core.InstallTakenArmDefs
+	InstallDecidedJoinedDefs = core.InstallDecidedJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop
@@ -510,11 +527,13 @@ var (
 	// so the engine's compile-pass undefined-word branches can consult it.
 	NoteCheckFnCarrierBind   = core.NoteCheckFnCarrierBind
 	CheckFnCarrierBind       = core.CheckFnCarrierBind
+	CheckFnCarrierBindDepth  = core.CheckFnCarrierBindDepth
 	CheckFnCarrierBoundName  = core.CheckFnCarrierBoundName
 	DropCheckFnCarrierBind   = core.DropCheckFnCarrierBind
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
 	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
+	CarrierTypedListOf       = core.CarrierTypedListOf
 	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).
@@ -636,10 +655,16 @@ var (
 	ValidateTypeNameParts  = core.ValidateTypeNameParts
 	ValuesEqual            = core.ValuesEqual
 	WithPos                = core.WithPos
+	WithPosAt              = core.WithPosAt
+	DynStackShuffleWords   = core.DynStackShuffleWords
 	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
 	ResolveFieldType = core.ResolveFieldType
 
 	// `get`/`set` helper, ported with those words to eng/go/core_storage.go.
+
+	// The kept `if` condition run (NUR212's follow-up).
+	RunCarrierCondBodyKeepDefs = core.RunCarrierCondBodyKeepDefs
+	GeneraliseSpecUndef        = core.GeneraliseSpecUndef
 )
 
 // Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04

@@ -11,14 +11,14 @@ import (
 // increment (`while` lowering) added to lower.go, both of which sit off the path
 // a well-formed recorded `while` trace takes:
 //
-//   - lowerLoop's CONDITION-fragment refusal arm: a condition loop whose
+//   - lowerLoop's CONDITION-fragment decline arm: a condition loop whose
 //     condition fragment fails to lower must POP its own loop context before
-//     returning the reason, so the refusal is clean — an enclosing loop's
+//     returning the reason, so the compile failure is clean — an enclosing loop's
 //     context survives untouched and no half-open frame is left for a later
 //     break/continue to patch. RecordWhile only ever records a net-one
 //     condition, so the arm is reached here through a hand-built EmitEvent on
 //     the direct-lowerer seam lower_seam8_test.go already uses for lowerLoop's
-//     sibling refusals (variadic bound, carried init).
+//     sibling compile failures (variadic bound, carried init).
 //   - fragmentOuts's nil-loop guard for an evLoop event: the planner walks
 //     every event's fragment-outs, and a loop event without its payload must
 //     contribute no out rather than dereference nil.
@@ -69,25 +69,25 @@ func wlgHasOp(code []Instr, op Opcode) bool {
 	return false
 }
 
-func TestWhileConditionFragmentRefusalPopsTheLoopContext(t *testing.T) {
+func TestWhileConditionFragmentCompileFailurePopsTheLoopContext(t *testing.T) {
 	lw := wlgLowerer()
 	// An ENCLOSING loop context, so the pop can be shown to take exactly one
 	// frame — the condition loop's own — and not the outer loop's.
 	lw.loops = []loopCtx{{nextPC: 42}}
 
 	// The condition fragment's events leave seq 5 on the sim, but the recorded
-	// condOut names seq 9: the fragment cannot seat that result and refuses.
+	// condOut names seq 9: the fragment cannot seat that result and declines.
 	reason := lw.lowerLoop(wlgWhileEvent(EventOperand(9, 0)))
 	if !strings.Contains(reason, "branch leaves extra values") {
-		t.Fatalf("condition-fragment refusal reason = %q, want the fragment's refusal", reason)
+		t.Fatalf("condition-fragment compile failure reason = %q, want the fragment's compile failure", reason)
 	}
 	if len(lw.loops) != 1 || lw.loops[0].nextPC != 42 {
-		t.Fatalf("loops after the refusal = %+v, want only the outer frame (nextPC 42)", lw.loops)
+		t.Fatalf("loops after the compile failure = %+v, want only the outer frame (nextPC 42)", lw.loops)
 	}
-	// The refusal happened at the condition test, before the loop could branch
+	// The compile failure happened at the condition test, before the loop could branch
 	// on it: no OpJmpIfFalse (and so no OpFlowBreak exit) was emitted.
 	if wlgHasOp(*lw.code, OpJmpIfFalse) {
-		t.Error("a refused condition must not emit the condition's branch")
+		t.Error("a declined condition must not emit the condition's branch")
 	}
 
 	// The twin: the same loop, whose condOut DOES name the condition's

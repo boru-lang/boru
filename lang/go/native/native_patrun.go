@@ -143,7 +143,7 @@ func patrunValType(args []Value) *core.Type {
 	return TAny
 }
 
-// ---- check-mode shape twins (design/checker-precision-fronts.0.md §2) ----
+// ---- check-mode shape twins (design/legacy/checker-precision-fronts.0.ignore §2) ----
 //
 // A Patrun is a store-class container: a mutable dispatch table whose
 // stored values are unreachable to the checker — `find` declared the

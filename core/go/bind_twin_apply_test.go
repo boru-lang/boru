@@ -4,7 +4,7 @@ import "testing"
 
 // ApplyBindTwin is the runtime half of §6.5's regime: one placed OpBindTwin
 // re-performing one recorded transition. Each kind's arm — and the
-// carrier-class skip that pairs a computed def's twin with its Push-mode
+// write-back pairing that leaves a written-back def's push to its Push-mode
 // OpBindGlobal — is pinned here directly, against the same DefTable
 // surface the sandbox harness proved at corpus scale.
 
@@ -27,12 +27,32 @@ func TestApplyBindTwinPushKinds(t *testing.T) {
 		t.Fatal("bare-node def twin installed nothing")
 	}
 
-	// THE CARRIER-CLASS SKIP: a captured CARRIER is lowerDynBind's
-	// needGlobal class — its Push-mode OpBindGlobal owns the install, so
-	// the twin must leave the name untouched.
-	ApplyBindTwin(r, BindTransition{Kind: BindDef, Name: "k"}, DefEntry{Body: NewDynamicCarrier(TAny)})
+	// THE WRITE-BACK PAIRING: a twin the lowering marked WrittenBack is a
+	// def whose Push-mode OpBindGlobal owns the install, so the twin must
+	// leave the name untouched — whatever the capture's shape. A carrier
+	// is the classic case; a computed compound (`def b [add 1 2]`, the
+	// capture a concrete `[Integer]`) is the one the shape-derived skip
+	// missed (review of #459).
+	ApplyBindTwin(r, BindTransition{Kind: BindDef, Name: "k", WrittenBack: true}, DefEntry{Body: NewDynamicCarrier(TAny)})
 	if _, ok := r.Defs.Top("k"); ok {
-		t.Fatal("carrier-class def twin must skip — its OpBindGlobal pushes the runtime value")
+		t.Fatal("a written-back def's twin must skip — its OpBindGlobal pushes the runtime value")
+	}
+	ApplyBindTwin(r, BindTransition{Kind: BindDef, Name: "b", WrittenBack: true}, DefEntry{Body: NewList([]Value{NewTypeLiteral(TInteger)})})
+	if _, ok := r.Defs.Top("b"); ok {
+		t.Fatal("a written-back computed compound's twin must skip too — the capture's concreteness decides nothing")
+	}
+	// THE CARRIER SKIP stands beside the pairing: an UNMARKED carrier
+	// capture never replays either — a carrier is the check pass's
+	// placeholder, not a value, and whatever binds the real one (a loop
+	// body's BIND_DYN_SCOPE, say) is elsewhere by construction. An unmarked
+	// CONCRETE capture replays as before.
+	ApplyBindTwin(r, BindTransition{Kind: BindDef, Name: "u"}, DefEntry{Body: NewDynamicCarrier(TAny)})
+	if _, ok := r.Defs.Top("u"); ok {
+		t.Fatal("an unmarked carrier capture must still skip — it is not a value")
+	}
+	ApplyBindTwin(r, BindTransition{Kind: BindDef, Name: "v"}, DefEntry{Body: NewList([]Value{NewTypeLiteral(TInteger)})})
+	if _, ok := r.Defs.Top("v"); !ok {
+		t.Fatal("an unmarked concrete capture replays")
 	}
 
 	// A MINTED type install re-pushes its node (the mint survived the
@@ -92,9 +112,9 @@ func TestApplyBindTwinDefReplace(t *testing.T) {
 		t.Fatalf("replace twin left %v/%v at depth %d, want 2 at depth 1", v, ok, r.Defs.Depth("rp"))
 	}
 
-	// A COMPUTED replacement is the pop half only — its Push-mode
+	// A WRITTEN-BACK replacement is the pop half only — its Push-mode
 	// OpBindGlobal pushes the runtime value right after, netting zero.
-	ApplyBindTwin(r, BindTransition{Kind: BindDefReplace, Name: "rp"}, DefEntry{Body: NewDynamicCarrier(TAny)})
+	ApplyBindTwin(r, BindTransition{Kind: BindDefReplace, Name: "rp", WrittenBack: true}, DefEntry{Body: NewDynamicCarrier(TAny)})
 	if _, ok := r.Defs.Top("rp"); ok {
 		t.Fatal("computed replace twin must pop and leave the push to OpBindGlobal")
 	}

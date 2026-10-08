@@ -1,13 +1,13 @@
 // fissiongate_test.go gates the type-handling code against re-fission.
 //
-// The type-node fusion (issue #392, design/TYPE-REPRESENTATION.1.md)
+// The type-node fusion (issue #392, design/legacy/TYPE-REPRESENTATION.1.ignore)
 // established one rule: a named type IS its minted lattice node, and every
 // consumer routes membership and constraint handling through the node's
 // Behavior — Match/Unify keyed by core.HasConstraintUnify — never through
 // per-kind probes. The spec corpus pins the resulting BEHAVIOUR per kind,
 // but behaviour tests cannot stop a new special-case branch that arrives
 // with its own passing test. This gate pins the ARCHITECTURE the same way
-// the compiled-census ceilings pin refusals: the node-kind predicates
+// the compiled-census ceilings pin compile failures: the node-kind predicates
 // (IsPredicateTypeNode, IsDisjunctTypeNode) may be CALLED from exactly the
 // sites pinned below, each of which is a deliberate, design-cited
 // divergence. A call anywhere else fails this test.
@@ -57,9 +57,9 @@ var kindPredicates = map[string]bool{
 var pinnedKindRoutingSites = map[string]int{
 	// The `is` word's strict-disjunct routing: dispatch through a union
 	// param stays loose on the newtype-alternative swap while `is` stays
-	// strict — the DIVERGENCE PIN of design/TYPE-REPRESENTATION.1.md §6.
+	// strict — the DIVERGENCE PIN of design/legacy/TYPE-REPRESENTATION.1.ignore §6.
 	"lang/go/native/native_type.go": 2,
-	// (compiler/go/emit.go was pinned at 1 — the recorder refusing a
+	// (compiler/go/emit.go was pinned at 1 — the recorder declining a
 	// predicate-type node at a fn-invoking word "exactly as the fn value it
 	// replaced". RETIRED 2026-08-28: a predicate node is not a fn value in
 	// disguise, it is a bare type literal riding as data whose body runs
@@ -69,7 +69,7 @@ var pinnedKindRoutingSites = map[string]int{
 	// the table to be tightened.)
 	// The typed-def gate splits a Function-parented constraint from a
 	// predicate-type node so `def x:T v` runs the predicate rather than
-	// binding the fn shape — design/TYPE-REPRESENTATION.1.md §6.
+	// binding the fn shape — design/legacy/TYPE-REPRESENTATION.1.ignore §6.
 	"basic/go/native_definition.go": 1,
 }
 

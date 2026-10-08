@@ -73,7 +73,9 @@ func makeWalkApply(cb Value, r *Registry, callErr *error) func(*string, any, any
 		cbArgs := []Value{NewMap(leaf)}
 		cbSig := MatchFnSig(cb, cbArgs)
 		if cbSig == nil {
-			*callErr = fmt.Errorf("walk: no matching callback signature")
+			// A BoruError, not a bare fmt.Errorf (NUR164): a non-Boru error
+			// off the VM reads as an internal bail and re-runs the interpreter.
+			*callErr = r.BoruError("signature_error", "walk: no matching callback signature", "walk")
 			return val
 		}
 		var cbDef *FnDefInfo

@@ -10,7 +10,7 @@ import (
 // def-bound CAPTURING fn LITERAL (`def kk (fn r:Integer Any [mul n r])`
 // inside a fn body, then `(g kk/v)`) resolves to the literal's closure
 // operand — its unit pushed with the captures, built at the first read and
-// cached on the bind — where the read used to refuse "fn call operand of
+// cached on the bind — where the read used to decline "fn call operand of
 // unknown provenance": the literal has no producing event, and the read is
 // a fresh wrap of the binding (ResolveRef). The push carries the def name,
 // so the value renders as the interpreter's binding does (`fn kk(Integer)`).
@@ -32,6 +32,11 @@ func TestLiteralReadParity(t *testing.T) {
 		{`def w n:Integer => [def kk (fn r:Integer Any [mul n r]) kk/v] end (w 5) 4`, "fn kk(Integer) 4 — parked with a token after it"},
 		{`def w n:Integer => [def kk (fn r:Integer Any [mul n r]) 3 kk/v apply] end (w 5)`, "15 — the read applied by the apply word inside the body"},
 		{`def g f:Function => [(f 3)] end def n 5 end def kk (fn r:Integer Any [mul n r]) end (g kk/v)`, "15 — the main program's read of a top-level capturing literal"},
+		// the read inside a branch arm, called twice: S1b's apply shapes
+		// (2026-09-22) record g's own `(f 3)` window under the arm's nesting,
+		// so the arm's result has a producer; and the two calls of the
+		// lambda-bodied w each seat their own result (freshResidual, NUR177)
+		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)`, "15 0 — the read inside a branch arm, the fn called twice"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -51,19 +56,16 @@ func TestLiteralReadParity(t *testing.T) {
 	}
 }
 
-// TestLiteralReadSoundRefusals pins the neighbours that still REFUSE, with
+// TestLiteralReadSoundCompileFailures pins the neighbours that still DECLINE, with
 // the interpreter's own answer.
-func TestLiteralReadSoundRefusals(t *testing.T) {
+func TestLiteralReadSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// a captured fn-local rebound between the def and the read: the
 		// literal snapshotted n = 5, a read-site construction would see 7
 		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) def n 7 (g kk/v)] end (w 5)`, "unknown provenance", "[15]"},
 		// the literal redefined by another capturing literal: installDef's
-		// fn-body refusal (the thirty-first increment)
+		// fn-body compile failure (the thirty-first increment)
 		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) def kk (fn r:Integer Any [add n r]) (g kk/v)] end (w 5)`, "redefined inside a fn body", "[8]"},
-		// the read inside a branch arm: the arm's gradual result may be a fn
-		// the interpreter re-steps (residualLeadReStepped), a separate hold
-		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)`, "then-branch result of unknown provenance", "[15 0]"},
 	}
 	for _, c := range rows {
 		a, err := New()
@@ -75,11 +77,11 @@ func TestLiteralReadSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {

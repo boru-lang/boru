@@ -26,7 +26,7 @@ const debugBreakWord = "debug-break"
 // stepNatives returns the interactive-stepping primitives. They are added
 // to debugNatives()'s slice (see debug.go).
 func stepNatives() []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{
 			// Run a quoted body under interactive single-step control.
 			Name: "debug-step",
@@ -99,7 +99,7 @@ func stepNatives() []native.NativeFunc {
 				}),
 			}},
 		},
-	}
+	})
 }
 
 // runStepped runs tokens in a sub-engine under single-step control. Each

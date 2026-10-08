@@ -106,22 +106,32 @@ func TestPlanDeoptsDeclines(t *testing.T) {
 	if len(rec.deopts) != 0 || rec.deoptEnv {
 		t.Errorf("a def with no re-pushable source declines the unit's points: %+v", rec.deopts)
 	}
-	// A def the island reads of a FN value (`def w fn […]  … w`): no
-	// const or local re-pushes it, so the unit would refuse at its bind —
-	// the points decline; a def of an inert literal binds.
-	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
-		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
-		EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: core.NewCarrier(core.TFunction), pos: deoptAt(48)}})
+	// A def the island reads of a FN value (`def w fn […]` before the
+	// island's statement, `… w` in it): no const or local re-pushes it, so
+	// the unit would decline at its bind — the points decline; a def of an
+	// inert literal binds.
+	fnDef := func(val core.Value, col int) (*EmitState, *emitUnit, *fnUnitRec) {
+		es, u, rec, _ := deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
+			EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
+			EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: val, pos: deoptAt(col)}})
+		return es, u, rec
+	}
+	es, u, rec = fnDef(core.NewCarrier(core.TFunction), 26)
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 0 || rec.deoptEnv {
 		t.Errorf("a def of a fn value the island spells declines: %+v", rec.deopts)
 	}
-	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
-		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
-		EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: core.NewInteger(7), pos: deoptAt(48)}})
+	es, u, rec = fnDef(core.NewInteger(7), 26)
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 1 || !rec.deoptEnv {
 		t.Errorf("a def of an inert literal binds: %+v", rec.deopts)
+	}
+	// The same def after the island's token is one the island makes itself
+	// (markIslandMadeDefs, NUR282): it needs no bind, and the point stands.
+	es, u, rec = fnDef(core.NewCarrier(core.TFunction), 48)
+	es.planDeopts(u, rec)
+	if w := rec.frag.events[len(rec.frag.events)-1].dyn; len(rec.deopts) != 1 || !rec.deoptEnv || !w.islandMade {
+		t.Errorf("a def the island makes itself needs no bind: %+v %+v", rec.deopts, w)
 	}
 	// A def the island reads made inside a branch arm declines too.
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("y", 52)}, 43,
@@ -572,6 +582,15 @@ func TestPlanDeoptsStartDeclines(t *testing.T) {
 	if len(rec.deopts) != 0 {
 		t.Errorf("a consumer with no position declines: %+v", rec.deopts)
 	}
+	// A top-level read whose consumer stands INSIDE an earlier token (a
+	// paren before the read): not after the read, inside the body, and at
+	// no top-level token — no statement start to place.
+	es, u, rec, _ = deoptUnit(t, []core.Value{deoptParen(43, deoptTok("typeof", 44)), deoptTok("j", 49)}, 49,
+		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(44), ops: []EmitOperand{EventOperand(1, 0)}}})
+	es.planDeopts(u, rec)
+	if len(rec.deopts) != 0 {
+		t.Errorf("a consumer nested before the read declines: %+v", rec.deopts)
+	}
 }
 
 // TestEmitDeoptsBeforeStackHome pins the lowerer's deopt over a value
@@ -696,7 +715,10 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	if len(rec3.deopts) != 0 || parent3.deoptNames["j"] {
 		t.Errorf("a rebind in the parent's open arm declines: %+v parent=%v", rec3.deopts, parent3.deoptNames)
 	}
-	// No enclosing unit: a top-level code body declines.
+	// No enclosing unit: a code body at the program root keeps its point,
+	// which installs the captured value — the root's defs are in the
+	// registry already (NUR285) — unless the root binds the name in an arm
+	// the run may skip.
 	es2 := NewEmitState()
 	top, _, _ := es2.StartFnCompile("c", "each$body", nil, nil, nil, nil, []core.CapturedBinding{cap}, false, core.SrcPos{})
 	u2 := es2.units[len(es2.units)-1]
@@ -707,8 +729,22 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	es2.NoteWordRead(j, "j", deoptAt(45))
 	es2.NoteLocalRead(j.ID, deoptAt(45))
 	es2.planDeopts(u2, rec2)
-	if len(rec2.deopts) != 0 {
-		t.Errorf("a code body with no enclosing unit declines: %+v", rec2.deopts)
+	if len(rec2.deopts) != 1 || !rec2.deopts[0].install || !rec2.rootCaptures {
+		t.Errorf("a code body at the root keeps its installing point: %+v", rec2.deopts)
+	}
+	es4 := NewEmitState()
+	es4.appendEvent(EmitEvent{kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{{kind: evDynBind, dyn: &emitDynBind{name: "j"}}}}}})
+	top4, _, _ := es4.StartFnCompile("c", "each$body", nil, nil, nil, nil, []core.CapturedBinding{cap}, false, core.SrcPos{})
+	u4 := es4.units[len(es4.units)-1]
+	rec4 := es4.fnRecs[top4]
+	rec4.closure = true
+	rec4.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
+	es4.SetUnitBody(top4, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
+	es4.NoteWordRead(j, "j", deoptAt(45))
+	es4.NoteLocalRead(j.ID, deoptAt(45))
+	es4.planDeopts(u4, rec4)
+	if len(rec4.deopts) != 0 {
+		t.Errorf("a root binding made in an arm is not the capture's: %+v", rec4.deopts)
 	}
 }
 

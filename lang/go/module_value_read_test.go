@@ -3,8 +3,8 @@ package lang
 // MODULE-FAMILY VALUES READ LIVE (2026-09-05). An import-bound namespace
 // (`IO`, `StringUtil`) or a Module descriptor (`X.$module`, `def m (module
 // […])`) used as a VALUE — an eq/deq operand, a residual, a def body —
-// refused "operand of unknown provenance" / "residual value not statically
-// materialisable": the const gate refuses a namespace on purpose (a
+// declined "operand of unknown provenance" / "residual value not statically
+// materialisable": the const gate declines a namespace on purpose (a
 // pointer-shared map of fn exports; ConstBakeable is closed to module
 // instances), and a `$module` read was elided as a compile-time resolution
 // whose result then had no compiled home. Now the namespace read routes to
@@ -18,7 +18,6 @@ package lang
 // are the shapes the corpus does not spell.
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -32,6 +31,12 @@ func TestModuleValueReadsCompileWithParity(t *testing.T) {
 		`import "boru:io" def x IO x`,
 		`import "boru:io" def x IO x def x IO`,
 		`import "boru:io" [IO] size`,
+		// a namespace read whose binding MOVES later — declined as "residual
+		// value not statically materialisable" while a module fn value was the
+		// one kind with a home; now that every fn carries one, the read is
+		// modelled like any other module value and the row compiles with parity
+		`import "boru:io" def x IO x def x 5`,
+		`import "boru:io" def x IO x undef x`,
 		// the descriptor
 		`import "boru:io" IO.$module`,
 		`import "boru:io" def x IO.$module x`,
@@ -59,17 +64,14 @@ func TestModuleValueReadsCompileWithParity(t *testing.T) {
 	}
 }
 
-// The shapes the live read must NOT admit: a residual re-push runs at the
-// END of the program, so a namespace read whose binding has moved by then
-// would surface the later value. Each refuses under the residual gate and
-// the interpreter answers. A frame-local def of a compile-time module
-// value keeps its refusal too (its binding is popped with the frame, so
-// there is nothing for the live read to find).
+// The shape the live read must NOT admit: a frame-local def of a
+// compile-time module value keeps its compile failure (its binding is popped with
+// the frame, so there is nothing for the live read to find); the interpreter
+// answers. The two moved-binding rows that used to sit here (`def x IO x def
+// x 5`, `… undef x`) graduated to the parity rows above once every fn value
+// carried its home.
 func TestModuleValueReadSoundFallbacks(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
-		{`import "boru:io" def x IO x def x 5`, "residual value not statically materialisable"},
-		{`import "boru:io" def x IO x undef x`, "residual value not statically materialisable"},
 		{`def f fn [[] [Any] [def m (module [export "X" {a: 1}]) m]] f`, "fn f: body result of unknown provenance"},
 	}
 	for _, c := range rows {
@@ -86,14 +88,15 @@ func TestModuleValueReadSoundFallbacks(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", c.src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", c.src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence on the fallback: compiled=%v/%v interp=%v/%v", c.src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it, so there is no compiled answer to compare:
+		// the failure is booked as the defect it is (compile_defect_test.go).
+		requireCompileDefect(t, c.src, gotC, errC)
 	}
 }

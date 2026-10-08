@@ -5,11 +5,11 @@ import "testing"
 // DeepKnown is DeepConcrete widened to admit a bare type node — the one
 // payload-less operand whose runtime value analysis provably holds. These
 // tests pin both directions, since the widening is what lets a mirror
-// decide `{value: None}` and the refusals are what keep it honest.
+// decide `{value: None}` and the compile failures are what keep it honest.
 
 func TestDeepKnownAdmitsBareTypeNodes(t *testing.T) {
 	// A bare type node is inert and self-evaluating: the checked node IS
-	// the runtime operand. DeepConcrete refuses it (no payload); DeepKnown
+	// the runtime operand. DeepConcrete declines it (no payload); DeepKnown
 	// admits it, at the top level and nested.
 	none := NewTypeLiteral(TNone)
 	if DeepConcrete(none) {
@@ -35,7 +35,7 @@ func TestDeepKnownAdmitsBareTypeNodes(t *testing.T) {
 	}
 }
 
-func TestDeepKnownRefusesUnknownOperands(t *testing.T) {
+func TestDeepKnownDoesNotLowerUnknownOperands(t *testing.T) {
 	// A carrier is the shape whose runtime value analysis does NOT hold,
 	// at the top level and at every nested position.
 	if DeepKnown(NewCarrier(TString)) {
@@ -50,8 +50,8 @@ func TestDeepKnownRefusesUnknownOperands(t *testing.T) {
 		t.Fatal("a list holding a carrier must not be DeepKnown")
 	}
 
-	// A DYNAMIC operand was matched optimistically — refused even though
-	// it carries a payload, and refused nested too.
+	// A DYNAMIC operand was matched optimistically — declined even though
+	// it carries a payload, and declined nested too.
 	dyn := NewString("x")
 	dyn.Dynamic = true
 	if DeepKnown(dyn) {

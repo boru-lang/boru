@@ -1,12 +1,12 @@
 package lang
 
-// Single-use user-call value-def SEATING pins (REFUSAL-CLOSURE §9.4 force-
+// Single-use user-call value-def SEATING pins (COMPILE FAILURE-CLOSURE §9.4 force-
 // compile quick-win). A NAMED user-call value-def read exactly ONCE
 // (`def a (n g)`) used to be left LOOSE on the simulated stack — the
 // "leave a single-use user call on the Stage-3 layout" case. That is fine
 // only while nothing is pushed ABOVE it before the read: once two more
 // computed operands land on top (`(n g) (n g)`), the buried `a` cannot be
-// seated as the next operand and the unit refused
+// seated as the next operand and the unit declined
 // `def a: value-def result is not adjacent on top`. This is the trie/stats
 // leaf in miniature (`def a (nd g) … a b add c add` — the chained op's
 // operands are not adjacent).
@@ -23,7 +23,7 @@ package lang
 import "testing"
 
 // A single-use user-call value-def buried under two computed operands: without
-// the promotion the buried `a` refuses "not adjacent on top"; with it, `a`
+// the promotion the buried `a` declines "not adjacent on top"; with it, `a`
 // stores to a frame local and re-pushes for the read. compile == interpret.
 func TestSingleUseUserCallValueDefSeatsUnderComputedOperands(t *testing.T) {
 	stage1aCompiles(t, `def g fn [[x:Integer] [Integer] [x 1 add]]

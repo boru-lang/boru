@@ -380,7 +380,7 @@ func mcovHostSpec(name string) MiniLangSpec {
 
 // TestMiniCovNewMiniLangFn drives the value constructor: a def-bound value
 // with a stack input dispatches through `mini <name>` (import-free), the
-// constructor's refusals are loud, and a binding never shadows a built-in
+// constructor's compile failures are loud, and a binding never shadows a built-in
 // kind.
 func TestMiniCovNewMiniLangFn(t *testing.T) {
 	r := mcovReg(t)
@@ -394,15 +394,15 @@ func TestMiniCovNewMiniLangFn(t *testing.T) {
 		t.Errorf("bound value = %v, want 7 (2+5)", out[0])
 	}
 
-	// Constructor refusals.
+	// Constructor compile failures.
 	if _, err := NewMiniLangFn(MiniLangSpec{Name: "", Handler: mcovHostSpec("x").Handler}); err == nil {
-		t.Error("empty name must be refused")
+		t.Error("empty name must be declined")
 	}
 	if _, err := NewMiniLangFn(MiniLangSpec{Name: "nohandler"}); err == nil {
-		t.Error("nil handler must be refused")
+		t.Error("nil handler must be declined")
 	}
 	if _, err := NewMiniLangFn(MiniLangSpec{Name: "not a word", Handler: mcovHostSpec("x").Handler}); err == nil {
-		t.Error("an invalid word name must be refused")
+		t.Error("an invalid word name must be declined")
 	}
 
 	// A built-in kind wins over a same-named binding: `re` still
@@ -470,7 +470,7 @@ func TestMiniCovOptHelpersDirect(t *testing.T) {
 		t.Errorf("miniOptInt absent = %d,%v want 9,nil", n, err)
 	}
 	if _, err := miniOptInt(opts, "bad", 0); err == nil {
-		t.Error("miniOptInt should refuse a non-Integer value")
+		t.Error("miniOptInt should decline a non-Integer value")
 	}
 	if s, err := miniOptString(opts, "s"); err != nil || s != "v" {
 		t.Errorf("miniOptString present = %q,%v want v,nil", s, err)
@@ -479,7 +479,7 @@ func TestMiniCovOptHelpersDirect(t *testing.T) {
 		t.Errorf("miniOptString absent = %q,%v", s, err)
 	}
 	if _, err := miniOptString(opts, "bad"); err == nil {
-		t.Error("miniOptString should refuse a non-String value")
+		t.Error("miniOptString should decline a non-String value")
 	}
 
 	if got := miniDropGrouping("de_ad be\tef\r\n"); got != "deadbeef" {
@@ -556,19 +556,19 @@ func TestMiniCovRegisterTombstonesDirect(t *testing.T) {
 }
 
 // TestMiniCovRunReDirect pins run-re's carrier guards: a non-extension
-// value and an extension wrapping the wrong body are both refused.
+// value and an extension wrapping the wrong body are both declined.
 func TestMiniCovRunReDirect(t *testing.T) {
 	r := mcovReg(t)
 	tMini := r.Types.MintType("CovCompiled", native.TIdeal)
 	args := []native.Value{native.NewInteger(5), native.NewMap(native.NewOrderedMap()), native.NewString("x")}
 	if _, err := miniRunReHandler(args, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not a compiled pattern") {
-		t.Errorf("a non-extension carrier should be refused, got %v", err)
+		t.Errorf("a non-extension carrier should be declined, got %v", err)
 	}
 	args[0] = core.NewExtension(tMini, "not-a-regexp")
 	if _, err := miniRunReHandler(args, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not a compiled pattern") {
-		t.Errorf("a wrong-body extension should be refused, got %v", err)
+		t.Errorf("a wrong-body extension should be declined, got %v", err)
 	}
 }
 

@@ -15,7 +15,6 @@ package exec
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -179,24 +178,15 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	var outBuf strings.Builder
 	a.SetOutput(&outBuf)
 
-	// Compiled-by-default (the same CompileTry semantics as `boru run`),
-	// with the interpreter as the sound fallback for refused programs
-	// (plan Phase 2 — entry-point routing). Post-Stage-J a refusal
-	// returns compile_refused instead of the library silently re-running,
-	// so this surface performs the fallback itself. The policy-gated
-	// registry is the canonical arm: compiled dispatch does not consult
-	// word rules, so a policy-bound server ALWAYS refuses and every
-	// request runs on the interpreter, where the gate lives. Stamping is
-	// armed across the fallback so stored callbacks keep the VM path on
-	// policy-free servers (StampDetachedFn itself refuses under a word
-	// policy, so arming never re-opens the gate).
+	// One outcome: the posted expression compiles and runs, or the response
+	// carries the compile failure. This used to re-run a failed compile on
+	// the interpreter, and the argument for it — that a policy-gated
+	// registry always declined, so a policy-bound server needed the
+	// interpreter because that was where the word gate lived — stopped being
+	// true when policy-gated registries started compiling (2026-07-15: every
+	// named VM dispatch consults the same WordChecker the interpreter's
+	// policyGateWord runs).
 	stack, _, _, runErr := a.RunCompiledReason(req.Code)
-	var refused *lang.BoruError
-	if errors.As(runErr, &refused) && refused.Code == "compile_refused" {
-		disarm := a.ArmRuntimeStamping()
-		stack, runErr = a.RunInterp(req.Code)
-		disarm()
-	}
 	resp := execResponse{Output: outBuf.String()}
 	if runErr != nil {
 		// An `IO.exit` in a SERVED request is reported, never honoured:

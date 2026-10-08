@@ -396,7 +396,7 @@ func TestW9CheckModeWordExtension(t *testing.T) {
 func TestW9CheckModeGenericFnBodyEmpty(t *testing.T) {
 	// Empty body → the len(Body)==0 continue in the construction-time
 	// generic analysis.
-	if _, err := seam5Check(seam5Reg(t), `def Id gen [T] fn [[x:T] [T] []]`); err != nil {
+	if _, err := seam5Check(seam5Reg(t), `def id gen [T] fn [[x:T] [T] []]`); err != nil {
 		t.Fatalf("check-mode generic fn empty body: %v", err)
 	}
 }

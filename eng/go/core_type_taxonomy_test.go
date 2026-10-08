@@ -9,7 +9,7 @@ import (
 )
 
 // TestInstallTypeNamePartConflictTaxonomy pins the taxonomy wrap on the
-// name-part conflict refusal: `def Integer 42` (a builtin type name as a
+// name-part conflict compile failure: `def Integer 42` (a builtin type name as a
 // def target) must surface as a *BoruError with code `type_error`, not
 // the raw fmt.Errorf ValidateTypeNameParts returns — the raw error
 // leaked to hosts as a non-taxonomy failure (the TS crossdiff reported
@@ -21,11 +21,11 @@ func TestInstallTypeNamePartConflictTaxonomy(t *testing.T) {
 	}
 	instErr := core.InstallType(r, "Integer", core.NewInteger(42))
 	if instErr == nil {
-		t.Fatalf("rebinding a builtin type name must refuse")
+		t.Fatalf("rebinding a builtin type name must decline")
 	}
 	var be *core.BoruError
 	if !errors.As(instErr, &be) {
-		t.Fatalf("refusal must be a BoruError, got %T: %v", instErr, instErr)
+		t.Fatalf("compile failure must be a BoruError, got %T: %v", instErr, instErr)
 	}
 	if be.Code != "type_error" {
 		t.Errorf("code = %q, want type_error", be.Code)

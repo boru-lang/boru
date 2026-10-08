@@ -4,7 +4,7 @@ package core
 // admits `none` at the unifier, aligning the pattern walks on the
 // reading `make`'s field rule and `is` always had. Never and Absent
 // keep their self-only folds — the `?:T` optional-key machinery
-// depends on `Unify(Any, Absent)` refusing.
+// depends on `Unify(Any, Absent)` declining.
 
 import "testing"
 
@@ -39,18 +39,18 @@ func TestNoneUnifiesWithAny(t *testing.T) {
 		t.Fatal("a declared-Any record field must admit a stored none")
 	}
 
-	// none still refuses every non-Any, non-none side.
+	// none still declines every non-Any, non-none side.
 	if _, ok := Unify(noneV, NewInteger(1)); ok {
-		t.Fatal("Unify(none, 1) must refuse")
+		t.Fatal("Unify(none, 1) must decline")
 	}
 	if _, ok := Unify(NewTypeLiteral(TInteger), noneV); ok {
-		t.Fatal("Unify(Integer, none) must refuse")
+		t.Fatal("Unify(Integer, none) must decline")
 	}
 	// Never and Absent keep the self-only rule against Any.
 	if _, ok := Unify(anyLit, NewTypeLiteral(TNever)); ok {
-		t.Fatal("Unify(Any, Never) must keep refusing")
+		t.Fatal("Unify(Any, Never) must keep declining")
 	}
 	if _, ok := Unify(anyLit, NewTypeLiteral(TAbsent)); ok {
-		t.Fatal("Unify(Any, Absent) must keep refusing (?:T optionality)")
+		t.Fatal("Unify(Any, Absent) must keep declining (?:T optionality)")
 	}
 }

@@ -5,7 +5,7 @@
 // runtime interpreter entries, a transcript identical to the interpreter's,
 // and race-clean. Nothing in the tree measured the first of those for a
 // server, so "does a callback-architected server compile completely?" had
-// no numeric answer — only the whole-program compile/refuse verdict, which
+// no numeric answer — only the whole-program compile/decline verdict, which
 // says nothing about what the per-connection handler does at runtime.
 //
 // This case measures it. A boru program starts a TCP echo server, connects
@@ -161,28 +161,19 @@ MiniRedis.cmd ep "GET k"
 // redisEntryCeiling is the unattributed-entry count for the protocol-server
 // case. Monotone DOWN only; 0 at Stage 9. Measured, not chosen.
 //
-// 51 today because the program does not compile AT ALL: it refuses on the
-// check-diagnostics sentinel with `undefined_word: h2`
-// (design/examples/apps/mini-redis.boru:210).
+// History. The first ceiling (51) was measured on the FALLBACK run: the
+// program did not compile (NUR103 — the handler bodies `boru check` never
+// analysed, a divergent call unbinding its `def`, and the suppressed
+// `no_signature` that moved the diagnostic to `undefined_word: h2` at
+// design/examples/apps/mini-redis.boru:210), the library re-ran it whole on
+// the interpreter, and the census counted that re-run. The fallback's
+// removal (2026-09-19) retired the number and left only the fact that it
+// did not compile.
 //
-// DIAGNOSED 2026-08-26 (NUR103), by delta-debugging this app rather than
-// writing reductions: of its fourteen registered handlers, HDEL alone
-// reproduces — and HSET, the site the message NAMES, does not. Three faults
-// compose. (1) `boru check` does not analyse a service-handler body AT ALL:
-// a bare undefined word inside one is reported clean by check and refused by
-// the compiler, so a typo in a request handler ships. The compile pass must
-// read that body — it records it into a compiled callback unit — so every
-// divergence follows from that asymmetry. (2) A call the checker models as
-// DIVERGENT silently unbinds its `def`, so the later read is undefined; at
-// run time the receiver is a real value and the handler works. (3) The
-// `no_signature` that would name the failing call is suppressed while
-// compiling, which is why the escaping diagnostic is at a different line,
-// about a different name, than its cause.
-//
-// This is frontier family E — the sentinel section 6.9 deletes at Stage 8 —
-// and it is the whole reason a realistic protocol server refuses while the
-// plain echo server compiles to zero.
-const redisEntryCeiling = 51 // 51 (2026-08-25, refuses on check diagnostics) -> 0 (Stage 8/9)
+// It COMPILES as of 2026-09-26 (the last real programs: the module-native
+// fn-value re-match and the each-over-Any widening), so the census is
+// re-measured on the compiled run it now has.
+const redisEntryCeiling = 0 // measured 2026-09-26 — see the log line
 
 func TestMiniRedisCallbackCensus(t *testing.T) {
 	app, err := filepath.Abs(filepath.Join("..", "..", "..", "design", "examples", "apps", "mini-redis.boru"))
@@ -212,6 +203,9 @@ func TestMiniRedisCallbackCensus(t *testing.T) {
 	if errC != nil {
 		t.Fatalf("compiled run: %v", errC)
 	}
+	if !wasCompiled {
+		t.Errorf("mini-redis ran without compiling: the compiled lane must run it")
+	}
 
 	ai, err := lang.New()
 	if err != nil {
@@ -221,7 +215,6 @@ func TestMiniRedisCallbackCensus(t *testing.T) {
 	if errI != nil {
 		t.Fatalf("interpreted run: %v", errI)
 	}
-
 	if renderResult(gotC) != renderResult(gotI) {
 		t.Errorf("mini-redis transcript diverged:\n  compiled    = %q\n  interpreted = %q",
 			renderResult(gotC), renderResult(gotI))
@@ -243,11 +236,10 @@ func TestMiniRedisCallbackCensus(t *testing.T) {
 			runs++
 		}
 	}
-	t.Logf("mini-redis callback census: compiled=%v, %d unattributed interpreter runs (routes: %v)",
+	t.Logf("mini-redis census: compiled=%v, %d unattributed interpreter runs (routes: %v)",
 		wasCompiled, runs, bySeam)
-
 	if runs > redisEntryCeiling {
-		t.Errorf("mini-redis callback census %d exceeds ceiling %d — the protocol callbacks re-entered the interpreter: %v",
+		t.Errorf("mini-redis census %d exceeds ceiling %d — a handler re-entered the interpreter: %v",
 			runs, redisEntryCeiling, bySeam)
 	}
 }

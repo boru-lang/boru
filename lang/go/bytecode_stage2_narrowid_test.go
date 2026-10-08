@@ -2,15 +2,15 @@ package lang
 
 import "testing"
 
-// Stage-2 narrowing-through-use provenance pins (voxgig zero-refusals plan,
+// Stage-2 narrowing-through-use provenance pins (voxgig zero-compile failures plan,
 // "quote of a computed get" leaf). The decision.boru eval-tree walker —
 // `def nodes quote (tree get "nodes")` … `(nodes next-id find-node)` — used
-// to refuse "fn call operand of unknown provenance". The quote was
+// to decline "fn call operand of unknown provenance". The quote was
 // incidental (its evaluated-paren sig is a RunInCheck identity, ID
 // preserved): the real leaf was narrowDynamicUses. A def-bound dynamic Any
 // (a computed get result) consumed at a typed slot rebinds the NAME to a
 // narrowed bound, but TandValues assembled that bound as a fresh Value —
-// fresh ID, no producedBy home — so every LATER read of the name refused.
+// fresh ID, no producedBy home — so every LATER read of the name declined.
 // Two-part fix:
 //
 //  1. narrowDynamicUses re-stamps the narrowed rebind with the current
@@ -27,7 +27,7 @@ import "testing"
 
 // The leaf shape in miniature: quote of a computed get, def-bound, feeding a
 // user fn TWICE (the second use reads the narrowed rebind — that read used to
-// refuse). Compiles + parity.
+// decline). Compiles + parity.
 func TestQuoteComputedGetTwoUsesCompiles(t *testing.T) {
 	stage1aCompiles(t, `def measure fn [[xs:List] [Integer] [xs size]]
 def treewalk fn [[tree:Map] [Integer] [def nodes quote (tree get "nodes") def a (nodes measure) def b (nodes measure) a add b]]

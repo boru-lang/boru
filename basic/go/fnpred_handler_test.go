@@ -9,7 +9,7 @@ import (
 
 // FnpredHandler's two defensive arms, neither reachable from the language
 // surface: a bare `List` type literal never matches the TList slot (dispatch
-// refuses first with signature_error), and the spec-list rows in
+// declines first with signature_error), and the spec-list rows in
 // lang/spec/fnpred.tsv cover the malformed-shape arm from source. Both are
 // live paths for a HOST calling the handler directly — the same reason
 // FnsigHandler carries the identical concrete-list guard — so they are
@@ -23,10 +23,10 @@ func TestFnpredHandlerNonConcreteList(t *testing.T) {
 	// A bare List TYPE LITERAL: Parent is List, Data is nil.
 	_, err = FnpredHandler([]core.Value{core.NewTypeLiteral(core.TList)}, nil, nil, r)
 	if err == nil {
-		t.Fatal("a non-concrete list must be refused")
+		t.Fatal("a non-concrete list must be declined")
 	}
 	if !strings.Contains(err.Error(), "concrete list") {
-		t.Errorf("want a concrete-list refusal, got %v", err)
+		t.Errorf("want a concrete-list compile failure, got %v", err)
 	}
 }
 

@@ -50,7 +50,7 @@ func RunDir(t *testing.T, dir string, run Run) {
 	}
 	ran := 0
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") || !SpecFileSelected(e.Name()) {
 			continue
 		}
 		ran++
@@ -61,6 +61,29 @@ func RunDir(t *testing.T, dir string, run Run) {
 	if ran == 0 {
 		t.Errorf("no .tsv specs found under %s", dir)
 	}
+}
+
+// SpecFileSelected reports whether a spec file takes part in this run.
+// BORU_SPEC_FILES (comma-separated basenames or globs, e.g.
+// `callbacks.tsv,fold-*.tsv`) restricts every corpus walk that reads the
+// directory through RunDir to the named files, so one family can be
+// iterated on in seconds; unset, every file is selected. The langspec
+// gates apply the same variable through their own specEntries.
+func SpecFileSelected(name string) bool {
+	raw := strings.TrimSpace(os.Getenv("BORU_SPEC_FILES"))
+	if raw == "" {
+		return true
+	}
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if ok, _ := filepath.Match(p, name); ok || p == name {
+			return true
+		}
+	}
+	return false
 }
 
 // RunFile runs every data row of a single `.tsv` file against run.

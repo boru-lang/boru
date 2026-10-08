@@ -8,7 +8,7 @@ import (
 
 // --- Naming rule: capitalisation selects type vs value binding ---
 //
-// `def` is the universal binder (design/TYPE-UNIFORM.10.md).
+// `def` is the universal binder (design/legacy/TYPE-UNIFORM.10.ignore).
 // The *name's capitalisation* selects what is bound: a capitalised
 // name is a TYPE binding, a lowercase name is a VALUE binding.
 

@@ -18,7 +18,7 @@
 #
 # CORRECTED 2026-09-10 by the batch gate: those two rows were moved to
 # lang/spec/bytecode-migrated.tsv and had to come back. The increment's
-# result stands — they COMPILE where they refused — but "the island's own
+# result stands — they COMPILE where they declined — but "the island's own
 # slot is the region" is literal: the OpFallback span is still in the
 # program, and the main corpus's island ceiling is 0. So they stay here,
 # ledgered "islanded" alongside family G's other working islands, and

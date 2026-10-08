@@ -1,0 +1,75 @@
+# runtime_defers.tsv — the per-file ledger of DEFERRED compilation failures
+# (runtime_defer_ledger_test.go; the maintainer's call, 2026-09-24).
+#
+# One line per lang/spec file that has rows which COMPILE and then BAIL —
+# the compiled run dying with the compiler-defect note: the VM abandoning
+# the run at a designed defer site (vmDefer, its site named below) or
+# raising an internal error the compiler admitted at compile time:
+#
+#   <spec file> TAB <bailing rows> TAB <what moved it>
+#
+# sorted by file name; a file not listed has none. TestSpecCompiledOrFallback
+# asserts every line against the live count of every file the run walks —
+# under BORU_SPEC_FILES too, so a filtered run over one family catches a new
+# deferral in that family in seconds. The corpus-wide "runtime defers" gate
+# (engine_entry_census_test.go) counts defer EVENTS by site; the walk's
+# bailDefectCeiling (compiled_defect_test.go) is the sum of the second
+# column; this ledger names the ROWS by file.
+#
+# Every count is a RATCHET ON A DEFECT COUNT, never a budget: a row that
+# compiles and then bails is a defect the compiler admitted after the fact,
+# not a decision it made. A line moves DOWN with the change that runs its
+# rows natively (deleted at zero), and UP only with the rows that moved it
+# named in the third column — a deferral booked by choice (the maintainer's,
+# where a compile-time decline would be over-wide) or a regression, and the
+# column says which. Lowering a line by deleting a corpus row is not
+# allowed. Nothing regenerates this file: edit it by hand, in the change
+# that moved it.
+#
+# First written 2026-09-24 from the walk's standing bails (52 rows) plus the
+# two rows booked by choice that day (fn-value.tsv L317/L318, NUR190's `/q`
+# capture deferred at the landing's walk).
+# fold-map-filter.tsv left the ledger on 2026-09-25: L246–L248, fold/each/
+# scan over a class member's Any-typed list, run natively through the
+# dyn-body poly re-match the recovery now records (widest satisfiable
+# overload) instead of bailing at the rematch trap.
+# fnpred.tsv left the ledger on 2026-09-25 (NUR141, the check pass runs a
+# PURE predicate over a concrete candidate): L34, L38, L43, L46 — `def
+# q:Even 5` and its twins — are the static check error the run raised, so
+# the program never runs compiled; record.tsv's L178 went the same way.
+# fn-value.tsv left the ledger on 2026-09-26 (NUR190 closed): L317/L318,
+# `m.f z` and `m get 'f' z`, take the landing's island — the value and the
+# program from the word on run on the interpreter, which captures the word
+# — where the landing deferred.
+# Forty-four rows left on 2026-09-26, 51 -> 7 (the plain-error disposition,
+# the retired-node replay, the type-name reach). Forty were "<native>'s own
+# error, no defer site" (bignum L108–L131, edge-dispatch-3 L54/L55/L59,
+# edge-scalars-3 L68, flex L69–L72, fnpred, generics L56, module-fmt, -matrix,
+# -net, -query, -struct, record, resource L156, weak-flex): a HANDLER's plain
+# Go error, which the interpreter surfaces untouched and compiledRunError
+# wrapped as a compiler defect. It passes a plain error through now; the VM's
+# own errors all carry VMDefer. class.tsv L98–L101: the type-install twin
+# re-adopts the node the check pass's `undef Point` retired, so OpPushType
+# resolves it (ApplyBindTwin). convert-ideal.tsv L33 and edge-scalars-3.tsv
+# L218: the poly no-match plan's reach bound counts a builtin type-name word
+# as the one value it steps to, so `convert Integer <x>` raises the
+# interpreter's signature_error byte-identically (vm:poly-no-match×2 gone).
+# The last five non-NUR rows left on 2026-09-26, 7 -> 2. edge-quote-1.tsv L28
+# and edge-quote-3.tsv L56 (`quote [add 1 2] get 0`, a macroexpand
+# expansion's `get 1`): the interpreter RE-STEPS a word node read out of a
+# list; the check pass now does too (getIntKeyReturns hands the token back)
+# and the read emits nothing (compiler tryFoldReStepWord), so add's own
+# no-match compiles to its trap at the word's position. flex.tsv L228, L230,
+# L236 (`set` on a flex member, vm:poly-nout-drift): the compile pass records
+# a flex write into the receiver's shape (FlexMap keys, and a new FlexList
+# element join), so the member read carries the adopted FlexMap bound and
+# `set` commits the overload — and the one result — the runtime lands on.
+# The merge of main's #511 with the reverse-order NUR run (2026-09-26) left
+# no row: main's five above were the run's five, and the one main kept
+# (fn-value.tsv L317/L318, NUR190) the run had closed.
+# The merge of main's #513 (2026-09-26) keeps it empty: main's own 2 -> 0
+# there (NUR190's `/q` claim: L317/L318 run through the landing's sealed
+# claim target, LandingWord.Skip, entering the fn's `/q` overload over the
+# word as an atom) closed the two rows the run had closed with the landing's
+# island, and the merged landing tries main's claim first. A line comes back
+# only with the rows that moved it, named.

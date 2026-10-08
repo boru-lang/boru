@@ -833,7 +833,7 @@ built, and this note replaces them with what shipped:
 | a fat `DebugOps{MemStats, ForceGC, Controller}` | shipped `DebugOps` is `{Controller()}`; heap/gc took a different path |
 | `Debug.stack` needs a new Run-loop field write | shipped as `Registry.CurrentStack()` (the "current engine" variant) |
 
-`BORU-DX-REPORT-DEBUG.0.md` is a historical DX report and stays as-is.
+`legacy/BORU-DX-REPORT-DEBUG.0.ignore` is a historical DX report and stays as-is.
 
 
 ## 13. Open questions for the maintainer

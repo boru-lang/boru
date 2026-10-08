@@ -38,6 +38,7 @@ func LexTokens(src string) ([]LexToken, bool) {
 	j := SafeMake(jsonic.Options{})
 	t, _ := setupBaseTokens(j, loadDeclGrammar())
 	setupTemplateLiteralMatcher(j, t)
+	setupStringEscapeMatcher(j)
 	setupBigNumberMatcher(j, t)
 	setupDecimalUnderscoreMatcher(j, t)
 	setupMiniLitMatcher(j, t)

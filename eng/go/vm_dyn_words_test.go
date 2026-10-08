@@ -134,6 +134,28 @@ func TestCallDynFrameWordsArms(t *testing.T) {
 	if r.Defs.Depth("g") != 0 {
 		t.Error("the frame binding is popped on the error path too")
 	}
+	// A name the registry ALREADY binds to a fn — a module-scope def read
+	// bare inside the body (NUR156) — dispatches through that binding: no
+	// frame install (the depth stays the def's), and a no-match lists the
+	// binding's candidates ONCE, as the interpreter's own read does.
+	r.Defs.Push("g", inc)
+	st, handled, err = vc.callDynFrameWords(r, words, 0, 0, []core.Value{five, inc}, seam7Dbg, 0)
+	if err != nil || !handled || len(st) != 1 {
+		t.Fatalf("`5 g` through the registry's own binding: got %v %v %v", st, handled, err)
+	}
+	if n, _ := core.AsInteger(st[0]); n != 6 {
+		t.Errorf("the bound word collects its argument from the region: %v", st[0])
+	}
+	if r.Defs.Depth("g") != 1 {
+		t.Errorf("a bound name installs no frame binding: depth %d", r.Defs.Depth("g"))
+	}
+	_, handled, err = vc.callDynFrameWords(r, []compiler.DynFrameWord{{Name: "g", Pos: core.SrcPos{Row: 1, Col: 4}}}, 0, 0, []core.Value{inc}, seam7Dbg, 0)
+	if !handled || err == nil || !strings.Contains(err.Error(), "cannot call `g`") {
+		t.Errorf("a no-match through the bound name raises the named dispatch error: %v %v", handled, err)
+	} else if n := strings.Count(err.Error(), "candidate `g"); n != 1 {
+		t.Errorf("the bound name's candidates are listed once, got %d:\n%v", n, err)
+	}
+	r.Defs.Pop("g")
 }
 
 // TestClosureAsWordDeclines pins the bridge's arms: a FnDefInfo passes
@@ -159,7 +181,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 		t.Errorf("an unbridgeable closure at a word entry declines the words path: %v %v", handled, err)
 	}
 	// A unit that recorded no declared param contract (a token body) declines
-	// too: guessing Any would apply where the interpreter refuses.
+	// too: guessing Any would apply where the interpreter declines.
 	vc.p = &compiler.Program{Fns: []compiler.CompiledFn{{NArgs: 1}}}
 	if _, ok := vc.closureAsWord(r, cl); ok {
 		t.Error("a unit without its param contract declines")
@@ -186,5 +208,27 @@ func TestClosureAsWordDeclines(t *testing.T) {
 	}
 	if core.MatchFnSig(v, []core.Value{core.NewInteger(1), core.NewInteger(7)}) == nil {
 		t.Error("the declared params admit their inhabitants")
+	}
+}
+
+// TestLandedFnTakesArgs pins the guard's question (LandingBeneathGuard,
+// NUR286): a landed fn value with an argument-taking overload could be
+// applied over the values beneath it; a nullary one, or one whose only
+// argument-taking signature is a fallback, could not.
+func TestLandedFnTakesArgs(t *testing.T) {
+	fn := func(sigs ...core.Signature) core.Value {
+		return core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: sigs}}
+	}
+	unary := core.Signature{Args: []*core.Type{core.TInteger}}
+	fallback := unary
+	fallback.Fallback = true
+	if !landedFnTakesArgs(fn(core.Signature{}, unary)) {
+		t.Error("an argument-taking overload takes arguments")
+	}
+	if landedFnTakesArgs(fn(core.Signature{}, fallback)) {
+		t.Error("a nullary fn with a fallback takes none here")
+	}
+	if landedFnTakesArgs(core.NewInteger(1)) {
+		t.Error("a value that is no fn takes nothing")
 	}
 }

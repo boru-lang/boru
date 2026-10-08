@@ -9,7 +9,7 @@ import (
 // and the recorded StackForm.
 //
 // The recording side effect is exactly the architecture proposed by
-// design/boru-bytecode-report.0.md §1.2 ("the compiler is the
+// design/legacy/boru-bytecode-report.0.ignore §1.2 ("the compiler is the
 // checker with a recording side effect") — except we record on the
 // normal-execution path, not the carrier-only check path, so the
 // values stored in PushLit ops are the actual data the engine saw.
@@ -20,11 +20,23 @@ import (
 // clock-seeded top-level. The Recorder simply observes what the
 // engine does; if the program is non-deterministic, so is the
 // resulting StackForm.
+//
+// The run is the tree-walker's by design: the recorder observes the ENGINE's
+// operations — every literal push and every dispatch, in the order the
+// interpreter performs them — and the VM performs none of them (a compiled
+// unit pushes constants and calls natives by index). So the run reports its
+// interpreter entries attributed "stackform-record", as the debugger's
+// observation runs report "debug-observe": an observation of the
+// interpreter, not a program the compiled lane handed back to it. The
+// shrinker discards the run's own result (shrinkFailingProgram reads only
+// the form); a form's REPLAY (Eval) is a program run and stays bare.
 func Compile(reg *core.Registry, tokens []core.Value) (result []core.Value, form *StackForm, err error) {
 	form = &StackForm{}
 	rec := &recorder{form: form}
 	e := core.NewTop(reg)
 	e.SetRecorder(rec)
+	restore := reg.SetInterpAttribution("stackform-record")
+	defer restore()
 	result, err = e.Run(tokens)
 	return result, form, err
 }
@@ -50,7 +62,18 @@ func (r *recorder) OnPushLit(v core.Value) {
 }
 
 func (r *recorder) OnCall(name string, arity, returns int) {
-	r.form.Append(Call{Name: name, Arity: arity})
+	if name == "" {
+		// The engine reports a fn VALUE's application with no name
+		// (execFnDefSig's splice): an Apply, not a Call (NUR077).
+		r.form.Append(Apply{Arity: arity})
+		r.skipPushes += returns
+		return
+	}
+	// The `apply` word's Function overload returns the fn VALUE it was
+	// handed, for the engine to re-step — a dispatching result, which the
+	// engine reports as no result at all (recordDispatch). The re-step's
+	// own dispatch records next; mark this one so the pair declines.
+	r.form.Append(Call{Name: name, Arity: arity, ReStep: name == "apply" && returns == 0})
 	r.skipPushes += returns
 }
 

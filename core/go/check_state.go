@@ -9,6 +9,7 @@ package core
 // CheckState methods here beside their type.
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -25,6 +26,15 @@ import (
 //     check-mode footprint at a glance instead of scanning ten
 //     adjacent declarations.
 type CheckState struct {
+	// OptimisticOuter is the OUTERMOST dispatch the pass matched
+	// OPTIMISTICALLY — a carrier operand whose type is wider than its slot's
+	// (`each (mk) [dup]` over a declared-Any result) — while execMatch
+	// auto-evaluates its arguments and models its handler (NUR264). The run
+	// evaluates those arguments only after the dispatch MATCHES, so a
+	// top-level trap recorded under it is conditional: the compiled lane
+	// re-matches the word over its live window first, raising its no-match,
+	// and raises the trap only on a match. Nil outside such a dispatch.
+	OptimisticOuter *OuterMatch
 	// CurCallPos is a TRANSIENT scratch: carrierResults writes the current
 	// call's source position here immediately before invoking a sig's
 	// ReturnsFn, so a ReturnsFn that needs the call site (e.g. `make Array`
@@ -32,6 +42,25 @@ type CheckState struct {
 	// ReturnsFunc signature carries no pos. Overwritten on every dispatch; not
 	// persistent state. Zero = unknown (synthetic/top-level).
 	CurCallPos SrcPos
+	// CurCallWord is CurCallPos's twin for the dispatching word's NAME:
+	// written beside it, read by the user-fn ReturnsFn at ENTRY (before the
+	// callee's body analysis dispatches and overwrites both), and handed to
+	// RecordUserCall so Phase B can claim the region capture the interpreter
+	// offered under exactly this (word, position) — the name the dispatch
+	// RESOLVED to, at the token that dispatched it (for a namespaced `M.m 5`
+	// that is the member word `m` at the `M.m` token's position). Empty
+	// where no dispatch published one (a fn-value apply), which makes the
+	// claim miss and is the safe direction.
+	CurCallWord string
+	// BareCallPos is the position of the dispatch whose ReturnsFn is running
+	// when that dispatch sits in a BARE context (Engine.bareCallContext): the
+	// top-level program's own stream, no value beneath its operands inside
+	// the enclosing group and no token after them before the statement or
+	// group ends — so a word its handler hands back for the tape to re-step
+	// there meets exactly what a fresh sealed sub-engine would. Zero
+	// otherwise; a ReturnsFn compares it with CurCallPos (a `case` clause
+	// block that is a bare function word, NUR332).
+	BareCallPos SrcPos
 	// CurWordPos is the position of the WORD TOKEN whose dispatch handler is
 	// currently running — what `e.currentPos()` reads, written once per
 	// dispatch just before the handler is invoked.
@@ -51,6 +80,20 @@ type CheckState struct {
 	// it reads 1:10 (`add`) where the def is at 1:18. Using it rendered a
 	// confidently wrong caret, which is worse than none.
 	CurWordPos SrcPos
+	// CurLayout is the exact operand layout of the native dispatch whose
+	// results a compiling pass is modelling (DispatchLayout, NUR242), set
+	// around the modelling and restored after it, so a nested dispatch's
+	// layout never outlives it. A record reads it through LayoutFor, which
+	// answers only for the dispatch's own operand slice.
+	CurLayout *DispatchLayout
+	// CurFits is the unproven forward fits of the native dispatch whose
+	// results a compiling pass is modelling (forward_fit.go, NUR357), set
+	// around the modelling like CurLayout and read through FitsFor.
+	CurFits *forwardFitsPub
+	// CurWritten is how many leading operands of the dispatch whose results
+	// a compiling pass is modelling were written after its word (NUR362),
+	// set around the modelling like CurLayout and read through WrittenFor.
+	CurWritten *writtenPub
 	// Mode toggles static type-checking execution. When true, the
 	// engine runs the same dispatch/matching machinery but carries
 	// type-only Carrier values instead of concrete payloads, and
@@ -105,7 +148,7 @@ type CheckState struct {
 	// fails a real parse, so modelling would break bodies that work. The
 	// effect ledger
 	// (effects.go) is therefore left counting modelled writes too: over-
-	// counting only forgoes a safe interpreter fallback, while under-
+	// counting only forgoes a safe decline, while under-
 	// counting a real network send would duplicate it.
 	ModelEffects bool
 
@@ -119,6 +162,43 @@ type CheckState struct {
 	// currently running so that recursive calls can bail out with
 	// a placeholder instead of looping.
 	FnInflight map[string]bool
+
+	// SpecKeySuffix is the one-shot memo-key suffix a CALL-SITE SPECIALISED
+	// fn-unit compile hands its own body analysis (check's
+	// BuildFnBodyReturnsFn): the specialised args carry a constant Function
+	// where the generic unit's carry a Function carrier, and the two render
+	// the same arg-type key, so without the suffix the specialised analysis
+	// would hit — or overwrite — the generic unit's summary. AnalyseFnBody
+	// takes it at entry and clears it, so no nested analysis inherits it.
+	SpecKeySuffix string
+
+	// FnSpecCounts counts the call-site specialisations compiled per fn
+	// DEFINITION SITE (the fnQuotaKey of FnAnalysisCounts), so a recursion
+	// that passes a freshly constructed fn at every level cannot mint
+	// specialised units without end. Reset by Begin.
+	FnSpecCounts map[string]int
+
+	// SpecOff disables call-site specialisation for this pass, and SpecTried
+	// records that the pass compiled one. A specialisation is only ever a
+	// faster path beside its generic unit, so a compile pass that TRIED one
+	// and failed is re-run once with SpecOff set (lang's CompileCheck): a
+	// program that compiles without specialisation never loses compilation
+	// to it. Both reset by Begin; a driver sets SpecOff after it.
+	SpecOff   bool
+	SpecTried bool
+	// SpecDeclined records that the pass's specialised analysis found a
+	// shape a specialisation must not compile (a residual missing the
+	// declared returns, a call through the param its contract may refuse, a
+	// fn value capturing the param). It is not a compile failure of the
+	// program: CompileCheck discards the pass and re-runs it with SpecOff.
+	SpecDeclined bool
+
+	// SpecParamNames are the constant-fn params a call-site specialised
+	// body analysis has bound (check's runFnBodyOnce), live for that
+	// analysis only: a dispatch THROUGH one of them over an argument its
+	// contract may refuse at run time declines the specialisation (check's
+	// specParamCallMayRefuse).
+	SpecParamNames map[string]bool
 
 	// FnBodyChecked records which fn BODIES the construction-time check has
 	// already analysed in this pass, keyed by the body's first token's
@@ -162,6 +242,41 @@ type CheckState struct {
 	// undefined.
 	PendingFnBodies []PendingFnBody
 
+	// BehaveMakers are the types a `behave make` call this pass reached
+	// gives a constructor of their own (NUR076). The pass does not run
+	// `behave` — installing the capability's wrapper would put user bodies
+	// within reach of analysis-time rendering, comparison and construction —
+	// so the word's check-mode half notes the one slot analysis consults,
+	// and HasMaker reads it: `make` then skips the schema validation of a
+	// type whose own constructor builds it, from the `behave` call on, as it
+	// does for a Go-side Maker. Reset per pass.
+	BehaveMakers map[*Type]bool
+	// AnonFnBodies maps the reader identity of each ANONYMOUS fn value
+	// queued for its body check — its body's first-token position — to the
+	// last position the body covers (NoteAnonFnBody). A finding inside the
+	// span names the value as its reader by position, and the dynamic-scope
+	// rescue asks the call graph about it (AnonScopeReachable, NUR257).
+	AnonFnBodies map[SrcPos]SrcPos
+	// BehaveReaders are the fn values a `behave` call this pass reached
+	// installed as a type's capability (NoteBehaveReader): a frame that
+	// handles a value of the target may run one (NoteBehaveDispatch).
+	BehaveReaders []BehaveReader
+	// FnMemberReads maps a get-family read's result carrier to the fn value
+	// it resolved from a concrete container (NoteFnMemberRead): `behave`'s
+	// check-mode half sees through the carrier to it (NUR257).
+	FnMemberReads map[string]Value
+
+	// SlotBoundReads are the word tokens, by name and position, that a
+	// pattern's binding slot binds for the handler whose body holds them
+	// (NUR064): a service `add` over `{op:"create" text:String}` binds
+	// `text` for its handler's run, as a `receive` clause binds it for its
+	// body. The handler's body is analysed where the fn literal is built,
+	// before `add` names its slots, so the reads report undefined_word; the
+	// word's check-mode half notes them here and RescueForwardRefDiagnostics
+	// drops exactly those. Keyed by position as well as name, so no other
+	// read of the name is excused. Reset per pass.
+	SlotBoundReads map[SlotRead]bool
+
 	// FnNameInflight counts, per fn NAME, how many of its body analyses
 	// are on the stack. A recursive self-call with a DIFFERENT arg shape
 	// has a different FnInflight key, so it does not bail — it re-analyses
@@ -188,6 +303,22 @@ type CheckState struct {
 	// is a working program). Raised around doListReturnsFn's body run;
 	// consulted by CheckAddUniqueDiagnostic and emitIndexOOB.
 	CaughtBodyDepth int
+	// RaiseWatches is the stack of `do`-body raise watches (NUR134): a
+	// caught body's analysis pushes one at its own nesting level, and a
+	// DEFINITE failed dispatch at exactly that level (NoteDefiniteRaise)
+	// marks it hit — the body raises unconditionally at run time, so the
+	// `do` result is one Error, not the failed call's wreckage.
+	RaiseWatches []RaiseWatch
+
+	// ValuelessDoBodies counts the `do` bodies the pass modelled as a
+	// RAISE for want of a residual (doListReturnsFn: a non-empty body with
+	// an empty residual stands as an Error carrier). A body that simply nets
+	// nothing — `do [def x 5]` — runs to no value at all, and inside a
+	// branch fragment the lowering then works over a value that is not there
+	// (NUR222). Monotone: a caller compares it around a body run. The kept
+	// `if` condition does (basic's analyseCondFragment), declining a binding
+	// condition that holds one rather than compile it over that model.
+	ValuelessDoBodies int
 
 	// NestedBodyDepth, when > 0, marks analysis running inside ANY nested
 	// body region (RunCarrierBodyWithDefs — if/case branches, loop bodies,
@@ -213,6 +344,48 @@ type CheckState struct {
 	// design (leak fidelity), matching the runtime.
 	SpecBaselines []map[string]int
 
+	// SpecUndefCarriers maps a name to the ID of the carrier
+	// GeneraliseSpecUndef put in place of its binding's value after a
+	// speculative undef (spec_undef.go): the model keeps the binding, its
+	// value is unknown from that point, and a second undef of the same
+	// generalised binding re-mints nothing. SpecUndefGen counts the
+	// generalisations; the loop analysis re-rounds when it moves inside a
+	// round, so reads recorded before the undef in the same body are
+	// re-recorded against the carrier.
+	SpecUndefCarriers map[string]string
+	SpecUndefGen      int
+
+	// SpecFnNames is every fn family a branch arm the model cannot decide
+	// (SpecArmDepth) defined fresh or redefined in place (an overlapping
+	// overload — family L): the model keeps the fn for typing, but the
+	// binding is SPECULATIVE — bound or unbound, outer or shadow, by the
+	// arm's own run — so its dispatches route with a live lead and the
+	// join notes no root twin for the arm's install, which is placed at its
+	// site (spec_fn.go, carrier_join.go).
+	SpecFnNames map[string]bool
+	// SpecArmDepth, when > 0, marks analysis running inside a branch arm
+	// whose CONDITION the model cannot decide (the `if` native's dynamic
+	// path; a literal or folded condition takes the static path, whose
+	// arm the model knows to run or not). Only such an arm makes a fn def
+	// speculative: a loop or each body, a known arm and a `do` body keep
+	// the twin machinery that already answers them.
+	SpecArmDepth int
+	// UnsealedArmDepth, when > 0, marks analysis inside an `if` whose chosen
+	// body the interpreter re-steps at the `if` rather than runs as an arm —
+	// the clause-list form (basic's ifClauseRecord) — so its arms, and every
+	// arm nested in them, are captured UNSEALED: no arm trap is recorded
+	// there (EmitRecorder.ArmSealedBranchCapture, NUR332).
+	UnsealedArmDepth int
+	// ArmResidualSweep, when > 0, marks the model's end-of-run evaluation of
+	// a branch arm's or a loop body's residual containers (Engine.ArmBody):
+	// a list or map literal the body leaves on the stack, which the
+	// interpreter leaves PENDING — evaluated where it is consumed, or at the
+	// end of the enclosing run, or never (a code-body slot takes it raw:
+	// `each (if c [[dup]] [3]) [2 3]` runs `[dup]` as each's body). A raise
+	// the model meets there is no raise of the arm, so no arm trap is
+	// recorded under it (NUR352).
+	ArmResidualSweep int
+
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
 	// gated on its provenTrips arg AND a sentinel-free body). Unlike the
@@ -222,7 +395,7 @@ type CheckState struct {
 	// body is such a loop body and a per-iteration binding is definitely
 	// reached with its residual intact. The S5 first-value loop split
 	// (SplitLoopRegionBind) consults exactly that equality for the
-	// loop-carried variadic def (REFUSAL-CLOSURE S9.2a); a branch arm keeps
+	// loop-carried variadic def (COMPILE FAILURE-CLOSURE S9.2a); a branch arm keeps
 	// the decline (a conditionally-reached split would leak the
 	// analysis-only binding — PR #278 review P1-b), and a computed-count or
 	// break/continue-bearing loop body never stamps (a zero-trip run leaks
@@ -235,20 +408,24 @@ type CheckState struct {
 	// or a loop body (the `keep=false` bodies of runCarrierBodyDefsAdds,
 	// whose net def growth is snapshot-restored). It EXCLUDES `do`
 	// (keep=true — always executes, leaks its defs by design). The compiler
-	// consults it to refuse a fn REDEFINITION that clobbers an enclosing
+	// consults it to decline a fn REDEFINITION that clobbers an enclosing
 	// binding in-place (the overlap-removal drops the outer overload without
 	// growing depth, so the branch rollback can't restore it): compiled
 	// resolution would statically bake the conditional shadow while the
-	// interpreter keeps the outer fn when the branch is not taken. Refusing
-	// keeps compiled == interpreter (slow, not wrong).
+	// interpreter keeps the outer fn when the branch is not taken. Declining
+	// keeps compiled == interpreter, at the price of not compiling at all —
+	// a defect owed a fix, not a resting place.
 	CondBodyDepth int
 
 	// RolledBackBodyDepth, when > 0, marks analysis running inside a body
 	// whose def growth is TRUNCATED on the way out — every `keep=false` run
 	// of runCarrierBodyDefsAdds, which is the branch arms and loop bodies
-	// CondBodyDepth covers PLUS the condition/scrutinee fragments it exempts.
-	// The bind ledger consults it, and needs the wider set: what makes an
-	// install unrecordable is the truncation, not the conditionality.
+	// CondBodyDepth covers PLUS the rolled-back scrutinee run it exempts
+	// (RunCarrierCondBody — a `case` scrutinee's count run). A KEPT `if`
+	// condition (RunCarrierCondBodyKeepDefs, NUR212) is not truncated, so
+	// it does not raise this and its installs ledger like any straight-line
+	// one. The bind ledger consults it, and needs the wider set: what makes
+	// an install unrecordable is the truncation, not the conditionality.
 	//
 	// An install inside such a body is SPECULATIVE. Either the construct
 	// re-installs it afterwards through InstallJoinedDefs — in which case
@@ -270,13 +447,13 @@ type CheckState struct {
 	// declaration instead and don't count). AnalyseFnBody compares
 	// the counter around a body run to know whether its summary was
 	// computed under the weakest hypothesis and needs refinement
-	// before being cached (design/checker-accuracy-review.10.md A2).
+	// before being cached (design/legacy/checker-accuracy-review.10.ignore A2).
 	InflightBails int
 
 	// Emit is the bytecode recorder seam (EmitRecorder). A real
 	// *EmitState — installed by the compile entry points after Begin —
 	// turns the check pass into the bytecode recording pass (Stage 1 of
-	// design/boru-bytecode-plan.0.md): every dispatch through
+	// design/legacy/boru-bytecode-plan.0.ignore): every dispatch through
 	// carrierResults records a classified call event and Finalize
 	// linearises the trace into a Program. A plain check runs against
 	// the inactive no-op recorder (Begin installs it). READ through
@@ -300,14 +477,22 @@ type CheckState struct {
 	// gated to !Compiling. Set by the compile entry points after Begin.
 	Compiling bool
 
+	// ProgramEmit is the recorder BeginCompilePass installed: the one whose
+	// recording becomes the executed Program. Every other recorder a compile
+	// pass swaps into Emit is a throwaway — IsolateEmit's, or a probe a
+	// compile path arms to try a body and discard it (compileStoredFnUnit,
+	// tryReturnedClosure) — and nothing it records or declines decides
+	// anything for the program. Nil outside a compile pass.
+	ProgramEmit EmitRecorder
+
 	// FnCarrierReadSubstituted marks that this compile pass resolved at
 	// least one read of a name def-bound to a computed fn through the
 	// fn-carrier side table (stepWord's Stage 1 consult). Before Stage 1
 	// such a read raised a false undefined_word, so every program in this
-	// class refused with the SILENT check-diagnostics sentinel; when the
-	// pass ends in a refusal anyway, the compile entry points consult this
-	// flag to keep that silent interpreter fallback — a working program
-	// must not trade its quiet slow path for a loud compile_refused just
+	// class declined with the SILENT check-diagnostics sentinel; when the
+	// pass ends in a compile failure anyway, the compile entry points consult this
+	// flag to keep that silent interpreter re-run — a working program
+	// must not trade its quiet slow path for a loud compile_failed just
 	// because the diagnostic became honest. Reset by Begin.
 	FnCarrierReadSubstituted bool
 
@@ -318,11 +503,42 @@ type CheckState struct {
 	// compiler's residual lowering, which must not lower a placed lead as
 	// an apply (`(m dot f) 5` is two values; `m.f 5` still applies).
 	ParenPlacedFnIDs map[string]bool
+	// ReachSurvivorFnIDs records the analysis-pass fn-typed CARRIERS a
+	// REACH-lowered group's collapse left as its lone survivor (`M.ff` is
+	// `( M dot ff )`; the module fn's call inside it returned a Function
+	// carrier). A reach group never parks — its collapse re-steps the
+	// survivor over the values beneath, whatever produced it — so the
+	// compiler's residual lowering must not treat such a call result as
+	// PLACED data (callResultPlaced): `5 M.ff` over `def ff fn
+	// [[][Function][inc/v]]` is 6 on the interpreter and seated `[5 fn
+	// inc]` compiled (NUR260). Recorded at the collapse (tagReachCollapsedFn),
+	// keyed by value ID like ParenPlacedFnIDs.
+	ReachSurvivorFnIDs map[string]bool
+	// ForceFnReanalysis makes AnalyseFnBody run a body past a cached summary
+	// for its key: the end-of-pass drain's declaration-shaped run of an
+	// exported module fn (NUR128) comes AFTER the pass's call-shape runs of
+	// the same fn, whose summaries would otherwise answer for it — and only
+	// the declaration-shaped run reports a property of the code (a dead
+	// branch, suppressed under a call shape). Set around that run only.
+	ForceFnReanalysis bool
+	// RootDefSites records, per name, the positions of its ROOT-level defs
+	// in program order (installDef, outside any fn body's analysis): the
+	// late-binding hint's evidence (EmitLateBindingHints, NUR097) — a fn
+	// body reads a module-scope name that a LATER def in the same file
+	// rebinds, and module names resolve late.
+	RootDefSites map[string][]SrcPos
+	// FnReads maps a named fn under analysis to every name its body reads
+	// (recordUse while FnNameStack is non-empty) — the late-binding hint's
+	// other half (NUR097): a read of a name that RootDefSites shows rebound
+	// after the fn's own def.
+	FnReads map[string]map[string]bool
 
 	// ParenReSteppedFnIDs records the opposite fact, and the two together are
 	// the paren re-step rule (design/PAREN-RESTEP-RULE.0.md): the carriers an
 	// enclosing paren's rewind LANDED ON and will therefore re-step into a
-	// CALL. A paren with more than one survivor declines the park, so the
+	// CALL — and, since 2026-09-23, the carriers a `word` splice's expansion
+	// re-steps against the live stack, the same fact by another route
+	// (Engine.markReStepped). A paren with more than one survivor declines the park, so the
 	// pointer comes back onto the leading value — `((mk 1) 2)` is 3 for
 	// exactly that reason, while its unwrapped twin `(mk 1) 2` is
 	// `fn (Integer) 2` because no rewind ever reaches it.
@@ -330,10 +546,58 @@ type CheckState struct {
 	// Recorded at the collapse, for the same reason ParenPlacedFnIDs is: the
 	// residual lowering sees the identical `[carrier, 2]` for both spellings
 	// and cannot recover which one it has. Without this the compiler must
-	// either apply both (miscompiling the placed one) or refuse both (losing
+	// either apply both (miscompiling the placed one) or decline both (losing
 	// the applied one) — it did the first until 2026-08-27 and the second
 	// briefly after, and neither is right. Reset by Begin.
 	ParenReSteppedFnIDs map[string]bool
+
+	// WordReadFnIDs records the carriers a BARE WORD READ of a fn-typed
+	// binding pushed (Engine.noteWordRead's own gate: a `comp:Function`
+	// param read as `comp`). The interpreter never substitutes a binding
+	// holding a fn — the read IS a dispatch, at the word — so a paren such
+	// a read ends (`(5 3 comp)`) is a call over the values inside it
+	// whatever follows the close, where a fn VALUE ending a paren (a
+	// parked call result, a `/v` read, a lambda literal) is re-stepped at
+	// the collapse and forward-collects past the close first (NUR184).
+	// Only the collapse asks, and by then both are one fn-typed carrier on
+	// the tape. Keyed by value ID like the two sets above, so a binding
+	// read both bare and by `/v` in one pass reads as the word (the
+	// recorder's NoteValRead has the same limit). Reset by Begin.
+	WordReadFnIDs map[string]bool
+
+	// ForwardLeftoverFnIDs records the fn-valued survivors a paren under a
+	// pending forward LEFT to that collection (stepCloseParen's trailing
+	// arm, NUR184): the group's survivors are the collecting word's
+	// candidates in written order, and a fn value the word does not take
+	// re-steps right after the word fires — over the word's result and the
+	// values beneath (`10 mul (2 (mk 1))` is 21), with the tokens after the
+	// group as its forward candidates — never over a LATER statement's
+	// values. Such a value is marked re-stepped too (ParenReSteppedFnIDs:
+	// the trailing lowering applies it over what lies beneath), and this
+	// set is what stops the residual's LEAD arm applying it over the values
+	// above it, which came later: `def r (2 (mk 1)) end r` compiled 3 for
+	// the interpreter's `[fn 2]` (def takes the 2, the closure re-steps
+	// over nothing and parks). Reset by Begin.
+	ForwardLeftoverFnIDs map[string]bool
+
+	// TrailingDeferredFnIDs records the fn values a paren's collapse left
+	// to the rewind's re-step because the token after the close is one the
+	// re-stepped value would forward-collect (stepCloseParen's
+	// trailingFnCollectsPastClose arm): a group or a value word, whose value
+	// exists only once it runs (NUR344). Such a value that then matches
+	// nothing parks where it lands — data, as a paren-placed value is — and
+	// the park records it in ParenPlacedFnIDs for the residual lowering
+	// (`("s" lam/v) ("x")` is `[s fn x]`). Reset by Begin.
+	TrailingDeferredFnIDs map[string]bool
+	// StoodAsideLandingIDs records the values the step loop re-stepped
+	// where they landed with a value after them its forward phase may
+	// collect, where no landing was noted (check's noteReStepLanding: the
+	// residual arms model `1 m.f 7`). A later dispatch that takes such a
+	// value off the stack beside a value written after it ran over the fn
+	// the interpreter re-stepped first — `1 m.f 7 add` is 9 — so the
+	// dispatch notes the value's landing then (Engine.noteCollectedLandings,
+	// NUR349). Keyed by value ID. Reset by Begin.
+	StoodAsideLandingIDs map[string]bool
 
 	// FnAnalysisCounts tracks distinct body analyses (memo misses)
 	// per fn DEFINITION SITE (fnQuotaKey: scope + name + body position,
@@ -344,7 +608,7 @@ type CheckState struct {
 	// declaration or dynamic(Any) — and emits ONE analysis_truncated
 	// diagnostic naming the fn, so heavy polymorphic use degrades loudly
 	// instead of silently eating the whole step budget
-	// (design/checker-accuracy-review.10.md A9).
+	// (design/legacy/checker-accuracy-review.10.ignore A9).
 	FnAnalysisCounts map[string]int
 
 	// StepCount is the running total of engine steps consumed by
@@ -383,8 +647,8 @@ type CheckState struct {
 	// other (a less-specific overload that forward-collects instead of
 	// grabbing the carrier from the stack). The two splits produce
 	// different result stacks, so the bytecode compiler reads this after
-	// the check pass and refuses — the program is uncompilable and must
-	// fall back to the interpreter. Dispatch itself is unchanged; this is
+	// the check pass and declines — the program is uncompilable and must
+	// not compile. Dispatch itself is unchanged; this is
 	// a compile-time advisory only.
 	AmbiguousGradualSplit bool
 
@@ -393,6 +657,11 @@ type CheckState struct {
 	// word. Populated by RecordCheckDef; consulted at end of run
 	// to emit unused_def warnings.
 	DefsInstalled map[string]SrcPos
+
+	// DefsDone counts the defs the check run completed (RecordDef): an
+	// engine that sees it move tells the recorder the stack it steps its
+	// next token over (Engine.noteDefStack, NUR336).
+	DefsDone int
 
 	// DefsUsed records names looked up via Registry.Lookup or
 	// simple-value substitution in check mode. Used to filter out
@@ -449,7 +718,7 @@ type CheckState struct {
 	// reads can produce a typed carrier rather than falling back to
 	// Any. Shared across the entire check run — not keyed by store
 	// identity. It remains the COMPATIBILITY FALLBACK for any store
-	// the shape minting misses (design/checker-precision-fronts.0.md
+	// the shape minting misses (design/legacy/checker-precision-fronts.0.ignore
 	// §2 stage 3 retires it only when every reader is store-shaped);
 	// store-identity-keyed typing lives on StoreShapeInfo carriers
 	// (store_shape.go).
@@ -510,7 +779,7 @@ type CheckState struct {
 	// 0 do]`) would recurse through the element-read producer
 	// unboundedly, so the producer declines past depth 1 — nested code
 	// stays dynamic(Any), a stage-2/3 precision
-	// (design/checker-precision-fronts.0.md §1).
+	// (design/legacy/checker-precision-fronts.0.ignore §1).
 	CodeEffectDepth int
 
 	// FnBodyDepth counts the AnalyseFnBody nesting around the
@@ -541,7 +810,7 @@ type CheckState struct {
 	// a frame local only when every param is NAMED; with an unnamed param the
 	// input stays live on the body stack and folding args.N strands it
 	// (a compile≠interpret divergence — design/EDGE-SPEC-FINDINGS.0.md §4), so
-	// specialWordResults refuses the program in compile mode when this is set.
+	// specialWordResults declines the program in compile mode when this is set.
 	ArgsFrameUnnamed bool
 
 	// FnNameStack is the stack of NAMED fn bodies currently under analysis
@@ -642,9 +911,9 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	"integer_overflow": SeverityError,
 	"arith_error":      SeverityError,
 	// `convert` of a PROVEN-Float source into a Big target — the one
-	// type-decidable convert refusal (native_type.go convertScalarReturns).
+	// type-decidable convert compile failure (native_type.go convertScalarReturns).
 	"convert_error": SeverityError,
-	// A boru:net address / TLS-option refusal decided from the call's OWN
+	// A boru:net address / TLS-option compile failure decided from the call's OWN
 	// literal options — a missing tcp:, a port outside 0–65535, a
 	// client-only TLS key on a listener (net_socket.go parseNetAddr,
 	// tlsopts.go). The mirror runs the SAME validator the handler runs and
@@ -654,18 +923,18 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// read as a note.
 	"net_error":   SeverityError,
 	"fetch_error": SeverityError,
-	// boru:io refusals decided from the call's OWN literal arguments —
+	// boru:io compile failures decided from the call's OWN literal arguments —
 	// an exit code outside 0..125, an unknown {mode:} on open. Each
 	// mirror runs the handler's own pure prefix over deep-concrete
 	// operands, so the flagged program raises this code at run time
 	// before touching a file or the process.
 	"exit_error": SeverityError,
 	"open_error": SeverityError,
-	// write's ENCODING refusals, mirrored from encodeEnc — doWrite's own
+	// write's ENCODING compile failures, mirrored from encodeEnc — doWrite's own
 	// encoder, pure in (content, enc): an unknown encoding name, or
 	// content carrying a character the encoding cannot represent.
 	"write_error": SeverityError,
-	// boru:vault ARGUMENT refusals, mirrored from the words' own pure
+	// boru:vault ARGUMENT compile failures, mirrored from the words' own pure
 	// prefixes: vaultCollectParams (a missing / empty / non-String
 	// required option key, a non-String scan path element) and identity's
 	// alias check. Both run BEFORE the backend lookup — the headless
@@ -673,11 +942,11 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// code at run time whether or not a vault backend is registered.
 	"vault_usage": SeverityError,
 	"vault_error": SeverityError,
-	// boru:tui ARGUMENT refusals, on the same footing: open's option
+	// boru:tui ARGUMENT compile failures, on the same footing: open's option
 	// parse, and the app-config / transport-option parses run and serve
 	// perform BEFORE the terminal is opened or the listener bound
 	// (module-tui.tsv). `unsupported` is the §11.7 alt-screen reservation
-	// — an accepted key whose false spelling is refused loudly.
+	// — an accepted key whose false spelling is declined loudly.
 	"tui_error":   SeverityError,
 	"unsupported": SeverityError,
 	// boru:time-util await's unknown {mode:}, mirrored from doAwait's own
@@ -711,7 +980,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	"parse_bad_matcher": SeverityError,
 	"parse_bad_abnf":    SeverityError,
 	"parse_bad_rule":    SeverityError,
-	// Generics (design/GENERICS.10.md §9.2).
+	// Generics (design/legacy/GENERICS.10.ignore §9.2).
 	"constraint_violation": SeverityError,
 	"unbound_param":        SeverityError,
 	"arity_mismatch":       SeverityError,
@@ -720,17 +989,27 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// the table is the single source of truth; TestCheckSeverityTableComplete
 	// gates that every emitted code has an entry).
 	"unused_def": SeverityWarning,
+	// A fn body reads a module-scope name a LATER root def rebinds — the
+	// closure computes with the later binding (NUR097, Allowed with this
+	// hint as the mitigation).
+	"late_binding": SeverityInfo,
 	// §5.1's silent stranding: a capitalised `def` given a fn body binds a
 	// TYPE, so the name in call position never calls — the lattice node and
 	// the operands written after it are simply left on the residual. WARNING,
 	// not error: the program runs and exits 0, so this is a suspicion about
 	// what the author meant, not a guaranteed runtime failure (the same line
 	// index_out_of_range was promoted across, in the other direction).
-	"stranded_type_call":    SeverityWarning,
-	"unreachable_branch":    SeverityWarning,
-	"record_shape_mismatch": SeverityError,
-	"fold_error":            SeverityError,
-	"foldaxis_error":        SeverityError, // the empty-lane mirror (staticEmptyLaneDetail), fold_error's one-rank-down twin
+	"stranded_type_call": SeverityWarning,
+	// A top-level import the host's policy refuses (NUR079): the run raises
+	// the coded refusal right at the import, so the check reports the
+	// guaranteed error it mirrors — never an opaque module whose names then
+	// read as undefined.
+	"permission_denied":        SeverityError,
+	"capability_not_installed": SeverityError,
+	"unreachable_branch":       SeverityWarning,
+	"record_shape_mismatch":    SeverityError,
+	"fold_error":               SeverityError,
+	"foldaxis_error":           SeverityError, // the empty-lane mirror (staticEmptyLaneDetail), fold_error's one-rank-down twin
 	// A typed Patrun (`patrun T`) whose `add` stores a CONCRETE value the
 	// checker can prove is not a T (native_patrun.go — the static mirror of
 	// the runtime add guard).
@@ -767,7 +1046,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// exactly when the type disjunction is fully met — so the finding
 	// fires only where a genuinely uncoverable value exists. NOT a
 	// RuntimeMirror: no-match is not a runtime error, so the compile
-	// pipeline refuses on it like any other model-level error.
+	// pipeline declines on it like any other model-level error.
 	"case_not_exhaustive": SeverityError,
 	// The advisory duals of the same coverage computation (info,
 	// non-gating, per the redundant_guard precedent): a trailing default
@@ -826,12 +1105,12 @@ type CheckDiagnostic struct {
 	FnName   string        `json:"fnName,omitempty"`   // enclosing named fn for an FnBody diagnostic — the reader for the dynamic-scope rescue
 
 	// RuntimeMirror marks a diagnostic that mirrors a GUARANTEED runtime
-	// error over exactly-known operands (design/CHECKER-COMPLETION.0.md):
+	// error over exactly-known operands (design/legacy/CHECKER-COMPLETION.0.ignore):
 	// the finding gates `boru check`, but the recording MODEL underneath it
 	// is exact — the program compiles and raises the identical error at
 	// runtime (a trap, the VM RET check, the same pure handler) — so the
-	// compile pipeline does NOT refuse on it (CompileCheck / Vm.compile
-	// skip mirrors in their error-diagnostic refusal). Contrast a
+	// compile pipeline does NOT decline on it (CompileCheck / Vm.compile
+	// skip mirrors in their error-diagnostic compile failure). Contrast a
 	// model-undermining diagnostic (undefined_word, no_signature), where
 	// dispatch did not resolve and the recording is a guess.
 	RuntimeMirror bool `json:"runtimeMirror,omitempty"`
@@ -861,7 +1140,7 @@ type CheckDiagnostic struct {
 // NewCheckState builds the registry's initial analysis state: analysis
 // off, the step budget at its "unset" sentinel (resolved to the project
 // default at run time), and the inactive no-op recorder standing in for
-// the emit surface (design/CHECKER-COMPLETION.0.md). Registry
+// the emit surface (design/legacy/CHECKER-COMPLETION.0.ignore). Registry
 // construction calls this so the check piece owns its own zero state.
 func NewCheckState() *CheckState {
 	return &CheckState{StepBudget: -1, Emit: TheInactiveEmit}
@@ -891,7 +1170,7 @@ type PendingFnBody struct {
 // snapshot (and a restore cannot bleed back). Emit is copied by pointer
 // (the recorder is shared, not snapshotted). Used by the predicate /
 // compile sandboxes, which since the Check-pointer conversion
-// (design/module-fn-checkstate-ownership.1.md §3.2) must snapshot the
+// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2) must snapshot the
 // POINTEE rather than alias it.
 func (c *CheckState) Clone() *CheckState {
 	if c == nil {
@@ -906,15 +1185,41 @@ func (c *CheckState) Clone() *CheckState {
 	cp.BindLedger = append([]BindTransition(nil), c.BindLedger...)
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
+	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
+	if c.RaiseWatches != nil {
+		cp.RaiseWatches = make([]RaiseWatch, len(c.RaiseWatches))
+		for i, w := range c.RaiseWatches {
+			w.Snap = cloneIntMap(w.Snap)
+			cp.RaiseWatches[i] = w
+		}
+	}
+	if c.RootDefSites != nil {
+		cp.RootDefSites = make(map[string][]SrcPos, len(c.RootDefSites))
+		for k, v := range c.RootDefSites {
+			cp.RootDefSites[k] = append([]SrcPos(nil), v...)
+		}
+	}
+	cp.FnReads = cloneNestedSet(c.FnReads)
 	cp.ParenReSteppedFnIDs = cloneMap(c.ParenReSteppedFnIDs)
+	cp.WordReadFnIDs = cloneMap(c.WordReadFnIDs)
+	cp.ForwardLeftoverFnIDs = cloneMap(c.ForwardLeftoverFnIDs)
+	cp.TrailingDeferredFnIDs = cloneMap(c.TrailingDeferredFnIDs)
+	cp.StoodAsideLandingIDs = cloneMap(c.StoodAsideLandingIDs)
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
+	cp.BehaveMakers = cloneMap(c.BehaveMakers)
+	cp.AnonFnBodies = cloneMap(c.AnonFnBodies)
+	cp.BehaveReaders = append([]BehaveReader(nil), c.BehaveReaders...)
+	cp.FnMemberReads = cloneMap(c.FnMemberReads)
+	cp.SlotBoundReads = cloneMap(c.SlotBoundReads)
 	if c.PendingFnBodies != nil {
 		cp.PendingFnBodies = append([]PendingFnBody(nil), c.PendingFnBodies...)
 	}
 	cp.FnNameInflight = cloneMap(c.FnNameInflight)
 	cp.FnAnalysisCounts = cloneMap(c.FnAnalysisCounts)
+	cp.FnSpecCounts = cloneMap(c.FnSpecCounts)
+	cp.SpecParamNames = cloneMap(c.SpecParamNames)
 	cp.DefsInstalled = cloneMap(c.DefsInstalled)
 	cp.DefsUsed = cloneMap(c.DefsUsed)
 	cp.ContextTypes = cloneMap(c.ContextTypes)
@@ -923,6 +1228,9 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnShapes = cloneMap(c.FnShapes)
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
+	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
+	cp.SpecFnNames = cloneMap(c.SpecFnNames)
+	cp.SpecArmDepth = c.SpecArmDepth
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
 	}
@@ -980,6 +1288,7 @@ func (c *CheckState) Begin() func() {
 	c.SuppressedRuntimeError = false
 	c.AmbiguousGradualSplit = false
 	c.DefsInstalled = nil
+	c.DefsDone = 0
 	c.BindLedger = nil
 	c.PassEndCleanups = nil
 	c.PendingBindPos = SrcPos{}
@@ -996,18 +1305,38 @@ func (c *CheckState) Begin() func() {
 	c.FnNameInflight = nil
 	c.SuppressBodyErrors = 0
 	c.FnAnalysisCounts = nil
+	c.FnSpecCounts = nil
+	c.SpecKeySuffix = ""
+	c.SpecOff = false
+	c.SpecTried = false
+	c.SpecDeclined = false
+	c.SpecParamNames = nil
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
+	c.BehaveMakers = nil
+	c.AnonFnBodies = nil
+	c.BehaveReaders = nil
+	c.FnMemberReads = nil
+	c.SlotBoundReads = nil
 	c.Emit = TheInactiveEmit
+	c.ProgramEmit = nil
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
 	c.CallShapeDepth = 0
 	c.CaughtBodyDepth = 0
+	c.RaiseWatches = nil
+	c.ValuelessDoBodies = 0
 	c.NestedBodyDepth = 0
 	c.CondBodyDepth = 0
 	c.RolledBackBodyDepth = 0
 	c.LoopBodyDepth = 0
 	c.SpecBaselines = nil
+	c.SpecUndefCarriers = nil
+	c.SpecUndefGen = 0
+	c.SpecFnNames = nil
+	c.SpecArmDepth = 0
+	c.UnsealedArmDepth = 0
+	c.ArmResidualSweep = 0
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is
@@ -1016,7 +1345,15 @@ func (c *CheckState) Begin() func() {
 	c.Compiling = false
 	c.FnCarrierReadSubstituted = false
 	c.ParenPlacedFnIDs = nil
+	c.ReachSurvivorFnIDs = nil
+	c.ForceFnReanalysis = false
+	c.RootDefSites = nil
+	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
+	c.WordReadFnIDs = nil
+	c.ForwardLeftoverFnIDs = nil
+	c.TrailingDeferredFnIDs = nil
+	c.StoodAsideLandingIDs = nil
 	// Arm process-wide ID minting for the pass's lifetime: the emit
 	// recorder keys provenance on Value.IDs minted at creation, so every
 	// value created while ANY pass is live must carry one (see
@@ -1053,6 +1390,39 @@ func (c *CheckState) AddPassEndCleanup(fn func()) {
 		return
 	}
 	c.PassEndCleanups = append(c.PassEndCleanups, fn)
+}
+
+// NoteBehaveMaker records that a `behave make` call this pass reached gives
+// t a constructor of its own (BehaveMakers). A no-op outside check mode — at
+// run time the call installs the real capability.
+func (c *CheckState) NoteBehaveMaker(t *Type) {
+	if c == nil || !c.Mode || t == nil {
+		return
+	}
+	if c.BehaveMakers == nil {
+		c.BehaveMakers = map[*Type]bool{}
+	}
+	c.BehaveMakers[t] = true
+}
+
+// SlotRead names one word token a binding slot binds: the slot's name and
+// the token's source position (SlotBoundReads).
+type SlotRead struct {
+	Name     string
+	Row, Col int
+}
+
+// NoteSlotBoundRead records that the word token at pos reads a name a
+// binding slot binds for the code that holds it (SlotBoundReads). A no-op
+// outside check mode.
+func (c *CheckState) NoteSlotBoundRead(name string, pos SrcPos) {
+	if c == nil || !c.Mode || name == "" {
+		return
+	}
+	if c.SlotBoundReads == nil {
+		c.SlotBoundReads = map[SlotRead]bool{}
+	}
+	c.SlotBoundReads[SlotRead{Name: name, Row: pos.Row, Col: pos.Col}] = true
 }
 
 // SuppressBindLedger marks a snapshot/restore-truncated evaluation region:
@@ -1246,8 +1616,21 @@ func (c *CheckState) IsolateFnAnalysis() func() {
 // RecordDef remembers a name the user bound during a check run so
 // end-of-run analysis can flag defs that were never referenced. Names
 // starting with "_" (engine internals) are ignored.
+// defsDone is the completed-def count of an active check run (DefsDone), 0
+// on any other.
+func (c *CheckState) defsDone() int {
+	if !c.IsActive() {
+		return 0
+	}
+	return c.DefsDone
+}
+
 func (c *CheckState) RecordDef(name string, pos SrcPos) {
-	if !c.IsActive() || name == "" || strings.HasPrefix(name, "_") {
+	if !c.IsActive() {
+		return
+	}
+	c.DefsDone++
+	if name == "" || strings.HasPrefix(name, "_") {
 		return
 	}
 	if c.DefsInstalled == nil {
@@ -1288,6 +1671,16 @@ func (c *CheckState) recordUse(name string) {
 		c.DefsUsed = map[string]bool{}
 	}
 	c.DefsUsed[name] = true
+	if n := len(c.FnNameStack); n > 0 {
+		fn := c.FnNameStack[n-1]
+		if c.FnReads == nil {
+			c.FnReads = map[string]map[string]bool{}
+		}
+		if c.FnReads[fn] == nil {
+			c.FnReads[fn] = map[string]bool{}
+		}
+		c.FnReads[fn][name] = true
+	}
 }
 
 // EmitUnusedDefDiagnostics walks the set of defs installed during a
@@ -1309,6 +1702,142 @@ func (c *CheckState) EmitUnusedDefDiagnostics() {
 			Row:    pos.Row,
 			Col:    pos.Col,
 		})
+	}
+}
+
+// NoteRootDefSite records a root-level def of name at pos (NUR097).
+func (c *CheckState) NoteRootDefSite(name string, pos SrcPos) {
+	if c == nil || name == "" || pos.Row == 0 {
+		return
+	}
+	if c.RootDefSites == nil {
+		c.RootDefSites = map[string][]SrcPos{}
+	}
+	c.RootDefSites[name] = append(c.RootDefSites[name], pos)
+}
+
+// cloneIntMap deep-copies a name → depth map (nil stays nil).
+func cloneIntMap(m map[string]int) map[string]int {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// RaiseWatch is one `do`-body raise watch (CheckState.RaiseWatches): the
+// nesting and fn-body depths the body's own statements analyse at, and
+// whether a definite raise happened there.
+type RaiseWatch struct {
+	Nested, Fn int
+	Hit        bool
+	// Snap is the def-stack depths at the FIRST hit: the defs the body
+	// makes after it never happen at run time (PopRaiseWatch's caller rolls
+	// them back).
+	Snap map[string]int
+}
+
+// PushRaiseWatch opens a raise watch for a body about to be analysed one
+// nesting level below the current one.
+func (c *CheckState) PushRaiseWatch() {
+	if c == nil {
+		return
+	}
+	c.RaiseWatches = append(c.RaiseWatches, RaiseWatch{Nested: c.NestedBodyDepth + 1, Fn: c.FnBodyDepth})
+}
+
+// PopRaiseWatch closes the innermost raise watch and reports whether the
+// body raised unconditionally at its own level, with the def-stack depths
+// at that raise.
+func (c *CheckState) PopRaiseWatch() (bool, map[string]int) {
+	if c == nil || len(c.RaiseWatches) == 0 {
+		return false, nil
+	}
+	w := c.RaiseWatches[len(c.RaiseWatches)-1]
+	c.RaiseWatches = c.RaiseWatches[:len(c.RaiseWatches)-1]
+	return w.Hit, w.Snap
+}
+
+// NoteDefiniteRaise marks the innermost raise watch hit when the analysis
+// sits at that watch's own level — a raise nested in a branch arm, a loop
+// body or a called fn's body is conditional or someone else's, and does
+// not count. snap is taken only for the first hit.
+func (c *CheckState) NoteDefiniteRaise(snap func() map[string]int) {
+	if c == nil || len(c.RaiseWatches) == 0 {
+		return
+	}
+	w := &c.RaiseWatches[len(c.RaiseWatches)-1]
+	if w.Hit || c.NestedBodyDepth != w.Nested || c.FnBodyDepth != w.Fn {
+		return
+	}
+	w.Hit = true
+	w.Snap = snap()
+}
+
+// EmitLateBindingHints emits the late-binding hint (NUR097, info): a named
+// fn whose body dispatches a module-scope name that a LATER root def of
+// the same file rebinds. A parameter or a body-local def is captured; a
+// module-scope name resolves late through the def stack, so the later def
+// changes what the existing closure computes — allowed (top-level
+// liveness is what makes redefinition and the REPL coherent), and worth
+// saying where the source makes it visible. Called at the end of the
+// pass, beside EmitUnusedDefDiagnostics.
+func (c *CheckState) EmitLateBindingHints() {
+	if c == nil || len(c.FnReads) == 0 || len(c.RootDefSites) == 0 {
+		return
+	}
+	fns := make([]string, 0, len(c.FnReads))
+	for fn := range c.FnReads {
+		fns = append(fns, fn)
+	}
+	sort.Strings(fns)
+	for _, fn := range fns {
+		fnSites := c.RootDefSites[fn]
+		if len(fnSites) == 0 {
+			continue
+		}
+		fnPos := fnSites[len(fnSites)-1]
+		names := make([]string, 0, len(c.FnReads[fn]))
+		for name := range c.FnReads[fn] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if name == fn {
+				continue
+			}
+			// A RE-binding: the name was bound by a root def BEFORE the fn
+			// (the binding its body was analysed against) and again after.
+			// A name first defined later is an ordinary forward reference —
+			// the body resolves it at call time, as every fn body does — and
+			// hints nothing.
+			boundBefore := false
+			for _, site := range c.RootDefSites[name] {
+				if site.Row < fnPos.Row || (site.Row == fnPos.Row && site.Col < fnPos.Col) {
+					boundBefore = true
+					break
+				}
+			}
+			if !boundBefore {
+				continue
+			}
+			for _, site := range c.RootDefSites[name] {
+				if site.Row < fnPos.Row || (site.Row == fnPos.Row && site.Col <= fnPos.Col) {
+					continue
+				}
+				c.AddDiagnostic(CheckDiagnostic{
+					Code:   "late_binding",
+					Detail: "`" + fn + "` reads `" + name + "`, re-def'ed at line " + strconv.Itoa(site.Row) + "; module names resolve late — the fn computes with the later binding (route the name through a parameter to freeze it)",
+					Word:   fn,
+					Row:    site.Row,
+					Col:    site.Col,
+				})
+				break
+			}
+		}
 	}
 }
 
@@ -1446,15 +1975,15 @@ func (c *CheckState) LookupContextType(key string) (Value, bool) {
 //
 //   - only a NAMED trivial-delegation wrapper carrying a foreign
 //     sub-registry qualifies (the shaped-instance-method class — a plain
-//     user fn stored in a map keeps today's refusal paths, so a capturing
-//     method fn still refuses);
+//     user fn stored in a map keeps today's compile failure paths, so a capturing
+//     method fn still declines);
 //   - a member with a GENUINE 0-arg overload — the miscompile-E
 //     auto-dispatch family (Span.finish, Rand.bool) — is now ANNOTATED
 //     rather than excluded: its landing is modelled as an arity-0
 //     OpCallDynMethod (shapedMethodApplyWindow's all-0-arg path), the
-//     read-guard refusal is skipped for the annotated read
+//     read-guard compile failure is skipped for the annotated read
 //     (EmitState.NoteShapedRead), and a landing the model cannot claim
-//     REFUSES outright (tryShapedMethodDispatch's guard-owned decline)
+//     DECLINES outright (tryShapedMethodDispatch's guard-owned decline)
 //     so the guard is re-homed, never weakened;
 //   - macros stay data (applied only by name).
 func (c *CheckState) NoteMethodShape(out, member Value) {
@@ -1462,7 +1991,7 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 		return
 	}
 	fd, ok := member.Data.(FnDefInfo)
-	if !ok || fd.Registry == nil || fd.Name == "" || fd.Macro {
+	if !ok || !fd.HasHome() || fd.Name == "" || fd.Macro {
 		return
 	}
 	if !IsDelegationFnDef(fd) {
@@ -1473,8 +2002,8 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 	}
 	c.MethodShapes[out.ID] = member
 	// Mirror the annotation into the recorder so the get-family read
-	// guards (recordCallRefusal / RecordPolyCall) can skip their
-	// auto-dispatch refusal for a read the landing model owns.
+	// guards (recordCallCompileFailure / RecordPolyCall) can skip their
+	// auto-dispatch compile failure for a read the landing model owns.
 	c.Emit.NoteShapedRead(out.ID)
 }
 
@@ -1495,6 +2024,22 @@ func (c *CheckState) MethodShapeMember(id string) (Value, bool) {
 type FnShape struct {
 	Arity  int
 	Result *FnShape
+	// Params is the wrapper's parameter types when the claim knows them —
+	// a compiled closure's unit, a const lambda's signature — one per
+	// Arity; nil when only the arity is known. The read model asks it
+	// whether a written token FITS before claiming it as an argument: the
+	// interpreter's matcher tries the token against the signature and
+	// falls back to the frame when it does not (`each [a5 "s" add] xs`
+	// is a5 over the element, then `"s" add`), a fallback the claim cannot
+	// model (NUR194, 2026-09-24).
+	Params []*Type
+	// Returns is the claimed fn's RESULT types when the claim knows them
+	// exactly — a fn-SHAPE-typed member read, whose declared shape fixes
+	// what any stored fn returns (NUR096). ReturnsKnown says the list IS
+	// the claim, so an empty list means "returns nothing"; without it a
+	// read model keeps its one-dynamic-result rule.
+	Returns      []*Type
+	ReturnsKnown bool
 }
 
 // NoteFnShape records the SHAPE of the fn value a computed-fn carrier stands
@@ -1566,6 +2111,7 @@ func (c *CheckState) BeginCompilePass() func() {
 		return done
 	}
 	c.Emit = NewEmitStateHook()
+	c.ProgramEmit = c.Emit
 	c.Compiling = true
 	c.FnSummaries = nil
 	c.FnInflight = nil
@@ -1624,17 +2170,25 @@ func (r *Registry) SpecUndefBlocked(name string) bool {
 // def (`def f fn […g…] f 1 def g …`) errors at run time but is
 // rescued here — the checker doesn't order call sites against defs.
 //
-// Call at end of a check pass, before reading Diagnostics.
+// Call at end of a check pass, before reading Diagnostics. It also
+// collapses exact duplicate findings (DedupeFindings), which every
+// end-of-pass site owes for the same reason.
 func (r *Registry) RescueForwardRefDiagnostics() {
 	if r == nil || r.Check.Diagnostics == nil {
 		return
 	}
+	defer r.Check.DedupeFindings()
 	kept := r.Check.Diagnostics[:0]
 	for _, d := range r.Check.Diagnostics {
 		if d.Code == "undefined_word" && d.FnBody && d.Word != "" {
 			// Module-scope forward reference: the name has a binding by end of
 			// pass (recursion, mutual recursion, a later top-level def).
 			if _, bound := r.Defs.Top(d.Word); bound || r.Lookup(d.Word) != nil {
+				continue
+			}
+			// A read a pattern's binding slot binds for the code holding it
+			// (a service handler's body, NUR064) — that exact token only.
+			if r.Check.SlotBoundReads[SlotRead{Name: d.Word, Row: d.Row, Col: d.Col}] {
 				continue
 			}
 			// Dynamic-scope reference: the name lives only in a per-call frame
@@ -1648,10 +2202,95 @@ func (r *Registry) RescueForwardRefDiagnostics() {
 			if r.Check.DynamicScopeReachable(d.Word, d.FnName) {
 				continue
 			}
+			// A read inside an ANONYMOUS fn value's body has the value as its
+			// reader, named by position whatever analysis made the finding
+			// (the end-of-pass drain, a stored unit's compile): the same
+			// question under the value's identity (NUR257).
+			if r.Check.AnonScopeReachable(d.Word, SrcPos{Row: d.Row, Col: d.Col}) {
+				continue
+			}
 		}
 		kept = append(kept, d)
 	}
 	r.Check.Diagnostics = kept
+}
+
+// findingKey is a finding's identity for DedupeFindings: every field a reader
+// can see or a gate can act on. The structured payload — Notes and
+// Suggestions — is part of it (findingPayload): one token analysed in two
+// registry states can gain a did-you-mean on the second pass, and a dedupe
+// that ignored the payload kept only the first (Codex review of #518).
+type findingKey struct {
+	code, detail, word, src, fnName string
+	row, col                        int
+	severity                        CheckSeverity
+	fnBody, mirror, caught          bool
+	payload                         string
+}
+
+// findingPayload renders a finding's Notes and Suggestions as one comparable
+// string: separators no rendered text carries, and a replacement's absence
+// (nil) kept distinct from an empty one.
+func findingPayload(d CheckDiagnostic) string {
+	if len(d.Notes) == 0 && len(d.Suggestions) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, n := range d.Notes {
+		b.WriteString(n)
+		b.WriteByte(0)
+	}
+	b.WriteByte(1)
+	for _, sg := range d.Suggestions {
+		b.WriteString(sg.Message)
+		if sg.Replacement != nil {
+			b.WriteByte(2)
+			b.WriteString(*sg.Replacement)
+		}
+		b.WriteByte(0)
+	}
+	return b.String()
+}
+
+// DedupeFindings drops every FINDING (error or warning) that repeats an
+// earlier one exactly — the same code, detail, word and position, and the
+// same flags. The analysis can reach one
+// token twice: the compile-armed pass drops the fn-summary memo
+// (BeginCompilePass) and analyses a fn body once to record its unit and
+// again at the call, so a single defect in the body surfaced as two
+// identical lines on that pass alone (diagnostic_parity_test.go's
+// duplicate rows, 2026-09-27: edge-quote-1.tsv:L103's undefined_word,
+// fn-locals-scope.tsv:L158/L159's fn_body_error, the constant-condition
+// unreachable_branch of an `if` in a called fn body). A duplicate says
+// nothing the first line did not, and a user reading two cannot tell
+// they are one.
+//
+// End-of-pass only (RescueForwardRefDiagnostics calls it), never in
+// AddDiagnostic: several in-pass consumers read the diagnostics a
+// sub-analysis ADDED (compiler/go/code_effect.go's clean-body test among
+// them), and a duplicate of an earlier finding is still evidence there.
+// Identical flags are part of the identity, so the copy that survives
+// carries exactly the verdict the dropped one did (a RuntimeMirror never
+// absorbs a model-undermining twin). Info advisories are left alone —
+// module_body_executed_in_check is one per body execution by design. A
+// position-less finding (fn_body_error carries its position in the
+// detail) dedupes like any other: two lines no reader can tell apart are
+// one finding to that reader.
+func (c *CheckState) DedupeFindings() {
+	seen := make(map[findingKey]bool, len(c.Diagnostics))
+	kept := c.Diagnostics[:0]
+	for _, d := range c.Diagnostics {
+		if d.Severity == SeverityError || d.Severity == SeverityWarning {
+			k := findingKey{d.Code, d.Detail, d.Word, d.Src, d.FnName, d.Row, d.Col,
+				d.Severity, d.FnBody, d.RuntimeMirror, d.CaughtAtRuntime, findingPayload(d)}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+		}
+		kept = append(kept, d)
+	}
+	c.Diagnostics = kept
 }
 
 // cloneNestedSet deep-copies a name→set map so a sandbox's mutation of an
@@ -1689,7 +2328,7 @@ func cloneMap[K comparable, V any](m map[K]V) map[K]V {
 // run once per analysed call shape, and a body can be analysed under
 // several shapes. Every caller mirrors a GUARANTEED runtime error over
 // exactly-known operands, so the diagnostic is stamped RuntimeMirror
-// (the compile pipeline does not refuse on it — the recording model is
+// (the compile pipeline does not decline on it — the recording model is
 // exact) and inside an error-catching `do` body AddDiagnostic
 // re-attributes it to a caught info finding. A caught (downgraded)
 // entry never blocks a later REAL emission of the same finding at
@@ -1707,7 +2346,7 @@ func CheckAddUniqueDiagnostic(r *Registry, code, detail, word string, pos SrcPos
 
 // CheckAddUnique is CheckAddUniqueDiagnostic's dedupe over a diagnostic the
 // caller shapes itself — for a finding that must NOT be stamped
-// RuntimeMirror because the compile pipeline should refuse on it. That is
+// RuntimeMirror because the compile pipeline should decline on it. That is
 // the MODEL-UNDERMINING class (eng/go/CLAUDE.md): a mirror promises the
 // program compiles and then raises the identical error, which is false when
 // dispatch itself did not resolve (`no_signature`, `undefined_word`,
@@ -1793,6 +2432,16 @@ type BindTransition struct {
 	Name  string
 	Pos   SrcPos
 	Depth int
+	// WrittenBack marks a push-kind twin whose def ALSO emitted an
+	// OpBindGlobal (the compiler's lowerDynBind pairs the two): the
+	// write-back installs the RUNTIME value where the interpreter's `def`
+	// would, so the twin's replay must not push the check pass's capture
+	// beside it (ApplyBindTwin). Set by the lowering, never by the ledger —
+	// the ledger records what the check pass did, the flag what the
+	// program will do about it. A type-install twin is written back by the
+	// run's own install of a type over a bound only the run knows
+	// (OpBindTypeRun, NUR308).
+	WrittenBack bool
 }
 
 // NoteBindTransition appends to the ledger.
@@ -1906,13 +2555,29 @@ func bindSitePos(r *Registry, pos SrcPos) SrcPos {
 // arm-residency bridge pairs the twin against (Recorder.RecordTypeInstall).
 // Every BindTypeInstall note goes through here so the two can never fall
 // out of step: a twin with no event, or an event with no twin, makes the
-// bridge's total pairing decline and the program refuse.
+// bridge's total pairing decline and the program decline.
 func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
 	r.NoteBindTransition(BindTypeInstall, name, pos)
 	if r == nil {
 		return
 	}
 	// Recorder() is nil-receiver safe, so a registry with no CheckState
-	// reaches the inactive no-op rather than a guard of its own.
-	r.Check.Recorder().RecordTypeInstall(name, bindSitePos(r, pos))
+	// reaches the inactive no-op rather than a guard of its own. The entry
+	// just pushed rides along: a FN unit's per-call type bind re-installs
+	// it (OpBindFnType), where the root's twin replays it from the ledger.
+	entry, _ := r.Defs.TopEntry(name)
+	r.Check.Recorder().RecordTypeInstall(name, entry, bindSitePos(r, pos))
+}
+
+// OuterMatch is CheckState.OptimisticOuter: the optimistically matched
+// word, its window's values as the runtime rematch reads them (the stack run
+// beneath the word top down, then the operands written after it in written
+// order), how many were written after it, the render tuple (the window
+// indices in written order) and the dispatch's position.
+type OuterMatch struct {
+	Word    string
+	Vals    []Value
+	NFwd    int
+	Written []int
+	Pos     SrcPos
 }

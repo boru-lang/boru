@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"slices"
+
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -27,32 +29,32 @@ import (
 // a throwaway probe state to test compilability, then once in the real state.
 // Mirrors the fn-def compile path (core_helpers.go): StartFnCompile arms the
 // unit, AnalyseFnBody records the body under it, finish closes it. ok is false
-// when the body refuses (StartFnCompile declined, or the analysis marked the
+// when the body declines (StartFnCompile declined, or the analysis marked the
 // state uncompilable).
 // paramNames is the per-input name table: a NAMED slot (a lambda param,
 // `([p] => …)`) binds the body's `p` to that input carrier in AnalyseFnBody;
 // an empty name (the token-quotation form, `[body]`) leaves the input on the
 // stack for the body to consume positionally. nil means all-unnamed.
-func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, pos core.SrcPos) (int, bool) {
+func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) (int, bool) {
 	// Closure compilation is emit-cluster machinery: it writes recording
 	// internals (fnRecs), so it needs the CONCRETE EmitState. A pass without
 	// one (the inactive recorder) declines exactly as the nil field did —
 	// the typed-nil receiver's StartFnCompile returns !ok below.
 	es, _ := r.Check.Recorder().(*EmitState)
 	// A side-effect body word (bodyOut 0 — a test case body) declares NO returns,
-	// so its 0-value residual is taken as-is rather than count-refused against the
+	// so its 0-value residual is taken as-is rather than count-declined against the
 	// default single [TAny]. The fn-VALUE factory path (word "fnval") passes
 	// bodyOut 1, so it keeps the single return. An EmptyBodyErrors word
 	// (each/fold/scan) also declares no returns even at bodyOut 1: a 0-net body is
 	// the handler's OWN runtime error, raised faithfully at invoke time, so the
-	// closure is left count-agnostic rather than count-refused (which would
+	// closure is left count-agnostic rather than count-declined (which would
 	// island).
 	declared := []*core.Type{core.TAny}
 	if bodyOut == 0 || bodyOut == core.BodyOutResidual || emptyBodyOK {
 		// A side-effect body (0), a whole-residual body (do — the handler
 		// returns everything the body nets, so the count is per-body), and an
 		// EmptyBodyErrors body are all count-AGNOSTIC: declared nil skips the
-		// closure count refusal and the unit RETs its actual residual.
+		// closure count compile failure and the unit RETs its actual residual.
 		declared = nil
 	}
 	if paramNames == nil {
@@ -68,6 +70,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// memo hit: the key includes name+input types, which determine the shape).
 	es.fnRecs[unit].inShape = shape
 	es.fnRecs[unit].closure = true
+	es.fnRecs[unit].residualToCaller = bodyOut == core.BodyOutResidual
 	es.fnRecs[unit].lambdaUnit = word == "fnval"
 	// A lambda VALUE's declared param PATTERNS ride on the record from the
 	// open, not only from the contract seated after the compile
@@ -98,10 +101,35 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// Drop any summary a suspended (non-recording) analysis cached so the
 	// body re-runs under the armed unit and records.
 	delete(r.Check.FnSummaries, key)
-	// true preserves this callback-body path's original recording gate
-	// (!anonymous is neutralised): the fn-context change flows through the
-	// def/dispatch paths, not this closure-body compile.
-	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, true)
+	// anonymous=true preserves this callback-body path's original recording
+	// gate (!anonymous is neutralised): the fn-context change flows through
+	// the def/dispatch paths, not this closure-body compile.
+	//
+	// EXCEPT for a body the interpreter evaluates IN-FRAME (bodyInFrame). The
+	// interpreter's frame-tail rule is one line, at every fn-frame builder
+	// (core_helpers.go InstallFnDef / compileFnSigs, engine.go execFnDefLiteral):
+	//
+	//     EvalResidual: !anonymous || BodyEvalsResidual(body)
+	//
+	// where `anonymous` is FnDefInfo.Anonymous — produced by `afn`, the `=>`
+	// sugar. So an afn lambda's single bare container literal is DEFERRED and
+	// resolves later, in module scope, whether or not a `def` has since given
+	// it a name; a `fn`-word fn evaluates the same literal against the live
+	// frame. Measured, interpreter first:
+	//
+	//     def a 99  def g fn [[a:Integer] [List] [[a]]]  each g/v [1 2]  => [[1] [2]]
+	//     def a 99  def f ([a:Integer] => [[a]])         each f/v [1 2]  => [[99] [99]]
+	//     def a 99  each ([a:Integer] => [[a]]) [1 2]                    => [[99] [99]]
+	//
+	// Passing anonymous=true for a `fn`-word fn threw away the very property
+	// that makes its residual container recordable, so AnalyseFnBody left
+	// ElemEvalRecordable off, the container recorded no OpMakeList/OpMakeMap,
+	// its result had no provenance, and the whole dispatch islanded ("fn
+	// each$body: body result of unknown provenance"). The callers pass
+	// bodyInFrame = !fd.Anonymous — the interpreter's predicate, verbatim.
+	// `fd.Name != ""` is NOT it: the second row above has a name and still
+	// defers, and keying on the name compiled it to [[1] [2]] (measured).
+	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, !bodyInFrame)
 	if len(bodyToks) == 0 && len(stk) == 0 {
 		// An EMPTY body's residual is its pushed inputs, verbatim: the runtime
 		// InvokeBody pushes the per-call inputs and runs no tokens, so the frame
@@ -113,6 +141,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 		// the unit resolves each input to its param slot (PUSH_LOCAL i … RET).
 		stk = append(stk, inputs...)
 	}
+	es.fnRecs[unit].mayReturnFn = slices.ContainsFunc(stk, valueMayBeFn)
 	finish(stk)
 	return unit, es.Compilable
 }
@@ -144,10 +173,10 @@ func mutableInstanceRef(v core.Value) bool {
 // (flex nodes, class instances). Per the language these references are
 // DYNAMIC — module scope sits below the fn baseline, so ComputeCaptures
 // excludes them — and for const-bakeable data the compiled body's const bake
-// IS the dynamic read. A mutable instance cannot bake (materialise refuses;
-// the body then refused "code-body word … (Stage 2)"), but its IDENTITY is
+// IS the dynamic read. A mutable instance cannot bake (materialise declines;
+// the body then declined "code-body word … (Stage 2)"), but its IDENTITY is
 // fixed for the whole dispatch: a compiled body cannot rebind a module-scope
-// name (body defs are body-local and module-mutating meta words refuse
+// name (body defs are body-local and module-mutating meta words decline
 // compilation), so the value passed at OpPushClosure equals every per-run
 // lookup the interpreter makes — a capture is exact. This is the accumulator
 // shape: `def acc (flex [0])  … each [ var [[x] (acc set 0 …)] ]`.
@@ -185,23 +214,25 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 // persistent TrieMap/TstMap, a built collection, any instance a module
 // constructor returns; its declared type may be Map/List or an under-annotated
 // Any). Module scope sits below the fn baseline, so ComputeCaptures excludes
-// it, and it is NOT const-bakeable (materialise refuses a non-concrete carrier)
+// it, and it is NOT const-bakeable (materialise declines a non-concrete carrier)
 // — yet it IS produced by a module-scope event, so it resolves at the call site
 // (the closure's construction, at module scope) while its event is unreachable
 // inside the body. Riding it as a capture slot is exact for the same reason the
 // mutable-accumulator capture is: a compiled body cannot rebind a module-scope
-// name (body defs are body-local; module-mutating meta words refuse), so the
+// name (body defs are body-local; module-mutating meta words decline), so the
 // value threaded at OpPushClosure equals every per-run lookup the interpreter
 // makes. A carrier with no producing event in the emit tables declines later in
-// recordClosureDispatch (capOps resolveOperand) — sound fallback, and the
-// ordinary path for a FOREIGN body's captures, whose events live elsewhere.
+// recordClosureDispatch (capOps resolveOperand) — a compile failure rather than a
+// wrong thread, and the ordinary path today for a FOREIGN body's captures,
+// whose events live elsewhere. That decline is a defect owed a fix, not a
+// resting place.
 //
 // A concrete value still const-bakes (excluded here); a bare type node is a
 // type, never a carried instance (excluded). A Dynamic (gradual-Any) carrier is
 // INCLUDED: an under-annotated module constructor (TstMap.make) binds its
 // instance as a Dynamic Any, yet the binding is still fixed for the program.
 // The capture only makes the value reachable in the body; any downstream
-// dispatch on it (an `each` over a gradual collection) still refuses at its own
+// dispatch on it (an `each` over a gradual collection) still declines at its own
 // ambiguity gate, so admitting the capture never introduces an unsound dispatch
 // — it just resolves the operand.
 func moduleScopeInstanceCarrier(v core.Value) bool {
@@ -226,8 +257,10 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// `do` returns the body's ENTIRE residual) admits any statically-exact count:
 	// the closure compiles count-agnostic, the VM's frameless RET returns the full
 	// residual, and the dispatch seats all N results. Other multi-output words
-	// stay beyond this path.
-	if !es.Active() || (len(outs) > 1 && spec.BodyOut != core.BodyOutResidual) || spec.BodyPos >= len(args) {
+	// stay beyond this path. A window shorter than the signature — a failed
+	// dispatch's recovery assuming it (`each (1 drop) [2]`, whose paren left
+	// nothing) — is no call: spec.Inputs reads the data operand positionally.
+	if !es.Active() || (len(outs) > 1 && spec.BodyOut != core.BodyOutResidual) || spec.BodyPos >= len(args) || len(args) < sig.TotalArgs() {
 		return false
 	}
 	body := args[spec.BodyPos]
@@ -240,8 +273,8 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// Stage M2d extension — a LAMBDA hook on a LambdaSharesTokenShape word,
 	// which compiles to its OWN closure unit inside recordClosureDispatch
 	// (walkClassifyHook already classifies a compiled closure per hook slot).
-	// Anything else declines here so the Stage-2 refusal (the sound
-	// interpreter fallback) stands.
+	// Anything else declines here so the Stage-2 compile failure (the sound
+	// compile failure) stands.
 	extraLamSlots, extrasOK := es.extraNoEvalHookSlots(sig, spec, args)
 	if !extrasOK {
 		return false
@@ -259,22 +292,32 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// overload (count 1) — so a lambda never reaches here.
 	//
 	// For a CrossCollectionTokenShape word the token body is shape-generic (both
-	// overloads present the bare value), so we DON'T refuse: fall through to record
+	// overloads present the bare value), so we DON'T decline: fall through to record
 	// the first-reachable (List) overload's closure ONCE, relying on the committed
 	// handler being runtime-robust to the sibling collection type (it delegates to
 	// the map/list iteration by the value's concrete type), so the same closure
 	// drives either shape == the interpreter. A non-robust word (no flag) still
-	// refuses → sound interpreter fallback.
+	// declines → compile failure.
+	//
+	// The shortcut's robustness is the HANDLER's contract, and it extends to a
+	// runtime value that is neither collection: a fn's declared `Any` result
+	// that is an Integer at run time reaches the committed arm's handler, which
+	// raises the dispatcher's own signature_error for it (NUR165 — it used to
+	// raise each_error/fold_error, an error-code divergence pre-dating S1a).
+	// Routing such words to the dyn-body seat instead was measured and
+	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
+	// rows importing a module whose fn defs a computed value declined with it.
 	_, bodyIsLambda := body.Data.(core.FnDefInfo)
 	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(body) && !bodyIsLambda
-	if check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
+	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
+		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
 		// A CompileDynBody word DECLINES instead: tryRecordDynBody records a
 		// POLY re-match over the word's own sigs — the runtime value picks
 		// the overload exactly as the interpreter's dispatch does.
 		if sig.CompileEffect.Has(core.CompileDynBody) {
 			return false
 		}
-		es.MarkUncompilable("higher-order `" + word + "` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match")
+		es.MarkUncompilable("higher-order `" + word + "` with a gradual-Any operand — the callback or the collection: ambiguous overload, no static commit and no poly re-match (the word does not declare CompileDynBody)")
 		return true
 	}
 
@@ -285,7 +328,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
 	if fd, isFn := body.Data.(core.FnDefInfo); isFn {
-		return tryRecordLambdaClosure(r, word, spec, sig, args, &fd, body.Pos(), extraLamSlots, outs, pos)
+		return tryRecordLambdaClosure(r, word, spec, sig, args, body, &fd, extraLamSlots, outs, pos)
 	}
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
@@ -299,14 +342,14 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	}
 	// A body with a flow-control sentinel (break/continue/return) targets an
 	// enclosing loop the VM can't reach across the call boundary — keep it on
-	// the whole-program fallback path. The scan is DEEP: a body word resolving
+	// the compile-failure path. The scan is DEEP: a body word resolving
 	// to a user fn whose body transitively holds a bare break/continue leaks
 	// the signal through the call (`do [f 1]` with a breaking f unwinds the
 	// caller's loop in the interpreter; the closure unit starts a fresh loop
 	// stack and surfaces internal flow-signal errors — a miscompile). The
 	// decline is conservative-but-parity: callback words that do NOT thread
 	// the signal (each/filter — the interpreter raises `break outside loop`)
-	// fall back to the interpreter, which raises identically.
+	// not compile, which raises identically.
 	if check.BodyHasSentinelDeep(r, body) {
 		return false
 	}
@@ -320,7 +363,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// (a param or body-local of a fn currently being compiled) ride as the
 	// closure's captures — resolved here in the enclosing scope, bound into
 	// the body unit's trailing slots at invocation. A module/global ref is
-	// not a capture (it bakes as a const in the body, or refuses the probe).
+	// not a capture (it bakes as a const in the body, or declines the probe).
 	captures := moduleScopeMutableCaptures(r, bodyToks, core.ComputeCaptures(r, &core.FnSig{Impl: core.Boru(bodyToks)}))
 	// A multi-run defs-keeping body (`each`) opens the arm-resident
 	// bracket around its compiles: `_`-named body defs get their event
@@ -330,11 +373,33 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 		es.armResidentDepth++
 		defer func() { es.armResidentDepth-- }()
 	}
+	// A defs-keeping body — once-run (`do`) or multi-run (each, fold, …) —
+	// arms the KEEP-DEFS unit flag for the unit its compile opens next
+	// (StartFnCompile stamps the unit opened at exactly this unit count):
+	// its defs install as kept registry bindings, the leak the interpreter
+	// delivers, once per run of the body.
+	if (spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) && es != nil {
+		prevKeep := es.keepDefsUnitDepth
+		es.keepDefsUnitDepth = len(es.units)
+		defer func() { es.keepDefsUnitDepth = prevKeep }()
+	}
 	// The body's compile re-run runs in the environment its analysis run
 	// STARTED from (unit_memo.go): claimed here, applied around every
 	// compile inside recordClosureDispatch.
 	env := es.takeBodyEnv(body, spec)
-	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, pos, env) {
+	// A TOKEN body's residual evaluates in the body's own run — the
+	// InvokeBody seam's sub-engine sweeps a pending container at its end,
+	// with the body's inputs and bindings live — never deferred past it:
+	// bodyInFrame is true, the interpreter's rule for a body that is not an
+	// anonymous lambda (ResidualEvalsInFrame). Passed false, a single
+	// container literal body (`do [[i]]` under a `for`, `do [{a:i}]`)
+	// analysed as a deferring lambda: its residual recorded no assembly,
+	// the closure declined on the unknown provenance, and the dyn-body
+	// backstop baked the literal as a const the handler re-ran through the
+	// interpreter — where the loop's `i` is a frame slot the registry never
+	// held, `error(undefined word: i)` for the interpreter's `[0]` (NUR197's
+	// do-body twin on the compiled lane).
+	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, true, pos, env) {
 		return false
 	}
 	// A once-run defs-keeping body (`do`) compiled to a closure unit makes
@@ -343,12 +408,22 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// (AdoptBodyTwins; a no-op for the flag-less multi-run words).
 	if spec.BodyOnceKeepsDefs {
 		es.AdoptBodyTwins(body)
+		// The enclosing side of the leak: later reads seat live, and a
+		// loop-carried slot the body rebinds is refreshed from the registry
+		// right after the call (NUR199).
+		es.NoteKeepDefsLeak(pos)
 	}
 	// A multi-run body's twins instead bridge INTO the unit — per-element
 	// installs with runtime values (AdoptResidentTwins; every fence
-	// declines to the standing refusal).
+	// declines to the standing compile failure).
 	if spec.BodyMultiRunKeepsDefs {
 		es.AdoptResidentTwins(body)
+		// The enclosing side of the multi-run leak, the same as the
+		// once-run body's: the names seat live from here (a read after
+		// the loop finds the last element's install, or the miss the
+		// interpreter raises), and a loop-carried slot is refreshed after
+		// the call (NUR200).
+		es.NoteKeepDefsLeak(pos)
 	}
 	return true
 }
@@ -358,9 +433,10 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 // is compiled with the word's per-callback input shape (lambdaCallbackInputs)
 // bound to the lambda's NAMED params, so a body that destructures the entry
 // (`p.value`, `kv.v`, `acc`+`kv.v`) typechecks. Returns false — leaving the
-// refusal to stand — for a shape the word has no lambda convention for, an
+// compile failure to stand — for a shape the word has no lambda convention for, an
 // arity mismatch, or a body that does not compile.
-func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, fd *core.FnDefInfo, fnPos core.SrcPos, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, body core.Value, fd *core.FnDefInfo, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+	fnPos := body.Pos()
 	inputs, shape, ok := lambdaCallbackInputs(r, word, spec, args)
 	if !ok {
 		return false
@@ -376,6 +452,7 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if !ok {
 		return false
 	}
+	inputs = narrowLambdaInputs(inputs, lam)
 	names := make([]string, len(lam.Params))
 	for i := range lam.Params {
 		names[i] = lam.Params[i].Name
@@ -425,11 +502,26 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if foreignFnHome(r, fd) {
 		restore := check.ShareCheckStateFrom(fd.Registry, r)
 		defer restore()
-		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), pos, nil)
+		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
 	}
 	// A lambda body is a fn body: its defs are frame-locals and nothing
 	// leaks, so it needs no re-run environment.
-	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), pos, nil)
+	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
+}
+
+// callbackSourceSpec carries the callback fn VALUE on its push's spec
+// (ClosureRetSpec.Source → ClosurePayload.Source): a callback body unit whose
+// body reads a param bare under a gradual carrier runs over data, and the VM
+// hands an invocation with a fn in such a slot to the interpreter's own step
+// of the value, which dispatches it there as a word (NUR268). The contract
+// fields ride as fnValueRetSpec built them — none when it built none.
+func callbackSourceSpec(ret *ClosureRetSpec, src core.Value) *ClosureRetSpec {
+	out := ClosureRetSpec{}
+	if ret != nil {
+		out = *ret
+	}
+	out.Source = &src
+	return &out
 }
 
 // lamParamContract is a lambda's declared PARAM contract — the types and
@@ -490,7 +582,7 @@ func paramSpecPatterns(ps *ClosureParamSpec) []*core.Value {
 //     the BODY lambda: recordClosureDispatch takes fd.Registry, and the
 //     caller's CheckState is shared onto it so the recorder still writes into
 //     the calling program. See the comment at that call site for the split.
-//   - DECLINE. The refusal falls through to the runtime callback path, which
+//   - DECLINE. The compile failure falls through to the runtime callback path, which
 //     runs the body on fd.Registry — the same place the interpreter runs it —
 //     so the answers match. This is what the extras/hook path does: its
 //     shared-token-shape hooks have no per-hook registry to swap to.
@@ -507,7 +599,7 @@ func paramSpecPatterns(ps *ClosureParamSpec) []*core.Value {
 // Both callers take fd from `args[i].Data.(core.FnDefInfo)` and pass its
 // address, so fd is never nil here.
 func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
-	return fd.Registry != nil && fd.Registry != r
+	return core.FnHomeForeign(r, fd)
 }
 
 // lambdaHookCompatible reports whether a LAMBDA hook value can compile to a
@@ -521,7 +613,7 @@ func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
 //   - LEXICAL captures only where the caller allows them (allowCaptures):
 //     the BODY lambda threads them onto the closure (resolved to compiled
 //     homes in the enclosing scope, bound to trailing unit slots); the
-//     extras/hook path keeps refusing them — its shared-token-shape hooks
+//     extras/hook path keeps declining them — its shared-token-shape hooks
 //     have no per-hook capture layout. MODULE-SCOPE mutable-instance reads
 //     are not lexical captures — the callers admit those via
 //     moduleScopeMutableCaptures;
@@ -534,7 +626,7 @@ func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
 //     anyway would silently keep the element. A map-iteration ENTRY input is
 //     a KeyVal (a Map subtype) the carrier conservatively under-types as a
 //     plain Map, so any Map-family param is accepted there and only a
-//     provably-incompatible param (a scalar, a sibling container) refuses.
+//     provably-incompatible param (a scalar, a sibling container) declines.
 func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Value, shape core.ClosureInShape, allowCaptures, foreignOK bool) (*core.Signature, bool) {
 	// A fn value DEFINED in another module resolves its free words THERE, so a
 	// caller that cannot compile the body in that home must decline it here
@@ -586,7 +678,7 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		// over `(keys m)` → a list of fn values). Admitting it here compiled
 		// an APPLYING callback — a live compile≠interpret divergence
 		// (checker-compiler-completeness-review.0.md §2.2). Declining keeps
-		// the refusal → interpreter fallback → parity.
+		// the compile failure → compile failure → parity.
 		if lam.QuoteArgs[i] || pt.ConformsTo(core.TAtom) {
 			return nil, false
 		}
@@ -601,6 +693,37 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		}
 	}
 	return lam, true
+}
+
+// narrowLambdaInputs binds each GRADUAL Any callback input to the lambda's
+// DECLARED param type where one is declared. The interpreter matches the
+// runtime element against that type at every call and no-matches otherwise,
+// and the VM's closure entry enforces the same contract (SetUnitParamTypes),
+// so inside the body the param IS that type — exactly what a fn value's own
+// unit sees (fnValueInputs → ParamInputCarrier). Measured 2026-09-22 (S1b's
+// apply shapes): `each ([e:Integer] => [(f e)]) xs` over an untyped List
+// analysed e as a gradual Any, whose runtime value nothing could prove not a
+// function, so the paren-lead window declined and the callback fell to
+// "function-valued operand at each (Stage 3)" — while the same lambda under
+// a seeded fold compiled, its accumulator carrying the seed's Integer. A
+// typed element, a KeyVal entry and an undeclared (Any) param are left as
+// they are; inputs is not mutated.
+func narrowLambdaInputs(inputs []core.Value, lam *core.Signature) []core.Value {
+	out := inputs
+	for i := range lam.Params {
+		if i >= len(inputs) {
+			break
+		}
+		pt, in := lam.Params[i].Type, inputs[i]
+		if pt == nil || pt.Equal(core.TAny) || !in.Dynamic || !in.Parent.Equal(core.TAny) {
+			continue
+		}
+		if &out[0] == &inputs[0] {
+			out = append([]core.Value(nil), inputs...)
+		}
+		out[i] = check.ParamInputCarrier(pt)
+	}
+	return out
 }
 
 // fnValueRetSpec is the callback fn value's return contract, or nil when there
@@ -638,7 +761,7 @@ func fnValueRetSpec(fd *core.FnDefInfo, lam *core.Signature, fnPos core.SrcPos) 
 
 // recordClosureDispatch is the shared tail of the token and lambda closure
 // paths: it resolves the lexical captures, probe-compiles the body in a
-// throwaway state (a refusal leaves the real program untouched), then
+// throwaway state (a compile failure leaves the real program untouched), then
 // real-compiles it and records the dispatch (the body operand lowering to
 // OpPushClosure). paramNames is nil for the token form (stack-consumed inputs)
 // and the lambda's param names for the lambda form. extraLamSlots are the
@@ -646,7 +769,7 @@ func fnValueRetSpec(fd *core.FnDefInfo, lam *core.Signature, fnPos core.SrcPos) 
 // M2d): each compiles to its OWN closure unit under the SAME shared token
 // shape (extraNoEvalHookSlots only nominates them on a LambdaSharesTokenShape
 // word) and rides as a second opClosure operand.
-func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args, bodyToks, inputs []core.Value, paramNames []string, captures []core.CapturedBinding, shape core.ClosureInShape, extraLamSlots []int, outs []core.Value, retSpec *ClosureRetSpec, paramSpec *ClosureParamSpec, pos core.SrcPos, env *bodyRunEnv) bool {
+func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args, bodyToks, inputs []core.Value, paramNames []string, captures []core.CapturedBinding, shape core.ClosureInShape, extraLamSlots []int, outs []core.Value, retSpec *ClosureRetSpec, paramSpec *ClosureParamSpec, bodyInFrame bool, pos core.SrcPos, env *bodyRunEnv) bool {
 	// The probe fork below needs the CONCRETE EmitState; both callers only
 	// reach here through an active recording state, so a non-EmitState
 	// recorder (the inactive no-op) declining is the unreachable belt.
@@ -669,6 +792,14 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	for i, cb := range captures {
 		op, ok := real.resolveOperand(cb.Value)
 		if !ok {
+			// The dyn-body backstop takes the body instead, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR294), so the probe that would have found it runs here
+			// and leaves the backstop its answer.
+			if spec.BodyOut == core.BodyOutResidual && len(extraLamSlots) == 0 &&
+				probeResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos, env) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		capOps[i] = op
@@ -678,7 +809,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// the SAME shared token-shape inputs the body uses (the nominating gate is
 	// LambdaSharesTokenShape-only) and resolve its module-scope captures, so
 	// the probe/real passes below compile them alongside the body. Any
-	// incompatibility declines the whole closure path — the refusal stands.
+	// incompatibility declines the whole closure path — the compile failure stands.
 	type extraHook struct {
 		slot  int
 		toks  []core.Value
@@ -721,7 +852,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	diagBase := len(r.Check.Diagnostics)
 	defer r.Check.TruncateDiagnostics(diagBase)
 
-	// PROBE: compile the body in a throwaway state so a refusal leaves the
+	// PROBE: compile the body in a throwaway state so a compile failure leaves the
 	// real program untouched (graceful fall-through to the island). The throwaway
 	// is SEEDED with the enclosing fn-unit tables (forkForProbe) so a self-
 	// recursive call inside the body — `… msd-go` in an `each` body — resolves to
@@ -742,11 +873,18 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 			return -1, false
 		}
 		defer env.exit(r, prev)
-		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, pos)
+		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, pos)
 	}
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
 	probeUnit, probeOk := compile(bodyToks, paramNames, captures)
+	// A body the probe finds may leave a fn value no modelled output shows
+	// is one whose results the interpreter re-steps, whichever strategy
+	// takes it (NUR317): the dyn-body backstop reads the note when the
+	// closure declines.
+	if spec.BodyOut == core.BodyOutResidual && probeUnit >= 0 && probe.fnRecs[probeUnit].mayReturnFn && !slices.ContainsFunc(outs, valueMayBeFn) {
+		real.noteBodyReStep(args[spec.BodyPos])
+	}
 	for _, ex := range extras {
 		if !probeOk { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			break
@@ -755,6 +893,10 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		probeOk = probeOk && exOk
 	}
 	r.Check.Emit = real
+	// The probe's const stamps must not outlive it (undoProbeStamps): a
+	// ref it left on a shared impl has no Program and blocks the real
+	// pass's own stamp.
+	probe.undoProbeStamps()
 	if !probeOk {
 		return false
 	}
@@ -768,7 +910,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// Whole-residual multi-out exactness (BodyOutResidual, N > 1): the dispatch
 	// seats exactly len(outs) results, so the compiled unit's residual count
 	// must be statically EXACT and equal — a variadic merge, a dynamic-apply
-	// tail, or any count mismatch declines to the refusal path. 0/1-out bodies
+	// tail, or any count mismatch declines to the compile failure path. 0/1-out bodies
 	// keep today's shapes untouched (a diverging body's single Error out, a
 	// dynTrail apply netting one value).
 	//
@@ -778,9 +920,26 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// The dispatch's recorded seats then stand for a run of its own length —
 	// the do-catch model — so the event is marked VARIADIC below and the
 	// program residual absorbs it.
+	//
+	// A residual holding a RUN is never exact, whatever the seat count: the
+	// run's values are its own runtime count (runOperand). A one-out body
+	// ending in one — `do [do (mk)]`, `do [if c (mk) [3]]` over a List arm —
+	// took the one seat and was promoted or rotated as one value (NUR294:
+	// `9 do [do (mk)]` over [1 2] answered [1 9 2]); now it is a region or
+	// declines to the dyn-body strategy.
 	regionResidual := false
-	if spec.BodyOut == core.BodyOutResidual && len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs)) {
+
+	if spec.BodyOut == core.BodyOutResidual &&
+		((len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs))) || closureResidualRuns(probe, probeUnit)) {
 		if !closureResidualRegion(probe, probeUnit) {
+			// The dyn-body backstop takes the body next, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR301: `do [do [raise oops 'x'] error (mk)]` seated a
+			// handler's two values as one), so it takes a computed body's
+			// marks, as the capture arm above leaves it.
+			if closureResidualRuns(probe, probeUnit) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		regionResidual = true
@@ -789,7 +948,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// runtime nets ONE value from, or — when the dispatch recorded ZERO
 	// outputs (the proven-raise zero-netting handler, completeness-review
 	// §8.2(6)) — the empty residual the runtime nets nothing from.
-	// Everything else declines to the refusal path, exactly as before.
+	// Everything else declines to the compile failure path, exactly as before.
 	if spec.StripsUnconsumedInput && !stripResidualShapeOK(probe, probeUnit, len(outs)) {
 		return false
 	}
@@ -802,9 +961,9 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// probe carries no producedBy, so an enclosing binding read whose value
 	// an EVENT produced (`k` after a leaking `do` rebound it) bakes as a
 	// const in the probe and routes LIVE in the real compile — and the
-	// residual-order hazard refuses the live read where it admitted the
+	// residual-order hazard declines the live read where it admitted the
 	// const. The real state is already marked with the hazard's reason;
-	// this decline hands the dispatch to its own refusal path (first reason
+	// this decline hands the dispatch to its own compile failure path (first reason
 	// wins). `def k 5  do [ k  def k 9  k ]  do [ k  def k 12  k ]` pins it
 	// (lang/go/analysis_order_test.go).
 	if !realOk || unit < 0 {
@@ -823,14 +982,14 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// Measured: `for 2 [def b true  do [1 2 (if b [] [9 9])]]` — the probe's
 	// do$body residual is [CONST CONST REGION] and the real one is
 	// [EVENT:0 EVENT:1 REGION]. Admitting on the probe alone recorded a
-	// closure whose unit then had no seating, and the LOWERING refuses with
+	// closure whose unit then had no seating, and the LOWERING declines with
 	// no fall-through: a row that compiled through the dyn-body strategy
-	// became a hard refusal. Declining here hands the dispatch to its own
-	// refusal path, which is where that strategy takes it.
+	// became a hard compile failure. Declining here hands the dispatch to its own
+	// compile failure path, which is where that strategy takes it.
 	if regionResidual && !closureResidualRegion(real, unit) {
 		// The units this compile just created are now ORPHANS: nothing
 		// records a dispatch to them, but Finalize lowers every unit in the
-		// table, and a refusal there kills the PROGRAM. That is the trade
+		// table, and a compile failure there kills the PROGRAM. That is the trade
 		// fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
 		// reasoning is identical — an unreachable unit's lowering says
 		// nothing about the program — so take the same recovery: a trap stub
@@ -875,7 +1034,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 // [a b]`), no dynamic-apply tail (dynTrailArity), no dyn-frame window
 // (dynFrameW), and want resolved residual operands. A whole-residual dispatch
 // (`do`, BodyOutResidual) seats want results at the call site, so a unit whose
-// runtime count could differ from the check run's must decline to the refusal
+// runtime count could differ from the check run's must decline to the compile failure
 // path rather than mis-seat the simulated stack.
 func closureResidualExact(es *EmitState, unit, want int) bool {
 	if es == nil || unit < 0 || unit >= len(es.fnRecs) {
@@ -883,6 +1042,44 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 	}
 	rec := es.fnRecs[unit]
 	return !rec.variadic && rec.dynTrailArity == 0 && rec.dynFrameW == 0 && len(rec.outOps) == want
+}
+
+// probeResidualRuns compiles a whole-residual body in a throwaway probe, as
+// recordClosureDispatch's own probe does, and reports whether its residual
+// holds a run (closureResidualRuns) — for a dispatch whose closure declines
+// before its probe, so the backstop that takes the body knows (NUR294).
+func probeResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos, env *bodyRunEnv) bool {
+	diagBase := len(r.Check.Diagnostics)
+	defer r.Check.TruncateDiagnostics(diagBase)
+	// The environment refuses only a multi-run body's re-run; a failed enter
+	// returns no table, which exit leaves alone.
+	prev, ok := env.enter(r)
+	defer env.exit(r, prev)
+	return ok && probedResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos)
+}
+
+// probedResidualRuns is probeResidualRuns' probe compile, in the environment
+// it entered.
+func probedResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) bool {
+	probe := real.forkForProbe()
+	r.Check.Emit = probe
+	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, pos)
+	r.Check.Emit = real
+	probe.undoProbeStamps()
+	return probeOk && closureResidualRuns(probe, unit)
+}
+
+// closureResidualRuns reports whether a probe-compiled closure unit's
+// residual holds a RUN (runOperand): values whose runtime count is their
+// own, which no seat count describes (NUR294).
+func closureResidualRuns(es *EmitState, unit int) bool {
+	rec := es.fnRecs[unit]
+	for _, op := range rec.outOps {
+		if rec.frag != nil && es.runOperand(op, rec.frag.events, 0) {
+			return true
+		}
+	}
+	return false
 }
 
 // closureResidualRegion reports whether a probe-compiled closure unit's
@@ -917,7 +1114,7 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 // The caller must mark the dispatch event VARIADIC for either shape. The
 // recorded nout seats then stand for a run whose runtime length is its own
 // (the do-catch model, catchVariadicFor), so the program residual absorbs it
-// and every fixed-arity consumer keeps its refusal.
+// and every fixed-arity consumer keeps its compile failure.
 func closureResidualRegion(es *EmitState, unit int) bool {
 	if es == nil || unit < 0 || unit >= len(es.fnRecs) {
 		return false
@@ -995,9 +1192,9 @@ func stripResidualShapeOK(es *EmitState, unit, want int) bool {
 //
 // The carriers are GENERALISED (field types, not one call's values) so the body
 // is compiled once for every entry. ok is false for a shape with no lambda
-// convention (the caller then leaves the refusal to stand): a list each/fold,
+// convention (the caller then leaves the compile failure to stand): a list each/fold,
 // a no-init map fold, and for-each (whose check-mode output count does not match
-// its 0-result runtime) all stay on the refusal path.
+// its 0-result runtime) all stay on the compile failure path.
 func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec, args []core.Value) ([]core.Value, core.ClosureInShape, bool) {
 	// A word whose lambda callback sees the SAME inputs as its token form
 	// (walk's payload map) declares LambdaSharesTokenShape: Inputs(args) IS the
@@ -1021,10 +1218,10 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// typed CARRIER. A typed, NON-dynamic List/Map carrier is admitted:
 		// its element type reads off the carrier exactly as off a concrete
 		// value (DataListElemTypeFromValue), and the closure compiles once
-		// against it. A Dynamic (gradual) carrier still refuses — the
+		// against it. A Dynamic (gradual) carrier still declines — the
 		// collection's family is unknown, so the InShape (pair vs KeyVal),
 		// and with it the runtime callback convention, is ambiguous. Bare
-		// type literals and non-container carriers refuse as before.
+		// type literals and non-container carriers decline as before.
 		if data.Dynamic || !data.Carrier || data.Parent == nil ||
 			!(data.Parent.ConformsTo(core.TList) || data.Parent.ConformsTo(core.TMap)) {
 			return nil, ClosureInValue, false
@@ -1061,7 +1258,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// position descriptor even over a list, which is why the two cases
 		// here differ rather than sharing a branch.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem)}, ClosureInValue, true
+			return []core.Value{check.ElementCarrierOf(data)}, ClosureInValue, true
 		}
 	case "fold":
 		// NOT an arity rule. `fold` declares TWO signatures — one taking a seed
@@ -1075,7 +1272,11 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// the accumulator carries the seed's type, the entry rides as a KeyVal.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
-			return []core.Value{core.NewCarrier(acc.Parent), keyValCarrier(r, elem)}, ClosureInKeyVal, true
+			accC := core.NewCarrier(acc.Parent)
+			if core.IsTypeLiteral(acc) {
+				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
+			}
+			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
 		}
 		// A LIST fold's lambda declares (element, accumulator) — the
 		// interpreter's top-down assignment over the stack InvokeBody hands it
@@ -1091,7 +1292,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			if len(args) > spec.BodyPos+2 {
 				accT = args[spec.BodyPos+2].Parent
 			}
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(accT)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), core.NewCarrier(accT)}, ClosureInStackPair, true
 		}
 	case "scan":
 		// scan seeds the accumulator from the first value (no init operand): the
@@ -1103,7 +1304,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// slots carry the element type; the order and the permutation are the
 		// list fold's.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(elem)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), check.ElementCarrierOf(data)}, ClosureInStackPair, true
 		}
 	}
 	return nil, ClosureInValue, false
@@ -1138,7 +1339,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 //
 // So the compiled binding needs ONE per-word permutation, not a modelled
 // callback frame: ClosureInStackPair reverses at the bind, and the list rows
-// compile native. Before that they did not REFUSE — they ISLANDED, answering
+// compile native. Before that they did not DECLINE — they ISLANDED, answering
 // correctly through the interpreter inside a compiled program, which is the
 // outcome the mission rules out and which no value-parity test can see.
 //
@@ -1161,8 +1362,8 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 //     is Integer) ['I'] ['S']]) {a:1 b:2 c:3}` answers 'S' on BOTH lanes, and
 //     `typeof acc` answers Scalar on both. A step whose accumulator fails the
 //     declared param no-matches identically in both lanes, and an OVERLOADED
-//     callback is already refused (lambdaHookCompatible wants exactly one own
-//     signature). That guard would have refused valid programs for a hazard
+//     callback is already declined (lambdaHookCompatible wants exactly one own
+//     signature). That guard would have declined valid programs for a hazard
 //     that is not there.
 //
 // And one about the fix itself: supplying the carriers in the other order does
@@ -1213,9 +1414,9 @@ func keyValCarrier(_ *core.Registry, elem *core.Type) core.Value {
 //     a compiled closure per hook slot, so a second closure operand runs
 //     byte-identically to the interpreter's per-node lambda call. The full
 //     lambda constraints (single own sig, capture-free, param-compatible) are
-//     enforced at compile time there; a decline leaves the refusal standing.
+//     enforced at compile time there; a decline leaves the compile failure standing.
 //
-// Anything else declines — the caller then leaves the Stage-2 refusal
+// Anything else declines — the caller then leaves the Stage-2 compile failure
 // standing (an INERT token hook needs no admission here: when the closure
 // path declines, the existing noEvalBodiesInertScoped const bake still
 // applies).
@@ -1257,7 +1458,7 @@ func (es *EmitState) extraNoEvalHookSlots(sig *core.Signature, spec core.Callabl
 //     mutator could precede this dispatch at run time;
 //   - NO event recorded since the construction (pr.seq == es.seq): every
 //     runtime effect between the two — a mutator call, a user call, a branch,
-//     an island — records an event or refuses, so the flex still holds its
+//     an island — records an event or declines, so the flex still holds its
 //     constructed (empty) contents when the word dispatches.
 func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 	if len(es.units) != 1 || len(es.frames) != 1 {

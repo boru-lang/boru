@@ -108,7 +108,7 @@ var strOptEnums = map[string][]string{
 // strOptEnumsFold names the enumerated keys whose value is upper-cased before
 // it is used, so their domain is checked case-INSENSITIVELY: `form:'nfc'` and
 // `form:'NFC'` are the same request and both must pass. Checking these
-// case-sensitively would refuse a spelling that has always worked.
+// case-sensitively would reject a spelling that has always worked.
 var strOptEnumsFold = map[string]bool{"form": true, "norm": true}
 
 func keySet(names ...string) map[string]bool {

@@ -252,7 +252,7 @@ func qualifiedName(d *closureDecl) string {
 //
 // So an ambiguous seed is an ERROR naming its candidates, and `Recv.Method`
 // is accepted as the disambiguated form. Measurement that quietly changes its
-// mind is worse than measurement that refuses.
+// mind is worse than measurement that declines.
 func resolveSeeds(seedNames []string, decls map[types.Object]*closureDecl) ([]types.Object, error) {
 	matches := map[string][]*closureDecl{}
 	for _, d := range decls {

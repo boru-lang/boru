@@ -1,10 +1,12 @@
 package core
 
+import "fmt"
+
 // The typed-def `make` record (ADR-013, 2026-08-08 amendment).
 // `def b:Type {map}` means exactly `def b (make Type map)`, but the
 // typed-def handler constructs the instance directly instead of
 // dispatching the make WORD — so under a recording pass the instance
-// would carry no provenance and a downstream `b typeof` would refuse.
+// would carry no provenance and a downstream `b typeof` would decline.
 // This file records the make event that construction skips.
 //
 // Core, not check: the recorder is core's EmitRecorder interface, the
@@ -16,7 +18,7 @@ package core
 // exactly `def b (make Type map)`, but the typed-def handler builds the
 // instance by calling MakeObject directly, bypassing the make WORD dispatch —
 // so the instance never gets the make event that gives an explicit make its
-// provenance, and a downstream `b typeof` then refuses with an operand the
+// provenance, and a downstream `b typeof` then declines with an operand the
 // lowerer cannot resolve.
 //
 // In active emit mode this records make over [typeArg, body] (both inert
@@ -25,7 +27,16 @@ package core
 // binding carries make-equivalent provenance; the VM re-runs make's
 // MakeObjHandler at run time, producing the identical instance. Outside emit
 // mode it returns (Value{}, false) and the caller binds the concrete value.
-func RecordTypedDefMake(r *Registry, typeArg, body Value, pos SrcPos) (Value, bool) {
+//
+// The recorded signature is a per-def COPY of make's whose handler wraps a
+// failure as `def <name>: <make's error>` — the exact wrap defTypedHandler
+// puts on MakeObject / MakeResource (`fmt.Errorf("def %s: %w", …)`). Recording
+// make's own signature raised the bare `make: field "value": …` on the
+// compiled lane where the interpreter raises `def b: make: field "value": …`
+// (generics.tsv L56, resource.tsv L156 — found 2026-09-26, once the plain
+// error stopped being booked as a defect and the two texts could be read
+// side by side). The copy runs make's own handler; only the error is wrapped.
+func RecordTypedDefMake(r *Registry, name string, typeArg, body Value, pos SrcPos) (Value, bool) {
 	if r == nil {
 		return Value{}, false
 	}
@@ -46,8 +57,23 @@ func RecordTypedDefMake(r *Registry, typeArg, body Value, pos SrcPos) (Value, bo
 	// TMap` early-out, and the `v.Data == nil` type-literal early-out. t is
 	// a class / resource node here, so it takes the second.
 	carrier := NewCarrier(t)
-	es.RecordCall("make", sig, []Value{typeArg, body}, []Value{carrier}, pos, false, false)
+	es.RecordCall("make", typedDefMakeSig(sig, name), []Value{typeArg, body}, []Value{carrier}, pos, false, false)
 	return carrier, true
+}
+
+// typedDefMakeSig is make's signature with its handler's failure wrapped as
+// the typed-def handler wraps it (see RecordTypedDefMake).
+func typedDefMakeSig(sig *Signature, name string) *Signature {
+	inner := sig.DispatchHandler()
+	wrapped := *sig
+	wrapped.Impl = Go(func(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
+		res, err := inner(args, ctx, stack, r)
+		if err != nil {
+			return nil, fmt.Errorf("def %s: %w", name, err)
+		}
+		return res, nil
+	})
+	return &wrapped
 }
 
 // objectMakeSig returns make's `[Ideal Map]` overload (MakeObjHandler) — the

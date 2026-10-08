@@ -2,7 +2,7 @@ package core
 
 import "fmt"
 
-// Tape — the engine's gap-buffer tape (see design/TAPE-DATA-STRUCTURE.10.md).
+// Tape — the engine's gap-buffer tape (see design/legacy/TAPE-DATA-STRUCTURE.10.ignore).
 //
 // The engine executes on a tape of Values with a cursor (Engine.pointer)
 // that mostly moves forward, and every structural edit — body splice,
@@ -11,7 +11,7 @@ import "fmt"
 // edit memmove the entire tail beyond the edit point; during recursion
 // the tail held every enclosing call's pending continuation, so the cost
 // was O(depth) per edit and O(depth²) overall (measured: 95.9% of a deep
-// recursion's runtime was runtime.memmove — design/RECURSION-PERFORMANCE.10.md).
+// recursion's runtime was runtime.memmove — design/legacy/RECURSION-PERFORMANCE.10.ignore).
 //
 // A gap buffer is the text-editor answer to exactly this access pattern
 // (Emacs uses one per buffer): the storage keeps one hole (the gap) at
@@ -82,7 +82,7 @@ const (
 	// real NON-tail recursion (~13 parked tokens per level ⇒ ~30k
 	// depth) while bounding a runaway's memory. Tail recursion needs
 	// no headroom at all under tail-call elimination
-	// (design/TCO-STAGED.10.md Stage 6); that guarantee is what brought
+	// (design/legacy/TCO-STAGED.10.ignore Stage 6); that guarantee is what brought
 	// the ceiling down from N=7 (~1.07M entries, ~171MB), whose extra
 	// range existed for deep tail chains that now run in O(1).
 	DefaultTapeInitialFloor = 1024

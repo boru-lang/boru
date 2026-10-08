@@ -142,7 +142,7 @@ func TestSeam7ConstHandler(t *testing.T) {
 		t.Fatalf("expected mutable-Store error, got %v", err)
 	}
 
-	// Negative: a non-concrete (type-literal) value is refused.
+	// Negative: a non-concrete (type-literal) value is declined.
 	if _, err := constHandler([]Value{NewTypeLiteral(TInteger)}, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "concrete") {
 		t.Fatalf("expected concrete-value error, got %v", err)

@@ -14,8 +14,8 @@ package lang
 //	  interpreted -> Integer Pos      compiled (before the fix) -> Integer Integer
 //
 // A silent miscompile on the DEFAULT path, not merely under -force-compile,
-// since `-compile` falls back only on a refusal and this program never
-// refused. Found while verifying an unrelated claim about whether a const
+// since `-compile` falls back only on a compile failure and this program never
+// declined. Found while verifying an unrelated claim about whether a const
 // index could serve as a baked-site identity — it cannot, and this is the
 // sharper reason why.
 

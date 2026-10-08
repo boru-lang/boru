@@ -121,7 +121,7 @@ doctrine):
   looking at the value (or, for a surface, by an `exposes`
   declaration a type can make at ANY time). These MUST NOT anchor.
   *(Since the type-node fusion,
-  [TYPE-REPRESENTATION.1.md](TYPE-REPRESENTATION.1.md), the catch-all
+  [legacy/TYPE-REPRESENTATION.1.ignore](legacy/TYPE-REPRESENTATION.1.ignore), the catch-all
   kinds — literal/singleton and other body-carrying declarations
   routed through `BindingBodyUnifier` — belong to this
   content-carried, MUST-NOT-anchor set too.)*
@@ -245,7 +245,9 @@ Go-module capability. Two are fixed (pinned by
   which already unified. Bare-refine newtypes of mutable containers
   render by payload family (`bareRefineUnifier.formatDelegate`).
 - **Container content-predicates** already worked as fn-bodied
-  capitalised defs (`def Sorted ([m:Map] => [pred])`); pinned.
+  capitalised defs (`def Sorted ([m:Map] => [pred])`); pinned. Since
+  NUR099 they are declared with `fnpred` (`def Sorted (fnpred [[m:Map]
+  [pred]])`) — a capitalised name over an undeclared fn body is refused.
 
 The third — **base-dispatch delegation for override bodies** — is
 now CLOSED by `as` (§9). A `super`-style word (returning the

@@ -101,7 +101,7 @@ because canon, unify and the type registry read their IDs at runtime. **Concrete
 runtime values do not** — the mint is elided outside a check/compile pass, which
 the doc comment at `value.go:1620` records as ~21% of all interpreter
 allocations. The same comment records a full audit
-(`design/INTERPRETER-PYTHON-PARITY.10.md` Phase B) finding **no run-mode reader
+(`design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore` Phase B) finding **no run-mode reader
 of a concrete value's ID**.
 
 Confirmed independently for this note: `eng/go/equal.go` and `eng/go/compare.go`
@@ -185,7 +185,7 @@ implies at the language level too.
 
 1. **Do not grow `Value`.** It is 88 bytes (measured), copied by value on every
    stack push, argument and tape cell, and under active size pressure
-   (`design/INTERPRETER-SPEED-PLAN.10.md` #1A). Its eight one-byte fields pack
+   (`design/legacy/INTERPRETER-SPEED-PLAN.10.ignore` #1A). Its eight one-byte fields pack
    with zero padding, so a ninth bool costs 8 bytes of padding; a new pointer
    field costs 8 bytes outright. Either is ~9% growth on the hottest copy in
    the system, permanently, for a feature that is off by default.

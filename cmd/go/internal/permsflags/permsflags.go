@@ -70,6 +70,16 @@ func Register(fs *flag.FlagSet, f *Flags) {
 		"set scope.install=true (repeatable; overrides extends)")
 }
 
+// EnvPolicy is the policy the environment names — BORU_POLICY_FILE, then
+// BORU_POLICY, exactly as Resolve reads them when no flag is given — for the
+// surfaces that take no permission flags yet run a program's analysis, which
+// executes an imported module's body (describe, the language server; NUR079).
+// (nil, nil) when neither is set.
+func EnvPolicy() (policy.Policy, error) {
+	var none Flags
+	return none.Resolve()
+}
+
 // Resolve produces the final policy from all flag inputs. Returns
 // (nil, nil) when the user did not configure any policy. Returns
 // an error when the inputs are inconsistent (e.g. --perms and

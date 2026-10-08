@@ -17,7 +17,7 @@ import (
 type seam6c2FailingResolveOps struct{ capabilities.FileOps }
 
 func (seam6c2FailingResolveOps) ResolvePath(string) (string, error) {
-	return "", errors.New("resolvepath refused")
+	return "", errors.New("resolvepath declined")
 }
 
 func TestSeam6C2RunModuleBodyInitError(t *testing.T) {

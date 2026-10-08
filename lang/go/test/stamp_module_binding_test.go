@@ -131,7 +131,7 @@ module [
 
 // TestStampModuleBindingNotMaterialisable pins the negative: a module
 // binding holding a value that cannot bake as a const (a mutable flex
-// map — instance identity is shared across calls) must still refuse
+// map — instance identity is shared across calls) must still decline
 // rather than bake a snapshot that would diverge from the interpreter's
 // live instance. The read now compiles NOT by baking (which would diverge)
 // but by lowering to a runtime dyn-scope lookup (OpLookupDynScope) that
@@ -145,7 +145,7 @@ module [
 ] import
 `)
 	// Stage-2 (detached-stamp flex delivery): a module-scope mutable-reference
-	// read used to REFUSE because the only compile option was baking a diverging
+	// read used to DECLINE because the only compile option was baking a diverging
 	// snapshot. It now STAMPS — the read lowers to a live dyn-scope lookup, so no
 	// snapshot is baked and the shared instance stays shared.
 	if reason, ok := stampOutcome(evs, "read-flex"); !ok {
@@ -158,7 +158,7 @@ module [
 // mutable flex must produce byte-identical results to the INTERPRETER over the
 // same shared-instance mutation sequence. The read lowers to a live dyn-scope
 // lookup, so both paths resolve the ONE shared cell per call; a baked snapshot
-// (the old refusal's only alternative) would freeze a stale value and diverge.
+// (the old compile failure's only alternative) would freeze a stale value and diverge.
 func TestStampModuleFlexReadDynScopeParity(t *testing.T) {
 	modSrc := `
 module [

@@ -38,7 +38,7 @@ func Unify(a, b Value) (Value, bool) {
 func UnifyExplain(a, b Value) (Value, *UnifyError) {
 	a = ResolveWordsDeep(a)
 	b = ResolveWordsDeep(b)
-	return unifyInner(a, b)
+	return unifyInner(a, b, nil)
 }
 
 // UnifyR is Unify with a Registry to enable predicate-FnDef
@@ -57,67 +57,79 @@ func UnifyR(a, b Value, r *Registry) (Value, bool) {
 
 // UnifyExplainR — see UnifyR. Returns structured failure.
 //
-// Pushes r onto the unifyRegistryStack so recursive calls inside the
-// per-family handlers (list element, map field, disjunct alternative)
-// can pick it up via currentUnifyRegistry without each handler taking
-// an explicit r parameter. The kernel is single-threaded per Engine,
-// so the package-level stack is safe.
+// r travels EXPLICITLY through the whole unify: unifyInner takes it,
+// and every family handler, fold, Unifier and helper that recurses
+// back into unifyInner passes it on, so a nested step (list element,
+// map field, disjunct alternative, record field, a Unifier's own
+// re-entry) consults exactly the registry of the UnifyExplainR chain
+// it belongs to. There is deliberately NO package-level state here:
+// the process runs many engines on many goroutines (timer and
+// interval bodies, the net acceptor's per-connection forks, spawned
+// forks), and UnifyExplainR sits on hot paths in all of them, so an
+// ambient stack would race (unify_race_test.go pins that).
+//
+// The chain ends where the ENGINE begins. When a step re-enters the
+// engine — a predicate body run by PredicateUnifier through
+// RunPredicate, a `behave unify` body — the code that body executes
+// (its dispatch, its typed defs, its own `is`) starts unarmed, exactly
+// as the same code does at top level; the body's registry is not the
+// chain's r. The old ambient stack armed those re-entries by accident,
+// from whichever UnifyExplainR happened to be in flight on ANY
+// goroutine, so `[1 2] is Wrap` could admit inside a predicate body a
+// call `(chk [1 2])` declined at top level. lang's
+// TestPredicateBodyDispatchIsUnarmedLikeTopLevel pins the consistent
+// rule on both engines.
 func UnifyExplainR(a, b Value, r *Registry) (Value, *UnifyError) {
 	// Registry-armed prepass (resolve.go): user-typed words inside
 	// patterns and typed-container children (`[:Foo]`) resolve to
 	// their bound bodies instead of degrading to Atoms (NUR060).
 	a = ResolveWordsDeepR(a, r)
 	b = ResolveWordsDeepR(b, r)
-	if r != nil {
-		pushUnifyRegistry(r)
-		defer popUnifyRegistry()
+	return unifyInner(a, b, r)
+}
+
+// unifyWithin is the plain-Unify entry for a call made from INSIDE an
+// in-flight unify — a Unifier's body check, the open-map subset walk a
+// disjunct alternative runs, a bound check. It runs the same unarmed
+// word-resolution prepass UnifyExplain runs, but keeps the registry of
+// the enclosing chain (nil when the chain started at UnifyExplain /
+// Unify) instead of dropping it at the boundary, so a nested typed
+// container or predicate reference is decided exactly as it would be
+// at the chain's top level.
+func unifyWithin(a, b Value, r *Registry) (Value, *UnifyError) {
+	a = ResolveWordsDeep(a)
+	b = ResolveWordsDeep(b)
+	return unifyInner(a, b, r)
+}
+
+// registryMatcher is the registry-threaded twin of TypeBehavior.Match
+// that the kernel membership Behaviors whose Match recurses into the
+// unifier (disjunct, negation, binding-body, type-parameter) implement:
+// their public Match is matchR with a nil registry. isR consults it so
+// an Is-membership question asked from INSIDE an armed unify keeps the
+// chain's registry for the nested walk.
+type registryMatcher interface {
+	matchR(v Value, t *Type, r *Registry) bool
+}
+
+// isR is Value.Is for a membership question asked from inside an
+// in-flight unify. When the chain is armed and t's Behavior is one of
+// the kernel Behaviors whose Match recurses into the unifier, the
+// registry is threaded into that walk; otherwise it is exactly v.Is(t)
+// — a wrapped or foreign Behavior is dispatched through Is unchanged.
+func isR(v Value, t *Type, r *Registry) bool {
+	if r != nil && t != nil {
+		if m, ok := t.Behavior().(registryMatcher); ok {
+			return m.matchR(v, t, r)
+		}
 	}
-	return unifyInnerR(a, b, r)
+	return v.Is(t)
 }
 
-// unifyRegistryStack holds the Registry chain for in-flight
-// UnifyExplainR calls. Family handlers (unifyConcreteMaps,
-// unifyTypedListWithConcrete, unifyDisjunct, etc.) consult the top
-// of the stack via currentUnifyRegistry when they encounter a
-// predicate-fn constraint embedded in a structural type.
-var unifyRegistryStack []*Registry
-
-func pushUnifyRegistry(r *Registry) {
-	unifyRegistryStack = append(unifyRegistryStack, r)
-}
-
-func popUnifyRegistry() {
-	if n := len(unifyRegistryStack); n > 0 {
-		unifyRegistryStack = unifyRegistryStack[:n-1]
-	}
-}
-
-// currentUnifyRegistry returns the Registry of the in-flight
-// UnifyExplainR call, or nil if no Registry-aware call is in flight.
-func currentUnifyRegistry() *Registry {
-	if n := len(unifyRegistryStack); n > 0 {
-		return unifyRegistryStack[n-1]
-	}
-	return nil
-}
-
-// unifyInnerR — Registry-threaded dispatch. Pre-pass handles
-// predicate-FnDef constraints (and disjunct alternatives that contain
-// them) by routing through RunPredicate; everything else falls
-// through to the standard kernel dispatch.
-func unifyInnerR(a, b Value, r *Registry) (Value, *UnifyError) {
-	return unifyInner(a, b)
-}
-
-// isPredicateFnValue reports whether v is a function value whose
-// first signature has a single typed parameter — the shape a
-// predicate type has.
 // IsDeclaredPredicateFn reports whether v is a fn value whose author
-// DECLARED it a membership test with `fnpred`. This is the explicit route
-// into the predicate-type branch, and the one that does not consult the
-// parameter count — ADR-016 forbids arity deciding how a function behaves,
-// and isPredicateFnValue below does exactly that. NUR099 tracks retiring
-// the arity route once the corpus has migrated to `fnpred`.
+// DECLARED it a membership test with `fnpred` — the one route into the
+// predicate-type branch (NUR099: the parameter-count route it replaced
+// was ADR-016's arity-keyed exception, and is gone).
 func IsDeclaredPredicateFn(v Value) bool {
 	if v.Parent == nil || !v.Parent.Equal(TFunction) {
 		return false
@@ -138,42 +150,14 @@ func MarkPredicateFn(v Value) Value {
 	return NewValueRaw(v.Parent, info)
 }
 
-// isPredicateFnValue reports whether v LOOKS like a predicate because it
-// takes one parameter.
-//
-// DEPRECATED ROUTE (NUR099, NUR100). Routing on the parameter count is an
-// arity-keyed exception, which ADR-016 forbids outright: it is why the same
-// fn body means a callable function under a lowercase name and a membership
-// test under a capitalised one, and why `def K fn [[a:Any b:Any]…]` binds a
-// type nothing can inhabit instead of being refused. `fnpred` is the
-// replacement (IsDeclaredPredicateFn); this stays only until the corpus has
-// migrated, and is not to be extended.
-func isPredicateFnValue(v Value) bool {
-	if v.Parent == nil {
-		return false
-	}
-	if !v.Parent.Equal(TFunction) {
-		return false
-	}
-	info, ok := v.Data.(FnDefInfo)
-	if !ok {
-		return false
-	}
-	sig, ok := info.FirstOwnSig()
-	if !ok {
-		return false
-	}
-	return len(sig.Params) == 1
-}
-
 // resolvePredicateRef returns the predicate type's lattice NODE when v
 // references a predicate type via name AND the type's Behavior is the
 // predicateUnifier installed by InstallType. The Behavior check is
-// what distinguishes a predicate TYPE from an ordinary 1-arg fn
-// value — without it, every 1-arg fn would look like a predicate and
-// hijack standard unification (e.g. FnUndef variance checks).
+// what distinguishes a predicate TYPE from an ordinary fn value —
+// without it, any fn would look like a predicate and hijack standard
+// unification (e.g. FnUndef variance checks).
 //
-// Returning the node (not the body) lets the unifyInner short-circuit
+// Returning the node (not the body) lets the unifyInner pre-pass
 // route through the node's own predicateUnifier.Unify, so a predicate
 // referenced by name/word/fn-body and one reached by lattice dispatch
 // share ONE membership verdict (no separate run-the-body path).
@@ -198,9 +182,9 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 		name = w
 	case IsBareTypeNode(v) && v.ID != "" && v.Name() != "":
 		name = v.Name()
-	case isPredicateFnValue(v):
+	case IsDeclaredPredicateFn(v):
 		// Direct FnDef body — try the FnDef's Name field. Predicate
-		// types installed via `def Pos fn […]` carry Name="Pos" on
+		// types installed via `def Pos fnpred […]` carry Name="Pos" on
 		// their FnDef payload after InstallType wires the binding.
 		if info, ok := v.Data.(FnDefInfo); ok {
 			name = info.Name
@@ -262,7 +246,7 @@ func sameFnConstruction(a, b Value) bool {
 // disjunct is a predicate fn value.
 func disjunctHasPredicate(disj DisjunctInfo) bool {
 	for _, alt := range disj.Alternatives {
-		if isPredicateFnValue(alt) {
+		if IsDeclaredPredicateFn(alt) {
 			return true
 		}
 	}
@@ -274,23 +258,23 @@ func disjunctHasPredicate(disj DisjunctInfo) bool {
 // path, shared with lattice dispatch. The candidate is unified against
 // the node's type literal, so predicateUnifier.Unify admits it iff the
 // predicate body accepts (via the shared unifyMembership contract).
-func unifyResolvedPredicate(def *Type, candidate Value) (Value, *UnifyError) {
+func unifyResolvedPredicate(def *Type, candidate Value, r *Registry) (Value, *UnifyError) {
 	pu, ok := def.Behavior().(*PredicateUnifier)
 	if !ok {
 		return Value{}, unifyFail("not a predicate type", candidate, NewTypeLiteral(def))
 	}
-	return pu.Unify(candidate, NewTypeLiteral(def))
+	return pu.Unify(candidate, NewTypeLiteral(def), r)
 }
 
 // unifyDisjunctR is the Registry-aware disjunct walk. Tries each
-// alternative via unifyInnerR so predicate-fn alternatives are
+// alternative via unifyInner with r so predicate-fn alternatives are
 // evaluated correctly.
 func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
 	if !IsConcrete(val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 	for _, alt := range disj.Alternatives {
-		if unified, err := unifyInnerR(alt, val, r); err == nil {
+		if unified, err := unifyInner(alt, val, r); err == nil {
 			return unified, nil
 		}
 	}
@@ -301,19 +285,36 @@ func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErr
 // inside the family handlers use this entry so ResolveWordsDeep runs
 // exactly once per top-level call.
 //
-// Pre-pass: if a Registry is active on the unifyRegistryStack and
-// either operand is a predicate-fn constraint (or a disjunct
-// containing one), route through RunPredicate so structural contexts
-// — typed-list child, typed-map child, record field, disjunct
-// alternative — honor predicate types without each handler needing
-// to know about Registry.
-func unifyInner(a, b Value) (Value, *UnifyError) {
-	if r := currentUnifyRegistry(); r != nil {
+// r is the registry of the enclosing UnifyExplainR chain — nil when
+// the chain started at UnifyExplain / Unify — and every handler that
+// recurses hands it back here unchanged, so one armed call arms the
+// whole structural walk beneath it.
+//
+// Pre-pass: if the chain is armed and either operand is a
+// predicate-fn constraint (or a disjunct containing one), route
+// through RunPredicate so structural contexts — typed-list child,
+// typed-map child, record field, disjunct alternative — honor
+// predicate types without each handler needing to know about
+// Registry.
+func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
+	if r != nil {
+		// Two references to ONE predicate type are the same type: an atom
+		// against an atom naming the same predicate (`[:Pos]` in one fn
+		// shape against `[:Pos]` in another, `fnsig` against `fn`) is a
+		// type comparison, not a membership test of the atom `Pos` against
+		// the predicate `Pos` — which is what the pre-pass ran, and it
+		// failed (NUR157: `((fn [[xs:[:Pos]] [Boolean] [true]]) unify T`
+		// was ~unify-fail under a registry and admitted without one).
+		if da, oka := resolvePredicateRef(a, r); oka {
+			if db, okb := resolvePredicateRef(b, r); okb && da != nil && da == db {
+				return a, nil
+			}
+		}
 		if def, ok := resolvePredicateRef(a, r); ok && b.Data != nil {
-			return unifyResolvedPredicate(def, b)
+			return unifyResolvedPredicate(def, b, r)
 		}
 		if def, ok := resolvePredicateRef(b, r); ok && a.Data != nil {
-			return unifyResolvedPredicate(def, a)
+			return unifyResolvedPredicate(def, a, r)
 		}
 		if IsDisjunct(a) {
 			disj, _ := AsDisjunct(a)
@@ -347,12 +348,12 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 	// disjunct node's alternatives before None's self-only rule, exactly
 	// as the disjunct fold preceded the None fold when the name
 	// evaluated to the DisjunctInfo body (the Stage 2 flip,
-	// design/TYPE-REPRESENTATION.1.md). One side only — a pair of
+	// design/legacy/TYPE-REPRESENTATION.1.ignore). One side only — a pair of
 	// constraint nodes keeps the table order.
 	aCons := IsBareTypeNode(a) && HasConstraintUnify(&a)
 	bCons := IsBareTypeNode(b) && HasConstraintUnify(&b)
 	if aCons != bCons {
-		if v, err, hit := dispatchUnifier(a, b); hit {
+		if v, err, hit := dispatchUnifier(a, b, r); hit {
 			return v, err
 		}
 	}
@@ -360,10 +361,10 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 	for i := range unifyFolds {
 		f := &unifyFolds[i]
 		if f.ruling(a, sa) {
-			return f.fold(a, b)
+			return f.fold(a, b, r)
 		}
 		if f.ruling(b, sb) {
-			return f.fold(b, a)
+			return f.fold(b, a, r)
 		}
 	}
 
@@ -374,7 +375,7 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 	// Unifiers (see core_type.go::InstallType) so narrowing into a
 	// constrained type checks the constraint; external plugin types
 	// and `behave unify/q` user installs also flow through here.
-	if v, err, hit := dispatchUnifier(a, b); hit {
+	if v, err, hit := dispatchUnifier(a, b, r); hit {
 		return v, err
 	}
 
@@ -397,10 +398,10 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 			other, so = a, sa
 		}
 		if IsMapShape(so) {
-			return unifyMapFamily(NewTypeLiteral(TMap), ShapeTypeLiteral, other, so)
+			return unifyMapFamily(NewTypeLiteral(TMap), ShapeTypeLiteral, other, so, r)
 		}
 		if IsListShape(so) {
-			return unifyListFamily(NewTypeLiteral(TList), ShapeTypeLiteral, other, so)
+			return unifyListFamily(NewTypeLiteral(TList), ShapeTypeLiteral, other, so, r)
 		}
 		// Node vs a narrower node-family type literal (Map, List,
 		// FlexMap, FlexList, …) — the narrower literal wins.
@@ -420,18 +421,18 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 	aListLit := sa == ShapeTypeLiteral && nodeFamily(denotedType(a)).Equal(TList)
 	bListLit := sb == ShapeTypeLiteral && nodeFamily(denotedType(b)).Equal(TList)
 	if IsListShape(sa) || IsListShape(sb) || aListLit || bListLit {
-		return unifyListFamily(a, sa, b, sb)
+		return unifyListFamily(a, sa, b, sb, r)
 	}
 	aMapLit := sa == ShapeTypeLiteral && nodeFamily(denotedType(a)).Equal(TMap)
 	bMapLit := sb == ShapeTypeLiteral && nodeFamily(denotedType(b)).Equal(TMap)
 	if IsMapShape(sa) || IsMapShape(sb) || aMapLit || bMapLit {
-		return unifyMapFamily(a, sa, b, sb)
+		return unifyMapFamily(a, sa, b, sb, r)
 	}
 	if sa == ShapeDepScalar || sb == ShapeDepScalar {
 		return unifyDepScalar(a, sa, b, sb)
 	}
 	if sa == ShapeFnUndef || sb == ShapeFnUndef {
-		return unifyFnUndefShape(a, sa, b, sb)
+		return unifyFnUndefShape(a, sa, b, sb, r)
 	}
 
 	// General narrowing: type-literal-vs-concrete, same-type literal
@@ -444,10 +445,12 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 // near the top of unifyInner. ruling reports whether a side is this
 // rule's governing shape (by ValueShape, or by a payload predicate the
 // Shape enum doesn't name — bounded type, surface, type parameter);
-// fold receives the ruling side first and the other side second.
+// fold receives the ruling side first, the other side second, and the
+// registry of the enclosing chain (nil when unarmed) for the folds
+// that recurse into unifyInner.
 type unifyFold struct {
 	ruling func(Value, ValueShape) bool
-	fold   func(ruling, other Value) (Value, *UnifyError)
+	fold   func(ruling, other Value, r *Registry) (Value, *UnifyError)
 }
 
 // unifyFolds is the priority-ordered fold table. The order reproduces
@@ -466,25 +469,27 @@ var unifyFolds []unifyFold
 func init() {
 	unifyFolds = []unifyFold{
 		{func(v Value, _ ValueShape) bool { return IsBoundedType(v) }, unifyBoundedType},
-		{func(_ Value, s ValueShape) bool { return s == ShapeDisjunct }, func(ruling, other Value) (Value, *UnifyError) {
+		{func(_ Value, s ValueShape) bool { return s == ShapeDisjunct }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
 			disj, _ := AsDisjunct(ruling)
-			return unifyDisjunct(disj, other)
+			return unifyDisjunct(disj, other, r)
 		}},
-		{func(_ Value, s ValueShape) bool { return s == ShapeNegation }, func(ruling, other Value) (Value, *UnifyError) {
+		{func(_ Value, s ValueShape) bool { return s == ShapeNegation }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
 			neg, _ := AsNegation(ruling)
-			return unifyNegation(neg, other)
+			return unifyNegation(neg, other, r)
 		}},
-		{func(v Value, _ ValueShape) bool { return IsSurfaceType(v) }, unifySurface},
+		{func(v Value, _ ValueShape) bool { return IsSurfaceType(v) }, func(ruling, other Value, _ *Registry) (Value, *UnifyError) {
+			return unifySurface(ruling, other)
+		}},
 		{func(_ Value, s ValueShape) bool { return s == ShapeNever }, foldDegenRoot("never", ShapeNever)},
 		{func(_ Value, s ValueShape) bool { return s == ShapeNone }, foldNoneRoot},
 		{func(_ Value, s ValueShape) bool { return s == ShapeAbsent }, foldDegenRoot("absent", ShapeAbsent)},
-		{func(_ Value, s ValueShape) bool { return s == ShapeAny }, func(_, other Value) (Value, *UnifyError) {
+		{func(_ Value, s ValueShape) bool { return s == ShapeAny }, func(_, other Value, _ *Registry) (Value, *UnifyError) {
 			// Any yields the other (more specific) side.
 			return other, nil
 		}},
 		{func(v Value, _ ValueShape) bool { return IsClassType(v) }, unifyObjectType},
-		{func(v Value, _ ValueShape) bool { return typeParamLitNode(v) != nil }, func(ruling, other Value) (Value, *UnifyError) {
-			return unifyTypeParam(ruling, typeParamLitNode(ruling), other)
+		{func(v Value, _ ValueShape) bool { return typeParamLitNode(v) != nil }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
+			return unifyTypeParam(ruling, typeParamLitNode(ruling), other, r)
 		}},
 	}
 }
@@ -496,17 +501,17 @@ func init() {
 // constraint (MakeFieldValueR's ConformsTo arm) — the unifier was the
 // one boundary that read `Any` as "anything except none", which split
 // a record's declared-`Any` field between construction (admitted) and
-// every pattern walk (refused). The intersection is the none side (the
+// every pattern walk (declined). The intersection is the none side (the
 // narrower). Stated here, not in the Any fold, because None outranks
 // Any in the fold order; Never and Absent keep their self-only rule —
 // in particular the `?:T` optional-key machinery depends on
-// `Unify(Any, Absent)` refusing (an `Any` field is required, not
+// `Unify(Any, Absent)` declining (an `Any` field is required, not
 // optional).
-func foldNoneRoot(ruling, other Value) (Value, *UnifyError) {
+func foldNoneRoot(ruling, other Value, _ *Registry) (Value, *UnifyError) {
 	if Shape(other) == ShapeAny {
 		return ruling, nil
 	}
-	return foldDegenRoot("none", ShapeNone)(ruling, other)
+	return foldDegenRoot("none", ShapeNone)(ruling, other, nil)
 }
 
 // foldDegenRoot builds the self-only fold a degenerate root (Never,
@@ -514,8 +519,8 @@ func foldNoneRoot(ruling, other Value) (Value, *UnifyError) {
 // root, otherwise it is a definitive mismatch. The ruling side is
 // returned on success (both-root pairs yield the first-checked side,
 // matching the prior `if sa == sb { return a }` rule).
-func foldDegenRoot(name string, root ValueShape) func(Value, Value) (Value, *UnifyError) {
-	return func(ruling, other Value) (Value, *UnifyError) {
+func foldDegenRoot(name string, root ValueShape) func(Value, Value, *Registry) (Value, *UnifyError) {
+	return func(ruling, other Value, _ *Registry) (Value, *UnifyError) {
 		if Shape(other) != root {
 			return Value{}, unifyFail(name+" only unifies with "+name, ruling, other)
 		}
@@ -539,8 +544,9 @@ func foldDegenRoot(name string, root ValueShape) func(Value, Value) (Value, *Uni
 // unifyObjectType admits the non-ObjectType side by Is-membership in
 // the object type's minted node (see the fold in unifyInner). Two
 // object types unify only when they are the same type (nominal —
-// matching the Record/Options exclusivity rules).
-func unifyObjectType(a, b Value) (Value, *UnifyError) {
+// matching the Record/Options exclusivity rules). r is the enclosing
+// chain's registry, threaded into the membership walk (isR).
+func unifyObjectType(a, b Value, r *Registry) (Value, *UnifyError) {
 	ot, other := a, b
 	if !IsClassType(ot) {
 		ot, other = b, a
@@ -565,7 +571,7 @@ func unifyObjectType(a, b Value) (Value, *UnifyError) {
 	}
 	// Concrete instance or check-mode carrier: Is-membership via the
 	// node's Behavior (subclass instances conform by ancestry).
-	if other.Is(oi.Type) {
+	if isR(other, oi.Type, r) {
 		return other, nil
 	}
 	return Value{}, unifyFail("value is not an instance of the object type", a, b)

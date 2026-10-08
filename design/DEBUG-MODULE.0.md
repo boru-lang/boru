@@ -1,5 +1,14 @@
 # boru:debug — a debugging & introspection module
 
+> **2026-09-26 (NUR063).** Seven of these words are self-knowledge, not
+> debugging — `words`, `defs`, `modules`, `sig`, `body`, `deps`, `shape` —
+> and their canonical home is now **`boru:scry`** (`design/BORU-SCRY.0.md`).
+> Both modules build them from one constructor (`selfKnowledge`,
+> `lang/go/modules/scry.go`), so the answers cannot fork. The `Debug.*`
+> copies are frozen at these seven, documented deprecated in `describe`,
+> and removed in the first minor release after the one that ships
+> `boru:scry`. The rest of this note stands.
+
 Status: **implemented through Phase 3 (every in-process surface).** Built
 and shipping in `lang/go/modules/debug.go` + `debug_step.go`: all of
 printing, structural/system introspection, value sizing, performance

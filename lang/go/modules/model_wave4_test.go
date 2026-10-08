@@ -287,63 +287,63 @@ func TestModelWave4NewHandlerRejections(t *testing.T) {
 // model_io arms of the inline-source scratch setup.
 type failOpsWave4 struct{ failMkdir bool }
 
-func (f *failOpsWave4) ReadFile(string) ([]byte, error)    { return nil, errors.New("read refused") }
-func (f *failOpsWave4) Chown(string, int, int, bool) error { return errors.New("chown refused") }
+func (f *failOpsWave4) ReadFile(string) ([]byte, error)    { return nil, errors.New("read declined") }
+func (f *failOpsWave4) Chown(string, int, int, bool) error { return errors.New("chown declined") }
 func (f *failOpsWave4) XattrGet(string, string) ([]byte, error) {
-	return nil, errors.New("xattr refused")
+	return nil, errors.New("xattr declined")
 }
-func (f *failOpsWave4) XattrSet(string, string, []byte) error { return errors.New("xattr refused") }
+func (f *failOpsWave4) XattrSet(string, string, []byte) error { return errors.New("xattr declined") }
 func (f *failOpsWave4) XattrList(string) ([]string, error) {
-	return nil, errors.New("xattr refused")
+	return nil, errors.New("xattr declined")
 }
-func (f *failOpsWave4) XattrRemove(string, string) error { return errors.New("xattr refused") }
+func (f *failOpsWave4) XattrRemove(string, string) error { return errors.New("xattr declined") }
 func (f *failOpsWave4) TempFile(string, string) (string, error) {
-	return "", errors.New("temp refused")
+	return "", errors.New("temp declined")
 }
 func (f *failOpsWave4) TempDir(string, string) (string, error) {
-	return "", errors.New("temp refused")
+	return "", errors.New("temp declined")
 }
 func (f *failOpsWave4) Statfs(string) (capabilities.FsInfo, error) {
-	return capabilities.FsInfo{}, errors.New("statfs refused")
+	return capabilities.FsInfo{}, errors.New("statfs declined")
 }
 func (f *failOpsWave4) Watch(string, capabilities.WatchOpts) (<-chan capabilities.WatchEvent, func() error, error) {
-	return nil, nil, errors.New("watch refused")
+	return nil, nil, errors.New("watch declined")
 }
 func (f *failOpsWave4) Open(string, capabilities.OpenOpts) (capabilities.FileHandle, error) {
-	return nil, errors.New("open refused")
+	return nil, errors.New("open declined")
 }
 func (f *failOpsWave4) Lock(string, bool, bool) (io.Closer, error) {
-	return nil, errors.New("lock refused")
+	return nil, errors.New("lock declined")
 }
 func (f *failOpsWave4) Mmap(string, int64, int, bool) (capabilities.MmapRegion, error) {
-	return nil, errors.New("mmap refused")
+	return nil, errors.New("mmap declined")
 }
 func (f *failOpsWave4) WriteFile(string, []byte, os.FileMode) error {
-	return errors.New("write refused")
+	return errors.New("write declined")
 }
 func (f *failOpsWave4) MkdirAll(string, os.FileMode) error {
 	if f.failMkdir {
-		return errors.New("mkdir refused")
+		return errors.New("mkdir declined")
 	}
 	return nil
 }
 func (f *failOpsWave4) ResolvePath(string) (string, error) { return "", errors.New("no resolve") }
 
 func (f *failOpsWave4) Stat(string, bool) (capabilities.FileInfo, error) {
-	return capabilities.FileInfo{}, errors.New("stat refused")
+	return capabilities.FileInfo{}, errors.New("stat declined")
 }
 func (f *failOpsWave4) ReadDir(string) ([]capabilities.FileInfo, error) {
-	return nil, errors.New("readdir refused")
+	return nil, errors.New("readdir declined")
 }
-func (f *failOpsWave4) Remove(string, bool) error       { return errors.New("remove refused") }
-func (f *failOpsWave4) Rename(string, string) error     { return errors.New("rename refused") }
-func (f *failOpsWave4) Symlink(string, string) error    { return errors.New("symlink refused") }
-func (f *failOpsWave4) Link(string, string) error       { return errors.New("link refused") }
-func (f *failOpsWave4) Chmod(string, os.FileMode) error { return errors.New("chmod refused") }
+func (f *failOpsWave4) Remove(string, bool) error       { return errors.New("remove declined") }
+func (f *failOpsWave4) Rename(string, string) error     { return errors.New("rename declined") }
+func (f *failOpsWave4) Symlink(string, string) error    { return errors.New("symlink declined") }
+func (f *failOpsWave4) Link(string, string) error       { return errors.New("link declined") }
+func (f *failOpsWave4) Chmod(string, os.FileMode) error { return errors.New("chmod declined") }
 func (f *failOpsWave4) Chtimes(string, time.Time, time.Time) error {
-	return errors.New("chtimes refused")
+	return errors.New("chtimes declined")
 }
-func (f *failOpsWave4) Truncate(string, int64) error { return errors.New("truncate refused") }
+func (f *failOpsWave4) Truncate(string, int64) error { return errors.New("truncate declined") }
 
 // TestModelWave4InlineIOFailures pins the model_io arms: a failing MkdirAll
 // and a failing WriteFile during inline scratch setup are loud errors.
@@ -351,14 +351,14 @@ func TestModelWave4InlineIOFailures(t *testing.T) {
 	r := mcovReg(t)
 	native.SetHostFileOps(r, &failOpsWave4{failMkdir: true})
 	if err := mcovErr(t, r, mw4Imp+`Model.new {src:'a: 1'}`); err == nil ||
-		!strings.Contains(err.Error(), "model_io") || !strings.Contains(err.Error(), "mkdir refused") {
+		!strings.Contains(err.Error(), "model_io") || !strings.Contains(err.Error(), "mkdir declined") {
 		t.Errorf("mkdir failure: %v, want model_io", err)
 	}
 
 	r2 := mcovReg(t)
 	native.SetHostFileOps(r2, &failOpsWave4{})
 	if err := mcovErr(t, r2, mw4Imp+`Model.new {src:'a: 1'}`); err == nil ||
-		!strings.Contains(err.Error(), "model_io") || !strings.Contains(err.Error(), "write refused") {
+		!strings.Contains(err.Error(), "model_io") || !strings.Contains(err.Error(), "write declined") {
 		t.Errorf("write failure: %v, want model_io", err)
 	}
 }

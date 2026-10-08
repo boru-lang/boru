@@ -1,6 +1,6 @@
 // Public entry point for @boru-lang/core — the TypeScript interpreter core.
 //
-// The TS twin of the core/go module (design/ENG-FOUR-PIECE.0.md): values,
+// The TS twin of the core/go module (design/legacy/ENG-FOUR-PIECE.0.ignore): values,
 // types, signatures, matching, the registry, and the step loop. What is NOT
 // here is the point of the package — no check pass, no compiler, no VM, no
 // parser, and no dependencies at all.

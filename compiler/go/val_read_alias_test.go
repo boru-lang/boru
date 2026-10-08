@@ -146,7 +146,7 @@ func TestArgIsProducedClosureSkipsValRead(t *testing.T) {
 	es.producedBy[v.ID] = producer{seq: 0}
 	sig := &core.Signature{Args: []*core.Type{core.TAny}}
 	if !es.argIsProducedClosure("typeof", sig, []core.Value{v}) || es.Compilable {
-		t.Fatal("a produced closure at an Any slot refuses")
+		t.Fatal("a produced closure at an Any slot declines")
 	}
 	es.Compilable = true
 	es.valReadIDs = map[string]bool{v.ID: true}

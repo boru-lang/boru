@@ -884,7 +884,7 @@ make Options {x:([Integer None] tany)}	options{x:None tor Integer}
 # =====================================================================
 
 # Define a named disjunct via tany.
-# Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): a name denotes its minted node and renders as the name.
+# Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): a name denotes its minted node and renders as the name.
 def Maybe (tany [String None]) Maybe	Maybe
 def ScalarOrList (tany [Scalar List]) ScalarOrList	ScalarOrList
 

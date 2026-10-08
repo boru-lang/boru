@@ -111,7 +111,7 @@ func TestBehaveUnify_RejectsBadShape(t *testing.T) {
 			if err != nil {
 				t.Fatalf("new: %v", err)
 			}
-			_, err = a.Run(c.src)
+			err = runReferenceErr(t, a, c.src)
 			if err == nil {
 				t.Fatalf("expected error for %s", c.name)
 			}

@@ -1,6 +1,6 @@
 package core
 
-// Compile-pass state isolation (design/boru-bytecode-plan.0.md §Stage 5,
+// Compile-pass state isolation (design/legacy/boru-bytecode-plan.0.ignore §Stage 5,
 // fallback registry-isolation follow-on).
 //
 // CompileCheck executes the program in check mode, so its
@@ -9,7 +9,7 @@ package core
 // types, the module load set, context-store state. The COMPILED path
 // relies on those persisting (OpPushType resolves minted IDs; islands
 // re-run via a sub-engine over the same registry). But when a program
-// is UNCOMPILABLE the interpreter fallback re-runs the whole source and
+// is UNCOMPILABLE nothing re-runs the source, and
 // double-applies them — a re-mint, a re-import, a re-run Test spec —
 // diverging from a clean interpreter run.
 //
@@ -46,7 +46,7 @@ func (r *Registry) SnapshotForCompile() CompileSandbox {
 	// check is DEEP-cloned (CheckState.Clone) because Check is now a shared
 	// *CheckState: a module sub-registry can transiently point its Check at the
 	// parent pass's and mutate its maps IN PLACE during module-fn body analysis
-	// (design/module-fn-checkstate-ownership.1.md §3.2). The old by-value copy
+	// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2). The old by-value copy
 	// reasoning ("the check pass only ever REPLACES, never mutates in place") no
 	// longer holds, so a shallow capture would let in-place mutations survive the
 	// rollback. pendGen stays a by-pointer capture (still only reassigned).
@@ -114,6 +114,7 @@ func (r *Registry) RestoreForCompile(s CompileSandbox) {
 		r.Check = s.check
 	}
 	r.FlowCtrl = s.flow
+	r.FlowAt, r.FlowAtSet, r.FlowAtHeld = SrcPos{}, false, false
 	r.pendingGen = s.pendGen
 	if r.Modules != nil {
 		r.Modules.seq = s.modSeq

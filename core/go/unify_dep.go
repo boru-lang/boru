@@ -39,7 +39,7 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 	// be re-verified on an abstract carrier anyway, so depScalarCheck below
 	// would conservatively (and wrongly) reject it. `def mk fn [[] [Big] [50]]
 	// use (mk)` failed exactly here. A CONCRETE value (Data present) still runs
-	// the predicate check, so a plain `5` is correctly refused for `Big`.
+	// the predicate check, so a plain `5` is correctly declined for `Big`.
 	if v.Carrier && !IsConcrete(v) && v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
 		return true
 	}
@@ -56,10 +56,10 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 // structural fallback cannot re-admit it by lattice subtyping alone.
 // This is the Unify capability PredicateUnifier already carries; without
 // it a typed bind against the bare minted node (`def x:Big 5` once
-// evaluation yields nodes — design/TYPE-REPRESENTATION.1.md §N3) would
+// evaluation yields nodes — design/legacy/TYPE-REPRESENTATION.1.ignore §N3) would
 // fall to unifySameOrSubtype's narrower-literal arm and bind without
 // ever running the constraint.
-func (d *DepScalarUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (d *DepScalarUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// TWO refinement sides — the other operand is itself DepScalar
 	// content (an inline body, or a sibling NAME's node recording one):
 	// the pair meets to the interval intersection, exactly as the
@@ -90,7 +90,7 @@ func (d *DepScalarUnifier) Unify(a, b Value) (Value, *UnifyError) {
 // depScalarContent returns the DepScalar VALUE a unify operand stands
 // for: the operand itself when it carries the payload, or a bare
 // node's recorded refinement body (the named spelling after the Stage
-// 2 flip — design/TYPE-REPRESENTATION.1.md §N2).
+// 2 flip — design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 func depScalarContent(v Value) (Value, bool) {
 	if v.IsDepScalar() {
 		return v, true

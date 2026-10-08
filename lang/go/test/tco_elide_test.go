@@ -10,7 +10,7 @@ import (
 )
 
 // End-to-end battery for tail-call elimination on direct
-// self-recursion (design/TCO-STAGED.10.md Stages 3+4a). Two things are
+// self-recursion (design/legacy/TCO-STAGED.10.ignore Stages 3+4a). Two things are
 // pinned per shape: the RESULT, which must be byte-identical with TCO
 // on, off, or inapplicable — correctness never depends on firing — and
 // the Detected/Elided/Replaced counters, which pin exactly which path

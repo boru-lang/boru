@@ -18,7 +18,7 @@ This document proposes the **Ideal**: a struct that describes a
 type-*kind* (Object, Record, Table, Array, …) and lives in a
 per-`Registry` registry with the same first-class, dynamically
 controllable status as a capability. It builds directly on the
-`def` / `make` / `type` surface established by `TYPE-UNIFORM.10.md`.
+`def` / `make` / `type` surface established by `legacy/TYPE-UNIFORM.10.ignore`.
 It does **not** change behaviour by itself.
 
 ## 1. Motivation
@@ -576,7 +576,7 @@ concrete: identity is global, *capability* is registry-scoped.
 **`def` / `make` resolution is generic.** A host kind installed
 through `InstallType` reuses the resolution records already use —
 `stepWord` resolves a type-bound name (since the type-node fusion,
-[TYPE-REPRESENTATION.1.md](TYPE-REPRESENTATION.1.md) §6, to the minted
+[legacy/TYPE-REPRESENTATION.1.ignore](legacy/TYPE-REPRESENTATION.1.ignore) §6, to the minted
 lattice NODE; `make` recovers the stored body via
 `core.TypeContentOf`), `MakeHandler` dispatches on it. Beyond the
 `HostTypeBody` marker, no per-kind kernel plumbing was needed.

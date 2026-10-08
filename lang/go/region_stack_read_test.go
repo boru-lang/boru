@@ -13,7 +13,7 @@ import (
 //
 // Measured on the merge base 6bc55db before fixing, which is what separates
 // them: the first two were introduced by the forty-eighth increment (both
-// shapes REFUSED there); the fourth diverged there identically, so the
+// shapes DECLINED there); the fourth diverged there identically, so the
 // review's diagnosis of it — the widened prefix predicate — was wrong about
 // the cause while its witness was right about the divergence.
 
@@ -24,6 +24,10 @@ func rsrRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr e
 		t.Fatal(err)
 	}
 	vC, ran, cerr := a.RunCompiled(src)
+	// Booked, not returned: the interpreter oracle below is what the
+	// caller asserts, and reading it is not a fallback — the compiled
+	// lane already returned its error.
+	noteCompileDefect(t, src, vC, cerr)
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -32,9 +36,9 @@ func rsrRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr e
 	return ran, fmt.Sprint(vC), fmt.Sprint(vI), cerr, ierr
 }
 
-// rsrRefuses asserts a sound refusal: the compiled lane declines, and the
+// rsrDoesNotCompile asserts a compile failure: the compiled lane declines, and the
 // fallback answer is the interpreter's.
-func rsrRefuses(t *testing.T, src, wantReason, wantInterp string) {
+func rsrDoesNotCompile(t *testing.T, src, wantReason, wantInterp string) {
 	t.Helper()
 	a, err := New()
 	if err != nil {
@@ -45,14 +49,14 @@ func rsrRefuses(t *testing.T, src, wantReason, wantInterp string) {
 		t.Fatal(cerr)
 	}
 	if prog != nil {
-		t.Fatalf("must refuse, it compiled:\n%s", prog.Disassemble())
+		t.Fatalf("must decline, it compiled:\n%s", prog.Disassemble())
 	}
 	if !strings.Contains(reason, wantReason) {
-		t.Errorf("refusal reason = %q, want it to name %q", reason, wantReason)
+		t.Errorf("compile failure reason = %q, want it to name %q", reason, wantReason)
 	}
 	ran, _, gotI, _, ierr := rsrRun(t, src)
 	if ran {
-		t.Error("the refused program must not run compiled")
+		t.Error("the declined program must not run compiled")
 	}
 	if ierr != nil {
 		t.Fatalf("the interpreter oracle errored: %v", ierr)
@@ -66,8 +70,15 @@ func rsrRefuses(t *testing.T, src, wantReason, wantInterp string) {
 // INTERPRETER executing arbitrary code, so what it appends is not bounded by
 // the modelled out: a maybe-raising body can pass a Function through the
 // handler, and the interpreter re-steps it against the value beneath.
+//
+// `error` declares CompileDynBody since 2026-09-25, but only a COMPUTED
+// handler body takes that path: a concrete `[drop]` the closure path
+// declined keeps declining (tryRecordDynBody's StripsUnconsumedInput arm),
+// because the handler's run-time result count is its body's own and the
+// variadic mark is not yet fenced at this shape's consumers (measured: the
+// raise arm ran to a CALL_DYNAMIC underflow).
 func TestFallbackRegionMayCarryACallable(t *testing.T) {
-	rsrRefuses(t,
+	rsrDoesNotCompile(t,
 		`def xs [1] def g fn x:Integer Integer [x add 1] 5 do [if ((xs 0 getr) eq 1) [g/v] [1 div 0]] error [drop]`,
 		"", "[6]")
 }
@@ -75,20 +86,39 @@ func TestFallbackRegionMayCarryACallable(t *testing.T) {
 // TestFallbackInputIsAStackRead — finding 2. The FALLBACK op pops its own
 // inputs; a mark opened above one of them leaves the op popping from beneath
 // its own mark, and MAKE_LIST_TO_MARK then collects an empty run.
+//
+// This declined while a strip island's result was unchecked, since the list
+// literal is a fixed-arity consumer of a result whose count is the handler
+// body's own. Since the #515 merge the island's run is a checkable region
+// (FallbackSpan.CheckOne, NUR301's single seat): the literal lowers a
+// fixed-count MAKE_LIST over the island's one value — no mark over the
+// input — so the value path answers the interpreter's [[1]], and the raise
+// path, whose handler leaves nothing, is the loud designed defer.
 func TestFallbackInputIsAStackRead(t *testing.T) {
-	rsrRefuses(t,
-		`def xs [1] [do [1 div (xs 0 getr)] error [drop]]`,
-		"", "[[1]]")
+	const src = `def xs [1] [do [1 div (xs 0 getr)] error [drop]]`
+	requireEngineParity(t, src, true)
+	prog, reason, _, err := mustNew(t).CompileCheck(src)
+	if prog == nil || err != nil || strings.Contains(prog.Disassemble(), "MAKE_LIST_TO_MARK") {
+		t.Fatalf("the island's one value is a fixed-count element: %q / %v", reason, err)
+	}
+	const raising = `def xs [0] [do [1 div (xs 0 getr)] error [drop]]`
+	gotC, _, errC := mustNew(t).RunCompiled(raising)
+	if !isBailDefect(errC) || !strings.Contains(errC.Error(), "error's island left 0") || len(gotC) != 0 {
+		t.Errorf("the raise path's empty run defers loudly, got %v / %v", gotC, errC)
+	}
+	if gotI, errI := mustNew(t).RunInterp(raising); errI != nil || fmt.Sprint(gotI) != "[[]]" {
+		t.Errorf("the interpreter answers [[]], got %v / %v", gotI, errI)
+	}
 }
 
-// TestVariadicUserCallPromotionRefuses — finding 3's witness, whose cause was
+// TestVariadicUserCallPromotionFailsToCompile — finding 3's witness, whose cause was
 // TWO defects stacked. The mark plan's half is the same stack-read question
 // (a user call's operands were not examined either); underneath it, a
 // variadic-returning callee's result was force-promoted to ONE frame slot,
 // which pops one value from a runtime-variable run. That half diverged
 // identically on the merge base.
-func TestVariadicUserCallPromotionRefuses(t *testing.T) {
-	rsrRefuses(t,
+func TestVariadicUserCallPromotionFailsToCompile(t *testing.T) {
+	rsrDoesNotCompile(t,
 		`def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)`,
 		"variadic fn result promoted to a frame slot", "[9 0 1 2]")
 }
@@ -135,17 +165,17 @@ func TestConstArgVariadicUserCallStillSeats(t *testing.T) {
 // live in `ev.br` — so the condition was never examined, the mark opened
 // above it, and the branch popped from beneath its own mark.
 //
-// Measured: on the merge base 6bc55db this REFUSED ("call result above a
+// Measured: on the merge base 6bc55db this DECLINED ("call result above a
 // literal"); at d663fe1 (the forty-seventh increment) it answered `9 1 9`
 // against the interpreter's `1 9 9`, silently, exit 0, on the default lane.
 func TestBranchRegionConditionIsAStackRead(t *testing.T) {
-	rsrRefuses(t,
+	rsrDoesNotCompile(t,
 		`def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])`,
 		"residual shape beyond Stage 1", "[1 9 9]")
 	// The zero-run arm of the same shape: the count differs, the defect does
 	// not — one witness per arm so a fix that only repairs the populated run
 	// cannot pass.
-	rsrRefuses(t,
+	rsrDoesNotCompile(t,
 		`def zs [1] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])`,
 		"residual shape beyond Stage 1", "[1]")
 }
@@ -153,11 +183,11 @@ func TestBranchRegionConditionIsAStackRead(t *testing.T) {
 // TestBranchRegionConditionInABodyUnit — the same hole, reached through the
 // fifty-fifth increment's body-unit seat, where it surfaced as an INTERNAL
 // VM error rather than a wrong answer: `bytecode: internal: SEAT_BELOW_MARK
-// prefix reaches past the mark`. At the fifty-fourth increment this refused
+// prefix reaches past the mark`. At the fifty-fourth increment this declined
 // cleanly, so the body-unit seat is what made the top-level hole reachable
 // here — the hole itself is older.
 func TestBranchRegionConditionInABodyUnit(t *testing.T) {
-	rsrRefuses(t,
+	rsrDoesNotCompile(t,
 		`def zs [1] def zt (zs 0 getr)  do [1 (if (zt gt 0) [] [9 9])]`,
 		"result above a literal", "[1]")
 }

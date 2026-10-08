@@ -1,7 +1,7 @@
 # ============================================================================
 # boru:sift — the semi-structured-text tier of the parsing stack, in boru.
 #
-# design/SIFT.0.md. Between StringUtil / read {fmt:'lines'} (primitives) and
+# design/legacy/SIFT.0.ignore. Between StringUtil / read {fmt:'lines'} (primitives) and
 # parse json / boru:parse (rigid formats / grammars), sift parses the loose
 # line- and field-oriented text Unix tools and /proc files emit.
 #
@@ -47,7 +47,7 @@ def sift-known-type fn [[t:String] [Boolean] [ ((sift-type-set get t) is None) n
 def sift-known-family fn [[f:String] [Boolean] [ ((sift-family-set get f) is None) not ]]
 
 # ----------------------------------------------------------------------------
-# Name normalization (design/SIFT.0.md §5.3): kebab-case, splitting camelCase
+# Name normalization (design/legacy/SIFT.0.ignore §5.3): kebab-case, splitting camelCase
 # only at a lowercase→uppercase boundary (so eth0 stays eth0, 1K stays 1k),
 # collapse non-alphanumerics to a single dash, lowercase, and prefix f- when
 # the result would start with a digit. A char-fold, then split/join on '-' to
@@ -83,7 +83,7 @@ def sift-normalize-name fn [[raw:String] [String] [
 ]]
 
 # ----------------------------------------------------------------------------
-# Coercion vocabulary (design/SIFT.0.md §5.4). An empty (trimmed) cell under a
+# Coercion vocabulary (design/legacy/SIFT.0.ignore §5.4). An empty (trimmed) cell under a
 # non-string type is None; a genuine conversion failure raises sift_type_error.
 # ----------------------------------------------------------------------------
 def sift-size-units {
@@ -254,7 +254,7 @@ def sift-add-type fn [[types:Map k:String t:String] [Map] [
 ]]
 
 # ----------------------------------------------------------------------------
-# Preprocessing (design/SIFT.0.md §5.1): drop a single trailing empty line,
+# Preprocessing (design/legacy/SIFT.0.ignore §5.1): drop a single trailing empty line,
 # then apply skip / chop / comment.
 # ----------------------------------------------------------------------------
 def sift-lines fn [[src:String] [List] [
@@ -300,7 +300,7 @@ def sift-split-n fn [[s:String n:Integer] [List] [
 ]]
 
 # ----------------------------------------------------------------------------
-# kv family — key/value lines -> Map (design/SIFT.0.md §5). line base is unused for
+# kv family — key/value lines -> Map (design/legacy/SIFT.0.ignore §5). line base is unused for
 # line numbers (the spec suite matches error codes, not positions).
 # ----------------------------------------------------------------------------
 def sift-kv-store fn [[acc:Map k:String v:Any repeat:String] [Map] [
@@ -684,7 +684,7 @@ def sift-fam-fixed fn [[src:String opts:Map] [List] [
 ]]
 
 # ----------------------------------------------------------------------------
-# pattern family — RE2 with named groups (design/SIFT.0.md §5.2). mini re is
+# pattern family — RE2 with named groups (design/legacy/SIFT.0.ignore §5.2). mini re is
 # positional, so the group names are extracted from the regex source (a global
 # scan that skips escaped chars and character classes) and zipped onto the
 # positional submatches; a non-participating optional group is None.

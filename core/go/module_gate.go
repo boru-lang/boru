@@ -65,10 +65,10 @@ func StampModuleCallGates(exports map[string]*OrderedMap, moduleRef string) {
 			}
 			id := &ModuleCallID{Module: moduleRef, Export: key}
 			stampSigsModuleCall(fd.Signatures, id)
-			if fd.Registry == nil {
+			if !fd.HasHome() {
 				continue
 			}
-			if fd.Registry.ModuleRef == "" {
+			if !fd.Registry.IsModule() {
 				fd.Registry.ModuleRef = moduleRef
 			}
 			// The stored dispatch targets in the module's sub-registry:

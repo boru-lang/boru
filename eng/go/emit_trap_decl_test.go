@@ -30,6 +30,6 @@ func TestSetUnitReturnPatternsGuard(t *testing.T) {
 // freshly-built interpreter error, so this is the defensive floor.
 func TestRecordTrapErrNil(t *testing.T) {
 	if compiler.NewEmitState().RecordTrapErr(nil, core.SrcPos{}) {
-		t.Fatal("RecordTrapErr(nil) should refuse")
+		t.Fatal("RecordTrapErr(nil) should decline")
 	}
 }

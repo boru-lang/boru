@@ -64,7 +64,7 @@ jobs:
       # check, compiler and eng carry ratchet floors that only ever rise.
       # parser starts AT 100 rather than on a ratchet because it is a leaf
       # over core — nothing else's suite could have been covering it, so
-      # there was no incidental coverage to unwind. See design/ENG-FOUR-PIECE.0.md and
+      # there was no incidental coverage to unwind. See design/legacy/ENG-FOUR-PIECE.0.ignore and
       # design/ENG-COVERAGE-PARITY.0.md.
       - name: Cover gate — core standalone (100%)
         run: make cover-gate-core
@@ -106,7 +106,7 @@ jobs:
       # shipped with the TS port and nothing ever ran the comparison, which
       # is how three render defects lived in the gap between them — the
       # engine-level `crossdiff` cannot see a parser difference that still
-      # evaluates alike (design/TS-PARITY-AUDIT.0.md).
+      # evaluates alike (design/legacy/TS-PARITY-AUDIT.0.ignore).
       - name: Parser differential (parser/go vs parser/ts)
         run: make parser-crossdiff
 

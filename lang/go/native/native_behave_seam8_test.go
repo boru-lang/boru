@@ -27,7 +27,7 @@ func (w8Cap) Format(v Value) string           { return "w8cap-format" }
 func (w8Cap) Equal(a, b Value) bool           { return true }
 func (w8Cap) Compare(a, b Value) (int, error) { return 7, nil }
 func (w8Cap) Nodify(v Value) (Value, error)   { return NewString("w8cap-nodify"), nil }
-func (w8Cap) Unify(a, b Value) (Value, *core.UnifyError) {
+func (w8Cap) Unify(a, b Value, _ *core.Registry) (Value, *core.UnifyError) {
 	return NewString("w8cap-unify"), nil
 }
 
@@ -283,7 +283,7 @@ func TestW8UserBehaviorNodifyReentry(t *testing.T) {
 
 func TestW8UserBehaviorUnifyDelegates(t *testing.T) {
 	u := &userBehavior{prev: w8Cap{}} // no unifyBody, prev is a Unifier
-	out, uerr := u.Unify(NewInteger(1), NewInteger(2))
+	out, uerr := u.Unify(NewInteger(1), NewInteger(2), nil)
 	if uerr != nil {
 		t.Fatalf("Unify delegate: %v", uerr)
 	}
@@ -294,14 +294,14 @@ func TestW8UserBehaviorUnifyDelegates(t *testing.T) {
 
 func TestW8UserBehaviorUnifyNoUnifier(t *testing.T) {
 	u := &userBehavior{prev: w8Plain{}} // prev not a Unifier, no body
-	if _, uerr := u.Unify(NewInteger(1), NewInteger(2)); uerr != core.ErrNoUnifier {
+	if _, uerr := u.Unify(NewInteger(1), NewInteger(2), nil); uerr != core.ErrNoUnifier {
 		t.Errorf("Unify should return ErrNoUnifier, got %v", uerr)
 	}
 }
 
 func TestW8UserBehaviorUnifyReentryDelegates(t *testing.T) {
 	u := &userBehavior{unifyBody: []Value{NewInteger(0)}, prev: w8Cap{}, inUnify: true}
-	out, uerr := u.Unify(NewInteger(1), NewInteger(2))
+	out, uerr := u.Unify(NewInteger(1), NewInteger(2), nil)
 	if uerr != nil {
 		t.Fatalf("Unify re-entry delegate: %v", uerr)
 	}
@@ -312,7 +312,7 @@ func TestW8UserBehaviorUnifyReentryDelegates(t *testing.T) {
 
 func TestW8UserBehaviorUnifyReentryNoUnifier(t *testing.T) {
 	u := &userBehavior{unifyBody: []Value{NewInteger(0)}, prev: w8Plain{}, inUnify: true}
-	if _, uerr := u.Unify(NewInteger(1), NewInteger(2)); uerr != core.ErrNoUnifier {
+	if _, uerr := u.Unify(NewInteger(1), NewInteger(2), nil); uerr != core.ErrNoUnifier {
 		t.Errorf("Unify re-entry without prev Unifier should return ErrNoUnifier, got %v", uerr)
 	}
 }
@@ -321,7 +321,7 @@ func TestW8UserBehaviorUnifyReentryNoUnifier(t *testing.T) {
 
 func TestW8RunUnifyBodyNoRegistry(t *testing.T) {
 	u := &userBehavior{typeName: "Foo", unifyBody: []Value{NewInteger(0)}}
-	if _, uerr := u.Unify(NewInteger(1), NewInteger(2)); uerr == nil {
+	if _, uerr := u.Unify(NewInteger(1), NewInteger(2), nil); uerr == nil {
 		t.Fatal("runUnifyBody with nil registry must error")
 	}
 }
@@ -332,7 +332,7 @@ func TestW8RunUnifyBodyEmptyResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := &userBehavior{registry: r, typeName: "Foo", unifyBody: w8DropBody()}
-	if _, uerr := u.Unify(NewInteger(1), NewInteger(2)); uerr == nil {
+	if _, uerr := u.Unify(NewInteger(1), NewInteger(2), nil); uerr == nil {
 		t.Fatal("runUnifyBody with empty result must error")
 	}
 }

@@ -375,9 +375,9 @@ run dupq { a: true }	{a:true} {a:true}	a keyword resolves
 run def x 5 ; dupq { a: x }	{a:5} {a:5}	and so does a def-bound name
 run dupq { a: nosuchword }	ERROR:undefined_word	while an unbound one is reported, not degraded
 run dupq { a: __pa }	{} {}	a value with no residual drops its key
-run dupq { a: [q addq 1 2 ] }	{a:[word(addq) 1 2]} {a:[word(addq) 1 2]}	a DATA list is a literal — its words are left alone
-run def x 5 ; dupq { a: [q x ] }	{a:[word(x)]} {a:[word(x)]}	even when the name is bound
-run dupq { a: [q nosuchword ] }	{a:[word(nosuchword)]} {a:[word(nosuchword)]}	and when it is not
+run dupq { a: [q addq 1 2 ] }	{a:[addq 1 2]} {a:[addq 1 2]}	a DATA list is a literal — its words are left alone
+run def x 5 ; dupq { a: [q x ] }	{a:[x]} {a:[x]}	even when the name is bound
+run dupq { a: [q nosuchword ] }	{a:[nosuchword]} {a:[nosuchword]}	and when it is not
 
 # Two gradual slots: the marker parks over the first word, collects
 # TWICE, and only then fires. `end` arriving mid-collection is not a

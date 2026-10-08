@@ -7,26 +7,32 @@ package core
 
 import "testing"
 
-// w8predFn builds a value that satisfies isPredicateFnValue: parented at
-// TFunction with a single-param non-fallback signature.
+// w8predFn builds a DECLARED predicate fn value (fnpred's MarkPredicateFn):
+// parented at TFunction with a single-param signature, marked Predicate.
 func w8predFn() Value {
-	return NewValueRaw(TFunction, FnDefInfo{
+	return MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{
 		Signatures: []Signature{{Params: []FnParam{{Name: "x", Type: TInteger}}}},
-	})
+	}))
 }
 
-func TestW8IsPredicateFnValueGuards(t *testing.T) {
+// TestW8IsDeclaredPredicateFnGuards pins the one route into the
+// predicate-type branch (NUR099): a DECLARED predicate, never a fn that
+// merely takes one parameter.
+func TestW8IsDeclaredPredicateFnGuards(t *testing.T) {
 	// Parent is TFunction but payload is not a FnDefInfo.
-	if isPredicateFnValue(NewValueRaw(TFunction, IntPayload{N: 1})) {
+	if IsDeclaredPredicateFn(NewValueRaw(TFunction, IntPayload{N: 1})) {
 		t.Fatal("non-FnDefInfo payload is not a predicate fn")
 	}
-	// FnDefInfo with no own signature.
-	if isPredicateFnValue(NewValueRaw(TFunction, FnDefInfo{})) {
-		t.Fatal("FnDefInfo with no own sig is not a predicate fn")
+	// A single-param FnDef the author did not declare a predicate.
+	undeclared := NewValueRaw(TFunction, FnDefInfo{
+		Signatures: []Signature{{Params: []FnParam{{Name: "x", Type: TInteger}}}},
+	})
+	if IsDeclaredPredicateFn(undeclared) {
+		t.Fatal("a one-parameter fn is not a predicate unless declared")
 	}
-	// Positive: a single-param sig IS a predicate fn.
-	if !isPredicateFnValue(w8predFn()) {
-		t.Fatal("single-param FnDef must be a predicate fn value")
+	// Positive: the declared one.
+	if !IsDeclaredPredicateFn(w8predFn()) {
+		t.Fatal("a fnpred-marked FnDef must be a declared predicate")
 	}
 }
 
@@ -45,7 +51,7 @@ func TestW8ResolvePredicateRefGuards(t *testing.T) {
 
 func TestW8UnifyResolvedPredicateNotPredicate(t *testing.T) {
 	// A type whose Behavior is not a predicateUnifier fails cleanly.
-	if _, err := unifyResolvedPredicate(TInteger, NewInteger(1)); err == nil {
+	if _, err := unifyResolvedPredicate(TInteger, NewInteger(1), nil); err == nil {
 		t.Fatal("non-predicate type must fail unifyResolvedPredicate")
 	}
 }

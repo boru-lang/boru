@@ -100,7 +100,7 @@ func TestAppTodoTUI(t *testing.T) {
 	}
 
 	// negative: the serve entry demands its transport options (a missing
-	// token reaches Tui.serve as None via dot-leniency and is refused)
+	// token reaches Tui.serve as None via dot-leniency and is declined)
 	vb2 := tuikit.NewVirtualBackend(44, 12)
 	_, sErr := runTuiAppSteps(t, vb2, []string{"todo-tui.boru"}, []string{
 		`import "/apps/todo-tui.boru"`,

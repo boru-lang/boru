@@ -18,7 +18,7 @@
 1 lt "a"	ERROR:incomparable	Integer vs String: no shared family comparer
 1 tcmp "a"	-1	…but tcmp orders it: Number band before String band
 none cmp 1	ERROR:incomparable	None vs Integer: none joins no scalar family
-none lt 1	ERROR:incomparable	lt refuses the same pair
+none lt 1	ERROR:incomparable	lt declines the same pair
 none tcmp 1	-1	tcmp: the None root ranks before every scalar
 1 tcmp none	1	…and the mirror flips the sign
 cat/q lt 1	ERROR:incomparable	Atom vs Integer
@@ -49,7 +49,7 @@ cat/q tcmp ""	-1	Atom before String
 Any tcmp Never	-1	…and before the other degenerate roots by rank
 #
 # §2  cross-family TYPE LITERAL pairs — same split
-Boolean gt Integer	ERROR:incomparable	two cross-family literals refuse to order
+Boolean gt Integer	ERROR:incomparable	two cross-family literals decline to order
 Boolean tcmp Integer	-1	…but rank by lattice band under tcmp
 Map gt String	ERROR:incomparable	Node-branch literal vs Scalar-branch literal
 Map tcmp List	1	tcmp: List ranks below Map

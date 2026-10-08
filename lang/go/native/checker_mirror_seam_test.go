@@ -6,7 +6,7 @@ import (
 )
 
 // Direct seam coverage for the guaranteed-runtime-error mirror helpers
-// (design/CHECKER-COMPLETION.0.md): the guard arms a full check pass
+// (design/legacy/CHECKER-COMPLETION.0.ignore): the guard arms a full check pass
 // cannot reach — malformed arg shapes, unresolvable schemas — so the
 // mirrors stay total under any caller.
 

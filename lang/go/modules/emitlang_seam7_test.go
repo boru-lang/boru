@@ -16,7 +16,7 @@ func s7aEmitHandler(_ []native.Value, _ map[string]native.Value, _ []native.Valu
 }
 
 // TestW8InstallBuiltinEmitterDuplicate drives installBuiltinEmitter's
-// duplicate-key refusal — defensive: the fixed built-in set is disjoint, so
+// duplicate-key compile failure — defensive: the fixed built-in set is disjoint, so
 // only a drifted EmitKinds could collide.
 func TestW8InstallBuiltinEmitterDuplicate(t *testing.T) {
 	r := s7aVMReg(t)
@@ -43,7 +43,7 @@ func TestS7A_EmitRegisterTombstone(t *testing.T) {
 }
 
 // TestS7A_NewEmitLangFnValidation drives the value constructor's validation
-// arms: empty name, nil handler, a name RegisterNativeFunc refuses, and the
+// arms: empty name, nil handler, a name RegisterNativeFunc declines, and the
 // sub-registry construction error (through the newDefaultRegistry seam).
 func TestS7A_NewEmitLangFnValidation(t *testing.T) {
 	if _, err := NewEmitLangFn(EmitLangSpec{Name: "", Handler: s7aEmitHandler}); err == nil {

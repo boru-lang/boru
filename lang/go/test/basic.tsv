@@ -88,7 +88,7 @@ def Bar refine Record [x:Number y:Boolean z:String] make Bar [y:false x:2 z:"Z"]
 refine Table (refine Record [x:Number y:String])	table{x:Number y:String}
 
 # Table type - with type Def
-# Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): a name denotes its minted node and renders as the name.
+# Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): a name denotes its minted node and renders as the name.
 def Foo refine Record [x:Integer y:String] def Bar refine Table Foo Bar	Bar
 
 # Make - table type (positional)
@@ -445,7 +445,7 @@ def R refine Record [x:Number] (refine Table R) eq (refine Table R)	true
 (String tor None) neq (Number tor None)	true
 
 # eq/neq - user-defined types
-# Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): named types are nominal — two names minted from equal bodies are distinct nodes.
+# Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): named types are nominal — two names minted from equal bodies are distinct nodes.
 def Foo [:Number] def Bar [:Number] Foo eq Bar	false
 def Foo [:Number] def Bar [:String] Foo neq Bar	true
 

@@ -1,6 +1,6 @@
 // Unit campaign for Value.toString()'s type-node arms — the two the corpus
 // never reaches on its own, both of which were WRONG until the parser stream
-// oracle was finally run over eng/spec (design/TS-PARITY-AUDIT.0.md).
+// oracle was finally run over eng/spec (design/legacy/TS-PARITY-AUDIT.0.ignore).
 //
 // toString() is not canonValue: it is the debug/stream render, and it is what
 // parser/ts/src/streamdump.ts emits for the row-for-row differential against

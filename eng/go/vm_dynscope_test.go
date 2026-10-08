@@ -48,6 +48,43 @@ func TestBindDynScopeInstallAndRetCleanup(t *testing.T) {
 	}
 }
 
+// TestBindDynScopeClosureValue: a compiled CLOSURE value bound by a frame's
+// OpBindDynScope is PUSHED onto the def stack (the installer's carrier guard
+// installs nothing for it — NUR192's false `undefined word: a5`), so the
+// data-position lookup reads it back, and the RET's trail truncation pops
+// it with the frame.
+func TestBindDynScopeClosureValue(t *testing.T) {
+	r := seam7Reg(t)
+	fn := compiler.CompiledFn{
+		Name: "dscl", Returns: []*core.Type{core.TAny},
+		Code: []compiler.Instr{
+			{Op: compiler.OpPushConst, Arg: 0},    // the closure value
+			{Op: compiler.OpBindDynScope, Arg: 1}, // bind dsc
+			{Op: compiler.OpLookupDynScopeData, Arg: 1},
+			{Op: compiler.OpRet},
+		},
+		Debug: make([]core.SrcPos, 4),
+	}
+	body := compiler.CompiledFn{Name: "dscl$body", Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: make([]core.SrcPos, 1)}
+	p := dsProgram([]compiler.CompiledFn{fn, body},
+		[]compiler.Instr{{Op: compiler.OpCallUser, Arg: 0}})
+	closure := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 1, Render: "fn ()"})
+	p.Consts = []core.Value{closure, core.NewString("dsc")}
+	out, err := RunProgram(p, r)
+	if err != nil {
+		t.Fatalf("bind+lookup of a closure: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("residual %v, want the looked-up closure", out)
+	}
+	if cl, ok := out[0].Data.(core.ClosurePayload); !ok || cl.Unit != 1 {
+		t.Errorf("the lookup must read the bound closure back, got %v", out[0])
+	}
+	if _, ok := r.Defs.Top("dsc"); ok {
+		t.Error("RET must pop the frame's closure binding with the trail")
+	}
+}
+
 func TestBindDynScopeErrorUnwind(t *testing.T) {
 	r := seam7Reg(t)
 	fn := compiler.CompiledFn{

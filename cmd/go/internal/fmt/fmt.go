@@ -22,6 +22,11 @@ import (
 // permissions when the suite runs as root.
 var osWriteFile = os.WriteFile
 
+// walkDir is the seam for the no-argument walk: tests drive the walk-error
+// arm by injecting a failure instead of deleting the process's working
+// directory, which Windows refuses and macOS keeps resolving.
+var walkDir = filepath.WalkDir
+
 type cmd struct{}
 
 // New returns the fmt subcommand.
@@ -48,26 +53,28 @@ func formatByExt(path, src string) string {
 	}
 }
 
-// Run handles `boru fmt [file.boru ...]`.
-func Run(args []string, stdout, stderr io.Writer) int {
-	return runWithWalk(args, stdout, stderr, filepath.Walk)
+// printUsage is the contract `boru help fmt` points the reader at.
+func printUsage(w io.Writer) {
+	stdfmt.Fprintln(w, "usage: boru fmt [file ...]")
+	stdfmt.Fprintln(w, "  Formats .boru source files in place. With no files it walks the current")
+	stdfmt.Fprintln(w, "  directory tree (skipping .boru/); .md and .html files have only their")
+	stdfmt.Fprintln(w, "  embedded boru reformatted.")
+	stdfmt.Fprintln(w, "  -h, --help  print this usage and exit 0")
 }
 
-func runWithWalk(args []string, stdout, stderr io.Writer, walk func(string, filepath.WalkFunc) error) int {
+// Run handles `boru fmt [file.boru ...]`.
+func Run(args []string, stdout, stderr io.Writer) int {
+	// -h is a help request, not a file named "-h" and not an error: it
+	// prints the usage and exits 0, as `check` does (NUR084).
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			printUsage(stdout)
+			return 0
+		}
+	}
 	var files []string
 	if len(args) == 0 {
-		err := walk(".", func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() && info.Name() == ".boru" {
-				return filepath.SkipDir
-			}
-			if !info.IsDir() && strings.HasSuffix(path, ".boru") {
-				files = append(files, path)
-			}
-			return nil
-		})
+		err := pathutil.WalkSources(".", walkDir, ".boru", func(path string) { files = append(files, path) })
 		if err != nil {
 			stdfmt.Fprintf(stderr, "error: %s\n", err)
 			return 1

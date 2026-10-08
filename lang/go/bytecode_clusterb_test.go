@@ -11,7 +11,7 @@ import (
 // reparent done ONLY by the interpreter's defTypedHandler. The bytecode value-def
 // lowering folds `def x:Pos n` to a bare `x≡n` alias keeping the base tag, so a
 // compiled `def x:(Integer gt 10) 5` bound x=5 where the interpreter raises, and
-// `def x:Pos n` reported typeof Integer / failed a [Pos] return-check. Now refused
+// `def x:Pos n` reported typeof Integer / failed a [Pos] return-check. Now declined
 // (no compiled store-with-reparent) → fall back → compile==interpret.
 func TestTypedDefRefinement(t *testing.T) {
 	refine := []struct{ name, src string }{
@@ -39,7 +39,7 @@ func TestTypedDefRefinement(t *testing.T) {
 	}
 
 	// NEGATIVE: a PLAIN base-type alias (Integer/Map) is not a refinement, so it
-	// must STILL compile natively (RunCompiledStrict) — the refusal must not
+	// must STILL compile natively (RunCompiledStrict) — the compile failure must not
 	// over-fire onto every typed-def.
 	plain := []struct{ name, src, want string }{
 		{"Integer alias", `def x:Integer 5 x`, "[5]"},

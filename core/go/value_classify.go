@@ -38,6 +38,16 @@ func BearsActiveTokens(v Value) bool {
 	return false
 }
 
+// IsPendingActiveContainer reports whether v is a map or list literal the
+// interpreter still owes an evaluation (a pending residual container: Eval,
+// unquoted, untyped) AND whose members hold a token that evaluation changes
+// (BearsActiveTokens) — `{a:(1 add 2)}`, `[1 add 2]`. Such a value is not
+// its own data: the consuming dispatch evaluates it first, so a compiled
+// operand must never carry it as a baked raw token (NUR337).
+func IsPendingActiveContainer(v Value) bool {
+	return isPendingResidualContainer(v) && BearsActiveTokens(v)
+}
+
 // ModuleScopeBinding reports whether name's active binding sits at module /
 // global scope — NOT an enclosing fn's param or body-local (the
 // ComputeCaptures depth rule: Depth > baseline means enclosing-fn-local). A
@@ -51,7 +61,7 @@ func ModuleScopeBinding(r *Registry, name string) bool {
 }
 
 // fnValueZeroArg reports whether v is a function VALUE whose LANDING the
-// read-guard must refuse: it carries a genuine 0-arg overload the
+// read-guard must decline: it carries a genuine 0-arg overload the
 // interpreter auto-fires the moment the value lands with no operands
 // (containerFnAutoDispatchRisk), in a shape the compiled landing does
 // not yet model. Built from the kernel's canonical Fallback-flag
@@ -59,18 +69,18 @@ func ModuleScopeBinding(r *Registry, name string) bool {
 // — this replaced a count-based phantom heuristic that encoded the same
 // verdicts opaquely.
 //
-// The refusal set is REPRESENTATION-dependent, and deliberately so —
+// The compile failure set is REPRESENTATION-dependent, and deliberately so —
 // probe-verified (2026-08-01) on `m.x` with a 0-arg+1-arg overload set:
 //   - the DIRECT-literal spelling `{x: (fn …)}` compiles and agrees
 //     (7/7): the check pass runs the interpreter loop over the concrete
 //     member, and the recorded events model the fire;
 //   - the PARKED spelling `{x: mx/v}` (an aggregate view, recognisable
 //     by its synthetic Fallback sig) compiled to the raw fn value —
-//     a silent divergence — so it must refuse until the landing model
+//     a silent divergence — so it must decline until the landing model
 //     covers parked mixed-overload members (the tracked graduation;
-//     frontier-nur038-seal.tsv's mixed-overload row pins the refusal).
+//     frontier-nur038-seal.tsv's mixed-overload row pins the compile failure).
 //
-// A pure property fn (every real overload 0-arg) refuses in BOTH
+// A pure property fn (every real overload 0-arg) declines in BOTH
 // representations. Merging the two arms = extending the compiled
 // landing model, not editing this predicate.
 func FnValueZeroArg(v Value) bool {
@@ -136,6 +146,12 @@ func IsSteplessWindow(vs []Value) bool {
 	return true
 }
 
+// depBoundConst reports whether a refinement's bound side is absent or an
+// inert const (NUR308).
+func depBoundConst(b *DepBound) bool {
+	return b == nil || IsInertConst(b.Value)
+}
+
 func IsInertConst(v Value) bool {
 	if v.Carrier || v.Dynamic || IsBareTypeNode(v) {
 		return false
@@ -160,7 +176,7 @@ func IsInertConst(v Value) bool {
 		// reached by the same parent-chain walk every capability dispatch
 		// uses. Extension types without the capability — Socket, Listener,
 		// Timeout/Interval, Module instances, every plugin type that never
-		// opted in — keep the historical refusal. This is what lets a
+		// opted in — keep the historical compile failure. This is what lets a
 		// module-scope `def crlf (convert Bytes "\r\n")` bake into a
 		// stored-fn unit (mini-s3's recv-until delimiter) with freshness
 		// still owned by the existing frozen-read / dep-snapshot gates.
@@ -182,7 +198,10 @@ func IsInertConst(v Value) bool {
 		// The bound is recovered for a stripped operand via origByID
 		// (RememberOriginal at the constructor); type-algebra words
 		// (tcmp/teq/tand/…) then run over the baked predicate at run time.
-		return true
+		// Only a KNOWN bound is self-contained: a computed one (`Integer gt
+		// (size s)`) is the analysis pass's carrier, and a predicate over it
+		// baked a bound that is no value (NUR308).
+		return depBoundConst(d.Lo) && depBoundConst(d.Hi)
 	case RecordTypeInfo, OptionsTypeInfo, ChildTypeInfo, DisjunctInfo, ClassTypeInfo, TableTypeInfo:
 		// STRUCTURAL type bodies (what a bound type name pushes at a
 		// use site — make's operand). Sound as consts when their
@@ -201,7 +220,7 @@ func IsInertConst(v Value) bool {
 		// so it bakes by value (the *Type pointers are shared, already
 		// canonical from construction). typeof/teq/is then read the baked
 		// signature at run time. A pattern-bearing param (rare in signatures)
-		// could embed non-const data, so it refuses conservatively.
+		// could embed non-const data, so it declines conservatively.
 		return fnSigConstOK(d)
 	case FnDefInfo:
 		// A function VALUE used as DATA — a residual (`f/v`), a map/list member
@@ -211,15 +230,12 @@ func IsInertConst(v Value) bool {
 		// pass) and no module sub-registry. The body tokens ride inside the
 		// payload and are never re-stepped while the value is data; a CALL of the
 		// value is a separate dispatch path (a bare `(fn …) args` auto-dispatch
-		// records the fn-body splice and refuses; a `/v`-referenced fn does not
+		// records the fn-body splice and declines; a `/v`-referenced fn does not
 		// auto-dispatch, so `f/v` / `{b:f/v}` are pure data).
-		if len(d.Captured) > 0 {
+		if len(d.Captured) > 0 || d.ShapeModelHomed() {
 			return false
 		}
-		if d.Registry == nil {
-			return true
-		}
-		// A module-export fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
+		// A HOMED fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
 		// a branch-arm operand, a container member, OR a comparator passed to another
 		// fn (`xs M.sort M.by-num`). The sub-registry pointer it carries is the SAME
 		// object the compiled run shares (RunProgram runs on the check-pass
@@ -231,8 +247,10 @@ func IsInertConst(v Value) bool {
 		//   - a REAL boru body via the island sub-engine (callDynTrailTop/…'s
 		//     `vc.island().Run([fn, args…])`), which INTERPRETS the fn in
 		//     fnDef.Registry — CallBoru, module-private scope and all. So a real body
-		//     applies soundly too (compile == interpret, verified). A macro stays
-		//     refused (applied only by name / compile-time expansion, never as data).
+		//     applies soundly too (compile == interpret, verified). A Go-built value
+		//     (no home) is the degenerate case: nothing to resolve. A macro stays
+		//     declined (applied only by name / compile-time expansion, never as data),
+		//     homed or not.
 		return !d.Macro
 	case *SurfaceInfo:
 		// A surface type (`def Shape surface {area: (fnsig …)}`): an immutable
@@ -269,7 +287,7 @@ func IsInertConst(v Value) bool {
 		// constant value at parse time (parser/xml_literal.go emits
 		// NewXmlElement; only a ${}-interpolated literal becomes the deferred
 		// Word/__XI builder, which is genuine runtime construction and stays
-		// refused). Value-semantics with structural sharing — never mutated in
+		// declined). Value-semantics with structural sharing — never mutated in
 		// place: the MUTABLE FlexXml is *FlexXmlData, which falls to default and
 		// never bakes (the bytecode_constbake_test mutation-safety guard) — so it
 		// is sound to pool, exactly like the List / Map cases. Bakes when its
@@ -341,6 +359,23 @@ func IsFnTypedCarrier(v Value) bool {
 		(v.Parent.ConformsTo(TFunction) || TypeIsFnShape(v.Parent))
 }
 
+// UnionMayBeFn reports whether v is a union carrier one of whose
+// alternatives is a fn — a branch join that may hold the fn value an arm
+// left (NUR317). The static tests miss it: the join's own type is the
+// union, which conforms to no fn type, and it is neither dynamic nor the
+// branch's value once a word hands it back under a fresh ID.
+func UnionMayBeFn(v Value) bool {
+	if !v.Carrier || !IsDisjunct(v) {
+		return false
+	}
+	for _, alt := range FlattenAlternatives(v) {
+		if IsFnTypedCarrier(CarrierOfLiteral(alt)) {
+			return true
+		}
+	}
+	return false
+}
+
 // TypeIsFnShape reports whether t is a function-SHAPE type — a type whose
 // concrete inhabitants are function values: the anonymous fn-shape type
 // itself (`fnsig …`, FunctionSignature) or a named fn-shape node minted
@@ -383,7 +418,7 @@ func IsModuleFamilyValue(v Value) bool {
 // determinism gate behind every twice-and-compare const-bake
 // (tryFoldModuleConst, the macroexpand splice in carrierResults, and the
 // engine's constFoldContainerVal): a clock / rand / mutation-bearing read
-// whose two probes drift renders a different canon and is refused, so no
+// whose two probes drift renders a different canon and is declined, so no
 // nondeterministic value is ever frozen into the program.
 //
 // CanonValue, NOT String(): String() is a DISPLAY rendering that conflates
@@ -412,7 +447,7 @@ func IsAppliableFn(v Value) bool {
 // stack-only (BarrierPos 0 — it never forward-collects) and, when its
 // registered signature is the single all-Any one, one extra or differently-
 // typed stack value cannot flip which overload it takes. Shared by
-// dynamicStackShuffleOK (the refusal bypass for a MATCHED dispatch over a
+// dynamicStackShuffleOK (the compile failure bypass for a MATCHED dispatch over a
 // dynamic operand) and dynShuffleConsumerAt (the gradual-arity modeling
 // gate for a mixed-arity mutator's statement-position result).
 var DynStackShuffleWords = map[string]bool{
@@ -428,7 +463,7 @@ var DynStackShuffleWords = map[string]bool{
 // stripped) would bake the analysis artefact into the const — the
 // caught differential mismatch rendered `r:Float` where the
 // interpreter rebuilds `r:1.0` — so any carrier, or any payload this
-// walk doesn't know, refuses.
+// walk doesn't know, declines.
 func typeBodyConstOK(v Value) bool {
 	if v.Carrier || v.Dynamic {
 		return false
@@ -474,7 +509,7 @@ func typeBodyConstOK(v Value) bool {
 	case ClassTypeInfo:
 		// A class / object type body is const-bakeable iff every field
 		// default is plain data — a method (fn-value) field is not, so a
-		// class with methods (the surface-body case) still refuses. The
+		// class with methods (the surface-body case) still declines. The
 		// canonical *Type rides the body's payload pointer (shared, not
 		// copied), so it stays canonical at run time; `make` recovers the
 		// field schema from the baked body. The parent chain's fields must
@@ -529,7 +564,7 @@ func surfaceConstOK(s *SurfaceInfo) bool {
 // schemaConstOK reports whether a generic schema bakes as a const: its body
 // must be a const-safe structural type body (or itself inert / a bare node)
 // and every parameter's extends-bound / default must be inert or a bare type
-// node. A computed constraint or a non-data (method-bearing fn) body refuses,
+// node. A computed constraint or a non-data (method-bearing fn) body declines,
 // falling back faithfully.
 func schemaConstOK(s *TypeSchemaInfo) bool {
 	if s == nil || s.Type == nil {
@@ -596,8 +631,19 @@ func isInertReach(v Value) bool {
 		return false
 	}
 	info, err := AsReach(v)
-	if err != nil || info.Eval || len(info.Receiver) > 0 {
+	if err != nil {
 		return false
+	}
+	if info.Eval || len(info.Receiver) > 0 {
+		// A dot-access reach WITH a receiver (`m.f`, `M.inc`) is data in
+		// exactly one standing: QUOTED (`codequote m.f`, `quote m.f`), where
+		// neither engine expands it — the interpreter's stepLiteral leaves a
+		// Quoted value alone and the VM never expands a reach — so it bakes
+		// by value like the member case (inertReachMember: the receiver and
+		// key tokens themselves inert, no computed segment). An UNQUOTED
+		// receiver reach stays out: it is the structural token the engine
+		// lowers to a get-chain in place.
+		return v.Quoted && inertReachMember(v)
 	}
 	for _, seg := range info.Segments {
 		if seg.Computed || !IsInertConstMember(seg.KeyLit) {
@@ -643,7 +689,15 @@ func IsInertConstMember(v Value) bool {
 			return true
 		}
 		if fd, ok := v.Data.(FnDefInfo); ok {
-			return len(fd.Captured) == 0 && fd.Registry == nil
+			// A fn value carries its HOME registry from construction (a
+			// main-file fn as much as a module export), so the home says
+			// nothing about mutability: the value is immutable code either
+			// way, and the fn-value-call boundary applies it against that home
+			// (FnHome) exactly as the interpreter does. Only a lexical capture
+			// makes it non-inert — the captured cell is live state — and a
+			// check-mode instance model's method is a stand-in, not the run's
+			// (Registry.ShapeModel).
+			return len(fd.Captured) == 0 && !fd.ShapeModelHomed()
 		}
 		// A dot-access reach (`r.int`, `m.a.b`) riding inside a NEVER-evaluated
 		// compound — a NoEvalArgs code body the driving word stores or drops
@@ -657,7 +711,7 @@ func IsInertConstMember(v Value) bool {
 		// as data inside the inert compound — so the reach bakes by value,
 		// differential-identical. Its receiver / literal-key tokens must
 		// themselves be inert members (Words / atoms / scalars, canonical
-		// Parents); a COMPUTED segment (a paren to evaluate) is code, so refuse.
+		// Parents); a COMPUTED segment (a paren to evaluate) is code, so decline.
 		if IsReach(v) {
 			return inertReachMember(v)
 		}
@@ -670,7 +724,7 @@ func IsInertConstMember(v Value) bool {
 		// same Computed segment the interpreter does, so it bakes by value
 		// differential-identically. Its tokens must themselves be inert members
 		// (Words / atoms / scalars / nested inert parens) — a token that would
-		// drag in a carrier or mutable instance refuses.
+		// drag in a carrier or mutable instance declines.
 		if IsParenExpr(v) {
 			toks, err := AsParenExpr(v)
 			if err != nil {

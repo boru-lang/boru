@@ -8,8 +8,14 @@ to 9 are not started beyond instruments and worklist measurements. §10's
 stage table carries the per-stage detail and is the authority on what has
 landed; the running state-of-play is
 [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md).
+**Re-staged 2026-09-17** (§10.1, on the review
+[FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md)): the
+corpus expansion of PR #471 measured the daily instruments as a sample of
+the old corpus, the generic lane's first slices moved none of the static
+inventory, and the debt is fn values and code bodies — so the order of
+work changes while the architecture does not.
 **Provenance:** the directive that closes the question
-`design/COMPILE-DECLARATION-MODEL.0.md` left open: interpreter islands are
+`design/legacy/COMPILE-DECLARATION-MODEL.0.ignore` left open: interpreter islands are
 not acceptable, the interpreter is not an escape hatch, failure to compile
 is a hard error, and compiled code must behave exactly as interpreted code
 with the checker aligned with both. This note designs the compiler that
@@ -18,7 +24,7 @@ satisfies those four sentences.
 > Authority: this note is the DESIGN, not the record of what is built —
 > §10's stage table and the handoff are that.
 > `design/COMPILABLE-SUBSET.md` remains the
-> statement of the current subset; `design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md`
+> statement of the current subset; `design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore`
 > remains the record of the doctrine this note extends. Where this note and
 > the code disagree, the code wins. Code citations were verified against the
 > tree at the recording date and drift as the tree does.
@@ -54,9 +60,10 @@ dynamic is **residual code, never refusal**.
 The four sentences of the directive, made checkable:
 
 - **T1 — Totality.** For every source program the interpreter accepts,
-  `CompileCheck` returns a `*Program`. `compile_refused` (Stage J,
+  `CompileCheck` returns a `*Program`. `compile_failed` (Stage J,
   `lang/go/boru.go:1079-1099`) becomes an internal invariant violation, not
-  a result. The `BORU_COMPILE_FALLBACK` hatch retires at the end state.
+  a result. The `BORU_COMPILE_FALLBACK` hatch RETIRED EARLY, on 2026-09-19
+  (PR #476), with every other interpreter fallback.
 - **T2 — No islands.** At runtime, a compiled program never re-enters the
   interpreter's stepping machinery over tokens — neither recorded *source*
   tokens (`OpFallback`, `eng/go/vm.go:1166-1199`; drift-window
@@ -87,7 +94,7 @@ Non-goals, explicitly: no language-semantics changes in service of
 compilation (Factor changed its language to get there — mandatory effect
 declarations, `call(` — boru does not; §4.1); no serialized-artifact story
 (blocked independently — a Program pins sub-registries by reference,
-`design/STAGE3-INLINING-DESIGN-ROUND.0.md`); no speculative typed lowering
+`design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore`); no speculative typed lowering
 that would need deoptimization (§6.9).
 
 ---
@@ -145,7 +152,7 @@ inside `Engine.MatchSignature`, `core/go/engine.go:8393-8413`; latched at
 (`boru.go:503-506`; §5). Totality must be proven against the **whole gate
 inventory**, with generated differential sweeps as the oracle (the
 690-program sweep that found 24 divergences the ~30 hand-picked rows
-missed — `design/HIGHER-ORDER-FUNCTIONS.0.md` §9g), not against the 153
+missed — `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §9g), not against the 153
 rows.
 
 **2.3 "Islands are at zero" is true only of `OpFallback`.** The live system
@@ -227,7 +234,7 @@ about the runtime.**
 This matters for the stage plan, not just for bookkeeping. **T2 is not
 satisfiable while this number is non-zero, whatever the `OpFallback` ceiling
 says**, so Stage 9 cannot honestly flip to total on the island ceiling alone.
-The census is a DOWNWARD ratchet like `refusalSiteCeiling` — it only falls,
+The census is a DOWNWARD ratchet like `compileFailureSiteCeiling` — it only falls,
 and a rise wants a design note rather than a bigger constant.
 
 The seam spread is also the work-list, and it is not one problem. Sampling the
@@ -284,7 +291,7 @@ verdict its residual code. That is the whole design.
 runtime-independence invariant C4 bans *interpreter execution*, not runtime
 decisions: "no interpreter execution of any program the compiler accepts,
 on any default path" with enumerated carve-outs
-(`design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:123-135`), and its
+(`design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:123-135`), and its
 stated method is "sound runtime re-dispatch — never static best-guess
 baking" (`:16-19`). Kernel `MatchSignature` at VM time is shipped doctrine
 (`OpCallNativePoly`, `eng/go/vm.go:485-590`; `OpCallUserPoly`, `:604`;
@@ -293,7 +300,7 @@ runtime name resolution is shipped (`OpLookupDynScope`/`OpBindDynScope`);
 runtime **compilation** is shipped (`StampDetachedSig`,
 `compiler/go/stamp_runtime.go:60`; the bounded JIT restamp, `:192`;
 `Vm.run` compiling runtime-supplied source under fork isolation). And
-`COMPILE-REFUSAL-SURVEY.0.md` already measured the corollary: after those
+`legacy/COMPILE-REFUSAL-SURVEY.0.ignore` already measured the corollary: after those
 opcodes drove islands 102→0, **not one live refusal is a
 dispatch-resolution problem**. What refuses today is everything *around*
 dispatch: putting operands on the stack (collection), naming their homes
@@ -308,7 +315,7 @@ a named compiled replacement per seam: the seams were permanent because
 their only landing pad was the interpreter, and T2 removes the landing
 pad. And C3's R3 defers registry-aware (predicate-faithful) matching in
 compiled dispatch to "a separate later design, not assumed"
-(`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:109-117`) — §6.3's
+(`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:109-117`) — §6.3's
 predicate-unit inventory and §6.10's retirement row are that design.
 
 **3.3 The precedents all have this shape.** Full compilation of a dynamic
@@ -361,7 +368,7 @@ code*:
   LuaJIT/HotSpot keep interpreters for native-code economics (startup,
   memory, deopt simplicity) that mostly vanish for an AOT-to-bytecode VM.
 
-**3.4 Engagement with the prior note.** `COMPILE-DECLARATION-MODEL.0.md`
+**3.4 Engagement with the prior note.** `legacy/COMPILE-DECLARATION-MODEL.0.ignore`
 proposed two things. Its §4.1 declaration triple
 (`tapeBound` / `needs` / `env`, constraints C1–C4) is *adopted* here as the
 handler-contract vocabulary (§6.8) — the fn-util lesson stands: what a Go
@@ -418,7 +425,7 @@ already was.
   mark-not-call episode (a second dispatch path produced three lane
   divergences; the fix was removing the fork) and the stage-3 rule "a
   dispatch seam may not have two recording paths"
-  (`design/STAGE3-INLINING-DESIGN-ROUND.0.md:162-164`). A generic opcode
+  (`design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore:162-164`). A generic opcode
   that *re-implements* matching or application would reintroduce drift one
   level down. The obligation is structural: G-lane opcodes call the same
   `core` functions the Engine calls (`MatchSignature`, `signature.go:175`;
@@ -1443,7 +1450,7 @@ checker cannot fold it, the compiled lane REFUSES, by name:
 
 ```
 def r1 (go) end  def k fn [[][Integer][9]] end  def r2 (go) end
-  -> bytecode compilation refused: module binding k rebound after a fn unit
+  -> bytecode compilation FAILED: module binding k rebound after a fn unit
      baked its value      (compiler/go/emit.go:3159, the fn-unit arm)
 ```
 
@@ -1621,7 +1628,7 @@ set.**
 compile at the concrete-mismatch recovery site were differential-reverted
 because "the recovery fires for reasons (forward-collection state, arity,
 coercion) the param guard does not replicate"
-(`design/VOXGIG-COMPILE-LEAVES.1.md:610-616`). Those attempts *committed a
+(`design/legacy/VOXGIG-COMPILE-LEAVES.1.ignore:610-616`). Those attempts *committed a
 bet* at compile time and guarded it with a check that lacked the
 collection state; the descriptor mechanism exists to *carry* that state
 and re-run the same routine — a replayed decision, not a guarded guess.
@@ -1773,9 +1780,11 @@ Morrisett & Harper, POPL 1996, is the formal warrant that one uniform
 
   The lookup now uses `fd.Registry` for a foreign body. A foreign cell has
   no producing event in the CALLER's emit tables, so `resolveOperand`
-  declines and this row falls back — sound, parity restored, and ONE island
-  remains where the shape needs a registry-tagged operand for a foreign
-  module-scope instance. That is the follow-up the frontier ledger named;
+  declines and this row is re-run on the interpreter — parity restored, the
+  miscompile gone, and ONE island still standing where the shape needs a
+  registry-tagged operand for a foreign module-scope instance. That island
+  is an open defect against §0's "residual code, never refusal", not a
+  resting place. That is the follow-up the frontier ledger named;
   the parity fence is `lang/go`'s
   `TestForeignClosureCaptureResolvesInItsOwnRegistry`.
 
@@ -2992,7 +3001,7 @@ sound and total:
   known trade — compile-on-eval is ~interpretation cost per op for
   run-once code (§7) — bounded by the **planned** Phase 6 JIT
   detached-unit cache: named as the graduation at `emit.go:6569`, scoped
-  in `RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md`'s Phase 6 (body identity
+  in `legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore`'s Phase 6 (body identity
   keys on the structural `FnAnalysisKey` precedent, never `Value.ID`), and
   **not yet built** — an explicit Stage 7 dependency.
 - **Staleness policy at the end state**: the bounded restamp
@@ -3048,7 +3057,7 @@ adopted declaration triple (§3.4): every signature declares, per operand,
   §6.7 when computed). `InvokeBody`'s raw-token fall-through arm retires;
   bodies run through `enterBodyUnit` under the VM invoker — the modelled
   callback frame the HOF audit names as the `InvokeBody` island's
-  graduation criterion (`design/HIGHER-ORDER-FUNCTIONS.0.md:921`),
+  graduation criterion (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore:921`),
   generalized here from the list-Function rows to every code-body word.
 - `env: Live` handlers (dyn-scope, `parselang`-class) get the per-region
   DynEnv arming.
@@ -3306,7 +3315,7 @@ the ~15 `vmDefer` sites plus the C1 fence, each with a named replacement:
 
 This retirement list deliberately **overturns C4's recorded permanence**
 of the fail-safe decline seams ("permanent by design",
-`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:123-135`): those seams were
+`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:123-135`): those seams were
 permanent because their only landing pad was the interpreter, and
 refusing to land there meant refusing the program. T2 removes the landing
 pad; the table is the argument that each seam can land compiled instead.
@@ -3411,7 +3420,7 @@ New ratchets, alongside the existing ones (all monotone, all in-tree):
   the mechanism deletes. Measured 2026-08-25: **5** — `vm:poly-nout-drift×3`,
   `vm:poly-no-match×2`, both named in §6.10's retirement table.
 - **Refusal-site census** — the recorder's `MarkUncompilable` call sites,
-  counted by source scan (`test/go/langspec/refusal_site_census_test.go`):
+  counted by source scan (`test/go/langspec/compile_failure_site_census_test.go`):
   **96** at the Stage-1 baseline. This is the STATIC half — machinery that
   exists rather than machinery that fired — so it keeps falling while the
   corpus's runtime refusal count sits at zero. The lowerer/`Finalize` and
@@ -3448,7 +3457,7 @@ universe closes alongside).
 | **6** | Handler migration per the triple (§6.8): units-not-tokens, `while` lowering, per-region DynEnv, `args`/`__pa`/`context` frames | H (6), context/tape-bound gate families | medium — wide but enumerable |
 | **7** | Runtime compilation everywhere (§6.7): computed bodies, splices, module bodies; the structural unit cache built here if not before (a hard dependency); unbounded memoised restamp; induction preconditions documented and fuzzed | eval-class gates | medium |
 | **8** | Checker totality (§6.9): sentinel deletion, traps for definite errors, `!Compiling`-fork collapse, soundiness classification | E (8) | medium |
-| **9** | Retire the valves (§6.10): defer sites → native answers; delete `OpFallback`/P7 machinery, the fence's re-run half, the fallback hatch; flip `CompileCheck` to total; `compile_refused` becomes a structured `internal_error` return (panics stay forbidden outside init-time registration) | T1, T2 complete | low by then |
+| **9** | Retire the valves (§6.10): defer sites → native answers; delete `OpFallback`/P7 machinery, the fence's re-run half, the fallback hatch; flip `CompileCheck` to total; `compile_failed` becomes a structured `internal_error` return (panics stay forbidden outside init-time registration) | T1, T2 complete | low by then |
 
 The dependency spine is 2 → {3,4} → 5 → 9; stages 6–8 are parallel tracks
 off it — **with one inversion the probe found**. `cover-gate-core` holds
@@ -3495,6 +3504,73 @@ result width feeds a static seat still declines until Stage 5's regions
 land. T1 is a Stage-9 property, not a rolling one.
 
 ---
+
+### 10.1 Re-staging — 2026-09-17
+
+The table above is kept as the record of what each stage IS; this block
+is the order the work now takes, and why. The argument and the
+measurements are in [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md);
+only the decisions are repeated here.
+
+Three findings force the change. **The corpus is a sample and
+under-measures by construction**: about 710 rows of ordinary idioms took
+the corpus from 0 refusals / 0 islands / 28 interpreter-entering rows to
+113 / 12 / 54 and exposed five miscompiles, so no ratchet over the
+hand-written corpus is evidence about "all valid code". **The generic lane
+grew from the typed end**: increments 60–66 route 676 dispatches the typed
+lowering already compiled (the `k` pair's class), because the VM's
+descriptor host declines every evaluation and the split-identity invariant
+was read as forbidding routing elsewhere; the refusal-site census stayed at
+92 and step 6's terminal arm is still `MarkUncompilable`. **The debt is fn
+values and code bodies**: 59 of the 113 refusals, all 12 islands, 23 of
+the 54 census rows and all five miscompiles are fn-value lowerings, and
+Stage 6's 114 undeclared handlers have not moved since 2026-08-25.
+
+Corrections to the spine: Stage 5's count-generic downstream is INSIDE
+Stage 4 (the lane cannot answer a live claim of another width without it,
+and that is the case the lane exists for); Stage 7's on-demand unit
+compile is on the spine, not a parallel track (the lane's `foreign-unit`
+arm and the fn-value convention both need it); the split-identity
+invariant (`TestEmitSplitFormsIdentical`) is a property of the TYPED lane —
+a record-time-stable lead's split is surface syntax; a live lead's split is
+semantics and the descriptor is right to carry it — so it is not the reason
+the terminal arm cannot flip; and the terminal arm flips per TOKEN CLASS
+(when the host drives every slot kind a region contains), then per family,
+never per site.
+
+| step | content | gate | session-days |
+|---|---|---|---:|
+| **S0** | the generated sweep — word inventory × operand kinds × call forms — through the differential and census lanes; the coverage-matrix gate; every ratchet re-based on it | no empty matrix cell; the sweep's defect list is the ledger the later steps retire from | 6–10 |
+| **S1** | fn values as ONE convention (Stage 3 closed): a fn value applied anywhere carries a unit of the running program or obtains one now, compiled at its home, memoised by body key and dep generation (the Stage 7 unit-cache slice); the Apply kernel's first branch; the callback seams reduced to one question; NUR153 ruled first | islands 12 → 0; fn-value refusals 59 → 0; the 23 fn-value census rows → 0; NUR154–156 closed by mechanism | 15–25 |
+| **S2** (parallel, `basic/go` + `lang/go`) | handler migration as a census-driven sweep (Stage 6): the 114 declared or rewritten; code-body words on units; `Test.*` quotation bodies compiled | `undeclaredHandlerCeiling` 114 → 0, falling per PR; code-body refusals 23 → 0; the `RunResolved` and `Test.*` census rows → 0 | 25–40 |
+| **S3** | runtime compilation (Stage 7): computed bodies, splices and code parts, `canon` / `Vm.run`, module bodies at import (O4: compile); O5 answered | the round-trip census rows → 0; F5 fuzzed | 10–20 |
+| **S4** | the lane completed: the evaluating host (group and active slots — 29% of tokens — with its own generated falsifier); the lane's runtime total (every `vm:generic-*` arm retired to a raise or a compiled path, the count-generic downstream built as part of it); the non-word leads on Apply; the routed-dispatch perf row in the register (F4); then the terminal-arm flip per family in the disposition census's order | oracle under-claim and declined classes → 0; dispatch-agreement ledger empty; `vm:generic-*` arms 10 → 0; `MarkUncompilable` sites 92 → the trap and delete rows | 25–40 |
+| **S5** | Stage 5's remaining generality (inert values both sides of a run, arbitrary and non-adjacent consumers, the split-rule window) | provenance refusals 15 → 0; NUR129 closed | 10–15 |
+| **S6** | Stage 8's T1 half: the "check diagnostics" sentinel deleted, definite errors trapped, the armed-only rows | `armedOnlyCeiling` 16 → 0; the correct-error row → 0 | 5–10 |
+| **S7** | Stage 9: every valve deleted, `CompileCheck` total | engine-entry census 0; `deferCeiling` and the mechanism deleted | 8–15 |
+| | **total remaining** | | **~105–175** |
+
+> **The session-day column is SUPERSEDED**
+> ([FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md),
+> 2026-09-18). It was measured two hours before `7178699` and five before
+> `a9cb212` — it prices a verification loop that no longer exists. The
+> re-estimate is **75–130**, and the re-plan also adds P0 (per-file
+> ratchets, first), carves S1a (the gradual-Any collection overload
+> commitment, 19 rows) out ahead of S1, and splits S2 into a 35-signature
+> sweep and a 59-signature mechanism that depends on S1b. The step CONTENT
+> above stands; only the order of those two and the numbers change.
+
+Dependencies: S0 first; S1 before S4's non-word leads and S2's `Test.*`
+half; S3's unit cache inside S1, the rest before S2 finishes and before
+S4's foreign-unit arm; S4 before S7; S2 beside everything else. Two rules
+bind every step: a new shape lands on the G-lane first and takes a typed
+lowering later by proof (the five miscompiles of 2026-09-17 are all
+bespoke typed lowerings, none in shared-kernel code); and the count of
+`vm:generic-*` defer arms may only fall, each retirement naming its
+compiled replacement — the discipline the refusal-site census already
+applies to `MarkUncompilable`. The rulings the steps wait on (NUR153, O2,
+O4, O5, the attributed set, NUR110, NUR078) are listed with a
+recommendation each in the review's §6.
 
 ## 11. Open questions (O) and what would falsify this (F)
 
@@ -3925,21 +4001,21 @@ benchmark is simply the first mandated pair.
 ## 15. Related work
 
 **In-tree:** `COMPILABLE-SUBSET.md` (the subset this note totalizes);
-`COMPILE-DECLARATION-MODEL.0.md` (the declaration triple, adopted; typed
-islands, rejected); `COMPILE-REFUSAL-SURVEY.0.md` (dispatch opcodes
+`legacy/COMPILE-DECLARATION-MODEL.0.ignore` (the declaration triple, adopted; typed
+islands, rejected); `legacy/COMPILE-REFUSAL-SURVEY.0.ignore` (dispatch opcodes
 necessary but insufficient — the finding §6.2/§6.6 answer);
-`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md` (the doctrine and the defer
-worklist); `HIGHER-ORDER-FUNCTIONS.0.md` (§9d and the §9g generated-sweep law);
+`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore` (the doctrine and the defer
+worklist); `legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` (§9d and the §9g generated-sweep law);
 `FUNCTION-VALUE-SCOPE.0.md` (the env axis); `NUR.md` NUR101/NUR078
 (NUR037 survives outside `NUR.md` — the ledger note at
-`design/HIGHER-ORDER-FUNCTIONS.0.md:1197`. NUR067 did too, in the
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore:1197`. NUR067 did too, in the
 `frontier-await-winner.tsv` ledger entry, and is CLOSED as of 2026-09-10:
 both the file and the entry are deleted, and its record is the
 frontier_spec_test.go note that replaced them plus this note's §6.6 and the
 handoff's thirty-ninth-to-forty-first increments);
 `DO-STRUCTURE-COMPILATION.0.md` (the "always compile" directive);
-`HOT-CODE-LOADING.0.md`; `STAGE3-INLINING-DESIGN-ROUND.0.md` (one
-recording path; the third architecture); `VOXGIG-COMPILE-LEAVES.1.md`
+`HOT-CODE-LOADING.0.md`; `legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore` (one
+recording path; the third architecture); `legacy/VOXGIG-COMPILE-LEAVES.1.ignore`
 (the differential-reverted recovery-site attempts — the "DO NOT RETRY"
 record §6.2 answers); `AOT-COMPILE.0.md` and
 `INTERPRETER-TIERED-EXECUTION.0.md` (adjacent, unimplemented tiers).

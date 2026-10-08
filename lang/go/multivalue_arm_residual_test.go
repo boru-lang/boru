@@ -10,7 +10,7 @@ import (
 // arm. RecordBranch records how many values an arm leaves, but the lowering
 // only COUNTED the slots the arm's events had left on the simulated stack —
 // so a stray leftover made the count match while the values did not, and the
-// arm's interior stayed unpromotable (collectPromotableEvents refused to walk
+// arm's interior stayed unpromotable (collectPromotableEvents declined to walk
 // a residualN>1 fragment at all, so a `def` inside it could never move to a
 // frame slot). Both faults show in one witness:
 //
@@ -38,7 +38,7 @@ func TestMultiValueArmResidualParity(t *testing.T) {
 			"arms of unequal residual width"},
 		{`def m {a: 3}  if true [ def c (m get "a")  99 (each [ (r:Integer => [ r add c ]) apply ] [1 2]) ] [ 7 8 ]`,
 			"99 [4 5] — a map read as the capture; was 3 [1 2]"},
-		// arms the old count-only reconciliation REFUSED ("branch leaves extra
+		// arms the old count-only reconciliation DECLINED ("branch leaves extra
 		// values"): the bound value is now stored once and re-pushed per use
 		{`if true [ def c (7777 add 1)  99 c ] [ 7 8 ]`, "99 7778 — the def read as the arm's own residual"},
 		{`if true [ def c (7777 add 1)  (each [ (r:Integer => [ r add c ]) apply ] [1 2]) 99 ] [ 7 8 ]`,
@@ -66,19 +66,19 @@ func TestMultiValueArmResidualParity(t *testing.T) {
 
 // The whole-arm capture DECLINES a residual that leads with a parked Function
 // (the auto-apply hazard captureArmResidual screens): the arm keeps the
-// count-only reconciliation, which refuses, and the program falls back to the
+// count-only reconciliation, which declines, and the program falls back to the
 // interpreter. The `for` side keeps its all-inert restriction untouched — a
 // loop body re-pushes its residual on EVERY iteration, where a frame slot
 // would hold only the last value — so its multi-out bodies lower exactly as
-// before. Parity is what is pinned in every row; the refusing rows are the
+// before. Parity is what is pinned in every row; the declining rows are the
 // negative pair for the graduations above.
 func TestMultiValueArmResidualDeclines(t *testing.T) {
-	refuse := []struct{ src, want string }{
+	decline := []struct{ src, want string }{
 		{`if true [ 99 (x:Integer => [ x ]) ] [ 7 8 ]`, "[99]"},
 		{`if true [ def c (7777 add 1)  99 (each [ (r:Integer => [ r add c ]) apply ] [1 2]) ] [ (x:Integer => [ x ]) 8 ]`,
 			"[99 [7779 7780]]"},
 	}
-	for _, c := range refuse {
+	for _, c := range decline {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -92,7 +92,7 @@ func TestMultiValueArmResidualDeclines(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, "branch leaves extra values") {
-			t.Errorf("%q: refusal = %q, want the branch-residual reason", c.src, reason)
+			t.Errorf("%q: compile failure = %q, want the branch-residual reason", c.src, reason)
 		}
 		d, _ := New()
 		gotI, errI := d.RunInterp(c.src)

@@ -947,6 +947,17 @@ identity, and process-wide-only scope.
 
 ## Known gap: child module registries do not inherit the policy
 
+**Status update (2026-09-26): CLOSED by NUR079.** A module body now runs
+under the importer's policy (`runModuleBodyCover` installs
+`HostPolicy(parent)` on the child — half (i), 2026-08-18), and a FILE
+module import passes the same three checks a native one does, keyed on
+the import's ref with `kind: "file"` (half (ii)): the restrictive built-ins
+admit file modules as a class, a profile can refuse one or all of them,
+refusals carry their policy code, and `boru check`, the run's pre-flight,
+`boru describe` and the language server run the analysis — which executes
+module bodies — under the same profile. The text below is the disclosure
+as written before those fixes, kept for its analysis.
+
 **Status: known defect (as of 2026-07).** The enforcement hooks in
 [Engine integration](#engine-integration) are correct for top-level code
 but do **not** reach code that runs *inside an imported module*. The

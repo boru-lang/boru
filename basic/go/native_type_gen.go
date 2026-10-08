@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// Generic-type words (design/GENERICS.10.md):
+// Generic-type words (design/legacy/GENERICS.10.ignore):
 //
 //	def Box gen [T] refine Record [value:T]
 //	def Pair gen [(K extends Comparable) (V default Any)] refine Record [key:K value:V]
@@ -33,6 +33,10 @@ var GenNatives = []NativeFunc{
 			Impl:       Go(GenHandler, RunInCheck()),
 			Returns:    []*Type{},
 			BarrierPos: -1,
+			// S2b's declaration: the params list runs on the check engine
+			// and installs the pending spec the next constructor consumes —
+			// an effect, never a dispatch over the list (CompileOwnLowering).
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{
@@ -194,7 +198,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 }
 
 // validateGenParamName enforces the type-name convention (capitalized)
-// and uniqueness, and refuses to shadow a same-named live binding in a
+// and uniqueness, and declines to shadow a same-named live binding in a
 // confusing way only when it is itself a placeholder (nested gen with
 // a reused name is almost certainly a bug).
 func validateGenParamName(r *Registry, name string, seen map[string]bool) error {

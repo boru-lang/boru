@@ -144,7 +144,7 @@ def R1 (refine Record [a:Integer b:Integer]) def R2 (refine Record [b:Integer a:
 # A `refine Record` type declared as a fn's return keeps its field		
 # schema on the result (the same schema `make R` and a record-typed		
 # param carry), so field reads through constructor functions narrow		
-# and schema-breaking uses are refused. The negatives pin the refusal		
+# and schema-breaking uses are declined. The negatives pin the compile failure		
 # side: a wrong-typed return, a field read fed to a map word, and a		
 # constructor result reaching a DIFFERENT record's param.		
 def R (refine Record [name:String n:Integer]) def mk fn [[] [R] [make R {name:'a' n:1}]] (mk) get 'name'	'a'	field read through a constructor fn
@@ -174,5 +174,5 @@ import module [def ok fn [[] [Integer] [1]] export "M" {ok: ok/v}] end M.ok	1	a 
 import module [def bad fn [[] [Integer] ['nope']] export "M" {bad: bad/v}] end M.bad	ERROR:expected Integer	the violation the interpreter used to wave through (NUR069)
 import module [def bad2 fn [[] [String] [42]] export "M" {bad2: bad2/v}] end M.bad2	ERROR:expected String	…in the other direction too
 import module [def free fn [[] [] ['anything']] export "M" {free: free/v}] end M.free	'anything'	an UNDECLARED return keeps the historical flow-through — the residual IS the return
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] end def p:Positive 5 end p	5	a predicate's None-on-failure residual is its PROTOCOL, not a return violation — enforcement is suppressed for the predicate call
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] end def q:Positive 0 end q	ERROR:does not satisfy	…and the failing branch still reports the predicate verdict, not a type_error
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] end def p:Positive 5 end p	5	a predicate's None-on-failure residual is its PROTOCOL, not a return violation — enforcement is suppressed for the predicate call
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] end def q:Positive 0 end q	ERROR:does not satisfy	…and the failing branch still reports the predicate verdict, not a type_error

@@ -814,7 +814,7 @@ var parseParserSeq int
 // (the finalizer always yields a conforming parser fn), and a plain typed
 // carrier is what lets the compile pass record both this call and the
 // downstream parselang-fn-dispatch without tripping the dynamic-operand
-// refusals. The `parse` macro's carrier branch handles the dispatch.
+// compile failures. The `parse` macro's carrier branch handles the dispatch.
 func parseParserReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	return []native.Value{native.NewCarrier(native.TFunction)}
 }
@@ -948,7 +948,7 @@ func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]na
 	// InvokeCallbackFn, not r.CallBoru: a matcher/action written in the grammar's
 	// own module resolves its free words there
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and the body is offered to the VM before
-	// the interpreter fallback.
+	// the compile failure.
 	return core.InvokeCallbackFn(r, fnDef, sig, args)
 }
 

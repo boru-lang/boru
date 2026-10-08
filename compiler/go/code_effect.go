@@ -5,7 +5,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Typed code values — stage 1 of design/checker-precision-fronts.0.md §1
+// Typed code values — stage 1 of design/legacy/checker-precision-fronts.0.ignore §1
 // (the `do` escape hatch). A QUOTED code list stored in data (a dispatch
 // table, a rule list, a callback slot) is statically described by its
 // STACK EFFECT — Code[in → out]. The effect is computed by the same
@@ -29,8 +29,8 @@ import (
 // consumer (`do`'s ReturnsFn) are gated to !Check.Compiling, so a real
 // compile pass (CompileCheck / RunCompiled) sees the pre-existing
 // dynamic(Any) hatch unchanged and a `do` over a computed body carrier
-// keeps REFUSING to lower (whole-program interpreter fallback) —
-// lang/go/code_effect_test.go pins the refusal.
+// keeps failing to lower (the program does not compile) —
+// lang/go/code_effect_test.go pins the compile failure.
 
 // AnalyseCodeEffectCarrier converts a CONCRETE quoted code list — a
 // stored body, recognised by containing at least one Word token — into

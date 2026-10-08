@@ -2,7 +2,7 @@
 
 ## Scope
 
-`design/roc-in-boru-report.0.md` produced fourteen recommendations
+`design/legacy/roc-in-boru-report.0.ignore` produced fourteen recommendations
 (A1–A14), two registered non-uniformities (NUR079, NUR080) and a list of
 declines. This note turns that into an ordered programme: what lands
 first, what gates what, and what "done" means for each item.
@@ -241,10 +241,10 @@ Where the work sits, so the next session does not have to reconstruct it.
 
 ### Landed
 
-- **#384** — `design/roc-in-boru-report.0.md`, the eight-axis comparison,
+- **#384** — `design/legacy/roc-in-boru-report.0.ignore`, the eight-axis comparison,
   plus **NUR079** and **NUR080** for the two defects its verification
   pass reproduced, plus a supersession banner on
-  `rust-zig-roc-faber-in-boru-report.0.md` (§4 of that report is stale in
+  `legacy/rust-zig-roc-faber-in-boru-report.0.ignore` (§4 of that report is stale in
   mechanism, not merely thin).
 - **#386** — this plan, and **A3**: `boru check --pedantic` promotes the
   advisory tiers to a non-zero exit *inside* the existing `!soft` guard,

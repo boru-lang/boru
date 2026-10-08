@@ -15,7 +15,7 @@ interpreter core) → `check/go` (the type checker / analysis pass)
 `eng/go` (the bytecode VM, the parser bridge, and the generated
 facades over the other three). The check-mode and compile/emit
 machinery documented below therefore LIVES in `check/go` and
-`compiler/go` (design/ENG-FOUR-PIECE.0.md), and each has its own
+`compiler/go` (design/legacy/ENG-FOUR-PIECE.0.ignore), and each has its own
 module guide; this file stays the single home of the shared kernel
 conventions, which apply to all four modules verbatim.
 
@@ -37,7 +37,7 @@ registered word's handler, not in a separate parser stage.
 
 A check diagnostic that mirrors a GUARANTEED runtime error (a strict-
 accessor static miss, a provable index OOB, an unconditional raise, a
-dry-passed pure handler's failure — design/CHECKER-COMPLETION.0.md) is
+dry-passed pure handler's failure — design/legacy/CHECKER-COMPLETION.0.ignore) is
 classified and gated rather than sprinkled with ad-hoc suppressions:
 
 - **`CheckDiagnostic.RuntimeMirror`** — stamped by every mirror emitter
@@ -141,7 +141,7 @@ Concretely:
   frames, `Engine.startAt` on sub-engine runs), so an argument with
   active step semantics (a Function value, an `__SP` marker) is
   inert data exactly like a named binding; it acts only where the
-  body uses it. See design/ARG-SEMANTICS-UNIFICATION.0.md.
+  body uses it. See design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore.
 
 There is **no exception path**. Anything that looks like a
 "reordering" elsewhere is either:
@@ -300,7 +300,7 @@ node-ness alone is NOT a constraint key: a kind that enforces
 membership through a Unifier (DepScalar, predicate, disjunct,
 negation, FnUndef, binding-body) must be routed by
 `core.HasConstraintUnify`, or the constraint is never run
-(design/TYPE-REPRESENTATION.1.md §N3 — the typed-def reparent arm's
+(design/legacy/TYPE-REPRESENTATION.1.ignore §N3 — the typed-def reparent arm's
 gate is the model).
 
 The regression gate `data_nil_gate_test.go::TestNoRawDataNilProbes`
@@ -317,7 +317,7 @@ every value mode.
 with the unexported `payloadMarker()` method satisfy it, and the
 method is only definable in this package. The interface also
 requires `IsTypeContent(owner *Value) bool` — the ONE
-type-recognition seam (design/TYPE-REPRESENTATION.1.md §N4):
+type-recognition seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4):
 `IsTypeBody` asks the payload instead of enumerating shapes. The seal closes the
 historical `Data interface{}` hole — `Value{Parent: TInteger,
 Data: "hello"}` is a **compile error**.
@@ -636,7 +636,7 @@ accessors):
 - `String() string` — `fmt.Stringer` interface.
 - `TypeBody() (Value, bool)` / `SetTypeBody(body Value)` — the type
   NODE's declaration stamp (the Stage 2 flip,
-  design/TYPE-REPRESENTATION.1.md §N2): `installTypeBinding` stamps
+  design/legacy/TYPE-REPRESENTATION.1.ignore §N2): `installTypeBinding` stamps
   the declared content at mint time, and consumers recover it through
   `core.TypeContentOf`.
 
@@ -702,7 +702,7 @@ Current call sites that must canonicalize:
 - `lang/native/native_type.go::refineBareHandler` — `MintRefinePrefab`
   parent.
 
-See `design/TYPE-CANONICALIZATION.10.md`.
+See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 
 ## Typed-Def Reparent
 

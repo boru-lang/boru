@@ -25,6 +25,7 @@ import (
 // request's check pass — keep-on-compile's contract, delivered by replay),
 // and a type install (the twin re-pushes the minted node).
 func TestTwinRegimeSmoke(t *testing.T) {
+	t.Parallel()
 	a, err := lang.New()
 	if err != nil {
 		t.Fatal(err)

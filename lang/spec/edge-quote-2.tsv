@@ -36,7 +36,7 @@ def two word [1,2] [two two] size	4	inside a list literal both splices flatten �
 quote (word [1,2])	1 2	the splice fires INSIDE the paren before quote can mark it
 quote word [1,2]	word/q [1 2]	quote captures the literal token `word`; the list evaluates apart
 quote (word [dup add])	ERROR:signature_error	a code payload fires in the paren — dup meets an empty stack
-def s word [dup add] quote [s]	(quote [word(s)])	holding a list stops the reference from splicing — s stays a raw word
+def s word [dup add] quote [s]	(quote [s])	holding a list stops the reference from splicing — s stays a raw word
 def s word [dup add] quote [s] size	1	the held reference is one node, not the payload's two
 def s word [dup add] quote s	s/q	quote captures the NAME of a splice-bound def, binding notwithstanding
 def n word 42 quote n eq n/q	true	…and the captured name is an ordinary atom

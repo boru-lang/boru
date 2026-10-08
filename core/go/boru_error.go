@@ -55,19 +55,39 @@ type BoruError struct {
 	// concrete replacement snippet.
 	Suggestions []DiagSuggestion
 
-	// DeferAlt, set only on a DESIGNED VM defer-to-interpreter
-	// (internal_error, vmDeferAlt), is the best-effort user-facing raise the
-	// defer site prepared for the arm where the interpreter re-run is BLOCKED
-	// by the effect fence: a no-match defer whose site proved the interpreter
-	// would also fail this dispatch builds the rich signature_error over the
-	// live window, so the fence-blocked caller (lang fenceBlockedFallback)
-	// surfaces a real diagnostic instead of an internal error telling the
-	// user to report a compiler bug. Best-effort: the Detail and candidate
+	// DeferAlt, set only on a DESIGNED VM defer (internal_error, vmDeferAlt),
+	// is the best-effort user-facing raise the defer site prepared for the
+	// moment it bails: a no-match defer whose site proved the interpreter would
+	// also fail this dispatch builds the rich signature_error over the live
+	// window, so the caller surfaces a real diagnostic instead of an internal
+	// error telling the user to report a compiler bug. It was the consolation
+	// prize for a fence-blocked re-run; with no re-run left it is the ANSWER —
+	// the "trap that raises the interpreter's own error at the same moment"
+	// disposition (design/SESSION-HANDOVER.0.md). Best-effort: the Detail and candidate
 	// verdicts are canonical, but the rendered argument tuple may be wider
 	// than the tape-derived tuple the interpreter would show (the fallback
 	// arm, when open, stays byte-identical by re-running). Nil everywhere
 	// else.
 	DeferAlt *BoruError
+
+	// VMDefer marks a DESIGNED VM defer-to-interpreter (vmErrAt / the panic
+	// guards), as opposed to a user `raise internal_error …` — the two share
+	// the public `internal_error` code, so a consumer that must catch the
+	// user error but re-raise the defer (the `do` escape hatch,
+	// bodyErrorPropagates) keys on this marker, not the code. Set only by the
+	// eng VM's internal_error mints; false on every user-raised error.
+	VMDefer bool
+
+	// AnchorFinal marks an error whose primary position its raising FRAME
+	// fixed: a fn value's return contract answered at the value's own
+	// position — none when the value has none (a `=>` lambda constructed
+	// with no token of its own). The interpreter's frame raises it from the
+	// step loop's ReturnCheck, where no word is dispatching, so the value's
+	// application leaves it as it is; only a word's handler boundary
+	// (stampErrPos) stamps a positionless error on its way out. The VM's
+	// apply ops honour it (eng stampAt) and its native-call sites clear it
+	// before they stamp. Set only by the VM's closure contract check.
+	AnchorFinal bool
 
 	// fullSource is the complete source text for generating context extracts.
 	FullSource string
@@ -231,6 +251,12 @@ func diagClamp(s string) string {
 }
 
 func diagValueDepth(v Value, depth int) string {
+	if diagCodeToken(v) {
+		// A code token — a pending literal's word, group, member path,
+		// template or sugar — renders as the source it was written as, never
+		// its debug form (`(1 add 1)`, not `paren([1 word(add) 1])`; NUR235).
+		return CanonValue(v)
+	}
 	if v.Parent == nil || !IsConcrete(v) {
 		return v.String()
 	}
@@ -272,6 +298,12 @@ func diagValueDepth(v Value, depth int) string {
 		return keys[i] + ":" + diagValueDepth(val, depth+1)
 	})
 	return "{" + strings.Join(parts, " ") + "}"
+}
+
+// diagCodeToken reports whether v is a token of unevaluated code a
+// diagnostic may meet inside a pending literal it renders.
+func diagCodeToken(v Value) bool {
+	return IsWord(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsSugar(v)
 }
 
 // diagHead renders the first diagMaxListHead of n entries through render

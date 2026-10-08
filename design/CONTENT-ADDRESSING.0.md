@@ -1,9 +1,9 @@
 # CONTENT-ADDRESSING.0 — identity by hash, and what it would actually take
 
 > **Status: discovery / design note — not implemented.** It consolidates
-> two documents into one design: `unison-in-boru-report.0.md` (the
+> two documents into one design: `legacy/unison-in-boru-report.0.ignore` (the
 > applicability study — *should* boru do this?) and
-> `unison-hash-identity-probe.0.md` (the proof of concept — *can* it,
+> `legacy/unison-hash-identity-probe.0.ignore` (the proof of concept — *can* it,
 > today?). Read this one first; the other two are the argument and the
 > measurements behind it.
 >
@@ -126,7 +126,7 @@ original report over-promise.
 |---|---|---|
 | Hashes | file bytes | a definition's *meaning* |
 | Construction | Merkle over sorted relative paths + bytes + modes | normalised AST with referents replaced by their digests |
-| Semantics needed | none | canonicity, alpha-normalisation, referent resolution, macro expansion, cycles |
+| Semantics needed | none | canonicity, referent resolution, macro expansion, cycles (NOT alpha-normalisation: a boru parameter's name is behaviour — §4.2 step 3, NUR074) |
 | Buys | dependency pinning, reproducibility, signing, capability/code binding | compiled-unit caching, free renames, test caching |
 | Status | **specified already** (`boru-vendor.0.md` §5); recommended already (`MODULE-SECURITY.0.md` §9.3) | a programme (§4.3) |
 | Blocked by | nothing | P1–P8 |
@@ -141,8 +141,16 @@ In order, each step with the probe result that demands it:
 1. **Canonicity** — `deq` values must render identically (P1). *New rule;
    would need an ADR.*
 2. **Strip the binding name** (P3) — NUR031's verdict already requires it.
-3. **De-name parameters**, to positional references (P4) — not covered by
-   NUR031; this is what Unison's positional rewriting is for.
+3. ~~**De-name parameters**, to positional references (P4)~~ — **withdrawn
+   (NUR074, resolved 2026-09-26).** It would be UNSOUND in boru. A parameter
+   is a frame binding on the def stack, and a free name resolves at call
+   time through that stack, so a parameter's name is visible to every
+   function the body reaches: `def x 1  def g fn [[] [Any] [x]]` then
+   `def f fn [[x:Any] [Any] [g]]  f 5` answers 5, and the same `f` with its
+   parameter named `y` answers 1. Unison can de-name because its variables
+   are lexical; boru's parameters are not, so two definitions differing only
+   in a parameter name are two behaviours, and a digest must keep the name
+   (as canon and `deq` do).
 4. **Expand macros** before hashing (P6), or a macro edit is invisible.
 5. **Substitute referents** with their digests (P5) — §4.3, the crux.
 6. **Cycle components** — hash a strongly-connected group as a unit,
@@ -310,7 +318,7 @@ programme and should not be entered by accident.
   as a surface rule.
 - **Inlining the closure** (§4.3 option c) — destroys late binding.
 - **Abilities / algebraic effects.** Out of scope here; analysed in
-  `effect-oriented-programming-in-boru-report.0.md`, whose idea #1 (effect
+  `legacy/effect-oriented-programming-in-boru-report.0.ignore`, whose idea #1 (effect
   rows inferred by the carrier checker) is the same design Unison ships,
   and whose recorded ceiling — no multi-shot continuations under the tape
   model — is unaffected by anything in this note. Phase 4's test-caching
@@ -319,9 +327,9 @@ programme and should not be entered by accident.
 
 ## 7. Evidence index
 
-- `unison-in-boru-report.0.md` — the applicability study, corrected in
+- `legacy/unison-in-boru-report.0.ignore` — the applicability study, corrected in
   place by the probe.
-- `unison-hash-identity-probe.0.md` — the measurements (P1–P10).
+- `legacy/unison-hash-identity-probe.0.ignore` — the measurements (P1–P10).
 - `scripts/hash-identity-probe.boru`, `scripts/hash-identity-probe.sh` —
   the runnable probe.
 - `RELOAD-INVALIDATION.0.md` §1, §2.2, §3 (F1), §4, §5 — the hot-path

@@ -28,7 +28,7 @@ import (
 // error; anywhere else reachability is conditional. Inside `do` bodies
 // AddDiagnostic re-attributes error findings to caught info centrally,
 // and the compile pass no longer needs excluding — mirror diagnostics
-// (RuntimeMirror) do not trip the compile pipeline's refusal.
+// (RuntimeMirror) do not trip the compile pipeline's compile failure.
 func CheckAtUncaughtTopLevel(r *core.Registry) bool {
 	return r != nil && r.Check.IsActive() &&
 		r.Check.FnBodyDepth == 0 && r.Check.NestedBodyDepth == 0

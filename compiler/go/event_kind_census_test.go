@@ -37,25 +37,41 @@ import (
 // eventKindSites: keyed on EVENT kind — a new event kind changes what each
 // one should do. The trailing note says what an UNNAMED kind gets today.
 var eventKindSites = map[string]string{
-	"regionReadsTheStack":     "emit.go  — does the region's event pop something already on the stack? (default: reads the stack — NUR137)",
-	"eventPos":                "emit.go  — the event's source position (no default; an unnamed kind reports 0:0 — see NUR130 on what a wrong position costs)",
-	"eventDivergesDeep":       "emit.go  — does this event never return past itself? (no default)",
-	"eventsBindDynScope":      "emit.go  — does this event bind a registry-visible name? (no default)",
-	"callResultPlacedIn":      "emit.go  — where a call's result lands",
-	"forEachOperand":          "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
-	"forEachFragmentOperand":  "lower.go — the same walk over a fragment's own events",
-	"eachClosureCap":          "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
-	"childFragments":          "lower.go — the event's nested fragments (a missing case hides a whole subtree)",
-	"RewritePromotedRefs":     "lower.go — rewrites promoted operand refs (a missing case leaves them stale)",
-	"collectPromotableEvents": "lower.go — which events may be promoted to frame locals",
-	"planValueDefLocals":      "lower.go — the promotion plan itself",
-	"lowerEvents":             "lower.go — the emission (default: REFUSES, \"unknown event kind\" — the shape worth copying)",
-	"singleOutputCall":        "lower.go — is this a promotable single-result call? (default: false)",
-	"fragSingleResidual":      "lower.go — does the fragment net exactly one value?",
-	"fragmentOuts":            "lower.go — the fragment's out operands",
-	"fragmentResultSeqs":      "lower.go — the seqs a fragment's results come from",
-	"markTailCalls":           "lower.go — marks a body's tail call",
-	"computeLeaverPrefix":     "lower.go — the prefix a diverging arm leaves",
+	"regionReadsTheStack":      "emit.go  — does the region's event pop something already on the stack? (default: reads the stack — NUR137)",
+	"eventPos":                 "emit.go  — the event's source position (no default; an unnamed kind reports 0:0 — see NUR130 on what a wrong position costs)",
+	"eventDivergesDeep":        "emit.go  — does this event never return past itself? (no default)",
+	"eventsBindValueWhere":     "emit.go  — does this event bind a registry-visible name? (no default)",
+	"callResultPlacedIn":       "emit.go  — where a call's result lands",
+	"forEachOperand":           "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
+	"readIsDeepestOperand":     "emit.go  — is a root read its plain call's deepest operand? (default: no — the read keeps its guard, NUR217)",
+	"forEachFragmentOperand":   "lower.go — the same walk over a fragment's own events",
+	"eachClosureCap":           "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
+	"bodyEscapes":              "kept_live_deopt.go — may this event cut a loop iteration short with a break/continue? (default: yes — an unnamed kind declines the S5 first-value def bind)",
+	"childFragments":           "lower.go — the event's nested fragments (a missing case hides a whole subtree)",
+	"appliesFnOperand":         "read_site_guard.go — does this event dispatch a fn operand as the interpreter's word dispatch would? (default: no — a new kind that applies one must say so, or its read takes a guard that fires where the event answers right, NUR361)",
+	"RewritePromotedRefs":      "lower.go — rewrites promoted operand refs (a missing case leaves them stale)",
+	"collectPromotableEvents":  "lower.go — which events may be promoted to frame locals",
+	"planValueDefLocals":       "lower.go — the promotion plan itself",
+	"lowerEvents":              "lower.go — the emission (default: DECLINES, \"unknown event kind\" — the shape worth copying)",
+	"singleOutputCall":         "lower.go — is this a promotable single-result call? (default: false)",
+	"resultCount":              "landing_restart.go — how many results a def's call leaves beneath its bound value? (default: one)",
+	"fitStop":                  "fit_restart.go — can a forward-fit island stop at this call? (default: false — no island, the call keeps its match)",
+	"fragSingleResidual":       "lower.go — does the fragment net exactly one value?",
+	"fragmentOuts":             "lower.go — the fragment's out operands",
+	"fragmentResultSeqs":       "lower.go — the seqs a fragment's results come from",
+	"markTailCalls":            "lower.go — marks a body's tail call",
+	"computeLeaverPrefix":      "lower.go — the prefix a diverging arm leaves",
+	"seqFnDef":                 "stored_fn_proof.go — does the event's single result arrive as an interpreter fn value at a strict store-fn slot? (default: unproven, so the slot declines — sound, never a closure handed to a validating handler)",
+	"fragCanCarry":             "branch_carried.go — does the arm carry a name's binding out on every path? (default: an unnamed kind neither binds nor carries, so the name is NOT seated and its read declines as before — sound, never a stale slot)",
+	"keptDefsInvoker":          "kept_defs.go — may the event RUN a unit that runs a computed keep-defs body? (default: runs nothing — a new kind that can apply a fn value must be named here, or the kept-defs latch misses the run, NUR210)",
+	"forEachConsumingOperand":  "dyn_body_one.go — which operands does the event consume at a fixed count? (default: forEachOperand's, whose own default names none — so a new kind consuming a computed `do` run leaves the region's decline standing, sound)",
+	"runOperand":               "prefix_island.go — is the event's result a run of its own runtime count? (default: not a run — a new kind passing a run through reads as one value, NUR294's wrong layout, until it is named)",
+	"eventLeavesPending":       "arm_pending.go — does the event leave an `if` arm's pending literal on its sequence's stack? (default: no — only a branch leaves one, and only a branch or loop nests a sequence the walk must enter; a new kind nesting events must be named or its arms go unwalked, NUR356)",
+	"pendingUntouched":         "arm_pending.go — may the event run between a branch and its pending literal's evaluation? (default: only a pure read, restartRead — sound; a new kind that binds must be named to be admitted, NUR356)",
+	"runtimeMatched":           "eager_literal.go — is the event's signature matched at run time? (default: no — a new kind that re-matches must be named, or its eagerly assembled literal operands go unchecked, NUR356)",
+	"mayEffect":                "eager_literal.go — may running the event have an effect the program observes? (default: yes — sound, a literal assembly holding it declines, NUR356)",
+	"consumesPendingEvaluated": "arm_pending.go — does the event take a pending literal as the interpreter evaluates it, at once? (default: no — the program declines, sound)",
+	"eventToken":               "kept_live_deopt.go — the body token the event's own tokens begin at, where a live-read island must start to run it (default: the statement's first token — sound for any kind, the whole statement the island's; a kind standing at its first token, as a call at its word, is named to start the island there)",
 }
 
 // operandKindSites key on OPERAND kind (opConst / opLocal / opEvent / …), a
@@ -64,12 +80,20 @@ var eventKindSites = map[string]string{
 var operandKindSites = map[string]bool{
 	"appendResidualSeqs":    true,
 	"callResultRenderKnown": true,
+	"unitRenderKnown":       true,
+	"fnOpRenderKnown":       true,
 	"closureOpShape":        true,
+	"fnOpContract":          true,
 	"computedArmCondOK":     true,
 	"deoptDeferred":         true,
 	"pushOperand":           true,
 	"regionSourceOf":        true,
 	"residualReadHazard":    true,
+	"provenFnDef":           true,
+	"strictFnOperandProven": true,
+	"operandMayInvoke":      true,
+	"provenBodyTokens":      true,
+	"knownFnLead":           true,
 }
 
 // evKinds is every event kind, with the name a failure should print.
@@ -244,7 +268,7 @@ func wellFormedEvent(kind int) *EmitEvent {
 		// A trap's operands are its REMATCH window, when it has one; a plain
 		// terminal trap carries none. The window is what must be visited, so
 		// that is what a well-formed fixture has.
-		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchNWritten: 1}
+		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchWritten: []int{0}}
 	case evStore:
 		ev.store = &emitStore{src: op}
 	case evDynBind:

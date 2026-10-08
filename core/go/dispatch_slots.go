@@ -1,7 +1,7 @@
 package core
 
 // Engine dispatch-hook slots — Stage 3b of the four-piece split
-// (design/ENG-FOUR-PIECE.0.md seam S9). A compiler-piece behavior the
+// (design/legacy/ENG-FOUR-PIECE.0.ignore seam S9). A compiler-piece behavior the
 // core step loop must be able to OFFER without naming compiler symbols
 // registers itself here at init; a nil slot simply declines. At the
 // package cut these become the compiler's registrations onto core's
@@ -10,7 +10,7 @@ package core
 // DriftWindowRecorder is the compiler's stack-drift island hook: offered
 // a matched dispatch whose forward window drifted, it may record the
 // window as a runtime island (drift_window.go) and report true to skip
-// the refusal path. The compiler piece installs the real recorder at
+// the compile failure path. The compiler piece installs the real recorder at
 // init; the NAMED default below is what a compiler-less build runs, so
 // the decline path is reachable and pinned like every other seam slot
 // (TestInactiveDriftWindowRecorder).
@@ -63,15 +63,21 @@ var CheckBraid = struct {
 	DrainUndefinedAtoms          func(e *Engine)
 	ExprRefsCarrier              func(e *Engine, items []Value) bool
 	NoteSpeculativeBarrierCommit func(e *Engine, fwd ForwardInfo)
-	RefuseForwardStackDrift      func(e *Engine, sig *Signature, positions []int)
-	RefuseStrandedMemberFn       func(e *Engine, positions []int)
+	DeclineForwardStackDrift     func(e *Engine, sig *Signature, positions []int) bool
+	DeclineStrandedMemberFn      func(e *Engine, positions []int)
 	ShareCheckState              func(e *Engine, capturedReg *Registry) func()
-	SpliceAnonCheckResult        func(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error
-	SpliceCheckResults           func(e *Engine, positions []int, results []Value)
-	SpliceFnValueCheckResult     func(e *Engine, valIdx, nArgs int, fnDef FnDefInfo, sig *FnSig, args []Value) error
-	TagCheckModeDefRead          func(e *Engine, top *Value, name string)
-	TryDynamicFnValueDispatch    func(e *Engine, valIdx int) bool
-	TryMemberFnArrivalDispatch   func(e *Engine, valIdx int) bool
+	// ShareCheckStateFrom points owner's Check at caller's for the returned
+	// restore's lifetime (the same transient sharing ShareCheckState does
+	// for a dispatch): the end-of-pass drain analyses an exported module
+	// fn's body in its own registry under the importing pass (NUR128).
+	ShareCheckStateFrom        func(owner, caller *Registry) func()
+	SpliceAnonCheckResult      func(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error
+	SpliceCheckResults         func(e *Engine, positions []int, results []Value)
+	SpliceFnValueCheckResult   func(e *Engine, valIdx, nArgs int, fnDef FnDefInfo, sig *FnSig, args []Value) error
+	TagCheckModeDefRead        func(e *Engine, top *Value, name string, pos SrcPos)
+	TryDynamicFnValueDispatch  func(e *Engine, valIdx int) bool
+	TryMemberFnArrivalDispatch func(e *Engine, valIdx int) bool
+	NoteReStepLanding          func(e *Engine, valIdx int)
 	// ParenPlacedFnCarrier reports whether the value at idx is an
 	// analysis-pass carrier the check side knows to be a FUNCTION (a
 	// pinpointed member-fn read, whose fn identity lives in the recorder's
@@ -83,7 +89,7 @@ var CheckBraid = struct {
 	// call that never happened: a capitalised `def` given a fn body binds a
 	// TYPE, so the name in call position places its lattice node and leaves
 	// the operands after it unconsumed, exit 0 and all
-	// (design/HIGHER-ORDER-FUNCTIONS.0.md §5.1). Offered the reconciled
+	// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1). Offered the reconciled
 	// residual — the exact list CheckResult.Stack reports — so the judgement
 	// reads what the user is shown.
 	NoteStrandedTypeCall    func(e *Engine, residual []Value)
@@ -99,15 +105,17 @@ var CheckBraid = struct {
 	DrainUndefinedAtoms:          inactiveDrainUndefinedAtoms,
 	ExprRefsCarrier:              inactiveExprRefsCarrier,
 	NoteSpeculativeBarrierCommit: inactiveNoteSpeculativeBarrierCommit,
-	RefuseForwardStackDrift:      inactiveRefuseForwardStackDrift,
-	RefuseStrandedMemberFn:       inactiveRefuseStrandedMemberFn,
+	DeclineForwardStackDrift:     inactiveDeclineForwardStackDrift,
+	DeclineStrandedMemberFn:      inactiveDeclineStrandedMemberFn,
 	ShareCheckState:              inactiveShareCheckState,
+	ShareCheckStateFrom:          inactiveShareCheckStateFrom,
 	SpliceAnonCheckResult:        inactiveSpliceAnonCheckResult,
 	SpliceCheckResults:           inactiveSpliceCheckResults,
 	SpliceFnValueCheckResult:     inactiveSpliceFnValueCheckResult,
 	TagCheckModeDefRead:          inactiveTagCheckModeDefRead,
 	TryDynamicFnValueDispatch:    inactiveTryDynamicFnValueDispatch,
 	TryMemberFnArrivalDispatch:   inactiveTryMemberFnArrivalDispatch,
+	NoteReStepLanding:            inactiveNoteReStepLanding,
 	ParenPlacedFnCarrier:         inactiveParenPlacedFnCarrier,
 	NoteStrandedTypeCall:         inactiveNoteStrandedTypeCall,
 	TryShapedMethodDispatch:      inactiveTryShapedMethodDispatch,
@@ -142,11 +150,14 @@ func inactiveExprRefsCarrier(e *Engine, items []Value) bool { return false }
 
 func inactiveNoteSpeculativeBarrierCommit(e *Engine, fwd ForwardInfo) {}
 
-func inactiveRefuseForwardStackDrift(e *Engine, sig *Signature, positions []int) {}
+func inactiveDeclineForwardStackDrift(e *Engine, sig *Signature, positions []int) bool { return false }
 
-func inactiveRefuseStrandedMemberFn(e *Engine, positions []int) {}
+func inactiveDeclineStrandedMemberFn(e *Engine, positions []int) {}
+
+func inactiveNoteReStepLanding(e *Engine, valIdx int) {}
 
 func inactiveShareCheckState(e *Engine, capturedReg *Registry) func() { return func() {} }
+func inactiveShareCheckStateFrom(owner, caller *Registry) func()      { return func() {} }
 
 func inactiveSpliceAnonCheckResult(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error {
 	return nil
@@ -158,7 +169,7 @@ func inactiveSpliceFnValueCheckResult(e *Engine, valIdx, nArgs int, fnDef FnDefI
 	return nil
 }
 
-func inactiveTagCheckModeDefRead(e *Engine, top *Value, name string) {}
+func inactiveTagCheckModeDefRead(e *Engine, top *Value, name string, pos SrcPos) {}
 
 func inactiveTryDynamicFnValueDispatch(e *Engine, valIdx int) bool { return false }
 

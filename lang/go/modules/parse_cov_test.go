@@ -202,7 +202,7 @@ def pbk (Parse.parser g)`)
 	}
 }
 
-// TestParseCovRuleNegatives pins ruleMapToSpec / altMapToSpec refusals.
+// TestParseCovRuleNegatives pins ruleMapToSpec / altMapToSpec compile failures.
 func TestParseCovRuleNegatives(t *testing.T) {
 	cases := []struct{ name, rule, want string }{
 		{"alt non-map", `{open:[42]}`, "each alternate must be a map"},
@@ -275,7 +275,7 @@ parse zt 'zz'`)
 	}
 }
 
-// TestParseCovMatcherContract pins wrapMatcher's refusals: a map without
+// TestParseCovMatcherContract pins wrapMatcher's compile failures: a map without
 // src, a src that is not a prefix, and a callback that raises.
 func TestParseCovMatcherContract(t *testing.T) {
 	cases := []struct{ name, matcher, want string }{
@@ -331,7 +331,7 @@ func TestParseCovActionRefContract(t *testing.T) {
 def g Parse.grammar
 Parse.action g 'hit' ([nd:Any] => [nd])`)
 	if err == nil || !strings.Contains(err.Error(), "must start with '@'") {
-		t.Errorf("a ref without @ should be refused, got %v", err)
+		t.Errorf("a ref without @ should be declined, got %v", err)
 	}
 }
 
@@ -366,7 +366,7 @@ parse ao 'inc'`); err != nil {
 }
 
 // TestParseCovSingleUsePerWord pins ensureOpen on every builder word: a
-// registered grammar refuses all further mutation.
+// registered grammar declines all further mutation.
 func TestParseCovSingleUsePerWord(t *testing.T) {
 	base := pcovImports + `
 def g Parse.grammar
@@ -397,7 +397,7 @@ end
 	}
 }
 
-// TestParseCovRegisterFailures pins register-time refusals: a broken
+// TestParseCovRegisterFailures pins register-time compile failures: a broken
 // deferred grammar step and a collision with an existing kind.
 func TestParseCovParserFailures(t *testing.T) {
 	r := pcovReg(t)
@@ -520,7 +520,7 @@ func TestParseCovParserReturns(t *testing.T) {
 	}
 }
 
-// TestParseCovAsParseGrammarDirect pins the unwrapper's refusal of a
+// TestParseCovAsParseGrammarDirect pins the unwrapper's compile failure of a
 // non-grammar value with the guiding hint.
 func TestParseCovAsParseGrammarDirect(t *testing.T) {
 	r := pcovReg(t)
@@ -591,7 +591,7 @@ func TestParseCovSpecAnyValueDirect(t *testing.T) {
 	}
 
 	if _, ok := specDataMap(native.NewInteger(9)); ok {
-		t.Error("specDataMap should refuse a non-map")
+		t.Error("specDataMap should decline a non-map")
 	}
 }
 

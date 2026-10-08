@@ -119,9 +119,9 @@ func TestS7B_RandListOfInterpreterArms(t *testing.T) {
 	// It has to be driven HERE rather than from the corpus, and that is a
 	// fact about the word, not a convenience. rand-list-of declares BodyOut 1,
 	// so compileClosureBody gives the closure a one-value contract and ANY
-	// zero-net body refuses to compile — a corpus row for this shape would
-	// therefore add a compile refusal, and TestCompiledCoverage pins refusals
-	// at 0. The guard stays live for user programs the compiler refuses;
+	// zero-net body fails to compile — a corpus row for this shape would
+	// therefore add a compile failure, and TestCompiledCoverage pins compile failures
+	// at 0. The guard stays live for user programs the compiler declines;
 	// the handler test is what can reach it without moving that gate.
 	dropBody := native.NewList([]native.Value{native.NewInteger(1), native.NewWord("drop")})
 	if _, err := h([]native.Value{dropBody, native.NewInteger(2)}, nil, nil, r); err == nil {
@@ -159,7 +159,7 @@ func TestS7B_RandMapFromArms(t *testing.T) {
 
 // TestS7B_RandWithSeedArgError drives rand-with-seed's AsConcreteInteger
 // arm: a DepScalar seed (`Integer gt 0`) matches the Integer sig slot yet
-// is refused by AsConcreteInteger inside the handler.
+// is declined by AsConcreteInteger inside the handler.
 func TestS7B_RandWithSeedArgError(t *testing.T) {
 	r := randRegistry(t)
 	values, perr := parser.Parse(`Rand.with-seed (Integer gt 0)`)
@@ -168,7 +168,7 @@ func TestS7B_RandWithSeedArgError(t *testing.T) {
 	}
 	_, err := native.NewTop(r).Run(values)
 	if err == nil {
-		t.Fatal("Rand.with-seed (Integer gt 0) should be refused")
+		t.Fatal("Rand.with-seed (Integer gt 0) should be declined")
 	}
 	if !strings.Contains(err.Error(), "AsConcreteInteger") && !strings.Contains(err.Error(), "concrete Integer") {
 		t.Errorf("unexpected error: %v", err)

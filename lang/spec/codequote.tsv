@@ -8,14 +8,14 @@
 #   codequote (1 add 2)  -> the paren as code (NOT evaluated)
 # Words -> atoms and lists -> raw list behave exactly like `quote`.
 # Expected values use the canon renderer.
-# See design/PAREN-REPRESENTATION.9.md Step 4.
+# See design/legacy/PAREN-REPRESENTATION.9.ignore Step 4.
 # =====================================================================
 
 # --- word / scalar / list forms behave like quote ---
 codequote foo	foo/q	bare word -> Atom (data, not a call)
 codequote add	add/q	works on bound names too (pure data)
 codequote 99	99	scalar passes through unchanged
-codequote [1 add 2]	(quote [1 word(add) 2])	list captured raw (unevaluated)
+codequote [1 add 2]	(quote [1 add 2])	list captured raw (unevaluated)
 
 # --- the new behaviour: a paren is captured RAW as code ---
 codequote (1 add 2)	(1 add 2)	paren captured raw — NOT evaluated to 3

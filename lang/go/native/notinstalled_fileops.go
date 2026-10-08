@@ -16,7 +16,7 @@ import (
 // nil-check still get a clean error instead of a nil deref.
 //
 // This is the "structural denial" pattern from PERMISSIONS.10 — the
-// only FileOps reachable to handlers either does I/O or refuses; it
+// only FileOps reachable to handlers either does I/O or declines; it
 // never crashes.
 type notInstalledFileOps struct{}
 
@@ -104,16 +104,16 @@ func (notInstalledFileOps) ResolvePath(path string) (string, error) {
 	// ResolvePath is pure path manipulation in real fileops; the
 	// stub returns the input unchanged so callers that resolve a
 	// path before deciding what to do don't trip up. The actual
-	// read/write/mkdir still refuses.
+	// read/write/mkdir still declines.
 	return path, nil
 }
 
-// notInstalledError is the stub's refusal, as a TYPE.
+// notInstalledError is the stub's compile failure, as a TYPE.
 //
 // It used to be a bare fmt.Errorf with the code written into the message
 // as an `[boru/capability_not_installed]:` prefix — which errors.As cannot
 // find, so a handler wrapping this error had nothing structured to read
-// and the refusal reached the user carrying the WORD's code (or none at
+// and the compile failure reached the user carrying the WORD's code (or none at
 // all). A code inside prose is a code no `case` arm can match.
 type notInstalledError struct{ scope, op, path string }
 

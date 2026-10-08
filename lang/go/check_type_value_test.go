@@ -192,13 +192,23 @@ func TestMiniEmitComputedBindingCheck(t *testing.T) {
 	}
 	// The interpreter runs both for real — the doubled source proves the
 	// BOUND fn ran (a fallthrough parse of 'x' could echo it unchanged).
+	// This is what the program MEANS; it is asserted on the reference
+	// engine because neither shape compiles yet, and each compile failure
+	// is booked as the defect it is.
 	a, _ := lang.New()
-	if got, err := a.Run(miniSrc); err != nil || len(got) != 1 || got[0] != "xx" {
+	if got, err := a.RunInterp(miniSrc); err != nil || len(got) != 1 || got[0] != "xx" {
 		t.Errorf("computed mini binding run = %v (err %v), want [xx]", got, err)
 	}
 	b, _ := lang.New()
-	if got, err := b.Run(emitSrc); err != nil || len(got) != 1 || got[0] != "E" {
+	if got, err := b.RunInterp(emitSrc); err != nil || len(got) != 1 || got[0] != "E" {
 		t.Errorf("computed emit binding run = %v (err %v), want [E]", got, err)
+	}
+	for _, src := range []string{miniSrc, emitSrc} {
+		c, _ := lang.New()
+		gotC, cErr := c.Run(src)
+		if !lang.NoteCompileDefect(t, src, gotC, cErr) && cErr != nil {
+			t.Errorf("compiled: %v", cErr)
+		}
 	}
 }
 

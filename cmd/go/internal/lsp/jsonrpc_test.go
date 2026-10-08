@@ -20,7 +20,7 @@ import (
 // failWriter fails every Write, for driving the transport error paths.
 type failWriter struct{}
 
-func (failWriter) Write([]byte) (int, error) { return 0, errors.New("write refused") }
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("write declined") }
 
 // --- readMessage ---
 

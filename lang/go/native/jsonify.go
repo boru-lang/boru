@@ -35,7 +35,7 @@ func jsonifyDefaultHandler(args []Value, ctx map[string]Value, stack []Value, r 
 // letters, so it leads the output), and (b) user map keys beginning
 // with "$" escape to "$$", so a spoofed "$class" inside plain data is
 // structurally impossible and MongoDB-style $-keys round-trip through
-// reify's unescape. Output is pure JSON (design/CLASS-OBJECT.10.md §3e).
+// reify's unescape. Output is pure JSON (design/legacy/CLASS-OBJECT.10.ignore §3e).
 func valueToAnySer(v Value) any {
 	if !IsConcrete(v) {
 		return nil

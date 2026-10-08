@@ -53,7 +53,7 @@ func TestPermissionedFileOpsNewMethodsAllow(t *testing.T) {
 	}
 }
 
-// TestPermissionedFileOpsNewMethodsDeny exercises the gate-refusal branch of
+// TestPermissionedFileOpsNewMethodsDeny exercises the gate-compile failure branch of
 // every new method under a policy that denies fileops.
 func TestPermissionedFileOpsNewMethodsDeny(t *testing.T) {
 	ops := NewPermissionedFileOps(capabilities.NewMem(), loadPolicy(t, "sandbox"))

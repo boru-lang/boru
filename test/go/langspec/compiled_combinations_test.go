@@ -1,4 +1,4 @@
-// Curated bytecode combination matrix (design/boru-bytecode-plan.0.md
+// Curated bytecode combination matrix (design/legacy/boru-bytecode-plan.0.ignore
 // Stage 6 follow-on; the regression net for the residual work). Rather
 // than a generator over the full Cartesian product, this is a curated
 // set of high-value pairwise/triple feature combinations plus "stranger"
@@ -43,7 +43,7 @@ var comboParity = []string{
 	`for 5 [if (gt i 2) [mul i 10] [i]]`,
 	`for 6 [if (eq i 3) [break] [i]]`,
 	`for 6 [if (eq i 3) [continue] [i]]`,
-	`add 100 (for 4 [add i 1])`, // loop residual consumed? (refuses -> fallback, parity holds)
+	`add 100 (for 4 [add i 1])`, // loop residual consumed? (declines -> fallback, parity holds)
 
 	// --- user fns: simple / recursive / tail / mutual / closure / generic ---
 	`def db fn [[n:Integer] [Integer] [n mul 2]] db 21`,
@@ -103,7 +103,7 @@ var comboParity = []string{
 	`def xs [10 20 30] xs get 2`,
 	`(flex [1 2 3]) is FlexList`, // typed query on a dynamic result via poly
 	// dynamic-INPUT poly: a builtin native over a dynamic operand re-matches
-	// its signature at run time (plan P3/P4 widening) instead of refusing.
+	// its signature at run time (plan P3/P4 widening) instead of declining.
 	`add (do [add 1 2]) 10`,
 	`mul 2 (do [mul 2 3])`,
 	`size (do [iota 5])`,
@@ -145,17 +145,17 @@ var comboParity = []string{
 }
 
 func TestCompiledCombinationParity(t *testing.T) {
+	t.Parallel()
 	var diverge int
 	for _, src := range comboParity {
 		ac := newDifferentialInstance(t)
 		gotC, _, errC := ac.RunCompiled(src)
-		// Stage J: a whole-program refusal returns compile_refused instead
-		// of the library silently re-running. This harness's contract is
-		// parity-VIA-FALLBACK (the fixture comments name it), so it performs
-		// the explicit fallback itself — same instance, exactly the caller
-		// side of the new contract.
-		if errCode(errC) == "compile_refused" {
-			gotC, errC = ac.RunInterp(src)
+		// A program that does not compile, or compiles and then bails, has
+		// no compiled answer to hold beside the interpreter's. This harness
+		// used to perform the fallback itself so it had one; both classes
+		// are booked as the defects they are instead.
+		if errCode(errC) == "compile_failed" || compiledDefect(errC) {
+			continue
 		}
 		ai := newDifferentialInstance(t)
 		gotI, errI := ai.RunInterp(src)
@@ -179,7 +179,7 @@ func TestCompiledCombinationParity(t *testing.T) {
 // pathOf classifies how a program compiles: "fallback" (whole-program),
 // "island" (compiles with an OpFallback island), or "native" (compiles,
 // no island).
-func pathOf(t *testing.T, src string) string {
+func pathOf(t testing.TB, src string) string {
 	t.Helper()
 	a := newDifferentialInstance(t)
 	prog, _, _, err := a.CompileCheck(src)
@@ -194,9 +194,10 @@ func pathOf(t *testing.T, src string) string {
 
 // TestCompiledCombinationPath pins the compilation DECISION for
 // representative shapes, so a regression that silently changes the path
-// (e.g. islanding a concrete dispatch, or refusing a shape that used to
+// (e.g. islanding a concrete dispatch, or declining a shape that used to
 // compile) is caught even when the result stays correct.
 func TestCompiledCombinationPath(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string

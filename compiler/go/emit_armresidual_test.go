@@ -12,7 +12,7 @@ import (
 // EVENT-produced entries included, since planValueDefLocals force-promotes
 // each to a frame slot before the re-push reads it. A parked Function, a value
 // with no resolvable provenance, and a single-value arm all decline
-// (residualOps stays nil — the arm keeps its refusal or its single-out path).
+// (residualOps stays nil — the arm keeps its compile failure or its single-out path).
 func TestCaptureArmResidualArms(t *testing.T) {
 	r := seam7Reg(t)
 	es := NewEmitState()
@@ -78,7 +78,7 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	dyn.Dynamic = true
 	dyn.ID = ""
 	if !core.SigTypeMatches(dyn, core.TFunction) {
-		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what refuses it")
+		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what declines it")
 	}
 	dynArm := &EmitFragment{}
 	es.captureArmResidual(dynArm, []core.Value{core.NewInteger(1), dyn})
@@ -101,17 +101,16 @@ func TestCaptureArmResidualArms(t *testing.T) {
 // The variadic-region rematch seat: a trap whose leading operand is a
 // variadic branch merge requires that merge slot on the sim TOP (the region
 // tops the runtime stack); a mismatched sim declines and the whole-program
-// refusal stands.
+// compile failure stands.
 func TestLowerTrapVariadicRegionNotOnTop(t *testing.T) {
 	es := NewEmitState()
 	cf := &CompiledFn{}
 	lw := &lowerer{es: es, p: &Program{}, code: &cf.Code, debug: &cf.Debug,
-		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, promoted: map[int]int{}}
+		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, nonEmpty: map[int]bool{7: true}, promoted: map[int]int{}}
 	ev := EmitEvent{kind: evTrap, trap: EmitTrap{
-		rematchWord:       "w",
-		rematchOps:        []EmitOperand{EventOperand(7, 0), ConstOperand(0)},
-		rematchWrittenOff: 1,
-		rematchNWritten:   1,
+		rematchWord:    "w",
+		rematchOps:     []EmitOperand{EventOperand(7, 0), ConstOperand(0)},
+		rematchWritten: []int{1},
 	}}
 	if reason := lw.lowerTrap(&ev); reason == "" ||
 		reason != "stack discipline: variadic rematch region is not on top" {
@@ -120,8 +119,8 @@ func TestLowerTrapVariadicRegionNotOnTop(t *testing.T) {
 }
 
 // A multi-value arm that is neither all-inert-captured nor event-seated is
-// irreconstructible: lowerFragment's default keeps the whole-program refusal
-// (the sound fallback) — the arm the each row covered before its all-inert
+// irreconstructible: lowerFragment's default keeps the whole-program compile failure
+// (a compile failure) — the arm the each row covered before its all-inert
 // capture graduated it.
 func TestLowerFragmentIrreconstructibleMultiArm(t *testing.T) {
 	es := NewEmitState()
@@ -132,7 +131,7 @@ func TestLowerFragmentIrreconstructibleMultiArm(t *testing.T) {
 	out := ConstOperand(0)
 	reason := lw.lowerFragment(frag, &out, true, core.SrcPos{})
 	if !strings.Contains(reason, "branch leaves extra values") {
-		t.Fatalf("irreconstructible multi-arm reason = %q, want the branch-residual refusal", reason)
+		t.Fatalf("irreconstructible multi-arm reason = %q, want the branch-residual compile failure", reason)
 	}
 }
 

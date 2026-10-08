@@ -32,7 +32,7 @@ module [
 
 // TestStampSetDropNegativeShapes pins what must NOT get the optimistic
 // modeling: a MODIFIED shuffle word (drop/s changes the collection shape)
-// keeps the faithful 0-arity, so the unit still refuses — the modeled
+// keeps the faithful 0-arity, so the unit still declines — the modeled
 // phantom may only feed a PLAIN dynStackShuffleWords consumer.
 func TestStampSetDropNegativeShapes(t *testing.T) {
 	evs := stampEventsFor(t, `

@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -9,8 +8,8 @@ import (
 // PRODUCED handed to a slot DECLARED `Function` — a user fn's `p:Function`
 // param, which the interpreter's frame binding installs as data — is the
 // call's argument, not a stranded apply, so argIsProducedClosure's
-// word-agnostic hold no longer refuses it (`cif (cnot ctrue/v)`); an `Any`
-// slot keeps the refusal (`typeof (h 5)` is the paren that failed to
+// word-agnostic hold no longer declines it (`cif (cnot ctrue/v)`); an `Any`
+// slot keeps the compile failure (`typeof (h 5)` is the paren that failed to
 // collapse), and so does apply's own Function slot over a fn-typed carrier.
 //
 // Lifting the hold exposed a latent collision in the fn-analysis memo key:
@@ -56,29 +55,8 @@ func TestFunctionSlotParity(t *testing.T) {
 	}
 }
 
-// TestFunctionSlotSoundRefusals pins the neighbours that still REFUSE.
-func TestFunctionSlotSoundRefusals(t *testing.T) {
-	rows := []struct{ src, reason string }{
-		// (the Any-slot row, `typeof (h 5)`, graduated with the thirty-sixth
-		// increment — closure_read_model_test.go)
-		// apply's own Function slot over a fn-typed CARRIER lead
-		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot"},
-	}
-	for _, c := range rows {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: check: %v", c.src, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
-		}
-	}
-}
+// TestFunctionSlotSoundCompileFailures pins the neighbours that still DECLINE.
+// (TestFunctionSlotSoundCompileFailures pinned apply's own Function slot
+// over a fn-typed CARRIER lead — `1 99 (mk 7) apply` — as a compile failure;
+// the dynamic-lead group compiled it on 2026-09-22 through the program
+// unit's pending apply, and top_level_apply_test.go pins it with parity.)

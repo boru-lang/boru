@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/boru-lang/boru/cmd/go/internal/command"
+	"github.com/boru-lang/boru/cmd/go/internal/permsflags"
 	"github.com/boru-lang/boru/lang/go/modules"
 	"github.com/boru-lang/boru/lang/go/native"
 	helppkg "github.com/boru-lang/boru/lang/go/native/help"
@@ -33,7 +34,7 @@ import (
 // defaultRegistry is a test seam (design/TEST-SEAMS.10.md); tests swap it
 // to drive newRegistry's construction-error arm, which no input can
 // provoke.
-var defaultRegistry = native.DefaultRegistry
+var defaultRegistry = native.DefaultRegistryWithPolicy
 
 // modulesResolve is a test seam (design/TEST-SEAMS.10.md); tests swap it
 // to drive the module-resolution failure arms — the built-in modules all
@@ -337,7 +338,13 @@ func qualifiedExportInfo(reg *native.Registry, name string) *helppkg.FuncInfo {
 // installed (file modules need it) and the native-module resolver is enabled
 // so "boru:<name>" references load.
 func newRegistry() (*native.Registry, error) {
-	reg, err := defaultRegistry()
+	// Describing a file module RUNS its body to learn its exports, so the
+	// documented environment policy governs it as it governs a run (NUR079).
+	pol, err := permsflags.EnvPolicy()
+	if err != nil {
+		return nil, err
+	}
+	reg, err := defaultRegistry(pol)
 	if err != nil {
 		return nil, err
 	}

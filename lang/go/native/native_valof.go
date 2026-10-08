@@ -41,6 +41,13 @@ var valofNatives = []NativeFunc{
 			QuoteArgs: map[int]bool{0: true},
 			Impl:      Go(valofHandler, RunInCheck(), Park()),
 			Returns:   []*Type{TAny},
+			// The handler-contract declaration (design/HANDLER-MIGRATION-
+			// LINE.0.md, the quoted class, S2a): the quoted name is resolved
+			// and its binding PARKED at the call site for the tape to carry —
+			// a re-stepping result the VM cannot reproduce by re-running the
+			// handler over a baked atom. Declared as the refusal it is
+			// (CompileResteps), never as an inert or key admission.
+			CompileEffect: CompileResteps,
 			// ParkResult: leave the resolved Function value as inert data at
 			// the call site instead of re-stepping it — so `valof f` behaves
 			// exactly like `f/v`, never auto-invoking (not even a 0-arg fn).
@@ -70,6 +77,17 @@ var valofNatives = []NativeFunc{
 				// (applyHandler still re-steps the fn).
 				ReturnsFn: applyReturns,
 				Returns:   []*Type{TAny}, BarrierPos: 0,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the fn-operand class, S2a): the handler MARKS the
+				// fn Applied and hands it back for the tape to apply against
+				// the values beneath — a re-stepping result. CompileReadsFn
+				// would be a permissive lie (a top-level fn-typed carrier
+				// would bake a CALL_NATIVE that leaves the marked fn as data),
+				// so the word declares the refusal, CompileResteps. The
+				// recorder owns the word by name besides (recordCallElided's
+				// fn-value elision, the pending-apply window,
+				// OpCallDynTrailTop), which the declaration leaves untouched.
+				CompileEffect: CompileResteps,
 			},
 			// Apply a Reach (a lens) to a receiver: `person $.name apply`
 			// rebinds the reach's receiver to `person` and evaluates it —
@@ -113,6 +131,23 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(usurpHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the fn-operand class): the operand is never
+				// invoked here — UsurpFunction READS its signatures to build
+				// the wrapper and STORES the original (FnDefInfo.Wraps) for
+				// the wrapper's later re-dispatch, so it is a store-fn slot,
+				// not a pure introspection one: a capturing fn must keep its
+				// real binding (CompileStoresFn), and the native VALIDATES the
+				// operand as an FnDefInfo (UsurpFunction's payload assertion),
+				// so a compiled closure — a ClosurePayload the assertion
+				// rejects with illegal_ref where the interpreter wraps it — is
+				// the CompileFnHandlerStrict shape and must decline, never
+				// lower. Under analysis the concrete value form folds at check
+				// time (the wrapper is a pure function of the fn's shape, and
+				// the VM dispatches it through UnwrapModifierChain with no
+				// tape); the gradual form's poly record is gated by the same
+				// declaration in recordGradualWrap.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -120,6 +155,13 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(usurpAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// The by-name form (the quoted class, S2a): the quoted name is
+				// resolved to its binding and the WRAPPER is returned for the
+				// tape to dispatch — the re-stepping result the CompileQuoteInert
+				// comment warns about. Declared as that refusal, CompileResteps;
+				// the check engine steps the wrapper and recordGradualWrap
+				// records its dispatch, exactly as before.
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -134,6 +176,10 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(stackArgsHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's value form: the fn is read for its
+				// shape and stored in the wrapper (rebarrierFunction) for the
+				// later re-dispatch; validated as an FnDefInfo.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -141,6 +187,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(stackArgsAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -157,6 +205,10 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forceArityHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's value form (ForceArityFunction
+				// reads the shape, stores the original in the wrapper,
+				// validates it as an FnDefInfo).
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TInteger, TAtom},
@@ -164,6 +216,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forceArityAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -177,6 +231,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forwardArgsHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's / stack-args' value form.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -184,6 +240,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forwardArgsAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -207,6 +265,9 @@ func forwardArgsAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Re
 func forceArityHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	n, _ := args[0].AsConcreteInteger()
 	wrapped, ok := core.ForceArityFunction(args[1], int(n))
+	if !ok {
+		wrapped, ok = wrapCompiledClosure(reg, "force-arity", args[1], int(n))
+	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[1]); gradual {
 			recordGradualWrap(reg, "force-arity", args, out)
@@ -261,6 +322,9 @@ func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 
 func rebarrierResult(wrap func(Value) (Value, bool), v Value, word string, reg *Registry) ([]Value, error) {
 	wrapped, ok := wrap(v)
+	if !ok {
+		wrapped, ok = wrapCompiledClosure(reg, word, v, 0)
+	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, v); gradual {
 			// Sound from the by-name (rebarrierAtom) entry too: the recorded
@@ -358,6 +422,17 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	// fn binding that suppresses the call; for any other binding it is
 	// the identity. No kind gate — that is what makes one spelling able
 	// to read a slot whose kind is not known statically (NUR085).
+	//
+	// Under the check pass the read is a def read like the bare word's
+	// (tagCheckModeDefRead's NoteLiveRead): a mutable reference the pass
+	// holds as a homeless carrier — a module-scope flex a multi-run body
+	// mutated, `for-each [… acc …] xs  join ',' (valof acc)` — seats live
+	// on the registry's cell instead of leaving `join` an operand of
+	// unknown provenance (module-composition.tsv L93, 2026-09-25); every
+	// other read is untouched by the note.
+	if reg != nil && reg.Check.IsActive() {
+		reg.Check.Recorder().NoteLiveRead(&v, name, args[0].Pos())
+	}
 	return []Value{v}, nil
 }
 
@@ -387,10 +462,18 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // against the RESULT rather than against the Function. An earlier revision
 // applied at the handler and had to declare the shape uncompilable to stay
 // honest; re-stepping models it exactly instead, so there is nothing left
-// to refuse.
+// to decline.
 func applyReturns(args []Value, r *Registry) []Value {
 	out := ReturnsIdentity(0)(args, r)
 	if len(out) == 1 {
+		// The handler hands the value back UNQUOTED (applyHandler below), and
+		// the model must too: a `/v`-marked reach group (`M.inc/v`) arrives
+		// Quoted from the marker's consumption at the group's collapse, and
+		// a quoted CONCRETE lead parks on the check pass — the re-step
+		// dispatches nothing, records nothing, and `5 M.inc/v apply`
+		// compiled to `[5 fn]` for the interpreter's 6 (NUR156). A word's
+		// own `/v` read (`inc/v`) is delivered unquoted and never met this.
+		out[0].Quoted = false
 		out[0] = markApplied(out[0])
 	}
 	return out
@@ -442,7 +525,7 @@ func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 	// signature can never eclipse an arg-taking sibling the stack was
 	// about to satisfy (the NUR035 hazard). Macros are excluded by the
 	// gate itself — applying a macro is never a stack-value dispatch
-	// (design/MACROS-PHASE1.10.md §5, D4).
+	// (design/legacy/MACROS-PHASE1.10.ignore §5, D4).
 	return []Value{markApplied(v)}, nil
 }
 
@@ -485,6 +568,9 @@ func rebindHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	wrapped, ok := core.UsurpFunction(args[0])
 	if !ok {
+		wrapped, ok = wrapCompiledClosure(reg, "usurp", args[0], 0)
+	}
+	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[0]); gradual {
 			recordGradualWrap(reg, "usurp", args, out)
 			return out, nil
@@ -498,26 +584,68 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	return []Value{wrapped}, nil
 }
 
+// wrapCompiledClosure wraps a COMPILED CLOSURE operand of a dispatch-modifier
+// word (the compiled lane's value for a capturing `fn` / `=>` literal minted at
+// run time — a factory's returned closure): the interpreter wraps the same
+// source fn, so the compiled lane wraps the closure over its bridged shape and
+// stores the closure itself (core's closureShape). Before this the value was a
+// ClosurePayload the FnDefInfo assertion refused with illegal_ref where the
+// interpreter answered (NUR158), which is why recordGradualWrap used to
+// decline every typed Function carrier at these slots. n is force-arity's
+// arity and unread by the others.
+func wrapCompiledClosure(reg *Registry, word string, v Value, n int) (Value, bool) {
+	if reg == nil || !IsCompiledClosure(v) {
+		return Value{}, false
+	}
+	switch word {
+	case "usurp":
+		return core.UsurpClosure(reg, v)
+	case "stack-args":
+		return core.ForceStackClosure(reg, v)
+	case "forward-args":
+		return core.ForceForwardClosure(reg, v)
+	default: // force-arity, the one caller left
+		return core.ForceArityClosure(reg, v, n)
+	}
+}
+
 // recordGradualWrap records a dispatch-modifier word's GRADUAL dispatch (a
 // dynamic fn operand the check-mode handler could not wrap — checkModeGradualFn)
 // as an OpCallNativePoly event, so the wrapper is constructed at RUN time by the
 // real handler over the real fn value (`m.a/u 1 2` lowers get → poly usurp →
-// OpCallDynamic; Stage M2b, design/STAGE3-INLINING-DESIGN-ROUND.0.md). The VM's
+// OpCallDynamic; Stage M2b, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The VM's
 // callPoly re-matches the word's own signatures with the kernel's own
 // MatchSignature — the exact dispatch the interpreter takes — so a runtime
 // non-fn value raises the identical illegal_ref. Only the VALUE-form
 // ([Function]-sig) sites record: the by-name Atom forms resolve a registry
 // binding the compiled program does not maintain, so they stay unrecorded
-// (downstream provenance refuses and the program falls back, the status quo).
+// (downstream provenance declines and the program falls back, the status quo).
 // RecordPolyCall declining (an unresolvable operand, inactive recorder) leaves
-// the recorder untouched — the residual then refuses, never miscompiles.
+// the recorder untouched — the residual then declines, never miscompiles.
+//
+// The poly record is the ONE seat of these words the recorder's declaration
+// check (RecordCallOperands' CompileFnHandlerStrict arm) never sees — the
+// value-form sigs run in check mode, so RecordCall declines them before the
+// operand walk. Until 2026-09-26 the declaration was honoured HERE: a TYPED
+// Function carrier (a user fn's declared Function result — a factory's
+// returned closure) declined the poly record, because the VM delivered a
+// capturing closure to the poly'd native as a ClosurePayload and the native's
+// FnDefInfo validation raised illegal_ref where the interpreter wrapped it
+// (`def r (usurp (mk 100))  r 10 3`: illegal_ref against 93, NUR158). The
+// natives wrap a compiled closure now (wrapCompiledClosure: the wrapper reads
+// the closure's bridged shape and stores the closure itself, which the VM's
+// dynamic apply runs natively), so every gradual Function carrier records —
+// the typed factory result, a sibling modifier's dynamic wrapper, and the
+// dynamic-Any `m.a` read alike — and the sweep's `force-arity` /
+// `forward-args` / `stack-args` / `usurp` × factory cells compile.
 func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 	if reg == nil {
 		return
 	}
 	pos := core.SrcPos{}
 	if len(args) > 0 {
-		pos = args[len(args)-1].Pos()
+		fnArg := args[len(args)-1]
+		pos = fnArg.Pos()
 	}
 	reg.Check.Recorder().RecordPolyCall(word, args, outs, pos, nil, nil)
 }

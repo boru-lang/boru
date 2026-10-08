@@ -44,7 +44,7 @@ func TestNestedDynamicDispatchUnderSuspend(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile (poly re-match), refused: %q", reason)
+				t.Fatalf("must compile (poly re-match), declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("must compile native (no island):\n%s", prog.Disassemble())
@@ -52,7 +52,7 @@ func TestNestedDynamicDispatchUnderSuspend(t *testing.T) {
 			b, _ := New()
 			got, err := b.RunCompiledStrict(c.src)
 			if err != nil {
-				t.Fatalf("RunCompiledStrict refused: %v", err)
+				t.Fatalf("RunCompiledStrict declined: %v", err)
 			}
 			d, _ := New()
 			want, werr := d.RunInterp(c.src)

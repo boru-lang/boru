@@ -42,6 +42,9 @@ func TestBoundParserDispatchNeverDiverges(t *testing.T) {
 
 			ca, _ := New()
 			got, _, gerr := ca.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, gerr) {
+				return
+			}
 
 			// Whether the program compiled or fell back, its result must match
 			// the interpreter exactly (value + error presence).
@@ -60,7 +63,7 @@ func TestNonRegisterModuleWordStillCompiles(t *testing.T) {
 	a, _ := New()
 	got, err := a.RunCompiledStrict(src)
 	if err != nil {
-		t.Fatalf("ParseLang.kinds should compile, got refusal: %v", err)
+		t.Fatalf("ParseLang.kinds should compile, got compile failure: %v", err)
 	}
 	b, _ := New()
 	want, _ := b.RunInterp(src)

@@ -11,7 +11,7 @@ import (
 //
 // Algorithms (FormatForPrint and the rest of print.go) live in eng;
 // this file owns the word name and dispatch wiring.
-var printNatives = []NativeFunc{
+var printNatives = SideEffecting([]NativeFunc{
 	{
 		Name: "print",
 
@@ -21,4 +21,4 @@ var printNatives = []NativeFunc{
 			Returns: []*Type{}, BarrierPos: -1,
 		}},
 	},
-}
+})

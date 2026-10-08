@@ -1,0 +1,269 @@
+# Effect-Oriented Programming in boru: Applicability Report
+
+## Scope
+
+Evaluate what **effect-oriented programming (EOP)** has to teach boru. EOP is two
+related-but-distinct traditions:
+
+- **Effects-as-values** — the ZIO/Cats-Effect lineage popularised by the
+  Frasure/Eckel/Ward book *Effect-Oriented Programming*
+  ([effectorientedprogramming.com](https://effectorientedprogramming.com/),
+  [Leanpub](https://leanpub.com/effect-oriented-programming)): an effect is a
+  *description* of a computation, held as an ordinary value, and only *run* later.
+- **Algebraic effects & handlers** — the Eff/Koka/Multicore-OCaml lineage
+  (Bauer & Pretnar, [*Programming with Algebraic Effects and
+  Handlers*](https://math.andrej.com/wp-content/uploads/2012/03/eff.pdf); Leijen,
+  [*Algebraic Effects for Functional Programming*](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/08/algeff-tr-2016-v2.pdf)):
+  operations are *performed*, and dynamically-scoped *handlers* interpret them,
+  with the set of effects a function may perform tracked in its type.
+
+The honest framing up front, the same one `elixir-types-in-boru-report.10.ignore` opens
+with: **boru has independently arrived at much of what EOP teaches.** Errors are
+already values, side effects are already gated by an object-capability model that
+*already enumerates the effect set*, values are immutable by default, code is
+homoiconic, and `boru check` already does carrier-based abstract interpretation. The
+value of EOP for boru is therefore not a new paradigm but a handful of specific
+places where the EOP lens sharpens or extends what is already here. This report
+ranks those by leverage, ties each to concrete machinery, and states plainly what
+does **not** transfer.
+
+## EOP recap
+
+### Effects-as-values (ZIO / the book)
+
+The core move: a function that "does IO" does not *do* it — it *returns a value
+describing* it. Because the effect is a value, you can compose, transform, and
+attach policy to it before anything runs:
+
+- **Composition without amplifying flaws** — small effects combine into big ones;
+  the book's stated mission is "reliable functional code that composes without
+  propagating or amplifying flaws in its components."
+- **Policy as data** — retry, repeat, timeout, and fallback are values
+  (ZIO's `Schedule`) applied to an effect, not control-flow woven through it.
+- **Resource safety** — `acquireRelease`/`scoped`/`ensuring` guarantee a finalizer
+  runs whether the body succeeds, fails, or is interrupted.
+- **The requirements channel** — `ZIO[R, E, A]` types the *environment* `R` a
+  program needs (dependency injection), the *error* `E` it may fail with, and the
+  *success* `A`. Providing `R` late is how the same program runs against a real or a
+  test implementation.
+- **Testability** — because effects are descriptions, you swap the interpreter
+  (real filesystem ↔ in-memory, real clock ↔ fixed) without touching the program.
+
+The book deliberately bans the word *monad*: the payoff is the discipline (effects
+as values, interpreted at the edge), not the category theory.
+
+### Algebraic effects & handlers
+
+The core move: impure behaviour is a set of *operations* (`get`/`set`, `read`/
+`print`, `raise`); by itself an operation is an inert value, and an *applied*
+operation is a computational effect whose meaning is fixed by the nearest enclosing
+*handler*. A handler gives a `return` clause plus one clause per operation, each
+receiving the operation's argument and a **continuation** it may resume. One
+mechanism thereby subsumes exceptions, mutable state, generators, async/await,
+cooperative threads, and backtracking. Languages in this lineage (Eff, Koka, Frank,
+Multicore OCaml) also carry an **effect row** in each function's type — the static
+record of which effects it may perform.
+
+## boru baseline — the parallel-evolution table
+
+Most of EOP's *motivation* is already satisfied in boru; stating this first keeps the
+applications section honest.
+
+| EOP concept | boru today | Where |
+|---|---|---|
+| Errors as values (not exceptions) | `do […] error […]`, `raise`; caught Error exposes `.code`/`.message`/payload | `design/legacy/ERRORS.8.ignore`, `lang/go/native/native_error_raise.go`, `eng/go/boru_error.go` |
+| The effect *set*, enumerated | Object-capability scopes: `disk.read`, `disk.write`, `network`, `process`, `env`, `clock` | `design/PERMISSIONS.10.md`, `lang/go/policy/` |
+| Immutability makes effects visible | Scalars / `List` / `Map` immutable; only `Store` / `Object` / `Array` mutate in place | `eng/go/clone.go` |
+| Computation as a describable value | Homoiconic quotations `[body]`, `do`, `NoEvalArgs` suppress evaluation | `lang/go/native/native_control.go` |
+| Pluggable interpreter per effect (host-level) | `FileOps` (OS ↔ in-memory), `EffectiveClock`, seeded `Rand` instances, network `Policy` | `lang/go/capabilities/`, `lang/go/native/capabilities.go`, `lang/go/modules/rand.go` |
+| Dynamically-scoped binding substrate | Copy-on-write, prototype-chained `ContextStack` | `eng/go/contextstack.go` |
+| Static abstract interpretation | Carrier-based checker behind `boru check` | `design/legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`, `eng/go/carrier.go` |
+| Structured concurrency | Fork-join `await` (isolated sub-engine per branch); actors planned | `lang/go/native/native_temporal_await.go`, `design/PROCESSES.0.md` |
+| **Effect set in the type/signature** | **Absent** — capabilities checked at runtime, not carried by signatures | — |
+| **Resource-safety primitive** | **Absent** — no guaranteed finalizer | — |
+| **Retry / schedule as a value** | **Absent** — has `timeout`/`interval`, no policy value | — |
+| **Language-level effect handler** | **Absent** — interpreter swap is host-only, unreachable from boru code | — |
+
+The last four rows are this report.
+
+## Where EOP applies — four refinements, ranked by leverage
+
+### 1. Effect rows on signatures + static effect inference (highest leverage)
+
+**The idea.** boru already names its effects — the capability scopes are exactly an
+effect alphabet (`disk.read`, `network`, `clock`, `process`, `env`, `disk.write`).
+Today a signature records argument and return *types*; it does not record the
+*effects* a word performs. Adding that third facet turns EOP's two type-level ideas
+— ZIO's `R`/`E` channels and algebraic **effect rows** — into a single feature
+realised entirely from machinery boru already owns.
+
+**Why it fits boru specifically.**
+- Native words already declare metadata-rich signatures (`Args`, `Returns`,
+  `ReturnsFn`, `BarrierPos`, `NoEvalArgs`); a per-signature `Effects []string`
+  (drawn from the capability vocabulary) is the same shape of declaration. The
+  effectful words are already a closed, known set (`read`/`write`/`fetch`/`now`/
+  `sleep`/`Rand.*`/`print`).
+- The carrier checker already walks call graphs in abstract-interpretation style and
+  already memoises per-`def` return summaries (`FnSummaries`,
+  `design/legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`). Propagating an effect **set** up
+  the same call graph is the same fixpoint it already computes for types: a `def`'s
+  inferred effects are the union of the effects of the words it calls. Recursion is
+  handled by the existing in-flight gate.
+- The result surfaces through tools boru already ships: `describe` can print a word's
+  effect set, and `boru check` can flag a `def` annotated (or assumed) *pure* that in
+  fact reaches a `network` word — a capability violation caught **statically**, at
+  the call site, before any policy denial at runtime.
+
+**Verdict: moderate.** No new value type and no syntax: an `Effects` field on the
+signature struct, a population pass over the native words, a union-propagation step
+in the carrier checker, and a `describe`/`check` surface. It unifies the permission
+model with the type system and is the conceptual spine the other three ideas hang
+from. The pure-vs-effectful split the compiler already tracks informally
+(`CompileIslandPure`) becomes a first-class, inferred, checkable property.
+
+### 2. Resource safety: `ensure` / `bracket` / `scoped` (clearest concrete gap)
+
+**The idea.** A primitive guaranteeing a finalizer runs whether the body returns,
+errors, or (later) is interrupted:
+
+```boru
+# acquire → use → always-release
+bracket [open "f.txt"] [afn [h] [h read-all]] [afn [h] [h close]]
+
+# simpler finalizer form
+ensure [body that may fail] [cleanup that always runs]
+```
+
+**Why it fits boru specifically.** boru has file I/O, SQLite handles, and planned
+network sockets and processes — all resources that need deterministic release — but
+no construct that guarantees it. `do […] error […]` *reifies* a failure as a value
+but guarantees no cleanup, and a finalizer written after the body simply does not run
+when the body raises. This is the one place where **both** EOP lineages converge on
+the same answer (ZIO `scoped`/`ensuring`, algebraic `finally`), which is a strong
+signal it is load-bearing. Implementation rides existing machinery: run the body
+through the same sub-engine path `do` uses, capture success or the in-flight Error,
+run the finalizer unconditionally, then re-raise or return. Fork isolation
+(`native_temporal_await.go`) already gives each `await` branch its own engine, so the
+finalizer story extends naturally to the concurrent case.
+
+**Verdict: feasible now.** A small number of core words (`ensure`, `bracket`, and a
+`scoped` convenience) over quotations plus the existing error path. No engine
+changes. This is the recommended first thing to actually build, and is expanded into
+an implementation-ready RFC in **`design/RESOURCE-SAFETY.0.md`**.
+
+### 3. Effect combinators over quotations: `retry` / `repeat` / `fallback` (schedules as values)
+
+**The idea.** A coherent vocabulary that attaches *policy as data* to a quoted
+effectful block:
+
+```boru
+retry [fetch url] {max: 5, backoff: "exponential", base-ms: 100, jitter: true}
+repeat [poll q] {until: [empty?], every-ms: 500}
+fallback [fetch primary] [fetch mirror]      # orelse on error
+```
+
+A **schedule is itself a value** (a map/record), exactly as ZIO's `Schedule` is — so
+policies are inspectable, reusable, and testable, not control flow hand-woven into
+each call site.
+
+**Why it fits boru specifically.** It is pure leverage of two things boru already has:
+errors-as-values (a failed attempt is a catchable Error, so "retry on error" is a
+loop over `do…error`) and the temporal layer (`timeout`/`interval`/`sleep`,
+`lang/go/native/native_temporal_await.go`) for the delay component. It needs nothing
+from the engine. And it is precisely the vocabulary the planned services/network work
+(`design/SERVICES.0.md`, `design/PROCESSES.0.md`) will want for resilient clients.
+
+**Verdict: feasible now (library).** Best delivered as a `boru:effect` module (or
+folded into the temporal module) once `ensure` from #2 exists to anchor the
+"resource + policy" story.
+
+### 4. Scoped effect handlers for DI and testing: `with-handler`
+
+**The idea.** The deepest algebraic-effects idea — interpret an operation by the
+nearest enclosing handler — in the pragmatic, **single-shot** form boru can actually
+support: a dynamically-scoped region that *reroutes* effectful words.
+
+```boru
+with-handler {
+  read:  [afn [path] [mem-fs get path]]     # files → in-memory map
+  now:   [afn [] [1700000000]]              # clock → fixed instant
+  fetch: [afn [url] [stub-for url]]         # network → canned responses
+} [
+  run-the-program-under-test
+]
+```
+
+**Why it fits boru specifically.** The substrate already exists — it is simply not
+reachable from boru code today. `FileOps` is already a swappable interface with an
+in-memory implementation, `EffectiveClock` already indirects every clock read
+(`lang/go/native/capabilities.go`), `Rand.with-seed` already yields a deterministic
+instance (`lang/go/modules/rand.go`), and network access already goes through a
+`Policy`. The `ContextStack` (`eng/go/contextstack.go`) is exactly the
+dynamically-scoped, copy-on-write substrate a handler region needs: install the
+interpreter overrides on entry, pop on exit. This delivers the EOP book's central
+payoff — **run the same program against a real or a fake world** — and dovetails with
+property-based testing (`design/legacy/PBT-PLAN.10.ignore`), where deterministic clock/random/IO
+is the precondition for reproducible shrinking.
+
+**Verdict: moderate, and explicitly bounded.** Reuse the capability registry and
+context stack; scope handlers to the known effectful-word set rather than arbitrary
+user operations. This is **not** general algebraic effects — see below.
+
+## What does NOT transfer
+
+- **Multi-shot delimited continuations / fully general algebraic effects.** boru's
+  engine runs a single **tape**: a call *splices its body into the tape*, which is
+  what makes tail-call elimination true by structural inspection
+  (`design/legacy/TAPE-DATA-STRUCTURE.10.ignore`, `design/legacy/TCO.10.ignore`). Capturing the remaining
+  tape as a first-class continuation and resuming it *more than once* would break both
+  the execution model and the TCO guarantee. boru can offer the *restricted* handler of
+  idea #4 (run-to-completion, single resume) but not Koka/OCaml-style resumable,
+  multi-shot handlers. This is a real expressiveness ceiling and should be stated as
+  such, not papered over.
+
+- **A monadic `IO` / `Either` wrapper.** Threading every effect through an `IO[_]`
+  and every failure through an `Either[E, _]` is antithetical to two settled boru
+  decisions: failures are values returned directly (`design/legacy/ERRORS.8.ignore`), *not*
+  wrapped in a Result the caller must unwrap, and — as the EOP book itself insists —
+  the discipline, not the monad, is the point. Effects belong as **signature
+  metadata** (idea #1), inferred and checked, never as a value constructor every
+  program must thread by hand. Mechanically, boru's forward-collection calling
+  convention has no `flatMap` to hang the plumbing on, so a monadic encoding would
+  also fight the surface syntax.
+
+- **New effect syntax.** boru is concatenative; every idea above is a *word* (`ensure`,
+  `retry`, `with-handler`) or a *signature field* (effect rows). No new literal forms,
+  no `<…>`-style annotations — consistent with `fsharp-units-in-boru-report.0.ignore`'s
+  "new behaviour is a word or a literal, nothing else."
+
+- **Interruption / fibers as an early target.** ZIO-style interruptible fibers
+  presuppose a long-lived, individually-addressable process with a cancellation
+  signal. boru's only such substrate is the *planned* actor runtime
+  (`design/PROCESSES.0.md`, which already reserves a `context.Context` for
+  cancellation). Interruption-aware `ensure` is therefore a downstream extension of
+  idea #2 once actors land — noted, not scheduled now.
+
+## Recommended framing
+
+Treat idea **#1 (effect rows + inference)** as the conceptual spine: it reframes the
+existing permission scopes as a typed, inferred, `describe`-/`check`-visible effect
+facet and gives the other three a vocabulary. Build **#2 (`ensure`/`bracket`)** first
+— it is feasible now, fills a genuine gap both EOP traditions agree on, and needs no
+engine change. Layer **#3 (`retry`/schedules)** as a `boru:effect` library on top of
+#2 and the existing temporal words. Pursue **#4 (`with-handler`)** for the
+testability/DI payoff, scoped to the known effectful words and explicitly short of
+general continuations. Reject monadic `IO`, new syntax, and multi-shot handlers for
+the reasons above.
+
+## Verdict
+
+**EOP is largely a refinement lens for boru, not a new paradigm to adopt.** boru
+already has the hard parts — errors as values, an enumerated capability/effect set,
+immutability, homoiconic deferred computation, and a static abstract interpreter. The
+genuine wins are two small, high-value, low-cost primitives (**resource safety** and
+**effect combinators**) and one deeper structural opportunity (**static effect
+inference in the carrier checker**, unifying the permission model with the type
+system). The algebraic-effects ceiling — no multi-shot continuations under the tape
+model — is real and bounds idea #4 to single-shot, scoped handlers, which is still
+enough to deliver EOP's signature payoff: running one program against a real or a
+test world.

@@ -26,7 +26,7 @@ func TestZeroNettingHandlerCompiles(t *testing.T) {
 
 // The DYNAMIC Error bound used to be pinned here as an edge the 2026-08-03
 // graduation kept: a body that may not raise has variable arity — the
-// pass-through nets one where the caught path nets zero — so it refused.
+// pass-through nets one where the caught path nets zero — so it declined.
 // The forty-eighth increment graduated it, and the diagnosis is what
 // changed rather than the shape: a run whose length is a runtime value is a
 // REGION, not an unrepresentable seat. See
@@ -57,6 +57,9 @@ func TestFullStackHostOverloadParity(t *testing.T) {
 	c, _ := New()
 	host(c)
 	gotC, _, errC := c.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if errI != nil || errC != nil || fmt.Sprint(gotI) != fmt.Sprint(gotC) {
 		t.Errorf("host-overload depth diverged: interp=%v/%v compiled=%v/%v", gotI, errI, gotC, errC)
 	}
@@ -105,6 +108,9 @@ func TestTrailingApplyBareFunctionStaysData(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Fatalf("%s: did not run compiled (%v)", src, errC)
 		}
@@ -122,6 +128,9 @@ func TestLeadApplyNoMatchTwoReturnParity(t *testing.T) {
 	const src = `def ld fn [[g:Function x:Integer] [Function Integer] [(g x)]] ld ([k:String] => [k]) 14`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("no-match lead apply: did not run compiled (errC=%v)", errC)
 	}
@@ -134,41 +143,58 @@ func TestLeadApplyNoMatchTwoReturnParity(t *testing.T) {
 	}
 }
 
-// TestCondBodyFreshDefBindsCompiledOnly pins NUR110 as measured: a FRESH `def`
-// inside a branch that did not run binds the name in the compiled lane and not
-// in the interpreter.
+// TestCondBodyFreshDefRaisesLikeInterpreter is NUR110 CLOSED: a FRESH `def`
+// inside a branch that did not run binds nothing afterwards, on both lanes.
 //
-// The interpreter is right — a `def` runs when its branch runs — and both lanes
-// already agree on the same question for a zero-iteration loop, which is why
-// the machinery to get this right demonstrably exists.
-//
-// Family L's CondBodyDepth gate refuses the SHADOW case (a redefinition whose
-// overlap-removal drops an enclosing overload, which the depth-based rollback
-// cannot revert). It is reached only when something is actually dropped, so a
-// fresh definition slips past it: the gate covers redefinition, not definition.
-//
-// Pinned as the measured divergence so it fails loudly when closed. The fix is
-// compiler-side and REFUSING counts — both siblings refuse, a refusal runs the
-// program correctly on the interpreter, and a silent wrong binding does not.
-func TestCondBodyFreshDefBindsCompiledOnly(t *testing.T) {
-	for _, tc := range []struct{ src, wantCompiled string }{
-		{`if false [def op 1] [0]  end  op`, "[0 1]"},
-		{`if false [def op 1] []   end  op`, "[1]"},
-		{`if false [def op 1] [0]  end  typeof op`, "[0 Integer]"},
+// The compiled lane used to bind it anyway — `if false [def op 1] [0] end op`
+// answered `0 1` where the interpreter raises undefined_word — because the
+// join folded the arm's own value back as a definite binding and a later read
+// baked it. The branch-carried def (compiler/go/branch_carried.go) seats the
+// name in a frame slot instead: the arm's def stores into it when the arm
+// runs, and a read past the merge is BOUND-CHECKED (OpPushLocalBound) — the
+// zero slot is the arm that did not run, and the read raises the
+// interpreter's own undefined_word. Both lanes now agree, and the fn-body
+// shapes the miscompile record measured (design/SESSION-HANDOVER.0.md,
+// 2026-09-21) are pinned beside the record's own three.
+func TestCondBodyFreshDefRaisesLikeInterpreter(t *testing.T) {
+	for _, src := range []string{
+		`if false [def op 1] [0]  end  op`,
+		`if false [def op 1] []   end  op`,
+		`if false [def op 1] [0]  end  typeof op`,
+		`if false [def z (1 add 8)] [] end z`,
+		`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false`,
+		`def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true`,
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
-		gotI, errI := mustNew(t).RunInterp(tc.src)
+		gotC, compiled, errC := mustNew(t).RunCompiled(src)
+		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !compiled {
-			t.Fatalf("%s: did not run compiled (%v)", tc.src, errC)
+			t.Fatalf("%s: did not run compiled (%v)", src, errC)
 		}
 		if codeOf(errI) != "undefined_word" {
 			t.Errorf("%s: interpreted err=[%s] got=%v, want undefined_word — the oracle moved, "+
-				"re-derive this fence", tc.src, codeOf(errI), gotI)
+				"re-derive this pin", src, codeOf(errI), gotI)
 		}
-		if errC != nil || fmt.Sprint(gotC) != tc.wantCompiled {
-			t.Errorf("%s: compiled err=%v got=%v, want %s — if the compiled lane now RAISES or "+
-				"REFUSES, NUR110 is CLOSED: delete this fence and assert parity",
-				tc.src, errC, gotC, tc.wantCompiled)
+		if codeOf(errC) != "undefined_word" || len(gotC) != 0 {
+			t.Errorf("%s: compiled err=[%s] got=%v, want undefined_word and no result — "+
+				"a def in an untaken arm must not bind (NUR110)", src, codeOf(errC), gotC)
+		}
+	}
+	// The taken path of the same shapes answers the arm's value on both
+	// lanes — the bound check costs nothing when the arm ran.
+	for _, tc := range []struct{ src, want string }{
+		{`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true`, "[9]"},
+		{`def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f false`, "[9]"},
+		{`def c true  if c [def op 1] [0]  end  op`, "[1]"},
+	} {
+		gotC, _, errC := mustNew(t).RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
+		if errC != nil || fmt.Sprint(gotC) != tc.want {
+			t.Errorf("%s: compiled err=%v got=%v, want %s", tc.src, errC, gotC, tc.want)
 		}
 	}
 }
@@ -181,6 +207,9 @@ func TestCondBodyZeroIterationLoopAgrees(t *testing.T) {
 	const src = `for 0 [def op 1]  end  op`
 	_, _, errC := mustNew(t).RunCompiled(src)
 	_, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if codeOf(errC) != "undefined_word" || codeOf(errI) != "undefined_word" {
 		t.Errorf("zero-iteration loop: compiled=[%s] interp=[%s], want both undefined_word",
 			codeOf(errC), codeOf(errI))
@@ -225,6 +254,9 @@ func TestMaybeRaisingZeroNettingHandlerIsARegion(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, compiled, cerr := a.RunCompiled(tc.src)
+			if noteCompileDefect(t, tc.src, out, cerr) {
+				return
+			}
 			if cerr != nil {
 				t.Fatalf("RunCompiled: %v", cerr)
 			}
@@ -249,17 +281,20 @@ func TestMaybeRaisingZeroNettingHandlerIsARegion(t *testing.T) {
 	}
 }
 
-// TestRegionHandlerRefusesAFixedSeatConsumer is the line: a region can be
+// TestRegionHandlerDoesNotLowerAFixedSeatConsumer is the line: a region can be
 // absorbed by a residual, and it cannot fill a slot that needs exactly one
 // value. `def x (do … error […])` binds a name, which needs a count — and
 // both lanes raise the same def_error when the run turns out to be empty.
-func TestRegionHandlerRefusesAFixedSeatConsumer(t *testing.T) {
+func TestRegionHandlerDoesNotLowerAFixedSeatConsumer(t *testing.T) {
 	const src = `def x (do [1 div 0] error [drop]) end 5`
 	a, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _, cerr := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, cerr) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

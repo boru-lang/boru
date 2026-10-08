@@ -18,7 +18,7 @@ import (
 // dispatches inside it with `3` forward and `7` from the stack.
 func TestInsideForwardSelectionEnforcesPatterns(t *testing.T) {
 	// Negative: 3 fails the literal-0 pattern → the patterned sig is
-	// skipped and p (which has no other sig) refuses to dispatch.
+	// skipped and p (which has no other sig) declines to dispatch.
 	a, err := lang.New()
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
@@ -35,7 +35,7 @@ func TestInsideForwardSelectionEnforcesPatterns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	out, rerr := a2.Run(`def p fn [[0 y:Integer] [String] ["hit"]]  7 p 0`)
+	out, rerr := runReference(t, a2, `def p fn [[0 y:Integer] [String] ["hit"]]  7 p 0`)
 	if rerr != nil {
 		t.Fatalf("pattern-satisfying call must dispatch: %v", rerr)
 	}

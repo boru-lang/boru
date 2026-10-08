@@ -167,7 +167,7 @@ func TestHelpExamplesCorrect(t *testing.T) {
 
 		// Every rendered example is now checkable: a concrete stack
 		// render, `(no value)` for an empty stack, or
-		// `error [boru/CODE]` for one the engine refuses. Only the
+		// `error [boru/CODE]` for one the engine declines. Only the
 		// placeholder is not, and placeholderWords is the tracked,
 		// shrink-only record of where one still ships.
 		var runnable []helpExample
@@ -201,7 +201,7 @@ func TestHelpExamplesCorrect(t *testing.T) {
 					result, err := eng.Run(vals)
 
 					// An `error [boru/CODE]` render is a claim about a
-					// refusal: the run must fail, and with that code.
+					// compile failure: the run must fail, and with that code.
 					if code, isErr := strings.CutPrefix(ex.expected, "error [boru/"); isErr {
 						code = strings.TrimSuffix(code, "]")
 						if err == nil {

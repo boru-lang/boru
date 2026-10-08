@@ -36,7 +36,7 @@ func equivByMembership(t *testing.T, name, t1, t2 string, probes []string) {
 		if err != nil {
 			t.Fatalf("%s: new: %v", name, err)
 		}
-		got, err := a.Run(src)
+		got, err := runReference(t, a, src)
 		if err != nil {
 			t.Fatalf("%s: run %q: %v", name, src, err)
 		}

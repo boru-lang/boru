@@ -7,7 +7,7 @@ import (
 )
 
 // fnvalue_loud_dispatch_test.go — the RUNTIME half of
-// design/FN-VALUE-DISPATCH.0.md that a spec row cannot express: a failed
+// design/legacy/FN-VALUE-DISPATCH.0.ignore that a spec row cannot express: a failed
 // fn-value dispatch raises at the CALL, so an enclosing `do […] error […]`
 // traps it like any other failure. The old end-of-run residue drain raised
 // outside every handler, which aborted a program that had explicitly asked

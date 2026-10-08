@@ -7,12 +7,12 @@
 # The note's DIAGNOSIS was wrong in a way worth keeping. It read:
 #
 #   "A predicate type's constraint IS a function value, so asking `4 is Even`
-#    walks that value into `is` and hits the Stage 3 refusal."
+#    walks that value into `is` and hits the Stage 3 compile failure."
 #
 # A predicate NODE is not a function value walking anywhere. It is a bare
 # type literal that rides as data; the body runs through the callback seam
 # (RunPredicate -> InvokeCallbackFn), never the tape, so the re-step the
-# refusal defends against was never in play. What DID block the graduation
+# compile failure defends against was never in play. What DID block the graduation
 # was invisible from here: the callback seam's nested arm declined every
 # detached unit, so the body interpreted inside the handler and admitting the
 # rows would have hidden an island rather than removed one. Once foreign

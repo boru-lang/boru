@@ -7,7 +7,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// The `const` word — singleton types (design/CLASS-OBJECT.10.md §3d).
+// The `const` word — singleton types (design/legacy/CLASS-OBJECT.10.ignore §3d).
 //
 //	const 1                 a value whose TYPE has one inhabitant
 //	typeof (const 1)        the singleton — its name renders as `1`

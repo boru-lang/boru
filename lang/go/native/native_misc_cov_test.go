@@ -787,7 +787,7 @@ func TestMiscCovHandlerTypeLiteralGuards(t *testing.T) {
 	}
 }
 
-// write with an explicitly read-only format is refused; an unknown format
+// write with an explicitly read-only format is declined; an unknown format
 // surfaces doWrite's error.
 func TestMiscCovWriteFormatGates(t *testing.T) {
 	r, err := DefaultRegistry()

@@ -210,6 +210,9 @@ func returnsDivMod(detail string) ReturnsFunc {
 			if atUncaughtTopLevel(r) {
 				core.CheckAddUniqueDiagnostic(r, "arith_error", detail, "", args[0].Pos())
 			}
+			// The raise is certain, as `raise`'s is: an enclosing `do` nets
+			// exactly the one Error it catches, never nothing (NUR222).
+			r.Check.NoteDefiniteRaise(r.Defs.Snapshot)
 			return nil // divergence: no residual (raise-like)
 		}
 		return base(args, r)
@@ -217,7 +220,7 @@ func returnsDivMod(detail string) ReturnsFunc {
 }
 
 // checkBigFloatMix flags the arithmetic tower's one TYPE-decidable
-// refusal on the top-level straight line: a Big leaf mixed with a binary
+// rejection on the top-level straight line: a Big leaf mixed with a binary
 // Float always raises (numericBinaryHandler → bigFloatMixError — exactness
 // is never silently lost), and the leaves are fixed by the operands'
 // STRICT static types, so no value can save the call. Emits the

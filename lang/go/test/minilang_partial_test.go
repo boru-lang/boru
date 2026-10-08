@@ -32,7 +32,7 @@ func TestMiniPartialParked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(miniImp + `"AbcD" (+re/[a-z]+/)/v typeof`)
+	got, err := runReference(t, a, miniImp+`"AbcD" (+re/[a-z]+/)/v typeof`)
 	if err != nil {
 		t.Fatalf("/v park: %v", err)
 	}
@@ -69,8 +69,8 @@ func TestMiniPartialTypedParam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(miniImp +
-		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  ` +
+	got, err := runReference(t, a, miniImp+
+		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  `+
 		`find-with (+re/[a-z]+/) "AbcD"`)
 	if err != nil {
 		t.Fatalf("typed-param call: %v", err)
@@ -79,7 +79,7 @@ func TestMiniPartialTypedParam(t *testing.T) {
 		t.Fatalf("typed-param call: expected ['bc'], got %v", got)
 	}
 
-	// The negative half: a gex partial is refused by the Re slot.
+	// The negative half: a gex partial is declined by the Re slot.
 	b, _ := lang.New()
 	_, err = b.Run(miniImp +
 		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  ` +

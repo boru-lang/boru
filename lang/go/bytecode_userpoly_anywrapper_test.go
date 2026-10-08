@@ -47,7 +47,7 @@ def hop fn [[cv:Any] [String] [ nk (cv) ]]
 			a, _ := New()
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {
-				t.Fatalf("RunCompiledStrict refused where it must compile: %v", err)
+				t.Fatalf("RunCompiledStrict declined where it must compile: %v", err)
 			}
 			b, _ := New()
 			want, werr := b.RunInterp(c.src)

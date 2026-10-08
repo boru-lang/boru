@@ -141,7 +141,7 @@ func TestShapedMethodApplyWindowZeroArgGates(t *testing.T) {
 }
 
 // NoteMethodShape declines a plain (non-delegation) fn member — a real body
-// keeps today's refusal paths.
+// keeps today's compile failure paths.
 func TestNoteMethodShapeDeclinesNonDelegation(t *testing.T) {
 	r := seam7Reg(t)
 	r.Check.Mode = true

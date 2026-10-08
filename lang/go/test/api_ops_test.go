@@ -74,7 +74,7 @@ func newBoruWithSDK(t *testing.T) *lang.Boru {
 func TestListAPIWithQuery(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
 	if err != nil {
 		t.Fatalf("list with query failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestListAPIWithQueryNoMatch(t *testing.T) {
 	a := newBoruWithSDK(t)
 
 	// Query for a non-existent id should return an empty list (not an error).
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet99"}}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet99"}}`)
 	if err != nil {
 		t.Fatalf("list with no-match query failed: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestListAPIWithoutQuery(t *testing.T) {
 	a := newBoruWithSDK(t)
 
 	// Without query should return all planets.
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo", entity:"planet"}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo", entity:"planet"}`)
 	if err != nil {
 		t.Fatalf("list without query failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestListAPIWithoutQuery(t *testing.T) {
 func TestLoadAPIPlanet(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`load {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
+	result, err := runReference(t, a, `load {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
 	if err != nil {
 		t.Fatalf("load api planet failed: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestLoadAPIPlanet(t *testing.T) {
 func TestLoadAPIMoon(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`load {kind:"api", spec:"voxgig-solardemo", entity:"moon", query:{id:"moon01"}}`)
+	result, err := runReference(t, a, `load {kind:"api", spec:"voxgig-solardemo", entity:"moon", query:{id:"moon01"}}`)
 	if err != nil {
 		t.Fatalf("load api moon failed: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestLoadAPINotFound(t *testing.T) {
 func TestLoadAPIWithJsonExtension(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`load {kind:"api", spec:"voxgig-solardemo.json", entity:"planet", query:{id:"planet02"}}`)
+	result, err := runReference(t, a, `load {kind:"api", spec:"voxgig-solardemo.json", entity:"planet", query:{id:"planet02"}}`)
 	if err != nil {
 		t.Fatalf("load api with .json extension failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestLoadAPIWithJsonExtension(t *testing.T) {
 func TestCreateAPIPlanet(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`create {kind:"api", spec:"voxgig-solardemo", entity:"planet", data:{name:"Mars", kind:"terrestrial", diameter:6792}}`)
+	result, err := runReference(t, a, `create {kind:"api", spec:"voxgig-solardemo", entity:"planet", data:{name:"Mars", kind:"terrestrial", diameter:6792}}`)
 	if err != nil {
 		t.Fatalf("create api planet failed: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestCreateAPIPlanet(t *testing.T) {
 func TestCreateAPIMoon(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`create {kind:"api", spec:"voxgig-solardemo", entity:"moon", data:{name:"Deimos", kind:"natural", diameter:12, planet_id:"planet04"}}`)
+	result, err := runReference(t, a, `create {kind:"api", spec:"voxgig-solardemo", entity:"moon", data:{name:"Deimos", kind:"natural", diameter:12, planet_id:"planet04"}}`)
 	if err != nil {
 		t.Fatalf("create api moon failed: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestCreateAPIMoon(t *testing.T) {
 func TestUpdateAPIPlanet(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`update {kind:"api", spec:"voxgig-solardemo", entity:"planet", data:{id:"planet01", name:"Mercury Updated"}}`)
+	result, err := runReference(t, a, `update {kind:"api", spec:"voxgig-solardemo", entity:"planet", data:{id:"planet01", name:"Mercury Updated"}}`)
 	if err != nil {
 		t.Fatalf("update api planet failed: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestRemoveAPIPlanet(t *testing.T) {
 	a := newBoruWithSDK(t)
 
 	// Remove planet01.
-	_, err := a.Run(`remove {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
+	_, err := runReference(t, a, `remove {kind:"api", spec:"voxgig-solardemo", entity:"planet", query:{id:"planet01"}}`)
 	if err != nil {
 		t.Fatalf("remove api planet failed: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestLoadAPINonAPIMapFallsThrough(t *testing.T) {
 
 	// A map without kind:"api" should not trigger the API handler.
 	// It should match the [map, map] signature (loadRecordHandler) and return empty map.
-	result, err := a.Run(`load {name:"test"} {id:"1"}`)
+	result, err := runReference(t, a, `load {name:"test"} {id:"1"}`)
 	if err != nil {
 		t.Fatalf("load plain map failed: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestLoadAPINonAPIMapFallsThrough(t *testing.T) {
 func TestCreateAPINonAPIMapFallsThrough(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`create {name:"test"} {id:"1", name:"Bob"}`)
+	result, err := runReference(t, a, `create {name:"test"} {id:"1", name:"Bob"}`)
 	if err != nil {
 		t.Fatalf("create plain map failed: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestCreateAPINonAPIMapFallsThrough(t *testing.T) {
 func TestUpdateAPINonAPIMapFallsThrough(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`update {name:"test"} {id:"1", name:"Bob"}`)
+	result, err := runReference(t, a, `update {name:"test"} {id:"1", name:"Bob"}`)
 	if err != nil {
 		t.Fatalf("update plain map failed: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestUpdateAPINonAPIMapFallsThrough(t *testing.T) {
 func TestRemoveAPINonAPIMapFallsThrough(t *testing.T) {
 	a := newBoruWithSDK(t)
 
-	result, err := a.Run(`remove {name:"test"} {id:"1"}`)
+	result, err := runReference(t, a, `remove {name:"test"} {id:"1"}`)
 	if err != nil {
 		t.Fatalf("remove plain map failed: %v", err)
 	}

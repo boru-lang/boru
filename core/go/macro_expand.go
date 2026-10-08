@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Macro expansion (design/MACROS-PHASE1.10.md §6). A macro is an FnDef flagged
+// Macro expansion (design/legacy/MACROS-PHASE1.10.ignore §6). A macro is an FnDef flagged
 // Macro=true whose every param is FormArgs raw-capture. At dispatch the
 // operands are captured unevaluated, the template body is run, the returned
 // token list is walked to resolve `unquote`/`splice`, and the result is
@@ -33,7 +33,7 @@ func (e *Engine) execMacro(valIdx int, fnDef *FnDefInfo) error {
 	}
 	// Memoize on (name + operand canon): the expansion is deterministic, so a
 	// macro re-applied to the same operand forms (e.g. in a loop) expands once
-	// and re-splices the cached tokens. See design/MACROS-PHASE1.10.md §8.
+	// and re-splices the cached tokens. See design/legacy/MACROS-PHASE1.10.ignore §8.
 	key := macroOperandsKey(fnDef.Name, operands)
 	expanded, ok := e.Registry.macroCacheGet(key)
 	if !ok {

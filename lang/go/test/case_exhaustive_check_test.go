@@ -448,7 +448,7 @@ func TestShorthandFnUnionReturnType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	out, err := a.Run(`def IS (Integer tor String) def f fn x:Integer IS [x] 1 f`)
+	out, err := runReference(t, a, `def IS (Integer tor String) def f fn x:Integer IS [x] 1 f`)
 	if err != nil {
 		t.Fatalf("union return type in shorthand fn: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestShorthandFnUnionReturnType(t *testing.T) {
 // `signature_error` — and before ReturnPatterns the same declaration in the
 // RETURN slot admitted anything list-shaped, because ParseFnReturns kept only
 // the `*Type` (TList) and dropped the element constraint. Params and returns
-// are the same contract read in two directions; they must refuse the same
+// are the same contract read in two directions; they must decline the same
 // values.
 func TestListOutputSigStructuralReturn(t *testing.T) {
 	for _, c := range []struct {
@@ -567,7 +567,7 @@ func TestListOutputSigStructuralReturn(t *testing.T) {
 				}
 				switch {
 				case c.bad && err == nil:
-					t.Errorf("%s: a declared structural return must refuse a "+
+					t.Errorf("%s: a declared structural return must decline a "+
 						"non-conforming body; it was ACCEPTED", mode)
 				case c.bad && !strings.Contains(err.Error(), "return value 1"):
 					t.Errorf("%s: want a return-value type_error, got %v", mode, err)
@@ -688,7 +688,7 @@ func TestCaseExhaustiveSeverities(t *testing.T) {
 		t.Errorf("case_not_exhaustive severity = %s, want error", d.Severity)
 	}
 	if d.RuntimeMirror {
-		t.Errorf("case_not_exhaustive must NOT be a RuntimeMirror — no-match is not a runtime error, and the compile pipeline must refuse on it")
+		t.Errorf("case_not_exhaustive must NOT be a RuntimeMirror — no-match is not a runtime error, and the compile pipeline must decline on it")
 	}
 	if d.Word != "case" {
 		t.Errorf("case_not_exhaustive word = %q, want case", d.Word)
@@ -732,7 +732,7 @@ func TestCaseRuntimeNoMatchProducesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	out, err := a.Run(`def f fn [[x:Any][][case x [1 "one" 2 "two"]]] f 9`)
+	out, err := runReference(t, a, `def f fn [[x:Any][][case x [1 "one" 2 "two"]]] f 9`)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

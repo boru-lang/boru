@@ -6,7 +6,7 @@ package stackform
 // The cost model is a flat per-Op weight today. The PBT plan's
 // Stage 4 will layer a word-transparency policy on top (frozen vs
 // transparent words get different weights, see
-// design/boru_property_based_reduction_report.10.md §8-9), but those
+// design/legacy/boru_property_based_reduction_report.10.ignore §8-9), but those
 // adjustments live in the lang-layer shrink package — kernel-level
 // stackform stays cost-policy-neutral.
 //
@@ -31,6 +31,8 @@ func Cost(form *StackForm) int {
 		case PushLit:
 			c += 1 + litComplexity(o.V)
 		case Call:
+			c += 2
+		case Apply:
 			c += 2
 		case Quote:
 			c += 1 + Cost(o.Body)

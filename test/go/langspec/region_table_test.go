@@ -15,22 +15,25 @@
 // silent wrong answer one step later.
 //
 // WHAT THE TABLE COVERS, stated because a census that does not say what it
-// omits reads as covering everything. Phase B is seated on RecordCall alone —
-// the mono native dispatch. A user-fn call records through RecordUserCall, and
-// the poly, dyn-apply and dyn-method families have their own entry points;
-// none of them claims a capture, so their regions are captured by Phase A and
-// never completed. Widening the seat is follow-on work, and
+// omits reads as covering everything. Phase B is seated on RecordCall — the
+// mono native dispatch — and, since 2026-09-14 (the first slice of the
+// generic lane's line), on RecordUserCall — the committed user-fn call,
+// claimed under the dispatching word's own name and position, which the
+// check pass publishes as CheckState.CurCallWord/CurCallPos — and, since the
+// sixty-first increment, on the two POLY records as well: RecordUserPolyCall
+// (keyed by the same published pair) and RecordPolyCall (whose pos is the
+// word's at every call site). The dyn-apply and dyn-method families still
+// have their own entry points and claim nothing, so their regions are
+// captured by Phase A and never completed. Widening those seats is
+// follow-on work, and
 // lang/go/region_capture_e2e_test.go fails if a seat lands without this note
 // being updated.
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
+	"sync"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -41,14 +44,24 @@ import (
 // shape of the model's central claim — a region's extent is its STATEMENT
 // while a dispatch's claim is usually far shorter — so they are counted
 // rather than assumed.
+// routedFloor is the ratchet on the generic lane's executing arm: how many
+// corpus dispatches lower THROUGH their descriptor (OpDispatchGeneric). UP
+// only — a fall means a seat stopped routing or the drivability rule
+// narrowed without a measurement saying so.
+const routedFloor = 600 // 676 measured at the head (2026-09-15, the sixty-fifth increment: the user seat's 2 and the native seat's 674; 677 as first built, before the review of #461's declines kept one corpus site on its committed call)
+
 type regionTally struct {
 	rows, withRegions, descs int
-	claimedSlots, spanSlots  int
-	nfwdZero, nfwdPartial    int
-	nfwdWhole                int
-	dupSites                 int
-	sources                  map[string]int
-	bad                      []string
+	// routed counts the dispatches lowered THROUGH their descriptor
+	// (Program.Generics, OpDispatchGeneric) — the generic lane's executing
+	// arm, measured beside the table it reads.
+	routed                  int
+	claimedSlots, spanSlots int
+	nfwdZero, nfwdPartial   int
+	nfwdWhole               int
+	dupSites                int
+	sources                 map[string]int
+	bad                     []string
 }
 
 func sourceName(s compiler.SlotSource) string {
@@ -71,21 +84,27 @@ func sourceName(s compiler.SlotSource) string {
 	return fmt.Sprintf("OTHER:%d", s)
 }
 
-// tallyRow compiles one row and folds its region table into the tally.
-func (tl *regionTally) tallyRow(src, where string) {
+// compileForRegions compiles one row on an Engine of its own and returns
+// the program, nil when the row does not compile. It is the walk's per-row
+// work and runs outside the tally's lock.
+func compileForRegions(src string) *lang.Program {
 	a, err := lang.New()
 	if err != nil {
-		return
+		return nil
 	}
 	prog, _, _, _ := a.CompileCheck(src)
-	if prog == nil {
-		return
-	}
+	return prog
+}
+
+// fold folds one compiled row's region table into the tally. The caller
+// holds the tally's lock.
+func (tl *regionTally) fold(prog *lang.Program, where string) {
 	tl.rows++
 	if len(prog.Regions) == 0 {
 		return
 	}
 	tl.withRegions++
+	tl.routed += len(prog.Generics)
 	// A (word, position) appearing twice in ONE program's table is the shape a
 	// recorder-side table produced when a discarded loop round left its
 	// descriptors behind. The table is built at lowering now, so it shares the
@@ -124,46 +143,40 @@ func (tl *regionTally) tallyRow(src, where string) {
 
 // TestRegionTableWellFormed walks the corpus, compiles every row, and
 // validates every descriptor the program carries.
+//
+// The walk is specWalk (walk_test.go): every row compiles on an Engine of
+// its own, on a worker goroutine, and the tally is the one shared state,
+// folded under mu once the compile is done. Nothing here depends on row
+// order — every count is a sum, and the `bad` list is sorted before it is
+// printed, so the log reads the same whichever worker saw a row first.
 func TestRegionTableWellFormed(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
 	tl := &regionTally{sources: map[string]int{}}
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		prog := compileForRegions(r.Input)
+		if prog == nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			tl.tallyRow(strings.TrimSpace(parts[0]), fmt.Sprintf("%s:%d", e.Name(), lineNo))
-		}
-		_ = f.Close()
-	}
+		mu.Lock()
+		defer mu.Unlock()
+		tl.fold(prog, fmt.Sprintf("%s:%d", r.File, r.Line))
+	})
+	sort.Strings(tl.bad) // the same log whichever worker saw a malformed row first
 
 	names := make([]string, 0, len(tl.sources))
 	for k := range tl.sources {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	t.Logf("region table: %d compiled rows, %d carrying regions, %d descriptors", tl.rows, tl.withRegions, tl.descs)
+	t.Logf("region table: %d compiled rows, %d carrying regions, %d descriptors, %d dispatches routed through one", tl.rows, tl.withRegions, tl.descs, tl.routed)
+	if !filteredCorpus() && tl.routed < routedFloor { // an absolute count: reported, not asserted, under BORU_SPEC_FILES (lanes_test.go)
+		t.Errorf("only %d dispatches route through their descriptor (floor %d) — a seat stopped routing", tl.routed, routedFloor)
+	}
 	t.Logf("   slots: %d claimed of %d in span", tl.claimedSlots, tl.spanSlots)
 	t.Logf("   claim: %d claimed nothing forward, %d a prefix, %d the whole span",
 		tl.nfwdZero, tl.nfwdPartial, tl.nfwdWhole)
@@ -184,14 +197,14 @@ func TestRegionTableWellFormed(t *testing.T) {
 	// stops matching — and leaving a green test measuring nothing. The floor
 	// is an order of magnitude below the live figure for that reason.
 	const descFloor = 4000
-	if tl.descs < descFloor {
+	if !filteredCorpus() && tl.descs < descFloor { // an absolute count: reported, not asserted, under BORU_SPEC_FILES (lanes_test.go)
 		t.Errorf("only %d descriptors emitted (floor %d) — Phase A or the (word, pos) join "+
 			"has stopped firing; find the seam, do not lower the floor", tl.descs, descFloor)
 	}
 	// The claim is a PREFIX of the span, never the other way round: a region
 	// runs to the next hard delimiter while a dispatch claims what it took
 	// forward. If these were equal the model would have collapsed into
-	// "the region IS the claim", which is the reading NFwd exists to refuse.
+	// "the region IS the claim", which is the reading NFwd exists to decline.
 	if tl.claimedSlots >= tl.spanSlots {
 		t.Errorf("claimed %d of %d span slots — the claim can never cover the whole corpus span",
 			tl.claimedSlots, tl.spanSlots)

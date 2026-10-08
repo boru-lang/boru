@@ -89,7 +89,7 @@ func TestRegisterClientIdentity(t *testing.T) {
 		t.Errorf("a registered identity must resolve, got %v", known)
 	}
 
-	// An unregistered name is refused before any dial.
+	// An unregistered name is declined before any dial.
 	_, unknown := a.RunInterp(`Net.fetch {url: "https://stub.invalid/x"  tls: {identity: nope/q}}`)
 	if unknown == nil || !strings.Contains(unknown.Error(), `no client identity named "nope"`) {
 		t.Errorf("got %v, want an unknown-identity error", unknown)

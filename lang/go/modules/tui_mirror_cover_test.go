@@ -27,7 +27,7 @@ func TestTuiOpenMirrorArms(t *testing.T) {
 	rf := tuiOpenMirror()
 
 	// The flagged shapes: a non-Boolean alt-screen, and the §11.7
-	// reservation refusing the inline tier. Both carry the handler's own
+	// reservation declining the inline tier. Both carry the handler's own
 	// code — `unsupported` is deliberately NOT tui_error.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{tuiMirrorMap("alt-screen", native.NewInteger(5))}, r)
@@ -62,7 +62,7 @@ func TestTuiOpenMirrorArms(t *testing.T) {
 
 	// An operand that does not inhabit the Map slot reaches this ReturnsFn
 	// only through union-combo expansion; the run never routes it here, so
-	// the mirror declines and leaves the refusal to dispatch.
+	// the mirror declines and leaves the compile failure to dispatch.
 	r5 := vaultMirrorRegistry(t)
 	rf([]native.Value{native.NewInteger(1)}, r5)
 	if len(r5.Check.Diagnostics) != 0 {
@@ -119,7 +119,7 @@ func TestTuiRunMirrorArms(t *testing.T) {
 		t.Fatalf("a dynamic app config must not be flagged, got %+v", r2.Check.Diagnostics)
 	}
 
-	// The wrong arity is dispatch's refusal, not the mirror's — and
+	// The wrong arity is dispatch's compile failure, not the mirror's — and
 	// parseTuiApp would index out of range on an empty slice.
 	r3 := vaultMirrorRegistry(t)
 	rf(nil, r3)
@@ -147,7 +147,7 @@ func TestTuiServeMirrorArms(t *testing.T) {
 	}
 
 	// With the transport valid, the app config is reached and its own
-	// refusal surfaces — the second half of the prefix.
+	// compile failure surfaces — the second half of the prefix.
 	r2 := vaultMirrorRegistry(t)
 	ok := tuiMirrorMap("tcp", native.NewInteger(0), "token", native.NewString("x"))
 	rf([]native.Value{ok, emptyApp}, r2)
@@ -219,7 +219,7 @@ func TestTuiServeMirrorValidatesTransportBeforePolicy(t *testing.T) {
 	}
 	t.Cleanup(reg.Check.Begin())
 
-	// No tcp: at all — tuiServeOptsOf refuses before any gate is reached.
+	// No tcp: at all — tuiServeOptsOf declines before any gate is reached.
 	tuiServeMirror()([]native.Value{
 		native.NewMap(native.NewOrderedMap()),
 		native.NewMap(native.NewOrderedMap()),
@@ -237,7 +237,7 @@ func TestTuiServeMirrorValidatesTransportBeforePolicy(t *testing.T) {
 // Under `sandbox` the net gate declines first, so the terminal gate is
 // never reached with a denial; it takes the split profile
 // (tui_serve_test.go's shape — network allowed, terminal not installed)
-// to get past the net gate and be refused by the terminal one.
+// to get past the net gate and be declined by the terminal one.
 //
 // The app config here is malformed, so the assertion is meaningful: the
 // mirror stays silent because the run never reaches parseTuiApp.

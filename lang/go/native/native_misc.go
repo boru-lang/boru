@@ -1,10 +1,13 @@
 package native
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	check "github.com/boru-lang/boru/check/go"
+	core "github.com/boru-lang/boru/core/go"
 	"github.com/boru-lang/boru/lang/go/native/help"
 )
 
@@ -34,7 +37,8 @@ func init() {
 
 		// ---- help (language overview) ----
 		{
-			Name: "help",
+			Name:          "help",
+			CompileEffect: CompileSideEffect,
 
 			Signatures: []Signature{
 				// Prints the overview to r.Output; produces no value.
@@ -44,7 +48,8 @@ func init() {
 
 		// ---- describe (per-word documentation) ----
 		{
-			Name: "describe",
+			Name:          "describe",
+			CompileEffect: CompileSideEffect,
 
 			Signatures: []Signature{
 				// Prints the documentation to r.Output; produces no value.
@@ -55,6 +60,13 @@ func init() {
 					QuoteArgs: map[int]bool{0: true},
 					Impl:      Go(describeWordHandler),
 					Returns:   []*Type{}, BarrierPos: -1,
+					// The handler-contract declaration (design/HANDLER-
+					// MIGRATION-LINE.0.md, the quoted class, S2a): the quoted
+					// word is the datum the handler documents, consumed
+					// verbatim — so `describe foo` bakes as a CALL_NATIVE over
+					// the inert atom and the VM prints what the interpreter
+					// prints (the same handler, the same registry).
+					CompileEffect: CompileQuoteInert,
 				},
 				{Args: []*Type{}, Impl: Go(describeSelfHandler), Returns: []*Type{}, BarrierPos: -1},
 			},
@@ -79,6 +91,10 @@ func init() {
 				Impl:       Go(moduleHandler, RunInCheck()),
 				Returns:    []*Type{TModuleInst},
 				BarrierPos: -1,
+				// S2b's declaration: the body runs as a module on the check
+				// engine; the instance it builds is what the recorder sees
+				// (CompileOwnLowering).
+				CompileEffect: CompileOwnLowering,
 			}},
 		},
 		{
@@ -102,6 +118,8 @@ func init() {
 					Impl:       Go(importRenameHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the list is export NAMES — keys (CompileQuoteKey).
+					CompileEffect: CompileQuoteKey,
 				},
 				{
 					Args:       []*Type{TAtom, TModuleInst},
@@ -121,6 +139,8 @@ func init() {
 					Impl:       Go(importFileRenameHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the list is export NAMES — keys (CompileQuoteKey).
+					CompileEffect: CompileQuoteKey,
 				},
 				// Inline module forms: use /q to capture "module" as a quoted word
 				// instead of executing it as a function.
@@ -131,22 +151,28 @@ func init() {
 					Impl:       Go(importInlineHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the inline module body runs on the check engine
+					// and the binding is lowered, never the body
+					// (CompileOwnLowering) — also on the two forms below.
+					CompileEffect: CompileOwnLowering,
 				},
 				{
-					Args:       []*Type{TList, TAtom, TList},
-					QuoteArgs:  map[int]bool{1: true},
-					NoEvalArgs: map[int]bool{0: true, 2: true},
-					Impl:       Go(importInlineRenameHandler, RunInCheck()),
-					Returns:    []*Type{},
-					BarrierPos: -1,
+					Args:          []*Type{TList, TAtom, TList},
+					QuoteArgs:     map[int]bool{1: true},
+					NoEvalArgs:    map[int]bool{0: true, 2: true},
+					Impl:          Go(importInlineRenameHandler, RunInCheck()),
+					Returns:       []*Type{},
+					BarrierPos:    -1,
+					CompileEffect: CompileOwnLowering,
 				},
 				{
-					Args:       []*Type{TAtom, TAtom, TList},
-					QuoteArgs:  map[int]bool{1: true},
-					NoEvalArgs: map[int]bool{2: true},
-					Impl:       Go(importInlineSingleRenameHandler, RunInCheck()),
-					Returns:    []*Type{},
-					BarrierPos: -1,
+					Args:          []*Type{TAtom, TAtom, TList},
+					QuoteArgs:     map[int]bool{1: true},
+					NoEvalArgs:    map[int]bool{2: true},
+					Impl:          Go(importInlineSingleRenameHandler, RunInCheck()),
+					Returns:       []*Type{},
+					BarrierPos:    -1,
+					CompileEffect: CompileOwnLowering,
 				},
 			},
 		},
@@ -706,6 +732,7 @@ func importFileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	// back to an opaque Module carrier and let analysis continue.
 	if r.Check.IsActive() {
 		if err := loadImportForCheck(r, path); err != nil {
+			mirrorImportRefusal(r, err, importWordPos(r, args[0]))
 			return []Value{NewCarrier(TModuleInst)}, nil
 		}
 		return nil, nil
@@ -732,6 +759,38 @@ func importFileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		return nil, err
 	}
 	return nil, installExports(r, desc, nil)
+}
+
+// mirrorImportRefusal is the check pass's half of a POLICY-refused import
+// (NUR079). The run raises the coded refusal right here, so where the import
+// is reached unconditionally it is a guaranteed error, not an opaque module
+// to analyse past: the compile pass records it as the top-level trap (the
+// compiled program raises the byte-identical coded error at this import —
+// what follows is unreachable), and the check reports it as the mirror it
+// is. Any other load failure keeps the opaque-module degradation, and so
+// does a refusal under a branch, loop or fn body, whose reach the model
+// cannot promise.
+func mirrorImportRefusal(r *Registry, err error, pos SrcPos) {
+	var be *BoruError
+	if !errors.As(err, &be) || (be.Code != "permission_denied" && be.Code != "capability_not_installed") {
+		return
+	}
+	if !check.CheckAtUncaughtTopLevel(r) {
+		return
+	}
+	r.Check.Recorder().RecordTrapErr(be, pos)
+	core.CheckAddUniqueDiagnostic(r, be.Code, be.Detail, "import", pos)
+}
+
+// importWordPos is where the run's refusal points: the `import` word
+// itself (CheckState.CurWordPos, which the engine publishes for the handler
+// it is running — the position stampErrPos gives the run's error), else —
+// with none recorded — the path operand's.
+func importWordPos(r *Registry, path Value) SrcPos {
+	if p := r.Check.CurWordPos; p.Row != 0 {
+		return p
+	}
+	return path.Pos()
 }
 
 // loadImportForCheck resolves an import in check mode for its export

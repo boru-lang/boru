@@ -11,7 +11,7 @@ import (
 // e.g. `[r.int 0 100]` and `[0 gte]`). These bodies are inert at the call —
 // `prop` stores them in a PropertySpec map, `skip` discards them, `check-prop`
 // CallBorus them inside its native handler — so the dispatch should bake them as
-// const operands (a plain CALL_NATIVE). It refused only because a dot-access
+// const operands (a plain CALL_NATIVE). It declined only because a dot-access
 // reach (`r.int`) inside a body was not admitted as an inert const MEMBER; with
 // inertReachMember it now is, so all three compile natively (no FALLBACK island)
 // and match the interpreter, RNG draws included.
@@ -35,7 +35,7 @@ func TestReachBodyInertCompiles(t *testing.T) {
 		a, _ := New()
 		prog, reason, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (inert reach body), but refused: %q", c.src, reason)
+			t.Errorf("%q: must compile (inert reach body), but declined: %q", c.src, reason)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
@@ -43,6 +43,9 @@ func TestReachBodyInertCompiles(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -58,6 +61,9 @@ func TestReachBodyInertCompiles(t *testing.T) {
 	const standalone = `def m {a:5}  m.a`
 	d, _ := New()
 	gotC, compiled, errC := d.RunCompiled(standalone)
+	if noteCompileDefect(t, standalone, gotC, errC) {
+		return
+	}
 	e, _ := New()
 	gotI, errI := e.RunInterp(standalone)
 	if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[5]" {

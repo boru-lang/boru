@@ -7,13 +7,13 @@ import (
 )
 
 // The frontier ledger — the expected-red harness for the runtime-independence
-// program (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md). Each frontier
+// program (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore). Each frontier
 // CASE asserts the TARGET behavior of a remaining compiler gap (compiles
 // natively / runs on the VM / zero runtime bails); the LEDGER pins that the
 // case fails today and HOW (the failure-mode substring). The runner is green
 // while the frontier is red, and it enforces the test-first contract
-// continuously, generalizing knownRefusals' stale-entry ratchet
-// (test/go/langspec/compiled_refusals_test.go):
+// continuously, generalizing knownCompileFailures' stale-entry ratchet
+// (test/go/langspec/compiled_failures_test.go):
 //
 //   - a ledgered case that PASSES fails the runner ("graduate": the phase
 //     landed — delete the ledger row; the case stays forever as a green pin);

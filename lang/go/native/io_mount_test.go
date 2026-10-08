@@ -166,7 +166,7 @@ func TestMountedBoruFilesystemFullSurface(t *testing.T) {
 	if _, err := ops.ReadFile("a.txt"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("read after remove = %v", err)
 	}
-	// An operation with no handler refuses cleanly (documented no-op).
+	// An operation with no handler declines cleanly (documented no-op).
 	if err := ops.Rename("a.txt", "b.txt"); !errors.Is(err, errMountUnsupported) {
 		t.Errorf("unhandled rename = %v", err)
 	}
@@ -364,9 +364,9 @@ func TestMountUnmountRestores(t *testing.T) {
 	if b, err := HostFileOps(r).ReadFile("marker.txt"); err != nil || string(b) != "prev" {
 		t.Errorf("previous ops not restored: %q (%v)", b, err)
 	}
-	// A second unmount refuses.
+	// A second unmount declines.
 	if _, err := doUnmountWord(nil, r); err == nil {
-		t.Error("expected unmount with nothing mounted to refuse")
+		t.Error("expected unmount with nothing mounted to decline")
 	}
 	// Unmount when the pre-mount slot was EMPTY deletes the capability.
 	r2, err := DefaultRegistry()
@@ -396,9 +396,9 @@ func TestMountValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	registerIOWords(r)
-	// A non-concrete map is refused.
+	// A non-concrete map is declined.
 	if _, err := doMountWord([]Value{NewTypeLiteral(TMap)}, r); err == nil {
-		t.Error("expected a type-literal handler map to be refused")
+		t.Error("expected a type-literal handler map to be declined")
 	}
 	// helpers: pathOfArgs with no args; isNoneResult on a concrete value.
 	if pathOfArgs(nil) != "" {
@@ -414,7 +414,7 @@ func TestMountValidation(t *testing.T) {
 
 // TestMountRemainingArms covers the in-package remnants: arity-mismatched
 // handlers, error propagation through Stat/ReadDir/ResolvePath, and the
-// doMountWord validation refusals.
+// doMountWord validation compile failures.
 func TestMountRemainingArms(t *testing.T) {
 	// A handler whose signature cannot take the call's arity.
 	r := mountFixture(t, `mount {read: ([a:Pathon b:Pathon] => ["two-arg"])}`)
@@ -434,7 +434,7 @@ func TestMountRemainingArms(t *testing.T) {
 	if _, err := HostFileOps(r2).ResolvePath("x"); err == nil || !strings.Contains(err.Error(), "resolve exploded") {
 		t.Errorf("raising resolve = %v", err)
 	}
-	// doMountWord refusals: a non-Function handler; a map without read.
+	// doMountWord compile failures: a non-Function handler; a map without read.
 	r3, err := DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ import core "github.com/boru-lang/boru/core/go"
 // program point is reused at every later call site whatever those bindings
 // are there. Six silent default-lane miscompiles were the same fault seen
 // from six sides (design/FULL-COMPILATION-HANDOFF.0.md, Stage 4a-4), and the
-// freeze discipline answered each by REFUSING the program on a later rebind.
+// freeze discipline answered each by DECLINING the program on a later rebind.
 //
 // This file makes the memo binding-sensitive instead, and it takes three
 // pieces:
@@ -33,7 +33,7 @@ import core "github.com/boru-lang/boru/core/go"
 //     returned closure (render), a stamped fn value (stampOnly), a fn-value
 //     closure (lambdaUnit) — cannot be re-recorded at a later call site,
 //     because its later "call" is an apply of the value, invisible to the
-//     memo. For those, and only those, NotifyNameRebound keeps the refusal
+//     memo. For those, and only those, NotifyNameRebound keeps the compile failure
 //     the discipline always made, with the same text.
 //
 //   - THE BODY RE-RUN ENVIRONMENT. A leaking body (`do`; the each/fold/scan
@@ -50,25 +50,25 @@ import core "github.com/boru-lang/boru/core/go"
 //     its start and end bindings — iteration-varying, hence non-concrete,
 //     hence a live read and a runtime re-match downstream.
 //
-// One hazard is deliberately REFUSED rather than fixed here, because the
+// One hazard is deliberately DECLINED rather than fixed here, because the
 // fix needs per-read identity the recorder does not have: a RE-PUSHABLE
 // residual read — a live OpLookupDynScope or a loop-carried slot — is
 // re-pushed at the END of its fragment, after a bind of the same name the
 // fragment recorded later than the read. Measured `def k (1 add 4)  def f
 // fn [[] [Integer Integer] [k  def k 9  k]]  f` → `9 9` against `5 9`, and
 // `def k 5  for 2 [ k  def k 9 ]` → `9 9` against `5 9`, both before this
-// file existed. residualReadHazard refuses that shape by name.
+// file existed. residualReadHazard declines that shape by name.
 
 // --- the bakes ----------------------------------------------------------
 
 // NoteFrozenRead records on the OPEN unit what it froze about an enclosing-
-// scope binding read — the bake KIND, for the escaping latch's refusal text,
+// scope binding read — the bake KIND, for the escaping latch's compile failure text,
 // and the binding's GENERATION at the read, the memo's staleness key. No-op
 // at top level (analysis order is program order there) and for a stored-ref
 // unit, whose rebind handling is NotifyNameRebound's per-ref poisoning; an
 // unclassified note (FrozenBakeNone) is dropped rather than recorded as a
 // default. FIRST BAKE WINS for both halves: a name frozen two ways is stale
-// (or refused) either way, and the text must not depend on analysis order.
+// (or declined) either way, and the text must not depend on analysis order.
 func (es *EmitState) NoteFrozenRead(name string, bake core.FrozenBake, gen int64) {
 	if !es.Active() || name == "" || bake == core.FrozenBakeNone || len(es.openUnitRecs) == 0 {
 		return
@@ -78,16 +78,57 @@ func (es *EmitState) NoteFrozenRead(name string, bake core.FrozenBake, gen int64
 		return
 	}
 	rec := es.fnRecs[idx]
-	if rec == nil || rec.storedRefUnit {
+	if rec == nil {
+		return
+	}
+	if rec.storedRefUnit {
+		// A stored-ref unit's rebind safety is the per-ref latch, not the
+		// escaping-unit discipline; the note is counted against the unit's
+		// live seats instead (the seventy-first increment), so a name read
+		// both ways stays the latch's.
+		es.noteUnitBaked(name)
 		return
 	}
 	if rec.frozen == nil {
 		rec.frozen = map[string]core.FrozenBake{}
 		rec.bakes = map[string]int64{}
+		rec.frozenReads = map[string]int{}
 	}
+	rec.frozenReads[name]++
 	if _, seen := rec.frozen[name]; !seen {
 		rec.frozen[name] = bake
 		rec.bakes[name] = gen
+	}
+}
+
+// unfreezeRead retires ONE noted read of name in the open unit — a read the
+// lowering will make LIVE through a routed dispatch (routeRegion). The name
+// stays frozen while any other read of it in the unit is still a bake; once
+// every read is routed, the ESCAPING LATCH's note goes (a live read is not
+// a bake an escaped unit could hold stale) but the MEMO's staleness key
+// STAYS: a rebind the check pass sees still re-records the unit, so the
+// record's own overload, result count and arity follow the binding, and
+// the routed op meets a live rebind only where no call site could
+// re-record — an escaped unit, a stored ref. Found in review of #461: with
+// the key dropped, a rebind that changed the word's overload or its result
+// count reached the op as a foreign-native or nout-drift defer, and an
+// effect already performed fenced the fallback into an internal error.
+func (es *EmitState) unfreezeRead(name string) {
+	if !es.Active() || len(es.openUnitRecs) == 0 {
+		return
+	}
+	idx := es.openUnitRecs[len(es.openUnitRecs)-1]
+	if idx < 0 || idx >= len(es.fnRecs) {
+		return
+	}
+	rec := es.fnRecs[idx]
+	if rec == nil || rec.frozenReads == nil || rec.frozenReads[name] == 0 {
+		return
+	}
+	rec.frozenReads[name]--
+	if rec.frozenReads[name] == 0 {
+		delete(rec.frozen, name)
+		delete(rec.frozenReads, name)
 	}
 }
 
@@ -319,7 +360,7 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 	// re-run takes the shadow path the re-run has always taken. A read of
 	// the type BEFORE the body's own def is the interpreter's undefined_word,
 	// and the analysis run — which saw the name absent — already reported
-	// it, so nothing here can bake a read the interpreter refuses.
+	// it, so nothing here can bake a read the interpreter declines.
 	for _, name := range r.Defs.Names() {
 		e, ok := r.Defs.TopEntry(name)
 		if !ok || e.TypeDef == nil || table.Has(name) {
@@ -346,7 +387,7 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 				continue
 			}
 			if entry, _ := table.TopEntry(name); entry.TypeDef != nil {
-				// A type rebound per element: the arm-resident bridge refuses
+				// A type rebound per element: the arm-resident bridge declines
 				// type installs already, so the start binding stands here.
 				continue
 			}
@@ -379,6 +420,8 @@ func bindCarrier(v core.Value) core.Value {
 		return core.NewDynamicCarrier(core.TAny)
 	}
 	switch {
+	case core.IsTypeLiteral(v):
+		return core.ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
 	case v.Parent.ConformsTo(core.TList):
 		return core.NewCarrier(core.TList)
 	case v.Parent.ConformsTo(core.TMap):
@@ -471,7 +514,7 @@ func (es *EmitState) noteStoreHazard(name string, slot int) {
 	}
 }
 
-// residualReadHazard reports the refusal for a residual value of fragment
+// residualReadHazard reports the compile failure for a residual value of fragment
 // frag whose operand is a RE-PUSHABLE read of a binding — a live dyn-scope
 // lookup, or a loop-carried slot — that the fragment read BEFORE a bind of
 // the same name it (or a fragment nested in it) recorded: the re-push at the
@@ -506,19 +549,46 @@ func (es *EmitState) residualReadHazard(v core.Value, op EmitOperand, frag *Emit
 	return ""
 }
 
+// firstHazard is the first non-empty verdict of a caller's hazard tests
+// over a residual value.
+func firstHazard(v core.Value, hazards []func(core.Value) string) string {
+	for _, h := range hazards {
+		if r := h(v); r != "" {
+			return r
+		}
+	}
+	return ""
+}
+
+// loopNamedFnHazard is a value-producing loop's own residual hazard: the
+// region has no per-value seat, so a NAMED fn value the body leaves
+// (`for 2 [g/v]`) is appended as data where the interpreter re-steps it
+// over the values beneath at the next iteration — `[fn g fn g]` compiled
+// for the interpreter's uncalled_function (NUR129). Only a named fn value
+// declines: an anonymous lambda or a factory's closure is parked data on
+// both lanes (NUR155's rule, `for 2 [(mk 1)]` is `[fn (Integer) fn
+// (Integer)]`), and a dynamic residual keeps its compile (the common `for
+// 3 [(f i)]` family) as the record asks.
+func loopNamedFnHazard(v core.Value) string {
+	if fd, isFn := v.Data.(core.FnDefInfo); isFn && !v.Quoted && !v.Carrier && fd.NamedDef() {
+		return "is a named fn value the interpreter re-steps per iteration (NUR129)"
+	}
+	return ""
+}
+
 // residualStands settles one residual value of fragment frag for its
 // caller — a fn unit's finish, a branch arm, a loop body — and reports
 // whether it stands. ok is the caller's own resolution verdict (resolveOperand
 // and whatever the site layers on it); a residual the caller could not
-// resolve refuses as "<what> of unknown provenance", a resolved one refuses
+// resolve declines as "<what> of unknown provenance", a resolved one declines
 // under residualReadHazard, and a fn-value lead a later dispatch collected
-// past refuses as the collection hazard (hazardLead, NUR121 — `[g x drop]`
+// past declines as the collection hazard (hazardLead, NUR121 — `[g x drop]`
 // leaves the model's `g` where the interpreter's `g` already ran over `x`).
-// All three refusals share this ONE MarkUncompilable site on purpose: the
-// refusal-site census (test/go/langspec) is a downward ratchet over call
+// All three compile failures share this ONE MarkUncompilable site on purpose: the
+// compile failure-site census (test/go/langspec) is a downward ratchet over call
 // sites, and each hazard is another reason at the same four sites, not a
 // fifth site.
-func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand, ok bool, frag *EmitFragment, what string) bool {
+func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand, ok bool, frag *EmitFragment, what string, hazards ...func(core.Value) string) bool {
 	if es == nil {
 		return false
 	}
@@ -528,6 +598,10 @@ func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand,
 		reason = what + " of unknown provenance"
 	case es.hazardLeadIn(v, frag):
 		reason = what + " is a fn-value lead a later dispatch collected past (NUR121)"
+	case firstHazard(v, hazards) != "":
+		// A caller's own hazard over the value — a loop's named fn-value
+		// residual (loopNamedFnHazard) — a fourth reason at the same site.
+		reason = what + " " + firstHazard(v, hazards)
 	default:
 		reason = es.residualReadHazard(v, op, frag)
 	}

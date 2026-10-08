@@ -26,12 +26,12 @@ func TestInvokeCallbackStaleDepFallsBack(t *testing.T) {
 		}},
 	}
 	// The boru body the interpreter runs instead: a single literal 7.
-	sig := &core.Signature{Impl: &core.BoruImpl{
-		Body: []core.Value{core.NewInteger(7)},
-		Compiled: &compiler.CompiledFnRef{Prog: p, Unit: 0, DepSnap: map[string]compiler.DepSnapEntry{
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled(
+		[]core.Value{core.NewInteger(7)},
+		&compiler.CompiledFnRef{Prog: p, Unit: 0, DepSnap: map[string]compiler.DepSnapEntry{
 			"dep": {Depth: 99, Gen: -1}, // never matches → stale
 		}},
-	}}
+	)}
 	out, err := core.InvokeCallback(r, sig, nil, nil)
 	if err != nil {
 		t.Fatalf("InvokeCallback: %v", err)
@@ -44,7 +44,7 @@ func TestInvokeCallbackStaleDepFallsBack(t *testing.T) {
 	}
 
 	// The positive twin: a FRESH snapshot takes the VM unit (42).
-	sig.Impl.(*core.BoruImpl).Compiled.(*compiler.CompiledFnRef).DepSnap = map[string]compiler.DepSnapEntry{
+	sig.Impl.(*core.BoruImpl).Compiled().(*compiler.CompiledFnRef).DepSnap = map[string]compiler.DepSnapEntry{
 		"dep": {Depth: r.Defs.Depth("dep"), Gen: r.Defs.Gen("dep")},
 	}
 	out, err = core.InvokeCallback(r, sig, nil, nil)
@@ -56,7 +56,7 @@ func TestInvokeCallbackStaleDepFallsBack(t *testing.T) {
 	}
 }
 
-// The §7c JIT re-stamp (REFUSAL-CLOSURE.0): a detached ref whose dep was
+// The §7c JIT re-stamp (COMPILE FAILURE-CLOSURE.0): a detached ref whose dep was
 // REBOUND after the stamp re-compiles against the live binding at invoke
 // time — the fresh twin runs on the VM with the NEW value (parity with the
 // interpreter's live resolution) — instead of degrading permanently to
@@ -74,7 +74,7 @@ func TestInvokeCallbackJITRestamp(t *testing.T) {
 	if !ok {
 		t.Fatalf("initial stamp declined: %+v", r.StampEvents())
 	}
-	sig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewWord("dep")}, Compiled: ref}}
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewWord("dep")}, ref)}
 
 	// Fresh: the frozen unit returns the stamp-time binding.
 	out, err := core.InvokeCallback(r, sig, nil, nil)
@@ -116,7 +116,7 @@ func TestInvokeCallbackJITRestamp(t *testing.T) {
 	// The try budget: each further rebind pays one re-stamp until the budget
 	// (RestampMaxTries, one already spent) exhausts; after that the seam
 	// stays on CallBoru — which STILL resolves the live binding, so values
-	// keep matching the interpreter (slow, not wrong).
+	// keep matching the interpreter — containment, not a fix.
 	for i := 3; i <= 6; i++ {
 		r.Defs.Pop("dep")
 		r.Defs.Push("dep", core.NewInteger(int64(i)))

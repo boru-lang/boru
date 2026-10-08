@@ -28,7 +28,7 @@ func fmtFormatHandler(t *testing.T) native.Handler {
 
 // TestFmtFormatHandler drives both arms of the format handler: a concrete
 // string is normalised, and a non-concrete (type-literal) argument — which
-// matches the [String] sig slot yet has no concrete payload — is refused by
+// matches the [String] sig slot yet has no concrete payload — is declined by
 // AsConcreteString rather than panicking.
 func TestFmtFormatHandler(t *testing.T) {
 	h := fmtFormatHandler(t)

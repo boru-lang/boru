@@ -11,8 +11,8 @@ package check
 //     the paren fn-carrier collapse, the fallback-position walk, the
 //     surface-shape typing, the assume-sig recovery) model exactly what
 //     their doc comments state;
-//   - the two compile-mode refusals (RefuseForwardStackDrift,
-//     refuseStrandedMemberFn) mark uncompilable only in their documented
+//   - the two compile-mode compile failures (DeclineForwardStackDrift,
+//     declineStrandedMemberFn) mark uncompilable only in their documented
 //     hazard shapes, observed through a test EmitRecorder stub embedding
 //     the inactive recorder (the same pattern core's own emit-stub tests
 //     use).
@@ -57,7 +57,8 @@ func (s *zzRecEmit) Suspend() func() {
 func (s *zzRecEmit) SuspendedNow() bool             { return s.suspended > 0 }
 func (s *zzRecEmit) MarkUncompilable(reason string) { s.uncomp = append(s.uncomp, reason) }
 func (s *zzRecEmit) MemberFnRead(id string) bool    { return s.member[id] }
-func (s *zzRecEmit) RecordDispatchRematchValues(string, []core.Value, int, int, core.SrcPos) bool {
+func (s *zzRecEmit) NameLocal(string, string)       {}
+func (s *zzRecEmit) RecordDispatchRematchValues(string, []core.Value, int, []int, core.SrcPos) bool {
 	s.rematched = true
 	return s.rematchOK
 }
@@ -145,6 +146,47 @@ func TestZZCoverConcreteEvalOnce(t *testing.T) {
 	// An erroring run declines too.
 	if _, ok := concreteEvalOnce(e, []core.Value{core.NewWord("zz-cover-no-such-word")}); ok {
 		t.Error("an erroring sub-run must decline")
+	}
+}
+
+// A run that changes a binding is no pure computation: the fold declines
+// (NUR330 — the interpreter keeps the binding a map member's `[def k 1 k]`
+// makes, the folded constant would not), and the table is restored EXACTLY,
+// a popped entry included, so the expression's recorded run starts where the
+// interpreter's does.
+func TestZZCoverConcreteEvalOnceDeclinesABindingRun(t *testing.T) {
+	r := covRegistry(t, func(r *core.Registry) {
+		r.RegisterNativeFunc(core.NativeFunc{Name: "zzbind", Signatures: []core.Signature{{
+			Returns: []*core.Type{core.TInteger},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
+				r.Defs.Push("zzfresh", core.NewInteger(1))
+				return []core.Value{core.NewInteger(7)}, nil
+			}),
+		}}})
+		r.RegisterNativeFunc(core.NativeFunc{Name: "zzunbind", Signatures: []core.Signature{{
+			Returns: []*core.Type{core.TInteger},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
+				r.Defs.Pop("zzkeep")
+				return []core.Value{core.NewInteger(8)}, nil
+			}),
+		}}})
+	})
+	done := r.Check.Begin()
+	defer done()
+	e := core.NewTop(r)
+	r.Defs.Push("zzkeep", core.NewInteger(42))
+
+	if _, ok := concreteEvalOnce(e, []core.Value{core.NewWord("zzbind")}); ok {
+		t.Error("a run that binds a name must decline")
+	}
+	if r.Defs.Has("zzfresh") {
+		t.Error("the run's binding must be rolled back")
+	}
+	if _, ok := concreteEvalOnce(e, []core.Value{core.NewWord("zzunbind")}); ok {
+		t.Error("a run that unbinds a name must decline")
+	}
+	if v, bound := r.Defs.Top("zzkeep"); !bound || v.String() != "42" {
+		t.Errorf("the popped binding must be restored, got %v (bound=%v)", v, bound)
 	}
 }
 
@@ -273,6 +315,31 @@ func TestZZCoverParenFnCollapseLeadingOneArg(t *testing.T) {
 	}
 }
 
+func TestZZCoverParenFnCollapseLeadingFnValueArg(t *testing.T) {
+	// `( g inc/v )` — a leading fn carrier over an INERT fn value collapses
+	// (S1b's apply shapes, 2026-09-22): the lead collects the value, one
+	// call on both engines. A GRADUAL fn-typed argument does not — it may
+	// be a bare fn word at run time.
+	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "inc"}}
+	e, fin := zzCollapseEng(t, true,
+		core.NewOpenParen(), zzFnCarrier(), fnVal, core.NewCloseParen())
+	defer fin()
+	if got := checkModeParenFnCollapse(e, 0, 3); got != 2 {
+		t.Fatalf("closeIdx = %d, want 2 (an inert fn value collapses under the lead)", got)
+	}
+	if out := e.Tape.At(1); !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+		t.Errorf("leading apply over a fn value must collapse to one dynamic Any carrier, got %#v", out)
+	}
+	gradual := core.NewCarrier(core.TFunction)
+	gradual.Dynamic = true
+	e2, fin2 := zzCollapseEng(t, true,
+		core.NewOpenParen(), zzFnCarrier(), gradual, core.NewCloseParen())
+	defer fin2()
+	if got := checkModeParenFnCollapse(e2, 0, 3); got != 3 {
+		t.Errorf("closeIdx = %d, want 3 (a gradual fn-typed argument stays un-collapsed)", got)
+	}
+}
+
 func TestZZCoverParenFnCollapseNeitherShape(t *testing.T) {
 	// Two plain values: no fn carrier in either admission position, the
 	// window stays as the interpreter leaves it.
@@ -339,7 +406,7 @@ func TestZZCoverSpliceFnValueCheckResult(t *testing.T) {
 	}
 }
 
-// --- RefuseForwardStackDrift -------------------------------------------------
+// --- DeclineForwardStackDrift -------------------------------------------------
 
 func zzDriftSig() *core.Signature {
 	return &core.Signature{Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 1}
@@ -356,34 +423,34 @@ func zzDriftEng(t *testing.T, vals []core.Value, pointer int) (*core.Engine, *zz
 	return e, es, fin
 }
 
-func TestZZCoverForwardStackDriftRefuses(t *testing.T) {
+func TestZZCoverForwardStackDriftFailsToCompile(t *testing.T) {
 	// The documented hazard: dynamic on top, concrete beneath, an atomic
 	// literal right after the word — the all-stack match drifts from the
-	// interpreter's forward collection, so the compile refuses.
+	// interpreter's forward collection, so the compile declines.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		core.NewInteger(5), core.NewDynamicCarrier(core.TAny),
 		core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin()
-	RefuseForwardStackDrift(e, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e, zzDriftSig(), []int{0, 1})
 	if !es.hasUncomp("forward operand accounting") {
-		t.Errorf("drift shape must refuse, marks = %v", es.uncomp)
+		t.Errorf("drift shape must decline, marks = %v", es.uncomp)
 	}
 }
 
 func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	dyn := func() core.Value { return core.NewDynamicCarrier(core.TAny) }
 
-	// NoEvalArgs (code-body word): never this guard's drift; no refusal.
+	// NoEvalArgs (code-body word): never this guard's drift; no compile failure.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		core.NewInteger(5), dyn(), core.NewWord("zzif"), core.NewInteger(0),
 	}, 2)
 	defer fin()
 	sig := zzDriftSig()
 	sig.NoEvalArgs = map[int]bool{1: true}
-	RefuseForwardStackDrift(e, sig, []int{0, 1})
+	DeclineForwardStackDrift(e, sig, []int{0, 1})
 	if len(es.uncomp) != 0 {
-		t.Errorf("a NoEvalArgs word must not refuse, marks = %v", es.uncomp)
+		t.Errorf("a NoEvalArgs word must not decline, marks = %v", es.uncomp)
 	}
 
 	// An out-of-range matched position aborts silently.
@@ -391,9 +458,9 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin2()
-	RefuseForwardStackDrift(e2, zzDriftSig(), []int{0, 99})
+	DeclineForwardStackDrift(e2, zzDriftSig(), []int{0, 99})
 	if len(es2.uncomp) != 0 {
-		t.Errorf("bad position must not refuse, marks = %v", es2.uncomp)
+		t.Errorf("bad position must not decline, marks = %v", es2.uncomp)
 	}
 
 	// Concrete on top: the interpreter takes the all-stack match too.
@@ -401,9 +468,9 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		dyn(), core.NewInteger(5), core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin3()
-	RefuseForwardStackDrift(e3, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e3, zzDriftSig(), []int{0, 1})
 	if len(es3.uncomp) != 0 {
-		t.Errorf("concrete top must not refuse, marks = %v", es3.uncomp)
+		t.Errorf("concrete top must not decline, marks = %v", es3.uncomp)
 	}
 
 	// No trailing token at all: nothing to forward-collect.
@@ -411,9 +478,9 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"),
 	}, 2)
 	defer fin4()
-	RefuseForwardStackDrift(e4, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e4, zzDriftSig(), []int{0, 1})
 	if len(es4.uncomp) != 0 {
-		t.Errorf("no trailing token must not refuse, marks = %v", es4.uncomp)
+		t.Errorf("no trailing token must not decline, marks = %v", es4.uncomp)
 	}
 
 	// A structural trailing token (`)`) is NOT a forward operand.
@@ -421,28 +488,28 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"), core.NewCloseParen(),
 	}, 2)
 	defer fin5()
-	RefuseForwardStackDrift(e5, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e5, zzDriftSig(), []int{0, 1})
 	if len(es5.uncomp) != 0 {
 		t.Errorf("a close paren is not a forward operand, marks = %v", es5.uncomp)
 	}
 }
 
-// --- refuseStrandedMemberFn --------------------------------------------------
+// --- declineStrandedMemberFn --------------------------------------------------
 
 func TestZZCoverStrandedMemberFn(t *testing.T) {
 	memfn := core.NewDynamicCarrier(core.TAny)
 	memfn.ID = "zzmemfn1"
 
 	// The hazard: a member-fn read directly beneath the consumed operand
-	// (a structural Mark between them is skipped) — refuse.
+	// (a structural Mark between them is skipped) — decline.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		memfn, core.NewMark("zzm"), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 3)
 	defer fin()
 	es.member["zzmemfn1"] = true
-	refuseStrandedMemberFn(e, []int{2})
+	declineStrandedMemberFn(e, []int{2})
 	if !es.hasUncomp("member fn value auto-applies mid-expression") {
-		t.Errorf("stranded member fn must refuse, marks = %v", es.uncomp)
+		t.Errorf("stranded member fn must decline, marks = %v", es.uncomp)
 	}
 }
 
@@ -452,19 +519,19 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 		core.NewInteger(21), core.NewWord("zzeq"),
 	}, 1)
 	defer fin()
-	refuseStrandedMemberFn(e, []int{0})
+	declineStrandedMemberFn(e, []int{0})
 	if len(es.uncomp) != 0 {
-		t.Errorf("bottom operand must not refuse, marks = %v", es.uncomp)
+		t.Errorf("bottom operand must not decline, marks = %v", es.uncomp)
 	}
 
-	// A scope boundary (open paren) directly beneath: stop, no refusal.
+	// A scope boundary (open paren) directly beneath: stop, no compile failure.
 	e2, es2, fin2 := zzDriftEng(t, []core.Value{
 		core.NewOpenParen(), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 2)
 	defer fin2()
-	refuseStrandedMemberFn(e2, []int{1})
+	declineStrandedMemberFn(e2, []int{1})
 	if len(es2.uncomp) != 0 {
-		t.Errorf("scope boundary must not refuse, marks = %v", es2.uncomp)
+		t.Errorf("scope boundary must not decline, marks = %v", es2.uncomp)
 	}
 
 	// First data value beneath is NOT a member-fn read: keep compiling.
@@ -472,7 +539,7 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 		core.NewInteger(1), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 2)
 	defer fin3()
-	refuseStrandedMemberFn(e3, []int{1})
+	declineStrandedMemberFn(e3, []int{1})
 	if len(es3.uncomp) != 0 {
 		t.Errorf("a plain value beneath is not the hazard, marks = %v", es3.uncomp)
 	}
@@ -678,7 +745,7 @@ func zzHasDiag(r *core.Registry, code string) bool {
 
 // TestZZCoverAssumeSigDisjunctPartitionFallthrough: a strict-disjunct
 // operand partitions per alternative; with nothing armed the straddle
-// is refused (MarkUncompilable is the inactive no-op here) and the
+// is declined (MarkUncompilable is the inactive no-op here) and the
 // per-alternative join is spliced — never a blanket no_signature.
 func TestZZCoverAssumeSigDisjunctPartitionFallthrough(t *testing.T) {
 	r := zzAssumeReg(t)
@@ -723,7 +790,7 @@ func TestZZCoverAssumeSigDisjunctPolyRecorded(t *testing.T) {
 
 // TestZZCoverAssumeSigDisjunctSingleUserFn: a SINGLE-overload boru user
 // fn over the disjunct records a guarded CALL_USER (its ReturnsFn's
-// results are spliced) instead of refusing.
+// results are spliced) instead of declining.
 func TestZZCoverAssumeSigDisjunctSingleUserFn(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -800,11 +867,11 @@ func TestZZCoverAssumeSigAnyCarrierPolyRecovery(t *testing.T) {
 	}
 }
 
-// TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses: everything
+// TestZZCoverAssumeSigAnyCarrierDoesNotLowerAndDiagnoses: everything
 // declines (unarmed braid, plain — non-Compiling — pass): the recovery
 // latches uncompilable and, with no best-fit candidate at all, reports
 // the genuine no_signature.
-func TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses(t *testing.T) {
+func TestZZCoverAssumeSigAnyCarrierDoesNotLowerAndDiagnoses(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
 	defer done()
@@ -828,7 +895,7 @@ func TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses(t *testing.T) {
 // TestZZCoverAssumeSigAnyCarrierRematchTrap: on a COMPILE pass
 // (Compiling, armed recorder) the declined Any-carrier dispatch
 // compiles to the runtime rematch — the trap owns the tail and no
-// refusal is latched.
+// compile failure is latched.
 func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -843,7 +910,7 @@ func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 		t.Error("the compile pass must record the dispatch rematch")
 	}
 	if len(es.uncomp) != 0 {
-		t.Errorf("a recorded rematch must not latch a refusal, marks = %v", es.uncomp)
+		t.Errorf("a recorded rematch must not latch a compile failure, marks = %v", es.uncomp)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
 		t.Errorf("the rematch splices the modelled results, tape len = %d", e.Tape.Len())
@@ -852,7 +919,7 @@ func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 
 // TestZZCoverAssumeSigAnyCarrierSingleUserFn: the single-overload user
 // fn over an Any carrier records the guarded CALL_USER (splicing its
-// ReturnsFn results) — the L4 leaf — instead of refusing.
+// ReturnsFn results) — the L4 leaf — instead of declining.
 func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -863,7 +930,7 @@ func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 		[]core.Value{core.NewCarrier(core.TAny), core.NewWord("zzr-user1")}, 1,
 		func(s *core.Signature) bool { return s.ReturnsFn != nil && !s.Fallback })
 	if len(es.uncomp) != 0 {
-		t.Errorf("the recovered user fn must not refuse, marks = %v", es.uncomp)
+		t.Errorf("the recovered user fn must not decline, marks = %v", es.uncomp)
 	}
 	out := e.Tape.At(0)
 	if e.Tape.Len() != 1 || !out.Carrier || !out.Parent.Equal(core.TInteger) {
@@ -877,7 +944,7 @@ func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 // TestZZCoverAssumeSigImpreciseCarrierPolyRecovery: a concrete-but-
 // imprecise carrier (a String carrier against an Integer slot) is not a
 // definite mismatch — the armed pass recovers via the runtime
-// re-matching poly (test double) instead of refusing.
+// re-matching poly (test double) instead of declining.
 func TestZZCoverAssumeSigImpreciseCarrierPolyRecovery(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -898,7 +965,7 @@ func TestZZCoverAssumeSigImpreciseCarrierPolyRecovery(t *testing.T) {
 		t.Error("the imprecise-carrier recovery must offer a dynamic-recovery poly")
 	}
 	if len(es.uncomp) != 0 {
-		t.Errorf("a recorded poly must not refuse, marks = %v", es.uncomp)
+		t.Errorf("a recorded poly must not decline, marks = %v", es.uncomp)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
 		t.Errorf("the recovered dispatch splices its results, tape len = %d", e.Tape.Len())
@@ -993,5 +1060,210 @@ func TestZZCoverSurfaceShapeDeclinesNonFnsigShape(t *testing.T) {
 	}
 	if e.Tape.Len() != 2 {
 		t.Errorf("declining must leave the tape untouched, len = %d", e.Tape.Len())
+	}
+}
+
+// --- noteReStepLanding (NUR173, widened by NUR174) --------------------------
+
+// The landing NOTES and nothing more — it consumes nothing, splices nothing
+// and declines nothing, which is what lets it sit last in stepLiteral's model
+// chain without disturbing the three above it. The gates each leave it
+// unrecorded: a suspended recorder, a quoted / id-less / concrete value, a
+// NON-CALLABLE carrier the re-step could never apply, a collectable token
+// written after the survivor (which the alone-island could not have taken), a
+// DISPATCH MODIFIER stating data intent, and a value still sitting alone
+// inside a LIVE reach group, where execFnDefLiteral defers rather than calls.
+func TestZZCoverReStepLandingGates(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland2"
+	quoted := v
+	quoted.Quoted = true
+	noID := core.NewDynamicCarrier(core.TAny)
+	noID.ID = ""
+	reachOpen := core.NewOpenParen()
+	reachOpen.ReachGroup = true
+	for _, tc := range []struct {
+		name    string
+		tape    []core.Value
+		at      int
+		suspend bool
+	}{
+		{"suspended", []core.Value{v}, 0, true},
+		{"quoted", []core.Value{quoted}, 0, false},
+		{"no id", []core.Value{noID}, 0, false},
+		{"concrete", []core.Value{core.NewInteger(7)}, 0, false},
+		{"a non-callable carrier", []core.Value{core.NewCarrier(core.TInteger)}, 0, false},
+		{"a collectable token follows", []core.Value{v, core.NewInteger(1)}, 0, false},
+		{"a word follows — a barrier, so it lands", []core.Value{v, core.NewWord("zzeq")}, 0, false},
+		{"a boundary follows — it lands", []core.Value{v, core.NewCloseParen()}, 0, false},
+		{"the tape ends — it lands", []core.Value{v}, 0, false},
+		{"alone in a LIVE reach group", []core.Value{reachOpen, v, core.NewCloseParen()}, 1, false},
+	} {
+		e, es, fin := zzDriftEng(t, tc.tape, 0)
+		if tc.suspend {
+			es.Suspend()
+		}
+		noteReStepLanding(e, tc.at)
+		if len(es.uncomp) != 0 {
+			t.Errorf("%s must never decline, marks = %v", tc.name, es.uncomp)
+		}
+		fin()
+	}
+}
+
+// A DISPATCH MODIFIER after the value is DATA intent, and execFnDefLiteral
+// honours it by quoting rather than calling. It is a Word by kind, so without
+// its own rung nothingToCollectAfter reads it as "nothing to collect" and the
+// landing calls the one read written specifically not to be one.
+func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland4"
+	mod := core.Value{Parent: core.TDispatchMod, Data: core.DispatchModInfo{}}
+	e, _, fin := zzDriftEng(t, []core.Value{v, mod}, 0)
+	defer fin()
+	if nothingToCollectAfter(e, 0) {
+		t.Error("a dispatch modifier must stop the landing: it states DATA intent")
+	}
+}
+
+// aloneInLiveReachGroup is the O(1) shape test execFnDefLiteral makes at the
+// same index: only a REACH-written group's markers either side count, so a
+// user's own paren — whose call IS the user's — still lands.
+func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland5"
+	reachOpen := core.NewOpenParen()
+	reachOpen.ReachGroup = true
+	for _, tc := range []struct {
+		name string
+		tape []core.Value
+		at   int
+		want bool
+	}{
+		{"a reach group's lone token", []core.Value{reachOpen, v, core.NewCloseParen()}, 1, true},
+		{"a USER paren's lone token", []core.Value{core.NewOpenParen(), v, core.NewCloseParen()}, 1, false},
+		{"a reach group with more to come", []core.Value{reachOpen, v, core.NewInteger(1)}, 1, false},
+		{"at index 0 — nothing before it", []core.Value{v, core.NewCloseParen()}, 0, false},
+		{"at the tape end — nothing after it", []core.Value{reachOpen, v}, 1, false},
+	} {
+		e, _, fin := zzDriftEng(t, tc.tape, 0)
+		if got := aloneInLiveReachGroup(e, tc.at); got != tc.want {
+			t.Errorf("%s: aloneInLiveReachGroup = %v, want %v", tc.name, got, tc.want)
+		}
+		fin()
+	}
+}
+
+// --- checkModeFallbackPositionsFor -------------------------------------------
+
+// TestZZCoverFallbackPositionsForwardFirst pins NUR180's fix: the recovery's
+// window for ONE signature fills the forward-eligible leading positions from
+// the written tokens FIRST, as the interpreter's matcher does, and only the
+// remainder from the stack — two stack values beneath a typed word with one
+// written argument take [top, written], never [deeper, top]; the stack run
+// comes back ascending with its length, a non-matching written token stops
+// the forward run, `/s` collects nothing forward, and a short stack fills
+// from the tokens after the run as the plain gatherer does.
+func TestZZCoverFallbackPositionsForwardFirst(t *testing.T) {
+	two := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	// tape: [1 2 zzw 10 "s"], pointer on zzw
+	e := engWithTape(t, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewWord("zzw"), core.NewInteger(10), core.NewString("s")}, 2)
+	pos, nStack := checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 3 || nStack != 1 {
+		t.Errorf("forward first: positions = %v nStack = %d, want [1 3] 1 (the written 10 fills sig[0], the stack top sig[1])", pos, nStack)
+	}
+	// /s: nothing collects forward — both from the stack, ascending.
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw", ForceStack: true})
+	if len(pos) != 2 || pos[0] != 0 || pos[1] != 1 || nStack != 2 {
+		t.Errorf("/s: positions = %v nStack = %d, want [0 1] 2", pos, nStack)
+	}
+	// A written token the position rejects stops the forward run: [1 2 zzw "s"]
+	e = engWithTape(t, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewWord("zzw"), core.NewString("s")}, 2)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 0 || pos[1] != 1 || nStack != 2 {
+		t.Errorf("a rejected token stops the run: positions = %v nStack = %d, want [0 1] 2", pos, nStack)
+	}
+	// A wildcard (an Any carrier, a raw word) is taken: [1 zzw x 10]
+	x := core.NewCarrier(core.TAny)
+	e = engWithTape(t, []core.Value{core.NewInteger(1), core.NewWord("zzw"), x, core.NewInteger(10)}, 1)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 2 || pos[1] != 3 || nStack != 0 {
+		t.Errorf("wildcards are taken: positions = %v nStack = %d, want [2 3] 0", pos, nStack)
+	}
+	// A short stack fills from the tokens after the run: [zzw "s" 7] with a
+	// stack-only signature — nothing forward-eligible, nothing beneath, the
+	// shortfall walks the tape after the pointer.
+	stackOnly := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: 0}
+	e = engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewString("s"), core.NewInteger(7)}, 0)
+	pos, nStack = checkModeFallbackPositionsFor(e, stackOnly, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 2 || nStack != 0 {
+		t.Errorf("shortfall: positions = %v nStack = %d, want [1 2] 0", pos, nStack)
+	}
+	if !fallbackTokenCompatible(two, 0, core.NewWord("w")) || !fallbackTokenCompatible(two, 0, x) || fallbackTokenCompatible(two, 0, core.NewString("s")) {
+		t.Error("fallbackTokenCompatible: a raw word and an Any carrier are wildcards, a String against Number is not")
+	}
+}
+
+// TestZZCoverFallbackPositionsForwardCrossesGroupsAndMarkers: the forward
+// run walks exactly as the plain gatherer does (pinned for that walk by
+// TestZZCoverFallbackPositionsSkipNestedGroup) — a NESTED group after the
+// word is entered and left without its close stopping the run, and the
+// engine's tape markers (a mark, a frame's def-cleanup / return-check tail)
+// are stepped over rather than taken as operands — so a call whose written
+// arguments straddle a raw group or a marker is recovered over the same
+// tokens the interpreter's forward phase would reach.
+func TestZZCoverFallbackPositionsForwardCrossesGroupsAndMarkers(t *testing.T) {
+	three := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	// tape: [zzw ( 1 ) <mark> 2 <def-cleanup> <return-check> 3 4], pointer on zzw
+	e := engWithTape(t, []core.Value{
+		core.NewWord("zzw"),
+		core.NewOpenParen(), core.NewInteger(1), core.NewCloseParen(),
+		core.NewMark("zzm"),
+		core.NewInteger(2),
+		core.NewDefCleanup(core.DefCleanupInfo{SkipCleanup: true}),
+		core.NewReturnCheck(core.ReturnCheckInfo{FuncName: "zzf"}),
+		core.NewInteger(3), core.NewInteger(4),
+	}, 0)
+	pos, nStack := checkModeFallbackPositionsFor(e, three, core.WordInfo{Name: "zzw"})
+	if len(pos) != 3 || pos[0] != 2 || pos[1] != 5 || pos[2] != 8 || nStack != 0 {
+		t.Errorf("positions = %v nStack = %d, want [2 5 8] 0 (the group is crossed, the markers skipped, the fourth token left)", pos, nStack)
+	}
+	// A forward run that stops SHORT (a String the second position rejects)
+	// is a prefix of what the plain gatherer takes past the empty stack, so
+	// the shortfall fill skips the taken token and appends exactly the
+	// missing one — the window is n, never more.
+	two := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	e = engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewInteger(1), core.NewString("s"), core.NewInteger(9)}, 0)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 2 || nStack != 0 {
+		t.Errorf("shortfall after a partial run: positions = %v nStack = %d, want [1 2] 0", pos, nStack)
+	}
+}
+
+// TestZZCoverWidestSatisfiableOverloadSkipsFallback: the dyn-body recovery's
+// window is the widest REAL overload whose operands exist at the site. The
+// aggregate's synthetic 0-arg catch-all (a boru-bodied overload beside the
+// natives brings one) must never be that window: its empty window is always
+// "satisfiable", so without the skip a site with no operands would recover
+// over the fallback instead of declining, and a site with some would still
+// land on a real overload only by width.
+func TestZZCoverWidestSatisfiableOverloadSkipsFallback(t *testing.T) {
+	fn := &core.FnDefInfo{Name: "zzw", Signatures: []core.Signature{
+		{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward},
+		{Args: []*core.Type{core.TNumber}, BarrierPos: core.BarrierAllForward},
+		{Fallback: true, BarrierPos: 0},
+	}}
+	w := core.WordInfo{Name: "zzw"}
+	// One written operand: the 2-arg window does not exist, the 1-arg one does.
+	e := engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewInteger(7)}, 0)
+	sig, pos, nStack := widestSatisfiableOverload(e, fn, w)
+	if sig != &fn.Signatures[1] || len(pos) != 1 || pos[0] != 1 || nStack != 0 {
+		t.Errorf("one operand: got sig %p pos %v nStack %d, want the 1-arg overload over [1]", sig, pos, nStack)
+	}
+	// No operand at all: no real overload is satisfiable, and the fallback is
+	// not a candidate — nothing is chosen.
+	e = engWithTape(t, []core.Value{core.NewWord("zzw")}, 0)
+	if sig, pos, _ := widestSatisfiableOverload(e, fn, w); sig != nil || pos != nil {
+		t.Errorf("no operands: got sig %p pos %v, want none (the 0-arg fallback is never the window)", sig, pos)
 	}
 }

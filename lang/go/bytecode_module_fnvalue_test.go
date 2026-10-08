@@ -14,7 +14,7 @@ import (
 // must apply it faithfully: the island sub-engine (callDynTrailTop's
 // `vc.island().Run([fn, args…])`) INTERPRETS the body in fnDef.Registry, so a
 // real-body module fn applies soundly (CallBoru + module-private scope). Before the
-// fn-dispatch unification + this bake relaxation, such a value refused at the call
+// fn-dispatch unification + this bake relaxation, such a value declined at the call
 // ("fn call operand of unknown provenance"); the comparison sorts that thread a
 // `M.by-...` comparator into the sort fn all hit it.
 //
@@ -44,7 +44,7 @@ func TestModuleFnValueAsArg(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island in the PROGRAM — the apply uses a runtime island, not a lowered FALLBACK span)", c.name)

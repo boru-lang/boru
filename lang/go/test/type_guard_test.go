@@ -29,7 +29,7 @@ func TestGuard_FalseGivesNone(t *testing.T) {
 // The Bbd type ("string between 'b' and 'd' inclusive") written
 // with guard is membership-equivalent to the if/None form.
 func TestGuard_PredicateIdiom(t *testing.T) {
-	got := runOne(t, `def Bbd fn [x:Any Any [(x is String) and (x gte "b") and (x lte "d") guard x]]
+	got := runOne(t, `def Bbd fnpred x:Any [(x is String) and (x gte "b") and (x lte "d") guard x]
 "a" is Bbd
 "b" is Bbd
 "c" is Bbd
@@ -67,7 +67,7 @@ func TestGuard_BarrierPosDoesNotEatNextToken(t *testing.T) {
 // Used inside `def x:*Type body` via a transforming predicate: the
 // returned value is what binds.
 func TestGuard_TypedDefAcceptsTransformed(t *testing.T) {
-	got := runOne(t, `def Up fn [x:Any Any [(x is String) guard (x upper)]]
+	got := runOne(t, `def Up fnpred x:Any [(x is String) guard (x upper)]
 def s:Up "hi"
 s`)
 	if len(got) != 1 || got[0] != "HI" {

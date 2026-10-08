@@ -13,7 +13,7 @@ import (
 // vm_seam7_test.go drives the bytecode VM's defensive error arms and a few
 // otherwise-uncovered normal branches. Most of these guards are unreachable
 // through a correctly compiled program (they exist to turn a compiler bug into
-// a clean internal_error → interpreter fallback, never a Go panic), so they are
+// a clean internal_error → compile failure, never a Go panic), so they are
 // exercised here two ways:
 //
 //   - hand-built malformed Programs fed to RunProgram (the run() dispatch arms),
@@ -132,16 +132,47 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		{"for-next", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForNext, Arg: 0}}}, "FOR_NEXT without a loop"},
 		{"jmpiffalse", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpJmpIfFalse, Arg: 5}}}, "JMP_IF_FALSE underflow"},
 		{"bind-typed", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTyped, Arg: 0}}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindDepScalar, Name: "x"}}}, "BIND_TYPED stack underflow"},
+		{"bind-typed-cons", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTyped, Arg: 0}}, Consts: []core.Value{core.NewInteger(1)}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindRunMembership, Name: "x", ConsOperand: true}}}, "BIND_TYPED stack underflow"},
+		{"bind-type-run", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTypeRun, Arg: 0}}, TypeRuns: []core.TypeRunInstallSpec{{Name: "T"}}}, "BIND_TYPE_RUN stack underflow"},
 		{"call-native-poly", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpCallNativePoly, Arg: 0}}, PolyRefs: []compiler.PolyRef{{Word: "p", Arity: 2}}}, "CALL_NATIVE_POLY underflow"},
 		{"drop-to-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpDropToMark}}}, "DROP_TO_MARK with no open mark"},
 		{"pop-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPopMark}}}, "POP_MARK with no open mark"},
 		{"unknown", &compiler.Program{Code: []compiler.Instr{{Op: compiler.Opcode(250)}}}, "unknown opcode"},
-		{"flow-break-noloop", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpFlowBreak}}}, "flow signal with no enclosing loop"},
+		{"for-publish", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForPublish}}, Consts: []core.Value{core.NewString("i")}}, "FOR_PUBLISH without an open loop"},
+		{"for-publish-name", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForPublish}}, Consts: []core.Value{core.NewInteger(1)}}, "FOR_PUBLISH without an open loop or a name const"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			wantInternal(t, runMalformed(t, c.p), c.sub)
 		})
+	}
+	// A break no loop takes is no malformed program: it is the interpreter's
+	// own report (NUR355).
+	wantFlowError(t, runMalformed(t, &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpFlowBreak}}}), "break outside loop")
+}
+
+// wantFlowError asserts err is the interpreter's `outside loop` flow_error
+// (NUR355), with the given detail.
+func wantFlowError(t *testing.T, err error, detail string) {
+	t.Helper()
+	var ae *core.BoruError
+	if !errors.As(err, &ae) || ae.Code != "flow_error" || ae.Detail != detail {
+		t.Fatalf("want flow_error %q, got %v", detail, err)
+	}
+}
+
+// TestBindTypeRunRefusal: the run-time type install's own refusal (NUR308's
+// type half) is the interpreter's installer's raise, stamped at the op.
+func TestBindTypeRunRefusal(t *testing.T) {
+	p := &compiler.Program{
+		Code:     []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTypeRun, Arg: 0}},
+		Consts:   []core.Value{core.NewDepScalar(core.DepGT, core.NewInteger(1))},
+		TypeRuns: []core.TypeRunInstallSpec{{Name: "lower"}},
+	}
+	err := runMalformed(t, p)
+	var ae *core.BoruError
+	if !errors.As(err, &ae) || ae.Code != "type_error" || !strings.Contains(ae.Detail, "type names must start with a capital letter") {
+		t.Fatalf("the installer's refusal surfaces: %v", err)
 	}
 }
 
@@ -218,13 +249,13 @@ func TestSeam7CodeUnitEndedWithoutRet(t *testing.T) {
 func TestSeam7ForSetupRangeErrors(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
 	// Non-integer range triple.
-	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "range must be concrete Integers")
 	// Zero step (stack top→ start, then end, then step).
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "step cannot be zero")
 	// Underflow.
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantInternal(t, err, "FOR_SETUP underflow")
 }
 
@@ -378,10 +409,10 @@ func TestSeam7CallDynApplyTopArms(t *testing.T) {
 
 func TestSeam7CallDynMethodArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, nil, seam7Dbg, 0)
+	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, nil, seam7Dbg, 0)
 	wantInternal(t, err, "CALL_DYN_METHOD underflow at m")
 	// non-appliable value on top: shape claim failed → defer.
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
 	wantInternal(t, err, "is not an appliable function at run time")
 }
 
@@ -420,19 +451,85 @@ func TestSeam7TryNativeFnApplyNoSigs(t *testing.T) {
 
 func TestSeam7RunFallbackArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, nil, seam7Dbg, 0)
+	_, _, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, nil, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK underflow at d")
-	// NIn > 1 with enough stack: the lowerer never threads >1, so it is refused.
-	_, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
+	// NIn > 1 with enough stack: the lowerer never threads >1, so it is declined.
+	_, _, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK threads >1 input at d")
 }
 
 // --- flowSignal no-loop (direct) -----------------------------------------
 
+// A signal no loop takes is the interpreter's own report (NUR355): the
+// flow_error `break outside loop` / `continue outside loop`, where the
+// interpreter's pointer rests — an island's stand, else the first value the
+// escaping op left, else the token after the op's run (FlowExit.Next), else
+// unknown. It used to be the internal_error "flow signal with no enclosing
+// loop".
 func TestSeam7FlowSignalNoLoop(t *testing.T) {
-	vc := seam7VC(seam7Reg(t))
-	_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, nil, nil, nil, nil, 0, -1, seam7Dbg)
-	wantInternal(t, err, "flow signal with no enclosing loop")
+	at := func(col int) core.SrcPos { return core.SrcPos{Row: 1, Col: col, Src: "x"} }
+	one := core.NewInteger(1)
+	one.SetPos(at(4))
+	for _, c := range []struct {
+		op     compiler.Opcode
+		unit   int
+		origin flowOrigin
+		want   core.SrcPos
+		msg    string
+	}{
+		{compiler.OpFlowBreak, -1, flowOrigin{}, at(9), "break outside loop"},
+		{compiler.OpFlowContinue, 0, flowOrigin{}, at(7), "continue outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{results: []core.Value{one}}, at(4), "break outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{results: []core.Value{one}, at: at(2), atSet: true}, at(2), "break outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{atSet: true}, core.SrcPos{}, "break outside loop"},
+		{compiler.OpFlowBreak, 1, flowOrigin{}, core.SrcPos{}, "break outside loop"},
+	} {
+		vc := seam7VC(seam7Reg(t))
+		vc.p = &compiler.Program{FlowExits: map[int]compiler.FlowExit{0: {Next: at(9)}},
+			Fns: []compiler.CompiledFn{{FlowExits: map[int]compiler.FlowExit{0: {Next: at(7)}}}, {}}}
+		_, _, _, _, _, _, err := vc.flowSignal(c.op, nil, nil, nil, nil, 0, c.unit, seam7Dbg, c.origin)
+		var ae *core.BoruError
+		if !errors.As(err, &ae) || ae.Code != "flow_error" || ae.Detail != c.msg || ae.Row != c.want.Row || ae.Col != c.want.Col {
+			t.Errorf("%+v: want flow_error %q at %v, got %#v", c, c.msg, c.want, err)
+		}
+	}
+}
+
+// A hosted token body's escape hands back its residual (hostedResidual): the
+// body frame's own values, then a stand-in for the unstepped rest — an open
+// frame's or a nested group's positionless marker, the island's stand, the
+// token after a top-level op's run, or nothing when that run ends the body.
+func TestSeam7FlowSignalHostedResidual(t *testing.T) {
+	at := func(col int) core.SrcPos { return core.SrcPos{Row: 1, Col: col, Src: "x"} }
+	one, two := core.NewInteger(1), core.NewInteger(2)
+	for _, c := range []struct {
+		name   string
+		exit   compiler.FlowExit
+		frames []vmFrame
+		origin flowOrigin
+		want   []core.SrcPos // the residual's positions past the stack's two values
+		vals   int
+	}{
+		{"top, a token after", compiler.FlowExit{Next: at(5), Top: true}, nil, flowOrigin{}, []core.SrcPos{at(5)}, 2},
+		{"top, the body's end", compiler.FlowExit{Top: true}, nil, flowOrigin{}, nil, 2},
+		{"a nested group", compiler.FlowExit{Next: at(5)}, nil, flowOrigin{}, []core.SrcPos{{}}, 2},
+		{"an island's stand", compiler.FlowExit{Next: at(5), Top: true}, nil, flowOrigin{at: at(3), atSet: true}, []core.SrcPos{at(3)}, 2},
+		{"an open frame", compiler.FlowExit{Next: at(5), Top: true}, []vmFrame{{stackBase: 1}}, flowOrigin{}, []core.SrcPos{{}}, 1},
+	} {
+		vc := seam7VC(seam7Reg(t))
+		vc.p = &compiler.Program{FlowExits: map[int]compiler.FlowExit{0: c.exit}}
+		vc.flowEscapes = true
+		_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, c.frames, nil, nil, []core.Value{one, two}, 0, -1, seam7Dbg, c.origin)
+		fe, ok := err.(*flowEscape)
+		if !ok || fe.op != compiler.OpFlowBreak || len(fe.residual) != c.vals+len(c.want) {
+			t.Fatalf("%s: want an escape with %d value(s), got %#v", c.name, c.vals+len(c.want), err)
+		}
+		for i, p := range c.want {
+			if got := fe.residual[c.vals+i]; !got.Parent.Equal(core.TNone) || got.Pos() != p {
+				t.Errorf("%s: stand-in %d = %v at %v, want None at %v", c.name, i, got, got.Pos(), p)
+			}
+		}
+	}
 }
 
 // --- closure fn-value apply branches -------------------------------------
@@ -566,7 +663,7 @@ func TestSeam7DelegationApplySuccess(t *testing.T) {
 		t.Errorf("leading delegation cinc(5) = %d, want 6", n)
 	}
 	// callDynMethod: fn ON TOP, shape claim {NArgs:1, NOut:1}.
-	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
+	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
 	if err != nil {
 		t.Fatalf("method delegation apply: %v", err)
 	}
@@ -585,7 +682,7 @@ func TestSeam7DelegationApplyError(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynamic(vc.r, 1, false, []core.Value{fail, core.NewInteger(5)}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 }
 
@@ -671,7 +768,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 	// callDynamicMixed islands its window verbatim — a window that calls cfail
 	// errors through the island (the mixed island error arm).
@@ -681,7 +778,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 
 // TestSeam7MatchUserPolyUnitShapeMismatch drives the unit-shape guard: a
 // recorded arm whose Impl/arity still match the live table but whose compiled
-// unit index is out of range (a compile/run drift) is refused.
+// unit index is out of range (a compile/run drift) is declined.
 func TestSeam7MatchUserPolyUnitShapeMismatch(t *testing.T) {
 	r := seam7Reg(t)
 	core.InstallFnDef(r, "cpoly", core.FnDefInfo{

@@ -255,7 +255,7 @@ func TestCopyMoveOverwriteOption(t *testing.T) {
 	seed("src.txt", "new")
 	seed("dst.txt", "old")
 
-	// {overwrite:false} refuses an existing destination for copy and move.
+	// {overwrite:false} declines an existing destination for copy and move.
 	if err := runBoruError(t, r, []Value{
 		NewWord("copy"), pathV("src.txt"), pathV("dst.txt"),
 		wrapMap(func(om *OrderedMap) { om.Set("overwrite", NewBoolean(false)) }),
@@ -269,7 +269,7 @@ func TestCopyMoveOverwriteOption(t *testing.T) {
 		t.Error("move {overwrite:false} onto existing dst should error")
 	}
 	if body, _ := mem.ReadFile("dst.txt"); string(body) != "old" {
-		t.Errorf("refused overwrite still mutated dst: %q", body)
+		t.Errorf("declined overwrite still mutated dst: %q", body)
 	}
 
 	// An absent destination is fine under {overwrite:false}.
@@ -531,13 +531,13 @@ func TestCopyWord(t *testing.T) {
 	if li, err := mem.Stat("occupied.txt", false); err != nil || !li.Symlink || li.Target != "src.txt" {
 		t.Errorf("symlink copy did not overwrite = %+v (%v)", li, err)
 	}
-	// Overwriting a NON-EMPTY directory with a symlink still refuses (the
+	// Overwriting a NON-EMPTY directory with a symlink still declines (the
 	// Remove fails), the same as writing a file over a directory.
 	if err := mem.WriteFile("busydir/keep.txt", []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := runBoruError(t, r, []Value{NewWord("copy"), pathV("link"), pathV("busydir")}); err == nil {
-		t.Error("symlink copy over a non-empty dir should refuse")
+		t.Error("symlink copy over a non-empty dir should decline")
 	}
 	// copying a directory needs {recursive}.
 	if err := mem.WriteFile("tree/a.txt", []byte("1"), 0644); err != nil {

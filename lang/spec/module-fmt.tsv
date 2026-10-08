@@ -70,7 +70,7 @@ import "boru:fmt" import "boru:minilang" end (Fmt.tree "def x 1") mini sp 'count
 # Stage-3 fn-value dispatch (landed 2026-07-21): the declarative-formatter
 # driver shape — a rule fn FETCHED from a Map at runtime and applied to the
 # waiting node — COMPILES via the whole-frame dynamic-apply replay
-# (OpCallDynFrame), where before it refused "result above a literal". These
+# (OpCallDynFrame), where before it declined "result above a literal". These
 # rows use a CONCRETE string key (`m get "inc"`) so they also check clean; the
 # end-to-end dispatch-by-Fmt.kind demo (a dynamic ATOM key, which trips a
 # pre-existing `get (Map, dynamic(Atom))` checker false-positive) is pinned by

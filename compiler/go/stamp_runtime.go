@@ -2,7 +2,7 @@ package compiler
 
 import core "github.com/boru-lang/boru/core/go"
 
-// Runtime (detached) fn-unit stamping — design/RUNTIME-STAMPING.0.md.
+// Runtime (detached) fn-unit stamping — design/legacy/RUNTIME-STAMPING.0.ignore.
 //
 // The compile-time store-fn bake (RecordCallOperands → compileStoredFnUnit →
 // stampCompiledRef) stamps a CompiledFnRef only onto a fn value that is a
@@ -15,7 +15,7 @@ import core "github.com/boru-lang/boru/core/go"
 // StampDetachedFn closes that gap: it compiles such a body to a standalone
 // one-unit *Program OUTSIDE any whole-program pass, on an isolated fork of
 // the live registry, and returns a ref the existing InvokeCallback seam runs
-// via RunUnit / runUnitNested with zero changes to its happy path. Refusal
+// via RunUnit / runUnitNested with zero changes to its happy path. Compile failure
 // is silent and per-body — the caller keeps the plain value and the
 // interpreter behaviour is byte-identical (slow, never wrong).
 //
@@ -33,7 +33,7 @@ import core "github.com/boru-lang/boru/core/go"
 // and the module-load sweep use (their values are single-overload by
 // construction). Multi-overload values stamp EVERY own sig through the
 // value-level loops (StampFnValue / StampFnValueInPlace →
-// StampDetachedSig, REFUSAL-CLOSURE §7b).
+// StampDetachedSig, COMPILE FAILURE-CLOSURE §7b).
 func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*CompiledFnRef, bool) {
 	si, ok := firstStampableSig(fd)
 	if !ok {
@@ -49,15 +49,28 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // fd.Signatures[sigIdx]'s body to a standalone one-unit Program and returns
 // its CompiledFnRef. It runs only when runtime stamping is armed on r
 // (EnableRuntimeStamping — the compiled execution entry points). The compile
-// is fully isolated: it runs on a ForkConcurrent copy of r carrying a FRESH
-// CheckState (Registry.Check is a shared pointer the fork's shallow copy
-// would otherwise alias — the compile pass must not touch the parent's live
-// check state). Refusal returns (nil, false) and leaves r untouched.
+// is fully isolated: it runs on a ForkConcurrent copy of r, which carries
+// its own fresh CheckState (the compile pass must not touch the parent's
+// live check state). Compile failure returns (nil, false) and leaves r untouched.
 //
 // The caller contract is ForkConcurrent's: invoke from the goroutine that
 // owns r (store words and codec resolution run on the registry executing
 // them, so this holds at every trigger site).
 func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos) (*CompiledFnRef, bool) {
+	return stampDetachedSig(r, fd, sigIdx, pos, false)
+}
+
+// stampDetachedSig is StampDetachedSig with the unit's KEEP-DEFS mode:
+// keepsDefs marks a TOKEN body stamp (StampTokenBody), whose unit is a
+// keep-defs unit exactly as a compile-time do/each body's is — its value
+// defs install as kept registry bindings that outlive the unit's RET
+// (CompiledFn.KeepsDefs), the leak the interpreter's InvokeBody delivers
+// for every token body (RunResolved on the shared registry, no def
+// cleanup): `def t 0 each [def t (t add 1) t] xs` over a gradual list read
+// 0 at every element, `[[1 1 1]]` for the interpreter's `[[1 2 3]]`
+// (NUR202). A fn VALUE's stamp keeps its frame-local defs — the
+// interpreter's CallBoru tears them down with the frame.
+func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos, keepsDefs bool) (*CompiledFnRef, bool) {
 	if r == nil || !r.RuntimeStampingEnabled() {
 		return nil, false
 	}
@@ -65,12 +78,15 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		return nil, false
 	}
 	fork := r.ForkConcurrent()
-	// Fresh check state: the fork's shallow copy aliases r.Check (a shared
-	// *CheckState); arming a compile pass on the alias would trash the
-	// parent's live diagnostics/emit state. Mirror NewRegistry's init
-	// (StepBudget sentinel -1, inactive recorder).
-	fork.Check = &core.CheckState{StepBudget: -1, Emit: core.TheInactiveEmit}
+	// The fork carries its OWN fresh check state (ForkConcurrent gives every
+	// fork one — a fork's shallow copy used to alias r.Check, and arming a
+	// compile pass on the alias would have trashed the parent's live
+	// diagnostics and emit state), so the compile pass is armed on it
+	// directly.
 	defer fork.Check.BeginCompilePass()()
+	// No call-site specialisation in a runtime stamp: a stamp that declines
+	// is dropped, not retried (CheckState.SpecOff).
+	fork.Check.SpecOff = true
 	// BeginCompilePass installs a concrete *EmitState; the two-value cast
 	// (never-failing here) keeps this panic-free without an unreachable
 	// guard branch — every EmitState method below is nil-receiver-safe and
@@ -81,7 +97,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// Detached compiles run in GRADUAL-Any nesting mode: an Any arg
 		// flowing into a nested callee's Any param binds a gradual carrier
 		// (see EmitState.storedGradualDepth), so a handler calling an
-		// `st:Any` helper that reads `st.kv` compiles instead of refusing
+		// `st:Any` helper that reads `st.kv` compiles instead of declining
 		// on the first field access. Safe here and only here — this fork
 		// owns its program and Finalize, so any gradual-caused failure is
 		// one silently declined stamp.
@@ -89,11 +105,21 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// Re-entrancy fence — see EmitState.inStampCompile. Measured before it
 		// existed: lang/go/modules went from 77s to not finishing.
 		es.inStampCompile = true
+		if keepsDefs {
+			// Armed at the root unit count: the unit compileStoredFnUnit opens
+			// next is the token body's (StartFnCompile stamps the unit opened
+			// at exactly this count, and only a body whose inputs are all
+			// unnamed — the seam's params).
+			es.keepDefsUnitDepth = len(es.units)
+			// And the live-args arm (liveArgsUnitDepth): the count once that
+			// unit is open, so only the body's own frame reads `args` live.
+			es.liveArgsUnitDepth = len(es.units) + 1
+		}
 	}
 	// An identity-less capture value (minted at pure runtime, where the
 	// mode-gated ID elision skips minting) cannot key its positional capture
-	// slot, so StartFnCompile's identity gate would refuse the unit
-	// (REFUSAL-CLOSURE.0 §7a). For a DETACHED unit the capture is per-ref
+	// slot, so StartFnCompile's identity gate would decline the unit
+	// (COMPILE FAILURE-CLOSURE.0 §7a). For a DETACHED unit the capture is per-ref
 	// and FROZEN — ref.Captures carries the construction-time snapshot — so
 	// minting a fresh identity on a CLONE of the captured slice is confined
 	// to this unit's compile: body reads resolve to the slot by the minted
@@ -116,11 +142,22 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// here), so the snapshot below describes exactly what the body resolved
 	// against — the analysis inside compileStoredFnUnit installs and restores
 	// its own body-local bindings.
-	deps := es.storedHandlerDeps(fd.Signatures[sigIdx].Body())
+	deps := es.storedHandlerDepsDeep(fd.Signatures[sigIdx].Body())
+	if keepsDefs {
+		// A name the KEEP-DEFS body defs itself is read live in its unit (the
+		// enclosing-binding lookup) and installed live (the kept
+		// OpBindDynScope), so the body's own rebinding of it is no staleness:
+		// left in the snapshot, `[def t (t add 1) t]` re-stamped at every
+		// element and, past the re-stamp budget, ran the rest on the
+		// interpreter (three entries over seven elements, measured).
+		for name := range bodyDefNames(fd.Signatures[sigIdx].Body()) {
+			delete(deps, name)
+		}
+	}
 	unit, ok := es.compileStoredFnUnit(fd, sigIdx, pos)
 	if !ok {
 		// The probe's latched reason when it gave one; the report printer
-		// substitutes a generic text for an empty reason (a refusal path
+		// substitutes a generic text for an empty reason (a compile failure path
 		// that never reached MarkUncompilable).
 		r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Reason: es.storedFnProbeReason})
 		return nil, false
@@ -142,7 +179,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// REACHABLE, sound per-body fallback. compileStoredFnUnit's probe/real
 		// passes only RECORD this body's events (and any nested fn as a
 		// sub-unit); they do not LOWER the recorded units. Finalize does — its
-		// per-unit lowering loop (emit.go, "fn <name>: " + reason) can refuse a
+		// per-unit lowering loop (emit.go, "fn <name>: " + reason) can decline a
 		// SUB-UNIT that the outer body's compile accepted. A runtime-constructed
 		// fn whose body defines a nested fn that consumes a loop result (Stage-2
 		// boundary: "consumes loop results") is the concrete case — the outer
@@ -166,12 +203,12 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// keeps "detached ref" distinguishable from "compile-time ref".
 		ref.DepSnap = map[string]DepSnapEntry{}
 	}
-	// Arm the JIT re-stamp box (REFUSAL-CLOSURE.0 §7c): the stamp inputs ride
+	// Arm the JIT re-stamp box (COMPILE FAILURE-CLOSURE.0 §7c): the stamp inputs ride
 	// the ref so a later dep rebind re-compiles against the live bindings at
 	// invoke time (jitRestamp) instead of degrading permanently to CallBoru.
 	// fd here carries the §7a identity-minted capture clone, so a re-stamp
 	// needs no re-clone.
-	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos}
+	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs}
 	r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Stamped: true})
 	return ref, true
 }
@@ -182,14 +219,14 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 // CallBoru, which resolves the live binding exactly as the interpreter.
 const RestampMaxTries = 3
 
-// jitRestamp is InvokeCallback's stale-ref recovery (REFUSAL-CLOSURE.0 §7c):
+// jitRestamp is InvokeCallback's stale-ref recovery (COMPILE FAILURE-CLOSURE.0 §7c):
 // when a detached ref's DepSnap no longer matches the live def table, re-run
 // StampDetachedFn against the CURRENT bindings and return the fresh twin —
 // each re-stamp snapshots the new generations, so a stable rebind pays one
 // compile and then runs on the VM again. Returns nil when the seam should
 // take the interpreter instead: a compile-time ref (no box), an exhausted
 // try budget, or a declined re-stamp (stamping disarmed, the body now
-// refusing). The box mutex serialises concurrent invokers of one shared sig
+// declining). The box mutex serialises concurrent invokers of one shared sig
 // — the winner compiles, the rest reuse its twin; StampDetachedFn itself
 // runs on the CALLER's registry per its ForkConcurrent contract.
 func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
@@ -206,7 +243,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 		return nil
 	}
 	box.Tries++
-	nr, ok := StampDetachedSig(r, box.fd, box.sigIdx, box.pos)
+	nr, ok := stampDetachedSig(r, box.fd, box.sigIdx, box.pos, box.keepsDefs)
 	if !ok {
 		return nil
 	}
@@ -221,7 +258,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 // const), and mutating its shared *BoruImpl from a store word would race
 // concurrent readers; the compile-time stampCompiledRef mutates only
 // pre-publication interned consts. On any decline (not a fn value, already
-// stamped, capturing, ineligible shape, refusing body, policy off) it
+// stamped, capturing, ineligible shape, declining body, policy off) it
 // returns the input unchanged with ok=false, so callers may use the returned
 // value unconditionally.
 func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
@@ -229,7 +266,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	if !ok {
 		return v, false
 	}
-	// Refuse an already-stamped value wholesale (first stamp wins: a
+	// Decline an already-stamped value wholesale (first stamp wins: a
 	// compile-time stamp or an earlier detached one already carries the VM
 	// edge for the sigs it accepted; re-stamping is the §7c box's job).
 	//
@@ -249,7 +286,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 		}
 	}
 	// EVERY stampable own sig compiles to its OWN unit and ref
-	// (REFUSAL-CLOSURE §7b): the callback seam dispatches through
+	// (COMPILE FAILURE-CLOSURE §7b): the callback seam dispatches through
 	// MatchFnSig, so the matched sig's Impl ref is the sig table. A sig
 	// whose body declines stays plain and interprets — per-sig, fail-safe.
 	// The sig slice clones once (and each stamped impl clones) so the stamp
@@ -276,9 +313,9 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 			sigs = make([]core.Signature, len(fd.Signatures))
 			copy(sigs, fd.Signatures)
 		}
-		na := *(sigs[i].Impl.(*core.BoruImpl))
-		na.Compiled = ref
-		sigs[i].Impl = &na
+		na := sigs[i].Impl.(*core.BoruImpl).Clone()
+		na.SetCompiled(ref)
+		sigs[i].Impl = na
 	}
 	if sigs == nil {
 		// Nothing stamped: a Go-backed / fallback-only value (a built-in
@@ -310,7 +347,7 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 	}
 	// Per-sig stamps onto the value's own shared impls (pre-publication —
 	// see the doc above): every stampable own sig gets its own ref
-	// (REFUSAL-CLOSURE §7b); a declining body leaves that sig plain.
+	// (COMPILE FAILURE-CLOSURE §7b); a declining body leaves that sig plain.
 	// The defining registry compiles the body — see StampFnValue.
 	homeIP, _ := core.FnHome(r, &fd)
 	any := false
@@ -322,8 +359,192 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 		if !ok {
 			continue
 		}
-		fd.Signatures[i].Impl.(*core.BoruImpl).Compiled = ref
+		fd.Signatures[i].Impl.(*core.BoruImpl).SetCompiled(ref)
 		any = true
 	}
 	return any
+}
+
+// stampDeclined is the marker LazyStampFnSig leaves in a body's compiled slot
+// when its detached stamp declined: the next application finds the marker
+// and takes the interpreter without paying the compile again. It is not a
+// *CompiledFnRef, so CompiledRef reads the slot as "no ref" and a later
+// compile-time stamp (which tests CompiledRef, not the raw slot) may still
+// replace it.
+type stampDeclined struct{}
+
+// LazyStampFnSig is the detached stamp made universal (S1b of
+// design/FULL-COMPILATION-REPLAN.0.md, the review's §3.3 "unit half"): a fn
+// VALUE applied through a runtime seam — a callback handed to each/fold/scan
+// through InvokeBody, a value InvokeCallback is about to fall back on —
+// obtains a compiled unit for the sig the application matched, NOW, compiled
+// at the value's home, and keeps it on the sig's shared impl so every later
+// application of the same value (a container field read again, a module
+// export applied in a loop) finds it without a second compile. The memo is
+// the value itself: the impl is shared by every copy of the Value that
+// carries the fn, and the slot is atomic (core.BoruImpl), so a fork applying
+// the same value concurrently reads either nothing or a whole ref.
+//
+// Returns the ref to run, or nil when the seam keeps the interpreter: the
+// sig is not a boru body, runtime stamping is not armed on r, the body is
+// not stampable, or the stamp declined (remembered on the slot). A declined
+// stamp is per value, not per application — the interpreter behaviour is
+// byte-identical either way (slow, never wrong).
+func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) *CompiledFnRef {
+	impl, ok := sig.Impl.(*core.BoruImpl)
+	if !ok {
+		return nil
+	}
+	if slot := impl.Compiled(); slot != nil {
+		ref, _ := slot.(*CompiledFnRef)
+		return ref // stamped already, or declined and remembered
+	}
+	if r == nil || !r.RuntimeStampingEnabled() {
+		return nil
+	}
+	idx := -1
+	for i := range fd.Signatures {
+		if fd.Signatures[i].Impl == sig.Impl {
+			idx = i
+			break
+		}
+	}
+	// A body that mutates the registry when run — a capitalised def, an
+	// import — is never stamped lazily: the detached compile pass RUNS the
+	// body in check mode, and the type it would mint or the module it would
+	// load leaks into the live registry the value is about to be applied on
+	// (measured: `def T (class {})` in a callback body raised the name
+	// conflict at the FIRST element, one call early). The compile-time seat
+	// has the same rule (bodyHasReplayHazard, the dyn-body seat).
+	if idx < 0 || !storedSigEligible(sig) || bodyHasReplayHazard(core.NewList(sig.Body())) {
+		impl.SetCompiled(stampDeclined{})
+		return nil
+	}
+	// The defining registry compiles the body, as every value-level stamp
+	// does (StampFnValue): a module export's free words resolve where it was
+	// written.
+	home, _ := core.FnHome(r, &fd)
+	ref, ok := StampDetachedSig(home, fd, idx, pos)
+	if !ok {
+		impl.SetCompiled(stampDeclined{})
+		return nil
+	}
+	impl.SetCompiled(ref)
+	return ref
+}
+
+// StampTokenBody is the run-time stamp of a TOKEN body (S3's first slice,
+// 2026-09-24): a quoted list a native hands the InvokeBody seam at run time
+// — read from a flex, returned by a fn, passed as a List param — that the
+// program could not lower because the body did not exist until it ran, so
+// the seam stepped it on a pooled sub-engine once per application (the
+// interp-entry census's code-bodies.tsv, twenty-one rows). The body
+// becomes the one signature of a synthetic anonymous fn — one unnamed param
+// per seam input, in stack order, typed by the input the seam holds (the
+// VM keys the unit by those types), over the tokens — and takes
+// the detached stamp every fn value takes (StampDetachedSig: compiled on a
+// fork of r against r's live bindings, its free words snapshotted for the
+// freshness dance), so the VM hosts the unit where it stepped the tokens.
+// The same hazards that keep a fn body from the lazy stamp keep a token
+// body: a body that mutates the registry when run (bodyHasReplayHazard —
+// the compile pass RUNS it in check mode) and a flow sentinel (break /
+// continue / return, storedSigEligible's rule). ok=false is the seam's
+// interpreter path, byte-identical to before.
+func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Type, pos core.SrcPos) (*CompiledFnRef, bool) {
+	if r == nil || !r.RuntimeStampingEnabled() || len(tokens) == 0 || bodyHasReplayHazard(core.NewList(tokens)) || bodyUndefs(tokens) {
+		return nil, false
+	}
+	params := make([]core.FnParam, len(inputTypes))
+	for i, t := range inputTypes {
+		if t == nil {
+			t = core.TAny
+		}
+		params[i] = core.FnParam{Type: t}
+	}
+	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
+	return stampDetachedSig(r, fd, 0, pos, true)
+}
+
+// bodyUndefs reports whether a token body unbinds a name with `undef`, in a
+// nested list or group included (NUR267). The stamp compiles the body as a
+// detached fn unit, whose frame does not model an unbind of a binding it
+// did not make — the interpreter's `do` runs the body in its caller's scope,
+// where the unbind takes effect — so a read after it answered the value the
+// name held before: `[undef x x]` over `def x 99` was 99 compiled, where the
+// interpreter raises `undefined word: x`, and `[def x 5 undef x x]` was 5 for
+// 99. Such a body stays the interpreter's, as every declined body does.
+func bodyUndefs(tokens []core.Value) bool {
+	for _, tok := range tokens {
+		switch d := tok.Data.(type) {
+		case core.WordInfo:
+			if d.Name == "undef" {
+				return true
+			}
+		case core.ListPayload:
+			if bodyUndefs(d.Elems) {
+				return true
+			}
+		case core.ParenExprPayload:
+			if bodyUndefs(d.Toks) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// bodyDefNames collects the names a token body binds with `def` (and the
+// `var` splice's declarations), nested lists included: the names whose
+// rebinding by the body is the body's own act, not a dependency moving
+// under a keep-defs stamp (stampDetachedSig).
+func bodyDefNames(tokens []core.Value) map[string]bool {
+	names := map[string]bool{}
+	var walk func(toks []core.Value)
+	addDecl := func(decl core.Value) {
+		switch {
+		case core.IsWord(decl):
+			w, _ := core.AsWord(decl)
+			names[w.Name] = true
+		case decl.Parent.Equal(core.TList) && core.IsConcrete(decl):
+			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Get(0)) {
+				w, _ := core.AsWord(dl.Get(0))
+				names[w.Name] = true
+			}
+		case decl.Parent.ConformsTo(core.TString):
+			s, _ := core.AsString(decl)
+			names[s] = true
+		}
+	}
+	walk = func(toks []core.Value) {
+		for i, tok := range toks {
+			if core.IsWord(tok) {
+				w, _ := core.AsWord(tok)
+				switch w.Name {
+				case "def":
+					if i+1 < len(toks) && core.IsWord(toks[i+1]) {
+						nw, _ := core.AsWord(toks[i+1])
+						names[nw.Name] = true
+					}
+				case "var":
+					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(toks[i+1]) {
+						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Get(0)) {
+							if decls, err := core.AsList(vl.Get(0)); err == nil {
+								for _, d := range decls.Slice() {
+									addDecl(d)
+								}
+							}
+						}
+					}
+				}
+				continue
+			}
+			if tok.Parent.Equal(core.TList) && core.IsConcrete(tok) {
+				if l, err := core.AsList(tok); err == nil {
+					walk(l.Slice())
+				}
+			}
+		}
+	}
+	walk(tokens)
+	return names
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // ParseTLSOpts reads a guest `tls: {…}` option map into a resolved
-// TLSProfile, per design/NETWORK-TLS-PLAN.0.md §4.3. One parser serves
+// TLSProfile, per design/legacy/NETWORK-TLS-PLAN.0.ignore §4.3. One parser serves
 // every call site (fetch today, connect-raw next) so the two cannot
 // drift apart.
 //
@@ -244,7 +244,7 @@ func CheckTLSPolicy(r *Registry, p capabilities.TLSProfile, host string, port in
 // own op rather than `client-cert`. The two are different authorities:
 // a client certificate proves who a program is when it calls out, while
 // a server certificate lets it answer AS a service on the network — a
-// deployment may well grant one and refuse the other. `require-client:`
+// deployment may well grant one and decline the other. `require-client:`
 // is ungated for the same reason `ca:` is on the dial side: demanding a
 // client certificate narrows who may connect, it never widens it.
 func CheckServerTLSPolicy(r *Registry, p capabilities.ServerTLSProfile, host string, port int) error {

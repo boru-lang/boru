@@ -67,7 +67,7 @@ func TestRegionCollectEmitsTheMarkAndCollect(t *testing.T) {
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("refused: %s", reason)
+		t.Fatalf("declined: %s", reason)
 	}
 	dis := prog.Disassemble()
 	if !strings.HasPrefix(dis, "0000 STACK_MARK") {
@@ -86,7 +86,7 @@ func TestRegionCollectEmitsTheMarkAndCollect(t *testing.T) {
 // TestRegionCollectDeclinesAMixedListLiteral — the scope line. A list literal
 // with any element BESIDE the region would need its other elements seated
 // either side of a run whose length is a runtime value; the collect closes
-// only the whole-run case, so these keep the pre-existing refusal with the
+// only the whole-run case, so these keep the pre-existing compile failure with the
 // interpreter's answer intact.
 func TestRegionCollectDeclinesAMixedListLiteral(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
@@ -101,7 +101,7 @@ func TestRegionCollectDeclinesAMixedListLiteral(t *testing.T) {
 				t.Fatal("a list literal that is not the whole run must decline the collect")
 			}
 			if err == nil || !strings.Contains(err.Error(), "consumes loop results") {
-				t.Fatalf("refusal reason drifted: %v", err)
+				t.Fatalf("compile failure reason drifted: %v", err)
 			}
 			if got := rpInterp(t, tc.src); got != tc.want {
 				t.Errorf("interpreter %s, want %s", got, tc.want)

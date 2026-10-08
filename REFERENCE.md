@@ -299,9 +299,17 @@ arriving at a paren:
 - **dot access** still calls: `m.fn 5` and `MathUtil.sqrt 16` lower to a
   reach group whose re-step *is* the dispatch.
 
-### Template-string escapes
+### String escapes
 
-`\\`, `` \` ``, `\$`, `\n`, `\t`, `\r`. Use `\$` for a literal `${`.
+One escape vocabulary for every string form — `"…"`, `'…'` and a backtick
+template: `\n` `\t` `\r` `\b` `\f` `\v`; `\xHH` (two hex digits);
+`\uHHHH` (four hex digits — a surrogate pair split across two such escapes
+is one code point); `\u{H…}` (1–6 hex digits, up to `10FFFF`); any other
+character after `\` is that character (`\\`, `\"`, `` \` ``, `\$`, `\z`).
+A malformed `\x` / `\u` escape is a syntax error in every form, naming the
+escape (`invalid ascii escape: \xZZ`). In a template, use `\$` for a
+literal `${`. An empty hole (`${}`, `${ }`) holds no expression and
+contributes nothing: `` `x${}y` `` is the string `'xy'`.
 
 ### Word modifiers
 
@@ -325,9 +333,11 @@ with nothing, and digits form one contiguous run. When `q` is present
 the result is an atom and any companion shape letters are ignored. An
 **invalid combination spelled from the modifier letters** (`add/fs`,
 `foo/qv`, `add/1f2`) is a loud `[boru/syntax_error]` — never a silent
-fall-through. A suffix containing any other character is not a modifier
-at all: the whole token is one plain word, which is how the full type
-paths (`Scalar/Number/Integer`) parse.
+fall-through. A modifier with **nothing before it** (`/s` alone, `/v 1`)
+is a syntax error too (`` `/s` modifies nothing ``). A suffix containing
+any other character is not a modifier at all: the whole token is one
+plain word, which is how the full type paths (`Scalar/Number/Integer`)
+parse.
 
 <!-- boru-test: skip -->
 ```
@@ -477,7 +487,7 @@ Any
 ├── Scalar
 │   ├── Atom
 │   ├── Boolean                     -- false | true
-│   ├── Bytes                       -- byte string (`0x…` literals)
+│   ├── Bytes                       -- byte string (no literal: `convert Bytes "…"`)
 │   ├── Number
 │   │   ├── Integer                  -- signed int64 (overflow → error)
 │   │   ├── Float                    -- IEEE-754 binary64
@@ -603,6 +613,7 @@ value your **source** wrote:
 
 ```
 {a:1} dot b                   # returns None — engine-produced absence
+{a:1}.b.c                     # returns None — a read THROUGH a missing member stays None
 {a:none}                      # returns {a:none} — source-written value
 def P refine Record [name:String nick:(String tor none)]
 make P {name:"Bob"}           # returns {name:'Bob' nick:None}
@@ -1048,6 +1059,27 @@ justification weight as a new init-time panic — NUR023):
   clause lowers to `if (v match __casematch) …`), always fed by the
   synthesized chain's stack discipline. The `__` prefix marks it
   internal; it is describable but not meant for direct calls.
+- `__casesubject` and `__casestack` — the same desugar's scrutinee
+  step, recorded ahead of the chain when the compile pass holds the
+  scrutinee abstractly and it may be a list at run time (NUR291):
+  `__casesubject` applies `case`'s own rule (a list runs as a code
+  body and its last result is the scrutinee), and `__casestack`, for
+  the stack form, passes a value that is not a list and defers on one.
+  Each takes the value the chain already holds, so they are stack-only
+  for the reason `__casematch` is; internal in the same way.
+- `__arm` — the compiled `if`'s reading of a computed List arm
+  (NUR293): the arm's splice, which runs a code body and propagates its
+  error where `do` would trap it, and passes a typed list or a table as
+  the arm's one value. Internal as above.
+- `__codeguard` and `__condguard` — the compiled `if`'s guards over an
+  arm and a condition the compile pass holds abstractly that may be a
+  list at run time (NUR292). Each passes any other value. The
+  interpreter runs such a list as code there: `__condguard` answers a
+  list of plain values (numbers, strings, booleans, atoms, lists) with
+  its last one, as the condition's inline run does, and raises the
+  interpreter's "no value" on an empty one; `__codeguard` answers a
+  one-value plain list with that value, as the arm's paren splice
+  places it. Any other list defers. Stack-only and internal as above.
 
 ### Arithmetic
 
@@ -1382,7 +1414,7 @@ restricted words refuse. See
 > Integer [add nn x])]` then `def c (mkc n)` snapshots today's `n`
 > permanently. Pinned in `lang/spec/frontier/frontier-hof-audit.tsv`
 > §8; recorded as NUR097, and discussed with the cross-language
-> positioning in `design/HIGHER-ORDER-FUNCTIONS.0.md` §5.6.
+> positioning in `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.6.
 
 #### Splices and spread — `word`
 
@@ -1570,7 +1602,9 @@ The signature spellings:
 
 The body must be **one** token — wrap multi-token bodies as `[…]` or
 `(…)`, both captured as code and run per call (a bare-word body like
-`=> x` fails; write `=> [x]`). Chained arrows curry right-
+`=> x` fails; write `=> [x]`). An arrow with **no** body — the source
+ends, or `]` `)` `}` `,` `;` follows — is a syntax error on the arrow
+(`` `=>` has no body ``). Chained arrows curry right-
 associatively, as in `make-adder` above: each inner lambda is
 constructed at call time with the outer params bound and captured.
 The arrow produces exactly one signature with return type `Any`; for
@@ -1644,6 +1678,26 @@ def mkbad fn [[] [Big] [5]]
 mkbad                                              # returns [boru/type_error] return value 1: expected Big got Integer
 ```
 
+The comparison words refine every ordered scalar base — `Integer`,
+`Float`, `Number`, `String`, `Boolean`, `Atom` and `Bytes` (each type
+declares itself one) — and `between lo hi Base` builds the closed
+interval. A bound may be computed: `(Integer gt (size s))`, `(Bytes gte
+(convert Bytes "m"))`. As a VALUE (`x is (Integer gt (size s))`) such a
+refinement is built when the program runs, on both lanes. As a NAMED
+type (`def Pos (Integer gt (size s))`) it is installed when the program
+runs too — the compiled program installs it at the `def` from the bound
+the run computed — and a typed `def`, a parameter or return typed by that
+name, a class field and an overload set over it all check against the
+run's bound. An empty interval the run computes is `Never`. A typed `def`
+over an inline refinement (`def x:(Integer gt (size s)) 5`) checks
+against the run's bound as well, and so does a parameter or return type
+spelt inline (`[n:(Integer gt (size s))]`). An inline INTERVAL over a
+computed bound (`[n:(between 1 (size s) Integer)]`) does not compile yet,
+because the run may find it empty: `boru run` stops with a
+`compile_failed` ("compile-time word def"). Name the type to compile it.
+`convert Bytes` over a string literal is known at compile time, so
+`def Hi (Bytes gte (convert Bytes "m"))` needs none of this.
+
 The newtype-vs-subset distinction and its cross-language rationale are
 explained in **[Explanation: Function signatures](EXPLANATION.md#function-signatures-and-refinement-types)**
 and pinned in `design/REFINE-NEWTYPE-VS-SUBSET.10.md`.
@@ -1678,13 +1732,15 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]
 and `fnsig` do: `fnpred [[n:Integer] [eq 0 (mod 2 n)]]`.
 
 > **Say it with `fnpred`.** A capitalised `def` over a plain `fn` body —
-> `def Even fn n:Integer Boolean [...]` — also mints a predicate type, and
-> still works. But then the CASE of the name is what decides whether a body
-> is a callable function or a membership test, which is how `def I x:Integer
-> => [add 1 x]` silently becomes a type instead of a function: `I 5` places
-> the type node, never consumes the `5`, and exits 0. `boru check` reports
-> that shape as `stranded_type_call`. `fnpred` removes the guesswork —
-> lowercase names are functions, `fnpred` declares predicates.
+> `def Even fn n:Integer Boolean [...]`, or a lambda such as `def I
+> x:Integer => [add 1 x]` — is refused at the declaration with `def_error`.
+> It used to mint a predicate type, which let the CASE of the name decide
+> whether a body was a callable function or a membership test: `I 5` placed
+> the type node, never consumed the `5`, and exited 0. Now the rule is one
+> sentence — lowercase names are functions, `fnpred` declares predicates.
+> A declared predicate written as a call (`def Even fnpred … end Even 4`)
+> still strands its operand, and `boru check` reports that shape as
+> `stranded_type_call`.
 
 #### Recursion and tail calls
 
@@ -1833,11 +1889,12 @@ clear error rather than looping.
 
 ```
 def twice (macro [[e] [ quote [ unquote e add unquote e ] ]])
-macroexpand (twice 5)                 # returns [5 word(add) 5]
+macroexpand (twice 5)                 # returns [5 add 5]
 ```
 
-(The result is a *token list*: `add` shows as `word(add)` because it is an
-unevaluated word in the expansion, not a call yet.)
+(The result is a *token list*, spelled here as source: `add` is an
+unevaluated word in the expansion, not a call yet — the REPL marks it so by
+printing `word(add)`.)
 
 Macros are **define-before-use**: a macro must be defined before its call site
 is reached (using one earlier raises `undefined_word`). A macro referenced
@@ -2198,7 +2255,7 @@ iota 6 ArrayUtil.reshape [2,3]        # returns [[0 1 2] [3 4 5]]
 ### The `boru:fn-util` module
 
 The point-free function vocabulary
-(`design/HIGHER-ORDER-FUNCTIONS.0.md` §6.4). Every word takes function
+(`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §6.4). Every word takes function
 VALUES — pass a named fn as `name/v` (or a bare name into the
 `Function`-typed slots) — and the constructors return ordinary
 first-class `Function` values: storable, passable, applied like any fn.
@@ -3087,8 +3144,8 @@ One-shot commands (run and exit):
 
 | Subcommand | Purpose | Key flags |
 |------------|---------|-----------|
-| `run` / `boru [script]` | Execute a script, `-e` expression, or (no args) the REPL | `-e`, `-check`, `-compile`, `-options`, `--perms`, `--allow`/`--deny` |
-| `do <words…>` | Evaluate the arguments as one boru expression and print the result | `--perms`, `--allow`/`--deny`, `--compile` |
+| `run` / `boru [script]` | Execute a script, `-e` expression, or (no args) the REPL | `-e`, `-check`, `-options`, `--perms`, `--allow`/`--deny` |
+| `do <words…>` | Evaluate the arguments as one boru expression and print the result | `--perms`, `--allow`/`--deny` |
 | `check [script]` | Static type-check; print diagnostics | `--json`, `--soft`, `--emit`, `-e` |
 | `fmt [file…]` | Format `.boru` files in place (whole tree if no args) | — |
 | `describe [name]` | Document a word, category, or module (the *language*) | — |
@@ -3170,9 +3227,12 @@ and the REPL). A *policy* is a set of allow/deny rules over
 | `--allow-global <cap>` | Raise a global hard cap (repeatable) |
 | `--deny-global <cap>` | Lower a global hard cap (repeatable) |
 
-Environment fallbacks: `BORU_POLICY`, `BORU_POLICY_FILE`. Bytecode
-compilation: `-compile` / `BORU_COMPILE` enable it, `BORU_NO_COMPILE`
-disables.
+Environment fallbacks: `BORU_POLICY`, `BORU_POLICY_FILE`.
+
+Bytecode compilation has no flags and no environment variables. Every
+program is compiled and run; one that does not compile is an error naming
+the construct, and there is no interpreter to select instead (see
+[CLI.md](CLI.md#bytecode-compilation)).
 
 ### Exit codes
 

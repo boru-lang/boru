@@ -21,7 +21,7 @@ func runOne(t *testing.T, src string) []any {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	result, err := a.Run(src)
+	result, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("run %q: %v", src, err)
 	}

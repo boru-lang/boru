@@ -67,15 +67,15 @@ import "boru:array-util"  ArrayUtil.group ['a' 'b' 'a'] [1 2 3]	{a:[1 3] b:[2]}	
 import "boru:array-util"  (ArrayUtil.group ['a' 'b' 'a'] [1 2 3]) get 'a'	[1 3]	the key the caller supplied reads the group back — the map key is the string's CONTENT
 import "boru:array-util"  keys (ArrayUtil.group ['a' 'b'] [1 2])	['a' 'b']	…and the key set is exactly the supplied keys, carrying no render quoting
 import "boru:array-util"  def S (refine String) end def k:S 'a' end ArrayUtil.group [k 'a'] [1 2]	{a:[1 2]}	a refined String is deq to its plain twin and groups with it, under the shared content key
-# The two NUR030 folds, now REFUSED rather than folded. Both rows flipped
+# The two NUR030 folds, now DECLINED rather than folded. Both rows flipped
 # 2026-08-15 with the fix: the first was the deq-distinct collision that
 # opened the record, the second the non-reflexive key it also absorbed.
 import "boru:array-util"  ArrayUtil.group [Integer Integer/q]	ERROR:grouping keys must be Strings	a type literal and a same-named atom no longer collide — neither can be a key at all (NUR030)
 import "boru:array-util"  ArrayUtil.group [nan nan] [1 2]	ERROR:grouping keys must be Strings	NaN is FORBIDDEN as a key rather than folded; was {nan:[1 2]} (NUR030)
 import "boru:array-util"  ArrayUtil.group [1 2 3]	ERROR:grouping keys must be Strings	the 1-arg form loses generality by design — convert first (NUR030)
-import "boru:array-util"  ArrayUtil.group [1 2] ['a' 'b']	ERROR:grouping keys must be Strings	the 2-arg form refuses a non-String key too
+import "boru:array-util"  ArrayUtil.group [1 2] ['a' 'b']	ERROR:grouping keys must be Strings	the 2-arg form declines a non-String key too
 import "boru:array-util"  ArrayUtil.group [none] [1]	ERROR:grouping keys must be Strings	none is not a String either
-import "boru:array-util"  ArrayUtil.group ['a' 1] [1 2]	ERROR:grouping keys must be Strings	a single bad key in an otherwise-String list is refused
+import "boru:array-util"  ArrayUtil.group ['a' 1] [1 2]	ERROR:grouping keys must be Strings	a single bad key in an otherwise-String list is declined
 #
 # §4  neighborhoods
 import "boru:array-util"  ArrayUtil.window 2 [1 2 3 4]	[[1 2] [2 3] [3 4]]	window: all contiguous slices of the given width

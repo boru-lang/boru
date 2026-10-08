@@ -126,7 +126,7 @@ func TestFetchMutualTLS(t *testing.T) {
 		t.Errorf("server saw subject %q, want boru-test-client", s)
 	}
 
-	// Without the identity: the server refuses the handshake.
+	// Without the identity: the server declines the handshake.
 	if _, noID := tlsFetch(t, r, ts.URL, tlsOpt("ca", NewString(serverCA))); noID == nil {
 		t.Error("a server requiring a client cert must reject a request without one")
 	}
@@ -229,7 +229,7 @@ func TestIdentityDeclineAndError(t *testing.T) {
 			return nil, nil
 		}))
 	// Declining leaves the server with no certificate to verify, so the
-	// handshake fails — but from the SERVER's refusal, not a nil deref.
+	// handshake fails — but from the SERVER's compile failure, not a nil deref.
 	if _, fErr := tlsFetch(t, r, ts.URL, tlsOpt(
 		"ca", NewString(serverCA), "identity", NewAtom("declines"),
 	)); fErr == nil {

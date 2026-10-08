@@ -672,7 +672,7 @@ func caseIvalContainsValue(iv caseIval, isInt bool, i int64, f float64) bool {
 // authoritative one. Deliberately NOT CheckAddUniqueDiagnostic: these
 // findings are static judgements, not guaranteed-runtime-error mirrors, so
 // they must not carry the RuntimeMirror exemption from the compile
-// pipeline's error refusal.
+// pipeline's error compile failure.
 func addCaseDiagnostic(r *Registry, code, detail string, pos SrcPos) {
 	for _, d := range r.Check.Diagnostics {
 		if d.Code == code && d.Row == pos.Row && d.Col == pos.Col &&

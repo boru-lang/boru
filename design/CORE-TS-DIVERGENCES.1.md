@@ -4,7 +4,7 @@
 [core/spec/divergent.tsv](../core/spec/divergent.tsv) · **Programme:**
 [GO-TS-PARITY.0.md](GO-TS-PARITY.0.md)
 
-Sibling: [CORE-GO-TS-DEFECTS.0.md](CORE-GO-TS-DEFECTS.0.md), the 2026-08-06
+Sibling: [legacy/CORE-GO-TS-DEFECTS.0.ignore](legacy/CORE-GO-TS-DEFECTS.0.ignore), the 2026-08-06
 read-only defect hunt. That one found 22 defects by READING the two cores
 against each other. This one found 135 by RUNNING them, and the two sets
 barely overlap — which is the first thing worth recording.

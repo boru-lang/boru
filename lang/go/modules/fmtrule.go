@@ -9,7 +9,7 @@ import (
 // formatter be written as a declarative boru rule table keyed by node kind —
 // the "template rules dispatched by node kind, apply recursion, document
 // output" model the design concludes is the natural boru expression of
-// formatting (design/fmt-module-and-xslt.0.md, "The XSLT investigation").
+// formatting (design/legacy/fmt-module-and-xslt.0.ignore, "The XSLT investigation").
 //
 // The two words are deliberately pure value→value transforms: they classify
 // a node and expose its children, leaving DISPATCH and RECURSION to ordinary

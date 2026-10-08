@@ -19,7 +19,7 @@
 # STATIC EXHAUSTIVENESS (design/case-exhaustiveness.0.md): `boru check`
 # requires a case's clauses to cover the scrutinee's static type — a
 # default-less case with a provably-uncoverable value is a check ERROR
-# (case_not_exhaustive), and `boru run` refuses such a program at
+# (case_not_exhaustive), and `boru run` declines such a program at
 # preflight. The default is NOT required when the type disjunctions are
 # met: the clauses cover every union alternative / enum member /
 # Boolean's true+false / the concrete scrutinee value. Coverage rules:

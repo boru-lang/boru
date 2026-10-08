@@ -171,14 +171,14 @@ func TestReplayable(t *testing.T) {
 		}
 	})
 
-	t.Run("an unnamed call is refused", func(t *testing.T) {
+	t.Run("an unnamed call is declined", func(t *testing.T) {
 		f := &StackForm{Ops: []Op{PushLit{V: core.NewInteger(1)}, unnamed}}
 		if err := Replayable(f); err != ErrUnnamedApply {
 			t.Errorf("Replayable = %v, want ErrUnnamedApply — an applied fn value has no name to re-invoke", err)
 		}
 	})
 
-	t.Run("an unnamed call NESTED in a Quote is refused", func(t *testing.T) {
+	t.Run("an unnamed call NESTED in a Quote is declined", func(t *testing.T) {
 		// The recursion arm: a quoted sub-program is still replayed, so an
 		// unreplayable op inside one is just as fatal as at the top level.
 		f := &StackForm{Ops: []Op{Quote{Body: &StackForm{Ops: []Op{unnamed}}}}}
@@ -190,7 +190,7 @@ func TestReplayable(t *testing.T) {
 	t.Run("a Quote of replayable ops is fine", func(t *testing.T) {
 		f := &StackForm{Ops: []Op{Quote{Body: &StackForm{Ops: []Op{named}}}}}
 		if err := Replayable(f); err != nil {
-			t.Errorf("Replayable = %v, want nil — the recursion must not refuse everything it walks", err)
+			t.Errorf("Replayable = %v, want nil — the recursion must not decline everything it walks", err)
 		}
 	})
 }

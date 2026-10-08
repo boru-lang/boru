@@ -7,7 +7,6 @@ package core
 // boru_error.go, and carrier_new.go.
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -40,55 +39,6 @@ func TestX5RegistryNoteEffect(t *testing.T) {
 	}
 }
 
-// x5FailWriter rejects every write.
-type x5FailWriter struct{}
-
-func (x5FailWriter) Write(p []byte) (int, error) { return 0, errors.New("closed") }
-
-func TestX5NoteEffectWriter(t *testing.T) {
-	l := &EffectLedger{}
-	var buf bytes.Buffer
-	w := noteEffectWriter{w: &buf, l: l}
-	if n, err := w.Write([]byte("hi")); n != 2 || err != nil {
-		t.Fatalf("write passes through, got n=%d err=%v", n, err)
-	}
-	if l.Count() != 1 {
-		t.Fatal("an accepted write marks the ledger")
-	}
-	// A rejected write provably emitted nothing.
-	fw := noteEffectWriter{w: x5FailWriter{}, l: l}
-	if n, err := fw.Write([]byte("hi")); n != 0 || err == nil {
-		t.Fatalf("rejected write, got n=%d err=%v", n, err)
-	}
-	if l.Count() != 1 {
-		t.Fatal("a rejected write must not mark the ledger")
-	}
-	if w.Unwrap() != &buf {
-		t.Fatal("Unwrap reaches the wrapped writer")
-	}
-}
-
-func TestX5ArmEffectFence(t *testing.T) {
-	r := x5reg(t)
-	var out, errOut bytes.Buffer
-	r.Output = &out
-	r.ErrOutput = &errOut
-	restore := r.ArmEffectFence()
-	if _, err := r.Output.Write([]byte("x")); err != nil {
-		t.Fatalf("fenced write: %v", err)
-	}
-	if _, err := r.ErrOutput.Write([]byte("y")); err != nil {
-		t.Fatalf("fenced err write: %v", err)
-	}
-	if r.Effects.Count() < 2 {
-		t.Fatalf("both writes count, got %d", r.Effects.Count())
-	}
-	restore()
-	if r.Output != &out || r.ErrOutput != &errOut {
-		t.Fatal("restore reinstates the original writers")
-	}
-}
-
 // --- tape.go --------------------------------------------------------------
 
 func x5Vals(n int) []Value {
@@ -110,7 +60,7 @@ func TestX5TapeResolveClampsToProgram(t *testing.T) {
 func TestX5TapeReloadTooSmall(t *testing.T) {
 	tp := NewTapeWith(x5Vals(2), TapeConfig{InitialSize: 2}, nil)
 	if tp.Reload(x5Vals(4000)) {
-		t.Fatal("a program larger than the backing array must refuse Reload")
+		t.Fatal("a program larger than the backing array must decline Reload")
 	}
 }
 

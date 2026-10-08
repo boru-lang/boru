@@ -4,7 +4,7 @@
 # would collect is an arrival BARRIER (committed via commitBarrierForward
 # or resolved from the stack), so consecutive dot-access calls each bind
 # their own arguments in source order. These rows are the value-returning
-# twin-call matrix: semantically green on the interpreter, compile-REFUSED
+# twin-call matrix: semantically green on the interpreter, compile-FAILED
 # on the pre-existing residual-ordering limitation ("dynamic value
 # precedes residual args (fn-value-call boundary)") — two dynamic call
 # results in one program residual exceed the Stage-1 lowering. Sound

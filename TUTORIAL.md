@@ -650,11 +650,12 @@ boru> twice 5                         # returns 10
 
 ```
 boru> def twice (macro [[e] [ quote [ unquote e add unquote e ] ]])
-boru> macroexpand (twice 5)           # returns [5 word(add) 5]
+boru> macroexpand (twice 5)           # returns [5 add 5]
 ```
 
-(It's a *token list* — `add` shows as `word(add)` because it's an
-unevaluated word in the expansion, not a call yet.)
+(It's a *token list*, spelled here as source — `add` is an unevaluated
+word in the expansion, not a call yet, which the REPL marks by printing it
+`word(add)`.)
 
 Because a macro sees its arguments as code, it can make new control
 forms. Here is an `unless` — `if`, but inverted — that takes its

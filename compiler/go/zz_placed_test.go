@@ -14,7 +14,7 @@ func TestS6aDynOutNativeOKFnValuedArgDeclines(t *testing.T) {
 	args := []core.Value{core.NewInteger(1)}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adyn", sig, args, outs) {
-		t.Error("a Function-typed arg slot must refuse the dyn-out bake")
+		t.Error("a Function-typed arg slot must decline the dyn-out bake")
 	}
 }
 
@@ -39,19 +39,53 @@ func TestS6aTryRecordPolyQuotedNonGetDeclines(t *testing.T) {
 	}
 	sig := &r.Lookup("s6apolyq").Signatures[0]
 	if tryRecordPoly(r, "s6apolyq", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
-		t.Error("a quoted-operand word other than get/getr/set/del must not poly")
+		t.Error("an UNDECLARED quoted-operand word must not poly")
 	}
 }
 
-// TestS6aTryRecordPolyQuotedDelAdmits is the POSITIVE twin of the decline
-// test above: `del` sits in the get/getr/set exemption family (one QuoteArg
-// — the inert Atom key — baked as a const operand; an unshadowable builtin
-// mutator), so an identically-shaped sig REGISTERED UNDER THE NAME `del`
-// must pass the quoted-operand gate and record the poly. The pairing pins
-// the admitted arm the same way the decline test pins the refused arm — a
-// regression that drops del from the exemption fails here, not silently in
-// a compiled corpus somewhere.
-func TestS6aTryRecordPolyQuotedDelAdmits(t *testing.T) {
+// TestS6aTryRecordPolyQuotedDeclarationAdmits is the POSITIVE twin of the
+// decline test above, and the pair now turns on a DECLARATION rather than a
+// word's name. `set`/`del` used to be admitted by setDelKernelSig (NUR057),
+// a by-name key; their quoted-receiver overloads declare CompileQuoteKey
+// instead, so the gate reads a contract about the operand. The two tests are
+// therefore the same signature shape under two arbitrary names: the one that
+// declares records the poly, the one that does not declines.
+//
+// The flag is CompileQuoteKey and not CompileQuoteInert on purpose. Reading
+// the wider quoteOperandInertOK here admits every CompileQuoteInert declarer,
+// `raise` among them, and a poly-recorded `raise` loses its divergence (the
+// poly event carries no sig) — measured, and the reason this gate tests the
+// narrow declaration.
+func TestS6aTryRecordPolyQuotedDeclarationAdmits(t *testing.T) {
+	r := newTestRegistry(t)
+	armEmit(r)
+	r.RegisterNativeFunc(core.NativeFunc{
+		Name: "s6apolyd",
+		Signatures: []core.Signature{{
+			Args:      []*core.Type{core.TAtom},
+			QuoteArgs: map[int]bool{0: true},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+				return nil, nil
+			}),
+			Returns: []*core.Type{}, BarrierPos: -1,
+			CompileEffect: core.CompileQuoteKey,
+		}},
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+	sig := &r.Lookup("s6apolyd").Signatures[0]
+	if !tryRecordPoly(r, "s6apolyd", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
+		t.Error("a sig DECLARING CompileQuoteKey must poly")
+	}
+}
+
+// TestS6aTryRecordPolyQuotedDelNameAloneDeclines is the negative that the
+// old by-name key could not express: an identically-shaped sig registered
+// under the name `del` but carrying NO declaration must decline. The name
+// is not the contract, and a regression that restored a name test would
+// pass the admit test above while failing here.
+func TestS6aTryRecordPolyQuotedDelNameAloneDeclines(t *testing.T) {
 	r := newTestRegistry(t)
 	armEmit(r)
 	r.RegisterNativeFunc(core.NativeFunc{
@@ -69,8 +103,8 @@ func TestS6aTryRecordPolyQuotedDelAdmits(t *testing.T) {
 		t.Fatalf("registration: %v", err)
 	}
 	sig := &r.Lookup("del").Signatures[0]
-	if !tryRecordPoly(r, "del", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
-		t.Error("del carries the get/getr/set quoted-operand exemption and must poly")
+	if tryRecordPoly(r, "del", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
+		t.Error("the name `del` alone must no longer admit — the declaration is the key")
 	}
 }
 
@@ -178,7 +212,7 @@ func TestS6aDynOutNativeOKFnValueDataDeclines(t *testing.T) {
 	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn"})}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adynv", sig, args, outs) {
-		t.Error("a concrete fn-valued arg must refuse the dyn-out bake")
+		t.Error("a concrete fn-valued arg must decline the dyn-out bake")
 	}
 }
 
@@ -248,7 +282,7 @@ func TestDriftWindowUnresolvableOperandDeclines(t *testing.T) {
 	}
 }
 
-func TestRecordCallRefusalComputedRangeList(t *testing.T) {
+func TestRecordCallCompileFailureComputedRangeList(t *testing.T) {
 	r := covRegistry(t, nil)
 	done := w8ArmCompile(t, r)
 	defer done()
@@ -258,8 +292,8 @@ func TestRecordCallRefusalComputedRangeList(t *testing.T) {
 	lst.ID = core.GenerateID(core.IDPrefixForType(core.TList))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, nout: 1, makeList: true}})
 	es.setProduced(lst, seq)
-	if !es.recordCallRefusal("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
-		t.Fatal("the computed-range-list arm must classify the refusal")
+	if !es.recordCallCompileFailure("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
+		t.Fatal("the computed-range-list arm must classify the compile failure")
 	}
 	if es.Compilable || !containsStr(es.Reason, "computed range list") {
 		t.Errorf("want the computed-range-list reason, got compilable=%v reason=%q", es.Compilable, es.Reason)
@@ -303,7 +337,7 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	}
 }
 
-func TestRecordDispatchOutcomeFnLocalFnRefusal(t *testing.T) {
+func TestRecordDispatchOutcomeFnLocalFnCompileFailure(t *testing.T) {
 	r := newTestRegistry(t)
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
@@ -314,14 +348,14 @@ func TestRecordDispatchOutcomeFnLocalFnRefusal(t *testing.T) {
 	}
 	if !strings.Contains(es.Reason, "fn-local fn `step`") ||
 		!strings.Contains(es.Reason, "for-each") {
-		t.Errorf("refusal reason = %q; want the fn-local-fn reason naming step and for-each", es.Reason)
+		t.Errorf("compile failure reason = %q; want the fn-local-fn reason naming step and for-each", es.Reason)
 	}
 }
 
 func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	// A dispatch a structured ReturnsFn hook already recorded (case's
 	// branch-chain desugar) lowered its clause bodies as inline events —
-	// not a leak path; the guard must not refuse it.
+	// not a leak path; the guard must not decline it.
 	r := newTestRegistry(t)
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
@@ -330,12 +364,12 @@ func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "case", sig, bodyArgs("step"), []core.Value{out}, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {
-		t.Errorf("already-produced dispatch hit the fn-local-fn refusal: %q", es.Reason)
+		t.Errorf("already-produced dispatch hit the fn-local-fn compile failure: %q", es.Reason)
 	}
 }
 
-func TestRecordDispatchOutcomeModuleScopeNotFnLocalRefused(t *testing.T) {
-	// The module-scope twin of the refusal test: whatever else the
+func TestRecordDispatchOutcomeModuleScopeNotFnLocalFailedToCompile(t *testing.T) {
+	// The module-scope twin of the compile failure test: whatever else the
 	// recording chain decides, the fn-local-fn reason must not fire.
 	r := newTestRegistry(t)
 	es := armEmit(r)
@@ -343,7 +377,7 @@ func TestRecordDispatchOutcomeModuleScopeNotFnLocalRefused(t *testing.T) {
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "for-each", sig, bodyArgs("step"), nil, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {
-		t.Errorf("module-scope callback hit the fn-local-fn refusal: %q", es.Reason)
+		t.Errorf("module-scope callback hit the fn-local-fn compile failure: %q", es.Reason)
 	}
 }
 

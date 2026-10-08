@@ -13,7 +13,7 @@ import (
 // handler expects a concrete value, and the AsConcreteX accessors are the
 // guard that turns that into a clean error instead of a zero value.
 
-// A DepScalar arriving in the name slot is refused, not silently read as
+// A DepScalar arriving in the name slot is declined, not silently read as
 // the empty string.
 func TestEnvLookupRejectsDepScalar(t *testing.T) {
 	r, err := DefaultRegistry()
@@ -26,7 +26,7 @@ func TestEnvLookupRejectsDepScalar(t *testing.T) {
 		t.Fatal("a String CONSTRAINT was accepted as an environment name")
 	}
 	if !strings.Contains(herr.Error(), "must be a String") {
-		t.Errorf("error = %v, want the name-type refusal", herr)
+		t.Errorf("error = %v, want the name-type compile failure", herr)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestExitRejectsDepScalar(t *testing.T) {
 		t.Fatal("an Integer CONSTRAINT was accepted as an exit code")
 	}
 	if !strings.Contains(herr.Error(), "must be an Integer") {
-		t.Errorf("error = %v, want the code-type refusal", herr)
+		t.Errorf("error = %v, want the code-type compile failure", herr)
 	}
 }
 

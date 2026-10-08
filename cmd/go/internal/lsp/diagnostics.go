@@ -36,7 +36,14 @@ func (s *server) publishDiagnostics(uri string) {
 // when the per-word diagnostic list is empty, so the editor shows
 // a marker for malformed buffers instead of clearing existing ones.
 func (s *server) computeDiagnostics(src string) []Diagnostic {
-	a, err := langNew(lang.Options{})
+	// The check RUNS an imported module's body, so the documented
+	// environment policy governs it as it governs a run (NUR079); a policy
+	// that cannot be resolved is the init failure below.
+	pol, err := envPolicy()
+	var a *lang.Boru
+	if err == nil {
+		a, err = langNew(lang.Options{Policy: pol})
+	}
 	if err != nil {
 		return []Diagnostic{{
 			Range:    Range{},

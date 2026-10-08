@@ -1,0 +1,194 @@
+# Failed function-value dispatch is an error
+
+**Status:** landed. Supersedes `design/legacy/ERRORS.8.ignore` §5 option 2 for both
+the runtime and the check contract; §5 stays as the record of how the
+previous mechanism got there.
+
+## 1. What was silent, and why it survived the last fix
+
+Plain word dispatch already hard-errors: `upper 99` is a `no_signature`
+error at the call. The leniency was reached only when the callee is a
+function **value** sitting on the tape — a module export reached through
+`dot`, a `usurp`ed value, a `FnDef` bound by `def` — because such a value
+must be able to sit on the stack as data for higher-order use.
+
+`execFnDefLiteral` therefore did not error when no signature matched. It
+marked the value `FailedDispatch` and deferred the judgement to the
+top-level end-of-`Run` drain, which raised `uncalled_function` only if the
+value was still on the tape when the program ended. That is ERRORS.8.ignore §5
+option 2, and for the shape it was written against it worked:
+
+```
+$ boru do 'import "boru:io"  IO.read "/nonexistent"'
+error: [boru/uncalled_function]: call to 'read' matched no signature
+```
+
+**The gap was the word "consumed".** The drain fired only on residue, and
+*any* consumer cleared it — not just a higher-order one. So a slot typed
+`Any`, or a plain `print`, absorbed the failed call and the program
+succeeded:
+
+```
+$ boru do 'import "boru:io"  print (IO.read "/nonexistent")'
+fn read(Pathon, Map) or (Pathon) or (StreamKind, Map) or …
+/nonexistent
+$ echo $?
+0
+```
+
+The program printed the *function* and its own argument, and exited 0.
+`boru check` on the same source reported `0 error(s), 0 warning(s)` — the
+check arm inherited the same deferral, so neither surface named it.
+
+This is not a corner case invented for the note: it is why
+`IO.read "/nonexistent"` — the String spelling of a shipped module word,
+the first thing a newcomer writes — succeeded silently instead of raising.
+The same shape produced a wrong measurement inside this project's own
+planning session (a `for-each` whose lambda was absorbed as a body
+argument ran zero iterations, printed nothing, and exited 0).
+
+## 2. Decision
+
+**A function value that fails dispatch with candidate arguments present
+raises, at the dispatch site.** Composition that wants the value as data
+says so explicitly: `f/r` (or `quote f`). The residue drain stops being
+the arbiter of intent, because "nothing consumed it" is not evidence of
+intent — it is evidence of nothing.
+
+What stays lenient, unchanged:
+
+- **No candidates.** A bare reference with nothing around it is a value,
+  not a call (`len(candidates) > 0` already guards this).
+- **Explicitly inert.** `/r` and `quote` set `Quoted`; those never
+  dispatch, so they never fail dispatch.
+- **Anonymous lambdas.** An anonymous Function value with no matched
+  positions is data by construction (the `def f ([] => [body])` rule).
+- **A fn value alone inside a reach-lowered group.** `Mod.word arg`
+  lowers to `( Mod dot word ) arg`; the group RESOLVES the word and the
+  call happens outside it, so there is no failed dispatch to report
+  inside the group. (The engine fix for that is already landed; without
+  it every module word with a 0-arg overload would raise here.)
+
+The cost is real and is accepted: a composition that relied on a failed
+dispatch leaving a value behind must be re-spelled with `/r`. The
+`(Sort.by-number Sort.reverse)` comparator composition the engine comment
+cites as the reason for the deferral **does not exist in this repository**
+(`Sort` is not a defined word; zero hits across `*.md`, `*.boru`, `*.tsv`),
+so the migration cost is the in-repo pins inventoried in §4 — not
+user-facing library code.
+
+## 3. Two arms, one commit
+
+**Runtime: the error is returned from the dispatch site.** No
+`lang.Options.StrictDispatch` gate. The plan called for one, so that the
+default could flip in a second commit once the corpus was migrated; the
+measurement below made the gate pointless — the in-repo fallout is seven
+pinned sites, no library code — and a permanent lenient mode would keep the
+silent footgun reachable by configuration. Recording the deviation because the
+reasoning matters more than the conclusion: gate a change when migration
+is the risk, not when correctness is the point.
+
+Raising at the SITE rather than at end-of-run has a consequence worth
+stating on its own, because it is an improvement the residue model could
+not give: the failure is now **catchable**. A program that wraps a call in
+`do [...] error [...]` asked to trap its failures, and it now traps this
+one (`design/legacy/ERRORS.8.ignore` §5's drain fired outside every handler, so it
+aborted a program that had explicitly handled the case).
+
+**Check mode reports a diagnostic instead**, at the same site, with the
+same `uncalled_function` code — a Go error returned during analysis would
+abort the pass instead of reporting it. Two things make it sound:
+
+- **Deduped, but NOT stamped `RuntimeMirror`.** The dedupe matters because
+  a body is analysed under several call shapes; `CheckAddUnique` (factored
+  out of `CheckAddUniqueDiagnostic` for this) provides it while leaving the
+  mirror flag off. The flag would be wrong here: a mirror promises the
+  program still COMPILES and then raises the identical error, and there is
+  no call to compile when dispatch did not resolve — this belongs with
+  `no_signature` / `undefined_word` in the model-undermining class that the
+  compile pipeline refuses on (eng/go/CLAUDE.md). Stamping it a mirror put
+  the corpus in the one state `design/COMPILABLE-SUBSET.md` forbids: a nil
+  Program with no diagnostic and a bare refusal reason
+  (`TestIOSurfaceCompilesNoRefusal` caught it on `IO.read "data.csv"`).
+  Both `CheckState` suppressions still apply, since the emission goes
+  through `AddDiagnostic`: `SuppressBodyErrors` (a recursive fn-body
+  re-entry, where the canonical analysis already reported) and
+  `CaughtBodyDepth` (inside `do [...]` the runtime really does convert the
+  error to a value, so the finding is downgraded, not dropped).
+- **`CheckAtUncaughtTopLevel`** — the guaranteed-error-mirror gate
+  (`eng/go/CLAUDE.md`). A fn body is analysed against generalised carrier
+  args, so a no-match there can be imprecision rather than a defect. This
+  is not theoretical: without the gate, the `kg` corpus reported two false
+  `uncalled_function` errors on `KgEnt.distinct-sorted`, a call that runs
+  correctly. With it, `kg` is clean.
+
+Analysis continues past a check-mode finding, so the value stays on the
+tape and keeps a `FailedDispatch` marker — that is all the field is for
+now (`defWordExtension` reads it to tell dispatch wreckage from a value
+the program meant to produce). At runtime nothing survives to mark, so
+**the end-of-run residue pass is deleted**, along with option 2's
+mechanism.
+
+## 4. Fallout (measured over the whole tree, not estimated)
+
+The `ERROR:uncalled_function` spec rows — 41 across 11 files
+(`module-tui` 24, `edge-scalars-4` 5, `edge-errors-2` 4, `module-vault` 3,
+`edge-dispatch-1/3` 2+2, `edge-scalars-1/3` 1+2, `module-math` 2, `error`
+1, `module-emitlang` 1) — **all pass unchanged**: same code, now from the
+site instead of the drain. Nothing in `kg` changed. The three Go sites
+that did move:
+
+| Site | Was | Now |
+|---|---|---|
+| `lang/go/bytecode_s9_landing_test.go` (2 rows) | interp raises `uncalled_function` out of the drain | the region's own `do … error […]` catches it and the program yields `uncalled_function` as a value |
+| `lang/go/test/typecheck_test.go` — `((usurp f) g)` | 0 diagnostics ("consumed by a higher-order word is not flagged") | 1, by design; a companion row pins `(g f/r)` at 0 as the spelling that means it |
+| `cmd/go/internal/test/test_test.go` — the `IO.exit`-mid-suite fixture | `Test.case "one" [...]` — a two-argument call of a three-argument constructor — recorded **no case at all** and the suite reported `0 passed` | spelled `Test.test`; the pre-exit case is counted, and the test now asserts the salvage its own comment claimed |
+
+| `lang/spec/frontier/frontier-do-catch.tsv` (2 rows) + their `knownRefusals` ledger entries | interpreter: `ERROR:uncalled_function`; compile: refused at the variadic-promotion gate | interpreter: the caught code as a value; compile: refused on `check diagnostics`, one stage earlier — re-diagnosed in the ledger rather than re-pinned silently |
+| `lang/go/bytecode_markwindow_test.go` | the same shape pinned against the promotion-gate refusal | pinned against `check diagnostics`; the gate is still what a widening must graduate, this row just no longer reaches it (parity, which is what the test guards, holds either way) |
+| `cmd/go/internal/check/check_wave3_test.go` — the Emit island report | pinned on `each [1,2,3] [dup mul]`, a program that does not type-check (`dup` gets a `__FN`) yet still compiled with a fallback | pinned on a check-clean lambda body; the old fixture now refuses on diagnostics, which is a different report than the islanding the test is about |
+| `test/go/langspec/check_run_fp_test.go` | `pinnedCheckRunDivergent = 182` | **144** — 38 generated programs the checker flagged and the runtime then ran clean now fail at runtime too. The ratchet only allows decreases, and the test itself asks for the new floor to be locked in |
+
+The `Test.case` fixture is the phase paying for itself: it was written in
+Phase 1 against the silent contract and had never run the case it appeared
+to assert.
+
+## 5. Verification
+
+- Both reproductions in §1 raise, at the call, and `boru check` agrees with
+  `boru run` on both (that agreement is the point of the check arm).
+- The 41 pinned rows still fail with the same code.
+- `make -C kg check test graph` clean, every `kg/*.boru` free of
+  `uncalled_function`, and `out/graph.json` byte-identical — the largest
+  body of boru in the tree, run end to end.
+- Full gauntlet including `make cover-gate` at 100%.
+
+## 6. Known divergence, pre-existing: a failing call inside a `do` body
+
+`do [(M.w "x")] error [dot code]` **runs clean** — the failure is raised at
+the call, inside the trapping region, so the handler takes it and the
+program yields `uncalled_function` as a value. `boru check` on the same
+source reports an **error**.
+
+That is a check-mode timing gap, not a disagreement about the finding: the
+check pass evaluates a code body's parens on its own top-level straight
+line (`Check → Run → stepLiteral → execFnDefLiteral`, with
+`CaughtBodyDepth == 0`), so the trapping context that `AddDiagnostic`'s
+central downgrade keys on has not been established yet. Mirrors emitted
+from *inside* the body run are downgraded correctly — `do [(1 div 0)]
+error [dot code]` reports nothing, `do [({a:1} get b)] …` reports info.
+
+**It predates this contract**, verified by running the same source against
+the previous binary: the old check arm reported the identical error for the
+`usurp` spelling (`def f … do [((usurp f) "x")] error [dot code]`). This
+phase neither introduced nor widened it, and the runtime half moved in the
+right direction — the failure used to escape the handler entirely.
+
+Left as is deliberately: closing it means changing WHEN check mode
+evaluates a code body's parens, which is a checker-precision change with
+its own corpus-wide fallout, and it is the sort of decision that wants a
+maintainer's verdict rather than a rider on this one. The `do`-catch
+behaviour is therefore pinned as a Go test
+(`lang/go/fnvalue_loud_dispatch_test.go`), not a spec row — a row would be
+counted as a checker false positive by `pinnedFalsePositives`, which is
+exactly the ratchet that surfaced this.

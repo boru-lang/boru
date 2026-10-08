@@ -28,29 +28,6 @@ func TestDefaultOutput(t *testing.T) {
 	}
 }
 
-// --- resolveCompile ---
-
-func TestResolveCompile(t *testing.T) {
-	if resolveCompile(false, false, false) != buildrt.CompileTry {
-		t.Error("default should be CompileTry (compiled mode on by default)")
-	}
-	if resolveCompile(true, false, false) != buildrt.CompileTry {
-		t.Error("--compile should be CompileTry")
-	}
-	if resolveCompile(false, true, false) != buildrt.CompileForce {
-		t.Error("--force-compile should be CompileForce")
-	}
-	if resolveCompile(true, true, false) != buildrt.CompileForce {
-		t.Error("force should win over try")
-	}
-	if resolveCompile(false, false, true) != buildrt.CompileOff {
-		t.Error("--no-compile should be CompileOff")
-	}
-	if resolveCompile(true, true, true) != buildrt.CompileOff {
-		t.Error("--no-compile should win over both")
-	}
-}
-
 // --- buildConfig + import bundling ---
 
 func TestBuildConfigSingleFile(t *testing.T) {
@@ -59,7 +36,7 @@ func TestBuildConfigSingleFile(t *testing.T) {
 	if err := os.WriteFile(src, []byte("add 1 2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := buildConfig(src, "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +57,7 @@ func TestBuildConfigBundlesTransitiveImports(t *testing.T) {
 	write(t, dir, "lib.boru", `import "./dep.boru"`+"\n"+`export "Lib" {x:1}`)
 	write(t, dir, "dep.boru", `export "Dep" {y:2}`)
 
-	cfg, err := buildConfig(filepath.Join(dir, "main.boru"), "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(filepath.Join(dir, "main.boru"), "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +75,7 @@ func TestBuildConfigBundlesTransitiveImports(t *testing.T) {
 func TestBuildConfigSkipsBuiltinImports(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "p.boru", `import "boru:math-util"`+"\n"+`MathUtil.sqrt 16.0`)
-	cfg, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +87,7 @@ func TestBuildConfigSkipsBuiltinImports(t *testing.T) {
 func TestBuildConfigRejectsBareImport(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "p.boru", `import "somepkg"`+"\n"+`1`)
-	_, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, buildrt.CompileOff, "", nil)
+	_, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, "", nil)
 	if err == nil {
 		t.Fatal("expected an error for an unbundlable bare-module import")
 	}
@@ -119,14 +96,14 @@ func TestBuildConfigRejectsBareImport(t *testing.T) {
 func TestBuildConfigMissingImportFails(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "p.boru", `import "./missing.boru"`+"\n"+`1`)
-	_, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, buildrt.CompileOff, "", nil)
+	_, err := buildConfig(filepath.Join(dir, "p.boru"), "", 0, "", nil)
 	if err == nil {
 		t.Fatal("expected an error when a bundled import does not exist")
 	}
 }
 
 func TestBuildConfigMissingEntryFails(t *testing.T) {
-	_, err := buildConfig(filepath.Join(t.TempDir(), "nope.boru"), "", 0, buildrt.CompileOff, "", nil)
+	_, err := buildConfig(filepath.Join(t.TempDir(), "nope.boru"), "", 0, "", nil)
 	if err == nil {
 		t.Fatal("expected an error for a missing entry file")
 	}
@@ -184,7 +161,7 @@ func TestBuildSelfEmbedEndToEnd(t *testing.T) {
 	src := write(t, dir, "p.boru", "add 1 2")
 	out := filepath.Join(dir, "p")
 
-	cfg, err := buildConfig(src, "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +199,7 @@ func TestBuildNativeEndToEnd(t *testing.T) {
 	src := write(t, dir, "p.boru", "add 1 2")
 	out := filepath.Join(dir, "p")
 
-	cfg, err := buildConfig(src, "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

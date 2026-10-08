@@ -45,7 +45,7 @@ func specfixProbeRegistry(t *testing.T) *core.Registry {
 	pinfo := core.ClassTypeInfo{Fields: fields, ID: "P1", Name: "Class/P"}
 	pbody := core.NewClassType(def, pinfo)
 	// Mirror installTypeBinding: the node records its declared content
-	// (design/TYPE-REPRESENTATION.1.md §N2) so the probes that evaluate
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2) so the probes that evaluate
 	// `P` — which now denotes the node — recover the class schema.
 	def.SetTypeBody(pbody)
 	r.Defs.PushType("P", def, pbody)
@@ -131,7 +131,7 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "set x 5 p p get x", want: "5"},
 		// Stage 2 flip: `P` denotes its minted node, so the type-literal
 		// guard fires ahead of the instance-shape assert — matching the
-		// production storage word's post-flip refusal.
+		// production storage word's post-flip compile failure.
 		{input: "set x 5 P", wantErr: "cannot set field on type literal"},
 		// …while a concrete non-instance at the Class slot still reaches
 		// the instance-shape assert (pm is P-typed but map-shaped).
@@ -168,7 +168,7 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "def tt Integer inspect tt",
 			want: "{name:'tt' type:'Type' struct:'Integer' kind:literal}"},
 		{input: "inspect nosig", want: "{name:'nosig' kind:native signatures:[]}"},
-		{input: "bakefnq nosig", wantErr: "bakefnq: argument must be a fn"},
+		{input: "bakefnq nosig/v", wantErr: "bakefnq: argument must be a fn"},
 
 		// fnsig / do — the remaining reachable guard arms.
 		{input: "fnsig [x y]", wantErr: `invalid type "x"`},

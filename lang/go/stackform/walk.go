@@ -63,7 +63,10 @@ func opEqual(a, b Op) bool {
 		return core.DeepEqual(x.V, y.V)
 	case Call:
 		y, ok := b.(Call)
-		return ok && x.Name == y.Name && x.Arity == y.Arity
+		return ok && x.Name == y.Name && x.Arity == y.Arity && x.ReStep == y.ReStep
+	case Apply:
+		y, ok := b.(Apply)
+		return ok && x.Arity == y.Arity
 	case Quote:
 		y, ok := b.(Quote)
 		return ok && Equal(x.Body, y.Body)

@@ -62,6 +62,19 @@ func TestRegionDescValidateRejectsLeadWordMismatch(t *testing.T) {
 	}
 }
 
+// The lead's modifiers, when carried, name the lead.
+func TestRegionDescValidateRejectsModsOfAnotherWord(t *testing.T) {
+	d := okDesc()
+	d.Mods = &core.WordInfo{Name: "g", ArgCount: -1, ForceForward: true}
+	if err := d.Validate(1, 0, 0); err == nil || !strings.Contains(err.Error(), "lead modifiers name") {
+		t.Errorf("modifiers naming another word must be rejected, got %v", err)
+	}
+	d.Mods.Name = "f"
+	if err := d.Validate(1, 0, 0); err != nil {
+		t.Errorf("modifiers naming the lead validate, got %v", err)
+	}
+}
+
 // Bounds are checked against the table the index actually addresses — an
 // in-range-but-wrong index is what a sentinel alone cannot catch.
 func TestRegionDescValidateRejectsOutOfRange(t *testing.T) {

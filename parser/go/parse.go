@@ -25,7 +25,7 @@ type parenGroup []any
 type unclosedParen struct{ items []any }
 
 // angleGroup represents a generics angle-bracket sugar group
-// (design/GENERICS.10.md Phase 6): `Box<Integer>` folds the receiver
+// (design/legacy/GENERICS.10.ignore Phase 6): `Box<Integer>` folds the receiver
 // name and the collected items into one node. The conversion emits ONE
 // structural sugar marker (ADR-012 amendment) carrying both
 // precomputed forms — the generic-def head params and the use-site
@@ -173,6 +173,7 @@ func Parse(src string) ([]core.Value, error) {
 	g := loadDeclGrammar()
 	t, tins := setupBaseTokens(j, g)
 	setupTemplateLiteralMatcher(j, t)
+	setupStringEscapeMatcher(j)
 	setupBigNumberMatcher(j, t)
 	setupDecimalUnderscoreMatcher(j, t)
 	setupMiniLitMatcher(j, t)
@@ -200,11 +201,13 @@ func Parse(src string) ([]core.Value, error) {
 		return nil, nil
 	}
 
-	// A single top-level scalar/paren/interp value arrives wrapped by the
-	// val-rule BC; unwrap it so the cases below see a bare jsonic node, but
-	// keep its position to stamp the single produced value. (Root containers
-	// come from the list/map rule and are not sited; their elements carry
-	// positions individually.)
+	// A single top-level value arrives wrapped by the val rule's siting —
+	// a scalar, a paren, an interp, and a root CONTAINER too (the whole
+	// input one list or map); unwrap it so the cases below see a bare jsonic
+	// node, but keep its position to stamp the single produced value. A
+	// root container left unstamped had no position, which cost every
+	// consumer that finds a statement by its token (a statement island, a
+	// caret) the program that is one list literal.
 	result, rootPos := deSite(result)
 
 	// One depth tracker for this parse, threaded through the recursive
@@ -223,7 +226,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{tv}, nil
+			return []core.Value{withPos(tv, rootPos)}, nil
 		}
 		if !val.Implicit {
 			// Explicit list [...]  — a single list value (quotation).
@@ -231,7 +234,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{lv}, nil
+			return []core.Value{withPos(lv, rootPos)}, nil
 		}
 		// Implicit list — top-level stack values.
 		return convertTopLevel(val.Val, d)
@@ -241,7 +244,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{tv}, nil
+			return []core.Value{withPos(tv, rootPos)}, nil
 		}
 		mv, err := convertMapData(val.Val, val.Implicit, d, val.Meta)
 		if err != nil {
@@ -252,13 +255,14 @@ func Parse(src string) ([]core.Value, error) {
 		if val.Implicit && !mv.Eval {
 			mv.Eval = true
 		}
-		return []core.Value{mv}, nil
+		return []core.Value{withPos(mv, rootPos)}, nil
 	case unclosedParen:
 		return nil, core.MakeBoruError("syntax_error", "unmatched opening parenthesis", "(", src, "")
 
 	case parenGroup:
-		// Single paren group at top level: expand to paren markers.
-		return convertTopLevelItems([]any{val}, d)
+		// Single paren group at top level: expand to paren markers, sited
+		// as any paren in a longer program is.
+		return convertTopLevelItems([]any{sited{Node: val, Pos: rootPos}}, d)
 
 	case interpGroup:
 		// Single template string at top level.
@@ -570,7 +574,7 @@ func groupModifier(item any) (base string, prefix, suffix []core.Value, ok bool)
 // pos is the source position of item (caller has already deSited it).
 //
 // Word-context paren groups become a single ParenExpr value (paren-nesting
-// Step 1, design/PAREN-REPRESENTATION.9.md), the same representation data
+// Step 1, design/legacy/PAREN-REPRESENTATION.9.ignore), the same representation data
 // context already uses. The engine evaluates it via evalParenExprResults
 // (Step 2 at the pointer, Step 3 in a forward window).
 func emitPrimary(dst *[]core.Value, item any, pos core.SrcPos, d *parseDepth) error {
@@ -703,6 +707,12 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 	case unclosedAngle:
 		return core.Value{}, unclosedAngleError(val)
 
+	case unclosedParen:
+		// An unclosed group in a member or operand position (`a.(`,
+		// `quote . ( =`): the item loop's refusal, never the internal
+		// marker's type name (NUR060).
+		return core.Value{}, core.MakeBoruError("syntax_error", "unmatched opening parenthesis", "(", "", "")
+
 	case bool:
 		return core.NewBoolean(val), nil
 
@@ -726,9 +736,13 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 func emptyElementError() error {
 	return &core.BoruError{
 		Code:   "syntax_error",
-		Detail: "empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)",
+		Detail: emptyElementDetail,
 	}
 }
+
+// emptyElementDetail is the empty-element refusal's detail, shared by the
+// converter's nil-slot check and the grammar's empty list child (NUR060).
+const emptyElementDetail = "empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)"
 
 // isNumberLiteral reports whether a (deSited) jsonic item is a numeric
 // literal: an integer arrives from jsonic as a float64, a decimal as a
@@ -1501,11 +1515,22 @@ func reachSegmentName(keyItem any, key core.Value, pos core.SrcPos) core.Value {
 	return withPos(core.NewWord(text.Str), pos)
 }
 
+// bareModifierError refuses a `/` modifier with nothing before it (`/s`,
+// `/v`, `/2`): a modifier follows the word or group it modifies. It used to
+// leave the parser as a plain `empty word` error — the one parse failure
+// that was no syntax_error, in both ports (NUR060).
+func bareModifierError(text string) error {
+	return &core.BoruError{
+		Code:   "syntax_error",
+		Detail: "`" + text + "` modifies nothing: a `/` modifier follows the word or group it modifies",
+	}
+}
+
 func parseWord(text string) (core.Value, error) {
 	name, argCount, forceStack, forceForward, quoteFlag, valFlag, usurpFlag, typeFlag, valid := scanWordModifier(text)
 
 	if name == "" {
-		return core.Value{}, fmt.Errorf("empty word")
+		return core.Value{}, bareModifierError(text)
 	}
 
 	// An invalid modifier combination spelled entirely from the modifier
@@ -1633,7 +1658,7 @@ func parseWord(text string) (core.Value, error) {
 	// literals never reach this path — jsonic lexes them as numbers.)
 	if isBasePrefixedInteger(name) {
 		// No uppercase check here: both lexers CLAIM a base-prefixed run as
-		// #NR whatever its magnitude, so an uppercase one is refused in
+		// #NR whatever its magnitude, so an uppercase one is declined in
 		// numberValToValue and can never reach this text path.
 		if strings.IndexByte(name, '_') >= 0 && !validUnderscores(name) {
 			return core.Value{}, &core.BoruError{Code: "syntax_error", Src: name,
@@ -1726,6 +1751,13 @@ func convertInterpGroup(grp interpGroup, d *parseDepth) (core.Value, error) {
 			// Template literal segment (Quote="tl").
 			parts = append(parts, core.InterpPart{Lit: v.Str})
 		case iexprGroup:
+			if len(v) == 0 {
+				// An empty hole (`${}`, `${ }`) holds no expression and
+				// contributes nothing: a template whose holes are all empty
+				// is the plain string it spells, as `abc` in backticks is
+				// (NUR060) — and as an XML attribute's empty hole folds.
+				continue
+			}
 			hasExpr = true
 			exprVals, err := convertTopLevelItems([]any(v), d)
 			if err != nil {
@@ -1827,7 +1859,25 @@ func writeStringEscape(buf *strings.Builder, s string, at int) int {
 		}
 		buf.WriteByte(c)
 	case 'u':
+		if at+1 < len(s) && s[at+1] == '{' {
+			// The braced form, `\u{1F600}`: 1-6 hex digits, any code point.
+			if r, n, ok := parseBracedEscape(s, at+2); ok {
+				buf.WriteRune(rune(r))
+				return n + 3
+			}
+			buf.WriteByte(c)
+			break
+		}
 		if r, ok := parseHexEscape(s, at+1, 4); ok {
+			// A UTF-16 surrogate pair split across two escapes is one code
+			// point, as jsonic reads it in a quoted string (a lone surrogate
+			// becomes U+FFFD through WriteRune).
+			if r >= 0xD800 && r <= 0xDBFF && at+11 <= len(s) && s[at+5] == '\\' && s[at+6] == 'u' {
+				if lo, ok := parseHexEscape(s, at+7, 4); ok && lo >= 0xDC00 && lo <= 0xDFFF {
+					buf.WriteRune(rune(0x10000 + (r-0xD800)<<10 + (lo - 0xDC00)))
+					return 11
+				}
+			}
 			buf.WriteRune(rune(r))
 			return 5
 		}
@@ -1838,6 +1888,68 @@ func writeStringEscape(buf *strings.Builder, s string, at int) int {
 		buf.WriteByte(c)
 	}
 	return 1
+}
+
+// parseBracedEscape reads a braced code point, `{` already consumed: 1-6 hex
+// digits at s[at:] and a closing `}`, at most U+10FFFF. n is the digit count.
+func parseBracedEscape(s string, at int) (r uint32, n int, ok bool) {
+	end := strings.IndexByte(s[min(at, len(s)):], '}')
+	if end < 1 || end > 6 {
+		return 0, 0, false
+	}
+	v, ok := parseHexEscape(s, at, end)
+	if !ok || v > 0x10FFFF {
+		return 0, 0, false
+	}
+	return v, end, true
+}
+
+// escapeFault reports a malformed `\x` / `\u` escape — the one definition a
+// template's text and a quoted string's body both answer to (NUR026). at
+// indexes the character after the backslash; stop is the form's closing
+// delimiter, which a reported span never crosses. code is jsonic's
+// (invalid_ascii / invalid_unicode) and end bounds the offending span, which
+// runs from the backslash; code is "" for a well-formed or other escape.
+func escapeFault(s string, at int, stop byte) (code string, end int) {
+	span := func(n int) int {
+		for i := at; i < at-1+n; i++ {
+			if i >= len(s) || s[i] == stop {
+				return i
+			}
+		}
+		return at - 1 + n
+	}
+	switch s[at] {
+	case 'x':
+		if _, ok := parseHexEscape(s, at+1, 2); !ok {
+			return "invalid_ascii", span(4)
+		}
+	case 'u':
+		if at+1 < len(s) && s[at+1] == '{' {
+			if _, _, ok := parseBracedEscape(s, at+2); !ok {
+				// The span runs through the closing `}` when one comes
+				// before the delimiter, else to the delimiter or the end.
+				rest := s[at:]
+				c, d := strings.IndexByte(rest, '}'), strings.IndexByte(rest, stop)
+				if c >= 0 && (d < 0 || c < d) {
+					return "invalid_unicode", at + c + 1
+				}
+				return "invalid_unicode", span(len(rest) + 1)
+			}
+		} else if _, ok := parseHexEscape(s, at+1, 4); !ok {
+			return "invalid_unicode", span(6)
+		}
+	}
+	return "", 0
+}
+
+// badEscapeToken is the lexer's refusal of a malformed escape: a bad token
+// over the escape itself, carrying jsonic's code, so a template and a quoted
+// string report it alike — `invalid ascii escape: \xZZ` (NUR026).
+func badEscapeToken(lex *jsonic.Lex, code, src string) *jsonic.Token {
+	tkn := lex.Token("#BD", jsonic.TinBD, nil, src)
+	tkn.Why = code
+	return tkn
 }
 
 // parseHexEscape reads exactly n hex digits at s[at:] and returns their
@@ -2116,7 +2228,7 @@ func isPlainDecimalInteger(src string) bool {
 // Boru's numeric syntax prefixes are lowercase only. Both lexers still CLAIM
 // an uppercase run as a numeric token (declining would split the ports: Go's
 // stock scanner reads `0XFF` as 255 while the TS one reads it as text), so the
-// refusal belongs here in the converter, where one diagnostic serves both
+// compile failure belongs here in the converter, where one diagnostic serves both
 // ports and every context.
 func hasUppercaseNumericPrefix(src string) bool {
 	s := src
@@ -2133,10 +2245,10 @@ func hasUppercaseNumericPrefix(src string) bool {
 	return false
 }
 
-// uppercaseNumericPrefixError refuses an uppercase-prefixed numeric literal.
+// uppercaseNumericPrefixError declines an uppercase-prefixed numeric literal.
 // Loud in EVERY context, data decode included: `0XFF` is a typo for `0xFF`
 // far more often than it is text, and a silent string would be the kind of
-// wrong answer this parser exists to refuse.
+// wrong answer this parser exists to decline.
 func uppercaseNumericPrefixError(src string, row, col int) *core.BoruError {
 	// Callers reach here only via hasUppercaseNumericPrefix, so the prefix
 	// letter is always present — index it directly rather than carrying an

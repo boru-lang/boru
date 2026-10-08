@@ -14,7 +14,7 @@ import (
 // condition region's LAST value decides; break and continue discard the
 // current round's values; body values accumulate; a def the body rebinds
 // persists after the loop; an empty condition raises. The lowering admits
-// a condition netting exactly one value and refuses every other count.
+// a condition netting exactly one value and declines every other count.
 
 // TestWhileCompileParity pins the shapes that COMPILE, agree on both lanes
 // and run VM-native.
@@ -56,10 +56,10 @@ func TestWhileCompileParity(t *testing.T) {
 	}
 }
 
-// TestWhileCompileSoundRefusals pins the neighbours that REFUSE, and that
-// the interpreter answers each one (the refusal is a fallback, not a
+// TestWhileCompileSoundCompileFailures pins the neighbours that DECLINE, and that
+// the interpreter answers each one (the compile failure is a fallback, not a
 // miscompile).
-func TestWhileCompileSoundRefusals(t *testing.T) {
+func TestWhileCompileSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interpErr string }{
 		// The lowering admits a condition netting exactly one value. The
 		// EMPTY condition is no longer here: it is a statically-provable
@@ -67,11 +67,11 @@ func TestWhileCompileSoundRefusals(t *testing.T) {
 		// TestWhileEmptyConditionTraps below). Two values is not provable
 		// either way — the region's last value is the condition and the
 		// rest are dropped, which the lowering does not model — so it
-		// keeps the refusal.
+		// keeps the compile failure.
 		{`while [1 false] ['x'] end 'z'`, "while: condition nets 2 values, not one", ""},
 		// The empty condition BELOW the top level: the trap is terminal
 		// and only a top-level program has one terminal point, so a
-		// fn body's empty condition keeps the arity refusal.
+		// fn body's empty condition keeps the arity compile failure.
 		{`def f fn [[][Integer][while [] [1]]] end (f)`, "while: condition nets 0 values, not one", "condition produced no value"},
 		{`if true [while [] [1]] []`, "while: condition nets 0 values, not one", "condition produced no value"},
 		// A pre-existing gate `for` shares: a multi-value body with a rebind.
@@ -87,11 +87,11 @@ func TestWhileCompileSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		_, ierr := a.RunInterp(c.src)
 		if c.interpErr == "" {
@@ -114,7 +114,7 @@ func TestWhileEmptyConditionTraps(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`while [] [1]`, "while: condition produced no value"},
 		// A PREFIX before the loop still runs: the trap is terminal, not a
-		// whole-program refusal, so everything recorded before it is kept.
+		// whole-program compile failure, so everything recorded before it is kept.
 		{`5 while [] [1]`, "while: condition produced no value"},
 		// The condition is empty; the BODY is irrelevant, it never runs.
 		{`while [] []`, "while: condition produced no value"},
@@ -129,17 +129,22 @@ func TestWhileEmptyConditionTraps(t *testing.T) {
 				t.Fatalf("check: %v", cerr)
 			}
 			if prog == nil {
-				t.Fatalf("refused %q — the empty condition is a provable error, not an unmodelled shape", reason)
+				t.Fatalf("declined %q — the empty condition is a provable error, not an unmodelled shape", reason)
 			}
 			if !strings.Contains(prog.Disassemble(), "TRAP") {
 				t.Errorf("compiled without a terminal trap:\n%s", prog.Disassemble())
 			}
 			_, compiled, errC := a.RunCompiled(c.src)
-			if !compiled {
-				t.Fatal("the trapping program must run compiled")
-			}
-			if errC == nil || !strings.Contains(errC.Error(), c.want) {
-				t.Errorf("compiled error %v, want %q", errC, c.want)
+			// A booked defect skips the COMPILED assertions — there is no
+			// compiled answer to assert — but never the interpreter oracle
+			// below, which is this case's own claim.
+			if !noteCompileDefect(t, c.src, nil, errC) {
+				if !compiled {
+					t.Fatal("the trapping program must run compiled")
+				}
+				if errC == nil || !strings.Contains(errC.Error(), c.want) {
+					t.Errorf("compiled error %v, want %q", errC, c.want)
+				}
 			}
 			b, err := New()
 			if err != nil {
@@ -167,7 +172,7 @@ func TestWhileNonEmptyConditionDoesNotTrap(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%q: refused %q err=%v", src, reason, cerr)
+			t.Fatalf("%q: declined %q err=%v", src, reason, cerr)
 		}
 		if strings.Contains(prog.Disassemble(), "TRAP") {
 			t.Errorf("%q: a non-empty condition must not trap:\n%s", src, prog.Disassemble())
@@ -190,6 +195,9 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -204,12 +212,13 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 	if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
 		t.Fatalf("message drifted: compiled=%v interp=%v", errC, errI)
 	}
-	// The POSITION is not (NUR130).
+	// The POSITION too, since NUR130's close: the interpreter anchors at
+	// the condition operand (ForCont.CondPos), where the trap always did.
 	if !strings.Contains(errC.Error(), "1:7") {
 		t.Errorf("the trap must anchor at the condition operand (1:7): %v", errC)
 	}
-	if !strings.Contains(errI.Error(), "1:14") {
-		t.Errorf("NUR130 moved — the interpreter no longer anchors at the tape pointer (1:14): %v", errI)
+	if !strings.Contains(errI.Error(), "1:7") {
+		t.Errorf("the interpreter must anchor at the condition operand too (1:7, NUR130): %v", errI)
 	}
 }
 
@@ -236,7 +245,7 @@ func TestWhileEmptyConditionChecksAsAnError(t *testing.T) {
 		t.Errorf("diagnostic = %+v", d)
 	}
 	if !d.RuntimeMirror {
-		t.Error("the finding must be a RUNTIME MIRROR — an un-mirrored error would refuse the compile")
+		t.Error("the finding must be a RUNTIME MIRROR — an un-mirrored error would decline the compile")
 	}
 	// And the program still compiles, to the trap.
 	b, err := New()
@@ -245,7 +254,7 @@ func TestWhileEmptyConditionChecksAsAnError(t *testing.T) {
 	}
 	prog, reason, _, cerr := b.CompileCheck(`5 while [] [1]`)
 	if cerr != nil || prog == nil {
-		t.Fatalf("the mirror must not refuse the compile: %q %v", reason, cerr)
+		t.Fatalf("the mirror must not decline the compile: %q %v", reason, cerr)
 	}
 }
 

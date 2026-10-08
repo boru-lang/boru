@@ -161,7 +161,7 @@ export class Engine {
       // expands back to its OpenParen … CloseParen marker span in
       // place, then re-processes — the IsOpenParen branch below
       // collapses it. Mirrors Go stepLiteral's ParenExpr expansion
-      // (design/PAREN-REPRESENTATION.9.md Step 3). Quoted paren-exprs
+      // (design/legacy/PAREN-REPRESENTATION.9.ignore Step 3). Quoted paren-exprs
       // stay data.
       if (
         val.vType.equal(TParenExpr) &&

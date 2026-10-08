@@ -1,6 +1,6 @@
 # edge-containers-1.tsv — container IDENTITY edge cases: eq vs deq over
 # compounds, and the per-call literal-identity family (miscompile-A
-# mechanism, design/MISCOMPILE-HUNT-FINDINGS.0.md §A).
+# mechanism, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A).
 #
 # `eq` on non-scalars is CONTAINER IDENTITY (eng/go/compare.go
 # ExactEqual → sameContainer): a MapPayload identifies by its

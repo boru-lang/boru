@@ -6,7 +6,7 @@ boru currently has no date/time types or words. The type system (`types.go`) is 
 
 **Deliverable:** New design document at `lang/doc/design/TEMPORAL-WORDS.9.md`.
 
-> **Status update (post Step 11 of TYPE-DECOUPLING.10.md):** the
+> **Status update (post Step 11 of legacy/TYPE-DECOUPLING.10.ignore):** the
 > free-form text parsing surface originally proposed in this design
 > has been **removed as a feature**. The temporal types remain (Date,
 > DateTime, Instant, TimeOfDay, CalDuration, ClkDuration, Timezone,
@@ -259,7 +259,7 @@ Units: `"year"`, `"quarter"`, `"month"`, `"week"`, `"day"`, `"hour"`, `"minute"`
 ### 11. Parsing — **REMOVED**
 
 > All four words below were removed as a feature in Step 11 of
-> TYPE-DECOUPLING.10.md. The parser-coupling between the temporal types
+> legacy/TYPE-DECOUPLING.10.ignore. The parser-coupling between the temporal types
 > and free-form text was the last remaining reason for eng/ to know
 > about temporal types; removing the parsing surface eliminates that
 > coupling. The original proposal is retained below struck through
@@ -290,7 +290,7 @@ Units: `"year"`, `"quarter"`, `"month"`, `"week"`, `"day"`, `"hour"`, `"minute"`
 | Conversion | 9 | `to-date`, `to-time-of-day`, `to-datetime`, `to-instant`, `to-local`, `to-utc`, `to-string`, `format`, `to-iso` |
 | Rounding | 4 | `round` (extend), `truncate` (extend), `start-of`, `end-of` |
 | Timezone | 6 | `tz`, `tz-utc`, `tz-local`, `tz-name`, `tz-offset`, `is-dst` |
-| ~~Parsing~~ | ~~4~~ | ~~`date`, `parse-date`, `parse-datetime`, `auto-date`~~ — **REMOVED**, see Step 11 of TYPE-DECOUPLING.10.md |
+| ~~Parsing~~ | ~~4~~ | ~~`date`, `parse-date`, `parse-datetime`, `auto-date`~~ — **REMOVED**, see Step 11 of legacy/TYPE-DECOUPLING.10.ignore |
 | **Total** | **~92** | (some overlap: `date`, `duration` appear in multiple categories) |
 
 **Unique new words: ~70. Extended existing words: `add`, `sub`, `eq`, `compare`, `round`, `truncate` (6).**
@@ -342,7 +342,7 @@ elapsed total-seconds
 
 ### ~~Parsing messy date formats~~ — **REMOVED**
 ```boru
-# REMOVED in Step 11 of TYPE-DECOUPLING.10.md; left for design history only.
+# REMOVED in Step 11 of legacy/TYPE-DECOUPLING.10.ignore; left for design history only.
 raw-data apply date_str [auto-date]
          dropna date_str
          mutate {yr:(date_str year)}

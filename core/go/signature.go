@@ -162,6 +162,16 @@ type MatchResult struct {
 	Reg       *Registry // sub-registry owning Sig for a module delegation dispatch (nil = main)
 }
 
+// DispatchRegistry is the registry that owns the matched signature: the
+// module sub-registry of a delegation dispatch, else main (the registry the
+// dispatch ran in).
+func (m *MatchResult) DispatchRegistry(main *Registry) *Registry {
+	if m.Reg != nil { //sentinel:home the one reading of a nil match Reg: the dispatch matched in main
+		return m.Reg
+	}
+	return main
+}
+
 // MatchSignature finds the first matching signature for a function given the
 // resolved stack and optional word modifiers.
 //
@@ -287,7 +297,7 @@ func SigTypeMatches(v Value, t *Type) bool {
 	}
 	// Gradual (dynamic) carrier: matches the slot unless its bound is
 	// PROVABLY disjoint from t — the not-disjoint rule, the optimistic
-	// dual of strict ConformsTo (design/dynamic-modality-report.10.md).
+	// dual of strict ConformsTo (design/legacy/dynamic-modality-report.10.ignore).
 	// Reuses `tand` for the disjointness proof; dynamic(Any) matches
 	// every inhabited slot, dynamic(Integer) fails only provably-disjoint
 	// slots (String, Atom, …). Checked first so a dynamic carrier never
@@ -346,7 +356,7 @@ func SigTypeMatches(v Value, t *Type) bool {
 	// never carriers): matches iff EVERY alternative matches, so
 	// dispatch distributes over the abstract domain. The selected
 	// signature's returns are then refined per alternative by
-	// disjunctPartitionReturns (design/checker-accuracy-review.10.md A1).
+	// disjunctPartitionReturns (design/legacy/checker-accuracy-review.10.ignore A1).
 	if v.Carrier && !v.Dynamic && IsDisjunct(v) {
 		di, err := AsDisjunct(v)
 		if err == nil && len(di.Alternatives) > 0 {
@@ -381,9 +391,9 @@ func SigTypeMatches(v Value, t *Type) bool {
 		// Options map is expected. A Map-typed CARRIER also matches: it is
 		// check mode's stand-in for a value that IS a concrete map at run
 		// time, and the runtime rule above accepts that value — without
-		// this the check-mode dispatch refuses what the interpreter runs
+		// this the check-mode dispatch declines what the interpreter runs
 		// (the template `{…} render` → Options-arm → tpl-render-opts
-		// refusal). A bare Map type literal (Data==nil, not a carrier)
+		// compile failure). A bare Map type literal (Data==nil, not a carrier)
 		// stays excluded.
 		if v.Parent.ConformsTo(TMap) && (IsConcrete(v) || v.Carrier) {
 			return true
@@ -498,10 +508,11 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if expectedType.Equal(TAny) {
 		return false
 	}
-	if expectedType.Equal(TNone) {
-		// At a TNone slot, the None type literal is the canonical
-		// inhabitant; sigTypeMatches has already verified the value
-		// is None-typed.
+	if !IsTypeLiteral(v) {
+		// The None literal is a VALUE — what a missing member reads as
+		// (IsTypeLiteral excludes it) — admitted wherever the slot's own
+		// match admitted it: a None slot, and a union that names None
+		// (NUR324).
 		return false
 	}
 	if expectedType.Equal(TType) {
@@ -514,7 +525,7 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if _, ok := v.TypeBody(); ok {
 		// A node carrying recorded type CONTENT is the evaluated name
 		// of a structural type (the Stage 2 flip of
-		// design/TYPE-REPRESENTATION.1.md): it is admissible exactly
+		// design/legacy/TYPE-REPRESENTATION.1.ignore): it is admissible exactly
 		// where its declared body was — `refine Table R` collects R at
 		// the TNode arg slot precisely as it collected R's record body
 		// before the flip. Pure nominal literals (builtins, refine
@@ -522,6 +533,20 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 		return false
 	}
 	return true
+}
+
+// ParamAdmits reports whether a declared parameter type t admits the value v
+// the way the interpreter's dispatch does: the type match (SigTypeMatches)
+// and the type-literal rule positionalMatch applies over it — a type is no
+// value of its Parent, so a bare type node is refused at a Map or List slot
+// and wherever rejectsTypeLiteral refuses it. The compiled lane's parameter
+// contract asked the type match alone, and a Type value bound an Integer
+// parameter the interpreter refuses it at (NUR328).
+func ParamAdmits(v Value, t *Type) bool {
+	if !SigTypeMatches(v, t) {
+		return false
+	}
+	return !IsBareTypeNode(v) || !(t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t))
 }
 
 // positionalMatch checks whether values match the signature's types in order.
@@ -548,7 +573,7 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		// operand arrives as a NON-CONCRETE carrier (an Any/dynamic value, e.g.
 		// `quote (s get k)`); such a value is not a literal word, so it must not
 		// ride the Any-conforms-to-everything rule onto a /q overload — it would
-		// claim `quote`'s word-capture sig (TAtom, QuoteArgs) and then refuse to
+		// claim `quote`'s word-capture sig (TAtom, QuoteArgs) and then decline to
 		// compile, instead of falling to the value sig (TAny, ReturnsIdentity).
 		// At RUNTIME the operand is concrete (no carrier), so this is inert there
 		// and merely aligns check-mode sig selection with the runtime's (a
@@ -561,9 +586,14 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		}
 		// Reject type literals (Data==nil) for concrete Map/List
 		// signatures — including the FlexMap/FlexList subtypes —
-		// unless this slot explicitly wants a type literal.
+		// unless this slot explicitly wants a type literal. Elsewhere a
+		// type literal is refused exactly where the interpreter's plan
+		// refuses it (rejectsTypeLiteral, PlanMatch and the collection
+		// kernel): a type is no value of its Parent, so the VM's poly
+		// re-match took `add` over the Integer node where the interpreter
+		// raises (NUR323).
 		isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[i]
-		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList)) {
+		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t)) {
 			return false
 		}
 	}
@@ -610,7 +640,7 @@ func sigSlotValue(sig *Signature, i int) Value {
 // rules, design/OPEN-WORDS.1.md §2-3), so an added signature can only
 // ever match calls carrying values of the author's own types, which
 // cannot predate the merge. `Locked` survives only as the
-// replacement-refusal flag (mergeExtensionSigs) — never as an ordering
+// replacement-compile failure flag (mergeExtensionSigs) — never as an ordering
 // input; the rev-1 locked-first key this replaces is documented in
 // design/OPEN-WORDS.0.md §2.3/§3.3.
 func CompareSignatures(a, b *Signature) int {
@@ -674,4 +704,45 @@ func RankSignatures(sigs []Signature) []int {
 		return CompareSignatures(&sigs[indices[i]], &sigs[indices[j]]) < 0
 	})
 	return indices
+}
+
+// TagDeterminedSigs reports whether MatchSignature's first match over the
+// n-argument signatures of sigs is decided by each runtime argument's
+// construction tag (its Parent) alone — so two argument windows with the
+// same tags, none of them a bare type node, an ascribed view, a carrier or
+// a dynamic value, always pick the same signature. It holds when no
+// n-argument signature declares a structural pattern (Unify on the value)
+// or a type-literal slot (sigTypeMatchesAsType reads the type's content),
+// and every argument type is a builtin (no runtime `behave` can install a
+// Behavior on it) whose Behavior decides membership by tag, not content
+// (behaviorIsContent) and is not Options (which accepts any concrete map).
+// The VM's poly inline cache keys on the tags under exactly this proof.
+func TagDeterminedSigs(sigs []Signature, n int) bool {
+	for i := range sigs {
+		s := &sigs[i]
+		if s.TotalArgs() != n {
+			continue
+		}
+		for idx := 0; idx < n; idx++ {
+			if _, ok := SigPattern(s, idx); ok {
+				return false
+			}
+			if s.TypeArgs != nil && s.TypeArgs[idx] {
+				return false
+			}
+			t := SigArgType(s, idx)
+			if t == nil || t.Origin != OriginBuiltin || t.Equal(TOptions) || behaviorIsContent(t.Behavior()) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// TagKeyable reports whether v's signature match is decided by its tag
+// under TagDeterminedSigs: a concrete runtime value — not a bare type node
+// (whose own node, not its Parent, is what matches), not an ascribed view,
+// not a carrier or a dynamic value.
+func TagKeyable(v Value) bool {
+	return v.Parent != nil && !v.Carrier && !v.Dynamic && !IsBareTypeNode(v) && v.AscribedType() == nil
 }

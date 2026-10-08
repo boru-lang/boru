@@ -21,9 +21,9 @@ import "boru:vm" { scopes: { engine: { words: { default: "allow" } } } } "10 sub
 #
 # §4  parse — boru source → inspectable structure (no evaluation).
 #     Returns a QUOTED list of the engine's parse values; element
-#     shapes are implementation-defined for now (design/PARSING.10.md
+#     shapes are implementation-defined for now (design/legacy/PARSING.10.ignore
 #     §3). Parse errors raise [boru/parse_error].
-import "boru:vm" Vm.parse "1 add 2"	(quote [1 word(add) 2])	parses source to a quoted token list without running it
+import "boru:vm" Vm.parse "1 add 2"	(quote [1 add 2])	parses source to a quoted token list without running it
 import "boru:vm" size (Vm.parse "1 add 2")	3	the structure is ordinary data
 import "boru:vm" Vm.parse "1 add ((("	ERROR:parse_error	malformed source raises loudly
 #
@@ -48,8 +48,8 @@ import "boru:vm" (Vm.check "1 add 2  def unused 99").warnings	1	non-fatal findin
 #     when it does not, sites = the dispatch-site census. Refusal is data,
 #     not an error.
 import "boru:vm" (Vm.compile "1 add 2").ok	true	a straight-line program compiles
-import "boru:vm" (Vm.compile "1 add 2").reason	''	…with no refusal reason
+import "boru:vm" (Vm.compile "1 add 2").reason	''	…with no compile failure reason
 import "boru:vm" ((Vm.compile "1 add 2").sites).mono	1	the dispatch-site census reports one mono call
-import "boru:vm" (Vm.compile "(size (for 5 [i]))").ok	false	a loop-result consumer refuses
+import "boru:vm" (Vm.compile "(size (for 5 [i]))").ok	false	a loop-result consumer declines
 import "boru:vm" (Vm.compile "1 add (((").ok	false	malformed source does not compile
 import "boru:vm" (Vm.compile "1 add (((").reason	'parse error'	…and says why

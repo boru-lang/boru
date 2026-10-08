@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// REFUSAL-CLOSURE §9 landing battery — written FAILING-FIRST (the goal's
+// COMPILE FAILURE-CLOSURE §9 landing battery — written FAILING-FIRST (the goal's
 // test-driven discipline): every subtest asserts the TARGET compile-parity
 // behavior of one §9 item and fails until its landing flips it. The `want`
 // values are the interpreter's (probe-pinned before any implementation).
@@ -33,11 +33,11 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	// Decline fences, each parity-faithful: a DYNAMIC inner count (no static
 	// region), a BRANCH between the loop and the def (conditionally-reached
 	// split — the P1-b leak), and a NESTED loop pair (depth-2 fence).
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def m {n: 2} for 2 [ def acc (for (m get "n") [5]) acc ]`, "")
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`for 2 [ if true [ def acc (for 2 [5]) acc ] [0] ]`, "")
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`for 2 [ for 2 [ def acc (for 2 [5]) acc ] ]`, "")
 
 	// PR #280 review reachability fences: the depth equality proves the BODY
@@ -48,15 +48,18 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	// analysis-only binding: compiled 0 vs interp undefined_word), as does an
 	// upstream `continue` (the bind is bypassed: compiled 0 vs undefined_word)
 	// and a downstream `break` (a discarded iteration's spill survived:
-	// compiled [5 5] vs interp [5]).
-	mustRefuseWithParity(t,
-		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
-	mustRefuseWithParity(t,
-		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
-	mustRefuseWithParity(t,
-		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "consumes loop results")
-	mustRefuseWithParity(t,
-		`for 3 [def acc (for 2 [5]) break] acc`, "consumes loop results")
+	// compiled [5 5] vs interp [5]). Since NUR214 a loop that is not
+	// proven to run CARRIES its fresh `acc` in a bound-checked cell, so the
+	// four decline where the carried store meets the inner loop's variadic
+	// result, before the consumer's own fence.
+	mustFailToCompileWithParity(t,
+		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
+	mustFailToCompileWithParity(t,
+		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
+	mustFailToCompileWithParity(t,
+		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "loop-carried store of a variadic result")
+	mustFailToCompileWithParity(t,
+		`for 3 [def acc (for 2 [5]) break] acc`, "loop-carried store of a variadic result")
 }
 
 func TestS9SpliceComputedPayload(t *testing.T) { // §9.2b
@@ -80,7 +83,7 @@ func TestS9CurriedFactory(t *testing.T) { // §9.2d
 func TestS9ParenBoundedLeadingApply(t *testing.T) { // §9.2e
 	// The stamp-suite shape: the apply inside an FN BODY (top-level already
 	// compiles via RecordDynApply).
-	interpOnlyWithSoundRefusal(t,
+	interpOnlyWithCompileFailure(t,
 		`def m {f: ([y:Integer] => [y add 1])} def h fn [[x:Integer] [Integer] [ add 1 (x (m get "f") apply) ]] h 7`, "[9]")
 }
 
@@ -96,11 +99,11 @@ func TestS9FnComputedOperand(t *testing.T) { // §9.2g — DESIGNED KEEP
 	// value (5), so a compiled unit would bake the check-time carrier where
 	// the live value belongs. No runtime op short of re-constructing the
 	// FnDefInfo per evaluation fixes it, and that machinery is unjustified
-	// for so exotic a shape — a designed opt-out like §8. Pinned refusing
+	// for so exotic a shape — a designed opt-out like §8. Pinned declining
 	// with interpreter parity.
-	mustRefuseWithParity(t, `def f fn (2 add 3) [Integer] [7] f 5`,
+	mustFailToCompileWithParity(t, `def f fn (2 add 3) [Integer] [7] f 5`,
 		"triple-form construction over a computed")
-	mustRefuseWithParity(t, `(2 add 3) afn [7]`,
+	mustFailToCompileWithParity(t, `(2 add 3) afn [7]`,
 		"construction over a computed")
 }
 
@@ -116,7 +119,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// even `add` so — probe-pinned: maxint add 1 through the original
 	// designed row underflowed BIND_GLOBAL's splice at run time, there IS no
 	// runtime wholesale-defer for a surprise raise), so the original
-	// `(1 add 2)` designed rows now REFUSE and fall back; re-landing them
+	// `(1 add 2)` designed rows now DECLINE and fall back; re-landing them
 	// needs the variable-arity residual model (OpStackMark/OpDropToMark —
 	// the L-DO roadmap in frontier-do-catch.tsv).
 	mustCompileWithParity(t,
@@ -124,31 +127,39 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// Double read re-resolves the live binding (OpLookupDynScope).
 	mustCompileWithParity(t,
 		`def x (do [10 "x"] error [dot code]) x x`, "[x 10 10]")
-	// The word-bearing designed rows: sound refusal + fallback parity.
-	mustRefuseWithParity(t,
+	// The word-bearing designed rows: compile failure + fallback parity.
+	mustFailToCompileWithParity(t,
 		`def msg (do [(1 add 2) "no-raise"] error [dot code]) msg`, "unpromoted computed value")
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def msg (do [(1 add 2) "a"] error [dot code]) msg msg`, "unpromoted computed value")
 	// The RUNTIME-SURPRISE raise that forced the narrowing, both arities.
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def msg (do [(9223372036854775807 add 1) "x"] error [dot code]) msg`, "unpromoted computed value")
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def x (do [(9223372036854775807 add 1) "a" "b"] error [dot code]) x`, "variadic result promoted")
 	// The unflagged-fallible-native twin (getr's not_found — the PR #280
 	// review follow-on this taxonomy closes).
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def m {a:1} def x (do [(m getr "zz") "a" "b"] error [dot code]) x`, "variadic result promoted")
 	// The fallibility scan descends into NESTED lists: the fallible call
-	// buried in the inner list marks the region exactly as a top-level one
-	// (here the refusal surfaces at the reorder stage, same sound fallback).
-	mustRefuseWithParity(t,
-		`def x (do [[1 add 2] "x"] error [dot code]) x`, "residual shape beyond Stage 1")
+	// buried in the inner list marks the region exactly as a top-level one.
+	// The compile failure used to surface at the reorder stage ("residual shape
+	// beyond Stage 1") because the def's value, `[Integer]`, read as
+	// concrete and the def lowered to nothing; since the write-back is
+	// decided by provenance (rootBindWritesBack, the sixty-third
+	// increment) a computed compound writes back like its scalar siblings
+	// above, and the def declines first — the same compile failure.
+	mustFailToCompileWithParity(t,
+		`def x (do [[1 add 2] "x"] error [dot code]) x`, "unpromoted computed value")
 	// The RAISING region rides the catch path: the compiled run defers and
 	// the interpreter owns the catch — value parity through the defer.
 	{
 		src := `def msg (do [(0 div 0) "x"] error [dot code]) msg`
 		a, _ := New()
 		gotC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(src)
 		if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -159,32 +170,29 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// The doc's M.dec ERROR rows: the region's paren call genuinely fails
 	// dispatch — a GUARANTEED-error program, so there is no clean idx-0
 	// event for the split to bind (SplitEventRegionBind declines) and the
-	// refusal stands. (The no-def form of the same region refuses "check
-	// diagnostics" — either refusal is the sound terminal state for a
+	// compile failure stands. (The no-def form of the same region declines "check
+	// diagnostics" — either compile failure is the sound terminal state for a
 	// program that cannot run.)
 	//
 	// The interpreter's half changed with the loud dispatch contract
-	// (design/FN-VALUE-DISPATCH.0.md): the failure is raised AT THE
+	// (design/legacy/FN-VALUE-DISPATCH.0.ignore): the failure is raised AT THE
 	// DISPATCH SITE, which is inside this `do [...]`, so the region's own
 	// error handler catches it and the program yields the caught code.
 	// Under the old residue model the error surfaced from the end-of-run
 	// drain instead — outside every handler — so a program that explicitly
 	// asked to trap its failures was aborted by one anyway.
+	//
+	// GRADUATED 2026-09-25 (NUR134): the do-body unit raises the definite
+	// no-match in place (a unit-scoped trap) and the do's model is the
+	// caught Error, so both rows compile and yield the caught code.
 	for _, src := range []string{
 		s9DocMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
 		s9DocMod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`,
 	} {
-		a, _ := New()
-		prog, _, _, _ := a.CompileCheck(src)
-		b, _ := New()
-		gotI, errI := b.RunInterp(src)
-		if prog != nil || errI != nil || fmt.Sprint(gotI) != "[uncalled_function]" {
-			t.Errorf("%.50q: want refusal + the do-catch yielding uncalled_function, got prognil=%v interp %v (%v)",
-				src, prog == nil, gotI, errI)
-		}
+		mustCompileWithParity(t, src, "[uncalled_function]")
 	}
 
-	// Fences (sound refusal / runtime defer, parity-faithful): a TWO-split
+	// Fences (compile failure / runtime defer, parity-faithful): a TWO-split
 	// program (the second read is a dynamic value preceding residual args)
 	// and a THREE-value region (runtime defer).
 	{
@@ -198,7 +206,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 
 	// PR #280 review fences. The split seats exactly the TWO-value region
 	// (nout != 2 declines — a wider one used to underflow BIND_GLOBAL's
-	// splice at run time). A word-bearing region's promotion refuses: its
+	// splice at run time). A word-bearing region's promotion declines: its
 	// event carries the variadic mark (the fallibility latch or the
 	// dyn-body record), and lowerCall's store-prologue gate rejects the
 	// seat whose raise path delivers ONE caught Error where nout success
@@ -206,13 +214,18 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// div, add-overflow, and a fallible user fn). The `(1 add 2)` instance
 	// cannot ride on its benign operands — fallibility is the word's, not
 	// the call site's.
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def x (do [(1 add 2) "a" "b"] error [dot code]) x`, "variadic result promoted")
-	mustRefuseWithParity(t,
-		`def x (do [(0 div 0) "a" "b"] error [dot code]) x`, "variadic result promoted")
-	mustRefuseWithParity(t,
-		`def x (do [(raise aa "m") "a" "b"] error [dot code]) x`, "variadic result promoted")
-	mustRefuseWithParity(t,
+	// GRADUATED 2026-09-25 (NUR134): an UNCONDITIONAL raise at the region's
+	// own level is no variadic region at all — the do's model is the one
+	// caught Error the runtime yields, so the promoted def seats one value.
+	mustCompileWithParity(t, `def x (do [(raise aa "m") "a" "b"] error [dot code]) x`, "[aa]")
+	// GRADUATED 2026-09-26 (NUR222): a division by a static zero is the same
+	// unconditional raise — its model notes it as `raise` does, so the do
+	// nets the one Error it catches, never the phantom a value-less body's
+	// latch seats.
+	mustCompileWithParity(t, `def x (do [(0 div 0) "a" "b"] error [dot code]) x`, "[arith_error]")
+	mustFailToCompileWithParity(t,
 		`def f fn [[n:Integer][Integer][if (n gt 0) [raise aa "m"] [n]]] def x (do [(f 1) "a" "b"] error [dot code]) x`,
 		"variadic result promoted")
 	// The BARE multi-value raising region keeps native parity — no seat, no

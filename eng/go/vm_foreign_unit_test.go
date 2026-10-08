@@ -34,10 +34,12 @@ func foreignVC(t *testing.T, running *compiler.Program) (*vmContext, *core.Regis
 // A ref belonging to ANOTHER program is hosted, not declined — the fix for the
 // seam that made every runtime-stamped body report Stamped:true and then run on
 // the interpreter. The enclosing run's body seams are restored on the way out,
-// and the step budget it spent comes back with it (a per-callback reset would
-// hand a hot callback a fresh runaway budget on every invoke).
+// and the enclosing run's step count resumes where it was: a nested body runs
+// on its own budget, as the interpreter's sub-engine does (enterBodyUnit), so
+// its steps are not charged to the caller.
 func TestRunUnitNestedHostsForeignProgram(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
+	vc.steps = 7
 	prevInvoker, prevNested := r.Invoker, r.NestedRunner
 	ref := &compiler.CompiledFnRef{Prog: oneConstProg(42), Unit: 0}
 
@@ -51,8 +53,8 @@ func TestRunUnitNestedHostsForeignProgram(t *testing.T) {
 	if n, _ := res[0].AsConcreteInteger(); n != 42 {
 		t.Fatalf("foreign unit must run its OWN program (42), got %v", res[0])
 	}
-	if vc.steps == 0 {
-		t.Error("the foreign run's steps must be handed back to the enclosing context")
+	if vc.steps != 7 {
+		t.Errorf("the enclosing run's step count must resume where it was (7), got %d", vc.steps)
 	}
 	if r.Invoker != nil || r.NestedRunner != nil {
 		t.Error("the foreign run must restore the enclosing body seams")
@@ -81,10 +83,9 @@ func TestRunUnitNestedForeignDynEnvRebalances(t *testing.T) {
 	}
 }
 
-// A soundness bailout inside ONE foreign callback degrades THAT callback:
-// InvokeCompiled's C1 fence then retries it on CallBoru. Without the local
-// recover the panic would unwind to the enclosing runVMEntry and abort the
-// whole program instead.
+// A soundness bailout inside ONE foreign callback is contained to THAT
+// callback, which reports it. Without the local recover the panic would unwind
+// to the enclosing runVMEntry and abort the whole program instead.
 func TestRunUnitNestedForeignPanicIsContained(t *testing.T) {
 	vc, _ := foreignVC(t, oneConstProg(1))
 	broken := oneConstProg(1)

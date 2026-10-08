@@ -39,13 +39,13 @@ What is missing is a *long-lived* process primitive, mailboxes, `send`/`receive`
 PIDs, and a named process registry. This document specifies them.
 
 This began as a **design RFC only**, matching how other subsystems were
-designed first (`STREAM-WORDS.0.md`, `PERMISSIONS-PLAN.10.md`). **Status
+designed first (`STREAM-WORDS.0.md`, `legacy/PERMISSIONS-PLAN.10.ignore`). **Status
 (2026-08-14):** phase 1 has since landed — `spawn`/`self`/`send`/`receive`/
 `register`/`whereis`/`unregister`, the opaque `Pid`, bounded mailboxes with
 `"block"`/`"fail"`/`"drop"` overflow, patrun dispatch with `name:Type`
 binding slots, and `process`-scope gating
 (`lang/go/native/native_process.go`, `core/go/process.go`) — with the
-executable-slice decisions recorded in `NETWORK-IMPLEMENTATION-PLAN.0.md`.
+executable-slice decisions recorded in `legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore`.
 Links/monitors, supervision, and distribution remain design-only.
 
 ### Relationship to `boru:stream`
@@ -129,7 +129,7 @@ This RFC delivers the concurrency substrate for that model. The networking and
 binary-codec layers that complete the end-goal are scoped as later phases and
 enumerated honestly in the [gap analysis](#8-gap-analysis). boru's stated stance
 is that it "is a query/data language, not a systems language"
-(`BATTERIES-INCLUDED-REPORT.5.md`); actors are introduced as *controlled,
+(`legacy/BATTERIES-INCLUDED-REPORT.5.ignore`); actors are introduced as *controlled,
 capability-gated* concurrency, not as an invitation to write arbitrary systems
 code.
 
@@ -276,14 +276,17 @@ pattern into its scalar-tag subset (→ patrun) and its `name:Type` subset (→
 ParseFnParams) is a build-time step over the clause list; neither layer is
 extended and both already exist.
 
-> **The binding layer is specific to `receive`.** Type-slot binding is a property
-> of a `receive` *clause*, not of patrun matching in general. The service-layer
-> `add` (`SERVICES.0.md` §1) deliberately does **not** bind pattern fields: an
-> `add` pattern is scalar-tag routing only, the whole request arrives as `req`,
-> and the handler destructures it by hand (`req.text`). So
-> `add {op:"create" text:String} …` does not bind `text`, whereas the `receive`
-> clause `{op:"create" text:String} […]` does. Same patrun routing underneath; the
-> `name:Type` binding pass is layered on only by `receive`.
+> **One clause pattern, two consumers.** The service-layer `add`
+> (`SERVICES.0.md` §1) reads its pattern with the same two layers
+> (`splitClausePattern`, NUR064, 2026-09-26): scalar fields route, `name:Type`
+> fields are binding slots. A routed clause whose slots decline the message
+> falls back to a slot-free catch-all (`{}`) or raises `no_match`, and a clause
+> that takes it sees each slot's field by name — a `receive` body while it
+> runs, an `add` handler while it runs (the whole request still arrives as
+> `req`). So `add {op:"create" text:String} [ [req state] => [ … text … ] ]`
+> binds `text` exactly as the `receive` clause `{op:"create" text:String} […]`
+> does. Raw patrun (`add {pattern} value patrun`, `find`) stays scalar-only:
+> it stores values, not code, so there is nothing to bind into.
 
 ### patrun routing limits (hard contract)
 

@@ -118,7 +118,7 @@ func TestS6b5CheckMicronConstructionUnreadableMap(t *testing.T) {
 	}
 }
 
-func TestS6b5MicronConstructRefusesNamedTypeBody(t *testing.T) {
+func TestS6b5MicronConstructDoesNotLowerNamedTypeBody(t *testing.T) {
 	r := newTestRegistry(t)
 	base := NewValueRaw(TMicron, MicronTypeInfo{Name: "S6b5Foon", Fields: NewOrderedMap()})
 	_, err := micronConstruct(base, NewMap(NewOrderedMap()), r)
@@ -180,24 +180,24 @@ func TestS6b5MicronInstantiateNewtypeOfUserKind(t *testing.T) {
 
 // --- micron_grammar.go -------------------------------------------------------
 
-func TestS6b5MicronGrammarConstructorRefusalFallsToPathon(t *testing.T) {
-	// The Emailon gate matches but net/mail refuses (consecutive dots):
+func TestS6b5MicronGrammarConstructorCompileFailureFallsToPathon(t *testing.T) {
+	// The Emailon gate matches but net/mail declines (consecutive dots):
 	// the action's fallback constructs a Pathon instead of failing.
 	v, err := MicronFromString("a..b@x.com")
 	if err != nil {
 		t.Fatalf("MicronFromString(a..b@x.com): %v", err)
 	}
 	if !v.Parent.ConformsTo(TPathon) {
-		t.Errorf("refused email literal should fall back to Pathon, got %s", v.Parent.String())
+		t.Errorf("declined email literal should fall back to Pathon, got %s", v.Parent.String())
 	}
 
-	// The Urlon gate matches but url.Parse refuses (unclosed bracket).
+	// The Urlon gate matches but url.Parse declines (unclosed bracket).
 	v, err = MicronFromString("http://[::1")
 	if err != nil {
 		t.Fatalf("MicronFromString(http://[::1): %v", err)
 	}
 	if !v.Parent.ConformsTo(TPathon) {
-		t.Errorf("refused url literal should fall back to Pathon, got %s", v.Parent.String())
+		t.Errorf("declined url literal should fall back to Pathon, got %s", v.Parent.String())
 	}
 }
 

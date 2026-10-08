@@ -12,7 +12,7 @@ package lang
 // backstop (CompileDynBody) then COMPILES the dispatch — the program's
 // DynEnv args bracket makes the runtime sub-run's `args` read identical
 // to the interpreter's. Non-CompileDynBody words (each) keep the
-// refusal with fallback parity. Fn-UNIT args projection (args.N folding
+// compile failure with fallback parity. Fn-UNIT args projection (args.N folding
 // to PUSH_LOCAL N) is untouched.
 
 import (
@@ -44,10 +44,7 @@ func argsBothEngines(t *testing.T, src string) (interp, compiled string, wasComp
 // interpreter's per-call push provides — [7], byte-identical. (The
 // original miscompile const-baked the closure analysis frame's [].)
 func TestArgsInDoBodyCompilesWithParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	src := `def g fn [[n:Integer] [Any] [do [args]]]  g 7`
 	a, err := New()
 	if err != nil {
@@ -64,18 +61,22 @@ func TestArgsInDoBodyCompilesWithParity(t *testing.T) {
 	if interp != compiled || interp != "[[7]]" {
 		t.Errorf("%q: want [[7]] on both engines; interpreted=%q compiled=%q", src, interp, compiled)
 	}
-	// A NON-CompileDynBody higher-order word (each) keeps the refusal —
-	// its closure input must never satisfy the args projection — with
-	// interpreter-fallback parity.
+	// Since S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) each
+	// declares CompileDynBody too, so an each body reading the enclosing
+	// fn's args takes the same backstop: the body's runtime sub-run reads
+	// `args` under the DynEnv bracket and answers 7 per element —
+	// byte-identical to the interpreter. (Before S1a the shape DECLINED —
+	// its closure input never satisfied the args projection — and fell
+	// back with parity.)
 	srcEach := "def g fn [[n:Integer] [List] [[10 20] each [drop args.0]]]  g 7"
 	b, _ := New()
-	eProg, eReason, _, _ := b.CompileCheck(srcEach)
-	if eProg != nil || eReason == "" {
-		t.Errorf("%q: each-body args must keep refusing; got prog=%v reason=%q", srcEach, eProg != nil, eReason)
+	eProg, eReason, _, ecerr := b.CompileCheck(srcEach)
+	if ecerr != nil || eProg == nil {
+		t.Errorf("%q: the dyn-body backstop must compile this; reason=%q err=%v", srcEach, eReason, ecerr)
 	}
 	interp, compiled, was = argsBothEngines(t, srcEach)
-	if was || interp != compiled {
-		t.Errorf("%q: fallback parity broke: was=%v interpreted=%q compiled=%q", srcEach, was, interp, compiled)
+	if !was || interp != compiled || interp != "[[7 7]]" {
+		t.Errorf("%q: want [[7 7]] compiled with parity: was=%v interpreted=%q compiled=%q", srcEach, was, interp, compiled)
 	}
 }
 

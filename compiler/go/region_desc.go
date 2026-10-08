@@ -31,12 +31,15 @@ import core "github.com/boru-lang/boru/core/go"
 //
 // Same body, same source position, same descriptor. A descriptor that froze
 // k's record-time class as a value slot answers 5 where the interpreter
-// raises. Today the compiler declines that program rather than getting it
-// wrong ("module binding k rebound after a fn unit baked its value",
-// compiler/go/emit.go:3159, NotifyNameRebound's fn-unit arm) — one of the
-// interim rebind-staleness latches §6.5 retires
-// once OpCollect re-derives. That pair is OpCollect's acceptance test: it
-// must ANSWER both spellings, not decline the second.
+// raises. Until the sixty-fourth increment the compiler declined that
+// program rather than getting it wrong ("module binding k rebound after a
+// fn unit baked its value", NotifyNameRebound's escaping-unit arm) — one
+// of the interim rebind-staleness latches §6.5 retires once a dispatch
+// re-derives. That pair was the ROUTED dispatch's acceptance test, and
+// OpDispatchGeneric (region_route.go, eng/go/vm_generic.go) now answers
+// both spellings from the same bytecode: `go` reads k live at every
+// execution, an escaped `go` (`def h go/v`) with it, and the fn rebind
+// raises the interpreter's own strict-barrier error.
 type SlotSource uint8
 
 const (
@@ -186,6 +189,14 @@ type ClosureRetSpec struct {
 	// the Function value by stampResultPos, so carrying it here is what makes
 	// the compiled diagnostic point at the same token the interpreter's does.
 	Pos core.SrcPos
+	// Source is the callback fn VALUE itself (ClosurePayload.Source): the
+	// VM steps it on the interpreter for an invocation whose input lands in
+	// a slot the unit reads bare (CompiledFn.FnReadParams, NUR268).
+	Source *core.Value
+	// Named marks a push of a NAMED fn value (ClosurePayload.Named,
+	// namedFnValueSpec): the unit is shared with anonymous values over the
+	// same body, so the anonymity rides on the push (NUR321).
+	Named bool
 }
 
 // RegionDesc is one G-lane region: what dispatches, and the slots it may
@@ -204,6 +215,41 @@ type RegionDesc struct {
 	Word  string
 	Slots []SlotDesc
 	Pos   core.SrcPos
+	// Mods is the lead word as the tape wrote it when it carried a dispatch
+	// modifier — `w/f`, `w/s`, `w/2` — so a live walk over the region reads
+	// the same forward limit and arity the recording walk read. A modifier
+	// is syntax, record-time-final like a slot's Quote. Nil for a plain lead
+	// (the common case, and every hand-built descriptor); when set,
+	// Mods.Name is Word, which Validate checks. A `/v` lead never
+	// dispatches (it is a value read) and `/u` arrives as the `usurp` word,
+	// so neither flag is ever set here.
+	Mods *core.WordInfo
+	// Reg is the registry the dispatch resolved its lead in — the running
+	// one, or a module's sub-registry when the lead is a module native
+	// reached through its wrapper (`StructUtil.clone k` dispatches the
+	// inner `clone` in the module's own table). The routed op looks the
+	// lead up here, as CALL_NATIVE_POLY looks its word up in PolyRef.Reg;
+	// looked up in the caller's registry the lead was unbound on every
+	// execution (found in review of #461). Nil in a hand-built descriptor
+	// means the running registry.
+	Reg *core.Registry
+	// LiveLead marks a dispatch whose lead resolves LIVE for the stored-ref
+	// unit that made it (RecordUserCall's markLiveLead — the seventy-first
+	// increment): the admission is the descriptor's, not the word's, so a
+	// body-local fn of the same name elsewhere keeps its committed call
+	// (review of #467).
+	LiveLead bool
+	// LeadLocal marks a lead no live lookup in Reg finds where the body
+	// runs: a binding that lives inside an enclosing fn — a body-local
+	// `def`, a fn-valued param — the fn-unit hazard fillOffer's slot rule
+	// guards, seen at the lead; or a lead Reg does not hold at all — a
+	// module native reached through its wrapper, whose inner signature is
+	// dispatched from the caller's registry (review of #461). The
+	// descriptor is still recorded (the COLLECT oracle counts such a lead
+	// as unbound); routing declines it, because the committed CALL_USER /
+	// CALL_NATIVE reaches its target by index where the routed op would
+	// look up a name the run-time registry does not hold.
+	LeadLocal bool
 	// NFwd is the RECORDED CLAIM: how many leading slots the recording
 	// dispatch actually took forward, in written order. Slots at i >= NFwd
 	// are inside the region's syntactic span but were not this dispatch's

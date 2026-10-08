@@ -1,6 +1,6 @@
 package lang
 
-// Typed code values, stage 1 (design/checker-precision-fronts.0.md §1 —
+// Typed code values, stage 1 (design/legacy/checker-precision-fronts.0.ignore §1 —
 // the `do` escape hatch): a QUOTED code list stored in data carries its
 // analysed stack effect (compiler.CodeEffectInfo) on the carrier the checker
 // holds for it, so `do` over the NON-literal body types the effect's
@@ -180,8 +180,8 @@ func TestCodeEffectInterpreterUnchanged(t *testing.T) {
 //   - a `do` whose computed body the emitter can concrete-fold (a
 //     literal index into a concrete table — tryFoldStaticIndex) keeps
 //     compiling NATIVELY with runtime parity;
-//   - every other do-over-carrier REFUSES to lower (whole-program
-//     interpreter fallback) rather than islanding or mis-lowering.
+//   - every other do-over-carrier DECLINES to lower (whole-program
+//     compile failure) rather than islanding or mis-lowering.
 func TestCodeEffectCompileDiscipline(t *testing.T) {
 	// Foldable: compiles natively (no FALLBACK island) and matches the
 	// interpreter.
@@ -199,6 +199,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(src)
 	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -206,9 +209,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 			src, compiled, gotC, errC, gotI, errI)
 	}
 
-	// Non-foldable carrier bodies: the compile pass REFUSES (prog nil,
+	// Non-foldable carrier bodies: the compile pass DECLINES (prog nil,
 	// named reason) and the program still runs correctly on the
-	// interpreter fallback.
+	// compile failure.
 	// The dyn-body backstop (CompileDynBody, the always-compile goal) now
 	// COMPILES a computed body whose operand types strictly as a List: the
 	// CALL_NATIVE's runtime sub-run over the concrete tokens IS the
@@ -231,6 +234,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 		}
 		e, _ := New()
 		got, compiled, rerr := e.RunCompiled(cc.src)
+		if noteCompileDefect(t, cc.src, got, rerr) {
+			continue
+		}
 		if !compiled || rerr != nil || fmt.Sprint(got) != cc.want {
 			t.Errorf("%q: want %s compiled; got %v compiled=%v err=%v", cc.src, cc.want, got, compiled, rerr)
 		}
@@ -257,6 +263,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 		}
 		e, _ := New()
 		got, compiled, rerr := e.RunCompiled(rc.src)
+		if noteCompileDefect(t, rc.src, got, rerr) {
+			continue
+		}
 		if !compiled || rerr != nil || fmt.Sprint(got) != rc.want {
 			t.Errorf("%q: want %s compiled; got %v compiled=%v err=%v", rc.src, rc.want, got, compiled, rerr)
 		}

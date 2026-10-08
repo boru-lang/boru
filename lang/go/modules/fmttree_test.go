@@ -69,7 +69,7 @@ func TestFmtTreeStructure(t *testing.T) {
 }
 
 // TestFmtTreeRejectsNonConcrete pins the panic-prevention guard: a type
-// literal in the source slot is refused with an error, never dereferenced.
+// literal in the source slot is declined with an error, never dereferenced.
 func TestFmtTreeRejectsNonConcrete(t *testing.T) {
 	if _, err := fmtTreeHandler([]native.Value{native.NewTypeLiteral(native.TString)}, nil, nil, nil); err == nil {
 		t.Fatal("Fmt.tree accepted a non-concrete (type-literal) argument; want error")

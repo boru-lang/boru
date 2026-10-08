@@ -31,7 +31,7 @@ func NewParseLangFn(spec ParseLangSpec) (native.Value, error) {
 	}
 	// A parser yields exactly one result (the ParseLangFnSigWhy contract) —
 	// reject a multi-return spec here rather than building a value every
-	// parse surface would refuse.
+	// parse surface would decline.
 	if len(spec.Returns) > 1 {
 		return native.Value{}, fmt.Errorf("new parser fn %q: a parser yields exactly one result (declare at most one Return)", spec.Name)
 	}

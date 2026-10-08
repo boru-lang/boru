@@ -32,7 +32,7 @@ func TestNur038ReachFnWouldClaim(t *testing.T) {
 	}{
 		{"Any slot claims a literal", anyFn, NewInteger(5), true},
 		{"typed slot claims a fitting literal", intFn, NewInteger(5), true},
-		{"typed slot refuses a misfit", intFn, NewList([]Value{NewInteger(99)}), false},
+		{"typed slot declines a misfit", intFn, NewList([]Value{NewInteger(99)}), false},
 		{"end is a boundary", anyFn, NewEnd(), false},
 		{"close paren is a boundary", anyFn, NewCloseParen(), false},
 		{"forward marker is a boundary", anyFn, NewForward(ForwardInfo{}), false},
@@ -46,7 +46,7 @@ func TestNur038ReachFnWouldClaim(t *testing.T) {
 		{"a stack-only sig claims nothing forward", stackOnly, NewInteger(5), false},
 		{"a sig-less value claims nothing", Value{Parent: TFunction, Data: FnDefInfo{Name: "z"}}, NewInteger(5), false},
 		{"none is a reserved literal, like true", anyFn, NewWord("none"), true},
-		{"a typed slot refuses none", intFn, NewWord("none"), false},
+		{"a typed slot declines none", intFn, NewWord("none"), false},
 		{"a 0-arg-only fn claims nothing, even a group", Value{Parent: TFunction, Data: FnDefInfo{Name: "p0", Signatures: []Signature{
 			{BarrierPos: -1},
 		}}}, NewOpenParen(), false},
@@ -115,19 +115,6 @@ func TestNur038FnValueWouldWiden(t *testing.T) {
 	e.Tape = NewTape([]Value{NewInteger(1)}, StackHeadroom)
 	if e.fnValueWouldWiden(concatLike, 1, 5) {
 		t.Error("out-of-range index must not widen")
-	}
-}
-
-func TestNur038SigWantsFunctionAt(t *testing.T) {
-	fnSlot := Signature{Args: []*Type{TFunction, TAny}, BarrierPos: -1}
-	if !sigWantsFunctionAt(&fnSlot, 0) {
-		t.Error("a Function slot wants the fn as data")
-	}
-	if sigWantsFunctionAt(&fnSlot, 1) {
-		t.Error("an Any slot is NOT a Function slot — it stays barred")
-	}
-	if sigWantsFunctionAt(&fnSlot, 2) {
-		t.Error("a position past the sig wants nothing")
 	}
 }
 
@@ -284,5 +271,25 @@ func TestNur038FnValueSigShapes(t *testing.T) {
 	}
 	if FnValueOnlyZeroArgSigs(FnDefInfo{Name: "fo", Signatures: []Signature{fb}}) {
 		t.Error("a fallback-only value proves nothing")
+	}
+}
+
+// TestPolyReachBoundCountsBuiltinTypeName — an unbound word that names a
+// builtin type (`Integer`) steps to exactly one value, its type literal, so
+// the reach bound counts it rather than reading it as unboundable
+// (`convert Integer none` recorded no faithful-raise plan otherwise and the
+// runtime no-match bailed, vm:poly-no-match; 2026-09-26). A genuinely
+// unbound word still makes the bound untrustworthy.
+func TestPolyReachBoundCountsBuiltinTypeName(t *testing.T) {
+	r := covRegistry(t, nil)
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(0), NewWord("Integer"), NewEnd()}, StackHeadroom)
+	e.Pointer = 0
+	if n, ok := e.polyReachBound(); !ok || n != 1 {
+		t.Errorf("bound = (%d,%v), want (1,true): a builtin type name is one type literal", n, ok)
+	}
+	e.Tape = NewTape([]Value{NewInteger(0), NewWord("zz-no-such-word"), NewEnd()}, StackHeadroom)
+	if _, ok := e.polyReachBound(); ok {
+		t.Error("an unbound non-type word keeps the bound untrustworthy")
 	}
 }

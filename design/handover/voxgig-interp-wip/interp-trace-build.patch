@@ -1,0 +1,103 @@
+diff --git a/core/go/interp_entry.go b/core/go/interp_entry.go
+index d0101faa5..bd0a8cb2f 100644
+--- a/core/go/interp_entry.go
++++ b/core/go/interp_entry.go
+@@ -1,6 +1,9 @@
+ package core
+ 
+ import (
++	"fmt"
++	"os"
++	"runtime"
+ 	"strings"
+ 	"sync/atomic"
+ )
+@@ -168,6 +171,28 @@ func (r *Registry) InheritObserveHooks(parent *Registry) {
+ // noteInterp emits one interpreter-entry observation when the hook is armed.
+ // Nil-safe on both the registry and the holder.
+ func (r *Registry) noteInterp(seam string) {
++	if r != nil && os.Getenv("BORU_INTERP_TRACE") != "" {
++		att := r.interpAttribution
++		check := r.analysisActive() || strings.HasPrefix(att, "check:")
++		if !check && att == "" {
++			pcs := make([]uintptr, 12)
++			n := runtime.Callers(3, pcs)
++			fr := runtime.CallersFrames(pcs[:n])
++			var chain []string
++			for {
++				f, more := fr.Next()
++				name := f.Function
++				if i := strings.LastIndex(name, "/"); i >= 0 {
++					name = name[i+1:]
++				}
++				chain = append(chain, name)
++				if !more || len(chain) >= 8 {
++					break
++				}
++			}
++			fmt.Fprintf(os.Stderr, "INTERP\t%s\t%s\n", seam, strings.Join(chain, " < "))
++		}
++	}
+ 	if r == nil || r.interpHook == nil {
+ 		return
+ 	}
+diff --git a/eng/go/vm.go b/eng/go/vm.go
+index e9e430f99..e943b756b 100644
+--- a/eng/go/vm.go
++++ b/eng/go/vm.go
+@@ -367,6 +367,7 @@ func (vc *vmContext) islandRun(reg *core.Registry, tokens []core.Value) ([]core.
+ 		// engine-entry census can separate compiled-lane re-entry from a
+ 		// sanctioned interpreter run. Engine.Run emits its own entry too.
+ 		vc.r.NoteInterp("vm:island")
++		traceIslandTokens("vm:island", tokens)
+ 		eng := vc.island()
+ 		eng.FlowUnwind = true
+ 		res, err := eng.Run(tokens)
+diff --git a/eng/go/vm_defer.go b/eng/go/vm_defer.go
+index 0ca4996a8..8d597c5be 100644
+--- a/eng/go/vm_defer.go
++++ b/eng/go/vm_defer.go
+@@ -1,6 +1,12 @@
+ package eng
+ 
+-import core "github.com/boru-lang/boru/core/go"
++import (
++	"fmt"
++	"os"
++	"strings"
++
++	core "github.com/boru-lang/boru/core/go"
++)
+ 
+ // The VM piece's interpreter-facing entry helpers: the designed
+ // defer-to-interpreter choke points (vmDefer / vmDeferAlt) and the
+@@ -64,6 +70,7 @@ func runIslandResolved(r *core.Registry, inputs, tokens []core.Value) ([]core.Va
+ 	// island twin, so it names itself rather than reporting only the
+ 	// Engine.Run its pooled sub-engine emits.
+ 	r.NoteInterp("vm:island-resolved")
++	traceIslandTokens("vm:island-resolved", append(append([]core.Value(nil), inputs...), tokens...))
+ 	input := make([]core.Value, len(inputs)+len(tokens))
+ 	copy(input, inputs)
+ 	copy(input[len(inputs):], tokens)
+@@ -81,3 +88,21 @@ func runIslandResolved(r *core.Registry, inputs, tokens []core.Value) ([]core.Va
+ 	r.PutSubEngine(e)
+ 	return res, err
+ }
++
++func traceIslandTokens(site string, tokens []core.Value) {
++	if os.Getenv("BORU_INTERP_TRACE") == "" {
++		return
++	}
++	pos := ""
++	var parts []string
++	for i, t := range tokens {
++		p := t.Pos()
++		if pos == "" && p.Row > 0 {
++			pos = fmt.Sprintf("%d:%d", p.Row, p.Col)
++		}
++		if i < 12 {
++			parts = append(parts, t.String())
++		}
++	}
++	fmt.Fprintf(os.Stderr, "ISLAND\t%s\t%s\t%s\n", site, pos, strings.Join(parts, " "))
++}

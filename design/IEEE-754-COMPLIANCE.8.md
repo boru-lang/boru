@@ -7,7 +7,7 @@ done**, and the `inf`/`-inf`/`nan` literals + matching rendering from
 Tier 1 landed alongside it — see [Tier-0 status](#tier-0-status). The
 pre-fix transcripts in §"The three deviations" are retained as the record
 of what was fixed. It is a companion to
-[NUMERIC-TOWER](NUMERIC-TOWER.0.md) and
+[NUMERIC-TOWER](legacy/NUMERIC-TOWER.0.ignore) and
 [INTEGER-OVERFLOW-STRATEGY](INTEGER-OVERFLOW-STRATEGY.5.md); the
 WAT-AUDIT Exhibits H (eq-but-not-substitutable) and L (Decimal-is-float)
 are the surface symptoms this document's gaps explain.

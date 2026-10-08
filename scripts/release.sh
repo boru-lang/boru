@@ -4,7 +4,7 @@
 #
 # Releases core/go, check/go, compiler/go, eng/go, basic/go, lang/go and
 # cmd/go in DEPENDENCY ORDER (the four-piece kernel split —
-# design/ENG-FOUR-PIECE.0.md). For each
+# design/legacy/ENG-FOUR-PIECE.0.ignore). For each
 # module it:
 #   1. auto-bumps the PATCH from the module's latest `<module>/vX.Y.Z` tag
 #      (or v0.0.1 if the module has never been tagged);

@@ -207,6 +207,9 @@ func seam7Reg(t *testing.T) *core.Registry {
 func statefulSig(effect core.CompileEffect, f func(n int) []core.Value) *core.Signature {
 	n := 0
 	return &core.Signature{
+		// One operand, as every caller passes: a handler runs over its
+		// signature's arity (concreteHandlerEval, NUR265).
+		Args:          []*core.Type{core.TAny},
 		CompileEffect: effect,
 		Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 			n++
@@ -347,7 +350,7 @@ func covWords(r *core.Registry) {
 		} else {
 			name, _ = core.AsString(args[0])
 		}
-		r.Check.Recorder().RefuseCarriedUndef(name)
+		r.Check.Recorder().DeclineCarriedUndef(name)
 		core.UninstallDef(r, name)
 		return nil, nil
 	}, core.RunInCheck())

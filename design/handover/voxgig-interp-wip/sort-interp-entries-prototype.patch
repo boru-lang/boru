@@ -1,0 +1,139 @@
+--- a/test/sort_prop_spec.aql	2026-10-01 23:26:36.317725789 +0000
++++ b/test/sort_prop_spec.aql	2026-10-02 18:52:50.715350627 +0000
+@@ -18,12 +18,19 @@
+ import "../sort.aql"
+ 
+ 
+-# Works around a boru compile defect (boru main @ 64c5ab2): a `Test.prop`
+-# body that reads a NAMESPACE member by `/v` (`Sort.by-number/v`) is
+-# refused — "code-body word test-prop (Stage 2)" — while a module-level
+-# binding read by `/v` compiles. So the property bodies pass `by-num/v`.
+-# Go back to `Sort.by-number/v` inline when the defect is fixed upstream.
+-def by-num (Sort.by-number/v)
++# Works around two boru defects (boru main @ 64c5ab2):
++# - a `Test.prop` body that reads a NAMESPACE member by `/v`
++#   (`Sort.by-number/v`) is refused — "code-body word test-prop (Stage 2)";
++# - a module-level binding of it, `def by-num (Sort.by-number/v)` read as
++#   `by-num/v`, compiles, but a program-level fn value read during a
++#   property run is applied on the interpreter at run time: every
++#   comparison the sorts made with it was a fallback island (~38,000
++#   interpreter entries in this suite; DX-REPORT.md, "Run-time interpreter
++#   entries").
++# So `by-num` is a 0-arg fn that returns the member, and the property
++# bodies call it: `(by-num)`. Go back to `Sort.by-number/v` inline when the
++# first defect is fixed upstream.
++def by-num fn [[] [Function] [ Sort.by-number/v ]]
+ 
+ 
+ # --- reporting helper (one PropertyResult → a pass/fail line) --------
+@@ -48,23 +55,23 @@
+   (Test.prop "all-comparison-sorts-agree-with-merge"
+     [ iota (r.int 0 7) each [ var [[i] r.int 0 12 ] ] ]
+     [ var [[lst]
+-        def want (lst Sort.merge by-num/v end)
++        def want (lst Sort.merge (by-num) end)
+         def results [
+-          (lst Sort.bubble    by-num/v end)
+-          (lst Sort.insertion by-num/v end)
+-          (lst Sort.selection by-num/v end)
+-          (lst Sort.gnome     by-num/v end)
+-          (lst Sort.cocktail  by-num/v end)
+-          (lst Sort.comb      by-num/v end)
+-          (lst Sort.shell     by-num/v end)
+-          (lst Sort.odd-even  by-num/v end)
+-          (lst Sort.cycle     by-num/v end)
+-          (lst Sort.pancake   by-num/v end)
+-          (lst Sort.bitonic   by-num/v end)
+-          (lst Sort.quick     by-num/v end)
+-          (lst Sort.heap      by-num/v end)
+-          (lst Sort.intro     by-num/v end)
+-          (lst Sort.tim       by-num/v end)
++          (lst Sort.bubble    (by-num) end)
++          (lst Sort.insertion (by-num) end)
++          (lst Sort.selection (by-num) end)
++          (lst Sort.gnome     (by-num) end)
++          (lst Sort.cocktail  (by-num) end)
++          (lst Sort.comb      (by-num) end)
++          (lst Sort.shell     (by-num) end)
++          (lst Sort.odd-even  (by-num) end)
++          (lst Sort.cycle     (by-num) end)
++          (lst Sort.pancake   (by-num) end)
++          (lst Sort.bitonic   (by-num) end)
++          (lst Sort.quick     (by-num) end)
++          (lst Sort.heap      (by-num) end)
++          (lst Sort.intro     (by-num) end)
++          (lst Sort.tim       (by-num) end)
+         ]
+         def ok (flex [true])
+         def _ (results each [ var [[r] if ((r deq want) not) [ ok set 0 false end drop 0 ] [0] ] ])
+@@ -75,7 +82,7 @@
+   (Test.prop "distribution-sorts-agree-with-merge"
+     [ iota (r.int 0 8) each [ var [[i] r.int 0 40 ] ] ]
+     [ var [[lst]
+-        def want (lst Sort.merge by-num/v end)
++        def want (lst Sort.merge (by-num) end)
+         def results [
+           (lst Sort.counting   end)
+           (lst Sort.pigeonhole end)
+@@ -92,14 +99,14 @@
+   # The output of a sort is ordered.
+   (Test.prop "output-is-ordered"
+     [ iota (r.int 0 14) each [ var [[i] r.int 0 50 ] ] ]
+-    [ var [[lst] (lst Sort.quick by-num/v end) Sort.is-sorted by-num/v end ] ])
++    [ var [[lst] (lst Sort.quick (by-num) end) Sort.is-sorted (by-num) end ] ])
+ 
+   # Sorting is idempotent.
+   (Test.prop "sort-is-idempotent"
+     [ iota (r.int 0 14) each [ var [[i] r.int 0 50 ] ] ]
+     [ var [[lst]
+-        def once  (lst  Sort.merge by-num/v end)
+-        def twice (once Sort.merge by-num/v end)
++        def once  (lst  Sort.merge (by-num) end)
++        def twice (once Sort.merge (by-num) end)
+         (once deq twice)
+     ] ])
+ 
+@@ -107,8 +114,8 @@
+   (Test.prop "reverse-comparator-reverses-output"
+     [ iota (r.int 0 12) each [ var [[i] r.int 0 100 ] ] ]
+     [ var [[lst]
+-        def asc  (lst Sort.heap by-num/v end)
+-        def desc (lst Sort.heap (by-num/v Sort.reverse) end)
++        def asc  (lst Sort.heap (by-num) end)
++        def desc (lst Sort.heap ((by-num) Sort.reverse) end)
+         (desc deq (asc reverse))
+     ] ])
+ 
+--- a/test/sort_prop_test.aql	2026-10-02 16:40:31.730586789 +0000
++++ b/test/sort_prop_test.aql	2026-10-02 18:52:57.701293597 +0000
+@@ -39,15 +39,6 @@
+ ]
+ 
+ 
+-# --- key extractor used by the stability property -------------------
+-#
+-# Decodes the value half of a `value*1000 + index` tag.
+-
+-def val-key fn [
+-  [x:Any] [Integer] [ x div 1000 ]
+-]
+-
+-
+ # --- P1+P4. Every comparison sort agrees with merge -----------------
+ #
+ # For a random list, each algorithm's output equals the stable merge
+@@ -172,7 +163,13 @@
+       def enc (flex (iota n each [drop 0]))
+       def _ (iota n each [ var [[i] enc set i (((arr get i) mul 1000) add i) end drop 0 ] ])
+       def encl (enc slice 0 (enc size))
+-      def by-val (encl Sort.merge (val-key/v Sort.by-key) end)
++      # The key function decodes the value half of a tag. It is written
++      # inline: a module-level fn (`def val-key fn [[x:Any] [Integer]
++      # [x div 1000]]`, passed as `val-key/v`) is a program-level fn value
++      # read during a property run, which boru main @ 64c5ab2 applies on
++      # the interpreter at run time — every key the merge took was a
++      # fallback island (DX-REPORT.md, "Run-time interpreter entries").
++      def by-val (encl Sort.merge ((x:Any => [ x div 1000 ]) Sort.by-key) end)
+       # stable ⇒ by-val equals sorting the encoded numbers outright
+       def direct (encl Sort.merge Sort.by-number/v end)
+       (by-val deq direct)

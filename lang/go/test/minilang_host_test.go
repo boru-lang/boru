@@ -105,7 +105,7 @@ func newCalcInstance(t *testing.T) *lang.Boru {
 // or on an unexpected stack shape.
 func runLast(t *testing.T, a *lang.Boru, src string) any {
 	t.Helper()
-	res, err := a.Run(src)
+	res, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("Run(%q): %v", src, err)
 	}
@@ -163,7 +163,7 @@ func TestMiniLangHostRegisterAfterImport(t *testing.T) {
 		t.Fatalf("lang.New: %v", err)
 	}
 	// Import first — this builds and caches the minilang module.
-	if _, err := a.Run(`import "boru:minilang"`); err != nil {
+	if _, err := runReference(t, a, `import "boru:minilang"`); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	// Bind AFTER the import.
@@ -210,7 +210,7 @@ func TestMiniLangHostIsolation(t *testing.T) {
 	}
 }
 
-// --- negative coverage: the contract is what gets refused -----------------
+// --- negative coverage: the contract is what gets declined -----------------
 
 // TestMiniLangHostRuntimeErrors pins the handler's loud failures.
 func TestMiniLangHostRuntimeErrors(t *testing.T) {
@@ -239,7 +239,7 @@ func TestMiniLangHostRuntimeErrors(t *testing.T) {
 	}
 }
 
-// TestMiniLangHostRegistrationContract pins what NewMiniLangFn refuses, and
+// TestMiniLangHostRegistrationContract pins what NewMiniLangFn declines, and
 // that a binding never shadows a built-in kind.
 func TestMiniLangHostRegistrationContract(t *testing.T) {
 	t.Run("empty name", func(t *testing.T) {

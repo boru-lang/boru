@@ -171,15 +171,16 @@ function newWordRef(name: string): Value {
 
 // newWordModified mirrors eng.NewWordModified: a word with explicit
 // argument-shape modifiers. Go's -1 argCount sentinel maps to the TS
-// optional-field convention (undefined = unset).
+// optional-field convention (undefined = unset). The arity is a bigint, as
+// exact as Go's int64 (NUR072: a JS number rounded `/N` above 2^53).
 function newWordModified(
   name: string,
-  argCount: number,
+  argCount: bigint,
   forceStack: boolean,
   forceForward: boolean,
 ): Value {
   const info: WordInfo = { name, forceStack, forceForward }
-  if (argCount >= 0) info.argCount = argCount
+  if (argCount >= 0n) info.argCount = argCount
   return new Value(TWord, info)
 }
 
@@ -518,11 +519,13 @@ export function parse(src: string): Value[] {
     return []
   }
 
-  // A single top-level scalar/paren/interp value arrives wrapped by the
-  // val-rule BC; unwrap it so the cases below see a bare jsonic node, but
-  // keep its position to stamp the single produced value. (Root containers
-  // come from the list/map rule and are not sited; their elements carry
-  // positions individually.)
+  // A single top-level value arrives wrapped by the val rule's siting — a
+  // scalar, a paren, an interp, and a root CONTAINER too (the whole input
+  // one list or map); unwrap it so the cases below see a bare jsonic node,
+  // but keep its position to stamp the single produced value. A root
+  // container left unstamped had no position, which cost every consumer
+  // that finds a statement by its token (a statement island, a caret) the
+  // program that is one list literal.
   // One depth tracker for this parse. Besides logical nesting, it owns a
   // linear UTF-16-index → code-point-column table so normalizing every
   // sited node below remains O(n), even for a 10,000-node single line.
@@ -545,11 +548,11 @@ export function parse(src: string): Value[] {
   // info.implicit distinguishes implicit structures from explicit ones.
   if (Array.isArray(res)) {
     if ((res as Record<string, unknown> & unknown[])['child$'] !== undefined) {
-      return [convertTypedList(res, d)]
+      return [withPos(convertTypedList(res, d), rootPos)]
     }
     if (!getInfo(res)?.implicit) {
       // Explicit list [...]  — a single list value (quotation).
-      return [convertWordList(res, d)]
+      return [withPos(convertWordList(res, d), rootPos)]
     }
     // Implicit list — top-level stack values.
     return convertTopLevel(res, d)
@@ -562,7 +565,7 @@ export function parse(src: string): Value[] {
     const implicit = !!info.implicit
     const meta = info?.meta
     if (hasMapChild(res)) {
-      return [convertTypedMap(res, d, meta)]
+      return [withPos(convertTypedMap(res, d, meta), rootPos)]
     }
     let mv = convertMapData(res, implicit, d, meta)
     // Top-level implicit maps (e.g. entire input is "a:x") must be
@@ -570,7 +573,7 @@ export function parse(src: string): Value[] {
     if (implicit && !mv.eval) {
       mv = markEval(mv)
     }
-    return [mv]
+    return [withPos(mv, rootPos)]
   }
   if (res instanceof UnclosedParen) {
     throw new BoruError('syntax_error', 'unmatched opening parenthesis', '(', {
@@ -578,8 +581,9 @@ export function parse(src: string): Value[] {
     })
   }
   if (res instanceof ParenGroup) {
-    // Single paren group at top level: expand to paren markers.
-    return convertTopLevelItems([res], d)
+    // Single paren group at top level: expand to paren markers, sited as
+    // any paren in a longer program is.
+    return convertTopLevelItems([new Sited(res, rootPos)], d)
   }
   if (res instanceof InterpGroup) {
     // Single template string at top level.
@@ -874,10 +878,10 @@ export function groupModifier(
   if (m.forceForward) {
     return { base: m.base, prefix: [newSugar({ kind: 'forward-args' })], suffix: null }
   }
-  if (m.argCount >= 0) {
+  if (m.argCount >= 0n) {
     return {
       base: m.base,
-      prefix: [newSugar({ kind: 'force-arity', n: BigInt(m.argCount) })],
+      prefix: [newSugar({ kind: 'force-arity', n: m.argCount })],
       suffix: null,
     }
   }
@@ -897,7 +901,7 @@ export function groupModifier(
 // pos is the source position of item (caller has already deSited it).
 //
 // Word-context paren groups become a single ParenExpr value (paren-nesting
-// Step 1, design/PAREN-REPRESENTATION.9.md), the same representation data
+// Step 1, design/legacy/PAREN-REPRESENTATION.9.ignore), the same representation data
 // context already uses. The engine evaluates it via evalParenExprResults
 // (Step 2 at the pointer, Step 3 in a forward window).
 function emitPrimary(dst: Value[], item: unknown, pos: SrcPos, d: ParseDepth): void {
@@ -1018,6 +1022,13 @@ export function convertTopLevelValueInner(v: unknown, d: ParseDepth): Value {
 
   if (v instanceof UnclosedAngle) {
     throw unclosedAngleError(v)
+  }
+
+  if (v instanceof UnclosedParen) {
+    // An unclosed group in a member or operand position (`a.(`,
+    // `quote . ( =`): the item loop's refusal, never the internal marker's
+    // type name (NUR060).
+    throw new BoruError('syntax_error', 'unmatched opening parenthesis', '(')
   }
 
   if (typeof v === 'boolean') {
@@ -1628,7 +1639,7 @@ export function orderedKeys(union: Set<string>, ko: string[]): string[] {
 // scanWordModifier's Go multi-return as one record.
 interface WordMod {
   base: string
-  argCount: number
+  argCount: bigint
   forceStack: boolean
   forceForward: boolean
   quoteFlag: boolean
@@ -1651,7 +1662,7 @@ interface WordMod {
 export function scanWordModifier(text: string): WordMod {
   const invalid = (): WordMod => ({
     base: text,
-    argCount: -1,
+    argCount: -1n,
     forceStack: false,
     forceForward: false,
     quoteFlag: false,
@@ -1676,7 +1687,7 @@ export function scanWordModifier(text: string): WordMod {
   // single argCount value.
   let valid = true
   let seenDigits = false
-  let argCount = -1
+  let argCount = -1n
   let forceStack = false
   let forceForward = false
   let quoteFlag = false
@@ -1700,7 +1711,7 @@ export function scanWordModifier(text: string): WordMod {
         if (n > INT64_MAX) {
           valid = false
         } else {
-          argCount = Number(n)
+          argCount = n
           seenDigits = true
         }
         i = j
@@ -1756,7 +1767,7 @@ export function scanWordModifier(text: string): WordMod {
 
   // /t combines with nothing — any companion flag invalidates, in
   // either order.
-  if (typeFlag && (quoteFlag || valFlag || usurpFlag || forceStack || forceForward || argCount >= 0)) {
+  if (typeFlag && (quoteFlag || valFlag || usurpFlag || forceStack || forceForward || argCount >= 0n)) {
     valid = false
   }
   if (!valid) {
@@ -1862,7 +1873,14 @@ export function parseWord(text: string): Value {
   const name = m.base
 
   if (name === '') {
-    throw new Error('empty word')
+    // A `/` modifier with nothing before it (`/s`, `/v`, `/2`): a modifier
+    // follows the word or group it modifies. It used to leave the parser as
+    // a plain `empty word` Error — the one parse failure that was no
+    // syntax_error, in both ports (NUR060).
+    throw new BoruError(
+      'syntax_error',
+      '`' + text + '` modifies nothing: a `/` modifier follows the word or group it modifies',
+    )
   }
 
   // An invalid modifier combination spelled entirely from the modifier
@@ -1936,7 +1954,7 @@ export function parseWord(text: string): Value {
     return newWordRef(name)
   }
 
-  if (m.forceStack || m.forceForward || m.argCount >= 0) {
+  if (m.forceStack || m.forceForward || m.argCount >= 0n) {
     return newWordModified(name, m.argCount, m.forceStack, m.forceForward)
   }
 
@@ -2101,6 +2119,13 @@ export function convertInterpGroup(grp: InterpGroup, d: ParseDepth): Value {
       continue
     }
     if (item instanceof IexprGroup) {
+      if (0 === item.items.length) {
+        // An empty hole (`${}`, `${ }`) holds no expression and contributes
+        // nothing: a template whose holes are all empty is the plain string
+        // it spells, as `abc` in backticks is (NUR060) — and as an XML
+        // attribute's empty hole folds.
+        continue
+      }
       hasExpr = true
       let exprVals: Value[]
       try {
@@ -2216,6 +2241,14 @@ function readStringEscape(s: string, at: number): [string, number] {
       return v === null ? [c, 1] : [String.fromCharCode(v), 3]
     }
     case 'u': {
+      if ('{' === s[at + 1]) {
+        // The braced form, `\u{1F600}`: 1-6 hex digits, any code point.
+        const b = parseBracedEscape(s, at + 2)
+        return b === null ? [c, 1] : [String.fromCodePoint(b[0]), b[1] + 3]
+      }
+      // A UTF-16 surrogate pair split across two escapes needs no pairing
+      // here: the two code units concatenate into the one code point, as
+      // Go's writeStringEscape pairs them explicitly.
       const v = parseHexEscape(s, at + 1, 4)
       return v === null ? [c, 1] : [String.fromCodePoint(v), 5]
     }
@@ -2224,6 +2257,63 @@ function readStringEscape(s: string, at: number): [string, number] {
       // jsonic's rule for a quoted string, now the template's too.
       return [c, 1]
   }
+}
+
+// parseBracedEscape reads a braced code point, `{` already consumed: 1-6 hex
+// digits at s[at:] and a closing `}`, at most U+10FFFF. Returns the value
+// and the digit count, or null.
+function parseBracedEscape(s: string, at: number): [number, number] | null {
+  const end = s.indexOf('}', Math.min(at, s.length)) - at
+  if (end < 1 || end > 6) {
+    return null
+  }
+  const v = parseHexEscape(s, at, end)
+  if (v === null || v > 0x10ffff) {
+    return null
+  }
+  return [v, end]
+}
+
+// escapeFault reports a malformed `\x` / `\u` escape — the one definition a
+// template's text and a quoted string's body both answer to (NUR026). at
+// indexes the character after the backslash; stop is the form's closing
+// delimiter, which a reported span never crosses. Returns jsonic's code
+// (invalid_ascii / invalid_unicode) and the end of the offending span, which
+// runs from the backslash; null for a well-formed or other escape.
+export function escapeFault(s: string, at: number, stop: string): [string, number] | null {
+  const span = (n: number): number => {
+    for (let i = at; i < at - 1 + n; i++) {
+      if (i >= s.length || s[i] === stop) {
+        return i
+      }
+    }
+    return at - 1 + n
+  }
+  switch (s[at]) {
+    case 'x':
+      if (parseHexEscape(s, at + 1, 2) === null) {
+        return ['invalid_ascii', span(4)]
+      }
+      break
+    case 'u':
+      if ('{' === s[at + 1]) {
+        if (parseBracedEscape(s, at + 2) === null) {
+          // The span runs through the closing `}` when one comes before the
+          // delimiter, else to the delimiter or the end.
+          const rest = s.slice(at)
+          const c = rest.indexOf('}')
+          const d = rest.indexOf(stop)
+          if (c >= 0 && (d < 0 || c < d)) {
+            return ['invalid_unicode', at + c + 1]
+          }
+          return ['invalid_unicode', span(rest.length + 1)]
+        }
+      } else if (parseHexEscape(s, at + 1, 4) === null) {
+        return ['invalid_unicode', span(6)]
+      }
+      break
+  }
+  return null
 }
 
 // parseHexEscape reads exactly n hex digits at s[at:] and returns their

@@ -145,6 +145,7 @@ package compiler
 // Test blocks re-homed by compiler-driven triage at the carve.
 
 import (
+	"strings"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -193,6 +194,7 @@ func TestS6aTryFoldScalarConstNondeterministicDeclines(t *testing.T) {
 	sig := statefulSig(core.CompileScalarFold, func(n int) []core.Value {
 		return []core.Value{core.NewInteger(int64(n))}
 	})
+	sig.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok {
 		t.Error("a nondeterministic handler must not const-fold")
 	}
@@ -203,6 +205,7 @@ func TestS6aTryFoldScalarConstNonInertResultDeclines(t *testing.T) {
 	sig := statefulSig(core.CompileScalarFold, func(int) []core.Value {
 		return []core.Value{core.NewTypeLiteral(core.TInteger)} // bare type node: not inert
 	})
+	sig.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok {
 		t.Error("a non-inert-const result must not fold")
 	}
@@ -210,12 +213,43 @@ func TestS6aTryFoldScalarConstNonInertResultDeclines(t *testing.T) {
 	sig2 := statefulSig(core.CompileScalarFold, func(int) []core.Value {
 		return []core.Value{core.NewInteger(7)}
 	})
+	sig2.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	folded, ok := tryFoldScalarConst(r, sig2, []core.Value{core.NewInteger(1)})
 	if !ok {
 		t.Fatal("deterministic inert const should fold")
 	}
 	if n, err := core.AsInteger(folded); err != nil || n != 7 {
 		t.Errorf("folded = %v, want 7", folded)
+	}
+}
+
+// TestTryFoldScalarConstArityMismatchDeclines pins the fold's arity guard:
+// the check pass's no-match recovery records its best-fit overload over the
+// args the real match rejected, which can be fewer than the sig declares
+// (`n div 0 gt 0` in a fn body assumed gt's two-slot DepScalar constructor
+// over one value). The handler indexes its params unguarded, so the fold must
+// decline before calling it — it panicked through RunCompiled before.
+func TestTryFoldScalarConstArityMismatchDeclines(t *testing.T) {
+	r := newTestRegistry(t)
+	called := false
+	sig := &core.Signature{
+		Args:          []*core.Type{core.TScalar, core.TScalar},
+		CompileEffect: core.CompileScalarFold,
+		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			called = true
+			return []core.Value{a[1]}, nil // indexes the second slot, as the DepScalar constructor does
+		}),
+	}
+	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok || called {
+		t.Errorf("a one-value window over a two-param sig must decline without calling the handler (ok=%v called=%v)", ok, called)
+	}
+	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewInteger(3)}); ok || called {
+		t.Errorf("a window wider than the sig must decline too (ok=%v called=%v)", ok, called)
+	}
+	if v, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1), core.NewInteger(2)}); !ok || !called {
+		t.Fatalf("a window of the sig's arity folds: ok=%v called=%v", ok, called)
+	} else if n, err := core.AsInteger(v); err != nil || n != 2 {
+		t.Errorf("folded = %v, want 2", v)
 	}
 }
 
@@ -295,7 +329,7 @@ func TestEmitStateNilReceiver(t *testing.T) {
 		t.Fatal("nil CanSeatAcrossFragment should be false")
 	}
 	if _, ok := es.tryReturnedClosure(core.NewInteger(1), core.SrcPos{}); ok {
-		t.Fatal("nil tryReturnedClosure should refuse")
+		t.Fatal("nil tryReturnedClosure should decline")
 	}
 }
 
@@ -514,7 +548,7 @@ func TestRecordCallOperandsInertFnBake(t *testing.T) {
 }
 
 func TestNoEvalBodiesInertSentinel(t *testing.T) {
-	// A body that is inert data but carries a break sentinel is refused.
+	// A body that is inert data but carries a break sentinel is declined.
 	sig := &core.Signature{NoEvalArgs: map[int]bool{0: true}}
 	body := core.NewList([]core.Value{core.NewWord("break")})
 	if noEvalBodiesInert(sig, []core.Value{body}) {
@@ -543,7 +577,7 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	// reads them unbound (the capturing-sink miscompile). It routes to the
 	// closure path instead — which, for a NON-anonymous fn like this synthetic
 	// one, declines (tryReturnedClosure requires an anonymous single-sig
-	// lambda), so the operand does not resolve and RecordCallOperands refuses.
+	// lambda), so the operand does not resolve and RecordCallOperands declines.
 	// The program then falls back faithfully. (Anonymous capturing lambdas whose
 	// body compiles DO resolve to an opClosure — see
 	// lang/go's TestPatrunFnValueStoreCompiles / TestReturnedCapturingClosureApply.)
@@ -556,30 +590,69 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	}
 }
 
-func TestRecordDefRebindRefusals(t *testing.T) {
-	// fn-valued rebind → refuse.
+func TestRecordDefRebindCompileFailures(t *testing.T) {
+	// fn-valued rebind → decline.
 	es := NewEmitState()
 	es.loopCarried = []*loopCarriedScope{{unitDepth: 1, slots: map[string]int{"n": 0}}}
 	es.RecordDefRebind("n", core.NewCarrier(core.TFunction), core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("fn-valued loop-carried rebind should refuse")
+		t.Fatal("fn-valued loop-carried rebind should decline")
 	}
-	// unresolvable rebind → refuse.
+	// unresolvable rebind → decline.
 	es = NewEmitState()
 	es.loopCarried = []*loopCarriedScope{{unitDepth: 1, slots: map[string]int{"n": 0}}}
 	es.RecordDefRebind("n", core.NewCarrier(core.TInteger), core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("unresolvable loop-carried rebind should refuse")
+		t.Fatal("unresolvable loop-carried rebind should decline")
 	}
 }
 
-func TestRefuseCarriedUndefFound(t *testing.T) {
+func TestFailToCompileCarriedUndefFound(t *testing.T) {
 	es := NewEmitState()
 	es.loopCarried = []*loopCarriedScope{{unitDepth: 1, slots: map[string]int{"n": 0}}}
-	es.RefuseCarriedUndef("n")
+	es.DeclineCarriedUndef("n")
 	if es.Compilable {
-		t.Fatal("undef of a loop-carried name should refuse")
+		t.Fatal("undef of a loop-carried name should decline")
 	}
+}
+
+// The undef handler's blocked branch declines through the same site: an
+// undef of an enclosing binding from a speculative region declines whether
+// or not recording is live (the fact is the handler's, not re-derived from
+// the recorder's registry), stays out of a closure body compile (the
+// body's transitions are the enclosing run's), and a carried-only call
+// never takes the speculative arm.
+func TestFailToCompileSpeculativeUndefArms(t *testing.T) {
+	es := NewEmitState()
+	es.DeclineSpeculativeUndef("k")
+	if es.Compilable || !strings.Contains(es.Reason, "undef of the enclosing binding `k`") {
+		t.Fatalf("a speculative undef declines: compilable=%v reason=%q", es.Compilable, es.Reason)
+	}
+	// Suspended recording still declines: the compile failure is the program's.
+	es2 := NewEmitState()
+	resume := es2.Suspend()
+	es2.DeclineSpeculativeUndef("k")
+	resume()
+	if es2.Compilable {
+		t.Fatal("a speculative undef under a suspended recorder still declines")
+	}
+	// Inside a closure body compile the enclosing run owns the transition.
+	es3 := NewEmitState()
+	es3.fnRecs = append(es3.fnRecs, &fnUnitRec{closure: true})
+	es3.openUnitRecs = append(es3.openUnitRecs, 0)
+	es3.DeclineSpeculativeUndef("k")
+	if !es3.Compilable {
+		t.Fatalf("a closure body compile keeps compiling: %q", es3.Reason)
+	}
+	// The carried hook never takes the speculative arm, and a nil recorder
+	// is a no-op.
+	es4 := NewEmitState()
+	es4.DeclineCarriedUndef("k")
+	if !es4.Compilable {
+		t.Fatalf("an uncarried undef through the carried hook compiles: %q", es4.Reason)
+	}
+	var none *EmitState
+	none.DeclineSpeculativeUndef("k")
 }
 
 func TestMixedDynamicApplyShape(t *testing.T) {
@@ -629,7 +702,7 @@ func TestRecordShuffleElidedMismatch(t *testing.T) {
 	}
 }
 
-func TestTryReturnedClosureRefusals(t *testing.T) {
+func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	r := covRegistry(t, nil)
 	// Anonymous lambda with an unresolvable capture → declines.
 	es := NewEmitState()
@@ -656,7 +729,7 @@ func TestTryReturnedClosureProbeFails(t *testing.T) {
 	es := NewEmitState()
 	es.reg = r
 	// One own sig, a nil-typed param (exercises the t==nil → Any default), and
-	// a body that references an unknown word so the probe compile refuses.
+	// a body that references an unknown word so the probe compile declines.
 	lam := core.Signature{
 		Params:     []core.FnParam{{Name: "y", Type: nil}},
 		Impl:       core.Boru([]core.Value{core.NewWord("no_such_word_zzz9")}),
@@ -712,7 +785,7 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	if rec := es.fnRecs[unit]; !es.Compilable || rec.dynTrailArity != 1 || !rec.dynTrailApply || rec.dynTrailPos.Col != 9 {
 		t.Fatalf("a fn value beneath the pending apply is the window's argument: compilable=%v arity=%d apply=%v pos=%v", es.Compilable, rec.dynTrailArity, rec.dynTrailApply, rec.dynTrailPos)
 	}
-	// A MID-BODY pending apply (its fn not the residual's top) still refuses.
+	// A MID-BODY pending apply (its fn not the residual's top) still declines.
 	es = NewEmitState()
 	_, finish, _ = es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	u = es.units[len(es.units)-1]
@@ -721,15 +794,15 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	u.pendingApply = []pendingApply{{id: fnHead.ID}}
 	finish([]core.Value{fnHead, fnLast})
 	if es.Compilable {
-		t.Fatal("a mid-body pending apply should refuse")
+		t.Fatal("a mid-body pending apply should decline")
 	}
 }
 
-func TestRecordCallRefusalQuotedOperand(t *testing.T) {
+func TestRecordCallCompileFailureQuotedOperand(t *testing.T) {
 	es := NewEmitState()
 	sig := &core.Signature{QuoteArgs: map[int]bool{0: true}}
-	if !es.recordCallRefusal("usurp", sig, nil, nil, core.SrcPos{}, false, false) || es.Compilable {
-		t.Fatal("an uncovered quoted-operand word should refuse")
+	if !es.recordCallCompileFailure("usurp", sig, nil, nil, core.SrcPos{}, false, false) || es.Compilable {
+		t.Fatal("an uncovered quoted-operand word should decline")
 	}
 }
 
@@ -745,17 +818,17 @@ func TestFinalizeResidualArms(t *testing.T) {
 		t.Fatal("a zeroOut-only residual should finalize")
 	}
 
-	// A bare Word residual materialises but is not an inert const → refuses.
+	// A bare Word residual materialises but is not an inert const → declines.
 	es = NewEmitState()
 	if _, why, ok := es.Finalize([]core.Value{core.NewWord("x")}); ok || why == "" {
-		t.Fatal("a non-materialisable residual should refuse")
+		t.Fatal("a non-materialisable residual should decline")
 	}
 
-	// An unfinished fn unit with no terminal trap → refuses.
+	// An unfinished fn unit with no terminal trap → declines.
 	es = NewEmitState()
 	es.fnRecs = []*fnUnitRec{{name: "ghost"}}
 	if _, why, ok := es.Finalize(nil); ok || why == "" {
-		t.Fatal("an unfinished fn unit should refuse")
+		t.Fatal("an unfinished fn unit should decline")
 	}
 }
 
@@ -809,19 +882,19 @@ func TestComputedArmCondOKDirect(t *testing.T) {
 	}
 }
 
-func TestEmbedsEnclosingCompound(t *testing.T) {
-	// MapPayload with nil backing map → false (the nil-map guard).
+func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
+	// MapPayload with nil backing map → no keep (the nil-map guard).
 	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
-	if embedsEnclosingCompound(nilMap, map[string]bool{}) {
-		t.Fatal("nil-map should not embed")
+	if keep := embeddedEnclosingIDs(nilMap, map[string]bool{}); keep != nil {
+		t.Fatalf("nil-map should embed nothing: %v", keep)
 	}
-	// A map whose (compound) member is an enclosing binding's value → true.
+	// A map whose (compound) member is an enclosing binding's value → kept.
 	member := core.NewList([]core.Value{core.NewInteger(9)})
 	om := core.NewOrderedMap()
 	om.Set("k", member)
 	mp := core.NewMap(om)
-	if !embedsEnclosingCompound(mp, map[string]bool{member.ID: true}) {
-		t.Fatal("map embedding an enclosing compound should report true")
+	if keep := embeddedEnclosingIDs(mp, map[string]bool{member.ID: true}); len(keep) != 1 || !keep[member.ID] {
+		t.Fatalf("map embedding an enclosing compound should keep it: %v", keep)
 	}
 }
 
@@ -1016,7 +1089,7 @@ func TestCompileStoredFnUnitGuards(t *testing.T) {
 		t.Fatal("reg-less EmitState must decline")
 	}
 	// A reg-ful state with an out-of-range / ineligible sig index declines
-	// at the per-sig gate (REFUSAL-CLOSURE §7b).
+	// at the per-sig gate (COMPILE FAILURE-CLOSURE §7b).
 	es := NewEmitState()
 	es.reg = runUnitReg(t)
 	if _, ok := es.compileStoredFnUnit(core.FnDefInfo{}, 0, core.SrcPos{}); ok {
@@ -1029,18 +1102,18 @@ func TestW9UserPolyArmShapeOK(t *testing.T) {
 
 	// Empty body → false.
 	if userPolyArmShapeOK(&core.Signature{}, nil) {
-		t.Error("empty body should refuse")
+		t.Error("empty body should decline")
 	}
 	// Quote/type/form arg slots → false.
 	if userPolyArmShapeOK(&core.Signature{Impl: body, QuoteArgs: map[int]bool{0: true}}, nil) {
-		t.Error("a QuoteArgs slot should refuse")
+		t.Error("a QuoteArgs slot should decline")
 	}
 	// A quoted param → false.
 	if userPolyArmShapeOK(&core.Signature{
 		Impl:   body,
 		Params: []core.FnParam{{Name: "p", Quote: true}},
 	}, []*core.Type{core.TInteger}) {
-		t.Error("a quoted param should refuse")
+		t.Error("a quoted param should decline")
 	}
 	// Returns length mismatch → false.
 	if userPolyArmShapeOK(&core.Signature{
@@ -1048,7 +1121,7 @@ func TestW9UserPolyArmShapeOK(t *testing.T) {
 		Params:  []core.FnParam{{Name: "p", Type: core.TInteger}},
 		Returns: []*core.Type{core.TInteger, core.TInteger},
 	}, []*core.Type{core.TInteger}) {
-		t.Error("a Returns arity mismatch should refuse")
+		t.Error("a Returns arity mismatch should decline")
 	}
 	// nil/non-nil Returns mismatch → false.
 	if userPolyArmShapeOK(&core.Signature{
@@ -1056,7 +1129,7 @@ func TestW9UserPolyArmShapeOK(t *testing.T) {
 		Params:  []core.FnParam{{Name: "p", Type: core.TInteger}},
 		Returns: []*core.Type{nil},
 	}, []*core.Type{core.TInteger}) {
-		t.Error("a nil vs concrete Returns slot should refuse")
+		t.Error("a nil vs concrete Returns slot should decline")
 	}
 	// Matching shape → true.
 	if !userPolyArmShapeOK(&core.Signature{
@@ -1083,10 +1156,10 @@ func TestW9FindOwningFnDef(t *testing.T) {
 	}
 }
 
-func TestW9TryCompileUserPolyOwnerRefusal(t *testing.T) {
+func TestW9TryCompileUserPolyOwnerCompileFailure(t *testing.T) {
 	r := newTestRegistry(t)
 	// Two same-arity overloads whose owning def is a MACRO: the owner gate
-	// (owner.Macro) refuses, keeping the interpreter in charge.
+	// (owner.Macro) declines, keeping the interpreter in charge.
 	core.InstallFnDef(r, "w9macro", core.FnDefInfo{
 		Macro: true,
 		Signatures: []core.Signature{
@@ -1095,14 +1168,14 @@ func TestW9TryCompileUserPolyOwnerRefusal(t *testing.T) {
 		},
 	})
 	if tryCompileUserPolyArms(r, NewEmitState(), "w9macro", []core.Value{core.NewInteger(1)}, []*core.Type{core.TInteger}) != nil {
-		t.Error("a macro-owned poly set should refuse")
+		t.Error("a macro-owned poly set should decline")
 	}
 }
 
 func TestW9TryCompileUserPolyArmCompileFails(t *testing.T) {
 	r := newTestRegistry(t)
 	// Two same-arity overloads that pass the shape/owner gates but whose
-	// bodies are deferred-param-list residuals: compileUserPolyArm refuses,
+	// bodies are deferred-param-list residuals: compileUserPolyArm declines,
 	// so the whole poly set is kept in the interpreter.
 	def := func(p string) core.Signature {
 		inner := core.NewList([]core.Value{core.NewWord(p)})
@@ -1117,16 +1190,16 @@ func TestW9TryCompileUserPolyArmCompileFails(t *testing.T) {
 		Signatures: []core.Signature{def("a"), def("b")},
 	})
 	if tryCompileUserPolyArms(r, NewEmitState(), "w9defer", []core.Value{core.NewInteger(1)}, []*core.Type{core.TInteger}) != nil {
-		t.Error("a poly set with an uncompilable arm should refuse")
+		t.Error("a poly set with an uncompilable arm should decline")
 	}
 }
 
-func TestW9CompileUserPolyArmRefusals(t *testing.T) {
+func TestW9CompileUserPolyArmCompileFailures(t *testing.T) {
 	r := newTestRegistry(t)
 
 	// Empty body → -1,false.
 	if _, ok := compileUserPolyArm(r, NewEmitState(), "w", &core.Signature{}, core.FnDefInfo{}); ok {
-		t.Error("empty body arm should refuse")
+		t.Error("empty body arm should decline")
 	}
 
 	// A deferred-param-list body (eval list referencing a param) → -1,false.
@@ -1137,7 +1210,7 @@ func TestW9CompileUserPolyArmRefusals(t *testing.T) {
 		Impl:   core.Boru([]core.Value{inner}),
 	}
 	if _, ok := compileUserPolyArm(r, NewEmitState(), "w", deferredSig, core.FnDefInfo{}); ok {
-		t.Error("a deferred-param-list body should refuse")
+		t.Error("a deferred-param-list body should decline")
 	}
 
 	// A valid body but an INACTIVE recorder → StartFnCompile fails → -1,false.
@@ -1151,7 +1224,7 @@ func TestW9CompileUserPolyArmRefusals(t *testing.T) {
 	}
 }
 
-func TestRecordMakeListRefusals(t *testing.T) {
+func TestRecordMakeListCompileFailures(t *testing.T) {
 	// Not the top frame → declines.
 	es := NewEmitState()
 	es.frames = append(es.frames, nil)
@@ -1173,7 +1246,7 @@ func TestRecordMakeListRefusals(t *testing.T) {
 	}
 }
 
-func TestRecordMakeMapRefusals(t *testing.T) {
+func TestRecordMakeMapCompileFailures(t *testing.T) {
 	es := NewEmitState()
 	// length mismatch → declines.
 	if es.RecordMakeMap(nil, []string{"a"}, nil, false, core.NewInteger(0), core.SrcPos{}) {
@@ -1194,34 +1267,34 @@ func TestRecordMakeMapRefusals(t *testing.T) {
 	}
 }
 
-func TestRecordCallRefusalArms(t *testing.T) {
+func TestRecordCallCompileFailureArms(t *testing.T) {
 	pos := core.SrcPos{}
 	// sig == nil.
 	es := NewEmitState()
-	if !es.recordCallRefusal("w", nil, nil, nil, pos, false, false) || es.Compilable {
-		t.Fatal("nil sig should refuse")
+	if !es.recordCallCompileFailure("w", nil, nil, nil, pos, false, false) || es.Compilable {
+		t.Fatal("nil sig should decline")
 	}
 	// anonymous dispatch (word == "").
 	es = NewEmitState()
-	if !es.recordCallRefusal("", &core.Signature{}, nil, nil, pos, false, false) || es.Compilable {
-		t.Fatal("empty word should refuse")
+	if !es.recordCallCompileFailure("", &core.Signature{}, nil, nil, pos, false, false) || es.Compilable {
+		t.Fatal("empty word should decline")
 	}
 	// full-stack word.
 	es = NewEmitState()
 	fs := &core.Signature{Impl: &core.GoImpl{FullStack: true}}
-	if !es.recordCallRefusal("depth", fs, nil, nil, pos, false, false) || es.Compilable {
-		t.Fatal("full-stack word should refuse")
+	if !es.recordCallCompileFailure("depth", fs, nil, nil, pos, false, false) || es.Compilable {
+		t.Fatal("full-stack word should decline")
 	}
 	// get-family read that may auto-dispatch a fn member.
 	es = NewEmitState()
 	getArgs := []core.Value{core.NewList([]core.Value{zeroArgFn()})}
-	if !es.recordCallRefusal("get", &core.Signature{}, getArgs, nil, pos, false, false) || es.Compilable {
-		t.Fatal("fn-member read should refuse")
+	if !es.recordCallCompileFailure("get", &core.Signature{}, getArgs, nil, pos, false, false) || es.Compilable {
+		t.Fatal("fn-member read should decline")
 	}
 	// context-dependent word `args`.
 	es = NewEmitState()
-	if !es.recordCallRefusal("args", &core.Signature{}, nil, nil, pos, false, false) || es.Compilable {
-		t.Fatal("args should refuse")
+	if !es.recordCallCompileFailure("args", &core.Signature{}, nil, nil, pos, false, false) || es.Compilable {
+		t.Fatal("args should decline")
 	}
 }
 
@@ -1265,7 +1338,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 		t.Error("minted value did not register in producedBy")
 	}
 
-	// RegisterLocal: "" refuses with -1 and never inserts; two distinct
+	// RegisterLocal: "" declines with -1 and never inserts; two distinct
 	// identity-less values must NOT collapse onto one slot.
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}})
 	if slot := es.RegisterLocal(""); slot != -1 {
@@ -1285,7 +1358,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 	}
 }
 
-// readFnMemberValue / memberFnReadValue arm coverage (REFUSAL-CLOSURE.0 §3):
+// readFnMemberValue / memberFnReadValue arm coverage (COMPILE FAILURE-CLOSURE.0 §3):
 // the pinpointing walk's decline arms, each unreachable-by-shape from the
 // lang fixtures alone — a carrier arg is skipped, a nil-backed map arg is
 // skipped, a non-fn member misses, and a bool-only tag (zero member) reports
@@ -1337,22 +1410,22 @@ func TestW9TryCompileUserPolyEarlyReturns(t *testing.T) {
 	r := newTestRegistry(t)
 	args := []core.Value{core.NewInteger(1)}
 
-	// The early-return guard: an inactive recorder OR empty args refuses
+	// The early-return guard: an inactive recorder OR empty args declines
 	// before any lookup.
 	if tryCompileUserPolyArms(r, inactiveEmitState(), "w", args, []*core.Type{core.TInteger}) != nil {
-		t.Error("inactive recorder should refuse")
+		t.Error("inactive recorder should decline")
 	}
 	if tryCompileUserPolyArms(r, NewEmitState(), "w", nil, []*core.Type{core.TInteger}) != nil {
-		t.Error("empty args should refuse")
+		t.Error("empty args should decline")
 	}
-	// Empty committedReturns is ADMITTED (REFUSAL-CLOSURE.0 §6a) — an
-	// unknown word still refuses through the agg==nil gate.
+	// Empty committedReturns is ADMITTED (COMPILE FAILURE-CLOSURE.0 §6a) — an
+	// unknown word still declines through the agg==nil gate.
 	if tryCompileUserPolyArms(r, NewEmitState(), "w", args, nil) != nil {
-		t.Error("unknown word should refuse (zero-return contract is admitted)")
+		t.Error("unknown word should decline (zero-return contract is admitted)")
 	}
 	// Unknown word → agg==nil → nil.
 	if tryCompileUserPolyArms(r, NewEmitState(), "w9unknown", args, []*core.Type{core.TInteger}) != nil {
-		t.Error("unknown word should refuse")
+		t.Error("unknown word should decline")
 	}
 	// A single same-arity overload → len(sigIdx) < 2 → nil.
 	core.InstallFnDef(r, "w9one", core.FnDefInfo{
@@ -1363,7 +1436,7 @@ func TestW9TryCompileUserPolyEarlyReturns(t *testing.T) {
 		}},
 	})
 	if tryCompileUserPolyArms(r, NewEmitState(), "w9one", args, []*core.Type{core.TInteger}) != nil {
-		t.Error("a single overload should refuse (single-overload path handles it)")
+		t.Error("a single overload should decline (single-overload path handles it)")
 	}
 }
 
@@ -1400,13 +1473,16 @@ func TestDynApplyLeadEligible(t *testing.T) {
 		return u
 	}
 
-	// A native code-body CLOSURE unit declines (its analysis frame is the
-	// CallableSpec inputs, not a per-call named frame).
+	// A native code-body CLOSURE unit with a NAMED frame (a callback lambda,
+	// each/fold$body) is ADMITTED for its own slot — S1b's apply shapes,
+	// 2026-09-22: the former exclusion left `(f e)` inside a fold lambda
+	// unrecorded and the body bailed at run time. The nUnnamed guard below
+	// still keeps a bare-type-param closure out.
 	es = NewEmitState()
 	u := openUnit(es, &fnUnitRec{closure: true})
 	u.localByID["g1"] = 0
-	if es.DynApplyLeadEligible(fnCarrier("g1")) {
-		t.Error("a native code-body closure unit must decline")
+	if !es.DynApplyLeadEligible(fnCarrier("g1")) {
+		t.Error("a named-frame native closure unit's own slot must be admitted")
 	}
 
 	// The Stage 2 closure-flag split: a LAMBDA unit ("fnval" — a returned
@@ -1440,8 +1516,8 @@ func TestDynApplyLeadEligible(t *testing.T) {
 	}
 
 	// An EVENT-provenance local (a computed def promoted to a slot) declines
-	// — RecordDynApply hard-refuses an event fn (runtime quote state
-	// unknown), so admitting it would turn a compiling shape into a refusal.
+	// — RecordDynApply hard-declines an event fn (runtime quote state
+	// unknown), so admitting it would turn a compiling shape into a compile failure.
 	es = NewEmitState()
 	u = openUnit(es, &fnUnitRec{nParams: 1})
 	u.localByID["g1"] = 0
@@ -1499,7 +1575,7 @@ func TestW9UnitNetsZero(t *testing.T) {
 }
 
 // carrierVal is an unresolvable operand: a stripped carrier with no recorded
-// original, so materialise (and thus resolveOperand) refuses it.
+// original, so materialise (and thus resolveOperand) declines it.
 func carrierVal(t *core.Type) core.Value { return core.NewCarrier(t) }
 
 // --- materialise list/map rebuild ---------------------------------------
@@ -1508,7 +1584,7 @@ func carrierVal(t *core.Type) core.Value { return core.NewCarrier(t) }
 
 // --- record-method guards: inactive / unresolvable ----------------------
 
-// --- RecordBranch refusal arms ------------------------------------------
+// --- RecordBranch decline arms ------------------------------------------
 
 // --- fn-value / container-member classifiers ----------------------------
 
@@ -1520,7 +1596,7 @@ func ptrVal(v core.Value) *core.Value { return &v }
 
 // --- record-method guards: inactive / unresolvable ----------------------
 
-// --- RecordBranch refusal arms ------------------------------------------
+// --- RecordBranch decline arms ------------------------------------------
 
 // --- fn-value / container-member classifiers ----------------------------
 

@@ -13,7 +13,7 @@ independently in ~40 lines.
 
 More importantly, `eng/spec` is an **agreement set**: rows are added where the
 two engines already agree, so it cannot see a construct one of them never
-implemented. design/CORE-GO-TS-DEFECTS.0.md documents 22 confirmed defects it
+implemented. design/legacy/CORE-GO-TS-DEFECTS.0.ignore documents 22 confirmed defects it
 is green across, and traces every one of them to that property.
 
 These rows are written from the **documented contract** (REFERENCE.md,
@@ -129,7 +129,7 @@ before anything could consume it.
 
 ## What is deliberately absent
 
-Rows for the 22 defects in design/CORE-GO-TS-DEFECTS.0.md are **not** here
+Rows for the 22 defects in design/legacy/CORE-GO-TS-DEFECTS.0.ignore are **not** here
 yet. They would fail today — several on both engines — and a corpus that
 ships red is a corpus people learn to ignore. That document lists each one
 with the row text that catches it; the rows land with the fixes.

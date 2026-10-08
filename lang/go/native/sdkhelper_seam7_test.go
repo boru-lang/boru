@@ -103,7 +103,7 @@ func TestB3MergeAPIOptionsExistingField(t *testing.T) {
 // mirror. The corpus drives the flagged shape (a descriptor with no
 // spec:); these cover the silent arms — a valid descriptor, and an
 // operand that clears the deep-concrete gate but is not a readable map,
-// where the refusal belongs to dispatch rather than the mirror.
+// where the compile failure belongs to dispatch rather than the mirror.
 func TestAPIDescriptorMirrorArms(t *testing.T) {
 	rf := apiDescriptorMirror("prepare")
 

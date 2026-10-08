@@ -29,6 +29,9 @@ func (d *RegionDesc) Validate(nConsts, nFns, nTypes int) error {
 	if d.Lead != LeadWord && d.Word != "" {
 		return fmt.Errorf("region at %v: word name %q on a non-word lead", d.Pos, d.Word)
 	}
+	if d.Mods != nil && d.Mods.Name != d.Word {
+		return fmt.Errorf("region at %v: lead modifiers name %q, not the lead %q", d.Pos, d.Mods.Name, d.Word)
+	}
 	if d.NFwd < 0 || d.NFwd > len(d.Slots) {
 		return fmt.Errorf("region at %v: claim bound %d outside the region's %d slots",
 			d.Pos, d.NFwd, len(d.Slots))

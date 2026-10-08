@@ -49,6 +49,22 @@ type PredicateUnifier struct {
 func (*PredicateUnifier) ContentMembership() {}
 
 func (p *PredicateUnifier) Match(v Value, t *Type) bool {
+	// A check-mode CARRIER of the predicate's input type is ADMITTED: the
+	// value it stands for may or may not satisfy the body, and only the run
+	// can tell. The lattice walk matchMembership defers a carrier to says
+	// no — Integer is not below Even — which threw a predicate-typed arm
+	// away statically: `we (f 2)` over `[a:Even]` / `[a:Integer]` arms
+	// committed the Integer arm and answered int-arm where the interpreter
+	// runs the predicate over 4 and answers even-arm (measured 2026-09-25,
+	// NUR102's family). Admitted, the arm stays reachable and the call
+	// goes poly: the runtime re-match asks the predicate, once (NUR102).
+	// A concrete candidate keeps the real run below (NUR141).
+	if v.Carrier && !IsConcrete(v) && p.registry != nil && p.registry.analysisActive() {
+		if inputT := PredicateInputType(p.constraint); inputT != nil && v.Parent != nil &&
+			(v.Parent.ConformsTo(inputT) || inputT.ConformsTo(v.Parent)) {
+			return true
+		}
+	}
 	return matchMembership(v, t, p.prev, func(v Value) bool {
 		if p.registry == nil {
 			// No registry attached — fall back to the lattice walk so
@@ -75,7 +91,12 @@ func (p *PredicateUnifier) Match(v Value, t *Type) bool {
 // unifySameOrSubtype-first candidate step whose "narrower literal →
 // admit" branch could admit a non-member without ever running the body
 // — the same hole the Go path avoids; the two now share one rule.)
-func (p *PredicateUnifier) Unify(a, b Value) (Value, *UnifyError) {
+// The body runs under the Unifier's OWN registry (the one InstallType
+// attached), not the chain's — one Unifier per (predicate type,
+// registry) — so the threaded registry is not consulted here, and the
+// body's own dispatch starts unarmed like top-level code (see
+// UnifyExplainR: the chain ends where the engine begins).
+func (p *PredicateUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	return unifyMembership(a, b, "predicate "+p.typeName, func(v Value) (Value, bool, error) {
 		if p.registry == nil {
 			return Value{}, false, fmt.Errorf("predicate type %s has no registry attached", p.typeName)

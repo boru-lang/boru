@@ -13,7 +13,7 @@ import (
 // recurses over via `node.children`.
 //
 // This is the bridge for the Phase-3 "layout rules expressed as boru"
-// direction (design/fmt-module-and-xslt.0.md): `Fmt.tree` supplies the tree,
+// direction (design/legacy/fmt-module-and-xslt.0.ignore): `Fmt.tree` supplies the tree,
 // `Fmt.render` the document-algebra output side, and a boru rule table keyed
 // by `Fmt.kind` the layout. The tree already carries the emitter's
 // semantics-preserving transforms (type capitalisation, fn-bracket elision),

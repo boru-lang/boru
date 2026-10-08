@@ -14,7 +14,7 @@ import "testing"
 //
 // If you are here because this test failed after adding a binding operation:
 // the operation must call noteRebind, or a compiled unit that baked the name
-// will keep answering from the stale bake and nothing will refuse. Add the
+// will keep answering from the stale bake and nothing will decline. Add the
 // call, then add the row. Do not add the row alone.
 
 // funnelRecorder captures both halves of the discipline.
@@ -98,7 +98,7 @@ func TestBindingOpsNotifyRebind(t *testing.T) {
 			if len(rec.rebound) == 0 {
 				t.Errorf("%s bound a name without notifying the rebind — a unit that "+
 					"baked it will keep answering from the stale bake, and nothing will "+
-					"refuse. Seat the operation on noteRebind (core/go/rebind_notify.go).",
+					"decline. Seat the operation on noteRebind (core/go/rebind_notify.go).",
 					c.what)
 			}
 		})
@@ -107,7 +107,7 @@ func TestBindingOpsNotifyRebind(t *testing.T) {
 
 // The one operation that must NOT notify, and the reason the funnel takes a
 // `!shadow` test rather than sitting on DefTable.Push: a frame binding is a
-// param or a capture, scoped to one call, and refusing on it would refuse
+// param or a capture, scoped to one call, and declining on it would decline
 // every program whose fn shadows a module name.
 func TestFrameBindingDoesNotNotifyRebind(t *testing.T) {
 	r, rec := funnelRegistry(t)

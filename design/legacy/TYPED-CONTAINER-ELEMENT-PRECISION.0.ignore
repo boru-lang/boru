@@ -1,0 +1,209 @@
+# Typed-Container Element Precision ("D2") — read narrowing + write enforcement
+
+**Status:** Proposed. Design only; no compiler code changed by this document.
+
+Companion reading: `../GRADUAL-ANY-RECEIVER-DISPATCH.0.md` (the gradual-dispatch
+sibling), `dynamic-modality-report.10.ignore` (the dynamic/gradual carrier contract),
+`PARAM-GUARD-SKIP-MISCOMPILE.0.ignore`.
+
+---
+
+## Context
+
+A typed container is written `{:T}` (map) / `[:T]` (list) — a map/list whose values
+are declared type `T`. The intent is that a read of such a container yields `T`, so
+downstream dispatch is precise: `(m get k)` on a `{:Integer}` map should type as
+`Integer`, a `{:Boolean}` read reaching an `Integer`-only word should be a compile
+error, and a covered read should commit or poly exactly as `T` warrants.
+
+**Today none of that holds for a typed-container PARAM.** A read of a `{:T}` param
+returns dynamic `Any`, so the element type buys nothing at exactly the boundary
+where it would be valuable. And a soundness hole underlies it: `{:T}` is enforced at
+construction but not through mutation, so a `{:Integer}` map can hold a String and
+be read — silently — as an Integer.
+
+This document scopes the full change. It is bigger than a return-type tweak: the
+element type is currently **stripped when a typed-container arg is generalized into
+a param body carrier**, so precise reads have nothing to read; making them work is a
+core-carrier change with real differential risk, and it must be paired with
+write-enforcement to be sound.
+
+## Current state (all verified this session)
+
+| Behaviour | Status | Evidence |
+|---|---|---|
+| Construction | **Enforced** | `def m:{:Integer} {a:"s"}` → `type_error: value {a:'s'} does not unify with declared type {:Integer}` |
+| Concrete/local read | **Narrows** | a concrete `{:Integer}` def read folds to the exact value type via `getNodeReturns`'s per-key path (native_storage.go ~662) |
+| **`{:T}` PARAM read** | **dynamic `Any`** | inside `probe fn [[m:{:Integer}] …]`, the accessor sees the container carrier with `ChildTypeInfo.Child = Any` — the element type is gone |
+| Call-site element check | **Enforced** | a `{:String}` arg is rejected by a `{:Integer}` param (`no_signature`) — so the element type IS known at the boundary, just not propagated inward |
+| **Writes** | **NOT enforced** | `def m:{:Integer} {a:1} (m set b/q "wrong")` → no error, `{a:1 b:'wrong'}`; the result stays statically `{:Integer}`, and `((m2 get b/q) add 1)` → **`"wrong1"`, 0 check errors** — a silent miscompile |
+
+## Root cause
+
+Two independent defects, both required for D2:
+
+1. **Element type stripped at the param boundary.** When `(probe t)` is analysed,
+   `probe`'s body compiles against GENERALISED args (`core_helpers.go` `genArgs`,
+   ~1147‑1224). The fallthrough is `genArgs[i] = NewCarrier(a.Parent)` (line ~1224):
+   it generalises through the ARG's bare `Parent` (`TMap`/`TList`), and
+   `NewCarrier(TMap/TList)` overwrites the child with `ChildTypeInfo{Child: Any}`.
+   The element type lives on the **param's declared type** (`sigParams[i].Type` =
+   `{:T}`), which this path never consults. `ParamInputCarrier` (carrier.go:298) has
+   the same `NewCarrier(t)` collapse but is not even on this path for a called fn.
+   Net: a `{:T}` param body sees a plain `Map`/`List` carrier (element `Any`).
+
+2. **Writes don't preserve/enforce `{:T}`.** `set` on a `{:T}` map (immutable —
+   returns a new map, native_storage.go `setMapHandler` ~266) copies the receiver's
+   static type onto the result WITHOUT checking the written value, so the result
+   still claims `{:Integer}` while holding a String. `setpath` / `merge` / `inject`
+   likewise (they delegate to voxgigstruct with no element check).
+
+## Design decision: reject-on-write (a hard `{:T}` invariant)
+
+Per the accepted policy: a write (`set`/`setpath`/`merge`/`inject`) of a value that
+does not conform to `T` into a `{:T}` container is a **compile-time `type_error`**.
+This makes `{:T}` a hard invariant — a `{:T}` value genuinely holds only `T` — which
+in turn lets reads be **precise and sound**. (The alternative policies — widen,
+drop, runtime-cast — were considered and rejected: the maintainer chose strict
+enforcement.)
+
+## The three parts
+
+**Part A — thread `{:T}` through the param carrier (foundational).**
+In `genArgs` (`core_helpers.go` ~1147‑1224), when the PARAM's declared type
+`sigParams[i].Type` is a typed container (`IsTypedMap`/`IsTypedList`), generalise to
+a carrier that PRESERVES the element type — `NewTypedMap(childCarrier)` + `Carrier`
+(the map twin of `NewCarrierTypedList`, value.go:1790 / carrier.go:152) /
+`NewCarrierTypedListValue(child)` (carrier.go:162, preserves a disjunct child
+verbatim) — instead of `NewCarrier(a.Parent)`. Audit the sibling sites:
+`narrowArgsToParams` (core_helpers.go:523) and `ParamInputCarrier` (carrier.go:298,
+the stored-body path). **High blast radius:** every `{:T}` param body now dispatches
+over its precise element type.
+
+**Part B — narrow the read (accessor).**
+In `getNodeReturns` / `getIntKeyReturns` (native_storage.go), when the container is a
+TYPED carrier (`!IsConcrete && IsTypedMap`/`IsTypedList`), return the element type
+instead of dynamic `Any`: reuse the child bound — `NewDynamicCarrier(child.Parent)`
+for a single type, `NewDynamicCarrierValue(CloneValue(child))` to preserve a disjunct
+`{:(A tor B)}`. An untyped child (`Any`) keeps dynamic `Any`, unchanged. (A working
+draft of this exists — it is inert until Part A lands.)
+
+STRICT vs DYNAMIC: with reject-on-write the invariant holds, so the read CAN be a
+strict `(T tor None)` (`None` for a missing key). Start DYNAMIC (gradual, lowest
+risk, dispatch-equivalent for the covered/disjoint cases) and tighten to strict
+after Part C lands and the differential is green.
+
+**Part C — reject the write (soundness).**
+In the `set`/`setr` Map/List handlers + their `ReturnsFn` (native_storage.go), and in
+`setpath` (setpath.go), `merge` (merge.go), `inject` (inject.go): when the receiver
+is a typed container, check the written value against the element type with the SAME
+unification the construction check uses (`Unify(value, elementType)` — the mechanism
+behind `does not unify with declared type {:T}`). On failure, emit a check-mode
+`type_error`. On success, the result keeps `{:T}`.
+
+## Soundness invariant
+
+`{:T}` is a hard invariant IFF **construction AND every write are enforced**.
+Construction already is (Part C completes the writes). Then:
+- A `{:T}` value provably holds only `T` → a read is soundly `T` (Part B), and a
+  provably-disjoint dispatch (`{:Boolean}` read → `Integer` word) is a real static
+  error, not a deferred one.
+- **Flex (mutable) maps are the exception to watch.** A `flex` map is mutable by
+  reference and already has a separate write-tracking path (`StoreShapeOf` /
+  `ShapeFieldRead`, consulted in `getNodeReturns` ~572). Part C must cover flex
+  writes too, or flex reads must stay on the tracked-bound (gradual) path — a
+  strict read over an untracked-writer flex would be unsound.
+
+## Goal & non-goals
+
+**Goal:** precise, sound element types for typed-container PARAMS — reads narrow to
+`T`, provably-disjoint dispatches static-error, and `{:T}` is a write-enforced hard
+invariant.
+
+**Non-goals:** inferring element types for UNTYPED maps/lists (they stay dynamic
+`Any`); changing untyped-container behaviour at all; concrete-value read narrowing
+(already works via the per-key path); widening/optional semantics for writes
+(rejected in favour of strict enforcement).
+
+## Phased plan (ship independently, validate each against the census)
+
+**Phase 1 — Part C (write rejection).** Self-contained: it closes the soundness hole
+and depends on nothing else. Risk: it turns today's silently-accepted heterogeneous
+writes into compile errors, so the census/differential will flag any corpus program
+that relies on the lie — those are real bugs, but each needs triage. Deliver first;
+it is the soundness win the policy chose.
+
+**Phase 2 — Part A (param-carrier threading).** Foundational and highest-risk: every
+`{:T}` param body re-dispatches over the precise element type. Measure the census
+delta before/after; expect churn.
+
+**Phase 3 — Part B (read narrowing).** Fires once Part A lands. Then optionally
+tighten reads from dynamic to strict `(T tor None)` and re-validate.
+
+## Edge cases
+
+- **Disjunct element** `{:(String tor Integer)}`: the child is a `DisjunctInfo`
+  carrier — preserve it verbatim (Parts A & B) so it distributes over dispatch (a
+  covered word polys/commits; a fully-disjoint one static-errors).
+- **Nested typed containers** `{:[:Integer]}`: the child is itself a typed-list
+  carrier — the verbatim-child construction handles one level; deeper nesting narrows
+  the first hop and the rest can fall to `Any` (strictly better than all-`Any`).
+- **`None` / missing key**: a read of an absent key is `None`. Strict reads should be
+  `(T tor None)`; dynamic reads leave absence to the runtime (as today).
+- **Flex maps**: see the soundness invariant — write-enforce or keep gradual.
+- **`merge` / `inject`**: these go through voxgigstruct — element-checking a deep
+  merge into a `{:T}` map means walking the merged result; scope may limit Phase 1
+  to `set`/`setpath` and defer `merge`/`inject` (documented, not silently skipped).
+- **FnParam.Type representation**: confirm `{:T}` reaches `sigParams[i].Type` as a
+  `ChildTypeInfo`-bearing type (the call-site check implies the element type is
+  known there) — the implementation must verify the exact representation before
+  Part A.
+
+## Risks
+
+- **Census / differential churn.** Every phase touches core check-mode carriers; a
+  similar gradual-carrier change broke `TestCompiledCoverage` earlier this cycle.
+  Part A is the highest risk (broad dispatch shift), Part C the most likely to add
+  *new* errors to existing programs.
+- **Over-strict reads.** Tightening reads to strict `(T tor None)` can force
+  `None`-handling on code that assumes presence — keep reads dynamic until measured.
+- **Flex soundness hole** if Part C misses mutable-map writers.
+
+## Validation surface (every phase)
+
+- `test/go/langspec`: `TestCompiledCoverage` (zero-divergence census; the ratchet),
+  `TestSpecCompiledDifferential`, `TestVariationDifferential`,
+  `TestOnlyMetaFallsBack`. Run: `cd test/go/langspec && go test ./...`.
+- `make fmt && make vet && make lint && make test && make cover-gate`.
+- The 6-library **voxgig** four-surface harness (interpret / check / `--compile`
+  parity / `--force-compile`).
+- New pins (`lang/go/bytecode_typed_container_test.go`): a `{:Integer}` param read
+  COMMITS the Integer arm; a `{:Boolean}` param read STATIC-ERRORS at an
+  Integer|String word; an untyped `Map` read is UNCHANGED (dynamic Any / poly); a
+  non-conforming `set`/`setpath` into `{:T}` is a `type_error`; a conforming write
+  keeps `{:T}`.
+
+## Critical files
+
+- `eng/go/core_helpers.go` — `genArgs` (~1147‑1224, the stripping site) and
+  `narrowArgsToParams` (523): Part A.
+- `eng/go/carrier.go` — `ParamInputCarrier` (298); constructors `NewTypedMap`
+  (value.go:1790) + `Carrier`, `NewCarrierTypedListValue` (162), `NewDynamicCarrier`
+  (46) / `NewDynamicCarrierValue` (55): Parts A & B.
+- `eng/go/value.go` — `ChildTypeInfo` (178), `IsTypedMap`/`IsTypedList` (2768/2774),
+  `AsChildType` (2847): child-type extraction.
+- `lang/go/native/native_storage.go` — `getNodeReturns` / `getIntKeyReturns` (Part
+  B); `setMapHandler` + `set` sigs/ReturnsFn (Part C).
+- `lang/go/native/setpath.go`, `merge.go`, `inject.go` — Part C write enforcement.
+- The typed-def construction check (`Unify` against the declared type — the
+  `does not unify with declared type {:T}` path) is the mechanism Part C reuses.
+
+## Verification (end-to-end, for the eventual implementation)
+
+1. `def probe fn [[m:{:Integer}] [String] [kindof m.k]] def t:{:Integer} {k:5}
+   (probe t)` — the `kindof m.k` dispatch COMMITS the Integer arm (no poly); the
+   `{:Boolean}` sibling static-errors; `m:Map` is unchanged.
+2. `def m:{:Integer} {a:1} (m set b/q "wrong")` — `type_error` (Part C).
+3. `cd test/go/langspec && go test ./...` — census/differentials green (note the
+   `TestCompiledCoverage` delta per phase).
+4. `make fmt vet lint test cover-gate` + the voxgig harness.

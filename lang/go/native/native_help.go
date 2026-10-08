@@ -364,7 +364,7 @@ func BuildFuncInfo(r *Registry, name string) *help.FuncInfo {
 //
 // Where a return carries a PATTERN, the pattern is the contract and the
 // *Type is the weaker half. A literal return type admits exactly itself
-// (design/FN-OUTPUT-SIG.0.md), so `def f fn x:String 22 [22]` returns
+// (design/legacy/FN-OUTPUT-SIG.0.ignore), so `def f fn x:String 22 [22]` returns
 // `22`, not `Integer`; a declared union degrades its type to `Any` and
 // keeps the whole domain in the pattern. Reporting the type alone named
 // a contract wider than the one enforced.

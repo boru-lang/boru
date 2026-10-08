@@ -1,5 +1,5 @@
 // Unit campaign for check-state.ts and registry.ts — the mutable execution
-// scopes. design/CORE-TS-COVERAGE.0.md stage 3.
+// scopes. design/legacy/CORE-TS-COVERAGE.0.ignore stage 3.
 //
 // snapshot/restore is the pair worth testing hardest: a speculative
 // check-mode compile mutates defs, capabilities, args and check state, then

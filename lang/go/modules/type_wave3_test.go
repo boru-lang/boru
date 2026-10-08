@@ -13,7 +13,7 @@ import (
 // introspection over fnsig values (the FnUndefInfo branch), declared-return
 // introspection (returnsofResult single / multiple), field-name decoding
 // edges, disjunct stripping edges, and the structural-equality fallback of
-// the type-set algebra — positives paired with the matching refusals.
+// the type-set algebra — positives paired with the matching compile failures.
 
 // runTypeErr runs expr against a fresh type-module registry and requires
 // an error containing want.
@@ -55,7 +55,7 @@ func TestTypeClassSurgeryWave3(t *testing.T) {
 			t.Errorf("%s = %q, want object type with fields %s", c.expr, s, c.wantFields)
 		}
 	}
-	// Negative: an un-unifiable field overlap is refused, for classes and
+	// Negative: an un-unifiable field overlap is declined, for classes and
 	// records alike.
 	runTypeErr(t, `(class {x:Integer}) TypeUtil.merge (class {x:String})`, `field "x" cannot unify`)
 	runTypeErr(t, `(refine Record [x:Integer]) TypeUtil.merge (refine Record [x:String])`, `field "x" cannot unify`)
@@ -74,7 +74,7 @@ func TestTypeParentOfClassWave3(t *testing.T) {
 // TestTypeFnSigIntrospectionWave3 pins the FnUndefInfo branch of fnSigs:
 // a body-less fnsig value answers paramsof / returnsof / arityof, with
 // single and multiple declared returns; a named fn's declared return is
-// reported precisely; a non-function is refused.
+// reported precisely; a non-function is declined.
 func TestTypeFnSigIntrospectionWave3(t *testing.T) {
 	cases := []struct{ expr, want string }{
 		{`(fnsig [[Integer] [String]]) TypeUtil.paramsof`, "[Integer]"},
@@ -99,7 +99,7 @@ func TestTypeFnSigIntrospectionWave3(t *testing.T) {
 }
 
 // TestTypeFieldNamesWave3 pins fieldNames' decoding edges: a non-atom /
-// non-string element and a non-concrete list are refused through the
+// non-string element and a non-concrete list are declined through the
 // word surface; an exactly-String-typed element (only constructible at
 // the host level — parser strings are Proper/Empty subtypes) is accepted
 // by the String branch.

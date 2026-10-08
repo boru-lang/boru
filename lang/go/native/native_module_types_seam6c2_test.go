@@ -108,7 +108,7 @@ func TestSeam6C2AsModuleDescNonModule(t *testing.T) {
 	if _, ok := AsModuleDesc(Value{Parent: TModuleInst, Data: ExtensionPayload{Body: ModuleDesc{ID: "m"}}}); ok {
 		t.Fatal("a by-value ModuleDesc body must not unwrap — the payload boxes a pointer")
 	}
-	// A nil boxed pointer is defensively refused, never dereferenced.
+	// A nil boxed pointer is defensively declined, never dereferenced.
 	if _, ok := AsModuleDesc(Value{Parent: TModuleInst, Data: ExtensionPayload{Body: (*ModuleDesc)(nil)}}); ok {
 		t.Fatal("a nil *ModuleDesc body must not unwrap")
 	}

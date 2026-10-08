@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,6 +48,20 @@ func MakeRecord(recType RecordTypeInfo, srcVal Value, useBase bool) ([]Value, er
 	return MakeRecordR(recType, srcVal, useBase, nil)
 }
 
+// makeFieldError is a make field's refusal: a structured type_error on both
+// lanes. A plain error here was the interpreter's raise, and a compiled run
+// books a plain error as a compiler defect (internal_error and its note) —
+// reached once a field value only the run knows, a loop-carried value or a
+// refinement's computed bound, left the check pass admitting (NUR310). An
+// error already structured keeps its own code beneath the prefix.
+func makeFieldError(key string, err error) error {
+	var ae *BoruError
+	if errors.As(err, &ae) {
+		return fmt.Errorf("make: field %q: %w", key, err)
+	}
+	return &BoruError{Code: "type_error", Detail: fmt.Sprintf("make: field %q: %v", key, err)}
+}
+
 // MakeRecordR is MakeRecord with Registry threading for
 // predicate-typed field constraints. See MakeFieldValueR.
 func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry) ([]Value, error) {
@@ -66,7 +81,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 				if useBase {
 					bv, err := BaseValueForConstraint(constraint)
 					if err != nil {
-						return fmt.Errorf("make: field %q: %w", key, err)
+						return makeFieldError(key, err)
 					}
 					result.Set(key, bv)
 					continue
@@ -80,7 +95,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 			}
 			converted, err := MakeFieldValueR(val, constraint, r)
 			if err != nil {
-				return fmt.Errorf("make: field %q: %w", key, err)
+				return makeFieldError(key, err)
 			}
 			result.Set(key, converted)
 		}
@@ -140,7 +155,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 			constraint, _ := recType.Fields.Get(key)
 			converted, err := MakeFieldValueR(elems.Get(i), constraint, r)
 			if err != nil {
-				return nil, fmt.Errorf("make: field %q: %w", key, err)
+				return nil, makeFieldError(key, err)
 			}
 			result.Set(key, converted)
 		}
@@ -185,7 +200,7 @@ func makeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, erro
 	}
 	// Every object type is now a class — flat, sealed instances (open
 	// objects and their prototype chain were removed). See
-	// design/CLASS-OBJECT.10.md §3.
+	// design/legacy/CLASS-OBJECT.10.ignore §3.
 	return makeClassInstance(objType, provided, r)
 }
 
@@ -201,7 +216,7 @@ func makeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, erro
 // legacy object path): a typed field rejects non-conforming values
 // loudly, predicate-typed fields run their predicate via Unify, and
 // a defaulted field rejects values outside the default's own type.
-// See design/CLASS-OBJECT.10.md §3c.
+// See design/legacy/CLASS-OBJECT.10.ignore §3c.
 func makeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry) ([]Value, error) {
 	allFields := objType.AllFields()
 
@@ -233,7 +248,7 @@ func makeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 
 		checked, err := MakeClassFieldValue(val, constraint, r)
 		if err != nil {
-			return nil, fmt.Errorf("make: field %q: %w", key, err)
+			return nil, makeFieldError(key, err)
 		}
 		result.Set(key, checked)
 	}
@@ -285,7 +300,7 @@ func makeResource(resType ResourceTypeInfo, provided *OrderedMap, r *Registry) (
 		}
 		checked, err := MakeClassFieldValue(val, constraint, r)
 		if err != nil {
-			return nil, fmt.Errorf("make: field %q: %w", key, err)
+			return nil, makeFieldError(key, err)
 		}
 		result.Set(key, checked)
 	}
@@ -316,6 +331,73 @@ func MakeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 // object/class instance (whose Fields *OrderedMap `set` writes in
 // place). Drives FreshenDefault's identity fast path: scalars and
 // purely-immutable nodes share safely and are returned unchanged.
+// containsCapturingFn reports whether v is, or holds at any depth, a fn
+// value WITH captures — a closure, whose captured state no const can carry.
+func containsCapturingFn(v Value) bool {
+	if fd, ok := v.Data.(FnDefInfo); ok {
+		return len(fd.Captured) > 0
+	}
+	if !IsConcrete(v) {
+		return false
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				if containsCapturingFn(val) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				if containsCapturingFn(lst.Get(i)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// containsFlexOrStore reports whether v is, or holds at any depth of a map or
+// list, a flex node or a store — the shared-mutable REFERENCES a const-fold's
+// scratch run mints afresh, which no compiled home can name (unlike a class
+// instance, which the const gate copies per `make`). AutoEvalMap's fold
+// acceptance keeps such a member on the recorded path.
+func containsFlexOrStore(v Value) bool {
+	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) {
+		return true
+	}
+	if !IsConcrete(v) {
+		return false
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				if containsFlexOrStore(val) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				if containsFlexOrStore(lst.Get(i)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func containsSharedMutable(v Value) bool {
 	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) || IsClassInstance(v) {
 		return true
@@ -612,7 +694,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 
 	// A generic SCHEMA as the make target — `make Box {value:42}` —
 	// infers its type arguments from the construction body and
-	// instantiates first (design/GENERICS.10.md Phase 7 / D12); the
+	// instantiates first (design/legacy/GENERICS.10.ignore Phase 7 / D12); the
 	// instantiation then takes the ordinary path below. Uninferable,
 	// undefaulted parameters error (unbound_param) — never silent Any.
 	if IsTypeSchema(targetVal) {
@@ -677,7 +759,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// the BASE type if needed, then tag the result with the refinement
 	// — the same reparent the typed-def path (`def x:Foo v`) performs.
 	// Without this, make silently returned a base-tagged value
-	// (design/CLASS-OBJECT.10.md §3c typed-defaults gap 1), so
+	// (design/legacy/CLASS-OBJECT.10.ignore §3c typed-defaults gap 1), so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed.
 	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
@@ -991,7 +1073,7 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	// — the same reparent the typed-def path (`def x:Foo v`) performs.
 	// Without this, make silently returned a base-tagged value, so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
-	// could not be expressed (design/CLASS-OBJECT.10.md §3c gap 1).
+	// could not be expressed (design/legacy/CLASS-OBJECT.10.ignore §3c gap 1).
 	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
 		if base := builtinBaseOf(canon); base != nil && base.ConformsTo(TScalar) {
 			conv := srcVal

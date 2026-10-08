@@ -161,12 +161,12 @@ func TestTestCovInvokeAtomAndOutcomes(t *testing.T) {
 	}
 }
 
-// TestTestCovInvokeNonConcreteList pins invokeSubject's refusal of a
+// TestTestCovInvokeNonConcreteList pins invokeSubject's compile failure of a
 // non-concrete inputs list (white-box: the type-literal carrier).
 func TestTestCovInvokeNonConcreteList(t *testing.T) {
 	r := testRegistry(t)
 	if _, err := invokeSubject(r, "add", native.NewTypeLiteral(native.TList)); err == nil {
-		t.Error("a type-literal inputs list must be refused")
+		t.Error("a type-literal inputs list must be declined")
 	}
 }
 
@@ -304,7 +304,7 @@ func TestTestCovResolveTestExportDirect(t *testing.T) {
 	}
 }
 
-// TestTestCovBuildModuleNoParser pins BuildTestModule's refusal when the
+// TestTestCovBuildModuleNoParser pins BuildTestModule's compile failure when the
 // parent registry carries no parser.
 func TestTestCovBuildModuleNoParser(t *testing.T) {
 	r, err := native.DefaultRegistry()
@@ -313,11 +313,11 @@ func TestTestCovBuildModuleNoParser(t *testing.T) {
 	}
 	if _, err := BuildTestModule(r); err == nil ||
 		!strings.Contains(err.Error(), "parser not configured") {
-		t.Errorf("BuildTestModule without a parser should refuse, got %v", err)
+		t.Errorf("BuildTestModule without a parser should decline, got %v", err)
 	}
 }
 
-// TestTestCovResolveExportNonConcrete pins resolveExport's refusal of a
+// TestTestCovResolveExportNonConcrete pins resolveExport's compile failure of a
 // non-concrete export map.
 func TestTestCovResolveExportNonConcrete(t *testing.T) {
 	r, err := native.DefaultRegistry()
@@ -326,7 +326,7 @@ func TestTestCovResolveExportNonConcrete(t *testing.T) {
 	}
 	exports := map[string]*native.OrderedMap{}
 	if _, err := resolveExport(r, exports, "X", native.NewTypeLiteral(native.TMap)); err == nil {
-		t.Error("a type-literal export map must be refused")
+		t.Error("a type-literal export map must be declined")
 	}
 }
 

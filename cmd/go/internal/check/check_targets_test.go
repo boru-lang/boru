@@ -452,7 +452,7 @@ func TestRunColorKeepsCwdAnchor(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := RunColor(&stdout, &stderr, "import \"./lib.boru\"\nLib.x\n", "", 0, false, false, false, false)
 	if err == nil {
-		t.Fatal("expected the import to miss from a foreign cwd; want a refusal")
+		t.Fatal("expected the import to miss from a foreign cwd; want a compile failure")
 	}
 }
 
@@ -629,7 +629,7 @@ func TestTolerateLegacyTail(t *testing.T) {
 	for _, form := range []string{"-e", "--e"} {
 		stderr.Reset()
 		if _, ok := tolerateLegacyTail([]string{form}, &stderr); ok {
-			t.Errorf("%s: want a refusal", form)
+			t.Errorf("%s: want a compile failure", form)
 		}
 		if !strings.Contains(stderr.String(), "requires an expression") {
 			t.Errorf("%s: stderr = %q, want the legacy message", form, stderr.String())

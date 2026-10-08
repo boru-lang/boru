@@ -1,7 +1,7 @@
 // Package vary generates STRUCTURED VARIATIONS of currently-passing spec
 // rows and classifies each variant through the dual interpreter/compiler
 // pipeline, to find compiler gaps the curated corpus does not exercise
-// (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, the test-first frontier
+// (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, the test-first frontier
 // suite's WS3).
 //
 // The idea: every lang/spec row is a program a human thought to write. Each
@@ -12,7 +12,7 @@
 // the oracle, so an ill-formed variant is discarded (InterpReject) and a
 // well-formed one gets the full native-compile + byte-parity verdict. A
 // variant that DIVERGES is a miscompile (the highest-value find); a variant
-// that REFUSES in a new reason bucket is a new frontier class.
+// that DECLINES in a new reason bucket is a new frontier class.
 //
 // Consumers: the specgen `-vary` CLI mode (full-breadth triage sweeps) and
 // test/go/langspec's TestVariationDifferential (the standing CI gate, modest
@@ -184,15 +184,34 @@ const (
 	// CheckReject: the interpreter runs it but CompileCheck hard-errors (a
 	// parse/check-run failure) or the harness could not be built.
 	CheckReject
-	// Refused: CompileCheck returned no Program (Detail = the reason), or
+	// Declined: CompileCheck returned no Program (Detail = the reason), or
 	// RunCompiled declined at runtime (Detail prefixed "runtime bail:").
-	Refused
+	Declined
 	// Islanded: it compiled, but the Program embeds an OpFallback span.
 	Islanded
 	// Diverged: it compiled and ran, and the result differs from the
 	// interpreter — a MISCOMPILE.
 	Diverged
+	// Panicked: one of the engines PANICKED on the program — a crash in
+	// the compiler or the interpreter, recovered so that one broken
+	// program names itself instead of taking the whole sweep down.
+	Panicked
+	// Hung: no engine answered within Deadline — a program that blocks
+	// (a top-level `receive` with no `after` clause waits for a message
+	// that never comes). Its goroutine is abandoned so the sweep goes on.
+	Hung
 )
+
+// Deadline bounds one classification. Every corpus program answers in
+// milliseconds; a program that has not answered by the deadline is Hung.
+// Its classification is abandoned, not stopped — the goroutine runs on
+// until the engine returns, if it ever does — and inflight counts it, so a
+// caller that swaps the seams (the unit tests) can wait for it to end
+// before restoring them.
+var Deadline = 30 * time.Second
+
+// inflight counts classifications still running, abandoned ones included.
+var inflight sync.WaitGroup
 
 // String names the outcome for reports.
 func (o Outcome) String() string {
@@ -203,12 +222,16 @@ func (o Outcome) String() string {
 		return "interp-reject"
 	case CheckReject:
 		return "check-reject"
-	case Refused:
-		return "refused"
+	case Declined:
+		return "declined"
 	case Islanded:
 		return "islanded"
-	default:
+	case Diverged:
 		return "DIVERGED"
+	case Panicked:
+		return "PANIC"
+	default:
+		return "HUNG"
 	}
 }
 
@@ -221,8 +244,32 @@ type Result struct {
 // Classify runs one program through the dual pipeline on fresh, isolated
 // instances (the freshDivergence discipline — no reused-instance artifacts):
 // interpreter oracle first, then CompileCheck + island scan + RunCompiled
-// parity. Output is discarded so print-bearing variants stay quiet.
+// parity. Output is discarded so print-bearing variants stay quiet. A
+// panic in either engine is recovered into Panicked, named by the phase it
+// fired in, and a program that has not answered within Deadline is Hung.
 func Classify(src string) Result {
+	done := make(chan Result, 1)
+	inflight.Add(1)
+	go func() {
+		defer inflight.Done()
+		done <- classify(src)
+	}()
+	select {
+	case r := <-done:
+		return r
+	case <-time.After(Deadline):
+		return Result{Hung, fmt.Sprintf("HUNG: no answer within %s", Deadline)}
+	}
+}
+
+// classify is Classify without the deadline.
+func classify(src string) (res Result) {
+	phase := "interp"
+	defer func() {
+		if r := recover(); r != nil {
+			res = Result{Panicked, fmt.Sprintf("PANIC in %s: %v", phase, r)}
+		}
+	}()
 	ai, err := langNew()
 	if err != nil {
 		return Result{CheckReject, "harness: " + err.Error()}
@@ -240,13 +287,15 @@ func Classify(src string) Result {
 	}
 	ac.SetClock(SpecClock)
 	ac.SetOutput(discard{})
+	phase = "compile"
 	prog, reason, _, cerr := compileCheck(ac, src)
 	if cerr != nil {
 		return Result{CheckReject, reason + ": " + cerr.Error()}
 	}
 	if prog == nil {
-		return Result{Refused, reason}
+		return Result{Declined, reason}
 	}
+	phase = "disassemble"
 	if strings.Contains(disasm(prog), "FALLBACK") {
 		return Result{Islanded, "program embeds an OpFallback island"}
 	}
@@ -257,9 +306,10 @@ func Classify(src string) Result {
 	}
 	ar.SetClock(SpecClock)
 	ar.SetOutput(discard{})
+	phase = "run"
 	gotC, wasC, errC := runCompiled(ar, src)
 	if !wasC {
-		return Result{Refused, fmt.Sprintf("runtime bail: did not run compiled (err=%v)", errC)}
+		return Result{Declined, fmt.Sprintf("runtime bail: did not run compiled (err=%v)", errC)}
 	}
 	if fmt.Sprint(errC) != fmt.Sprint(errI) {
 		return Result{Diverged, fmt.Sprintf("error divergence: compiled %v vs interp %v", errC, errI)}
@@ -278,7 +328,7 @@ func (discard) Write(p []byte) (int, error) { return len(p), nil }
 // Variant is one classified (seed × transform) program. The base seed's own
 // classification appears with Transform == "seed"; transform variants are
 // generated only for seeds whose base classification is Pass — variations of
-// an already-refused row would only re-observe the base refusal, which the
+// an already-declined row would only re-observe the base compile failure, which the
 // corpus ratchets already own.
 type Variant struct {
 	Seed      Seed

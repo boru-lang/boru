@@ -832,7 +832,7 @@ func registerEngSpecStorage(r *core.Registry) {
 		container := args[2]
 		// Reachable since the Stage 2 flip: a class NAME in the value
 		// slot dispatches as its minted node (`set x 5 P`), and the
-		// type-literal guard refuses it — mirroring production.
+		// type-literal guard declines it — mirroring production.
 		if !core.IsConcrete(container) {
 			return nil, fmt.Errorf("set: cannot set field on type literal")
 		}

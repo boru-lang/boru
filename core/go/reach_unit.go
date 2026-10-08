@@ -27,8 +27,7 @@ import "sync"
 // ApplyReach would otherwise have interpreted, with the receiver VALUE replaced
 // by a reference to the bound parameter — no hand-lowering, no second model of
 // what a segment means. Everything else (dep freshness, the JIT re-stamp, the
-// effect fence, the internal-error degrade) is the CompiledRuntime seam's,
-// unchanged.
+// internal-error classification) is the CompiledRuntime seam's, unchanged.
 //
 // The receiver arrives as a NAMED param rather than a stack push, and that is
 // the one place this differs in shape from the interpreted chain. It was
@@ -83,7 +82,7 @@ func compiledLensSig(r *Registry, lu *lensUnit, segs []ReachSeg) *Signature {
 		compiledRuntime.StampDetached(r, fd, SrcPos{})
 		// The ref is the compiler piece's opaque handle (S4); core only asks
 		// whether one landed, exactly as compiler.CompiledRef reads it.
-		if bi, ok := fd.Signatures[0].Impl.(*BoruImpl); ok && bi.Compiled != nil {
+		if bi, ok := fd.Signatures[0].Impl.(*BoruImpl); ok && bi.Compiled() != nil {
 			lu.sig = &fd.Signatures[0]
 		}
 	})

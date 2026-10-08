@@ -239,21 +239,26 @@ const (
 
 	// Compile-effect classifications (core.CompileEffect) for the bytecode
 	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault          = core.CompileDefault
-	CompileReadsFn          = core.CompileReadsFn
-	CompileStoresFn         = core.CompileStoresFn
-	CompileModuleFold       = core.CompileModuleFold
-	CompileIslandPure       = core.CompileIslandPure
-	CompileScalarFold       = core.CompileScalarFold
-	CompileFallbackBody     = core.CompileFallbackBody
-	CompileQuoteInert       = core.CompileQuoteInert
-	CompileDiverges         = core.CompileDiverges
-	CompileValueDiverges    = core.CompileValueDiverges
-	CompileStoresBody       = core.CompileStoresBody
-	CompileStoresBodyList   = core.CompileStoresBodyList
-	CompileFnHandlerStrict  = core.CompileFnHandlerStrict
-	CompileRunsBodyIsolated = core.CompileRunsBodyIsolated
-	CompileDynBody          = core.CompileDynBody
+	CompileDefault            = core.CompileDefault
+	CompileReadsFn            = core.CompileReadsFn
+	CompileStoresFn           = core.CompileStoresFn
+	CompileModuleFold         = core.CompileModuleFold
+	CompileIslandPure         = core.CompileIslandPure
+	CompileScalarFold         = core.CompileScalarFold
+	CompileFallbackBody       = core.CompileFallbackBody
+	CompileQuoteInert         = core.CompileQuoteInert
+	CompileQuoteKey           = core.CompileQuoteKey
+	CompileDiverges           = core.CompileDiverges
+	CompileValueDiverges      = core.CompileValueDiverges
+	CompileStoresBody         = core.CompileStoresBody
+	CompileStoresBodyList     = core.CompileStoresBodyList
+	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
+	CompileResteps            = core.CompileResteps
+	CompileOwnLowering        = core.CompileOwnLowering
+	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
+	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
+	CompileDynBody            = core.CompileDynBody
+	CompileSideEffect         = core.CompileSideEffect
 
 	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
 	// the driving handler returns the body's entire residual (`do`).
@@ -487,14 +492,20 @@ var (
 	RunPooledTop             = core.RunPooledTop
 	RunResolved              = core.RunResolved
 	InvokeBody               = core.InvokeBody
+	BodyEscaped              = core.BodyEscaped
 	InvokeCallbackBody       = core.InvokeCallbackBody
 	InvokeCallbackFn         = core.InvokeCallbackFn
 	FnValueOnlyZeroArgSigs   = core.FnValueOnlyZeroArgSigs
 	FnHome                   = core.FnHome
+	FnHomeLookup             = core.FnHomeLookup
+	HomeExportedFn           = core.HomeExportedFn
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
 	IsCompiledClosure        = compiler.IsCompiledClosure
 	ClosureWantsKeyVal       = compiler.ClosureWantsKeyVal
+	ClosureIsFnValue         = compiler.ClosureIsFnValue
+	ClosureAsFnDef           = core.ClosureAsFnDef
+	ClosureSigMatched        = core.ClosureSigMatched
 	CloneValue               = core.CloneValue
 	NewSyncWriter            = core.NewSyncWriter
 	NewReadList              = core.NewReadList
@@ -520,8 +531,11 @@ var (
 	StampModuleCallGates     = core.StampModuleCallGates
 	NewElementCarrier        = check.NewElementCarrier
 	ElementCarrierFromValue  = check.ElementCarrierFromValue
+	ElementCarrierOf         = check.ElementCarrierOf
 	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
+	CarrierTypedListOf       = core.CarrierTypedListOf
+	ValueCarrier             = core.ValueCarrier
 	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).
@@ -553,6 +567,7 @@ var (
 	NewList               = core.NewList
 	NewFlexList           = core.NewFlexList
 	NewMap                = core.NewMap
+	MarkShapeModel        = core.MarkShapeModel
 	NewFlexMap            = core.NewFlexMap
 	NewMark               = core.NewMark
 	NewMove               = core.NewMove
@@ -567,6 +582,7 @@ var (
 	NewEnd                = core.NewEnd
 	NewOptionsType        = core.NewOptionsType
 	NewOrderedMap         = core.NewOrderedMap
+	NoteFnBodyPendingIn   = core.NoteFnBodyPendingIn
 	NewParenExpr          = core.NewParenExpr
 	NewPathon             = core.NewPathon
 	NewPathonVol          = core.NewPathonVol

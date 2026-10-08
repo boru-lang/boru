@@ -149,7 +149,7 @@ func TestAnonFnValueZeroArgAppliedDispatches(t *testing.T) {
 // TestAppliedMarkIsOneShot pins that the mark is SPENT by the re-step that
 // reads it, whether or not that re-step dispatches. A macro is the case that
 // makes this observable: applying a macro is never a stack-value dispatch
-// (design/MACROS-PHASE1.10.md §5, D4), so the value parks — and it must park
+// (design/legacy/MACROS-PHASE1.10.ignore §5, D4), so the value parks — and it must park
 // UNMARKED, or the stale flag rides into whatever binding or container takes
 // it and fires a call at some later, unrelated step.
 func TestAppliedMarkIsOneShot(t *testing.T) {
@@ -191,7 +191,9 @@ func TestQuotedFnValueIsData(t *testing.T) {
 }
 
 func TestFnValueDispatchModLeavesInert(t *testing.T) {
-	// A Word/__DM marker right after the fn value marks it inert data.
+	// A Word/__DM marker right after the fn value DELIVERS it: pushed and
+	// stepped past, unquoted — the value its word twin `f/v` is (NUR280) —
+	// so it is inert where it sits and the 5 beside it stays data.
 	r := covRegistry(t, nil)
 	fnv := anonFnVal(
 		[]FnParam{{Name: "a", Type: TInteger}},
@@ -204,8 +206,8 @@ func TestFnValueDispatchModLeavesInert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch mod: %v", err)
 	}
-	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || !out[0].Quoted {
-		t.Errorf("dispatch mod did not leave fn inert: %s", renderAll(out))
+	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || out[0].Quoted {
+		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && out[0].Quoted)
 	}
 }
 
@@ -385,7 +387,7 @@ func TestUnresolvableFnValueIsData(t *testing.T) {
 func TestNamedFnValueFailedDispatchRaises(t *testing.T) {
 	// A named fn value whose candidate args match no sig raises
 	// uncalled_function at the dispatch site
-	// (design/FN-VALUE-DISPATCH.0.md).
+	// (design/legacy/FN-VALUE-DISPATCH.0.ignore).
 	r := covRegistry(t, nil)
 	fnv := namedFnVal("intonly",
 		[]FnParam{{Name: "x", Type: TInteger}},
@@ -696,7 +698,7 @@ func TestWordRefUndefinedErrors(t *testing.T) {
 // TestWordValNonFunctionIsTheValue: `/v` is TOTAL over binding kinds —
 // for a non-fn binding it is the identity, not an error. The negative
 // twin is TestWordRefUndefinedErrors above: an UNBOUND name still
-// refuses, because there is no value to take.
+// declines, because there is no value to take.
 func TestWordValNonFunctionIsTheValue(t *testing.T) {
 	r := covRegistry(t, nil)
 	InstallDef(r, "plainv", NewInteger(2))

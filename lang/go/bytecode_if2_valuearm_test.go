@@ -12,32 +12,32 @@ import (
 // resolveArm, it carries its own check that the then FRAGMENT was captured;
 // these two tests are the two sides of it.
 //
-// The refusing side is a documented program, not a contrived one. `boru
+// The declining side is a documented program, not a contrived one. `boru
 // describe if` lists the 2-arg VALUE form — `if 5 6 ;# 6` — and a plain-value
 // arm is not a code body, so core's body runner (runCarrierBodyDefsAdds)
 // returns on its AsList failure BEFORE installing the guard that would record
 // the arm into a fragment. If2ReturnsFn therefore hands the recorder a nil
-// fragment over an empty then-stack, and the recorder refuses the PROGRAM
+// fragment over an empty then-stack, and the recorder declines the PROGRAM
 // rather than emitting a branch with nothing to lower on its true path. The
-// interpreter still answers, which is the point of a refusal: it is a
+// interpreter still answers, which is the point of a compile failure: it is a
 // fallback, not a change of behaviour.
 //
-// The refusal is load-bearing, not tidiness: with the recorder's check
+// The compile failure is load-bearing, not tidiness: with the recorder's check
 // removed, the nil fragment reaches lowerFragment and `if 5 6` PANICS inside
 // CompileCheck on a nil dereference. This test is what stands between that
 // and a release.
 //
 // The accepting side is the same recorder arm reached with a real `[…]` body
 // that happens to leave nothing — `if true []`. It must keep compiling, or
-// the guard above has been widened into a refusal of working programs.
+// the guard above has been widened into a compile failure of working programs.
 //
 // compiler/go/if2_zero_arm_guard_test.go is the seam half, which pins where
-// the refusal lands inside RecordBranch.
+// the compile failure lands inside RecordBranch.
 
-// TestIf2ValueThenArmRefusesToCompile pins the REFUSAL: a 2-arg `if` whose
+// TestIf2ValueThenArmDoesNotCompile pins the COMPILE FAILURE: a 2-arg `if` whose
 // then arm is an already-evaluated value has no fragment to lower, so the
-// program falls back to the interpreter with this exact reason.
-func TestIf2ValueThenArmRefusesToCompile(t *testing.T) {
+// program fails to compile with this exact reason.
+func TestIf2ValueThenArmDoesNotCompile(t *testing.T) {
 	const want = "if: then-branch not captured"
 	cases := []struct{ name, src, interp string }{
 		// The worked example `boru describe if` publishes for the 2-arg form.
@@ -46,7 +46,7 @@ func TestIf2ValueThenArmRefusesToCompile(t *testing.T) {
 		// A COMPUTED condition takes the same path: the arm, not the
 		// condition, is what was never captured.
 		{"computed condition, literal value arm", `if (1 lt 2) 99`, "[99]"},
-		// A def-bound condition, and a residual after the if, so the refusal
+		// A def-bound condition, and a residual after the if, so the compile failure
 		// is not an artifact of the if being the whole program.
 		{"def-bound condition, value arm, trailing residual",
 			`def a 1 if (a gt 0) 99 end 7`, "[99 7]"},
@@ -62,9 +62,9 @@ func TestIf2ValueThenArmRefusesToCompile(t *testing.T) {
 				t.Fatalf("a value then arm has no fragment to lower; it must not compile (got %s)", prog.Disassemble())
 			}
 			if reason != want {
-				t.Errorf("refusal reason = %q, want %q", reason, want)
+				t.Errorf("compile failure reason = %q, want %q", reason, want)
 			}
-			// The refusal is a FALLBACK: the program still runs, and still
+			// The compile failure is a FALLBACK: the program still runs, and still
 			// gives the documented answer.
 			got, err := a.RunInterp(c.src)
 			if err != nil {
@@ -79,8 +79,8 @@ func TestIf2ValueThenArmRefusesToCompile(t *testing.T) {
 
 // TestIf2CapturedZeroValueArmCompiles is the TWIN: the same RecordBranch arm
 // (2-arg if, then nets nothing) reached with a real `[…]` body, which IS
-// captured. These must keep compiling natively — a guard that refused them
-// too would be refusing the shape it was written to admit.
+// captured. These must keep compiling natively — a guard that declined them
+// too would be declining the shape it was written to admit.
 func TestIf2CapturedZeroValueArmCompiles(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"empty body arm", `if true []`, "[]"},
@@ -104,7 +104,7 @@ func TestIf2CapturedZeroValueArmCompiles(t *testing.T) {
 				t.Fatalf("CompileCheck: %v", err)
 			}
 			if prog == nil {
-				t.Fatalf("a captured 0-value then arm must compile, refused: %q", reason)
+				t.Fatalf("a captured 0-value then arm must compile, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("must compile native (no interpreter island):\n%s", prog.Disassemble())

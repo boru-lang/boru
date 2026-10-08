@@ -10,8 +10,8 @@ import (
 // (recursion.tsv 71/72): a fn body's word that resolves only through the
 // runtime def stack lowers to OpLookupDynScope, and every frame binding such
 // a name installs a registry-visible OpBindDynScope twin. Negatives: a read
-// with no reachable binder still refuses (a typo never becomes a runtime
-// lookup), and the refusal's interpreter fallback stays faithful.
+// with no reachable binder still declines (a typo never becomes a runtime
+// lookup), and the compile failure's compile failure stays faithful.
 
 func TestDynScopeRowsCompileWithParity(t *testing.T) {
 	rows := []struct{ src, want, op string }{
@@ -33,7 +33,7 @@ func TestDynScopeRowsCompileWithParity(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%q: expected a native compile, refused: reason=%q err=%v", c.src, reason, cerr)
+			t.Fatalf("%q: expected a native compile, declined: reason=%q err=%v", c.src, reason, cerr)
 		}
 		dis := prog.Disassemble()
 		if !strings.Contains(dis, "LOOKUP_DYN_SCOPE") {
@@ -44,6 +44,9 @@ func TestDynScopeRowsCompileWithParity(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil {
 			t.Fatalf("%q: compiled run: compiled=%v err=%v", c.src, compiled, errC)
 		}
@@ -56,9 +59,9 @@ func TestDynScopeRowsCompileWithParity(t *testing.T) {
 }
 
 // A fn-body read with NO reachable binder (a genuine typo) must NOT lower to
-// a runtime lookup — the refusal stands and the interpreter owns the
+// a runtime lookup — the compile failure stands and the interpreter owns the
 // undefined_word error.
-func TestDynScopeUnreachableNameStaysRefused(t *testing.T) {
+func TestDynScopeUnreachableNameStaysFailedToCompile(t *testing.T) {
 	src := `def g fn [[] [Integer] [nosuchbinding]] g`
 	a, err := New()
 	if err != nil {
@@ -74,6 +77,9 @@ func TestDynScopeUnreachableNameStaysRefused(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, _, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(src)
 	if fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -82,8 +88,8 @@ func TestDynScopeUnreachableNameStaysRefused(t *testing.T) {
 }
 
 // A branch-arm dynamic read with no reachable binder keeps the arm's
-// provenance refusal (the resolveArm decline), with faithful fallback.
-func TestDynScopeUnreachableBranchArmStaysRefused(t *testing.T) {
+// provenance compile failure (the resolveArm decline), with faithful fallback.
+func TestDynScopeUnreachableBranchArmStaysFailedToCompile(t *testing.T) {
 	src := `def g fn [[] [Integer] [if (1 lte 0) [nosucharm] [2]]] g`
 	a, err := New()
 	if err != nil {
@@ -98,6 +104,9 @@ func TestDynScopeUnreachableBranchArmStaysRefused(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, _, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(src)
 	if fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -106,13 +115,10 @@ func TestDynScopeUnreachableBranchArmStaysRefused(t *testing.T) {
 }
 
 // A dyn-read name whose per-frame def is a COMPUTED value the unit did not
-// promote refuses at lowering (no way to duplicate the value for the
-// registry install) — sound interpreter fallback.
-func TestDynScopeUnpromotedComputedDefRefuses(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+// promote declines at lowering (no way to duplicate the value for the
+// registry install) — compile failure.
+func TestDynScopeUnpromotedComputedDefFailsToCompile(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	src := `def f fn [[n:Integer] [Integer] [if (n lte 0) [acc3] [def acc3 (n add 1) f (n sub 1)]]] f 2`
 	a, err := New()
 	if err != nil {
@@ -126,6 +132,9 @@ func TestDynScopeUnpromotedComputedDefRefuses(t *testing.T) {
 		// If promotion machinery later learns this shape, parity is the bar.
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -134,10 +143,13 @@ func TestDynScopeUnpromotedComputedDefRefuses(t *testing.T) {
 		return
 	}
 	if !strings.Contains(reason, "acc3") {
-		t.Errorf("refusal %q should name the computed dyn-scope def", reason)
+		t.Errorf("compile failure %q should name the computed dyn-scope def", reason)
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(src)
 	if compiled || fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {

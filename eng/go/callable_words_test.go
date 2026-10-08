@@ -12,7 +12,7 @@ import (
 // one of the word's signatures so the bytecode recorder reads it back via the
 // resolved sig.Callable — eng holds no name-keyed callable table. The negative
 // half proves an ordinary word's signatures carry no spec, so the recorder
-// refuses a fn-valued body for words that do not opt in.
+// declines a fn-valued body for words that do not opt in.
 func TestRegisterNativeFuncCopiesCallable(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -56,7 +56,7 @@ func TestRegisterNativeFuncCopiesCallable(t *testing.T) {
 	}
 
 	// NEGATIVE: an ordinary word (no Callable declared) carries no spec on any
-	// signature — the recorder then refuses a fn-valued body at this word.
+	// signature — the recorder then declines a fn-valued body at this word.
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name:       "probe-plain",
 		Signatures: []core.Signature{{Args: []*core.Type{core.TList}, BarrierPos: -1}},

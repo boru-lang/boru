@@ -63,7 +63,7 @@ join ['a' 'b' 'c']	'a,b,c'	default separator is a comma
 #     result), no EmptyBodyErrors (a 0-net body is the ordinary case, not
 #     an error), no CrossCollectionTokenShape (forEachHandler does not
 #     cross-delegate to the map iteration, so a gradual collection must
-#     keep refusing rather than commit to the list overload). The lambda
+#     keep declining rather than commit to the list overload). The lambda
 #     convention was measured off the interpreter, not inherited from
 #     each: `for-each ([e:Any] => [typeof e print]) [1 2 3]` prints
 #     Integer and the same lambda over `{a:1 b:2}` prints KeyVal.

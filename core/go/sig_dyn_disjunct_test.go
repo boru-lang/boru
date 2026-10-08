@@ -5,7 +5,7 @@ import "testing"
 // TestSigTypeMatchesDynamicDisjunct pins the ANY-alternative rule for a
 // dynamic disjunct bound: the runtime holds exactly one alternative, so
 // gradual optimism matches a slot any alternative could satisfy, and
-// still refuses a slot provably disjoint from every alternative — the
+// still declines a slot provably disjoint from every alternative — the
 // optimistic dual of the strict-disjunct EVERY rule.
 func TestSigTypeMatchesDynamicDisjunct(t *testing.T) {
 	union := NewDynamicCarrierValue(NewDisjunct([]Value{
@@ -26,7 +26,7 @@ func TestSigTypeMatchesDynamicDisjunct(t *testing.T) {
 	}
 	// No alternative reaches a provably-disjoint scalar slot.
 	if SigTypeMatches(union, TInteger) {
-		t.Error("dynamic(Map|None) must refuse an Integer slot — every alternative is disjoint")
+		t.Error("dynamic(Map|None) must decline an Integer slot — every alternative is disjoint")
 	}
 
 	// A CARRIER alternative (not a bare type literal) rides the same rule.
@@ -38,6 +38,6 @@ func TestSigTypeMatchesDynamicDisjunct(t *testing.T) {
 		t.Error("a carrier alternative must match its own type's slot")
 	}
 	if SigTypeMatches(carrierUnion, TList) {
-		t.Error("dynamic(String|None) must refuse a List slot")
+		t.Error("dynamic(String|None) must decline a List slot")
 	}
 }

@@ -45,7 +45,7 @@ func TestCollectionHazardNote(t *testing.T) {
 
 // TestHazardLeadDeclinesEveryLowering pins the three compiler-side
 // consumers of the note (NUR121): RecordDynApply declines a marked fn (the
-// paren lead window records through it), and resolveDynamicApply refuses a
+// paren lead window records through it), and resolveDynamicApply declines a
 // marked fn-carrier lead and a marked dynamic lead at the residual — while
 // the same leads unmarked keep their lowering.
 func TestHazardLeadDeclinesEveryLowering(t *testing.T) {
@@ -58,12 +58,12 @@ func TestHazardLeadDeclinesEveryLowering(t *testing.T) {
 	}
 	es.NoteCollectionHazard(lead.ID)
 	if _, op, reason := es.resolveDynamicApply(lw, residual); op != 0 || !strings.Contains(reason, "NUR121") {
-		t.Errorf("a marked carrier lead must refuse: op=%v reason=%q", op, reason)
+		t.Errorf("a marked carrier lead must decline: op=%v reason=%q", op, reason)
 	}
 	dyn := core.NewDynamicCarrier(core.TAny)
 	es.NoteCollectionHazard(dyn.ID)
 	if _, op, reason := es.resolveDynamicApply(lw, []core.Value{dyn, core.NewInteger(5)}); op != 0 || !strings.Contains(reason, "NUR121") {
-		t.Errorf("a marked dynamic lead must refuse: op=%v reason=%q", op, reason)
+		t.Errorf("a marked dynamic lead must decline: op=%v reason=%q", op, reason)
 	}
 	// RecordDynApply: the marked fn declines without marking the program.
 	out := core.NewCarrier(core.TInteger)

@@ -1,8 +1,8 @@
 // Package stackform defines a canonical strict-stack representation
 // of a boru program. It is the form the property-based-testing
-// reducer operates on (design/PBT-PLAN.10.md) and the first half of
+// reducer operates on (design/legacy/PBT-PLAN.10.ignore) and the first half of
 // the work the bytecode-emission proposal in
-// design/boru-bytecode-report.0.md needs.
+// design/legacy/boru-bytecode-report.0.ignore needs.
 //
 // A StackForm is a flat sequence of Ops. Each Op corresponds to one
 // observable engine action — either pushing a literal value onto
@@ -55,9 +55,29 @@ func (PushLit) opMarker() {}
 type Call struct {
 	Name  string
 	Arity int
+	// ReStep marks the `apply` WORD's dispatch of a fn value: the handler
+	// hands the value back and the engine re-steps it, so the fn's own
+	// dispatch is recorded as the NEXT op too — the same application
+	// twice (NUR077's "Hole 2"). The form is faithful to what the engine
+	// did and cannot be replayed as written; Replayable declines it.
+	ReStep bool
 }
 
 func (Call) opMarker() {}
+
+// Apply applies the function VALUE the stack holds beneath `Arity`
+// arguments — a fn read out of a container, an inline lambda, a param —
+// consuming the value as the interpreter's application does (NUR077: a
+// `Call` re-invokes by NAME and consumes no receiver, so it could never
+// stand for an application). Recorded where the engine applies a fn value
+// (execFnDefSig's splice); replayed through the `apply` word over the
+// value brought to the top — Eval supports arities 0, 1 and 2 (the stack
+// rotations the vocabulary has), and Replayable declines a wider one.
+type Apply struct {
+	Arity int
+}
+
+func (Apply) opMarker() {}
 
 // Quote pushes a quoted sub-program as a list-shaped value. The
 // Body is the StackForm of the inner tokens (recursively Compiled).
@@ -68,7 +88,7 @@ func (Call) opMarker() {}
 // emitted by the engine's primary recorder — quoted bodies stay as
 // PushLit of the raw list. A future enhancement can promote those
 // to Quote when the body is later executed via call/do. See
-// design/PBT-PLAN.10.md "Out of scope".
+// design/legacy/PBT-PLAN.10.ignore "Out of scope".
 type Quote struct {
 	Body *StackForm
 }

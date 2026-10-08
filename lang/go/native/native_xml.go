@@ -53,6 +53,12 @@ var xmlNatives = []NativeFunc{
 				Impl:      Go(xmlAttrHandler),
 				Returns:   []*Type{TAny},
 				ReturnsFn: xmlAttrReturns, BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the quoted class, S2a): the quoted atom is the
+				// attribute NAME the handler reads off the element's attr map
+				// — a key, like `get`'s; a carrier-delivered key lowers as an
+				// ordinary operand and the VM reads what the interpreter reads.
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},

@@ -21,7 +21,7 @@ package basic
 // error list, which RegisterNativeFunc appends to rather than raising.
 func Register(r *Registry) error {
 	// An init-time external-type failure means the type table these words
-	// close over is already wrong, so refuse before installing anything —
+	// close over is already wrong, so decline before installing anything —
 	// the early return lang's DefaultRegistryWithPolicy makes for its
 	// own layer.
 	if err := TypeInitError(); err != nil {

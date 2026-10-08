@@ -107,6 +107,9 @@ func TestModuleFnCheckPathGate(t *testing.T) {
 
 			ca, _ := New()
 			got, _, gerr := ca.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, gerr) {
+				return
+			}
 
 			// (a) compiled (or fallback) result is byte-identical to the
 			// interpreter — value AND error taxonomy.

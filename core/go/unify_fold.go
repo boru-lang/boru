@@ -56,11 +56,12 @@ func unifyFlexLiteral(a Value, sa ValueShape, b Value, sb ValueShape, flexType *
 // each from leftAt / rightAt, and tags any failure with the indexed path
 // "[i]". It is the shared element-wise traversal behind concrete-list and
 // typed-list-vs-concrete unification: the former pairs a[i] with b[i], the
-// latter pairs the single child type against each element.
-func unifyZip(n int, leftAt, rightAt func(int) Value) ([]Value, *UnifyError) {
+// latter pairs the single child type against each element. r is the
+// enclosing chain's registry, handed to every pair.
+func unifyZip(n int, leftAt, rightAt func(int) Value, r *Registry) ([]Value, *UnifyError) {
 	out := make([]Value, n)
 	for i := 0; i < n; i++ {
-		u, err := unifyInner(leftAt(i), rightAt(i))
+		u, err := unifyInner(leftAt(i), rightAt(i), r)
 		if err != nil {
 			return nil, err.withPath(fmt.Sprintf("[%d]", i))
 		}
@@ -77,9 +78,6 @@ func constAt(v Value) func(int) Value { return func(int) Value { return v } }
 // sliceAt returns an index function that reads elems[i].
 func sliceAt(elems []Value) func(int) Value { return func(i int) Value { return elems[i] } }
 
-// unifyMapValues unifies the value at each key of m, sourcing the left side
-// from leftFor(key), and tags failures with "key:<k>". Backing the
-// typed-map-vs-concrete traversal: leftFor returns the shared child type.
 // unifyCarrierVsTyped handles an abstract CARRIER (ShapeCarrier — Data==nil,
 // Carrier=true) unified against a typed-container constraint (typedShape =
 // ShapeTypedList / ShapeTypedMap). The canonical case is a check-mode
@@ -115,11 +113,15 @@ func unifyCarrierVsTyped(a Value, sa ValueShape, b Value, sb ValueShape, typedSh
 	return out, true
 }
 
-func unifyMapValues(m ReadMap, leftFor func(key string) Value) (Value, *UnifyError) {
+// unifyMapValues unifies the value at each key of m, sourcing the left side
+// from leftFor(key), and tags failures with "key:<k>". Backing the
+// typed-map-vs-concrete traversal: leftFor returns the shared child type.
+// r is the enclosing chain's registry, handed to every pair.
+func unifyMapValues(m ReadMap, leftFor func(key string) Value, r *Registry) (Value, *UnifyError) {
 	result := NewOrderedMap()
 	for _, key := range m.Keys() {
 		val, _ := m.Get(key)
-		unified, err := unifyInner(leftFor(key), val)
+		unified, err := unifyInner(leftFor(key), val, r)
 		if err != nil {
 			return Value{}, err.withPath("key:" + key)
 		}

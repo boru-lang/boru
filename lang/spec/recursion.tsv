@@ -2,7 +2,7 @@
 # Format: input<TAB>expected<TAB>description
 #
 # Pins the observable semantics of fn-call frames that tail-call
-# optimisation must preserve bit-for-bit (design/TCO-STAGED.10.md
+# optimisation must preserve bit-for-bit (design/legacy/TCO-STAGED.10.ignore
 # Stage 0): param/local/capture teardown, per-frame args visibility,
 # ReturnCheck behaviour, frames that accrete values, forwards pending
 # below a call, and flow control crossing fn frames. Depths stay well
@@ -82,7 +82,7 @@ import module [def aod fn [[n:Integer] [Boolean] [if (n eq 0) [false] [aev (n su
 #     whose value is a Function and whose NAME collides with a live
 #     CALLER binding must SHADOW that binding (a fresh frame entry the
 #     teardown pops to restore the caller's), never replace it. The bug
-#     (design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md): installing the fn-valued
+#     (design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore): installing the fn-valued
 #     param routed through the redefinition overlap-removal, which dropped
 #     the colliding caller entry, so a reuse of the name after the call
 #     errored undefined_word. Required trigger: collision + a /v-parked fn

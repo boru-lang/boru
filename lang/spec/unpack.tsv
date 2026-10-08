@@ -22,9 +22,9 @@ def m {greeting: 'hi'} unpack {greeting: g} m g	'hi'	rename: works for any value
 def m {a:1 b:2} unpack {a b} m a add b	3	rename: map shorthand {a b} ≡ {a: a b: b}
 def m {x:1} unpack [] m x	ERROR:undefined	names: empty list binds nothing
 def m {x:1} unpack [y] m	ERROR:not found	names: missing key is strict
-def m {X:1} unpack [X] m	ERROR:capitalised	names: refuses a capitalised (type) name
+def m {X:1} unpack [X] m	ERROR:capitalised	names: declines a capitalised (type) name
 def m {a:1} unpack {z: x} m	ERROR:not found	rename: missing source key is strict
-def m {a:1} unpack {a: X} m	ERROR:capitalised	rename: refuses a capitalised target name
+def m {a:1} unpack {a: X} m	ERROR:capitalised	rename: declines a capitalised target name
 def m {a:1} unpack everything m	ERROR:expected	only the keyword `all` selects every key
 unpack [x] 42	ERROR:	non-map source is rejected
 unpack [x] Map	ERROR:	bare type-literal source is rejected

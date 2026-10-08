@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,7 +28,9 @@ import (
 	"github.com/boru-lang/boru/cmd/go/internal/command"
 	"github.com/boru-lang/boru/cmd/go/internal/flagutil"
 	"github.com/boru-lang/boru/cmd/go/internal/pathutil"
+	"github.com/boru-lang/boru/cmd/go/internal/permsflags"
 	lang "github.com/boru-lang/boru/lang/go"
+	"github.com/boru-lang/boru/lang/go/policy"
 )
 
 // langNew is a test seam (design/TEST-SEAMS.10.md); tests swap it to
@@ -78,6 +79,17 @@ type Opts struct {
 	// documented meaning intact (design/ROC-ADOPTION-PLAN.0.md, A3).
 	Pedantic bool
 	Color    bool
+	// Base, when set, is the directory a target's RELATIVE imports resolve
+	// against instead of the target's own directory — `boru check --base .
+	// tests/x.boru` checks a file the way `boru tests/x.boru` runs it from
+	// the same cwd (run anchors on the process cwd; check anchors on the
+	// file, which `boru build` needs). Empty keeps the file's directory.
+	Base string
+	// Policy is the permission profile the check runs under (`--perms` and
+	// its siblings, or BORU_POLICY) — nil for none. Analysis EXECUTES an
+	// imported file module's body to learn its exports, so the profile that
+	// governs the run must govern that execution too (NUR079).
+	Policy policy.Policy
 }
 
 // Target is one unit of work: Source is the boru text and Path is the
@@ -101,9 +113,12 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	pedantic := fs.Bool("pedantic", false, "gate on the advisory tiers too, not only on errors (composes under --soft)")
 	emit := fs.Bool("emit", false, "print the bytecode disassembly instead of the check report")
 	colorMode := fs.String("color", "auto", "colorize diagnostics: auto|always|never")
+	base := fs.String("base", "", "resolve relative imports against this directory instead of the file's own")
 	registry := fs.String("r", "", "registry path")
 	var seed int64
 	fs.Int64Var(&seed, "s", 0, "random seed")
+	var pf permsflags.Flags
+	permsflags.Register(fs, &pf)
 
 	// -h is answered before parsing: flag.ContinueOnError would print its
 	// own flag dump and return ErrHelp, which this command then reports as
@@ -164,8 +179,13 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		work = files
 	}
 
+	pol, err := pf.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", err)
+		return 1
+	}
 	if *emit {
-		return runEmit(stdout, stderr, work, *registry, seed)
+		return runEmit(stdout, stderr, work, *registry, seed, pol)
 	}
 	opts := Opts{
 		Registry: *registry,
@@ -175,6 +195,8 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		Strict:   *strict,
 		Pedantic: *pedantic,
 		Color:    lang.ResolveColor(nil, stderr, *colorMode),
+		Base:     *base,
+		Policy:   pol,
 	}
 	if err := RunTargets(stdout, stderr, work, opts); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
@@ -242,21 +264,7 @@ func resolveTargets(args []string) ([]Target, error) {
 			continue
 		}
 		var found []string
-		if err := walkDir(t, func(path string, d fs.DirEntry, werr error) error {
-			if werr != nil {
-				return werr
-			}
-			if d.IsDir() {
-				if d.Name() == ".boru" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if strings.HasSuffix(path, ".boru") {
-				found = append(found, path)
-			}
-			return nil
-		}); err != nil {
+		if err := pathutil.WalkSources(t, walkDir, ".boru", func(path string) { found = append(found, path) }); err != nil {
 			return nil, err
 		}
 		sort.Strings(found)
@@ -279,12 +287,12 @@ func resolveTargets(args []string) ([]Target, error) {
 // than one target each block is introduced by a `; file:` comment line,
 // which the disassembly's own comment syntax makes harmless to a reader
 // or a downstream tool.
-func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed int64) int {
+func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed int64, pol policy.Policy) int {
 	for _, t := range targets {
 		if len(targets) > 1 {
 			fmt.Fprintf(stdout, "; file: %s\n", t.Path)
 		}
-		if err := EmitAt(stdout, stderr, t.Source, registry, seed, anchorOf(t.Path)); err != nil {
+		if err := emitAtPolicy(stdout, stderr, t.Source, registry, seed, anchorOf(t.Path), pol); err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return 1
 		}
@@ -349,16 +357,24 @@ Options:
                  composes under --soft, so --soft --pedantic exits 0
   --emit         print the bytecode disassembly instead of checking
   --color MODE   auto (default), always, or never
+  --base DIR     resolve relative imports against DIR, not the file's
+                 own directory (check a file the way boru runs it)
   -r PATH        registry path
   -s SEED        random seed
+  --perms P      check under a permission profile (name, file, or inline
+                 jsonic); --perms-file, --perms-inline, --allow, --deny,
+                 --allow-global, --deny-global, --install and --no-install
+                 work as they do for boru run, and BORU_POLICY /
+                 BORU_POLICY_FILE are honoured. An imported module's body
+                 runs during the check, under this profile.
   -h, --help     print this message
 `)
 }
 
 // Emit runs the bytecode recording pass over source and prints the
-// Program disassembly to stdout, or the precise refusal reason when
+// Program disassembly to stdout, or the precise compile failure reason when
 // the emitter cannot lower the program (debug/tooling surface —
-// design/boru-bytecode-plan.0.md, Stage 1 gate and the DX section).
+// design/legacy/boru-bytecode-plan.0.ignore, Stage 1 gate and the DX section).
 func Emit(stdout, stderr io.Writer, source string) error {
 	return EmitAt(stdout, stderr, source, "", 0, "")
 }
@@ -368,7 +384,14 @@ func Emit(stdout, stderr io.Writer, source string) error {
 // `boru check --emit src/prog.boru` records the program its own
 // directory describes. An empty baseDir keeps the process cwd.
 func EmitAt(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string) error {
-	a, err := langNew(lang.Options{Registry: registry, Seed: seed})
+	return emitAtPolicy(stdout, stderr, source, registry, seed, baseDir, nil)
+}
+
+// emitAtPolicy is EmitAt under a permission profile (nil for none): the
+// recording pass executes an imported module's body exactly as the check
+// does, so `boru check --emit --perms …` governs it the same way (NUR079).
+func emitAtPolicy(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string, pol policy.Policy) error {
+	a, err := langNew(lang.Options{Registry: registry, Seed: seed, Policy: pol})
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}
@@ -397,7 +420,7 @@ func EmitAt(stdout, stderr io.Writer, source, registry string, seed int64, baseD
 	return nil
 }
 
-// writeSiteReport prints the compile report (design/boru-bytecode-plan.0.md
+// writeSiteReport prints the compile report (design/legacy/boru-bytecode-plan.0.ignore
 // DX section): the per-class dispatch-site tally that answers "why didn't
 // this compile to a single path?", plus the interpreter islands a
 // compiled program falls back into for each fallback span.
@@ -470,7 +493,7 @@ type fileResult struct {
 func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 	if len(targets) == 0 {
 		// Nothing to check is not a failure for a library caller; the CLI
-		// refuses an empty target expansion before it gets here.
+		// declines an empty target expansion before it gets here.
 		return nil
 	}
 	multi := len(targets) > 1
@@ -480,11 +503,15 @@ func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 	var firstFail error
 
 	for _, t := range targets {
-		a, err := langNew(lang.Options{Registry: o.Registry, Seed: o.Seed})
+		a, err := langNew(lang.Options{Registry: o.Registry, Seed: o.Seed, Policy: o.Policy})
 		if err != nil {
 			return fmt.Errorf("init error: %s", err)
 		}
-		if dir := anchorOf(t.Path); dir != "" {
+		dir := anchorOf(t.Path)
+		if o.Base != "" {
+			dir = anchorOf(filepath.Join(o.Base, "x")) // the directory itself, made absolute
+		}
+		if dir != "" {
 			a.NativeRegistry().BaseDir = dir
 		}
 		if o.Strict {
@@ -666,10 +693,20 @@ func PreflightColor(stderr io.Writer, source, registry string, seed int64, verbo
 // build-time entry directory (buildrt.Main sets NativeRegistry().BaseDir
 // to cfg.EntryDir), so its pre-flight must ask the same question or a
 // perfectly buildable multi-file program invoked from a foreign cwd
-// would be refused. An empty baseDir keeps the cwd behaviour run/debug
+// would be declined. An empty baseDir keeps the cwd behaviour run/debug
 // want — for them, cwd IS how the subsequent execution resolves imports.
 func PreflightColorAt(stderr io.Writer, source, registry string, seed int64, verbose, color bool, baseDir string) error {
-	a, err := langNew(lang.Options{Registry: registry, Seed: seed})
+	return PreflightPolicyAt(stderr, source, registry, seed, verbose, color, baseDir, nil)
+}
+
+// PreflightPolicyAt is PreflightColorAt under the permission profile the
+// run that follows will use (nil for none). The pre-flight EXECUTES an
+// imported file module's body to learn its exports, so without the profile
+// a gated call in that body ran ungated before the run's own gate could
+// refuse it — `boru run --perms read-only` on a program whose module
+// fetched sent the request during the check (NUR079).
+func PreflightPolicyAt(stderr io.Writer, source, registry string, seed int64, verbose, color bool, baseDir string, pol policy.Policy) error {
+	a, err := langNew(lang.Options{Registry: registry, Seed: seed, Policy: pol})
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}

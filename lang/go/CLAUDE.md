@@ -694,7 +694,7 @@ lambdas. Don't expect to capture caller args; pass them explicitly.
   Cleanup is the existing `DefCleanup` + `undef` tail in the
   synthesized body; capture names are appended to the cleanup list at
   install time so they tear down uniformly. See
-  `design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md`.
+  `design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore`.
 
 ### Sharp edge: 0-arg lambdas as values vs as calls
 
@@ -940,7 +940,7 @@ name index (`LookupBuiltinByName`).
 **DefTable methods** (`r.Defs.*`):
 - reads — `Top(name) (Value, bool)` (what the binding DENOTES: a
   value binding's Body, a **type** binding's lattice NODE — the Stage
-  2 flip of design/TYPE-REPRESENTATION.1.md), `TopEntry(name)
+  2 flip of design/legacy/TYPE-REPRESENTATION.1.ignore), `TopEntry(name)
   (DefEntry, bool)` (the raw entry: Body + TypeDef + Minted),
   `Has(name)`, `IsType(name)`, `Depth(name)`, `Stack(name) []Value`,
   `Names()`.
@@ -1023,7 +1023,7 @@ accessors below.)
   `Value` since they're the canonical handler-side error path; the
   low-level accessors were drained to free functions in `eng/` as part
   of the type-decoupling work — see
-  `design/TYPE-DECOUPLING.10.md`.
+  `design/legacy/TYPE-DECOUPLING.10.ignore`.
 
 **Check mode**:
 - `r.IsCheckMode()` — read-side helper. Replaces `r.Check.Mode` and
@@ -1059,7 +1059,7 @@ accessors below.)
   from `&v` of a by-value type-literal Value — `behave` Behavior
   installs and LCA-walk identity must reach the canonical pointer,
   not a stack-local copy. See
-  `design/TYPE-CANONICALIZATION.10.md`.
+  `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 
 **Typed-def reparent**:
 - `ReparentValue(v, def) Value` — return a fresh copy of v with

@@ -11,7 +11,7 @@ package core
 // the documented contract (REFERENCE.md, design/TYPES.10.md), so a row can
 // legitimately fail on BOTH engines — which is exactly the class of defect
 // the engine-level agreement corpus is structurally blind to
-// (design/CORE-GO-TS-DEFECTS.0.md).
+// (design/legacy/CORE-GO-TS-DEFECTS.0.ignore).
 
 import (
 	"bufio"
@@ -477,7 +477,7 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		BarrierPos: 2,
 	})
 	// tyq's only slot is a TYPE-ARG slot: it admits a type (a bare literal
-	// or a structural type body) and refuses every concrete value, which is
+	// or a structural type body) and declines every concrete value, which is
 	// a different rule from "a slot whose declared type is Type". It
 	// returns what it was given so a row can read the match back.
 	r.Register("tyq", Signature{

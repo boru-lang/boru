@@ -1,0 +1,98 @@
+# TUI-UTILITIES.0.ignore — general terminal utilities out of `boru:tui`
+
+Status: **investigation + landed surface** (follow-on to
+[../TUI.0.md](../TUI.0.md) / [TUI-IMPLEMENTATION-PLAN.0.ignore](TUI-IMPLEMENTATION-PLAN.0.ignore),
+user-directed after P5). The question: which parts of the TUI stack are
+useful **independently** of the app framework — to a plain CLI script
+that never opens the terminal, never runs an event loop — and how
+should `boru:tui` expose them? Colorisation is the motivating example.
+
+## 1. What the stack already owns, and what travels
+
+`lang/go/tuikit` (the pure kernel under the module) contains four
+things a non-TUI program wants, all already implemented, tested, and
+dependency-free:
+
+| tuikit primitive | Independent use |
+| --- | --- |
+| `SGR(style, profile)` + `SGRReset` + the `To256`/`To16` degradation tables | print a styled string from any script — colored errors, highlighted diffs — with the SAME color model and degradation the framework uses |
+| `StripANSI(s)` | clean logs / captured output; make colored text comparable in tests |
+| `StringWidth(s)` (wcwidth: wide CJK, emoji, combining marks) | manual alignment and padding of plain output — the thing `len` gets wrong the moment text stops being ASCII |
+| `ParseProfile(s)` | validate a user-supplied color-capability name |
+
+Everything else in the stack (layout solver, widget render, diff,
+backends, the driver) is only meaningful inside a session and does NOT
+graduate to a general utility.
+
+## 2. Placement: pure words on `boru:tui` (not a new `-util` module)
+
+Two candidate homes were considered:
+
+1. **`boru:tui` pure words** — `Tui.colorize` / `Tui.strip-ansi` /
+   `Tui.text-width`, beside the widget constructors.
+2. **A separate `boru:term-util` (`TermUtil`)** — the naming rule says
+   `-util` marks a library of pure helpers, which these are.
+
+**Decision: (1), pure words on `boru:tui`.** The deciding facts:
+
+- The module ALREADY splits cleanly along the pure/capability line:
+  the nine constructors, `style`, `edit`, `focusable`, `quit` are pure
+  data words that work with **no backend registered and no policy
+  grant** — only `open`/`run`/`serve` touch the `terminal` scope. The
+  utilities join an established pure tier; "usable independently" is
+  the existing behaviour of that tier, not a new mechanism.
+- One import serves every terminal-adjacent need
+  (`import "boru:tui"  IO.printstr (Tui.colorize {fg: "red"} "boom")`),
+  and the style VOCABULARY (`{fg bold underline …}`, color names /
+  `#rrggbb` / `256:n`) stays one vocabulary — the same map colorizes a
+  string today and styles a widget tomorrow.
+- A three-word module would be the smallest `-util` in the tree, and
+  its words would still need the tuikit tables — the split would
+  separate the vocabulary from its own definition. If the utility
+  surface ever grows past the terminal-output domain (say, prompt
+  builders), that is the moment to revisit a `term-util` extraction —
+  recorded as the fallback, not chosen now.
+
+## 3. The landed surface
+
+Three words, all pure, no policy scope, no backend:
+
+- **`Tui.colorize style text`** → String — wrap `text` in the style's
+  SGR sequence plus a reset. The empty/attribute-less style returns
+  the text UNCHANGED (no stray escapes — safe to call unconditionally).
+  The optional third options map takes `{profile: "truecolor" | "256"
+  | "16" | "none"}` (default truecolor) and runs the same degradation
+  tables the framework paints with; `"none"` keeps attributes (bold,
+  underline, …) and drops colors. Unknown profiles are a hard
+  `tui_error`; unparseable color STRINGS inside the style are skipped
+  exactly as the renderer skips them (author data must not crash
+  painting — §3.2 of the RFC).
+- **`Tui.strip-ansi text`** → String — remove ANSI escape sequences
+  (the CSI/OSC forms the stack emits, and common strays). Round-trips
+  `colorize`: `Tui.strip-ansi (Tui.colorize st s)` ≡ `s`.
+- **`Tui.text-width text`** → Integer — the DISPLAY width in terminal
+  cells: ANSI escapes are stripped first, then the wcwidth tables
+  count (CJK wide = 2, combining marks = 0, emoji = 2). This is "how
+  many columns will this occupy", which is the only question a CLI
+  ever asks; `size` remains the character count.
+
+## 4. Deliberately not included (and why)
+
+- **`pad` / `truncate-to-width`** — trivially composed from
+  `text-width` + core string words today; adding them is vocabulary
+  growth without new capability. Revisit on demonstrated demand.
+- **Hyperlink (OSC 8) / title / bell as pure string builders** —
+  emitting control sequences for a terminal the program has NOT taken
+  over belongs to the capability tier, not the pure tier; `title` and
+  `bell` already exist on the Terminal handle.
+- **A `profile-detect` word** — sniffing `$TERM`/`$COLORTERM` needs
+  the `env` scope and a policy story; the host backend already detects
+  for the framework path. A script can pass its own `{profile: …}`.
+
+## 5. Cross-references
+
+- Words: `lang/go/modules/tui_utils.go` (+ `docs_tui.go`,
+  `lang/spec/module-tui.tsv` §7 rows).
+- Primitives: `lang/go/tuikit/ansi.go`, `width.go`.
+- The RFC's style vocabulary: ../TUI.0.md §3.2; the pure/capability split:
+  §4.3 and the P1 outcome in the implementation plan §3b.

@@ -1,0 +1,189 @@
+# boru documentation/implementation review notes
+
+Date: 2026-06-11
+
+Status: **implemented** (same day). Every finding below was resolved
+or explicitly decided; the analysis text is kept as written, with
+this block recording the outcomes.
+
+- **knownMismatch doc examples (finding 1, action 1)** — all four
+  fixed as doc bugs (`tcmp`/literal-on-the-right for type ordering,
+  `MathUtil.log MathUtil.e`, `nick:None`, the `import … end` demo
+  replacing the bare `set`/`get` one); the xfail registry is empty
+  and the doc harness is a zero-xfail gate. One engine bug surfaced
+  alongside: `Value.String` rendered the value `none` as the debug
+  form `None({})` — fixed to lowercase `none`, matching Canon.
+- **boru:query (finding 2, action 2)** — maintainer decision:
+  **supported, module-only**. The 21 native tests skipped as "query
+  words disabled" tested the deliberately-removed unqualified words;
+  they were deleted, their unique coverage ported to
+  `lang/go/modules/query_test.go` in module form, and a pin added
+  that the words stay out of the global registry. Porting exposed
+  two real bugs, both fixed: bare `Query.offset` generated invalid
+  SQL (`OFFSET` without `LIMIT`), and double-quoted identifiers let
+  SQLite's legacy fallback turn an unknown column into a string
+  literal (now backtick-quoted, so typos error).
+- **CLI `--` audit (finding 3, action n/a)** — audited; the only
+  leading-negative example already demonstrates the `--` guard.
+- **Cognitive load 1 (call-style)** — maintainer decision: examples
+  default to the **forward form** (per ADR-004), with the **infix
+  form** kept for predicates (`n gt 0`) and non-commutative operations
+  (`10 sub 3`, `7 div 2`, string concat), data-first pipelines kept,
+  Forth stack words kept, and the sections that teach the three call
+  forms untouched. Applied across README/TUTORIAL/HOWTO/REFERENCE/
+  EXPLANATION/CLI.
+- **Cognitive load 2 (`Integer lt 0`)** — the ordering sections now
+  use `tcmp` / literal-on-the-right and cross-reference the
+  predicate-refinement section for the constructor overload.
+- **Cognitive load 3 (`none`/`None`), action 3** — REFERENCE gained
+  the "Absence — `none` and `None`" subsection; TUTORIAL explains
+  the rendering at the optional-field example.
+- **Cognitive load 4 (module names)** — TUTORIAL's modules section
+  gained the compact import-id → namespace table; stale `boru:math` /
+  `math.` spellings fixed.
+- **Cognitive load 5 (`boru check`)** — TUTORIAL now folds
+  `boru check` into the workflow where typed functions appear.
+- **Code anomaly 3 (`_DEBUG` tests), action 4** — the three log-only
+  probes are now asserting tests named for the invariants they pin
+  (nominal newtype membership, canonical lattice-node identity for
+  class instances, disjunct membership through the canonical node).
+- **Code anomalies 4–5 (function model / legacy markers), action 5**
+  — investigation showed the consolidation tracked by the root-level
+  `REFACTOR_PROGRESS.md` had already **landed**:
+  `type Signature = FnSig`, the single-slice `FnDefInfo`,
+  `compileFnDef`, and `aggregateDispatch` are all in the tree, the
+  two equivalence harnesses pass, and `design/FUNCTION-MODEL.10.md`
+  records the completed design (including the deliberate deviation
+  that non-anonymous FnDef values keep `Handler == nil` to stay
+  inert). The stale tracker was removed; the stale dual-`Sigs`
+  passages in `design/USURP.10.md` and `lang/go/CLAUDE.md` — the
+  plan's last unticked cleanup item — were brought in line with the
+  single-slice model.
+- **Code anomaly 6 (panics)** — audited: every panic outside tests
+  is an annotated init-time type-registration path (plus the
+  Must-style `stackform.MustEval`); no user-triggerable path reaches
+  one.
+
+## Scope and verification performed
+
+This review compared the public prose documentation against the executable documentation harness, the language tests, and implementation notes in the repository. It focused on correctness drift, language-design cognitive load, surprising behavior, dead or disabled code paths, and general maintainability risks.
+
+Commands run during the review:
+
+- `make test`
+- `go test ./docexamples -run TestDocExamples -v` from `test/go`
+- targeted source searches with `rg` for known doc mismatches, skipped tests, debug tests, legacy paths, and TODO/FIXME markers
+
+At the time this note was written, the strongest correctness signal was the dedicated documentation example harness in `test/go/docexamples`, because it extracts `# returns ...` examples from `../README.md`, `REFERENCE.md`, `TUTORIAL.md`, `HOWTO.md`, and `EXPLANATION.md` and runs them against the production language layer.
+
+## Documentation correctness findings
+
+### 1. Executable docs have known xfails that are real doc/engine disagreements
+
+`test/go/docexamples/docexamples_test.go` contains a `knownMismatch` registry that downgrades several doc failures to expected skips. These should be treated as documentation debt, not as passing documentation.
+
+Current mismatches recorded by the harness:
+
+- `REFERENCE.md` and `EXPLANATION.md` document `Integer lt 0 # returns true`, but the harness notes that `lt` with a type-literal left operand constructs a dependent scalar refinement rather than performing a boolean ordering comparison.
+- `TUTORIAL.md` documents `MathUtil.log 2.718281828 # returns 1.0`, while the engine returns the floating approximation `0.9999999998311266`.
+- `TUTORIAL.md` documents an omitted optional record field as lowercase `none`, while the renderer currently produces the `None` type literal.
+- `EXPLANATION.md` uses `set foo 99 end get foo # returns 99` to demonstrate `end`, but the test note says bare `set`/`get` require a context store and have no matching signature in that form.
+
+Recommendation: resolve these as ordinary doc bugs or engine bugs, then remove the `knownMismatch` entries so the documentation harness becomes a zero-xfail gate.
+
+### 2. Query documentation/help is ahead of the enabled test surface
+
+The reference lists `boru:query` as a SQL-flavoured query pipeline module, module docs register query words, and help text describes `Query.select`, `Query.from`, `Query.where`, and related words. However, many query tests in `lang/go/native/coverage_test.go` and `lang/go/native/coverage_engine_edge_test.go` are skipped with `query words disabled`.
+
+Recommendation: either mark query as experimental/disabled in user-facing docs, or re-enable the tests and make the query module part of the supported surface. Advertising a disabled or weakly tested subsystem increases user trust risk.
+
+### 3. CLI/docs examples rely on subtle shell and parser interactions
+
+The CLI reference already calls out at least one shell/parser gotcha: a leading negative expression to `boru do` is parsed as a command-line flag unless separated with `--`. This is a useful warning, but it also indicates that examples involving negative literals should consistently use non-leading negatives or the `--` form.
+
+Recommendation: audit command-line examples for leading `-N` and add `--` wherever applicable.
+
+## Cognitive-load notes on language design
+
+### 1. Flexible call order is powerful but expensive to reason about
+
+boru intentionally allows stack, mixed, and forward forms for most words. This is expressive, but it asks readers to model both the visible stack and a type-directed forward-collection process. The `end` keyword exists specifically because the collector can otherwise consume more than intended.
+
+Cognitive load drivers:
+
+- Three equivalent call shapes must remain mentally equivalent for each word.
+- Asymmetric words such as `sub` require users to internalize the signature-order rule rather than visual left-to-right argument order.
+- Forward collection is type-directed, so small type changes can alter which later tokens are consumed.
+- `end` is an escape hatch rather than an obvious delimiter; users must first understand the collector to understand why `end` is needed.
+
+Possible mitigation: keep the tutorial biased toward one canonical style per concept, then introduce mixed/forward forms as an advanced convenience. The docs already explain the model, but examples sometimes switch styles quickly.
+
+### 2. Reusing ordinary comparison words for type construction is surprising
+
+The `Integer lt 0` mismatch is a symptom of a deeper design surprise: the same spelling can look like a value comparison in prose and like a type/refinement constructor to the implementation. Even if this is intended, it is high-friction because readers naturally parse `lt` as a boolean predicate.
+
+Possible mitigation: document dependent-scalar construction in a separate, prominent section and avoid using `lt`/`gt` examples with type literals in the general ordering section unless the exact rendered refinement is shown.
+
+### 3. Value-vs-type spelling around `none`/`None` is a gotcha
+
+The optional-field mismatch shows that the rendered absence value/type story is easy to misunderstand. If lowercase `none` is a value users write but uppercase `None` is what canonical rendering emits for some cases, the docs should explicitly explain when each appears.
+
+Possible mitigation: add a small “absence, `none`, and `None`” reference subsection with examples for value literals, type literals, optional record fields, and canonical rendering.
+
+### 4. The module naming transition increases memorization cost
+
+The README's upgrade notes say namespaces are now capital-initial and utility modules took a `-util` suffix. That is reasonable, but it means users must remember both package paths such as `boru:math-util` and bound namespace names such as `MathUtil`.
+
+Possible mitigation: include a compact module import/name table near the first module tutorial section, not only in upgrade notes.
+
+### 5. Static checking and runtime behavior are intentionally close, but not identical enough to be simple
+
+The CLI reference explains diagnostics such as `uncalled_function`, including cases where runtime would leave a named function value on the stack instead of erroring. That is an important guardrail, but it also means users need to know when `boru check` is stricter or more informative than a run.
+
+Possible mitigation: recommend `boru check` as part of every tutorial workflow before introducing advanced dispatch, not only as a CLI feature.
+
+## Code anomalies, dead paths, and maintainability risks
+
+### 1. `knownMismatch` makes doc tests pass while preserving stale user-facing examples
+
+The xfail mechanism is well designed for triage: it fails stale xfails and dead entries. Still, the current entries mean the checked documentation is not actually fully correct. This should be kept short-lived.
+
+Suggested priority: high, because it directly affects user-visible examples.
+
+### 2. Query code appears present, documented, and partially covered only by skipped tests
+
+There is substantial query implementation and help text, but numerous query tests are skipped. This creates an ambiguity: query support looks like a feature, but the test suite treats parts of it as disabled.
+
+Suggested priority: high if query is intended to be public; otherwise document it as experimental or hidden.
+
+### 3. Debug-named tests are committed in normal test files
+
+`lang/go/native/user_subtype_dispatch_test.go` contains tests named with `_DEBUG`. They may be legitimate regression probes, but the names communicate temporary investigation rather than stable coverage.
+
+Suggested priority: low-to-medium. Rename them to describe the invariant they protect, or move exploratory probes behind an explicit debug build path.
+
+### 4. Function dispatch still has transitional dual paths
+
+`REFACTOR_PROGRESS.md` records that named boru functions already compile into Go handlers, but function values on the stack still go through `execFnDefLiteral` and handler-less signature fallbacks. The same note lists future stages to remove handler-nil fallbacks, merge signature structures, and delete bridge paths.
+
+Suggested priority: medium-to-high, because dispatch is central to the language and dual representations tend to leak into edge behavior.
+
+### 5. Legacy markers remain in core engine/value/signature paths
+
+Searches show legacy comments around payload markers, signature fields, stack-match fallbacks, object paths, and recorder behavior. Some are clearly intentional migration notes, but their breadth indicates the codebase is mid-refactor.
+
+Suggested priority: medium. Keep an owner-facing migration checklist current, and avoid adding new features on top of legacy compatibility layers unless they are covered by equivalence tests.
+
+### 6. Panics are used for builtin registration failures
+
+Several native registration functions panic when builtin registration fails. That is acceptable for impossible startup invariants, but it should remain isolated to initialization. Any user-triggerable parse, import, registry, or module-loading failure should return structured boru errors instead.
+
+Suggested priority: low, unless audit finds user input can reach these panic paths.
+
+## Suggested next actions
+
+1. Fix or explicitly redesign the four `knownMismatch` doc examples, then remove their xfail entries.
+2. Decide whether `boru:query` is supported, experimental, or disabled; align docs and tests accordingly.
+3. Add one short reference subsection for `none` vs `None` and canonical rendering.
+4. Rename `_DEBUG` tests or document why they are permanent probes.
+5. Continue the function-model consolidation tracked in `REFACTOR_PROGRESS.md`, keeping the equivalence harnesses as required gates.

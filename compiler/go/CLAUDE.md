@@ -1,7 +1,7 @@
 # compiler/go — Compiler CLAUDE.md
 
 The `compiler` module is the recorder and lowerer cut out of the
-kernel (design/ENG-FOUR-PIECE.0.md): the EmitState recording pass
+kernel (design/legacy/ENG-FOUR-PIECE.0.ignore): the EmitState recording pass
 that rides the check run (`emit.go`), the trace lowerer that
 linearises it (`lower.go`), the bytecode Program model and its
 emitter (`bytecode.go`), the dispatch-outcome recording family —

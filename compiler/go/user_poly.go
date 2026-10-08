@@ -15,12 +15,12 @@ import (
 // at entry to select the arm. Parity argument: the interpreter's dispatch
 // takes the same MatchSignature first-match over the same (live) table, so the
 // arm the VM enters is the arm the interpreter splices; any drift or no-match
-// defers to the interpreter through the whole-program fallback.
+// bails, and the compiled run reports it.
 //
 // Everything here is ALL-OR-NOTHING: if any same-arity overload cannot be
-// compiled under these rules, the caller keeps the original refusal
+// compiled under these rules, the caller keeps the original compile failure
 // (MarkUncompilable) and the interpreter owns the program. If in doubt,
-// refuse — compile == interpret is non-negotiable.
+// decline — compile == interpret is non-negotiable.
 
 // userPolyPlan is the compiled arm table of one poly user call, handed from
 // tryCompileUserPolyArms to the RecordUserPolyCall site: parallel slices of
@@ -30,7 +30,7 @@ type userPolyPlan struct {
 	sigIdx []int
 	units  []int
 	impls  []core.SigImpl
-	// sigs is the FROZEN dispatch table for a BODY-LOCAL word (REFUSAL-
+	// sigs is the FROZEN dispatch table for a BODY-LOCAL word (COMPILE FAILURE-
 	// CLOSURE.0 §6b — see UserPolyRef.Sigs): non-nil arms the VM's stored
 	// re-match mode, which never Lookups the (popped-before-run) name.
 	sigs []core.Signature
@@ -50,7 +50,7 @@ type userPolyPlan struct {
 // multi-overload user-fn dispatch: it collects EVERY non-fallback overload of
 // `word` whose arity matches the call, gates the set to the shapes the VM's
 // runtime re-match handles faithfully, and compiles each arm's body to its
-// own unit. Returns nil — leaving the caller to keep the original refusal —
+// own unit. Returns nil — leaving the caller to keep the original compile failure —
 // when any gate fails or any arm does not compile.
 //
 // Gates (each keeps compile == interpret):
@@ -75,20 +75,20 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 		return nil
 	}
 	// An EMPTY committedReturns admits the all-zero-return overload set
-	// (REFUSAL-CLOSURE.0 §6a): userPolyArmShapeOK requires every arm's
+	// (COMPILE FAILURE-CLOSURE.0 §6a): userPolyArmShapeOK requires every arm's
 	// Returns to match the committed contract position-wise, so 0==0 keeps
 	// the arms consistent, and a zero-return call contributes nothing to
 	// the residual — no downstream typing exists to diverge. Anonymity
-	// (whose declaredReturns is also empty) is still refused below by
+	// (whose declaredReturns is also empty) is still declined below by
 	// findOwningFnDef's owner.Anonymous gate.
 	// A word bound INSIDE an enclosing fn body (Depth above the innermost fn
 	// baseline — the same test closure capture uses) is popped before the VM
 	// runs, so the runtime Lookup could never resolve it. Since the §6b
-	// landing (REFUSAL-CLOSURE.0) the plan FREEZES the dispatch table
-	// instead of refusing: the VM re-matches over the stored signatures
+	// landing (COMPILE FAILURE-CLOSURE.0) the plan FREEZES the dispatch table
+	// instead of declining: the VM re-matches over the stored signatures
 	// (UserPolyRef.Sigs), which are faithful because a body-local fn's
 	// construction is source-determined and per-call identical — captures
-	// and conditional redefinitions already refuse upstream. The one way
+	// and conditional redefinitions already decline upstream. The one way
 	// the live table can still drift from the freeze is DYNAMIC-SCOPE
 	// mutation: a callee run between the local def and this call whose own
 	// body rebinds the same name overlap-replaces the local IN PLACE (and
@@ -96,7 +96,7 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 	// semantics), which the frozen table cannot see. Gate it: when any
 	// OTHER fn in the program binds this name as a body-local
 	// (Check.FnBinders — the dynamic-scope attribution map), keep the
-	// refusal and let the interpreter own the shape.
+	// compile failure and let the interpreter own the shape.
 	bodyLocal := false
 	if baseline := r.TopFnBaseline(); baseline != nil && r.Defs.Depth(word) > baseline[word] {
 		bodyLocal = true
@@ -147,7 +147,7 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 		// VM-selected arm must net exactly zero residual values. A declared-[]
 		// arm whose body leaves a residual is the interpreter's "residual IS
 		// the result" shape — a fixed nout of 0 cannot carry it, so the whole
-		// set keeps its refusal (all-or-nothing).
+		// set keeps its compile failure (all-or-nothing).
 		if len(committedReturns) == 0 && !es.UnitNetsZero(unit) {
 			return nil
 		}
@@ -202,7 +202,7 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 		// carrier would distribute more precisely, but the partition
 		// machinery re-mints the result carrier and orphans the recorded
 		// event's identity — the elision then misses and the dispatch
-		// re-refuses generically.)
+		// re-declines generically.)
 		j.Dynamic = true
 		plan.outs[pos] = j
 		plan.joined[pos] = true
@@ -299,7 +299,7 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 // analysis (the placeholder nodes are parented at their bounds, so the body
 // dispatches against the constraint — sound: the entry guard re-checks the
 // runtime value against the same placeholder membership). Returns ok=false on
-// any refusal, leaving the caller to keep the original MarkUncompilable.
+// any compile failure, leaving the caller to keep the original MarkUncompilable.
 func compileUserPolyArm(r *core.Registry, es core.EmitRecorder, word string, s *core.Signature, owner core.FnDefInfo) (int, bool) {
 	body := append([]core.Value(nil), s.Body()...)
 	if len(body) == 0 {
@@ -318,7 +318,7 @@ func compileUserPolyArm(r *core.Registry, es core.EmitRecorder, word string, s *
 	}
 	// A deferred-param-list body returns its raw list for MODULE-scope late
 	// evaluation (see buildFnBodyReturnsFn) — a unit's call-time result cannot
-	// model that, so the arm (and with it the whole poly set) refuses.
+	// model that, so the arm (and with it the whole poly set) declines.
 	if _, deferred := check.DeferredParamListResidual(body, paramNames); deferred {
 		return -1, false
 	}

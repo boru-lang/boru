@@ -40,15 +40,32 @@ type DeepCloner interface {
 // CloneValue returns a deep, independent copy of v. See the file comment
 // for the per-payload contract.
 func CloneValue(v Value) Value {
-	c := cloner{seen: make(map[any]any)}
+	return CloneValueKeeping(v, nil)
+}
+
+// CloneValueKeeping is CloneValue with a KEEP set: a compound whose ID is in
+// keep is returned as it is, the same instance, and the clone continues
+// around it. It is the selective (spine-only) freshen a compiled fn unit
+// needs for a body literal that EMBEDS an enclosing binding's container —
+// `def c [9]  def mk fn [[] [List] [[c]]]`: the interpreter constructs the
+// outer list fresh per call and the member is the binding's one instance,
+// so `(mk) eq (mk)` is false and `((mk) get 0) eq c` true. A deep clone
+// broke the member's identity and a shared const the outer's, so the shape
+// declined until 2026-09-24 (PR #225 P1's open item); the keep set names
+// the members, the spine clones, and both identities hold. A nil or empty
+// keep is CloneValue.
+func CloneValueKeeping(v Value, keep map[string]bool) Value {
+	c := cloner{seen: make(map[any]any), keep: keep}
 	return c.clone(v)
 }
 
 // cloner carries the identity map that makes pointer-backed graphs
 // clone cycle-safely: each original pointer payload maps to its single
-// clone, so shared substructure stays shared and cycles terminate.
+// clone, so shared substructure stays shared and cycles terminate — and
+// the keep set (CloneValueKeeping) of the values it returns unchanged.
 type cloner struct {
 	seen map[any]any
+	keep map[string]bool
 }
 
 // withPayload returns a copy of v carrying a new payload and a fresh ID,
@@ -61,6 +78,9 @@ func (c *cloner) withPayload(v Value, data Payload) Value {
 }
 
 func (c *cloner) clone(v Value) Value {
+	if v.ID != "" && c.keep[v.ID] {
+		return v // an enclosing binding's instance the literal embeds: shared, as the interpreter shares it
+	}
 	switch p := v.Data.(type) {
 	case nil:
 		// Type literal / bare lattice node — no payload to copy.

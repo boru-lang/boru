@@ -8,7 +8,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Bytecode Program model — Stage 1 of design/boru-bytecode-plan.0.md.
+// Bytecode Program model — Stage 1 of design/legacy/boru-bytecode-plan.0.ignore.
 //
 // A Program is the flat, linear lowering of the typed region the
 // carrier checker resolved: literal pushes, fixed-arity native calls
@@ -162,7 +162,7 @@ const (
 	// same point. A MATCH means the static model was wrong (a refined
 	// runtime tag, a value-sensitive predicate satisfied) — the tail was
 	// truncated at this terminal op, so the run defers to the interpreter
-	// (vm:rematch-matched, the fenced whole-program fallback — slow, not
+	// (vm:rematch-matched, the bail the compiled run reports — not
 	// wrong). Terminal like OpTrap.
 	OpDispatchRematch
 	// OpReverse reverses the top Arg operand-stack values in place. It is the
@@ -171,7 +171,7 @@ const (
 	// where the args evaluate left→right so sig position 0 ends up DEEPEST, but the
 	// call wants it on top. SWAP handles N=2; OpReverse generalises it to N≥3
 	// (the 3-deep rotate the VM previously had no opcode for, so layoutOperands
-	// refused). Emitted only when layoutOperands recognises an exact reverse, so
+	// declined). Emitted only when layoutOperands recognises an exact reverse, so
 	// it can never seat an operand wrongly.
 	OpReverse
 	// OpCallDynamicTrailing applies a runtime FUNCTION value to the Arg values
@@ -256,7 +256,7 @@ const (
 	// order (the fn sits above a before-arg literal, which the in-order
 	// reconciliation otherwise forbids).
 	OpCallDynamicMixed
-	// OpSpliceDyn spreads a runtime splice payload (REFUSAL-CLOSURE §9.2b —
+	// OpSpliceDyn spreads a runtime splice payload (COMPILE FAILURE-CLOSURE §9.2b —
 	// `def d word xs d` over a computed xs): pop the payload; a plain list
 	// spreads its top-level elements (spliceExpand), any other value
 	// contributes itself — exactly the interpreter's marker re-step for a
@@ -266,7 +266,7 @@ const (
 	// dispatches against the live stack, which only the interpreter owns).
 	OpSpliceDyn
 	// OpInterpXml assembles an interpolated XML element from its computed
-	// holes (REFUSAL-CLOSURE §9.2c — the tree twin of OpInterp).
+	// holes (COMPILE FAILURE-CLOSURE §9.2c — the tree twin of OpInterp).
 	// Program.XmlInterps[Arg] holds the template skeleton; the VM pops one
 	// operand-stack value per hole (deepest popped = hole 0 — the
 	// depth-first attr-then-children traversal order BuildXmlFromTmpl
@@ -292,9 +292,9 @@ const (
 	// The user-fn mirror of OpCallNativePoly: used where a gradual-Any arg
 	// made the dispatch ambiguous at check time (two or more same-arity
 	// overloads reachable), so the VM selects the arm faithfully at run time
-	// instead of refusing the whole program. A no-match (or any drift between
+	// instead of declining the whole program. A no-match (or any drift between
 	// the recorded overload set and the word's live dispatch table) defers to
-	// the interpreter through the whole-program fallback, which raises the
+	// the interpreter, which raises the
 	// canonical signature_error / runs the live definition.
 	OpCallUserPoly
 	// OpCallDynTrailTop applies a runtime FUNCTION value sitting ON TOP of its Arg
@@ -343,7 +343,7 @@ const (
 	// result auto-applies. No strip: a Quoted runtime value leaves the
 	// window untouched (both engines' data case); an unquoted one applies
 	// exactly as OpCallDynTrailTop. This is what retires RecordDynApply's
-	// event-lead hard-refusal (PR #280's probe is the quoted witness).
+	// event-lead hard-compile failure (PR #280's probe is the quoted witness).
 	OpCallDynTrailKeepQ
 
 	// OpCallDynFrame replays a fn body's ENTIRE end-of-body residual — the
@@ -367,7 +367,7 @@ const (
 	// mismatch (the value stays data), or below-window collection — PROVIDED
 	// the window is the body's LAST statement: the replay fires at the RET,
 	// so a recorded event after it would reorder observable effects ahead of
-	// the apply's (the recorder's replayIsBodyTail gate refuses that shape).
+	// the apply's (the recorder's replayIsBodyTail gate declines that shape).
 	// The following RET applies the CallBoru-path trim (CompiledFn.RetReplay).
 	OpCallDynFrame
 
@@ -377,7 +377,7 @@ const (
 	// constructing a fresh List/Map each time — so a pooled const pushed from a
 	// compiled fn unit must not leak one shared identity across calls
 	// (`def mk fn [[] [List] [[1]]]  (mk) eq (mk)` must stay false; miscompile
-	// mechanism A, design/MISCOMPILE-HUNT-FINDINGS.0.md §A). The finalize pass
+	// mechanism A, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). The finalize pass
 	// rewrites OpPushConst → OpPushConstFresh in place (freshenFnUnitConsts,
 	// emit.go) exactly for fn-unit consts that (a) materialised from a literal
 	// written in the body — an ENCLOSING binding's value read by name keeps the
@@ -385,8 +385,14 @@ const (
 	// semantics — and (b) have a single push site, so within-call reads of one
 	// binding still share one instance. Main-unit pushes stay bare: top-level
 	// straight-line code evaluates each literal once, and loop-spread
-	// consumption refuses before lowering. Captured containers arrive through
+	// consumption declines before lowering. Captured containers arrive through
 	// capture slots (locals), never consts, so closure identity is preserved.
+	// A body literal that EMBEDS an enclosing binding's container (`[c]` with
+	// `def c [9]` outside the fn) clones its SPINE only: Program.ConstKeep
+	// names the embedded members by ID and the clone returns them as they
+	// are (core.CloneValueKeeping), so the outer is fresh per call and the
+	// member stays the binding's one instance — the interpreter's per-call
+	// construction over a read (since 2026-09-24; the shape declined before).
 	OpPushConstFresh
 
 	// OpPushConstFreshLocal is the MULTI-read twin of OpPushConstFresh: a compound
@@ -405,6 +411,40 @@ const (
 	// leaves every jump target untouched. Only fn units emit it (main-unit literals
 	// evaluate once, straight-line).
 	OpPushConstFreshLocal
+	// OpCollect is the generic lane's first EXECUTING descriptor read, and
+	// today it is an ORACLE: it walks Program.Regions[Arg] live in the VM
+	// (eng/go/region_oracle.go — the kernel's collection routine over the
+	// descriptor host against the registry the dispatch sees) and checks
+	// the claim against the operands the static lowering already pushed for
+	// the call that follows. It pushes and pops nothing and never changes
+	// the run: the outcome goes to core's region-oracle hook, and the call
+	// opcode after it executes as it would have. Emitted only under
+	// compiler.RegionOracle (a lane flag, off by default), immediately
+	// after the descriptor's append and before the call it describes, at
+	// every seat Phase B completes (mono native, poly native, user, poly
+	// user). It is the twins' discipline again — execute the table while
+	// nothing depends on it, and count how often the live walk reproduces
+	// the record over the whole corpus — before OpDispatchGeneric routes a
+	// dispatch through a descriptor instead of beside one.
+	OpCollect
+	// OpDispatchGeneric is the generic lane's first ROUTED dispatch (Stage 4,
+	// §6.2/§6.5): Arg indexes Program.Generics, whose entry names the region
+	// descriptor the dispatch is driven from and the compiled unit the check
+	// pass committed to. The VM lays the descriptor's window out as the
+	// interpreter's tape — the resolved stack values, the word, the forward
+	// tokens (a claimed value slot presenting the operand the lowering
+	// pushed, a live word slot its token) — walks it with the kernel's own
+	// collection (CollectForward) and matches it with the kernel's own plan
+	// matcher (PlanMatch), so a rebinding between two executions of the
+	// region is honoured because the lookup is performed, not baked. The
+	// claimed operands the lowering pushed are popped (they were the
+	// record's claim; the live one may differ) and the dispatch proceeds
+	// over the live operands: the committed unit when the live match is its
+	// signature, a native handler when the live binding is one, and a
+	// designed defer (vmDefer) for every shape the first slice does not
+	// answer — a no-match, a speculative slot, a unit the program does not
+	// hold.
+	OpDispatchGeneric
 
 	// OpBindTyped is the runtime validate/reparent step of a typed value-def
 	// (`def x:Pos n`) whose constraint is a REFINEMENT — a predicate type, a
@@ -438,8 +478,9 @@ const (
 	// program CONTINUES past this op with NOut results committed downstream,
 	// so every shape-claim failure — a non-callable/quoted runtime value, or
 	// a result count differing from the claim — raises internal_error, which
-	// RunCompiled resolves by re-running the interpreter (slow, not wrong;
-	// runtimeShouldFallback) and --force-compile surfaces loudly. A genuine
+	// RunCompiled resolves by silently re-running the interpreter
+	// (runtimeShouldFallback) — right answer, hidden failure — and
+	// --force-compile surfaces the same case loudly. A genuine
 	// boru error raised by the method surfaces as-is (the interpreter raises
 	// the same at the same point, prior side effects included).
 	OpCallDynMethod
@@ -454,7 +495,8 @@ const (
 	// substitution does. A miss, or a binding the substitution would NOT
 	// push as a simple value (a Function/class dispatch, a splice/reach
 	// marker), defers to the interpreter via internal_error
-	// (runtimeShouldFallback — slow, not wrong). The binder side is
+	// (runtimeShouldFallback) — containment for a shape the VM cannot yet
+	// read, and a defect while it stands. The binder side is
 	// OpBindDynScope: the whole-program lowering pass installs it in every
 	// unit that binds a dynamically-read name.
 	OpLookupDynScope
@@ -496,12 +538,15 @@ const (
 	OpBindGlobal
 	// OpLookupDynScopeData is the DATA-position twin of OpLookupDynScope: it
 	// reads the name's live dynamic-scope binding and PUSHES it, WITHOUT the
-	// FnDefInfo dispatch-defer. The emitter uses it only where a
-	// Signature.FnDataArgs slot proved the fn value is consumed as DATA (the
-	// parselang-fn-dispatch parser operand), so pushing the FnDefInfo binding is
-	// byte-identical to the interpreter reading the /q-captured name as data. It
-	// still defers on a genuine miss, an active token, and a class binding (a
-	// class read as data is not a parser).
+	// FnDefInfo dispatch-defer. The emitter uses it only where the fn value's
+	// consumer is proven: a Signature.FnDataArgs slot that takes it as DATA
+	// (the parselang-fn-dispatch parser operand), so pushing the FnDefInfo
+	// binding is byte-identical to the interpreter reading the /q-captured
+	// name as data; or the OpCallDynTrailTop the emitter lowers right after
+	// it for a def-bound fn read at a closure body's tail (`each [h] xs`),
+	// which calls what the lookup pushes. It still defers on a genuine miss,
+	// an active token, and a class binding (a class read as data is not a
+	// parser, and the tail rule never fires on one).
 	OpLookupDynScopeData
 	// OpBindTwin marks ONE bind-ledger transition's position in the
 	// instruction stream (§6.5's inert-emission stage): Arg indexes
@@ -533,6 +578,22 @@ const (
 	// either; the bridge proves the type expression element-independent
 	// before stamping the site (typeInstallElementIndependent).
 	OpBindResident
+	// OpUndefDynScope is the PLACED transition of a SPECULATIVE undef (the
+	// sixty-eighth increment): an `undef` of an enclosing binding inside a
+	// region the runtime may never execute — a branch arm, a loop body, a
+	// fn body — which the check pass keeps in its model (the wrapped-undef
+	// leniency, core.Registry.SpecUndefBlocked) and the bind ledger never
+	// notes. Arg indexes Program.Consts (a String holding the name); the op
+	// pops the name's live top binding in the CURRENT registry
+	// (core.PopLiveBinding — the same pop a replayed undef twin performs),
+	// consuming no stack and riding no unwind trail: it executes exactly
+	// when its site does, and a binding popped stays popped, as the
+	// interpreter's does. A missing binding is a no-op (a loop's second
+	// pass over the name). The model generalised the binding's value at
+	// the same site (core.GeneraliseSpecUndef), so every later read of the
+	// name is an OpLookupDynScope whose miss defers to the interpreter that
+	// raises the undefined_word.
+	OpUndefDynScope
 	// OpDeoptIfFn is the per-read DEOPT of a gradual word read (NUR123): a
 	// bare read of a frame binding the pass types dynamic(Any) — a body-
 	// local bound to a container element — that the model consumed as a
@@ -545,8 +606,120 @@ const (
 	// statement's token) to the interpreter with the frame's bindings
 	// registry-visible, then continues at the unit's RET with the island's
 	// residual as the frame region (CompiledFn.Deopts[Arg]). Plain data
-	// costs the test and nothing else.
+	// costs the test and nothing else. A LIVE-READ point (DeoptSpec.Live)
+	// tests the registry binding of a read seated live after a computed
+	// keep-defs body instead, before the read is made (LiveHot).
 	OpDeoptIfFn
+
+	// OpReStepLanding is the guarded LANDING of a reach-lowered group's single
+	// survivor (NUR173). `m.f` lowers to the paren `( m dot f )`, and that
+	// collapse never parks — an unmarked dot-read of a function is a CALL
+	// (NUR038), so fnReturnPark declines a reach group by kind — which means
+	// the rewind lands ON the one value it left and stepLiteral RE-STEPS it:
+	// dispatched when it is callable, pushed when it is not.
+	//
+	// The check pass holds a carrier there whose static bound admits both, so
+	// the decision belongs to the runtime VALUE. The op reads the top of the
+	// stack and, for an unquoted appliable fn, islands [fn] — the
+	// interpreter's own one-token re-step, which applies a matching signature
+	// and leaves a non-matching fn as data. Anything else is left exactly
+	// where it is, so an ordinary (non-fn) container read costs one type test.
+	//
+	// Unlike OpCallDynTrailTop over zero args, it raises NO no-match: at this
+	// landing a fn that matches nothing is the interpreter's answer, not an
+	// error (`m.g` alone, where g takes one argument, is `fn a1(Integer)` on
+	// both lanes). The recorded landing claims ONE value, so a result count
+	// that differs is a claim failure and defers. Arg is a bit set
+	// (landingArg): a candidate follows (1), a function word the VM walks
+	// (2), LandingBeneathGuard (4), and LandingCollects (8).
+	OpReStepLanding
+	// OpPushLocalBound is OpPushLocal for a BRANCH-CARRIED binding that may
+	// never have been stored on the path that reached it — a name bound only
+	// inside an `if` arm, with no binding before the branch, read after the
+	// merge (compiler/go/branch_carried.go). The frame's locals begin as the
+	// zero Value; a zero slot here is the arm that did not run, and the read
+	// raises the interpreter's undefined_word (NUR110) for the name seated
+	// at this pc in the code's StoreNames table. A stored slot pushes exactly
+	// as OpPushLocal does.
+	OpPushLocalBound
+	// OpBindFnType is a FN unit's own type install, per call (Arg indexes
+	// Program.FnTypeBinds): the interpreter's `def T (class {})` inside a fn
+	// body mints a node and reserves its name part for the registry's
+	// lifetime, binds it for the frame (the frame's teardown pops the
+	// binding and keeps the part, so a SECOND call conflicts on it), and
+	// the check pass's single run of the body cannot replay that per call —
+	// the fn-body transition is kept out of the bind ledger, and a unit that
+	// recorded nothing for it dropped the mint (NUR167). The op re-installs
+	// the entry the check pass pushed: the name checked against the run's
+	// reservations exactly as the front door checks it (core.TypeNameFree —
+	// a live same-named binding is a redefinition and passes) and reserved
+	// (core.ReserveTypeParts), the check-time node bound as an ADOPTED
+	// entry (the node is the one the unit's OpPushType reads bake; an undef
+	// in the body must not retire it — the interpreter's per-call node is
+	// unobservable past the raise its second call is), and recorded on the
+	// dyn-bind trail so the unit's RET pops it, as the unit's own value
+	// defs (OpBindDynScope) pop: every body this op reaches runs in a frame
+	// of its own on the interpreter — a fn's, a lambda's, a stored body's
+	// CallBoru frame (Test.check-prop's gen body conflicts on its second
+	// trial) — while a body the interpreter runs WITHOUT cleanup is either
+	// keep-defs (`do`, its twin adopted at the root) or arm-resident (each /
+	// fold / scan, whose resident type twin mints per element and leaks).
+	// Zero stack effect.
+	OpBindFnType
+	// OpBindDynScopePeek is OpBindDynScope for a computed def's value that
+	// sits LIVE on the unit sim for its downstream readers: it installs the
+	// top value under the name in Program.Consts[Arg] exactly as
+	// OpBindDynScope does, and leaves the value in place. The install arm's
+	// twin of the GlobalBindSpec / ResidentBindSpec peek mode: a def binds
+	// immediately after its value event, so the value is on top when the
+	// bind runs and the def consumes nothing the compiled model still needs.
+	// This is how a dyn-scope def of an UNPROMOTED computed value lowers —
+	// a branch merge (`def x (if …)`) or a loop value a frame slot cannot
+	// seat — under the widened environment (dynEnv, a deopt unit).
+	OpBindDynScopePeek
+	// OpBindTypeRun is the RUN-TIME type install (NUR308's type half): a
+	// root `def T <body>` whose body holds a refinement over a bound the
+	// analysis pass did not know (`def T (Integer gte (size s))`). It pops
+	// the body the run computed and installs it through the interpreter's own
+	// type installer (core.RunTypeInstall — a fresh mint, or an alias of an
+	// empty interval's Never), then forwards the node the pass minted — the
+	// one every compiled reference names — to the run's. The same def's bind
+	// twin is written back: this op is the one install. Arg indexes
+	// Program.TypeRuns.
+	OpBindTypeRun
+	// OpMakeListReStep is OpMakeList for a list literal an element of which
+	// the interpreter's own evaluation may RE-STEP over its neighbours (a
+	// gradual member read, a word's fn result — NUR295): `[m.g 5]` is `[6]`
+	// interpreted, and OpMakeList assembled `[fn 5]`. Arg indexes
+	// Program.ListReSteps. Elements that hold no value the tape dispatches
+	// assemble as OpMakeList's do; otherwise, where the spec proves the
+	// window (Island), the elements re-step through the interpreter as the
+	// list's evaluation would and the list holds what it leaves, and
+	// elsewhere the op is a designed defer.
+	OpMakeListReStep
+	// OpLookupDynScopeRef is the `/v` READ's twin of OpLookupDynScope
+	// (NUR334): a `/v` read the recorder seats live (NoteValReadLive — a
+	// name a computed keep-defs body may have rebound) resolves the binding
+	// at its token as the interpreter's stepWordVal does, through
+	// core.ResolveRef: the binding's value, a fn binding as the aggregate
+	// Function value and a class as the class, pushed as data where
+	// OpLookupDynScope defers on both. An active token keeps the defer, and
+	// a miss is the read's undefined_word, as OpLookupDynScope's is for a
+	// live-read name.
+	OpLookupDynScopeRef
+	// OpForPublish makes the innermost open counted loop's index
+	// REGISTRY-VISIBLE (NUR354): emitted right after OpForSetup, under the
+	// program's dynamic-environment mirror, with Arg the index name's const.
+	// Each FOR_NEXT that enters an iteration then truncates the name back to
+	// its pre-loop depth (the iteration's own levels: the previous index, a
+	// body def of the index) and installs the new index through the
+	// interpreter's own installer — RunForLoop's InstallDef and stepMoveCont's
+	// popIterLevels — and the loop's exit (exhaustion, a break) truncates it
+	// back, so a run-time body resolving names on the registry reads the
+	// index the interpreter's `for` binds. The loop's entry is recorded on the
+	// dyn-bind trail, so a raise or a frame exit mid-loop pops it too. Zero
+	// stack effect.
+	OpForPublish
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -598,6 +771,8 @@ var opcodeNames = [...]string{
 	OpCallDynFrame:         "CALL_DYN_FRAME",
 	OpPushConstFresh:       "PUSH_CONST_FRESH",
 	OpPushConstFreshLocal:  "PUSH_CONST_FRESH_LOCAL",
+	OpCollect:              "COLLECT",
+	OpDispatchGeneric:      "DISPATCH_GENERIC",
 	OpBindTyped:            "BIND_TYPED",
 	OpCallDynMethod:        "CALL_DYN_METHOD",
 	OpLookupDynScope:       "LOOKUP_DYN_SCOPE",
@@ -607,7 +782,16 @@ var opcodeNames = [...]string{
 	OpLookupDynScopeData:   "LOOKUP_DYN_SCOPE_DATA",
 	OpBindTwin:             "BIND_TWIN",
 	OpDeoptIfFn:            "DEOPT_IF_FN",
+	OpPushLocalBound:       "PUSH_LOCAL_BOUND",
+	OpBindFnType:           "BIND_FN_TYPE",
 	OpBindResident:         "BIND_RESIDENT",
+	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
+	OpReStepLanding:        "RESTEP_LANDING",
+	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
+	OpBindTypeRun:          "BIND_TYPE_RUN",
+	OpMakeListReStep:       "MAKE_LIST_RESTEP",
+	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
+	OpForPublish:           "FOR_PUBLISH",
 }
 
 func (o Opcode) String() string {
@@ -617,19 +801,31 @@ func (o Opcode) String() string {
 	return fmt.Sprintf("OP(%d)", uint8(o))
 }
 
+// PolyNOutRegion is PolyRef.NOut's out-of-domain sentinel for a variadic
+// region's run: the op commits no result-count claim.
+const PolyNOutRegion = -1
+
 // PolyRef names one runtime-dispatched native call: the word and the arity
 // (operand count) the checker fixed at the call site. OpCallNativePoly runs
 // MatchSignature over the word's signatures against that many stack values.
 type PolyRef struct {
 	Word  string
 	Arity int
+	// FnArgPos is SigRef.FnArgPos for the re-matched call (NUR347): the
+	// window's positionless named fn values take the position of their `/v`
+	// read before the match, as a baked call's arguments do — `each g/v [5]`
+	// over a `g` a runtime member read bound dispatches poly.
+	FnArgPos []core.SrcPos
 	// NOut is the result-count CLAIM the recorder's stack model committed
 	// downstream ops to. The runtime re-match may land on a DIFFERENT
 	// overload than the checker's model (that is poly's point), and when
 	// that overload's result count differs from the claim the program's
 	// stack layout no longer holds — the VM defers to the interpreter via
-	// internal_error (runtimeShouldFallback: slow, not wrong) instead of
-	// silently shifting every downstream operand.
+	// internal_error (runtimeShouldFallback) instead of silently shifting
+	// every downstream operand — the lesser of two failures, and still one.
+	// PolyNOutRegion (-1) is no claim: the call is a variadic region's run
+	// (NUR282), whose count the region's own seat rules own, as they do for
+	// the CALL_NATIVE twin.
 	NOut int
 	// Reg is the sub-registry whose signatures the VM re-matches a MODULE poly
 	// word over (`StructUtil.getpath` — a sub-registry word). Nil means the main
@@ -645,6 +841,108 @@ type PolyRef struct {
 	// whole run to the interpreter. Nil (the record-time gates declined, or an
 	// older/foreign record site) keeps the sound defer.
 	NoMatch *core.PolyNoMatchSpec
+	// Split, when non-nil, is the dispatch's exact operand layout on the
+	// interpreter's tape (core.DispatchLayout, NUR242): how many of the
+	// operands were written after the word. With it the no-match arm lays
+	// the operands out as that tape — the stack ones beneath the word, the
+	// written ones after it — and asks the interpreter's own plan, so a
+	// word whose overloads differ in arity (fold's 2- and 3-operand forms,
+	// which NoMatch's arity screen declines) raises the interpreter's
+	// signature_error, or keeps the defer when the plan finds a match.
+	Split *PolySplit
+	// Raw, by window index (sig order, 0 = the stack top), is the list
+	// literal an operand was assembled from where the compiled code
+	// evaluated it before the match (OpMakeList): the interpreter evaluates
+	// a pending literal only once a signature takes it, so its no-match
+	// report renders the literal as written — `[1 word(add) 2]`, not `[3]`
+	// (NUR352). The no-match arms render the window with these in place
+	// (RenderWindow); the match itself reads the evaluated values.
+	Raw map[int]core.Value
+	// QuietGuard marks a poly the compiler judged QUIET — run where the
+	// interpreter runs it later, or never (an eager literal's element, an
+	// event between an `if` arm and its pending literal, NUR356) — though
+	// some overload it may pick declares an effect (core.CompileSideEffect):
+	// the run's pick of such an overload raises a designed defer instead.
+	QuietGuard bool
+	// Fit, when non-nil, is the poly's FORWARD-FIT island (NUR357): an
+	// operand the pass collected forward was gradual, and the interpreter's
+	// forward collection takes the run's value there only where it fits
+	// the candidates' slots (core.ForwardFit). A value that misses one
+	// makes the interpreter's plan draw from the stack beneath instead, a
+	// window the program never assembled, so the statement runs again on
+	// the interpreter from its first token (Fit.Restart) before the match.
+	Fit *PolyFit
+	// DynBodyOne is SigRef.DynBodyOne for a poly re-match of a computed `do`
+	// body (a gradual operand): exactly one non-re-stepping result, or the
+	// loud defer.
+	DynBodyOne bool
+	// DynBodyPlain is SigRef.DynBodyPlain for a poly re-match of a computed
+	// `do` body: any count of results, none of them one the interpreter
+	// re-steps, or the loud defer.
+	DynBodyPlain bool
+	// Seed is the checker's own pick, where it holds for the runtime window
+	// under a cheap guard (polySeedFor): the VM dispatches it directly — no
+	// lookup, no match — when the guard holds, and re-matches (the inline
+	// cache, then MatchSignature) when it does not. SeedTags, when set, are
+	// the operand tags the pick was proven for (every operand strict or
+	// concrete, the word's overloads tag-determined): the guard is exact tag
+	// equality. Nil SeedTags means Seed is the word's ONLY overload of this
+	// arity: the guard is that overload's own positional match.
+	Seed     *core.Signature
+	SeedTags []*core.Type
+}
+
+// PolySplit is PolyRef.Split: the number of the poly's operands, in
+// signature order from position 0, that were written after the word, and
+// what else the interpreter's tape holds for its plan to reach (core
+// DispatchLayout's Beneath and After, NUR283): the constants beneath the
+// stack operands and the source tokens after the written ones.
+type PolySplit struct {
+	NFwd    int
+	Beneath []core.Value
+	After   []core.Value
+	// Words, by written operand index, is the source word a written operand
+	// was read from. The interpreter's plan reads a word's binding without
+	// stepping it, so at its no-match the word still stands on its tape and
+	// its report stops there (core.ReorderForwardCandidates); the report is
+	// rendered over the tape with the word in place (NUR356).
+	Words map[int]core.Value
+	// Live are the Beneath entries that are no constant — an earlier
+	// call's result the run's stack holds there (NUR351) — each read where
+	// the compiled code keeps it when the arm runs.
+	Live []SplitLive
+}
+
+// SplitLive is one PolySplit.Live entry: Beneath index At, read from the
+// frame's local Idx (Local) or the operand stack Idx entries below its top
+// at the poly's op, its operands included.
+type SplitLive struct {
+	At    int
+	Local bool
+	Idx   int
+}
+
+// PolyFit is PolyRef.Fit: for each signature position At[i] (0 = the stack
+// top) the forward fits Fits[i] of the gradual operand there, and the
+// statement island a miss takes.
+type PolyFit struct {
+	At      []int
+	Fits    [][]core.ForwardFit
+	Restart *StmtIsland
+}
+
+// Missed reports whether an operand of the poly's window (stack, its
+// operands on top) misses one of its forward fits.
+func (f *PolyFit) Missed(stack []core.Value) bool {
+	for i, k := range f.At {
+		if k < 0 || k >= len(stack) {
+			return true
+		}
+		if !core.ForwardFitsAll(f.Fits[i], stack[len(stack)-1-k]) {
+			return true
+		}
+	}
+	return false
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the
@@ -668,19 +966,29 @@ type UserPolyRef struct {
 	SigIdx []int
 	Units  []int
 	Impls  []core.SigImpl
-	// Sigs, when non-empty, is the STORED dispatch table (REFUSAL-CLOSURE.0
+	// Sigs, when non-empty, is the STORED dispatch table (COMPILE FAILURE-CLOSURE.0
 	// §6b): the arm signatures frozen at record time, for a BODY-LOCAL
 	// multi-overload fn whose binding is popped before the VM runs — a live
 	// name Lookup could never resolve it, so the runtime re-match runs over
 	// this frozen subset instead (matchUserPoly's stored mode). Freezing is
 	// faithful because a body-local fn's construction is source-determined
-	// and per-call identical (captures and conditional redefinitions refuse
-	// upstream, and a same-named local in ANY other fn refuses the freeze —
+	// and per-call identical (captures and conditional redefinitions decline
+	// upstream, and a same-named local in ANY other fn declines the freeze —
 	// the dynamic-scope mutation gate in tryCompileUserPolyArms), so the
 	// frozen table IS the table the interpreter's dispatch sees at the same
 	// program point. Empty = the live-Lookup mode with its index/Impl drift
 	// guard (module-scope words, where a later rebind must defer).
 	Sigs []core.Signature
+	// Split, when non-nil, is the call's exact operand layout where an arm's
+	// barrier stops its forward collection short of the operands written
+	// after the word (core.BarrierBars, NUR362): the flat re-match is not
+	// the interpreter's there, so the run plans the window over the live
+	// binding as PolyRef.Split's barred poly does. Live-Lookup mode only.
+	Split *PolySplit
+	// WordPos, set with Split, is the dispatching word's position, where
+	// the interpreter reports a planned no-match (the op's own position is
+	// its first operand's).
+	WordPos core.SrcPos
 }
 
 const (
@@ -736,6 +1044,72 @@ func ClosureWantsKeyVal(v core.Value) bool {
 	return ok && cl.InShape == ClosureInKeyVal
 }
 
+// UnitIsFnValue reports whether a closure unit is a fn VALUE's — compiled
+// from a `fn` / `=>` literal (CompiledFn.Lambda) with its declared param
+// contract recorded, one Params entry per real arg (lamParamContract seats
+// it) — as opposed to a callback BODY unit compiled at a call site from a
+// quotation, which has no contract of its own (Params empty, NArgs the
+// word's input count).
+func UnitIsFnValue(fn *CompiledFn) bool {
+	return fn != nil && fn.Lambda && len(fn.Params) == fn.NArgs
+}
+
+// ClosureIsAnonymous reports whether closure cl over unit fn is an
+// ANONYMOUS fn value (`afn` / `=>`): the interpreter parks such a value,
+// unapplied, where nothing supplies an argument (ADR-016's gate); a named
+// one — a `fn` literal, cl.Named — calls (NUR321).
+func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
+	return fn != nil && fn.Lambda && !cl.Named
+}
+
+// ClosureCallsAtLanding reports whether a fn-value closure landing with
+// nothing to apply CALLS rather than parks: a NAMED fn value whose unit
+// takes no argument — its only call form is nullary, and a name always
+// calls (NUR321). An anonymous value, or one that needs arguments, parks.
+func ClosureCallsAtLanding(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || !cl.Named {
+		return false
+	}
+	prog, ok := cl.Prog.(*Program)
+	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return false
+	}
+	return prog.Fns[cl.Unit].NArgs == 0
+}
+
+// ClosureTakesArgs reports whether v is a fn-value closure (ClosureIsFnValue)
+// whose unit takes an argument: a landing over values beneath it is where
+// the interpreter's re-step could apply it over them (LandingBeneathGuard).
+func ClosureTakesArgs(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || !ClosureIsFnValue(v) {
+		return false
+	}
+	prog, _ := cl.Prog.(*Program)
+	return prog.Fns[cl.Unit].NArgs > 0
+}
+
+// ClosureIsFnValue reports whether v is a compiled closure minted from a fn
+// VALUE — a capturing `fn` / `=>` literal pushed at run time (a factory's
+// result, a def-bound one read back), in the plain value shape — which every
+// callback seam must treat as the interpreter treats a fn value: matched
+// against its own signature over the args the seam hands (a KeyVal at the
+// map arm, the stack's top-down order at the token seam), never run blind
+// like a callback body unit (S1b-2). A closure minted by a program the
+// running one cannot name reads as data here, as it does to the bridge.
+func ClosureIsFnValue(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || cl.InShape != ClosureInValue {
+		return false
+	}
+	prog, ok := cl.Prog.(*Program)
+	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return false
+	}
+	return UnitIsFnValue(&prog.Fns[cl.Unit])
+}
+
 // IsCompiledClosure reports whether v is a compiled-closure VALUE (a body unit
 // the VM runs via InvokeBody), as opposed to an interpreter FnDefInfo lambda.
 // Both are Parent=TFunction, so a higher-order handler that treats a lambda
@@ -776,7 +1150,12 @@ type CompiledFnRef struct {
 	// exactly as the interpreter does. Compile-time only; unused at run time (a
 	// stamped ref always has poisoned=false).
 	depNames map[string]bool
-	poisoned bool
+	// liveNames are the module-level names the unit reads LIVE (a routed
+	// slot, a seated live read, a routed lead — the seventy-first
+	// increment): a rebind of one leaves no bake stale, so the latch
+	// (NotifyNameRebound) passes it over.
+	liveNames map[string]bool
+	poisoned  bool
 	// optional marks a ref that exists ONLY as an optimisation — stampFnConst's
 	// fn-value consts, whose fallback is the island the program used before
 	// anything stamped them. It changes what a dep REBIND costs: poisoning
@@ -784,12 +1163,12 @@ type CompiledFnRef struct {
 	// optional ref that IS the whole remedy, because islanding restores the
 	// exact pre-stamp behaviour the differential already validates.
 	//
-	// A store-site ref is not optional and keeps the program-level refusal:
+	// A store-site ref is not optional and keeps the program-level compile failure:
 	// its handler is invoked at RUNTIME, after module-scope def sites have all
 	// executed in the compile pass, so the CallBoru fallback reads the
 	// PASS-FINAL binding where the interpreter read the point-in-program one
 	// (design/RELOAD-INVALIDATION.0.md §3 F1). Nothing the compile pass can do
-	// makes that right, which is why the whole program falls back there.
+	// makes that right, which is why the program does not compile there.
 	optional bool
 	// DepSnap is the RUNTIME-stamped twin of the compile-time poisoning above
 	// (StampDetachedFn): a ref created OUTSIDE a whole-program pass has no
@@ -808,7 +1187,7 @@ type CompiledFnRef struct {
 	// interpreter. nil = compile-time ref, no validation (nil is the
 	// unambiguous unset for a map).
 	DepSnap map[string]DepSnapEntry
-	// Restamp is the JIT re-stamp box (REFUSAL-CLOSURE.0 §7c): a DETACHED
+	// Restamp is the JIT re-stamp box (COMPILE FAILURE-CLOSURE.0 §7c): a DETACHED
 	// ref whose DepSnap went stale re-compiles against the LIVE bindings at
 	// invoke time (CompiledFnRef.jitRestamp) instead of degrading
 	// permanently to CallBoru. Allocated by StampDetachedFn only — a
@@ -822,14 +1201,18 @@ type CompiledFnRef struct {
 // RestampBox carries a detached ref's stamp inputs and its current
 // re-stamped twin (see CompiledFnRef.Restamp). Tries caps the TOTAL
 // re-compiles per ref so a hot rebinding loop cannot pay a compile per
-// invoke — once exhausted, the seam stays on CallBoru (slow, not wrong).
+// invoke — once exhausted, the seam stays on CallBoru: correct, uncompiled,
+// and a cap worth removing rather than a settled design point.
 type RestampBox struct {
 	mu     sync.Mutex
 	fd     core.FnDefInfo
-	sigIdx int // which own sig this ref compiled (REFUSAL-CLOSURE §7b: per-sig refs)
+	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
-	Tries  int
-	Cur    *CompiledFnRef
+	// keepsDefs: a TOKEN body's stamp (StampTokenBody) — the re-stamp opens
+	// the same keep-defs unit the first stamp did (NUR202).
+	keepsDefs bool
+	Tries     int
+	Cur       *CompiledFnRef
 }
 
 // DepSnapEntry is one dep's binding state at stamp time (see DepSnap).
@@ -887,6 +1270,111 @@ type SigRef struct {
 	// one sig and raises otherwise, so it diverges from the interpreter only if a
 	// sibling exists — which the single-overload gate forbids.
 	Guard bool
+	// HostSplice marks the CALL_NATIVE of a structured-lowering word over a
+	// COMPUTED body (`for 3 (mk 0)` — compiler's hostsSplice): the handler
+	// returns the interpreter's SPLICE (the loop's mark, body and move
+	// tokens), and the VM runs it on the program's interpreter island rather
+	// than rejecting it as a tape-coupled result. The recorder admits it only
+	// as the program's last statement over an empty residual, where the
+	// island's run and the interpreter's inline splice cannot be told apart.
+	HostSplice bool
+	// SpliceOuts, when non-nil, marks the CALL_NATIVE of a `do` over a
+	// LITERAL body whose results hold a splice (a `word` value its body
+	// read by value — `do [w/v]`, NUR348): the interpreter splices the
+	// results back at its word and steps them, so the marker fires there,
+	// and the check pass stepped the very marker it modelled — the program
+	// after the call is the marker's expansion, recorded. The VM admits a
+	// result list only when it is these values' count and each tape-coupled
+	// result is a splice rendering as the one the pass stepped at its
+	// position (the run's binding is the model's); anything else is the
+	// screen's loud defer, as before.
+	SpliceOuts []core.Value
+	// FnArgPos, when non-nil, is the position of each argument (signature
+	// order; a zero entry for none) the program read as a fn VALUE by its
+	// `/v` spelling (EmitState.noteFnArgPos, NUR347): the interpreter's read
+	// stamps the value with that token, where the compiled slot push carries
+	// none, so the VM stamps a positionless NAMED fn value with it before the
+	// call — the position a callback's return-contract error answers at.
+	FnArgPos []core.SrcPos
+	// DynBodyOne marks the CALL_NATIVE of a COMPUTED `do` body whose run a
+	// single-value seat consumes (eventFlags.dynBodyOne, dyn_body_one.go):
+	// the VM seats the handler's results only when they are exactly ONE
+	// value the interpreter's tape would not re-step, and otherwise defers
+	// loudly at this call (vm:dyn-body-one).
+	DynBodyOne bool
+	// DynBodyPlain marks the CALL_NATIVE of a COMPUTED `do` body whose run may
+	// leave a callable and is seated where the prefix island does not re-step
+	// it — with values beneath it, entries after it, or as a fn's result
+	// (lowerCall, NUR213): the VM seats the run only when none of its values
+	// is one the interpreter's tape would re-step (a fn value, class, reach
+	// or modifier) — a plain run is data on both lanes wherever it lands —
+	// and otherwise defers loudly at this call (vm:dyn-body-plain).
+	DynBodyPlain bool
+	// Split, when non-nil, marks the committed CALL_NATIVE of a code-body
+	// word the pass matched OPTIMISTICALLY — a declared-Any collection at a
+	// Map slot — with the dispatch's exact operand layout (NUR263). The
+	// handler is robust to the sibling collection, but a live value no
+	// overload takes makes it refuse; the interpreter raises the word's
+	// signature_error there, report and all. On a handler error the VM lays
+	// the operands out as the interpreter's tape (the body slot as its token
+	// list) and plans them: no signature, and it raises that report.
+	Split *NativeSplit
+	// Restart, when non-nil, is a branch guard's STATEMENT island (NUR292,
+	// compiler's landing_restart.go): where the guard's designed defer fires
+	// — a list the interpreter runs as code — the VM runs the statement again
+	// from its first token instead, the guarded value standing where the
+	// paren that computed it was written (StmtIsland.Subst).
+	Restart *StmtIsland
+	// CountCheck marks a `do` whose run's count the program may not hold
+	// (NUR222): a catch-latched value-less body seats the one Error a caught
+	// raise leaves, which a later word consumes, where a clean run leaves
+	// nothing. A run of any count but CountClaim runs the statement again
+	// from its first token — Count, its island, the run written in place of
+	// the do word and its body (RestartResults) — or, with no island, is a
+	// designed defer: the consumer would take a value beneath.
+	CountCheck bool
+	CountClaim int
+	Count      *StmtIsland
+	// CountAlways marks a computed `do` body's call run before the
+	// program's terminal trap, which the pass proved over bindings the body
+	// may have changed (NUR348): the run takes Count whatever it left — a
+	// splice or a fn value among it included, which the island steps as the
+	// interpreter's tape does — so the statement and the program after it
+	// are the interpreter's.
+	CountAlways bool
+	// CountFrame marks a UNIT's count island of a computed `do` body's run
+	// (planUnitRestarts, NUR348): the island runs the unit's body to its end
+	// on its own, where the interpreter's frame runs on into the caller's
+	// tape — a named fn value it steps last with nothing after it raises
+	// uncalled_function there, and is data on the island. The VM defers
+	// loudly on an island residual holding a value the tape re-steps.
+	CountFrame bool
+	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
+	// step loop re-steps where the check pass's model had already stepped
+	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
+	// dispatched a placed fn inside it, so nothing the program records after
+	// the call applies the fn value the compiled body hands back. The VM
+	// re-steps the results through the island where that is exact — every
+	// value it would dispatch takes no argument, or nothing beneath the
+	// results in the frame and the unit ending after the call — and they must
+	// leave ReStepOut values (-1: a region's, any count). Anywhere else, or at
+	// another count, it is a designed defer (vm:do-restep).
+	ReStep    bool
+	ReStepOut int
+}
+
+// NativeSplit is SigRef.Split: how many of the call's operands, in
+// signature order from position 0, were written after the word, the body
+// operand the program passes as a compiled closure — its signature
+// position and the token list the interpreter's tape holds there — and
+// what else that tape holds for the plan to reach (PolySplit's Beneath and
+// After, NUR283).
+type NativeSplit struct {
+	NFwd    int
+	BodyAt  int
+	Body    core.Value
+	Beneath []core.Value
+	After   []core.Value
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved
@@ -902,9 +1390,38 @@ type TypeRef struct {
 // i-th value (deepest popped = value 0). The keys ride here rather than as
 // stack operands so OpMakeMap only handles the VALUE operands (which may be
 // computed event results), reusing the same operand-layout engine as a call.
+// ListReStepSpec is one OpMakeListReStep's list (NUR295): N elements, the
+// ones (Fn, element indices in source order) the interpreter's evaluation of
+// the literal re-steps when they hold a fn value, and whether re-stepping the
+// window's VALUES is its evaluation of the TOKENS (Island): every element
+// after the first Fn one is another Fn one or one a fn's forward collection
+// takes as the token's value — a literal, a paren's placed result, a word
+// bound to a value; a bare word call's result is not (the collection stops
+// at the word). An element that is not an Fn one must step as itself (the
+// VM checks: a placed fn would be re-stepped, a fn in a word stops the
+// collection).
+type ListReStepSpec struct {
+	N      int
+	Fn     []int
+	Island bool
+	// Words holds, for a literal written as a WORD right after an Fn
+	// element (a reserved `true`, a value-bound word — LandingWord.Collected),
+	// that word: a fn whose `/q` slot captures the next token takes it, not
+	// its folded value (NUR219).
+	Words map[int]LandingWord
+}
+
 type MakeMapSpec struct {
 	Keys     []string
 	Implicit bool
+	// FnPos, when non-nil, is the position of each value (key order) that is
+	// a fn value the program read by its `/v` spelling (NUR347): the
+	// interpreter's read stamps the value with its token, which the map stores
+	// and a callback word's contract error later anchors at, where the
+	// compiled read is a positionless slot push. OpMakeMap stamps it on a
+	// positionless named value, as a native call stamps its arguments
+	// (SigRef.FnArgPos).
+	FnPos []core.SrcPos
 }
 
 // InterpSeg is one segment of an OpInterp template: either a literal run of
@@ -951,6 +1468,14 @@ type XmlInterpSpec struct {
 // sits live on the unit sim for its downstream readers (the def consumes
 // nothing the compiled model still needs) — and POPS when the lowering
 // pushed a copy for the install (a baked literal, a promoted local).
+// FnTypeBindSpec describes one OpBindFnType (see the opcode's doc): Name is
+// the type binding, Entry the check-time entry the op re-installs (its
+// TypeDef the node the unit's reads bake).
+type FnTypeBindSpec struct {
+	Name  string
+	Entry core.DefEntry
+}
+
 type ResidentBindSpec struct {
 	Name  string
 	Twin  int
@@ -977,9 +1502,29 @@ type GlobalBindSpec struct {
 	// Splice selects the S5 first-value loop-bind mode: bind the value
 	// SpliceFromTop entries below the stack top and remove it — the
 	// interpreter's pending-forward collection of a loop region's first
-	// value, at the region's statically-known depth (REFUSAL-CLOSURE S5).
+	// value, at the region's statically-known depth (COMPILE FAILURE-CLOSURE S5).
 	Splice        bool
 	SpliceFromTop int
+	// AfterDynScope marks a write-back whose def ALSO emitted an
+	// OpBindDynScope at this site, just before it (emitDynBind: a root
+	// computed def under DynEnv, or one a dyn-scope reader names). That op
+	// installed the runtime value through the interpreter's own installer
+	// (bindDynScope → core.InstallDef); the write-back then ADOPTS that
+	// install as the persisted binding — it takes the entry off the
+	// dyn-bind trail, so no unwind pops it, and pushes nothing — instead
+	// of stacking a second entry under the name. Two entries were what
+	// the pair used to leave, and Registry.Lookup unions the entries of a
+	// name: a factory's fn value bound at the root read back under `do`
+	// as `fn f(String) or (String)` for the interpreter's `fn f(String)`
+	// (NUR168's second finding, 2026-09-25).
+	AfterDynScope bool
+	// WriteSlot marks a copy re-pushed from frame local Slot (Pop mode): the
+	// def's rename of a fn value (installDef names what it binds) goes back
+	// into the local too, the value's compiled home — later reads push it
+	// from there. Without it `def j (do [(mk)]) end j/v` read `fn` for the
+	// interpreter's `fn j` (NUR285).
+	WriteSlot bool
+	Slot      int
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
@@ -998,7 +1543,7 @@ type ConstLocalRef struct {
 // error-scraping tooling can never tell which engine ran. It lowers a
 // check-mode-suppressed runtime error (an orphan gen, an unpack of a missing
 // key, a statically-definite unmatched dispatch) into the compiled stream
-// rather than refusing the whole program. The rich fields are populated by
+// rather than declining the whole program. The rich fields are populated by
 // RecordTrapErr (serialising a built BoruError); the plain string RecordTrap
 // leaves them nil for the simpler callers.
 type TrapSpec struct {
@@ -1017,25 +1562,89 @@ type TrapSpec struct {
 // dispatch site's source position, stamped onto the runtime-built
 // diagnostic so it labels the same site the interpreter's would.
 //
-// NWritten is the RENDER BOUND: how many LEADING window operands form the
-// WRITTEN tuple the interpreter's sigError renders (its forward-else-stack
-// derivation). The match view can be wider than the raise view — the
-// local-add shape's match probed 3 positions where its error renders the
-// single stack value — so the rematch re-runs the match over the FULL
-// window but builds the diagnostic over window[:NWritten]. Always explicit,
-// 1..NArgs (never the Go zero): the record gate proves the bound by ID
-// identity (the written tuple IS the window's leading slots) before
-// recording, and the VM rejects a spec outside the range.
+// Written is the RENDER TUPLE: the window indices, in render order, of the
+// operands the diagnostic reports as the written tuple — the attempted
+// window (core.attemptedWindow: the forward operands, then the stack values
+// beneath up to the smallest overload's arity), proven at record time to be
+// exactly window values by ID. The runtime rematch matches over the FULL
+// window but builds the diagnostic over the tuple. Always explicit — at
+// least one index, each inside 0..NArgs-1 and distinct; a spec with an
+// empty tuple is malformed. An index tuple rather than an offset because a
+// mixed tuple (a forward operand and the stack value beneath it) is not a
+// contiguous slice of a window that lists the stack run first.
+//
+// NFwd is how many of the window's operands were WRITTEN after the word
+// (NUR211). The window lists the stack run first, top down, then the
+// forward operands in written order, so window[NArgs-NFwd:] are the forward
+// ones. With NFwd > 0 the flat match (window[i] as sig position i) is not the
+// interpreter's: its forward phase fills the leading positions from the
+// written operands and the stack fills the rest. `3 for (mk)` matched `for 3
+// [i]` flat where the interpreter raises, so the rematch plans that window
+// as the interpreter does instead.
+//
+// Restart is the trap's statement island (compiler's planRematchRestart):
+// where the run matches the word the pass's model failed on, the
+// interpreter runs the statement, and the program after it, from its first
+// token instead of the defer (NUR336). Nil where none was planned.
 type DispatchSpec struct {
-	Word     string
-	NArgs    int
-	NWritten int
-	// WrittenOff is the 0-based window index where the written slice starts
-	// (the each shape's written tuple is the body operand at offset 1, after
-	// the region carrier). Valid domain 0..NArgs-NWritten; NWritten >= 1 is
-	// what makes the pair explicit — a spec with NWritten 0 is malformed.
-	WrittenOff int
-	Pos        core.SrcPos
+	Word    string
+	NArgs   int
+	NFwd    int
+	Written []int
+	Restart *StmtIsland
+	// Prefix is the window indices, top first, of the stack prefix beneath
+	// the word the interpreter's report reads, and PrefixKnown marks it
+	// recorded (every value a window operand). The check pass renders a
+	// written operand it holds as a carrier; the interpreter's walk over the
+	// written operands stops at one that is no concrete value at run time — a
+	// type literal, None — and its report then falls to this prefix
+	// (core.AttemptedTuple), which the VM rebuilds (NUR311).
+	Prefix      []int
+	PrefixKnown bool
+	Pos         core.SrcPos
+	// OnMatch, when set, is what a MATCH raises in place of the defer: the
+	// error a trap recorded under this word's OPTIMISTIC match carries
+	// (NUR264) — the interpreter evaluates the word's arguments only once it
+	// matches, so the run raises the word's no-match first, and the trap's
+	// own error, at OnMatchPos, only when it matches.
+	OnMatch    *TrapSpec
+	OnMatchPos core.SrcPos
+}
+
+// GenericSpec describes one OpDispatchGeneric (see the opcode doc): the
+// region descriptor the dispatch is driven from, the compiled unit the
+// check pass committed the call to (the user-fn seat's CALL_USER target —
+// entered when the live match selects its signature), and the result
+// count the record declared, which the live dispatch must reproduce for
+// the stack discipline the lowering assumed to hold.
+type GenericSpec struct {
+	Region int
+	Unit   int
+	NOut   int
+	// NArgs is the recorded signature's arity. The live plan must claim
+	// exactly the record's forward slots (RegionDesc.NFwd) and exactly this
+	// many positions in all: the code after the op was lowered for the
+	// record's stack effect, and a plan of another extent would leave
+	// tokens to run twice, or take values the interpreter leaves (found in
+	// review of #460).
+	NArgs int
+	// Impl is the recorded signature's run implementation when the record
+	// knew it — the mono native seat's; nil at the user seat, whose target
+	// the call-target bake guards. A live native match of this identity
+	// runs with CALL_NATIVE's own guarantee (the check pass observed its
+	// result count); any other native overload defers before its handler
+	// runs, unless the word is declared pure (found in review of #460) or
+	// LiveSet holds.
+	Impl core.SigImpl
+	// LiveSet marks a record that was a POLY native dispatch
+	// (RecordPolyCall): the check pass committed to no one overload, so the
+	// word's LIVE table is the record's set, exactly as CALL_NATIVE_POLY
+	// re-matches over it — any overload the live match selects runs, and
+	// the result count is checked after the handler as vm:poly-nout-drift
+	// checks it. The routed dispatch inherits the seat's discipline, no
+	// more and no less.
+	LiveSet bool
+	Pos     core.SrcPos
 }
 
 // DynMethodSpec is one OpCallDynMethod's shape claim (Stage M2c): the member
@@ -1047,37 +1656,139 @@ type DynMethodSpec struct {
 	Word  string
 	NArgs int
 	NOut  int
+	// DefRead marks a method that IS a def-bound binding's read (the read
+	// model's word dispatch, check tryShapedFnReadArrival): the run
+	// dispatches the NAME, so where the VM cannot enter the value's unit
+	// (the binding's installed copy carries no stamp) its island steps the
+	// word rather than the value, which the interpreter would park as data
+	// when it is an anonymous lambda (NUR216).
+	DefRead bool
+	// Restart is a root apply's STATEMENT island (compiler's
+	// landing_restart.go, LandingWord.Restart's twin): where the method is
+	// no fn at run time the interpreter's paren places the values instead,
+	// a stack shape this program cannot express, so the VM runs the
+	// statement again from its first token — Island, over the Depth values
+	// of the frame region beneath it — and continues at RetPC.
+	Restart   bool
+	Root      bool
+	Depth     int
+	Island    []core.Value
+	RetPC     int
+	PrefixSrc []RestartSrc
+	// Substs are the parens the island writes the compiled code's values in
+	// place of (RestartSubst).
+	Substs []RestartSubst
+	// FirstIter is the loops' first-iteration check the island takes at run
+	// time (RestartFirst); empty outside loops.
+	FirstIter []RestartFirst
+	// Loop, when set, makes the island a per-iteration loop continuation
+	// (LoopCont, NUR336): Island is the stop's statement in the loop's body.
+	Loop *LoopCont
+	// Paren marks a paren's leading apply (core's recordParenLeadingApply,
+	// `(m.f 7)`): the interpreter's paren applies its lead over the values
+	// after it — a lead the landing before it parked included, `(m.f y)` over
+	// a lambda that could not take the word y — and PLACES a lead that is no
+	// fn, the lead then the values, as a paren leaves them (NUR336).
+	Paren bool
+	// Place marks a paren apply at the program root after which the code only
+	// pushes (stampRootRestarts): a data lead with no statement island is
+	// placed where the apply stands, the program's residual taking the extra
+	// values as the interpreter's does (NUR336).
+	Place bool
+	// LeadName is the word a paren's lead token is (compiler's
+	// parenLeadToken): a def-bound read, which the interpreter's paren
+	// dispatches by that NAME — a lambda bound to it runs where it takes
+	// none of the values, and raises where it takes the wrong ones — so the
+	// apply runs such a lead where the paren's values miss it only if the
+	// name's call runs it (a fn of no argument), and its island writes it so
+	// (RestartSubst.Named, NUR336); where its signatures miss the values it
+	// raises the name's no-match at LeadPos, the word's token.
+	LeadName string
+	LeadPos  core.SrcPos
+	// LeadUnrun marks a Restart island that steps the paren's lead itself
+	// (compiler's leadUnrun, NUR336): its member read's value written as the
+	// reach the read lowers to, or a word the island dispatches. A lead that
+	// no signature of which takes the paren's values is then the island's
+	// before it runs — the interpreter's paren places it, runs it over fewer
+	// or reaches beneath the paren — so the VM never runs it first.
+	LeadUnrun bool
+	// Parks is the residual's claim that the apply's result is placed where
+	// it lands: a def-bound name's dispatch over a callee the compiler cannot
+	// see (`j j` over a factory's lambda, NUR282), whose result the
+	// interpreter parks when the callee is a boru fn (fnReturnPark). The VM
+	// defers on any other appliable callee, whose result it might step on.
+	Parks bool
 }
 
 // Program is a compiled unit: code, interned constants, the signature
 // table, a pc → source-position map, and the precomputed stack bound.
 type Program struct {
-	Code       []Instr
-	Consts     []core.Value
-	Types      []TypeRef
-	Sigs       []SigRef
-	PolyRefs   []PolyRef
-	UserPolys  []UserPolyRef
-	Fallbacks  []core.FallbackSpan
-	MakeMaps   []MakeMapSpec
-	Interps    []InterpSpec
-	XmlInterps []XmlInterpSpec
-	Traps      []TrapSpec
-	Dispatches []DispatchSpec
+	Code      []Instr
+	Consts    []core.Value
+	Types     []TypeRef
+	Sigs      []SigRef
+	PolyRefs  []PolyRef
+	UserPolys []UserPolyRef
+	Fallbacks []core.FallbackSpan
+	// FallbackCounts is the count island of a strip word's island a single
+	// seat takes (core.FallbackSpan.CheckOne), by fallback index: a run
+	// that is not one plain value runs its statement again on the
+	// interpreter, the run written in the do's place (countPoint's island
+	// arm, NUR301). Absent where the walk seated none; the check's loud
+	// defer stands there.
+	FallbackCounts map[int]*StmtIsland
+	MakeMaps       []MakeMapSpec
+	Interps        []InterpSpec
+	XmlInterps     []XmlInterpSpec
+	Traps          []TrapSpec
+	Dispatches     []DispatchSpec
 	// Regions backs OpCollect / OpDispatchGeneric: one entry per G-lane
 	// region, recording what the interpreter would have read off the tape
 	// (region_desc.go). Peer to Dispatches. Nil for a program with no
 	// generically-lowered dispatch.
 	Regions []RegionDesc
+	// Generics backs OpDispatchGeneric: one entry per routed dispatch.
+	Generics []GenericSpec
+	// ListReSteps backs OpMakeListReStep: one entry per list literal whose
+	// elements the interpreter may re-step (NUR295).
+	ListReSteps []ListReStepSpec
 	// ClosureRet carries a pushed closure's CALLBACK return contract, keyed by
 	// the pc of its OpPushClosure. Keyed by pc rather than by unit because the
 	// unit is SHARED across fn values with identical bodies and inputs — the
 	// contract is the value's, not the body's.
 	ClosureRet map[int]ClosureRetSpec
+	// LandingWords is the main code's twin of CompiledFn.LandingWords (see
+	// there).
+	LandingWords map[int]LandingWord
+	// DynApplyName is the main code's twin of CompiledFn.DynApplyName: a
+	// main-code apply names no frame binding, but its window's written order
+	// decides a value's no-match (NUR238).
+	DynApplyName map[int]DynApplyHead
+	// Deopts is the main code's twin of CompiledFn.Deopts (OpDeoptIfFn's
+	// Arg at the program root, NUR207): a bare read of a def-bound value the
+	// pass types gradually, which the interpreter dispatches as a WORD when
+	// the binding holds a fn at run time. Body is the program's tokens an
+	// island point hands the interpreter from the read's token on
+	// (CompiledFn.Body's twin; nil when every root point is a guard), and
+	// an island's residual ends the run (RetPC is the main code's end).
+	Deopts []DeoptSpec
+	Body   []core.Value
+	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
+	// there).
+	CallWindows map[int][]CallWindowOperand
+	// FlowExits is the main code's twin of CompiledFn.FlowExits (see there).
+	FlowExits map[int]FlowExit
+	// CallFits is the main code's twin of CompiledFn.CallFits (see there).
+	CallFits map[int]*PolyFit
+	// CallResults is the main code's twin of CompiledFn.CallResults.
+	CallResults map[int]*StmtIsland
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
 	TypedBinds []core.TypedBindSpec
+	// TypeRuns backs OpBindTypeRun: one entry per root type def the run
+	// installs from the body it computed (NUR308).
+	TypeRuns []core.TypeRunInstallSpec
 	// GlobalBinds backs OpBindGlobal: one entry per top-level computed `def`,
 	// naming the binding and the DEPTH its check-pass install recorded. The
 	// runtime value is PUSHED: the pass's install was rolled back to
@@ -1087,7 +1798,7 @@ type Program struct {
 	// §6.5): the check pass's bind ledger, mirrored entry for entry through
 	// NoteBindTransition's own funnel and finalized with the Program. Every
 	// entry has an op at its source position (Finalize's full-placement gate
-	// refuses otherwise) — OpBindTwin replays it, OpBindResident installs it
+	// declines otherwise) — OpBindTwin replays it, OpBindResident installs it
 	// per invocation — and the langspec gate asserts table == ledger for
 	// every compiled corpus program.
 	BindTwins []core.BindTransition
@@ -1098,6 +1809,9 @@ type Program struct {
 	// then-live entry). Proven against the pass-left registry, corpus-wide,
 	// by the sandbox harness (test/go/langspec/bind_replay_sandbox_test.go).
 	BindTwinEntries []core.DefEntry
+	// FnTypeBinds backs OpBindFnType (a fn unit's per-call type install —
+	// see the opcode's doc).
+	FnTypeBinds []FnTypeBindSpec
 	// ResidentBinds backs OpBindResident (the arm-resident twins —
 	// §6.5's each-body recovery): one entry per resident install/teardown
 	// site inside a compiled per-invocation unit. Twin indexes BindTwins
@@ -1106,6 +1820,41 @@ type Program struct {
 	// replayed (the op carries the runtime value instead, which is the
 	// whole point). Only a twin-regime program carries entries.
 	ResidentBinds []ResidentBindSpec
+	// SpecUndefNames is every name a PLACED speculative undef may pop
+	// (OpUndefDynScope — the sixty-eighth increment). A dynamic-scope read
+	// of one of these that MISSES is the interpreter's own undefined_word
+	// — the binding was popped by a region that ran — so the VM raises it
+	// from the read's position instead of deferring: an effect performed
+	// before the read (a print inside the loop) fences the interpreter
+	// re-run a defer asks for, and the user saw the defer's internal error
+	// where the interpreter raises the word. Nil for a program that placed
+	// none.
+	SpecUndefNames map[string]bool
+	// SpecFnNames is every fn family a rolled-back conditional body defined
+	// or replaced (RecordSpeculativeFnDef): its dispatches route, and the
+	// routed op's miss on such a lead is the interpreter's undefined_word,
+	// raised at the word — the arm did not run, so the name is unbound
+	// (the seventieth increment).
+	SpecFnNames map[string]bool
+	// LiveLeadNames is every fn a stored handler's unit dispatches by name
+	// (the seventy-first increment): its routed dispatches resolve the lead
+	// live exactly as a speculative family's do — the live signature's own
+	// unit by its declaration site, the interpreter's undefined_word on a
+	// miss.
+	LiveLeadNames map[string]bool
+	// LiveReadNames is every module-scope value a stored handler's unit
+	// reads bare (seated live, the seventy-first increment): a miss on the
+	// read is the interpreter's undefined_word, raised as SpecUndefNames'
+	// is.
+	LiveReadNames map[string]bool
+	// CondBoundNames is every name a bound-checked cell carries — a name
+	// bound only on some paths: a branch arm's def with no pre binding
+	// (NUR110) or a fresh def in a loop that may run zero times (NUR214).
+	// The cell answers the unit's own reads; a DYNAMIC read of the name
+	// (a fn's OpLookupDynScope) that misses is the path that skipped the
+	// binding, the interpreter's undefined_word, raised as SpecUndefNames'
+	// is (NUR215).
+	CondBoundNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass
@@ -1133,10 +1882,23 @@ type Program struct {
 	// across its read sites. Slot is frame-relative to the fn unit whose Code holds
 	// the op (each op appears in exactly one unit). Nil for programs with none.
 	ConstLocals []ConstLocalRef
-	Fns         []CompiledFn
-	Debug       []core.SrcPos // 1:1 with Code
-	MaxStack    int           // a floor when the program loops (results accumulate)
-	NumLocals   int
+	// ConstKeep names, per const-pool index, the value IDs a FRESH push of
+	// that const keeps shared instead of cloning (core.CloneValueKeeping): the
+	// enclosing bindings' containers a fn-unit body literal embeds, whose
+	// identity the interpreter's per-call construction preserves while the
+	// literal's own spine is minted anew. Read by OpPushConstFresh and
+	// OpPushConstFreshLocal; absent for a const with no embedded binding.
+	ConstKeep map[int]map[string]bool
+	Fns       []CompiledFn
+	Debug     []core.SrcPos // 1:1 with Code
+	MaxStack  int           // a floor when the program loops (results accumulate)
+	NumLocals int
+	// LocalNames maps a MAIN-unit frame local slot to its source name — a
+	// loop variable, a promoted body-local def — where one is known; "" for
+	// a spill temp. The did-you-mean pool of a compiled undefined_word reads
+	// it (with a fn unit's CompiledFn.LocalNames), since a compiled local is
+	// a binding the interpreter's registry holds as a def (NUR146).
+	LocalNames []string
 	// DynEnv marks a program containing a dynamic code-body dispatch
 	// (CompileDynBody — tryRecordDynBody): the VM brackets every CALL_USER
 	// frame with an args-stack push so a body's runtime sub-run reads `args`
@@ -1172,6 +1934,258 @@ type DynFrameWord struct {
 	Read bool
 }
 
+// LandingWord is one entry of Program.LandingWords / CompiledFn.LandingWords:
+// the function word after a landed value and that word's source position
+// (the interpreter's stranded-forward diagnostic points at it).
+type LandingWord struct {
+	Name string
+	Pos  core.SrcPos
+	// ValPos is where the landed value stands on the interpreter's tape when
+	// the compiled value carries no token of its own: the position the
+	// recording pass saw it at (a read's own token — `do [l.0]` lands at the
+	// `l.0`), else the call whose result it is (a `do` lands its body's
+	// lambda at the `do`) — NUR289's caret. Zero for a branch's merge
+	// landing, whose raise stays at the word.
+	ValPos core.SrcPos
+	// Deopt marks a landing whose walk may meet a `/q` slot CAPTURING the
+	// word (NUR190): the interpreter's re-step takes the word as an atom and
+	// never runs it, where the compiled code calls it and the residual arm
+	// applies the value over its result. On that claim the VM hands the
+	// interpreter Opens fresh user parens, the value, then Island — the
+	// word's token and the rest of the body, each of those parens closed
+	// where its items end (landingIsland) — over the frame region beneath,
+	// and continues at RetPC with the island's residual: the unit's RET, or
+	// the program's end (Root, whose defs outlive the island as a top-level
+	// def does). Set only where the word is in the body at the landing's
+	// own depth.
+	Deopt  bool
+	Root   bool
+	Opens  int
+	Island []core.Value
+	RetPC  int
+	// SkipTo is the other answer to a `/q` claim, where no island can be
+	// rebuilt (a landing inside a branch arm, a loop body, a literal's
+	// member): the word's compiled call is followed at once by the paren
+	// apply that consumes the value and the word's result, so on the claim
+	// the VM captures on the interpreter over the value and the word alone,
+	// seats the SkipOut results the apply claims, and continues at SkipTo —
+	// past the word's call and the apply, which answer a model the claim
+	// voided. 0 means no skip.
+	SkipTo  int
+	SkipOut int
+	// Skip is the pc the landing resumes at when the interpreter's re-step
+	// CAPTURES the word itself through a `/q` slot (NUR190): past the word's
+	// compiled call and the residual apply the lowering laid over that
+	// call's result, which the claim means never run. Set only where the
+	// lowering proves that layout (sealLandingSkip): the landing op, then the
+	// word's argument-free one-result call, then OpCallDynamic applying the
+	// landed value over it. The VM tries it FIRST — it enters the fn's own
+	// unit over the atom and stays compiled — and falls to Deopt, then
+	// SkipTo, where it is 0 or the overload has no unit of this program; with
+	// none of the three the claim defers.
+	Skip int
+	// Collected marks a word the ordinary re-step COLLECTS as its value — a
+	// word bound to a value, or the reserved `true` / `false` — which the
+	// pass folded to that value (NUR219): only a `/q` slot captures it, as
+	// the atom the word spells. Its claim target (Skip) seals over the
+	// folded value's push instead of the word's call.
+	Collected bool
+	// Restart marks a root landing whose claim has no compiled answer but
+	// whose STATEMENT the interpreter can run again from its first token
+	// (NUR242, NUR219 — compiler's landing_restart.go): Island is the
+	// program from that token on, Depth how many values of the frame region
+	// lie beneath the statement. On such a claim the VM hands the
+	// interpreter those values as the resolved prefix and the tokens, and
+	// continues at RetPC with the island's residual — the program's.
+	Restart bool
+	Depth   int
+	// PrefixSrc lists, in the interpreter's stack order, the values the
+	// root's island seats beneath the statement (RestartSrc): the program
+	// residual's earlier entries. Empty, the prefix is the frame region's
+	// Depth values.
+	PrefixSrc []RestartSrc
+	// Substs are the parens the island writes the compiled code's values in
+	// place of (RestartSubst).
+	Substs []RestartSubst
+	// FirstIter is the loops' first-iteration check the island takes at run
+	// time (RestartFirst); empty outside loops.
+	FirstIter []RestartFirst
+}
+
+// StmtIsland is a guard's statement island (SigRef.Restart): Island is the
+// body from the statement's first token, Depth how many values of the frame
+// region lie beneath the statement, PrefixSrc where the island's prefix
+// lives (RestartSrc; empty: the Depth values themselves), and Substs the
+// parens it writes the compiled code's values in place of — the guarded
+// value's own among them. The run continues at RetPC with the island's
+// residual; a unit's island tears its own defs down (Root false).
+type StmtIsland struct {
+	Island    []core.Value
+	Depth     int
+	RetPC     int
+	Root      bool
+	PrefixSrc []RestartSrc
+	Substs    []RestartSubst
+	FirstIter []RestartFirst
+}
+
+// LoopCont is a statement island's per-iteration continuation of the counted
+// `for` loop its stop is inside (compiler's loopContPlan, NUR336): the VM
+// resumes the interpreter's own loop at the stop's iteration — its mark,
+// the values the iteration left before the stop's statement, the island,
+// then the loop's continuation (core.ForCont) over Body with the earlier
+// iterations' values as its results and IterName bound to the iteration's
+// index — followed by After, the tokens after the loop.
+type LoopCont struct {
+	Body     []core.Value
+	After    []core.Value
+	IterName string
+	// Beneath is how many values of the frame region lie beneath the loop,
+	// the island's prefix (DynMethodSpec.PrefixSrc, when set, seats them
+	// from where the compiled code keeps each).
+	Beneath int
+}
+
+// RestartFirst is one loop's first-iteration check a statement island takes
+// at run time (compiler's firstIterGuard): the island runs the loop from its
+// start, so it may take the statement over only while the loop's index slot
+// Slot still holds the loop's start Val — no earlier iteration ran what it
+// runs again.
+type RestartFirst struct {
+	Slot int
+	Val  int64
+}
+
+// RestartSubst is one run of tokens a statement island writes a value in
+// place of (compiler's restartSubsts): the call that computed it ran in the
+// compiled code, which must not repeat it. Path is the run's first token's
+// index in the island, then in each paren or list literal entered on the
+// way down; Span is how many tokens the run holds there, never below 1; Src
+// is where the compiled code holds the value when the island runs.
+//
+// A run of one is a paren, which seals the stack off so its value is all it
+// leaves, or a bare word that took nothing. The interpreter parks such a
+// value where it lands if it would dispatch there, and a token does
+// dispatch (core.FnValueDispatchesAtPointer), so the VM defers on one
+// (NUR297). A run of two is a `do` and its body list (NUR286): the do's
+// result goes back on the tape in the do's place and is stepped there,
+// exactly as the token is. Placed marks a longer run whose value the
+// interpreter placed as a paren's is — a bare call and the arguments written
+// after it (NUR296's call run): a call's returned fn value is parked, never
+// stepped, so the VM defers on one as it does on a paren's.
+//
+// Reach marks a paren apply's lead that is its member read's own value, in
+// place of the evaluated reach token that read it (compiler's rawReachLead,
+// NUR336): the VM writes the value as the reach-lowered group the token
+// steps as — the value alone in the group — so a fn value there is stepped
+// as the interpreter steps the read's, never the NUR297 defer.
+//
+// Named marks a paren apply's lead that is a def-bound word
+// (DynMethodSpec.LeadName): the interpreter's paren calls it by name, so a fn
+// value there of no argument is written to run where it is stepped
+// (FnDefInfo.Applied), never parked as a lambda value would be.
+type RestartSubst struct {
+	Path   []int
+	Span   int
+	Src    RestartSrc
+	Placed bool
+	Reach  bool
+	Named  bool
+}
+
+// RestartSrc is one value a root statement island seats beneath the
+// statement's tokens (LandingWord.PrefixSrc, DynMethodSpec.PrefixSrc,
+// compiler's landing_restart.go): an earlier entry of the program residual,
+// found where the compiled root keeps it.
+type RestartSrc struct {
+	Kind RestartSrcKind
+	Idx  int
+	Val  core.Value
+	// Fresh, on a RestartConst, marks a compound literal a fn unit's code
+	// pushes as a fresh instance per evaluation (OpPushConstFresh): the
+	// island seats a fresh copy too (NUR336's seated literals).
+	Fresh bool
+}
+
+// RestartSrcKind names where a RestartSrc's value lives when the island runs.
+type RestartSrcKind uint8
+
+const (
+	// RestartConst is Val itself: a literal the root pushes only at the
+	// program's end.
+	RestartConst RestartSrcKind = iota
+	// RestartLocal is the frame's local Idx: an earlier result the root
+	// promoted to a slot.
+	RestartLocal
+	// RestartStack is the frame region's entry Idx, 0 at its bottom: an
+	// earlier result the root left on the stack.
+	RestartStack
+	// RestartGuard is the value a branch guard checks, off the stack when
+	// its island runs (a RestartSubst of StmtIsland only).
+	RestartGuard
+	// RestartResults is the run of values the stop's own call left, written
+	// in the call's place (a RestartSubst of SigRef.Count only: a `do` whose
+	// run's count the program's seat does not hold, NUR222).
+	RestartResults
+	// RestartNone is no value: a call run before the stop that left nothing
+	// (`print "a"`) is written as no token, so the island never runs it
+	// again (a RestartSubst only, NUR296).
+	RestartNone
+	// RestartType is the type node Val names, resolved by its ID when the
+	// island runs — the canonical node, as OpPushType pushes it (a
+	// RestartSrc of a prefix only, NUR336).
+	RestartType
+)
+
+// CallWindowKind names where one CallWindowOperand's value lives when the
+// call runs.
+type CallWindowKind uint8
+
+const (
+	// WinArg is the call's argument at signature position Idx.
+	WinArg CallWindowKind = iota
+	// WinValue is Value itself: a definite scalar the pass saw on the tape.
+	WinValue
+	// WinLocal is the caller's frame local Idx (a promoted event result).
+	WinLocal
+	// WinStack is the value Idx deep beneath the call's operands, 0 on top.
+	WinStack
+)
+
+// FlowExit is where the interpreter's tape stands after an op that raised a
+// break/continue — the `break` word itself — or let one escape a body it ran
+// (a native running a code body, a fallback island), for the report a signal
+// no loop takes raises (NUR355): the interpreter's `outside loop` flow_error
+// points at the token its pointer rests on after that step.
+//
+// Next is the position of the token right after the op's run in its own
+// token sequence — the word and the operands written after it, in the fn
+// body, a paren group or a branch arm the interpreter splices inline — and
+// the zero position when the run ends its sequence (a frame's tail or a
+// group's close stands there, which carries none). Top is whether that
+// sequence is the unit's own body: a HOSTED run's residual (vm_token_body.go)
+// goes on with the token after a top-level op, and with a group's marker
+// after a nested one.
+type FlowExit struct {
+	Next core.SrcPos
+	Top  bool
+}
+
+// CallWindowOperand is one value of a call's no-match window
+// (CompiledFn.CallWindows), in the window's own order. Fwd marks a value
+// written after the word; PrefixOnly an entry past the window that carries
+// the rest of the stack prefix beneath it. The interpreter's report stops
+// its written values at the first that is no concrete value at run time and
+// falls to that prefix — the window's stack values, then the PrefixOnly ones
+// (NUR311). A window with no Fwd mark is rendered as recorded.
+type CallWindowOperand struct {
+	Kind       CallWindowKind
+	Idx        int
+	Value      core.Value
+	Fwd        bool
+	PrefixOnly bool
+}
+
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the
 // head of a paren-bounded trailing fn-value apply was read under, that READ's
 // position, and how many of the apply's arguments the interpreter's forward
@@ -1180,6 +2194,30 @@ type DynApplyHead struct {
 	Name     string
 	Pos      core.SrcPos
 	NWritten int
+	// Leading marks the classified LEADING window `(g x)` (RecordDynApplyLead):
+	// the lead was written BEFORE its arguments. The op binds either window
+	// the same way, and the bit matters only where the lead fires over
+	// NOTHING — a 0-arg fn under the window (NUR176) — since the interpreter
+	// then steps a leading window's arguments AFTER the result lands and
+	// keeps a trailing window's beneath it.
+	Leading bool
+	// WrittenFirst marks a TRAILING-classified window whose fn was
+	// nevertheless written BEFORE its arguments (`(g/v 5)`: a `/v` delivery
+	// takes the trailing artifact). It decides only the PARKED residual's
+	// order — a value the window does not fit stays where it was written.
+	WrittenFirst bool
+	// ValueDelivery marks a lead delivered by a `/v` read of a binding
+	// (fnUnitRec.valReads): a VALUE, not the word dispatch a bare read
+	// makes, so a window it does not fit leaves it as data (NUR124's fifth
+	// witness) rather than raising the no-match.
+	ValueDelivery bool
+	// OneResult marks a NAMED head whose one result a later event consumes
+	// (eventFlags.dynOneResult): the layout seats exactly one value, so a
+	// lead that turns out 0-arg — it fires over nothing and leaves its
+	// window beside its result (NUR176), n+1 values — raises instead of
+	// misaligning that layout (NUR249). A result seated in place (the
+	// residual, a RET tail) takes the n+1 values as the interpreter does.
+	OneResult bool
 }
 
 type CompiledFn struct {
@@ -1202,6 +2240,14 @@ type CompiledFn struct {
 	// gate), and the value-path bridge (CompiledRuntime.ClosureAsFnDef)
 	// carries the flag so a compiled closure parks in the same places.
 	Lambda bool
+	// KeepsDefs marks the body unit of a BodyOnceKeepsDefs word (`do`): the
+	// interpreter runs that body ONCE in the caller's frame and its defs
+	// LEAK to the enclosing scope, so the unit's OpBindDynScope installs are
+	// KEPT past its own RET — they ride the dynamic-scope trail the
+	// ENCLOSING frame unwinds (torn down with a fn frame as the
+	// interpreter's def-cleanup tears the leak down; kept for the run at
+	// root, as a root def is). Every other unit's installs pop at its RET.
+	KeepsDefs bool
 	// NArgs is the fn's REAL argument count — the sig-matched args, excluding
 	// the trailing capture slots a user fn's call site pushes (NParams
 	// includes them; NCaptures stays 0 for user fns). The DynEnv args bracket
@@ -1323,6 +2369,39 @@ type CompiledFn struct {
 	// Nil for an apply whose head was not a bare read (an event-produced
 	// fn, a `/v` delivery) — the nameless diagnostic stays exactly as it was.
 	DynApplyName map[int]DynApplyHead
+	// LandingWords is the FUNCTION WORD the check pass found right after a
+	// landed value, keyed by the landing op's own pc (OpReStepLanding with
+	// bit 1 of its argument set, landingArg). The interpreter's re-step of
+	// a fn value plans over the live tape — a `/q` slot captures the word,
+	// an Any-typed slot claims it and strands, a typed slot stops at it and
+	// the zero-argument fallback fires — so the VM's landing walks the
+	// run-time fn's overloads over exactly that token (NUR190). Nil where
+	// no landing has a word after it.
+	LandingWords map[int]LandingWord
+	// CallWindows is the operand window a CALL_USER / TAIL_CALL_USER's
+	// param-contract no-match reports, keyed by the call's pc: the window
+	// the interpreter's failed dispatch reports (sigError's attempted
+	// window), which is not the call's arguments — a bare word read written
+	// after the word ends the written run and never lands in it, and the
+	// stack beneath the call fills it (NUR320). A call with no entry
+	// reports its arguments; an EMPTY entry is a window of no values.
+	CallWindows map[int][]CallWindowOperand
+	// FlowExits is where the interpreter stands after the op at a pc raised
+	// a break/continue, or let one escape a body it ran, while no loop of the
+	// unit was open (FlowExit, NUR355), keyed by that pc.
+	FlowExits map[int]FlowExit
+	// CallFits is a CALL_USER's forward-fit island, keyed by the call's pc
+	// (PolyRef.Fit's twin, NUR357): an argument the pass collected forward
+	// was gradual, and a run value the interpreter's collection stops at —
+	// or a window the param contract refuses — runs the statement again on
+	// the interpreter from its first token.
+	CallFits map[int]*PolyFit
+	// CallResults is a CALL_USER's call-result island, keyed by the call's
+	// pc (NUR334): the interpreter steps a fn frame's results where the call
+	// stood, so results the callee left tape-coupled (a `/v` read of a
+	// splice) run the call's statement again on the interpreter from its
+	// first token, the call written as those results.
+	CallResults map[int]*StmtIsland
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
@@ -1351,6 +2430,59 @@ type CompiledFn struct {
 	Body []core.Value
 	// Deopts is the unit's per-read deopt table (OpDeoptIfFn's Arg).
 	Deopts []DeoptSpec
+	// FnReadParams are the param slots a closure unit — a STORED fn's
+	// (NUR279) or a callback body's (NUR268) — reads BARE under a gradual
+	// carrier: a binding the interpreter dispatches as a word when the
+	// argument is a fn (NUR123), which the unit's slot push cannot. The seams
+	// that run the unit refuse an argument list holding a fn in one of these
+	// slots (FnReadRefused), and the value takes the interpreter's own
+	// dispatch there; data arguments run the unit.
+	FnReadParams []int
+	// SpecGuards marks a CALL-SITE SPECIALISED unit: the body was compiled
+	// with each guarded param bound to a constant fn, so its reads of that
+	// param dispatch the fn's own compiled unit directly, typed by the fn's
+	// declared signature. It is valid only while every guarded runtime arg IS
+	// that fn (core.ExactEqual — fn identity); CALL_USER checks the guards at
+	// entry, before anything runs, and when one fails applies SpecFallback
+	// instead. Nil for every other unit.
+	SpecGuards []SpecGuard
+	// SpecFallback is the fn this unit specialises (single-signature): what
+	// a failed SpecGuards check applies to the call's args, through the
+	// fn-value callback seam — the dispatch the interpreter makes for it.
+	// Meaningful only when SpecGuards is non-empty.
+	SpecFallback core.Value
+}
+
+// FnReadRefused reports whether args (positional — args[i] fills param slot
+// i) put a fn value in one of fn's FnReadParams: the call the unit cannot
+// run faithfully, which the seam hands to the interpreter (NUR279, NUR268).
+// A nil unit refuses nothing.
+func (fn *CompiledFn) FnReadRefused(args []core.Value) bool {
+	if fn == nil {
+		return false
+	}
+	for _, i := range fn.FnReadParams {
+		if i < len(args) && core.IsAppliableFn(args[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// RefusesArgs is FnReadRefused on the unit ref names; a ref that names no
+// unit refuses nothing (the seams' own guards decline it).
+func (ref *CompiledFnRef) RefusesArgs(args []core.Value) bool {
+	if ref == nil || ref.Prog == nil || ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
+		return false
+	}
+	return ref.Prog.Fns[ref.Unit].FnReadRefused(args)
+}
+
+// SpecGuard is one call-site specialisation guard: the runtime arg bound to
+// param Param (sig position Param, the body's slot Param) must be the fn Fn.
+type SpecGuard struct {
+	Param int
+	Fn    core.Value
 }
 
 // DeoptSpec is one OpDeoptIfFn: the gradual word read it guards (Name, its
@@ -1376,6 +2508,123 @@ type DeoptSpec struct {
 	Results int
 	Token   int
 	RetPC   int
+	// Bail marks a GUARD: no island resumes here. When the read's value is
+	// a fn the VM raises a designed defer — the interpreter dispatches the
+	// word at this point and the unit's slot push cannot (NUR123).
+	Bail bool
+	// Beneath marks a point tested AFTER its statement's values were laid
+	// out (a program-root residual read, NUR207): the island's prefix is the
+	// region beneath the read only, since the Depth entries above it are
+	// the statement's own, which the island produces again from their
+	// tokens.
+	Beneath bool
+	// NoMatchOnly marks a root point whose read LEADS the residual's
+	// leading-form dynamic apply (OpCallDynamic): over a window the value
+	// matches, that apply is the word dispatch's own answer, so only a
+	// no-match — which the value apply parks and the word raises — deopts
+	// (a Beneath island) or bails (a guard, Bail).
+	NoMatchOnly bool
+	// Install marks the read of a ROOT def a code body at the program root
+	// captured (`def j (mk) end do [10 j]`): the root's def wrote the value
+	// plainly (bindGlobal), where the interpreter's def installs it, so the
+	// island installs it under its name for its run, as a root read's
+	// island does (NUR285).
+	Install bool
+	// Live marks a LIVE-READ point (compiler kept_live_deopt.go): the value
+	// tested is the registry binding of Name — the read seated live after a
+	// computed keep-defs body, not yet made — tested before its statement's
+	// first op, and the island runs the statement when the binding is one
+	// the compiled statement cannot take (LiveHot). Ref marks the `/v`
+	// read's point, and Model is the type the statement was compiled for
+	// (nil: none — a type value).
+	Live  bool
+	Ref   bool
+	Model *core.Type
+	// Fits, on an island point, are the unproven forward fits of the
+	// dispatch that collected the read forward (core.ForwardFit, NUR357):
+	// the candidate slots the interpreter's forward collection must take
+	// the value at for its plan to be the one the unit was compiled for. A
+	// value that misses one stops that collection, whose candidate then
+	// draws from the stack beneath — the interpreter's statement, which the
+	// island runs as it does a fn's (FitsHot).
+	Fits []core.ForwardFit
+	// Seat, on a root read's statement island (NUR352), is where the
+	// island's prefix comes from — the program residual's entries before
+	// the statement, where the compiled root keeps each (a constant it
+	// lays out at the program's end, a promoted slot, the frame region's
+	// entry), as a statement island's LandingWord.PrefixSrc does — in place
+	// of the frame region at the test. Held is how many of them are on the
+	// compiled stack there: the frame region is exactly those.
+	Seat []RestartSrc
+	Held int
+	// Island, on a live-read point whose read the pass met in a spliced
+	// word's tokens (compiler's spliceBody, NUR334), is the island's tokens
+	// in place of the body's from Token: the program from the read's
+	// statement as the splice left it.
+	Island []core.Value
+}
+
+// FitsHot reports whether v, a guarded read's value, misses one of the
+// point's forward fits (DeoptSpec.Fits): the interpreter's forward
+// collection stops at it where the compiled dispatch took it.
+func (d *DeoptSpec) FitsHot(v core.Value) bool {
+	return len(d.Fits) > 0 && !core.ForwardFitsAll(d.Fits, v)
+}
+
+// RenderWindow is window with each operand the compiled code assembled from
+// a pending list literal (Raw) put back as the literal, for the no-match
+// report; window itself when none is.
+func (pr *PolyRef) RenderWindow(window []core.Value) []core.Value {
+	if len(pr.Raw) == 0 {
+		return window
+	}
+	out := append([]core.Value(nil), window...)
+	for i, v := range pr.Raw {
+		if i >= 0 && i < len(out) {
+			out[i] = v
+		}
+	}
+	return out
+}
+
+// LiveHot reports whether a live-read point's binding — v, when bound — is
+// one its compiled statement cannot take, which the interpreter's step
+// answers: no binding (the step's own error, where the lookup would raise
+// before a pending word could), a binding a bare read DISPATCHES (a fn, a
+// class — the `/v` read delivers both as data, as stepWordVal does), an
+// active token either read hands on for a step to splice or re-step (a
+// splice, a reach, a word, a mark, a move), or a value no longer of the type
+// the statement was compiled for (Model) — a type node among them — whose
+// dispatch the compiled statement laid out for that type. A spurious test is
+// only an island: the interpreter's answer either way.
+func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
+	if !bound {
+		return true
+	}
+	switch v.Data.(type) {
+	case core.FnDefInfo, *core.ClassTypeInfo:
+		if !d.Ref {
+			return true
+		}
+	}
+	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+		return true
+	}
+	return d.Model != nil && (core.IsTypeLiteral(v) || !core.SigTypeMatches(v, d.Model))
+}
+
+// specNote renders a specialised unit's guards for the disassembler:
+// " spec [l<param>=<fn>]" — empty for an ordinary unit.
+func specNote(fn CompiledFn) string {
+	if len(fn.SpecGuards) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(" spec")
+	for _, g := range fn.SpecGuards {
+		fmt.Fprintf(&sb, " [l%d=%s]", g.Param, g.Fn.String())
+	}
+	return sb.String()
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1418,10 +2667,10 @@ func (p *Program) StoredRefStampedCount() int {
 // Disassemble renders the program for golden tests and debugging.
 func (p *Program) Disassemble() string {
 	var sb strings.Builder
-	p.disasmUnit(&sb, p.Code, nil)
+	p.disasmUnit(&sb, p.Code, p.Deopts, p.CallResults)
 	for fi := range p.Fns {
-		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
-		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
+		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames), specNote(p.Fns[fi]))
+		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts, p.Fns[fi].CallResults)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",
 		len(p.Consts), len(p.Types), len(p.Sigs), len(p.Fallbacks), len(p.Fns), p.MaxStack, p.NumLocals)
@@ -1440,15 +2689,23 @@ func (p *Program) Disassemble() string {
 	return sb.String()
 }
 
-func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec) {
+func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec, callResults map[int]*StmtIsland) {
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope, OpForPublish:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:
 			s := p.Sigs[in.Arg]
+			if s.Sig == nil {
+				// A signature entry with no signature is a recorder defect
+				// (NUR162 measured one under a paren-grouped `word` bound to
+				// a fn value); the disassembler names it rather than crash
+				// the classifier that reads it.
+				fmt.Fprintf(sb, " s%-3d ; %s (NO SIGNATURE — recorder defect)", in.Arg, s.Word)
+				break
+			}
 			names := make([]string, s.Sig.TotalArgs())
 			for j, t := range s.Sig.ArgTypes() {
 				names[j] = t.Leaf()
@@ -1457,23 +2714,57 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			if s.Guard {
 				guard = " [guarded]"
 			}
+			if s.HostSplice {
+				guard = " [hosted splice]"
+			}
+			if s.DynBodyOne {
+				guard = " [one value, checked]"
+			}
+			if s.DynBodyPlain {
+				guard = " [plain values, checked]"
+			}
+			if s.ReStep {
+				guard = " [results re-stepped]"
+			}
+			if s.CountAlways {
+				guard += " [count island, always]"
+			}
+			if s.CountFrame {
+				guard += " [count island, unit]"
+			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:
 			fmt.Fprintf(sb, " -> %04d", in.Arg)
 		case OpPushLocal, OpForSetup, OpStoreLocal:
 			fmt.Fprintf(sb, " l%d", in.Arg)
+		case OpPushLocalBound:
+			fmt.Fprintf(sb, " l%d ; bound-checked", in.Arg)
 		case OpPushType:
 			fmt.Fprintf(sb, " t%-3d ; %s", in.Arg, p.Types[in.Arg].Name)
 		case OpFallback:
 			fb := p.Fallbacks[in.Arg]
 			fmt.Fprintf(sb, " b%-3d ; %s (nin=%d)", in.Arg, fb.Desc, fb.NIn)
 		case OpCallUser, OpTailCallUser:
-			fmt.Fprintf(sb, " f%-3d ; %s/%d", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams)
+			island := ""
+			if callResults[i] != nil {
+				island = " [call-result island]"
+			}
+			fmt.Fprintf(sb, " f%-3d ; %s/%d%s", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams, island)
 		case OpPushClosure:
 			fmt.Fprintf(sb, " f%-3d ; closure %s/%d", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams)
 		case OpCallNativePoly:
 			pr := p.PolyRefs[in.Arg]
-			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)", in.Arg, pr.Word, pr.Arity)
+			one := ""
+			if pr.DynBodyOne {
+				one = " [one value, checked]"
+			}
+			if pr.DynBodyPlain {
+				one = " [plain values, checked]"
+			}
+			if pr.Fit != nil {
+				one += " [fit island]"
+			}
+			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)%s", in.Arg, pr.Word, pr.Arity, one)
 		case OpCallUserPoly:
 			up := p.UserPolys[in.Arg]
 			fmt.Fprintf(sb, " u%-3d ; %s/%d (user poly, %d arms)", in.Arg, up.Word, up.Arity, len(up.Units))
@@ -1485,11 +2776,23 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " /%d ; replay frame residual (dynamic apply)", in.Arg)
 		case OpMakeList:
 			fmt.Fprintf(sb, " n%-3d ; assemble %d into a list", in.Arg, in.Arg)
+		case OpMakeListReStep:
+			ls := p.ListReSteps[in.Arg]
+			fmt.Fprintf(sb, " l%-3d ; assemble %d into a list, re-stepping elements %v (island %v)", in.Arg, ls.N, ls.Fn, ls.Island)
 		case OpMakeMap:
 			mm := p.MakeMaps[in.Arg]
 			fmt.Fprintf(sb, " m%-3d ; assemble {%s}", in.Arg, strings.Join(mm.Keys, " "))
 		case OpTrap:
 			fmt.Fprintf(sb, " x%-3d ; trap %s", in.Arg, p.Traps[in.Arg].Code)
+		case OpCollect:
+			fmt.Fprintf(sb, " r%-3d ; collect oracle over %s", in.Arg, p.Regions[in.Arg].Word)
+		case OpDispatchGeneric:
+			gs := p.Generics[in.Arg]
+			if gs.Unit < 0 {
+				fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (native)", in.Arg, p.Regions[gs.Region].Word, gs.Region)
+			} else {
+				fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (unit f%d)", in.Arg, p.Regions[gs.Region].Word, gs.Region, gs.Unit)
+			}
 		case OpReverse:
 			fmt.Fprintf(sb, " n%-3d ; reverse top %d", in.Arg, in.Arg)
 		case OpInterp:
@@ -1497,6 +2800,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		case OpBindTyped:
 			tb := p.TypedBinds[in.Arg]
 			fmt.Fprintf(sb, " y%-3d ; typed bind %s:%s", in.Arg, tb.Name, tb.Describe)
+		case OpBindTypeRun:
+			fmt.Fprintf(sb, " v%-3d ; run-time type install %s", in.Arg, p.TypeRuns[in.Arg].Name)
 		case OpBindGlobal:
 			gb := p.GlobalBinds[in.Arg]
 			fmt.Fprintf(sb, " g%-3d ; global bind %s @depth %d", in.Arg, gb.Name, gb.Depth)
@@ -1504,11 +2809,21 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
 		case OpDeoptIfFn:
-			if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
+			if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail && deopts[in.Arg].NoMatchOnly {
+				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn its window does not match (guard)", in.Arg)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail {
+				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn (guard)", in.Arg)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Live {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the live binding of %s is not the compiled statement's", in.Arg, deopts[in.Arg].Name)
+			} else if int(in.Arg) < len(deopts) && len(deopts[in.Arg].Fits) > 0 {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn or misses its collection's fit", in.Arg)
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
 			}
+		case OpBindFnType:
+			fmt.Fprintf(sb, " t%-3d ; fn-unit type bind %s", in.Arg, p.FnTypeBinds[in.Arg].Name)
 		case OpBindResident:
 			rb := p.ResidentBinds[in.Arg]
 			arm := "install"
@@ -1540,13 +2855,13 @@ func (f *CompiledFn) ReturnPattern(k int) *core.Value {
 
 // CompiledRef returns the sig's durable compiled-unit reference, or nil
 // when the body was never compiled (a Go sig, an un-armed boru body, a
-// refused body). It is the read surface the callback-invocation seam and
+// declined body). It is the read surface the callback-invocation seam and
 // the lang layer consult to choose the VM path over CallBoru. A free
 // function in the compiler piece (not a Signature method): the core
 // Signature holds the ref as an OPAQUE handle it cannot name.
 func CompiledRef(s *core.Signature) *CompiledFnRef {
 	if a, ok := s.Impl.(*core.BoruImpl); ok {
-		ref, _ := a.Compiled.(*CompiledFnRef)
+		ref, _ := a.Compiled().(*CompiledFnRef)
 		return ref
 	}
 	return nil

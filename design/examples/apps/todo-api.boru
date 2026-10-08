@@ -77,7 +77,7 @@ def todo-serve fn opts:Map Any [
         ]
     )
     api add {method:"GET" path:"/stats"}
-    ([req:Map state:Any] => [{hits:state.hits}]) api
+    ([req:Map state:Any] => [({hits:state.hits})]) api
     # Ambient middleware: count every request into the service.
   wrap
     ([req:Map state:Any prior:Any] =>

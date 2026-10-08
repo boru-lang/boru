@@ -35,7 +35,7 @@ func TestMiniQuerySubjectTypes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("lang.New: %v", err)
 			}
-			res, err := a.Run(qImp + c.src)
+			res, err := runReference(t, a, qImp+c.src)
 			if err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
@@ -96,7 +96,7 @@ func TestMiniQueryInKinds(t *testing.T) {
 
 func mustRun(t *testing.T, a *lang.Boru, src string) any {
 	t.Helper()
-	res, err := a.Run(src)
+	res, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("Run(%q): %v", src, err)
 	}

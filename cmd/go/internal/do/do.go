@@ -29,9 +29,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	// so this works as long as users put flags first.
 	fs := flag.NewFlagSet("do", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	compileFlag := fs.Bool("compile", false, "execute via the bytecode compiler when possible; silent interpreter fallback (the default; also enabled by BORU_COMPILE)")
-	noCompileFlag := fs.Bool("no-compile", false, "run the interpreter instead of the default bytecode compiler; wins over --compile/--force-compile and their env vars (also enabled by BORU_NO_COMPILE)")
-	forceCompileFlag := fs.Bool("force-compile", false, "REQUIRE the bytecode compiler — abort with the refusal reason if the program is not compilable")
 	colorMode := fs.String("color", "auto", "diagnostic color: auto (terminal-only, honors NO_COLOR), always, never")
 	var pf permsflags.Flags
 	permsflags.Register(fs, &pf)
@@ -51,7 +48,7 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := run.EvalOptionsModeColor(stdout, source, run.OptionsFor("", 0, pol), run.ResolveCompileMode(*compileFlag, *forceCompileFlag, *noCompileFlag), lang.ResolveColor(nil, stderr, *colorMode)); err != nil {
+	if err := run.EvalOptionsColor(stdout, source, run.OptionsFor("", 0, pol), lang.ResolveColor(nil, stderr, *colorMode)); err != nil {
 		// `IO.exit N` sets this process's status directly — `boru do` is as
 		// much a program driver as `boru run`, and an expression that asks
 		// to exit must not be reported as a failure instead.

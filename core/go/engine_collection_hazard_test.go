@@ -111,6 +111,59 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 			t.Errorf("a forward-collected index consumes nothing below the word: %v", es.marked)
 		}
 	})
+	t.Run("a forward collection laid out beneath the word passes a parked fn", func(t *testing.T) {
+		// NUR337's remainder: `(m lam/v) print 2` — rearrangeForForward laid
+		// print's forward 2 out beneath it, so the collection reads as a
+		// stack one. Every operand was written after the word (forwardSplit),
+		// so the concrete fn value parked below collected nothing; a fn-typed
+		// CARRIER (a fn word's read, dispatched where it stands at run time)
+		// stays marked.
+		parked := NewFunction(FnDefInfo{Anonymous: true, Signatures: []FnSig{{Params: []FnParam{{Type: TInteger}}, Returns: []*Type{TAny}, BarrierPos: 1}}})
+		parked.ID = "PARKED"
+		word := WithPosAt(NewWord("print"), SrcPos{Row: 1, Col: 9})
+		lay := func(e *Engine, n int) {
+			e.Tape = NewTape([]Value{parked, fn, five, word}, StackHeadroom)
+			e.Pointer = 3
+			e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = 3, n, word.Pos()
+		}
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		lay(e, 1)
+		if !e.forwardOnly(1) || e.forwardOnly(2) {
+			t.Fatal("one operand written after the word: forward-only for a one-operand window only")
+		}
+		e.noteCollectionHazards(nil, []int{2})
+		if es.marked[parked.ID] || !es.marked[fn.ID] {
+			t.Errorf("forward-only: the parked fn passes, the carrier stays marked: %v", es.marked)
+		}
+		// NEGATIVE: a stack operand beneath the forward one marks both.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.noteCollectionHazards(nil, []int{1, 2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a stack collection past the parked fn marks it: %v", es.marked)
+		}
+		// NEGATIVE: a stale record (another word's position) is no split.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.fwdSplitPos = SrcPos{Row: 1, Col: 2}
+		e.noteCollectionHazards(nil, []int{2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a record for another word proves nothing: %v", es.marked)
+		}
+		// NEGATIVE: a positionless word's record is never trusted.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.Tape.Set(3, NewWord("print"))
+		e.fwdSplitPos = SrcPos{}
+		e.noteCollectionHazards(nil, []int{2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a positionless record proves nothing: %v", es.marked)
+		}
+	})
 	t.Run("an inactive recorder marks nothing", func(t *testing.T) {
 		es := newHazardEmit()
 		es.active = false
@@ -144,7 +197,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		other := NewCarrier(TFunction)
 		e.Tape = NewTape([]Value{other, fn, five, NewWord("depth")}, StackHeadroom)
 		e.Pointer = 3
-		e.noteCollectionHazardsBelow(1, 3)
+		e.noteCollectionHazardsBelow(1, 3, false)
 		if es.marked[other.ID] || !es.marked[fn.ID] {
 			t.Errorf("only values at or above the floor are in scope: %v", es.marked)
 		}
@@ -166,4 +219,84 @@ func TestParenLeadFnApplyIdxDeclinesAHazardLead(t *testing.T) {
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
 		t.Errorf("a hazard-marked lead must decline the window, got %d", got)
 	}
+}
+
+// TestCollectionHazardStopsAtAStatementEnd pins NUR276: a statement end
+// between a candidate and the collected value keeps the candidate unmarked
+// — its re-step collects nothing past its own statement's end. The
+// collected value answers by its own position, or, def-bound and
+// positionless, by EVERY position it was read at; an unknown position
+// proves nothing.
+func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
+	at := func(r, c int) SrcPos { return SrcPos{Row: r, Col: c} }
+	dyn := WithPosAt(NewDynamicCarrier(TAny), at(1, 1))
+	t.Run("a positioned value past the end", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 9)), NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if es.marked[dyn.ID] {
+			t.Error("a value past the statement end is no argument of the earlier lead")
+		}
+	})
+	t.Run("a positioned value in the lead's statement", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 3)), NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("a value before the end is the lead's own argument: marked")
+		}
+	})
+	t.Run("a def-bound value by its reads", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		s := NewString("s")
+		s.ID = "bound-s"
+		e.Tape = NewTape([]Value{dyn, s, NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("no read recorded: nothing is proven, the lead is marked")
+		}
+		es.marked = map[string]bool{}
+		e.noteDefReadPos("bound-s", at(1, 9))
+		e.noteDefReadPos("", at(1, 9))
+		e.noteDefReadPos("bound-s", SrcPos{})
+		e.noteCollectionHazards(nil, []int{1})
+		if es.marked[dyn.ID] {
+			t.Error("every read past the end: unmarked")
+		}
+		e.noteDefReadPos("bound-s", at(1, 3))
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("one read before the end proves nothing: marked")
+		}
+	})
+	t.Run("unknown positions prove nothing", func(t *testing.T) {
+		e := hazardEngine(t, newHazardEmit())
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		if e.stmtEndBetween(SrcPos{}, at(1, 9)) || e.stmtEndBetween(at(1, 1), SrcPos{}) || e.collectedPastStmtEnd(at(1, 1), NewInteger(3)) {
+			t.Error("a zero position or a value with no identity proves no crossing")
+		}
+		if !srcPosBefore(at(1, 9), at(2, 1)) || srcPosBefore(at(2, 1), at(1, 9)) || srcPosBefore(at(1, 1), at(1, 1)) {
+			t.Error("srcPosBefore orders by row, then column, strictly")
+		}
+	})
+	t.Run("an analysis pass notes each positioned end", func(t *testing.T) {
+		r := covRegistry(t, nil)
+		r.Check.Mode = true
+		e := NewTop(r)
+		if _, err := e.Run([]Value{NewInteger(1), WithPosAt(NewEnd(), at(1, 3)), NewInteger(2), NewEnd()}); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.stmtEnds) != 1 || e.stmtEnds[0] != at(1, 3) {
+			t.Errorf("the positioned end is noted, the positionless one is not: %v", e.stmtEnds)
+		}
+	})
 }

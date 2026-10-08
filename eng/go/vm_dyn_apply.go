@@ -43,6 +43,48 @@ type dynEnter struct {
 	// FORWARD — read by the replay window, which may only enter over a
 	// non-empty resolved prefix when the callee cannot reach into it.
 	allForward bool
+	// jump is no frame push at all: the op handed the rest of the body to
+	// the interpreter (a landing's `/q` claim, NUR190), and the run
+	// continues at jumpPC with the island's residual — the unit's RET, or
+	// the program's end.
+	jump   bool
+	jumpPC int
+	// at is the applied VALUE's own position, where the interpreter's return
+	// check anchors the entered frame's contract error (execFnDefSig's
+	// callPos: the value at the pointer); zero when the value carries none,
+	// and the RET anchors at the call (NUR118).
+	at core.SrcPos
+}
+
+// applyAnchor is where an entered frame's contract error anchors (vmFrame.retAt):
+// the interpreter's return check anchors at the fn value it re-stepped at the
+// pointer (execFnDefSig's callPos), which is the value's own position — a
+// member read hands the stored value on unmoved — except where a NAME read put
+// it there, which re-positions it to the read's token. A named head (the
+// op's DynApplyHead) is that read, and the op's own debug entry already holds
+// its position, so the RET's call anchor stands (NUR118); so does a value that
+// carries no position.
+func applyAnchor(ent *dynEnter, head compiler.DynApplyHead) core.SrcPos {
+	if head.Name != "" {
+		return core.SrcPos{}
+	}
+	return ent.at
+}
+
+// headNamedContract is the frame contract of a fn value applied under a NAMED
+// head: the interpreter dispatches such a read as the WORD, and the fn it
+// finds carries the binding's name — `def g <fn value>` renames the value to
+// g (installFnDef), a param's frame binding names it by the param (NUR239) —
+// so its return check reports `g: return value 1: …`, where the value's own
+// contract carries the name it was built under (`h`, NUR275). Unnamed heads,
+// and frames whose unit is its own contract, keep theirs.
+func headNamedContract(fn *compiler.CompiledFn, head compiler.DynApplyHead) *compiler.CompiledFn {
+	if fn == nil || head.Name == "" || fn.Name == head.Name {
+		return fn
+	}
+	named := *fn
+	named.Name = head.Name
+	return &named
 }
 
 // allForwardSig reports whether every parameter of a matched signature is
@@ -77,7 +119,7 @@ func allForwardSig(sig *core.Signature) bool {
 //	  compiled     'str'
 //
 // A silent wrong answer rather than an error — the class this project ranks
-// strictly above a refusal. The declared return is only checkable at RUN time
+// strictly above a compile failure. The declared return is only checkable at RUN time
 // here (the body returns its `n:Any` param, so the check pass cannot rule the
 // String out statically), which is exactly why the runtime contract has to
 // ride along.
@@ -92,6 +134,21 @@ func applyRetContract(unit *compiler.CompiledFn, name string, sig *core.Signatur
 	ov.ReturnPatterns = sig.ReturnPatterns
 	ov.Decl = sig.Decl
 	return &ov
+}
+
+// applyFrameName is the name the interpreter's frame for an APPLIED fn value
+// carries, which its return-contract errors report: a nameless VERBOSE `fn`
+// (not a `=>` lambda) runs through the step's stack-match path, whose frame
+// is `<fn>` (core.FnValueFrameName); every other value runs under its own
+// name, empty for a nameless lambda. Measured: `((mk) 'z')` over a factory
+// returning `fn [[s:String][Integer][s]]` raised `<fn>: return value 1: …`
+// interpreted and `: return value 1: …` compiled, with the lambda twin `:`
+// on both lanes.
+func applyFrameName(fd core.FnDefInfo) string {
+	if !fd.Anonymous && !fd.NamedDef() {
+		return core.FnValueFrameName
+	}
+	return fd.Name
 }
 
 // dynApplyEnter reports how to enter a dynamically-applied fn VALUE on the VM,
@@ -129,6 +186,14 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	if sig == nil {
 		return nil
 	}
+	return vc.dynApplyEnterSig(fd, sig, args, fnVal.Pos())
+}
+
+// dynApplyEnterSig is dynApplyEnter past the match: enter fd's overload sig —
+// one the caller already selected by the interpreter's rule — over args, or
+// nil when that overload has no in-program unit of the matching shape. at is
+// the applied value's position (dynEnter.at).
+func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, args []core.Value, at core.SrcPos) *dynEnter {
 	ref := compiler.CompiledRef(sig)
 	if ref == nil || ref.Prog != vc.p || ref.Unit < 0 || ref.Unit >= len(vc.p.Fns) {
 		return nil
@@ -138,6 +203,12 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	// mismatch is a compile/run drift, and entering on one would bind the
 	// wrong locals silently — decline and let the island answer.
 	if fn.NParams != len(args) || fn.NCaptures != 0 {
+		return nil
+	}
+	// A fn argument in a slot the stored unit reads bare is the interpreter's
+	// word dispatch, which the unit's slot push cannot run (NUR279): the
+	// island answers.
+	if fn.FnReadRefused(args) {
 		return nil
 	}
 	locals := make([]core.Value, fn.NLocals)
@@ -152,5 +223,91 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 			locals[i].Quoted = true
 		}
 	}
-	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, fd.Name, sig), allForward: allForwardSig(sig)}
+	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, applyFrameName(fd), sig), allForward: allForwardSig(sig), at: at}
+}
+
+// dynApplyForeign applies a fn VALUE whose matched overload carries a
+// DETACHED compiled unit — a module fn's own stamp, its Program not the one
+// vc runs — by hosting that unit nested (runForeignUnit, the fn-VALUE seam's
+// discipline), where dynApplyEnter, which enters only an in-program unit as
+// a frame, declined it to the island: the interp-entry census's
+// callbacks.tsv:L146 (`M.run M.inc 5`, one export passed into another as its
+// callback), module-composition.tsv:L100 (an export fetched by get and
+// applied) and module-fnvalue-boundary.tsv:L51 (`apply1 A.pub 5`, a named
+// Function param), 2026-09-24. The match is the island's (core.MatchFnSig,
+// the interpreter's selection rule), and the arity must be the unit's own
+// (dynApplyEnter's shape rule), so a value the window does not fit stays the
+// island's to park or raise. The unit runs where its Program put it: each
+// unit carries its dispatch registry, so a module fn's free words resolve at
+// the module — the interpreter's rule for a foreign value
+// (design/FUNCTION-VALUE-SCOPE.0.md) — with the seam's freshness dance
+// (DepsFresh / JitRestamp at the value's home, as InvokeCompiled's).
+//
+// ran=false leaves the island exactly as it was: a quoted value (data), no
+// match, no ref or an unfinalized one, an in-program ref (dynApplyEnter's
+// own decline stands), a unit index outside its program, or — at a site
+// that CLAIMS a result count (nout > 0) — a contract that does not promise
+// exactly it. That claim is discharged before the run, off the applied
+// value's declared returns, the way dynMethodClaimOK discharges it before a
+// frame push: a hosted unit has run, effects and all, before its results
+// can be counted.
+func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
+	fd, isFn := fnVal.Data.(core.FnDefInfo)
+	if !isFn || fnVal.Quoted {
+		return nil, false, nil
+	}
+	sig := core.MatchFnSig(fnVal, args)
+	if sig == nil || len(sig.Params) != len(args) {
+		return nil, false, nil
+	}
+	if nout > 0 && len(sig.Returns) != nout {
+		return nil, false, nil
+	}
+	ref := compiler.CompiledRef(sig)
+	if ref == nil {
+		// A value minted at run time carries no unit until it is applied:
+		// the lazy stamp gives it one now, as the token seam's arm does
+		// (invokeFnValue) — a factory's lambda read back through its def
+		// and applied at a shaped method (`def f (mk 1) end do [f 'z']`,
+		// the interp-entry census's fn-value.tsv:L334) islanded for want
+		// of one. A body the stamp declines keeps the island.
+		ref = compiler.LazyStampFnSig(vc.r, fd, sig, fnVal.Pos())
+	}
+	if ref == nil || ref.Prog == nil || ref.Prog == vc.p {
+		return nil, false, nil
+	}
+	home, _ := core.FnHome(vc.r, &fd)
+	if !ref.DepsFresh(home) {
+		if ref = ref.JitRestamp(home); ref == nil || ref.Prog == nil {
+			return nil, false, nil
+		}
+	}
+	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) || ref.Prog.Fns[ref.Unit].FnReadRefused(args) {
+		return nil, false, nil
+	}
+	// The interpreter dispatches a foreign fn VALUE through the strict seam
+	// (execFnDefLiteral's cross-registry arm, InvokeCallbackStrict), so the
+	// hosted root RET takes the NAMED discipline, and the results answer to
+	// the applied VALUE's declared contract, as the Apply kernel's frame does
+	// (applyRetContract): the unit a module stamps for a value declares none
+	// of its own, so a body leaving the wrong count answered `[5 1]` for
+	// `m.f 5` where the interpreter raises the count error (NUR252).
+	res, _, err = vc.runForeignUnit(ref, args, true)
+	if err == nil {
+		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(fd), sig), res, 0, true, core.SrcPos{})
+	}
+	return res, true, err
+}
+
+// dynForeignResults lands a hosted foreign unit's results where the island's
+// would land: the error stamped at the op as an island's is, the results
+// screened as an island's are, and the window replaced beneath them.
+func (vc *vmContext) dynForeignResults(results []core.Value, err error, stack []core.Value, base int, label string, curDebug []core.SrcPos, pc int, reg *core.Registry) ([]core.Value, *dynEnter, error) {
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if err := vc.screenResults(results, label, curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, nil, err
+	}
+	return append(stack[:base], results...), nil, nil
 }

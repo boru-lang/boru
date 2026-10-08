@@ -61,14 +61,14 @@ func runBatteryCompiled(t *testing.T, input string) ([]core.Value, bool, error) 
 	rA.Check.EmitUnusedDefDiagnostics()
 	var prog *compiler.Program
 	if runErr == nil && !rA.Check.SuppressedRuntimeError && !rA.Check.AmbiguousGradualSplit {
-		refuse := false
+		decline := false
 		for _, d := range rA.Check.Diagnostics {
 			if !d.RuntimeMirror && (d.Severity == core.SeverityError || d.CaughtAtRuntime) {
-				refuse = true
+				decline = true
 				break
 			}
 		}
-		if !refuse {
+		if !decline {
 			if p, _, ok := rA.Check.Recorder().(*compiler.EmitState).Finalize(residual); ok {
 				prog = p
 			}
@@ -178,7 +178,7 @@ func TestControlBattery(t *testing.T) {
 
 // TestControlEdgeBattery drives the fixture control words' edge arms:
 // branches that produce no value (both the literal-cond fragment and
-// the dynamic join), the spliced computed-list arm refusal, doq bodies
+// the dynamic join), the spliced computed-list arm compile failure, doq bodies
 // reached through a def'd word and a fn param, loop captures whose
 // element type is a disjunct, the range-parse error taxonomy, and the
 // empty negative-step loop.
@@ -189,7 +189,7 @@ func TestControlEdgeBattery(t *testing.T) {
 		// A dynamic cond whose branches both net no value: the empty join.
 		{input: "5 if (0 addq 1) [1 drop] [1 drop]", want: "5"},
 		// A List param as an arm is the interpreter's spliced code body;
-		// the compile pass refuses it and the fallback island runs it.
+		// the compile pass declines it and the fallback island runs it.
 		{input: "def f fn [[x:List] [Integer] [if [true] x [9]]] f [7]", want: "7"},
 		// doq bodies: a def'd word resolves under the recorder; a fn
 		// param stays dynamic.
@@ -199,13 +199,13 @@ func TestControlEdgeBattery(t *testing.T) {
 		// a body-constructed enum and a def'd one the model resolves.
 		{input: "for 2 [enum [a b]]", want: "a tor b a tor b"},
 		{input: "for [2] [enum [a b]]", want: "a tor b a tor b"},
-		// Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): the NAME
+		// Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): the NAME
 		// denotes its minted node and renders as the name (the inline
 		// enum rows above keep the body rendering).
 		{input: "def E (enum [a b]) for 2 [E]", want: "E E"},
 		{input: "def E (enum [a b]) for [2] [E]", want: "E E"},
 		// A List param as an arm under a DYNAMIC cond: the computed-list
-		// refusal (the literal-cond twin of the row above).
+		// compile failure (the literal-cond twin of the row above).
 		{input: "def f fn [[x:List] [Integer] [if (0 addq 1) x [9]]] f [7]", want: "7"},
 		// Range-parse taxonomy: non-integer elements in every position,
 		// and the arity gate on both sides.
@@ -232,8 +232,8 @@ func TestHigherOrderBattery(t *testing.T) {
 		// An empty body passes each element through (the element IS the
 		// residual top of the invoked body).
 		{input: "eachq [] [1 2]", want: "[1 2]"},
-		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) eachq f [1 2 3]", want: "[2 4 6]"},
-		{input: "def f (fn [[s:String] [String] [s concatq '!']]) eachq f ['a' 'b']", want: "['a!' 'b!']"},
+		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) eachq f/v [1 2 3]", want: "[2 4 6]"},
+		{input: "def f (fn [[s:String] [String] [s concatq '!']]) eachq f/v ['a' 'b']", want: "['a!' 'b!']"},
 		{input: "eachq [drop] [1]", wantErr: "body produced no result"},
 		// Nested: the outer body is itself a higher-order call.
 		{input: "eachq [[1 addq] swap eachq] [[1 2] [3]]", wantErr: "no signature matches"},
@@ -393,7 +393,7 @@ func TestFallbackIslandBattery(t *testing.T) {
 func TestBakingBattery(t *testing.T) {
 	runBattery(t, []batteryRow{
 		{input: "bakefnq (fn [[x:Integer] [Integer] [x addq 1]])", want: "8"},
-		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) bakefnq f", want: "14"},
+		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) bakefnq f/v", want: "14"},
 		{input: "bakebodyq [1 addq 2]", want: "3"},
 		{input: "bakebodyq [10 20]", want: "10 20"},
 		{input: "def n 4 bakebodyq [n addq 1]", want: "5"},

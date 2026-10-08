@@ -235,7 +235,7 @@ func TestMatrixArithmeticMismatchWave3(t *testing.T) {
 }
 
 // TestMatrixDimValidationWave3 pins validDims through the constructors:
-// negative dimensions and cap-exceeding products are refused.
+// negative dimensions and cap-exceeding products are declined.
 func TestMatrixDimValidationWave3(t *testing.T) {
 	r := tensorRegistry(t)
 	runTensorSrcErr(t, r, "MatrixUtil.zeros -1 3", "dimensions must be non-negative")
@@ -266,7 +266,7 @@ func TestMatrixAccessBoundsWave3(t *testing.T) {
 }
 
 // TestMatrixDetWave3 pins det on a singular matrix (0, not an error) and
-// the non-square refusals of det and trace.
+// the non-square compile failures of det and trace.
 func TestMatrixDetWave3(t *testing.T) {
 	r := tensorRegistry(t)
 	res, err := runTensorSrc(t, r, "MatrixUtil.det (make MatrixUtil.Matrix [[1 2][2 4]])")
@@ -297,7 +297,7 @@ func TestMatrixDotErrorsWave3(t *testing.T) {
 }
 
 // TestMatrixDotNilListWave3 pins the nil-list guard inside the dot
-// handler. Signature dispatch refuses bare List literals (uncalled
+// handler. Signature dispatch declines bare List literals (uncalled
 // function), so the guard is exercised by direct handler invocation.
 func TestMatrixDotNilListWave3(t *testing.T) {
 	r, err := native.DefaultRegistry()
@@ -329,7 +329,7 @@ func TestMatrixFromRowsErrorsWave3(t *testing.T) {
 }
 
 // TestTensorShapeSpecWave3 pins parseTensorShapeSpec through `refine`:
-// each kind's happy path next to every malformed-spec refusal (non-map
+// each kind's happy path next to every malformed-spec compile failure (non-map
 // spec, missing keys, non-integer and non-positive dimensions) — the
 // error text carries the per-kind shapeSpecHint.
 func TestTensorShapeSpecWave3(t *testing.T) {
@@ -343,7 +343,7 @@ func TestTensorShapeSpecWave3(t *testing.T) {
 	if td := AsTensor(res[len(res)-1]); !shapeEqual(td.Shape, []int{2, 2, 2}) {
 		t.Fatalf("shaped tensor = %v, want [2 2 2]", td.Shape)
 	}
-	// Mismatched data against the shaped Tensor type is refused.
+	// Mismatched data against the shaped Tensor type is declined.
 	runTensorSrcErr(t, r,
 		"def T22 (refine MatrixUtil.Tensor {shape:[2 2]}) make T22 [1 2 3 4]",
 		"does not match")

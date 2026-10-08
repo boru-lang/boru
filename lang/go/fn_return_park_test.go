@@ -123,12 +123,12 @@ func TestFnFrameParksFunctionReturn(t *testing.T) {
 						t.Fatalf("New: %v", err)
 					}
 					got, err := eng.run(a)
-					// A compiler REFUSAL is an acceptable outcome: the default
+					// A compiler COMPILE FAILURE is an acceptable outcome: the default
 					// driver falls through to the interpreter, so the user
 					// still gets the right answer. Compiling to a DIFFERENT
 					// answer is what this test exists to forbid.
-					if isCompileRefusal(err) {
-						t.Skipf("compilation refused (%v)", err)
+					if isCompileFailure(err) {
+						t.Skipf("compilation declined (%v)", err)
 					}
 					if err != nil {
 						t.Fatalf("run: %v", err)

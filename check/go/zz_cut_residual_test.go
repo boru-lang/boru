@@ -339,7 +339,7 @@ func TestVariadicCarrierHelpers(t *testing.T) {
 		[]core.Value{core.NewNone()},
 	)
 	if !ok {
-		t.Fatal("core.FoldVariadicArms refused a variadic arm")
+		t.Fatal("core.FoldVariadicArms declined a variadic arm")
 	}
 	fe, ok := core.IsVariadicSpread(folded)
 	if !ok {
@@ -348,7 +348,7 @@ func TestVariadicCarrierHelpers(t *testing.T) {
 	if !strings.Contains(fe.String(), "Integer") {
 		t.Errorf("folded element = %v", fe)
 	}
-	// No variadic anywhere: refuses.
+	// No variadic anywhere: declines.
 	if _, ok := core.FoldVariadicArms([]core.Value{core.NewCarrier(core.TInteger)}, nil); ok {
 		t.Error("core.FoldVariadicArms accepted plain arms")
 	}

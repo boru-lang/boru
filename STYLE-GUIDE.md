@@ -46,7 +46,7 @@ rows in [`lang/spec/fn-triple.tsv`](lang/spec/fn-triple.tsv) §2b, and
 the five `canon` equalities against the target form are
 `TestFnSignatureSpellingsAreOneValue` in
 `lang/go/test/fn_triple_compiled_test.go` (a `canon` of a function value
-does not compile, and the spec corpus admits no compile refusals).
+does not compile, and the spec corpus admits no compile failures).
 
 ### The one spelling that is not valid
 

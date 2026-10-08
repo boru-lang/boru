@@ -6,7 +6,7 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// Paren-condition guard narrowing (design/checker-accuracy-review.10.md
+// Paren-condition guard narrowing (design/legacy/checker-accuracy-review.10.ignore
 // A3): the canonical `if (x is T) …` form must narrow exactly like the
 // list form `if [x is T] …`.
 

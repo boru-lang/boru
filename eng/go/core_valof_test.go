@@ -172,7 +172,7 @@ func TestRefSuffixHoldsStackArgsUndispatched(t *testing.T) {
 // kinds. A simple-value binding (`answer` = 42) has no call to suppress,
 // so `answer/v` is the identity and passes 42 straight through. The
 // negative twin is TestRefSuffixUndefinedNameErrors below: an UNBOUND
-// name still refuses, because there is no value to take.
+// name still declines, because there is no value to take.
 func TestValSuffixOnSimpleValueBindingIsTheValue(t *testing.T) {
 	r := freshRegistry(t)
 	out := runSrc(t, r, "answer/v")
