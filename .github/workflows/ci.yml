@@ -187,3 +187,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: scripts/ci-steps.sh borudebug-gates
+
+# push-permission probe (to be deleted)
