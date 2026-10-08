@@ -85,8 +85,20 @@ func TestNoStrandedOracleReads(t *testing.T) {
 	root := repoRoot(t)
 	found := map[string]int{}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, "_test.go") {
+		if err != nil {
 			return err
+		}
+		if info.IsDir() {
+			// Match the other source censuses; scratch worktrees contain
+			// independent copies of tests whose paths are not this repo's.
+			switch info.Name() {
+			case ".git", ".claude", ".codex", "node_modules", "vendor", "coverage":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			return nil
 		}
 		src, rerr := os.ReadFile(path)
 		if rerr != nil {

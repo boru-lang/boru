@@ -31,4 +31,7 @@ func osMmapFile(f *os.File, length int, writable bool) ([]byte, error) {
 }
 
 func osMunmap(b []byte) error { return munmapFn(b) }
-func osMsync(b []byte) error  { return msyncFn(b, unix.MS_SYNC) }
+
+// osMsync flushes the mapping; msync(MS_SYNC) reaches the file itself, so
+// the fd is not needed here (it is on Windows).
+func osMsync(_ *os.File, b []byte) error { return msyncFn(b, unix.MS_SYNC) }

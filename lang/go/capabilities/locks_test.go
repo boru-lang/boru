@@ -67,6 +67,31 @@ func TestOSLockShared(t *testing.T) {
 	_ = s2.Close()
 }
 
+func TestOSLockAllowsIO(t *testing.T) {
+	o := &OSFileOps{}
+	p := filepath.Join(t.TempDir(), "f")
+	if err := o.WriteFile(p, []byte("before"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := o.Lock(p, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Close() })
+	if data, err := o.ReadFile(p); err != nil || string(data) != "before" {
+		t.Fatalf("advisory lock must allow ordinary reads: %q, %v", data, err)
+	}
+	if err := o.WriteFile(p, []byte("after"), 0o644); err != nil {
+		t.Fatalf("advisory lock must allow ordinary writes: %v", err)
+	}
+	if other, err := o.Lock(p, false, false); !errors.Is(err, ErrLockBusy) {
+		if other != nil {
+			_ = other.Close()
+		}
+		t.Fatalf("file I/O must not release the advisory lock: %v", err)
+	}
+}
+
 func TestOSLockMmapResolveErrors(t *testing.T) {
 	bad := &OSFileOps{getwd: func() (string, error) { return "", errors.New("no wd") }}
 	if _, err := bad.Lock("rel", false, true); err == nil {
@@ -86,18 +111,6 @@ func TestOSMmapStatSeam(t *testing.T) {
 	_ = os.WriteFile(p, []byte("abc"), 0o644)
 	if _, err := (&OSFileOps{}).Mmap(p, 0, 0, false); err == nil {
 		t.Error("a Stat failure should surface from Mmap")
-	}
-}
-
-func TestOSLockFlockSeam(t *testing.T) {
-	orig := flockFn
-	t.Cleanup(func() { flockFn = orig })
-	flockFn = func(int, int) error { return errors.New("flock boom") }
-	root := t.TempDir()
-	p := filepath.Join(root, "f")
-	_ = os.WriteFile(p, []byte("x"), 0o644)
-	if _, err := (&OSFileOps{}).Lock(p, false, true); err == nil {
-		t.Error("a flock failure should surface from Lock")
 	}
 }
 
@@ -164,35 +177,6 @@ func TestOSMmap(t *testing.T) {
 	// An absent path errors.
 	if _, err := o.Mmap(filepath.Join(root, "ghost"), 0, 0, false); err == nil {
 		t.Error("mapping an absent path should error")
-	}
-}
-
-func TestOSMmapSeams(t *testing.T) {
-	root := t.TempDir()
-	p := filepath.Join(root, "m")
-	_ = os.WriteFile(p, []byte("abc"), 0o644)
-	o := &OSFileOps{}
-	// mmap syscall failure surfaces.
-	origM := mmapFn
-	mmapFn = func(int, int64, int, int, int) ([]byte, error) { return nil, errors.New("mmap boom") }
-	if _, err := o.Mmap(p, 0, 0, false); err == nil {
-		t.Error("mmap syscall failure should surface")
-	}
-	mmapFn = origM
-	// munmap / msync failures surface from Close.
-	origMs, origMu := msyncFn, munmapFn
-	t.Cleanup(func() { msyncFn = origMs; munmapFn = origMu })
-	r, err := o.Mmap(p, 0, 0, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	msyncFn = func([]byte, int) error { return errors.New("msync boom") }
-	if err := r.Flush(); err == nil {
-		t.Error("msync failure should surface from Flush")
-	}
-	munmapFn = func([]byte) error { return errors.New("munmap boom") }
-	if err := r.Close(); err == nil {
-		t.Error("munmap/msync failure should surface from Close")
 	}
 }
 

@@ -1,0 +1,3 @@
+# Encrypted golden fixtures: the bytes are the contract (cmd/go/internal/wire).
+# Never let a checkout convert line endings or diff them as text.
+cmd/go/internal/wire/testdata/*.golden binary

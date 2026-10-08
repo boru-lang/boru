@@ -155,13 +155,17 @@ func stripXattrNS(prefix, host string) (string, bool) {
 // empty map — absence of support and absence of attributes must not
 // look alike.
 func attachXattrs(r *Registry, om Value, path string) error {
+	return attachXattrsWithPrefix(r, om, path, capabilities.XattrNamespacePrefix)
+}
+
+func attachXattrsWithPrefix(r *Registry, om Value, path, prefix string) error {
 	names, err := EffectiveFileOps(r).XattrList(path)
 	if err != nil {
 		return err
 	}
 	xs := NewOrderedMap()
 	for _, host := range names {
-		name, ours := hostToBoruXattr(host)
+		name, ours := stripXattrNS(prefix, host)
 		if !ours {
 			continue
 		}

@@ -187,3 +187,64 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: scripts/ci-steps.sh borudebug-gates
+
+  # A current compiler and linter beside the pinned pair in `checks`: a new
+  # Go release adds deprecation checks (reflect.Ptr for reflect.Pointer was
+  # one) that the module's minimum Go and the pinned golangci-lint cannot
+  # see, and the host-specific filesystem and terminal code is linted for
+  # darwin and windows, which no ubuntu job compiles otherwise. Cold, the
+  # lint runs long; the setup action's per-job cache brings it under the
+  # ceiling once warm.
+  lint-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          tools: lint
+          go-version: stable
+          lint-version: v2.13.2
+      - run: scripts/ci-steps.sh lint
+      - name: Lint the darwin and windows filesystem and terminal code
+        working-directory: lang/go
+        run: |
+          for target_os in darwin windows; do
+            GOOS="$target_os" golangci-lint run ./capabilities ./native
+          done
+
+  # Native runs on each desktop OS, not cross-compiles: the filesystem
+  # portability tests, a real PTY or console for the terminal probes, the
+  # injected import-anchor failures, and the credential and clipboard
+  # failure arms without host tools, on the module's minimum Go and the
+  # current one. A missing terminal fixture fails the test instead of
+  # skipping it.
+  platform-regressions:
+    name: Platforms (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.24.7', stable]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Build and start the CLI
+        run: |
+          go build -o "$RUNNER_TEMP/boru.exe" ./cmd/go/boru
+          "$RUNNER_TEMP/boru.exe" help
+      - name: Filesystem portability
+        run: go test ./lang/go/capabilities -count=1 -timeout=3m -v -run 'TestPortable|TestOSLock|TestOSMmap|TestMemLock|TestMemMmap|TestDifferentialLockMmap'
+      - name: Real terminal and colour detection
+        run: go test ./lang/go/native -count=1 -timeout=3m -v -run 'TestOSStreamProbeAgainstRealFiles|TestResolveColor|TestPortableXattrNamespaces'
+      - name: Import anchor resolution and failure
+        run: go test ./cmd/go/internal/check ./cmd/go/internal/build ./cmd/go/internal/buildrt ./cmd/go/internal/fmt -count=1 -timeout=3m -v -run 'TestAnchorOf|TestAbsDir|TestSeam5AbsDirError|TestBuildConfigAbsError|TestNativeAbsError|TestRunWalkError'
+      - name: Credential and clipboard failures without host tools
+        run: go test ./cmd/go/internal/vault -count=1 -timeout=3m -v -run 'TestSelectKeyringBackends|TestMacKeychainErrorPaths|TestSecretDetailScreenActions'

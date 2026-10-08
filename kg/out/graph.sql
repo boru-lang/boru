@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '7907536354544182414');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '6555895061405772767');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -54,6 +54,7 @@ INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '174746230
 INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '2105940020756301791', 118341);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
+INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
 INSERT INTO input_files VALUES ('../design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', '5471579664599608073', 28469);
 INSERT INTO input_files VALUES ('../design/legacy/CORE-TS-COVERAGE.0.ignore', '5035147551064830801', 10419);
@@ -70,7 +71,7 @@ INSERT INTO input_files VALUES ('../design/legacy/checker-compiler-completeness-
 INSERT INTO input_files VALUES ('../editors/tree-sitter/bindings/go/go.mod', '8359550297204300245', 134);
 INSERT INTO input_files VALUES ('../eng/go/go.mod', '1395838019470277805', 800);
 INSERT INTO input_files VALUES ('../go.work', '3757042855308333246', 546);
-INSERT INTO input_files VALUES ('../lang/go/go.mod', '4939140721251129377', 2432);
+INSERT INTO input_files VALUES ('../lang/go/go.mod', '729147395552432810', 2463);
 INSERT INTO input_files VALUES ('../parser/go/go.mod', '8990721982208133206', 350);
 INSERT INTO input_files VALUES ('../test/go/go.mod', '5812574713479453703', 3027);
 INSERT INTO input_files VALUES ('../test/solardemo/go.mod', '8784937342672483810', 59);
@@ -78,7 +79,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '4067624072807802993', 96563);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '2041182796375109940', 97686);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -285,6 +286,9 @@ INSERT INTO sources VALUES ('src:type-representation-audit', 'text', 'design/leg
 INSERT INTO sources VALUES ('src:voxgig-boru-handover', 'text', 'design/VOXGIG-BORU-HANDOVER.0.md', 'handover of the voxgig-boru libraries on main: the interpreter-entry census, the defects found, the saved patches', NULL, 'voxgig-boru-handover-2026-10-05', 'primary', '{
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:wire-identity', 'text', 'design/WIRE-IDENTITY.0.md', 'Wire identity across product renames', NULL, 'wire-identity-2026-09-14', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO entities VALUES ('ent:Concept:2039420555596601682', 'Concept', 'secrets vault', 'secrets vault', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Concept:2039420555596601682', 'role', 'encrypted API-key / token store, driven by the boru vault subcommand');
 INSERT INTO entities VALUES ('ent:Concept:3854395902791518463', 'Concept', 'boru language', 'boru language', 'accepted');
@@ -373,6 +377,8 @@ INSERT INTO entities VALUES ('ent:Document:6813571866310634100', 'Document', 'de
 INSERT INTO entity_attributes VALUES ('ent:Document:6813571866310634100', 'role', 'the CURRENT-STATE page for the full-compilation project, and the one file a fresh session reads first: it says where the gates stand today rather than how they got there, which is the division of labour with FULL-COMPILATION-HANDOFF.0.md — that log is append-only, so an earlier section''s dated figures survive beside the later ones that overtook them and it is the wrong place to look for what is true now. Carries the gate table (frontier ledger 29, interp-entry census 29 and failing in BOTH directions, refusal/island/type-soundness pins at 0, minCompiledRows 6410, diagnostic-parity 320, armed-only 4, two remaining twin-placement shapes), what is in flight on the branch, the next increment''s three MEASURED constraints with the design they rule out, the ranked alternatives, the instruments that can see a defect the ordinary gates cannot (TestInterpEntryCensus is the only thing that sees a compiled program whose BODY is interpreted, since -force-compile reports SUCCESS for those; TestVariationDifferential runs only under make test and the merged coverage gate), and the process rules this line paid for in red CI — among them that re-running the gate that owns an edit applies to cosmetic edits too (four reds traced to skipping it, one on a commit containing nothing but a design note), that CI green is not the same as gated because the repo-wide ADR-008 floor is a separate dispatchable workflow, that a what-remains-is narrowing inherits the last reader''s vantage point, and that a COUNT test may be asked of the probe where a SHAPE test may not');
 INSERT INTO entities VALUES ('ent:Document:7308074811740152317', 'Document', 'design/legacy/TYPE-REPRESENTATION.0.ignore', 'design/legacy/type-representation.0.ignore', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:7308074811740152317', 'role', 'the issue #392 / NUR090 audit: the three-layer diagnosis (uniform lattice, 18-shape type-as-value, InstallType''s 11 branches and 3 binding strategies), why the minted node is invisible to evaluation, the measured spelling table, the ResolveSigType fix that was built and backed out, and the §6 bring-(b)-and-(c)-onto-(a) recommendation');
+INSERT INTO entities VALUES ('ent:Document:7349944459851435202', 'Document', 'design/WIRE-IDENTITY.0.md', 'design/wire-identity.0.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:7349944459851435202', 'role', 'preserving shipped vault and executable markers and credential namespaces across product renames, with compatibility fixtures and a scoped rename inventory');
 INSERT INTO entities VALUES ('ent:Document:7583878321315113890', 'Document', 'design/TABNAS-UPSTREAM-FIRST.0.md', 'design/tabnas-upstream-first.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:7583878321315113890', 'role', 'ADR-014''s case study: why a tabnas parser defect is fixed upstream and never behind a boru shim — the five shims the 2026-08-10 upgrade retired, the two-workarounds-deep episode that earned the rule, and the boundary against boru''s own grammar-layer divergences');
 INSERT INTO entities VALUES ('ent:Document:7594380001231677524', 'Document', 'design/FUNCTION-VALUE-SCOPE.0.md', 'design/function-value-scope.0.md', 'accepted');
@@ -879,6 +885,8 @@ INSERT INTO assertions VALUES ('ast:6783118704822344398', 'ent:SoftwareModule:43
 INSERT INTO assertion_evidence VALUES ('ast:6783118704822344398', 'src:gomod:test-specfix', 'require block', 'github.com/boru-lang/boru/parser/go v0.0.0', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:6860032272018226827', 'ent:Document:5175176782070740682', 'supports', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:6860032272018226827', 'src:boru-infoview', 'Architecture — what is new', '`lang/go/checktrace.go` — the `CheckTrace` position→stack oracle', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:6921518929736430139', 'ent:Document:7349944459851435202', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:6921518929736430139', 'src:wire-identity', 'title', 'Wire identity across product renames', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:693828507174078607', 'ent:Document:2413361039686810166', 'related_to', 'entity', 'ent:Document:5292060467150439417', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:693828507174078607', 'src:nur-round6-handover', 'introduction', 'This page is for whoever picks up the Non-Uniformity Register (NUR.md) work', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:6939544502052218836', 'ent:SoftwareModule:4386785925506277682', 'depends_on', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -897,6 +905,8 @@ INSERT INTO assertions VALUES ('ast:7030401685464928973', 'ent:Document:10153481
 INSERT INTO assertion_evidence VALUES ('ast:7030401685464928973', 'src:full-compilation-review', 'title', 'Full compilation — the plan re-examined: realism, strategy, algorithm', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:7044130325114909254', 'ent:SoftwareModule:4192460694199531608', 'has_attribute', 'literal', NULL, '"github.com/boru-lang/boru/wpg"', 'String', 'go-module-path', NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:7044130325114909254', 'src:gomod:wpg', 'module directive', 'module github.com/boru-lang/boru/wpg', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:7166989022638354176', 'ent:Document:7349944459851435202', 'supports', 'entity', 'ent:SoftwareModule:4361728672720029650', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:7166989022638354176', 'src:wire-identity', 'Scope', 'This note covers `cmd/go/internal/wire`: keyring and export-bundle markers,', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:7210676921761501973', 'ent:Document:2413361039686810166', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:7210676921761501973', 'src:nur-round6-handover', 'title', 'Handover: the NUR rounds, stopped mid round 6', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:7212088808110577326', 'ent:SoftwareModule:8275629451197117420', 'depends_on', 'entity', 'ent:SoftwareModule:425341189454841366', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);

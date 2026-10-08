@@ -21,12 +21,27 @@ inputs:
   build-cli:
     description: build cmd/go/bin/boru
     default: 'false'
+  go-version:
+    description: >
+      the Go toolchain to install: empty (the default) takes the module's
+      minimum from lang/go/go.mod; a job exercising a CURRENT compiler
+      passes `stable`, a platform matrix passes its own entry
+    default: ''
+  lint-version:
+    description: >
+      the golangci-lint release to install when tools has lint; the default
+      is the version `make lint` documents
+    default: 'v2.5.0'
 runs:
   using: composite
   steps:
     - uses: actions/setup-go@v5
       with:
-        go-version-file: lang/go/go.mod
+        # go-version wins over go-version-file when both are given, with a
+        # warning; blank the file when a version is asked for so the log
+        # stays clean.
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version == '' && 'lang/go/go.mod' || '' }}
         # The action's own cache is OFF: it keys on a go.sum at the
         # repository ROOT, and this go.work workspace has none, so it
         # cached nothing. The two caches below are the replacement.
@@ -87,7 +102,7 @@ runs:
       if: contains(inputs.tools, 'lint')
       shell: bash
       run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.5.0
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" ${{ inputs.lint-version }}
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
         golangci-lint version
 

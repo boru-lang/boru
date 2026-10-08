@@ -1,11 +1,14 @@
 package fmt
 
-// fmt_seam6e_test.go — covers Run's walk-error arms (deleted cwd) and the
-// write-failure arm (osWriteFile seam; permissions cannot force it as root).
+// fmt_seam6e_test.go — covers Run's walk-error arm (the walkDir seam: an
+// injected failure, since deleting the working directory is not portable)
+// and the write-failure arm (osWriteFile seam; permissions cannot force it
+// as root).
 
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,25 +16,15 @@ import (
 )
 
 func TestRunWalkError(t *testing.T) {
-	gone := filepath.Join(t.TempDir(), "gone")
-	if err := os.Mkdir(gone, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(gone)
-	if err := os.Remove(gone); err != nil {
-		t.Skipf("cannot remove cwd on this platform: %v", err)
-	}
-	// Some platforms (notably macOS) keep resolving a removed working
-	// directory, so the walk succeeds and the error arm is unreachable. Skip
-	// rather than fail spuriously where that is the case.
-	if _, err := os.Getwd(); err == nil {
-		t.Skip("this platform still resolves a removed working directory; the walk-error arm is unreachable here")
-	}
+	boom := errors.New("directory unavailable")
+	orig := walkDir
+	t.Cleanup(func() { walkDir = orig })
+	walkDir = func(root string, visit fs.WalkDirFunc) error { return visit(root, nil, boom) }
 	var stdout, stderr bytes.Buffer
 	if code := Run(nil, &stdout, &stderr); code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "error:") {
+	if !strings.Contains(stderr.String(), boom.Error()) {
 		t.Errorf("stderr = %q, want walk error", stderr.String())
 	}
 }
