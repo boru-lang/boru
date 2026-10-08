@@ -221,11 +221,11 @@ func TestMarkMoveAccessors(t *testing.T) {
 	}
 
 	// Continuation-carrying moves keep their payloads.
-	fc := &core.ForCont{}
+	fc := &core.Loop{}
 	mvc := core.NewMoveCont("m9", "iter", fc)
 	mic, _ := core.AsMove(mvc)
 	if mic.Cont != fc {
-		t.Error("NewMoveCont lost the ForCont")
+		t.Error("NewMoveCont lost the Loop")
 	}
 	ic := &core.IfCont{}
 	mvi := core.NewMoveIf("m9", "if", ic)

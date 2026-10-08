@@ -119,7 +119,7 @@ func TestNUR358CoreLiteralEscapeRaises(t *testing.T) {
 // the loop's — the iteration's collection is undone and the loop breaks.
 func TestNUR358CoreLoopTakesTheEscape(t *testing.T) {
 	r := nurReg(t)
-	cont := &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)},
+	cont := &Loop{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)},
 		Body: []Value{NewInteger(9), NewEvalList([]Value{NewWord("nbrk")})}}
 	InstallDef(r, "nuri", NewInteger(0))
 	prog := []Value{
@@ -297,7 +297,7 @@ func TestNUR365CoreParenOperandEscape(t *testing.T) {
 	// iteration's partial values dropped.
 	r = nurReg(t)
 	fwd(r)
-	cont := &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
+	cont := &Loop{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
 	InstallDef(r, "nuri", NewInteger(0))
 	out, err := NewTop(r).Run([]Value{
 		NewMark("nurP"), NewInteger(9),
@@ -316,7 +316,7 @@ func TestNUR365CoreParenOperandEscape(t *testing.T) {
 		Impl: Boru([]Value{brk}), BarrierPos: BarrierAllForward,
 	}}})
 	depth := r.Args.Depth()
-	cont = &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1}
+	cont = &Loop{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1}
 	if _, err := NewTop(r).Run([]Value{
 		NewMark("nurQ"),
 		NewWord("nfw"), NewOpenParen(), NewWord("nurf"), NewInteger(1), NewCloseParen(),
@@ -340,7 +340,7 @@ func TestNUR365CoreParenOperandEscape(t *testing.T) {
 	for _, body := range [][]Value{{brk}, {NewOpenParen(), brk, NewCloseParen()}} {
 		r = nurReg(t)
 		fwd(r)
-		inner := &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(7)}}
+		inner := &Loop{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(7)}}
 		InstallDef(r, "nuri", NewInteger(0))
 		toks := append([]Value{NewWord("nfw"), NewOpenParen(), NewMark("nurQ")}, body...)
 		toks = append(toks, NewMoveCont("nurQ", "for loop", inner), NewCloseParen())

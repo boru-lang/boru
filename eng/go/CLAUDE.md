@@ -102,6 +102,38 @@ body-local) and is captured; depth ≤ baseline means module / global
 scope and the reference stays dynamic. See lang/go/CLAUDE.md
 "Closures and Capture" for the language-level semantics.
 
+## Loops on the tape (one protocol)
+
+Every loop the interpreter runs is a mark/move continuation
+(`core.Loop`, `core/go/loop.go`): a mark opens an iteration's region,
+the move after it collects the region's values and splices either the
+next iteration or the loop's results in its place. `for` counts an index
+it installs as a def, `while` alternates a condition region and a body
+region, and the **driven** loops — `each`, `for-each`, `fold`, `scan`,
+`outer`, `inner`, `eachrank`, `foldaxis`, `filter`'s quotation form and
+the map forms over a quotation — hand the engine a `LoopDriver` whose
+`Next` supplies each iteration's inert inputs and body and whose
+`Collect` reads the region's residual. A driven region is sealed by a
+paren carrying `LoopOpenInfo` (the inert-input span, `FrameOpenInfo
+.ArgSpan`'s twin) so the body sees exactly its inputs, collapses WITHOUT
+the paren re-step (its residual is never re-stepped, as a sub-engine's
+was not), runs under its own context layer and its own step budget (a
+body's steps are never charged to the run holding the loop), lets
+break/continue pass THROUGH to the enclosing `for`/`while`, and wraps a
+body fault with the driver's attribution (`each: element 2: …`). Every
+loop is annotated — `Loop.Word`, `Iter`, `Count`, `Describe()` — and the
+trace notes `loop <state>` / `loop next` / `loop done` (the debugger
+treats `loop next` as an iteration boundary, as it treats `for next`).
+
+Until 2026-10-08 the driven words looped in Go and ran their body on a
+pooled sub-engine per element; that path survives only under the VM,
+where a handler is reached with the registry's `Invoker` set and
+`StartLoop` drives the same driver from Go through `InvokeBody`
+(`DriveLoop`). The lambda-callback forms — a `=>` value over a map,
+`filter`'s Function form — still apply their callback through the
+callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,
+a flow signal stops at the boundary), because that contract is pinned.
+
 ## Signature Ordering (CRITICAL)
 
 There is exactly **one** argument-positioning convention in this

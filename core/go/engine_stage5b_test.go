@@ -584,7 +584,7 @@ func TestS5BStepMoveContCollectsResults(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	id := NextMarkID()
-	cont := &ForCont{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, Body: []Value{NewInteger(9)}}
+	cont := &Loop{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, Body: []Value{NewInteger(9)}}
 	move := NewMoveCont(id, "for", cont)
 	e.Tape = NewTape([]Value{NewMark(id, NewInteger(9)), NewInteger(9), move}, StackHeadroom)
 	e.Pointer = 2
@@ -634,7 +634,7 @@ func TestS5BHandleFlowCtrlBreak(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	id := NextMarkID()
-	cont := &ForCont{Registry: r, IterName: "i", Results: []Value{NewInteger(7)}}
+	cont := &Loop{Registry: r, IterName: "i", Results: []Value{NewInteger(7)}}
 	e.Tape = NewTape([]Value{NewMark(id), NewInteger(5), NewMoveCont(id, "for", cont)}, StackHeadroom)
 	e.Pointer = 0
 	e.marks = map[string]bool{id: true}
@@ -654,7 +654,7 @@ func TestS5BHandleFlowCtrlContinue(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	id := NextMarkID()
-	cont := &ForCont{Registry: r, IterName: "i"}
+	cont := &Loop{Registry: r, IterName: "i"}
 	e.Tape = NewTape([]Value{NewMark(id), NewInteger(5), NewMoveCont(id, "for", cont)}, StackHeadroom)
 	e.Pointer = 0
 	e.marks = map[string]bool{id: true}

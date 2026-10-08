@@ -5,7 +5,7 @@ import "testing"
 // TestWhileEmptyConditionAnchorsAtTheOperand pins NUR130: a `while` whose
 // condition produces no value raises at the CONDITION operand on both lanes
 // — the compiled terminal trap's anchor, and now the interpreter's too
-// (ForCont.CondPos), where the spliced tape pointer used to underline the
+// (Loop.CondPos), where the spliced tape pointer used to underline the
 // token after the loop, or nothing.
 func TestWhileEmptyConditionAnchorsAtTheOperand(t *testing.T) {
 	for _, src := range []string{

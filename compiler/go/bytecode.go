@@ -2033,7 +2033,7 @@ type StmtIsland struct {
 // `for` loop its stop is inside (compiler's loopContPlan, NUR336): the VM
 // resumes the interpreter's own loop at the stop's iteration — its mark,
 // the values the iteration left before the stop's statement, the island,
-// then the loop's continuation (core.ForCont) over Body with the earlier
+// then the loop's continuation (core.Loop) over Body with the earlier
 // iterations' values as its results and IterName bound to the iteration's
 // index — followed by After, the tokens after the loop.
 type LoopCont struct {

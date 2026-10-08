@@ -6,14 +6,21 @@ import "errors"
 // residual value stack (bottom→top) — exactly as the body-running native
 // handlers did when they spun up `New(r).Run([inputs… bodyTokens…])`.
 //
-// This is the single seam through which every higher-order / code-body word
-// (each/fold/scan/do/filter/case/where/group/having/order/outer/inner/select)
-// runs its body. It exists so the bytecode VM can drive body execution
-// WITHOUT re-entering the interpreter: when r.Invoker is set (the VM is
-// running), the body is a compiled closure and execution re-enters the VM;
-// when it is nil (a plain interpreter run) a fresh sub-engine runs the
-// reconstructed token stream, so behaviour is byte-identical to the pre-seam
-// handlers (design plan P1).
+// This is the seam through which a code-body word (do/case/where/group/
+// having/order/select, and the collection words under the VM) runs its
+// body. It exists so the bytecode VM can drive body execution WITHOUT
+// re-entering the interpreter: when r.Invoker is set (the VM is running),
+// the body is a compiled closure and execution re-enters the VM; when it is
+// nil (a plain interpreter run) a fresh sub-engine runs the reconstructed
+// token stream, so behaviour is byte-identical to the pre-seam handlers
+// (design plan P1).
+//
+// The ITERATING words — each, for-each, fold, scan, outer, inner, eachrank,
+// foldaxis, filter's quotation form and the map forms over a quotation —
+// no longer reach here on the interpreter: their loop runs on the running
+// tape (StartLoop / LoopDriver, loop.go), one sealed region per element,
+// and only the VM lane drives the same driver through this seam
+// (DriveLoop).
 //
 // inputs are spliced BEFORE the body tokens, matching the handlers' historical
 // `input[0..k-1]=inputs; input[k..]=bodyTokens` layout, so the body sees its

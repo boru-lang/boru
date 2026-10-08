@@ -77,7 +77,7 @@ type (
 	FnSig                = core.FnSig
 	FnSigSpec            = core.FnSigSpec
 	FnUndefInfo          = core.FnUndefInfo
-	ForCont              = core.ForCont
+	Loop                 = core.Loop
 	ForwardInfo          = core.ForwardInfo
 	Handler              = core.Handler
 	IfCont               = core.IfCont

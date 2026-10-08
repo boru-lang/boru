@@ -2353,7 +2353,7 @@ func (vc *vmContext) stopRestart(reg *core.Registry, is *compiler.StmtIsland, st
 // values as its results — and the tokens after the loop, over what lies
 // beneath the loop (srcs, or its Beneath values of the frame region). The
 // index is installed as the loop's first iteration installs it, and its
-// level is the continuation's (ForCont.IterDepth). The residual replaces the
+// level is the continuation's (Loop.IterDepth). The residual replaces the
 // frame region, and the run continues at retPC.
 func (vc *vmContext) loopContRestart(reg *core.Registry, lc *compiler.LoopCont, srcs []compiler.RestartSrc, island []core.Value, depth, retPC int, root bool, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	lp := vc.restartLoop
@@ -2369,8 +2369,8 @@ func (vc *vmContext) loopContRestart(reg *core.Registry, lc *compiler.LoopCont, 
 	cur := lp.cur - lp.step
 	core.InstallDef(reg, lc.IterName, core.NewInteger(cur))
 	id := core.NextMarkID()
-	cont := &core.ForCont{
-		Registry: reg, IterName: lc.IterName, Current: cur, End: lp.end, Step: lp.step,
+	cont := &core.Loop{
+		Registry: reg, Word: "for", Iter: 1, Count: -1, IterName: lc.IterName, Current: cur, End: lp.end, Step: lp.step,
 		Body: lc.Body, Results: append([]core.Value(nil), stack[lp.base:lp.iterBase]...), IterDepth: reg.Defs.Depth(lc.IterName),
 	}
 	tokens := make([]core.Value, 0, len(island)+len(lc.After)+2)

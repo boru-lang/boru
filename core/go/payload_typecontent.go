@@ -123,6 +123,7 @@ func (SugarInfo) IsTypeContent(*Value) bool            { return false }
 func (ReturnCheckInfo) IsTypeContent(*Value) bool      { return false }
 func (DefCleanupInfo) IsTypeContent(*Value) bool       { return false }
 func (FrameOpenInfo) IsTypeContent(*Value) bool        { return false }
+func (LoopOpenInfo) IsTypeContent(*Value) bool         { return false }
 func (ModuleDesc) IsTypeContent(*Value) bool           { return false }
 func (ClassInstanceInfo) IsTypeContent(*Value) bool    { return false }
 func (DispatchModInfo) IsTypeContent(*Value) bool      { return false }

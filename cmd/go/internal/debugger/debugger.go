@@ -464,9 +464,10 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 		return
 	}
 	s.lastFault = ""
-	if strings.HasPrefix(note, "for next ") {
-		// A `for` iteration boundary is a line boundary: without this, a
-		// single-line loop body coalesces ALL its iterations into the
+	if strings.HasPrefix(note, "for next ") || strings.HasPrefix(note, "loop next ") {
+		// A loop's iteration boundary — a `for` re-mark, or a driven loop's
+		// (each, fold, …: core loop.go) — is a line boundary: without this,
+		// a single-line loop body coalesces ALL its iterations into the
 		// first stop (every token shares one Row, contiguously).
 		s.prevRow = 0
 	}

@@ -41,7 +41,7 @@ func cforRun(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core
 	core.InstallDef(r, "i", core.NewInteger(0))
 	bodyCopy := make([]core.Value, len(bodySlice))
 	copy(bodyCopy, bodySlice)
-	cont := &core.ForCont{Registry: r, IterName: "i", Current: 0, End: n, Step: 1, Body: bodyCopy}
+	cont := &core.Loop{Registry: r, IterName: "i", Current: 0, End: n, Step: 1, Body: bodyCopy}
 
 	id := core.NextMarkID()
 	tokens := make([]core.Value, 0, len(bodySlice)+2)

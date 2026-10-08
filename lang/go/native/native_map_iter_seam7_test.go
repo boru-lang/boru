@@ -86,6 +86,7 @@ func TestCallLambdaNoMatchAndBodyError(t *testing.T) {
 
 func TestRunQuotationBodyError(t *testing.T) {
 	r := b2Reg(t)
+	drive := w9Driven(r)
 	// A token body referencing an undefined word errors when the sub-engine
 	// runs it.
 	mb, err := newMapBody(r, NewList([]Value{NewWord("zzz_undef_word_xyz")}), "each")
@@ -97,10 +98,10 @@ func TestRunQuotationBodyError(t *testing.T) {
 	}
 
 	// Positive pair: a working quotation body transforms the value.
-	out, err := eachMapHandler([]Value{
+	out, err := drive(eachMapHandler([]Value{
 		NewList([]Value{NewWord("dup"), NewWord("add")}),
 		mapVal("a", NewInteger(2)),
-	}, nil, nil, r)
+	}, nil, nil, r))
 	if err != nil || len(out) != 1 {
 		t.Fatalf("each over map = %v / %v", out, err)
 	}

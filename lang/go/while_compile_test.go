@@ -213,7 +213,7 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 		t.Fatalf("message drifted: compiled=%v interp=%v", errC, errI)
 	}
 	// The POSITION too, since NUR130's close: the interpreter anchors at
-	// the condition operand (ForCont.CondPos), where the trap always did.
+	// the condition operand (Loop.CondPos), where the trap always did.
 	if !strings.Contains(errC.Error(), "1:7") {
 		t.Errorf("the trap must anchor at the condition operand (1:7): %v", errC)
 	}

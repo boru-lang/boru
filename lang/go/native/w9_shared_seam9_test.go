@@ -49,3 +49,17 @@ func w9Map(pairs ...any) Value {
 
 // w9List wraps elements into a concrete list value.
 func w9List(elems ...Value) Value { return NewList(elems) }
+
+// w9Driven returns a runner for a DIRECT handler call's result: a looping
+// word's handler now exits with its loop's first region (core loop.go), so a
+// test that calls the handler itself steps that region to the loop's results
+// on an engine over r, exactly as the dispatching run would; plain results
+// and errors pass through. Use as `drive(eachMapHandler(args, nil, nil, r))`.
+func w9Driven(r *Registry) func([]Value, error) ([]Value, error) {
+	return func(out []Value, err error) ([]Value, error) {
+		if err != nil || !IsLoopRegion(out) {
+			return out, err
+		}
+		return NewTop(r).Run(out)
+	}
+}
