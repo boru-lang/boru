@@ -15,18 +15,27 @@ package core
 // compiledFnDef is one registry's compiled dispatch form of a function,
 // with what it was built from: the registry (the body-runner closes over
 // it — a fork of the registry compiles its own), the authored signature
-// and capture lists by backing array and length, and the dispatch name.
-// A token reused over a REBUILT list — a looked-up name's aggregate,
-// which aggregateDispatch regenerates — therefore recompiles instead of
+// and capture lists by identity (sameList), and the dispatch name. A token
+// reused over a REBUILT list — a looked-up name's aggregate, which
+// aggregateDispatch regenerates — therefore recompiles instead of
 // answering a stale form; copies of one value share their arrays and hit.
 type compiledFnDef struct {
-	reg   *Registry
-	name  string
-	sigs  *Signature
-	nsigs int
-	caps  *CapturedBinding
-	ncaps int
-	fn    *FnDefInfo
+	reg  *Registry
+	name string
+	sigs []Signature       // the authored list the form was built from
+	caps []CapturedBinding // the capture list it was built from
+	fn   *FnDefInfo
+}
+
+// sameList reports whether a and b are the same list: the same backing
+// array at the same length. A list rebuilt by aggregateDispatch is a
+// different array; a copy of a value shares its arrays. Two empty lists
+// are the same empty list.
+func sameList[T any](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return len(a) == 0 || &a[0] == &b[0]
 }
 
 // compiledFnDefFor returns compileFnDef(reg, fnDef), computed once per
@@ -39,28 +48,17 @@ func compiledFnDefFor(reg *Registry, fnDef FnDefInfo) *FnDefInfo {
 	if id == nil {
 		return compileFnDef(reg, fnDef)
 	}
-	var sigs *Signature
-	if len(fnDef.Signatures) > 0 {
-		sigs = &fnDef.Signatures[0]
-	}
-	var caps *CapturedBinding
-	if len(fnDef.Captured) > 0 {
-		caps = &fnDef.Captured[0]
-	}
 	if c := id.dispatch.Load(); c != nil && c.reg == reg && c.name == fnDef.Name &&
-		c.sigs == sigs && c.nsigs == len(fnDef.Signatures) &&
-		c.caps == caps && c.ncaps == len(fnDef.Captured) {
+		sameList(c.sigs, fnDef.Signatures) && sameList(c.caps, fnDef.Captured) {
 		return c.fn
 	}
 	fn := compileFnDef(reg, fnDef)
 	id.dispatch.Store(&compiledFnDef{
-		reg:   reg,
-		name:  fnDef.Name,
-		sigs:  sigs,
-		nsigs: len(fnDef.Signatures),
-		caps:  caps,
-		ncaps: len(fnDef.Captured),
-		fn:    fn,
+		reg:  reg,
+		name: fnDef.Name,
+		sigs: fnDef.Signatures,
+		caps: fnDef.Captured,
+		fn:   fn,
 	})
 	return fn
 }
