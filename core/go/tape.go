@@ -215,6 +215,20 @@ func (t *Tape) Reload(vals []Value) bool {
 	return true
 }
 
+// EnsureBoundsFor raises the tape's growth ceiling to what a FRESH tape
+// for a program of progLen entries under cfg would have. A reused tape —
+// a pooled sub-engine's, the VM's island engine's — keeps the ceiling it
+// was built with, derived from its FIRST program's length; a later, longer
+// program that fits the grown buffer would otherwise run under a lower
+// ceiling than the fresh-tape path grants it and exhaust earlier (Codex
+// P2 on #532). A ceiling the tape already exceeds is left alone.
+func (t *Tape) EnsureBoundsFor(progLen int, cfg TapeConfig) {
+	initial, maxGrows, factor := cfg.Resolve(progLen)
+	if ceil := GrowthCeiling(initial, maxGrows, factor); ceil > t.maxCap {
+		t.maxCap = ceil
+	}
+}
+
 // Exhausted reports whether the tape hit its growth ceiling. The engine
 // checks this each step and fails loudly when set.
 func (t *Tape) Exhausted() bool { return t.exhausted }

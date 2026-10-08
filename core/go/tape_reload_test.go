@@ -61,3 +61,35 @@ func TestTapeReloadLongerProgramAfterTakeAll(t *testing.T) {
 		}
 	}
 }
+
+// A reused tape's ceiling was derived from its FIRST program; a later,
+// longer program that fits the buffer is granted the ceiling a fresh tape
+// would have had (Codex P2 on #532), and a shorter one leaves a larger
+// ceiling alone.
+func TestTapeEnsureBoundsForNeverBelowFresh(t *testing.T) {
+	short := []Value{NewInteger(1)}
+	tp := NewTapeWith(short, TapeConfig{InitialSize: 4000, MaxGrows: 1, GrowthFactor: 2}, nil)
+	if tp.MaxCap() != 8000 {
+		t.Fatalf("fixture ceiling = %d, want 8000", tp.MaxCap())
+	}
+	long := make([]Value, 1500)
+	for i := range long {
+		long[i] = NewInteger(int64(i))
+	}
+	if !tp.Reload(long) {
+		t.Fatal("Reload declined a program that fits")
+	}
+	tp.EnsureBoundsFor(len(long), TapeConfig{})
+	fresh := NewTapeWith(long, TapeConfig{}, nil)
+	if tp.MaxCap() != fresh.MaxCap() {
+		t.Fatalf("reused ceiling = %d, want the fresh tape's %d", tp.MaxCap(), fresh.MaxCap())
+	}
+	// A shorter program on the same tape keeps the larger ceiling.
+	if !tp.Reload(short) {
+		t.Fatal("Reload declined the short program")
+	}
+	tp.EnsureBoundsFor(len(short), TapeConfig{})
+	if tp.MaxCap() != fresh.MaxCap() {
+		t.Fatalf("a shorter program lowered the ceiling to %d", tp.MaxCap())
+	}
+}

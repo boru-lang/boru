@@ -62,6 +62,14 @@ func TestCompiledFnDefForCachesPerIdentityAndRegistry(t *testing.T) {
 	if compiledFnDefFor(r, rebuilt) == cur {
 		t.Error("a rebuilt signature list must recompile")
 	}
+	// A list of another LENGTH under the same token — an overload appended
+	// in place — recompiles too.
+	grown := fd
+	grown.Signatures = append(fd.Signatures[:1:1], fd.Signatures[0])
+	cur = compiledFnDefFor(r, fd)
+	if compiledFnDefFor(r, grown) == cur {
+		t.Error("a signature list of another length must recompile")
+	}
 	// The same token under another NAME compiles under that name: the
 	// frame's diagnostics carry it.
 	renamed := fd

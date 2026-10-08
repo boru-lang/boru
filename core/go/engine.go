@@ -1722,7 +1722,11 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// up a fresh tape every execution. Falls back to a fresh tape when
 	// the existing buffer is too small. Per-run scratch state is cleared
 	// so nothing leaks across reuses.
-	if !(e.ReuseTape && e.Tape != nil && e.Tape.Reload(prog)) {
+	if e.ReuseTape && e.Tape != nil && e.Tape.Reload(prog) {
+		// The reused tape's ceiling came from its first program; this one
+		// gets at least what a fresh tape would have given it.
+		e.Tape.EnsureBoundsFor(len(prog), e.Registry.TapeConfig)
+	} else {
 		e.Tape = NewTapeWith(prog, e.Registry.TapeConfig, e.tapeWarn)
 	}
 	// Per-run scratch state is cleared on EVERY entry (not only the
