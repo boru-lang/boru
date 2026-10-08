@@ -438,6 +438,13 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.curStack, s.curPointer = stack, pointer
+	// An each/fold/… body runs on its loop's own tape (core loop.go) since
+	// 2026-10-08 — it reached the session as a sub-engine's fire before —
+	// so a fire inside a driven loop's region is a body fire: labelled
+	// "(in body)", part of its line for `next`/`out`, off the replay count.
+	if !sub && inLoopBody(stack, pointer) {
+		sub = true
+	}
 	if s.mode == modeDetached || s.inPrompt {
 		return
 	}
@@ -1251,6 +1258,35 @@ func (s *Session) renderBacktrace() {
 		}
 		fmt.Fprintln(s.out, line)
 	}
+}
+
+// inLoopBody reports whether the pointer lies inside a DRIVEN loop's
+// iteration region on this tape — an each/fold/scan/filter/… body: the
+// nearest live loop move after the pointer whose mark lies before it. A
+// `for`/`while` body is not a body in this sense: it never was one (it ran
+// on the program's own tape all along), and `step` walks it as its line.
+func inLoopBody(stack []native.Value, pointer int) bool {
+	if pointer < 0 {
+		return false
+	}
+	for i := pointer; i < len(stack); i++ {
+		if !native.IsMove(stack[i]) {
+			continue
+		}
+		info, _ := native.AsMove(stack[i])
+		if info.Cont == nil || info.Cont.Driver == nil {
+			continue
+		}
+		for j := min(pointer, len(stack)) - 1; j >= 0; j-- {
+			if !native.IsMark(stack[j]) {
+				continue
+			}
+			if m, _ := native.AsMark(stack[j]); m.ID == info.To {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // liveFrames scans the tape snapshot for fn frames opened below the
