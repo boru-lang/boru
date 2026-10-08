@@ -1,4 +1,4 @@
-.PHONY: all build install test test-race test-module commit-gate sweep-status test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
+.PHONY: all brand-audit build install test test-race test-module commit-gate sweep-status test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
         spec-gen spec-test crossdiff parser-crossdiff parser-parity cover-gate-eng cover-gate-check cover-gate-compiler cover-gate-parser \
         verify-bytecode fuzz-bytecode status \
         publish publish-eng publish-basic publish-lang publish-cmd release tags \
@@ -243,6 +243,13 @@ fmt-docs:
 
 lint:
 	@scripts/each-module.sh -j $(JOBS) golangci-lint run ./...
+
+# brand-audit — inventory every place the product name is baked in, split
+# by what breaks if it changes underneath existing data (design/WIRE-IDENTITY.0.md).
+# A report, not a gate; the hard gates are the golden fixtures and identifier
+# test in cmd/go/internal/wire.
+brand-audit:
+	@./scripts/brand-audit.sh
 
 vuln:
 	@set -e; for m in $(MODULES); do \

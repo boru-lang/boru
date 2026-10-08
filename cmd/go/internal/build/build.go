@@ -238,8 +238,20 @@ func defaultOutput(srcPath string) string {
 	return name
 }
 
+// buildConfig reads the entry program, walks its file-import graph, and
+// assembles the buildrt.Config baked into the binary. Built-in boru: imports
+// are skipped (they are in the runtime); every reachable .boru file is embedded
+// under its absolute path so the in-memory file system resolves it at run time.
 func buildConfig(srcPath, registry string, seed int64, optionsBlob string, prof *policy.Profile) (buildrt.Config, error) {
-	entryAbs, err := filepath.Abs(srcPath)
+	return buildConfigWithAbs(srcPath, registry, seed, optionsBlob, prof, filepath.Abs)
+}
+
+// buildConfigWithAbs is buildConfig with the absolute-path resolution
+// injected (design/TEST-SEAMS.10.md): its failure arm is driven directly
+// rather than by deleting the process's working directory, which Windows
+// refuses and macOS keeps resolving.
+func buildConfigWithAbs(srcPath, registry string, seed int64, optionsBlob string, prof *policy.Profile, abs func(string) (string, error)) (buildrt.Config, error) {
+	entryAbs, err := abs(srcPath)
 	if err != nil {
 		return buildrt.Config{}, err
 	}

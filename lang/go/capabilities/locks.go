@@ -135,13 +135,13 @@ func (r *osMmapRegion) Flush() error {
 	if !r.writable {
 		return nil
 	}
-	return osMsync(r.full)
+	return osMsync(r.f, r.full)
 }
 
 func (r *osMmapRegion) Close() error {
 	r.once.Do(func() {
 		if r.writable {
-			r.err = osMsync(r.full)
+			r.err = osMsync(r.f, r.full)
 		}
 		if e := osMunmap(r.full); r.err == nil {
 			r.err = e

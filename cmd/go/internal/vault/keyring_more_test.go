@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,6 +27,8 @@ func requireNoBinary(t *testing.T, bin string) {
 }
 
 func TestSelectKeyringBackends(t *testing.T) {
+	p7swapGoos(t, "linux")
+	p7cleanPath(t)
 	dir := t.TempDir()
 	// The file backend always resolves.
 	kr, err := selectKeyring(BackendFile, dir, "p")
@@ -39,13 +40,13 @@ func TestSelectKeyringBackends(t *testing.T) {
 		!strings.Contains(err.Error(), "unknown backend") {
 		t.Errorf("unknown backend: %v", err)
 	}
-	if runtime.GOOS != "darwin" {
+	if p7goosName != "darwin" {
 		if _, err := selectKeyring(BackendKeychain, dir, ""); err == nil ||
 			!strings.Contains(err.Error(), "requires macOS") {
 			t.Errorf("keychain off-macOS: %v", err)
 		}
 	}
-	if runtime.GOOS != "windows" {
+	if p7goosName != "windows" {
 		if _, err := selectKeyring(BackendWinCred, dir, ""); err == nil ||
 			!strings.Contains(err.Error(), "requires windows") {
 			t.Errorf("wincred off-windows: %v", err)
@@ -62,7 +63,7 @@ func TestSelectKeyringBackends(t *testing.T) {
 		t.Errorf("1password without op: %v", err)
 	}
 	// auto falls back to file when no host backend is available.
-	if runtime.GOOS == "linux" {
+	if p7goosName == "linux" {
 		if got := autoBackend(); got != BackendFile {
 			t.Errorf("autoBackend = %q, want file (no secret-tool)", got)
 		}
@@ -77,6 +78,7 @@ func TestSelectKeyringBackends(t *testing.T) {
 }
 
 func TestMacKeychainErrorPaths(t *testing.T) {
+	p7cleanPath(t)
 	var k macKeychain
 	if k.Name() != BackendKeychain {
 		t.Error("name")

@@ -56,12 +56,11 @@ func TestResolveColorProcessFallback(t *testing.T) {
 		}
 	}
 	// auto: a real terminal DOES colour, which is the arm that matters.
-	if pty, perr := os.OpenFile("/dev/ptmx", os.O_RDWR, 0); perr == nil {
-		defer pty.Close()
-		if !ResolveColor(nil, pty, "auto") {
-			t.Fatal("auto must colour a real terminal")
-		}
+	terminal := openTestTerminal(t)
+	if !ResolveColor(nil, terminal, "auto") {
+		t.Fatal("auto must colour a real terminal")
 	}
+
 	// A closed file makes Stat fail — the defensive arm declines color.
 	closed, err := os.CreateTemp(t.TempDir(), "closed")
 	if err != nil {
@@ -92,22 +91,12 @@ func TestResolveColorRegistryWithoutEnvOps(t *testing.T) {
 // from the renderer, and a host that sets it in a hermetic environment
 // disables colour even though the real process never had it.
 func TestResolveColorUsesInstalledEnvOps(t *testing.T) {
-	// A real pty, not os.DevNull. This used to open /dev/null and require
-	// isCharDevice(dev) — which held only because the probe called every
-	// character device a terminal. Once the probe started asking the kernel,
-	// /dev/null answered false and this test SKIPPED: no failure, just the
-	// NO_COLOR arms silently no longer covered. A pty makes the precondition
-	// true for the right reason.
-	dev, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
-	if err != nil {
-		t.Skipf("no /dev/ptmx on this platform: %v", err)
-	}
-	defer dev.Close()
+	dev := openTestTerminal(t)
 
 	// Sanity: the destination really is a terminal, so colour hinges on
 	// NO_COLOR alone.
 	if !ResolveColor(nil, dev, "always") || !isCharDevice(dev) {
-		t.Fatal("a pty master must read as a terminal")
+		t.Fatal("an initialized terminal must read as a terminal")
 	}
 
 	// The host's view SETS NO_COLOR while the process does not: no colour.

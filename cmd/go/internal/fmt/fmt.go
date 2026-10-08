@@ -22,6 +22,11 @@ import (
 // permissions when the suite runs as root.
 var osWriteFile = os.WriteFile
 
+// walkDir is the seam for the no-argument walk: tests drive the walk-error
+// arm by injecting a failure instead of deleting the process's working
+// directory, which Windows refuses and macOS keeps resolving.
+var walkDir = filepath.WalkDir
+
 type cmd struct{}
 
 // New returns the fmt subcommand.
@@ -69,7 +74,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	var files []string
 	if len(args) == 0 {
-		err := pathutil.WalkSources(".", filepath.WalkDir, ".boru", func(path string) { files = append(files, path) })
+		err := pathutil.WalkSources(".", walkDir, ".boru", func(path string) { files = append(files, path) })
 		if err != nil {
 			stdfmt.Fprintf(stderr, "error: %s\n", err)
 			return 1

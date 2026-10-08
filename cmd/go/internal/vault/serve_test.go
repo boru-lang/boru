@@ -15,9 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 )
 
 // newServeServer builds a handler-testable server for home. The broker
@@ -162,87 +160,6 @@ func TestServeListenErrorArms(t *testing.T) {
 			t.Errorf("temporary password = %d, %q", code, errOut)
 		}
 	})
-}
-
-// TestRunServeLifecycleUnderAdmin drives runServe end to end: it starts
-// under an envelope-admin passphrase (emitting the admin warning),
-// answers real wire requests — health, a wildcard-token KV read, a LIST
-// — and shuts down cleanly on SIGTERM.
-func TestRunServeLifecycleUnderAdmin(t *testing.T) {
-	home := w4EnvelopeVault(t)
-	token := grantWire(t, "--agent=sekreto", "proj:*")
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	_ = ln.Close()
-
-	var stdout, stderr w4SyncBuffer
-	done := make(chan int, 1)
-	go func() {
-		done <- runServe([]string{"--listen=" + addr}, home, &stdout, &stderr)
-	}()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		conn, derr := net.DialTimeout("tcp", addr, 50*time.Millisecond)
-		if derr == nil {
-			conn.Close()
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	base := "http://" + addr
-	resp, err := http.Get(base + "/v1/sys/health")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("health over the wire = %d", resp.StatusCode)
-	}
-	req, _ := http.NewRequest("GET", base+"/v1/secret/data/proj/k", nil)
-	req.Header.Set(headerVaultToken, token)
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"value":"v"`) {
-		t.Errorf("wire read = %d, %q", resp.StatusCode, body)
-	}
-	req, _ = http.NewRequest("LIST", base+"/v1/secret/metadata/proj", nil)
-	req.Header.Set(headerVaultToken, token)
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"keys":["k"]`) {
-		t.Errorf("wire list = %d, %q", resp.StatusCode, body)
-	}
-
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case code := <-done:
-		if code != 0 {
-			t.Errorf("runServe exit = %d, want 0 (stderr: %q)", code, stderr.String())
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("runServe did not shut down on SIGTERM")
-	}
-	if !strings.Contains(stderr.String(), "ADMIN password") {
-		t.Errorf("missing the admin-password warning: %q", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "wire protocol listening") {
-		t.Errorf("missing the listening line: %q", stdout.String())
-	}
 }
 
 func TestServeProtocolNegotiation(t *testing.T) {

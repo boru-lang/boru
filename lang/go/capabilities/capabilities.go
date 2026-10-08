@@ -413,7 +413,8 @@ func (o *OSFileOps) Symlink(target, linkPath string) error {
 	return os.Symlink(target, linkResolved)
 }
 
-// Link creates a hard link at linkPath referring to target.
+// Link creates a hard link at linkPath referring to target. If target is a
+// symlink, the hard link refers to the symlink itself, without following it.
 func (o *OSFileOps) Link(target, linkPath string) error {
 	targetResolved, err := o.ResolvePath(target)
 	if err != nil {
@@ -423,7 +424,7 @@ func (o *OSFileOps) Link(target, linkPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.Link(targetResolved, linkResolved)
+	return linkNoFollow(targetResolved, linkResolved)
 }
 
 // Chmod sets path's permission bits.
@@ -693,7 +694,8 @@ func mtimeOf(meta *memMeta) time.Time {
 	return time.Time{}
 }
 
-func isMemRoot(p string) bool { return p == "." || p == "/" }
+// A root is a fixed point of Dir, including Windows drive and UNC roots.
+func isMemRoot(p string) bool { return p == "." || p == "/" || filepath.Dir(p) == p }
 
 // resolve turns path into its final in-model location: lexical resolution
 // (ResolvePath), then a component walk that chases symlinks in every
@@ -714,10 +716,10 @@ func (m *MemFileOps) resolveSteps(resolved string, followTrailing bool, depth *i
 		return resolved, nil
 	}
 	sep := string(filepath.Separator)
-	acc := ""
-	rest := resolved
-	if strings.HasPrefix(resolved, sep) {
-		acc, rest = sep, strings.TrimPrefix(resolved, sep)
+	acc := filepath.VolumeName(resolved)
+	rest := strings.TrimPrefix(resolved, acc)
+	if strings.HasPrefix(rest, sep) {
+		acc, rest = acc+sep, strings.TrimPrefix(rest, sep)
 	}
 	comps := strings.Split(rest, sep)
 	for i, comp := range comps {
@@ -911,11 +913,9 @@ func (m *MemFileOps) mkdirAllLocked(path string, perm os.FileMode) error {
 }
 
 // recordDir records dir and every ancestor as a directory, stamping default
-// metadata where none exists. Root ("." / "/") is implicit and not recorded.
+// metadata where none exists. Filesystem roots are implicit and not recorded.
 func (m *MemFileOps) recordDir(dir string) {
-	// filepath.Dir's only POSIX fixed points are "/" and ".", both excluded
-	// by the loop condition, so this always terminates.
-	for dir != "." && dir != "/" && dir != "" {
+	for dir != "" && !isMemRoot(dir) {
 		m.Dirs[dir] = true
 		if m.Meta[dir] == nil {
 			m.Meta[dir] = m.stampOwner(&memMeta{Mode: 0o755, MTime: m.now()})
