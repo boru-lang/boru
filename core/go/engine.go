@@ -7470,11 +7470,23 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	var tokens []Value
 	tokens = append(tokens, NewFrameOpen(fnValueFrameMeta))
 
+	// A LEAF body — one that binds nothing and constructs no inner fn
+	// (bodyNeedsFrameState) — takes the fast path buildFnBodyHandler's
+	// named dispatch has had since the speed plan: no fn-entry baseline
+	// snapshot, no def-cleanup snapshot, no cleanup scan at the tail. Each
+	// snapshot copies every bound name, and they were the largest cost of
+	// applying a lambda, closure or method value.
+	leaf := !bodyNeedsFrameState(e.Registry, sig.Body())
 	// Push the fn-entry baseline before installing anything. Inner
 	// fn/afn constructions inside this body consult TopFnBaseline
 	// to identify enclosing-fn-local bindings. Paired with __pa
-	// below, which pops the baseline.
-	e.Registry.PushFnBaseline(e.Registry.Defs.Snapshot())
+	// below, which pops the baseline; a leaf pushes a nil entry so the
+	// per-call stacks stay balanced.
+	if leaf {
+		e.Registry.PushFnBaseline(nil)
+	} else {
+		e.Registry.PushFnBaseline(e.Registry.Defs.Snapshot())
+	}
 
 	// Retag typed-container args so the args stack (args.N) and unnamed body
 	// pushes carry the {:T}/[:T] tag too, not just the named binding — a body
@@ -7528,7 +7540,12 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	// buildFnBodyHandler. (This tail historically omitted the
 	// DefCleanup marker; it is synthesized by the shared
 	// AppendFrameTail now, so the two splice paths cannot diverge.)
-	defSnapshot := e.Registry.Defs.Snapshot()
+	// A leaf body has none to tear down: the marker rides with
+	// SkipCleanup, as the named path's does.
+	var defSnapshot map[string]int
+	if !leaf {
+		defSnapshot = e.Registry.Defs.Snapshot()
+	}
 
 	// Append the sig's body tokens directly: append COPIES them into
 	// tokens' backing array, and sig.Body() (the shared BoruImpl.Body) is
@@ -7539,6 +7556,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	tokens = AppendFrameTail(tokens, FrameTailSpec{
 		Registry:       e.Registry,
 		Snapshot:       defSnapshot,
+		SkipCleanup:    leaf,
 		Names:          names,
 		Returns:        sig.Returns,
 		ReturnPatterns: sig.ReturnPatterns,

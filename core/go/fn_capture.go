@@ -23,6 +23,11 @@ var frameStateWords = map[string]bool{
 	"word":   true,                                 // splice unevaluated code into the stream
 	"module": true, "import": true, "export": true, // module-scope binding
 	"usurp": true, "behave": true, // word / type-behavior modification
+	// NOT listed: `unpack`. It binds from Go, outside a leaf frame's
+	// sight, and that is the pinned discipline — a fn-body unpack rebinds
+	// an outer name past the call on both lanes
+	// (lang/go TestUnpackUnprovenSourceCompiles). Listing it here would
+	// make the frame clean those bindings up and diverge from the VM.
 }
 
 // bodyNeedsFrameState reports whether a fn body may install a body-local
@@ -44,7 +49,7 @@ var frameStateWords = map[string]bool{
 // non-macro (the same assumption recursion's forward refs rely on).
 func bodyNeedsFrameState(r *Registry, body []Value) bool {
 	needs := false
-	seen := map[string]bool{} // guards mutually-recursive macros
+	var seen map[string]bool // guards mutually-recursive macros; built on the first splice word
 	var walk func([]Value)
 	walk = func(toks []Value) {
 		walkBodyTokens(toks, func(w WordInfo, _ Value) {
@@ -65,6 +70,9 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			info, ok := bound.Data.(SpliceInfo)
 			if !ok {
 				return
+			}
+			if seen == nil {
+				seen = map[string]bool{}
 			}
 			seen[w.Name] = true
 			walk(SpliceExpand(info.Data))

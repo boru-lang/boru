@@ -224,7 +224,11 @@ func TestCallBoruArms(t *testing.T) {
 		t.Fatalf("clamped trim call: got %v, %v", res, err)
 	}
 
-	// Body-created defs are popped back to the pre-call snapshot.
+	// Body-created defs are popped back to the pre-call snapshot — in a
+	// body that CAN bind (one naming a frame-state word, bodyNeedsFrameState).
+	// `stage-five-def` stands in for such a word: it is listed in
+	// frameStateWords under the name `do`, so the frame takes its snapshots
+	// and the cleanup scan pops the native's push along with everything else.
 	r.RegisterNativeFunc(NativeFunc{
 		Name: "stage-five-leak",
 		Signatures: []Signature{{
@@ -236,9 +240,17 @@ func TestCallBoruArms(t *testing.T) {
 			BarrierPos: 0,
 		}},
 	})
+	r.RegisterNativeFunc(NativeFunc{
+		Name: "do",
+		Signatures: []Signature{{
+			Impl:       Go(func(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) { return nil, nil }),
+			Returns:    []*Type{},
+			BarrierPos: 0,
+		}},
+	})
 	sigLeak := &Signature{
 		Params:     []FnParam{{Name: "a", Type: TAny}},
-		Impl:       Boru([]Value{NewWord("stage-five-leak")}),
+		Impl:       Boru([]Value{NewWord("stage-five-leak"), NewWord("do")}),
 		BarrierPos: 0,
 	}
 	if _, err := r.CallBoru(sigLeak, []Value{NewInteger(1)}, nil); err != nil {
@@ -247,6 +259,25 @@ func TestCallBoruArms(t *testing.T) {
 	if _, ok := r.Defs.Top("stage5$leaked"); ok {
 		t.Fatal("body-created def must be cleaned up after the call")
 	}
+	// A LEAF body — no frame-state word — takes no snapshot and runs no
+	// cleanup scan, the rule buildFnBodyHandler's named dispatch has
+	// applied since the speed plan and that CallBoru now shares: a native
+	// that pushes a def from Go inside such a body is outside the rule's
+	// sight, which is why every scope-binding native is listed in
+	// frameStateWords (`unpack`). This synthetic one is not, so its push
+	// persists — on this path exactly as on the named one.
+	sigLeafLeak := &Signature{
+		Params:     []FnParam{{Name: "a", Type: TAny}},
+		Impl:       Boru([]Value{NewWord("stage-five-leak")}),
+		BarrierPos: 0,
+	}
+	if _, err := r.CallBoru(sigLeafLeak, []Value{NewInteger(1)}, nil); err != nil {
+		t.Fatalf("leaf leak call: %v", err)
+	}
+	if _, ok := r.Defs.Top("stage5$leaked"); !ok {
+		t.Fatal("a leaf frame takes no cleanup snapshot: a Go-side push inside it persists, as on the named path")
+	}
+	r.Defs.Pop("stage5$leaked")
 
 	// The args-stack Pop guard: Pop errors only on a nil ArgsStack, which
 	// a normal call can never produce (Push on the same receiver succeeded

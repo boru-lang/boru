@@ -996,6 +996,20 @@ reused after the join now compiles.
 
 ---
 
+- **Open refusals recorded 2026-10-08 (the interpreter fn-kind inlining
+  pass):** found while measuring every way a function body can be reached
+  on both lanes (`lang/go/fn_kinds_bench_test.go`). The answer divergence
+  found beside it is NUR384.
+  - **U15.** A class method called by dot access and followed by more
+    tokens refuses: `def C class {op:(fn [[x:Integer] [Integer] [x add 1]])}
+    def c (make C {})`, then `c.op 4 c.op 5` — "dynamic value precedes
+    residual args (fn-value-call boundary)" — and `for 3 [c.op i]` — "for:
+    body nets multiple values per iteration". A single `c.op 4` compiles,
+    and so does the paren spelling `for 3 [(c.op i)]`, which is the
+    workaround: the bare method call's window is not closed off by the
+    next token the way a named fn call's is. The interpreter answers all
+    four.
+
 ## 6. The execution-environment seams
 
 - **Fallback islands** (`OpFallback`) re-run a recorded token span through a
