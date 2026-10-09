@@ -136,6 +136,12 @@ type Engine struct {
 	// atomically before control returns, so a single engine-owned buffer is
 	// reentrancy-safe.
 	loopTokens []Value
+	// sealed holds the sealed-region Loops (sealed.go), one per nesting
+	// depth of literal evaluation; sealDepth is the depth live now. A
+	// region at a depth is minted once and reused by every later literal
+	// evaluated at that depth, so a literal costs no allocation of its own.
+	sealed    []*Loop
+	sealDepth int
 	// peScratch is the reusable span buffer for expandParenExprScratch:
 	// a ParenExpr expands to `( items… )` immediately before a
 	// Tape.Splice (which copies the tokens in), so the buffer is free the
@@ -467,8 +473,8 @@ func (e *Engine) faultReturn(err error) error {
 	if e.trace != nil {
 		e.trace(-1, e.Pointer, e.Tape.Snapshot(), "fault: "+err.Error())
 	}
-	err = e.wrapLoopFault(err)
-	e.unwindLiveLoops()
+	err = e.wrapLoopFault(e.Pointer, e.Tape.Len(), err)
+	e.unwindLiveLoops(e.Pointer, e.Tape.Len())
 	e.unwindLiveFrames(0, e.Tape.Len())
 	return err
 }
@@ -487,8 +493,11 @@ func (e *Engine) faultReturn(err error) error {
 // that truncation nothing to pop for the name, and a loop enclosing a
 // live frame keeps its iterator beneath the frame's snapshot, where only
 // this walk reaches it. A while loop installs no iterator of its own.
-func (e *Engine) unwindLiveLoops() {
-	for i := e.Pointer; i < e.Tape.Len(); i++ {
+// The loops whose moves lie in [from, to) — the tape ahead of the pointer
+// for the run's fault return, a sealed region's extent for the region's
+// (failSealed).
+func (e *Engine) unwindLiveLoops(from, to int) {
+	for i := from; i < to; i++ {
 		if !IsMove(e.Tape.At(i)) {
 			continue
 		}
@@ -1812,122 +1821,8 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			e.trace(step, e.Pointer, snapshot, note)
 		}
 
-		switch {
-		case IsWord(val):
-			if err := e.stepWord(val); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsForward(val):
-			e.Pointer++
-
-		case IsOpenParen(val):
-			e.noteParenStack(e.Pointer)
-			e.stepPastOpenParen(val)
-
-		case IsCloseParen(val):
-			if err := e.stepCloseParen(true, false); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsEnd(val):
-			if err := e.stepEnd(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-				return nil, e.faultReturn(err)
-			}
-
-		case IsParenExpr(val):
-			// A word-context ParenExpr (paren-nesting work, Step 2 —
-			// design/legacy/PAREN-REPRESENTATION.9.ignore): expand it back to its
-			// OpenParen … CloseParen marker span in place and let the
-			// existing in-place collapse machinery evaluate it on THIS
-			// engine. That keeps exact parity with the former marker
-			// representation (recorder-transparent, same stack/registry
-			// semantics) — the four contracts hold because markers already
-			// honor them: errors propagate, defs leak, the OpenParen is a
-			// stack barrier, and results flow out. Do not advance — the
-			// OpenParen now sits at the pointer.
-			//
-			// Step 4: a codequote-captured ParenExpr (Quoted) is data, and a
-			// raw-capture pending forward (pendingForwardWantsRawParen) wants
-			// the paren collected as-is — both route through stepLiteral
-			// (push data / collect the forward arg) rather than expanding.
-			if val.Quoted || e.pendingForwardWantsRawParen() {
-				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-					return nil, e.faultReturn(err)
-				}
-			} else {
-				items, _ := AsParenExpr(val)
-				e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
-			}
-
-		case IsReach(val):
-			// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
-			// by lowering to its get/getr chain in place, exactly like the
-			// ParenExpr it replaced. An inert reach (Eval=false, from `reach`)
-			// or a codequote'd one (Quoted) is data — left via stepLiteral.
-			if isEvalReach(val) && !e.pendingForwardWantsRawParen() {
-				info, _ := AsReach(val)
-				// A dot-access chain (`m.a`, `MathUtil.now`) is a self-
-				// delimiting navigation that produces exactly ONE value — it
-				// reads as an implicit `(m.a)` group and feeds forward
-				// collection like any other value, so it is NOT a barrier
-				// under the strict rule. (The barrier exists for a function
-				// word that forward-collects its OWN args — `print add 1 2`;
-				// a Reach collects nothing further, its key is bound in the
-				// chain.) Lower to its get-chain marker span in place.
-				// design/STRICT-FORWARD-BARRIER.0.md.
-				e.Tape.Splice(e.Pointer, 1, expandReach(info)...)
-			} else {
-				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-					return nil, e.faultReturn(err)
-				}
-			}
-
-		case IsInterpString(val):
-			result, err := e.evalInterpString(val)
-			if err != nil {
-				return nil, e.faultReturn(err)
-			}
-			// Replace with the evaluated string but do NOT advance the
-			// pointer. The resulting string value needs to go through
-			// stepLiteral so forward collection works correctly.
-			e.Tape.Set(e.Pointer, result)
-
-		case IsXmlInterp(val):
-			// Interpolated XML literal: evaluate the skeleton in place to
-			// a concrete Node/Xml, then re-step it as the value (no pointer
-			// advance) so forward collection sees a Node/Xml — mirrors the
-			// IsInterpString case above.
-			result, err := e.EvalXmlInterp(val)
-			if err != nil {
-				return nil, e.faultReturn(err)
-			}
-			e.Tape.Set(e.Pointer, result)
-
-		case IsMark(val):
-			e.stepMark(val)
-
-		case IsMove(val):
-			if err := e.stepMove(val); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsReturnCheck(val):
-			e.Pointer++
-
-		case IsDefCleanup(val):
-			if err := e.stepDefCleanup(val, e.Pointer); err != nil {
-				return nil, e.faultReturn(err)
-			}
-			e.Pointer++
-
-		default:
-			if val.Parent == nil && val.Behavior() == nil {
-				return nil, e.faultReturn(e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", ""))
-			}
-			if err := e.stepLiteral(); err != nil {
-				return nil, e.faultReturn(err)
-			}
+		if err := e.stepToken(val); err != nil {
+			return nil, e.faultReturn(err)
 		}
 
 		// Flow-control signal raised during the step (by a break/
@@ -2048,6 +1943,116 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	residual := e.reconcileTopResidual(e.Tape.TakeAll())
 	CheckBraid.NoteStrandedTypeCall(e, residual)
 	return residual, nil
+}
+
+// stepToken steps the token at the pointer — the Run loop's dispatch on the
+// token's kind, shared with a sealed region's loop (evalSealed, sealed.go)
+// so a literal's elements step exactly as the program's tokens do. An
+// error is the step's; the caller decides the fault return.
+func (e *Engine) stepToken(val Value) error {
+	switch {
+	case IsWord(val):
+		return e.stepWord(val)
+
+	case IsForward(val):
+		e.Pointer++
+
+	case IsOpenParen(val):
+		e.noteParenStack(e.Pointer)
+		e.stepPastOpenParen(val)
+
+	case IsCloseParen(val):
+		return e.stepCloseParen(true, false)
+
+	case IsEnd(val):
+		return e.stepEnd()
+
+	case IsParenExpr(val):
+		// A word-context ParenExpr (paren-nesting work, Step 2 —
+		// design/legacy/PAREN-REPRESENTATION.9.ignore): expand it back to its
+		// OpenParen … CloseParen marker span in place and let the
+		// existing in-place collapse machinery evaluate it on THIS
+		// engine. That keeps exact parity with the former marker
+		// representation (recorder-transparent, same stack/registry
+		// semantics) — the four contracts hold because markers already
+		// honor them: errors propagate, defs leak, the OpenParen is a
+		// stack barrier, and results flow out. Do not advance — the
+		// OpenParen now sits at the pointer.
+		//
+		// Step 4: a codequote-captured ParenExpr (Quoted) is data, and a
+		// raw-capture pending forward (pendingForwardWantsRawParen) wants
+		// the paren collected as-is — both route through stepLiteral
+		// (push data / collect the forward arg) rather than expanding.
+		if val.Quoted || e.pendingForwardWantsRawParen() {
+			return e.stepLiteral()
+		}
+		items, _ := AsParenExpr(val)
+		e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
+
+	case IsReach(val):
+		// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
+		// by lowering to its get/getr chain in place, exactly like the
+		// ParenExpr it replaced. An inert reach (Eval=false, from `reach`)
+		// or a codequote'd one (Quoted) is data — left via stepLiteral.
+		if isEvalReach(val) && !e.pendingForwardWantsRawParen() {
+			info, _ := AsReach(val)
+			// A dot-access chain (`m.a`, `MathUtil.now`) is a self-
+			// delimiting navigation that produces exactly ONE value — it
+			// reads as an implicit `(m.a)` group and feeds forward
+			// collection like any other value, so it is NOT a barrier
+			// under the strict rule. (The barrier exists for a function
+			// word that forward-collects its OWN args — `print add 1 2`;
+			// a Reach collects nothing further, its key is bound in the
+			// chain.) Lower to its get-chain marker span in place.
+			// design/STRICT-FORWARD-BARRIER.0.md.
+			e.Tape.Splice(e.Pointer, 1, expandReach(info)...)
+		} else {
+			return e.stepLiteral()
+		}
+
+	case IsInterpString(val):
+		result, err := e.evalInterpString(val)
+		if err != nil {
+			return err
+		}
+		// Replace with the evaluated string but do NOT advance the
+		// pointer. The resulting string value needs to go through
+		// stepLiteral so forward collection works correctly.
+		e.Tape.Set(e.Pointer, result)
+
+	case IsXmlInterp(val):
+		// Interpolated XML literal: evaluate the skeleton in place to
+		// a concrete Node/Xml, then re-step it as the value (no pointer
+		// advance) so forward collection sees a Node/Xml — mirrors the
+		// IsInterpString case above.
+		result, err := e.EvalXmlInterp(val)
+		if err != nil {
+			return err
+		}
+		e.Tape.Set(e.Pointer, result)
+
+	case IsMark(val):
+		e.stepMark(val)
+
+	case IsMove(val):
+		return e.stepMove(val)
+
+	case IsReturnCheck(val):
+		e.Pointer++
+
+	case IsDefCleanup(val):
+		if err := e.stepDefCleanup(val, e.Pointer); err != nil {
+			return err
+		}
+		e.Pointer++
+
+	default:
+		if val.Parent == nil && val.Behavior() == nil {
+			return e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", "")
+		}
+		return e.stepLiteral()
+	}
+	return nil
 }
 
 // reconcileTopResidual reconciles the top-level program residual the same
@@ -5234,17 +5239,19 @@ func AutoEvalConsumedMap(r *Registry, v Value, dataMap bool) (Value, error) {
 	return NewTop(r).AutoEvalMap(v, dataMap, true)
 }
 
-// runInlineCtxRegion runs input on a pooled sub-engine, bracketing the run
-// as an inline context-boundary region while an analysis pass is live
-// (EmitRecorder.PushInlineCtxBoundary — NUR054): the sub-run's RUNTIME twin
-// pushes a context layer (Engine.Run's Contexts Push/Pop pair), but its
-// recorded events lower INLINE into the enclosing unit (OpMakeList /
-// OpInterp assembly), so an ambient-context write inside it must decline
-// rather than compile one scope too shallow. Outside analysis the wrapper is
-// exactly RunPooledSub — the hot interpreter path pays nothing.
-func (e *Engine) runInlineCtxRegion(input []Value, elemEvalRecordable bool) ([]Value, error) {
+// runInlineCtxRegion runs input — a container literal's elements, a map
+// member, an interpolation hole — as an inline context-boundary region.
+// At run time that is a sealed region of this tape (runSealed, sealed.go).
+// While an analysis pass is live it is a pooled sub-engine run bracketed
+// for the recorder (EmitRecorder.PushInlineCtxBoundary — NUR054): the
+// sub-run's RUNTIME twin pushes a context layer (the region's mark, as
+// Engine.Run's Contexts Push/Pop pair before it), but its recorded events
+// lower INLINE into the enclosing unit (OpMakeList / OpInterp assembly), so
+// an ambient-context write inside it must decline rather than compile one
+// scope too shallow. kind names the region for the trace and the debugger.
+func (e *Engine) runInlineCtxRegion(input []Value, kind string, elemEvalRecordable bool) ([]Value, error) {
 	if !e.Registry.analysisActive() {
-		return RunContainerSub(e.Registry, input, elemEvalRecordable)
+		return e.runSealed(input, kind, elemEvalRecordable)
 	}
 	es := e.Registry.analysisRecorder()
 	es.PushInlineCtxBoundary()
@@ -5258,9 +5265,13 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	if elems.Len() == 0 {
 		return val, nil
 	}
-	input := make([]Value, elems.Len())
-	copy(input, elems.Slice())
-	result, err := e.runInlineCtxRegion(input, e.IsTop || consumed || e.ElemEvalRecordable)
+	// A sealed region copies the elements onto the tape itself; a
+	// sub-engine's run is handed a copy of its own.
+	input := elems.elems
+	if !e.sealsLiterals() {
+		input = elems.Slice()
+	}
+	result, err := e.runInlineCtxRegion(input, "list literal", e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, err
 	}
@@ -5366,7 +5377,7 @@ func (e *Engine) evalInterpParts(parts []InterpPart) (s string, dynamic bool, ho
 			buf.WriteString(part.Lit)
 			continue
 		}
-		result, runErr := e.runInlineCtxRegion(part.Expr, false)
+		result, runErr := e.runInlineCtxRegion(part.Expr, "interpolation hole", false)
 		if runErr != nil {
 			return "", dynamic, nil, false, runErr
 		}
@@ -5561,7 +5572,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 			// layer push), but its events lower inline into OpInterpXml's
 			// enclosing unit (NUR054 — the attribute holes ride evalInterpParts
 			// and are bracketed there).
-			results, err := e.runInlineCtxRegion(c.Expr, false)
+			results, err := e.runInlineCtxRegion(c.Expr, "interpolation hole", false)
 			if err != nil {
 				return Value{}, false, nil, false, err
 			}
@@ -5763,7 +5774,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 		if folded, ok := e.constFoldContainerVal(items); ok {
 			if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
 				return e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
-					return e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+					return e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 				}), true, nil
 			}
 		}
@@ -5774,7 +5785,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 	// results resolve as the map's operands (RecordMakeMap). Off that bracket
 	// — the bare pooled sub-run this used to be — a member the fold declined
 	// left the map with no compiled home.
-	result, err := e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+	result, err := e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, false, err
 	}
@@ -5836,7 +5847,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// Computed key: evaluate the key text as boru code to get
 		// the actual string key. E.g., {[a]:1} with def a 'x' → {x:1}
 		if ckSet[key] {
-			keyResult, err := RunContainerSub(e.Registry, []Value{NewWord(key)}, false)
+			keyResult, err := e.runSealed([]Value{NewWord(key)}, "map key", false)
 			if err != nil {
 				return Value{}, fmt.Errorf("computed key [%s]: %w", key, err)
 			}
@@ -5891,7 +5902,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// in the same inline region as a paren member.
 		if isEvalReach(v) {
 			info, _ := AsReach(v)
-			result, err := e.runInlineCtxRegion(lowerReach(info), e.IsTop || consumed || e.ElemEvalRecordable)
+			result, err := e.runInlineCtxRegion(lowerReach(info), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 			if err != nil {
 				return Value{}, err
 			}
@@ -5936,9 +5947,10 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			out.Set(resolvedKey, rv)
 			continue
 		}
-		// Evaluate each value in a pooled sub-engine.
-		result, err := RunContainerSub(e.Registry, []Value{v},
-			e.IsTop || consumed || e.ElemEvalRecordable)
+		// Evaluate each value as a sealed region of its own (a pooled
+		// sub-engine under analysis): a member's context layer is the
+		// member's.
+		result, err := e.runSealed([]Value{v}, "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 		if err != nil {
 			return Value{}, err
 		}
@@ -10175,7 +10187,14 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	// The move that follows fires here as well, rather than as a step of
 	// its own: the region's residual is complete, and the move is the
 	// token right after it.
+	// A region's close paren is the one its move follows; a `)` among the
+	// body's tokens with no `(` of its own meets the seal instead, and is
+	// the unmatched close the body's own run reported (the parser writes no
+	// such body or literal; a Go-built one can).
 	if _, isLoop := e.Tape.At(openIdx).Data.(LoopOpenInfo); isLoop {
+		if closeIdx+1 >= e.Tape.Len() || !IsMove(e.Tape.At(closeIdx+1)) {
+			return makeBoruErrorAt("syntax_error", "unmatched closing parenthesis", ")", e.effectiveSource(), "", e.Tape.At(closeIdx).Pos())
+		}
 		e.Tape.Remove(closeIdx)
 		e.Tape.Remove(openIdx)
 		e.Pointer = closeIdx - 1

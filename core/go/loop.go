@@ -141,6 +141,17 @@ func IsLoopRegion(results []Value) bool {
 	return info.Loop != nil
 }
 func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value {
+	lp.mint(len(inputs))
+	out := append(buf[:0], lp.mark, lp.open)
+	out = append(out, inputs...)
+	out = append(out, lp.bodyTokens(body)...)
+	return append(out, lp.close, lp.move)
+}
+
+// mint makes the loop's synthetic tokens once — the mark, the close paren
+// and the move on the first call, the sealing paren whenever the inert-input
+// span differs from the one it was minted for.
+func (lp *Loop) mint(argSpan int) {
 	if lp.mark.Parent == nil {
 		id := NextMarkID()
 		lp.mark = NewLoopMark(id, lp)
@@ -155,13 +166,9 @@ func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value
 			lp.mark.pos, lp.move.pos = &lp.Pos, &lp.Pos
 		}
 	}
-	if lp.open.Parent == nil || lp.openSpan != len(inputs) {
-		lp.open, lp.openSpan = NewLoopOpen(lp, len(inputs)), len(inputs)
+	if lp.open.Parent == nil || lp.openSpan != argSpan {
+		lp.open, lp.openSpan = NewLoopOpen(lp, argSpan), argSpan
 	}
-	out := append(buf[:0], lp.mark, lp.open)
-	out = append(out, inputs...)
-	out = append(out, lp.bodyTokens(body)...)
-	return append(out, lp.close, lp.move)
 }
 
 // bodyTokens is BodyTokens without the copy: a concrete list's own elements
@@ -360,14 +367,16 @@ func (e *Engine) abandonDrivenLoop(info MoveInfo) {
 }
 
 // wrapLoopFault attributes a fault raised inside a driven loop's body to
-// the loop — `each: element 2: …` — through every live driven loop
-// enclosing the pointer, innermost first, as each handler wrapped the error
-// its sub-engine returned before the next handler out wrapped that.
-func (e *Engine) wrapLoopFault(err error) error {
+// the loop — `each: element 2: …` — through every live driven loop whose
+// move lies in [from, to), innermost first (the tape ahead of the pointer
+// for the run's fault return; a sealed region's extent for the region's,
+// failSealed), as each handler wrapped the error its sub-engine returned
+// before the next handler out wrapped that.
+func (e *Engine) wrapLoopFault(from, to int, err error) error {
 	if e.marks == nil {
 		return err
 	}
-	for i := e.Pointer; i < e.Tape.Len(); i++ {
+	for i := from; i < to; i++ {
 		v := e.Tape.At(i)
 		if !IsMove(v) {
 			continue

@@ -134,6 +134,46 @@ where a handler is reached with the registry's `Invoker` set and
 callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,
 a flow signal stops at the boundary), because that contract is pinned.
 
+## Container literals are sealed regions of the tape
+
+A pending list or map literal — one the parser wrote and nothing has
+consumed yet — evaluates where a word takes it, where a loop's region or a
+frame's cleanup collects it, or at the end-of-run sweep. Since 2026-10-09
+that evaluation is a **sealed region** of the running tape
+(`core/go/sealed.go`), not a pooled container sub-engine: the elements are
+spliced right after the pointer as a driven loop of ONE iteration —
+`mark (ₗ elements… ) move` — and stepped by `evalSealed` until the move
+collapses them. Each piece is what the sub-engine's run was: the
+`LoopOpenInfo` paren seals the stack, the mark pushes the context layer
+and opens a step budget of the region's own, the close paren resolves the
+region's pending forwards (the run's implicit end) and fires the move,
+whose collection evaluates a nested pending literal as the end-of-run
+sweep did; the driver keeps the residual as the result and the tokens
+leave the tape with the pointer back where it stood. A map evaluates one
+region per member and per computed key — a member's context layer is the
+member's, as its sub-run's was; an interpolation hole is a region too. A
+break/continue the elements let out is NUR358's: a loop inside the literal
+takes it in place, otherwise the region is abandoned whole and the holding
+run resolves the signal; an error is attributed to the driven loops still
+live inside the region, which is then unwound and removed before the
+run's own fault return runs, so a trapped error finds the tape sound.
+
+Two things to know when touching the engine. **Per-dispatch engine state
+is shared with the region.** The dispatch holding the literal may be
+mid-match (a pattern evaluating a member, NUR235) or mid-collection, so
+the region sets aside what that dispatch keeps live — the resolved-stack
+scratch its match reads, the pattern-evaluation flags, the void-group and
+recovery-raw records, the StackForm recorder — and the TCO paren-depth
+guard, which the region's own stepping does not need (`sealedHold`). A
+new engine-level scratch buffer or one-shot flag that a dispatch holds
+across its argument evaluation belongs in that hold. **The analysis pass
+keeps the sub-engine** (`sealsLiterals`): its recorder brackets and
+top-frame rules read the sub-run's flags (`ElemEvalRecordable`, `IsTop`),
+and so does an engine with no tape to run on (`AutoEvalConsumedList`'s
+`NewTop`). A literal is no longer an interpreter entry in the census; a
+sub-engine inside the elements (a `=>` callback, a foreign module fn) still
+is.
+
 ## Signature Ordering (CRITICAL)
 
 There is exactly **one** argument-positioning convention in this
