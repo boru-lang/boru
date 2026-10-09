@@ -39,7 +39,7 @@ func TestS7StepMoveMarkNotFoundErrors(t *testing.T) {
 
 func TestS7StepMoveContMoreIterationsNilMarks(t *testing.T) {
 	r := covRegistry(t, nil)
-	cont := &ForCont{
+	cont := &Loop{
 		Registry: r,
 		IterName: "i",
 		Current:  0,
@@ -122,7 +122,7 @@ func TestS7TraceNotesGated(t *testing.T) {
 	// stepMoveCont next iteration → "for next <id> i=<n>"
 	{
 		r := covRegistry(t, nil)
-		cont := &ForCont{Registry: r, IterName: "i", Current: 0, End: 3, Step: 1, Body: []Value{NewInteger(1)}}
+		cont := &Loop{Registry: r, IterName: "i", Current: 0, End: 3, Step: 1, Body: []Value{NewInteger(1)}}
 		e := NewTop(r)
 		e.SetTrace(noop)
 		e.Tape = NewTape([]Value{NewMark("m1"), NewMoveCont("m1", "for loop", cont)}, StackHeadroom)
@@ -138,7 +138,7 @@ func TestS7TraceNotesGated(t *testing.T) {
 	// stepMoveCont final iteration → "for done"
 	{
 		r := covRegistry(t, nil)
-		cont := &ForCont{Registry: r, IterName: "i", Current: 3, End: 3, Step: 1, Body: []Value{NewInteger(1)}}
+		cont := &Loop{Registry: r, IterName: "i", Current: 3, End: 3, Step: 1, Body: []Value{NewInteger(1)}}
 		e := NewTop(r)
 		e.SetTrace(noop)
 		e.Tape = NewTape([]Value{NewMark("m1"), NewMoveCont("m1", "for loop", cont)}, StackHeadroom)
@@ -229,7 +229,7 @@ func TestEffectiveResolvedScratchReuse(t *testing.T) {
 
 func TestS7HandleLoopBreakMissingMark(t *testing.T) {
 	r := covRegistry(t, nil)
-	cont := &ForCont{Registry: r, IterName: "i"}
+	cont := &Loop{Registry: r, IterName: "i"}
 	// A MoveCont with no matching Mark on the tape → markIdx<0 → skip.
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewMoveCont("gone", "for loop", cont)}, StackHeadroom)
@@ -241,7 +241,7 @@ func TestS7HandleLoopBreakMissingMark(t *testing.T) {
 
 func TestS7HandleLoopContinueMissingMark(t *testing.T) {
 	r := covRegistry(t, nil)
-	cont := &ForCont{Registry: r, IterName: "i"}
+	cont := &Loop{Registry: r, IterName: "i"}
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewMoveCont("gone", "for loop", cont)}, StackHeadroom)
 	e.marks = map[string]bool{"gone": true}

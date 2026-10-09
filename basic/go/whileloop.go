@@ -2,7 +2,7 @@ package basic
 
 // RunWhileLoop builds the mark + condition + move tokens for a while
 // loop — the condition region runs first, and the move's while-mode
-// ForCont (core engine.go stepMoveWhile) alternates condition and body
+// Loop (core engine.go stepMoveWhile) alternates condition and body
 // regions from there. Both operands are quoted code lists (NoEvalArgs).
 // Every region is engine-stepped, so the Run loop's step budget meters
 // the loop: `while [true] []` is bounded by evaluation_limit, never a
@@ -29,8 +29,10 @@ func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
 	bodyCopy := make([]Value, len(bodySlice))
 	copy(bodyCopy, bodySlice)
 
-	cont := &ForCont{
+	cont := &Loop{
 		Registry:  r,
+		Word:      "while",
+		Count:     -1,
 		Body:      bodyCopy,
 		WhileCond: condCopy,
 		CondPos:   cond.Pos(),

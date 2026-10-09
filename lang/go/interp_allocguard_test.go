@@ -37,8 +37,12 @@ func TestInterpAllocCeilings(t *testing.T) {
 		{"compare_loop", "", `for 200 [gt i 100]`, 4780, 1_850_000},
 		{"if_scalar", "", `for 200 [if (gt i 100) [1] [0]]`, 8150, 3_700_000},
 		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 7750, 2_950_000},
-		{"each_list", `def xs100 ` + intList(100), `each [mul 2] xs100`, 1950, 850_000},
-		{"fold_int", `def xs100b ` + intList(100), `fold [add] xs100b 0`, 1360, 620_000},
+		// each / fold LOWERED 2026-10-08 (1950 -> 1400, 1360 -> 870): the loop
+		// runs on the tape (core loop.go) — one sealed region per element,
+		// the loop's tokens minted once — instead of a pooled sub-engine run
+		// per element, whose entry, inputs and result copy allocated.
+		{"each_list", `def xs100 ` + intList(100), `each [mul 2] xs100`, 1400, 400_000},
+		{"fold_int", `def xs100b ` + intList(100), `fold [add] xs100b 0`, 870, 300_000},
 		{"map_get", `def mg {a: {b: {c: {d: 1}}}}`, `for 100 [mg.a.b.c.d]`, 6800, 3_300_000},
 		{"string_join", `def ws ['alpha' 'beta' 'gamma' 'delta']`, `for 50 [join '-' ws]`, 18400, 2_050_000},
 	}

@@ -4,7 +4,8 @@ import "fmt"
 
 // RunForLoop builds the mark+body+move tokens for a for loop and returns
 // them. The engine splices these onto the stack and processes them; the
-// move's ForCont drives subsequent iterations via stepMoveCont.
+// move's Loop drives subsequent iterations via stepMoveCont. The Loop is
+// annotated for the trace and the debugger (Word, Iter, Count).
 //
 // Break and continue use sentinel errors caught by the engine's Run loop,
 // which delegates to handleLoopBreak/handleLoopContinue.
@@ -32,8 +33,11 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 	bodyCopy := make([]Value, len(bodySlice))
 	copy(bodyCopy, bodySlice)
 
-	cont := &ForCont{
+	cont := &Loop{
 		Registry:  r,
+		Word:      "for",
+		Iter:      1,
+		Count:     int(LoopIterations(start, end, step)),
 		IterName:  iterName,
 		Current:   start,
 		End:       end,

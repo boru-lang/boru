@@ -206,62 +206,16 @@ func filterBodyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	if !IsConcrete(args[0]) {
 		return nil, r.BoruError("filter_error", "filter: expected a concrete body list", "filter")
 	}
-	keep := func(elem Value, label string) (bool, error) {
-		res, err := InvokeBody(r, args[0], []Value{elem})
-		if err != nil {
-			return false, fmt.Errorf("filter: %s: %w", label, err)
-		}
-		if BodyEscaped(r) {
-			return false, nil // the body's break/continue ends the filter; the loops below return
-		}
-		if len(res) == 0 {
-			return false, r.BoruError("filter_error", fmt.Sprintf("filter: %s: body produced no result", label), "filter")
-		}
-		top := res[len(res)-1]
-		if !top.Parent.ConformsTo(TBoolean) || !IsConcrete(top) {
-			return false, r.BoruError("filter_error", fmt.Sprintf("filter: %s: body must produce a Boolean, got %s", label, top.Parent.Name()), "filter")
-		}
-		b, _ := AsBoolean(top)
-		return b, nil
-	}
-
+	// One tape loop over the elements (the entries), the body's Boolean
+	// top deciding each (filterDriver, core loop.go); under the VM the
+	// driver runs from Go over the compiled closure.
 	switch {
 	case args[1].Parent.ConformsTo(TList) && IsConcrete(args[1]):
 		data, _ := AsList(args[1])
-		out := make([]Value, 0, data.Len())
-		for i := 0; i < data.Len(); i++ {
-			elem := data.Get(i)
-			ok, err := keep(elem, fmt.Sprintf("element %d", i))
-			if err != nil {
-				return nil, err
-			}
-			if BodyEscaped(r) {
-				return nil, nil
-			}
-			if ok {
-				out = append(out, elem)
-			}
-		}
-		// #4 (round 3): filter (quotation list form) — retain the source [:T] tag.
-		return []Value{d2RetainElem(NewList(out), args[1])}, nil
+		return StartLoop(r, "filter", &filterDriver{reg: r, body: args[0], src: args[1], list: data, out: make([]Value, 0, data.Len())}, nil)
 	case args[1].Parent.ConformsTo(TMap) && IsConcrete(args[1]):
 		data, _ := AsMap(args[1])
-		out := NewOrderedMap()
-		for _, k := range data.Keys() {
-			v, _ := data.Get(k)
-			ok, err := keep(v, fmt.Sprintf("key %q", k))
-			if err != nil {
-				return nil, err
-			}
-			if BodyEscaped(r) {
-				return nil, nil
-			}
-			if ok {
-				out.Set(k, v)
-			}
-		}
-		// #4 (round 3): filter (quotation map form) — retain the source {:T} tag.
-		return []Value{d2RetainElem(NewMap(out), args[1])}, nil
+		return StartLoop(r, "filter", &filterDriver{reg: r, body: args[0], src: args[1], data: data, keys: data.Keys(), outMap: NewOrderedMap()}, nil)
 	default:
 		return nil, r.BoruError("filter_error", "filter: quotation form expects a concrete list or map", "filter")
 	}

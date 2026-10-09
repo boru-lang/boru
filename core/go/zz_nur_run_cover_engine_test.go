@@ -57,7 +57,7 @@ func TestNurRunPopIterLevels(t *testing.T) {
 	r.Defs.Push("i", NewInteger(100)) // pre-loop binding
 	r.Defs.Push("i", NewInteger(0))   // the loop's index level
 	r.Defs.Push("i", NewInteger(9))   // a body `def i 9`
-	cont := &ForCont{Registry: r, IterName: "i", IterDepth: 2}
+	cont := &Loop{Registry: r, IterName: "i", IterDepth: 2}
 
 	popIterLevels(cont, false)
 	if d := r.Defs.Depth("i"); d != 2 {
@@ -72,7 +72,7 @@ func TestNurRunPopIterLevels(t *testing.T) {
 	// Negative: no recorded depth — one level, whatever sits above it.
 	r.Defs.Push("j", NewInteger(1))
 	r.Defs.Push("j", NewInteger(2))
-	popIterLevels(&ForCont{Registry: r, IterName: "j"}, true)
+	popIterLevels(&Loop{Registry: r, IterName: "j"}, true)
 	if d := r.Defs.Depth("j"); d != 1 {
 		t.Fatalf("an unrecorded depth pops one level: depth %d, want 1", d)
 	}
@@ -82,8 +82,8 @@ func TestNurRunPopIterLevels(t *testing.T) {
 // move not yet reached) uninstalls the loop's iterator, while a fault BEFORE
 // the loop's mark has stepped leaves the binding alone.
 func TestNurRunFaultUnwindsLiveLoopIterator(t *testing.T) {
-	loop := func(r *Registry) *ForCont {
-		return &ForCont{Registry: r, IterName: "i", Current: 0, End: 2, Step: 1, IterDepth: 1}
+	loop := func(r *Registry) *Loop {
+		return &Loop{Registry: r, IterName: "i", Current: 0, End: 2, Step: 1, IterDepth: 1}
 	}
 
 	r := nrcEngineRegistry(t)
@@ -121,7 +121,7 @@ func TestNurRunForRegionEvaluatesPendingResidual(t *testing.T) {
 	r := nrcEngineRegistry(t)
 	r.Defs.Push("i", NewInteger(100)) // an OUTER i, beneath the loop
 	r.Defs.Push("i", NewInteger(7))   // the loop's index for this iteration
-	cont := &ForCont{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, IterDepth: 2}
+	cont := &Loop{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, IterDepth: 2}
 	quoted := NewEvalList([]Value{NewWord("i")})
 	quoted.Quoted = true
 	e := NewTop(r)
@@ -140,7 +140,7 @@ func TestNurRunForRegionEvaluatesPendingResidual(t *testing.T) {
 	}
 
 	// Negative: the residual's evaluation raises — the move surfaces it.
-	cont2 := &ForCont{Registry: r, IterName: "k", Current: 0, End: 1, Step: 1}
+	cont2 := &Loop{Registry: r, IterName: "k", Current: 0, End: 1, Step: 1}
 	e2 := NewTop(r)
 	e2.Tape = NewTape([]Value{
 		NewMark("m2"), NewEvalList([]Value{NewWord("nrc-boom")}), NewMoveCont("m2", "for loop", cont2),

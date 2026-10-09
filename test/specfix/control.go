@@ -179,7 +179,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 
 // fixRunForLoop mirrors basic's RunForLoop for the count form: install
 // the iterator, build mark + body + move-cont tokens; the engine's
-// stepMoveCont drives the remaining iterations through the ForCont.
+// stepMoveCont drives the remaining iterations through the Loop.
 func fixRunForLoop(r *core.Registry, start, end, step int64, iterName string, body core.Value) ([]core.Value, error) {
 	if step > 0 && start >= end {
 		return nil, nil
@@ -194,8 +194,11 @@ func fixRunForLoop(r *core.Registry, start, end, step int64, iterName string, bo
 
 	bodyCopy := make([]core.Value, len(bodySlice))
 	copy(bodyCopy, bodySlice)
-	cont := &core.ForCont{
+	cont := &core.Loop{
 		Registry: r,
+		Word:     "for",
+		Iter:     1,
+		Count:    -1,
 		IterName: iterName,
 		Current:  start,
 		End:      end,

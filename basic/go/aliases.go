@@ -77,7 +77,7 @@ type (
 	FnSig                = core.FnSig
 	FnSigSpec            = core.FnSigSpec
 	FnUndefInfo          = core.FnUndefInfo
-	ForCont              = core.ForCont
+	Loop                 = core.Loop
 	ForwardInfo          = core.ForwardInfo
 	Handler              = core.Handler
 	IfCont               = core.IfCont
@@ -499,6 +499,9 @@ var (
 	RunPooledTop             = core.RunPooledTop
 	RunResolved              = core.RunResolved
 	InvokeBody               = core.InvokeBody
+	CallRegion               = core.CallRegion
+	BodyTokens               = core.BodyTokens
+	IsLoopRegion             = core.IsLoopRegion
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
 	CloneValue               = core.CloneValue

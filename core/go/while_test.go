@@ -7,8 +7,8 @@ import (
 
 // whileCont builds a while-mode continuation over the given cond/body
 // token slices — the shape basic's RunWhileLoop constructs.
-func whileCont(r *Registry, cond, body []Value) *ForCont {
-	return &ForCont{Registry: r, Body: body, WhileCond: cond}
+func whileCont(r *Registry, cond, body []Value) *Loop {
+	return &Loop{Registry: r, Body: body, WhileCond: cond}
 }
 
 // TestWhileMoveCondTruthySplicesBody — a truthy condition region flips

@@ -438,6 +438,13 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.curStack, s.curPointer = stack, pointer
+	// An each/fold/… body runs on its loop's own tape (core loop.go) since
+	// 2026-10-08 — it reached the session as a sub-engine's fire before —
+	// so a fire inside a driven loop's region is a body fire: labelled
+	// "(in body)", part of its line for `next`/`out`, off the replay count.
+	if !sub && inLoopBody(stack, pointer) {
+		sub = true
+	}
 	if s.mode == modeDetached || s.inPrompt {
 		return
 	}
@@ -464,10 +471,17 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 		return
 	}
 	s.lastFault = ""
-	if strings.HasPrefix(note, "for next ") {
-		// A `for` iteration boundary is a line boundary: without this, a
-		// single-line loop body coalesces ALL its iterations into the
-		// first stop (every token shares one Row, contiguously).
+	if strings.HasPrefix(note, "for next ") || (strings.HasPrefix(note, "loop ") && !strings.HasPrefix(note, "loop done ")) {
+		// A loop's iteration boundary — a `for` re-mark, or a driven loop's
+		// (each, fold, …: core loop.go) — is a line boundary: without this,
+		// a single-line loop body coalesces ALL its iterations into the
+		// first stop (every token shares one Row, contiguously). A region's
+		// ENTRY (`loop <state>`: a driven loop's first iteration, a
+		// container literal's elements, a `case` block) is one too — the
+		// sub-engine that ran the body before fired a fresh run there, so a
+		// breakpoint on the call's own line stops in the first body as in
+		// every later one. `loop done` ends the region on the call's line
+		// and is no boundary.
 		s.prevRow = 0
 	}
 	row := 0
@@ -933,6 +947,14 @@ func resolvedData(stack []native.Value, pointer int) []native.Value {
 	}
 	vals := make([]native.Value, 0, n)
 	for _, v := range stack[:n] {
+		if native.IsOpenParen(v) {
+			// A loop region's sealing paren bounds the view, as the live
+			// CurrentStack bounds it: the body sees nothing beneath it.
+			if _, sealed := v.Data.(native.LoopOpenInfo); sealed {
+				vals = vals[:0]
+			}
+			continue
+		}
 		if isEngineMarker(v) {
 			continue
 		}
@@ -1250,6 +1272,35 @@ func (s *Session) renderBacktrace() {
 		}
 		fmt.Fprintln(s.out, line)
 	}
+}
+
+// inLoopBody reports whether the pointer lies inside a DRIVEN loop's
+// iteration region on this tape — an each/fold/scan/filter/… body: the
+// nearest live loop move after the pointer whose mark lies before it. A
+// `for`/`while` body is not a body in this sense: it never was one (it ran
+// on the program's own tape all along), and `step` walks it as its line.
+func inLoopBody(stack []native.Value, pointer int) bool {
+	if pointer < 0 {
+		return false
+	}
+	for i := pointer; i < len(stack); i++ {
+		if !native.IsMove(stack[i]) {
+			continue
+		}
+		info, _ := native.AsMove(stack[i])
+		if info.Cont == nil || info.Cont.Driver == nil {
+			continue
+		}
+		for j := min(pointer, len(stack)) - 1; j >= 0; j-- {
+			if !native.IsMark(stack[j]) {
+				continue
+			}
+			if m, _ := native.AsMark(stack[j]); m.ID == info.To {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // liveFrames scans the tape snapshot for fn frames opened below the

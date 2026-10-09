@@ -65,7 +65,10 @@ type (
 	FnSig                = core.FnSig
 	FnSigSpec            = core.FnSigSpec
 	FnUndefInfo          = core.FnUndefInfo
-	ForCont              = core.ForCont
+	Loop                 = core.Loop
+	LoopDriver           = core.LoopDriver
+	LoopOpenInfo         = core.LoopOpenInfo
+	LoopInvoke           = core.LoopInvoke
 	ForwardInfo          = core.ForwardInfo
 	GuardClause          = core.GuardClause
 	Handler              = core.Handler
@@ -572,6 +575,9 @@ var (
 	NewMark               = core.NewMark
 	NewMove               = core.NewMove
 	NewMoveCont           = core.NewMoveCont
+	StartLoop             = core.StartLoop
+	IsLoopRegion          = core.IsLoopRegion
+	DriveLoop             = core.DriveLoop
 	NewMoveIf             = core.NewMoveIf
 	NewClassInstance      = core.NewClassInstance
 	NewClassType          = core.NewClassType

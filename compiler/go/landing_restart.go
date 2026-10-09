@@ -1856,7 +1856,7 @@ func takesBeneath(tree map[int]treeEvent, body []core.Value, start core.SrcPos, 
 // stop inside a counted `for` loop's body on ANY iteration runs the rest of
 // that iteration's statement and body, the loop's remaining iterations and
 // everything after the loop on the interpreter — the loop's own mark and
-// continuation (core.ForCont) resumed at the stop's iteration, the values
+// continuation (core.Loop) resumed at the stop's iteration, the values
 // its earlier iterations left as the continuation's results. A statement
 // island taking the loop's statement over from its first token could run
 // only the first iteration, which it would otherwise repeat.

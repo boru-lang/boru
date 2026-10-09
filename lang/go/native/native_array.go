@@ -301,11 +301,12 @@ var allArrayNatives = []NativeFunc{
 		// A 0-net body is each's own each_error ("body produced no result"), raised
 		// faithfully from InvokeBody, so EmptyBodyErrors compiles it natively rather
 		// than islanding.
-		// BodyMultiRunKeepsDefs: eachHandler drives InvokeBody once per
-		// element on the shared registry with no def cleanup, so a body def
-		// leaks one install per element with the per-element runtime value
-		// (the parity oracle's measured population) — the twin regime's
-		// arm-residency license; see the field's doc in core.
+		// BodyMultiRunKeepsDefs: eachHandler's loop runs the body once per
+		// element on the shared registry with no def cleanup — on the tape
+		// interpreted (core loop.go), through InvokeBody under the VM — so a
+		// body def leaks one install per element with the per-element
+		// runtime value (the parity oracle's measured population) — the
+		// twin regime's arm-residency license; see the field's doc in core.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
 			return []Value{ElementCarrierOf(a[1])}
 		}},
@@ -1563,23 +1564,12 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		return nil, err
 	}
 	dataList, _ := AsList(args[1])
-
-	results := make([]Value, dataList.Len())
-	for i := 0; i < dataList.Len(); i++ {
-		elem := dataList.Get(i)
-		res, err := InvokeBody(reg, args[0], []Value{elem})
-		if err != nil {
-			return nil, fmt.Errorf("each: element %d: %w", i, err)
-		}
-		if BodyEscaped(reg) {
-			return nil, nil // the body's break/continue ends the each; the run resolves it
-		}
-		if len(res) == 0 {
-			return nil, reg.BoruError("each_error", fmt.Sprintf("each: element %d: body produced no result", i), "each")
-		}
-		results[i] = res[len(res)-1] // take top of stack
-	}
-	return []Value{NewList(results)}, nil
+	// The loop runs ON THE TAPE (core loop.go): one sealed region per
+	// element, the body's top as the element's answer, break/continue
+	// passing through to the enclosing loop, a body error attributed
+	// `each: element N:`. Under the VM the same driver runs from Go
+	// through InvokeBody, the body a compiled closure, as before.
+	return StartLoop(reg, "each", newEachListDriver(reg, "each", args[0], dataList, true), nil)
 }
 
 // eachReachHandler is the lens form of each: it applies a receiverless Reach
@@ -1649,17 +1639,7 @@ func forEachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 		return nil, err
 	}
 	dataList, _ := AsList(args[1])
-
-	for i := 0; i < dataList.Len(); i++ {
-		elem := dataList.Get(i)
-		if _, err := InvokeBody(reg, args[0], []Value{elem}); err != nil {
-			return nil, fmt.Errorf("for-each: element %d: %w", i, err)
-		}
-		if BodyEscaped(reg) {
-			return nil, nil
-		}
-	}
-	return nil, nil
+	return StartLoop(reg, "for-each", newEachListDriver(reg, "for-each", args[0], dataList, false), nil)
 }
 
 // forEachReturnsFn runs the body once in check mode (for its diagnostics)
@@ -2050,23 +2030,10 @@ func staticEmptyLaneDetail(args []Value) string {
 	return ""
 }
 
-// doFold is the shared fold implementation used by both fold signatures.
+// doFold is the shared fold implementation used by both fold signatures:
+// the accumulator threads through a tape loop (foldDriver, core loop.go).
 func doFold(reg *Registry, acc Value, body Value, data ReadList) ([]Value, error) {
-	for i := 0; i < data.Len(); i++ {
-		elem := data.Get(i)
-		res, err := InvokeBody(reg, body, []Value{acc, elem})
-		if err != nil {
-			return nil, fmt.Errorf("fold: step %d: %w", i, err)
-		}
-		if BodyEscaped(reg) {
-			return nil, nil
-		}
-		if len(res) == 0 {
-			return nil, reg.BoruError("fold_error", fmt.Sprintf("fold: step %d: body produced no result", i), "fold")
-		}
-		acc = res[len(res)-1]
-	}
-	return []Value{acc}, nil
+	return StartLoop(reg, "fold", &foldDriver{reg: reg, body: body, data: data, acc: acc}, nil)
 }
 
 // ---- scan ----
@@ -2086,23 +2053,7 @@ func scanHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	results := make([]Value, dataList.Len())
 	acc := dataList.Get(0)
 	results[0] = acc
-
-	for i := 1; i < dataList.Len(); i++ {
-		elem := dataList.Get(i)
-		res, err := InvokeBody(reg, args[0], []Value{acc, elem})
-		if err != nil {
-			return nil, fmt.Errorf("scan: step %d: %w", i, err)
-		}
-		if BodyEscaped(reg) {
-			return nil, nil
-		}
-		if len(res) == 0 {
-			return nil, reg.BoruError("scan_error", fmt.Sprintf("scan: step %d: body produced no result", i), "scan")
-		}
-		acc = res[len(res)-1]
-		results[i] = acc
-	}
-	return []Value{NewList(results)}, nil
+	return StartLoop(reg, "scan", &scanDriver{reg: reg, body: args[0], data: dataList, acc: acc, results: results}, nil)
 }
 
 // scan returns the list of accumulator states, so its element type
@@ -2133,30 +2084,11 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	}
 	left, _ := AsList(args[1])
 	right, _ := AsList(args[2])
-
-	rows := make([]Value, left.Len())
-	for i := 0; i < left.Len(); i++ {
-		row := make([]Value, right.Len())
-		for j := 0; j < right.Len(); j++ {
-			// The body sees (left[i], right[j]) on the stack. InvokeBody is the
-			// single body-running seam: under the VM it drives the compiled
-			// closure, under the interpreter it runs a fresh sub-engine — so a
-			// compiled `outer` is byte-identical to the interpreter.
-			res, err := InvokeBody(reg, args[0], []Value{left.Get(i), right.Get(j)})
-			if err != nil {
-				return nil, fmt.Errorf("outer: (%d,%d): %w", i, j, err)
-			}
-			if BodyEscaped(reg) {
-				return nil, nil
-			}
-			if len(res) == 0 {
-				return nil, reg.BoruError("outer_error", fmt.Sprintf("outer: (%d,%d): body produced no result", i, j), "outer")
-			}
-			row[j] = res[len(res)-1]
-		}
-		rows[i] = NewList(row)
-	}
-	return []Value{NewList(rows)}, nil
+	// The body sees (left[i], right[j]) on the stack, one tape region per
+	// pair, row-major (outerDriver, core loop.go); under the VM the driver
+	// runs from Go over the compiled closure, so a compiled `outer` is
+	// byte-identical to the interpreter.
+	return StartLoop(reg, "outer", newOuterDriver(reg, args[0], left, right), nil)
 }
 
 func outerReturnsFn(args []Value, r *Registry) []Value {
@@ -2191,89 +2123,16 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		if left.Len() != right.Len() {
 			return nil, reg.BoruError("inner_error", "inner: vectors must have same length", "inner")
 		}
-		// Apply pair-op to each pair. InvokeBody is the single body-running
-		// seam (as in `outer`): under the VM it drives the compiled closure,
-		// under the interpreter it runs a pooled sub-engine.
-		paired := make([]Value, left.Len())
-		for i := 0; i < left.Len(); i++ {
-			res, err := InvokeBody(reg, args[0], []Value{left.Get(i), right.Get(i)})
-			if err != nil {
-				return nil, fmt.Errorf("inner: pair %d: %w", i, err)
-			}
-			if BodyEscaped(reg) {
-				return nil, nil
-			}
-			if len(res) == 0 {
-				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair %d: no result", i), "inner")
-			}
-			paired[i] = res[len(res)-1]
-		}
-		// Fold with agg-op
-		acc := paired[0]
-		for i := 1; i < len(paired); i++ {
-			res, err := InvokeBody(reg, args[1], []Value{acc, paired[i]})
-			if err != nil {
-				return nil, fmt.Errorf("inner: fold %d: %w", i, err)
-			}
-			if BodyEscaped(reg) {
-				return nil, nil
-			}
-			if len(res) == 0 {
-				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold %d: no result", i), "inner")
-			}
-			acc = res[len(res)-1]
-		}
-		return []Value{acc}, nil
+		// Pair-op over each pair, then the agg-op fold over the pairs —
+		// one tape loop in two phases (innerDriver, core loop.go); under
+		// the VM the driver runs from Go over the compiled closures.
+		return StartLoop(reg, "inner", newInnerDriver1D(reg, args[0], args[1], left, right), nil)
 	}
 
-	// 2D case: matrix inner product
-	// left is list of rows, right is list of rows
-	// Need to transpose right to get columns
-	rightCols := transposeListOfLists(right)
-
-	rows := make([]Value, left.Len())
-	for i := 0; i < left.Len(); i++ {
-		leftRow, _ := AsList(left.Get(i))
-		cols := make([]Value, len(rightCols))
-		for j := 0; j < len(rightCols); j++ {
-			rightCol := rightCols[j]
-			if leftRow.Len() != len(rightCol) {
-				return nil, reg.BoruError("inner_error", "inner: dimension mismatch", "inner")
-			}
-			// Pair then fold, through the same InvokeBody seam as the 1D case.
-			paired := make([]Value, leftRow.Len())
-			for k := 0; k < leftRow.Len(); k++ {
-				res, err := InvokeBody(reg, args[0], []Value{leftRow.Get(k), rightCol[k]})
-				if err != nil {
-					return nil, err
-				}
-				if BodyEscaped(reg) {
-					return nil, nil
-				}
-				if len(res) == 0 {
-					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair (%d,%d,%d): no result", i, j, k), "inner")
-				}
-				paired[k] = res[len(res)-1]
-			}
-			acc := paired[0]
-			for k := 1; k < len(paired); k++ {
-				res, err := InvokeBody(reg, args[1], []Value{acc, paired[k]})
-				if err != nil {
-					return nil, err
-				}
-				if BodyEscaped(reg) {
-					return nil, nil
-				}
-				if len(res) == 0 {
-					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold (%d,%d,%d): no result", i, j, k), "inner")
-				}
-				acc = res[len(res)-1]
-			}
-			cols[j] = acc
-		}
-		rows[i] = NewList(cols)
-	}
-	return []Value{NewList(rows)}, nil
+	// 2D case: matrix inner product — left is a list of rows, right a list
+	// of rows transposed to columns; each cell pairs then folds, through
+	// the same driver, checking its dimensions as it is reached.
+	return StartLoop(reg, "inner", newInnerDriver2D(reg, args[0], args[1], left, right), nil)
 }
 
 func innerReturnsFn(args []Value, r *Registry) []Value {
@@ -2346,7 +2205,10 @@ func eachrankHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	if descend < 0 {
 		return nil, reg.BoruError("eachrank_error", fmt.Sprintf("eachrank: rank %d exceeds data rank %d", depth, total), "eachrank")
 	}
-	return eachrankWalk(reg, descend, args[1], args[2])
+	// The walk runs as one tape loop over the cells at that depth, in
+	// depth-first order, rebuilding the nesting around the bodies' tops
+	// (eachrankDriver, core loop.go).
+	return StartLoop(reg, "eachrank", &eachrankDriver{reg: reg, body: args[1], root: args[2], depth: descend}, nil)
 }
 
 // listDepth reports the nesting depth of v along its first-element
@@ -2362,44 +2224,6 @@ func listDepth(v Value) int {
 		v = list.Get(0)
 	}
 	return d
-}
-
-// eachrankWalk recurses into the structure until `depth` reaches 0,
-// then runs the body once per cell at that level. The cell value is
-// pushed and the body's top-of-stack result replaces it.
-func eachrankWalk(reg *Registry, depth int, body Value, cell Value) ([]Value, error) {
-	if depth == 0 {
-		// InvokeBody, not a raw token run: the body arrives as a compiled
-		// CLOSURE when the word's Callable spec let the recorder lower it, and
-		// falls back to the same resolved token run otherwise.
-		res, err := InvokeBody(reg, body, []Value{cell})
-		if err != nil {
-			return nil, fmt.Errorf("eachrank: %w", err)
-		}
-		if BodyEscaped(reg) {
-			return nil, nil
-		}
-		if len(res) == 0 {
-			return nil, reg.BoruError("eachrank_error", "eachrank: body produced no result", "eachrank")
-		}
-		return []Value{res[len(res)-1]}, nil
-	}
-	if !cell.Parent.ConformsTo(TList) || !IsConcrete(cell) {
-		return nil, reg.BoruError("eachrank_error", fmt.Sprintf("eachrank: rank exceeds nesting depth at %v", cell), "eachrank")
-	}
-	list, _ := AsList(cell)
-	out := make([]Value, list.Len())
-	for i := 0; i < list.Len(); i++ {
-		sub, err := eachrankWalk(reg, depth-1, body, list.Get(i))
-		if err != nil {
-			return nil, err
-		}
-		if BodyEscaped(reg) {
-			return nil, nil
-		}
-		out[i] = sub[0]
-	}
-	return []Value{NewList(out)}, nil
 }
 
 // ---- foldaxis ----
@@ -2447,24 +2271,14 @@ func foldaxisHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	} else {
 		lanes = transposeListOfLists(rows)
 	}
-	result := make([]Value, len(lanes))
-	for i, lane := range lanes {
-		// A lane with no element has nothing to seed its accumulator from —
-		// fold's own no-init rule (`fold: empty list with no initial
-		// value`), raised as this word's error. `[[]]` reduced along axis 1
-		// is the shape: one row, zero columns, one empty lane. Indexing
-		// lane[0] here panicked before (2026-09-02; panics are forbidden).
-		if len(lane) == 0 {
-			return nil, reg.BoruError("foldaxis_error", fmt.Sprintf("foldaxis: lane %d is empty (no initial value)", i), "foldaxis")
-		}
-		acc := lane[0]
-		res, err := doFold(reg, acc, args[1], NewReadList(lane[1:]))
-		if err != nil {
-			return nil, fmt.Errorf("foldaxis: lane %d: %w", i, err)
-		}
-		result[i] = res[0]
-	}
-	return []Value{NewList(result)}, nil
+	// Every lane reduces through fold's own step on one tape loop
+	// (foldaxisDriver, core loop.go). A lane with no element has nothing to
+	// seed its accumulator from — fold's own no-init rule (`fold: empty list
+	// with no initial value`), raised as this word's error when the lane is
+	// reached. `[[]]` reduced along axis 1 is the shape: one row, zero
+	// columns, one empty lane. Indexing lane[0] here panicked before
+	// (2026-09-02; panics are forbidden).
+	return StartLoop(reg, "foldaxis", &foldaxisDriver{reg: reg, body: args[1], lanes: lanes, result: make([]Value, len(lanes))}, nil)
 }
 
 // transposeListOfLists transposes a list-of-lists, returning columns as [][]Value.

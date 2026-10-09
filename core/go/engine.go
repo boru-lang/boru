@@ -65,7 +65,13 @@ type Engine struct {
 	// exhausted run REPORTS in place of stepLimit (StepBudget).
 	stepsTaken  int
 	limitReport int
-	marks       map[string]bool // active mark IDs (for mark/move control flow)
+	// budgetBase is the stepsTaken count the live budget scope began at:
+	// the run's entry, or — inside a driven loop's iteration — that
+	// iteration's entry (beginLoopIteration), so the iteration runs on a
+	// budget of its own and its steps are never charged to the run that
+	// holds the loop, exactly as the sub-engine protocol metered a body.
+	budgetBase int
+	marks      map[string]bool // active mark IDs (for mark/move control flow)
 	// sealFnValue / sealFnValueIdx: one-shot commit seal for a VALUE-called
 	// function whose forward collection just COMPLETED. Completion re-steps
 	// the callee stack-only; a WORD callee gets that via the /s token
@@ -130,6 +136,12 @@ type Engine struct {
 	// atomically before control returns, so a single engine-owned buffer is
 	// reentrancy-safe.
 	loopTokens []Value
+	// sealed holds the sealed-region Loops (sealed.go), one per nesting
+	// depth of literal evaluation; sealDepth is the depth live now. A
+	// region at a depth is minted once and reused by every later literal
+	// evaluated at that depth, so a literal costs no allocation of its own.
+	sealed    []*Loop
+	sealDepth int
 	// peScratch is the reusable span buffer for expandParenExprScratch:
 	// a ParenExpr expands to `( items… )` immediately before a
 	// Tape.Splice (which copies the tokens in), so the buffer is free the
@@ -461,7 +473,8 @@ func (e *Engine) faultReturn(err error) error {
 	if e.trace != nil {
 		e.trace(-1, e.Pointer, e.Tape.Snapshot(), "fault: "+err.Error())
 	}
-	e.unwindLiveLoops()
+	err = e.wrapLoopFault(e.Pointer, e.Tape.Len(), err)
+	e.unwindLiveLoops(e.Pointer, e.Tape.Len())
 	e.unwindLiveFrames(0, e.Tape.Len())
 	return err
 }
@@ -480,28 +493,37 @@ func (e *Engine) faultReturn(err error) error {
 // that truncation nothing to pop for the name, and a loop enclosing a
 // live frame keeps its iterator beneath the frame's snapshot, where only
 // this walk reaches it. A while loop installs no iterator of its own.
-func (e *Engine) unwindLiveLoops() {
-	for i := e.Pointer; i < e.Tape.Len(); i++ {
+// The loops whose moves lie in [from, to) — the tape ahead of the pointer
+// for the run's fault return, a sealed region's extent for the region's
+// (failSealed).
+func (e *Engine) unwindLiveLoops(from, to int) {
+	for i := from; i < to; i++ {
 		if !IsMove(e.Tape.At(i)) {
 			continue
 		}
 		info, _ := AsMove(e.Tape.At(i))
-		if info.Cont == nil || info.Cont.WhileCond != nil || info.Cont.IterName == "" || !e.marks[info.To] {
+		if info.Cont == nil || !e.marks[info.To] {
 			continue
 		}
-		popIterLevels(info.Cont, true)
+		// A driven loop is abandoned whole (loop.go); a counted loop pops
+		// its index; a while loop installed nothing.
+		if info.Cont.Driver != nil {
+			e.abandonDrivenLoop(info)
+		} else if info.Cont.WhileCond == nil && info.Cont.IterName != "" {
+			popIterLevels(info.Cont, true)
+		}
 	}
 }
 
 // popIterLevels restores a counted loop's index name to its entry depth
-// (ForCont.IterDepth): the levels a body `def` of the index pushed above
+// (Loop.IterDepth): the levels a body `def` of the index pushed above
 // it (`for 3 [def i 9]`) are the iteration's own and end with it, and when
 // the loop is DONE the index level goes too, so the pre-loop binding shows
 // after the loop as it does when the body never rebinds — the index level
 // used to survive the loop bound to the last index, 2 for `def i 0  for 3
 // [def i 9]  i` (NUR204). A continuation with no recorded depth pops one
 // level, as before.
-func popIterLevels(cont *ForCont, done bool) {
+func popIterLevels(cont *Loop, done bool) {
 	if cont.IterDepth <= 0 {
 		UninstallDef(cont.Registry, cont.IterName)
 		return
@@ -1754,7 +1776,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// directly, but no longer — the constructors are the only entry.
 	limit := e.stepLimit
 	completed := false
-	for step := 0; step < limit; step++ {
+	// This run's budget scope: the loop meters stepsTaken against the
+	// scope's base, which a driven loop's iteration moves (loop.go).
+	prevBase := e.budgetBase
+	e.budgetBase = e.stepsTaken
+	defer func() { e.budgetBase = prevBase }()
+	for step := 0; e.stepsTaken-e.budgetBase < limit; step++ {
 		e.stepsTaken++
 		// Memory guard FIRST: a previous edit hit the tape's growth
 		// ceiling (and was dropped to avoid an out-of-bounds write).
@@ -1794,122 +1821,8 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			e.trace(step, e.Pointer, snapshot, note)
 		}
 
-		switch {
-		case IsWord(val):
-			if err := e.stepWord(val); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsForward(val):
-			e.Pointer++
-
-		case IsOpenParen(val):
-			e.noteParenStack(e.Pointer)
-			e.stepPastOpenParen(val)
-
-		case IsCloseParen(val):
-			if err := e.stepCloseParen(true, false); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsEnd(val):
-			if err := e.stepEnd(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-				return nil, e.faultReturn(err)
-			}
-
-		case IsParenExpr(val):
-			// A word-context ParenExpr (paren-nesting work, Step 2 —
-			// design/legacy/PAREN-REPRESENTATION.9.ignore): expand it back to its
-			// OpenParen … CloseParen marker span in place and let the
-			// existing in-place collapse machinery evaluate it on THIS
-			// engine. That keeps exact parity with the former marker
-			// representation (recorder-transparent, same stack/registry
-			// semantics) — the four contracts hold because markers already
-			// honor them: errors propagate, defs leak, the OpenParen is a
-			// stack barrier, and results flow out. Do not advance — the
-			// OpenParen now sits at the pointer.
-			//
-			// Step 4: a codequote-captured ParenExpr (Quoted) is data, and a
-			// raw-capture pending forward (pendingForwardWantsRawParen) wants
-			// the paren collected as-is — both route through stepLiteral
-			// (push data / collect the forward arg) rather than expanding.
-			if val.Quoted || e.pendingForwardWantsRawParen() {
-				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-					return nil, e.faultReturn(err)
-				}
-			} else {
-				items, _ := AsParenExpr(val)
-				e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
-			}
-
-		case IsReach(val):
-			// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
-			// by lowering to its get/getr chain in place, exactly like the
-			// ParenExpr it replaced. An inert reach (Eval=false, from `reach`)
-			// or a codequote'd one (Quoted) is data — left via stepLiteral.
-			if isEvalReach(val) && !e.pendingForwardWantsRawParen() {
-				info, _ := AsReach(val)
-				// A dot-access chain (`m.a`, `MathUtil.now`) is a self-
-				// delimiting navigation that produces exactly ONE value — it
-				// reads as an implicit `(m.a)` group and feeds forward
-				// collection like any other value, so it is NOT a barrier
-				// under the strict rule. (The barrier exists for a function
-				// word that forward-collects its OWN args — `print add 1 2`;
-				// a Reach collects nothing further, its key is bound in the
-				// chain.) Lower to its get-chain marker span in place.
-				// design/STRICT-FORWARD-BARRIER.0.md.
-				e.Tape.Splice(e.Pointer, 1, expandReach(info)...)
-			} else {
-				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-					return nil, e.faultReturn(err)
-				}
-			}
-
-		case IsInterpString(val):
-			result, err := e.evalInterpString(val)
-			if err != nil {
-				return nil, e.faultReturn(err)
-			}
-			// Replace with the evaluated string but do NOT advance the
-			// pointer. The resulting string value needs to go through
-			// stepLiteral so forward collection works correctly.
-			e.Tape.Set(e.Pointer, result)
-
-		case IsXmlInterp(val):
-			// Interpolated XML literal: evaluate the skeleton in place to
-			// a concrete Node/Xml, then re-step it as the value (no pointer
-			// advance) so forward collection sees a Node/Xml — mirrors the
-			// IsInterpString case above.
-			result, err := e.EvalXmlInterp(val)
-			if err != nil {
-				return nil, e.faultReturn(err)
-			}
-			e.Tape.Set(e.Pointer, result)
-
-		case IsMark(val):
-			e.stepMark(val)
-
-		case IsMove(val):
-			if err := e.stepMove(val); err != nil {
-				return nil, e.faultReturn(err)
-			}
-
-		case IsReturnCheck(val):
-			e.Pointer++
-
-		case IsDefCleanup(val):
-			if err := e.stepDefCleanup(val, e.Pointer); err != nil {
-				return nil, e.faultReturn(err)
-			}
-			e.Pointer++
-
-		default:
-			if val.Parent == nil && val.Behavior() == nil {
-				return nil, e.faultReturn(e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", ""))
-			}
-			if err := e.stepLiteral(); err != nil {
-				return nil, e.faultReturn(err)
-			}
+		if err := e.stepToken(val); err != nil {
+			return nil, e.faultReturn(err)
 		}
 
 		// Flow-control signal raised during the step (by a break/
@@ -2030,6 +1943,116 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	residual := e.reconcileTopResidual(e.Tape.TakeAll())
 	CheckBraid.NoteStrandedTypeCall(e, residual)
 	return residual, nil
+}
+
+// stepToken steps the token at the pointer — the Run loop's dispatch on the
+// token's kind, shared with a sealed region's loop (evalSealed, sealed.go)
+// so a literal's elements step exactly as the program's tokens do. An
+// error is the step's; the caller decides the fault return.
+func (e *Engine) stepToken(val Value) error {
+	switch {
+	case IsWord(val):
+		return e.stepWord(val)
+
+	case IsForward(val):
+		e.Pointer++
+
+	case IsOpenParen(val):
+		e.noteParenStack(e.Pointer)
+		e.stepPastOpenParen(val)
+
+	case IsCloseParen(val):
+		return e.stepCloseParen(true, false)
+
+	case IsEnd(val):
+		return e.stepEnd()
+
+	case IsParenExpr(val):
+		// A word-context ParenExpr (paren-nesting work, Step 2 —
+		// design/legacy/PAREN-REPRESENTATION.9.ignore): expand it back to its
+		// OpenParen … CloseParen marker span in place and let the
+		// existing in-place collapse machinery evaluate it on THIS
+		// engine. That keeps exact parity with the former marker
+		// representation (recorder-transparent, same stack/registry
+		// semantics) — the four contracts hold because markers already
+		// honor them: errors propagate, defs leak, the OpenParen is a
+		// stack barrier, and results flow out. Do not advance — the
+		// OpenParen now sits at the pointer.
+		//
+		// Step 4: a codequote-captured ParenExpr (Quoted) is data, and a
+		// raw-capture pending forward (pendingForwardWantsRawParen) wants
+		// the paren collected as-is — both route through stepLiteral
+		// (push data / collect the forward arg) rather than expanding.
+		if val.Quoted || e.pendingForwardWantsRawParen() {
+			return e.stepLiteral()
+		}
+		items, _ := AsParenExpr(val)
+		e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
+
+	case IsReach(val):
+		// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
+		// by lowering to its get/getr chain in place, exactly like the
+		// ParenExpr it replaced. An inert reach (Eval=false, from `reach`)
+		// or a codequote'd one (Quoted) is data — left via stepLiteral.
+		if isEvalReach(val) && !e.pendingForwardWantsRawParen() {
+			info, _ := AsReach(val)
+			// A dot-access chain (`m.a`, `MathUtil.now`) is a self-
+			// delimiting navigation that produces exactly ONE value — it
+			// reads as an implicit `(m.a)` group and feeds forward
+			// collection like any other value, so it is NOT a barrier
+			// under the strict rule. (The barrier exists for a function
+			// word that forward-collects its OWN args — `print add 1 2`;
+			// a Reach collects nothing further, its key is bound in the
+			// chain.) Lower to its get-chain marker span in place.
+			// design/STRICT-FORWARD-BARRIER.0.md.
+			e.Tape.Splice(e.Pointer, 1, expandReach(info)...)
+		} else {
+			return e.stepLiteral()
+		}
+
+	case IsInterpString(val):
+		result, err := e.evalInterpString(val)
+		if err != nil {
+			return err
+		}
+		// Replace with the evaluated string but do NOT advance the
+		// pointer. The resulting string value needs to go through
+		// stepLiteral so forward collection works correctly.
+		e.Tape.Set(e.Pointer, result)
+
+	case IsXmlInterp(val):
+		// Interpolated XML literal: evaluate the skeleton in place to
+		// a concrete Node/Xml, then re-step it as the value (no pointer
+		// advance) so forward collection sees a Node/Xml — mirrors the
+		// IsInterpString case above.
+		result, err := e.EvalXmlInterp(val)
+		if err != nil {
+			return err
+		}
+		e.Tape.Set(e.Pointer, result)
+
+	case IsMark(val):
+		e.stepMark(val)
+
+	case IsMove(val):
+		return e.stepMove(val)
+
+	case IsReturnCheck(val):
+		e.Pointer++
+
+	case IsDefCleanup(val):
+		if err := e.stepDefCleanup(val, e.Pointer); err != nil {
+			return err
+		}
+		e.Pointer++
+
+	default:
+		if val.Parent == nil && val.Behavior() == nil {
+			return e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", "")
+		}
+		return e.stepLiteral()
+	}
+	return nil
 }
 
 // reconcileTopResidual reconciles the top-level program residual the same
@@ -2530,7 +2553,17 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 	// depth so inner parens are processed without prematurely breaking on
 	// their ")" tokens.
 	depth := 1
-	for limit := 0; limit < e.stepLimit && depth > 0; limit++ {
+	// The group is a budget scope of its own, as it was with its own
+	// counter: it meters stepsTaken from its entry, its steps are never
+	// charged to the run that collects it (the base moves up by what the
+	// group spent), and a driven loop's iteration inside it moves the base
+	// (loop.go) exactly as one on the main loop does, so a body's steps
+	// are the body's on every path.
+	prevBase, entry := e.budgetBase, e.stepsTaken
+	e.budgetBase = entry
+	defer func() { e.budgetBase = prevBase + (e.stepsTaken - entry) }()
+	for e.stepsTaken-e.budgetBase < e.stepLimit && depth > 0 {
+		e.stepsTaken++
 		if e.Pointer >= e.Tape.Len() {
 			break
 		}
@@ -2636,6 +2669,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 		if e.Registry.FlowCtrl != FlowNone {
 			e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
 			e.unwindLiveFrames(scanIdx, e.Tape.Len())
+			e.abandonDrivenLoops(scanIdx, e.Tape.Len())
 			e.Tape.Splice(scanIdx, groupExtent(e.Tape, scanIdx))
 			e.Pointer = savedPointer
 			return nil
@@ -2679,7 +2713,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 // against — stands before end.
 func (e *Engine) loopContWithin(end int) bool {
 	for i := e.Pointer; i < end; i++ {
-		if info, err := AsMove(e.Tape.At(i)); err == nil && info.Cont != nil {
+		if info, err := AsMove(e.Tape.At(i)); err == nil && info.Cont != nil && info.Cont.Driver == nil {
 			return true
 		}
 	}
@@ -4052,17 +4086,21 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	}
 	e.recordRuntimeDispatch(match, results)
 	if e.recorder != nil {
-		e.recordDispatch(match.Name, n, results)
+		if IsLoopRegion(results) {
+			// A loop region (StartLoop, CallRegion) is the call still in
+			// flight: the recorder stands aside while its body steps on
+			// this tape — a sub-engine ran it unrecorded before — and the
+			// call records once the loop's results stand in its place
+			// (recordLoopEnd), with their count, as the handler's did.
+			info, _ := AsMark(results[0])
+			info.Loop.recName, info.Loop.recArity, info.Loop.recorder = match.Name, n, e.recorder
+			e.recorder = nil
+		} else {
+			e.recordDispatch(match.Name, n, results)
+		}
 	}
 
-	// Stamp handler-produced ReturnCheck markers and fresh Function
-	// values that lack a position with the call-site word's position, so a
-	// return-type error (named-fn body or anonymous fn value) points at the
-	// call/construction rather than the last textual occurrence of the name.
-	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
-		cur := e.Tape.At(e.Pointer)
-		stampResultPos(results, cur.pos)
-	}
+	e.stampHandlerResults(results)
 
 	// Full frame replacement: the callee's frame (the handler result,
 	// a complete `( body… tail )` carrying its own ReturnCheck)
@@ -4103,6 +4141,19 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		e.Pointer++
 	}
 	return nil
+}
+
+// stampHandlerResults stamps a handler's fresh ReturnCheck markers and
+// Function values that lack a position with the call-site word's position
+// (stampResultPos), so a return-type error (named-fn body or anonymous fn
+// value) points at the call/construction rather than the last textual
+// occurrence of the name. A driven loop's first region (IsLoopRegion) is
+// not stamped: its body tokens are the program's own and keep theirs.
+func (e *Engine) stampHandlerResults(results []Value) {
+	if e.Pointer < 0 || e.Pointer >= e.Tape.Len() || IsLoopRegion(results) {
+		return
+	}
+	stampResultPos(results, e.Tape.At(e.Pointer).pos)
 }
 
 // maybeAddFnShapeHint wraps a signature_error from a fn-dispatch
@@ -4237,9 +4288,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 	}
 	lo := open + 1
 	if open >= 0 {
-		if info, ok := e.Tape.At(open).Data.(FrameOpenInfo); ok && info.ArgSpan > 0 {
-			lo += info.ArgSpan
-		}
+		lo += openArgSpan(e.Tape.At(open))
 	}
 	if lo < e.inertPrefix {
 		lo = e.inertPrefix
@@ -5201,17 +5250,19 @@ func AutoEvalConsumedMap(r *Registry, v Value, dataMap bool) (Value, error) {
 	return NewTop(r).AutoEvalMap(v, dataMap, true)
 }
 
-// runInlineCtxRegion runs input on a pooled sub-engine, bracketing the run
-// as an inline context-boundary region while an analysis pass is live
-// (EmitRecorder.PushInlineCtxBoundary — NUR054): the sub-run's RUNTIME twin
-// pushes a context layer (Engine.Run's Contexts Push/Pop pair), but its
-// recorded events lower INLINE into the enclosing unit (OpMakeList /
-// OpInterp assembly), so an ambient-context write inside it must decline
-// rather than compile one scope too shallow. Outside analysis the wrapper is
-// exactly RunPooledSub — the hot interpreter path pays nothing.
-func (e *Engine) runInlineCtxRegion(input []Value, elemEvalRecordable bool) ([]Value, error) {
+// runInlineCtxRegion runs input — a container literal's elements, a map
+// member, an interpolation hole — as an inline context-boundary region.
+// At run time that is a sealed region of this tape (runSealed, sealed.go).
+// While an analysis pass is live it is a pooled sub-engine run bracketed
+// for the recorder (EmitRecorder.PushInlineCtxBoundary — NUR054): the
+// sub-run's RUNTIME twin pushes a context layer (the region's mark, as
+// Engine.Run's Contexts Push/Pop pair before it), but its recorded events
+// lower INLINE into the enclosing unit (OpMakeList / OpInterp assembly), so
+// an ambient-context write inside it must decline rather than compile one
+// scope too shallow. kind names the region for the trace and the debugger.
+func (e *Engine) runInlineCtxRegion(input []Value, kind string, elemEvalRecordable bool) ([]Value, error) {
 	if !e.Registry.analysisActive() {
-		return RunContainerSub(e.Registry, input, elemEvalRecordable)
+		return e.runSealed(input, kind, elemEvalRecordable)
 	}
 	es := e.Registry.analysisRecorder()
 	es.PushInlineCtxBoundary()
@@ -5225,9 +5276,30 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	if elems.Len() == 0 {
 		return val, nil
 	}
-	input := make([]Value, elems.Len())
-	copy(input, elems.Slice())
-	result, err := e.runInlineCtxRegion(input, e.IsTop || consumed || e.ElemEvalRecordable)
+	// Elements that are all placed as they stand — scalar literals, `[1 2
+	// 3]` — run to themselves (IsSteplessWindow's rule, the `do {key:
+	// [body]}` precedent): the list is its own evaluation, with no region
+	// to step. The value is a FRESH list over a copy of the elements, as
+	// the run's result stack was: a literal in a fn body is constructed per
+	// call, and two calls' values are not one (`(mk) eq (mk)` is false). The
+	// coverage seam still sees the rows the elements lie on.
+	if e.sealsLiterals() && IsSteplessWindow(elems.elems) {
+		out := elems.Slice()
+		for i, el := range out {
+			e.Registry.noteCoverage(el.Pos())
+			// Stored, so no dispatch ascription rides in (the strip the
+			// stepped path applies below).
+			out[i] = StripAscribed(el)
+		}
+		return NewList(out), nil
+	}
+	// A sealed region copies the elements onto the tape itself; a
+	// sub-engine's run is handed a copy of its own.
+	input := elems.elems
+	if !e.sealsLiterals() {
+		input = elems.Slice()
+	}
+	result, err := e.runInlineCtxRegion(input, "list literal", e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, err
 	}
@@ -5333,7 +5405,7 @@ func (e *Engine) evalInterpParts(parts []InterpPart) (s string, dynamic bool, ho
 			buf.WriteString(part.Lit)
 			continue
 		}
-		result, runErr := e.runInlineCtxRegion(part.Expr, false)
+		result, runErr := e.runInlineCtxRegion(part.Expr, "interpolation hole", false)
 		if runErr != nil {
 			return "", dynamic, nil, false, runErr
 		}
@@ -5528,7 +5600,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 			// layer push), but its events lower inline into OpInterpXml's
 			// enclosing unit (NUR054 — the attribute holes ride evalInterpParts
 			// and are bracketed there).
-			results, err := e.runInlineCtxRegion(c.Expr, false)
+			results, err := e.runInlineCtxRegion(c.Expr, "interpolation hole", false)
 			if err != nil {
 				return Value{}, false, nil, false, err
 			}
@@ -5730,7 +5802,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 		if folded, ok := e.constFoldContainerVal(items); ok {
 			if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
 				return e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
-					return e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+					return e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 				}), true, nil
 			}
 		}
@@ -5741,7 +5813,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 	// results resolve as the map's operands (RecordMakeMap). Off that bracket
 	// — the bare pooled sub-run this used to be — a member the fold declined
 	// left the map with no compiled home.
-	result, err := e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+	result, err := e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, false, err
 	}
@@ -5803,7 +5875,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// Computed key: evaluate the key text as boru code to get
 		// the actual string key. E.g., {[a]:1} with def a 'x' → {x:1}
 		if ckSet[key] {
-			keyResult, err := RunContainerSub(e.Registry, []Value{NewWord(key)}, false)
+			keyResult, err := e.runSealed([]Value{NewWord(key)}, "map key", false)
 			if err != nil {
 				return Value{}, fmt.Errorf("computed key [%s]: %w", key, err)
 			}
@@ -5858,7 +5930,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// in the same inline region as a paren member.
 		if isEvalReach(v) {
 			info, _ := AsReach(v)
-			result, err := e.runInlineCtxRegion(lowerReach(info), e.IsTop || consumed || e.ElemEvalRecordable)
+			result, err := e.runInlineCtxRegion(lowerReach(info), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 			if err != nil {
 				return Value{}, err
 			}
@@ -5903,9 +5975,17 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			out.Set(resolvedKey, rv)
 			continue
 		}
-		// Evaluate each value in a pooled sub-engine.
-		result, err := RunContainerSub(e.Registry, []Value{v},
-			e.IsTop || consumed || e.ElemEvalRecordable)
+		// A scalar literal member is placed as it stands: it is its own
+		// evaluation, with no region to step (autoEvalList's rule).
+		if e.sealsLiterals() && IsSteplessValue(v) {
+			e.Registry.noteCoverage(v.Pos())
+			out.Set(resolvedKey, v)
+			continue
+		}
+		// Evaluate each value as a sealed region of its own (a pooled
+		// sub-engine under analysis): a member's context layer is the
+		// member's.
+		result, err := e.runSealed([]Value{v}, "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 		if err != nil {
 			return Value{}, err
 		}
@@ -8877,7 +8957,9 @@ func (e *Engine) stepMark(val Value) {
 		e.marks = make(map[string]bool)
 	}
 	e.marks[info.ID] = true
-	if e.trace != nil {
+	if info.Loop != nil {
+		e.beginLoopIteration(info.Loop)
+	} else if e.trace != nil {
 		e.traceNote = "mark " + info.ID
 	}
 	e.Pointer++
@@ -8888,7 +8970,7 @@ func (e *Engine) stepMark(val Value) {
 // the jump to prevent infinite loops. If the target mark is not found, an
 // error is returned using the move's reason metadata.
 //
-// When the move carries a ForCont (for-loop continuation), stepMoveCont is
+// When the move carries a Loop (for-loop continuation), stepMoveCont is
 // called instead of the basic one-shot replay.
 func (e *Engine) stepMove(val Value) error {
 	info, _ := AsMove(val)
@@ -8898,11 +8980,18 @@ func (e *Engine) stepMove(val Value) error {
 		return e.runtimeError("move_error", fmt.Sprintf("mark %q not found (%s)", info.To, info.Reason), info.To, "")
 	}
 
-	// Scan the stack to find the mark's current position.
+	// Find the mark's current position: backward from the move, where it
+	// sits just beyond the region — a loop's mark is the nearest one
+	// behind its move, and a mark id is on the tape once, so the scan
+	// costs the region's length, not the tape's (it walked the whole tape
+	// from the front, once per iteration, until 2026-10-08).
 	markIdx := -1
-	for i := 0; i < e.Tape.Len(); i++ {
-		_as2, _ := AsMark(e.Tape.At(i))
-		if IsMark(e.Tape.At(i)) && _as2.ID == info.To {
+	for i := moveIdx - 1; i >= 0; i-- {
+		v := e.Tape.At(i)
+		if !IsMark(v) {
+			continue
+		}
+		if _as2, _ := AsMark(v); _as2.ID == info.To {
 			markIdx = i
 			break
 		}
@@ -8954,6 +9043,10 @@ func (e *Engine) stepMove(val Value) error {
 func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	cont := info.Cont
 
+	// A driven loop's move hands the region to its driver (loop.go).
+	if cont.Driver != nil {
+		return e.stepMoveDriven(markIdx, moveIdx, info)
+	}
 	// A while-mode continuation alternates condition and body regions
 	// rather than counting an iterator — its own driver owns the move.
 	if cont.WhileCond != nil {
@@ -9006,8 +9099,9 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 
 		// Set pointer to the new mark so stepMark processes it.
 		e.Pointer = markIdx
+		cont.Iter++
 		if e.trace != nil {
-			e.traceNote = fmt.Sprintf("for next %s i=%d", id, cont.Current)
+			e.traceNote = fmt.Sprintf("for next %s %s", id, cont.Describe())
 		}
 		return nil
 	}
@@ -9042,7 +9136,7 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 // and escaped reports it, leaving the signal set and the pointer on the move
 // for the run's resolver, which finds this loop there and breaks or
 // continues it as it would for a signal the body raised itself.
-func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) (escaped bool, err error) {
+func (e *Engine) collectLoopRegion(cont *Loop, markIdx, moveIdx int) (escaped bool, err error) {
 	base := len(cont.Results)
 	for j := markIdx + 1; j < moveIdx; j++ {
 		v := e.Tape.At(j)
@@ -9103,6 +9197,7 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	}
 	if CoerceBoolean(condResult) {
 		cont.WhileInBody = true
+		cont.Iter++
 		e.spliceWhileRegion(markIdx, moveIdx, info, cont.Body, "while body")
 		return nil
 	}
@@ -9223,6 +9318,9 @@ func (e *Engine) isIsland() bool { return e.FlowUnwind }
 // stays set on the shared registry and the residual tape is returned
 // cleanly so an outer Run can resolve it.
 func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
+	// A driven loop left live on this tape is abandoned on every exit:
+	// the signal passed through it and nothing steps its region again.
+	e.abandonDrivenLoops(0, e.Tape.Len())
 	if e.IsTop {
 		// Where the signal stood: this run's pointer, unless a container
 		// literal's element run let it out — the literal's elements stood
@@ -9255,7 +9353,10 @@ func (e *Engine) handleLoopBreak() bool {
 	for i := e.Pointer; i < e.Tape.Len(); i++ {
 		if IsMove(e.Tape.At(i)) {
 			info, _ := AsMove(e.Tape.At(i))
-			if info.Cont != nil {
+			// A DRIVEN loop (each, fold, …) is not a loop for break: the
+			// signal passes through it to the enclosing for/while, as it
+			// passed through the handler's Go loop (loop.go).
+			if info.Cont != nil && info.Cont.Driver == nil {
 				// Found the for-loop's move. Find its mark.
 				markIdx := -1
 				for j := 0; j < i; j++ {
@@ -9274,6 +9375,7 @@ func (e *Engine) handleLoopBreak() bool {
 				// tail is about to be discarded with the loop region and
 				// would otherwise leak the per-call stacks (fn_frame.go).
 				e.unwindLiveFrames(markIdx, i)
+				e.abandonDrivenLoops(markIdx, i)
 
 				// Uninstall the iterator (and any body level above it,
 				// NUR204), splice in accumulated results.
@@ -9297,7 +9399,7 @@ func (e *Engine) handleLoopContinue() bool {
 	for i := e.Pointer; i < e.Tape.Len(); i++ {
 		if IsMove(e.Tape.At(i)) {
 			info, _ := AsMove(e.Tape.At(i))
-			if info.Cont != nil {
+			if info.Cont != nil && info.Cont.Driver == nil {
 				// Found the for-loop's move. Find its mark.
 				markIdx := -1
 				for j := 0; j < i; j++ {
@@ -9316,6 +9418,7 @@ func (e *Engine) handleLoopContinue() bool {
 				// tail is about to be discarded with the iteration region and
 				// would otherwise leak the per-call stacks (fn_frame.go).
 				e.unwindLiveFrames(markIdx, i)
+				e.abandonDrivenLoops(markIdx, i)
 
 				// Remove values between mark and move (discard partial results).
 				if i-markIdx > 1 {
@@ -9382,9 +9485,7 @@ func (e *Engine) consumeStartAt() int {
 // (arguments are inert; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 func (e *Engine) stepPastOpenParen(val Value) {
 	e.Pointer++
-	if info, ok := val.Data.(FrameOpenInfo); ok && info.ArgSpan > 0 {
-		e.Pointer += info.ArgSpan
-	}
+	e.Pointer += openArgSpan(val)
 }
 
 // stepCloseParen handles the ")" word. It resolves any pending forwards
@@ -10032,6 +10133,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 
 				// Re-evaluate from current pointer up to closeIdx.
 				for e.Pointer < closeIdx {
+					e.stepsTaken++
 					val := e.Tape.At(e.Pointer)
 					// Line-coverage seam (coverage.go): this nested forward-
 					// resolution loop steps tokens off the main loop; mirror
@@ -10106,6 +10208,32 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 			}
 			return e.insufficientArgsError(fwd.FuncName, fwd.ExpectedArgs, fwd.Pos) //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		}
+	}
+
+	// A DRIVEN loop's iteration region (LoopOpenInfo, core loop.go) is
+	// done once its forwards are resolved: it holds no frame marker or
+	// return check of its own, records no void group, and collapses
+	// WITHOUT the paren re-step below — its survivors are the iteration's
+	// residual, the sub-engine protocol's result stack, which no run ever
+	// re-stepped, and the move after them reads them as they stand. Re-
+	// stepping would apply a fn value the body left as DATA to the input
+	// beneath it: `each [[n:Integer] => [n mul 2]] [1 2]` is a list of two
+	// fn values, not `[2 4]`.
+	// The move that follows fires here as well, rather than as a step of
+	// its own: the region's residual is complete, and the move is the
+	// token right after it.
+	// A region's close paren is the one its move follows; a `)` among the
+	// body's tokens with no `(` of its own meets the seal instead, and is
+	// the unmatched close the body's own run reported (the parser writes no
+	// such body or literal; a Go-built one can).
+	if _, isLoop := e.Tape.At(openIdx).Data.(LoopOpenInfo); isLoop {
+		if closeIdx+1 >= e.Tape.Len() || !IsMove(e.Tape.At(closeIdx+1)) {
+			return makeBoruErrorAt("syntax_error", "unmatched closing parenthesis", ")", e.effectiveSource(), "", e.Tape.At(closeIdx).Pos())
+		}
+		e.Tape.Remove(closeIdx)
+		e.Tape.Remove(openIdx)
+		e.Pointer = closeIdx - 1
+		return e.stepMove(e.Tape.At(e.Pointer))
 	}
 
 	// A group that resolved to ZERO values is recorded together with

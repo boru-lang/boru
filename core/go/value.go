@@ -842,8 +842,9 @@ type CallableSpec struct {
 	// cannot replay. Mutually exclusive with BodyOnceKeepsDefs (a body
 	// runs once or per element, never both); never set it on a word
 	// whose handler tears its body installs down. Verified against the
-	// handler: eachHandler drives InvokeBody per element on the shared
-	// registry with no def cleanup.
+	// handler: eachHandler's loop runs the body per element on the shared
+	// registry with no def cleanup — on the tape (loop.go) interpreted, and
+	// through InvokeBody under the VM.
 	BodyMultiRunKeepsDefs bool
 	// BodyResultTop marks a driving handler that reads only the TOP of each
 	// invocation's body residual (`res[len(res)-1]`) — each / fold / scan / filter.
@@ -1591,6 +1592,11 @@ func NextMarkID() string {
 type MarkInfo struct {
 	ID   string  // unique identifier for this mark
 	Body []Value // original content to replay (set by the move on first encounter)
+	// Loop is the DRIVEN loop this mark opens an iteration of (loop.go):
+	// stepping the mark begins the iteration — the scoped context Store the
+	// sub-engine protocol pushed per body run — so every annotation of the
+	// loop reads from here. Nil for a plain or counted loop's mark.
+	Loop *Loop
 }
 
 // SpliceInfo carries an __SP (splice) marker's payload. When an __SP value
@@ -1608,21 +1614,56 @@ type SpliceInfo struct {
 // describes why the move exists (e.g. "for loop") and is used in error
 // messages when the target mark cannot be found.
 //
-// Cont optionally carries for-loop continuation state. When set, stepMove
-// uses it to drive multi-iteration loops: each firing advances the iterator,
-// conditionally re-inserts mark+body+move for the next iteration, and
-// accumulates results across iterations.
+// Cont optionally carries the loop's continuation state. When set, stepMove
+// uses it to drive multi-iteration loops: each firing collects the region,
+// advances the loop, and either re-inserts mark+region+move for the next
+// iteration or splices the loop's results in its place.
 type MoveInfo struct {
-	To     string   // ID of the target mark
-	Reason string   // human-readable reason (for error messages)
-	Cont   *ForCont // optional: for-loop iteration state
-	IfCont *IfCont  // optional: if-statement continuation state
+	To     string  // ID of the target mark
+	Reason string  // human-readable reason (for error messages)
+	Cont   *Loop   // optional: the loop's iteration state
+	IfCont *IfCont // optional: if-statement continuation state
 }
 
-// ForCont holds the iteration state for a mark/move-driven for loop.
-// It is carried by the MoveInfo and mutated across iterations.
-type ForCont struct {
+// Loop is the iteration state of a mark/move-driven loop — the ONE loop
+// protocol of the interpreter. A looping construct hands the engine a mark,
+// a first region and a move carrying the Loop; when the pointer reaches the
+// move, stepMoveCont collects the region's values and either splices the
+// next iteration's region in place or the loop's results. The loop lives on
+// the tape it runs on, so the debugger, the trace and the step budget see
+// every iteration, and break/continue find it with the one forward scan.
+//
+// Three modes ride the same continuation, told apart by their fields:
+//
+//   - COUNTED (`for`): IterName/Current/End/Step count an index the loop
+//     installs as a def; Body replays each iteration.
+//   - WHILE (`while`): WhileCond non-nil; the move alternates a condition
+//     region and a body region (stepMoveWhile).
+//   - DRIVEN (`each`, `fold`, `scan`, …): Driver non-nil; a Go driver hands
+//     the engine each iteration's inert inputs and body, reads each region's
+//     residual, and assembles the result (loop.go). Until 2026-10-08 these
+//     words looped in Go, running the body on a pooled sub-engine per
+//     element; the sub-engine is now the special case, not the loop.
+//
+// Word, Iter and Count are the loop's debugging annotations: every trace
+// note, the move's render and the debugger read Describe.
+type Loop struct {
 	Registry *Registry
+	// Word is the looping construct that owns the loop ("for", "while",
+	// "each", …), the label every annotation carries. Empty on a
+	// continuation built without one (the compiled lane's island restart,
+	// a test fixture): Describe then names the mode.
+	Word string
+	// Iter counts the iterations the loop has STARTED; the live region is
+	// iteration Iter-1 (0-based). Count is the iteration total when the
+	// loop knows it up front, -1 when it does not (a while loop, a driver
+	// over an unknown extent) — never the Go zero for "unknown".
+	Iter, Count int
+	// Pos is the owning word's source position: where an error the loop
+	// itself raises (a driver's own, not the body's) is reported, and the
+	// position the loop's synthetic tokens carry.
+	Pos SrcPos
+
 	IterName string  // name of the iterator variable (e.g. "i")
 	Current  int64   // current iteration value
 	End      int64   // exclusive bound
@@ -1652,6 +1693,55 @@ type ForCont struct {
 	// that produced no value is reported, on both lanes (the compiled
 	// terminal trap anchors there; NUR130).
 	CondPos SrcPos
+
+	// Driver drives a DRIVEN loop (loop.go); nil for a counted or while
+	// loop. Results is the driver's per-iteration scratch: the live
+	// region's residual, valid only during the driver's Collect.
+	Driver LoopDriver
+	// ctxPushed records that the live iteration pushed the scoped context
+	// Store (beginLoopIteration) the move or an abandonment still pops;
+	// enterSteps and outerBase are the engine's step count and budget base
+	// at the iteration's entry, restored when it ends (the iteration's
+	// steps are its own, never the enclosing run's).
+	ctxPushed             bool
+	enterSteps, outerBase int
+	// The loop's synthetic tokens, minted once (loopRegionTokens) and
+	// reused by every iteration: the one mark id, the sealing paren for
+	// the iteration's input span, the close paren and the move.
+	mark, open, close, move Value
+	openSpan                int
+	one                     [1]Value // a non-list body as its one token
+	// closeAtWord positions the region's close paren at the word too: a
+	// CALL region (CallRegion), whose block a signal escapes with no loop
+	// to take it, reports at the construct, where the pointer stands after
+	// the body.
+	closeAtWord bool
+	// toks is a call region's reusable token run (CallRegion): the handler's
+	// result, copied onto the tape by the dispatch that splices it.
+	toks []Value
+	// recorder is the StackForm recorder the dispatch that spliced this
+	// loop's region set aside for the loop's life (execMatch), with the
+	// dispatch's name and arity: the loop's body steps on the recorded
+	// engine where a sub-engine ran it unrecorded, so the recorder is
+	// told of the call once, when the results stand in the region's place
+	// (recordLoopEnd), and sees nothing of the body.
+	recorder Recorder
+	recName  string
+	recArity int
+}
+
+// LoopOpenInfo is the payload on the open paren that SEALS a driven loop's
+// iteration region (`mark (ₗ inputs… body… ) move`). The token stays an
+// ordinary OpenParen for every structural purpose — the stack walk stops at
+// it, so the body sees exactly its inputs, as it saw exactly the values the
+// sub-engine protocol placed before it; collapse removes it like any paren.
+// ArgSpan is the number of inert input values spliced right after it: the
+// driver resolved them, so the step loop skips the pointer past them and
+// they enter as stack data, never re-stepped — a Function value element
+// must not fire on placement (FrameOpenInfo.ArgSpan's twin).
+type LoopOpenInfo struct {
+	Loop    *Loop
+	ArgSpan int
 }
 
 // IfCont holds the continuation state for a mark/move-driven if statement.
@@ -3073,8 +3163,21 @@ func NewMove(to string, reason string) Value {
 	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason})
 }
 
-// NewMoveCont creates a move value with for-loop continuation state.
-func NewMoveCont(to, reason string, cont *ForCont) Value {
+// NewLoopMark creates the mark that opens an iteration of a DRIVEN loop:
+// stepping it begins the iteration (loop.go). The mark stores no body — the
+// driver replays the body each iteration.
+func NewLoopMark(id string, lp *Loop) Value {
+	return NewValueRaw(TMark, MarkInfo{ID: id, Loop: lp})
+}
+
+// NewLoopOpen creates the open paren that seals a driven loop's iteration
+// region, carrying the count of inert inputs spliced after it (LoopOpenInfo).
+func NewLoopOpen(lp *Loop, argSpan int) Value {
+	return NewValueRaw(TOpenParen, LoopOpenInfo{Loop: lp, ArgSpan: argSpan})
+}
+
+// NewMoveCont creates a move value with loop continuation state.
+func NewMoveCont(to, reason string, cont *Loop) Value {
 	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason, Cont: cont})
 }
 
@@ -4212,9 +4315,18 @@ func kernelFormatDefault(v Value) string {
 		return "interp-xml(" + renderXmlTmplSrc(tmpl) + ")"
 	case IsMark(v):
 		_as2, _ := AsMark(v)
+		if _as2.Loop != nil {
+			return fmt.Sprintf("mark(%s,%s)", _as2.ID, _as2.Loop.Describe())
+		}
 		return fmt.Sprintf("mark(%s)", _as2.ID)
 	case IsMove(v):
 		m, _ := AsMove(v)
+		if m.Cont != nil {
+			// A loop's move renders its annotation — the construct, the
+			// iteration, the index — so a tape snapshot in the trace or
+			// the debugger says which loop is where, and how far along.
+			return fmt.Sprintf("move(%s,%s,%s)", m.To, m.Reason, m.Cont.Describe())
+		}
 		return fmt.Sprintf("move(%s,%s)", m.To, m.Reason)
 	case IsReturnCheck(v):
 		rc, _ := AsReturnCheck(v)

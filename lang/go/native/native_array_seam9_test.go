@@ -1,6 +1,7 @@
 package native
 
 import (
+	"strings"
 	"testing"
 
 	parser "github.com/boru-lang/boru/parser/go"
@@ -179,57 +180,61 @@ func TestW9ReachLensErrors(t *testing.T) {
 
 func TestW9InnerBodyFailures(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 	left1 := w9List(NewInteger(1), NewInteger(2))
 	right1 := w9List(NewInteger(3), NewInteger(4))
 	left2 := w9List(w9List(NewInteger(1), NewInteger(2)))
 	right2 := w9List(w9List(NewInteger(3), NewInteger(4)), w9List(NewInteger(5), NewInteger(6)))
 
 	// 1D: pair-op error, then agg-op error.
-	if _, err := innerHandler([]Value{w9ErrBody(), w9AddBody(), left1, right1}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9ErrBody(), w9AddBody(), left1, right1}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 1D pair error: expected error")
 	}
-	if _, err := innerHandler([]Value{w9AddBody(), w9ErrBody(), left1, right1}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9AddBody(), w9ErrBody(), left1, right1}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 1D agg error: expected error")
 	}
 
 	// 2D: pair error, pair no-result, agg error, agg no-result.
-	if _, err := innerHandler([]Value{w9ErrBody(), w9AddBody(), left2, right2}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9ErrBody(), w9AddBody(), left2, right2}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 2D pair error: expected error")
 	}
-	if _, err := innerHandler([]Value{w9Drop2Body(), w9AddBody(), left2, right2}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9Drop2Body(), w9AddBody(), left2, right2}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 2D pair no-result: expected error")
 	}
-	if _, err := innerHandler([]Value{w9AddBody(), w9ErrBody(), left2, right2}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9AddBody(), w9ErrBody(), left2, right2}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 2D agg error: expected error")
 	}
-	if _, err := innerHandler([]Value{w9AddBody(), w9Drop2Body(), left2, right2}, nil, nil, r); err == nil {
+	if _, err := drive(innerHandler([]Value{w9AddBody(), w9Drop2Body(), left2, right2}, nil, nil, r)); err == nil {
 		t.Fatalf("inner 2D agg no-result: expected error")
 	}
 }
 
 func TestW9EachRankFoldAxisArms(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 
 	// eachrank: non-integer rank rejected.
 	if _, err := eachrankHandler([]Value{NewTypeLiteral(TInteger), w9AddBody(), w9List(NewInteger(1))}, nil, nil, r); err == nil {
 		t.Fatalf("eachrank non-int rank: expected error")
 	}
-	// eachrankWalk: body error at a leaf.
-	if _, err := eachrankWalk(r, 0, NewList([]Value{NewWord("nope_word_xyz")}), NewInteger(5)); err == nil {
-		t.Fatalf("eachrankWalk body error: expected error")
+	// The walk runs on the tape (eachrankDriver): a body error at a leaf,
+	// and a non-list cell where a list is expected — met lazily, after the
+	// cell before it ran — both reach the run as the word's error.
+	ar := arrayTestReg()
+	if _, err := w3Run(t, ar, "eachrank 0 [nope_word_xyz] [5]"); err == nil || !strings.Contains(err.Error(), "eachrank: ") {
+		t.Fatalf("eachrank body error: got %v", err)
 	}
-	// eachrankWalk: rank exceeds nesting (non-list cell at depth>0).
-	if _, err := eachrankWalk(r, 1, NewList(nil), NewInteger(3)); err == nil {
-		t.Fatalf("eachrankWalk depth exceeds: expected error")
+	if _, err := w3Run(t, ar, "eachrank 0 [dup] [[1] 2]"); err == nil || !strings.Contains(err.Error(), "rank exceeds nesting depth") {
+		t.Fatalf("eachrank depth exceeds: got %v", err)
 	}
 
 	// foldaxis: non-integer axis rejected.
-	if _, err := foldaxisHandler([]Value{NewTypeLiteral(TInteger), w9AddBody(), w9List(w9List(NewInteger(1)))}, nil, nil, r); err == nil {
+	if _, err := drive(foldaxisHandler([]Value{NewTypeLiteral(TInteger), w9AddBody(), w9List(w9List(NewInteger(1)))}, nil, nil, r)); err == nil {
 		t.Fatalf("foldaxis non-int axis: expected error")
 	}
 	// foldaxis: a lane body that errors.
 	matrix := w9List(w9List(NewInteger(1), NewInteger(2)), w9List(NewInteger(3), NewInteger(4)))
-	if _, err := foldaxisHandler([]Value{NewInteger(1), w9ErrBody(), matrix}, nil, nil, r); err == nil {
+	if _, err := drive(foldaxisHandler([]Value{NewInteger(1), w9ErrBody(), matrix}, nil, nil, r)); err == nil {
 		t.Fatalf("foldaxis lane error: expected error")
 	}
 }

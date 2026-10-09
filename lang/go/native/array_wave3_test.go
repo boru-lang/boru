@@ -364,8 +364,9 @@ func TestW3EachCrossCollection(t *testing.T) {
 	// (collIsConcreteList) — reachable via a direct handler call, as the
 	// interpreter's matchSignature gates the shapes apart.
 	r := arrayTestReg()
+	drive := w9Driven(r)
 	body := NewEvalList([]Value{NewWord("mul"), NewInteger(2)})
-	out, err := eachMapHandler([]Value{body, NewList([]Value{NewInteger(3)})}, nil, nil, r)
+	out, err := drive(eachMapHandler([]Value{body, NewList([]Value{NewInteger(3)})}, nil, nil, r))
 	if err != nil {
 		t.Fatalf("eachMapHandler over list: %v", err)
 	}
@@ -373,11 +374,11 @@ func TestW3EachCrossCollection(t *testing.T) {
 		t.Errorf("eachMapHandler over list = %q, want [6]", Canon(out))
 	}
 	// And the fold/scan cross-collection redirects.
-	out, err = foldWithInitHandler([]Value{
+	out, err = drive(foldWithInitHandler([]Value{
 		NewEvalList([]Value{NewWord("add")}),
 		mapOf(t, "a", NewInteger(1), "b", NewInteger(2)),
 		NewInteger(0),
-	}, nil, nil, r)
+	}, nil, nil, r))
 	if err != nil {
 		t.Fatalf("fold over map: %v", err)
 	}

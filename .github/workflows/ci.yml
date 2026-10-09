@@ -203,7 +203,11 @@ jobs:
         with:
           tools: lint
           go-version: stable
-          lint-version: v2.13.2
+          # The release must decode the export data `stable` writes: Go
+          # 1.27 writes version 5, which x/tools reads from v0.50.0 — the
+          # release golangci-lint v2.14.0 vendors (v2.13.2's v0.49.0 stops
+          # at 4, and failed every module's typecheck once stable moved).
+          lint-version: v2.14.0
       - run: scripts/ci-steps.sh lint
       - name: Lint the darwin and windows filesystem and terminal code
         working-directory: lang/go

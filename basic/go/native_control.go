@@ -1641,11 +1641,14 @@ func caseSubject(r *Registry, v Value) (Value, error) {
 }
 
 // ArmSpliceHandler is the runtime of __arm: spliceArg's reading of a
-// computed arm — a code body runs (InvokeBody, as `do` runs it) and its
-// error propagates, where `do` would trap it as a value (NUR293); a typed
-// list or a table is the arm's one value. The body slot takes a List, so the
-// one other value that reaches it is the compiled closure the VM hands in
-// place of a LITERAL body, which runs as that body.
+// computed arm — a code body runs and its error propagates, where `do`
+// would trap it as a value (NUR293); a typed list or a table is the arm's
+// one value. The body slot takes a List, so the one other value that
+// reaches it is the compiled closure the VM hands in place of a LITERAL
+// body, which runs as that body. The run is the handler's last act, so it
+// is returned as a region of the tape (CallRegion) — the arm steps where
+// the `if` stands, as a literal arm's splice does — and under the VM the
+// closure runs through InvokeBody from Go, as before.
 func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
 	if !isCodeBody(v) && v.Parent != nil && v.Parent.ConformsTo(TList) {
@@ -1664,7 +1667,7 @@ func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 		}
 		return nil, err
 	}
-	return InvokeBody(r, v, nil)
+	return CallRegion(r, "if", "if arm", nil, v)
 }
 
 // armHoldsSteppingLiteral reports whether a computed arm's tokens hold, at

@@ -75,6 +75,24 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	return mapBody{tokens: bl.Slice()}, nil
 }
 
+// quotation reports a token body: the construct's loop then runs on the
+// tape (mapQuotDriver, core loop.go) with the entry's value as the
+// region's inert input. A lambda or a compiled closure keeps the Go loop
+// below, where the callback seam hands it the KeyVal and applies the fn
+// value's own return discipline.
+func (mb mapBody) quotation() bool { return !mb.lambda && !mb.closure }
+
+// quotationBody is the quotation as the body value the loop region steps:
+// a list whose BodyTokens are exactly mb.tokens — an EMPTY quotation
+// included, which stays the identity on its inputs (runQuotationBody's
+// rule) rather than reading, nil-backed, as a one-token body.
+func (mb mapBody) quotationBody() Value {
+	if mb.tokens == nil {
+		return NewList([]Value{})
+	}
+	return NewList(mb.tokens)
+}
+
 // value runs the body for one entry with no accumulator. ok=false when the body
 // left the stack empty.
 func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bool, error) {
@@ -237,6 +255,9 @@ func eachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 		return nil, err
 	}
 	keys := data.Keys()
+	if mb.quotation() {
+		return StartLoop(reg, "each", &mapQuotDriver{reg: reg, kind: mapQuotEach, word: "each", body: mb.quotationBody(), data: data, keys: keys, out: NewOrderedMap()}, quotationInvoke(reg, mb.tokens))
+	}
 	n := int64(len(keys))
 	out := NewOrderedMap()
 	for idx, k := range keys {
@@ -265,6 +286,9 @@ func forEachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 		return nil, err
 	}
 	keys := data.Keys()
+	if mb.quotation() {
+		return StartLoop(reg, "for-each", &mapQuotDriver{reg: reg, kind: mapQuotForEach, word: "for-each", body: mb.quotationBody(), data: data, keys: keys}, quotationInvoke(reg, mb.tokens))
+	}
 	n := int64(len(keys))
 	for idx, k := range keys {
 		v, _ := data.Get(k)
@@ -314,6 +338,9 @@ func doFoldMap(reg *Registry, body, acc Value, data ReadMap, start int) ([]Value
 		return nil, err
 	}
 	keys := data.Keys()
+	if mb.quotation() {
+		return StartLoop(reg, "fold", &mapQuotDriver{reg: reg, kind: mapQuotFold, word: "fold", body: mb.quotationBody(), data: data, keys: keys, start: start, acc: acc}, quotationInvoke(reg, mb.tokens))
+	}
 	n := int64(len(keys))
 	for idx := start; idx < len(keys); idx++ {
 		k := keys[idx]
@@ -354,6 +381,9 @@ func scanMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 	n := int64(len(keys))
 	acc, _ := data.Get(keys[0])
 	out.Set(keys[0], acc) // first value seeds and is the first output
+	if mb.quotation() {
+		return StartLoop(reg, "scan", &mapQuotDriver{reg: reg, kind: mapQuotScan, word: "scan", body: mb.quotationBody(), data: data, keys: keys, start: 1, acc: acc, out: out}, quotationInvoke(reg, mb.tokens))
+	}
 	for idx := 1; idx < len(keys); idx++ {
 		k := keys[idx]
 		v, _ := data.Get(k)

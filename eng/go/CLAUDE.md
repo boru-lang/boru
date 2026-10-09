@@ -102,6 +102,107 @@ body-local) and is captured; depth ≤ baseline means module / global
 scope and the reference stays dynamic. See lang/go/CLAUDE.md
 "Closures and Capture" for the language-level semantics.
 
+## Loops on the tape (one protocol)
+
+Every loop the interpreter runs is a mark/move continuation
+(`core.Loop`, `core/go/loop.go`): a mark opens an iteration's region,
+the move after it collects the region's values and splices either the
+next iteration or the loop's results in its place. `for` counts an index
+it installs as a def, `while` alternates a condition region and a body
+region, and the **driven** loops — `each`, `for-each`, `fold`, `scan`,
+`outer`, `inner`, `eachrank`, `foldaxis`, `filter`'s quotation form and
+the map forms over a quotation — hand the engine a `LoopDriver` whose
+`Next` supplies each iteration's inert inputs and body and whose
+`Collect` reads the region's residual. A driven region is sealed by a
+paren carrying `LoopOpenInfo` (the inert-input span, `FrameOpenInfo
+.ArgSpan`'s twin) so the body sees exactly its inputs, collapses WITHOUT
+the paren re-step (its residual is never re-stepped, as a sub-engine's
+was not), runs under its own context layer and its own step budget (a
+body's steps are never charged to the run holding the loop), lets
+break/continue pass THROUGH to the enclosing `for`/`while`, and wraps a
+body fault with the driver's attribution (`each: element 2: …`). Every
+loop is annotated — `Loop.Word`, `Iter`, `Count`, `Describe()` — and the
+trace notes `loop <state>` / `loop next` / `loop done` (the debugger
+treats `loop next` as an iteration boundary, as it treats `for next`).
+
+Until 2026-10-08 the driven words looped in Go and ran their body on a
+pooled sub-engine per element; that path survives only under the VM,
+where a handler is reached with the registry's `Invoker` set and
+`StartLoop` drives the same driver from Go through `InvokeBody`
+(`DriveLoop`). The lambda-callback forms — a `=>` value over a map,
+`filter`'s Function form — still apply their callback through the
+callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,
+a flow signal stops at the boundary), because that contract is pinned.
+
+Two observers keep the sub-engine's view of a region's body. The StackForm
+recorder (`Engine.SetRecorder`, `Debug.disasm`) stands aside while a loop
+or call region runs and is told of the call once, when the loop's results
+stand in its place, with their count (`recordLoopEnd`) — it never sees the
+body's own dispatches, which a sub-engine ran unrecorded. The data-stack
+view (`Registry.CurrentStack`, `Debug.stack`, and the debugger's offline
+twin) stops at the region's sealing paren: a body sees nothing beneath the
+call. A sealed literal's hold (`sealedHold`) covers the recorder the same
+way.
+
+A native whose LAST act is running a body — `case`'s matched block or
+default, the compiled lane's computed `if` arm (`__arm`; the interpreter's
+`if` splices a computed arm inline already) — returns that run as a **call
+region** instead (`core.CallRegion`): a one-iteration driven loop whose
+inputs enter sealed and inert, whose body steps where the word stands, and
+whose residual replaces the region as the handler's results would, re-
+stepped. The region's close paren carries the word's position, so a
+break/continue the block lets out with no loop to take it reports at the
+construct. Under the VM the body runs from Go as before (`InvokeBody`;
+`case` keeps `RunResolved` on that lane itself). A one-shot region cannot
+amortise its Loop and tokens over iterations, so the registry pools them
+(`takeCallLoop` / `putCallLoop`): a call allocates nothing of its own, and
+the measured cost is the sub-engine's. Only a tail invocation qualifies: a handler that reads the body's result — `do`
+trapping an error, a `case` predicate coerced to a Boolean, a scrutinee's
+last value, `with-precision`'s context teardown, a callback whose count the
+seam trims — runs it as it did.
+
+## Container literals are sealed regions of the tape
+
+A pending list or map literal — one the parser wrote and nothing has
+consumed yet — evaluates where a word takes it, where a loop's region or a
+frame's cleanup collects it, or at the end-of-run sweep. Since 2026-10-09
+that evaluation is a **sealed region** of the running tape
+(`core/go/sealed.go`), not a pooled container sub-engine: the elements are
+spliced right after the pointer as a driven loop of ONE iteration —
+`mark (ₗ elements… ) move` — and stepped by `evalSealed` until the move
+collapses them. Each piece is what the sub-engine's run was: the
+`LoopOpenInfo` paren seals the stack, the mark pushes the context layer
+and opens a step budget of the region's own, the close paren resolves the
+region's pending forwards (the run's implicit end) and fires the move,
+whose collection evaluates a nested pending literal as the end-of-run
+sweep did; the driver keeps the residual as the result and the tokens
+leave the tape with the pointer back where it stood. A map evaluates one
+region per member and per computed key — a member's context layer is the
+member's, as its sub-run's was; an interpolation hole is a region too.
+Elements or members that are all scalar literals (`[1 2 3]`, `{a:1}`) are
+their own evaluation and step nothing (`IsSteplessWindow`'s rule). A
+break/continue the elements let out is NUR358's: a loop inside the literal
+takes it in place, otherwise the region is abandoned whole and the holding
+run resolves the signal; an error is attributed to the driven loops still
+live inside the region, which is then unwound and removed before the
+run's own fault return runs, so a trapped error finds the tape sound.
+
+Two things to know when touching the engine. **Per-dispatch engine state
+is shared with the region.** The dispatch holding the literal may be
+mid-match (a pattern evaluating a member, NUR235) or mid-collection, so
+the region sets aside what that dispatch keeps live — the resolved-stack
+scratch its match reads, the pattern-evaluation flags, the void-group and
+recovery-raw records, the StackForm recorder — and the TCO paren-depth
+guard, which the region's own stepping does not need (`sealedHold`). A
+new engine-level scratch buffer or one-shot flag that a dispatch holds
+across its argument evaluation belongs in that hold. **The analysis pass
+keeps the sub-engine** (`sealsLiterals`): its recorder brackets and
+top-frame rules read the sub-run's flags (`ElemEvalRecordable`, `IsTop`),
+and so does an engine with no tape to run on (`AutoEvalConsumedList`'s
+`NewTop`). A literal is no longer an interpreter entry in the census; a
+sub-engine inside the elements (a `=>` callback, a foreign module fn) still
+is.
+
 ## Signature Ordering (CRITICAL)
 
 There is exactly **one** argument-positioning convention in this

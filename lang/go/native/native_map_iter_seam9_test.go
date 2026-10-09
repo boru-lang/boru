@@ -33,22 +33,23 @@ func w9wantErr(t *testing.T, err error, sub string) {
 
 func TestW9EachMapHandlerArms(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 	m := w9Map("a", NewInteger(1), "b", NewInteger(2))
 
 	// requireConcreteMap: bare Map literal is not concrete.
-	_, err := eachMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r)
+	_, err := drive(eachMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r))
 	w9wantErr(t, err, "expected a concrete map")
 
 	// newMapBody: bare List literal body is not concrete/lambda/closure.
-	_, err = eachMapHandler([]Value{w9BadBody(), m}, nil, nil, r)
+	_, err = drive(eachMapHandler([]Value{w9BadBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "must be a quotation list or a lambda")
 
 	// per-entry body error.
-	_, err = eachMapHandler([]Value{w9ErrBody(), m}, nil, nil, r)
+	_, err = drive(eachMapHandler([]Value{w9ErrBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "key")
 
 	// positive: empty body returns the value unchanged, keeping shape.
-	out, err := eachMapHandler([]Value{w9List(), m}, nil, nil, r)
+	out, err := drive(eachMapHandler([]Value{w9List(), m}, nil, nil, r))
 	if err != nil {
 		t.Fatalf("positive each: %v", err)
 	}
@@ -60,51 +61,53 @@ func TestW9EachMapHandlerArms(t *testing.T) {
 
 func TestW9ForEachMapHandlerArms(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 	m := w9Map("a", NewInteger(1))
 
-	_, err := forEachMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r)
+	_, err := drive(forEachMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r))
 	w9wantErr(t, err, "expected a concrete map")
 
-	_, err = forEachMapHandler([]Value{w9BadBody(), m}, nil, nil, r)
+	_, err = drive(forEachMapHandler([]Value{w9BadBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "must be a quotation list or a lambda")
 
-	_, err = forEachMapHandler([]Value{w9ErrBody(), m}, nil, nil, r)
+	_, err = drive(forEachMapHandler([]Value{w9ErrBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "key")
 
 	// positive: side-effect-only run over a valid map returns nothing.
-	out, err := forEachMapHandler([]Value{w9List(), m}, nil, nil, r)
-	if err != nil || out != nil {
+	out, err := drive(forEachMapHandler([]Value{w9List(), m}, nil, nil, r))
+	if err != nil || len(out) != 0 {
 		t.Fatalf("positive for-each: out=%v err=%v", out, err)
 	}
 }
 
 func TestW9FoldMapHandlerArms(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 	m := w9Map("a", NewInteger(1), "b", NewInteger(2))
 	seed := NewInteger(0)
 
 	// foldMapInitHandler requireConcreteMap.
-	_, err := foldMapInitHandler([]Value{w9List(), NewTypeLiteral(TMap), seed}, nil, nil, r)
+	_, err := drive(foldMapInitHandler([]Value{w9List(), NewTypeLiteral(TMap), seed}, nil, nil, r))
 	w9wantErr(t, err, "expected a concrete map")
 
 	// foldMapNoInitHandler requireConcreteMap.
-	_, err = foldMapNoInitHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r)
+	_, err = drive(foldMapNoInitHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r))
 	w9wantErr(t, err, "expected a concrete map")
 
 	// doFoldMap newMapBody error (reached via no-init with a concrete map).
-	_, err = foldMapNoInitHandler([]Value{w9BadBody(), m}, nil, nil, r)
+	_, err = drive(foldMapNoInitHandler([]Value{w9BadBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "must be a quotation list or a lambda")
 
 	// doFoldMap per-entry body error.
-	_, err = foldMapInitHandler([]Value{w9ErrBody(), m, seed}, nil, nil, r)
+	_, err = drive(foldMapInitHandler([]Value{w9ErrBody(), m, seed}, nil, nil, r))
 	w9wantErr(t, err, "key")
 
 	// doFoldMap "produced no result": drop both acc and value.
-	_, err = foldMapInitHandler([]Value{w9Drop2Body(), m, seed}, nil, nil, r)
+	_, err = drive(foldMapInitHandler([]Value{w9Drop2Body(), m, seed}, nil, nil, r))
 	w9wantErr(t, err, "produced no result")
 
 	// positive: empty body threads the value as the new accumulator.
-	out, err := foldMapNoInitHandler([]Value{w9List(), m}, nil, nil, r)
+	out, err := drive(foldMapNoInitHandler([]Value{w9List(), m}, nil, nil, r))
 	if err != nil {
 		t.Fatalf("positive fold: %v", err)
 	}
@@ -115,20 +118,21 @@ func TestW9FoldMapHandlerArms(t *testing.T) {
 
 func TestW9ScanMapHandlerArms(t *testing.T) {
 	r := w9Reg(t)
+	drive := w9Driven(r)
 	m := w9Map("a", NewInteger(1), "b", NewInteger(2))
 
-	_, err := scanMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r)
+	_, err := drive(scanMapHandler([]Value{w9List(), NewTypeLiteral(TMap)}, nil, nil, r))
 	w9wantErr(t, err, "expected a concrete map")
 
-	_, err = scanMapHandler([]Value{w9BadBody(), m}, nil, nil, r)
+	_, err = drive(scanMapHandler([]Value{w9BadBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "must be a quotation list or a lambda")
 
 	// per-entry body error (needs >=2 keys to enter the scan loop).
-	_, err = scanMapHandler([]Value{w9ErrBody(), m}, nil, nil, r)
+	_, err = drive(scanMapHandler([]Value{w9ErrBody(), m}, nil, nil, r))
 	w9wantErr(t, err, "key")
 
 	// positive: empty body keeps the map shape.
-	out, err := scanMapHandler([]Value{w9List(), m}, nil, nil, r)
+	out, err := drive(scanMapHandler([]Value{w9List(), m}, nil, nil, r))
 	if err != nil {
 		t.Fatalf("positive scan: %v", err)
 	}

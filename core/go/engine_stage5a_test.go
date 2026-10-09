@@ -311,7 +311,7 @@ func TestS5ARunFlowBreakInLoop(t *testing.T) {
 			Returns: []*Type{}, BarrierPos: -1,
 		}}})
 	})
-	cont := &ForCont{Registry: r, IterName: "s5ai", Results: []Value{NewInteger(42)}}
+	cont := &Loop{Registry: r, IterName: "s5ai", Results: []Value{NewInteger(42)}}
 	prog := []Value{
 		NewMark("s5aL"),
 		NewWord("s5abrk"),
