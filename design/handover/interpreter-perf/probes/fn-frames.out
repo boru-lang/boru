@@ -1,0 +1,145 @@
+def f fn [[len:Integer][Integer][len add 1]] f 3
+  I: [4] | <nil>
+  C(true): [4] | <nil>
+def f fn [[Foo:Integer][Integer][Foo add 1]] f 3
+  I: [] | function spec: [boru/invalid_word_name]: word "Foo" must begin with [a-z_-$]; got "F"
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass errored: [invalid_word_name] word "Foo" must begin with [a-z_-$]; got "F" — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def f fn [[x:Integer][Integer][add x]] f 1
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:32
+  1 | def f fn [[x:Integer][Integer][add x]] f 1
+                                     ^^^ cannot call `add` — no signature matches the arguments
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Map, Any, Patrun)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Bytes, Bytes)` takes 2 arguments, but none were supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:32
+  1 | def f fn [[x:Integer][Integer][add x]] f 1
+                                     ^^^ cannot call `add` — no signature matches the arguments
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Map, Any, Patrun)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Bytes, Bytes)` takes 2 arguments, but none were supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+def g fn [[][Integer][add]] g
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:23
+  1 | def g fn [[][Integer][add]] g
+                            ^^^ cannot call `add` — no signature matches the arguments
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Map, Any, Patrun)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Bytes, Bytes)` takes 2 arguments, but none were supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: unmatched dispatch recovered at add — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def h fn [[][Integer][add 1]] 2 h
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:23
+  1 | def h fn [[][Integer][add 1]] 2 h
+                            ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: unmatched dispatch recovered at add — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def l ([len:Integer] => [len add 1]) l 3
+  I: [4] | <nil>
+  C(true): [4] | <nil>
+def l ([Foo:Integer] => [Foo add 1]) l 3
+  I: [] | [boru/afn_error]: function spec: [boru/invalid_word_name]: word "Foo" must begin with [a-z_-$]; got "F"
+  --> source position unknown
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass errored: [afn_error] function spec: [boru/invalid_word_name]: word "Foo" must begin with [a-z_-$]; got "F"
+  --> source position unknown — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def k fn [[x:Integer][Integer][x add 1]] def q fn [[x:Integer][Integer][k x]] q 1
+  I: [2] | <nil>
+  C(true): [2] | <nil>
+def t fn [[n:Integer acc:Integer][Integer][if (n eq 0) [acc] [t (n sub 1) (acc add n)]]] t 100000 0
+  I: [5000050000] | <nil>
+  C(true): [5000050000] | <nil>
+def t fn [[n:Integer][Integer][if (n eq 0) [0] [1 add (t (n sub 1))]]] t 2000
+  I: [2000] | <nil>
+  C(true): [2000] | <nil>
+def c fn [[x:Integer][Integer][def y 2 x add y]] c 1 y
+  I: [] | [boru/undefined_word]: undefined word: y
+  --> 1:54
+  1 | def c fn [[x:Integer][Integer][def y 2 x add y]] c 1 y
+                                                           ^ undefined word: y
+  = help: did you mean `c`?
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: y — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:54
+  1 | def c fn [[x:Integer][Integer][def y 2 x add y]] c 1 y
+                                                           ^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: y — this is a compiler defect, not a policy: valid code must compile.
+  = help: did you mean `c`?
+def u fn [[x:Integer][Integer][x]] for 3 [u i] args
+  I: [] | [boru/args_error]: args: not inside a function
+  --> 1:48
+  1 | def u fn [[x:Integer][Integer][x]] for 3 [u i] args
+                                                     ^^^^ args: not inside a function
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: context-dependent word args — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def e fn [[x:Integer][Integer][if (x eq 1) [raise 'boom'] [x]]] do [e 1] args
+  I: [] | [boru/args_error]: args: not inside a function
+  --> 1:74
+  1 | def e fn [[x:Integer][Integer][if (x eq 1) [raise 'boom'] [x]]] do [e 1] args
+                                                                               ^^^^ args: not inside a function
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: context-dependent word args — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a fn [[x:Integer][Integer][def z x z]] a 1 z
+  I: [] | [boru/undefined_word]: undefined word: z
+  --> 1:48
+  1 | def a fn [[x:Integer][Integer][def z x z]] a 1 z
+                                                     ^ undefined word: z
+  = help: did you mean `a`?
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: z — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:48
+  1 | def a fn [[x:Integer][Integer][def z x z]] a 1 z
+                                                     ^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: z — this is a compiler defect, not a policy: valid code must compile.
+  = help: did you mean `a`?
+def b fn [[x:Integer][List][[1 2] each [x add it]]] b 10
+  I: [] | each: element 0: [boru/undefined_word]: undefined word: it
+  --> 1:47
+  1 | def b fn [[x:Integer][List][[1 2] each [x add it]]] b 10
+                                                    ^^ undefined word: it
+  = help: did you mean `gt`, `if`, or `is`?
+  = help: see `boru describe gt` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: it — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:47
+  1 | def b fn [[x:Integer][List][[1 2] each [x add it]]] b 10
+                                                    ^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: it — this is a compiler defect, not a policy: valid code must compile.
+  = help: did you mean `gt`, `if`, or `is`?
+  = help: see `boru describe gt` for its signatures and examples
+def m fn [[x:Integer][Integer][for 2 [if (i eq 1) [break]] x]] m 5
+  I: [5] | <nil>
+  C(true): [5] | <nil>
+def len 5 len
+  I: [5] | <nil>
+  C(true): [5] | <nil>
+undef len
+  I: [] | <nil>
+  C(true): [] | <nil>
+def f fn [[add:Integer][Integer][add]] f 3
+  I: [3] | <nil>
+  C(true): [3] | <nil>
+def f fn [[x:Integer][Integer][x]] f 1 f 2 f 3
+  I: [1 2 3] | <nil>
+  C(true): [1 2 3] | <nil>
+def f fn [[x:Integer][Integer][undef x 7]] f 1
+  I: [7] | <nil>
+  C(true): [7] | <nil>
+def w fn [[x:Integer][Integer][x]] def g fn [[x:Integer][Integer][w x add 1]] g 1
+  I: [2] | <nil>
+  C(true): [2] | <nil>

@@ -1,0 +1,309 @@
+diff --git a/check/go/check_fnmodel.go b/check/go/check_fnmodel.go
+index 931341300..5c0eea9e2 100644
+--- a/check/go/check_fnmodel.go
++++ b/check/go/check_fnmodel.go
+@@ -587,7 +587,7 @@ func residualProvablyDisjoint(got core.Value, exp *core.Type) bool {
+ 	// disjointness proof says nothing there — skip. The carrier-Is probe is
+ 	// the backstop for wrapped behaviors (a behave-augmented union still
+ 	// answers membership through its Match chain).
+-	if membershipBeyondNominal(exp) || core.NewCarrier(p).Is(exp) {
++	if membershipBeyondNominal(exp) || func() bool { c := core.NewCarrier(p); return c.Is(exp) }() {
+ 		return false
+ 	}
+ 	return core.IsNeverShape(core.TandValues(core.NewCarrier(p), core.NewCarrier(exp)))
+diff --git a/core/go/depscalar.go b/core/go/depscalar.go
+index 2f03974f7..0af5c511a 100644
+--- a/core/go/depscalar.go
++++ b/core/go/depscalar.go
+@@ -187,13 +187,13 @@ func init() {
+ // constraint. Detection is by payload type — the Value's Parent is
+ // just the base scalar (TInteger, TString, …), indistinguishable
+ // from an ordinary scalar at the lattice level.
+-func (v Value) IsDepScalar() bool {
++func (v *Value) IsDepScalar() bool {
+ 	_, ok := v.Data.(DepScalarInfo)
+ 	return ok
+ }
+ 
+ // AsDepScalar extracts the DepScalarInfo payload.
+-func (v Value) AsDepScalar() (DepScalarInfo, error) {
++func (v *Value) AsDepScalar() (DepScalarInfo, error) {
+ 	if di, ok := v.Data.(DepScalarInfo); ok {
+ 		return di, nil
+ 	}
+diff --git a/core/go/util.go b/core/go/util.go
+index b75a0259c..5f3209bc1 100644
+--- a/core/go/util.go
++++ b/core/go/util.go
+@@ -417,7 +417,7 @@ func restorePredicateState(r *Registry, s predicateSandbox) {
+ // when the caller swallows the error. Use AsConcreteString in any
+ // path where the concrete payload is required (display, comparison,
+ // indexing, …); the error is loud and discoverable.
+-func (v Value) AsConcreteString() (string, error) {
++func (v *Value) AsConcreteString() (string, error) {
+ 	if v.IsDepScalar() {
+ 		return "", fmt.Errorf("AsConcreteString: value is a dependent-type constraint (%s), not a concrete String", v.Parent.String())
+ 	}
+@@ -427,42 +427,42 @@ func (v Value) AsConcreteString() (string, error) {
+ 	// shared between strings and atoms. Post Step 5, atoms carry
+ 	// AtomPayload; accept it here so the "textual content" semantic
+ 	// of AsConcreteString is preserved for those handlers.
+-	if IsAtom(v) {
+-		return AsAtom(v)
++	if IsAtom(*v) {
++		return AsAtom(*v)
+ 	}
+-	return AsString(v)
++	return AsString(*v)
+ }
+ 
+ // AsConcreteInteger — DepScalar-rejecting accessor. See AsConcreteString.
+-func (v Value) AsConcreteInteger() (int64, error) {
++func (v *Value) AsConcreteInteger() (int64, error) {
+ 	if v.IsDepScalar() {
+ 		return 0, fmt.Errorf("AsConcreteInteger: value is a dependent-type constraint (%s), not a concrete Integer", v.Parent.String())
+ 	}
+-	return AsInteger(v)
++	return AsInteger(*v)
+ }
+ 
+ // AsConcreteFloat — DepScalar-rejecting accessor. See AsConcreteString.
+-func (v Value) AsConcreteFloat() (float64, error) {
++func (v *Value) AsConcreteFloat() (float64, error) {
+ 	if v.IsDepScalar() {
+ 		return 0, fmt.Errorf("AsConcreteFloat: value is a dependent-type constraint (%s), not a concrete Float", v.Parent.String())
+ 	}
+-	return AsFloat(v)
++	return AsFloat(*v)
+ }
+ 
+ // AsConcreteBoolean — DepScalar-rejecting accessor. See AsConcreteString.
+-func (v Value) AsConcreteBoolean() (bool, error) {
++func (v *Value) AsConcreteBoolean() (bool, error) {
+ 	if v.IsDepScalar() {
+ 		return false, fmt.Errorf("AsConcreteBoolean: value is a dependent-type constraint (%s), not a concrete Boolean", v.Parent.String())
+ 	}
+-	return AsBoolean(v)
++	return AsBoolean(*v)
+ }
+ 
+ // AsConcreteAtom — DepScalar-rejecting accessor. See AsConcreteString.
+-func (v Value) AsConcreteAtom() (string, error) {
++func (v *Value) AsConcreteAtom() (string, error) {
+ 	if v.IsDepScalar() {
+ 		return "", fmt.Errorf("AsConcreteAtom: value is a dependent-type constraint (%s), not a concrete Atom", v.Parent.String())
+ 	}
+-	return AsAtom(v)
++	return AsAtom(*v)
+ }
+ 
+ // FlattenDisjunctAlts returns the alternatives of a disjunct value
+diff --git a/core/go/value.go b/core/go/value.go
+index 7fefc6c75..828bdee4b 100644
+--- a/core/go/value.go
++++ b/core/go/value.go
+@@ -2099,7 +2099,7 @@ func (v *Value) SetName(name string) {
+ // Behavior is the nil-safe read of the type node's pluggable dispatch —
+ // nil for an ordinary value (no tmeta). A non-nil result is the marker of
+ // a type node, exactly as the inline field was.
+-func (v Value) Behavior() TypeBehavior {
++func (v *Value) Behavior() TypeBehavior {
+ 	if v.tmeta == nil {
+ 		return nil
+ 	}
+@@ -2112,7 +2112,7 @@ func (v Value) Behavior() TypeBehavior {
+ // kind with no structure (a builtin, a bare refine newtype) and an
+ // ordinary value both answer false. The returned Value is a copy; the
+ // stored content is written once at install and never mutated.
+-func (v Value) TypeBody() (Value, bool) {
++func (v *Value) TypeBody() (Value, bool) {
+ 	if v.tmeta == nil || v.tmeta.Body == nil {
+ 		return Value{}, false
+ 	}
+@@ -2173,7 +2173,7 @@ func (v *Value) SetPos(p SrcPos) {
+ 
+ // DynFrom returns the check-mode binding name a dynamic carrier was
+ // resolved from, or "" when unset. Nil-safe read of the pointer.
+-func (v Value) DynFrom() string {
++func (v *Value) DynFrom() string {
+ 	if v.dynFrom == nil {
+ 		return ""
+ 	}
+@@ -2195,7 +2195,7 @@ func (v *Value) SetDynFrom(name string) {
+ // typed container ({:T} map / [:T] list) and true, or a zero Value and
+ // false when v carries no tag (the common case). Nil-safe read of the
+ // pointer. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
+-func (v Value) ElemConstraint() (Value, bool) {
++func (v *Value) ElemConstraint() (Value, bool) {
+ 	if v.elem == nil {
+ 		return Value{}, false
+ 	}
+@@ -2273,7 +2273,7 @@ func StripAscribed(v Value) Value {
+ 
+ // Name is the nil-safe read of the type-node leaf name — "" for an
+ // ordinary value (no tmeta), matching the old empty inline field.
+-func (v Value) Name() string {
++func (v *Value) Name() string {
+ 	if v.tmeta == nil {
+ 		return ""
+ 	}
+@@ -2283,7 +2283,7 @@ func (v Value) Name() string {
+ // OwnerID is the nil-safe read of the type node's registration/mint
+ // provenance (design/OPEN-WORDS.1.md §4) — "" for an ordinary value or
+ // an unowned ad-hoc type. See typeMeta.Owner for the sentinel table.
+-func (v Value) OwnerID() string {
++func (v *Value) OwnerID() string {
+ 	if v.tmeta == nil {
+ 		return ""
+ 	}
+@@ -2300,35 +2300,35 @@ func (v *Value) SetOwner(owner string) {
+ // FixedID / Rank / Depth / In / Out are nil-safe reads of the lattice
+ // integer fields — 0 when tmeta is absent (every ordinary runtime value,
+ // where these were always zero when they were inline fields).
+-func (v Value) FixedID() int {
++func (v *Value) FixedID() int {
+ 	if v.tmeta == nil {
+ 		return 0
+ 	}
+ 	return v.tmeta.FixedID
+ }
+ 
+-func (v Value) Rank() int {
++func (v *Value) Rank() int {
+ 	if v.tmeta == nil {
+ 		return 0
+ 	}
+ 	return v.tmeta.Rank
+ }
+ 
+-func (v Value) Depth() int {
++func (v *Value) Depth() int {
+ 	if v.tmeta == nil {
+ 		return 0
+ 	}
+ 	return v.tmeta.Depth
+ }
+ 
+-func (v Value) In() int {
++func (v *Value) In() int {
+ 	if v.tmeta == nil {
+ 		return 0
+ 	}
+ 	return v.tmeta.In
+ }
+ 
+-func (v Value) Out() int {
++func (v *Value) Out() int {
+ 	if v.tmeta == nil {
+ 		return 0
+ 	}
+@@ -2796,7 +2796,7 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
+ // (the branch-carried def). No value the engine mints is the zero Value: a
+ // runtime value carries a Parent, a type node carries its metadata, and a
+ // carrier is flagged — so the test is exact, not a heuristic.
+-func (v Value) IsUnboundSlot() bool {
++func (v *Value) IsUnboundSlot() bool {
+ 	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !v.Dynamic
+ }
+ 
+@@ -2871,14 +2871,14 @@ func NewNone() Value {
+ // not encounter this state because every Type registered through
+ // the kernel paths carries a non-nil Behavior, but the method
+ // defends against it anyway.
+-func (v Value) Is(t *Type) bool {
++func (v *Value) Is(t *Type) bool {
+ 	if t == nil {
+ 		return false
+ 	}
+ 	if t.Behavior() == nil {
+ 		return v.Parent.ConformsTo(t)
+ 	}
+-	return t.Behavior().Match(v, t)
++	return t.Behavior().Match(*v, t)
+ }
+ 
+ // IsNone reports whether v is the value `none` (not the None type
+diff --git a/lang/go/formatter/rules_boru.go b/lang/go/formatter/rules_boru.go
+index 496955446..3bb9688da 100644
+--- a/lang/go/formatter/rules_boru.go
++++ b/lang/go/formatter/rules_boru.go
+@@ -230,7 +230,8 @@ func stringListField(v core.Value, field string) ([]string, error) {
+ 	}
+ 	out := make([]string, lst.Len())
+ 	for i := 0; i < lst.Len(); i++ {
+-		s, serr := lst.Get(i).AsConcreteString()
++		el := lst.Get(i)
++		s, serr := el.AsConcreteString()
+ 		if serr != nil {
+ 			return nil, fmt.Errorf("fmt rules: %s[%d] must be a String: %w", field, i, serr)
+ 		}
+diff --git a/lang/go/modules/tui_run.go b/lang/go/modules/tui_run.go
+index c44720709..3864699db 100644
+--- a/lang/go/modules/tui_run.go
++++ b/lang/go/modules/tui_run.go
+@@ -357,7 +357,8 @@ func chordCtrl(ev native.ReadMap, key string) bool {
+ 		return false
+ 	}
+ 	for i := 0; i < l.Len(); i++ {
+-		if s, sErr := l.Get(i).AsConcreteString(); sErr == nil && s == "ctrl" {
++		rcv360 := l.Get(i)
++		if s, sErr := rcv360.AsConcreteString(); sErr == nil && s == "ctrl" {
+ 			return true
+ 		}
+ 	}
+diff --git a/lang/go/modules/tui_widgets.go b/lang/go/modules/tui_widgets.go
+index c17695504..9efc802ee 100644
+--- a/lang/go/modules/tui_widgets.go
++++ b/lang/go/modules/tui_widgets.go
+@@ -217,7 +217,8 @@ func tuiEditHandler(args []native.Value, _ map[string]native.Value, _ []native.V
+ 	if v, ok := ev.Get("mods"); ok {
+ 		if l, lErr := native.RequireConcreteList(v, "edit"); lErr == nil {
+ 			for i := 0; i < l.Len(); i++ {
+-				if s, sErr := l.Get(i).AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
++				rcv220 := l.Get(i)
++				if s, sErr := rcv220.AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
+ 					ctrl = true
+ 				}
+ 			}
+diff --git a/lang/go/modules/vault.go b/lang/go/modules/vault.go
+index b1d5b8372..03a235058 100644
+--- a/lang/go/modules/vault.go
++++ b/lang/go/modules/vault.go
+@@ -263,7 +263,8 @@ func vaultCollectParams(op vaultOp, args []native.Value, r *native.Registry) (ma
+ 			}
+ 			items := make([]any, 0, lst.Len())
+ 			for j := 0; j < lst.Len(); j++ {
+-				s, sErr := lst.Get(j).AsConcreteString()
++				rcv266 := lst.Get(j)
++				s, sErr := rcv266.AsConcreteString()
+ 				if sErr != nil {
+ 					return nil, vaultUsage(r, op.name, p.name+": elements must be Strings")
+ 				}
+diff --git a/lang/go/native/io_mount.go b/lang/go/native/io_mount.go
+index d1dd807b3..702c4988c 100644
+--- a/lang/go/native/io_mount.go
++++ b/lang/go/native/io_mount.go
+@@ -324,7 +324,8 @@ func (a *boruFileOps) XattrList(path string) ([]string, error) {
+ 	}
+ 	names := make([]string, 0, lst.Len())
+ 	for i := 0; i < lst.Len(); i++ {
+-		if s, serr := lst.Get(i).AsConcreteString(); serr == nil {
++		el := lst.Get(i)
++		if s, serr := el.AsConcreteString(); serr == nil {
+ 			names = append(names, s)
+ 		}
+ 	}
+diff --git a/lang/go/native/native_bytes.go b/lang/go/native/native_bytes.go
+index 0e9491f71..aef8e2dec 100644
+--- a/lang/go/native/native_bytes.go
++++ b/lang/go/native/native_bytes.go
+@@ -165,7 +165,8 @@ func convertListToBytes(args []Value, _ map[string]Value, _ []Value, r *Registry
+ 	}
+ 	out := make([]byte, lst.Len())
+ 	for i := 0; i < lst.Len(); i++ {
+-		n, ierr := lst.Get(i).AsConcreteInteger()
++		el := lst.Get(i)
++		n, ierr := el.AsConcreteInteger()
+ 		if ierr != nil {
+ 			return nil, r.BoruError("expected-byte", fmt.Sprintf("convert Bytes: element %d is not an Integer", i), "convert")
+ 		}

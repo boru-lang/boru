@@ -1,0 +1,22 @@
+import "boru:sift"  (Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total
+  I: [16688332800] | <nil>
+  C(true): [16688332800] | <nil>
+for 2 [import "boru:sift"  (Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]
+  I: [16688332800 16688332800] | <nil>
+  C(true): [16688332800 16688332800] | <nil>
+for 2 [import "boru:sift" 1]
+  I: [1 1] | <nil>
+  C(true): [1 1] | <nil>
+for 2 [(Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]
+  I: [] | [boru/undefined_word]: undefined word: Sift
+  --> 1:9
+  1 | for 2 [(Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]
+              ^^^^ undefined word: Sift
+  = help: did you mean `shift`?
+  = help: see `boru describe shift` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: Sift — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:9
+  1 | for 2 [(Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]
+              ^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: Sift — this is a compiler defect, not a policy: valid code must compile.
+  = help: did you mean `shift`?
+  = help: see `boru describe shift` for its signatures and examples

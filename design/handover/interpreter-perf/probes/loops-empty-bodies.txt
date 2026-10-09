@@ -1,0 +1,12 @@
+each [] [1 2]
+each [] {a:1 b:2}
+for-each [] [1]
+fold [] [1 2] 0
+scan [] [1 2]
+each [[zk:Integer] => [zk add 2]] [2 4]
+each [([n:Integer] => [n mul 2])] [1 2 3]
+0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]
+def m {f:([x:Integer] => [x mul 2])} end each [m.f] [1 2]
+each [mul 2] (iota 5)
+filter [] [1 2]
+import "boru:array-util" ArrayUtil.eachrank 1 [] [[1 2] [3]]

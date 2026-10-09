@@ -1,0 +1,22 @@
+def f fn [[len:Integer][Integer][len add 1]] f 3
+def f fn [[Foo:Integer][Integer][Foo add 1]] f 3
+def f fn [[x:Integer][Integer][add x]] f 1
+def g fn [[][Integer][add]] g
+def h fn [[][Integer][add 1]] 2 h
+def l ([len:Integer] => [len add 1]) l 3
+def l ([Foo:Integer] => [Foo add 1]) l 3
+def k fn [[x:Integer][Integer][x add 1]] def q fn [[x:Integer][Integer][k x]] q 1
+def t fn [[n:Integer acc:Integer][Integer][if (n eq 0) [acc] [t (n sub 1) (acc add n)]]] t 100000 0
+def t fn [[n:Integer][Integer][if (n eq 0) [0] [1 add (t (n sub 1))]]] t 2000
+def c fn [[x:Integer][Integer][def y 2 x add y]] c 1 y
+def u fn [[x:Integer][Integer][x]] for 3 [u i] args
+def e fn [[x:Integer][Integer][if (x eq 1) [raise 'boom'] [x]]] do [e 1] args
+def a fn [[x:Integer][Integer][def z x z]] a 1 z
+def b fn [[x:Integer][List][[1 2] each [x add it]]] b 10
+def m fn [[x:Integer][Integer][for 2 [if (i eq 1) [break]] x]] m 5
+def len 5 len
+undef len
+def f fn [[add:Integer][Integer][add]] f 3
+def f fn [[x:Integer][Integer][x]] f 1 f 2 f 3
+def f fn [[x:Integer][Integer][undef x 7]] f 1
+def w fn [[x:Integer][Integer][x]] def g fn [[x:Integer][Integer][w x add 1]] g 1

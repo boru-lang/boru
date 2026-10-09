@@ -1,0 +1,282 @@
+case 1 [1 ["one"] 2 ["two"]]
+  I: [1 one] | <nil>
+  C(true): [1 one] | <nil>
+case 3 [1 ["one"] ["other"]]
+  I: [3 other] | <nil>
+  C(true): [3 other] | <nil>
+case 5 [[gt 3] ["big"] ["small"]]
+  I: [5 big] | <nil>
+  C(true): [5 big] | <nil>
+case 2 [[gt 3] ["big"] ["small"]]
+  I: [2 small] | <nil>
+  C(true): [2 small] | <nil>
+case 1 [1 [dup add]]
+  I: [2] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [[dup add] drop 7]]
+  I: [] | [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:13
+  1 | case 1 [1 [[dup add] drop 7]]
+                  ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: function value reaches dup (Stage 3) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [[1 add 2]]]
+  I: [1 [3]] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [{a:(1 add 2)}]]
+  I: [1 {a:3}] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 3 [case i [1 [break] [i]]]
+  I: [0 0] | <nil>
+  C(true): [0 0] | <nil>
+for 3 [case i [1 [continue] [i]]]
+  I: [0 0 2 2] | <nil>
+  C(true): [0 0 2 2] | <nil>
+case 1 [1 [break]]
+  I: [] | [boru/flow_error]: break outside loop
+  --> 1:1
+  1 | case 1 [1 [break]]
+      ^^^^ break outside loop
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [raise 'x']]
+  I: [] | [boru/user_error]: x
+  --> 1:12
+  1 | case 1 [1 [raise 'x']]
+                 ^^^^^ x
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [nosuch]]
+  I: [] | [boru/undefined_word]: undefined word: nosuch
+  --> 1:12
+  1 | case 1 [1 [nosuch]]
+                 ^^^^^^ undefined word: nosuch
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:12
+  1 | case 1 [1 [nosuch]]
+                 ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+do [case 1 [1 [raise 'x']]]
+  I: [error(x)] | <nil>
+  C(true): [error(x)] | <nil>
+case 1 [1 [def q 9 q]] end q
+  I: [1 9 9] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [context set 'k' 2]] end context get 'k'
+  I: [] | [boru/key_error]: unknown key: k
+  --> 1:44
+  1 | case 1 [1 [context set 'k' 2]] end context get 'k'
+                                                 ^^^ unknown key: k
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: `context` is read inside an inline-lowered body (a case clause / auto-evaluated list / interp hole): the interpreter gives that body its own context layer, and the inline stream has no layer to hand out (NUR054); the program runs on the interpreter — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a (quote [10 add 1]) end if true a [2]
+  I: [11] | <nil>
+  C(true): [11] | <nil>
+def a (quote [10 add 1]) end 5 if true a [2]
+  I: [5 11] | <nil>
+  C(true): [5 11] | <nil>
+def a (quote [break]) end for 2 [if true a [2]]
+  I: [] | <nil>
+  C(true): [] | <nil>
+def a (quote [break]) end if true a [2]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: break outside a compiled loop (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a (quote [raise 'boom']) end if true a [2]
+  I: [] | [boru/user_error]: boom
+  --> 1:15
+  1 | def a (quote [raise 'boom']) end if true a [2]
+                    ^^^^^ boom
+  C(true): [] | [boru/user_error]: boom
+  --> 1:15
+  1 | def a (quote [raise 'boom']) end if true a [2]
+                    ^^^^^ boom
+def a (quote [[1 add 2]]) end if true a [2]
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+def a (quote [def z 3 z]) end if true a [2] end z
+  I: [3 3] | <nil>
+  C(true): [3 3] | <nil>
+def a (quote [context set 'k' 2]) end if true a [2] end context get 'k'
+  I: [2] | <nil>
+  C(true): [2] | <nil>
+def a (quote [1 2 3]) end if true a [2]
+  I: [1 2 3] | <nil>
+  C(true): [1 2 3] | <nil>
+def a (quote []) end if true a [2]
+  I: [] | <nil>
+  C(true): [] | <nil>
+def a (quote [nosuch]) end if true a [2]
+  I: [] | [boru/undefined_word]: undefined word: nosuch
+  --> 1:15
+  1 | def a (quote [nosuch]) end if true a [2]
+                    ^^^^^^ undefined word: nosuch
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:15
+  1 | def a (quote [nosuch]) end if true a [2]
+                    ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+def a (quote [5 (dup mul)]) end if true a [2]
+  I: [] | [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:18
+  1 | def a (quote [5 (dup mul)]) end if true a [2]
+                       ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: function value reaches dup (Stage 3) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a (quote [for 2 [i]]) end if true a [2]
+  I: [0 1] | <nil>
+  C(true): [0 1] | <nil>
+def a (quote [each [dup] [1 2]]) end if true a [2]
+  I: [[1 2]] | <nil>
+  C(true): [[1 2]] | <nil>
+def a (quote [case 2 [2 ['two']]]) end if true a [2]
+  I: [2 two] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 []]
+  I: [1] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [1 2 3]]
+  I: [1 1 2 3] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 7 [[dup gt 3] [dup mul 2] ["small"]]
+  I: [7 14] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: branch leaves extra values (Stage 2 lowers single-result branches) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 'x' [String ['str'] Integer ['int']]
+  I: [x str] | <nil>
+  C(true): [x str] | <nil>
+case {a:1} [{a:Integer} ['map'] ['no']]
+  I: [{a:1} map] | <nil>
+  C(true): [{a:1} map] | <nil>
+def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 1
+  I: [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [1 'one']
+  --> 1:64
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 1
+                                                                     ^ f: expected 1 return value(s), got 2 — [1 'one']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 1
+                            - the declaration of `f` expects 1 return value(s)
+  C(true): [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [1 'one']
+  --> 1:64
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 1
+                                                                     ^ f: expected 1 return value(s), got 2 — [1 'one']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 1
+                            - the declaration of `f` expects 1 return value(s)
+def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 2
+  I: [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:64
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 2
+                                                                     ^ f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 2
+                            - the declaration of `f` expects 1 return value(s)
+  C(true): [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:64
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 2
+                                                                     ^ f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end f 2
+                            - the declaration of `f` expects 1 return value(s)
+each [[n] case n [1 ['one'] ['many']]] [1 2]
+  I: [] | each: element 0: [boru/undefined_word]: undefined word: n
+  --> 1:16
+  1 | each [[n] case n [1 ['one'] ['many']]] [1 2]
+                     ^ undefined word: n
+  = help: did you mean `fn`?
+  = help: see `boru describe fn` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: n — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:16
+  1 | each [[n] case n [1 ['one'] ['many']]] [1 2]
+                     ^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: n — this is a compiler defect, not a policy: valid code must compile.
+  = help: did you mean `fn`?
+  = help: see `boru describe fn` for its signatures and examples
+[1 2 3] each [case 2 [2 ['two'] ['no']]]
+  I: [['two' 'two' 'two']] | <nil>
+  C(true): [['two' 'two' 'two']] | <nil>
+case 1 [1 [case 2 [2 ['nested']]]]
+  I: [1 2 nested] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [for 2 [i]]]
+  I: [1 0 1] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [each [dup] [1 2]]]
+  I: [1 [1 2]] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [case i [0 [continue] [i]] 7]
+  I: [1 1 7] | <nil>
+  C(true): [1 1 7] | <nil>
+case (1 add 1) [2 ['two']]
+  I: [2 two] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:16
+  1 | case (1 add 1) [2 ['two']]
+                     ^^^^ bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+case [1 add 1] [2 ['two']]
+  I: [2 two] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: this scrutinee is gradual here — no static type is available to prove the clauses cover it; add a trailing default (or an Any clause) — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:6
+  1 | case [1 add 1] [2 ['two']]
+           ^^^^ bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: this scrutinee is gradual here — no static type is available to prove the clauses cover it; add a trailing default (or an Any clause) — this is a compiler defect, not a policy: valid code must compile.
+case 1 [1 [raise 'x']] end 5
+  I: [] | [boru/user_error]: x
+  --> 1:12
+  1 | case 1 [1 [raise 'x']] end 5
+                 ^^^^^ x
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [def q fn [[] [Integer] [raise 'deep']] q]]
+  I: [] | [boru/user_error]: deep
+  --> 1:36
+  1 | case 1 [1 [def q fn [[] [Integer] [raise 'deep']] q]]
+                                         ^^^^^ deep
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a (quote [args]) end def g fn [[x:Integer] [Any] [if true a [2]]] end g 4
+  I: [[4]] | <nil>
+  C(true): [[4]] | <nil>
+def a (quote [1]) end for 3 [if (i eq 1) a [i]]
+  I: [0 1 2] | <nil>
+  C(true): [0 1 2] | <nil>
+case 1 [1 [[1 2] each [dup]]]
+  I: [1 [1 2]] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [1 add]]
+  I: [2] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def a (quote [1 add]) end if true a [2]
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:17
+  1 | def a (quote [1 add]) end if true a [2]
+                      ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:17
+  1 | def a (quote [1 add]) end if true a [2]
+                      ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples

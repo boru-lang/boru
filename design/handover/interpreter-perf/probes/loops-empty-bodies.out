@@ -1,0 +1,42 @@
+each [] [1 2]
+  I: [[1 2]] | <nil>
+  C(true): [[1 2]] | <nil>
+each [] {a:1 b:2}
+  I: [{a:1 b:2}] | <nil>
+  C(true): [{a:1 b:2}] | <nil>
+for-each [] [1]
+  I: [] | <nil>
+  C(true): [] | <nil>
+fold [] [1 2] 0
+  I: [2] | <nil>
+  C(true): [2] | <nil>
+scan [] [1 2]
+  I: [[1 2]] | <nil>
+  C(true): [[1 2]] | <nil>
+each [[zk:Integer] => [zk add 2]] [2 4]
+  I: [[fn (Integer) fn (Integer)]] | <nil>
+  C(true): [[fn (Integer) fn (Integer)]] | <nil>
+each [([n:Integer] => [n mul 2])] [1 2 3]
+  I: [[fn (Integer) fn (Integer) fn (Integer)]] | <nil>
+  C(true): [[fn (Integer) fn (Integer) fn (Integer)]] | <nil>
+0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]
+  I: [fn (Integer, Integer)] | <nil>
+  C(true): [fn (Integer, Integer)] | <nil>
+def m {f:([x:Integer] => [x mul 2])} end each [m.f] [1 2]
+  I: [[2 4]] | <nil>
+  C(true): [[2 4]] | <nil>
+each [mul 2] (iota 5)
+  I: [[0 2 4 6 8]] | <nil>
+  C(true): [[0 2 4 6 8]] | <nil>
+filter [] [1 2]
+  I: [] | [boru/filter_error]: filter: element 0: body must produce a Boolean, got Integer
+  --> 1:1
+  1 | filter [] [1 2]
+      ^^^^^^ filter: element 0: body must produce a Boolean, got Integer
+  C(true): [] | [boru/filter_error]: filter: element 0: body must produce a Boolean, got Integer
+  --> 1:1
+  1 | filter [] [1 2]
+      ^^^^^^ filter: element 0: body must produce a Boolean, got Integer
+import "boru:array-util" ArrayUtil.eachrank 1 [] [[1 2] [3]]
+  I: [[[1 2] [3]]] | <nil>
+  C(true): [[[1 2] [3]]] | <nil>

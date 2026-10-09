@@ -1,0 +1,428 @@
+[1 add 2]
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+[1 add 2 3 (4 add 5)]
+  I: [[1 5 9]] | <nil>
+  C(true): [[1 5 9]] | <nil>
+[[1 add 2] [3]]
+  I: [[[3] [3]]] | <nil>
+  C(true): [[[3] [3]]] | <nil>
+{a:1 b:(1 add 2) c:[1 add 2]}
+  I: [{a:1 b:3 c:[3]}] | <nil>
+  C(true): [{a:1 b:3 c:[3]}] | <nil>
+{a:(def q 1 q) b:q}
+  I: [{a:1 b:1}] | <nil>
+  C(true): [{a:1 b:1}] | <nil>
+def x 5 end [x (x add 1)]
+  I: [[5 6]] | <nil>
+  C(true): [[5 6]] | <nil>
+def x 5 end {a:x b:(x mul 2)}
+  I: [{a:5 b:10}] | <nil>
+  C(true): [{a:5 b:10}] | <nil>
+[1 2] size
+  I: [2] | <nil>
+  C(true): [2] | <nil>
+{a:1 b:2} size
+  I: [2] | <nil>
+  C(true): [2] | <nil>
+[dup] size
+  I: [] | [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:2
+  1 | [dup] size
+       ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(true): [] | [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:2
+  1 | [dup] size
+       ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+[1 2 add]
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+[add]
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:2
+  1 | [add]
+       ^^^ cannot call `add` — no signature matches the arguments
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Map, Any, Patrun)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Bytes, Bytes)` takes 2 arguments, but none were supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:2
+  1 | [add]
+       ^^^ cannot call `add` — no signature matches the arguments
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Map, Any, Patrun)` takes 3 arguments, but none were supplied
+  = note: candidate `add (Bytes, Bytes)` takes 2 arguments, but none were supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+{a:(1 add)}
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:7
+  1 | {a:(1 add)}
+            ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:7
+  1 | {a:(1 add)}
+            ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+10 [add 1]
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:5
+  1 | 10 [add 1]
+          ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:5
+  1 | 10 [add 1]
+          ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+10 {a:(add 1)}
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:8
+  1 | 10 {a:(add 1)}
+             ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:8
+  1 | 10 {a:(add 1)}
+             ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+(10 [add 1])
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:6
+  1 | (10 [add 1])
+           ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:6
+  1 | (10 [add 1])
+           ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+def f fn [[x:Integer] [List] [[x (x add 1)]]] end f 3
+  I: [[3 4]] | <nil>
+  C(true): [[3 4]] | <nil>
+def f fn [[x:Integer] [Map] [{a:x b:(x add 1)}]] end f 3
+  I: [{a:3 b:4}] | <nil>
+  C(true): [{a:3 b:4}] | <nil>
+for 2 [[i (i add 1)]]
+  I: [[0 1] [1 2]] | <nil>
+  C(true): [[0 1] [1 2]] | <nil>
+for 2 [{a:i}]
+  I: [{a:0} {a:1}] | <nil>
+  C(true): [{a:0} {a:1}] | <nil>
+each [[dup]] [1 2]
+  I: [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:8
+  1 | each [[dup]] [1 2]
+             ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(true): [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:8
+  1 | each [[dup]] [1 2]
+             ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+each [def y 7 [y]] [1 2]
+  I: [[[7] [7]]] | <nil>
+  C(true): [[[7] [7]]] | <nil>
+[break]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: break outside a compiled loop (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+[1 (break) 2]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: break outside a compiled loop (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+{a:(break)}
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: break outside a compiled loop (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [[do (quote [break])]]
+  I: [] | <nil>
+  C(true): [] | <nil>
+for 3 [[if (i eq 1) [break] [i]]]
+  I: [[0]] | <nil>
+  C(true): [[0]] | <nil>
+for 3 [[i (if (i eq 1) [continue] [i])] 7]
+  I: [[0 0] 7 [2 2] 7] | <nil>
+  C(true): [[0 0] 7 [2 2] 7] | <nil>
+[nosuch]
+  I: [] | [boru/undefined_word]: undefined word: nosuch
+  --> 1:2
+  1 | [nosuch]
+       ^^^^^^ undefined word: nosuch
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:2
+  1 | [nosuch]
+       ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+{a:nosuch}
+  I: [] | [boru/undefined_word]: undefined word: nosuch
+  --> 1:4
+  1 | {a:nosuch}
+         ^^^^^^ undefined word: nosuch
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:4
+  1 | {a:nosuch}
+         ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+do [[nosuch]]
+  I: [error(undefined word: nosuch)] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:6
+  1 | do [[nosuch]]
+           ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+do [{a:(raise 'boom')}]
+  I: [error(boom)] | <nil>
+  C(true): [error(boom)] | <nil>
+[raise 'x']
+  I: [] | [boru/user_error]: x
+  --> 1:2
+  1 | [raise 'x']
+       ^^^^^ x
+  C(true): [] | [boru/user_error]: x
+  --> 1:2
+  1 | [raise 'x']
+       ^^^^^ x
+context set 'k' 1 end [(context set 'k' 2) (context get 'k')] end context get 'k'
+  I: [[2] 1] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: `context` is read inside an inline-lowered body (a case clause / auto-evaluated list / interp hole): the interpreter gives that body its own context layer, and the inline stream has no layer to hand out (NUR054); the program runs on the interpreter — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+context set 'k' 1 end {a:(context set 'k' 2) b:(context get 'k')} end context get 'k'
+  I: [{b:1} 1] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: `context` is read inside an inline-lowered body (a case clause / auto-evaluated list / interp hole): the interpreter gives that body its own context layer, and the inline stream has no layer to hand out (NUR054); the program runs on the interpreter — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+def n 0 end [def n 1 n] end n
+  I: [[1] 0] | <nil>
+  C(true): [[1] 0] | <nil>
+[1 2 3] each [[dup]]
+  I: [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:16
+  1 | [1 2 3] each [[dup]]
+                     ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(true): [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:16
+  1 | [1 2 3] each [[dup]]
+                     ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+[[1 2] [3 4]] each [size]
+  I: [[2 2]] | <nil>
+  C(true): [[2 2]] | <nil>
+quote [1 add 2]
+  I: [[1 word(add) 2]] | <nil>
+  C(true): [[1 word(add) 2]] | <nil>
+[1 add 2]/q
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+def m {a:[1 add 2]} end m.a
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+{a:[1 add 2]}
+  I: [{a:[3]}] | <nil>
+  C(true): [{a:[3]}] | <nil>
+[{a:(1 add 2)}]
+  I: [[{a:3}]] | <nil>
+  C(true): [[{a:3}]] | <nil>
+[`x${1 add 2}y`]
+  I: [['x3y']] | <nil>
+  C(true): [['x3y']] | <nil>
+{a:`v${2 mul 3}`}
+  I: [{a:'v6'}] | <nil>
+  C(true): [{a:'v6'}] | <nil>
+["a" 1 true none]
+  I: [['a' 1 true none]] | <nil>
+  C(true): [['a' 1 true none]] | <nil>
+[Integer String]
+  I: [[Integer String]] | <nil>
+  C(true): [[Integer String]] | <nil>
+[:Integer]
+  I: [[:Integer]] | <nil>
+  C(true): [[:Integer]] | <nil>
+{:Integer}
+  I: [{:Integer}] | <nil>
+  C(true): [{:Integer}] | <nil>
+[(fn [[] [Integer] [7]])]
+  I: [[7]] | <nil>
+  C(true): [[7]] | <nil>
+def g fn [[] [Integer] [7]] end [g/v]
+  I: [[fn g]] | <nil>
+  C(true): [[fn g]] | <nil>
+def g fn [[] [Integer] [7]] end [g]
+  I: [[7]] | <nil>
+  C(true): [[7]] | <nil>
+[([x:Integer] => [x])]
+  I: [[fn (Integer)]] | <nil>
+  C(true): [[fn (Integer)]] | <nil>
+if true [1] [2]
+  I: [1] | <nil>
+  C(true): [1] | <nil>
+if true (quote [1 add 2]) [2]
+  I: [3] | <nil>
+  C(true): [3] | <nil>
+def a (quote [10 add 1]) end if true a [2]
+  I: [11] | <nil>
+  C(true): [11] | <nil>
+def a (quote [10 add 1]) end 5 if true a [2]
+  I: [5 11] | <nil>
+  C(true): [5 11] | <nil>
+def a (quote [[1 add 2]]) end if true a [2]
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+def a (quote [break]) end for 2 [if true a [2]]
+  I: [] | <nil>
+  C(true): [] | <nil>
+def a (quote [break]) end if true a [2]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: break outside a compiled loop (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 2 [1 [10] 2 [20 add 1]]
+  I: [2 21] | <nil>
+  C(true): [2 21] | <nil>
+case 2 [1 [10] 2 [dup add]]
+  I: [4] | <nil>
+  C(true): [4] | <nil>
+case 2 [1 [10] [99]]
+  I: [2 99] | <nil>
+  C(true): [2 99] | <nil>
+case 2 [1 [10] 2 [[dup]]]
+  I: [] | [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:20
+  1 | case 2 [1 [10] 2 [[dup]]]
+                         ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: unmatched dispatch recovered at dup — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 2 [1 [10] 2 [nosuch]]
+  I: [] | [boru/undefined_word]: undefined word: nosuch
+  --> 1:19
+  1 | case 2 [1 [10] 2 [nosuch]]
+                        ^^^^^^ undefined word: nosuch
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:19
+  1 | case 2 [1 [10] 2 [nosuch]]
+                        ^^^^^^ bytecode compilation FAILED: the check pass stopped at [undefined_word] undefined word: nosuch — this is a compiler defect, not a policy: valid code must compile.
+for 2 [case 1 [1 [break]]]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case 1 [1 [break]]
+  I: [] | [boru/flow_error]: break outside loop
+  --> 1:1
+  1 | case 1 [1 [break]]
+      ^^^^ break outside loop
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+5 case 1 [1 [add 1]]
+  I: [5 2] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+context set 'k' 1 end case 1 [1 [(context set 'k' 2) (context get 'k')]] end context get 'k'
+  I: [1 2 1] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: `context` is read inside an inline-lowered body (a case clause / auto-evaluated list / interp hole): the interpreter gives that body its own context layer, and the inline stream has no layer to hand out (NUR054); the program runs on the interpreter — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+case (1 add 1) [2 [x]]
+  I: [] | [boru/undefined_word]: undefined word: x
+  --> 1:20
+  1 | case (1 add 1) [2 [x]]
+                         ^ undefined word: x
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:16
+  1 | case (1 add 1) [2 [x]]
+                     ^^^^ bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+def x 9 end case (1 add 1) [2 [x]]
+  I: [2 9] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+  --> 1:28
+  1 | def x 9 end case (1 add 1) [2 [x]]
+                                 ^^^^ bytecode compilation FAILED: the check pass stopped at [case_not_exhaustive] case: clauses do not cover the scrutinee type — uncovered: Integer; add matching clauses or a trailing default — this is a compiler defect, not a policy: valid code must compile.
+[1 [2 [3 (1 add 2)]]]
+  I: [[1 [2 [3 3]]]] | <nil>
+  C(true): [[1 [2 [3 3]]]] | <nil>
+{a:{b:{c:(1 add 2)}}}
+  I: [{a:{b:{c:3}}}] | <nil>
+  C(true): [{a:{b:{c:3}}}] | <nil>
+def xs (iota 3) end [xs size]
+  I: [[3]] | <nil>
+  C(true): [[3]] | <nil>
+[1 2 3] [4 5] append
+  I: [] | [boru/signature_error]: cannot call `append` — no signature matches the arguments
+  --> 1:15
+  1 | [1 2 3] [4 5] append
+                    ^^^^^^ cannot call `append` — no signature matches the arguments
+  = note: the arguments were [4 5] (a List) and [1 2 3] (a List)
+  = note: candidate `append (List, FlexXml)` — argument 2: expected FlexXml, got [1 2 3] (a List)
+  = note: candidate `append (List, WeakFlexList)` — argument 2: expected WeakFlexList, got [1 2 3] (a List)
+  = note: candidate `append (List, FlexList)` — argument 2: expected FlexList, got [1 2 3] (a List)
+  = note: …and 4 more signatures
+  = help: forward args for append may have run into the next word; group the call in parens so its RESULT becomes the argument — (append …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If append reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe append` for its signatures and examples
+  C(true): [] | [boru/signature_error]: cannot call `append` — no signature matches the arguments
+  --> 1:15
+  1 | [1 2 3] [4 5] append
+                    ^^^^^^ cannot call `append` — no signature matches the arguments
+  = note: the arguments were [4 5] (a List) and [1 2 3] (a List)
+  = note: candidate `append (List, FlexXml)` — argument 2: expected FlexXml, got [1 2 3] (a List)
+  = note: candidate `append (List, WeakFlexList)` — argument 2: expected WeakFlexList, got [1 2 3] (a List)
+  = note: candidate `append (List, FlexList)` — argument 2: expected FlexList, got [1 2 3] (a List)
+  = note: …and 4 more signatures
+  = help: forward args for append may have run into the next word; group the call in parens so its RESULT becomes the argument — (append …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If append reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe append` for its signatures and examples
+make Record [a:Integer] {a:(1 add 1)}
+  I: [] | make: expected a constructed record type, got Record
+  C(true): [] | make: expected a constructed record type, got Record

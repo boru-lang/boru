@@ -1,0 +1,27 @@
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: (1 add 1)}) (h {f: ("a" add "b")})]
+  I: [['int' 'str']] | <nil>
+  C(true): [['int' 'str']] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: (1 add 1)})]
+  I: [['int']] | <nil>
+  C(true): [['int']] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end (h {f: (1 add 1)})
+  I: [int] | <nil>
+  C(true): [int] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end h {f: (1 add 1)}
+  I: [int] | <nil>
+  C(true): [int] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: 2})]
+  I: [['int']] | <nil>
+  C(true): [['int']] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [h {f: (1 add 1)}]
+  I: [['int']] | <nil>
+  C(true): [['int']] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [h {f: 2}]
+  I: [['int']] | <nil>
+  C(true): [['int']] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: 2}) 1]
+  I: [['int' 1]] | <nil>
+  C(true): [['int' 1]] | <nil>
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end 1 [(h {f: 2})]
+  I: [1 ['int']] | <nil>
+  C(true): [1 ['int']] | <nil>

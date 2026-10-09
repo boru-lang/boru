@@ -1,0 +1,42 @@
+import "boru:debug" end 10 20 each [Debug.stack] [1 2]
+  I: [10 20 [[1] [2]]] | <nil>
+  C(true): [10 20 [[] []]] | <nil>
+import "boru:debug" end 10 20 fold [Debug.stack drop add] [1 2] 0
+  I: [10 20 3] | <nil>
+  C(true): [10 20 3] | <nil>
+import "boru:debug" end 10 case 1 [1 [Debug.stack]]
+  I: [10 1 [1]] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: if: else-branch not captured — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+import "boru:debug" end 10 [Debug.stack 5]
+  I: [10 [[] 5]] | <nil>
+  C(true): [10 [[] 5]] | <nil>
+import "boru:debug" end def f fn [[x:Integer] [Any] [Debug.stack]] end 10 20 f 1
+  I: [10 20 [10 20]] | <nil>
+  C(true): [10 20 []] | <nil>
+import "boru:debug" end 10 20 each [Debug.stack] {a:1}
+  I: [10 20 {a:[1]}] | <nil>
+  C(true): [10 20 {a:[]}] | <nil>
+import "boru:debug" end Debug.disasm [each [mul 2] [1 2 3]]
+  I: [[1 2 3] [word(mul) 2] each] | <nil>
+  C(true): [[1 2 3] [word(mul) 2] each] | <nil>
+import "boru:debug" end Debug.disasm (quote [each [mul 2] [1 2 3]])
+  I: [[1 2 3] [word(mul) 2] each] | <nil>
+  C(true): [[1 2 3] [word(mul) 2] each] | <nil>
+import "boru:debug" end Debug.disasm "each [mul 2] [1 2 3]"
+  I: [] | [boru/uncalled_function]: call to 'debug-disasm' matched no signature
+  --> 1:25
+  1 | import "boru:debug" end Debug.disasm "each [mul 2] [1 2 3]"
+                              ^^^^^ call to 'debug-disasm' matched no signature
+  = hint: check the call's argument types and arity — or use debug-disasm/v to push the function as a value deliberately
+  C(true): [] | [boru/uncalled_function]: call to 'debug-disasm' matched no signature
+  --> 1:25
+  1 | import "boru:debug" end Debug.disasm "each [mul 2] [1 2 3]"
+                              ^^^^^ call to 'debug-disasm' matched no signature
+  = hint: check the call's argument types and arity — or use debug-disasm/v to push the function as a value deliberately
+import "boru:debug" end Debug.disasm [case 1 [1 [2]]]
+  I: [[1 [2]] 1 case] | <nil>
+  C(true): [[1 [2]] 1 case] | <nil>
+import "boru:debug" end Debug.disasm [[1 add 2] size]
+  I: [[1 word(add) 2] size] | <nil>
+  C(true): [[1 word(add) 2] size] | <nil>

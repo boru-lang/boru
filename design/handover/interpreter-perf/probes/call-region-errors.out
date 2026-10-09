@@ -1,0 +1,18 @@
+def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end (f 2)
+  I: [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:65
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end (f 2)
+                                                                      ^ f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end (f 2)
+                            - the declaration of `f` expects 1 return value(s)
+  C(true): [] | [boru/type_error]: f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:65
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end (f 2)
+                                                                      ^ f: expected 1 return value(s), got 2 — [2 'many']
+  --> 1:23
+  1 | def f fn [[x:Integer] [Any] [case x [1 ['one'] ['many']]]] end (f 2)
+                            - the declaration of `f` expects 1 return value(s)
+def a (quote [10 add 1]) end (if true a [2])
+  I: [11] | <nil>
+  C(true): [11] | <nil>

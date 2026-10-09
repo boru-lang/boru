@@ -1,0 +1,106 @@
+10 each [1 add] [1 2]
+10 each [add] [1 2]
+1 2 each [dup] [3]
+10 for 2 [1 add]
+for 2 [each [1 break] [1 2]]
+each [1 break] [1 2]
+for 2 [each [continue] [1 2] 7]
+each [1 continue] [1 2]
+for 2 [each ([x:Any] => [1 break]) [1 2]]
+for 2 [each ([kv:Any] => [1 break]) {a:1 b:2}]
+def f fn [[] [Any] [1 break]] end for 2 [f]
+each ([x:String] => [x]) [1 2]
+each ([kv:String] => [kv]) {a:1}
+each ([x:Any] => [x drop]) [1 2]
+each ([kv:Any] => [kv drop]) {a:1}
+each [drop] [1 2]
+each [raise 'boom'] [1 2]
+each [each [raise 'boom'] [1]] [1]
+do [each [raise 'boom'] [1 2]]
+convert Map (do [each [raise 'boom'] [1]])
+context set 'x' 1 end each [drop (context set 'x' 2) (context get 'x')] [0 0] end context get 'x'
+each [def q 5 q] [1 2] end q
+each [def x 7 [x]] [1 2]
+each [[dup]] [1 2]
+for 2 [[i]]
+fold [add] [1 2 3] 0
+fold [add] [1 2 3]
+fold [drop] [1 2 3] 0
+fold [drop drop] [1 2] 0
+fold [add] []
+fold [add] [] 0
+scan [add] [1 2 3]
+scan [add] []
+scan [drop drop] [1 2]
+for-each [print] [1 2]
+for-each [drop] [1 2]
+for-each [1 break] [1 2]
+for 2 [for-each [break] [1 2] 9]
+outer [mul] [1 2] [3 4]
+outer [drop drop] [1] [2]
+for 2 [outer [break] [1 2] [3]]
+inner [mul] [add] [1 2] [3 4]
+inner [mul] [add] [[1 2] [3 4]] [[1 0] [0 1]]
+inner [mul] [add] [1 2] [3]
+import "boru:array-util" ArrayUtil.eachrank 0 [mul 2] [[1 2] [3 4]]
+import "boru:array-util" ArrayUtil.eachrank 1 [size] [[1 2] [3 4]]
+import "boru:array-util" ArrayUtil.eachrank 1 [size] [[1] 2]
+import "boru:array-util" ArrayUtil.eachrank 0 [drop] [1 2]
+import "boru:array-util" ArrayUtil.foldaxis 0 [add] [[1 2] [3 4]]
+import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[1 2] [3 4]]
+import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[]]
+filter [2 gt] [1 2 3 4]
+filter [gt 2] [1 2 3 4]
+filter ([p:Any] => [p.value gt 2]) [1 2 3 4]
+filter [1 gt] {a:1 b:2}
+filter ([kv:Any] => [kv.v gt 1]) {a:1 b:2}
+filter [1] [1 2]
+filter [drop] [1 2]
+for 2 [filter [break] [1 2] 5]
+each [mul 10] {a:1 b:2}
+each ([kv:Any] => [kv.v mul 10]) {a:1 b:2}
+each ([kv:Any] => [kv.k]) {a:1}
+each ([kv:Any] => [kv.i]) {a:1 b:2}
+for-each [print] {a:1}
+for-each ([kv:Any] => [print kv.k]) {a:1 b:2}
+fold [add] {a:1 b:2} 0
+fold [add] {a:1 b:2}
+fold ([acc:Any kv:Any] => [acc add kv.v]) {a:1 b:2} 0
+scan [add] {a:1 b:2}
+scan ([acc:Any kv:Any] => [acc add kv.v]) {a:1 b:2}
+def dbl fn [[x:Integer] [Integer] [x mul 2]] end each dbl/v [1 2]
+fold add/v [1 2 3] 0
+scan add/v [1 2 3]
+for-each print/v [1 2]
+def f fn [[] [Integer] [7]] end each [typeof] [f/v]
+def f fn [[] [Integer] [7]] end each [drop 1] [f/v]
+each [def y 2 end y add] [1 2]
+each [[1 2] each [mul 2]] [0]
+each [do [raise 'x']] [1]
+def g fn [[xs:List] [Any] [each [mul 2] xs]] end g [1 2]
+def g fn [[Integer] [Any] [each [args.0 add] [1 2]]] end g 10
+for 2 [each [i add] [10]]
+def n 0 end while [n lt 2] [each [n add] [1] end def n (n add 1)]
+def xs:[:Integer] [1 2] end each [mul 2] xs
+each [dup] [1 2]
+each [1 2] [0]
+each [mul 2] []
+each [mul 2] {}
+fold [add] {} 0
+scan [add] {}
+for-each [print] []
+each [print] [1 2]
+for 3 [each [i (if (i eq 1) [break] [i])] [0]]
+each [dup each [add] [1 2]] [10]
+import "boru:array-util" ArrayUtil.eachrank 1 [print] [[1] 2]
+each (fn [[x:Integer] [Integer] [x mul 2]]) [1 2]
+each ([x:Integer] => [x mul 2]) {a:1}
+fold [raise 'f'] [1 2] 0
+scan [raise 's'] [1 2]
+outer [raise 'o'] [1] [2]
+inner [raise 'i'] [add] [1] [2]
+filter [raise 'q'] [1 2]
+filter ([p:Any] => [raise 'q']) [1 2]
+fold ([acc:Any kv:Any] => [raise 'm']) {a:1} 0
+each ([kv:Any] => [raise 'm']) {a:1}
+import "boru:array-util" ArrayUtil.foldaxis 0 [raise 'fa'] [[1 2] [3 4]]
