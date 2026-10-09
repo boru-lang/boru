@@ -27,7 +27,7 @@ Last updated: **2026-10-09** (the pointer to the interpreter-performance handove
 > literals and a native's tail body run on the caller's tape); CI is green
 > on it. The no-copy policy is reviewed in
 > [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) with five decisions open and
-> no code changed; the copy inventories, two experiment patches and eight
+> no code changed; the copy inventories, two experiment patches and nine
 > two-lane probe corpora are saved in `design/handover/interpreter-perf/`.
 > The gate table below predates #532 and #533, which moved the
 > interpreter-entry census; `make gate-status` refreshes it.

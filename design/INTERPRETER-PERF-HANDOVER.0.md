@@ -9,7 +9,7 @@ only what this session knows that the code, the PRs and the issues do not.
 
 Everything the session left in scratch space is saved under
 [handover/interpreter-perf/](handover/interpreter-perf/): the four copy
-inventories, two experiment patches, eight probe corpora with their
+inventories, two experiment patches, nine probe corpora with their
 outputs on main, and the sources of every scratch benchmark and harness.
 Its README says how to use each.
 

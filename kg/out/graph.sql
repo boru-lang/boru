@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '2778647830517171829');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '3642440955129919094');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -45,14 +45,14 @@ INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '59656315
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
-INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '4970436455337278570', 17373);
+INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '2687147691256013019', 17372);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '2574920545089865532', 183827);
 INSERT INTO input_files VALUES ('../design/NUR-ROUND6-HANDOVER.0.md', '8014059356792532768', 14152);
 INSERT INTO input_files VALUES ('../design/NUR-RUN-HANDOFF.0.md', '2640723508142864479', 280357);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '6362463872929681453', 16140);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '8600369331687048302', 119209);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7042806167894054599', 119208);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
 INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '1733558817585756964', 28686);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
@@ -81,7 +81,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '9188778394180754266', 102638);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '5746162906621858059', 102637);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -342,7 +342,7 @@ INSERT INTO entity_attributes VALUES ('ent:Document:373024332343379636', 'role',
 INSERT INTO entities VALUES ('ent:Document:3904106568037504161', 'Document', 'AGENTS.md', 'agents.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:3955423872539901697', 'Document', 'HOWTO.md', 'howto.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:4099203920617049978', 'Document', 'design/INTERPRETER-PERF-HANDOVER.0.md', 'design/interpreter-perf-handover.0.md', 'accepted');
-INSERT INTO entity_attributes VALUES ('ent:Document:4099203920617049978', 'role', 'the handover page for the interpreter-performance session of 2026-10-08/09: main at 6780a6030 after #452, #532 (fn-call paths inline on the caller''s tape, twelve fn kinds 41% faster on the interpreter lane) and #533 (the collection words driven as loops on the tape, container literals as sealed regions, a native''s tail body run returned as a call region); which natives still run a sub-engine and why; the Value no-copy policy the maintainer set on 2026-10-09, reviewed but not started, with where to begin; the seven decisions waiting on the maintainer (five from the no-copy review, the leaf rule''s call-time hole recorded as U16, the callback seam''s contract); the follow-ups found and not done; answers given in the session that exist nowhere else; the lessons that cost time; and the saved work in design/handover/interpreter-perf/ (four copy inventories, a vet no-copy marker patch, a pointer-receiver patch, eight two-lane probe corpora with their outputs on main, and every scratch harness and benchmark source)');
+INSERT INTO entity_attributes VALUES ('ent:Document:4099203920617049978', 'role', 'the handover page for the interpreter-performance session of 2026-10-08/09: main at 6780a6030 after #452, #532 (fn-call paths inline on the caller''s tape, twelve fn kinds 41% faster on the interpreter lane) and #533 (the collection words driven as loops on the tape, container literals as sealed regions, a native''s tail body run returned as a call region); which natives still run a sub-engine and why; the Value no-copy policy the maintainer set on 2026-10-09, reviewed but not started, with where to begin; the seven decisions waiting on the maintainer (five from the no-copy review, the leaf rule''s call-time hole recorded as U16, the callback seam''s contract); the follow-ups found and not done; answers given in the session that exist nowhere else; the lessons that cost time; and the saved work in design/handover/interpreter-perf/ (four copy inventories, a vet no-copy marker patch, a pointer-receiver patch, nine two-lane probe corpora with their outputs on main, and every scratch harness and benchmark source)');
 INSERT INTO entities VALUES ('ent:Document:4163489813681141089', 'Document', 'README.md', 'readme.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:4472215996454426427', 'Document', 'design/legacy/GO-MODULE-GRAPH.0.ignore', 'design/legacy/go-module-graph.0.ignore', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:4472215996454426427', 'role', 'the measured Go-side snapshot: the module inventory, the direct-require graph and its twelve-edge transitive reduction, and per-module coverage in both columns — the merged ADR-008 gate and each module''s own standalone suite');

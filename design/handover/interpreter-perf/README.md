@@ -58,6 +58,7 @@ before and after, apart from the differences the change intended.
 | `call-region-errors.txt` | 2 | a `case` inside a fn, a computed `if` arm | the call-loop pool |
 | `debug-stack.txt` | 11 | `Debug.stack` and `Debug.disasm` inside loop bodies, call regions and literals | the Codex review of #533 (the stack view and the recorder) |
 | `sift-differential.txt` | 4 | `import "boru:sift"` inside `for` | the `TestVariationDifferential` timeout seen only under heavy box load |
+| `fn-frames.txt` | 22 | fn frames: params named like words (`len`, `add`, `Foo`), lambdas, nested calls, a 100,000-deep tail recursion and a 2,000-deep non-tail one, body-local defs, `args` after a loop, `do` trapping a raise, `break` in a body, `undef` of a param | the structural frame tail (#532, NUR385) |
 
 ### The harness
 
