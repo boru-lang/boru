@@ -1,0 +1,76 @@
+[1 add 2]
+[1 add 2 3 (4 add 5)]
+[[1 add 2] [3]]
+{a:1 b:(1 add 2) c:[1 add 2]}
+{a:(def q 1 q) b:q}
+def x 5 end [x (x add 1)]
+def x 5 end {a:x b:(x mul 2)}
+[1 2] size
+{a:1 b:2} size
+[dup] size
+[1 2 add]
+[add]
+{a:(1 add)}
+10 [add 1]
+10 {a:(add 1)}
+(10 [add 1])
+def f fn [[x:Integer] [List] [[x (x add 1)]]] end f 3
+def f fn [[x:Integer] [Map] [{a:x b:(x add 1)}]] end f 3
+for 2 [[i (i add 1)]]
+for 2 [{a:i}]
+each [[dup]] [1 2]
+each [def y 7 [y]] [1 2]
+[break]
+[1 (break) 2]
+{a:(break)}
+for 2 [[do (quote [break])]]
+for 3 [[if (i eq 1) [break] [i]]]
+for 3 [[i (if (i eq 1) [continue] [i])] 7]
+[nosuch]
+{a:nosuch}
+do [[nosuch]]
+do [{a:(raise 'boom')}]
+[raise 'x']
+context set 'k' 1 end [(context set 'k' 2) (context get 'k')] end context get 'k'
+context set 'k' 1 end {a:(context set 'k' 2) b:(context get 'k')} end context get 'k'
+def n 0 end [def n 1 n] end n
+[1 2 3] each [[dup]]
+[[1 2] [3 4]] each [size]
+quote [1 add 2]
+[1 add 2]/q
+def m {a:[1 add 2]} end m.a
+{a:[1 add 2]}
+[{a:(1 add 2)}]
+[`x${1 add 2}y`]
+{a:`v${2 mul 3}`}
+["a" 1 true none]
+[Integer String]
+[:Integer]
+{:Integer}
+[(fn [[] [Integer] [7]])]
+def g fn [[] [Integer] [7]] end [g/v]
+def g fn [[] [Integer] [7]] end [g]
+[([x:Integer] => [x])]
+if true [1] [2]
+if true (quote [1 add 2]) [2]
+def a (quote [10 add 1]) end if true a [2]
+def a (quote [10 add 1]) end 5 if true a [2]
+def a (quote [[1 add 2]]) end if true a [2]
+def a (quote [break]) end for 2 [if true a [2]]
+def a (quote [break]) end if true a [2]
+case 2 [1 [10] 2 [20 add 1]]
+case 2 [1 [10] 2 [dup add]]
+case 2 [1 [10] [99]]
+case 2 [1 [10] 2 [[dup]]]
+case 2 [1 [10] 2 [nosuch]]
+for 2 [case 1 [1 [break]]]
+case 1 [1 [break]]
+5 case 1 [1 [add 1]]
+context set 'k' 1 end case 1 [1 [(context set 'k' 2) (context get 'k')]] end context get 'k'
+case (1 add 1) [2 [x]]
+def x 9 end case (1 add 1) [2 [x]]
+[1 [2 [3 (1 add 2)]]]
+{a:{b:{c:(1 add 2)}}}
+def xs (iota 3) end [xs size]
+[1 2 3] [4 5] append
+make Record [a:Integer] {a:(1 add 1)}

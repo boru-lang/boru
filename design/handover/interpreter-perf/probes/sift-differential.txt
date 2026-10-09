@@ -1,0 +1,4 @@
+import "boru:sift"  (Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total
+for 2 [import "boru:sift"  (Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]
+for 2 [import "boru:sift" 1]
+for 2 [(Sift.parse kv/q {sep:':' names:'normalize' vtype:'size'} "MemTotal: 16297200 kB") dot mem-total]

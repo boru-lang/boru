@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-05** (the baseline block below; the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-09** (the pointer to the interpreter-performance handover below; the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -18,6 +18,19 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 > compiles and every runtime callback stamps on 64c5ab2f3, but 30 of 58
 > suites still enter the interpreter at run time; the stopped pass to remove
 > that is saved as patches, and the defects found are NUR366–NUR377.
+
+> **2026-10-09:** the interpreter-performance work and the review of the
+> Value no-copy policy are handed over in
+> [INTERPRETER-PERF-HANDOVER.0.md](INTERPRETER-PERF-HANDOVER.0.md). Main
+> is at 6780a6030 after #529, #452, #532 (fn-call paths: twelve fn kinds
+> −41% on the interpreter lane) and #533 (collection words, container
+> literals and a native's tail body run on the caller's tape); CI is green
+> on it. The no-copy policy is reviewed in
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) with five decisions open and
+> no code changed; the copy inventories, two experiment patches and eight
+> two-lane probe corpora are saved in `design/handover/interpreter-perf/`.
+> The gate table below predates #532 and #533, which moved the
+> interpreter-entry census; `make gate-status` refreshes it.
 
 > ## Where things stand on 2026-10-05 — the baseline
 >

@@ -1,0 +1,27 @@
+diff --git a/core/go/value.go b/core/go/value.go
+index 7fefc6c75..65578776e 100644
+--- a/core/go/value.go
++++ b/core/go/value.go
+@@ -1894,7 +1894,10 @@ type ForwardInfo struct {
+ // the struct from 96 to 80 bytes on its own (design/
+ // INTERPRETER-SPEED-PLAN.10.md #1A, bool-packing follow-up).
+ type Value struct {
+-	ID string
++	// noCopy makes go vet's copylocks analyzer report every by-value copy of
++	// a Value (zero size, placed first so it adds no padding).
++	noCopy noCopy
++	ID     string
+ 	// Data is the kernel-known data payload; see payload.go for variants.
+ 	Data Payload
+ 
+@@ -4557,3 +4560,10 @@ func IsTypeValue(v Value) bool {
+ 
+ 	return false
+ }
++
++// noCopy is a zero-size marker: its Lock and Unlock methods make go vet's
++// copylocks analyzer treat Value as a no-copy type and report every copy.
++type noCopy struct{}
++
++func (*noCopy) Lock()   {}
++func (*noCopy) Unlock() {}

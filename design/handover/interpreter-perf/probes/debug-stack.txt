@@ -1,0 +1,11 @@
+import "boru:debug" end 10 20 each [Debug.stack] [1 2]
+import "boru:debug" end 10 20 fold [Debug.stack drop add] [1 2] 0
+import "boru:debug" end 10 case 1 [1 [Debug.stack]]
+import "boru:debug" end 10 [Debug.stack 5]
+import "boru:debug" end def f fn [[x:Integer] [Any] [Debug.stack]] end 10 20 f 1
+import "boru:debug" end 10 20 each [Debug.stack] {a:1}
+import "boru:debug" end Debug.disasm [each [mul 2] [1 2 3]]
+import "boru:debug" end Debug.disasm (quote [each [mul 2] [1 2 3]])
+import "boru:debug" end Debug.disasm "each [mul 2] [1 2 3]"
+import "boru:debug" end Debug.disasm [case 1 [1 [2]]]
+import "boru:debug" end Debug.disasm [[1 add 2] size]

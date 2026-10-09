@@ -1,0 +1,541 @@
+10 each [1 add] [1 2]
+  I: [10 [2 3]] | <nil>
+  C(true): [10 [2 3]] | <nil>
+10 each [add] [1 2]
+  I: [] | each: element 0: [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:10
+  1 | 10 each [add] [1 2]
+               ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | each: element 0: [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:10
+  1 | 10 each [add] [1 2]
+               ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+1 2 each [dup] [3]
+  I: [1 2 [3]] | <nil>
+  C(true): [1 2 [3]] | <nil>
+10 for 2 [1 add]
+  I: [] | [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:13
+  1 | 10 for 2 [1 add]
+                  ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: unmatched dispatch recovered at add — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [each [1 break] [1 2]]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+each [1 break] [1 2]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [each [continue] [1 2] 7]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+each [1 continue] [1 2]
+  I: [] | [boru/flow_error]: continue outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [each ([x:Any] => [1 break]) [1 2]]
+  I: [] | <nil>
+  C(true): [] | <nil>
+for 2 [each ([kv:Any] => [1 break]) {a:1 b:2}]
+  I: [] | each: key "a": [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(true): [] | each: key "a": [boru/flow_error]: break outside loop
+  --> source position unknown
+def f fn [[] [Any] [1 break]] end for 2 [f]
+  I: [] | <nil>
+  C(true): [] | <nil>
+each ([x:String] => [x]) [1 2]
+  I: [[fn (String) fn (String)]] | <nil>
+  C(true): [[fn (String) fn (String)]] | <nil>
+each ([kv:String] => [kv]) {a:1}
+  I: [] | each: key "a": [boru/signature_error]: no matching lambda signature for 1 argument(s)
+  --> source position unknown
+  C(true): [] | each: key "a": [boru/signature_error]: no matching lambda signature for 1 argument(s)
+  --> source position unknown
+each ([x:Any] => [x drop]) [1 2]
+  I: [] | each: element 0: [boru/type_error]: : expected 1 return value(s), got 0
+  --> source position unknown
+  C(true): [] | each: element 0: [boru/type_error]: : expected 1 return value(s), got 0
+  --> source position unknown
+each ([kv:Any] => [kv drop]) {a:1}
+  I: [] | [boru/each_error]: each: key "a": body produced no result
+  --> 1:1
+  1 | each ([kv:Any] => [kv drop]) {a:1}
+      ^^^^ each: key "a": body produced no result
+  C(true): [] | [boru/each_error]: each: key "a": body produced no result
+  --> 1:1
+  1 | each ([kv:Any] => [kv drop]) {a:1}
+      ^^^^ each: key "a": body produced no result
+each [drop] [1 2]
+  I: [] | [boru/each_error]: each: element 0: body produced no result
+  --> 1:1
+  1 | each [drop] [1 2]
+      ^^^^ each: element 0: body produced no result
+  C(true): [] | [boru/each_error]: each: element 0: body produced no result
+  --> 1:1
+  1 | each [drop] [1 2]
+      ^^^^ each: element 0: body produced no result
+each [raise 'boom'] [1 2]
+  I: [] | each: element 0: [boru/user_error]: boom
+  --> 1:7
+  1 | each [raise 'boom'] [1 2]
+            ^^^^^ boom
+  C(true): [] | each: element 0: [boru/user_error]: boom
+  --> 1:7
+  1 | each [raise 'boom'] [1 2]
+            ^^^^^ boom
+each [each [raise 'boom'] [1]] [1]
+  I: [] | each: element 0: each: element 0: [boru/user_error]: boom
+  --> 1:13
+  1 | each [each [raise 'boom'] [1]] [1]
+                  ^^^^^ boom
+  C(true): [] | each: element 0: each: element 0: [boru/user_error]: boom
+  --> 1:13
+  1 | each [each [raise 'boom'] [1]] [1]
+                  ^^^^^ boom
+do [each [raise 'boom'] [1 2]]
+  I: [error(boom)] | <nil>
+  C(true): [error(boom)] | <nil>
+convert Map (do [each [raise 'boom'] [1]])
+  I: [{code:user_error message:'boom'}] | <nil>
+  C(true): [{code:user_error message:'boom'}] | <nil>
+context set 'x' 1 end each [drop (context set 'x' 2) (context get 'x')] [0 0] end context get 'x'
+  I: [[2 2] 1] | <nil>
+  C(true): [[2 2] 1] | <nil>
+each [def q 5 q] [1 2] end q
+  I: [[5 5] 5] | <nil>
+  C(true): [[5 5] 5] | <nil>
+each [def x 7 [x]] [1 2]
+  I: [[[7] [7]]] | <nil>
+  C(true): [[[7] [7]]] | <nil>
+each [[dup]] [1 2]
+  I: [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:8
+  1 | each [[dup]] [1 2]
+             ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+  C(true): [] | each: element 0: [boru/signature_error]: cannot call `dup` — no signature matches the arguments
+  --> 1:8
+  1 | each [[dup]] [1 2]
+             ^^^ cannot call `dup` — no signature matches the arguments
+  = note: candidate `dup (Any)` takes 1 argument, but none were supplied
+for 2 [[i]]
+  I: [[0] [1]] | <nil>
+  C(true): [[0] [1]] | <nil>
+fold [add] [1 2 3] 0
+  I: [6] | <nil>
+  C(true): [6] | <nil>
+fold [add] [1 2 3]
+  I: [6] | <nil>
+  C(true): [6] | <nil>
+fold [drop] [1 2 3] 0
+  I: [0] | <nil>
+  C(true): [0] | <nil>
+fold [drop drop] [1 2] 0
+  I: [] | [boru/fold_error]: fold: step 0: body produced no result
+  --> 1:1
+  1 | fold [drop drop] [1 2] 0
+      ^^^^ fold: step 0: body produced no result
+  C(true): [] | [boru/fold_error]: fold: step 0: body produced no result
+  --> 1:1
+  1 | fold [drop drop] [1 2] 0
+      ^^^^ fold: step 0: body produced no result
+fold [add] []
+  I: [] | [boru/fold_error]: fold: empty list with no initial value
+  --> 1:1
+  1 | fold [add] []
+      ^^^^ fold: empty list with no initial value
+  C(true): [] | [boru/fold_error]: fold: empty list with no initial value
+  --> 1:1
+  1 | fold [add] []
+      ^^^^ fold: empty list with no initial value
+fold [add] [] 0
+  I: [0] | <nil>
+  C(true): [0] | <nil>
+scan [add] [1 2 3]
+  I: [[1 3 6]] | <nil>
+  C(true): [[1 3 6]] | <nil>
+scan [add] []
+  I: [[]] | <nil>
+  C(true): [[]] | <nil>
+scan [drop drop] [1 2]
+  I: [] | [boru/scan_error]: scan: step 1: body produced no result
+  --> 1:1
+  1 | scan [drop drop] [1 2]
+      ^^^^ scan: step 1: body produced no result
+  C(true): [] | [boru/scan_error]: scan: step 1: body produced no result
+  --> 1:1
+  1 | scan [drop drop] [1 2]
+      ^^^^ scan: step 1: body produced no result
+for-each [print] [1 2]
+  I: [] | <nil>
+  C(true): [] | <nil>
+for-each [drop] [1 2]
+  I: [] | <nil>
+  C(true): [] | <nil>
+for-each [1 break] [1 2]
+  I: [] | [boru/flow_error]: break outside loop
+  --> source position unknown
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word for-each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+for 2 [for-each [break] [1 2] 9]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word for-each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+outer [mul] [1 2] [3 4]
+  I: [[[3 4] [6 8]]] | <nil>
+  C(true): [[[3 4] [6 8]]] | <nil>
+outer [drop drop] [1] [2]
+  I: [] | [boru/outer_error]: outer: (0,0): body produced no result
+  --> 1:1
+  1 | outer [drop drop] [1] [2]
+      ^^^^^ outer: (0,0): body produced no result
+  C(true): [] | [boru/outer_error]: outer: (0,0): body produced no result
+  --> 1:1
+  1 | outer [drop drop] [1] [2]
+      ^^^^^ outer: (0,0): body produced no result
+for 2 [outer [break] [1 2] [3]]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word outer (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+inner [mul] [add] [1 2] [3 4]
+  I: [11] | <nil>
+  C(true): [11] | <nil>
+inner [mul] [add] [[1 2] [3 4]] [[1 0] [0 1]]
+  I: [[[1 2] [3 4]]] | <nil>
+  C(true): [[[1 2] [3 4]]] | <nil>
+inner [mul] [add] [1 2] [3]
+  I: [] | [boru/inner_error]: inner: vectors must have same length
+  --> 1:1
+  1 | inner [mul] [add] [1 2] [3]
+      ^^^^^ inner: vectors must have same length
+  C(true): [] | [boru/inner_error]: inner: vectors must have same length
+  --> 1:1
+  1 | inner [mul] [add] [1 2] [3]
+      ^^^^^ inner: vectors must have same length
+import "boru:array-util" ArrayUtil.eachrank 0 [mul 2] [[1 2] [3 4]]
+  I: [[[2 4] [6 8]]] | <nil>
+  C(true): [[[2 4] [6 8]]] | <nil>
+import "boru:array-util" ArrayUtil.eachrank 1 [size] [[1 2] [3 4]]
+  I: [[2 2]] | <nil>
+  C(true): [[2 2]] | <nil>
+import "boru:array-util" ArrayUtil.eachrank 1 [size] [[1] 2]
+  I: [[1 2]] | <nil>
+  C(true): [[1 2]] | <nil>
+import "boru:array-util" ArrayUtil.eachrank 0 [drop] [1 2]
+  I: [] | [boru/eachrank_error]: eachrank: body produced no result
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.eachrank 0 [drop] [1 2]
+                               ^^^^^^^^^ eachrank: body produced no result
+  C(true): [] | [boru/eachrank_error]: eachrank: body produced no result
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.eachrank 0 [drop] [1 2]
+                               ^^^^^^^^^ eachrank: body produced no result
+import "boru:array-util" ArrayUtil.foldaxis 0 [add] [[1 2] [3 4]]
+  I: [[4 6]] | <nil>
+  C(true): [[4 6]] | <nil>
+import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[1 2] [3 4]]
+  I: [[3 7]] | <nil>
+  C(true): [[3 7]] | <nil>
+import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[]]
+  I: [] | [boru/foldaxis_error]: foldaxis: lane 0 is empty (no initial value)
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[]]
+                               ^^^^^^^^^ foldaxis: lane 0 is empty (no initial value)
+  C(true): [] | [boru/foldaxis_error]: foldaxis: lane 0 is empty (no initial value)
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.foldaxis 1 [add] [[]]
+                               ^^^^^^^^^ foldaxis: lane 0 is empty (no initial value)
+filter [2 gt] [1 2 3 4]
+  I: [[3 4]] | <nil>
+  C(true): [[3 4]] | <nil>
+filter [gt 2] [1 2 3 4]
+  I: [[3 4]] | <nil>
+  C(true): [[3 4]] | <nil>
+filter ([p:Any] => [p.value gt 2]) [1 2 3 4]
+  I: [[3 4]] | <nil>
+  C(true): [[3 4]] | <nil>
+filter [1 gt] {a:1 b:2}
+  I: [{b:2}] | <nil>
+  C(true): [{b:2}] | <nil>
+filter ([kv:Any] => [kv.v gt 1]) {a:1 b:2}
+  I: [{b:2}] | <nil>
+  C(true): [{b:2}] | <nil>
+filter [1] [1 2]
+  I: [] | [boru/filter_error]: filter: element 0: body must produce a Boolean, got Integer
+  --> 1:1
+  1 | filter [1] [1 2]
+      ^^^^^^ filter: element 0: body must produce a Boolean, got Integer
+  C(true): [] | [boru/filter_error]: filter: element 0: body must produce a Boolean, got Integer
+  --> 1:1
+  1 | filter [1] [1 2]
+      ^^^^^^ filter: element 0: body must produce a Boolean, got Integer
+filter [drop] [1 2]
+  I: [] | [boru/filter_error]: filter: element 0: body produced no result
+  --> 1:1
+  1 | filter [drop] [1 2]
+      ^^^^^^ filter: element 0: body produced no result
+  C(true): [] | [boru/filter_error]: filter: element 0: body produced no result
+  --> 1:1
+  1 | filter [drop] [1 2]
+      ^^^^^^ filter: element 0: body produced no result
+for 2 [filter [break] [1 2] 5]
+  I: [] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word filter (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+each [mul 10] {a:1 b:2}
+  I: [{a:10 b:20}] | <nil>
+  C(true): [{a:10 b:20}] | <nil>
+each ([kv:Any] => [kv.v mul 10]) {a:1 b:2}
+  I: [{a:10 b:20}] | <nil>
+  C(true): [{a:10 b:20}] | <nil>
+each ([kv:Any] => [kv.k]) {a:1}
+  I: [{a:'a'}] | <nil>
+  C(true): [{a:'a'}] | <nil>
+each ([kv:Any] => [kv.i]) {a:1 b:2}
+  I: [{a:0 b:1}] | <nil>
+  C(true): [{a:0 b:1}] | <nil>
+for-each [print] {a:1}
+  I: [] | <nil>
+  C(true): [] | <nil>
+for-each ([kv:Any] => [print kv.k]) {a:1 b:2}
+  I: [] | <nil>
+  C(true): [] | <nil>
+fold [add] {a:1 b:2} 0
+  I: [3] | <nil>
+  C(true): [3] | <nil>
+fold [add] {a:1 b:2}
+  I: [3] | <nil>
+  C(true): [3] | <nil>
+fold ([acc:Any kv:Any] => [acc add kv.v]) {a:1 b:2} 0
+  I: [3] | <nil>
+  C(true): [3] | <nil>
+scan [add] {a:1 b:2}
+  I: [{a:1 b:3}] | <nil>
+  C(true): [{a:1 b:3}] | <nil>
+scan ([acc:Any kv:Any] => [acc add kv.v]) {a:1 b:2}
+  I: [{a:1 b:3}] | <nil>
+  C(true): [{a:1 b:3}] | <nil>
+def dbl fn [[x:Integer] [Integer] [x mul 2]] end each dbl/v [1 2]
+  I: [[2 4]] | <nil>
+  C(true): [[2 4]] | <nil>
+fold add/v [1 2 3] 0
+  I: [6] | <nil>
+  C(true): [6] | <nil>
+scan add/v [1 2 3]
+  I: [[1 3 6]] | <nil>
+  C(true): [[1 3 6]] | <nil>
+for-each print/v [1 2]
+  I: [] | <nil>
+  C(true): [] | <nil>
+def f fn [[] [Integer] [7]] end each [typeof] [f/v]
+  I: [[Function]] | <nil>
+  C(true): [[Function]] | <nil>
+def f fn [[] [Integer] [7]] end each [drop 1] [f/v]
+  I: [[1]] | <nil>
+  C(true): [[1]] | <nil>
+each [def y 2 end y add] [1 2]
+  I: [[3 4]] | <nil>
+  C(true): [[3 4]] | <nil>
+each [[1 2] each [mul 2]] [0]
+  I: [[[2 4]]] | <nil>
+  C(true): [[[2 4]]] | <nil>
+each [do [raise 'x']] [1]
+  I: [[error(x)]] | <nil>
+  C(true): [[error(x)]] | <nil>
+def g fn [[xs:List] [Any] [each [mul 2] xs]] end g [1 2]
+  I: [[2 4]] | <nil>
+  C(true): [[2 4]] | <nil>
+def g fn [[Integer] [Any] [each [args.0 add] [1 2]]] end g 10
+  I: [[11 12]] | <nil>
+  C(true): [[11 12]] | <nil>
+for 2 [each [i add] [10]]
+  I: [[10] [11]] | <nil>
+  C(true): [[10] [11]] | <nil>
+def n 0 end while [n lt 2] [each [n add] [1] end def n (n add 1)]
+  I: [[1] [2]] | <nil>
+  C(true): [[1] [2]] | <nil>
+def xs:[:Integer] [1 2] end each [mul 2] xs
+  I: [[2 4]] | <nil>
+  C(true): [[2 4]] | <nil>
+each [dup] [1 2]
+  I: [[1 2]] | <nil>
+  C(true): [[1 2]] | <nil>
+each [1 2] [0]
+  I: [[2]] | <nil>
+  C(true): [[2]] | <nil>
+each [mul 2] []
+  I: [[]] | <nil>
+  C(true): [[]] | <nil>
+each [mul 2] {}
+  I: [{}] | <nil>
+  C(true): [{}] | <nil>
+fold [add] {} 0
+  I: [0] | <nil>
+  C(true): [0] | <nil>
+scan [add] {}
+  I: [{}] | <nil>
+  C(true): [{}] | <nil>
+for-each [print] []
+  I: [] | <nil>
+  C(true): [] | <nil>
+each [print] [1 2]
+  I: [] | [boru/each_error]: each: element 0: body produced no result
+  --> 1:1
+  1 | each [print] [1 2]
+      ^^^^ each: element 0: body produced no result
+  C(true): [] | [boru/each_error]: each: element 0: body produced no result
+  --> 1:1
+  1 | each [print] [1 2]
+      ^^^^ each: element 0: body produced no result
+for 3 [each [i (if (i eq 1) [break] [i])] [0]]
+  I: [[0]] | <nil>
+  C(false): [] | [boru/compile_failed]: bytecode compilation FAILED: code-body word each (Stage 2) — this is a compiler defect, not a policy: valid code must compile.
+  --> source position unknown
+each [dup each [add] [1 2]] [10]
+  I: [] | each: element 0: each: element 0: [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:17
+  1 | each [dup each [add] [1 2]] [10]
+                      ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+  C(true): [] | each: element 0: each: element 0: [boru/signature_error]: cannot call `add` — no signature matches the arguments
+  --> 1:17
+  1 | each [dup each [add] [1 2]] [10]
+                      ^^^ cannot call `add` — no signature matches the arguments
+  = note: the argument was 1 (an Integer)
+  = note: candidate `add (Number, Number)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Scalar, String)` takes 2 arguments, but 1 was supplied
+  = note: candidate `add (Map, Any, Service)` takes 3 arguments, but 1 was supplied
+  = note: …and 6 more signatures
+  = help: forward args for add may have run into the next word; group the call in parens so its RESULT becomes the argument — (add …). `end` / `;` only ends the statement — it does NOT turn a following word into a nested call. If add reads a value from the enclosing stack (a paren seals the stack off), run it first and use its result in sequence instead.
+  = help: see `boru describe add` for its signatures and examples
+import "boru:array-util" ArrayUtil.eachrank 1 [print] [[1] 2]
+  I: [] | [boru/eachrank_error]: eachrank: body produced no result
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.eachrank 1 [print] [[1] 2]
+                               ^^^^^^^^^ eachrank: body produced no result
+  C(true): [] | [boru/eachrank_error]: eachrank: body produced no result
+  --> 1:26
+  1 | import "boru:array-util" ArrayUtil.eachrank 1 [print] [[1] 2]
+                               ^^^^^^^^^ eachrank: body produced no result
+each (fn [[x:Integer] [Integer] [x mul 2]]) [1 2]
+  I: [[2 4]] | <nil>
+  C(true): [[2 4]] | <nil>
+each ([x:Integer] => [x mul 2]) {a:1}
+  I: [] | each: key "a": [boru/signature_error]: no matching lambda signature for 1 argument(s)
+  --> source position unknown
+  C(true): [] | each: key "a": [boru/signature_error]: no matching lambda signature for 1 argument(s)
+  --> source position unknown
+fold [raise 'f'] [1 2] 0
+  I: [] | fold: step 0: [boru/user_error]: f
+  --> 1:7
+  1 | fold [raise 'f'] [1 2] 0
+            ^^^^^ f
+  C(true): [] | fold: step 0: [boru/user_error]: f
+  --> 1:7
+  1 | fold [raise 'f'] [1 2] 0
+            ^^^^^ f
+scan [raise 's'] [1 2]
+  I: [] | scan: step 1: [boru/user_error]: s
+  --> 1:7
+  1 | scan [raise 's'] [1 2]
+            ^^^^^ s
+  C(true): [] | scan: step 1: [boru/user_error]: s
+  --> 1:7
+  1 | scan [raise 's'] [1 2]
+            ^^^^^ s
+outer [raise 'o'] [1] [2]
+  I: [] | outer: (0,0): [boru/user_error]: o
+  --> 1:8
+  1 | outer [raise 'o'] [1] [2]
+             ^^^^^ o
+  C(true): [] | outer: (0,0): [boru/user_error]: o
+  --> 1:8
+  1 | outer [raise 'o'] [1] [2]
+             ^^^^^ o
+inner [raise 'i'] [add] [1] [2]
+  I: [] | inner: pair 0: [boru/user_error]: i
+  --> 1:8
+  1 | inner [raise 'i'] [add] [1] [2]
+             ^^^^^ i
+  C(true): [] | inner: pair 0: [boru/user_error]: i
+  --> 1:8
+  1 | inner [raise 'i'] [add] [1] [2]
+             ^^^^^ i
+filter [raise 'q'] [1 2]
+  I: [] | filter: element 0: [boru/user_error]: q
+  --> 1:9
+  1 | filter [raise 'q'] [1 2]
+              ^^^^^ q
+  C(true): [] | filter: element 0: [boru/user_error]: q
+  --> 1:9
+  1 | filter [raise 'q'] [1 2]
+              ^^^^^ q
+filter ([p:Any] => [raise 'q']) [1 2]
+  I: [] | filter: callback error: [boru/user_error]: q
+  --> 1:21
+  1 | filter ([p:Any] => [raise 'q']) [1 2]
+                          ^^^^^ q
+  C(true): [] | filter: callback error: [boru/user_error]: q
+  --> 1:21
+  1 | filter ([p:Any] => [raise 'q']) [1 2]
+                          ^^^^^ q
+fold ([acc:Any kv:Any] => [raise 'm']) {a:1} 0
+  I: [] | fold: key "a": [boru/user_error]: m
+  --> 1:28
+  1 | fold ([acc:Any kv:Any] => [raise 'm']) {a:1} 0
+                                 ^^^^^ m
+  C(true): [] | fold: key "a": [boru/user_error]: m
+  --> 1:28
+  1 | fold ([acc:Any kv:Any] => [raise 'm']) {a:1} 0
+                                 ^^^^^ m
+each ([kv:Any] => [raise 'm']) {a:1}
+  I: [] | each: key "a": [boru/user_error]: m
+  --> 1:20
+  1 | each ([kv:Any] => [raise 'm']) {a:1}
+                         ^^^^^ m
+  C(true): [] | each: key "a": [boru/user_error]: m
+  --> 1:20
+  1 | each ([kv:Any] => [raise 'm']) {a:1}
+                         ^^^^^ m
+import "boru:array-util" ArrayUtil.foldaxis 0 [raise 'fa'] [[1 2] [3 4]]
+  I: [] | foldaxis: lane 0: fold: step 0: [boru/user_error]: fa
+  --> 1:48
+  1 | import "boru:array-util" ArrayUtil.foldaxis 0 [raise 'fa'] [[1 2] [3 4]]
+                                                     ^^^^^ fa
+  C(true): [] | foldaxis: lane 0: fold: step 0: [boru/user_error]: fa
+  --> 1:48
+  1 | import "boru:array-util" ArrayUtil.foldaxis 0 [raise 'fa'] [[1 2] [3 4]]
+                                                     ^^^^^ fa

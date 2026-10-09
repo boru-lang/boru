@@ -1009,6 +1009,21 @@ reused after the join now compiles.
     workaround: the bare method call's window is not closed off by the
     next token the way a named fn call's is. The interpreter answers all
     four.
+  - **U16.** A binding word handed to a fn through a `Function` parameter
+    and applied in its body refuses: `def h fn [[b:Function n:Integer]
+    [Integer] [b y 2 n]]  h def/v 1  y` — "the check pass stopped at
+    [undefined_word] undefined word: y". The interpreter answers `[1 2]`:
+    the body names no binding word, so the leaf-frame fast path takes no
+    cleanup snapshot and the `def` that `b` performs outlives the call, as
+    it has on the named path since the speed plan. Which lane is right is
+    open: it is the Codex P1 thread on PR #532, left for the maintainer
+    (a run-time rule that snapshots lazily at the first install inside a
+    leaf frame, acceptance as a documented property of the fast path, or
+    `Function`-typed params treated as frame state). An alias of `def`
+    reached by name (`def mydef def/v`) is fixed and agrees on both lanes
+    (`undefined word: y`). Recorded 2026-10-09 from
+    [INTERPRETER-PERF-HANDOVER.0.md](INTERPRETER-PERF-HANDOVER.0.md),
+    decision 6.
 
 ## 6. The execution-environment seams
 

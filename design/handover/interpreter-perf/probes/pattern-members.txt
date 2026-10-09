@@ -1,0 +1,9 @@
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: (1 add 1)}) (h {f: ("a" add "b")})]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: (1 add 1)})]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end (h {f: (1 add 1)})
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end h {f: (1 add 1)}
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: 2})]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [h {f: (1 add 1)}]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [h {f: 2}]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end [(h {f: 2}) 1]
+def h fn [[m:{f:Integer}][Any]["int"] [m:{f:String}][Any]["str"]] end 1 [(h {f: 2})]
