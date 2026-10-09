@@ -15,7 +15,7 @@ main at `6780a6030`.
 | `inventory/core-value.md` | value-side copy inventory for `core/go` (`Value`, payloads, clone, unify, carriers, type literals) |
 | `inventory/eng-check-compiler.md` | copy inventory for the VM, the checker and the compiler |
 | `inventory/basic-lang-parser-cmd.md` | copy inventory for the word libraries, the parser and the CLI, with the language's aliasing semantics answered |
-| `patches/vet-nocopy-marker.patch` | phase 0 of the plan: a zero-size `noCopy` field that makes `go vet -copylocks` report every copy of a `Value` |
+| `patches/vet-nocopy-marker.patch` | part of phase 0: a zero-size `noCopy` field that makes `go vet -copylocks` report every copy of a single `Value`; bulk copies through `copy` and variadic `append` over `[]Value` stay invisible to it |
 | `patches/pointer-receivers.patch` | the first step of phase 1: pointer receivers on 20 of `Value`'s 23 value-receiver methods |
 | `probes/*.txt` | two-lane probe corpora, one program per line |
 | `probes/*.out` | each corpus's output on `6780a6030`, from the harness below |
@@ -351,9 +351,15 @@ go tool pprof -peek '^runtime\.duffcopy$' lang.test stage6-interp.prof
 
 ## Counting every Value copy with go vet
 
+Every module `go.work` lists counts; the first census missed five of
+them. `wpg/wasm` builds only for js/wasm and needs `GOOS=js GOARCH=wasm
+go vet -copylocks ./wasm/` from `wpg` (it has none). With the marker
+applied, the ordinary `go vet ./...` lanes fail on these findings, so
+revert the patch when done.
+
 ```bash
 git apply design/handover/interpreter-perf/patches/vet-nocopy-marker.patch
-for m in core/go basic/go lang/go eng/go check/go compiler/go parser/go cmd/go test/go; do
+for m in $(awk '/^use \(/{f=1; next} /^\)/{f=0} f {sub(/^[ \t]*\.\//, ""); print}' go.work); do
   (cd $m && go vet -copylocks ./... > /tmp/vet-$(echo $m | tr / -).txt 2>&1)
   echo "$m: $(grep -c 'lock' /tmp/vet-$(echo $m | tr / -).txt) all, $(grep 'lock' /tmp/vet-$(echo $m | tr / -).txt | grep -vc '_test.go') non-test"
 done

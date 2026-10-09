@@ -34,8 +34,9 @@ Companion documents:
 
 1. **The policy is three changes wearing one sentence.** (a) A
    representation change: `core.Value` is a 104-byte struct that the
-   compiler copies at 14,887 non-test sites (31,779 with tests); "never
-   copied" means every one of them becomes a pointer. (b) A storage
+   compiler copies at 15,235 non-test sites that `go vet` can count
+   (32,141 with tests), plus the bulk copies of `[]Value` it cannot;
+   "never copied" means every one of them becomes a pointer. (b) A storage
    change: the state that a copy protects today is per-occurrence state
    that lives inside the Value (position, quoted, eval, ascription,
    check-mode tags, names); "modify in situ" is only sound once that
@@ -58,9 +59,11 @@ Companion documents:
    neutral at best unless scalars are interned.
 4. **Recommended shape.** Adopt the policy as an *ownership rule*: a
    Value has one owner, every other holder references it, and nothing
-   writes through a shared reference. Enforce it with `go vet` (a
-   zero-size `noCopy` field makes the copylocks analyzer report every
-   struct copy; the gate is "zero findings", ratcheted per module). Reach
+   writes through a shared reference. Enforce it with two checks,
+   ratcheted per module: `go vet`'s copylocks analyzer, which a
+   zero-size `noCopy` field turns on for `Value` and which reports every
+   copy of a single `Value`, and a small analyzer for the bulk copies
+   copylocks cannot see, `copy` and variadic `append` over `[]Value`. Reach
    it in phases, each measured on the shipped benchmarks, and decide the
    final representation (§6, phase 4) on the numbers after phase 3 rather
    than now.
@@ -97,8 +100,12 @@ where this reading changes behaviour; §4 lists them.
 
 ## 3. Where copies happen today
 
-Counts are from `go vet -copylocks` with the marker (all Go, non-test)
-and from the four inventories (explicit sites, non-test).
+Counts are from `go vet -copylocks` with the marker (all Go, non-test,
+every module in `go.work`; bulk copies through `copy` and `append` are
+not in them) and from the four inventories (explicit sites, non-test).
+`test/specfix` (337 copies) and `calc/go` (11) were counted after the
+inventories were written and are not inventoried; `tools/piecetool`,
+`test/solardemo` and `wpg` have none.
 
 | module | struct copies (vet) | explicit copy-to-modify and container copies (inventory) |
 |---|---|---|
@@ -110,6 +117,8 @@ and from the four inventories (explicit sites, non-test).
 | eng/go (the VM) | 606 | 19 whole-Value copy-to-modify, 7 payload copies, 19 `StripAscribed`, 8 `WithPos`, 107 slice copies, 7 per-run by-value holders |
 | parser/go | 56 | constructs only; 1 `withPos` on a just-minted value |
 | cmd/go | 46 | 2 copies, 4 snapshot-retaining fields |
+| test/specfix | 337 | not inventoried |
+| calc/go | 11 | not inventoried |
 
 Seven families, in the order the plan treats them:
 
@@ -138,7 +147,7 @@ Seven families, in the order the plan treats them:
    ring, `send`'s deep clone, `FnUtil.memoize`/`curry`, `const`'s
    exemplar. They rely on the copy being independent.
 5. **Container element arrays.** ~110 `Slice()` calls, ~60 `make`+`copy`
-   gathers, `CloneValue` (the `clone` word, `send`, the VM's fresh-push
+   gathers, `CloneValue` (the `StructUtil.clone` word, `send`, the VM's fresh-push
    family `OpPushConstFresh`, `CloneValueKeeping` for compiled fn units).
    This is boru's value-semantics column: `set`, `push`, `pop`, `shift`,
    `unshift`, `merge`, `setpath`, `sort`, `reverse`, `take`, `unique`,
@@ -160,7 +169,9 @@ Seven families, in the order the plan treats them:
    writes them after construction: the existence proof for the model.
 
 `CloneValue` has nine real callers outside its own file, and they sort
-cleanly: the `clone` word (user-facing semantics, `clone.go:19`); `send`
+cleanly: the `StructUtil.clone` word (user-facing semantics,
+`clone.go:19`; it copies mutable containers and returns scalars and other
+immutable payloads shared, so `(StructUtil.clone 1) eq 1` is true); `send`
 (isolation at the process boundary, `native_process.go:335`); four
 check-mode reads that clone a container for a fresh provenance ID
 (`native_storage.go:1449/1586/1595/1627`); one stale call in
@@ -229,12 +240,15 @@ Line numbers are in the inventories.
   flips into this aliasing problem. The value side counts 27
   `NewTypeLiteral` call sites, 24 `&v` orphan sites and 12 `CanonicalType`
   repairs; `typeof`, `pathof`, the None/Absent fill literals and sig
-  patterns all hand node copies to user data. The prize on the other side
-  of the fix: `Type.Equal` (`types.go:322-350`, an ID-string compare on
-  every `ConformsTo` step, ~7% of interpreter CPU by its own comment)
-  becomes pointer equality, and `CommonAncestorType`'s pointer-keyed
-  `seen` set stops over-widening on orphans (`carrier_join.go:28-42,
-  193-195`).
+  patterns all hand node copies to user data. On the other side of the
+  fix, `Type.Equal` (`types.go:322-350`) becomes pointer equality
+  everywhere: today it settles most comparisons by pointer, by the
+  shared `tmeta` or by the interval label, and falls back to comparing
+  ID strings only for unlabelled nodes (minted, refined and orphan
+  copies). The ~7% of interpreter CPU its comment cites is the cost
+  before those fast paths, not a remaining one; what the fallback costs
+  now is unmeasured. `CommonAncestorType`'s pointer-keyed `seen` set also
+  stops over-widening on orphans (`carrier_join.go:28-42, 193-195`).
 - **H4. Recorder identities.** Check-mode def reads are tagged on a copy
   and mutated through a pointer (`engine.go:2952, 3248` →
   `check_recovery.go:82-96`, `emit.go:7463-7560`, `kept_defs.go:103-118`
@@ -298,7 +312,7 @@ Consequences that fall out:
   construction, not by rewriting `Value.ID` on a copy (H4).
 - Snapshots (H5) are either immutable shared objects (nothing to
   snapshot) or an explicit, named copy-on-write at the mutation site: the
-  debugger ring, `send`, `clone`, `memoize` stay as deliberate
+  debugger ring, `send`, `StructUtil.clone`, `memoize` stay as deliberate
   constructions of equal values, which the policy should name as its
   sanctioned exceptions.
 - Every "copy then retag" helper becomes a constructor that mints from
@@ -313,8 +327,10 @@ Consequences that fall out:
   `SetBehavior`, `SetTypeBody`, `SetOwner`. The five copy-local facet
   setters (`SetPos`, `SetDynFrom`, `SetElemConstraint`, `SetAscribed`,
   `WithModuleNS`) are exactly the ones whose semantics change.
-- The `go vet` marker is the enforcement: once a module reaches zero
-  findings it stays there.
+- The two copy checks are the enforcement: `go vet`'s copylocks for
+  single-value copies and the bulk-copy analyzer for `copy` and variadic
+  `append` over `[]Value`. Once a module reaches zero on both it stays
+  there.
 
 ## 6. Refactor plan
 
@@ -326,10 +342,27 @@ cover-gate`, the langspec gates and the benchmark anchors (`BenchmarkStage6`,
 **Phase 0 — enforcement and anchors (2 days).** Add the zero-size
 `noCopy` field to `Value` (it costs nothing at run time; the handover
 folder's `patches/vet-nocopy-marker.patch` is that change, and `Value`
-stays 104 bytes with it) and a
-`make vet-copies` target that counts copylocks findings per module and
-fails when a module's count rises above its recorded ceiling. Record the
-benchmark baselines. This is the ratchet every later phase pulls on.
+stays 104 bytes with it) and a `make vet-copies` target that counts
+copylocks findings per module, for every module `go.work` lists, and
+fails when a module's count rises above its recorded ceiling. Two more
+pieces make that ratchet hold:
+
+- **Take copylocks out of the ordinary vet lanes first.** With the marker
+  in place, the plain `go vet ./...` that `make vet` and the commit
+  gate's vet lane run (`scripts/commit-gate.sh`), and golangci-lint's
+  `govet` under the `standard` preset (`.golangci.yml`), would all fail on
+  the 32,141 baseline findings. Those lanes run with copylocks disabled
+  (`go vet -copylocks=false`, and `govet` configured to match), and
+  `make vet-copies` becomes the only place copylocks runs, against its
+  ceilings.
+- **Count the bulk copies too.** copylocks does not see `copy` or a
+  variadic `append` over `[]Value`, which are exactly the tape and
+  argument-array copies the policy targets. A small `go/analysis` pass
+  that reports both when the element type is `core.Value` gives the
+  ratchet a second count.
+
+Record the benchmark baselines. This is the ratchet every later phase
+pulls on.
 
 **Phase 1 — pass by pointer on the hot paths (1 week, measured 11%,
 estimated 15–20% with the rest).** Pointer receivers on 20 of the 23
@@ -395,10 +428,15 @@ the numbers on the table.
 
 **Phase 5 — the language decision (1–2 weeks of spec work, any time
 after phase 3).** Either keep list and map value semantics by
-construction (a word returns a new container sharing its elements: no
-Value copied, element arrays still gathered) or move them to in-place
-mutation like flex containers (a spec change touching every row that
-relies on the receiver staying put). `clone`, `send`, `memoize` and the
+construction (a word returns a new container whose elements are the
+receiver's own) or move them to in-place mutation like flex containers (a
+spec change touching every row that relies on the receiver staying put).
+Value semantics without copying a `Value` needs the elements to be
+references, which is phase 4, or a persistent container representation
+that shares structure between versions. While the header stays a
+by-value struct, building the new container copies each unchanged
+element's header, a bulk copy the exceptions list sanctions until
+then. `StructUtil.clone`, `send`, `memoize` and the
 debugger ring are explicit constructions of equal values either way.
 
 Order and dependencies: 0 → 1 → 2 can land in any interleaving; 3
@@ -412,7 +450,9 @@ the value-semantics column cheap.
 
 1. **Is constructing a new container that shares its elements a
    "copy"?** The plan assumes no. If yes, list and map value semantics
-   cannot survive and phase 5 is forced to in-place.
+   cannot survive and phase 5 is forced to in-place. Sharing elements
+   for real needs reference elements (phase 4) or a persistent container
+   representation, so the answer here and decision 3 go together.
 2. **Lists and maps: value semantics or in-place?** Today value
    semantics (`set` returns an updated copy); flex containers already
    mutate in place. Recommendation: keep value semantics by construction.
@@ -421,7 +461,7 @@ the value-semantics column cheap.
    3 with benchstat in hand.
 4. **Sanctioned copies.** The full list, with sites, invariants and
    expiry phases, is [VALUE-NO-COPY-EXCEPTIONS.0.md](VALUE-NO-COPY-EXCEPTIONS.0.md): two
-   language-level copies (`clone`, `send`), seven named constructions,
+   language-level copies (`StructUtil.clone`, `send`), seven named constructions,
    seven reference-copy families that are not Value copies, ten
    transitional allowances tied to phases, and seven copies that are
    explicitly not exceptions. Approve or amend it.
@@ -447,6 +487,6 @@ rises with object count under phase 4; the alloc ceilings and the
 to allocation; `-race` runs get slower with more pointer traffic. The
 upsides not in the table: phase 3 removes a bug class (H1–H4) rather than
 a cost, and the vet ratchet keeps it removed; type identity by pointer
-retires the `Type.Equal` string compare (~7% of interpreter CPU by its own
-comment) and the `ResolveWordsDeep` prepass that rebuilds both `Unify`
-operands on every call (`resolve.go:75-155`).
+retires `Type.Equal`'s remaining ID-string fallback (unmeasured since its
+fast paths landed) and the `ResolveWordsDeep` prepass that rebuilds both
+`Unify` operands on every call (`resolve.go:75-155`).

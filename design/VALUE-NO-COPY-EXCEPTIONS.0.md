@@ -7,8 +7,10 @@ Companion to [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md). Every copy of a
 Value that is allowed to exist once the policy holds is named here, with
 the site, the reason the copy is right, the invariant that keeps it safe,
 and whether it is permanent or expires with a phase of the plan. Anything
-`go vet -copylocks` reports that is not covered by an entry below is a
-defect. Line numbers are from main at `6780a6030`; the per-module
+the two copy checks report that is not covered by an entry below is a
+defect: `go vet -copylocks` for copies of a single `Value`, and the
+bulk-copy check phase 0 adds for `copy` and variadic `append` over
+`[]Value`, which copylocks cannot see. Line numbers are from main at `6780a6030`; the per-module
 inventories in
 [handover/interpreter-perf/inventory/](handover/interpreter-perf/inventory/)
 hold the full tables.
@@ -32,7 +34,7 @@ hold the full tables.
   neither.
 - **R5. Mutable-by-design payloads are shared, not copied.** FlexList,
   FlexMap, class instances, Store layers, Table rows and an Error's data
-  map mutate in place; that is their semantics. `clone` and `send` are the
+  map mutate in place; that is their semantics. `StructUtil.clone` and `send` are the
   only ways to obtain an independent one.
 - **R6. Every exception is written down.** Permanent entries carry the
   class letter; transitional entries name the phase that retires them.
@@ -41,7 +43,7 @@ hold the full tables.
 
 | id | site | why the copy is right | invariant | status |
 |---|---|---|---|---|
-| A1 | `clone` word: `CloneValue` (`lang/go/native/clone.go:19`; `StructUtil.clone` `struct_module.go:92`); host bodies through `DeepCloner` (`core/go/clone.go:146-152`) | the word's meaning is a deep, independent copy: `(clone p) eq p` is false, nested mutable payloads cannot alias | the cloner builds an equal value graph with fresh identities for the mutable payloads and shares the immutable ones; its header step (`cloner.withPayload`, `clone.go:74-78`) becomes a constructor, not a struct copy | permanent |
+| A1 | `StructUtil.clone` from `boru:struct-util` (there is no unqualified `clone` word): `CloneValue` (`lang/go/native/clone.go:19`, exported at `struct_module.go:92`); host bodies through `DeepCloner` (`core/go/clone.go:146-152`) | the word's meaning is a deep, independent copy of a mutable container: for a list or map `xs`, `(StructUtil.clone xs) eq xs` is false and nested mutable payloads cannot alias; scalars and other immutable payloads come back shared, so `(StructUtil.clone 1) eq 1` is true | the cloner builds an equal value graph with fresh identities for the mutable payloads and shares the immutable ones; its header step (`cloner.withPayload`, `clone.go:74-78`) becomes a constructor, not a struct copy | permanent |
 | A2 | `send` at the process boundary (`lang/go/native/native_process.go:335`) | a message crosses a task boundary; a receiver must never observe the sender mutating a flex container or store it still holds | a message is either deep-cloned at the boundary or provably immutable; nothing else crosses tasks | permanent, unless ownership transfer of messages is designed later |
 | A3 | serialization and deserialization: export bundles, keyrings, `jsonify`/`nodify`, the wire readers, the wasm playground | an external representation is constructed and values are reconstructed on read | bytes are not Values; a read mints new values | permanent (not a Value copy; listed to stop the argument) |
 
@@ -50,7 +52,7 @@ hold the full tables.
 | id | site | why | invariant | status |
 |---|---|---|---|---|
 | B1 | one instance per evaluation of a literal: pending list and map literals (`core/go/engine.go:5287-5294, 5322, 6030, 5154-5158`), fn-body literals (`(mk) eq (mk)` is false, `TestFnBodyContainerLiteralIdentity`), the scalar-literal fast path, the VM's fresh-push family (`eng/go/vm.go:2300, 4634, 4769` with `Program.ConstKeep`) | the spine of a literal is a new container each time it is evaluated; a binding's container embedded in it stays the binding's instance | elements are shared by reference; only the spine is new; the deep clone that implements this today (`CloneValueKeeping` + `WithFreshFnIdentity`) is the transitional means, construction code (`OpMakeList`/`OpMakeMap` over shared consts) the end state | permanent as a rule; the clone implementation expires at phase 3/4 (D7) |
-| B2 | the value-semantics column: `set`, `push`, `pop`, `shift`, `unshift`, `merge`, `setpath`, `sort`, `reverse`, `take`, `unique`, `create`, `listAll` and kin (`native_storage.go:2078-2116`, `listops.go:49-122`, `merge.go:42-97`, `setpath.go:240-302`, `native_sort.go:48-63`, `native_array.go:946-1078`, `list.go:65`, `create.go:92`) | a word returns a new container and leaves the receiver untouched | the new container's elements are the old references; no element is copied; the receiver is never written | permanent if decision 2 keeps value semantics; void if lists and maps go in-place |
+| B2 | the value-semantics column: `set`, `push`, `pop`, `shift`, `unshift`, `merge`, `setpath`, `sort`, `reverse`, `take`, `unique`, `create`, `listAll` and kin (`native_storage.go:2078-2116`, `listops.go:49-122`, `merge.go:42-97`, `setpath.go:240-302`, `native_sort.go:48-63`, `native_array.go:946-1078`, `list.go:65`, `create.go:92`) | a word returns a new container and leaves the receiver untouched | the receiver is never written. With reference elements (phase 4) or a persistent container representation, the new container's elements are the old ones and no `Value` is copied. While the header is a by-value struct, building the new element array copies each unchanged element's header: a bulk copy sanctioned until one of those lands | permanent if decision 2 keeps value semantics; void if lists and maps go in-place |
 | B3 | self-append over one flex list, `append f f` (`native_flex.go:318-323`) | the read set must be fixed before the receiver grows | a length-bounded read of the elements, which needs no copy at all; the current `Slice()` snapshot is the transitional form | permanent as a read; the snapshot expires at phase 2 |
 | B4 | a function value per construction: `WithFreshFnIdentity` on each evaluation of a fn literal (NUR288), a closure source re-created with this closure's captures (`vm.go:893-903`) | identity is per construction, the body is shared | mint a new Function value sharing `FnDefInfo`'s body with its own identity and captures | permanent |
 | B5 | Store layers: `CowSet` (`native_storage.go:1879-1887` → `core/go/core_helpers.go:1004`), tombstones travelling with a layer | `set` on a store creates a new layer with a prototype link | a layer holds references; the prototype chain is shared; no Value is duplicated | permanent (the design is copy-on-write of the layer structure) |
@@ -102,10 +104,10 @@ shared pointer instead.
 
 ## How to use this list
 
-- A `go vet -copylocks` finding is matched to an A–D entry by site or
-  it is a defect. Phase 0's `make vet-copies` records the count per
-  module; the ceiling only goes down.
+- A finding of either copy check is matched to an A–D entry by site or
+  it is a defect. Phase 0's `make vet-copies` records both counts per
+  module, for every module `go.work` lists; the ceilings only go down.
 - When a D entry's phase lands, its row moves to class E in the same
-  change and the vet ceiling drops by its sites.
+  change and the ceilings drop by its sites.
 - A new copy needs a row here before it is merged, with the class, the
   invariant and, for class D, the phase that retires it.

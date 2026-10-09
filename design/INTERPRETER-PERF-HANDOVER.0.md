@@ -89,7 +89,8 @@ changing code. The review is four documents:
 
 The findings in one paragraph: struct copy and zero routines are 23–25% of
 CPU on both lanes, so the copies are worth attacking; `go vet` with a
-zero-size marker counts 14,887 copies in non-test code. But "modify in
+zero-size marker counts 15,235 copies of a single `Value` in non-test
+code, and the bulk copies of `[]Value` it cannot see come on top. But "modify in
 situ" is only sound once per-occurrence state (position, quoted, eval,
 ascription, check-mode tags, names) moves out of the shared value into
 the slot that holds it, and lists and maps have value semantics today, so
@@ -101,9 +102,11 @@ representation on phase 3's numbers.
 
 **Where to start.** Phases 0 to 2 depend on no decision and can start now:
 
-1. Phase 0: apply `patches/vet-nocopy-marker.patch` and add a
-   `make vet-copies` ratchet with per-module ceilings from the
-   measurements note §3.
+1. Phase 0: apply `patches/vet-nocopy-marker.patch`, take copylocks out
+   of the ordinary vet and golangci-lint lanes (which the marker would
+   otherwise fail), and add a `make vet-copies` ratchet over every
+   `go.work` module with ceilings from the measurements note §3, plus a
+   small analyzer for the bulk copies copylocks cannot see.
 2. Phase 1: apply `patches/pointer-receivers.patch` (11% geomean on
    Stage6), fix the 105 test call sites listed beside it, then move the
    step loop, the matcher and the VM run loop to pointer reads as the

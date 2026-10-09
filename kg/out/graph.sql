@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '3642440955129919094');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '267526902222705605');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -45,7 +45,7 @@ INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '59656315
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
-INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '2687147691256013019', 17372);
+INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '3764270809544189057', 17644);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '2574920545089865532', 183827);
 INSERT INTO input_files VALUES ('../design/NUR-ROUND6-HANDOVER.0.md', '8014059356792532768', 14152);
@@ -54,7 +54,7 @@ INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '63624638729
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
 INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7042806167894054599', 119208);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
-INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '1733558817585756964', 28686);
+INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '4697432564749662338', 31160);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
 INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
@@ -81,7 +81,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '5746162906621858059', 102637);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6585610741718224556', 102676);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -321,7 +321,7 @@ INSERT INTO entity_attributes VALUES ('ent:Document:1913611373576952100', 'role'
 INSERT INTO entities VALUES ('ent:Document:203047846460430642', 'Document', 'design/DECLARATIVE-GRAMMAR.0.md', 'design/declarative-grammar.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:203047846460430642', 'role', 'the shared declarative tabnas grammar artifact (parser/go/grammar.json): contract, loader pair, and the batch-migration state');
 INSERT INTO entities VALUES ('ent:Document:203462101593576208', 'Document', 'design/VALUE-NO-COPY.0.md', 'design/value-no-copy.0.md', 'accepted');
-INSERT INTO entity_attributes VALUES ('ent:Document:203462101593576208', 'role', 'the review of the maintainer''s 2026-10-09 policy that Value structures are never copied and may be modified in situ, written before any code changed: the policy is three changes in one sentence (a representation change, since core.Value is a 104-byte struct go vet counts 14,887 non-test copies of; a storage change, since the per-occurrence state a copy protects must move from the shared value into the slot that holds it; and a language change for list and map value semantics), the seven hazard classes in-situ writes would hit, the design the plan converges on (an immutable shared value, an occurrence record in each slot, contents constructed per evaluation), a phased plan with a go vet no-copy ratchet, the decisions it needs, and the estimate: copy and zero routines are 23-25% of CPU on both lanes, pointer receivers alone gave 11%, phases 1-3 are estimated at 20-30%, and a heap-allocated pointer representation measured 2.7x slower than today on a copy-dominated loop. Its companions are VALUE-NO-COPY-EXCEPTIONS.0.md (the sanctioned copies) and VALUE-NO-COPY-MEASUREMENTS.0.md');
+INSERT INTO entity_attributes VALUES ('ent:Document:203462101593576208', 'role', 'the review of the maintainer''s 2026-10-09 policy that Value structures are never copied and may be modified in situ, written before any code changed: the policy is three changes in one sentence (a representation change, since core.Value is a 104-byte struct go vet counts 15,235 non-test single-value copies of, bulk slice copies on top; a storage change, since the per-occurrence state a copy protects must move from the shared value into the slot that holds it; and a language change for list and map value semantics), the seven hazard classes in-situ writes would hit, the design the plan converges on (an immutable shared value, an occurrence record in each slot, contents constructed per evaluation), a phased plan with a go vet no-copy ratchet, the decisions it needs, and the estimate: copy and zero routines are 23-25% of CPU on both lanes, pointer receivers alone gave 11%, phases 1-3 are estimated at 20-30%, and a heap-allocated pointer representation measured 2.7x slower than today on a copy-dominated loop. Its companions are VALUE-NO-COPY-EXCEPTIONS.0.md (the sanctioned copies) and VALUE-NO-COPY-MEASUREMENTS.0.md');
 INSERT INTO entities VALUES ('ent:Document:208373100487963948', 'Document', 'design/PAREN-RESTEP-RULE.0.md', 'design/paren-restep-rule.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:208373100487963948', 'role', 'the measured statement of when a paren-collapsed function is PLACED and when it is re-stepped into a CALL, superseding NUR101''s 2026-08-26 place-uniformly ruling whose premise it falsifies. The rule: a Function a paren placed is re-stepped exactly when it leads TWO OR MORE survivors of an enclosing group that closes with a paren rewind — a user paren, an fn frame, or an if/for/do body — while the program top level, list literals and map literals do not rewind; placement is the one-survivor case and the enclosing group is a SECOND decision taken one paren out, not a context that modifies the first. The ruling had been implemented by deleting fnReturnPark''s survivor-count clause on the reasoning that the count was never the right question; it is, and deleting it turned (x:Integer => [x mul 2] 5) from 10 into fn (Integer) 5 and broke seven suites. The defect was the COMPILER''S, in both directions, and there were five silent miscompiles: (mk 1) 2 and (mk2 5) 10 applied what the interpreter places, while [((mk 1) 2)] and two if-arm shapes placed what it applies — ((mk 1) 2) compiling correctly at the top level only by ACCIDENT, because the outer paren collapses and the pair reaches the program residual where the carrier arm applies it. The fix is a matched PAIR of records taken at the collapse, the last moment the two spellings are distinguishable — ParenPlacedFnIDs and the new ParenReSteppedFnIDs — read by the residual lowering, the branch-arm merge and the list-literal assembly, which is what lets [(mk 1) 2] keep compiling while [((mk 1) 2)], byte-identical in its elements, refuses. Value divergences on the 16-shape probe: five to zero. Also the finding of how they survived a 100%-covered parity suite (NUR106): Stage J flipped lang.Run to the compiled path and 75 parity assertions across five files still read it as their interpreter oracle, comparing the compiled lane against itself; the sweep to RunInterp surfaced NUR107 on the very test that had pinned that claim as non-reproducing');
 INSERT INTO entities VALUES ('ent:Document:2160474245302207298', 'Document', 'design/FULL-COMPILATION-ASSESSMENT.0.md', 'design/full-compilation-assessment.0.md', 'accepted');

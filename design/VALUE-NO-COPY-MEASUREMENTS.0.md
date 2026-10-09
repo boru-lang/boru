@@ -85,13 +85,28 @@ Grep counts over non-test Go (717 files):
 | value-receiver methods on `Value` | 23 (9 pointer-receiver) |
 | test files mentioning `Value` | 981 |
 
-Exact count of by-value copies: in a scratch worktree a zero-size
-`noCopy` field (Lock/Unlock methods) was added to `Value`, and `go vet
--copylocks` then reports every copy the compiler makes. This is also the
-enforcement tool the refactor can use (the gate is "vet reports zero").
-The marker (`patches/vet-nocopy-marker.patch` in the handover folder) is a
-zero-size field placed first in the struct: `Value` stays
-104 bytes with it, so it can live in the shipped code.
+Count of by-value copies: in a scratch worktree a zero-size `noCopy`
+field (Lock/Unlock methods) was added to `Value`, and `go vet -copylocks`
+then reports every copy of a single `Value` the compiler makes: each
+argument, parameter, receiver, assignment, return, range variable and
+composite literal. The marker (`patches/vet-nocopy-marker.patch` in the
+handover folder) is a zero-size field placed first in the struct, so
+`Value` stays 104 bytes with it and it can live in the shipped code.
+
+Two limits on what that count covers:
+
+- **Bulk copies are invisible to it.** The analyzer does not look inside
+  the built-in `copy` or a variadic `append(dst, src...)`, so the element
+  copies of a `[]Value` are not in the table: the tape's buffer copies
+  (`core/go/tape.go:165`, `:208`, `:351`, `:441`), the per-call argument
+  copy (`core/go/core_helpers.go:486`), and every `make` + `copy` and
+  `append([]Value(nil), xs...)` the inventories list. A gate on this
+  policy needs a second check for them (phase 0 in the review).
+- **Every workspace module counts.** The first census covered nine
+  modules; `go.work` lists fourteen. The other five add 24 copies, 11 of
+  them non-test, in `calc/go` and 338, 337 non-test, in `test/specfix`;
+  `tools/piecetool`, `test/solardemo` and `wpg` (including `wpg/wasm`,
+  vetted as `GOOS=js GOARCH=wasm`) have none.
 
 | module | copies (all) | copies (non-test) |
 |---|---|---|
@@ -101,12 +116,16 @@ zero-size field placed first in the struct: `Value` stays
 | basic/go | 1,604 | 1,361 |
 | check/go | 1,677 | 709 |
 | eng/go | 2,047 | 606 |
+| test/specfix | 338 | 337 |
 | parser/go | 408 | 56 |
 | cmd/go | 68 | 46 |
+| calc/go | 24 | 11 |
 | test/go | 160 | 0 |
-| **total** | **31,779** | **14,887** |
+| tools/piecetool, test/solardemo, wpg | 0 | 0 |
+| **total** | **32,141** | **15,235** |
 
-Non-test copies by kind: 9,944 call arguments passed by value, 1,949
+Non-test copies by kind, over the nine modules first counted: 9,944 call
+arguments passed by value, 1,949
 by-value parameters and receivers declared, 925 assignments, 682 composite
 literals, 676 returns, ~600 range variables, 120 func literals. The ten
 files with the most: `compiler/go/emit.go` 1,013, `core/go/engine.go`
