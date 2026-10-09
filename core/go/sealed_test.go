@@ -266,3 +266,20 @@ func TestSealedLiteralHoldsTheDispatchState(t *testing.T) {
 		t.Fatalf("err = %v (replaced %d), want evaluation_limit with frames replaced", err, r.TCO.Replaced)
 	}
 }
+
+// TestSealedSteplessStripsAscription: the stepless fast path stores a
+// literal's elements as the stepped path stores them — a dispatch ascription
+// a Go-built element carries is consumed, never kept in the container.
+func TestSealedSteplessStripsAscription(t *testing.T) {
+	r := loopReg(t)
+	v := NewInteger(1)
+	v.SetAscribed(TString)
+	out, err := NewTop(r).Run([]Value{NewEvalList([]Value{v, NewInteger(2)}), NewWord("nidl")})
+	if err != nil || len(out) != 1 {
+		t.Fatalf("Run = %s / %v", renderAll(out), err)
+	}
+	lst, _ := AsList(out[0])
+	if lst.Len() != 2 || lst.Get(0).AscribedType() != nil {
+		t.Fatalf("the stored element keeps its ascription: %v", lst.Get(0).AscribedType())
+	}
+}

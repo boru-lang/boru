@@ -471,11 +471,17 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 		return
 	}
 	s.lastFault = ""
-	if strings.HasPrefix(note, "for next ") || strings.HasPrefix(note, "loop next ") {
+	if strings.HasPrefix(note, "for next ") || (strings.HasPrefix(note, "loop ") && !strings.HasPrefix(note, "loop done ")) {
 		// A loop's iteration boundary — a `for` re-mark, or a driven loop's
 		// (each, fold, …: core loop.go) — is a line boundary: without this,
 		// a single-line loop body coalesces ALL its iterations into the
-		// first stop (every token shares one Row, contiguously).
+		// first stop (every token shares one Row, contiguously). A region's
+		// ENTRY (`loop <state>`: a driven loop's first iteration, a
+		// container literal's elements, a `case` block) is one too — the
+		// sub-engine that ran the body before fired a fresh run there, so a
+		// breakpoint on the call's own line stops in the first body as in
+		// every later one. `loop done` ends the region on the call's line
+		// and is no boundary.
 		s.prevRow = 0
 	}
 	row := 0
@@ -941,6 +947,14 @@ func resolvedData(stack []native.Value, pointer int) []native.Value {
 	}
 	vals := make([]native.Value, 0, n)
 	for _, v := range stack[:n] {
+		if native.IsOpenParen(v) {
+			// A loop region's sealing paren bounds the view, as the live
+			// CurrentStack bounds it: the body sees nothing beneath it.
+			if _, sealed := v.Data.(native.LoopOpenInfo); sealed {
+				vals = vals[:0]
+			}
+			continue
+		}
 		if isEngineMarker(v) {
 			continue
 		}

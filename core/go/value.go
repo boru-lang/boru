@@ -1719,6 +1719,15 @@ type Loop struct {
 	// toks is a call region's reusable token run (CallRegion): the handler's
 	// result, copied onto the tape by the dispatch that splices it.
 	toks []Value
+	// recorder is the StackForm recorder the dispatch that spliced this
+	// loop's region set aside for the loop's life (execMatch), with the
+	// dispatch's name and arity: the loop's body steps on the recorded
+	// engine where a sub-engine ran it unrecorded, so the recorder is
+	// told of the call once, when the results stand in the region's place
+	// (recordLoopEnd), and sees nothing of the body.
+	recorder Recorder
+	recName  string
+	recArity int
 }
 
 // LoopOpenInfo is the payload on the open paren that SEALS a driven loop's

@@ -147,16 +147,10 @@ func (d *callDriver) Collect(_ int, residual []Value) error {
 	return nil
 }
 
-// Finish hands the residual back and returns the region's Loop to the
-// registry's pool: the region has collapsed, its mark forgotten, so the
-// Loop's tokens and mark id are free for the next call.
-func (d *callDriver) Finish() ([]Value, error) {
-	out := d.out
-	if d.lp != nil {
-		d.lp.Registry.putCallLoop(d.lp)
-	}
-	return out, nil
-}
+// Finish hands the residual back. The Loop returns to the registry's pool
+// once the residual stands on the tape (releaseCallLoop): the residual IS
+// the loop's own collection, which the pool's release clears.
+func (d *callDriver) Finish() ([]Value, error) { return d.out, nil }
 
 func (d *callDriver) Describe() string { return d.kind }
 
@@ -228,16 +222,30 @@ func (r *Registry) takeCallLoop(word, kind string, inputs []Value, body Value) *
 	return lp
 }
 
+// releaseCallLoop returns a call region's Loop to its registry's pool once
+// the region has collapsed and its residual stands on the tape; any other
+// loop is left alone. A Loop abandoned mid-region (a signal or a fault
+// discarded it) is never returned: its tokens may still lie on a dead tape.
+func releaseCallLoop(lp *Loop) {
+	if d, ok := lp.Driver.(*callDriver); ok && d.lp == lp {
+		lp.Registry.putCallLoop(lp)
+	}
+}
+
 // putCallLoop returns a call-region Loop whose region has collapsed to the
-// pool, its call's references released. A Loop abandoned mid-region (a
-// signal or a fault discarded it) is never returned: its tokens may still
-// lie on a dead tape.
+// pool, its call's references released.
 func (r *Registry) putCallLoop(lp *Loop) {
 	if len(r.callLoops) >= maxCallLoops {
 		return
 	}
 	drv := lp.Driver.(*callDriver)
 	drv.inputs, drv.body, drv.out = nil, Value{}, nil
+	// The token run and the collection keep their capacity and release
+	// their values: a pooled Loop must not pin the call's subject or its
+	// residual (a large list a `case` consumed) for the registry's life.
+	clear(lp.toks)
+	lp.toks = lp.toks[:0]
+	clear(lp.Results[:cap(lp.Results)])
 	lp.Results = lp.Results[:0]
 	r.callLoops = append(r.callLoops, lp)
 }
@@ -429,10 +437,13 @@ func (e *Engine) spliceDrivenIteration(markIdx, moveIdx int, info MoveInfo) erro
 		delete(e.marks, info.To)
 		results, err := lp.Driver.Finish()
 		if err != nil {
+			e.recordLoopEnd(lp, nil)
 			return e.stampErrPos(err)
 		}
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1, results...)
 		e.Pointer = markIdx
+		e.recordLoopEnd(lp, results)
+		releaseCallLoop(lp)
 		if e.trace != nil {
 			e.traceNote = "loop done " + lp.word()
 		}
@@ -461,7 +472,22 @@ func (e *Engine) spliceDrivenIteration(markIdx, moveIdx int, info MoveInfo) erro
 func (e *Engine) failDrivenLoop(info MoveInfo, err error) error {
 	e.endLoopIteration(info.Cont)
 	delete(e.marks, info.To)
+	e.recordLoopEnd(info.Cont, nil)
 	return e.stampErrPos(err)
+}
+
+// recordLoopEnd hands the StackForm recorder a loop's dispatch stood aside
+// for (execMatch) back to the engine and tells it of the call with the
+// loop's final results — the handler's results, as the recorder saw them
+// when a sub-engine ran the body. A loop that ends with no results (a
+// signal abandoned it, the driver failed) records the call with none, as
+// the handler returned none on an escape.
+func (e *Engine) recordLoopEnd(lp *Loop, results []Value) {
+	if lp.recorder == nil {
+		return
+	}
+	e.recorder, lp.recorder = lp.recorder, nil
+	e.recordDispatch(lp.recName, lp.recArity, results)
 }
 
 // abandonDrivenLoops ends every LIVE driven loop whose move lies in
@@ -494,6 +520,7 @@ func (e *Engine) abandonDrivenLoops(from, to int) {
 func (e *Engine) abandonDrivenLoop(info MoveInfo) {
 	e.endLoopIteration(info.Cont)
 	delete(e.marks, info.To)
+	e.recordLoopEnd(info.Cont, nil)
 }
 
 // wrapLoopFault attributes a fault raised inside a driven loop's body to

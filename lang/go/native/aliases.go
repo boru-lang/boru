@@ -67,6 +67,7 @@ type (
 	FnUndefInfo          = core.FnUndefInfo
 	Loop                 = core.Loop
 	LoopDriver           = core.LoopDriver
+	LoopOpenInfo         = core.LoopOpenInfo
 	LoopInvoke           = core.LoopInvoke
 	ForwardInfo          = core.ForwardInfo
 	GuardClause          = core.GuardClause

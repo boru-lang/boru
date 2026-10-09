@@ -252,7 +252,9 @@ func (e *Engine) failSealed(saved, at, tail int, err error) error {
 //     when a pattern evaluates the literal; a dispatch inside the region
 //     resets them for a match of its own.
 //   - voidGroups: the void-group candidates are a run's; the region's are
-//     the literal's and go with it, as a sub-engine's went.
+//     the literal's and go with it, as a sub-engine's went — on a slice of
+//     its own, so an `end` inside the region (which empties the slice)
+//     cannot write over the holder's entries.
 //   - recoveryRaw: the holder's no-match recovery keeps the literals it
 //     replaced by tape index; a dispatch inside the region records and
 //     clears its own.
@@ -262,7 +264,7 @@ type sealedHold struct {
 	resolved        []Value
 	parenDepth      int
 	patMake, patDid bool
-	voidGroups      int
+	voidGroups      []string
 	recoveryRaw     map[int]Value
 	recorder        Recorder
 }
@@ -271,9 +273,9 @@ func (e *Engine) holdForSealed(drv *sealedDriver) sealedHold {
 	h := sealedHold{
 		resolved: e.resolvedScratch, parenDepth: e.parenEvalDepth,
 		patMake: e.patternEvalMake, patDid: e.patternEvalDid,
-		voidGroups: len(e.voidGroups), recoveryRaw: e.recoveryRaw, recorder: e.recorder,
+		voidGroups: e.voidGroups, recoveryRaw: e.recoveryRaw, recorder: e.recorder,
 	}
-	e.resolvedScratch, e.parenEvalDepth, e.recoveryRaw, e.recorder = drv.resolved, 0, nil, nil
+	e.resolvedScratch, e.parenEvalDepth, e.voidGroups, e.recoveryRaw, e.recorder = drv.resolved, 0, nil, nil, nil
 	return h
 }
 
@@ -281,7 +283,7 @@ func (e *Engine) releaseSealed(drv *sealedDriver, h sealedHold) {
 	drv.resolved = e.resolvedScratch
 	e.resolvedScratch, e.parenEvalDepth = h.resolved, h.parenDepth
 	e.patternEvalMake, e.patternEvalDid = h.patMake, h.patDid
-	e.voidGroups = e.voidGroups[:h.voidGroups]
+	e.voidGroups = h.voidGroups
 	e.recoveryRaw, e.recorder = h.recoveryRaw, h.recorder
 }
 

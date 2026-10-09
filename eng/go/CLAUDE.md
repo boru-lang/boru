@@ -134,6 +134,16 @@ where a handler is reached with the registry's `Invoker` set and
 callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,
 a flow signal stops at the boundary), because that contract is pinned.
 
+Two observers keep the sub-engine's view of a region's body. The StackForm
+recorder (`Engine.SetRecorder`, `Debug.disasm`) stands aside while a loop
+or call region runs and is told of the call once, when the loop's results
+stand in its place, with their count (`recordLoopEnd`) — it never sees the
+body's own dispatches, which a sub-engine ran unrecorded. The data-stack
+view (`Registry.CurrentStack`, `Debug.stack`, and the debugger's offline
+twin) stops at the region's sealing paren: a body sees nothing beneath the
+call. A sealed literal's hold (`sealedHold`) covers the recorder the same
+way.
+
 A native whose LAST act is running a body — `case`'s matched block or
 default, the compiled lane's computed `if` arm (`__arm`; the interpreter's
 `if` splices a computed arm inline already) — returns that run as a **call

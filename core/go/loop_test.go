@@ -606,3 +606,120 @@ func TestCallLoopPool(t *testing.T) {
 		t.Fatalf("pool size %d, want the bound %d", len(r.callLoops), maxCallLoops)
 	}
 }
+
+// tlRecorder is a StackForm-style Recorder (Engine.SetRecorder): it keeps
+// every call and literal push the engine reports.
+type tlRecorder struct {
+	calls []string
+	lits  int
+}
+
+func (r *tlRecorder) OnPushLit(Value) { r.lits++ }
+func (r *tlRecorder) OnCall(name string, arity, returns int) {
+	r.calls = append(r.calls, fmt.Sprintf("%s/%d:%d", name, arity, returns))
+}
+
+// TestLoopRegionRecordsOnce: a StackForm recorder sees a driven loop's or a
+// call region's dispatch once, at the loop's end, with the results that
+// stand in its place — never the body's own dispatches, which a sub-engine
+// ran unrecorded before — and a loop a signal abandons records with no
+// result, as the handler returned none on an escape.
+func TestLoopRegionRecordsOnce(t *testing.T) {
+	r := loopReg(t)
+	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
+		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
+		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0])
+		}),
+		Returns: []*Type{TAny}, BarrierPos: -1,
+	}}})
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	run := func(prog []Value) (*tlRecorder, []Value, error) {
+		rec := &tlRecorder{}
+		e := NewTop(r)
+		e.SetRecorder(rec)
+		out, err := e.Run(prog)
+		return rec, out, err
+	}
+	// A driven loop: one call, its one result, no body dispatch.
+	rec, out, err := run(tlCall("tl", words("cdub"), ints(1, 2, 3)))
+	if err != nil || renderAll(out) != "[2 4 6]" || strings.Join(rec.calls, " ") != "tl/2:1" {
+		t.Fatalf("driven loop: %s / %v, calls %v (want tl/2:1 alone)", renderAll(out), err, rec.calls)
+	}
+	// A call region: likewise, with the block's residual count.
+	rec, out, err = run(tlCall("tcall", words("cdub", "cdub"), NewInteger(5)))
+	if err != nil || renderAll(out) != "20" || strings.Join(rec.calls, " ") != "tcall/2:1" {
+		t.Fatalf("call region: %s / %v, calls %v (want tcall/2:1 alone)", renderAll(out), err, rec.calls)
+	}
+	// A break escaping the region records the call with no result.
+	cont := &Loop{Registry: r, IterName: "tri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
+	InstallDef(r, "tri", NewInteger(0))
+	prog := []Value{NewMark("trL")}
+	prog = append(prog, tlCall("tl", words("nbrk"), ints(1))...)
+	prog = append(prog, NewMoveCont("trL", "for loop", cont))
+	rec, out, err = run(prog)
+	if err != nil || renderAll(out) != "42" || strings.Join(rec.calls, " ") != "tl/2:0" {
+		t.Fatalf("escaped loop: %s / %v, calls %v (want tl/2:0)", renderAll(out), err, rec.calls)
+	}
+	// A driver's own error ends the loop with the recorder back in place.
+	e := NewTop(r)
+	rec = &tlRecorder{}
+	e.SetRecorder(rec)
+	if _, err := e.Run(tlCall("tlnext1", words("cdub"), ints(1, 2))); err == nil || e.recorder != rec || strings.Join(rec.calls, " ") != "tlnext1/2:0" {
+		t.Fatalf("failed loop: err %v, recorder restored %v, calls %v", err, e.recorder == rec, rec.calls)
+	}
+}
+
+// TestLoopRegionSealsTheStackView: inside a driven loop's body, a container
+// literal's elements or a call region's block, the registry's data-stack
+// view (CurrentStack — Debug.stack) holds the region's own values only, as
+// the sub-engine's tape held them: the values beneath the call are sealed
+// off by the region's paren.
+func TestLoopRegionSealsTheStackView(t *testing.T) {
+	r := loopReg(t)
+	r.RegisterNativeFunc(NativeFunc{Name: "tstack", Signatures: []Signature{{
+		Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			vals, _ := reg.CurrentStack()
+			return []Value{NewList(append([]Value(nil), vals...))}, nil
+		}),
+		Returns: []*Type{TList}, BarrierPos: -1,
+	}}})
+	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
+		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
+		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0])
+		}),
+		Returns: []*Type{TAny}, BarrierPos: -1,
+	}}})
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	beneath := []Value{NewInteger(10), NewInteger(20)}
+	for name, prog := range map[string][]Value{
+		"driven loop": append(append([]Value(nil), beneath...), tlCall("tl", words("tstack"), ints(1))...),
+		"call region": append(append([]Value(nil), beneath...), tlCall("tcall", words("tstack"), NewInteger(1))...),
+		"literal":     append(append([]Value(nil), beneath...), NewEvalList([]Value{NewInteger(1), NewWord("tstack")}), NewWord("nidl")),
+	} {
+		out, err := NewTop(r).Run(prog)
+		// The view is the region's own values: the loop's element, the
+		// block's input (kept beside the block's result), the literal's
+		// elements — never the 10 and 20 beneath the call.
+		want := "10 | 20 | [[1]]"
+		switch name {
+		case "call region":
+			want = "10 | 20 | 1 | [1]"
+		case "literal":
+			want = "10 | 20 | [1 [1]]"
+		}
+		if err != nil || renderAll(out) != want {
+			t.Errorf("%s: %s / %v, want %s (the values beneath the call sealed off)", name, renderAll(out), err, want)
+		}
+	}
+	// Outside any region the view is the whole resolved stack.
+	out, err := NewTop(r).Run([]Value{NewInteger(10), NewInteger(20), NewWord("tstack")})
+	if err != nil || renderAll(out) != "10 | 20 | [10 20]" {
+		t.Fatalf("top-level view: %s / %v", renderAll(out), err)
+	}
+}

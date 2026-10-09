@@ -722,10 +722,22 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 	}
 	// Keep only resolved DATA values; drop the structural markers the tape
 	// carries to the left of the pointer (open parens, forwards, marks,
-	// ends) so the result is the clean data stack, not the raw tape.
+	// ends) so the result is the clean data stack, not the raw tape. A
+	// loop region's sealing paren (LoopOpenInfo — a driven loop's
+	// iteration, a container literal's elements, a call region's block)
+	// bounds the view: the body sees nothing beneath it, as it saw nothing
+	// beneath the sub-engine's tape that ran it until 2026-10-08. A region
+	// still open is the only one whose paren lies left of the pointer — a
+	// collapsed region's parens leave the tape.
 	out := make([]Value, 0, end)
 	for _, v := range snap[:end] {
-		if IsOpenParen(v) || IsCloseParen(v) || IsForward(v) ||
+		if IsOpenParen(v) {
+			if _, sealed := v.Data.(LoopOpenInfo); sealed {
+				out = out[:0]
+			}
+			continue
+		}
+		if IsCloseParen(v) || IsForward(v) ||
 			IsMark(v) || IsMove(v) || IsEnd(v) || IsWord(v) {
 			continue
 		}

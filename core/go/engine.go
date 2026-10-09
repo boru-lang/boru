@@ -4086,7 +4086,18 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	}
 	e.recordRuntimeDispatch(match, results)
 	if e.recorder != nil {
-		e.recordDispatch(match.Name, n, results)
+		if IsLoopRegion(results) {
+			// A loop region (StartLoop, CallRegion) is the call still in
+			// flight: the recorder stands aside while its body steps on
+			// this tape — a sub-engine ran it unrecorded before — and the
+			// call records once the loop's results stand in its place
+			// (recordLoopEnd), with their count, as the handler's did.
+			info, _ := AsMark(results[0])
+			info.Loop.recName, info.Loop.recArity, info.Loop.recorder = match.Name, n, e.recorder
+			e.recorder = nil
+		} else {
+			e.recordDispatch(match.Name, n, results)
+		}
 	}
 
 	e.stampHandlerResults(results)
@@ -5273,10 +5284,14 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	// call, and two calls' values are not one (`(mk) eq (mk)` is false). The
 	// coverage seam still sees the rows the elements lie on.
 	if e.sealsLiterals() && IsSteplessWindow(elems.elems) {
-		for _, el := range elems.elems {
+		out := elems.Slice()
+		for i, el := range out {
 			e.Registry.noteCoverage(el.Pos())
+			// Stored, so no dispatch ascription rides in (the strip the
+			// stepped path applies below).
+			out[i] = StripAscribed(el)
 		}
-		return NewList(elems.Slice()), nil
+		return NewList(out), nil
 	}
 	// A sealed region copies the elements onto the tape itself; a
 	// sub-engine's run is handed a copy of its own.
