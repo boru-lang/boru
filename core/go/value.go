@@ -1711,6 +1711,11 @@ type Loop struct {
 	mark, open, close, move Value
 	openSpan                int
 	one                     [1]Value // a non-list body as its one token
+	// closeAtWord positions the region's close paren at the word too: a
+	// CALL region (CallRegion), whose block a signal escapes with no loop
+	// to take it, reports at the construct, where the pointer stands after
+	// the body.
+	closeAtWord bool
 }
 
 // LoopOpenInfo is the payload on the open paren that SEALS a driven loop's

@@ -68,7 +68,18 @@ func TestArmSpliceHandlerDefersAPendingLiteral(t *testing.T) {
 		t.Fatalf("want the NUR356 designed defer, got %v", err)
 	}
 	out, err := ArmSpliceHandler([]Value{NewList([]Value{NewInteger(1)})}, nil, nil, r)
+	out, err = armRun(r, out, err)
 	if err != nil || len(out) != 1 {
 		t.Errorf("a scalar arm runs: %v %v", out, err)
 	}
+}
+
+// armRun steps the region a computed arm's handler returns (CallRegion)
+// on an engine, as the run holding the `if` would, and hands back its
+// values; anything else passes through.
+func armRun(r *Registry, out []Value, err error) ([]Value, error) {
+	if err != nil || !IsLoopRegion(out) {
+		return out, err
+	}
+	return NewTop(r).Run(out)
 }

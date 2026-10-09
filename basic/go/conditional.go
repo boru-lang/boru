@@ -201,17 +201,32 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 			matched = ok
 		}
 		if matched {
-			return runCaseBody(r, v, elems[i+1])
+			return caseBlockRegion(r, v, elems[i+1])
 		}
 	}
 	if i < len(elems) {
 		// Trailing odd element: the default clause (an open-call tail
-		// arrives here as one synthetic code-body block and so runs in
-		// an isolated sub-engine with the case value pushed first —
-		// exactly like a matched arm, NUR048/G9).
-		return runCaseBody(r, v, elems[i])
+		// arrives here as one synthetic code-body block and so runs
+		// sealed with the case value pushed first — exactly like a
+		// matched arm, NUR048/G9).
+		return caseBlockRegion(r, v, elems[i])
 	}
 	return nil, nil
+}
+
+// caseBlockRegion is runCaseBody for the block the handler returns as its
+// result — the matched block or the default: the block is the handler's
+// last act, so it is returned as a region of the tape (CallRegion) with the
+// captured value its sealed input, and steps where the `case` stands. A
+// plain value is the result as-is. Under the VM the block runs from Go
+// exactly as runCaseBody ran it (RunResolved).
+func caseBlockRegion(r *Registry, v Value, body Value) ([]Value, error) {
+	if !isCodeBody(body) {
+		return []Value{body}, nil
+	}
+	return CallRegion(r, "case", "case block", []Value{v}, body, func(body Value, inputs []Value) ([]Value, error) {
+		return RunResolved(r, inputs, BodyTokens(body))
+	})
 }
 
 // CaseReturnsFn type-checks a `case` and, when bytecode emission is active,
@@ -899,10 +914,12 @@ func CaseMatchHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 	return []Value{NewBoolean(ok)}, nil
 }
 
-// runCaseBody executes a case block (or default): a code-body list
-// runs in a sub-engine with the captured value pushed first — the
-// same convention as the `error [handler]` block — so the block can
-// consume it; any other value is the result as-is.
+// runCaseBody executes a case body whose RESULT the handler reads — a
+// predicate match, whose last value decides the clause: a code-body list
+// runs in a sub-engine with the captured value pushed first — the same
+// convention as the `error [handler]` block — so the block can consume it;
+// any other value is the result as-is. The matched block and the default
+// are the handler's result and run on the tape instead (caseBlockRegion).
 func runCaseBody(r *Registry, v Value, body Value) ([]Value, error) {
 	if !isCodeBody(body) {
 		return []Value{body}, nil

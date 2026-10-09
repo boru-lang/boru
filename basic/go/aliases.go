@@ -499,6 +499,9 @@ var (
 	RunPooledTop             = core.RunPooledTop
 	RunResolved              = core.RunResolved
 	InvokeBody               = core.InvokeBody
+	CallRegion               = core.CallRegion
+	BodyTokens               = core.BodyTokens
+	IsLoopRegion             = core.IsLoopRegion
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
 	CloneValue               = core.CloneValue

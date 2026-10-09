@@ -487,3 +487,84 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 		t.Fatalf("runaway tail: %v", err)
 	}
 }
+
+// TestCallRegion: a native's tail invocation of a body returned as a region
+// of the tape (CallRegion) — the inputs sealed and inert, the body stepped
+// where the word stands under its own context layer, the residual the
+// handler's result; a break passes through to the enclosing loop and an
+// escape with no loop reports at the word; a fault keeps its own
+// attribution; under an Invoker the body runs from Go.
+func TestCallRegion(t *testing.T) {
+	r := loopReg(t)
+	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
+		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
+		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0], nil)
+		}),
+		Returns: []*Type{TAny}, BarrierPos: -1,
+	}}})
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	e := NewTop(r)
+	var notes []string
+	e.SetTrace(func(_, _ int, _ []Value, note string) {
+		if note != "" {
+			notes = append(notes, note)
+		}
+	})
+	depth := r.Contexts.Depth()
+	// The body runs over its sealed input; a pending literal it leaves is
+	// evaluated at the region's end and the residual is re-stepped in place.
+	out, err := e.Run(append(tlCall("tcall", words("cdub"), NewInteger(5)), tlCall("tcall", NewList([]Value{NewEvalList([]Value{NewInteger(1), NewWord("cadd"), NewInteger(2)})}), NewInteger(0))...))
+	if err != nil || renderAll(out) != "10 | 0 | [3]" || r.Contexts.Depth() != depth {
+		t.Fatalf("Run = %s / %v (context depth %d, want %d)", renderAll(out), err, r.Contexts.Depth(), depth)
+	}
+	if joined := strings.Join(notes, "\n"); !strings.Contains(joined, "loop tcall body") || !strings.Contains(joined, "loop done tcall") {
+		t.Errorf("trace notes lack the region:\n%s", joined)
+	}
+	// A Function-valued input is inert: the body sees the value, unapplied.
+	fnv := NewFunction(FnDefInfo{Name: "fv"})
+	out, err = NewTop(r).Run(tlCall("tcall", NewList([]Value{}), fnv))
+	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+		t.Fatalf("inert input: %s / %v", renderAll(out), err)
+	}
+	// A break inside the body is the enclosing loop's.
+	cont := &Loop{Registry: r, IterName: "tci", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
+	InstallDef(r, "tci", NewInteger(0))
+	prog := []Value{NewMark("tcL")}
+	prog = append(prog, tlCall("tcall", words("nbrk"), NewInteger(1))...)
+	prog = append(prog, NewMoveCont("tcL", "for loop", cont))
+	out, err = NewTop(r).Run(prog)
+	if err != nil || renderAll(out) != "42" || r.FlowCtrl != FlowNone {
+		t.Fatalf("break through the region = %s / %v (flow %v), want 42", renderAll(out), err, r.FlowCtrl)
+	}
+	// With no loop to take it, the escape reports at the word (row 4).
+	_, err = NewTop(r).Run(tlCall("tcall", words("nbrk"), NewInteger(1)))
+	if be, ok := err.(*BoruError); !ok || be.Code != "flow_error" || be.Row != 4 || be.Col != 2 {
+		t.Fatalf("escape = %v, want break outside loop at 4:2", err)
+	}
+	// A fault keeps the body's own report, unattributed.
+	_, err = NewTop(r).Run(tlCall("tcall", words("nosuch"), NewInteger(1)))
+	if err == nil || !strings.Contains(err.Error(), "undefined word: nosuch") || strings.Contains(err.Error(), "tcall:") {
+		t.Fatalf("fault = %v, want the body's own undefined word", err)
+	}
+	// Under an Invoker (the VM lane) the body runs from Go — through
+	// InvokeBody, or the invoke the handler supplies.
+	r.Invoker = func(reg *Registry, body Value, inputs []Value) ([]Value, error) {
+		return RunResolved(reg, inputs, BodyTokens(body))
+	}
+	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"), nil)
+	if err != nil || renderAll(out) != "10" {
+		t.Fatalf("CallRegion under Invoker = %s / %v", renderAll(out), err)
+	}
+	calls := 0
+	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"), func(body Value, inputs []Value) ([]Value, error) {
+		calls++
+		return RunResolved(r, inputs, BodyTokens(body))
+	})
+	r.Invoker = nil
+	if err != nil || renderAll(out) != "10" || calls != 1 {
+		t.Fatalf("CallRegion invoke = %s / %v (%d calls)", renderAll(out), err, calls)
+	}
+}

@@ -129,6 +129,7 @@ func TestMerge519ArmSpliceHandlerValueArms(t *testing.T) {
 	// Negative twin: a plain list is a code body — its values land.
 	plain := merge519Parse(t, "[1 2]")
 	out, err = ArmSpliceHandler(plain, nil, nil, r)
+	out, err = armRun(r, out, err)
 	if err != nil {
 		t.Fatalf("code-body arm: %v", err)
 	}

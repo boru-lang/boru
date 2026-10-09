@@ -118,6 +118,69 @@ func DriveLoop(r *Registry, drv LoopDriver, invoke LoopInvoke) ([]Value, error) 
 	}
 }
 
+// callDriver is the driver of a CALL region (CallRegion): a native's tail
+// invocation of a body — a case block, a computed `if` arm — returned to
+// the engine as a loop of one iteration, so the body steps on the running
+// tape where a sub-engine ran it. Its residual is the handler's result:
+// spliced in the region's place and re-stepped, exactly as the sub-engine's
+// result stack was when the handler returned it.
+type callDriver struct {
+	inputs []Value
+	body   Value
+	kind   string
+	out    []Value
+}
+
+func (d *callDriver) Next(it int) ([]Value, Value, bool, error) {
+	if it > 0 {
+		return nil, Value{}, false, nil
+	}
+	return d.inputs, d.body, true, nil
+}
+
+func (d *callDriver) Collect(_ int, residual []Value) error {
+	d.out = append([]Value(nil), residual...)
+	return nil
+}
+
+func (d *callDriver) Finish() ([]Value, error) { return d.out, nil }
+
+func (d *callDriver) Describe() string { return d.kind }
+
+// WrapError leaves a body fault as it is: the sub-engine's error was the
+// handler's own result, with no construct to attribute it to.
+func (d *callDriver) WrapError(_ int, err error) error { return err }
+
+// CallRegion is a native handler's exit for a body it would otherwise run as
+// its LAST act — InvokeBody's or RunResolved's run of a code body over
+// resolved inputs, the result stack returned as the handler's own. It
+// returns the call as a region of the tape instead (StartLoop over a
+// one-iteration driver): the inputs enter sealed and inert, the body steps
+// on the running tape under its own context layer and step budget, a
+// break/continue passes through to the enclosing loop as it passed through
+// the sub-engine's run, a fault keeps the body's own attribution, and the
+// residual replaces the region as the handler's results would, re-stepped.
+// kind names the region for the trace and the debugger. Under the VM (the
+// registry's Invoker set) the body runs from Go through invoke — InvokeBody
+// when nil — as the handler ran it before.
+//
+// Only a TAIL invocation qualifies. A handler that reads the body's result
+// — `do` trapping an error, a predicate coerced to a Boolean, a scrutinee's
+// last value, a callback whose count the seam trims (InvokeCallbackFn) —
+// runs it as it did: the region's residual is the engine's, not the
+// handler's.
+func CallRegion(r *Registry, word, kind string, inputs []Value, body Value, invoke LoopInvoke) ([]Value, error) {
+	drv := &callDriver{inputs: inputs, body: body, kind: kind}
+	if r.Invoker != nil {
+		return DriveLoop(r, drv, invoke)
+	}
+	lp := &Loop{Registry: r, Word: word, Iter: 1, Count: 1, Driver: drv, closeAtWord: true}
+	if r.Check != nil {
+		lp.Pos = r.Check.CurWordPos
+	}
+	return loopRegionTokens(nil, lp, inputs, body), nil
+}
+
 // loopRegionTokens builds one iteration's token run into buf: the loop's
 // mark, the sealing paren with its inert-input span, the inputs, the body's
 // tokens, the close paren and the move. The synthetic tokens are minted
@@ -158,12 +221,17 @@ func (lp *Loop) mint(argSpan int) {
 		lp.close = NewCloseParen()
 		lp.move = NewMoveCont(id, lp.word()+" loop", lp)
 		if lp.Pos.Row != 0 {
-			// The mark and the move only: the parens stay unpositioned, so
-			// a signal or an error reported where the pointer stands after
-			// the body (the close paren) reads as it did off the
+			// The mark and the move only: a loop's parens stay unpositioned,
+			// so a signal or an error reported where the pointer stands
+			// after the body (the close paren) reads as it did off the
 			// sub-engine's residual — no position — rather than blaming
-			// the word.
+			// the word. A call region's close paren takes the word's: the
+			// construct whose block let a signal out is where the report
+			// points (closeAtWord).
 			lp.mark.pos, lp.move.pos = &lp.Pos, &lp.Pos
+			if lp.closeAtWord {
+				lp.close.pos = &lp.Pos
+			}
 		}
 	}
 	if lp.open.Parent == nil || lp.openSpan != argSpan {

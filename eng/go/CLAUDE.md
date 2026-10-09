@@ -134,6 +134,21 @@ where a handler is reached with the registry's `Invoker` set and
 callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,
 a flow signal stops at the boundary), because that contract is pinned.
 
+A native whose LAST act is running a body — `case`'s matched block or
+default, the compiled lane's computed `if` arm (`__arm`; the interpreter's
+`if` splices a computed arm inline already) — returns that run as a **call
+region** instead (`core.CallRegion`): a one-iteration driven loop whose
+inputs enter sealed and inert, whose body steps where the word stands, and
+whose residual replaces the region as the handler's results would, re-
+stepped. The region's close paren carries the word's position, so a
+break/continue the block lets out with no loop to take it reports at the
+construct. Under the VM the body runs from Go as before (`InvokeBody`, or
+the invoke the handler supplies — `case` keeps `RunResolved`). Only a tail
+invocation qualifies: a handler that reads the body's result — `do`
+trapping an error, a `case` predicate coerced to a Boolean, a scrutinee's
+last value, `with-precision`'s context teardown, a callback whose count the
+seam trims — runs it as it did.
+
 ## Container literals are sealed regions of the tape
 
 A pending list or map literal — one the parser wrote and nothing has
