@@ -499,7 +499,7 @@ func TestCallRegion(t *testing.T) {
 	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
 		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
 		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0], nil)
+			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0])
 		}),
 		Returns: []*Type{TAny}, BarrierPos: -1,
 	}}})
@@ -549,22 +549,60 @@ func TestCallRegion(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "undefined word: nosuch") || strings.Contains(err.Error(), "tcall:") {
 		t.Fatalf("fault = %v, want the body's own undefined word", err)
 	}
-	// Under an Invoker (the VM lane) the body runs from Go — through
-	// InvokeBody, or the invoke the handler supplies.
+	// Under an Invoker (the VM lane) the body runs from Go through
+	// InvokeBody, with no Loop taken from the pool.
+	pooled := len(r.callLoops)
 	r.Invoker = func(reg *Registry, body Value, inputs []Value) ([]Value, error) {
 		return RunResolved(reg, inputs, BodyTokens(body))
 	}
-	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"), nil)
-	if err != nil || renderAll(out) != "10" {
-		t.Fatalf("CallRegion under Invoker = %s / %v", renderAll(out), err)
-	}
-	calls := 0
-	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"), func(body Value, inputs []Value) ([]Value, error) {
-		calls++
-		return RunResolved(r, inputs, BodyTokens(body))
-	})
+	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"))
 	r.Invoker = nil
-	if err != nil || renderAll(out) != "10" || calls != 1 {
-		t.Fatalf("CallRegion invoke = %s / %v (%d calls)", renderAll(out), err, calls)
+	if err != nil || renderAll(out) != "10" || len(r.callLoops) != pooled {
+		t.Fatalf("CallRegion under Invoker = %s / %v (pool %d, want %d)", renderAll(out), err, len(r.callLoops), pooled)
+	}
+}
+
+// TestCallLoopPool: a call region's Loop — its driver, its tokens, its mark
+// id — goes back to the registry's pool once the region has collapsed and
+// is reused by the next call; an abandoned region's never returns; the pool
+// is bounded.
+func TestCallLoopPool(t *testing.T) {
+	r := loopReg(t)
+	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
+		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
+		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0])
+		}),
+		Returns: []*Type{TAny}, BarrierPos: -1,
+	}}})
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := NewTop(r).Run(tlCall("tcall", words("cdub"), NewInteger(5)))
+	if err != nil || renderAll(out) != "10" || len(r.callLoops) != 1 {
+		t.Fatalf("after one call: %s / %v, pool %d (want 1)", renderAll(out), err, len(r.callLoops))
+	}
+	first := r.callLoops[0]
+	id, _ := AsMark(first.mark)
+	// The next call reuses the Loop and its mark id; two live at once (a
+	// call inside a call's body) take two.
+	prog := tlCall("tcall", NewList(tlCall("tcall", words("cdub"), NewInteger(5))), NewInteger(0))
+	out, err = NewTop(r).Run(prog)
+	if err != nil || renderAll(out) != "0 | 10" || len(r.callLoops) != 2 || r.callLoops[1] != first {
+		t.Fatalf("nested calls: %s / %v, pool %d (want 2, the first Loop back on top)", renderAll(out), err, len(r.callLoops))
+	}
+	if again, _ := AsMark(first.mark); again.ID != id.ID {
+		t.Fatalf("the reused Loop's mark id changed: %s -> %s", id.ID, again.ID)
+	}
+	// A region a fault abandons keeps its Loop out of the pool.
+	if _, err := NewTop(r).Run(tlCall("tcall", words("nosuch"), NewInteger(1))); err == nil || len(r.callLoops) != 1 {
+		t.Fatalf("abandoned region: err %v, pool %d (want 1)", err, len(r.callLoops))
+	}
+	// The pool is bounded.
+	for i := 0; i < maxCallLoops+5; i++ {
+		r.putCallLoop(&Loop{Registry: r, Driver: &callDriver{}})
+	}
+	if len(r.callLoops) != maxCallLoops {
+		t.Fatalf("pool size %d, want the bound %d", len(r.callLoops), maxCallLoops)
 	}
 }

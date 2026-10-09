@@ -379,6 +379,12 @@ type Registry struct {
 	// per-execution state, reset by ForkConcurrent so forks never share
 	// the parent's engines (a pooled engine pins its creating registry).
 	enginePool []*Engine
+	// callLoops holds idle call-region Loops (CallRegion, loop.go): a
+	// one-shot region's Loop, driver and minted tokens, reused once its
+	// region has collapsed, so a `case` block or a computed `if` arm
+	// allocates nothing per call. Per registry like enginePool, and reset
+	// on a fork for the same reason.
+	callLoops []*Loop
 
 	// debugTrace is the registry-level debug step hook (SetDebugTrace /
 	// SetDebugTraceFrom): every engine constructed on this registry —

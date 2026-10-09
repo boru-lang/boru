@@ -83,6 +83,42 @@ func TestSealedLiteralRunsOnTheTape(t *testing.T) {
 	}
 }
 
+// TestSealedLiteralStepless: a literal whose elements or members are all
+// scalar literals is its own evaluation — no region is stepped, and the
+// interpreter is not entered — while one element that steps takes the
+// region.
+func TestSealedLiteralStepless(t *testing.T) {
+	r := loopReg(t)
+	var c entryCollector
+	defer r.ArmInterpEntryHook(c.add)()
+	e := NewTop(r)
+	var notes []string
+	e.SetTrace(func(_, _ int, _ []Value, note string) {
+		if strings.HasPrefix(note, "loop ") {
+			notes = append(notes, note)
+		}
+	})
+	out, err := e.Run([]Value{
+		NewEvalList([]Value{NewInteger(1), NewString("a"), NewBoolean(true)}), NewWord("nidl"),
+		evalMap(NewString("a"), NewInteger(1), NewString("b"), NewString("x")), NewWord("nidm"),
+		NewEvalList([]Value{NewInteger(2), NewInteger(3)}),
+	})
+	if err != nil || renderAll(out) != "[1 'a' true] | {a:1 b:'x'} | [2 3]" {
+		t.Fatalf("Run = %s / %v", renderAll(out), err)
+	}
+	if len(notes) != 0 || len(e.sealed) != 0 {
+		t.Fatalf("stepless literals took a region: notes %q, %d regions minted", notes, len(e.sealed))
+	}
+	if seams := c.seams(); len(seams) != 1 {
+		t.Fatalf("interpreter entries = %v, want the run's one", seams)
+	}
+	// One stepping element — a word — and the list runs as a region.
+	out, err = e.Run([]Value{NewEvalList([]Value{NewInteger(1), NewInteger(2), NewWord("cadd")}), NewWord("nidl")})
+	if err != nil || renderAll(out) != "[3]" || len(notes) == 0 || len(e.sealed) != 1 {
+		t.Fatalf("stepping element: %s / %v, notes %q, %d regions", renderAll(out), err, notes, len(e.sealed))
+	}
+}
+
 func TestSealedLiteralEscapes(t *testing.T) {
 	// A loop inside the literal takes the signal in place: the literal is
 	// the loop's results.
@@ -148,6 +184,7 @@ func TestSealedLiteralFaults(t *testing.T) {
 	for i := range wide {
 		wide[i] = NewInteger(1)
 	}
+	wide[1] = NewWord("cdub") // one stepping element: the literal takes a region
 	_, err = NewTop(r).Run([]Value{NewEvalList(wide), NewWord("nidl")})
 	if be, ok := err.(*BoruError); !ok || be.Code != "tape_exhausted" {
 		t.Fatalf("err = %v, want tape_exhausted", err)

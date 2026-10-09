@@ -142,9 +142,11 @@ inputs enter sealed and inert, whose body steps where the word stands, and
 whose residual replaces the region as the handler's results would, re-
 stepped. The region's close paren carries the word's position, so a
 break/continue the block lets out with no loop to take it reports at the
-construct. Under the VM the body runs from Go as before (`InvokeBody`, or
-the invoke the handler supplies — `case` keeps `RunResolved`). Only a tail
-invocation qualifies: a handler that reads the body's result — `do`
+construct. Under the VM the body runs from Go as before (`InvokeBody`;
+`case` keeps `RunResolved` on that lane itself). A one-shot region cannot
+amortise its Loop and tokens over iterations, so the registry pools them
+(`takeCallLoop` / `putCallLoop`): a call allocates nothing of its own, and
+the measured cost is the sub-engine's. Only a tail invocation qualifies: a handler that reads the body's result — `do`
 trapping an error, a `case` predicate coerced to a Boolean, a scrutinee's
 last value, `with-precision`'s context teardown, a callback whose count the
 seam trims — runs it as it did.
@@ -166,7 +168,9 @@ whose collection evaluates a nested pending literal as the end-of-run
 sweep did; the driver keeps the residual as the result and the tokens
 leave the tape with the pointer back where it stood. A map evaluates one
 region per member and per computed key — a member's context layer is the
-member's, as its sub-run's was; an interpolation hole is a region too. A
+member's, as its sub-run's was; an interpolation hole is a region too.
+Elements or members that are all scalar literals (`[1 2 3]`, `{a:1}`) are
+their own evaluation and step nothing (`IsSteplessWindow`'s rule). A
 break/continue the elements let out is NUR358's: a loop inside the literal
 takes it in place, otherwise the region is abandoned whole and the holding
 run resolves the signal; an error is attributed to the driven loops still

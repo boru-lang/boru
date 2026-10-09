@@ -129,6 +129,7 @@ type callDriver struct {
 	body   Value
 	kind   string
 	out    []Value
+	lp     *Loop // the pooled Loop this drives, released at Finish; nil when driven from Go
 }
 
 func (d *callDriver) Next(it int) ([]Value, Value, bool, error) {
@@ -138,12 +139,24 @@ func (d *callDriver) Next(it int) ([]Value, Value, bool, error) {
 	return d.inputs, d.body, true, nil
 }
 
+// Collect keeps the residual for Finish, which follows it at once: on the
+// tape the slice is the loop's own collection, spliced in the region's
+// place before anything touches it again; from Go it is the run's copy.
 func (d *callDriver) Collect(_ int, residual []Value) error {
-	d.out = append([]Value(nil), residual...)
+	d.out = residual
 	return nil
 }
 
-func (d *callDriver) Finish() ([]Value, error) { return d.out, nil }
+// Finish hands the residual back and returns the region's Loop to the
+// registry's pool: the region has collapsed, its mark forgotten, so the
+// Loop's tokens and mark id are free for the next call.
+func (d *callDriver) Finish() ([]Value, error) {
+	out := d.out
+	if d.lp != nil {
+		d.lp.Registry.putCallLoop(d.lp)
+	}
+	return out, nil
+}
 
 func (d *callDriver) Describe() string { return d.kind }
 
@@ -154,31 +167,79 @@ func (d *callDriver) WrapError(_ int, err error) error { return err }
 // CallRegion is a native handler's exit for a body it would otherwise run as
 // its LAST act — InvokeBody's or RunResolved's run of a code body over
 // resolved inputs, the result stack returned as the handler's own. It
-// returns the call as a region of the tape instead (StartLoop over a
-// one-iteration driver): the inputs enter sealed and inert, the body steps
-// on the running tape under its own context layer and step budget, a
+// returns the call as a region of the tape instead (a one-iteration driven
+// loop, loop.go): the inputs enter sealed and inert, the body steps on the
+// running tape under its own context layer and step budget, a
 // break/continue passes through to the enclosing loop as it passed through
 // the sub-engine's run, a fault keeps the body's own attribution, and the
 // residual replaces the region as the handler's results would, re-stepped.
-// kind names the region for the trace and the debugger. Under the VM (the
-// registry's Invoker set) the body runs from Go through invoke — InvokeBody
-// when nil — as the handler ran it before.
+// The region's close paren carries the word's position, so a signal the
+// body lets out with no loop to take it reports at the construct. kind
+// names the region for the trace and the debugger. Under the VM (the
+// registry's Invoker set) the body runs from Go through InvokeBody, as the
+// handler ran it before; a handler that ran it another way there
+// (RunResolved) keeps that lane itself.
+//
+// A one-shot region cannot amortise its tokens over iterations as a loop
+// does, so its Loop — the driver, the four minted tokens, the mark id — is
+// pooled on the registry and reused once the region has collapsed
+// (takeCallLoop / putCallLoop): a call allocates nothing of its own.
 //
 // Only a TAIL invocation qualifies. A handler that reads the body's result
 // — `do` trapping an error, a predicate coerced to a Boolean, a scrutinee's
 // last value, a callback whose count the seam trims (InvokeCallbackFn) —
 // runs it as it did: the region's residual is the engine's, not the
 // handler's.
-func CallRegion(r *Registry, word, kind string, inputs []Value, body Value, invoke LoopInvoke) ([]Value, error) {
-	drv := &callDriver{inputs: inputs, body: body, kind: kind}
+func CallRegion(r *Registry, word, kind string, inputs []Value, body Value) ([]Value, error) {
 	if r.Invoker != nil {
-		return DriveLoop(r, drv, invoke)
+		return DriveLoop(r, &callDriver{inputs: inputs, body: body, kind: kind}, nil)
 	}
-	lp := &Loop{Registry: r, Word: word, Iter: 1, Count: 1, Driver: drv, closeAtWord: true}
+	lp := r.takeCallLoop(word, kind, inputs, body)
+	lp.toks = loopRegionTokens(lp.toks, lp, inputs, body)
+	return lp.toks, nil
+}
+
+// maxCallLoops bounds the registry's pool of call-region Loops: deeper
+// nesting of live call regions than this mints and drops.
+const maxCallLoops = 64
+
+// takeCallLoop takes a call-region Loop from the registry's pool — or
+// mints one — set up for this call: the word, the region's description,
+// the driver's inputs and body, the word's position for the mark, the
+// move and the close paren (the minted tokens point at the Loop's own Pos,
+// so a reused Loop's tokens take the new call's position).
+func (r *Registry) takeCallLoop(word, kind string, inputs []Value, body Value) *Loop {
+	var lp *Loop
+	if n := len(r.callLoops); n > 0 {
+		lp = r.callLoops[n-1]
+		r.callLoops[n-1] = nil
+		r.callLoops = r.callLoops[:n-1]
+	} else {
+		lp = &Loop{Registry: r, closeAtWord: true}
+		lp.Driver = &callDriver{lp: lp}
+	}
+	drv := lp.Driver.(*callDriver)
+	drv.inputs, drv.body, drv.kind, drv.out = inputs, body, kind, nil
+	lp.Word, lp.Iter, lp.Count, lp.Results = word, 1, 1, lp.Results[:0]
+	lp.Pos = SrcPos{}
 	if r.Check != nil {
 		lp.Pos = r.Check.CurWordPos
 	}
-	return loopRegionTokens(nil, lp, inputs, body), nil
+	return lp
+}
+
+// putCallLoop returns a call-region Loop whose region has collapsed to the
+// pool, its call's references released. A Loop abandoned mid-region (a
+// signal or a fault discarded it) is never returned: its tokens may still
+// lie on a dead tape.
+func (r *Registry) putCallLoop(lp *Loop) {
+	if len(r.callLoops) >= maxCallLoops {
+		return
+	}
+	drv := lp.Driver.(*callDriver)
+	drv.inputs, drv.body, drv.out = nil, Value{}, nil
+	lp.Results = lp.Results[:0]
+	r.callLoops = append(r.callLoops, lp)
 }
 
 // loopRegionTokens builds one iteration's token run into buf: the loop's
@@ -220,14 +281,15 @@ func (lp *Loop) mint(argSpan int) {
 		lp.mark = NewLoopMark(id, lp)
 		lp.close = NewCloseParen()
 		lp.move = NewMoveCont(id, lp.word()+" loop", lp)
-		if lp.Pos.Row != 0 {
+		if lp.Pos.Row != 0 || lp.closeAtWord {
 			// The mark and the move only: a loop's parens stay unpositioned,
 			// so a signal or an error reported where the pointer stands
 			// after the body (the close paren) reads as it did off the
 			// sub-engine's residual — no position — rather than blaming
 			// the word. A call region's close paren takes the word's: the
 			// construct whose block let a signal out is where the report
-			// points (closeAtWord).
+			// points (closeAtWord) — and its tokens point at the Loop's Pos
+			// whatever it holds now, as the Loop is reused call after call.
 			lp.mark.pos, lp.move.pos = &lp.Pos, &lp.Pos
 			if lp.closeAtWord {
 				lp.close.pos = &lp.Pos

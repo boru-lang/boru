@@ -81,6 +81,7 @@ func (r *Registry) ForkConcurrent() *Registry {
 	// its own — inheriting the slice would run fork work against the
 	// parent's registry and race with it.
 	fork.enginePool = nil
+	fork.callLoops = nil
 	// dispatchCache is keyed by name against the PARENT DefTable's
 	// generation; the fork clones Defs (fresh generations), so sharing
 	// the parent's holder would serve parent aggregates at mismatched

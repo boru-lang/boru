@@ -5265,6 +5265,19 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	if elems.Len() == 0 {
 		return val, nil
 	}
+	// Elements that are all placed as they stand — scalar literals, `[1 2
+	// 3]` — run to themselves (IsSteplessWindow's rule, the `do {key:
+	// [body]}` precedent): the list is its own evaluation, with no region
+	// to step. The value is a FRESH list over a copy of the elements, as
+	// the run's result stack was: a literal in a fn body is constructed per
+	// call, and two calls' values are not one (`(mk) eq (mk)` is false). The
+	// coverage seam still sees the rows the elements lie on.
+	if e.sealsLiterals() && IsSteplessWindow(elems.elems) {
+		for _, el := range elems.elems {
+			e.Registry.noteCoverage(el.Pos())
+		}
+		return NewList(elems.Slice()), nil
+	}
 	// A sealed region copies the elements onto the tape itself; a
 	// sub-engine's run is handed a copy of its own.
 	input := elems.elems
@@ -5945,6 +5958,13 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// resolves its names directly.
 		if rv, ok := e.resolveInertTypeShape(v); ok {
 			out.Set(resolvedKey, rv)
+			continue
+		}
+		// A scalar literal member is placed as it stands: it is its own
+		// evaluation, with no region to step (autoEvalList's rule).
+		if e.sealsLiterals() && IsSteplessValue(v) {
+			e.Registry.noteCoverage(v.Pos())
+			out.Set(resolvedKey, v)
 			continue
 		}
 		// Evaluate each value as a sealed region of its own (a pooled

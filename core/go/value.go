@@ -1716,6 +1716,9 @@ type Loop struct {
 	// to take it, reports at the construct, where the pointer stands after
 	// the body.
 	closeAtWord bool
+	// toks is a call region's reusable token run (CallRegion): the handler's
+	// result, copied onto the tape by the dispatch that splices it.
+	toks []Value
 }
 
 // LoopOpenInfo is the payload on the open paren that SEALS a driven loop's

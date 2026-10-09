@@ -224,9 +224,10 @@ func caseBlockRegion(r *Registry, v Value, body Value) ([]Value, error) {
 	if !isCodeBody(body) {
 		return []Value{body}, nil
 	}
-	return CallRegion(r, "case", "case block", []Value{v}, body, func(body Value, inputs []Value) ([]Value, error) {
-		return RunResolved(r, inputs, BodyTokens(body))
-	})
+	if r.Invoker != nil {
+		return runCaseBody(r, v, body)
+	}
+	return CallRegion(r, "case", "case block", []Value{v}, body)
 }
 
 // CaseReturnsFn type-checks a `case` and, when bytecode emission is active,

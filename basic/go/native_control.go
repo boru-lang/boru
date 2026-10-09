@@ -1667,7 +1667,7 @@ func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 		}
 		return nil, err
 	}
-	return CallRegion(r, "if", "if arm", nil, v, nil)
+	return CallRegion(r, "if", "if arm", nil, v)
 }
 
 // armHoldsSteppingLiteral reports whether a computed arm's tokens hold, at
