@@ -758,6 +758,38 @@ Methods on `Value` accumulate API surface and become coupling
 points; free functions are equally callable and can be moved
 between packages without affecting the kernel.
 
+## Values are not copied (CRITICAL)
+
+The maintainer's policy of 2026-10-09: *Value structures should never
+need to be copied.* The review and the phased plan are
+`design/VALUE-NO-COPY.0.md`; every copy allowed to remain is a row of
+`design/VALUE-NO-COPY-EXCEPTIONS.0.md` (approved 2026-10-12). A change
+is measured against its rules:
+
+- A Value has ONE owner until it is published — bound by `def`, stored
+  in a container, captured, pushed to a second cell, interned in a
+  pool, handed to a host. After that nothing writes it through any
+  reference; a stage may write only a Value it uniquely owns.
+- Read a Value where it lives, through a pointer into its slot
+  (`&xs[i]`, a pointer parameter), instead of copying it out.
+- Minting a new Value from parts (a new container sharing its elements,
+  a retag built from a payload) is construction, not a copy.
+- A copy that is not covered by an exceptions row is a defect.
+
+**Enforcement: `make vet-copies`.** `core.Value` carries a zero-size
+`noCopy` marker, so go vet's copylocks analyzer reports every by-value
+copy of a Value. `scripts/vet-copies.sh` runs it, with the bulk-copy
+analyzer of `tools/vetcopies` (the built-in `copy` and a variadic
+`append` over a `[]core.Value`, which copylocks cannot see), in every
+`go.work` module and holds each module's NON-TEST counts to
+`tools/vetcopies/ceilings.tsv`; it also fails on a copy of any other
+lock. The ordinary vet lanes run `-copylocks=false` (and `.golangci.yml`
+turns govet's copylocks off), so this is the one lane that sees either.
+The commit gate runs it on the touched modules and CI's `vet-copies`
+job on all of them. The ceilings only go down: a change that removes
+copies lowers them in the same commit (`UPDATE=1 make vet-copies`), and
+a failing run lists the findings on the lines the change touched.
+
 ## Type installation
 
 A capitalised `def Foo body` installs a type binding (the

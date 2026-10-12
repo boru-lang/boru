@@ -13,6 +13,8 @@
 #   build-cli            build cmd/go/bin/boru
 #   kg-verify            the committed knowledge graph matches the tree
 #   vet | lint-assertions | lint
+#   vet-copies           the no-copy ratchet: every module's copies of a
+#                        core.Value against tools/vetcopies/ceilings.tsv
 #   test-module D [ONLY] one module's tests (ONLY=root: its root package
 #                        alone; ONLY=rest: every other package); test/go
 #                        never includes the langspec corpus
@@ -52,6 +54,7 @@ case "$step" in
   vet)              run make vet ;;
   lint-assertions)  run make -C lang/go lint-assertions ;;
   lint)             run make lint ;;
+  vet-copies)       run make vet-copies ;;
   test-module)      run make test-module M="${1:?module dir}" ONLY="${2:-}" ;;
   test-modules-core)
     for m in core/go check/go compiler/go parser/go eng/go basic/go calc/go wpg test/specfix test/solardemo; do
@@ -102,7 +105,7 @@ case "$step" in
   vuln)             run make vuln || echo "==> [ci] vuln is advisory (see STATIC_ANALYSIS_REPORT.md); continuing" ;;
   direction-gates)  run make test-direction || echo "==> [ci] the direction lane is red by design until the debt is paid; its table is the output" ;;
   all)
-    for s in build-cli kg-verify vet lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates borudebug-gates wasm vuln; do
+    for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates borudebug-gates wasm vuln; do
       "$0" "$s"
     done
     echo "==> [ci] every CI step ran" ;;

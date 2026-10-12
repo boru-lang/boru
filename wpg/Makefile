@@ -78,7 +78,7 @@ e2e:
 	node e2e/tui-e2e.js
 
 vet:
-	go vet ./...
+	go vet -copylocks=false ./...
 
 fmt:
 	gofmt -w .

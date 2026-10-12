@@ -24,6 +24,16 @@ linters:
     - gocognit
     - dupl
   settings:
+    govet:
+      # core.Value carries a zero-size noCopy marker, so copylocks reports
+      # every by-value copy of a Value: tens of thousands today. Those are
+      # counted against per-module ceilings by `make vet-copies` (the
+      # no-copy ratchet, design/VALUE-NO-COPY.0.md phase 0), which is the
+      # one place copylocks runs and which also fails on a copy of any
+      # other lock. `go vet` in every Makefile runs -copylocks=false to
+      # match.
+      disable:
+        - copylocks
     errcheck:
       # Calls where ignoring the error is the established convention.
       exclude-functions:

@@ -4,7 +4,8 @@ Policy under review: *"Value structures should never need to be copied.
 They can be modified in situ as needed by any stage, but copying is
 forbidden."*
 
-**Status: accepted, not started.** Review of main at `6780a6030`
+**Status: accepted, in progress** (§9 records each phase as it
+lands). Review of main at `6780a6030`
 (2026-10-09); no code was changed. The maintainer made the five decisions
 in §7 on 2026-10-12: the plan's assumptions stand, lists and maps keep
 value semantics, phase 4 is decided on phase 3's numbers, the sanctioned
@@ -505,3 +506,37 @@ a cost, and the vet ratchet keeps it removed; type identity by pointer
 retires `Type.Equal`'s remaining ID-string fallback (unmeasured since its
 fast paths landed) and the `ResolveWordsDeep` prepass that rebuilds both
 `Unify` operands on every call (`resolve.go:75-155`).
+
+## 9. Progress
+
+Each phase as it lands, with what it measured. The ceilings are
+`tools/vetcopies/ceilings.tsv`; "value" counts the non-test copies of a
+single `Value` copylocks reports, "bulk" the non-test `copy` and variadic
+`append` calls over a `[]core.Value`.
+
+**Phase 0 — 2026-10-12.** `core.Value` carries the zero-size `noCopy`
+marker (still 104 bytes). `make vet-copies` (`scripts/vet-copies.sh`)
+builds `tools/vetcopies` — go vet's copylocks plus a `bulkcopy` analyzer —
+runs it as the `-vettool` in all fifteen `go.work` modules (`wpg/wasm`
+for js/wasm) and holds every module to its ceilings, which only go down
+(`UPDATE=1` lowers them). It also fails on a copy of any other lock, since
+`make vet`, every module Makefile's `vet`, the commit gate's vet lane and
+golangci-lint's govet now run without copylocks. The commit gate runs the
+ratchet on the touched modules (every module when the ratchet itself
+changed), CI runs it as the `vet-copies` job, and `make ci-local` runs it
+after `vet`. The baseline equals the census in the measurements note §3:
+
+| module | value | bulk |
+|---|---:|---:|
+| core/go | 5,509 | 72 |
+| lang/go | 4,902 | 56 |
+| compiler/go | 1,698 | 25 |
+| basic/go | 1,361 | 35 |
+| check/go | 709 | 18 |
+| eng/go | 606 | 132 |
+| test/specfix | 337 | 10 |
+| parser/go | 56 | 0 |
+| cmd/go | 46 | 0 |
+| calc/go | 11 | 9 |
+| test/go, tools/piecetool, tools/vetcopies, test/solardemo, wpg | 0 | 0 |
+| **total** | **15,235** | **357** |
