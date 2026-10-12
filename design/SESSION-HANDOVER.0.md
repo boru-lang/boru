@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-09** (the pointer to the interpreter-performance handover below; the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-12** (the no-copy decisions below; the pointer to the interpreter-performance handover is 2026-10-09's, the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -31,6 +31,14 @@ Last updated: **2026-10-09** (the pointer to the interpreter-performance handove
 > two-lane probe corpora are saved in `design/handover/interpreter-perf/`.
 > The gate table below predates #532 and #533, which moved the
 > interpreter-entry census; `make gate-status` refreshes it.
+
+> **2026-10-12:** the five no-copy decisions are made and recorded in
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) §7: a new container sharing
+> its elements is construction, lists and maps keep value semantics,
+> phase 4 is decided on phase 3's numbers, the sanctioned copies are
+> approved as written, and `type Type = Value` stays. Still no code has
+> changed for the policy: `core.Value` is a 104-byte struct passed by
+> value. Phases 0 to 2 come first; phase 3 no longer waits on a decision.
 
 > ## Where things stand on 2026-10-05 — the baseline
 >

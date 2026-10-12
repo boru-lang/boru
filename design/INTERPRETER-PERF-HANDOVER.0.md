@@ -115,7 +115,7 @@ representation on phase 3's numbers.
 
 Use the probe corpora and the langspec gates as the oracle for every
 phase, and `compare.py` from the handover README for every timing. Phase
-3 onward waits on decisions 1 to 5.
+3 onward waited on decisions 1 to 5, which were made on 2026-10-12.
 
 **Relation to the issues.** Issue #531 recorded the `Value` copy cost on
 2026-10-08 and proposed "borrow for reads, shrink the header, split Value
@@ -127,6 +127,13 @@ itself becomes shared and immutable once published. Issue #530 (the native `add`
 is independent of the policy and still open.
 
 ## Decisions waiting on the maintainer
+
+> **2026-10-12:** decisions 1 to 5 are made, and §7 of
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) records each answer: a new
+> container sharing its elements is construction, lists and maps keep
+> value semantics, phase 4 is decided on phase 3's numbers, the
+> sanctioned copies are approved as written, and `type Type = Value`
+> stays. Decisions 6 and 7 are still open.
 
 From the no-copy review (its §7 has the detail and a recommendation for
 each):

@@ -4,12 +4,14 @@ Policy under review: *"Value structures should never need to be copied.
 They can be modified in situ as needed by any stage, but copying is
 forbidden."*
 
-**Status: proposal, not started.** Review of main at `6780a6030`
-(2026-10-09); no code was changed. The decisions in §7 are open, and
-nothing in §6 should start past phase 2 before they are made. The policy
+**Status: accepted, not started.** Review of main at `6780a6030`
+(2026-10-09); no code was changed. The maintainer made the five decisions
+in §7 on 2026-10-12: the plan's assumptions stand, lists and maps keep
+value semantics, phase 4 is decided on phase 3's numbers, the sanctioned
+copies are approved as written, and `type Type = Value` stays. The policy
 supersedes the plan in issue #531 ("borrow for reads, shrink the header,
 then split Value from Type"), whose first two steps survive here as phases
-1 to 3.
+1 to 3; its third, the split, is not part of the plan (decision 5).
 
 Companion documents:
 
@@ -44,7 +46,8 @@ Companion documents:
    A language change: boru's list and map words return an updated copy
    and leave the receiver untouched; in-situ modification there is a new
    language, not a refactor. (a) and (b) are refactors with a clear plan.
-   (c) is a decision the maintainer has to make explicitly.
+   (c) is a decision the maintainer has to make explicitly; it was made
+   on 2026-10-12, and lists and maps keep value semantics (§7, decision 2).
 2. **Copying is worth attacking.** Struct copy and zero routines are
    23–25% of CPU on the interpreter and on the compiled VM alike
    (measurements §2). Nothing else in the profile is that large and
@@ -302,8 +305,7 @@ Consequences that fall out:
   body it did not construct (H2 closes by construction).
 - A type literal is a reference value (node pointer + occurrence), so
   `NewTypeLiteral` stops copying the node and `CanonicalType` retires
-  (H3 closes; the duality `type Type = Value` can stay or be split, see
-  §7).
+  (H3 closes; the duality `type Type = Value` stays, §7 decision 5).
 - Dispatch ascription (`as T`) and quote-ness become properties of the
   operand slot, which is what "match-time-only, stripped at every
   delivery boundary" already says they are; the 19 `StripAscribed`
@@ -426,17 +428,17 @@ pointer switch buys consistency (no copies to police) rather than speed,
 and that is a legitimate reason to do it, but it should be chosen with
 the numbers on the table.
 
-**Phase 5 — the language decision (1–2 weeks of spec work, any time
-after phase 3).** Either keep list and map value semantics by
-construction (a word returns a new container whose elements are the
-receiver's own) or move them to in-place mutation like flex containers (a
-spec change touching every row that relies on the receiver staying put).
-Value semantics without copying a `Value` needs the elements to be
-references, which is phase 4, or a persistent container representation
-that shares structure between versions. While the header stays a
-by-value struct, building the new container copies each unchanged
-element's header, a bulk copy the exceptions list sanctions until
-then. `StructUtil.clone`, `send`, `memoize` and the
+**Phase 5 — value semantics by construction (any time after phase 3).**
+Decision 2 keeps list and map value semantics: a word returns a new
+container whose elements are the receiver's own, and no spec row
+changes. The alternative it rejected, in-place mutation like flex
+containers, was 1–2 weeks of spec work touching every row that relies on
+the receiver staying put. Value semantics without copying a `Value`
+needs the elements to be references, which is phase 4, or a persistent
+container representation that shares structure between versions. While
+the header stays a by-value struct, building the new container copies
+each unchanged element's header, a bulk copy the exceptions list
+sanctions until then. `StructUtil.clone`, `send`, `memoize` and the
 debugger ring are explicit constructions of equal values either way.
 
 Order and dependencies: 0 → 1 → 2 can land in any interleaving; 3
@@ -446,28 +448,41 @@ reproduces every H1–H4 bug at once); 5 is independent but should not
 land before 3, since phase 3 removes the element-array copies that make
 the value-semantics column cheap.
 
-## 7. Decisions needed from the maintainer
+## 7. Decisions
+
+The review left five decisions to the maintainer. All five were made on
+2026-10-12; each answer is recorded under its question.
 
 1. **Is constructing a new container that shares its elements a
    "copy"?** The plan assumes no. If yes, list and map value semantics
    cannot survive and phase 5 is forced to in-place. Sharing elements
    for real needs reference elements (phase 4) or a persistent container
    representation, so the answer here and decision 3 go together.
+   **Decided: no.** Minting a Value from parts, including a new
+   container whose elements are shared, is construction (rule R4 of the
+   exceptions list).
 2. **Lists and maps: value semantics or in-place?** Today value
    semantics (`set` returns an updated copy); flex containers already
    mutate in place. Recommendation: keep value semantics by construction.
+   **Decided: keep value semantics**, by construction (phase 5).
 3. **Is phase 4 required, or is a ~40-byte immutable header passed by
    value an acceptable end state?** Recommendation: decide after phase
-   3 with benchstat in hand.
+   3 with benchstat in hand. **Decided: as recommended.** Phase 4 is a
+   go/no-go on phase 3's benchstat, and until then the header passed by
+   value stays a transitional allowance (D10 in the exceptions list).
 4. **Sanctioned copies.** The full list, with sites, invariants and
    expiry phases, is [VALUE-NO-COPY-EXCEPTIONS.0.md](VALUE-NO-COPY-EXCEPTIONS.0.md): two
    language-level copies (`StructUtil.clone`, `send`), seven named constructions,
    seven reference-copy families that are not Value copies, ten
    transitional allowances tied to phases, and seven copies that are
-   explicitly not exceptions. Approve or amend it.
+   explicitly not exceptions. Approve or amend it. **Decided: approved
+   as written.** A copy either check reports that matches no class A–D
+   row is a defect, and a new copy needs a row before it merges.
 5. **The type duality.** Keep `type Type = Value` with a node-reference
    literal, or split `Type` from `Value` (the legacy speed plan's option
-   1). Phase 3 needs one of them chosen.
+   1). Phase 3 needs one of them chosen. **Decided: keep `type Type =
+   Value`.** Phase 3 makes `NewTypeLiteral` a node reference and retires
+   `CanonicalType`; `tmeta` and the type-node flags stay in the header.
 
 ## 8. Performance estimate
 
