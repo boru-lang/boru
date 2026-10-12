@@ -426,7 +426,7 @@ func ParseFnReturns(r *Registry, outputSig Value) ([]*Type, []*Value, error) {
 	}
 	types := make([]*Type, elems.Len())
 	var pats []*Value
-	for i, e := range elems.Slice() {
+	for i, e := range elems.Elems() {
 		sig, err := resolveReturnSlot(r, e, i)
 		if err != nil {
 			return nil, nil, err

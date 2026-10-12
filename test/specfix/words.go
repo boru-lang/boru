@@ -329,7 +329,7 @@ func RegisterSpecWords(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 				_lst, _ := core.AsList(args[0])
-				body := _lst.Slice()
+				body := _lst.Elems()
 				specReplayCounter++
 				id := fmt.Sprintf("__replayq_%d", specReplayCounter)
 				out := make([]core.Value, 0, len(body)+2)
@@ -485,7 +485,7 @@ func registerEngSpecDefinition(r *core.Registry) {
 			return nil, &core.BoruError{Code: "type_error", Detail: "def fn: body must be a concrete list"}
 		}
 		lst, _ := core.AsList(args[2])
-		elems := lst.Slice()
+		elems := lst.Elems()
 		if len(elems) == 0 || len(elems)%3 != 0 {
 			return nil, &core.BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
 		}
@@ -561,7 +561,7 @@ func registerEngSpecDefinition(r *core.Registry) {
 					return nil, &core.BoruError{Code: "type_error", Detail: "fn: argument must be a concrete list"}
 				}
 				lst, _ := core.AsList(args[0])
-				elems := lst.Slice()
+				elems := lst.Elems()
 				if len(elems) == 0 || len(elems)%3 != 0 {
 					return nil, &core.BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
 				}
@@ -937,7 +937,7 @@ func registerEngSpecObjectRecord(r *core.Registry) {
 			return nil, fmt.Errorf("record: list must have at least one field")
 		}
 		fields := core.NewOrderedMap()
-		for _, elem := range elems.Slice() {
+		for _, elem := range elems.Elems() {
 			if !elem.Parent.Equal(core.TMap) {
 				return nil, fmt.Errorf("record: each element must be a pair (map), got %s", elem.String())
 			}
@@ -1287,7 +1287,7 @@ func registerEngSpecFnSig(r *core.Registry) {
 					}
 				}
 				lst, _ := core.AsList(args[0])
-				spec := lst.Slice()
+				spec := lst.Elems()
 				if len(spec) == 0 || len(spec)%2 != 0 {
 					return nil, &core.BoruError{
 						Code:   "fnsig_invalid_spec",
@@ -1366,7 +1366,7 @@ func registerEngSpecDo(r *core.Registry) {
 		}
 		lst, _ := core.AsList(args[0])
 		sub := core.New(r)
-		input := append([]core.Value{}, lst.Slice()...)
+		input := append([]core.Value{}, lst.Elems()...)
 		result, err := sub.Run(input)
 		if err != nil {
 			return []core.Value{core.NewError(err)}, nil
@@ -1397,9 +1397,7 @@ func doEvalMapValue(r *core.Registry, v core.Value) (core.Value, error) {
 	if v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(&v) && !core.IsTableType(v) {
 		lst, _ := core.AsList(v)
 		sub := core.New(r)
-		input := make([]core.Value, lst.Len())
-		copy(input, lst.Slice())
-		results, err := sub.Run(input)
+		results, err := sub.Run(lst.Elems())
 		if err != nil {
 			return core.Value{}, err
 		}

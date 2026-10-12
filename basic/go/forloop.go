@@ -23,6 +23,8 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 	if !IsConcrete(&body) {
 		return nil, r.BoruError("for_error", "for: body must be a concrete list, got type literal", "for")
 	}
+	// The Loop replays this one copy of the body every iteration; the
+	// first iteration's tokens below are a run built from it.
 	_lst, _ := AsList(body)
 	bodySlice := _lst.Slice()
 
@@ -30,9 +32,6 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 	InstallDef(r, iterName, NewInteger(start))
 
 	// Create the continuation state.
-	bodyCopy := make([]Value, len(bodySlice))
-	copy(bodyCopy, bodySlice)
-
 	cont := &Loop{
 		Registry:  r,
 		Word:      "for",
@@ -42,17 +41,16 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 		Current:   start,
 		End:       end,
 		Step:      step,
-		Body:      bodyCopy,
+		Body:      bodySlice,
 		IterDepth: r.Defs.Depth(iterName),
 	}
 
-	// Build the stack segment: mark + body + move.
+	// Build the stack segment: mark + body + move. The mark carries no
+	// body — the move's Loop replays cont.Body (stepMoveCont).
 	id := NextMarkID()
 	tokens := make([]Value, 0, len(bodySlice)+2)
-	tokens = append(tokens, NewMark(id, bodySlice...))
-	bodyTokens := make([]Value, len(bodySlice))
-	copy(bodyTokens, bodySlice)
-	tokens = append(tokens, bodyTokens...)
+	tokens = append(tokens, NewMark(id))
+	tokens = append(tokens, bodySlice...)
 	tokens = append(tokens, NewMoveCont(id, "for loop", cont))
 
 	return tokens, nil

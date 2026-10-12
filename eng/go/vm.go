@@ -2382,7 +2382,7 @@ func (vc *vmContext) loopContRestart(reg *core.Registry, lc *compiler.LoopCont, 
 		Body: lc.Body, Results: append([]core.Value(nil), stack[lp.base:lp.iterBase]...), IterDepth: reg.Defs.Depth(lc.IterName),
 	}
 	tokens := make([]core.Value, 0, len(island)+len(lc.After)+2)
-	tokens = append(tokens, core.NewMark(id, lc.Body...))
+	tokens = append(tokens, core.NewMark(id))
 	tokens = append(tokens, island...)
 	tokens = append(tokens, core.NewMoveCont(id, "for loop", cont))
 	tokens = append(tokens, lc.After...)

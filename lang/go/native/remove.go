@@ -65,7 +65,7 @@ func removeRecordHandler(args []Value, ctx map[string]Value, stack []Value, r *R
 func removeHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	filter, _ := AsMap(args[0])
 	_lst, _ := AsList(args[1])
-	rows := _lst.Slice()
+	rows := _lst.Elems()
 
 	idVal, ok := filter.Get("id")
 	if !ok {

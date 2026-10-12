@@ -526,7 +526,7 @@ func bodySpanEnd(body []core.Value) core.SrcPos {
 				continue
 			}
 			if lst, err := core.AsList(v); err == nil && !lst.IsNil() {
-				walk(lst.Slice())
+				walk(lst.Elems())
 				continue
 			}
 			if mp, err := core.AsMap(v); err == nil && mp != nil {

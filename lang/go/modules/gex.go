@@ -112,7 +112,7 @@ func miniGexHandler(args []native.Value, _ map[string]native.Value, _ []native.V
 	case native.IsConcrete(&subject) && subject.Parent.ConformsTo(native.TList):
 		elems, _ := native.AsList(subject)
 		var out []native.Value
-		for _, e := range elems.Slice() {
+		for _, e := range elems.Elems() {
 			if re.MatchString(native.ValToString(e)) {
 				out = append(out, e)
 			}

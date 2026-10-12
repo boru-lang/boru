@@ -521,7 +521,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 			// body itself pushed, exactly as it did here — `do [1 drop]` nets
 			// nothing, and there is no Error to latch (NUR222: `1 do [1 drop]
 			// drop` is [] on both lanes; its consumer had bailed).
-			if shuffleOnlyBody(bl.Slice(), r) {
+			if shuffleOnlyBody(bl.Elems(), r) {
 				return nil
 			}
 			if r.Check.Compiling {
@@ -707,7 +707,7 @@ func doBodyMayRaise(body Value, r *Registry) bool {
 	if err != nil || bl.IsNil() { //covergate:allow do's TList sig + the len(stk)>1 caller guard guarantee a concrete non-empty list body
 		return true
 	}
-	return tokensMayRaise(bl.Slice(), r)
+	return tokensMayRaise(bl.Elems(), r)
 }
 
 // tokensMayRaise recursively scans body tokens for a fallible invocation,
@@ -728,7 +728,7 @@ func tokensMayRaise(toks []Value, r *Registry) bool {
 				return true
 			}
 		case IsConcrete(&t) && t.Parent != nil && t.Parent.ConformsTo(TList):
-			if inner, err := AsList(t); err == nil && !inner.IsNil() && tokensMayRaise(inner.Slice(), r) {
+			if inner, err := AsList(t); err == nil && !inner.IsNil() && tokensMayRaise(inner.Elems(), r) {
 				return true
 			}
 		case IsWord(&t):
@@ -799,9 +799,7 @@ func DoMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 // Errors are caught and returned as a single error value on the stack.
 func DoEvalList(r *Registry, elems []Value) ([]Value, error) {
 	sub := New(r)
-	input := make([]Value, len(elems))
-	copy(input, elems)
-	result, err := sub.Run(input)
+	result, err := sub.Run(elems)
 	if err != nil {
 		return []Value{NewError(err)}, nil
 	}
@@ -830,10 +828,7 @@ func doEvalDataList(r *Registry, elems []Value) ([]Value, error) {
 	if IsSteplessWindow(elems) {
 		return append([]Value(nil), elems...), nil
 	}
-	sub := New(r)
-	input := make([]Value, len(elems))
-	copy(input, elems)
-	return sub.Run(input)
+	return New(r).Run(elems)
 }
 
 // DoEvalMapValue recursively evaluates list values within a map. Used
@@ -841,7 +836,7 @@ func doEvalDataList(r *Registry, elems []Value) ([]Value, error) {
 func DoEvalMapValue(r *Registry, v Value) (Value, error) {
 	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
 		_lst, _ := AsList(v)
-		results, err := doEvalDataList(r, _lst.Slice())
+		results, err := doEvalDataList(r, _lst.Elems())
 		if err != nil {
 			return Value{}, err
 		}
@@ -878,10 +873,10 @@ func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([
 		return nil, false
 	}
 	_lst, _ := AsList(cond)
-	condSlice := _lst.Slice()
+	condSlice := _lst.Elems()
 	id := NextMarkID()
 	tokens := make([]Value, 0, len(condSlice)+2)
-	tokens = append(tokens, NewMark(id, condSlice...))
+	tokens = append(tokens, NewMark(id))
 	tokens = append(tokens, condSlice...)
 	// The move carries the `if`'s position: a condition that nets no value
 	// raises there (stepMoveIf), as the compiled guard does (NUR292).
@@ -1586,7 +1581,7 @@ func IfListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("if_error", "if: clause-list argument must be a concrete list, got a type literal", "if")
 	}
 	_lst, _ := AsList(args[0])
-	return ifClause(_lst.Slice(), r.Check.CurWordPos), nil
+	return ifClause(_lst.Elems(), r.Check.CurWordPos), nil
 }
 
 // CaseHandler implements both call shapes of `case`:
@@ -1616,7 +1611,7 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			"case: clause list must be a concrete list of match/block pairs (optional trailing default)", "case")
 	}
 	lst, _ := AsList(clauses)
-	return CaseClauses(r, v, lst.Slice())
+	return CaseClauses(r, v, lst.Elems())
 }
 
 // caseSubject is case's scrutinee rule: a code body runs in a sub-engine and
@@ -1627,9 +1622,7 @@ func caseSubject(r *Registry, v Value) (Value, error) {
 		return v, nil
 	}
 	lst, _ := AsList(v)
-	input := make([]Value, lst.Len())
-	copy(input, lst.Slice())
-	out, err := New(r).Run(input)
+	out, err := New(r).Run(lst.Elems())
 	if err != nil {
 		return Value{}, err
 	}
@@ -1679,7 +1672,7 @@ func armHoldsSteppingLiteral(arm Value) bool {
 	if err != nil {
 		return false
 	}
-	for _, t := range elems.Slice() {
+	for _, t := range elems.Elems() {
 		if PendingLiteralSteps(t) {
 			return true
 		}
@@ -1825,7 +1818,7 @@ func IfListReturnsFn(args []Value, r *Registry) []Value {
 		return []Value{NewCarrier(TAny)}
 	}
 	_lst, _ := AsList(args[0])
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 
 	var joined []Value
 	add := func(stk []Value) {
@@ -2032,7 +2025,7 @@ func ForRangeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		return nil, r.BoruError("for_error", "for: range must be a concrete list, got type literal", "for")
 	}
 	_lst, _ := AsList(args[0])
-	rangeSpec := _lst.Slice()
+	rangeSpec := _lst.Elems()
 	body := args[1]
 	start, end, step, err := ParseRange(rangeSpec)
 	if err != nil {
@@ -2110,7 +2103,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 				}
 			case cv.Parent.ConformsTo(TList):
 				if lst, err := AsList(cv); err == nil && !lst.IsNil() {
-					if st, en, sp, perr := ParseRange(lst.Slice()); perr == nil && LoopIterations(st, en, sp) == 0 {
+					if st, en, sp, perr := ParseRange(lst.Elems()); perr == nil && LoopIterations(st, en, sp) == 0 {
 						zero = true
 					}
 				}
@@ -2137,7 +2130,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			lowerable, staticBounds = true, IsConcrete(&cv)
 		case IsConcrete(&cv) && cv.Parent.ConformsTo(TList):
 			if lst, err := AsList(cv); err == nil && !lst.IsNil() {
-				elems := lst.Slice()
+				elems := lst.Elems()
 				if st, en, sp, perr := ParseRange(elems); perr == nil {
 					startV, endV, stepV = NewInteger(st), NewInteger(en), NewInteger(sp)
 					lowerable, staticBounds = true, true
@@ -2322,7 +2315,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 	if err != nil || body.IsNil() {
 		return wide
 	}
-	seeded := append([]Value{NewCarrier(TError)}, body.Slice()...)
+	seeded := append([]Value{NewCarrier(TError)}, body.Elems()...)
 	stk := RunCarrierBody(r, NewList(seeded))
 	// The handler nets ONE value (BodyOut 1): the seeded error still at the
 	// residual bottom is the strip-unconsumed shape (`["fallback"]`), so drop

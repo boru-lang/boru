@@ -201,8 +201,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		if err != nil {
 			return nil, err
 		}
-		tokens = make([]Value, bodyList.Len())
-		copy(tokens, bodyList.Slice())
+		tokens = bodyList.Slice() // the spawned goroutine's own copy
 	}
 	bound := core.DefaultMailboxBound
 	overflow := core.OverflowBlock
@@ -419,9 +418,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 			if bErr != nil {
 				return nil, nil, r.BoruError("receive_error", "receive: `after` body must be a list", "receive")
 			}
-			body := make([]Value, bodyList.Len())
-			copy(body, bodyList.Slice())
-			after = &recvAfter{ms: ms, body: body}
+			after = &recvAfter{ms: ms, body: bodyList.Slice()}
 			i += 2
 			continue
 		}
@@ -437,8 +434,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 		if bErr != nil {
 			return nil, nil, r.BoruError("receive_error", "receive: clause body must be a list", "receive")
 		}
-		body := make([]Value, bodyList.Len())
-		copy(body, bodyList.Slice())
+		body := bodyList.Slice()
 		clause, cErr := splitClausePattern(r, e, "receive", "receive_error")
 		if cErr != nil {
 			return nil, nil, cErr
@@ -588,9 +584,7 @@ type recvBinding struct {
 // frame bindings (shadowing, torn down afterwards).
 func runClauseBody(r *Registry, binds []recvBinding, body []Value) ([]Value, error) {
 	return withSlotBindings(r, binds, func() ([]Value, error) {
-		tokens := make([]Value, len(body))
-		copy(tokens, body)
-		return New(r).Run(tokens)
+		return New(r).Run(body)
 	})
 }
 

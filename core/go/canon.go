@@ -220,7 +220,7 @@ func CanonValue(v Value) string {
 		if ct, ok := v.Data.(ChildTypeInfo); ok {
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 		}
-		parts = append(parts, canonSeqParts(lst.Slice(), canonChild)...)
+		parts = append(parts, canonSeqParts(lst.Elems(), canonChild)...)
 		body := "[" + joinCanonParts(parts) + "]"
 		if v.Quoted {
 			return "(quote " + body + ")"
@@ -787,8 +787,8 @@ func canonSugar(info SugarInfo) (string, bool) {
 		return "+" + info.Name + "'" + canonMiniSrc(info.Src) + "'", true
 	case SugarTypeBound:
 		if len(info.Items) == 1 {
-			if l, err := AsList(info.Items[0]); err == nil && !l.IsNil() && l.Len() == 1 && IsAtom(l.Slice()[0]) {
-				name, _ := AsAtom(l.Slice()[0])
+			if l, err := AsList(info.Items[0]); err == nil && !l.IsNil() && l.Len() == 1 && IsAtom(l.Get(0)) {
+				name, _ := AsAtom(l.Get(0))
 				return name + "/t", true
 			}
 		}

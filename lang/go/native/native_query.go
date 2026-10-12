@@ -393,7 +393,7 @@ func queryUsingHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	if err != nil {
 		return nil, fmt.Errorf("using: %w", err)
 	}
-	elems := lst.Slice()
+	elems := lst.Elems()
 	cols := make([]string, 0, len(elems))
 	for _, e := range elems {
 		colName := valueToColName(e)

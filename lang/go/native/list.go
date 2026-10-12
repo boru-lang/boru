@@ -62,7 +62,7 @@ func listAPIHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 // listAllHandler returns all records from a table as a list.
 func listAllHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	_lst, _ := AsList(args[0])
-	rows := _lst.Slice()
+	rows := _lst.Elems()
 	result := make([]Value, len(rows))
 	copy(result, rows)
 	return []Value{NewList(result)}, nil
@@ -74,7 +74,7 @@ func listAllHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 // args[1]=list.
 func listFilterHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	_lst, _ := AsList(args[1])
-	rows := _lst.Slice()
+	rows := _lst.Elems()
 	filter, _ := AsMap(args[0])
 
 	var matched []Value

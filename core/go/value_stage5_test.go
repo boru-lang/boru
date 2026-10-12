@@ -50,6 +50,29 @@ func TestS5VReadListAndSortedKeys(t *testing.T) {
 	}
 }
 
+// Elems is the list's own storage, not a copy, with its capacity clamped so
+// an append cannot write into a neighbour's spare capacity; like Slice it is
+// never nil.
+func TestReadListElemsIsTheListsOwnStorage(t *testing.T) {
+	backing := make([]Value, 2, 4)
+	backing[0], backing[1] = NewInteger(1), NewInteger(2)
+	rl := NewReadList(backing)
+	els := rl.Elems()
+	if len(els) != 2 || &els[0] != &backing[0] {
+		t.Fatal("Elems must be the list's own elements")
+	}
+	if cap(els) != 2 {
+		t.Fatalf("Elems capacity = %d, want it clamped to the length 2", cap(els))
+	}
+	grown := append(els, NewInteger(3))
+	if &grown[0] == &backing[0] {
+		t.Error("an append to Elems must reallocate, not write past the list's end")
+	}
+	if empty := (ReadList{}).Elems(); empty == nil || len(empty) != 0 {
+		t.Errorf("Elems of a nil list = %v, want a non-nil empty slice", empty)
+	}
+}
+
 // --- CompileEffect.Has ----------------------------------------------------
 
 func TestS5VCompileEffectHas(t *testing.T) {

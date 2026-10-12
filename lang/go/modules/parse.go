@@ -552,7 +552,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 		fns := []native.Value{fv}
 		if fv.Parent.ConformsTo(native.TList) && native.IsConcrete(&fv) {
 			lst, _ := native.AsList(fv)
-			fns = lst.Slice()
+			fns = lst.Elems()
 		}
 		for _, fn := range fns {
 			if lenient && !native.IsConcrete(&fn) {
@@ -594,7 +594,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 		entries := []native.Value{v}
 		if v.Parent.ConformsTo(native.TList) && native.IsConcrete(&v) {
 			lst, _ := native.AsList(v)
-			entries = lst.Slice()
+			entries = lst.Elems()
 		}
 		for _, e := range entries {
 			if lenient && !native.IsConcrete(&e) {

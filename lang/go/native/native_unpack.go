@@ -321,7 +321,7 @@ func unpackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	if err != nil {
 		return nil, err
 	}
-	for _, el := range names.Slice() {
+	for _, el := range names.Elems() {
 		name := defName(el)
 		if err := bindUnpackEntry(r, name, name, get, proven, el.Pos()); err != nil {
 			return nil, err

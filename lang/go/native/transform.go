@@ -84,7 +84,7 @@ func valueToAny(v Value) any {
 		return out
 	case v.Parent.ConformsTo(TList):
 		_lst, _ := AsList(v)
-		elems := _lst.Slice()
+		elems := _lst.Elems()
 		out := make([]any, len(elems))
 		for i, elem := range elems {
 			out[i] = valueToAny(elem)

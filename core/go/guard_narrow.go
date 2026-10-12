@@ -57,7 +57,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 		if err != nil || list.IsNil() || list.Len() < 3 {
 			return nil
 		}
-		elems = list.Slice()
+		elems = list.Elems()
 	}
 	if len(elems) < 2 {
 		return nil

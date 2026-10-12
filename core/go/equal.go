@@ -201,7 +201,7 @@ func valuesEqualDefault(a, b Value) bool {
 			// list-family value): rendering compare, never a nil walk.
 			return fmt.Sprintf("%v", a.Data) == fmt.Sprintf("%v", b.Data)
 		}
-		return listsEqual(aLst.Slice(), bLst.Slice())
+		return listsEqual(aLst.Elems(), bLst.Elems())
 	case nodeFamily(a.Parent).Equal(TMap):
 		aRT, aRec := a.Data.(RecordTypeInfo)
 		bRT, bRec := b.Data.(RecordTypeInfo)

@@ -10534,7 +10534,7 @@ func regionValsMayBeCallable(vals []core.Value) bool {
 // nonetheless KNOWN, namely none at all.
 func storedBodyIsEmpty(elem core.Value) bool {
 	lst, err := core.AsList(elem)
-	return err == nil && !lst.IsNil() && len(lst.Slice()) == 0
+	return err == nil && !lst.IsNil() && lst.Len() == 0
 }
 
 // callVariadicRegion reports whether a dispatch's modelled residual is a
@@ -11187,7 +11187,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// the interpreter, per-element and unchanged.
 		if sig.CompileEffect.Has(core.CompileStoresBodyList) && sig.NoEvalArgs != nil && sig.NoEvalArgs[i] {
 			if lst, lerr := core.AsList(a); lerr == nil && !lst.IsNil() {
-				elems := lst.Slice()
+				elems := lst.Elems()
 				rebuilt := make([]core.Value, len(elems))
 				any := false
 				for j := range elems {
@@ -20068,7 +20068,7 @@ func collectWordNames(tokens []core.Value, names map[string]bool) {
 			continue
 		}
 		if l, err := core.AsList(t); err == nil {
-			collectWordNames(l.Slice(), names)
+			collectWordNames(l.Elems(), names)
 			continue
 		}
 		if m, err := core.AsMap(t); err == nil {

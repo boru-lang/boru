@@ -46,6 +46,11 @@ func RunPooledTop(r *Registry, tokens []Value) ([]Value, error) {
 func RunResolved(r *Registry, inputs, tokens []Value) ([]Value, error) {
 	// Observability seam (interp_entry.go): the callback-style body path.
 	r.noteInterp("RunResolved")
+	if len(inputs) == 0 {
+		// Nothing to place before the body: Run copies the tokens onto its
+		// tape itself.
+		return runPooledAt(r, tokens, 0, false)
+	}
 	input := make([]Value, len(inputs)+len(tokens))
 	copy(input, inputs)
 	copy(input[len(inputs):], tokens)

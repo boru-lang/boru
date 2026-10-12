@@ -558,7 +558,7 @@ func reachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if err != nil {
 		return nil, err
 	}
-	segs, err := decodeReachSegments(keys.Slice(), r)
+	segs, err := decodeReachSegments(keys.Elems(), r)
 	if err != nil {
 		return nil, err
 	}

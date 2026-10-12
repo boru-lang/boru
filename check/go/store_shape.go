@@ -135,7 +135,7 @@ func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	}
 	out := core.NewStoreShapeCarrier(core.TFlexList, 0)
 	ss, _ := StoreShapeOf(out)
-	for _, el := range l.Slice() {
+	for _, el := range l.Elems() {
 		ss.RecordVal(AdoptShapeValue(el, depth+1))
 	}
 	return out, true

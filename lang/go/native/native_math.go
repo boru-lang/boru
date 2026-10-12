@@ -475,7 +475,7 @@ func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 		return InvokeBody(r, body, nil)
 	}
 	lst, _ := AsList(body)
-	return doEvalList(r, lst.Slice())
+	return doEvalList(r, lst.Elems())
 }
 
 func addConcatHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {

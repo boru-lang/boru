@@ -56,10 +56,10 @@ func ifClause(elems []Value, pos SrcPos) []Value {
 
 	if isCodeBody(cond) {
 		_lst, _ := AsList(cond)
-		condSlice := _lst.Slice()
+		condSlice := _lst.Elems()
 		id := NextMarkID()
 		tokens := make([]Value, 0, len(condSlice)+2)
-		tokens = append(tokens, NewMark(id, condSlice...))
+		tokens = append(tokens, NewMark(id))
 		tokens = append(tokens, condSlice...)
 		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}), pos))
 		return tokens
@@ -328,7 +328,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// block up front (NUR048/G9), so the coverage pass, the compile
 	// desugar, and the branch join all see the standard shape and lower
 	// the arm exactly like a matched block.
-	elems := caseNormalizeClauses(r, lst.Slice())
+	elems := caseNormalizeClauses(r, lst.Elems())
 	// Static coverage pass (case_exhaustive.go) — BEFORE the compile-desugar /
 	// plain-check paths diverge, so both report identical findings: a
 	// default-less case whose clauses don't cover the scrutinee's static type
@@ -486,7 +486,7 @@ func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
 		return matched, true
 	}
 	ml, _ := AsList(m)
-	toks := ml.Slice()
+	toks := ml.Elems()
 	if !caseFoldablePredicate(r, toks) {
 		return false, false
 	}
@@ -778,7 +778,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 	}
 	if isCodeBody(clauses) {
 		if lst, _ := AsList(clauses); !lst.IsNil() {
-			elems := caseNormalizeClauses(r, lst.Slice())
+			elems := caseNormalizeClauses(r, lst.Elems())
 			if len(elems) == 3 && !isCodeBody(elems[1]) && !isCodeBody(elems[2]) {
 				if caseReStepDeclined(r, es, elems) {
 					return dynAny
@@ -869,7 +869,7 @@ func CaseBranchJoin(r *Registry, v Value, elems []Value) []Value {
 func caseGuardTokens(v Value, m Value) []Value {
 	if isCodeBody(m) {
 		ml, _ := AsList(m)
-		return append([]Value{v}, ml.Slice()...)
+		return append([]Value{v}, ml.Elems()...)
 	}
 	return []Value{v, m, NewWord("__casematch")}
 }
@@ -880,7 +880,7 @@ func caseGuardTokens(v Value, m Value) []Value {
 func caseBlockTokens(v Value, b Value) []Value {
 	if isCodeBody(b) {
 		bl, _ := AsList(b)
-		return append([]Value{v}, bl.Slice()...)
+		return append([]Value{v}, bl.Elems()...)
 	}
 	return []Value{b}
 }
@@ -928,5 +928,5 @@ func runCaseBody(r *Registry, v Value, body Value) ([]Value, error) {
 	lst, _ := AsList(body)
 	// The captured value is a resolved input: it enters as stack data the
 	// block consumes, never re-stepped (arguments are inert; RunResolved).
-	return RunResolved(r, []Value{v}, lst.Slice())
+	return RunResolved(r, []Value{v}, lst.Elems())
 }

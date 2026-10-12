@@ -14,8 +14,7 @@ func RunTimerCallback(r *Registry, callback Value, isList bool) {
 			return
 		}
 		_lst, _ := AsList(callback)
-		input = make([]Value, len(_lst.Slice()))
-		copy(input, _lst.Slice())
+		input = _lst.Elems()
 	} else {
 		// Callback is an Atom (from /q) or String (quoted form);
 		// either yields a word name to invoke.

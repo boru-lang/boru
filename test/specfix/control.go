@@ -47,10 +47,10 @@ func fixIfMarkMoveTokens(cond core.Value, thenBranch, elseBranch []core.Value) (
 		return nil, false
 	}
 	lst, _ := core.AsList(cond)
-	condSlice := lst.Slice()
+	condSlice := lst.Elems()
 	id := core.NextMarkID()
 	tokens := make([]core.Value, 0, len(condSlice)+2)
-	tokens = append(tokens, core.NewMark(id, condSlice...))
+	tokens = append(tokens, core.NewMark(id))
 	tokens = append(tokens, condSlice...)
 	tokens = append(tokens, core.NewMoveIf(id, "if", &core.IfCont{
 		Then: thenBranch,
@@ -188,7 +188,7 @@ func fixRunForLoop(r *core.Registry, start, end, step int64, iterName string, bo
 		return nil, &core.BoruError{Code: "for_error", Detail: "for: body must be a concrete list, got type literal"}
 	}
 	lst, _ := core.AsList(body)
-	bodySlice := lst.Slice()
+	bodySlice := lst.Elems()
 
 	core.InstallDef(r, iterName, core.NewInteger(start))
 
@@ -208,10 +208,8 @@ func fixRunForLoop(r *core.Registry, start, end, step int64, iterName string, bo
 
 	id := core.NextMarkID()
 	tokens := make([]core.Value, 0, len(bodySlice)+2)
-	tokens = append(tokens, core.NewMark(id, bodySlice...))
-	bodyTokens := make([]core.Value, len(bodySlice))
-	copy(bodyTokens, bodySlice)
-	tokens = append(tokens, bodyTokens...)
+	tokens = append(tokens, core.NewMark(id))
+	tokens = append(tokens, bodySlice...)
 	tokens = append(tokens, core.NewMoveCont(id, "for loop", cont))
 	return tokens, nil
 }
@@ -453,7 +451,7 @@ func fixForRangeHandler(args []core.Value, _ map[string]core.Value, _ []core.Val
 		return nil, &core.BoruError{Code: "for_error", Detail: "for: range must be a concrete list, got type literal"}
 	}
 	lst, _ := core.AsList(args[0])
-	start, end, step, err := fixParseRange(lst.Slice())
+	start, end, step, err := fixParseRange(lst.Elems())
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +475,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	staticCount := int64(-1)
 	if cv := args[0]; core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TList) {
 		if lst, err := core.AsList(cv); err == nil && !lst.IsNil() {
-			elems := lst.Slice()
+			elems := lst.Elems()
 			if st, en, sp, perr := fixParseRange(elems); perr == nil {
 				startV, endV, stepV = core.NewInteger(st), core.NewInteger(en), core.NewInteger(sp)
 				lowerable, staticBounds = true, true
@@ -610,7 +608,7 @@ func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	if err != nil || bl.IsNil() { //covergate:allow guarded by IsConcrete+ConformsTo(TList) above; AsList cannot fail and a concrete list is never nil-backed
 		return []core.Value{core.NewCarrier(core.TList)}
 	}
-	toks := append([]core.Value{check.ElementCarrierFromValue(args[1])}, bl.Slice()...)
+	toks := append([]core.Value{check.ElementCarrierFromValue(args[1])}, bl.Elems()...)
 	stk := core.RunCarrierBody(r, core.NewList(toks))
 	if len(stk) == 0 {
 		return []core.Value{core.NewCarrier(core.TList)}

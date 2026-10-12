@@ -31,7 +31,7 @@ func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("record_error", "record: list must have at least one field", "record")
 	}
 	fields := NewOrderedMap()
-	for _, elem := range elems.Slice() {
+	for _, elem := range elems.Elems() {
 		if !elem.Parent.Equal(TMap) {
 			return nil, fmt.Errorf("record: each element must be a pair (map), got %s", elem.String())
 		}

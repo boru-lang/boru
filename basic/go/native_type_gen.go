@@ -126,7 +126,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		return nil, err
 	}
 
-	for _, entry := range lst.Slice() {
+	for _, entry := range lst.Elems() {
 		switch {
 		case IsWord(&entry):
 			w, _ := AsWord(&entry)

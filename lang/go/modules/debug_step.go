@@ -40,7 +40,7 @@ func stepNatives() []native.NativeFunc {
 					if err != nil {
 						return nil, err
 					}
-					return runStepped(r, append([]native.Value(nil), body.Slice()...))
+					return runStepped(r, body.Elems())
 				}),
 			}},
 		},

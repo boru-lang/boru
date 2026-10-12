@@ -405,7 +405,7 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 				continue
 			}
 			if lst, err := core.AsList(v); err == nil && !lst.IsNil() {
-				walk(lst.Slice())
+				walk(lst.Elems())
 				continue
 			}
 			if mp, err := core.AsMap(v); err == nil && mp != nil {

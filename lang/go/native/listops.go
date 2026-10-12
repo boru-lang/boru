@@ -46,7 +46,7 @@ func pushHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry)
 	// ADR-005). A non-concrete List arg yields an empty slice and pushes
 	// onto it, matching the pre-existing behaviour of the dead guard.
 	_lst, _ := AsList(args[1])
-	list := _lst.Slice()
+	list := _lst.Elems()
 
 	result := make([]Value, len(list)+1)
 	copy(result, list)
@@ -62,7 +62,7 @@ func pushHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry)
 //	[a,b,c] pop → [a,b] c
 func popHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	_lst, _ := AsList(args[0])
-	list := _lst.Slice()
+	list := _lst.Elems()
 	if len(list) == 0 {
 		return nil, r.BoruError("pop_error", "pop: cannot pop from empty list", "pop")
 	}
@@ -93,7 +93,7 @@ func unshiftHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 	// Dead "list == nil" guard removed: ReadList.Slice always allocates
 	// (design/TEST-SEAMS.10.md, ADR-005). See pushHandler.
 	_lst, _ := AsList(args[1])
-	list := _lst.Slice()
+	list := _lst.Elems()
 
 	result := make([]Value, len(list)+1)
 	result[0] = newElem
@@ -109,7 +109,7 @@ func unshiftHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 //	[a,b,c] shift → [b,c] a
 func shiftHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	_lst, _ := AsList(args[0])
-	list := _lst.Slice()
+	list := _lst.Elems()
 	if len(list) == 0 {
 		return nil, r.BoruError("shift_error", "shift: cannot shift from empty list", "shift")
 	}

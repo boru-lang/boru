@@ -130,7 +130,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 
 	if isNamed {
 		provided := NewOrderedMap()
-		for _, elem := range elems.Slice() {
+		for _, elem := range elems.Elems() {
 			if !elem.Parent.ConformsTo(TMap) {
 				return nil, fmt.Errorf("make: mixed named and positional fields")
 			}
@@ -836,7 +836,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 		result := NewOrderedMap()
 		if isNamed {
 			provided := NewOrderedMap()
-			for _, elem := range rowElems.Slice() {
+			for _, elem := range rowElems.Elems() {
 				if !elem.Parent.ConformsTo(TMap) {
 					return nil, fmt.Errorf("make: table row %d: mixed named and positional fields", rowIdx)
 				}
@@ -1326,7 +1326,7 @@ func ResolveFieldType(r *Registry, v Value) Value {
 	if v.Parent.Equal(TList) && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		input := make([]Value, elems.Len())
-		for i, e := range elems.Slice() {
+		for i, e := range elems.Elems() {
 			if (e.Parent.ConformsTo(TString) || e.Parent.ConformsTo(TAtom)) && e.Data != nil {
 				name, _ := AsString(e)
 				if r.Lookup(name) != nil {

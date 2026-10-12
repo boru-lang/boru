@@ -49,7 +49,7 @@ func (listFormatBehavior) Format(v Value) string {
 		return "[" + strings.Join(parts, " ") + "]"
 	}
 	_lst, _ := AsList(v)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	parts := make([]string, 0, len(elems))
 	for i := 0; i < len(elems); i++ {
 		// Display-only: collapse a parser-grouped dot chain

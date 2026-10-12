@@ -2364,7 +2364,7 @@ func predicateBodyPure(r *Registry, predSig *FnSig) bool {
 				return false
 			}
 			if lst, err := AsList(it); err == nil && !lst.IsNil() {
-				if !pure(lst.Slice()) {
+				if !pure(lst.Elems()) {
 					return false
 				}
 			}

@@ -370,8 +370,6 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// quoted value whose text happens to name a word (`"def"`, `"print"`)
 	// stays a string, the same contract `do` and every other evaluator
 	// honour.
-	input := make([]Value, len(elems))
-	copy(input, elems)
 	// The module's identity is drawn BEFORE the body runs so every type
 	// the body mints (refine / class) is owner-stamped with this
 	// module's token — the provenance the ownership-anchored signature
@@ -383,7 +381,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// C4 attribution (plan Phase 10): the body run IS the module load — a
 	// sanctioned interpreter entry reported under its named seam.
 	restoreAtt := modReg.SetInterpAttribution("module-load")
-	_, err = sub.Run(input)
+	_, err = sub.Run(elems)
 	restoreAtt()
 	if err != nil {
 		return ModuleDesc{}, err

@@ -65,7 +65,7 @@ func updateRecordHandler(args []Value, ctx map[string]Value, stack []Value, r *R
 func updateHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	patch, _ := AsMap(args[0])
 	_lst, _ := AsList(args[1])
-	rows := _lst.Slice()
+	rows := _lst.Elems()
 
 	idVal, ok := patch.Get("id")
 	if !ok {

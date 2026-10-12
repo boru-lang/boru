@@ -177,9 +177,8 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 	}
 
 	// Run the template body → the template token list (its last result).
-	body := make([]Value, len(sig.Body()))
-	copy(body, sig.Body())
-	res, runErr := New(r).Run(body)
+	// Run copies the body onto its tape; the signature's own is untouched.
+	res, runErr := New(r).Run(sig.Body())
 	if runErr != nil {
 		r.Defs.RestoreEntriesSnapshot(snap)
 		return nil, fmt.Errorf("macro %s: template: %w", fnDef.Name, runErr)
@@ -193,7 +192,7 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 	var tmpl []Value
 	if template.Parent.Equal(TList) && IsConcrete(&template) {
 		l, _ := AsList(template)
-		tmpl = l.Slice()
+		tmpl = l.Elems()
 	} else {
 		tmpl = []Value{template}
 	}
@@ -246,7 +245,7 @@ func collectBindersNested(t Value, set map[string]bool) {
 	switch {
 	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
-		collectTemplateBinders(l.Slice(), set)
+		collectTemplateBinders(l.Elems(), set)
 	case IsParenExpr(&t):
 		pt, _ := AsParenExpr(&t)
 		collectTemplateBinders(pt, set)
@@ -289,7 +288,7 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 							Detail: "splice: operand did not evaluate to a list"}
 					}
 					l, _ := AsList(val)
-					out = append(out, l.Slice()...)
+					out = append(out, l.Elems()...)
 				} else {
 					out = append(out, val)
 				}
@@ -359,7 +358,7 @@ func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[s
 	switch {
 	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
-		inner, err := expandTemplate(r, l.Slice(), bindings, renames)
+		inner, err := expandTemplate(r, l.Elems(), bindings, renames)
 		if err != nil {
 			return Value{}, err
 		}
@@ -498,7 +497,7 @@ func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 	switch {
 	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
-		inner, err := expandAllMacros(r, l.Slice(), depth+1)
+		inner, err := expandAllMacros(r, l.Elems(), depth+1)
 		if err != nil {
 			return Value{}, err
 		}

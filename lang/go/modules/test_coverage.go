@@ -136,7 +136,7 @@ func coverWalkSeq(seq []native.Value, rows map[int]bool) {
 			w, _ := native.AsWord(&v)
 			if (w.Name == "fn" || w.Name == "afn") && i+1 < len(seq) {
 				if lst, err := native.AsList(seq[i+1]); err == nil && !lst.IsNil() {
-					coverWalkFnSig(lst.Slice(), rows)
+					coverWalkFnSig(lst.Elems(), rows)
 					i++
 				}
 			}
@@ -154,7 +154,7 @@ func coverWalkFnSig(sig []native.Value, rows map[int]bool) {
 			continue
 		}
 		if body, err := native.AsList(sig[i]); err == nil && !body.IsNil() {
-			coverWalkSeq(body.Slice(), rows)
+			coverWalkSeq(body.Elems(), rows)
 		}
 	}
 }
@@ -166,7 +166,7 @@ func coverWalkValue(v native.Value, rows map[int]bool) {
 		return
 	}
 	if lst, err := native.AsList(v); err == nil && !lst.IsNil() {
-		coverWalkSeq(lst.Slice(), rows)
+		coverWalkSeq(lst.Elems(), rows)
 		return
 	}
 	if m, err := native.AsMap(v); err == nil && native.IsConcrete(&v) {
@@ -223,7 +223,7 @@ func coverNatives(parent *native.Registry) []native.NativeFunc {
 					cover := activeCover(parent)
 					disarm := parent.ArmCoverageHook(cover.record)
 					defer disarm()
-					_, e := native.New(r).Run(body.Slice())
+					_, e := native.New(r).Run(body.Elems())
 					return nil, e
 				}),
 			}},

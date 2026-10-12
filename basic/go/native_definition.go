@@ -1050,9 +1050,7 @@ func evalParenAnnotation(r *Registry, name string, constraint Value) (Value, err
 		return constraint, nil
 	}
 	toks, _ := AsParenExpr(&constraint)
-	body := make([]Value, len(toks))
-	copy(body, toks)
-	out, err := New(r).Run(body)
+	out, err := New(r).Run(toks)
 	if err != nil {
 		return Value{}, fmt.Errorf("def %s: type annotation: %w", name, err)
 	}
@@ -1817,7 +1815,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		return nil, r.BoruError("var_error", "var: first element must be a list of variable declarations", "var")
 	}
 	decls, _ := AsList(declVal)
-	body := elems.Slice()[1:]
+	body := elems.Elems()[1:]
 
 	var result []Value
 	var varNames []string
@@ -1829,7 +1827,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	// `do [var [[[k 1]] …]]` (code-bodies.tsv L197, measured 2026-09-24).
 	var varSites []Value
 
-	for _, decl := range decls.Slice() {
+	for _, decl := range decls.Elems() {
 		switch {
 		case IsWord(&decl):
 			_as0, _ := AsWord(&decl)
@@ -1855,7 +1853,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			varNames = append(varNames, name)
 			varSites = append(varSites, declElems.Get(0))
 			result = append(result, WithPos(NewWord("def"), declElems.Get(0)), WithPos(NewWord(name), declElems.Get(0)))
-			result = append(result, declElems.Slice()[1:]...)
+			result = append(result, declElems.Elems()[1:]...)
 			result = append(result, NewEnd())
 
 		case decl.Parent.ConformsTo(TString):
@@ -1906,7 +1904,7 @@ func FnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: argument must be a concrete list, got type literal", "fn"))
 	}
 	_lst, _ := AsList(list)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 || len(elems)%3 != 0 {
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: list length must be a non-zero multiple of 3 (input output body triples); use `fnsig` for the type-only form, or the 3-arg form `fn input output body` for a single triple with a non-list input", "fn"))
 	}
@@ -2252,7 +2250,7 @@ func FnpredHandler(args []Value, names map[string]Value, stack []Value, r *Regis
 		return nil, r.BoruError("fnpred_invalid_spec", "fnpred: argument must be a concrete list", "fnpred")
 	}
 	_lst, _ := AsList(args[0])
-	spec := _lst.Slice()
+	spec := _lst.Elems()
 	if len(spec) == 0 || len(spec)%2 != 0 {
 		return nil, r.BoruError("fnpred_invalid_spec",
 			"fnpred: list length must be a non-zero multiple of 2 (input body pairs); "+
@@ -2283,7 +2281,7 @@ func FnsigHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		}
 	}
 	_lst, _ := AsList(args[0])
-	spec := _lst.Slice()
+	spec := _lst.Elems()
 	if len(spec) == 0 || len(spec)%2 != 0 {
 		return nil, &BoruError{
 			Code:   "fnsig_invalid_spec",

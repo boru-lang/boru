@@ -25,7 +25,7 @@ func valueToSliceArg(v Value) interface{} {
 	if v.Parent.ConformsTo(TList) {
 		list, _ := AsList(v)
 		result := make([]interface{}, list.Len())
-		for i, elem := range list.Slice() {
+		for i, elem := range list.Elems() {
 			result[i] = elem
 		}
 		return result

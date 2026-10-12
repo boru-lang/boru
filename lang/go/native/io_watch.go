@@ -120,8 +120,7 @@ func doWatchWord(args []Value, r *Registry, watcherType *Type, opts Value) ([]Va
 		return nil, r.BoruError("watch_error", "watch: the callback body must be a concrete list", "watch")
 	}
 	bodyList, _ := AsList(body)
-	tokens := make([]Value, bodyList.Len())
-	copy(tokens, bodyList.Slice())
+	tokens := bodyList.Slice() // the watch goroutine's own copy
 
 	recursive, match, hasMatch := false, "", false
 	if IsConcrete(&opts) {

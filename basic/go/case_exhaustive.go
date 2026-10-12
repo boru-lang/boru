@@ -858,7 +858,7 @@ func checkCaseCodeBodyScrutinee(r *Registry, v Value, clauses Value) {
 	}
 	// An open-call default tail counts as the catch-all: normalize it
 	// into the standard single-default shape first (NUR048/G9).
-	elems := caseNormalizeClauses(r, lst.Slice())
+	elems := caseNormalizeClauses(r, lst.Elems())
 	if len(elems)%2 == 1 {
 		return
 	}

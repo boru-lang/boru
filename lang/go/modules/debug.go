@@ -346,7 +346,7 @@ func debugNatives() []native.NativeFunc {
 					if err != nil {
 						return nil, err
 					}
-					res, terr := native.RunTrace(r, append([]native.Value(nil), body.Slice()...), r.Output)
+					res, terr := native.RunTrace(r, body.Elems(), r.Output)
 					if terr != nil {
 						return nil, terr
 					}
@@ -386,7 +386,7 @@ func debugNatives() []native.NativeFunc {
 					// so the interpreter is not a fallback here — it is the
 					// instrument. Compiling the body would empty the tally.
 					restoreAtt := r.SetInterpAttribution("debug-observe")
-					_, rerr := sub.Run(append([]native.Value(nil), body.Slice()...))
+					_, rerr := sub.Run(body.Elems())
 					restoreAtt()
 					if rerr != nil {
 						return nil, rerr
@@ -437,7 +437,7 @@ func debugNatives() []native.NativeFunc {
 					if derr != nil {
 						return nil, derr
 					}
-					_, form, cerr := stackform.Compile(sub, append([]native.Value(nil), body.Slice()...))
+					_, form, cerr := stackform.Compile(sub, body.Elems())
 					if cerr != nil {
 						return nil, r.BoruError("debug_error",
 							fmt.Sprintf("Debug.disasm: %v", cerr), "Debug.disasm")
@@ -560,7 +560,7 @@ func runCounted(parent *native.Registry, bodyVal native.Value, op string) ([]nat
 	// different machine and answer a different number — this is interpretation
 	// the end state must PERMIT, not interpretation it forbids.
 	restoreAtt := parent.SetInterpAttribution("debug-observe")
-	res, rerr := sub.Run(append([]native.Value(nil), body.Slice()...))
+	res, rerr := sub.Run(body.Elems())
 	restoreAtt()
 	if rerr != nil {
 		return nil, 0, rerr
@@ -656,7 +656,7 @@ func sizeOfValue(v native.Value) int {
 		}
 	case isListValue(v):
 		if lst, lerr := native.AsList(v); lerr == nil && !lst.IsNil() {
-			for _, e := range lst.Slice() {
+			for _, e := range lst.Elems() {
 				size += sizeOfValue(e)
 			}
 		}
@@ -687,7 +687,7 @@ func (c *shapeCensus) walk(v native.Value, depth int) {
 	case isListValue(v):
 		c.lists++
 		if lst, lerr := native.AsList(v); lerr == nil && !lst.IsNil() {
-			for _, e := range lst.Slice() {
+			for _, e := range lst.Elems() {
 				c.walk(e, depth+1)
 			}
 		}

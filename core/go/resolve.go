@@ -78,7 +78,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 	}
 	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
 		lst, _ := AsList(v)
-		elems := lst.Slice()
+		elems := lst.Elems()
 		resolved := make([]Value, len(elems))
 		for i, e := range elems {
 			resolved[i] = resolveWordsDeep(e, r)

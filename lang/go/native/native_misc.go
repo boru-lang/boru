@@ -684,7 +684,7 @@ func moduleHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("module_error", "module: argument must be a concrete list, got type literal", "module")
 	}
 	_lst, _ := AsList(args[0])
-	desc, err := RunModuleBody(r, _lst.Slice())
+	desc, err := RunModuleBody(r, _lst.Elems())
 	if err != nil {
 		return nil, fmt.Errorf("module: %w", err)
 	}
@@ -702,7 +702,7 @@ func importRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 		return nil, r.BoruError("import_error", "import: rename list must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[0])
-	return nil, installRenamedExports(r, desc, _lst.Slice())
+	return nil, installRenamedExports(r, desc, _lst.Elems())
 }
 
 func importSingleRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -839,7 +839,7 @@ func importFileRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 			return nil, err
 		}
 		_lst, _ := AsList(args[0])
-		return nil, installRenamedExports(r, desc, _lst.Slice())
+		return nil, installRenamedExports(r, desc, _lst.Elems())
 	}
 	if isDataFile(r, path) {
 		return nil, r.BoruError("import_error", fmt.Sprintf("import: rename not supported for data files (%s)", path), "import")
@@ -849,7 +849,7 @@ func importFileRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 		return nil, err
 	}
 	_lst, _ := AsList(args[0])
-	return nil, installRenamedExports(r, desc, _lst.Slice())
+	return nil, installRenamedExports(r, desc, _lst.Elems())
 }
 
 // import: [atom/q list] -> [] — inline module: import module [body]
@@ -864,7 +864,7 @@ func importInlineHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[1])
-	desc, err := RunModuleBody(r, _lst.Slice())
+	desc, err := RunModuleBody(r, _lst.Elems())
 	if err != nil {
 		return nil, fmt.Errorf("import module: %w", err)
 	}
@@ -883,12 +883,12 @@ func importInlineRenameHandler(args []Value, _ map[string]Value, _ []Value, r *R
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst2, _ := AsList(args[2])
-	desc, err := RunModuleBody(r, _lst2.Slice())
+	desc, err := RunModuleBody(r, _lst2.Elems())
 	if err != nil {
 		return nil, fmt.Errorf("import module: %w", err)
 	}
 	_lst, _ := AsList(args[0])
-	return nil, installRenamedExports(r, desc, _lst.Slice())
+	return nil, installRenamedExports(r, desc, _lst.Elems())
 }
 
 func importInlineSingleRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -900,7 +900,7 @@ func importInlineSingleRenameHandler(args []Value, _ map[string]Value, _ []Value
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[2])
-	desc, err := RunModuleBody(r, _lst.Slice())
+	desc, err := RunModuleBody(r, _lst.Elems())
 	if err != nil {
 		return nil, fmt.Errorf("import module: %w", err)
 	}

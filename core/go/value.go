@@ -62,6 +62,23 @@ func (l ReadList) Slice() []Value {
 	return out
 }
 
+// Elems returns the list's own elements, not a copy. Take it to read: walk
+// it by index (`for i := range xs { v := &xs[i] … }`), spread or copy it into
+// a slice you own, or hand it to a reader that copies what it keeps —
+// Engine.Run copies its program onto its tape. Never write into it: the
+// elements are shared by every holder of the list. Its capacity is clamped to
+// its length, so an append reallocates instead of writing past the end into
+// storage another list may share. Like Slice it is never nil, so a caller's
+// nil test means the same with either. A flex list's view is live: a write
+// through the flex list during the walk shows in it, so a walk that runs user
+// code which may write the same list wants Slice.
+func (l ReadList) Elems() []Value {
+	if l.elems == nil {
+		return []Value{}
+	}
+	return l.elems[:len(l.elems):len(l.elems)]
+}
+
 // IsNil reports whether this ReadList has no backing data.
 func (l ReadList) IsNil() bool {
 	return l.elems == nil
@@ -1599,7 +1616,7 @@ func NextMarkID() string {
 // enabling replay when the move fires.
 type MarkInfo struct {
 	ID   string  // unique identifier for this mark
-	Body []Value // original content to replay (set by the move on first encounter)
+	Body []Value // original content a plain move replays (empty under a continuation move)
 	// Loop is the DRIVEN loop this mark opens an iteration of (loop.go):
 	// stepping the mark begins the iteration — the scoped context Store the
 	// sub-engine protocol pushed per body run — so every annotation of the
@@ -3178,8 +3195,10 @@ func NewInterpString(parts []InterpPart) Value {
 }
 
 // NewMark creates a mark value with the given unique ID and the body to
-// replay when the corresponding move fires. The body should contain
-// the original values between the mark and its paired move.
+// replay when the corresponding plain move (NewMove) fires. The body should
+// contain the original values between the mark and its paired move. A mark
+// paired with a continuation move (NewMoveCont, NewMoveIf) takes no body:
+// that move never replays one, its Loop or IfCont holds what it needs.
 func NewMark(id string, body ...Value) Value {
 	b := make([]Value, len(body))
 	copy(b, body)
@@ -4563,7 +4582,7 @@ func IsTypeValue(v Value) bool {
 	if v.Parent.ConformsTo(TList) && v.Data != nil {
 		elems, _ := AsList(v)
 		if !elems.IsNil() {
-			for _, elem := range elems.Slice() {
+			for _, elem := range elems.Elems() {
 				if IsTypeValue(elem) {
 					return true
 				}

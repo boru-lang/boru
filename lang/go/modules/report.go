@@ -135,7 +135,7 @@ func formatTableValue(v native.Value) string {
 	}
 	cols := []string{}
 	seen := map[string]bool{}
-	for _, row := range rows.Slice() {
+	for _, row := range rows.Elems() {
 		if !row.Parent.Equal(native.TMap) || !native.IsConcrete(&row) {
 			return native.FormatForPrint(v)
 		}
@@ -151,7 +151,7 @@ func formatTableValue(v native.Value) string {
 		}
 	}
 	cells := make([][]string, rows.Len())
-	for i, row := range rows.Slice() {
+	for i, row := range rows.Elems() {
 		cells[i] = make([]string, len(cols))
 		rm, _ := native.AsMap(row)
 		for j, c := range cols {
@@ -218,7 +218,7 @@ func formatListValue(v native.Value) string {
 	}
 	idxWidth := len(fmt.Sprintf("%d", rows.Len()-1))
 	var b strings.Builder
-	for i, e := range rows.Slice() {
+	for i, e := range rows.Elems() {
 		if i > 0 {
 			b.WriteByte('\n')
 		}

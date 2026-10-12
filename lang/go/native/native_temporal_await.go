@@ -337,7 +337,7 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 	}
 	if elem.Parent.ConformsTo(TList) && elem.Data != nil && !IsTypedList(&elem) && !IsTableType(elem) {
 		_lst, _ := AsList(elem)
-		return interpretBranchBody(reg, _lst.Slice())
+		return interpretBranchBody(reg, _lst.Elems())
 	}
 	// Non-list element: just return it as-is.
 	return parallelResult{values: []Value{elem}}
@@ -357,10 +357,7 @@ func interpretBranchBody(reg *Registry, body []Value) parallelResult {
 	if len(body) == 0 {
 		return branchOutcome(nil, nil)
 	}
-	sub := New(reg)
-	input := make([]Value, len(body))
-	copy(input, body)
-	result, runErr := sub.Run(input)
+	result, runErr := New(reg).Run(body)
 	return branchOutcome(result, runErr)
 }
 
@@ -545,7 +542,7 @@ func awaitUnknownMode(r *Registry, mode string) error {
 // doAwait returns the empty List and the program runs.
 func awaitParallelsEmpty(parallels Value) bool {
 	lst, err := AsList(parallels)
-	return err == nil && len(lst.Slice()) == 0
+	return err == nil && lst.Len() == 0
 }
 
 // awaitModeGate accepts a call only when BOTH operands the validator reads

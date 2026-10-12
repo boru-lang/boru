@@ -529,7 +529,7 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(&toks[i+1]) {
 						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Ref(0)) {
 							if decls, err := core.AsList(vl.Get(0)); err == nil {
-								for _, d := range decls.Slice() {
+								for _, d := range decls.Elems() {
 									addDecl(d)
 								}
 							}
@@ -540,7 +540,7 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 			}
 			if tok.Parent.Equal(core.TList) && core.IsConcrete(&tok) {
 				if l, err := core.AsList(tok); err == nil {
-					walk(l.Slice())
+					walk(l.Elems())
 				}
 			}
 		}

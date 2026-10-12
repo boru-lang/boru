@@ -84,7 +84,7 @@ func valueToAnySer(v Value) any {
 	}
 	if v.Parent.ConformsTo(TList) {
 		if _lst, _ := AsList(v); !_lst.IsNil() {
-			elems := _lst.Slice()
+			elems := _lst.Elems()
 			out := make([]any, len(elems))
 			for i, elem := range elems {
 				out[i] = valueToAnySer(elem)

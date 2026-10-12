@@ -415,7 +415,7 @@ func logWithSpanNative(lsr *LogSinkRegistry) NativeFunc {
 				if compiled {
 					out, runErr = InvokeBody(r, args[1], nil)
 				} else {
-					out, runErr = New(r).Run(append([]Value(nil), body.Slice()...))
+					out, runErr = New(r).Run(body.Elems())
 				}
 				if runErr != nil {
 					lsr.mu.Lock()

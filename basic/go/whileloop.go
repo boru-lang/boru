@@ -19,34 +19,28 @@ func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
 		return nil, r.BoruError("while_error",
 			"while: body must be a concrete list, got type literal", "while")
 	}
+	// The Loop replays these copies of the two regions every iteration.
 	condLst, _ := AsList(cond)
 	bodyLst, _ := AsList(body)
 	condSlice := condLst.Slice()
 	bodySlice := bodyLst.Slice()
 
-	condCopy := make([]Value, len(condSlice))
-	copy(condCopy, condSlice)
-	bodyCopy := make([]Value, len(bodySlice))
-	copy(bodyCopy, bodySlice)
-
 	cont := &Loop{
 		Registry:  r,
 		Word:      "while",
 		Count:     -1,
-		Body:      bodyCopy,
-		WhileCond: condCopy,
+		Body:      bodySlice,
+		WhileCond: condSlice,
 		CondPos:   cond.Pos(),
 	}
 
 	// First region: the condition. Its move fires stepMoveWhile with
 	// WhileInBody false, which reads the region's last value and either
-	// splices the body or finishes the loop.
+	// splices the body or finishes the loop. The mark carries no body.
 	id := NextMarkID()
-	tokens := make([]Value, 0, len(condCopy)+2)
-	tokens = append(tokens, NewMark(id, condCopy...))
-	condTokens := make([]Value, len(condCopy))
-	copy(condTokens, condCopy)
-	tokens = append(tokens, condTokens...)
+	tokens := make([]Value, 0, len(condSlice)+2)
+	tokens = append(tokens, NewMark(id))
+	tokens = append(tokens, condSlice...)
 	tokens = append(tokens, NewMoveCont(id, "while loop", cont))
 	return tokens, nil
 }

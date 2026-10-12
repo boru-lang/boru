@@ -281,7 +281,7 @@ func diagValueDepth(v Value, depth int) string {
 			// here. It has no elements to walk and renders itself.
 			return v.String()
 		}
-		elems := lst.Slice()
+		elems := lst.Elems()
 		parts, _ := diagHead(len(elems), func(i int) string {
 			return diagValueDepth(elems[i], depth+1)
 		})

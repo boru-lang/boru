@@ -465,7 +465,7 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	if err != nil {
 		return list, nil
 	}
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return list, nil
 	}
@@ -558,7 +558,7 @@ type columnSpec struct {
 //   - [[cast age integer a]]     — CAST("age" AS INTEGER) AS "a"
 func parseColumnSpec(colList Value) ([]columnSpec, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	cols := make([]columnSpec, 0, len(elems))
 	for _, e := range elems {
 		switch {
@@ -576,7 +576,7 @@ func parseColumnSpec(colList Value) ([]columnSpec, error) {
 			cols = append(cols, columnSpec{Name: wname})
 		case e.Parent.Equal(TList):
 			_lst, _ := AsList(e)
-			pair := _lst.Slice()
+			pair := _lst.Elems()
 			if len(pair) < 2 {
 				return nil, fmt.Errorf("select: column spec list must have at least 2 elements")
 			}
@@ -815,7 +815,7 @@ var logicalOps = map[string]string{
 //	[... and/or ...]                           — logical connectives
 func buildWhereClause(condList Value) (string, error) {
 	_lst, _ := AsList(condList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "1=1", nil
 	}
@@ -1095,7 +1095,7 @@ func buildInList(v Value) (string, error) {
 	}
 
 	_lst, _ := AsList(v)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty IN list")
 	}
@@ -1222,7 +1222,7 @@ func valueToSQL(v Value) (string, error) {
 // buildGroupByClause translates a column list into a SQL GROUP BY clause.
 func buildGroupByClause(colList Value) (string, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty group by column list")
 	}
@@ -1241,7 +1241,7 @@ func buildGroupByClause(colList Value) (string, error) {
 // Supports dot-separated qualified names: [a.id eq b.id]
 func buildJoinCondition(condList Value) (string, error) {
 	_lst, _ := AsList(condList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "1=1", nil
 	}
@@ -1308,7 +1308,7 @@ func quoteJoinCol(name string) string {
 //   - [1, 2 desc]                    — positional (1-based)
 func buildOrderClause(colList Value) (string, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty order column list")
 	}

@@ -163,7 +163,7 @@ func sigDeclPos(sig Value) SrcPos {
 	}
 	if sig.Parent.Equal(TList) && sig.Data != nil {
 		if l, err := AsList(sig); err == nil {
-			for _, e := range l.Slice() {
+			for _, e := range l.Elems() {
 				if p := sigDeclPos(e); p.Row > 0 {
 					return p
 				}

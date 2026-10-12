@@ -301,7 +301,7 @@ func doConcat(listVal Value, o strOpts) ([]Value, error) {
 	}
 	elems, _ := AsList(listVal)
 	var parts []string
-	for _, e := range elems.Slice() {
+	for _, e := range elems.Elems() {
 		if e.Parent.Equal(TNone) {
 			if o.skipNullish {
 				continue

@@ -301,7 +301,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 						if err != nil {
 							return err
 						}
-						_, e := native.New(r).Run(body.Slice())
+						_, e := native.New(r).Run(body.Elems())
 						return e
 					}
 					run.mu.Lock()
@@ -354,7 +354,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 						return nil, err
 					}
 					run.runCase(r, name, func() error {
-						_, e := native.New(r).Run(body.Slice())
+						_, e := native.New(r).Run(body.Elems())
 						return e
 					})
 					return nil, nil
@@ -497,7 +497,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					if compiled {
 						_, runErr = native.InvokeBody(r, args[0], nil)
 					} else {
-						_, runErr = native.New(r).Run(body.Slice())
+						_, runErr = native.New(r).Run(body.Elems())
 					}
 					if runErr == nil {
 						return nil, r.BoruError("assertion_failure",
@@ -576,7 +576,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					run.mu.Lock()
 					defer run.mu.Unlock()
 					path := make([]string, 0, pathList.Len())
-					for _, p := range pathList.Slice() {
+					for _, p := range pathList.Elems() {
 						s, _ := native.AsString(p)
 						path = append(path, s)
 					}
@@ -1475,7 +1475,7 @@ func invokeSubject(parent *native.Registry, name string, inputArg native.Value) 
 		return nil, err
 	}
 	body := native.NewList(dottedWordTokens(name))
-	stack, runErr := native.InvokeBody(parent, body, append([]native.Value(nil), inputs.Slice()...))
+	stack, runErr := native.InvokeBody(parent, body, inputs.Slice())
 	if runErr != nil {
 		return []native.Value{native.NewError(runErr)}, nil
 	}

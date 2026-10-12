@@ -144,8 +144,6 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// Snapshot def-stack depths (all known names).
 	snapshot := r.Defs.Snapshot()
 
-	tokens := make([]Value, elems.Len())
-	copy(tokens, elems.Slice())
 	sub := New(r)
 	sub.ElemEvalRecordable = recordable
 	sub.ArmBody = !keep && !condFrag
@@ -182,7 +180,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 		// runs unconditionally, so its undefs are real on both engines.
 		r.Check.PushSpecBaseline(snapshot)
 	}
-	result, err := sub.Run(tokens)
+	result, err := sub.Run(elems.Elems())
 	if raiseCond {
 		r.Check.PopSpecBaseline()
 		r.Check.CondBodyDepth--

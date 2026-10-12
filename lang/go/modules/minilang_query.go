@@ -46,7 +46,7 @@ func docToAny(v native.Value) any {
 		// Plain List, or a Table (a TList value carrying TableData that AsList
 		// can't read — project its rows via the Ideal converter).
 		if lst, err := native.AsList(v); err == nil {
-			return sliceToAny(lst.Slice())
+			return sliceToAny(lst.Elems())
 		}
 		return idealListToAny(v)
 	case native.IsClassInstance(v):
@@ -79,7 +79,7 @@ func idealListToAny(v native.Value) any {
 	if err != nil {
 		return native.ValueToAny(v)
 	}
-	return sliceToAny(lst.Slice())
+	return sliceToAny(lst.Elems())
 }
 
 func sliceToAny(elems []native.Value) []any {

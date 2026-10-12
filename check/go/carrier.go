@@ -2147,7 +2147,7 @@ func valueTreeHasCarriers(v core.Value) bool {
 		}
 	}
 	if l, err := core.AsList(v); err == nil && l.Len() > 0 {
-		for _, e := range l.Slice() {
+		for _, e := range l.Elems() {
 			if valueTreeHasCarriers(e) {
 				return true
 			}
@@ -3380,7 +3380,7 @@ func IsDeferredWordList(v core.Value) bool {
 	if err != nil {
 		return false
 	}
-	for _, e := range lst.Slice() {
+	for _, e := range lst.Elems() {
 		if core.IsWord(&e) {
 			return true
 		}

@@ -414,13 +414,13 @@ func runPooledSub(r *Registry, input []Value, elemEvalRecordable, container bool
 	return out, nil
 }
 
-// bodyTokens returns the executable token sequence for a code body: a concrete
-// list's elements (the common case — `[mul 2]`), or the value itself wrapped
-// as a singleton for a non-list body. Mirrors what the handlers extracted via
-// `AsList(body).Slice()` before splicing.
+// BodyTokens returns the executable token sequence for a code body: a
+// concrete list's own elements (the common case — `[mul 2]`; ReadList.Elems,
+// not a copy: every caller reads them or copies them into the program it
+// runs), or the value itself wrapped as a singleton for a non-list body.
 func BodyTokens(body Value) []Value {
 	if lst, err := AsList(body); err == nil && !lst.IsNil() {
-		return lst.Slice()
+		return lst.Elems()
 	}
 	return []Value{body}
 }

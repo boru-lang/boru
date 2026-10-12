@@ -3803,7 +3803,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 					// which WalkBodyWords would skip).
 					if e.Registry.analysisActive() {
 						if lst, lerr := AsList(match.Args[i]); lerr == nil {
-							WalkBodyWords(lst.Slice(), func(w WordInfo, _ Value) {
+							WalkBodyWords(lst.Elems(), func(w WordInfo, _ Value) {
 								e.Registry.noteAnalysisUse(w.Name)
 							})
 						}
@@ -4715,13 +4715,13 @@ func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 // reaches the pointer. A plain (non-typed) list splices its top-level
 // elements; every other value — scalars, maps, typed lists, tables — splices
 // as a single entry. The data is returned verbatim (unevaluated); the engine
-// re-steps over it after splicing.
+// re-steps over it after splicing. A list's expansion is its own elements
+// (ReadList.Elems): every caller reads them or copies them onto a tape or a
+// stack, never writes into them.
 func SpliceExpand(data Value) []Value {
 	if data.Parent.Equal(TList) && data.Data != nil && !IsTypedList(&data) && !IsTableType(data) {
 		elems, _ := AsList(data)
-		out := make([]Value, elems.Len())
-		copy(out, elems.Slice())
-		return out
+		return elems.Elems()
 	}
 	return []Value{data}
 }
@@ -5286,13 +5286,9 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 		}
 		return NewList(out), nil
 	}
-	// A sealed region copies the elements onto the tape itself; a
-	// sub-engine's run is handed a copy of its own.
-	input := elems.elems
-	if !e.sealsLiterals() {
-		input = elems.Slice()
-	}
-	result, err := e.runInlineCtxRegion(input, "list literal", e.IsTop || consumed || e.ElemEvalRecordable)
+	// A sealed region copies the elements onto the tape itself, and a
+	// sub-engine's Run copies its program onto its own.
+	result, err := e.runInlineCtxRegion(elems.elems, "list literal", e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, err
 	}
@@ -6108,7 +6104,7 @@ func (e *Engine) exprHasEffect(items []Value) bool {
 				continue
 			}
 			if lst, err := AsList(v); err == nil && !lst.IsNil() {
-				walk(lst.Slice())
+				walk(lst.Elems())
 				continue
 			}
 			if mp, err := AsMap(v); err == nil && mp != nil {
@@ -9016,10 +9012,9 @@ func (e *Engine) stepMove(val Value) error {
 	// Remove from hash table.
 	delete(e.marks, info.To)
 
-	// Replace everything from mark through move (inclusive) with the body copy.
-	body := make([]Value, len(markInfo.Body))
-	copy(body, markInfo.Body)
-	e.Tape.Splice(markIdx, moveIdx-markIdx+1, body...)
+	// Replace everything from mark through move (inclusive) with the body;
+	// Splice copies it onto the tape, so the mark's own stays as it was.
+	e.Tape.Splice(markIdx, moveIdx-markIdx+1, markInfo.Body...)
 
 	if e.trace != nil {
 		e.traceNote = fmt.Sprintf("move→mark %s", info.To)
@@ -9071,13 +9066,13 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		id := NextMarkID()
 
 		// Build replacement `mark + body + move` into a reused scratch
-		// buffer. The mark stores cont.Body (stable, for the next re-mark);
-		// the body elements appended after it are the executable copy — no
-		// separate bodyCopy is needed because Tape.Splice copies the whole
-		// token run into the tape, leaving cont.Body untouched.
+		// buffer. The mark carries no body: a continuation's move never
+		// replays one (stepMove hands it to this function first), and the
+		// Loop holds cont.Body for every iteration. Tape.Splice copies the
+		// whole token run into the tape, leaving cont.Body untouched.
 		body := cont.Body
 		tokens := e.loopTokens[:0]
-		tokens = append(tokens, NewMark(id, body...))
+		tokens = append(tokens, NewMark(id))
 		tokens = append(tokens, body...)
 		tokens = append(tokens, NewMoveCont(id, info.Reason, cont))
 		e.loopTokens = tokens
@@ -9211,7 +9206,7 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 func (e *Engine) spliceWhileRegion(markIdx, moveIdx int, info MoveInfo, region []Value, note string) {
 	id := NextMarkID()
 	tokens := e.loopTokens[:0]
-	tokens = append(tokens, NewMark(id, region...))
+	tokens = append(tokens, NewMark(id))
 	tokens = append(tokens, region...)
 	tokens = append(tokens, NewMoveCont(id, info.Reason, info.Cont))
 	e.loopTokens = tokens

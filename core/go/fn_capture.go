@@ -164,7 +164,7 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// List payload: recurse.
 	if v.Parent.Equal(TList) && v.Data != nil {
 		lst, _ := AsList(v)
-		for _, e := range lst.Slice() {
+		for _, e := range lst.Elems() {
 			walkBodyValue(e, callback, sugarCB)
 		}
 		return
@@ -374,10 +374,10 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 				// temporary names; they desugar to `def NAME` at run time.
 				if i+1 < len(body) && body[i+1].Parent.Equal(TList) && body[i+1].Data != nil {
 					if outer, lerr := AsList(body[i+1]); lerr == nil {
-						elems := outer.Slice()
+						elems := outer.Elems()
 						if len(elems) > 0 && elems[0].Parent.Equal(TList) && elems[0].Data != nil {
 							if decls, derr := AsList(elems[0]); derr == nil {
-								for _, d := range decls.Slice() {
+								for _, d := range decls.Elems() {
 									if dw, dwe := AsWord(&d); dwe == nil && dw.Name != "" {
 										locals[dw.Name] = true
 									}
@@ -390,7 +390,7 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 		}
 		if v.Parent.Equal(TList) && v.Data != nil {
 			if lst, lerr := AsList(v); lerr == nil {
-				CollectBodyLocalDefs(lst.Slice(), locals)
+				CollectBodyLocalDefs(lst.Elems(), locals)
 			}
 		} else if IsParenExpr(&v) {
 			if toks, perr := AsParenExpr(&v); perr == nil {

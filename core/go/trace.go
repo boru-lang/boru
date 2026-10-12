@@ -78,7 +78,7 @@ func TraceColorize(v Value) string {
 		return cRed + s + cReset
 	case v.Parent.ConformsTo(TList):
 		_lst, _ := AsList(v)
-		elems := _lst.Slice()
+		elems := _lst.Elems()
 		parts := make([]string, len(elems))
 		for i, e := range elems {
 			parts[i] = TraceColorize(e)
@@ -129,8 +129,7 @@ func TraceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		return nil, fmt.Errorf("trace: argument must be a concrete list, got type literal")
 	}
 	_lst, _ := AsList(args[0])
-	elems := _lst.Slice()
-	return RunTrace(r, elems, r.Output)
+	return RunTrace(r, _lst.Elems(), r.Output)
 }
 
 // RunTrace executes tokens in a sub-engine with tracing enabled,

@@ -1728,7 +1728,7 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	}
 	input := make([]Value, 0, len(vals)+bodyList.Len())
 	input = append(input, vals...)
-	input = append(input, bodyList.Slice()...)
+	input = append(input, bodyList.Elems()...)
 	sub := New(r)
 	// A higher-order body (each/fold/scan/outer/inner/…) is CONDITIONALLY
 	// reached — the collection may be empty, so the body runs zero times.
@@ -1954,7 +1954,7 @@ func rank2ElemCarrier(data Value) Value {
 			return NewElementCarrier(TAny)
 		}
 		rl, _ := AsList(row)
-		elems = append(elems, rl.Slice()...)
+		elems = append(elems, rl.Elems()...)
 	}
 	if len(elems) == 0 {
 		return NewElementCarrier(TAny)
