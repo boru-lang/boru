@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '5341452188826181056');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '5180337149146494337');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6843024056992995220', 15419);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -54,7 +54,7 @@ INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '63624638729
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
 INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '4102096792439945994', 119743);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
-INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '2552683887019468402', 33809);
+INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '7756521319759518455', 36072);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
 INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);

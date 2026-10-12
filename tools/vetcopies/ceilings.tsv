@@ -8,10 +8,10 @@ basic/go	1184	35
 calc/go	11	9
 check/go	533	18
 cmd/go	23	0
-compiler/go	1404	25
-core/go	4483	72
-eng/go	550	132
-lang/go	4534	56
+compiler/go	1402	25
+core/go	4460	72
+eng/go	529	132
+lang/go	4513	56
 parser/go	52	0
 test/go	0	0
 tools/piecetool	0	0

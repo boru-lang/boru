@@ -1083,7 +1083,7 @@ func ClosureCallsAtLanding(v core.Value) bool {
 // the interpreter's re-step could apply it over them (LandingBeneathGuard).
 func ClosureTakesArgs(v core.Value) bool {
 	cl, ok := v.Data.(core.ClosurePayload)
-	if !ok || !ClosureIsFnValue(v) {
+	if !ok || !ClosureIsFnValue(&v) {
 		return false
 	}
 	prog, _ := cl.Prog.(*Program)
@@ -1098,7 +1098,7 @@ func ClosureTakesArgs(v core.Value) bool {
 // map arm, the stack's top-down order at the token seam), never run blind
 // like a callback body unit (S1b-2). A closure minted by a program the
 // running one cannot name reads as data here, as it does to the bridge.
-func ClosureIsFnValue(v core.Value) bool {
+func ClosureIsFnValue(v *core.Value) bool {
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || cl.InShape != ClosureInValue {
 		return false

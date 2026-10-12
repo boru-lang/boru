@@ -457,7 +457,6 @@ var (
 	ConvertIdealToList       = core.ConvertIdealToList
 	IsCompiledClosure        = compiler.IsCompiledClosure
 	ClosureWantsKeyVal       = compiler.ClosureWantsKeyVal
-	ClosureIsFnValue         = compiler.ClosureIsFnValue
 	ClosureAsFnDef           = core.ClosureAsFnDef
 	ClosureSigMatched        = core.ClosureSigMatched
 	CloneValue               = core.CloneValue
@@ -727,3 +726,9 @@ func NewCarrierTypedListLen(elem *core.Type, n int) core.Value {
 func makeConvert(src core.Value, targetType *core.Type) (core.Value, error) {
 	return core.MakeConvert(src, targetType)
 }
+
+// Re-exports of functions that read a Value through a pointer. They are
+// wrapper functions rather than variables, so a call is direct: it can
+// inline, and escape analysis sees that the pointer does not escape (a
+// call through a function variable would move every &v to the heap).
+func ClosureIsFnValue(v *core.Value) bool { return compiler.ClosureIsFnValue(v) }

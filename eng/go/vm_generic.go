@@ -218,7 +218,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			return nil, -1, nil, err
 		}
 		for i := range args {
-			args[i] = core.StripAscribed(args[i])
+			core.ClearAscribed(&args[i])
 		}
 		results, err := h(args, reg.Contexts.TopData(), nil, reg)
 		if err != nil {

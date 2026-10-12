@@ -53,7 +53,7 @@ type mapBody struct {
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	if IsCompiledClosure(body) {
 		mb := mapBody{closure: true, body: body}
-		if ClosureIsFnValue(body) {
+		if ClosureIsFnValue(&body) {
 			if fnv, ok := ClosureAsFnDef(reg, body); ok {
 				mb.sigFn = fnv
 				mb.body = ClosureSigMatched(body)

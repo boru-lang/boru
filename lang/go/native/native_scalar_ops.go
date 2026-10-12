@@ -68,7 +68,7 @@ func applyScalarBinaryOp(r *Registry, op string, left, right Value) (Value, erro
 		ops, _ := towerOpsFor(op)
 		// towerApply computes args[1] OP args[0]; pass (right, left) so
 		// the result is the natural left OP right.
-		out, err := towerApply(ops, right, left, r)
+		out, err := towerApply(ops, &right, &left, r)
 		if err != nil {
 			return Value{}, err
 		}

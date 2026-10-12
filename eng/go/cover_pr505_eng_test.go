@@ -124,7 +124,7 @@ func TestUnmatchedNamedBodyAnchorsAtTheValue(t *testing.T) {
 	} {
 		cl := core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, RetName: "h", RetPos: c.retPos, Ident: core.NewFnIdentity()}
 		body := core.WithPosAt(core.NewValueRaw(core.TFunction, cl), at)
-		res, err, ran := vc.unmatchedLambdaBody(r, body, cl, []core.Value{core.NewString("s")})
+		res, err, ran := vc.unmatchedLambdaBody(r, &body, cl, []core.Value{core.NewString("s")})
 		var be *core.BoruError
 		if !ran || !errors.As(err, &be) || be.Code != "uncalled_function" || be.Detail != "call to 'h' matched no signature" {
 			t.Errorf("%s: got %v / %v (ran=%v), want the word's uncalled_function", c.name, res, err, ran)

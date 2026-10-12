@@ -1004,19 +1004,19 @@ func isDeqComparableHandle(v Value) bool {
 // the family guard, which raises [boru/incomparable]. The total-order
 // words cmp / tcmp / sort deliberately bypass this and give NaN a defined
 // slot (see numberCompareBehavior.Compare).
-func numericUnordered(a, b Value) bool {
-	return isConcreteNumber(&a) && isConcreteNumber(&b) && (isNaNValue(a) || isNaNValue(b))
+func numericUnordered(a, b *Value) bool {
+	return isConcreteNumber(a) && isConcreteNumber(b) && (isNaNValue(a) || isNaNValue(b))
 }
 
 func isConcreteNumber(v *Value) bool {
 	return !v.IsDepScalar() && IsConcrete(v) && ValueType(*v).ConformsTo(TNumber)
 }
 
-func isNaNValue(v Value) bool {
-	if !isConcreteNumber(&v) {
+func isNaNValue(v *Value) bool {
+	if !isConcreteNumber(v) {
 		return false
 	}
-	f, err := AsNumber(v)
+	f, err := AsNumber(*v)
 	return err == nil && math.IsNaN(f)
 }
 
@@ -1030,7 +1030,7 @@ func isNaNValue(v Value) bool {
 // true). The zero-magnitude probe runs in the exact big.Rat domain so
 // the cross-leaf pairs (Integer 0, BigInteger/BigDecimal zeros vs
 // -0.0) are guarded too.
-func signedZeroPair(a, b Value) bool {
+func signedZeroPair(a, b *Value) bool {
 	if !isNegZeroFloat(a) && !isNegZeroFloat(b) {
 		return false
 	}
@@ -1039,11 +1039,11 @@ func signedZeroPair(a, b Value) bool {
 
 // isZeroNumber reports whether v is a concrete number of exactly zero
 // magnitude (either sign), across all four numeric leaves.
-func isZeroNumber(v Value) bool {
-	if !isConcreteNumber(&v) {
+func isZeroNumber(v *Value) bool {
+	if !isConcreteNumber(v) {
 		return false
 	}
-	r, ok := toRatExact(v)
+	r, ok := toRatExact(*v)
 	return ok && r.Sign() == 0
 }
 
@@ -1059,10 +1059,10 @@ func isZeroNumber(v Value) bool {
 // reading convention) from drifting.
 func relationalHandler(op string, keep func(int) bool) func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
 	return func(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-		if numericUnordered(args[0], args[1]) {
+		if numericUnordered(&args[0], &args[1]) {
 			return []Value{NewBoolean(false)}, nil
 		}
-		if signedZeroPair(args[0], args[1]) {
+		if signedZeroPair(&args[0], &args[1]) {
 			return []Value{NewBoolean(keep(0))}, nil
 		}
 		cmp, err := orderedCompare(op, args[1], args[0])

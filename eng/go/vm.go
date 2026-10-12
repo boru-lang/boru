@@ -317,7 +317,8 @@ type vmContext struct {
 // operand stack screens for them and fails loudly instead of pushing a token
 // as data. The single definition keeps the four call sites in lockstep.
 func tapeCoupled(results []core.Value) bool {
-	for _, rv := range results {
+	for i := range results {
+		rv := &results[i]
 		// A Word-typed BARE type node is a type literal, never a live word:
 		// a word token carries its WordInfo payload, and the interpreter
 		// leaves the literal as data like any other — `typeof (codequote
@@ -325,11 +326,11 @@ func tapeCoupled(results []core.Value) bool {
 		// `codequote` × literal / lambda / factory cells bailed here,
 		// 2026-09-26). The payload-less MARKERS (an open paren) are tokens
 		// with no payload, so they keep their screen.
-		if core.IsWord(&rv) && core.IsBareTypeNode(&rv) {
+		if core.IsWord(rv) && core.IsBareTypeNode(rv) {
 			continue
 		}
-		if core.IsWord(&rv) || core.IsMark(&rv) || core.IsMove(&rv) || core.IsForward(&rv) ||
-			core.IsOpenParen(&rv) || core.IsSplice(&rv) {
+		if core.IsWord(rv) || core.IsMark(rv) || core.IsMove(rv) || core.IsForward(rv) ||
+			core.IsOpenParen(rv) || core.IsSplice(rv) {
 			return true
 		}
 	}
@@ -737,7 +738,7 @@ func (vc *vmContext) invokeClosure(reg *core.Registry, body core.Value, inputs [
 // that is not a fn value keeps the seam's positional binding (applyClosure
 // through shapeInputs) and is handed the args as they are.
 func (vc *vmContext) invokeClosurePositional(reg *core.Registry, fnVal core.Value, args []core.Value) ([]core.Value, error) {
-	if !compiler.ClosureIsFnValue(fnVal) {
+	if !compiler.ClosureIsFnValue(&fnVal) {
 		return vc.invokeClosure(reg, fnVal, args)
 	}
 	rev := make([]core.Value, len(args))
@@ -857,10 +858,10 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 	// path when nothing matches (S1b-2; vm_fnvalue_seam.go). A seam that
 	// already matched it hands SigMatched args in signature order.
 	if !cl.SigMatched {
-		if res, err, ran := vc.invokeFnValueClosure(reg, body, cl, inputs); ran {
+		if res, err, ran := vc.invokeFnValueClosure(reg, &body, cl, inputs); ran {
 			return res, err
 		}
-		if res, err, ran := vc.unmatchedLambdaBody(reg, body, cl, inputs); ran {
+		if res, err, ran := vc.unmatchedLambdaBody(reg, &body, cl, inputs); ran {
 			return res, err
 		}
 	}
@@ -926,7 +927,7 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 // a fn VALUE unit (invokeFnValueClosure's, above) are not this arm's; the
 // match runs over the positional args the bind would seat (shapeInputs), so
 // the match and the bind read one order.
-func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
+func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body *core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
 	if body.Quoted {
 		return nil, nil, false
 	}
@@ -964,13 +965,14 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body core.Value, cl
 	// The value renders as the interpreter's own lambda renders — `fn
 	// (Integer)` — not as a body unit's payload (nameStoredClosure's rule,
 	// vm_dyn_words.go, over the unit's declared contract).
+	out := *body
 	if cl.Render == "" {
 		if params, ok := closureSigParams(fn); ok {
 			cl.Render = core.FormatFnDef(core.FnDefInfo{Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: true})
-			body = core.Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
+			out = core.Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
 		}
 	}
-	return append(append([]core.Value(nil), inputs...), body), nil, true
+	return append(append([]core.Value(nil), inputs...), out), nil, true
 }
 
 // applyClosure runs a closure's unit over args already in the unit's
@@ -1300,7 +1302,7 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 	// StripAscribed at delivery: the re-match above consumed the ascribed
 	// view; the handler receives the REAL values (execMatch parity).
 	for i := range args {
-		args[i] = core.StripAscribed(args[i])
+		core.ClearAscribed(&args[i])
 	}
 	results, err := sig.DispatchHandler()(args, r.Contexts.TopData(), nil, r)
 	if err != nil {
@@ -1365,18 +1367,24 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 // position keeps it, as the interpreter's does.
 func stampFnResultPos(results []core.Value, debug []core.SrcPos, pc int) {
 	for i := range results {
-		results[i] = stampFnPos(results[i], debug, pc)
+		stampFnPosIn(&results[i], debug, pc)
 	}
 }
 
 // stampFnPos is stampFnResultPos over one value: v with the op's position
 // when v is a positionless fn value and the op has one, else v unchanged.
 func stampFnPos(v core.Value, debug []core.SrcPos, pc int) core.Value {
+	stampFnPosIn(&v, debug, pc)
+	return v
+}
+
+// stampFnPosIn is stampFnPos on a value the caller owns, stamped in place:
+// a fresh result in the call's own results slice, never a shared value.
+func stampFnPosIn(v *core.Value, debug []core.SrcPos, pc int) {
 	if pc < 0 || pc >= len(debug) || debug[pc].Row == 0 || v.Pos().Row != 0 || !v.Parent.Equal(core.TFunction) {
-		return v
+		return
 	}
 	v.SetPos(debug[pc])
-	return v
 }
 
 // stampFnArgPos gives each positionless NAMED fn value among a native call's
@@ -1565,7 +1573,7 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		// park), and the rotation the lowering made for the apply must be
 		// undone, as it is for a non-callable value below (NUR159's probe:
 		// `[fn 7]` without this arm).
-		if compiler.ClosureIsFnValue(fnVal) {
+		if compiler.ClosureIsFnValue(&fnVal) {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
 				if !trailing {
 					return stack, nil, nil
@@ -1859,7 +1867,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// (bytecode-migrated.tsv:L285, callbacks.tsv:L150).
 		// A NAMED fn value that takes no argument is the other side of the
 		// gate: a name always calls, so it fires (NUR321).
-		if compiler.ClosureIsFnValue(v) && !compiler.ClosureCallsAtLanding(v) {
+		if compiler.ClosureIsFnValue(&v) && !compiler.ClosureCallsAtLanding(v) {
 			return stack, nil, nil
 		}
 		results, err := vc.invokeClosure(vc.r, v, nil)
@@ -3783,7 +3791,7 @@ func (vc *vmContext) loneTokenArity(v core.Value) (int, bool) {
 // arm. ran is false when nothing matched and the island must decide.
 func (vc *vmContext) invokeLoneToken(reg *core.Registry, fnVal core.Value, inputs []core.Value) ([]core.Value, error, bool) {
 	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
-		return vc.invokeFnValueClosure(reg, fnVal, cl, inputs)
+		return vc.invokeFnValueClosure(reg, &fnVal, cl, inputs)
 	}
 	return vc.invokeFnValue(reg, fnVal, inputs)
 }
@@ -4834,7 +4842,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// Ascription hygiene: list elements are STORED data (mirrors
 			// autoEvalList's element strip).
 			for i := range elems {
-				elems[i] = core.StripAscribed(elems[i])
+				core.ClearAscribed(&elems[i])
 			}
 			stack = stack[:len(stack)-n]
 			stack = append(stack, core.NewList(elems))
@@ -4962,7 +4970,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			nl := make([]core.Value, fn.NLocals)
 			copy(nl, sigArgs)
 			for i := 0; i < fn.NParams && i < len(nl); i++ {
-				nl[i] = core.StripAscribed(nl[i])
+				core.ClearAscribed(&nl[i])
 				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
 					nl[i].Quoted = true
 				}
@@ -5132,7 +5140,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// ascribed view via sigTypeMatches, but a stripped subtype
 				// passes every slot its widened view passed, so the strip is
 				// order-independent — see design/OPEN-WORDS.1.md §9.
-				args[i] = core.StripAscribed(stack[len(stack)-1-i])
+				args[i] = stack[len(stack)-1-i]
+				core.ClearAscribed(&args[i])
 			}
 			stampFnArgPos(args, s.FnArgPos)
 			// A guard's statement island writes the guarded value as the
@@ -5544,7 +5553,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// references are data — the compiled mirror of the
 			// interpreter's binding rule (core_helpers.go).
 			for i := 0; i < fn.NParams && i < len(nl); i++ {
-				nl[i] = core.StripAscribed(nl[i])
+				core.ClearAscribed(&nl[i])
 				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
 					nl[i].Quoted = true
 				}
@@ -5607,7 +5616,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// param contract its widened view passed. Quote list params
 				// so body references are data — the compiled mirror of the
 				// interpreter's binding rule (core_helpers.go).
-				nl[i] = core.StripAscribed(stack[len(stack)-1-i])
+				nl[i] = stack[len(stack)-1-i]
+				core.ClearAscribed(&nl[i])
 				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
 					nl[i].Quoted = true
 				}
@@ -6001,7 +6011,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// ascription when `as` took a dynamic operand it could not
 				// fold, so a guarded arm here would be a dead compiled branch.
 				for i := stackBase; i < len(stack); i++ {
-					stack[i] = core.StripAscribed(stack[i])
+					core.ClearAscribed(&stack[i])
 				}
 			}
 			if len(frames) == 0 {

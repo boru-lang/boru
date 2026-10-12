@@ -136,7 +136,7 @@ func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.
 // interpreter's `[fn (Integer) 3]` — and every such shape was a compile failure on
 // `main` ("function-valued operand at each"), so the release was S1a's and
 // the arm is what makes it sound.
-func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
+func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body *core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
 	if body.Quoted || !compiler.ClosureIsFnValue(body) {
 		return nil, nil, false
 	}
@@ -149,7 +149,7 @@ func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, c
 		args[len(inputs)-1-i] = v
 	}
 	if !closureMatchesArgs(&p.Fns[cl.Unit], args) {
-		res, err := core.RunResolved(reg, inputs, core.BodyTokens(body))
+		res, err := core.RunResolved(reg, inputs, core.BodyTokens(*body))
 		return res, err, true
 	}
 	res, err := vc.applyClosure(reg, cl, deliverArgs(args))
@@ -181,7 +181,7 @@ func (vc *vmContext) hostFnValueUnit(reg *core.Registry, ref *compiler.CompiledF
 func deliverArgs(args []core.Value) []core.Value {
 	out := make([]core.Value, len(args))
 	for i, a := range args {
-		a = core.StripAscribed(a)
+		core.ClearAscribed(&a)
 		if a.Parent.Equal(core.TList) && !a.Quoted {
 			a.Quoted = true
 		}

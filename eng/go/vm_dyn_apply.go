@@ -218,7 +218,7 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 	// references are data — the compiled mirror of the interpreter's binding
 	// rule (core_helpers.go).
 	for i := 0; i < fn.NParams && i < len(locals); i++ {
-		locals[i] = core.StripAscribed(locals[i])
+		core.ClearAscribed(&locals[i])
 		if locals[i].Parent.Equal(core.TList) && !locals[i].Quoted {
 			locals[i].Quoted = true
 		}

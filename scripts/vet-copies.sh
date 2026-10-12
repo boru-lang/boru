@@ -15,7 +15,10 @@
 # tools/vetcopies/ceilings.tsv, or when copylocks reports a copy of any
 # other lock (a sync.Mutex, say): there must be none, and this is the only
 # lane that would see one, because the marker makes the ordinary vet lanes
-# run with -copylocks=false. A module with no row has ceilings of zero.
+# run with -copylocks=false. A module with no row has ceilings of zero. It
+# also fails on a function VARIABLE aliasing a function that takes a
+# *core.Value (fnvaralias): calls through it are indirect, so every &v handed
+# to them escapes to the heap — re-export such a function as a wrapper func.
 #
 # The ceilings only go down. UPDATE=1 lowers each ceiling to its module's
 # current count and never raises one; a change that adds a copy the policy
@@ -103,8 +106,9 @@ for m in $modules; do
   nontest=$(echo "$diags" | grep -v '_test\.go:' | grep . || true)
   value=$(echo "$nontest" | grep -c 'core/go\.noCopy' || true)
   bulk=$(echo "$nontest" | grep -c 'bulk copy of \[\]core\.Value' || true)
-  locks=$(echo "$diags" | grep -v 'core/go\.noCopy' | grep 'lock' || true)
-  other=$(echo "$diags" | grep -v 'core/go\.noCopy\|bulk copy of \[\]core\.Value\|lock' || true)
+  locks=$(echo "$diags" | grep -v 'core/go\.noCopy\|function variable aliases' | grep 'lock' || true)
+  aliases=$(echo "$nontest" | grep 'function variable aliases' || true)
+  other=$(echo "$diags" | grep -v 'core/go\.noCopy\|bulk copy of \[\]core\.Value\|lock\|function variable aliases' || true)
   stray=$(grep -vE '^[^ #][^ ]*\.go:[0-9]+:[0-9]+: |^#|^$' "$out" || true)
   vc=$(ceiling "$m" 2); bc=$(ceiling "$m" 3)
   verdict=""
@@ -131,6 +135,12 @@ for m in $modules; do
     failed=1
     echo "  FAILED: copylocks reports a copy of a lock other than core.Value's marker:"
     echo "$locks" | sed 's/^/    /'
+  fi
+  if [ -n "$aliases" ]; then
+    failed=1
+    echo "  FAILED: a function variable aliases a function that takes a *core.Value; calls through it"
+    echo "  are indirect, so every &v handed to them escapes to the heap. Declare a wrapper func:"
+    echo "$aliases" | sed 's/^/    /'
   fi
   if [ -n "$other$stray" ]; then
     failed=1

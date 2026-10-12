@@ -36,7 +36,7 @@ func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 	fnv := compiler.NewClosure(fnValueClosureProg(), 0, nil)
 	cl := fnv.Data.(core.ClosurePayload)
 
-	res, err, ran := vc.invokeFnValueClosure(r, fnv, cl, []core.Value{core.NewInteger(5)})
+	res, err, ran := vc.invokeFnValueClosure(r, &fnv, cl, []core.Value{core.NewInteger(5)})
 	if !ran || err != nil || len(res) != 1 {
 		t.Fatalf("a matching fn-value closure runs its unit: ran=%v err=%v res=%v", ran, err, res)
 	}
@@ -44,7 +44,7 @@ func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 		t.Errorf("the unit answers its argument, got %v", res[0])
 	}
 
-	res, err, ran = vc.invokeFnValueClosure(r, fnv, cl, []core.Value{core.NewString("s")})
+	res, err, ran = vc.invokeFnValueClosure(r, &fnv, cl, []core.Value{core.NewString("s")})
 	if !ran || err != nil {
 		t.Fatalf("a no-match declines to the stepping path: ran=%v err=%v", ran, err)
 	}
@@ -54,11 +54,11 @@ func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 
 	quoted := fnv
 	quoted.Quoted = true
-	if _, _, ran := vc.invokeFnValueClosure(r, quoted, cl, nil); ran {
+	if _, _, ran := vc.invokeFnValueClosure(r, &quoted, cl, nil); ran {
 		t.Error("a quoted closure is data, not a callee")
 	}
 	body := compiler.NewClosure(fnValueClosureProg(), 1, nil)
-	if _, _, ran := vc.invokeFnValueClosure(r, body, body.Data.(core.ClosurePayload), nil); ran {
+	if _, _, ran := vc.invokeFnValueClosure(r, &body, body.Data.(core.ClosurePayload), nil); ran {
 		t.Error("a callback body unit's closure is not the arm's")
 	}
 

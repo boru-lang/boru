@@ -1437,7 +1437,7 @@ func (e *Engine) stampErrPos(err error) error {
 func (e *Engine) stripTapeAscriptions(lo, hi int) {
 	for j := lo; j < hi; j++ {
 		if e.Tape.Ref(j).AscribedType() != nil {
-			e.Tape.Set(j, StripAscribed(e.Tape.At(j)))
+			ClearAscribed(e.Tape.Ref(j))
 		}
 	}
 }
@@ -3764,7 +3764,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// REAL value, so the ascription can never ride into a stored
 		// binding, a container write, or a returned receiver (design/
 		// OPEN-WORDS.1.md §9's match-time-only rule).
-		match.Args[i] = StripAscribed(match.Args[i])
+		ClearAscribed(&match.Args[i])
 		if match.Args[i].Eval && !match.Args[i].Quoted {
 			if match.Args[i].Parent.Equal(TMap) &&
 				match.Args[i].Data != nil && !IsTypedMap(&match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
@@ -5278,11 +5278,11 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	// coverage seam still sees the rows the elements lie on.
 	if e.sealsLiterals() && IsSteplessWindow(elems.elems) {
 		out := elems.Slice()
-		for i, el := range out {
-			e.Registry.noteCoverage(el.Pos())
+		for i := range out {
+			e.Registry.noteCoverage(out[i].Pos())
 			// Stored, so no dispatch ascription rides in (the strip the
 			// stepped path applies below).
-			out[i] = StripAscribed(el)
+			ClearAscribed(&out[i])
 		}
 		return NewList(out), nil
 	}
@@ -5307,7 +5307,7 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	// type-shaped elements resolve their names here, where every other
 	// element resolves.
 	for i := range result {
-		result[i] = StripAscribed(result[i])
+		ClearAscribed(&result[i])
 		if rv, ok := e.resolveInertTypeShape(result[i]); ok {
 			result[i] = rv
 		}
@@ -7414,7 +7414,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	for i := range args {
 		// Dispatch ascription: consumed at delivery, exactly as execMatch
 		// strips it — the fn body binds the REAL value.
-		args[i] = StripAscribed(args[i])
+		ClearAscribed(&args[i])
 		if args[i].Eval && !args[i].Quoted {
 			if args[i].Parent.Equal(TMap) &&
 				args[i].Data != nil && !IsTypedMap(&args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {

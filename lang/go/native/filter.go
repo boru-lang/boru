@@ -146,7 +146,7 @@ type filterCallback struct {
 
 func newFilterCallback(r *Registry, cb Value) filterCallback {
 	fc := filterCallback{val: cb}
-	if IsCompiledClosure(cb) && ClosureIsFnValue(cb) {
+	if IsCompiledClosure(cb) && ClosureIsFnValue(&cb) {
 		if fnv, ok := ClosureAsFnDef(r, cb); ok {
 			fc.sigFn = fnv
 			fc.val = ClosureSigMatched(cb)

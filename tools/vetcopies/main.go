@@ -8,6 +8,9 @@
 //   - bulkcopy (bulkcopy.go): the element copies of a []core.Value that
 //     copylocks cannot see, through the built-in copy and an append whose
 //     source is spread with "...".
+//   - fnvaralias (fnvaralias.go): a function variable aliasing a function
+//     that takes a *core.Value. Calls through it are indirect, so every
+//     &v handed to them escapes to the heap; the ratchet allows none.
 //
 // scripts/vet-copies.sh builds it, runs it in every go.work module, and holds
 // each module's non-test counts to the ceilings in ceilings.tsv.
@@ -18,4 +21,4 @@ import (
 	"golang.org/x/tools/go/analysis/unitchecker"
 )
 
-func main() { unitchecker.Main(copylock.Analyzer, BulkCopy) }
+func main() { unitchecker.Main(copylock.Analyzer, BulkCopy, FnVarAlias) }

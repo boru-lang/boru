@@ -2281,6 +2281,11 @@ func (v *Value) SetAscribed(t *Type) {
 	v.asc = t
 }
 
+// ClearAscribed drops the dispatch ascription of a value the caller owns —
+// an arg slot, a fresh result, its own stack cell or tape cell — in place:
+// StripAscribed without the copy in and the copy out.
+func ClearAscribed(v *Value) { v.asc = nil }
+
 // StripAscribed returns v without its dispatch ascription — the
 // arg-delivery form of the value. The no-ascription fast path returns v
 // unchanged (no copy cost on the hot path).

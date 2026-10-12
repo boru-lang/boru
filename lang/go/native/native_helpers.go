@@ -24,7 +24,7 @@ const (
 // numLeaf classifies a numeric value's leaf. Tested most-specific first
 // because BigInteger/BigDecimal both ConformsTo TNumber but neither
 // conforms to TInteger/TFloat.
-func numLeaf(v Value) int {
+func numLeaf(v *Value) int {
 	switch {
 	case v.Parent.ConformsTo(TBigDecimal):
 		return leafBigDecimal
@@ -99,9 +99,9 @@ func decimalContext(r *Registry) *apd.Context {
 // asBigOperand projects an exact integer value (Integer or BigInteger) to
 // *big.Int. Only called when the widest leaf is BigInteger, so the value
 // is one of those two.
-func asBigOperand(v Value) *big.Int {
+func asBigOperand(v *Value) *big.Int {
 	if v.Parent.ConformsTo(TBigInteger) {
-		n, _ := AsBigInteger(v)
+		n, _ := AsBigInteger(*v)
 		return n
 	}
 	n, _ := v.AsConcreteInteger()
@@ -111,13 +111,13 @@ func asBigOperand(v Value) *big.Int {
 // asApdOperand projects any exact numeric value (Integer/BigInteger/
 // BigDecimal) to *apd.Decimal. Only called when the widest leaf is
 // BigDecimal.
-func asApdOperand(v Value) *apd.Decimal {
+func asApdOperand(v *Value) *apd.Decimal {
 	switch {
 	case v.Parent.ConformsTo(TBigDecimal):
-		d, _ := AsBigDecimal(v)
+		d, _ := AsBigDecimal(*v)
 		return d
 	case v.Parent.ConformsTo(TBigInteger):
-		n, _ := AsBigInteger(v)
+		n, _ := AsBigInteger(*v)
 		d, _, _ := apd.NewFromString(n.String())
 		return d
 	default:
@@ -149,7 +149,7 @@ type towerOps struct {
 //     int64 (unchanged), *big.Int, or *apd.Decimal at the decimal context.
 func numericBinaryHandler(ops towerOps) Handler {
 	return func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-		return towerApply(ops, args[0], args[1], r)
+		return towerApply(ops, &args[0], &args[1], r)
 	}
 }
 
@@ -159,7 +159,7 @@ func numericBinaryHandler(ops towerOps) Handler {
 // numericBinaryHandler so the Micron field-wise default
 // (native_scalar_ops.go) can drive the exact same numeric semantics
 // per field without threading a Handler through.
-func towerApply(ops towerOps, a0, a1 Value, r *Registry) ([]Value, error) {
+func towerApply(ops towerOps, a0, a1 *Value, r *Registry) ([]Value, error) {
 	la, lb := numLeaf(a0), numLeaf(a1)
 	if la == leafFloat || lb == leafFloat {
 		other := la
@@ -167,10 +167,10 @@ func towerApply(ops towerOps, a0, a1 Value, r *Registry) ([]Value, error) {
 			other = lb
 		}
 		if other == leafBigInteger || other == leafBigDecimal {
-			return nil, bigFloatMixError(r, a0, a1)
+			return nil, bigFloatMixError(r, *a0, *a1)
 		}
-		a, _ := AsNumber(a0)
-		b, _ := AsNumber(a1)
+		a, _ := AsNumber(*a0)
+		b, _ := AsNumber(*a1)
 		return singleResult(ops.fltFn(a, b))
 	}
 	w := la
@@ -233,7 +233,7 @@ func checkBigFloatMix(r *Registry, args []Value) {
 		IsBareTypeNode(&args[0]) || IsBareTypeNode(&args[1]) {
 		return
 	}
-	la, lb := numLeaf(args[0]), numLeaf(args[1])
+	la, lb := numLeaf(&args[0]), numLeaf(&args[1])
 	if (la == leafFloat && (lb == leafBigInteger || lb == leafBigDecimal)) ||
 		(lb == leafFloat && (la == leafBigInteger || la == leafBigDecimal)) {
 		var ae *BoruError
@@ -326,7 +326,7 @@ func ApdUnaryNative(name string, floatFn func(float64) float64, apdFn func(c *ap
 	}
 	bigHandler := func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 		out := new(apd.Decimal)
-		if _, err := apdFn(decimalContext(r), out, asApdOperand(args[0])); err != nil {
+		if _, err := apdFn(decimalContext(r), out, asApdOperand(&args[0])); err != nil {
 			return nil, r.BoruError("math_error", name+": "+err.Error(), name)
 		}
 		return []Value{NewBigDecimal(out)}, nil
@@ -367,7 +367,7 @@ func RoundToIntegralNative(name string, floatFn func(float64) float64, mode apd.
 		ctx := *decimalContext(r) // clone: Rounding is per-word, the context is shared
 		ctx.Rounding = mode
 		out := new(apd.Decimal)
-		if _, err := ctx.RoundToIntegralValue(out, asApdOperand(args[0])); err != nil { //covergate:allow boru BigDecimals are always finite (non-finite literals reject at parse; producing ops trap first) and round-to-integral of a finite decimal cannot overflow the context — defensive error-propagation only (§native)
+		if _, err := ctx.RoundToIntegralValue(out, asApdOperand(&args[0])); err != nil { //covergate:allow boru BigDecimals are always finite (non-finite literals reject at parse; producing ops trap first) and round-to-integral of a finite decimal cannot overflow the context — defensive error-propagation only (§native)
 			return nil, r.BoruError("math_error", name+": "+err.Error(), name)
 		}
 		return []Value{NewBigDecimal(out)}, nil

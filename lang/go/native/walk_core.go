@@ -136,7 +136,7 @@ func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 		// A fn-VALUE closure (a capturing `fn` / `=>` literal minted at run
 		// time) is matched against its own signature before it runs, as
 		// the lambda branch matches a lambda (S1b-2).
-		if ClosureIsFnValue(body) {
+		if ClosureIsFnValue(&body) {
 			if fnv, ok := ClosureAsFnDef(r, body); ok {
 				h.sigFn = fnv
 				h.body = ClosureSigMatched(body)

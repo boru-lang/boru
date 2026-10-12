@@ -204,7 +204,7 @@ func (numberCompareBehavior) Compare(a, b Value) (int, error) {
 // ties. Callers invoke it only after the magnitudes compared equal, so
 // a non-zero pair always hits the aNeg == bNeg (both false) arm.
 func signedZeroOrder(a, b Value) int {
-	aNeg, bNeg := isNegZeroFloat(a), isNegZeroFloat(b)
+	aNeg, bNeg := isNegZeroFloat(&a), isNegZeroFloat(&b)
 	switch {
 	case aNeg == bNeg:
 		return 0
@@ -219,11 +219,11 @@ func signedZeroOrder(a, b Value) int {
 // ONLY value that slots as -0 in the total order. Integer 0 and the
 // Big zeros (0n0, 0d0 — including a BigDecimal negative-zero spelling)
 // are not Floats and slot as +0.
-func isNegZeroFloat(v Value) bool {
+func isNegZeroFloat(v *Value) bool {
 	if !v.Parent.ConformsTo(TFloat) {
 		return false
 	}
-	f, err := AsFloat(v)
+	f, err := AsFloat(*v)
 	return err == nil && f == 0 && math.Signbit(f)
 }
 

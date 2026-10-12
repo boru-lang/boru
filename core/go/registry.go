@@ -2048,7 +2048,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// ascription is scoped to a dispatch WITHIN the body and cannot ride
 	// out into the caller (design/OPEN-WORDS.1.md §9).
 	for i := range result {
-		result[i] = StripAscribed(result[i])
+		ClearAscribed(&result[i])
 	}
 	return result, nil
 }

@@ -540,3 +540,44 @@ after `vet`. The baseline equals the census in the measurements note §3:
 | calc/go | 11 | 9 |
 | test/go, tools/piecetool, tools/vetcopies, test/solardemo, wpg | 0 | 0 |
 | **total** | **15,235** | **357** |
+
+**Phase 1 — 2026-10-12.** Values on the hot paths are read where they
+live. Pointer receivers on Value's accessors (the handover patch plus
+`Pos` and `AscribedType`); `Tape.Ref`, `CollectWindow.Ref`, `ReadList.Ref`
+and `DefTable.TopRef`; 54 free functions taking `*Value` — the token-kind
+predicates and payload readers the step loop and matcher ask of every
+cell, the dispatch classifications (`IsConcrete`, `IsBareTypeNode`,
+`SigTypeMatches`, `SigArgMatches`, …), the numeric tower's operand
+readers and the relational helpers — with about 5,000 call sites
+rewritten by type-checked tooling. `Run`, a sealed region's loop,
+`stepToken` and `stepWord` step the cell in place; `EffectiveResolved`,
+`CollectCandidateScan`, `PlanMatch` and `rearrangeForForward` read
+through pointers (the last permutes forward args in place, two copies per
+arg instead of four); `Value.Is` runs the default Match in place; the VM
+clears ascriptions in place (`ClearAscribed`), stamps fn results in
+place, and passes a closure body by pointer through its seam helpers.
+
+Two side effects were found and fixed on the way, and are now checked.
+`Payload.IsTypeContent` took the owning `*Value` through an interface,
+which made every `IsTypeBody` caller's value escape (and had always cost
+an allocation per `TypeContentOf`): it takes the owner's `Parent` now.
+And `lang/go/native` and `basic/go` re-exported core's functions as
+function VARIABLES — indirect calls, never inlined — so every `&v` handed
+to one escaped to the heap: the pointer-taking ones are wrapper funcs
+now, `make vet-copies` fails on a new such variable (its `fnvaralias`
+analyzer), and heap escapes in every module are at or below the phase-0
+build.
+
+| | phase 0 | phase 1 |
+|---|---:|---:|
+| non-test single-Value copies (vet) | 15,235 | 13,005 |
+| bulk copies | 357 | 357 |
+| anchors, geomean time vs phase 0 (55 benchmarks, one VM) | 1.000 | 0.80 |
+| interpreter lane | 1.000 | 0.73–0.76 |
+| compiled lane | 1.000 | 0.87 |
+
+The remaining copy time is dominated by the by-value representation
+itself — constructors returning a `Value` (`NewValueRaw`), stack and
+local pushes in the VM, binding reads (`DefTable.Top`), handler argument
+arrays — which phase 3's smaller header and phase 4's representation
+address.

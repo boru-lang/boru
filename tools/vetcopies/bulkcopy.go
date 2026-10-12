@@ -61,7 +61,12 @@ func isValueSlice(t types.Type) bool {
 	if !ok {
 		return false
 	}
-	named, ok := types.Unalias(s.Elem()).(*types.Named)
+	return isValue(s.Elem())
+}
+
+// isValue reports whether t is core.Value (Type is an alias of it).
+func isValue(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return false
 	}

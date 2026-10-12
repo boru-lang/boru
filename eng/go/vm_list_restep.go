@@ -64,7 +64,7 @@ func (vc *vmContext) makeListReStep(reg *core.Registry, spec compiler.ListReStep
 	}
 	// Ascription hygiene, as OpMakeList: list elements are stored data.
 	for i := range elems {
-		elems[i] = core.StripAscribed(elems[i])
+		core.ClearAscribed(&elems[i])
 	}
 	return append(stack[:base], core.NewList(elems)), nil
 }

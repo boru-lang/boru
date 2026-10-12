@@ -53,7 +53,11 @@ Language-agnostic content stays at the top of each component:
   Sub-files:
   - `aliases.go` — re-exports the eng kernel's exported types/funcs
     as `native.Foo` so the rest of the lang code can stay
-    eng-agnostic.
+    eng-agnostic. A function that takes a `*Value` is re-exported as a
+    WRAPPER func, never a function variable: a call through a
+    variable is indirect, so it cannot inline and every `&v` handed
+    to it escapes to the heap (`make vet-copies`' fnvaralias check
+    fails on one).
   - `basic_shim.go` — the same pattern one layer up: re-exports the
     fundamental-word registration groups, handler internals, and
     Scalar/Time surface that moved to `basic/go` (ADR-013), under
@@ -982,6 +986,10 @@ the underlying state. Adding direct field access regresses the
 consolidation and will be flagged in code review.
 
 **Concrete-value guards** (panic-prevention, type-literal vs concrete):
+These predicates read the value through a pointer (`IsBareTypeNode(&v)`,
+`IsConcrete(&args[i])`, `IsWord(e.Tape.Ref(i))`) — the no-copy rule of
+eng/go/CLAUDE.md "Values are not copied".
+
 - `IsBareTypeNode(v)` — true if `Data == nil` and not a carrier (v IS
   its own lattice node). INCLUDES None/Any/Never; use for naming,
   ordering, and lattice-identity dispatch.
@@ -1006,7 +1014,7 @@ consolidation and will be flagged in code review.
 - `RequireConcreteMap(v, op) (ReadMap, error)` — same for maps.
 
 Handlers that take `TList`/`TMap`/`TAny` args should guard with
-`!IsConcrete(args[i])` (or use the `RequireConcreteX` helpers) before
+`!IsConcrete(&args[i])` (or use the `RequireConcreteX` helpers) before
 calling `AsList(v)`/`AsMap(v)` — otherwise carriers and type literals
 panic on `.Len()`. (`AsList` / `AsMap` are free functions in eng, not
 methods on `Value`; the method surface is `Is`, `String`, the node-

@@ -790,6 +790,34 @@ job on all of them. The ceilings only go down: a change that removes
 copies lowers them in the same commit (`UPDATE=1 make vet-copies`), and
 a failing run lists the findings on the lines the change touched.
 
+**Reading a Value without copying it** (phase 1, 2026-10-12):
+
+- `Tape.Ref(i)`, `CollectWindow.Ref(i)`, `ReadList.Ref(i)` and
+  `DefTable.TopRef(name)` hand out a pointer to where the cell, the
+  element or the binding lives. A tape pointer dies at the tape's next
+  edit (Set, Insert, Remove, Splice, MoveGap, grow, Reload): read through
+  it at once, and snapshot what you need before the tape moves —
+  `stepWord` keeps its cell's `pos` for that reason. Never write through
+  a pointer into a shared value (a list element, a binding); the engine
+  may write a cell IT owns in place (`ClearAscribed(e.Tape.Ref(j))`, the
+  forward-arg permutation in `rearrangeForForward`).
+- The token-kind and classification predicates take `*Value`
+  (`IsWord`, `IsForward`, `IsOpenParen`, …, `AsWord`, `AsForward`,
+  `AsMark`, `IsConcrete`, `IsBareTypeNode`, `IsTypeLiteral`, `IsDisjunct`,
+  `SigTypeMatches`, `SigArgMatches`, …), and Value's accessors have
+  pointer receivers (`String` stays by value for fmt). Pass `&v`,
+  `&args[i]`, `e.Tape.Ref(i)`; in a test, a non-addressable value goes
+  through the package's `addrOf` helper.
+- A pointer parameter must not escape, or every caller's `&v` moves to
+  the heap: no interface call takes it (`Payload.IsTypeContent` takes the
+  owner's Parent for that reason; `Value.Is` runs the default Match in
+  place — `defaultMatcher`), and a re-export of such a function is a
+  wrapper func, never a function variable (fnvaralias). Check a
+  conversion with `go build -gcflags=-m` against the previous commit's
+  "moved to heap" list.
+- `ClearAscribed(&slot)` drops a dispatch ascription from a slot the
+  caller owns; `StripAscribed` stays for the copying form.
+
 ## Type installation
 
 A capitalised `def Foo body` installs a type binding (the

@@ -149,7 +149,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	vcl := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{
 		Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
-	if !compiler.ClosureIsFnValue(cl) {
+	if !compiler.ClosureIsFnValue(&cl) {
 		t.Fatal("fixture is not a fn-VALUE closure — the lambda rung would not consult it")
 	}
 	gotc, entc, errc := vcl.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0, compiler.LandingWord{})
@@ -195,7 +195,7 @@ func TestReStepLandingNonFnValueClosureInvokes(t *testing.T) {
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
-	if compiler.ClosureIsFnValue(cl) {
+	if compiler.ClosureIsFnValue(&cl) {
 		t.Fatal("fixture reads as a fn-VALUE closure — it would park, not invoke")
 	}
 	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0, compiler.LandingWord{})

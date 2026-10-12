@@ -45,8 +45,9 @@ func vmMakeListToMark(marks []int, stack []core.Value, debug []core.SrcPos, pc i
 		return marks, stack, vmErrAt(debug, pc, "MAKE_LIST_TO_MARK above current depth")
 	}
 	elems := make([]core.Value, len(stack)-m)
-	for i, v := range stack[m:] {
-		elems[i] = core.StripAscribed(v)
+	for i := range stack[m:] {
+		elems[i] = stack[m+i]
+		core.ClearAscribed(&elems[i])
 	}
 	return marks, append(stack[:m], core.NewList(elems)), nil
 }
