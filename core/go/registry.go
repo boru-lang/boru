@@ -664,6 +664,16 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	// but keep the backing array so the buffer stays reusable.
 	clear(e.rrValues[:cap(e.rrValues)])
 	e.rrValues = e.rrValues[:0]
+	// The other per-run Value scratch buffers pin the same way: a loop's
+	// re-mark tokens, a paren expansion's span, the matcher's resolved
+	// window, and its exclusion set (exceptions list C2).
+	clear(e.loopTokens[:cap(e.loopTokens)])
+	e.loopTokens = e.loopTokens[:0]
+	clear(e.peScratch[:cap(e.peScratch)])
+	e.peScratch = e.peScratch[:0]
+	clear(e.resolvedScratch[:cap(e.resolvedScratch)])
+	e.resolvedScratch = e.resolvedScratch[:0]
+	clear(e.excludeScratch)
 	r.enginePool = append(r.enginePool, e)
 }
 

@@ -40,6 +40,17 @@ Last updated: **2026-10-12** (the no-copy decisions below; the pointer to the in
 > changed for the policy: `core.Value` is a 104-byte struct passed by
 > value. Phases 0 to 2 come first; phase 3 no longer waits on a decision.
 
+> **2026-10-12, later:** phases 0, 1 and 2 of the no-copy plan have
+> landed on `claude/eager-bardeen-w1jnxr`, each recorded with its
+> measurements in [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) §9:
+> `make vet-copies` ratchets the copy counts (15,235 → 12,993 non-test
+> single-Value copies, 357 → 327 bulk), Values are read through pointers
+> on the hot paths, `FnDefInfo` is a pointer payload, and the anchors run
+> at 0.76 of phase 0's time (interpreter 0.71, compiled 0.80). The merged
+> ADR-008 gate has been red on main since #532/#533 (`loop_drivers.go`'s
+> `Describe` methods, `native_map_iter.go`, the debugger's marker arms);
+> that is not this work's, and it adds no uncovered statement of its own.
+
 > ## Where things stand on 2026-10-05 — the baseline
 >
 > Read this block first. Everything after the two pointers above is the

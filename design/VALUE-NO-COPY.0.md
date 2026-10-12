@@ -581,3 +581,72 @@ itself — constructors returning a `Value` (`NewValueRaw`), stack and
 local pushes in the VM, binding reads (`DefTable.Top`), handler argument
 arrays — which phase 3's smaller header and phase 4's representation
 address.
+
+**Phase 2 — 2026-10-12.** The copies that bought nothing go. Most of
+them were a token run copied before a stage that copies it again:
+`Engine.Run` copies its program onto its tape, `Tape.Splice` copies what
+it splices, and `RunResolved` builds its own program, so a handler that
+copied a body first copied it twice, and `append([]Value(nil),
+body.Slice()...)` three times. `ReadList.Elems` is the view the plan
+asked for: a list's own elements, capacity clamped so an append
+reallocates, never nil (like `Slice`). A `ListPayload` array is never
+written after construction, so a view of a plain list is safe even across
+user code; a flex list's view is live, so a walk that runs user code over
+a list that may be flex keeps `Slice`.
+
+- The handler-side pre-`Run` copies (E1), `BodyTokens` behind the
+  `InvokeBody` seam, `RunResolved`'s concatenation when there are no
+  inputs, `SpliceExpand`, `stepMove`'s body copy, and the body every
+  continuation mark (`for`, `while`, `if`, the VM's loop restart) copied
+  into `MarkInfo.Body` although its move never replays it; about ninety
+  read-only walks read through `Elems` (E2).
+- `FnDefInfo` is a pointer payload (D9, now E8 in the exceptions list).
+  Its `payloadMarker` moved to the pointer, so the compiler refuses to
+  box a by-value one. A type-checked rewrite took all 396 assertions and
+  12 type-switch cases: a binding that never writes the payload (checked
+  through its callees' `*FnDefInfo` parameters) binds the pointer; a
+  comma-ok binding read off the ok path goes through `FnDefOf`, whose miss
+  is a shared read-only zero `FnDefInfo`, what the failed by-value
+  assertion yielded; an editor copies on the path that edits and boxes
+  the copy. The callback seams that copied the payload only to hand
+  `InvokeCallbackFn` a pointer now pass the payload, one allocation per
+  callback fewer than before the phase.
+- A forward collection's marker takes each arrival's payload in its own
+  cell instead of a new marker per collected argument; six check-mode
+  carriers lost a second ID mint; a fn value's dispatch-form signatures
+  are built once per identity and cached beside its compiled dispatch
+  form (`FnDispatchSigs`); the fn-shape unifier matches its own specs
+  instead of minting an `FnUndef` per test (E6); the "clone for a fresh
+  ID" that cloned nothing goes (E7); a pooled engine clears every scratch
+  buffer, not just `rrValues` (C2).
+
+One trap found on the way, and worth knowing for phase 3: escape analysis
+puts a local on the heap at its declaration when its address is boxed
+anywhere later, so "copy the payload at the top, edit, box `&copy` at the
+end" allocated a 232-byte copy for every value that passed through, the
+non-functions included. Compiled recursion took two allocations per call
+from `nameFrameFns` alone (5,753 → 7,755 allocs/op) until the editors
+were reshaped to copy where they edit. And the phase-1 alias wrappers that
+nothing called were statements the merged ADR-008 gate counted (47 of
+them); they are gone.
+
+Not done, with the reason: E5's memoised results stay copied because the
+engine stamps positions into a handler's returned slice (phase 3 moves
+positions out); E6's resolve rebuild is observable, not redundant (`def a
+[1 2]  def p:List a  p eq a` is false because the rebuilt operand is what
+binds), so changing it is a language decision; `installedSigView` still
+builds its view, on the no-match diagnostic's cold path.
+
+| | phase 1 | phase 2 |
+|---|---:|---:|
+| non-test single-Value copies (vet) | 13,005 | 12,993 |
+| bulk copies | 357 | 327 |
+| anchors, geomean time vs phase 0 (55 benchmarks, one VM) | 0.80 | 0.760 |
+| interpreter lane vs phase 0 | 0.73–0.76 | 0.708 |
+| compiled lane vs phase 0 | 0.87 | 0.802 |
+| anchors, geomean vs phase 1 | 1.000 | 0.945 |
+| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,875 / 4,240 / 6,041 | 6,673 / 4,038 / 5,939 |
+
+The interpreter's allocation ceilings for the five loop shapes that
+dropped are lowered by their drop; the compiled lane's counts are where
+phase 1 left them.

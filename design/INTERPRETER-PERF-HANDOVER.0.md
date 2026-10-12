@@ -134,6 +134,9 @@ is independent of the policy and still open.
 > value semantics, phase 4 is decided on phase 3's numbers, the
 > sanctioned copies are approved as written, and `type Type = Value`
 > stays. Decisions 6 and 7 are still open.
+>
+> **2026-10-12, later:** phases 0 to 2 have landed; §9 of the review
+> records each with its numbers.
 
 From the no-copy review (its §7 has the detail and a recommendation for
 each):
