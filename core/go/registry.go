@@ -1128,7 +1128,8 @@ func (r *Registry) upsertFnDef(name string, sigs ...Signature) {
 	}
 	// If the top of the stack is already a FnDefInfo, update it in place.
 	if top, ok := r.Defs.Top(name); ok {
-		if fnDef, ok := FnDefCopy(top.Data); ok {
+		if prev, ok := FnDefOf(top.Data); ok {
+			fnDef := *prev
 			fnDef.Signatures = append(fnDef.Signatures, sigs...)
 			SortSignatures(fnDef.Signatures)
 			fnDef.MaxForwardArgs = calcMaxForwardArgs(fnDef.Signatures)

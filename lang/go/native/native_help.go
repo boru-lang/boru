@@ -191,10 +191,11 @@ func BuildQualifiedFuncInfo(r *Registry, name string) *help.FuncInfo {
 // module export's wrapper), for callers outside the engine package that hold
 // the Value but not the payload. ok=false when v is not an FnDef.
 func FnDefFromValue(v Value) (*FnDefInfo, bool) {
-	fn, ok := FnDefCopy(v.Data)
+	src, ok := FnDefOf(v.Data)
 	if !ok {
 		return nil, false
 	}
+	fn := *src // a copy: callers edit it (modules' export provenance)
 	return &fn, true
 }
 

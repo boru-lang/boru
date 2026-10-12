@@ -78,10 +78,7 @@ func makeWalkApply(cb Value, r *Registry, callErr *error) func(*string, any, any
 			*callErr = r.BoruError("signature_error", "walk: no matching callback signature", "walk")
 			return val
 		}
-		var cbDef *FnDefInfo
-		if fd, ok := FnDefCopy(cb.Data); ok {
-			cbDef = &fd
-		}
+		cbDef, _ := cb.Data.(*FnDefInfo) // read, never written: the payload itself
 		// InvokeCallbackFn, not r.CallBoru: the callback resolves its free words in
 		// the module that DEFINED it (design/FUNCTION-VALUE-SCOPE.0.md), and a
 		// stamped body runs on the VM.

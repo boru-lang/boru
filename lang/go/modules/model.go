@@ -326,9 +326,10 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 // error, on the compiled and interpreted paths alike. A decline (captures,
 // ineligible shape, stamping off) returns the input unchanged.
 func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
-	if fd, ok := native.FnDefCopy(fnVal.Data); ok && fd.Name == "" {
-		fd.Name = name
-		fnVal.Data = &fd
+	if fd, ok := native.FnDefOf(fnVal.Data); ok && fd.Name == "" {
+		named := *fd
+		named.Name = name
+		fnVal.Data = &named
 	}
 	stamped, _ := compiler.StampFnValue(r, fnVal)
 	return stamped
@@ -390,10 +391,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 	// The fn's own definition is hoisted out of the type-assert so the action
 	// closure can hand it to InvokeCallbackFn: a model action written in another
 	// module must resolve its free words there (design/FUNCTION-VALUE-SCOPE.0.md).
-	var fnInfo *native.FnDefInfo
-	if fd, ok := native.FnDefCopy(fnVal.Data); ok {
-		fnInfo = &fd
-	}
+	fnInfo, _ := fnVal.Data.(*native.FnDefInfo) // read, never written: the payload itself
 	return model.ActionDef{
 		Step: step,
 		Run: func(mdl map[string]any, _ *model.Build, _ *model.BuildContext) model.ActionResult {

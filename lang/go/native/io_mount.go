@@ -72,10 +72,7 @@ func (a *boruFileOps) call(op string, args []Value) (Value, error) {
 	// InvokeCallbackFn, not a.r.CallBoru: a mounted handler runs on the registry
 	// that DEFINED it, so its module-private helpers resolve
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and a stamped handler runs on the VM.
-	var fnDef *FnDefInfo
-	if fd, ok := FnDefCopy(fnVal.Data); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := fnVal.Data.(*FnDefInfo) // read, never written: the payload itself
 	res, err := InvokeCallbackFn(a.r, fnDef, sig, args)
 	if err != nil {
 		return Value{}, err

@@ -1204,10 +1204,11 @@ func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
 // per push (OpPushConstFresh) — `def mk fn [[][Any][([x:Any] => [x])]] end
 // mk mk eq` is false on both lanes (NUR288).
 func WithFreshFnIdentity(v Value) Value {
-	fd, ok := FnDefCopy(v.Data)
+	prev, ok := FnDefOf(v.Data)
 	if !ok {
 		return v
 	}
+	fd := *prev
 	fd.ident = &fnIdent{}
 	v.Data = &fd
 	return v

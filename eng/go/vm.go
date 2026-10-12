@@ -579,24 +579,25 @@ func nameFrameFns(r *core.Registry, fn *compiler.CompiledFn, locals []core.Value
 			locals[i] = nameClosureValue(locals[i], name)
 			continue
 		}
-		fd, ok := core.FnDefCopy(locals[i].Data)
+		fd, ok := core.FnDefOf(locals[i].Data)
 		if !ok || fd.Name == name {
 			continue
 		}
-		if core.FnHomeForeign(r, &fd) {
+		if core.FnHomeForeign(r, fd) {
 			// A FOREIGN trivial-delegation wrapper (a module export) bound
 			// for a named param is the inner native's overloads under the
 			// param's name — installDef's own rebinding, which the payload
 			// rename could not mirror (NUR123): `(f MathUtil.sqrt/v) 16.0`
 			// rendered `fn sqrt(Number)` for the interpreter's `fn
 			// g(BigDecimal) or … 16.0`. Any other foreign value is left alone.
-			if v, rebound := core.WrapperUnderName(r, name, fd); rebound {
+			if v, rebound := core.WrapperUnderName(r, name, *fd); rebound {
 				locals[i] = v
 			}
 			continue
 		}
-		fd.Name = name
-		locals[i].Data = &fd
+		named := *fd
+		named.Name = name
+		locals[i].Data = &named
 	}
 }
 
@@ -892,19 +893,20 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 		return nil, nil, false
 	}
 	src := *cl.Source
-	fd, _ := core.FnDefCopy(src.Data)
-	if len(fd.Captured) > 0 {
+	if fd, _ := core.FnDefOf(src.Data); len(fd.Captured) > 0 {
 		bound := append([]core.CapturedBinding(nil), fd.Captured...)
 		for i := range bound {
 			if i < len(cl.Captures) {
 				bound[i].Value = cl.Captures[i]
 			}
 		}
-		fd.Captured = bound
-		src.Data = &fd
+		withCaps := *fd
+		withCaps.Captured = bound
+		src.Data = &withCaps
 	}
 	if sig := core.MatchFnSig(src, inputs); cl.RetTrim && sig != nil {
-		res, err := core.InvokeCallbackFn(reg, &fd, sig, inputs)
+		fd, _ := core.FnDefOf(src.Data) // the payload with this closure's captures bound
+		res, err := core.InvokeCallbackFn(reg, fd, sig, inputs)
 		return res, err, true
 	}
 	res, err := core.RunResolved(reg, inputs, []core.Value{src})
@@ -3419,9 +3421,10 @@ func namedRuns(v core.Value) bool {
 // call (namedRuns) — as `apply` marks a fn of no argument
 // (FnDefInfo.Applied); any other value as it is.
 func appliedLead(v core.Value) core.Value {
-	if fd, ok := core.FnDefCopy(v.Data); ok && core.FnValueOnlyZeroArgSigs(fd) {
-		fd.Applied = true
-		v.Data = &fd
+	if fd, ok := core.FnDefOf(v.Data); ok && core.FnValueOnlyZeroArgSigs(*fd) {
+		marked := *fd
+		marked.Applied = true
+		v.Data = &marked
 	}
 	return v
 }

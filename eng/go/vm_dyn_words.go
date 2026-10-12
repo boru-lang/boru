@@ -129,12 +129,13 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
 	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
 	// const keeps its own payload, as the interpreter's binding copies do.
-	if fd, ok := core.FnDefCopy(v.Data); ok {
+	if fd, ok := core.FnDefOf(v.Data); ok {
 		if fd.Name == name {
 			return v
 		}
-		fd.Name = name
-		v.Data = &fd
+		named := *fd
+		named.Name = name
+		v.Data = &named
 		return v
 	}
 	cl, ok := v.Data.(core.ClosurePayload)

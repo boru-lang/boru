@@ -116,10 +116,7 @@ func invokeFnUtil(r *native.Registry, opName string, fn native.Value, args []nat
 	if gi, ok := sig.Impl.(*core.GoImpl); ok {
 		return gi.Handler(args, nil, nil, r)
 	}
-	var fnDef *native.FnDefInfo
-	if fd, ok := native.FnDefCopy(fn.Data); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := fn.Data.(*native.FnDefInfo) // read, never written: the payload itself
 	return core.InvokeCallbackFn(r, fnDef, sig, args)
 }
 

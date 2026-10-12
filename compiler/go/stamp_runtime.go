@@ -262,7 +262,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 // returns the input unchanged with ok=false, so callers may use the returned
 // value unconditionally.
 func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
-	fd, ok := core.FnDefCopy(v.Data)
+	fd, ok := core.FnDefOf(v.Data)
 	if !ok {
 		return v, false
 	}
@@ -299,13 +299,13 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	// would bake in that module's bindings for the body's free words and hand
 	// the VM a different answer from the interpreter fallback. Same registry
 	// for a fn defined in the running scope, so the common path is unchanged.
-	home, _ := core.FnHome(r, &fd)
+	home, _ := core.FnHome(r, fd)
 	var sigs []core.Signature
 	for i := range fd.Signatures {
 		if !storedSigEligible(&fd.Signatures[i]) {
 			continue
 		}
-		ref, ok := StampDetachedSig(home, fd, i, v.Pos())
+		ref, ok := StampDetachedSig(home, *fd, i, v.Pos())
 		if !ok {
 			continue
 		}
@@ -322,9 +322,10 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 		// codec), or every eligible body declined.
 		return v, false
 	}
-	fd.Signatures = sigs
+	stamped := *fd
+	stamped.Signatures = sigs
 	out := v
-	out.Data = &fd
+	out.Data = &stamped
 	return out, true
 }
 

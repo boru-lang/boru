@@ -1359,11 +1359,11 @@ func getrXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // sound to resolve from an abstract instance carrier. A plain RNG-bound
 // wrapper (rand-int) has no CallableSpec and stays dynamic.
 func isClosureBearingWrapper(v Value) bool {
-	fd, ok := FnDefCopy(v.Data)
+	fd, ok := FnDefOf(v.Data)
 	if !ok {
 		return false
 	}
-	inner := FnHomeLookup(&fd)
+	inner := FnHomeLookup(fd)
 	if inner == nil {
 		return false
 	}

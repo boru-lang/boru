@@ -6214,12 +6214,13 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 // it must never ride into a binding or a container. Same one-shot
 // discipline as ReachGroup and the sealFnValue seal.
 func (e *Engine) takeAppliedMark(valIdx int, val Value) (Value, bool) {
-	fd, isFn := FnDefCopy(val.Data)
+	fd, isFn := FnDefOf(val.Data)
 	if !isFn || !fd.Applied {
 		return val, false
 	}
-	fd.Applied = false
-	val.Data = &fd
+	cleared := *fd
+	cleared.Applied = false
+	val.Data = &cleared
 	e.Tape.Set(valIdx, val)
 	return val, true
 }
@@ -8402,12 +8403,13 @@ func fnValueHasZeroArgSig(v Value) bool {
 // FnDefInfo.Applied for why the gate needs telling, and execFnDefLiteral
 // for where the mark is consumed and cleared.
 func MarkApplied(v Value) Value {
-	fd, ok := FnDefCopy(v.Data)
-	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
+	fd, ok := FnDefOf(v.Data)
+	if !ok || !FnValueOnlyZeroArgSigs(*fd) || !fd.Anonymous || fd.Macro {
 		return v
 	}
-	fd.Applied = true
-	v.Data = &fd
+	marked := *fd
+	marked.Applied = true
+	v.Data = &marked
 	return v
 }
 

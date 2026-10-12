@@ -941,10 +941,7 @@ func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]na
 	if sig == nil {
 		return nil, fmt.Errorf("no matching callback signature")
 	}
-	var fnDef *native.FnDefInfo
-	if fd, ok := native.FnDefCopy(fn.Data); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := fn.Data.(*native.FnDefInfo) // read, never written: the payload itself
 	// InvokeCallbackFn, not r.CallBoru: a matcher/action written in the grammar's
 	// own module resolves its free words there
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and the body is offered to the VM before

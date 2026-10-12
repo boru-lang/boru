@@ -147,9 +147,7 @@ func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 	if body.Parent.ConformsTo(TFunction) {
 		h.lambda = true
 		h.fn = body
-		if fd, ok := FnDefCopy(body.Data); ok {
-			h.fnDef = &fd
-		}
+		h.fnDef, _ = body.Data.(*FnDefInfo) // read, never written: the payload itself
 		return h, nil
 	}
 	if !IsConcrete(&body) {

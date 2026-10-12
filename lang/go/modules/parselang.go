@@ -570,11 +570,12 @@ func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value
 // cannot name — stays the data it is (bridged=false).
 func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 	bv, ok := native.ClosureAsFnDef(r, v)
-	fd, isFn := native.FnDefCopy(bv.Data)
+	src, isFn := native.FnDefOf(bv.Data)
 	cl, isCl := v.Data.(core.ClosurePayload)
 	if !ok || !isFn || !isCl {
 		return v, false
 	}
+	fd := *src
 	sigs := make([]native.Signature, len(fd.Signatures))
 	copy(sigs, fd.Signatures)
 	for i := range sigs {

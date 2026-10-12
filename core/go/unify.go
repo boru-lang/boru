@@ -142,10 +142,11 @@ func IsDeclaredPredicateFn(v Value) bool {
 // — `fnpred`'s half of the pair above. Total: a value carrying no FnDefInfo
 // comes back unchanged, so a caller never has to guard the payload shape.
 func MarkPredicateFn(v Value) Value {
-	info, ok := FnDefCopy(v.Data)
+	fd, ok := FnDefOf(v.Data)
 	if !ok {
 		return v
 	}
+	info := *fd
 	info.Predicate = true
 	return NewValueRaw(v.Parent, &info)
 }

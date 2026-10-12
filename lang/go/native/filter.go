@@ -185,10 +185,7 @@ func runFilterCallback(r *Registry, fc filterCallback, cbArgs []Value) ([]Value,
 		// the VM reads as an internal bail and re-runs the interpreter.
 		return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 	}
-	var fnDef *FnDefInfo
-	if fd, ok := FnDefCopy(cb.Data); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := cb.Data.(*FnDefInfo) // read, never written: the payload itself
 	return InvokeCallbackFn(r, fnDef, sig, cbArgs)
 }
 
