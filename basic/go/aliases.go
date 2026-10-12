@@ -628,58 +628,27 @@ const (
 // wrapper functions rather than variables, so a call is direct: it can
 // inline, and escape analysis sees that the pointer does not escape (a
 // call through a function variable would move every &v to the heap).
-func AsDefCleanup(v *core.Value) (core.DefCleanupInfo, error)   { return core.AsDefCleanup(v) }
-func AsMark(v *core.Value) (core.MarkInfo, error)               { return core.AsMark(v) }
-func AsMove(v *core.Value) (core.MoveInfo, error)               { return core.AsMove(v) }
-func AsParenExpr(v *core.Value) ([]core.Value, error)           { return core.AsParenExpr(v) }
-func AsReturnCheck(v *core.Value) (core.ReturnCheckInfo, error) { return core.AsReturnCheck(v) }
-func IsBoolean(v *core.Value) bool                              { return core.IsBoolean(v) }
-func IsCloseParen(v *core.Value) bool                           { return core.IsCloseParen(v) }
-func IsDefCleanup(v *core.Value) bool                           { return core.IsDefCleanup(v) }
-func IsDisjunct(v *core.Value) bool                             { return core.IsDisjunct(v) }
-func IsEnd(v *core.Value) bool                                  { return core.IsEnd(v) }
-func IsForward(v *core.Value) bool                              { return core.IsForward(v) }
-func IsFrameOpen(v *core.Value) bool                            { return core.IsFrameOpen(v) }
-func AsFrameOpen(v *core.Value) (core.FrameOpenInfo, error)     { return core.AsFrameOpen(v) }
-func IsInterpString(v *core.Value) bool                         { return core.IsInterpString(v) }
-func IsMark(v *core.Value) bool                                 { return core.IsMark(v) }
-func IsSplice(v *core.Value) bool                               { return core.IsSplice(v) }
-func AsSplice(v *core.Value) (core.SpliceInfo, error)           { return core.AsSplice(v) }
-func IsMove(v *core.Value) bool                                 { return core.IsMove(v) }
-func IsNone(v *core.Value) bool                                 { return core.IsNone(v) }
-func IsClassType(v *core.Value) bool                            { return core.IsClassType(v) }
-func IsOpenParen(v *core.Value) bool                            { return core.IsOpenParen(v) }
-func IsParenExpr(v *core.Value) bool                            { return core.IsParenExpr(v) }
-func IsReach(v *core.Value) bool                                { return core.IsReach(v) }
-func AsReach(v *core.Value) (core.ReachInfo, error)             { return core.AsReach(v) }
-func IsReturnCheck(v *core.Value) bool                          { return core.IsReturnCheck(v) }
-func IsTypedList(v *core.Value) bool                            { return core.IsTypedList(v) }
-func IsTypedMap(v *core.Value) bool                             { return core.IsTypedMap(v) }
-func IsWord(v *core.Value) bool                                 { return core.IsWord(v) }
-func AsForward(v *core.Value) (core.ForwardInfo, error)         { return core.AsForward(v) }
-func AsWord(v *core.Value) (core.WordInfo, error)               { return core.AsWord(v) }
-func BaseValue(t *core.Type) (core.Value, error)                { return core.BaseValue(t) }
-func CommonAncestorType(a *core.Type, b *core.Type) *core.Type  { return core.CommonAncestorType(a, b) }
-func SubstituteSelf(spec core.FnSigSpec, node *core.Type) core.FnSigSpec {
-	return core.SubstituteSelf(spec, node)
-}
+func AsMove(v *core.Value) (core.MoveInfo, error)              { return core.AsMove(v) }
+func AsParenExpr(v *core.Value) ([]core.Value, error)          { return core.AsParenExpr(v) }
+func IsDisjunct(v *core.Value) bool                            { return core.IsDisjunct(v) }
+func IsSplice(v *core.Value) bool                              { return core.IsSplice(v) }
+func IsNone(v *core.Value) bool                                { return core.IsNone(v) }
+func IsClassType(v *core.Value) bool                           { return core.IsClassType(v) }
+func IsParenExpr(v *core.Value) bool                           { return core.IsParenExpr(v) }
+func IsReach(v *core.Value) bool                               { return core.IsReach(v) }
+func IsTypedList(v *core.Value) bool                           { return core.IsTypedList(v) }
+func IsTypedMap(v *core.Value) bool                            { return core.IsTypedMap(v) }
+func IsWord(v *core.Value) bool                                { return core.IsWord(v) }
+func AsWord(v *core.Value) (core.WordInfo, error)              { return core.AsWord(v) }
+func CommonAncestorType(a *core.Type, b *core.Type) *core.Type { return core.CommonAncestorType(a, b) }
 func NewTypeSchema(t *core.Type, info *core.TypeSchemaInfo) core.Value {
 	return core.NewTypeSchema(t, info)
 }
 func AttachGenBound(r *core.Registry, node *core.Type, p core.GenParam) {
 	core.AttachGenBound(r, node, p)
 }
-func IsTypeParamNode(t *core.Type) bool { return core.IsTypeParamNode(t) }
-func TypeParamName(t *core.Type) string { return core.TypeParamName(t) }
-func SubstituteTypeParams(r *core.Registry, v core.Value, bindings map[string]core.Value, selfNode *core.Type) (core.Value, error) {
-	return core.SubstituteTypeParams(r, v, bindings, selfNode)
-}
-func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
-func NewSurfaceType(t *core.Type, info *core.SurfaceInfo) core.Value {
-	return core.NewSurfaceType(t, info)
-}
-func IsSugar(v *core.Value) bool                              { return core.IsSugar(v) }
-func IDPrefixForType(t *core.Type) string                     { return core.IDPrefixForType(t) }
+func TypeParamName(t *core.Type) string                       { return core.TypeParamName(t) }
+func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool)  { return core.SchemaInfoOf(t) }
 func CanonicalType(r *core.Registry, t *core.Type) *core.Type { return core.CanonicalType(r, t) }
 func ReparentValue(v core.Value, def *core.Type) core.Value   { return core.ReparentValue(v, def) }
 func IsBareTypeNode(v *core.Value) bool                       { return core.IsBareTypeNode(v) }
@@ -688,26 +657,9 @@ func IsTypeBody(v *core.Value) bool                           { return core.IsTy
 func IsTypeLiteral(v *core.Value) bool                        { return core.IsTypeLiteral(v) }
 func NewValueRaw(t *core.Type, data core.Payload) core.Value  { return core.NewValueRaw(t, data) }
 func NewCarrier(t *core.Type) core.Value                      { return core.NewCarrier(t) }
-func NewCarrierTypedList(elem *core.Type) core.Value          { return core.NewCarrierTypedList(elem) }
 func NewDynamicCarrier(t *core.Type) core.Value               { return core.NewDynamicCarrier(t) }
-func NewClassInstance(t *core.Type, info core.ClassInstanceInfo) core.Value {
-	return core.NewClassInstance(t, info)
-}
-func NewClassType(t *core.Type, info core.ClassTypeInfo) core.Value {
-	return core.NewClassType(t, info)
-}
-func NewResourceInstance(t *core.Type, info core.ResourceInstanceInfo) core.Value {
-	return core.NewResourceInstance(t, info)
-}
 func NewResourceType(t *core.Type, info core.ResourceTypeInfo) core.Value {
 	return core.NewResourceType(t, info)
-}
-func NewStore(t *core.Type) core.Value { return core.NewStore(t) }
-func NewStoreValue(t *core.Type, si *core.StoreInstanceInfo) core.Value {
-	return core.NewStoreValue(t, si)
-}
-func NewStoreWithPrototype(t *core.Type, prototype *core.StoreInstanceInfo) core.Value {
-	return core.NewStoreWithPrototype(t, prototype)
 }
 func NewTypeLiteral(t *core.Type) core.Value     { return core.NewTypeLiteral(t) }
 func NewBoundedType(bound *core.Type) core.Value { return core.NewBoundedType(bound) }
