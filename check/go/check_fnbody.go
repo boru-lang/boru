@@ -624,10 +624,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// abstract Function carrier. The carrier has no FnDefInfo, so
 				// binding it (`def g (mkfn)`) and later referencing `g` would
 				// fail to dispatch (undefined_word) — the closure-render gap.
-				// Cloned for a fresh ID (operand-provenance, like the concrete
-				// list/map fold in getNodeReturns). Only for a concrete fn
-				// residual aligned to this return slot; anything else keeps the
-				// carrier below.
+				// The value itself, not a clone: CloneValue hands a Function
+				// back unchanged (a fn payload is immutable), so the clone this
+				// once made bought no fresh ID. Only for a concrete fn residual
+				// aligned to this return slot; anything else keeps the carrier
+				// below.
 				//
 				// PLAIN-CHECK ONLY (!Compiling): during a REAL compile pass the
 				// emitter models a returned closure through its own PUSH_CLOSURE
@@ -643,7 +644,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					t.ConformsTo(core.TFunction) && len(stk) >= len(declaredReturns) {
 					if bv := stk[len(stk)-len(declaredReturns)+i]; core.IsConcrete(&bv) &&
 						bv.Parent.ConformsTo(core.TFunction) {
-						out[i] = core.CloneValue(bv)
+						out[i] = bv
 						continue
 					}
 				}

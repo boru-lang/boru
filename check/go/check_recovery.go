@@ -717,7 +717,6 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 	}
 	out := core.NewCarrier(core.TAny)
 	out.Dynamic = true
-	out.ID = core.GenerateID(core.IDPrefixForType(core.TAny))
 	out = core.WithPos(out, e.Tape.At(anchor))
 	// Seat the collapsed carrier at the window's first recordable literal
 	// and splice every later one out.

@@ -94,7 +94,7 @@ func legacyReMatchAgrees(fd core.FnDefInfo, below, args []core.Value) bool {
 // the value, and the args in signature order — ok=false for no pick, a
 // Fallback pick, or positions that are not the window's contiguous halves.
 func mixedPlanArgs(reg *core.Registry, fd core.FnDefInfo, window []core.Value, p int) (nStk, nFwd int, args []core.Value, ok bool) {
-	view := fnDispatchView(fd)
+	view := fnDispatchView(&fd)
 	h := newRegionHostOver(reg, window)
 	w := core.WordInfo{Name: fd.Name, ArgCount: -1}
 	resolved := window[:p]

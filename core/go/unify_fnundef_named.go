@@ -61,7 +61,7 @@ func (f *FnUndefUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	if v.Carrier {
 		return v.Parent.ConformsTo(TFunction) || v.Parent.Equal(TAny)
 	}
-	return fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), v, r)
+	return fnSpecsAdmitR(f.sigs, v, r)
 }
 
 // Unify admits a concrete function candidate by the same structural
@@ -97,7 +97,7 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("value is not a "+f.typeName+" function", a, b)
 	}
-	if fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), candidate, r) {
+	if fnSpecsAdmitR(f.sigs, candidate, r) {
 		return candidate, nil
 	}
 	return Value{}, unifyFail("function does not satisfy fn shape "+f.typeName, a, b)

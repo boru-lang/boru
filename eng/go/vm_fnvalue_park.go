@@ -93,7 +93,7 @@ func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward 
 			return noMatchUnproven, *fd
 		}
 	}
-	view := fnDispatchView(*fd)
+	view := fnDispatchView(fd)
 	for i := range view.Signatures {
 		if s := &view.Signatures[i]; !s.Fallback && s.TotalArgs() == 0 {
 			return noMatchUnproven, *fd
@@ -143,23 +143,11 @@ func planPicks(h *regionHost, reg *core.Registry, view *core.FnDefInfo, w core.W
 }
 
 // fnDispatchView is the signature view the interpreter's step matches a fn
-// value under (compileFnDef, without the body runners a match would need):
-// each signature with its all-forward barrier sentinel resolved, normalised,
-// and sorted into dispatch order.
-func fnDispatchView(fd core.FnDefInfo) core.FnDefInfo {
-	sigs := make([]core.Signature, len(fd.Signatures))
-	for i := range fd.Signatures {
-		s := fd.Signatures[i]
-		s.Params = append([]core.FnParam(nil), s.Params...)
-		if s.BarrierPos == core.BarrierAllForward {
-			s.BarrierPos = len(s.Params)
-		}
-		core.NormalizeSig(&s)
-		sigs[i] = s
-	}
-	core.SortSignatures(sigs)
-	view := fd
-	view.Signatures = sigs
+// value under: fd with its signatures in dispatch form (core.FnDispatchSigs,
+// built once per function and shared, so the view is read, never written).
+func fnDispatchView(fd *core.FnDefInfo) core.FnDefInfo {
+	view := *fd
+	view.Signatures = core.FnDispatchSigs(fd)
 	return view
 }
 

@@ -5093,7 +5093,9 @@ func (e *Engine) stepLiteral() error {
 			}
 		}
 	} else {
-		e.Tape.Set(fwdIdx, NewForward(fwd))
+		// The marker's own cell takes the advanced payload: no new Value
+		// per arrival (nothing reads a forward marker's identity).
+		e.Tape.Ref(fwdIdx).Data = fwd
 		e.Pointer = fwdIdx + 1
 	}
 
@@ -5467,7 +5469,6 @@ func (e *Engine) EvalXmlInterp(val Value) (Value, error) {
 		// and falls back, exactly as the string sibling.
 		if es := e.Registry.analysisRecorder(); es.Active() {
 			out := NewCarrier(TXml)
-			out.ID = GenerateID(IDPrefixForType(TXml))
 			if !holesOK || !es.RecordInterpXml(tmpl, holes, out, val.Pos()) {
 				es.MarkUncompilable("interpolated XML with a runtime-computed part")
 			}
@@ -7202,7 +7203,6 @@ func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
 		argVals = append(argVals, e.Tape.At(i))
 	}
 	out := NewCarrier(TAny)
-	out.ID = GenerateID(IDPrefixForType(TAny))
 	out.pos = fnv.pos
 	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, out, fnv.Pos())
 	if !ok {
@@ -9523,7 +9523,6 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 		}
 	}
 	out := NewCarrier(TAny)
-	out.ID = GenerateID(IDPrefixForType(TAny))
 	out.pos = fnVal.pos
 	if es.RecordDynMethod(fnVal, argVals, []Value{out}, "(paren apply)", fnVal.Pos()) {
 		e.Tape.Set(first, out)
@@ -9638,7 +9637,6 @@ func parenLeadArgTypedNonFn(v Value) bool {
 func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeIdx int) int {
 	lead := e.Tape.At(leadFn)
 	out := NewCarrier(TAny)
-	out.ID = GenerateID(IDPrefixForType(TAny))
 	out.pos = lead.pos
 	// A one-value window: the callee either consumes it or the record
 	// declines, so there is no partial-consumption case to thread here.
@@ -9749,7 +9747,6 @@ func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWin
 		retType = TAny
 	}
 	out := NewCarrier(retType)
-	out.ID = GenerateID(IDPrefixForType(retType))
 	out.pos = fnVal.pos
 	// The recorder matched the window to the callee's own arity, so the
 	// record consumes the whole window or declines: there is no partial

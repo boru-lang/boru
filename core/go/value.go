@@ -1158,6 +1158,9 @@ type fnIdent struct {
 	// copies go (an instance's method slot, a list of callbacks, the tape)
 	// and dies with it. Atomic: forked engines apply one value concurrently.
 	dispatch atomic.Pointer[compiledFnDef]
+	// view caches the function's dispatch-ordered signature list
+	// (FnDispatchSigs), keyed by the authored list it was built from.
+	view atomic.Pointer[sigView]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value

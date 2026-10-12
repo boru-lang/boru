@@ -77,3 +77,32 @@ func TestReadListRefIsTheElement(t *testing.T) {
 		t.Error("ReadList.Ref must point at the list's own element")
 	}
 }
+
+// FnDispatchSigs builds a fn value's dispatch view once per identity and
+// authored list: the all-forward barrier resolved, the sigs sorted; a second
+// read is the same list, a rebuilt authored list (one identity, new sigs)
+// rebuilds, and an identity-less payload builds per call.
+func TestFnDispatchSigsCachedOnIdentity(t *testing.T) {
+	one := Signature{Params: []FnParam{{Type: TInteger}}, BarrierPos: BarrierAllForward}
+	fv := NewFunction(FnDefInfo{Signatures: []Signature{one}})
+	fd := fv.Data.(*FnDefInfo)
+	first := FnDispatchSigs(fd)
+	if len(first) != 1 || first[0].BarrierPos != 1 {
+		t.Fatalf("the all-forward barrier must resolve to the arg count: %+v", first)
+	}
+	if fd.Signatures[0].BarrierPos != BarrierAllForward {
+		t.Fatal("the authored signature must stay as written")
+	}
+	if again := FnDispatchSigs(fd); &again[0] != &first[0] {
+		t.Error("a second read of one function must hit the cache")
+	}
+	grown := *fd // one identity, a rebuilt authored list
+	grown.Signatures = append([]Signature{{Params: []FnParam{{Type: TString}, {Type: TString}}}}, fd.Signatures...)
+	if got := FnDispatchSigs(&grown); len(got) != 2 {
+		t.Fatalf("a rebuilt list must rebuild the view, got %d sigs", len(got))
+	}
+	bare := FnDefInfo{Signatures: []Signature{one}} // no identity
+	if a, b := FnDispatchSigs(&bare), FnDispatchSigs(&bare); &a[0] == &b[0] {
+		t.Error("an identity-less payload has no cache")
+	}
+}

@@ -141,18 +141,26 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 	if !ok {
 		return false
 	}
+	return fnSpecsAdmitR(uInfo.Sigs, fnVal, r)
+}
+
+// fnSpecsAdmitR is the signature rule over the specs themselves: fnVal is a
+// function value with an overload satisfying every spec. The fn-shape
+// unifier holds its specs and asks this directly, without minting an
+// FnUndef value per test.
+func fnSpecsAdmitR(specs []FnSigSpec, fnVal Value, r *Registry) bool {
 	fnDef, ok := fnVal.Data.(*FnDefInfo)
 	if !ok {
 		return false
 	}
-	if len(uInfo.Sigs) == 0 {
+	if len(specs) == 0 {
 		// An empty constraint trivially matches any function. Treat
 		// this as an authoring error in practice — but it's well
 		// defined.
 		return true
 	}
-	for _, want := range uInfo.Sigs {
-		if !fnDefHasSigR(*fnDef, want, r) {
+	for _, want := range specs {
+		if !fnDefHasSigR(fnDef, want, r) {
 			return false
 		}
 	}
@@ -165,12 +173,12 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 // fallback excluded) so both boru fns and Go-implemented words are
 // considered. The variance rule is delegated to FnSigSatisfiesSpec.
 func FnDefHasSig(fnDef FnDefInfo, want FnSigSpec) bool {
-	return fnDefHasSigR(fnDef, want, nil)
+	return fnDefHasSigR(&fnDef, want, nil)
 }
 
 // fnDefHasSigR is FnDefHasSig with the enclosing unify chain's registry
 // threaded through (see fnSigSatisfiesSpecR).
-func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
+func fnDefHasSigR(fnDef *FnDefInfo, want FnSigSpec, r *Registry) bool {
 	for _, s := range fnDef.OwnSigs() {
 		if fnSigSatisfiesSpecR(s, want, r) {
 			return true

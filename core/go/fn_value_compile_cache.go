@@ -62,3 +62,44 @@ func compiledFnDefFor(reg *Registry, fnDef FnDefInfo) *FnDefInfo {
 	})
 	return fn
 }
+
+// sigView is a function's dispatch-ordered signature list (FnDispatchSigs)
+// with the authored list it was built from, by identity (sameList).
+type sigView struct {
+	src  []Signature
+	sigs []Signature
+}
+
+// FnDispatchSigs returns fd's signatures as the interpreter's step matches a
+// fn value under them (compileFnDef's view, without the body runners a match
+// needs): each with its all-forward barrier resolved and normalised, sorted
+// into dispatch order. It is built once per function identity and authored
+// list and shared by every caller after: never write into it. A payload with
+// no identity builds it on every call.
+func FnDispatchSigs(fd *FnDefInfo) []Signature {
+	id := fd.ident
+	if id == nil {
+		return dispatchSigs(fd.Signatures)
+	}
+	if c := id.view.Load(); c != nil && sameList(c.src, fd.Signatures) {
+		return c.sigs
+	}
+	sigs := dispatchSigs(fd.Signatures)
+	id.view.Store(&sigView{src: fd.Signatures, sigs: sigs})
+	return sigs
+}
+
+func dispatchSigs(src []Signature) []Signature {
+	sigs := make([]Signature, len(src))
+	for i := range src {
+		s := src[i]
+		s.Params = append([]FnParam(nil), s.Params...)
+		if s.BarrierPos == BarrierAllForward {
+			s.BarrierPos = len(s.Params)
+		}
+		NormalizeSig(&s)
+		sigs[i] = s
+	}
+	SortSignatures(sigs)
+	return sigs
+}

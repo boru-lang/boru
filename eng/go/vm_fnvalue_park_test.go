@@ -78,7 +78,7 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 		t.Errorf("a /s-retry match is not a no-match: %v", v)
 	}
 	// …and it is the RETRY that matched, not the first plan.
-	twoView := fnDispatchView(*two.Data.(*core.FnDefInfo))
+	twoView := fnDispatchView(two.Data.(*core.FnDefInfo))
 	h := newRegionHostOver(r, append(append(append([]core.Value(nil), stk...), two), fwd...))
 	w := core.WordInfo{ArgCount: -1}
 	if planPicks(h, r, &twoView, w, stk) {
