@@ -752,7 +752,7 @@ func TestS5AUsurpUndefinedCheckMode(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordUsurp("s5a-missing", false)}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -762,7 +762,7 @@ func TestS5AUsurpNonFnCheckMode(t *testing.T) {
 	InstallDef(r, "s5aval", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordUsurp("s5aval", false)}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	found := false
@@ -786,7 +786,7 @@ func TestS5AUsurpBarrierCommit(t *testing.T) {
 	e := s5aEng(t, r, []Value{
 		NewInteger(1), NewInteger(2), NewWord("cadd"), fwd, NewWordUsurp("cneg", false),
 	}, 4)
-	if err := e.stepWord(e.Tape.At(4)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(4)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	if e.Pointer != 2 {
@@ -798,7 +798,7 @@ func TestS5ARefUndefinedCheckMode(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5a-missing")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -814,7 +814,7 @@ func TestS5AValDynamicCarrierCheckMode(t *testing.T) {
 	InstallDef(r, "s5adyn", c)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5adyn")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	got := e.Tape.At(0)
@@ -828,7 +828,7 @@ func TestS5ARefNonFnCheckMode(t *testing.T) {
 	InstallDef(r, "s5aval", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5aval")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -841,7 +841,7 @@ func TestS5ARefArrivesAtPendingForward(t *testing.T) {
 		FuncIndex: 0, Sig: caddSig,
 	})
 	e := s5aEng(t, r, []Value{NewWord("cadd"), fwd, NewWordRef("cneg")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -860,7 +860,7 @@ func TestS5AStepWordFormArgCapture(t *testing.T) {
 	sig := &Signature{Args: []*Type{TAny}, FormArgs: map[int]bool{0: true}, BarrierPos: 1}
 	fwd := NewForward(ForwardInfo{FuncName: "s5ahost", ExpectedArgs: 1, FuncIndex: 0, Sig: sig})
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, NewWord("s5araw")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -901,7 +901,7 @@ func TestS5AStepWordDefReadCheckMode(t *testing.T) {
 	InstallDef(r, "s5anum", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWord("s5anum")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -915,7 +915,7 @@ func TestS5AStepWordSplicePendingForward(t *testing.T) {
 		FuncIndex: 0, Sig: caddSig,
 	})
 	e := s5aEng(t, r, []Value{NewWord("cadd"), fwd, NewWord("s5asp")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	// The splice-bound word was wrapped as (w) and expanded to markers.
@@ -971,7 +971,7 @@ func TestS5ACheckModeFallbackRetry(t *testing.T) {
 	r := s5aFallbackReg(t)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewString("x"), NewWord("s5afb")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -985,7 +985,7 @@ func TestS5ACheckModeSurfaceShapeHandles(t *testing.T) {
 	}
 	defer func() { CheckBraid.CheckModeSurfaceShape = saved }()
 	e := s5aEng(t, r, []Value{NewString("x"), NewWord("s5afb")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -1029,7 +1029,7 @@ func TestS5ADriftWindowRecorderHook(t *testing.T) {
 	e := s5aEng(t, r, []Value{
 		NewInteger(1), NewInteger(2), NewWordModified("cadd", -1, true, false),
 	}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -1051,7 +1051,7 @@ func TestS5APolicyGateWordDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := s5aEng(t, r, []Value{NewWord("cadd")}, 0)
-	err := e.stepWord(e.Tape.At(0))
+	err := e.stepWord(e.Tape.Ref(0))
 	if err == nil || !strings.Contains(err.Error(), "s5a policy denies word") {
 		t.Fatalf("stepWord = %v, want policy denial", err)
 	}
@@ -1180,7 +1180,7 @@ func TestS5AFullStackCheckFold(t *testing.T) {
 	defer func() { r.Check.Emit = saved }()
 
 	e := s5aEng(t, r, []Value{NewInteger(1), NewWord("s5afs")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	if e.Tape.Len() != 1 {

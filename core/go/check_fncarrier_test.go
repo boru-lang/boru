@@ -96,7 +96,7 @@ func TestStepWordCompileCarrierSubstitute(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("substituting stepWord errored: %v", err)
 	}
 	got := e.Tape.At(0)
@@ -193,7 +193,7 @@ func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
 	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
@@ -228,7 +228,7 @@ func TestStepWordCompileCarrierMissStaysUndefined(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("nope")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("miss-arm stepWord errored: %v", err)
 	}
 	if got := e.Tape.At(0); !got.Undefined {
@@ -279,7 +279,7 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	carrier := NewCarrier(TWord)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{carrier}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord over a word carrier errored: %v", err)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -412,7 +412,7 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("nested-body stepWord errored: %v", err)
 	}
 	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
@@ -458,7 +458,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("h")}, StackHeadroom)
 	e.Pointer = 3
-	err := e.stepWord(e.Tape.At(3))
+	err := e.stepWord(e.Tape.Ref(3))
 	if err == nil || !strings.Contains(err.Error(), "strict rule") {
 		t.Fatalf("a fn word read under a pending forward strands it, got %v", err)
 	}
@@ -468,7 +468,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e = NewTop(r)
 	e.Tape = NewTape([]Value{fwdMarker("cadd", 3, 2, 0), NewInteger(3), NewInteger(4), NewWord("cadd"), NewWord("h")}, StackHeadroom)
 	e.Pointer = 4
-	if err := e.stepWord(e.Tape.At(4)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(4)); err != nil {
 		t.Fatalf("a committing barrier returns nil, got %v", err)
 	}
 	if IsWord(e.Tape.Ref(e.Tape.Len()-1)) == false {
@@ -480,7 +480,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e = NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("g")}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepWord(e.Tape.At(3)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(3)); err != nil {
 		t.Errorf("a gradual carrier's read is not a barrier, got %v", err)
 	}
 }

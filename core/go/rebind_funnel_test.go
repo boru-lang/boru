@@ -132,13 +132,13 @@ func TestBindingReadsNoteThroughTheFunnel(t *testing.T) {
 		{
 			"stepWord, a value read",
 			func(r *Registry) { r.Defs.Push("k", NewInteger(5)) },
-			func(e *Engine) error { return e.stepWord(e.Tape.At(0)) },
+			func(e *Engine) error { return e.stepWord(e.Tape.Ref(0)) },
 			FrozenBakeValue,
 		},
 		{
 			"stepWord, a type read",
 			func(r *Registry) { r.Defs.PushType("k", TInteger, NewTypeLiteral(TInteger)) },
-			func(e *Engine) error { return e.stepWord(e.Tape.At(0)) },
+			func(e *Engine) error { return e.stepWord(e.Tape.Ref(0)) },
 			FrozenBakeType,
 		},
 		{

@@ -85,7 +85,7 @@ func strictTape() []Value {
 func TestStrictBarrierStepWordOff(t *testing.T) {
 	setStrict(t, false)
 	e := engWithTape(t, strictTape(), 3)
-	if err := e.stepWord(e.Tape.At(3)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(3)); err != nil {
 		t.Errorf("gate off keeps shipped behaviour, got %v", err)
 	}
 }
@@ -93,7 +93,7 @@ func TestStrictBarrierStepWordOff(t *testing.T) {
 func TestStrictBarrierStepWordOn(t *testing.T) {
 	setStrict(t, true)
 	e := engWithTape(t, strictTape(), 3)
-	err := e.stepWord(e.Tape.At(3))
+	err := e.stepWord(e.Tape.Ref(3))
 	if err == nil {
 		t.Fatal("gate on: expected stranded-forward error from stepWord")
 	}

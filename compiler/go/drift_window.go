@@ -76,7 +76,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// `def mk fn [[][Any][42]] end mk mk add 1` is `[42 43]`, where the
 	// match over two carriers took `add (Bytes, Bytes)` all-stack and the
 	// poly re-match answered `[84 1]` (NUR287).
-	if !e.Tape.At(topPos).Dynamic {
+	if !e.Tape.Ref(topPos).Dynamic {
 		return false
 	}
 	fwdIdx := e.Pointer + 1

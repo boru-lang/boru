@@ -79,7 +79,7 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	r.Defs.Push("g", g)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("g")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("bare read errored: %v", err)
 	}
 	if len(es.noted) != 1 || es.noted[0] != "g" {
@@ -92,7 +92,7 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	r.Defs.Push("n", n)
 	e.Tape = NewTape([]Value{NewWord("n")}, StackHeadroom)
 	e.Pointer = 0
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("bare read errored: %v", err)
 	}
 	if len(es.noted) != 1 {

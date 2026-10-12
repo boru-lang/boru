@@ -2173,6 +2173,15 @@ func (v *Value) Pos() SrcPos {
 	return *v.pos
 }
 
+// derefPos is Pos for a position read off a cell earlier (a word step
+// snapshots its cell's pos before the tape moves under it).
+func derefPos(p *SrcPos) SrcPos {
+	if p == nil {
+		return SrcPos{}
+	}
+	return *p
+}
+
 // SetPos attaches a source position, allocating a *SrcPos. Internal eng
 // code threads a position without allocating by copying the pos pointer
 // directly (`v.pos = other.pos`, as WithPos does); SetPos is the exported
@@ -2886,10 +2895,14 @@ func (v *Value) Is(t *Type) bool {
 	if t == nil {
 		return false
 	}
-	if t.Behavior() == nil {
+	switch b := t.Behavior().(type) {
+	case nil:
 		return v.Parent.ConformsTo(t)
+	case defaultMatcher:
+		return defaultMatch(v, t)
+	default:
+		return b.Match(*v, t)
 	}
-	return t.Behavior().Match(*v, t)
 }
 
 // IsNone reports whether v is the value `none` (not the None type

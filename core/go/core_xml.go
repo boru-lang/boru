@@ -14,6 +14,7 @@ import "strings"
 type xmlBehavior struct{}
 
 func (xmlBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (xmlBehavior) matchesAsDefault()           {}
 
 func (xmlBehavior) Format(v Value) string {
 	tag, attr, cren, ok := xmlParts(v)

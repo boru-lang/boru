@@ -170,7 +170,7 @@ func (e *Engine) evalSealed(toks []Value, kind string) ([]Value, error) {
 		if e.Pointer >= end {
 			break
 		}
-		val := e.Tape.At(e.Pointer)
+		val := e.Tape.Ref(e.Pointer)
 		// Line-coverage seam (coverage.go): the region's tokens step here,
 		// off the main loop — the main loop's per-step emit, mirrored.
 		e.Registry.noteCoverage(val.Pos())

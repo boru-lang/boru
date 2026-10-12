@@ -142,7 +142,7 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 	}
 	for i := 0; i < n; i++ {
 		at := e.Pointer - 1 - i
-		if indices[i] != at || at < 0 || match.Args[i].ID == "" || e.Tape.At(at).ID != match.Args[i].ID {
+		if indices[i] != at || at < 0 || match.Args[i].ID == "" || e.Tape.Ref(at).ID != match.Args[i].ID {
 			return nil
 		}
 	}

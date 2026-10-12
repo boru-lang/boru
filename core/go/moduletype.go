@@ -81,6 +81,7 @@ type moduleTypeBehavior struct {
 }
 
 func (moduleTypeBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (moduleTypeBehavior) matchesAsDefault()           {}
 func (moduleTypeBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 
 func (b moduleTypeBehavior) Format(v Value) string {

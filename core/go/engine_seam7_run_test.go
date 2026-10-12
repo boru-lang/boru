@@ -244,7 +244,7 @@ func TestS7StepWordForwardExpectingFunction(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{fwd, NewWord("cadd")}, StackHeadroom)
 	e.Pointer = 1
-	err := e.stepWord(e.Tape.At(1))
+	err := e.stepWord(e.Tape.Ref(1))
 	if err == nil || !strings.Contains(err.Error(), "begins its own dispatch") {
 		t.Fatalf("a bare fn name before a Function slot must dispatch, not arrive as a reference: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestS7StepWordForwardExpectingFunction(t *testing.T) {
 	w = NewValueRaw(TWord, info)
 	e.Tape = NewTape([]Value{fwd, w}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord cadd/v: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {

@@ -89,11 +89,27 @@ func (dt *DefTable) Top(name string) (Value, bool) {
 	if len(ds) == 0 {
 		return Value{}, false
 	}
-	e := ds[len(ds)-1]
+	e := &ds[len(ds)-1]
 	if e.TypeDef != nil {
 		return NewTypeLiteral(e.TypeDef), true
 	}
 	return e.Body, true
+}
+
+// TopRef returns the most recent binding for name where it lives, or
+// (nil, false) if name is unbound: the reader's view of the binding
+// without copying it out. The pointer is valid until name's binding stack
+// next changes (a push may move the stack), and it is never written
+// through — a binding is shared by every reader of the name.
+func (dt *DefTable) TopRef(name string) (*DefEntry, bool) {
+	if dt == nil {
+		return nil, false
+	}
+	ds := dt.stacks[name]
+	if len(ds) == 0 {
+		return nil, false
+	}
+	return &ds[len(ds)-1], true
 }
 
 // TopEntry returns the most recent binding (body plus the type def, if

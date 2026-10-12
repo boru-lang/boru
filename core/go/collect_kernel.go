@@ -573,7 +573,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 	// One inner loop over parameters, matching forward tokens.
 	for fwd < forwardLimit && scanIdx < win.Len() {
 
-		tok := win.At(scanIdx)
+		tok := win.Ref(scanIdx)
 		expectedType := SigArgType(sig, fwd)
 
 		// 1.4: structural boundaries (forward / mark / move /
@@ -588,13 +588,13 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// is three loops over the same tokens with three stop
 		// condition sets (design/FULL-COMPILATION.0.md §6.2); every
 		// decision they share belongs in one place.
-		if scanBoundaryToken(&tok) {
+		if scanBoundaryToken(tok) {
 			break
 		}
 
 		// 1.5: open parens are pre-evaluated by preEvalParens
 		// before matching begins. If one remains, treat as boundary.
-		if IsOpenParen(&tok) {
+		if IsOpenParen(tok) {
 			break
 		}
 
@@ -610,8 +610,8 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			continue
 		}
 
-		if IsWord(&tok) {
-			ww, _ := AsWord(&tok)
+		if IsWord(tok) {
+			ww, _ := AsWord(tok)
 			// /q modifier: capture the upcoming Word as an Atom
 			// (the conversion happens at insertForward / stepLiteral
 			// time; here we just count it as a match).
@@ -754,7 +754,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		}
 
 		// Open paren marker: boundary, stop forward scan.
-		if IsOpenParen(&tok) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+		if IsOpenParen(tok) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 			break
 		}
 
@@ -765,8 +765,8 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// its bare-word spelling would. One with no claim is an
 		// operand (a branch arm, a reference) and scans on, as
 		// does one filling this sig's own Function slot.
-		if tok.ReachGroup && !tok.Quoted && isFnDefValue(tok) &&
-			h.ReachFnWouldClaim(tok, scanIdx+1) {
+		if tok.ReachGroup && !tok.Quoted && isFnDefValue(*tok) &&
+			h.ReachFnWouldClaim(*tok, scanIdx+1) {
 			break
 		}
 
@@ -783,7 +783,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// matches. Inert at runtime (operands are concrete there). Mirrors
 		// the stack-phase and positionalMatch /q guards. See
 		// design/legacy/module-fn-checkstate-ownership.2.ignore.
-		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(&tok) && !tok.Parent.ConformsTo(TAtom) {
+		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(tok) && !tok.Parent.ConformsTo(TAtom) {
 			break
 		}
 
@@ -794,8 +794,8 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// QuoteArgs flag selects the Angle marker's head form
 		// (the binder's name slot). An unexpandable marker is
 		// a boundary; it errors at step time.
-		if IsSugar(&tok) {
-			sinfo, sok := AsSugar(tok)
+		if IsSugar(tok) {
+			sinfo, sok := AsSugar(*tok)
 			if !sok { //covergate:allow IsSugar guarantees a SugarInfo payload
 				break
 			}
@@ -807,7 +807,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			if sinfo.Kind == SugarAngle {
 				break
 			}
-			exp, serr := h.ExpandSugarTokens(sinfo, tok, false)
+			exp, serr := h.ExpandSugarTokens(sinfo, *tok, false)
 			if serr != nil {
 				break
 			}
@@ -815,9 +815,9 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			continue
 		}
 		// Literal value: direct type check.
-		if SigArgMatches(sig, fwd, &tok) || expectedType.Equal(TAny) {
+		if SigArgMatches(sig, fwd, tok) || expectedType.Equal(TAny) {
 			isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
-			if !isTypeArg && rejectsTypeLiteral(tok, expectedType) {
+			if !isTypeArg && rejectsTypeLiteral(*tok, expectedType) {
 				break // reject type literal at concrete-payload sig
 			}
 			positions[fwd] = scanIdx

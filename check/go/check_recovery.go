@@ -254,7 +254,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 			topPos = p
 		}
 	}
-	if !e.Tape.At(topPos).Dynamic {
+	if !e.Tape.Ref(topPos).Dynamic {
 		return false
 	}
 	nxt := e.Pointer + 1

@@ -98,6 +98,7 @@ func init() {
 type objectConvertBehavior struct{}
 
 func (objectConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (objectConvertBehavior) matchesAsDefault()           {}
 func (objectConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (objectConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (objectConvertBehavior) ToMap(v Value) (Value, error) {
@@ -150,6 +151,7 @@ func orderedMapValues(m *OrderedMap) []Value {
 type storeConvertBehavior struct{}
 
 func (storeConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (storeConvertBehavior) matchesAsDefault()           {}
 func (storeConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (storeConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (storeConvertBehavior) ToMap(v Value) (Value, error) {
@@ -179,6 +181,7 @@ func storeEntryMap(v Value) *OrderedMap {
 type errorConvertBehavior struct{}
 
 func (errorConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (errorConvertBehavior) matchesAsDefault()           {}
 func (errorConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (errorConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (errorConvertBehavior) ToMap(v Value) (Value, error) {
@@ -212,6 +215,7 @@ func (errorConvertBehavior) ToList(v Value) (Value, error) {
 type reachConvertBehavior struct{}
 
 func (reachConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (reachConvertBehavior) matchesAsDefault()           {}
 func (reachConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (reachConvertBehavior) Format(v Value) string       { return canonReach(v) }
 
@@ -282,6 +286,7 @@ func init() {
 type tableConvertBehavior struct{}
 
 func (tableConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (tableConvertBehavior) matchesAsDefault()           {}
 func (tableConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (tableConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (tableConvertBehavior) ToList(v Value) (Value, error) {

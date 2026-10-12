@@ -10,6 +10,7 @@ import "strings"
 type listFormatBehavior struct{}
 
 func (listFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (listFormatBehavior) matchesAsDefault()           {}
 func (listFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (listFormatBehavior) Format(v Value) string {
 	if tt, ok := v.Data.(TableTypeInfo); ok {
@@ -141,6 +142,7 @@ func formatFieldBag(name string, fields *OrderedMap) string {
 type mapFormatBehavior struct{}
 
 func (mapFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (mapFormatBehavior) matchesAsDefault()           {}
 func (mapFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (mapFormatBehavior) Format(v Value) string {
 	if ct, ok := v.Data.(ChildTypeInfo); ok {

@@ -193,32 +193,25 @@ func TestRunPooledDropsGrownTape(t *testing.T) {
 }
 
 // TestPutSubEngineClearsScratch pins that returning a sub-engine to the pool
-// releases the forward-collection scratch buffers (rrValues / rrReordered):
-// their slots are zeroed to capacity so a pooled idle engine cannot pin a
-// prior call's (possibly large) collected-arg payloads, while the backing
-// arrays are retained for reuse.
+// releases the forward-collection scratch buffer (rrValues): its slots are
+// zeroed to capacity so a pooled idle engine cannot pin a prior call's
+// (possibly large) collected-arg payloads, while the backing array is
+// retained for reuse.
 func TestPutSubEngineClearsScratch(t *testing.T) {
 	r := poolTestRegistry(t)
 	e := r.TakeSubEngine()
 	e.rrValues = append(e.rrValues, NewInteger(1), NewInteger(2))
-	e.rrReordered = append(e.rrReordered, NewInteger(3))
 	r.PutSubEngine(e)
 	if len(r.enginePool) != 1 {
 		t.Fatalf("engine not pooled: pool size %d", len(r.enginePool))
 	}
 	pooled := r.TakeSubEngine() // LIFO: the same engine back
-	if len(pooled.rrValues) != 0 || len(pooled.rrReordered) != 0 {
-		t.Fatalf("scratch not reset to empty: rrValues len %d rrReordered len %d",
-			len(pooled.rrValues), len(pooled.rrReordered))
+	if len(pooled.rrValues) != 0 {
+		t.Fatalf("scratch not reset to empty: rrValues len %d", len(pooled.rrValues))
 	}
 	for i, v := range pooled.rrValues[:cap(pooled.rrValues)] {
 		if v != (Value{}) {
 			t.Fatalf("rrValues[%d] not zeroed after pooling: %+v", i, v)
-		}
-	}
-	for i, v := range pooled.rrReordered[:cap(pooled.rrReordered)] {
-		if v != (Value{}) {
-			t.Fatalf("rrReordered[%d] not zeroed after pooling: %+v", i, v)
 		}
 	}
 }
