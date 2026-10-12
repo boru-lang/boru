@@ -1400,12 +1400,12 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 		return nil, 0, nil, false
 	}
 	for i, rv := range residual {
-		pr, produced := es.producedBy[rv.ID]
+		pr, produced := es.producedBy[core.IDOf(&rv)]
 		if reads[i] {
-			if before[rv.ID] == 0 {
+			if before[core.IDOf(&rv)] == 0 {
 				break
 			}
-			before[rv.ID]--
+			before[core.IDOf(&rv)]--
 		} else if own, known := es.statementPushed(tree, rv, start, firstSeq); !known {
 			return nil, 0, nil, false
 		} else if own {
@@ -1464,7 +1464,7 @@ func (es *EmitState) stackAtStart(tok int) ([]core.Value, bool) {
 func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
 	slots = []vmSlot{}
 	for _, v := range stack {
-		if pr, produced := es.producedBy[v.ID]; produced {
+		if pr, produced := es.producedBy[core.IDOf(&v)]; produced {
 			if slot, promoted := lw.promoted[pr.seq]; promoted {
 				srcs = append(srcs, RestartSrc{Kind: RestartLocal, Idx: slot + pr.idx})
 				continue
@@ -1474,7 +1474,7 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 			held++
 			continue
 		}
-		if core.IsBareTypeNode(&v) && v.ID != "" && !core.IsDynamic(&v) {
+		if core.IsBareTypeNode(&v) && core.IDOf(&v) != "" && !core.IsDynamic(&v) {
 			srcs = append(srcs, RestartSrc{Kind: RestartType, Val: v})
 			continue
 		}
@@ -1495,7 +1495,7 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 // by the top-level tokens spelling it, when they all stand on one side of
 // start.
 func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, start core.SrcPos, firstSeq int) (own, known bool) {
-	if pr, produced := es.producedBy[rv.ID]; produced {
+	if pr, produced := es.producedBy[core.IDOf(&rv)]; produced {
 		if te, in := tree[pr.seq]; in {
 			if p := eventPos(*te.ev); p.Row > 0 {
 				return !posAfter(start, p), true
@@ -1539,22 +1539,22 @@ func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, star
 func (es *EmitState) boundReadsBefore(tree map[int]treeEvent, residual []core.Value, start core.SrcPos) (before map[string]int, reads []bool, ok bool) {
 	bound := map[string][]core.SrcPos{}
 	for _, te := range tree {
-		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil && d.val.ID != "" {
-			bound[d.val.ID] = append(bound[d.val.ID], d.val.Pos())
+		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil && core.IDOf(&d.val) != "" {
+			bound[core.IDOf(&d.val)] = append(bound[core.IDOf(&d.val)], d.val.Pos())
 		}
 	}
 	reads = make([]bool, len(residual))
 	occ := map[string]int{}
 	for i, rv := range residual {
-		poss, isBound := bound[rv.ID]
+		poss, isBound := bound[core.IDOf(&rv)]
 		if !isBound {
 			continue
 		}
-		if _, produced := es.producedBy[rv.ID]; !produced && !containsPos(poss, rv.Pos()) {
+		if _, produced := es.producedBy[core.IDOf(&rv)]; !produced && !containsPos(poss, rv.Pos()) {
 			continue
 		}
 		reads[i] = true
-		occ[rv.ID]++
+		occ[core.IDOf(&rv)]++
 	}
 	before = map[string]int{}
 	receivers := map[core.SrcPos]bool{}

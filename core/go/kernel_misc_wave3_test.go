@@ -66,13 +66,13 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 
 	dyn := NewDynamicTypeTable()
 	dyn.Adopt(minted)
-	if dyn.LookupByID(minted.ID) != minted {
+	if dyn.LookupByID(IDOf(minted)) != minted {
 		t.Error("adopted type not resolvable by ID")
 	}
 	// Idempotent: a same-ID re-adoption keeps the first pointer.
 	clone := *minted
 	dyn.Adopt(&clone)
-	if dyn.LookupByID(minted.ID) != minted {
+	if dyn.LookupByID(IDOf(minted)) != minted {
 		t.Error("re-adoption replaced the canonical pointer")
 	}
 	// Nil / empty-ID no-ops.
@@ -83,7 +83,7 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 
 	// Retire removes the identity.
 	dyn.Retire(minted)
-	if dyn.LookupByID(minted.ID) != nil {
+	if dyn.LookupByID(IDOf(minted)) != nil {
 		t.Error("retired type still resolvable")
 	}
 	dyn.Retire(nil)
@@ -91,8 +91,8 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 }
 
 func TestBuiltinIDForPath(t *testing.T) {
-	if got := BuiltinIDForPath(TInteger.Path()); got != TInteger.ID {
-		t.Errorf("BuiltinIDForPath(Integer) = %q, want %q", got, TInteger.ID)
+	if got := BuiltinIDForPath(TInteger.Path()); got != IDOf(TInteger) {
+		t.Errorf("BuiltinIDForPath(Integer) = %q, want %q", got, IDOf(TInteger))
 	}
 	if BuiltinIDForPath("No/Such/Path") != "" {
 		t.Error("bogus path yielded an ID")

@@ -29,8 +29,8 @@ func reStepUnit(t *testing.T, body []core.Value, resume core.SrcPos, outOps ...E
 	rec := es.fnRecs[unit]
 	five := es.internUnpooled(core.NewInteger(5))
 	out0, out1 := core.NewCarrier(core.TInteger), core.NewCarrier(core.TFunction)
-	es.producedBy[out0.ID] = producer{seq: 1}
-	es.producedBy[out1.ID] = producer{seq: 1, idx: 1}
+	es.producedBy[core.IDOf(&out0)] = producer{seq: 1}
+	es.producedBy[core.IDOf(&out1)] = producer{seq: 1, idx: 1}
 	rec.frag = &EmitFragment{events: []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "swap", nout: 2, pos: deoptAt(3), ops: []EmitOperand{localOperand(0), ConstOperand(five)}}},
 		{seq: 2, kind: evCall, call: emitCall{word: "drop", nout: 0, pos: deoptAt(8), ops: []EmitOperand{EventOperand(1, 1)}}},
@@ -51,9 +51,9 @@ func TestNoteFnResultReStepArms(t *testing.T) {
 	if len(es.reStepNotes) != 0 {
 		t.Fatalf("an unproduced result notes nothing: %v", es.reStepNotes)
 	}
-	es.producedBy[fn.ID] = producer{seq: 4}
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 4}
 	dyn := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[dyn.ID] = producer{seq: 4, idx: 1}
+	es.producedBy[core.IDOf(&dyn)] = producer{seq: 4, idx: 1}
 	es.NoteFnResultReStep(dyn, deoptAt(1))
 	if n := es.reStepNotes[4]; n.strict || n.resume != deoptAt(1) {
 		t.Errorf("a gradual result notes non-strict at its resume: %+v", n)

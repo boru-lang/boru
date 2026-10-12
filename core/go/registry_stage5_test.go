@@ -164,7 +164,7 @@ func TestResolveTypeLiteralDefClassBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	lit := NewTypeLiteral(TInteger)
-	if name := TypeNameByID(lit.ID); name != "Integer" {
+	if name := TypeNameByID(IDOf(&lit)); name != "Integer" {
 		t.Fatalf("precondition: TypeNameByID = %q, want Integer", name)
 	}
 	cv := NewClassType(TInteger, ClassTypeInfo{Fields: NewOrderedMap(), Name: "Class/Stage5"})

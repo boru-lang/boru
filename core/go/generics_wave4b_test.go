@@ -663,7 +663,7 @@ func TestResolveSigRecordFields(t *testing.T) {
 	inertFields.Set("a", NewInteger(1))
 	inertFields.Set("b", NewMap(NewOrderedMap()))
 	inert := NewMap(inertFields)
-	if out := ResolveSigRecordFields(r, inert); out.ID != inert.ID {
+	if out := ResolveSigRecordFields(r, inert); IDOf(&out) != IDOf(&inert) {
 		t.Errorf("all-concrete field map rebuilt: %v", out)
 	}
 

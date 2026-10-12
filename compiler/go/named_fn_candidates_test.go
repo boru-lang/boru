@@ -20,7 +20,7 @@ func nfState() (*EmitState, core.Value) {
 	es.frames = [][]EmitEvent{{{kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: 5}}, seq: 1}}}
 	es.producedBy = map[string]producer{"v": {seq: 1, idx: 0}}
 	v := core.NewCarrier(core.TFunction)
-	v.ID = "v"
+	core.SetID(&v, "v")
 	return es, v
 }
 
@@ -72,12 +72,12 @@ func TestLandingArg(t *testing.T) {
 		t.Error("a nil state lands nothing")
 	}
 	inactive := &EmitState{}
-	inactive.NoteLandingNext(core.Value{ID: "v"}, core.LandingNextWord, false, core.Value{})
+	inactive.NoteLandingNext(withID(core.Value{}, "v"), core.LandingNextWord, false, core.Value{})
 	if len(inactive.landingNext) != 0 {
 		t.Error("an inactive recorder notes nothing")
 	}
 	es, v := nfState()
-	es.NoteLandingNext(core.Value{ID: "unproduced"}, core.LandingNextWord, false, core.Value{})
+	es.NoteLandingNext(withID(core.Value{}, "unproduced"), core.LandingNextWord, false, core.Value{})
 	if len(es.landingNext) != 0 {
 		t.Error("a value with no producing event has no landing to note")
 	}
@@ -122,7 +122,7 @@ func TestNamedFnUnmatchedAtTail(t *testing.T) {
 	es := NewEmitState()
 	oneArg := []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1}}
 	inc := core.NewFunction(core.FnDefInfo{Name: "inc", Signatures: oneArg})
-	inc.ID = "inc-1"
+	core.SetID(&inc, "inc-1")
 	if !es.namedFnUnmatchedAtTail(inc) {
 		t.Error("a named fn with only an arg-taking overload is the interpreter's raise")
 	}
@@ -197,7 +197,7 @@ func TestPolyCallDeclineReasonMemberReadAndWreckage(t *testing.T) {
 
 func TestCrossesBoundaryWordNext(t *testing.T) {
 	es, v := nfState()
-	rest := []core.Value{{ID: "later"}}
+	rest := []core.Value{withID(core.Value{}, "later")}
 	if es.crossesBoundary(v, rest) {
 		t.Error("nothing noted: no crossing")
 	}
@@ -238,7 +238,7 @@ func TestTrailingApplyPlacedDeclines(t *testing.T) {
 	es, v := nfState()
 	lw := &lowerer{vm: []vmSlot{{seq: 1, idx: 0}}}
 	residual := []core.Value{core.NewInteger(7), v}
-	if rot, ok := es.trailingApply(lw, residual); !ok || len(rot) != 2 || rot[0].ID != "v" {
+	if rot, ok := es.trailingApply(lw, residual); !ok || len(rot) != 2 || core.IDOf(&rot[0]) != "v" {
 		t.Fatalf("a trailing fn-typed carrier over one literal is the rotated apply, got %v %v", rot, ok)
 	}
 	es.reg = &core.Registry{Check: &core.CheckState{ParenPlacedFnIDs: map[string]bool{"v": true}}}
@@ -263,7 +263,7 @@ func TestTrailingApplyPlacedDeclines(t *testing.T) {
 func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
 	es := NewEmitState()
 	carrier := core.NewCarrier(core.TFunction)
-	carrier.ID = "c"
+	core.SetID(&carrier, "c")
 	elem := core.NewInteger(1)
 	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil, &emitUnit{localByID: map[string]int{}}, 0) {
 		t.Error("a fn-typed carrier over the element is an unapplied apply")
@@ -318,7 +318,7 @@ func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
 func TestDefReadFnTailArity(t *testing.T) {
 	es := NewEmitState()
 	v := core.NewCarrier(core.TFunction)
-	v.ID = "a5"
+	core.SetID(&v, "a5")
 	if n, _ := es.defReadFnTailArity(v); n != 0 {
 		t.Error("no registry, no claim")
 	}

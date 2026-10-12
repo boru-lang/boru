@@ -55,7 +55,7 @@ func TestDynScopeRescueReaderFallback(t *testing.T) {
 	// FnNameStack carries the reader.
 	r.Check.FnNameStack = []string{"reader"}
 	v := core.NewCarrier(core.TAny)
-	es.NoteDefRead(v.ID, "dsv")
+	es.NoteDefRead(core.IDOf(&v), "dsv")
 	op, ok := es.dynScopeRescue(v)
 	if !ok || op.kind != opDynScope {
 		t.Fatalf("rescue via FnNameStack fallback: op=%+v ok=%v", op, ok)
@@ -183,14 +183,14 @@ func TestDynScopeRescueElidedIDByName(t *testing.T) {
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}},
 		&emitUnit{localByID: map[string]int{}, enclosingBindIDs: map[string]bool{}, enclosingBindNames: map[string]bool{"files": true}})
 	v := core.NewCarrier(core.TAny)
-	v.ID = ""
+	core.SetID(&v, "")
 	v.SetDynFrom("files")
 	op, ok := es.dynScopeRescue(v)
 	if !ok || op.kind != opDynScope || !es.dynScopeNames["files"] {
 		t.Fatalf("an elided-ID DynFrom read commits by name: op=%+v ok=%v names=%v", op, ok, es.dynScopeNames)
 	}
 	w := core.NewCarrier(core.TAny)
-	w.ID = ""
+	core.SetID(&w, "")
 	w.SetDynFrom("other")
 	if _, ok := es.dynScopeRescue(w); ok {
 		t.Fatal("a name outside the snapshot, with no fn binder, is declined as before")

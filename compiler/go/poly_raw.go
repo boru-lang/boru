@@ -87,7 +87,7 @@ func (es *EmitState) writtenPositions(args []core.Value, nFwd int) []core.SrcPos
 	out := make([]core.SrcPos, 0, nFwd)
 	for i := 0; i < nFwd && i < len(args); i++ {
 		p := args[i].Pos()
-		if rp, ok := es.readPos[args[i].ID]; ok && args[i].ID != "" {
+		if rp, ok := es.readPos[core.IDOf(&args[i])]; ok && core.IDOf(&args[i]) != "" {
 			p = rp
 		}
 		out = append(out, p)

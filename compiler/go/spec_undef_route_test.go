@@ -31,7 +31,7 @@ func TestForwardSlotOfGeneralisedNameRoutes(t *testing.T) {
 	}
 	other := core.NewCarrier(core.TInteger)
 	es.NoteLiveRead(&other, "k", pos)
-	es.defReads[other.ID] = "j"
+	es.defReads[core.IDOf(&other)] = "j"
 	if es.slotIsOperand(slot, reg, other) {
 		t.Fatal("a live read of another name is not")
 	}
@@ -46,7 +46,7 @@ func TestForwardSlotOfGeneralisedNameRoutes(t *testing.T) {
 	}
 	// The read's event becomes a placeholder for the routed dispatch.
 	es.placeRoutedLiveSlots(d, []core.Value{v, core.NewInteger(1)})
-	pr := es.producedBy[v.ID]
+	pr := es.producedBy[core.IDOf(&v)]
 	if !es.livePlaceholders[pr.seq] {
 		t.Fatalf("the routed slot's read is a placeholder: %v", es.livePlaceholders)
 	}

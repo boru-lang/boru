@@ -1956,7 +1956,6 @@ type Value struct {
 	// noCopy makes go vet's copylocks analyzer report every by-value copy of
 	// a Value (zero size, placed first so it adds no padding).
 	noCopy noCopy
-	ID     string
 	// Data is the kernel-known data payload; see payload.go for variants.
 	Data Payload
 
@@ -1990,14 +1989,12 @@ type Value struct {
 	// (nil-safe, returns the zero SrcPos); external packages set it via
 	// SetPos since the field is unexported.
 	pos *SrcPos
-	// occ is this occurrence's state — the dispatch ascription, a gradual
-	// read's source binding, and the occurrence flags (quoted, eval,
-	// undefined, failed dispatch, reach group, dynamic) — behind one
-	// pointer to an immutable record (occurrence.go). nil for the
-	// overwhelming majority of values; a setter repoints this one header,
-	// never writes the record, so every other copy keeps what it had.
-	// Read and write through AscribedType/SetAscribed, DynFrom/SetDynFrom
-	// and IsQuoted/SetQuoted and their siblings.
+	// occ is this occurrence's state — the identity token, the dispatch
+	// ascription and a gradual read's source binding — behind one pointer
+	// to an immutable record (occurrence.go). nil for the overwhelming
+	// majority of values; a setter repoints this one header, never writes
+	// the record, so every other copy keeps what it had. Read and write
+	// through IDOf/SetID, AscribedType/SetAscribed and DynFrom/SetDynFrom.
 	occ *occurrence
 	// elem is the retained ELEMENT constraint of a concrete typed container
 	// ({:T} map / [:T] list), behind a pointer so its Value doesn't ride on
@@ -2027,10 +2024,13 @@ type Value struct {
 	modns *ModuleNSInfo
 
 	// One-byte fields, clustered so they pack without padding: the kind
-	// flags. The occurrence flags are in the occ record.
+	// flags, and the occurrence flags (quoted, eval, undefined, failed
+	// dispatch, reach group, dynamic — occurrence.go), read and written
+	// through IsQuoted/SetQuoted and their siblings.
 	IsInternal bool       // Word/__XX runtime markers — not user-facing
 	Origin     OriginKind // builtin / userdef
 	Carrier    bool       // static-typecheck carrier (type-only, Data stripped of concrete payload)
+	flags      occFlags
 }
 
 // typeMeta carries the integer lattice fields of a type node, held behind
@@ -2530,7 +2530,7 @@ func NewValueRaw(t *Type, data Payload) Value {
 		Data:   data,
 	}
 	if data == nil || checkPassDepth.Load() > 0 {
-		v.ID = GenerateID(IDPrefixForType(t))
+		SetID(&v, GenerateID(IDPrefixForType(t)))
 	}
 	return v
 }
@@ -2853,7 +2853,7 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // runtime value carries a Parent, a type node carries its metadata, and a
 // carrier is flagged — so the test is exact, not a heuristic.
 func (v *Value) IsUnboundSlot() bool {
-	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !IsDynamic(v)
+	return IDOf(v) == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !IsDynamic(v)
 }
 
 func NewTypeLiteral(t *Type) Value {
@@ -3045,7 +3045,7 @@ func NewForward(info ForwardInfo) Value {
 func newMarkerValue(t *Type) Value {
 	v := Value{Parent: t}
 	if checkPassDepth.Load() > 0 {
-		v.ID = GenerateID(IDPrefixForType(t))
+		SetID(&v, GenerateID(IDPrefixForType(t)))
 	}
 	return v
 }

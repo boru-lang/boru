@@ -43,7 +43,7 @@ func TestApplyResidentBind(t *testing.T) {
 	minted := r.Types.MintType("Rz", TInteger)
 	r.Defs.PushType("Rz", minted, NewTypeLiteral(TInteger))
 	ApplyResidentBind(r, "Rz", true, Value{})
-	if r.Types.LookupByID(minted.ID) != nil {
+	if r.Types.LookupByID(IDOf(minted)) != nil {
 		t.Fatal("popping a minted type binding must retire its node")
 	}
 }
@@ -82,7 +82,7 @@ func TestApplyResidentTypeBind(t *testing.T) {
 	// Retire the top the way `undef` does; the level below must survive.
 	ApplyResidentBind(r, "Tz", true, Value{})
 	rest, ok := r.Defs.TopEntry("Tz")
-	if !ok || rest.TypeDef == nil || r.Types.LookupByID(rest.TypeDef.ID) == nil {
+	if !ok || rest.TypeDef == nil || r.Types.LookupByID(IDOf(rest.TypeDef)) == nil {
 		t.Fatalf("after one undef the remaining node is unresolvable (%+v) — the arm shared one node", rest)
 	}
 

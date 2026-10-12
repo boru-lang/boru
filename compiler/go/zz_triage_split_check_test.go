@@ -336,7 +336,7 @@ func TestEmitStateNilReceiver(t *testing.T) {
 // seedProduced makes v resolve to an event operand: resolveOperand finds a
 // producedBy entry (and v is not a type body, so the events-first arm wins).
 func seedProduced(es *EmitState, v core.Value, seq int) {
-	es.producedBy[v.ID] = producer{seq: seq, idx: 0}
+	es.producedBy[core.IDOf(&v)] = producer{seq: seq, idx: 0}
 }
 
 // residualReadStable's no-name arm: a value never noted as a def read (or a
@@ -351,7 +351,7 @@ func TestResidualReadStableNoName(t *testing.T) {
 // §9.8 dyn-bind skip): only a value the window actually holds reads.
 func TestWindowReadsID(t *testing.T) {
 	w := core.NewCarrier(core.TFunction)
-	w.ID = "g1"
+	core.SetID(&w, "g1")
 	if !windowReadsID([]core.Value{w}, "g1") {
 		t.Error("a window value's own ID must read")
 	}
@@ -374,7 +374,7 @@ func TestStripZeroOutPhantomsKeepsNonPhantom(t *testing.T) {
 	es.eventInfo[1] = f
 	seedProduced(es, kept, 2) // eventInfo[2].zeroOut defaults false
 	got := es.stripZeroOutPhantoms([]core.Value{phantom, kept})
-	if len(got) != 1 || got[0].ID != kept.ID {
+	if len(got) != 1 || core.IDOf(&got[0]) != core.IDOf(&kept) {
 		t.Fatalf("strip = %v, want just the kept value", got)
 	}
 }
@@ -397,7 +397,7 @@ func TestSetLoopBodyApplyDeclines(t *testing.T) {
 func TestInstanceFnFieldRiskUnresolvableKey(t *testing.T) {
 	es := NewEmitState()
 	inst := instanceVal(mapOfFields())
-	es.fnRiskFields = map[string]map[string]bool{inst.ID: {"f": true}}
+	es.fnRiskFields = map[string]map[string]bool{core.IDOf(&inst): {"f": true}}
 	// No concrete key among args → any tracked field is risky → true.
 	if !es.instanceFnFieldRisk([]core.Value{inst}) {
 		t.Fatal("unresolvable key over a tracked instance should be risky")
@@ -416,7 +416,7 @@ func TestProducerWordMiss(t *testing.T) {
 	es := NewEmitState()
 	v := core.NewInteger(1)
 	seedProduced(es, v, 99) // producedBy hit, but no frame event with seq 99
-	if _, ok := es.producerWord(v.ID); ok {
+	if _, ok := es.producerWord(core.IDOf(&v)); ok {
 		t.Fatal("no matching frame event should miss")
 	}
 }
@@ -563,7 +563,7 @@ func TestNoEvalBodiesInertSentinel(t *testing.T) {
 func TestInternCompoundEmptyID(t *testing.T) {
 	es := NewEmitState()
 	lst := core.NewList([]core.Value{core.NewInteger(1)})
-	lst.ID = "" // a compound with no ID takes the un-pooled append path
+	core.SetID(&lst, "") // a compound with no ID takes the un-pooled append path
 	if idx := es.intern(lst); idx != 0 || len(es.consts) != 1 {
 		t.Fatalf("empty-id compound intern = %d (consts=%d)", idx, len(es.consts))
 	}
@@ -581,9 +581,9 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	// The program then falls back faithfully. (Anonymous capturing lambdas whose
 	// body compiles DO resolve to an opClosure — see
 	// lang/go's TestPatrunFnValueStoreCompiles / TestReturnedCapturingClosureApply.)
-	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
+	fn := withID(core.Value{Parent: core.TFunction,
 		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}
+			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if ok {
 		t.Fatalf("captured non-anonymous fn must NOT resolve as a const bake: ops=%+v", ops)
@@ -671,7 +671,7 @@ func TestMixedDynamicApplyShape(t *testing.T) {
 	}
 	es2 := NewEmitState()
 	es2.reg = r
-	r.Check.MethodShapes = map[string]core.Value{dyn.ID: core.NewInteger(0)}
+	r.Check.MethodShapes = map[string]core.Value{core.IDOf(&dyn): core.NewInteger(0)}
 	if _, ok := es2.mixedDynamicApplyShape(residual); ok {
 		t.Fatal("annotated interior carrier should decline")
 	}
@@ -707,18 +707,18 @@ func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	// Anonymous lambda with an unresolvable capture → declines.
 	es := NewEmitState()
 	es.reg = r
-	withCap := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
+	withCap := withID(core.Value{Parent: core.TFunction,
 		Data: &core.FnDefInfo{Anonymous: true,
 			Captured:   []core.CapturedBinding{{Name: "c", Value: core.NewCarrier(core.TInteger)}},
-			Signatures: []core.Signature{{}}}}
+			Signatures: []core.Signature{{}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(withCap, core.SrcPos{}); ok {
 		t.Fatal("unresolvable capture should decline")
 	}
 	// Anonymous lambda with more than one own signature → declines.
 	es = NewEmitState()
 	es.reg = r
-	multiSig := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}
+	multiSig := withID(core.Value{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(multiSig, core.SrcPos{}); ok {
 		t.Fatal("multi-sig lambda should decline")
 	}
@@ -736,8 +736,8 @@ func TestTryReturnedClosureProbeFails(t *testing.T) {
 		Returns:    []*core.Type{core.TInteger},
 		BarrierPos: -1,
 	}
-	v := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}
+	v := withID(core.Value{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(v, core.SrcPos{}); ok {
 		t.Fatal("an uncompilable lambda body should decline")
 	}
@@ -752,7 +752,7 @@ func TestStartFnCompileFinishZeroOut(t *testing.T) {
 	// A body residual entry that is a 0-output statement guard's phantom is
 	// skipped in the finish resolution.
 	phantom := core.NewInteger(1)
-	es.producedBy[phantom.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&phantom)] = producer{seq: 1}
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f
@@ -764,8 +764,8 @@ func TestStartFnCompileFinishDynTrail(t *testing.T) {
 	_, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	arg := core.NewInteger(5)
 	fn := core.NewDynamicCarrier(core.TFunction)
-	es.producedBy[fn.ID] = producer{seq: 1} // resolves to an event
-	es.RegisterTrailingApply(fn.ID, 1)      // arity 1 == len(bodyStk)-1
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 1} // resolves to an event
+	es.RegisterTrailingApply(core.IDOf(&fn), 1)      // arity 1 == len(bodyStk)-1
 	finish([]core.Value{arg, fn})
 }
 
@@ -775,9 +775,9 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	u := es.units[len(es.units)-1]
 	fnHead := core.NewDynamicCarrier(core.TFunction)
 	fnLast := core.NewDynamicCarrier(core.TFunction)
-	es.producedBy[fnHead.ID] = producer{seq: 1}
-	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []pendingApply{{id: fnLast.ID, pos: core.SrcPos{Row: 1, Col: 9}}}
+	es.producedBy[core.IDOf(&fnHead)] = producer{seq: 1}
+	es.producedBy[core.IDOf(&fnLast)] = producer{seq: 2}
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fnLast), pos: core.SrcPos{Row: 1, Col: 9}}}
 	// bodyStk[:last] carries a fn VALUE: an argument of the pending apply
 	// (the thirty-first increment — `(a:Any => [b:Any => [a/v]]) p/v apply`
 	// hands the lambda to the pair), so the whole residual is the window.
@@ -789,9 +789,9 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	es = NewEmitState()
 	_, finish, _ = es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	u = es.units[len(es.units)-1]
-	es.producedBy[fnHead.ID] = producer{seq: 1}
-	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []pendingApply{{id: fnHead.ID}}
+	es.producedBy[core.IDOf(&fnHead)] = producer{seq: 1}
+	es.producedBy[core.IDOf(&fnLast)] = producer{seq: 2}
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fnHead)}}
 	finish([]core.Value{fnHead, fnLast})
 	if es.Compilable {
 		t.Fatal("a mid-body pending apply should decline")
@@ -810,7 +810,7 @@ func TestFinalizeResidualArms(t *testing.T) {
 	// A zeroOut phantom in the residual is skipped, yielding an empty program.
 	es := NewEmitState()
 	phantom := core.NewInteger(1)
-	es.producedBy[phantom.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&phantom)] = producer{seq: 1}
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f
@@ -893,7 +893,7 @@ func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
 	om := core.NewOrderedMap()
 	om.Set("k", member)
 	mp := core.NewMap(om)
-	if keep := embeddedEnclosingIDs(mp, map[string]bool{member.ID: true}); len(keep) != 1 || !keep[member.ID] {
+	if keep := embeddedEnclosingIDs(mp, map[string]bool{core.IDOf(&member): true}); len(keep) != 1 || !keep[core.IDOf(&member)] {
 		t.Fatalf("map embedding an enclosing compound should keep it: %v", keep)
 	}
 }
@@ -1048,7 +1048,7 @@ func TestResolveOperandIdentitylessCompoundRescued(t *testing.T) {
 	}
 	// Positive twin: the same compound minted with an identity resolves.
 	minted := core.NewList([]core.Value{core.NewInteger(1)})
-	if minted.ID == "" {
+	if core.IDOf(&minted) == "" {
 		t.Fatal("test premise: pass-minted list should carry an ID")
 	}
 	if _, ok := es.resolveOperand(minted); !ok {
@@ -1240,7 +1240,7 @@ func TestRecordMakeListCompileFailures(t *testing.T) {
 	// …while one with NO canonical ID has no runtime home → declines.
 	es = NewEmitState()
 	noID := core.NewTypeLiteral(core.TInteger)
-	noID.ID = ""
+	core.SetID(&noID, "")
 	if es.RecordMakeListInner(nil, []core.Value{noID}, core.NewInteger(0), core.SrcPos{}) {
 		t.Fatal("type node with no canonical ID should decline")
 	}
@@ -1261,7 +1261,7 @@ func TestRecordMakeMapCompileFailures(t *testing.T) {
 	// …while one with NO canonical ID has no runtime home → declines.
 	es = NewEmitState()
 	noID := core.NewTypeLiteral(core.TInteger)
-	noID.ID = ""
+	core.SetID(&noID, "")
 	if es.RecordMakeMap(nil, []string{"a"}, []core.Value{noID}, false, core.NewInteger(0), core.SrcPos{}) {
 		t.Fatal("type node with no canonical ID should decline")
 	}
@@ -1322,7 +1322,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 	// setProducedAt with an identity-less value: no entry — a later ""
 	// lookup is a guaranteed miss, and no other value can false-hit it.
 	blank := core.NewInteger(1) // runtime mint → "" ID
-	if blank.ID != "" {
+	if core.IDOf(&blank) != "" {
 		t.Fatal("test premise: runtime mint should be identity-less")
 	}
 	es.setProducedAt(blank, 3, 0)
@@ -1334,7 +1334,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 	minted := core.NewInteger(2)
 	end()
 	es.setProducedAt(minted, 4, 0)
-	if pr, ok := es.producedBy[minted.ID]; !ok || pr.seq != 4 {
+	if pr, ok := es.producedBy[core.IDOf(&minted)]; !ok || pr.seq != 4 {
 		t.Error("minted value did not register in producedBy")
 	}
 
@@ -1443,7 +1443,7 @@ func TestW9TryCompileUserPolyEarlyReturns(t *testing.T) {
 func TestDynApplyLeadEligible(t *testing.T) {
 	fnCarrier := func(id string) core.Value {
 		v := core.NewCarrier(core.TFunction)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 

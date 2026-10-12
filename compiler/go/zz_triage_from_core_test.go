@@ -77,7 +77,7 @@ func TestRecordDynApplyPendingConsume(t *testing.T) {
 	es := NewEmitState()
 	fn := core.NewDynamicCarrier(core.TFunction)
 	seedProduced(es, fn, 1)
-	es.units[len(es.units)-1].pendingApply = []pendingApply{{id: fn.ID}}
+	es.units[len(es.units)-1].pendingApply = []pendingApply{{id: core.IDOf(&fn)}}
 	out := core.NewInteger(0)
 	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(10)}, fn, out, core.SrcPos{}); !ok {
 		t.Fatal("resolvable apply with pending entry should record")
@@ -97,8 +97,8 @@ func TestRecordPolyCallGuard(t *testing.T) {
 	if !es.RecordPolyCall("pop", nil, []core.Value{o1, o2}, core.SrcPos{}, nil, nil) {
 		t.Fatal("multi-out poly call should record")
 	}
-	pr1, ok1 := es.producedBy[o1.ID]
-	pr2, ok2 := es.producedBy[o2.ID]
+	pr1, ok1 := es.producedBy[core.IDOf(&o1)]
+	pr2, ok2 := es.producedBy[core.IDOf(&o2)]
 	if !ok1 || !ok2 {
 		t.Fatal("both results should register in producedBy")
 	}
@@ -129,23 +129,23 @@ func TestRecordPolyCallGuard(t *testing.T) {
 	// args → the colliding result is re-minted. (RecordPolyCall mutates the
 	// outs SLICE in place, so observe the element, not the local copy.)
 	c := core.NewDynamicCarrier(core.TFlexList)
-	c.ID = a.ID
+	core.SetID(&c, core.IDOf(&a))
 	outs2 := []core.Value{c, core.NewDynamicCarrier(core.TAny)}
 	if !es2.RecordPolyCall("shift", nil, outs2, core.SrcPos{}, nil, nil) {
 		t.Fatal("collision poly should record")
 	}
-	if outs2[0].ID == a.ID {
+	if core.IDOf(&outs2[0]) == core.IDOf(&a) {
 		t.Error("a colliding non-passthrough result ID should be re-minted")
 	}
 	// A third poly whose result reuses a's ID WHILE a is passed as an arg →
 	// the passthrough exemption keeps the ID.
 	d := core.NewDynamicCarrier(core.TAny)
-	d.ID = a.ID
+	core.SetID(&d, core.IDOf(&a))
 	outs3 := []core.Value{d, core.NewDynamicCarrier(core.TAny)}
 	if !es2.RecordPolyCall("shift", []core.Value{a}, outs3, core.SrcPos{}, nil, nil) {
 		t.Fatal("passthrough poly should record")
 	}
-	if outs3[0].ID != a.ID {
+	if core.IDOf(&outs3[0]) != core.IDOf(&a) {
 		t.Error("a passthrough result ID should be preserved")
 	}
 }

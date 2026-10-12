@@ -26,8 +26,8 @@ func TestArgsStackLazy(t *testing.T) {
 		t.Fatalf("lazy entry = %v, want [7 8]", first)
 	}
 	again, _, _ := as.Top()
-	if again.ID != first.ID || again.String() != first.String() {
-		t.Errorf("a second read = %v (%s), want the first read's value %v (%s)", again, again.ID, first, first.ID)
+	if IDOf(&again) != IDOf(&first) || again.String() != first.String() {
+		t.Errorf("a second read = %v (%s), want the first read's value %v (%s)", again, IDOf(&again), first, IDOf(&first))
 	}
 	// Truncate over a lazy entry, then Pop past a lazy one never read.
 	_ = as.PushLazy([]Value{NewInteger(9)})

@@ -33,7 +33,7 @@ func compareTypes(a, b *Type) int {
 	if c := strings.Compare(a.Name(), b.Name()); c != 0 {
 		return c
 	}
-	return strings.Compare(a.ID, b.ID)
+	return strings.Compare(IDOf(a), IDOf(b))
 }
 
 // rankOf returns t's unified lattice Rank. Builtins, MintType, and

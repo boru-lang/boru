@@ -213,7 +213,7 @@ func TestNurRunWhileEmptyConditionAnchorsAtCondition(t *testing.T) {
 func TestNurRunPolyNoMatchSpecBorrowsOperandPosition(t *testing.T) {
 	fn := &FnDefInfo{Name: "nrcpoly", Signatures: []Signature{{Params: []FnParam{{Name: "s", Type: TString}}}}}
 	positioned := NewInteger(5)
-	positioned.ID = "nrc-poly-a"
+	SetID(&positioned, "nrc-poly-a")
 	positioned.SetPos(SrcPos{Row: 1, Col: 1})
 
 	p := polyNoMatchProbe{ok: true, written: []Value{positioned}, stackVals: []Value{positioned}}
@@ -228,7 +228,7 @@ func TestNurRunPolyNoMatchSpecBorrowsOperandPosition(t *testing.T) {
 	}
 
 	bare := NewInteger(6)
-	bare.ID = "nrc-poly-b"
+	SetID(&bare, "nrc-poly-b")
 	q := polyNoMatchProbe{ok: true, written: []Value{bare}, stackVals: []Value{bare}}
 	if spec := q.Spec(fn, []Value{bare}); spec == nil || spec.Pos.Row != 0 {
 		t.Fatalf("no positioned operand: the spec stays unpositioned, got %+v", spec)
@@ -391,7 +391,7 @@ func TestNurRunTagReachCollapsedCarrierSurvivor(t *testing.T) {
 		e.Tape = NewTape([]Value{v, NewInteger(0), NewInteger(0)}, StackHeadroom)
 		e.tagReachCollapsedFn(0, 2, wasReach)
 	}
-	withID := func(v Value, id string) Value { v.ID = id; return v }
+	withID := func(v Value, id string) Value { SetID(&v, id); return v }
 
 	tag(withID(NewCarrier(TFunction), "nrc-inactive"), true)
 	if r.Check.ReachSurvivorFnIDs != nil {

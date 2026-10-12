@@ -22,14 +22,14 @@ func TestProducerReturnedClosureArityClaim(t *testing.T) {
 	defer r.Check.Begin()()
 	out := core.NewCarrier(core.TFunction)
 	r.Check.NoteFnShape(out, core.FnShape{Arity: 2})
-	if n, ok := es.producerReturnedClosureArity(out.ID); !ok || n != 2 {
+	if n, ok := es.producerReturnedClosureArity(core.IDOf(&out)); !ok || n != 2 {
 		t.Errorf("a claimed carrier's arity = %d/%v, want 2", n, ok)
 	}
 	if _, ok := es.producerReturnedClosureArity("T_unclaimed"); ok {
 		t.Error("an unclaimed, unproduced ID has no arity")
 	}
 	es.reg = nil
-	if _, ok := es.producerReturnedClosureArity(out.ID); ok {
+	if _, ok := es.producerReturnedClosureArity(core.IDOf(&out)); ok {
 		t.Error("with no registry there is no claim table to consult")
 	}
 }
@@ -100,7 +100,7 @@ func TestNoteClosureShapeBindArms(t *testing.T) {
 	es.producedBy = map[string]producer{"T_h": {seq: 41}}
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 41, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}})
 	carrier := core.NewCarrier(core.TFunction)
-	carrier.ID = "T_h"
+	core.SetID(&carrier, "T_h")
 	es.noteClosureShapeBind(carrier) // no registry: nothing to write to
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -109,7 +109,7 @@ func TestNoteClosureShapeBindArms(t *testing.T) {
 	es.reg = r
 	defer r.Check.Begin()()
 	plain := core.NewInteger(1)
-	plain.ID = "T_h"
+	core.SetID(&plain, "T_h")
 	es.noteClosureShapeBind(plain) // not a fn carrier
 	if _, ok := r.Check.FnShapeOf("T_h"); ok {
 		t.Fatal("a plain value claims no shape")
@@ -125,7 +125,7 @@ func TestNoteClosureShapeBindArms(t *testing.T) {
 		t.Error("a producing word's claim stands")
 	}
 	unknown := core.NewCarrier(core.TFunction)
-	unknown.ID = "T_native"
+	core.SetID(&unknown, "T_native")
 	es.noteClosureShapeBind(unknown) // no producer
 	if _, ok := r.Check.FnShapeOf("T_native"); ok {
 		t.Error("an unproduced carrier claims nothing")

@@ -74,7 +74,7 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		&fnUnitRec{outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}},
 		&fnUnitRec{nParams: 1})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy[fn.ID] = producer{seq: 0}
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 0}
 	// The `apply` word's one-arg overload over a CONCRETE closure value is
 	// the pending-apply path (the twenty-eighth increment), never this
 	// compile failure; its two-arg Reach overload holds the closure as data and
@@ -94,7 +94,7 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 	// by the word, not stranded (the dynamic-lead group, 2026-09-22): it
 	// takes the pending-apply path, so the guard stands aside here too.
 	carrier := core.NewCarrier(core.TFunction)
-	es.producedBy[carrier.ID] = producer{seq: 0}
+	es.producedBy[core.IDOf(&carrier)] = producer{seq: 0}
 	if es.argIsProducedClosure("apply", nil, []core.Value{carrier}) {
 		t.Fatal("apply over a produced fn-typed carrier is the pending apply's, not this compile failure")
 	}
@@ -159,7 +159,7 @@ func TestRecordDynBindNotesOnlyConcreteClosures(t *testing.T) {
 		return es, carrier, concrete
 	}
 	es, carrier, concrete := mk()
-	if !es.producerReturnedClosure(carrier.ID) || !es.producerReturnedClosure(concrete.ID) {
+	if !es.producerReturnedClosure(core.IDOf(&carrier)) || !es.producerReturnedClosure(core.IDOf(&concrete)) {
 		t.Fatal("fixture: both values must be produced closures")
 	}
 	es.RecordDynBind("f", carrier, core.SrcPos{})

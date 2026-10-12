@@ -267,7 +267,7 @@ func TestStage5RetagTypedContainerValueArms(t *testing.T) {
 	// Non-typed-container pattern: pass-through.
 	plainPat := NewTypeLiteral(TMap)
 	arg := NewInteger(1)
-	if got := RetagTypedContainerValue(plainPat, arg); got.ID != arg.ID {
+	if got := RetagTypedContainerValue(plainPat, arg); IDOf(&got) != IDOf(&arg) {
 		t.Error("a non-container pattern must pass the arg through")
 	}
 

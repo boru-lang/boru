@@ -73,7 +73,7 @@ func TestRecordFnValueApplyFallbackArms(t *testing.T) {
 	if !ok {
 		t.Fatal("the qualifying shape must record")
 	}
-	if !fresh.Carrier || fresh.ID == carrierOut[0].ID {
+	if !fresh.Carrier || core.IDOf(&fresh) == core.IDOf(&carrierOut[0]) {
 		t.Errorf("the out must be a FRESH carrier (shared IDs overwrite producedBy): %v", fresh)
 	}
 	// The recorder declining leaves the caller on the unit-call path.

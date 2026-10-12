@@ -487,7 +487,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// (`2 fn (Integer) 3` where the interpreter answers `6`). Decline
 		// rather than leak: the program is then silently interpreted, which
 		// hides this failure instead of fixing it.
-		if prev, dup := CheckFnCarrierBoundName(r, value.ID); dup && prev != name {
+		if prev, dup := CheckFnCarrierBoundName(r, IDOf(&value)); dup && prev != name {
 			r.Check.Recorder().MarkUncompilable(
 				"def of a computed fn whose apply the analysis dropped (curried chain — Stage 1)")
 		}

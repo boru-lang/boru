@@ -67,12 +67,12 @@ func TestRegionSplitNameGates(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := core.NewInteger(3)
-	v.ID = "v-split"
+	core.SetID(&v, "v-split")
 
 	// The loop-region split: a variadic loop result produced at idx 0.
 	es := NewEmitState()
 	es.BindRegistry(r)
-	es.producedBy[v.ID] = producer{seq: 7, idx: 0}
+	es.producedBy[core.IDOf(&v)] = producer{seq: 7, idx: 0}
 	if es.eventInfo == nil {
 		es.eventInfo = map[int]eventFlags{}
 	}

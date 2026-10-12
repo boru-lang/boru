@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
 // Value.Is runs the default match in place for a behavior that carries the
 // matchesAsDefault marker and never calls that behavior's Match: the marker
@@ -22,7 +25,7 @@ func TestMarkedBehaviorsMatchByDefault(t *testing.T) {
 		for i := range vals {
 			for _, ty := range types {
 				if got, want := b.Match(vals[i], ty), defaultMatch(&vals[i], ty); got != want {
-					t.Errorf("%T.Match(%s, %s) = %v; the default match says %v", b, vals[i].String(), ty.ID, got, want)
+					t.Errorf("%T.Match(%s, %s) = %v; the default match says %v", b, vals[i].String(), IDOf(ty), got, want)
 				}
 			}
 		}
@@ -119,7 +122,17 @@ func TestNewDynamicRecordCarrier(t *testing.T) {
 	if ri, ok := a.Data.(RecordTypeInfo); !ok || ri.Fields != fields {
 		t.Fatalf("the carrier must hold the schema, got %T", a.Data)
 	}
-	if a.ID == "" || a.ID == b.ID {
-		t.Fatalf("each carrier needs its own ID: %q %q", a.ID, b.ID)
+	if IDOf(&a) == "" || IDOf(&a) == IDOf(&b) {
+		t.Fatalf("each carrier needs its own ID: %q %q", IDOf(&a), IDOf(&b))
+	}
+}
+
+// The header only shrinks (design/VALUE-NO-COPY.0.md §6 phase 3): every
+// byte of it rides on each by-value copy the ratchet still allows, so a new
+// field belongs in the occurrence record, the type-node metadata or a
+// payload, not here.
+func TestValueHeaderSize(t *testing.T) {
+	if got := unsafe.Sizeof(Value{}); got > 72 {
+		t.Fatalf("Value header is %d bytes, want at most 72", got)
 	}
 }

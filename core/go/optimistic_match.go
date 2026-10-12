@@ -70,7 +70,7 @@ func (e *Engine) ForwardSplit() int { return e.forwardSplit() }
 func (e *Engine) regionMatch(match *MatchResult) bool {
 	rec := e.Registry.analysisRecorder()
 	for _, a := range match.Args {
-		if a.ID != "" && rec.RegionResult(a.ID) {
+		if IDOf(&a) != "" && rec.RegionResult(IDOf(&a)) {
 			return true
 		}
 	}
@@ -142,7 +142,7 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 	}
 	for i := 0; i < n; i++ {
 		at := e.Pointer - 1 - i
-		if indices[i] != at || at < 0 || match.Args[i].ID == "" || e.Tape.Ref(at).ID != match.Args[i].ID {
+		if indices[i] != at || at < 0 || IDOf(&match.Args[i]) == "" || IDOf(e.Tape.Ref(at)) != IDOf(&match.Args[i]) {
 			return nil
 		}
 	}

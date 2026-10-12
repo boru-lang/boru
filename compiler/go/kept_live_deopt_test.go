@@ -162,7 +162,7 @@ func TestRootHeldBeneath(t *testing.T) {
 		{"a literal with no position", "np", core.SrcPos{}, false},
 	} {
 		v := core.NewInteger(1)
-		v.ID = c.id
+		core.SetID(&v, c.id)
 		v.SetPos(c.pos)
 		if got := es.rootHeldBeneath(lw, nil, []core.Value{v}, start, 8); got != c.want {
 			t.Errorf("%s: rootHeldBeneath = %v, want %v", c.name, got, c.want)

@@ -119,7 +119,7 @@ func TestCloneTypeLiteralNoPanic(t *testing.T) {
 	c := core.CloneValue(orig)
 	// A type literal IS its lattice node and has no payload; the clone is
 	// the same node (shared, immutable).
-	if c.ID != orig.ID || !core.ValueType(c).Equal(core.ValueType(orig)) {
+	if core.IDOf(&c) != core.IDOf(&orig) || !core.ValueType(c).Equal(core.ValueType(orig)) {
 		t.Error("type-literal clone is not the same lattice node")
 	}
 }

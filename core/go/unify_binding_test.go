@@ -52,7 +52,7 @@ func TestBindingAliasAdoptsUserNode(t *testing.T) {
 	if aliasEntry.Minted {
 		t.Error("alias of a user node must not claim the mint")
 	}
-	if aliasEntry.TypeDef.ID != nomEntry.TypeDef.ID {
+	if IDOf(aliasEntry.TypeDef) != IDOf(nomEntry.TypeDef) {
 		t.Error("alias must adopt the refine node's identity")
 	}
 }

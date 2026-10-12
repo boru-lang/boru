@@ -75,7 +75,7 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	if boruErr != nil {
 		return nil, boruErr
 	}
-	if sinfo.Conform[node.ID] {
+	if sinfo.Conform[IDOf(node)] {
 		return nil, nil
 	}
 
@@ -104,7 +104,7 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 			fmt.Sprintf("exposes: %s does not expose %s:\n  %s",
 				node.Name(), sinfo.Name, strings.Join(gaps, "\n  ")), "exposes")
 	}
-	sinfo.Conform[node.ID] = true
+	sinfo.Conform[IDOf(node)] = true
 	return nil, nil
 }
 

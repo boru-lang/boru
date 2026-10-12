@@ -796,8 +796,8 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	es.dynApplyOK = true
 	lead := NewCarrier(TAny)
 	SetDynamic(&lead, true)
-	lead.ID = "lead-id"
-	es.pending = lead.ID
+	SetID(&lead, "lead-id")
+	es.pending = IDOf(&lead)
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(7), lead, NewCloseParen()}, StackHeadroom)
@@ -1566,7 +1566,7 @@ func TestS5BTrapCarrierWrittenOffsetMiss(t *testing.T) {
 
 	carrierA := NewCarrier(TInteger)
 	carrierB := NewCarrier(TInteger)
-	if carrierA.ID == carrierB.ID {
+	if IDOf(&carrierA) == IDOf(&carrierB) {
 		t.Fatal("pass-armed carriers must carry distinct IDs")
 	}
 	// The tuple is the stack prefix (carrierB on top, then carrierA): a
@@ -1618,7 +1618,7 @@ func producedLeadEngine(t *testing.T, es *s5bEmit, args ...Value) (*Engine, Valu
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	lead := NewCarrier(TFunction)
-	lead.ID = "T_produced_lead"
+	SetID(&lead, "T_produced_lead")
 	tape := []Value{NewOpenParen(), lead}
 	tape = append(tape, args...)
 	tape = append(tape, NewCloseParen())
@@ -1652,8 +1652,8 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	if !out.Carrier || IsDynamic(&out) || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(&out) {
 		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, IsDynamic(&out))
 	}
-	if es.lastOut.ID != out.ID || out.ID == "" {
-		t.Errorf("the recorded out is the tape's survivor: recorded %q tape %q", es.lastOut.ID, out.ID)
+	if IDOf(&es.lastOut) != IDOf(&out) || IDOf(&out) == "" {
+		t.Errorf("the recorded out is the tape's survivor: recorded %q tape %q", IDOf(&es.lastOut), IDOf(&out))
 	}
 
 	// A chain level: the answer types the out Function, so the next paren
@@ -1782,7 +1782,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	e = NewTop(r)
 	lead := NewCarrier(TFunction)
 	SetDynamic(&lead, true)
-	lead.ID = "T_dyn_lead"
+	SetID(&lead, "T_dyn_lead")
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
 	if err := e.stepCloseParen(true, false); err != nil {
@@ -1859,7 +1859,7 @@ func TestS5BProducedLeadWindowSkipsNonLiteral(t *testing.T) {
 	if !ok || w.lead != 1 || len(w.argIdxs) != 1 || w.argIdxs[0] != 3 {
 		t.Fatalf("the window is the lead at 1 over the value at 3, the End skipped: ok=%v lead=%d args=%v", ok, w.lead, w.argIdxs)
 	}
-	if e.Tape.At(w.lead).ID != lead.ID || len(es.producedArgs) != 1 {
+	if IDOf(addrOf(e.Tape.At(w.lead))) != IDOf(&lead) || len(es.producedArgs) != 1 {
 		t.Errorf("the recorder is asked over the one data argument: asked=%v", es.producedArgs)
 	}
 }

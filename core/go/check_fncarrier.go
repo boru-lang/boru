@@ -87,7 +87,7 @@ func CheckFnCarrierBoundName(r *Registry, id string) (string, bool) {
 		return "", false
 	}
 	for name, v := range m {
-		if v.ID == id {
+		if IDOf(&v) == id {
 			return name, true
 		}
 	}

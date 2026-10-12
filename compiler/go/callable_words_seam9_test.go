@@ -178,8 +178,8 @@ func TestW9EmptyFlexHookOperand(t *testing.T) {
 	newES := func() (*EmitState, core.Value) {
 		es := NewEmitState()
 		v := core.NewCarrier(core.TFlexList)
-		v.ID = "w9flex"
-		es.producedBy[v.ID] = producer{seq: es.seq, idx: 0}
+		core.SetID(&v, "w9flex")
+		es.producedBy[core.IDOf(&v)] = producer{seq: es.seq, idx: 0}
 		return es, v
 	}
 

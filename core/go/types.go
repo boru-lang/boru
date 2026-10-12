@@ -347,7 +347,7 @@ func (t *Type) Equal(other *Type) bool {
 			return tm.In == om.In
 		}
 	}
-	return t.ID != "" && t.ID == other.ID
+	return IDOf(t) != "" && IDOf(t) == IDOf(other)
 }
 
 // ValidateTypeNameParts checks that a type name (slash-separated) does not

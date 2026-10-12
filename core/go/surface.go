@@ -58,13 +58,13 @@ func SubstituteSelf(spec FnSigSpec, node *Type) FnSigSpec {
 		Returns: make([]*Type, len(spec.Returns)),
 	}
 	for i, p := range spec.Params {
-		if p.Type != nil && p.Type.ID == TSelf.ID {
+		if p.Type != nil && IDOf(p.Type) == IDOf(TSelf) {
 			p.Type = node
 		}
 		out.Params[i] = p
 	}
 	for i, t := range spec.Returns {
-		if t != nil && t.ID == TSelf.ID {
+		if t != nil && IDOf(t) == IDOf(TSelf) {
 			t = node
 		}
 		out.Returns[i] = t
@@ -117,7 +117,7 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 		node = other.Parent
 	}
 	for p := node; p != nil; p = p.Parent {
-		if info.Conform[p.ID] {
+		if info.Conform[IDOf(p)] {
 			return other, nil
 		}
 	}
@@ -159,7 +159,7 @@ func (s *surfaceUnifier) Match(v Value, t *Type) bool {
 		return baseBehavior(s.prev).Match(v, t)
 	}
 	for p := v.Parent; p != nil; p = p.Parent {
-		if s.info.Conform[p.ID] {
+		if s.info.Conform[IDOf(p)] {
 			return true
 		}
 	}
@@ -198,7 +198,7 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 		// unifySurface runs for the body.
 		cn := &candidate
 		for p := cn; p != nil; p = p.Parent {
-			if s.info.Conform[p.ID] {
+			if s.info.Conform[IDOf(p)] {
 				return candidate, nil
 			}
 		}

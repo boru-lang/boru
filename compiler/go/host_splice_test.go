@@ -59,15 +59,15 @@ func TestHostedSpliceAdmitted(t *testing.T) {
 		t.Fatal("a program with no hosted splice is admitted")
 	}
 	out := core.NewCarrier(core.TList)
-	out.ID = "loop-out"
+	core.SetID(&out, "loop-out")
 	es.hostSplices = []int{2}
 	es.frames[0] = []EmitEvent{{seq: 1}, {seq: 2}}
-	es.producedBy[out.ID] = producer{seq: 2}
+	es.producedBy[core.IDOf(&out)] = producer{seq: 2}
 	if reason, ok := es.hostedSpliceAdmitted([]core.Value{out}); !ok {
 		t.Fatalf("the last event, its one result the whole residual: admitted, got %q", reason)
 	}
 	other := core.NewCarrier(core.TList)
-	other.ID = "other"
+	core.SetID(&other, "other")
 	for name, residual := range map[string][]core.Value{
 		"a value beneath the loop":   {core.NewInteger(9), out},
 		"a residual not the loop's":  {other},

@@ -127,11 +127,11 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// is mutated (the input's Captured backing array stays untouched). The
 	// compile pass armed above keeps GenerateID live.
 	for i := range fd.Captured {
-		if fd.Captured[i].Value.ID == "" {
+		if core.IDOf(&fd.Captured[i].Value) == "" {
 			cloned := append([]core.CapturedBinding(nil), fd.Captured...)
 			for j := range cloned {
-				if cloned[j].Value.ID == "" {
-					cloned[j].Value.ID = core.GenerateID(core.IDPrefixForType(cloned[j].Value.Parent))
+				if core.IDOf(&cloned[j].Value) == "" {
+					core.SetID(&cloned[j].Value, core.GenerateID(core.IDPrefixForType(cloned[j].Value.Parent)))
 				}
 			}
 			fd.Captured = cloned

@@ -276,10 +276,10 @@ func TestReturnsDynUnion(t *testing.T) {
 	// collapses separate effectful evaluations into one slot, a proven
 	// miscompile (TestReadLineStdinAdvances, lang/go/test).
 	w := f(nil, r)[0]
-	if v.ID != "" && v.ID == w.ID {
+	if core.IDOf(&v) != "" && core.IDOf(&v) == core.IDOf(&w) {
 		t.Error("two invocations must not share a value ID")
 	}
-	if w.ID == "" {
+	if core.IDOf(&w) == "" {
 		t.Error("inside a check pass the modelled result must carry a minted ID")
 	}
 }

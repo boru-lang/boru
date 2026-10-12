@@ -253,13 +253,13 @@ func TestUninstallTypeArms(t *testing.T) {
 
 	minted := r.Types.MintType("Mz", TInteger)
 	r.Defs.PushType("Mz", minted, NewTypeLiteral(minted))
-	if r.Types.LookupByID(minted.ID) == nil {
+	if r.Types.LookupByID(IDOf(minted)) == nil {
 		t.Fatal("the minted node must be in the ID index before the undef")
 	}
 	if !UninstallType(r, "Mz") {
 		t.Fatal("a bound type must be removed")
 	}
-	if r.Types.LookupByID(minted.ID) != nil {
+	if r.Types.LookupByID(IDOf(minted)) != nil {
 		t.Error("a MINTED node must be retired with its binding")
 	}
 }

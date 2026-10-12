@@ -65,7 +65,7 @@ func TestCrossesStatementEndFirstEntry(t *testing.T) {
 	es.stmtEnds = []core.SrcPos{{Row: 1, Col: 20}}
 	es.defReads = map[string]string{"r": "j"}
 	es.defReadPos = map[string][]core.SrcPos{"r": {{Row: 1, Col: 30}}}
-	read := core.Value{ID: "r"}
+	read := withID(core.Value{}, "r")
 	seven := core.WithPosAt(core.NewInteger(7), core.SrcPos{Row: 1, Col: 10})
 	if !es.crossesStatementEnd(v, []core.Value{read}) {
 		t.Error("a read right after the lead, past the end, crosses")

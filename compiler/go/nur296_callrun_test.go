@@ -19,7 +19,7 @@ func TestNoteArgSites(t *testing.T) {
 	es.producedBy["p"] = producer{seq: 4}
 	val := func(id string, col int) core.Value {
 		v := core.NewInteger(1)
-		v.ID = id
+		core.SetID(&v, id)
 		v.SetPos(gpos(col))
 		return v
 	}
@@ -246,7 +246,7 @@ func TestClaimParked(t *testing.T) {
 	es.frames[len(es.frames)-1] = []EmitEvent{apply(4, 1, true), apply(5, 1, false), apply(6, 2, true), {kind: evCallUser, seq: 7}}
 	val := func(id string, seq, idx int) core.Value {
 		v := core.NewInteger(1)
-		v.ID = id
+		core.SetID(&v, id)
 		if seq > 0 {
 			es.producedBy[id] = producer{seq: seq, idx: idx}
 		}

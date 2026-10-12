@@ -289,7 +289,7 @@ func TestRecordCallCompileFailureComputedRangeList(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	es.BindRegistry(r)
 	lst := core.NewCarrier(core.TList)
-	lst.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+	core.SetID(&lst, core.GenerateID(core.IDPrefixForType(core.TList)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, nout: 1, makeList: true}})
 	es.setProduced(lst, seq)
 	if !es.recordCallCompileFailure("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
@@ -313,12 +313,12 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 
 	// A 2-out call event whose idx-0 result is Function-typed.
 	fnOut := core.NewCarrier(core.TFunction)
-	fnOut.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+	core.SetID(&fnOut, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	other := core.NewCarrier(core.TString)
-	other.ID = core.GenerateID(core.IDPrefixForType(core.TString))
+	core.SetID(&other, core.GenerateID(core.IDPrefixForType(core.TString)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz", nout: 2}})
 	es.setProduced(fnOut, seq)
-	es.producedBy[other.ID] = producer{seq: seq, idx: 1}
+	es.producedBy[core.IDOf(&other)] = producer{seq: seq, idx: 1}
 	if _, ok := es.SplitEventRegionBind("zzf", fnOut); ok {
 		t.Error("a Function-typed first result must decline (parked-fn screen)")
 	}
@@ -327,7 +327,7 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	// fragment, close it, then ask for the split — eventBySeq misses.
 	closeFrag := es.beginFragment()
 	iOut := core.NewCarrier(core.TInteger)
-	iOut.ID = core.GenerateID(core.IDPrefixForType(core.TInteger))
+	core.SetID(&iOut, core.GenerateID(core.IDPrefixForType(core.TInteger)))
 	fseq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz2", nout: 2}})
 	es.setProduced(iOut, fseq)
 	closeFrag()
@@ -360,7 +360,7 @@ func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
 	out := core.NewInteger(7)
-	es.producedBy[out.ID] = producer{}
+	es.producedBy[core.IDOf(&out)] = producer{}
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "case", sig, bodyArgs("step"), []core.Value{out}, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {

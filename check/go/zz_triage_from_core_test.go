@@ -43,12 +43,12 @@ func TestReturnsFuncBuilders(t *testing.T) {
 	// ReturnsIdentity: repeated sources get fresh IDs.
 	idfn := core.ReturnsIdentity(0, 0)
 	in := core.NewInteger(5)
-	in.ID = core.GenerateID("i_")
+	core.SetID(&in, core.GenerateID("i_"))
 	out := idfn([]core.Value{in}, nil)
 	if len(out) != 2 {
 		t.Fatalf("identity out = %v", out)
 	}
-	if out[0].ID == out[1].ID {
+	if core.IDOf(&out[0]) == core.IDOf(&out[1]) {
 		t.Error("duplicated identity shares an ID")
 	}
 	// Out-of-range mapping degrades to Any.
@@ -100,7 +100,7 @@ func TestReturnsFuncBuilders(t *testing.T) {
 	}
 	a := fi([]core.Value{core.NewTypeLiteral(core.TPathon), mapOf()}, nil)[0]
 	b := fi([]core.Value{core.NewTypeLiteral(core.TPathon), mapOf()}, nil)[0]
-	if a.ID == b.ID {
+	if core.IDOf(&a) == core.IDOf(&b) {
 		t.Error("two constructions share an identity")
 	}
 	// A carrier target keeps identity behaviour; an out-of-range slot is Any.

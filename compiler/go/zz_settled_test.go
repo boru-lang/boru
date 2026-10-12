@@ -91,7 +91,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 		t.Fatal("inactive RecordTrap should decline")
 	}
 	in := core.NewInteger(3)
-	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || out.ID != in.ID {
+	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || core.IDOf(&out) != core.IDOf(&in) {
 		t.Fatalf("inactive RecordTypedBind = %v %v", out, ok)
 	}
 	if e.RecordMakeList(nil, nil, core.Value{}, core.SrcPos{}) {
@@ -114,7 +114,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if e.DynInputsProven(nil, nil) {
 		t.Fatal("inactive dynInputsProven should be false")
 	}
-	if v, ok := e.Materialise(in); ok || v.ID != in.ID {
+	if v, ok := e.Materialise(in); ok || core.IDOf(&v) != core.IDOf(&in) {
 		t.Fatalf("inactive materialise = %v %v", v, ok)
 	}
 	if e.ZeroOutProduced("id") || e.AlreadyProduced("id") {
@@ -185,7 +185,7 @@ func TestMaterialiseMapPrefixCopy(t *testing.T) {
 	// A 2-key map whose SECOND key is the changed (recoverable) member: the
 	// rebuild copies the unchanged prefix, then patches the second.
 	c := core.NewCarrier(core.TInteger)
-	es.origByID[c.ID] = core.NewInteger(9)
+	es.origByID[core.IDOf(&c)] = core.NewInteger(9)
 	om := core.NewOrderedMap()
 	om.Set("a", core.NewInteger(1)) // unchanged prefix
 	om.Set("b", c)                  // changed → triggers prefix copy
@@ -553,9 +553,9 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 	// isInertConst declines reaches here. A capture-free MACRO module fn (Registry
 	// set, Macro true) is exactly that case — resolveOperand declines it, so the
 	// `IsConcrete && no-captures` arm is what places the const operand.
-	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
+	fn := withID(core.Value{Parent: core.TFunction,
 		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Registry: r, Macro: true}}
+			Registry: r, Macro: true}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if !ok {
 		t.Fatalf("a capture-free fn that resolveOperand declines must bake as a const here")

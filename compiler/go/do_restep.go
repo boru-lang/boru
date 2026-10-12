@@ -67,14 +67,14 @@ func (es *EmitState) noteBodyReStep(body core.Value) {
 	if es.bodyReSteps == nil {
 		es.bodyReSteps = map[string]bool{}
 	}
-	es.bodyReSteps[body.ID] = true
+	es.bodyReSteps[core.IDOf(&body)] = true
 }
 
 // takeBodyReStep reports and clears noteBodyReStep's record for body.
 func (es *EmitState) takeBodyReStep(body core.Value) bool {
-	if !es.bodyReSteps[body.ID] {
+	if !es.bodyReSteps[core.IDOf(&body)] {
 		return false
 	}
-	delete(es.bodyReSteps, body.ID)
+	delete(es.bodyReSteps, core.IDOf(&body))
 	return true
 }

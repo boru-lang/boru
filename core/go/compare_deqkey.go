@@ -83,12 +83,12 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// NUR034 type-literal arm answers `List deq List` true and
 	// `List deq Map` false), so the bucket stays a sound filter.
 	if IsBareTypeNode(&v) {
-		return "tlit:" + ValueType(v).ID, DeqKeyed
+		return "tlit:" + IDOf(ValueType(v)), DeqKeyed
 	}
 
 	// DepScalar — equal only to a DepScalar of the identical Parent.
 	if v.IsDepScalar() {
-		return "D:" + v.Parent.ID, DeqKeyed
+		return "D:" + IDOf(v.Parent), DeqKeyed
 	}
 
 	// Numbers — scalarFamilyEqual compares int64-exact (int/int),
@@ -141,7 +141,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// bucket per family (Time, Micron, …) is sound; members are
 	// disambiguated pairwise.
 	if v.Parent.ConformsTo(TScalar) {
-		return "c:" + scalarFamilyRoot(v.Parent).ID, DeqKeyed
+		return "c:" + IDOf(scalarFamilyRoot(v.Parent)), DeqKeyed
 	}
 
 	// Lists — structural recursion over element VALUES (populated typed
@@ -220,7 +220,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 		sort.Strings(keys)
 		var b strings.Builder
 		b.WriteString("i:")
-		b.WriteString(v.Parent.ID)
+		b.WriteString(IDOf(v.Parent))
 		b.WriteByte('{')
 		for i, k := range keys {
 			fv, _ := fields.Get(k)
@@ -292,7 +292,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// modifiers alike, so canon is an exact key here rather than merely a
 	// sound one.
 	if _, ok := v.Data.(WordInfo); ok && v.Parent != nil {
-		return "w:" + v.Parent.ID + ":" + CanonValue(v), DeqKeyed
+		return "w:" + IDOf(v.Parent) + ":" + CanonValue(v), DeqKeyed
 	}
 
 	// Declared type VALUES (NUR031): deq shares eq's type-body arm, which
@@ -308,7 +308,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// inaccurate one could hide a render-matched type-level operand from
 	// the scan.
 	if IsTypeBody(&v) && v.Parent != nil {
-		return "t:" + v.Parent.ID, DeqKeyed
+		return "t:" + IDOf(v.Parent), DeqKeyed
 	}
 
 	// DeepEqual's unsupported fall-through. NUR031 emptied this class of
@@ -340,7 +340,7 @@ func deqFam(v Value) string {
 		return "M"
 	}
 	if _, _, ok := FlatInstanceParts(v); ok {
-		return "I:" + v.Parent.ID
+		return "I:" + IDOf(v.Parent)
 	}
 	// NUR031 handles scan within one family per PAYLOAD KIND, NOT per
 	// type ID: a timer's deq is pointer identity, which ignores Parent,
@@ -369,7 +369,7 @@ func deqFam(v Value) string {
 	// DeqUnkeyed classification above is inert (Add files unkeyed
 	// entries by family; FirstMatch scans allByFam only).
 	if owner := DeepEqualerOwner(ValueType(v)); owner != nil {
-		return "DE:" + owner.ID
+		return "DE:" + IDOf(owner)
 	}
 	// A sealed HOST payload (NUR031): compared by box identity, so every
 	// one of them scans in one family. BELOW the capability arm on

@@ -56,7 +56,7 @@ func TestResidualHasVariadicRegionFindsTheRecordedEvent(t *testing.T) {
 
 	plain := core.NewInteger(99)
 	region := vrSpread()
-	region.ID = core.GenerateID("zzrg")
+	core.SetID(&region, core.GenerateID("zzrg"))
 
 	// Nothing recorded yet: an unproduced value is not a region, which is
 	// also the arm every const-only residual takes.

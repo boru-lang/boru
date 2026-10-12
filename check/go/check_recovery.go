@@ -46,7 +46,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 		}
 		c := core.NewCarrier(core.TAny)
 		if a, aerr := core.AsAtom(und); aerr == nil && a != "" {
-			e.Registry.Check.Recorder().NoteDefRead(c.ID, a)
+			e.Registry.Check.Recorder().NoteDefRead(core.IDOf(&c), a)
 		}
 		e.Tape.Set(i, c)
 	}
@@ -314,7 +314,7 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 		// Function value here (a `c/v` param ref, a factory closure) is a
 		// DIFFERENT boundary (M2a `apply`, the residual leading/trailing apply) with
 		// its own handling — do NOT claim it, or those decline with the wrong reason.
-		if es.MemberFnRead(v.ID) {
+		if es.MemberFnRead(core.IDOf(&v)) {
 			es.MarkUncompilable("member fn value auto-applies mid-expression (fn-value-call boundary, Stage 3)")
 		}
 		return
@@ -357,7 +357,7 @@ func valueCarriesCarrier(v core.Value) bool {
 // program (NUR331). The event is the value's truth, so the fold declines and the
 // container records over it.
 func bindingProduced(r *core.Registry, bound core.Value) bool {
-	return bound.ID != "" && r.Check.Recorder().AlreadyProduced(bound.ID)
+	return core.IDOf(&bound) != "" && r.Check.Recorder().AlreadyProduced(core.IDOf(&bound))
 }
 
 // exprRefsCarrier reports whether a folded container expression references a
@@ -1679,7 +1679,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 		return false
 	}
 	v := e.Tape.At(idx)
-	if v.ID == "" {
+	if core.IDOf(&v) == "" {
 		return false
 	}
 	// FOUR shapes place, and they are one decision with one record.
@@ -1706,8 +1706,8 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
 	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) &&
-		!core.IsFnValueResidual(v) && !es.MayBeFn(v.ID) {
-		if _, ok := es.MemberFnReadValue(v.ID); !ok {
+		!core.IsFnValueResidual(v) && !es.MayBeFn(core.IDOf(&v)) {
+		if _, ok := es.MemberFnReadValue(core.IDOf(&v)); !ok {
 			return false
 		}
 	}
@@ -1719,7 +1719,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	if cs.ParenPlacedFnIDs == nil {
 		cs.ParenPlacedFnIDs = map[string]bool{}
 	}
-	cs.ParenPlacedFnIDs[v.ID] = true
+	cs.ParenPlacedFnIDs[core.IDOf(&v)] = true
 	return true
 }
 

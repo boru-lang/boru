@@ -92,7 +92,7 @@ func typeArgNode(arg Value) *Type {
 // instantiation must be deferred (GenInstRef, D5).
 func containsTypeParam(v Value) bool {
 	if IsBareTypeNode(&v) {
-		return IsTypeParamNode(&v) || v.ID == TSelf.ID
+		return IsTypeParamNode(&v) || IDOf(&v) == IDOf(TSelf)
 	}
 	if IsGenInstRef(v) {
 		ref, _ := AsGenInstRef(v)
@@ -144,7 +144,7 @@ func containsTypeParam(v Value) bool {
 		if fi, ok := v.Data.(FnUndefInfo); ok {
 			for _, sig := range fi.Sigs {
 				for _, p := range sig.Params {
-					if p.Type != nil && (IsTypeParamNode(p.Type) || p.Type.ID == TSelf.ID) {
+					if p.Type != nil && (IsTypeParamNode(p.Type) || IDOf(p.Type) == IDOf(TSelf)) {
 						return true
 					}
 					if p.Pattern != nil && containsTypeParam(*p.Pattern) {
@@ -152,7 +152,7 @@ func containsTypeParam(v Value) bool {
 					}
 				}
 				for _, rt := range sig.Returns {
-					if rt != nil && (IsTypeParamNode(rt) || rt.ID == TSelf.ID) {
+					if rt != nil && (IsTypeParamNode(rt) || IDOf(rt) == IDOf(TSelf)) {
 						return true
 					}
 				}
@@ -195,7 +195,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 			}
 			return b, nil
 		}
-		if v.ID == TSelf.ID && selfNode != nil {
+		if IDOf(&v) == IDOf(TSelf) && selfNode != nil {
 			return NewTypeLiteral(selfNode), nil
 		}
 		return v, nil
@@ -226,7 +226,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 			if sinfo, ok := SchemaInfoOf(hn); ok {
 				return InstantiateSchema(r, sinfo, args)
 			}
-			if hn != nil && selfNode != nil && hn.ID == selfNode.ID {
+			if hn != nil && selfNode != nil && IDOf(hn) == IDOf(selfNode) {
 				// Self resolved to the in-flight node and the schema
 				// payload is reachable through its parent (the schema).
 				if sinfo, ok := SchemaInfoOf(hn.Parent); ok {
@@ -360,7 +360,7 @@ func substituteParamNode(r *Registry, t *Type, bindings map[string]Value, selfNo
 	if t == nil {
 		return nil, nil
 	}
-	if t.ID == TSelf.ID && selfNode != nil {
+	if IDOf(t) == IDOf(TSelf) && selfNode != nil {
 		return selfNode, nil
 	}
 	name := TypeParamName(t)
@@ -456,7 +456,7 @@ func InstantiateSchema(r *Registry, info *TypeSchemaInfo, args []Value) (Value, 
 		canonArgs[i] = canonTypeArg(a)
 	}
 	canon := strings.Join(canonArgs, " ")
-	key := genMemoKey(info.Type.ID, canon)
+	key := genMemoKey(IDOf(info.Type), canon)
 	if body, ok := r.TopTypeBody(key); ok {
 		return body, nil
 	}

@@ -24,7 +24,7 @@ func TestNUR253RunPrefixSkipsPhantoms(t *testing.T) {
 	r.Check.Emit = rec
 	t.Cleanup(func() { r.Check.Emit = nil })
 	ph := NewCarrier(TNone)
-	ph.ID = "nur253-phantom"
+	SetID(&ph, "nur253-phantom")
 	five, x := NewInteger(5), NewString("x")
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{five, ph, x, NewWord("f")}, StackHeadroom)
@@ -32,7 +32,7 @@ func TestNUR253RunPrefixSkipsPhantoms(t *testing.T) {
 	if got := e.runPrefix(); len(got) != 3 {
 		t.Fatalf("an unmarked tape reports its prefix whole: got %v", got)
 	}
-	rec.phantom = ph.ID
+	rec.phantom = IDOf(&ph)
 	got := e.runPrefix()
 	if len(got) != 2 || !ExactEqual(got[0], x) || !ExactEqual(got[1], five) {
 		t.Fatalf("the phantom is dropped and the run's entries kept top-first: got %v", got)

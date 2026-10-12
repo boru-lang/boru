@@ -557,7 +557,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// renamed Foo literal as the body so resolving `Foo` pushes
 		// the new subtype node (Parent = base, Rank in the external
 		// band) rather than the original input type literal.
-		def := r.Types.LookupByID(body.ID)
+		def := r.Types.LookupByID(IDOf(&body))
 		if def == nil {
 			return &BoruError{
 				Code:   "type_error",

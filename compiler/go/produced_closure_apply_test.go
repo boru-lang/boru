@@ -21,12 +21,12 @@ func TestPendingClosureApply(t *testing.T) {
 		t.Fatal("no pending entry: must miss")
 	}
 	u := es.units[len(es.units)-1]
-	u.pendingApply = []pendingApply{{id: "carrier"}, {id: fn.ID, fn: fn}}
+	u.pendingApply = []pendingApply{{id: "carrier"}, {id: core.IDOf(&fn), fn: fn}}
 	if _, ok := es.PendingClosureApply(nil); ok {
 		t.Fatal("an empty body must miss")
 	}
 	got, ok := es.PendingClosureApply(body)
-	if !ok || got.ID != fn.ID {
+	if !ok || core.IDOf(&got) != core.IDOf(&fn) {
 		t.Fatal("the produced-closure entry must match its own sig body; a carrier entry is skipped")
 	}
 	if _, ok := es.PendingClosureApply([]core.Value{core.NewInteger(1)}); ok {

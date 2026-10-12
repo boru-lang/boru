@@ -80,13 +80,13 @@ func TestClaimHeldWindow(t *testing.T) {
 func TestCallWindowOps(t *testing.T) {
 	at := core.SrcPos{Row: 1, Col: 1}
 	arg := core.NewCarrier(core.TAny)
-	arg.ID = "arg"
+	core.SetID(&arg, "arg")
 	ev := core.NewCarrier(core.TAny)
-	ev.ID = "ev"
+	core.SetID(&ev, "ev")
 	loc := core.NewCarrier(core.TAny)
-	loc.ID = "loc"
+	core.SetID(&loc, "loc")
 	lost := core.NewCarrier(core.TAny)
-	lost.ID = "lost"
+	core.SetID(&lost, "lost")
 
 	es := NewEmitState()
 	if es.callWindowOps("f", at, nil) != nil {
@@ -278,7 +278,7 @@ func TestClosureCallsAtLanding(t *testing.T) {
 func TestCallWindowOpEmptyIdentity(t *testing.T) {
 	es := NewEmitState()
 	c := core.NewCarrier(core.TAny)
-	c.ID = ""
+	core.SetID(&c, "")
 	if _, ok := es.callWindowOp(c, false, nil); ok {
 		t.Fatal("a carrier with no identity has no home")
 	}

@@ -253,7 +253,7 @@ func TestCheckFnCarrierBoundName(t *testing.T) {
 		t.Error("an empty table must miss")
 	}
 	carrier := NewCarrier(TFunction)
-	carrier.ID = "v1"
+	SetID(&carrier, "v1")
 	NoteCheckFnCarrierBind(r, "f1", carrier)
 	name, hit := CheckFnCarrierBoundName(r, "v1")
 	if !hit || name != "f1" {

@@ -109,25 +109,25 @@ func TestSpecFamilyBothArmsJoin(t *testing.T) {
 		return top, len(r.Check.BindLedger) > base
 	}
 	a, b := fn(sig(TInteger, TAny, nil)), fn(sig(TInteger, TAny, nil))
-	if top, noted := join(a, b, ""); top.ID != a.ID || noted {
+	if top, noted := join(a, b, ""); IDOf(&top) != IDOf(&a) || noted {
 		t.Fatalf("undecided: the then arm's fn, no transition — got %v noted=%v", top, noted)
 	}
-	if top, noted := join(a, b, "else"); top.ID != b.ID || !noted {
+	if top, noted := join(a, b, "else"); IDOf(&top) != IDOf(&b) || !noted {
 		t.Fatalf("decided else: the else arm's fn, noted — got %v noted=%v", top, noted)
 	}
-	if top, noted := join(a, b, "then"); top.ID != a.ID || !noted {
+	if top, noted := join(a, b, "then"); IDOf(&top) != IDOf(&a) || !noted {
 		t.Fatalf("decided then: the then arm's fn, noted — got %v noted=%v", top, noted)
 	}
 	p0, q0 := fn(sig(TInteger, TInteger, &zero)), fn(sig(TInteger, TInteger, &zero))
-	if top, _ := join(p0, q0, ""); top.ID != p0.ID {
+	if top, _ := join(p0, q0, ""); IDOf(&top) != IDOf(&p0) {
 		t.Fatal("equal patterns and returns agree")
 	}
 	// Decided, the running arm's fn stands whatever the other arm declares.
 	s8 := fn(sig(TString, TAny, nil))
-	if top, noted := join(a, s8, "else"); top.ID != s8.ID || !noted {
+	if top, noted := join(a, s8, "else"); IDOf(&top) != IDOf(&s8) || !noted {
 		t.Fatalf("decided else over differing shapes: the else arm's fn, noted — got %v noted=%v", top, noted)
 	}
-	if top, noted := join(a, s8, "then"); top.ID != a.ID || !noted {
+	if top, noted := join(a, s8, "then"); IDOf(&top) != IDOf(&a) || !noted {
 		t.Fatalf("decided then over differing shapes: the then arm's fn, noted — got %v noted=%v", top, noted)
 	}
 	// Undecided, a TYPE difference widens the then arm's fn: each parameter
@@ -147,7 +147,7 @@ func TestSpecFamilyBothArmsJoin(t *testing.T) {
 		c.then.Data = &declared
 		top, noted := join(c.then, c.els, "")
 		fd, ok := FnDefOf(top.Data)
-		if !ok || noted || top.ID != c.then.ID {
+		if !ok || noted || IDOf(&top) != IDOf(&c.then) {
 			t.Fatalf("%s: the widened then arm's fn, no transition — got %v noted=%v", c.name, top, noted)
 		}
 		s := fd.OwnSigs()[0]

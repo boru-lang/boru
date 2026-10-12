@@ -328,7 +328,7 @@ func TestCompletedRegionLivesOnItsEventOnly(t *testing.T) {
 func TestSlotIsOperandDoesNotLowerIdlessValues(t *testing.T) {
 	es := NewEmitState()
 	a, b := core.NewInteger(1), core.NewInteger(2)
-	if a.ID != "" || b.ID != "" {
+	if core.IDOf(&a) != "" || core.IDOf(&b) != "" {
 		t.Skip("values minted here carry ids; the hazard this pins cannot arise")
 	}
 	if es.slotIsOperand(SlotDesc{Token: a}, nil, b) {

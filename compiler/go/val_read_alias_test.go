@@ -18,7 +18,7 @@ func TestNoteValBindArms(t *testing.T) {
 	es := NewEmitState()
 	cur := es.units[0]
 	fn := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	fn.ID = "T_fn" // values mint no id outside a check pass
+	core.SetID(&fn, "T_fn") // values mint no id outside a check pass
 	es.noteValBind(cur, "p", fn)
 	if cur.valBinds != nil {
 		t.Fatal("no registry: nothing recorded")
@@ -29,12 +29,12 @@ func TestNoteValBindArms(t *testing.T) {
 	if len(cur.valBinds) != 0 {
 		t.Fatalf("a non-fn value and a fn value no event produced record nothing: %v", cur.valBinds)
 	}
-	es.producedBy[fn.ID] = producer{seq: 3}
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
 	es.reg.Defs.Push("p", fn)
 	es.valBindEpoch = map[string]int{"p": 2}
 	es.noteValBind(cur, "p", fn)
 	b, ok := cur.valBinds["p"]
-	if !ok || b.pr.seq != 3 || b.top != fn.ID || b.gen != es.reg.Defs.Gen("p") || b.epoch != 2 {
+	if !ok || b.pr.seq != 3 || b.top != core.IDOf(&fn) || b.gen != es.reg.Defs.Gen("p") || b.epoch != 2 {
 		t.Fatalf("a produced fn value records its producer, the entry on top, the generation and the epoch: %+v", b)
 	}
 	// A bind inside a branch or loop body records like any other (the
@@ -72,8 +72,8 @@ func TestAliasValReadArms(t *testing.T) {
 		t.Fatal("no bind of the name: nothing aliased")
 	}
 	fn := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	fn.ID = "T_fn"
-	es.producedBy[fn.ID] = producer{seq: 3}
+	core.SetID(&fn, "T_fn")
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
 	es.reg.Defs.Push("p", fn)
 	es.valBindEpoch = map[string]int{"p": 1}
 	cur := es.units[0]
@@ -101,7 +101,7 @@ func TestAliasValReadArms(t *testing.T) {
 	// Another entry on top (a rebind the recorder did not see): not aliased;
 	// nor one with no identity to compare.
 	other := core.NewInteger(9)
-	other.ID = "T_other"
+	core.SetID(&other, "T_other")
 	es.reg.Defs.Push("p", other)
 	es.aliasValRead("r3", "p")
 	es.reg.Defs.PopEntry("p")
@@ -123,8 +123,8 @@ func TestNoteValReadAliasesWithoutAnOpenUnit(t *testing.T) {
 	es := NewEmitState()
 	es.reg = newTestRegistry(t)
 	fn := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	fn.ID = "T_fn"
-	es.producedBy[fn.ID] = producer{seq: 3}
+	core.SetID(&fn, "T_fn")
+	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
 	es.reg.Defs.Push("p", fn)
 	es.noteValBind(es.units[0], "p", fn)
 	es.NoteValRead("r1", "p")
@@ -142,14 +142,14 @@ func TestArgIsProducedClosureSkipsValRead(t *testing.T) {
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}}, &fnUnitRec{nParams: 1})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
 	v := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	v.ID = "T_closure"
-	es.producedBy[v.ID] = producer{seq: 0}
+	core.SetID(&v, "T_closure")
+	es.producedBy[core.IDOf(&v)] = producer{seq: 0}
 	sig := &core.Signature{Args: []*core.Type{core.TAny}}
 	if !es.argIsProducedClosure("typeof", sig, []core.Value{v}) || es.Compilable {
 		t.Fatal("a produced closure at an Any slot declines")
 	}
 	es.Compilable = true
-	es.valReadIDs = map[string]bool{v.ID: true}
+	es.valReadIDs = map[string]bool{core.IDOf(&v): true}
 	if es.argIsProducedClosure("typeof", sig, []core.Value{v}) || !es.Compilable {
 		t.Fatal("a `/v` read of a def-bound closure is data at the slot")
 	}
@@ -166,24 +166,24 @@ func TestNoteValBindLiteralArms(t *testing.T) {
 	cap := core.CapturedBinding{Name: "n", Value: core.NewCarrier(core.TInteger)}
 	es.valBindEpoch = map[string]int{"n": 3}
 	lit := core.NewFunction(core.FnDefInfo{Anonymous: true, Captured: []core.CapturedBinding{cap}})
-	lit.ID = "T_lit"
+	core.SetID(&lit, "T_lit")
 	es.reg.Defs.Push("kk", lit)
 	es.noteValBind(cur, "kk", lit)
 	b, ok := cur.valBinds["kk"]
-	if !ok || b.lit.ID != "T_lit" || b.capEpochs["n"] != 3 || b.op != nil {
+	if !ok || core.IDOf(&b.lit) != "T_lit" || b.capEpochs["n"] != 3 || b.op != nil {
 		t.Fatalf("a capturing literal records the literal and its captures' epochs: %+v", b)
 	}
 	nameless := core.NewFunction(core.FnDefInfo{Name: "", Captured: []core.CapturedBinding{cap}})
-	nameless.ID = "T_nameless"
+	core.SetID(&nameless, "T_nameless")
 	es.noteValBind(cur, "kk", nameless)
-	if b := cur.valBinds["kk"]; b.lit.ID != "T_nameless" {
+	if b := cur.valBinds["kk"]; core.IDOf(&b.lit) != "T_nameless" {
 		t.Fatalf("a nameless verbose fn literal records too: %+v", b)
 	}
 	for _, v := range []core.Value{
 		core.NewFunction(core.FnDefInfo{Anonymous: true}),
 		core.NewFunction(core.FnDefInfo{Name: "sq", Captured: []core.CapturedBinding{cap}}),
 	} {
-		v.ID = "T_other"
+		core.SetID(&v, "T_other")
 		es.noteValBind(cur, "kk", v)
 		if _, ok := cur.valBinds["kk"]; ok {
 			t.Errorf("a capture-free or named fn value records nothing: %v", v)
@@ -206,9 +206,9 @@ func TestAliasValReadLiteralArms(t *testing.T) {
 	es.reg = newTestRegistry(t)
 	cur := es.units[0]
 	capV := core.NewCarrier(core.TInteger)
-	capV.ID = "T_n"
+	core.SetID(&capV, "T_n")
 	lit := core.NewFunction(core.FnDefInfo{Anonymous: true, Captured: []core.CapturedBinding{{Name: "n", Value: capV}}})
-	lit.ID = "T_lit"
+	core.SetID(&lit, "T_lit")
 	es.reg.Defs.Push("kk", lit)
 	es.valBindEpoch = map[string]int{"kk": 1, "n": 2}
 	es.noteValBind(cur, "kk", lit)
@@ -229,7 +229,7 @@ func TestAliasValReadLiteralArms(t *testing.T) {
 	want := EmitOperand{kind: opClosure, closureUnit: 7}
 	es.readOps = map[string]EmitOperand{"r3": want}
 	v := core.NewInteger(1)
-	v.ID = "r3"
+	core.SetID(&v, "r3")
 	if op, ok := es.resolveOperand(v); !ok || op.closureUnit != 7 || op.kind != opClosure {
 		t.Fatalf("a read operand resolves first: %+v %v", op, ok)
 	}

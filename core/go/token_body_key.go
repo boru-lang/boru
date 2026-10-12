@@ -38,9 +38,9 @@ func TokenBodyKey(body Value, tokens []Value) (string, bool) {
 			b.WriteString(strconv.Itoa(p.Col))
 			b.WriteByte(' ')
 		}
-	case body.ID != "":
+	case IDOf(&body) != "":
 		b.WriteString("id:")
-		b.WriteString(body.ID)
+		b.WriteString(IDOf(&body))
 	default:
 		return "", false
 	}

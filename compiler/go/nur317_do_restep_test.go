@@ -81,7 +81,7 @@ func TestValueMayBeFn(t *testing.T) {
 func TestBodyReStepNote(t *testing.T) {
 	es := NewEmitState()
 	body := core.NewList([]core.Value{core.NewInteger(1)})
-	body.ID = "body"
+	core.SetID(&body, "body")
 	if es.takeBodyReStep(body) {
 		t.Fatal("no note yet")
 	}

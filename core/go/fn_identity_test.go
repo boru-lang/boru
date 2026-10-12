@@ -71,11 +71,11 @@ func TestParenTrailingFnApply(t *testing.T) {
 		t.Error("a non-dynamic last value is the fn it is")
 	}
 	dyn := NewDynamicCarrier(TAny)
-	dyn.ID = "lead"
+	SetID(&dyn, "lead")
 	other := NewDynamicCarrier(TAny)
-	other.ID = "other"
+	SetID(&other, "other")
 	noID := NewDynamicCarrier(TAny)
-	noID.ID = ""
+	SetID(&noID, "")
 	if !parenTrailingFnApply(rec, dyn, 2, 1) || parenTrailingFnApply(rec, other, 2, 1) || parenTrailingFnApply(rec, noID, 2, 1) {
 		t.Error("a dynamic last value is the lead exactly when the apply word holds it pending")
 	}

@@ -496,13 +496,13 @@ func TestZcaStripZeroOutResiduals(t *testing.T) {
 	// the real residual kept.
 	es := zcaNewEmit()
 	es.active = true
-	es.zeroOut[phantom.ID] = true
+	es.zeroOut[core.IDOf(&phantom)] = true
 	r.Check.Emit = es
 	got = stripZeroOutResiduals(r, []core.Value{phantom, real})
 	if len(got) != 1 {
 		t.Fatalf("active recorder: %d residuals, want 1", len(got))
 	}
-	if got[0].ID != real.ID {
+	if core.IDOf(&got[0]) != core.IDOf(&real) {
 		t.Error("the surviving residual must be the non-phantom value")
 	}
 	// An empty stack short-circuits.
@@ -574,7 +574,7 @@ func TestZcaNarrowDynamicUsesTightens(t *testing.T) {
 	}
 	// Identity-preserving rebind: the narrowing refines the SAME runtime
 	// value, so the producing event's ID is kept.
-	if got.ID != v.ID {
+	if core.IDOf(&got) != core.IDOf(&v) {
 		t.Error("the narrowed binding must keep the original binding's ID")
 	}
 }
@@ -736,7 +736,7 @@ func TestZcaReturnsFreshInstanceRecordBodyAndMisc(t *testing.T) {
 	}
 	dyn := core.NewDynamicCarrier(core.TType)
 	out = ReturnsFreshInstance(0)([]core.Value{dyn}, r)
-	if len(out) != 1 || out[0].ID != dyn.ID {
+	if len(out) != 1 || core.IDOf(&out[0]) != core.IDOf(&dyn) {
 		t.Error("a dynamic/computed target keeps the prior identity behaviour")
 	}
 }
@@ -790,7 +790,7 @@ func TestZcaAnalyseLoopBodyJoinAndCapture(t *testing.T) {
 	// The armed capture protocol: locals registered for the loop binds,
 	// the loop-carried bracket opened and closed, the rebind noted, one
 	// checkpoint per round, and the non-final round rolled back.
-	if len(es.locals) != 1 || es.locals[0] != iter.ID {
+	if len(es.locals) != 1 || es.locals[0] != core.IDOf(&iter) {
 		t.Errorf("RegisterLocal calls = %v, want the iterator's ID", es.locals)
 	}
 	if es.beginLC != 1 || es.endLC != 1 {

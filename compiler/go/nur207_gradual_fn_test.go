@@ -118,7 +118,7 @@ func TestArmsLeaveFnAndReadPoison(t *testing.T) {
 	es.producedBy = map[string]producer{"inner": {seq: 4}}
 	es.eventInfo[4] = eventFlags{armLeavesFn: true}
 	inner := core.NewCarrier(core.TAny)
-	inner.ID = "inner"
+	core.SetID(&inner, "inner")
 	if !es.armsLeaveFn(core.BranchRecord{ThenValue: &inner}) {
 		t.Error("a nested branch that leaves a fn leaves it through the outer arm")
 	}
@@ -155,7 +155,7 @@ func TestGradualHoldsFn(t *testing.T) {
 	es.producedBy = map[string]producer{"viaBranch": {seq: 7}, "viaClosure": {seq: 9}, "plain": {seq: 3}}
 	mk := func(id string, t *core.Type) core.Value {
 		v := core.NewCarrier(t)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	if !es.gradualHoldsFn(mk("viaBranch", core.TAny)) || !es.gradualHoldsFn(mk("viaClosure", core.TAny)) {
@@ -211,21 +211,21 @@ func TestNoteClosureShapeBindMemberClaim(t *testing.T) {
 	es, reg, done := beginRegionPass(t)
 	defer done()
 	read := core.NewDynamicCarrier(core.TAny)
-	es.NoteMemberFnRead(read.ID, n207Lambda(core.FnParam{Type: core.TInteger}))
+	es.NoteMemberFnRead(core.IDOf(&read), n207Lambda(core.FnParam{Type: core.TInteger}))
 	es.noteClosureShapeBind(read)
-	if s, ok := reg.Check.FnShapeOf(read.ID); !ok || s.Arity != 1 {
+	if s, ok := reg.Check.FnShapeOf(core.IDOf(&read)); !ok || s.Arity != 1 {
 		t.Errorf("a def of a pinpointed member read claims the member's shape, got %+v/%v", s, ok)
 	}
 	unfit := core.NewDynamicCarrier(core.TAny)
-	es.NoteMemberFnRead(unfit.ID, core.NewFunction(core.FnDefInfo{Name: "inc"}))
+	es.NoteMemberFnRead(core.IDOf(&unfit), core.NewFunction(core.FnDefInfo{Name: "inc"}))
 	es.noteClosureShapeBind(unfit)
-	if _, ok := reg.Check.FnShapeOf(unfit.ID); ok {
+	if _, ok := reg.Check.FnShapeOf(core.IDOf(&unfit)); ok {
 		t.Error("a member the claim cannot describe claims nothing")
 	}
 	data := core.NewDynamicCarrier(core.TInteger)
-	es.NoteMemberFnRead(data.ID, n207Lambda())
+	es.NoteMemberFnRead(core.IDOf(&data), n207Lambda())
 	es.noteClosureShapeBind(data)
-	if _, ok := reg.Check.FnShapeOf(data.ID); ok {
+	if _, ok := reg.Check.FnShapeOf(core.IDOf(&data)); ok {
 		t.Error("a carrier whose bound excludes a fn claims nothing")
 	}
 }
@@ -258,7 +258,7 @@ func TestApplyOverGradualLeadIsPending(t *testing.T) {
 	es := NewEmitState()
 	es.units = []*emitUnit{{}}
 	lead := core.NewDynamicCarrier(core.TAny)
-	lead.ID = "lead"
+	core.SetID(&lead, "lead")
 	es.producedBy = map[string]producer{"lead": {seq: 3}}
 	es.eventInfo[3] = eventFlags{}
 	sig := &core.Signature{Args: []*core.Type{core.TFunction}}
@@ -294,13 +294,13 @@ func TestNoteFnLeavingBind(t *testing.T) {
 	es.producedBy = map[string]producer{"claimed": {seq: 9}, "unclaimed": {seq: 7}, "fnTyped": {seq: 7}, "branch": {seq: 5}}
 	carrier := func(id string, ty *core.Type) core.Value {
 		v := core.NewDynamicCarrier(ty)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	claimed := carrier("claimed", core.TAny)
 	reg.Check.NoteFnShape(claimed, core.FnShape{Arity: 0})
 	fnTyped := core.NewCarrier(core.TFunction)
-	fnTyped.ID = "fnTyped"
+	core.SetID(&fnTyped, "fnTyped")
 	for _, v := range []core.Value{claimed, carrier("unclaimed", core.TAny), fnTyped, carrier("branch", core.TAny), {}} {
 		es.noteFnLeavingBind(v)
 	}

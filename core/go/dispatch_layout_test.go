@@ -8,9 +8,9 @@ type layoutRecorder struct{ inactiveEmit }
 
 func (layoutRecorder) Active() bool { return true }
 
-// withID gives a test value the identity a tape token carries.
-func withID(v Value) Value {
-	v.ID = GenerateID("layout")
+// withFreshID gives a test value the identity a tape token carries.
+func withFreshID(v Value) Value {
+	SetID(&v, GenerateID("layout"))
 	return v
 }
 
@@ -38,7 +38,7 @@ func layoutEngine(t *testing.T, tape []Value, at int) *Engine {
 // evaluated list), a gap, a modified word, a tape-only report layer, or no
 // recording pass.
 func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
-	zero, body, s := withID(NewInteger(0)), withID(NewList([]Value{NewWord("add")})), withID(NewString("s"))
+	zero, body, s := withFreshID(NewInteger(0)), withFreshID(NewList([]Value{NewWord("add")})), withFreshID(NewString("s"))
 	fold := NewWord("fold")
 	// `0 fold [add] s`, the operands in signature order: [add], s, 0.
 	e := layoutEngine(t, []Value{zero, fold, body, s}, 1)
@@ -77,12 +77,12 @@ func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
 	restore()
 	// A constant beneath and literals after ride with the layout, the run
 	// after it closed by a bare function word.
-	seven, five, cneg := withID(NewInteger(7)), withID(NewInteger(5)), NewWord("cneg")
+	seven, five, cneg := withFreshID(NewInteger(7)), withFreshID(NewInteger(5)), NewWord("cneg")
 	e = layoutEngine(t, []Value{seven, zero, fold, body, five, cneg, NewInteger(9)}, 2)
 	args = []Value{body, zero}
 	restore = e.PublishLayout(args, []int{3, 1}, SrcPos{})
-	if l := e.Registry.Check.LayoutFor(args); l == nil || l.NFwd != 1 || len(l.Beneath) != 1 || l.Beneath[0].ID != seven.ID ||
-		len(l.After) != 2 || l.After[0].ID != five.ID || !IsWord(&l.After[1]) {
+	if l := e.Registry.Check.LayoutFor(args); l == nil || l.NFwd != 1 || len(l.Beneath) != 1 || IDOf(&l.Beneath[0]) != IDOf(&seven) ||
+		len(l.After) != 2 || IDOf(&l.After[0]) != IDOf(&five) || !IsWord(&l.After[1]) {
 		t.Errorf("7 0 fold [add] 5 cneg 9: 7 beneath, 5 cneg after; got %+v", l)
 	}
 	restore()
@@ -102,10 +102,10 @@ func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
 		{"a modified word", []Value{NewWordModified("fold", -1, true, false), body}, 0, []Value{body}, []int{1}, nil},
 		{"a void group", []Value{fold, body}, 0, []Value{body}, []int{1}, func(e *Engine) { e.voidGroups = []string{"fold"} }},
 		{"a gap", []Value{fold, zero, body}, 0, []Value{body}, []int{2}, nil},
-		{"not the tape's value", []Value{fold, body}, 0, []Value{withID(NewList([]Value{NewInteger(3)}))}, []int{1}, nil},
+		{"not the tape's value", []Value{fold, body}, 0, []Value{withFreshID(NewList([]Value{NewInteger(3)}))}, []int{1}, nil},
 		{"an operand with no identity", []Value{fold, body}, 0, []Value{{Parent: TList}}, []int{1}, nil},
-		{"a carrier beneath", []Value{withID(NewDynamicCarrier(TAny)), zero, fold, body}, 2, []Value{body, zero}, []int{3, 1}, nil},
-		{"a list after", []Value{zero, fold, body, withID(NewList([]Value{NewInteger(5)}))}, 1, []Value{body, zero}, []int{2, 0}, nil},
+		{"a carrier beneath", []Value{withFreshID(NewDynamicCarrier(TAny)), zero, fold, body}, 2, []Value{body, zero}, []int{3, 1}, nil},
+		{"a list after", []Value{zero, fold, body, withFreshID(NewList([]Value{NewInteger(5)}))}, 1, []Value{body, zero}, []int{2, 0}, nil},
 		{"a word bound to no function after", []Value{zero, fold, body, NewWord("nope")}, 1, []Value{body, zero}, []int{2, 0}, nil},
 		{"a group after", []Value{zero, fold, body, NewOpenParen(), NewInteger(5), NewCloseParen()}, 1, []Value{body, zero}, []int{2, 0}, nil},
 	}

@@ -136,7 +136,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	case keep && condFrag:
 		defer r.Check.Recorder().CondBodyGuard()()
 	case keep:
-		defer r.Check.Recorder().KeepDefsBodyGuard(r, body.ID)()
+		defer r.Check.Recorder().KeepDefsBodyGuard(r, IDOf(&body))()
 	default:
 		defer r.Check.Recorder().BodyAnalysisGuard()()
 	}

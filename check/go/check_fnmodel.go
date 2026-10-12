@@ -140,7 +140,7 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 			bv.Parent != nil && bv.Parent.ConformsTo(core.TMap) {
 			if _, isRec := bv.Data.(core.RecordTypeInfo); isRec {
 				sv := bv
-				sv.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
+				core.SetID(&sv, core.GenerateID(core.IDPrefixForType(core.TMap)))
 				return sv, true
 			}
 		}
@@ -171,14 +171,14 @@ func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 	}
 	if core.IsTypedMap(&pat) && (a.Parent.ConformsTo(core.TMap) || a.Parent.Equal(core.TAny)) {
 		v := core.NewTypedMap(ci.Child)
-		v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
+		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TMap)))
 		v.Carrier = true
 		core.SetDynamic(&v, true) // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
 		return v, true
 	}
 	if core.IsTypedList(&pat) && (a.Parent.ConformsTo(core.TList) || a.Parent.Equal(core.TAny)) {
 		v := core.NewCarrierTypedListValue(ci.Child)
-		v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TList)))
 		core.SetDynamic(&v, true)
 		return v, true
 	}
@@ -198,14 +198,14 @@ func ParamBodyCarrier(p core.FnParam) core.Value {
 		if ci, err := core.AsChildType(pat); err == nil && ci.Child.Parent != nil && !ci.Child.Parent.Equal(core.TAny) {
 			if core.IsTypedMap(&pat) {
 				v := core.NewTypedMap(ci.Child)
-				v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
+				core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TMap)))
 				v.Carrier = true
 				core.SetDynamic(&v, true)
 				return v
 			}
 			if core.IsTypedList(&pat) {
 				v := core.NewCarrierTypedListValue(ci.Child)
-				v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+				core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TList)))
 				core.SetDynamic(&v, true)
 				return v
 			}

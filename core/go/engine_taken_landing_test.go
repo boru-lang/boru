@@ -11,16 +11,16 @@ type takenEmit struct {
 }
 
 func (h *takenEmit) Active() bool             { return h.active }
-func (h *takenEmit) NoteTakenLanding(v Value) { h.taken[v.ID] = true }
+func (h *takenEmit) NoteTakenLanding(v Value) { h.taken[IDOf(&v)] = true }
 func newTakenEmit(active bool) *takenEmit {
 	return &takenEmit{EmitRecorder: TheInactiveEmit, active: active, taken: map[string]bool{}}
 }
-func (h *takenEmit) was(v Value) bool { return h.taken[v.ID] }
+func (h *takenEmit) was(v Value) bool { return h.taken[IDOf(&v)] }
 func (h *takenEmit) count() int       { return len(h.taken) }
 func stoodAside(e *Engine, vs ...Value) {
 	e.Registry.Check.StoodAsideLandingIDs = map[string]bool{}
 	for _, v := range vs {
-		e.Registry.Check.StoodAsideLandingIDs[v.ID] = true
+		e.Registry.Check.StoodAsideLandingIDs[IDOf(&v)] = true
 	}
 }
 

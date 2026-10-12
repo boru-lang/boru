@@ -416,7 +416,7 @@ func TestDeclaredReturnCarriersRecordSchema(t *testing.T) {
 	if ft, ok := rt.Fields.Get("name"); !ok || !core.ValueType(ft).Equal(core.TString) {
 		t.Fatalf("schema field name = %#v, want the String constraint", rt.Fields)
 	}
-	if out[0].ID == "" {
+	if core.IDOf(&out[0]) == "" {
 		t.Error("record return carrier must mint a fresh identity")
 	}
 
@@ -458,7 +458,7 @@ func TestRecordReturnCarrierGates(t *testing.T) {
 		t.Error("an Options pattern must decline")
 	}
 	rc, ok := recordReturnCarrier(core.TMap, &pat)
-	if !ok || !rc.Carrier || !core.IsDynamic(&rc) || rc.ID == "" {
+	if !ok || !rc.Carrier || !core.IsDynamic(&rc) || core.IDOf(&rc) == "" {
 		t.Fatalf("field-bag pattern = (%#v, %v), want a fresh dynamic schema carrier", rc, ok)
 	}
 	if rt, isRec := rc.Data.(core.RecordTypeInfo); !isRec || rt.Fields == nil {
@@ -760,7 +760,7 @@ func TestAlternativeCarriersExpansion(t *testing.T) {
 
 	// Any other value yields itself.
 	plain := core.NewCarrier(core.TInteger)
-	if got := alternativeCarriers(plain); len(got) != 1 || got[0].ID != plain.ID {
+	if got := alternativeCarriers(plain); len(got) != 1 || core.IDOf(&got[0]) != core.IDOf(&plain) {
 		t.Errorf("a plain carrier must yield itself, got %#v", got)
 	}
 	dyn := covCDDisjunct(false, core.TInteger, core.TString)
@@ -769,7 +769,7 @@ func TestAlternativeCarriersExpansion(t *testing.T) {
 		t.Errorf("a dynamic disjunct must yield itself, got %#v", got)
 	}
 	conc := core.NewInteger(3)
-	if got := alternativeCarriers(conc); len(got) != 1 || got[0].ID != conc.ID {
+	if got := alternativeCarriers(conc); len(got) != 1 || core.IDOf(&got[0]) != core.IDOf(&conc) {
 		t.Errorf("a concrete value must yield itself, got %#v", got)
 	}
 }

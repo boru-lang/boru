@@ -158,7 +158,7 @@ func oracleStopPresentable(tok core.Value) bool {
 // Never by rendering either, which would walk a container's whole payload
 // on every execution of a loop body that names it.
 func oracleSameValue(live, pushed core.Value) bool {
-	if live.ID != "" && live.ID == pushed.ID {
+	if core.IDOf(&live) != "" && core.IDOf(&live) == core.IDOf(&pushed) {
 		return true
 	}
 	if core.HasContainerIdentity(live) || core.HasContainerIdentity(pushed) {

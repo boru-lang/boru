@@ -54,7 +54,7 @@ func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 	defer done()
 	carrier := core.NewDynamicCarrier(core.TAny)
 	r.Check.NoteMethodShape(carrier, member)
-	if _, ok := r.Check.MethodShapeMember(carrier.ID); !ok {
+	if _, ok := r.Check.MethodShapeMember(core.IDOf(&carrier)); !ok {
 		t.Fatal("genuine-0-arg delegation member must be annotated")
 	}
 	e := z9Engine(t, r, []core.Value{carrier, core.NewWord("z9unmodelable")})

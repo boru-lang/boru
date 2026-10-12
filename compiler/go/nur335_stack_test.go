@@ -34,7 +34,7 @@ func TestNoteStatementStack(t *testing.T) {
 	es.openUnitRecs = nil
 	es.NoteStatementStack(pos, stack)
 	stack[0] = n335Val("b", 1, 1)
-	if got := es.rootStmtStacks[pos]; len(got) != 1 || got[0].ID != "a" {
+	if got := es.rootStmtStacks[pos]; len(got) != 1 || core.IDOf(&got[0]) != "a" {
 		t.Errorf("the root boundary's stack, copied: %v", got)
 	}
 	// stackAtStart reads it through the `end` before the statement.

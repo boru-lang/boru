@@ -26,7 +26,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile(t *testing.T) {
 	if op != OpCallDynamic || reason != "" {
 		t.Fatalf("an event-provenance carrier lead must keep the lowering: op=%v reason=%q", op, reason)
 	}
-	es.defReads = map[string]string{lead.ID: "k"}
+	es.defReads = map[string]string{core.IDOf(&lead): "k"}
 	_, op, reason = es.resolveDynamicApply(lw, residual)
 	if op != 0 || !strings.Contains(reason, "def-bound computed fn apply") {
 		t.Fatalf("a read-substituted lead with unknown closure shape must decline: op=%v reason=%q", op, reason)
@@ -42,7 +42,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile(t *testing.T) {
 func TestRecordDispatchRematchDeclinesReadSubstitutedCarrier(t *testing.T) {
 	es := NewEmitState()
 	carrier := core.NewCarrier(core.TFunction)
-	es.defReads = map[string]string{carrier.ID: "q"}
+	es.defReads = map[string]string{core.IDOf(&carrier): "q"}
 	if es.RecordDispatchRematchValues("add", []core.Value{core.NewInteger(1), carrier}, 0, []int{0}, core.SrcPos{}) {
 		t.Error("a read-substituted fn-carrier window value must decline the rematch")
 	}
@@ -129,7 +129,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	// checker's gradual stand-ins, which is what a real event out is.
 	core.SetDynamic(&carrier, true)
 	es.frames[0] = append(es.frames[0], EmitEvent{kind: evCall})
-	es.producedBy[carrier.ID] = producer{seq: 0}
+	es.producedBy[core.IDOf(&carrier)] = producer{seq: 0}
 	out := core.NewCarrier(core.TInteger)
 	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, carrier, out, core.SrcPos{}); ok {
 		t.Fatal("an unprovable event-provenance carrier lead must decline")
@@ -163,7 +163,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es2 := NewEmitState()
 	fn := mkFn()
 	es2.frames[0] = append(es2.frames[0], EmitEvent{kind: evCall})
-	es2.producedBy[fn.ID] = producer{seq: 0}
+	es2.producedBy[core.IDOf(&fn)] = producer{seq: 0}
 	if _, ok := es2.RecordDynApply([]core.Value{core.NewInteger(5)}, fn, core.NewCarrier(core.TInteger), core.SrcPos{}); !ok {
 		t.Fatalf("a sig-proven event lead must record (reason %q)", es2.Reason)
 	}
@@ -175,7 +175,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es3 := NewEmitState()
 	fn3 := mkFn()
 	es3.frames[0] = append(es3.frames[0], EmitEvent{kind: evCall})
-	es3.producedBy[fn3.ID] = producer{seq: 0}
+	es3.producedBy[core.IDOf(&fn3)] = producer{seq: 0}
 	consumed, ok := es3.RecordDynApply([]core.Value{core.NewInteger(1), core.NewInteger(2)}, fn3, core.NewCarrier(core.TInteger), core.SrcPos{})
 	if !ok {
 		t.Fatalf("a wider window must UNDER-APPLY, not decline (reason %q)", es3.Reason)
@@ -201,7 +201,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	core.SetDynamic(&two, true)
 	es4 := NewEmitState()
 	es4.frames[0] = append(es4.frames[0], EmitEvent{kind: evCall})
-	es4.producedBy[two.ID] = producer{seq: 0}
+	es4.producedBy[core.IDOf(&two)] = producer{seq: 0}
 	if _, ok := es4.RecordDynApply([]core.Value{core.NewInteger(5)}, two, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
 		t.Fatal("a window NARROWER than the callee's arity must decline")
 	}

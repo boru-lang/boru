@@ -195,11 +195,11 @@ func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	// The live read: the recorder seats it with its own identity and event.
 	es.specUndefNames = map[string]bool{"k": true}
 	v := core.NewCarrier(core.TInteger)
-	before := v.ID
+	before := core.IDOf(&v)
 	es.NoteLiveRead(&v, "k", readAt)
-	pr, ok := es.producedBy[v.ID]
-	if v.ID == before || !ok || es.defReads[v.ID] != "k" || len(es.frames[0]) != 1 || !es.frames[0][0].call.live || es.frames[0][0].call.nout != 1 {
-		t.Fatalf("a live read gets its own identity and a one-result live event: id changed=%v produced=%v events=%d", v.ID != before, ok, len(es.frames[0]))
+	pr, ok := es.producedBy[core.IDOf(&v)]
+	if core.IDOf(&v) == before || !ok || es.defReads[core.IDOf(&v)] != "k" || len(es.frames[0]) != 1 || !es.frames[0][0].call.live || es.frames[0][0].call.nout != 1 {
+		t.Fatalf("a live read gets its own identity and a one-result live event: id changed=%v produced=%v events=%d", core.IDOf(&v) != before, ok, len(es.frames[0]))
 	}
 	ev := es.frames[0][len(es.frames[0])-1]
 	if ev.seq != pr.seq {
@@ -229,7 +229,7 @@ func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	es3.reg, _ = core.NewRegistry()
 	es3.specUndefNames = map[string]bool{"k": true}
 	c := core.NewCarrier(core.TInteger)
-	es3.defReads = map[string]string{c.ID: "k"}
+	es3.defReads = map[string]string{core.IDOf(&c): "k"}
 	if _, ok := es3.dynScopeRescue(c); ok || es3.Compilable || !strings.Contains(es3.Reason, "read of `k` after a placed undef the placement did not seat") {
 		t.Fatalf("an unseated read declines: ok=%v %q", ok, es3.Reason)
 	}

@@ -58,7 +58,7 @@ func TestGeneraliseSpecUndef(t *testing.T) {
 	if !ok || IsConcrete(&top) || !top.Parent.Equal(TInteger) || r.Defs.Depth("k") != 1 {
 		t.Fatalf("the binding stays at its depth with a carrier of its type: %v depth=%d", top, r.Defs.Depth("k"))
 	}
-	if r.Defs.Gen("k") == gen || r.Check.SpecUndefGen != 1 || r.Check.SpecUndefCarriers["k"] != top.ID {
+	if r.Defs.Gen("k") == gen || r.Check.SpecUndefGen != 1 || r.Check.SpecUndefCarriers["k"] != IDOf(&top) {
 		t.Fatalf("the generation moves and the carrier is noted: gen %d→%d SpecUndefGen=%d noted=%q", gen, r.Defs.Gen("k"), r.Check.SpecUndefGen, r.Check.SpecUndefCarriers["k"])
 	}
 	// A second undef of the generalised binding: still placeable, nothing
@@ -67,7 +67,7 @@ func TestGeneraliseSpecUndef(t *testing.T) {
 	if !GeneraliseSpecUndef(r, "k") || r.Defs.Gen("k") != gen || r.Check.SpecUndefGen != 1 {
 		t.Fatal("an already-generalised binding neither re-mints nor moves the generation")
 	}
-	if again, _ := r.Defs.Top("k"); again.ID != top.ID {
+	if again, _ := r.Defs.Top("k"); IDOf(&again) != IDOf(&top) {
 		t.Fatal("the same carrier stays in place")
 	}
 	// A NEW concrete binding of the name generalises afresh.
@@ -118,7 +118,7 @@ func TestPopLiveBinding(t *testing.T) {
 	if r.Defs.Depth("Pos") != 0 {
 		t.Fatal("the type binding pops")
 	}
-	if r.Types.LookupByID(e.TypeDef.ID) != nil {
+	if r.Types.LookupByID(IDOf(e.TypeDef)) != nil {
 		t.Fatal("the minted node is retired with its binding")
 	}
 }

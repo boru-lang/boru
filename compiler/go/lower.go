@@ -3329,7 +3329,7 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 // entry but the exempt ones (EmitState.residualCallableExempt).
 func residualMayBeCallable(vals []core.Value, exempt map[string]bool) bool {
 	for _, v := range vals {
-		if !exempt[v.ID] && regionValsMayBeCallable([]core.Value{v}) {
+		if !exempt[core.IDOf(&v)] && regionValsMayBeCallable([]core.Value{v}) {
 			return true
 		}
 	}
@@ -4761,7 +4761,7 @@ func (lw *lowerer) fallbackFlowOps(fb *emitFallback) []core.SrcPos {
 	span := lw.es.fallbacks[fb.spanIdx]
 	out := make([]core.SrcPos, 0, len(span.Tokens))
 	for _, t := range span.Tokens {
-		if p, read := lw.es.readPos[t.ID]; read && t.ID != "" {
+		if p, read := lw.es.readPos[core.IDOf(&t)]; read && core.IDOf(&t) != "" {
 			out = append(out, p)
 			continue
 		}

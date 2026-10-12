@@ -212,7 +212,7 @@ func TestMaterialiseRebuild(t *testing.T) {
 	// List whose member is a stripped carrier recoverable to a concrete int.
 	member := core.NewCarrier(core.TInteger)
 	orig := core.NewInteger(7)
-	es.origByID[member.ID] = orig
+	es.origByID[core.IDOf(&member)] = orig
 	lst := core.NewList([]core.Value{member})
 	got, ok := es.Materialise(lst)
 	if !ok {
@@ -231,7 +231,7 @@ func TestMaterialiseRebuild(t *testing.T) {
 
 	// Map with a recoverable member gets rebuilt.
 	m2 := core.NewCarrier(core.TInteger)
-	es.origByID[m2.ID] = core.NewInteger(11)
+	es.origByID[core.IDOf(&m2)] = core.NewInteger(11)
 	om := core.NewOrderedMap()
 	om.Set("k", m2)
 	mp := core.NewMap(om)
@@ -288,7 +288,7 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	seedProduced(esW, fn, 1)
 	argFn := core.NewDynamicCarrier(core.TFunction)
 	seedProduced(esW, argFn, 2)
-	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: fn.ID})
+	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: core.IDOf(&fn)})
 	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, core.NewInteger(0), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
 		t.Fatal("a fn-valued arg beneath the apply word records")
 	}
@@ -372,7 +372,7 @@ func TestRecordTypedBindDeclines(t *testing.T) {
 	es := NewEmitState()
 	// Concrete body → declines (returns out unchanged, false).
 	in := core.NewInteger(5)
-	if out, ok := es.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || out.ID != in.ID {
+	if out, ok := es.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || core.IDOf(&out) != core.IDOf(&in) {
 		t.Fatal("concrete typed-bind body should decline")
 	}
 	// Non-concrete but unresolvable body → declines.

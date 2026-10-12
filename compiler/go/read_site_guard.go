@@ -59,19 +59,19 @@ type siteKey struct {
 // produced, in the innermost frame (a fn-typed read has its own strict
 // accounting; a value no event produced — a param — has no producer home).
 func (es *EmitState) noteReadSite(v core.Value, name string, pos core.SrcPos, owner *fnUnitRec) {
-	pr, produced := es.producedBy[v.ID]
+	pr, produced := es.producedBy[core.IDOf(&v)]
 	if core.IsFnTypedCarrier(&v) || !produced {
 		return
 	}
 	n := len(es.frames) - 1
-	s := &readSite{id: v.ID, name: name, pos: pos, before: -1, after: -1, owner: owner, fragID: es.frameID(n), prod: pr}
+	s := &readSite{id: core.IDOf(&v), name: name, pos: pos, before: -1, after: -1, owner: owner, fragID: es.frameID(n), prod: pr}
 	if k := len(es.frames[n]); k > 0 {
 		s.after = es.frames[n][k-1].seq
 	}
 	if es.readSites == nil {
 		es.readSites = map[string][]*readSite{}
 	}
-	es.readSites[v.ID] = append(es.readSites[v.ID], s)
+	es.readSites[core.IDOf(&v)] = append(es.readSites[core.IDOf(&v)], s)
 	es.pendingSites = append(es.pendingSites, s)
 }
 

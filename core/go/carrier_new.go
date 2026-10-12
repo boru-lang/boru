@@ -34,8 +34,8 @@ func NewCarrier(t *Type) Value {
 // per carrier because the bytecode compiler keys a frame local and a
 // recorded result by it. Built in one literal, the dynamic mark included.
 func NewDynamicRecordCarrier(fields *OrderedMap) Value {
-	return Value{ID: GenerateID(IDPrefixForType(TMap)), Parent: TMap, Carrier: true,
-		Data: RecordTypeInfo{Fields: fields}, occ: &flagsOnly[occDynamic]}
+	return Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields},
+		occ: idOcc(GenerateID(IDPrefixForType(TMap))), flags: occDynamic}
 }
 
 // NewDynamicCarrier constructs a bounded gradual carrier dynamic(t):
@@ -191,7 +191,7 @@ func ReturnsIdentity(mapping ...int) ReturnsFunc {
 			}
 			v := args[m] // struct copy: the ID write below is local to v.
 			if counts[m] > 1 {
-				v.ID = GenerateID(IDPrefixForType(v.Parent))
+				SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
 			}
 			out[i] = v
 		}

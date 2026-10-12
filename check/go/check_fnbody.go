@@ -866,7 +866,7 @@ func freshResidual(stk []core.Value) []core.Value {
 	out := make([]core.Value, len(stk))
 	for i, v := range stk {
 		c := v
-		c.ID = core.GenerateID(core.IDPrefixForType(c.Parent))
+		core.SetID(&c, core.GenerateID(core.IDPrefixForType(c.Parent)))
 		out[i] = c
 	}
 	return out
@@ -1072,7 +1072,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 		// it re-steps the value and records through this same arm, resolving
 		// the fn to THIS apply's event.
 		fresh = outs[0]
-		fresh.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+		core.SetID(&fresh, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	} else {
 		parent := outs[0].Parent
 		if parent == nil {

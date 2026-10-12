@@ -13,7 +13,7 @@ func takenFixture(word string, nout int) (*EmitState, core.Value, int) {
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, nout: nout}})
 	v := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[v.ID] = producer{seq: seq}
+	es.producedBy[core.IDOf(&v)] = producer{seq: seq}
 	return es, v, seq
 }
 
@@ -32,7 +32,7 @@ func TestNoteTakenLandingGates(t *testing.T) {
 	// A second note on another read keeps the first.
 	v2 := core.NewDynamicCarrier(core.TAny)
 	seq2 := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "get", nout: 1}})
-	es.producedBy[v2.ID] = producer{seq: seq2}
+	es.producedBy[core.IDOf(&v2)] = producer{seq: seq2}
 	es.NoteTakenLanding(v2)
 	if !es.landingTaken[seq] || !es.landingTaken[seq2] {
 		t.Errorf("both reads are taken: %v", es.landingTaken)
@@ -51,12 +51,12 @@ func TestNoteTakenLandingGates(t *testing.T) {
 		{"a producer seq with no event", func() (*EmitState, core.Value) {
 			es := NewEmitState()
 			v := core.NewDynamicCarrier(core.TAny)
-			es.producedBy[v.ID] = producer{seq: 99}
+			es.producedBy[core.IDOf(&v)] = producer{seq: 99}
 			return es, v
 		}},
 		{"a def-bound read", func() (*EmitState, core.Value) {
 			es, v, _ := takenFixture("dot", 1)
-			es.defReads = map[string]string{v.ID: "x"}
+			es.defReads = map[string]string{core.IDOf(&v): "x"}
 			return es, v
 		}},
 		{"a native's result that is no member read", func() (*EmitState, core.Value) {
@@ -71,7 +71,7 @@ func TestNoteTakenLandingGates(t *testing.T) {
 			es := NewEmitState()
 			seq := es.appendEvent(EmitEvent{kind: evBranch, br: &emitBranch{}})
 			v := core.NewDynamicCarrier(core.TAny)
-			es.producedBy[v.ID] = producer{seq: seq}
+			es.producedBy[core.IDOf(&v)] = producer{seq: seq}
 			return es, v
 		}},
 	} {

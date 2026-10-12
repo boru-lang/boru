@@ -856,7 +856,7 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 				// as a value, so it declines as a speculative family's `/v`
 				// read does: no live home for the read.
 				if r.Check.SpecFnNames[kind] && r.Check.SpecArmDepth == 0 {
-					r.Check.Recorder().NoteValRead(top.ID, kind)
+					r.Check.Recorder().NoteValRead(IDOf(&top), kind)
 				}
 				return parseFnExpand(top, args, r)
 			}

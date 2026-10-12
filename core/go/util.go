@@ -367,10 +367,10 @@ func ReparentValue(v Value, def *Type) Value {
 //
 // See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 func CanonicalType(r *Registry, t *Type) *Type {
-	if t == nil || r == nil || t.ID == "" {
+	if t == nil || r == nil || IDOf(t) == "" {
 		return t
 	}
-	if canon := r.Types.LookupByID(t.ID); canon != nil {
+	if canon := r.Types.LookupByID(IDOf(t)); canon != nil {
 		return canon
 	}
 	return t

@@ -160,9 +160,9 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 	sites := make([]argSite, len(args))
 	for i, a := range args {
 		sites[i] = argSite{pos: a.Pos(), seq: -1}
-		if p, read := es.readPos[a.ID]; read && a.ID != "" {
+		if p, read := es.readPos[core.IDOf(&a)]; read && core.IDOf(&a) != "" {
 			sites[i].pos = p
-		} else if pr, produced := es.producedBy[a.ID]; produced && a.ID != "" {
+		} else if pr, produced := es.producedBy[core.IDOf(&a)]; produced && core.IDOf(&a) != "" {
 			sites[i].seq = pr.seq
 		}
 	}
@@ -212,7 +212,7 @@ func (es *EmitState) noteForwardFits(seq int, args []core.Value) {
 	// binding is not of the type the statement was compiled for.
 	fits := es.reg.Check.FitsFor(args)
 	for k, f := range fits {
-		if es.keptLiveID(args[k].ID) {
+		if es.keptLiveID(core.IDOf(&args[k])) {
 			continue
 		}
 		if es.fwdFits == nil {
@@ -221,7 +221,7 @@ func (es *EmitState) noteForwardFits(seq int, args []core.Value) {
 		if es.fwdFits[seq] == nil {
 			es.fwdFits[seq] = map[string][]core.ForwardFit{}
 		}
-		es.fwdFits[seq][args[k].ID] = f
+		es.fwdFits[seq][core.IDOf(&args[k])] = f
 		if es.fwdFitsAt == nil {
 			es.fwdFitsAt = map[int]map[int][]core.ForwardFit{}
 		}
@@ -260,7 +260,7 @@ func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
 func (es *EmitState) fnValReadPos(vals []core.Value) []core.SrcPos {
 	var out []core.SrcPos
 	for i, a := range vals {
-		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || valueMayBeFn(a)) {
+		if core.IDOf(&a) == "" || a.Pos().Row == 0 || !es.valReadNoted[core.IDOf(&a)] || !(core.IsAppliableFn(a) || valueMayBeFn(a)) {
 			continue
 		}
 		if out == nil {
@@ -3601,7 +3601,7 @@ func (es *EmitState) RecordTypeInstall(name string, entry core.DefEntry, pos cor
 		if es.passMintedTypes == nil {
 			es.passMintedTypes = map[string]bool{}
 		}
-		es.passMintedTypes[entry.TypeDef.ID] = true
+		es.passMintedTypes[core.IDOf(entry.TypeDef)] = true
 	}
 	if !es.Active() || name == "" {
 		return
@@ -3720,10 +3720,10 @@ func (es *EmitState) setProducedAt(out core.Value, seq, idx int) {
 	// (all identity-less values would alias one producer) — an active
 	// miscompile. Skipping keeps "" lookups guaranteed misses, which
 	// degrade to dynScopeRescue / failure.
-	if out.ID == "" {
+	if core.IDOf(&out) == "" {
 		return
 	}
-	es.producedBy[out.ID] = producer{seq: seq, idx: idx}
+	es.producedBy[core.IDOf(&out)] = producer{seq: seq, idx: idx}
 	if core.IsTypeBody(&out) {
 		f := es.eventInfo[seq]
 		f.typeOut = true
@@ -3744,7 +3744,7 @@ func (es *EmitState) MarkValueDef(v core.Value) {
 	if es == nil || !es.Compilable {
 		return
 	}
-	if pr, ok := es.producedBy[v.ID]; ok && pr.idx == 0 {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.idx == 0 {
 		f := es.eventInfo[pr.seq]
 		f.valueDef = true
 		es.eventInfo[pr.seq] = f
@@ -3788,7 +3788,7 @@ func (es *EmitState) SplitLoopRegionBind(name string, v core.Value) (core.Value,
 		// miscompiled [5 0 5 0] vs [5 5 5 5]).
 		return core.Value{}, false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 {
 		return core.Value{}, false
 	}
@@ -3850,7 +3850,7 @@ func (es *EmitState) SplitEventRegionBind(name string, v core.Value) (core.Value
 	if (name[0] == '_' || name[0] == '$') && !es.recordsFilteredDynBind() { //covergate:allow the guard above already requires len(units)==1 && reg!=nil && FnBodyDepth==0 — recordsFilteredDynBind's root disjunct — so the predicate is true here by construction; asked anyway so this gate and RecordDynBind's stay one predicate (NUR116) (§compiler)
 		return core.Value{}, false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 {
 		return core.Value{}, false
 	}
@@ -3971,7 +3971,7 @@ func (es *EmitState) producedInCurrentUnit(id string) bool {
 func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// A `/v` read of a def-bound capturing fn literal (readOps) is the
 	// literal's closure operand, before any other resolution.
-	if op, ok := es.readOps[v.ID]; ok {
+	if op, ok := es.readOps[core.IDOf(&v)]; ok {
 		return op, true
 	}
 	// A CAPTURE of the CURRENT unit overrides events-first: the captured value
@@ -3984,8 +3984,8 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// the computed-capture case. (The captured VALUE is carried correctly by the
 	// parent-side promotion of the computed def — see forEachOperand /
 	// promoteOperand closureCaps handling.)
-	if cur := es.units[len(es.units)-1]; cur != nil && cur.capID[v.ID] {
-		if slot, ok := cur.localByID[v.ID]; ok && !es.producedInCurrentUnit(v.ID) {
+	if cur := es.units[len(es.units)-1]; cur != nil && cur.capID[core.IDOf(&v)] {
+		if slot, ok := cur.localByID[core.IDOf(&v)]; ok && !es.producedInCurrentUnit(core.IDOf(&v)) {
 			return localOperand(slot), true
 		}
 	}
@@ -3994,7 +3994,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// agree), and the event is then the value's stack-discipline truth
 	// — the branch pushed it. A plain param/iterator reference has no
 	// producing event and resolves to its local slot.
-	if pr, ok := es.producedBy[v.ID]; ok {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
 		// A type operand whose ID matches a producing event whose own
 		// output was NOT a type is an ID collision (a `make` result
 		// inheriting the type literal's ID): resolve it as its own type
@@ -4029,7 +4029,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			// body) and the binding unit's OpBindDynScope twin installs the
 			// closure the lookup then reads (the VM's bindDynScope).
 			if cur := es.units[len(es.units)-1]; cur != nil && len(es.units) > 1 &&
-				(cur.enclosingBindIDs[v.ID] || (es.isDefRead(v) && core.IsFnTypedCarrier(&v) && !es.producedInCurrentUnit(v.ID))) {
+				(cur.enclosingBindIDs[core.IDOf(&v)] || (es.isDefRead(v) && core.IsFnTypedCarrier(&v) && !es.producedInCurrentUnit(core.IDOf(&v)))) {
 				if op, ok := es.dynScopeRescue(v); ok {
 					return op, true
 				}
@@ -4037,9 +4037,9 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			return EventOperand(pr.seq, pr.idx), true
 		}
 	}
-	if slot, ok := es.units[len(es.units)-1].localByID[v.ID]; ok {
-		if name := es.units[len(es.units)-1].boundLocals[v.ID]; name != "" {
-			return es.boundLocalOperand(slot, name, v.ID), true
+	if slot, ok := es.units[len(es.units)-1].localByID[core.IDOf(&v)]; ok {
+		if name := es.units[len(es.units)-1].boundLocals[core.IDOf(&v)]; name != "" {
+			return es.boundLocalOperand(slot, name, core.IDOf(&v)), true
 		}
 		return localOperand(slot), true
 	}
@@ -4047,7 +4047,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// as the CANONICAL registry node (a pooled by-value copy goes
 	// stale against behaviour/field installs), so it gets its own
 	// table, resolved by ID at run time via OpPushType.
-	if core.IsBareTypeNode(&v) && v.ID != "" {
+	if core.IsBareTypeNode(&v) && core.IDOf(&v) != "" {
 		// A CLASS TYPE carries fn values too — its field DEFAULTS — and this
 		// return is before the const chokepoint's stamp below, so they used to
 		// reach no stamp at all. `def C class {op:(fn …)}  (make C {}).op 21`
@@ -4114,7 +4114,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// the enclosing-binding probe and be wrongly freshened (breaking
 		// member identity with the live runtime instance). Rescue —
 		// dynamic-scope read or failure — never freshen.
-		if v.ID == "" && freshenableConst(lit) {
+		if core.IDOf(&v) == "" && freshenableConst(lit) {
 			return es.dynScopeRescue(v)
 		}
 	}
@@ -4126,7 +4126,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// merely reads it. Compounds are never pooled (intern), so idx belongs
 	// to exactly this materialise context.
 	if len(es.units) > 1 && (freshenableConst(lit) || freshFnLiteral(lit)) &&
-		!es.units[len(es.units)-1].enclosingIDs[v.ID] {
+		!es.units[len(es.units)-1].enclosingIDs[core.IDOf(&v)] {
 		// A body literal EMBEDDING an enclosing binding's container is
 		// neither deep-freshened nor shared: the interpreter constructs the
 		// OUTER literal fresh per call while the binding-read MEMBER keeps
@@ -4162,11 +4162,11 @@ func embeddedEnclosingIDs(v core.Value, enclosing map[string]bool) map[string]bo
 	var keep map[string]bool
 	var walk func(v core.Value)
 	walk = func(v core.Value) {
-		if enclosing[v.ID] {
+		if enclosing[core.IDOf(&v)] {
 			if keep == nil {
 				keep = map[string]bool{}
 			}
-			keep[v.ID] = true
+			keep[core.IDOf(&v)] = true
 			return
 		}
 		switch d := v.Data.(type) {
@@ -4306,8 +4306,8 @@ func (es *EmitState) snapshotCompoundBindingIDs(reg *core.Registry) map[string]b
 	}
 	for _, name := range reg.Defs.Names() {
 		for _, bv := range reg.Defs.Stack(name) {
-			if freshenableConst(bv) && bv.ID != "" {
-				ids[bv.ID] = true
+			if freshenableConst(bv) && core.IDOf(&bv) != "" {
+				ids[core.IDOf(&bv)] = true
 			}
 		}
 	}
@@ -4332,8 +4332,8 @@ func (es *EmitState) snapshotAllBindingIDs(reg *core.Registry) map[string]bool {
 	}
 	for _, name := range reg.Defs.Names() {
 		for _, bv := range reg.Defs.Stack(name) {
-			if bv.ID != "" {
-				ids[bv.ID] = true
+			if core.IDOf(&bv) != "" {
+				ids[core.IDOf(&bv)] = true
 			}
 		}
 	}
@@ -5344,13 +5344,13 @@ func (es *EmitState) OperandRepushable(v core.Value) bool {
 	}
 	// An event operand is the value's stack-discipline truth (pushed once);
 	// it cannot be re-pushed for a second reference.
-	if pr, ok := es.producedBy[v.ID]; ok && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut) {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut) {
 		return false
 	}
-	if _, ok := es.units[len(es.units)-1].localByID[v.ID]; ok {
+	if _, ok := es.units[len(es.units)-1].localByID[core.IDOf(&v)]; ok {
 		return true
 	}
-	if core.IsBareTypeNode(&v) && v.ID != "" {
+	if core.IsBareTypeNode(&v) && core.IDOf(&v) != "" {
 		return true
 	}
 	lit, ok := es.Materialise(v)
@@ -5377,7 +5377,7 @@ func (es *EmitState) CanSeatAcrossFragment(v core.Value) bool {
 	if es.OperandRepushable(v) {
 		return true
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	return ok && pr.idx == 0 && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut)
 }
 
@@ -5390,7 +5390,7 @@ func (es *EmitState) CanSeatAcrossFragment(v core.Value) bool {
 // unknown.
 func (es *EmitState) Materialise(v core.Value) (core.Value, bool) {
 	if v.Carrier || core.IsDynamic(&v) {
-		orig, ok := es.origByID[v.ID]
+		orig, ok := es.origByID[core.IDOf(&v)]
 		if !ok {
 			return v, false
 		}
@@ -5465,7 +5465,7 @@ func (es *EmitState) materialiseMember(e core.Value) (m core.Value, changed, ok 
 	if !ok {
 		return e, false, false
 	}
-	return m, m.Carrier != e.Carrier || m.ID != e.ID, true
+	return m, m.Carrier != e.Carrier || core.IDOf(&m) != core.IDOf(&e), true
 }
 
 // fragDiverges reports whether a captured fragment's trailing event
@@ -5558,12 +5558,12 @@ func eventDivergesDeep(ev *EmitEvent) bool {
 func (es *EmitState) stripZeroOutPhantoms(stk []core.Value) []core.Value {
 	kept := stk
 	for i, rv := range stk {
-		pr, ok := es.producedBy[rv.ID]
+		pr, ok := es.producedBy[core.IDOf(&rv)]
 		if ok && es.eventInfo[pr.seq].zeroOut {
 			// First phantom found: copy the prefix and filter the rest.
 			kept = append([]core.Value(nil), stk[:i]...)
 			for _, r := range stk[i:] {
-				if p, o := es.producedBy[r.ID]; o && es.eventInfo[p.seq].zeroOut {
+				if p, o := es.producedBy[core.IDOf(&r)]; o && es.eventInfo[p.seq].zeroOut {
 					continue
 				}
 				kept = append(kept, r)
@@ -5867,7 +5867,7 @@ func (es *EmitState) branchArmsRetPinned(b core.BranchRecord) bool {
 		if len(stk) != 1 {
 			return false
 		}
-		pr, ok := es.producedBy[stk[0].ID]
+		pr, ok := es.producedBy[core.IDOf(&stk[0])]
 		return ok && es.retPinnedVariadic(pr.seq)
 	}
 	if b.ConstCond != nil {
@@ -5927,7 +5927,7 @@ func (es *EmitState) armOutVariadic(stk []core.Value) bool {
 	if len(stk) == 0 {
 		return false
 	}
-	pr, ok := es.producedBy[stk[len(stk)-1].ID]
+	pr, ok := es.producedBy[core.IDOf(&stk[len(stk)-1])]
 	return ok && es.eventInfo[pr.seq].variadicResult
 }
 
@@ -6186,12 +6186,12 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 			break
 		}
 	}
-	u.localByID[joined.ID] = slot
+	u.localByID[core.IDOf(&joined)] = slot
 	// A loop may run zero times, so a pre binding that is itself possibly
 	// unbound (a branch-carried name with no pre of its own) leaves the
 	// post-loop binding possibly unbound too.
-	if bname := u.boundLocals[pre.ID]; bname != "" {
-		u.boundLocals[joined.ID] = bname
+	if bname := u.boundLocals[core.IDOf(&pre)]; bname != "" {
+		u.boundLocals[core.IDOf(&joined)] = bname
 	}
 }
 
@@ -6208,7 +6208,7 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 // carrier skip). Called at the end of every analysis round, like its twin:
 // from the second round on the body's defs store into the cell.
 func (es *EmitState) NoteLoopFresh(name string, joined core.Value) {
-	if !es.Active() || len(es.loopCarried) == 0 || joined.ID == "" {
+	if !es.Active() || len(es.loopCarried) == 0 || core.IDOf(&joined) == "" {
 		return
 	}
 	scope := es.loopCarried[len(es.loopCarried)-1]
@@ -6233,15 +6233,15 @@ func (es *EmitState) NoteLoopFresh(name string, joined core.Value) {
 		es.carriedNames = map[string]bool{}
 	}
 	es.carriedNames[name] = true
-	u.localByID[joined.ID] = slot
+	u.localByID[core.IDOf(&joined)] = slot
 	if u.boundLocals == nil {
 		u.boundLocals = map[string]string{}
 	}
-	u.boundLocals[joined.ID] = name
+	u.boundLocals[core.IDOf(&joined)] = name
 	if u.loopFresh == nil {
 		u.loopFresh = map[string]bool{}
 	}
-	u.loopFresh[joined.ID] = true
+	u.loopFresh[core.IDOf(&joined)] = true
 	es.noteCondBound(name)
 }
 
@@ -6664,7 +6664,7 @@ func (es *EmitState) recordTypeRun(p *pendingTypeRun, pos core.SrcPos) bool {
 		if es.runTypes == nil {
 			es.runTypes = map[string]bool{}
 		}
-		es.runTypes[p.node.ID] = true
+		es.runTypes[core.IDOf(p.node)] = true
 	}
 	es.SiteCounts[SiteDynamic]++
 	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordTypeRun, ops: []EmitOperand{op}, nout: 0, pos: pos, typeRun: &spec}})
@@ -6886,7 +6886,7 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 	// program then declined for want of the placement. progReg is captured once
 	// and never re-bound, which is what "the program registry" above means —
 	// the Finalize stamp site uses it for this same reason.
-	if body.ID == "" || ml.bodyID != body.ID || !es.isProgramRegistry(ml.reg) ||
+	if core.IDOf(&body) == "" || ml.bodyID != core.IDOf(&body) || !es.isProgramRegistry(ml.reg) ||
 		!es.isProgramRegistry(rec.reg) || rec.frag == nil {
 		return
 	}
@@ -7464,11 +7464,11 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	if !es.Active() || v == nil || name == "" {
 		return
 	}
-	if v.ID != "" && pos.Row > 0 {
+	if core.IDOf(v) != "" && pos.Row > 0 {
 		if es.defReadPos == nil {
 			es.defReadPos = map[string][]core.SrcPos{}
 		}
-		es.defReadPos[v.ID] = append(es.defReadPos[v.ID], pos)
+		es.defReadPos[core.IDOf(v)] = append(es.defReadPos[core.IDOf(v)], pos)
 	}
 	keepLive, rootLive := es.keptLeakLive(*v, name)
 	// A stored-ref unit's bare read of a module-scope value is live too
@@ -7538,26 +7538,26 @@ func (es *EmitState) keptLeakLive(v core.Value, name string) (keepLive, rootLive
 // OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive). It returns the
 // event's seq.
 func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) int {
-	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
+	core.SetID(v, core.GenerateID(core.IDPrefixForType(v.Parent)))
 	if pos.Row > 0 {
 		if es.defReadPos == nil {
 			es.defReadPos = map[string][]core.SrcPos{}
 		}
-		es.defReadPos[v.ID] = []core.SrcPos{pos}
+		es.defReadPos[core.IDOf(v)] = []core.SrcPos{pos}
 	}
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
-	es.defReads[v.ID] = name
+	es.defReads[core.IDOf(v)] = name
 	if es.liveReadIDs == nil {
 		es.liveReadIDs = map[string]bool{}
 	}
-	es.liveReadIDs[v.ID] = true
+	es.liveReadIDs[core.IDOf(v)] = true
 	if !ref {
 		if es.liveDataIDs == nil {
 			es.liveDataIDs = map[string]bool{}
 		}
-		es.liveDataIDs[v.ID] = true
+		es.liveDataIDs[core.IDOf(v)] = true
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
@@ -7578,7 +7578,7 @@ func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, r
 // lookups mutated. A concrete flex, or a carrier some event produced,
 // keeps its home.
 func (es *EmitState) mutableRefCarrierRead(v core.Value) bool {
-	if !v.Carrier || v.ID == "" || v.Parent == nil {
+	if !v.Carrier || core.IDOf(&v) == "" || v.Parent == nil {
 		return false
 	}
 	if !(v.Parent.ConformsTo(core.TFlexList) || v.Parent.ConformsTo(core.TFlexMap) ||
@@ -7593,12 +7593,12 @@ func (es *EmitState) mutableRefCarrierRead(v core.Value) bool {
 // capture, a carried slot, a promoted value). An identity-less value has
 // none.
 func (es *EmitState) readHasHome(v core.Value) bool {
-	_, produced := es.producedBy[v.ID]
+	_, produced := es.producedBy[core.IDOf(&v)]
 	local := false
 	if n := len(es.units); n > 0 && es.units[n-1] != nil {
-		_, local = es.units[n-1].localByID[v.ID]
+		_, local = es.units[n-1].localByID[core.IDOf(&v)]
 	}
-	return v.ID != "" && (produced || local)
+	return core.IDOf(&v) != "" && (produced || local)
 }
 
 // placeRoutedLiveSlots marks, for a dispatch that ROUTES, every claimed
@@ -7615,10 +7615,10 @@ func (es *EmitState) placeRoutedLiveSlots(d *RegionDesc, args []core.Value) {
 		return
 	}
 	for i := 0; i < d.NFwd && i < len(d.Slots) && i < len(args); i++ {
-		if d.Slots[i].Source != SlotWordRef || !es.liveReadIDs[args[i].ID] {
+		if d.Slots[i].Source != SlotWordRef || !es.liveReadIDs[core.IDOf(&args[i])] {
 			continue
 		}
-		if pr, ok := es.producedBy[args[i].ID]; ok {
+		if pr, ok := es.producedBy[core.IDOf(&args[i])]; ok {
 			if es.livePlaceholders == nil {
 				es.livePlaceholders = map[int]bool{}
 			}
@@ -7805,7 +7805,7 @@ func (es *EmitState) splitUndefExposesLive(name string) bool {
 	if !seated || len(stk) < 2 {
 		return false
 	}
-	home, has := u.localByID[stk[len(stk)-2].ID]
+	home, has := u.localByID[core.IDOf(&stk[len(stk)-2])]
 	return !has || home != slot
 }
 
@@ -8076,7 +8076,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	es.unitNames = append(es.unitNames, name)
 	es.openUnitRecs = append(es.openUnitRecs, unit)
 	for _, a := range args {
-		es.RegisterLocal(a.ID)
+		es.RegisterLocal(core.IDOf(&a))
 	}
 	// Capture slots: the body analysis binds each captured name to
 	// cb.Value (the construction-time snapshot — AnalyseFnBody pushes
@@ -8087,11 +8087,11 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	// cannot be skipped without shifting every subsequent capture's slot:
 	// decline the unit instead (failure).
 	for _, cb := range captures {
-		if cb.Value.ID == "" {
+		if core.IDOf(&cb.Value) == "" {
 			es.MarkUncompilable("closure captures a runtime-minted value (no compile identity)")
 		}
-		es.RegisterLocal(cb.Value.ID)
-		u.capID[cb.Value.ID] = true
+		es.RegisterLocal(core.IDOf(&cb.Value))
+		u.capID[core.IDOf(&cb.Value)] = true
 	}
 	resume := es.beginFragment()
 	rec.rootFrame = len(es.frames) - 1
@@ -8115,7 +8115,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			ops := make([]EmitOperand, 0, len(bodyStk))
 			vals := make([]core.Value, 0, len(bodyStk))
 			for _, v := range bodyStk {
-				if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].zeroOut {
+				if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].zeroOut {
 					continue
 				}
 				// A body that RETURNS an anonymous capture-free lambda (the factory
@@ -8147,7 +8147,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			dynTrail := 0
 			if len(bodyStk) >= 2 {
 				top := bodyStk[len(bodyStk)-1]
-				a := es.TrailingApplyArity(top.ID)
+				a := es.TrailingApplyArity(core.IDOf(&top))
 				// A def-bound computed fn READ at a closure body's tail over
 				// the body's values (`each [a5] xs`): the interpreter's word
 				// dispatch takes its operands from the stack top-down, the
@@ -8193,7 +8193,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 						// no-match anchor (NUR118's fn-value seam); the unit's
 						// position is a fallback, not the site.
 						if rec.dynTrailPos == (core.SrcPos{}) {
-							if p, ok := rec.wordReadPos[top.ID]; ok && p.Row > 0 {
+							if p, ok := rec.wordReadPos[core.IDOf(&top)]; ok && p.Row > 0 {
 								rec.dynTrailPos = p
 							} else {
 								rec.dynTrailPos = top.Pos()
@@ -8311,7 +8311,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// whole body on the interpreter (the interp-entry census's
 			// placed-in-body rows, 2026-09-23).
 			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag, u, len(args)) &&
-				!(rec.plainLambda() && len(bodyStk) == 1 && (core.IsQuoted(&bodyStk[0]) || rec.valReads[bodyStk[0].ID] > 0)) {
+				!(rec.plainLambda() && len(bodyStk) == 1 && (core.IsQuoted(&bodyStk[0]) || rec.valReads[core.IDOf(&bodyStk[0])] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
 			}
@@ -8527,7 +8527,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	}
 	if rec.returnsFolded {
 		for _, o := range outs {
-			if o.ID != "" {
+			if core.IDOf(&o) != "" {
 				es.noteFolded(o)
 			}
 		}
@@ -8782,10 +8782,10 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 		return false
 	}
 	u := es.units[len(es.units)-1]
-	if _, isLocal := u.localByID[v.ID]; !isLocal {
+	if _, isLocal := u.localByID[core.IDOf(&v)]; !isLocal {
 		return false
 	}
-	if _, produced := es.producedBy[v.ID]; produced && !u.capID[v.ID] {
+	if _, produced := es.producedBy[core.IDOf(&v)]; produced && !u.capID[core.IDOf(&v)] {
 		return false
 	}
 	return true
@@ -8837,7 +8837,7 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 // does today, so the caller treats "unknown" as "no trim" on the concrete path
 // and keeps the standing failure only on the event lead.
 func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
-	if arity, known := es.producerReturnedClosureArity(fn.ID); known {
+	if arity, known := es.producerReturnedClosureArity(core.IDOf(&fn)); known {
 		return arity, true
 	}
 	fd, isFn := fn.Data.(*core.FnDefInfo)
@@ -8875,7 +8875,7 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 	if _, isFn := fn.Data.(*core.FnDefInfo); isFn {
 		return false // own signatures, none of which provably admits the window
 	}
-	s, ok := es.producerReturnedClosureShape(fn.ID)
+	s, ok := es.producerReturnedClosureShape(core.IDOf(&fn))
 	if !ok || len(s.Params) != len(sigArgs) {
 		return false
 	}
@@ -8941,7 +8941,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	// (NUR118's fn-value seam, NUR122).
 	if pos.Row == 0 {
 		if rec := es.openUnitRec(); rec != nil {
-			if p, ok := rec.wordReadPos[fn.ID]; ok && p.Row > 0 {
+			if p, ok := rec.wordReadPos[core.IDOf(&fn)]; ok && p.Row > 0 {
 				pos = p
 			}
 		}
@@ -8961,7 +8961,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	if len(es.units) > 0 {
 		u := es.units[len(es.units)-1]
 		for i, p := range u.pendingApply {
-			if p.id == fn.ID {
+			if p.id == core.IDOf(&fn) {
 				applyIdx = i
 				pos = p.pos // the op raises where the interpreter's `apply` does
 				break
@@ -8978,7 +8978,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	// which is what tells a bare read apart from an `apply`-word arrival.
 	headName := es.dynApplyHeadName(es.openUnitRec(), fn, args)
 	headName.Leading = lead
-	if rec := es.openUnitRec(); rec != nil && headName.Name == "" && rec.valReads[fn.ID] > 0 {
+	if rec := es.openUnitRec(); rec != nil && headName.Name == "" && rec.valReads[core.IDOf(&fn)] > 0 {
 		headName.ValueDelivery = true
 	}
 	if !lead && fn.Pos().Row > 0 && len(args) > 0 {
@@ -8993,7 +8993,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	}
 	// The paren window consumed a bare read of this local (NUR123
 	// accounting): an accepted value-semantics lowering.
-	es.creditWordRead(fn.ID)
+	es.creditWordRead(core.IDOf(&fn))
 	// A QUOTED fn value at the trailing position stays INERT in the
 	// interpreter (the paren never collapses — `(1 2 (quote (fn …)))` leaves
 	// [1 2 fn]); only a READ-substituted arrival (unquoted by the check's
@@ -9347,7 +9347,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 	// (CheckState.ReachSurvivorFnIDs — `m.f` over `{f: g/v}`), both the
 	// interpreter's re-step at the iteration's end.
 	loopHazards := []func(core.Value) string{loopNamedFnHazard, func(v core.Value) string {
-		if core.IsDynamic(&v) && v.ID != "" && es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] {
+		if core.IsDynamic(&v) && core.IDOf(&v) != "" && es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[core.IDOf(&v)] {
 			return "is a reach group's survivor the interpreter re-steps per iteration (NUR129)"
 		}
 		return ""
@@ -9438,7 +9438,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 				return
 			}
 			lp.bodyOut, lp.hasBodyOut = bodyOut, true
-			if pr, okP := es.producedBy[bodyStk[0].ID]; okP && bodyOut.kind == opEvent &&
+			if pr, okP := es.producedBy[core.IDOf(&bodyStk[0])]; okP && bodyOut.kind == opEvent &&
 				es.eventInfo[pr.seq].splitBound &&
 				!core.SigTypeMatches(&bodyStk[0], core.TFunction) {
 				// The body's sole residual is a SPLIT-BOUND region (S9.2a: `for 3
@@ -9657,10 +9657,10 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 	if es == nil || es.suspended > 0 || !es.Active() {
 		return
 	}
-	if v.Carrier || core.IsDynamic(&v) || v.ID == "" {
+	if v.Carrier || core.IsDynamic(&v) || core.IDOf(&v) == "" {
 		return
 	}
-	es.origByID[v.ID] = v
+	es.origByID[core.IDOf(&v)] = v
 }
 
 // atUnitRootFrame reports whether recording is at the CURRENT unit's root
@@ -9724,10 +9724,10 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 	// is not counted, and a shuffle's index skips it.
 	phantoms := 0
 	for _, v := range preserved {
-		if v.ID == "" {
+		if core.IDOf(&v) == "" {
 			return nil, false
 		}
-		if pr, ok := es.producedBy[v.ID]; ok {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
 			}
@@ -9753,7 +9753,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 			// rebuild's own screen asks again.
 			continue
 		}
-		if _, ok := es.units[unit].localByID[v.ID]; ok {
+		if _, ok := es.units[unit].localByID[core.IDOf(&v)]; ok {
 			continue
 		}
 		if core.IsConcrete(&v) || core.IsBareTypeNode(&v) {
@@ -9764,7 +9764,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 	switch word {
 	case "depth":
 		n := core.NewInteger(int64(len(preserved) - phantoms))
-		n.ID = core.GenerateID(core.IDPrefixForType(core.TInteger))
+		core.SetID(&n, core.GenerateID(core.IDPrefixForType(core.TInteger)))
 		return append(append([]core.Value(nil), preserved...), n), true
 	case "pick", "roll":
 		if len(args) != 1 || !core.IsConcrete(&args[0]) {
@@ -9788,7 +9788,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		// today, because a read is not event-produced and the deopt
 		// machinery covers it.
 		for _, v := range preserved {
-			if _, produced := es.producedBy[v.ID]; !produced {
+			if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
 				continue
 			}
 			if core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
@@ -9804,7 +9804,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		// the interpreter: no fold.
 		idx := -1
 		for i, seen := len(preserved)-1, 0; i >= 0; i-- {
-			if phantoms > 0 && es.ZeroOutProduced(preserved[i].ID) {
+			if phantoms > 0 && es.ZeroOutProduced(core.IDOf(&preserved[i])) {
 				continue
 			}
 			if seen == int(nn) {
@@ -9869,7 +9869,7 @@ func (es *EmitState) splitLiveProducers(l *core.DispatchLayout) ([]splitLive, bo
 	var out []splitLive
 	for _, at := range l.Live {
 		// Live indexes Beneath (core layoutSurround).
-		id := l.Beneath[at].ID
+		id := core.IDOf(&l.Beneath[at])
 		pr, ok := es.producedBy[id]
 		if !ok || (len(es.units) > 1 && !es.producedInCurrentUnit(id)) {
 			return nil, false
@@ -10097,7 +10097,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// would raise a no-match the interpreter never does. The poly seat
 		// declines the same operand (polyCallDeclineReason, NUR184); the
 		// rematch declines it too, and the caller's failure stands.
-		if core.IsFnTypedCarrier(&v) && !core.IsQuoted(&v) && es.parenReSteppedFn(v) && !es.applyPending(v.ID) {
+		if core.IsFnTypedCarrier(&v) && !core.IsQuoted(&v) && es.parenReSteppedFn(v) && !es.applyPending(core.IDOf(&v)) {
 			return false
 		}
 		// A READ-substituted fn-carrier window value (Stage 1's fn-carrier
@@ -10110,7 +10110,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// Decline; the caller's failure stands and the program falls back.
 		if core.IsFnTypedCarrier(&v) {
 			if _, isFn := v.Data.(*core.FnDefInfo); !isFn {
-				if _, read := es.defReads[v.ID]; read {
+				if _, read := es.defReads[core.IDOf(&v)]; read {
 					return false
 				}
 			}
@@ -10242,7 +10242,7 @@ func (es *EmitState) RecordTypedBind(spec core.TypedBindSpec, in, out core.Value
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: wordTypedBind, ops: []EmitOperand{op}, nout: 1, pos: pos, typedBind: &sp,
 	}})
-	out.ID = core.GenerateID(core.IDPrefixForType(out.Parent))
+	core.SetID(&out, core.GenerateID(core.IDPrefixForType(out.Parent)))
 	es.setProduced(out, seq)
 	return out, true
 }
@@ -10273,7 +10273,7 @@ func (es *EmitState) RecordTypedBindRun(spec core.TypedBindSpec, cons, in, out c
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: wordTypedBind, ops: ops, nout: 1, pos: pos, typedBind: &sp,
 	}})
-	out.ID = core.GenerateID(core.IDPrefixForType(out.Parent))
+	core.SetID(&out, core.GenerateID(core.IDPrefixForType(out.Parent)))
 	es.setProduced(out, seq)
 	return out, true
 }
@@ -10284,7 +10284,7 @@ func (es *EmitState) RecordTypedBindRun(spec core.TypedBindSpec, cons, in, out c
 // concrete need no recovery and are skipped. pre and stripped are parallel.
 func (es *EmitState) RememberStrippedOriginals(pre, stripped []core.Value) {
 	for i := range stripped {
-		if stripped[i].Carrier && pre[i].ID != "" && pre[i].ID == stripped[i].ID {
+		if stripped[i].Carrier && core.IDOf(&pre[i]) != "" && core.IDOf(&pre[i]) == core.IDOf(&stripped[i]) {
 			es.RememberOriginal(pre[i])
 		}
 	}
@@ -10427,18 +10427,18 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		// dispatch (recordCallElided declines to elide it) reachable
 		// downstream; the outs slice is the carrierResults return, so the
 		// ID flows to the consumer exactly as the de-collision mint does.
-		if outs[i].ID == "" && core.IsModuleFamilyValue(outs[i]) {
-			outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
+		if core.IDOf(&outs[i]) == "" && core.IsModuleFamilyValue(outs[i]) {
+			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 		}
-		if pr, ok := es.producedBy[outs[i].ID]; ok && pr.seq != seq {
+		if pr, ok := es.producedBy[core.IDOf(&outs[i])]; ok && pr.seq != seq {
 			if argIDs == nil {
 				argIDs = make(map[string]bool, len(args))
 				for _, a := range args {
-					argIDs[a.ID] = true
+					argIDs[core.IDOf(&a)] = true
 				}
 			}
-			if !argIDs[outs[i].ID] {
-				outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
+			if !argIDs[core.IDOf(&outs[i])] {
+				core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 			}
 		}
 		es.setProducedAt(outs[i], seq, i)
@@ -10451,7 +10451,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 // every fn-value-call classification: none of those arms can read a count.
 func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 	for _, v := range residual {
-		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicRegion {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicRegion {
 			return true
 		}
 	}
@@ -10472,11 +10472,11 @@ func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
 	for i := 0; i+1 < len(residual); i++ {
 		v := residual[i]
-		pr, ok := es.producedBy[v.ID]
+		pr, ok := es.producedBy[core.IDOf(&v)]
 		if !ok || !es.eventInfo[pr.seq].dynBodyResult || !(core.IsDynamic(&v) || core.IsFnValueResidual(v)) {
 			continue
 		}
-		if nx, ok := es.producedBy[residual[i+1].ID]; ok && nx.seq == pr.seq {
+		if nx, ok := es.producedBy[core.IDOf(&residual[i+1])]; ok && nx.seq == pr.seq {
 			return true
 		}
 	}
@@ -10584,9 +10584,9 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// time and raises apply's own no-match over anything else, or declines.
 	if word == "apply" && len(args) == 1 && len(outs) == 1 && len(es.units) > 0 && !core.IsFnTypedCarrier(&args[0]) &&
 		(gradualFnCarrier(args[0]) || es.gradualHoldsFn(args[0])) {
-		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
+		if pr, ok := es.producedBy[core.IDOf(&outs[0])]; ok && !es.eventInfo[pr.seq].generic {
 			u := es.units[len(es.units)-1]
-			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos})
 			return true
 		}
 	}
@@ -10608,10 +10608,10 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// branch's own id, so the registered-output arm below took it for the
 	// branch's and elided it, and the application was lost (`[fn]` for the
 	// interpreter's 42).
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedConstLambda(args[0].ID) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(args[0].ID)) {
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(core.IDOf(&args[0])) || es.producedConstLambda(core.IDOf(&args[0])) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(core.IDOf(&args[0]))) {
 		if _, isFn := args[0].Data.(*core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
-			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
+			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos, fn: args[0]})
 			return true
 		}
 		// The same closure as a fn-typed CARRIER — a declared-Function
@@ -10630,7 +10630,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// interpreter's `[5 1]`).
 		if core.IsFnTypedCarrier(&args[0]) {
 			u := es.units[len(es.units)-1]
-			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos})
 			return true
 		}
 	}
@@ -10655,7 +10655,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// (NUR269). Such an apply has no modelled overload and no tail window; it
 	// reaches the dynamic-lead decline below.
 	if len(outs) > 0 && !loneGradualApplyLead(word, args) {
-		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
+		if pr, ok := es.producedBy[core.IDOf(&outs[0])]; ok && !es.eventInfo[pr.seq].generic {
 			return true
 		}
 	}
@@ -10697,10 +10697,10 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// the interpreter CALLED it at the word (NUR078), and `apply` meets
 		// its result — which the record has no model of — so it takes the
 		// dynamic lead's decline below.
-		bareRead := es.reg != nil && es.reg.Check != nil && es.reg.Check.WordReadFnIDs[args[0].ID]
+		bareRead := es.reg != nil && es.reg.Check != nil && es.reg.Check.WordReadFnIDs[core.IDOf(&args[0])]
 		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(&args[0]) && !bareRead {
 			u := es.units[len(es.units)-1]
-			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos})
 			return true
 		}
 		// A GRADUAL lead (a Dynamic carrier — a `x:Any` param, a map get's
@@ -10964,13 +10964,13 @@ func (es *EmitState) recordShuffleElided(word string, sig *core.Signature, args,
 	}
 	remaining := make(map[string]int, len(args))
 	for _, a := range args {
-		remaining[a.ID]++
+		remaining[core.IDOf(&a)]++
 	}
 	for _, o := range outs {
-		if remaining[o.ID] == 0 {
+		if remaining[core.IDOf(&o)] == 0 {
 			return false
 		}
-		remaining[o.ID]--
+		remaining[core.IDOf(&o)]--
 	}
 	return true
 }
@@ -11363,7 +11363,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		return "fn value read from a container auto-dispatches (Stage 3)"
 	}
 	for _, a := range args {
-		if core.IsFnTypedCarrier(&a) && !core.IsQuoted(&a) && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
+		if core.IsFnTypedCarrier(&a) && !core.IsQuoted(&a) && es.parenReSteppedFn(a) && !es.applyPending(core.IDOf(&a)) {
 			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
 		}
 		// Dispatch WRECKAGE: a named fn value the check pass re-stepped and
@@ -11383,7 +11383,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		// compare-restrict.tsv): the park rule leaves it as data where it
 		// sits, and the word takes it exactly as the poly's window does
 		// (NUR188).
-		if _, member := es.MemberFnReadValue(a.ID); member && !core.IsQuoted(&a) && !es.applyPending(a.ID) && !es.placedValRead(a.ID) && !es.placedNotReStepped(a) {
+		if _, member := es.MemberFnReadValue(core.IDOf(&a)); member && !core.IsQuoted(&a) && !es.applyPending(core.IDOf(&a)) && !es.placedValRead(core.IDOf(&a)) && !es.placedNotReStepped(a) {
 			if rp := es.residualPos(a); rp.Row != 0 && pos.Row != 0 && srcPosBefore(rp, pos) {
 				return "a dispatch collected a container member's fn value the interpreter re-steps first (NUR188)"
 			}
@@ -11396,7 +11396,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		// so the window's overload and width are the wrong dispatch's (`7 if
 		// true one/v [2] add 1` recorded a three-operand window and raised an
 		// internal error where the interpreter answers [7 2]) (NUR159).
-		if es.MayBeFn(a.ID) && !core.IsQuoted(&a) && !es.applyPending(a.ID) {
+		if es.MayBeFn(core.IDOf(&a)) && !core.IsQuoted(&a) && !es.applyPending(core.IDOf(&a)) {
 			return "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 		}
 	}
@@ -11519,13 +11519,13 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.eventInfo[seq] = gf
 		argIDs := make(map[string]bool, len(args))
 		for i := range args {
-			if args[i].ID != "" {
-				argIDs[args[i].ID] = true
+			if core.IDOf(&args[i]) != "" {
+				argIDs[core.IDOf(&args[i])] = true
 			}
 		}
 		for i := range outs {
-			if pr, ok := es.producedBy[outs[i].ID]; ok && pr.seq != seq && !argIDs[outs[i].ID] {
-				outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
+			if pr, ok := es.producedBy[core.IDOf(&outs[i])]; ok && pr.seq != seq && !argIDs[core.IDOf(&outs[i])] {
+				core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 			}
 			es.setProducedAt(outs[i], seq, i)
 		}
@@ -11640,7 +11640,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	if !es.Active() {
 		return false
 	}
-	if fn.ID != "" && fn.ID == es.pendingFoldedFire {
+	if core.IDOf(&fn) != "" && core.IDOf(&fn) == es.pendingFoldedFire {
 		es.pendingFoldedFire = ""
 	}
 	// A method value and its operands that are all results of ONE
@@ -11681,10 +11681,10 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// interpreter dispatches — `def r (mk)  r`) is consumed by an accepted
 	// lowering: credit the read so the NUR123 accounting does not count it
 	// as a read lost where the interpreter dispatches it.
-	es.creditWordRead(fn.ID)
+	es.creditWordRead(core.IDOf(&fn))
 	es.SiteCounts[SiteDynamic]++
 	defRead := false
-	if name, ok := es.defReads[fn.ID]; ok && name == word {
+	if name, ok := es.defReads[core.IDOf(&fn)]; ok && name == word {
 		defRead = true
 	}
 	call := emitCall{
@@ -11693,7 +11693,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	}
 	if lead, moved := es.parenLeadToken(word, pos, args); moved {
 		call.leadAt = lead
-		if w, err := core.AsWord(&lead); err == nil && es.defReads[fn.ID] == w.Name && es.readPos[fn.ID] == lead.Pos() {
+		if w, err := core.AsWord(&lead); err == nil && es.defReads[core.IDOf(&fn)] == w.Name && es.readPos[core.IDOf(&fn)] == lead.Pos() {
 			// The lead is the word's read of a def-bound value, which the
 			// paren dispatches by its NAME (NUR336) — not a call's result.
 			call.dynMethod.LeadName, call.dynMethod.LeadPos = w.Name, lead.Pos()
@@ -11702,7 +11702,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
 	// result parks (calleeUnit's doc).
-	if pr, ok := es.producedBy[fn.ID]; ok {
+	if pr, ok := es.producedBy[core.IDOf(&fn)]; ok {
 		if op, ok := es.eventProducedFnOp(pr.seq, 0); ok && op.kind == opClosure && op.closureUnit >= 0 && op.closureUnit < len(es.fnRecs) {
 			call.calleeUnit, call.calleeKnown = op.closureUnit, true
 		}
@@ -11782,7 +11782,7 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 	if !es.Active() {
 		return
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
@@ -11883,7 +11883,7 @@ func (es *EmitState) branchPlacedHere(v core.Value, seq int) bool {
 // that holds the event: a fn unit's residual at finish reads it from the
 // unit's captured fragment, where eventBySeq no longer reaches it.
 func (es *EmitState) branchPlacedBy(v core.Value, br *emitBranch) bool {
-	return es.deliveries[v.ID] <= 1 && !es.parenReSteppedFn(v) && !es.inResidualToCallerUnit() && branchPlaces(br)
+	return es.deliveries[core.IDOf(&v)] <= 1 && !es.parenReSteppedFn(v) && !es.inResidualToCallerUnit() && branchPlaces(br)
 }
 
 // unionLeadReStepped reports a placed branch's join (branchPlacesAt), one
@@ -11897,7 +11897,7 @@ func (es *EmitState) unionLeadReStepped(v core.Value, seq int) bool {
 	if !core.UnionMayBeFn(v) || !es.branchPlacesAt(seq) {
 		return false
 	}
-	return es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(v.ID))
+	return es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(core.IDOf(&v)))
 }
 
 // inResidualToCallerUnit reports whether the innermost open unit is a code
@@ -11914,13 +11914,13 @@ func (es *EmitState) inResidualToCallerUnit() bool {
 // NoteDelivery counts one step-loop delivery of v (EmitRecorder,
 // branchPlacedHere).
 func (es *EmitState) NoteDelivery(v core.Value) {
-	if !es.Active() || v.ID == "" {
+	if !es.Active() || core.IDOf(&v) == "" {
 		return
 	}
 	if es.deliveries == nil {
 		es.deliveries = map[string]int{}
 	}
-	es.deliveries[v.ID]++
+	es.deliveries[core.IDOf(&v)]++
 }
 
 // NoteStatementEnd records a statement boundary's position (EmitRecorder;
@@ -11977,7 +11977,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	if !es.Active() {
 		return
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
@@ -12019,7 +12019,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		if es.landingOwn == nil {
 			es.landingOwn = map[int]landingStep{}
 		}
-		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: v.ID}
+		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: core.IDOf(&v)}
 	}
 	if w, err := core.AsWord(&word); err == nil && w.Name != "" && !defRead {
 		if es.landingWord == nil {
@@ -12154,7 +12154,7 @@ func (es *EmitState) landingCollects(seq int) bool {
 func (es *EmitState) guardRootLandings(lw *lowerer, dynOp Opcode, residual []core.Value) {
 	for _, l := range lw.rootBeneathLandings {
 		pc, seq := l[0], l[1]
-		if es.callResultPlaced(core.Value{ID: es.landingOwn[seq].id}) || es.residualApplies(dynOp, residual, seq) || eventApplies(es.frames[0], seq, lw.promoted) {
+		if es.callResultPlaced(core.IdentityOnly(es.landingOwn[seq].id)) || es.residualApplies(dynOp, residual, seq) || eventApplies(es.frames[0], seq, lw.promoted) {
 			continue
 		}
 		(*lw.code)[pc].Arg |= LandingBeneathGuard
@@ -12189,7 +12189,7 @@ func (es *EmitState) guardUnitLandings(flw *lowerer, rec *fnUnitRec) {
 	}
 	for _, l := range flw.rootBeneathLandings {
 		pc, seq := l[0], l[1]
-		if es.callResultPlaced(core.Value{ID: es.landingOwn[seq].id}) || eventApplies(rec.frag.events, seq, flw.promoted) || frameReplays(rec, seq, flw.promoted) {
+		if es.callResultPlaced(core.IdentityOnly(es.landingOwn[seq].id)) || eventApplies(rec.frag.events, seq, flw.promoted) || frameReplays(rec, seq, flw.promoted) {
 			continue
 		}
 		(*flw.code)[pc].Arg |= LandingBeneathGuard
@@ -12227,7 +12227,7 @@ func frameReplays(rec *fnUnitRec, seq int, promoted map[int]int) bool {
 // re-steps over what sits beneath the READ.
 func (es *EmitState) residualApplies(dynOp Opcode, residual []core.Value, seq int) bool {
 	is := func(v core.Value) bool {
-		pr, ok := es.producedBy[v.ID]
+		pr, ok := es.producedBy[core.IDOf(&v)]
 		return ok && pr.seq == seq && pr.idx == 0 && !es.isDefRead(v)
 	}
 	switch dynOp {
@@ -12288,7 +12288,7 @@ func (es *EmitState) residualPos(v core.Value) core.SrcPos {
 	if es.isDefRead(v) {
 		return core.SrcPos{}
 	}
-	if pr, ok := es.producedBy[v.ID]; ok && v.ID != "" {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && core.IDOf(&v) != "" {
 		if ev := es.eventBySeq(pr.seq); ev != nil {
 			if pos := eventPos(*ev); pos.Row != 0 {
 				return pos
@@ -12340,7 +12340,7 @@ func (es *EmitState) crossesBoundary(v core.Value, rest []core.Value) bool {
 // the word's result, a Function-typed one its reference — which only the
 // run-time overload walk the landing does not do yet can tell apart.
 func (es *EmitState) wordFollowsLanding(v core.Value) bool {
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	return ok && pr.idx == 0 && es.landingNext[pr.seq] == core.LandingNextWord
 }
 
@@ -12360,15 +12360,15 @@ func (es *EmitState) siblingCallOutputs(residual []core.Value) bool {
 	if len(residual) < 2 {
 		return false
 	}
-	pr, ok := es.producedBy[residual[0].ID]
-	if !ok || residual[0].ID == "" {
+	pr, ok := es.producedBy[core.IDOf(&residual[0])]
+	if !ok || core.IDOf(&residual[0]) == "" {
 		return false
 	}
 	if ev := es.eventBySeq(pr.seq); ev == nil || ev.kind != evCallUser {
 		return false
 	}
 	for _, r := range residual[1:] {
-		if q, ok := es.producedBy[r.ID]; !ok || r.ID == "" || q.seq != pr.seq {
+		if q, ok := es.producedBy[core.IDOf(&r)]; !ok || core.IDOf(&r) == "" || q.seq != pr.seq {
 			return false
 		}
 	}
@@ -12395,7 +12395,7 @@ func (es *EmitState) crossesStatementEnd(v core.Value, rest []core.Value) bool {
 		// values between the lead and the read — `def j (5 do [(mk)] 7)
 		// end j` applies mk's lambda to the 7 before the def takes the 5,
 		// which the apply over the residual's 7 answers (NUR298).
-		if i == 0 && es.isDefRead(r) && es.defReadCrossed(r.ID, from) {
+		if i == 0 && es.isDefRead(r) && es.defReadCrossed(core.IDOf(&r), from) {
 			return true
 		}
 		to := es.residualPos(r)
@@ -12495,8 +12495,8 @@ func (es *EmitState) noteFnRiskFields(word string, args, outs []core.Value) {
 			es.fnMemberFields = map[string]map[string]core.Value{}
 		}
 		for _, o := range outs {
-			if o.ID != "" {
-				es.fnMemberFields[o.ID] = members
+			if core.IDOf(&o) != "" {
+				es.fnMemberFields[core.IDOf(&o)] = members
 			}
 		}
 	}
@@ -12507,8 +12507,8 @@ func (es *EmitState) noteFnRiskFields(word string, args, outs []core.Value) {
 		es.fnRiskFields = map[string]map[string]bool{}
 	}
 	for _, o := range outs {
-		if o.ID != "" {
-			es.fnRiskFields[o.ID] = risky
+		if core.IDOf(&o) != "" {
+			es.fnRiskFields[core.IDOf(&o)] = risky
 		}
 	}
 }
@@ -12521,7 +12521,7 @@ func (es *EmitState) instanceFnFieldRisk(args []core.Value) bool {
 		return false
 	}
 	for _, a := range args {
-		risky := es.fnRiskFields[a.ID]
+		risky := es.fnRiskFields[core.IDOf(&a)]
 		if risky == nil {
 			continue
 		}
@@ -12547,7 +12547,7 @@ func (es *EmitState) instanceFnMember(args []core.Value) (core.Value, bool) {
 		return core.Value{}, false
 	}
 	for _, a := range args {
-		members := es.fnMemberFields[a.ID]
+		members := es.fnMemberFields[core.IDOf(&a)]
 		if members == nil {
 			continue
 		}
@@ -12699,11 +12699,11 @@ func (es *EmitState) flushGradualRead() {
 // consumer-position rescue needs no such gate (its op executes at the read's
 // own position); only the residual disposition calls this.
 func (es *EmitState) residualReadStable(v core.Value) bool {
-	name := es.defReads[v.ID]
+	name := es.defReads[core.IDOf(&v)]
 	if name == "" || es.reg == nil {
 		return false
 	}
-	gen, ok := es.defReadGens[v.ID]
+	gen, ok := es.defReadGens[core.IDOf(&v)]
 	return ok && es.reg.Defs.Gen(name) == gen
 }
 
@@ -12765,7 +12765,7 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		// stranded: recordCallElided registers it as the unit's (or the
 		// program's) pending apply and the tail lowering applies it over the
 		// residual beneath (the dynamic-lead group, 2026-09-22).
-		if core.IsFnTypedCarrier(&args[0]) && es.producerReturnedClosure(args[0].ID) {
+		if core.IsFnTypedCarrier(&args[0]) && es.producerReturnedClosure(core.IDOf(&args[0])) {
 			return false
 		}
 	}
@@ -12776,10 +12776,10 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		// A `/v` read of a def-bound closure (valReadIDs) is DATA on both
 		// engines — the interpreter never dispatches the value spelling —
 		// so no paren failed to collapse: the slot takes the value.
-		if es.valReadIDs[args[i].ID] {
+		if es.valReadIDs[core.IDOf(&args[i])] {
 			continue
 		}
-		if es.producerReturnedClosure(args[i].ID) {
+		if es.producerReturnedClosure(core.IDOf(&args[i])) {
 			es.MarkUncompilable(
 				"computed closure at a word's argument slot (its apply did not collapse — Stage 2)")
 			return true
@@ -12865,7 +12865,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.foldedEscape("a container literal")
 	}
 
-	es.noteKeptDefsFreshBind(name, v.ID)
+	es.noteKeptDefsFreshBind(name, core.IDOf(&v))
 	// A def of a name a PLACED speculative undef generalised, inside a
 	// rolled-back region of this unit, cannot be placed after the undef
 	// (defAfterSpecUndef) — decline before recording anything for it.
@@ -12924,7 +12924,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// `do [(h 1)]` over a lambda factory's closure compiled and raised
 	// `undefined word: g` (the captured param) for the interpreter's 8,
 	// and `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`.
-	if es.producerReturnedClosure(v.ID) && core.IsConcrete(&v) {
+	if es.producerReturnedClosure(core.IDOf(&v)) && core.IsConcrete(&v) {
 		if es.dynBoundClosures == nil {
 			es.dynBoundClosures = map[string]bool{}
 		}
@@ -12938,7 +12938,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// value it binds, closure or not, and the unnamed const escaped as data
 	// under the interpreter's named copy (`def f (mk 1)  each f/v [1 2 3]`
 	// read `fn (String)` for `fn f(String)`, NUR168).
-	if pr, ok := es.producedBy[v.ID]; ok && (es.producedFnValue(v.ID) || es.producedConstLambda(v.ID)) {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && (es.producedFnValue(core.IDOf(&v)) || es.producedConstLambda(core.IDOf(&v))) {
 		if es.defNameAt == nil {
 			es.defNameAt = map[seqIdx]string{}
 		}
@@ -12947,7 +12947,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	src, srcSeq := EmitOperand{}, -1
 	cur := es.units[len(es.units)-1]
 	es.noteValBind(cur, name, v)
-	if slot, ok := cur.localByID[v.ID]; ok && cur.capID[v.ID] {
+	if slot, ok := cur.localByID[core.IDOf(&v)]; ok && cur.capID[core.IDOf(&v)] {
 		// A CAPTURE of the CURRENT unit overrides events-first, mirroring
 		// resolveOperand's capID override (emit.go ~1241): the captured value
 		// may still carry a producedBy entry from the ENCLOSING unit (a
@@ -12961,9 +12961,9 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		// JoinCarriers ID-reuse case (a branch result reusing a live local's
 		// ID) to the local instead of the branch event.
 		src = localOperand(slot)
-	} else if pr, ok := es.producedBy[v.ID]; ok && pr.idx == 0 {
+	} else if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.idx == 0 {
 		srcSeq = pr.seq
-	} else if slot, ok := cur.localByID[v.ID]; ok {
+	} else if slot, ok := cur.localByID[core.IDOf(&v)]; ok {
 		src = localOperand(slot)
 	}
 	// A def recorded in the ROOT unit outside any fn body persists past the
@@ -12986,8 +12986,8 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		if es.rootComputedBindIDs == nil {
 			es.rootComputedBindIDs = map[string]bool{}
 		}
-		es.rootComputedBindIDs[v.ID] = true
-		es.NoteDefRead(v.ID, name)
+		es.rootComputedBindIDs[core.IDOf(&v)] = true
+		es.NoteDefRead(core.IDOf(&v), name)
 	}
 	spliceDepth := -1
 	if plb := es.pendingLoopBind; plb != nil {
@@ -13099,7 +13099,7 @@ func (es *EmitState) stampKeepSkipped(name string) {
 // the reparented literal's reason above: the body's type twin replays the
 // node after the unit, and the twin of `x` binds the replayed node.
 func (es *EmitState) keepTypeNode(v core.Value) bool {
-	return core.IsBareTypeNode(&v) && v.ID != "" && !es.passMintedTypes[v.ID]
+	return core.IsBareTypeNode(&v) && core.IDOf(&v) != "" && !es.passMintedTypes[core.IDOf(&v)]
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value
@@ -13117,7 +13117,7 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 	}
 	name := v.DynFrom()
 	if name == "" {
-		name = es.defReads[v.ID]
+		name = es.defReads[core.IDOf(&v)]
 	}
 	if name == "" {
 		return EmitOperand{}, false
@@ -13156,7 +13156,7 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 			// the interpreter's undefined_word at the read, not at the
 			// consumer or the program's end the residual lowers at.
 			op := dynScopeOperand(es.intern(core.NewString(name)))
-			op.boundPos = es.readPos[v.ID]
+			op.boundPos = es.readPos[core.IDOf(&v)]
 			return op, true
 		}
 		return EmitOperand{}, false
@@ -13182,7 +13182,7 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 	enclosing := false
 	if len(es.units) > 1 {
 		if cur := es.units[len(es.units)-1]; cur != nil {
-			enclosing = cur.enclosingBindIDs[v.ID]
+			enclosing = cur.enclosingBindIDs[core.IDOf(&v)]
 			// An ID-ELIDED enclosing read (a detached stamp forked the runtime
 			// def table, where the mutable ref's ID was never minted) cannot be
 			// matched by ID. Fall back to the by-name snapshot: the recovered
@@ -13193,7 +13193,7 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 			// (b) a DynFrom-tagged read, so the name came from the module-scope
 			// mutable-ref tag (engine.stepWord) — NOT the unreliable defReads[""]
 			// that every elided-ID read collides on.
-			if !enclosing && v.ID == "" && v.DynFrom() != "" {
+			if !enclosing && core.IDOf(&v) == "" && v.DynFrom() != "" {
 				enclosing = cur.enclosingBindNames[name]
 			}
 		}
@@ -13232,7 +13232,7 @@ func (es *EmitState) NoteShapedRead(id string) {
 // landing model cannot pinpoint what it would apply.
 func (es *EmitState) zeroArgMemberFnLandingOut(outs []core.Value) bool {
 	for _, o := range outs {
-		if m, ok := es.MemberFnReadValue(o.ID); ok && core.FnValueZeroArg(m) {
+		if m, ok := es.MemberFnReadValue(core.IDOf(&o)); ok && core.FnValueZeroArg(m) {
 			return true
 		}
 	}
@@ -13246,7 +13246,7 @@ func (es *EmitState) shapedReadOut(outs []core.Value) bool {
 		return false
 	}
 	for _, o := range outs {
-		if es.shapedReads[o.ID] {
+		if es.shapedReads[core.IDOf(&o)] {
 			return true
 		}
 	}
@@ -13296,7 +13296,7 @@ func (es *EmitState) NoteCollectionHazard(id string) {
 	// 21 for 30 (NUR178). The re-step record is taken at the collapse
 	// (recordParenReStep), so a lead already re-stepped when the collection
 	// marks it was collected past its own apply.
-	if es.parenReSteppedFn(core.Value{ID: id}) {
+	if es.parenReSteppedFn(core.IdentityOnly(id)) {
 		if es.hazardAfterReStep == nil {
 			es.hazardAfterReStep = map[string]bool{}
 		}
@@ -13319,14 +13319,14 @@ func (es *EmitState) CollectionHazard(id string) bool {
 // certainly a fn, so a unit no deopt serves must decline rather than keep
 // the value as data.
 func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
-	if !es.Active() || v.ID == "" {
+	if !es.Active() || core.IDOf(&v) == "" {
 		return
 	}
 	// A branch whose body arms each net one value never re-steps it where
 	// the `if` stood: the arm's paren parked it (NUR313) — `def f fn [[][Any]
 	// [if c [(mkl)] [0] 5]] end f` returns `fn l 5` to its count check,
 	// where the deopt applied l to the 5.
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || es.branchPlacesAt(pr.seq) {
 		return
 	}
@@ -13363,7 +13363,7 @@ func (es *EmitState) hazardLead(v core.Value) bool { return es.hazardLeadIn(v, n
 // unit's finish, an arm): the placed-call-result exclusion must find the
 // producing event where it lives.
 func (es *EmitState) hazardLeadIn(v core.Value, frag *EmitFragment) bool {
-	return es.CollectionHazard(v.ID) && (es.hazardAfterReStep[v.ID] || !es.parenPlacedMemberFn(v)) && !es.callResultPlacedIn(v, frag) && !es.applyPending(v.ID)
+	return es.CollectionHazard(core.IDOf(&v)) && (es.hazardAfterReStep[core.IDOf(&v)] || !es.parenPlacedMemberFn(v)) && !es.callResultPlacedIn(v, frag) && !es.applyPending(core.IDOf(&v))
 }
 
 // applyPending reports whether the innermost open unit holds a PENDING
@@ -13436,11 +13436,11 @@ func storedUnitFnRead(u *emitUnit, rec *fnUnitRec, vals []core.Value) (string, b
 		}
 	}
 	for _, v := range vals {
-		name, read := rec.wordReadNames[v.ID]
+		name, read := rec.wordReadNames[core.IDOf(&v)]
 		if !read {
 			continue
 		}
-		if slot, local := u.localByID[v.ID]; local && slot < rec.nParams {
+		if slot, local := u.localByID[core.IDOf(&v)]; local && slot < rec.nParams {
 			continue
 		}
 		return name, true
@@ -13514,7 +13514,7 @@ func pendingApplyTail(rec *fnUnitRec, pend []pendingApply, bodyStk []core.Value,
 		return nil, dynTrail, true
 	}
 	if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
-		bodyStk[len(bodyStk)-1].ID == pend[0].id {
+		core.IDOf(&bodyStk[len(bodyStk)-1]) == pend[0].id {
 		dynTrail = len(bodyStk) - 1
 		// applyHandler unquotes: a /v-parked fn value still applies
 		// (OpCallDynApplyTop), unlike the paren case.
@@ -13563,7 +13563,7 @@ func fnValueMayTakeArgs(v core.Value) bool {
 // settled and `7 if true (mk) [2]` lays out as the pair on both lanes
 // (read as unsettled, the trailing arm rotated it to `[fn 7]`).
 func (es *EmitState) branchArmMayTakeArgs(v core.Value) bool {
-	if n, ok := es.producerReturnedClosureArity(v.ID); ok {
+	if n, ok := es.producerReturnedClosureArity(core.IDOf(&v)); ok {
 		return n > 0
 	}
 	return fnValueMayTakeArgs(v)
@@ -13616,13 +13616,13 @@ func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 // or a branch result an arm of which leaves a fn (armLeavesFn). The pass
 // reads such a carrier as data wherever its type does not say Function.
 func (es *EmitState) gradualHoldsFn(v core.Value) bool {
-	if v.ID == "" || !v.Carrier || core.IsQuoted(&v) || core.IsFnTypedCarrier(&v) {
+	if core.IDOf(&v) == "" || !v.Carrier || core.IsQuoted(&v) || core.IsFnTypedCarrier(&v) {
 		return false
 	}
-	if _, fn := es.producerReturnedClosureArity(v.ID); fn {
+	if _, fn := es.producerReturnedClosureArity(core.IDOf(&v)); fn {
 		return true
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	return ok && es.eventLeavesFn(pr.seq, 0)
 }
 
@@ -13678,7 +13678,7 @@ func (es *EmitState) carryFoldedTaint(b core.BranchRecord) {
 			arms = append(arms, *p)
 		}
 	}
-	if b.Out.ID != "" && es.anyFolded(arms) {
+	if core.IDOf(&b.Out) != "" && es.anyFolded(arms) {
 		es.noteFolded(b.Out)
 	}
 }
@@ -13710,7 +13710,7 @@ func (es *EmitState) anyFoldedCarrier(vals []core.Value) bool {
 // fold's own value, a branch merge that carries it) or by its signature
 // table (any copy of the member fn shares its body — foldedBodies).
 func (es *EmitState) isFolded(v core.Value) bool {
-	if v.ID != "" && es.foldedMembers[v.ID] {
+	if core.IDOf(&v) != "" && es.foldedMembers[core.IDOf(&v)] {
 		return true
 	}
 	fd, ok := v.Data.(*core.FnDefInfo)
@@ -13732,7 +13732,7 @@ func (es *EmitState) noteFolded(v core.Value) {
 		es.foldedMembers = map[string]bool{}
 		es.foldedBodies = map[*core.Value]bool{}
 	}
-	es.foldedMembers[v.ID] = true
+	es.foldedMembers[core.IDOf(&v)] = true
 	if fd, ok := v.Data.(*core.FnDefInfo); ok {
 		for _, sig := range fd.OwnSigs() {
 			if b := sig.Body(); len(b) > 0 {
@@ -13800,13 +13800,13 @@ func (es *EmitState) foldedEscape(where string) {
 // such a branch keeps the fn-carrier paths it had), or a gradual carrier
 // proven to hold one (gradualHoldsFn) that no shape claim models.
 func (es *EmitState) noteFnLeavingBind(v core.Value) {
-	if v.ID == "" {
+	if core.IDOf(&v) == "" {
 		return
 	}
-	pr, ok := es.producedBy[v.ID]
-	leaves := (ok && es.eventInfo[pr.seq].armLeavesFn) || (v.Carrier && es.isFolded(v) && !es.gradualClaims[v.ID])
+	pr, ok := es.producedBy[core.IDOf(&v)]
+	leaves := (ok && es.eventInfo[pr.seq].armLeavesFn) || (v.Carrier && es.isFolded(v) && !es.gradualClaims[core.IDOf(&v)])
 	if !leaves && es.gradualHoldsFn(v) {
-		_, claimed := es.claimedShape(v.ID)
+		_, claimed := es.claimedShape(core.IDOf(&v))
 		leaves = !claimed
 	}
 	if !leaves {
@@ -13815,7 +13815,7 @@ func (es *EmitState) noteFnLeavingBind(v core.Value) {
 	if es.fnLeavingBinds == nil {
 		es.fnLeavingBinds = map[string]bool{}
 	}
-	es.fnLeavingBinds[v.ID] = true
+	es.fnLeavingBinds[core.IDOf(&v)] = true
 }
 
 // claimedShape answers the def-read model's claim for id (CheckState.FnShapes).
@@ -13835,17 +13835,17 @@ func (es *EmitState) claimedShape(id string) (core.FnShape, bool) {
 // reaches (unionLeadReStepped): `def r (if c [g/v] [0]) 3 r 5` is `3 7 5`,
 // the read's dispatch firing g between its neighbours (NUR319).
 func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
-	if es == nil || v.ID == "" || core.IsQuoted(&v) {
+	if es == nil || core.IDOf(&v) == "" || core.IsQuoted(&v) {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok {
 		return false
 	}
 	if es.unionLeadReStepped(v, pr.seq) {
 		return true
 	}
-	return es.eventInfo[pr.seq].mayBeFnArgs && !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
+	return es.eventInfo[pr.seq].mayBeFnArgs && !es.placedNotReStepped(v) && !es.placedValRead(core.IDOf(&v))
 }
 
 // fnLikeResidual reports whether a residual entry may be a callable at run
@@ -13920,7 +13920,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 		return false
 	}
 	lead := args[0]
-	if core.IsConcrete(&lead) || !core.IsDynamic(&lead) || lead.ID == "" {
+	if core.IsConcrete(&lead) || !core.IsDynamic(&lead) || core.IDOf(&lead) == "" {
 		return false
 	}
 	// A lead the interpreter RE-STEPS where it stands — a container read the
@@ -13933,7 +13933,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 	// below. A `/v` read or a user paren's placed result (`nd (m get "inc")
 	// apply` — its re-step ran inside the sealed paren, over nothing) is the
 	// inert value this event models.
-	if pr, produced := es.producedBy[lead.ID]; produced && !es.valReadNoted[lead.ID] && !es.parenPlacedMemberFn(lead) {
+	if pr, produced := es.producedBy[core.IDOf(&lead)]; produced && !es.valReadNoted[core.IDOf(&lead)] && !es.parenPlacedMemberFn(lead) {
 		if _, landed := es.landingAfter[pr.seq]; landed {
 			return false
 		}
@@ -13947,7 +13947,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 		return false
 	}
 	// The apply word consumed a bare read of the lead (NUR123 accounting).
-	es.creditWordRead(lead.ID)
+	es.creditWordRead(core.IDOf(&lead))
 	es.SiteCounts[SiteMono]++
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{fnOp, argOp}, nout: 1, pos: pos, dynApply: 1, dynApplyUnquote: true, dynApplyOne: true}})
 	es.setProduced(outs[0], seq)
@@ -14649,15 +14649,15 @@ func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bo
 // closure lowered as `h 2 3`, compiled 12 for the interpreter's
 // signature_error). A producing word's own claim stands.
 func (es *EmitState) noteClosureShapeBind(v core.Value) {
-	if es.reg == nil || v.ID == "" || !(core.IsFnTypedCarrier(&v) || gradualFnCarrier(v)) {
+	if es.reg == nil || core.IDOf(&v) == "" || !(core.IsFnTypedCarrier(&v) || gradualFnCarrier(v)) {
 		return
 	}
-	if _, claimed := es.reg.Check.FnShapeOf(v.ID); claimed {
+	if _, claimed := es.reg.Check.FnShapeOf(core.IDOf(&v)); claimed {
 		return
 	}
-	s, ok := es.producerReturnedClosureShape(v.ID)
+	s, ok := es.producerReturnedClosureShape(core.IDOf(&v))
 	if !ok {
-		if m, member := es.MemberFnReadValue(v.ID); member {
+		if m, member := es.MemberFnReadValue(core.IDOf(&v)); member {
 			s, ok = memberLambdaShape(m)
 		}
 	}
@@ -14669,7 +14669,7 @@ func (es *EmitState) noteClosureShapeBind(v core.Value) {
 		if es.gradualClaims == nil {
 			es.gradualClaims = map[string]bool{}
 		}
-		es.gradualClaims[v.ID] = true
+		es.gradualClaims[core.IDOf(&v)] = true
 	}
 }
 
@@ -14804,7 +14804,7 @@ func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
 	if u := es.openUnitRec(); u == nil || (u.closure && !u.plainLambda()) {
 		return false
 	}
-	_, produced := es.producedBy[v.ID]
+	_, produced := es.producedBy[core.IDOf(&v)]
 	return produced
 }
 
@@ -14892,7 +14892,7 @@ func lambdaOwnParams(fd core.FnDefInfo) ([]core.FnParam, bool) {
 // computed range list.
 func makeListRange(es *EmitState, args []core.Value) bool {
 	for i := range args {
-		if w, ok := es.producerWord(args[i].ID); ok && w == wordMakeList {
+		if w, ok := es.producerWord(core.IDOf(&args[i])); ok && w == wordMakeList {
 			return true
 		}
 	}
@@ -14936,7 +14936,7 @@ func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core
 // last event — the indexed read keeps lowering to the bare local, and a
 // projection some other consumer took stays put.
 func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
-	if !es.Active() || out.ID == "" {
+	if !es.Active() || core.IDOf(&out) == "" {
 		return false
 	}
 	if !es.RecordMakeListInner(r, ins, out, pos) {
@@ -14948,7 +14948,7 @@ func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, ou
 	// No lookup miss to guard: RecordMakeListInner's one success path
 	// registers out at its OpMakeList event (setProduced), and out has the
 	// identity setProduced keys on (checked above).
-	es.argsProjSeq[out.ID] = es.producedBy[out.ID].seq
+	es.argsProjSeq[core.IDOf(&out)] = es.producedBy[core.IDOf(&out)].seq
 	return true
 }
 
@@ -15016,7 +15016,7 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 	// declining for a reason of its own.
 	if r != nil {
 		for i := range ins {
-			if _, tabled := core.CheckFnCarrierBoundName(r, ins[i].ID); tabled {
+			if _, tabled := core.CheckFnCarrierBoundName(r, core.IDOf(&ins[i])); tabled {
 				es.MarkUncompilable(
 					"computed fn read inside an unevaluated body (the read substitution cannot model a code body — Stage 1)")
 				return false
@@ -15070,7 +15070,7 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 		// identical canonical nodes the interpreter's list would. A node with
 		// no canonical ID has no runtime home and still declines.
 		if core.IsBareTypeNode(&ins[i]) {
-			if ins[i].ID == "" {
+			if core.IDOf(&ins[i]) == "" {
 				return false
 			}
 			ops[len(ins)-1-i] = typeOperand(es.internType(ins[i]))
@@ -15133,7 +15133,7 @@ func (es *EmitState) listReStepSpec(ins []core.Value, ops []EmitOperand) *ListRe
 			spec.Fn = append(spec.Fn, i)
 			// The literal after it written as a word: a `/q` slot takes the
 			// word (NUR219), which the landing noted.
-			if pr, ok := es.producedBy[v.ID]; ok && i+1 < len(ins) && es.landingWord[pr.seq].Collected && ops[len(ins)-2-i].kind == opConst {
+			if pr, ok := es.producedBy[core.IDOf(&v)]; ok && i+1 < len(ins) && es.landingWord[pr.seq].Collected && ops[len(ins)-2-i].kind == opConst {
 				if spec.Words == nil {
 					spec.Words = map[int]LandingWord{}
 				}
@@ -15187,7 +15187,7 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 		// compiles exactly as it interprets. A node with no canonical ID has no
 		// runtime home and still declines.
 		if core.IsBareTypeNode(&vals[i]) {
-			if vals[i].ID == "" {
+			if core.IDOf(&vals[i]) == "" {
 				return false
 			}
 			ops[len(vals)-1-i] = typeOperand(es.internType(vals[i]))
@@ -15218,13 +15218,13 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 // empty identity on either side links nothing: an empty id never corresponds
 // (slotIsOperand), and a link through one would admit a coincidental match.
 func (es *EmitState) NoteInPlaceSlot(tok, result core.Value) {
-	if !es.Active() || tok.ID == "" || result.ID == "" {
+	if !es.Active() || core.IDOf(&tok) == "" || core.IDOf(&result) == "" {
 		return
 	}
 	if es.inPlaceFrom == nil {
 		es.inPlaceFrom = map[string]string{}
 	}
-	es.inPlaceFrom[result.ID] = tok.ID
+	es.inPlaceFrom[core.IDOf(&result)] = core.IDOf(&tok)
 }
 
 // RecordInterp records the assembly of a template string whose holes are
@@ -15405,7 +15405,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	if bodyPos >= 0 && bodyPos < len(args) {
 		b := args[bodyPos]
 		site := b.Pos()
-		if p, read := es.readPos[b.ID]; read && b.ID != "" {
+		if p, read := es.readPos[core.IDOf(&b)]; read && core.IDOf(&b) != "" {
 			site = p
 		}
 		if es.closureBodySites == nil {
@@ -15449,7 +15449,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 			if i == bodyPos {
 				continue
 			}
-			if pr, ok := es.producedBy[args[i].ID]; ok && es.eventInfo[pr.seq].variadicResult {
+			if pr, ok := es.producedBy[core.IDOf(&args[i])]; ok && es.eventInfo[pr.seq].variadicResult {
 				f := es.eventInfo[seq]
 				f.variadicResult = true
 				// The strip's result is real stack values exactly when
@@ -15959,11 +15959,11 @@ func valueRefsName(v core.Value) bool {
 
 // internType pools a type operand by canonical ID.
 func (es *EmitState) internType(v core.Value) int {
-	if i, ok := es.typeIdx[v.ID]; ok {
+	if i, ok := es.typeIdx[core.IDOf(&v)]; ok {
 		return i
 	}
-	es.types = append(es.types, TypeRef{Name: v.String(), ID: v.ID})
-	es.typeIdx[v.ID] = len(es.types) - 1
+	es.types = append(es.types, TypeRef{Name: v.String(), ID: core.IDOf(&v)})
+	es.typeIdx[core.IDOf(&v)] = len(es.types) - 1
 	return len(es.types) - 1
 }
 
@@ -16002,7 +16002,7 @@ func (es *EmitState) internUnpooled(v core.Value) int {
 // Parent would have failed there first. A guard here would be an unreachable
 // branch carrying a pragma to say so.
 func constPoolKey(v core.Value) string {
-	return v.Parent.ID + "\x00" + core.CanonValue(v)
+	return core.IDOf(v.Parent) + "\x00" + core.CanonValue(v)
 }
 
 // identPayloadBound reports whether a refinement's bound side carries an
@@ -16052,15 +16052,15 @@ func (es *EmitState) intern(v core.Value) int {
 		// so it pools by ID: semantics-preserving, and it keeps
 		// freshenFnUnitConsts' push-site counting truthful (two reads of one
 		// binding count as pushes of ONE const, never two slots).
-		if v.ID != "" {
-			if i, ok := es.constIDIdx[v.ID]; ok {
+		if core.IDOf(&v) != "" {
+			if i, ok := es.constIDIdx[core.IDOf(&v)]; ok {
 				return i
 			}
 			es.consts = append(es.consts, v)
 			if es.constIDIdx == nil {
 				es.constIDIdx = map[string]int{}
 			}
-			es.constIDIdx[v.ID] = len(es.consts) - 1
+			es.constIDIdx[core.IDOf(&v)] = len(es.consts) - 1
 			return len(es.consts) - 1
 		}
 		es.consts = append(es.consts, v)
@@ -16196,12 +16196,12 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 	if len(residual) < 2 {
 		return 0, false
 	}
-	pr, ok := es.producedBy[residual[0].ID]
+	pr, ok := es.producedBy[core.IDOf(&residual[0])]
 	if !ok || !es.eventInfo[pr.seq].variadicResult {
 		return 0, false
 	}
 	for _, rv := range residual {
-		p2, ok := es.producedBy[rv.ID]
+		p2, ok := es.producedBy[core.IDOf(&rv)]
 		if !ok || es.eventInfo[p2.seq].zeroOut {
 			return 0, false // a non-event entry would need a re-push the window forbids
 		}
@@ -16331,7 +16331,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 	if len(residual) < 2 {
 		return 0, false
 	}
-	pr, ok := es.producedBy[residual[len(residual)-1].ID]
+	pr, ok := es.producedBy[core.IDOf(&residual[len(residual)-1])]
 	if !ok {
 		return 0, false
 	}
@@ -16349,7 +16349,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 	// all), which is what makes the prefix pushable after the run.
 	i := len(residual) - 1
 	for i > 0 {
-		p, isEvent := es.producedBy[residual[i-1].ID]
+		p, isEvent := es.producedBy[core.IDOf(&residual[i-1])]
 		if !isEvent || p.seq != pr.seq {
 			break
 		}
@@ -16359,7 +16359,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 		return 0, false // the run IS the whole residual; no prefix to seat
 	}
 	for _, rv := range residual[:i] {
-		if _, isEvent := es.producedBy[rv.ID]; isEvent {
+		if _, isEvent := es.producedBy[core.IDOf(&rv)]; isEvent {
 			return 0, false
 		}
 	}
@@ -16650,12 +16650,12 @@ func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
 // variadicSiblings reports whether every value in vals is a result of ONE
 // runtime-variable call (variadicSiblingLead's event class).
 func (es *EmitState) variadicSiblings(vals []core.Value) bool {
-	first, ok := es.producedBy[vals[0].ID]
+	first, ok := es.producedBy[core.IDOf(&vals[0])]
 	if !ok {
 		return false
 	}
 	for _, v := range vals[1:] {
-		if pr, ok := es.producedBy[v.ID]; !ok || pr.seq != first.seq {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; !ok || pr.seq != first.seq {
 			return false
 		}
 	}
@@ -16679,7 +16679,7 @@ func (es *EmitState) variadicSiblings(vals []core.Value) bool {
 // placed data until a re-step undoes that (callResultPlaced's branch case,
 // branchPlacedBy).
 func (es *EmitState) branchLeadDecline(lead core.Value) string {
-	if pr, ok := es.producedBy[lead.ID]; ok && es.splitArmMayBeFn(pr.seq) {
+	if pr, ok := es.producedBy[core.IDOf(&lead)]; ok && es.splitArmMayBeFn(pr.seq) {
 		return "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
 	}
 	return ""
@@ -16790,7 +16790,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// drop), as the run-time peek quotes the concrete value — `m.f/v 5` is
 	// `fn (Integer) 5` on the interpreter, and applied here it was 6
 	// (NUR277).
-	if !leadCrossed && len(residual) >= 2 && core.IsDynamic(&residual[0]) && !core.IsQuoted(&residual[0]) && !es.methodShapeAnnotated(residual[0].ID) && !es.siblingCallOutputs(residual) &&
+	if !leadCrossed && len(residual) >= 2 && core.IsDynamic(&residual[0]) && !core.IsQuoted(&residual[0]) && !es.methodShapeAnnotated(core.IDOf(&residual[0])) && !es.siblingCallOutputs(residual) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
 	}
@@ -16840,7 +16840,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		// closure (miscompile mechanism E). Decline; the interpreter applies
 		// the chain faithfully.
 		if applyDynamic {
-			arity, known := es.producerReturnedClosureArity(residual[0].ID)
+			arity, known := es.producerReturnedClosureArity(core.IDOf(&residual[0]))
 			if known && arity != len(residual)-1 {
 				return residual, 0, "fn-value apply arity mismatch — curried chain or partial apply (Stage 3)"
 			}
@@ -16862,7 +16862,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			// registry — eng's vmNativeApplicable, the thirty-fifth
 			// increment.)
 			if !known {
-				if _, read := es.defReads[residual[0].ID]; read {
+				if _, read := es.defReads[core.IDOf(&residual[0])]; read {
 					return residual, 0, "def-bound computed fn apply (closure shape unknown — Stage 1)"
 				}
 			}
@@ -16884,7 +16884,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// A union lead a re-step reaches is a conditional apply the same way
 	// (unionLeadReStepped, NUR317).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !core.IsQuoted(&residual[0]) && !es.leadPlacedNotRead(residual[0]) {
-		if pr, ok := es.producedBy[residual[0].ID]; ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
+		if pr, ok := es.producedBy[core.IDOf(&residual[0])]; ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
 	}
@@ -17059,18 +17059,18 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 // rules (callResultPlacedIn).
 func (lw *lowerer) claimParked(v core.Value) bool {
 	es := lw.es
-	pr, ok := es.producedBy[v.ID]
-	if !ok || v.ID == "" || pr.idx != 0 {
+	pr, ok := es.producedBy[core.IDOf(&v)]
+	if !ok || core.IDOf(&v) == "" || pr.idx != 0 {
 		return false
 	}
 	ev := es.eventBySeq(pr.seq)
 	if ev == nil || ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.DefRead || ev.call.nout != 1 {
 		return false
 	}
-	if (es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID]) || es.parenReSteppedFn(v) || es.isDefRead(v) {
+	if (es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[core.IDOf(&v)]) || es.parenReSteppedFn(v) || es.isDefRead(v) {
 		return false
 	}
-	if _, member := es.MemberFnReadValue(v.ID); member {
+	if _, member := es.MemberFnReadValue(core.IDOf(&v)); member {
 		return false
 	}
 	di, seated := lw.dynMethodAt[pr.seq]
@@ -17117,7 +17117,7 @@ func anyFnOrDynamicTail(residual []core.Value) bool {
 func (es *EmitState) replayedCallEntries(residual []core.Value) int {
 	n := 0
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[rv.ID]; ok && es.eventInfo[pr.seq].replayedCall {
+		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && es.eventInfo[pr.seq].replayedCall {
 			n++
 		}
 	}
@@ -17150,7 +17150,7 @@ func (es *EmitState) claimSpliceApplies(lw *lowerer, dynOp Opcode, residual []co
 // rotated as if it were one (`[1 5 2]` for the interpreter's `[5 1 2]`,
 // measured 2026-09-26 on main), and its elements were never the apply's.
 func (es *EmitState) markSpliceApplied(lw *lowerer, fn core.Value) {
-	pr, ok := es.producedBy[fn.ID]
+	pr, ok := es.producedBy[core.IDOf(&fn)]
 	if !ok || pr.idx != 0 || !es.eventInfo[pr.seq].spliceDyn {
 		return
 	}
@@ -17164,7 +17164,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		return residual, false
 	}
 	fnv := residual[1]
-	pr, isEvent := es.producedBy[fnv.ID]
+	pr, isEvent := es.producedBy[core.IDOf(&fnv)]
 	if !isEvent || pr.idx != 0 || core.IsQuoted(&fnv) || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun ||
 		es.runOperand(EmitOperand{kind: opEvent, idx: pr.seq}, es.frames[0], 0) {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
@@ -17180,7 +17180,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		return residual, false
 	}
 	arg := residual[0]
-	if _, argIsEvent := es.producedBy[arg.ID]; argIsEvent || core.IsDynamic(&arg) ||
+	if _, argIsEvent := es.producedBy[core.IDOf(&arg)]; argIsEvent || core.IsDynamic(&arg) ||
 		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(&arg) {
 		return residual, false
 	}
@@ -17190,7 +17190,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	// Unless a trailing `apply` WORD dispatched it on purpose — `10 (mk2 5)
 	// apply` parks identically and then applies — which is what appliedByWord
 	// separates and the residual shape cannot (NUR124).
-	if !es.appliedByWord[fnv.ID] && es.callResultPlaced(fnv) {
+	if !es.appliedByWord[core.IDOf(&fnv)] && es.callResultPlaced(fnv) {
 		return residual, false
 	}
 	// A value a user paren PLACED and no enclosing paren re-stepped is data
@@ -17200,7 +17200,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	// the call-result park. An `apply` WORD after the placed value dispatches
 	// it on purpose, exactly as it undoes the call-result park above (`1
 	// (M.run2 mk/v) apply` is 7 on both lanes).
-	if !es.appliedByWord[fnv.ID] && es.placedNotReStepped(fnv) {
+	if !es.appliedByWord[core.IDOf(&fnv)] && es.placedNotReStepped(fnv) {
 		return residual, false
 	}
 	return []core.Value{fnv, arg}, true
@@ -17222,7 +17222,7 @@ func (es *EmitState) trailingWindowApplyShape(residual []core.Value) bool {
 			return false
 		}
 	}
-	pr, ok := es.producedBy[residual[last].ID]
+	pr, ok := es.producedBy[core.IDOf(&residual[last])]
 	return ok && pr.idx == 0
 }
 
@@ -17254,10 +17254,10 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 	// forward collection would cross the value's statement End boundary
 	// (`3 c.add 2 ; {a:1} …` — the island could bind the NEXT statement's map
 	// as the method's 2-arg overload's field arg). See methodShapeAnnotated.
-	if es.methodShapeAnnotated(residual[dynIdx].ID) {
+	if es.methodShapeAnnotated(core.IDOf(&residual[dynIdx])) {
 		return 0, false
 	}
-	if pr, ok := es.producedBy[residual[dynIdx].ID]; !ok || pr.idx != 0 {
+	if pr, ok := es.producedBy[core.IDOf(&residual[dynIdx])]; !ok || pr.idx != 0 {
 		return 0, false // not event-produced — cannot promote to a local
 	}
 	// An entry ABOVE the value pushed past a statement boundary its re-step
@@ -17285,16 +17285,16 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 	// decline (PR #279 review): the interpreter owns the re-read shape.
 	seenSplice := map[string]bool{}
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[rv.ID]; ok && es.eventInfo[pr.seq].spliceDyn {
-			if seenSplice[rv.ID] {
+		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && es.eventInfo[pr.seq].spliceDyn {
+			if seenSplice[core.IDOf(&rv)] {
 				return nil, "splice payload re-read after the spread (Stage 2)"
 			}
-			seenSplice[rv.ID] = true
+			seenSplice[core.IDOf(&rv)] = true
 		}
 	}
 	ops := make([]EmitOperand, 0, len(residual))
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[rv.ID]; ok {
+		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok {
 			if es.eventInfo[pr.seq].zeroOut {
 				continue
 			}
@@ -17310,15 +17310,15 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 		// A frame-0 local (a loop-carried def's slot — the post-loop read of a
 		// module-scope rebind resolves the joined binding to its cell). Events
 		// first, mirroring resolveOperand's precedence.
-		if slot, okLoc := es.units[0].localByID[rv.ID]; okLoc {
-			if name := es.units[0].boundLocals[rv.ID]; name != "" {
-				ops = append(ops, es.boundLocalOperand(slot, name, rv.ID))
+		if slot, okLoc := es.units[0].localByID[core.IDOf(&rv)]; okLoc {
+			if name := es.units[0].boundLocals[core.IDOf(&rv)]; name != "" {
+				ops = append(ops, es.boundLocalOperand(slot, name, core.IDOf(&rv)))
 				continue
 			}
 			ops = append(ops, localOperand(slot))
 			continue
 		}
-		if core.IsBareTypeNode(&rv) && rv.ID != "" {
+		if core.IsBareTypeNode(&rv) && core.IDOf(&rv) != "" {
 			ops = append(ops, typeOperand(es.internType(rv)))
 			continue
 		}
@@ -17367,7 +17367,7 @@ func (es *EmitState) moduleResidualStable(v core.Value) bool {
 	}
 	name := v.DynFrom()
 	if name == "" {
-		name = es.defReads[v.ID]
+		name = es.defReads[core.IDOf(&v)]
 	}
 	if name == "" {
 		return false
@@ -17599,7 +17599,7 @@ func (es *EmitState) programPendingApplyTop(residual []core.Value) bool {
 	// closure fires (`(mk0) apply` is 1), a wider one finds no match and
 	// stays data (`(mk) apply` is `fn (Integer)`); declining it left the
 	// first silently as `fn` on main (NUR160's neighbours).
-	return len(u.pendingApply) == 1 && len(residual) >= 1 && residual[len(residual)-1].ID == u.pendingApply[0].id
+	return len(u.pendingApply) == 1 && len(residual) >= 1 && core.IDOf(&residual[len(residual)-1]) == u.pendingApply[0].id
 }
 
 // hostedSpliceAdmitted is the whole-program half of a hosted splice's
@@ -17627,7 +17627,7 @@ func (es *EmitState) hostedSpliceAdmitted(residual []core.Value) (string, bool) 
 		if len(top) == 0 || top[len(top)-1].seq != seq {
 			return "for: a computed body is hosted only as the program's last statement (a later statement could read a binding the spliced body changed)", false
 		}
-		if len(residual) != 1 || es.producedBy[residual[0].ID].seq != seq {
+		if len(residual) != 1 || es.producedBy[core.IDOf(&residual[0])].seq != seq {
 			return "for: a computed body is hosted only over an empty stack (the interpreter's splice reads and leaves values beneath the loop)", false
 		}
 	}
@@ -17685,7 +17685,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// then plan + rewrite before lowering.
 	var residualSeqs []int
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[rv.ID]; ok && pr.idx == 0 {
+		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && pr.idx == 0 {
 			residualSeqs = append(residualSeqs, pr.seq)
 		}
 	}
@@ -17719,7 +17719,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	var forceOrder map[int]bool
 	residualHasFnOrDynamic := false
 	for _, rv := range residual {
-		if (core.IsDynamic(&rv) || core.IsFnValueResidual(rv) || es.mayBeFnUnsettled(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
+		if (core.IsDynamic(&rv) || core.IsFnValueResidual(rv) || es.mayBeFnUnsettled(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[core.IDOf(&rv)]) {
 			residualHasFnOrDynamic = true
 			break
 		}
@@ -17727,7 +17727,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if !residualHasFnOrDynamic {
 		seenLiteral, outOfOrder := false, false
 		for _, rv := range residual {
-			pr, isEvent := es.producedBy[rv.ID]
+			pr, isEvent := es.producedBy[core.IDOf(&rv)]
 			if isEvent && pr.idx == 0 && !es.eventInfo[pr.seq].zeroOut {
 				if seenLiteral {
 					outOfOrder = true
@@ -18125,7 +18125,7 @@ func (lw *lowerer) rootLeadHead(dynOp Opcode, residual []core.Value, reads map[s
 	if dynOp != OpCallDynamic || len(residual) == 0 {
 		return pos
 	}
-	r, read := reads[residual[0].ID]
+	r, read := reads[core.IDOf(&residual[0])]
 	if !read || len(r.reads) == 0 || r.reads[0].Row == 0 {
 		return pos
 	}
@@ -18152,7 +18152,7 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 	}
 	inResidual := map[string]bool{}
 	for _, rv := range residual {
-		inResidual[rv.ID] = true
+		inResidual[core.IDOf(&rv)] = true
 	}
 	ids := make([]string, 0, len(es.rootWordReads))
 	for id := range es.rootWordReads {
@@ -18264,19 +18264,19 @@ func (es *EmitState) residualCallableExempt(residual []core.Value, reads map[str
 	}
 	count := map[string]int{}
 	for _, rv := range residual {
-		count[rv.ID]++
+		count[core.IDOf(&rv)]++
 	}
 	exempt := map[string]bool{}
 	for _, rv := range residual {
-		if rv.ID == "" {
+		if core.IDOf(&rv) == "" {
 			continue
 		}
-		if r, ok := reads[rv.ID]; ok {
-			exempt[rv.ID] = count[rv.ID] <= len(r.reads)
+		if r, ok := reads[core.IDOf(&rv)]; ok {
+			exempt[core.IDOf(&rv)] = count[core.IDOf(&rv)] <= len(r.reads)
 			continue
 		}
-		if _, produced := es.producedBy[rv.ID]; produced && count[rv.ID] == 1 {
-			exempt[rv.ID] = true
+		if _, produced := es.producedBy[core.IDOf(&rv)]; produced && count[core.IDOf(&rv)] == 1 {
+			exempt[core.IDOf(&rv)] = true
 		}
 	}
 	return exempt
@@ -18396,14 +18396,14 @@ func (es *EmitState) seatRootResidualReads(lw *lowerer, reads map[string]rootWor
 	}
 	seen := map[string]bool{}
 	for at, rv := range residual {
-		r, noted := reads[rv.ID]
-		if !noted || seen[rv.ID] {
+		r, noted := reads[core.IDOf(&rv)]
+		if !noted || seen[core.IDOf(&rv)] {
 			continue
 		}
-		seen[rv.ID] = true
+		seen[core.IDOf(&rv)] = true
 		n := 0
 		for _, other := range residual {
-			if other.ID == rv.ID {
+			if core.IDOf(&other) == core.IDOf(&rv) {
 				n++
 			}
 		}
@@ -18428,7 +18428,7 @@ func (es *EmitState) seatRootResidualReads(lw *lowerer, reads map[string]rootWor
 			default:
 				// A guard reads the value's own slot when it has one: the
 				// entries above may be a runtime-variable region.
-				if slot, promoted := lw.promoted[es.producedBy[rv.ID].seq]; promoted {
+				if slot, promoted := lw.promoted[es.producedBy[core.IDOf(&rv)].seq]; promoted {
 					spec.Slot, spec.Depth = slot, -1
 				}
 			}
@@ -18471,7 +18471,7 @@ func (es *EmitState) rootResidualIsland(lw *lowerer, r rootWordRead, residual []
 // depth from the top is static.
 func (es *EmitState) rootResidualStatic(lw *lowerer, residual []core.Value, at int) bool {
 	for _, rv := range residual[at+1:] {
-		if pr, ok := es.producedBy[rv.ID]; ok && lw.variadic[pr.seq] {
+		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && lw.variadic[pr.seq] {
 			return false
 		}
 	}
@@ -18608,7 +18608,7 @@ func (es *EmitState) noteApplyLoopReplay(rec *fnUnitRec, ops []EmitOperand) []Em
 func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core.Value, extra int) bool {
 	for i, v := range vals {
 		if i < extra && i < rec.nUnnamed {
-			if slot, isLocal := u.localByID[v.ID]; isLocal && slot < rec.nParams {
+			if slot, isLocal := u.localByID[core.IDOf(&v)]; isLocal && slot < rec.nParams {
 				continue
 			}
 		}
@@ -18630,14 +18630,14 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		// (NUR277) or read through `/v` (placedValRead): `def f fn [[][Any]
 		// [g/v 5]]` is the count error over `[fn g 5]`, where the replay
 		// fired g first and listed `[7 5]` (NUR318).
-		if es.placedNotReStepped(v) || core.IsQuoted(&v) || es.placedValRead(v.ID) {
+		if es.placedNotReStepped(v) || core.IsQuoted(&v) || es.placedValRead(core.IDOf(&v)) {
 			continue
 		}
 		// A bare read seated live pushes data or defers (liveDataIDs): its
 		// gradual modality after a computed body (computedLeakGradual) is
 		// the TYPE's, never a possible call — `t t` over `quote [def t 5
 		// 1]` is the frame's count error over `[5 5]`.
-		if es.liveDataIDs[v.ID] {
+		if es.liveDataIDs[core.IDOf(&v)] {
 			continue
 		}
 		if core.IsDynamic(&v) || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
@@ -18692,7 +18692,7 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 // CALL_DYN_FRAME, NUR242). Such a window does not arm.
 func (es *EmitState) windowHasVariadicRun(window []core.Value) bool {
 	for _, v := range window {
-		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicResult {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicResult {
 			return true
 		}
 	}
@@ -18759,10 +18759,10 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	// interpreter's pointer stepped past it, so nothing inside the body
 	// re-steps it (`[1 2 3] each [m.f/v]` is three fn values on both
 	// lanes, as `each [inc/v]` is — NUR280).
-	if es.placedValRead(top.ID) {
+	if es.placedValRead(core.IDOf(&top)) {
 		return
 	}
-	if !es.MemberFnRead(top.ID) || !(core.IsDynamic(&top) || core.IsFnTypedCarrier(&top)) {
+	if !es.MemberFnRead(core.IDOf(&top)) || !(core.IsDynamic(&top) || core.IsFnTypedCarrier(&top)) {
 		return
 	}
 	// A DEF-READ of the tagged member (`def f tbl.inc end each [f] xs`,
@@ -18774,7 +18774,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	if es.isDefRead(top) && es.wordReadName(rec, top) == "" {
 		return
 	}
-	if mv, ok := es.MemberFnReadValue(top.ID); ok {
+	if mv, ok := es.MemberFnReadValue(core.IDOf(&top)); ok {
 		if fd, isFn := mv.Data.(*core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(*fd) {
 			return
 		}
@@ -18788,7 +18788,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 // through a closure body — is not this unit's to seat and is not counted:
 // the closure paths decline fn-typed carriers on their own gates.
 func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
-	if !es.Active() || v.ID == "" || name == "" {
+	if !es.Active() || core.IDOf(&v) == "" || name == "" {
 		return
 	}
 	if len(es.openUnitRecs) == 0 {
@@ -18797,13 +18797,13 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 	}
 	u := es.units[len(es.units)-1]
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
-	if _, isLocal := u.localByID[v.ID]; !isLocal {
+	if _, isLocal := u.localByID[core.IDOf(&v)]; !isLocal {
 		// A body-local `def` bound to a value an event of THIS unit
 		// produced (`def j (m get "f")  j`) resolves through its producing
 		// event, not a slot — resolveOperand's events-first rule — and is
 		// this unit's read all the same; an ENCLOSING-scope binding's
 		// value (enclosingBindIDs, resolveOperand's own test) is not.
-		if _, produced := es.producedBy[v.ID]; !produced || u.enclosingBindIDs[v.ID] {
+		if _, produced := es.producedBy[core.IDOf(&v)]; !produced || u.enclosingBindIDs[core.IDOf(&v)] {
 			// A DEF-BOUND binding of an enclosing scope — a module-scope
 			// `def f tbl.inc` read inside an each body (NUR156, the
 			// quotation-body def reads) — is the interpreter's WORD dispatch
@@ -18816,13 +18816,13 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 			// consumption keeps the slot push it has today rather than
 			// declining a unit whose value semantics may still agree.
 			if es.isDefRead(v) {
-				rec.noteWordReadName(v.ID, name, pos)
+				rec.noteWordReadName(core.IDOf(&v), name, pos)
 			}
 			return
 		}
 	}
-	rec.noteWordReadName(v.ID, name, pos)
-	if !u.capID[v.ID] {
+	rec.noteWordReadName(core.IDOf(&v), name, pos)
+	if !u.capID[core.IDOf(&v)] {
 		// A capture's value is the enclosing unit's producer's, with no home
 		// in this frame but its slot: no site guard serves it.
 		es.noteReadSite(v, name, pos, rec)
@@ -18837,7 +18837,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		if rec.wordReads == nil {
 			rec.wordReads = map[string]int{}
 		}
-		rec.wordReads[v.ID]++
+		rec.wordReads[core.IDOf(&v)]++
 	}
 }
 
@@ -18863,17 +18863,17 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 	if core.IsFnTypedCarrier(&v) || !es.isDefRead(v) || pos.Row == 0 {
 		return
 	}
-	if _, produced := es.producedBy[v.ID]; !produced {
+	if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
 		return
 	}
 	if es.rootWordReads == nil {
 		es.rootWordReads = map[string]rootWordRead{}
 	}
 	es.noteReadSite(v, name, pos, nil)
-	r := es.rootWordReads[v.ID]
-	r.id, r.name = v.ID, name
+	r := es.rootWordReads[core.IDOf(&v)]
+	r.id, r.name = core.IDOf(&v), name
 	r.reads = append(r.reads, pos)
-	es.rootWordReads[v.ID] = r
+	es.rootWordReads[core.IDOf(&v)] = r
 }
 
 // noteWordReadName records a bare read's binding NAME and position on the
@@ -18978,7 +18978,7 @@ func (es *EmitState) ArmTailApply(stk []core.Value) []core.Value {
 		return stk
 	}
 	top := stk[len(stk)-1]
-	if !es.applyPending(top.ID) {
+	if !es.applyPending(core.IDOf(&top)) {
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
@@ -19021,7 +19021,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 		return
 	}
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
-	if pr, ok := es.producedBy[v.ID]; ok {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
 		b.pr = pr
 	} else if fd, isFn := v.Data.(*core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !core.IsQuoted(&v) {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
@@ -19037,7 +19037,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 		return
 	}
 	top, _ := es.reg.Defs.Top(name)
-	b.top = top.ID
+	b.top = core.IDOf(&top)
 	if cur.valBinds == nil {
 		cur.valBinds = map[string]valBind{}
 	}
@@ -19063,7 +19063,7 @@ func (es *EmitState) aliasValRead(id, name string) {
 		return
 	}
 	if es.reg.Defs.Gen(name) != b.gen {
-		if top, found := es.reg.Defs.Top(name); !found || top.ID == "" || top.ID != b.top {
+		if top, found := es.reg.Defs.Top(name); !found || core.IDOf(&top) == "" || core.IDOf(&top) != b.top {
 			return
 		}
 	}
@@ -19253,7 +19253,7 @@ func (es *EmitState) namedFnUnmatchedAtTail(v core.Value) bool {
 	if core.MatchFnSig(v, nil) != nil {
 		return false
 	}
-	return !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
+	return !es.placedNotReStepped(v) && !es.placedValRead(core.IDOf(&v))
 }
 
 // seatUnitDeopts hands a deopt unit's points (planDeopts) to its lowerer:
@@ -20452,8 +20452,8 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		return !(consumed == 0 && seat != nil && d.restart && d.frameHeld && es.seatReads(rec, d, id, *seat))
 	}
 	deferredConst := func(c core.Value) bool {
-		if len(rec.localReads[c.ID]) > 0 {
-			return deferredRead(c.ID, &RestartSrc{Kind: RestartConst, Val: c, Fresh: isCompoundValue(c)})
+		if len(rec.localReads[core.IDOf(&c)]) > 0 {
+			return deferredRead(core.IDOf(&c), &RestartSrc{Kind: RestartConst, Val: c, Fresh: isCompoundValue(c)})
 		}
 		if d.restart && d.frameHeld && es.seatLiteral(rec, d, c, consumedBefore) {
 			return false
@@ -20561,8 +20561,8 @@ type seatLit struct {
 func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, events []EmitEvent, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
 	var reads []core.SrcPos
 	for i := range events {
-		if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq && ev.dyn.val.ID != "" {
-			for _, q := range rec.localReads[ev.dyn.val.ID] {
+		if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq && core.IDOf(&ev.dyn.val) != "" {
+			for _, q := range rec.localReads[core.IDOf(&ev.dyn.val)] {
 				if posAfter(d.start, q) && !slices.Contains(reads, q) {
 					reads = append(reads, q)
 				}
@@ -20752,7 +20752,7 @@ func (es *EmitState) wordReadAccounting(rec *fnUnitRec) string {
 		window := rec.outOpsVals[len(rec.outOpsVals)-rec.dynFrameW:]
 		for i, v := range window {
 			if i < len(rec.dynFrameWords) && rec.dynFrameWords[i].Name != "" {
-				seated[v.ID]++
+				seated[core.IDOf(&v)]++
 			}
 		}
 	}
@@ -20796,17 +20796,17 @@ func seatDynFrameWords(cf *CompiledFn, pc int, words []DynFrameWord) {
 // fn-admitting carrier, no Function-expecting forward pending) on this
 // unit; a `/v` value with a pending `apply` is the apply word's own.
 func (es *EmitState) wordReadName(rec *fnUnitRec, v core.Value) string {
-	if es == nil || rec == nil || v.ID == "" || core.IsQuoted(&v) || es.applyPending(v.ID) {
+	if es == nil || rec == nil || core.IDOf(&v) == "" || core.IsQuoted(&v) || es.applyPending(core.IDOf(&v)) {
 		return ""
 	}
 	// A binding read both bare and by `/v` shares one value ID across two
 	// dispatch semantics: the residual entry may be the `/v` delivery, not
 	// the word. That mix is the accounting's failure (wordReadAccounting),
 	// never a seat.
-	if rec.valReads[v.ID] > 0 {
+	if rec.valReads[core.IDOf(&v)] > 0 {
 		return ""
 	}
-	return rec.wordReadNames[v.ID]
+	return rec.wordReadNames[core.IDOf(&v)]
 }
 
 // openUnitRec is the INNERMOST open fn-unit record — the frame a recording
@@ -20828,7 +20828,7 @@ func (es *EmitState) openUnitRec() *fnUnitRec {
 // interpreter has no binding name to print either.
 func (es *EmitState) dynApplyHeadName(rec *fnUnitRec, v core.Value, args []core.Value) DynApplyHead {
 	if name := es.wordReadName(rec, v); name != "" {
-		return DynApplyHead{Name: name, Pos: rec.wordReadPos[v.ID], NWritten: writtenRun(rec, args)}
+		return DynApplyHead{Name: name, Pos: rec.wordReadPos[core.IDOf(&v)], NWritten: writtenRun(rec, args)}
 	}
 	return DynApplyHead{}
 }
@@ -20857,10 +20857,10 @@ func (es *EmitState) dynApplyHeadName(rec *fnUnitRec, v core.Value, args []core.
 // or a paren-computed event, each minted with its own fresh ID, while every
 // occurrence that shares a binding's ID is by construction a read of it.
 func readSubstituted(rec *fnUnitRec, v core.Value) bool {
-	if rec == nil || v.ID == "" {
+	if rec == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	return len(rec.localReads[v.ID]) > 0 || rec.valReads[v.ID] > 0
+	return len(rec.localReads[core.IDOf(&v)]) > 0 || rec.valReads[core.IDOf(&v)] > 0
 }
 
 // writtenRun is how many of a dispatch's arguments the interpreter's forward
@@ -20914,7 +20914,7 @@ func (es *EmitState) dynFrameWordsFor(u *emitUnit, rec *fnUnitRec, window []core
 		if names == nil {
 			names = make([]DynFrameWord, len(window))
 		}
-		names[i] = DynFrameWord{Name: name, Pos: rec.wordReadPos[v.ID]}
+		names[i] = DynFrameWord{Name: name, Pos: rec.wordReadPos[core.IDOf(&v)]}
 	}
 	if names == nil {
 		return nil
@@ -20947,7 +20947,7 @@ func (es *EmitState) noteWordReadReplay(u *emitUnit, rec *fnUnitRec, vals []core
 	// the word table and no count, and stays best-effort.
 	strict := false
 	for i, v := range vals {
-		if all[i].Name != "" && rec.wordReads[v.ID] > 0 {
+		if all[i].Name != "" && rec.wordReads[core.IDOf(&v)] > 0 {
 			strict = true
 		}
 	}
@@ -21073,7 +21073,7 @@ func (es *EmitState) replayIsBodyTailAnchored(frag *EmitFragment, window []core.
 			}
 			continue
 		}
-		if pr, ok := es.producedBy[v.ID]; ok && pr.seq > anchorSeq {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.seq > anchorSeq {
 			anchorSeq = pr.seq
 		}
 	}
@@ -21095,7 +21095,7 @@ func (es *EmitState) replayIsBodyTailAnchored(frag *EmitFragment, window []core.
 			// the def's evDynBind lands between r's producer and the tail
 			// (§9.4 graduation, checker-compiler-completeness-review).
 			if ev := &frag.events[i]; ev.kind == evDynBind && ev.dyn != nil &&
-				ev.dyn.val.ID != "" && windowReadsID(window, ev.dyn.val.ID) {
+				core.IDOf(&ev.dyn.val) != "" && windowReadsID(window, core.IDOf(&ev.dyn.val)) {
 				continue
 			}
 			return false
@@ -21130,7 +21130,7 @@ func posAfter(p, q core.SrcPos) bool {
 // non-reorderable event for replayIsBodyTail.
 func windowReadsID(window []core.Value, id string) bool {
 	for _, v := range window {
-		if v.ID == id {
+		if core.IDOf(&v) == id {
 			return true
 		}
 	}
@@ -21150,7 +21150,7 @@ func windowReadsID(window []core.Value, id string) bool {
 func dynFrameWindow(u *emitUnit, rec *fnUnitRec, vals []core.Value) (int, bool) {
 	k := 0
 	for k < len(vals) && k < rec.nUnnamed {
-		slot, isLocal := u.localByID[vals[k].ID]
+		slot, isLocal := u.localByID[core.IDOf(&vals[k])]
 		if !isLocal || slot >= rec.nParams {
 			break
 		}
@@ -21224,8 +21224,8 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 		// tuck]`) hands it back to the pointer, where the interpreter steps
 		// it and a fn value applies to what lies beneath (15, measured) —
 		// that value keeps the shapes below.
-		if slot, isIn := u.localByID[v.ID]; isIn && v.ID != "" && slot < nInputs && slot == i {
-			if _, produced := es.producedBy[v.ID]; !produced {
+		if slot, isIn := u.localByID[core.IDOf(&v)]; isIn && core.IDOf(&v) != "" && slot < nInputs && slot == i {
+			if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
 				continue
 			}
 		}
@@ -21250,7 +21250,7 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 // (TestModuleFnStampedAtLoadAndRerouted's decliner and the curried chain's
 // pending collection caught the drafts that read them so).
 func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
-	pr, produced := es.producedBy[v.ID]
+	pr, produced := es.producedBy[core.IDOf(&v)]
 	if !produced {
 		// A def READ of a placed closure carries the placed value's ID and
 		// no body event, but a bare name always calls (ADR-011): `0 fold
@@ -21291,14 +21291,14 @@ func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
 // `/v` read and a quoted value are data, and a value the recorder cannot
 // name is not a read.
 func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
-	if core.IsQuoted(&v) || v.ID == "" || !core.IsFnTypedCarrier(&v) || es.placedValRead(v.ID) {
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || !core.IsFnTypedCarrier(&v) || es.placedValRead(core.IDOf(&v)) {
 		return 0, ""
 	}
-	name, read := es.DefReadName(v.ID)
+	name, read := es.DefReadName(core.IDOf(&v))
 	if !read || es.reg == nil || es.reg.Check == nil {
 		return 0, ""
 	}
-	n, claimed := es.reg.Check.FnShapeArity(v.ID)
+	n, claimed := es.reg.Check.FnShapeArity(core.IDOf(&v))
 	if !claimed || n == 0 {
 		return 0, ""
 	}
@@ -21439,7 +21439,7 @@ func (es *EmitState) leadPlacedNotRead(v core.Value) bool {
 	if !es.parenPlacedMemberFn(v) {
 		return false
 	}
-	if _, read := es.defReads[v.ID]; read {
+	if _, read := es.defReads[core.IDOf(&v)]; read {
 		return false
 	}
 	// An ENCLOSING paren re-stepped it, so the placement was undone one level
@@ -21503,13 +21503,13 @@ func (es *EmitState) noteAppliedByWord(word string, args, outs []core.Value) {
 	if es == nil || word != "apply" || len(args) == 0 || len(outs) != 1 {
 		return
 	}
-	if args[0].ID == "" || args[0].ID != outs[0].ID {
+	if core.IDOf(&args[0]) == "" || core.IDOf(&args[0]) != core.IDOf(&outs[0]) {
 		return
 	}
 	if es.appliedByWord == nil {
 		es.appliedByWord = map[string]bool{}
 	}
-	es.appliedByWord[outs[0].ID] = true
+	es.appliedByWord[core.IDOf(&outs[0])] = true
 }
 
 func (es *EmitState) callResultPlaced(v core.Value) bool {
@@ -21520,10 +21520,10 @@ func (es *EmitState) callResultPlaced(v core.Value) bool {
 // captured fragment — a fn unit's own residual at finish, after
 // TakeFragment moved its events off the frame stack.
 func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
-	if es == nil || v.ID == "" {
+	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok {
 		return false
 	}
@@ -21534,7 +21534,7 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	// (CheckState.ReachSurvivorFnIDs); an ENCLOSING user paren that then
 	// parks the same value (`5 (M.ff)` is `[5 fn inc]` on both lanes)
 	// records its placement (ParenPlacedFnIDs), and the placement wins.
-	if es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] && !es.reg.Check.ParenPlacedFnIDs[v.ID] {
+	if es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[core.IDOf(&v)] && !es.reg.Check.ParenPlacedFnIDs[core.IDOf(&v)] {
 		return false
 	}
 	var ev *EmitEvent
@@ -21585,10 +21585,10 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	// A def-bound read DISPATCHES only when it is the bare name (ADR-011):
 	// the `/v` spelling delivers the value inert, and the interpreter parks
 	// it exactly like the call result it is (NUR185).
-	if es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(v.ID)) {
+	if es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(core.IDOf(&v))) {
 		return false
 	}
-	if _, member := es.MemberFnReadValue(v.ID); member {
+	if _, member := es.MemberFnReadValue(core.IDOf(&v)); member {
 		return false
 	}
 	return true
@@ -21612,10 +21612,10 @@ func (es *EmitState) placedValRead(id string) bool {
 // collecting word fired, over what lay beneath it then — never over the
 // residual values above it, which a later statement produced.
 func (es *EmitState) forwardLeftoverFn(v core.Value) bool {
-	if es == nil || es.reg == nil || es.reg.Check == nil || v.ID == "" {
+	if es == nil || es.reg == nil || es.reg.Check == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	return es.reg.Check.ForwardLeftoverFnIDs[v.ID]
+	return es.reg.Check.ForwardLeftoverFnIDs[core.IDOf(&v)]
 }
 
 // callAppliedClosureUnit is the compiled closure UNIT a dyn-method or
@@ -21657,10 +21657,10 @@ func (es *EmitState) callAppliedClosureUnit(ev *EmitEvent) (int, bool) {
 // interpreter may render it under a binding name the runtime value does
 // not carry (NUR119), and the residual gate keeps its failure.
 func (es *EmitState) callResultRenderKnown(v core.Value) bool {
-	if es == nil || v.ID == "" {
+	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok {
 		return false
 	}
@@ -21692,10 +21692,10 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 // 2026-09-26). An arm that is anything else — an event, a local, a named fn
 // the landing fires — answers false and keeps the decline.
 func (es *EmitState) branchResultRenderKnown(v core.Value) bool {
-	if es == nil || v.ID == "" {
+	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 {
 		return false
 	}
@@ -21837,22 +21837,22 @@ func (es *EmitState) userMemberFn(word string) bool {
 // conjunction; the residual-layout loops ask for it separately because they
 // answer a different question and only some of them need it.
 func (es *EmitState) isDefRead(v core.Value) bool {
-	_, read := es.defReads[v.ID]
+	_, read := es.defReads[core.IDOf(&v)]
 	return read
 }
 
 func (es *EmitState) parenReSteppedFn(v core.Value) bool {
-	if es == nil || es.reg == nil || es.reg.Check == nil || v.ID == "" {
+	if es == nil || es.reg == nil || es.reg.Check == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	return es.reg.Check.ParenReSteppedFnIDs[v.ID]
+	return es.reg.Check.ParenReSteppedFnIDs[core.IDOf(&v)]
 }
 
 func (es *EmitState) parenPlacedMemberFn(v core.Value) bool {
-	if es == nil || es.reg == nil || es.reg.Check == nil || v.ID == "" {
+	if es == nil || es.reg == nil || es.reg.Check == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	return es.reg.Check.ParenPlacedFnIDs[v.ID]
+	return es.reg.Check.ParenPlacedFnIDs[core.IDOf(&v)]
 }
 
 // unreachableUnitStub replaces a unit whose lowering declined with a trap stub,
@@ -21900,7 +21900,7 @@ type applyStep struct {
 // step that consumes it), and no step's argument may be a fn value (the
 // single tail apply's own rule). nil when the shape does not fit.
 func applyChainSteps(pend []pendingApply, bodyStk []core.Value, ops []EmitOperand) []applyStep {
-	if len(pend) < 2 || len(ops) != len(bodyStk) || bodyStk[len(bodyStk)-1].ID != pend[len(pend)-1].id {
+	if len(pend) < 2 || len(ops) != len(bodyStk) || core.IDOf(&bodyStk[len(bodyStk)-1]) != pend[len(pend)-1].id {
 		return nil
 	}
 	for _, op := range ops {
@@ -21913,7 +21913,7 @@ func applyChainSteps(pend []pendingApply, bodyStk []core.Value, ops []EmitOperan
 	for k, pa := range pend {
 		at := -1
 		for i := from; i < len(bodyStk); i++ {
-			if bodyStk[i].ID == pa.id {
+			if core.IDOf(&bodyStk[i]) == pa.id {
 				at = i
 				break
 			}

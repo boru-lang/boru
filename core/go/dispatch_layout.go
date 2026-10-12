@@ -151,10 +151,10 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 		if i >= k {
 			want = e.Pointer - (i - k) - 1
 		}
-		if at[i] != want || want < 0 || want >= e.Tape.Len() || args[i].ID == "" {
+		if at[i] != want || want < 0 || want >= e.Tape.Len() || IDOf(&args[i]) == "" {
 			return nil
 		}
-		if tok := e.Tape.At(want); tok.ID != args[i].ID {
+		if tok := e.Tape.At(want); IDOf(&tok) != IDOf(&args[i]) {
 			// A written word whose data binding is the operand: the plan
 			// read it and left the word on the tape (Words).
 			if i >= k || !e.readsDataBinding(tok, args[i]) {
@@ -184,7 +184,7 @@ func (e *Engine) readsDataBinding(tok, v Value) bool {
 		return false
 	}
 	top, ok := e.Registry.Defs.Top(w.Name)
-	return ok && top.ID == v.ID && !IsDynamic(&top) && readsData(e.Registry, w.Name)
+	return ok && IDOf(&top) == IDOf(&v) && !IsDynamic(&top) && readsData(e.Registry, w.Name)
 }
 
 // layoutSurround reads what a dispatch's plan could reach around its
@@ -265,7 +265,7 @@ func (e *Engine) forwardReachMax() (int, bool) {
 // — a call's result, a carrier — which a record can place by its identity:
 // never a word, a marker, or a value with no ID.
 func liveBeneath(v Value) bool {
-	return v.ID != "" && !IsWord(&v) && !isEngineMarker(v) && !IsForward(&v) && !IsParenExpr(&v) &&
+	return IDOf(&v) != "" && !IsWord(&v) && !isEngineMarker(v) && !IsForward(&v) && !IsParenExpr(&v) &&
 		(v.Carrier || IsDynamic(&v) || IsConcrete(&v))
 }
 

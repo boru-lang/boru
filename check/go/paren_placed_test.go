@@ -38,8 +38,8 @@ func TestParenPlacedFnCarrierGuards(t *testing.T) {
 	// Live recorder, id-less value: a freshly built literal carries no id,
 	// so the side table cannot be keyed on it.
 	reg.Check.Emit = activeEmit{core.TheInactiveEmit}
-	if v := e.Tape.At(0); v.ID != "" {
-		t.Fatalf("fixture drifted: expected an id-less literal, got %q", v.ID)
+	if v := e.Tape.At(0); core.IDOf(&v) != "" {
+		t.Fatalf("fixture drifted: expected an id-less literal, got %q", core.IDOf(&v))
 	}
 	if parenPlacedFnCarrier(e, 0) {
 		t.Error("an id-less value must decline — there is nothing to look up")

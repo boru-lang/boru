@@ -1691,7 +1691,7 @@ func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
 	// A type literal IS its lattice node (by-value copy), so the
 	// canonical identity is the value's own ID, not v.Parent.ID (the
 	// supertype's ID).
-	name := TypeNameByID(v.ID)
+	name := TypeNameByID(IDOf(&v))
 	if name == "" {
 		return v
 	}
@@ -2231,8 +2231,8 @@ func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, 
 // fn value and the candidate's canonical form.
 func predMemoKey(constraint, candidate Value) string {
 	key := "|" + Canon([]Value{candidate})
-	if constraint.ID != "" {
-		return constraint.ID + key
+	if IDOf(&constraint) != "" {
+		return IDOf(&constraint) + key
 	}
 	// The interpreter's predicate fn carries no value ID (the check pass
 	// mints those): its first signature's boru body is the identity.

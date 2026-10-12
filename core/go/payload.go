@@ -298,9 +298,9 @@ type ExtensionPayload struct{ Body any }
 // through ExtensionPayload rather than dedicated kernel variants.
 func NewExtension(t *Type, body any) Value {
 	return Value{
-		ID:     GenerateID(IDPrefixForType(t)),
 		Parent: t,
 		Data:   ExtensionPayload{Body: body},
+		occ:    idOcc(GenerateID(IDPrefixForType(t))),
 	}
 }
 

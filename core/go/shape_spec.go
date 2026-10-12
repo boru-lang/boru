@@ -39,7 +39,7 @@ func ShapeOf(v Value, maxFields int) (Value, bool) {
 		}
 		fields.Set(k, NewCarrier(fv.Parent))
 	}
-	return Value{ID: GenerateID(IDPrefixForType(TMap)), Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}}, true
+	return Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}, occ: idOcc(GenerateID(IDPrefixForType(TMap)))}, true
 }
 
 // IsShapeCarrier reports whether v is a shape carrier: a STRICT record

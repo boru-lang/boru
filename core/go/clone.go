@@ -73,12 +73,12 @@ type cloner struct {
 // containers, whose clone is a distinct value from the original.
 func (c *cloner) withPayload(v Value, data Payload) Value {
 	v.Data = data
-	v.ID = GenerateID(IDPrefixForType(v.Parent))
+	SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
 	return v
 }
 
 func (c *cloner) clone(v Value) Value {
-	if v.ID != "" && c.keep[v.ID] {
+	if IDOf(&v) != "" && c.keep[IDOf(&v)] {
 		return v // an enclosing binding's instance the literal embeds: shared, as the interpreter shares it
 	}
 	switch p := v.Data.(type) {

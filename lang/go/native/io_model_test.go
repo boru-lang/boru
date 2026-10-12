@@ -152,7 +152,7 @@ func TestStatSpaceShapeReturns(t *testing.T) {
 	// def-slot aliasing lesson — a shared hoisted bound aliased three
 	// reads onto one compiled slot).
 	again := statShapeReturns(TAtom)(nil, r)
-	if out[0].ID != "" && out[0].ID == again[0].ID {
+	if IDOf(&out[0]) != "" && IDOf(&out[0]) == IDOf(&again[0]) {
 		t.Error("stat shape reuses one value identity across invocations")
 	}
 

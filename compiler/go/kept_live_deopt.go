@@ -57,7 +57,7 @@ func (es *EmitState) noteKeptLiveRead(seq int, v core.Value, name string, pos co
 	if v.Parent != nil && !v.Parent.ConformsTo(core.TType) {
 		model = v.Parent
 	}
-	es.keptLiveReads[seq] = keptLiveRead{id: v.ID, name: name, pos: pos, ref: ref, model: model}
+	es.keptLiveReads[seq] = keptLiveRead{id: core.IDOf(&v), name: name, pos: pos, ref: ref, model: model}
 }
 
 // keptLiveSeqs lists the kept live reads among events and the branch arms

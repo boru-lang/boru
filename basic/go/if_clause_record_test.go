@@ -28,7 +28,7 @@ func TestIfClauseStaticCond(t *testing.T) {
 
 func TestIfClauseArm(t *testing.T) {
 	body := NewList([]Value{NewInteger(1)})
-	if arm, ok := ifClauseArm(body); !ok || arm.ID != body.ID {
+	if arm, ok := ifClauseArm(body); !ok || IDOf(&arm) != IDOf(&body) {
 		t.Error("a code-body arm runs as it stands")
 	}
 	for name, v := range map[string]Value{

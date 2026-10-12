@@ -188,7 +188,7 @@ func TestStatementRestartSeatsTypes(t *testing.T) {
 		t.Errorf("the type beneath the statement: %v %v", stack, err)
 	}
 	gone := core.NewTypeLiteral(core.TInteger)
-	gone.ID = "no-such-type"
+	core.SetID(&gone, "no-such-type")
 	if _, _, err := vc.statementRestart(r, []compiler.RestartSrc{{Kind: compiler.RestartType, Val: gone}}, []core.Value{core.NewInteger(5)}, 0, 1, true, 0, nil, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "unresolvable statement-island type") {
 		t.Errorf("a type no table holds: %v", err)
 	}

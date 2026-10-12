@@ -26,14 +26,14 @@ func TestUndefAliasKeepsAdoptedNode(t *testing.T) {
 	if _, err := w8RunOn(t, r, "def NsB NsA  undef NsB"); err != nil {
 		t.Fatalf("alias+undef: %v", err)
 	}
-	if r.Types.LookupByID(node.ID) == nil {
+	if r.Types.LookupByID(IDOf(node)) == nil {
 		t.Fatal("undef of the alias must not retire NsA's minted node")
 	}
 	// The minted binding itself still retires on its own undef.
 	if _, err := w8RunOn(t, r, "undef NsA"); err != nil {
 		t.Fatalf("undef NsA: %v", err)
 	}
-	if r.Types.LookupByID(node.ID) != nil {
+	if r.Types.LookupByID(IDOf(node)) != nil {
 		t.Fatal("undef of the minting binding must retire the node")
 	}
 }

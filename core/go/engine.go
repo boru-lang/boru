@@ -621,10 +621,10 @@ func (e *Engine) runPrefix() []Value {
 	prefix := ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	es := e.Registry.analysisRecorder()
 	for i, v := range prefix {
-		if es.ZeroOutProduced(v.ID) {
+		if es.ZeroOutProduced(IDOf(&v)) {
 			kept := append([]Value(nil), prefix[:i]...)
 			for _, w := range prefix[i+1:] {
-				if !es.ZeroOutProduced(w.ID) {
+				if !es.ZeroOutProduced(IDOf(&w)) {
 					kept = append(kept, w)
 				}
 			}
@@ -897,12 +897,12 @@ func mapTupleToWindow(tuple, window []Value) ([]int, bool) {
 	idx := make([]int, len(tuple))
 	used := make([]bool, len(window))
 	for i, v := range tuple {
-		if v.ID == "" {
+		if IDOf(&v) == "" {
 			return nil, false
 		}
 		found := -1
 		for j := range window {
-			if !used[j] && window[j].ID == v.ID {
+			if !used[j] && IDOf(&window[j]) == IDOf(&v) {
 				found = j
 				break
 			}
@@ -2883,14 +2883,14 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			// dispatches.
 			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
 				e.Registry.noteAnalysisUse(w.Name)
-				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
-				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
+				e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), w.Name)
+				e.Registry.analysisRecorder().NoteLocalRead(IDOf(&cv), val.Pos())
 				// The value spelling is noted here as on the Defs path
 				// below: the residual lowering must know the delivery is
 				// INERT — `def c (mk 1) end 2 c/v 10` islanded the window
 				// and applied the closure, `[2 11]` for the interpreter's
 				// `[2 fn 10]` (NUR185; callResultPlaced's placedValRead).
-				e.Registry.analysisRecorder().NoteValRead(cv.ID, w.Name)
+				e.Registry.analysisRecorder().NoteValRead(IDOf(&cv), w.Name)
 				if e.Registry.analysisCompiling() {
 					e.Registry.Check.FnCarrierReadSubstituted = true
 				}
@@ -2953,7 +2953,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 		tagged := v
 		e.Registry.analysisRecorder().NoteValReadLive(&tagged, w.Name, val.Pos())
 		v = tagged
-		e.Registry.analysisRecorder().NoteValRead(v.ID, w.Name)
+		e.Registry.analysisRecorder().NoteValRead(IDOf(&v), w.Name)
 	}
 	v.pos = val.pos
 	// A reference denotes DATA. When a parked forward in this paren
@@ -3017,11 +3017,11 @@ func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
 		// The collapse of a paren this read ends asks which it has — a
 		// value the rewind re-steps, or the model of a dispatch the
 		// interpreter already ran at the word (CheckState.WordReadFnIDs).
-		if e.Registry.Check != nil && v.ID != "" {
+		if e.Registry.Check != nil && IDOf(&v) != "" {
 			if e.Registry.Check.WordReadFnIDs == nil {
 				e.Registry.Check.WordReadFnIDs = map[string]bool{}
 			}
-			e.Registry.Check.WordReadFnIDs[v.ID] = true
+			e.Registry.Check.WordReadFnIDs[IDOf(&v)] = true
 		}
 	}
 }
@@ -3229,8 +3229,8 @@ func (e *Engine) stepWord(val *Value) error {
 				if IsQuoted(&top) && (IsFnTypedCarrier(&top) || (IsDynamic(&top) && SigTypeMatches(&top, TFunction))) {
 					SetQuoted(&top, false)
 				}
-				e.Registry.analysisRecorder().NoteDefRead(top.ID, w.Name)
-				e.Registry.analysisRecorder().NoteLocalRead(top.ID, derefPos(vpos))
+				e.Registry.analysisRecorder().NoteDefRead(IDOf(&top), w.Name)
+				e.Registry.analysisRecorder().NoteLocalRead(IDOf(&top), derefPos(vpos))
 				e.noteWordRead(top, w.Name, derefPos(vpos))
 				// Freeze discipline: a CONCRETE module-scope binding read inside
 				// an open fn/closure unit bakes into the unit across calls, where
@@ -3253,7 +3253,7 @@ func (e *Engine) stepWord(val *Value) error {
 				tagged := top
 				CheckBraid.TagCheckModeDefRead(e, &tagged, w.Name, derefPos(vpos))
 				top = tagged
-				e.noteDefReadPos(top.ID, derefPos(vpos))
+				e.noteDefReadPos(IDOf(&top), derefPos(vpos))
 			}
 			e.Tape.Set(e.Pointer, top)
 			return e.stepLiteral()
@@ -3389,8 +3389,8 @@ func (e *Engine) stepWord(val *Value) error {
 				return err
 			}
 			e.Registry.noteAnalysisUse(w.Name)
-			e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
-			e.Registry.analysisRecorder().NoteLocalRead(cv.ID, derefPos(vpos))
+			e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), w.Name)
+			e.Registry.analysisRecorder().NoteLocalRead(IDOf(&cv), derefPos(vpos))
 			e.noteWordRead(cv, w.Name, derefPos(vpos))
 			// Mark a COMPILE pass: if it ends in a compile failure anyway, the
 			// compile entry points keep the SILENT interpreter
@@ -3841,7 +3841,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		if IsUndefined(&match.Args[i]) {
 			c := NewDynamicCarrier(TAny)
 			if a, aerr := AsAtom(match.Args[i]); aerr == nil && a != "" {
-				e.Registry.analysisRecorder().NoteDefRead(c.ID, a)
+				e.Registry.analysisRecorder().NoteDefRead(IDOf(&c), a)
 			}
 			match.Args[i] = WithPos(c, match.Args[i])
 		}
@@ -4254,7 +4254,7 @@ func (e *Engine) noteCollectedLandings(sortedIndices []int) {
 	}
 	run -= e.forwardSplit()
 	for _, j := range sortedIndices[:max(run-1, 0)] {
-		if v := e.Tape.At(j); !IsQuoted(&v) && e.Registry.Check.StoodAsideLandingIDs[v.ID] {
+		if v := e.Tape.At(j); !IsQuoted(&v) && e.Registry.Check.StoodAsideLandingIDs[IDOf(&v)] {
 			es.NoteTakenLanding(v)
 		}
 	}
@@ -4319,7 +4319,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 			continue
 		}
 		if IsFnValueResidual(v) || IsFnTypedCarrier(&v) || (IsDynamic(&v) && SigTypeMatches(&v, TFunction)) {
-			es.NoteCollectionHazard(v.ID)
+			es.NoteCollectionHazard(IDOf(&v))
 		}
 	}
 }
@@ -4344,8 +4344,8 @@ func (e *Engine) collectedPastStmtEnd(from SrcPos, collected Value) bool {
 	if p := collected.Pos(); p.Row != 0 {
 		return e.stmtEndBetween(from, p)
 	}
-	reads := e.defReads[collected.ID]
-	if collected.ID == "" || len(reads) == 0 {
+	reads := e.defReads[IDOf(&collected)]
+	if IDOf(&collected) == "" || len(reads) == 0 {
 		return false
 	}
 	for _, p := range reads {
@@ -4894,7 +4894,7 @@ func (e *Engine) stepLiteral() error {
 					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
 					// values on both lanes.
 					if e.Registry.analysisActive() {
-						e.Registry.analysisRecorder().NoteValRead(prev.ID, "")
+						e.Registry.analysisRecorder().NoteValRead(IDOf(&prev), "")
 					}
 				}
 			}
@@ -5834,8 +5834,8 @@ func (e *Engine) foldedReferenceIdentity(folded Value, dataMap bool, run func() 
 	if dataMap || e.ElemEvalRecordable || !containsFlexOrStore(folded) || !e.Registry.analysisRecorder().Armed() {
 		return folded
 	}
-	if result, err := run(); err == nil && len(result) == 1 && result[0].ID != "" {
-		folded.ID = result[0].ID
+	if result, err := run(); err == nil && len(result) == 1 && IDOf(&result[0]) != "" {
+		SetID(&folded, IDOf(&result[0]))
 	}
 	return folded
 }
@@ -6377,7 +6377,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 			// sits (placedValRead) — a named fn at a frame's tail is
 			// returned, not the zero-argument call NUR186 declines.
 			if e.Registry != nil && e.Registry.analysisActive() {
-				e.Registry.analysisRecorder().NoteValRead(e.Tape.Ref(valIdx).ID, "")
+				e.Registry.analysisRecorder().NoteValRead(IDOf(e.Tape.Ref(valIdx)), "")
 			}
 			e.Pointer++
 			return nil
@@ -7835,12 +7835,12 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	// (callResultPlaced, NUR260), and a loop body that leaves one is the
 	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
 	// (CheckState.ReachSurvivorFnIDs).
-	if e.Registry != nil && e.Registry.analysisActive() && !IsQuoted(&v) && v.ID != "" && (IsFnTypedCarrier(&v) || IsDynamic(&v)) {
+	if e.Registry != nil && e.Registry.analysisActive() && !IsQuoted(&v) && IDOf(&v) != "" && (IsFnTypedCarrier(&v) || IsDynamic(&v)) {
 		cs := e.Registry.Check
 		if cs.ReachSurvivorFnIDs == nil {
 			cs.ReachSurvivorFnIDs = map[string]bool{}
 		}
-		cs.ReachSurvivorFnIDs[v.ID] = true
+		cs.ReachSurvivorFnIDs[IDOf(&v)] = true
 	}
 }
 
@@ -8058,7 +8058,7 @@ func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Valu
 		return
 	}
 	for _, r := range results {
-		if IsQuoted(&r) || r.ID == "" || IsConcrete(&r) {
+		if IsQuoted(&r) || IDOf(&r) == "" || IsConcrete(&r) {
 			continue
 		}
 		if IsFnTypedCarrier(&r) || (IsDynamic(&r) && SigTypeMatches(&r, TFunction)) {
@@ -9512,7 +9512,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// map field — is admitted the same way (2026-09-25): the guarded op
 	// applies whatever the read yields and defers on a non-callable value,
 	// exactly as the interpreter's paren leaves a non-fn lead as data.
-	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(&fnVal) && !es.ContainerReadResult(fnVal.ID) {
+	if !es.MemberFnRead(IDOf(&fnVal)) && !IsFnTypedCarrier(&fnVal) && !es.ContainerReadResult(IDOf(&fnVal)) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}
@@ -9607,7 +9607,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 			// this scope (`(g x add 1)`: the model's `add` took `x`) is a
 			// collection hazard — the window's argument is that dispatch's
 			// result, not the lead's (NUR121).
-			if !IsDynamic(&v) && !IsQuoted(&v) && IsFnTypedCarrier(&v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(v.ID) {
+			if !IsDynamic(&v) && !IsQuoted(&v) && IsFnTypedCarrier(&v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(IDOf(&v)) {
 				return i
 			}
 			break
@@ -9703,7 +9703,7 @@ func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, c
 			continue
 		}
 		if w.lead < 0 {
-			if IsDynamic(&v) || IsQuoted(&v) || v.ID == "" || !IsFnTypedCarrier(&v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
+			if IsDynamic(&v) || IsQuoted(&v) || IDOf(&v) == "" || !IsFnTypedCarrier(&v) || es.CollectionHazard(IDOf(&v)) || es.ApplyPending(IDOf(&v)) {
 				return w, false
 			}
 			w.lead = i
@@ -9714,7 +9714,7 @@ func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, c
 		}
 		w.argIdxs = append(w.argIdxs, i)
 	}
-	ret, ok := es.ProducedLeadApplies(e.Tape.Ref(w.lead).ID, e.producedLeadArgs(w))
+	ret, ok := es.ProducedLeadApplies(IDOf(e.Tape.Ref(w.lead)), e.producedLeadArgs(w))
 	w.ret = ret
 	return w, ok
 }
@@ -9795,7 +9795,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	// over the frame's gradual input instead of the written argument:
 	// `xs each [(2 inc2/v) mul 10]` compiled 10 for the interpreter's 40
 	// (NUR180; a fn-typed carrier lead keeps the Any and the hazard).
-	if t := concreteFnSingleReturn(last); t != nil && !IsDynamic(&last) && !es.ApplyPending(last.ID) {
+	if t := concreteFnSingleReturn(last); t != nil && !IsDynamic(&last) && !es.ApplyPending(IDOf(&last)) {
 		outType = t
 	}
 	out := NewCarrier(outType)
@@ -9810,10 +9810,10 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	// strict Any: the comparator convention's consumers were built on
 	// it, and a gradual result there declined an each body's residual
 	// ("result above a literal") that compiles today.
-	if IsDynamic(&last) || es.ApplyPending(last.ID) {
+	if IsDynamic(&last) || es.ApplyPending(IDOf(&last)) {
 		SetDynamic(&out, true)
 	}
-	out.ID = GenerateID(IDPrefixForType(outType))
+	SetID(&out, GenerateID(IDPrefixForType(outType)))
 	out.pos = last.pos
 	// consumed counts from the TOP of the window (the values
 	// nearest the fn). It is normally every arg, but a callee whose
@@ -9828,7 +9828,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 			closeIdx--
 		}
 	} else {
-		es.RegisterTrailingApply(last.ID, count-1)
+		es.RegisterTrailingApply(IDOf(&last), count-1)
 	}
 	return closeIdx
 }
@@ -10055,7 +10055,7 @@ func parenTrailingFnApply(es EmitRecorder, last Value, count, lastIdx int) bool 
 		return false
 	}
 	if IsDynamic(&last) {
-		return last.ID != "" && es.ApplyPending(last.ID)
+		return IDOf(&last) != "" && es.ApplyPending(IDOf(&last))
 	}
 	return IsFnValueResidual(last)
 }
@@ -10353,7 +10353,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 		// a trailing fn only under a 0-arg lead, which dispatched before
 		// the value was stepped. The one exception is a tail the `apply`
 		// WORD owns (`(k r apply)`), which stays the trailing record's.
-		leadWins := leadFn >= 0 && !es.ApplyPending(last.ID)
+		leadWins := leadFn >= 0 && !es.ApplyPending(IDOf(&last))
 		producedLead, hasProducedLead := e.parenProducedLeadApplyIdx(es, openIdx, closeIdx, count, reStepped)
 		switch {
 		case leadWins:
@@ -10386,7 +10386,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 			// WORD, inside the paren, whatever follows the close: those
 			// record as before.
 			switch {
-			case es.ApplyPending(last.ID) || e.Registry.Check.WordReadFnIDs[last.ID]:
+			case es.ApplyPending(IDOf(&last)) || e.Registry.Check.WordReadFnIDs[IDOf(&last)]:
 				closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
 			case feedsForward, e.parenFeedsPendingForward(openIdx):
 				e.markReStepped(last)
@@ -10514,7 +10514,7 @@ func (e *Engine) recordParenReStep(openIdx, closeIdx, park int, wasReachGroup bo
 // fn-typed carrier, or a dynamic value whose static bound does not exclude
 // Function.
 func (e *Engine) markReStepped(v Value) {
-	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || v.ID == "" {
+	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || IDOf(&v) == "" {
 		return
 	}
 	if !e.mightBeCallable(v) {
@@ -10523,7 +10523,7 @@ func (e *Engine) markReStepped(v Value) {
 	if e.Registry.Check.ParenReSteppedFnIDs == nil {
 		e.Registry.Check.ParenReSteppedFnIDs = map[string]bool{}
 	}
-	e.Registry.Check.ParenReSteppedFnIDs[v.ID] = true
+	e.Registry.Check.ParenReSteppedFnIDs[IDOf(&v)] = true
 }
 
 // mightBeCallable is the "might be callable" gate the collapse marks share
@@ -10545,10 +10545,10 @@ func (e *Engine) mightBeCallable(v Value) bool {
 // with a fn-valued arm (EmitRecorder.MayBeFn); false with no registry, no
 // check state or no recorder (the inactive default answers false).
 func (e *Engine) recorderMayBeFn(v Value) bool {
-	if e.Registry == nil || e.Registry.Check == nil || v.ID == "" {
+	if e.Registry == nil || e.Registry.Check == nil || IDOf(&v) == "" {
 		return false
 	}
-	return e.Registry.Check.Recorder().MayBeFn(v.ID)
+	return e.Registry.Check.Recorder().MayBeFn(IDOf(&v))
 }
 
 // markForwardLeftover records v as a fn-valued survivor a paren under a
@@ -10558,7 +10558,7 @@ func (e *Engine) recorderMayBeFn(v Value) bool {
 // statement's values. markReStepped's own gate applies (a quoted, ID-less,
 // concrete or non-callable value records nothing).
 func (e *Engine) markForwardLeftover(v Value) {
-	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || v.ID == "" {
+	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || IDOf(&v) == "" {
 		return
 	}
 	if !e.mightBeCallable(v) {
@@ -10567,20 +10567,20 @@ func (e *Engine) markForwardLeftover(v Value) {
 	if e.Registry.Check.ForwardLeftoverFnIDs == nil {
 		e.Registry.Check.ForwardLeftoverFnIDs = map[string]bool{}
 	}
-	e.Registry.Check.ForwardLeftoverFnIDs[v.ID] = true
+	e.Registry.Check.ForwardLeftoverFnIDs[IDOf(&v)] = true
 }
 
 // noteTrailingDeferred records a fn value a paren's collapse left to the
 // rewind's re-step over the token after the close
 // (CheckState.TrailingDeferredFnIDs, NUR344).
 func (e *Engine) noteTrailingDeferred(v Value) {
-	if v.ID == "" {
+	if IDOf(&v) == "" {
 		return
 	}
 	if e.Registry.Check.TrailingDeferredFnIDs == nil {
 		e.Registry.Check.TrailingDeferredFnIDs = map[string]bool{}
 	}
-	e.Registry.Check.TrailingDeferredFnIDs[v.ID] = true
+	e.Registry.Check.TrailingDeferredFnIDs[IDOf(&v)] = true
 }
 
 // placeTrailingDeferred records a trailing-deferred fn value (see
@@ -10592,7 +10592,7 @@ func (e *Engine) placeTrailingDeferred(valIdx int) {
 	if e.Registry == nil || !e.Registry.analysisActive() || valIdx >= e.Tape.Len() {
 		return
 	}
-	id := e.Tape.Ref(valIdx).ID
+	id := IDOf(e.Tape.Ref(valIdx))
 	cs := e.Registry.Check
 	if id == "" || !cs.TrailingDeferredFnIDs[id] {
 		return
@@ -11580,7 +11580,7 @@ func rematchRenderTuple(written, window []Value) ([]int, bool) {
 	for i, v := range written {
 		found := -1
 		for j := range window {
-			if !used[j] && window[j].ID == v.ID {
+			if !used[j] && IDOf(&window[j]) == IDOf(&v) {
 				found = j
 				break
 			}

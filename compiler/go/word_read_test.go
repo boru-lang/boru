@@ -43,20 +43,20 @@ func TestNoteWordReadArms(t *testing.T) {
 	}
 	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 7})
 	es.NoteWordRead(x, "x", core.SrcPos{Row: 1, Col: 9})
-	if rec.wordReads[g.ID] != 1 || rec.wordReads[x.ID] != 0 {
+	if rec.wordReads[core.IDOf(&g)] != 1 || rec.wordReads[core.IDOf(&x)] != 0 {
 		t.Errorf("only the fn-typed read is accounted strictly: %v", rec.wordReads)
 	}
-	if rec.wordReadNames[x.ID] != "x" || rec.wordReadPos[g.ID].Col != 7 {
+	if rec.wordReadNames[core.IDOf(&x)] != "x" || rec.wordReadPos[core.IDOf(&g)].Col != 7 {
 		t.Errorf("both reads keep their name and position: %v %v", rec.wordReadNames, rec.wordReadPos)
 	}
-	es.NoteValRead(g.ID, "n")
-	if rec.valReads[g.ID] != 1 {
+	es.NoteValRead(core.IDOf(&g), "n")
+	if rec.valReads[core.IDOf(&g)] != 1 {
 		t.Errorf("a /v read counts: %v", rec.valReads)
 	}
 	es.Compilable = false
 	es.NoteWordRead(g, "g", core.SrcPos{})
-	es.NoteValRead(g.ID, "n")
-	if rec.wordReads[g.ID] != 1 || rec.valReads[g.ID] != 1 {
+	es.NoteValRead(core.IDOf(&g), "n")
+	if rec.wordReads[core.IDOf(&g)] != 1 || rec.valReads[core.IDOf(&g)] != 1 {
 		t.Error("an inactive state records nothing")
 	}
 }
@@ -72,16 +72,16 @@ func TestCreditWordReadArms(t *testing.T) {
 	es.creditWordRead("x")
 	es, rec, g, _ := wordReadUnit(t)
 	es.creditWordRead("")
-	es.creditWordRead(g.ID)
+	es.creditWordRead(core.IDOf(&g))
 	if rec.wordReadCredit != nil {
 		t.Errorf("an id never read bare takes no credit: %v", rec.wordReadCredit)
 	}
 	es.NoteWordRead(g, "g", core.SrcPos{})
-	es.RegisterTrailingApply(g.ID, 1)
+	es.RegisterTrailingApply(core.IDOf(&g), 1)
 	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, g, core.NewCarrier(core.TInteger), core.SrcPos{}); !ok {
 		t.Fatal("a plain paren apply over a carrier lead records")
 	}
-	if rec.wordReadCredit[g.ID] != 2 {
+	if rec.wordReadCredit[core.IDOf(&g)] != 2 {
 		t.Errorf("each apply lowering credits one read: %v", rec.wordReadCredit)
 	}
 }
@@ -99,7 +99,7 @@ func TestWordReadAccounting(t *testing.T) {
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "consumed where the interpreter dispatches it") {
 		t.Errorf("an unseated fn-typed read declines: %q", r)
 	}
-	es.creditWordRead(g.ID)
+	es.creditWordRead(core.IDOf(&g))
 	if r := es.wordReadAccounting(rec); r != "" {
 		t.Errorf("a credited read passes: %q", r)
 	}
@@ -110,7 +110,7 @@ func TestWordReadAccounting(t *testing.T) {
 	if r := es.wordReadAccounting(rec); r != "" {
 		t.Errorf("a read seated in the replay window passes: %q", r)
 	}
-	es.NoteValRead(g.ID, "n")
+	es.NoteValRead(core.IDOf(&g), "n")
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "read both bare and by /v") {
 		t.Errorf("a mixed read declines: %q", r)
 	}
@@ -135,7 +135,7 @@ func TestWordReadReplayArms(t *testing.T) {
 	if es.wordReadName(rec, quoted) != "" {
 		t.Error("a quoted value is data")
 	}
-	u.pendingApply = append(u.pendingApply, pendingApply{id: x.ID})
+	u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&x)})
 	if es.wordReadName(rec, x) != "" {
 		t.Error("an apply-pending id is the apply word's")
 	}
@@ -227,11 +227,11 @@ func TestFnResidualReplayReasonArms(t *testing.T) {
 	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); !strings.Contains(r, "NUR123") {
 		t.Errorf("a trailing apply still accounts for an uncredited bare read: %q", r)
 	}
-	es.creditWordRead(g.ID)
+	es.creditWordRead(core.IDOf(&g))
 	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); r != "" {
 		t.Errorf("a trailing apply over a credited read takes no verdict: %q", r)
 	}
-	delete(rec.wordReadCredit, g.ID)
+	delete(rec.wordReadCredit, core.IDOf(&g))
 	rec.closure = true
 	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 0); r != "" {
 		t.Errorf("a closure unit takes no verdict here: %q", r)
@@ -260,28 +260,28 @@ func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	u := es.units[len(es.units)-1]
 	j := core.NewDynamicCarrier(core.TAny)
 	es.NoteWordRead(j, "j", core.SrcPos{Row: 1, Col: 40})
-	if rec.wordReadNames[j.ID] != "" {
+	if rec.wordReadNames[core.IDOf(&j)] != "" {
 		t.Error("a value neither local nor produced here is not this unit's read")
 	}
-	es.producedBy[j.ID] = producer{seq: 3}
+	es.producedBy[core.IDOf(&j)] = producer{seq: 3}
 	es.NoteWordRead(j, "j", core.SrcPos{Row: 1, Col: 40})
-	if rec.wordReadNames[j.ID] != "j" || rec.wordReads[j.ID] != 0 || rec.wordReadPos[j.ID].Col != 40 {
+	if rec.wordReadNames[core.IDOf(&j)] != "j" || rec.wordReads[core.IDOf(&j)] != 0 || rec.wordReadPos[core.IDOf(&j)].Col != 40 {
 		t.Errorf("a body-local producer's value is named at its read, gradual: %v %v %v", rec.wordReadNames, rec.wordReads, rec.wordReadPos)
 	}
 	k := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[k.ID] = producer{seq: 2}
+	es.producedBy[core.IDOf(&k)] = producer{seq: 2}
 	if u.enclosingBindIDs == nil {
 		u.enclosingBindIDs = map[string]bool{}
 	}
-	u.enclosingBindIDs[k.ID] = true
+	u.enclosingBindIDs[core.IDOf(&k)] = true
 	es.NoteWordRead(k, "k", core.SrcPos{Row: 1, Col: 44})
-	if rec.wordReadNames[k.ID] != "" {
+	if rec.wordReadNames[core.IDOf(&k)] != "" {
 		t.Error("an enclosing-scope binding's value is not this unit's to seat")
 	}
 	if es.wordReadName(rec, j) != "j" {
 		t.Error("the produced value reads as its word")
 	}
-	es.NoteValRead(j.ID, "n")
+	es.NoteValRead(core.IDOf(&j), "n")
 	if es.wordReadName(rec, j) != "" {
 		t.Error("a binding read both bare and by /v is the accounting's, never a seat")
 	}
@@ -299,7 +299,7 @@ func TestReplayIsBodyTailWordReadAnchor(t *testing.T) {
 		return EmitEvent{seq: seq, kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: col}}}
 	}
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[j.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
 	j.SetPos(core.SrcPos{Row: 1, Col: 50})
 	frag := &EmitFragment{events: []EmitEvent{evAt(1, 33), evAt(2, 45)}}
 	if !es.replayIsBodyTailAnchored(frag, []core.Value{j}, []bool{true}) {
@@ -313,7 +313,7 @@ func TestReplayIsBodyTailWordReadAnchor(t *testing.T) {
 		t.Error("an event after the read reorders — decline")
 	}
 	r := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[r.ID] = producer{seq: 2}
+	es.producedBy[core.IDOf(&r)] = producer{seq: 2}
 	frag = &EmitFragment{events: []EmitEvent{evAt(1, 33), evAt(2, 45), evAt(3, 48)}}
 	if !es.replayIsBodyTailAnchored(frag, []core.Value{r, j}, []bool{false, true}) {
 		t.Error("an event after the produced value's seq but before the read is admitted")
@@ -416,7 +416,7 @@ func TestRecordGradualApplyEventDeclines(t *testing.T) {
 	oneArg := &core.Signature{Args: []*core.Type{core.TFunction}}
 	out := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	unknown := core.NewDynamicCarrier(core.TAny)
-	unknown.ID = "nowhere"
+	core.SetID(&unknown, "nowhere")
 	pos := core.SrcPos{Row: 1, Col: 9}
 	if es.recordGradualApplyEvent(nil, []core.Value{x, g}, out, pos) {
 		t.Error("a nil signature declines")
@@ -434,7 +434,7 @@ func TestRecordGradualApplyEventDeclines(t *testing.T) {
 		t.Error("a fn-typed (not gradual) lead is the pending apply's")
 	}
 	noID := core.NewDynamicCarrier(core.TAny)
-	noID.ID = ""
+	core.SetID(&noID, "")
 	if es.recordGradualApplyEvent(two, []core.Value{noID, g}, out, pos) {
 		t.Error("an unidentified lead declines")
 	}

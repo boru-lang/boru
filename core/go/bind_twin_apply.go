@@ -158,10 +158,10 @@ func ReserveTypeParts(r *Registry, name string) {
 func applyTwinSigUndef(r *Registry, name string, removed Value) {
 	stack := r.Defs.Stack(name)
 	for j := len(stack) - 1; j >= 0; j-- {
-		if stack[j].ID != removed.ID {
+		if IDOf(&stack[j]) != IDOf(&removed) {
 			continue
 		}
-		if removed.ID == "" && !ValuesEqual(stack[j], removed) {
+		if IDOf(&removed) == "" && !ValuesEqual(stack[j], removed) {
 			continue
 		}
 		rest := append([]Value(nil), stack[:j]...)

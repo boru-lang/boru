@@ -165,7 +165,7 @@ func (e *Engine) stackBeneath(match *MatchResult, nFwd int) (stack []Value, unbo
 	stack = append(stack, match.Args[nFwd:]...)
 	for i := len(below) - n - 1; i >= 0; i-- {
 		v := e.Tape.At(below[i])
-		if v.ID != "" && rec.RegionResult(v.ID) {
+		if IDOf(&v) != "" && rec.RegionResult(IDOf(&v)) {
 			return nil, true
 		}
 		stack = append(stack, v)

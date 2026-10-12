@@ -34,7 +34,7 @@ func TestHoldRegionSurvivesANestedOfferAtTheSameKey(t *testing.T) {
 		t.Fatalf("holds stack: held %d, want 2", es.HeldRegionCount())
 	}
 	inner := es.completeHeldRegion("f", pos, []core.Value{zero}, []EmitOperand{ConstOperand(3)})
-	if inner == nil || len(inner.Slots) != 1 || inner.Slots[0].Token.ID != zero.ID {
+	if inner == nil || len(inner.Slots) != 1 || core.IDOf(&inner.Slots[0].Token) != core.IDOf(&zero) {
 		t.Fatalf("the inner record must complete the INNER offer: %+v", inner)
 	}
 	releaseInner()
@@ -42,7 +42,7 @@ func TestHoldRegionSurvivesANestedOfferAtTheSameKey(t *testing.T) {
 		t.Fatalf("the inner release must pop only its own hold: held %d", es.HeldRegionCount())
 	}
 	outer := es.completeHeldRegion("f", pos, []core.Value{one}, []EmitOperand{ConstOperand(4)})
-	if outer == nil || len(outer.Slots) != 1 || outer.Slots[0].Token.ID != one.ID {
+	if outer == nil || len(outer.Slots) != 1 || core.IDOf(&outer.Slots[0].Token) != core.IDOf(&one) {
 		t.Fatalf("the outer record must complete the OUTER offer it held: %+v", outer)
 	}
 	if outer.NFwd != 1 || outer.Slots[0].Source != SlotConst || outer.Slots[0].Idx != 4 {
@@ -135,7 +135,7 @@ func TestHoldRegionIsNotClaimedByANativeRecord(t *testing.T) {
 	capture(t, es, reg, "min", inner)
 	// …and its record (RecordCall's completeRegion) claims ITS offer.
 	d := es.completeRegion("min", pos, []core.Value{inner}, []EmitOperand{ConstOperand(2)})
-	if d == nil || d.Slots[0].Token.ID != inner.ID {
+	if d == nil || core.IDOf(&d.Slots[0].Token) != core.IDOf(&inner) {
 		t.Fatalf("the native record completes its own pool offer: %+v", d)
 	}
 	if es.PendingRegionCount() != 0 || es.HeldRegionCount() != 1 {
@@ -143,7 +143,7 @@ func TestHoldRegionIsNotClaimedByANativeRecord(t *testing.T) {
 	}
 	// The holder's record still finds its own offer.
 	h := es.completeHeldRegion("min", pos, []core.Value{outer}, []EmitOperand{ConstOperand(1)})
-	if h == nil || h.Slots[0].Token.ID != outer.ID {
+	if h == nil || core.IDOf(&h.Slots[0].Token) != core.IDOf(&outer) {
 		t.Fatalf("the holder completes the held offer: %+v", h)
 	}
 	// And with no hold on top at all, the holder path is the pool path.

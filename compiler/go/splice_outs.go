@@ -53,10 +53,10 @@ func concreteSplice(v core.Value) bool {
 // move down one place, and the call leaves one value fewer. Nothing for any
 // other marker, or when inactive.
 func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
-	if !es.Active() || v.ID == "" || !concreteSplice(v) {
+	if !es.Active() || core.IDOf(&v) == "" || !concreteSplice(v) {
 		return
 	}
-	pr, produced := es.producedBy[v.ID]
+	pr, produced := es.producedBy[core.IDOf(&v)]
 	outs := es.spliceOuts[pr.seq]
 	if !produced || outs == nil {
 		return
@@ -66,10 +66,10 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 		return
 	}
 	ev.call.nout--
-	delete(es.producedBy, v.ID)
+	delete(es.producedBy, core.IDOf(&v))
 	for _, o := range outs {
-		if p, ok := es.producedBy[o.ID]; ok && p.seq == pr.seq && p.idx > pr.idx {
-			es.producedBy[o.ID] = producer{seq: p.seq, idx: p.idx - 1}
+		if p, ok := es.producedBy[core.IDOf(&o)]; ok && p.seq == pr.seq && p.idx > pr.idx {
+			es.producedBy[core.IDOf(&o)] = producer{seq: p.seq, idx: p.idx - 1}
 		}
 	}
 	if es.firedSplices == nil {
@@ -78,7 +78,7 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 	if es.firedSplices[pr.seq] == nil {
 		es.firedSplices[pr.seq] = map[string]bool{}
 	}
-	es.firedSplices[pr.seq][v.ID] = true
+	es.firedSplices[pr.seq][core.IDOf(&v)] = true
 }
 
 // spliceOutsAt is the SigRef.SpliceOuts of the call seq: the results the
@@ -90,7 +90,7 @@ func (lw *lowerer) spliceOutsAt(seq int) []core.Value {
 	}
 	outs := lw.es.spliceOuts[seq]
 	for _, v := range outs {
-		if core.IsSplice(&v) && !lw.es.firedSplices[seq][v.ID] {
+		if core.IsSplice(&v) && !lw.es.firedSplices[seq][core.IDOf(&v)] {
 			return nil
 		}
 	}

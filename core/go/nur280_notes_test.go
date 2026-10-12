@@ -17,7 +17,7 @@ func TestNUR280PeekNotesTheDelivery(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	fnv := anonFnVal([]FnParam{{Name: "a", Type: TInteger}}, nil, parenBody(NewWord("a")))
-	fnv.ID = "T_peek_fn"
+	SetID(&fnv, "T_peek_fn")
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{fnv, NewDispatchMod(DispatchModInfo{Val: true})}, StackHeadroom)
 	if err := e.execFnDefLiteral(0); err != nil {
@@ -40,7 +40,7 @@ func TestNUR280MarkerDropNotesTheCarrier(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	c := NewDynamicCarrier(TAny)
-	c.ID = "T_member_read"
+	SetID(&c, "T_member_read")
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{c, NewDispatchMod(DispatchModInfo{Val: true})}, StackHeadroom)
 	e.Pointer = 1
@@ -74,7 +74,7 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	g := NewDynamicCarrier(TAny)
-	g.ID = "T_bound_member"
+	SetID(&g, "T_bound_member")
 	SetQuoted(&g, true)
 	r.Defs.Push("g", g)
 	e := NewTop(r)
@@ -87,7 +87,7 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	}
 	// Negative: a quoted Integer carrier is data — not noted.
 	n := NewCarrier(TInteger)
-	n.ID = "T_bound_int"
+	SetID(&n, "T_bound_int")
 	SetQuoted(&n, true)
 	r.Defs.Push("n", n)
 	e.Tape = NewTape([]Value{NewWord("n")}, StackHeadroom)

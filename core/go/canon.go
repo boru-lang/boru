@@ -135,7 +135,7 @@ func CanonValue(v Value) string {
 		return "end"
 	case v.Data == nil:
 		if t := TypeNodeOf(v); t != nil {
-			if name := TypeNameByID(t.ID); name != "" {
+			if name := TypeNameByID(IDOf(t)); name != "" {
 				return name
 			}
 			return t.Leaf()

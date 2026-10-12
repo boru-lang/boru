@@ -39,14 +39,14 @@ func TestRestoreBindingsKeepsMintedTypes(t *testing.T) {
 	snap := r.SnapshotBindings()
 
 	minted := r.Types.MintType("Minted", TInteger)
-	if minted == nil || minted.ID == "" {
+	if minted == nil || IDOf(minted) == "" {
 		t.Fatal("MintType produced no identity")
 	}
 
 	r.RestoreBindings(snap)
 
-	if got := r.Types.LookupByID(minted.ID); got != minted {
-		t.Errorf("minted type %s did not survive the rollback (got %v) — a compile-time product was replayed away", minted.ID, got)
+	if got := r.Types.LookupByID(IDOf(minted)); got != minted {
+		t.Errorf("minted type %s did not survive the rollback (got %v) — a compile-time product was replayed away", IDOf(minted), got)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestRestoreBindingsUndoesTypeRetirement(t *testing.T) {
 	// this binding minted.
 	r.Defs.Pop("Retired")
 	r.Types.Retire(def)
-	if r.Types.LookupByID(def.ID) != nil {
+	if r.Types.LookupByID(IDOf(def)) != nil {
 		t.Fatal("Retire did not remove the node — the test is measuring the wrong thing")
 	}
 
@@ -74,7 +74,7 @@ func TestRestoreBindingsUndoesTypeRetirement(t *testing.T) {
 	if !r.Defs.IsType("Retired") {
 		t.Fatal("the type binding did not come back")
 	}
-	if got := r.Types.LookupByID(def.ID); got != def {
+	if got := r.Types.LookupByID(IDOf(def)); got != def {
 		t.Errorf("binding restored but its lattice node is still retired (got %v) — a live binding on a dead ID", got)
 	}
 }
@@ -159,10 +159,10 @@ func TestTypeIDSnapshotAndReadmit(t *testing.T) {
 	if n := r.Types.readmitRetired(snap); n != 1 {
 		t.Errorf("re-admitted %d ids, want exactly 1 (the retired one)", n)
 	}
-	if r.Types.LookupByID(a.ID) != a {
+	if r.Types.LookupByID(IDOf(a)) != a {
 		t.Error("the retired id was not re-admitted")
 	}
-	if r.Types.LookupByID(b.ID) != b {
+	if r.Types.LookupByID(IDOf(b)) != b {
 		t.Error("re-admission dropped an id minted after the capture")
 	}
 	if n := r.Types.readmitRetired(snap); n != 0 {

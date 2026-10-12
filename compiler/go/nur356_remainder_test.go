@@ -72,7 +72,7 @@ func TestLiteralMatchSure(t *testing.T) {
 			t.Errorf("%s: no sure match", name)
 		}
 	}
-	es.runTypes = map[string]bool{core.TInteger.ID: true}
+	es.runTypes = map[string]bool{core.IDOf(core.TInteger): true}
 	if _, ok := es.typeOperand(ti, nil); ok {
 		t.Error("a node the run installs anew proves nothing")
 	}
@@ -154,7 +154,7 @@ func TestSplitWordsAndWindowLiteral(t *testing.T) {
 		t.Error("an empty body holds no token")
 	}
 	a := deoptLit(core.NewInteger(1), 2)
-	a.ID = "A"
+	core.SetID(&a, "A")
 	es.readPos = map[string]core.SrcPos{"A": deoptAt(9)}
 	if ps := es.writtenPositions([]core.Value{a, deoptLit(core.NewInteger(2), 4)}, 2); ps[0] != deoptAt(9) || ps[1] != deoptAt(4) {
 		t.Errorf("a read's position, else its own: %v", ps)

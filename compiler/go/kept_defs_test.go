@@ -349,7 +349,7 @@ func TestProvenBodyTokens(t *testing.T) {
 	// event; the dynamic stand-in keeps a typed-list carrier's type-body
 	// identity out of this fixture's way.
 	body := core.NewDynamicCarrier(core.TList)
-	body.ID = "mk-out"
+	core.SetID(&body, "mk-out")
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Fatal("an unresolvable operand proves nothing")
 	}
@@ -360,7 +360,7 @@ func TestProvenBodyTokens(t *testing.T) {
 		{seq: 2, kind: evCallUser, uc: emitUserCall{unit: 1, nout: 1}},
 		{seq: 3, kind: evCallUser, uc: emitUserCall{unit: 2, nout: 1}},
 	}
-	es.producedBy[body.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 1}
 	toks, ok := es.provenBodyTokens(body)
 	if !ok || len(toks) != 1 {
 		t.Fatalf("a factory call returning a const list proves its tokens: %v %v", toks, ok)
@@ -371,44 +371,44 @@ func TestProvenBodyTokens(t *testing.T) {
 	if es.bodyPlainData(body) {
 		t.Error("`[add]` is not plain data: a word")
 	}
-	es.producedBy[body.ID] = producer{seq: 3}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 3}
 	if es.bodyBindsNothing(r, body) {
 		t.Error("`[def]` binds")
 	}
-	es.producedBy[body.ID] = producer{seq: 2}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 2}
 	if _, ok := es.provenBodyTokens(body); ok || es.bodyPlainData(body) || es.bodyBindsNothing(r, body) {
 		t.Error("a const that is not a list proves nothing")
 	}
 	es.consts = append(es.consts, core.NewList([]core.Value{core.NewInteger(1), core.NewString("a")}))
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{outOps: []EmitOperand{{kind: opConst, idx: 3}}})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 4, kind: evCallUser, uc: emitUserCall{unit: 3, nout: 1}})
-	es.producedBy[body.ID] = producer{seq: 4}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 4}
 	if !es.bodyPlainData(body) {
 		t.Error("`[1 'a']` is plain data")
 	}
-	es.producedBy[body.ID] = producer{seq: 1, idx: 1}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 1, idx: 1}
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a second result proves nothing")
 	}
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 5, kind: evCall, call: emitCall{word: "get", nout: 1}})
-	es.producedBy[body.ID] = producer{seq: 5}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 5}
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a native's result proves nothing")
 	}
-	delete(es.producedBy, body.ID)
-	es.units[0].localByID[body.ID] = 0
+	delete(es.producedBy, core.IDOf(&body))
+	es.units[0].localByID[core.IDOf(&body)] = 0
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a local with no producer proves nothing")
 	}
 	// A capture slot of the open unit whose value a factory call produced
 	// (the promoted value-def read inside a body) proves through its
 	// producer.
-	es.units = append(es.units, &emitUnit{capID: map[string]bool{body.ID: true}, localByID: map[string]int{body.ID: 0}})
-	es.producedBy[body.ID] = producer{seq: 1}
+	es.units = append(es.units, &emitUnit{capID: map[string]bool{core.IDOf(&body): true}, localByID: map[string]int{core.IDOf(&body): 0}})
+	es.producedBy[core.IDOf(&body)] = producer{seq: 1}
 	if toks, ok := es.provenBodyTokens(body); !ok || len(toks) != 1 {
 		t.Errorf("a captured factory result proves its tokens: %v %v", toks, ok)
 	}
-	es.producedBy[body.ID] = producer{seq: 1, idx: 1}
+	es.producedBy[core.IDOf(&body)] = producer{seq: 1, idx: 1}
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a captured second result proves nothing")
 	}
@@ -421,7 +421,7 @@ func TestBodyProvenFn(t *testing.T) {
 		t.Error("a const fn value is a proven callback")
 	}
 	unresolved := core.NewCarrier(core.TList)
-	unresolved.ID = "nowhere"
+	core.SetID(&unresolved, "nowhere")
 	if es.bodyProvenFn(unresolved) {
 		t.Error("an unresolvable body is not")
 	}

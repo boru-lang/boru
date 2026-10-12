@@ -117,8 +117,8 @@ func TestStampDetachedFnShapeGates(t *testing.T) {
 	if n, err := core.AsInteger(ref.Captures[0]); len(ref.Captures) != 1 || err != nil || n != 9 {
 		t.Fatalf("ref must carry the frozen capture value, got %+v", ref.Captures)
 	}
-	if captured.Captured[0].Value.ID != "" {
-		t.Fatalf("the INPUT capture value must stay identity-less (clone, not mutate), got %q", captured.Captured[0].Value.ID)
+	if core.IDOf(&captured.Captured[0].Value) != "" {
+		t.Fatalf("the INPUT capture value must stay identity-less (clone, not mutate), got %q", core.IDOf(&captured.Captured[0].Value))
 	}
 
 	// A multi-own-sig fn stamps PER SIG since the §7b landing: the
@@ -163,7 +163,7 @@ func TestStampFnValueGates(t *testing.T) {
 	r.EnableRuntimeStamping()
 
 	notFn := core.NewInteger(5)
-	if got, ok := StampFnValue(r, notFn); ok || got.ID != notFn.ID {
+	if got, ok := StampFnValue(r, notFn); ok || core.IDOf(&got) != core.IDOf(&notFn) {
 		t.Fatalf("non-fn value must decline unchanged")
 	}
 

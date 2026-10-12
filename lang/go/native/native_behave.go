@@ -302,7 +302,7 @@ func behaveReturns(args []Value, r *Registry) []Value {
 		// A container member's fn read as a gradual carrier: the pass
 		// tagged the value the read resolved (NoteFnMemberRead), which the
 		// run installs — seen through for the call graph alone (NUR257).
-		member, ok := r.Check.FnMemberRead(fnVal.ID)
+		member, ok := r.Check.FnMemberRead(IDOf(&fnVal))
 		if !ok {
 			return nil
 		}

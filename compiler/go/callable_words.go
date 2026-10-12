@@ -1468,7 +1468,7 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 	if p == nil || (!p.ConformsTo(core.TFlexList) && !p.ConformsTo(core.TFlexMap)) {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producedBy[core.IDOf(&v)]
 	if !ok || pr.idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return false
 	}

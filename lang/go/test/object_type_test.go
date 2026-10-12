@@ -315,61 +315,61 @@ func TestObjectTypeVTypeMatches(t *testing.T) {
 // TestBuiltinTypeFixedIDs verifies that builtin types have stable, fixed IDs.
 func TestBuiltinTypeFixedIDs(t *testing.T) {
 	// Builtin types must have non-empty fixed IDs
-	if native.TAny.ID == "" {
+	if native.IDOf(native.TAny) == "" {
 		t.Error("TAny should have a fixed ID")
 	}
-	if native.TString.ID == "" {
+	if native.IDOf(native.TString) == "" {
 		t.Error("TString should have a fixed ID")
 	}
-	if native.TList.ID == "" {
+	if native.IDOf(native.TList) == "" {
 		t.Error("TList should have a fixed ID")
 	}
-	if native.TWord.ID == "" {
+	if native.IDOf(native.TWord) == "" {
 		t.Error("TWord should have a fixed ID")
 	}
-	if native.TClass.ID == "" {
+	if native.IDOf(native.TClass) == "" {
 		t.Error("TClass should have a fixed ID")
 	}
 
 	// Fixed IDs must be 14 chars (prefix + 12 hex)
-	if len(native.TAny.ID) != 14 {
-		t.Errorf("TAny ID should be 14 chars, got %d: %s", len(native.TAny.ID), native.TAny.ID)
+	if len(native.IDOf(native.TAny)) != 14 {
+		t.Errorf("TAny ID should be 14 chars, got %d: %s", len(native.IDOf(native.TAny)), native.IDOf(native.TAny))
 	}
 
 	// Correct prefixes
-	if !strings.HasPrefix(native.TAny.ID, "T_") {
-		t.Errorf("TAny ID should start with T_, got %s", native.TAny.ID)
+	if !strings.HasPrefix(native.IDOf(native.TAny), "T_") {
+		t.Errorf("TAny ID should start with T_, got %s", native.IDOf(native.TAny))
 	}
-	if !strings.HasPrefix(native.TString.ID, "S_") {
-		t.Errorf("TString ID should start with S_, got %s", native.TString.ID)
+	if !strings.HasPrefix(native.IDOf(native.TString), "S_") {
+		t.Errorf("TString ID should start with S_, got %s", native.IDOf(native.TString))
 	}
-	if !strings.HasPrefix(native.TList.ID, "N_") {
-		t.Errorf("TList ID should start with N_, got %s", native.TList.ID)
+	if !strings.HasPrefix(native.IDOf(native.TList), "N_") {
+		t.Errorf("TList ID should start with N_, got %s", native.IDOf(native.TList))
 	}
-	if !strings.HasPrefix(native.TWord.ID, "W_") {
-		t.Errorf("TWord ID should start with W_, got %s", native.TWord.ID)
+	if !strings.HasPrefix(native.IDOf(native.TWord), "W_") {
+		t.Errorf("TWord ID should start with W_, got %s", native.IDOf(native.TWord))
 	}
-	if !strings.HasPrefix(native.TClass.ID, "T_") {
-		t.Errorf("TClass ID should start with T_, got %s", native.TClass.ID)
+	if !strings.HasPrefix(native.IDOf(native.TClass), "T_") {
+		t.Errorf("TClass ID should start with T_, got %s", native.IDOf(native.TClass))
 	}
 
 	// Specific known values: TAny=1, TNone=2, TScalar=3, TString=4
 	expectedAny := "T_000000000001"
-	if native.TAny.ID != expectedAny {
-		t.Errorf("TAny ID should be %s, got %s", expectedAny, native.TAny.ID)
+	if native.IDOf(native.TAny) != expectedAny {
+		t.Errorf("TAny ID should be %s, got %s", expectedAny, native.IDOf(native.TAny))
 	}
 	expectedNone := "T_000000000002"
-	if native.TNone.ID != expectedNone {
-		t.Errorf("TNone ID should be %s, got %s", expectedNone, native.TNone.ID)
+	if native.IDOf(native.TNone) != expectedNone {
+		t.Errorf("TNone ID should be %s, got %s", expectedNone, native.IDOf(native.TNone))
 	}
 	expectedString := "S_000000000004"
-	if native.TString.ID != expectedString {
-		t.Errorf("TString ID should be %s, got %s", expectedString, native.TString.ID)
+	if native.IDOf(native.TString) != expectedString {
+		t.Errorf("TString ID should be %s, got %s", expectedString, native.IDOf(native.TString))
 	}
 
 	// IDs are stable across multiple accesses (no regeneration)
-	id1 := native.TAny.ID
-	id2 := native.TAny.ID
+	id1 := native.IDOf(native.TAny)
+	id2 := native.IDOf(native.TAny)
 	if id1 != id2 {
 		t.Errorf("TAny ID should be stable, got %s then %s", id1, id2)
 	}
@@ -388,10 +388,10 @@ func TestBuiltinTypeFixedIDs(t *testing.T) {
 		"TClass": native.TClass,
 	}
 	for name, typ := range builtins {
-		if prev, exists := ids[typ.ID]; exists {
-			t.Errorf("duplicate ID: %s and %s both have %s", prev, name, typ.ID)
+		if prev, exists := ids[native.IDOf(typ)]; exists {
+			t.Errorf("duplicate ID: %s and %s both have %s", prev, name, native.IDOf(typ))
 		}
-		ids[typ.ID] = name
+		ids[native.IDOf(typ)] = name
 	}
 
 	// NewType is strict — unregistered paths error.
@@ -408,64 +408,64 @@ func TestValueIDPrefixes(t *testing.T) {
 	defer native.BeginIDMintScope()()
 	// Scalar values get S_ prefix
 	str := native.NewString("hello")
-	if !strings.HasPrefix(str.ID, "S_") {
-		t.Errorf("string ID should start with S_, got %s", str.ID)
+	if !strings.HasPrefix(native.IDOf(&str), "S_") {
+		t.Errorf("string ID should start with S_, got %s", native.IDOf(&str))
 	}
-	if len(str.ID) != 14 { // "S_" + 12 hex chars
-		t.Errorf("string ID should be 14 chars, got %d: %s", len(str.ID), str.ID)
+	if len(native.IDOf(&str)) != 14 { // "S_" + 12 hex chars
+		t.Errorf("string ID should be 14 chars, got %d: %s", len(native.IDOf(&str)), native.IDOf(&str))
 	}
 
 	num := native.NewInteger(42)
-	if !strings.HasPrefix(num.ID, "S_") {
-		t.Errorf("integer ID should start with S_, got %s", num.ID)
+	if !strings.HasPrefix(native.IDOf(&num), "S_") {
+		t.Errorf("integer ID should start with S_, got %s", native.IDOf(&num))
 	}
 
 	dec := native.NewFloat(3.14)
-	if !strings.HasPrefix(dec.ID, "S_") {
-		t.Errorf("decimal ID should start with S_, got %s", dec.ID)
+	if !strings.HasPrefix(native.IDOf(&dec), "S_") {
+		t.Errorf("decimal ID should start with S_, got %s", native.IDOf(&dec))
 	}
 
 	boolv := native.NewBoolean(true)
-	if !strings.HasPrefix(boolv.ID, "S_") {
-		t.Errorf("boolean ID should start with S_, got %s", boolv.ID)
+	if !strings.HasPrefix(native.IDOf(&boolv), "S_") {
+		t.Errorf("boolean ID should start with S_, got %s", native.IDOf(&boolv))
 	}
 
 	// Node values get N_ prefix
 	list := native.NewList([]native.Value{})
-	if !strings.HasPrefix(list.ID, "N_") {
-		t.Errorf("list ID should start with N_, got %s", list.ID)
+	if !strings.HasPrefix(native.IDOf(&list), "N_") {
+		t.Errorf("list ID should start with N_, got %s", native.IDOf(&list))
 	}
 
 	m := native.NewMap(native.NewOrderedMap())
-	if !strings.HasPrefix(m.ID, "N_") {
-		t.Errorf("map ID should start with N_, got %s", m.ID)
+	if !strings.HasPrefix(native.IDOf(&m), "N_") {
+		t.Errorf("map ID should start with N_, got %s", native.IDOf(&m))
 	}
 
 	// Word values get W_ prefix
 	word := native.NewWord("Test")
-	if !strings.HasPrefix(word.ID, "W_") {
-		t.Errorf("word ID should start with W_, got %s", word.ID)
+	if !strings.HasPrefix(native.IDOf(&word), "W_") {
+		t.Errorf("word ID should start with W_, got %s", native.IDOf(&word))
 	}
 
 	atom := native.NewAtom("foo")
-	if !strings.HasPrefix(atom.ID, "S_") {
-		t.Errorf("atom ID should start with S_, got %s", atom.ID)
+	if !strings.HasPrefix(native.IDOf(&atom), "S_") {
+		t.Errorf("atom ID should start with S_, got %s", native.IDOf(&atom))
 	}
 
 	// Type/Object values get T_ prefix
 	typeLit := native.NewTypeLiteral(native.TString)
-	if !strings.HasPrefix(typeLit.ID, "S_") {
-		t.Errorf("string type literal ID should start with S_ (type's own category), got %s", typeLit.ID)
+	if !strings.HasPrefix(native.IDOf(&typeLit), "S_") {
+		t.Errorf("string type literal ID should start with S_ (type's own category), got %s", native.IDOf(&typeLit))
 	}
 
 	noneLit := native.NewTypeLiteral(native.TNone)
-	if !strings.HasPrefix(noneLit.ID, "T_") {
-		t.Errorf("none type literal ID should start with T_, got %s", noneLit.ID)
+	if !strings.HasPrefix(native.IDOf(&noneLit), "T_") {
+		t.Errorf("none type literal ID should start with T_, got %s", native.IDOf(&noneLit))
 	}
 
 	// All IDs should be unique
-	ids := map[string]bool{str.ID: true, num.ID: true, dec.ID: true, boolv.ID: true,
-		list.ID: true, m.ID: true, word.ID: true, atom.ID: true}
+	ids := map[string]bool{native.IDOf(&str): true, native.IDOf(&num): true, native.IDOf(&dec): true, native.IDOf(&boolv): true,
+		native.IDOf(&list): true, native.IDOf(&m): true, native.IDOf(&word): true, native.IDOf(&atom): true}
 	if len(ids) != 8 {
 		t.Errorf("expected 8 unique IDs, got %d (some duplicates)", len(ids))
 	}

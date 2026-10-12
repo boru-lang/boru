@@ -32,11 +32,11 @@ func TestMintIDNoSiblingCollision(t *testing.T) {
 	t1 := m1.MintType("Foo", core.TInteger)
 	t2 := m2.MintType("Foo", core.TString)
 	tp := parent.MintType("TopLevel", core.TInteger)
-	if t1.ID == t2.ID {
-		t.Errorf("sibling module tables minted colliding IDs: %s", t1.ID)
+	if core.IDOf(t1) == core.IDOf(t2) {
+		t.Errorf("sibling module tables minted colliding IDs: %s", core.IDOf(t1))
 	}
-	if tp.ID == t1.ID || tp.ID == t2.ID {
-		t.Errorf("parent mint after module mints collided: %s", tp.ID)
+	if core.IDOf(tp) == core.IDOf(t1) || core.IDOf(tp) == core.IDOf(t2) {
+		t.Errorf("parent mint after module mints collided: %s", core.IDOf(tp))
 	}
 
 	// Concurrent-fork clones share the counter: same rule.
@@ -44,11 +44,11 @@ func TestMintIDNoSiblingCollision(t *testing.T) {
 	cf2 := parent.CloneDynamic()
 	f1 := cf1.MintType("Fork1", core.TInteger)
 	f2 := cf2.MintType("Fork2", core.TInteger)
-	if f1.ID == f2.ID {
-		t.Errorf("sibling CloneDynamic() tables minted colliding IDs: %s", f1.ID)
+	if core.IDOf(f1) == core.IDOf(f2) {
+		t.Errorf("sibling CloneDynamic() tables minted colliding IDs: %s", core.IDOf(f1))
 	}
-	if f1.ID == tp.ID || f2.ID == tp.ID {
-		t.Errorf("fork mints collided with parent mint: %s / %s", f1.ID, f2.ID)
+	if core.IDOf(f1) == core.IDOf(tp) || core.IDOf(f2) == core.IDOf(tp) {
+		t.Errorf("fork mints collided with parent mint: %s / %s", core.IDOf(f1), core.IDOf(f2))
 	}
 }
 
@@ -70,8 +70,8 @@ func TestMintIDRollbackCloneCopies(t *testing.T) {
 	// parent's next mint takes the ordinal the sandbox used (the
 	// sandbox and its mints are about to be thrown away).
 	after := parent.MintType("After", core.TInteger)
-	if after.ID != sbMint.ID {
-		t.Errorf("rollback clone advanced the parent counter: parent minted %s, sandbox minted %s (must reuse the discarded ordinal)", after.ID, sbMint.ID)
+	if core.IDOf(after) != core.IDOf(sbMint) {
+		t.Errorf("rollback clone advanced the parent counter: parent minted %s, sandbox minted %s (must reuse the discarded ordinal)", core.IDOf(after), core.IDOf(sbMint))
 	}
 }
 
@@ -90,7 +90,7 @@ func TestMintIDConcurrentUnique(t *testing.T) {
 		go func(tt *core.TypeTable) {
 			defer wg.Done()
 			for j := 0; j < perTable; j++ {
-				ids <- tt.MintType("C", core.TInteger).ID
+				ids <- core.IDOf(tt.MintType("C", core.TInteger))
 			}
 		}(fork)
 	}

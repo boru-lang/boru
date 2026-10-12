@@ -71,7 +71,7 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// (Bindings made inside fn bodies are scope-cleaned like any def;
 	// a re-mint in another scope is semantically identical — Match is
 	// by value, not node identity.)
-	key := "__const:" + base.ID + ":" + canon
+	key := "__const:" + IDOf(base) + ":" + canon
 	if entry, ok := r.Defs.TopEntry(key); ok && entry.TypeDef != nil {
 		return []Value{ReparentValue(v, entry.TypeDef)}, nil
 	}

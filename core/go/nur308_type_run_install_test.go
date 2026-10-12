@@ -60,7 +60,7 @@ func TestRunTypeInstallForwards(t *testing.T) {
 	if err := RunTypeInstall(r, &TypeRunInstallSpec{Name: "Em", Node: empty}, NewTypeLiteral(TNever)); err != nil {
 		t.Fatal(err)
 	}
-	if ForwardedType(empty).ID != TNever.ID || addrOf(NewInteger(1)).Is(empty) {
+	if IDOf(ForwardedType(empty)) != IDOf(TNever) || addrOf(NewInteger(1)).Is(empty) {
 		t.Errorf("an empty interval forwards to Never: %v", ForwardedType(empty))
 	}
 
@@ -119,10 +119,10 @@ func TestForwardingBehaviorOperands(t *testing.T) {
 	if got := forwardedOperand(NewInteger(4)); got.String() != "4" {
 		t.Errorf("a value is itself: %v", got)
 	}
-	if got := forwardedOperand(NewTypeLiteral(TString)); !IsBareTypeNode(&got) || got.ID != TString.ID {
+	if got := forwardedOperand(NewTypeLiteral(TString)); !IsBareTypeNode(&got) || IDOf(&got) != IDOf(TString) {
 		t.Errorf("a node without a forward is itself: %v", got)
 	}
-	if got := forwardedOperand(NewTypeLiteral(pass)); got.ID != r.LookupTypeName("Op").ID {
+	if got := forwardedOperand(NewTypeLiteral(pass)); IDOf(&got) != IDOf(r.LookupTypeName("Op")) {
 		t.Errorf("a forwarded node is the run's: %v", got)
 	}
 	// The forwarded behaviour's Unify, driven with the node on either side.

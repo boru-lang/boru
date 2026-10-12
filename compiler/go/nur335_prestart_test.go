@@ -16,7 +16,7 @@ import (
 
 func n335Val(id string, row, col int) core.Value {
 	v := core.NewInteger(1)
-	v.ID = id
+	core.SetID(&v, id)
 	v.SetPos(core.SrcPos{Row: row, Col: col})
 	return v
 }
@@ -25,7 +25,7 @@ func n335Map(row, col int) core.Value {
 	om := core.NewOrderedMap()
 	om.Set("a", core.NewInteger(1))
 	m := core.NewMap(om)
-	m.ID = "map"
+	core.SetID(&m, "map")
 	m.SetPos(core.SrcPos{Row: row, Col: col})
 	return m
 }

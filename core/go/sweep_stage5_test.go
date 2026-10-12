@@ -220,7 +220,7 @@ func TestSweepMakeNodeHandlerRegisteredKindPrecedence(t *testing.T) {
 		Name:    "SweepKind",
 		Enabled: true,
 		Accepts: func(base Value) bool {
-			return base.Data == nil && !base.Carrier && base.ID == TFlexMap.ID
+			return base.Data == nil && !base.Carrier && IDOf(&base) == IDOf(TFlexMap)
 		},
 		Instantiate: func(typ, data Value, _ *Registry) ([]Value, error) {
 			return []Value{NewString("sweep-made")}, nil

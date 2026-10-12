@@ -797,7 +797,7 @@ func adoptEscapedTypes(r *Registry, desc ModuleDesc) {
 			if !IsBareTypeNode(&v) {
 				continue
 			}
-			canonical := desc.Src.Types.LookupByID(v.ID)
+			canonical := desc.Src.Types.LookupByID(IDOf(&v))
 			if canonical == nil {
 				continue // a builtin literal — the VM's Builtin fallback covers it
 			}

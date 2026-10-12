@@ -87,7 +87,7 @@ func TestApplyBindTwinUndef(t *testing.T) {
 	minted := r.Types.MintType("TwinGone", TInteger)
 	r.Defs.PushType("TwinGone", minted, NewTypeLiteral(TInteger))
 	ApplyBindTwin(r, BindTransition{Kind: BindUndef, Name: "TwinGone"}, DefEntry{})
-	if r.Defs.IsType("TwinGone") || r.Types.LookupByID(minted.ID) != nil {
+	if r.Defs.IsType("TwinGone") || r.Types.LookupByID(IDOf(minted)) != nil {
 		t.Fatal("minted-type undef twin must pop the binding AND retire the node")
 	}
 
@@ -99,7 +99,7 @@ func TestApplyBindTwinUndef(t *testing.T) {
 	if r.Defs.IsType("TwinKeep") {
 		t.Fatal("adopted-alias undef twin left the binding")
 	}
-	if r.Types.LookupByID(owned.ID) != owned {
+	if r.Types.LookupByID(IDOf(owned)) != owned {
 		t.Fatal("adopted-alias undef twin retired a node it did not mint")
 	}
 }
@@ -126,17 +126,17 @@ func TestApplyBindTwinSigUndef(t *testing.T) {
 	// ID identity, mid-stack: the captured removal takes out ITS entry, not
 	// the top.
 	oldFn := NewInteger(10)
-	oldFn.ID = "twin-old"
+	SetID(&oldFn, "twin-old")
 	newFn := NewInteger(20)
-	newFn.ID = "twin-new"
+	SetID(&newFn, "twin-new")
 	r.Defs.Push("f", oldFn)
 	r.Defs.Push("f", newFn)
 	ApplyBindTwin(r, BindTransition{Kind: BindSigUndef, Name: "f"}, DefEntry{Body: oldFn})
 	if r.Defs.Depth("f") != 1 {
 		t.Fatalf("sig-undef twin left depth %d, want 1", r.Defs.Depth("f"))
 	}
-	if v, _ := r.Defs.Top("f"); v.ID != "twin-new" {
-		t.Fatalf("sig-undef twin removed the wrong entry: top is %s", v.ID)
+	if v, _ := r.Defs.Top("f"); IDOf(&v) != "twin-new" {
+		t.Fatalf("sig-undef twin removed the wrong entry: top is %s", IDOf(&v))
 	}
 
 	// No ID on the capture: value equality locates the entry, most-recent
@@ -155,7 +155,7 @@ func TestApplyBindTwinSigUndef(t *testing.T) {
 	// position. Both miss shapes: an ID nothing carries, and an unequal
 	// value.
 	missing := NewInteger(3)
-	missing.ID = "twin-none"
+	SetID(&missing, "twin-none")
 	ApplyBindTwin(r, BindTransition{Kind: BindSigUndef, Name: "g"}, DefEntry{Body: missing})
 	ApplyBindTwin(r, BindTransition{Kind: BindSigUndef, Name: "g"}, DefEntry{Body: NewInteger(9)})
 	if r.Defs.Depth("g") != 1 {
@@ -187,7 +187,7 @@ func TestRestoreBindingsForReplayKeepsModuleLedger(t *testing.T) {
 	if _, ok := r.Defs.Top("passed"); ok {
 		t.Error("the def was not rolled back for its twin to replay")
 	}
-	if r.Types.LookupByID(minted.ID) != minted {
+	if r.Types.LookupByID(IDOf(minted)) != minted {
 		t.Error("the retirement was not re-admitted for the undef twin to re-apply")
 	}
 	if _, ok := r.Modules.Loaded["imported"]; !ok {

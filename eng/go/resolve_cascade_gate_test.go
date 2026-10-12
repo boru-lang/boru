@@ -19,7 +19,7 @@ func TestResolveFieldTypeBuiltinArm(t *testing.T) {
 		t.Fatalf("registry: %v", err)
 	}
 	got := core.ResolveFieldType(r, core.NewWord("Integer"))
-	if !core.IsBareTypeNode(&got) || got.ID != core.TInteger.ID {
+	if !core.IsBareTypeNode(&got) || core.IDOf(&got) != core.IDOf(core.TInteger) {
 		t.Fatalf("ResolveFieldType(word(Integer)) = %s, want the Integer literal", got)
 	}
 	raw := core.NewWord("NoSuchTypeName")
@@ -46,7 +46,7 @@ func TestResolveTypeLiteralDefBareNameClassArm(t *testing.T) {
 		t.Fatalf("bare-name class binding must win, got %s", got)
 	}
 	// Negative: no binding → the literal passes through.
-	if got := core.ResolveTypeLiteralDef(core.NewTypeLiteral(core.TFloat), r); !core.IsBareTypeNode(&got) || got.ID != core.TFloat.ID {
+	if got := core.ResolveTypeLiteralDef(core.NewTypeLiteral(core.TFloat), r); !core.IsBareTypeNode(&got) || core.IDOf(&got) != core.IDOf(core.TFloat) {
 		t.Fatalf("unbound literal must pass through, got %s", got)
 	}
 }

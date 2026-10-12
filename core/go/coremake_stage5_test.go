@@ -197,7 +197,7 @@ func TestWt5MakeHandlerUnavailableIdeal(t *testing.T) {
 	r.Ideals.Register(&Ideal{
 		Name:    "Wt5Kind",
 		Enabled: false,
-		Accepts: func(v Value) bool { return v.ID != "" && v.ID == mark.ID },
+		Accepts: func(v Value) bool { return IDOf(&v) != "" && IDOf(&v) == IDOf(mark) },
 	})
 	if _, err := MakeHandler([]Value{NewTypeLiteral(mark), NewInteger(1)}, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not available in this registry") {

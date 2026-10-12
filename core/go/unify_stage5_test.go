@@ -206,7 +206,7 @@ func TestX5DegenRootConcreteWins(t *testing.T) {
 }
 
 func TestX5UnifyObjectTypeInstance(t *testing.T) {
-	node := &Type{tmeta: &typeMeta{Name: "X5Cls"}, ID: "X5Cls", Parent: TClass}
+	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5Cls"}, Parent: TClass}, "X5Cls"))
 	// NewClassType stamps info.Type with its first argument, so mint the
 	// class-type value with the instance node itself as the minted node.
 	ot := NewClassType(node, ClassTypeInfo{ID: "X5Cls", Name: "Class/X5Cls", Fields: NewOrderedMap()})
@@ -275,7 +275,7 @@ func TestX5PredicateUnifierUnifyDirect(t *testing.T) {
 
 func TestX5InstallPredicateUnifierDirect(t *testing.T) {
 	r := x5reg(t)
-	node := &Type{tmeta: &typeMeta{Name: "X5IP"}, ID: "X5IP", Parent: TInteger}
+	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5IP"}, Parent: TInteger}, "X5IP"))
 	installPredicateUnifier(node, x5PredFn(), r, "X5IP")
 	if _, ok := node.Behavior().(*PredicateUnifier); !ok {
 		t.Fatalf("expected a PredicateUnifier, got %T", node.Behavior())
@@ -600,7 +600,7 @@ func TestX5SchemaFieldsClassArm(t *testing.T) {
 
 func TestX5InferAndInstantiateSchemaDefaultBreak(t *testing.T) {
 	r := x5reg(t)
-	node := &Type{tmeta: &typeMeta{Name: "X5Box"}, ID: "X5Box", Parent: TMap}
+	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5Box"}, Parent: TMap}, "X5Box"))
 	info := &TypeSchemaInfo{
 		Name: "X5Box",
 		Params: []GenParam{

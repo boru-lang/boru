@@ -21,15 +21,15 @@ func TestTryFoldStaticIndexArgsProjection(t *testing.T) {
 		r := newTestRegistry(t)
 		es := armEmit(r)
 		recv := core.NewList([]core.Value{core.NewInteger(3), core.NewInteger(4)})
-		recv.ID = "ARGS"
-		es.argsProjSeq = map[string]int{recv.ID: 7}
-		es.producedBy[recv.ID] = producer{seq: 7}
+		core.SetID(&recv, "ARGS")
+		es.argsProjSeq = map[string]int{core.IDOf(&recv): 7}
+		es.producedBy[core.IDOf(&recv)] = producer{seq: 7}
 		es.frames[0] = []EmitEvent{{seq: 7, kind: evCall, call: emitCall{word: "args", nout: 1}}}
 		if trailing {
 			es.frames[0] = append(es.frames[0], EmitEvent{seq: 8, kind: evDynBind, dyn: &emitDynBind{name: "xs", srcSeq: 7, residentTwin: -1}})
 		}
 		out := core.NewCarrier(core.TInteger)
-		out.ID = "OUT"
+		core.SetID(&out, "OUT")
 		return r, es, recv, []core.Value{out}
 	}
 
@@ -37,7 +37,7 @@ func TestTryFoldStaticIndexArgsProjection(t *testing.T) {
 	if tryFoldStaticIndex(r, "get", []core.Value{core.NewInteger(1), recv}, outs) {
 		t.Fatal("a projection another event follows cannot be retracted: the fold must stand aside")
 	}
-	if outs[0].ID != "OUT" || len(es.frames[0]) != 2 || es.argsProjSeq[recv.ID] != 7 {
+	if core.IDOf(&outs[0]) != "OUT" || len(es.frames[0]) != 2 || es.argsProjSeq[core.IDOf(&recv)] != 7 {
 		t.Fatalf("a declined fold must leave the projection and the result alone (out %v, frame %d events)", outs[0], len(es.frames[0]))
 	}
 
@@ -48,7 +48,7 @@ func TestTryFoldStaticIndexArgsProjection(t *testing.T) {
 	if n, err := core.AsInteger(outs[0]); err != nil || n != 4 {
 		t.Fatalf("the fold must hand on the element, got %v", outs[0])
 	}
-	if len(es.frames[0]) != 0 || len(es.argsProjSeq) != 0 || es.AlreadyProduced(recv.ID) {
+	if len(es.frames[0]) != 0 || len(es.argsProjSeq) != 0 || es.AlreadyProduced(core.IDOf(&recv)) {
 		t.Fatal("the retracted projection must leave no event, note or producer behind")
 	}
 }
@@ -159,7 +159,7 @@ func TestTryRecordFallbackDeclinesReachLens(t *testing.T) {
 	sig := &r.Lookup("lensw").Signatures[0]
 	out := func(id string) []core.Value {
 		v := core.NewDynamicCarrier(core.TAny)
-		v.ID = id
+		core.SetID(&v, id)
 		return []core.Value{v}
 	}
 

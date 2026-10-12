@@ -22,7 +22,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 	if es.callResultPlaced(v) {
 		t.Error("an identity-less value has no producer")
 	}
-	v.ID = "v-res"
+	core.SetID(&v, "v-res")
 	if es.callResultPlaced(v) {
 		t.Error("a value no event produced is not a call result")
 	}
@@ -73,7 +73,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 	// before the frame stack.
 	frag := &EmitFragment{events: []EmitEvent{{seq: 77, kind: evCallUser, uc: emitUserCall{nout: 1}}}}
 	w := core.NewInteger(2)
-	w.ID = "v-frag"
+	core.SetID(&w, "v-frag")
 	es.producedBy["v-frag"] = producer{seq: 77}
 	if !es.callResultPlacedIn(w, frag) {
 		t.Error("a unit's own call result is found in its captured fragment")
@@ -147,7 +147,7 @@ func TestUserMemberFn(t *testing.T) {
 func TestCallResultRenderKnown(t *testing.T) {
 	var nilES *EmitState
 	v := core.NewInteger(1)
-	v.ID = "v-r"
+	core.SetID(&v, "v-r")
 	if nilES.callResultRenderKnown(v) {
 		t.Error("a nil recorder knows no render")
 	}

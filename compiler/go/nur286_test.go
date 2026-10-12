@@ -87,7 +87,7 @@ func TestGuardUnitLandings(t *testing.T) {
 func n286State() (*EmitState, core.Value, core.Value) {
 	es, v := nfState()
 	k := core.NewInteger(5)
-	k.ID = "k"
+	core.SetID(&k, "k")
 	return es, v, k
 }
 
@@ -95,7 +95,7 @@ func TestResidualApplies(t *testing.T) {
 	es, v, k := n286State()
 	word := core.NewWord("add")
 	read := v
-	read.ID = "r"
+	core.SetID(&read, "r")
 	es.producedBy["r"] = producer{seq: 1}
 	es.defReads = map[string]string{"r": "j"}
 	for name, c := range map[string]struct {

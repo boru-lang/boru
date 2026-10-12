@@ -18,7 +18,7 @@ func TestStage5CloneTypeLiteralSharesValue(t *testing.T) {
 	if !IsBareTypeNode(&cl) || !ValueType(cl).Equal(TInteger) {
 		t.Errorf("clone of a type literal = %v, want the literal back", cl)
 	}
-	if cl.ID != lit.ID {
+	if IDOf(&cl) != IDOf(&lit) {
 		t.Error("a payload-free literal is shared, not re-minted")
 	}
 }
@@ -53,7 +53,7 @@ func TestStage5CloneMapDeepAndMeta(t *testing.T) {
 	if _, ok := om.Get("b"); ok {
 		t.Error("writing the clone must not touch the original")
 	}
-	if cl.ID == m.ID {
+	if IDOf(&cl) == IDOf(&m) {
 		t.Error("a container clone gets a fresh ID")
 	}
 }
@@ -238,7 +238,7 @@ func TestStage5CloneTable(t *testing.T) {
 	if n, err := AsInteger(td.Rows[0]); err != nil || n != 1 {
 		t.Errorf("row 0 = %v (%v), want 1", td.Rows[0], err)
 	}
-	if cl.ID == tv.ID {
+	if IDOf(&cl) == IDOf(&tv) {
 		t.Error("a table clone gets a fresh ID")
 	}
 }
@@ -307,7 +307,7 @@ func TestStage5CloneExtensionPayload(t *testing.T) {
 	// No DeepCloner: the whole value is shared as-is.
 	ov := NewValueRaw(TAny, ExtensionPayload{Body: stage5OpaqueBody{N: 3}})
 	ocl := CloneValue(ov)
-	if ocl.ID != ov.ID {
+	if IDOf(&ocl) != IDOf(&ov) {
 		t.Error("an opaque host body is shared, not re-minted")
 	}
 }

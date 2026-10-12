@@ -25,7 +25,7 @@ type mayBeFnEmit struct {
 func (m *mayBeFnEmit) Active() bool           { return true }
 func (m *mayBeFnEmit) MayBeFn(id string) bool { return m.maybe[id] }
 func (m *mayBeFnEmit) NoteReStepLanding(v core.Value, _ core.SrcPos) {
-	m.landed = append(m.landed, v.ID)
+	m.landed = append(m.landed, core.IDOf(&v))
 }
 func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, beneath bool, word core.Value) {
 	m.next = append(m.next, next)
@@ -56,7 +56,7 @@ func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*cor
 // modifier.
 func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-land"
+	core.SetID(&branch, "br-land")
 	e, rec, fin := mayBeFnEngine(t, []core.Value{branch}, map[string]bool{"br-land": true})
 	defer fin()
 	noteReStepLanding(e, 0)
@@ -129,7 +129,7 @@ func TestInDefGroup(t *testing.T) {
 // that place.
 func TestParenPlacedFnCarrierAdmitsMayBeFn(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-park"
+	core.SetID(&branch, "br-park")
 	e, _, fin := mayBeFnEngine(t, []core.Value{branch}, map[string]bool{"br-park": true})
 	defer fin()
 	if !parenPlacedFnCarrier(e, 0) || !e.Registry.Check.ParenPlacedFnIDs["br-park"] {
@@ -148,7 +148,7 @@ func TestParenPlacedFnCarrierAdmitsMayBeFn(t *testing.T) {
 // only with a candidate after it and nothing beneath).
 func TestNoteReStepLandingNotesNext(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-next"
+	core.SetID(&branch, "br-next")
 	maybe := map[string]bool{"br-next": true}
 	for _, tc := range []struct {
 		name    string

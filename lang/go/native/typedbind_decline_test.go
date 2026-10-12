@@ -22,7 +22,7 @@ func TestRecordTypedBindOrFailToCompileConcreteDecline(t *testing.T) {
 	defer r.Check.BeginCompilePass()()
 	dyn := core.NewCarrier(TAny)
 	SetDynamic(&dyn, true)
-	dyn.ID = ""
+	SetID(&dyn, "")
 	cons := core.NewCarrier(TAny)
 	out := recordTypedBindOrDeclineConcrete(r, func() core.TypedBindSpec {
 		return core.TypedBindSpec{Kind: core.TypedBindPredicate, Name: "zz", Describe: "Zz", Cons: &cons}

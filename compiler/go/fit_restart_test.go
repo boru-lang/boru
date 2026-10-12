@@ -79,7 +79,7 @@ func TestPlanFitRestarts(t *testing.T) {
 	es.rootBody[2] = gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 6)}), 5)
 	es.frames[0][0], es.frames[0][1] = es.frames[0][1], es.frames[0][0]
 	held := core.NewInteger(1)
-	held.ID = "held"
+	core.SetID(&held, "held")
 	es.producedBy["held"] = producer{seq: 2}
 	es.rootStmtStacks = map[core.SrcPos][]core.Value{gpos(3): {held}}
 	es.trapAt = 20
@@ -218,7 +218,7 @@ func TestRootResidualBeforeSpelled(t *testing.T) {
 func TestSplitLive(t *testing.T) {
 	es := NewEmitState()
 	live := core.NewInteger(4)
-	live.ID = "live"
+	core.SetID(&live, "live")
 	l := &core.DispatchLayout{Beneath: []core.Value{live}, Live: []int{0}}
 	if _, ok := es.splitLiveProducers(l); ok {
 		t.Error("a live value no event produced has no home")

@@ -236,8 +236,8 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	if def == nil {
 		t.Fatal("LookupTypeName(Foo) = nil")
 	}
-	if inst.Parent.ID != def.ID {
-		t.Errorf("instance tag %q is not the minted lattice node %q", inst.Parent.ID, def.ID)
+	if IDOf(inst.Parent) != IDOf(def) {
+		t.Errorf("instance tag %q is not the minted lattice node %q", IDOf(inst.Parent), IDOf(def))
 	}
 	if !inst.Is(def) {
 		t.Error("instance.Is(Foo lattice node) = false — class membership broken")
@@ -250,8 +250,8 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	// its own ID — a non-canonical stand-in that membership checks must
 	// not be routed through.
 	body, _ := r.TopTypeBody("Foo")
-	if inst.Parent.ID == body.ID {
-		t.Errorf("def-table body unexpectedly IS the lattice node (%q) — canonical-pointer docs need updating", body.ID)
+	if IDOf(inst.Parent) == IDOf(&body) {
+		t.Errorf("def-table body unexpectedly IS the lattice node (%q) — canonical-pointer docs need updating", IDOf(&body))
 	}
 }
 

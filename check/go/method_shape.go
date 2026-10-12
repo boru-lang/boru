@@ -121,10 +121,10 @@ func modifiedAsData(e *core.Engine, valIdx int) bool {
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if !core.IsDynamic(&v) || core.IsQuoted(&v) || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || core.IDOf(&v) == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
-	member, ok := r.Check.MethodShapeMember(v.ID)
+	member, ok := r.Check.MethodShapeMember(core.IDOf(&v))
 	if !ok {
 		return false
 	}
@@ -496,10 +496,10 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !core.IsDynamic(&v) || core.IsQuoted(&v) || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || core.IDOf(&v) == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
-	member, ok := es.MemberFnReadValue(v.ID)
+	member, ok := es.MemberFnReadValue(core.IDOf(&v))
 	if !ok {
 		return false
 	}
@@ -625,14 +625,14 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	r := e.Registry
 	v := e.Tape.At(valIdx)
 	gradual := !core.IsFnTypedCarrier(&v)
-	if core.IsQuoted(&v) || v.ID == "" || (gradual && !(v.Carrier && core.SigTypeMatches(&v, core.TFunction))) {
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || (gradual && !(v.Carrier && core.SigTypeMatches(&v, core.TFunction))) {
 		return false
 	}
-	name, read := es.DefReadName(v.ID)
+	name, read := es.DefReadName(core.IDOf(&v))
 	if !read {
 		return false
 	}
-	shape, claimed := r.Check.FnShapeOf(v.ID)
+	shape, claimed := r.Check.FnShapeOf(core.IDOf(&v))
 	if !claimed {
 		return false
 	}
@@ -670,7 +670,7 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 		}
 		return decline(why)
 	}
-	out := shapedReadOut(r, v.ID)
+	out := shapedReadOut(r, core.IDOf(&v))
 	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
 		if gradual {
 			return false
@@ -757,20 +757,20 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if core.IsQuoted(&v) || core.IsDynamic(&v) || v.ID == "" || !core.IsFnTypedCarrier(&v) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !core.IsFnTypedCarrier(&v) {
 		return false
 	}
-	if _, bound := core.CheckFnCarrierBoundName(r, v.ID); !bound {
+	if _, bound := core.CheckFnCarrierBoundName(r, core.IDOf(&v)); !bound {
 		return false
 	}
-	shape, claimed := r.Check.FnShapeOf(v.ID)
+	shape, claimed := r.Check.FnShapeOf(core.IDOf(&v))
 	if !claimed {
 		return false
 	}
 	if _, why := shapedFnReadWindow(e, valIdx, shape); why != "" {
 		return false
 	}
-	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, v.ID))
+	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, core.IDOf(&v)))
 	return true
 }
 
@@ -790,7 +790,7 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 // the types alone do not decide, a window the claim cannot fill.
 func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 	v := e.Tape.At(valIdx)
-	if core.IsQuoted(&v) || core.IsDynamic(&v) || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
 		return false
 	}
 	shape, ok := fnShapeTypedClaim(e.Registry, v)
@@ -819,7 +819,7 @@ func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 // the named shape node that types it. One signature of plain parameters,
 // or no claim.
 func fnShapeTypedClaim(r *core.Registry, v core.Value) (core.FnShape, bool) {
-	if s, ok := r.Check.FnShapeOf(v.ID); ok {
+	if s, ok := r.Check.FnShapeOf(core.IDOf(&v)); ok {
 		return s, s.ReturnsKnown
 	}
 	content, ok := core.TypeContentOf(*v.Parent)
@@ -908,7 +908,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		return
 	}
 	v := e.Tape.At(valIdx)
-	if core.IsQuoted(&v) || v.ID == "" || core.IsConcrete(&v) {
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || core.IsConcrete(&v) {
 		return
 	}
 	es.NoteDelivery(v)
@@ -935,7 +935,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
 	// the branch's own MayBeFn, which only a value arm sets, does not say so
 	// (NUR317).
-	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(core.IDOf(&v)) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
@@ -977,7 +977,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		// Elsewhere the residual arms model the collection (`1 m.f 7`), and
 		// a later dispatch that takes the value beside the one after it
 		// notes the landing then (NUR349).
-		noteStoodAside(r.Check, v.ID)
+		noteStoodAside(r.Check, core.IDOf(&v))
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())

@@ -168,9 +168,9 @@ func windowStopPrefix(es *EmitState, out []callWinOp, pw pendingWindow, args []c
 // holding the new value, where the interpreter's window holds the one
 // read).
 func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) (callWinOp, bool) {
-	if v.ID != "" {
+	if core.IDOf(&v) != "" {
 		for i := range args {
-			if args[i].ID == v.ID {
+			if core.IDOf(&args[i]) == core.IDOf(&v) {
 				return callWinOp{kind: WinArg, idx: i}, true
 			}
 		}
@@ -178,16 +178,16 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 	if windowScalar(v) || unexpandedToken(v) || core.IsPendingLiteral(v) {
 		return callWinOp{kind: WinValue, value: v}, true
 	}
-	if v.ID == "" {
+	if core.IDOf(&v) == "" {
 		return callWinOp{}, false
 	}
-	if pr, ok := es.producedBy[v.ID]; ok {
-		if len(es.units) > 1 && !es.producedInCurrentUnit(v.ID) {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
+		if len(es.units) > 1 && !es.producedInCurrentUnit(core.IDOf(&v)) {
 			return callWinOp{}, false
 		}
 		return callWinOp{kind: WinStack, op: EventOperand(pr.seq, pr.idx)}, true
 	}
-	if slot, ok := es.units[len(es.units)-1].localByID[v.ID]; ok && stable {
+	if slot, ok := es.units[len(es.units)-1].localByID[core.IDOf(&v)]; ok && stable {
 		return callWinOp{kind: WinLocal, idx: slot}, true
 	}
 	return callWinOp{}, false

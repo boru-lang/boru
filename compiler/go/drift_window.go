@@ -137,7 +137,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	ops = append(ops, ConstOperand(es.intern(wordTok)))
 	for p := topPos; p >= minPos; p-- {
 		v := e.Tape.At(p)
-		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicResult {
+		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicResult {
 			return false
 		}
 		op, ok := es.resolveOperand(v)
@@ -156,7 +156,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		// (ADR-011): the interpreter's read dispatches the fn, and so does the
 		// island's step of it — `each [def v (mk) v add 1] [1]` over a paren-
 		// placed fn islanded `( v )` and met the open paren (NUR363).
-		readDispatches := es.isDefRead(v) && !es.placedValRead(v.ID)
+		readDispatches := es.isDefRead(v) && !es.placedValRead(core.IDOf(&v))
 		if es.callResultPlaced(v) || (es.placedNotReStepped(v) && !readDispatches) {
 			ops = append(ops, ConstOperand(es.intern(core.NewCloseParen())), op, ConstOperand(es.intern(core.NewOpenParen())))
 			continue

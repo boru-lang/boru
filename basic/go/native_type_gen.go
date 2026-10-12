@@ -274,7 +274,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 
 	// Self head: always deferred — resolved when the enclosing schema
 	// instantiates (D5).
-	if IsBareTypeNode(&head) && head.ID == TSelf.ID {
+	if IsBareTypeNode(&head) && IDOf(&head) == IDOf(TSelf) {
 		return []Value{NewGenInstRef(GenInstRef{Head: head, Args: argv})}, nil
 	}
 
@@ -284,7 +284,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// `(Type of [Map])`). The bound must denote a single lattice node
 	// (a builtin or a NAMED user type, including named disjuncts);
 	// structural bodies have no single node to conform to.
-	if IsBareTypeNode(&head) && head.ID == TType.ID {
+	if IsBareTypeNode(&head) && IDOf(&head) == IDOf(TType) {
 		if len(argv) != 1 {
 			return nil, r.BoruError("type_error",
 				fmt.Sprintf("of: Type takes exactly one bound, got %d", len(argv)), "of")
@@ -349,7 +349,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// check mode (§7.6).
 	if r.Check.IsActive() {
 		for _, a := range argv {
-			if IsBareTypeNode(&a) && a.ID == TNever.ID {
+			if IsBareTypeNode(&a) && IDOf(&a) == IDOf(TNever) {
 				r.Check.AddDiagnostic(CheckDiagnostic{
 					Code:   "static_warning",
 					Detail: "of: instantiation with Never is value-uninhabited",

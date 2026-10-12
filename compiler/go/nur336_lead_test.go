@@ -262,7 +262,7 @@ func TestSeatStackType(t *testing.T) {
 	lw := &lowerer{es: es, promoted: map[int]int{}}
 	integer := core.NewTypeLiteral(core.TInteger)
 	srcs, _, _, ok := es.seatStack(lw, []core.Value{integer})
-	if !ok || len(srcs) != 1 || srcs[0].Kind != RestartType || srcs[0].Val.ID != integer.ID {
+	if !ok || len(srcs) != 1 || srcs[0].Kind != RestartType || core.IDOf(&srcs[0].Val) != core.IDOf(&integer) {
 		t.Errorf("the type node by its ID: %+v %v", srcs, ok)
 	}
 	dyn := integer

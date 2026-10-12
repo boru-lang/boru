@@ -16,7 +16,7 @@ func nur356LayoutEngine(t *testing.T, tape []Value) *Engine {
 }
 
 func TestDispatchLayoutWordReads(t *testing.T) {
-	three, five := withID(NewInteger(3)), withID(NewInteger(5))
+	three, five := withFreshID(NewInteger(3)), withFreshID(NewInteger(5))
 	l := NewWord("l")
 	e := nur356LayoutEngine(t, []Value{NewWord("ea"), three, l})
 	e.Registry.Defs.Push("l", five)
@@ -29,13 +29,13 @@ func TestDispatchLayoutWordReads(t *testing.T) {
 
 	for name, prep := range map[string]func(e *Engine) []Value{
 		"a word bound to a fn": func(e *Engine) []Value {
-			fn := withID(NewFunction(FnDefInfo{Name: "k", Signatures: []Signature{{}}}))
+			fn := withFreshID(NewFunction(FnDefInfo{Name: "k", Signatures: []Signature{{}}}))
 			e.Registry.Defs.Push("l", fn)
 			return []Value{three, fn}
 		},
 		"an unbound word": func(e *Engine) []Value { return []Value{three, five} },
 		"a gradual binding": func(e *Engine) []Value {
-			g := withID(NewDynamicCarrier(TInteger))
+			g := withFreshID(NewDynamicCarrier(TInteger))
 			e.Registry.Defs.Push("l", g)
 			return []Value{three, g}
 		},
@@ -67,7 +67,7 @@ func TestDispatchLayoutWordReads(t *testing.T) {
 }
 
 func TestDispatchLayoutWordPastReach(t *testing.T) {
-	three, list := withID(NewInteger(3)), withID(NewList([]Value{NewInteger(1)}))
+	three, list := withFreshID(NewInteger(3)), withFreshID(NewList([]Value{NewInteger(1)}))
 	m := NewWord("m")
 	e := nur356LayoutEngine(t, []Value{NewWord("ea"), three, list, m})
 	args := []Value{three, list}

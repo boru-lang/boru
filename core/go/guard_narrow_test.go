@@ -178,8 +178,8 @@ func TestApplyGuardNarrowing(t *testing.T) {
 	if !ok {
 		t.Fatal("narrowing must push a binding")
 	}
-	if narrowed.ID != src.ID {
-		t.Errorf("narrowed ID = %q, want the source's %q", narrowed.ID, src.ID)
+	if IDOf(&narrowed) != IDOf(&src) {
+		t.Errorf("narrowed ID = %q, want the source's %q", IDOf(&narrowed), IDOf(&src))
 	}
 	if narrowed.Parent == nil || !narrowed.Parent.ConformsTo(TInteger) {
 		t.Errorf("narrowed binding = %v, want Integer-conforming", narrowed)
@@ -188,7 +188,7 @@ func TestApplyGuardNarrowing(t *testing.T) {
 		t.Error("a dynamic binding must stay dynamic through the meet")
 	}
 	restore()
-	if v, _ := r.Defs.Top("x"); IsDynamic(&v) != IsDynamic(&src) || v.ID != src.ID {
+	if v, _ := r.Defs.Top("x"); IsDynamic(&v) != IsDynamic(&src) || IDOf(&v) != IDOf(&src) {
 		t.Error("restore must pop the narrowing")
 	}
 
@@ -307,8 +307,8 @@ func TestApplyComplementNarrowing(t *testing.T) {
 	r.Defs.Push("x", src)
 	restore := ApplyComplementNarrowing(r, cond)
 	narrowed, _ := r.Defs.Top("x")
-	if narrowed.ID != src.ID {
-		t.Errorf("complement ID = %q, want the source's %q", narrowed.ID, src.ID)
+	if IDOf(&narrowed) != IDOf(&src) {
+		t.Errorf("complement ID = %q, want the source's %q", IDOf(&narrowed), IDOf(&src))
 	}
 	if narrowed.Parent.ConformsTo(TInteger) {
 		t.Errorf("complement = %v, still admits Integer", narrowed)

@@ -65,8 +65,8 @@ func TestS6b1MintIDNilSeqAndPrefixes(t *testing.T) {
 	if bare.seq == nil {
 		t.Fatal("first mint on a bare table must initialise seq")
 	}
-	if !strings.HasPrefix(def.ID, "T_") {
-		t.Errorf("nil-parent mint ID = %q, want T_ prefix", def.ID)
+	if !strings.HasPrefix(IDOf(def), "T_") {
+		t.Errorf("nil-parent mint ID = %q, want T_ prefix", IDOf(def))
 	}
 
 	// mintID's category prefix reads parent.Root().Name. Every builtin
@@ -75,19 +75,19 @@ func TestS6b1MintIDNilSeqAndPrefixes(t *testing.T) {
 	// those directly.
 	dt := NewDynamicTypeTable()
 	s := dt.MintType("s6b1s", &Type{tmeta: &typeMeta{Name: "Scalar"}})
-	if !strings.HasPrefix(s.ID, "S_") {
-		t.Errorf("Scalar-rooted mint ID = %q, want S_ prefix", s.ID)
+	if !strings.HasPrefix(IDOf(s), "S_") {
+		t.Errorf("Scalar-rooted mint ID = %q, want S_ prefix", IDOf(s))
 	}
 	if s.Rank() != 21_000_000_000 {
 		t.Errorf("Scalar-rooted mint Rank = %d, want 21e9", s.Rank())
 	}
 	n := dt.MintType("s6b1n", &Type{tmeta: &typeMeta{Name: "Node"}})
-	if !strings.HasPrefix(n.ID, "N_") {
-		t.Errorf("Node-rooted mint ID = %q, want N_ prefix", n.ID)
+	if !strings.HasPrefix(IDOf(n), "N_") {
+		t.Errorf("Node-rooted mint ID = %q, want N_ prefix", IDOf(n))
 	}
 	w := dt.MintType("s6b1w", &Type{tmeta: &typeMeta{Name: "Word"}})
-	if !strings.HasPrefix(w.ID, "W_") {
-		t.Errorf("Word-rooted mint ID = %q, want W_ prefix", w.ID)
+	if !strings.HasPrefix(IDOf(w), "W_") {
+		t.Errorf("Word-rooted mint ID = %q, want W_ prefix", IDOf(w))
 	}
 
 	// A mint under the REAL Word branch takes the Word external band
@@ -293,16 +293,16 @@ func TestS6b1MintTestTypePrefixes(t *testing.T) {
 	})
 
 	s := MintTestType("S6b1PoolSc/S6b1Kid")
-	if !strings.HasPrefix(s.ID, "S_") {
-		t.Errorf("Scalar test mint ID = %q, want S_ prefix", s.ID)
+	if !strings.HasPrefix(IDOf(s), "S_") {
+		t.Errorf("Scalar test mint ID = %q, want S_ prefix", IDOf(s))
 	}
 	n := MintTestType("S6b1PoolNd/S6b1Kid")
-	if !strings.HasPrefix(n.ID, "N_") {
-		t.Errorf("Node test mint ID = %q, want N_ prefix", n.ID)
+	if !strings.HasPrefix(IDOf(n), "N_") {
+		t.Errorf("Node test mint ID = %q, want N_ prefix", IDOf(n))
 	}
 	w := MintTestType("S6b1PoolWd/S6b1Kid")
-	if !strings.HasPrefix(w.ID, "W_") {
-		t.Errorf("Word test mint ID = %q, want W_ prefix", w.ID)
+	if !strings.HasPrefix(IDOf(w), "W_") {
+		t.Errorf("Word test mint ID = %q, want W_ prefix", IDOf(w))
 	}
 }
 
@@ -341,7 +341,7 @@ func TestS6b1BuildTypeNamesSkipsNilEntry(t *testing.T) {
 }
 
 func TestS6b1TypeNameByIDNotUserFacing(t *testing.T) {
-	fake := &Type{ID: "S6b1FakeByID", tmeta: &typeMeta{Name: "S6b1NotInByName"}}
+	fake := addrOf(withID(Type{tmeta: &typeMeta{Name: "S6b1NotInByName"}}, "S6b1FakeByID"))
 	Builtin.byID["S6b1FakeByID"] = fake
 	t.Cleanup(func() { delete(Builtin.byID, "S6b1FakeByID") })
 	if got := TypeNameByID("S6b1FakeByID"); got != "" {
@@ -427,9 +427,9 @@ func TestEqualIntervalLabelInvariant(t *testing.T) {
 		}
 		labelled++
 		if prev, dup := seen[in]; dup {
-			t.Errorf("In=%d shared by two nodes: %q and %q", in, prev, n.ID)
+			t.Errorf("In=%d shared by two nodes: %q and %q", in, prev, IDOf(n))
 		}
-		seen[in] = n.ID
+		seen[in] = IDOf(n)
 	}
 	if labelled == 0 {
 		t.Fatal("no labelled builtin nodes — labelIntervals did not run")
@@ -445,7 +445,7 @@ func TestEqualIntervalLabelInvariant(t *testing.T) {
 		if a.tmeta != nil && a.tmeta == b.tmeta {
 			return true
 		}
-		return a.ID != "" && a.ID == b.ID
+		return IDOf(a) != "" && IDOf(a) == IDOf(b)
 	}
 	sawMismatchPair := false
 	for _, a := range nodes {
@@ -453,7 +453,7 @@ func TestEqualIntervalLabelInvariant(t *testing.T) {
 			want := idIdentity(a, b)
 			if got := a.Equal(b); got != want {
 				t.Errorf("Equal(%q,%q)=%v, ID-identity=%v (In %d vs %d)",
-					a.ID, b.ID, got, want, a.In(), b.In())
+					IDOf(a), IDOf(b), got, want, a.In(), b.In())
 			}
 			if !want {
 				sawMismatchPair = true

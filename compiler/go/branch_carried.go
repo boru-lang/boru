@@ -119,7 +119,7 @@ func (es *EmitState) carryBranchJoins(ev *EmitEvent, b core.BranchRecord) {
 }
 
 func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emitUnit, j core.BranchJoin) {
-	if j.Name == "" || j.Joined.ID == "" || core.IsCapitalisedName(j.Name) {
+	if j.Name == "" || core.IDOf(&j.Joined) == "" || core.IsCapitalisedName(j.Name) {
 		return
 	}
 	if core.IsFnValueResidual(j.Joined) || (j.HasPre && core.IsFnValueResidual(j.Pre)) {
@@ -183,7 +183,7 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 	// no dynamic-scope commitment is made for it.
 	var seed *EmitOperand
 	if j.HasPre && !j.Taken {
-		if len(es.units) > 1 && (u.enclosingBindIDs[j.Pre.ID] || u.enclosingIDs[j.Pre.ID]) {
+		if len(es.units) > 1 && (u.enclosingBindIDs[core.IDOf(&j.Pre)] || u.enclosingIDs[core.IDOf(&j.Pre)]) {
 			return
 		}
 		had := es.dynScopeNames[j.Name]
@@ -224,12 +224,12 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 	// dispatch reads keeps its registry twin (routedBindsDyn), so the
 	// registry is current on the path that ran the arm and empty on the
 	// path that did not — the interpreter's own state on both.
-	u.localByID[j.Joined.ID] = slot
+	u.localByID[core.IDOf(&j.Joined)] = slot
 	// Bound-checked when some path to the merge may leave the slot never
 	// stored: no pre binding and not every arm binding (a taken arm always
 	// binds), or a pre binding that is itself possibly unbound.
 	bothBind := b.HasElse && j.ThenBinds && j.ElseBinds
-	unbound := !j.Taken && !bothBind && (!j.HasPre || u.boundLocals[j.Pre.ID] != "")
+	unbound := !j.Taken && !bothBind && (!j.HasPre || u.boundLocals[core.IDOf(&j.Pre)] != "")
 	if j.HasPre && bothBind {
 		unbound = false
 	}
@@ -237,7 +237,7 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 		if u.boundLocals == nil {
 			u.boundLocals = map[string]string{}
 		}
-		u.boundLocals[j.Joined.ID] = j.Name
+		u.boundLocals[core.IDOf(&j.Joined)] = j.Name
 		es.noteCondBound(j.Name)
 	}
 	// The residual-order hazard (unit_memo.go): a fragment that read the
@@ -249,7 +249,7 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 	// storing arm; a read of a pre binding with its own home re-pushes that
 	// home and is untouched by the stores. RecordDynBind marked the
 	// name-keyed twin at each def.
-	if !j.HasPre || u.localByID[j.Pre.ID] != slot {
+	if !j.HasPre || u.localByID[core.IDOf(&j.Pre)] != slot {
 		return
 	}
 	fids := append([]int{0}, es.fragIDs...)

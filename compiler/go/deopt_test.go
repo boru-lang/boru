@@ -37,7 +37,7 @@ func deoptUnit(t *testing.T, tail []core.Value, readCol int, rest ...EmitEvent) 
 	u := es.units[len(es.units)-1]
 	rec := es.fnRecs[unit]
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[j.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
 	events := []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0), ConstOperand(es.internUnpooled(core.NewString("f")))}}},
 		{seq: 2, kind: evDynBind, dyn: &emitDynBind{name: "j", srcSeq: 1, pos: deoptAt(28)}},
@@ -46,7 +46,7 @@ func deoptUnit(t *testing.T, tail []core.Value, readCol int, rest ...EmitEvent) 
 	body := []core.Value{deoptTok("def", 24), deoptTok("j", 28), deoptLit(core.NewList([]core.Value{deoptTok("m", 31), deoptTok("get", 33)}), 30)}
 	es.SetUnitBody(unit, append(body, tail...))
 	es.NoteWordRead(j, "j", deoptAt(readCol))
-	es.NoteLocalRead(j.ID, deoptAt(readCol))
+	es.NoteLocalRead(core.IDOf(&j), deoptAt(readCol))
 	return es, u, rec, j
 }
 
@@ -409,8 +409,8 @@ func TestPlanDeoptsAccounting(t *testing.T) {
 	es, u, rec, j := deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("j", 52), deoptTok("add", 54)}, 43,
 		deoptCall(3, "typeof", 45, EventOperand(1, 0)),
 		deoptCall(4, "add", 54, localOperand(1), EventOperand(3, 0)))
-	u.localByID[j.ID] = 1
-	es.NoteLocalRead(j.ID, deoptAt(52))
+	u.localByID[core.IDOf(&j)] = 1
+	es.NoteLocalRead(core.IDOf(&j), deoptAt(52))
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 1 {
 		t.Errorf("a def-bound local read after the start is not deferred: %+v", rec.deopts)
@@ -419,24 +419,24 @@ func TestPlanDeoptsAccounting(t *testing.T) {
 	// add`): read after the start, nothing is deferred; read before it too
 	// (`… y  j typeof  y add`), the compiled stack lacks it — decline.
 	five := deoptLit(core.NewInteger(5), 49)
-	five.ID = "lit-five"
+	core.SetID(&five, "lit-five")
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("def", 43), deoptTok("y", 47), five, deoptTok("j", 52), deoptTok("typeof", 54), deoptTok("y", 61), deoptTok("add", 63)}, 52,
 		EmitEvent{seq: 3, kind: evDynBind, dyn: &emitDynBind{name: "y", srcSeq: -1, val: five, pos: deoptAt(47)}},
 		deoptCall(4, "typeof", 54, EventOperand(1, 0)))
 	rec.frag.events = append(rec.frag.events, deoptCall(5, "add", 63, ConstOperand(es.internUnpooled(five)), EventOperand(4, 0)))
-	es.NoteLocalRead(five.ID, deoptAt(61))
+	es.NoteLocalRead(core.IDOf(&five), deoptAt(61))
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 1 || !rec.deopts[0].atPush {
 		t.Errorf("a def's literal read after the start is not deferred: %+v", rec.deopts)
 	}
 	five = deoptLit(core.NewInteger(5), 49)
-	five.ID = "lit-five"
+	core.SetID(&five, "lit-five")
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("def", 43), deoptTok("y", 47), five, deoptTok("y", 51), deoptTok("j", 53), deoptTok("typeof", 55), deoptTok("y", 62), deoptTok("add", 64)}, 53,
 		EmitEvent{seq: 3, kind: evDynBind, dyn: &emitDynBind{name: "y", srcSeq: -1, val: five, pos: deoptAt(47)}},
 		deoptCall(4, "typeof", 55, EventOperand(1, 0)))
 	rec.frag.events = append(rec.frag.events, deoptCall(5, "add", 64, ConstOperand(es.internUnpooled(five)), EventOperand(4, 0)))
-	es.NoteLocalRead(five.ID, deoptAt(51))
-	es.NoteLocalRead(five.ID, deoptAt(62))
+	es.NoteLocalRead(core.IDOf(&five), deoptAt(51))
+	es.NoteLocalRead(core.IDOf(&five), deoptAt(62))
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 0 {
 		t.Errorf("a def's literal read before the start declines: %+v", rec.deopts)
@@ -513,9 +513,9 @@ func TestPlanDeoptsAccounting(t *testing.T) {
 	// A def of a literal consumed its literal (`def y 5  j typeof  5 add`):
 	// the later `5` is the pooled const's own token, pushed after the start.
 	five = deoptLit(core.NewInteger(5), 49)
-	five.ID = "lit-five"
+	core.SetID(&five, "lit-five")
 	five2 := deoptLit(core.NewInteger(5), 61)
-	five2.ID = "lit-five-2"
+	core.SetID(&five2, "lit-five-2")
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("def", 43), deoptTok("y", 47), five, deoptTok("j", 52), deoptTok("typeof", 54), five2, deoptTok("add", 63)}, 52,
 		EmitEvent{seq: 3, kind: evDynBind, dyn: &emitDynBind{name: "y", srcSeq: -1, val: five, pos: deoptAt(47)}},
 		deoptCall(4, "typeof", 54, EventOperand(1, 0)))
@@ -649,7 +649,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	}
 	parent := es.fnRecs[parentUnit]
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[j.ID] = producer{seq: 1}
+	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
 	// The parent's root frame so far: `def j (m get "f")`.
 	es.frames[parent.rootFrame] = []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0)}}},
@@ -667,7 +667,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	rec.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
 	es.SetUnitBody(childUnit, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
 	es.NoteWordRead(j, "j", deoptAt(45))
-	es.NoteLocalRead(j.ID, deoptAt(45))
+	es.NoteLocalRead(core.IDOf(&j), deoptAt(45))
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 1 || rec.deopts[0].slot != 0 || !rec.deopts[0].atPush || !parent.deoptNames["j"] || len(parent.deoptChildren) != 1 {
 		t.Errorf("a captured read plans on its slot and seeds the parent: %+v parent=%v children=%v", rec.deopts, parent.deoptNames, parent.deoptChildren)
@@ -695,7 +695,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	p3, _, _ := es3.StartFnCompile("k", "h", nil, []core.Value{m3}, []*core.Type{core.TAny}, []string{"m"}, nil, false, core.SrcPos{})
 	parent3 := es3.fnRecs[p3]
 	j3 := core.NewDynamicCarrier(core.TAny)
-	es3.producedBy[j3.ID] = producer{seq: 1}
+	es3.producedBy[core.IDOf(&j3)] = producer{seq: 1}
 	es3.frames[parent3.rootFrame] = []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0)}}},
 		{seq: 2, kind: evDynBind, dyn: &emitDynBind{name: "j", srcSeq: 1, pos: deoptAt(28)}},
@@ -710,7 +710,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	rec3.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
 	es3.SetUnitBody(c3, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
 	es3.NoteWordRead(j3, "j", deoptAt(45))
-	es3.NoteLocalRead(j3.ID, deoptAt(45))
+	es3.NoteLocalRead(core.IDOf(&j3), deoptAt(45))
 	es3.planDeopts(u3, rec3)
 	if len(rec3.deopts) != 0 || parent3.deoptNames["j"] {
 		t.Errorf("a rebind in the parent's open arm declines: %+v parent=%v", rec3.deopts, parent3.deoptNames)
@@ -727,7 +727,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	rec2.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
 	es2.SetUnitBody(top, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
 	es2.NoteWordRead(j, "j", deoptAt(45))
-	es2.NoteLocalRead(j.ID, deoptAt(45))
+	es2.NoteLocalRead(core.IDOf(&j), deoptAt(45))
 	es2.planDeopts(u2, rec2)
 	if len(rec2.deopts) != 1 || !rec2.deopts[0].install || !rec2.rootCaptures {
 		t.Errorf("a code body at the root keeps its installing point: %+v", rec2.deopts)
@@ -741,7 +741,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	rec4.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
 	es4.SetUnitBody(top4, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
 	es4.NoteWordRead(j, "j", deoptAt(45))
-	es4.NoteLocalRead(j.ID, deoptAt(45))
+	es4.NoteLocalRead(core.IDOf(&j), deoptAt(45))
 	es4.planDeopts(u4, rec4)
 	if len(rec4.deopts) != 0 {
 		t.Errorf("a root binding made in an arm is not the capture's: %+v", rec4.deopts)

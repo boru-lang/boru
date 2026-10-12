@@ -136,7 +136,7 @@ func TestFnMemberReads(t *testing.T) {
 	om.Set("c", fnv)
 	om.Set("n", NewInteger(1))
 	mp, lst := NewMap(om), NewList([]Value{NewInteger(0), fnv})
-	out := func() []Value { return []Value{withID(NewCarrier(TAny))} }
+	out := func() []Value { return []Value{withFreshID(NewCarrier(TAny))} }
 	for _, tc := range []struct {
 		name string
 		word string
@@ -158,7 +158,7 @@ func TestFnMemberReads(t *testing.T) {
 		c.FnMemberReads = nil
 		res := out()
 		c.NoteFnMemberRead(tc.word, tc.args, res)
-		if _, ok := c.FnMemberRead(res[0].ID); ok != tc.want {
+		if _, ok := c.FnMemberRead(IDOf(&res[0])); ok != tc.want {
 			t.Errorf("%s: tagged=%v, want %v", tc.name, ok, tc.want)
 		}
 	}

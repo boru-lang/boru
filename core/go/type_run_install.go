@@ -91,7 +91,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 // forwardType forwards the pass's node to the run's. A node forwarded to
 // itself (the run re-installed the very node) is left alone.
 func forwardType(node, target *Type) {
-	if node == target || node.ID == target.ID {
+	if node == target || IDOf(node) == IDOf(target) {
 		return
 	}
 	m := node.ensureTMeta()

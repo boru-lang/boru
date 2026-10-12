@@ -21,7 +21,7 @@ func TestRecorderAccessorFallback(t *testing.T) {
 // --- direct-call helpers -------------------------------------------------
 
 func fnVal(sigs ...Signature) Value {
-	return Value{ID: GenerateID(IDPrefixForType(TFunction)), Parent: TFunction, Data: &FnDefInfo{Signatures: sigs}}
+	return withID(Value{Parent: TFunction, Data: &FnDefInfo{Signatures: sigs}}, GenerateID(IDPrefixForType(TFunction)))
 }
 
 // zeroArgFn is a genuine 0-param fn value (two 0-arg sigs → real + phantom),

@@ -54,7 +54,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		e.Tape = NewTape([]Value{fn, dyn, five, NewWord("add")}, StackHeadroom)
 		e.Pointer = 3
 		e.noteCollectionHazards(nil, []int{2})
-		if !es.marked[fn.ID] || !es.marked[dyn.ID] {
+		if !es.marked[IDOf(&fn)] || !es.marked[IDOf(&dyn)] {
 			t.Errorf("both fn-shaped values below the collected index must be marked: %v", es.marked)
 		}
 	})
@@ -119,7 +119,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		// CARRIER (a fn word's read, dispatched where it stands at run time)
 		// stays marked.
 		parked := NewFunction(FnDefInfo{Anonymous: true, Signatures: []FnSig{{Params: []FnParam{{Type: TInteger}}, Returns: []*Type{TAny}, BarrierPos: 1}}})
-		parked.ID = "PARKED"
+		SetID(&parked, "PARKED")
 		word := WithPosAt(NewWord("print"), SrcPos{Row: 1, Col: 9})
 		lay := func(e *Engine, n int) {
 			e.Tape = NewTape([]Value{parked, fn, five, word}, StackHeadroom)
@@ -133,7 +133,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 			t.Fatal("one operand written after the word: forward-only for a one-operand window only")
 		}
 		e.noteCollectionHazards(nil, []int{2})
-		if es.marked[parked.ID] || !es.marked[fn.ID] {
+		if es.marked[IDOf(&parked)] || !es.marked[IDOf(&fn)] {
 			t.Errorf("forward-only: the parked fn passes, the carrier stays marked: %v", es.marked)
 		}
 		// NEGATIVE: a stack operand beneath the forward one marks both.
@@ -141,7 +141,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		e = hazardEngine(t, es)
 		lay(e, 1)
 		e.noteCollectionHazards(nil, []int{1, 2})
-		if !es.marked[parked.ID] {
+		if !es.marked[IDOf(&parked)] {
 			t.Errorf("a stack collection past the parked fn marks it: %v", es.marked)
 		}
 		// NEGATIVE: a stale record (another word's position) is no split.
@@ -150,7 +150,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		lay(e, 1)
 		e.fwdSplitPos = SrcPos{Row: 1, Col: 2}
 		e.noteCollectionHazards(nil, []int{2})
-		if !es.marked[parked.ID] {
+		if !es.marked[IDOf(&parked)] {
 			t.Errorf("a record for another word proves nothing: %v", es.marked)
 		}
 		// NEGATIVE: a positionless word's record is never trusted.
@@ -160,7 +160,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		e.Tape.Set(3, NewWord("print"))
 		e.fwdSplitPos = SrcPos{}
 		e.noteCollectionHazards(nil, []int{2})
-		if !es.marked[parked.ID] {
+		if !es.marked[IDOf(&parked)] {
 			t.Errorf("a positionless record proves nothing: %v", es.marked)
 		}
 	})
@@ -187,7 +187,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		}
 		plain := &Signature{Callable: &CallableSpec{}}
 		e.noteCollectionHazards(plain, []int{1})
-		if !es.marked[fn.ID] {
+		if !es.marked[IDOf(&fn)] {
 			t.Errorf("an ordinary collection past the lead marks it: %v", es.marked)
 		}
 	})
@@ -198,7 +198,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		e.Tape = NewTape([]Value{other, fn, five, NewWord("depth")}, StackHeadroom)
 		e.Pointer = 3
 		e.noteCollectionHazardsBelow(1, 3, false)
-		if es.marked[other.ID] || !es.marked[fn.ID] {
+		if es.marked[IDOf(&other)] || !es.marked[IDOf(&fn)] {
 			t.Errorf("only values at or above the floor are in scope: %v", es.marked)
 		}
 	})
@@ -215,7 +215,7 @@ func TestParenLeadFnApplyIdxDeclinesAHazardLead(t *testing.T) {
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
 		t.Fatalf("an unmarked lead admits the window, got %d", got)
 	}
-	es.marked[lead.ID] = true
+	es.marked[IDOf(&lead)] = true
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
 		t.Errorf("a hazard-marked lead must decline the window, got %d", got)
 	}
@@ -237,7 +237,7 @@ func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
 		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 9)), NewWord("size")}, StackHeadroom)
 		e.Pointer = 2
 		e.noteCollectionHazards(nil, []int{1})
-		if es.marked[dyn.ID] {
+		if es.marked[IDOf(&dyn)] {
 			t.Error("a value past the statement end is no argument of the earlier lead")
 		}
 	})
@@ -248,7 +248,7 @@ func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
 		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 3)), NewWord("size")}, StackHeadroom)
 		e.Pointer = 2
 		e.noteCollectionHazards(nil, []int{1})
-		if !es.marked[dyn.ID] {
+		if !es.marked[IDOf(&dyn)] {
 			t.Error("a value before the end is the lead's own argument: marked")
 		}
 	})
@@ -257,11 +257,11 @@ func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
 		e := hazardEngine(t, es)
 		e.stmtEnds = []SrcPos{at(1, 5)}
 		s := NewString("s")
-		s.ID = "bound-s"
+		SetID(&s, "bound-s")
 		e.Tape = NewTape([]Value{dyn, s, NewWord("size")}, StackHeadroom)
 		e.Pointer = 2
 		e.noteCollectionHazards(nil, []int{1})
-		if !es.marked[dyn.ID] {
+		if !es.marked[IDOf(&dyn)] {
 			t.Error("no read recorded: nothing is proven, the lead is marked")
 		}
 		es.marked = map[string]bool{}
@@ -269,12 +269,12 @@ func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
 		e.noteDefReadPos("", at(1, 9))
 		e.noteDefReadPos("bound-s", SrcPos{})
 		e.noteCollectionHazards(nil, []int{1})
-		if es.marked[dyn.ID] {
+		if es.marked[IDOf(&dyn)] {
 			t.Error("every read past the end: unmarked")
 		}
 		e.noteDefReadPos("bound-s", at(1, 3))
 		e.noteCollectionHazards(nil, []int{1})
-		if !es.marked[dyn.ID] {
+		if !es.marked[IDOf(&dyn)] {
 			t.Error("one read before the end proves nothing: marked")
 		}
 	})

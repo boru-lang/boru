@@ -110,7 +110,7 @@ func altSubtypes(alt, target native.Value) bool {
 		aNode := &alt
 		tNode := &target
 		for d := aNode; d != nil; d = d.Parent {
-			if d.ID != "" && tNode.ID != "" && d.ID == tNode.ID {
+			if core.IDOf(d) != "" && core.IDOf(tNode) != "" && core.IDOf(d) == core.IDOf(tNode) {
 				return true
 			}
 			if d == tNode { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
@@ -634,13 +634,13 @@ var typeModuleNatives = []native.NativeFunc{
 				bNode := latticeNode(b)
 				seen := map[string]*native.Type{}
 				for d := aNode; d != nil; d = d.Parent {
-					if d.ID != "" {
-						seen[d.ID] = d
+					if core.IDOf(d) != "" {
+						seen[core.IDOf(d)] = d
 					}
 				}
 				for d := bNode; d != nil; d = d.Parent {
-					if d.ID != "" {
-						if hit, ok := seen[d.ID]; ok {
+					if core.IDOf(d) != "" {
+						if hit, ok := seen[core.IDOf(d)]; ok {
 							return []native.Value{native.NewTypeLiteral(hit)}, nil
 						}
 					}

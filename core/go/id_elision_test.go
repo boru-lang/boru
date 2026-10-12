@@ -13,14 +13,14 @@ func TestIDElisionMatrix(t *testing.T) {
 	if CheckPassActive() {
 		t.Fatal("no pass should be live at test entry")
 	}
-	if v := NewInteger(7); v.ID != "" {
-		t.Errorf("runtime concrete mint carries ID %q, want elided", v.ID)
+	if v := NewInteger(7); IDOf(&v) != "" {
+		t.Errorf("runtime concrete mint carries ID %q, want elided", IDOf(&v))
 	}
 	// Bare lattice values always mint: type literal and carrier.
-	if v := NewTypeLiteral(TInteger); v.ID == "" {
+	if v := NewTypeLiteral(TInteger); IDOf(&v) == "" {
 		t.Error("type literal must always carry an ID")
 	}
-	if v := NewCarrier(TList); v.ID == "" {
+	if v := NewCarrier(TList); IDOf(&v) == "" {
 		t.Error("carrier must always carry an ID (RegisterLocal keys on it)")
 	}
 
@@ -30,40 +30,40 @@ func TestIDElisionMatrix(t *testing.T) {
 	if !CheckPassActive() {
 		t.Error("CheckPassActive must report a live pass")
 	}
-	if v := NewInteger(7); v.ID == "" {
+	if v := NewInteger(7); IDOf(&v) == "" {
 		t.Error("mint inside a pass must carry an ID")
 	}
 	// Nested pass: still minted after the INNER done.
 	c2 := &CheckState{}
 	done2 := c2.Begin()
 	done2()
-	if v := NewInteger(7); v.ID == "" {
+	if v := NewInteger(7); IDOf(&v) == "" {
 		t.Error("outer pass still live — mint must carry an ID")
 	}
 	// done called TWICE must not drive the counter negative: after the
 	// single outer done the counter is zero…
 	done2()
 	done()
-	if v := NewInteger(7); v.ID != "" {
-		t.Errorf("all passes ended — mint carries ID %q, want elided", v.ID)
+	if v := NewInteger(7); IDOf(&v) != "" {
+		t.Errorf("all passes ended — mint carries ID %q, want elided", IDOf(&v))
 	}
 	// …and a later legitimate pass still mints (the double-dec guard).
 	c3 := &CheckState{}
 	done3 := c3.Begin()
-	if v := NewInteger(7); v.ID == "" {
+	if v := NewInteger(7); IDOf(&v) == "" {
 		t.Error("later pass after a double-done must still mint IDs")
 	}
 	done3()
 
 	// Explicit mint scope (the parser's arm).
 	end := BeginIDMintScope()
-	if v := NewString("x"); v.ID == "" {
+	if v := NewString("x"); IDOf(&v) == "" {
 		t.Error("mint scope must arm ID minting")
 	}
 	end()
 	end() // second call is a no-op
-	if v := NewString("x"); v.ID != "" {
-		t.Errorf("after scope end mint carries ID %q, want elided", v.ID)
+	if v := NewString("x"); IDOf(&v) != "" {
+		t.Errorf("after scope end mint carries ID %q, want elided", IDOf(&v))
 	}
 	// nil CheckState: Begin is a no-op closure, counter untouched.
 	var nilC *CheckState

@@ -50,17 +50,17 @@ func covRegistry(t *testing.T, extra func(*core.Registry)) *core.Registry {
 
 func ffsConst(id string, n int64) core.Value {
 	v := core.NewInteger(n)
-	v.ID = id
+	core.SetID(&v, id)
 	return v
 }
 
 func fnVal(sigs ...core.Signature) core.Value {
-	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}
+	return withID(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 }
 
 // instanceVal builds a flat class instance whose fields map is `om`.
 func instanceVal(om *core.OrderedMap) core.Value {
-	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TAny)), Parent: core.TAny, Data: core.ClassInstanceInfo{Fields: om}}
+	return withID(core.Value{Parent: core.TAny, Data: core.ClassInstanceInfo{Fields: om}}, core.GenerateID(core.IDPrefixForType(core.TAny)))
 }
 
 func mapOf2(key string, v core.Value) *core.OrderedMap {

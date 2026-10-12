@@ -220,7 +220,7 @@ func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p co
 	var found *emitDynBind
 	for _, te := range tree {
 		d := te.ev.dyn
-		if te.ev.kind != evDynBind || d == nil || d.val.ID != id || d.name != name {
+		if te.ev.kind != evDynBind || d == nil || core.IDOf(&d.val) != id || d.name != name {
 			continue
 		}
 		if found != nil {

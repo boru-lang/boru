@@ -133,13 +133,13 @@ func TestNurRunPredMemoKey(t *testing.T) {
 	cand := NewInteger(4)
 
 	withID := NewFunction(FnDefInfo{Signatures: []Signature{{Impl: Boru([]Value{NewBoolean(true)})}}})
-	withID.ID = "nrc-pred-id"
+	SetID(&withID, "nrc-pred-id")
 	if got := predMemoKey(withID, cand); !strings.HasPrefix(got, "nrc-pred-id|") {
 		t.Fatalf("an ID'd constraint keys on its ID: %q", got)
 	}
 
 	boru := NewFunction(FnDefInfo{Signatures: []Signature{{Impl: Boru([]Value{NewBoolean(true)})}}})
-	boru.ID = ""
+	SetID(&boru, "")
 	if got := predMemoKey(boru, cand); !strings.HasPrefix(got, "impl:") {
 		t.Fatalf("an ID-less boru predicate keys on its impl: %q", got)
 	}
@@ -147,12 +147,12 @@ func TestNurRunPredMemoKey(t *testing.T) {
 	native := NewFunction(FnDefInfo{Signatures: []Signature{{Impl: Go(func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
 		return nil, nil
 	})}}})
-	native.ID = ""
+	SetID(&native, "")
 	if got := predMemoKey(native, cand); got != "" {
 		t.Fatalf("an ID-less native predicate cannot be keyed: %q", got)
 	}
 	bare := NewFunction(FnDefInfo{})
-	bare.ID = ""
+	SetID(&bare, "")
 	if got := predMemoKey(bare, cand); got != "" {
 		t.Fatalf("a signature-less predicate cannot be keyed: %q", got)
 	}

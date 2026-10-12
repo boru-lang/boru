@@ -643,7 +643,7 @@ func TestS5VIsUnboundSlot(t *testing.T) {
 		"an integer":     NewInteger(1),
 		"a carrier":      NewCarrier(TInteger),
 		"a type node":    NewTypeLiteral(TInteger),
-		"an identity":    {ID: "slot-1"},
+		"an identity":    withID(Value{}, "slot-1"),
 		"a dynamic bit":  func() Value { var v Value; SetDynamic(&v, true); return v }(),
 		"a carrier bit":  {Carrier: true},
 		"a bare payload": {Data: IntPayload{N: 1}},

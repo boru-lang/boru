@@ -58,7 +58,7 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 	if _, hit := CheckFnCarrierBind(r, name); hit {
 		return false
 	}
-	if id := r.Check.SpecUndefCarriers[name]; id != "" && v.ID == id {
+	if id := r.Check.SpecUndefCarriers[name]; id != "" && IDOf(&v) == id {
 		return true
 	}
 	noteRebind(r, name)
@@ -70,7 +70,7 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 	if r.Check.SpecUndefCarriers == nil {
 		r.Check.SpecUndefCarriers = map[string]string{}
 	}
-	r.Check.SpecUndefCarriers[name] = c.ID
+	r.Check.SpecUndefCarriers[name] = IDOf(&c)
 	r.Check.SpecUndefGen++
 	return true
 }

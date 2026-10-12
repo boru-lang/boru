@@ -292,7 +292,7 @@ func TestZZCoverParenFnCollapseTrailing(t *testing.T) {
 		t.Fatalf("tape len = %d, want 4", e.Tape.Len())
 	}
 	out := e.Tape.At(2)
-	if !out.Carrier || !core.IsDynamic(&out) || !out.Parent.Equal(core.TAny) || out.ID == "" {
+	if !out.Carrier || !core.IsDynamic(&out) || !out.Parent.Equal(core.TAny) || core.IDOf(&out) == "" {
 		t.Errorf("collapsed window must seat one dynamic Any carrier with an ID, got %#v", out)
 	}
 	if !core.IsMark(e.Tape.Ref(1)) {
@@ -498,7 +498,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 
 func TestZZCoverStrandedMemberFn(t *testing.T) {
 	memfn := core.NewDynamicCarrier(core.TAny)
-	memfn.ID = "zzmemfn1"
+	core.SetID(&memfn, "zzmemfn1")
 
 	// The hazard: a member-fn read directly beneath the consumed operand
 	// (a structural Mark between them is skipped) — decline.
@@ -1075,11 +1075,11 @@ func TestZZCoverSurfaceShapeDeclinesNonFnsigShape(t *testing.T) {
 // inside a LIVE reach group, where execFnDefLiteral defers rather than calls.
 func TestZZCoverReStepLandingGates(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland2"
+	core.SetID(&v, "zzland2")
 	quoted := v
 	core.SetQuoted(&quoted, true)
 	noID := core.NewDynamicCarrier(core.TAny)
-	noID.ID = ""
+	core.SetID(&noID, "")
 	reachOpen := core.NewOpenParen()
 	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {
@@ -1117,7 +1117,7 @@ func TestZZCoverReStepLandingGates(t *testing.T) {
 // landing calls the one read written specifically not to be one.
 func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland4"
+	core.SetID(&v, "zzland4")
 	mod := core.Value{Parent: core.TDispatchMod, Data: core.DispatchModInfo{}}
 	e, _, fin := zzDriftEng(t, []core.Value{v, mod}, 0)
 	defer fin()
@@ -1131,7 +1131,7 @@ func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
 // user's own paren — whose call IS the user's — still lands.
 func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland5"
+	core.SetID(&v, "zzland5")
 	reachOpen := core.NewOpenParen()
 	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {

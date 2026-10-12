@@ -54,13 +54,13 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 	}
 	rec.applyOK = true
 	fresh, ok := recordPendingClosureApply(rec, nil, args, carrierOut, core.SrcPos{})
-	if !ok || !fresh.Carrier || fresh.Parent != core.TInteger || fresh.ID == carrierOut[0].ID || core.IsDynamic(&fresh) {
+	if !ok || !fresh.Carrier || fresh.Parent != core.TInteger || core.IDOf(&fresh) == core.IDOf(&carrierOut[0]) || core.IsDynamic(&fresh) {
 		t.Errorf("a carrier out must freshen to a strict carrier of its type: %+v", fresh)
 	}
 	if len(rec.window) != 2 || !core.ValuesEqual(rec.window[0], args[1]) || !core.ValuesEqual(rec.window[1], args[0]) {
 		t.Errorf("the window must be the args in tape order (sig[0] on top): %v", rec.window)
 	}
-	if rec.out.ID != fresh.ID {
+	if core.IDOf(&rec.out) != core.IDOf(&fresh) {
 		t.Error("the recorder must see the freshened out")
 	}
 	dyn := core.NewCarrier(core.TAny)
@@ -73,7 +73,7 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 	}
 	lam := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	fresh, ok = recordPendingClosureApply(rec, nil, args, []core.Value{lam}, core.SrcPos{})
-	if _, isFn := fresh.Data.(*core.FnDefInfo); !ok || !isFn || fresh.ID == lam.ID {
+	if _, isFn := fresh.Data.(*core.FnDefInfo); !ok || !isFn || core.IDOf(&fresh) == core.IDOf(&lam) {
 		t.Error("a fn-value out keeps its payload under a fresh id")
 	}
 }
@@ -107,12 +107,12 @@ func TestRecordUserCallOrApplyPendingFirst(t *testing.T) {
 	outs := []core.Value{core.NewCarrier(core.TInteger)}
 	rec := &fakeOrderRec{fakePendingRec: fakePendingRec{EmitRecorder: core.TheInactiveEmit, fn: top, has: true, applyOK: true}}
 	got := recordUserCallOrApply(rec, r, "p", captures, body, 0, callSite{}, args, outs)
-	if rec.named || len(rec.window) != 1 || got[0].ID == outs[0].ID {
+	if rec.named || len(rec.window) != 1 || core.IDOf(&got[0]) == core.IDOf(&outs[0]) {
 		t.Errorf("the pending route runs first: named=%v window=%v", rec.named, rec.window)
 	}
 	rec.has, rec.window = false, nil
 	got = recordUserCallOrApply(rec, r, "p", captures, body, 0, callSite{}, args, outs)
-	if !rec.named || rec.window != nil || got[0].ID == outs[0].ID {
+	if !rec.named || rec.window != nil || core.IDOf(&got[0]) == core.IDOf(&outs[0]) {
 		t.Errorf("with no pending entry the name fallback takes the dispatch: named=%v window=%v", rec.named, rec.window)
 	}
 }

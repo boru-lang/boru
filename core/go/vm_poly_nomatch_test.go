@@ -16,7 +16,7 @@ func pnmSig(barrier int, args ...*Type) Signature {
 // --- the record-time spec derivation ---------------------------------------
 
 func pnmVal(id string, v Value) Value {
-	v.ID = id
+	SetID(&v, id)
 	return v
 }
 

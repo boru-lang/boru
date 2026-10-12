@@ -17,13 +17,13 @@ func ptfFn(t *testing.T, params ...*Type) Value {
 	sig := Signature{Params: fp, BarrierPos: BarrierAllForward}
 	NormalizeSig(&sig)
 	v := NewFunction(FnDefInfo{Name: "g", Signatures: []Signature{sig}})
-	v.ID = "fn-" + v.ID
+	SetID(&v, "fn-"+IDOf(&v))
 	return v
 }
 
 func TestTrailingFnCollectsPastClose(t *testing.T) {
 	carrier := NewCarrier(TFunction)
-	carrier.ID = "fnc-1"
+	SetID(&carrier, "fnc-1")
 	intFn := ptfFn(t, TInteger)
 	strFn := ptfFn(t, TString)
 	nullary := ptfFn(t)
@@ -99,12 +99,12 @@ func TestParenFeedsPendingForward(t *testing.T) {
 func TestMarkForwardLeftover(t *testing.T) {
 	carrier := func(id string) Value {
 		v := NewCarrier(TFunction)
-		v.ID = id
+		SetID(&v, id)
 		return v
 	}
 	dynAny := NewCarrier(TAny)
 	SetDynamic(&dynAny, true)
-	dynAny.ID = "dyn-2"
+	SetID(&dynAny, "dyn-2")
 	quoted := carrier("fnc-q")
 	SetQuoted(&quoted, true)
 	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
@@ -133,10 +133,10 @@ func TestMarkForwardLeftover(t *testing.T) {
 // read a Function-expecting forward takes record nothing.
 func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 	carrier := NewCarrier(TFunction)
-	carrier.ID = "fnc-r"
+	SetID(&carrier, "fnc-r")
 	dyn := NewCarrier(TAny)
 	SetDynamic(&dyn, true)
-	dyn.ID = "dyn-r"
+	SetID(&dyn, "dyn-r")
 	newEngine := func(tape ...Value) *Engine {
 		r := &Registry{Check: &CheckState{}}
 		return &Engine{Registry: r, Tape: NewTape(tape, 8), Pointer: len(tape)}
@@ -151,7 +151,7 @@ func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 	quoted := carrier
 	SetQuoted(&quoted, true)
 	idless := carrier
-	idless.ID = ""
+	SetID(&idless, "")
 	e.noteWordRead(quoted, "g", SrcPos{})
 	e.noteWordRead(idless, "g", SrcPos{})
 	e.noteWordRead(NewInteger(5), "n", SrcPos{})
@@ -195,7 +195,7 @@ func trailingFnCloseEngine(t *testing.T, prefix []Value, suffix ...Value) (*Engi
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	last := NewCarrier(TFunction)
-	last.ID = "fnc-trailing"
+	SetID(&last, "fnc-trailing")
 	tape := append([]Value(nil), prefix...)
 	tape = append(tape, NewOpenParen(), NewInteger(3), last, NewCloseParen())
 	closeIdx := len(tape) - 1
@@ -237,7 +237,7 @@ func TestCloseParenTrailingFnFeedsForward(t *testing.T) {
 				t.Errorf("both survivors stay for the collection, tape len %d", e.Tape.Len())
 			}
 			ck := e.Registry.Check
-			if !ck.ParenReSteppedFnIDs[last.ID] || !ck.ForwardLeftoverFnIDs[last.ID] {
+			if !ck.ParenReSteppedFnIDs[IDOf(&last)] || !ck.ForwardLeftoverFnIDs[IDOf(&last)] {
 				t.Errorf("the fn value is marked re-stepped and a forward leftover: restepped=%v leftover=%v", ck.ParenReSteppedFnIDs, ck.ForwardLeftoverFnIDs)
 			}
 		})
@@ -261,13 +261,13 @@ func TestCloseParenTrailingFnCollectsPastClose(t *testing.T) {
 		t.Errorf("both survivors stay ahead of the following group, tape len %d", e.Tape.Len())
 	}
 	ck := e.Registry.Check
-	if !ck.ParenReSteppedFnIDs[last.ID] {
+	if !ck.ParenReSteppedFnIDs[IDOf(&last)] {
 		t.Errorf("the fn value is marked re-stepped: %v", ck.ParenReSteppedFnIDs)
 	}
-	if ck.ForwardLeftoverFnIDs[last.ID] {
+	if ck.ForwardLeftoverFnIDs[IDOf(&last)] {
 		t.Errorf("no collection is pending, so no forward-leftover mark: %v", ck.ForwardLeftoverFnIDs)
 	}
-	if !ck.TrailingDeferredFnIDs[last.ID] {
+	if !ck.TrailingDeferredFnIDs[IDOf(&last)] {
 		t.Errorf("the value is noted as deferred to the re-step (NUR344): %v", ck.TrailingDeferredFnIDs)
 	}
 }
@@ -280,11 +280,11 @@ func TestCloseParenTrailingFnCollectsPastClose(t *testing.T) {
 // the tape, a run with no registry.
 func TestTrailingDeferredPlacement(t *testing.T) {
 	deferred := NewInteger(1)
-	deferred.ID = "fn-deferred"
+	SetID(&deferred, "fn-deferred")
 	other := NewInteger(2)
-	other.ID = "fn-other"
+	SetID(&other, "fn-other")
 	idless := NewInteger(3)
-	idless.ID = ""
+	SetID(&idless, "")
 	r := &Registry{Check: &CheckState{Mode: true}}
 	e := &Engine{Registry: r, Tape: NewTape([]Value{deferred, other, idless}, 8)}
 	e.noteTrailingDeferred(idless)

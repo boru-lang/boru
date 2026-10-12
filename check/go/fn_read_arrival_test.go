@@ -25,7 +25,7 @@ func fraFix(t *testing.T, arity int) (*core.Registry, *zzmsRecorder, core.Value,
 	rec := newZZMSRecorder()
 	r.Check.Emit = rec
 	carrier := core.NewCarrier(core.TFunction)
-	rec.defReads = map[string]string{carrier.ID: "k"}
+	rec.defReads = map[string]string{core.IDOf(&carrier): "k"}
 	r.Check.NoteFnShape(carrier, core.FnShape{Arity: arity})
 	return r, rec, carrier, done
 }
@@ -41,8 +41,8 @@ func TestShapedFnReadArrivalSuccess(t *testing.T) {
 		t.Fatalf("exactly one RecordDynMethod event, got %d", len(rec.dynCalls))
 	}
 	call := rec.dynCalls[0]
-	if call.word != "k" || call.fn.ID != carrier.ID {
-		t.Errorf("event = %q over %q, want the def name over the read carrier", call.word, call.fn.ID)
+	if call.word != "k" || core.IDOf(&call.fn) != core.IDOf(&carrier) {
+		t.Errorf("event = %q over %q, want the def name over the read carrier", call.word, core.IDOf(&call.fn))
 	}
 	if len(call.args) != 1 || len(call.outs) != 1 {
 		t.Fatalf("recorded arity = %d args / %d outs, want 1/1", len(call.args), len(call.outs))
@@ -126,13 +126,13 @@ func TestShapedFnReadArrivalDeclines(t *testing.T) {
 	quoted := carrier
 	core.SetQuoted(&quoted, true)
 	noID := carrier
-	noID.ID = ""
+	core.SetID(&noID, "")
 	unread := core.NewCarrier(core.TFunction) // claimed, but no read noted
 	r.Check.NoteFnShape(unread, core.FnShape{Arity: 1})
 	unclaimed := core.NewCarrier(core.TFunction) // read, but no claim
-	rec.defReads[unclaimed.ID] = "u"
+	rec.defReads[core.IDOf(&unclaimed)] = "u"
 	notFn := core.NewCarrier(core.TInteger) // read and claimed, not a fn carrier
-	rec.defReads[notFn.ID] = "n"
+	rec.defReads[core.IDOf(&notFn)] = "n"
 	r.Check.NoteFnShape(notFn, core.FnShape{Arity: 1})
 	for _, v := range []core.Value{quoted, noID, unread, unclaimed, notFn} {
 		tape := []core.Value{v, core.NewInteger(99), core.NewEnd()}
@@ -220,10 +220,10 @@ func TestShapedFnReadResultShape(t *testing.T) {
 	if !core.IsFnTypedCarrier(&out) || core.IsDynamic(&out) {
 		t.Fatalf("the result of a chain level is a Function carrier, got %v", out)
 	}
-	if n, ok := r.Check.FnShapeArity(out.ID); !ok || n != 2 {
+	if n, ok := r.Check.FnShapeArity(core.IDOf(&out)); !ok || n != 2 {
 		t.Errorf("the result carries the next level's claim, got %d/%v", n, ok)
 	}
-	if got := e.Tape.At(0); got.ID != out.ID {
+	if got := e.Tape.At(0); core.IDOf(&got) != core.IDOf(&out) {
 		t.Error("the spliced value is the recorded out")
 	}
 	done()
@@ -237,7 +237,7 @@ func TestShapedFnReadResultShape(t *testing.T) {
 	}
 	if got := e2.Tape.At(0); !core.IsFnTypedCarrier(&got) || core.IsDynamic(&got) {
 		t.Errorf("the plain check's result of a chain level is a Function carrier, got %v", got)
-	} else if n, ok := r2.Check.FnShapeArity(got.ID); !ok || n != 1 {
+	} else if n, ok := r2.Check.FnShapeArity(core.IDOf(&got)); !ok || n != 1 {
 		t.Errorf("the plain check's result carries the next level's claim, got %d/%v", n, ok)
 	}
 }

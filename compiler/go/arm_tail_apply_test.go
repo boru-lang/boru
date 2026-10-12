@@ -26,7 +26,7 @@ func TestArmTailApplyArms(t *testing.T) {
 		t.Fatal("a top that is no pending apply passes through")
 	}
 	u := es.units[len(es.units)-1]
-	u.pendingApply = []pendingApply{{id: fn.ID, pos: core.SrcPos{Row: 1, Col: 9}}}
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fn), pos: core.SrcPos{Row: 1, Col: 9}}}
 	// The fn resolves to nothing: the recorder declines, the residual and
 	// the pending entry stand.
 	if got := es.ArmTailApply(stk); len(got) != 2 || len(u.pendingApply) != 1 {

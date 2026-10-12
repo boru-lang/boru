@@ -19,7 +19,7 @@ func optimisticSig() *Signature {
 // declared-Any result of (mk) at the Map slot.
 func optimisticEngine(t *testing.T) (*Engine, *MatchResult, []int) {
 	t.Helper()
-	zero, dyn, body := withID(NewInteger(0)), withID(NewDynamicCarrier(TAny)), withID(NewList([]Value{NewWord("add")}))
+	zero, dyn, body := withFreshID(NewInteger(0)), withFreshID(NewDynamicCarrier(TAny)), withFreshID(NewList([]Value{NewWord("add")}))
 	e := layoutEngine(t, []Value{zero, body, dyn, NewWord("fold")}, 3)
 	e.Registry.Check.Mode, e.Registry.Check.Compiling = true, true
 	t.Cleanup(func() { e.Registry.Check.Mode, e.Registry.Check.Compiling = false, false })
@@ -67,8 +67,8 @@ func TestOptimisticOuterWindow(t *testing.T) {
 	if o == nil {
 		t.Fatal("an Any operand at a Map slot is an optimistic match")
 	}
-	if o.Word != "fold" || o.NFwd != 2 || len(o.Vals) != 3 || o.Vals[0].ID != match.Args[2].ID ||
-		o.Vals[1].ID != match.Args[0].ID || o.Vals[2].ID != match.Args[1].ID {
+	if o.Word != "fold" || o.NFwd != 2 || len(o.Vals) != 3 || IDOf(&o.Vals[0]) != IDOf(&match.Args[2]) ||
+		IDOf(&o.Vals[1]) != IDOf(&match.Args[0]) || IDOf(&o.Vals[2]) != IDOf(&match.Args[1]) {
 		t.Errorf("window: the stack's 0, then [add] and the carrier as written; got %+v", o)
 	}
 	if len(o.Written) != 3 || o.Written[0] != 0 || o.Written[1] != 1 || o.Written[2] != 2 {
@@ -154,7 +154,7 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 			return &MatchResult{Sig: m.Sig, Name: "fold"}, nil
 		}},
 		{"every operand conforms", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
-			mp := withID(NewMap(NewOrderedMap()))
+			mp := withFreshID(NewMap(NewOrderedMap()))
 			e.Tape.Set(1, mp)
 			return &MatchResult{Sig: m.Sig, Args: []Value{m.Args[0], mp, m.Args[2]}, Name: "fold"}, []int{2, 1, 0}
 		}},
@@ -183,17 +183,17 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 		}},
 		{"a gap", func(_ *Engine, m *MatchResult) (*MatchResult, []int) { return m, []int{2, 1, 1} }},
 		{"not the tape's value", func(_ *Engine, m *MatchResult) (*MatchResult, []int) {
-			return &MatchResult{Sig: m.Sig, Args: []Value{m.Args[0], withID(NewDynamicCarrier(TAny)), m.Args[2]}, Name: "fold"}, []int{2, 1, 0}
+			return &MatchResult{Sig: m.Sig, Args: []Value{m.Args[0], withFreshID(NewDynamicCarrier(TAny)), m.Args[2]}, Name: "fold"}, []int{2, 1, 0}
 		}},
 		{"a carrier beneath with no identity", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
 			v := NewDynamicCarrier(TAny)
-			v.ID = ""
+			SetID(&v, "")
 			e.Tape.Insert(0, v)
 			e.Pointer, e.fwdSplitAt = 4, 4
 			return m, []int{3, 2, 1}
 		}},
 		{"a word beneath", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
-			e.Tape.Insert(0, withID(NewWord("x")))
+			e.Tape.Insert(0, withFreshID(NewWord("x")))
 			e.Pointer, e.fwdSplitAt = 4, 4
 			return m, []int{3, 2, 1}
 		}},
@@ -213,7 +213,7 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 	// (gradualMatch): the poly record re-matches the live value, which may
 	// still match nothing — the run raises the interpreter's report there.
 	eg, mg, _ := optimisticEngine(t)
-	gm := withID(NewDynamicCarrier(TMap))
+	gm := withFreshID(NewDynamicCarrier(TMap))
 	eg.Tape.Set(1, gm)
 	gmatch := &MatchResult{Sig: mg.Sig, Args: []Value{mg.Args[0], gm, mg.Args[2]}, Name: "fold"}
 	if optimisticMatch(gmatch) {
@@ -233,16 +233,16 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 	// A carrier beneath rides as a LIVE entry: the run's stack holds its
 	// value there, which the record places (NUR351).
 	e, m, _ = optimisticEngine(t)
-	e.Tape.Insert(0, withID(NewInteger(7)))
-	e.Tape.Insert(1, withID(NewDynamicCarrier(TAny)))
+	e.Tape.Insert(0, withFreshID(NewInteger(7)))
+	e.Tape.Insert(1, withFreshID(NewDynamicCarrier(TAny)))
 	e.Pointer, e.fwdSplitAt = 5, 5
 	if l := e.optimisticLayout(m, []int{4, 3, 2}); l == nil || len(l.Beneath) != 2 || !slices.Equal(l.Live, []int{1}) {
 		t.Errorf("7 (mk) 0 fold [add] (mk): the carrier beneath is live; got %+v", l)
 	}
 	// A constant beneath and a literal after ride with it (NUR283).
 	e, m, _ = optimisticEngine(t)
-	e.Tape.Insert(0, withID(NewInteger(7)))
-	e.Tape.Insert(5, withID(NewInteger(5)))
+	e.Tape.Insert(0, withFreshID(NewInteger(7)))
+	e.Tape.Insert(5, withFreshID(NewInteger(5)))
 	e.Pointer, e.fwdSplitAt = 4, 4
 	if l := e.optimisticLayout(m, []int{3, 2, 1}); l == nil || len(l.Beneath) != 1 || len(l.After) != 1 {
 		t.Errorf("7 0 fold [add] (mk) 5: 7 beneath, 5 after; got %+v", l)
@@ -292,12 +292,12 @@ func (m *regionRecorder) RegionResult(id string) bool { return m.region[id] }
 // id, leaves a conforming match unpublished.
 func TestOptimisticOuterOverARegionSeat(t *testing.T) {
 	e, match, indices := optimisticEngine(t)
-	seat := withID(NewCarrier(TMap))
+	seat := withFreshID(NewCarrier(TMap))
 	concrete := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], seat, match.Args[2]}, Name: "fold"}
-	rec := &regionRecorder{region: map[string]bool{seat.ID: true}}
+	rec := &regionRecorder{region: map[string]bool{IDOf(&seat): true}}
 	e.Registry.Check.Emit = rec
 	t.Cleanup(func() { e.Registry.Check.Emit = nil })
-	if o := e.optimisticOuter(concrete, indices); o == nil || o.Word != "fold" || o.Vals[2].ID != seat.ID {
+	if o := e.optimisticOuter(concrete, indices); o == nil || o.Word != "fold" || IDOf(&o.Vals[2]) != IDOf(&seat) {
 		t.Fatalf("a region seat at a conforming slot is an optimistic match; got %+v", o)
 	}
 	rec.region = map[string]bool{}

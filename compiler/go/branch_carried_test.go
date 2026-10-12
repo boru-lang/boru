@@ -20,7 +20,7 @@ func bcArmDef(name string, v core.Value) *EmitFragment {
 // bcCarrier is a payload-less Integer carrier with a fixed identity.
 func bcCarrier(id string) core.Value {
 	v := core.NewCarrier(core.TInteger)
-	v.ID = id
+	core.SetID(&v, id)
 	return v
 }
 

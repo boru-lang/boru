@@ -112,8 +112,8 @@ func TestZzFmRecordSchemaCarrier(t *testing.T) {
 	}
 	// A fresh, DISTINCT ID per carrier (the frame-local slot key).
 	rc2, _ := recordSchemaCarrier(p, core.NewCarrier(core.TMap))
-	if rc.ID == "" || rc.ID == rc2.ID {
-		t.Errorf("carrier IDs must be fresh and distinct, got %q and %q", rc.ID, rc2.ID)
+	if core.IDOf(&rc) == "" || core.IDOf(&rc) == core.IDOf(&rc2) {
+		t.Errorf("carrier IDs must be fresh and distinct, got %q and %q", core.IDOf(&rc), core.IDOf(&rc2))
 	}
 
 	// A pattern that is NOT a concrete map (a typed-map ChildTypeInfo
@@ -491,7 +491,7 @@ func TestZzFmReturnsFnBareMapSurfacesRecordResidual(t *testing.T) {
 	if !ok || rt.Fields == nil {
 		t.Fatalf("surfaced Data = %#v, want the residual's RecordTypeInfo", out[0].Data)
 	}
-	if out[0].ID == "" || out[0].ID == res.ID {
+	if core.IDOf(&out[0]) == "" || core.IDOf(&out[0]) == core.IDOf(&res) {
 		t.Error("surfaced residual must carry a freshly minted identity")
 	}
 

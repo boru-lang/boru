@@ -489,7 +489,7 @@ func TestS5bESubstituteSelfReturns(t *testing.T) {
 		Returns: []*Type{TSelf, nil},
 	}
 	out := SubstituteSelf(spec, TInteger)
-	if out.Returns[0] == nil || out.Returns[0].ID != TInteger.ID {
+	if out.Returns[0] == nil || IDOf(out.Returns[0]) != IDOf(TInteger) {
 		t.Errorf("Self return not substituted: %v", out.Returns[0])
 	}
 	if out.Returns[1] != nil {
@@ -510,7 +510,7 @@ func TestS5bEUnifySurfaceClassTypeOperand(t *testing.T) {
 	info := &SurfaceInfo{
 		Name:     "S5beS2",
 		Required: NewOrderedMap(),
-		Conform:  map[string]bool{TClass.ID: true},
+		Conform:  map[string]bool{IDOf(TClass): true},
 		Type:     TSurface,
 	}
 	surf := NewValueRaw(TSurface, info)

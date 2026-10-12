@@ -120,7 +120,7 @@ func specialisedArgs(r *core.Registry, params []core.FnParam, args, genArgs []co
 			specArgs = append([]core.Value(nil), genArgs...)
 		}
 		c := a
-		c.ID = core.GenerateID(core.IDPrefixForType(c.Parent))
+		core.SetID(&c, core.GenerateID(core.IDPrefixForType(c.Parent)))
 		specArgs[i] = c
 		specParams = append(specParams, i)
 		specFns = append(specFns, a)

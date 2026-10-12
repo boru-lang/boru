@@ -168,7 +168,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 	vc := seam7VC(r)
 	vc.p = &compiler.Program{}
 	fn := core.NewFunction(core.FnDefInfo{})
-	if v, ok := vc.closureAsWord(r, fn); !ok || v.ID != fn.ID {
+	if v, ok := vc.closureAsWord(r, fn); !ok || core.IDOf(&v) != core.IDOf(&fn) {
 		t.Error("a FnDefInfo is already dispatchable by name")
 	}
 	cl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Unit: 0}}

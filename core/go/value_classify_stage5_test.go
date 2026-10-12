@@ -252,7 +252,7 @@ func TestS5CInertReachAndConstMembers(t *testing.T) {
 		t.Error("a receiverless literal-key lens is inert")
 	}
 	lit := NewTypeLiteral(TInteger)
-	if lit.ID == "" {
+	if IDOf(&lit) == "" {
 		t.Fatal("kernel type literals carry an ID")
 	}
 	if !IsInertConstMember(lit) {

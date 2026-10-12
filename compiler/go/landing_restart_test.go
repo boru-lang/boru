@@ -148,7 +148,7 @@ func TestRootPreStart(t *testing.T) {
 	lw := &lowerer{es: es, promoted: map[int]int{4: 7}}
 	val := func(id string, row, col int) core.Value {
 		v := core.NewInteger(1)
-		v.ID = id
+		core.SetID(&v, id)
 		v.SetPos(core.SrcPos{Row: row, Col: col})
 		return v
 	}

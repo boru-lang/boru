@@ -30,11 +30,11 @@ func TestExprRefsCarrierProducedBinding(t *testing.T) {
 	model := mapOf("k", core.NewInteger(1))
 	literal := mapOf("k", core.NewInteger(2))
 	idless := core.NewInteger(3)
-	idless.ID = ""
+	core.SetID(&idless, "")
 	r.Defs.Push("s", model)
 	r.Defs.Push("lit", literal)
 	r.Defs.Push("n", idless)
-	r.Check.Emit = &producedRecorder{EmitRecorder: core.TheInactiveEmit, produced: map[string]bool{model.ID: true, "": true}}
+	r.Check.Emit = &producedRecorder{EmitRecorder: core.TheInactiveEmit, produced: map[string]bool{core.IDOf(&model): true, "": true}}
 
 	if !exprRefsCarrier(e, []core.Value{core.NewWord("s")}) {
 		t.Error("a read of an event-produced binding must veto the fold")

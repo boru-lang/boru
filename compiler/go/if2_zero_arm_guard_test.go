@@ -74,7 +74,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	if es.SiteCounts[SiteMono] != 0 {
 		t.Errorf("a declined branch must append no event, got %d mono sites", es.SiteCounts[SiteMono])
 	}
-	if _, ok := es.producedBy[out.ID]; ok {
+	if _, ok := es.producedBy[core.IDOf(&out)]; ok {
 		t.Error("a declined branch must not register its result as produced")
 	}
 
@@ -91,7 +91,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	if es2.SiteCounts[SiteMono] != 1 {
 		t.Fatalf("a recorded branch = %d mono sites, want 1", es2.SiteCounts[SiteMono])
 	}
-	pr, ok := es2.producedBy[out2.ID]
+	pr, ok := es2.producedBy[core.IDOf(&out2)]
 	if !ok {
 		t.Fatal("the recorded branch must register its (phantom None) result, so RecordCall's double-record guard elides the dispatch")
 	}

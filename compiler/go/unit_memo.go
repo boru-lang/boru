@@ -322,14 +322,14 @@ func (es *EmitState) publishBodyStart(bodyID string, r *core.Registry, defs *cor
 // nothing (a body that is neither once-run nor multi-run keeps-defs, or one
 // whose guard never ran) — the re-run then runs where it always did.
 func (es *EmitState) takeBodyEnv(body core.Value, spec core.CallableSpec) *bodyRunEnv {
-	if es == nil || body.ID == "" || !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) {
+	if es == nil || core.IDOf(&body) == "" || !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) {
 		return nil
 	}
-	bs, ok := es.bodyStarts[body.ID]
+	bs, ok := es.bodyStarts[core.IDOf(&body)]
 	if !ok {
 		return nil
 	}
-	delete(es.bodyStarts, body.ID)
+	delete(es.bodyStarts, core.IDOf(&body))
 	return &bodyRunEnv{start: bs.defs, reg: bs.reg, multi: spec.BodyMultiRunKeepsDefs}
 }
 
@@ -383,7 +383,7 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 			// without one (outside a pass), by equality. An empty id on both
 			// sides must not read as "same", or a runtime-minted rebind would
 			// pass as its own start binding.
-			if sv.ID == ev.ID && (sv.ID != "" || core.ValuesEqual(sv, ev)) {
+			if core.IDOf(&sv) == core.IDOf(&ev) && (core.IDOf(&sv) != "" || core.ValuesEqual(sv, ev)) {
 				continue
 			}
 			if entry, _ := table.TopEntry(name); entry.TypeDef != nil {
@@ -532,14 +532,14 @@ func (es *EmitState) residualReadHazard(v core.Value, op EmitOperand, frag *Emit
 	case opDynScope:
 		name := v.DynFrom()
 		if name == "" {
-			name = es.defReads[v.ID]
+			name = es.defReads[core.IDOf(&v)]
 		}
 		if name != "" && es.bindHazard[readKey{name, fid}] {
 			return "residual read of `" + name + "` precedes its rebind in the same body (Stage 4b)"
 		}
 	case opLocal:
 		if es.storeHazard[slotKey{op.idx, fid}] {
-			name := es.defReads[v.ID]
+			name := es.defReads[core.IDOf(&v)]
 			if name == "" {
 				name = "a loop-carried def"
 			}

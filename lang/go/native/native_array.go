@@ -1718,7 +1718,7 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	// Codex P1 on #421) — and additionally latches this run's twin-table
 	// range keyed by the body's identity, the seat the arm-residency
 	// bridge pairs against the compiled per-invocation unit's def sites.
-	defer r.Check.Recorder().MultiRunBodyGuard(r, body.ID)()
+	defer r.Check.Recorder().MultiRunBodyGuard(r, IDOf(&body))()
 	if !IsConcrete(&body) {
 		return nil
 	}

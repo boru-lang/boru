@@ -179,7 +179,7 @@ func (c *CheckState) AnonScopeReachable(name string, at SrcPos) bool {
 // read's result is a gradual carrier, and a `behave` over it installs that
 // value, which its check-mode half then sees through (FnMemberRead, NUR257).
 func (c *CheckState) NoteFnMemberRead(word string, args, results []Value) {
-	if len(results) != 1 || results[0].ID == "" || (!IsGetWord(word) && !IsGetrWord(word)) {
+	if len(results) != 1 || IDOf(&results[0]) == "" || (!IsGetWord(word) && !IsGetrWord(word)) {
 		return
 	}
 	member, ok := fnMemberAt(args)
@@ -189,7 +189,7 @@ func (c *CheckState) NoteFnMemberRead(word string, args, results []Value) {
 	if c.FnMemberReads == nil {
 		c.FnMemberReads = map[string]Value{}
 	}
-	c.FnMemberReads[results[0].ID] = member
+	c.FnMemberReads[IDOf(&results[0])] = member
 }
 
 // FnMemberRead is the fn value a tagged member read resolved (NoteFnMemberRead).

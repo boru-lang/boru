@@ -685,7 +685,7 @@ func IsInertConstMember(v Value) bool {
 		// isInertConst switch still rejects a bare type node, so a top-level type
 		// operand keeps reaching the runtime via the by-ID type table
 		// (OpPushType), the canonical path that survives a later `behave`.
-		if IsBareTypeNode(&v) && v.ID != "" {
+		if IsBareTypeNode(&v) && IDOf(&v) != "" {
 			return true
 		}
 		if fd, ok := v.Data.(*FnDefInfo); ok {

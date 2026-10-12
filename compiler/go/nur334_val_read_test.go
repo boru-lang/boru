@@ -22,23 +22,23 @@ func TestNoteValReadLiveSeatsALeakedName(t *testing.T) {
 	es.keepLeakNames = map[string]bool{"t": true}
 	es.dynLeakNames = map[string]bool{"t": true}
 	v := core.NewInteger(0)
-	v.ID = "nur334-t"
+	core.SetID(&v, "nur334-t")
 	at := core.SrcPos{Row: 1, Col: 43}
 	es.NoteValReadLive(&v, "t", at)
-	if v.ID == "nur334-t" || !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) {
+	if core.IDOf(&v) == "nur334-t" || !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) {
 		t.Fatalf("the read is seated live as a dynamic(Integer) carrier with its own identity — the computed body may have bound any type — got %+v", v)
 	}
 	if es.armReadCompileFailure != "" || es.pendingKeptRead != "" {
 		t.Fatalf("a seated read observes nothing stale: poison=%q pending=%q", es.armReadCompileFailure, es.pendingKeptRead)
 	}
-	if !es.liveReadNames["t"] || !es.liveReadIDs[v.ID] || es.defReads[v.ID] != "t" {
+	if !es.liveReadNames["t"] || !es.liveReadIDs[core.IDOf(&v)] || es.defReads[core.IDOf(&v)] != "t" {
 		t.Errorf("the live read is named: names=%v ids=%v reads=%v", es.liveReadNames, es.liveReadIDs, es.defReads)
 	}
 	ev := es.frames[0][len(es.frames[0])-1]
 	if ev.kind != evCall || !ev.call.live || !ev.call.liveRef || ev.call.pos != at {
 		t.Errorf("a live `/v` event at the read's token, got %+v", ev)
 	}
-	if pr, ok := es.producedBy[v.ID]; !ok || pr.seq != ev.seq {
+	if pr, ok := es.producedBy[core.IDOf(&v)]; !ok || pr.seq != ev.seq {
 		t.Errorf("the read's producer is the live event: %v %v", pr, ok)
 	}
 	// It lowers to the value spelling's lookup (OpLookupDynScopeRef), where
@@ -80,7 +80,7 @@ func TestNoteValReadLiveObservers(t *testing.T) {
 			es.dynLeakNames = map[string]bool{"t": true}
 		}
 		v := c.v
-		v.ID = "nur334-obs"
+		core.SetID(&v, "nur334-obs")
 		es.NoteValReadLive(&v, "t", core.SrcPos{Row: 1, Col: 1})
 		if es.pendingKeptRead != "" && c.leaked {
 			// A leaked name's read waits for its seat; the next event
@@ -91,7 +91,7 @@ func TestNoteValReadLiveObservers(t *testing.T) {
 		if !strings.Contains(es.armReadCompileFailure, "the read of `t`") || !strings.Contains(es.armReadCompileFailure, "(NUR210)") {
 			t.Errorf("%s: the read is an observer and declines, got %q", label, es.armReadCompileFailure)
 		}
-		if v.ID != "nur334-obs" || es.liveReadNames["t"] {
+		if core.IDOf(&v) != "nur334-obs" || es.liveReadNames["t"] {
 			t.Errorf("%s: an observer is not seated, got %+v", label, v)
 		}
 	}
@@ -103,13 +103,13 @@ func TestNoteValReadLiveObservers(t *testing.T) {
 func TestNoteValReadLiveNoOps(t *testing.T) {
 	es := NewEmitState()
 	v := core.NewInteger(3)
-	v.ID = "nur334-plain"
+	core.SetID(&v, "nur334-plain")
 	es.NoteValReadLive(nil, "t", core.SrcPos{})
 	es.NoteValReadLive(&v, "", core.SrcPos{})
 	noID := core.NewInteger(4)
 	es.NoteValReadLive(&noID, "t", core.SrcPos{})
 	es.NoteValReadLive(&v, "t", core.SrcPos{})
-	if v.ID != "nur334-plain" || v.Carrier || es.armReadCompileFailure != "" || len(es.liveReadNames) != 0 {
+	if core.IDOf(&v) != "nur334-plain" || v.Carrier || es.armReadCompileFailure != "" || len(es.liveReadNames) != 0 {
 		t.Errorf("an unlatched, unleaked read is untouched: %+v poison=%q", v, es.armReadCompileFailure)
 	}
 	es.latchKeptDefs("do")
@@ -117,7 +117,7 @@ func TestNoteValReadLiveNoOps(t *testing.T) {
 	resume := es.Suspend()
 	es.NoteValReadLive(&v, "t", core.SrcPos{})
 	resume()
-	if v.ID != "nur334-plain" || es.armReadCompileFailure != "" {
+	if core.IDOf(&v) != "nur334-plain" || es.armReadCompileFailure != "" {
 		t.Errorf("a suspended recorder notes nothing: %+v poison=%q", v, es.armReadCompileFailure)
 	}
 }
@@ -129,9 +129,9 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	es := NewEmitState()
 	es.keepLeakNames = map[string]bool{"x": true}
 	v := core.NewCarrier(core.TInteger)
-	v.ID = "nur334-x"
+	core.SetID(&v, "nur334-x")
 	es.NoteValReadLive(&v, "x", core.SrcPos{Row: 1, Col: 1})
-	if v.ID == "nur334-x" || !v.Carrier || core.IsDynamic(&v) || !es.liveReadNames["x"] {
+	if core.IDOf(&v) == "nur334-x" || !v.Carrier || core.IsDynamic(&v) || !es.liveReadNames["x"] {
 		t.Fatalf("a literal leak's /v read is seated live, static: %+v", v)
 	}
 	// A computed-body leak of a concrete value the latch did not settle
@@ -140,7 +140,7 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	es.keepLeakNames = map[string]bool{"y": true}
 	es.dynLeakNames = map[string]bool{"y": true}
 	w := core.NewInteger(4)
-	w.ID = "nur334-y"
+	core.SetID(&w, "nur334-y")
 	es.NoteValReadLive(&w, "y", core.SrcPos{Row: 1, Col: 1})
 	if w.Carrier || core.IsDynamic(&w) || !es.liveReadNames["y"] {
 		t.Fatalf("an unlatched concrete read is seated as it stands: %+v", w)
@@ -157,16 +157,16 @@ func TestBareLiveReadAfterComputedBodyIsGradualData(t *testing.T) {
 	es.keepLeakNames = map[string]bool{"t": true}
 	es.dynLeakNames = map[string]bool{"t": true}
 	v := core.NewInteger(0)
-	v.ID = "gd-t"
-	es.noteKeptDefsRead(v.ID, "t")
+	core.SetID(&v, "gd-t")
+	es.noteKeptDefsRead(core.IDOf(&v), "t")
 	es.NoteLiveRead(&v, "t", core.SrcPos{Row: 1, Col: 2})
-	if !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[v.ID] {
-		t.Fatalf("a bare live read after a computed body is gradual data: %+v data=%v", v, es.liveDataIDs[v.ID])
+	if !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[core.IDOf(&v)] {
+		t.Fatalf("a bare live read after a computed body is gradual data: %+v data=%v", v, es.liveDataIDs[core.IDOf(&v)])
 	}
 	w := core.NewInteger(0)
-	w.ID = "gd-w"
+	core.SetID(&w, "gd-w")
 	es.NoteValReadLive(&w, "t", core.SrcPos{Row: 1, Col: 4})
-	if !core.IsDynamic(&w) || es.liveDataIDs[w.ID] || !es.liveReadIDs[w.ID] {
+	if !core.IsDynamic(&w) || es.liveDataIDs[core.IDOf(&w)] || !es.liveReadIDs[core.IDOf(&w)] {
 		t.Errorf("a /v seat is gradual and live, not a bare data read: %+v", w)
 	}
 }
@@ -182,7 +182,7 @@ func TestKeepInstallableTypeNodes(t *testing.T) {
 		t.Fatal("a builtin type node is installable")
 	}
 	minted := core.NewTypeLiteral(core.TInteger)
-	minted.ID = "nur333-P"
+	core.SetID(&minted, "nur333-P")
 	if !es.keepInstallable(EmitOperand{}, -1, minted) {
 		t.Fatal("a node minted before this pass is installable")
 	}
@@ -195,7 +195,7 @@ func TestKeepInstallableTypeNodes(t *testing.T) {
 		t.Error("a node this pass minted keeps the skip")
 	}
 	anon := core.NewTypeLiteral(core.TInteger)
-	anon.ID = ""
+	core.SetID(&anon, "")
 	if es.keepInstallable(EmitOperand{}, -1, anon) {
 		t.Error("an identity-less node has no type operand to push")
 	}

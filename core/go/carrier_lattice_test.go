@@ -95,7 +95,7 @@ func TestReturnsIdentity(t *testing.T) {
 	if len(out) != 2 || !ValuesEqual(out[0], b) || !ValuesEqual(out[1], a) {
 		t.Fatalf("swap = %v, want [x 1]", out)
 	}
-	if out[1].ID != a.ID {
+	if IDOf(&out[1]) != IDOf(&a) {
 		t.Error("an unrepeated source must keep its identity")
 	}
 
@@ -106,10 +106,10 @@ func TestReturnsIdentity(t *testing.T) {
 	if len(out) != 2 {
 		t.Fatalf("dup arity = %d, want 2", len(out))
 	}
-	if out[0].ID == out[1].ID {
+	if IDOf(&out[0]) == IDOf(&out[1]) {
 		t.Error("repeated sources must get distinct identities")
 	}
-	if out[0].ID == a.ID && out[1].ID == a.ID {
+	if IDOf(&out[0]) == IDOf(&a) && IDOf(&out[1]) == IDOf(&a) {
 		t.Error("neither copy may keep the source's own provenance")
 	}
 
@@ -271,7 +271,7 @@ func TestJoinCarriersInner(t *testing.T) {
 	if !got.Parent.Equal(TInteger) || got.Data != nil {
 		t.Errorf("Integer+Integer = %v, want a bare Integer carrier", got)
 	}
-	if got.ID == a.ID || got.ID == b.ID {
+	if IDOf(&got) == IDOf(&a) || IDOf(&got) == IDOf(&b) {
 		t.Error("the merged carrier must mint a fresh identity")
 	}
 
@@ -397,12 +397,12 @@ func TestJoinBranchDefAndInstallJoinedDefs(t *testing.T) {
 	// a fresh one would strand every later reference.
 	a := NewCarrier(TInteger)
 	b := a
-	if got := joinBranchDef(a, b); got.ID != a.ID {
-		t.Errorf("narrow-only merge ID = %q, want the preserved %q", got.ID, a.ID)
+	if got := joinBranchDef(a, b); IDOf(&got) != IDOf(&a) {
+		t.Errorf("narrow-only merge ID = %q, want the preserved %q", IDOf(&got), IDOf(&a))
 	}
 	// DIFFERING identities are a genuine reassignment: fresh ID.
 	c := NewCarrier(TInteger)
-	if got := joinBranchDef(a, c); got.ID == a.ID || got.ID == c.ID {
+	if got := joinBranchDef(a, c); IDOf(&got) == IDOf(&a) || IDOf(&got) == IDOf(&c) {
 		t.Error("a genuine rebind must mint a fresh identity")
 	}
 
@@ -655,7 +655,7 @@ func TestInstallJoinedDefsNarrowingSkipAndBothArmsNote(t *testing.T) {
 	pre := NewDynamicCarrier(TAny)
 	r.Defs.Push("njq", pre)
 	narrowed := NewDynamicCarrierValue(NewCarrier(TList))
-	narrowed.ID = pre.ID
+	SetID(&narrowed, IDOf(&pre))
 
 	base := len(r.Check.BindLedger)
 	// then-only, else-only, and both-arms narrowing: no push, no note.
@@ -709,13 +709,13 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 	if !ok || IsConcrete(&got) || !got.Carrier || !got.Parent.Equal(TInteger) {
 		t.Fatalf("a then-only fresh binding under an armed recorder is a payload-less Integer carrier: %v/%v", got, ok)
 	}
-	if got.ID == then.ID {
+	if IDOf(&got) == IDOf(&then) {
 		t.Error("the carrier takes a FRESH identity, not the arm's value's")
 	}
 
 	els := NewString("s")
 	InstallJoinedDefs(r, nil, map[string]Value{"cby": els})
-	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(&got) || !got.Parent.ConformsTo(TString) || got.ID == els.ID {
+	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(&got) || !got.Parent.ConformsTo(TString) || IDOf(&got) == IDOf(&els) {
 		t.Errorf("an else-only fresh binding takes the same carrier: %v/%v", got, ok)
 	}
 
@@ -724,7 +724,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 	fnCarrier := NewCarrier(TFunction)
 	InstallJoinedDefs(r, map[string]Value{"Cbz": capName, "cbf": fnv, "cbc": fnCarrier}, nil)
 	for name, want := range map[string]Value{"Cbz": capName, "cbf": fnv, "cbc": fnCarrier} {
-		if got, ok := r.Defs.Top(name); !ok || got.ID != want.ID {
+		if got, ok := r.Defs.Top(name); !ok || IDOf(&got) != IDOf(&want) {
 			t.Errorf("%s: a capitalised name, a fn value and a Function-typed value keep the arm's own value: %v/%v", name, got, ok)
 		}
 	}
@@ -732,7 +732,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 	// Off the compile pass the arm's own value is kept exactly as before.
 	plain := w8reg(t)
 	InstallJoinedDefs(plain, map[string]Value{"cbx": then}, nil)
-	if got, ok := plain.Defs.Top("cbx"); !ok || got.ID != then.ID {
+	if got, ok := plain.Defs.Top("cbx"); !ok || IDOf(&got) != IDOf(&then) {
 		t.Errorf("a plain check keeps the arm's own value: %v/%v", got, ok)
 	}
 }
@@ -748,7 +748,7 @@ func TestInstallTakenArmDefs(t *testing.T) {
 	if len(joins) != 1 || !joins[0].Taken || !joins[0].ThenBinds || joins[0].ElseBinds || joins[0].Name != "tka" {
 		t.Fatalf("a then-arm taken binding reports one Taken then-join: %+v", joins)
 	}
-	if got, ok := r.Defs.Top("tka"); !ok || got.ID != tv.ID {
+	if got, ok := r.Defs.Top("tka"); !ok || IDOf(&got) != IDOf(&tv) {
 		t.Errorf("the taken arm's binding is the arm's own value, not a carrier: %v/%v", got, ok)
 	}
 	ev := NewString("e")
@@ -756,7 +756,7 @@ func TestInstallTakenArmDefs(t *testing.T) {
 	if len(joins) != 1 || !joins[0].Taken || joins[0].ThenBinds || !joins[0].ElseBinds {
 		t.Fatalf("an else-arm taken binding reports one Taken else-join: %+v", joins)
 	}
-	if got, ok := r.Defs.Top("tkb"); !ok || got.ID != ev.ID {
+	if got, ok := r.Defs.Top("tkb"); !ok || IDOf(&got) != IDOf(&ev) {
 		t.Errorf("the taken else arm's binding is the arm's own value: %v/%v", got, ok)
 	}
 }

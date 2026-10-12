@@ -81,7 +81,7 @@ func zzmsAnnotate(t *testing.T, r *core.Registry, member core.Value) (core.Value
 	done := r.Check.Begin()
 	carrier := core.NewDynamicCarrier(core.TAny)
 	r.Check.NoteMethodShape(carrier, member)
-	if _, ok := r.Check.MethodShapeMember(carrier.ID); !ok {
+	if _, ok := r.Check.MethodShapeMember(core.IDOf(&carrier)); !ok {
 		done()
 		t.Fatal("test premise: the delegation member must be annotated")
 	}
@@ -275,7 +275,7 @@ func TestZZMSPlainCheckCollapseDeclines(t *testing.T) {
 	if TryShapedMethodDispatch(e1, 0) {
 		t.Error("a non-inert window must decline the collapse")
 	}
-	if e1.Tape.Len() != 3 || e1.Tape.At(0).ID != c1.ID {
+	if e1.Tape.Len() != 3 || core.IDOf(addrOf(e1.Tape.At(0))) != core.IDOf(&c1) {
 		t.Error("a declined collapse must leave the tape untouched")
 	}
 
@@ -418,7 +418,7 @@ func TestZZMSCompilePassModelRecordsDynMethod(t *testing.T) {
 	if call.word != "zzmsadd" {
 		t.Errorf("recorded word = %q, want the member's inner name", call.word)
 	}
-	if call.fn.ID != carrier.ID {
+	if core.IDOf(&call.fn) != core.IDOf(&carrier) {
 		t.Error("the event's fn operand must be the dot-read carrier (the runtime value)")
 	}
 	if len(call.args) != 1 || len(call.outs) != 1 {
@@ -491,7 +491,7 @@ func TestZZMSCompilePassUnconsumedPendingDeclines(t *testing.T) {
 	if r.Check.PendingMethodApply != nil {
 		t.Error("the decline must clear the pending apply")
 	}
-	if e.Tape.Len() != 3 || e.Tape.At(0).ID != carrier.ID {
+	if e.Tape.Len() != 3 || core.IDOf(addrOf(e.Tape.At(0))) != core.IDOf(&carrier) {
 		t.Error("the declined model must leave the tape untouched")
 	}
 }
@@ -617,7 +617,7 @@ func zzmsArrivalFix(t *testing.T, member core.Value) (*core.Registry, *zzmsRecor
 	rec := newZZMSRecorder()
 	r.Check.Emit = rec
 	carrier := core.NewDynamicCarrier(core.TAny)
-	rec.members = map[string]core.Value{carrier.ID: member}
+	rec.members = map[string]core.Value{core.IDOf(&carrier): member}
 	return r, rec, carrier, done
 }
 
@@ -644,8 +644,8 @@ func TestZZMSMemberFnArrivalDispatchSuccess(t *testing.T) {
 		t.Fatalf("exactly one RecordDynMethod event, got %d", len(rec.dynCalls))
 	}
 	call := rec.dynCalls[0]
-	if call.word != "zzmsarr" || call.fn.ID != carrier.ID {
-		t.Errorf("event = %q over %q, want the member name over the read carrier", call.word, call.fn.ID)
+	if call.word != "zzmsarr" || core.IDOf(&call.fn) != core.IDOf(&carrier) {
+		t.Errorf("event = %q over %q, want the member name over the read carrier", call.word, core.IDOf(&call.fn))
 	}
 	if len(call.args) != 1 || len(call.outs) != 1 {
 		t.Errorf("recorded arity = %d args / %d outs, want 1/1", len(call.args), len(call.outs))

@@ -36,7 +36,7 @@ func TestInvokeCallbackBodyStampsRetTrim(t *testing.T) {
 			t.Fatalf("invoke: %v", err)
 		}
 	}
-	if cl := seen[1].Data.(ClosurePayload); !cl.RetTrim || cl.Unit != 3 || seen[2].ID != list.ID {
+	if cl := seen[1].Data.(ClosurePayload); !cl.RetTrim || cl.Unit != 3 || IDOf(&seen[2]) != IDOf(&list) {
 		t.Error("an already-trimmed closure and a token body pass through unchanged")
 	}
 }

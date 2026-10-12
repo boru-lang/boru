@@ -280,7 +280,7 @@ func typeParamLitNode(v Value) *Type {
 // into the bound walk (isR).
 func unifyTypeParam(lit Value, node *Type, other Value, r *Registry) (Value, *UnifyError) {
 	// The same placeholder on both sides (memo keys, `[T] vs [T]`).
-	if IsBareTypeNode(&other) && other.ID == node.ID {
+	if IsBareTypeNode(&other) && IDOf(&other) == IDOf(node) {
 		return lit, nil
 	}
 	if isR(other, node, r) {

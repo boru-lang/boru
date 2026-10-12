@@ -87,7 +87,7 @@ func TestRegionCollectShapeDeclinesTheNearMisses(t *testing.T) {
 	es6 := rpState(t)
 	plain := es6.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzadd", nout: 1}})
 	out := core.NewInteger(3)
-	out.ID = core.GenerateID("zzrc")
+	core.SetID(&out, core.GenerateID("zzrc"))
 	es6.setProduced(out, plain)
 	rcList(es6, rcRegionOp(plain))
 	if _, _, ok := es6.regionCollectShape(es6.frames[0]); ok {

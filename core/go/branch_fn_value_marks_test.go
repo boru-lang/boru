@@ -31,9 +31,9 @@ func (m *mayBeFnRecorder) NoteStatementStack(_ SrcPos, stack []Value) {
 // check state or without an id.
 func TestMightBeCallableAsksRecorder(t *testing.T) {
 	branch := NewCarrier(TAny)
-	branch.ID = "br-1"
+	SetID(&branch, "br-1")
 	other := NewCarrier(TAny)
-	other.ID = "br-2"
+	SetID(&other, "br-2")
 	rec := &mayBeFnRecorder{maybe: map[string]bool{"br-1": true}}
 	e := &Engine{Registry: &Registry{Check: &CheckState{Emit: rec}}}
 	for _, v := range []Value{branch, other} {
@@ -74,7 +74,7 @@ func TestMightBeCallableAsksRecorder(t *testing.T) {
 // main loop.
 func TestFnReturnParkAsksRecorder(t *testing.T) {
 	branch := NewCarrier(TAny)
-	branch.ID = "br-1"
+	SetID(&branch, "br-1")
 	rec := &mayBeFnRecorder{maybe: map[string]bool{"br-1": true}}
 	asked := 0
 	prev := CheckBraid.ParenPlacedFnCarrier

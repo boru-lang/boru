@@ -21,7 +21,7 @@ import (
 // seated.
 func TestCoverPR505MainJoinWithoutBindingArmSeatsNothing(t *testing.T) {
 	joined := core.NewCarrier(core.TInteger)
-	joined.ID = "joined-x"
+	core.SetID(&joined, "joined-x")
 	armDef := EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(1), residentTwin: -1}}
 	branch := func() *EmitEvent {
 		return &EmitEvent{kind: evBranch, br: &emitBranch{
@@ -37,7 +37,7 @@ func TestCoverPR505MainJoinWithoutBindingArmSeatsNothing(t *testing.T) {
 	if len(u.nameSlots) != 0 || u.numLocals != 0 {
 		t.Errorf("a join naming no binding arm must allocate no slot: slots=%v locals=%d", u.nameSlots, u.numLocals)
 	}
-	if _, aliased := u.localByID[joined.ID]; aliased || ev.br.carriedNames["x"] || len(ev.br.carried) != 0 {
+	if _, aliased := u.localByID[core.IDOf(&joined)]; aliased || ev.br.carriedNames["x"] || len(ev.br.carried) != 0 {
 		t.Errorf("a join naming no binding arm must seat nothing: aliased=%v names=%v carried=%v", aliased, ev.br.carriedNames, ev.br.carried)
 	}
 
@@ -45,7 +45,7 @@ func TestCoverPR505MainJoinWithoutBindingArmSeatsNothing(t *testing.T) {
 	ev = branch()
 	es.carryBranchJoins(ev, core.BranchRecord{HasElse: true, Joins: []core.BranchJoin{{Name: "x", Joined: joined, ThenBinds: true}}})
 	slot, ok := es.units[0].nameSlots["x"]
-	if !ok || !ev.br.carriedNames["x"] || es.units[0].localByID[joined.ID] != slot {
+	if !ok || !ev.br.carriedNames["x"] || es.units[0].localByID[core.IDOf(&joined)] != slot {
 		t.Errorf("a then-binding join is seated in the name's slot: slot=%d ok=%v names=%v", slot, ok, ev.br.carriedNames)
 	}
 	if d := ev.br.then.events[0].dyn; !d.armCarried || d.armSlot != slot {

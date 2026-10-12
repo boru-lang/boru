@@ -181,7 +181,7 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 	case v.Parent != nil && v.Parent.ConformsTo(TAtom) && v.Data != nil:
 		w, _ := AsAtom(v)
 		name = w
-	case IsBareTypeNode(&v) && v.ID != "" && v.Name() != "":
+	case IsBareTypeNode(&v) && IDOf(&v) != "" && v.Name() != "":
 		name = v.Name()
 	case IsDeclaredPredicateFn(v):
 		// Direct FnDef body — try the FnDef's Name field. Predicate
@@ -240,7 +240,7 @@ func sameFnConstruction(a, b Value) bool {
 		&ai.Signatures[0] == &bi.Signatures[0] {
 		return true
 	}
-	return a.ID != "" && a.ID == b.ID
+	return IDOf(&a) != "" && IDOf(&a) == IDOf(&b)
 }
 
 // disjunctHasPredicate reports whether any alternative in the
@@ -620,7 +620,7 @@ func unifySameOrSubtype(a, b Value) (Value, *UnifyError) {
 // stand-in for a value of type T); treat its Parent as the denoted
 // type since &v has no lattice identity to compare against.
 func denotedType(v Value) *Type {
-	if IsBareTypeNode(&v) && v.ID != "" {
+	if IsBareTypeNode(&v) && IDOf(&v) != "" {
 		return &v
 	}
 	return v.Parent

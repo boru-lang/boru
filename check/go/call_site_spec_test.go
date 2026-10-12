@@ -85,7 +85,7 @@ func TestSpecialisedArgs(t *testing.T) {
 	gen := []core.Value{core.NewCarrier(core.TFunction), core.NewCarrier(core.TInteger)}
 	r, _ := core.NewRegistry()
 	args, ps, fns, suffix := specialisedArgs(r, params, []core.Value{fn, core.NewInteger(3)}, gen)
-	if len(args) != 2 || !core.ExactEqual(args[0], fn) || args[0].ID == fn.ID || args[1].ID != gen[1].ID {
+	if len(args) != 2 || !core.ExactEqual(args[0], fn) || core.IDOf(&args[0]) == core.IDOf(&fn) || core.IDOf(&args[1]) != core.IDOf(&gen[1]) {
 		t.Errorf("want the fn kept under a fresh ID and the rest generalised, got %v", args)
 	}
 	if len(ps) != 1 || ps[0] != 0 || len(fns) != 1 || suffix == "" {

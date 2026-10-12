@@ -150,7 +150,7 @@ func JoinCarriersInner(a, b Value) Value {
 		// returns a live local — `def v0 3 def v1 (if c [v0] [4])` makes the if-
 		// result reuse v0's id, so a later `v0` reference resolves to the if-event
 		// (the compiler bakes the wrong value). Mint a distinct identity.
-		out.ID = GenerateID(IDPrefixForType(out.Parent))
+		SetID(&out, GenerateID(IDPrefixForType(out.Parent)))
 		return out
 	}
 	if collapse && !IsDisjunct(&a) && !IsDisjunct(&b) {
@@ -217,8 +217,8 @@ func JoinCarriersInner(a, b Value) Value {
 // reassignment gives the arms DIFFERING IDs and keeps the fresh-ID join.
 func joinBranchDef(a, b Value) Value {
 	out := JoinCarriers(a, b)
-	if a.ID != "" && a.ID == b.ID {
-		out.ID = a.ID
+	if IDOf(&a) != "" && IDOf(&a) == IDOf(&b) {
+		SetID(&out, IDOf(&a))
 	}
 	return out
 }
@@ -237,11 +237,11 @@ func joinBranchDef(a, b Value) Value {
 // narrowing's own doctrine — and every reference keeps its seat, because the
 // pre binding carries the same ID.
 func narrowedSameBinding(r *Registry, k string, v Value) bool {
-	if !IsDynamic(&v) || v.ID == "" {
+	if !IsDynamic(&v) || IDOf(&v) == "" {
 		return false
 	}
 	pre, ok := r.Defs.Top(k)
-	return ok && pre.ID == v.ID
+	return ok && IDOf(&pre) == IDOf(&v)
 }
 
 // InstallJoinedDefs merges the `adds` maps from two branches back

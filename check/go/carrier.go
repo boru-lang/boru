@@ -585,7 +585,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 		// faithfully at run time, and eliding the event would strand every
 		// lowering that anchors on a condition EVENT (computed-arm `if`,
 		// variadic-else claims — the emit goldens pin this).
-		folded.ID = out[0].ID // keep the recorder's result identity
+		core.SetID(&folded, core.IDOf(&out[0])) // keep the recorder's result identity
 		out[0] = folded
 	}
 	out = applyGradualContagion(r, word, args, out, pos, tailConsumed)
@@ -600,7 +600,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 			return out
 		}
 		for i := range partOut {
-			partOut[i].ID = out[i].ID
+			core.SetID(&partOut[i], core.IDOf(&out[i]))
 		}
 		return partOut
 	}
@@ -691,8 +691,8 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 			// `args.N` fold retracts the assembly (2026-09-25).
 			if es := r.Check.Recorder(); es.Active() {
 				if lst, lerr := core.AsList(top); lerr == nil && !lst.IsNil() {
-					if top.ID == "" {
-						top.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+					if core.IDOf(&top) == "" {
+						core.SetID(&top, core.GenerateID(core.IDPrefixForType(core.TList)))
 					}
 					es.RecordArgsProjection(r, lst.Slice(), top, pos)
 				}
@@ -1749,8 +1749,8 @@ func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Val
 		if !reach {
 			continue
 		}
-		if t := s.Returns[0]; !seen[t.ID] {
-			seen[t.ID] = true
+		if t := s.Returns[0]; !seen[core.IDOf(t)] {
+			seen[core.IDOf(t)] = true
 			rets = append(rets, t)
 		}
 	}
@@ -1856,14 +1856,14 @@ func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) [
 			if !allUnknown {
 				return nil
 			}
-			if !seen[core.TAny.ID] {
-				seen[core.TAny.ID] = true
+			if !seen[core.IDOf(core.TAny)] {
+				seen[core.IDOf(core.TAny)] = true
 				rets = append(rets, core.TAny)
 			}
 			continue
 		}
-		if t := s.Returns[0]; !seen[t.ID] {
-			seen[t.ID] = true
+		if t := s.Returns[0]; !seen[core.IDOf(t)] {
+			seen[core.IDOf(t)] = true
 			rets = append(rets, t)
 		}
 	}
@@ -1947,7 +1947,7 @@ func narrowDynamicUses(r *core.Registry, word string, sig *core.Signature, args 
 		// decision eval-tree walkers). Re-stamp the current binding's ID so
 		// the recorder's producedBy still resolves the rebound name to its
 		// original producer.
-		narrowed.ID = cur.ID
+		core.SetID(&narrowed, core.IDOf(&cur))
 		name := a.DynFrom()
 		pushed := core.NewDynamicCarrierValue(narrowed)
 		r.Defs.Push(name, pushed)
@@ -2515,9 +2515,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	loopCapture := es.ConsumeLoopArm()
 	if loopCapture {
 		for i, v := range bindVals {
-			es.RegisterLocal(v.ID)
+			es.RegisterLocal(core.IDOf(&v))
 			if i < len(bindNames) {
-				es.NameLocal(v.ID, bindNames[i])
+				es.NameLocal(core.IDOf(&v), bindNames[i])
 			}
 		}
 		// Loop-carried def rebinds: a pre-loop `def` the body REBINDS gets a
@@ -2614,7 +2614,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				// rule at the branch join; Codex P2, PR #418 — a body that
 				// merely consumed a dynamic name through a typed slot
 				// recorded a phantom `def` a twin would replay).
-				if core.IsDynamic(&v) && v.ID != "" && v.ID == pre.ID {
+				if core.IsDynamic(&v) && core.IDOf(&v) != "" && core.IDOf(&v) == core.IDOf(&pre) {
 					continue
 				}
 				j := core.JoinCarriers(v, pre)
@@ -3197,7 +3197,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 		}
 		c := core.NewDynamicCarrier(core.TAny)
 		if a, aerr := core.AsAtom(args[i]); aerr == nil && a != "" {
-			r.Check.Recorder().NoteDefRead(c.ID, a)
+			r.Check.Recorder().NoteDefRead(core.IDOf(&c), a)
 		}
 		args[i] = core.WithPos(c, args[i])
 	}
@@ -3448,7 +3448,7 @@ func stripZeroOutResiduals(r *core.Registry, stk []core.Value) []core.Value {
 	}
 	filtered := make([]core.Value, 0, len(stk))
 	for _, v := range stk {
-		if es.ZeroOutProduced(v.ID) {
+		if es.ZeroOutProduced(core.IDOf(&v)) {
 			continue
 		}
 		filtered = append(filtered, v)

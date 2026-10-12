@@ -93,7 +93,7 @@ func TestStampBodySigKeepsTheFrame(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
 	unnamed := NewList([]Value{NewMap(om), NewWord("size")})
-	unnamed.ID = ""
+	SetID(&unnamed, "")
 	usig := bodySigOver([]FnParam{{Type: TAny}}, unnamed.Data.(core.ListPayload).Elems)
 	if StampBodySig(r, usig, unnamed, in) != usig {
 		t.Fatal("a body with no name stands aside")

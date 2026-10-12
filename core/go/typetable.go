@@ -168,17 +168,17 @@ func (tt *TypeTable) labelIntervals() {
 			roots = append(roots, t)
 			continue
 		}
-		children[t.Parent.ID] = append(children[t.Parent.ID], t)
+		children[IDOf(t.Parent)] = append(children[IDOf(t.Parent)], t)
 	}
-	sort.Slice(roots, func(i, j int) bool { return roots[i].ID < roots[j].ID })
+	sort.Slice(roots, func(i, j int) bool { return IDOf(roots[i]) < IDOf(roots[j]) })
 
 	counter := 0
 	var visit func(t *Type)
 	visit = func(t *Type) {
 		counter++
 		t.ensureTMeta().In = counter
-		kids := children[t.ID]
-		sort.Slice(kids, func(i, j int) bool { return kids[i].ID < kids[j].ID })
+		kids := children[IDOf(t)]
+		sort.Slice(kids, func(i, j int) bool { return IDOf(kids[i]) < IDOf(kids[j]) })
 		for _, c := range kids {
 			visit(c)
 		}
@@ -335,11 +335,11 @@ func (tt *TypeTable) mintID(parent *Type) string {
 // not only in the module sub-registry that minted them. Idempotent;
 // a same-ID re-adoption keeps the first pointer (canonical identity).
 func (tt *TypeTable) Adopt(t *Type) {
-	if tt == nil || t == nil || t.ID == "" {
+	if tt == nil || t == nil || IDOf(t) == "" {
 		return
 	}
-	if _, exists := tt.byID[t.ID]; !exists {
-		tt.byID[t.ID] = t
+	if _, exists := tt.byID[IDOf(t)]; !exists {
+		tt.byID[IDOf(t)] = t
 	}
 }
 
@@ -384,8 +384,8 @@ func (tt *TypeTable) MintType(name string, parent *Type) *Type {
 	if parent != nil {
 		def.ensureTMeta().Rank = externalBandFor(parent)
 	}
-	def.ID = tt.mintID(parent)
-	tt.byID[def.ID] = def
+	SetID(def, tt.mintID(parent))
+	tt.byID[IDOf(def)] = def
 	return def
 }
 
@@ -529,9 +529,9 @@ func (tt *TypeTable) RegisterType(path string, fixedID int, owner string, behavi
 	}
 
 	def := &Type{
-		ID:     id,
 		Parent: parent,
 		tmeta:  &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: fixedID, Behavior: behavior, Owner: owner},
+		occ:    idOcc(id),
 		Origin: OriginBuiltin,
 	}
 	// External builtins share the user-/external-type band for
@@ -586,7 +586,7 @@ func (tt *TypeTable) Retire(def *Type) {
 	if tt == nil || def == nil {
 		return
 	}
-	delete(tt.byID, def.ID)
+	delete(tt.byID, IDOf(def))
 }
 
 // idSnapshot returns a copy of the canonical-ID index. It is the TYPE half of
@@ -971,9 +971,9 @@ func (tt *TypeTable) registerBuiltin(d builtinDecl) {
 		return
 	}
 	def := &Type{
-		ID:         id,
 		Parent:     parent,
 		tmeta:      &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: d.FixedID, Rank: d.Rank, Behavior: DefaultBehavior, Owner: OwnerKernel},
+		occ:        idOcc(id),
 		IsInternal: d.IsInternal,
 		Origin:     OriginBuiltin,
 	}
@@ -1096,9 +1096,9 @@ func MintTestType(path string) *Type {
 		}
 	}
 	def := &Type{
-		ID:     fmt.Sprintf("%st%011x", prefix, testTypeSeq),
 		tmeta:  &typeMeta{Name: parts[len(parts)-1], Behavior: DefaultBehavior, Owner: OwnerProgram},
 		Parent: parent,
+		occ:    idOcc(fmt.Sprintf("%st%011x", prefix, testTypeSeq)),
 		Origin: OriginUserDef,
 	}
 	if parent != nil {
@@ -1115,7 +1115,7 @@ var testTypeSeq int
 // if the path is not a registered builtin.
 func BuiltinIDForPath(path string) string {
 	if def := Builtin.bypath[path]; def != nil {
-		return def.ID
+		return IDOf(def)
 	}
 	return ""
 }

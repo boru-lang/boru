@@ -101,7 +101,7 @@ func (es *EmitState) noteKeptDefsRead(id, name string) {
 // may hold a fn value stays an observer: a fn is interned as a const, which
 // the carrier would not stop.
 func (es *EmitState) keptReadSeatedLive(v *core.Value) {
-	if v.ID == "" || es.pendingKeptRead != v.ID {
+	if core.IDOf(v) == "" || es.pendingKeptRead != core.IDOf(v) {
 		return
 	}
 	name := es.pendingKeptName
@@ -350,11 +350,11 @@ func (es *EmitState) bodyProvenFn(body core.Value) bool {
 // value the model holds as a possible fn (keptReadMayBeFn) stays unseated, as
 // the bare read's does, so a pending one becomes an observer and declines.
 func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos) {
-	if !es.Active() || v == nil || v.ID == "" || name == "" {
+	if !es.Active() || v == nil || core.IDOf(v) == "" || name == "" {
 		return
 	}
-	if !es.keptDefsFreshRead(v.ID, name) {
-		es.noteKeptDefsRead(v.ID, name)
+	if !es.keptDefsFreshRead(core.IDOf(v), name) {
+		es.noteKeptDefsRead(core.IDOf(v), name)
 	}
 	keepLive, rootLive := es.keptLeakLive(*v, name)
 	if !keepLive && !rootLive {

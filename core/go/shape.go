@@ -46,7 +46,7 @@ func Shape(v Value) ValueShape {
 	// Special root types first — they're identified by lattice node,
 	// not by payload shape.
 	t := v.Parent
-	if v.Data == nil && !v.Carrier && v.ID != "" {
+	if v.Data == nil && !v.Carrier && IDOf(&v) != "" {
 		t = &v
 	}
 	if t.Equal(TNever) {

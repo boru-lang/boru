@@ -1753,7 +1753,7 @@ func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	fold := NewFlexList([]Value{NewInteger(1)})
-	fold.ID = "flex-fold"
+	SetID(&fold, "flex-fold")
 	savedCE := CheckBraid.ConcreteEvalOnce
 	CheckBraid.ConcreteEvalOnce = func(*Engine, []Value) (Value, bool) { return fold, true }
 	defer func() { CheckBraid.ConcreteEvalOnce = savedCE }()
@@ -1785,14 +1785,14 @@ func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
 	}
 
 	for k, v := range eval() {
-		if v.ID == "" || v.ID == fold.ID {
-			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, v.ID)
+		if IDOf(&v) == "" || IDOf(&v) == IDOf(&fold) {
+			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, IDOf(&v))
 		}
 	}
 	stub.armed = false
 	for k, v := range eval() {
-		if v.ID != fold.ID {
-			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, v.ID)
+		if IDOf(&v) != IDOf(&fold) {
+			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, IDOf(&v))
 		}
 	}
 }

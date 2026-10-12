@@ -411,7 +411,7 @@ func sameDefEntry(a, b DefEntry) bool {
 		return false
 	}
 	x, y := a.Body, b.Body
-	if x.ID != y.ID || x.Parent != y.Parent || x.pos != y.pos {
+	if IDOf(&x) != IDOf(&y) || x.Parent != y.Parent || x.pos != y.pos {
 		return false
 	}
 	if HasContainerIdentity(x) || HasContainerIdentity(y) {

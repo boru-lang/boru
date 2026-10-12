@@ -2316,9 +2316,9 @@ func (vc *vmContext) seatPrefix(reg *core.Registry, srcs []compiler.RestartSrc, 
 			case src.Kind == compiler.RestartStack && src.Idx < depth:
 				prefix = append(prefix, stack[frameBase+src.Idx])
 			case src.Kind == compiler.RestartType:
-				t := reg.Types.LookupByID(src.Val.ID)
+				t := reg.Types.LookupByID(core.IDOf(&src.Val))
 				if t == nil {
-					t = core.Builtin.LookupByID(src.Val.ID)
+					t = core.Builtin.LookupByID(core.IDOf(&src.Val))
 				}
 				if t == nil {
 					return nil, vmErrAt(curDebug, pc, "unresolvable statement-island type "+src.Val.String())
@@ -4459,9 +4459,9 @@ func seatDeoptPrefix(reg *core.Registry, spec *compiler.DeoptSpec, frameBase int
 		case src.Kind == compiler.RestartStack && src.Idx >= 0 && src.Idx < spec.Held:
 			prefix = append(prefix, stack[frameBase+src.Idx])
 		case src.Kind == compiler.RestartType:
-			t := reg.Types.LookupByID(src.Val.ID)
+			t := reg.Types.LookupByID(core.IDOf(&src.Val))
 			if t == nil {
-				t = core.Builtin.LookupByID(src.Val.ID)
+				t = core.Builtin.LookupByID(core.IDOf(&src.Val))
 			}
 			if t == nil {
 				return nil, vmErrAt(curDebug, pc, "unresolvable deopt-island type "+src.Val.String())

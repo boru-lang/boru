@@ -131,7 +131,7 @@ func TestNoteMethodShapeArms(t *testing.T) {
 	c.Mode = true
 
 	out := NewCarrier(TFunction)
-	out.ID = "ms$1"
+	SetID(&out, "ms$1")
 
 	// Non-FnDefInfo member: vetted out.
 	c.NoteMethodShape(out, NewInteger(1))
@@ -193,8 +193,8 @@ func TestContextShape(t *testing.T) {
 	store := &StoreInstanceInfo{TypeName: "Ideal/Store", Data: map[string]Value{}}
 	v1 := c.ContextShape(store, 3)
 	v2 := c.ContextShape(store, 3)
-	if v1.ID == "" || v2.ID == "" || v1.ID == v2.ID {
-		t.Fatalf("each call must mint a fresh ID, got %q / %q", v1.ID, v2.ID)
+	if IDOf(&v1) == "" || IDOf(&v2) == "" || IDOf(&v1) == IDOf(&v2) {
+		t.Fatalf("each call must mint a fresh ID, got %q / %q", IDOf(&v1), IDOf(&v2))
 	}
 	s1, ok1 := v1.Data.(*StoreShapeInfo)
 	s2, ok2 := v2.Data.(*StoreShapeInfo)

@@ -171,8 +171,8 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 			return []Value{out}
 		}
 		iter := NewCarrier(TInteger)
-		es.RegisterLocal(iter.ID)
-		es.RecordWhile(condFrag, bodyFrag, condStk, stk, iter.ID, out, args[0].Pos())
+		es.RegisterLocal(IDOf(&iter))
+		es.RecordWhile(condFrag, bodyFrag, condStk, stk, IDOf(&iter), out, args[0].Pos())
 		return []Value{out}
 	}
 	if len(stk) == 0 {

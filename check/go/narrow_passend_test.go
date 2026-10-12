@@ -125,7 +125,7 @@ func TestAnalyseLoopBodySkipsNarrowingOnlyAdds(t *testing.T) {
 	// the narrowing's own trigger conditions (which live in their own
 	// tests above).
 	refined := core.NewDynamicCarrierValue(core.NewCarrier(core.TMap))
-	refined.ID = pre.ID
+	core.SetID(&refined, core.IDOf(&pre))
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "refq",
 		Signatures: []core.Signature{{

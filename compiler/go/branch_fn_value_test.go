@@ -26,9 +26,9 @@ func bfState() (*EmitState, core.Value, core.Value) {
 	es.eventInfo[1] = eventFlags{mayBeFn: true, mayBeFnArgs: true}
 	es.eventInfo[2] = eventFlags{mayBeFn: true}
 	br := core.NewCarrier(core.TAny)
-	br.ID = "br"
+	core.SetID(&br, "br")
 	br0 := core.NewCarrier(core.TAny)
-	br0.ID = "br0"
+	core.SetID(&br0, "br0")
 	return es, br, br0
 }
 
@@ -55,7 +55,7 @@ func TestFnValueMayTakeArgs(t *testing.T) {
 
 func TestMayBeFnHelpers(t *testing.T) {
 	var nilES *EmitState
-	if nilES.MayBeFn("br") || nilES.mayBeFnArgsOf("br") || nilES.mayBeFnUnsettled(core.Value{ID: "br"}) || nilES.crossesBoundary(core.Value{ID: "br"}, nil) {
+	if nilES.MayBeFn("br") || nilES.mayBeFnArgsOf("br") || nilES.mayBeFnUnsettled(withID(core.Value{}, "br")) || nilES.crossesBoundary(withID(core.Value{}, "br"), nil) {
 		t.Error("a nil state answers false everywhere")
 	}
 	es, br, br0 := bfState()
@@ -104,7 +104,7 @@ func TestPolyCallDeclineReasonMayBeFn(t *testing.T) {
 	want := "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 	for _, v := range []core.Value{br, br0} {
 		if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), v}, nil, core.SrcPos{}); got != want {
-			t.Errorf("%s: a branch result under a poly declines, got %q", v.ID, got)
+			t.Errorf("%s: a branch result under a poly declines, got %q", core.IDOf(&v), got)
 		}
 	}
 	quoted := br
@@ -208,7 +208,7 @@ func TestStatementBoundaryCrossing(t *testing.T) {
 		{kind: evCall, call: emitCall{}, seq: 3},
 	}}
 	es.producedBy = map[string]producer{"a": {seq: 1}, "b": {seq: 2}, "c": {seq: 3}}
-	a, b, c := core.Value{ID: "a"}, core.Value{ID: "b"}, core.Value{ID: "c"}
+	a, b, c := withID(core.Value{}, "a"), withID(core.Value{}, "b"), withID(core.Value{}, "c")
 	if es.crossesBoundary(a, []core.Value{b}) {
 		t.Error("no boundary recorded: nothing crosses")
 	}

@@ -24,7 +24,7 @@ func fragFix(t *testing.T, arity int) (*core.Registry, *zzmsRecorder, core.Value
 	rec := newZZMSRecorder()
 	r.Check.Emit = rec
 	carrier := core.NewDynamicCarrier(core.TAny)
-	rec.defReads = map[string]string{carrier.ID: "j"}
+	rec.defReads = map[string]string{core.IDOf(&carrier): "j"}
 	r.Check.NoteFnShape(carrier, core.FnShape{Arity: arity, Params: make([]*core.Type, arity)})
 	return r, rec, carrier, done
 }
@@ -114,7 +114,7 @@ func TestGradualReadArrivalAdmission(t *testing.T) {
 	r, rec, _, done := fragFix(t, 1)
 	defer done()
 	data := core.NewDynamicCarrier(core.TInteger)
-	rec.defReads[data.ID] = "d"
+	rec.defReads[core.IDOf(&data)] = "d"
 	r.Check.NoteFnShape(data, core.FnShape{Arity: 1})
 	e := zzmsEngine(r, []core.Value{data, core.NewEnd()})
 	if tryMemberFnArrivalDispatch(e, 0) || len(rec.reasons) != 0 {

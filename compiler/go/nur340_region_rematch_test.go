@@ -71,7 +71,9 @@ func TestArmNonEmpty(t *testing.T) {
 func TestRegionResultReadsTheRegionMarks(t *testing.T) {
 	es := NewEmitState()
 	loop, native, plain := core.NewCarrier(core.TList), core.NewCarrier(core.TAny), core.NewCarrier(core.TInteger)
-	loop.ID, native.ID, plain.ID = "loop", "native", "plain"
+	core.SetID(&loop, "loop")
+	core.SetID(&native, "native")
+	core.SetID(&plain, "plain")
 	es.setProduced(loop, 1)
 	es.setProduced(native, 2)
 	es.setProduced(plain, 3)

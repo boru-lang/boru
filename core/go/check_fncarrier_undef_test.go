@@ -10,7 +10,7 @@ import "testing"
 func TestDropCheckFnCarrierBind(t *testing.T) {
 	r := compileCheckRegistry(t)
 	carrier := NewCarrier(TFunction)
-	carrier.ID = "v1"
+	SetID(&carrier, "v1")
 	NoteCheckFnCarrierBind(r, "f", carrier)
 	if _, hit := CheckFnCarrierBind(r, "f"); !hit {
 		t.Fatal("the bind must be recorded before the drop")

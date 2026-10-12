@@ -28,7 +28,7 @@ type x5DelegatingBehavior struct{ x5StubBehavior }
 func (x5DelegatingBehavior) FormatDelegate() {}
 
 func x5UserType(name string, parent *Type, b TypeBehavior) *Type {
-	t := &Type{tmeta: &typeMeta{Name: name, Behavior: b}, ID: name, Parent: parent}
+	t := addrOf(withID(Type{tmeta: &typeMeta{Name: name, Behavior: b}, Parent: parent}, name))
 	t.Origin = OriginUserDef
 	return t
 }
@@ -171,7 +171,7 @@ func TestX5UnifySurfaceSurfacePairs(t *testing.T) {
 }
 
 func TestX5UnifySurfaceConcreteMembership(t *testing.T) {
-	node, sv, info := x5Surface("X5Shp3", map[string]bool{TInteger.ID: true})
+	node, sv, info := x5Surface("X5Shp3", map[string]bool{IDOf(TInteger): true})
 	installSurfaceUnifier(node, info, "X5Shp3")
 
 	// A concrete integer conforms via the surfaceUnifier walk.
@@ -189,7 +189,7 @@ func TestX5UnifySurfaceConcreteMembership(t *testing.T) {
 }
 
 func TestX5UnifySurfaceAbstractArms(t *testing.T) {
-	_, sv, _ := x5Surface("X5Shp4", map[string]bool{TInteger.ID: true})
+	_, sv, _ := x5Surface("X5Shp4", map[string]bool{IDOf(TInteger): true})
 
 	// Bare type node in the conformance set: containment.
 	got, uerr := unifySurface(sv, NewTypeLiteral(TInteger))
@@ -214,7 +214,7 @@ func TestX5UnifySurfaceAbstractArms(t *testing.T) {
 }
 
 func TestX5SurfaceUnifierMatchFormatAndInfoOf(t *testing.T) {
-	node, sv, info := x5Surface("X5Shp5", map[string]bool{TInteger.ID: true})
+	node, sv, info := x5Surface("X5Shp5", map[string]bool{IDOf(TInteger): true})
 	info.Required.Set("area", NewFnUndef(FnUndefInfo{}))
 	installSurfaceUnifier(node, info, "X5Shp5")
 	su := node.Behavior().(*surfaceUnifier)

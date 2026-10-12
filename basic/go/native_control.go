@@ -486,7 +486,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// bounded dynamic(Any), the run's own result.
 	for _, v := range stk {
 		if v.Carrier && v.Parent != nil && v.Parent.ConformsTo(TFunction) {
-			if _, bound := CheckFnCarrierBoundName(r, v.ID); bound {
+			if _, bound := CheckFnCarrierBoundName(r, IDOf(&v)); bound {
 				return []Value{NewDynamicCarrier(TAny)}
 			}
 		}
@@ -2181,7 +2181,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, iterName, out, regionN, args[countArg].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, IDOf(&iter), iterName, out, regionN, args[countArg].Pos())
 	}
 	// A body that nets ZERO values per iteration (every pass drops / is pure
 	// side effect) leaves the stack untouched at run time — BOTH engines net
@@ -2320,7 +2320,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 	// The handler nets ONE value (BodyOut 1): the seeded error still at the
 	// residual bottom is the strip-unconsumed shape (`["fallback"]`), so drop
 	// it before the count check — mirroring ErrorHandler's identity probe.
-	if len(stk) >= 2 && stk[0].ID == seeded[0].ID {
+	if len(stk) >= 2 && IDOf(&stk[0]) == IDOf(&seeded[0]) {
 		stk = stk[1:]
 	}
 	if len(stk) == 0 {

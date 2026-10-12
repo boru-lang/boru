@@ -299,7 +299,7 @@ func TestRegionOracleContainerIdentity(t *testing.T) {
 	// clone's provenance ID) agrees with itself before any equality is
 	// asked.
 	tagged := core.NewInteger(7)
-	tagged.ID = "T_same-provenance"
+	core.SetID(&tagged, "T_same-provenance")
 	reg.Defs.Push("k", tagged)
 	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), tagged}); ev.Outcome != "reproduced" {
 		t.Errorf("the same ID is the same value: %+v", ev)

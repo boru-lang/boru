@@ -10,7 +10,7 @@ import (
 // carrier widens the stack-only window to the whole rendered prefix, so the
 // failure is the runtime rematch's and its report names the run's value.
 func TestWithRenderedPrefix(t *testing.T) {
-	carrier, zero := withID(NewDynamicCarrier(TAny)), withID(NewInteger(0))
+	carrier, zero := withFreshID(NewDynamicCarrier(TAny)), withFreshID(NewInteger(0))
 	build := func(tape ...Value) (*Engine, *FnDefInfo) {
 		r := covRegistry(t, func(r *Registry) {
 			r.Register("w", Signature{Args: []*Type{TMap}, BarrierPos: -1, Impl: Go(nilHandler)})
@@ -34,9 +34,9 @@ func TestWithRenderedPrefix(t *testing.T) {
 		window []int
 	}{
 		{"a window past the word", []Value{carrier, NewWord("w"), zero}, []int{2}},
-		{"an operand written after the word", []Value{carrier, zero, NewWord("w"), withID(NewInteger(5))}, []int{1}},
+		{"an operand written after the word", []Value{carrier, zero, NewWord("w"), withFreshID(NewInteger(5))}, []int{1}},
 		{"a window holding the whole prefix", []Value{carrier, zero, NewWord("w")}, []int{0, 1}},
-		{"a concrete prefix", []Value{withID(NewInteger(7)), zero, NewWord("w")}, []int{1}},
+		{"a concrete prefix", []Value{withFreshID(NewInteger(7)), zero, NewWord("w")}, []int{1}},
 		{"a window that is not the prefix's top", []Value{carrier, zero, NewWord("w")}, []int{0}},
 	}
 	for _, c := range cases {
@@ -103,7 +103,7 @@ func fitEngine(t *testing.T, beneath ...Value) (*Engine, *MatchResult, *FnDefInf
 		)
 	})
 	r.Check.Emit = layoutRecorder{}
-	dyn := withID(NewDynamicCarrier(TAny))
+	dyn := withFreshID(NewDynamicCarrier(TAny))
 	tape := append(append([]Value{}, beneath...), dyn, NewWord("w"))
 	e := NewTop(r)
 	e.Tape = NewTape(tape, StackHeadroom)
@@ -127,7 +127,7 @@ func nilHandler([]Value, map[string]Value, []Value, *Registry) ([]Value, error) 
 // stack beneath — a stack-only overload never reaches the operand, and one
 // needing more values than the stack holds fails whatever the run holds.
 func TestForwardFitsListsTheViableCandidates(t *testing.T) {
-	e, match, _ := fitEngine(t, withID(NewMap(NewOrderedMap())))
+	e, match, _ := fitEngine(t, withFreshID(NewMap(NewOrderedMap())))
 	fits := e.forwardFits(match)
 	if len(fits) != 1 || len(fits[0]) != 1 || fits[0][0].Sig != match.Sig || fits[0][0].Idx != 0 {
 		t.Fatalf("`{} w y`: the Map overload alone, got %+v", fits)
@@ -151,20 +151,20 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 		t.Errorf("`w y` over nothing: listed, with no fit; got %+v", fits)
 	}
 	// A value beneath the Map slot refuses: no alternative there either.
-	e, match, _ = fitEngine(t, withID(NewInteger(3)))
+	e, match, _ = fitEngine(t, withFreshID(NewInteger(3)))
 	if fits := e.forwardFits(match); len(fits[0]) != 0 {
 		t.Errorf("`3 w y`: 3 misses Map, got %+v", fits)
 	}
 	// Two values beneath: the (Integer, Integer) overload's collection is
 	// viable over a gradual pair.
-	e, match, _ = fitEngine(t, withID(NewDynamicCarrier(TAny)), withID(NewDynamicCarrier(TAny)))
+	e, match, _ = fitEngine(t, withFreshID(NewDynamicCarrier(TAny)), withFreshID(NewDynamicCarrier(TAny)))
 	if fits := e.forwardFits(match); len(fits[0]) != 2 {
 		t.Errorf("two gradual values beneath: both one-slot-short candidates, got %+v", fits)
 	}
 	// A region's seat beneath holds any count: every reaching candidate.
-	reg := withID(NewCarrier(TList))
+	reg := withFreshID(NewCarrier(TList))
 	e, match, _ = fitEngine(t, reg)
-	e.Registry.Check.Emit = &regionRecorder{region: map[string]bool{reg.ID: true}}
+	e.Registry.Check.Emit = &regionRecorder{region: map[string]bool{IDOf(&reg): true}}
 	if fits := e.forwardFits(match); len(fits[0]) != 2 {
 		t.Errorf("a region beneath: unbounded, got %+v", fits)
 	}
@@ -185,21 +185,21 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 			return &MatchResult{Sig: m.Sig, Args: m.Args, Name: "nope"}
 		}},
 		{"a concrete operand", func(_ *Engine, m *MatchResult) *MatchResult {
-			return &MatchResult{Sig: m.Sig, Args: []Value{withID(NewMap(NewOrderedMap()))}, Name: "w"}
+			return &MatchResult{Sig: m.Sig, Args: []Value{withFreshID(NewMap(NewOrderedMap()))}, Name: "w"}
 		}},
 		{"a proven carrier", func(_ *Engine, m *MatchResult) *MatchResult {
-			return &MatchResult{Sig: m.Sig, Args: []Value{withID(NewCarrier(TMap))}, Name: "w"}
+			return &MatchResult{Sig: m.Sig, Args: []Value{withFreshID(NewCarrier(TMap))}, Name: "w"}
 		}},
 	}
 	for _, c := range declines {
-		e, match, _ := fitEngine(t, withID(NewMap(NewOrderedMap())))
+		e, match, _ := fitEngine(t, withFreshID(NewMap(NewOrderedMap())))
 		if fits := e.forwardFits(c.prep(e, match)); fits != nil {
 			t.Errorf("%s: no fits, got %+v", c.name, fits)
 		}
 	}
 	// The matched candidate is Chosen; a matched copy (a user fn's frame
 	// sig) names none of fn's own, and every candidate may be the pass's.
-	e, match, _ = fitEngine(t, withID(NewMap(NewOrderedMap())))
+	e, match, _ = fitEngine(t, withFreshID(NewMap(NewOrderedMap())))
 	if fits := e.forwardFits(match); !fits[0][0].Chosen {
 		t.Errorf("the Map overload is the pass's: %+v", fits)
 	}
@@ -209,14 +209,14 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 		t.Errorf("a copy: every candidate chosen, got %+v", fits)
 	}
 	// A module word's own registry names it (MatchResult.Reg).
-	e, match, _ = fitEngine(t, withID(NewMap(NewOrderedMap())))
+	e, match, _ = fitEngine(t, withFreshID(NewMap(NewOrderedMap())))
 	match.Reg = e.Registry
 	if fits := e.forwardFits(match); len(fits[0]) != 1 {
 		t.Errorf("the match's registry: got %+v", fits)
 	}
 	// A plain pass publishes nothing, and neither does a dispatch with no
 	// fits; both restores are no-ops.
-	e, match, _ = fitEngine(t, withID(NewMap(NewOrderedMap())))
+	e, match, _ = fitEngine(t, withFreshID(NewMap(NewOrderedMap())))
 	e.Registry.Check.Emit = nil
 	e.publishForwardFits(match)()
 	e.Registry.Check.Emit = layoutRecorder{}
@@ -232,10 +232,10 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 // top first — or no proof, where the operands are not laid out beneath the
 // word or a region's seat holds any count.
 func TestStackBeneathIsTheInterpretersStack(t *testing.T) {
-	a, b := withID(NewInteger(1)), withID(NewInteger(2))
+	a, b := withFreshID(NewInteger(1)), withFreshID(NewInteger(2))
 	e, match, _ := fitEngine(t, a, b)
 	stack, unbounded := e.stackBeneath(match, 1)
-	if unbounded || len(stack) != 2 || stack[0].ID != b.ID || stack[1].ID != a.ID {
+	if unbounded || len(stack) != 2 || IDOf(&stack[0]) != IDOf(&b) || IDOf(&stack[1]) != IDOf(&a) {
 		t.Errorf("`1 2 w y`: [2 1], got %v %v", stack, unbounded)
 	}
 	e, match, _ = fitEngine(t, a, NewMark("m"))

@@ -227,7 +227,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 		// slot already holds the right runtime value because it IS the same
 		// binding, so no value-passing half is needed (unlike a closure capture).
 		if cur, ok := r.Defs.Top(c.Name); ok {
-			narrowed.ID = cur.ID
+			SetID(&narrowed, IDOf(&cur))
 			// MEET the guard type with the binding's current (abstract) carrier
 			// rather than overwriting it with a bare NewCarrier(c.Type): an
 			// incompatible pair collapses to Never — a DEAD then-arm the runtime
@@ -243,11 +243,11 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 					deadArm = true
 				} else if IsBareTypeNode(&meet) {
 					narrowed = NewCarrier(ValueType(meet))
-					narrowed.ID = cur.ID
+					SetID(&narrowed, IDOf(&cur))
 				} else {
 					meet.Carrier = true
 					narrowed = meet
-					narrowed.ID = cur.ID
+					SetID(&narrowed, IDOf(&cur))
 				}
 				if IsDynamic(&cur) && !deadArm {
 					SetDynamic(&narrowed, true)
@@ -397,7 +397,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		// complement type, so it must resolve to cur's provenance. Set AFTER the
 		// ValuesEqual(narrowed, cur) check above so the "did not refine" early-out
 		// (which can compare by ID) is unaffected.
-		narrowed.ID = cur.ID
+		SetID(&narrowed, IDOf(&cur))
 		r.Defs.Push(c.Name, narrowed)
 		pushed = append(pushed, applied{name: c.Name})
 	}

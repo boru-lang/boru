@@ -713,8 +713,10 @@ func ClosureIsFnValue(v *core.Value) bool { return compiler.ClosureIsFnValue(v) 
 func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
 func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
 
-// The occurrence flags (core/go/occurrence.go): read and written through
-// the holder, never as fields of the value.
+// The occurrence state (core/go/occurrence.go): the identity and the flags,
+// read and written through the holder, never as fields of the value.
+func IDOf(v *core.Value) string           { return core.IDOf(v) }
+func SetID(v *core.Value, id string)      { core.SetID(v, id) }
 func SetQuoted(v *core.Value, on bool)    { core.SetQuoted(v, on) }
 func IsUndefined(v *core.Value) bool      { return core.IsUndefined(v) }
 func SetUndefined(v *core.Value, on bool) { core.SetUndefined(v, on) }

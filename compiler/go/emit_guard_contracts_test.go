@@ -22,11 +22,11 @@ import (
 // beside it.
 func TestEmbeddedEnclosingIDsNilStoreMember(t *testing.T) {
 	enclosing := core.NewList([]core.Value{core.NewInteger(9)})
-	enclosing.ID = "enc-1"
+	core.SetID(&enclosing, "enc-1")
 	nilStore := core.NewMap(nil)
-	nilStore.ID = "own-map"
+	core.SetID(&nilStore, "own-map")
 	inner := core.NewList([]core.Value{nilStore, enclosing})
-	inner.ID = "own-list"
+	core.SetID(&inner, "own-list")
 	keep := embeddedEnclosingIDs(core.NewList([]core.Value{inner}), map[string]bool{"enc-1": true})
 	if len(keep) != 1 || !keep["enc-1"] {
 		t.Fatalf("keep = %v, want exactly the enclosing member", keep)
@@ -76,9 +76,9 @@ func TestBranchArmsRetPinnedBothArmsDiverge(t *testing.T) {
 	if es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: brk, Els: cont}) {
 		t.Error("a branch whose arms both diverge reaches no merge, so nothing is ret-pinned")
 	}
-	pinned := core.Value{ID: "pinned-1"}
+	pinned := withID(core.Value{}, "pinned-1")
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 1}})
-	es.producedBy[pinned.ID] = producer{seq: seq}
+	es.producedBy[core.IDOf(&pinned)] = producer{seq: seq}
 	es.eventInfo[seq] = eventFlags{dynBodyResult: true}
 	els := &EmitFragment{events: []EmitEvent{{kind: evCall, call: emitCall{word: "do", nout: 1}}}}
 	if !es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: brk, Els: els, ElsStk: []core.Value{pinned}}) {
@@ -100,7 +100,7 @@ func TestRecordRuntimeBindDispatchUnresolvedOperand(t *testing.T) {
 	sig := &core.Signature{Args: []*core.Type{core.TList, core.TMap}, Impl: core.Go(nil, core.RunInCheck())}
 	names := core.NewList([]core.Value{core.NewAtom("a")})
 	src := core.NewCarrier(core.TMap)
-	src.ID = "src-without-home"
+	core.SetID(&src, "src-without-home")
 
 	es := NewEmitState()
 	es.reg = r
@@ -179,7 +179,7 @@ func TestRecordArgsProjectionDeclines(t *testing.T) {
 	}
 	list := func(id string) core.Value {
 		v := core.NewList(nil)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	params := []core.Value{core.NewInteger(1), core.NewInteger(2)}
@@ -194,7 +194,7 @@ func TestRecordArgsProjectionDeclines(t *testing.T) {
 		t.Error("an identity-less projection cannot be remembered, so it is not recorded")
 	}
 	noHome := core.NewCarrier(core.TInteger)
-	noHome.ID = "param-without-home"
+	core.SetID(&noHome, "param-without-home")
 	if es.RecordArgsProjection(r, []core.Value{noHome}, list("proj-1"), core.SrcPos{}) {
 		t.Error("a param with no compiled home leaves the projection unrecorded")
 	}
@@ -308,11 +308,11 @@ func TestCallResultRenderKnownProducerOffFrame(t *testing.T) {
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{ConstOperand(fi)}}}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
 	es.producedBy["res-1"] = producer{seq: seq}
-	if !es.callResultRenderKnown(core.Value{ID: "res-1"}) {
+	if !es.callResultRenderKnown(withID(core.Value{}, "res-1")) {
 		t.Error("a user call returning a baked fn const renders known")
 	}
 	es.producedBy["res-2"] = producer{seq: seq + 100}
-	if es.callResultRenderKnown(core.Value{ID: "res-2"}) {
+	if es.callResultRenderKnown(withID(core.Value{}, "res-2")) {
 		t.Error("a producer outside the current frame answers no")
 	}
 }
@@ -325,7 +325,7 @@ func TestCallResultRenderKnownProducerOffFrame(t *testing.T) {
 // a nil / identity-less query all answer no.
 func TestBranchResultRenderKnownArms(t *testing.T) {
 	var nilES *EmitState
-	if nilES.branchResultRenderKnown(core.Value{ID: "b"}) {
+	if nilES.branchResultRenderKnown(withID(core.Value{}, "b")) {
 		t.Error("a nil EmitState must decline")
 	}
 	es := NewEmitState()
@@ -354,7 +354,7 @@ func TestBranchResultRenderKnownArms(t *testing.T) {
 		seq := es.appendEvent(EmitEvent{kind: evBranch, br: c.br})
 		id := fmt.Sprintf("branch-%d", seq)
 		es.producedBy[id] = producer{seq: seq}
-		if got := es.branchResultRenderKnown(core.Value{ID: id}); got != c.want {
+		if got := es.branchResultRenderKnown(withID(core.Value{}, id)); got != c.want {
 			t.Errorf("%s: branchResultRenderKnown = %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -368,11 +368,11 @@ func TestBranchResultRenderKnownArms(t *testing.T) {
 func TestApplyChainStepsShapes(t *testing.T) {
 	val := func(id string) core.Value {
 		v := core.NewInteger(1)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	x, y := val("x"), val("y")
-	f, g := core.Value{ID: "f"}, core.Value{ID: "g"}
+	f, g := withID(core.Value{}, "f"), withID(core.Value{}, "g")
 	fnArg := fnVal()
 	pend := []pendingApply{{id: "f"}, {id: "g"}}
 	locals := func(n int) []EmitOperand {

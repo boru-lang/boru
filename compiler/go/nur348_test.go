@@ -21,12 +21,14 @@ func TestTrapHeldBeneath(t *testing.T) {
 	trap := EmitEvent{seq: 8, kind: evTrap, trap: EmitTrap{pos: deoptAt(9)}}
 	tree := rootTreeEvents([]EmitEvent{trap}, false)
 	held, slot, lit, orphan := core.NewCarrier(core.TAny), core.NewCarrier(core.TAny), core.NewInteger(4), core.NewCarrier(core.TAny)
-	held.ID, slot.ID, orphan.ID = "held", "slot", "orphan"
+	core.SetID(&held, "held")
+	core.SetID(&slot, "slot")
+	core.SetID(&orphan, "orphan")
 	fresh := func(stack ...core.Value) (*EmitState, *lowerer) {
 		es := NewEmitState()
 		es.rootBody, es.trapAt = body, 8
-		es.producedBy[held.ID] = producer{seq: 3}
-		es.producedBy[slot.ID] = producer{seq: 4}
+		es.producedBy[core.IDOf(&held)] = producer{seq: 3}
+		es.producedBy[core.IDOf(&slot)] = producer{seq: 4}
 		if stack != nil {
 			es.rootStmtStacks = map[core.SrcPos][]core.Value{deoptAt(3): stack}
 		}
@@ -94,7 +96,9 @@ func TestNoteSpliceFired(t *testing.T) {
 		return core.NewSplice(core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)}))
 	}
 	one, fired, three := core.NewInteger(1), marker(), core.NewInteger(3)
-	one.ID, fired.ID, three.ID = "one", "fired", "three"
+	core.SetID(&one, "one")
+	core.SetID(&fired, "fired")
+	core.SetID(&three, "three")
 	fresh := func() *EmitState {
 		es := NewEmitState()
 		es.Compilable = true
@@ -107,13 +111,13 @@ func TestNoteSpliceFired(t *testing.T) {
 		return es
 	}
 	es := fresh()
-	seq := es.producedBy[fired.ID].seq
+	seq := es.producedBy[core.IDOf(&fired)].seq
 	es.NoteSpliceFired(fired, core.SrcPos{})
 	ev := es.eventBySeq(seq)
-	if ev.call.nout != 2 || es.producedBy[three.ID] != (producer{seq: seq, idx: 1}) || es.producedBy[one.ID] != (producer{seq: seq}) {
-		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, es.producedBy[three.ID], es.producedBy[one.ID])
+	if ev.call.nout != 2 || es.producedBy[core.IDOf(&three)] != (producer{seq: seq, idx: 1}) || es.producedBy[core.IDOf(&one)] != (producer{seq: seq}) {
+		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, es.producedBy[core.IDOf(&three)], es.producedBy[core.IDOf(&one)])
 	}
-	if _, still := es.producedBy[fired.ID]; still || !es.firedSplices[seq][fired.ID] {
+	if _, still := es.producedBy[core.IDOf(&fired)]; still || !es.firedSplices[seq][core.IDOf(&fired)] {
 		t.Error("the fired marker is forgotten and noted fired")
 	}
 	lw := &lowerer{es: es}
@@ -123,9 +127,9 @@ func TestNoteSpliceFired(t *testing.T) {
 
 	// The markers left alone.
 	computed := core.NewSplice(core.NewCarrier(core.TList))
-	computed.ID = "computed-marker"
+	core.SetID(&computed, "computed-marker")
 	unnoted := marker()
-	unnoted.ID = "unnoted"
+	core.SetID(&unnoted, "unnoted")
 	for _, c := range []struct {
 		name string
 		es   func() *EmitState
@@ -180,7 +184,8 @@ func TestNoteSpliceFired(t *testing.T) {
 // is owed there.
 func TestSpliceNotesRollBack(t *testing.T) {
 	marker, three := core.NewSplice(core.NewList([]core.Value{core.NewInteger(1)})), core.NewInteger(3)
-	marker.ID, three.ID = "marker", "three"
+	core.SetID(&marker, "marker")
+	core.SetID(&three, "three")
 	es := NewEmitState()
 	record := func() int {
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2}})
