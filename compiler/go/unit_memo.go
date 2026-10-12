@@ -374,8 +374,8 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 	}
 	if env.multi {
 		for _, name := range table.Names() {
-			sv, _ := table.Top(name)
-			ev, present := r.Defs.Top(name)
+			sv, _ := table.TopValue(name) // a listed name is bound
+			ev, present := r.Defs.TopValue(name)
 			if !present {
 				return nil, false
 			}
@@ -383,7 +383,7 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 			// without one (outside a pass), by equality. An empty id on both
 			// sides must not read as "same", or a runtime-minted rebind would
 			// pass as its own start binding.
-			if core.IDOf(&sv) == core.IDOf(&ev) && (core.IDOf(&sv) != "" || core.ValuesEqual(sv, ev)) {
+			if core.IDOf(sv) == core.IDOf(ev) && (core.IDOf(sv) != "" || core.ValuesEqual(*sv, *ev)) {
 				continue
 			}
 			if entry, _ := table.TopEntry(name); entry.TypeDef != nil {
@@ -391,10 +391,10 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 				// type installs already, so the start binding stands here.
 				continue
 			}
-			if core.IsFnValueResidual(sv) || core.IsFnValueResidual(ev) {
+			if core.IsFnValueResidual(*sv) || core.IsFnValueResidual(*ev) {
 				return nil, false
 			}
-			table.Replace(name, core.JoinCarriers(bindCarrier(sv), bindCarrier(ev)))
+			table.Replace(name, core.JoinCarriers(bindCarrier(*sv), bindCarrier(*ev)))
 		}
 	}
 	return r.SwapDefs(table), true

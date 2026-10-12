@@ -79,9 +79,9 @@ func (h *seamHost) ScratchParenSpan(items []core.Value) []core.Value {
 	return h.span
 }
 
-func (h *seamHost) DefTop(name string) (core.Value, bool) {
+func (h *seamHost) DefTop(name string) (*core.Value, bool) {
 	h.note("DefTop")
-	return h.reg.Defs.Top(name)
+	return h.reg.Defs.TopValue(name)
 }
 
 // The four classifications below delegate to core's SHARED implementations

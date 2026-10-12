@@ -112,6 +112,35 @@ func (dt *DefTable) TopRef(name string) (*DefEntry, bool) {
 	return &ds[len(ds)-1], true
 }
 
+// TopValue is Top read where the binding lives: a pointer to what name's
+// most recent binding denotes — a value binding's Body, a type binding's
+// lattice node itself — or (nil, false) if name is unbound. Like TopRef,
+// it is valid until name's binding stack next changes and is never written
+// through: the binding is every reader's, and a type node is the lattice's.
+func (dt *DefTable) TopValue(name string) (*Value, bool) {
+	e, ok := dt.TopRef(name)
+	if !ok {
+		return nil, false
+	}
+	if e.TypeDef != nil {
+		return e.TypeDef, true
+	}
+	return &e.Body, true
+}
+
+// SetTopData swaps the payload of name's top binding in place: Replace for
+// a writer that changes only the payload, without copying the binding out
+// and back. Returns false (a no-op) if name is unbound.
+func (dt *DefTable) SetTopData(name string, data Payload) bool {
+	e, ok := dt.TopRef(name)
+	if !ok {
+		return false
+	}
+	dt.touch(name)
+	e.Body.Data = data
+	return true
+}
+
 // TopEntry returns the most recent binding (body plus the type def, if
 // any) for name, or (zero DefEntry, false) if name is unbound.
 func (dt *DefTable) TopEntry(name string) (DefEntry, bool) {

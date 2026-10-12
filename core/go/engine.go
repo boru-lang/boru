@@ -2394,14 +2394,16 @@ func (e *Engine) ScratchParenSpan(items []Value) []Value { return e.expandParenE
 // analysis branch), so the scan claims the slot with the carrier the
 // arrival will deliver. Inert at run time: the table exists only under
 // analysis.
-func (e *Engine) DefTop(name string) (Value, bool) {
-	if top, ok := e.Registry.Defs.Top(name); ok {
+func (e *Engine) DefTop(name string) (*Value, bool) {
+	if top, ok := e.Registry.Defs.TopValue(name); ok {
 		return top, true
 	}
 	if e.Registry.analysisActive() {
-		return CheckFnCarrierBind(e.Registry, name)
+		if v, ok := CheckFnCarrierBind(e.Registry, name); ok {
+			return &v, true
+		}
 	}
-	return Value{}, false
+	return nil, false
 }
 
 func (e *Engine) IsFnWordBarrier(tok Value) bool { return e.fnWordBarrierAt(tok) }
@@ -3122,58 +3124,63 @@ func (e *Engine) stepWord(val *Value) error {
 	// name. The pushed value flows through stepLiteral so a pending
 	// forward can still consume it (e.g. `Color` as the value side
 	// of an export map entry).
-	if e.Registry != nil {
-		if entry, ok := e.Registry.Defs.TopRef(w.Name); ok && entry.TypeDef != nil {
-			// A type name DENOTES its minted (or adopted) lattice node
-			// (the Stage 2 flip, design/legacy/TYPE-REPRESENTATION.1.ignore §5):
-			// evaluating `M` pushes the M node for every declaration
-			// kind, exactly as `P` always pushed the refine node. The
-			// declared structure stays reachable from the node
-			// (Value.TypeBody); nothing on the evaluation path reads
-			// the stored body any more. A bare node never dispatches,
-			// so the fn-shape Quoted special case the body push needed
-			// is gone with the body.
-			//
-			// Freeze discipline, TYPE half. A module-scope type binding read
-			// inside an open fn/closure unit BAKES: resolveOperand's bare-
-			// type-node arm returns a typeOperand, which lowers to OpPushType
-			// carrying the node's IDENTITY, chosen at compile time. The node
-			// it names stays live, but the ID does not, so a later rebind of
-			// the NAME leaves the unit resolving the old node while the
-			// interpreter re-resolves the name per call (NUR097's late half,
-			// which the single binding store gives type names too).
-			//
-			// Measured before this note existed — a silent wrong answer on
-			// the DEFAULT lane, not a -force-compile curiosity:
-			//
-			//	def T Integer  def f fn [[] [Boolean] [5 is T]]  f  def T String  f
-			//	  interpreted -> true false      compiled -> true true
-			//
-			// and the `undef` twin answers `true true` where the interpreter
-			// raises undefined_word, because an ALIAS binding is not Minted
-			// and so retires no node (basic/go/native_definition.go's undef
-			// type arm) — the baked ID keeps resolving after its binding is
-			// gone. The value-name twin of both rows has been declined since
-			// the freeze discipline landed; only the type half was missing.
-			//
-			// No IsConcrete conjunct here, deliberately. On the value side
-			// that test is a PROXY for "the unit baked it" and is neither
-			// necessary nor sufficient; here the bake is unconditional — a
-			// bare type node reaching resolveOperand has exactly one arm —
-			// so the real decision is available and the proxy is not needed.
-			push := NewTypeLiteral(entry.TypeDef)
-			e.noteBindingRead(w.Name, push)
-			push.pos = vpos
-			e.Tape.Set(e.Pointer, push)
-			return e.stepLiteral()
-		}
+	//
+	// One lookup serves both arms below: the binding is read where it lives
+	// (TopRef), and nothing between here and the cell write moves its stack.
+	entry, bound := e.Registry.Defs.TopRef(w.Name)
+	if bound && entry.TypeDef != nil {
+		// A type name DENOTES its minted (or adopted) lattice node
+		// (the Stage 2 flip, design/legacy/TYPE-REPRESENTATION.1.ignore §5):
+		// evaluating `M` pushes the M node for every declaration
+		// kind, exactly as `P` always pushed the refine node. The
+		// declared structure stays reachable from the node
+		// (Value.TypeBody); nothing on the evaluation path reads
+		// the stored body any more. A bare node never dispatches,
+		// so the fn-shape Quoted special case the body push needed
+		// is gone with the body.
+		//
+		// Freeze discipline, TYPE half. A module-scope type binding read
+		// inside an open fn/closure unit BAKES: resolveOperand's bare-
+		// type-node arm returns a typeOperand, which lowers to OpPushType
+		// carrying the node's IDENTITY, chosen at compile time. The node
+		// it names stays live, but the ID does not, so a later rebind of
+		// the NAME leaves the unit resolving the old node while the
+		// interpreter re-resolves the name per call (NUR097's late half,
+		// which the single binding store gives type names too).
+		//
+		// Measured before this note existed — a silent wrong answer on
+		// the DEFAULT lane, not a -force-compile curiosity:
+		//
+		//	def T Integer  def f fn [[] [Boolean] [5 is T]]  f  def T String  f
+		//	  interpreted -> true false      compiled -> true true
+		//
+		// and the `undef` twin answers `true true` where the interpreter
+		// raises undefined_word, because an ALIAS binding is not Minted
+		// and so retires no node (basic/go/native_definition.go's undef
+		// type arm) — the baked ID keeps resolving after its binding is
+		// gone. The value-name twin of both rows has been declined since
+		// the freeze discipline landed; only the type half was missing.
+		//
+		// No IsConcrete conjunct here, deliberately. On the value side
+		// that test is a PROXY for "the unit baked it" and is neither
+		// necessary nor sufficient; here the bake is unconditional — a
+		// bare type node reaching resolveOperand has exactly one arm —
+		// so the real decision is available and the proxy is not needed.
+		push := NewTypeLiteral(entry.TypeDef)
+		e.noteBindingRead(w.Name, push)
+		push.pos = vpos
+		e.Tape.SetFrom(e.Pointer, &push)
+		return e.stepLiteral()
 	}
 
 	// Simple value def: substitute the word with its value directly,
 	// bypassing function dispatch entirely. FnDefInfo and ClassTypeInfo
 	// entries are not simple values — they go through normal Lookup, and
-	// so does a compiled closure a run can bridge (dispatchesAsWord).
-	if top, ok := e.Registry.Defs.Top(w.Name); ok && !dispatchesAsWord(&top, e.Registry) {
+	// so does a compiled closure a run can bridge (dispatchesAsWord). The
+	// binding is copied once, into the cell the word stood in; an analysis
+	// pass edits its read, so it takes a copy of its own first.
+	if bound && !dispatchesAsWord(&entry.Body, e.Registry) {
+		top := &entry.Body
 		{
 			// f w ≡ f (w): a word bound to a DATA __SP splice marker that
 			// is being collected by a pending forward expands as the paren
@@ -3197,8 +3204,8 @@ func (e *Engine) stepWord(val *Value) error {
 			// fmt.Errorf — an allocation on EVERY def-value substitution
 			// without the guard (the same guard the collection-side twin at
 			// the stepLiteral splice check already carries).
-			if IsSplice(&top) {
-				if info, serr := AsSplice(&top); serr == nil && spliceIsData(info) {
+			if IsSplice(top) {
+				if info, serr := AsSplice(top); serr == nil && spliceIsData(info) {
 					if fwdIdx := e.pendingForwardIdx(); fwdIdx >= 0 {
 						if fwd, ferr := AsForward(e.Tape.Ref(fwdIdx)); ferr == nil && !bindsReferent(fwd.FuncName) {
 							pe := NewParenExpr([]Value{*val})
@@ -3212,31 +3219,8 @@ func (e *Engine) stepWord(val *Value) error {
 			// Record the substitution as a "use" for unused-def
 			// tracking in check mode.
 			e.Registry.noteAnalysisUse(w.Name)
-			// Remember which NAME produced this value (compile passes): if the
-			// value later has no compiled home in a fn unit, the read was a
-			// dynamic-scope reference and lowers to a runtime name lookup
-			// (resolveOperand's dynScopeRescue). Gated on an active check —
-			// NoteDefRead is a no-op outside a pass, but the bare call still
-			// evaluated top.ID unconditionally on the run-mode hot path.
 			if e.Registry.analysisActive() {
-				// A bare read of a binding that may hold a fn is the WORD
-				// dispatch whatever the bound value's quote — the run routes
-				// a bound FnDefInfo through Lookup — so the pass's stand-in
-				// for such a binding is read, not substituted as the quoted
-				// data it was where it was bound: `def g (m.f/v) end g 4` is
-				// 5 (NUR280; the marker drop quotes the member carrier,
-				// NUR277, and a def binds what the paren left).
-				if IsQuoted(&top) && (IsFnTypedCarrier(&top) || (IsDynamic(&top) && SigTypeMatches(&top, TFunction))) {
-					SetQuoted(&top, false)
-				}
-				e.Registry.analysisRecorder().NoteDefRead(IDOf(&top), w.Name)
-				e.Registry.analysisRecorder().NoteLocalRead(IDOf(&top), derefPos(vpos))
-				e.noteWordRead(top, w.Name, derefPos(vpos))
-				// Freeze discipline: a CONCRETE module-scope binding read inside
-				// an open fn/closure unit bakes into the unit across calls, where
-				// the interpreter re-resolves the name per call — a later module
-				// rebind would diverge. Note it so NotifyNameRebound declines.
-				e.noteBindingRead(w.Name, top)
+				return e.stepDefReadAnalysis(*top, w.Name, vpos)
 			}
 			// A def'd word binds a VALUE: push it as-is. Lists bind like
 			// maps — `def xs [1,2,3]` makes `xs` the list value, evaluated
@@ -3244,18 +3228,7 @@ func (e *Engine) stepWord(val *Value) error {
 			// onto the stack (the old implicit behaviour / Forth-style
 			// macros) use the explicit `def name word [list]` form, whose
 			// __SP marker is handled in stepLiteral.
-			if e.Registry.analysisActive() {
-				// Tag a COPY and write it back: taking &top toward the
-				// opaque S9 slot would make every interpreter def read
-				// heap-allocate top (the braid call is invisible to
-				// escape analysis) — the one measured regression of the
-				// slot conversion (TestInterpAllocCeilings).
-				tagged := top
-				CheckBraid.TagCheckModeDefRead(e, &tagged, w.Name, derefPos(vpos))
-				top = tagged
-				e.noteDefReadPos(IDOf(&top), derefPos(vpos))
-			}
-			e.Tape.Set(e.Pointer, top)
+			e.Tape.SetFrom(e.Pointer, top)
 			return e.stepLiteral()
 		}
 	}
@@ -3564,6 +3537,42 @@ func (e *Engine) stepWord(val *Value) error {
 	return e.execMatch(match)
 }
 
+// stepDefReadAnalysis is stepWord's def-value substitution under an
+// analysis pass. The pass edits its read — the quote drop below, the
+// check-mode tag — so it works on its own copy of the binding, never the
+// binding. Its own function so that the copy, whose address goes to the
+// opaque S9 slot and so to the heap, is made only on the pass's path, not
+// on every interpreter def read (the one measured regression of the slot
+// conversion, TestInterpAllocCeilings).
+func (e *Engine) stepDefReadAnalysis(top Value, name string, vpos *SrcPos) error {
+	// Remember which NAME produced this value (compile passes): if the
+	// value later has no compiled home in a fn unit, the read was a
+	// dynamic-scope reference and lowers to a runtime name lookup
+	// (resolveOperand's dynScopeRescue).
+	//
+	// A bare read of a binding that may hold a fn is the WORD dispatch
+	// whatever the bound value's quote — the run routes a bound FnDefInfo
+	// through Lookup — so the pass's stand-in for such a binding is read,
+	// not substituted as the quoted data it was where it was bound: `def g
+	// (m.f/v) end g 4` is 5 (NUR280; the marker drop quotes the member
+	// carrier, NUR277, and a def binds what the paren left).
+	if IsQuoted(&top) && (IsFnTypedCarrier(&top) || (IsDynamic(&top) && SigTypeMatches(&top, TFunction))) {
+		SetQuoted(&top, false)
+	}
+	e.Registry.analysisRecorder().NoteDefRead(IDOf(&top), name)
+	e.Registry.analysisRecorder().NoteLocalRead(IDOf(&top), derefPos(vpos))
+	e.noteWordRead(top, name, derefPos(vpos))
+	// Freeze discipline: a CONCRETE module-scope binding read inside an
+	// open fn/closure unit bakes into the unit across calls, where the
+	// interpreter re-resolves the name per call — a later module rebind
+	// would diverge. Note it so NotifyNameRebound declines.
+	e.noteBindingRead(name, top)
+	CheckBraid.TagCheckModeDefRead(e, &top, name, derefPos(vpos))
+	e.noteDefReadPos(IDOf(&top), derefPos(vpos))
+	e.Tape.SetFrom(e.Pointer, &top)
+	return e.stepLiteral()
+}
+
 // mixedFormStackSlotAny reports whether the deepest stack-bound sig slot of a
 // mixed-form call is Any-typed. The mixed_form_call advisory fires only when it
 // is: an Any slot has no type discipline, so a value stacked into it (the
@@ -3632,7 +3641,11 @@ func (e *Engine) ForwardOperandValue(t Value) (Value, bool) {
 	if err != nil || w.ForceVal || w.ForceStack || w.ForceForward || w.ForceUsurp {
 		return Value{}, false
 	}
-	top, ok := e.DefTop(w.Name)
+	var top Value
+	p, ok := e.DefTop(w.Name)
+	if ok {
+		top = *p
+	}
 	if !ok && (w.Name == "true" || w.Name == "false") {
 		top, ok = NewBoolean(w.Name == "true"), true
 	}

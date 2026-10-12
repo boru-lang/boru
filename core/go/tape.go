@@ -318,6 +318,22 @@ func (t *Tape) Set(i int, v Value) {
 	t.buf[p] = v
 }
 
+// SetFrom is Set reading the new value where it lives: the cell takes the
+// one copy, where Set's by-value parameter makes two.
+func (t *Tape) SetFrom(i int, v *Value) {
+	if i < 0 || i >= t.Len() {
+		return
+	}
+	p := t.phys(i)
+	if IsForward(&t.buf[p]) {
+		t.forwards--
+	}
+	if IsForward(v) {
+		t.forwards++
+	}
+	t.buf[p] = *v
+}
+
 // MoveGap relocates the gap so it sits at logical index i — O(|i - gap|)
 // Value copies. The engine calls this implicitly via the edit methods;
 // the cursor's step-by-step advance makes the move cheap (usually 0-4).

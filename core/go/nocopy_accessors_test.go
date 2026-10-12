@@ -72,6 +72,60 @@ func TestTapeRefOutOfRangeIsAZeroCell(t *testing.T) {
 	}
 }
 
+// SetFrom is Set reading the new value where it lives: the same cell write,
+// the same forward bookkeeping, and an out-of-range index ignored.
+func TestTapeSetFromIsSet(t *testing.T) {
+	tp := NewTape([]Value{NewInteger(1), NewInteger(2)}, 0)
+	fwd := NewForward(ForwardInfo{FuncName: "f"})
+	tp.SetFrom(1, &fwd)
+	if !IsForward(tp.Ref(1)) || !tp.hasForward() {
+		t.Fatal("SetFrom must place the value and count the forward it places")
+	}
+	one := NewInteger(3)
+	tp.SetFrom(1, &one)
+	if n, _ := AsInteger(*tp.Ref(1)); n != 3 || tp.hasForward() {
+		t.Fatalf("SetFrom over a forward must uncount it: %v %v", tp.Ref(1), tp.hasForward())
+	}
+	for _, i := range []int{-1, 2} {
+		tp.SetFrom(i, &fwd)
+	}
+	if tp.Len() != 2 || tp.hasForward() {
+		t.Error("an out-of-range SetFrom must change nothing")
+	}
+}
+
+// TopValue is Top read where the binding lives: a value binding's Body, a
+// type binding's node itself, nothing for an unbound name; SetTopData
+// swaps the payload in place and moves the name's generation.
+func TestDefTableTopValueReadsInPlace(t *testing.T) {
+	dt := NewDefTable()
+	if v, ok := dt.TopValue("x"); ok || v != nil {
+		t.Fatal("an unbound name has no value")
+	}
+	dt.Push("x", NewInteger(1))
+	ref, _ := dt.TopRef("x")
+	if v, ok := dt.TopValue("x"); !ok || v != &ref.Body {
+		t.Fatal("a value binding reads as its own Body")
+	}
+	dt.PushType("T", TInteger, NewTypeLiteral(TInteger))
+	if v, ok := dt.TopValue("T"); !ok || v != TInteger {
+		t.Fatal("a type binding reads as its lattice node itself")
+	}
+	gen := dt.Gen("x")
+	if !dt.SetTopData("x", IntPayload{N: 2}) {
+		t.Fatal("SetTopData on a bound name")
+	}
+	if v, _ := dt.TopValue("x"); dt.Gen("x") == gen || v != &ref.Body {
+		t.Fatal("SetTopData writes the binding in place and moves its generation")
+	}
+	if n, _ := AsInteger(ref.Body); n != 2 {
+		t.Fatalf("SetTopData payload = %v, want 2", ref.Body)
+	}
+	if dt.SetTopData("y", IntPayload{N: 1}) || dt.Has("y") {
+		t.Error("SetTopData on an unbound name is a no-op")
+	}
+}
+
 // ReadList.Ref is the element where it lives.
 func TestReadListRefIsTheElement(t *testing.T) {
 	elems := []Value{NewInteger(1), NewInteger(2)}

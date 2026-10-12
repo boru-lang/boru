@@ -193,18 +193,18 @@ func TestRegionHostResolvesWordSlotsLive(t *testing.T) {
 		t.Fatal("k must start unbound")
 	}
 	reg.Defs.Push("k", core.NewInteger(5))
-	if v, ok := h.DefTop("k"); !ok || core.CanonValue(v) != "5" {
-		t.Fatalf("DefTop after bind = %v/%v, want 5", core.CanonValue(v), ok)
+	if v, ok := h.DefTop("k"); !ok || core.CanonValue(*v) != "5" {
+		t.Fatalf("DefTop after bind = %v/%v, want 5", v, ok)
 	}
 	reg.Defs.Push("k", core.NewInteger(9))
-	if v, _ := h.DefTop("k"); core.CanonValue(v) != "9" {
-		t.Errorf("DefTop after rebind = %s, want 9 — the slot must not be frozen", core.CanonValue(v))
+	if v, _ := h.DefTop("k"); core.CanonValue(*v) != "9" {
+		t.Errorf("DefTop after rebind = %s, want 9 — the slot must not be frozen", core.CanonValue(*v))
 	}
 	if !reg.Defs.Pop("k") {
 		t.Fatal("pop")
 	}
-	if v, _ := h.DefTop("k"); core.CanonValue(v) != "5" {
-		t.Errorf("DefTop after undef = %s, want 5", core.CanonValue(v))
+	if v, _ := h.DefTop("k"); core.CanonValue(*v) != "5" {
+		t.Errorf("DefTop after undef = %s, want 5", core.CanonValue(*v))
 	}
 }
 

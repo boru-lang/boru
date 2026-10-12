@@ -167,7 +167,7 @@ func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
 	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
 		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
 	}
-	if got, ok := e.DefTop("d"); !ok || !IsConcrete(&got) {
+	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
 		t.Errorf("a Defs binding must resolve as itself: %v %v", got, ok)
 	}
 	if _, ok := e.DefTop("zz"); ok {

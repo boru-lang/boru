@@ -27,7 +27,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 	if r == nil {
 		return Value{}, false
 	}
-	top, ok := r.Defs.Top(name)
+	top, ok := r.Defs.TopValue(name)
 	if !ok {
 		return Value{}, false
 	}
@@ -48,7 +48,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 			return NewFunction(*fnDef), true
 		}
 	}
-	return top, true
+	return *top, true
 }
 
 // IsFunctionRef reports whether a value resolved by ResolveRef is a

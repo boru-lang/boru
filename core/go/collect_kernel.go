@@ -119,8 +119,9 @@ type CollectHost interface {
 
 	// --- classifications: pure questions against the live binding set ---
 
-	// DefTop resolves a name to its active binding, if any.
-	DefTop(name string) (Value, bool)
+	// DefTop resolves a name to its active binding, if any, where it lives
+	// (DefTable.TopValue): read it at once, never write through it.
+	DefTop(name string) (*Value, bool)
 	// IsFnWordBarrier reports whether tok is a bare function word acting as
 	// a forward-collection barrier.
 	IsFnWordBarrier(tok Value) bool
@@ -252,7 +253,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		if IsWord(&tok) {
 			if wi, werr := AsWord(&tok); werr == nil {
 				if top, ok := h.DefTop(wi.Name); ok {
-					prunePatterns(pos, top)
+					prunePatterns(pos, *top)
 				}
 			}
 			return
@@ -469,8 +470,8 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// the splice — see bindsReferent).
 		if IsWord(&tok) && viableConsumes(pos) && !bindsReferent(fn.Name) && !capturesForwardToken(fn, pos, tok) {
 			if wi, werr := AsWord(&tok); werr == nil {
-				if top, ok := h.DefTop(wi.Name); ok && IsSplice(&top) {
-					if info, serr := AsSplice(&top); serr == nil && spliceIsData(info) {
+				if top, ok := h.DefTop(wi.Name); ok && IsSplice(top) {
+					if info, serr := AsSplice(top); serr == nil && spliceIsData(info) {
 						pe := NewParenExpr([]Value{tok})
 						pe.pos = tok.pos
 						win.Set(scanIdx, pe)
@@ -643,9 +644,9 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// literal is declined at a concrete-payload slot, so the
 				// plan never claims what the commit re-match would
 				// reject.
-				if IsBareTypeNode(&top) {
+				if IsBareTypeNode(top) {
 					isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
-					if !isTypeArg && rejectsTypeLiteral(top, expectedType) {
+					if !isTypeArg && rejectsTypeLiteral(*top, expectedType) {
 						break
 					}
 				}
@@ -667,9 +668,9 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// when it dispatches. Both are the fn binding here, or the
 				// compiled lane collects by value what the interpreter calls.
 				_, isFnPayload := top.Data.(*FnDefInfo)
-				isFnBinding := isFnPayload || IsFnTypedCarrier(&top) ||
-					(IsDynamic(&top) && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
-				byValue := SigArgMatches(sig, fwd, &top) && (!isFnBinding || ww.ForceVal)
+				isFnBinding := isFnPayload || IsFnTypedCarrier(top) ||
+					(IsDynamic(top) && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
+				byValue := SigArgMatches(sig, fwd, top) && (!isFnBinding || ww.ForceVal)
 				if byValue || expectedType.Equal(TAny) || gradualAny {
 					// A dispatching binding (FnDefInfo) planned as an
 					// operand is SPECULATIVE: at runtime this token

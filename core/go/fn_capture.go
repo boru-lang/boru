@@ -63,7 +63,7 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			if r == nil || seen[w.Name] {
 				return
 			}
-			bound, ok := r.Defs.Top(w.Name)
+			bound, ok := r.Defs.TopValue(w.Name)
 			if !ok {
 				return
 			}
@@ -463,7 +463,7 @@ func fnValueIsBindingWord(r *Registry, fd *FnDefInfo) bool {
 		return false
 	}
 	for w := range frameStateWords {
-		if top, ok := r.Defs.Top(w); ok {
+		if top, ok := r.Defs.TopValue(w); ok {
 			if tfd, isFn := top.Data.(*FnDefInfo); isFn && tfd.ident == fd.ident {
 				return true
 			}

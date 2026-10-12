@@ -184,14 +184,16 @@ func (h *regionHost) ScratchParenSpan(items []core.Value) []core.Value {
 // side table (core.CheckFnCarrierBind), the binding the engine's own seat
 // resolves (Engine.DefTop, S1b-2), so the descriptor's plan walk and the
 // dispatch it describes claim the same forward slots.
-func (h *regionHost) DefTop(name string) (core.Value, bool) {
-	if top, ok := h.reg.Defs.Top(name); ok {
+func (h *regionHost) DefTop(name string) (*core.Value, bool) {
+	if top, ok := h.reg.Defs.TopValue(name); ok {
 		return top, true
 	}
 	if h.reg.Check.IsActive() {
-		return core.CheckFnCarrierBind(h.reg, name)
+		if v, ok := core.CheckFnCarrierBind(h.reg, name); ok {
+			return &v, true
+		}
 	}
-	return core.Value{}, false
+	return nil, false
 }
 
 func (h *regionHost) IsFnWordBarrier(tok core.Value) bool {
