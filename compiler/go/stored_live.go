@@ -219,7 +219,7 @@ func (es *EmitState) noteLiveNameTransition(name string) {
 // push — the arms OpLookupDynScope defers on.
 func dispatchingBinding(v core.Value) bool {
 	switch v.Data.(type) {
-	case core.FnDefInfo, *core.ClassTypeInfo:
+	case *core.FnDefInfo, *core.ClassTypeInfo:
 		return true
 	}
 	return core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v)
@@ -235,8 +235,8 @@ func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 		es.declineUndef(name, liveLeadUndeclared)
 		return
 	}
-	fd := v.Data.(core.FnDefInfo)
+	fd := v.Data.(*core.FnDefInfo)
 	for i := range fd.Signatures {
-		check.CompileFnSigUnit(es.reg, fd, i)
+		check.CompileFnSigUnit(es.reg, *fd, i)
 	}
 }

@@ -2602,7 +2602,7 @@ func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
 		return true
 	}
 	switch v.Data.(type) {
-	case core.FnDefInfo, *core.ClassTypeInfo:
+	case *core.FnDefInfo, *core.ClassTypeInfo:
 		if !d.Ref {
 			return true
 		}

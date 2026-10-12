@@ -262,7 +262,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 // returns the input unchanged with ok=false, so callers may use the returned
 // value unconditionally.
 func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefCopy(v.Data)
 	if !ok {
 		return v, false
 	}
@@ -324,7 +324,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	}
 	fd.Signatures = sigs
 	out := v
-	out.Data = fd
+	out.Data = &fd
 	return out, true
 }
 
@@ -336,7 +336,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 // see the stamp, and nothing outside the loading goroutine holds the value
 // yet. Returns false on any decline, leaving the value untouched.
 func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -349,13 +349,13 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 	// see the doc above): every stampable own sig gets its own ref
 	// (COMPILE FAILURE-CLOSURE §7b); a declining body leaves that sig plain.
 	// The defining registry compiles the body — see StampFnValue.
-	homeIP, _ := core.FnHome(r, &fd)
+	homeIP, _ := core.FnHome(r, fd)
 	any := false
 	for i := range fd.Signatures {
 		if !storedSigEligible(&fd.Signatures[i]) {
 			continue
 		}
-		ref, ok := StampDetachedSig(homeIP, fd, i, v.Pos())
+		ref, ok := StampDetachedSig(homeIP, *fd, i, v.Pos())
 		if !ok {
 			continue
 		}

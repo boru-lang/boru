@@ -1660,7 +1660,7 @@ func eachReturnsFn(args []Value, r *Registry) []Value {
 	// calls, 2026-09-22). An anonymous lambda's placeholder Any, an Any
 	// return and a multi-return fn keep the untyped list, as does a fn-typed
 	// CARRIER callback (the body analysis below finds no list body).
-	if fd, ok := args[0].Data.(FnDefInfo); ok && !fd.Anonymous {
+	if fd, ok := args[0].Data.(*FnDefInfo); ok && !fd.Anonymous {
 		if sig, has := fd.FirstOwnSig(); has && len(sig.Returns) == 1 && sig.Returns[0] != nil && !sig.Returns[0].Equal(TAny) {
 			return []Value{NewCarrierTypedList(sig.Returns[0])}
 		}

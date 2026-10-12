@@ -528,7 +528,7 @@ func caseFoldablePredicate(r *Registry, toks []Value) bool {
 			if caseScalarConst(top) {
 				continue // a name bound to a known scalar steps to it
 			}
-			if _, isFn := top.Data.(FnDefInfo); !isFn {
+			if _, isFn := top.Data.(*FnDefInfo); !isFn {
 				return false
 			}
 		}
@@ -604,8 +604,8 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 		return false
 	}
 	if top, ok := r.Defs.Top(w.Name); ok {
-		if fd, isFn := top.Data.(FnDefInfo); isFn {
-			return callReachesContext(&fd)
+		if fd, isFn := top.Data.(*FnDefInfo); isFn {
+			return callReachesContext(fd)
 		}
 		// A splice marker (`def g word [add]`) spills its tokens where the
 		// block is re-stepped, and those tokens reach the values around the

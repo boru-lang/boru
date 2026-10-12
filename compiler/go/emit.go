@@ -4408,7 +4408,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		// review: compiled [3] vs interp [fn (Integer) 2]). Keep it inert.
 		return EmitOperand{}, false
 	}
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	// An ANONYMOUS lambda (=>/afn) or a NAMELESS verbose `fn` construction
 	// (COMPILE FAILURE-CLOSURE §9.2d — the curried factory's inner fn) both model as
 	// returned closures; a NAMED fn value carries registry dispatch and
@@ -4456,7 +4456,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	ps := lamParamContract(lam)
 	// In the fn's HOME, with the caller's check state shared onto a foreign
 	// one — see compileStoredFnUnit for the measured divergence.
-	r, restore := es.fnValueHome(&fd)
+	r, restore := es.fnValueHome(fd)
 	defer restore()
 	// PROBE in a throwaway emit state (mirrors recordClosureDispatch), so a body
 	// that declines leaves THIS program untouched and the value stays unresolved.
@@ -4501,7 +4501,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
-	es.fnRecs[unit].render = core.FormatFnDef(fd)
+	es.fnRecs[unit].render = core.FormatFnDef(*fd)
 	// The returned lambda's declared param contract rides on its unit, so a
 	// runtime that dispatches the closure BY NAME (the word-read replay's
 	// closureAsWord bridge, NUR123) declares the interpreter's signature.
@@ -4520,7 +4520,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// `[(fn [[a:Integer][String] …])]`), a `=>` lambda none. pos is the
 	// residual's (the enclosing paren, 1:36), which the compiled report
 	// used to name (NUR347).
-	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, v.Pos()), &fd)}, true
+	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(fd, lam, v.Pos()), fd)}, true
 }
 
 // namedFnValueSpec marks a push of a NAMED fn value (a `fn` literal — only
@@ -4742,7 +4742,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	}
 	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens), liveNames: es.unitLiveNames(unit)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
-	carrier := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
+	carrier := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
 		Signatures: []core.Signature{{Impl: core.NewBoruImplCompiled(tokens, ref)}},
 	}}
 	return carrier, true
@@ -4832,7 +4832,7 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	}
 	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens), liveNames: es.unitLiveNames(unit)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
-	carrier := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
+	carrier := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
 		Signatures: []core.Signature{{
 			Params:     append([]core.FnParam(nil), params...),
 			Returns:    []*core.Type{core.TAny},
@@ -4999,7 +4999,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 		}
 		return
 	}
-	fd, isFn := v.Data.(core.FnDefInfo)
+	fd, isFn := v.Data.(*core.FnDefInfo)
 	if !isFn || !core.IsConcrete(&v) || len(fd.Captured) > 0 {
 		return
 	}
@@ -5081,7 +5081,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 		// in one always-executed call — the general restore below is unchanged,
 		// and nothing here assumes the map starts empty.
 		dynBefore := maps.Clone(es.dynScopeNames)
-		unit, ok := es.compileStoredFnUnit(fd, si, v.Pos())
+		unit, ok := es.compileStoredFnUnit(*fd, si, v.Pos())
 		es.reg.Check.TruncateDiagnostics(diagsBefore)
 		if ok && len(es.dynScopeNames) != len(dynBefore) {
 			for n := range es.dynScopeNames {
@@ -7295,7 +7295,7 @@ func (es *EmitState) RecordSpecFnUndef(name string, pos core.SrcPos) {
 // neither can be placed — the placement declines them (review of #466: the
 // identity was the body's first-token position, which carries no file).
 func fnSigsDeclared(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok || len(fd.Signatures) == 0 {
 		return false
 	}
@@ -7398,9 +7398,9 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 		// recorder's registry) — so the routed op runs the live
 		// signature's own unit, located by its declaration site
 		// (CompiledFn.Decl). A body that declines declines the program.
-		if fd, ok := outer.Data.(core.FnDefInfo); ok {
+		if fd, ok := outer.Data.(*core.FnDefInfo); ok {
 			for i := range fd.Signatures {
-				es.compileSpecOuterUnit(fd, i)
+				es.compileSpecOuterUnit(*fd, i)
 			}
 		}
 	}
@@ -7412,7 +7412,7 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 // labels a contract error with the binding's name, as the interpreter's
 // does.
 func (es *EmitState) compileSpecPlacementUnits(name string, fn core.Value) {
-	if fd, ok := fn.Data.(core.FnDefInfo); ok {
+	if fd, ok := core.FnDefCopy(fn.Data); ok {
 		fd.Name = name
 		for i := range fd.Signatures {
 			es.compileSpecOuterUnit(fd, i)
@@ -7424,8 +7424,8 @@ func (es *EmitState) compileSpecPlacementUnits(name string, fn core.Value) {
 // every signature shape a call's record fixes (core.SameSigShapes), so the
 // join's model is the first of them and its call sites compile its units.
 func sameOwnSigShapes(a, b core.Value) bool {
-	fa, okA := a.Data.(core.FnDefInfo)
-	fb, okB := b.Data.(core.FnDefInfo)
+	fa, okA := core.FnDefOf(a.Data)
+	fb, okB := core.FnDefOf(b.Data)
 	return okA && okB && core.SameSigShapes(fa.OwnSigs(), fb.OwnSigs())
 }
 
@@ -8840,7 +8840,7 @@ func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
 	if arity, known := es.producerReturnedClosureArity(fn.ID); known {
 		return arity, true
 	}
-	fd, isFn := fn.Data.(core.FnDefInfo)
+	fd, isFn := fn.Data.(*core.FnDefInfo)
 	if !isFn {
 		return 0, false // a fn-typed CARRIER — no static arity, see the header
 	}
@@ -8872,7 +8872,7 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 	if core.ProvenWindowMatch(fn, sigArgs) {
 		return true
 	}
-	if _, isFn := fn.Data.(core.FnDefInfo); isFn {
+	if _, isFn := fn.Data.(*core.FnDefInfo); isFn {
 		return false // own signatures, none of which provably admits the window
 	}
 	s, ok := es.producerReturnedClosureShape(fn.ID)
@@ -8893,9 +8893,9 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 // applied as a trailing window — the interpreter raises uncalled_function
 // over it, and the VM's valueTrailNoMatch does too.
 func raisesTrailNoMatch(fn core.Value, fnOp EmitOperand, head DynApplyHead) bool {
-	fd, ok := fn.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(fn.Data)
 	return ok && fnOp.kind == opConst && !head.Leading && !head.WrittenFirst &&
-		!fd.Anonymous && !fd.Macro && len(fd.OwnSigs()) > 0 && !core.IsDelegationFnDef(fd)
+		!fd.Anonymous && !fd.Macro && len(fd.OwnSigs()) > 0 && !core.IsDelegationFnDef(*fd)
 }
 
 // anyPendingActiveContainer reports whether an apply window holds an
@@ -10109,7 +10109,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// and raised signature_error where the interpreter computes 7).
 		// Decline; the caller's failure stands and the program falls back.
 		if core.IsFnTypedCarrier(&v) {
-			if _, isFn := v.Data.(core.FnDefInfo); !isFn {
+			if _, isFn := v.Data.(*core.FnDefInfo); !isFn {
 				if _, read := es.defReads[v.ID]; read {
 					return false
 				}
@@ -10609,7 +10609,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// branch's and elided it, and the application was lost (`[fn]` for the
 	// interpreter's 42).
 	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedConstLambda(args[0].ID) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(args[0].ID)) {
-		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
+		if _, isFn := args[0].Data.(*core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
 			return true
@@ -10676,7 +10676,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// this RecordCall would decline it as "function value reaches apply". The
 	// Reach-apply sig (a TReach operand, not an FnDef) is untouched.
 	if word == "apply" && len(args) >= 1 {
-		if _, ok := args[0].Data.(core.FnDefInfo); ok {
+		if _, ok := args[0].Data.(*core.FnDefInfo); ok {
 			return true
 		}
 		// `apply` of a Function-typed CARRIER (a `comp:Function` param or
@@ -10742,7 +10742,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// and the program falls back.
 	if (core.IsGetWord(word) || core.IsGetrWord(word)) && len(outs) == 1 && core.IsConcrete(&outs[0]) {
 		switch outs[0].Data.(type) {
-		case core.FnDefInfo:
+		case *core.FnDefInfo:
 			return true
 		case core.ExtensionPayload:
 			// A Module DESCRIPTOR (`M.$module`) is the one extension result
@@ -11099,7 +11099,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// const and its body runs on the VM. A declined stamp still falls
 		// back to CallBoru — correct, uncompiled, and visible to the
 		// interp-entry census, which is the gate that keeps this honest.
-		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal && !quotedFnCarrier(a) {
+		if _, isFnVal := a.Data.(*core.FnDefInfo); !isFnVal && !quotedFnCarrier(a) {
 			continue
 		}
 		// Dispatch WRECKAGE rides no inert slot either: a named fn value the
@@ -11141,12 +11141,12 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 			// unmasked). A non-strict store word (Patrun) invokes a stored
 			// closure fine and is untouched.
 			if sig.CompileEffect.Has(core.CompileFnHandlerStrict) {
-				if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) > 0 {
+				if fd, isFn := a.Data.(*core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) > 0 {
 					es.MarkUncompilable("capturing handler stored at " + word + " (validated as a function value)")
 					return nil, false
 				}
 			}
-			if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) == 0 {
+			if fd, isFn := a.Data.(*core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) == 0 {
 				// EVERY stampable own sig gets its own unit + ref
 				// (COMPILE FAILURE-CLOSURE §7b): the callback seam dispatches via
 				// MatchFnSig, so the matched sig's Impl ref is the sig table.
@@ -11160,7 +11160,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 					if CompiledRef(&fd.Signatures[si]) != nil {
 						continue // first stamp wins
 					}
-					if unit, cOK := es.compileStoredFnUnit(fd, si, a.Pos()); cOK {
+					if unit, cOK := es.compileStoredFnUnit(*fd, si, a.Pos()); cOK {
 						ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), liveNames: es.unitLiveNames(unit)}
 						aImpl.SetCompiled(ref)
 						es.storedFnRefs = append(es.storedFnRefs, ref)
@@ -11232,7 +11232,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		}
 		op, ok := es.resolveOperand(a)
 		if !ok && (introspect || inertFn || sig.FnInertArgs[i]) {
-			if fd, isFn := a.Data.(core.FnDefInfo); isFn {
+			if fd, isFn := a.Data.(*core.FnDefInfo); isFn {
 				switch {
 				case core.IsConcrete(&a) && len(fd.Captured) == 0:
 					// A CAPTURE-FREE concrete (immutable) fn value bakes as a const
@@ -12482,7 +12482,7 @@ func (es *EmitState) noteFnRiskFields(word string, args, outs []core.Value) {
 			// The any-arity sibling: EVERY fn-valued field is remembered
 			// with its VALUE, so a later read through the instance carrier
 			// can tag the member-fn landing (see fnMemberFields).
-			if _, isFn := mv.Data.(core.FnDefInfo); isFn {
+			if _, isFn := mv.Data.(*core.FnDefInfo); isFn {
 				if members == nil {
 					members = map[string]core.Value{}
 				}
@@ -12757,7 +12757,7 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		return false
 	}
 	if word == "apply" && len(args) == 1 {
-		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
+		if _, isFn := args[0].Data.(*core.FnDefInfo); isFn {
 			return false
 		}
 		// A produced fn-typed CARRIER under the apply word — a declared-
@@ -13548,11 +13548,11 @@ func branchArmMayBeFn(v core.Value) bool {
 // carrier whose overloads are unknown. Only-0-arg fns (and 0-arg lambdas,
 // which the landing parks) are settled by the merge's guarded landing.
 func fnValueMayTakeArgs(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return true
 	}
-	return !core.FnValueOnlyZeroArgSigs(fd)
+	return !core.FnValueOnlyZeroArgSigs(*fd)
 }
 
 // branchArmMayTakeArgs is fnValueMayTakeArgs for a branch ARM's value, asking
@@ -13593,8 +13593,8 @@ func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 		if !core.IsFnValueResidual(v) {
 			return false
 		}
-		fd, ok := v.Data.(core.FnDefInfo)
-		return !ok || v.Carrier || !fd.NamedDef() || fd.Macro || !core.FnValueOnlyZeroArgSigs(fd)
+		fd, ok := core.FnDefOf(v.Data)
+		return !ok || v.Carrier || !fd.NamedDef() || fd.Macro || !core.FnValueOnlyZeroArgSigs(*fd)
 	}
 	for _, p := range []*core.Value{b.ThenValue, b.ElsValue} {
 		if p != nil && leaves(*p) {
@@ -13713,7 +13713,7 @@ func (es *EmitState) isFolded(v core.Value) bool {
 	if v.ID != "" && es.foldedMembers[v.ID] {
 		return true
 	}
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -13733,7 +13733,7 @@ func (es *EmitState) noteFolded(v core.Value) {
 		es.foldedBodies = map[*core.Value]bool{}
 	}
 	es.foldedMembers[v.ID] = true
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := v.Data.(*core.FnDefInfo); ok {
 		for _, sig := range fd.OwnSigs() {
 			if b := sig.Body(); len(b) > 0 {
 				es.foldedBodies[&b[0]] = true
@@ -13881,7 +13881,7 @@ func (es *EmitState) PendingClosureApply(body []core.Value) (core.Value, bool) {
 		return core.Value{}, false
 	}
 	for _, p := range es.units[len(es.units)-1].pendingApply {
-		fd, isFn := p.fn.Data.(core.FnDefInfo)
+		fd, isFn := p.fn.Data.(*core.FnDefInfo)
 		if !isFn {
 			continue
 		}
@@ -13996,7 +13996,7 @@ func (es *EmitState) MemberFnReadValue(id string) (core.Value, bool) {
 	if !ok {
 		return core.Value{}, false
 	}
-	if _, isFn := m.Data.(core.FnDefInfo); !isFn {
+	if _, isFn := m.Data.(*core.FnDefInfo); !isFn {
 		return core.Value{}, false
 	}
 	return m, true
@@ -14114,7 +14114,7 @@ func readFnMemberValue(args []core.Value) (core.Value, bool) {
 // MemberFnReadValue, which answers only for a concrete fn; the tag alone is
 // what the paren-bounded apply `(fs.b 10)` and the stranded-fn guard read.
 func memberIsFnValued(v core.Value) bool {
-	if _, ok := v.Data.(core.FnDefInfo); ok {
+	if _, ok := v.Data.(*core.FnDefInfo); ok {
 		return true
 	}
 	return core.IsFnTypedCarrier(&v)
@@ -14569,7 +14569,7 @@ func (es *EmitState) fnOpContract(op EmitOperand) (fnOpContract, bool) {
 		if es.consts[op.idx].Quoted {
 			return fnOpContract{}, false
 		}
-		fd := es.consts[op.idx].Data.(core.FnDefInfo)
+		fd := es.consts[op.idx].Data.(*core.FnDefInfo)
 		sig := fd.OwnSigs()[0]
 		c := fnOpContract{ret: core.TAny}
 		for i := range sig.Params {
@@ -14678,11 +14678,11 @@ func (es *EmitState) noteClosureShapeBind(v core.Value) {
 // read yields exactly this value): a capture-free anonymous lambda with one
 // signature of plain typed params.
 func memberLambdaShape(m core.Value) (core.FnShape, bool) {
-	fd, ok := m.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(m.Data)
 	if !ok || m.Quoted || fd.Macro || len(fd.Captured) != 0 {
 		return core.FnShape{}, false
 	}
-	params, ok := lambdaOwnParams(fd)
+	params, ok := lambdaOwnParams(*fd)
 	if !ok {
 		return core.FnShape{}, false
 	}
@@ -14839,7 +14839,7 @@ func (es *EmitState) producedConstLambda(id string) bool {
 	if !ok || op.kind != opConst || op.idx < 0 || op.idx >= len(es.consts) {
 		return false
 	}
-	_, isFn := es.consts[op.idx].Data.(core.FnDefInfo)
+	_, isFn := es.consts[op.idx].Data.(*core.FnDefInfo)
 	return isFn
 }
 
@@ -14860,11 +14860,11 @@ func constLambdaParams(consts []core.Value, idx int) ([]core.FnParam, bool) {
 	if idx < 0 || idx >= len(consts) {
 		return nil, false
 	}
-	fd, ok := consts[idx].Data.(core.FnDefInfo)
+	fd, ok := consts[idx].Data.(*core.FnDefInfo)
 	if !ok {
 		return nil, false
 	}
-	return lambdaOwnParams(fd)
+	return lambdaOwnParams(*fd)
 }
 
 // lambdaOwnParams is the params of an unnamed, non-module fn value with ONE
@@ -16019,7 +16019,7 @@ func identPayloadBound(b *core.DepBound) bool {
 }
 
 func (es *EmitState) intern(v core.Value) int {
-	if _, isFn := v.Data.(core.FnDefInfo); isFn {
+	if _, isFn := v.Data.(*core.FnDefInfo); isFn {
 		// A fn value (introspection operand): never pool — CanonValue is not a
 		// reliable identity key for fn bodies, so dedup could merge distinct
 		// fns. Each bakes as its own const.
@@ -16145,7 +16145,7 @@ func freshenableConst(v core.Value) bool {
 // NUR288). A named fn — a binding's value read by `/v`, a module export —
 // is one function however often it is read.
 func freshFnLiteral(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(v.Data)
 	return ok && !v.Carrier && !v.Dynamic && fd.Name == "" && len(fd.Captured) == 0
 }
 
@@ -18775,7 +18775,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 		return
 	}
 	if mv, ok := es.MemberFnReadValue(top.ID); ok {
-		if fd, isFn := mv.Data.(core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(fd) {
+		if fd, isFn := mv.Data.(*core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(*fd) {
 			return
 		}
 	}
@@ -19023,7 +19023,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
 	if pr, ok := es.producedBy[v.ID]; ok {
 		b.pr = pr
-	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !v.Quoted {
+	} else if fd, isFn := v.Data.(*core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !v.Quoted {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
 		// increment): no event, no const — its `/v` read builds the closure
 		// at the read site, so remember the literal and its captures'
@@ -19246,7 +19246,7 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 // literal park), not a macro, with overloads but none taking zero
 // arguments, neither quoted, `/v`-read nor paren-placed.
 func (es *EmitState) namedFnUnmatchedAtTail(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(v.Data)
 	if !ok || v.Quoted || !fd.NamedDef() || fd.Macro || len(fd.OwnSigs()) == 0 {
 		return false
 	}
@@ -21324,7 +21324,7 @@ func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
 //     multi-return. Such a callee is declined so the faithful interpreter island
 //     runs it.
 func fnConcreteSingleValuedOrCarrier(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return true // carrier — arity unknown; keep lowering (comparator convention)
 	}
@@ -21745,7 +21745,7 @@ func (es *EmitState) fnOpRenderKnown(op EmitOperand) bool {
 		if op.idx < 0 || op.idx >= len(es.consts) {
 			return false
 		}
-		fd, isFn := es.consts[op.idx].Data.(core.FnDefInfo)
+		fd, isFn := core.FnDefOf(es.consts[op.idx].Data)
 		return isFn && fd.Anonymous && !fd.Macro
 	}
 	return false
@@ -21784,7 +21784,7 @@ func (es *EmitState) unitRenderKnown(unit, depth int) bool {
 		if out.idx < 0 || out.idx >= len(es.consts) {
 			return false
 		}
-		_, isFn := es.consts[out.idx].Data.(core.FnDefInfo)
+		_, isFn := es.consts[out.idx].Data.(*core.FnDefInfo)
 		return isFn
 	case opEvent:
 		// The body returns another call's single result: the event lives in
@@ -21819,7 +21819,7 @@ func (es *EmitState) userMemberFn(word string) bool {
 	if !ok {
 		return false
 	}
-	fd, isFn := v.Data.(core.FnDefInfo)
+	fd, isFn := v.Data.(*core.FnDefInfo)
 	if !isFn {
 		return false
 	}

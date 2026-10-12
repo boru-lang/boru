@@ -177,8 +177,8 @@ func specialisableFnArg(r *core.Registry, p core.FnParam, a core.Value) (string,
 	if p.Name == "" || p.Type == nil || !p.Type.Equal(core.TFunction) || p.Pattern != nil || a.Carrier {
 		return "", false
 	}
-	fd, isFn := a.Data.(core.FnDefInfo)
-	if !isFn || len(fd.Captured) > 0 || fd.Gen != nil || fd.Macro || fd.Wrap != core.WrapNone || core.FnHomeForeign(r, &fd) {
+	fd, isFn := core.FnDefOf(a.Data)
+	if !isFn || len(fd.Captured) > 0 || fd.Gen != nil || fd.Macro || fd.Wrap != core.WrapNone || core.FnHomeForeign(r, fd) {
 		return "", false
 	}
 	// A fn LITERAL a fn or closure unit writes is a new function each time

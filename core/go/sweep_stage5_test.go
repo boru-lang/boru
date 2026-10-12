@@ -286,7 +286,7 @@ func TestSweepForceForwardFunction(t *testing.T) {
 	if !ok {
 		t.Fatal("ForceForwardFunction declined a function value")
 	}
-	wf, wok := wrapped.Data.(FnDefInfo)
+	wf, wok := FnDefOf(wrapped.Data)
 	if !wok || len(wf.Signatures) != 1 {
 		t.Fatalf("wrapper shape wrong: %v", wrapped)
 	}

@@ -46,7 +46,7 @@ func memberRead(es *EmitState, member core.Value) core.Value {
 // member read above the element arms the whole-frame replay over the token
 // region; every other top keeps the unit as it was.
 func TestNoteClosureBodyReplayArms(t *testing.T) {
-	inc := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
+	inc := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
 	es, u, rec, elem := closureBodyUnit(t)
 	top := memberRead(es, inc)
 	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
@@ -84,7 +84,7 @@ func TestNoteClosureBodyReplayArms(t *testing.T) {
 			return []core.Value{v}
 		},
 		"zero-arg member": func(es *EmitState) []core.Value {
-			z := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "z", Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}})
+			z := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "z", Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}})
 			return []core.Value{memberRead(es, z)}
 		},
 		"placed": func(es *EmitState) []core.Value {
@@ -249,7 +249,7 @@ func TestNoteWordReadDefReadName(t *testing.T) {
 // its binding NAME, and the window then carries the word table (the VM
 // re-steps the entry as the word: `cannot call `f“ on a no-match).
 func TestNoteClosureBodyReplayDefRead(t *testing.T) {
-	inc := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
+	inc := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
 	es, u, rec, elem := closureBodyUnit(t)
 	top := memberRead(es, inc)
 	es.NoteDefRead(top.ID, "f")

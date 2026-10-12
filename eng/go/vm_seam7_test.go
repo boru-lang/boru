@@ -637,7 +637,7 @@ func seam7DelegReg(t *testing.T) (r *core.Registry, inc, fail core.Value) {
 
 func TestSeam7DelegationApplySuccess(t *testing.T) {
 	r, inc, _ := seam7DelegReg(t)
-	if !core.IsDelegationFnDef(inc.Data.(core.FnDefInfo)) {
+	if !core.IsDelegationFnDef(*inc.Data.(*core.FnDefInfo)) {
 		t.Fatal("cinc wrapper is not recognised as a delegation fn")
 	}
 	vc := seam7VC(r)
@@ -760,7 +760,7 @@ func seam7UserFail(r *core.Registry) core.Value {
 func TestSeam7IslandApplyErrorArms(t *testing.T) {
 	r, _, _ := seam7DelegReg(t)
 	fn := seam7UserFail(r)
-	if core.IsDelegationFnDef(fn.Data.(core.FnDefInfo)) {
+	if core.IsDelegationFnDef(*fn.Data.(*core.FnDefInfo)) {
 		t.Fatal("user fail fn should NOT be a trivial delegation")
 	}
 	vc := seam7VC(r)
@@ -873,7 +873,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return []core.Value{core.NewInteger(n * 3)}, nil
 		}),
 	}}})
-	core.NormalizeSig(&one.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&one.Data.(*core.FnDefInfo).Signatures[0])
 	got, ent, err := vc.callDynApply(r, 1, []core.Value{core.NewInteger(5), one}, seam7Dbg, 0, true)
 	if err != nil || ent != nil || len(got) != 1 {
 		t.Fatalf("a 1-arg fn over its one arg commits one result: %v %v %v", got, ent, err)
@@ -887,7 +887,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return []core.Value{core.NewInteger(42)}, nil
 		}),
 	}}})
-	core.NormalizeSig(&zero.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&zero.Data.(*core.FnDefInfo).Signatures[0])
 	// The tail form (one=false) keeps whatever the re-step leaves: the 0-arg
 	// fn fires and its result lands ABOVE the untouched receiver, exactly
 	// the interpreter's [4 42].
@@ -922,7 +922,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return nil, fmt.Errorf("boom")
 		}),
 	}}})
-	core.NormalizeSig(&bad.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&bad.Data.(*core.FnDefInfo).Signatures[0])
 	if _, err := vc.applyReStep(nil, bad, []core.Value{core.NewInteger(1)}, seam7Dbg, 0); err == nil {
 		t.Error("the island's error rides out of the re-step")
 	}

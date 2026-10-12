@@ -326,9 +326,9 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 // error, on the compiled and interpreted paths alike. A decline (captures,
 // ineligible shape, stamping off) returns the input unchanged.
 func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
-	if fd, ok := fnVal.Data.(native.FnDefInfo); ok && fd.Name == "" {
+	if fd, ok := native.FnDefCopy(fnVal.Data); ok && fd.Name == "" {
 		fd.Name = name
-		fnVal.Data = fd
+		fnVal.Data = &fd
 	}
 	stamped, _ := compiler.StampFnValue(r, fnVal)
 	return stamped
@@ -338,7 +338,7 @@ func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.V
 // An entry is either a Function directly (step defaults to post) or a Map
 // {run:Function, step:'pre'|'post'|'all'}.
 func actionFnAndStep(name string, entry native.Value, r *native.Registry) (native.Value, model.Step, error) {
-	if _, ok := entry.Data.(native.FnDefInfo); ok {
+	if _, ok := entry.Data.(*native.FnDefInfo); ok {
 		return entry, model.StepPost, nil
 	}
 	if native.IsConcrete(&entry) {
@@ -349,7 +349,7 @@ func actionFnAndStep(name string, entry native.Value, r *native.Registry) (nativ
 					fmt.Sprintf("new: action %q map needs a 'run' Function", name), "new",
 					"e.g. actions:{gen:{run:([m:Any] => [...]), step:'post'}}")
 			}
-			if _, ok := run.Data.(native.FnDefInfo); !ok {
+			if _, ok := run.Data.(*native.FnDefInfo); !ok {
 				return native.Value{}, "", r.BoruError("model_bad_action",
 					fmt.Sprintf("new: action %q 'run' must be a Function", name), "new")
 			}
@@ -391,7 +391,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 	// closure can hand it to InvokeCallbackFn: a model action written in another
 	// module must resolve its free words there (design/FUNCTION-VALUE-SCOPE.0.md).
 	var fnInfo *native.FnDefInfo
-	if fd, ok := fnVal.Data.(native.FnDefInfo); ok {
+	if fd, ok := native.FnDefCopy(fnVal.Data); ok {
 		fnInfo = &fd
 	}
 	return model.ActionDef{

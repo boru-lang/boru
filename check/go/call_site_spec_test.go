@@ -38,7 +38,7 @@ func TestSpecialisableFnArg(t *testing.T) {
 		"patterned param":  {core.FnParam{Name: "g", Type: core.TFunction, Pattern: &pattern}, specFn("inc")},
 		"carrier arg":      {gParam, carrier},
 		"data arg":         {gParam, core.NewInteger(1)},
-		"no identity":      {gParam, core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "x"}}},
+		"no identity":      {gParam, core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "x"}}},
 		"capturing fn":     {gParam, withFn(func(fd *core.FnDefInfo) { fd.Captured = []core.CapturedBinding{{Name: "c"}} })},
 		"generic fn":       {gParam, withFn(func(fd *core.FnDefInfo) { fd.Gen = &core.GenSpecInfo{} })},
 		"macro fn":         {gParam, withFn(func(fd *core.FnDefInfo) { fd.Macro = true })},

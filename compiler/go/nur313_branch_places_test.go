@@ -59,7 +59,7 @@ func TestSplitArmMayBeFn(t *testing.T) {
 		t.Error("an event's value may be a fn")
 	}
 	es.frames[0][0].br = &emitBranch{thenIsVal: true, hasThenOut: true, els: body, hasElsOut: true,
-		elsOut: ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}))}
+		elsOut: ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}))}
 	if !es.splitArmMayBeFn(7) {
 		t.Error("a fn const in the placed else arm is a fn")
 	}

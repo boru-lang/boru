@@ -333,9 +333,9 @@ func ExactEqual(a, b Value) bool {
 	if eq, handled := closureIdentityEqual(a, b); handled {
 		return eq
 	}
-	if af, aok := a.Data.(FnDefInfo); aok {
-		if bf, bok := b.Data.(FnDefInfo); bok {
-			return sameFnIdentity(af, bf)
+	if af, aok := a.Data.(*FnDefInfo); aok {
+		if bf, bok := b.Data.(*FnDefInfo); bok {
+			return sameFnIdentity(*af, *bf)
 		}
 		return false
 	}
@@ -715,9 +715,9 @@ func DeepEqual(a, b Value) bool {
 	// reached through, not part of the function: including it is exactly
 	// what made `a/v deq b/v` false for two bindings of one function, and
 	// what kept `f/v deq f/v` false at all.
-	if af, aok := a.Data.(FnDefInfo); aok {
-		if bf, bok := b.Data.(FnDefInfo); bok {
-			return fnStructurallyEqual(af, bf)
+	if af, aok := a.Data.(*FnDefInfo); aok {
+		if bf, bok := b.Data.(*FnDefInfo); bok {
+			return fnStructurallyEqual(*af, *bf)
 		}
 		return false
 	}
@@ -1167,7 +1167,7 @@ func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 	switch d := v.Data.(type) {
 	case ClosurePayload:
 		return d.Ident.seq, true
-	case FnDefInfo:
+	case *FnDefInfo:
 		if d.ident != nil {
 			return d.ident.closure, false
 		}
@@ -1182,7 +1182,7 @@ func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 // is false for anything that is not an identified FnDefInfo — data, a
 // carrier, a hand-built payload with no token — which has no identity to key.
 func FnIdentityKey(v Value) (string, bool) {
-	fd, isFn := v.Data.(FnDefInfo)
+	fd, isFn := v.Data.(*FnDefInfo)
 	if !isFn || fd.ident == nil {
 		return "", false
 	}

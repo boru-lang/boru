@@ -99,7 +99,7 @@ func anyQuotesFirstSlot(fnDef core.FnDefInfo) bool {
 func fnValueQuotes(v core.Value) bool {
 	var params []core.FnParam
 	switch d := v.Data.(type) {
-	case core.FnDefInfo:
+	case *core.FnDefInfo:
 		for i := range d.Signatures {
 			params = append(params, d.Signatures[i].Params...)
 		}

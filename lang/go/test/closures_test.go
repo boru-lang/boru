@@ -162,7 +162,7 @@ func TestClosureTopLevelFnHasNoCaptures(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(out))
 	}
-	fnDef, ok := out[0].Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(out[0].Data)
 	if !ok {
 		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data)
 	}
@@ -184,7 +184,7 @@ func TestClosureInnerFnHasCaptures(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(out))
 	}
-	fnDef, ok := out[0].Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(out[0].Data)
 	if !ok {
 		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data)
 	}

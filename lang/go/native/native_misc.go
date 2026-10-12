@@ -657,7 +657,7 @@ func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	}
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
-		if fnDef, ok := v.Data.(FnDefInfo); ok && fnDef.Name != "" {
+		if fnDef, ok := v.Data.(*FnDefInfo); ok && fnDef.Name != "" {
 			r.Check.RecordUse(fnDef.Name)
 			continue
 		}

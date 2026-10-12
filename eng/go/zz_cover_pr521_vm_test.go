@@ -44,7 +44,7 @@ func TestPR521CallDynamicWrappedNativeError(t *testing.T) {
 	if !ok {
 		t.Fatal("usurp over a self-contained Go fn value")
 	}
-	if vmNativeApplicable(r, flipped.Data.(core.FnDefInfo)) {
+	if vmNativeApplicable(r, *flipped.Data.(*core.FnDefInfo)) {
 		t.Fatal("the wrapper itself must not be native-applicable, or the unwrap arm is not what runs")
 	}
 	// Leading form: (flipped 10 3) — the wrapped sub sees [3 10].

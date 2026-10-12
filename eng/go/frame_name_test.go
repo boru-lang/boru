@@ -34,20 +34,20 @@ func TestNameFrameFns(t *testing.T) {
 	home := core.NewFunction(core.FnDefInfo{Name: "inc", Registry: r})
 	locals := []core.Value{lam, lam, named, foreign, home, closure}
 	nameFrameFns(r, fn, locals)
-	if fd := locals[0].Data.(core.FnDefInfo); fd.Name != "g" || !fd.Anonymous {
-		t.Errorf("a lambda bound for param g is named g, its other fields kept: %+v", fd)
+	if fd := locals[0].Data.(*core.FnDefInfo); fd.Name != "g" || !fd.Anonymous {
+		t.Errorf("a lambda bound for param g is named g, its other fields kept: %+v", *fd)
 	}
-	if fd := locals[1].Data.(core.FnDefInfo); fd.Name != "" {
-		t.Errorf("an unnamed slot names nothing: %+v", fd)
+	if fd := locals[1].Data.(*core.FnDefInfo); fd.Name != "" {
+		t.Errorf("an unnamed slot names nothing: %+v", *fd)
 	}
-	if fd := locals[2].Data.(core.FnDefInfo); fd.Name != "h" {
-		t.Errorf("a value already so named is untouched: %+v", fd)
+	if fd := locals[2].Data.(*core.FnDefInfo); fd.Name != "h" {
+		t.Errorf("a value already so named is untouched: %+v", *fd)
 	}
-	if fd := locals[3].Data.(core.FnDefInfo); fd.Name != "sqrt" {
-		t.Errorf("a module wrapper keeps its name (installDef's rebinding path is not mirrored): %+v", fd)
+	if fd := locals[3].Data.(*core.FnDefInfo); fd.Name != "sqrt" {
+		t.Errorf("a module wrapper keeps its name (installDef's rebinding path is not mirrored): %+v", *fd)
 	}
-	if fd := locals[4].Data.(core.FnDefInfo); fd.Name != "k" || fd.Registry != r {
-		t.Errorf("a fn at home in r is named for its param, its home kept: %+v", fd)
+	if fd := locals[4].Data.(*core.FnDefInfo); fd.Name != "k" || fd.Registry != r {
+		t.Errorf("a fn at home in r is named for its param, its home kept: %+v", *fd)
 	}
 	if cl, ok := locals[5].Data.(core.ClosurePayload); !ok || cl.RetName != "" {
 		t.Errorf("a compiled closure in a CAPTURE slot (past NParams) is left alone: %v", locals[4])
@@ -81,7 +81,7 @@ func TestNameFrameFns(t *testing.T) {
 	}
 	// bindUnitLocals names through the same helper.
 	bound := bindUnitLocals(r, fn, []core.Value{lam, lam, named, foreign}, []core.Value{closure})
-	if fd := bound[0].Data.(core.FnDefInfo); fd.Name != "g" {
-		t.Errorf("bindUnitLocals names the frame's fns: %+v", fd)
+	if fd := bound[0].Data.(*core.FnDefInfo); fd.Name != "g" {
+		t.Errorf("bindUnitLocals names the frame's fns: %+v", *fd)
 	}
 }

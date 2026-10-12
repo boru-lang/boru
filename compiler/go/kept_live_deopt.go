@@ -433,7 +433,7 @@ func (es *EmitState) trapBeforeStaleRead(pos core.SrcPos) bool {
 			continue
 		}
 		if top, bound := es.reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+			if _, isFn := top.Data.(*core.FnDefInfo); !isFn {
 				return true
 			}
 			continue

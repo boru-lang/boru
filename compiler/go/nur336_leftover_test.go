@@ -135,7 +135,7 @@ func TestNUR336ToldAt(t *testing.T) {
 
 func TestNUR347NoteFnArgPos(t *testing.T) {
 	es := NewEmitState()
-	fn := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "h"}, ID: "fnid"}
+	fn := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "h"}, ID: "fnid"}
 	fn.SetPos(core.SrcPos{Row: 1, Col: 101})
 	unread := fn
 	unread.ID = "other"

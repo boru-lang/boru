@@ -79,8 +79,8 @@ func macroFnValue(r *native.Registry, v native.Value) (native.Value, native.FnDe
 			v = bv
 		}
 	}
-	fd, ok := v.Data.(native.FnDefInfo)
-	return v, fd, ok
+	fd, ok := native.FnDefOf(v.Data)
+	return v, *fd, ok
 }
 
 // rerunMacroWord re-runs the macro word over its surface operands in a

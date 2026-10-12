@@ -41,7 +41,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 	// §6); the declared body is the node's CONTENT (`TypeContentOf`), not
 	// the binding's value.
 	r.noteAnalysisUse(name)
-	if _, ok := top.Data.(FnDefInfo); ok {
+	if _, ok := top.Data.(*FnDefInfo); ok {
 		// Wrap the aggregate dispatch view so the reference carries every
 		// overload of the name, not just the topmost entry's own sigs.
 		if fnDef := r.Lookup(name); fnDef != nil {
@@ -82,11 +82,11 @@ func UsurpFunction(v Value) (Value, bool) {
 	if !v.Parent.Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(FnDefInfo)
+	fnDef, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
-	return usurpOver(NewFunction(fnDef), fnDef), true
+	return usurpOver(NewFunction(*fnDef), *fnDef), true
 }
 
 // closureShape is the compiled lane's view of a COMPILED CLOSURE at a
@@ -109,8 +109,8 @@ func closureShape(r *Registry, v Value) (FnDefInfo, bool) {
 	if !ok {
 		return FnDefInfo{}, false
 	}
-	fd, ok := bridged.Data.(FnDefInfo)
-	return fd, ok
+	fd, ok := FnDefOf(bridged.Data)
+	return *fd, ok
 }
 
 // UsurpClosure is UsurpFunction over a compiled closure value (closureShape).
@@ -224,11 +224,11 @@ func rebarrierFunction(v Value, stack bool) (Value, bool) {
 	if !v.Parent.Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(FnDefInfo)
+	fnDef, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
-	return rebarrierOver(NewFunction(fnDef), fnDef, stack), true
+	return rebarrierOver(NewFunction(*fnDef), *fnDef, stack), true
 }
 
 // rebarrierOver builds the rebarrier wrapper (see usurpOver for orig/fnDef).
@@ -298,11 +298,11 @@ func ForceArityFunction(v Value, n int) (Value, bool) {
 	if n < 0 || !v.Parent.Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(FnDefInfo)
+	fnDef, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
-	return forceArityOver(NewFunction(fnDef), fnDef, n), true
+	return forceArityOver(NewFunction(*fnDef), *fnDef, n), true
 }
 
 // forceArityOver builds the arity wrapper (see usurpOver for orig/fnDef).
@@ -344,7 +344,7 @@ func forceArityOver(orig Value, fnDef FnDefInfo, n int) Value {
 // funcSigBarrier returns the resolved BarrierPos of orig's n-arg signature
 // (all-forward when there is none) — used to lay out a re-dispatch.
 func funcSigBarrier(orig Value, n int) int {
-	fnDef, ok := orig.Data.(FnDefInfo)
+	fnDef, ok := orig.Data.(*FnDefInfo)
 	if !ok {
 		return n
 	}

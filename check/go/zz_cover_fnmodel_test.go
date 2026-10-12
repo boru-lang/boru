@@ -561,7 +561,7 @@ func TestZzFmReturnsFnConcreteClosureSurfaces(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("out = %v", out)
 	}
-	fd, isFn := out[0].Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(out[0].Data)
 	if !isFn || fd.Name != "zzfminner" {
 		t.Fatalf("out[0] = %+v, want the concrete closure value surfaced", out[0])
 	}

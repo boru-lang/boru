@@ -166,7 +166,7 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 	guarded := []Payload{
 		DisjunctInfo{}, NegationInfo{}, ChildTypeInfo{}, RecordTypeInfo{},
 		OptionsTypeInfo{}, TableTypeInfo{}, TableData{},
-		MaterializerPayload{}, FnUndefInfo{}, FnDefInfo{}, MapPayload{},
+		MaterializerPayload{}, FnUndefInfo{}, &FnDefInfo{}, MapPayload{},
 	}
 	for i, p := range guarded {
 		if p.IsTypeContent(nil) {

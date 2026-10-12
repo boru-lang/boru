@@ -209,7 +209,7 @@ func TestS6aDynOutNativeOKFnValueDataDeclines(t *testing.T) {
 	r := newTestRegistry(t)
 	armEmit(r)
 	sig := &core.Signature{Args: []*core.Type{core.TAny}}
-	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn"})}
+	args := []core.Value{core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "s6afn"})}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adynv", sig, args, outs) {
 		t.Error("a concrete fn-valued arg must decline the dyn-out bake")
@@ -234,7 +234,7 @@ func TestS6aTryRecordPolyFnValueDataDeclines(t *testing.T) {
 		t.Fatalf("registration: %v", err)
 	}
 	sig := &r.Lookup("s6apolyv").Signatures[0]
-	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn2"})}
+	args := []core.Value{core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "s6afn2"})}
 	if tryRecordPoly(r, "s6apolyv", sig, args, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, false, nil, false, nil) {
 		t.Error("a concrete fn-valued arg must not poly")
 	}

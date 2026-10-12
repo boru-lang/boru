@@ -1201,12 +1201,12 @@ func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
 // per push (OpPushConstFresh) — `def mk fn [[][Any][([x:Any] => [x])]] end
 // mk mk eq` is false on both lanes (NUR288).
 func WithFreshFnIdentity(v Value) Value {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefCopy(v.Data)
 	if !ok {
 		return v
 	}
 	fd.ident = &fnIdent{}
-	v.Data = fd
+	v.Data = &fd
 	return v
 }
 
@@ -1281,6 +1281,36 @@ func (fn *FnDefInfo) FirstOwnSig() (*Signature, bool) {
 		}
 	}
 	return nil, false
+}
+
+// A fn value's payload is held by pointer (*FnDefInfo), so a reader takes it
+// where it lives instead of copying 232 bytes out of the box. A payload is
+// never written once it is in a Value: a change is made on a copy
+// (FnDefCopy) and boxed as a new payload.
+
+// zeroFnDef is the payload FnDefOf hands a reader whose value is not a fn:
+// the zero FnDefInfo a failed by-value assertion used to yield. It is shared
+// and never written.
+var zeroFnDef FnDefInfo
+
+// FnDefOf returns the fn payload d holds and true, or the shared zero
+// FnDefInfo and false when d is not one — for a reader that reads the
+// payload whether or not the value is a fn. Never write through the result.
+func FnDefOf(d any) (*FnDefInfo, bool) {
+	if fd, ok := d.(*FnDefInfo); ok {
+		return fd, true
+	}
+	return &zeroFnDef, false
+}
+
+// FnDefCopy returns a copy of the fn payload d holds and true, or the zero
+// FnDefInfo and false — for a caller that edits the payload and boxes the
+// result as a new one (&copy).
+func FnDefCopy(d any) (FnDefInfo, bool) {
+	if fd, ok := d.(*FnDefInfo); ok {
+		return *fd, true
+	}
+	return FnDefInfo{}, false
 }
 
 // FnSigSpec describes a signature specification without a body, used for
@@ -1827,7 +1857,7 @@ const (
 func UnwrapModifierChain(v Value) (base Value, reverse bool, ok bool) {
 	base = v
 	for depth := 0; depth < 64; depth++ {
-		fd, isFn := base.Data.(FnDefInfo)
+		fd, isFn := base.Data.(*FnDefInfo)
 		if !isFn || fd.Wraps == nil {
 			return base, reverse, ok
 		}
@@ -3268,7 +3298,7 @@ func NewFunction(info FnDefInfo) Value {
 			info.Signatures[i].Anonymous = true
 		}
 	}
-	return NewValueRaw(TFunction, info)
+	return NewValueRaw(TFunction, &info)
 }
 
 // NewFnUndef creates a function undef spec value for targeted signature removal.
@@ -4507,8 +4537,8 @@ func kernelFormatDefault(v Value) string {
 	// — including its captured *Registry and the module's entire exports
 	// map (a 600-line spill into error messages). See formatFnDef.
 	case isFnDefValue(v):
-		fd, _ := v.Data.(FnDefInfo)
-		return FormatFnDef(fd)
+		fd, _ := FnDefOf(v.Data)
+		return FormatFnDef(*fd)
 	case func() bool { cl, ok := v.Data.(ClosurePayload); return ok && cl.Render != "" }():
 		// A compiled closure carrying its source fn's interpreter rendering
 		// (CompiledFn.Render via OpPushClosure) — byte-identical to the
@@ -4527,7 +4557,7 @@ func kernelFormatDefault(v Value) string {
 // isFnDefValue reports whether v carries an FnDefInfo payload (a fn or
 // lambda value, Parent TFunction).
 func isFnDefValue(v Value) bool {
-	_, ok := v.Data.(FnDefInfo)
+	_, ok := v.Data.(*FnDefInfo)
 	return ok
 }
 

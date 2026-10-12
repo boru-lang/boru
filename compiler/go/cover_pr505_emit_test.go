@@ -191,7 +191,7 @@ func TestSetRootBodyCopies(t *testing.T) {
 func TestRecordDynApplyNameNeedsAnArgument(t *testing.T) {
 	es := NewEmitState()
 	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}}
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}}
 	if es.RecordDynApplyName("h", nil, fn, core.NewCarrier(core.TInteger), core.SrcPos{}) {
 		t.Fatal("an apply over no argument records nothing")
 	}

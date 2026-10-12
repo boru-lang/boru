@@ -59,7 +59,7 @@ func takesArgsAtPointer(v core.Value) bool {
 	if !core.FnValueDispatchesAtPointer(v) {
 		return false
 	}
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return true
 	}

@@ -239,7 +239,7 @@ func TestPayloadMarkersInvoke(t *testing.T) {
 		core.GuardFactInfo{},
 		core.FrameOpenInfo{},
 		core.ModuleDesc{},
-		core.FnDefInfo{},
+		&core.FnDefInfo{},
 		core.FnUndefInfo{},
 		core.DisjunctInfo{},
 		core.NegationInfo{},
@@ -554,7 +554,7 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 	// set, Macro true) is exactly that case — resolveOperand declines it, so the
 	// `IsConcrete && no-captures` arm is what places the const operand.
 	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
+		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
 			Registry: r, Macro: true}}
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if !ok {

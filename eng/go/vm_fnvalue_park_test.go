@@ -78,7 +78,7 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 		t.Errorf("a /s-retry match is not a no-match: %v", v)
 	}
 	// …and it is the RETRY that matched, not the first plan.
-	twoView := fnDispatchView(two.Data.(core.FnDefInfo))
+	twoView := fnDispatchView(*two.Data.(*core.FnDefInfo))
 	h := newRegionHostOver(r, append(append(append([]core.Value(nil), stk...), two), fwd...))
 	w := core.WordInfo{ArgCount: -1}
 	if planPicks(h, r, &twoView, w, stk) {
@@ -94,7 +94,7 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 	if v, _ := fnValueNoMatchVerdict(r, unnamed, []core.Value{five, s}, nil); v != noMatchUnproven {
 		t.Errorf("a legacy stack match is not a no-match: %v", v)
 	}
-	if !core.FnValueStackMatches(unnamed.Data.(core.FnDefInfo), []core.Value{five, s}) {
+	if !core.FnValueStackMatches(*unnamed.Data.(*core.FnDefInfo), []core.Value{five, s}) {
 		t.Error("the legacy pure-stack path must be what matched")
 	}
 	// An all-stack signature has no forward plan to retry (the /s arm is

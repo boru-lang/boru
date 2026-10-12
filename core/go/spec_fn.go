@@ -74,8 +74,8 @@ func specFamilyAtFnBaseline(r *Registry, name string) bool {
 // interpreter's no-match. A pair that differs on the claim keeps the
 // payload-less join, and its call's standing failure.
 func specFamilyJoinModel(then, else_ Value, runs armRuns) (Value, bool) {
-	a, aFn := then.Data.(FnDefInfo)
-	b, bFn := else_.Data.(FnDefInfo)
+	a, aFn := FnDefOf(then.Data)
+	b, bFn := FnDefOf(else_.Data)
 	switch {
 	case !aFn || !bFn:
 		return Value{}, false
@@ -84,7 +84,7 @@ func specFamilyJoinModel(then, else_ Value, runs armRuns) (Value, bool) {
 	case runs == thenArmRuns || SameSigShapes(a.OwnSigs(), b.OwnSigs()):
 		return then, true
 	}
-	return widenedFamilyModel(then, &a, &b)
+	return widenedFamilyModel(then, a, b)
 }
 
 // widenedFamilyModel is the then arm's fn with each own signature's
@@ -111,7 +111,7 @@ func widenedFamilyModel(then Value, a, b *FnDefInfo) (Value, bool) {
 		fd.Signatures = append(fd.Signatures, s)
 	}
 	model := then
-	model.Data = fd
+	model.Data = &fd
 	return model, true
 }
 

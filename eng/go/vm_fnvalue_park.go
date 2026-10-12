@@ -84,19 +84,19 @@ func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forwa
 // sweeps (NUR344): the interpreter's step meets the values beneath as the
 // compiled stack holds them, a pending literal included.
 func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) (fnValueNoMatch, core.FnDefInfo) {
-	fd, ok := fnVal.Data.(core.FnDefInfo)
-	if !ok || !fnValueParkable(reg, fnVal, fd) {
-		return noMatchUnproven, fd
+	fd, ok := core.FnDefOf(fnVal.Data)
+	if !ok || !fnValueParkable(reg, fnVal, *fd) {
+		return noMatchUnproven, *fd
 	}
 	for _, v := range forward {
 		if !core.IsSteplessValue(v) {
-			return noMatchUnproven, fd
+			return noMatchUnproven, *fd
 		}
 	}
-	view := fnDispatchView(fd)
+	view := fnDispatchView(*fd)
 	for i := range view.Signatures {
 		if s := &view.Signatures[i]; !s.Fallback && s.TotalArgs() == 0 {
-			return noMatchUnproven, fd
+			return noMatchUnproven, *fd
 		}
 	}
 	window := make([]core.Value, 0, len(resolved)+1+len(forward))
@@ -104,21 +104,21 @@ func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward 
 	h := newRegionHostOver(reg, window)
 	w := core.WordInfo{Name: fd.Name, ArgCount: -1}
 	if planPicks(h, reg, &view, w, resolved) {
-		return noMatchUnproven, fd
+		return noMatchUnproven, *fd
 	}
 	if view.HasForwardSigs() {
 		w.ForceStack = true
 		if planPicks(h, reg, &view, w, resolved) {
-			return noMatchUnproven, fd
+			return noMatchUnproven, *fd
 		}
 	}
-	if core.FnValueStackMatches(fd, resolved) {
-		return noMatchUnproven, fd
+	if core.FnValueStackMatches(*fd, resolved) {
+		return noMatchUnproven, *fd
 	}
 	if fd.NamedDef() && len(resolved)+len(forward) > 0 {
-		return noMatchRaise, fd
+		return noMatchRaise, *fd
 	}
-	return noMatchPark, fd
+	return noMatchPark, *fd
 }
 
 // fnValueParkable is the value-level half of the guards (see the file

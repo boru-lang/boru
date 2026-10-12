@@ -537,7 +537,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 // fixBakeFnHandler applies its fn argument to 7 — the runtime side of
 // the battery's stored-fn word.
 func fixBakeFnHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
-	info, ok := args[0].Data.(core.FnDefInfo)
+	info, ok := args[0].Data.(*core.FnDefInfo)
 	if !ok || len(info.Signatures) == 0 {
 		return nil, &core.BoruError{Code: "type_error", Detail: "bakefnq: argument must be a fn"}
 	}

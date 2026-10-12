@@ -27,21 +27,21 @@ func TestParkedMemberFn(t *testing.T) {
 	quoted := lam
 	quoted.Quoted = true
 	applied := n207Lambda()
-	fd := applied.Data.(core.FnDefInfo)
+	fd := *applied.Data.(*core.FnDefInfo)
 	fd.Applied = true
-	applied.Data = fd
+	applied.Data = &fd
 	macro := n207Lambda()
-	fd = macro.Data.(core.FnDefInfo)
+	fd = *macro.Data.(*core.FnDefInfo)
 	fd.Macro = true
-	macro.Data = fd
+	macro.Data = &fd
 	capturing := n207Lambda()
-	fd = capturing.Data.(core.FnDefInfo)
+	fd = *capturing.Data.(*core.FnDefInfo)
 	fd.Captured = []core.CapturedBinding{{Name: "k", Value: core.NewInteger(1)}}
-	capturing.Data = fd
+	capturing.Data = &fd
 	fallback := n207Lambda()
-	fd = fallback.Data.(core.FnDefInfo)
+	fd = *fallback.Data.(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, core.Signature{Fallback: true})
-	fallback.Data = fd
+	fallback.Data = &fd
 	noSigs := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	if !parkedMemberFn(lam) {
 		t.Error("an anonymous capture-free only-0-arg lambda parks at every value landing")
@@ -83,7 +83,7 @@ func TestTryFoldParkedMemberFn(t *testing.T) {
 	if !tryFoldParkedMemberFn(reg, "dot", []core.Value{key, m}, outs) {
 		t.Fatal("the parking member of a concrete container folds")
 	}
-	if _, isFn := outs[0].Data.(core.FnDefInfo); !isFn || outs[0].Carrier {
+	if _, isFn := outs[0].Data.(*core.FnDefInfo); !isFn || outs[0].Carrier {
 		t.Errorf("the out is the member value itself, got %v", outs[0])
 	}
 	es.Compilable = false
@@ -185,9 +185,9 @@ func TestMemberLambdaShape(t *testing.T) {
 	quoted := n207Lambda()
 	quoted.Quoted = true
 	twoSigs := n207Lambda()
-	fd := twoSigs.Data.(core.FnDefInfo)
+	fd := *twoSigs.Data.(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])
-	twoSigs.Data = fd
+	twoSigs.Data = &fd
 	bodiless := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}}})
 	for name, v := range map[string]core.Value{
 		"a pattern param":  n207Lambda(core.FnParam{Type: core.TInteger, Pattern: &pat}),

@@ -232,7 +232,7 @@ func TestSharedClassificationsAgreeWithTheInterpreter(t *testing.T) {
 	fd := core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, BarrierPos: 1,
 	}}}
-	h.reg.Defs.Push("w", core.Value{Parent: core.TFunction, Data: fd})
+	h.reg.Defs.Push("w", core.Value{Parent: core.TFunction, Data: &fd})
 
 	bare := core.NewWord("w")
 	if !h.IsFnWordBarrier(bare) {

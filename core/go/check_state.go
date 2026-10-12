@@ -1990,11 +1990,11 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 	if !c.IsActive() || out.ID == "" {
 		return
 	}
-	fd, ok := member.Data.(FnDefInfo)
+	fd, ok := FnDefOf(member.Data)
 	if !ok || !fd.HasHome() || fd.Name == "" || fd.Macro {
 		return
 	}
-	if !IsDelegationFnDef(fd) {
+	if !IsDelegationFnDef(*fd) {
 		return
 	}
 	if c.MethodShapes == nil {

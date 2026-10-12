@@ -186,7 +186,7 @@ func runFilterCallback(r *Registry, fc filterCallback, cbArgs []Value) ([]Value,
 		return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 	}
 	var fnDef *FnDefInfo
-	if fd, ok := cb.Data.(FnDefInfo); ok {
+	if fd, ok := FnDefCopy(cb.Data); ok {
 		fnDef = &fd
 	}
 	return InvokeCallbackFn(r, fnDef, sig, cbArgs)

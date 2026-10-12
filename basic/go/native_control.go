@@ -766,11 +766,11 @@ func wordMayRaise(name string, r *Registry) bool {
 		// it can reach module machinery, so it counts fallible.
 		return true
 	}
-	fd, isFn := v.Data.(FnDefInfo)
+	fd, isFn := v.Data.(*FnDefInfo)
 	if !isFn {
 		return false
 	}
-	return fnDefMayRaise(&fd)
+	return fnDefMayRaise(fd)
 }
 
 // fnDefMayRaise reports whether invoking fd can raise. EVERY callable is

@@ -70,11 +70,11 @@ func TestInvokeClosurePositional(t *testing.T) {
 // against the stack), or a closure of an unknown unit declines.
 func TestLoneTokenArity(t *testing.T) {
 	vc, _ := foreignVC(t, oneConstProg(1))
-	one := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}}}})
+	one := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}}}})
 	if n, ok := vc.loneTokenArity(one); !ok || n != 1 {
 		t.Errorf("one signature of one param: (%d, %v)", n, ok)
 	}
-	two := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "z", Signatures: []core.Signature{{}, {Params: []core.FnParam{{Type: core.TInteger}}}}})
+	two := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "z", Signatures: []core.Signature{{}, {Params: []core.FnParam{{Type: core.TInteger}}}}})
 	if _, ok := vc.loneTokenArity(two); ok {
 		t.Error("an overloaded fn has no lone arity")
 	}

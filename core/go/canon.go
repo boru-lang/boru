@@ -319,8 +319,8 @@ func CanonValue(v Value) string {
 		// closure environment is not part of its identity for ordering,
 		// and dumping it would spill the module exports map (the leak
 		// formatFnDef fixed for String()). See canonFnDef.
-		fd, _ := v.Data.(FnDefInfo)
-		return canonFnDef(fd)
+		fd, _ := FnDefOf(v.Data)
+		return canonFnDef(*fd)
 	default:
 		return v.String()
 	}

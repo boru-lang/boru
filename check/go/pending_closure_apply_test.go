@@ -73,7 +73,7 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 	}
 	lam := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	fresh, ok = recordPendingClosureApply(rec, nil, args, []core.Value{lam}, core.SrcPos{})
-	if _, isFn := fresh.Data.(core.FnDefInfo); !ok || !isFn || fresh.ID == lam.ID {
+	if _, isFn := fresh.Data.(*core.FnDefInfo); !ok || !isFn || fresh.ID == lam.ID {
 		t.Error("a fn-value out keeps its payload under a fresh id")
 	}
 }

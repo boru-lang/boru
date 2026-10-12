@@ -893,7 +893,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	if body.FailedDispatch {
 		return false, nil
 	}
-	fnDef, ok := body.Data.(FnDefInfo)
+	fnDef, ok := body.Data.(*FnDefInfo)
 	if !ok {
 		return false, nil
 	}
@@ -906,7 +906,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	// would otherwise record a spurious self-use.
 	checking := r.Check.IsActive()
 	prevUsed := checking && r.Check.DefsUsed != nil && r.Check.DefsUsed[name]
-	if err := core.InstallWordExtension(r, name, fnDef); err != nil {
+	if err := core.InstallWordExtension(r, name, *fnDef); err != nil {
 		return true, err
 	}
 	r.Check.RecordDef(name, pos)

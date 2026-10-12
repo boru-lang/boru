@@ -417,12 +417,12 @@ func ExpandMacroForm(r *Registry, form Value) ([]Value, error) {
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: undefined macro " + name.Name}
 	}
-	fnDef, ok := bound.Data.(FnDefInfo)
+	fnDef, ok := bound.Data.(*FnDefInfo)
 	if !ok || !fnDef.Macro {
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: " + name.Name + " is not a macro"}
 	}
-	first, err := expandMacroWith(r, &fnDef, toks[1:])
+	first, err := expandMacroWith(r, fnDef, toks[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -442,11 +442,11 @@ func macroByName(r *Registry, name string) (FnDefInfo, bool) {
 	if !ok {
 		return FnDefInfo{}, false
 	}
-	fd, ok := bound.Data.(FnDefInfo)
+	fd, ok := bound.Data.(*FnDefInfo)
 	if !ok || !fd.Macro {
 		return FnDefInfo{}, false
 	}
-	return fd, true
+	return *fd, true
 }
 
 // expandAllMacros walks a token list expanding every macro call it finds — at

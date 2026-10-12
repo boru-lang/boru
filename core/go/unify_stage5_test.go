@@ -30,7 +30,7 @@ func x5PredFn() Value {
 		Returns: []*Type{TBoolean},
 		Impl:    Boru([]Value{NewBoolean(true)}),
 	}
-	return MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{sig}}))
+	return MarkPredicateFn(NewValueRaw(TFunction, &FnDefInfo{Signatures: []Signature{sig}}))
 }
 
 // x5PredType installs the predicate fn as type name and returns the

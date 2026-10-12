@@ -123,9 +123,9 @@ func fnValuesEqual(a, b core.Value) bool {
 }
 
 func stripFnHome(v core.Value) core.Value {
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := core.FnDefCopy(v.Data); ok {
 		fd.Registry = nil
-		v.Data = fd
+		v.Data = &fd
 	}
 	return v
 }

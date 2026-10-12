@@ -1128,11 +1128,11 @@ func (r *Registry) upsertFnDef(name string, sigs ...Signature) {
 	}
 	// If the top of the stack is already a FnDefInfo, update it in place.
 	if top, ok := r.Defs.Top(name); ok {
-		if fnDef, ok := top.Data.(FnDefInfo); ok {
+		if fnDef, ok := FnDefCopy(top.Data); ok {
 			fnDef.Signatures = append(fnDef.Signatures, sigs...)
 			SortSignatures(fnDef.Signatures)
 			fnDef.MaxForwardArgs = calcMaxForwardArgs(fnDef.Signatures)
-			top.Data = fnDef
+			top.Data = &fnDef
 			r.Defs.Replace(name, top)
 			return
 		}
@@ -1249,7 +1249,7 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 				continue
 			}
 			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
-				if fnDef, ok := bv.Data.(FnDefInfo); ok {
+				if fnDef, ok := FnDefCopy(bv.Data); ok {
 					fnDef.Name = name
 					fnDef.Anonymous = false
 					entries = append(entries, fnDef)
@@ -1257,8 +1257,8 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 			}
 			continue
 		}
-		if fnDef, ok := stack[i].Data.(FnDefInfo); ok {
-			entries = append(entries, fnDef)
+		if fnDef, ok := stack[i].Data.(*FnDefInfo); ok {
+			entries = append(entries, *fnDef)
 			if fnDef.Extends != "" {
 				break
 			}
@@ -1276,7 +1276,7 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 // invoker can bridge (lookupUncachedBridged).
 func dispatchesAsWord(v *Value, r *Registry) bool {
 	switch v.Data.(type) {
-	case FnDefInfo, *ClassTypeInfo:
+	case *FnDefInfo, *ClassTypeInfo:
 		return true
 	case ClosurePayload:
 		return r != nil && r.Invoker != nil
@@ -1391,7 +1391,7 @@ func (r *Registry) fnFallbackSig(name string) Signature {
 			// dispatched (the fnCourtesyDispatches guard in engine.go), so
 			// the only shape reaching the Impl without a 0-arg handler
 			// falls straight through to the shared no-match error.
-			if _, ok := top.Data.(FnDefInfo); ok {
+			if _, ok := top.Data.(*FnDefInfo); ok {
 				if fn := r.Lookup(name); fn != nil {
 					for i := range fn.Signatures {
 						sig := &fn.Signatures[i]
@@ -2225,7 +2225,7 @@ func predMemoKey(constraint, candidate Value) string {
 	}
 	// The interpreter's predicate fn carries no value ID (the check pass
 	// mints those): its first signature's boru body is the identity.
-	fd, ok := constraint.Data.(FnDefInfo)
+	fd, ok := constraint.Data.(*FnDefInfo)
 	if !ok {
 		return ""
 	}
@@ -2286,7 +2286,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	if !constraint.Parent.Equal(TFunction) {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent.String())
 	}
-	fnDef, ok := constraint.Data.(FnDefInfo)
+	fnDef, ok := constraint.Data.(*FnDefInfo)
 	if !ok {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data)
 	}
@@ -2331,7 +2331,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 		r.Check.Mode = false
 		defs := r.Defs.Snapshot()
 		restoreAtt := r.SetInterpAttribution("check:predicate")
-		out, matched, err = r.runPredicateBody(fnDef, predSig, candidate)
+		out, matched, err = r.runPredicateBody(*fnDef, predSig, candidate)
 		restoreAtt()
 		r.Defs.Restore(defs)
 		r.Check.Mode = prevMode
@@ -2340,7 +2340,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 		}
 		return out, matched, nil
 	}
-	return r.runPredicateBody(fnDef, predSig, candidate)
+	return r.runPredicateBody(*fnDef, predSig, candidate)
 }
 
 // predicateBodyPure reports whether a predicate's body is a function of its
@@ -2382,7 +2382,7 @@ func userDefined(r *Registry, name string) bool {
 	if !ok {
 		return false
 	}
-	fd, isFn := v.Data.(FnDefInfo)
+	fd, isFn := v.Data.(*FnDefInfo)
 	if !isFn {
 		return true
 	}

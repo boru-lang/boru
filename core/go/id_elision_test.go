@@ -90,7 +90,7 @@ func TestSameFnConstruction(t *testing.T) {
 	x := NewFunction(FnDefInfo{Signatures: []Signature{{}}})
 	end()
 	y := x
-	y.Data = FnDefInfo{Signatures: append([]Signature(nil), x.Data.(FnDefInfo).Signatures...)}
+	y.Data = &FnDefInfo{Signatures: append([]Signature(nil), x.Data.(*FnDefInfo).Signatures...)}
 	if !sameFnConstruction(x, y) {
 		t.Error("same-ID rebuilt copy must match via the ID fallback")
 	}

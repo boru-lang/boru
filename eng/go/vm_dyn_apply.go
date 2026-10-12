@@ -164,7 +164,7 @@ func applyFrameName(fd core.FnDefInfo) string {
 // against p.Fns — and hosting it nested would reintroduce the body bracket this
 // file exists to avoid. Those keep the island.
 func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnter {
-	fd, isFn := fnVal.Data.(core.FnDefInfo)
+	fd, isFn := fnVal.Data.(*core.FnDefInfo)
 	if !isFn {
 		return nil
 	}
@@ -186,7 +186,7 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	if sig == nil {
 		return nil
 	}
-	return vc.dynApplyEnterSig(fd, sig, args, fnVal.Pos())
+	return vc.dynApplyEnterSig(*fd, sig, args, fnVal.Pos())
 }
 
 // dynApplyEnterSig is dynApplyEnter past the match: enter fd's overload sig —
@@ -252,7 +252,7 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 // frame push: a hosted unit has run, effects and all, before its results
 // can be counted.
 func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
-	fd, isFn := fnVal.Data.(core.FnDefInfo)
+	fd, isFn := fnVal.Data.(*core.FnDefInfo)
 	if !isFn || fnVal.Quoted {
 		return nil, false, nil
 	}
@@ -271,12 +271,12 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 		// and applied at a shaped method (`def f (mk 1) end do [f 'z']`,
 		// the interp-entry census's fn-value.tsv:L334) islanded for want
 		// of one. A body the stamp declines keeps the island.
-		ref = compiler.LazyStampFnSig(vc.r, fd, sig, fnVal.Pos())
+		ref = compiler.LazyStampFnSig(vc.r, *fd, sig, fnVal.Pos())
 	}
 	if ref == nil || ref.Prog == nil || ref.Prog == vc.p {
 		return nil, false, nil
 	}
-	home, _ := core.FnHome(vc.r, &fd)
+	home, _ := core.FnHome(vc.r, fd)
 	if !ref.DepsFresh(home) {
 		if ref = ref.JitRestamp(home); ref == nil || ref.Prog == nil {
 			return nil, false, nil
@@ -294,7 +294,7 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 	// `m.f 5` where the interpreter raises the count error (NUR252).
 	res, _, err = vc.runForeignUnit(ref, args, true)
 	if err == nil {
-		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(fd), sig), res, 0, true, core.SrcPos{})
+		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(*fd), sig), res, 0, true, core.SrcPos{})
 	}
 	return res, true, err
 }

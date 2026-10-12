@@ -91,7 +91,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	// fn-carrier side table instead (native installAndRecordDef), which the
 	// parse/mini/emit value-form macros consult for name resolution.
 	if body.Parent.Equal(TFunction) {
-		fnDef, ok := body.Data.(FnDefInfo)
+		fnDef, ok := FnDefCopy(body.Data)
 		if !ok {
 			return
 		}
@@ -150,8 +150,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			filtered := stack[:0:0]
 			changed := false
 			for _, entry := range stack {
-				oldFn, ok := entry.Data.(FnDefInfo)
-				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
+				oldFn, ok := entry.Data.(*FnDefInfo)
+				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, fnDef) {
 					changed = true
 					dropped = entry
 					continue
@@ -889,7 +889,7 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 	// from depth 2 to 1 while recording delta 0.)
 	for _, spec := range specs.Sigs {
 		for j := len(stack) - 1; j >= 0; j-- {
-			fnDef, ok := stack[j].Data.(FnDefInfo)
+			fnDef, ok := stack[j].Data.(*FnDefInfo)
 			if !ok {
 				continue
 			}
@@ -1167,7 +1167,7 @@ func PredicateInputType(v Value) *Type {
 	if !v.Parent.Equal(TFunction) {
 		return nil
 	}
-	info, ok := v.Data.(FnDefInfo)
+	info, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return nil
 	}

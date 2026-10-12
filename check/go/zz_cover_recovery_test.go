@@ -320,7 +320,7 @@ func TestZZCoverParenFnCollapseLeadingFnValueArg(t *testing.T) {
 	// (S1b's apply shapes, 2026-09-22): the lead collects the value, one
 	// call on both engines. A GRADUAL fn-typed argument does not — it may
 	// be a bare fn word at run time.
-	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "inc"}}
+	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "inc"}}
 	e, fin := zzCollapseEng(t, true,
 		core.NewOpenParen(), zzFnCarrier(), fnVal, core.NewCloseParen())
 	defer fin()

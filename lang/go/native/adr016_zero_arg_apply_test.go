@@ -92,7 +92,7 @@ func TestADR016AppliedMarkIsNotACall(t *testing.T) {
 	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
 		t.Fatalf("apply must MARK, not call: want the Function back, got %v", out)
 	}
-	fd, ok := out[0].Data.(FnDefInfo)
+	fd, ok := FnDefOf(out[0].Data)
 	if !ok || !fd.Applied {
 		t.Errorf("want the one-shot Applied mark set for the re-step, got %+v", out[0])
 	}

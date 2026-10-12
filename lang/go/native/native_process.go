@@ -187,7 +187,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// a raw code-list. Run the former via RunUnit on the fork, the latter via a
 	// fresh interpreter sub-engine.
 	var compiledRef *compiler.CompiledFnRef
-	if fd, ok := args[0].Data.(core.FnDefInfo); ok {
+	if fd, ok := args[0].Data.(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			if ref := compiler.CompiledRef(&fd.Signatures[i]); ref != nil && ref.Prog != nil {
 				compiledRef = ref

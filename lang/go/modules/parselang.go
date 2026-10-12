@@ -461,7 +461,7 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 			fnVal = bv
 		}
 	}
-	fnDef, ok := fnVal.Data.(native.FnDefInfo)
+	fnDef, ok := native.FnDefCopy(fnVal.Data)
 	if !ok {
 		return nil, r.BoruErrorHint("parse_error",
 			"parse: the parser is not a usable function value", "parse",
@@ -570,7 +570,7 @@ func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value
 // cannot name — stays the data it is (bridged=false).
 func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 	bv, ok := native.ClosureAsFnDef(r, v)
-	fd, isFn := bv.Data.(native.FnDefInfo)
+	fd, isFn := native.FnDefCopy(bv.Data)
 	cl, isCl := v.Data.(core.ClosurePayload)
 	if !ok || !isFn || !isCl {
 		return v, false
@@ -583,7 +583,7 @@ func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 		}
 	}
 	fd.Signatures = sigs
-	bv.Data = fd
+	bv.Data = &fd
 	return bv, true
 }
 

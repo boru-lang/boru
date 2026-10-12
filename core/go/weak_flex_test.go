@@ -78,7 +78,7 @@ func TestClassifyWeakHandles(t *testing.T) {
 func TestClassifyWeakRefusals(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
-	fnVal := NewValueRaw(TFunction, FnDefInfo{Name: "f"})
+	fnVal := NewValueRaw(TFunction, &FnDefInfo{Name: "f"})
 	errVal := NewValueRaw(TAny, ErrorInfo{Message: "boom"})
 	record := NewRecordType(NewOrderedMap())
 	cases := []struct {

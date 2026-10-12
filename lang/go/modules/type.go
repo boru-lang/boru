@@ -205,7 +205,7 @@ func returnsofResult(fn native.Value, r *native.Registry) (native.Value, error) 
 }
 
 func fnSigs(v native.Value, opName string, r *native.Registry) ([]native.FnSig, error) {
-	if fn, ok := v.Data.(native.FnDefInfo); ok {
+	if fn, ok := v.Data.(*native.FnDefInfo); ok {
 		return fn.OwnSigs(), nil
 	}
 	if fnu, ok := v.Data.(native.FnUndefInfo); ok {

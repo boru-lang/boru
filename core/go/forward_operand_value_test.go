@@ -10,7 +10,7 @@ import "testing"
 func TestForwardOperandValue(t *testing.T) {
 	r := newTestRegistry(t)
 	r.Defs.Push("k", NewInteger(1))
-	r.Defs.Push("fnk", Value{Parent: TFunction, Data: FnDefInfo{Name: "fnk"}})
+	r.Defs.Push("fnk", Value{Parent: TFunction, Data: &FnDefInfo{Name: "fnk"}})
 	e := NewTop(r)
 	lit := NewInteger(7)
 	if v, ok := e.ForwardOperandValue(lit); !ok || v.Data != lit.Data {

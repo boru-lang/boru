@@ -317,8 +317,8 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			// the module registry it was written in (NUR128: a module
 			// body's own check is inactive, so a dead branch in an exported
 			// fn was reported only when someone called it).
-			if fd, isFn := ev.Data.(FnDefInfo); isFn {
-				NoteFnBodyPendingIn(parent, modReg, fd)
+			if fd, isFn := ev.Data.(*FnDefInfo); isFn {
+				NoteFnBodyPendingIn(parent, modReg, *fd)
 			}
 		}
 		exports[name] = resolved
@@ -882,7 +882,7 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// map, which auto-evaluates to the bound fn as data — must carry the
 	// module registry so it executes in module scope (resolving module-
 	// private words) when called after import.
-	if fnDef, ok := v.Data.(FnDefInfo); ok {
+	if fnDef, ok := v.Data.(*FnDefInfo); ok {
 		// An exported word (the public API) IS used — record it so check mode
 		// does not falsely flag every exported impl as unused_def. The `name/v`
 		// reference form auto-evaluates to the bound fn HERE (as data), so the

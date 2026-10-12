@@ -62,9 +62,9 @@ func TestPlacesAlone(t *testing.T) {
 	seven := core.NewInteger(7)
 	two := []core.Value{seven, seven}
 	twoSigs := n336Fn("f", core.TAny)
-	fd := twoSigs.Data.(core.FnDefInfo)
+	fd := *twoSigs.Data.(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])
-	twoSigs.Data = fd
+	twoSigs.Data = &fd
 	for _, c := range []struct {
 		name  string
 		v     core.Value
@@ -94,7 +94,7 @@ func TestNamedRunsAndAppliedLead(t *testing.T) {
 	if !namedRuns(zero) || namedRuns(n336Fn("g", core.TAny)) || namedRuns(core.NewInteger(1)) {
 		t.Error("a fn of no argument only")
 	}
-	if fd := appliedLead(zero).Data.(core.FnDefInfo); !fd.Applied {
+	if fd := appliedLead(zero).Data.(*core.FnDefInfo); !fd.Applied {
 		t.Error("marked to run where it is stepped")
 	}
 	if got := appliedLead(core.NewInteger(1)); fmt.Sprint(got) != "1" {
@@ -139,7 +139,7 @@ func TestNamedLeadPlaces(t *testing.T) {
 		t.Errorf("the name's call, then its values: %v %v", res, err)
 	}
 	raising := n336Fn("g")
-	fd := raising.Data.(core.FnDefInfo)
+	fd := raising.Data.(*core.FnDefInfo)
 	fd.Signatures[0].Impl = core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return nil, fmt.Errorf("boom")
 	})
@@ -170,7 +170,7 @@ func TestSubstIslandLeadArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	toks, _ = core.AsParenExpr(&got[0])
-	if fd, ok := toks[0].Data.(core.FnDefInfo); !ok || !fd.Applied {
+	if fd, ok := toks[0].Data.(*core.FnDefInfo); !ok || !fd.Applied {
 		t.Errorf("the name's call of a fn of none: %v", toks)
 	}
 	if _, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0); err == nil {

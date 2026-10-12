@@ -942,7 +942,7 @@ func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]na
 		return nil, fmt.Errorf("no matching callback signature")
 	}
 	var fnDef *native.FnDefInfo
-	if fd, ok := fn.Data.(native.FnDefInfo); ok {
+	if fd, ok := native.FnDefCopy(fn.Data); ok {
 		fnDef = &fd
 	}
 	// InvokeCallbackFn, not r.CallBoru: a matcher/action written in the grammar's
@@ -1202,6 +1202,6 @@ func isCallableValue(v native.Value) bool {
 	if v.Parent == native.TFunction {
 		return true
 	}
-	_, ok := v.Data.(native.FnDefInfo)
+	_, ok := v.Data.(*native.FnDefInfo)
 	return ok
 }

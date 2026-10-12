@@ -186,8 +186,8 @@ func (w *bodyMapWalk) walk(v core.Value) {
 	case core.WordInfo:
 		w.facts.names[d.Name] = true
 		w.callee(d.Name)
-	case core.FnDefInfo:
-		w.fnBodies(&d)
+	case *core.FnDefInfo:
+		w.fnBodies(d)
 	case core.ListPayload:
 		w.seq(d.Elems)
 	case core.MapPayload:

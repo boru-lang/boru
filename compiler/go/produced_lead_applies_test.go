@@ -167,7 +167,7 @@ func TestFnOpContract(t *testing.T) {
 	}
 	// An Any return over a const-lambda out-op is a Function too; over
 	// anything else it stays Any.
-	lam := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	lam := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger},
 		Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -201,7 +201,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 1}); ok {
 		t.Error("a const 7 is no lambda")
 	}
-	undeclared := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	undeclared := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger, Optional: true}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -209,7 +209,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 2}); ok {
 		t.Error("an optional param is not a static contract")
 	}
-	quoteP := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	quoteP := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TAtom, Quote: true}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -217,7 +217,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 3}); ok {
 		t.Error("a /q param is not a static contract")
 	}
-	plain := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	plain := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})

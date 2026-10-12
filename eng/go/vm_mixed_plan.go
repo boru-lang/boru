@@ -56,19 +56,19 @@ func (vc *vmContext) mixedPlanApply(reg *core.Registry, window []core.Value) ([]
 		return nil, nil, false
 	}
 	fnVal := window[p]
-	fd, ok := fnVal.Data.(core.FnDefInfo)
-	if !ok || !fnValueParkable(reg, fnVal, fd) {
+	fd, ok := fnVal.Data.(*core.FnDefInfo)
+	if !ok || !fnValueParkable(reg, fnVal, *fd) {
 		return nil, nil, false
 	}
 	own := fd.OwnSigs()
-	if len(own) != 1 || !boruSig(&own[0]) || core.FnValueOnlyZeroArgSigs(fd) || !allParamsNamed(own[0].Params) {
+	if len(own) != 1 || !boruSig(&own[0]) || core.FnValueOnlyZeroArgSigs(*fd) || !allParamsNamed(own[0].Params) {
 		return nil, nil, false
 	}
-	nStk, nFwd, args, ok := mixedPlanArgs(reg, fd, window, p)
-	if !ok || (!fd.Anonymous && !legacyReMatchAgrees(fd, window[:p-nStk], args)) {
+	nStk, nFwd, args, ok := mixedPlanArgs(reg, *fd, window, p)
+	if !ok || (!fd.Anonymous && !legacyReMatchAgrees(*fd, window[:p-nStk], args)) {
 		return nil, nil, false
 	}
-	res, err, ran := vc.runFnValueSig(reg, fnVal, fd, &own[0], args)
+	res, err, ran := vc.runFnValueSig(reg, fnVal, *fd, &own[0], args)
 	if !ran || err != nil {
 		return nil, err, ran
 	}

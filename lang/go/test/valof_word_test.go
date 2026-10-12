@@ -48,7 +48,7 @@ func TestRefBuildsDispatchTable(t *testing.T) {
 		if v.Quoted {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", key)
 		}
-		fnDef, ok := v.Data.(core.FnDefInfo)
+		fnDef, ok := core.FnDefOf(v.Data)
 		if !ok {
 			t.Fatalf("ops[%q] payload type = %T, want FnDefInfo", key, v.Data)
 		}
@@ -106,7 +106,7 @@ func TestRefMapRetrievalAsData(t *testing.T) {
 	if !v.Parent.Equal(core.TFunction) {
 		t.Fatalf("ops.plus type = %s, want Function", v.Parent.String())
 	}
-	fnDef, _ := v.Data.(core.FnDefInfo)
+	fnDef, _ := core.FnDefOf(v.Data)
 	if fnDef.Name != "myadd" {
 		t.Errorf("ops.plus fnDef.Name = %q, want %q", fnDef.Name, "myadd")
 	}

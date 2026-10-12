@@ -77,7 +77,7 @@ func Shape(v Value) ValueShape {
 	if _, ok := v.Data.(FnUndefInfo); ok {
 		return ShapeFnUndef
 	}
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data.(*FnDefInfo); ok {
 		return ShapeFunction
 	}
 	if _, ok := v.Data.(ClassInstanceInfo); ok {

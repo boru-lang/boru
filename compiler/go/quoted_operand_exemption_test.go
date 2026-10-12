@@ -132,7 +132,7 @@ func TestQuotedOperandCounterfeitScreen(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: the wrapper must build over a Function", tc.name)
 		}
-		wd, ok := wrapped.Data.(core.FnDefInfo)
+		wd, ok := core.FnDefOf(wrapped.Data)
 		if !ok {
 			t.Fatalf("%s: the wrapper must carry an FnDefInfo", tc.name)
 		}

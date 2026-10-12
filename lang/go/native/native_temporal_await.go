@@ -106,7 +106,7 @@ func sharedMutableKind(v Value) string {
 // the raw token list (interpreted) or the BoruImpl body carried by a
 // compiled fn-value (the shape runParallelBranch unwraps via RunUnit).
 func branchTokens(elem Value) []Value {
-	if fd, ok := elem.Data.(core.FnDefInfo); ok {
+	if fd, ok := elem.Data.(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			if a, isBoru := fd.Signatures[i].Impl.(*core.BoruImpl); isBoru {
 				return a.Body
@@ -229,7 +229,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 			if inspect(w.Name, bound) {
 				return
 			}
-			if fd, isFn := bound.Data.(FnDefInfo); isFn {
+			if fd, isFn := bound.Data.(*FnDefInfo); isFn {
 				for _, c := range fd.Captured {
 					if inspect(c.Name, c.Value) {
 						return
@@ -321,7 +321,7 @@ func makeBranchForks(r *Registry, elems []Value) ([]*Registry, error) {
 // pattern) and runs via RunUnit on the fork; a raw list runs as an
 // interpreter sub-program; anything else is returned as a single value.
 func runParallelBranch(reg *Registry, elem Value) parallelResult {
-	if fd, ok := elem.Data.(core.FnDefInfo); ok {
+	if fd, ok := elem.Data.(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			ref := compiler.CompiledRef(&fd.Signatures[i])
 			if ref == nil || ref.Prog == nil {

@@ -275,13 +275,13 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 	}
 	stack := r.Defs.Stack(word)
 	for i := len(stack) - 1; i >= 0; i-- {
-		fnDef, ok := stack[i].Data.(core.FnDefInfo)
+		fnDef, ok := stack[i].Data.(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
 		for j := range fnDef.Signatures {
 			if fnDef.Signatures[j].Impl == impl {
-				return fnDef, true
+				return *fnDef, true
 			}
 		}
 	}

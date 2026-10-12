@@ -365,9 +365,9 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 // anonymous park (execFnDefLiteral), read through the one predicate that
 // states it (core.FnValueOnlyZeroArgSigs).
 func parkedMemberFn(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(v.Data)
 	if !ok || v.Quoted || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
-		!core.FnValueOnlyZeroArgSigs(fd) {
+		!core.FnValueOnlyZeroArgSigs(*fd) {
 		return false
 	}
 	// A fallback overload makes the landing's aggregate view unmodelled
@@ -548,7 +548,7 @@ func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, ou
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(core.FnDefInfo); ok {
+		if _, ok := a.Data.(*core.FnDefInfo); ok {
 			return false
 		}
 	}
@@ -667,11 +667,11 @@ func isModuleInnerSig(r *core.Registry, word string, sig *core.Signature) bool {
 			}
 			for _, k := range em.Keys() {
 				v, _ := em.Get(k)
-				fd, ok := v.Data.(core.FnDefInfo)
+				fd, ok := v.Data.(*core.FnDefInfo)
 				if !ok || fd.Name != word {
 					continue
 				}
-				inner := core.FnHomeLookup(&fd)
+				inner := core.FnHomeLookup(fd)
 				if inner == nil {
 					continue
 				}
@@ -839,7 +839,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(core.FnDefInfo); ok {
+		if _, ok := a.Data.(*core.FnDefInfo); ok {
 			return false
 		}
 	}

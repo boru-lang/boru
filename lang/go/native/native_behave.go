@@ -317,8 +317,8 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	// Every slot's fn runs where a value of the target is handled, so a
 	// frame that handles one reaches it: the dynamic-scope rescue asks the
 	// call graph about it (NUR257).
-	if fd, isFn := fnVal.Data.(core.FnDefInfo); isFn {
-		r.Check.NoteBehaveReader(target, fd)
+	if fd, isFn := fnVal.Data.(*core.FnDefInfo); isFn {
+		r.Check.NoteBehaveReader(target, *fd)
 	}
 	if name == "make" && IsConcrete(&args[1]) {
 		r.Check.NoteBehaveMaker(target)
@@ -335,11 +335,11 @@ func extractFnDefInfo(v Value) (core.FnDefInfo, error) {
 	if !v.Parent.Equal(core.TFunction) {
 		return core.FnDefInfo{}, fmt.Errorf("fn arg must be a Function (got %s)", v.Parent.String())
 	}
-	info, ok := v.Data.(core.FnDefInfo)
+	info, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return core.FnDefInfo{}, fmt.Errorf("fn arg has invalid payload (%T)", v.Data)
 	}
-	return info, nil
+	return *info, nil
 }
 
 // validateCompareSig enforces shape `[[T T] [Integer] [body]]` and

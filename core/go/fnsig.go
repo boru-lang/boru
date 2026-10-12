@@ -141,7 +141,7 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 	if !ok {
 		return false
 	}
-	fnDef, ok := fnVal.Data.(FnDefInfo)
+	fnDef, ok := fnVal.Data.(*FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -152,7 +152,7 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 		return true
 	}
 	for _, want := range uInfo.Sigs {
-		if !fnDefHasSigR(fnDef, want, r) {
+		if !fnDefHasSigR(*fnDef, want, r) {
 			return false
 		}
 	}
@@ -220,7 +220,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 // own signatures to consult and answers nil, so a caller must treat nil as "no
 // opinion" unless it has already established that the value carries sigs.
 func MatchFnSig(fn Value, args []Value) *FnSig {
-	fnDef, ok := fn.Data.(FnDefInfo)
+	fnDef, ok := fn.Data.(*FnDefInfo)
 	if !ok {
 		return nil
 	}

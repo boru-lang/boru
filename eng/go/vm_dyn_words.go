@@ -90,7 +90,7 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // dispatched by what the payload rename would change, so their home keeps
 // them as the program's later uses need them (NUR285).
 func renamesAsData(v core.Value) bool {
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := v.Data.(*core.FnDefInfo); ok {
 		if !fd.HasHome() {
 			return false
 		}
@@ -129,12 +129,12 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
 	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
 	// const keeps its own payload, as the interpreter's binding copies do.
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := core.FnDefCopy(v.Data); ok {
 		if fd.Name == name {
 			return v
 		}
 		fd.Name = name
-		v.Data = fd
+		v.Data = &fd
 		return v
 	}
 	cl, ok := v.Data.(core.ClosurePayload)
@@ -231,7 +231,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		// (NotifyNameRebound) is what guarantees the binding still holds
 		// the value the unit captured.
 		if top, bound := reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(core.FnDefInfo); isFn {
+			if _, isFn := top.Data.(*core.FnDefInfo); isFn {
 				if i == 0 {
 					lead = top
 				}
@@ -398,7 +398,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 	}
 	sig := core.Signature{Params: params, BarrierPos: len(params)}
 	core.NormalizeSig(&sig)
-	probe := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{sig}}}
+	probe := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{sig}}}
 	return core.MatchFnSig(probe, args) != nil
 }
 
@@ -527,7 +527,7 @@ func callWindowValue(o compiler.CallWindowOperand, args, stack, locals []core.Va
 // unit): the interpreter's re-step could apply it over values beneath it
 // (LandingBeneathGuard, NUR286).
 func landedFnTakesArgs(v core.Value) bool {
-	fnDef, ok := v.Data.(core.FnDefInfo)
+	fnDef, ok := v.Data.(*core.FnDefInfo)
 	if !ok {
 		return compiler.ClosureTakesArgs(v)
 	}

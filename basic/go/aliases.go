@@ -714,3 +714,8 @@ func NewBoundedType(bound *core.Type) core.Value { return core.NewBoundedType(bo
 func NewBoundedTypeBody(node *core.Type, body core.Value) core.Value {
 	return core.NewBoundedTypeBody(node, body)
 }
+
+// The fn payload's readers (core.FnDefOf, core.FnDefCopy): a fn value holds
+// its FnDefInfo by pointer.
+func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
+func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }

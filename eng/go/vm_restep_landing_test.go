@@ -266,7 +266,7 @@ func TestReStepLandingIslandArm(t *testing.T) {
 	if !core.IsAppliableFn(lit) {
 		t.Fatal("fixture is not appliable — the landing would leave it as data before the island")
 	}
-	if _, isFn := lit.Data.(core.FnDefInfo); isFn {
+	if _, isFn := lit.Data.(*core.FnDefInfo); isFn {
 		t.Fatal("fixture carries an FnDefInfo — it would take an earlier rung")
 	}
 	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{lit}, seam7Dbg, 0, compiler.LandingWord{})

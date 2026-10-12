@@ -478,7 +478,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 		if bound {
 			// The /q-captured word bypassed stepWord's use tracking.
 			r.Check.RecordUse(kind)
-			if _, isFn := top.Data.(FnDefInfo); isFn {
+			if _, isFn := top.Data.(*FnDefInfo); isFn {
 				return miniFnExpand(top, args, r)
 			}
 			if r.Check.IsActive() && !IsConcrete(&top) {
@@ -635,7 +635,7 @@ standardCall:
 // Function-typed carrier under analysis degrades to a dynamic value like
 // the other not-statically-expandable macro paths.
 func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
-	fnDef, ok := fn.Data.(FnDefInfo)
+	fnDef, ok := fn.Data.(*FnDefInfo)
 	if !ok {
 		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "mini", "the mini fn is not a concrete value under analysis", args[0].Pos())
@@ -652,7 +652,7 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 			"mini: the mini-language is not a usable function value", "mini",
 			"pass a transducer fn: mini (fn [[src:String opts:Map] [Any] [...]]) 'text'")
 	}
-	if why := MiniLangFnSigWhy(fnDef); why != "" {
+	if why := MiniLangFnSigWhy(*fnDef); why != "" {
 		return nil, r.BoruErrorHint("mini_bad_signature",
 			"mini: "+why, "mini",
 			"declare the fn as fn [[src:String opts:Map …inputs] [outputs] [body]]")
@@ -662,7 +662,7 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 		opts = args[2]
 	}
 	tail := []Value{appliedTransducer(fn), args[1], opts, NewEnd()}
-	if MiniLangFnFilterShaped(fnDef) {
+	if MiniLangFnFilterShaped(*fnDef) {
 		// No trailing End on the partial splice — see miniPartialFn.
 		partial := miniPartialFromSigs("fn", "", fnDef.OwnSigs(), tail)
 		return []Value{NewSplice(NewList([]Value{partial}))}, nil
@@ -705,8 +705,8 @@ func miniPartialFn(r *Registry, kind, target string, tail []Value) (Value, bool)
 	if !ok {
 		return Value{}, false
 	}
-	info, ok := wrapper.Data.(FnDefInfo)
-	if !ok || !MiniLangFnFilterShaped(info) {
+	info, ok := wrapper.Data.(*FnDefInfo)
+	if !ok || !MiniLangFnFilterShaped(*info) {
 		return Value{}, false
 	}
 	return miniPartialFromSigs(kind, kind, info.OwnSigs(), tail), true
@@ -843,7 +843,7 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			// The /q-captured word bypassed stepWord's use tracking, so an
 			// only-used-as-a-parser fn would be falsely flagged unused_def.
 			r.Check.RecordUse(kind)
-			if _, isFn := top.Data.(FnDefInfo); isFn {
+			if _, isFn := top.Data.(*FnDefInfo); isFn {
 				// A SPECULATIVE family's name (a fn def in a branch arm that
 				// may not run, read past the arms — core.NoteSpecFnDef): the
 				// binding is the arm's, and on the path that skipped it the
@@ -938,7 +938,7 @@ func parseSurfaceOperands(args []Value) (source, opts Value) {
 // under analysis (a computed parser) degrades to a dynamic value, exactly
 // like the other not-statically-expandable macro paths.
 func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
-	fnDef, ok := fn.Data.(FnDefInfo)
+	fnDef, ok := fn.Data.(*FnDefInfo)
 	if !ok {
 		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "parse", "the parser fn is not a concrete value under analysis", args[0].Pos())
@@ -959,7 +959,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 			"parse: the parser is not a usable function value", "parse",
 			"pass a parser fn: parse (fn [[source:String opts:Map] [Any] [...]]) 'x'")
 	}
-	if why := ParseLangFnSigWhy(fnDef); why != "" {
+	if why := ParseLangFnSigWhy(*fnDef); why != "" {
 		return nil, r.BoruErrorHint("parse_bad_signature",
 			"parse: "+why, "parse",
 			"declare the fn as fn [[source:String opts:Map] [outputs] [body]]")
@@ -1331,7 +1331,7 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 		if bound {
 			// The /q-captured word bypassed stepWord's use tracking.
 			r.Check.RecordUse(kind)
-			if _, isFn := top.Data.(FnDefInfo); isFn {
+			if _, isFn := top.Data.(*FnDefInfo); isFn {
 				return emitFnExpand(top, args, r)
 			}
 			if r.Check.IsActive() && !IsConcrete(&top) {
@@ -1405,7 +1405,7 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 // Function-typed carrier under analysis degrades to a
 // dynamic String like the other not-statically-expandable macro paths.
 func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
-	fnDef, ok := fn.Data.(FnDefInfo)
+	fnDef, ok := fn.Data.(*FnDefInfo)
 	if !ok {
 		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "emit", "the emitter fn is not a concrete value under analysis", args[0].Pos())
@@ -1422,7 +1422,7 @@ func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 			"emit: the emitter is not a usable function value", "emit",
 			"pass an emitter fn: emit (fn [[value:Any opts:Map] [String] [...]]) {a:1}")
 	}
-	if why := EmitLangFnSigWhy(fnDef); why != "" {
+	if why := EmitLangFnSigWhy(*fnDef); why != "" {
 		return nil, r.BoruErrorHint("emit_bad_signature",
 			"emit: "+why, "emit",
 			"declare the fn as fn [[value:Any opts:Map] [String] [body]]")

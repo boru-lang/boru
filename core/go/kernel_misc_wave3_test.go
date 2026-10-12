@@ -285,9 +285,9 @@ func TestUninstallFnSigs(t *testing.T) {
 	if len(stack) != 1 {
 		t.Fatalf("after undef: stack depth = %d", len(stack))
 	}
-	fd, _ := stack[0].Data.(FnDefInfo)
+	fd, _ := FnDefOf(stack[0].Data)
 	if len(fd.OwnSigs()) != 1 || !fd.OwnSigs()[0].Params[0].Type.Equal(TInteger) {
-		t.Errorf("wrong entry removed: %+v", fd)
+		t.Errorf("wrong entry removed: %+v", *fd)
 	}
 	// A spec matching nothing is a no-op; an unbound name too.
 	UninstallFnSigs(r, "w3fn", FnUndefInfo{Sigs: []FnSigSpec{{

@@ -1065,7 +1065,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 		return core.Value{}, false
 	}
 	var fresh core.Value
-	if _, isFn := outs[0].Data.(core.FnDefInfo); isFn {
+	if _, isFn := outs[0].Data.(*core.FnDefInfo); isFn {
 		// A fn VALUE result (the next closure of a staged combinator) keeps
 		// its analysed payload under a fresh identity: a later `apply` over
 		// it re-steps the value and records through this same arm, resolving
@@ -1142,7 +1142,7 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	if !ok {
 		return core.Value{}, false
 	}
-	fd, isFn := top.Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(top.Data)
 	if !isFn || !fd.Anonymous || top.Quoted {
 		return core.Value{}, false
 	}

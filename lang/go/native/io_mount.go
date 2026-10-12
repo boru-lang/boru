@@ -73,7 +73,7 @@ func (a *boruFileOps) call(op string, args []Value) (Value, error) {
 	// that DEFINED it, so its module-private helpers resolve
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and a stamped handler runs on the VM.
 	var fnDef *FnDefInfo
-	if fd, ok := fnVal.Data.(FnDefInfo); ok {
+	if fd, ok := FnDefCopy(fnVal.Data); ok {
 		fnDef = &fd
 	}
 	res, err := InvokeCallbackFn(a.r, fnDef, sig, args)
@@ -497,7 +497,7 @@ func doMountWord(args []Value, r *Registry) ([]Value, error) {
 	handlers := NewOrderedMap()
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
-		if _, isFn := v.Data.(FnDefInfo); !isFn {
+		if _, isFn := v.Data.(*FnDefInfo); !isFn {
 			return nil, r.BoruError("mount_error",
 				fmt.Sprintf("mount: handler %q is %s — every handler must be a Function", key, v.Parent), "mount")
 		}

@@ -180,18 +180,18 @@ func BuildQualifiedFuncInfo(r *Registry, name string) *help.FuncInfo {
 	if !ok {
 		return nil
 	}
-	fnDef, ok := exp.Data.(FnDefInfo)
+	fnDef, ok := exp.Data.(*FnDefInfo)
 	if !ok {
 		return nil
 	}
-	return FnDefFuncInfo(name, &fnDef)
+	return FnDefFuncInfo(name, fnDef)
 }
 
 // FnDefFromValue unwraps an FnDefInfo carried by a function Value (e.g. a
 // module export's wrapper), for callers outside the engine package that hold
 // the Value but not the payload. ok=false when v is not an FnDef.
 func FnDefFromValue(v Value) (*FnDefInfo, bool) {
-	fn, ok := v.Data.(FnDefInfo)
+	fn, ok := FnDefCopy(v.Data)
 	if !ok {
 		return nil, false
 	}

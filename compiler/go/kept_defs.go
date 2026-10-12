@@ -207,7 +207,7 @@ func (es *EmitState) operandMayInvoke(op EmitOperand) bool {
 			return false
 		}
 		v := es.consts[op.idx]
-		_, isFn := v.Data.(core.FnDefInfo)
+		_, isFn := v.Data.(*core.FnDefInfo)
 		return isFn || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
 	}
 	return true

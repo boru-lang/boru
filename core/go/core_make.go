@@ -334,7 +334,7 @@ func MakeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 // containsCapturingFn reports whether v is, or holds at any depth, a fn
 // value WITH captures — a closure, whose captured state no const can carry.
 func containsCapturingFn(v Value) bool {
-	if fd, ok := v.Data.(FnDefInfo); ok {
+	if fd, ok := v.Data.(*FnDefInfo); ok {
 		return len(fd.Captured) > 0
 	}
 	if !IsConcrete(&v) {

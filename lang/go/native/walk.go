@@ -79,7 +79,7 @@ func makeWalkApply(cb Value, r *Registry, callErr *error) func(*string, any, any
 			return val
 		}
 		var cbDef *FnDefInfo
-		if fd, ok := cb.Data.(FnDefInfo); ok {
+		if fd, ok := FnDefCopy(cb.Data); ok {
 			cbDef = &fd
 		}
 		// InvokeCallbackFn, not r.CallBoru: the callback resolves its free words in

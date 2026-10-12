@@ -197,7 +197,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 	if !ok {
 		t.Fatal("a foreign program's closure resolves through that program")
 	}
-	fd, isFn := v.Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(v.Data)
 	if !isFn || len(fd.Signatures) != 1 || len(fd.Signatures[0].Args) != 2 ||
 		!fd.Signatures[0].Args[0].Equal(core.TInteger) || !fd.Signatures[0].Args[1].Equal(core.TAny) ||
 		fd.Signatures[0].Params[1].Pattern == nil {
@@ -217,7 +217,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 // argument-taking signature is a fallback, could not.
 func TestLandedFnTakesArgs(t *testing.T) {
 	fn := func(sigs ...core.Signature) core.Value {
-		return core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: sigs}}
+		return core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}
 	}
 	unary := core.Signature{Args: []*core.Type{core.TInteger}}
 	fallback := unary

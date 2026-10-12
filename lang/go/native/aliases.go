@@ -732,3 +732,8 @@ func makeConvert(src core.Value, targetType *core.Type) (core.Value, error) {
 // inline, and escape analysis sees that the pointer does not escape (a
 // call through a function variable would move every &v to the heap).
 func ClosureIsFnValue(v *core.Value) bool { return compiler.ClosureIsFnValue(v) }
+
+// The fn payload's readers (core.FnDefOf, core.FnDefCopy): a fn value holds
+// its FnDefInfo by pointer.
+func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
+func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }

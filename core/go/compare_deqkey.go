@@ -283,8 +283,8 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// stale, and the divergence is silent: Add files the value nowhere
 	// and FirstMatch answers -1, so `unique` keeps two functions `deq`
 	// calls duplicates.
-	if fd, ok := v.Data.(FnDefInfo); ok {
-		return "f:" + canonFnDef(fd), DeqKeyed
+	if fd, ok := v.Data.(*FnDefInfo); ok {
+		return "f:" + canonFnDef(*fd), DeqKeyed
 	}
 
 	// Words (NUR031): a word is value-like — eq and deq both compare the
@@ -357,7 +357,7 @@ func deqFam(v Value) string {
 	// another fn, so its own family keeps the scan tight and stops the
 	// depth-capped unkeyed values (the only other residents of the
 	// empty family) from being rescanned on every fn lookup.
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data.(*FnDefInfo); ok {
 		return "F"
 	}
 	// Capability-carrying values scan within the family of the OWNING

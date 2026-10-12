@@ -176,7 +176,7 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 		}
 		return false
 	}
-	fnDef, _ := member.Data.(core.FnDefInfo) // validated by shapedMethodApplyWindow
+	fnDef, _ := core.FnDefOf(member.Data) // validated by shapedMethodApplyWindow
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		args[i] = e.Tape.At(p)
@@ -208,11 +208,11 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 // compile-pass model (which runs the real dispatch) and the plain-check
 // collapse (which folds the apply to dynamic(Any)).
 func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*core.Signature, []int, bool) {
-	fnDef, ok := member.Data.(core.FnDefInfo)
+	fnDef, ok := member.Data.(*core.FnDefInfo)
 	if !ok {
 		return nil, nil, false
 	}
-	fn := core.FnHomeLookup(&fnDef)
+	fn := core.FnHomeLookup(fnDef)
 	if fn == nil {
 		return nil, nil, false
 	}
@@ -334,7 +334,7 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 
 // fnDefName names a function value for a compile failure message.
 func fnDefName(v core.Value) string {
-	if fd, ok := v.Data.(core.FnDefInfo); ok && fd.Name != "" {
+	if fd, ok := v.Data.(*core.FnDefInfo); ok && fd.Name != "" {
 		return fd.Name
 	}
 	return "fn value"
@@ -504,7 +504,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return false
 	}
 	decline := func() bool { return declineMemberFnArrival(es, member) }
-	fnDef, _ := member.Data.(core.FnDefInfo) // validated by memberFnReadValue
+	fnDef, _ := core.FnDefOf(member.Data) // validated by memberFnReadValue
 	if !fnDef.NamedDef() || fnDef.Macro || len(fnDef.Captured) != 0 {
 		return decline()
 	}
@@ -1061,7 +1061,7 @@ func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 		return core.LandingNextValue
 	}
 	if top, ok := e.DefTop(ww.Name); ok {
-		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+		if _, isFn := top.Data.(*core.FnDefInfo); !isFn {
 			return core.LandingNextValue
 		}
 		return core.LandingNextWord

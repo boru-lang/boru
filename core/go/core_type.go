@@ -360,7 +360,7 @@ func isFnBodiedValue(v Value) bool {
 		return false
 	}
 	switch v.Data.(type) {
-	case FnDefInfo, ClosurePayload:
+	case *FnDefInfo, ClosurePayload:
 		return true
 	}
 	return false
@@ -539,11 +539,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// only the REF is stamped, never the payload Name (the canon-
 		// ordering note above stands).
 		if r.RuntimeStampingEnabled() {
-			if fd, isFn := body.Data.(FnDefInfo); isFn {
+			if fd, isFn := body.Data.(*FnDefInfo); isFn {
 				// The stamp EVENT carries the type name so -compile-report
 				// (and the stamp-report gates) attribute the unit; the
 				// binding's payload Name stays empty (the canon note above).
-				named := fd
+				named := *fd
 				named.Name = name
 				compiledRuntime.StampDetached(r, named, body.Pos())
 			}

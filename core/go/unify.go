@@ -134,7 +134,7 @@ func IsDeclaredPredicateFn(v Value) bool {
 	if v.Parent == nil || !v.Parent.Equal(TFunction) {
 		return false
 	}
-	info, ok := v.Data.(FnDefInfo)
+	info, ok := v.Data.(*FnDefInfo)
 	return ok && info.Predicate
 }
 
@@ -142,12 +142,12 @@ func IsDeclaredPredicateFn(v Value) bool {
 // — `fnpred`'s half of the pair above. Total: a value carrying no FnDefInfo
 // comes back unchanged, so a caller never has to guard the payload shape.
 func MarkPredicateFn(v Value) Value {
-	info, ok := v.Data.(FnDefInfo)
+	info, ok := FnDefCopy(v.Data)
 	if !ok {
 		return v
 	}
 	info.Predicate = true
-	return NewValueRaw(v.Parent, info)
+	return NewValueRaw(v.Parent, &info)
 }
 
 // resolvePredicateRef returns the predicate type's lattice NODE when v
@@ -186,7 +186,7 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 		// Direct FnDef body — try the FnDef's Name field. Predicate
 		// types installed via `def Pos fnpred […]` carry Name="Pos" on
 		// their FnDef payload after InstallType wires the binding.
-		if info, ok := v.Data.(FnDefInfo); ok {
+		if info, ok := v.Data.(*FnDefInfo); ok {
 			name = info.Name
 		}
 		if name == "" {
@@ -230,8 +230,8 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 // Value-ID equality is kept as a secondary probe for pass-minted values
 // whose payloads were rebuilt (aggregate clones re-slice Signatures).
 func sameFnConstruction(a, b Value) bool {
-	ai, aok := a.Data.(FnDefInfo)
-	bi, bok := b.Data.(FnDefInfo)
+	ai, aok := a.Data.(*FnDefInfo)
+	bi, bok := FnDefOf(b.Data)
 	if !aok || !bok {
 		return false
 	}

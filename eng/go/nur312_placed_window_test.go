@@ -11,7 +11,7 @@ import (
 // dispatch, the resolved prefix and the rest where one would, and a refusal
 // where a value beneath the last placed one is not plain data.
 func TestPlacedWindowSplit(t *testing.T) {
-	g := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}
+	g := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
 	op, cp, word, three := core.NewOpenParen(), core.NewCloseParen(), core.NewWord("add"), core.NewInteger(3)
 	if _, _, split, refused := placedWindowSplit([]core.Value{core.NewInteger(2), op, core.NewInteger(5), cp, word, three}); split || refused {
 		t.Error("a placed datum keeps the verbatim island")
@@ -41,9 +41,9 @@ func TestNamedDispatchingFn(t *testing.T) {
 		v    core.Value
 		want bool
 	}{
-		{"a named definition", fnv(core.FnDefInfo{Name: "g"}, false), true},
-		{"a named lambda", fnv(core.FnDefInfo{Name: "g", Anonymous: true}, false), false},
-		{"a quoted definition", fnv(core.FnDefInfo{Name: "g"}, true), false},
+		{"a named definition", fnv(&core.FnDefInfo{Name: "g"}, false), true},
+		{"a named lambda", fnv(&core.FnDefInfo{Name: "g", Anonymous: true}, false), false},
+		{"a quoted definition", fnv(&core.FnDefInfo{Name: "g"}, true), false},
 		{"a named closure", fnv(core.ClosurePayload{Named: true}, false), true},
 		{"an anonymous closure", fnv(core.ClosurePayload{}, false), false},
 		{"data", core.NewInteger(7), false},

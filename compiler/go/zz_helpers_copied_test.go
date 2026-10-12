@@ -55,7 +55,7 @@ func ffsConst(id string, n int64) core.Value {
 }
 
 func fnVal(sigs ...core.Signature) core.Value {
-	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction, Data: core.FnDefInfo{Signatures: sigs}}
+	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}
 }
 
 // instanceVal builds a flat class instance whose fields map is `om`.

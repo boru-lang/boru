@@ -32,16 +32,16 @@ func TestMarkShapeModel(t *testing.T) {
 
 	modelFn := wrapper(model)
 	liveFn := wrapper(live)
-	fd, _ := modelFn.Data.(FnDefInfo)
+	fd, _ := FnDefOf(modelFn.Data)
 	if !fd.ShapeModelHomed() {
 		t.Error("a method homed in the model registry is ShapeModelHomed")
 	}
-	lfd, _ := liveFn.Data.(FnDefInfo)
+	lfd, _ := FnDefOf(liveFn.Data)
 	if lfd.ShapeModelHomed() {
 		t.Error("a method homed in a live registry is not ShapeModelHomed")
 	}
 	nat, _ := inst.Get("native")
-	nfd, _ := nat.Data.(FnDefInfo)
+	nfd, _ := FnDefOf(nat.Data)
 	if nfd.ShapeModelHomed() {
 		t.Error("a Go-built value (no home) is never ShapeModelHomed")
 	}

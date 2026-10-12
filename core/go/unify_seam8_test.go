@@ -10,7 +10,7 @@ import "testing"
 // w8predFn builds a DECLARED predicate fn value (fnpred's MarkPredicateFn):
 // parented at TFunction with a single-param signature, marked Predicate.
 func w8predFn() Value {
-	return MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{
+	return MarkPredicateFn(NewValueRaw(TFunction, &FnDefInfo{
 		Signatures: []Signature{{Params: []FnParam{{Name: "x", Type: TInteger}}}},
 	}))
 }
@@ -24,7 +24,7 @@ func TestW8IsDeclaredPredicateFnGuards(t *testing.T) {
 		t.Fatal("non-FnDefInfo payload is not a predicate fn")
 	}
 	// A single-param FnDef the author did not declare a predicate.
-	undeclared := NewValueRaw(TFunction, FnDefInfo{
+	undeclared := NewValueRaw(TFunction, &FnDefInfo{
 		Signatures: []Signature{{Params: []FnParam{{Name: "x", Type: TInteger}}}},
 	})
 	if IsDeclaredPredicateFn(undeclared) {

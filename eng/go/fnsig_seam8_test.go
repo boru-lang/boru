@@ -41,7 +41,7 @@ func TestW8FnSigSatisfiesSpecReturnArity(t *testing.T) {
 
 func TestW8FnUndefMatchesFnDefGuards(t *testing.T) {
 	// undef value is not a FnUndefInfo.
-	if core.FnUndefMatchesFnDef(core.NewInteger(1), core.NewValueRaw(core.TFunction, core.FnDefInfo{})) {
+	if core.FnUndefMatchesFnDef(core.NewInteger(1), core.NewValueRaw(core.TFunction, &core.FnDefInfo{})) {
 		t.Fatal("non-FnUndef constraint value must not match")
 	}
 	// fn value is not a FnDefInfo.
@@ -51,7 +51,7 @@ func TestW8FnUndefMatchesFnDefGuards(t *testing.T) {
 	}
 	// Empty constraint trivially matches any function.
 	emptyUndef := core.NewFnUndef(core.FnUndefInfo{})
-	if !core.FnUndefMatchesFnDef(emptyUndef, core.NewValueRaw(core.TFunction, core.FnDefInfo{})) {
+	if !core.FnUndefMatchesFnDef(emptyUndef, core.NewValueRaw(core.TFunction, &core.FnDefInfo{})) {
 		t.Fatal("an empty FnUndef constraint matches any function")
 	}
 }

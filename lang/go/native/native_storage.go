@@ -1359,7 +1359,7 @@ func getrXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // sound to resolve from an abstract instance carrier. A plain RNG-bound
 // wrapper (rand-int) has no CallableSpec and stays dynamic.
 func isClosureBearingWrapper(v Value) bool {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefCopy(v.Data)
 	if !ok {
 		return false
 	}
@@ -1591,7 +1591,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// member and its argument (NUR112). The compile pass keeps the dynamic
 	// carrier below: its arrival is claimed through the shaped method model.
 	if r != nil && !r.Check.Recorder().Armed() && val.Parent.ConformsTo(TFunction) {
-		if _, ok := val.Data.(FnDefInfo); ok {
+		if _, ok := val.Data.(*FnDefInfo); ok {
 			return []Value{CloneValue(val)}
 		}
 	}

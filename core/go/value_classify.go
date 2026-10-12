@@ -84,14 +84,14 @@ func ModuleScopeBinding(r *Registry, name string) bool {
 // representations. Merging the two arms = extending the compiled
 // landing model, not editing this predicate.
 func FnValueZeroArg(v Value) bool {
-	d, ok := v.Data.(FnDefInfo)
+	d, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return false
 	}
 	if !fnValueHasZeroArgSig(v) {
 		return false // no genuine 0-arg overload: needs args, lands as data
 	}
-	if FnValueOnlyZeroArgSigs(d) {
+	if FnValueOnlyZeroArgSigs(*d) {
 		return true // pure property fn: auto-fires in both representations
 	}
 	for i := range d.Signatures {
@@ -222,7 +222,7 @@ func IsInertConst(v *Value) bool {
 		// signature at run time. A pattern-bearing param (rare in signatures)
 		// could embed non-const data, so it declines conservatively.
 		return fnSigConstOK(d)
-	case FnDefInfo:
+	case *FnDefInfo:
 		// A function VALUE used as DATA — a residual (`f/v`), a map/list member
 		// (`{b:f/v}`), or an introspection operand (`arityof (fn …)`) — NOT a
 		// call site. It bakes as a const only with no closure state: no captured
@@ -436,7 +436,7 @@ func ConstFoldAgrees(a, b Value) bool { return CanonValue(a) == CanonValue(b) }
 // isAppliableFn reports whether a runtime value is a callable the interpreter
 // would auto-apply: a Function-typed value or an FnDefInfo payload.
 func IsAppliableFn(v Value) bool {
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data.(*FnDefInfo); ok {
 		return true
 	}
 	return v.Parent != nil && v.Parent.ConformsTo(TFunction)
@@ -688,7 +688,7 @@ func IsInertConstMember(v Value) bool {
 		if IsBareTypeNode(&v) && v.ID != "" {
 			return true
 		}
-		if fd, ok := v.Data.(FnDefInfo); ok {
+		if fd, ok := v.Data.(*FnDefInfo); ok {
 			// A fn value carries its HOME registry from construction (a
 			// main-file fn as much as a module export), so the home says
 			// nothing about mutability: the value is immutable code either

@@ -34,7 +34,7 @@ func TestBodyNeedsFrameStateSeesBindingWordAliases(t *testing.T) {
 	if !ok {
 		t.Fatal("ResolveRef(do) failed")
 	}
-	renamed, _ := ref.Data.(FnDefInfo)
+	renamed, _ := FnDefCopy(ref.Data)
 	renamed.Name = "mydo"
 	cases = append(cases,
 		struct {

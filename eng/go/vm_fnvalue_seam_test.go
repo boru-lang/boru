@@ -12,7 +12,7 @@ import (
 // compiled unit — the shape a value has after a compile-time bake, a
 // module-load stamp, or the lazy stamp — with the given params and returns.
 func fnValueWithRef(ref *compiler.CompiledFnRef, params []core.FnParam, returns []*core.Type) core.Value {
-	return core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
+	return core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
 		Name: "fv",
 		Signatures: []core.Signature{{
 			Params:  params,
@@ -99,7 +99,7 @@ func TestFnValueSeamDeclinesUnenterableRefs(t *testing.T) {
 // is not armed on the registry (the lazy stamp's first gate).
 func TestFnValueSeamDeclinesUnstampedWhenStampingDisarmed(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
-	plain := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "plain", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(7)})}}}}
+	plain := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "plain", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(7)})}}}}
 	if _, _, ran := vc.invokeFnValue(r, plain, nil); ran {
 		t.Error("an unstamped value with stamping disarmed declines")
 	}
@@ -112,7 +112,7 @@ func TestFnValueSeamForeignHomeTakesInvokeCallback(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	home := stampReg(t)
 	ref := &compiler.CompiledFnRef{Prog: oneConstProg(42), Unit: 0}
-	fv := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
+	fv := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
 		Name:       "abroad",
 		Registry:   home,
 		Signatures: []core.Signature{{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(7)}, ref)}},

@@ -222,7 +222,7 @@ func fnMemberAt(args []Value) (Value, bool) {
 				}
 			}
 		}
-		if _, isFn := member.Data.(FnDefInfo); found && isFn {
+		if _, isFn := member.Data.(*FnDefInfo); found && isFn {
 			return member, true
 		}
 	}

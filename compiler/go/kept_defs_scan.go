@@ -114,7 +114,7 @@ func (sc *keptDefsScan) value(v core.Value) bool {
 				return false
 			}
 		}
-	case core.FnDefInfo:
+	case *core.FnDefInfo:
 		return sc.fnBodies(d.Signatures)
 	case core.ClosurePayload, core.InterpStringPayload, core.XmlInterpPayload:
 		return false
@@ -138,7 +138,7 @@ func (sc *keptDefsScan) word(name string) bool {
 		return false
 	}
 	if bound, ok := sc.r.Defs.Top(name); ok {
-		if _, isFn := bound.Data.(core.FnDefInfo); !isFn {
+		if _, isFn := bound.Data.(*core.FnDefInfo); !isFn {
 			return sc.value(bound)
 		}
 	}

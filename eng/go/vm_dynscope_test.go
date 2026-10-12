@@ -167,7 +167,7 @@ func TestLookupDynScopeDataArms(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("residual %v, want the pushed fn value", out)
 	}
-	if _, isFn := out[0].Data.(core.FnDefInfo); !isFn {
+	if _, isFn := out[0].Data.(*core.FnDefInfo); !isFn {
 		t.Errorf("pushed %v, want the FnDefInfo parser value as data", out[0])
 	}
 

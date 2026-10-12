@@ -1753,7 +1753,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 		t.Error("a lead under a pending apply word is the word's, never asked here")
 	}
 	// A gradual Any argument, and a fn-valued argument.
-	for _, arg := range []Value{NewDynamicCarrier(TAny), NewValueRaw(TFunction, FnDefInfo{Name: "g"})} {
+	for _, arg := range []Value{NewDynamicCarrier(TAny), NewValueRaw(TFunction, &FnDefInfo{Name: "g"})} {
 		es = newS5BEmit()
 		es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 		e, _ = producedLeadEngine(t, es, arg)
@@ -1798,7 +1798,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 func TestConcreteFnSingleReturn(t *testing.T) {
 	sig := func(ret ...*Type) Signature { return Signature{Params: []FnParam{{Type: TInteger}}, Returns: ret} }
 	named := func(sigs ...Signature) Value {
-		return NewValueRaw(TFunction, FnDefInfo{Name: "f", Signatures: sigs})
+		return NewValueRaw(TFunction, &FnDefInfo{Name: "f", Signatures: sigs})
 	}
 	if got := concreteFnSingleReturn(named(sig(TInteger))); got == nil || !got.Equal(TInteger) {
 		t.Errorf("one declared return: got %v", got)
@@ -1808,7 +1808,7 @@ func TestConcreteFnSingleReturn(t *testing.T) {
 	}
 	for name, v := range map[string]Value{
 		"a carrier":         NewCarrier(TFunction),
-		"anonymous":         NewValueRaw(TFunction, FnDefInfo{Anonymous: true, Signatures: []Signature{sig(TInteger)}}),
+		"anonymous":         NewValueRaw(TFunction, &FnDefInfo{Anonymous: true, Signatures: []Signature{sig(TInteger)}}),
 		"no signatures":     named(),
 		"undeclared return": named(sig()),
 		"two returns":       named(sig(TInteger, TInteger)),

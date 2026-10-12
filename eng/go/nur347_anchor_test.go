@@ -57,9 +57,9 @@ func TestNUR347FnPosStamps(t *testing.T) {
 // binding's name, `<fn>` for a nameless verbose value (a returned closure's
 // Named push, or a callback's verbose Source), and nothing for a lambda.
 func TestNUR347ClosureFrameName(t *testing.T) {
-	verbose := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{}}
-	lambda := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Anonymous: true}}
-	named := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}
+	verbose := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{}}
+	lambda := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}}
+	named := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
 	notFn := core.NewInteger(1)
 	for _, c := range []struct {
 		cl   core.ClosurePayload
@@ -127,10 +127,10 @@ func TestNUR347FnArgPosStamps(t *testing.T) {
 		want int
 	}{
 		{fnv(core.ClosurePayload{RetName: "h"}), 1},
-		{fnv(core.FnDefInfo{Name: "FnUtil.compose"}), 1},
+		{fnv(&core.FnDefInfo{Name: "FnUtil.compose"}), 1},
 		{fnv(core.ClosurePayload{}), 0},
 		{fnv(core.ClosurePayload{RetName: "h", RetPos: core.SrcPos{Row: 1, Col: 37}}), 0},
-		{fnv(core.FnDefInfo{}), 0},
+		{fnv(&core.FnDefInfo{}), 0},
 		{positioned, 2},
 		{core.NewInteger(1), 0},
 	} {

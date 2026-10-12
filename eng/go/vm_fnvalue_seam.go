@@ -54,7 +54,7 @@ import (
 //     that had printed did not print twice; nothing re-runs now, so the bail
 //     is the compiler defect it is and it surfaces either way.
 func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
-	fd, ok := body.Data.(core.FnDefInfo)
+	fd, ok := body.Data.(*core.FnDefInfo)
 	if !ok || body.Quoted {
 		return nil, nil, false
 	}
@@ -66,7 +66,7 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 	if sig == nil {
 		return nil, nil, false
 	}
-	return vc.runFnValueSig(reg, body, fd, sig, args)
+	return vc.runFnValueSig(reg, body, *fd, sig, args)
 }
 
 // runFnValueSig is invokeFnValue past the match: run the value's matched

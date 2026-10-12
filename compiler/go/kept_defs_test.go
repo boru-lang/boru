@@ -158,7 +158,7 @@ func TestKeptDefsInvoker(t *testing.T) {
 		t.Errorf("with no kept-defs unit an island invokes nothing: %q", w)
 	}
 	es.keptDefsUnitWord = "do"
-	es.consts = []core.Value{core.NewInteger(1), {Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}}
+	es.consts = []core.Value{core.NewInteger(1), {Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}}
 	for name, ev := range map[string]EmitEvent{
 		"an island":                      {kind: evFallback},
 		"a fn-value apply":               {kind: evCall, call: emitCall{dynApply: 1}},
@@ -315,7 +315,7 @@ func TestKeptDefsScan(t *testing.T) {
 		"a recursive fn is visited once":      {words("rec"), true},
 		"a paren group":                       {[]core.Value{core.NewParenExpr(words("add"))}, true},
 		"a Integer carrier":                   {[]core.Value{core.NewCarrier(core.TInteger)}, true},
-		"a fn value":                          {[]core.Value{{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}}}}, true},
+		"a fn value":                          {[]core.Value{{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}}}}, true},
 		"a def at the body's top level":       {words("def"), false},
 		"an undef":                            {words("undef"), false},
 		"an unresolved name":                  {words("zz"), false},
@@ -416,7 +416,7 @@ func TestProvenBodyTokens(t *testing.T) {
 
 func TestBodyProvenFn(t *testing.T) {
 	es := NewEmitState()
-	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}
+	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
 	if !es.bodyProvenFn(fnVal) {
 		t.Error("a const fn value is a proven callback")
 	}

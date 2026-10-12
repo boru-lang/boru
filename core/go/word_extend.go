@@ -68,11 +68,11 @@ func HasLockedSigs(fn *FnDefInfo) bool {
 // marker (never probe the Extends field inline) — recognised by the
 // import machinery for the export transplant (§2.4).
 func IsWordExtension(v Value) (FnDefInfo, bool) {
-	fnDef, ok := v.Data.(FnDefInfo)
+	fnDef, ok := v.Data.(*FnDefInfo)
 	if !ok || fnDef.Extends == "" {
 		return FnDefInfo{}, false
 	}
-	return fnDef, true
+	return *fnDef, true
 }
 
 // sigTupleEqual reports whether two signatures declare the SAME

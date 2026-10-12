@@ -364,7 +364,7 @@ func toCarrier(v core.Value) core.Value {
 	// check mode would otherwise bind add5 to an empty carrier rather
 	// than to the inner FnDefInfo, breaking subsequent invocation +
 	// inference of `add5 3`.
-	if _, ok := v.Data.(core.FnDefInfo); ok {
+	if _, ok := v.Data.(*core.FnDefInfo); ok {
 		return v
 	}
 	// Keep Disjunct / Enum values concrete: their DisjunctInfo (the
@@ -1146,7 +1146,7 @@ func BodyRefsFnLocalFns(r *core.Registry, sig *core.Signature, args []core.Value
 			if !bound || r.Defs.Depth(w.Name) <= baseline[w.Name] {
 				return
 			}
-			if _, isFn := v.Data.(core.FnDefInfo); !isFn {
+			if _, isFn := v.Data.(*core.FnDefInfo); !isFn {
 				return
 			}
 			if w.ForceVal || w.ForceUsurp {
@@ -1185,7 +1185,7 @@ func BodyHasSentinel(body core.Value) bool {
 // signal with no enclosing loop" and was caught as a value — a miscompile.
 // Nested fn bodies are still skipped: their sentinel targets their own scope.
 func valueHasSentinel(v core.Value) bool {
-	if _, ok := v.Data.(core.FnDefInfo); ok {
+	if _, ok := v.Data.(*core.FnDefInfo); ok {
 		return false
 	}
 	if core.IsWord(&v) {
@@ -1329,8 +1329,8 @@ func BodyHasSentinelDeep(r *core.Registry, body core.Value) bool {
 // tokens reach the direct scanner; a constructed FnDefInfo in a body is
 // treated as potentially applied).
 func calleeValueLeaksFlow(r *core.Registry, v core.Value, seen map[string]bool) bool {
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
-		return fnDefLeaksFlow(r, &fd, seen)
+	if fd, ok := v.Data.(*core.FnDefInfo); ok {
+		return fnDefLeaksFlow(r, fd, seen)
 	}
 	if core.IsWord(&v) {
 		w, _ := core.AsWord(&v)
@@ -2931,7 +2931,7 @@ func refineRecursiveSummary(r *core.Registry, key string, diagBase int, result [
 // `/v` spelling of the same fn never drew (NUR089). Every other value — a
 // carrier, a scalar, a container — is the plain push it always was.
 func bindFrameValue(r *core.Registry, name string, v core.Value) {
-	if _, isFn := v.Data.(core.FnDefInfo); isFn && v.Parent != nil && v.Parent.Equal(core.TFunction) {
+	if _, isFn := v.Data.(*core.FnDefInfo); isFn && v.Parent != nil && v.Parent.Equal(core.TFunction) {
 		core.InstallFrameBinding(r, name, v)
 		return
 	}

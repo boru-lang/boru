@@ -167,7 +167,7 @@ func TestStampFnValueGates(t *testing.T) {
 		t.Fatalf("non-fn value must decline unchanged")
 	}
 
-	goFn := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{
+	goFn := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{
 		{Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 			return nil, nil
 		})},
@@ -177,7 +177,7 @@ func TestStampFnValueGates(t *testing.T) {
 	}
 
 	pre := &CompiledFnRef{Unit: 0, Prog: &Program{Fns: []CompiledFn{{}}}}
-	stampedAlready := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{
+	stampedAlready := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{
 		{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(1)}, pre)},
 	}}}
 	if _, ok := StampFnValue(r, stampedAlready); ok {
@@ -268,11 +268,12 @@ func TestDepsFresh(t *testing.T) {
 func TestStampFnValueInPlace(t *testing.T) {
 	r := stampReg(t)
 	r.EnableRuntimeStamping()
-	v := core.Value{Parent: core.TFunction, Data: BoruBodyFd(core.NewInteger(1))}
+	body := BoruBodyFd(core.NewInteger(1))
+	v := core.Value{Parent: core.TFunction, Data: &body}
 	if !StampFnValueInPlace(r, v) {
 		t.Fatalf("first in-place stamp must succeed")
 	}
-	fd := v.Data.(core.FnDefInfo)
+	fd := v.Data.(*core.FnDefInfo)
 	if ref := CompiledRef(&fd.Signatures[0]); ref == nil || ref.Prog == nil {
 		t.Fatalf("in-place stamp must mutate the shared impl")
 	}
@@ -284,7 +285,7 @@ func TestStampFnValueInPlace(t *testing.T) {
 	}
 	// Policy off: untouched.
 	r2 := stampReg(t)
-	w := core.Value{Parent: core.TFunction, Data: BoruBodyFd(core.NewInteger(2))}
+	w := core.Value{Parent: core.TFunction, Data: addrOf(BoruBodyFd(core.NewInteger(2)))}
 	if StampFnValueInPlace(r2, w) {
 		t.Fatalf("an unarmed registry must not stamp in place")
 	}
@@ -301,7 +302,7 @@ func TestStampReportCollector(t *testing.T) {
 	r.EnableRuntimeStamping()
 
 	// A successful stamp records Stamped=true.
-	v := core.Value{Parent: core.TFunction, Data: BoruBodyFd(core.NewInteger(1))}
+	v := core.Value{Parent: core.TFunction, Data: addrOf(BoruBodyFd(core.NewInteger(1)))}
 	if _, ok := StampFnValue(r, v); !ok {
 		t.Fatalf("stamp failed")
 	}
@@ -344,7 +345,7 @@ func TestStampReportCollector(t *testing.T) {
 
 	// Forks and module-style inheritance feed the SAME log.
 	fork := r.ForkConcurrent()
-	if _, ok := StampFnValue(fork, core.Value{Parent: core.TFunction, Data: BoruBodyFd(core.NewInteger(2))}); !ok {
+	if _, ok := StampFnValue(fork, core.Value{Parent: core.TFunction, Data: addrOf(BoruBodyFd(core.NewInteger(2)))}); !ok {
 		t.Fatalf("fork stamp failed")
 	}
 	child, err := core.NewRegistry()
@@ -353,7 +354,7 @@ func TestStampReportCollector(t *testing.T) {
 	}
 	child.InitRootContext()
 	child.InheritRuntimeStamping(r)
-	if _, ok := StampFnValue(child, core.Value{Parent: core.TFunction, Data: BoruBodyFd(core.NewInteger(3))}); !ok {
+	if _, ok := StampFnValue(child, core.Value{Parent: core.TFunction, Data: addrOf(BoruBodyFd(core.NewInteger(3)))}); !ok {
 		t.Fatalf("inherited-child stamp failed")
 	}
 	if got := len(r.StampEvents()); got != 5 {

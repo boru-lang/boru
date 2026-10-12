@@ -225,7 +225,7 @@ func TestCallBoruArms(t *testing.T) {
 	}
 	sigOf := func(v Value) *core.FnSig {
 		t.Helper()
-		info, ok := v.Data.(core.FnDefInfo)
+		info, ok := core.FnDefOf(v.Data)
 		if !ok || len(info.Signatures) == 0 {
 			t.Fatalf("not a fn value: %s", v.String())
 		}

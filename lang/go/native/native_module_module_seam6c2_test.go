@@ -256,7 +256,7 @@ func TestSeam6C2ResolveModuleExportFnDefValue(t *testing.T) {
 	if !out.Parent.Equal(TFunction) {
 		t.Fatalf("expected FnDef result, got %v", out.Parent)
 	}
-	info, ok := out.Data.(FnDefInfo)
+	info, ok := FnDefOf(out.Data)
 	if !ok || info.Registry != r {
 		t.Fatal("expected module registry to be attached to the FnDef")
 	}
@@ -280,7 +280,7 @@ func TestSeam6C2ResolveModuleExportTypeBodyArms(t *testing.T) {
 	if !out.Parent.Equal(TFunction) {
 		t.Fatalf("expected FnDef from type body, got %v", out.Parent)
 	}
-	if info, ok := out.Data.(FnDefInfo); !ok || info.Registry != r {
+	if info, ok := out.Data.(*FnDefInfo); !ok || info.Registry != r {
 		t.Fatal("expected registry attached to type-body FnDef")
 	}
 
@@ -307,7 +307,7 @@ func TestSeam6C2ResolveModuleExportDefArms(t *testing.T) {
 	if !out.Parent.Equal(TFunction) {
 		t.Fatalf("expected FnDef from def stack, got %v", out.Parent)
 	}
-	if info, ok := out.Data.(FnDefInfo); !ok || info.Registry != r {
+	if info, ok := out.Data.(*FnDefInfo); !ok || info.Registry != r {
 		t.Fatal("expected registry attached to def-stack FnDef")
 	}
 

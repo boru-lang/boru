@@ -318,7 +318,7 @@ func refuseWeak(v Value) *WeakRefusal {
 				"identity the collector could track",
 			Help: "store a mutable handle: flex the element first",
 		}
-	case func() bool { _, ok := v.Data.(FnDefInfo); return ok }():
+	case func() bool { _, ok := v.Data.(*FnDefInfo); return ok }():
 		return &WeakRefusal{Kind: "a fn value", Note: weakDomainNote,
 			Help: "wrap the fn in a flex container to cache it: (flex [f/v])"}
 	case func() bool { _, ok := v.Data.(ErrorInfo); return ok }():

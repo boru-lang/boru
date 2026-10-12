@@ -75,7 +75,7 @@ func TestClosureFnViewDefaultsTheReturn(t *testing.T) {
 	for _, want := range [][]*core.Type{nil, {core.TAny}} {
 		cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity(), RetTypes: want})
 		bv, ok := closureFnView(r, cl)
-		fd, isFn := bv.Data.(native.FnDefInfo)
+		fd, isFn := native.FnDefOf(bv.Data)
 		if !ok || !isFn || len(fd.Signatures) == 0 {
 			t.Fatalf("the closure bridges: %v %v", bv, ok)
 		}

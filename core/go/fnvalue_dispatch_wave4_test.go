@@ -118,9 +118,9 @@ func TestAnonFnValueZeroArgIsData(t *testing.T) {
 // application mark — what lang's applyHandler stamps to say a call was
 // asked for at this site.
 func applied(v Value) Value {
-	fd := v.Data.(FnDefInfo)
+	fd := *v.Data.(*FnDefInfo)
 	fd.Applied = true
-	v.Data = fd
+	v.Data = &fd
 	return v
 }
 
@@ -155,10 +155,10 @@ func TestAnonFnValueZeroArgAppliedDispatches(t *testing.T) {
 func TestAppliedMarkIsOneShot(t *testing.T) {
 	r := covRegistry(t, nil)
 	fnv := anonFnVal(nil, nil, parenBody(NewInteger(99)))
-	fd := fnv.Data.(FnDefInfo)
+	fd := *fnv.Data.(*FnDefInfo)
 	fd.Macro = true
 	fd.Applied = true
-	fnv.Data = fd
+	fnv.Data = &fd
 
 	out, err := NewTop(r).Run([]Value{fnv})
 	if err != nil {
@@ -167,7 +167,7 @@ func TestAppliedMarkIsOneShot(t *testing.T) {
 	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
 		t.Fatalf("a macro value must park as data, got %s", renderAll(out))
 	}
-	if got, ok := out[0].Data.(FnDefInfo); !ok || got.Applied {
+	if got, ok := out[0].Data.(*FnDefInfo); !ok || got.Applied {
 		t.Errorf("the Applied mark must not survive the re-step, got %+v", out[0])
 	}
 }

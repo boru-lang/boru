@@ -72,7 +72,7 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			// — installs into this frame exactly as the word itself would,
 			// so it is the word for this rule (Codex P1 on #532: the CallBoru
 			// path's unconditional snapshots used to cover the alias).
-			if fd, isFn := bound.Data.(FnDefInfo); isFn && fnValueIsBindingWord(r, &fd) {
+			if fd, isFn := bound.Data.(*FnDefInfo); isFn && fnValueIsBindingWord(r, fd) {
 				needs = true
 				return
 			}
@@ -158,7 +158,7 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	}
 	// Nested FnDefInfo: opaque. Its captures were resolved at its
 	// own construction; don't descend.
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data.(*FnDefInfo); ok {
 		return
 	}
 	// List payload: recurse.
@@ -357,7 +357,7 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 		if v.Quoted {
 			continue
 		}
-		if _, isFn := v.Data.(FnDefInfo); isFn {
+		if _, isFn := v.Data.(*FnDefInfo); isFn {
 			continue // nested closure: its defs are its own
 		}
 		if w, err := AsWord(&v); err == nil {
@@ -464,7 +464,7 @@ func fnValueIsBindingWord(r *Registry, fd *FnDefInfo) bool {
 	}
 	for w := range frameStateWords {
 		if top, ok := r.Defs.Top(w); ok {
-			if tfd, isFn := top.Data.(FnDefInfo); isFn && tfd.ident == fd.ident {
+			if tfd, isFn := top.Data.(*FnDefInfo); isFn && tfd.ident == fd.ident {
 				return true
 			}
 		}

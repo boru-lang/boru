@@ -493,7 +493,7 @@ func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 	if !v.Parent.Equal(TFunction) {
 		return nil, fmt.Errorf("apply: expected Function, got %s", v.Parent.String())
 	}
-	if _, ok := v.Data.(FnDefInfo); !ok {
+	if _, ok := v.Data.(*FnDefInfo); !ok {
 		return nil, fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", v.Data)
 	}
 	v.Quoted = false

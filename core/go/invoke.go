@@ -302,7 +302,7 @@ func (fd *FnDefInfo) ShapeModelHomed() bool {
 func MarkShapeModel(inst *OrderedMap) {
 	for _, k := range inst.Keys() {
 		mv, _ := inst.Get(k)
-		if fd, ok := mv.Data.(FnDefInfo); ok && fd.HasHome() {
+		if fd, ok := mv.Data.(*FnDefInfo); ok && fd.HasHome() {
 			fd.Registry.ShapeModel = true
 		}
 	}

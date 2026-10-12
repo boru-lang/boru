@@ -251,7 +251,7 @@ func TestReStepLandingFireIslands(t *testing.T) {
 			}),
 		}},
 	})
-	if vmNativeApplicable(r, fn.Data.(core.FnDefInfo)) {
+	if vmNativeApplicable(r, *fn.Data.(*core.FnDefInfo)) {
 		t.Fatal("fixture reads as natively applicable — it would take the native rung, not the island")
 	}
 	entries := armEntries(t, r)

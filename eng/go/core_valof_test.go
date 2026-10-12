@@ -112,7 +112,7 @@ func TestRefSuffixReturnsFunctionValue(t *testing.T) {
 	if v.Quoted {
 		t.Errorf("function value is Quoted — /v should produce unquoted in the new dispatch model")
 	}
-	fnDef, ok := v.Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(v.Data)
 	if !ok {
 		t.Fatalf("payload=%T, want FnDefInfo", v.Data)
 	}
@@ -225,7 +225,7 @@ func TestRefStableInMap(t *testing.T) {
 		if v.Quoted {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", name)
 		}
-		fnDef, ok := v.Data.(core.FnDefInfo)
+		fnDef, ok := core.FnDefOf(v.Data)
 		if !ok {
 			t.Fatalf("ops[%q] payload=%T, want FnDefInfo", name, v.Data)
 		}
@@ -243,7 +243,7 @@ func TestRefStableInMap(t *testing.T) {
 	if !v.Parent.Equal(core.TFunction) {
 		t.Fatalf("after shadow, ops[add].Parent=%s, want Function still", v.Parent.String())
 	}
-	fnDef, _ := v.Data.(core.FnDefInfo)
+	fnDef, _ := core.FnDefOf(v.Data)
 	if fnDef.Name != "add" {
 		t.Errorf("after shadow, captured fnDef.Name=%q, want %q", fnDef.Name, "add")
 	}
@@ -264,7 +264,7 @@ func TestRefStableInMap(t *testing.T) {
 		t.Fatal("expected add binding to be gone after double-pop")
 	}
 	stillThere, _ := ops.Get("add")
-	stillFn, _ := stillThere.Data.(core.FnDefInfo)
+	stillFn, _ := core.FnDefOf(stillThere.Data)
 	if stillFn.Name != "add" || len(stillFn.Signatures) == 0 {
 		t.Errorf("post-undef captured fn lost shape: name=%q sigs=%d", stillFn.Name, len(stillFn.Signatures))
 	}
@@ -298,7 +298,7 @@ func TestResolveRefDirect(t *testing.T) {
 	if v.Quoted {
 		t.Error("returned function is Quoted — should be unquoted")
 	}
-	fnDef, _ := v.Data.(core.FnDefInfo)
+	fnDef, _ := core.FnDefOf(v.Data)
 	if fnDef.Name != "mul" {
 		t.Errorf("fnDef.Name=%q, want %q", fnDef.Name, "mul")
 	}

@@ -175,7 +175,7 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	}}})
 	if got := toCarrier(fnv); !core.IsConcrete(&got) {
 		t.Error("a Function value must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(core.FnDefInfo); !ok {
+	} else if _, ok := got.Data.(*core.FnDefInfo); !ok {
 		t.Errorf("Function payload = %T after strip, want core.FnDefInfo", got.Data)
 	}
 

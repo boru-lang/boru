@@ -385,7 +385,7 @@ func (DefCleanupInfo) payloadMarker()       {}
 func (FrameOpenInfo) payloadMarker()        {}
 func (LoopOpenInfo) payloadMarker()         {}
 func (ModuleDesc) payloadMarker()           {}
-func (FnDefInfo) payloadMarker()            {}
+func (*FnDefInfo) payloadMarker()           {} // held by pointer (design/VALUE-NO-COPY.0.md D9)
 func (FnUndefInfo) payloadMarker()          {}
 func (DisjunctInfo) payloadMarker()         {}
 func (NegationInfo) payloadMarker()         {}

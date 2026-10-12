@@ -79,7 +79,7 @@ func (FnUndefInfo) IsTypeContent(parent *Type) bool {
 	return parent != nil && parent.Equal(TFnUndef)
 }
 
-func (FnDefInfo) IsTypeContent(parent *Type) bool {
+func (*FnDefInfo) IsTypeContent(parent *Type) bool {
 	return parent != nil && parent.Equal(TFunction)
 }
 

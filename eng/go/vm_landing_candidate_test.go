@@ -121,7 +121,7 @@ func TestReStepLandingWalk(t *testing.T) {
 	// zero-argument fallback where the wordless landing stood aside.
 	rn, fire := landingNativeReg(t, "zz-walk-fire", func() ([]core.Value, error) { return []core.Value{core.NewInteger(42)}, nil })
 	rn.Defs.Push("z", core.NewFunction(core.FnDefInfo{Name: "z", Signatures: []core.Signature{{BarrierPos: -1, Returns: []*core.Type{core.TInteger}, Impl: core.Boru([]core.Value{core.NewInteger(0)})}}}))
-	fd, _ := fire.Data.(core.FnDefInfo)
+	fd, _ := core.FnDefCopy(fire.Data)
 	fd.Signatures = append(append([]core.Signature(nil), fd.Signatures...), oneInt)
 	mixed := core.NewFunction(fd)
 	vcn := &vmContext{p: landingProg(), r: rn, ceiling: 1 << 20, stepLimit: 1 << 20}

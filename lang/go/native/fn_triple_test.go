@@ -30,7 +30,7 @@ func TestFnTripleHandlerBuildsFunction(t *testing.T) {
 	if len(vals) != 1 || !vals[0].Parent.ConformsTo(TFunction) {
 		t.Fatalf("fn triple: want one Function value, got %v", vals)
 	}
-	fnDef, ok := vals[0].Data.(FnDefInfo)
+	fnDef, ok := FnDefOf(vals[0].Data)
 	if !ok {
 		t.Fatalf("fn triple: payload is %T, want FnDefInfo", vals[0].Data)
 	}

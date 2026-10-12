@@ -118,7 +118,7 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 		// MintTypeWithBehavior workaround is gone.
 		t := subReg.Types.MintMemberType(name, native.TFunction,
 			func(v native.Value) bool {
-				info, ok := v.Data.(native.FnDefInfo)
+				info, ok := v.Data.(*native.FnDefInfo)
 				return ok && info.MiniKind == kind
 			})
 		exports.Set(name, native.NewTypeLiteral(t))

@@ -273,7 +273,7 @@ func TestS6aIsModuleInnerSigGuards(t *testing.T) {
 	r := newTestRegistry(t)
 	sub := newTestRegistry(t)
 	em := core.NewOrderedMap()
-	em.Set("s6aw", core.NewValueRaw(core.TFunction, core.FnDefInfo{Registry: sub, Name: "s6aw"}))
+	em.Set("s6aw", core.NewValueRaw(core.TFunction, &core.FnDefInfo{Registry: sub, Name: "s6aw"}))
 	r.Modules.MarkLoaded("s6amod", core.ModuleDesc{
 		ID: "s6amod",
 		Exports: map[string]*core.OrderedMap{
@@ -468,9 +468,9 @@ func TestConstLambdaArity(t *testing.T) {
 	boru := func() core.SigImpl { return &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}} }
 	lam := func(name, module string, sigs ...core.Signature) core.Value {
 		v := fnVal(sigs...)
-		fd := v.Data.(core.FnDefInfo)
+		fd := *v.Data.(*core.FnDefInfo)
 		fd.Name, fd.Module = name, module
-		v.Data = fd
+		v.Data = &fd
 		return v
 	}
 	twoParam := core.Signature{Params: []core.FnParam{{Name: "a"}, {Name: "z"}}, Impl: boru()}
@@ -582,7 +582,7 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	// body compiles DO resolve to an opClosure — see
 	// lang/go's TestPatrunFnValueStoreCompiles / TestReturnedCapturingClosureApply.)
 	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
+		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
 			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if ok {
@@ -708,7 +708,7 @@ func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	es := NewEmitState()
 	es.reg = r
 	withCap := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true,
+		Data: &core.FnDefInfo{Anonymous: true,
 			Captured:   []core.CapturedBinding{{Name: "c", Value: core.NewCarrier(core.TInteger)}},
 			Signatures: []core.Signature{{}}}}
 	if _, ok := es.tryReturnedClosure(withCap, core.SrcPos{}); ok {
@@ -718,7 +718,7 @@ func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	es = NewEmitState()
 	es.reg = r
 	multiSig := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}
 	if _, ok := es.tryReturnedClosure(multiSig, core.SrcPos{}); ok {
 		t.Fatal("multi-sig lambda should decline")
 	}
@@ -737,7 +737,7 @@ func TestTryReturnedClosureProbeFails(t *testing.T) {
 		BarrierPos: -1,
 	}
 	v := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}
 	if _, ok := es.tryReturnedClosure(v, core.SrcPos{}); ok {
 		t.Fatal("an uncompilable lambda body should decline")
 	}
@@ -1364,7 +1364,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 // skipped, a non-fn member misses, and a bool-only tag (zero member) reports
 // no pinpointed value.
 func TestReadFnMemberValueArms(t *testing.T) {
-	fn := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}}
+	fn := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}}
 	om := core.NewOrderedMap()
 	om.Set("f", fn)
 	fnMap := core.NewMap(om)

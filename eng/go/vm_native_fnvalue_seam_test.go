@@ -50,28 +50,28 @@ func TestApplyNativeFnValueTopDown(t *testing.T) {
 		return out
 	}
 	one := goValueWith(1)
-	fd, _ := one.Data.(core.FnDefInfo)
-	if !vmNativeApplicable(r, fd) {
+	fd, _ := core.FnDefOf(one.Data)
+	if !vmNativeApplicable(r, *fd) {
 		t.Fatal("a self-contained Go fn value applies natively")
 	}
-	out, done, err := vc.applyNativeFnValueTopDown(one, fd, ints(1, 2, 3))
+	out, done, err := vc.applyNativeFnValueTopDown(one, *fd, ints(1, 2, 3))
 	if !done || err != nil || len(out) != 3 || renderInts(out) != "[1 2 30]" {
 		t.Errorf("a one-param value takes the top input and leaves the rest: %v %v %v", out, done, err)
 	}
 	both := goValueWith(1, 2)
-	fd2, _ := both.Data.(core.FnDefInfo)
-	out, done, err = vc.applyNativeFnValueTopDown(both, fd2, ints(7, 3))
+	fd2, _ := core.FnDefOf(both.Data)
+	out, done, err = vc.applyNativeFnValueTopDown(both, *fd2, ints(7, 3))
 	if !done || err != nil || renderInts(out) != "[-4]" {
 		t.Errorf("the widest fitting arity binds top-down (the top 3 is the first param): %v %v %v", out, done, err)
 	}
-	out, done, err = vc.applyNativeFnValueTopDown(both, fd2, ints(5))
+	out, done, err = vc.applyNativeFnValueTopDown(both, *fd2, ints(5))
 	if !done || err != nil || renderInts(out) != "[50]" {
 		t.Errorf("with one input only the one-param arm fits: %v %v %v", out, done, err)
 	}
-	if _, done, _ := vc.applyNativeFnValueTopDown(one, fd, []core.Value{core.NewString("s")}); done {
+	if _, done, _ := vc.applyNativeFnValueTopDown(one, *fd, []core.Value{core.NewString("s")}); done {
 		t.Error("a window nothing fits declines to the interpreter fallback")
 	}
-	if _, done, _ := vc.applyNativeFnValueTopDown(one, fd, nil); done {
+	if _, done, _ := vc.applyNativeFnValueTopDown(one, *fd, nil); done {
 		t.Error("an empty window fits no arm")
 	}
 }

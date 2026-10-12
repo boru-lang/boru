@@ -192,7 +192,7 @@ func TestNUR235CorePatternEvaluatesThePendingLiteral(t *testing.T) {
 	// A fn VALUE at the pointer takes the same match.
 	r := nurReg(t)
 	npm, _ := r.Defs.Top("npm")
-	fd, _ := npm.Data.(FnDefInfo)
+	fd, _ := FnDefCopy(npm.Data)
 	fd.Anonymous = true
 	_, err := NewTop(r).Run([]Value{evalMap(NewString("f"), group(NewWord("nur-missing"))), NewFunction(fd)})
 	if err == nil || !strings.Contains(err.Error(), "nur-missing") {

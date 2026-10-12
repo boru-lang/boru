@@ -414,8 +414,8 @@ func registerEngSpecDefinition(r *core.Registry) {
 			return nil, err
 		}
 		reg.Check.RecordDef(name, core.SrcPos{})
-		if info, ok := args[1].Data.(core.FnDefInfo); ok {
-			core.InstallFnDef(reg, name, info)
+		if info, ok := args[1].Data.(*core.FnDefInfo); ok {
+			core.InstallFnDef(reg, name, *info)
 			return nil, nil
 		}
 		// Through the LEDGERED installer, never a bare Defs.Push: the twin
@@ -449,8 +449,8 @@ func registerEngSpecDefinition(r *core.Registry) {
 				Detail: "def " + name + ": value " + body.String() + " does not satisfy declared type " + constraint.String(),
 			}
 		}
-		if info, ok := body.Data.(core.FnDefInfo); ok {
-			core.InstallFnDef(reg, name, info)
+		if info, ok := body.Data.(*core.FnDefInfo); ok {
+			core.InstallFnDef(reg, name, *info)
 			return nil, nil
 		}
 		core.InstallDef(reg, name, body) // ledgered — see plainDef

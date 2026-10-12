@@ -121,7 +121,7 @@ func TestW8BehaveHandlerFnNoSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fnVal := Value{Parent: TFunction, Data: core.FnDefInfo{}} // no signatures
+	fnVal := Value{Parent: TFunction, Data: &core.FnDefInfo{}} // no signatures
 	_, herr := behaveHandler([]Value{NewAtom("compare"), fnVal}, nil, nil, r)
 	if herr == nil {
 		t.Fatal("behave: fn with no signatures must error")
@@ -141,7 +141,7 @@ func TestW8BehaveHandlerTargetNil(t *testing.T) {
 	}
 	t.Cleanup(func() { delete(behaviors, "w8fake") })
 
-	fnVal := Value{Parent: TFunction, Data: core.FnDefInfo{
+	fnVal := Value{Parent: TFunction, Data: &core.FnDefInfo{
 		Signatures: []Signature{{
 			Params:  []FnParam{{Type: TInteger}},
 			Returns: []*Type{TInteger},

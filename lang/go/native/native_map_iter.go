@@ -63,7 +63,7 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	}
 	if body.Parent.ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
-		if fd, ok := body.Data.(FnDefInfo); ok {
+		if fd, ok := FnDefCopy(body.Data); ok {
 			mb.fnDef = &fd
 		}
 		return mb, nil

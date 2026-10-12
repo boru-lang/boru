@@ -34,7 +34,7 @@ func TestClosureIdentity(t *testing.T) {
 		t.Error("another function, or data, is not the closure")
 	}
 	minted := NewFunctionIdentified(FnDefInfo{}, FnIdentity{})
-	if md := minted.Data.(FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
+	if md := minted.Data.(*FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
 		t.Error("a zero identity mints afresh")
 	}
 	// Two plain fns still compare by their own tokens (the closure arm is
@@ -85,10 +85,10 @@ func TestParenTrailingFnApply(t *testing.T) {
 	// MarkApplied: only an anonymous, non-macro fn whose every signature
 	// is 0-arg takes the mark.
 	zero := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{{BarrierPos: 0}}})
-	if fd := MarkApplied(zero).Data.(FnDefInfo); !fd.Applied {
+	if fd := MarkApplied(zero).Data.(*FnDefInfo); !fd.Applied {
 		t.Error("a 0-arg anonymous fn is marked")
 	}
-	if fd := MarkApplied(fn).Data.(FnDefInfo); fd.Applied {
+	if fd := MarkApplied(fn).Data.(*FnDefInfo); fd.Applied {
 		t.Error("a fn with no 0-arg signature is untouched")
 	}
 	if MarkApplied(NewInteger(1)).Data.(IntPayload).N != 1 {

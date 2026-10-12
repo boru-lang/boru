@@ -173,7 +173,7 @@ func TestLambdaProducesAnonymousFunction(t *testing.T) {
 	if !v.Parent.Equal(core.TFunction) {
 		t.Fatalf("Parent = %s, want Function", v.Parent.String())
 	}
-	fnDef, ok := v.Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(v.Data)
 	if !ok {
 		t.Fatalf("payload type = %T, want FnDefInfo", v.Data)
 	}
@@ -199,7 +199,7 @@ func TestFnNamedIsNotAnonymous(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	v := result[0]
-	fnDef, ok := v.Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(v.Data)
 	if !ok {
 		t.Fatalf("payload type = %T, want FnDefInfo", v.Data)
 	}

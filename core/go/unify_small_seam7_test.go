@@ -101,7 +101,7 @@ func TestS7BaseCompareDelegatesToComparerPrev(t *testing.T) {
 func TestS7MatchMembershipCarrierClosurePayload(t *testing.T) {
 	// A non-concrete carrier whose payload is an FnDefInfo is payload-
 	// decidable: the predicate is consulted directly.
-	v := Value{Parent: TFunction, Carrier: true, Data: FnDefInfo{}}
+	v := Value{Parent: TFunction, Carrier: true, Data: &FnDefInfo{}}
 	if IsConcrete(&v) {
 		t.Fatal("test premise: carrier is not concrete")
 	}

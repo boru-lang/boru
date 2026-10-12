@@ -47,7 +47,7 @@ func matchMembership(v Value, t *Type, prev TypeBehavior, member func(Value) boo
 		// list/map carriers, …) stay on the abstract path: they
 		// describe a SHAPE, not the value itself.
 		if v.Carrier {
-			if _, ok := v.Data.(FnDefInfo); ok {
+			if _, ok := v.Data.(*FnDefInfo); ok {
 				return member(v)
 			}
 		}

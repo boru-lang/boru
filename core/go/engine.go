@@ -709,7 +709,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 				return 0, false
 			}
 			if top, ok := e.Registry.Defs.Top(wi.Name); ok {
-				if _, isFn := top.Data.(FnDefInfo); isFn {
+				if _, isFn := top.Data.(*FnDefInfo); isFn {
 					if wi.ForceVal {
 						// `/v`: the word denotes its REFERENCE value —
 						// one claimable datum, not a call (NUR050/G12).
@@ -1011,7 +1011,7 @@ func fnCourtesyDispatches(r *Registry, name string, fn *FnDefInfo) bool {
 	if !ok {
 		return false
 	}
-	if _, isFnDef := top.Data.(FnDefInfo); !isFnDef {
+	if _, isFnDef := top.Data.(*FnDefInfo); !isFnDef {
 		return false
 	}
 	for i := range fn.Signatures {
@@ -4944,7 +4944,7 @@ func (e *Engine) stepLiteral() error {
 		val := e.Tape.At(valIdx)
 		if val.Parent.Equal(TFunction) &&
 			val.Data != nil && !val.Quoted {
-			if _, ok := val.Data.(FnDefInfo); ok {
+			if _, ok := val.Data.(*FnDefInfo); ok {
 				return e.execFnDefLiteral(valIdx)
 			}
 			// A compiled closure VALUE (an island's sub-engine re-stepping
@@ -6162,14 +6162,14 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 // end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
 // containsCapturingFn does.
 func noteFoldedFnBodies(r *Registry, v Value) {
-	if fd, ok := v.Data.(FnDefInfo); ok {
+	if fd, ok := v.Data.(*FnDefInfo); ok {
 		// In the registry it was WRITTEN in (FnHome), as the module-export
 		// queue does (NoteFnBodyPendingIn): a folded value can carry a fn
 		// another module minted — a seeded generator's method, whose delegate
 		// (`rand-int`) exists only in its home — and analysed in this registry
 		// it read as an undefined word (NUR331).
-		home, _ := FnHome(r, &fd)
-		noteFnBodyPending(r, home, fd)
+		home, _ := FnHome(r, fd)
+		noteFnBodyPending(r, home, *fd)
 		return
 	}
 	if !IsConcrete(&v) {
@@ -6213,12 +6213,12 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 // it must never ride into a binding or a container. Same one-shot
 // discipline as ReachGroup and the sealFnValue seal.
 func (e *Engine) takeAppliedMark(valIdx int, val Value) (Value, bool) {
-	fd, isFn := val.Data.(FnDefInfo)
+	fd, isFn := FnDefCopy(val.Data)
 	if !isFn || !fd.Applied {
 		return val, false
 	}
 	fd.Applied = false
-	val.Data = fd
+	val.Data = &fd
 	e.Tape.Set(valIdx, val)
 	return val, true
 }
@@ -7282,16 +7282,16 @@ func uncalledDispatchDefinite(candidates []Value) bool {
 // keep applying through a finished run's invoker). Outside a VM run, or for
 // a unit the bridge cannot describe, the closure stays data (ok=false).
 func (e *Engine) fnDefAtPointer(val Value) (Value, FnDefInfo, bool) {
-	if fnDef, ok := val.Data.(FnDefInfo); ok {
-		return val, fnDef, true
+	if fnDef, ok := val.Data.(*FnDefInfo); ok {
+		return val, *fnDef, true
 	}
 	bridged, ok := compiledRuntime.ClosureAsFnDef(e.Registry, val)
 	if !ok {
 		return val, FnDefInfo{}, false
 	}
 	val = WithPos(bridged, val)
-	fnDef, ok := val.Data.(FnDefInfo)
-	return val, fnDef, ok
+	fnDef, ok := FnDefOf(val.Data)
+	return val, *fnDef, ok
 }
 
 // compileFnDef produces the compiled-dispatch view of a constructed
@@ -7467,7 +7467,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		var captures []CapturedBinding
 		var fnLabel string
 		if valIdx < e.Tape.Len() {
-			if fd, ok := e.Tape.Ref(valIdx).Data.(FnDefInfo); ok {
+			if fd, ok := e.Tape.Ref(valIdx).Data.(*FnDefInfo); ok {
 				captures = fd.Captured
 				fnLabel = fd.Name
 			}
@@ -7577,7 +7577,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	// params shadow same-named captures (innermost wins).
 	var captures []CapturedBinding
 	if valIdx < e.Tape.Len() {
-		if fd, ok := e.Tape.Ref(valIdx).Data.(FnDefInfo); ok {
+		if fd, ok := e.Tape.Ref(valIdx).Data.(*FnDefInfo); ok {
 			captures = fd.Captured
 		}
 	}
@@ -7710,8 +7710,8 @@ func (e *Engine) ReachFnWouldClaim(fnVal Value, idx int) bool {
 // call-vs-data decision, and a VM adapter that answered it differently would
 // diverge from the interpreter on exactly the shapes the census still holds.
 func ReachFnWouldClaimOn(win CollectWindow, reg *Registry, fnVal Value, idx int) bool {
-	fd, isFn := fnVal.Data.(FnDefInfo)
-	if !isFn || !fnHasForwardSigPast(fd, 0) {
+	fd, isFn := fnVal.Data.(*FnDefInfo)
+	if !isFn || !fnHasForwardSigPast(*fd, 0) {
 		return false
 	}
 	probe, kind := ForwardClaimProbeOn(win, reg, idx)
@@ -7743,8 +7743,8 @@ func ReachFnWouldClaimOn(win CollectWindow, reg *Registry, fnVal Value, idx int)
 // next token is tested against EVERY forward-eligible slot of each wider
 // sig, not just position `completed`.
 func (e *Engine) fnValueWouldWiden(fnVal Value, completed, idx int) bool {
-	fd, isFn := fnVal.Data.(FnDefInfo)
-	if !isFn || !fnHasForwardSigPast(fd, completed) {
+	fd, isFn := fnVal.Data.(*FnDefInfo)
+	if !isFn || !fnHasForwardSigPast(*fd, completed) {
 		// No overload is wider than the completed collection — nothing
 		// can widen, whatever the next token is. Checked BEFORE the
 		// probe: an optimistic probe (a group / reach next) must not
@@ -7822,7 +7822,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 		return
 	}
 	v := e.Tape.At(idx)
-	if fd, isFn := v.Data.(FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
+	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
 		v.ReachGroup = true
 		e.Tape.Set(idx, v)
 	}
@@ -8344,12 +8344,12 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		}
 		if wi.ForceVal {
 			// `/v`: one Function reference datum
-			return Value{Parent: TFunction, Data: FnDefInfo{}}, probeValue
+			return Value{Parent: TFunction, Data: &FnDefInfo{}}, probeValue
 		}
 		top, bound := reg.Defs.Top(wi.Name)
 		switch {
 		case bound:
-			if _, topFn := top.Data.(FnDefInfo); topFn {
+			if _, topFn := top.Data.(*FnDefInfo); topFn {
 				return Value{}, probeNone // an fn word is a barrier
 			}
 			return top, probeValue // a plain value binding steps to this value
@@ -8370,7 +8370,7 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 // (it dispatches consuming nothing, so it can never swallow a following
 // statement). Part of the NUR038 arrival gate's call-vs-data decision.
 func fnValueHasZeroArgSig(v Value) bool {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := v.Data.(*FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -8402,12 +8402,12 @@ func fnValueHasZeroArgSig(v Value) bool {
 // FnDefInfo.Applied for why the gate needs telling, and execFnDefLiteral
 // for where the mark is consumed and cleared.
 func MarkApplied(v Value) Value {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefCopy(v.Data)
 	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
 		return v
 	}
 	fd.Applied = true
-	v.Data = fd
+	v.Data = &fd
 	return v
 }
 
@@ -9857,7 +9857,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 // operand (recordDynApply's container arm): it stays on the tape for the
 // residual's own sweep, or the program declines.
 func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, lastIdx int) {
-	fd, ok := last.Data.(FnDefInfo)
+	fd, ok := last.Data.(*FnDefInfo)
 	if !ok {
 		return
 	}
@@ -9995,7 +9995,7 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 	if _, mod := AsDispatchMod(tok); mod {
 		return false
 	}
-	fd, ok := last.Data.(FnDefInfo)
+	fd, ok := last.Data.(*FnDefInfo)
 	if !ok {
 		return true // a carrier: the runtime value's parameters are unknown
 	}
@@ -10023,7 +10023,7 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 // value (whose declared return the seams enforce as a count only), an
 // undeclared or multi-valued return, or overloads that disagree.
 func concreteFnSingleReturn(v Value) *Type {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := v.Data.(*FnDefInfo)
 	if !ok || fd.Anonymous {
 		return nil // an anonymous fn value's declared return is a COUNT contract
 	}
@@ -11101,7 +11101,7 @@ func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
 	if !ok {
 		return false
 	}
-	if _, isFn := top.Data.(FnDefInfo); isFn || IsFnTypedCarrier(&top) {
+	if _, isFn := top.Data.(*FnDefInfo); isFn || IsFnTypedCarrier(&top) {
 		return true
 	}
 	et := SigArgType(sig, idx)

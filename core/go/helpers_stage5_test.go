@@ -56,7 +56,7 @@ func TestStage5InstallDefOverlapRemoval(t *testing.T) {
 	if len(stack) != 2 {
 		t.Fatalf("post-redefinition stack depth = %d, want 2 (String kept + new Integer)", len(stack))
 	}
-	oldest, ok := stack[0].Data.(FnDefInfo)
+	oldest, ok := FnDefOf(stack[0].Data)
 	if !ok {
 		t.Fatal("oldest entry is not an fn def")
 	}
@@ -114,7 +114,7 @@ func TestStage5InstallDefModuleWrapperRebind(t *testing.T) {
 	if !ok {
 		t.Fatal("wrapper rebinding installed nothing")
 	}
-	fd, ok := top.Data.(FnDefInfo)
+	fd, ok := FnDefCopy(top.Data)
 	if !ok {
 		t.Fatal("rebound entry is not an fn def")
 	}
@@ -142,7 +142,7 @@ func TestStage5InstallDefModuleWrapperRebind(t *testing.T) {
 	if !ok {
 		t.Fatal("mixed wrapper installed nothing")
 	}
-	fd, ok = top.Data.(FnDefInfo)
+	fd, ok = FnDefCopy(top.Data)
 	if !ok || len(fd.Signatures) == 0 {
 		t.Fatal("mixed wrapper entry is not an fn def")
 	}

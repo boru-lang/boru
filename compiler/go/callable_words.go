@@ -307,7 +307,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// Routing such words to the dyn-body seat instead was measured and
 	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
 	// rows importing a module whose fn defs a computed value declined with it.
-	_, bodyIsLambda := body.Data.(core.FnDefInfo)
+	_, bodyIsLambda := body.Data.(*core.FnDefInfo)
 	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(&body) && !bodyIsLambda
 	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
 		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
@@ -327,8 +327,8 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// the lambda body against that representative shape so `p.value`/`kv.v`
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
-	if fd, isFn := body.Data.(core.FnDefInfo); isFn {
-		return tryRecordLambdaClosure(r, word, spec, sig, args, body, &fd, extraLamSlots, outs, pos)
+	if fd, isFn := body.Data.(*core.FnDefInfo); isFn {
+		return tryRecordLambdaClosure(r, word, spec, sig, args, body, fd, extraLamSlots, outs, pos)
 	}
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
@@ -819,7 +819,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	}
 	extras := make([]extraHook, 0, len(extraLamSlots))
 	for _, slot := range extraLamSlots {
-		fd, isFn := args[slot].Data.(core.FnDefInfo)
+		fd, isFn := args[slot].Data.(*core.FnDefInfo)
 		if !isFn { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
@@ -827,7 +827,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		if !insOK { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
-		lam, lamOK := lambdaHookCompatible(r, &fd, hookIns, hookShape, false, false)
+		lam, lamOK := lambdaHookCompatible(r, fd, hookIns, hookShape, false, false)
 		if !lamOK {
 			return false
 		}
@@ -1428,7 +1428,7 @@ func (es *EmitState) extraNoEvalHookSlots(sig *core.Signature, spec core.Callabl
 		if es.emptyFlexHookOperand(args[i]) {
 			continue
 		}
-		if _, isFn := args[i].Data.(core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
+		if _, isFn := args[i].Data.(*core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
 			lamSlots = append(lamSlots, i)
 			continue
 		}

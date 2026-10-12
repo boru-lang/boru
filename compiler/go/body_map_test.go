@@ -122,7 +122,7 @@ func TestBodyMapShapeReadsCallees(t *testing.T) {
 	defer done()
 	r.Register("zzbmleaf", core.Signature{Impl: core.Boru([]core.Value{core.NewWord("i")}), BarrierPos: -1})
 	r.Register("zzbmmid", core.Signature{Impl: core.Boru([]core.Value{core.NewWord("zzbmleaf"), core.NewWord("zzbmmid")}), BarrierPos: -1})
-	lambda := core.Value{Data: core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewWord("lv")})}}}}
+	lambda := core.Value{Data: &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewWord("lv")})}}}}
 	f := bodyMapShape(r, bodyMapSchema(map[string]core.Value{"a": core.NewList([]core.Value{core.NewWord("zzbmmid"), lambda})}))
 	for _, n := range []string{"zzbmmid", "zzbmleaf", "i", "lv"} {
 		if !f.names[n] {

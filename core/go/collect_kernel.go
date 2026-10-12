@@ -666,7 +666,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// Function-typed slot only by holding a function, i.e. only
 				// when it dispatches. Both are the fn binding here, or the
 				// compiled lane collects by value what the interpreter calls.
-				_, isFnPayload := top.Data.(FnDefInfo)
+				_, isFnPayload := top.Data.(*FnDefInfo)
 				isFnBinding := isFnPayload || IsFnTypedCarrier(&top) ||
 					(top.Dynamic && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
 				byValue := SigArgMatches(sig, fwd, &top) && (!isFnBinding || ww.ForceVal)
@@ -688,7 +688,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 					scanIdx++
 					continue
 				}
-				if _, ok := top.Data.(FnDefInfo); !ok {
+				if _, ok := top.Data.(*FnDefInfo); !ok {
 					break // simple def, type mismatch
 				}
 			}

@@ -10,18 +10,18 @@ import "testing"
 func TestNur038ReachFnWouldClaim(t *testing.T) {
 	r := covRegistry(t, nil)
 	r.Defs.Push("nsval", NewInteger(7))
-	r.Defs.Push("nsfn", Value{Parent: TFunction, Data: FnDefInfo{Name: "nsfn"}})
+	r.Defs.Push("nsfn", Value{Parent: TFunction, Data: &FnDefInfo{Name: "nsfn"}})
 	e := NewTop(r)
-	anyFn := Value{Parent: TFunction, Data: FnDefInfo{Name: "a", Signatures: []Signature{
+	anyFn := Value{Parent: TFunction, Data: &FnDefInfo{Name: "a", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: -1},
 	}}}
-	intFn := Value{Parent: TFunction, Data: FnDefInfo{Name: "i", Signatures: []Signature{
+	intFn := Value{Parent: TFunction, Data: &FnDefInfo{Name: "i", Signatures: []Signature{
 		{Args: []*Type{TInteger}, BarrierPos: -1},
 	}}}
-	fnFn := Value{Parent: TFunction, Data: FnDefInfo{Name: "hof", Signatures: []Signature{
+	fnFn := Value{Parent: TFunction, Data: &FnDefInfo{Name: "hof", Signatures: []Signature{
 		{Args: []*Type{TFunction}, BarrierPos: -1},
 	}}}
-	stackOnly := Value{Parent: TFunction, Data: FnDefInfo{Name: "s", Signatures: []Signature{
+	stackOnly := Value{Parent: TFunction, Data: &FnDefInfo{Name: "s", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: 0},
 	}}}
 	cases := []struct {
@@ -44,10 +44,10 @@ func TestNur038ReachFnWouldClaim(t *testing.T) {
 		{"unbound word is no claim", anyFn, NewWord("ns-no-such"), false},
 		{"a group is an optimistic claim", intFn, NewOpenParen(), true},
 		{"a stack-only sig claims nothing forward", stackOnly, NewInteger(5), false},
-		{"a sig-less value claims nothing", Value{Parent: TFunction, Data: FnDefInfo{Name: "z"}}, NewInteger(5), false},
+		{"a sig-less value claims nothing", Value{Parent: TFunction, Data: &FnDefInfo{Name: "z"}}, NewInteger(5), false},
 		{"none is a reserved literal, like true", anyFn, NewWord("none"), true},
 		{"a typed slot declines none", intFn, NewWord("none"), false},
-		{"a 0-arg-only fn claims nothing, even a group", Value{Parent: TFunction, Data: FnDefInfo{Name: "p0", Signatures: []Signature{
+		{"a 0-arg-only fn claims nothing, even a group", Value{Parent: TFunction, Data: &FnDefInfo{Name: "p0", Signatures: []Signature{
 			{BarrierPos: -1},
 		}}}, NewOpenParen(), false},
 	}
@@ -75,11 +75,11 @@ func TestNur038FnValueWouldWiden(t *testing.T) {
 	// The concat shape: a 1-arg [List] overload plus a 2-arg [Map List]
 	// overload whose MAP rides at sig[0] (the swap slot) — the completed
 	// list redistributes to the stack side when the wider sig claims.
-	concatLike := Value{Parent: TFunction, Data: FnDefInfo{Name: "c", Signatures: []Signature{
+	concatLike := Value{Parent: TFunction, Data: &FnDefInfo{Name: "c", Signatures: []Signature{
 		{Args: []*Type{TMap, TList}, BarrierPos: -1},
 		{Args: []*Type{TList}, BarrierPos: -1},
 	}}}
-	barriered := Value{Parent: TFunction, Data: FnDefInfo{Name: "b", Signatures: []Signature{
+	barriered := Value{Parent: TFunction, Data: &FnDefInfo{Name: "b", Signatures: []Signature{
 		{Args: []*Type{TInteger, TMap}, BarrierPos: 1},
 	}}}
 	cases := []struct {
@@ -133,7 +133,7 @@ func arrivalGateEngine(t *testing.T, callee string, sigs []Signature) *Engine {
 		InstallFnDef(r, callee, FnDefInfo{Name: callee, Signatures: sigs})
 	})
 	e := NewTop(r)
-	tagged := Value{Parent: TFunction, Data: FnDefInfo{Name: "p", Signatures: []Signature{
+	tagged := Value{Parent: TFunction, Data: &FnDefInfo{Name: "p", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: -1},
 	}}}
 	tagged.ReachGroup = true
@@ -218,7 +218,7 @@ func TestNur038SealClearedAtRunEntry(t *testing.T) {
 func TestNur038PolyReachBoundStopsAtCallHead(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
-	tagged := Value{Parent: TFunction, Data: FnDefInfo{Name: "p", Signatures: []Signature{
+	tagged := Value{Parent: TFunction, Data: &FnDefInfo{Name: "p", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: -1},
 	}}}
 	tagged.ReachGroup = true
@@ -245,10 +245,10 @@ func TestNur038FnValueSigShapes(t *testing.T) {
 
 	// fnValueHasZeroArgSig: a real 0-arg sig counts, a Fallback does not,
 	// and a non-fn value has none.
-	if !fnValueHasZeroArgSig(Value{Parent: TFunction, Data: FnDefInfo{Name: "z", Signatures: []Signature{zero, one}}}) {
+	if !fnValueHasZeroArgSig(Value{Parent: TFunction, Data: &FnDefInfo{Name: "z", Signatures: []Signature{zero, one}}}) {
 		t.Error("a real 0-arg overload must count")
 	}
-	if fnValueHasZeroArgSig(Value{Parent: TFunction, Data: FnDefInfo{Name: "f", Signatures: []Signature{one, fb}}}) {
+	if fnValueHasZeroArgSig(Value{Parent: TFunction, Data: &FnDefInfo{Name: "f", Signatures: []Signature{one, fb}}}) {
 		t.Error("a Fallback catch-all is not a property-read overload")
 	}
 	if fnValueHasZeroArgSig(NewInteger(1)) {
