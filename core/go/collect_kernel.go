@@ -889,20 +889,36 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 		return ArrivalCollect
 	}
 	win := h.Window()
-	val := win.At(valIdx)
+	val := win.Ref(valIdx) // read where it lies, re-read after a write
 	nextIdx := fwd.CollectedArgs
-	matches := SigArgMatches(fwd.Sig, nextIdx, &val)
+	matches := SigArgMatches(fwd.Sig, nextIdx, val)
 	// A /q-marked TAtom slot accepts a Word: convert it in place so the
 	// eventual handler sees a uniform Atom rather than having to extract a
 	// name from either shape.
 	if !matches && fwd.Sig.QuoteArgs != nil && fwd.Sig.QuoteArgs[nextIdx] &&
 		val.Parent.Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
-		w, _ := AsWord(&val)
+		w, _ := AsWord(val)
 		atom := NewAtom(w.Name)
 		atom.pos = val.pos // preserve source position across /q Word→Atom conversion
 		win.Set(valIdx, atom)
+		val = win.Ref(valIdx)
 		matches = true
 	}
+	if matches && IsReachGroup(val) {
+		return arrivalReachGroup(h, *val, valIdx)
+	}
+	if !matches {
+		return ArrivalImplicitEnd
+	}
+	return ArrivalCollect
+}
+
+// arrivalReachGroup is CollectArrival for a matching arrival a REACH-LOWERED
+// group collapsed to (the transient ReachGroup tag). It edits a copy of its
+// own — the window may lose the `/v` marker after val, which moves cells —
+// and writes the window only where the arrival's value changes.
+func arrivalReachGroup(h CollectHost, val Value, valIdx int) ArrivalVerdict {
+	win := h.Window()
 	// A named function that a REACH-LOWERED group collapsed to (the
 	// transient ReachGroup tag) and that WOULD COLLECT from the tokens after
 	// it is a CALL, not data — the value twin of the fn-word collection
@@ -921,7 +937,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// execFnDefLiteral's peek does (`def g M.w/v`: the fn arrives
 	// mid-collection before that peek can run); user-written reference
 	// expressions ((inc/v), (usurp sub2)) carry no tag.
-	if matches && IsReachGroup(&val) && !IsQuoted(&val) {
+	if !IsQuoted(&val) {
 		marked := false
 		if valIdx+1 < win.Len() {
 			if _, ok := AsDispatchMod(win.At(valIdx + 1)); ok {
@@ -950,13 +966,10 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// lane applies it — `[1 2 3] each M.inc/v` was `[fn fn fn]` against
 	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
 	// (NUR078's `/v` spelling).
-	if matches && IsReachGroup(&val) && IsQuoted(&val) && (isFnDefValue(val) || val.Carrier) {
+	if IsQuoted(&val) && (isFnDefValue(val) || val.Carrier) {
 		SetQuoted(&val, false)
 		SetReachGroup(&val, false)
 		win.Set(valIdx, val)
-	}
-	if !matches {
-		return ArrivalImplicitEnd
 	}
 	return ArrivalCollect
 }

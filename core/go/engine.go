@@ -2699,10 +2699,8 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 	if groupSpan > 0 && len(guardToks) >= 2 {
 		nResults := e.Tape.Len() - lenBefore + groupSpan
 		if nResults == 1 && scanIdx < e.Tape.Len() {
-			res := e.Tape.At(scanIdx)
-			if res.Carrier && res.Parent.ConformsTo(TBoolean) {
+			if res := e.Tape.Ref(scanIdx); res.Carrier && res.Parent.ConformsTo(TBoolean) {
 				res.Data = GuardFactInfo{Toks: guardToks, Prev: res.Data}
-				e.Tape.Set(scanIdx, res)
 			}
 		}
 	}
@@ -4899,15 +4897,14 @@ func (e *Engine) stepLiteral() error {
 			// and the residual layout applies it (resolveDynamicApply):
 			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR277).
 			if valIdx > 0 {
-				if prev := e.Tape.At(valIdx - 1); !IsQuoted(&prev) && (IsDynamic(&prev) || prev.Carrier) {
-					SetQuoted(&prev, true)
-					e.Tape.Set(valIdx-1, prev)
+				if prev := e.Tape.Ref(valIdx - 1); !IsQuoted(prev) && (IsDynamic(prev) || prev.Carrier) {
+					SetQuoted(prev, true)
 					// And note the delivery as the peek notes the concrete
 					// value's (NUR280): a code body whose top is this read
 					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
 					// values on both lanes.
 					if e.Registry.analysisActive() {
-						e.Registry.analysisRecorder().NoteValRead(IDOf(&prev), "")
+						e.Registry.analysisRecorder().NoteValRead(IDOf(prev), "")
 					}
 				}
 			}
@@ -6253,7 +6250,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// container (the Quoted transience discipline).
 	if IsReachGroup(&val) {
 		SetReachGroup(&val, false)
-		e.Tape.Set(valIdx, val)
+		SetReachGroup(e.Tape.Ref(valIdx), false)
 	}
 	// `apply`'s one-shot application signal is spent by the same rule and
 	// for the same reason — see takeAppliedMark. The gate below reads the
@@ -7094,15 +7091,14 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				// that it is dispatch WRECKAGE rather than a deliberate value —
 				// see defWordExtension, which would otherwise read the failed
 				// call's locked signatures as a word-extension attempt.
-				fv := e.Tape.At(valIdx)
-				SetFailedDispatch(&fv, true)
-				e.Tape.Set(valIdx, fv)
+				fv := e.Tape.Ref(valIdx)
+				SetFailedDispatch(fv, true)
 				// A DEFINITE failure — every value the match examined is the
 				// value the runtime examines — raises at run time whatever the
 				// region: the enclosing `do` body models it (NUR134), and below
 				// the uncaught top level the compiled body unit raises it in
 				// place (a unit-scoped trap) instead of lowering the wreckage.
-				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !IsDynamic(&fv)
+				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !IsDynamic(fv)
 				if definite {
 					e.Registry.Check.NoteDefiniteRaise(e.Registry.Defs.Snapshot)
 				}
@@ -7272,9 +7268,10 @@ func UncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
 // reached as a call, not a word dispatch — so the screen only has to be
 // sound, and the narrow version is the one that is obviously so.
 func uncalledDispatchDefinite(candidates []Value) bool {
-	for _, c := range candidates {
-		if !IsConcrete(&c) || IsDynamic(&c) || IsUndefined(&c) ||
-			IsWord(&c) || IsOpenParen(&c) || IsReach(&c) || IsParenExpr(&c) || IsInterpString(&c) {
+	for i := range candidates {
+		c := &candidates[i]
+		if !IsConcrete(c) || IsDynamic(c) || IsUndefined(c) ||
+			IsWord(c) || IsOpenParen(c) || IsReach(c) || IsParenExpr(c) || IsInterpString(c) {
 			return false
 		}
 	}
@@ -7835,10 +7832,9 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	if !wasReachGroup || closeIdx != idx+2 || idx >= e.Tape.Len() {
 		return
 	}
-	v := e.Tape.At(idx)
-	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !IsQuoted(&v) {
-		SetReachGroup(&v, true)
-		e.Tape.Set(idx, v)
+	v := e.Tape.Ref(idx)
+	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !IsQuoted(v) {
+		SetReachGroup(v, true)
 	}
 	// Under the check pass the survivor may be a CARRIER — fn-typed, the
 	// declared return of a call the group made (`M.ff` over a module fn
@@ -7848,12 +7844,12 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	// (callResultPlaced, NUR260), and a loop body that leaves one is the
 	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
 	// (CheckState.ReachSurvivorFnIDs).
-	if e.Registry != nil && e.Registry.analysisActive() && !IsQuoted(&v) && IDOf(&v) != "" && (IsFnTypedCarrier(&v) || IsDynamic(&v)) {
+	if e.Registry != nil && e.Registry.analysisActive() && !IsQuoted(v) && IDOf(v) != "" && (IsFnTypedCarrier(v) || IsDynamic(v)) {
 		cs := e.Registry.Check
 		if cs.ReachSurvivorFnIDs == nil {
 			cs.ReachSurvivorFnIDs = map[string]bool{}
 		}
-		cs.ReachSurvivorFnIDs[IDOf(&v)] = true
+		cs.ReachSurvivorFnIDs[IDOf(v)] = true
 	}
 }
 

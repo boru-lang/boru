@@ -2425,21 +2425,19 @@ func substToken(toks []core.Value, path []int, span int, vs ...core.Value) ([]co
 		return out, true
 	}
 	out := append([]core.Value(nil), toks...)
-	t := out[i]
-	if core.IsParenExpr(&t) {
-		inner, _ := core.AsParenExpr(&t)
+	t := &out[i] // out is this level's own copy: rewrite the token in it
+	if core.IsParenExpr(t) {
+		inner, _ := core.AsParenExpr(t)
 		sub, ok := substToken(inner, path[1:], span, vs...)
 		t.Data = core.ParenExprPayload{Toks: sub}
-		out[i] = t
 		return out, ok
 	}
-	l, err := core.AsList(t)
+	l, err := core.AsList(*t)
 	if err != nil {
 		return nil, false
 	}
-	sub, ok := substToken(l.Slice(), path[1:], span, vs...)
+	sub, ok := substToken(l.Elems(), path[1:], span, vs...)
 	t.Data = core.ListPayload{Elems: sub}
-	out[i] = t
 	return out, ok
 }
 
