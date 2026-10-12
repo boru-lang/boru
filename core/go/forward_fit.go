@@ -44,7 +44,7 @@ func ForwardValueFits(sig *Signature, k int, v Value) bool {
 		return true
 	}
 	expected := SigArgType(sig, k)
-	if !SigArgMatches(sig, k, v) && !expected.Equal(TAny) {
+	if !SigArgMatches(sig, k, &v) && !expected.Equal(TAny) {
 		return false
 	}
 	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[k]
@@ -99,7 +99,7 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 	if nFwd == 0 || match.Sig == nil || nFwd > len(match.Args) {
 		return nil
 	}
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	if err != nil {
 		return nil
 	}
@@ -128,7 +128,7 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 		fits := []ForwardFit{}
 		for i := range fn.Signatures {
 			s := &fn.Signatures[i]
-			if s.Fallback || k >= s.TotalArgs() || !forwardReaches(s, w, k) || !SigArgMatches(s, k, a) || fitProven(s, k, a) ||
+			if s.Fallback || k >= s.TotalArgs() || !forwardReaches(s, w, k) || !SigArgMatches(s, k, &a) || fitProven(s, k, a) ||
 				!altViable(s, k, stack, unbounded) {
 				continue
 			}
@@ -184,7 +184,7 @@ func altViable(sig *Signature, k int, stack []Value, unbounded bool) bool {
 		return false
 	}
 	for j := 0; j < need && j < len(stack); j++ {
-		if !SigArgMatches(sig, k+j, stack[j]) {
+		if !SigArgMatches(sig, k+j, &stack[j]) {
 			return false
 		}
 	}

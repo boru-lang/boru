@@ -75,22 +75,22 @@ func (listFormatBehavior) Format(v Value) string {
 // all-bare-Word shape is re-sugared; nested-group receivers (`(expr).k`)
 // and computed `(expr)` keys (`m.(expr)`) render verbatim.
 func resugarDotChain(elems []Value, i int) (string, int, bool) {
-	if !IsOpenParen(elems[i]) || i+1 >= len(elems) || !IsWord(elems[i+1]) {
+	if !IsOpenParen(&elems[i]) || i+1 >= len(elems) || !IsWord(&elems[i+1]) {
 		return "", 0, false
 	}
-	recv, _ := AsWord(elems[i+1])
+	recv, _ := AsWord(&elems[i+1])
 	var b strings.Builder
 	b.WriteString(recv.Name)
 	j := i + 2
-	for j+1 < len(elems) && IsWord(elems[j]) {
-		verb, _ := AsWord(elems[j])
+	for j+1 < len(elems) && IsWord(&elems[j]) {
+		verb, _ := AsWord(&elems[j])
 		if !IsGetWord(verb.Name) && !IsGetrWord(verb.Name) {
 			break
 		}
-		if !IsWord(elems[j+1]) {
+		if !IsWord(&elems[j+1]) {
 			return "", 0, false // computed / non-word key — leave verbatim
 		}
-		key, _ := AsWord(elems[j+1])
+		key, _ := AsWord(&elems[j+1])
 		if IsGetrWord(verb.Name) {
 			b.WriteString("!.")
 		} else {
@@ -99,7 +99,7 @@ func resugarDotChain(elems []Value, i int) (string, int, bool) {
 		b.WriteString(key.Name)
 		j += 2
 	}
-	if j == i+2 || j >= len(elems) || !IsCloseParen(elems[j]) {
+	if j == i+2 || j >= len(elems) || !IsCloseParen(&elems[j]) {
 		return "", 0, false // no segment consumed, or no clean close
 	}
 	return b.String(), j, true

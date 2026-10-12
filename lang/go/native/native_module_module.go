@@ -338,7 +338,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			{
 				Args: []*Type{TAtom, TMap},
 				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-					if !IsConcrete(eargs[1]) {
+					if !IsConcrete(&eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as1, _ := eargs[0].AsConcreteAtom()
@@ -351,7 +351,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			{
 				Args: []*Type{TString, TMap},
 				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-					if !IsConcrete(eargs[1]) {
+					if !IsConcrete(&eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as2, _ := eargs[0].AsConcreteString()
@@ -796,7 +796,7 @@ func adoptEscapedTypes(r *Registry, desc ModuleDesc) {
 	for _, exportMap := range desc.Exports {
 		for _, key := range exportMap.Keys() {
 			v, _ := exportMap.Get(key)
-			if !IsBareTypeNode(v) {
+			if !IsBareTypeNode(&v) {
 				continue
 			}
 			canonical := desc.Src.Types.LookupByID(v.ID)
@@ -900,8 +900,8 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// registry. After auto-eval this path is reached mainly in check
 	// mode and for type/value names that resolved to themselves.
 	var name string
-	if IsWord(v) {
-		_as3, _ := AsWord(v)
+	if IsWord(&v) {
+		_as3, _ := AsWord(&v)
 		name = _as3.Name
 	} else if v.Parent.ConformsTo(TString) {
 		name, _ = AsString(v)
@@ -1044,8 +1044,8 @@ func ensureExportsBound(r *Registry, desc ModuleDesc) {
 
 // valToAtomOrString extracts a string from a Value that is an atom, string, or word.
 func valToAtomOrString(v Value) string {
-	if IsWord(v) {
-		_as4, _ := AsWord(v)
+	if IsWord(&v) {
+		_as4, _ := AsWord(&v)
 		return _as4.Name
 	}
 	if IsAtom(v) {

@@ -25,7 +25,7 @@ func ReorderCandidates(stack []Value) []Value {
 	var vals []Value
 	for i := len(stack) - 1; i >= 0 && len(vals) < 4; i-- {
 		v := stack[i]
-		if IsOpenParen(v) || IsForward(v) || IsWord(v) || IsEnd(v) ||
+		if IsOpenParen(&v) || IsForward(&v) || IsWord(&v) || IsEnd(&v) ||
 			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
 			v.Parent.ConformsTo(TInternal) {
 			break
@@ -49,8 +49,8 @@ func ReorderForwardCandidates(tape *Tape, pointer int) []Value {
 		// sits right after the body's last token, and a
 		// no-match there used to list `__dc (a __DC)` as the argument the
 		// caller supplied — a marker no one wrote, in a user-facing note.
-		if !IsConcrete(v) || IsWord(v) || IsParenExpr(v) || IsForward(v) ||
-			IsOpenParen(v) || IsEnd(v) || isEngineMarker(v) {
+		if !IsConcrete(&v) || IsWord(&v) || IsParenExpr(&v) || IsForward(&v) ||
+			IsOpenParen(&v) || IsEnd(&v) || isEngineMarker(v) {
 			break
 		}
 		written = append(written, v)

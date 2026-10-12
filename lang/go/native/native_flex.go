@@ -199,7 +199,7 @@ func nodeReturns(args []Value, _ *Registry) []Value {
 }
 
 func flexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("flex_error", "flex: expected a concrete map or list, got "+args[0].String(), "flex")
 	}
 	out, err := core.FlexDeepCopy(args[0])
@@ -210,7 +210,7 @@ func flexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 }
 
 func nodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("node_error", "node: expected a concrete map or list, got "+args[0].String(), "node")
 	}
 	out, err := core.NodeDeepCopy(args[0])

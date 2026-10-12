@@ -68,7 +68,7 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 		}
 		return mb, nil
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return mapBody{}, reg.BoruError(word+"_error", word+": body must be a quotation list or a lambda", word)
 	}
 	bl, _ := AsList(body)
@@ -227,10 +227,10 @@ func runQuotationBody(reg *Registry, tokens []Value, pushed []Value) (Value, boo
 // divergence). A NON-concrete value (a Map type literal, a carrier) keeps
 // the word's own error: the interpreter reaches that branch as well.
 func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
-	if IsConcrete(v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
+	if IsConcrete(&v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
 		return nil, reg.BoruError("signature_error", core.NoMatchDetail(word), word)
 	}
-	if !IsConcrete(v) || !v.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&v) || !v.Parent.ConformsTo(TMap) {
 		return nil, reg.BoruError(word+"_error", word+": expected a concrete map", word)
 	}
 	m, _ := AsMap(v)

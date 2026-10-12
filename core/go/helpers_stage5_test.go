@@ -471,7 +471,7 @@ func TestStage5IsTypeBodyArms(t *testing.T) {
 		{"host type body", NewValueRaw(TAny, ExtensionPayload{Body: stage5HostBody{}})},
 	}
 	for _, c := range cases {
-		if !IsTypeBody(c.v) {
+		if !IsTypeBody(&c.v) {
 			t.Errorf("IsTypeBody(%s) = false, want true", c.name)
 		}
 	}
@@ -656,8 +656,8 @@ func TestStage5ExpandOptionalSigsNamedPresentParam(t *testing.T) {
 	}
 	sawA := false
 	for _, tok := range sigs[1].Body() {
-		if IsWord(tok) {
-			if w, err := AsWord(tok); err == nil && w.Name == "a" {
+		if IsWord(&tok) {
+			if w, err := AsWord(&tok); err == nil && w.Name == "a" {
 				sawA = true
 			}
 		}

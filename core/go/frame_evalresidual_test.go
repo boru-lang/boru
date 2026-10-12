@@ -167,7 +167,7 @@ func TestPendingResidualContainerArms(t *testing.T) {
 		{"pending non-container", pend(NewInteger(3)), false},
 	}
 	for _, c := range cases {
-		if got := isPendingResidualContainer(c.v); got != c.want {
+		if got := isPendingResidualContainer(&c.v); got != c.want {
 			t.Errorf("isPendingResidualContainer(%s) = %v, want %v", c.name, got, c.want)
 		}
 	}

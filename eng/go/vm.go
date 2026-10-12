@@ -325,11 +325,11 @@ func tapeCoupled(results []core.Value) bool {
 		// `codequote` × literal / lambda / factory cells bailed here,
 		// 2026-09-26). The payload-less MARKERS (an open paren) are tokens
 		// with no payload, so they keep their screen.
-		if core.IsWord(rv) && core.IsBareTypeNode(rv) {
+		if core.IsWord(&rv) && core.IsBareTypeNode(&rv) {
 			continue
 		}
-		if core.IsWord(rv) || core.IsMark(rv) || core.IsMove(rv) || core.IsForward(rv) ||
-			core.IsOpenParen(rv) || core.IsSplice(rv) {
+		if core.IsWord(&rv) || core.IsMark(&rv) || core.IsMove(&rv) || core.IsForward(&rv) ||
+			core.IsOpenParen(&rv) || core.IsSplice(&rv) {
 			return true
 		}
 	}
@@ -2415,8 +2415,8 @@ func substToken(toks []core.Value, path []int, span int, vs ...core.Value) ([]co
 	}
 	out := append([]core.Value(nil), toks...)
 	t := out[i]
-	if core.IsParenExpr(t) {
-		inner, _ := core.AsParenExpr(t)
+	if core.IsParenExpr(&t) {
+		inner, _ := core.AsParenExpr(&t)
 		sub, ok := substToken(inner, path[1:], span, vs...)
 		t.Data = core.ParenExprPayload{Toks: sub}
 		out[i] = t
@@ -3592,7 +3592,7 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 func placedWindowSplit(window []core.Value) (inputs, tokens []core.Value, split, refused bool) {
 	last, dispatches := -1, false
 	for i := 0; i+2 < len(window); i++ {
-		if core.IsOpenParen(window[i]) && core.IsCloseParen(window[i+2]) {
+		if core.IsOpenParen(&window[i]) && core.IsCloseParen(&window[i+2]) {
 			dispatches = dispatches || core.FnValueDispatchesAtPointer(window[i+1])
 			last = i + 2
 			i += 2
@@ -3602,7 +3602,7 @@ func placedWindowSplit(window []core.Value) (inputs, tokens []core.Value, split,
 		return nil, nil, false, false
 	}
 	for i := 0; i <= last; i++ {
-		if core.IsOpenParen(window[i]) {
+		if core.IsOpenParen(&window[i]) {
 			inputs = append(inputs, window[i+1])
 			i += 2
 			continue
@@ -4881,13 +4881,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:splice-active-payload",
 					"splice of a multi-value payload where the program applies one value; the compiled runtime cannot execute it")
 			}
-			singleFn := in.Arg == 1 && core.IsAppliableFn(payload) && !core.IsWord(payload)
+			singleFn := in.Arg == 1 && core.IsAppliableFn(payload) && !core.IsWord(&payload)
 			for _, el := range elems {
 				if singleFn {
 					break
 				}
-				if core.IsWord(el) || core.IsParenExpr(el) || core.IsReach(el) || core.IsInterpString(el) || core.IsSplice(el) ||
-					core.IsForward(el) || core.IsOpenParen(el) || core.IsCloseParen(el) || core.IsAppliableFn(el) {
+				if core.IsWord(&el) || core.IsParenExpr(&el) || core.IsReach(&el) || core.IsInterpString(&el) || core.IsSplice(&el) ||
+					core.IsForward(&el) || core.IsOpenParen(&el) || core.IsCloseParen(&el) || core.IsAppliableFn(el) {
 					return nil, vmDefer(vc.r, curDebug, pc, "vm:splice-active-payload",
 						"splice of a code-bearing payload; the compiled runtime cannot execute it")
 				}
@@ -5889,7 +5889,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-dispatching", "dynamic-scope read of a dispatching binding `"+name+"`; the compiled runtime cannot execute it")
 			}
-			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+			if core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v) {
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-active-token", "dynamic-scope read of an active token `"+name+"`; the compiled runtime cannot execute it")
 			}
 			stack = append(stack, v)
@@ -5912,7 +5912,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if _, isClass := v.Data.(*core.ClassTypeInfo); isClass {
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-class", "dynamic-scope data read of a class binding `"+name+"`; the compiled runtime cannot execute it")
 			}
-			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+			if core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v) {
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-active-token", "dynamic-scope data read of an active token `"+name+"`; the compiled runtime cannot execute it")
 			}
 			stack = append(stack, v)
@@ -6609,7 +6609,7 @@ func checkParamContract(r *core.Registry, fn *compiler.CompiledFn, locals []core
 		// interpreter's RetagTypedContainerParam. Uses the SAME shared core, so a
 		// flex arg is retagged in place (reference identity preserved) and a plain
 		// arg is re-unified — both paths agree with the interpreter (no divergence).
-		if core.IsConcrete(v) {
+		if core.IsConcrete(&v) {
 			locals[i] = core.RetagTypedContainerValue(pat, v)
 		}
 	}
@@ -6652,7 +6652,7 @@ func checkNativeParamContract(r *core.Registry, s *compiler.SigRef, args []core.
 		if s.Sig.QuoteArgs != nil && s.Sig.QuoteArgs[i] {
 			continue
 		}
-		if !core.SigTypeMatches(args[i], at) {
+		if !core.SigTypeMatches(&args[i], at) {
 			return core.RuntimeNoMatch(r, s.Word, args)
 		}
 	}

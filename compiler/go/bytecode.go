@@ -2607,10 +2607,10 @@ func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
 			return true
 		}
 	}
-	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+	if core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v) {
 		return true
 	}
-	return d.Model != nil && (core.IsTypeLiteral(v) || !core.SigTypeMatches(v, d.Model))
+	return d.Model != nil && (core.IsTypeLiteral(&v) || !core.SigTypeMatches(&v, d.Model))
 }
 
 // specNote renders a specialised unit's guards for the disassembler:

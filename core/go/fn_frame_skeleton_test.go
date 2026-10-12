@@ -79,8 +79,8 @@ func TestSkeletonPerCallCopyIsolated(t *testing.T) {
 	stampResultPos(out1, &SrcPos{Row: 41, Col: 7})
 	stamped := false
 	for _, v := range out1 {
-		if IsReturnCheck(v) {
-			rc, _ := AsReturnCheck(v)
+		if IsReturnCheck(&v) {
+			rc, _ := AsReturnCheck(&v)
 			if rc.Pos.Row == 41 {
 				stamped = true
 			}
@@ -98,8 +98,8 @@ func TestSkeletonPerCallCopyIsolated(t *testing.T) {
 
 	// Call 2's copy must carry the pristine zero Pos, not call 1's stamp.
 	for _, v := range out2 {
-		if IsReturnCheck(v) {
-			rc, _ := AsReturnCheck(v)
+		if IsReturnCheck(&v) {
+			rc, _ := AsReturnCheck(&v)
 			if rc.Pos.Row != 0 {
 				t.Fatalf("call 2's ReturnCheck carries call 1's stamp (Row=%d) — skeleton shared, not copied", rc.Pos.Row)
 			}
@@ -133,7 +133,7 @@ func TestSkeletonInterleavedParams(t *testing.T) {
 	}
 	popFrameEntry(t, r, "a", "b")
 
-	info, err := AsFrameOpen(out[0])
+	info, err := AsFrameOpen(&out[0])
 	if err != nil {
 		t.Fatalf("out[0] is not a frame open: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestSlowPathUnnamedParamSpan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("slow-path call: %v", err)
 	}
-	info, err := AsFrameOpen(out[0])
+	info, err := AsFrameOpen(&out[0])
 	if err != nil || info.ArgSpan != 1 {
 		t.Fatalf("slow path FrameOpenSpan: ArgSpan=%d err=%v, want 1", info.ArgSpan, err)
 	}

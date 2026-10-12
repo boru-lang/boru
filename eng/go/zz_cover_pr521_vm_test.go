@@ -96,7 +96,7 @@ func TestPR521DynMethodIslandLead(t *testing.T) {
 	fnVal := pr521Sub()
 	dbg := []core.SrcPos{{Row: 4, Col: 9}}
 
-	if lead := dynMethodIslandLead(&compiler.DynMethodSpec{Word: "j"}, fnVal, dbg, 0); !core.IsAppliableFn(lead) || core.IsWord(lead) {
+	if lead := dynMethodIslandLead(&compiler.DynMethodSpec{Word: "j"}, fnVal, dbg, 0); !core.IsAppliableFn(lead) || core.IsWord(&lead) {
 		t.Errorf("a non-def-read method leads with its fn value, got %v", lead)
 	}
 
@@ -143,5 +143,5 @@ func TestPR521MixedTrailingNativeError(t *testing.T) {
 // pr521WordName reports v's word name, if v is a word.
 func pr521WordName(v core.Value) (string, bool) {
 	wi, ok := v.Data.(core.WordInfo)
-	return wi.Name, ok && core.IsWord(v)
+	return wi.Name, ok && core.IsWord(&v)
 }

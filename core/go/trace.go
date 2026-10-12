@@ -24,8 +24,8 @@ const (
 // TraceColorize returns a colored string representation of a Value for trace output.
 func TraceColorize(v Value) string {
 	switch {
-	case IsWord(v):
-		w, _ := AsWord(v)
+	case IsWord(&v):
+		w, _ := AsWord(&v)
 		if w.ForceStack {
 			return cYellow + w.Name + "/s" + cReset
 		}
@@ -33,8 +33,8 @@ func TraceColorize(v Value) string {
 			return cYellow + w.Name + "/f" + cReset
 		}
 		return cYellow + w.Name + cReset
-	case IsForward(v):
-		f, _ := AsForward(v)
+	case IsForward(&v):
+		f, _ := AsForward(&v)
 		// A speculative forward (a slot the plan filled with a word
 		// that will dispatch rather than arrive) is marked spec@k so
 		// the plan-vs-arrival divergence is visible in traces. See
@@ -44,7 +44,7 @@ func TraceColorize(v Value) string {
 				f.FuncName, f.CollectedArgs, f.ExpectedArgs, f.SpeculativeAt) + cReset
 		}
 		return cMagenta + fmt.Sprintf("→%s(%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs) + cReset
-	case IsOpenParen(v):
+	case IsOpenParen(&v):
 		return cDim + "(" + cReset
 	case v.Data == nil:
 		// Type literal — render the value's OWN type name (it IS its
@@ -125,7 +125,7 @@ func TraceVisibleLen(s string) int {
 // exported algorithm primitives that lang's registration calls into.
 
 func TraceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, fmt.Errorf("trace: argument must be a concrete list, got type literal")
 	}
 	_lst, _ := AsList(args[0])

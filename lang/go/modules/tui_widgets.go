@@ -217,7 +217,8 @@ func tuiEditHandler(args []native.Value, _ map[string]native.Value, _ []native.V
 	if v, ok := ev.Get("mods"); ok {
 		if l, lErr := native.RequireConcreteList(v, "edit"); lErr == nil {
 			for i := 0; i < l.Len(); i++ {
-				if s, sErr := l.Get(i).AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
+				el := l.Get(i)
+				if s, sErr := el.AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
 					ctrl = true
 				}
 			}

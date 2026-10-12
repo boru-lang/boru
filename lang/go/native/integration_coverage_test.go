@@ -1147,7 +1147,7 @@ func TestIntegTorDisjunctValues(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewInteger(1), NewWord("tor"), NewString("hello"), NewWord("tor"), NewBoolean(true),
 	})
-	if len(result) != 1 || !IsDisjunct(result[0]) {
+	if len(result) != 1 || !IsDisjunct(&result[0]) {
 		t.Fatalf("1 tor 'hello' tor true should be disjunct, got %v", result)
 	}
 	_as37, _ := AsDisjunct(result[0])
@@ -1163,7 +1163,7 @@ func TestIntegTorDisjunctTwoValues(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewInteger(42), NewWord("tor"), NewString("hello"),
 	})
-	if len(result) != 1 || !IsDisjunct(result[0]) {
+	if len(result) != 1 || !IsDisjunct(&result[0]) {
 		t.Fatalf("42 tor 'hello' should be disjunct, got %v", result)
 	}
 	_as38, _ := AsDisjunct(result[0])
@@ -1180,7 +1180,7 @@ func TestIntegTorDisjunctFlattensLeft(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewInteger(1), NewWord("tor"), NewInteger(2), NewWord("tor"), NewInteger(3),
 	})
-	if len(result) != 1 || !IsDisjunct(result[0]) {
+	if len(result) != 1 || !IsDisjunct(&result[0]) {
 		t.Fatalf("chained tor should produce disjunct, got %v", result)
 	}
 	_as39, _ := AsDisjunct(result[0])
@@ -1198,7 +1198,7 @@ func TestIntegTorDisjunctFlattensRight(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewInteger(1), NewWord("tor"), rightDisjunct,
 	})
-	if len(result) != 1 || !IsDisjunct(result[0]) {
+	if len(result) != 1 || !IsDisjunct(&result[0]) {
 		t.Fatalf("tor with right disjunct should produce disjunct, got %v", result)
 	}
 	_as40, _ := AsDisjunct(result[0])

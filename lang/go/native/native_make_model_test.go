@@ -22,7 +22,7 @@ func scalarClaimingIdeal(name string, called *bool, pure bool) *core.Ideal {
 			// A bare type node IS its lattice node (NewTypeLiteral
 			// returns *t), so claim the target by node identity.
 			n := core.TypeNodeOf(base)
-			return core.IsBareTypeNode(base) && n != nil && n.Equal(core.TScalar)
+			return core.IsBareTypeNode(&base) && n != nil && n.Equal(core.TScalar)
 		},
 		Instantiate: func(_, data core.Value, _ *core.Registry) ([]core.Value, error) {
 			*called = true
@@ -49,7 +49,7 @@ func TestMakeScalarModelPurityGate(t *testing.T) {
 	if called {
 		t.Fatal("unmarked Instantiate executed at analysis time")
 	}
-	if len(out) != 1 || core.IsConcrete(out[0]) {
+	if len(out) != 1 || core.IsConcrete(&out[0]) {
 		t.Fatalf("unmarked kind's residual = %v, want one fresh carrier", out)
 	}
 
@@ -62,7 +62,7 @@ func TestMakeScalarModelPurityGate(t *testing.T) {
 	if !called2 {
 		t.Fatal("marked Instantiate did not run at analysis time")
 	}
-	if len(out2) != 1 || !core.IsConcrete(out2[0]) {
+	if len(out2) != 1 || !core.IsConcrete(&out2[0]) {
 		t.Fatalf("marked kind's residual = %v, want the concrete construction", out2)
 	}
 	if s, err := out2[0].AsConcreteString(); err != nil || s != "x" {

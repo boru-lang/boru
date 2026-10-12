@@ -295,7 +295,7 @@ func TestZZCoverParenFnCollapseTrailing(t *testing.T) {
 	if !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) || out.ID == "" {
 		t.Errorf("collapsed window must seat one dynamic Any carrier with an ID, got %#v", out)
 	}
-	if !core.IsMark(e.Tape.At(1)) {
+	if !core.IsMark(e.Tape.Ref(1)) {
 		t.Error("the non-recordable Mark must survive the collapse")
 	}
 }

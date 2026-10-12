@@ -77,7 +77,7 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	dyn := core.NewCarrier(core.TAny)
 	dyn.Dynamic = true
 	dyn.ID = ""
-	if !core.SigTypeMatches(dyn, core.TFunction) {
+	if !core.SigTypeMatches(&dyn, core.TFunction) {
 		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what declines it")
 	}
 	dynArm := &EmitFragment{}

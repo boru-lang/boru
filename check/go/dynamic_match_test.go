@@ -60,7 +60,7 @@ func TestDynamicCarrierMatch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := core.SigTypeMatches(tc.v, tc.slot); got != tc.want {
+			if got := core.SigTypeMatches(&tc.v, tc.slot); got != tc.want {
 				t.Errorf("sigTypeMatches = %v, want %v", got, tc.want)
 			}
 		})
@@ -191,8 +191,8 @@ func TestDynamicCarrierConstructors(t *testing.T) {
 	disj := core.NewDynamicCarrierValue(
 		core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString)}),
 	)
-	if !disj.Dynamic || !core.IsDisjunct(disj) {
-		t.Errorf("core.NewDynamicCarrierValue: Dynamic=%v IsDisjunct=%v, want both true", disj.Dynamic, core.IsDisjunct(disj))
+	if !disj.Dynamic || !core.IsDisjunct(&disj) {
+		t.Errorf("core.NewDynamicCarrierValue: Dynamic=%v IsDisjunct=%v, want both true", disj.Dynamic, core.IsDisjunct(&disj))
 	}
 
 	// toCarrier must return a dynamic carrier unchanged — same bound,

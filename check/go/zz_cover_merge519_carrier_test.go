@@ -15,7 +15,7 @@ import (
 // the numeric lattice with no Type alternative.
 func TestMerge519JoinedElementCarrierTypeLiteral(t *testing.T) {
 	typeLit := core.NewTypeLiteral(core.TInteger)
-	if !core.IsTypeLiteral(typeLit) || typeLit.Parent.Equal(core.TInteger) {
+	if !core.IsTypeLiteral(&typeLit) || typeLit.Parent.Equal(core.TInteger) {
 		t.Fatalf("precondition: an Integer type literal is parented off Integer, got %v", typeLit.Parent)
 	}
 

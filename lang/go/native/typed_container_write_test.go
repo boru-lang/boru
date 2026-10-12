@@ -73,7 +73,7 @@ func TestTypedContainerRetainsElem(t *testing.T) {
 			t.Fatalf("[%s] run: %v", tc.src, err)
 		}
 		v := out[len(out)-1]
-		if !core.IsConcrete(v) {
+		if !core.IsConcrete(&v) {
 			t.Errorf("[%s] retained value is not concrete", tc.src)
 		}
 		c, ok := v.ElemConstraint()
@@ -320,7 +320,7 @@ func TestD2TypedContainerBoundBranches(t *testing.T) {
 	// Disjunct child → the bound preserves the disjunct verbatim.
 	disj := core.NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TInteger)})
 	b, ok := d2TypedContainerBound(core.NewTypedMap(disj))
-	if !ok || !core.IsDisjunct(b) {
+	if !ok || !core.IsDisjunct(&b) {
 		t.Errorf("disjunct-typed-map bound = (%v, %v), want a disjunct carrier", b.Parent, ok)
 	}
 	// Single-type child → a dynamic carrier. It binds child.Parent (the
@@ -329,7 +329,7 @@ func TestD2TypedContainerBoundBranches(t *testing.T) {
 	// d2TypedContainerBound). R2's write-check is exact regardless (it unifies
 	// against the child value directly).
 	b2, ok2 := d2TypedContainerBound(core.NewTypedMap(NewTypeLiteral(TInteger)))
-	if !ok2 || core.IsConcrete(b2) {
+	if !ok2 || core.IsConcrete(&b2) {
 		t.Errorf("integer-typed-map bound = (%v, %v), want a dynamic carrier", b2.Parent, ok2)
 	}
 }

@@ -145,7 +145,7 @@ func heldReadPlan(tree map[int]treeEvent, before []int, ev *EmitEvent, body []co
 	w := path
 	for len(w) > 1 {
 		holder := tokenAt(body, w[:len(w)-1])
-		if inner, _ := nestedToks(holder); !core.IsParenExpr(holder) || len(inner) != 1 {
+		if inner, _ := nestedToks(*holder); !core.IsParenExpr(holder) || len(inner) != 1 {
 			break
 		}
 		w = w[:len(w)-1]
@@ -160,13 +160,14 @@ func heldReadPlan(tree map[int]treeEvent, before []int, ev *EmitEvent, body []co
 	return substPlan{path: w, span: 1, seq: ev.seq}, true
 }
 
-// tokenAt is the token at path (tokenPath) in body.
-func tokenAt(body []core.Value, path []int) core.Value {
+// tokenAt is the token at path (tokenPath) in body, read where it lives:
+// the pointer is into the body's own token arrays, so never write through it.
+func tokenAt(body []core.Value, path []int) *core.Value {
 	toks := body
 	for _, at := range path[:len(path)-1] {
 		toks, _ = nestedToks(toks[at])
 	}
-	return toks[path[len(path)-1]]
+	return &toks[path[len(path)-1]]
 }
 
 // boundWordPlans plans each bare word on the call's level before its run
@@ -182,7 +183,7 @@ func boundWordPlans(tree map[int]treeEvent, body []core.Value, tok int, run []in
 	var out []substPlan
 	for i := from; i < run[len(run)-1]; i++ {
 		t := toks[i]
-		wi, err := core.AsWord(t)
+		wi, err := core.AsWord(&t)
 		if err != nil {
 			continue // not a word
 		}
@@ -312,7 +313,7 @@ func tailRun(body []core.Value, sp substPlan) bool {
 		}
 		if i > 0 {
 			holder := levels[i-1][sp.path[i-1]]
-			if !core.IsParenExpr(holder) {
+			if !core.IsParenExpr(&holder) {
 				return false
 			}
 			end = sp.path[i-1] + 1

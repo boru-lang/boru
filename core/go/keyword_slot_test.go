@@ -141,13 +141,13 @@ func TestScanMacroOperandsFoldsNestedGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fold: %v", err)
 	}
-	if len(ops) != 1 || !IsParenExpr(ops[0]) {
+	if len(ops) != 1 || !IsParenExpr(&ops[0]) {
 		t.Fatalf("want one ParenExpr operand, got %v", ops)
 	}
 	if last != 7 {
 		t.Errorf("operand span must end at the close paren, got %d", last)
 	}
-	toks, _ := AsParenExpr(ops[0])
+	toks, _ := AsParenExpr(&ops[0])
 	// 1 ( 2 ) 3 — the nested markers ride inside; the outer pair is
 	// consumed by the fold.
 	if len(toks) != 5 {

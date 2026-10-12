@@ -92,7 +92,7 @@ func TestSetpathResidualRetainsTag(t *testing.T) {
 	}
 	// An untyped receiver keeps the plain dynamic carrier (no tag).
 	u, _ := tcValue(t, `def u [1 2 3] u`)
-	if _, ok := d2DynamicTypedResidual(u).ElemConstraint(); ok {
+	if _, ok := addrOf(d2DynamicTypedResidual(u)).ElemConstraint(); ok {
 		t.Errorf("untyped setpath residual should carry no elem tag")
 	}
 }

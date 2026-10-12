@@ -90,7 +90,7 @@ func TestW8SubstituteSelfInFlightNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Self head resolving to the in-flight node must not error: %v", err)
 	}
-	if !IsBareTypeNode(got) || got.ID != selfNode.ID {
+	if !IsBareTypeNode(&got) || got.ID != selfNode.ID {
 		t.Fatalf("expected the self node literal, got %v", got)
 	}
 }

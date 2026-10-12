@@ -331,7 +331,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	}
 
 	armOf := func(arg core.Value, then bool) (*EmitFragment, []core.Value, map[string]core.Value, *core.Value) {
-		if core.IsConcrete(arg) && arg.Parent.ConformsTo(core.TList) {
+		if core.IsConcrete(&arg) && arg.Parent.ConformsTo(core.TList) {
 			var restore func()
 			if then {
 				restore = core.ApplyGuardNarrowing(r, args[0])
@@ -533,10 +533,10 @@ func TestInterpBodyInertBoundary(t *testing.T) {
 	// fn scope noEvalBodiesInertScoped uses isInertConst, which keeps the body
 	// declined so it does not compile instead of baking a
 	// frame-local ${name} that would resolve against the registry.
-	if core.IsInertConst(interp) {
+	if core.IsInertConst(&interp) {
 		t.Error("isInertConst(`v${k}`) = true; the strict whitelist must NOT admit an InterpString")
 	}
-	if core.IsInertConst(core.NewList([]core.Value{interp})) {
+	if core.IsInertConst(addrOf(core.NewList([]core.Value{interp}))) {
 		t.Error("isInertConst([`v${k}`]) = true; the strict whitelist must keep an InterpString body declined")
 	}
 }

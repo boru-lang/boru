@@ -4,7 +4,7 @@ package basic
 // its elements are returned wrapped in parens so the main engine evaluates
 // them as a sub-expression. Scalars are returned as-is.
 func spliceArg(v Value) []Value {
-	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(v) && !IsTableType(v) {
+	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		// Append element-wise: Slice() would copy the backing once into a
 		// throwaway slice and append would copy it AGAIN into result —
@@ -25,7 +25,7 @@ func spliceArg(v Value) []Value {
 // list — i.e. something to be evaluated as a code body rather than used
 // as a literal value.
 func isCodeBody(v Value) bool {
-	return v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(v) && !IsTableType(v)
+	return v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v)
 }
 
 // ifClause turns the element slice of a clause-list `[c1 b1 c2 b2 … else]`
@@ -81,10 +81,10 @@ func ifClause(elems []Value, pos SrcPos) []Value {
 // NOT bound to a function keep their atom-match reading (`case c/q [ red
 // "R" … ]`), so only provably-uncallable-as-match heads change meaning.
 func IsCaseOpenCallHead(r *Registry, m Value) bool {
-	if !IsWord(m) {
+	if !IsWord(&m) {
 		return false
 	}
-	w, _ := AsWord(m)
+	w, _ := AsWord(&m)
 	bound, ok := r.ResolveTypedName(w.Name)
 	if !ok {
 		return false
@@ -163,8 +163,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 			// structurally. A bare word resolves through the def table
 			// first so user types and def'd values work as matches.
 			m := match
-			if IsWord(m) {
-				w, _ := AsWord(m)
+			if IsWord(&m) {
+				w, _ := AsWord(&m)
 				if bound, ok := r.ResolveTypedName(w.Name); ok {
 					m = bound
 				} else {
@@ -185,8 +185,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 			// client; any expression producing one value works. An
 			// evaluation error or multi-value result keeps the raw
 			// ParenExpr (which then simply fails to unify).
-			if IsParenExpr(m) {
-				if toks, perr := AsParenExpr(m); perr == nil {
+			if IsParenExpr(&m) {
+				if toks, perr := AsParenExpr(&m); perr == nil {
 					input := make([]Value, 0, len(toks)+2)
 					input = append(input, NewOpenParen())
 					input = append(input, toks...)
@@ -514,13 +514,13 @@ func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
 // at the case.
 func caseFoldablePredicate(r *Registry, toks []Value) bool {
 	for _, t := range toks {
-		if !IsWord(t) {
+		if !IsWord(&t) {
 			if !caseScalarConst(t) {
 				return false
 			}
 			continue
 		}
-		w, _ := AsWord(t)
+		w, _ := AsWord(&t)
 		if w.ForceVal {
 			return false
 		}
@@ -596,10 +596,10 @@ func caseReStepsBlock(r *Registry, elems []Value) bool {
 // operands runs alike wherever it is stepped, as the chain's arm runs it;
 // a `/v` reference parks the value.
 func caseBlockReSteps(r *Registry, b Value) bool {
-	if !IsWord(b) {
+	if !IsWord(&b) {
 		return false
 	}
-	w, _ := AsWord(b)
+	w, _ := AsWord(&b)
 	if w.ForceVal {
 		return false
 	}
@@ -610,7 +610,7 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 		// A splice marker (`def g word [add]`) spills its tokens where the
 		// block is re-stepped, and those tokens reach the values around the
 		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
-		return top.Carrier || top.Dynamic || IsSplice(top)
+		return top.Carrier || top.Dynamic || IsSplice(&top)
 	}
 	fn := r.Lookup(w.Name)
 	return fn != nil && callReachesContext(fn)
@@ -821,7 +821,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 // model, and before it the pass reported nothing here. Plain check (no
 // recorder armed) is unchanged, as it is for `if` conditions.
 func keepScrutineeBindings(r *Registry, v Value) {
-	if !r.Check.Recorder().Armed() || !IsConcrete(v) {
+	if !r.Check.Recorder().Armed() || !IsConcrete(&v) {
 		return
 	}
 	nDiag := len(r.Check.Diagnostics)

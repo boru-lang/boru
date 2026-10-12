@@ -214,7 +214,7 @@ func TestZZMSPlainCheckCollapseValueMethod(t *testing.T) {
 	if !out.Dynamic || !out.Carrier || !out.Parent.Equal(core.TAny) {
 		t.Errorf("the collapse result must be dynamic(Any), got %v", out)
 	}
-	if !core.IsEnd(e.Tape.At(1)) {
+	if !core.IsEnd(e.Tape.Ref(1)) {
 		t.Error("the statement boundary must survive the splice")
 	}
 }
@@ -241,7 +241,7 @@ func TestZZMSPlainCheckCollapseSideEffectMethod(t *testing.T) {
 	if !TryShapedMethodDispatch(e, 0) {
 		t.Fatal("the collapse must consume a side-effect-only apply too")
 	}
-	if e.Tape.Len() != 1 || !core.IsEnd(e.Tape.At(0)) {
+	if e.Tape.Len() != 1 || !core.IsEnd(e.Tape.Ref(0)) {
 		t.Fatalf("a 0-return method must collapse to NO values, tape len = %d", e.Tape.Len())
 	}
 	if len(rfArgs) != 1 {
@@ -657,7 +657,7 @@ func TestZZMSMemberFnArrivalDispatchSuccess(t *testing.T) {
 	if !out.Carrier || out.Dynamic || !out.Parent.Equal(core.TInteger) {
 		t.Errorf("the modelled out must be the declared Integer carrier, got %v", out)
 	}
-	if !core.IsWord(e.Tape.At(1)) {
+	if !core.IsWord(e.Tape.Ref(1)) {
 		t.Error("the token after the arity window belongs to the NEXT dispatch")
 	}
 }

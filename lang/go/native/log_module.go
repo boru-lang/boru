@@ -142,7 +142,7 @@ func (rec LogRecord) toMap() Value {
 // empty Map when no structured fields were supplied (so the record
 // shape is uniform and never carries a bare type literal).
 func (rec LogRecord) attributesOrEmpty() Value {
-	if IsConcrete(rec.Attributes) && rec.Attributes.Parent != nil && rec.Attributes.Parent.Equal(TMap) {
+	if IsConcrete(&rec.Attributes) && rec.Attributes.Parent != nil && rec.Attributes.Parent.Equal(TMap) {
 		return rec.Attributes
 	}
 	return NewMap(NewOrderedMap())
@@ -583,7 +583,7 @@ func mergeAttrs(defaults *OrderedMap, call Value) Value {
 			out.Set(k, v)
 		}
 	}
-	if IsConcrete(call) && call.Parent != nil && call.Parent.Equal(TMap) {
+	if IsConcrete(&call) && call.Parent != nil && call.Parent.Equal(TMap) {
 		if m, err := AsMap(call); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				v, _ := m.Get(k)
@@ -597,7 +597,7 @@ func mergeAttrs(defaults *OrderedMap, call Value) Value {
 // asConcreteOrderedMap returns the *OrderedMap backing a concrete Map
 // value, or nil. Used to snapshot a logger's bound default attributes.
 func asConcreteOrderedMap(v Value) *OrderedMap {
-	if !IsConcrete(v) || v.Parent == nil || !v.Parent.Equal(TMap) {
+	if !IsConcrete(&v) || v.Parent == nil || !v.Parent.Equal(TMap) {
 		return nil
 	}
 	m, err := AsMap(v)

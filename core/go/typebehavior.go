@@ -237,7 +237,7 @@ var DefaultBehavior TypeBehavior = defaultBehavior{}
 func (defaultBehavior) Match(v Value, t *Type) bool {
 	// A bare type literal IS a lattice node — test it directly. Any
 	// other value (concrete, or a carrier) is tested by its Parent.
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.ConformsTo(t)
 	}
 	return v.Parent.ConformsTo(t)

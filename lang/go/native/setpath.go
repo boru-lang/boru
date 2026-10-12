@@ -17,7 +17,7 @@ func setpathHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 	// Find the path arg — a String dotted path, or a Reach lens.
 	pathIdx := -1
 	for i := range args {
-		if args[i].Parent.ConformsTo(TString) || IsReach(args[i]) {
+		if args[i].Parent.ConformsTo(TString) || IsReach(&args[i]) {
 			pathIdx = i
 			break
 		}
@@ -61,8 +61,8 @@ func setpathHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 	// Reach lens: set natively so nesting is honored (an immutable nested
 	// set, the lens "set" — the dotted-string voxgigstruct form does not
 	// deep-set). The reach's receiver is ignored; data is the base.
-	if IsReach(args[pathIdx]) {
-		info, err := AsReach(args[pathIdx])
+	if IsReach(&args[pathIdx]) {
+		info, err := AsReach(&args[pathIdx])
 		if err != nil {
 			return nil, fmt.Errorf("setpath: %w", err)
 		}
@@ -235,7 +235,7 @@ func setReachNative(data Value, keys []Value, val Value, r *Registry) (Value, er
 	}
 
 	// List index.
-	if k.Parent.ConformsTo(TInteger) && data.Parent.ConformsTo(TList) && IsConcrete(data) {
+	if k.Parent.ConformsTo(TInteger) && data.Parent.ConformsTo(TList) && IsConcrete(&data) {
 		lst, _ := AsList(data)
 		n := lst.Len()
 		idx64, _ := AsInteger(k)
@@ -270,7 +270,7 @@ func setReachNative(data Value, keys []Value, val Value, r *Registry) (Value, er
 	// Map key (the default). Shallow-clone the source map (or start fresh
 	// when the level is absent / not a map).
 	out := NewOrderedMap()
-	if data.Parent.ConformsTo(TMap) && IsConcrete(data) {
+	if data.Parent.ConformsTo(TMap) && IsConcrete(&data) {
 		src, _ := AsMap(data)
 		for _, key := range src.Keys() {
 			v, _ := src.Get(key)
@@ -306,8 +306,8 @@ func setReachNative(data Value, keys []Value, val Value, r *Registry) (Value, er
 // atom by name, a string by value, anything else via ValToString).
 func reachKeyString(k Value) string {
 	switch {
-	case IsWord(k):
-		w, _ := AsWord(k)
+	case IsWord(&k):
+		w, _ := AsWord(&k)
 		return w.Name
 	case IsAtom(k):
 		a, _ := AsAtom(k)

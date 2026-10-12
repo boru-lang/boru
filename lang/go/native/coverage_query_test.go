@@ -878,7 +878,7 @@ func TestResolveFieldTypeString(t *testing.T) {
 
 	// ResolveFieldType should resolve "MyNum" string to the type value
 	result := ResolveFieldType(r, NewString("MyNum"))
-	if !IsTypeBody(result) {
+	if !IsTypeBody(&result) {
 		t.Errorf("expected type value, got %s (data=%v)", result.Parent, result.Data)
 	}
 }
@@ -911,7 +911,7 @@ func TestResolveFieldTypeList(t *testing.T) {
 		NewWord("String"), NewWord("tor"), NewWord("None"),
 	}))
 	// Should be a disjunct type, not a raw list
-	if result.Parent.ConformsTo(TList) && !IsTypedList(result) {
+	if result.Parent.ConformsTo(TList) && !IsTypedList(&result) {
 		t.Error("expected resolved type, not raw list")
 	}
 }

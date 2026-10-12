@@ -98,7 +98,7 @@ func makerCapability(target *Type, src Value) (Value, bool, error) {
 // target is never nil here: the only caller is makerCapability's walk,
 // whose loop condition already required a node to read a Behavior from.
 func conformMakerResult(target *Type, out Value) (Value, error) {
-	if IsConcrete(out) {
+	if IsConcrete(&out) {
 		if out.Is(target) {
 			return out, nil
 		}
@@ -123,7 +123,7 @@ func makerResultDesc(out Value) string {
 	switch {
 	case out.Parent == nil:
 		return "no value"
-	case IsBareTypeNode(out):
+	case IsBareTypeNode(&out):
 		return "the type " + out.Parent.String() + " rather than a value of it"
 	default:
 		return out.Parent.String()

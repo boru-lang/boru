@@ -24,7 +24,7 @@ func TestCarrierConstructors(t *testing.T) {
 	if !dyn.Carrier || !dyn.Dynamic {
 		t.Error("NewDynamicCarrierValue must set both Carrier and Dynamic")
 	}
-	if !IsDisjunct(dyn) {
+	if !IsDisjunct(&dyn) {
 		t.Error("the disjunct bound must survive the promotion")
 	}
 
@@ -68,7 +68,7 @@ func TestUnionCarrierForType(t *testing.T) {
 	if !ok {
 		t.Fatal("a union type must yield its distributing carrier")
 	}
-	if !dv.Carrier || !IsDisjunct(dv) {
+	if !dv.Carrier || !IsDisjunct(&dv) {
 		t.Fatalf("union carrier = %v, want a strict disjunct carrier", dv)
 	}
 	di, err := AsDisjunct(dv)
@@ -177,7 +177,7 @@ func TestFoldVariadicArms(t *testing.T) {
 		t.Fatal("a variadic arm must fold")
 	}
 	elem, _ = IsVariadicSpread(out)
-	if !IsDisjunct(elem) {
+	if !IsDisjunct(&elem) {
 		t.Errorf("mixed leaks = %v, want a disjunct element", elem)
 	}
 
@@ -292,13 +292,13 @@ func TestJoinCarriersInner(t *testing.T) {
 	// first-match dispatch, so they stay a disjunct with the real
 	// alternatives.
 	got = JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TString))
-	if !IsDisjunct(got) || !got.Carrier {
+	if !IsDisjunct(&got) || !got.Carrier {
 		t.Errorf("Integer+String = %v, want a disjunct carrier", got)
 	}
 
 	// A mixed None/value pair falls through to the alternatives union.
 	got = JoinCarriersInner(none, NewCarrier(TInteger))
-	if !IsDisjunct(got) {
+	if !IsDisjunct(&got) {
 		t.Errorf("None+Integer = %v, want a disjunct", got)
 	}
 
@@ -306,7 +306,7 @@ func TestJoinCarriersInner(t *testing.T) {
 	got = JoinCarriersInner(
 		NewDisjunct([]Value{NewTypeLiteral(TInteger)}),
 		NewDisjunct([]Value{NewTypeLiteral(TInteger)}))
-	if IsDisjunct(got) {
+	if IsDisjunct(&got) {
 		t.Errorf("a one-alternative union = %v, want a plain carrier", got)
 	}
 
@@ -317,7 +317,7 @@ func TestJoinCarriersInner(t *testing.T) {
 		wide = append(wide, NewInteger(int64(i)))
 	}
 	got = JoinCarriersInner(NewDisjunct(wide), NewCarrier(TInteger))
-	if IsDisjunct(got) {
+	if IsDisjunct(&got) {
 		t.Errorf("over-cap union = %v, want the widened ancestor", got)
 	}
 	if !got.Parent.ConformsTo(TInteger) {
@@ -612,7 +612,7 @@ func TestJoinCarriersInnerOverCap(t *testing.T) {
 		alts[i] = NewTypeLiteral(n)
 	}
 	got := JoinCarriersInner(NewDisjunct(alts), NewCarrier(TInteger))
-	if IsDisjunct(got) {
+	if IsDisjunct(&got) {
 		t.Fatalf("over-cap union = %v, want the widened ancestor", got)
 	}
 	if !got.Carrier {
@@ -706,7 +706,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 	then := NewInteger(5)
 	InstallJoinedDefs(r, map[string]Value{"cbx": then}, nil)
 	got, ok := r.Defs.Top("cbx")
-	if !ok || IsConcrete(got) || !got.Carrier || !got.Parent.Equal(TInteger) {
+	if !ok || IsConcrete(&got) || !got.Carrier || !got.Parent.Equal(TInteger) {
 		t.Fatalf("a then-only fresh binding under an armed recorder is a payload-less Integer carrier: %v/%v", got, ok)
 	}
 	if got.ID == then.ID {
@@ -715,7 +715,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 
 	els := NewString("s")
 	InstallJoinedDefs(r, nil, map[string]Value{"cby": els})
-	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(got) || !got.Parent.ConformsTo(TString) || got.ID == els.ID {
+	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(&got) || !got.Parent.ConformsTo(TString) || got.ID == els.ID {
 		t.Errorf("an else-only fresh binding takes the same carrier: %v/%v", got, ok)
 	}
 

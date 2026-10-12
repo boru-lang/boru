@@ -39,7 +39,7 @@ func TestS6aGradualContagionZeroOutSingleValueSibling(t *testing.T) {
 // configuration.
 func TestInactiveDispatchBraid(t *testing.T) {
 	inactiveDispatchRecordOutcome(nil, "", nil, nil, nil, core.SrcPos{}, nil)
-	if v, ok := inactiveDispatchTryFoldScalarConst(nil, nil, nil); ok || core.IsConcrete(v) {
+	if v, ok := inactiveDispatchTryFoldScalarConst(nil, nil, nil); ok || core.IsConcrete(&v) {
 		t.Fatal("inactive scalar fold must decline")
 	}
 	if inactiveDispatchTryRecordPoly(nil, "", nil, nil, nil, core.SrcPos{}, false, nil, false, nil) {

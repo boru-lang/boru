@@ -126,7 +126,7 @@ func TestW3Enum(t *testing.T) {
 	// enumReturns: concrete args fold to the real enum; a carrier falls
 	// back to the bare TEnum carrier.
 	out := enumReturns([]Value{NewList([]Value{NewAtom("a")})}, nil)
-	if len(out) != 1 || !IsDisjunct(out[0]) {
+	if len(out) != 1 || !IsDisjunct(&out[0]) {
 		t.Errorf("enumReturns concrete = %v, want an enum value", out)
 	}
 	out = enumReturns([]Value{NewCarrier(TList)}, nil)

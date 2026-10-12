@@ -252,7 +252,7 @@ func TestS6b2LookupDefTypeArms(t *testing.T) {
 	// Def-stack bare type literal: canonicalized lattice node.
 	r.Defs.Push("S6b2Alias", NewTypeLiteral(TInteger))
 	got = LookupDefType(r, "S6b2Alias")
-	if got == nil || !IsBareTypeNode(*got) || got.ID != TInteger.ID {
+	if got == nil || !IsBareTypeNode(got) || got.ID != TInteger.ID {
 		t.Errorf("bare-literal def binding must canonicalize to Integer, got %v", got)
 	}
 }

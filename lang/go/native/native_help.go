@@ -217,7 +217,7 @@ func sigKeywordSlots(sig Signature) map[int]string {
 		// IsConcrete filters bare atom nodes / type literals, so the
 		// AsAtom below always yields the name (err path is a plain skip,
 		// no separate branch).
-		if !sig.QuoteArgs[i] || !IsConcrete(pat) || !pat.Parent.ConformsTo(TAtom) {
+		if !sig.QuoteArgs[i] || !IsConcrete(&pat) || !pat.Parent.ConformsTo(TAtom) {
 			continue
 		}
 		if name, err := AsAtom(pat); err == nil {
@@ -276,7 +276,7 @@ func sigArgDisplay(sig *Signature, i int, t *Type) string {
 	}
 	ni, _ := AsNegation(pat) // payload presence guaranteed by IsNegation
 	inner := ni.Inner
-	if IsBareTypeNode(inner) {
+	if IsBareTypeNode(&inner) {
 		return "(tnot " + (&inner).Leaf() + ")"
 	}
 	return "(tnot " + inner.String() + ")"

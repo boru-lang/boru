@@ -18,7 +18,7 @@ func TestWithRenderedPrefix(t *testing.T) {
 		e := NewTop(r)
 		e.Tape = NewTape(tape, StackHeadroom)
 		for i, v := range tape {
-			if IsWord(v) {
+			if IsWord(&v) {
 				e.Pointer = i
 			}
 		}
@@ -108,7 +108,7 @@ func fitEngine(t *testing.T, beneath ...Value) (*Engine, *MatchResult, *FnDefInf
 	e := NewTop(r)
 	e.Tape = NewTape(tape, StackHeadroom)
 	e.Pointer = len(tape) - 1
-	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, e.Tape.At(e.Pointer).Pos()
+	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, addrOf(e.Tape.At(e.Pointer)).Pos()
 	fn := r.Lookup("w")
 	var mapSig *Signature
 	for i := range fn.Signatures {
@@ -178,7 +178,7 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 		{"a split wider than the operands", func(e *Engine, m *MatchResult) *MatchResult { e.fwdSplitN = 2; return m }},
 		{"not a word", func(e *Engine, m *MatchResult) *MatchResult {
 			e.Tape.Set(e.Pointer, NewInteger(1))
-			e.fwdSplitPos = e.Tape.At(e.Pointer).Pos()
+			e.fwdSplitPos = addrOf(e.Tape.At(e.Pointer)).Pos()
 			return m
 		}},
 		{"no such word", func(_ *Engine, m *MatchResult) *MatchResult {

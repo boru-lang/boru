@@ -203,7 +203,7 @@ func (h *regionHost) IsReachCallHead(tok core.Value, i int) bool {
 }
 
 func (h *regionHost) StaticForwardType(tok core.Value) (core.Value, core.FwdKind) {
-	return core.StaticForwardTypeOf(tok)
+	return core.StaticForwardTypeOf(&tok)
 }
 
 func (h *regionHost) LookupWord(name string) *core.FnDefInfo { return h.reg.Lookup(name) }

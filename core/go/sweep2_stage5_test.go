@@ -194,7 +194,7 @@ func TestSweepInstantiateClassSchema(t *testing.T) {
 	if !ok {
 		t.Fatal("substituted field missing")
 	}
-	if !IsBareTypeNode(fv) || (&fv).Leaf() != "Integer" {
+	if !IsBareTypeNode(&fv) || (&fv).Leaf() != "Integer" {
 		t.Errorf("substituted field type = %v", fv)
 	}
 }

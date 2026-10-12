@@ -117,8 +117,8 @@ func covWords(r *core.Registry) {
 	})
 	undefImpl := core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 		name := ""
-		if core.IsWord(args[0]) {
-			w, _ := core.AsWord(args[0])
+		if core.IsWord(&args[0]) {
+			w, _ := core.AsWord(&args[0])
 			name = w.Name
 		} else if core.IsAtom(args[0]) {
 			name, _ = core.AsAtom(args[0])

@@ -343,18 +343,18 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// params. (parseFnParams treats bare words as type names, which is wrong
 	// here; typed macro params are a later extension.)
 	paramsSpec := elems[0]
-	if !paramsSpec.Parent.Equal(TList) || !IsConcrete(paramsSpec) {
+	if !paramsSpec.Parent.Equal(TList) || !IsConcrete(&paramsSpec) {
 		return nil, r.BoruError("macro_error", "macro: params must be a list of names", "macro")
 	}
 	pl, _ := AsList(paramsSpec)
 	params := make([]FnParam, 0, pl.Len())
 	for i := 0; i < pl.Len(); i++ {
 		el := pl.Get(i)
-		if !IsWord(el) {
+		if !IsWord(&el) {
 			return nil, r.BoruError("macro_error",
 				"macro: each param must be a bare name (typed params are a later extension)", "macro")
 		}
-		w, _ := AsWord(el)
+		w, _ := AsWord(&el)
 		params = append(params, FnParam{Name: w.Name, Type: TAny})
 	}
 	if len(params) == 0 {
@@ -365,7 +365,7 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// Body: a list runs as the template-producing program; a bare value is
 	// wrapped (mirrors afn).
 	var bodyElems []Value
-	if elems[1].Parent.Equal(TList) && IsConcrete(elems[1]) {
+	if elems[1].Parent.Equal(TList) && IsConcrete(&elems[1]) {
 		bl, _ := AsList(elems[1])
 		bodyElems = bl.Slice()
 	} else {
@@ -481,7 +481,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			if _, isFn := top.Data.(FnDefInfo); isFn {
 				return miniFnExpand(top, args, r)
 			}
-			if r.Check.IsActive() && !IsConcrete(top) {
+			if r.Check.IsActive() && !IsConcrete(&top) {
 				macroDegradedAdvisory(r, "mini", "the mini fn bound to "+kind+" is not a concrete value under analysis", args[0].Pos())
 				return []Value{NewDynamicCarrier(TAny)}, nil
 			}
@@ -556,7 +556,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 				switch {
 				case func() bool { _, serr := args[1].AsConcreteString(); return serr != nil }():
 					decline("compile hook needs a concrete src at compile time")
-				case !IsConcrete(opts):
+				case !IsConcrete(&opts):
 					decline("compile hook needs concrete opts at compile time")
 				}
 			}
@@ -565,7 +565,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			if src, serr := args[1].AsConcreteString(); serr == nil {
 				var hookToks []Value
 				var herr error
-				if r.Check.IsActive() && !IsConcrete(opts) {
+				if r.Check.IsActive() && !IsConcrete(&opts) {
 					// Declined above; keep the standard call for analysis.
 					hookToks = nil
 				} else {
@@ -637,7 +637,7 @@ standardCall:
 func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	fnDef, ok := fn.Data.(FnDefInfo)
 	if !ok {
-		if r.Check.IsActive() && !IsConcrete(fn) {
+		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "mini", "the mini fn is not a concrete value under analysis", args[0].Pos())
 			// COMPILE pass: record the runtime fn dispatch (a factory's
 			// returned transducer — the sweep's `mini` × factory cell).
@@ -724,7 +724,7 @@ func miniPartialFromSigs(label, kindTag string, sigs []FnSig, tail []Value) Valu
 	// partial dispatches within an enclosing fn body (dropping pending
 	// tokens like a trailing dot-chain), and the body list is already
 	// self-delimiting — so strip it.
-	for len(tail) > 0 && IsEnd(tail[len(tail)-1]) {
+	for len(tail) > 0 && IsEnd(&tail[len(tail)-1]) {
 		tail = tail[:len(tail)-1]
 	}
 	body := append([]Value{NewWord(miniSubjParam)}, tail...)
@@ -860,7 +860,7 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 				}
 				return parseFnExpand(top, args, r)
 			}
-			if r.Check.IsActive() && !IsConcrete(top) {
+			if r.Check.IsActive() && !IsConcrete(&top) {
 				// A Function-typed carrier binding (a fn param, a computed
 				// parser) under analysis: the parser is real at run time but
 				// not expandable here — degrade like the other macro paths.
@@ -908,7 +908,7 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 // classify. A strict non-fn type (an Integer binding) is not gradual: it
 // raises the literal-name error exactly as the interpreter will.
 func gradualMacroOperand(r *Registry, v Value) bool {
-	if r == nil || !r.Check.IsActive() || IsConcrete(v) || v.Parent == nil {
+	if r == nil || !r.Check.IsActive() || IsConcrete(&v) || v.Parent == nil {
 		return false
 	}
 	// A dynamic(Any) read, or an Atom-typed carrier (`{p: ini/q}.p` — a kind
@@ -940,7 +940,7 @@ func parseSurfaceOperands(args []Value) (source, opts Value) {
 func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	fnDef, ok := fn.Data.(FnDefInfo)
 	if !ok {
-		if r.Check.IsActive() && !IsConcrete(fn) {
+		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "parse", "the parser fn is not a concrete value under analysis", args[0].Pos())
 			// COMPILE pass: record the runtime fn dispatch so the result has
 			// provenance and the program compiles — the fn operand's own
@@ -979,7 +979,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	// yields a concrete result the compile pass folds, observation-free
 	// (TestParseFnDispatchCheckObservationFree). Declines (pure check, no
 	// boru:parselang import) also fall through to the expansion.
-	if !IsConcrete(source) {
+	if !IsConcrete(&source) {
 		if out, ok := recordParseLangFnDispatch(r, fn, args); ok {
 			return []Value{out}, nil
 		}
@@ -1334,7 +1334,7 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			if _, isFn := top.Data.(FnDefInfo); isFn {
 				return emitFnExpand(top, args, r)
 			}
-			if r.Check.IsActive() && !IsConcrete(top) {
+			if r.Check.IsActive() && !IsConcrete(&top) {
 				macroDegradedAdvisory(r, "emit", "the emitter fn bound to "+kind+" is not a concrete value under analysis", args[0].Pos())
 				return []Value{NewDynamicCarrier(TString)}, nil
 			}
@@ -1407,7 +1407,7 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	fnDef, ok := fn.Data.(FnDefInfo)
 	if !ok {
-		if r.Check.IsActive() && !IsConcrete(fn) {
+		if r.Check.IsActive() && !IsConcrete(&fn) {
 			macroDegradedAdvisory(r, "emit", "the emitter fn is not a concrete value under analysis", args[0].Pos())
 			// COMPILE pass: record the runtime fn dispatch (a factory's
 			// returned emitter — the sweep's `emit` × factory cell).

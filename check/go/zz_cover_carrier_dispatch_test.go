@@ -89,9 +89,9 @@ func TestCarrierResultsSpecialWordShortCircuit(t *testing.T) {
 	// needed — the short-circuit returns first).
 	out := CarrierResults(r, "word", nil, []core.Value{core.NewList([]core.Value{core.NewWord("x")})},
 		core.SrcPos{Row: 1, Col: 1}, r, false)
-	if len(out) != 1 || !core.IsSplice(out[0]) {
+	if len(out) != 1 || !core.IsSplice(&out[0]) {
 		t.Fatalf("word splice: got %d results (splice=%v), want 1 splice marker",
-			len(out), len(out) == 1 && core.IsSplice(out[0]))
+			len(out), len(out) == 1 && core.IsSplice(&out[0]))
 	}
 }
 
@@ -115,7 +115,7 @@ func TestCarrierResultsDisjunctStraddlePolyLowering(t *testing.T) {
 	// directly — the per-alternative join, not the single matched sig's
 	// declared return.
 	out := CarrierResults(r, "pstrq", sig, args, core.SrcPos{Row: 2, Col: 3}, r, false)
-	if len(out) != 1 || !core.IsDisjunct(out[0]) || !out[0].Carrier {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Carrier {
 		t.Fatalf("straddle result = %#v, want one disjunct carrier (the per-alternative join)", out)
 	}
 	if got := len(core.FlattenAlternatives(out[0])); got != 2 {
@@ -149,7 +149,7 @@ func TestCarrierResultsPartitionedUserFnPrecision(t *testing.T) {
 	// join is the per-alternative Integer|String union. Getting the
 	// disjunct back proves the partition carriers (not the recorded
 	// declared return) were handed downstream.
-	if len(out) != 1 || !core.IsDisjunct(out[0]) {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) {
 		t.Fatalf("partitioned user-fn result = %#v, want the per-alternative disjunct", out)
 	}
 }
@@ -182,7 +182,7 @@ func TestCarrierResultsPartitionedUserFnCountMismatch(t *testing.T) {
 		t.Fatalf("count mismatch must keep the recorded results: got %d, want 2", len(out))
 	}
 	for i, v := range out {
-		if core.IsDisjunct(v) || v.Parent == nil || !v.Parent.Equal(core.TInteger) {
+		if core.IsDisjunct(&v) || v.Parent == nil || !v.Parent.Equal(core.TInteger) {
 			t.Errorf("result %d = %#v, want the committed sig's declared Integer carrier", i, v)
 		}
 	}
@@ -210,7 +210,7 @@ func TestCarrierResultsScalarConstFold(t *testing.T) {
 	sig := &fn.Signatures[0]
 	out := CarrierResults(r, "feqq", sig,
 		[]core.Value{core.NewInteger(0), core.NewInteger(0)}, core.SrcPos{Row: 5, Col: 1}, r, false)
-	if len(out) != 1 || !core.IsConcrete(out[0]) {
+	if len(out) != 1 || !core.IsConcrete(&out[0]) {
 		t.Fatalf("folded dispatch = %#v, want one CONCRETE result replacing the Boolean carrier", out)
 	}
 	if b, err := core.AsBoolean(out[0]); err != nil || b {
@@ -276,7 +276,7 @@ func TestSpecialWordResultsWordSpliceMarker(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 	body := core.NewList([]core.Value{core.NewWord("x")})
 	out, ok := specialWordResults(r, "word", []core.Value{body}, pos)
-	if !ok || len(out) != 1 || !core.IsSplice(out[0]) {
+	if !ok || len(out) != 1 || !core.IsSplice(&out[0]) {
 		t.Fatalf("word [body] = (%v, %v), want one __SP splice marker", out, ok)
 	}
 	// Only the one-arg shape is the splice form.
@@ -299,7 +299,7 @@ func TestSpecialWordResultsMacroexpandFold(t *testing.T) {
 	if !ok || len(out) != 1 {
 		t.Fatalf("macroexpand fold = (%v, %v), want the baked expansion", out, ok)
 	}
-	if !core.IsInertConst(out[0]) {
+	if !core.IsInertConst(&out[0]) {
 		t.Fatalf("baked expansion %#v must be an inert const", out[0])
 	}
 	l, err := core.AsList(out[0])
@@ -525,7 +525,7 @@ func TestApplyGradualContagionMixedArityMutator(t *testing.T) {
 	// reaches the value-returning siblings: model ONE dynamic value — the
 	// union of the reachable value returns.
 	out := applyGradualContagion(r, "mutq", args, nil, pos, false)
-	if len(out) != 1 || !core.IsDisjunct(out[0]) || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Dynamic {
 		t.Fatalf("mixed-arity model = %#v, want one dynamic Map|List disjunct", out)
 	}
 	if got := len(core.FlattenAlternatives(out[0])); got != 2 {
@@ -582,7 +582,7 @@ func TestDisjunctPartitionReturnsJoinAndDiagnostics(t *testing.T) {
 	// Both alternatives dispatch: the per-alternative returns join
 	// position-wise into the Integer|String union.
 	out, ok := disjunctPartitionReturns(r, "pcolq", []core.Value{covCDDisjunct(false, core.TInteger, core.TString)}, pos)
-	if !ok || len(out) != 1 || !core.IsDisjunct(out[0]) {
+	if !ok || len(out) != 1 || !core.IsDisjunct(&out[0]) {
 		t.Fatalf("partition = (%#v, %v), want the joined Integer|String carrier", out, ok)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -652,7 +652,7 @@ func TestDisjunctPartitionReturnsReturnsFnArm(t *testing.T) {
 	defer done()
 	out, ok := disjunctPartitionReturns(r, "prfq",
 		[]core.Value{covCDDisjunct(false, core.TInteger, core.TString)}, core.SrcPos{Row: 10, Col: 1})
-	if !ok || len(out) != 1 || !core.IsDisjunct(out[0]) {
+	if !ok || len(out) != 1 || !core.IsDisjunct(&out[0]) {
 		t.Fatalf("ReturnsFn partition = (%#v, %v), want the joined Integer|String carrier", out, ok)
 	}
 }
@@ -765,7 +765,7 @@ func TestAlternativeCarriersExpansion(t *testing.T) {
 	}
 	dyn := covCDDisjunct(false, core.TInteger, core.TString)
 	dyn.Dynamic = true
-	if got := alternativeCarriers(dyn); len(got) != 1 || !core.IsDisjunct(got[0]) {
+	if got := alternativeCarriers(dyn); len(got) != 1 || !core.IsDisjunct(&got[0]) {
 		t.Errorf("a dynamic disjunct must yield itself, got %#v", got)
 	}
 	conc := core.NewInteger(3)
@@ -786,7 +786,7 @@ func TestJoinReturnRowsLattice(t *testing.T) {
 		{core.NewCarrier(core.TInteger)},
 		{core.NewCarrier(core.TString)},
 	})
-	if !ok || len(out) != 1 || !core.IsDisjunct(out[0]) || !out[0].Carrier {
+	if !ok || len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Carrier {
 		t.Fatalf("divergent join = (%#v, %v), want one Integer|String carrier", out, ok)
 	}
 	// Agreeing rows collapse to the shared type.
@@ -794,7 +794,7 @@ func TestJoinReturnRowsLattice(t *testing.T) {
 		{core.NewCarrier(core.TInteger)},
 		{core.NewCarrier(core.TInteger)},
 	})
-	if !ok || len(out) != 1 || core.IsDisjunct(out[0]) || !out[0].Parent.Equal(core.TInteger) {
+	if !ok || len(out) != 1 || core.IsDisjunct(&out[0]) || !out[0].Parent.Equal(core.TInteger) {
 		t.Fatalf("agreeing join = (%#v, %v), want the one Integer carrier", out, ok)
 	}
 	// Rows disagreeing on return arity decline.

@@ -225,7 +225,7 @@ func TestS7RunBareTypePathWord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(out) != 1 || !IsBareTypeNode(out[0]) {
+	if len(out) != 1 || !IsBareTypeNode(&out[0]) {
 		t.Fatalf("expected a type literal, got %v", out)
 	}
 }
@@ -251,7 +251,7 @@ func TestS7StepWordForwardExpectingFunction(t *testing.T) {
 	// The reference is explicit: `cadd/v` arrives as the Function value.
 	e = NewTop(r)
 	w := NewWord("cadd")
-	info, _ := AsWord(w)
+	info, _ := AsWord(&w)
 	info.ForceVal = true
 	w = NewValueRaw(TWord, info)
 	e.Tape = NewTape([]Value{fwd, w}, StackHeadroom)
@@ -260,7 +260,7 @@ func TestS7StepWordForwardExpectingFunction(t *testing.T) {
 		t.Fatalf("stepWord cadd/v: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsWord(e.Tape.At(i)) {
+		if IsWord(e.Tape.Ref(i)) {
 			t.Errorf("cadd/v left unresolved as a Word at %d", i)
 		}
 	}

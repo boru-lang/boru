@@ -23,7 +23,7 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 	// Any narrows to the negation constraint itself: Any tand (tnot T)
 	// = tnot T (the top intersected with the complement is the
 	// complement).
-	if !IsConcrete(val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
 		return NewNegation(neg.Inner), nil
 	}
 
@@ -32,7 +32,7 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 	// membership test — scalar subtyping, disjunct alternatives, nested
 	// negation, DepScalar bounds — so a refined inner like (Integer gt
 	// 0) is checked pointwise against the value.
-	if IsConcrete(val) {
+	if IsConcrete(&val) {
 		// The complement of a refinement over a bound the analysis pass
 		// does not know: the refinement admits every value (depBoundCheck),
 		// so its complement would refuse every value, and neither verdict
@@ -74,7 +74,7 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 // Inner it does not, and unifyNegation falls back to admitting the
 // abstract operand.
 func isPlainTypeRef(v Value) bool {
-	return !v.IsDepScalar() && !IsDisjunct(v) && !IsNegation(v)
+	return !v.IsDepScalar() && !IsDisjunct(&v) && !IsNegation(v)
 }
 
 // negationUnifier is the kernel-installed Behavior for named negation
@@ -99,7 +99,7 @@ func (n *NegationUnifier) Match(v Value, t *Type) bool {
 // matchR is Match with the enclosing unify chain's registry threaded
 // into the complement walk (see isR).
 func (n *NegationUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(n.prev).Match(v, t)
 	}
 	_, err := unifyNegation(NegationInfo{Inner: n.inner}, v, r)
@@ -115,8 +115,8 @@ func (n *NegationUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// The complement rule decides whenever exactly one side IS this
 	// negation's node — concrete, carrier, or type-level candidate
 	// alike, exactly as the payload fold decided them for the body.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(n)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(n)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(n)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(n)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}

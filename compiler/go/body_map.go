@@ -106,7 +106,7 @@ func bodyMapShape(r *core.Registry, schema core.Value) bodyMapFacts {
 		data: &bodyMapWalk{facts: &quoted, reg: r, seen: map[string]bool{}}}
 	for _, k := range m.Keys() {
 		v, _ := m.Get(k)
-		if !core.IsConcrete(v) {
+		if !core.IsConcrete(&v) {
 			facts.computed = true
 			continue
 		}
@@ -150,7 +150,7 @@ type bodyMapWalk struct {
 func (w *bodyMapWalk) seq(toks []core.Value) {
 	for i := 0; i < len(toks); i++ {
 		w.walk(toks[i])
-		if wi, err := core.AsWord(toks[i]); err == nil && wi.Name == "quote" && i+1 < len(toks) && !core.IsParenExpr(toks[i+1]) {
+		if wi, err := core.AsWord(&toks[i]); err == nil && wi.Name == "quote" && i+1 < len(toks) && !core.IsParenExpr(&toks[i+1]) {
 			i++
 			w.quotedData(toks[i])
 		}
@@ -178,7 +178,7 @@ func (w *bodyMapWalk) walk(v core.Value) {
 		w.quotedData(v)
 		return
 	}
-	if core.IsSplice(v) || core.IsInterpString(v) || core.IsXmlInterp(v) || core.IsSugar(v) {
+	if core.IsSplice(&v) || core.IsInterpString(&v) || core.IsXmlInterp(&v) || core.IsSugar(&v) {
 		w.facts.opaque = true
 		return
 	}

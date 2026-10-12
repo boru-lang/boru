@@ -54,24 +54,24 @@ func TestStreamKindTypeMembership(t *testing.T) {
 	sk := MintStreamKind(r)
 	other := MintStreamKind(r) // a distinct StreamKind node
 
-	if !newStreamAtom("stdout", sk).Is(sk) {
+	if !addrOf(newStreamAtom("stdout", sk)).Is(sk) {
 		t.Error("stdout handle should be a StreamKind")
 	}
-	if !newStreamAtom("stdout", sk).Is(other) {
+	if !addrOf(newStreamAtom("stdout", sk)).Is(other) {
 		t.Error("a handle minted by one StreamKind should inhabit another (name-based)")
 	}
 	// A bare atom of the right name is admitted too (the type IS those atoms).
-	if !NewAtom("stderr").Is(sk) {
+	if !addrOf(NewAtom("stderr")).Is(sk) {
 		t.Error("a bare `stderr` atom should be a StreamKind")
 	}
 	// Unrelated atoms and non-atoms are rejected.
-	if NewAtom("foo").Is(sk) {
+	if addrOf(NewAtom("foo")).Is(sk) {
 		t.Error("`foo` atom must not be a StreamKind")
 	}
-	if NewString("stdout").Is(sk) {
+	if addrOf(NewString("stdout")).Is(sk) {
 		t.Error("the String \"stdout\" must not be a StreamKind")
 	}
-	if NewInteger(1).Is(sk) {
+	if addrOf(NewInteger(1)).Is(sk) {
 		t.Error("an Integer must not be a StreamKind")
 	}
 }

@@ -91,7 +91,7 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
 func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
-	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body)) {
+	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(&entry.Body) && !IsBareTypeNode(&entry.Body)) {
 		return nil
 	}
 	switch {

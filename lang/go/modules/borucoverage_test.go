@@ -48,7 +48,7 @@ func assertBoruCoverage(t *testing.T, coverID, moduleSource, testSource string, 
 	// Run the suite, then read fail-count + the coverage report on the SAME
 	// registry so the cover collector persists.
 	runOn("suite", testSource)
-	fails, _ := runOn("fail-count", `Test.fail-count`).AsConcreteInteger()
+	fails, _ := addrOf(runOn("fail-count", `Test.fail-count`)).AsConcreteInteger()
 	report := runOn("report", `Test.report`).String()
 	rep, merr := native.AsMap(runOn("coverage", `Test.coverage "`+coverID+`"`))
 	if merr != nil {
@@ -59,9 +59,9 @@ func assertBoruCoverage(t *testing.T, coverID, moduleSource, testSource string, 
 	}
 
 	get := func(k string) native.Value { v, _ := rep.Get(k); return v }
-	total, _ := get("total").AsConcreteInteger()
-	covered, _ := get("covered").AsConcreteInteger()
-	pct, _ := get("percent").AsConcreteFloat()
+	total, _ := addrOf(get("total")).AsConcreteInteger()
+	covered, _ := addrOf(get("covered")).AsConcreteInteger()
+	pct, _ := addrOf(get("percent")).AsConcreteFloat()
 	uncovList, _ := native.AsList(get("uncovered"))
 	var uncovered []int
 	for _, v := range uncovList.Slice() {

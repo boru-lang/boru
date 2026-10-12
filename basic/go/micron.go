@@ -139,7 +139,7 @@ func (mb micronBehavior) Compare(a, b Value) (int, error) {
 	if c, ok := core.LitVsConcreteOrder(a, b); ok {
 		return c, nil
 	}
-	if IsBareTypeNode(a) && IsBareTypeNode(b) {
+	if IsBareTypeNode(&a) && IsBareTypeNode(&b) {
 		return core.LitVsLitOrder(a, b), nil
 	}
 	// Two concrete Microns. This Comparer owns the pair only when it
@@ -496,10 +496,10 @@ func MicronSchemaFor(t *Type) (*OrderedMap, bool) {
 // and re-validates through the string path — one validator.
 func makeEmailon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return emailonFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Emailon")
 		if err != nil {
 			return nil, err
@@ -558,10 +558,10 @@ func emailonFromString(s string) ([]Value, error) {
 // `10.0.0.7` — all canonicalize to one stored `addr`.
 func makeIpon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return iponFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Ipon")
 		if err != nil {
 			return nil, err
@@ -611,10 +611,10 @@ func iponFromString(s string) ([]Value, error) {
 // re-renders and re-validates through the string parser — one validator.
 func makeHoston(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return hostonFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Hoston")
 		if err != nil {
 			return nil, err
@@ -798,10 +798,10 @@ var semveronFieldOrder = []string{"major", "minor", "patch", "prerelease", "buil
 // to the canonical string and re-parses through the single validator.
 func makeSemveron(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return semveronFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Semveron")
 		if err != nil {
 			return nil, err
@@ -1149,11 +1149,11 @@ func compareSemverBuild(a, b string) int {
 // (["rc" "1"]); the List is joined with '.' so both forms re-validate
 // through the single string parser identifier-by-identifier.
 func semveronIdentField(v Value, field string) (string, error) {
-	if v.Parent.ConformsTo(TString) && IsConcrete(v) {
+	if v.Parent.ConformsTo(TString) && IsConcrete(&v) {
 		s, _ := AsString(v)
 		return s, nil
 	}
-	if v.Parent.ConformsTo(TList) && IsConcrete(v) {
+	if v.Parent.ConformsTo(TList) && IsConcrete(&v) {
 		lst, lerr := RequireConcreteList(v, "make Semveron")
 		if lerr != nil {
 			return "", semveronErr(fmt.Sprintf("Semveron field %s: %v", field, lerr))
@@ -1184,10 +1184,10 @@ func semveronErr(detail string) error {
 // which (unlike net.ParseCIDR) preserves an IPv4-mapped IPv6 prefix.
 func makeCidron(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return cidronFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Cidron")
 		if err != nil {
 			return nil, err
@@ -1296,10 +1296,10 @@ func cidronErr(detail string) error {
 // or 64-bit only. Canonical form is lowercase colon-separated hex.
 func makeMacon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return maconFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Macon")
 		if err != nil {
 			return nil, err
@@ -1395,10 +1395,10 @@ func maconErr(detail string) error {
 // lowercase hex, 6 digits when opaque else 8.
 func makeColoron(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return coloronFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Coloron")
 		if err != nil {
 			return nil, err
@@ -1663,10 +1663,10 @@ func coloronErr(detail string) error {
 // parameter values).
 func makeMimon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return mimonFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Mimon")
 		if err != nil {
 			return nil, err
@@ -1823,10 +1823,10 @@ func mimonErr(detail string) error {
 // with MORE fractional digits is rejected, not rounded).
 func makeQion(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return qionFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Qion")
 		if err != nil {
 			return nil, err
@@ -1870,10 +1870,10 @@ func qionAmountText(v Value) (string, error) {
 			return "", qionErr("Qion amount is not a valid decimal")
 		}
 		return d.Text('f'), nil
-	case v.Parent.ConformsTo(TInteger) && IsConcrete(v):
+	case v.Parent.ConformsTo(TInteger) && IsConcrete(&v):
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10), nil
-	case v.Parent.ConformsTo(TString) && IsConcrete(v):
+	case v.Parent.ConformsTo(TString) && IsConcrete(&v):
 		s, _ := AsString(v)
 		return s, nil
 	}
@@ -2027,10 +2027,10 @@ var phononSep = strings.NewReplacer(" ", "", "\t", "", "-", "", ".", "", "(", ""
 // string (presentation separators stripped) or a {cc subscriber} map.
 func makePhonon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return phononFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Phonon")
 		if err != nil {
 			return nil, err
@@ -2088,10 +2088,10 @@ var urlonFieldOrder = []string{"scheme", "host", "port", "path", "query", "fragm
 // validator.
 func makeUrlon(src Value) ([]Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TString) && IsConcrete(src):
+	case src.Parent.ConformsTo(TString) && IsConcrete(&src):
 		s, _ := AsString(src)
 		return urlonFromString(s)
-	case src.Parent.ConformsTo(TMap) && IsConcrete(src):
+	case src.Parent.ConformsTo(TMap) && IsConcrete(&src):
 		m, err := RequireConcreteMap(src, "make Urlon")
 		if err != nil {
 			return nil, err
@@ -2190,7 +2190,7 @@ func makeMicronUser(info MicronTypeInfo, data Value, r *Registry) ([]Value, erro
 	if kindName == "" {
 		kindName = "Micron"
 	}
-	if !data.Parent.ConformsTo(TMap) || !IsConcrete(data) {
+	if !data.Parent.ConformsTo(TMap) || !IsConcrete(&data) {
 		return nil, &BoruError{Code: "type_error",
 			Detail: fmt.Sprintf("make: %s takes a map of fields, got %s", kindName, data.String())}
 	}
@@ -2210,7 +2210,7 @@ func makeMicronUser(info MicronTypeInfo, data Value, r *Registry) ([]Value, erro
 		val, ok := provided.Get(key)
 		if !ok {
 			// A concrete (non-type-body) schema entry is a default.
-			if constraint.Data != nil && !IsTypeBody(constraint) {
+			if constraint.Data != nil && !IsTypeBody(&constraint) {
 				result.Set(key, constraint)
 				continue
 			}
@@ -2249,7 +2249,7 @@ func CheckMicronConstruction(r *Registry, target, src Value, pos SrcPos) {
 	if !micronAccepts(target) {
 		return
 	}
-	if !IsConcrete(src) {
+	if !IsConcrete(&src) {
 		return
 	}
 	if src.Parent.ConformsTo(TMap) {
@@ -2258,7 +2258,7 @@ func CheckMicronConstruction(r *Registry, target, src Value, pos SrcPos) {
 			return
 		}
 		for _, k := range m.Keys() {
-			if fv, ok := m.Get(k); ok && !IsConcrete(fv) {
+			if fv, ok := m.Get(k); ok && !IsConcrete(&fv) {
 				return
 			}
 		}
@@ -2284,7 +2284,7 @@ func micronAccepts(v Value) bool {
 	if IsMicronType(v) {
 		return true
 	}
-	return IsBareTypeNode(v) && (&v).ConformsTo(TMicron)
+	return IsBareTypeNode(&v) && (&v).ConformsTo(TMicron)
 }
 
 // micronConstruct is `refine ‹base› {fields}` for the family.
@@ -2292,9 +2292,9 @@ func micronAccepts(v Value) bool {
 // field set is its validation contract (D5). Bare nominal refinement
 // of any Micron kind rides the ordinary refine-prefab path instead.
 func micronConstruct(base, arg Value, r *Registry) ([]Value, error) {
-	if !(IsBareTypeNode(base) && base.Equal(TMicron)) {
+	if !(IsBareTypeNode(&base) && base.Equal(TMicron)) {
 		name := base.Parent.Name()
-		if IsBareTypeNode(base) {
+		if IsBareTypeNode(&base) {
 			name = base.Name()
 		} else if info, err := AsMicronType(base); err == nil && info.Name != "" {
 			name = info.Name
@@ -2312,7 +2312,7 @@ func micronConstruct(base, arg Value, r *Registry) ([]Value, error) {
 	for _, k := range fieldsIn.Keys() {
 		v, _ := fieldsIn.Get(k)
 		v = ResolveWordValue(v)
-		if !IsTypeBody(v) && !IsConcrete(v) {
+		if !IsTypeBody(&v) && !IsConcrete(&v) {
 			return nil, &BoruError{Code: "type_error",
 				Detail: fmt.Sprintf("refine Micron: field %s must be a type or a concrete default, got %s", k, v.String())}
 		}

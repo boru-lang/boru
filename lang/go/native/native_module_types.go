@@ -66,7 +66,7 @@ func NewModuleNamespace(name string, fields *OrderedMap, module Value) Value {
 // namespace (a concrete Map carrying the module-namespace facet), or nil
 // for anything else.
 func moduleNSFields(v Value) *OrderedMap {
-	if core.ModuleNSOf(v) == nil || !IsConcrete(v) {
+	if core.ModuleNSOf(v) == nil || !IsConcrete(&v) {
 		return nil
 	}
 	if mp, ok := v.Data.(core.MapPayload); ok {
@@ -152,7 +152,7 @@ func moduleGet(v Value, key string) (Value, bool) {
 // stays dynamic(Any) (get reads none, getr raises — the runtime's job).
 func moduleInstGetReturns(args []Value, _ *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 2 || !IsConcrete(args[0]) {
+	if len(args) != 2 || !IsConcrete(&args[0]) {
 		return dyn
 	}
 	switch getKey(args[0]) {
@@ -209,10 +209,10 @@ func moduleNSGetrMiss(r *Registry, container Value, k string, keyPos core.SrcPos
 // may fold — module_export_growth.go). ok=false for a non-namespace
 // receiver.
 func moduleNSGetReturns(args []Value) ([]Value, bool) {
-	if len(args) != 2 || core.ModuleNSOf(args[1]) == nil || !IsConcrete(args[1]) {
+	if len(args) != 2 || core.ModuleNSOf(args[1]) == nil || !IsConcrete(&args[1]) {
 		return nil, false
 	}
-	if IsConcrete(args[0]) {
+	if IsConcrete(&args[0]) {
 		if val, ok := moduleExportGet(args[1], getKey(args[0])); ok {
 			return []Value{val}, true
 		}
@@ -236,10 +236,10 @@ func moduleNSGetReturns(args []Value) ([]Value, bool) {
 // and keeps the lenient Any fallback. ok=false for a non-namespace
 // receiver.
 func moduleNSGetrReturns(args []Value, r *Registry) ([]Value, bool) {
-	if len(args) != 2 || core.ModuleNSOf(args[1]) == nil || !IsConcrete(args[1]) {
+	if len(args) != 2 || core.ModuleNSOf(args[1]) == nil || !IsConcrete(&args[1]) {
 		return nil, false
 	}
-	if IsConcrete(args[0]) {
+	if IsConcrete(&args[0]) {
 		k := getKey(args[0])
 		if val, ok := moduleExportGet(args[1], k); ok {
 			return []Value{val}, true
@@ -271,7 +271,7 @@ func moduleNSGetrReturns(args []Value, r *Registry) ([]Value, bool) {
 // ---- get / getr handlers for the Module descriptor ----
 
 func getModuleInstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[1]) {
+	if !IsConcrete(&args[1]) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	if val, ok := moduleGet(args[1], getKey(args[0])); ok {
@@ -281,7 +281,7 @@ func getModuleInstHandler(args []Value, _ map[string]Value, _ []Value, r *Regist
 }
 
 func getrModuleInstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[1]) {
+	if !IsConcrete(&args[1]) {
 		return nil, r.BoruError("getr_error", "getr: cannot access property on type literal", "getr")
 	}
 	k := getKey(args[0])

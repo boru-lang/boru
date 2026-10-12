@@ -187,7 +187,7 @@ func TestIsHostTypeBody(t *testing.T) {
 	if !core.IsHostTypeBody(typeVal) {
 		t.Error("IsHostTypeBody(marked extension) = false, want true")
 	}
-	if !core.IsTypeBody(typeVal) {
+	if !core.IsTypeBody(&typeVal) {
 		t.Error("IsTypeBody(host type body) = false, want true")
 	}
 	// An ExtensionPayload whose Body does not embed HostTypeBody is an
@@ -196,7 +196,7 @@ func TestIsHostTypeBody(t *testing.T) {
 	if core.IsHostTypeBody(instVal) {
 		t.Error("IsHostTypeBody(plain extension) = true, want false")
 	}
-	if core.IsTypeBody(instVal) {
+	if core.IsTypeBody(&instVal) {
 		t.Error("IsTypeBody(plain extension instance) = true, want false")
 	}
 	if core.IsHostTypeBody(core.NewInteger(1)) {

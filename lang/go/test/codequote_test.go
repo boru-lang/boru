@@ -20,7 +20,7 @@ func TestCodequoteCapturesParenAsCode(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("codequote left %d values, want 1", len(res))
 	}
-	if !core.IsParenExpr(res[0]) {
+	if !core.IsParenExpr(&res[0]) {
 		t.Errorf("codequote (1 add 2) top is %s, want ParenExpr (raw code)", res[0].Parent.String())
 	}
 }
@@ -32,7 +32,7 @@ func TestCodequoteDoesNotEvaluateContents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("codequote should not evaluate its paren (got error): %v", err)
 	}
-	if len(res) != 1 || !core.IsParenExpr(res[0]) {
+	if len(res) != 1 || !core.IsParenExpr(&res[0]) {
 		t.Fatalf("want a single ParenExpr, got %v", res)
 	}
 }

@@ -262,7 +262,7 @@ func (g *genParamUnifier) matchR(v Value, t *Type, r *Registry) bool {
 }
 
 func (g *genParamUnifier) Format(v Value) string {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return g.param.Name
 	}
 	return baseBehavior(g.prev).Format(v)
@@ -274,9 +274,9 @@ func (g *genParamUnifier) Format(v Value) string {
 // bounds (disjuncts, depscalars) return nil and route through Unify.
 func boundNode(bound Value) *Type {
 	switch {
-	case IsBareTypeNode(bound):
+	case IsBareTypeNode(&bound):
 		return &bound
-	case IsClassType(bound):
+	case IsClassType(&bound):
 		oi, _ := AsClassType(bound)
 		return oi.Type
 	case IsSurfaceType(bound):

@@ -53,5 +53,5 @@ func orderingDeterminate(v core.Value) bool {
 	if v.Dynamic {
 		return false
 	}
-	return core.IsConcrete(v) || core.IsNoneShape(v) || core.IsBareTypeNode(v)
+	return core.IsConcrete(&v) || core.IsNoneShape(v) || core.IsBareTypeNode(&v)
 }

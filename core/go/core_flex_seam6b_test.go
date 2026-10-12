@@ -147,7 +147,7 @@ func TestS6b0MakeNodeHandlerUnavailableKind(t *testing.T) {
 	r.Ideals.Register(&Ideal{
 		Name:    "S6b0NodeKind",
 		Enabled: false,
-		Accepts: func(v Value) bool { return IsBareTypeNode(v) && v.Equal(TBoolean) },
+		Accepts: func(v Value) bool { return IsBareTypeNode(&v) && v.Equal(TBoolean) },
 	})
 	_, err := MakeNodeHandler([]Value{NewTypeLiteral(TBoolean), NewInteger(1)}, nil, nil, r)
 	if err == nil || !strings.Contains(err.Error(), "S6b0NodeKind type-kind is not available") {

@@ -138,7 +138,7 @@ func (c *CheckState) NoteBehaveDispatch(args []Value) {
 	for i := range args {
 		a := &args[i]
 		for _, br := range c.BehaveReaders {
-			if (a.Parent != nil && a.Parent.ConformsTo(br.Target)) || (IsBareTypeNode(*a) && a.ConformsTo(br.Target)) {
+			if (a.Parent != nil && a.Parent.ConformsTo(br.Target)) || (IsBareTypeNode(a) && a.ConformsTo(br.Target)) {
 				c.RecordCallEdge(fn, br.Reader)
 			}
 		}

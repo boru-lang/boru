@@ -110,7 +110,7 @@ func (es *EmitState) keptReadSeatedLive(v *core.Value) {
 		es.noteKeptDefsObserver("the read of `" + name + "`")
 		return
 	}
-	if core.IsTypeLiteral(*v) {
+	if core.IsTypeLiteral(v) {
 		*v = core.WithPos(core.ValueCarrier(*v), *v) // a type VALUE (NUR323)
 		return
 	}
@@ -320,7 +320,7 @@ func (es *EmitState) keptDefsFreshRead(id, name string) bool {
 // run time, so the check pass modelled none of its binding changes — and that
 // may be a code LIST (a Function callback runs in a frame of its own).
 func keepsComputedDefs(spec *core.CallableSpec, body core.Value) bool {
-	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(body) {
+	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(&body) {
 		return false
 	}
 	return body.Dynamic || body.Parent == nil || body.Parent.ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent)

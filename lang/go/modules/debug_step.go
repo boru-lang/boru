@@ -185,10 +185,10 @@ func isBreakAt(stack []native.Value, pointer int) bool {
 		return false
 	}
 	v := stack[pointer]
-	if !native.IsWord(v) {
+	if !native.IsWord(&v) {
 		return false
 	}
-	w, err := native.AsWord(v)
+	w, err := native.AsWord(&v)
 	return err == nil && w.Name == debugBreakWord
 }
 

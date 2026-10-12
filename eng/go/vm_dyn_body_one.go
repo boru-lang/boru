@@ -68,7 +68,7 @@ func dynBodyOneRefuses(results []core.Value) bool {
 // dynBodyValueReSteps reports whether the interpreter's tape DISPATCHES v
 // when it steps it, rather than pushing it as data.
 func dynBodyValueReSteps(v core.Value) bool {
-	if core.IsAppliableFn(v) || core.IsReach(v) {
+	if core.IsAppliableFn(v) || core.IsReach(&v) {
 		return true
 	}
 	if _, isClass := v.Data.(*core.ClassTypeInfo); isClass {
@@ -87,9 +87,9 @@ func dynBodyValueReSteps(v core.Value) bool {
 // on the island.
 func frameRunReSteps(results []core.Value) bool {
 	return slices.ContainsFunc(results, func(v core.Value) bool {
-		if info, err := core.AsSplice(v); err == nil {
+		if info, err := core.AsSplice(&v); err == nil {
 			return slices.ContainsFunc(splicePayload(info.Data), func(e core.Value) bool {
-				return core.IsSplice(e) || dynBodyValueReSteps(e)
+				return core.IsSplice(&e) || dynBodyValueReSteps(e)
 			})
 		}
 		return dynBodyValueReSteps(v)

@@ -143,7 +143,7 @@ func TestSeam7UnifyFoldReturns(t *testing.T) {
 		t.Fatalf("build disjunct: %v / %v", disj, err)
 	}
 	dv := disj[len(disj)-1]
-	if !IsDisjunct(dv) {
+	if !IsDisjunct(&dv) {
 		t.Skip("tany did not yield a disjunct value")
 	}
 	dout := unifyFoldReturns([]Value{dv, dv}, r)

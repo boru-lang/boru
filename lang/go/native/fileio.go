@@ -155,7 +155,7 @@ func parseFileOpts(opts Value) (enc, format, mode, nl string, fmtExplicit bool, 
 	mode = "write"
 	nl = "lf"
 
-	if !opts.Parent.Equal(TMap) || !IsConcrete(opts) {
+	if !opts.Parent.Equal(TMap) || !IsConcrete(&opts) {
 		return
 	}
 	m, _ := AsMap(opts)

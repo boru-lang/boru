@@ -996,7 +996,7 @@ func convertResults(result []core.Value) []any {
 			// pull a zero value from the DepScalarInfo payload. Route
 			// through String() to render as "(Integer gte 5)".
 			out[i] = v.String()
-		case native.IsBareTypeNode(v):
+		case native.IsBareTypeNode(&v):
 			// Type literal (e.g. `typeof x` result, a bare `Integer`
 			// or user-minted Foo literal): render its type name
 			// rather than trying to extract an Integer/String payload

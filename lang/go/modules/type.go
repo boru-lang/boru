@@ -88,7 +88,7 @@ func BuildTypeModule(parent *native.Registry) (native.ModuleDesc, error) {
 // ---- Common helpers ----
 
 func typeBodyArg(v native.Value, opName string, r *native.Registry) (native.Value, error) {
-	if !native.IsTypeBody(v) {
+	if !native.IsTypeBody(&v) {
 		return native.Value{}, r.BoruError("type_error",
 			fmt.Sprintf("%s: argument must be a type, got %s", opName, v.String()), opName)
 	}
@@ -106,7 +106,7 @@ func typeBodyArg(v native.Value, opName string, r *native.Registry) (native.Valu
 // strict equality — set-algebra over those is reserved for future
 // work.
 func altSubtypes(alt, target native.Value) bool {
-	if native.IsBareTypeNode(alt) && native.IsBareTypeNode(target) {
+	if native.IsBareTypeNode(&alt) && native.IsBareTypeNode(&target) {
 		aNode := &alt
 		tNode := &target
 		for d := aNode; d != nil; d = d.Parent {
@@ -131,7 +131,7 @@ func fieldsOf(v native.Value) *native.OrderedMap {
 	case native.IsRecordType(v):
 		rec, _ := native.AsRecordType(v)
 		return rec.Fields
-	case native.IsClassType(v):
+	case native.IsClassType(&v):
 		info, _ := native.AsClassType(v)
 		return info.AllFields()
 	}
@@ -153,7 +153,7 @@ func constructRecordOrObjectLike(original native.Value, newFields *native.Ordere
 }
 
 func stripNoneFromField(t native.Value) native.Value {
-	if !native.IsDisjunct(t) {
+	if !native.IsDisjunct(&t) {
 		return t
 	}
 	disj, _ := native.AsDisjunct(t)
@@ -173,7 +173,7 @@ func stripNoneFromField(t native.Value) native.Value {
 }
 
 func latticeNode(v native.Value) *native.Type {
-	if native.IsBareTypeNode(v) {
+	if native.IsBareTypeNode(&v) {
 		node := v
 		return &node
 	}
@@ -221,7 +221,7 @@ func fnSigs(v native.Value, opName string, r *native.Registry) ([]native.FnSig, 
 
 // fieldNames decodes a list of field-name atoms/strings into []string.
 func fieldNames(list native.Value, opName string, r *native.Registry) ([]string, error) {
-	if !native.IsConcrete(list) {
+	if !native.IsConcrete(&list) {
 		return nil, r.BoruError("type_error",
 			opName+": expected a concrete list of field names", opName)
 	}

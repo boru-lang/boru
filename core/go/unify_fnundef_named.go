@@ -51,7 +51,7 @@ func (f *FnUndefUnifier) Match(v Value, t *Type) bool {
 // matchR is Match with the enclosing unify chain's registry threaded
 // into the signature rule's Pattern-compatibility unify (see isR).
 func (f *FnUndefUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(f.prev).Match(v, t)
 	}
 	// A carrier (abstract value) carries no signatures to inspect. Admit
@@ -80,8 +80,8 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// shape's node; the fn-shape structural unifier handles the
 	// candidate (function value, carrier, or another fn shape) exactly
 	// as the ShapeFnUndef fold handled it for the body.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(f)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(f)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(f)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(f)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}
@@ -89,7 +89,7 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	if aSelf {
 		candidate = b
 	}
-	if candidate.Carrier || !IsConcrete(candidate) {
+	if candidate.Carrier || !IsConcrete(&candidate) {
 		// Sound over-approximation, mirroring Match's carrier arm.
 		if candidate.Parent != nil && (candidate.Parent.ConformsTo(TFunction) ||
 			candidate.Parent.Equal(TAny) || candidate.Parent.Equal(TFnUndef)) {

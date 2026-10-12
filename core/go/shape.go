@@ -65,7 +65,7 @@ func Shape(v Value) ValueShape {
 	// Payload-shaped values come next — they win over plain Data==nil
 	// classification because a Disjunct/DepScalar/FnUndef payload is
 	// the discriminator, not the Parent.
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return ShapeDisjunct
 	}
 	if IsNegation(v) {
@@ -102,7 +102,7 @@ func Shape(v Value) ValueShape {
 			return ShapeRecord
 		case IsOptionsType(v):
 			return ShapeOptions
-		case IsTypedMap(v):
+		case IsTypedMap(&v):
 			return ShapeTypedMap
 		default:
 			return ShapeMap
@@ -120,7 +120,7 @@ func Shape(v Value) ValueShape {
 			return ShapeTypeLiteral
 		case IsTableType(v):
 			return ShapeTable
-		case IsTypedList(v):
+		case IsTypedList(&v):
 			return ShapeTypedList
 		default:
 			return ShapeList

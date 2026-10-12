@@ -250,7 +250,7 @@ func TestBodyRunEnvMulti(t *testing.T) {
 		t.Fatal("a value rebind joins rather than declines")
 	}
 	k, _ := r.Defs.Top("k")
-	if core.IsConcrete(k) || !k.Carrier {
+	if core.IsConcrete(&k) || !k.Carrier {
 		t.Errorf("a rebound name reads as a carrier inside the environment, got %v", k)
 	}
 	if s, _ := r.Defs.Top("same"); s.String() != "1" || s.Carrier {
@@ -309,7 +309,7 @@ func TestBindCarrier(t *testing.T) {
 	if got := bindCarrier(c); !got.Carrier || got.Parent != c.Parent {
 		t.Error("a carrier is itself")
 	}
-	if got := bindCarrier(core.NewInteger(5)); !got.Carrier || core.IsConcrete(got) || !got.Parent.Equal(core.TInteger) {
+	if got := bindCarrier(core.NewInteger(5)); !got.Carrier || core.IsConcrete(&got) || !got.Parent.Equal(core.TInteger) {
 		t.Errorf("a scalar widens to its type carrier: %v", got)
 	}
 	if got := bindCarrier(core.NewList(nil)); !got.Parent.Equal(core.TList) || got.Data == nil {

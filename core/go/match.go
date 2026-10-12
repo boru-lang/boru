@@ -60,7 +60,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// for macros/binders (syntax-rules-style keyword literals).
 		if sig.QuoteArgs != nil && sig.QuoteArgs[idx] && IsAtom(pattern) {
 			name := ""
-			if w, werr := AsWord(val); werr == nil {
+			if w, werr := AsWord(&val); werr == nil {
 				name = w.Name
 			} else if a, aerr := AsAtom(val); aerr == nil {
 				name = a
@@ -78,8 +78,8 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// way before unifying — otherwise a typed-list/map pattern
 		// (`xs:[:Integer]`) rejects `f zs` while accepting the literal
 		// `f [1 2]`, purely by spelling.
-		if isForward && r != nil && IsWord(val) {
-			if w, werr := AsWord(val); werr == nil {
+		if isForward && r != nil && IsWord(&val) {
+			if w, werr := AsWord(&val); werr == nil {
 				if top, ok := r.Defs.Top(w.Name); ok {
 					val = top
 				}
@@ -88,7 +88,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		if pattern.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
 			pattern.Data != nil && val.Data != nil &&
 			!IsOptionsType(pattern) &&
-			!IsRecordType(val) && !IsTypedMap(val) && !IsOptionsType(val) {
+			!IsRecordType(val) && !IsTypedMap(&val) && !IsOptionsType(val) {
 			if isForward {
 				// Legacy: structural map patterns only enforced on
 				// stack positions. See doc comment.
@@ -106,7 +106,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// Concrete scalar pattern? Always check.
 		// *Type-literal / non-concrete pattern on a forward position?
 		// Skip — handlers may further constrain inside the body.
-		if isForward && !IsConcrete(pattern) {
+		if isForward && !IsConcrete(&pattern) {
 			continue
 		}
 		if patternReadsContents(pattern) {
@@ -198,10 +198,10 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 	if pattern.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
 		pattern.Data != nil && val.Data != nil &&
 		!IsOptionsType(pattern) &&
-		!IsRecordType(val) && !IsTypedMap(val) && !IsOptionsType(val) {
+		!IsRecordType(val) && !IsTypedMap(&val) && !IsOptionsType(val) {
 		return false // structural map pattern: stack-only enforcement
 	}
-	if !IsConcrete(pattern) {
+	if !IsConcrete(&pattern) {
 		return false // type-literal / non-concrete pattern: not forward-enforced
 	}
 	// Direct unifyNegation path for negation patterns — see the twin

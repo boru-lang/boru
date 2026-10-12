@@ -114,7 +114,7 @@ func (lw *lowerer) splitWords(sp *PolySplit, wordPos core.SrcPos, fwdPos []core.
 	var words map[int]core.Value
 	for i, p := range fwdPos {
 		j := bodyTokenAt(toks, p)
-		if _, known := sp.Words[i]; known || j <= at || !core.IsWord(toks[j]) {
+		if _, known := sp.Words[i]; known || j <= at || !core.IsWord(&toks[j]) {
 			continue
 		}
 		if words == nil {

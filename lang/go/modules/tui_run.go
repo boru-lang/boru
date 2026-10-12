@@ -357,7 +357,8 @@ func chordCtrl(ev native.ReadMap, key string) bool {
 		return false
 	}
 	for i := 0; i < l.Len(); i++ {
-		if s, sErr := l.Get(i).AsConcreteString(); sErr == nil && s == "ctrl" {
+		el := l.Get(i)
+		if s, sErr := el.AsConcreteString(); sErr == nil && s == "ctrl" {
 			return true
 		}
 	}

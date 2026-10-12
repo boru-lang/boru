@@ -22,13 +22,13 @@ func spliceOutsSeat(want, got []core.Value) ([]core.Value, bool) {
 	kept := make([]core.Value, 0, len(got))
 	for i, v := range got {
 		if !tapeCoupled(got[i : i+1]) {
-			if core.IsSplice(want[i]) {
+			if core.IsSplice(&want[i]) {
 				return nil, false
 			}
 			kept = append(kept, v)
 			continue
 		}
-		if !core.IsSplice(v) || !sameSpliceToken(v, want[i]) {
+		if !core.IsSplice(&v) || !sameSpliceToken(v, want[i]) {
 			return nil, false
 		}
 	}
@@ -49,8 +49,8 @@ func sameSpliceToken(a, b core.Value) bool {
 		a.Carrier || b.Carrier || a.Dynamic || b.Dynamic {
 		return false
 	}
-	if ai, err := core.AsSplice(a); err == nil {
-		bi, err := core.AsSplice(b)
+	if ai, err := core.AsSplice(&a); err == nil {
+		bi, err := core.AsSplice(&b)
 		return err == nil && sameSpliceToken(ai.Data, bi.Data)
 	}
 	if aw, ok := a.Data.(core.WordInfo); ok {
@@ -69,7 +69,7 @@ func sameSpliceToken(a, b core.Value) bool {
 		}
 		return true
 	}
-	return core.IsConcrete(a) && core.IsConcrete(b) && renderIsValue(a.Parent) && core.CanonValue(a) == core.CanonValue(b)
+	return core.IsConcrete(&a) && core.IsConcrete(&b) && renderIsValue(a.Parent) && core.CanonValue(a) == core.CanonValue(b)
 }
 
 // renderIsValue reports whether a value of type t renders injectively —

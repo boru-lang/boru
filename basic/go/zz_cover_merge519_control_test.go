@@ -115,14 +115,14 @@ func TestMerge519ArmSpliceHandlerValueArms(t *testing.T) {
 	r := merge519Registry(t)
 
 	typed := merge519Parse(t, "[:Integer 1 2]")
-	if len(typed) != 1 || !IsTypedList(typed[0]) {
+	if len(typed) != 1 || !IsTypedList(&typed[0]) {
 		t.Fatalf("want one typed list, got %v", typed)
 	}
 	out, err := ArmSpliceHandler(typed, nil, nil, r)
 	if err != nil {
 		t.Fatalf("typed-list arm: %v", err)
 	}
-	if len(out) != 1 || !IsTypedList(out[0]) || fmt.Sprint(out[0]) != fmt.Sprint(typed[0]) {
+	if len(out) != 1 || !IsTypedList(&out[0]) || fmt.Sprint(out[0]) != fmt.Sprint(typed[0]) {
 		t.Errorf("a typed-list arm is its own value: got %v", out)
 	}
 

@@ -720,7 +720,7 @@ func typeCovered(checked, actual core.Value) bool {
 	// enum mints share members and differ only by ID).
 	if actualIsTypeValue(actual) {
 		cnode := checked.Parent
-		if core.IsBareTypeNode(checked) {
+		if core.IsBareTypeNode(&checked) {
 			cnode = core.ValueType(checked)
 		}
 		if cnode != nil && core.TType.ConformsTo(cnode) {
@@ -730,7 +730,7 @@ func typeCovered(checked, actual core.Value) bool {
 			return true
 		}
 	}
-	if core.IsDisjunct(checked) {
+	if core.IsDisjunct(&checked) {
 		di, err := core.AsDisjunct(checked)
 		if err != nil {
 			return false
@@ -743,7 +743,7 @@ func typeCovered(checked, actual core.Value) bool {
 		return false
 	}
 	node := checked.Parent
-	if core.IsBareTypeNode(checked) {
+	if core.IsBareTypeNode(&checked) {
 		node = core.ValueType(checked)
 	}
 	if node == nil {
@@ -771,7 +771,7 @@ func typeCovered(checked, actual core.Value) bool {
 // typeCovered so a `typeof`/type-algebra result is judged by its
 // type-membership, not by its denoted type's lattice parent.
 func actualIsTypeValue(v core.Value) bool {
-	return core.IsBareTypeNode(v) || core.IsTypeBody(v) ||
+	return core.IsBareTypeNode(&v) || core.IsTypeBody(&v) ||
 		core.IsRecordShape(v) || v.Parent.ConformsTo(core.TType)
 }
 

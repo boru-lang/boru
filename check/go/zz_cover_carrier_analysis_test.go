@@ -173,7 +173,7 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 		Returns: []*core.Type{core.TInteger},
 		Impl:    core.Boru([]core.Value{core.NewInteger(1)}),
 	}}})
-	if got := toCarrier(fnv); !core.IsConcrete(got) {
+	if got := toCarrier(fnv); !core.IsConcrete(&got) {
 		t.Error("a Function value must survive carrier-stripping concrete")
 	} else if _, ok := got.Data.(core.FnDefInfo); !ok {
 		t.Errorf("Function payload = %T after strip, want core.FnDefInfo", got.Data)
@@ -185,7 +185,7 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	if _, ok := dep.Data.(core.DepScalarInfo); !ok {
 		t.Fatalf("fixture: NewDepScalar payload = %T", dep.Data)
 	}
-	if got := toCarrier(dep); !core.IsConcrete(got) {
+	if got := toCarrier(dep); !core.IsConcrete(&got) {
 		t.Error("a DepScalar constraint must survive carrier-stripping concrete")
 	} else if _, ok := got.Data.(core.DepScalarInfo); !ok {
 		t.Errorf("DepScalar payload = %T after strip, want core.DepScalarInfo", got.Data)
@@ -200,7 +200,7 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 		Body: core.NewRecordType(fields),
 		Kind: core.SchemaRecord,
 	})
-	if got := toCarrier(schema); !core.IsConcrete(got) {
+	if got := toCarrier(schema); !core.IsConcrete(&got) {
 		t.Error("a schema value must survive carrier-stripping concrete")
 	} else if _, ok := got.Data.(*core.TypeSchemaInfo); !ok {
 		t.Errorf("schema payload = %T after strip, want *core.TypeSchemaInfo", got.Data)
@@ -212,13 +212,13 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	mfields := core.NewOrderedMap()
 	mfields.Set("address", core.NewString("a@b.c"))
 	micron := core.NewValueRaw(core.TEmailon, core.MicronPayload{Fields: mfields})
-	if got := toCarrier(micron); !core.IsConcrete(got) {
+	if got := toCarrier(micron); !core.IsConcrete(&got) {
 		t.Error("a Micron value must survive carrier-stripping concrete")
 	} else if _, ok := got.Data.(core.MicronPayload); !ok {
 		t.Errorf("Micron payload = %T after strip, want core.MicronPayload", got.Data)
 	}
 	pathon := core.NewValueRaw(core.TPathon, core.PathonPayload{Info: core.PathonInfo{Parts: []string{"a"}}})
-	if got := toCarrier(pathon); !core.IsConcrete(got) {
+	if got := toCarrier(pathon); !core.IsConcrete(&got) {
 		t.Error("a Pathon value must survive carrier-stripping concrete")
 	} else if _, ok := got.Data.(core.PathonPayload); !ok {
 		t.Errorf("Pathon payload = %T after strip, want core.PathonPayload", got.Data)
@@ -226,7 +226,7 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	// The negative pair: a micron-typed CARRIER (no payload) is already
 	// in carrier form and passes through unchanged — preservation is
 	// payload-gated, not type-gated.
-	if got := toCarrier(core.NewCarrier(core.TEmailon)); core.IsConcrete(got) || !got.Carrier {
+	if got := toCarrier(core.NewCarrier(core.TEmailon)); core.IsConcrete(&got) || !got.Carrier {
 		t.Error("a micron-typed carrier must stay a carrier")
 	}
 
@@ -236,17 +236,17 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	if !core.IsModuleFamilyValue(mod) {
 		t.Fatal("fixture: NewModuleInstance must be a module-family value")
 	}
-	if got := toCarrier(mod); !core.IsConcrete(got) {
+	if got := toCarrier(mod); !core.IsConcrete(&got) {
 		t.Error("a module value must survive carrier-stripping concrete")
 	}
 
 	// Reach values stay concrete: stripping would null the ReachInfo and
 	// the chain would never expand in check mode.
 	reach := core.NewReachFromKeys(core.NewInteger(1), []core.Value{core.NewString("a")})
-	if !core.IsReach(reach) {
+	if !core.IsReach(&reach) {
 		t.Fatal("fixture: NewReachFromKeys must build a Reach")
 	}
-	if got := toCarrier(reach); !core.IsReach(got) || !core.IsConcrete(got) {
+	if got := toCarrier(reach); !core.IsReach(&got) || !core.IsConcrete(&got) {
 		t.Error("a Reach value must survive carrier-stripping concrete")
 	}
 
@@ -453,10 +453,10 @@ func TestZcaResolveTypeNameArgs(t *testing.T) {
 		t.Errorf("Integer word resolved to %v, want the Integer literal", out[0])
 	}
 	// Everything else passes through untouched.
-	if !core.IsWord(out[1]) || out[1].Data != nil {
+	if !core.IsWord(&out[1]) || out[1].Data != nil {
 		t.Error("a payload-less Word-typed carrier must pass through")
 	}
-	if w, err := core.AsWord(out[2]); err != nil || w.Name != "zca-not-a-type-q" {
+	if w, err := core.AsWord(&out[2]); err != nil || w.Name != "zca-not-a-type-q" {
 		t.Error("a non-type word must pass through as a word")
 	}
 	if n, err := core.AsInteger(out[3]); err != nil || n != 3 {
@@ -464,7 +464,7 @@ func TestZcaResolveTypeNameArgs(t *testing.T) {
 	}
 	// The copy is lazy AND non-destructive: the caller's slice keeps the
 	// raw word.
-	if !core.IsWord(args[0]) || args[0].Data == nil {
+	if !core.IsWord(&args[0]) || args[0].Data == nil {
 		t.Error("resolveTypeNameArgs must not mutate the caller's slice")
 	}
 	// The all-resolved common case allocates nothing: same values back.

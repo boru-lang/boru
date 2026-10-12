@@ -463,7 +463,7 @@ func TestDoBody(t *testing.T) {
 		t.Error("a body with more tokens than the call's leaves another value")
 	}
 	notDo := doProgram()
-	inner, _ := core.AsParenExpr(notDo[0])
+	inner, _ := core.AsParenExpr(&notDo[0])
 	inner[1] = gtok(core.NewWord("each"), 6)
 	if _, _, ok := es.doBody(do, notDo, 0); ok {
 		t.Error("a body list another word takes is not the do's")

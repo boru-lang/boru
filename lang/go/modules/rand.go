@@ -151,7 +151,7 @@ func randMapFromReturns(args []native.Value, r *native.Registry) []native.Value 
 	if schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema"); err == nil {
 		base := len(r.Check.Diagnostics)
 		for _, key := range schema.Keys() {
-			if body, _ := schema.Get(key); native.IsConcrete(body) && body.Parent.ConformsTo(native.TList) {
+			if body, _ := schema.Get(key); native.IsConcrete(&body) && body.Parent.ConformsTo(native.TList) {
 				native.AnalyseMultiRunBody(r, body)
 			}
 		}

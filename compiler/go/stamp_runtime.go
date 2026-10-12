@@ -502,12 +502,12 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 	var walk func(toks []core.Value)
 	addDecl := func(decl core.Value) {
 		switch {
-		case core.IsWord(decl):
-			w, _ := core.AsWord(decl)
+		case core.IsWord(&decl):
+			w, _ := core.AsWord(&decl)
 			names[w.Name] = true
-		case decl.Parent.Equal(core.TList) && core.IsConcrete(decl):
-			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Get(0)) {
-				w, _ := core.AsWord(dl.Get(0))
+		case decl.Parent.Equal(core.TList) && core.IsConcrete(&decl):
+			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Ref(0)) {
+				w, _ := core.AsWord(dl.Ref(0))
 				names[w.Name] = true
 			}
 		case decl.Parent.ConformsTo(core.TString):
@@ -517,17 +517,17 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 	}
 	walk = func(toks []core.Value) {
 		for i, tok := range toks {
-			if core.IsWord(tok) {
-				w, _ := core.AsWord(tok)
+			if core.IsWord(&tok) {
+				w, _ := core.AsWord(&tok)
 				switch w.Name {
 				case "def":
-					if i+1 < len(toks) && core.IsWord(toks[i+1]) {
-						nw, _ := core.AsWord(toks[i+1])
+					if i+1 < len(toks) && core.IsWord(&toks[i+1]) {
+						nw, _ := core.AsWord(&toks[i+1])
 						names[nw.Name] = true
 					}
 				case "var":
-					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(toks[i+1]) {
-						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Get(0)) {
+					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(&toks[i+1]) {
+						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Ref(0)) {
 							if decls, err := core.AsList(vl.Get(0)); err == nil {
 								for _, d := range decls.Slice() {
 									addDecl(d)
@@ -538,7 +538,7 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 				}
 				continue
 			}
-			if tok.Parent.Equal(core.TList) && core.IsConcrete(tok) {
+			if tok.Parent.Equal(core.TList) && core.IsConcrete(&tok) {
 				if l, err := core.AsList(tok); err == nil {
 					walk(l.Slice())
 				}

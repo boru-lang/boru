@@ -296,7 +296,7 @@ func concatOptsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 }
 
 func doConcat(listVal Value, o strOpts) ([]Value, error) {
-	if !IsConcrete(listVal) {
+	if !IsConcrete(&listVal) {
 		return nil, fmt.Errorf("concat: argument must be a concrete list, got type literal")
 	}
 	elems, _ := AsList(listVal)
@@ -1047,7 +1047,7 @@ func padHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 // pad: forward-first: args[0]=width (forward), args[1]=opts (forward), args[2]=string (stack).
 // Usage: "ab" pad 5 {side:"left" fill:"0"} → "000ab"
 func padOptsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[1]) {
+	if !IsConcrete(&args[1]) {
 		return nil, r.BoruError("pad_error", "pad: options must be a concrete map, got type literal", "pad")
 	}
 	if err := validateStrOpts(r, args[1], "pad"); err != nil {

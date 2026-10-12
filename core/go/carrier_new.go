@@ -64,9 +64,9 @@ func CarrierOfLiteral(lit Value) Value {
 // None literal is a value at dispatch and widens to the None carrier.
 func ValueCarrier(v Value) Value {
 	switch {
-	case IsTypeLiteral(v):
+	case IsTypeLiteral(&v):
 		return NewCarrier(TType)
-	case IsBareTypeNode(v):
+	case IsBareTypeNode(&v):
 		return NewCarrier(TNone)
 	}
 	c := NewCarrier(v.Parent)
@@ -115,10 +115,10 @@ func NewCarrierTypedListValue(child Value) Value {
 // another overload (NUR316: `ys each [add 1]` over a list `each` built from
 // such a read answered [[1]] for [['s1']]).
 func CarrierTypedListOf(v Value) Value {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return NewCarrierTypedListValue(v)
 	}
-	if IsTypeLiteral(v) {
+	if IsTypeLiteral(&v) {
 		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
 	}
 	if v.Dynamic {

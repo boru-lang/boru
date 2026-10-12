@@ -294,11 +294,11 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	if len(args) < 2 {
 		return nil
 	}
-	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) {
+	if r == nil || !r.Check.IsActive() || !IsConcrete(&args[0]) {
 		return nil
 	}
 	fnVal := args[1]
-	if !IsConcrete(fnVal) {
+	if !IsConcrete(&fnVal) {
 		// A container member's fn read as a gradual carrier: the pass
 		// tagged the value the read resolved (NoteFnMemberRead), which the
 		// run installs — seen through for the call graph alone (NUR257).
@@ -320,7 +320,7 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	if fd, isFn := fnVal.Data.(core.FnDefInfo); isFn {
 		r.Check.NoteBehaveReader(target, fd)
 	}
-	if name == "make" && IsConcrete(args[1]) {
+	if name == "make" && IsConcrete(&args[1]) {
 		r.Check.NoteBehaveMaker(target)
 	}
 	return nil

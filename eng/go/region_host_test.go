@@ -25,7 +25,7 @@ func regionDesc(toks ...core.Value) *compiler.RegionDesc {
 	slots := make([]compiler.SlotDesc, 0, len(toks))
 	for _, t := range toks {
 		s := compiler.SlotDesc{Token: t}
-		if core.IsWord(t) {
+		if core.IsWord(&t) {
 			s.Source = compiler.SlotWordRef
 		} else {
 			s.Source = compiler.SlotConst
@@ -128,7 +128,7 @@ func TestRegionHostScratchSpanReuses(t *testing.T) {
 	// it would never meet an OpenParen on its next step — the first corpus
 	// walk of the COLLECT oracle spun forever on exactly that.
 	first := h.ScratchParenSpan([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if len(first) != 4 || !core.IsOpenParen(first[0]) || !core.IsCloseParen(first[3]) ||
+	if len(first) != 4 || !core.IsOpenParen(&first[0]) || !core.IsCloseParen(&first[3]) ||
 		core.CanonValue(first[1]) != "1" || core.CanonValue(first[2]) != "2" {
 		t.Fatalf("span = %v, want ( 1 2 )", first)
 	}
@@ -237,7 +237,7 @@ func TestRegionHostClassificationsFollowTheRegistry(t *testing.T) {
 	// …and `/v` opts out, which is the exact subtlety the seam exists to keep
 	// in one implementation. A host that read only "is it bound" would miss it.
 	vTok := core.NewWord("f")
-	if wi, err := core.AsWord(vTok); err == nil {
+	if wi, err := core.AsWord(&vTok); err == nil {
 		wi.ForceVal = true
 		vTok.Data = wi
 	}
@@ -249,7 +249,7 @@ func TestRegionHostClassificationsFollowTheRegistry(t *testing.T) {
 	// the one classification that cannot drift between hosts. Asserted against
 	// core's own answer rather than a transcribed constant.
 	gotV, gotK := h.StaticForwardType(core.NewInteger(1))
-	wantV, wantK := core.StaticForwardTypeOf(core.NewInteger(1))
+	wantV, wantK := core.StaticForwardTypeOf(addrOf(core.NewInteger(1)))
 	if core.CanonValue(gotV) != core.CanonValue(wantV) || gotK != wantK {
 		t.Errorf("StaticForwardType = %s/%v, want core's own answer %s/%v",
 			core.CanonValue(gotV), gotK, core.CanonValue(wantV), wantK)

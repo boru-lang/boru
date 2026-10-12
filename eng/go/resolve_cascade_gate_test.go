@@ -19,11 +19,11 @@ func TestResolveFieldTypeBuiltinArm(t *testing.T) {
 		t.Fatalf("registry: %v", err)
 	}
 	got := core.ResolveFieldType(r, core.NewWord("Integer"))
-	if !core.IsBareTypeNode(got) || got.ID != core.TInteger.ID {
+	if !core.IsBareTypeNode(&got) || got.ID != core.TInteger.ID {
 		t.Fatalf("ResolveFieldType(word(Integer)) = %s, want the Integer literal", got)
 	}
 	raw := core.NewWord("NoSuchTypeName")
-	if got := core.ResolveFieldType(r, raw); !core.IsWord(got) {
+	if got := core.ResolveFieldType(r, raw); !core.IsWord(&got) {
 		t.Fatalf("unknown name must pass through, got %s", got)
 	}
 }
@@ -42,11 +42,11 @@ func TestResolveTypeLiteralDefBareNameClassArm(t *testing.T) {
 	cls := core.NewClassType(core.TInteger, core.ClassTypeInfo{Name: "Integer", Fields: fields})
 	core.InstallDef(r, "Integer", cls)
 	got := core.ResolveTypeLiteralDef(core.NewTypeLiteral(core.TInteger), r)
-	if !core.IsClassType(got) {
+	if !core.IsClassType(&got) {
 		t.Fatalf("bare-name class binding must win, got %s", got)
 	}
 	// Negative: no binding → the literal passes through.
-	if got := core.ResolveTypeLiteralDef(core.NewTypeLiteral(core.TFloat), r); !core.IsBareTypeNode(got) || got.ID != core.TFloat.ID {
+	if got := core.ResolveTypeLiteralDef(core.NewTypeLiteral(core.TFloat), r); !core.IsBareTypeNode(&got) || got.ID != core.TFloat.ID {
 		t.Fatalf("unbound literal must pass through, got %s", got)
 	}
 }
@@ -64,7 +64,7 @@ func TestResolveSigChildParamArms(t *testing.T) {
 	// User-type child resolves to the binding's body at sig install.
 	got := core.ResolveSigChildParam(r, core.NewTypedList(core.NewWord("Foo")))
 	ci, cerr := core.AsChildType(got)
-	if cerr != nil || core.IsWord(ci.Child) {
+	if cerr != nil || core.IsWord(&ci.Child) {
 		t.Fatalf("user-type child must resolve, got %s", got)
 	}
 	// Nested container whose inner child resolves to nothing: the

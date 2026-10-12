@@ -22,7 +22,7 @@ import (
 // value is not a concrete map or the key is absent. It is the single option
 // reader all of the io words share.
 func mapBoolOpt(opts Value, key string, def bool) bool {
-	if !opts.Parent.Equal(TMap) || !IsConcrete(opts) {
+	if !opts.Parent.Equal(TMap) || !IsConcrete(&opts) {
 		return def
 	}
 	m, _ := AsMap(opts)
@@ -436,7 +436,7 @@ func copyOptsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 
 // mapIntOpt reads one integer key from an options map, reporting presence.
 func mapIntOpt(opts Value, key string) (int64, bool) {
-	if !opts.Parent.Equal(TMap) || !IsConcrete(opts) {
+	if !opts.Parent.Equal(TMap) || !IsConcrete(&opts) {
 		return 0, false
 	}
 	m, _ := AsMap(opts)
@@ -557,7 +557,7 @@ func applyTouch(ops capabilities.FileOps, path string, opts Value, hasOpts bool)
 
 // mapMapOpt reads one map-valued key from an options map, reporting presence.
 func mapMapOpt(opts Value, key string) (ReadMap, bool) {
-	if !opts.Parent.Equal(TMap) || !IsConcrete(opts) {
+	if !opts.Parent.Equal(TMap) || !IsConcrete(&opts) {
 		return nil, false
 	}
 	m, _ := AsMap(opts)

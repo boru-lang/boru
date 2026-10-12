@@ -20,7 +20,7 @@ func TestGetIntKeyReturnsLiveWordReSteps(t *testing.T) {
 	r := w9Reg(t)
 	w := NewWord("add")
 	out := getIntKeyReturns([]Value{NewInteger(0), w9List(w, NewInteger(1))}, r)
-	if len(out) != 1 || !IsWord(out[0]) || IsBareTypeNode(out[0]) {
+	if len(out) != 1 || !IsWord(&out[0]) || IsBareTypeNode(&out[0]) {
 		t.Fatalf("a live word element comes back as the token itself: %v", out)
 	}
 	// A bare type node is a type literal — data, the carrier path.

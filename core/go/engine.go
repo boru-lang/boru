@@ -498,10 +498,10 @@ func (e *Engine) faultReturn(err error) error {
 // (failSealed).
 func (e *Engine) unwindLiveLoops(from, to int) {
 	for i := from; i < to; i++ {
-		if !IsMove(e.Tape.At(i)) {
+		if !IsMove(e.Tape.Ref(i)) {
 			continue
 		}
-		info, _ := AsMove(e.Tape.At(i))
+		info, _ := AsMove(e.Tape.Ref(i))
 		if info.Cont == nil || !e.marks[info.To] {
 			continue
 		}
@@ -591,10 +591,10 @@ func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
 	var written []Value
 	for i := e.Pointer + 1; i < e.Tape.Len() && len(written) < 4; i++ {
 		v := e.Tape.At(i)
-		if IsWord(v) || IsParenExpr(v) || IsForward(v) || IsOpenParen(v) || IsEnd(v) || isEngineMarker(v) {
+		if IsWord(&v) || IsParenExpr(&v) || IsForward(&v) || IsOpenParen(&v) || IsEnd(&v) || isEngineMarker(v) {
 			break
 		}
-		if !IsConcrete(v) && !v.Carrier {
+		if !IsConcrete(&v) && !v.Carrier {
 			break
 		}
 		written = append(written, v)
@@ -698,14 +698,14 @@ func (e *Engine) polyReachBound() (int, bool) {
 	n := 0
 	for i := e.Pointer + 1; i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if IsOpenParen(v) || IsCloseParen(v) || IsEnd(v) {
+		if IsOpenParen(&v) || IsCloseParen(&v) || IsEnd(&v) {
 			break // structural collection boundary
 		}
 		if polyReachUnboundable(v) {
 			return 0, false
 		}
-		if IsWord(v) {
-			wi, werr := AsWord(v)
+		if IsWord(&v) {
+			wi, werr := AsWord(&v)
 			if werr != nil { //covergate:allow AsWord cannot fail after an IsWord guard — the payload IS a WordInfo (§engine)
 				return 0, false
 			}
@@ -746,7 +746,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 		if v.ReachGroup && !v.Quoted && isFnDefValue(v) && e.ReachFnWouldClaim(v, i+1) {
 			break // a reach-collapsed named fn with a claim is the next CALL — a barrier (NUR038)
 		}
-		if IsConcrete(v) || v.Carrier {
+		if IsConcrete(&v) || v.Carrier {
 			n++
 			continue
 		}
@@ -755,10 +755,10 @@ func (e *Engine) polyReachBound() (int, bool) {
 	stack := e.Tape.Prefix(e.Pointer)
 	for i := len(stack) - 1; i >= 0; i-- {
 		v := stack[i]
-		if IsOpenParen(v) || IsEnd(v) {
+		if IsOpenParen(&v) || IsEnd(&v) {
 			break // dispatch never collects across a paren/statement boundary
 		}
-		if polyReachUnboundable(v) || IsWord(v) || !(IsConcrete(v) || v.Carrier) {
+		if polyReachUnboundable(v) || IsWord(&v) || !(IsConcrete(&v) || v.Carrier) {
 			return 0, false // word/marker in the prefix: unboundable
 		}
 		n++
@@ -773,7 +773,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 // every one of these carries a payload, so the bare concrete probe counts
 // them — screen them first (the reorderCandidates stop-set lesson).
 func polyReachUnboundable(v Value) bool {
-	return IsForward(v) || IsReach(v) || IsParenExpr(v) || IsInterpString(v) || IsSplice(v) || IsSugar(v) ||
+	return IsForward(&v) || IsReach(&v) || IsParenExpr(&v) || IsInterpString(&v) || IsSplice(&v) || IsSugar(&v) ||
 		v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) || v.Parent.ConformsTo(TInternal)
 }
 
@@ -881,7 +881,7 @@ func narrowOverloadShadowed(fn *FnDefInfo, j int, window []Value) bool {
 			ok = ns != nil && ws != nil && ns.ConformsTo(ws)
 		}
 		for q := k; q < len(window) && ok; q++ {
-			ok = IsConcrete(window[q]) && SigArgMatches(s, q, window[q])
+			ok = IsConcrete(&window[q]) && SigArgMatches(s, q, &window[q])
 		}
 		if ok {
 			return true
@@ -969,7 +969,7 @@ func assignsPositionally(written []Value, sig *Signature, identity bool) bool {
 	n := sig.TotalArgs()
 	if identity {
 		for i := 0; i < n; i++ {
-			if !SigTypeMatches(written[i], SigArgType(sig, i)) {
+			if !SigTypeMatches(&written[i], SigArgType(sig, i)) {
 				return false
 			}
 		}
@@ -983,7 +983,7 @@ func assignsPositionally(written []Value, sig *Signature, identity bool) bool {
 		}
 		t := SigArgType(sig, slot)
 		for j := 0; j < n; j++ {
-			if used[j] || !SigTypeMatches(written[j], t) {
+			if used[j] || !SigTypeMatches(&written[j], t) {
 				continue
 			}
 			used[j] = true
@@ -1083,7 +1083,7 @@ func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix
 // run whose written operand is a type literal renders fewer (NUR311).
 func attemptedWindowSplit(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) ([]Value, int) {
 	if len(written) == 0 && pointer+1 < tape.Len() && fn != nil {
-		if w, err := AsWord(tape.At(pointer + 1)); err == nil && !w.ForceVal {
+		if w, err := AsWord(tape.Ref(pointer + 1)); err == nil && !w.ForceVal {
 			for i := range fn.Signatures {
 				s := &fn.Signatures[i]
 				if !s.Fallback && s.QuoteArgs != nil && s.QuoteArgs[0] {
@@ -1202,13 +1202,13 @@ func (e *Engine) IsFnShapeTypedBindingContext() bool {
 		return false
 	}
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			return false
 		}
-		if !IsForward(e.Tape.At(i)) {
+		if !IsForward(e.Tape.Ref(i)) {
 			continue
 		}
-		fwd, _ := AsForward(e.Tape.At(i))
+		fwd, _ := AsForward(e.Tape.Ref(i))
 		if fwd.FuncName != "def" || fwd.Sig == nil {
 			return false
 		}
@@ -1232,8 +1232,8 @@ func (e *Engine) IsFnShapeTypedBindingContext() bool {
 			return false
 		}
 		constraint, _ := m.Get(m.Keys()[0])
-		if IsWord(constraint) {
-			cw, _ := AsWord(constraint)
+		if IsWord(&constraint) {
+			cw, _ := AsWord(&constraint)
 			if tv, ok := e.Registry.ResolveTypedName(cw.Name); ok {
 				constraint = tv
 			}
@@ -1250,11 +1250,11 @@ func (e *Engine) IsFnShapeTypedBindingContext() bool {
 // undefined word being collected as `def`'s body).
 func (e *Engine) pendingForwardFunc() string {
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			return ""
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			return fwd.FuncName
 		}
 	}
@@ -1340,7 +1340,7 @@ func (e *Engine) voidArgErrorFor(name string, pos SrcPos) *BoruError {
 	if name == "def" {
 		n := "<name>"
 		for i := e.Pointer - 1; i >= 0; i-- {
-			if IsOpenParen(e.Tape.At(i)) {
+			if IsOpenParen(e.Tape.Ref(i)) {
 				break
 			}
 			if IsAtom(e.Tape.At(i)) {
@@ -1381,8 +1381,8 @@ func stampResultPos(vals []Value, pos *SrcPos) {
 			continue
 		}
 		switch {
-		case IsReturnCheck(vals[i]):
-			if rc, err := AsReturnCheck(vals[i]); err == nil && rc.Pos.Row == 0 {
+		case IsReturnCheck(&vals[i]):
+			if rc, err := AsReturnCheck(&vals[i]); err == nil && rc.Pos.Row == 0 {
 				rc.Pos = *pos
 				vals[i] = NewReturnCheck(rc)
 			}
@@ -1437,7 +1437,7 @@ func (e *Engine) stampErrPos(err error) error {
 // hot path stays under the cyclomatic-complexity gate.
 func (e *Engine) stripTapeAscriptions(lo, hi int) {
 	for j := lo; j < hi; j++ {
-		if e.Tape.At(j).AscribedType() != nil {
+		if e.Tape.Ref(j).AscribedType() != nil {
 			e.Tape.Set(j, StripAscribed(e.Tape.At(j)))
 		}
 	}
@@ -1539,7 +1539,7 @@ func attachDeclSpan(ae *BoruError, decl DeclSite, label string) {
 // at the token that triggered it.
 func (e *Engine) currentPos() SrcPos {
 	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
-		return e.Tape.At(e.Pointer).Pos()
+		return e.Tape.Ref(e.Pointer).Pos()
 	}
 	return SrcPos{}
 }
@@ -1865,7 +1865,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	}
 
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			return nil, e.faultReturn(e.syntaxError("unmatched opening parenthesis", "("))
 		}
 	}
@@ -1951,23 +1951,23 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 // error is the step's; the caller decides the fault return.
 func (e *Engine) stepToken(val Value) error {
 	switch {
-	case IsWord(val):
+	case IsWord(&val):
 		return e.stepWord(val)
 
-	case IsForward(val):
+	case IsForward(&val):
 		e.Pointer++
 
-	case IsOpenParen(val):
+	case IsOpenParen(&val):
 		e.noteParenStack(e.Pointer)
 		e.stepPastOpenParen(val)
 
-	case IsCloseParen(val):
+	case IsCloseParen(&val):
 		return e.stepCloseParen(true, false)
 
-	case IsEnd(val):
+	case IsEnd(&val):
 		return e.stepEnd()
 
-	case IsParenExpr(val):
+	case IsParenExpr(&val):
 		// A word-context ParenExpr (paren-nesting work, Step 2 —
 		// design/legacy/PAREN-REPRESENTATION.9.ignore): expand it back to its
 		// OpenParen … CloseParen marker span in place and let the
@@ -1986,16 +1986,16 @@ func (e *Engine) stepToken(val Value) error {
 		if val.Quoted || e.pendingForwardWantsRawParen() {
 			return e.stepLiteral()
 		}
-		items, _ := AsParenExpr(val)
+		items, _ := AsParenExpr(&val)
 		e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
 
-	case IsReach(val):
+	case IsReach(&val):
 		// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
 		// by lowering to its get/getr chain in place, exactly like the
 		// ParenExpr it replaced. An inert reach (Eval=false, from `reach`)
 		// or a codequote'd one (Quoted) is data — left via stepLiteral.
-		if isEvalReach(val) && !e.pendingForwardWantsRawParen() {
-			info, _ := AsReach(val)
+		if isEvalReach(&val) && !e.pendingForwardWantsRawParen() {
+			info, _ := AsReach(&val)
 			// A dot-access chain (`m.a`, `MathUtil.now`) is a self-
 			// delimiting navigation that produces exactly ONE value — it
 			// reads as an implicit `(m.a)` group and feeds forward
@@ -2010,7 +2010,7 @@ func (e *Engine) stepToken(val Value) error {
 			return e.stepLiteral()
 		}
 
-	case IsInterpString(val):
+	case IsInterpString(&val):
 		result, err := e.evalInterpString(val)
 		if err != nil {
 			return err
@@ -2020,7 +2020,7 @@ func (e *Engine) stepToken(val Value) error {
 		// stepLiteral so forward collection works correctly.
 		e.Tape.Set(e.Pointer, result)
 
-	case IsXmlInterp(val):
+	case IsXmlInterp(&val):
 		// Interpolated XML literal: evaluate the skeleton in place to
 		// a concrete Node/Xml, then re-step it as the value (no pointer
 		// advance) so forward collection sees a Node/Xml — mirrors the
@@ -2031,16 +2031,16 @@ func (e *Engine) stepToken(val Value) error {
 		}
 		e.Tape.Set(e.Pointer, result)
 
-	case IsMark(val):
+	case IsMark(&val):
 		e.stepMark(val)
 
-	case IsMove(val):
+	case IsMove(&val):
 		return e.stepMove(val)
 
-	case IsReturnCheck(val):
+	case IsReturnCheck(&val):
 		e.Pointer++
 
-	case IsDefCleanup(val):
+	case IsDefCleanup(&val):
 		if err := e.stepDefCleanup(val, e.Pointer); err != nil {
 			return err
 		}
@@ -2073,7 +2073,7 @@ func (e *Engine) resolveOrphanedForwards() error {
 	for attempt := 0; attempt < 222; attempt++ {
 		fwdIdx := -1
 		for i := 0; i < e.Tape.Len(); i++ {
-			if IsForward(e.Tape.At(i)) {
+			if IsForward(e.Tape.Ref(i)) {
 				fwdIdx = i
 				break
 			}
@@ -2082,7 +2082,7 @@ func (e *Engine) resolveOrphanedForwards() error {
 			return nil
 		}
 
-		fwd, _ := AsForward(e.Tape.At(fwdIdx))
+		fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 		funcIdx := fwd.FuncIndex
 		collectedCount := fwd.CollectedArgs
 		stackArgCount := fwd.StackArgs
@@ -2107,21 +2107,21 @@ func (e *Engine) resolveOrphanedForwards() error {
 			// the main loop, so it mirrors the main loop's per-step emit.
 			e.Registry.noteCoverage(val.Pos())
 			switch {
-			case IsWord(val):
+			case IsWord(&val):
 				if err := e.stepWord(val); err != nil {
 					return err
 				}
-			case IsCloseParen(val):
+			case IsCloseParen(&val):
 				if err := e.stepCloseParen(false, false); err != nil {
 					return err
 				}
-			case IsEnd(val):
+			case IsEnd(&val):
 				if err := e.stepEnd(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 					return err
 				}
-			case IsForward(val):
+			case IsForward(&val):
 				e.Pointer++
-			case IsOpenParen(val):
+			case IsOpenParen(&val):
 				e.Pointer++
 			default:
 				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
@@ -2206,7 +2206,7 @@ func capturesForwardToken(fn *FnDefInfo, pos int, tok Value) bool {
 		return false
 	}
 	tokName := ""
-	if w, err := AsWord(tok); err == nil {
+	if w, err := AsWord(&tok); err == nil {
 		tokName = w.Name
 	}
 	for i := range fn.Signatures {
@@ -2234,11 +2234,11 @@ func capturesForwardToken(fn *FnDefInfo, pos int, tok Value) bool {
 // Stops at an OpenParen barrier. See Step 4.
 func (e *Engine) pendingForwardWantsRawParen() bool {
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			return false
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			// RawParens or FormArgs (macro raw capture) both want a forward
 			// ParenExpr / Reach left raw at the pointer rather than evaluated
 			// during collection.
@@ -2306,8 +2306,8 @@ func sigsHaveKeywordSlot(viable []ViableSig) bool {
 // pre-evaluated across the true dispatch's barrier.
 func pruneKeywordViable(viable []ViableSig, pos int, tok Value) []ViableSig {
 	tokName := ""
-	if IsWord(tok) {
-		if wi, err := AsWord(tok); err == nil {
+	if IsWord(&tok) {
+		if wi, err := AsWord(&tok); err == nil {
 			tokName = wi.Name
 		}
 	}
@@ -2432,7 +2432,7 @@ func (e *Engine) fnWordBarrierAt(tok Value) bool {
 // collection, and `/v` opts out because it takes the value rather than
 // calling. Registry-only — it never needed a window.
 func FnWordBarrierOn(reg *Registry, tok Value) bool {
-	wi, werr := AsWord(tok)
+	wi, werr := AsWord(&tok)
 	return werr == nil && reg.Lookup(wi.Name) != nil && !wi.ForceVal
 }
 
@@ -2470,7 +2470,7 @@ const (
 // counted as one resolved position with the viable set left intact, exactly
 // as the former eager scan treated it.
 func (e *Engine) StaticForwardType(tok Value) (Value, FwdKind) {
-	return StaticForwardTypeOf(tok)
+	return StaticForwardTypeOf(&tok)
 }
 
 // StaticForwardTypeOf is StaticForwardType as a free function. It needed
@@ -2478,7 +2478,7 @@ func (e *Engine) StaticForwardType(tok Value) (Value, FwdKind) {
 // because it is the classification whose doc explains at length why a WORD
 // is deliberately NOT prunable. A second host reading a different copy of
 // that reasoning is how the two lanes would drift.
-func StaticForwardTypeOf(tok Value) (match Value, kind FwdKind) {
+func StaticForwardTypeOf(tok *Value) (match Value, kind FwdKind) {
 	if IsOpenParen(tok) || IsParenExpr(tok) || IsReach(tok) {
 		return Value{}, FwdGroup
 	}
@@ -2486,7 +2486,7 @@ func StaticForwardTypeOf(tok Value) (match Value, kind FwdKind) {
 		return Value{}, FwdBoundary
 	}
 	if IsConcrete(tok) {
-		return tok, FwdValue
+		return *tok, FwdValue
 	}
 	// Type literals, carriers, markers: not a prunable concrete value.
 	return Value{}, FwdBoundary
@@ -2518,14 +2518,14 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 		gdepth := 0
 		for i := scanIdx; i < e.Tape.Len(); i++ {
 			v := e.Tape.At(i)
-			if IsOpenParen(v) {
+			if IsOpenParen(&v) {
 				gdepth++
 				if i > scanIdx {
 					guardToks = append(guardToks, v)
 				}
 				continue
 			}
-			if IsCloseParen(v) {
+			if IsCloseParen(&v) {
 				gdepth--
 				if gdepth == 0 {
 					groupSpan = i - scanIdx + 1
@@ -2574,12 +2574,12 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 		// nested fn-body rows attribute to the module-under-test.
 		e.Registry.noteCoverage(v.Pos())
 
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			depth++
 			e.Pointer++
 			continue
 		}
-		if IsCloseParen(v) {
+		if IsCloseParen(&v) {
 			depth--
 			if err := e.stepCloseParen(false, depth == 0); err != nil {
 				e.Pointer = savedPointer
@@ -2593,34 +2593,34 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 
 		// Normal evaluation inside paren.
 		switch {
-		case IsWord(v):
+		case IsWord(&v):
 			if err := e.stepWord(v); err != nil {
 				e.Pointer = savedPointer
 				return err
 			}
-		case IsEnd(v):
+		case IsEnd(&v):
 			if err := e.stepEnd(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 				e.Pointer = savedPointer
 				return err
 			}
-		case IsMark(v):
+		case IsMark(&v):
 			e.stepMark(v)
-		case IsMove(v):
+		case IsMove(&v):
 			if err := e.stepMove(v); err != nil {
 				e.Pointer = savedPointer
 				return err
 			}
-		case IsForward(v):
+		case IsForward(&v):
 			e.Pointer++
-		case IsReturnCheck(v):
+		case IsReturnCheck(&v):
 			e.Pointer++
-		case IsDefCleanup(v):
+		case IsDefCleanup(&v):
 			if err := e.stepDefCleanup(v, e.Pointer); err != nil {
 				e.Pointer = savedPointer
 				return err
 			}
 			e.Pointer++
-		case IsInterpString(v):
+		case IsInterpString(&v):
 			// Mirror the main loop: evaluate the template in place and
 			// re-step the resulting string (no pointer advance), so a
 			// paren-wrapped template — `raise (`bad: ${x}`)` — collapses
@@ -2632,7 +2632,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 			}
 			result.pos = v.pos
 			e.Tape.Set(e.Pointer, result)
-		case IsXmlInterp(v):
+		case IsXmlInterp(&v):
 			// Mirror the InterpString case: a paren-wrapped interpolated
 			// XML literal — `f (<p>${x}</p>)` — collapses to a Node/Xml.
 			result, err := e.EvalXmlInterp(v)
@@ -2713,7 +2713,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 // against — stands before end.
 func (e *Engine) loopContWithin(end int) bool {
 	for i := e.Pointer; i < end; i++ {
-		if info, err := AsMove(e.Tape.At(i)); err == nil && info.Cont != nil && info.Cont.Driver == nil {
+		if info, err := AsMove(e.Tape.Ref(i)); err == nil && info.Cont != nil && info.Cont.Driver == nil {
 			return true
 		}
 	}
@@ -2725,9 +2725,9 @@ func (e *Engine) loopContWithin(end int) bool {
 func openDepthBetween(tape *Tape, from, to int) int {
 	depth := 0
 	for i := from; i < to; i++ {
-		if v := tape.At(i); IsOpenParen(v) {
+		if v := tape.At(i); IsOpenParen(&v) {
 			depth++
-		} else if IsCloseParen(v) {
+		} else if IsCloseParen(&v) {
 			depth--
 		}
 	}
@@ -2741,9 +2741,9 @@ func groupExtent(tape *Tape, open int) int {
 	depth := 0
 	for i := open; i < tape.Len(); i++ {
 		v := tape.At(i)
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			depth++
-		} else if IsCloseParen(v) {
+		} else if IsCloseParen(&v) {
 			depth--
 			if depth == 0 {
 				return i - open + 1
@@ -3011,7 +3011,7 @@ func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
 	if v.Quoted {
 		return
 	}
-	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
+	if IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
 		e.Registry.analysisRecorder().NoteWordRead(v, name, pos)
 		// The collapse of a paren this read ends asks which it has — a
 		// value the rewind re-steps, or the model of a dispatch the
@@ -3032,11 +3032,11 @@ func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
 // be pushed behind the pointer.
 func (e *Engine) hasPendingForwardCollecting() bool {
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			return fwd.CollectedArgs < fwd.Sig.TotalArgs()
 		}
 	}
@@ -3044,7 +3044,7 @@ func (e *Engine) hasPendingForwardCollecting() bool {
 }
 
 func (e *Engine) stepWord(val Value) error {
-	w, werr := AsWord(val)
+	w, werr := AsWord(&val)
 	if werr != nil {
 		// A Word-TYPED value with no WordInfo payload is a CARRIER, not a
 		// token: check mode's carrier-strip nulls the payload, so there is
@@ -3167,7 +3167,7 @@ func (e *Engine) stepWord(val Value) error {
 	// bypassing function dispatch entirely. FnDefInfo and ClassTypeInfo
 	// entries are not simple values — they go through normal Lookup, and
 	// so does a compiled closure a run can bridge (dispatchesAsWord).
-	if top, ok := e.Registry.Defs.Top(w.Name); ok && !dispatchesAsWord(top, e.Registry) {
+	if top, ok := e.Registry.Defs.Top(w.Name); ok && !dispatchesAsWord(&top, e.Registry) {
 		{
 			// f w ≡ f (w): a word bound to a DATA __SP splice marker that
 			// is being collected by a pending forward expands as the paren
@@ -3191,10 +3191,10 @@ func (e *Engine) stepWord(val Value) error {
 			// fmt.Errorf — an allocation on EVERY def-value substitution
 			// without the guard (the same guard the collection-side twin at
 			// the stepLiteral splice check already carries).
-			if IsSplice(top) {
-				if info, serr := AsSplice(top); serr == nil && spliceIsData(info) {
+			if IsSplice(&top) {
+				if info, serr := AsSplice(&top); serr == nil && spliceIsData(info) {
 					if fwdIdx := e.pendingForwardIdx(); fwdIdx >= 0 {
-						if fwd, ferr := AsForward(e.Tape.At(fwdIdx)); ferr == nil && !bindsReferent(fwd.FuncName) {
+						if fwd, ferr := AsForward(e.Tape.Ref(fwdIdx)); ferr == nil && !bindsReferent(fwd.FuncName) {
 							pe := NewParenExpr([]Value{val})
 							pe.pos = val.pos
 							e.Tape.Set(e.Pointer, pe)
@@ -3220,7 +3220,7 @@ func (e *Engine) stepWord(val Value) error {
 				// data it was where it was bound: `def g (m.f/v) end g 4` is
 				// 5 (NUR280; the marker drop quotes the member carrier,
 				// NUR277, and a def binds what the paren left).
-				if top.Quoted && (IsFnTypedCarrier(top) || (top.Dynamic && SigTypeMatches(top, TFunction))) {
+				if top.Quoted && (IsFnTypedCarrier(&top) || (top.Dynamic && SigTypeMatches(&top, TFunction))) {
 					top.Quoted = false
 				}
 				e.Registry.analysisRecorder().NoteDefRead(top.ID, w.Name)
@@ -3594,16 +3594,16 @@ func MixedFormStackSlotAny(e *Engine, sig *Signature, positions []int) bool {
 // TScalar, so the type test below is not sufficient on its own). Used only by
 // declineForwardStackDrift.
 func ForwardLiteralOperand(t Value) bool {
-	if IsOpenParen(t) || IsCloseParen(t) || IsForward(t) || IsEnd(t) ||
-		IsDefCleanup(t) || IsParenExpr(t) ||
+	if IsOpenParen(&t) || IsCloseParen(&t) || IsForward(&t) || IsEnd(&t) ||
+		IsDefCleanup(&t) || IsParenExpr(&t) ||
 		t.Parent.ConformsTo(TMark) || t.Parent.ConformsTo(TMove) ||
 		t.Parent.ConformsTo(TInternal) || t.Parent.ConformsTo(TReturnCheck) {
 		return false
 	}
-	if IsBareTypeNode(t) {
+	if IsBareTypeNode(&t) {
 		return true
 	}
-	if !IsConcrete(t) || t.Parent == nil {
+	if !IsConcrete(&t) || t.Parent == nil {
 		return false
 	}
 	return t.Parent.ConformsTo(TScalar) || t.Parent.ConformsTo(TAtom)
@@ -3622,7 +3622,7 @@ func (e *Engine) ForwardOperandValue(t Value) (Value, bool) {
 	if ForwardLiteralOperand(t) {
 		return t, true
 	}
-	w, err := AsWord(t)
+	w, err := AsWord(&t)
 	if err != nil || w.ForceVal || w.ForceStack || w.ForceForward || w.ForceUsurp {
 		return Value{}, false
 	}
@@ -3649,10 +3649,10 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 		return false
 	}
 	tok := e.Tape.At(idx)
-	if !IsWord(tok) {
+	if !IsWord(&tok) {
 		return false
 	}
-	w, err := AsWord(tok)
+	w, err := AsWord(&tok)
 	if err != nil || !DynStackShuffleWords[w.Name] {
 		return false
 	}
@@ -3761,7 +3761,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		match.Args[i] = StripAscribed(match.Args[i])
 		if match.Args[i].Eval && !match.Args[i].Quoted {
 			if match.Args[i].Parent.Equal(TMap) &&
-				match.Args[i].Data != nil && !IsTypedMap(match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
+				match.Args[i].Data != nil && !IsTypedMap(&match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
 				// NoEvalMapArgs (separate from the list-only
 				// NoEvalArgs) suppresses map auto-evaluation at this
 				// slot. Used by def's typed-name sig so a Word at the
@@ -3780,7 +3780,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 					match.Args[i] = evaluated
 				}
 			} else if match.Args[i].Parent.Equal(TList) &&
-				match.Args[i].Data != nil && !IsTypedList(match.Args[i]) && !IsTableType(match.Args[i]) {
+				match.Args[i].Data != nil && !IsTypedList(&match.Args[i]) && !IsTableType(match.Args[i]) {
 				// NoEvalArgs suppresses list auto-evaluation for code-body
 				// positions (def body, if branches, for body, etc.).
 				noEval := match.Sig.NoEvalArgs != nil && match.Sig.NoEvalArgs[i]
@@ -3872,8 +3872,8 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		name := match.Name
 		var pos SrcPos
 		if e.Pointer < e.Tape.Len() {
-			pos = e.Tape.At(e.Pointer).Pos()
-			if w, err := AsWord(e.Tape.At(e.Pointer)); err == nil {
+			pos = e.Tape.Ref(e.Pointer).Pos()
+			if w, err := AsWord(e.Tape.Ref(e.Pointer)); err == nil {
 				name = w.Name
 			}
 		}
@@ -3888,7 +3888,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		if match.Sig.FullStack() && match.Sig.checkFullStackFn() != nil {
 			base := 0
 			for i := e.Pointer - 1; i >= 0; i-- {
-				if IsOpenParen(e.Tape.At(i)) {
+				if IsOpenParen(e.Tape.Ref(i)) {
 					base = i + 1
 					break
 				}
@@ -3946,7 +3946,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			}
 		}
 		tailConsumed := callEnd+1 < e.Tape.Len() &&
-			(IsCloseParen(e.Tape.At(callEnd+1)) || e.dynShuffleConsumerAt(callEnd+1))
+			(IsCloseParen(e.Tape.Ref(callEnd+1)) || e.dynShuffleConsumerAt(callEnd+1))
 		// An optimistic dispatch's exact layout rides to its own record, so a
 		// committed call can raise the interpreter's report when the live
 		// value matches no overload (NUR263).
@@ -4002,7 +4002,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// only replace within the current paren scope, not below it.
 		base := 0
 		for i := e.Pointer - 1; i >= 0; i-- {
-			if IsOpenParen(e.Tape.At(i)) {
+			if IsOpenParen(e.Tape.Ref(i)) {
 				base = i + 1
 				break
 			}
@@ -4092,7 +4092,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			// this tape — a sub-engine ran it unrecorded before — and the
 			// call records once the loop's results stand in its place
 			// (recordLoopEnd), with their count, as the handler's did.
-			info, _ := AsMark(results[0])
+			info, _ := AsMark(&results[0])
 			info.Loop.recName, info.Loop.recArity, info.Loop.recorder = match.Name, n, e.recorder
 			e.recorder = nil
 		} else {
@@ -4281,7 +4281,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 	}
 	open := -1
 	for j := top - 1; j >= 0 && j >= floor; j-- {
-		if IsOpenParen(e.Tape.At(j)) {
+		if IsOpenParen(e.Tape.Ref(j)) {
 			open = j
 			break
 		}
@@ -4299,7 +4299,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 	collected := e.Tape.At(top)
 	for j := lo; j < top; j++ {
 		v := e.Tape.At(j)
-		if v.Quoted || IsForward(v) || IsMark(v) || IsMove(v) || IsOpenParen(v) {
+		if v.Quoted || IsForward(&v) || IsMark(&v) || IsMove(&v) || IsOpenParen(&v) {
 			continue
 		}
 		if e.collectedPastStmtEnd(v.Pos(), collected) {
@@ -4312,7 +4312,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 		if fwdOnly && !v.Carrier && !v.Dynamic {
 			continue
 		}
-		if IsFnValueResidual(v) || IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
+		if IsFnValueResidual(v) || IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
 			es.NoteCollectionHazard(v.ID)
 		}
 	}
@@ -4389,12 +4389,12 @@ func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
 	if len(sortedIndices) > 0 && sortedIndices[0] < first {
 		first = sortedIndices[0]
 	}
-	if first > 0 && !IsOpenParen(e.Tape.At(first-1)) {
+	if first > 0 && !IsOpenParen(e.Tape.Ref(first-1)) {
 		return false
 	}
 	if next := callEnd + 1; next < e.Tape.Len() {
 		v := e.Tape.At(next)
-		return IsCloseParen(v) || IsEnd(v)
+		return IsCloseParen(&v) || IsEnd(&v)
 	}
 	return true
 }
@@ -4530,7 +4530,7 @@ func (e *Engine) rearrangeForForward(stackArgs, forwardArgs int) {
 	}
 	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, forwardArgs, SrcPos{}
 	if e.Pointer < e.Tape.Len() {
-		e.fwdSplitPos = e.Tape.At(e.Pointer).Pos()
+		e.fwdSplitPos = e.Tape.Ref(e.Pointer).Pos()
 	}
 }
 
@@ -4555,10 +4555,10 @@ func (e *Engine) resolvedIndicesBeforeInto(buf []int, n int) []int {
 func resolvedIndicesBeforeInto(win *Tape, pointer int, buf []int, n int) []int {
 	indices := buf
 	for i := pointer - 1; i >= 0 && len(indices) < n; i-- {
-		if IsOpenParen(win.At(i)) {
+		if IsOpenParen(win.Ref(i)) {
 			break
 		}
-		if IsForward(win.At(i)) || IsMark(win.At(i)) || IsMove(win.At(i)) {
+		if IsForward(win.Ref(i)) || IsMark(win.Ref(i)) || IsMove(win.Ref(i)) {
 			continue
 		}
 		indices = append(indices, i)
@@ -4580,7 +4580,7 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 	}
 	var stack []Value
 	for i := from; i < e.Pointer; i++ {
-		if exclude[i] || IsForward(e.Tape.At(i)) || IsOpenParen(e.Tape.At(i)) || IsMark(e.Tape.At(i)) || IsMove(e.Tape.At(i)) {
+		if exclude[i] || IsForward(e.Tape.Ref(i)) || IsOpenParen(e.Tape.Ref(i)) || IsMark(e.Tape.Ref(i)) || IsMove(e.Tape.Ref(i)) {
 			continue
 		}
 		stack = append(stack, e.Tape.At(i))
@@ -4598,7 +4598,7 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 // forward-collection completion points where the word must re-dispatch
 // against the stack; callers set e.pointer themselves as needed.
 func (e *Engine) forceStackWord(idx int, w WordInfo) {
-	pos := e.Tape.At(idx).Pos()
+	pos := e.Tape.Ref(idx).Pos()
 	nw := NewWordModified(w.Name, w.ArgCount, true, false)
 	nw.pos = &pos // preserve source position across force-stack rewrite
 	e.Tape.Set(idx, nw)
@@ -4607,7 +4607,7 @@ func (e *Engine) forceStackWord(idx int, w WordInfo) {
 func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackArgs, specAt int) error {
 	var pos SrcPos
 	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
-		pos = e.Tape.At(e.Pointer).Pos()
+		pos = e.Tape.Ref(e.Pointer).Pos()
 	}
 	fwd := NewForward(ForwardInfo{
 		FuncName:     w.Name,
@@ -4624,7 +4624,7 @@ func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackA
 		// The deferred word-led plan (ForwardInfo.WordLed): a Word next
 		// on the tape and no name capture at the first slot is exactly
 		// the case PlanMatch defers every candidate for.
-		WordLed: e.Pointer+1 < e.Tape.Len() && IsWord(e.Tape.At(e.Pointer+1)) && (sig.QuoteArgs == nil || !sig.QuoteArgs[0]),
+		WordLed: e.Pointer+1 < e.Tape.Len() && IsWord(e.Tape.Ref(e.Pointer+1)) && (sig.QuoteArgs == nil || !sig.QuoteArgs[0]),
 	})
 
 	e.Tape.Insert(e.Pointer+1, fwd)
@@ -4651,7 +4651,7 @@ func (e *Engine) noteWordLedArrival(fwd *ForwardInfo, valIdx, funcIdx int) {
 		return
 	}
 	slot := fwd.CollectedArgs
-	if slot == 0 || slot >= fwd.Sig.TotalArgs() || !unprovenStackOperand(e.Tape.At(valIdx), SigArgType(fwd.Sig, slot)) {
+	if slot == 0 || slot >= fwd.Sig.TotalArgs() || !unprovenStackOperand(e.Tape.Ref(valIdx), SigArgType(fwd.Sig, slot)) {
 		return
 	}
 	if e.narrowerWindowFits(fwd, funcIdx) {
@@ -4705,10 +4705,10 @@ func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 		}
 		fits := true
 		for i := 0; i < k && fits; i++ {
-			fits = SigArgMatches(sig, i, win.At(base+i))
+			fits = SigArgMatches(sig, i, win.Ref(base+i))
 		}
 		for j := 0; j < n-k && fits; j++ {
-			fits = SigArgMatches(sig, k+j, win.At(below[len(below)-1-j]))
+			fits = SigArgMatches(sig, k+j, win.Ref(below[len(below)-1-j]))
 		}
 		if fits {
 			return true
@@ -4724,7 +4724,7 @@ func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 // as a single entry. The data is returned verbatim (unevaluated); the engine
 // re-steps over it after splicing.
 func SpliceExpand(data Value) []Value {
-	if data.Parent.Equal(TList) && data.Data != nil && !IsTypedList(data) && !IsTableType(data) {
+	if data.Parent.Equal(TList) && data.Data != nil && !IsTypedList(&data) && !IsTableType(data) {
 		elems, _ := AsList(data)
 		out := make([]Value, elems.Len())
 		copy(out, elems.Slice())
@@ -4745,7 +4745,7 @@ func SpliceExpand(data Value) []Value {
 // paths; group explicitly (`f (p)`) to use its result as an operand.
 func spliceIsData(info SpliceInfo) bool {
 	for _, el := range SpliceExpand(info.Data) {
-		if IsWord(el) || IsParenExpr(el) || IsReach(el) || IsInterpString(el) || IsSplice(el) {
+		if IsWord(&el) || IsParenExpr(&el) || IsReach(&el) || IsInterpString(&el) || IsSplice(&el) {
 			return false
 		}
 	}
@@ -4773,10 +4773,10 @@ func (e *Engine) pendingForwardIdx() int {
 	}
 	for i := e.Pointer - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			return -1
 		}
-		if IsForward(v) {
+		if IsForward(&v) {
 			return i
 		}
 	}
@@ -4798,16 +4798,16 @@ func (e *Engine) stepLiteral() error {
 	// they fall through to normal literal handling (pushed as data /
 	// collected as the forward arg). Otherwise expand and re-step (the
 	// nested-paren case).
-	if IsParenExpr(e.Tape.At(valIdx)) && !e.Tape.At(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
-		items, _ := AsParenExpr(e.Tape.At(valIdx))
+	if IsParenExpr(e.Tape.Ref(valIdx)) && !e.Tape.At(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
+		items, _ := AsParenExpr(e.Tape.Ref(valIdx))
 		e.Tape.Splice(valIdx, 1, e.expandParenExprScratch(items)...)
 		return nil
 	}
 	// A Reach reaching stepLiteral (nested in a collapsing span, or a
 	// collected list/map element) lowers to its get-chain in place, like a
 	// ParenExpr (Reach Phase B). Quoted/raw-pending reaches fall through.
-	if isEvalReach(e.Tape.At(valIdx)) && !e.pendingForwardWantsRawParen() {
-		info, _ := AsReach(e.Tape.At(valIdx))
+	if isEvalReach(e.Tape.Ref(valIdx)) && !e.pendingForwardWantsRawParen() {
+		info, _ := AsReach(e.Tape.Ref(valIdx))
 		e.Tape.Splice(valIdx, 1, expandReach(info)...)
 		return nil
 	}
@@ -4815,7 +4815,7 @@ func (e *Engine) stepLiteral() error {
 	// rule 3, 2026-08-04 amendment — sugar.go), exactly like the
 	// ParenExpr and Reach expansions above. Quoted markers (captured
 	// data) and raw-capture collection fall through.
-	if IsSugar(e.Tape.At(valIdx)) && !e.Tape.At(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
+	if IsSugar(e.Tape.Ref(valIdx)) && !e.Tape.At(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
 		return e.stepSugar(valIdx)
 	}
 
@@ -4830,8 +4830,8 @@ func (e *Engine) stepLiteral() error {
 		// means it is being processed as a standalone stack entry — the
 		// only place a splice should fire (as an arg it is collected by
 		// value via the TAny match in the collection branch below).
-		if IsSplice(e.Tape.At(valIdx)) {
-			info, _ := AsSplice(e.Tape.At(valIdx))
+		if IsSplice(e.Tape.Ref(valIdx)) {
+			info, _ := AsSplice(e.Tape.Ref(valIdx))
 			// A splice over a COMPUTED (carrier) payload that MIGHT BE A LIST
 			// cannot RECORD: the runtime marker SPREADS a list's elements, but
 			// the analysis can only step the carrier as itself, so a compiled
@@ -4849,7 +4849,7 @@ func (e *Engine) stepLiteral() error {
 			// ReturnsFn body run) stay silent — only a LIVE recording is
 			// poisoned.
 			if rec := e.Registry.analysisRecorder(); rec.Active() &&
-				!IsConcrete(info.Data) && !IsBareTypeNode(info.Data) &&
+				!IsConcrete(&info.Data) && !IsBareTypeNode(&info.Data) &&
 				(info.Data.Dynamic || info.Data.Parent == nil ||
 					TList.ConformsTo(info.Data.Parent) || info.Data.Parent.ConformsTo(TList)) {
 				// COMPILE FAILURE-CLOSURE §9.2b: record the spread as an OpSpliceDyn
@@ -4860,14 +4860,14 @@ func (e *Engine) stepLiteral() error {
 				// (only the program residual absorbs it; fixed-arity
 				// consumers keep declining). An unresolvable payload keeps
 				// the compile failure.
-				if !rec.RecordSpliceDyn(info.Data, e.Tape.At(valIdx).Pos()) {
+				if !rec.RecordSpliceDyn(info.Data, e.Tape.Ref(valIdx).Pos()) {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
 			}
 			// The marker leaves the stack the pass models: a recorded
 			// result it was is consumed here (NoteSpliceFired, NUR348).
 			if rec := e.Registry.analysisRecorder(); rec.Active() {
-				rec.NoteSpliceFired(e.Tape.At(valIdx), e.Tape.At(valIdx).Pos())
+				rec.NoteSpliceFired(e.Tape.At(valIdx), e.Tape.Ref(valIdx).Pos())
 			}
 			expanded := SpliceExpand(info.Data)
 			// The expansion RE-STEPS every element against the live stack: a
@@ -4883,7 +4883,7 @@ func (e *Engine) stepLiteral() error {
 		// the preceding value was NOT a pending function (so execFnDefLiteral
 		// never consumed it) — e.g. `(1 add 2)/s`. The modifier is a no-op on
 		// a non-function result: drop the marker.
-		if IsDispatchMod(e.Tape.At(valIdx)) {
+		if IsDispatchMod(e.Tape.Ref(valIdx)) {
 			// Under analysis the preceding value may be a Function-typed
 			// CARRIER (a member read the pass models — `m.f/v 5`), which
 			// execFnDefLiteral's peek never reaches (fnDefAtPointer fails
@@ -4972,7 +4972,7 @@ func (e *Engine) stepLiteral() error {
 		return nil
 	}
 
-	fwd, _ := AsForward(e.Tape.At(fwdIdx))
+	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	funcIdx := fwd.FuncIndex
 
 	// Check if the value matches the next expected arg positionally.
@@ -5045,8 +5045,8 @@ func (e *Engine) stepLiteral() error {
 		}
 
 		if funcIdx < e.Tape.Len() {
-			if IsWord(e.Tape.At(funcIdx)) {
-				w, _ := AsWord(e.Tape.At(funcIdx))
+			if IsWord(e.Tape.Ref(funcIdx)) {
+				w, _ := AsWord(e.Tape.Ref(funcIdx))
 				e.forceStackWord(funcIdx, w)
 			} else if fv, _, isFn := e.fnDefAtPointer(e.Tape.At(funcIdx)); isFn &&
 				!e.fnValueWouldWiden(fv, fwd.CollectedArgs+fwd.StackArgs, funcIdx+1) {
@@ -5140,7 +5140,7 @@ func (e *Engine) resolveConsumedInertTypeShape(match *MatchResult, i int) {
 
 func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 	switch {
-	case IsTypedList(v) || IsTypedMap(v):
+	case IsTypedList(&v) || IsTypedMap(&v):
 		ci, err := AsChildType(v)
 		if err != nil { //covergate:allow IsTypedList/IsTypedMap require a ChildTypeInfo payload, so AsChildType cannot fail here
 			return v, false
@@ -5156,7 +5156,7 @@ func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 		out := v
 		out.Data = nd
 		return out, true
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		rv := ResolveWordsDeepR(v, e.Registry)
 		if ExactEqual(rv, v) {
 			return v, false
@@ -5326,7 +5326,7 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	// the list is an unresolvable residual and the program falls back. A
 	// fully-literal list (`[1 2 3]`) stays inert and bakes as a pooled const.
 	if e.Registry.analysisActive() {
-		if es := e.Registry.analysisRecorder(); es.Armed() && !IsInertConst(out) {
+		if es := e.Registry.analysisRecorder(); es.Armed() && !IsInertConst(&out) {
 			switch {
 			case e.IsTop:
 				// Top-level (frames==1): the canonical case, evaluated once.
@@ -5553,7 +5553,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 			cren = append(cren, r)
 			return
 		}
-		if !IsConcrete(r) {
+		if !IsConcrete(&r) {
 			dynamic = true
 		}
 		addText(ValToString(r))
@@ -5563,7 +5563,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 	// nested list element is kept as a single value, not flattened, the
 	// same as `append [..]` on a FlexXml); any other value is one child.
 	addChild := func(r Value) {
-		if IsConcrete(r) && r.Parent.ConformsTo(TList) {
+		if IsConcrete(&r) && r.Parent.ConformsTo(TList) {
 			if rl, err := AsList(r); err == nil {
 				for i := 0; i < rl.Len(); i++ {
 					addOne(rl.Get(i))
@@ -5692,7 +5692,7 @@ func lowerReach(info ReachInfo) []Value {
 // a parsed dot-access (Eval=true) that has not been quote-captured. An inert
 // constructor-built reach (Eval=false, from `reach …`) or a codequote'd one
 // (Quoted) is data and is left alone.
-func isEvalReach(v Value) bool {
+func isEvalReach(v *Value) bool {
 	if !IsReach(v) || v.Quoted {
 		return false
 	}
@@ -5891,7 +5891,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		}
 
 		// Interpolated string: evaluate inline.
-		if IsInterpString(v) {
+		if IsInterpString(&v) {
 			result, err := e.evalInterpString(v)
 			if err != nil {
 				return Value{}, err
@@ -5902,7 +5902,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 
 		// Interpolated XML literal as a map value: evaluate inline to a
 		// Node/Xml, mirroring the InterpString case.
-		if IsXmlInterp(v) {
+		if IsXmlInterp(&v) {
 			result, err := e.EvalXmlInterp(v)
 			if err != nil {
 				return Value{}, err
@@ -5913,8 +5913,8 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 
 		// Paren expression: evaluate items as an isolated sub-expression
 		// (shared via evalParenExprResults with the main-stack path).
-		if IsParenExpr(v) {
-			items, _ := AsParenExpr(v)
+		if IsParenExpr(&v) {
+			items, _ := AsParenExpr(&v)
 			member, set, err := e.autoEvalMapGroupMember(items, dataMap, consumed)
 			if err != nil {
 				return Value{}, err
@@ -5928,8 +5928,8 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// Reach map value (e.g. {x: m.a}) — evaluate its lowered get-chain
 		// as an isolated sub-expression, like a ParenExpr (Reach Phase B),
 		// in the same inline region as a paren member.
-		if isEvalReach(v) {
-			info, _ := AsReach(v)
+		if isEvalReach(&v) {
+			info, _ := AsReach(&v)
 			result, err := e.runInlineCtxRegion(lowerReach(info), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
 			if err != nil {
 				return Value{}, err
@@ -6008,7 +6008,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// unresolvable / stateful / type-pattern element, so the map then falls back.
 		if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() && !e.containerEscaped() {
 			if es := e.Registry.analysisRecorder(); es.Armed() {
-				if lv, _ := out.Get(resolvedKey); lv.Parent.Equal(TList) && !IsInertConst(lv) {
+				if lv, _ := out.Get(resolvedKey); lv.Parent.Equal(TList) && !IsInertConst(&lv) {
 					if lp, isList := lv.Data.(ListPayload); isList {
 						es.RecordMakeListInner(e.Registry, lp.Elems, lv, lv.Pos())
 					}
@@ -6059,7 +6059,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 	// does: the end-of-Run evaluation appends the assembly at the end of the
 	// event stream, exactly when the interpreter builds the map.
 	if (consumed || e.ElemEvalRecordable || e.IsTop) && e.Registry.analysisActive() {
-		if es := e.Registry.analysisRecorder(); es.Armed() && !IsInertConst(res) {
+		if es := e.Registry.analysisRecorder(); es.Armed() && !IsInertConst(&res) {
 			keys := out.Keys()
 			vals := make([]Value, len(keys))
 			for i, k := range keys {
@@ -6085,8 +6085,8 @@ func (e *Engine) exprHasEffect(items []Value) bool {
 			if found {
 				return
 			}
-			if IsWord(v) {
-				if w, err := AsWord(v); err == nil {
+			if IsWord(&v) {
+				if w, err := AsWord(&v); err == nil {
 					if w.Name == "print" {
 						found = true
 						return
@@ -6097,14 +6097,14 @@ func (e *Engine) exprHasEffect(items []Value) bool {
 					}
 				}
 			}
-			if IsParenExpr(v) {
-				if toks, err := AsParenExpr(v); err == nil {
+			if IsParenExpr(&v) {
+				if toks, err := AsParenExpr(&v); err == nil {
 					walk(toks)
 				}
 				continue
 			}
-			if IsReach(v) {
-				if ri, err := AsReach(v); err == nil {
+			if IsReach(&v) {
+				if ri, err := AsReach(&v); err == nil {
 					walk(ri.Receiver)
 					for i := range ri.Segments {
 						if ri.Segments[i].Computed {
@@ -6183,7 +6183,7 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 		noteFnBodyPending(r, home, fd)
 		return
 	}
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return
 	}
 	if v.Parent.ConformsTo(TMap) {
@@ -6305,8 +6305,8 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// would consume the fn before the post-collapse marker peek could
 	// see it — so a marked 0-arg read defers like any other fn.
 	if valIdx > 0 && valIdx+1 < e.Tape.Len() &&
-		e.Tape.At(valIdx-1).ReachGroup && IsOpenParen(e.Tape.At(valIdx-1)) &&
-		IsCloseParen(e.Tape.At(valIdx+1)) &&
+		e.Tape.At(valIdx-1).ReachGroup && IsOpenParen(e.Tape.Ref(valIdx-1)) &&
+		IsCloseParen(e.Tape.Ref(valIdx+1)) &&
 		(!FnValueOnlyZeroArgSigs(fnDef) || e.dispatchModAt(valIdx+2)) {
 		e.Pointer++
 		return nil
@@ -6457,7 +6457,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	if sig == nil && e.fnValueNoMatchRecovers(valIdx, fnDef, fn) {
 		rfn := *fn
 		rfn.Registry, _ = FnHome(e.Registry, &fnDef)
-		pos := UncalledRaisePos(e.Tape.At(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
+		pos := UncalledRaisePos(e.Tape.Ref(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
 		e.fnValueRecovery = true
 		err := CheckBraid.CheckModeAssumeSig(e, w, &rfn, &rfn.Signatures[0], pos)
 		e.fnValueRecovery = false
@@ -6682,7 +6682,7 @@ func IsRecordableLiteral(v Value) bool {
 		return false
 	}
 	switch {
-	case IsForward(v), IsOpenParen(v), IsCloseParen(v), IsEnd(v):
+	case IsForward(&v), IsOpenParen(&v), IsCloseParen(&v), IsEnd(&v):
 		return false
 	case v.Parent.ConformsTo(TMark), v.Parent.ConformsTo(TMove),
 		v.Parent.ConformsTo(TReturnCheck), v.Parent.ConformsTo(TInternal):
@@ -6728,16 +6728,16 @@ func (e *Engine) inFnFrame() bool {
 	depth := 0
 	for i := e.Pointer - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if IsCloseParen(v) {
+		if IsCloseParen(&v) {
 			depth++
 			continue
 		}
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			if depth > 0 {
 				depth--
 				continue
 			}
-			if IsFrameOpen(v) {
+			if IsFrameOpen(&v) {
 				return true
 			}
 		}
@@ -6772,7 +6772,7 @@ func (e *Engine) recordDispatch(name string, arity int, results []Value) {
 		// A callee's own dispatch. The enclosing Call already stands for it.
 		return
 	}
-	if len(results) > 0 && IsFrameOpen(results[0]) {
+	if len(results) > 0 && IsFrameOpen(&results[0]) {
 		e.sawFnFrame = true
 		e.recorder.OnCall(name, arity, 0)
 		return
@@ -6840,14 +6840,14 @@ func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefIn
 	}
 	for _, p := range CheckBraid.CheckModeFallbackPositions(e, maxN) {
 		v := e.Tape.At(p)
-		if IsWord(v) {
-			if wv, werr := AsWord(v); werr == nil {
+		if IsWord(&v) {
+			if wv, werr := AsWord(&v); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wv.Name); ok {
 					v = top
 				}
 			}
 		}
-		if v.Carrier && v.Parent != nil && !IsBareTypeNode(v) &&
+		if v.Carrier && v.Parent != nil && !IsBareTypeNode(&v) &&
 			(v.Dynamic || v.Parent.Equal(TAny) || v.Parent.ConformsTo(TDisjunct)) {
 			return true
 		}
@@ -6872,10 +6872,10 @@ func trivialDelegationTarget(sig *FnSig) (string, bool) {
 			return "", false
 		}
 	}
-	if !IsWord(sig.Body()[0]) {
+	if !IsWord(&sig.Body()[0]) {
 		return "", false
 	}
-	w, err := AsWord(sig.Body()[0])
+	w, err := AsWord(&sig.Body()[0])
 	if err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		return "", false
 	}
@@ -6893,9 +6893,9 @@ func (e *Engine) upcomingArgs(valIdx int) []Value {
 	for i := valIdx + 1; i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
 		switch {
-		case IsForward(v):
+		case IsForward(&v):
 			continue
-		case IsMark(v) || IsMove(v) || IsCloseParen(v) || IsEnd(v):
+		case IsMark(&v) || IsMove(&v) || IsCloseParen(&v) || IsEnd(&v):
 			return out
 		default:
 			out = append(out, v)
@@ -6989,7 +6989,7 @@ func FnValueStackMatches(fnDef FnDefInfo, resolved []Value) bool {
 // a named call, a def-bound lambda, the VM's apply — refuses it (NUR248).
 func stackSlotAdmits(sig *Signature, j int, v Value) bool {
 	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[j]
-	return SigArgMatches(sig, j, v) && (isTypeArg || !rejectsTypeLiteral(v, SigArgType(sig, j)))
+	return SigArgMatches(sig, j, &v) && (isTypeArg || !rejectsTypeLiteral(v, SigArgType(sig, j)))
 }
 
 func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []Value) error {
@@ -7077,7 +7077,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		valIdx < e.Tape.Len() && !e.Tape.At(valIdx).Quoted {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
-			pos := UncalledRaisePos(e.Tape.At(valIdx).Pos(), candidates)
+			pos := UncalledRaisePos(e.Tape.Ref(valIdx).Pos(), candidates)
 			// The detail no longer says "was left on the stack as data" — that
 			// described what the OLD contract did with the value, and saying it
 			// while raising would tell the reader the opposite of what happened.
@@ -7181,7 +7181,7 @@ func undecidedPatternWindow(ownSigs []Signature, resolved []Value) int {
 			case !stackSlotAdmits(sig, j, v):
 				ok = false
 			case p.Pattern == nil:
-			case !IsConcrete(v):
+			case !IsConcrete(&v):
 				undecided = true
 			default:
 				_, ok = Unify(v, *p.Pattern)
@@ -7270,8 +7270,8 @@ func UncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
 // sound, and the narrow version is the one that is obviously so.
 func uncalledDispatchDefinite(candidates []Value) bool {
 	for _, c := range candidates {
-		if !IsConcrete(c) || c.Dynamic || c.Undefined ||
-			IsWord(c) || IsOpenParen(c) || IsReach(c) || IsParenExpr(c) || IsInterpString(c) {
+		if !IsConcrete(&c) || c.Dynamic || c.Undefined ||
+			IsWord(&c) || IsOpenParen(&c) || IsReach(&c) || IsParenExpr(&c) || IsInterpString(&c) {
 			return false
 		}
 	}
@@ -7406,7 +7406,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	// stack is mutated, so a return-type error can point at the call.
 	var callPos SrcPos
 	if valIdx >= 0 && valIdx < e.Tape.Len() {
-		callPos = e.Tape.At(valIdx).Pos()
+		callPos = e.Tape.Ref(valIdx).Pos()
 	}
 
 	// Auto-evaluate consumed arguments with Eval=true so FnDef handlers
@@ -7424,7 +7424,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		args[i] = StripAscribed(args[i])
 		if args[i].Eval && !args[i].Quoted {
 			if args[i].Parent.Equal(TMap) &&
-				args[i].Data != nil && !IsTypedMap(args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {
+				args[i].Data != nil && !IsTypedMap(&args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {
 				noEval := sig.NoEvalMapArgs != nil && sig.NoEvalMapArgs[i]
 				if !noEval {
 					// This FnDef/module-wrapper path never dispatches the core `make`
@@ -7440,7 +7440,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 					args[i] = evaluated
 				}
 			} else if args[i].Parent.Equal(TList) &&
-				args[i].Data != nil && !IsTypedList(args[i]) && !IsTableType(args[i]) {
+				args[i].Data != nil && !IsTypedList(&args[i]) && !IsTableType(args[i]) {
 				noEval := sig.NoEvalArgs != nil && sig.NoEvalArgs[i]
 				if !noEval {
 					// Bare words never degrade to data — propagate the
@@ -7737,7 +7737,7 @@ func ReachFnWouldClaimOn(win CollectWindow, reg *Registry, fnVal Value, idx int)
 		if sig.TotalArgs() == 0 || sig.Fallback || sig.BarrierPos == 0 {
 			continue // nothing to claim forward
 		}
-		if SigArgMatches(sig, 0, probe) {
+		if SigArgMatches(sig, 0, &probe) {
 			return true
 		}
 	}
@@ -7782,7 +7782,7 @@ func (e *Engine) fnValueWouldWiden(fnVal Value, completed, idx int) bool {
 			limit = sig.TotalArgs()
 		}
 		for slot := 0; slot < limit; slot++ {
-			if SigArgMatches(sig, slot, probe) {
+			if SigArgMatches(sig, slot, &probe) {
 				return true
 			}
 		}
@@ -7845,7 +7845,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	// (callResultPlaced, NUR260), and a loop body that leaves one is the
 	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
 	// (CheckState.ReachSurvivorFnIDs).
-	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(v) || v.Dynamic) {
+	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(&v) || v.Dynamic) {
 		cs := e.Registry.Check
 		if cs.ReachSurvivorFnIDs == nil {
 			cs.ReachSurvivorFnIDs = map[string]bool{}
@@ -7969,7 +7969,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 	// at its site and never rebound. The general carrier is. Closing it means
 	// making the compiler's placement signal POSITIONAL like this one, rather
 	// than value-keyed — not widening the ID table further.
-	if !v.Quoted && (v.Dynamic || IsFnTypedCarrier(v) || e.recorderMayBeFn(v)) {
+	if !v.Quoted && (v.Dynamic || IsFnTypedCarrier(&v) || e.recorderMayBeFn(v)) {
 		// Ask the braid FIRST, and unconditionally. It is not only a
 		// predicate: it RECORDS the placement in ParenPlacedFnIDs for the
 		// compiler's residual lowering, which must not lower a placed lead
@@ -7994,7 +7994,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 		// not-disjoint-against-Function test is the same rule the residual
 		// lowering's auto-dispatch guard already uses, so both ends agree on
 		// what "might be callable" means.
-		if IsFnTypedCarrier(v) || placed {
+		if IsFnTypedCarrier(&v) || placed {
 			return 1
 		}
 	}
@@ -8068,10 +8068,10 @@ func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Valu
 		return
 	}
 	for _, r := range results {
-		if r.Quoted || r.ID == "" || IsConcrete(r) {
+		if r.Quoted || r.ID == "" || IsConcrete(&r) {
 			continue
 		}
-		if IsFnTypedCarrier(r) || (r.Dynamic && SigTypeMatches(r, TFunction)) {
+		if IsFnTypedCarrier(&r) || (r.Dynamic && SigTypeMatches(&r, TFunction)) {
 			es.NoteFnResultReStep(r, next.Pos())
 		}
 	}
@@ -8089,7 +8089,7 @@ func plainReStepToken(t Value) bool {
 	if _, mod := AsDispatchMod(t); mod {
 		return false
 	}
-	if IsWord(t) || IsParenExpr(t) || isEvalReach(t) || IsSugar(t) {
+	if IsWord(&t) || IsParenExpr(&t) || isEvalReach(&t) || IsSugar(&t) {
 		return true
 	}
 	return IsRecordableLiteral(t)
@@ -8214,7 +8214,7 @@ func effectiveForwardLimit(sig *Signature, w WordInfo) int {
 // signature's arity.
 func EffectiveForwardLimit(sig *Signature, w WordInfo) int { return effectiveForwardLimit(sig, w) }
 
-func scanBoundaryToken(tok Value) bool {
+func scanBoundaryToken(tok *Value) bool {
 	if IsForward(tok) || tok.Parent.ConformsTo(TMark) || tok.Parent.ConformsTo(TMove) ||
 		tok.Parent.ConformsTo(TInternal) || tok.Parent.ConformsTo(TReturnCheck) {
 		return true
@@ -8336,11 +8336,11 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 	}
 	v := win.At(idx)
 	switch {
-	case IsEnd(v) || IsCloseParen(v) || IsForward(v):
+	case IsEnd(&v) || IsCloseParen(&v) || IsForward(&v):
 		return Value{}, probeNone
-	case IsOpenParen(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsXmlInterp(v):
+	case IsOpenParen(&v) || IsParenExpr(&v) || IsReach(&v) || IsInterpString(&v) || IsXmlInterp(&v):
 		return Value{}, probeOptimistic
-	case IsDispatchMod(v):
+	case IsDispatchMod(&v):
 		// A dispatch-modifier marker (`/v` / `/q` after a paren or a dotted
 		// path — the parser's Word/__DM) qualifies the value BEFORE it and
 		// is never an argument: it fell to the literal arm below, where an
@@ -8348,8 +8348,8 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		// an Any first parameter read as a call head that would claim its
 		// own marker and `def g M.up1/v` collected nothing (NUR262).
 		return Value{}, probeNone
-	case IsWord(v):
-		wi, werr := AsWord(v)
+	case IsWord(&v):
+		wi, werr := AsWord(&v)
 		if werr != nil { //covergate:allow AsWord cannot fail after an IsWord guard — the payload IS a WordInfo (§engine)
 			return Value{}, probeNone
 		}
@@ -8438,7 +8438,7 @@ func FnValueOnlyZeroArgSigs(fd FnDefInfo) bool {
 
 // implicitEnd resolves a forward early when a type mismatch occurs.
 func (e *Engine) implicitEnd(fwdIdx int) error {
-	fwd, _ := AsForward(e.Tape.At(fwdIdx))
+	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	funcIdx := fwd.FuncIndex
 	collectedCount := fwd.CollectedArgs
 	stackArgCount := fwd.StackArgs
@@ -8510,10 +8510,10 @@ func (e *Engine) commitBarrierForward() bool {
 	// the same scan stepEnd performs.
 	fwdIdx := -1
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			fwdIdx = i
 			break
 		}
@@ -8522,17 +8522,17 @@ func (e *Engine) commitBarrierForward() bool {
 		return false
 	}
 
-	fwd, _ := AsForward(e.Tape.At(fwdIdx))
+	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	funcIdx := fwd.FuncIndex
 	claimed := fwd.CollectedArgs + fwd.StackArgs
 	if claimed == 0 {
 		// Nothing collected yet — no smaller-arity dispatch to commit.
 		return false
 	}
-	if funcIdx < 0 || funcIdx >= e.Tape.Len() || !IsWord(e.Tape.At(funcIdx)) {
+	if funcIdx < 0 || funcIdx >= e.Tape.Len() || !IsWord(e.Tape.Ref(funcIdx)) {
 		return false
 	}
-	w, _ := AsWord(e.Tape.At(funcIdx))
+	w, _ := AsWord(e.Tape.Ref(funcIdx))
 	fn := e.Registry.Lookup(w.Name)
 	if fn == nil {
 		return false
@@ -8552,7 +8552,7 @@ func (e *Engine) commitBarrierForward() bool {
 	var resolved []Value
 	for i := start; i < funcIdx; i++ {
 		v := e.Tape.At(i)
-		if IsForward(v) || IsOpenParen(v) || IsMark(v) || IsMove(v) {
+		if IsForward(&v) || IsOpenParen(&v) || IsMark(&v) || IsMove(&v) {
 			continue
 		}
 		resolved = append(resolved, v)
@@ -8596,7 +8596,7 @@ func (e *Engine) commitBarrierForward() bool {
 	if fwdIdx < funcIdx {
 		funcIdx--
 	}
-	if funcIdx < e.Tape.Len() && IsWord(e.Tape.At(funcIdx)) {
+	if funcIdx < e.Tape.Len() && IsWord(e.Tape.Ref(funcIdx)) {
 		e.forceStackWord(funcIdx, w)
 	}
 	e.Pointer = funcIdx
@@ -8628,7 +8628,7 @@ func (e *Engine) wordBarrier(name string) (committed bool, err error) {
 // pass proves holds a fn; a gradual one may hold data, where the run
 // collects it (its claim declines the collection instead, NUR207).
 func (e *Engine) fnCarrierBarrier(cv Value, name string) (stop bool, err error) {
-	if !IsFnTypedCarrier(cv) {
+	if !IsFnTypedCarrier(&cv) {
 		return false, nil
 	}
 	return e.wordBarrier(name)
@@ -8649,10 +8649,10 @@ func (e *Engine) strandedForwardError(boundary string) *BoruError {
 	}
 	fwdIdx := -1
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			fwdIdx = i
 			break
 		}
@@ -8660,7 +8660,7 @@ func (e *Engine) strandedForwardError(boundary string) *BoruError {
 	if fwdIdx < 0 {
 		return nil
 	}
-	fwd, _ := AsForward(e.Tape.At(fwdIdx))
+	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	return StrandedForwardDiag(e.effectiveSource(), fwd.FuncName, fwd.ExpectedArgs-fwd.CollectedArgs,
 		boundary, e.barrierReceiverWord(boundary), fwd.Pos)
 }
@@ -8684,8 +8684,8 @@ func (e *Engine) stepEnd() error {
 	// The recorder learns where the boundary fell (NUR187): the residual's
 	// apply arms never carry a fn value's collection across it.
 	if e.Registry != nil && e.Registry.Check != nil && e.Registry.analysisActive() {
-		e.Registry.Check.Recorder().NoteStatementEnd(e.Tape.At(endIdx).Pos())
-		if p := e.Tape.At(endIdx).Pos(); p.Row > 0 {
+		e.Registry.Check.Recorder().NoteStatementEnd(e.Tape.Ref(endIdx).Pos())
+		if p := e.Tape.Ref(endIdx).Pos(); p.Row > 0 {
 			e.stmtEnds = append(e.stmtEnds, p)
 		}
 	}
@@ -8693,10 +8693,10 @@ func (e *Engine) stepEnd() error {
 	// Find nearest pending forward, stopping at open-paren barriers.
 	fwdIdx := -1
 	for i := endIdx - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			fwdIdx = i
 			break
 		}
@@ -8708,7 +8708,7 @@ func (e *Engine) stepEnd() error {
 		return nil
 	}
 
-	fwd, _ := AsForward(e.Tape.At(fwdIdx))
+	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	funcIdx := fwd.FuncIndex
 
 	// Remove forward and end from the stack.
@@ -8768,10 +8768,10 @@ func (e *Engine) noteDefStack(first bool) {
 // token inside it, which the recorder matches to the paren's source token.
 func (e *Engine) statementStackPos(idx int) SrcPos {
 	tok := e.Tape.At(idx)
-	if p := tok.Pos(); p.Row != 0 || !IsOpenParen(tok) || idx+1 >= e.Tape.Len() {
+	if p := tok.Pos(); p.Row != 0 || !IsOpenParen(&tok) || idx+1 >= e.Tape.Len() {
 		return p
 	}
-	return e.Tape.At(idx + 1).Pos()
+	return e.Tape.Ref(idx + 1).Pos()
 }
 
 // noteStatementStack tells the recorder the stack an `end` at endIdx that
@@ -8786,7 +8786,7 @@ func (e *Engine) noteStatementStack(endIdx int) {
 	stack := make([]Value, 0, endIdx)
 	for i := 0; i < endIdx; i++ {
 		v := e.Tape.At(i)
-		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+		if IsOpenParen(&v) || IsForward(&v) || isEngineMarker(v) {
 			return
 		}
 		stack = append(stack, v)
@@ -8806,7 +8806,7 @@ func (e *Engine) noteParenStack(idx int) {
 	stack := make([]Value, 0, idx)
 	for i := 0; i < idx; i++ {
 		v := e.Tape.At(i)
-		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+		if IsOpenParen(&v) || IsForward(&v) || isEngineMarker(v) {
 			return
 		}
 		stack = append(stack, v)
@@ -8821,15 +8821,15 @@ func (e *Engine) noteParenStack(idx int) {
 // EvalResidual scan evaluates in-frame. Shared with probeTailCall so
 // the TCO gate and the marker can never disagree about what the
 // eager teardown would evaluate.
-func isPendingResidualContainer(v Value) bool {
+func isPendingResidualContainer(v *Value) bool {
 	if !v.Eval || v.Quoted || v.Parent == nil {
 		return false
 	}
 	if v.Parent.Equal(TMap) {
-		return v.Data != nil && !IsTypedMap(v) && !IsRecordType(v) && !IsOptionsType(v)
+		return v.Data != nil && !IsTypedMap(v) && !IsRecordType(*v) && !IsOptionsType(*v)
 	}
 	if v.Parent.Equal(TList) {
-		return v.Data != nil && !IsTypedList(v) && !IsTableType(v)
+		return v.Data != nil && !IsTypedList(v) && !IsTableType(*v)
 	}
 	return false
 }
@@ -8851,7 +8851,7 @@ func isPendingResidualContainer(v Value) bool {
 // again, so the cell is overwritten with a spent marker — truncation-only,
 // nothing left to pop — before the pops run.
 func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
-	info, _ := AsDefCleanup(val)
+	info, _ := AsDefCleanup(&val)
 	if info.EvalResidual {
 		// A COMPUTING body's residual pending containers evaluate
 		// IN-frame — before the body-local defs pop — so the spliced
@@ -8871,14 +8871,14 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 		// down from the marker would run their side effects in reverse.
 		lo := 0
 		for i := markerIdx - 1; i >= 0; i-- {
-			if IsOpenParen(e.Tape.At(i)) {
+			if IsOpenParen(e.Tape.Ref(i)) {
 				lo = i + 1
 				break
 			}
 		}
 		for i := lo; i < markerIdx; i++ {
 			v := e.Tape.At(i)
-			if !isPendingResidualContainer(v) {
+			if !isPendingResidualContainer(&v) {
 				continue
 			}
 			var ev Value
@@ -8952,7 +8952,7 @@ func truncateFrameDefs(info DefCleanupInfo) {
 }
 
 func (e *Engine) stepMark(val Value) {
-	info, _ := AsMark(val)
+	info, _ := AsMark(&val)
 	if e.marks == nil {
 		e.marks = make(map[string]bool)
 	}
@@ -8973,7 +8973,7 @@ func (e *Engine) stepMark(val Value) {
 // When the move carries a Loop (for-loop continuation), stepMoveCont is
 // called instead of the basic one-shot replay.
 func (e *Engine) stepMove(val Value) error {
-	info, _ := AsMove(val)
+	info, _ := AsMove(&val)
 	moveIdx := e.Pointer
 
 	if e.marks == nil || !e.marks[info.To] {
@@ -8988,10 +8988,10 @@ func (e *Engine) stepMove(val Value) error {
 	markIdx := -1
 	for i := moveIdx - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if !IsMark(v) {
+		if !IsMark(&v) {
 			continue
 		}
-		if _as2, _ := AsMark(v); _as2.ID == info.To {
+		if _as2, _ := AsMark(&v); _as2.ID == info.To {
 			markIdx = i
 			break
 		}
@@ -9018,7 +9018,7 @@ func (e *Engine) stepMove(val Value) error {
 	}
 
 	// Get the saved body from the mark.
-	markInfo, _ := AsMark(e.Tape.At(markIdx))
+	markInfo, _ := AsMark(e.Tape.Ref(markIdx))
 
 	// Remove from hash table.
 	delete(e.marks, info.To)
@@ -9140,7 +9140,7 @@ func (e *Engine) collectLoopRegion(cont *Loop, markIdx, moveIdx int) (escaped bo
 	base := len(cont.Results)
 	for j := markIdx + 1; j < moveIdx; j++ {
 		v := e.Tape.At(j)
-		if isPendingResidualContainer(v) {
+		if isPendingResidualContainer(&v) {
 			ev, err := e.autoEvalResidual(v)
 			if err != nil {
 				return false, err
@@ -9254,7 +9254,7 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	// position its move carries — read before the splice removes it, which
 	// otherwise left whatever token followed the if (or none) at the pointer.
 	if condResult.Parent == nil {
-		movePos := e.Tape.At(moveIdx).Pos()
+		movePos := e.Tape.Ref(moveIdx).Pos()
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
 		return makeBoruErrorAt("runtime_error", "if: condition produced no value", "if", e.effectiveSource(), "", movePos)
@@ -9351,8 +9351,8 @@ func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
 func (e *Engine) handleLoopBreak() bool {
 	// Scan forward from current pointer for a move with continuation.
 	for i := e.Pointer; i < e.Tape.Len(); i++ {
-		if IsMove(e.Tape.At(i)) {
-			info, _ := AsMove(e.Tape.At(i))
+		if IsMove(e.Tape.Ref(i)) {
+			info, _ := AsMove(e.Tape.Ref(i))
 			// A DRIVEN loop (each, fold, …) is not a loop for break: the
 			// signal passes through it to the enclosing for/while, as it
 			// passed through the handler's Go loop (loop.go).
@@ -9360,8 +9360,8 @@ func (e *Engine) handleLoopBreak() bool {
 				// Found the for-loop's move. Find its mark.
 				markIdx := -1
 				for j := 0; j < i; j++ {
-					_as3, _ := AsMark(e.Tape.At(j))
-					if IsMark(e.Tape.At(j)) && _as3.ID == info.To {
+					_as3, _ := AsMark(e.Tape.Ref(j))
+					if IsMark(e.Tape.Ref(j)) && _as3.ID == info.To {
 						markIdx = j
 						break
 					}
@@ -9397,14 +9397,14 @@ func (e *Engine) handleLoopBreak() bool {
 func (e *Engine) handleLoopContinue() bool {
 	// Scan forward from current pointer for a move with continuation.
 	for i := e.Pointer; i < e.Tape.Len(); i++ {
-		if IsMove(e.Tape.At(i)) {
-			info, _ := AsMove(e.Tape.At(i))
+		if IsMove(e.Tape.Ref(i)) {
+			info, _ := AsMove(e.Tape.Ref(i))
 			if info.Cont != nil && info.Cont.Driver == nil {
 				// Found the for-loop's move. Find its mark.
 				markIdx := -1
 				for j := 0; j < i; j++ {
-					_as4, _ := AsMark(e.Tape.At(j))
-					if IsMark(e.Tape.At(j)) && _as4.ID == info.To {
+					_as4, _ := AsMark(e.Tape.Ref(j))
+					if IsMark(e.Tape.Ref(j)) && _as4.ID == info.To {
 						markIdx = j
 						break
 					}
@@ -9439,7 +9439,7 @@ func (e *Engine) handleLoopContinue() bool {
 func (e *Engine) cleanMarks() {
 	i := 0
 	for i < e.Tape.Len() {
-		if IsMark(e.Tape.At(i)) || IsMove(e.Tape.At(i)) {
+		if IsMark(e.Tape.Ref(i)) || IsMove(e.Tape.Ref(i)) {
 			e.Tape.Remove(i)
 		} else {
 			i++
@@ -9522,7 +9522,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// map field — is admitted the same way (2026-09-25): the guarded op
 	// applies whatever the read yields and defers on a non-callable value,
 	// exactly as the interpreter's paren leaves a non-fn lead as data.
-	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) && !es.ContainerReadResult(fnVal.ID) {
+	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(&fnVal) && !es.ContainerReadResult(fnVal.ID) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}
@@ -9618,7 +9618,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 			// this scope (`(g x add 1)`: the model's `add` took `x`) is a
 			// collection hazard — the window's argument is that dispatch's
 			// result, not the lead's (NUR121).
-			if !v.Dynamic && !v.Quoted && IsFnTypedCarrier(v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(v.ID) {
+			if !v.Dynamic && !v.Quoted && IsFnTypedCarrier(&v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(v.ID) {
 				return i
 			}
 			break
@@ -9632,7 +9632,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 // type that neither is nor contains Function — an `e:Integer` param, not
 // `x:Any`, not `Function`, not an alternative set.
 func parenLeadArgTypedNonFn(v Value) bool {
-	if v.Parent == nil || IsDisjunct(v) || v.Parent.Equal(TAny) {
+	if v.Parent == nil || IsDisjunct(&v) || v.Parent.Equal(TAny) {
 		return false
 	}
 	return !v.Parent.ConformsTo(TFunction) && !TFunction.ConformsTo(v.Parent)
@@ -9715,7 +9715,7 @@ func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, c
 			continue
 		}
 		if w.lead < 0 {
-			if v.Dynamic || v.Quoted || v.ID == "" || !IsFnTypedCarrier(v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
+			if v.Dynamic || v.Quoted || v.ID == "" || !IsFnTypedCarrier(&v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
 				return w, false
 			}
 			w.lead = i
@@ -9960,11 +9960,11 @@ func (e *Engine) parenFeedsPendingForward(openIdx int) bool {
 	}
 	for i := openIdx - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			return false
 		}
-		if IsForward(v) {
-			fwd, _ := AsForward(v)
+		if IsForward(&v) {
+			fwd, _ := AsForward(&v)
 			return fwd.CollectedArgs < fwd.Sig.TotalArgs()
 		}
 	}
@@ -9995,13 +9995,13 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 		return false
 	}
 	tok := e.Tape.At(closeIdx + 1)
-	if IsOpenParen(tok) || IsParenExpr(tok) || IsReach(tok) || IsInterpString(tok) {
+	if IsOpenParen(&tok) || IsParenExpr(&tok) || IsReach(&tok) || IsInterpString(&tok) {
 		return true
 	}
-	if IsWord(tok) {
+	if IsWord(&tok) {
 		return !e.fnWordBarrierAt(tok)
 	}
-	if IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
+	if IsCloseParen(&tok) || IsEnd(&tok) || IsForward(&tok) || IsMark(&tok) || IsMove(&tok) || !IsRecordableLiteral(tok) {
 		return false
 	}
 	if _, mod := AsDispatchMod(tok); mod {
@@ -10022,7 +10022,7 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 		}
 		limit := effectiveForwardLimit(sig, WordInfo{Name: fd.Name, ArgCount: -1})
 		if limit == BarrierAllForward || limit > 0 {
-			if SigArgMatches(sig, 0, tok) {
+			if SigArgMatches(sig, 0, &tok) {
 				return true
 			}
 		}
@@ -10088,7 +10088,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 
 	openIdx := -1
 	for i := closeIdx - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			openIdx = i
 			break
 		}
@@ -10109,9 +10109,9 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	for attempt := 0; attempt < 222; attempt++ {
 		hasFwd := false
 		for i := openIdx + 1; i < closeIdx; i++ {
-			if IsForward(e.Tape.At(i)) {
+			if IsForward(e.Tape.Ref(i)) {
 				hasFwd = true
-				fwd, _ := AsForward(e.Tape.At(i))
+				fwd, _ := AsForward(e.Tape.Ref(i))
 				funcIdx := fwd.FuncIndex
 				collectedCount := fwd.CollectedArgs
 				stackArgCount := fwd.StackArgs
@@ -10140,7 +10140,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 					// its per-step emit.
 					e.Registry.noteCoverage(val.Pos())
 					switch {
-					case IsWord(val):
+					case IsWord(&val):
 						if err := e.stepWord(val); err != nil {
 							return err
 						}
@@ -10149,7 +10149,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 						if closeIdx < 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
-					case IsCloseParen(val): //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+					case IsCloseParen(&val): //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 						if err := e.stepCloseParen(false, false); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return err
 						}
@@ -10157,7 +10157,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 						if closeIdx < 0 {                         //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
-					case IsEnd(val):
+					case IsEnd(&val):
 						if err := e.stepEnd(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return err
 						}
@@ -10165,13 +10165,13 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 						if closeIdx < 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
-					case IsForward(val):
+					case IsForward(&val):
 						e.Pointer++
-					case IsOpenParen(val):
+					case IsOpenParen(&val):
 						e.Pointer++
-					case IsReturnCheck(val):
+					case IsReturnCheck(&val):
 						e.Pointer++
-					case IsDefCleanup(val):
+					case IsDefCleanup(&val):
 						if err := e.stepDefCleanup(val, e.Pointer); err != nil { //covergate:allow interpreter step/dispatch defensive error arm: a marker reaching the implicit-end re-run was already stepped by the main loop (its residual containers are no longer pending, so the EvalResidual scan no-ops); a first-time step here needs a frame spliced DURING forward resolution carrying a pending failing residual — a pathological shape the census does not produce (§engine)
 							return err
 						}
@@ -10201,8 +10201,8 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 
 	// Check for any remaining orphaned forwards.
 	for i := openIdx + 1; i < closeIdx; i++ {
-		if IsForward(e.Tape.At(i)) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			if verr := e.voidArgErrorFor(fwd.FuncName, fwd.Pos); verr != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 				return verr
 			}
@@ -10227,8 +10227,8 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	// the unmatched close the body's own run reported (the parser writes no
 	// such body or literal; a Go-built one can).
 	if _, isLoop := e.Tape.At(openIdx).Data.(LoopOpenInfo); isLoop {
-		if closeIdx+1 >= e.Tape.Len() || !IsMove(e.Tape.At(closeIdx+1)) {
-			return makeBoruErrorAt("syntax_error", "unmatched closing parenthesis", ")", e.effectiveSource(), "", e.Tape.At(closeIdx).Pos())
+		if closeIdx+1 >= e.Tape.Len() || !IsMove(e.Tape.Ref(closeIdx+1)) {
+			return makeBoruErrorAt("syntax_error", "unmatched closing parenthesis", ")", e.effectiveSource(), "", e.Tape.Ref(closeIdx).Pos())
 		}
 		e.Tape.Remove(closeIdx)
 		e.Tape.Remove(openIdx)
@@ -10249,15 +10249,15 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	if closeIdx == openIdx+1 {
 		for i := openIdx - 1; i >= 0; i-- {
 			v := e.Tape.At(i)
-			if IsOpenParen(v) {
+			if IsOpenParen(&v) {
 				break
 			}
 			switch {
-			case IsWord(v):
-				w, _ := AsWord(v)
+			case IsWord(&v):
+				w, _ := AsWord(&v)
 				e.voidGroups = append(e.voidGroups, w.Name)
-			case IsForward(v):
-				fwd, _ := AsForward(v)
+			case IsForward(&v):
+				fwd, _ := AsForward(&v)
 				e.voidGroups = append(e.voidGroups, fwd.FuncName)
 			}
 		}
@@ -10265,7 +10265,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 
 	// Remove any surviving def-cleanup markers.
 	for i := openIdx + 1; i < closeIdx; i++ {
-		if IsDefCleanup(e.Tape.At(i)) {
+		if IsDefCleanup(e.Tape.Ref(i)) {
 			if err := e.stepDefCleanup(e.Tape.At(i), i); err != nil {
 				return err
 			}
@@ -10277,8 +10277,8 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 
 	// Check for return type validation.
 	for i := openIdx + 1; i < closeIdx; i++ {
-		if IsReturnCheck(e.Tape.At(i)) {
-			rc, _ := AsReturnCheck(e.Tape.At(i))
+		if IsReturnCheck(e.Tape.Ref(i)) {
+			rc, _ := AsReturnCheck(e.Tape.Ref(i))
 			e.Tape.Remove(i)
 			closeIdx--
 
@@ -10548,7 +10548,7 @@ func (e *Engine) markReStepped(v Value) {
 // which a re-step dispatches where the arm's own paren parked it; NUR317).
 // Requires a registry with check state.
 func (e *Engine) mightBeCallable(v Value) bool {
-	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
+	if IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
 		return true
 	}
 	return e.recorderMayBeFn(v) || UnionMayBeFn(v)
@@ -10621,9 +10621,9 @@ func (e *Engine) placeTrailingDeferred(valIdx int) {
 func (e *Engine) findCloseParenAfter(openIdx int) int {
 	depth := 0
 	for i := openIdx + 1; i < e.Tape.Len(); i++ {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			depth++
-		} else if IsCloseParen(e.Tape.At(i)) {
+		} else if IsCloseParen(e.Tape.Ref(i)) {
 			if depth == 0 {
 				return i
 			}
@@ -10646,12 +10646,12 @@ func (e *Engine) EffectiveResolved() []Value {
 	excludeIndices := e.excludeScratch
 	hasExclude := false
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			start = i + 1
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			if excludeIndices == nil {
 				excludeIndices = make(map[int]bool)
 				e.excludeScratch = excludeIndices
@@ -10684,7 +10684,7 @@ func (e *Engine) EffectiveResolved() []Value {
 	resolved := e.resolvedScratch[:0]
 	for i := start; i < e.Pointer; i++ {
 		v := e.Tape.At(i)
-		if IsForward(v) || IsOpenParen(v) || IsMark(v) || IsMove(v) || (hasExclude && excludeIndices[i]) {
+		if IsForward(&v) || IsOpenParen(&v) || IsMark(&v) || IsMove(&v) || (hasExclude && excludeIndices[i]) {
 			continue
 		}
 		resolved = append(resolved, v)
@@ -10719,7 +10719,7 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		sac = stackArgCount[0]
 	}
 
-	if funcIdx >= e.Tape.Len() || !IsWord(e.Tape.At(funcIdx)) {
+	if funcIdx >= e.Tape.Len() || !IsWord(e.Tape.Ref(funcIdx)) {
 		// A VALUE callee re-steps and re-plans in full — its own forward
 		// window (`(concat parts {sep})`) must stay claimable so a wider
 		// arity can still match. A reach-read CALL head in that window
@@ -10729,7 +10729,7 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		return
 	}
 
-	w, _ := AsWord(e.Tape.At(funcIdx))
+	w, _ := AsWord(e.Tape.Ref(funcIdx))
 	fn := e.Registry.Lookup(w.Name)
 
 	// Check if stack match exists with current resolved values.
@@ -10741,12 +10741,12 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		start := 0
 		excludeIndices := make(map[int]bool)
 		for i := funcIdx - 1; i >= 0; i-- {
-			if IsOpenParen(e.Tape.At(i)) {
+			if IsOpenParen(e.Tape.Ref(i)) {
 				start = i + 1
 				break
 			}
-			if IsForward(e.Tape.At(i)) {
-				fwd, _ := AsForward(e.Tape.At(i))
+			if IsForward(e.Tape.Ref(i)) {
+				fwd, _ := AsForward(e.Tape.Ref(i))
 				// Exclude the function word itself.
 				excludeIndices[fwd.FuncIndex] = true
 				// Exclude collected forward args (before function word).
@@ -10768,7 +10768,7 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		var resolved []Value
 		for i := start; i < funcIdx; i++ {
 			v := e.Tape.At(i)
-			if IsForward(v) || IsOpenParen(v) || excludeIndices[i] {
+			if IsForward(&v) || IsOpenParen(&v) || excludeIndices[i] {
 				continue
 			}
 			resolved = append(resolved, v)
@@ -10801,10 +10801,10 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		checkStart = 0
 	}
 	for i := checkStart - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			hasOuterForward = true
 			break
 		}
@@ -10842,11 +10842,11 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 // quote, inspect, etc.; see signature.go §1.5 on /q.
 func (e *Engine) hasPendingForwardQuoteArg() bool {
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			// Forward args fill from sigArgs[0]; the next forward slot
 			// is at index CollectedArgs.
 			nextIdx := fwd.CollectedArgs
@@ -10865,11 +10865,11 @@ func (e *Engine) hasPendingForwardQuoteArg() bool {
 // hasPendingForwardQuoteArg. See design/legacy/MACROS-PHASE1.10.ignore §3.
 func (e *Engine) hasPendingForwardFormArg() bool {
 	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			break
 		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
+		if IsForward(e.Tape.Ref(i)) {
+			fwd, _ := AsForward(e.Tape.Ref(i))
 			nextIdx := fwd.CollectedArgs
 			if nextIdx < fwd.Sig.TotalArgs() {
 				return fwd.Sig.FormArgs != nil && fwd.Sig.FormArgs[nextIdx]
@@ -11105,7 +11105,7 @@ func (e *Engine) TryRecordRecoveredUserFn(sig *Signature, fn *FnDefInfo, args []
 // dynamic binding at a function-typed slot calls wherever it is written,
 // unless read `/v` (NUR078).
 func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
-	w, err := AsWord(e.Tape.At(p))
+	w, err := AsWord(e.Tape.Ref(p))
 	if err != nil || w.ForceVal {
 		return false
 	}
@@ -11113,7 +11113,7 @@ func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
 	if !ok {
 		return false
 	}
-	if _, isFn := top.Data.(FnDefInfo); isFn || IsFnTypedCarrier(top) {
+	if _, isFn := top.Data.(FnDefInfo); isFn || IsFnTypedCarrier(&top) {
 		return true
 	}
 	et := SigArgType(sig, idx)
@@ -11139,7 +11139,7 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 		if v.Carrier && v.Parent != nil && v.Parent.Equal(TAny) {
 			continue // the deferrable unknown operand
 		}
-		if !SigArgMatches(sig, i, v) {
+		if !SigArgMatches(sig, i, &v) {
 			return false
 		}
 	}
@@ -11350,7 +11350,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if !inWindow {
 			break
 		}
-		if IsOpenParen(e.Tape.At(i)) {
+		if IsOpenParen(e.Tape.Ref(i)) {
 			return false
 		}
 	}
@@ -11363,8 +11363,8 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 	needsRematch := false
 	for _, p := range window {
 		v := e.Tape.At(p)
-		if IsWord(v) {
-			if wi, werr := AsWord(v); werr == nil {
+		if IsWord(&v) {
+			if wi, werr := AsWord(&v); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wi.Name); ok {
 					v = top // the binding is what matchSignature examined
 				} else {
@@ -11414,7 +11414,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// the byte-identical rich error when it does not. The flex witness is
 		// the deferring case and keeps its answer; `p apply $.name` is the
 		// raising one, and stops needing the whole program to fall back.
-		if IsReach(v) || IsParenExpr(v) || IsInterpString(v) {
+		if IsReach(&v) || IsParenExpr(&v) || IsInterpString(&v) {
 			needsRematch = true
 		}
 		// A CARRIER operand is not concrete at compile time, so the rich
@@ -11493,7 +11493,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// token.
 		fwd := forwardReach(fn, w)
 		for _, p := range window {
-			if tok := e.Tape.At(p); p > e.Pointer && p <= e.Pointer+fwd && (IsReach(tok) || IsInterpString(tok)) {
+			if tok := e.Tape.At(p); p > e.Pointer && p <= e.Pointer+fwd && (IsReach(&tok) || IsInterpString(&tok)) {
 				return false
 			}
 		}

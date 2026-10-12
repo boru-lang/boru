@@ -195,7 +195,7 @@ func TestS5AStripTapeAscriptions(t *testing.T) {
 	v.SetAscribed(TInteger)
 	e := engWithTape(t, []Value{v}, 0)
 	e.stripTapeAscriptions(0, 1)
-	if e.Tape.At(0).AscribedType() != nil {
+	if addrOf(e.Tape.At(0)).AscribedType() != nil {
 		t.Error("ascription not stripped")
 	}
 }
@@ -277,7 +277,7 @@ func TestS5ARunQuotedParenExpr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !IsParenExpr(out[0]) {
+	if len(out) != 1 || !IsParenExpr(&out[0]) {
 		t.Errorf("residual = %v, want the quoted ParenExpr", out)
 	}
 }
@@ -480,7 +480,7 @@ func TestS5AForwardScanParenNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsOpenParen(e.Tape.At(2)) {
+	if !IsOpenParen(e.Tape.Ref(2)) {
 		t.Error("unconsumed paren was evaluated")
 	}
 }
@@ -496,7 +496,7 @@ func TestS5AForwardScanInterpStringNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsInterpString(e.Tape.At(2)) {
+	if !IsInterpString(e.Tape.Ref(2)) {
 		t.Error("unconsumed interp string was evaluated")
 	}
 }
@@ -527,7 +527,7 @@ func TestS5AForwardScanXmlNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsXmlInterp(e.Tape.At(2)) {
+	if !IsXmlInterp(e.Tape.Ref(2)) {
 		t.Error("unconsumed xml interp was evaluated")
 	}
 }
@@ -542,7 +542,7 @@ func TestS5AForwardScanXmlEval(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if IsXmlInterp(e.Tape.At(1)) {
+	if IsXmlInterp(e.Tape.Ref(1)) {
 		t.Error("xml interp not evaluated in place")
 	}
 }
@@ -558,7 +558,7 @@ func TestS5AForwardScanQuotedParenExprSkips(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsParenExpr(e.Tape.At(1)) {
+	if !IsParenExpr(e.Tape.Ref(1)) {
 		t.Error("quoted ParenExpr was expanded")
 	}
 }
@@ -573,7 +573,7 @@ func TestS5AForwardScanInertReachSkips(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsReach(e.Tape.At(1)) {
+	if !IsReach(e.Tape.Ref(1)) {
 		t.Error("inert reach was expanded")
 	}
 }
@@ -605,7 +605,7 @@ func TestS5AForwardScanSugarExpansion(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if IsSugar(e.Tape.At(1)) {
+	if IsSugar(e.Tape.Ref(1)) {
 		t.Error("sugar marker not expanded")
 	}
 }
@@ -891,7 +891,7 @@ func TestS5AStepWordTypeBodyFnShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !IsBareTypeNode(out[0]) || !out[0].Equal(TFunction) {
+	if len(out) != 1 || !IsBareTypeNode(&out[0]) || !out[0].Equal(TFunction) {
 		t.Errorf("a type name must denote its node: %v", out)
 	}
 }
@@ -919,7 +919,7 @@ func TestS5AStepWordSplicePendingForward(t *testing.T) {
 		t.Fatalf("stepWord: %v", err)
 	}
 	// The splice-bound word was wrapped as (w) and expanded to markers.
-	if !IsOpenParen(e.Tape.At(2)) {
+	if !IsOpenParen(e.Tape.Ref(2)) {
 		t.Errorf("splice word not wrapped as a group: %v", e.Tape.At(2))
 	}
 }
@@ -1305,7 +1305,7 @@ func TestS5AStepLiteralExpandsParenExpr(t *testing.T) {
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
-	if e.Tape.Len() != 3 || !IsOpenParen(e.Tape.At(0)) {
+	if e.Tape.Len() != 3 || !IsOpenParen(e.Tape.Ref(0)) {
 		t.Errorf("ParenExpr not expanded: len=%d", e.Tape.Len())
 	}
 }
@@ -1321,7 +1321,7 @@ func TestS5AStepLiteralSpliceDynRecording(t *testing.T) {
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
-	if IsSplice(e.Tape.At(0)) {
+	if IsSplice(e.Tape.Ref(0)) {
 		t.Error("splice marker not expanded")
 	}
 }
@@ -1443,7 +1443,7 @@ func TestS5AResolveConsumedInertTypeShape(t *testing.T) {
 	}
 	e.resolveConsumedInertTypeShape(m3, 0)
 	ci, err := AsChildType(m3.Args[0])
-	if err != nil || IsWord(ci.Child) {
+	if err != nil || IsWord(&ci.Child) {
 		t.Errorf("typed-list child not resolved: %v", m3.Args[0])
 	}
 }
@@ -1455,7 +1455,7 @@ func TestS5AAutoEvalStackResolvesInertShape(t *testing.T) {
 		t.Fatalf("autoEvalStack: %v", err)
 	}
 	ci, err := AsChildType(e.Tape.At(0))
-	if err != nil || IsWord(ci.Child) {
+	if err != nil || IsWord(&ci.Child) {
 		t.Errorf("typed-list child not resolved on the residual stack: %v", e.Tape.At(0))
 	}
 }
@@ -1489,7 +1489,7 @@ func TestS5AAutoEvalListQuotedInertElem(t *testing.T) {
 	}
 	lst, _ := AsList(lv)
 	ci, cerr := AsChildType(lst.Get(0))
-	if cerr != nil || IsWord(ci.Child) {
+	if cerr != nil || IsWord(&ci.Child) {
 		t.Errorf("quoted typed-list element not resolved: %v", lst.Get(0))
 	}
 }
@@ -1603,7 +1603,7 @@ func TestS5AAutoEvalMapVarietyOfValues(t *testing.T) {
 		t.Fatalf("AutoEvalMap: %v", err)
 	}
 	gm, _ := AsMap(got)
-	if tv, ok := gm.Get("t"); !ok || IsWord(func() Value { ci, _ := AsChildType(tv); return ci.Child }()) {
+	if tv, ok := gm.Get("t"); !ok || IsWord(addrOf(func() Value { ci, _ := AsChildType(tv); return ci.Child }())) {
 		t.Errorf("typed-list value not resolved: %v", tv)
 	}
 	if sv, ok := gm.Get("s"); !ok || !sv.Parent.Equal(TList) {

@@ -81,15 +81,15 @@ func (e *Engine) scanMacroOperands(fnDef *FnDefInfo, arity, valIdx int) ([]Value
 		// (def's keyword forms) leaves the group as markers, and the
 		// macro must not depend on which path the previous statement
 		// took.
-		if IsOpenParen(t) {
+		if IsOpenParen(&t) {
 			depth := 1
 			j := idx + 1
 			var inner []Value
 			for ; j < e.Tape.Len(); j++ {
 				v := e.Tape.At(j)
-				if IsOpenParen(v) {
+				if IsOpenParen(&v) {
 					depth++
-				} else if IsCloseParen(v) {
+				} else if IsCloseParen(&v) {
 					depth--
 					if depth == 0 {
 						break
@@ -107,7 +107,7 @@ func (e *Engine) scanMacroOperands(fnDef *FnDefInfo, arity, valIdx int) ([]Value
 			idx = j + 1
 			continue
 		}
-		if IsEnd(t) || IsCloseParen(t) || IsForward(t) ||
+		if IsEnd(&t) || IsCloseParen(&t) || IsForward(&t) ||
 			t.Parent.ConformsTo(TMark) || t.Parent.ConformsTo(TMove) ||
 			t.Parent.ConformsTo(TInternal) || t.Parent.ConformsTo(TReturnCheck) {
 			break
@@ -191,7 +191,7 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 	}
 	template := res[len(res)-1]
 	var tmpl []Value
-	if template.Parent.Equal(TList) && IsConcrete(template) {
+	if template.Parent.Equal(TList) && IsConcrete(&template) {
 		l, _ := AsList(template)
 		tmpl = l.Slice()
 	} else {
@@ -228,10 +228,10 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 func collectTemplateBinders(toks []Value, set map[string]bool) {
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
-		if IsWord(t) {
-			w, _ := AsWord(t)
-			if w.Name == "def" && i+1 < len(toks) && IsWord(toks[i+1]) {
-				nm, _ := AsWord(toks[i+1])
+		if IsWord(&t) {
+			w, _ := AsWord(&t)
+			if w.Name == "def" && i+1 < len(toks) && IsWord(&toks[i+1]) {
+				nm, _ := AsWord(&toks[i+1])
 				if nm.Name != "unquote" && nm.Name != "splice" {
 					set[nm.Name] = true
 				}
@@ -244,13 +244,13 @@ func collectTemplateBinders(toks []Value, set map[string]bool) {
 // collectBindersNested recurses collectTemplateBinders into a container value.
 func collectBindersNested(t Value, set map[string]bool) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(t):
+	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		collectTemplateBinders(l.Slice(), set)
-	case IsParenExpr(t):
-		pt, _ := AsParenExpr(t)
+	case IsParenExpr(&t):
+		pt, _ := AsParenExpr(&t)
 		collectTemplateBinders(pt, set)
-	case t.Parent.Equal(TMap) && IsConcrete(t):
+	case t.Parent.Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return
@@ -269,8 +269,8 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 	out := make([]Value, 0, len(toks))
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
-		if IsWord(t) {
-			w, _ := AsWord(t)
+		if IsWord(&t) {
+			w, _ := AsWord(&t)
 			if w.Name == "unquote" || w.Name == "splice" {
 				if i+1 >= len(toks) {
 					return nil, &BoruError{Code: "macro_error",
@@ -284,7 +284,7 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 				}
 				i++ // consume the escape's operand
 				if w.Name == "splice" {
-					if !val.Parent.Equal(TList) || !IsConcrete(val) {
+					if !val.Parent.Equal(TList) || !IsConcrete(&val) {
 						return nil, &BoruError{Code: "macro_error",
 							Detail: "splice: operand did not evaluate to a list"}
 					}
@@ -323,8 +323,8 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 // data. `def unquote g` then binds the name and `if unquote g` resolves it —
 // whereas a spliced atom would be truthy data in value position.
 func resolveTemplateEscape(r *Registry, operand Value, bindings map[string]Value) (Value, error) {
-	if IsWord(operand) {
-		w, _ := AsWord(operand)
+	if IsWord(&operand) {
+		w, _ := AsWord(&operand)
 		if form, ok := bindings[w.Name]; ok {
 			return asTemplateNode(form), nil
 		}
@@ -357,7 +357,7 @@ func asTemplateNode(v Value) Value {
 // embed unquote/splice inside a list, a paren, or a map value — §3.1).
 func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[string]string) (Value, error) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(t):
+	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		inner, err := expandTemplate(r, l.Slice(), bindings, renames)
 		if err != nil {
@@ -366,14 +366,14 @@ func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[s
 		nl := NewList(inner)
 		nl.Quoted = t.Quoted
 		return nl, nil
-	case IsParenExpr(t):
-		toks, _ := AsParenExpr(t)
+	case IsParenExpr(&t):
+		toks, _ := AsParenExpr(&t)
 		inner, err := expandTemplate(r, toks, bindings, renames)
 		if err != nil {
 			return Value{}, err
 		}
 		return NewParenExpr(inner), nil
-	case t.Parent.Equal(TMap) && IsConcrete(t):
+	case t.Parent.Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return t, nil
@@ -399,20 +399,20 @@ func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[s
 func ExpandMacroForm(r *Registry, form Value) ([]Value, error) {
 	var toks []Value
 	switch {
-	case IsParenExpr(form):
-		toks, _ = AsParenExpr(form)
-	case form.Parent.Equal(TList) && IsConcrete(form):
+	case IsParenExpr(&form):
+		toks, _ = AsParenExpr(&form)
+	case form.Parent.Equal(TList) && IsConcrete(&form):
 		l, _ := AsList(form)
 		toks = l.Slice()
 	default:
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: expected a (macro operand…) form"}
 	}
-	if len(toks) == 0 || !IsWord(toks[0]) {
+	if len(toks) == 0 || !IsWord(&toks[0]) {
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: form must start with a macro word"}
 	}
-	name, _ := AsWord(toks[0])
+	name, _ := AsWord(&toks[0])
 	bound, ok := r.Defs.Top(name.Name)
 	if !ok {
 		return nil, &BoruError{Code: "macroexpand_error",
@@ -463,8 +463,8 @@ func expandAllMacros(r *Registry, toks []Value, depth int) ([]Value, error) {
 	out := make([]Value, 0, len(toks))
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
-		if IsWord(t) {
-			w, _ := AsWord(t)
+		if IsWord(&t) {
+			w, _ := AsWord(&t)
 			if fd, ok := macroByName(r, w.Name); ok {
 				arity := len(fd.Signatures[0].Params)
 				if i+1+arity <= len(toks) {
@@ -496,7 +496,7 @@ func expandAllMacros(r *Registry, toks []Value, depth int) ([]Value, error) {
 // expandAllNested recurses expandAllMacros into a container value.
 func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(t):
+	case t.Parent.Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		inner, err := expandAllMacros(r, l.Slice(), depth+1)
 		if err != nil {
@@ -505,14 +505,14 @@ func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 		nl := NewList(inner)
 		nl.Quoted = t.Quoted
 		return nl, nil
-	case IsParenExpr(t):
-		pt, _ := AsParenExpr(t)
+	case IsParenExpr(&t):
+		pt, _ := AsParenExpr(&t)
 		inner, err := expandAllMacros(r, pt, depth+1)
 		if err != nil {
 			return Value{}, err
 		}
 		return NewParenExpr(inner), nil
-	case t.Parent.Equal(TMap) && IsConcrete(t):
+	case t.Parent.Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return t, nil

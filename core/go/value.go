@@ -33,6 +33,14 @@ func (l ReadList) Get(i int) Value {
 	return l.elems[i]
 }
 
+// Ref returns a pointer to the element at index i, so a reader takes it
+// where it lives instead of copying it out. The elements are shared by
+// every holder of the list, so never write through it.
+// Internal use only — caller must ensure 0 <= i < Len().
+func (l ReadList) Ref(i int) *Value {
+	return &l.elems[i]
+}
+
 // GetOk returns the element at index i and true, or the zero Value and false
 // if i is out of bounds. Safe for use at system boundaries.
 func (l ReadList) GetOk(i int) (Value, bool) {
@@ -2102,7 +2110,7 @@ func (v *Value) SetName(name string) {
 // Behavior is the nil-safe read of the type node's pluggable dispatch —
 // nil for an ordinary value (no tmeta). A non-nil result is the marker of
 // a type node, exactly as the inline field was.
-func (v Value) Behavior() TypeBehavior {
+func (v *Value) Behavior() TypeBehavior {
 	if v.tmeta == nil {
 		return nil
 	}
@@ -2115,7 +2123,7 @@ func (v Value) Behavior() TypeBehavior {
 // kind with no structure (a builtin, a bare refine newtype) and an
 // ordinary value both answer false. The returned Value is a copy; the
 // stored content is written once at install and never mutated.
-func (v Value) TypeBody() (Value, bool) {
+func (v *Value) TypeBody() (Value, bool) {
 	if v.tmeta == nil || v.tmeta.Body == nil {
 		return Value{}, false
 	}
@@ -2139,10 +2147,10 @@ func (v *Value) SetTypeBody(body Value) {
 // Stage 2 flip) and an inline body are one case
 // (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 func TypeContentOf(v Value) (Value, bool) {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.TypeBody()
 	}
-	if v.Data != nil && v.Data.IsTypeContent(&v) {
+	if v.Data != nil && v.Data.IsTypeContent(v.Parent) {
 		return v, true
 	}
 	return Value{}, false
@@ -2158,7 +2166,7 @@ func (v *Value) SetBehavior(b TypeBehavior) {
 
 // Pos returns the value's source position, or the zero SrcPos (Row/Col 0
 // = unknown) when none is set. Nil-safe read of the pos pointer.
-func (v Value) Pos() SrcPos {
+func (v *Value) Pos() SrcPos {
 	if v.pos == nil {
 		return SrcPos{}
 	}
@@ -2176,7 +2184,7 @@ func (v *Value) SetPos(p SrcPos) {
 
 // DynFrom returns the check-mode binding name a dynamic carrier was
 // resolved from, or "" when unset. Nil-safe read of the pointer.
-func (v Value) DynFrom() string {
+func (v *Value) DynFrom() string {
 	if v.dynFrom == nil {
 		return ""
 	}
@@ -2198,7 +2206,7 @@ func (v *Value) SetDynFrom(name string) {
 // typed container ({:T} map / [:T] list) and true, or a zero Value and
 // false when v carries no tag (the common case). Nil-safe read of the
 // pointer. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
-func (v Value) ElemConstraint() (Value, bool) {
+func (v *Value) ElemConstraint() (Value, bool) {
 	if v.elem == nil {
 		return Value{}, false
 	}
@@ -2252,7 +2260,7 @@ func WithModuleNS(v Value, name string, module Value) Value {
 // AscribedType returns the value's dispatch ascription (`v as T`), or nil
 // for the overwhelming majority of values that carry none. Nil-safe read
 // of the pointer; see the asc field doc for the semantics.
-func (v Value) AscribedType() *Type {
+func (v *Value) AscribedType() *Type {
 	return v.asc
 }
 
@@ -2276,7 +2284,7 @@ func StripAscribed(v Value) Value {
 
 // Name is the nil-safe read of the type-node leaf name — "" for an
 // ordinary value (no tmeta), matching the old empty inline field.
-func (v Value) Name() string {
+func (v *Value) Name() string {
 	if v.tmeta == nil {
 		return ""
 	}
@@ -2286,7 +2294,7 @@ func (v Value) Name() string {
 // OwnerID is the nil-safe read of the type node's registration/mint
 // provenance (design/OPEN-WORDS.1.md §4) — "" for an ordinary value or
 // an unowned ad-hoc type. See typeMeta.Owner for the sentinel table.
-func (v Value) OwnerID() string {
+func (v *Value) OwnerID() string {
 	if v.tmeta == nil {
 		return ""
 	}
@@ -2303,35 +2311,35 @@ func (v *Value) SetOwner(owner string) {
 // FixedID / Rank / Depth / In / Out are nil-safe reads of the lattice
 // integer fields — 0 when tmeta is absent (every ordinary runtime value,
 // where these were always zero when they were inline fields).
-func (v Value) FixedID() int {
+func (v *Value) FixedID() int {
 	if v.tmeta == nil {
 		return 0
 	}
 	return v.tmeta.FixedID
 }
 
-func (v Value) Rank() int {
+func (v *Value) Rank() int {
 	if v.tmeta == nil {
 		return 0
 	}
 	return v.tmeta.Rank
 }
 
-func (v Value) Depth() int {
+func (v *Value) Depth() int {
 	if v.tmeta == nil {
 		return 0
 	}
 	return v.tmeta.Depth
 }
 
-func (v Value) In() int {
+func (v *Value) In() int {
 	if v.tmeta == nil {
 		return 0
 	}
 	return v.tmeta.In
 }
 
-func (v Value) Out() int {
+func (v *Value) Out() int {
 	if v.tmeta == nil {
 		return 0
 	}
@@ -2651,7 +2659,7 @@ func NewXmlInterp(tmpl XmlTmpl) Value {
 }
 
 // IsXmlInterp reports whether v is an interpolated XML literal skeleton.
-func IsXmlInterp(v Value) bool {
+func IsXmlInterp(v *Value) bool {
 	return v.Parent.Equal(TXmlInterp)
 }
 
@@ -2799,7 +2807,7 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // (the branch-carried def). No value the engine mints is the zero Value: a
 // runtime value carries a Parent, a type node carries its metadata, and a
 // carrier is flagged — so the test is exact, not a heuristic.
-func (v Value) IsUnboundSlot() bool {
+func (v *Value) IsUnboundSlot() bool {
 	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !v.Dynamic
 }
 
@@ -2825,7 +2833,7 @@ func TypeNodeOf(v Value) *Type {
 // literal's own name, or any other value's Parent leaf. Used by
 // inspect and rendering paths that display a type's name.
 func TypeNameOf(v Value) string {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.Leaf()
 	}
 	return v.Parent.Leaf()
@@ -2834,7 +2842,7 @@ func TypeNameOf(v Value) string {
 // TypePathOf returns the slash path of the type v represents: a type
 // literal's own path, or any other value's Parent path.
 func TypePathOf(v Value) string {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.Path()
 	}
 	return v.Parent.Path()
@@ -2844,7 +2852,7 @@ func TypePathOf(v Value) string {
 // v is a bare type literal (a type literal IS a lattice node), and
 // v's Parent for any concrete value or carrier.
 func ValueType(v Value) *Type {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return &v
 	}
 	return v.Parent
@@ -2874,14 +2882,14 @@ func NewNone() Value {
 // not encounter this state because every Type registered through
 // the kernel paths carries a non-nil Behavior, but the method
 // defends against it anyway.
-func (v Value) Is(t *Type) bool {
+func (v *Value) Is(t *Type) bool {
 	if t == nil {
 		return false
 	}
 	if t.Behavior() == nil {
 		return v.Parent.ConformsTo(t)
 	}
-	return t.Behavior().Match(v, t)
+	return t.Behavior().Match(*v, t)
 }
 
 // IsNone reports whether v is the value `none` (not the None type
@@ -2889,7 +2897,7 @@ func (v Value) Is(t *Type) bool {
 // `none` carries a NonePayload/noneSentinel marker; the bare type
 // literal `None` is just a by-value copy of TNone with Data=nil.
 // Use IsNoneShape for the broader "is this any form of None" check.
-func IsNone(v Value) bool {
+func IsNone(v *Value) bool {
 	if !v.Parent.Equal(TNone) {
 		return false
 	}
@@ -2915,7 +2923,7 @@ func IsNone(v Value) bool {
 // from "None" (capital, the type) use IsNone for the strict check;
 // dispatch and comparison sites use IsNoneShape.
 func IsNoneShape(v Value) bool {
-	if IsNone(v) {
+	if IsNone(&v) {
 		return true
 	}
 	if v.Data != nil {
@@ -3044,12 +3052,12 @@ func NewReachFromKeys(receiver Value, keys []Value) Value {
 }
 
 // IsReach reports whether v is an Ideal/Reach value.
-func IsReach(v Value) bool {
+func IsReach(v *Value) bool {
 	return v.Parent.Equal(TReach)
 }
 
 // AsReach returns the ReachInfo of a Reach value.
-func AsReach(v Value) (ReachInfo, error) {
+func AsReach(v *Value) (ReachInfo, error) {
 	if ri, ok := v.Data.(ReachInfo); ok {
 		return ri, nil
 	}
@@ -3475,42 +3483,42 @@ type IntervalInfo struct {
 // IsInterval and AsInterval moved to lang/go/engine/native_misc.go (Step 8).
 
 // IsWord reports whether this value is a word (function reference).
-func IsWord(v Value) bool {
+func IsWord(v *Value) bool {
 	return v.Parent.Equal(TWord)
 }
 
 // IsForward reports whether this value is a forward primitive.
-func IsForward(v Value) bool {
+func IsForward(v *Value) bool {
 	return v.Parent.Equal(TForward)
 }
 
 // IsBoolean reports whether this value is a boolean type.
-func IsBoolean(v Value) bool {
+func IsBoolean(v *Value) bool {
 	return v.Parent.ConformsTo(TBoolean)
 }
 
 // IsOpenParen reports whether this value is an open-paren marker.
-func IsOpenParen(v Value) bool {
+func IsOpenParen(v *Value) bool {
 	return v.Parent.Equal(TOpenParen)
 }
 
 // IsCloseParen reports whether this value is a close-paren marker.
-func IsCloseParen(v Value) bool {
+func IsCloseParen(v *Value) bool {
 	return v.Parent.Equal(TCloseParen)
 }
 
 // IsEnd reports whether this value is an end-marker.
-func IsEnd(v Value) bool {
+func IsEnd(v *Value) bool {
 	return v.Parent.Equal(TEnd)
 }
 
 // IsParenExpr reports whether this value is a paren expression.
-func IsParenExpr(v Value) bool {
+func IsParenExpr(v *Value) bool {
 	return v.Parent.Equal(TParenExpr)
 }
 
 // AsParenExpr returns the items in a paren expression value.
-func AsParenExpr(v Value) ([]Value, error) {
+func AsParenExpr(v *Value) ([]Value, error) {
 	if pp, ok := v.Data.(ParenExprPayload); ok {
 		return pp.Toks, nil
 	}
@@ -3518,7 +3526,7 @@ func AsParenExpr(v Value) ([]Value, error) {
 }
 
 // IsInterpString reports whether this value is an interpolated string.
-func IsInterpString(v Value) bool {
+func IsInterpString(v *Value) bool {
 	return v.Parent.Equal(TInterpString)
 }
 
@@ -3531,12 +3539,12 @@ func AsInterpString(v Value) ([]InterpPart, error) {
 }
 
 // IsMark reports whether this value is a mark.
-func IsMark(v Value) bool {
+func IsMark(v *Value) bool {
 	return v.Parent.Equal(TMark)
 }
 
 // AsMark returns the MarkInfo, panics if not a mark.
-func AsMark(v Value) (MarkInfo, error) {
+func AsMark(v *Value) (MarkInfo, error) {
 	info, ok := v.Data.(MarkInfo)
 	if !ok {
 		return MarkInfo{}, fmt.Errorf("AsMark: not a mark value (got %T)", v.Data)
@@ -3545,7 +3553,7 @@ func AsMark(v Value) (MarkInfo, error) {
 }
 
 // IsMove reports whether this value is a move.
-func IsMove(v Value) bool {
+func IsMove(v *Value) bool {
 	return v.Parent.Equal(TMove)
 }
 
@@ -3556,12 +3564,12 @@ func NewSplice(v Value) Value {
 }
 
 // IsSplice reports whether this value is an __SP splice marker.
-func IsSplice(v Value) bool {
+func IsSplice(v *Value) bool {
 	return v.Parent.Equal(TSplice)
 }
 
 // AsSplice returns the SpliceInfo, erroring if not a splice value.
-func AsSplice(v Value) (SpliceInfo, error) {
+func AsSplice(v *Value) (SpliceInfo, error) {
 	info, ok := v.Data.(SpliceInfo)
 	if !ok {
 		return SpliceInfo{}, fmt.Errorf("AsSplice: not a splice value (got %T)", v.Data)
@@ -3589,7 +3597,7 @@ func NewDispatchMod(info DispatchModInfo) Value {
 }
 
 // IsDispatchMod reports whether v is a Word/__DM marker.
-func IsDispatchMod(v Value) bool { return v.Parent.Equal(TDispatchMod) }
+func IsDispatchMod(v *Value) bool { return v.Parent.Equal(TDispatchMod) }
 
 // AsDispatchMod returns the DispatchModInfo if v is a Word/__DM marker.
 func AsDispatchMod(v Value) (DispatchModInfo, bool) {
@@ -3598,7 +3606,7 @@ func AsDispatchMod(v Value) (DispatchModInfo, bool) {
 }
 
 // AsMove returns the MoveInfo, panics if not a move.
-func AsMove(v Value) (MoveInfo, error) {
+func AsMove(v *Value) (MoveInfo, error) {
 	info, ok := v.Data.(MoveInfo)
 	if !ok {
 		return MoveInfo{}, fmt.Errorf("AsMove: not a move value (got %T)", v.Data)
@@ -3607,12 +3615,12 @@ func AsMove(v Value) (MoveInfo, error) {
 }
 
 // IsReturnCheck reports whether this value is a return-check marker.
-func IsReturnCheck(v Value) bool {
+func IsReturnCheck(v *Value) bool {
 	return v.Parent.Equal(TReturnCheck)
 }
 
 // AsReturnCheck returns the ReturnCheckInfo, panics if not a return-check.
-func AsReturnCheck(v Value) (ReturnCheckInfo, error) {
+func AsReturnCheck(v *Value) (ReturnCheckInfo, error) {
 	info, ok := v.Data.(ReturnCheckInfo)
 	if !ok {
 		return ReturnCheckInfo{}, fmt.Errorf("AsReturnCheck: not a return-check value (got %T)", v.Data)
@@ -3621,7 +3629,7 @@ func AsReturnCheck(v Value) (ReturnCheckInfo, error) {
 }
 
 // IsDefCleanup reports whether this value is a def-cleanup marker.
-func IsDefCleanup(v Value) bool {
+func IsDefCleanup(v *Value) bool {
 	return v.Parent.Equal(TDefCleanup)
 }
 
@@ -3634,7 +3642,7 @@ func (dc DefCleanupInfo) FrameOn(r *Registry) bool {
 	return dc.Registry == r //sentinel:home a frame's registry is compared by identity: the teardown pops that registry's stacks
 }
 
-func AsDefCleanup(v Value) (DefCleanupInfo, error) {
+func AsDefCleanup(v *Value) (DefCleanupInfo, error) {
 	info, ok := v.Data.(DefCleanupInfo)
 	if !ok {
 		return DefCleanupInfo{}, fmt.Errorf("AsDefCleanup: not a def-cleanup value (got %T)", v.Data)
@@ -3645,7 +3653,7 @@ func AsDefCleanup(v Value) (DefCleanupInfo, error) {
 // IsDisjunct reports whether this value is a disjunction type — a
 // plain Disjunct (Type/Disjunct) or any subtype such as an Enum
 // (Type/Disjunct/Enum).
-func IsDisjunct(v Value) bool {
+func IsDisjunct(v *Value) bool {
 	_, ok := v.Data.(DisjunctInfo)
 	return ok && v.Parent.ConformsTo(TDisjunct)
 }
@@ -3680,7 +3688,7 @@ func AsNegation(v Value) (NegationInfo, error) {
 // object type, regardless of where its Parent sits in the lattice — a
 // builtin like Resource is an object type whose Parent is the peer
 // Ideal kind Ideal/Resource, not a descendant of Ideal/Object.
-func IsClassType(v Value) bool {
+func IsClassType(v *Value) bool {
 	_, ok := v.Data.(ClassTypeInfo)
 	return ok
 }
@@ -3852,13 +3860,13 @@ func AsAtom(v Value) (string, error) {
 }
 
 // IsTypedList reports whether this value is a typed list (has child type constraint).
-func IsTypedList(v Value) bool {
+func IsTypedList(v *Value) bool {
 	_, ok := v.Data.(ChildTypeInfo)
 	return ok && v.Parent.Equal(TList)
 }
 
 // IsTypedMap reports whether this value is a typed map (has child type constraint).
-func IsTypedMap(v Value) bool {
+func IsTypedMap(v *Value) bool {
 	_, ok := v.Data.(ChildTypeInfo)
 	return ok && v.Parent.Equal(TMap)
 }
@@ -3940,7 +3948,7 @@ func AsChildType(v Value) (ChildTypeInfo, error) {
 }
 
 // AsWord returns the WordInfo, panics if not a word.
-func AsWord(v Value) (WordInfo, error) {
+func AsWord(v *Value) (WordInfo, error) {
 	info, ok := v.Data.(WordInfo)
 	if !ok {
 		return WordInfo{}, fmt.Errorf("AsWord: not a word value (got %T)", v.Data)
@@ -3949,7 +3957,7 @@ func AsWord(v Value) (WordInfo, error) {
 }
 
 // AsForward returns the ForwardInfo, panics if not a forward.
-func AsForward(v Value) (ForwardInfo, error) {
+func AsForward(v *Value) (ForwardInfo, error) {
 	info, ok := v.Data.(ForwardInfo)
 	if !ok {
 		return ForwardInfo{}, fmt.Errorf("AsForward: not a forward value (got %T)", v.Data)
@@ -4276,10 +4284,10 @@ func kernelFormatDefault(v Value) string {
 			return "Type"
 		}
 		return n.Leaf() + "/t"
-	case IsWord(v) && !IsSugar(v):
-		w, _ := AsWord(v)
+	case IsWord(&v) && !IsSugar(&v):
+		w, _ := AsWord(&v)
 		return fmt.Sprintf("word(%s)", w.Name)
-	case IsSugar(v):
+	case IsSugar(&v):
 		info, _ := AsSugar(v)
 		switch info.Kind {
 		case SugarForceArity:
@@ -4292,38 +4300,38 @@ func kernelFormatDefault(v Value) string {
 			return fmt.Sprintf("sugar(%s %v)", info.Kind, info.Items)
 		}
 		return fmt.Sprintf("sugar(%s)", info.Kind)
-	case IsForward(v):
-		f, _ := AsForward(v)
+	case IsForward(&v):
+		f, _ := AsForward(&v)
 		return fmt.Sprintf("forward(%s,%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs)
-	case IsOpenParen(v):
+	case IsOpenParen(&v):
 		return "("
-	case IsCloseParen(v):
+	case IsCloseParen(&v):
 		return ")"
-	case IsEnd(v):
+	case IsEnd(&v):
 		return "end"
-	case IsParenExpr(v):
-		_pe, _ := AsParenExpr(v)
+	case IsParenExpr(&v):
+		_pe, _ := AsParenExpr(&v)
 		return fmt.Sprintf("paren(%v)", _pe)
-	case IsInterpString(v):
+	case IsInterpString(&v):
 		// A readable structural render (`interp('a ' ${word(x)})`) —
 		// previously this fell to the %v fallback and dumped the raw
 		// payload struct (`word()({[{ [42]}]})`), which leaked into
 		// debug output and the parser stream oracle.
 		parts, _ := AsInterpString(v)
 		return renderInterpParts(parts)
-	case IsXmlInterp(v):
+	case IsXmlInterp(&v):
 		// Same repair for the XML template skeleton: render the source
 		// form with ${…} holes instead of the payload struct dump.
 		tmpl, _ := AsXmlInterp(v)
 		return "interp-xml(" + renderXmlTmplSrc(tmpl) + ")"
-	case IsMark(v):
-		_as2, _ := AsMark(v)
+	case IsMark(&v):
+		_as2, _ := AsMark(&v)
 		if _as2.Loop != nil {
 			return fmt.Sprintf("mark(%s,%s)", _as2.ID, _as2.Loop.Describe())
 		}
 		return fmt.Sprintf("mark(%s)", _as2.ID)
-	case IsMove(v):
-		m, _ := AsMove(v)
+	case IsMove(&v):
+		m, _ := AsMove(&v)
 		if m.Cont != nil {
 			// A loop's move renders its annotation — the construct, the
 			// iteration, the index — so a tape snapshot in the trace or
@@ -4331,15 +4339,15 @@ func kernelFormatDefault(v Value) string {
 			return fmt.Sprintf("move(%s,%s,%s)", m.To, m.Reason, m.Cont.Describe())
 		}
 		return fmt.Sprintf("move(%s,%s)", m.To, m.Reason)
-	case IsReturnCheck(v):
-		rc, _ := AsReturnCheck(v)
+	case IsReturnCheck(&v):
+		rc, _ := AsReturnCheck(&v)
 		return fmt.Sprintf("returncheck(%s)", rc.FuncName)
-	case IsDefCleanup(v):
+	case IsDefCleanup(&v):
 		return "__dc"
 	case IsError(v):
 		_as3, _ := AsError(v)
 		return fmt.Sprintf("error(%s)", _as3.Message)
-	case IsNone(v):
+	case IsNone(&v):
 		// The VALUE none (NonePayload, Data non-nil) — lowercase, like
 		// the source literal and eng.Canon. The None TYPE literal has
 		// Data==nil and takes the next arm, rendering capital `None`.
@@ -4434,14 +4442,14 @@ func kernelFormatDefault(v Value) string {
 			name = v.Parent.Leaf()
 		}
 		return formatFieldBag(name, ri.Fields)
-	case IsClassType(v):
+	case IsClassType(&v):
 		ot, _ := AsClassType(v)
 		name := ot.Name
 		if name == "" {
 			name = "Ideal/Class/" + ot.ID
 		}
 		return formatFieldBag("object<"+name+">", ot.AllFields())
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		di, _ := AsDisjunct(v)
 		parts := make([]string, len(di.Alternatives))
 		for i, alt := range di.Alternatives {
@@ -4452,7 +4460,7 @@ func kernelFormatDefault(v Value) string {
 		ni, _ := AsNegation(v)
 		// Parenthesise a compound inner so `tnot (A tor B)` doesn't misread
 		// as `(tnot A) tor B`.
-		if IsDisjunct(ni.Inner) || IsNegation(ni.Inner) {
+		if IsDisjunct(&ni.Inner) || IsNegation(ni.Inner) {
 			return "tnot (" + ni.Inner.String() + ")"
 		}
 		return "tnot " + ni.Inner.String()
@@ -4528,8 +4536,8 @@ func IsTypeValue(v Value) bool {
 	}
 
 	// Options type, record type, typed list/map, table type, object type.
-	if IsOptionsType(v) || IsRecordType(v) || IsTypedList(v) ||
-		IsTypedMap(v) || IsTableType(v) || IsClassType(v) {
+	if IsOptionsType(v) || IsRecordType(v) || IsTypedList(&v) ||
+		IsTypedMap(&v) || IsTableType(v) || IsClassType(&v) {
 		return true
 	}
 

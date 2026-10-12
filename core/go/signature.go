@@ -222,8 +222,8 @@ func MatchSignature(sigs []Signature, stack []Value, modifiers WordInfo) *MatchR
 			}
 			if pattern.Parent.Equal(TMap) && ordered[idx].Parent.Equal(TMap) &&
 				pattern.Data != nil && ordered[idx].Data != nil &&
-				!IsOptionsType(pattern) && !IsTypedMap(pattern) &&
-				!IsRecordType(ordered[idx]) && !IsTypedMap(ordered[idx]) && !IsOptionsType(ordered[idx]) {
+				!IsOptionsType(pattern) && !IsTypedMap(&pattern) &&
+				!IsRecordType(ordered[idx]) && !IsTypedMap(&ordered[idx]) && !IsOptionsType(ordered[idx]) {
 				if !OpenUnifyMap(pattern, ordered[idx]) {
 					patternOk = false
 					break
@@ -276,7 +276,7 @@ func FlexibleMatch(values []Value, sig *Signature) ([]Value, bool) {
 // level — but semantically they are abstract VALUES, not types. They
 // satisfy ordinary value slots (Carrier{Integer} matches TInteger)
 // and are rejected at TypeArgs slots by sigTypeMatchesAsType.
-func SigTypeMatches(v Value, t *Type) bool {
+func SigTypeMatches(v *Value, t *Type) bool {
 	// Dispatch ascription (`v as T` — design/OPEN-WORDS.1.md §9): match as
 	// if the value were tagged with the ascribed ancestor type. The VIEW is
 	// a reparented copy used for this test only — the delivered arg is the
@@ -290,10 +290,10 @@ func SigTypeMatches(v Value, t *Type) bool {
 	// matchSignature arms, positionalMatch, the VM's guarded-native
 	// contract and poly re-match — so this one arm is the whole rule.
 	if a := v.AscribedType(); a != nil {
-		view := ReparentValue(v, a)
+		view := ReparentValue(*v, a)
 		view.SetAscribed(nil)
 		view.Dynamic = false
-		return SigTypeMatches(view, t)
+		return SigTypeMatches(&view, t)
 	}
 	// Gradual (dynamic) carrier: matches the slot unless its bound is
 	// PROVABLY disjoint from t — the not-disjoint rule, the optimistic
@@ -331,21 +331,21 @@ func SigTypeMatches(v Value, t *Type) bool {
 		// see through to the alternatives — so the union strands forward
 		// collection at the first field read.
 		if IsDisjunct(v) {
-			di, err := AsDisjunct(v)
+			di, err := AsDisjunct(*v)
 			if err == nil {
 				for _, alt := range di.Alternatives {
 					probe := alt
-					if IsBareTypeNode(alt) {
+					if IsBareTypeNode(&alt) {
 						probe = CarrierOfLiteral(alt)
 					}
 					probe.Dynamic = true
-					if SigTypeMatches(probe, t) {
+					if SigTypeMatches(&probe, t) {
 						return true
 					}
 				}
 			}
 		}
-		bound := v
+		bound := *v
 		bound.Dynamic = false
 		return !IsNeverShape(TandValues(bound, NewCarrier(t)))
 	}
@@ -358,15 +358,15 @@ func SigTypeMatches(v Value, t *Type) bool {
 	// signature's returns are then refined per alternative by
 	// disjunctPartitionReturns (design/legacy/checker-accuracy-review.10.ignore A1).
 	if v.Carrier && !v.Dynamic && IsDisjunct(v) {
-		di, err := AsDisjunct(v)
+		di, err := AsDisjunct(*v)
 		if err == nil && len(di.Alternatives) > 0 {
 			all := true
 			for _, alt := range di.Alternatives {
 				probe := alt
-				if IsBareTypeNode(alt) {
+				if IsBareTypeNode(&alt) {
 					probe = CarrierOfLiteral(alt)
 				}
-				if !SigTypeMatches(probe, t) {
+				if !SigTypeMatches(&probe, t) {
 					all = false
 					break
 				}
@@ -384,7 +384,7 @@ func SigTypeMatches(v Value, t *Type) bool {
 	// instead of the more descriptive `Options`. A bare `Map` type
 	// literal (Data==nil) is excluded; only a concrete map matches.
 	if t.Equal(TOptions) {
-		if IsOptionsType(v) {
+		if IsOptionsType(*v) {
 			return true
 		}
 		// ConformsTo (not Equal) so a FlexMap also passes where an
@@ -430,7 +430,7 @@ func sigTypeMatchesAsType(v Value, t *Type) bool {
 	if v.Carrier {
 		return false
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		// Bare None has Parent=TNone; treat it as not-a-type for type
 		// args. Lattice roots have Parent=nil but are still valid type
 		// literals — &v is the lattice node either way.
@@ -451,7 +451,7 @@ func sigTypeMatchesAsType(v Value, t *Type) bool {
 	// ChildType, Disjunct, Enum, Function/FnUndef, ImplicitMap
 	// record shape) are "types" — accept them when their lattice
 	// family matches the slot.
-	if IsTypeBody(v) {
+	if IsTypeBody(&v) {
 		return v.Parent.ConformsTo(t)
 	}
 	return false
@@ -462,9 +462,9 @@ func sigTypeMatchesAsType(v Value, t *Type) bool {
 // based on sig.TypeArgs[idx]. Use this at every call site that has
 // a *Signature in hand; bare sigTypeMatches stays for the
 // no-sig-context paths (carrier promotion, predicate sandbox).
-func SigArgMatches(sig *Signature, idx int, v Value) bool {
+func SigArgMatches(sig *Signature, idx int, v *Value) bool {
 	if sig.TypeArgs != nil && sig.TypeArgs[idx] {
-		return sigTypeMatchesAsType(v, SigArgType(sig, idx))
+		return sigTypeMatchesAsType(*v, SigArgType(sig, idx))
 	}
 	return SigTypeMatches(v, SigArgType(sig, idx))
 }
@@ -508,7 +508,7 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if expectedType.Equal(TAny) {
 		return false
 	}
-	if !IsTypeLiteral(v) {
+	if !IsTypeLiteral(&v) {
 		// The None literal is a VALUE — what a missing member reads as
 		// (IsTypeLiteral excludes it) — admitted wherever the slot's own
 		// match admitted it: a None slot, and a union that names None
@@ -543,10 +543,10 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 // contract asked the type match alone, and a Type value bound an Integer
 // parameter the interpreter refuses it at (NUR328).
 func ParamAdmits(v Value, t *Type) bool {
-	if !SigTypeMatches(v, t) {
+	if !SigTypeMatches(&v, t) {
 		return false
 	}
-	return !IsBareTypeNode(v) || !(t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t))
+	return !IsBareTypeNode(&v) || !(t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t))
 }
 
 // positionalMatch checks whether values match the signature's types in order.
@@ -578,10 +578,10 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		// At RUNTIME the operand is concrete (no carrier), so this is inert there
 		// and merely aligns check-mode sig selection with the runtime's (a
 		// concrete non-Atom already fails TAtom and picks the value overload).
-		if sig.QuoteArgs != nil && sig.QuoteArgs[i] && v.Carrier && !IsConcrete(v) && !v.Parent.ConformsTo(TAtom) {
+		if sig.QuoteArgs != nil && sig.QuoteArgs[i] && v.Carrier && !IsConcrete(&v) && !v.Parent.ConformsTo(TAtom) {
 			return false
 		}
-		if !SigArgMatches(sig, i, v) {
+		if !SigArgMatches(sig, i, &v) {
 			return false
 		}
 		// Reject type literals (Data==nil) for concrete Map/List
@@ -593,7 +593,7 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		// re-match took `add` over the Integer node where the interpreter
 		// raises (NUR323).
 		isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[i]
-		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t)) {
+		if !isTypeArg && IsBareTypeNode(&v) && (t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t)) {
 			return false
 		}
 	}
@@ -744,5 +744,5 @@ func TagDeterminedSigs(sigs []Signature, n int) bool {
 // (whose own node, not its Parent, is what matches), not an ascribed view,
 // not a carrier or a dynamic value.
 func TagKeyable(v Value) bool {
-	return v.Parent != nil && !v.Carrier && !v.Dynamic && !IsBareTypeNode(v) && v.AscribedType() == nil
+	return v.Parent != nil && !v.Carrier && !v.Dynamic && !IsBareTypeNode(&v) && v.AscribedType() == nil
 }

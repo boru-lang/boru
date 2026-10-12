@@ -85,11 +85,11 @@ func (sc *keptDefsScan) value(v core.Value) bool {
 	if sc.depth > keptDefsScanDepth {
 		return false
 	}
-	if core.IsWord(v) {
-		wi, _ := core.AsWord(v)
+	if core.IsWord(&v) {
+		wi, _ := core.AsWord(&v)
 		return sc.word(wi.Name)
 	}
-	if core.IsReach(v) || core.IsSplice(v) {
+	if core.IsReach(&v) || core.IsSplice(&v) {
 		return false
 	}
 	if v.Carrier {
@@ -200,7 +200,7 @@ func (es *EmitState) bodyPlainCount(body core.Value) (int, bool) {
 		return 0, false
 	}
 	for _, tk := range toks {
-		if valueRefsName(tk) || core.IsParenExpr(tk) || regionValsMayBeCallable([]core.Value{tk}) || engineMarkerToken(tk) {
+		if valueRefsName(tk) || core.IsParenExpr(&tk) || regionValsMayBeCallable([]core.Value{tk}) || engineMarkerToken(tk) {
 			return 0, false
 		}
 	}
@@ -211,7 +211,7 @@ func (es *EmitState) bodyPlainCount(body core.Value) (int, bool) {
 // one pushed value — a dispatch modifier, a sugar marker, a mark or a move.
 func engineMarkerToken(tk core.Value) bool {
 	_, mod := core.AsDispatchMod(tk)
-	return mod || core.IsSugar(tk) || core.IsMark(tk) || core.IsMove(tk)
+	return mod || core.IsSugar(&tk) || core.IsMark(&tk) || core.IsMove(&tk)
 }
 
 // bodyParksFnValues reports whether a computed body's tokens are proven
@@ -242,9 +242,9 @@ func (es *EmitState) bodyParksFnValues(body core.Value) bool {
 // lists around the lambda sugar (core's isLambdaFold shape), under any
 // single-item paren nesting the quoted list keeps — and its parameter count.
 func anonLambdaArity(tk core.Value) (int, bool) {
-	items, err := core.AsParenExpr(tk)
-	for err == nil && len(items) == 1 && core.IsParenExpr(items[0]) {
-		items, err = core.AsParenExpr(items[0])
+	items, err := core.AsParenExpr(&tk)
+	for err == nil && len(items) == 1 && core.IsParenExpr(&items[0]) {
+		items, err = core.AsParenExpr(&items[0])
 	}
 	if err != nil || len(items) != 3 {
 		return 0, false
@@ -253,7 +253,7 @@ func anonLambdaArity(tk core.Value) (int, bool) {
 		return 0, false
 	}
 	params, perr := core.AsList(items[0])
-	if _, berr := core.AsList(items[2]); perr != nil || berr != nil || !core.IsConcrete(items[0]) || !core.IsConcrete(items[2]) {
+	if _, berr := core.AsList(items[2]); perr != nil || berr != nil || !core.IsConcrete(&items[0]) || !core.IsConcrete(&items[2]) {
 		return 0, false
 	}
 	return params.Len(), true

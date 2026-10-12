@@ -100,18 +100,18 @@ func TestTypeBodyConstOKChildType(t *testing.T) {
 func TestIsInertConstPayloadArms(t *testing.T) {
 	// Micron instance → inert.
 	micron := Value{Parent: TAny, Data: MicronPayload{Fields: NewOrderedMap()}}
-	if !IsInertConst(micron) {
+	if !IsInertConst(&micron) {
 		t.Fatal("a Micron instance should be inert")
 	}
 	// nil-backed map → not inert.
-	if IsInertConst(Value{Parent: TMap, Data: MapPayload{M: nil}}) {
+	if IsInertConst(&Value{Parent: TMap, Data: MapPayload{M: nil}}) {
 		t.Fatal("nil map should not be inert")
 	}
 	// XML element whose attribute value is a carrier → not inert.
 	attr := NewOrderedMap()
 	attr.Set("x", NewCarrier(TInteger))
 	xml := Value{Parent: TAny, Data: XmlElementPayload{Tag: "a", Attr: attr}}
-	if IsInertConst(xml) {
+	if IsInertConst(&xml) {
 		t.Fatal("carrier attribute should decline")
 	}
 }

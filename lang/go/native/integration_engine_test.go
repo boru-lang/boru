@@ -1593,7 +1593,7 @@ func TestEngineDisjunct(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewTypeLiteral(TString), NewWord("tor"), NewTypeLiteral(TNone),
 	})
-	if len(result) != 1 || !IsDisjunct(result[0]) {
+	if len(result) != 1 || !IsDisjunct(&result[0]) {
 		t.Errorf("string tor none = %v, want disjunct", result)
 	}
 }

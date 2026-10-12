@@ -35,7 +35,7 @@ func unifyFlexLiteral(a Value, sa ValueShape, b Value, sb ValueShape, flexType *
 	// flex type (a WeakFlex* value, a user `refine FlexMap` newtype)
 	// satisfies the parent literal — ordinary nominal subtyping. Plain
 	// nodes still do not qualify (they sit ABOVE the flex type).
-	if IsConcrete(other) && other.Parent != nil && other.Parent.ConformsTo(flexType) {
+	if IsConcrete(&other) && other.Parent != nil && other.Parent.ConformsTo(flexType) {
 		return other, true, nil
 	}
 	// Gradual: a check-mode CARRIER tagged at (or under) the flex type

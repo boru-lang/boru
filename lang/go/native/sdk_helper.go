@@ -66,7 +66,7 @@ func getSDK(apiMap ReadMap, opName string, r *Registry) (sdkClient, string, erro
 // OrderedMap that getSDK expects ({kind:..., spec:..., entity:...}).
 func entityToAPIMap(v Value) *OrderedMap {
 	m := NewOrderedMap()
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return m
 	}
 	inst, err := AsResourceInstance(v)

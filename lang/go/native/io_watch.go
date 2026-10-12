@@ -116,7 +116,7 @@ func watchRel(root, evPath string) string {
 func doWatchWord(args []Value, r *Registry, watcherType *Type, opts Value) ([]Value, error) {
 	path := extractPath(args[0])
 	body := args[1]
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return nil, r.BoruError("watch_error", "watch: the callback body must be a concrete list", "watch")
 	}
 	bodyList, _ := AsList(body)
@@ -124,7 +124,7 @@ func doWatchWord(args []Value, r *Registry, watcherType *Type, opts Value) ([]Va
 	copy(tokens, bodyList.Slice())
 
 	recursive, match, hasMatch := false, "", false
-	if IsConcrete(opts) {
+	if IsConcrete(&opts) {
 		recursive = mapBoolOpt(opts, "recursive", false)
 		match, hasMatch = mapStrOpt(opts, "match")
 	}

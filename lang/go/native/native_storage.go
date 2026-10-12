@@ -540,7 +540,7 @@ func stripQuoteArgs(sigs []Signature) []Signature {
 // runtime handler re-checks the concrete value). See
 // design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 func d2WriteConforms(elem, v Value) bool {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return true
 	}
 	_, ok := Unify(elem, v)
@@ -568,7 +568,7 @@ func d2AdoptTyped(r *Registry, container, v Value, word string) (Value, error) {
 			fmt.Sprintf("%s: value %s does not conform to element type %s", word, v.String(), elem.String()),
 			word)
 	}
-	if IsTypedMap(elem) || IsTypedList(elem) {
+	if IsTypedMap(&elem) || IsTypedList(&elem) {
 		// Nested typed container — store the recursively-tagged value. A FLEX child
 		// is by-reference: Unify above validated it but rebuilt a DETACHED copy
 		// (unifyTyped*WithConcrete's flex branch allocates a fresh store), so a
@@ -1032,7 +1032,7 @@ func classSchemaOf(r *Registry, recv Value) (ClassTypeInfo, bool) {
 // top-level straight line; a carrier value, unresolvable schema, or
 // computed key keeps the declared no-residual model silently.
 func setClassInstanceReturns(args []Value, r *Registry) []Value {
-	if !atUncaughtTopLevel(r) || len(args) != 3 || !IsConcrete(args[0]) {
+	if !atUncaughtTopLevel(r) || len(args) != 3 || !IsConcrete(&args[0]) {
 		return []Value{}
 	}
 	info, ok := classSchemaOf(r, args[2])
@@ -1052,7 +1052,7 @@ func setClassInstanceReturns(args []Value, r *Registry) []Value {
 			"set", args[0].Pos())
 		return []Value{}
 	}
-	if IsConcrete(args[1]) {
+	if IsConcrete(&args[1]) {
 		if _, err := MakeClassFieldValue(args[1], constraint, r); err != nil {
 			core.CheckAddUniqueDiagnostic(r, "type_error",
 				fmt.Sprintf("set: field %q: %s", key, err.Error()), "set", args[0].Pos())
@@ -1063,7 +1063,7 @@ func setClassInstanceReturns(args []Value, r *Registry) []Value {
 
 func setClassInstanceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	container := args[2]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("set_error", "set: cannot set field on type literal", "set")
 	}
 	oi, ok := container.Data.(ClassInstanceInfo)
@@ -1160,7 +1160,7 @@ func weakValueMirror(r *Registry, v Value, word, container string) {
 	// literal, or ANY None-shaped check value — None has a single
 	// inhabitant, so even a None carrier is provably the none the
 	// runtime declines.
-	if !IsConcrete(v) && !core.IsBareTypeNode(v) && !core.IsNoneShape(v) {
+	if !IsConcrete(&v) && !core.IsBareTypeNode(&v) && !core.IsNoneShape(v) {
 		return
 	}
 	if refusal := core.ClassifyWeakRefusal(v); refusal != nil {
@@ -1445,7 +1445,7 @@ func d2TypedContainerBound(container Value) (Value, bool) {
 	// (r get 1)` over an each-produced typed list folded differently). The
 	// exact narrowing needs the downstream dispatch fixed first; kept at the
 	// supertype until then. See design/TYPED-CONTAINER-TAG-RETENTION.0.md (R4).
-	if IsDisjunct(child) {
+	if IsDisjunct(&child) {
 		return NewDynamicCarrierValue(CloneValue(child)), true
 	}
 	return NewDynamicCarrier(child.Parent), true
@@ -1463,7 +1463,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		return out
 	}
 	key, container := args[0], args[1]
-	if !IsConcrete(key) {
+	if !IsConcrete(&key) {
 		return dyn
 	}
 	// A record-schema carrier (a record-typed param reparented at the call
@@ -1538,12 +1538,12 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// D2 Part B: a TYPED-map carrier ({:T}) narrows the read to its declared
 	// element type. A concrete map falls through to the exact per-key narrowing
 	// below; an untyped carrier keeps dynamic(Any).
-	if !IsConcrete(container) && IsTypedMap(container) {
+	if !IsConcrete(&container) && IsTypedMap(&container) {
 		if b, ok := d2TypedContainerBound(container); ok {
 			return []Value{b}
 		}
 	}
-	if !IsConcrete(container) || !container.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&container) || !container.Parent.ConformsTo(TMap) {
 		return dyn
 	}
 	m, err := AsMap(container)
@@ -1596,7 +1596,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		}
 	}
 	if val.Parent.ConformsTo(TFunction) ||
-		IsReach(val) || IsSplice(val) {
+		IsReach(&val) || IsSplice(&val) {
 		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):
 		// a NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
 		// stays dynamic — the runtime instance carries per-call state, so the
@@ -1623,7 +1623,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// than analysed over Any (module-test:38). Scalars keep the type
 	// carrier — there is nothing to fold, and the ID-collision guard above
 	// is the reason we never returned the bare stored scalar.
-	if IsConcrete(val) && (val.Parent.ConformsTo(TList) || val.Parent.ConformsTo(TMap)) {
+	if IsConcrete(&val) && (val.Parent.ConformsTo(TList) || val.Parent.ConformsTo(TMap)) {
 		return []Value{CloneValue(val)}
 	}
 	return []Value{elementReadCarrier(val)}
@@ -1669,7 +1669,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// D2 Part B: an index read over a TYPED-list carrier ([:T]) narrows to its
 	// declared element type. A concrete list falls through to the exact per-index
 	// narrowing below; an untyped carrier keeps dynamic(Any).
-	if len(args) == 2 && IsConcrete(args[0]) && !IsConcrete(args[1]) && IsTypedList(args[1]) {
+	if len(args) == 2 && IsConcrete(&args[0]) && !IsConcrete(&args[1]) && IsTypedList(&args[1]) {
 		if b, ok := d2TypedContainerBound(args[1]); ok {
 			return []Value{b}
 		}
@@ -1687,7 +1687,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 			return dyn
 		}
 	}
-	if len(args) != 2 || !IsConcrete(args[0]) || !IsConcrete(args[1]) ||
+	if len(args) != 2 || !IsConcrete(&args[0]) || !IsConcrete(&args[1]) ||
 		!args[1].Parent.ConformsTo(TList) {
 		return dyn
 	}
@@ -1714,11 +1714,11 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// the same way and models the call it makes; the compile pass emits
 	// nothing for the read (compiler.tryFoldReStepWord). A bare type node is
 	// a type literal, data like any other, and keeps the carrier below.
-	if IsWord(el) && !IsBareTypeNode(el) {
+	if IsWord(&el) && !IsBareTypeNode(&el) {
 		return []Value{el}
 	}
 	if el.Parent.ConformsTo(TFunction) ||
-		IsReach(el) || IsSplice(el) {
+		IsReach(&el) || IsSplice(&el) {
 		return dyn
 	}
 	// A QUOTED CODE element (a dispatch-table entry — `def ops [quote [1
@@ -1737,7 +1737,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	// Integer key: list index access.
@@ -1780,7 +1780,7 @@ func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // lower a fn-value call and decline).
 func getObjectReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if r == nil || len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {
+	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent == nil {
 		return dyn
 	}
 	body, ok := r.TopTypeBody(args[1].Parent.Leaf())
@@ -1821,7 +1821,7 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 // schema is reachable via TopTypeBody like a class type's.
 func getResourceReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if r == nil || len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {
+	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent == nil {
 		return dyn
 	}
 	// Resource/Entity are def bindings, not type bindings, so resolve
@@ -1844,7 +1844,7 @@ func getResourceReturns(args []Value, r *Registry) []Value {
 func getObjectHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	k := getKey(key)

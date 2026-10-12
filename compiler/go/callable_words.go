@@ -152,7 +152,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 // TFlexList carrier, not the concrete store). Bare type nodes are excluded:
 // a class/flex TYPE literal is not an instance.
 func mutableInstanceRef(v core.Value) bool {
-	if core.IsBareTypeNode(v) {
+	if core.IsBareTypeNode(&v) {
 		return false
 	}
 	if core.IsFlexNode(v) || core.IsClassInstance(v) {
@@ -236,7 +236,7 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 // ambiguity gate, so admitting the capture never introduces an unsound dispatch
 // — it just resolves the operand.
 func moduleScopeInstanceCarrier(v core.Value) bool {
-	return !core.IsBareTypeNode(v) && !core.IsConcrete(v) && v.Carrier
+	return !core.IsBareTypeNode(&v) && !core.IsConcrete(&v) && v.Carrier
 }
 
 // tryRecordClosure attempts to compile a code-body higher-order word's body to
@@ -308,7 +308,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
 	// rows importing a module whose fn defs a computed value declined with it.
 	_, bodyIsLambda := body.Data.(core.FnDefInfo)
-	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(body) && !bodyIsLambda
+	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(&body) && !bodyIsLambda
 	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
 		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
 		// A CompileDynBody word DECLINES instead: tryRecordDynBody records a
@@ -333,7 +333,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
 	// positionally off the stack.
-	if !core.IsConcrete(body) {
+	if !core.IsConcrete(&body) {
 		return false
 	}
 	bodyList, err := core.AsList(body)
@@ -688,7 +688,7 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 			}
 			continue
 		}
-		if !core.SigTypeMatches(inputs[i], pt) {
+		if !core.SigTypeMatches(&inputs[i], pt) {
 			return nil, false
 		}
 	}
@@ -1213,7 +1213,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		return nil, ClosureInValue, false
 	}
 	data := args[spec.BodyPos+1] // the data operand follows the body operand
-	if !core.IsConcrete(data) {
+	if !core.IsConcrete(&data) {
 		// A COMPUTED collection (`filter (…lambda) (keys kv)`) arrives as a
 		// typed CARRIER. A typed, NON-dynamic List/Map carrier is admitted:
 		// its element type reads off the carrier exactly as off a concrete
@@ -1273,7 +1273,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
 			accC := core.NewCarrier(acc.Parent)
-			if core.IsTypeLiteral(acc) {
+			if core.IsTypeLiteral(&acc) {
 				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
 			}
 			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
@@ -1525,7 +1525,7 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 // ZERO members ([] or {}) — the only construction input emptyFlexHookOperand
 // accepts, so the flex provably starts with no elements.
 func emptyContainerConst(v core.Value) bool {
-	if !core.IsConcrete(v) {
+	if !core.IsConcrete(&v) {
 		return false
 	}
 	if lst, err := core.AsList(v); err == nil && !lst.IsNil() {

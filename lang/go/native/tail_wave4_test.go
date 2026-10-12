@@ -360,10 +360,10 @@ func TestW4SizeAndCloneReturns(t *testing.T) {
 	if out := sizeReturns([]Value{NewMap(m)}, r); Canon(out) != `1` {
 		t.Errorf("sizeReturns map = %q", Canon(out))
 	}
-	if out := sizeReturns([]Value{NewString("abc")}, r); len(out) != 1 || IsConcrete(out[0]) {
+	if out := sizeReturns([]Value{NewString("abc")}, r); len(out) != 1 || IsConcrete(&out[0]) {
 		t.Errorf("sizeReturns string should stay a carrier: %v", out)
 	}
-	if out := sizeReturns([]Value{NewTypeLiteral(TList)}, r); len(out) != 1 || IsConcrete(out[0]) {
+	if out := sizeReturns([]Value{NewTypeLiteral(TList)}, r); len(out) != 1 || IsConcrete(&out[0]) {
 		t.Errorf("sizeReturns literal should stay a carrier: %v", out)
 	}
 	if out := sizeReturns(nil, r); len(out) != 1 {
@@ -384,10 +384,10 @@ func TestW4StreamKindMint(t *testing.T) {
 	if sk == nil || sk.Name() != "StreamKind" {
 		t.Fatalf("NewStreamKind = %v", sk)
 	}
-	if !NewAtom("stdout").Is(sk) || !NewAtom("stdin").Is(sk) || !NewAtom("stderr").Is(sk) {
+	if !addrOf(NewAtom("stdout")).Is(sk) || !addrOf(NewAtom("stdin")).Is(sk) || !addrOf(NewAtom("stderr")).Is(sk) {
 		t.Error("standard stream atoms should inhabit StreamKind")
 	}
-	if NewAtom("other").Is(sk) || NewString("stdout").Is(sk) {
+	if addrOf(NewAtom("other")).Is(sk) || addrOf(NewString("stdout")).Is(sk) {
 		t.Error("non-stream values must not inhabit StreamKind")
 	}
 }

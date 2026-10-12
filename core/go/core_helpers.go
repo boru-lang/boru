@@ -269,7 +269,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	}
 
 	// ClassTypeInfo body: set the proper name in the type hierarchy.
-	if IsClassType(body) {
+	if IsClassType(&body) {
 		info, _ := AsClassType(body)
 		if info.Parent != nil {
 			// Child type: full name is Parent/Name (e.g. Ideal/Foo/Bar)
@@ -622,7 +622,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 // tags; a non-container param or a non-concrete arg passes through. Applied at
 // every param-binding site (execFnDefSig / CallBoru / InstallFnDef).
 func RetagTypedContainerParam(p FnParam, arg Value) Value {
-	if p.Pattern == nil || !IsConcrete(arg) {
+	if p.Pattern == nil || !IsConcrete(&arg) {
 		return arg
 	}
 	return RetagTypedContainerValue(*p.Pattern, arg)
@@ -642,7 +642,7 @@ func RetagTypedContainerParam(p FnParam, arg Value) Value {
 // its elements conform; no re-validate, no rebuild. A plain (immutable) arg is
 // re-unified — that validates AND recursively re-tags nested containers.
 func RetagTypedContainerValue(pat, arg Value) Value {
-	if !IsTypedMap(pat) && !IsTypedList(pat) {
+	if !IsTypedMap(&pat) && !IsTypedList(&pat) {
 		return arg
 	}
 	if IsFlexList(arg) || IsFlexMap(arg) {
@@ -670,7 +670,7 @@ func RetagTypedContainerValue(pat, arg Value) Value {
 func RetagFlexElem(v Value, elemType Value) Value {
 	out := v
 	out.SetElemConstraint(elemType)
-	if IsTypedMap(elemType) || IsTypedList(elemType) {
+	if IsTypedMap(&elemType) || IsTypedList(&elemType) {
 		if ci, err := AsChildType(elemType); err == nil {
 			retagFlexChildrenInPlace(v, ci.Child)
 		}
@@ -706,7 +706,7 @@ func isTypedContainerParam(p FnParam) bool {
 		return false
 	}
 	pat := *p.Pattern
-	return IsTypedMap(pat) || IsTypedList(pat)
+	return IsTypedMap(&pat) || IsTypedList(&pat)
 }
 
 // RetagTypedContainerArgs retags every concrete {:T}/[:T] argument with its
@@ -722,7 +722,7 @@ func RetagTypedContainerArgs(params []FnParam, args []Value) []Value {
 	out := args
 	cloned := false
 	for i := 0; i < len(args) && i < len(params); i++ {
-		if !IsConcrete(args[i]) || !isTypedContainerParam(params[i]) {
+		if !IsConcrete(&args[i]) || !isTypedContainerParam(params[i]) {
 			continue
 		}
 		if !cloned {
@@ -960,7 +960,7 @@ func CoerceBoolean(v Value) bool {
 	// so empty flex containers are falsey exactly like empty plain
 	// ones (PR #123 review note).
 	case nodeFamily(ValueType(v)).Equal(TList):
-		if !IsConcrete(v) {
+		if !IsConcrete(&v) {
 			return false
 		}
 		if elems, err := AsMutableList(v); err == nil {
@@ -969,7 +969,7 @@ func CoerceBoolean(v Value) bool {
 		// Non-[]Value list backings (table types, query builders) are truthy.
 		return true
 	case nodeFamily(ValueType(v)).Equal(TMap):
-		if !IsConcrete(v) {
+		if !IsConcrete(&v) {
 			return false
 		}
 		if om, err := AsMutableMap(v); err == nil {
@@ -1123,7 +1123,7 @@ func IsHostTypeBody(v Value) bool {
 // IsLiteralTypeBody at the `type` install site, so paths that need
 // to discriminate code-bodies / fn-bodies / data-defs from explicit
 // type shapes (e.g. `inspect`) keep using IsTypeBody and stay sharp.
-func IsTypeBody(v Value) bool {
+func IsTypeBody(v *Value) bool {
 	// A bare lattice node IS a type; everything else asks its sealed
 	// payload through the one recognition seam (Payload.IsTypeContent,
 	// design/legacy/TYPE-REPRESENTATION.1.ignore §N4). The 18-arm shape
@@ -1140,7 +1140,7 @@ func IsTypeBody(v Value) bool {
 	if v.Parent != nil && (v.Parent.Equal(TFnUndef) || v.Parent.Equal(TFunction)) {
 		return true
 	}
-	return v.Data != nil && v.Data.IsTypeContent(&v)
+	return v.Data != nil && v.Data.IsTypeContent(v.Parent)
 }
 
 // PredicateInputType returns the concrete input type of a declared
@@ -1199,7 +1199,7 @@ func PredicateInputType(v Value) *Type {
 // installType to relax the strict IsTypeBody check in a way that
 // doesn't pollute the inspect / fn-shape paths.
 func IsLiteralTypeBody(v Value) bool {
-	if IsNone(v) {
+	if IsNone(&v) {
 		return true
 	}
 	switch {
@@ -1276,10 +1276,10 @@ outer:
 				continue
 			}
 			// cand's type is a strict subtype of other's.
-			if IsBareTypeNode(cand) && IsBareTypeNode(other) {
+			if IsBareTypeNode(&cand) && IsBareTypeNode(&other) {
 				continue outer
 			}
-			if IsConcrete(cand) && IsBareTypeNode(other) {
+			if IsConcrete(&cand) && IsBareTypeNode(&other) {
 				continue outer
 			}
 		}
@@ -1352,16 +1352,16 @@ func BaseValue(t *Type) (Value, error) {
 // For disjunctions (e.g. string|none), returns the base of the first
 // non-none alternative.
 func BaseValueForConstraint(constraint Value) (Value, error) {
-	if IsDisjunct(constraint) {
+	if IsDisjunct(&constraint) {
 		di, _ := AsDisjunct(constraint)
 		for _, alt := range di.Alternatives {
-			if IsTypeLiteral(alt) {
+			if IsTypeLiteral(&alt) {
 				return BaseValue(ValueType(alt))
 			}
 		}
 		return NewTypeLiteral(TNone), nil
 	}
-	if IsBareTypeNode(constraint) {
+	if IsBareTypeNode(&constraint) {
 		return BaseValue(ValueType(constraint))
 	}
 	return Value{}, fmt.Errorf("base: cannot determine base value for %s", constraint.String())
@@ -1380,7 +1380,7 @@ func omittedDefaultValue(p FnParam) (Value, error) {
 			m := NewOrderedMap()
 			for _, k := range oi.Fields.Keys() {
 				fv, _ := oi.Fields.Get(k)
-				if IsTypeBody(fv) {
+				if IsTypeBody(&fv) {
 					continue
 				}
 				m.Set(k, fv)

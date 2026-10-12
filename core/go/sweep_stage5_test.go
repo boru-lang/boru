@@ -85,7 +85,7 @@ func TestSweepConvertBehaviorDelegates(t *testing.T) {
 func TestSweepUnionTypeSingleton(t *testing.T) {
 	// Duplicate alternatives dedupe to a single bare literal.
 	u := UnionType(NewTypeLiteral(TInteger), NewTypeLiteral(TInteger))
-	if !IsBareTypeNode(u) || (&u).Leaf() != "Integer" {
+	if !IsBareTypeNode(&u) || (&u).Leaf() != "Integer" {
 		t.Errorf("UnionType singleton = %v", u)
 	}
 }
@@ -429,7 +429,7 @@ func TestSweepDepScalarEdges(t *testing.T) {
 		Hi: &DepBound{Value: NewInteger(9)},
 	}
 	comp := complementWithinBase(TInteger, interval)
-	if !IsDisjunct(comp) {
+	if !IsDisjunct(&comp) {
 		t.Errorf("interval complement should be a disjunct: %v", comp)
 	}
 	// complementWithinBase: upper-only → flipped lower bound.
@@ -733,7 +733,7 @@ func TestSweepMemberBehaviorArms(t *testing.T) {
 	if !b.Match(NewInteger(2), mt) {
 		t.Error("a member value should Match")
 	}
-	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2), nil); uerr != nil || !IsConcrete(out) {
+	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2), nil); uerr != nil || !IsConcrete(&out) {
 		t.Errorf("member Unify = %v, %v", out, uerr)
 	}
 	if _, err := b.Compare(NewInteger(1), NewInteger(2)); err == nil {

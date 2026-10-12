@@ -262,7 +262,7 @@ func readReturns(withOpts bool) ReturnsFunc {
 		return []Value{c}
 	}
 	return func(args []Value, r *Registry) []Value {
-		if r == nil || len(args) < 1 || !IsConcrete(args[0]) {
+		if r == nil || len(args) < 1 || !IsConcrete(&args[0]) {
 			return dynAny()
 		}
 		pi, err := AsPathon(args[0])
@@ -325,7 +325,7 @@ func writeEncMirror(optsAt int) ReturnsFunc {
 	gate := DeepConcreteOptionsAt(optsAt)
 	return MirrorReturns("write",
 		func(args []Value) bool {
-			if !gate(args) || len(args) <= optsAt || !IsConcrete(args[1]) {
+			if !gate(args) || len(args) <= optsAt || !IsConcrete(&args[1]) {
 				return false
 			}
 			// A RESERVED STREAM path never reaches the encoder: doWrite
@@ -383,7 +383,7 @@ func writeEncMirror(optsAt int) ReturnsFunc {
 // declared fresh carrier.
 func writeReturns() ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if len(args) >= 1 && IsConcrete(args[0]) {
+		if len(args) >= 1 && IsConcrete(&args[0]) {
 			if _, err := AsPathon(args[0]); err == nil {
 				return []Value{args[0]}
 			}
@@ -567,7 +567,7 @@ func formatTypeSchema(name string, v Value) string {
 		if !own {
 			inherited = "  (inherited)"
 		}
-		if IsConcrete(c) {
+		if IsConcrete(&c) {
 			fmt.Fprintf(&b, "  %-*s : %s = %s  (default)%s\n", w, k, c.Parent.Name(), c.String(), inherited)
 		} else {
 			fmt.Fprintf(&b, "  %-*s : %s  (required)%s\n", w, k, c.String(), inherited)
@@ -648,7 +648,7 @@ func referentHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 // auto-evaluated, so `name/v` values are fn data whose name is read off the
 // FnDefInfo; a bare name resolves through ResolveRef (which also records it).
 func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if r == nil || !r.Check.IsActive() || len(args) < 2 || !IsConcrete(args[1]) {
+	if r == nil || !r.Check.IsActive() || len(args) < 2 || !IsConcrete(&args[1]) {
 		return nil, nil
 	}
 	m, err := RequireConcreteMap(args[1], "export")
@@ -662,8 +662,8 @@ func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 			continue
 		}
 		switch {
-		case IsWord(v):
-			w, _ := AsWord(v)
+		case IsWord(&v):
+			w, _ := AsWord(&v)
 			r.Check.RecordUse(w.Name)
 		case IsAtom(v):
 			a, _ := AsAtom(v)
@@ -680,7 +680,7 @@ func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 }
 
 func moduleHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("module_error", "module: argument must be a concrete list, got type literal", "module")
 	}
 	_lst, _ := AsList(args[0])
@@ -698,7 +698,7 @@ func importAllHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 
 func importRenameHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	desc, _ := asModuleDesc(args[1])
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("import_error", "import: rename list must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[0])
@@ -860,7 +860,7 @@ func importInlineHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 	if name != "module" {
 		return nil, r.BoruError("import_error", fmt.Sprintf("import: unknown inline form %q (expected 'module')", name), "import")
 	}
-	if !IsConcrete(args[1]) {
+	if !IsConcrete(&args[1]) {
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[1])
@@ -876,10 +876,10 @@ func importInlineRenameHandler(args []Value, _ map[string]Value, _ []Value, r *R
 	if name != "module" {
 		return nil, r.BoruError("import_error", fmt.Sprintf("import: unknown inline form %q (expected 'module')", name), "import")
 	}
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("import_error", "import: rename list must be a concrete list, got type literal", "import")
 	}
-	if !IsConcrete(args[2]) {
+	if !IsConcrete(&args[2]) {
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst2, _ := AsList(args[2])
@@ -896,7 +896,7 @@ func importInlineSingleRenameHandler(args []Value, _ map[string]Value, _ []Value
 	if modName != "module" {
 		return nil, r.BoruError("import_error", fmt.Sprintf("import: unknown inline form %q (expected 'module')", modName), "import")
 	}
-	if !IsConcrete(args[2]) {
+	if !IsConcrete(&args[2]) {
 		return nil, r.BoruError("import_error", "import: module body must be a concrete list, got type literal", "import")
 	}
 	_lst, _ := AsList(args[2])
@@ -955,7 +955,7 @@ func awaitDefaultHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 }
 
 func doAwait(r *Registry, mode string, parallels Value) ([]Value, error) {
-	if !IsConcrete(parallels) {
+	if !IsConcrete(&parallels) {
 		return nil, r.BoruError("await_error", "await: parallels must be a concrete list, got type literal", "await")
 	}
 	_lst, _ := AsList(parallels)

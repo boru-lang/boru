@@ -421,10 +421,10 @@ func TestIsAppliableFnShapes(t *testing.T) {
 	if !core.IsAppliableFn(carrier) {
 		t.Error("Function-typed carrier not appliable")
 	}
-	if !core.IsFnTypedCarrier(carrier) {
+	if !core.IsFnTypedCarrier(&carrier) {
 		t.Error("Function carrier not fn-typed")
 	}
-	if core.IsFnTypedCarrier(core.NewCarrier(core.TInteger)) {
+	if core.IsFnTypedCarrier(addrOf(core.NewCarrier(core.TInteger))) {
 		t.Error("Integer carrier fn-typed")
 	}
 	if !core.IsFnValueResidual(core.NewFunction(core.FnDefInfo{Name: "g"})) {

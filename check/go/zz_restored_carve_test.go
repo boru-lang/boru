@@ -94,7 +94,7 @@ func TestW8SpliceFnCheckTailCompaction(t *testing.T) {
 	if got := e.Tape.Len(); got != 2 {
 		t.Fatalf("tape len = %d, want 2 (marker + carrier)", got)
 	}
-	if !core.IsForward(e.Tape.At(0)) {
+	if !core.IsForward(e.Tape.Ref(0)) {
 		t.Errorf("tape[0] = %+v, want the Forward marker compacted down", e.Tape.At(0))
 	}
 	if got := e.Tape.At(1); !got.Carrier || !got.Parent.Equal(core.TAny) {

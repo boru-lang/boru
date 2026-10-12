@@ -139,14 +139,14 @@ func TestFnReturnPark(t *testing.T) {
 // that here: a parser-produced open paren must not read as a frame, and both
 // machine-generated constructors must.
 func TestFrameOpenIsMachineGeneratedOnly(t *testing.T) {
-	if IsFrameOpen(NewOpenParen()) {
+	if IsFrameOpen(addrOf(NewOpenParen())) {
 		t.Error("a plain source-written open paren reads as a fn frame — frame teardown would fire on user parens")
 	}
 	meta := &FnFrameMeta{}
-	if !IsFrameOpen(NewFrameOpen(meta)) {
+	if !IsFrameOpen(addrOf(NewFrameOpen(meta))) {
 		t.Error("NewFrameOpen does not read as a fn frame — frame machinery would never engage")
 	}
-	if !IsFrameOpen(NewFrameOpenSpan(meta, 2)) {
+	if !IsFrameOpen(addrOf(NewFrameOpenSpan(meta, 2))) {
 		t.Error("NewFrameOpenSpan does not read as a fn frame — frames with a resolved-arg span would not engage")
 	}
 }

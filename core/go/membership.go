@@ -35,7 +35,7 @@ func baseCompare(prev TypeBehavior, a, b Value) (int, error) {
 // type literal ("the type itself") or a carrier (a CheckMode abstract
 // value) — defers to the lattice walk; a concrete value is put to member.
 func matchMembership(v Value, t *Type, prev TypeBehavior, member func(Value) bool) bool {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		// A check-mode CARRIER carrying a real closure payload (the
 		// concrete-closure residual buildFnBodyReturnsFn / toCarrier
 		// preserve) is payload-decidable: the FnDefInfo IS the value
@@ -76,7 +76,7 @@ func matchMembership(v Value, t *Type, prev TypeBehavior, member func(Value) boo
 // match — the candidate itself for a Go predicate, or RunPredicate's
 // result for a boru one.
 func unifyMembership(a, c Value, typeName string, admit func(Value) (Value, bool, error)) (Value, *UnifyError) {
-	aConc, cConc := IsConcrete(a), IsConcrete(c)
+	aConc, cConc := IsConcrete(&a), IsConcrete(&c)
 	if aConc == cConc {
 		// Both concrete (value vs value) or both abstract (type level):
 		// settle by the structural rule, not the predicate.

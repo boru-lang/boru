@@ -48,10 +48,10 @@ func wantParseErrWave3(t *testing.T, src, sub string) {
 // wordNameWave3 asserts v is a Word and returns its info.
 func wordNameWave3(t *testing.T, v core.Value, ctx string) core.WordInfo {
 	t.Helper()
-	if !core.IsWord(v) {
+	if !core.IsWord(&v) {
 		t.Fatalf("%s: expected a Word, got %s", ctx, v.String())
 	}
-	w, err := core.AsWord(v)
+	w, err := core.AsWord(&v)
 	if err != nil {
 		t.Fatalf("%s: AsWord: %v", ctx, err)
 	}
@@ -62,7 +62,7 @@ func wordNameWave3(t *testing.T, v core.Value, ctx string) core.WordInfo {
 
 func TestParseWave3NoneLiteral(t *testing.T) {
 	vals := mustParseWave3(t, "none")
-	if len(vals) != 1 || !core.IsNone(vals[0]) {
+	if len(vals) != 1 || !core.IsNone(&vals[0]) {
 		t.Fatalf("none: expected the unique None value, got %v", vals)
 	}
 }
@@ -106,7 +106,7 @@ func TestParseWave3MarkerTokens(t *testing.T) {
 		}
 	}
 	vals := mustParseWave3(t, ")")
-	if len(vals) != 1 || !core.IsCloseParen(vals[0]) {
+	if len(vals) != 1 || !core.IsCloseParen(&vals[0]) {
 		t.Fatalf("bare `)`: expected a close-paren marker, got %v", vals)
 	}
 	// A trailing `!` with no following `.` stays a bare `!` word.
@@ -204,7 +204,7 @@ func TestParseWave3WordContextTypePath(t *testing.T) {
 	if len(vals) != 1 {
 		t.Fatalf("Scalar/Number/Integer: expected one value, got %v", vals)
 	}
-	if w, err := core.AsWord(vals[0]); err != nil || w.Name != "Scalar/Number/Integer" {
+	if w, err := core.AsWord(&vals[0]); err != nil || w.Name != "Scalar/Number/Integer" {
 		t.Fatalf("Scalar/Number/Integer: expected word(Scalar/Number/Integer), got %v", vals)
 	}
 }

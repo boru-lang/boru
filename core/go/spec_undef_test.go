@@ -55,7 +55,7 @@ func TestGeneraliseSpecUndef(t *testing.T) {
 		t.Fatal("a module-scope value binding generalises")
 	}
 	top, ok := r.Defs.Top("k")
-	if !ok || IsConcrete(top) || !top.Parent.Equal(TInteger) || r.Defs.Depth("k") != 1 {
+	if !ok || IsConcrete(&top) || !top.Parent.Equal(TInteger) || r.Defs.Depth("k") != 1 {
 		t.Fatalf("the binding stays at its depth with a carrier of its type: %v depth=%d", top, r.Defs.Depth("k"))
 	}
 	if r.Defs.Gen("k") == gen || r.Check.SpecUndefGen != 1 || r.Check.SpecUndefCarriers["k"] != top.ID {

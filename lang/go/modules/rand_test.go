@@ -278,8 +278,8 @@ func TestRandListOf(t *testing.T) {
 	res2 := runRandBoru(t, r2, `def s (Rand.with-seed 42)  Rand.list-of [s.int 0 100] 5`)
 	lst2, _ := native.RequireConcreteList(res2[0], "test")
 	for i := 0; i < lst.Len(); i++ {
-		a, _ := lst.Get(i).AsConcreteInteger()
-		b, _ := lst2.Get(i).AsConcreteInteger()
+		a, _ := addrOf(lst.Get(i)).AsConcreteInteger()
+		b, _ := addrOf(lst2.Get(i)).AsConcreteInteger()
 		if a != b {
 			t.Errorf("element %d diverges: %d vs %d", i, a, b)
 		}
@@ -332,7 +332,7 @@ func TestRandListOfBodyKeepsQuoted(t *testing.T) {
 	lst, _ := native.RequireConcreteList(res[0], "test")
 	distinct := map[int64]bool{}
 	for i := 0; i < lst.Len(); i++ {
-		n, _ := lst.Get(i).AsConcreteInteger()
+		n, _ := addrOf(lst.Get(i)).AsConcreteInteger()
 		distinct[n] = true
 	}
 	// Four draws from [0, 1e6) should almost certainly all be distinct.

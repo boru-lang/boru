@@ -159,7 +159,7 @@ func TestCarrierResultsPartitionCountMismatchKeepsRecorded(t *testing.T) {
 	r.RegisterNativeFunc(core.NativeFunc{Name: "ljmis", Signatures: []core.Signature{{
 		Args: []*core.Type{core.TAny}, BarrierPos: -1, Impl: impl,
 		ReturnsFn: func(args []core.Value, _ *core.Registry) []core.Value {
-			if len(args) == 1 && core.IsDisjunct(args[0]) {
+			if len(args) == 1 && core.IsDisjunct(&args[0]) {
 				return []core.Value{core.NewCarrier(core.TInteger), core.NewCarrier(core.TString)}
 			}
 			return []core.Value{core.NewCarrier(core.TInteger)}

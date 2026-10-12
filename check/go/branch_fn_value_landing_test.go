@@ -31,7 +31,7 @@ func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, benea
 	m.next = append(m.next, next)
 	m.beneath = append(m.beneath, beneath)
 	name := ""
-	if w, err := core.AsWord(word); err == nil {
+	if w, err := core.AsWord(&word); err == nil {
 		name = w.Name
 	}
 	m.words = append(m.words, name)
@@ -191,7 +191,7 @@ func TestNoteReStepLandingNotesNext(t *testing.T) {
 		// none.
 		wantWord := ""
 		if tc.next == core.LandingNextWord || tc.next == core.LandingNextValue {
-			w, _ := core.AsWord(tc.tape[1])
+			w, _ := core.AsWord(&tc.tape[1])
 			wantWord = w.Name
 		}
 		if rec.words[0] != wantWord {

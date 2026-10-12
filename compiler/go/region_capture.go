@@ -49,7 +49,7 @@ func CaptureRegionSlots(w core.CollectWindow, from int) []SlotDesc {
 	for i := from; i < from+n; i++ {
 		tok := w.At(i)
 		d := SlotDesc{Quote: quoteOfToken(tok), Token: tok}
-		if core.IsWord(tok) {
+		if core.IsWord(&tok) {
 			d.Source = SlotWordRef
 		}
 		slots = append(slots, d)
@@ -68,7 +68,7 @@ func quoteOfToken(v core.Value) SlotQuote {
 		// tape: the quote is not a pending instruction, it is done.
 		return QuoteAtom
 	}
-	if core.IsDispatchMod(v) {
+	if core.IsDispatchMod(&v) {
 		// /v and /q are distinct facts on ONE marker type and mean different
 		// things downstream: /v disables the call, /q treats the RESULT as
 		// data. Collapsing them loses the distinction the payload carries.

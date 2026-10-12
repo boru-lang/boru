@@ -131,13 +131,13 @@ func TestEdgeNewStringSpecialChars(t *testing.T) {
 
 func TestEdgeNewOpenParen(t *testing.T) {
 	v := NewOpenParen()
-	if !IsOpenParen(v) {
+	if !IsOpenParen(&v) {
 		t.Error("IsOpenParen() = false for NewOpenParen()")
 	}
-	if IsWord(v) {
+	if IsWord(&v) {
 		t.Error("IsWord() = true for open paren")
 	}
-	if IsForward(v) {
+	if IsForward(&v) {
 		t.Error("IsForward() = true for open paren")
 	}
 	if v.String() != "(" {
@@ -1946,7 +1946,7 @@ func TestEdgeForwardInfoFields(t *testing.T) {
 		FuncIndex:     5,
 	}
 	v := NewForward(info)
-	got, _ := AsForward(v)
+	got, _ := AsForward(&v)
 	if got.FuncName != "test" {
 		t.Errorf("FuncName = %q, want 'test'", got.FuncName)
 	}
@@ -1966,7 +1966,7 @@ func TestEdgeForwardInfoFields(t *testing.T) {
 		t.Errorf("zero-value speculation = (%v,%d), want (false,0)", got.Speculative, got.SpeculativeAt)
 	}
 	spec := ForwardInfo{FuncName: "g", ExpectedArgs: 3, Speculative: true, SpeculativeAt: 2}
-	got2, _ := AsForward(NewForward(spec))
+	got2, _ := AsForward(addrOf(NewForward(spec)))
 	if !got2.Speculative || got2.SpeculativeAt != 2 {
 		t.Errorf("speculation round-trip = (%v,%d), want (true,2)", got2.Speculative, got2.SpeculativeAt)
 	}

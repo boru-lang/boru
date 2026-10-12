@@ -358,7 +358,7 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 // (stores, class instances, fn values, timers) are NOT inert — their
 // check-time state is not their runtime state — so they decline the fold.
 func parseFoldableValue(v native.Value) bool {
-	if v.Carrier || v.Dynamic || v.Undefined || !native.IsConcrete(v) {
+	if v.Carrier || v.Dynamic || v.Undefined || !native.IsConcrete(&v) {
 		return false
 	}
 	switch {
@@ -395,10 +395,10 @@ func parseFoldableValue(v native.Value) bool {
 // `{file:…}` map raises `parse_file_unsupported` (deferred in v1); anything
 // else is a clear error.
 func resolveParseSource(v native.Value, r *native.Registry) (string, error) {
-	if v.Parent.ConformsTo(native.TString) && native.IsConcrete(v) {
+	if v.Parent.ConformsTo(native.TString) && native.IsConcrete(&v) {
 		return v.AsConcreteString()
 	}
-	if v.Parent.Equal(native.TMap) && native.IsConcrete(v) {
+	if v.Parent.Equal(native.TMap) && native.IsConcrete(&v) {
 		m, _ := native.AsMap(v)
 		if m == nil {
 			return "", r.BoruError("parse_bad_source", "parse: source map is empty", "parse")

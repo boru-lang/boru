@@ -548,7 +548,7 @@ func severityString(s native.CheckSeverity) string {
 // policyFromMapValue converts a boru Map value (as received in a
 // Vm.run-with arg) into a policy.Policy.
 func policyFromMapValue(v native.Value) (policy.Policy, error) {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return nil, fmt.Errorf("policy map cannot be a type literal or carrier")
 	}
 	if _, err := native.RequireConcreteMap(v, "Vm.run-with policy"); err != nil {

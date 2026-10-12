@@ -25,13 +25,13 @@ func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Regis
 	}
 
 	// Bare Map type literal vs Options → preserve the Options schema.
-	if !IsConcrete(concrete) {
+	if !IsConcrete(&concrete) {
 		return NewOptionsType(opts.Fields), nil
 	}
 
 	// Options only accepts plain concrete maps, never structural map
 	// subtypes (Record / TypedMap / nested Options).
-	if IsRecordType(concrete) || IsTypedMap(concrete) || IsOptionsType(concrete) {
+	if IsRecordType(concrete) || IsTypedMap(&concrete) || IsOptionsType(concrete) {
 		return Value{}, unifyFail("Options only unifies with a plain Map", a, b)
 	}
 
@@ -85,7 +85,7 @@ func unifyOptionsPair(a, b OptionsTypeInfo, r *Registry) (Value, *UnifyError) {
 //   - Type literal (Data==nil) → fail (requires a value)
 //   - Disjunct → None if present, else first concrete alternative, else fail
 func optionsDefault(v Value) (Value, bool) {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		disj, _ := AsDisjunct(v)
 		alts := disj.Alternatives
 		for _, alt := range alts {
@@ -94,7 +94,7 @@ func optionsDefault(v Value) (Value, bool) {
 			}
 		}
 		for _, alt := range alts {
-			if alt.Data != nil && !IsDisjunct(alt) {
+			if alt.Data != nil && !IsDisjunct(&alt) {
 				return alt, true
 			}
 		}
@@ -144,7 +144,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 		}
 		fieldSchema, _ := pot.Fields.Get(key)
 		def, dok := optionsDefault(fieldSchema)
-		if !dok || !IsConcrete(def) {
+		if !dok || !IsConcrete(&def) {
 			continue // required field, or None/unset default — leave absent
 		}
 		if filled == nil {
@@ -182,7 +182,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 //
 // r is the enclosing chain's registry, handed to the type-literal arm.
 func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
-	if IsDisjunct(optVal) {
+	if IsDisjunct(&optVal) {
 		disj, _ := AsDisjunct(optVal)
 		for _, alt := range disj.Alternatives {
 			if unified, err := unifyOptionsField(alt, cVal, r); err == nil {

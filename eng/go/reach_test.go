@@ -21,14 +21,14 @@ func TestReachConstructAndAccess(t *testing.T) {
 	}
 	v := core.NewReach(info)
 
-	if !core.IsReach(v) {
+	if !core.IsReach(&v) {
 		t.Fatalf("IsReach = false for a Reach value (parent %s)", v.Parent)
 	}
 	if !v.Parent.Equal(core.TReach) {
 		t.Fatalf("parent = %s, want Ideal/Reach", v.Parent)
 	}
 
-	got, err := core.AsReach(v)
+	got, err := core.AsReach(&v)
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestReachConstructAndAccess(t *testing.T) {
 
 // AsReach must error (not panic) on a non-Reach value.
 func TestAsReachRejectsNonReach(t *testing.T) {
-	if _, err := core.AsReach(core.NewInteger(5)); err == nil {
+	if _, err := core.AsReach(addrOf(core.NewInteger(5))); err == nil {
 		t.Fatal("AsReach(5) should error, got nil")
 	}
 }

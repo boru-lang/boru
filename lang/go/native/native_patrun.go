@@ -180,7 +180,7 @@ func patrunAddReturns(args []Value, r *Registry) []Value {
 	// stay a runtime check. Plain-check only — the diagnostic never bakes.
 	if r != nil && !r.Check.Compiling && len(args) >= 3 {
 		if ss, ok := check.StoreShapeOf(args[2]); ok && ss.DeclaredVal != nil &&
-			!ss.DeclaredVal.Equal(TAny) && IsConcrete(args[1]) && !args[1].Is(ss.DeclaredVal) {
+			!ss.DeclaredVal.Equal(TAny) && IsConcrete(&args[1]) && !args[1].Is(ss.DeclaredVal) {
 			// A proven-concrete wrong-typed value is a GUARANTEED runtime
 			// error mirror of patrunAddHandler's guard — stamped and deduped
 			// through the helper (NUR058). Plain-check-only today (the
@@ -317,7 +317,7 @@ func coercePattern(pv Value, op string, r *Registry) (map[string]string, []strin
 	pat := make(map[string]string, len(mkeys))
 	for _, k := range mkeys {
 		val, _ := mp.Get(k)
-		if !IsConcrete(val) || !val.Parent.ConformsTo(TScalar) {
+		if !IsConcrete(&val) || !val.Parent.ConformsTo(TScalar) {
 			return nil, nil, "", r.BoruErrorHint("patrun_error",
 				fmt.Sprintf("%s: pattern value for %q must be a Scalar, got %s", op, k, val.Parent.String()),
 				op, "patterns match on scalar values (Integer/Float/String/Boolean/Atom)")
@@ -340,7 +340,7 @@ func coerceSubject(sv Value, op string) (map[string]string, error) {
 	subj := make(map[string]string, len(mp.Keys()))
 	for _, k := range mp.Keys() {
 		val, _ := mp.Get(k)
-		if IsConcrete(val) && val.Parent.ConformsTo(TScalar) {
+		if IsConcrete(&val) && val.Parent.ConformsTo(TScalar) {
 			subj[k] = ValToString(val)
 		}
 	}

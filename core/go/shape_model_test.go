@@ -46,16 +46,16 @@ func TestMarkShapeModel(t *testing.T) {
 		t.Error("a Go-built value (no home) is never ShapeModelHomed")
 	}
 
-	if IsInertConst(modelFn) || IsInertConstMember(modelFn) {
+	if IsInertConst(&modelFn) || IsInertConstMember(modelFn) {
 		t.Error("a model's method must not bake as a constant")
 	}
-	if !IsInertConst(liveFn) || !IsInertConstMember(liveFn) {
+	if !IsInertConst(&liveFn) || !IsInertConstMember(liveFn) {
 		t.Error("a live module method still bakes as data")
 	}
-	if IsInertConst(NewMap(inst)) {
+	if IsInertConst(addrOf(NewMap(inst))) {
 		t.Error("a map holding a model's method must not bake as a constant")
 	}
-	if !IsInertConst(NewList([]Value{liveFn})) {
+	if !IsInertConst(addrOf(NewList([]Value{liveFn}))) {
 		t.Error("a list holding a live method still bakes")
 	}
 }

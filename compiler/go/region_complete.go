@@ -188,7 +188,7 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 		if reg == nil {
 			return false
 		}
-		wi, err := core.AsWord(s.Token)
+		wi, err := core.AsWord(&s.Token)
 		if err != nil {
 			return false
 		}
@@ -229,7 +229,7 @@ func fnScopedWord(reg *core.Registry, tok core.Value) bool {
 	if reg == nil || len(reg.FnBaselines) == 0 {
 		return false
 	}
-	wi, err := core.AsWord(tok)
+	wi, err := core.AsWord(&tok)
 	if err != nil {
 		return false
 	}

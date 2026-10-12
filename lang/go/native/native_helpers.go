@@ -230,7 +230,7 @@ func checkBigFloatMix(r *Registry, args []Value) {
 	if !atUncaughtTopLevel(r) || len(args) != 2 ||
 		args[0].Dynamic || args[1].Dynamic ||
 		args[0].Parent == nil || args[1].Parent == nil ||
-		IsBareTypeNode(args[0]) || IsBareTypeNode(args[1]) {
+		IsBareTypeNode(&args[0]) || IsBareTypeNode(&args[1]) {
 		return
 	}
 	la, lb := numLeaf(args[0]), numLeaf(args[1])
@@ -254,7 +254,7 @@ func atUncaughtTopLevel(r *Registry) bool {
 // equal to zero — the divisor shape that makes div / mod raise at runtime
 // (the Float leaves are IEEE and never raise).
 func isStaticZeroIntDivisor(v Value) bool {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return false
 	}
 	if v.Parent.ConformsTo(TBigInteger) {

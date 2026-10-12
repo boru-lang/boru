@@ -12,11 +12,11 @@ import "testing"
 func TestRank2ElemCarrierArms(t *testing.T) {
 	row := func(vs ...Value) Value { return NewList(vs) }
 	uniform := rank2ElemCarrier(row(row(NewInteger(1), NewInteger(2)), row(NewInteger(3), NewInteger(4))))
-	if uniform.Dynamic || IsDisjunct(uniform) || !uniform.Parent.Equal(TInteger) {
+	if uniform.Dynamic || IsDisjunct(&uniform) || !uniform.Parent.Equal(TInteger) {
 		t.Fatalf("uniform rows must give the plain strict element type, got %v", uniform)
 	}
 	mixed := rank2ElemCarrier(row(row(NewInteger(1), NewInteger(2)), row(NewString("a"), NewString("b"))))
-	if !IsDisjunct(mixed) {
+	if !IsDisjunct(&mixed) {
 		t.Fatalf("mixed rows must join to a Disjunct (the second row's type must reach the body), got %v", mixed)
 	}
 	for name, data := range map[string]Value{

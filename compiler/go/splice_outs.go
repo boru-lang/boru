@@ -43,8 +43,8 @@ func (es *EmitState) noteSpliceOuts(seq int, outs []core.Value) {
 // payload — one the pass stepped token for token (a computed payload's
 // spread is RecordSpliceDyn's, and renders as no run's marker).
 func concreteSplice(v core.Value) bool {
-	info, err := core.AsSplice(v)
-	return err == nil && core.IsConcrete(info.Data)
+	info, err := core.AsSplice(&v)
+	return err == nil && core.IsConcrete(&info.Data)
 }
 
 // NoteSpliceFired takes a fired splice marker v out of the results of the
@@ -90,7 +90,7 @@ func (lw *lowerer) spliceOutsAt(seq int) []core.Value {
 	}
 	outs := lw.es.spliceOuts[seq]
 	for _, v := range outs {
-		if core.IsSplice(v) && !lw.es.firedSplices[seq][v.ID] {
+		if core.IsSplice(&v) && !lw.es.firedSplices[seq][v.ID] {
 			return nil
 		}
 	}

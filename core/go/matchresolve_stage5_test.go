@@ -131,7 +131,7 @@ func TestWt5ResolveWordsDeepScalarArms(t *testing.T) {
 		t.Fatalf("false word = %v", v)
 	}
 	// Builtin type name resolves to its literal.
-	if v := ResolveWordsDeep(NewWord("Integer")); !IsBareTypeNode(v) || !(&v).Equal(TInteger) {
+	if v := ResolveWordsDeep(NewWord("Integer")); !IsBareTypeNode(&v) || !(&v).Equal(TInteger) {
 		t.Fatalf("Integer word = %v", v)
 	}
 	// Unknown names degrade to Atoms.
@@ -153,7 +153,7 @@ func TestWt5ResolveWordsDeepTypedContainers(t *testing.T) {
 	// Typed list with inline elements: child and elements resolve deep.
 	tl := NewTypedListWithElements(NewTypeLiteral(TBoolean), []Value{NewWord("true")})
 	out := ResolveWordsDeep(tl)
-	if !IsTypedList(out) {
+	if !IsTypedList(&out) {
 		t.Fatalf("typed list did not survive resolution: %v", out)
 	}
 	ci, err := AsChildType(out)
@@ -164,7 +164,7 @@ func TestWt5ResolveWordsDeepTypedContainers(t *testing.T) {
 	// Typed map with inline entries.
 	tm := NewTypedMapWithEntries(NewTypeLiteral(TBoolean), []ChildEntry{{Key: "a", Value: NewWord("false")}})
 	out = ResolveWordsDeep(tm)
-	if !IsTypedMap(out) {
+	if !IsTypedMap(&out) {
 		t.Fatalf("typed map did not survive resolution: %v", out)
 	}
 	ci, err = AsChildType(out)

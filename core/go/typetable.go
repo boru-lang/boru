@@ -406,7 +406,7 @@ func (tt *TypeTable) MintRefinePrefab(parent *Type) *Type {
 // lattice node is user-minted with no Name — the unique shape
 // `MintRefinePrefab` produces.
 func IsRefinePrefab(v Value) bool {
-	return IsBareTypeNode(v) && v.Origin == OriginUserDef && v.Name() == ""
+	return IsBareTypeNode(&v) && v.Origin == OriginUserDef && v.Name() == ""
 }
 
 // externalBandFor returns the Rank band for user/external types

@@ -131,7 +131,7 @@ func TestZzFmParamBodyCarrierInlineUnion(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString),
 	})
 	v := ParamBodyCarrier(core.FnParam{Name: "x", Pattern: &pat})
-	if !core.IsDisjunct(v) || !v.Carrier {
+	if !core.IsDisjunct(&v) || !v.Carrier {
 		t.Fatalf("inline-union param carrier = %+v, want a strict disjunct carrier", v)
 	}
 	di, err := core.AsDisjunct(v)
@@ -565,7 +565,7 @@ func TestZzFmReturnsFnConcreteClosureSurfaces(t *testing.T) {
 	if !isFn || fd.Name != "zzfminner" {
 		t.Fatalf("out[0] = %+v, want the concrete closure value surfaced", out[0])
 	}
-	if !core.IsConcrete(out[0]) || !out[0].Parent.ConformsTo(core.TFunction) {
+	if !core.IsConcrete(&out[0]) || !out[0].Parent.ConformsTo(core.TFunction) {
 		t.Errorf("surfaced closure = %+v, want a concrete Function value", out[0])
 	}
 }
@@ -594,7 +594,7 @@ func TestZzFmReturnsFnUnionReturnDistributes(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmuni", sig, core.FnDefInfo{})
 	out := rf([]core.Value{core.NewInteger(1)}, r)
-	if len(out) != 1 || !core.IsDisjunct(out[0]) || !out[0].Carrier {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Carrier {
 		t.Fatalf("union return = %+v, want a strict disjunct carrier", out)
 	}
 }
@@ -710,7 +710,7 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	if _, isRec := rec.startArgs[0].Data.(core.RecordTypeInfo); !isRec {
 		t.Errorf("genArgs[0] = %+v, want the record schema carrier", rec.startArgs[0])
 	}
-	if !core.IsTypedMap(rec.startArgs[1]) || !rec.startArgs[1].Dynamic {
+	if !core.IsTypedMap(&rec.startArgs[1]) || !rec.startArgs[1].Dynamic {
 		t.Errorf("genArgs[1] = %+v, want a dynamic typed-map carrier", rec.startArgs[1])
 	}
 	if !rec.startArgs[2].Parent.Equal(core.TInteger) {

@@ -68,7 +68,7 @@ func TestGaterecovery477InterleavedMarkerIsCompacted(t *testing.T) {
 	if got := e.Tape.Len(); got != 2 {
 		t.Fatalf("tape len = %d, want 2 (the compacted Mark + the residual carrier)", got)
 	}
-	if !core.IsMark(e.Tape.At(0)) {
+	if !core.IsMark(e.Tape.Ref(0)) {
 		t.Errorf("tape[0] = %#v, want the interleaved Mark compacted to firstArgIdx", e.Tape.At(0))
 	}
 	if !e.Tape.At(1).Carrier {

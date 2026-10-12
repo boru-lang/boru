@@ -59,7 +59,7 @@ func (p *PredicateUnifier) Match(v Value, t *Type) bool {
 	// NUR102's family). Admitted, the arm stays reachable and the call
 	// goes poly: the runtime re-match asks the predicate, once (NUR102).
 	// A concrete candidate keeps the real run below (NUR141).
-	if v.Carrier && !IsConcrete(v) && p.registry != nil && p.registry.analysisActive() {
+	if v.Carrier && !IsConcrete(&v) && p.registry != nil && p.registry.analysisActive() {
 		if inputT := PredicateInputType(p.constraint); inputT != nil && v.Parent != nil &&
 			(v.Parent.ConformsTo(inputT) || inputT.ConformsTo(v.Parent)) {
 			return true
@@ -111,7 +111,7 @@ func (p *PredicateUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 // node-valued predicate constraints through the same run-then-reparent
 // path an inline fn constraint takes.
 func IsPredicateTypeNode(v Value) bool {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return false
 	}
 	for b := v.Behavior(); b != nil; {

@@ -197,7 +197,7 @@ func TestSubstituteTypeParamsWordAndRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unrelated word: %v", err)
 	}
-	w, _ := AsWord(same)
+	w, _ := AsWord(&same)
 	if w.Name != "unrelated" {
 		t.Errorf("unrelated word rewritten to %v", same)
 	}

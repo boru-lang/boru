@@ -199,7 +199,7 @@ func unifyConcreteMaps(aMap, bMap ReadMap, r *Registry) (Value, *UnifyError) {
 // See design/TYPED-CONTAINER-TAG-RETENTION.0.md. r is the enclosing
 // chain's registry, handed to every value unify and to the reparent.
 func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(concrete) {
+	if !IsConcrete(&concrete) {
 		// A carrier (a check-mode abstract map with no readable entries) tags
 		// gradually; its concrete elements are validated at runtime.
 		out := concrete

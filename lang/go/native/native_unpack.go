@@ -216,7 +216,7 @@ func unpackModuleExportHandler(args []Value, _ map[string]Value, _ []Value, r *R
 // prove nothing.
 func unpackSource(src Value, r *Registry) (get func(string) (Value, bool), keys []string, proven bool, err error) {
 	switch {
-	case IsConcrete(src):
+	case IsConcrete(&src):
 		if m, mErr := AsMap(src); mErr == nil && m != nil {
 			return m.Get, m.Keys(), true, nil
 		}

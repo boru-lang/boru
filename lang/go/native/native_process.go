@@ -426,7 +426,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 			continue
 		}
 		// `{pattern} [body]` pair.
-		if !IsConcrete(e) || !e.Parent.ConformsTo(TMap) {
+		if !IsConcrete(&e) || !e.Parent.ConformsTo(TMap) {
 			return nil, nil, r.BoruError("receive_error",
 				"receive: expected a {pattern} map (or `after`), got "+e.Parent.String(), "receive")
 		}
@@ -485,9 +485,9 @@ func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, er
 				op, "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
 		}
 		switch {
-		case IsConcrete(v) && v.Parent.ConformsTo(TScalar):
+		case IsConcrete(&v) && v.Parent.ConformsTo(TScalar):
 			c.route[k] = ValToString(v)
-		case IsTypeLiteral(v):
+		case IsTypeLiteral(&v):
 			t := core.ValueType(v)
 			if t == nil { //covergate:allow IsTypeLiteral(v) implies a bare type node, so core.ValueType returns a non-nil pointer; the t==nil default cannot fire (§native)
 				t = TAny
@@ -518,11 +518,11 @@ func routeMessage(clauses []recvClause, msg Value) int {
 		pm.Add(c.route, &h)
 	}
 	subj := map[string]string{}
-	if IsConcrete(msg) && msg.Parent.ConformsTo(TMap) {
+	if IsConcrete(&msg) && msg.Parent.ConformsTo(TMap) {
 		if mp, _ := AsMap(msg); mp != nil {
 			for _, k := range mp.Keys() {
 				v, _ := mp.Get(k)
-				if IsConcrete(v) && v.Parent.ConformsTo(TScalar) {
+				if IsConcrete(&v) && v.Parent.ConformsTo(TScalar) {
 					subj[k] = ValToString(v)
 				}
 			}
@@ -558,7 +558,7 @@ func bindSlots(slots []recvBind, msg Value) ([]recvBinding, bool) {
 	if len(slots) == 0 {
 		return nil, true
 	}
-	if !IsConcrete(msg) || !msg.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&msg) || !msg.Parent.ConformsTo(TMap) {
 		return nil, false
 	}
 	mp, _ := AsMap(msg)

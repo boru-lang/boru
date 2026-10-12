@@ -222,7 +222,7 @@ func dispatchingBinding(v core.Value) bool {
 	case core.FnDefInfo, *core.ClassTypeInfo:
 		return true
 	}
-	return core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v)
+	return core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v)
 }
 
 // compileLiveLeadUnits gives every own signature of v, name's current

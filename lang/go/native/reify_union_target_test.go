@@ -13,11 +13,11 @@ func TestReifyReturnsUnionTarget(t *testing.T) {
 		t.Fatalf("build union target: %v / %v", out, err)
 	}
 	target := out[len(out)-1]
-	if !IsDisjunct(target) {
+	if !IsDisjunct(&target) {
 		t.Fatalf("(A tor B) must evaluate to a disjunct, got %v", target)
 	}
 	res := reifyReturns([]Value{target, NewMap(NewOrderedMap())}, r)
-	if len(res) != 1 || !res[0].Dynamic || !IsDisjunct(res[0]) {
+	if len(res) != 1 || !res[0].Dynamic || !IsDisjunct(&res[0]) {
 		t.Fatalf("a union target's residual is the dynamic disjunct, got %v", res)
 	}
 }

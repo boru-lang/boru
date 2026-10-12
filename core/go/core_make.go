@@ -30,11 +30,11 @@ import (
 // (type literal with nil Data, record type, options type, table
 // type, or object type).
 func isTypeLike(v Value) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return true
 	}
 	return IsRecordType(v) || IsOptionsType(v) || IsTableType(v) ||
-		IsClassType(v) || IsMicronType(v) || IsHostTypeBody(v)
+		IsClassType(&v) || IsMicronType(v) || IsHostTypeBody(v)
 }
 
 // MakeRecord creates a record instance from a source value and
@@ -116,7 +116,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 	if !srcVal.Parent.ConformsTo(TList) {
 		return nil, fmt.Errorf("make: record values must be a list or map, got %s", srcVal.String())
 	}
-	if !IsConcrete(srcVal) {
+	if !IsConcrete(&srcVal) {
 		return nil, fmt.Errorf("make: record values must be a concrete list, got type literal")
 	}
 	elems, _ := AsList(srcVal)
@@ -337,7 +337,7 @@ func containsCapturingFn(v Value) bool {
 	if fd, ok := v.Data.(FnDefInfo); ok {
 		return len(fd.Captured) > 0
 	}
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return false
 	}
 	if v.Parent.ConformsTo(TMap) {
@@ -372,7 +372,7 @@ func containsFlexOrStore(v Value) bool {
 	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) {
 		return true
 	}
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return false
 	}
 	if v.Parent.ConformsTo(TMap) {
@@ -402,7 +402,7 @@ func containsSharedMutable(v Value) bool {
 	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) || IsClassInstance(v) {
 		return true
 	}
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return false
 	}
 	if v.Parent.ConformsTo(TMap) {
@@ -548,8 +548,8 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 	// kinds whose membership runs through the node's Behavior (dep
 	// scalars, predicates, disjuncts) keep the NODE — UnifyExplainR
 	// consults the Behavior — so only class-content nodes resolve.
-	if IsBareTypeNode(constraint) {
-		if body, ok := constraint.TypeBody(); ok && IsClassType(body) {
+	if IsBareTypeNode(&constraint) {
+		if body, ok := constraint.TypeBody(); ok && IsClassType(&body) {
 			constraint = body
 		}
 	}
@@ -562,7 +562,7 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 	// rule — so the type's Behavior decides: DefaultBehavior is plain
 	// lattice conformance, bareRefineUnifier stays nominal, and a
 	// const singleton's Behavior matches by value equality.
-	if constraint.Data != nil && !IsTypeBody(constraint) {
+	if constraint.Data != nil && !IsTypeBody(&constraint) {
 		if val.Is(constraint.Parent) {
 			return val, nil
 		}
@@ -572,7 +572,7 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 
 	// Class-typed field ({i:Inner}) — nominal check: the value must be
 	// an instance of that class (or a subclass, via the lattice).
-	if IsClassType(constraint) {
+	if IsClassType(&constraint) {
 		info, _ := AsClassType(constraint)
 		if IsClassInstance(val) && info.Type != nil && val.Parent.ConformsTo(info.Type) {
 			return val, nil
@@ -726,8 +726,8 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// (The former 2-arg Pathon special case is gone — the Micron
 	// Ideal's Instantiate, dispatched above, owns the whole family.)
 
-	if targetVal.Equal(TOptions) && IsBareTypeNode(targetVal) {
-		if !srcVal.Parent.Equal(TMap) || !IsConcrete(srcVal) {
+	if targetVal.Equal(TOptions) && IsBareTypeNode(&targetVal) {
+		if !srcVal.Parent.Equal(TMap) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: Options requires a concrete map")
 		}
 		src, err := AsMutableMap(srcVal)
@@ -810,7 +810,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 	if !srcVal.Parent.ConformsTo(TList) {
 		return nil, fmt.Errorf("make: table values must be a list of row lists, got %s", srcVal.String())
 	}
-	if !IsConcrete(srcVal) {
+	if !IsConcrete(&srcVal) {
 		return nil, fmt.Errorf("make: table values must be a concrete list, got type literal")
 	}
 	rows, _ := AsList(srcVal)
@@ -821,7 +821,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 		if !rowVal.Parent.ConformsTo(TList) {
 			return nil, fmt.Errorf("make: table row %d must be a list, got %s", rowIdx, rowVal.String())
 		}
-		if !IsConcrete(rowVal) {
+		if !IsConcrete(&rowVal) {
 			return nil, fmt.Errorf("make: table row %d must be a concrete list, got type literal", rowIdx)
 		}
 		rowElems, _ := AsList(rowVal)
@@ -902,7 +902,7 @@ func registerKernelIdeals(r *Registry) {
 		Name:    "Object",
 		Enabled: true,
 		Accepts: func(v Value) bool {
-			return IsClassType(v)
+			return IsClassType(&v)
 		},
 		Instantiate: func(typ, data Value, r *Registry) ([]Value, error) {
 			objType, err := AsClassType(typ)
@@ -937,7 +937,7 @@ func registerKernelIdeals(r *Registry) {
 		Name:    "Record",
 		Enabled: true,
 		Accepts: func(v Value) bool {
-			return (IsBareTypeNode(v) && v.Equal(TRecord)) || IsRecordType(v)
+			return (IsBareTypeNode(&v) && v.Equal(TRecord)) || IsRecordType(v)
 		},
 		Instantiate: func(typ, data Value, r *Registry) ([]Value, error) {
 			recType, err := AsRecordType(typ)
@@ -956,7 +956,7 @@ func registerKernelIdeals(r *Registry) {
 		Name:    "Table",
 		Enabled: true,
 		Accepts: func(v Value) bool {
-			return (IsBareTypeNode(v) && v.Equal(TTable)) || IsTableType(v)
+			return (IsBareTypeNode(&v) && v.Equal(TTable)) || IsTableType(v)
 		},
 		Instantiate: func(typ, data Value, r *Registry) ([]Value, error) {
 			tt, err := AsTableType(typ)
@@ -1008,7 +1008,7 @@ func MakeWithOpts(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		return out, err
 	}
 
-	if IsClassType(targetVal) {
+	if IsClassType(&targetVal) {
 		objType, _ := AsClassType(targetVal)
 		return makeObject(objType, srcVal, reg)
 	}
@@ -1018,7 +1018,7 @@ func MakeWithOpts(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		return MakeRecordR(recType, srcVal, useBase, reg)
 	}
 
-	if IsBareTypeNode(targetVal) && targetVal.Equal(TPathon) {
+	if IsBareTypeNode(&targetVal) && targetVal.Equal(TPathon) {
 		abs := false
 		if optsMap, _ := AsMap(optsVal); optsMap != nil {
 			if v, ok := optsMap.Get("abs"); ok && v.Parent.ConformsTo(TBoolean) {
@@ -1115,7 +1115,7 @@ func MakeObjHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 			return nil, fmt.Errorf("make: the %s type-kind is not available in this registry", m.Name)
 		}
 	}
-	if IsClassType(targetVal) {
+	if IsClassType(&targetVal) {
 		objType, _ := AsClassType(targetVal)
 		return makeObject(objType, srcVal, reg)
 	}
@@ -1127,7 +1127,7 @@ func MakeObjHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 // MakeScalarOptsHandler is the 3-arg [ScalarType, Map, Any] make handler.
 func MakeScalarOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	targetVal, optsVal, srcVal := args[0], args[1], args[2]
-	if IsBareTypeNode(targetVal) && targetVal.Equal(TPathon) {
+	if IsBareTypeNode(&targetVal) && targetVal.Equal(TPathon) {
 		abs := false
 		if optsMap, _ := AsMap(optsVal); optsMap != nil {
 			if v, ok := optsMap.Get("abs"); ok && v.Parent.ConformsTo(TBoolean) {
@@ -1219,7 +1219,7 @@ func MakeFieldValue(val Value, constraint Value) (Value, error) {
 func MakeFieldValueR(val Value, constraint Value, r *Registry) (Value, error) {
 	val = ResolveWordValue(val)
 
-	if IsBareTypeNode(constraint) {
+	if IsBareTypeNode(&constraint) {
 		constraintType := ValueType(constraint)
 		// A constraint node whose kind enforces membership through a
 		// Unify capability (predicate, dependent scalar, binding-body —
@@ -1274,10 +1274,10 @@ func MakeFieldValueR(val Value, constraint Value, r *Registry) (Value, error) {
 //     expressions like [string or none] produce a disjunction.
 //  3. Everything else passes through unchanged.
 func ResolveFieldType(r *Registry, v Value) Value {
-	if v.Data != nil && (v.Parent.ConformsTo(TString) || v.Parent.ConformsTo(TAtom) || IsWord(v)) {
+	if v.Data != nil && (v.Parent.ConformsTo(TString) || v.Parent.ConformsTo(TAtom) || IsWord(&v)) {
 		var name string
-		if IsWord(v) {
-			_as2, _ := AsWord(v)
+		if IsWord(&v) {
+			_as2, _ := AsWord(&v)
 			name = _as2.Name
 		} else {
 			name, _ = AsString(v)
@@ -1293,12 +1293,12 @@ func ResolveFieldType(r *Registry, v Value) Value {
 			return v
 		}
 		if tv, ok := r.TopTypeBody(name); ok {
-			if IsTypeBody(tv) {
+			if IsTypeBody(&tv) {
 				return tv
 			}
 		}
 		if top, ok := r.Defs.Top(name); ok {
-			if IsTypeBody(top) {
+			if IsTypeBody(&top) {
 				return top
 			}
 		}
@@ -1306,7 +1306,7 @@ func ResolveFieldType(r *Registry, v Value) Value {
 		// `{a:Integer}` field arrives as a Word post-opacity (ADR-012
 		// rule 4), while a QUOTED capitalised string default
 		// (`{unit:"Integer"}`) must stay the string it always was.
-		if IsWord(v) {
+		if IsWord(&v) {
 			if t, ok := ResolveBuiltinTypeName(name); ok {
 				return NewTypeLiteral(t)
 			}
@@ -1319,11 +1319,11 @@ func ResolveFieldType(r *Registry, v Value) Value {
 	// type names one level down — resolve them through the registry-
 	// armed deep resolver, which also re-simplifies resolved disjuncts
 	// to `tor`'s canonical order.
-	if IsDisjunct(v) || IsTypedList(v) || IsTypedMap(v) {
+	if IsDisjunct(&v) || IsTypedList(&v) || IsTypedMap(&v) {
 		return ResolveWordsDeepR(v, r)
 	}
 
-	if v.Parent.Equal(TList) && !IsTypedList(v) && !IsTableType(v) {
+	if v.Parent.Equal(TList) && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		input := make([]Value, elems.Len())
 		for i, e := range elems.Slice() {

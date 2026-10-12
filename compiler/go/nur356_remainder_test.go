@@ -130,7 +130,7 @@ func TestSplitWordsAndWindowLiteral(t *testing.T) {
 	lw := &lowerer{landingBody: body}
 	sp := &PolySplit{NFwd: 2}
 	got := lw.splitWords(sp, deoptAt(1), []core.SrcPos{deoptAt(6), deoptAt(9)})
-	if got == sp || len(got.Words) != 1 || got.Words[1].Pos() != deoptAt(9) {
+	if got == sp || len(got.Words) != 1 || addrOf(got.Words[1]).Pos() != deoptAt(9) {
 		t.Errorf("the word read at 9 is put back: %v", got)
 	}
 	first := deoptTok("k", 12)
@@ -214,7 +214,7 @@ func TestQuietBranchAt(t *testing.T) {
 		}
 	}
 	mod := deoptTok("if", 1)
-	w, _ := core.AsWord(mod)
+	w, _ := core.AsWord(&mod)
 	w.ForceStack = true
 	if unmodifiedWordInfo(w) {
 		t.Error("a modified word")

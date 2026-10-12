@@ -117,7 +117,7 @@ func TestNoteSpliceFired(t *testing.T) {
 		t.Error("the fired marker is forgotten and noted fired")
 	}
 	lw := &lowerer{es: es}
-	if outs := lw.spliceOutsAt(seq); len(outs) != 3 || !core.IsSplice(outs[1]) {
+	if outs := lw.spliceOutsAt(seq); len(outs) != 3 || !core.IsSplice(&outs[1]) {
 		t.Errorf("every splice fired: the call carries the results the pass stepped: %v", outs)
 	}
 

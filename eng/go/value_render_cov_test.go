@@ -203,33 +203,33 @@ func TestBigNumberAccessors(t *testing.T) {
 
 func TestMarkMoveAccessors(t *testing.T) {
 	mk := core.NewMark("m9", core.NewInteger(1))
-	info, err := core.AsMark(mk)
+	info, err := core.AsMark(&mk)
 	if err != nil || info.ID != "m9" || len(info.Body) != 1 {
 		t.Errorf("AsMark = %+v, %v", info, err)
 	}
-	if _, err := core.AsMark(core.NewInteger(1)); err == nil {
+	if _, err := core.AsMark(addrOf(core.NewInteger(1))); err == nil {
 		t.Error("AsMark(1) should error")
 	}
 
 	mv := core.NewMove("m9", "test")
-	mi, err := core.AsMove(mv)
+	mi, err := core.AsMove(&mv)
 	if err != nil || mi.To != "m9" || mi.Reason != "test" {
 		t.Errorf("AsMove = %+v, %v", mi, err)
 	}
-	if _, err := core.AsMove(core.NewInteger(1)); err == nil {
+	if _, err := core.AsMove(addrOf(core.NewInteger(1))); err == nil {
 		t.Error("AsMove(1) should error")
 	}
 
 	// Continuation-carrying moves keep their payloads.
 	fc := &core.Loop{}
 	mvc := core.NewMoveCont("m9", "iter", fc)
-	mic, _ := core.AsMove(mvc)
+	mic, _ := core.AsMove(&mvc)
 	if mic.Cont != fc {
 		t.Error("NewMoveCont lost the Loop")
 	}
 	ic := &core.IfCont{}
 	mvi := core.NewMoveIf("m9", "if", ic)
-	mii, _ := core.AsMove(mvi)
+	mii, _ := core.AsMove(&mvi)
 	if mii.IfCont != ic {
 		t.Error("NewMoveIf lost the IfCont")
 	}
@@ -266,10 +266,10 @@ func TestErrorValueAccessors(t *testing.T) {
 
 func TestSpliceAndDispatchMod(t *testing.T) {
 	sp := core.NewSplice(core.NewList([]core.Value{core.NewInteger(1)}))
-	if !core.IsSplice(sp) {
+	if !core.IsSplice(&sp) {
 		t.Error("NewSplice not recognised by IsSplice")
 	}
-	if core.IsSplice(core.NewInteger(1)) {
+	if core.IsSplice(addrOf(core.NewInteger(1))) {
 		t.Error("IsSplice(1) = true")
 	}
 
@@ -287,7 +287,7 @@ func TestTypedListAndMapConstructors(t *testing.T) {
 	child := core.NewTypeLiteral(core.TInteger)
 
 	tl := core.NewTypedList(child)
-	if !core.IsTypedList(tl) {
+	if !core.IsTypedList(&tl) {
 		t.Error("NewTypedList not a typed list")
 	}
 	tle := core.NewTypedListWithElements(child, []core.Value{core.NewInteger(1), core.NewInteger(2)})
@@ -300,7 +300,7 @@ func TestTypedListAndMapConstructors(t *testing.T) {
 	}
 
 	tm := core.NewTypedMap(child)
-	if !core.IsTypedMap(tm) {
+	if !core.IsTypedMap(&tm) {
 		t.Error("NewTypedMap not a typed map")
 	}
 	tme := core.NewTypedMapWithEntries(child, []core.ChildEntry{{Key: "k", Value: core.NewInteger(3)}})
@@ -313,10 +313,10 @@ func TestTypedListAndMapConstructors(t *testing.T) {
 	}
 
 	// Negatives.
-	if core.IsTypedList(core.NewList(nil)) {
+	if core.IsTypedList(addrOf(core.NewList(nil))) {
 		t.Error("plain list misread as typed list")
 	}
-	if core.IsTypedMap(core.NewMap(core.NewOrderedMap())) {
+	if core.IsTypedMap(addrOf(core.NewMap(core.NewOrderedMap()))) {
 		t.Error("plain map misread as typed map")
 	}
 	if _, err := core.AsChildType(core.NewInteger(1)); err == nil {
@@ -386,7 +386,7 @@ func TestTypeNameAndPathOf(t *testing.T) {
 
 func TestEnumAndFnUndef(t *testing.T) {
 	e := core.NewEnum([]core.Value{core.NewAtom("red"), core.NewAtom("blue")})
-	if !core.IsDisjunct(e) {
+	if !core.IsDisjunct(&e) {
 		t.Error("enum should be a disjunct value")
 	}
 	di, err := core.AsDisjunct(e)
@@ -472,7 +472,7 @@ func TestRecordTypeAccessors(t *testing.T) {
 
 func TestWordUsurpConstructor(t *testing.T) {
 	w := core.NewWordUsurp("target", true)
-	wi, err := core.AsWord(w)
+	wi, err := core.AsWord(&w)
 	if err != nil {
 		t.Fatalf("AsWord: %v", err)
 	}
@@ -480,7 +480,7 @@ func TestWordUsurpConstructor(t *testing.T) {
 		t.Errorf("usurp word info = %+v", wi)
 	}
 	plain := core.NewWordUsurp("other", false)
-	pi, _ := core.AsWord(plain)
+	pi, _ := core.AsWord(&plain)
 	if pi.ForceVal {
 		t.Error("non-ref usurp gained ForceVal")
 	}
@@ -519,22 +519,22 @@ func TestMapFieldHelpers(t *testing.T) {
 }
 
 func TestConcreteScalarAccessors(t *testing.T) {
-	if s, err := core.NewString("x").AsConcreteString(); err != nil || s != "x" {
+	if s, err := addrOf(core.NewString("x")).AsConcreteString(); err != nil || s != "x" {
 		t.Errorf("AsConcreteString = %q, %v", s, err)
 	}
-	if _, err := core.NewTypeLiteral(core.TString).AsConcreteString(); err == nil {
+	if _, err := addrOf(core.NewTypeLiteral(core.TString)).AsConcreteString(); err == nil {
 		t.Error("bare String literal read as concrete string")
 	}
-	if f, err := core.NewFloat(1.25).AsConcreteFloat(); err != nil || f != 1.25 {
+	if f, err := addrOf(core.NewFloat(1.25)).AsConcreteFloat(); err != nil || f != 1.25 {
 		t.Errorf("AsConcreteFloat = %v, %v", f, err)
 	}
-	if _, err := core.NewTypeLiteral(core.TFloat).AsConcreteFloat(); err == nil {
+	if _, err := addrOf(core.NewTypeLiteral(core.TFloat)).AsConcreteFloat(); err == nil {
 		t.Error("bare Float literal read as concrete float")
 	}
-	if b, err := core.NewBoolean(true).AsConcreteBoolean(); err != nil || !b {
+	if b, err := addrOf(core.NewBoolean(true)).AsConcreteBoolean(); err != nil || !b {
 		t.Errorf("AsConcreteBoolean = %v, %v", b, err)
 	}
-	if _, err := core.NewTypeLiteral(core.TBoolean).AsConcreteBoolean(); err == nil {
+	if _, err := addrOf(core.NewTypeLiteral(core.TBoolean)).AsConcreteBoolean(); err == nil {
 		t.Error("bare Boolean literal read as concrete boolean")
 	}
 }

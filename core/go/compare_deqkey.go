@@ -82,7 +82,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// still land here and are resolved pairwise by DeepEqual (whose
 	// NUR034 type-literal arm answers `List deq List` true and
 	// `List deq Map` false), so the bucket stays a sound filter.
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return "tlit:" + ValueType(v).ID, DeqKeyed
 	}
 
@@ -307,7 +307,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// there is nothing for a family to keep reachable — while an
 	// inaccurate one could hide a render-matched type-level operand from
 	// the scan.
-	if IsTypeBody(v) && v.Parent != nil {
+	if IsTypeBody(&v) && v.Parent != nil {
 		return "t:" + v.Parent.ID, DeqKeyed
 	}
 

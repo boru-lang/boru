@@ -13,21 +13,21 @@ import (
 func TestNUR347FnPosStamps(t *testing.T) {
 	debug := []core.SrcPos{{Row: 1, Col: 7, Src: "m"}, {}}
 	fn := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{}}
-	if got := stampFnPos(fn, debug, 0).Pos(); got.Row != 1 || got.Col != 7 {
+	if got := addrOf(stampFnPos(fn, debug, 0)).Pos(); got.Row != 1 || got.Col != 7 {
 		t.Fatalf("positionless fn: got %v, want 1:7", got)
 	}
-	if got := stampFnPos(fn, debug, 1).Pos(); got.Row != 0 {
+	if got := addrOf(stampFnPos(fn, debug, 1)).Pos(); got.Row != 0 {
 		t.Fatalf("op without a position stamped %v", got)
 	}
-	if got := stampFnPos(fn, debug, 5).Pos(); got.Row != 0 {
+	if got := addrOf(stampFnPos(fn, debug, 5)).Pos(); got.Row != 0 {
 		t.Fatalf("pc past the table stamped %v", got)
 	}
 	own := fn
 	own.SetPos(core.SrcPos{Row: 2, Col: 3})
-	if got := stampFnPos(own, debug, 0).Pos(); got.Row != 2 {
+	if got := addrOf(stampFnPos(own, debug, 0)).Pos(); got.Row != 2 {
 		t.Fatalf("a fn with its own position was restamped: %v", got)
 	}
-	if got := stampFnPos(core.NewInteger(1), debug, 0).Pos(); got.Row != 0 {
+	if got := addrOf(stampFnPos(core.NewInteger(1), debug, 0)).Pos(); got.Row != 0 {
 		t.Fatalf("a non-fn value was stamped: %v", got)
 	}
 	res := []core.Value{fn, core.NewInteger(1)}
@@ -35,12 +35,12 @@ func TestNUR347FnPosStamps(t *testing.T) {
 	if res[0].Pos().Row != 1 || res[1].Pos().Row != 0 {
 		t.Fatalf("stampFnResultPos: %v %v", res[0].Pos(), res[1].Pos())
 	}
-	if got := dropFnPos(own).Pos(); got.Row != 0 {
+	if got := addrOf(dropFnPos(own)).Pos(); got.Row != 0 {
 		t.Fatalf("dropFnPos kept %v", got)
 	}
 	n := core.NewInteger(1)
 	n.SetPos(core.SrcPos{Row: 4, Col: 1})
-	if got := dropFnPos(n).Pos(); got.Row != 4 {
+	if got := addrOf(dropFnPos(n)).Pos(); got.Row != 4 {
 		t.Fatalf("dropFnPos dropped a non-fn value's position")
 	}
 	// A binding's rename drops it too, the closure's construction anchor

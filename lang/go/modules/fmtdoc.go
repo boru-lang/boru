@@ -47,7 +47,7 @@ func renderDocHandler(args []native.Value, _ map[string]native.Value, _ []native
 //	{fmt:'group' body:d}          lay d out flat if it fits, else broken
 //	{fmt:'indent' by:2 body:d}    indent d by `by` columns
 func buildDoc(v native.Value) (formatter.Doc, error) {
-	if native.IsConcrete(v) && v.Is(native.TString) {
+	if native.IsConcrete(&v) && v.Is(native.TString) {
 		s, _ := v.AsConcreteString()
 		return formatter.DocText{S: s}, nil
 	}

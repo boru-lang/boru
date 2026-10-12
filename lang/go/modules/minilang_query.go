@@ -27,7 +27,7 @@ import (
 // Records go through the standard value→any path; Arrays, Tables and other
 // Ideals are projected through their IdealConverter.
 func docToAny(v native.Value) any {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return nil
 	}
 	switch {

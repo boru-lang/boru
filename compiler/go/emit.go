@@ -3724,7 +3724,7 @@ func (es *EmitState) setProducedAt(out core.Value, seq, idx int) {
 		return
 	}
 	es.producedBy[out.ID] = producer{seq: seq, idx: idx}
-	if core.IsTypeBody(out) {
+	if core.IsTypeBody(&out) {
 		f := es.eventInfo[seq]
 		f.typeOut = true
 		es.eventInfo[seq] = f
@@ -4005,7 +4005,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// typed-list/typed-map bound ([:Any]) that trips IsTypeBody, but
 		// its ID-matched event genuinely produced it (the identity-
 		// preserving rebind in narrowDynamicUses).
-		if !core.IsTypeBody(v) || v.Dynamic || es.eventInfo[pr.seq].typeOut {
+		if !core.IsTypeBody(&v) || v.Dynamic || es.eventInfo[pr.seq].typeOut {
 			// An ENCLOSING-scope binding read (a module-scope `flex`, a computed
 			// module `def`) carries a producedBy event from the PARENT/module
 			// frame — unreachable from this fn unit's sim stack. Route it to a
@@ -4029,7 +4029,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			// body) and the binding unit's OpBindDynScope twin installs the
 			// closure the lookup then reads (the VM's bindDynScope).
 			if cur := es.units[len(es.units)-1]; cur != nil && len(es.units) > 1 &&
-				(cur.enclosingBindIDs[v.ID] || (es.isDefRead(v) && core.IsFnTypedCarrier(v) && !es.producedInCurrentUnit(v.ID))) {
+				(cur.enclosingBindIDs[v.ID] || (es.isDefRead(v) && core.IsFnTypedCarrier(&v) && !es.producedInCurrentUnit(v.ID))) {
 				if op, ok := es.dynScopeRescue(v); ok {
 					return op, true
 				}
@@ -4047,7 +4047,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// as the CANONICAL registry node (a pooled by-value copy goes
 	// stale against behaviour/field installs), so it gets its own
 	// table, resolved by ID at run time via OpPushType.
-	if core.IsBareTypeNode(v) && v.ID != "" {
+	if core.IsBareTypeNode(&v) && v.ID != "" {
 		// A CLASS TYPE carries fn values too — its field DEFAULTS — and this
 		// return is before the const chokepoint's stamp below, so they used to
 		// reach no stamp at all. `def C class {op:(fn …)}  (make C {}).op 21`
@@ -4090,7 +4090,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// noEvalBodiesInertScoped). isInertConst stays strict so this admission never
 	// reaches a compiled fn frame: there the body declines at the Stage-2 gate
 	// before resolveOperand, so the operand never gets here.
-	if !core.IsInertConst(lit) && !(len(es.units) == 1 && InterpBodyInert(lit)) {
+	if !core.IsInertConst(&lit) && !(len(es.units) == 1 && InterpBodyInert(lit)) {
 		return es.dynScopeRescue(v)
 	}
 	// An ACTIVE-token MAP (`{line: src}` — a word / paren / interpolation
@@ -5000,7 +5000,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 		return
 	}
 	fd, isFn := v.Data.(core.FnDefInfo)
-	if !isFn || !core.IsConcrete(v) || len(fd.Captured) > 0 {
+	if !isFn || !core.IsConcrete(&v) || len(fd.Captured) > 0 {
 		return
 	}
 	// A MODIFIER WRAPPER is a container too — of exactly one fn — and the walk
@@ -5344,17 +5344,17 @@ func (es *EmitState) OperandRepushable(v core.Value) bool {
 	}
 	// An event operand is the value's stack-discipline truth (pushed once);
 	// it cannot be re-pushed for a second reference.
-	if pr, ok := es.producedBy[v.ID]; ok && (!core.IsTypeBody(v) || es.eventInfo[pr.seq].typeOut) {
+	if pr, ok := es.producedBy[v.ID]; ok && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut) {
 		return false
 	}
 	if _, ok := es.units[len(es.units)-1].localByID[v.ID]; ok {
 		return true
 	}
-	if core.IsBareTypeNode(v) && v.ID != "" {
+	if core.IsBareTypeNode(&v) && v.ID != "" {
 		return true
 	}
 	lit, ok := es.Materialise(v)
-	return ok && core.IsInertConst(lit)
+	return ok && core.IsInertConst(&lit)
 }
 
 // CanSeatAcrossFragment reports whether v can be read INSIDE a branch / loop
@@ -5378,7 +5378,7 @@ func (es *EmitState) CanSeatAcrossFragment(v core.Value) bool {
 		return true
 	}
 	pr, ok := es.producedBy[v.ID]
-	return ok && pr.idx == 0 && (!core.IsTypeBody(v) || es.eventInfo[pr.seq].typeOut)
+	return ok && pr.idx == 0 && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut)
 }
 
 // materialise recovers the fully concrete value behind a stripped
@@ -7031,8 +7031,8 @@ func typeInstallElementIndependent(body core.Value, frag *EmitFragment, pos core
 func typeDefExprAt(v core.Value, pos core.SrcPos) (core.Value, bool) {
 	toks := tokenInterior(v)
 	for i, el := range toks {
-		if el.Pos() == pos && core.IsWord(el) && i+2 < len(toks) {
-			if w, werr := core.AsWord(el); werr == nil && w.Name == "def" {
+		if el.Pos() == pos && core.IsWord(&el) && i+2 < len(toks) {
+			if w, werr := core.AsWord(&el); werr == nil && w.Name == "def" {
 				return toks[i+2], true
 			}
 		}
@@ -7050,8 +7050,8 @@ func typeDefExprAt(v core.Value, pos core.SrcPos) (core.Value, bool) {
 // none of the three — declines, so the walk is closed by construction rather
 // than by a list of known-bad shapes.
 func typeExprInert(v core.Value, bound map[string]bool) bool {
-	if core.IsWord(v) {
-		w, err := core.AsWord(v)
+	if core.IsWord(&v) {
+		w, err := core.AsWord(&v)
 		return err == nil && !bound[w.Name]
 	}
 	for _, t := range tokenInterior(v) {
@@ -7062,7 +7062,7 @@ func typeExprInert(v core.Value, bound map[string]bool) bool {
 	if isTokenContainer(v) {
 		return true
 	}
-	return core.IsInertConst(v)
+	return core.IsInertConst(&v)
 }
 
 // isTokenContainer / tokenInterior are the token-tree descent the type
@@ -7073,7 +7073,7 @@ func typeExprInert(v core.Value, bound map[string]bool) bool {
 // which is how this screen first declined the row it exists to admit) and the
 // WRONG one for a position gather, which would then screen an empty set.
 func isTokenContainer(v core.Value) bool {
-	if core.IsParenExpr(v) {
+	if core.IsParenExpr(&v) {
 		return true
 	}
 	_, err := core.AsList(v)
@@ -7081,8 +7081,8 @@ func isTokenContainer(v core.Value) bool {
 }
 
 func tokenInterior(v core.Value) []core.Value {
-	if core.IsParenExpr(v) {
-		toks, err := core.AsParenExpr(v)
+	if core.IsParenExpr(&v) {
+		toks, err := core.AsParenExpr(&v)
 		if err != nil { //covergate:allow IsParenExpr above already proved the payload type AsParenExpr asserts; asked anyway so the accessor pair is total (§compiler)
 			return nil
 		}
@@ -7505,7 +7505,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 			es.liveReadNames = map[string]bool{}
 		}
 		es.liveReadNames[name] = true
-	} else if !es.specUndefNames[name] || core.IsConcrete(*v) {
+	} else if !es.specUndefNames[name] || core.IsConcrete(v) {
 		// A CONCRETE read of the name is a binding a later `def` made after
 		// the region (`if c [undef k] []  def k 6  k`): program order is
 		// analysis order at root, the region has run, and the bake is the
@@ -7755,7 +7755,7 @@ func (es *EmitState) specUndefFwdSlot(d *RegionDesc, from, to int) string {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
-		if wi, err := core.AsWord(d.Slots[i].Token); err == nil && es.specUndefNames[wi.Name] {
+		if wi, err := core.AsWord(&d.Slots[i].Token); err == nil && es.specUndefNames[wi.Name] {
 			return wi.Name
 		}
 	}
@@ -9243,7 +9243,7 @@ func (es *EmitState) captureArmResidual(frag *EmitFragment, stk []core.Value) {
 	}
 	ops := make([]EmitOperand, 0, len(stk))
 	for i := range stk {
-		if core.SigTypeMatches(stk[i], core.TFunction) {
+		if core.SigTypeMatches(&stk[i], core.TFunction) {
 			return
 		}
 		op, ok := es.resolveOperand(stk[i])
@@ -9385,7 +9385,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 			// ACROSS iterations (iteration k's top sits below k+1's first) —
 			// so a verbatim accumulation would diverge. Keep those declined.
 			for i := range bodyStk {
-				if core.SigTypeMatches(bodyStk[i], core.TFunction) {
+				if core.SigTypeMatches(&bodyStk[i], core.TFunction) {
 					es.MarkUncompilable(word + ": body nets multiple values per iteration")
 					return
 				}
@@ -9440,7 +9440,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 			lp.bodyOut, lp.hasBodyOut = bodyOut, true
 			if pr, okP := es.producedBy[bodyStk[0].ID]; okP && bodyOut.kind == opEvent &&
 				es.eventInfo[pr.seq].splitBound &&
-				!core.SigTypeMatches(bodyStk[0], core.TFunction) {
+				!core.SigTypeMatches(&bodyStk[0], core.TFunction) {
 				// The body's sole residual is a SPLIT-BOUND region (S9.2a: `for 3
 				// [ def acc (for 2 [1]) ]` — the def consumed the first value,
 				// the statically-counted rest is the iteration's contribution).
@@ -9509,7 +9509,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 // on the sim, so it is excluded here and the residual instead fails lowerFragment's
 // sole-fn check and declines — never a double-push.
 func (es *EmitState) setLoopBodyApply(body *EmitFragment, bodyStk []core.Value) bool {
-	if es == nil || body == nil || len(bodyStk) < 2 || !core.IsFnTypedCarrier(bodyStk[0]) {
+	if es == nil || body == nil || len(bodyStk) < 2 || !core.IsFnTypedCarrier(&bodyStk[0]) {
 		return false
 	}
 	fnOp, ok := es.resolveOperand(bodyStk[0])
@@ -9756,7 +9756,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if _, ok := es.units[unit].localByID[v.ID]; ok {
 			continue
 		}
-		if core.IsConcrete(v) || core.IsBareTypeNode(v) {
+		if core.IsConcrete(&v) || core.IsBareTypeNode(&v) {
 			continue
 		}
 		return nil, false
@@ -9767,7 +9767,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		n.ID = core.GenerateID(core.IDPrefixForType(core.TInteger))
 		return append(append([]core.Value(nil), preserved...), n), true
 	case "pick", "roll":
-		if len(args) != 1 || !core.IsConcrete(args[0]) {
+		if len(args) != 1 || !core.IsConcrete(&args[0]) {
 			return nil, false
 		}
 		// A shuffle RE-PUSHES its values, and a value that arrives on the
@@ -9791,7 +9791,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 			if _, produced := es.producedBy[v.ID]; !produced {
 				continue
 			}
-			if core.IsFnValueResidual(v) || core.SigTypeMatches(v, core.TFunction) {
+			if core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
 				return nil, false
 			}
 		}
@@ -10097,7 +10097,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// would raise a no-match the interpreter never does. The poly seat
 		// declines the same operand (polyCallDeclineReason, NUR184); the
 		// rematch declines it too, and the caller's failure stands.
-		if core.IsFnTypedCarrier(v) && !v.Quoted && es.parenReSteppedFn(v) && !es.applyPending(v.ID) {
+		if core.IsFnTypedCarrier(&v) && !v.Quoted && es.parenReSteppedFn(v) && !es.applyPending(v.ID) {
 			return false
 		}
 		// A READ-substituted fn-carrier window value (Stage 1's fn-carrier
@@ -10108,7 +10108,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// [fn-arm] [fn-arm])  add 1 (q 5)` re-matched add over [1, fn, 5]
 		// and raised signature_error where the interpreter computes 7).
 		// Decline; the caller's failure stands and the program falls back.
-		if core.IsFnTypedCarrier(v) {
+		if core.IsFnTypedCarrier(&v) {
 			if _, isFn := v.Data.(core.FnDefInfo); !isFn {
 				if _, read := es.defReads[v.ID]; read {
 					return false
@@ -10231,7 +10231,7 @@ func (es *EmitState) RecordTypedBind(spec core.TypedBindSpec, in, out core.Value
 	// or read live state — so concrete operands record too (the 2026-07-15
 	// flip finding: a check-lenient bake bound the raw value where the
 	// interpreter runs the transform).
-	if core.IsConcrete(in) && spec.Kind != core.TypedBindPredicate {
+	if core.IsConcrete(&in) && spec.Kind != core.TypedBindPredicate {
 		return out, false
 	}
 	op, ok := es.resolveOperand(in)
@@ -10522,7 +10522,7 @@ func (es *EmitState) regionSettledOp(residual []core.Value) (Opcode, bool) {
 // would re-step.
 func regionValsMayBeCallable(vals []core.Value) bool {
 	for _, v := range vals {
-		if v.Dynamic || core.IsFnValueResidual(v) || core.SigTypeMatches(v, core.TFunction) {
+		if v.Dynamic || core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
 			return true
 		}
 	}
@@ -10582,7 +10582,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// the pending apply the fn-typed carrier registers: the unit's finish
 	// or Finalize lowers it as OpCallDynApplyTop, which applies a fn at run
 	// time and raises apply's own no-match over anything else, or declines.
-	if word == "apply" && len(args) == 1 && len(outs) == 1 && len(es.units) > 0 && !core.IsFnTypedCarrier(args[0]) &&
+	if word == "apply" && len(args) == 1 && len(outs) == 1 && len(es.units) > 0 && !core.IsFnTypedCarrier(&args[0]) &&
 		(gradualFnCarrier(args[0]) || es.gradualHoldsFn(args[0])) {
 		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
 			u := es.units[len(es.units)-1]
@@ -10628,7 +10628,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// carrier to the paren-shaped residual arms, which PARK a closure of
 		// another arity (`5 (mk0 1)/v apply` compiled to `[5 fn]` for the
 		// interpreter's `[5 1]`).
-		if core.IsFnTypedCarrier(args[0]) {
+		if core.IsFnTypedCarrier(&args[0]) {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
 			return true
@@ -10698,7 +10698,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// its result — which the record has no model of — so it takes the
 		// dynamic lead's decline below.
 		bareRead := es.reg != nil && es.reg.Check != nil && es.reg.Check.WordReadFnIDs[args[0].ID]
-		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) && !bareRead {
+		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(&args[0]) && !bareRead {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
 			return true
@@ -10725,7 +10725,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// fn arrive at `apply` as an untyped carrier — so a recorded poly
 		// call carries the wrong arity and can only die as a VM-internal
 		// no-match. No overload is provable at record time: decline.
-		if (!core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0])) || bareRead {
+		if (!core.IsConcrete(&args[0]) && !core.IsFnTypedCarrier(&args[0])) || bareRead {
 			es.SiteCounts[SiteMeta]++
 			es.MarkUncompilable("apply over a dynamic lead (overload unprovable)")
 			return true
@@ -10740,7 +10740,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// NATIVE parity holds). Elide the resolution event; if the value
 	// instead flows somewhere data-like, downstream provenance declines
 	// and the program falls back.
-	if (core.IsGetWord(word) || core.IsGetrWord(word)) && len(outs) == 1 && core.IsConcrete(outs[0]) {
+	if (core.IsGetWord(word) || core.IsGetrWord(word)) && len(outs) == 1 && core.IsConcrete(&outs[0]) {
 		switch outs[0].Data.(type) {
 		case core.FnDefInfo:
 			return true
@@ -10763,7 +10763,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 // lead — a Dynamic carrier that is neither concrete nor fn-typed (NUR269's
 // exemption from the registered-output elision above).
 func loneGradualApplyLead(word string, args []core.Value) bool {
-	return word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0])
+	return word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(&args[0]) && !core.IsFnTypedCarrier(&args[0])
 }
 
 // recordCallCompileFailure classifies a dispatch the recorder cannot lower as a generic
@@ -11043,7 +11043,7 @@ func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) boo
 // run holds the fn value itself, which a word re-steps with its results like
 // any fn value — `m.f/v dup` is `7 7` interpreted (NUR318).
 func quotedFnCarrier(a core.Value) bool {
-	return a.Quoted && a.Carrier && (core.IsFnTypedCarrier(a) || (a.Dynamic && core.SigTypeMatches(a, core.TFunction)))
+	return a.Quoted && a.Carrier && (core.IsFnTypedCarrier(&a) || (a.Dynamic && core.SigTypeMatches(&a, core.TFunction)))
 }
 
 // RecordCallOperands resolves a lowerable native dispatch's operands. It declines
@@ -11141,12 +11141,12 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 			// unmasked). A non-strict store word (Patrun) invokes a stored
 			// closure fine and is untouched.
 			if sig.CompileEffect.Has(core.CompileFnHandlerStrict) {
-				if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(a) && len(fd.Captured) > 0 {
+				if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) > 0 {
 					es.MarkUncompilable("capturing handler stored at " + word + " (validated as a function value)")
 					return nil, false
 				}
 			}
-			if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(a) && len(fd.Captured) == 0 {
+			if fd, isFn := a.Data.(core.FnDefInfo); isFn && core.IsConcrete(&a) && len(fd.Captured) == 0 {
 				// EVERY stampable own sig gets its own unit + ref
 				// (COMPILE FAILURE-CLOSURE §7b): the callback seam dispatches via
 				// MatchFnSig, so the matched sig's Impl ref is the sig table.
@@ -11234,7 +11234,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		if !ok && (introspect || inertFn || sig.FnInertArgs[i]) {
 			if fd, isFn := a.Data.(core.FnDefInfo); isFn {
 				switch {
-				case core.IsConcrete(a) && len(fd.Captured) == 0:
+				case core.IsConcrete(&a) && len(fd.Captured) == 0:
 					// A CAPTURE-FREE concrete (immutable) fn value bakes as a const
 					// the introspection / fn-inert-slot / store-fn handler reads at
 					// run time. A CAPTURING fn must NOT bake as a const: its baked
@@ -11363,7 +11363,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		return "fn value read from a container auto-dispatches (Stage 3)"
 	}
 	for _, a := range args {
-		if core.IsFnTypedCarrier(a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
+		if core.IsFnTypedCarrier(&a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
 			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
 		}
 		// Dispatch WRECKAGE: a named fn value the check pass re-stepped and
@@ -11425,8 +11425,8 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		// re-match sees exactly the operand the interpreter's dispatch does.
 		// Only a PLAIN word naming a live type qualifies; anything else keeps
 		// the unresolvable-operand decline below.
-		if core.IsWord(a) && es.reg != nil {
-			if w, wErr := core.AsWord(a); wErr == nil &&
+		if core.IsWord(&a) && es.reg != nil {
+			if w, wErr := core.AsWord(&a); wErr == nil &&
 				w.ArgCount == -1 && !w.ForceStack && !w.ForceForward && !w.ForceVal && !w.ForceUsurp {
 				// Mirror stepWord's type-name cascade exactly — the
 				// builtin arm of the canonical resolver (resolve.go).
@@ -11583,7 +11583,7 @@ func barredLayoutOK(l *core.DispatchLayout, sigs []core.Signature, nArgs int) bo
 func stackSlotsFit(sig *core.Signature, limit, nStack int, beneath []core.Value) bool {
 	for j := limit; j < sig.TotalArgs(); j++ {
 		k := j - limit - nStack // the slot's depth beneath the stack operands
-		if k >= len(beneath) || (k >= 0 && !core.SigArgMatches(sig, j, beneath[len(beneath)-1-k])) {
+		if k >= len(beneath) || (k >= 0 && !core.SigArgMatches(sig, j, &beneath[len(beneath)-1-k])) {
 			return false
 		}
 	}
@@ -11693,7 +11693,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	}
 	if lead, moved := es.parenLeadToken(word, pos, args); moved {
 		call.leadAt = lead
-		if w, err := core.AsWord(lead); err == nil && es.defReads[fn.ID] == w.Name && es.readPos[fn.ID] == lead.Pos() {
+		if w, err := core.AsWord(&lead); err == nil && es.defReads[fn.ID] == w.Name && es.readPos[fn.ID] == lead.Pos() {
 			// The lead is the word's read of a def-bound value, which the
 			// paren dispatches by its NAME (NUR336) — not a call's result.
 			call.dynMethod.LeadName, call.dynMethod.LeadPos = w.Name, lead.Pos()
@@ -11740,7 +11740,7 @@ func (es *EmitState) parenLeadToken(word string, pos core.SrcPos, args []core.Va
 			if !nested {
 				break
 			}
-			if core.IsParenExpr(toks[at]) && len(inner) > 1 && bodyTokenAt(inner, q) > 0 {
+			if core.IsParenExpr(&toks[at]) && len(inner) > 1 && bodyTokenAt(inner, q) > 0 {
 				lead := inner[0]
 				return lead, lead.Pos().Row > 0 && lead.Pos() != pos
 			}
@@ -12021,7 +12021,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		}
 		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: v.ID}
 	}
-	if w, err := core.AsWord(word); err == nil && w.Name != "" && !defRead {
+	if w, err := core.AsWord(&word); err == nil && w.Name != "" && !defRead {
 		if es.landingWord == nil {
 			es.landingWord = map[int]LandingWord{}
 		}
@@ -12240,7 +12240,7 @@ func (es *EmitState) residualApplies(dynOp Opcode, residual []core.Value, seq in
 	}
 	for i, rv := range residual {
 		if is(rv) {
-			return i == len(residual)-1 || core.IsWord(residual[i+1]) || es.landingOwn[seq].next == core.LandingNextValue
+			return i == len(residual)-1 || core.IsWord(&residual[i+1]) || es.landingOwn[seq].next == core.LandingNextValue
 		}
 	}
 	return false
@@ -12765,7 +12765,7 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		// stranded: recordCallElided registers it as the unit's (or the
 		// program's) pending apply and the tail lowering applies it over the
 		// residual beneath (the dynamic-lead group, 2026-09-22).
-		if core.IsFnTypedCarrier(args[0]) && es.producerReturnedClosure(args[0].ID) {
+		if core.IsFnTypedCarrier(&args[0]) && es.producerReturnedClosure(args[0].ID) {
 			return false
 		}
 	}
@@ -12924,7 +12924,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// `do [(h 1)]` over a lambda factory's closure compiled and raised
 	// `undefined word: g` (the captured param) for the interpreter's 8,
 	// and `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`.
-	if es.producerReturnedClosure(v.ID) && core.IsConcrete(v) {
+	if es.producerReturnedClosure(v.ID) && core.IsConcrete(&v) {
 		if es.dynBoundClosures == nil {
 			es.dynBoundClosures = map[string]bool{}
 		}
@@ -12974,7 +12974,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if len(es.units) == 1 && es.reg != nil && es.reg.Check.FnBodyDepth == 0 {
 		root, depth = true, es.reg.Defs.Depth(name)
 	}
-	if root && !core.IsConcrete(v) && v.Parent.ConformsTo(core.TFunction) {
+	if root && !core.IsConcrete(&v) && v.Parent.ConformsTo(core.TFunction) {
 		// A top-level computed fn value-def (`def op (Parse.parser g)`) that
 		// installDef declined to install in Defs (the compiled-closure machinery
 		// owns the name): record its ID + name so a deeper fn body reading the
@@ -13067,7 +13067,7 @@ func (es *EmitState) keepInstallable(src EmitOperand, srcSeq int, v core.Value) 
 	if srcSeq >= 0 || src.kind == opLocal || es.keepTypeNode(v) {
 		return true
 	}
-	return core.IsInertConst(v) && (v.Parent == nil || v.Parent.Origin == core.OriginBuiltin)
+	return core.IsInertConst(&v) && (v.Parent == nil || v.Parent.Origin == core.OriginBuiltin)
 }
 
 // stampKeepSkipped declines a RUN-TIME stamp (a token body, StampTokenBody)
@@ -13099,7 +13099,7 @@ func (es *EmitState) stampKeepSkipped(name string) {
 // the reparented literal's reason above: the body's type twin replays the
 // node after the unit, and the twin of `x` binds the replayed node.
 func (es *EmitState) keepTypeNode(v core.Value) bool {
-	return core.IsBareTypeNode(v) && v.ID != "" && !es.passMintedTypes[v.ID]
+	return core.IsBareTypeNode(&v) && v.ID != "" && !es.passMintedTypes[v.ID]
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value
@@ -13335,7 +13335,7 @@ func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
 	}
 	n := es.reStepNotes[pr.seq]
 	n.resume = resume
-	n.strict = n.strict || (core.IsFnTypedCarrier(v) && !v.Dynamic)
+	n.strict = n.strict || (core.IsFnTypedCarrier(&v) && !v.Dynamic)
 	es.reStepNotes[pr.seq] = n
 }
 
@@ -13540,7 +13540,7 @@ func pendingApplyTail(rec *fnUnitRec, pend []pendingApply, bodyStk []core.Value,
 // member), and the merge must land it as it lands a named fn arm (NUR159);
 // read as data it compiled to `fn one` (NUR280's container twin).
 func branchArmMayBeFn(v core.Value) bool {
-	return core.IsFnValueResidual(v) || (v.Dynamic && !v.Quoted && core.SigTypeMatches(v, core.TFunction))
+	return core.IsFnValueResidual(v) || (v.Dynamic && !v.Quoted && core.SigTypeMatches(&v, core.TFunction))
 }
 
 // fnValueMayTakeArgs reports whether a fn VALUE in a branch arm may take
@@ -13587,7 +13587,7 @@ func (es *EmitState) mayBeFnArgsOf(id string) bool {
 // return over the lambda its unit builds).
 func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 	leaves := func(v core.Value) bool {
-		if v.Carrier && !core.IsFnTypedCarrier(v) {
+		if v.Carrier && !core.IsFnTypedCarrier(&v) {
 			return es.gradualHoldsFn(v)
 		}
 		if !core.IsFnValueResidual(v) {
@@ -13616,7 +13616,7 @@ func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 // or a branch result an arm of which leaves a fn (armLeavesFn). The pass
 // reads such a carrier as data wherever its type does not say Function.
 func (es *EmitState) gradualHoldsFn(v core.Value) bool {
-	if v.ID == "" || !v.Carrier || v.Quoted || core.IsFnTypedCarrier(v) {
+	if v.ID == "" || !v.Carrier || v.Quoted || core.IsFnTypedCarrier(&v) {
 		return false
 	}
 	if _, fn := es.producerReturnedClosureArity(v.ID); fn {
@@ -13863,7 +13863,7 @@ func (es *EmitState) fnLikeResidual(v core.Value) bool {
 	if v.Quoted {
 		return false
 	}
-	return v.Dynamic || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(v) || es.mayBeFnUnsettled(v)
+	return v.Dynamic || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(&v) || es.mayBeFnUnsettled(v)
 }
 
 // PendingClosureApply is the recorder seam the check pass's user-fn record
@@ -13920,7 +13920,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 		return false
 	}
 	lead := args[0]
-	if core.IsConcrete(lead) || !lead.Dynamic || lead.ID == "" {
+	if core.IsConcrete(&lead) || !lead.Dynamic || lead.ID == "" {
 		return false
 	}
 	// A lead the interpreter RE-STEPS where it stands — a container read the
@@ -14117,7 +14117,7 @@ func memberIsFnValued(v core.Value) bool {
 	if _, ok := v.Data.(core.FnDefInfo); ok {
 		return true
 	}
-	return core.IsFnTypedCarrier(v)
+	return core.IsFnTypedCarrier(&v)
 }
 
 func containerFnAutoDispatchRisk(args []core.Value) bool {
@@ -14596,7 +14596,7 @@ func argConformsStatically(a core.Value, p *core.Type) bool {
 	if p == nil || p.Equal(core.TAny) {
 		return true
 	}
-	if a.Parent == nil || core.IsDisjunct(a) {
+	if a.Parent == nil || core.IsDisjunct(&a) {
 		return false
 	}
 	return a.Parent.ConformsTo(p)
@@ -14649,7 +14649,7 @@ func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bo
 // closure lowered as `h 2 3`, compiled 12 for the interpreter's
 // signature_error). A producing word's own claim stands.
 func (es *EmitState) noteClosureShapeBind(v core.Value) {
-	if es.reg == nil || v.ID == "" || !(core.IsFnTypedCarrier(v) || gradualFnCarrier(v)) {
+	if es.reg == nil || v.ID == "" || !(core.IsFnTypedCarrier(&v) || gradualFnCarrier(v)) {
 		return
 	}
 	if _, claimed := es.reg.Check.FnShapeOf(v.ID); claimed {
@@ -14665,7 +14665,7 @@ func (es *EmitState) noteClosureShapeBind(v core.Value) {
 		return
 	}
 	es.reg.Check.NoteFnShape(v, s)
-	if !core.IsFnTypedCarrier(v) {
+	if !core.IsFnTypedCarrier(&v) {
 		if es.gradualClaims == nil {
 			es.gradualClaims = map[string]bool{}
 		}
@@ -14700,7 +14700,7 @@ func memberLambdaShape(m core.Value) (core.FnShape, bool) {
 // (a strict or dynamic Any, a union reaching Function) — the carrier a user
 // fn's declared `Any` return mints over the closure its unit returns.
 func gradualFnCarrier(v core.Value) bool {
-	return v.Carrier && !v.Quoted && core.SigTypeMatches(v, core.TFunction)
+	return v.Carrier && !v.Quoted && core.SigTypeMatches(&v, core.TFunction)
 }
 
 // appendResidualSeqs collects the producing-event seqs a residual's
@@ -14798,7 +14798,7 @@ func (es *EmitState) mayBeFnBranchResult(id string) bool {
 // compiled to before and still does — and the program unit keeps its
 // residual arms, which apply the same value trailing.
 func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
-	if len(es.units) < 2 || !core.IsFnTypedCarrier(v) {
+	if len(es.units) < 2 || !core.IsFnTypedCarrier(&v) {
 		return false
 	}
 	if u := es.openUnitRec(); u == nil || (u.closure && !u.plainLambda()) {
@@ -15069,7 +15069,7 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 		// computed list that feeds the type machinery (`x is […]`) carries the
 		// identical canonical nodes the interpreter's list would. A node with
 		// no canonical ID has no runtime home and still declines.
-		if core.IsBareTypeNode(ins[i]) {
+		if core.IsBareTypeNode(&ins[i]) {
 			if ins[i].ID == "" {
 				return false
 			}
@@ -15186,7 +15186,7 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 		// dispatch over the assembled map included. `{x: a  r: None}` therefore
 		// compiles exactly as it interprets. A node with no canonical ID has no
 		// runtime home and still declines.
-		if core.IsBareTypeNode(vals[i]) {
+		if core.IsBareTypeNode(&vals[i]) {
 			if vals[i].ID == "" {
 				return false
 			}
@@ -15392,7 +15392,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// call then raises the interpreter's report over the laid-out tape,
 	// the body slot as the token list it holds there (NUR263). A lambda
 	// body or an extra hook slot keeps the handler's own refusal.
-	if l := es.layoutFor(args); l != nil && len(l.Live) == 0 && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
+	if l := es.layoutFor(args); l != nil && len(l.Live) == 0 && len(extraOps) == 0 && core.IsConcrete(&args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
 		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
@@ -15514,7 +15514,7 @@ func noEvalBodiesInert(sig *core.Signature, args []core.Value) bool {
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		if !core.IsInertConst(args[i]) {
+		if !core.IsInertConst(&args[i]) {
 			return false
 		}
 		// A flow-control sentinel (break/continue/return) inside the body
@@ -15621,11 +15621,11 @@ func (es *EmitState) registryBodyNamesNothingKnown(sig *core.Signature, args []c
 // values, paren tokens), a Word the recorder's registry binds or registers, or
 // a Reach / Splice token — the names registryBodyNamesNothingKnown refuses.
 func (es *EmitState) valueNamesKnown(v core.Value) bool {
-	if core.IsReach(v) || core.IsSplice(v) {
+	if core.IsReach(&v) || core.IsSplice(&v) {
 		return true
 	}
-	if core.IsWord(v) {
-		w, _ := core.AsWord(v)
+	if core.IsWord(&v) {
+		w, _ := core.AsWord(&v)
 		if _, bound := es.reg.Defs.Top(w.Name); bound {
 			return true
 		}
@@ -15692,7 +15692,7 @@ func (es *EmitState) runsBodyOnRegistryAtModuleScope(sig *core.Signature, args [
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		if !core.IsConcrete(args[i]) || check.BodyHasSentinel(args[i]) || es.bodyRebindsBoundName(args[i]) {
+		if !core.IsConcrete(&args[i]) || check.BodyHasSentinel(args[i]) || es.bodyRebindsBoundName(args[i]) {
 			return false
 		}
 	}
@@ -15758,7 +15758,7 @@ func (es *EmitState) noEvalBodiesInertScoped(sig *core.Signature, args []core.Va
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		inert := core.IsInertConst(args[i])
+		inert := core.IsInertConst(&args[i])
 		if !inert && moduleScope {
 			inert = InterpBodyInert(args[i])
 		}
@@ -15833,7 +15833,7 @@ func InterpBodyInert(v core.Value) bool {
 	case core.ListPayload, core.MapPayload:
 		return InterpMemberInert(v)
 	default:
-		return core.IsInertConst(v)
+		return core.IsInertConst(&v)
 	}
 }
 
@@ -15848,7 +15848,7 @@ func InterpMemberInert(v core.Value) bool {
 	if v.Carrier || v.Dynamic {
 		return false
 	}
-	if core.IsInterpString(v) {
+	if core.IsInterpString(&v) {
 		parts, err := core.AsInterpString(v)
 		if err != nil {
 			return false
@@ -15920,7 +15920,7 @@ func execBodyRefsNames(sig *core.Signature, args []core.Value) bool {
 // could carry a name is NOT data, so only the known pure-data shapes return
 // false.
 func valueRefsName(v core.Value) bool {
-	if core.IsWord(v) || core.IsReach(v) || core.IsSplice(v) {
+	if core.IsWord(&v) || core.IsReach(&v) || core.IsSplice(&v) {
 		return true
 	}
 	switch d := v.Data.(type) {
@@ -16038,7 +16038,7 @@ func (es *EmitState) intern(v core.Value) int {
 		identPayload = identPayloadBound(d.Lo) || identPayloadBound(d.Hi)
 	}
 	if identPayload || v.Parent.Equal(core.TList) || v.Parent.Equal(core.TMap) ||
-		isTypeBodyPayload(v) || core.IsParenExpr(v) {
+		isTypeBodyPayload(v) || core.IsParenExpr(&v) {
 		// Compounds, structural type bodies, codequote'd ParenExprs, and
 		// identity-bearing instance payloads (an Xml element literal, an
 		// Extension-backed host container) are never CanonValue-deduped:
@@ -16829,7 +16829,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// after a class member read (`c.op/v 5`) quotes the fn-SHAPE-typed
 	// carrier the pass holds, where the run-time peek quotes the concrete fn
 	// — `fn (Integer) 5` interpreted, and this arm applied it to 6 (NUR278).
-	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
+	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(&residual[0]) &&
 		!residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
 		!es.forwardLeftoverFn(residual[0]) {
 		applyDynamic = !anyFnOrDynamicTail(residual)
@@ -16984,7 +16984,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		// marker's intent, recorded on the value by the standalone-marker
 		// drop; NUR277) — no boundary to decline on.
 		if residual[i].Dynamic && !residual[i].Quoted &&
-			core.SigTypeMatches(residual[i], core.TFunction) {
+			core.SigTypeMatches(&residual[i], core.TFunction) {
 			if es.markWindowSeq != 0 {
 				return residual, OpCallDynMixedFromMark, ""
 			}
@@ -17019,7 +17019,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// What remains genuinely blocked is §6.3's universal fn value, and the
 	// residue is now visible rather than hidden behind a blanket failure.
 	for i := range residual {
-		if core.IsFnTypedCarrier(residual[i]) {
+		if core.IsFnTypedCarrier(&residual[i]) {
 			// A QUOTED carrier is data by the marker's intent (NUR277: the
 			// standalone-marker drop quotes the carrier a `/v` follows, and
 			// a fn that returns the value it was handed returns it quoted),
@@ -17098,7 +17098,7 @@ func anyDynamicTail(residual []core.Value) bool {
 func anyFnOrDynamicTail(residual []core.Value) bool {
 	for i := 1; i < len(residual); i++ {
 		if residual[i].Dynamic || core.IsFnValueResidual(residual[i]) ||
-			core.IsFnTypedCarrier(residual[i]) {
+			core.IsFnTypedCarrier(&residual[i]) {
 			return true
 		}
 	}
@@ -17181,7 +17181,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	}
 	arg := residual[0]
 	if _, argIsEvent := es.producedBy[arg.ID]; argIsEvent || arg.Dynamic ||
-		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(arg) {
+		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(&arg) {
 		return residual, false
 	}
 	// The park rule, which every SIBLING arm of resolveDynamicApply already
@@ -17318,7 +17318,7 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 			ops = append(ops, localOperand(slot))
 			continue
 		}
-		if core.IsBareTypeNode(rv) && rv.ID != "" {
+		if core.IsBareTypeNode(&rv) && rv.ID != "" {
 			ops = append(ops, typeOperand(es.internType(rv)))
 			continue
 		}
@@ -17333,7 +17333,7 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 			}
 			return nil, "residual value of unknown provenance"
 		}
-		if !core.IsInertConst(lit) {
+		if !core.IsInertConst(&lit) {
 			// A MODULE-FAMILY residual (an import-bound namespace, a Module
 			// descriptor bound by def) materialises as a map the const gate
 			// declines on purpose; it re-reads the live binding instead
@@ -18330,12 +18330,12 @@ func (es *EmitState) rootResidualBefore(residual []core.Value, p core.SrcPos) bo
 // spelledBefore reports whether a root program token written before p — a
 // value, not a word — has v's canonical form.
 func (es *EmitState) spelledBefore(v core.Value, p core.SrcPos) bool {
-	if !core.IsConcrete(v) || core.IsWord(v) {
+	if !core.IsConcrete(&v) || core.IsWord(&v) {
 		return false
 	}
 	canon := core.CanonValue(v)
 	for _, t := range es.rootBody {
-		if q := t.Pos(); q.Row > 0 && posAfter(p, q) && !core.IsWord(t) && core.CanonValue(t) == canon {
+		if q := t.Pos(); q.Row > 0 && posAfter(p, q) && !core.IsWord(&t) && core.CanonValue(t) == canon {
 			return true
 		}
 	}
@@ -18762,7 +18762,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	if es.placedValRead(top.ID) {
 		return
 	}
-	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) {
+	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(&top)) {
 		return
 	}
 	// A DEF-READ of the tagged member (`def f tbl.inc end each [f] xs`,
@@ -18833,7 +18833,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 	// fn; its residual read arms the replay best-effort, and its other
 	// consumptions keep the slot push — declining them would decline every
 	// `m k get` over an Any param (measured: the corpus's own fn bodies).
-	if core.IsFnTypedCarrier(v) {
+	if core.IsFnTypedCarrier(&v) {
 		if rec.wordReads == nil {
 			rec.wordReads = map[string]int{}
 		}
@@ -18860,7 +18860,7 @@ type rootWordRead struct {
 // produced is noted: a fn-TYPED carrier has its own read model (the shaped
 // read arrival), and a literal's binding is no gradual value.
 func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos) {
-	if core.IsFnTypedCarrier(v) || !es.isDefRead(v) || pos.Row == 0 {
+	if core.IsFnTypedCarrier(&v) || !es.isDefRead(v) || pos.Row == 0 {
 		return
 	}
 	if _, produced := es.producedBy[v.ID]; !produced {
@@ -20050,20 +20050,20 @@ func collectWordNames(tokens []core.Value, names map[string]bool) {
 		if t.Data == nil {
 			continue
 		}
-		if w, err := core.AsWord(t); err == nil {
+		if w, err := core.AsWord(&t); err == nil {
 			names[w.Name] = true
 			continue
 		}
 		// A reach (`q.f`, `m.(k)`) reads its receiver's names, and a
 		// computed segment's: an island stepping `(q.f 7)` resolves q.
-		if ri, err := core.AsReach(t); err == nil {
+		if ri, err := core.AsReach(&t); err == nil {
 			collectWordNames(ri.Receiver, names)
 			for _, seg := range ri.Segments {
 				collectWordNames(seg.KeyExpr, names)
 			}
 			continue
 		}
-		if inner, err := core.AsParenExpr(t); err == nil {
+		if inner, err := core.AsParenExpr(&t); err == nil {
 			collectWordNames(inner, names)
 			continue
 		}
@@ -20127,7 +20127,7 @@ func (es *EmitState) deoptDefsBindable(events []EmitEvent, names map[string]bool
 			// a local. A body-local FN def (`def check-paths fn […]`), a
 			// stripped carrier with no original, cannot — the unit would
 			// decline at its bind, so the points decline instead.
-			if ev.dyn.src.kind == opNone && !core.IsInertConst(ev.dyn.val) {
+			if ev.dyn.src.kind == opNone && !core.IsInertConst(&ev.dyn.val) {
 				if op, ok := es.resolveOperand(ev.dyn.val); !ok || (op.kind != opConst && op.kind != opLocal) {
 					return false
 				}
@@ -20289,7 +20289,7 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 		}
 		t := -1
 		for k := contTok - 1; k >= 0 && k >= contTok-4; k-- {
-			if w, err := core.AsWord(rec.body[k]); err == nil && w.Name == want {
+			if w, err := core.AsWord(&rec.body[k]); err == nil && w.Name == want {
 				t = k
 				break
 			}
@@ -20334,7 +20334,7 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 		// A def's event stands at its NAME token: the statement begins at
 		// the binding word before it (`def k j`).
 		if events[ci].kind == evDynBind {
-			if t := bodyTokenAt(rec.body, d.start); t > 0 && core.IsWord(rec.body[t-1]) {
+			if t := bodyTokenAt(rec.body, d.start); t > 0 && core.IsWord(&rec.body[t-1]) {
 				d.start = rec.body[t-1].Pos()
 			} else {
 				return d, false
@@ -20370,7 +20370,7 @@ func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsB
 	tr := es.types[idx]
 	n := readsBefore(tr.ID)
 	for _, t := range rec.body {
-		if w, err := core.AsWord(t); err == nil && w.Name == tr.Name && t.Pos().Row > 0 && posAfter(d.start, t.Pos()) {
+		if w, err := core.AsWord(&t); err == nil && w.Name == tr.Name && t.Pos().Row > 0 && posAfter(d.start, t.Pos()) {
 			n++
 		}
 	}
@@ -20466,7 +20466,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		// position: its tokens before the start against its consumptions.
 		canon := core.CanonValue(c)
 		sameCanon := func(v core.Value) bool {
-			return !core.IsWord(v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+			return !core.IsWord(&v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
 		}
 		tokens := 0
 		for _, t := range rec.body {
@@ -20610,7 +20610,7 @@ func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, co
 	compound := isCompoundValue(c)
 	canon := core.CanonValue(c)
 	sameCanon := func(v core.Value) bool {
-		return !core.IsWord(v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+		return !core.IsWord(&v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
 	}
 	var toks []core.SrcPos
 	for _, t := range rec.body {
@@ -21187,8 +21187,8 @@ func residualLeadReStepped(stk []core.Value) bool {
 	if len(stk) < 2 || stk[0].Quoted {
 		return false
 	}
-	return core.IsFnTypedCarrier(stk[0]) ||
-		(stk[0].Dynamic && core.SigTypeMatches(stk[0], core.TFunction))
+	return core.IsFnTypedCarrier(&stk[0]) ||
+		(stk[0].Dynamic && core.SigTypeMatches(&stk[0], core.TFunction))
 }
 
 // closureResidualHasUnappliedFn reports whether a closure body's residual
@@ -21229,8 +21229,8 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 				continue
 			}
 		}
-		dynMaybeFn := v.Dynamic && core.SigTypeMatches(v, core.TFunction) && i+1 < len(bodyStk)
-		if core.IsFnTypedCarrier(v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
+		dynMaybeFn := v.Dynamic && core.SigTypeMatches(&v, core.TFunction) && i+1 < len(bodyStk)
+		if core.IsFnTypedCarrier(&v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
 			return true
 		}
 	}
@@ -21291,7 +21291,7 @@ func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
 // `/v` read and a quoted value are data, and a value the recorder cannot
 // name is not a read.
 func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
-	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(v) || es.placedValRead(v.ID) {
+	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(&v) || es.placedValRead(v.ID) {
 		return 0, ""
 	}
 	name, read := es.DefReadName(v.ID)
@@ -21562,7 +21562,7 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 		// parks it (NUR313) until a re-step undoes the placement
 		// (branchPlacedHere, NUR317) — a question only for a value that may
 		// be a fn; data sits where it lands either way.
-		if !es.branchPlacedBy(v, ev.br) || !(core.IsFnTypedCarrier(v) || (v.Dynamic && core.SigTypeMatches(v, core.TFunction)) || core.IsFnValueResidual(v) || core.UnionMayBeFn(v)) {
+		if !es.branchPlacedBy(v, ev.br) || !(core.IsFnTypedCarrier(&v) || (v.Dynamic && core.SigTypeMatches(&v, core.TFunction)) || core.IsFnValueResidual(v) || core.UnionMayBeFn(v)) {
 			return false
 		}
 	case evCall:

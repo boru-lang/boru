@@ -45,22 +45,22 @@ func TestValueModePredicates(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := core.IsConcrete(c.v); got != c.concrete {
+			if got := core.IsConcrete(&c.v); got != c.concrete {
 				t.Errorf("IsConcrete = %v, want %v", got, c.concrete)
 			}
-			if got := core.IsBareTypeNode(c.v); got != c.bareNode {
+			if got := core.IsBareTypeNode(&c.v); got != c.bareNode {
 				t.Errorf("IsBareTypeNode = %v, want %v", got, c.bareNode)
 			}
-			if got := core.IsTypeLiteral(c.v); got != c.typeLit {
+			if got := core.IsTypeLiteral(&c.v); got != c.typeLit {
 				t.Errorf("IsTypeLiteral = %v, want %v", got, c.typeLit)
 			}
 			if got := (c.v.Data == nil); got != c.dataIsNil {
 				t.Errorf("Data == nil = %v, want %v", got, c.dataIsNil)
 			}
 			// IsBareTypeNode is exactly `Data == nil && !Carrier`.
-			if want := c.v.Data == nil && !c.v.Carrier; core.IsBareTypeNode(c.v) != want {
+			if want := c.v.Data == nil && !c.v.Carrier; core.IsBareTypeNode(&c.v) != want {
 				t.Errorf("IsBareTypeNode must equal (Data==nil && !Carrier): got %v want %v",
-					core.IsBareTypeNode(c.v), want)
+					core.IsBareTypeNode(&c.v), want)
 			}
 		})
 	}

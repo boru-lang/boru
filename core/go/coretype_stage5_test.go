@@ -251,7 +251,7 @@ func TestWt5InstallTypePredicateStamping(t *testing.T) {
 		t.Fatalf("predicate type must mint at its declared input type, got %v", def)
 	}
 	// The attached unifier runs the predicate at Unify call sites.
-	if !NewInteger(5).Is(def) {
+	if !addrOf(NewInteger(5)).Is(def) {
 		t.Fatal("predicate type must admit a passing candidate")
 	}
 }

@@ -36,7 +36,7 @@ func TestArgsStackLazy(t *testing.T) {
 		t.Fatalf("Depth after Truncate = %d, want 2", as.Depth())
 	}
 	_ = as.PushLazy(nil)
-	if empty, _, _ := as.Top(); !IsConcrete(empty) || empty.String() != NewList(nil).String() {
+	if empty, _, _ := as.Top(); !IsConcrete(&empty) || empty.String() != NewList(nil).String() {
 		t.Errorf("a lazy entry of no values reads %v, want []", empty)
 	}
 	for k := 0; k < 2; k++ {

@@ -257,7 +257,7 @@ func diagValueDepth(v Value, depth int) string {
 		// its debug form (`(1 add 1)`, not `paren([1 word(add) 1])`; NUR235).
 		return CanonValue(v)
 	}
-	if v.Parent == nil || !IsConcrete(v) {
+	if v.Parent == nil || !IsConcrete(&v) {
 		return v.String()
 	}
 	isList := v.Parent.ConformsTo(TList)
@@ -303,7 +303,7 @@ func diagValueDepth(v Value, depth int) string {
 // diagCodeToken reports whether v is a token of unevaluated code a
 // diagnostic may meet inside a pending literal it renders.
 func diagCodeToken(v Value) bool {
-	return IsWord(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsSugar(v)
+	return IsWord(&v) || IsParenExpr(&v) || IsReach(&v) || IsInterpString(&v) || IsSugar(&v)
 }
 
 // diagHead renders the first diagMaxListHead of n entries through render
@@ -364,8 +364,8 @@ func describeStackTypes(tape *Tape, pointer int) string {
 		if t := ValueType(v); t != nil {
 			label = t.String()
 		}
-		if IsWord(v) {
-			w, _ := AsWord(v)
+		if IsWord(&v) {
+			w, _ := AsWord(&v)
 			label = "word(" + w.Name + ")"
 		} else if IsAtom(v) {
 			a, _ := AsAtom(v)

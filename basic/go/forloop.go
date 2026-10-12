@@ -20,7 +20,7 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 		return nil, nil
 	}
 
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return nil, r.BoruError("for_error", "for: body must be a concrete list, got type literal", "for")
 	}
 	_lst, _ := AsList(body)

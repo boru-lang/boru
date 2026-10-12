@@ -19,10 +19,10 @@ func TestNoneLiteralIsAUnionMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	noneLit := NewTypeLiteral(TNone)
-	if !noneLit.Is(maybe) || !NewNone().Is(maybe) || !NewInteger(5).Is(maybe) {
+	if !noneLit.Is(maybe) || !addrOf(NewNone()).Is(maybe) || !addrOf(NewInteger(5)).Is(maybe) {
 		t.Error("the None literal, none and 5 are all members of (Integer tor None)")
 	}
-	if NewTypeLiteral(TInteger).Is(maybe) || NewString("s").Is(maybe) {
+	if addrOf(NewTypeLiteral(TInteger)).Is(maybe) || addrOf(NewString("s")).Is(maybe) {
 		t.Error("a type literal and a String are no members")
 	}
 	if rejectsTypeLiteral(noneLit, maybe) || !rejectsTypeLiteral(NewTypeLiteral(TInteger), maybe) {
@@ -121,7 +121,7 @@ func TestInstallTypeResolvesAParenChild(t *testing.T) {
 	}
 	got, ok := r.TopTypeBody("Zints")
 	ci, cerr := AsChildType(got)
-	if !ok || cerr != nil || IsParenExpr(ci.Child) || !(&ci.Child).Equal(TInteger) {
+	if !ok || cerr != nil || IsParenExpr(&ci.Child) || !(&ci.Child).Equal(TInteger) {
 		t.Fatalf("the installed child is Integer, not a paren: %v %v", got, cerr)
 	}
 	if err := InstallType(r, "Zbad", NewTypedList(NewParenExpr([]Value{NewWord("nosuchword")}))); err == nil {

@@ -1448,7 +1448,7 @@ func TestEngineCoreResolveFieldTypeList(t *testing.T) {
 	list := NewList([]Value{NewString("string"), NewString("tor"), NewString("none")})
 	v := ResolveFieldType(r, list)
 	// Should produce a disjunction
-	if !IsDisjunct(v) {
+	if !IsDisjunct(&v) {
 		// If it didn't produce a disjunction, at least it shouldn't crash
 		t.Logf("ResolveFieldType list = %v (type %s)", v, v.Parent)
 	}

@@ -125,7 +125,7 @@ func (e *Engine) tcoEligible(scan frameTailScan, sig *Signature, defMutsBefore i
 	// base-branch reads depend on it. Eager teardown may therefore
 	// remove ONLY names the callee rebinds before its body runs;
 	// anything else declines and nests.
-	dcInfo, err := AsDefCleanup(e.Tape.At(scan.TailStart))
+	dcInfo, err := AsDefCleanup(e.Tape.Ref(scan.TailStart))
 	if err != nil {
 		return false
 	}
@@ -174,7 +174,7 @@ func (e *Engine) returnsConform(scan frameTailScan, sig *Signature) bool {
 	if scan.RCIdx < 0 {
 		return true
 	}
-	rc, err := AsReturnCheck(e.Tape.At(scan.RCIdx))
+	rc, err := AsReturnCheck(e.Tape.Ref(scan.RCIdx))
 	if err != nil {
 		return false
 	}

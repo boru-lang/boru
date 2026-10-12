@@ -29,7 +29,7 @@ type DepScalarUnifier struct {
 func (*DepScalarUnifier) ContentMembership() {}
 
 func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(d.prev).Match(v, t)
 	}
 	// An abstract CARRIER already tagged as t (the predicate type) or a subtype
@@ -40,7 +40,7 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 	// would conservatively (and wrongly) reject it. `def mk fn [[] [Big] [50]]
 	// use (mk)` failed exactly here. A CONCRETE value (Data present) still runs
 	// the predicate check, so a plain `5` is correctly declined for `Big`.
-	if v.Carrier && !IsConcrete(v) && v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
+	if v.Carrier && !IsConcrete(&v) && v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
 		return true
 	}
 	if !v.Parent.ConformsTo(d.baseType) {
@@ -95,7 +95,7 @@ func depScalarContent(v Value) (Value, bool) {
 	if v.IsDepScalar() {
 		return v, true
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		if body, ok := v.TypeBody(); ok && body.IsDepScalar() {
 			return body, true
 		}
@@ -165,7 +165,7 @@ func unifyDepScalar(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Uni
 	// Parent is its base scalar, so the subtype walk handles e.g.
 	// `Pos refine Integer` (Pos sub Integer) by returning the
 	// narrower side.
-	if !IsConcrete(other) {
+	if !IsConcrete(&other) {
 		return unifySameOrSubtype(dep, other)
 	}
 

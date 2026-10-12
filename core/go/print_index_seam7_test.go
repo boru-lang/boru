@@ -20,7 +20,7 @@ func (m s7Mz) Materialize() (TableData, error) {
 }
 func (s7Mz) SourceRecord() RecordTypeInfo { return RecordTypeInfo{Fields: NewOrderedMap()} }
 func (s7Mz) payloadMarker()               {}
-func (s7Mz) IsTypeContent(*Value) bool    { return false }
+func (s7Mz) IsTypeContent(*Type) bool     { return false }
 
 // --- print.go -------------------------------------------------------------
 

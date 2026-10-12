@@ -51,7 +51,7 @@ const CarrierDisjunctCap = 8
 // alternatives recursively; for any other carrier, returns a single
 // type literal of its Parent.
 func FlattenAlternatives(v Value) []Value {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		di, _ := AsDisjunct(v)
 		var out []Value
 		for _, alt := range di.Alternatives {
@@ -63,7 +63,7 @@ func FlattenAlternatives(v Value) []Value {
 	// v.Parent of a literal would shift one lattice level up (the
 	// node's parent), silently widening every stored alternative on
 	// re-join. Carriers and concrete values stand for their Parent.
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return []Value{v}
 	}
 	return []Value{NewTypeLiteral(v.Parent)}
@@ -100,10 +100,10 @@ func JoinCarriers(a, b Value) Value {
 	// (`if c [Integer] [5]` joined to a Number carrier, and `add` committed
 	// over the type the run held — NUR323): it joins as ValueCarrier's
 	// Type carrier. None keeps its own arm handling.
-	if IsTypeLiteral(a) {
+	if IsTypeLiteral(&a) {
 		a = ValueCarrier(a)
 	}
-	if IsTypeLiteral(b) {
+	if IsTypeLiteral(&b) {
 		b = ValueCarrier(b)
 	}
 	out := JoinCarriersInner(a, b)
@@ -141,7 +141,7 @@ func JoinCarriersInner(a, b Value) Value {
 		return NewCarrier(TNone)
 	}
 	collapse := !aNone && !bNone
-	if collapse && a.Parent.Equal(b.Parent) && !IsDisjunct(a) && !IsDisjunct(b) {
+	if collapse && a.Parent.Equal(b.Parent) && !IsDisjunct(&a) && !IsDisjunct(&b) {
 		out := a
 		out.Carrier = true
 		out.Data = nil
@@ -153,7 +153,7 @@ func JoinCarriersInner(a, b Value) Value {
 		out.ID = GenerateID(IDPrefixForType(out.Parent))
 		return out
 	}
-	if collapse && !IsDisjunct(a) && !IsDisjunct(b) {
+	if collapse && !IsDisjunct(&a) && !IsDisjunct(&b) {
 		if a.Parent.ConformsTo(b.Parent) {
 			// a is subtype of b → widen to b
 			return NewCarrier(b.Parent)
@@ -399,7 +399,7 @@ func condBoundCarrier(r *Registry, name string, v Value, taken bool) Value {
 	if taken || r == nil || r.Check == nil || !r.Check.Recorder().Armed() {
 		return v
 	}
-	if IsCapitalisedName(name) || IsFnValueResidual(v) || IsBareTypeNode(v) || IsModuleFamilyValue(v) ||
+	if IsCapitalisedName(name) || IsFnValueResidual(v) || IsBareTypeNode(&v) || IsModuleFamilyValue(v) ||
 		(v.Parent != nil && v.Parent.ConformsTo(TFunction)) {
 		return v
 	}

@@ -196,7 +196,7 @@ func TestX5UnifySurfaceAbstractArms(t *testing.T) {
 	if uerr != nil {
 		t.Fatalf("conforming bare node: %v", uerr)
 	}
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Fatalf("expected the narrower type back, got %v", got)
 	}
 	// Carrier of a conforming type.
@@ -420,7 +420,7 @@ func TestX5StepSugarSplices(t *testing.T) {
 	if err := e.stepSugar(0); err != nil {
 		t.Fatalf("stepSugar: %v", err)
 	}
-	if w, err := AsWord(e.Tape.At(0)); err != nil || w.Name != "x5usurp" {
+	if w, err := AsWord(e.Tape.Ref(0)); err != nil || w.Name != "x5usurp" {
 		t.Fatalf("marker must splice to its bound word, got %v", e.Tape.At(0))
 	}
 }

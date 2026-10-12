@@ -64,10 +64,10 @@ func TestS5bEFlattenQuoteAndDoEval(t *testing.T) {
 	if !out[0].Quoted || !out[0].Parent.Equal(core.TList) {
 		t.Errorf("Quote must flatten to a quoted list, got %v", out[0])
 	}
-	if !core.IsWord(out[1]) {
+	if !core.IsWord(&out[1]) {
 		t.Fatalf("DoEval must flatten to the do word, got %v", out[1])
 	}
-	if w, _ := core.AsWord(out[1]); w.Name != "do" {
+	if w, _ := core.AsWord(&out[1]); w.Name != "do" {
 		t.Errorf("DoEval word = %q, want do", w.Name)
 	}
 }

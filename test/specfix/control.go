@@ -37,7 +37,7 @@ func fixSpliceArg(v core.Value) []core.Value {
 }
 
 func fixIsCodeBody(v core.Value) bool {
-	return v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(v) && !core.IsTableType(v)
+	return v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(&v) && !core.IsTableType(v)
 }
 
 // fixIfMarkMoveTokens builds the lazy-condition token stream: mark +
@@ -77,7 +77,7 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 // KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
 func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
 	es, _ := r.Check.Recorder().(*compiler.EmitState)
-	if !es.Armed() || !core.IsConcrete(cond) || !cond.Parent.ConformsTo(core.TList) {
+	if !es.Armed() || !core.IsConcrete(&cond) || !cond.Parent.ConformsTo(core.TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
@@ -143,7 +143,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			restore()
 			return frag, stk, defs, nil
 		}
-		if es.Recorder().Active() && !core.IsConcrete(v) && v.Parent != nil && v.Parent.ConformsTo(core.TList) {
+		if es.Recorder().Active() && !core.IsConcrete(&v) && v.Parent != nil && v.Parent.ConformsTo(core.TList) {
 			// A COMPUTED list arm is the interpreter's spliced code body;
 			// the fixture does not model it — decline the compile.
 			es.Recorder().MarkUncompilable("fixture if: computed list arm")
@@ -184,7 +184,7 @@ func fixRunForLoop(r *core.Registry, start, end, step int64, iterName string, bo
 	if step > 0 && start >= end {
 		return nil, nil
 	}
-	if !core.IsConcrete(body) { //covergate:allow both callers pass a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
+	if !core.IsConcrete(&body) { //covergate:allow both callers pass a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
 		return nil, &core.BoruError{Code: "for_error", Detail: "for: body must be a concrete list, got type literal"}
 	}
 	lst, _ := core.AsList(body)
@@ -234,7 +234,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 
 	cv := args[0]
 	staticCount := int64(-1)
-	if core.IsConcrete(cv) && cv.Parent.ConformsTo(core.TInteger) {
+	if core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TInteger) {
 		if n, err := core.AsInteger(cv); err == nil {
 			staticCount = n
 			if n <= 0 {
@@ -253,7 +253,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
-		if core.IsDisjunct(top) {
+		if core.IsDisjunct(&top) {
 			out = core.NewCarrierTypedListValue(top)
 		} else {
 			out = core.NewCarrierTypedList(top.Parent)
@@ -317,7 +317,7 @@ func registerEngSpecControl(r *core.Registry) {
 // inputs through the InvokeBody seam (so the VM can run it as a
 // compiled closure) and surface a body error as an Error VALUE.
 func fixDoHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
-	if !core.IsConcrete(args[0]) { //covergate:allow the body is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
+	if !core.IsConcrete(&args[0]) { //covergate:allow the body is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
 		return nil, &core.BoruError{Code: "do_error", Detail: "doq: argument must be a concrete list, got type literal"}
 	}
 	result, err := core.InvokeBody(r, args[0], nil)
@@ -336,7 +336,7 @@ func fixDoHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r 
 // the fixture's model — battery rows keep bodies infallible.
 func fixDoReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	body := args[0]
-	if !(core.IsConcrete(body) && body.Parent.ConformsTo(core.TList)) {
+	if !(core.IsConcrete(&body) && body.Parent.ConformsTo(core.TList)) {
 		return []core.Value{core.NewDynamicCarrier(core.TAny)}
 	}
 	r.Check.CaughtBodyDepth++
@@ -449,7 +449,7 @@ func fixLoopIterations(start, end, step int64) int64 {
 }
 
 func fixForRangeHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
-	if !core.IsConcrete(args[0]) { //covergate:allow the range is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
+	if !core.IsConcrete(&args[0]) { //covergate:allow the range is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
 		return nil, &core.BoruError{Code: "for_error", Detail: "for: range must be a concrete list, got type literal"}
 	}
 	lst, _ := core.AsList(args[0])
@@ -475,7 +475,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	var startV, endV, stepV core.Value
 	lowerable, staticBounds := false, false
 	staticCount := int64(-1)
-	if cv := args[0]; core.IsConcrete(cv) && cv.Parent.ConformsTo(core.TList) {
+	if cv := args[0]; core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TList) {
 		if lst, err := core.AsList(cv); err == nil && !lst.IsNil() {
 			elems := lst.Slice()
 			if st, en, sp, perr := fixParseRange(elems); perr == nil {
@@ -508,7 +508,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
-		if core.IsDisjunct(top) {
+		if core.IsDisjunct(&top) {
 			out = core.NewCarrierTypedListValue(top)
 		} else {
 			out = core.NewCarrierTypedList(top.Parent)
@@ -603,7 +603,7 @@ func fixEachHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, 
 func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	defer r.Check.Recorder().Suspend()()
 	body := args[0]
-	if !(core.IsConcrete(body) && body.Parent.ConformsTo(core.TList)) {
+	if !(core.IsConcrete(&body) && body.Parent.ConformsTo(core.TList)) {
 		return []core.Value{core.NewCarrier(core.TList)}
 	}
 	bl, err := core.AsList(body)

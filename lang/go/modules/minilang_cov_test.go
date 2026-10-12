@@ -107,7 +107,7 @@ func TestMiniCovRe(t *testing.T) {
 	// Unmatched capture groups render as none.
 	grp := mcovRun(t, r, mcovImp+`('ab' mini re '(a)(x)?(b)').fst.g`)
 	gl, glErr := native.AsList(grp[0])
-	if glErr != nil || gl.Len() != 3 || !native.IsNone(gl.Get(1)) {
+	if glErr != nil || gl.Len() != 3 || !native.IsNone(gl.Ref(1)) {
 		t.Errorf("groups = %v, want ['a' none 'b'] (err %v)", grp[0], glErr)
 	}
 

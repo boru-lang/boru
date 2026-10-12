@@ -101,7 +101,7 @@ func TestW8CombineDepScalarsIntervalCompareError(t *testing.T) {
 func TestW8ComplementWithinBaseUnbounded(t *testing.T) {
 	// An info with neither bound complements to the bare base literal.
 	got := complementWithinBase(TInteger, DepScalarInfo{})
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Fatalf("expected a bare type literal, got %v", got)
 	}
 	if !ValueType(got).Equal(TInteger) {

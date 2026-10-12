@@ -335,7 +335,7 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 			return branchOutcome(result, runErr)
 		}
 	}
-	if elem.Parent.ConformsTo(TList) && elem.Data != nil && !IsTypedList(elem) && !IsTableType(elem) {
+	if elem.Parent.ConformsTo(TList) && elem.Data != nil && !IsTypedList(&elem) && !IsTableType(elem) {
 		_lst, _ := AsList(elem)
 		return interpretBranchBody(reg, _lst.Slice())
 	}
@@ -555,7 +555,7 @@ func awaitParallelsEmpty(parallels Value) bool {
 // Len() alone, and the elements are unevaluated code bodies that deep
 // concreteness would decline for no reason.
 func awaitModeGate(args []Value) bool {
-	return len(args) == 2 && DeepConcreteOptionsAt(0)(args) && IsConcrete(args[1])
+	return len(args) == 2 && DeepConcreteOptionsAt(0)(args) && IsConcrete(&args[1])
 }
 
 // awaitModeMirror flags an unknown {mode:} at check time.
@@ -621,7 +621,7 @@ func awaitModeName(v Value, def string) string {
 // a runtime `first`/`any` mode is reachable, so the model is the variadic
 // spread, not a one-seat Any (NUR067).
 func awaitOptsReturns(args []Value, r *Registry) []Value {
-	if len(args) < 2 || !IsConcrete(args[0]) {
+	if len(args) < 2 || !IsConcrete(&args[0]) {
 		return awaitVariadicResult(r)
 	}
 	return awaitResidual(r, awaitOptsMode(args[0]), args[1])
@@ -711,12 +711,12 @@ func awaitVariadicResult(r *Registry) []Value {
 // only the variadic claim covers both.
 func awaitResidual(r *Registry, mode string, parallels Value) []Value {
 	if mode == "first" || mode == "any" {
-		if IsConcrete(parallels) && awaitParallelsEmpty(parallels) {
+		if IsConcrete(&parallels) && awaitParallelsEmpty(parallels) {
 			return []Value{NewCarrier(TList)}
 		}
 		return awaitVariadicResult(r)
 	}
-	if !IsConcrete(parallels) {
+	if !IsConcrete(&parallels) {
 		return []Value{NewCarrier(TAny)}
 	}
 	if awaitParallelsEmpty(parallels) {

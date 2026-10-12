@@ -23,7 +23,7 @@ func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	if !list.Parent.Equal(TList) {
 		return nil, r.BoruError("record_error", "record: argument must be a list", "record")
 	}
-	if !IsConcrete(list) {
+	if !IsConcrete(&list) {
 		return nil, r.BoruError("record_error", "record: argument must be a concrete list, got type literal", "record")
 	}
 	elems, _ := AsList(list)
@@ -121,7 +121,7 @@ func objectWithParentHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 		return nil, fmt.Errorf("object: first argument must be a concrete map, got %s", fieldsVal.String())
 	}
 
-	if !IsClassType(parentVal) {
+	if !IsClassType(&parentVal) {
 		return nil, fmt.Errorf("object: parent must be an object type, got %s", parentVal.String())
 	}
 	parentInfo, _ := AsClassType(parentVal)

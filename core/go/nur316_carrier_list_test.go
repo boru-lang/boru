@@ -22,7 +22,7 @@ func TestCarrierTypedListOf(t *testing.T) {
 		}
 	}
 	d := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if ci, err := AsChildType(CarrierTypedListOf(d)); err != nil || !IsDisjunct(ci.Child) {
+	if ci, err := AsChildType(CarrierTypedListOf(d)); err != nil || !IsDisjunct(&ci.Child) {
 		t.Errorf("a disjunct element stands as it is: %v (err %v)", ci.Child, err)
 	}
 }

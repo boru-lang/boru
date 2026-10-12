@@ -70,6 +70,9 @@ type CollectWindow interface {
 	// Len is the window's CURRENT length, re-read after every mutation.
 	Len() int
 	At(i int) Value
+	// Ref reads the token at i where it lives (Tape.Ref): valid until the
+	// window's next edit, and never written through.
+	Ref(i int) *Value
 	Set(i int, v Value)
 	// Splice replaces count tokens at i with repl, changing the length.
 	Splice(i, count int, repl ...Value)
@@ -198,7 +201,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		for _, vs := range viable {
 			keep := true
 			if pos < vs.Barrier && !sigRawSlot(vs.Sig, pos) {
-				if et := SigArgType(vs.Sig, pos); !et.Equal(TAny) && !SigArgMatches(vs.Sig, pos, v) {
+				if et := SigArgType(vs.Sig, pos); !et.Equal(TAny) && !SigArgMatches(vs.Sig, pos, &v) {
 					keep = false
 				} else if forwardPatternRejects(vs.Sig, pos, v) {
 					keep = false
@@ -246,8 +249,8 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 	// before unifying — so the pattern is tested against the binding the
 	// matcher will actually see. An unbound word never prunes.
 	pruneResolvedPatterns := func(pos int, tok Value) {
-		if IsWord(tok) {
-			if wi, werr := AsWord(tok); werr == nil {
+		if IsWord(&tok) {
+			if wi, werr := AsWord(&tok); werr == nil {
 				if top, ok := h.DefTop(wi.Name); ok {
 					prunePatterns(pos, top)
 				}
@@ -263,7 +266,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		tok := win.At(scanIdx)
 
 		// Boundary tokens (engine structurals, end / `)`): stop scanning.
-		if scanBoundaryToken(tok) {
+		if scanBoundaryToken(&tok) {
 			break
 		}
 
@@ -272,7 +275,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// the tape per sig). A marker the expansion helper declines is a
 		// boundary; a selected-head expansion failure is the user's
 		// syntax error, surfaced now.
-		if IsSugar(tok) {
+		if IsSugar(&tok) {
 			expanded, serr := h.ExpandSugarAt(tok, pos, scanIdx, viable)
 			if serr != nil {
 				return serr
@@ -294,7 +297,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		}
 
 		// Open paren: a forward group of unknown type.
-		if IsOpenParen(tok) {
+		if IsOpenParen(&tok) {
 			// Structure-first gate: evaluate ONLY if some still-viable
 			// overload consumes a forward argument at this position.
 			// Otherwise no signature wants a value here — leave the
@@ -372,7 +375,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// it will actually receive. Left raw, the token's internal
 		// InterpString type would prune every typed signature and a
 		// `raise `bad: ${x}`` mis-dispatched to the 0-arg fallback.
-		if IsInterpString(tok) {
+		if IsInterpString(&tok) {
 			if !viableConsumes(pos) {
 				break
 			}
@@ -391,7 +394,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// Interpolated XML literal: same as InterpString — its type
 		// (Node/Xml) is only knowable after evaluation, so evaluate in
 		// place when a viable overload consumes this position, then prune.
-		if IsXmlInterp(tok) {
+		if IsXmlInterp(&tok) {
 			if !viableConsumes(pos) {
 				break
 			}
@@ -411,7 +414,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// its OpenParen … CloseParen marker span in place, then re-process
 		// — the IsOpenParen branch above collapses it on THIS engine. See
 		// design/legacy/PAREN-REPRESENTATION.9.ignore Step 3.
-		if IsParenExpr(tok) {
+		if IsParenExpr(&tok) {
 			// Step 4: a quote-captured ParenExpr (already Quoted) or a
 			// raw-capture forward position is left unevaluated so the
 			// matched sig captures the paren as code.
@@ -420,7 +423,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 				scanIdx++
 				continue
 			}
-			peItems, _ := AsParenExpr(tok)
+			peItems, _ := AsParenExpr(&tok)
 			win.Splice(scanIdx, 1, h.ScratchParenSpan(peItems)...)
 			continue
 		}
@@ -429,8 +432,8 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// Phase B): expand to its lowered get-chain marker span in place,
 		// then re-process. Quoted/raw-capture reaches are left for the
 		// matched sig (parity with the ParenExpr branch above).
-		if IsReach(tok) {
-			if !isEvalReach(tok) || rawParenForward(fn, pos) || rawFormForward(fn, pos) {
+		if IsReach(&tok) {
+			if !isEvalReach(&tok) || rawParenForward(fn, pos) || rawFormForward(fn, pos) {
 				pos++
 				scanIdx++
 				continue
@@ -441,7 +444,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			// like a paren group — uniformly, strict or not. Only a bare
 			// function word that collects its own args stops the scan
 			// (below). design/STRICT-FORWARD-BARRIER.0.md.
-			info, _ := AsReach(tok)
+			info, _ := AsReach(&tok)
 			win.Splice(scanIdx, 1, expandReach(info)...)
 			continue
 		}
@@ -464,10 +467,10 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// macros that must run against the live stack — see spliceIsData),
 		// and binder operands (`def y xs` rebinds the MARKER so y aliases
 		// the splice — see bindsReferent).
-		if IsWord(tok) && viableConsumes(pos) && !bindsReferent(fn.Name) && !capturesForwardToken(fn, pos, tok) {
-			if wi, werr := AsWord(tok); werr == nil {
-				if top, ok := h.DefTop(wi.Name); ok && IsSplice(top) {
-					if info, serr := AsSplice(top); serr == nil && spliceIsData(info) {
+		if IsWord(&tok) && viableConsumes(pos) && !bindsReferent(fn.Name) && !capturesForwardToken(fn, pos, tok) {
+			if wi, werr := AsWord(&tok); werr == nil {
+				if top, ok := h.DefTop(wi.Name); ok && IsSplice(&top) {
+					if info, serr := AsSplice(&top); serr == nil && spliceIsData(info) {
 						pe := NewParenExpr([]Value{tok})
 						pe.pos = tok.pos
 						win.Set(scanIdx, pe)
@@ -495,7 +498,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// `undef foo`, a raw/form/type slot, a matching KEYWORD literal like
 		// def's `fn`) — there the function word is the argument, not a
 		// barrier, and the scan must walk past it.
-		if IsWord(tok) && !capturesForwardToken(fn, pos, tok) && h.IsFnWordBarrier(tok) {
+		if IsWord(&tok) && !capturesForwardToken(fn, pos, tok) && h.IsFnWordBarrier(tok) {
 			break
 		}
 
@@ -516,7 +519,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// former scan, groups beyond a NON-FUNCTION word remain reachable.
 		if mt, kind := h.StaticForwardType(tok); kind == FwdValue {
 			pruneViable(pos, mt)
-		} else if IsWord(tok) {
+		} else if IsWord(&tok) {
 			// A def-bound word's TYPE stays un-pruned (contextual), but
 			// its concrete-PATTERN verdict is exact — patternsOk resolves
 			// the word through Defs.Top the same way before unifying — so
@@ -585,13 +588,13 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// is three loops over the same tokens with three stop
 		// condition sets (design/FULL-COMPILATION.0.md §6.2); every
 		// decision they share belongs in one place.
-		if scanBoundaryToken(tok) {
+		if scanBoundaryToken(&tok) {
 			break
 		}
 
 		// 1.5: open parens are pre-evaluated by preEvalParens
 		// before matching begins. If one remains, treat as boundary.
-		if IsOpenParen(tok) {
+		if IsOpenParen(&tok) {
 			break
 		}
 
@@ -607,8 +610,8 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			continue
 		}
 
-		if IsWord(tok) {
-			ww, _ := AsWord(tok)
+		if IsWord(&tok) {
+			ww, _ := AsWord(&tok)
 			// /q modifier: capture the upcoming Word as an Atom
 			// (the conversion happens at insertForward / stepLiteral
 			// time; here we just count it as a match).
@@ -640,7 +643,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// literal is declined at a concrete-payload slot, so the
 				// plan never claims what the commit re-match would
 				// reject.
-				if IsBareTypeNode(top) {
+				if IsBareTypeNode(&top) {
 					isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
 					if !isTypeArg && rejectsTypeLiteral(top, expectedType) {
 						break
@@ -664,9 +667,9 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// when it dispatches. Both are the fn binding here, or the
 				// compiled lane collects by value what the interpreter calls.
 				_, isFnPayload := top.Data.(FnDefInfo)
-				isFnBinding := isFnPayload || IsFnTypedCarrier(top) ||
+				isFnBinding := isFnPayload || IsFnTypedCarrier(&top) ||
 					(top.Dynamic && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
-				byValue := SigArgMatches(sig, fwd, top) && (!isFnBinding || ww.ForceVal)
+				byValue := SigArgMatches(sig, fwd, &top) && (!isFnBinding || ww.ForceVal)
 				if byValue || expectedType.Equal(TAny) || gradualAny {
 					// A dispatching binding (FnDefInfo) planned as an
 					// operand is SPECULATIVE: at runtime this token
@@ -713,7 +716,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 
 			// Known literals: true/false → Boolean, type names → type literal.
 			if ww.Name == "true" || ww.Name == "false" {
-				if SigArgMatches(sig, fwd, Value{Parent: TBoolean}) || expectedType.Equal(TAny) {
+				if SigArgMatches(sig, fwd, &Value{Parent: TBoolean}) || expectedType.Equal(TAny) {
 					positions[fwd] = scanIdx
 					fwd++
 					scanIdx++
@@ -723,7 +726,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			}
 			if tn, isType := ResolveBuiltinTypeName(ww.Name); isType {
 				lit := NewTypeLiteral(tn)
-				if SigArgMatches(sig, fwd, lit) {
+				if SigArgMatches(sig, fwd, &lit) {
 					// Same admission a future LITERAL token gets
 					// (the block below): a type literal is declined
 					// at a concrete-payload slot, so the plan never
@@ -741,7 +744,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			}
 
 			// Undefined word: always resolves to Atom.
-			if SigArgMatches(sig, fwd, Value{Parent: TAtom}) || expectedType.Equal(TAny) {
+			if SigArgMatches(sig, fwd, &Value{Parent: TAtom}) || expectedType.Equal(TAny) {
 				positions[fwd] = scanIdx
 				fwd++
 				scanIdx++
@@ -751,7 +754,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		}
 
 		// Open paren marker: boundary, stop forward scan.
-		if IsOpenParen(tok) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+		if IsOpenParen(&tok) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 			break
 		}
 
@@ -780,7 +783,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// matches. Inert at runtime (operands are concrete there). Mirrors
 		// the stack-phase and positionalMatch /q guards. See
 		// design/legacy/module-fn-checkstate-ownership.2.ignore.
-		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(tok) && !tok.Parent.ConformsTo(TAtom) {
+		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(&tok) && !tok.Parent.ConformsTo(TAtom) {
 			break
 		}
 
@@ -791,7 +794,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// QuoteArgs flag selects the Angle marker's head form
 		// (the binder's name slot). An unexpandable marker is
 		// a boundary; it errors at step time.
-		if IsSugar(tok) {
+		if IsSugar(&tok) {
 			sinfo, sok := AsSugar(tok)
 			if !sok { //covergate:allow IsSugar guarantees a SugarInfo payload
 				break
@@ -812,7 +815,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			continue
 		}
 		// Literal value: direct type check.
-		if SigArgMatches(sig, fwd, tok) || expectedType.Equal(TAny) {
+		if SigArgMatches(sig, fwd, &tok) || expectedType.Equal(TAny) {
 			isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
 			if !isTypeArg && rejectsTypeLiteral(tok, expectedType) {
 				break // reject type literal at concrete-payload sig
@@ -887,13 +890,13 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	win := h.Window()
 	val := win.At(valIdx)
 	nextIdx := fwd.CollectedArgs
-	matches := SigArgMatches(fwd.Sig, nextIdx, val)
+	matches := SigArgMatches(fwd.Sig, nextIdx, &val)
 	// A /q-marked TAtom slot accepts a Word: convert it in place so the
 	// eventual handler sees a uniform Atom rather than having to extract a
 	// name from either shape.
 	if !matches && fwd.Sig.QuoteArgs != nil && fwd.Sig.QuoteArgs[nextIdx] &&
 		val.Parent.Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
-		w, _ := AsWord(val)
+		w, _ := AsWord(&val)
 		atom := NewAtom(w.Name)
 		atom.pos = val.pos // preserve source position across /q Word→Atom conversion
 		win.Set(valIdx, atom)

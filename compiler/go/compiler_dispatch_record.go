@@ -40,7 +40,7 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 	for i, a := range args {
 		// A type literal at a declared type slot — `convert Bytes "m"`'s
 		// target — is compile-time known by construction.
-		if sig.TypeArgs[i] && core.IsBareTypeNode(a) {
+		if sig.TypeArgs[i] && core.IsBareTypeNode(&a) {
 			continue
 		}
 		if !check.ScalarFoldOperand(a) {
@@ -55,7 +55,7 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 	if !ok || !core.ConstFoldAgrees(one, two) {
 		return core.Value{}, false
 	}
-	if !core.IsInertConst(one) {
+	if !core.IsInertConst(&one) {
 		return core.Value{}, false
 	}
 	return one, true
@@ -246,12 +246,12 @@ func tryFoldReStepWord(r *core.Registry, word string, args, outs []core.Value) b
 	if !es.Active() || (!core.IsGetWord(word) && !core.IsGetrWord(word)) || len(args) != 2 || len(outs) != 1 {
 		return false
 	}
-	if !core.IsWord(outs[0]) || core.IsBareTypeNode(outs[0]) {
+	if !core.IsWord(&outs[0]) || core.IsBareTypeNode(&outs[0]) {
 		return false
 	}
 	key, recv := args[0], args[1]
-	return core.IsConcrete(recv) && recv.Parent.ConformsTo(core.TList) &&
-		core.IsConcrete(key) && key.Parent.ConformsTo(core.TInteger)
+	return core.IsConcrete(&recv) && recv.Parent.ConformsTo(core.TList) &&
+		core.IsConcrete(&key) && key.Parent.ConformsTo(core.TInteger)
 }
 
 // tryFoldReStepCase folds a `case` whose check-mode result is a LIVE WORD
@@ -270,7 +270,7 @@ func tryFoldReStepCase(r *core.Registry, word string, sig *core.Signature, outs 
 	if word != "case" || !r.Check.Recorder().Active() || sig == nil || sig.FnFrame() != nil || len(outs) != 1 {
 		return false
 	}
-	return core.IsWord(outs[0]) && !core.IsBareTypeNode(outs[0])
+	return core.IsWord(&outs[0]) && !core.IsBareTypeNode(&outs[0])
 }
 
 // tryFoldStaticIndex folds a `get` / `getr` over a CONCRETE list with a STATIC,
@@ -288,8 +288,8 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 		return false
 	}
 	key, recv := args[0], args[1]
-	if !recv.Parent.ConformsTo(core.TList) || !core.IsConcrete(recv) ||
-		!key.Parent.ConformsTo(core.TInteger) || !core.IsConcrete(key) {
+	if !recv.Parent.ConformsTo(core.TList) || !core.IsConcrete(&recv) ||
+		!key.Parent.ConformsTo(core.TInteger) || !core.IsConcrete(&key) {
 		return false
 	}
 	n, err := core.AsInteger(key)
@@ -316,7 +316,7 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 	// named binding read via /v" (module-fnvalue-boundary.tsv:L24) — and
 	// the unfolded event's receiver has no compiled home (the VM keeps no
 	// args stack), so the exclusion turned four such rows into declines.
-	if (core.IsFnTypedCarrier(elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
+	if (core.IsFnTypedCarrier(&elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
 		return false
 	}
 	// An `args` projection with a recorded home (RecordArgsProjection):
@@ -423,9 +423,9 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 				return false
 			}
 			sawModule = true
-		case core.IsBareTypeNode(a):
+		case core.IsBareTypeNode(&a):
 			// a type operand (the target of `convert Map …` / `… is Module`)
-		case core.IsInertConst(a):
+		case core.IsInertConst(&a):
 			// an inert const operand (a quoted key atom, a scalar)
 		default:
 			return false // a runtime / non-const operand — not a compile-time fold
@@ -463,9 +463,9 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 		return false
 	}
 	switch {
-	case core.IsInertConst(one):
+	case core.IsInertConst(&one):
 		outs[0] = one // ride as an inert const
-	case core.IsBareTypeNode(one) && one.ID != "":
+	case core.IsBareTypeNode(&one) && one.ID != "":
 		outs[0] = one // ride as a type operand (OpPushType)
 	default:
 		return false
@@ -499,7 +499,7 @@ func concreteHandlerEval(r *core.Registry, sig *core.Signature, args []core.Valu
 	if err != nil || len(res) != 1 {
 		return core.Value{}, false
 	}
-	if core.IsConcrete(res[0]) || (core.IsBareTypeNode(res[0]) && res[0].ID != "") {
+	if core.IsConcrete(&res[0]) || (core.IsBareTypeNode(&res[0]) && res[0].ID != "") {
 		return res[0], true
 	}
 	return core.Value{}, false
@@ -632,7 +632,7 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 	// than silently ride a mutator's argument.
 	if sig.CompileEffect.Has(core.CompileQuoteInert) {
 		for i := range args {
-			if sig.QuoteArgs[i] && !core.IsInertConst(args[i]) {
+			if sig.QuoteArgs[i] && !core.IsInertConst(&args[i]) {
 				return false
 			}
 		}
@@ -642,7 +642,7 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 		if !sig.QuoteArgs[i] {
 			continue
 		}
-		if _, ok := args[i].Data.(core.AtomPayload); !ok || !core.IsInertConst(args[i]) {
+		if _, ok := args[i].Data.(core.AtomPayload); !ok || !core.IsInertConst(&args[i]) {
 			return false
 		}
 	}
@@ -931,7 +931,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 		// and only a COMPUTED list — tokens that exist only at run time (a
 		// module fn's returned clause list) — takes this backstop.
 		bp, ok := soleNoEvalSlot(sig, len(args))
-		if !ok || core.IsConcrete(args[bp]) || len(outs) == 0 {
+		if !ok || core.IsConcrete(&args[bp]) || len(outs) == 0 {
 			return false
 		}
 		// A STRUCTURED-LOWERING word (`for`) has no body run of its own to
@@ -967,7 +967,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// capitalised def / import inside the baked body re-runs a registry
 	// mutation the check pass already applied and half-rolled-back (the
 	// do-unit registry-replay miscompile — see bodyHasReplayHazard).
-	if core.IsConcrete(body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
+	if core.IsConcrete(&body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
 		return false
 	}
 	// An error HANDLER (`error`, StripsUnconsumedInput) takes the dyn-body
@@ -976,13 +976,13 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// (0 for `[drop]`, 1 for a pass-through), a region below (NUR300). A
 	// CONCRETE handler body the closure path declined keeps its decline
 	// (region_stack_read_test.go's two witnesses).
-	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
+	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(&body) {
 		return false
 	}
 	// Every OTHER code-body slot the handler re-runs (walk's optional ascend
 	// hook, sig position 3) is held to the same two rules.
 	for i := range args {
-		if i == bp || !sig.NoEvalArgs[i] || !core.IsConcrete(args[i]) {
+		if i == bp || !sig.NoEvalArgs[i] || !core.IsConcrete(&args[i]) {
 			continue
 		}
 		if check.BodyHasSentinelDeep(r, args[i]) || bodyHasReplayHazard(args[i]) {
@@ -1073,10 +1073,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// runtime net count / overload is genuinely variable — keeps the marking.
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
-	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
+	fixedValueEval := core.IsConcrete(&body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	// A LITERAL body a closure probe found to leave a run (noteBodyRun,
 	// NUR294) is not modelled exactly: it takes a computed body's marks.
-	litRun := core.IsConcrete(body) && es.takeBodyRun(body)
+	litRun := core.IsConcrete(&body) && es.takeBodyRun(body)
 	if !fixedValueEval {
 		f.variadicResult = true
 		// A COMPUTED body's run (NUR210): a literal body the backstop took
@@ -1086,7 +1086,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// body ends in it leaves the run's count, not one seat.
 		cs := sig.Callable
 		f.dynBodyRun = cs != nil && (cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs || cs.StripsUnconsumedInput) &&
-			(!core.IsConcrete(body) || body.Dynamic || litRun)
+			(!core.IsConcrete(&body) || body.Dynamic || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
 	// values where the check pass models one dynamic(Any) out, and so does a
@@ -1103,7 +1103,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// check pass models. A region that may leave a callable is demoted to a
 	// runtime-checked single value where a fixed seat consumes it
 	// (dyn_body_one.go), rather than declined.
-	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
+	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(&body) || litRun) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
 			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
@@ -1187,11 +1187,11 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 			fnSlot = i
 		}
 	}
-	if fnSlot < 0 || core.IsConcrete(args[fnSlot]) || !args[fnSlot].Dynamic {
+	if fnSlot < 0 || core.IsConcrete(&args[fnSlot]) || !args[fnSlot].Dynamic {
 		return false
 	}
 	for i := range args {
-		if sig.QuoteArgs[i] && (!sig.CompileEffect.Has(core.CompileQuoteInert) || !core.IsInertConst(args[i])) {
+		if sig.QuoteArgs[i] && (!sig.CompileEffect.Has(core.CompileQuoteInert) || !core.IsInertConst(&args[i])) {
 			return false
 		}
 	}
@@ -1306,7 +1306,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// regression on islandCeiling) for no gain — the reach form has no body to
 	// run. Decline so it declines; the lens-as-const value/apply/getpath forms
 	// (which do not route here) still compile natively.
-	if sig.Callable != nil && sig.Callable.BodyPos < len(args) && core.IsReach(args[sig.Callable.BodyPos]) {
+	if sig.Callable != nil && sig.Callable.BodyPos < len(args) && core.IsReach(&args[sig.Callable.BodyPos]) {
 		return false
 	}
 	// A dispatch whose output is already recorded was handled by a structured
@@ -1359,7 +1359,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 		// re-resolves it against the registry's lattice at run time, the
 		// same place OpPushType resolves canonical types. It is never
 		// threaded (a stack PUSH_TYPE would mis-order the dispatch).
-		if core.IsBareTypeNode(a) && a.ID != "" {
+		if core.IsBareTypeNode(&a) && a.ID != "" {
 			if len(ins) > 0 {
 				return false
 			}
@@ -1367,14 +1367,14 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 			continue
 		}
 		cv, ok := es.Materialise(a)
-		baked := ok && core.IsConcrete(cv)
+		baked := ok && core.IsConcrete(&cv)
 		if baked && sig.NoEvalArgs[i] {
 			// A code body: legitimately contains words, but every one
 			// must be VM-resolvable (no check-time def carriers).
 			if !check.BodyFreeForFallback(r, cv) {
 				return false
 			}
-		} else if baked && !core.IsInertConst(cv) {
+		} else if baked && !core.IsInertConst(&cv) {
 			// A baked data arg must be DEEPLY concrete plain data — a
 			// carrier element anywhere (e.g. a def-bound list whose
 			// interior the check pass stripped) would bake a type-only
@@ -1510,7 +1510,7 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 		if v.Carrier && v.Parent != nil && v.Parent.Equal(core.TAny) {
 			continue
 		}
-		if !core.SigTypeMatches(v, t) {
+		if !core.SigTypeMatches(&v, t) {
 			return false
 		}
 	}

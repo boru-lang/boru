@@ -46,7 +46,7 @@ func classifyNode(v Value) (emitNodeKind, []walkEntry) {
 
 	// List-like: a concrete List, or an Ideal Table (which childrenOf
 	// projects to a List).
-	if IsConcrete(v) {
+	if IsConcrete(&v) {
 		if v.Parent.ConformsTo(TList) {
 			return emitList, entries
 		}
@@ -174,7 +174,7 @@ func NaturalEmitKind(v Value) (string, bool) {
 	if IsXmlValue(v) {
 		return "xml", true
 	}
-	if IsConcrete(v) {
+	if IsConcrete(&v) {
 		// A concrete table from read / CSVFormat.Decode is a TList whose payload
 		// is TableData (its Parent does NOT conform to TTable), so detect the
 		// payload directly — otherwise the TList branch below would pick json and
@@ -699,7 +699,7 @@ func joinFields(fields []string, sep string) string {
 // with internal quotes doubled). Non-string cells render via String().
 func csvCell(v Value, sep string) string {
 	var s string
-	if v.Parent.ConformsTo(TString) && IsConcrete(v) {
+	if v.Parent.ConformsTo(TString) && IsConcrete(&v) {
 		s, _ = AsString(v)
 	} else {
 		s = v.String()

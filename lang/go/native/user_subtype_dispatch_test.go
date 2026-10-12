@@ -76,7 +76,7 @@ func TestUserTypeBindingShape_ObjectRefinement(t *testing.T) {
 	if !ok {
 		t.Fatal("Foo not installed as a type")
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		t.Error("ObjectType body should have Data != nil")
 	}
 	if body.Parent == nil || body.Parent.Leaf() != "Foo" {
@@ -188,18 +188,18 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 	if !ok {
 		t.Fatal("Pos not installed")
 	}
-	if !IsBareTypeNode(body) {
+	if !IsBareTypeNode(&body) {
 		t.Errorf("bare-refine body should be a bare type node, got Data=%T", body.Data)
 	}
 	def := r.LookupTypeName("Pos")
 	if def == nil {
 		t.Fatal("LookupTypeName(Pos) = nil")
 	}
-	if NewInteger(42).Is(def) {
+	if addrOf(NewInteger(42)).Is(def) {
 		t.Error("42.Is(Pos lattice node) = true — newtype membership must be nominal, a plain Integer is not a Pos")
 	}
 	bNode := body
-	if NewInteger(42).Is(&bNode) {
+	if addrOf(NewInteger(42)).Is(&bNode) {
 		t.Error("42.Is(&body) = true — the def-table body must not admit untagged base values either")
 	}
 }
@@ -276,10 +276,10 @@ func TestDisjunctMembershipRequiresCanonicalNode(t *testing.T) {
 	if def == nil {
 		t.Fatal("LookupTypeName(Maybe) = nil")
 	}
-	if !NewInteger(42).Is(def) {
+	if !addrOf(NewInteger(42)).Is(def) {
 		t.Error("42.Is(Maybe) = false — the Integer alternative must be admitted")
 	}
-	if NewString("x").Is(def) {
+	if addrOf(NewString("x")).Is(def) {
 		t.Error(`"x".Is(Maybe) = true — String is not an alternative and must be rejected`)
 	}
 
@@ -288,7 +288,7 @@ func TestDisjunctMembershipRequiresCanonicalNode(t *testing.T) {
 	// canonical — update eng/go/CLAUDE.md "Canonical *Type Pointers".
 	body, _ := r.TopTypeBody("Maybe")
 	bNode := body
-	if NewInteger(42).Is(&bNode) {
+	if addrOf(NewInteger(42)).Is(&bNode) {
 		t.Error("42.Is(&body) = true — non-canonical body pointer unexpectedly dispatches membership")
 	}
 }

@@ -167,7 +167,7 @@ func planSplitOver(reg *core.Registry, word string, fn *core.FnDefInfo, beneath,
 func rematchStoppedTuple(ds *compiler.DispatchSpec, fn *core.FnDefInfo, window, written []core.Value) []core.Value {
 	nStack := ds.NArgs - ds.NFwd
 	for i, at := range ds.Written {
-		if at < nStack || core.IsConcrete(written[i]) {
+		if at < nStack || core.IsConcrete(&written[i]) {
 			continue
 		}
 		prefix, ok := tupleAt(window, ds.Prefix)

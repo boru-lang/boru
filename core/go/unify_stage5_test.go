@@ -200,7 +200,7 @@ func TestX5DegenRootConcreteWins(t *testing.T) {
 	if !ok {
 		t.Fatal("None literal vs none must unify")
 	}
-	if !IsNone(got) {
+	if !IsNone(&got) {
 		t.Fatalf("expected the concrete none value, got %v", got)
 	}
 }
@@ -539,7 +539,7 @@ func TestX5ResolveSigChildParamNested(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolved inner is a typed list: %v", err)
 	}
-	if !IsBareTypeNode(ici.Child) {
+	if !IsBareTypeNode(&ici.Child) {
 		t.Fatalf("inner child should resolve to the Integer literal, got %v", ici.Child)
 	}
 
@@ -562,7 +562,7 @@ func TestX5ResolveSigChildParamUserType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolved value is a typed list: %v", err)
 	}
-	if !IsBareTypeNode(ci.Child) {
+	if !IsBareTypeNode(&ci.Child) {
 		t.Fatalf("user-type child should resolve to its body, got %v", ci.Child)
 	}
 }

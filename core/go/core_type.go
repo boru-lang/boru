@@ -56,7 +56,7 @@ func PathOf(t Value) Value {
 	// node, so start from t itself; any other value (a Function /
 	// Disjunct / Enum value) contributes the ancestry of its type.
 	start := t.Parent
-	if IsBareTypeNode(t) {
+	if IsBareTypeNode(&t) {
 		start = &t
 	}
 	var chain []*Type
@@ -112,7 +112,7 @@ func TypeOf(v Value) Value {
 // returns Map). Singleton-typed shapes still go via `is`'s structural
 // unification path.
 func IsRecordShape(v Value) bool {
-	if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 		return false
 	}
 	m, _ := AsMap(v)
@@ -121,7 +121,7 @@ func IsRecordShape(v Value) bool {
 	}
 	for _, k := range m.Keys() {
 		fv, _ := m.Get(k)
-		if IsBareTypeNode(fv) {
+		if IsBareTypeNode(&fv) {
 			continue // type literal (or None type literal)
 		}
 		if IsRecordShape(fv) {
@@ -175,7 +175,7 @@ func IsValueOfType(v, t Value) bool {
 	// constraint Unifier (predicate / DepScalar / disjunct / negation /
 	// FnUndef / surface) keep the node — the Unify fallback consults
 	// the node's Behavior.
-	if IsBareTypeNode(t) {
+	if IsBareTypeNode(&t) {
 		resolve := !HasConstraintUnify(&t)
 		if !resolve {
 			if u, ok := unifierOf(t.Behavior()); ok {
@@ -188,8 +188,8 @@ func IsValueOfType(v, t Value) bool {
 			}
 		}
 	}
-	if IsTypedList(t) {
-		if !v.Parent.Equal(TList) || !IsConcrete(v) {
+	if IsTypedList(&t) {
+		if !v.Parent.Equal(TList) || !IsConcrete(&v) {
 			return false
 		}
 		ci, _ := AsChildType(t)
@@ -204,8 +204,8 @@ func IsValueOfType(v, t Value) bool {
 		}
 		return true
 	}
-	if IsTypedMap(t) {
-		if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+	if IsTypedMap(&t) {
+		if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 			return false
 		}
 		ci, _ := AsChildType(t)
@@ -228,7 +228,7 @@ func IsValueOfType(v, t Value) bool {
 	// Subtypes like RecordTypeInfo / OptionsTypeInfo (whose AsMap
 	// returns nil) fall through to Unify below.
 	if _tMap, _tErr := AsMap(t); t.Parent.Equal(TMap) && t.Data != nil && _tErr == nil && _tMap != nil {
-		if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+		if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 			return false
 		}
 		vMap, _ := AsMap(v)
@@ -248,7 +248,7 @@ func IsValueOfType(v, t Value) bool {
 		}
 		return true
 	}
-	if IsBareTypeNode(t) {
+	if IsBareTypeNode(&t) {
 		// `v is Type` — the bare metatype: v satisfies it iff v is
 		// itself a TYPE — not merely a value whose type would qualify:
 		//
@@ -271,7 +271,7 @@ func IsValueOfType(v, t Value) bool {
 			if v.Carrier {
 				return false
 			}
-			return IsBareTypeNode(v) || IsTypeBody(v) || IsRecordShape(v) || v.Parent.ConformsTo(TType)
+			return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) || v.Parent.ConformsTo(TType)
 		}
 		// Canonical dispatch site: route through Behavior so custom
 		// type semantics (predicate types, dependent scalars, future
@@ -344,7 +344,7 @@ func validateTypeName(r *Registry, name string) error {
 // newtype's renamed literal) carries no structure, so nothing is
 // recorded for it.
 func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
-	if !IsBareTypeNode(pushed) {
+	if !IsBareTypeNode(&pushed) {
 		def.SetTypeBody(pushed)
 	}
 	r.Defs.PushType(name, def, pushed)
@@ -374,7 +374,7 @@ func InstallType(r *Registry, name string, body Value) error {
 	if err != nil {
 		return err
 	}
-	if !IsTypeBody(body) && !IsLiteralTypeBody(body) {
+	if !IsTypeBody(&body) && !IsLiteralTypeBody(body) {
 		return &BoruError{
 			Code:   "type_error",
 			Detail: "type: body must be a type value or literal, got " + body.String(),
@@ -425,7 +425,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		}
 		def.ensureTMeta().Behavior = bhv
 		installTypeBinding(r, name, def, NewValueRaw(def, info))
-	} else if IsClassType(body) {
+	} else if IsClassType(&body) {
 		info, _ := AsClassType(body)
 		// Object types are class types now — sealed nominal records rooted
 		// under Ideal/Class (the open Object container was removed).
@@ -594,7 +594,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 			installBareRefineUnifier(def, name)
 		}
 		installTypeBinding(r, name, def, body)
-	} else if IsDisjunct(body) {
+	} else if IsDisjunct(&body) {
 		// `def Maybe (Integer tor none)` route: mint a lattice node
 		// parented at the body's lattice (TDisjunct) and attach a
 		// disjunctUnifier so `42.Is(Maybe)` and sig dispatch consult
@@ -654,7 +654,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		def := r.Types.MintType(name, body.Parent)
 		installDepScalarUnifier(def, body.Parent, di, name)
 		installTypeBinding(r, name, def, body)
-	} else if IsBareTypeNode(body) {
+	} else if IsBareTypeNode(&body) {
 		// ALIAS: `def Foo Integer`. The name ADOPTS the canonical
 		// aliased node instead of minting an unbridged child — a fresh
 		// mint under the aliased type carried DefaultBehavior, nothing

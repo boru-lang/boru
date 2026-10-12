@@ -37,7 +37,7 @@ func jsonifyDefaultHandler(args []Value, ctx map[string]Value, stack []Value, r 
 // structurally impossible and MongoDB-style $-keys round-trip through
 // reify's unescape. Output is pure JSON (design/legacy/CLASS-OBJECT.10.ignore §3e).
 func valueToAnySer(v Value) any {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil
 	}
 	if IsClassInstance(v) {

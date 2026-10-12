@@ -153,10 +153,10 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
 	r.Defs.Push("a5", closure)
 
-	if dispatchesAsWord(closure, r) || r.Lookup("a5") != nil {
+	if dispatchesAsWord(&closure, r) || r.Lookup("a5") != nil {
 		t.Fatal("outside a run the bound closure is data: no dispatch, no lookup aggregate")
 	}
-	if dispatchesAsWord(closure, nil) {
+	if dispatchesAsWord(&closure, nil) {
 		t.Error("a nil registry hosts no dispatch")
 	}
 	// The nil computed without an invoker must not outlive the run that
@@ -166,7 +166,7 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 	}
 
 	r.Invoker = func(_ *Registry, _ Value, _ []Value) ([]Value, error) { return nil, nil }
-	if !dispatchesAsWord(closure, r) {
+	if !dispatchesAsWord(&closure, r) {
 		t.Fatal("under a run's invoker the bound closure dispatches as a word")
 	}
 	fn := r.Lookup("a5")

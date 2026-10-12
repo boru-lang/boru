@@ -171,7 +171,7 @@ func TestResolveTypeLiteralDefClassBinding(t *testing.T) {
 	r.Defs.Push("Integer", cv)
 	defer r.Defs.Pop("Integer")
 	got := ResolveTypeLiteralDef(lit, r)
-	if !IsClassType(got) {
+	if !IsClassType(&got) {
 		t.Fatalf("literal must resolve to the class binding, got %s", got.String())
 	}
 }
@@ -329,7 +329,7 @@ func TestResolveTypedNameValueArms(t *testing.T) {
 	if v, name, ok := r.ResolveTypedNameValue(NewWord("stage5val")); !ok || name != "stage5val" || !ValuesEqual(v, NewInteger(4)) {
 		t.Fatal("def-bound word must resolve to its binding")
 	}
-	if v, name, ok := r.ResolveTypedNameValue(NewWord("Integer")); !ok || name != "Integer" || !IsBareTypeNode(v) {
+	if v, name, ok := r.ResolveTypedNameValue(NewWord("Integer")); !ok || name != "Integer" || !IsBareTypeNode(&v) {
 		t.Fatal("builtin type name must resolve to its literal")
 	}
 	if _, name, ok := r.ResolveTypedNameValue(NewWord("Zz-stage5-missing")); ok || name != "Zz-stage5-missing" {

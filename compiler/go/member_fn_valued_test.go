@@ -27,7 +27,7 @@ func TestMemberIsFnValued(t *testing.T) {
 	if !readsFnMember(args) {
 		t.Error("a fn-typed carrier member tags the read")
 	}
-	if mv, ok := readFnMemberValue(args); !ok || !core.IsFnTypedCarrier(mv) {
+	if mv, ok := readFnMemberValue(args); !ok || !core.IsFnTypedCarrier(&mv) {
 		t.Errorf("the pinpointed member is the carrier, got %#v (%v)", mv, ok)
 	}
 }

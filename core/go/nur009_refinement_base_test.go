@@ -140,7 +140,7 @@ func TestRefinementConstructorsNoteUnknownBounds(t *testing.T) {
 	// between: a known empty interval is Never; an unknown bound decides
 	// nothing and is constructed at run time.
 	out, err = BetweenHandler([]Value{NewInteger(5), NewInteger(1), intLit}, nil, nil, r)
-	if err != nil || !IsBareTypeNode(out[0]) || !out[0].Is(TNever) {
+	if err != nil || !IsBareTypeNode(&out[0]) || !out[0].Is(TNever) {
 		t.Fatalf("between over known crossed bounds is Never: %v %v", out, err)
 	}
 	out, err = BetweenHandler([]Value{NewInteger(1), NewCarrier(TInteger), intLit}, nil, nil, r)
@@ -184,17 +184,17 @@ func TestUnknownBoundDecidesNothing(t *testing.T) {
 // bakes only when every bound it carries is itself a const.
 func TestRefinementConstOnlyOverKnownBounds(t *testing.T) {
 	known := NewDepScalar(DepGT, NewInteger(3))
-	if !IsInertConst(known) {
+	if !IsInertConst(&known) {
 		t.Error("a refinement over a known bound is a const")
 	}
-	if IsInertConst(NewDepScalar(DepGT, NewCarrier(TInteger))) {
+	if IsInertConst(addrOf(NewDepScalar(DepGT, NewCarrier(TInteger)))) {
 		t.Error("a refinement over an unknown bound is no const")
 	}
 	half := NewValueRaw(TInteger, DepScalarInfo{
 		Lo: &DepBound{Inclusive: true, Value: NewInteger(1)},
 		Hi: &DepBound{Inclusive: true, Value: NewCarrier(TInteger)},
 	})
-	if IsInertConst(half) {
+	if IsInertConst(&half) {
 		t.Error("an interval with one unknown side is no const")
 	}
 }
@@ -257,12 +257,12 @@ func TestUnknownRefinementIsTheRuns(t *testing.T) {
 	// A compile pass carries an anonymous node the run forwards.
 	r.Check.Compiling = true
 	kind, pat, err = ResolveSigType(r, unknown)
-	if err != nil || kind != TInteger || pat == nil || !IsBareTypeNode(*pat) || len(rec.sigForwards) != 1 ||
+	if err != nil || kind != TInteger || pat == nil || !IsBareTypeNode(pat) || len(rec.sigForwards) != 1 ||
 		!HasUnknownRefinement(*pat) {
 		t.Fatalf("a compile pass's inline refinement over an unknown bound is a forwarded node: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
 	}
 	if kind, pat, err = ResolveSigType(r, NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil || kind != TAny ||
-		pat == nil || !IsBareTypeNode(*pat) || len(rec.sigForwards) != 2 {
+		pat == nil || !IsBareTypeNode(pat) || len(rec.sigForwards) != 2 {
 		t.Fatalf("an inline union holding one is too: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
 	}
 	// An interval may be empty at run time — the interpreter's slot is then

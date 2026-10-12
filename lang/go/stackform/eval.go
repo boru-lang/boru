@@ -223,7 +223,7 @@ func plainLiterals(form *StackForm) ([]core.Value, bool) {
 // steps (a paren group, a splice, sugar, a reach). A Function is not plain —
 // unquoted it dispatches.
 func plainLiteral(v core.Value) bool {
-	if v.Parent == nil || core.IsParenExpr(v) || core.IsSplice(v) || core.IsSugar(v) || core.IsReach(v) {
+	if v.Parent == nil || core.IsParenExpr(&v) || core.IsSplice(&v) || core.IsSugar(&v) || core.IsReach(&v) {
 		return false
 	}
 	return v.Parent.ConformsTo(core.TScalar) || v.Parent.ConformsTo(core.TList) || v.Parent.ConformsTo(core.TMap)

@@ -74,10 +74,10 @@ func TestS3DisjunctUnifierNodeArms(t *testing.T) {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
 	// Candidate on either side of the node.
-	if out, err := u.Unify(NewInteger(5), node, nil); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(NewInteger(5), node, nil); err != nil || !IsConcrete(&out) {
 		t.Errorf("5 must unify through the Integer alternative (candidate left): %v", err)
 	}
-	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(&out) {
 		t.Errorf("5 must unify through the Integer alternative (candidate right): %v", err)
 	}
 	if _, err := u.Unify(NewString("x"), node, nil); err == nil {
@@ -122,7 +122,7 @@ func TestS3NegationUnifierNodeArms(t *testing.T) {
 	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
 	}
-	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(out) {
+	if out, err := u.Unify(node, NewInteger(5), nil); err != nil || !IsConcrete(&out) {
 		t.Errorf("a non-String is a member of the complement (candidate right): %v", err)
 	}
 	if _, err := u.Unify(NewString("x"), node, nil); err == nil {
@@ -343,7 +343,7 @@ func TestS3NodeContentConsumerArms(t *testing.T) {
 
 	// MakeFieldValueR: a constraint node with a Unify capability runs
 	// its rule — admitting a member, declining a non-member.
-	if out, err := MakeFieldValueR(NewInteger(50), bigLit, r); err != nil || !IsConcrete(out) {
+	if out, err := MakeFieldValueR(NewInteger(50), bigLit, r); err != nil || !IsConcrete(&out) {
 		t.Errorf("50 satisfies the refinement field constraint: %v", err)
 	}
 	if _, err := MakeFieldValueR(NewInteger(5), bigLit, r); err == nil {

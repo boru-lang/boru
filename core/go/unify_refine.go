@@ -34,7 +34,7 @@ type bareRefineUnifier struct {
 func (b *bareRefineUnifier) formatDelegate() {}
 
 func (b *bareRefineUnifier) Match(v Value, t *Type) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(b.prev).Match(v, t)
 	}
 	// Nominal: the value's tag must be the refine type itself (or a

@@ -36,7 +36,7 @@ package core
 // to its body. Builtin and refine nodes record no content and stay
 // nominal operands.
 func resolveTypeOperand(v Value) Value {
-	if b, ok := TypeContentOf(v); ok && IsBareTypeNode(v) {
+	if b, ok := TypeContentOf(v); ok && IsBareTypeNode(&v) {
 		return b
 	}
 	return v
@@ -109,7 +109,7 @@ func UnionType(a, b Value) Value {
 // non-type operand (a carrier from a runtime computation) degrades to the
 // declared Any.
 func TandReturnsFn(args []Value, _ *Registry) []Value {
-	if len(args) != 2 || !IsTypeBody(args[0]) || !IsTypeBody(args[1]) {
+	if len(args) != 2 || !IsTypeBody(&args[0]) || !IsTypeBody(&args[1]) {
 		return []Value{NewCarrier(TAny)}
 	}
 	return []Value{TandValues(args[1], args[0])}
@@ -155,7 +155,7 @@ func TandValues(a, b Value) Value {
 		return NegateType(UnionType(ai.Inner, bi.Inner))
 	}
 
-	if IsDisjunct(a) || IsDisjunct(b) {
+	if IsDisjunct(&a) || IsDisjunct(&b) {
 		aAlts := FlattenDisjunctAlts(a)
 		bAlts := FlattenDisjunctAlts(b)
 		var result []Value
@@ -199,7 +199,7 @@ func IsNeverShape(v Value) bool {
 	if v.Parent.Equal(TNever) {
 		return true
 	}
-	return IsBareTypeNode(v) && (&v).Equal(TNever)
+	return IsBareTypeNode(&v) && (&v).Equal(TNever)
 }
 
 // isAnyShape reports whether v is any form of Any: the carrier/sentinel
@@ -208,7 +208,7 @@ func isAnyShape(v Value) bool {
 	if v.Parent.Equal(TAny) {
 		return true
 	}
-	return IsBareTypeNode(v) && (&v).Equal(TAny)
+	return IsBareTypeNode(&v) && (&v).Equal(TAny)
 }
 
 // NegateType computes the set-theoretic complement of a type value,
@@ -286,10 +286,10 @@ func TnotReturnsFn(args []Value, _ *Registry) []Value {
 // isPlainConcreteMap reports whether v is a non-typed, non-record,
 // non-options concrete map (Data is *OrderedMap).
 func isPlainConcreteMap(v Value) bool {
-	if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 		return false
 	}
-	if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(v) {
+	if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(&v) {
 		return false
 	}
 	m, err := AsMap(v)
@@ -310,7 +310,7 @@ func mergeMaps(a, b ReadMap) (*OrderedMap, bool) {
 			// Combined is Never — check both forms: sentinel (Parent=
 			// TNever) and bare type literal (NewTypeLiteral(TNever),
 			// Parent=nil after the degenerate-root setup).
-			if combined.Parent.Equal(TNever) || (IsBareTypeNode(combined) && (&combined).Equal(TNever)) {
+			if combined.Parent.Equal(TNever) || (IsBareTypeNode(&combined) && (&combined).Equal(TNever)) {
 				return nil, false
 			}
 			result.Set(key, combined)

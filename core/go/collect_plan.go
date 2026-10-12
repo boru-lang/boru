@@ -104,7 +104,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	preferWordSig := false
 	if pointer+1 < win.Len() {
 		next := win.At(pointer + 1)
-		if IsWord(next) {
+		if IsWord(&next) {
 			preferWordSig = true
 		}
 	}
@@ -211,7 +211,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				canStack := true
 				for j := 0; j < remaining; j++ {
 					stackVal := resolved[len(resolved)-1-j]
-					if !SigArgMatches(sig, fwd+j, stackVal) {
+					if !SigArgMatches(sig, fwd+j, &stackVal) {
 						canStack = false
 						break
 					}
@@ -294,11 +294,11 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// Any-conforms-to-everything rule — it belongs to a value overload.
 			// Mirrors the forward-scan and positionalMatch /q guards. Inert at
 			// runtime (operands are concrete there).
-			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier && !IsConcrete(stackVal) && !stackVal.Parent.ConformsTo(TAtom) {
+			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier && !IsConcrete(&stackVal) && !stackVal.Parent.ConformsTo(TAtom) {
 				allMatch = false
 				break
 			}
-			if !SigArgMatches(sig, sigIdx, stackVal) {
+			if !SigArgMatches(sig, sigIdx, &stackVal) {
 				// A more-specific overload rejected because the stack-top
 				// operand is a mixed gradual carrier: a concrete value drawn
 				// from it might have matched here (and been grabbed). Remember
@@ -315,7 +315,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				allMatch = false
 				break
 			}
-			if unprovenStackOperand(stackVal, SigArgType(sig, sigIdx)) {
+			if unprovenStackOperand(&stackVal, SigArgType(sig, sigIdx)) {
 				gradualStack = true
 			}
 			positions[sigIdx] = resolvedIdx[ri]
@@ -383,7 +383,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 // unprovenStackOperand reports a stack operand matched on no proof — a
 // carrier whose static type does not conform to the slot, so the runtime
 // value may miss it (NUR305).
-func unprovenStackOperand(v Value, slot *Type) bool {
+func unprovenStackOperand(v *Value, slot *Type) bool {
 	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
 }
 
@@ -409,7 +409,7 @@ func allStackWindowAmbiguous(e *Engine, fn *FnDefInfo, w WordInfo, sig *Signatur
 			top, at = p, i
 		}
 	}
-	if at < 0 || !unprovenStackOperand(e.Tape.At(top), SigArgType(sig, at)) {
+	if at < 0 || !unprovenStackOperand(e.Tape.Ref(top), SigArgType(sig, at)) {
 		return false
 	}
 	si := len(fn.Signatures)

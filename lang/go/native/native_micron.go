@@ -20,7 +20,7 @@ import (
 func getMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	recv := args[1]
-	if !IsConcrete(recv) {
+	if !IsConcrete(&recv) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	if val, ok := basicMicronProperty(recv, getKey(key)); ok {
@@ -35,7 +35,7 @@ func getMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 func getrMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	recv := args[1]
-	if !IsConcrete(recv) {
+	if !IsConcrete(&recv) {
 		return nil, r.BoruError("getr_error", "getr: cannot access property on type literal", "getr")
 	}
 	k := getKey(key)
@@ -48,7 +48,7 @@ func getrMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 
 func hasMicronHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	recv := args[1]
-	if !IsConcrete(recv) {
+	if !IsConcrete(&recv) {
 		return []Value{NewBoolean(false)}, nil
 	}
 	_, ok := basicMicronProperty(recv, getKey(args[0]))
@@ -114,7 +114,7 @@ func delMicronReturns(args []Value, r *Registry) []Value {
 // never flagged.
 func getrMicronReturns(args []Value, r *Registry) []Value {
 	out := getMicronReturns(args, r)
-	if r != nil && r.Check.IsActive() && len(args) == 2 && IsConcrete(args[0]) &&
+	if r != nil && r.Check.IsActive() && len(args) == 2 && IsConcrete(&args[0]) &&
 		len(out) == 1 && out[0].Carrier && !out[0].Dynamic && out[0].Parent != nil && out[0].Parent.Equal(TNone) {
 		kind := "Micron"
 		if args[1].Parent != nil {
@@ -135,12 +135,12 @@ func getrMicronReturns(args []Value, r *Registry) []Value {
 // dynamic.
 func getMicronReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {
+	if len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent == nil {
 		return dyn
 	}
 	recv := args[1]
 	key := getKey(args[0])
-	if IsConcrete(recv) {
+	if IsConcrete(&recv) {
 		if val, ok := basicMicronProperty(recv, key); ok {
 			if ft := ValueType(val); ft != nil {
 				return []Value{NewCarrier(ft)}

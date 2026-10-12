@@ -14,18 +14,18 @@ func TestSigTypeMatchesDynamicDisjunct(t *testing.T) {
 	}))
 
 	// The Map alternative satisfies a Map (and Node) receiver slot.
-	if !SigTypeMatches(union, TMap) {
+	if !SigTypeMatches(&union, TMap) {
 		t.Error("dynamic(Map|None) must match a Map slot on its Map alternative")
 	}
-	if !SigTypeMatches(union, TNode) {
+	if !SigTypeMatches(&union, TNode) {
 		t.Error("dynamic(Map|None) must match a Node slot on its Map alternative")
 	}
 	// The None alternative satisfies a None slot.
-	if !SigTypeMatches(union, TNone) {
+	if !SigTypeMatches(&union, TNone) {
 		t.Error("dynamic(Map|None) must match a None slot on its None alternative")
 	}
 	// No alternative reaches a provably-disjoint scalar slot.
-	if SigTypeMatches(union, TInteger) {
+	if SigTypeMatches(&union, TInteger) {
 		t.Error("dynamic(Map|None) must decline an Integer slot — every alternative is disjoint")
 	}
 
@@ -34,10 +34,10 @@ func TestSigTypeMatchesDynamicDisjunct(t *testing.T) {
 		NewCarrier(TString),
 		NewTypeLiteral(TNone),
 	}))
-	if !SigTypeMatches(carrierUnion, TString) {
+	if !SigTypeMatches(&carrierUnion, TString) {
 		t.Error("a carrier alternative must match its own type's slot")
 	}
-	if SigTypeMatches(carrierUnion, TList) {
+	if SigTypeMatches(&carrierUnion, TList) {
 		t.Error("dynamic(String|None) must decline a List slot")
 	}
 }

@@ -81,7 +81,7 @@ func TestS5VOwnSigsFallbackFilter(t *testing.T) {
 func TestS5VReturnPatternInRange(t *testing.T) {
 	pat := NewTypeLiteral(TInteger)
 	rc := ReturnCheckInfo{ReturnPatterns: []*Value{&pat}}
-	if got := rc.ReturnPattern(0); got == nil || !IsBareTypeNode(*got) {
+	if got := rc.ReturnPattern(0); got == nil || !IsBareTypeNode(got) {
 		t.Errorf("ReturnPattern(0) = %v, want the stored pattern", got)
 	}
 	if rc.ReturnPattern(1) != nil {
@@ -223,7 +223,7 @@ func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 		t.Error("NewImplicitMap must produce an implicit map")
 	}
 	e := NewEnum([]Value{NewAtom("a"), NewAtom("b")})
-	if !e.Parent.Equal(TEnum) || !IsDisjunct(e) {
+	if !e.Parent.Equal(TEnum) || !IsDisjunct(&e) {
 		t.Error("NewEnum must build a TEnum-tagged disjunct")
 	}
 }
@@ -265,10 +265,10 @@ func TestS5VTypeNameAndPathOf(t *testing.T) {
 
 func TestS5VIsNilBehaviorFallback(t *testing.T) {
 	bare := &Type{} // no tmeta => Behavior() is nil
-	if NewInteger(1).Is(bare) {
+	if addrOf(NewInteger(1)).Is(bare) {
 		t.Error("Integer must not conform to an unrelated bare node")
 	}
-	if NewInteger(1).Is(nil) {
+	if addrOf(NewInteger(1)).Is(nil) {
 		t.Error("Is(nil) must be false")
 	}
 }
@@ -345,10 +345,10 @@ func TestS5VDisjunctAltLessCanonTiebreak(t *testing.T) {
 
 func TestS5VAccessorErrorArms(t *testing.T) {
 	notIt := NewInteger(1)
-	if _, err := AsSplice(notIt); err == nil {
+	if _, err := AsSplice(&notIt); err == nil {
 		t.Error("AsSplice(int) must error")
 	}
-	if _, err := AsMove(notIt); err == nil {
+	if _, err := AsMove(&notIt); err == nil {
 		t.Error("AsMove(int) must error")
 	}
 	if _, err := AsDisjunct(notIt); err == nil {
@@ -613,7 +613,7 @@ func TestS5VIsTypeValue(t *testing.T) {
 // the engine mints: a runtime value carries a Parent, a type node its
 // metadata, a carrier its flag, an identity-only or dynamic value its bit.
 func TestS5VIsUnboundSlot(t *testing.T) {
-	if !(Value{}).IsUnboundSlot() {
+	if !addrOf((Value{})).IsUnboundSlot() {
 		t.Error("the zero Value is the unbound slot")
 	}
 	for name, v := range map[string]Value{

@@ -17,7 +17,7 @@ func TestForwardPatternRejectsBranches(t *testing.T) {
 	// FORWARD positions only when IsConcrete(pattern) — a negation
 	// carries a NegationInfo payload and must stay concrete, or fn's
 	// tnot-List input constraint silently stops gating forward dispatch.
-	if !IsConcrete(notList) {
+	if !IsConcrete(&notList) {
 		t.Fatal("a negation pattern must be IsConcrete (forward-position enforcement depends on it)")
 	}
 

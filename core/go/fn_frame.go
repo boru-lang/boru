@@ -119,7 +119,7 @@ func NewFrameOpenSpan(meta *FnFrameMeta, argSpan int) Value {
 
 // IsFrameOpen reports whether v is a fn frame's open paren (as opposed
 // to a plain grouping paren).
-func IsFrameOpen(v Value) bool {
+func IsFrameOpen(v *Value) bool {
 	if !IsOpenParen(v) {
 		return false
 	}
@@ -128,7 +128,7 @@ func IsFrameOpen(v Value) bool {
 }
 
 // AsFrameOpen returns the FrameOpenInfo carried by a frame-open paren.
-func AsFrameOpen(v Value) (FrameOpenInfo, error) {
+func AsFrameOpen(v *Value) (FrameOpenInfo, error) {
 	info, ok := v.Data.(FrameOpenInfo)
 	if !ok {
 		return FrameOpenInfo{}, fmt.Errorf("AsFrameOpen: not a frame-open paren (got %T)", v.Data)
@@ -185,7 +185,7 @@ type FrameTailSpec struct {
 // compile-side residual-recording admission route through this ONE
 // predicate so the engines cannot disagree about the timing.
 func BodyEvalsResidual(body []Value) bool {
-	return len(body) > 1 || (len(body) == 1 && IsParenExpr(body[0]))
+	return len(body) > 1 || (len(body) == 1 && IsParenExpr(&body[0]))
 }
 
 // ResidualEvalsInFrame is THE residual rule (NUR153, ruled 2026-09-18):
@@ -272,7 +272,7 @@ func (e *Engine) unwindLiveFrames(from, to int) {
 	}
 	var opens []int
 	for i := from; i < to && i < e.Pointer; i++ {
-		if !IsFrameOpen(e.Tape.At(i)) {
+		if !IsFrameOpen(e.Tape.Ref(i)) {
 			continue
 		}
 		// Live iff the frame's matching close paren is at/after the
@@ -281,9 +281,9 @@ func (e *Engine) unwindLiveFrames(from, to int) {
 		closed := -1
 		for j := i; j < to; j++ {
 			v := e.Tape.At(j)
-			if IsOpenParen(v) {
+			if IsOpenParen(&v) {
 				depth++
-			} else if IsCloseParen(v) {
+			} else if IsCloseParen(&v) {
 				depth--
 				if depth == 0 {
 					closed = j
@@ -318,14 +318,14 @@ func (e *Engine) unwindFrameTail(openIdx, to int) {
 	for j := openIdx; j < to; j++ {
 		v := e.Tape.At(j)
 		switch {
-		case IsOpenParen(v):
+		case IsOpenParen(&v):
 			depth++
-		case IsCloseParen(v):
+		case IsCloseParen(&v):
 			depth--
 			if depth == 0 {
 				return
 			}
-		case depth == 1 && IsDefCleanup(v):
+		case depth == 1 && IsDefCleanup(&v):
 			// Registry-balance replay of a DISCARDED frame: the region's
 			// values (any pending residual included) are dropped by the
 			// flow resolver, so the in-frame residual eval is skipped —

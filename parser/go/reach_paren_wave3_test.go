@@ -30,7 +30,7 @@ func TestReachWave3WordModifiers(t *testing.T) {
 		if info, ok := core.AsSugar(vals[0]); !ok || info.Kind != c.kind {
 			t.Errorf("%q: value 0 = %v, want sugar(%s)", c.src, vals[0], c.kind)
 		}
-		if !core.IsReach(vals[1]) {
+		if !core.IsReach(&vals[1]) {
 			t.Errorf("%q: last value is not a Reach: %v", c.src, vals[1])
 		}
 	}
@@ -45,7 +45,7 @@ func TestReachWave3ForceArityModifier(t *testing.T) {
 	if info, ok := core.AsSugar(vals[0]); !ok || info.Kind != core.SugarForceArity || info.N != 2 {
 		t.Errorf("a.b/2: first value %v, want sugar(force-arity 2)", vals[0])
 	}
-	if !core.IsReach(vals[1]) {
+	if !core.IsReach(&vals[1]) {
 		t.Errorf("a.b/2: second value is not a Reach: %v", vals[1])
 	}
 }
@@ -58,10 +58,10 @@ func TestReachWave3MarkerModifiers(t *testing.T) {
 		if len(vals) != 2 {
 			t.Fatalf("%q: got %d values, want 2: %v", src, len(vals), vals)
 		}
-		if !core.IsReach(vals[0]) {
+		if !core.IsReach(&vals[0]) {
 			t.Errorf("%q: first value is not a Reach: %v", src, vals[0])
 		}
-		if !core.IsDispatchMod(vals[1]) {
+		if !core.IsDispatchMod(&vals[1]) {
 			t.Errorf("%q: second value is not a Word/__DM marker: %v", src, vals[1])
 		}
 	}
@@ -72,10 +72,10 @@ func TestReachWave3MarkerModifiers(t *testing.T) {
 // `(Type of [b/q])` paren expression inside the reach.
 func TestReachWave3TypeBoundKey(t *testing.T) {
 	vals := mustParseWave3(t, "a.b/t")
-	if len(vals) != 1 || !core.IsReach(vals[0]) {
+	if len(vals) != 1 || !core.IsReach(&vals[0]) {
 		t.Fatalf("a.b/t: expected one Reach, got %v", vals)
 	}
-	ri, _ := core.AsReach(vals[0])
+	ri, _ := core.AsReach(&vals[0])
 	last := ri.Segments[len(ri.Segments)-1].KeyLit
 	if info, ok := core.AsSugar(last); !ok || info.Kind != core.SugarTypeBound {
 		t.Errorf("a.b/t: the final key is %v, want the type-bound sugar", last)
@@ -97,7 +97,7 @@ func TestParenWave3StandaloneModifier(t *testing.T) {
 	if info, ok := core.AsSugar(vals[0]); !ok || info.Kind != core.SugarStackArgs {
 		t.Errorf("(1 add 2)/s: first value %v, want sugar(stack-args)", vals[0])
 	}
-	if !core.IsParenExpr(vals[1]) {
+	if !core.IsParenExpr(&vals[1]) {
 		t.Errorf("(1 add 2)/s: second value is not a ParenExpr: %v", vals[1])
 	}
 	// Marker modifier suffixes the group.
@@ -105,7 +105,7 @@ func TestParenWave3StandaloneModifier(t *testing.T) {
 	if len(vals) != 2 {
 		t.Fatalf("(f)/v: got %d values, want 2: %v", len(vals), vals)
 	}
-	if !core.IsParenExpr(vals[0]) || !core.IsDispatchMod(vals[1]) {
+	if !core.IsParenExpr(&vals[0]) || !core.IsDispatchMod(&vals[1]) {
 		t.Errorf("(f)/v: want [ParenExpr, Word/__DM], got %v", vals)
 	}
 }
@@ -114,10 +114,10 @@ func TestParenWave3StandaloneModifier(t *testing.T) {
 
 func TestReachWave3ComputedKey(t *testing.T) {
 	vals := mustParseWave3(t, "m.(x add 1)")
-	if len(vals) != 1 || !core.IsReach(vals[0]) {
+	if len(vals) != 1 || !core.IsReach(&vals[0]) {
 		t.Fatalf("m.(x add 1): expected one Reach, got %v", vals)
 	}
-	info, err := core.AsReach(vals[0])
+	info, err := core.AsReach(&vals[0])
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -131,10 +131,10 @@ func TestReachWave3ComputedKey(t *testing.T) {
 
 func TestReachWave3QuotedKey(t *testing.T) {
 	vals := mustParseWave3(t, "m.'k k'")
-	if len(vals) != 1 || !core.IsReach(vals[0]) {
+	if len(vals) != 1 || !core.IsReach(&vals[0]) {
 		t.Fatalf("m.'k k': expected one Reach, got %v", vals)
 	}
-	info, _ := core.AsReach(vals[0])
+	info, _ := core.AsReach(&vals[0])
 	if len(info.Segments) != 1 {
 		t.Fatalf("m.'k k': got %d segments, want 1", len(info.Segments))
 	}
@@ -286,7 +286,7 @@ func TestArrowWave3Folds(t *testing.T) {
 	if len(vals) != 2 {
 		t.Fatalf("1 x => [x]: got %d values, want 2: %v", len(vals), vals)
 	}
-	if !core.IsParenExpr(vals[1]) {
+	if !core.IsParenExpr(&vals[1]) {
 		t.Fatalf("1 x => [x]: expected a folded ParenExpr, got %v", vals[1])
 	}
 	if s := vals[1].String(); !strings.Contains(s, "sugar(lambda)") {
@@ -298,7 +298,7 @@ func TestArrowWave3Folds(t *testing.T) {
 	if len(vals) != 3 {
 		t.Fatalf("def-lambda: got %d values, want 3: %v", len(vals), vals)
 	}
-	if !core.IsParenExpr(vals[2]) {
+	if !core.IsParenExpr(&vals[2]) {
 		t.Fatalf("def-lambda: expected the pair to fold into a ParenExpr, got %v", vals[2])
 	}
 	if s := vals[2].String(); !strings.Contains(s, "x:word(Integer)") || !strings.Contains(s, "sugar(lambda)") {

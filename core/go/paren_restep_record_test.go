@@ -122,7 +122,7 @@ func TestRecordParenReStep(t *testing.T) {
 					}
 				}
 				for _, v := range tc.tape {
-					if (IsFnTypedCarrier(v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
+					if (IsFnTypedCarrier(&v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
 						t.Errorf("survivor %s is callable but unmarked: %v", v.ID, e.Registry.Check.ParenReSteppedFnIDs)
 					}
 				}

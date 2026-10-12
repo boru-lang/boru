@@ -210,7 +210,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 // what RunModuleBody does internally but is duplicated here because
 // BuildTestModule manages its own modReg.
 func resolveExport(modReg *native.Registry, exports map[string]*native.OrderedMap, name string, mapArg native.Value) ([]native.Value, error) {
-	if !native.IsConcrete(mapArg) {
+	if !native.IsConcrete(&mapArg) {
 		return nil, fmt.Errorf("test/export: value must be a concrete map")
 	}
 	rawMap, _ := native.AsMap(mapArg)
@@ -233,8 +233,8 @@ func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 	}
 	var name string
 	switch {
-	case native.IsWord(v):
-		w, _ := native.AsWord(v)
+	case native.IsWord(&v):
+		w, _ := native.AsWord(&v)
 		name = w.Name
 	case v.Parent.ConformsTo(native.TString):
 		name, _ = native.AsString(v)
@@ -1019,7 +1019,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 	shrunkInput := failingInput
 	shrunkSource := ""
 	shrunkCost := int64(0)
-	if failed && !native.IsNone(failingInput) && failingIter >= 0 {
+	if failed && !native.IsNone(&failingInput) && failingIter >= 0 {
 		genSv, genSrc, genCost, genOK := shrinkFailingProgram(
 			parent, genBody, propSigC, args[2], seed+failingIter, maxShrinks)
 		if genOK {
@@ -1510,14 +1510,14 @@ func dottedWordTokens(name string) []native.Value {
 // truthy. This keeps `Assert.ok` aligned with the language's other
 // boolean coercion sites without introducing a new rule.
 func isTruthy(v native.Value) bool {
-	if native.IsNone(v) {
+	if native.IsNone(&v) {
 		return false
 	}
 	if v.Parent.ConformsTo(native.TBoolean) {
 		b, _ := native.AsBoolean(v)
 		return b
 	}
-	if native.IsBareTypeNode(v) {
+	if native.IsBareTypeNode(&v) {
 		return false
 	}
 	return true

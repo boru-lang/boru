@@ -56,7 +56,7 @@ func TestShapedFnReadArrivalSuccess(t *testing.T) {
 	if out := e.Tape.At(0); !out.Carrier || !out.Dynamic {
 		t.Errorf("the modelled result is one dynamic value, got %v", out)
 	}
-	if n, _ := e.Tape.At(1).AsConcreteInteger(); n != 2 {
+	if n, _ := addrOf(e.Tape.At(1)).AsConcreteInteger(); n != 2 {
 		t.Error("the token past the arity stays on the tape (`(k 1 2)` is `7 2`)")
 	}
 	if len(rec.reasons) != 0 {
@@ -173,7 +173,7 @@ func TestShapedFnReadWindowPlainCheck(t *testing.T) {
 	if out := e.Tape.At(0); !out.Carrier || !out.Dynamic {
 		t.Errorf("the dispatch's one result is dynamic, got %v", out)
 	}
-	if n, _ := e.Tape.At(1).AsConcreteInteger(); n != 9 {
+	if n, _ := addrOf(e.Tape.At(1)).AsConcreteInteger(); n != 9 {
 		t.Error("the token past the arity stays on the tape")
 	}
 }
@@ -217,7 +217,7 @@ func TestShapedFnReadResultShape(t *testing.T) {
 		t.Fatal("the read model consumes the window")
 	}
 	out := rec.dynCalls[0].outs[0]
-	if !core.IsFnTypedCarrier(out) || out.Dynamic {
+	if !core.IsFnTypedCarrier(&out) || out.Dynamic {
 		t.Fatalf("the result of a chain level is a Function carrier, got %v", out)
 	}
 	if n, ok := r.Check.FnShapeArity(out.ID); !ok || n != 2 {
@@ -235,7 +235,7 @@ func TestShapedFnReadResultShape(t *testing.T) {
 	if !tryDynamicFnValueDispatch(e2, 0) {
 		t.Fatal("the plain check collapses the window")
 	}
-	if got := e2.Tape.At(0); !core.IsFnTypedCarrier(got) || got.Dynamic {
+	if got := e2.Tape.At(0); !core.IsFnTypedCarrier(&got) || got.Dynamic {
 		t.Errorf("the plain check's result of a chain level is a Function carrier, got %v", got)
 	} else if n, ok := r2.Check.FnShapeArity(got.ID); !ok || n != 1 {
 		t.Errorf("the plain check's result carries the next level's claim, got %d/%v", n, ok)

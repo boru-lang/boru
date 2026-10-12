@@ -346,21 +346,21 @@ func TestFnShapeReturnsClaims(t *testing.T) {
 	r := fnUtilReg(t)
 	defer r.Check.Begin()()
 	outs := fnShapeReturns(fnShapeConst(2))(nil, r)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Fatalf("the result is one Function carrier, got %v", outs)
 	}
 	if n, ok := r.Check.FnShapeArity(outs[0].ID); !ok || n != 2 {
 		t.Errorf("a constant arity is claimed: %d/%v", n, ok)
 	}
 	outs = fnShapeReturns(fnShapeFromOperand(0))(nil, r)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Fatalf("an unknown arity still mints the carrier, got %v", outs)
 	}
 	if _, ok := r.Check.FnShapeArity(outs[0].ID); ok {
 		t.Error("an unknown arity makes no claim")
 	}
 	outs = fnShapeReturns(fnShapeConst(1))(nil, nil)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Errorf("with no registry the carrier alone is minted, got %v", outs)
 	}
 }

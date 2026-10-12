@@ -287,7 +287,7 @@ func TestPayloadMarkersCallable(t *testing.T) {
 	// The sealed-payload markers are no-ops; calling them directly pins
 	// that the types satisfy eng.Payload.
 	mod := core.NewDispatchMod(core.DispatchModInfo{Val: true})
-	if !core.IsDispatchMod(mod) {
+	if !core.IsDispatchMod(&mod) {
 		t.Error("dispatch-mod marker not recognised")
 	}
 	if info, ok := core.AsDispatchMod(mod); !ok || !info.Val {
@@ -356,7 +356,7 @@ func TestVariadicCarrierHelpers(t *testing.T) {
 
 func TestTypedListCarrierHelpers(t *testing.T) {
 	tl := core.NewCarrierTypedListValue(core.NewCarrier(core.TString))
-	if !tl.Carrier || !core.IsTypedList(tl) {
+	if !tl.Carrier || !core.IsTypedList(&tl) {
 		t.Errorf("typed-list carrier shape: %v", tl)
 	}
 	if elem := DataListElemTypeFromValue(tl); !elem.Equal(core.TString) {
@@ -373,7 +373,7 @@ func TestTypedListCarrierHelpers(t *testing.T) {
 
 	pres := ReturnsPreserveListAt(0)
 	out := pres([]core.Value{core.NewCarrierTypedList(core.TInteger)}, nil)
-	if len(out) != 1 || !core.IsTypedList(out[0]) {
+	if len(out) != 1 || !core.IsTypedList(&out[0]) {
 		t.Fatalf("ReturnsPreserveListAt = %v", out)
 	}
 	if elem := DataListElemTypeFromValue(out[0]); !elem.Equal(core.TInteger) {
@@ -551,7 +551,7 @@ func TestW9JoinCarriersInnerOverCap(t *testing.T) {
 	if !out.Carrier {
 		t.Errorf("an over-cap join should collapse to a carrier, got %v", out)
 	}
-	if core.IsDisjunct(out) {
+	if core.IsDisjunct(&out) {
 		t.Error("an over-cap join must not remain a disjunct")
 	}
 }
@@ -588,13 +588,13 @@ func TestS7MinMaxIndexErrorArms(t *testing.T) {
 // if the check-mode strip nulls their payload.
 func TestToCarrierKeepsStepMarkers(t *testing.T) {
 	sp := core.NewSplice(core.NewList([]core.Value{core.NewInteger(1)}))
-	if got := toCarrier(sp); !core.IsSplice(got) {
+	if got := toCarrier(sp); !core.IsSplice(&got) {
 		t.Errorf("splice must survive the carrier strip, got %v", got)
-	} else if _, serr := core.AsSplice(got); serr != nil {
+	} else if _, serr := core.AsSplice(&got); serr != nil {
 		t.Errorf("splice payload must survive the carrier strip: %v", serr)
 	}
 	sg := core.NewSugar(core.SugarInfo{Kind: core.SugarLambda})
-	if got := toCarrier(sg); !core.IsSugar(got) {
+	if got := toCarrier(sg); !core.IsSugar(&got) {
 		t.Errorf("sugar marker must survive the carrier strip, got %v", got)
 	} else if _, ok := core.AsSugar(got); !ok {
 		t.Errorf("sugar marker payload must survive the carrier strip")
@@ -611,11 +611,11 @@ func TestTypedContainerCarrier(t *testing.T) {
 	listPat := core.NewCarrierTypedListValue(core.NewTypeLiteral(core.TInteger))
 
 	// Typed-map pattern + a conforming Map arg → a typed carrier.
-	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &mapPat}, core.NewCarrier(core.TMap)); !ok || !core.IsTypedMap(v) {
+	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &mapPat}, core.NewCarrier(core.TMap)); !ok || !core.IsTypedMap(&v) {
 		t.Errorf("map pattern + Map arg: got (%v, %v), want a typed-map carrier", v.Parent, ok)
 	}
 	// Typed-list pattern + a conforming List arg → a typed carrier.
-	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &listPat}, core.NewCarrier(core.TList)); !ok || !core.IsTypedList(v) {
+	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &listPat}, core.NewCarrier(core.TList)); !ok || !core.IsTypedList(&v) {
 		t.Errorf("list pattern + List arg: got (%v, %v), want a typed-list carrier", v.Parent, ok)
 	}
 	// Nil pattern → no carrier.

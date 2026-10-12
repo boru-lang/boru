@@ -72,7 +72,7 @@ type walkEntry struct {
 // hooks, runs the chosen engine, and returns the input data unchanged.
 func walkCoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	mode := "depth"
-	if IsConcrete(args[0]) {
+	if IsConcrete(&args[0]) {
 		if om, _ := AsMap(args[0]); om != nil {
 			if mv, ok := om.Get("mode"); ok {
 				ms, ok2 := walkModeValue(mv)
@@ -152,7 +152,7 @@ func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 		}
 		return h, nil
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return walkHook{}, r.BoruError("walk_error", "walk: hook must be a quotation list or a lambda", "walk")
 	}
 	bl, err := AsList(body)
@@ -323,7 +323,7 @@ func walkChildFrame(parent walkFrame, e walkEntry) walkFrame {
 // walk. Scalars, carriers/type literals, and empty containers are leaves —
 // every concrete access is guarded (panic-prevention).
 func childrenOf(v Value) ([]walkEntry, bool) {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil, false
 	}
 	if v.Parent.ConformsTo(TList) {

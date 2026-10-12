@@ -128,7 +128,7 @@ func TestDryPassOperandsCanonicalisesNone(t *testing.T) {
 	// canonicalisation is needed).
 	args := []core.Value{core.NewTypeLiteral(core.TNone), core.NewInteger(1)}
 	got := dryPassOperands(args)
-	if !core.IsNone(got[0]) {
+	if !core.IsNone(&got[0]) {
 		t.Errorf("none literal not canonicalised: %v", got[0])
 	}
 	if n, err := core.AsInteger(got[1]); err != nil || n != 1 {

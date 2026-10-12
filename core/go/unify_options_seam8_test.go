@@ -58,7 +58,7 @@ func TestW8UnifyOptionsRejectsStructuralMap(t *testing.T) {
 	rf := NewOrderedMap()
 	rf.Set("x", NewTypeLiteral(TInteger))
 	rec := NewRecordType(rf)
-	if !IsConcrete(rec) {
+	if !IsConcrete(&rec) {
 		t.Fatal("precondition: record type value must be concrete for this arm")
 	}
 	if _, err := unifyOptionsFamily(opts, Shape(opts), rec, Shape(rec), nil); err == nil {

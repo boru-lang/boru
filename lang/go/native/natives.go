@@ -577,8 +577,8 @@ func decodeReachSegments(elems []Value, r *Registry) ([]ReachSeg, error) {
 		}
 		seg := ReachSeg{Getr: getrNext}
 		getrNext = false
-		if IsParenExpr(el) {
-			toks, _ := AsParenExpr(el)
+		if IsParenExpr(&el) {
+			toks, _ := AsParenExpr(&el)
 			seg.Computed = true
 			seg.KeyExpr = toks
 		} else {
@@ -595,8 +595,8 @@ func decodeReachSegments(elems []Value, r *Registry) ([]ReachSeg, error) {
 // isReachBang reports whether a key-list element is the `!` getr marker (a
 // bare `!` lexes to a word; an atom `!` covers the quoted form).
 func isReachBang(v Value) bool {
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		return w.Name == "!"
 	}
 	if IsAtom(v) {
@@ -798,7 +798,7 @@ func cancelIntervalofHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 func listEdgeElemReturns(last bool) ReturnsFunc {
 	return func(args []Value, _ *Registry) []Value {
 		fallback := []Value{NewCarrier(TList), NewDynamicCarrier(TAny)}
-		if len(args) != 1 || !IsConcrete(args[0]) {
+		if len(args) != 1 || !IsConcrete(&args[0]) {
 			return fallback
 		}
 		list, err := AsList(args[0])

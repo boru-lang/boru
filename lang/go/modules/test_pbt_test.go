@@ -185,7 +185,7 @@ func TestCheckProp_RejectsNonBooleanProperty(t *testing.T) {
 		t.Fatal("expected non-Boolean property body to fail")
 	}
 	errV, _ := m.Get("error")
-	if native.IsNone(errV) {
+	if native.IsNone(&errV) {
 		t.Errorf("error field should be populated when property returns non-Boolean")
 	}
 }

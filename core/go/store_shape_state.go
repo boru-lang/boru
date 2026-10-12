@@ -43,7 +43,7 @@ func (s *StoreShapeInfo) RecordVal(v Value) {
 		return
 	}
 	if v.Parent == nil || v.Parent.ConformsTo(TFunction) ||
-		IsReach(v) || IsSplice(v) {
+		IsReach(&v) || IsSplice(&v) {
 		s.ValsPoisoned = true
 		s.Vals = Value{}
 		return

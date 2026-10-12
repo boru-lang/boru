@@ -1401,7 +1401,7 @@ func TestReadFnMemberValueArms(t *testing.T) {
 		t.Errorf("an untagged id must not report a pinpointed value")
 	}
 	es.NoteMemberFnRead("rich", fn)
-	if got, ok := es.MemberFnReadValue("rich"); !ok || !core.IsConcrete(got) {
+	if got, ok := es.MemberFnReadValue("rich"); !ok || !core.IsConcrete(&got) {
 		t.Errorf("a rich tag must report the member")
 	}
 }

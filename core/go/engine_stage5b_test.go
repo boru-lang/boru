@@ -515,7 +515,7 @@ func TestS5BExpandScanSugar(t *testing.T) {
 	if !ok || err != nil {
 		t.Fatalf("expansion: ok=%v err=%v", ok, err)
 	}
-	if w, werr := AsWord(e.Tape.At(0)); werr != nil || w.Name != "cadd" {
+	if w, werr := AsWord(e.Tape.Ref(0)); werr != nil || w.Name != "cadd" {
 		t.Errorf("expansion must splice the bound word, got %v", e.Tape.At(0))
 	}
 }
@@ -1270,7 +1270,7 @@ func TestS5BMatchSignatureSugarArms(t *testing.T) {
 	if sig, _, _ := e.MatchSignature(fn, WordInfo{Name: "w", ArgCount: -1}, nil); sig != nil {
 		t.Errorf("expanded marker still misses the Integer slot, got %v", sig)
 	}
-	if w, werr := AsWord(e.Tape.At(1)); werr != nil || w.Name != "af" {
+	if w, werr := AsWord(e.Tape.Ref(1)); werr != nil || w.Name != "af" {
 		t.Errorf("the marker must expand on the tape, got %v", e.Tape.At(1))
 	}
 }
@@ -1649,7 +1649,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 		t.Fatalf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(out) {
+	if !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(&out) {
 		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, out.Dynamic)
 	}
 	if es.lastOut.ID != out.ID || out.ID == "" {
@@ -1664,7 +1664,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.At(0)) || e.Tape.At(0).Dynamic {
+	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.Ref(0)) || e.Tape.At(0).Dynamic {
 		t.Errorf("a Function answer types the out as a strict fn-typed carrier: %v", e.Tape.At(0))
 	}
 
@@ -1738,7 +1738,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if es.dynApplies != 1 || e.Tape.Len() != 2 || !IsFnTypedCarrier(e.Tape.At(0)) {
+	if es.dynApplies != 1 || e.Tape.Len() != 2 || !IsFnTypedCarrier(e.Tape.Ref(0)) {
 		t.Errorf("a declined record leaves the window: applies=%d len=%d", es.dynApplies, e.Tape.Len())
 	}
 	// A lead the apply WORD owns.

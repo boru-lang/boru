@@ -82,7 +82,7 @@ func reportNatives() []native.NativeFunc {
 // the colon. Falls back to FormatForPrint for non-Map values so the
 // word is safe to call on heterogeneous inputs.
 func formatRecord(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
 	m, err := native.RequireConcreteMap(v, "Report.record")
@@ -117,7 +117,7 @@ func formatRecord(v native.Value) string {
 // from the union of keys (in first-seen order) and an ad-hoc table is
 // rendered.
 func formatTableValue(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
 	if native.IsTableType(v) {
@@ -136,7 +136,7 @@ func formatTableValue(v native.Value) string {
 	cols := []string{}
 	seen := map[string]bool{}
 	for _, row := range rows.Slice() {
-		if !row.Parent.Equal(native.TMap) || !native.IsConcrete(row) {
+		if !row.Parent.Equal(native.TMap) || !native.IsConcrete(&row) {
 			return native.FormatForPrint(v)
 		}
 		rm, _ := native.AsMap(row)
@@ -203,7 +203,7 @@ func formatTableValue(v native.Value) string {
 // formatListValue renders a list one element per line, indexed.
 // Falls back to FormatForPrint when v is not a concrete list.
 func formatListValue(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
 	if !v.Parent.Equal(native.TList) {

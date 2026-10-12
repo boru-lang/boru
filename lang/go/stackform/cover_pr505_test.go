@@ -22,7 +22,7 @@ func TestApplyOpSurfaces(t *testing.T) {
 		t.Errorf("Cost(apply/0) = %d, want 2", got)
 	}
 	flat := Flatten(f)
-	if w, err := core.AsWord(flat[len(flat)-1]); len(flat) != 1 || err != nil || w.Name != "apply" {
+	if w, err := core.AsWord(&flat[len(flat)-1]); len(flat) != 1 || err != nil || w.Name != "apply" {
 		t.Errorf("Flatten(apply/0) = %v, want [apply]", flat)
 	}
 	if got := Pretty(f); !strings.Contains(got, "apply/0") {

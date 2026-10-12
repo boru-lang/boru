@@ -29,7 +29,7 @@ func TestNUR329GradualWrittenOperands(t *testing.T) {
 		{"a deferred reach alone", []Value{NewInteger(7), w, NewInteger(1), reach}, []int{0}, []int{0}},
 		{"nothing written", []Value{NewInteger(7), w}, []int{0}, []int{0}},
 	} {
-		ptr := slices.IndexFunc(c.tape, func(v Value) bool { return IsWord(v) })
+		ptr := slices.IndexFunc(c.tape, func(v Value) bool { return IsWord(&v) })
 		e := engWithTape(t, c.tape, ptr)
 		if got := e.withGradualWrittenOperands(c.window, nil); !slices.Equal(got, c.want) {
 			t.Errorf("%s: window %v, want %v", c.what, got, c.want)

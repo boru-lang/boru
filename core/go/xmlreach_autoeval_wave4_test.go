@@ -133,7 +133,7 @@ func TestQuotedAndInertReachStayData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inert reach: %v", err)
 	}
-	if len(out) != 2 || !IsReach(out[0]) || !IsReach(out[1]) {
+	if len(out) != 2 || !IsReach(&out[0]) || !IsReach(&out[1]) {
 		t.Errorf("reaches evaluated: %s", renderAll(out))
 	}
 }
@@ -179,16 +179,16 @@ func TestLowerReachShape(t *testing.T) {
 	if len(toks) != 7 {
 		t.Fatalf("lowered token count = %d: %v", len(toks), toks)
 	}
-	w1, _ := AsWord(toks[1])
-	w3, _ := AsWord(toks[3])
+	w1, _ := AsWord(&toks[1])
+	w3, _ := AsWord(&toks[3])
 	if w1.Name != "dot" || w3.Name != "dotr" {
 		t.Errorf("chain words = %s %s", w1.Name, w3.Name)
 	}
-	if !IsParenExpr(toks[6]) {
+	if !IsParenExpr(&toks[6]) {
 		t.Errorf("computed key did not lower to a ParenExpr: %v", toks[6])
 	}
 	span := expandReach(info)
-	if !IsOpenParen(span[0]) || !IsCloseParen(span[len(span)-1]) {
+	if !IsOpenParen(&span[0]) || !IsCloseParen(&span[len(span)-1]) {
 		t.Error("expandReach did not wrap in paren markers")
 	}
 }

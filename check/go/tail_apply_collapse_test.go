@@ -28,7 +28,7 @@ func TestCollapseTailApplyArms(t *testing.T) {
 		t.Error("no tail apply: the residual stays")
 	}
 	rec := fakeTailRec{EmitRecorder: core.TheInactiveEmit, n: 1, ok: true}
-	if got := collapseTailApply(rec, 0, []core.Value{fnCarrier}); len(got) != 1 || !core.IsFnTypedCarrier(got[0]) {
+	if got := collapseTailApply(rec, 0, []core.Value{fnCarrier}); len(got) != 1 || !core.IsFnTypedCarrier(&got[0]) {
 		t.Error("a residual shorter than the window stays")
 	}
 	if got := collapseTailApply(rec, 0, []core.Value{one, two, fnCarrier}); len(got) != 3 {
@@ -66,7 +66,7 @@ func TestCollapseElidedTailApplyArms(t *testing.T) {
 	if got := collapseElidedTailApply(nil, stk, true); len(got) != 2 {
 		t.Error("an empty body: nothing to read")
 	}
-	if got := collapseElidedTailApply([]core.Value{apply}, []core.Value{fnCarrier}, true); len(got) != 1 || !core.IsFnTypedCarrier(got[0]) {
+	if got := collapseElidedTailApply([]core.Value{apply}, []core.Value{fnCarrier}, true); len(got) != 1 || !core.IsFnTypedCarrier(&got[0]) {
 		t.Error("a one-value residual stays")
 	}
 	if got := collapseElidedTailApply([]core.Value{one, core.NewWord("add")}, stk, true); len(got) != 2 {

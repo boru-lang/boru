@@ -16,8 +16,8 @@ import (
 // FormatFloat / FormatInt forms, matching the language's
 // printing rules.
 func GetKey(v Value) string {
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		return w.Name
 	}
 	if v.Parent.ConformsTo(TString) {

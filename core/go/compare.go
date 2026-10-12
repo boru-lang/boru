@@ -66,10 +66,10 @@ func compareValuesClassified(a, b Value) (n int, viaFamily bool, err error) {
 	// family (flexness is a mutability mode, not value identity), so a
 	// deq-equal flex/plain pair also cmp-equals. Bare type literals are
 	// NOT normalised — `FlexList cmp List` stays a Rank ordering.
-	if IsConcrete(a) {
+	if IsConcrete(&a) {
 		aType = nodeFamily(aType)
 	}
-	if IsConcrete(b) {
+	if IsConcrete(&b) {
 		bType = nodeFamily(bType)
 	}
 	sameType := aType.Equal(bType)
@@ -229,7 +229,7 @@ func scalarFamilyEqual(a, b Value) (equal, handled bool) {
 		// iff they name the same type (keeping `Integer eq Integer`,
 		// matching `eq`'s type-body arm); a literal never equals a
 		// concrete number.
-		if aLit, bLit := IsBareTypeNode(a), IsBareTypeNode(b); aLit || bLit {
+		if aLit, bLit := IsBareTypeNode(&a), IsBareTypeNode(&b); aLit || bLit {
 			return aLit && bLit && ValueType(a).Equal(ValueType(b)), true
 		}
 		// An arbitrary-precision operand is compared exactly via apd
@@ -341,7 +341,7 @@ func ExactEqual(a, b Value) bool {
 	}
 
 	// Types: structural comparison.
-	if IsTypeBody(a) && IsTypeBody(b) {
+	if IsTypeBody(&a) && IsTypeBody(&b) {
 		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
 	}
 
@@ -576,7 +576,7 @@ func DeepEqual(a, b Value) bool {
 	// leaves out, so `List deq List` → true and `List deq Map` → false.
 	// A mixed literal/concrete pair (`0 deq Integer`) needs both sides
 	// bare, so it falls through to scalarFamilyEqual's NUR032 guard.
-	if IsBareTypeNode(a) && IsBareTypeNode(b) {
+	if IsBareTypeNode(&a) && IsBareTypeNode(&b) {
 		return ValueType(a).Equal(ValueType(b))
 	}
 
@@ -752,7 +752,7 @@ func DeepEqual(a, b Value) bool {
 	// that is the answer it wants: the comparison reaches its Render, which
 	// IS the fn's canon — so the VM's closure and the interpreter's fn value
 	// answer deq the same way, by content.
-	if IsTypeBody(a) && IsTypeBody(b) {
+	if IsTypeBody(&a) && IsTypeBody(&b) {
 		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
 	}
 
@@ -1005,15 +1005,15 @@ func isDeqComparableHandle(v Value) bool {
 // words cmp / tcmp / sort deliberately bypass this and give NaN a defined
 // slot (see numberCompareBehavior.Compare).
 func numericUnordered(a, b Value) bool {
-	return isConcreteNumber(a) && isConcreteNumber(b) && (isNaNValue(a) || isNaNValue(b))
+	return isConcreteNumber(&a) && isConcreteNumber(&b) && (isNaNValue(a) || isNaNValue(b))
 }
 
-func isConcreteNumber(v Value) bool {
-	return !v.IsDepScalar() && IsConcrete(v) && ValueType(v).ConformsTo(TNumber)
+func isConcreteNumber(v *Value) bool {
+	return !v.IsDepScalar() && IsConcrete(v) && ValueType(*v).ConformsTo(TNumber)
 }
 
 func isNaNValue(v Value) bool {
-	if !isConcreteNumber(v) {
+	if !isConcreteNumber(&v) {
 		return false
 	}
 	f, err := AsNumber(v)
@@ -1040,7 +1040,7 @@ func signedZeroPair(a, b Value) bool {
 // isZeroNumber reports whether v is a concrete number of exactly zero
 // magnitude (either sign), across all four numeric leaves.
 func isZeroNumber(v Value) bool {
-	if !isConcreteNumber(v) {
+	if !isConcreteNumber(&v) {
 		return false
 	}
 	r, ok := toRatExact(v)

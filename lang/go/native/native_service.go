@@ -296,9 +296,9 @@ func serviceAddCheck(args []Value, r *Registry) []Value {
 		return []Value{}
 	}
 	slots := map[string]bool{}
-	if mp, err := AsMap(args[0]); err == nil && mp != nil && IsConcrete(args[0]) {
+	if mp, err := AsMap(args[0]); err == nil && mp != nil && IsConcrete(&args[0]) {
 		for _, k := range mp.Keys() {
-			if v, _ := mp.Get(k); IsTypeLiteral(v) {
+			if v, _ := mp.Get(k); IsTypeLiteral(&v) {
 				slots[k] = true
 			}
 		}

@@ -27,7 +27,7 @@ func PrintstrHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 func FormatForPrint(v Value) string {
 	// The value `none` (the unique inhabitant of None, Data != nil
 	// sentinel) prints as "none".
-	if IsNone(v) {
+	if IsNone(&v) {
 		return "none"
 	}
 	// Type literals (Data==nil) — print as the leaf of the type path

@@ -216,7 +216,7 @@ func (reachConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavio
 func (reachConvertBehavior) Format(v Value) string       { return canonReach(v) }
 
 func (reachConvertBehavior) ToMap(v Value) (Value, error) {
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return NewMap(NewOrderedMap()), nil
 	}
@@ -247,7 +247,7 @@ func (reachConvertBehavior) ToMap(v Value) (Value, error) {
 }
 
 func (reachConvertBehavior) ToList(v Value) (Value, error) {
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return NewList(nil), nil
 	}

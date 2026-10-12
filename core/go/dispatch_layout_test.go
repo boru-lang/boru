@@ -82,7 +82,7 @@ func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
 	args = []Value{body, zero}
 	restore = e.PublishLayout(args, []int{3, 1}, SrcPos{})
 	if l := e.Registry.Check.LayoutFor(args); l == nil || l.NFwd != 1 || len(l.Beneath) != 1 || l.Beneath[0].ID != seven.ID ||
-		len(l.After) != 2 || l.After[0].ID != five.ID || !IsWord(l.After[1]) {
+		len(l.After) != 2 || l.After[0].ID != five.ID || !IsWord(&l.After[1]) {
 		t.Errorf("7 0 fold [add] 5 cneg 9: 7 beneath, 5 cneg after; got %+v", l)
 	}
 	restore()

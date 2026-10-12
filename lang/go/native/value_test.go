@@ -113,7 +113,7 @@ func TestNewFunction(t *testing.T) {
 
 func TestNewDisjunct(t *testing.T) {
 	v := NewDisjunct([]Value{NewTypeLiteral(TString)})
-	if !IsDisjunct(v) {
+	if !IsDisjunct(&v) {
 		t.Error("expected IsDisjunct to be true")
 	}
 	di, _ := AsDisjunct(v)
@@ -123,13 +123,13 @@ func TestNewDisjunct(t *testing.T) {
 }
 
 func TestIsBoolean(t *testing.T) {
-	if !IsBoolean(NewBoolean(true)) {
+	if !IsBoolean(addrOf(NewBoolean(true))) {
 		t.Error("expected true to be boolean")
 	}
-	if !IsBoolean(NewBoolean(false)) {
+	if !IsBoolean(addrOf(NewBoolean(false))) {
 		t.Error("expected false to be boolean")
 	}
-	if IsBoolean(NewInteger(1)) {
+	if IsBoolean(addrOf(NewInteger(1))) {
 		t.Error("integer should not be boolean")
 	}
 }

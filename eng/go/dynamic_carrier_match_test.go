@@ -35,7 +35,7 @@ func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
 		{"dynamic(Any) vs Node", dyn(core.TAny), core.TNode},
 	}
 	for _, c := range match {
-		if !core.SigTypeMatches(c.v, c.slot) {
+		if !core.SigTypeMatches(&c.v, c.slot) {
 			t.Errorf("%s: expected match, got false", c.name)
 		}
 	}
@@ -52,7 +52,7 @@ func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
 		{"dynamic(List) vs String", dyn(core.TList), core.TString},
 	}
 	for _, c := range noMatch {
-		if core.SigTypeMatches(c.v, c.slot) {
+		if core.SigTypeMatches(&c.v, c.slot) {
 			t.Errorf("%s: expected NO match (provably disjoint), got true", c.name)
 		}
 	}

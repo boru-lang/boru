@@ -169,14 +169,14 @@ func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 	if err != nil || ci.Child.Parent == nil || ci.Child.Parent.Equal(core.TAny) {
 		return core.Value{}, false
 	}
-	if core.IsTypedMap(pat) && (a.Parent.ConformsTo(core.TMap) || a.Parent.Equal(core.TAny)) {
+	if core.IsTypedMap(&pat) && (a.Parent.ConformsTo(core.TMap) || a.Parent.Equal(core.TAny)) {
 		v := core.NewTypedMap(ci.Child)
 		v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
 		v.Carrier = true
 		v.Dynamic = true // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
 		return v, true
 	}
-	if core.IsTypedList(pat) && (a.Parent.ConformsTo(core.TList) || a.Parent.Equal(core.TAny)) {
+	if core.IsTypedList(&pat) && (a.Parent.ConformsTo(core.TList) || a.Parent.Equal(core.TAny)) {
 		v := core.NewCarrierTypedListValue(ci.Child)
 		v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
 		v.Dynamic = true
@@ -196,14 +196,14 @@ func ParamBodyCarrier(p core.FnParam) core.Value {
 	if p.Pattern != nil {
 		pat := *p.Pattern
 		if ci, err := core.AsChildType(pat); err == nil && ci.Child.Parent != nil && !ci.Child.Parent.Equal(core.TAny) {
-			if core.IsTypedMap(pat) {
+			if core.IsTypedMap(&pat) {
 				v := core.NewTypedMap(ci.Child)
 				v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
 				v.Carrier = true
 				v.Dynamic = true
 				return v
 			}
-			if core.IsTypedList(pat) {
+			if core.IsTypedList(&pat) {
 				v := core.NewCarrierTypedListValue(ci.Child)
 				v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
 				v.Dynamic = true
@@ -224,7 +224,7 @@ func ParamBodyCarrier(p core.FnParam) core.Value {
 		// Declared is set for the same reason it is there — the annotation
 		// claims every alternative is a valid input, so a body dispatch that
 		// fails for one is an error rather than an analysis-join warning.
-		if core.IsDisjunct(pat) && (p.Type == nil || p.Type.Equal(core.TAny)) {
+		if core.IsDisjunct(&pat) && (p.Type == nil || p.Type.Equal(core.TAny)) {
 			if di, err := core.AsDisjunct(pat); err == nil && len(di.Alternatives) > 0 {
 				dv := core.NewDisjunct(core.SimplifyDisjunctAlts(di.Alternatives))
 				dv.Carrier = true
@@ -275,7 +275,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 			nc := core.NewCarrier(pt)
 			nc.Dynamic = true
 			out[i] = nc
-		case !a.Dynamic && a.Carrier && core.IsDisjunct(a) && pt != nil && !pt.Equal(core.TAny):
+		case !a.Dynamic && a.Carrier && core.IsDisjunct(&a) && pt != nil && !pt.Equal(core.TAny):
 			// A strict DISJUNCT carrier — the checker's ∀-abstraction of an
 			// unresolved overload's returns — narrows to the declared param
 			// type by the same contract as the armed-compile genArgs twin:
@@ -288,7 +288,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 				out = append([]core.Value(nil), args...)
 			}
 			out[i] = core.NewCarrier(pt)
-		case !a.Dynamic && pt != nil && pt.Equal(core.TAny) && a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(a):
+		case !a.Dynamic && pt != nil && pt.Equal(core.TAny) && a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(&a):
 			// A STRICT Any arg bound to a declared-`Any` param. The param is
 			// gradual by declaration (ParamInputCarrier gives dynamic Any), so a
 			// body word over it must match optimistically — a strict Any conforms
@@ -423,12 +423,12 @@ func generalisedResidualModelsReturn(stk []core.Value, declared []*core.Type,
 	// would be the fuller fix; declining the residual is the sound one, and
 	// its cost is the usual lost detection rather than a wrong answer.
 	for _, pat := range patterns {
-		if pat != nil && core.IsConcrete(*pat) {
+		if pat != nil && core.IsConcrete(pat) {
 			return false
 		}
 	}
 	for i := range stk {
-		if core.IsFnTypedCarrier(stk[i]) {
+		if core.IsFnTypedCarrier(&stk[i]) {
 			return false
 		}
 		// A CONCRETE slot is disqualifying only when the body could have put
@@ -444,7 +444,7 @@ func generalisedResidualModelsReturn(stk []core.Value, declared []*core.Type,
 		// exception exists for. Measured: a computed body (`[1 add 2]`) and a
 		// param body (`[n]`) were already caught; the bare literal was the
 		// only hole.
-		if core.IsConcrete(stk[i]) && !bodyIsLiteral {
+		if core.IsConcrete(&stk[i]) && !bodyIsLiteral {
 			return false
 		}
 	}
@@ -464,7 +464,7 @@ func bodyIsInertLiteral(body []core.Value) bool {
 		return false
 	}
 	for _, v := range body {
-		if !core.IsInertConst(v) || core.BearsActiveTokens(v) {
+		if !core.IsInertConst(&v) || core.BearsActiveTokens(v) {
 			return false
 		}
 	}
@@ -508,14 +508,14 @@ func bodySpanEnd(body []core.Value) core.SrcPos {
 			if posBefore(end.Row, end.Col, v.Pos()) {
 				end = v.Pos()
 			}
-			if core.IsParenExpr(v) {
-				if toks, err := core.AsParenExpr(v); err == nil {
+			if core.IsParenExpr(&v) {
+				if toks, err := core.AsParenExpr(&v); err == nil {
 					walk(toks)
 				}
 				continue
 			}
-			if core.IsReach(v) {
-				if ri, err := core.AsReach(v); err == nil {
+			if core.IsReach(&v) {
+				if ri, err := core.AsReach(&v); err == nil {
 					walk(ri.Receiver)
 					for i := range ri.Segments {
 						if ri.Segments[i].Computed {
@@ -548,14 +548,14 @@ func bodySpanEnd(body []core.Value) core.SrcPos {
 // types as disjoint when one conforms to the other). A disjunct residual is
 // disjoint only if every alternative is.
 func residualProvablyDisjoint(got core.Value, exp *core.Type) bool {
-	if core.IsDisjunct(got) {
+	if core.IsDisjunct(&got) {
 		di, err := core.AsDisjunct(got)
 		if err != nil || len(di.Alternatives) == 0 {
 			return false
 		}
 		for _, alt := range di.Alternatives {
 			probe := alt
-			if core.IsBareTypeNode(alt) {
+			if core.IsBareTypeNode(&alt) {
 				probe = core.CarrierOfLiteral(alt)
 			}
 			if !residualProvablyDisjoint(probe, exp) {
@@ -587,10 +587,16 @@ func residualProvablyDisjoint(got core.Value, exp *core.Type) bool {
 	// disjointness proof says nothing there — skip. The carrier-Is probe is
 	// the backstop for wrapped behaviors (a behave-augmented union still
 	// answers membership through its Match chain).
-	if membershipBeyondNominal(exp) || core.NewCarrier(p).Is(exp) {
+	if membershipBeyondNominal(exp) || carrierIs(p, exp) {
 		return false
 	}
 	return core.IsNeverShape(core.TandValues(core.NewCarrier(p), core.NewCarrier(exp)))
+}
+
+// carrierIs reports whether a carrier of p answers membership in exp.
+func carrierIs(p, exp *core.Type) bool {
+	c := core.NewCarrier(p)
+	return c.Is(exp)
 }
 
 // membershipBeyondNominal reports whether t's installed Behavior admits

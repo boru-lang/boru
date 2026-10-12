@@ -375,7 +375,7 @@ func TestAdjacentToLiteralWordWindow(t *testing.T) {
 	// import-adjacent string is kept concrete so the import handler can
 	// resolve and analyse the target.
 	out := StripToCarriers([]core.Value{imp, str})
-	if !core.IsConcrete(out[1]) {
+	if !core.IsConcrete(&out[1]) {
 		t.Error("the import-adjacent string must survive carrier-stripping")
 	}
 }

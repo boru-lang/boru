@@ -274,7 +274,7 @@ func setpathReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
 	pathIdx := -1
 	for i := range args {
-		if args[i].Parent.ConformsTo(TString) || IsReach(args[i]) {
+		if args[i].Parent.ConformsTo(TString) || IsReach(&args[i]) {
 			pathIdx = i
 			break
 		}
@@ -323,7 +323,7 @@ func reifyReturns(args []Value, r *Registry) []Value {
 	// failure, a union source missing its $class discriminator, a
 	// non-class target — is a guaranteed runtime error, flagged with the
 	// runtime's own code + detail.
-	if atUncaughtTopLevel(r) && IsConcrete(args[1]) {
+	if atUncaughtTopLevel(r) && IsConcrete(&args[1]) {
 		if _, err := reifyHandler(args, nil, nil, r); err != nil {
 			code, detail := "reify_error", err.Error()
 			var ae *BoruError
@@ -333,14 +333,14 @@ func reifyReturns(args []Value, r *Registry) []Value {
 			core.CheckAddUniqueDiagnostic(r, code, detail, "reify", args[1].Pos())
 		}
 	}
-	if IsDisjunct(target) {
+	if IsDisjunct(&target) {
 		return []Value{NewDynamicCarrierValue(target)}
 	}
 	// A bare type node (`reify Foo …`) or a structural type body (`reify
 	// Point …` where Point's binding pushes its ClassTypeInfo body):
 	// ValueType yields the minted *Type in both cases, exactly as
 	// ReturnsFreshInstance resolves make's target.
-	if !IsBareTypeNode(target) && !IsTypeBody(target) {
+	if !IsBareTypeNode(&target) && !IsTypeBody(&target) {
 		return dyn
 	}
 	t := ValueType(target)
@@ -358,7 +358,7 @@ func reifyReturns(args []Value, r *Registry) []Value {
 // carrier this sig produced before.
 func parseTextReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 1 || !IsConcrete(args[0]) || !args[0].Parent.ConformsTo(TString) {
+	if len(args) != 1 || !IsConcrete(&args[0]) || !args[0].Parent.ConformsTo(TString) {
 		return dyn
 	}
 	out, err := parseTextHandler(args, nil, nil, r)

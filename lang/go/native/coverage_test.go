@@ -82,7 +82,7 @@ func TestUnifyDisjunctWithAny(t *testing.T) {
 	if !ok {
 		t.Fatal("expected unification to succeed")
 	}
-	if !IsDisjunct(result) {
+	if !IsDisjunct(&result) {
 		t.Errorf("expected disjunct, got %s", result)
 	}
 }
@@ -254,7 +254,7 @@ func TestUnifyTypedMaps(t *testing.T) {
 	if !ok {
 		t.Fatal("expected typed map unification to succeed")
 	}
-	if !IsTypedMap(result) {
+	if !IsTypedMap(&result) {
 		t.Errorf("expected typed map, got %s", result)
 	}
 }

@@ -324,7 +324,8 @@ func (a *boruFileOps) XattrList(path string) ([]string, error) {
 	}
 	names := make([]string, 0, lst.Len())
 	for i := 0; i < lst.Len(); i++ {
-		if s, serr := lst.Get(i).AsConcreteString(); serr == nil {
+		el := lst.Get(i)
+		if s, serr := el.AsConcreteString(); serr == nil {
 			names = append(names, s)
 		}
 	}
@@ -523,7 +524,7 @@ func doMountZipWord(args []Value, r *Registry, opts Value) ([]Value, error) {
 	target := extractPath(args[0])
 	zipIntent := strings.HasSuffix(strings.ToLower(target), ".zip")
 	writable := false
-	if IsConcrete(opts) {
+	if IsConcrete(&opts) {
 		if mapBoolOpt(opts, "zip", false) {
 			zipIntent = true
 		}

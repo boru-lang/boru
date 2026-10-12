@@ -85,8 +85,8 @@ func MintFlexShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	if depth > flexShapeMaxDepth {
 		return core.Value{}, false
 	}
-	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TMap) ||
-		core.IsRecordType(src) || core.IsOptionsType(src) || core.IsTypedMap(src) {
+	if !core.IsConcrete(&src) || src.Parent == nil || !src.Parent.ConformsTo(core.TMap) ||
+		core.IsRecordType(src) || core.IsOptionsType(src) || core.IsTypedMap(&src) {
 		return core.Value{}, false
 	}
 	m, err := core.AsMap(src)
@@ -98,7 +98,7 @@ func MintFlexShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	for _, k := range m.Keys() {
 		fv, _ := m.Get(k)
 		if fv.Parent == nil || fv.Parent.ConformsTo(core.TFunction) ||
-			core.IsReach(fv) || core.IsSplice(fv) {
+			core.IsReach(&fv) || core.IsSplice(&fv) {
 			continue // dispatch-bearing: absent key reads dynamic(Any)
 		}
 		ss.RecordKey(k, AdoptShapeValue(fv, depth+1))
@@ -125,8 +125,8 @@ func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	if depth > flexShapeMaxDepth {
 		return core.Value{}, false
 	}
-	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TList) ||
-		core.IsTypedList(src) || core.IsTableType(src) {
+	if !core.IsConcrete(&src) || src.Parent == nil || !src.Parent.ConformsTo(core.TList) ||
+		core.IsTypedList(&src) || core.IsTableType(src) {
 		return core.Value{}, false
 	}
 	l, err := core.AsList(src)
@@ -208,7 +208,7 @@ func AdoptShapeValue(v core.Value, depth int) core.Value {
 	if nested, ok := MintFlexListShapeCarrier(v, depth); ok {
 		return nested
 	}
-	if core.IsConcrete(v) && v.Parent != nil {
+	if core.IsConcrete(&v) && v.Parent != nil {
 		switch {
 		case v.Parent.ConformsTo(core.TXml):
 			return core.NewCarrier(core.TFlexXml)
@@ -231,7 +231,7 @@ func ShapeFieldRead(v core.Value) core.Value {
 	if _, ok := StoreShapeOf(v); ok {
 		return core.NewDynamicCarrierValue(v)
 	}
-	if core.IsDisjunct(v) {
+	if core.IsDisjunct(&v) {
 		return core.NewDynamicCarrierValue(v)
 	}
 	ft := core.ValueType(v)

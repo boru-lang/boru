@@ -487,7 +487,7 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	// Fast path: no paren markers at this level.
 	hasParen := false
 	for _, e := range work {
-		if IsOpenParen(e) {
+		if IsOpenParen(&e) {
 			hasParen = true
 			break
 		}
@@ -500,13 +500,13 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	var out []Value
 	i := 0
 	for i < len(work) {
-		if IsOpenParen(work[i]) {
+		if IsOpenParen(&work[i]) {
 			depth := 1
 			j := i + 1
 			for j < len(work) && depth > 0 {
-				if IsOpenParen(work[j]) {
+				if IsOpenParen(&work[j]) {
 					depth++
-				} else if IsCloseParen(work[j]) {
+				} else if IsCloseParen(&work[j]) {
 					depth--
 				}
 				j++
@@ -568,10 +568,10 @@ func parseColumnSpec(colList Value) ([]columnSpec, error) {
 		case e.Parent.ConformsTo(TString):
 			_as7, _ := AsString(e)
 			cols = append(cols, columnSpec{Name: _as7})
-		case IsWord(e):
+		case IsWord(&e):
 			// A word that appears in the column list without evaluation
 			// is treated as a column name OR as an aggregate function name.
-			_as8, _ := AsWord(e)
+			_as8, _ := AsWord(&e)
 			wname := _as8.Name
 			cols = append(cols, columnSpec{Name: wname})
 		case e.Parent.Equal(TList):
@@ -649,8 +649,8 @@ func nameFromValue(v Value) string {
 		_as10, _ := AsString(v)
 		return _as10
 	}
-	if IsWord(v) {
-		_as11, _ := AsWord(v)
+	if IsWord(&v) {
+		_as11, _ := AsWord(&v)
 		return _as11.Name
 	}
 	return ""
@@ -755,8 +755,8 @@ func valueToColName(v Value) string {
 		_as13, _ := AsString(v)
 		return _as13
 	}
-	if IsWord(v) {
-		_as14, _ := AsWord(v)
+	if IsWord(&v) {
+		_as14, _ := AsWord(&v)
 		return _as14.Name
 	}
 	return ""
@@ -1212,7 +1212,7 @@ func valueToSQL(v Value) (string, error) {
 	case v.Parent.Equal(TNone):
 		return "NULL", nil
 	case v.Parent.Equal(TWord):
-		_as27, _ := AsWord(v)
+		_as27, _ := AsWord(&v)
 		return "'" + strings.ReplaceAll(_as27.Name, "'", "''") + "'", nil
 	default:
 		return "", fmt.Errorf("unsupported value type in condition: %s", v.Parent)

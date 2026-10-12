@@ -11,11 +11,11 @@ package basic
 // per-iteration values; `break` ends the loop with the values collected
 // so far, `continue` abandons the current body round.
 func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
-	if !IsConcrete(cond) {
+	if !IsConcrete(&cond) {
 		return nil, r.BoruError("while_error",
 			"while: condition must be a concrete list, got type literal", "while")
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return nil, r.BoruError("while_error",
 			"while: body must be a concrete list, got type literal", "while")
 	}
@@ -197,7 +197,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// runtime leaves N scalars is a false claim (measured: 5 violations
 	// the moment the while rows entered the main corpus, control.tsv §7).
 	elem := NewTypeLiteral(top.Parent)
-	if IsDisjunct(top) {
+	if IsDisjunct(&top) {
 		elem = top
 	}
 	// A body that nets MORE THAN ONE value per round leaves one of EACH on
@@ -230,5 +230,5 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 // not known at all.
 func emptyWhileCond(cond Value) bool {
 	lst, err := AsList(cond)
-	return err == nil && IsConcrete(cond) && lst.Len() == 0
+	return err == nil && IsConcrete(&cond) && lst.Len() == 0
 }

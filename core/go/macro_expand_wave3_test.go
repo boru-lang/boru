@@ -285,17 +285,17 @@ func TestMacroHygieneRenamesTemplateBinders(t *testing.T) {
 		t.Fatalf("expansion too short: %v", toks)
 	}
 	// toks: def <g> 3 <g> [def <g2>]
-	w1, _ := AsWord(toks[1])
+	w1, _ := AsWord(&toks[1])
 	if w1.Name == "tmp" {
 		t.Error("template binder tmp was not renamed")
 	}
-	w3, _ := AsWord(toks[3])
+	w3, _ := AsWord(&toks[3])
 	if w3.Name != w1.Name {
 		t.Errorf("binder rename inconsistent: %q vs %q", w1.Name, w3.Name)
 	}
 	// The nested list's binder was renamed too (collectBindersNested).
 	nested, _ := AsList(toks[4])
-	nw, _ := AsWord(nested.Get(1))
+	nw, _ := AsWord(addrOf(nested.Get(1)))
 	if nw.Name == "nested" {
 		t.Error("nested template binder was not renamed")
 	}
@@ -331,7 +331,7 @@ func TestExpandMacroFormAndAll(t *testing.T) {
 	if len(toks) != 3 {
 		t.Fatalf("mouter expansion = %v", toks)
 	}
-	if w, _ := AsWord(toks[0]); w.Name != "cadd" {
+	if w, _ := AsWord(&toks[0]); w.Name != "cadd" {
 		t.Errorf("nested macro not expanded: %v", toks)
 	}
 
@@ -349,7 +349,7 @@ func TestExpandMacroFormAndAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExpandMacroForm mbare: %v", err)
 	}
-	if len(toks) != 1 || !IsWord(toks[0]) {
+	if len(toks) != 1 || !IsWord(&toks[0]) {
 		t.Errorf("bare inner macro should stay as-is: %v", toks)
 	}
 
@@ -398,7 +398,7 @@ func TestExpandAllMacrosNestedContainers(t *testing.T) {
 	if err != nil || lst.Len() != 3 {
 		t.Errorf("nested list not macro-expanded: %v", toks[0])
 	}
-	pe, err := AsParenExpr(toks[1])
+	pe, err := AsParenExpr(&toks[1])
 	if err != nil || len(pe) != 3 {
 		t.Errorf("nested paren not macro-expanded: %v", toks[1])
 	}

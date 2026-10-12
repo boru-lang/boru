@@ -79,7 +79,7 @@ func registerTensorIdeals(r *native.Registry, tt TensorModuleTypes) {
 // a type of my kind", the question `type` and `make` ask of a target.
 func tensorAccepts(vt *core.Type, kind string) func(native.Value) bool {
 	return func(v native.Value) bool {
-		if native.IsBareTypeNode(v) {
+		if native.IsBareTypeNode(&v) {
 			// A bare type literal IS its lattice node (by-value copy
 			// post the type/value merge), so test the value's own
 			// identity, not v.Parent (which is the supertype).

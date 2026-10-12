@@ -59,7 +59,7 @@ func canonTypeArg(arg Value) string {
 	// `(H of [Pos]) teq (H of [(Integer gt 0)])` (edge-types-3). Class
 	// and surface content re-reaches the node-name arm below through
 	// its payload back-pointer, exactly as the body value always did.
-	if IsBareTypeNode(arg) {
+	if IsBareTypeNode(&arg) {
 		if body, ok := arg.TypeBody(); ok {
 			arg = body
 		}
@@ -75,9 +75,9 @@ func canonTypeArg(arg Value) string {
 // surface carries its minted node in the payload.
 func typeArgNode(arg Value) *Type {
 	switch {
-	case IsBareTypeNode(arg):
+	case IsBareTypeNode(&arg):
 		return &arg
-	case IsClassType(arg):
+	case IsClassType(&arg):
 		oi, _ := AsClassType(arg)
 		return oi.Type
 	case IsSurfaceType(arg):
@@ -91,7 +91,7 @@ func typeArgNode(arg Value) *Type {
 // a placeholder — the F-bound / Self-recursion shape whose
 // instantiation must be deferred (GenInstRef, D5).
 func containsTypeParam(v Value) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return IsTypeParamNode(&v) || v.ID == TSelf.ID
 	}
 	if IsGenInstRef(v) {
@@ -115,7 +115,7 @@ func containsTypeParam(v Value) bool {
 				return true
 			}
 		}
-	case IsClassType(v):
+	case IsClassType(&v):
 		oi, _ := AsClassType(v)
 		for _, k := range oi.Fields.Keys() {
 			fv, _ := oi.Fields.Get(k)
@@ -123,14 +123,14 @@ func containsTypeParam(v Value) bool {
 				return true
 			}
 		}
-	case IsTypedList(v) || IsTypedMap(v):
+	case IsTypedList(&v) || IsTypedMap(&v):
 		ci, _ := AsChildType(v)
 		// NOTE: a raw Word child (`[:T]` keeps T as a Word at schema
 		// build time) cannot be classified without bindings; defer
 		// detection stays literal-only and the word substitutes by
 		// name at instantiation.
 		return containsTypeParam(ci.Child)
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		di, _ := AsDisjunct(v)
 		for _, alt := range di.Alternatives {
 			if containsTypeParam(alt) {
@@ -174,8 +174,8 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 	// at schema-build time) substitute by name here. Words naming
 	// nothing in the bindings pass through (they resolve, or fail,
 	// exactly as they would in a non-generic body).
-	if IsWord(v) {
-		if w, err := AsWord(v); err == nil {
+	if IsWord(&v) {
+		if w, err := AsWord(&v); err == nil {
 			if b, ok := bindings[w.Name]; ok {
 				return b, nil
 			}
@@ -187,7 +187,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 	}
 
 	// Bare placeholder reference.
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		if name := TypeParamName(&v); name != "" {
 			b, ok := bindings[name]
 			if !ok {
@@ -221,7 +221,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		// direct-recursion case) — but with different args (e.g.
 		// Self of [(Box of [T])]) it is a genuinely new instantiation
 		// of the same schema.
-		if IsBareTypeNode(head) {
+		if IsBareTypeNode(&head) {
 			hn := CanonicalType(r, &head)
 			if sinfo, ok := SchemaInfoOf(hn); ok {
 				return InstantiateSchema(r, sinfo, args)
@@ -255,7 +255,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		}
 		return NewRecordType(fields), nil
 
-	case IsClassType(v):
+	case IsClassType(&v):
 		oi, _ := AsClassType(v)
 		fields := NewOrderedMap()
 		for _, k := range oi.Fields.Keys() {
@@ -270,7 +270,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		out.Fields = fields
 		return NewValueRaw(v.Parent, out), nil
 
-	case IsTypedList(v):
+	case IsTypedList(&v):
 		ci, _ := AsChildType(v)
 		child, err := SubstituteTypeParams(r, ci.Child, bindings, selfNode)
 		if err != nil {
@@ -278,7 +278,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		}
 		return NewTypedList(child), nil
 
-	case IsTypedMap(v):
+	case IsTypedMap(&v):
 		ci, _ := AsChildType(v)
 		child, err := SubstituteTypeParams(r, ci.Child, bindings, selfNode)
 		if err != nil {
@@ -286,7 +286,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		}
 		return NewTypedMap(child), nil
 
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		di, _ := AsDisjunct(v)
 		alts := make([]Value, len(di.Alternatives))
 		for i, alt := range di.Alternatives {

@@ -268,7 +268,7 @@ func TestReturnsDynUnion(t *testing.T) {
 	if !v.Dynamic {
 		t.Error("a declared union result must stay DYNAMIC — a strict union declines gradual call sites")
 	}
-	if !core.IsDisjunct(v) {
+	if !core.IsDisjunct(&v) {
 		t.Errorf("the bound must be the alternative set, got %s", v.Parent.Leaf())
 	}
 	// Each invocation mints a FRESH identity. A shared bound identity

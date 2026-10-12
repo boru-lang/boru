@@ -263,7 +263,8 @@ func vaultCollectParams(op vaultOp, args []native.Value, r *native.Registry) (ma
 			}
 			items := make([]any, 0, lst.Len())
 			for j := 0; j < lst.Len(); j++ {
-				s, sErr := lst.Get(j).AsConcreteString()
+				el := lst.Get(j)
+				s, sErr := el.AsConcreteString()
 				if sErr != nil {
 					return nil, vaultUsage(r, op.name, p.name+": elements must be Strings")
 				}

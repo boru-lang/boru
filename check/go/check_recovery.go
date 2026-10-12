@@ -162,12 +162,12 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 	// nearest scope boundary. The first data value found is "stranded".
 	for i := minStack - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if core.IsOpenParen(v) || core.IsCloseParen(v) || core.IsForward(v) || core.IsDefCleanup(v) ||
+		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsDefCleanup(&v) ||
 			v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
 			v.Parent.ConformsTo(core.TInternal) || v.Parent.ConformsTo(core.TReturnCheck) {
 			return // scope boundary: nothing stranded in this scope
 		}
-		if !core.IsConcrete(v) && !core.IsBareTypeNode(v) {
+		if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
 			continue // structural residue, keep scanning
 		}
 		// Sibling-operand heuristic: only flag a stranded value the word
@@ -300,7 +300,7 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 	// regardless of what it is.
 	for i := minStack - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if core.IsOpenParen(v) || core.IsCloseParen(v) || core.IsForward(v) || core.IsEnd(v) || core.IsDefCleanup(v) {
+		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsEnd(&v) || core.IsDefCleanup(&v) {
 			return // scope / statement boundary
 		}
 		if v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
@@ -376,16 +376,16 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			if found {
 				return
 			}
-			if core.IsWord(v) {
-				if w, err := core.AsWord(v); err == nil {
+			if core.IsWord(&v) {
+				if w, err := core.AsWord(&v); err == nil {
 					if bound, ok := r.Defs.Top(w.Name); ok && (bound.Carrier || bindingProduced(r, bound)) {
 						found = true
 						return
 					}
 				}
 			}
-			if core.IsParenExpr(v) {
-				if toks, err := core.AsParenExpr(v); err == nil {
+			if core.IsParenExpr(&v) {
+				if toks, err := core.AsParenExpr(&v); err == nil {
 					walk(toks)
 				}
 				continue
@@ -393,8 +393,8 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			// A Reach can hide a carrier in its receiver or a computed key
 			// (`m.(k)` with a def-local carrier `k`): recurse into both so the
 			// fold declines rather than baking the carrier's check-time value.
-			if core.IsReach(v) {
-				if ri, err := core.AsReach(v); err == nil {
+			if core.IsReach(&v) {
+				if ri, err := core.AsReach(&v); err == nil {
 					walk(ri.Receiver)
 					for i := range ri.Segments {
 						if ri.Segments[i].Computed {
@@ -456,7 +456,7 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	}
 	changed := r.Defs.ChangedSince(snap)
 	r.Defs.RestoreEntriesSnapshot(snap)
-	if escaped || changed || err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
+	if escaped || changed || err != nil || len(res) != 1 || !core.IsConcrete(&res[0]) {
 		return core.Value{}, false
 	}
 	return res[0], true
@@ -624,7 +624,7 @@ func noteSpeculativeBarrierCommit(e *core.Engine, fwd core.ForwardInfo) {
 	detail := fwd.FuncName + " committed with " +
 		strconv.Itoa(fwd.CollectedArgs+fwd.StackArgs) + " argument(s) at a statement boundary"
 	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
-		if bw, err := core.AsWord(e.Tape.At(e.Pointer)); err == nil {
+		if bw, err := core.AsWord(e.Tape.Ref(e.Pointer)); err == nil {
 			detail += " (`" + bw.Name + "`)"
 		}
 	}
@@ -696,7 +696,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		if !core.IsRecordableLiteral(v) {
 			continue
 		}
-		if count == 0 && !v.Dynamic && !v.Quoted && core.IsFnTypedCarrier(v) {
+		if count == 0 && !v.Dynamic && !v.Quoted && core.IsFnTypedCarrier(&v) {
 			leadIdx = i
 		}
 		count++
@@ -706,7 +706,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		return closeIdx
 	}
 	last := e.Tape.At(lastIdx)
-	trailing := !last.Dynamic && !last.Quoted && core.IsFnTypedCarrier(last)
+	trailing := !last.Dynamic && !last.Quoted && core.IsFnTypedCarrier(&last)
 	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !last.Dynamic)
 	if !trailing && !leading {
 		return closeIdx
@@ -757,19 +757,19 @@ func checkModeFallbackPositions(e *core.Engine, n int) []int {
 	depth := 0
 	for i := e.Pointer + 1; remaining > 0 && i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if core.IsCloseParen(v) {
+		if core.IsCloseParen(&v) {
 			if depth == 0 {
 				break
 			}
 			depth--
 			continue
 		}
-		if core.IsOpenParen(v) {
+		if core.IsOpenParen(&v) {
 			depth++
 			continue
 		}
-		if core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
-			core.IsReturnCheck(v) || core.IsDefCleanup(v) {
+		if core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) ||
+			core.IsReturnCheck(&v) || core.IsDefCleanup(&v) {
 			continue
 		}
 		positions = append(positions, i)
@@ -814,19 +814,19 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 	// most `limit` compatible tokens.
 	for i := e.Pointer + 1; len(forward) < limit && i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if core.IsCloseParen(v) {
+		if core.IsCloseParen(&v) {
 			if depth == 0 {
 				break
 			}
 			depth--
 			continue
 		}
-		if core.IsOpenParen(v) {
+		if core.IsOpenParen(&v) {
 			depth++
 			continue
 		}
-		if core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
-			core.IsReturnCheck(v) || core.IsDefCleanup(v) {
+		if core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) ||
+			core.IsReturnCheck(&v) || core.IsDefCleanup(&v) {
 			continue
 		}
 		if !fallbackTokenCompatible(s, len(forward), v) {
@@ -869,10 +869,10 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 // an Any carrier (the scoring's wildcard), a raw word the dispatch has not
 // yet resolved.
 func fallbackTokenCompatible(s *core.Signature, idx int, v core.Value) bool {
-	if core.IsWord(v) || v.Parent == nil || v.Parent.Equal(core.TAny) {
+	if core.IsWord(&v) || v.Parent == nil || v.Parent.Equal(core.TAny) {
 		return true
 	}
-	return core.SigArgMatches(s, idx, v)
+	return core.SigArgMatches(s, idx, &v)
 }
 
 // checkModeAssumeSig is the recovery path for unmatched signatures in
@@ -910,8 +910,8 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 		// (e.g. a generic fn's surface-bounded `x:T` param inside
 		// AnalyseFnBody, design/legacy/GENERICS.10.ignore Phase 5) is visible to
 		// the S2 scan.
-		if core.IsWord(v) {
-			if wv, werr := core.AsWord(v); werr == nil {
+		if core.IsWord(&v) {
+			if wv, werr := core.AsWord(&v); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wv.Name); ok {
 					v = top
 				}
@@ -1048,7 +1048,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			if av.Parent.Equal(core.TAny) {
 				continue
 			}
-			if core.SigArgMatches(s, j, av) {
+			if core.SigArgMatches(s, j, &av) {
 				score++
 				continue
 			}
@@ -1607,7 +1607,7 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 	}
 	for i := 0; i+1 < len(residual); i++ {
 		v := residual[i]
-		if !fnBodiedTypeNode(v) || core.IsBareTypeNode(residual[i+1]) {
+		if !fnBodiedTypeNode(v) || core.IsBareTypeNode(&residual[i+1]) {
 			continue
 		}
 		// Prefer the SOURCE token over the node's own name: they agree for
@@ -1656,7 +1656,7 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 // CONTENT rather than on predicate-ness is what makes the multi-argument
 // combinators — `def K fn [[a:Any b:Any][Any][a]] end` — visible too.
 func fnBodiedTypeNode(v core.Value) bool {
-	if !core.IsBareTypeNode(v) {
+	if !core.IsBareTypeNode(&v) {
 		return false
 	}
 	content, ok := core.TypeContentOf(v)
@@ -1706,7 +1706,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// carrier was never recorded at all: `((mk 1) 2)` placed interpreted and
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) &&
+	if !core.IsFnTypedCarrier(&v) && !(v.Dynamic && core.SigTypeMatches(&v, core.TFunction)) &&
 		!core.IsFnValueResidual(v) && !es.MayBeFn(v.ID) {
 		if _, ok := es.MemberFnReadValue(v.ID); !ok {
 			return false
@@ -1738,15 +1738,15 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		av := e.Tape.At(p)
-		if core.IsWord(av) {
-			if wi, werr := core.AsWord(av); werr == nil {
+		if core.IsWord(&av) {
+			if wi, werr := core.AsWord(&av); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wi.Name); ok {
 					av = top
 					e.Registry.Check.RecordUse(wi.Name)
 				}
 			}
 		}
-		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
+		if core.IsConcrete(&av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
 			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
 				// The interpreter's failed match never evaluates the
 				// literal: its report renders it as written, so a trap built

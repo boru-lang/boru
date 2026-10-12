@@ -233,18 +233,18 @@ func TestMarkMoveString(t *testing.T) {
 // TestMarkMoveIsMethods tests IsMark/IsMove type checks.
 func TestMarkMoveIsMethods(t *testing.T) {
 	m := NewMark("x", NewInteger(1))
-	if !IsMark(m) {
+	if !IsMark(&m) {
 		t.Error("NewMark should be IsMark()")
 	}
-	if IsMove(m) {
+	if IsMove(&m) {
 		t.Error("NewMark should not be IsMove()")
 	}
 
 	mv := NewMove("x", "reason")
-	if !IsMove(mv) {
+	if !IsMove(&mv) {
 		t.Error("NewMove should be IsMove()")
 	}
-	if IsMark(mv) {
+	if IsMark(&mv) {
 		t.Error("NewMove should not be IsMark()")
 	}
 

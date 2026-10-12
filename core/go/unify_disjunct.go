@@ -45,7 +45,7 @@ func (d *DisjunctUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	// A TYPE literal is the type itself, not an inhabitant. The None literal
 	// is not one: it is the value a missing member reads as, and a union
 	// that names None admits it as it admits `none` (NUR324).
-	if IsTypeLiteral(v) {
+	if IsTypeLiteral(&v) {
 		return baseBehavior(d.prev).Match(v, t)
 	}
 	_, err := unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, v, r)
@@ -59,7 +59,7 @@ func (d *DisjunctUnifier) matchR(v Value, t *Type, r *Registry) bool {
 // path (where the newtype-alternative swap is declined) instead of the
 // Match short-circuit (which stays deliberately loose for dispatch).
 func IsDisjunctTypeNode(v Value) bool {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return false
 	}
 	u, ok := unifierOf(v.Behavior())
@@ -84,8 +84,8 @@ func (d *DisjunctUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// alternative), all of which the payload fold decided identically
 	// for the body the node replaced. A same-node (or node-free) pair
 	// settles structurally.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(d)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(d)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(d)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(d)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}
@@ -120,7 +120,7 @@ func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErro
 	// two value shapes: the bare type literal NewTypeLiteral(TAny)
 	// (Data=nil; the value IS the TAny lattice node) and the Any-
 	// typed carrier (Data=nil, Carrier=true, Parent=TAny).
-	if !IsConcrete(val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 
@@ -130,7 +130,7 @@ func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErro
 		// pattern, not a full schema.
 		if alt.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
 			!IsRecordType(alt) && !IsRecordType(val) &&
-			!IsTypedMap(alt) && !IsTypedMap(val) &&
+			!IsTypedMap(&alt) && !IsTypedMap(&val) &&
 			!IsOptionsType(alt) && !IsOptionsType(val) {
 			if alt.Data != nil && val.Data != nil {
 				if openUnifyMap(alt, val, r) {

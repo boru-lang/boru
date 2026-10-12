@@ -187,13 +187,13 @@ func init() {
 // constraint. Detection is by payload type — the Value's Parent is
 // just the base scalar (TInteger, TString, …), indistinguishable
 // from an ordinary scalar at the lattice level.
-func (v Value) IsDepScalar() bool {
+func (v *Value) IsDepScalar() bool {
 	_, ok := v.Data.(DepScalarInfo)
 	return ok
 }
 
 // AsDepScalar extracts the DepScalarInfo payload.
-func (v Value) AsDepScalar() (DepScalarInfo, error) {
+func (v *Value) AsDepScalar() (DepScalarInfo, error) {
 	if di, ok := v.Data.(DepScalarInfo); ok {
 		return di, nil
 	}
@@ -401,7 +401,7 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 
 // depBoundKnown reports whether a bound is a value the analysis pass knows
 // (not its carrier for a computed one, NUR308).
-func depBoundKnown(b *DepBound) bool { return IsConcrete(b.Value) }
+func depBoundKnown(b *DepBound) bool { return IsConcrete(&b.Value) }
 
 // unknownBound picks, of two same-side bounds at least one of which the
 // pass does not know, an unknown one: which is tighter is the run's to
@@ -475,7 +475,7 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 			// arg1 is the type-literal at the deep position. Reject
 			// non-leaf bases — only the well-known scalar types map
 			// to a supported DepScalar base.
-			if IsConcrete(args[1]) {
+			if IsConcrete(&args[1]) {
 				return nil, fmt.Errorf("%s: dependent constructor needs a scalar type literal, got concrete %s",
 					opName, args[1].Parent.String())
 			}
@@ -519,7 +519,7 @@ func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
 		return
 	}
 	for _, b := range bounds {
-		if !IsConcrete(b) {
+		if !IsConcrete(&b) {
 			// Only the analysis pass itself latches: a concrete sub-run (a
 			// const-fold probe) records nothing, and a latch it left would be
 			// consumed by the pass's next compile-time word.
@@ -533,7 +533,7 @@ func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
 }
 
 func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if IsConcrete(args[2]) {
+	if IsConcrete(&args[2]) {
 		return nil, fmt.Errorf("between: type arg must be a scalar type literal, got concrete %s",
 			args[2].Parent.String())
 	}
@@ -562,7 +562,7 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	// computed one is the analysis pass's carrier, which orders below every
 	// value, so `between 1 (size s) Integer` was Never at compile time
 	// whatever s held (NUR308). Over an unknown bound the run decides.
-	if IsConcrete(args[0]) && IsConcrete(args[1]) {
+	if IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 		cmp, err := CompareValues(args[0], args[1])
 		if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return nil, fmt.Errorf("between: %w", err)

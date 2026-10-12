@@ -50,7 +50,7 @@ func TestFnShapeTypedWindowNamedShape(t *testing.T) {
 			t.Errorf("return %d = %v, want a %s carrier", i, out, want.Name())
 		}
 	}
-	if n, _ := e.Tape.At(2).AsConcreteInteger(); n != 9 {
+	if n, _ := addrOf(e.Tape.At(2)).AsConcreteInteger(); n != 9 {
 		t.Error("the token past the arity stays on the tape")
 	}
 }
@@ -80,7 +80,7 @@ func TestFnShapeTypedWindowNotedClaim(t *testing.T) {
 	quiet := core.NewCarrier(core.TFnUndef)
 	r.Check.NoteFnShape(quiet, void)
 	e = zzmsEngine(r, []core.Value{quiet, core.NewInteger(1), core.NewEnd()})
-	if !tryDynamicFnValueDispatch(e, 0) || e.Tape.Len() != 1 || !core.IsEnd(e.Tape.At(0)) {
+	if !tryDynamicFnValueDispatch(e, 0) || e.Tape.Len() != 1 || !core.IsEnd(e.Tape.Ref(0)) {
 		t.Errorf("a shape returning nothing consumes the window, tape len = %d", e.Tape.Len())
 	}
 }

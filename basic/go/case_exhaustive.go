@@ -65,7 +65,7 @@ func caseAlternatives(r *Registry, v Value) ([]Value, bool) {
 		}
 		return out, true
 	}
-	if IsConcrete(v) || IsNoneShape(v) {
+	if IsConcrete(&v) || IsNoneShape(v) {
 		// A concrete scrutinee is its own single alternative: coverage is
 		// then value-precise (`case 2 [1 'a' 2 'b']` provably matches), and
 		// only a provably-unmatched value demands more clauses or a default.
@@ -83,7 +83,7 @@ func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
 	if a.Dynamic { //covergate:allow the root scrutinee is pre-checked by caseAlternatives, and disjunct alternatives are never Dynamic — JoinCarriers' gradual contagion makes a join with a dynamic arm dynamic as a WHOLE, and type-body alternatives (SimplifyDisjunctAlts / UnionCarrierForType) are literals or concretes
 		return false
 	}
-	if IsDisjunct(a) {
+	if IsDisjunct(&a) {
 		if depth <= 0 { //covergate:allow tor flattens nested disjunct VALUES (FlattenDisjunctAlts), so payload-carrying disjuncts never nest beyond the single root level and the recursion cannot exhaust the bound
 			return false
 		}
@@ -106,7 +106,7 @@ func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
 		}
 		return expandCaseAlt(r, NewTypeLiteral(a.Parent), depth, out)
 	}
-	if IsBareTypeNode(a) {
+	if IsBareTypeNode(&a) {
 		t := CanonicalType(r, &a)
 		if t.Equal(TBoolean) {
 			// Boolean is an opaque scalar leaf in the lattice, not a
@@ -128,7 +128,7 @@ func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
 		*out = append(*out, a)
 		return true
 	}
-	if IsConcrete(a) {
+	if IsConcrete(&a) {
 		*out = append(*out, normalizeCaseNone(a))
 		return true
 	}
@@ -211,7 +211,7 @@ func resolveCaseMatch(r *Registry, m Value) caseClauseMatch {
 		}
 		if tgt, ok := parseCaseIsPred(r, m); ok {
 			cm.pred = true
-			if IsBareTypeNode(tgt) {
+			if IsBareTypeNode(&tgt) {
 				cm.isT = CanonicalType(r, &tgt)
 				return cm
 			}
@@ -226,12 +226,12 @@ func resolveCaseMatch(r *Registry, m Value) caseClauseMatch {
 		cm.opaque = true
 		return cm
 	}
-	if IsParenExpr(m) {
+	if IsParenExpr(&m) {
 		cm.opaque = true
 		return cm
 	}
-	if IsWord(m) {
-		w, err := AsWord(m)
+	if IsWord(&m) {
+		w, err := AsWord(&m)
 		if err != nil { //covergate:allow IsWord already proved the WordInfo payload
 			cm.opaque = true
 			return cm
@@ -275,10 +275,10 @@ func parseCaseCmpPred(m Value) (caseIval, bool) {
 		return caseIval{}, false
 	}
 	opv, arg := lst.Get(0), lst.Get(1)
-	if !IsWord(opv) {
+	if !IsWord(&opv) {
 		return caseIval{}, false
 	}
-	w, err := AsWord(opv)
+	w, err := AsWord(&opv)
 	if err != nil { //covergate:allow IsWord already proved the WordInfo payload
 		return caseIval{}, false
 	}
@@ -312,10 +312,10 @@ func parseCaseIsPred(r *Registry, m Value) (Value, bool) {
 		return Value{}, false
 	}
 	opv, arg := lst.Get(0), lst.Get(1)
-	if !IsWord(opv) {
+	if !IsWord(&opv) {
 		return Value{}, false
 	}
-	w, err := AsWord(opv)
+	w, err := AsWord(&opv)
 	if err != nil { //covergate:allow IsWord already proved the WordInfo payload
 		return Value{}, false
 	}
@@ -323,8 +323,8 @@ func parseCaseIsPred(r *Registry, m Value) (Value, bool) {
 		return Value{}, false
 	}
 	tgt := arg
-	if IsWord(tgt) {
-		tw, err := AsWord(tgt)
+	if IsWord(&tgt) {
+		tw, err := AsWord(&tgt)
 		if err != nil { //covergate:allow IsWord already proved the WordInfo payload
 			return Value{}, false
 		}
@@ -334,7 +334,7 @@ func parseCaseIsPred(r *Registry, m Value) (Value, bool) {
 			tgt = ResolveWordValue(tgt)
 		}
 	}
-	if IsBareTypeNode(tgt) && !IsNoneShape(tgt) {
+	if IsBareTypeNode(&tgt) && !IsNoneShape(tgt) {
 		// A refinement NAME resolves to its node; a DepScalar body behind
 		// it contributes interval coverage exactly as the body did when
 		// the name denoted the body directly. A non-numeric refinement
@@ -360,7 +360,7 @@ func parseCaseIsPred(r *Registry, m Value) (Value, bool) {
 // scrutinee is uncoverable by comparisons; a non-finite BOUND makes the
 // predicate unrecognizable).
 func CaseNumericValue(v Value) (isInt bool, i int64, f float64, ok bool) {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return false, 0, 0, false
 	}
 	if v.Parent.ConformsTo(TInteger) {
@@ -451,11 +451,11 @@ func caseTypeCovers(at, t *Type) bool {
 // walks the plain lattice (a Pos value IS an Integer), so no newtype
 // boundary applies here — [is Integer] is the explicit family check.
 func caseIsCovers(r *Registry, t *Type, alt Value) bool {
-	if IsBareTypeNode(alt) {
+	if IsBareTypeNode(&alt) {
 		at := CanonicalType(r, &alt)
 		return at.ConformsTo(t)
 	}
-	if IsConcrete(alt) {
+	if IsConcrete(&alt) {
 		return alt.Is(t)
 	}
 	return false //covergate:allow alternatives are bare nodes or concrete values (expandCaseAlt)
@@ -468,7 +468,7 @@ func caseMatchCovers(r *Registry, m, alt Value, depth int) bool {
 	if depth <= 0 { //covergate:allow tor flattens nested disjuncts, so the recursion (one level per disjunct payload or union node) cannot exhaust the bound
 		return false
 	}
-	if IsDisjunct(m) {
+	if IsDisjunct(&m) {
 		// A disjunction value in match position unifies when SOME
 		// alternative unifies (unifyDisjunct), so its coverage is the
 		// union of its alternatives' coverage.
@@ -483,7 +483,7 @@ func caseMatchCovers(r *Registry, m, alt Value, depth int) bool {
 		}
 		return false
 	}
-	if IsBareTypeNode(m) {
+	if IsBareTypeNode(&m) {
 		t := CanonicalType(r, &m)
 		if dv, ok := core.UnionCarrierForType(t); ok {
 			// A named union/enum/disjunct type as a match covers what its
@@ -492,17 +492,17 @@ func caseMatchCovers(r *Registry, m, alt Value, depth int) bool {
 			// TypeContentOf arm is needed.
 			return caseMatchCovers(r, dv, alt, depth-1)
 		}
-		if IsBareTypeNode(alt) {
+		if IsBareTypeNode(&alt) {
 			return caseTypeCovers(CanonicalType(r, &alt), t)
 		}
-		if IsConcrete(alt) {
+		if IsConcrete(&alt) {
 			// Membership of the concrete alternative — runs the real
 			// Behavior.Match (predicate refinements decide exactly).
 			return alt.Is(t)
 		}
 		return false //covergate:allow alternatives and resolved matches are bare nodes or concrete values (expandCaseAlt / resolveCaseMatch), so no third shape reaches here
 	}
-	if IsConcrete(m) && IsConcrete(alt) {
+	if IsConcrete(&m) && IsConcrete(&alt) {
 		// Value-level coverage — the runtime's own unify relation, so
 		// numeric-leaf exactness (2.0 vs 2) is decided identically.
 		_, ok := UnifyR(m, alt, r)
@@ -796,7 +796,7 @@ func checkCaseExhaustiveness(r *Registry, v Value, clauses Value, elems []Value)
 			if covered[ai] {
 				continue
 			}
-			if IsBareTypeNode(alt) {
+			if IsBareTypeNode(&alt) {
 				covered[ai] = caseIvalsCover(ivals, CanonicalType(r, &alt))
 				continue
 			}
@@ -882,7 +882,7 @@ func caseHasAnyClause(r *Registry, matches []caseClauseMatch) bool {
 			continue
 		}
 		m := cm.resolved
-		if IsBareTypeNode(m) && CanonicalType(r, &m).Equal(TAny) {
+		if IsBareTypeNode(&m) && CanonicalType(r, &m).Equal(TAny) {
 			return true
 		}
 	}
@@ -951,7 +951,7 @@ func caseFindingPos(pos SrcPos, clauses Value) SrcPos {
 // union domain — a check-mode disjunct carrier minted from a named-union
 // fn-param annotation (ParamInputCarrier sets DisjunctInfo.Declared).
 func caseDeclaredDomain(v Value) bool {
-	if !v.Carrier || !IsDisjunct(v) {
+	if !v.Carrier || !IsDisjunct(&v) {
 		return false
 	}
 	info, err := AsDisjunct(v)

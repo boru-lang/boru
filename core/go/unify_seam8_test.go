@@ -63,7 +63,7 @@ func TestW8UnifyDisjunctRAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Any vs a disjunct yields the disjunct: %v", err)
 	}
-	if !IsDisjunct(got) {
+	if !IsDisjunct(&got) {
 		t.Fatalf("expected a disjunct result, got %v", got)
 	}
 }

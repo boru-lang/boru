@@ -186,7 +186,7 @@ func TestNUR031TypeValueDeqKeyMatchesDeq(t *testing.T) {
 	// not on which declarer produced it.
 	pv := NewDisjunct([]Value{NewString("a"), NewString("b")})
 	qv := NewEnum([]Value{NewString("a"), NewString("b")})
-	if !IsTypeBody(pv) || !IsTypeBody(qv) {
+	if !IsTypeBody(&pv) || !IsTypeBody(&qv) {
 		t.Fatal("fixture: both values must be type bodies")
 	}
 	if !DeepEqual(pv, pv) {

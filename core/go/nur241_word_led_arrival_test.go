@@ -142,7 +142,7 @@ func TestNUR241WordLedPlanIsMarked(t *testing.T) {
 	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1); err != nil {
 		t.Fatal(err)
 	}
-	fwd, _ := AsForward(e.Tape.At(1))
+	fwd, _ := AsForward(e.Tape.Ref(1))
 	if !fwd.WordLed {
 		t.Error("a Word next and no name capture at the first slot is the deferred word-led plan")
 	}
@@ -151,7 +151,7 @@ func TestNUR241WordLedPlanIsMarked(t *testing.T) {
 	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1); err != nil {
 		t.Fatal(err)
 	}
-	if fwd, _ = AsForward(e.Tape.At(1)); fwd.WordLed {
+	if fwd, _ = AsForward(e.Tape.Ref(1)); fwd.WordLed {
 		t.Error("a literal next is no word-led plan")
 	}
 }

@@ -160,8 +160,8 @@ func TestSubstIslandLeadArms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	toks, _ := core.AsParenExpr(got[0])
-	if ri, err := core.AsReach(toks[0]); err != nil || !ri.Eval || len(ri.Receiver) != 1 {
+	toks, _ := core.AsParenExpr(&got[0])
+	if ri, err := core.AsReach(&toks[0]); err != nil || !ri.Eval || len(ri.Receiver) != 1 {
 		t.Errorf("the reach group of the value: %v %v", toks, err)
 	}
 	zero := n336Fn("g")
@@ -169,7 +169,7 @@ func TestSubstIslandLeadArms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	toks, _ = core.AsParenExpr(got[0])
+	toks, _ = core.AsParenExpr(&got[0])
 	if fd, ok := toks[0].Data.(core.FnDefInfo); !ok || !fd.Applied {
 		t.Errorf("the name's call of a fn of none: %v", toks)
 	}

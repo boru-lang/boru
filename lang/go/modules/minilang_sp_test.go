@@ -39,26 +39,26 @@ func TestMiniSpHandler(t *testing.T) {
 	}
 
 	// A matched element comes back as its source value.
-	if v, _ := first("//a").AsConcreteInteger(); v != 1 {
+	if v, _ := addrOf(first("//a")).AsConcreteInteger(); v != 1 {
 		t.Errorf("//a = %v, want 1", v)
 	}
 	// A text() node comes back as a String.
-	if s, _ := first("//a/text()").AsConcreteString(); s != "1" {
+	if s, _ := addrOf(first("//a/text()")).AsConcreteString(); s != "1" {
 		t.Errorf("//a/text() = %q, want \"1\"", s)
 	}
 	// A string() result is a String.
-	if s, _ := first("string(/a)").AsConcreteString(); s != "1" {
+	if s, _ := addrOf(first("string(/a)")).AsConcreteString(); s != "1" {
 		t.Errorf("string(/a) = %q, want \"1\"", s)
 	}
 	// A boolean result is a Boolean.
-	if b, _ := first("1 > 0").AsConcreteBoolean(); !b {
+	if b, _ := addrOf(first("1 > 0")).AsConcreteBoolean(); !b {
 		t.Errorf("1 > 0 not true")
 	}
 	// An integral number is an Integer, a fractional one a Float.
-	if v, _ := first("count(//a)").AsConcreteInteger(); v != 1 {
+	if v, _ := addrOf(first("count(//a)")).AsConcreteInteger(); v != 1 {
 		t.Errorf("count(//a) = %v, want 1", v)
 	}
-	if f, _ := first("1 div 4").AsConcreteFloat(); f != 0.25 {
+	if f, _ := addrOf(first("1 div 4")).AsConcreteFloat(); f != 0.25 {
 		t.Errorf("1 div 4 = %v, want 0.25", f)
 	}
 

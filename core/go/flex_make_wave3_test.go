@@ -77,7 +77,7 @@ func TestAdoptIntoFlexPassThroughs(t *testing.T) {
 	}
 
 	// Non-concrete (type literal) passes through.
-	if v, err := AdoptIntoFlex(NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(v) {
+	if v, err := AdoptIntoFlex(NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(&v) {
 		t.Errorf("type literal: v=%v err=%v", v, err)
 	}
 	// Scalars pass through.
@@ -425,7 +425,7 @@ func TestResolveFieldType(t *testing.T) {
 		t.Fatalf("InstallType: %v", err)
 	}
 	got := ResolveFieldType(r, NewString("FooT"))
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Errorf("FooT did not resolve to a type body: %v", got)
 	}
 

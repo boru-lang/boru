@@ -165,7 +165,7 @@ func TestNur038ArrivalGateCommitsAtCallHead(t *testing.T) {
 		t.Fatalf("stepLiteral: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			t.Fatal("the pending forward must be COMMITTED by the arriving call head")
 		}
 	}
@@ -187,7 +187,7 @@ func TestNur038ArrivalGateFallsBackToImplicitEnd(t *testing.T) {
 	// survives at its own position AFTER the word — the next dispatch,
 	// never collected data beneath it.
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			t.Fatal("implicitEnd must resolve the pending forward")
 		}
 	}

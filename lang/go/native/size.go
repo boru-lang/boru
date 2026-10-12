@@ -26,7 +26,7 @@ func sizeReturns(args []Value, _ *Registry) []Value {
 		return carrier
 	}
 	v := args[0]
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return carrier
 	}
 	// The fold below assumes SizeOf answers with the PHYSICAL element

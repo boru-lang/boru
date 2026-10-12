@@ -31,7 +31,7 @@ func getpathHandler(args []Value, ctx map[string]Value, stack []Value, r *Regist
 // (not via voxgigstruct) so per-segment getr strictness and computed keys
 // behave exactly as bare m.a.b — the same primitive `apply` uses.
 func getpathReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	info, err := AsReach(args[0])
+	info, err := AsReach(&args[0])
 	if err != nil {
 		return nil, fmt.Errorf("getpath: %w", err)
 	}

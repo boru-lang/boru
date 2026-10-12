@@ -84,7 +84,7 @@ func TestReadReturnsRouting(t *testing.T) {
 	// Bytes. Caught as a live soundness violation:
 	//   IO.read p {enc:e}   check: String   runtime: Bytes
 	computedEnc := mapOfKV("enc", NewCarrier(TString))
-	if !core.IsConcrete(computedEnc) {
+	if !core.IsConcrete(&computedEnc) {
 		t.Fatal("fixture: a map with a carrier field must still be IsConcrete — that is the trap being guarded")
 	}
 	wantDynAny(t, rf2([]Value{p, computedEnc}, r), "computed enc field")
@@ -101,7 +101,7 @@ func TestWriteReturnsIdentity(t *testing.T) {
 	// a write-then-read chain.
 	p := modelPathon(t, r, "mem://w.txt")
 	out := rf([]Value{p, NewString("hello")}, r)
-	if len(out) != 1 || !core.IsConcrete(out[0]) {
+	if len(out) != 1 || !core.IsConcrete(&out[0]) {
 		t.Fatalf("concrete write residual = %v, want the Pathon back", out)
 	}
 	if !core.ValuesEqual(out[0], p) {
@@ -298,7 +298,7 @@ func TestIOValidationMirrors(t *testing.T) {
 	// nothing to encode (AsConcreteString rejects it by design).
 	r11 := mirrorReg(t)
 	dep := core.NewDepScalar(core.DepGT, NewInteger(3))
-	if !core.IsConcrete(dep) {
+	if !core.IsConcrete(&dep) {
 		t.Fatal("fixture: a DepScalar constraint must be concrete — otherwise the gate, not this arm, declines")
 	}
 	w([]Value{p, dep, mapOfKV("enc", NewString("latin1"))}, r11)
@@ -318,7 +318,7 @@ func TestIOValidationMirrors(t *testing.T) {
 	// The residual still comes from writeReturns: a concrete Pathon
 	// target is handed back verbatim.
 	out := w([]Value{p, NewString("hi"), mapOfKV("enc", NewString("utf8"))}, r8)
-	if len(out) != 1 || !core.IsConcrete(out[0]) {
+	if len(out) != 1 || !core.IsConcrete(&out[0]) {
 		t.Fatalf("write residual = %v, want the concrete Pathon back", out)
 	}
 }

@@ -78,7 +78,7 @@ func DryPassWrap(h func(args []core.Value, named map[string]core.Value, body []c
 // signature carries a type-literal slot).
 func allConcreteArgs(args []core.Value) bool {
 	for _, a := range args {
-		if core.IsConcrete(a) || core.IsBareTypeNode(a) {
+		if core.IsConcrete(&a) || core.IsBareTypeNode(&a) {
 			continue
 		}
 		if core.IsNoneShape(a) && !a.Dynamic {
@@ -185,7 +185,7 @@ func MirrorReturns(word string, gate func([]core.Value) bool,
 func dryPassOperands(args []core.Value) []core.Value {
 	var out []core.Value
 	for i, a := range args {
-		if !core.IsConcrete(a) && core.IsNoneShape(a) {
+		if !core.IsConcrete(&a) && core.IsNoneShape(a) {
 			if out == nil {
 				out = append([]core.Value(nil), args...)
 			}

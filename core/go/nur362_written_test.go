@@ -75,7 +75,7 @@ func TestForwardSplitExported(t *testing.T) {
 	if e.ForwardSplit() != 0 {
 		t.Error("no rearrangement: no split")
 	}
-	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, e.Tape.At(e.Pointer).Pos()
+	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, addrOf(e.Tape.At(e.Pointer)).Pos()
 	if e.ForwardSplit() != 1 {
 		t.Errorf("the word's own rearrangement: got %d", e.ForwardSplit())
 	}

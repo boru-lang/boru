@@ -195,7 +195,7 @@ func TestFetchAccessorHandlers(t *testing.T) {
 	// panic.
 	lit := NewTypeLiteral(ft.Response)
 	if got, hErr := fetchGetHandler([]Value{NewAtom("status"), lit}, nil, nil, r); hErr != nil ||
-		len(got) != 1 || !IsBareTypeNode(got[0]) {
+		len(got) != 1 || !IsBareTypeNode(&got[0]) {
 		t.Errorf("dot on a type literal = %v %v, want none", got, hErr)
 	}
 	if _, sErr := fetchGetrHandler([]Value{NewAtom("status"), lit}, nil, nil, r); sErr == nil {

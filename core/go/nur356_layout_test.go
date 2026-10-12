@@ -22,7 +22,7 @@ func TestDispatchLayoutWordReads(t *testing.T) {
 	e.Registry.Defs.Push("l", five)
 	args := []Value{three, five}
 	restore := e.PublishLayout(args, []int{1, 2}, SrcPos{})
-	if got := e.Registry.Check.LayoutFor(args); got == nil || got.NFwd != 2 || !IsWord(got.Words[1]) || len(got.Words) != 1 {
+	if got := e.Registry.Check.LayoutFor(args); got == nil || got.NFwd != 2 || !IsWord(addrOf(got.Words[1])) || len(got.Words) != 1 {
 		t.Errorf("ea 3 l: the word read rides as written; got %+v", got)
 	}
 	restore()
@@ -72,7 +72,7 @@ func TestDispatchLayoutWordPastReach(t *testing.T) {
 	e := nur356LayoutEngine(t, []Value{NewWord("ea"), three, list, m})
 	args := []Value{three, list}
 	restore := e.PublishLayout(args, []int{1, 2}, SrcPos{})
-	if got := e.Registry.Check.LayoutFor(args); got == nil || len(got.After) != 1 || !IsWord(got.After[0]) {
+	if got := e.Registry.Check.LayoutFor(args); got == nil || len(got.After) != 1 || !IsWord(&got.After[0]) {
 		t.Errorf("ea 3 [1] m: m stands past every reach; got %+v", got)
 	}
 	restore()

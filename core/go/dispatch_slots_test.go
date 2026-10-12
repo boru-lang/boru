@@ -21,7 +21,7 @@ func TestInactiveCheckBraid(t *testing.T) {
 	if ok, err := inactiveCheckModeSurfaceShape(nil, WordInfo{}, SrcPos{}); ok || err != nil {
 		t.Fatal("inactive surfaceShape must decline")
 	}
-	if v, ok := inactiveConcreteEvalOnce(nil, nil); ok || IsConcrete(v) {
+	if v, ok := inactiveConcreteEvalOnce(nil, nil); ok || IsConcrete(&v) {
 		t.Fatal("inactive concreteEvalOnce must decline")
 	}
 	inactiveDrainUndefinedAtoms(nil)

@@ -34,7 +34,7 @@ func TestResolveWordsDeepPreservesTypedContainerPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("typed list lost its ChildTypeInfo: %v", err)
 	}
-	if !core.IsTypeLiteral(ct.Child) || !core.ValueType(ct.Child).Equal(core.TInteger) {
+	if !core.IsTypeLiteral(&ct.Child) || !core.ValueType(ct.Child).Equal(core.TInteger) {
 		t.Errorf("child = %s, want the Integer type literal", ct.Child)
 	}
 	if len(ct.Elements) != 2 {

@@ -47,7 +47,7 @@ func unifyFoldReturns(args []Value, r *Registry) []Value {
 	// A Disjunct result is a type-as-VALUE — ride it dynamic so carrier-side
 	// consumers don't misread it as a union carrier (same rule as the
 	// tany/tall fold).
-	if IsDisjunct(out[0]) { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
+	if IsDisjunct(&out[0]) { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 		out[0] = NewDynamicCarrierValue(out[0])
 	}
 	return out
@@ -56,10 +56,10 @@ func unifyFoldReturns(args []Value, r *Registry) []Value {
 // unifyFoldable: a bare type node, or fully-concrete inert data (scalars,
 // none, lists/maps of the same — type literals admitted inside containers).
 func unifyFoldable(v Value) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return true
 	}
-	if v.Carrier || v.Dynamic || v.Undefined || !IsConcrete(v) {
+	if v.Carrier || v.Dynamic || v.Undefined || !IsConcrete(&v) {
 		return false
 	}
 	switch {

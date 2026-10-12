@@ -283,12 +283,12 @@ func leadingDef(tree map[int]treeEvent, defs map[core.SrcPos]*emitDynBind, body 
 	if tok+3 > len(body) {
 		return -1
 	}
-	w, err := core.AsWord(body[tok])
+	w, err := core.AsWord(&body[tok])
 	if err != nil {
 		return -1
 	}
 	switch {
-	case w.Name == "def" && core.IsWord(body[tok+1]):
+	case w.Name == "def" && core.IsWord(&body[tok+1]):
 		if d := defs[body[tok+1].Pos()]; d != nil && tookWhole(tree, d, body, tok+2) {
 			return tok + 3
 		}
@@ -306,7 +306,7 @@ func quietBranchAt(tree map[int]treeEvent, body []core.Value, tok int) int {
 	if tok < 0 || tok+3 > len(body) {
 		return -1
 	}
-	if w, err := core.AsWord(body[tok]); err != nil || w.Name != "if" || !unmodifiedWordInfo(w) {
+	if w, err := core.AsWord(&body[tok]); err != nil || w.Name != "if" || !unmodifiedWordInfo(w) {
 		return -1
 	}
 	for _, te := range tree {
@@ -390,7 +390,7 @@ func tookWhole(tree map[int]treeEvent, d *emitDynBind, body []core.Value, at int
 		return d.src.kind == opNone && core.IsSteplessValue(body[at])
 	}
 	te, in := tree[d.srcSeq]
-	return in && (core.IsParenExpr(body[at]) || core.IsReach(body[at])) && bodyTokenContaining(body, eventPos(*te.ev)) == at
+	return in && (core.IsParenExpr(&body[at]) || core.IsReach(&body[at])) && bodyTokenContaining(body, eventPos(*te.ev)) == at
 }
 
 // toldAfter is where a statement island may take over the statement it would
@@ -424,10 +424,10 @@ func (es *EmitState) toldAt(tok int) ([]core.Value, bool) {
 			return stack, true
 		}
 	}
-	if !core.IsParenExpr(t) {
+	if !core.IsParenExpr(&t) {
 		return nil, false
 	}
-	if inner, _ := core.AsParenExpr(t); len(inner) > 0 && inner[0].Pos().Row > 0 {
+	if inner, _ := core.AsParenExpr(&t); len(inner) > 0 && inner[0].Pos().Row > 0 {
 		stack, told := es.rootStmtStacks[inner[0].Pos()]
 		return stack, told
 	}
@@ -446,7 +446,7 @@ func statementStart(body []core.Value, tok int) core.SrcPos {
 	if tok == 0 {
 		return core.SrcPos{Row: 1}
 	}
-	if e := body[tok-1].Pos(); core.IsEnd(body[tok-1]) && e.Row > 0 {
+	if e := body[tok-1].Pos(); core.IsEnd(&body[tok-1]) && e.Row > 0 {
 		return core.SrcPos{Row: e.Row, Col: e.Col + 1}
 	}
 	return core.SrcPos{}
@@ -560,7 +560,7 @@ func literalDefsBefore(tree map[int]treeEvent, body []core.Value, tok int, p cor
 		}
 	}
 	for at := bodyTokenContaining(body, p); tok+3 <= at; tok += 3 {
-		if w, err := core.AsWord(body[tok]); err != nil || w.Name != "def" || !core.IsWord(body[tok+1]) ||
+		if w, err := core.AsWord(&body[tok]); err != nil || w.Name != "def" || !core.IsWord(&body[tok+1]) ||
 			!core.IsSteplessValue(body[tok+2]) || !defs[body[tok+1].Pos()] {
 			break
 		}
@@ -827,7 +827,7 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 		toks, _ = nestedToks(toks[at])
 	}
 	at := path[len(path)-1]
-	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != pos {
+	if at+1 >= len(toks) || !core.IsWord(&toks[at]) || toks[at].Pos() != pos {
 		return 0, nil, false
 	}
 	// The run the island writes: the do and its body, or — for an error
@@ -900,7 +900,7 @@ func (es *EmitState) doBefore(tree map[int]treeEvent, op EmitOperand, toks []cor
 	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 {
 		return false
 	}
-	return core.IsWord(toks[at-2]) && toks[at-2].Pos() == do.ev.call.pos && es.doBodyAfter(tree, op.idx, toks, at-2)
+	return core.IsWord(&toks[at-2]) && toks[at-2].Pos() == do.ev.call.pos && es.doBodyAfter(tree, op.idx, toks, at-2)
 }
 
 // literalListTok reports whether v is a list literal as written: evaluated
@@ -1041,7 +1041,7 @@ func wholeParen(body []core.Value, path []int, span int) ([]int, bool) {
 	}
 	outer := toks[path[n-2]]
 	inner, _ := nestedToks(outer)
-	return path[:n-1], core.IsParenExpr(outer) && len(inner) == span
+	return path[:n-1], core.IsParenExpr(&outer) && len(inner) == span
 }
 
 // pathLess orders two token paths as the tokens they reach stand in the
@@ -1072,7 +1072,7 @@ func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
 	toks := body
 	for i, at := range path {
 		inner, nested := nestedToks(toks[at])
-		if core.IsParenExpr(toks[at]) && len(inner) > 0 && inner[0].Pos() == p {
+		if core.IsParenExpr(&toks[at]) && len(inner) > 0 && inner[0].Pos() == p {
 			// A paren's shaped apply takes its method from the paren's
 			// first token too.
 			method := 0
@@ -1082,7 +1082,7 @@ func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
 			return path[:i+1], nout == 1 && len(ops) == len(inner)-1+method
 		}
 		if !nested {
-			return path, i == len(path)-1 && core.IsWord(toks[at]) && toks[at].Pos() == p && nout == 1 && len(ops) == 0
+			return path, i == len(path)-1 && core.IsWord(&toks[at]) && toks[at].Pos() == p && nout == 1 && len(ops) == 0
 		}
 		toks = inner
 	}
@@ -1130,7 +1130,7 @@ func (es *EmitState) doBody(ev *EmitEvent, body []core.Value, tok int) (sub []in
 	}
 	list := path[len(path)-2]
 	elems, nested := nestedToks(toks[list])
-	if !nested || core.IsParenExpr(toks[list]) || len(elems) != 1 || list == 0 || !core.IsWord(toks[list-1]) || toks[list-1].Pos() != c.pos {
+	if !nested || core.IsParenExpr(&toks[list]) || len(elems) != 1 || list == 0 || !core.IsWord(&toks[list-1]) || toks[list-1].Pos() != c.pos {
 		return nil, false, false
 	}
 	return append(append([]int(nil), path[:len(path)-2]...), list-1), false, true
@@ -1142,7 +1142,7 @@ func wordAt(body []core.Value, path []int) bool {
 	for _, at := range path[:len(path)-1] {
 		toks, _ = nestedToks(toks[at])
 	}
-	return core.IsWord(toks[path[len(path)-1]])
+	return core.IsWord(&toks[path[len(path)-1]])
 }
 
 // inertBefore reports whether every token before the one at path, on its own
@@ -1177,7 +1177,7 @@ func inertBefore(body []core.Value, tok int, path []int, written ...substPlan) b
 // do's count island (NUR348).
 func writtenParen(t core.Value, path []int, written []substPlan) bool {
 	inner, nested := nestedToks(t)
-	if !nested || !core.IsParenExpr(t) {
+	if !nested || !core.IsParenExpr(&t) {
 		return false
 	}
 	for j, v := range inner {
@@ -1196,7 +1196,7 @@ func writtenParen(t core.Value, path []int, written []substPlan) bool {
 // elements do (`[(l.0 true)] print "z"`). A paren's value may be a fn that
 // dispatches at the pointer, and a word may be one.
 func barrierFree(t core.Value) bool {
-	return core.IsSteplessValue(t) || (!core.IsParenExpr(t) && t.Parent != nil && t.Parent.Equal(core.TList))
+	return core.IsSteplessValue(t) || (!core.IsParenExpr(&t) && t.Parent != nil && t.Parent.Equal(core.TList))
 }
 
 // writtenOver reports whether one of the runs an island writes covers the
@@ -1239,7 +1239,7 @@ func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.
 		toks, _ = nestedToks(toks[at])
 	}
 	at := path[len(path)-1]
-	if !core.IsWord(toks[at]) || toks[at].Pos() != p {
+	if !core.IsWord(&toks[at]) || toks[at].Pos() != p {
 		return nil, 0, false
 	}
 	lo, hi := at, at
@@ -1255,7 +1255,7 @@ func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.
 		switch {
 		case j > at && (j == hi && hi > at || j == hi+1):
 			hi = j
-		case j >= 0 && j < at && (j == lo && lo < at || j == lo-1) && (!made || core.IsParenExpr(toks[j])):
+		case j >= 0 && j < at && (j == lo && lo < at || j == lo-1) && (!made || core.IsParenExpr(&toks[j])):
 			lo = j
 		case j >= 0 && j < at && made:
 			// A word's result (`3 4 add print/s`): the producer's own run,
@@ -1311,8 +1311,8 @@ func tokenPath(body []core.Value, p core.SrcPos) []int {
 
 // nestedToks is a paren's or a plain list literal's tokens.
 func nestedToks(v core.Value) ([]core.Value, bool) {
-	if core.IsParenExpr(v) {
-		toks, _ := core.AsParenExpr(v)
+	if core.IsParenExpr(&v) {
+		toks, _ := core.AsParenExpr(&v)
 		return toks, true
 	}
 	if v.Parent.Equal(core.TList) && v.Eval && !v.Quoted {
@@ -1419,7 +1419,7 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 			}
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			held++
-		case !core.IsConcrete(rv) || rv.Carrier || rv.Dynamic:
+		case !core.IsConcrete(&rv) || rv.Carrier || rv.Dynamic:
 			return nil, 0, nil, false
 		default:
 			srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: rv})
@@ -1444,7 +1444,7 @@ func (es *EmitState) stackAtStart(tok int) ([]core.Value, bool) {
 		return stack, true
 	}
 	s := tok
-	for s > 0 && !core.IsEnd(es.rootBody[s-1]) {
+	for s > 0 && !core.IsEnd(&es.rootBody[s-1]) {
 		s--
 	}
 	if s == 0 {
@@ -1474,7 +1474,7 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 			held++
 			continue
 		}
-		if core.IsBareTypeNode(v) && v.ID != "" && !v.Dynamic {
+		if core.IsBareTypeNode(&v) && v.ID != "" && !v.Dynamic {
 			srcs = append(srcs, RestartSrc{Kind: RestartType, Val: v})
 			continue
 		}
@@ -1513,7 +1513,7 @@ func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, star
 	pre, in := 0, 0
 	for _, t := range es.rootBody {
 		q := t.Pos()
-		if core.IsWord(t) || !isCompoundValue(t) || q.Row == 0 || core.CanonValue(t) != canon {
+		if core.IsWord(&t) || !isCompoundValue(t) || q.Row == 0 || core.CanonValue(t) != canon {
 			continue
 		}
 		if posAfter(start, q) {
@@ -1597,9 +1597,9 @@ func (es *EmitState) boundReadsBefore(tree map[int]treeEvent, residual []core.Va
 // the reach's own operand and never stays on the stack.
 func reachReceivers(toks []core.Value, at map[core.SrcPos]bool) {
 	for _, t := range toks {
-		if ri, err := core.AsReach(t); err == nil {
+		if ri, err := core.AsReach(&t); err == nil {
 			for _, r := range ri.Receiver {
-				if core.IsWord(r) {
+				if core.IsWord(&r) {
 					at[r.Pos()] = true
 				}
 			}
@@ -1811,7 +1811,7 @@ func (es *EmitState) lateRootRestart(lw *lowerer, tree map[int]treeEvent, at tre
 // the engine expanded to its markers, its first inner token's (toldAt's
 // rule).
 func (es *EmitState) parenStackAt(tok int) ([]core.Value, bool) {
-	inner, err := core.AsParenExpr(es.rootBody[tok])
+	inner, err := core.AsParenExpr(&es.rootBody[tok])
 	if err != nil || len(inner) == 0 {
 		return nil, false
 	}
@@ -1903,7 +1903,7 @@ func (es *EmitState) loopContPlan(tree map[int]treeEvent, at treeEvent, seq int,
 		return nil, false
 	}
 	forTok := path[0] - 2
-	if w, err := core.AsWord(body[forTok]); err != nil || w.Name != "for" || statementToken(body, body[forTok].Pos()) != forTok {
+	if w, err := core.AsWord(&body[forTok]); err != nil || w.Name != "for" || statementToken(body, body[forTok].Pos()) != forTok {
 		return nil, false
 	}
 	// The stop's statement is the body's first: nothing an earlier statement
@@ -2294,7 +2294,7 @@ func statementToken(body []core.Value, p core.SrcPos) int {
 	if at < 0 {
 		return -1
 	}
-	for at > 0 && !core.IsEnd(body[at-1]) {
+	for at > 0 && !core.IsEnd(&body[at-1]) {
 		at--
 	}
 	return at
@@ -2324,7 +2324,7 @@ func (es *EmitState) restartReruns(tree map[int]treeEvent, at treeEvent, seq int
 	}
 	end := len(body)
 	for i := tok + 1; i < len(body); i++ {
-		if core.IsEnd(body[i]) {
+		if core.IsEnd(&body[i]) {
 			end = i
 			break
 		}
@@ -2509,7 +2509,7 @@ func (es *EmitState) rawReachLead(tree map[int]treeEvent, seq int, body []core.V
 		toks, _ = nestedToks(toks[at])
 	}
 	t := toks[path[len(path)-1]]
-	ri, err := core.AsReach(t)
+	ri, err := core.AsReach(&t)
 	return err == nil && ri.Eval && !t.Quoted
 }
 

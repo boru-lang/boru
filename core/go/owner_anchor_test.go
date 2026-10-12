@@ -29,7 +29,7 @@ func TestOwnerStamps(t *testing.T) {
 		t.Errorf("CloneDynamic lost MintOwner: %q", c.MintOwner)
 	}
 	// An ordinary runtime value has no owner.
-	if got := NewInteger(1).OwnerID(); got != "" {
+	if got := addrOf(NewInteger(1)).OwnerID(); got != "" {
 		t.Errorf("scalar OwnerID = %q, want empty", got)
 	}
 	// SetOwner stamps through the shared tmeta.

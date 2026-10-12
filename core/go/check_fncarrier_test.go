@@ -167,7 +167,7 @@ func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
 	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
 		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
 	}
-	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
+	if got, ok := e.DefTop("d"); !ok || !IsConcrete(&got) {
 		t.Errorf("a Defs binding must resolve as itself: %v %v", got, ok)
 	}
 	if _, ok := e.DefTop("zz"); ok {
@@ -196,7 +196,7 @@ func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 	if err := e.stepWord(e.Tape.At(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
 		t.Errorf("plain check must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -415,7 +415,7 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 	if err := e.stepWord(e.Tape.At(0)); err != nil {
 		t.Fatalf("nested-body stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
 		t.Errorf("a nested body must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -471,7 +471,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	if err := e.stepWord(e.Tape.At(4)); err != nil {
 		t.Fatalf("a committing barrier returns nil, got %v", err)
 	}
-	if IsWord(e.Tape.At(e.Tape.Len()-1)) == false {
+	if IsWord(e.Tape.Ref(e.Tape.Len()-1)) == false {
 		t.Error("the read stays a word for its own step once the forward fires")
 	}
 	// A gradual carrier is no barrier: it is substituted as before.

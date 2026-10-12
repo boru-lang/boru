@@ -30,7 +30,7 @@ func TestUnwrapNamedReturnImplicitPair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unwrap: %v", err)
 	}
-	if !IsBareTypeNode(got) || !ValueType(got).Equal(TInteger) {
+	if !IsBareTypeNode(&got) || !ValueType(got).Equal(TInteger) {
 		t.Fatalf("unwrapped = %v, want the Integer type literal", got)
 	}
 }
@@ -38,7 +38,7 @@ func TestUnwrapNamedReturnImplicitPair(t *testing.T) {
 func TestUnwrapNamedReturnLeavesEverythingElse(t *testing.T) {
 	// A non-map value is returned untouched.
 	word := NewWord("Integer")
-	if got, err := unwrapNamedReturn(nil, word); err != nil || !IsWord(got) {
+	if got, err := unwrapNamedReturn(nil, word); err != nil || !IsWord(&got) {
 		t.Errorf("a word must pass through: %v, %v", got, err)
 	}
 	// An EXPLICIT map declares a Map-typed return — not a named one — so
@@ -54,7 +54,7 @@ func TestUnwrapNamedReturnLeavesEverythingElse(t *testing.T) {
 		t.Errorf("an explicit map must pass through, got %v", got)
 	}
 	// A Map-typed value with no payload takes the same early return.
-	if got, err := unwrapNamedReturn(nil, NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(got) {
+	if got, err := unwrapNamedReturn(nil, NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(&got) {
 		t.Errorf("a bare Map type node must pass through: %v, %v", got, err)
 	}
 }
@@ -326,10 +326,10 @@ func TestUnwrapNamedReturnColonWord(t *testing.T) {
 	if uerr != nil {
 		t.Fatalf("unwrap: %v", uerr)
 	}
-	if !IsWord(got) {
+	if !IsWord(&got) {
 		t.Fatalf("unwrapped = %v, want a Word", got)
 	}
-	if gw, _ := AsWord(got); gw.Name != "Integer" {
+	if gw, _ := AsWord(&got); gw.Name != "Integer" {
 		t.Errorf("unwrapped word = %q, want Integer", gw.Name)
 	}
 	// The declaration span rides along, so the pair spelling still
@@ -343,11 +343,11 @@ func TestUnwrapNamedReturnColonWord(t *testing.T) {
 		t.Errorf("ParseFnReturns = %v/%v, want [Integer]", types, perr)
 	}
 	// A word with no colon is a plain type name, untouched.
-	if got, uerr := unwrapNamedReturn(r, NewWord("Integer")); uerr != nil || !IsWord(got) {
+	if got, uerr := unwrapNamedReturn(r, NewWord("Integer")); uerr != nil || !IsWord(&got) {
 		t.Errorf("a bare type word must pass through: %v, %v", got, uerr)
 	}
 	// A leading colon names nothing — idx 0 is not a name/type split.
-	if got, uerr := unwrapNamedReturn(r, NewWord(":Integer")); uerr != nil || !IsWord(got) {
+	if got, uerr := unwrapNamedReturn(r, NewWord(":Integer")); uerr != nil || !IsWord(&got) {
 		t.Errorf("a leading colon must pass through: %v, %v", got, uerr)
 	}
 	// An invalid return NAME is rejected, as it is on the input side.
@@ -379,11 +379,11 @@ func TestEvalSigTypeExprNamedReturn(t *testing.T) {
 	}
 
 	// A non-paren value is returned untouched.
-	if got, eerr := EvalSigTypeExpr(r, NewWord("Integer"), "y"); eerr != nil || !IsWord(got) {
+	if got, eerr := EvalSigTypeExpr(r, NewWord("Integer"), "y"); eerr != nil || !IsWord(&got) {
 		t.Errorf("a plain word must pass through: %v, %v", got, eerr)
 	}
 	// A nil registry cannot run anything, so the value passes through.
-	if got, eerr := EvalSigTypeExpr(nil, paren, "y"); eerr != nil || !IsParenExpr(got) {
+	if got, eerr := EvalSigTypeExpr(nil, paren, "y"); eerr != nil || !IsParenExpr(&got) {
 		t.Errorf("no registry must pass the ParenExpr through: %v, %v", got, eerr)
 	}
 	// A FAILING annotation is a def-time error, not a silent wildcard.

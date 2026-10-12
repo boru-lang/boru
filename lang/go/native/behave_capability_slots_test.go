@@ -374,7 +374,7 @@ behave size/q (fn [[Bag] [Integer] [99]])`); err != nil {
 	if len(out) != 1 {
 		t.Fatalf("sizeReturns = %v, want one value", out)
 	}
-	if IsConcrete(out[0]) {
+	if IsConcrete(&out[0]) {
 		t.Errorf("the fold fired despite the size body: %s — runtime answers 99, "+
 			"a folded 3 makes the checker model a size the runtime never reports",
 			out[0].String())

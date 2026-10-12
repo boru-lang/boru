@@ -533,7 +533,7 @@ func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 // the reach's receiver to args[1] and evaluates the segment walk (the lens
 // "get"). getr strictness and computed keys behave exactly as bare m.a.b.
 func applyReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	info, err := AsReach(args[0])
+	info, err := AsReach(&args[0])
 	if err != nil {
 		return nil, fmt.Errorf("apply: %w", err)
 	}
@@ -548,7 +548,7 @@ func applyReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 // args[1] — composition, not evaluation. The result is a bound lens (data);
 // `apply` / `getpath` read through it.
 func rebindHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-	info, err := AsReach(args[0])
+	info, err := AsReach(&args[0])
 	if err != nil {
 		return nil, fmt.Errorf("rebind: %w", err)
 	}
@@ -660,7 +660,7 @@ func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 // downstream arg dispatch types optimistically. Only fires for a carrier the
 // real wrapper already declined (a concrete Function still wraps normally).
 func checkModeGradualFn(reg *Registry, v Value) ([]Value, bool) {
-	if reg == nil || !reg.Check.IsActive() || IsConcrete(v) || v.Parent == nil {
+	if reg == nil || !reg.Check.IsActive() || IsConcrete(&v) || v.Parent == nil {
 		return nil, false
 	}
 	// Only a STATICALLY-UNKNOWN carrier (a dynamic Any from a dispatch-bearing

@@ -536,7 +536,7 @@ func bodyAnalysisReturns(fixed *native.Type) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		if len(args) > 0 {
 			body := args[0]
-			if native.IsConcrete(body) && body.Parent != nil && body.Parent.ConformsTo(native.TList) {
+			if native.IsConcrete(&body) && body.Parent != nil && body.Parent.ConformsTo(native.TList) {
 				native.RunCarrierBody(r, body)
 			}
 		}
@@ -646,7 +646,7 @@ func profileRows(counts map[string]int) native.Value {
 func sizeOfValue(v native.Value) int {
 	const nodeOverhead = int(unsafe.Sizeof(native.Value{}))
 	size := nodeOverhead
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return size
 	}
 	switch {
@@ -714,13 +714,13 @@ func (c *shapeCensus) walk(v native.Value, depth int) {
 // even though they share the family Parent) are classified as plain nodes
 // and never reach an accessor — the no-panic discipline.
 func isStringValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TString)
+	return native.IsConcrete(&v) && v.Is(native.TString)
 }
 
 func isListValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TList)
+	return native.IsConcrete(&v) && v.Is(native.TList)
 }
 
 func isMapValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TMap)
+	return native.IsConcrete(&v) && v.Is(native.TMap)
 }

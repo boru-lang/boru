@@ -53,7 +53,7 @@ func (vc *vmContext) polyNoMatchRaise(r *core.Registry, pr *compiler.PolyRef, fn
 	// where the check pass's carrier did not: its report takes the ones
 	// before it, filled from the stack prefix (NUR311).
 	for i, v := range written[:min(spec.NFwd, len(written))] {
-		if !core.IsConcrete(v) {
+		if !core.IsConcrete(&v) {
 			written = core.AttemptedTuple(fn, append([]core.Value(nil), written[:i]...), stackTuple)
 			break
 		}

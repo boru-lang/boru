@@ -23,6 +23,7 @@ type seamWindow struct{ toks []core.Value }
 
 func (w *seamWindow) Len() int                { return len(w.toks) }
 func (w *seamWindow) At(i int) core.Value     { return w.toks[i] }
+func (w *seamWindow) Ref(i int) *core.Value   { return &w.toks[i] }
 func (w *seamWindow) Set(i int, v core.Value) { w.toks[i] = v }
 func (w *seamWindow) Remove(i int)            { w.toks = append(w.toks[:i], w.toks[i+1:]...) }
 
@@ -107,7 +108,7 @@ func (h *seamHost) IsReachCallHead(tok core.Value, i int) bool {
 
 func (h *seamHost) StaticForwardType(tok core.Value) (core.Value, core.FwdKind) {
 	h.note("StaticForwardType")
-	return core.StaticForwardTypeOf(tok)
+	return core.StaticForwardTypeOf(&tok)
 }
 
 func (h *seamHost) LookupWord(name string) *core.FnDefInfo {

@@ -40,11 +40,11 @@ func binarySpecLayout(v Value) (Value, bool) {
 	// predicate only ever sees concrete candidates (matchMembership
 	// defers bare nodes to the lattice walk) — so no node-resolution
 	// prelude is needed here.
-	if !IsClassType(v) {
+	if !IsClassType(&v) {
 		return Value{}, false
 	}
 	ot, err := AsClassType(v)
-	if err != nil || !IsConcrete(ot.BinaryLayout) {
+	if err != nil || !IsConcrete(&ot.BinaryLayout) {
 		return Value{}, false
 	}
 	return ot.BinaryLayout, true
@@ -57,7 +57,7 @@ func binaryInstanceLayout(v Value) (Value, bool) {
 		return Value{}, false
 	}
 	oi, err := AsClassInstance(v)
-	if err != nil || oi.TypeRef == nil || !IsConcrete(oi.TypeRef.BinaryLayout) {
+	if err != nil || oi.TypeRef == nil || !IsConcrete(&oi.TypeRef.BinaryLayout) {
 		return Value{}, false
 	}
 	return oi.TypeRef.BinaryLayout, true
@@ -165,7 +165,8 @@ func convertListToBytes(args []Value, _ map[string]Value, _ []Value, r *Registry
 	}
 	out := make([]byte, lst.Len())
 	for i := 0; i < lst.Len(); i++ {
-		n, ierr := lst.Get(i).AsConcreteInteger()
+		el := lst.Get(i)
+		n, ierr := el.AsConcreteInteger()
 		if ierr != nil {
 			return nil, r.BoruError("expected-byte", fmt.Sprintf("convert Bytes: element %d is not an Integer", i), "convert")
 		}
@@ -774,7 +775,7 @@ func frameInstance(specVal Value, b []byte, r *Registry, word string) (Value, []
 	// A NAMED spec evaluates to its node (the Stage 2 flip); both the
 	// layout probe and the AsClassType read below need the recorded
 	// class content.
-	if body, ok := TypeContentOf(specVal); ok && IsBareTypeNode(specVal) {
+	if body, ok := TypeContentOf(specVal); ok && IsBareTypeNode(&specVal) {
 		specVal = body
 	}
 	rawLayout, ok := binarySpecLayout(specVal)

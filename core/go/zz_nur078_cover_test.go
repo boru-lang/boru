@@ -73,8 +73,8 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	for _, kind := range []SugarKind{SugarUsurp, SugarStackArgs, SugarForwardArgs, SugarForceArity} {
 		tape := NewTape([]Value{NewWord("usurp"), reach}, StackHeadroom)
 		placeModifierOperand(tape, kind, 1)
-		items, err := AsParenExpr(tape.At(1))
-		if err != nil || len(items) != 1 || !IsReach(items[0]) {
+		items, err := AsParenExpr(tape.Ref(1))
+		if err != nil || len(items) != 1 || !IsReach(&items[0]) {
 			t.Errorf("kind %v: the reach operand must be wrapped in a paren, got %v", kind, tape.At(1))
 		}
 	}
@@ -82,11 +82,11 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	// the tape, an inert (non-evaluating) reach.
 	tape := NewTape([]Value{reach}, StackHeadroom)
 	placeModifierOperand(tape, SugarAngle, 0)
-	if !IsReach(tape.At(0)) {
+	if !IsReach(tape.Ref(0)) {
 		t.Error("a non-modifier sugar must leave the reach alone")
 	}
 	placeModifierOperand(tape, SugarUsurp, 1)
-	if tape.Len() != 1 || !IsReach(tape.At(0)) {
+	if tape.Len() != 1 || !IsReach(tape.Ref(0)) {
 		t.Error("an index past the tape must change nothing")
 	}
 	lit := NewTape([]Value{NewInteger(3)}, StackHeadroom)
@@ -96,7 +96,7 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	}
 	inert := NewTape([]Value{NewReachFromKeys(NewWord("m"), []Value{NewAtom("a")})}, StackHeadroom)
 	placeModifierOperand(inert, SugarUsurp, 0)
-	if !IsReach(inert.At(0)) {
+	if !IsReach(inert.Ref(0)) {
 		t.Error("an inert reach is data already and must be left alone")
 	}
 }

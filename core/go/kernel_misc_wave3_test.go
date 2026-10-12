@@ -156,7 +156,7 @@ func TestSetIDSeedDeterminism(t *testing.T) {
 func TestXmlInterpAccessors(t *testing.T) {
 	tmpl := XmlTmpl{Tag: "div"}
 	v := NewXmlInterp(tmpl)
-	if !IsXmlInterp(v) {
+	if !IsXmlInterp(&v) {
 		t.Fatal("NewXmlInterp not recognised")
 	}
 	got, err := AsXmlInterp(v)
@@ -171,10 +171,10 @@ func TestXmlInterpAccessors(t *testing.T) {
 func TestNewReachFromKeys(t *testing.T) {
 	m := mapOf("a", NewInteger(1))
 	rv := NewReachFromKeys(m, []Value{NewString("a")})
-	if !IsReach(rv) {
+	if !IsReach(&rv) {
 		t.Fatal("not a reach value")
 	}
-	info, err := AsReach(rv)
+	info, err := AsReach(&rv)
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -190,15 +190,15 @@ func TestNewReachFromKeys(t *testing.T) {
 }
 
 func TestIsBooleanPredicate(t *testing.T) {
-	if !IsBoolean(NewBoolean(true)) {
+	if !IsBoolean(addrOf(NewBoolean(true))) {
 		t.Error("boolean not boolean")
 	}
-	if IsBoolean(NewInteger(1)) {
+	if IsBoolean(addrOf(NewInteger(1))) {
 		t.Error("integer boolean")
 	}
 	// A bare Boolean TYPE LITERAL is not a boolean VALUE: its Parent is
 	// the literal's supertype, not TBoolean.
-	if IsBoolean(NewTypeLiteral(TBoolean)) {
+	if IsBoolean(addrOf(NewTypeLiteral(TBoolean))) {
 		t.Error("Boolean literal misread as a boolean value")
 	}
 }

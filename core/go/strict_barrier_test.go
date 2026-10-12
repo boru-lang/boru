@@ -111,7 +111,7 @@ func TestStrictBarrierStepWordUsurpOn(t *testing.T) {
 		NewWordUsurp("cadd", false), NewInteger(2), NewInteger(3),
 	}
 	e := engWithTape(t, vals, 3)
-	w, _ := AsWord(e.Tape.At(3))
+	w, _ := AsWord(e.Tape.Ref(3))
 	err := e.stepWordUsurp(e.Tape.At(3), w)
 	if err == nil {
 		t.Fatal("gate on: expected stranded-forward error from stepWordUsurp")
@@ -167,7 +167,7 @@ func TestStrictForwardScanReachExpands(t *testing.T) {
 		if err := e.resolveForwardArgs(fn, WordInfo{Name: "collector", ArgCount: -1}); err != nil {
 			t.Fatalf("strict=%v resolveForwardArgs: %v", on, err)
 		}
-		if IsReach(e.Tape.At(1)) {
+		if IsReach(e.Tape.Ref(1)) {
 			t.Errorf("strict=%v: the Reach must expand during forward collection (dot-access is exempt)", on)
 		}
 	}

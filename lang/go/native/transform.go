@@ -41,7 +41,7 @@ func ValueToAny(v Value) any { return valueToAny(v) }
 func valueToAny(v Value) any {
 	// Type literals (e.g. bare Map, List, Integer) have Data==nil.
 	// Return nil rather than panicking on accessor calls.
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil
 	}
 	switch {

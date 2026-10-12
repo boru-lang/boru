@@ -69,6 +69,9 @@ type Tape struct {
 	exhausted bool         // set once the ceiling is hit; engine fails loudly
 	warned    [3]bool      // 90% / 95% / 99% warnings emitted
 	warn      func(string) // sink for capacity warnings (nil = silent)
+
+	// zero is the cell Ref hands out for an out-of-range index.
+	zero Value
 }
 
 // Bounded-growth defaults.
@@ -253,7 +256,7 @@ func (t *Tape) capEntries() int { return len(t.buf) }
 func countForwards(vals []Value) int {
 	n := 0
 	for i := range vals {
-		if IsForward(vals[i]) {
+		if IsForward(&vals[i]) {
 			n++
 		}
 	}
@@ -284,6 +287,21 @@ func (t *Tape) At(i int) Value {
 	return t.buf[t.phys(i)]
 }
 
+// Ref returns a pointer to the cell at logical index i, so a reader takes
+// the Value where it lives instead of copying it out (the no-copy policy,
+// design/VALUE-NO-COPY.0.md). The pointer is valid until the tape's next
+// edit — Set, Insert, Remove, Splice, MoveGap, grow or Reload may move the
+// cell — so read through it at once and never keep it. An out-of-range
+// index yields the tape's own zero cell, cleared on every such read, which
+// answers false to every predicate as At's zero Value does (ADR-005).
+func (t *Tape) Ref(i int) *Value {
+	if i < 0 || i >= t.Len() {
+		t.zero = Value{}
+		return &t.zero
+	}
+	return &t.buf[t.phys(i)]
+}
+
 // Set replaces the element at logical index i. Out-of-range writes are
 // ignored (never panic — ADR-005).
 func (t *Tape) Set(i int, v Value) {
@@ -291,10 +309,10 @@ func (t *Tape) Set(i int, v Value) {
 		return
 	}
 	p := t.phys(i)
-	if IsForward(t.buf[p]) {
+	if IsForward(&t.buf[p]) {
 		t.forwards--
 	}
-	if IsForward(v) {
+	if IsForward(&v) {
 		t.forwards++
 	}
 	t.buf[p] = v
@@ -392,7 +410,7 @@ func (t *Tape) Insert(i int, v Value) {
 	}
 	t.buf[t.gapStart] = v
 	t.gapStart++
-	if IsForward(v) {
+	if IsForward(&v) {
 		t.forwards++
 	}
 }
@@ -404,7 +422,7 @@ func (t *Tape) Remove(i int) {
 	}
 	t.MoveGap(i)
 	// The element at logical i sits just after the gap; widen over it.
-	if IsForward(t.buf[t.gapEnd]) {
+	if IsForward(&t.buf[t.gapEnd]) {
 		t.forwards--
 	}
 	t.buf[t.gapEnd] = Value{} // release references
@@ -429,7 +447,7 @@ func (t *Tape) Splice(i, count int, repl ...Value) {
 	t.MoveGap(i)
 	// Consume count elements after the gap.
 	for k := 0; k < count; k++ {
-		if IsForward(t.buf[t.gapEnd+k]) {
+		if IsForward(&t.buf[t.gapEnd+k]) {
 			t.forwards--
 		}
 		t.buf[t.gapEnd+k] = Value{}

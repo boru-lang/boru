@@ -29,7 +29,7 @@ func TestCollectorTokenArms(t *testing.T) {
 	es := NewEmitState()
 	es.reg = nurRegistry(t)
 	ref := deoptTok("k", 3)
-	w, _ := core.AsWord(ref)
+	w, _ := core.AsWord(&ref)
 	w.ForceVal = true
 	refTok := core.NewWord("k")
 	refTok.Data = w
@@ -283,7 +283,7 @@ func TestPolyRawOperands(t *testing.T) {
 	}
 	lw := &lowerer{landingBody: body, scopes: [][]EmitEvent{events}, vm: []vmSlot{{seq: 3}, {seq: 1}, {seq: 2}, {seq: 9}}}
 	raw := lw.polyRawOperands(3)
-	if len(raw) != 1 || raw[1].Pos() != deoptAt(6) {
+	if len(raw) != 1 || addrOf(raw[1]).Pos() != deoptAt(6) {
 		t.Fatalf("the literal's window index: %v", raw)
 	}
 	lw.vm = []vmSlot{{seq: 2, idx: 1}}

@@ -44,13 +44,13 @@ Test.coverage "boru:sift"`)
 		t.Fatalf("expected 1 result (the report), got %d: %v", len(out), out)
 	}
 	rep, rerr := native.AsMap(out[0])
-	if rerr != nil || !native.IsConcrete(out[0]) {
+	if rerr != nil || !native.IsConcrete(&out[0]) {
 		t.Fatalf("report is not a map: %v", out[0])
 	}
 	get := func(k string) native.Value { v, _ := rep.Get(k); return v }
-	total, _ := get("total").AsConcreteInteger()
-	covered, _ := get("covered").AsConcreteInteger()
-	pct, _ := get("percent").AsConcreteFloat()
+	total, _ := addrOf(get("total")).AsConcreteInteger()
+	covered, _ := addrOf(get("covered")).AsConcreteInteger()
+	pct, _ := addrOf(get("percent")).AsConcreteFloat()
 	if total <= 0 {
 		t.Fatalf("total denominator rows = %d, want > 0", total)
 	}

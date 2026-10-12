@@ -1195,7 +1195,7 @@ func TestInterpStringNone(t *testing.T) {
 	}
 	// Negative: the result must be a concrete String, NOT a non-concrete
 	// carrier — the bug returned NewCarrier(TString), which rendered "String".
-	if !IsConcrete(result[0]) {
+	if !IsConcrete(&result[0]) {
 		t.Errorf("expected a concrete String value, got non-concrete %v", result[0])
 	}
 }
@@ -1222,7 +1222,7 @@ func TestInterpStringTypeLiteral(t *testing.T) {
 	if got != "type: Integer" {
 		t.Errorf("expected 'type: Integer', got %q", got)
 	}
-	if !IsConcrete(result[0]) {
+	if !IsConcrete(&result[0]) {
 		t.Errorf("expected a concrete String value, got non-concrete %v", result[0])
 	}
 }

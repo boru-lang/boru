@@ -33,7 +33,7 @@ func TestW9SigTypeMatchesAsTypeBareNone(t *testing.T) {
 	// A bare None lattice node (Parent=TNone, Data==nil, no Name) is not a
 	// valid type-arg literal.
 	bareNone := Value{Parent: TNone}
-	if !IsBareTypeNode(bareNone) {
+	if !IsBareTypeNode(&bareNone) {
 		t.Fatal("test premise: a payload-less TNone value is a bare type node")
 	}
 	if sigTypeMatchesAsType(bareNone, TInteger) {

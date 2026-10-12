@@ -145,7 +145,7 @@ func (es *EmitState) constMemberFn(c *emitCall) (core.FnDefInfo, bool) {
 		vals[i] = es.consts[op.idx]
 	}
 	member, ok := readFnMemberValue(vals)
-	if !ok || !core.IsConcrete(member) {
+	if !ok || !core.IsConcrete(&member) {
 		return core.FnDefInfo{}, false
 	}
 	fd, isFn := member.Data.(core.FnDefInfo)

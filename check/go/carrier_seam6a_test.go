@@ -64,7 +64,7 @@ func TestS6aScalarFoldOperandBigNumPayloads(t *testing.T) {
 // two clones of one stored list and pruned the live branch.
 func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 	dataList := core.NewList([]core.Value{core.NewInteger(1)})
-	if !core.IsInertConst(dataList) {
+	if !core.IsInertConst(&dataList) {
 		t.Fatal("fixture: a data-only list must be an inert const — otherwise this test proves nothing")
 	}
 	if ScalarFoldOperand(dataList) {
@@ -73,7 +73,7 @@ func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 	m := core.NewOrderedMap()
 	m.Set("a", core.NewInteger(1))
 	dataMap := core.NewMap(m)
-	if !core.IsInertConst(dataMap) {
+	if !core.IsInertConst(&dataMap) {
 		t.Fatal("fixture: a data-only map must be an inert const")
 	}
 	if ScalarFoldOperand(dataMap) {
@@ -344,7 +344,7 @@ func TestS6aJoinCarriersWidthCapCollapses(t *testing.T) {
 	a := mk(1, 5)
 	b := mk(6, 10)
 	got := core.JoinCarriersInner(a, b)
-	if !got.Carrier || !got.Parent.Equal(core.TInteger) || core.IsDisjunct(got) {
+	if !got.Carrier || !got.Parent.Equal(core.TInteger) || core.IsDisjunct(&got) {
 		t.Errorf("10 alternatives must collapse to a plain Integer carrier, got %+v", got)
 	}
 }
@@ -446,7 +446,7 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 		t.Fatalf("summary len = %d, want 1", len(got))
 	}
 	// The refined hypothesis must cover BOTH rounds' types.
-	if got[0].Parent.Equal(core.TInteger) && !core.IsDisjunct(got[0]) {
+	if got[0].Parent.Equal(core.TInteger) && !core.IsDisjunct(&got[0]) {
 		t.Errorf("summary did not widen past round 1: %+v", got[0])
 	}
 }

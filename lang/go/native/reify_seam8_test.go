@@ -23,7 +23,7 @@ func w8ClassReg(t *testing.T, def string, name string) (*Registry, Value) {
 	if body, bok := TypeContentOf(tv); bok {
 		tv = body
 	}
-	if !IsClassType(tv) {
+	if !IsClassType(&tv) {
 		t.Fatalf("%s did not resolve to a class type", name)
 	}
 	return r, tv

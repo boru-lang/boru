@@ -51,10 +51,12 @@ type Payload interface {
 	// values answer from value state — MapPayload from its OrderedMap's
 	// Implicit flag (a record shape vs a concrete map), ExtensionPayload
 	// from its nested hostTypeBody marker (a host type body vs a host
-	// instance) — and the two function payloads from the owner's
-	// dispatch identity (owner carries the Value whose Data this is;
-	// implementations that don't need it ignore it).
-	IsTypeContent(owner *Value) bool
+	// instance) — and the guarded kinds from the owning value's
+	// dispatch identity: parent is the Parent of the Value whose Data
+	// this is (nil when there is none), and implementations that don't
+	// need it ignore it. The seam takes the parent rather than the owner
+	// so the call never makes the owning Value escape to the heap.
+	IsTypeContent(parent *Type) bool
 }
 
 // =================================================================

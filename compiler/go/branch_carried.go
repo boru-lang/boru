@@ -393,7 +393,7 @@ func (es *EmitState) dynBindStorable(d *emitDynBind) bool {
 	case d.src.kind == opLocal || d.src.kind == opConst:
 		return true
 	case d.src.kind == opNone:
-		return core.IsInertConst(d.val)
+		return core.IsInertConst(&d.val)
 	}
 	return false
 }

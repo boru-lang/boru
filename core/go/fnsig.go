@@ -198,7 +198,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 		return false
 	}
 	for i, p := range sig.Params {
-		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(sigArgs[i]) {
+		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(&sigArgs[i]) {
 			return false
 		}
 	}

@@ -80,7 +80,7 @@ func TestSeam6C2ClassHandlerArms(t *testing.T) {
 	schema := NewOrderedMap()
 	schema.Set("a", NewTypeLiteral(TInteger))
 	out, err := classHandler([]Value{NewMap(schema)}, nil, nil, r)
-	if err != nil || len(out) != 1 || !IsClassType(out[0]) {
+	if err != nil || len(out) != 1 || !IsClassType(&out[0]) {
 		t.Fatalf("expected class type, got %v / %v", out, err)
 	}
 }
@@ -115,7 +115,7 @@ func TestSeam6C2ObjectWithParentHandlerArms(t *testing.T) {
 	childFields := NewOrderedMap()
 	childFields.Set("b", NewTypeLiteral(TString))
 	out, err := objectWithParentHandler([]Value{NewMap(childFields), bareParent}, nil, nil, r)
-	if err != nil || len(out) != 1 || !IsClassType(out[0]) {
+	if err != nil || len(out) != 1 || !IsClassType(&out[0]) {
 		t.Fatalf("expected extended class type, got %v / %v", out, err)
 	}
 	info, err2 := AsClassType(out[0])

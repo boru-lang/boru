@@ -89,7 +89,7 @@ func predicateBodyImpliedType(r *Registry, param string, body []Value) (*Type, b
 			return nil, false
 		}
 		ev := elseArm.Get(0)
-		if IsConcrete(ev) && ev.Parent.ConformsTo(TBoolean) {
+		if IsConcrete(&ev) && ev.Parent.ConformsTo(TBoolean) {
 			if b, berr := AsBoolean(ev); berr == nil && !b {
 				return t, true
 			}
@@ -110,8 +110,8 @@ func guardTripleType(r *Registry, param string, w0, w1, tv Value) (*Type, bool) 
 	if !isWordNamed(w0, param) || !isWordNamed(w1, "is") {
 		return nil, false
 	}
-	if IsWord(tv) {
-		inner, err := AsWord(tv)
+	if IsWord(&tv) {
+		inner, err := AsWord(&tv)
 		if err != nil {
 			return nil, false
 		}
@@ -127,7 +127,7 @@ func guardTripleType(r *Registry, param string, w0, w1, tv Value) (*Type, bool) 
 			tv = NewTypeLiteral(t)
 		}
 	}
-	if !IsBareTypeNode(tv) || tv.Is(TNone) {
+	if !IsBareTypeNode(&tv) || tv.Is(TNone) {
 		return nil, false
 	}
 	return CanonicalType(r, ValueType(tv)), true
@@ -143,10 +143,10 @@ func defsHasType(r *Registry, name string) bool {
 // concreteness probe uses IsConcrete rather than a raw `Data == nil` (the
 // data_nil_gate discipline) — a Word carrier is not a literal word token.
 func isWordNamed(v Value, name string) bool {
-	if !v.Parent.Equal(TWord) || !IsConcrete(v) {
+	if !v.Parent.Equal(TWord) || !IsConcrete(&v) {
 		return false
 	}
-	w, err := AsWord(v)
+	w, err := AsWord(&v)
 	return err == nil && w.Name == name
 }
 
@@ -155,7 +155,7 @@ func isWordNamed(v Value, name string) bool {
 func stripGuardMarkers(toks []Value) []Value {
 	out := make([]Value, 0, len(toks))
 	for _, t := range toks {
-		if IsOpenParen(t) || IsCloseParen(t) || IsEnd(t) {
+		if IsOpenParen(&t) || IsCloseParen(&t) || IsEnd(&t) {
 			continue
 		}
 		out = append(out, t)

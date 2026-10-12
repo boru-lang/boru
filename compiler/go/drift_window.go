@@ -103,7 +103,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// settled boundary.
 	for i := fwdIdx + 1; i < e.Tape.Len(); i++ {
 		t := e.Tape.At(i)
-		if !core.IsEnd(t) && !core.IsDefCleanup(t) {
+		if !core.IsEnd(&t) && !core.IsDefCleanup(&t) {
 			return false
 		}
 	}
@@ -114,7 +114,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// defect, not a settled boundary.
 	for i := 0; i < minPos; i++ {
 		t := e.Tape.At(i)
-		if !core.IsEnd(t) && !core.IsDefCleanup(t) {
+		if !core.IsEnd(&t) && !core.IsDefCleanup(&t) {
 			return false
 		}
 	}

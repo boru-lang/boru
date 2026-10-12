@@ -137,7 +137,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry
 // node (CanonicalType) before the reparent, so a retagged element
 // carries the registry's own *Type pointer.
 func reparentSwappedElem(src, unified Value, r *Registry) Value {
-	if !IsBareTypeNode(unified) || !IsConcrete(src) {
+	if !IsBareTypeNode(&unified) || !IsConcrete(&src) {
 		return unified
 	}
 	t := ValueType(unified)
@@ -148,7 +148,7 @@ func reparentSwappedElem(src, unified Value, r *Registry) Value {
 }
 
 func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(concrete) {
+	if !IsConcrete(&concrete) {
 		// A carrier (a check-mode abstract list with no readable elements) tags
 		// gradually; its concrete elements are validated at runtime.
 		out := concrete

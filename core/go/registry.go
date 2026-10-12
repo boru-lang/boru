@@ -731,14 +731,14 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 	// collapsed region's parens leave the tape.
 	out := make([]Value, 0, end)
 	for _, v := range snap[:end] {
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			if _, sealed := v.Data.(LoopOpenInfo); sealed {
 				out = out[:0]
 			}
 			continue
 		}
-		if IsCloseParen(v) || IsForward(v) ||
-			IsMark(v) || IsMove(v) || IsEnd(v) || IsWord(v) {
+		if IsCloseParen(&v) || IsForward(&v) ||
+			IsMark(&v) || IsMove(&v) || IsEnd(&v) || IsWord(&v) {
 			continue
 		}
 		out = append(out, v)
@@ -1276,7 +1276,7 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 // definition the word step must route through Lookup rather than
 // substitute: a fn definition, a class, or a compiled closure a run's
 // invoker can bridge (lookupUncachedBridged).
-func dispatchesAsWord(v Value, r *Registry) bool {
+func dispatchesAsWord(v *Value, r *Registry) bool {
 	switch v.Data.(type) {
 	case FnDefInfo, *ClassTypeInfo:
 		return true
@@ -1530,7 +1530,7 @@ func BinaryIntOpNative(name string, op func(a, b int64) (int64, error)) NativeFu
 
 // ValToString converts any scalar Value to its string representation.
 func ValToString(v Value) string {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return v.String()
 	}
 	switch {
@@ -1561,8 +1561,8 @@ func ValToString(v Value) string {
 	case IsPathon(v):
 		_as13, _ := AsPathon(v)
 		return _as13.String()
-	case IsWord(v):
-		_as14, _ := AsWord(v)
+	case IsWord(&v):
+		_as14, _ := AsWord(&v)
 		return _as14.Name
 	default:
 		return v.String()
@@ -1687,7 +1687,7 @@ func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
 		return v
 	}
 	if top, ok := reg.Defs.TopEntry(name); ok && top.TypeDef == nil &&
-		(IsClassType(top.Body) || IsResourceType(top.Body)) {
+		(IsClassType(&top.Body) || IsResourceType(top.Body)) {
 		// Value-side ObjectType installations from outside the type
 		// word (legacy RegisterResource paths) — a VALUE binding whose
 		// body is the schema.
@@ -1712,11 +1712,11 @@ func ResourceDefKey(name string) string { return "__resource:" + name }
 
 // StoreKey converts a Value to a string key for the store.
 func StoreKey(v Value) string {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return v.Parent.String()
 	}
-	if IsWord(v) {
-		_as15, _ := AsWord(v)
+	if IsWord(&v) {
+		_as15, _ := AsWord(&v)
 		return _as15.Name
 	}
 	if v.Parent.ConformsTo(TString) {
@@ -2174,10 +2174,10 @@ func (r *Registry) LookupTypeName(name string) *Type {
 // downstream error messages can surface "type Bbd" rather than the
 // rendered value form.
 func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, ok bool) {
-	if !IsWord(v) {
+	if !IsWord(&v) {
 		return v, "", true
 	}
-	w, _ := AsWord(v)
+	w, _ := AsWord(&v)
 	rv, hit := r.ResolveTypedName(w.Name)
 	if hit {
 		return rv, w.Name, true
@@ -2264,7 +2264,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	// commit and at a statement end), so a predicate body's effects happen
 	// once per dispatch on both lanes. Analysis keeps its own path.
 	memoKey := ""
-	if !r.analysisActive() && IsConcrete(candidate) {
+	if !r.analysisActive() && IsConcrete(&candidate) {
 		memoKey = predMemoKey(constraint, candidate)
 		if memoKey != "" {
 			if hit, ok := r.predMemo[memoKey]; ok {
@@ -2301,7 +2301,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	// statically as it is at run time, where the pass's plan used to claim
 	// the slot (NUR141). A run that errors admits, as before.
 	analysis := r != nil && r.analysisMode()
-	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate)) {
+	if analysis && (!IsConcrete(&candidate) || IsBareTypeNode(&candidate)) {
 		return candidate, true, nil
 	}
 	// Membership is a ONE-VALUE APPLICATION of the predicate: the candidate
@@ -2359,7 +2359,7 @@ func predicateBodyPure(r *Registry, predSig *FnSig) bool {
 	var pure func(items []Value) bool
 	pure = func(items []Value) bool {
 		for _, it := range items {
-			if w, err := AsWord(it); err == nil {
+			if w, err := AsWord(&it); err == nil {
 				if w.Name == param || !userDefined(r, w.Name) {
 					continue
 				}

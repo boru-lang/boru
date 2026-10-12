@@ -128,7 +128,7 @@ func NewElementCarrier(t *core.Type) core.Value {
 // NewElementCarrier(DataListElemTypeFromValue(data)) — an untyped element
 // stays a dynamic Any.
 func ElementCarrierFromValue(data core.Value) core.Value {
-	if core.IsConcrete(data) {
+	if core.IsConcrete(&data) {
 		if joined, ok := joinedElementCarrier(data); ok {
 			return joined
 		}
@@ -248,7 +248,7 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 		var t *core.Type
 		for _, k := range mp.M.Keys() {
 			v, _ := mp.M.Get(k)
-			if core.IsTypeLiteral(v) {
+			if core.IsTypeLiteral(&v) {
 				return core.TAny // a type VALUE is no value of its Parent (NUR323)
 			}
 			if t == nil {
@@ -273,7 +273,7 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 	// element is unknown (TAny — NewElementCarrier makes it gradual), where
 	// its Parent committed a body's `add` over the type (NUR323).
 	for i := 0; i < list.Len(); i++ {
-		if core.IsTypeLiteral(list.Get(i)) {
+		if core.IsTypeLiteral(list.Ref(i)) {
 			return core.TAny
 		}
 	}
@@ -291,7 +291,7 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 // join: its type's, or core.ValueCarrier's Type carrier for a type literal,
 // which is no value of its Parent (NUR323).
 func elementJoinCarrier(el core.Value) core.Value {
-	if core.IsTypeLiteral(el) {
+	if core.IsTypeLiteral(&el) {
 		return core.ValueCarrier(el)
 	}
 	return core.NewCarrier(el.Parent)
@@ -305,9 +305,9 @@ func elementJoinCarrier(el core.Value) core.Value {
 // signature matching keeps working; carrier-aware list/map handling
 // is future work.
 func toCarrier(v core.Value) core.Value {
-	if core.IsWord(v) || core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
-		core.IsOpenParen(v) || core.IsParenExpr(v) || core.IsInterpString(v) || core.IsXmlInterp(v) ||
-		core.IsReturnCheck(v) || core.IsDefCleanup(v) || core.IsDispatchMod(v) {
+	if core.IsWord(&v) || core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) ||
+		core.IsOpenParen(&v) || core.IsParenExpr(&v) || core.IsInterpString(&v) || core.IsXmlInterp(&v) ||
+		core.IsReturnCheck(&v) || core.IsDefCleanup(&v) || core.IsDispatchMod(&v) {
 		// A `/v`/`/q` dispatch-modifier marker (Word/__DM, parser-emitted right
 		// after a paren / dotted-path group) is a control token too: stripping
 		// it to a payload-less carrier made check mode UNABLE to consume it
@@ -354,7 +354,7 @@ func toCarrier(v core.Value) core.Value {
 	case core.IntPayload, core.StrPayload, core.BoolPayload, core.FloatPayload, core.AtomPayload,
 		core.BigIntPayload, core.DecimalPayload, core.TimePayload, core.DurationPayload, core.TimezonePayload,
 		core.MicronPayload, core.PathonPayload:
-		if core.IsConcrete(v) {
+		if core.IsConcrete(&v) {
 			return v
 		}
 	}
@@ -415,21 +415,21 @@ func toCarrier(v core.Value) core.Value {
 	// would be opaque in check mode, silently dropping module-export type
 	// propagation, index checks, and dispatch diagnostics. Same rationale
 	// as the FnDefInfo case above.
-	if core.IsReach(v) {
+	if core.IsReach(&v) {
 		return v
 	}
 	// Keep an __SP splice marker concrete: it is a compile-time macro binding
 	// (`def x word [body]`), expanded inline at each use site by stepLiteral. A
 	// carrier-stripped marker would lose its payload and never splice, so the
 	// reference would be an opaque carrier in check mode.
-	if core.IsSplice(v) {
+	if core.IsSplice(&v) {
 		return v
 	}
 	// Keep a sugar marker concrete: the parser's structural desugar
 	// output (ADR-012 rule 3, 2026-08-04 amendment), lowered at step
 	// time by stepSugar. A carrier-stripped marker loses its SugarInfo
 	// and could never lower — the sugar would be opaque in check mode.
-	if core.IsSugar(v) {
+	if core.IsSugar(&v) {
 		return v
 	}
 	// Type literals (Data already nil) are already in the right
@@ -479,7 +479,7 @@ var checkModeLiteralWords = map[string]bool{
 func StripToCarriers(in []core.Value) []core.Value {
 	out := make([]core.Value, len(in))
 	for i, v := range in {
-		if v.Parent.ConformsTo(core.TString) && core.IsConcrete(v) && adjacentToLiteralWord(in, i) {
+		if v.Parent.ConformsTo(core.TString) && core.IsConcrete(&v) && adjacentToLiteralWord(in, i) {
 			out[i] = v
 			continue
 		}
@@ -508,10 +508,10 @@ func adjacentToLiteralWord(in []core.Value, i int) bool {
 }
 
 func isLiteralWord(v core.Value) bool {
-	if !core.IsWord(v) {
+	if !core.IsWord(&v) {
 		return false
 	}
-	w, _ := core.AsWord(v)
+	w, _ := core.AsWord(&v)
 	return checkModeLiteralWords[w.Name]
 }
 
@@ -643,7 +643,7 @@ func ScalarFoldOperand(v core.Value) bool {
 	if core.HasContainerIdentity(v) {
 		return false
 	}
-	if core.IsInertConst(v) {
+	if core.IsInertConst(&v) {
 		return true
 	}
 	if v.Dynamic || v.Data == nil {
@@ -683,7 +683,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive()) {
 			return nil, false
 		}
-		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {
+		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(&top) {
 			// A bare `args` read in a fn unit (`fn [[a b][List][args]]`)
 			// used to leave the projection with no compiled home ("body
 			// result of unknown provenance"); the recorder assembles it per
@@ -724,7 +724,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 	if word == "macroexpand" && len(args) == 1 {
 		toks, err := core.ExpandMacroForm(r, args[0])
 		if err == nil {
-			if lst := core.NewList(toks); core.IsInertConst(lst) {
+			if lst := core.NewList(toks); core.IsInertConst(&lst) {
 				// Determinism guard (mirrors tryFoldModuleConst /
 				// constFoldContainerVal): ExpandMacroForm runs the macro template
 				// through a sub-engine, which is NOT guaranteed pure — a template
@@ -1188,8 +1188,8 @@ func valueHasSentinel(v core.Value) bool {
 	if _, ok := v.Data.(core.FnDefInfo); ok {
 		return false
 	}
-	if core.IsWord(v) {
-		w, _ := core.AsWord(v)
+	if core.IsWord(&v) {
+		w, _ := core.AsWord(&v)
 		return w.Name == "break" || w.Name == "continue" || w.Name == "return"
 	}
 	if v.Parent != nil && v.Parent.Equal(core.TList) && v.Data != nil {
@@ -1223,8 +1223,8 @@ func scanBodyContainers(v core.Value, scan func(core.Value) bool) bool {
 		}
 		return false
 	}
-	if core.IsParenExpr(v) {
-		toks, _ := core.AsParenExpr(v)
+	if core.IsParenExpr(&v) {
+		toks, _ := core.AsParenExpr(&v)
 		for _, t := range toks {
 			if scan(t) {
 				return true
@@ -1232,7 +1232,7 @@ func scanBodyContainers(v core.Value, scan func(core.Value) bool) bool {
 		}
 		return false
 	}
-	if core.IsInterpString(v) {
+	if core.IsInterpString(&v) {
 		parts, _ := core.AsInterpString(v)
 		for _, p := range parts {
 			for _, t := range p.Expr {
@@ -1243,7 +1243,7 @@ func scanBodyContainers(v core.Value, scan func(core.Value) bool) bool {
 		}
 		return false
 	}
-	if core.IsXmlInterp(v) {
+	if core.IsXmlInterp(&v) {
 		tmpl, _ := core.AsXmlInterp(v)
 		return xmlTmplScan(tmpl, scan)
 	}
@@ -1332,8 +1332,8 @@ func calleeValueLeaksFlow(r *core.Registry, v core.Value, seen map[string]bool) 
 	if fd, ok := v.Data.(core.FnDefInfo); ok {
 		return fnDefLeaksFlow(r, &fd, seen)
 	}
-	if core.IsWord(v) {
-		w, _ := core.AsWord(v)
+	if core.IsWord(&v) {
+		w, _ := core.AsWord(&v)
 		if w.Name == "break" || w.Name == "continue" {
 			return true
 		}
@@ -1397,7 +1397,7 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 	hasStrictDisjunct := false
 	declaredDomain := true // every strict disjunct arg is a declared-union param binding
 	for _, a := range args {
-		if core.IsDisjunct(a) && a.Carrier && !a.Dynamic {
+		if core.IsDisjunct(&a) && a.Carrier && !a.Dynamic {
 			hasStrictDisjunct = true
 			if di, err := core.AsDisjunct(a); err != nil || !di.Declared {
 				declaredDomain = false
@@ -1406,7 +1406,7 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 		// Body-running ReturnsFns (if, each, fold, do, …) take
 		// concrete list/map operands; re-running them per alternative
 		// would duplicate branch analysis and its diagnostics.
-		if core.IsConcrete(a) && (a.Parent.ConformsTo(core.TList) || a.Parent.ConformsTo(core.TMap)) {
+		if core.IsConcrete(&a) && (a.Parent.ConformsTo(core.TList) || a.Parent.ConformsTo(core.TMap)) {
 			return nil, false
 		}
 	}
@@ -1522,7 +1522,7 @@ func disjunctCombosTakeSig(r *core.Registry, word string, args []core.Value, sig
 // per flattened alternative; any other value yields itself. It is the
 // per-argument expansion the disjunct cross product enumerates.
 func alternativeCarriers(a core.Value) []core.Value {
-	if core.IsDisjunct(a) && a.Carrier && !a.Dynamic {
+	if core.IsDisjunct(&a) && a.Carrier && !a.Dynamic {
 		lits := core.FlattenAlternatives(a)
 		out := make([]core.Value, 0, len(lits))
 		for _, lit := range lits {
@@ -1593,7 +1593,7 @@ func firstMatchingSig(fn *core.FnDefInfo, args []core.Value) *core.Signature {
 		}
 		ok := true
 		for j := range args {
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				ok = false
 				break
 			}
@@ -1670,7 +1670,7 @@ func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value)
 			if p, ok := core.SigPattern(s, j); ok && core.HasUnknownRefinement(p) {
 				hasPred = true
 			}
-			if !core.SigTypeMatches(args[j], t) {
+			if !core.SigTypeMatches(&args[j], t) {
 				reach = false
 				break
 			}
@@ -1715,7 +1715,7 @@ func DynamicReachableOverloadCount(r *core.Registry, word string, args []core.Va
 			if args[j].Dynamic && core.IsTypeParamNode(core.SigArgType(s, j)) {
 				continue
 			}
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				reach = false
 				break
 			}
@@ -1741,7 +1741,7 @@ func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Val
 		}
 		reach := true
 		for j := range args {
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				reach = false
 				break
 			}
@@ -1776,7 +1776,7 @@ func reachableUnknownReturnSibling(r *core.Registry, word string, args []core.Va
 		}
 		reach := true
 		for j := range args {
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				reach = false
 				break
 			}
@@ -1830,7 +1830,7 @@ func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) [
 		}
 		reach := true
 		for j := range args {
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				reach = false
 				break
 			}
@@ -2026,7 +2026,7 @@ func slotIsPolymorphic(r *core.Registry, word string, args []core.Value, i int, 
 				}
 				continue
 			}
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
 				reach = false
 				break
 			}
@@ -2056,7 +2056,7 @@ func AnyDynamicCarrier(vs []core.Value) bool {
 // more-specific unlocked overload claims.
 func AnyNonConcreteOperand(vs []core.Value) bool {
 	for _, v := range vs {
-		if !core.IsConcrete(v) {
+		if !core.IsConcrete(&v) {
 			return true
 		}
 	}
@@ -2124,7 +2124,7 @@ func anyDisjunctCarrier(vs []core.Value) bool {
 // operand of is/typeof) are excluded — they are not runtime values to re-match.
 func anyImpreciseCarrier(vs []core.Value) bool {
 	for _, v := range vs {
-		if v.Carrier && v.Parent != nil && !core.IsBareTypeNode(v) {
+		if v.Carrier && v.Parent != nil && !core.IsBareTypeNode(&v) {
 			return true
 		}
 	}
@@ -2201,7 +2201,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				// a generic schema, a record body — is the node's recorded
 				// declaration (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 				target := args[m]
-				if content, ok := core.TypeContentOf(target); ok && core.IsBareTypeNode(target) {
+				if content, ok := core.TypeContentOf(target); ok && core.IsBareTypeNode(&target) {
 					target = content
 				}
 				//
@@ -2217,7 +2217,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				// the Map branch and keeps the field schema reachable), else
 				// fall back to a plain TMap carrier.
 				if info, serr := core.AsTypeSchema(target); serr == nil && info.Kind == core.SchemaRecord {
-					if r != nil && len(args) == 2 && core.IsConcrete(args[1-m]) && !valueTreeHasCarriers(args[1-m]) {
+					if r != nil && len(args) == 2 && core.IsConcrete(&args[1-m]) && !valueTreeHasCarriers(args[1-m]) {
 						// CONCRETE construction data: validate statically, exactly as the
 						// runtime will — infer + instantiate, then run the record
 						// constructor. On SUCCESS the carrier takes the instantiated
@@ -2433,7 +2433,7 @@ func ReturnsAddConcat() core.ReturnsFunc {
 // and a bare dynamic carrier are NOT mixed and return false: the split is
 // consistent, or is the dynamic path handled elsewhere.
 func carrierMixedConform(v core.Value, t *core.Type) bool {
-	if t == nil || !v.Carrier || core.IsConcrete(v) || v.Dynamic {
+	if t == nil || !v.Carrier || core.IsConcrete(&v) || v.Dynamic {
 		return false
 	}
 	alts := core.FlattenAlternatives(v)
@@ -2708,7 +2708,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 // its own machinery (their readers read the payload), exactly the classes
 // the branch's condBoundCarrier leaves alone.
 func loopFreshCarriable(name string, v core.Value) bool {
-	return !core.IsCapitalisedName(name) && !core.IsFnValueResidual(v) && !core.IsBareTypeNode(v) &&
+	return !core.IsCapitalisedName(name) && !core.IsFnValueResidual(v) && !core.IsBareTypeNode(&v) &&
 		!core.IsModuleFamilyValue(v) && !(v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
 }
 
@@ -2990,7 +2990,7 @@ func runFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	hasUnnamed := false
 	for i, arg := range args {
 		if i < len(paramNames) && paramNames[i] != "" {
-			if frameBindFns && core.IsConcrete(arg) && arg.Parent.ConformsTo(core.TFunction) {
+			if frameBindFns && core.IsConcrete(&arg) && arg.Parent.ConformsTo(core.TFunction) {
 				core.InstallFrameBinding(r, paramNames[i], arg)
 				specNames[paramNames[i]] = true
 			} else {
@@ -3373,7 +3373,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 // deferred residual a transparent fn body like `[[c1]]` returns.
 func IsDeferredWordList(v core.Value) bool {
 	if !v.Eval || v.Quoted || !v.Parent.Equal(core.TList) || v.Data == nil ||
-		core.IsTypedList(v) || core.IsTableType(v) {
+		core.IsTypedList(&v) || core.IsTableType(v) {
 		return false
 	}
 	lst, err := core.AsList(v)
@@ -3381,7 +3381,7 @@ func IsDeferredWordList(v core.Value) bool {
 		return false
 	}
 	for _, e := range lst.Slice() {
-		if core.IsWord(e) {
+		if core.IsWord(&e) {
 			return true
 		}
 		if e.Parent.Equal(core.TList) && IsDeferredWordList(e) {
@@ -3409,7 +3409,7 @@ func DeferredParamListResidual(body []core.Value, paramNames []string) (core.Val
 	}
 	v := body[0]
 	if v.Quoted || !v.Eval || !v.Parent.Equal(core.TList) || v.Data == nil ||
-		core.IsTypedList(v) || core.IsTableType(v) {
+		core.IsTypedList(&v) || core.IsTableType(v) {
 		return core.Value{}, false
 	}
 	params := make(map[string]bool, len(paramNames))
@@ -3482,10 +3482,10 @@ func carrierStacksEqual(a, b []core.Value) bool {
 func resolveTypeNameArgs(args []core.Value) []core.Value {
 	var out []core.Value
 	for i, a := range args {
-		if !core.IsWord(a) {
+		if !core.IsWord(&a) {
 			continue
 		}
-		w, err := core.AsWord(a)
+		w, err := core.AsWord(&a)
 		if err != nil {
 			continue
 		}
@@ -3517,12 +3517,12 @@ func resolveTypeNameArgs(args []core.Value) []core.Value {
 // concrete capture is re-analysed per capture shape.
 func callShapeSpecialised(args []core.Value, captures []core.CapturedBinding) bool {
 	for i := range args {
-		if core.IsConcrete(args[i]) {
+		if core.IsConcrete(&args[i]) {
 			return true
 		}
 	}
 	for i := range captures {
-		if core.IsConcrete(captures[i].Value) {
+		if core.IsConcrete(&captures[i].Value) {
 			return true
 		}
 	}

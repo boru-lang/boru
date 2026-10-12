@@ -369,13 +369,13 @@ func TestWt5ResolveFieldTypeArms(t *testing.T) {
 
 	// A bare Word resolves through the builtin arm.
 	got := ResolveFieldType(r, NewWord("Integer"))
-	if !IsBareTypeNode(got) || !(&got).Equal(TInteger) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TInteger) {
 		t.Fatalf("builtin word = %v", got)
 	}
 
 	// Typed containers resolve deep through the registry-armed resolver.
 	tl := NewTypedList(NewTypeLiteral(TInteger))
-	if got := ResolveFieldType(r, tl); !IsTypedList(got) {
+	if got := ResolveFieldType(r, tl); !IsTypedList(&got) {
 		t.Fatalf("typed list constraint = %v", got)
 	}
 }

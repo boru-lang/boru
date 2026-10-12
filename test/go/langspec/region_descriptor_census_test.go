@@ -52,8 +52,8 @@ import (
 func expandMarkers(vals []core.Value) []core.Value {
 	out := make([]core.Value, 0, len(vals))
 	for _, v := range vals {
-		items, err := core.AsParenExpr(v)
-		if core.IsParenExpr(v) && err == nil {
+		items, err := core.AsParenExpr(&v)
+		if core.IsParenExpr(&v) && err == nil {
 			out = append(out, core.NewOpenParen())
 			out = append(out, expandMarkers(items)...)
 			out = append(out, core.NewCloseParen())
@@ -73,7 +73,7 @@ func nestedBodies(vals []core.Value, depth int) [][]core.Value {
 	}
 	var out [][]core.Value
 	for _, v := range vals {
-		if !core.IsConcrete(v) || !v.Parent.Equal(core.TList) {
+		if !core.IsConcrete(&v) || !v.Parent.Equal(core.TList) {
 			continue
 		}
 		lst, err := core.AsList(v)
@@ -104,7 +104,7 @@ func regionSpans(w core.CollectWindow) (spans [][2]int, delims []int, ok bool) {
 		}
 		if end == at {
 			v := w.At(at)
-			if !core.IsEnd(v) && !core.IsCloseParen(v) {
+			if !core.IsEnd(&v) && !core.IsCloseParen(&v) {
 				return spans, delims, false
 			}
 			delims = append(delims, at)
@@ -338,7 +338,7 @@ func TestRegionDescriptorReach(t *testing.T) {
 				}
 				tapes++
 				for _, v := range s {
-					if core.IsOpenParen(v) {
+					if core.IsOpenParen(&v) {
 						withParen++
 						break
 					}
@@ -383,15 +383,15 @@ func TestRegionDescriptorReach(t *testing.T) {
 // which is the whole question TestRegionSlotTokenKinds exists to answer.
 func slotKind(v core.Value) string {
 	switch {
-	case core.IsOpenParen(v) || core.IsCloseParen(v) || core.IsParenExpr(v):
+	case core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsParenExpr(&v):
 		return "group"
-	case core.IsDispatchMod(v):
+	case core.IsDispatchMod(&v):
 		return "mod"
 	case core.IsAtom(v):
 		return "atom"
-	case core.IsBareTypeNode(v):
+	case core.IsBareTypeNode(&v):
 		return "type"
-	case core.IsWord(v):
+	case core.IsWord(&v):
 		return "word"
 	case core.BearsActiveTokens(v):
 		// A compound literal whose MEMBERS are active tokens is not its own
@@ -402,7 +402,7 @@ func slotKind(v core.Value) string {
 		// merely LOOKS concrete is the same frozen-class mistake one level
 		// down, inside the literal.
 		return "active"
-	case core.IsConcrete(v):
+	case core.IsConcrete(&v):
 		return "const"
 	}
 	if v.Parent == nil {

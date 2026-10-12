@@ -424,7 +424,7 @@ every value mode.
 `Value.Data` is a sealed interface: `eng.Payload`. Only types
 with the unexported `payloadMarker()` method satisfy it, and the
 method is only definable in this package. The interface also
-requires `IsTypeContent(owner *Value) bool` — the ONE
+requires `IsTypeContent(parent *Type) bool` — the ONE
 type-recognition seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4):
 `IsTypeBody` asks the payload instead of enumerating shapes. The seal closes the
 historical `Data interface{}` hole — `Value{Parent: TInteger,

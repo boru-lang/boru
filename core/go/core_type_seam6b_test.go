@@ -123,7 +123,7 @@ func TestS6b0UnifyBoundedTypePairs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("literal-vs-bounded: %v", err)
 	}
-	if !IsBareTypeNode(got) || !(&got).Equal(TInteger) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TInteger) {
 		t.Errorf("the conforming literal must survive, got %v", got)
 	}
 }
@@ -143,7 +143,7 @@ func TestS6b0TypeMembershipBehaviorDelegates(t *testing.T) {
 
 func TestS6b0UnionTypeEmptyIsNever(t *testing.T) {
 	got := UnionType(NewDisjunct(nil), NewDisjunct(nil))
-	if !IsBareTypeNode(got) || !(&got).Equal(TNever) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TNever) {
 		t.Errorf("empty union = %v, want Never", got)
 	}
 }

@@ -264,7 +264,7 @@ func TestS5bESimplifyDisjunctConcreteSubsumedByLiteral(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected the concrete 5 to be subsumed by Number, got %v", out)
 	}
-	if !IsBareTypeNode(out[0]) {
+	if !IsBareTypeNode(&out[0]) {
 		t.Errorf("survivor should be the Number literal, got %v", out[0])
 	}
 }
@@ -291,8 +291,8 @@ func TestS5bEExpandOptionalSigsUnnamedAndBarrierClamp(t *testing.T) {
 	// The unnamed present param is spliced via (args N dot).
 	sawArgs := false
 	for _, tok := range exp.Body() {
-		if IsWord(tok) {
-			if w, _ := AsWord(tok); w.Name == "args" {
+		if IsWord(&tok) {
+			if w, _ := AsWord(&tok); w.Name == "args" {
 				sawArgs = true
 			}
 		}
@@ -314,7 +314,7 @@ func TestS5bEResolveRefNilAndTypeBinding(t *testing.T) {
 	if !ok {
 		t.Fatal("type binding should resolve")
 	}
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		t.Errorf("expected the stored type body, got %v", v)
 	}
 }
@@ -520,7 +520,7 @@ func TestS5bEUnifySurfaceClassTypeOperand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("class type conforming via Conform set should unify: %v", err)
 	}
-	if !IsClassType(got) {
+	if !IsClassType(&got) {
 		t.Errorf("unify result should be the class-type side, got %v", got)
 	}
 }

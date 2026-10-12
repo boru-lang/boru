@@ -31,7 +31,7 @@ func hasUnknownRefinement(v Value, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		if body, ok := v.TypeBody(); ok {
 			return hasUnknownRefinement(body, depth+1)
 		}
@@ -136,7 +136,7 @@ func (f forwardingBehavior) Unify(a, b Value, r *Registry) (Value, *UnifyError) 
 
 // forwardedOperand is v with a forwarded node replaced by the run's node.
 func forwardedOperand(v Value) Value {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return v
 	}
 	if t := ForwardedType(&v); t != &v {
@@ -153,13 +153,13 @@ func mintRunType(r *Registry, body Value) *Type {
 	name := body.String()
 	var t *Type
 	switch {
-	case IsBareTypeNode(body):
+	case IsBareTypeNode(&body):
 		return CanonicalType(r, &body)
 	case body.IsDepScalar():
 		di, _ := body.AsDepScalar() // IsDepScalar: the payload is a DepScalarInfo
 		t = r.Types.MintType(name, body.Parent)
 		installDepScalarUnifier(t, body.Parent, di, name)
-	case IsDisjunct(body):
+	case IsDisjunct(&body):
 		di, _ := AsDisjunct(body) // IsDisjunct: the payload is a DisjunctInfo
 		t = r.Types.MintType(name, body.Parent)
 		installDisjunctUnifier(t, di.Alternatives, name)

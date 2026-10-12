@@ -121,10 +121,10 @@ func windowComparable(v core.Value, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if core.IsWord(v) || core.IsForward(v) || core.IsMark(v) || core.IsMove(v) {
+	if core.IsWord(&v) || core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) {
 		return false
 	}
-	if !core.IsConcrete(v) && !core.IsBareTypeNode(v) {
+	if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
 		return false
 	}
 	if v.Parent != nil && v.Parent.Equal(core.TList) {

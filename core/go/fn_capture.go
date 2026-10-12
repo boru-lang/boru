@@ -135,8 +135,8 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 		return
 	}
 	// Bare Word: emit.
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		callback(w, v)
 		return
 	}
@@ -144,7 +144,7 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// value streams it carries (an Angle marker's gen-params head and
 	// use-site type args re-enter the body when the engine lowers the
 	// marker, so the words inside them are genuine body references).
-	if info, ok := AsSugar(v); ok && IsSugar(v) {
+	if info, ok := AsSugar(v); ok && IsSugar(&v) {
 		if sugarCB != nil {
 			sugarCB(info, v)
 		}
@@ -171,15 +171,15 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	}
 	// Paren-expr payload (stored inside map values when a paren
 	// group appears as a data position): walk the inner tokens.
-	if IsParenExpr(v) {
-		toks, _ := AsParenExpr(v)
+	if IsParenExpr(&v) {
+		toks, _ := AsParenExpr(&v)
 		for _, t := range toks {
 			walkBodyValue(t, callback, sugarCB)
 		}
 		return
 	}
 	// Interpolated string: walk each expression part.
-	if IsInterpString(v) {
+	if IsInterpString(&v) {
 		parts, _ := AsInterpString(v)
 		for _, p := range parts {
 			for _, t := range p.Expr {
@@ -191,7 +191,7 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// Interpolated XML literal: walk every ${...} expression in the
 	// skeleton (attribute values and child holes, recursively) so a
 	// closure over `<p>${x}</p>` captures `x`.
-	if IsXmlInterp(v) {
+	if IsXmlInterp(&v) {
 		tmpl, _ := AsXmlInterp(v)
 		walkXmlTmplExprs(tmpl, callback, sugarCB)
 		return
@@ -215,8 +215,8 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// over `x.field` must capture `x`) and for check-mode use-recording (the
 	// receiver `def` is genuinely used). Literal bare-word keys (`.code`) are
 	// field names, not references, and are NOT walked.
-	if IsReach(v) {
-		if info, err := AsReach(v); err == nil {
+	if IsReach(&v) {
+		if info, err := AsReach(&v); err == nil {
 			for _, t := range info.Receiver {
 				walkBodyValue(t, callback, sugarCB)
 			}
@@ -360,12 +360,12 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 		if _, isFn := v.Data.(FnDefInfo); isFn {
 			continue // nested closure: its defs are its own
 		}
-		if w, err := AsWord(v); err == nil {
+		if w, err := AsWord(&v); err == nil {
 			switch w.Name {
 			case "def":
 				// def NAME … — NAME is the next bare-word token.
 				if i+1 < len(body) {
-					if nw, nerr := AsWord(body[i+1]); nerr == nil && nw.Name != "" {
+					if nw, nerr := AsWord(&body[i+1]); nerr == nil && nw.Name != "" {
 						locals[nw.Name] = true
 					}
 				}
@@ -378,7 +378,7 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 						if len(elems) > 0 && elems[0].Parent.Equal(TList) && elems[0].Data != nil {
 							if decls, derr := AsList(elems[0]); derr == nil {
 								for _, d := range decls.Slice() {
-									if dw, dwe := AsWord(d); dwe == nil && dw.Name != "" {
+									if dw, dwe := AsWord(&d); dwe == nil && dw.Name != "" {
 										locals[dw.Name] = true
 									}
 								}
@@ -392,8 +392,8 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 			if lst, lerr := AsList(v); lerr == nil {
 				CollectBodyLocalDefs(lst.Slice(), locals)
 			}
-		} else if IsParenExpr(v) {
-			if toks, perr := AsParenExpr(v); perr == nil {
+		} else if IsParenExpr(&v) {
+			if toks, perr := AsParenExpr(&v); perr == nil {
 				CollectBodyLocalDefs(toks, locals)
 			}
 		}

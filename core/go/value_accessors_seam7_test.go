@@ -65,22 +65,22 @@ func TestS7ConstructorNilDefaults(t *testing.T) {
 
 func TestS7AccessorErrorArms(t *testing.T) {
 	notIt := NewInteger(1)
-	if _, err := AsParenExpr(notIt); err == nil {
+	if _, err := AsParenExpr(&notIt); err == nil {
 		t.Error("AsParenExpr(int) must error")
 	}
 	if _, err := AsInterpString(notIt); err == nil {
 		t.Error("AsInterpString(int) must error")
 	}
-	if _, err := AsReturnCheck(notIt); err == nil {
+	if _, err := AsReturnCheck(&notIt); err == nil {
 		t.Error("AsReturnCheck(int) must error")
 	}
-	if _, err := AsDefCleanup(notIt); err == nil {
+	if _, err := AsDefCleanup(&notIt); err == nil {
 		t.Error("AsDefCleanup(int) must error")
 	}
 	if _, err := AsNegation(notIt); err == nil {
 		t.Error("AsNegation(int) must error")
 	}
-	if _, err := AsForward(notIt); err == nil {
+	if _, err := AsForward(&notIt); err == nil {
 		t.Error("AsForward(int) must error")
 	}
 	if _, err := AsFlexXml(notIt); err == nil {

@@ -86,7 +86,7 @@ func cmpInt(a, b int) int {
 // deliberate use of a rendered form as an ordering key beyond String,
 // Word, and Atom.
 func compareStructural(a, b Value) (int, error) {
-	if IsConcrete(a) && IsConcrete(b) {
+	if IsConcrete(&a) && IsConcrete(&b) {
 		if a.Parent.ConformsTo(TList) {
 			return compareListElems(a, b)
 		}

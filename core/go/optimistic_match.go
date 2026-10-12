@@ -49,7 +49,7 @@ func optimisticMatch(match *MatchResult) bool {
 // pointer and position); none otherwise, which is also what a dispatch that
 // collected nothing forward has.
 func (e *Engine) forwardSplit() int {
-	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.At(e.Pointer).Pos() == e.fwdSplitPos {
+	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.Ref(e.Pointer).Pos() == e.fwdSplitPos {
 		return e.fwdSplitN
 	}
 	return 0
@@ -110,7 +110,7 @@ func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch 
 	}
 	pos := SrcPos{}
 	if e.Pointer < e.Tape.Len() {
-		pos = e.Tape.At(e.Pointer).Pos()
+		pos = e.Tape.Ref(e.Pointer).Pos()
 	}
 	return &OuterMatch{Word: match.Name, Vals: vals, NFwd: nFwd, Written: written, Pos: pos}
 }
@@ -132,12 +132,12 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 		!(optimisticMatch(match) || gradualMatch(match)) || e.Pointer >= e.Tape.Len() {
 		return nil
 	}
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	nFwd := e.forwardSplit()
 	if err != nil || w.ArgCount != -1 || (w.ForceStack && nFwd == 0) || w.ForceForward || w.ForceVal || w.ForceUsurp || nFwd > n {
 		return nil
 	}
-	if e.voidArgErrorFor(w.Name, e.Tape.At(e.Pointer).Pos()) != nil || e.IsFnShapeTypedBindingContext() {
+	if e.voidArgErrorFor(w.Name, e.Tape.Ref(e.Pointer).Pos()) != nil || e.IsFnShapeTypedBindingContext() {
 		return nil
 	}
 	for i := 0; i < n; i++ {

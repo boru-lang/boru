@@ -68,7 +68,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 	// Bail entirely — no component clause is sound — rather than narrow one.
 	for _, e := range elems {
 		if e.Parent.Equal(TWord) {
-			if w, werr := AsWord(e); werr == nil {
+			if w, werr := AsWord(&e); werr == nil {
 				switch w.Name {
 				case "or", "nor", "xor", "xnor", "not":
 					return nil
@@ -81,18 +81,18 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 		if !elems[i].Parent.Equal(TWord) || !elems[i+1].Parent.Equal(TWord) {
 			continue
 		}
-		wx, err := AsWord(elems[i])
+		wx, err := AsWord(&elems[i])
 		if err != nil {
 			continue
 		}
-		wis, err := AsWord(elems[i+1])
+		wis, err := AsWord(&elems[i+1])
 		if err != nil || wis.Name != "is" {
 			continue
 		}
 		tv := elems[i+2]
 		var minted *Type
 		if tv.Data != nil && tv.Parent.Equal(TWord) {
-			inner, _ := AsWord(tv)
+			inner, _ := AsWord(&tv)
 			if e, ok := r.Defs.TopEntry(inner.Name); ok {
 				tv = e.Body
 				minted = e.TypeDef
@@ -102,7 +102,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 				tv = NewTypeLiteral(t)
 			}
 		}
-		if tv.Data != nil && !IsClassType(tv) && !(tv.IsDepScalar() && minted != nil) {
+		if tv.Data != nil && !IsClassType(&tv) && !(tv.IsDepScalar() && minted != nil) {
 			continue
 		}
 		// A bare type-literal clause IS its type; an ObjectType keeps
@@ -134,8 +134,8 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 	// live binding; the predicate must reduce to a single `param is T` fact.
 	if len(out) == 0 && len(elems) == 2 &&
 		elems[0].Parent.Equal(TWord) && elems[1].Parent.Equal(TWord) {
-		wp, perr := AsWord(elems[0])
-		wx, xerr := AsWord(elems[1])
+		wp, perr := AsWord(&elems[0])
+		wx, xerr := AsWord(&elems[1])
 		if perr == nil && xerr == nil {
 			if _, bound := r.Defs.Top(wx.Name); bound {
 				if t, tok := predicateImpliedType(r, wp.Name); tok {
@@ -183,7 +183,7 @@ func LiteralCondValue(condList Value) (bool, bool) {
 	// resolve to booleans in engine.stepWord; in check mode the
 	// words stay as Words until the branch runs).
 	if only.Parent.Equal(TWord) {
-		w, err := AsWord(only)
+		w, err := AsWord(&only)
 		if err == nil {
 			if w.Name == "true" {
 				return true, true
@@ -237,11 +237,11 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 			// it keeps the plain NewCarrier form. A dynamic binding stays dynamic
 			// through the meet so the narrowed value still discharges downstream
 			// modality checks.
-			if cur.Carrier && !IsConcrete(cur) && c.Type != nil {
+			if cur.Carrier && !IsConcrete(&cur) && c.Type != nil {
 				meet := TandValues(cur, NewTypeLiteral(c.Type))
 				if IsNeverShape(meet) {
 					deadArm = true
-				} else if IsBareTypeNode(meet) {
+				} else if IsBareTypeNode(&meet) {
 					narrowed = NewCarrier(ValueType(meet))
 					narrowed.ID = cur.ID
 				} else {
@@ -267,7 +267,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 			// work). A non-concrete strict carrier IS the declared-type
 			// record, so tag conformance is shape-independent. Dedup: fn
 			// bodies re-analyse per shape and fixpoint round.
-			if cur.Carrier && !IsConcrete(cur) && !cur.Dynamic &&
+			if cur.Carrier && !IsConcrete(&cur) && !cur.Dynamic &&
 				cur.Parent != nil && c.Type != nil &&
 				cur.Parent.ConformsTo(c.Type) {
 				detail := "guard is always true: " + c.Name + " is already " +
@@ -382,7 +382,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		// carrier of that type (Parent = the type, like NewCarrier); a
 		// disjunct or other compound keeps its payload and is marked
 		// abstract.
-		if IsBareTypeNode(narrowed) {
+		if IsBareTypeNode(&narrowed) {
 			narrowed = NewCarrier(ValueType(narrowed))
 		} else {
 			narrowed.Carrier = true

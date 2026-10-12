@@ -192,7 +192,7 @@ func classifyWeak(v Value) (weakSlot, *WeakRefusal) {
 			Help: "omit the key instead of storing none",
 		}
 	}
-	if v.Parent != nil && v.Parent.ConformsTo(TScalar) && IsConcrete(v) {
+	if v.Parent != nil && v.Parent.ConformsTo(TScalar) && IsConcrete(&v) {
 		return weakSlot{strong: v}, nil
 	}
 	if ref, ok := weakRefFor(v); ok {
@@ -288,11 +288,11 @@ func refuseWeak(v Value) *WeakRefusal {
 	flexHelp := "store a mutable handle instead (flex the value), or keep " +
 		"it in an ordinary FlexMap/FlexList if it should live until removed"
 	switch {
-	case IsBareTypeNode(v):
+	case IsBareTypeNode(&v):
 		return &WeakRefusal{Kind: "a type literal", Note: weakDomainNote,
 			Help: "type literals are values — " + flexHelp}
-	case v.Parent != nil && v.Parent.ConformsTo(TMap) && IsConcrete(v):
-		if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(v) {
+	case v.Parent != nil && v.Parent.ConformsTo(TMap) && IsConcrete(&v):
+		if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(&v) {
 			return &WeakRefusal{Kind: "a structural type body", Note: weakDomainNote,
 				Help: flexHelp}
 		}
@@ -304,14 +304,14 @@ func refuseWeak(v Value) *WeakRefusal {
 			Help: "store a mutable handle: flex the map first (set k/q (flex {…}) w), " +
 				"or keep it in an ordinary FlexMap if it should live until removed",
 		}
-	case v.Parent != nil && v.Parent.ConformsTo(TList) && IsConcrete(v):
+	case v.Parent != nil && v.Parent.ConformsTo(TList) && IsConcrete(&v):
 		return &WeakRefusal{
 			Kind: "an immutable List",
 			Note: "an immutable List is a value — it has no independent identity " +
 				"the collector could track",
 			Help: "store a mutable handle: flex the list first (append (flex […]) w)",
 		}
-	case v.Parent != nil && v.Parent.ConformsTo(TXml) && IsConcrete(v):
+	case v.Parent != nil && v.Parent.ConformsTo(TXml) && IsConcrete(&v):
 		return &WeakRefusal{
 			Kind: "an immutable Xml element",
 			Note: "an immutable Xml element is a value — it has no independent " +

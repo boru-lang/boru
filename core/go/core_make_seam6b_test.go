@@ -394,7 +394,7 @@ func TestS6b0ResolveFieldTypeWordUnbound(t *testing.T) {
 	r := newTestRegistry(t)
 	w := NewWord("S6b0Und")
 	out := ResolveFieldType(r, w)
-	if !IsWord(out) {
+	if !IsWord(&out) {
 		t.Errorf("unbound capitalised word must pass through, got %v", out)
 	}
 }

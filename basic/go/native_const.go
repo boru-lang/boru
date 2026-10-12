@@ -42,7 +42,7 @@ var ConstNative = NativeFunc{
 
 func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil, r.BoruError("const_error",
 			fmt.Sprintf("const: needs a concrete value, got %s", v.String()), "const")
 	}

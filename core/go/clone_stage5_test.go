@@ -15,7 +15,7 @@ import (
 func TestStage5CloneTypeLiteralSharesValue(t *testing.T) {
 	lit := NewTypeLiteral(TInteger)
 	cl := CloneValue(lit)
-	if !IsBareTypeNode(cl) || !ValueType(cl).Equal(TInteger) {
+	if !IsBareTypeNode(&cl) || !ValueType(cl).Equal(TInteger) {
 		t.Errorf("clone of a type literal = %v, want the literal back", cl)
 	}
 	if cl.ID != lit.ID {

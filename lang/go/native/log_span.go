@@ -344,7 +344,7 @@ func withSpanReturnsFn(args []Value, r *Registry) []Value {
 	body := args[1]
 	// A computed body the checker can't run statically gets a bounded
 	// gradual dynamic(Any), same hatch `do` uses.
-	if !(IsConcrete(body) && body.Parent.ConformsTo(TList)) {
+	if !(IsConcrete(&body) && body.Parent.ConformsTo(TList)) {
 		return []Value{NewDynamicCarrier(TAny)}
 	}
 	stk := RunCarrierBody(r, body)

@@ -172,7 +172,7 @@ func residualInert(v core.Value) bool {
 	if v.Quoted {
 		return true
 	}
-	return !v.Eval && !core.IsTypedList(v) && !core.IsTypedMap(v) && !core.IsDisjunct(v)
+	return !v.Eval && !core.IsTypedList(&v) && !core.IsTypedMap(&v) && !core.IsDisjunct(&v)
 }
 
 // uncalledAt is the named value's raise for an unmatched window: the

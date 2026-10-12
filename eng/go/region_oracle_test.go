@@ -242,7 +242,7 @@ func TestRegionOracleWindowPresentsOperands(t *testing.T) {
 	d.Slots = append(d.Slots, compiler.SlotDesc{Source: compiler.SlotNone, Token: core.NewWord("tail")})
 	d.Slots[1] = compiler.SlotDesc{Source: compiler.SlotLocal, Idx: 0, Token: core.NewWord("b")}
 	win := regionOracleWindow(d, stack)
-	if len(win) != 3 || !core.IsWord(win[0]) || core.CanonValue(win[1]) != "1" || !core.IsWord(win[2]) {
+	if len(win) != 3 || !core.IsWord(&win[0]) || core.CanonValue(win[1]) != "1" || !core.IsWord(&win[2]) {
 		t.Fatalf("window = %v: want [word k, the pushed 1, word tail]", win)
 	}
 }

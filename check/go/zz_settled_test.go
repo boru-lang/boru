@@ -24,7 +24,7 @@ func TestS6aJoinCarriersNoneArm(t *testing.T) {
 	if got.Parent == nil {
 		t.Fatalf("value-vs-None join must not produce a nil-Parent carrier: %+v", got)
 	}
-	if !core.IsDisjunct(got) {
+	if !core.IsDisjunct(&got) {
 		t.Errorf("Integer joined with None should be a disjunct carrier, got %+v", got)
 	}
 

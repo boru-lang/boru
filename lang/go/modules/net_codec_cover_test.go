@@ -101,7 +101,7 @@ func TestInvokeFnDirectArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty Go handler: %v", err)
 	}
-	if native.IsConcrete(res) || res.String() != "None" {
+	if native.IsConcrete(&res) || res.String() != "None" {
 		t.Errorf("empty Go handler must yield None, got %v", res)
 	}
 
@@ -145,7 +145,7 @@ func TestInvokeFnBoruArms(t *testing.T) {
 	if iErr != nil {
 		t.Fatalf("empty boru codec body: %v", iErr)
 	}
-	if native.IsConcrete(res) || res.String() != "None" {
+	if native.IsConcrete(&res) || res.String() != "None" {
 		t.Errorf("empty boru codec body must yield None, got %v", res)
 	}
 }
@@ -630,7 +630,7 @@ func TestHTTPStatusTextTable(t *testing.T) {
 func TestJSONValueConversionArms(t *testing.T) {
 	// null -> None.
 	v, err := jsonToValue([]byte("null"))
-	if err != nil || native.IsConcrete(v) || v.String() != "None" {
+	if err != nil || native.IsConcrete(&v) || v.String() != "None" {
 		t.Errorf("null = %v (%v), want None", v, err)
 	}
 	// A decimal stays a Float.

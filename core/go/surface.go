@@ -97,7 +97,7 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("distinct surfaces do not unify", a, b)
 	}
-	if IsConcrete(other) {
+	if IsConcrete(&other) {
 		if other.Is(info.Type) {
 			return other, nil
 		}
@@ -105,10 +105,10 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 	}
 	var node *Type
 	switch {
-	case IsClassType(other):
+	case IsClassType(&other):
 		oi, _ := AsClassType(other)
 		node = oi.Type
-	case IsBareTypeNode(other):
+	case IsBareTypeNode(&other):
 		node = &other
 	case other.Carrier:
 		// A check-mode carrier denotes its Parent type — so
@@ -155,7 +155,7 @@ func (*surfaceUnifier) ContentMembership() {}
 // set. Type literals pass through to the default walk — a bare
 // Shape-literal is "the type itself", not an inhabitant.
 func (s *surfaceUnifier) Match(v Value, t *Type) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(s.prev).Match(v, t)
 	}
 	for p := v.Parent; p != nil; p = p.Parent {
@@ -183,8 +183,8 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// with the Circle node), exactly the cases the surface fold
 	// decided for the body. A same-node (or node-free) pair settles
 	// structurally.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(s)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(s)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(s)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(s)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}
@@ -192,7 +192,7 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	if bSelf {
 		node, candidate = b, a
 	}
-	if IsBareTypeNode(candidate) {
+	if IsBareTypeNode(&candidate) {
 		// Type-level containment: the candidate NODE (or an ancestor)
 		// must be in the conformance set — the literal-vs-literal walk
 		// unifySurface runs for the body.

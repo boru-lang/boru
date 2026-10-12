@@ -74,12 +74,12 @@ func TestNewInteger(t *testing.T) {
 
 func TestNewWord(t *testing.T) {
 	v := NewWord("upper")
-	if !IsWord(v) {
+	if !IsWord(&v) {
 		t.Errorf("IsWord() = false")
 	}
-	_as4, _ := AsWord(v)
+	_as4, _ := AsWord(&v)
 	if _as4.Name != "upper" {
-		_as5, _ := AsWord(v)
+		_as5, _ := AsWord(&v)
 		t.Errorf("name = %q, want %q", _as5.Name, "upper")
 	}
 }

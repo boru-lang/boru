@@ -266,10 +266,10 @@ func (r *Registry) putCallLoop(lp *Loop) {
 // tokens are the program's own and keep their positions — execMatch does
 // not stamp them with the word's, as it stamps a handler's fresh values.
 func IsLoopRegion(results []Value) bool {
-	if len(results) == 0 || !IsMark(results[0]) {
+	if len(results) == 0 || !IsMark(&results[0]) {
 		return false
 	}
-	info, _ := AsMark(results[0])
+	info, _ := AsMark(&results[0])
 	return info.Loop != nil
 }
 func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value {
@@ -506,10 +506,10 @@ func (e *Engine) abandonDrivenLoops(from, to int) {
 	}
 	for i := max(from, 0); i < to; i++ {
 		v := e.Tape.At(i)
-		if !IsMove(v) {
+		if !IsMove(&v) {
 			continue
 		}
-		info, _ := AsMove(v)
+		info, _ := AsMove(&v)
 		if info.Cont == nil || info.Cont.Driver == nil || !e.marks[info.To] {
 			continue
 		}
@@ -535,10 +535,10 @@ func (e *Engine) wrapLoopFault(from, to int, err error) error {
 	}
 	for i := from; i < to; i++ {
 		v := e.Tape.At(i)
-		if !IsMove(v) {
+		if !IsMove(&v) {
 			continue
 		}
-		info, _ := AsMove(v)
+		info, _ := AsMove(&v)
 		if info.Cont == nil || info.Cont.Driver == nil || !e.marks[info.To] {
 			continue
 		}

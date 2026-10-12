@@ -112,7 +112,7 @@ func registerCheckFixtures(r *core.Registry) {
 				if err := core.ValidateWordName(name); err != nil {
 					return nil, err
 				}
-				if !core.IsConcrete(args[1]) {
+				if !core.IsConcrete(&args[1]) {
 					return nil, &core.BoruError{Code: "type_error", Detail: "defq: body must be a concrete list"}
 				}
 				lst, _ := core.AsList(args[1])
@@ -246,7 +246,7 @@ func registerControlFixtures(r *core.Registry) {
 	// computed count must not (a runtime count of 0 runs the body never).
 	forqReturnsFn := func(args []core.Value, reg *core.Registry) []core.Value {
 		proven := false
-		if core.IsConcrete(args[0]) {
+		if core.IsConcrete(&args[0]) {
 			if n, err := core.AsInteger(args[0]); err == nil && n > 0 {
 				proven = true
 			}
@@ -315,7 +315,7 @@ func registerIndexFixtures(r *core.Registry) {
 		}
 		var out []core.Value
 		for i := 0; i < idxs.Len(); i++ {
-			n, err := idxs.Get(i).AsConcreteInteger()
+			n, err := addrOf(idxs.Get(i)).AsConcreteInteger()
 			if err != nil || n < 0 || int(n) >= data.Len() {
 				return nil, &core.BoruError{Code: "index_error", Detail: "atq: index out of range"}
 			}

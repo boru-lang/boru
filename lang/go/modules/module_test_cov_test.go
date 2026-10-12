@@ -156,7 +156,7 @@ func TestTestCovInvokeAtomAndOutcomes(t *testing.T) {
 	}
 	// A subject that leaves nothing returns None.
 	out3 := runTestBoru(t, r, `def noop fn [[] [] []]  Test.invoke noop/q []`)
-	if !native.IsNone(out3[len(out3)-1]) {
+	if !native.IsNone(&out3[len(out3)-1]) {
 		t.Errorf("empty-stack invoke should return None, got %v", out3[len(out3)-1])
 	}
 }
@@ -195,7 +195,7 @@ func TestTestCovCheckPropErrorArms(t *testing.T) {
 				t.Fatalf("%s should fail the property", c.name)
 			}
 			errV, _ := m.Get("error")
-			if native.IsNone(errV) {
+			if native.IsNone(&errV) {
 				t.Fatalf("%s should record an error", c.name)
 			}
 			if !strings.Contains(errV.String(), c.errWant) {
@@ -346,7 +346,7 @@ func TestTestCovResolveTestExportTypeBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := resolveTestExport(r, native.NewWord("CovT"))
-	if !native.IsBareTypeNode(res) {
+	if !native.IsBareTypeNode(&res) {
 		t.Errorf("a type binding should resolve to its type body, got %s", res.String())
 	}
 }
@@ -406,14 +406,14 @@ func TestTestCovIsTruthyDirect(t *testing.T) {
 // and dotted subject names.
 func TestTestCovDottedWordTokensDirect(t *testing.T) {
 	plain := dottedWordTokens("sqrt")
-	if len(plain) != 1 || !native.IsWord(plain[0]) {
+	if len(plain) != 1 || !native.IsWord(&plain[0]) {
 		t.Fatalf("plain name should expand to one Word, got %v", plain)
 	}
 	dotted := dottedWordTokens("A.b.c")
 	if len(dotted) != 5 {
 		t.Fatalf("A.b.c should expand to 5 tokens, got %v", dotted)
 	}
-	w, _ := native.AsWord(dotted[1])
+	w, _ := native.AsWord(&dotted[1])
 	if w.Name != "dot" {
 		t.Errorf("second token should be the dot word, got %v", dotted[1])
 	}

@@ -29,7 +29,7 @@ func TestRunTypeInstallForwards(t *testing.T) {
 		t.Fatal(err)
 	}
 	pass := passNode(r, "Rt")
-	if !NewInteger(2).Is(pass) {
+	if !addrOf(NewInteger(2)).Is(pass) {
 		t.Fatal("before the run, the pass's node admits: its bound is unknown")
 	}
 	if err := RunTypeInstall(r, &TypeRunInstallSpec{Name: "Rt", Node: pass}, NewDepScalar(DepGT, NewInteger(3))); err != nil {
@@ -39,7 +39,7 @@ func TestRunTypeInstallForwards(t *testing.T) {
 	if run == nil || run == pass || ForwardedType(pass) != run {
 		t.Fatalf("the name binds the run's node and the pass's forwards to it: %v %v %v", run, pass, ForwardedType(pass))
 	}
-	if NewInteger(2).Is(pass) || !NewInteger(5).Is(pass) {
+	if addrOf(NewInteger(2)).Is(pass) || !addrOf(NewInteger(5)).Is(pass) {
 		t.Error("the pass's node decides membership over the run's bound")
 	}
 	if _, ok := Unify(NewInteger(2), NewTypeLiteral(pass)); ok {
@@ -60,7 +60,7 @@ func TestRunTypeInstallForwards(t *testing.T) {
 	if err := RunTypeInstall(r, &TypeRunInstallSpec{Name: "Em", Node: empty}, NewTypeLiteral(TNever)); err != nil {
 		t.Fatal(err)
 	}
-	if ForwardedType(empty).ID != TNever.ID || NewInteger(1).Is(empty) {
+	if ForwardedType(empty).ID != TNever.ID || addrOf(NewInteger(1)).Is(empty) {
 		t.Errorf("an empty interval forwards to Never: %v", ForwardedType(empty))
 	}
 
@@ -119,7 +119,7 @@ func TestForwardingBehaviorOperands(t *testing.T) {
 	if got := forwardedOperand(NewInteger(4)); got.String() != "4" {
 		t.Errorf("a value is itself: %v", got)
 	}
-	if got := forwardedOperand(NewTypeLiteral(TString)); !IsBareTypeNode(got) || got.ID != TString.ID {
+	if got := forwardedOperand(NewTypeLiteral(TString)); !IsBareTypeNode(&got) || got.ID != TString.ID {
 		t.Errorf("a node without a forward is itself: %v", got)
 	}
 	if got := forwardedOperand(NewTypeLiteral(pass)); got.ID != r.LookupTypeName("Op").ID {

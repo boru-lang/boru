@@ -95,7 +95,7 @@ func renamesAsData(v core.Value) bool {
 			return false
 		}
 		for i := range fd.Signatures {
-			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(b[0]) {
+			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(&b[0]) {
 				return false
 			}
 		}
@@ -491,7 +491,7 @@ func callWindowAt(r *core.Registry, name string, p *compiler.Program, unit, pc i
 			continue
 		case !o.Fwd:
 			prefix = append(prefix, v)
-		case stop < 0 && !core.IsConcrete(v):
+		case stop < 0 && !core.IsConcrete(&v):
 			stop = len(win)
 		}
 		win = append(win, v)

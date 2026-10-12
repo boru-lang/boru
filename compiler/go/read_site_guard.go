@@ -60,7 +60,7 @@ type siteKey struct {
 // accounting; a value no event produced — a param — has no producer home).
 func (es *EmitState) noteReadSite(v core.Value, name string, pos core.SrcPos, owner *fnUnitRec) {
 	pr, produced := es.producedBy[v.ID]
-	if core.IsFnTypedCarrier(v) || !produced {
+	if core.IsFnTypedCarrier(&v) || !produced {
 		return
 	}
 	n := len(es.frames) - 1
@@ -310,7 +310,7 @@ func (es *EmitState) guardDroppedReads(owner *fnUnitRec, points []deoptPoint) {
 // A deopt point on a read inside the token then begins its statement at the
 // word (deoptStatementStart, NUR361).
 func collectingWordBefore(body []core.Value, events []EmitEvent, tok int) (core.SrcPos, bool) {
-	if tok <= 0 || !core.IsWord(body[tok-1]) {
+	if tok <= 0 || !core.IsWord(&body[tok-1]) {
 		return core.SrcPos{}, false
 	}
 	w, t := body[tok-1].Pos(), body[tok].Pos()

@@ -124,7 +124,7 @@ func keySet(names ...string) map[string]bool {
 // (the no-options call); an unknown WORD is a programming error in the
 // caller, not user input, so it is reported as such.
 func validateStrOpts(r *Registry, v Value, word string) error {
-	if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 		return nil
 	}
 	allowed, ok := strOptKeys[word]
@@ -196,7 +196,7 @@ func parseStrOpts(v Value) strOpts {
 	o.form = "NFC"
 	o.quote = "none"
 
-	if !v.Parent.Equal(TMap) || !IsConcrete(v) {
+	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
 		return o
 	}
 	m, _ := AsMap(v)

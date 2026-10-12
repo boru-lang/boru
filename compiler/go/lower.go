@@ -240,7 +240,7 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 		src, pop, pushCopy = localOperand(slot), true, true
 	case src.kind == opLocal:
 		pop, pushCopy = true, true
-	case src.kind == opNone && core.IsInertConst(d.val):
+	case src.kind == opNone && core.IsInertConst(&d.val):
 		src, pop, pushCopy = ConstOperand(lw.es.internUnpooled(d.val)), true, true
 	default:
 		return "arm-resident def `" + d.name + "` of unknown provenance"
@@ -299,11 +299,11 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 // collectRootBindConsumes mirrors this exactly (it decides whose producer
 // keeps its value on the stack for the bind to pop), so both read one rule.
 func rootBindWritesBack(d *emitDynBind) bool {
-	if !d.root || core.IsBareTypeNode(d.val) {
+	if !d.root || core.IsBareTypeNode(&d.val) {
 		return false
 	}
 	if d.srcSeq < 0 {
-		return !core.IsConcrete(d.val)
+		return !core.IsConcrete(&d.val)
 	}
 	switch d.val.Data.(type) {
 	case core.IntPayload, core.FloatPayload, core.StrPayload, core.BoolPayload, core.AtomPayload,
@@ -559,7 +559,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// resolveOperand recovers it as a const/local — the same slot the
 			// binding's reads resolve to, so the written-back value IS the
 			// instance the program uses). Anything else declines.
-			if core.IsInertConst(d.val) {
+			if core.IsInertConst(&d.val) {
 				src = ConstOperand(lw.es.internUnpooled(d.val))
 			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal || op.kind == opType) {
 				src = op
@@ -680,7 +680,7 @@ func (lw *lowerer) storeBindInto(d *emitDynBind, armSlot int, what string, consu
 		return ""
 	case src.kind == opNone:
 		// dynBindStorable admitted only an inert literal here.
-		if !core.IsInertConst(d.val) {
+		if !core.IsInertConst(&d.val) {
 			return what + " `" + d.name + "` of unknown provenance"
 		}
 		src = ConstOperand(lw.es.internUnpooled(d.val))
@@ -703,7 +703,7 @@ func (lw *lowerer) twinInstalls(idx int) bool {
 		return false
 	}
 	e := lw.p.BindTwinEntries[idx]
-	return e.TypeDef == nil && (core.IsConcrete(e.Body) || core.IsBareTypeNode(e.Body))
+	return e.TypeDef == nil && (core.IsConcrete(&e.Body) || core.IsBareTypeNode(&e.Body))
 }
 
 // noteTwin records a just-lowered PUSH-kind twin as the pending pair for
@@ -1655,7 +1655,7 @@ func landingIsland(toks []core.Value, wordPos core.SrcPos) (int, []core.Value, b
 		return 0, nil, false
 	}
 	for i, t := range toks {
-		if items, err := core.AsParenExpr(t); err == nil && !t.Quoted {
+		if items, err := core.AsParenExpr(&t); err == nil && !t.Quoted {
 			if opens, inner, ok := landingIsland(items, wordPos); ok {
 				tail := make([]core.Value, 0, len(inner)+1+len(toks)-i-1)
 				tail = append(tail, inner...)

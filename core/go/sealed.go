@@ -297,11 +297,11 @@ func (e *Engine) releaseSealed(drv *sealedDriver, h sealedHold) {
 // layer pops, its mark is forgotten), and the tokens leave the tape.
 func (e *Engine) escapeSealed(at, end int) {
 	pos, set := SrcPos{}, e.Pointer < end-1
-	if set && e.Pointer == end-2 && IsCloseParen(e.Tape.At(e.Pointer)) {
+	if set && e.Pointer == end-2 && IsCloseParen(e.Tape.Ref(e.Pointer)) {
 		set = false
 	}
 	if set {
-		pos = e.Tape.At(e.Pointer).Pos()
+		pos = e.Tape.Ref(e.Pointer).Pos()
 	}
 	e.Registry.HoldFlowAt(pos, set)
 	e.unwindLiveFrames(at, end)
@@ -313,7 +313,7 @@ func (e *Engine) escapeSealed(at, end int) {
 // left open by an unmatched `(` among the elements.
 func hasOpenParen(vals []Value) bool {
 	for _, v := range vals {
-		if IsOpenParen(v) {
+		if IsOpenParen(&v) {
 			return true
 		}
 	}

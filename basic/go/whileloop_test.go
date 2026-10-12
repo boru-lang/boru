@@ -32,7 +32,7 @@ func TestRunWhileLoopTokens(t *testing.T) {
 	if len(tokens) != 3 {
 		t.Fatalf("want mark+cond+move, got %d tokens", len(tokens))
 	}
-	info, merr := AsMove(tokens[2])
+	info, merr := AsMove(&tokens[2])
 	if merr != nil || info.Cont == nil || info.Cont.WhileCond == nil {
 		t.Fatalf("move must carry a while-mode continuation: %v %v", merr, info.Cont)
 	}

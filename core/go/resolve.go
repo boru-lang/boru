@@ -31,10 +31,10 @@ func ResolveBuiltinTypeName(name string) (*Type, bool) {
 // ResolveWordValue / ResolveWordValueR. A nil registry skips the
 // registry arm.
 func resolveWordValue(v Value, r *Registry) Value {
-	if !IsWord(v) {
+	if !IsWord(&v) {
 		return v
 	}
-	_as1, _ := AsWord(v)
+	_as1, _ := AsWord(&v)
 	name := _as1.Name
 	switch name {
 	case "true":
@@ -73,10 +73,10 @@ func ResolveWordsDeepR(v Value, r *Registry) Value {
 }
 
 func resolveWordsDeep(v Value, r *Registry) Value {
-	if IsWord(v) {
+	if IsWord(&v) {
 		return resolveWordValue(v, r)
 	}
-	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(v) && !IsTableType(v) {
+	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
 		lst, _ := AsList(v)
 		elems := lst.Slice()
 		resolved := make([]Value, len(elems))
@@ -118,7 +118,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 	// PRESERVED and resolved deep — the child-only rebuild silently
 	// emptied populated typed-container defaults in record/class
 	// schemas (found by the TS-parity review; the TS twin preserves).
-	if IsTypedList(v) {
+	if IsTypedList(&v) {
 		ct, _ := AsChildType(v)
 		child := resolveWordsDeep(ct.Child, r)
 		if len(ct.Elements) == 0 {
@@ -130,7 +130,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 		}
 		return NewTypedListWithElements(child, elems)
 	}
-	if IsTypedMap(v) {
+	if IsTypedMap(&v) {
 		ct, _ := AsChildType(v)
 		child := resolveWordsDeep(ct.Child, r)
 		if len(ct.Entries) == 0 {
@@ -142,7 +142,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 		}
 		return NewTypedMapWithEntries(child, entries)
 	}
-	if v.Parent.Equal(TMap) && v.Data != nil && !IsTypedMap(v) && !IsRecordType(v) && !IsOptionsType(v) {
+	if v.Parent.Equal(TMap) && v.Data != nil && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v) {
 		m, _ := AsMap(v)
 		result := NewOrderedMap()
 		for _, key := range m.Keys() {

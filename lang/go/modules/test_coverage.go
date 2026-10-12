@@ -129,11 +129,11 @@ func coverDenominator(parent *native.Registry, src string) map[int]bool {
 func coverWalkSeq(seq []native.Value, rows map[int]bool) {
 	for i := 0; i < len(seq); i++ {
 		v := seq[i]
-		if native.IsWord(v) {
+		if native.IsWord(&v) {
 			if r := v.Pos().Row; r != 0 {
 				rows[r] = true
 			}
-			w, _ := native.AsWord(v)
+			w, _ := native.AsWord(&v)
 			if (w.Name == "fn" || w.Name == "afn") && i+1 < len(seq) {
 				if lst, err := native.AsList(seq[i+1]); err == nil && !lst.IsNil() {
 					coverWalkFnSig(lst.Slice(), rows)
@@ -160,8 +160,8 @@ func coverWalkFnSig(sig []native.Value, rows map[int]bool) {
 }
 
 func coverWalkValue(v native.Value, rows map[int]bool) {
-	if native.IsParenExpr(v) {
-		toks, _ := native.AsParenExpr(v)
+	if native.IsParenExpr(&v) {
+		toks, _ := native.AsParenExpr(&v)
 		coverWalkSeq(toks, rows)
 		return
 	}
@@ -169,7 +169,7 @@ func coverWalkValue(v native.Value, rows map[int]bool) {
 		coverWalkSeq(lst.Slice(), rows)
 		return
 	}
-	if m, err := native.AsMap(v); err == nil && native.IsConcrete(v) {
+	if m, err := native.AsMap(v); err == nil && native.IsConcrete(&v) {
 		for _, k := range m.Keys() {
 			val, _ := m.Get(k)
 			coverWalkValue(val, rows)

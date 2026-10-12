@@ -157,7 +157,7 @@ func TabnasKinds() []TabnasKind {
 // empty / non-concrete value yields nil, so a kind's defaults pass through
 // mergeOpts untouched.
 func OptsToMap(v Value) map[string]any {
-	if !v.Parent.ConformsTo(TMap) || !IsConcrete(v) {
+	if !v.Parent.ConformsTo(TMap) || !IsConcrete(&v) {
 		return nil
 	}
 	m, ok := ValueToAny(v).(map[string]any)

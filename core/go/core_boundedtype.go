@@ -88,7 +88,7 @@ func TypeMembership(v Value) bool {
 	if v.Carrier {
 		return !v.Dynamic && v.Parent != nil && (v.Parent.Equal(TType) || v.Parent.Equal(TNone))
 	}
-	return IsBareTypeNode(v) || IsTypeBody(v) || IsRecordShape(v) ||
+	return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) ||
 		(v.Parent != nil && v.Parent.ConformsTo(TType))
 }
 
@@ -98,7 +98,7 @@ func TypeMembership(v Value) bool {
 // ConformsTo needs). Structural bodies denote no single node and
 // return nil — they satisfy bare `Type` but no bound.
 func DenotedTypeNode(v Value) *Type {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return nil
 	}
 	node := v
@@ -127,7 +127,7 @@ func boundedTypeSatisfied(v Value, child Value, r *Registry) bool {
 			return true
 		}
 	}
-	if !IsBareTypeNode(child) {
+	if !IsBareTypeNode(&child) {
 		if _, uerr := unifyWithin(v, child, r); uerr == nil {
 			return true
 		}

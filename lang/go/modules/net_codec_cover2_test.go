@@ -303,7 +303,7 @@ func TestDispatchDecodedEmptyReplyIsNone(t *testing.T) {
 	}
 	svc := vals[len(vals)-1]
 	reply := dispatchDecoded(reg, svc, codecTestMap("op", native.NewString("x")), native.Value{})
-	if native.IsConcrete(reply) || reply.String() != "None" {
+	if native.IsConcrete(&reply) || reply.String() != "None" {
 		t.Errorf("a handler with no reply must yield None, got %v", reply)
 	}
 }

@@ -496,23 +496,23 @@ func TestConcreteAccessorsRejectDepScalars(t *testing.T) {
 		t.Error("DepScalar read as concrete atom")
 	}
 	// The happy paths still unwrap.
-	if n, err := NewInteger(4).AsConcreteInteger(); err != nil || n != 4 {
+	if n, err := addrOf(NewInteger(4)).AsConcreteInteger(); err != nil || n != 4 {
 		t.Error("integer accessor broken")
 	}
-	if s, err := NewString("x").AsConcreteString(); err != nil || s != "x" {
+	if s, err := addrOf(NewString("x")).AsConcreteString(); err != nil || s != "x" {
 		t.Error("string accessor broken")
 	}
 	// Atoms satisfy the textual-content contract of AsConcreteString.
-	if s, err := NewAtom("tag").AsConcreteString(); err != nil || s != "tag" {
+	if s, err := addrOf(NewAtom("tag")).AsConcreteString(); err != nil || s != "tag" {
 		t.Error("atom-as-string accessor broken")
 	}
-	if f, err := NewFloat(2.5).AsConcreteFloat(); err != nil || f != 2.5 {
+	if f, err := addrOf(NewFloat(2.5)).AsConcreteFloat(); err != nil || f != 2.5 {
 		t.Error("float accessor broken")
 	}
-	if b, err := NewBoolean(true).AsConcreteBoolean(); err != nil || !b {
+	if b, err := addrOf(NewBoolean(true)).AsConcreteBoolean(); err != nil || !b {
 		t.Error("boolean accessor broken")
 	}
-	if a, err := NewAtom("z").AsConcreteAtom(); err != nil || a != "z" {
+	if a, err := addrOf(NewAtom("z")).AsConcreteAtom(); err != nil || a != "z" {
 		t.Error("atom accessor broken")
 	}
 }

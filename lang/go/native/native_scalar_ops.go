@@ -59,7 +59,7 @@ var arithOps = []string{"add", "sub", "mul", "div", "mod", "pow"}
 // field values recurse element-wise (Maps and Lists are not exposed on
 // the public op words — only reachable inside a Micron field).
 func applyScalarBinaryOp(r *Registry, op string, left, right Value) (Value, error) {
-	if !IsConcrete(left) || !IsConcrete(right) {
+	if !IsConcrete(&left) || !IsConcrete(&right) {
 		return Value{}, opCrossTypeError(r, op, left, right)
 	}
 	lp, rp := left.Parent, right.Parent
@@ -278,7 +278,7 @@ func booleanArithHandler(op string) Handler {
 // CoreDefault match over a carrier proves nothing.
 func booleanArithReturns(op string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			core.CheckAddUniqueDiagnostic(r, "type_error", booleanArithDetail(op), op, args[0].Pos())
 		}
 		return []Value{}
@@ -592,7 +592,7 @@ func mirrorOpError(r *Registry, op string, err error, pos core.SrcPos) {
 // detail. The residual is the declared result type either way.
 func seqOpReturns(op string, elem *Type, h Handler) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			if _, err := h(args, nil, nil, r); err != nil {
 				mirrorOpError(r, op, err, args[0].Pos())
 			}
@@ -623,7 +623,7 @@ func micronOpReturns(op string) ReturnsFunc {
 		if len(args) != 2 || args[0].Parent == nil || args[1].Parent == nil {
 			return []Value{NewCarrier(TMicron)}
 		}
-		if atUncaughtTopLevel(r) && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			if _, err := micronBinaryOp(r, op, args[1], args[0]); err != nil {
 				mirrorOpError(r, op, err, args[0].Pos())
 			}

@@ -22,7 +22,7 @@ type s6b5MatPayload struct {
 }
 
 func (s6b5MatPayload) payloadMarker()                    {}
-func (s6b5MatPayload) IsTypeContent(*Value) bool         { return false }
+func (s6b5MatPayload) IsTypeContent(*Type) bool          { return false }
 func (m s6b5MatPayload) Materialize() (TableData, error) { return m.td, m.err }
 func (m s6b5MatPayload) SourceRecord() RecordTypeInfo    { return m.td.Record }
 

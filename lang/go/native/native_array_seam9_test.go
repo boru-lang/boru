@@ -23,7 +23,7 @@ func w9Reach(t *testing.T) Value {
 		t.Fatalf("parse reach: %v", err)
 	}
 	for _, tk := range toks {
-		if _, e := AsReach(tk); e == nil {
+		if _, e := AsReach(&tk); e == nil {
 			return tk
 		}
 	}

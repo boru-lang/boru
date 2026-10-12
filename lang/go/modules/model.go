@@ -181,7 +181,7 @@ type parsedSpec struct {
 // assembles the model Build/Watch.
 func modelNewHandlerFor(tModel *native.Type) native.Handler {
 	return func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-		if !native.IsConcrete(args[0]) {
+		if !native.IsConcrete(&args[0]) {
 			return nil, r.BoruError("model_bad_spec", "new: spec must be a concrete Map", "new")
 		}
 		specMap, merr := native.AsMap(args[0])
@@ -264,7 +264,7 @@ func parseSpec(specMap native.ReadMap, h *modelHandle, r *native.Registry) (pars
 			"e.g. Model.new {src:'service: name: \"orders\"'}")
 	}
 
-	if v, ok := specMap.Get("args"); ok && native.IsConcrete(v) {
+	if v, ok := specMap.Get("args"); ok && native.IsConcrete(&v) {
 		if m, mok := native.ValueToAny(v).(map[string]any); mok {
 			ps.args = m
 		}
@@ -275,7 +275,7 @@ func parseSpec(specMap native.ReadMap, h *modelHandle, r *native.Registry) (pars
 	if order, ok := mapStrList(specMap, "order"); ok {
 		ps.order = order
 	}
-	if w, ok := specMap.Get("watch"); ok && native.IsConcrete(w) {
+	if w, ok := specMap.Get("watch"); ok && native.IsConcrete(&w) {
 		if wm, werr := native.AsMap(w); werr == nil {
 			mod, _ := mapBool(wm, "mod")
 			add, _ := mapBool(wm, "add")
@@ -299,7 +299,7 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 	if !ok {
 		return nil, nil
 	}
-	if !native.IsConcrete(av) {
+	if !native.IsConcrete(&av) {
 		return nil, r.BoruError("model_bad_action", "new: actions must be a Map", "new")
 	}
 	am, aerr := native.AsMap(av)
@@ -341,7 +341,7 @@ func actionFnAndStep(name string, entry native.Value, r *native.Registry) (nativ
 	if _, ok := entry.Data.(native.FnDefInfo); ok {
 		return entry, model.StepPost, nil
 	}
-	if native.IsConcrete(entry) {
+	if native.IsConcrete(&entry) {
 		if m, err := native.AsMap(entry); err == nil {
 			run, hasRun := m.Get("run")
 			if !hasRun {
@@ -425,7 +425,7 @@ func interpretActionResult(res []native.Value) model.ActionResult {
 	if b, err := last.AsConcreteBoolean(); err == nil {
 		return model.ActionResult{OK: b}
 	}
-	if native.IsConcrete(last) {
+	if native.IsConcrete(&last) {
 		if m, err := native.AsMap(last); err == nil {
 			ok := true
 			if v, has := m.Get("ok"); has {
@@ -636,7 +636,7 @@ func (synthFileInfo) Sys() any           { return nil }
 
 func mapStr(m native.ReadMap, key string) (string, bool) {
 	v, ok := m.Get(key)
-	if !ok || !native.IsConcrete(v) {
+	if !ok || !native.IsConcrete(&v) {
 		return "", false
 	}
 	s, err := v.AsConcreteString()
@@ -660,7 +660,7 @@ func mapBool(m native.ReadMap, key string) (bool, bool) {
 
 func mapStrList(m native.ReadMap, key string) ([]string, bool) {
 	v, ok := m.Get(key)
-	if !ok || !native.IsConcrete(v) {
+	if !ok || !native.IsConcrete(&v) {
 		return nil, false
 	}
 	lst, err := native.AsList(v)
