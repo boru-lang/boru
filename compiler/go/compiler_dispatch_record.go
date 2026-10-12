@@ -366,7 +366,7 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 // states it (core.FnValueOnlyZeroArgSigs).
 func parkedMemberFn(v core.Value) bool {
 	fd, ok := core.FnDefOf(v.Data)
-	if !ok || v.Quoted || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
+	if !ok || core.IsQuoted(&v) || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
 		!core.FnValueOnlyZeroArgSigs(*fd) {
 		return false
 	}
@@ -1073,7 +1073,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// runtime net count / overload is genuinely variable — keeps the marking.
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
-	fixedValueEval := core.IsConcrete(&body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
+	fixedValueEval := core.IsConcrete(&body) && !core.IsDynamic(&body) && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	// A LITERAL body a closure probe found to leave a run (noteBodyRun,
 	// NUR294) is not modelled exactly: it takes a computed body's marks.
 	litRun := core.IsConcrete(&body) && es.takeBodyRun(body)
@@ -1086,7 +1086,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// body ends in it leaves the run's count, not one seat.
 		cs := sig.Callable
 		f.dynBodyRun = cs != nil && (cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs || cs.StripsUnconsumedInput) &&
-			(!core.IsConcrete(&body) || body.Dynamic || litRun)
+			(!core.IsConcrete(&body) || core.IsDynamic(&body) || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
 	// values where the check pass models one dynamic(Any) out, and so does a
@@ -1187,7 +1187,7 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 			fnSlot = i
 		}
 	}
-	if fnSlot < 0 || core.IsConcrete(&args[fnSlot]) || !args[fnSlot].Dynamic {
+	if fnSlot < 0 || core.IsConcrete(&args[fnSlot]) || !core.IsDynamic(&args[fnSlot]) {
 		return false
 	}
 	for i := range args {
@@ -1218,7 +1218,7 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 // POLY re-match over the word's own overloads) rather than baking the sig the
 // check committed — recordDynBodyCall's rule, stated there.
 func dynBodyPoly(r *core.Registry, word string, args []core.Value, body core.Value) bool {
-	return body.Dynamic || check.AnyAnyCarrier(args) ||
+	return core.IsDynamic(&body) || check.AnyAnyCarrier(args) ||
 		(check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2)
 }
 

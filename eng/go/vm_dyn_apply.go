@@ -179,7 +179,7 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	//
 	// IsAppliableFn alone does not exclude a quoted value (callDynApplyTop
 	// tests `|| fnVal.Quoted` separately for the same reason).
-	if fnVal.Quoted {
+	if core.IsQuoted(&fnVal) {
 		return nil
 	}
 	sig := core.MatchFnSig(fnVal, args)
@@ -219,8 +219,8 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 	// rule (core_helpers.go).
 	for i := 0; i < fn.NParams && i < len(locals); i++ {
 		core.ClearAscribed(&locals[i])
-		if locals[i].Parent.Equal(core.TList) && !locals[i].Quoted {
-			locals[i].Quoted = true
+		if locals[i].Parent.Equal(core.TList) && !core.IsQuoted(&locals[i]) {
+			core.SetQuoted(&locals[i], true)
 		}
 	}
 	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, applyFrameName(fd), sig), allForward: allForwardSig(sig), at: at}
@@ -253,7 +253,7 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 // can be counted.
 func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
 	fd, isFn := fnVal.Data.(*core.FnDefInfo)
-	if !isFn || fnVal.Quoted {
+	if !isFn || core.IsQuoted(&fnVal) {
 		return nil, false, nil
 	}
 	sig := core.MatchFnSig(fnVal, args)

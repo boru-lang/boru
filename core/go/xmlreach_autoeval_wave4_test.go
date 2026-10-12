@@ -127,7 +127,7 @@ func TestQuotedAndInertReachStayData(t *testing.T) {
 	r := covRegistry(t, registerDotWords)
 	m := mapOf("a", NewInteger(1))
 	q := NewReach(ReachInfo{Receiver: []Value{m}, Segments: []ReachSeg{{KeyLit: NewString("a")}}, Eval: true})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	inert := NewReachFromKeys(m, []Value{NewString("a")})
 	out, err := NewTop(r).Run([]Value{q, inert})
 	if err != nil {
@@ -292,7 +292,7 @@ func TestXmlInterpExprErrorPropagates(t *testing.T) {
 func evalMapVal(t *testing.T, r *Registry, om *OrderedMap) Value {
 	t.Helper()
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	out, err := NewTop(r).Run([]Value{mv})
 	if err != nil {
 		t.Fatalf("map auto-eval: %v", err)
@@ -370,7 +370,7 @@ func TestAutoEvalMapComputedKeyError(t *testing.T) {
 	om.Set("no_such_key_word", NewInteger(1))
 	om.Meta = map[string]any{"ck": map[string]bool{"no_such_key_word": true}}
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	_, err := NewTop(r).Run([]Value{mv})
 	if err == nil || !strings.Contains(err.Error(), "computed key") {
 		t.Errorf("computed key error = %v", err)
@@ -382,7 +382,7 @@ func TestAutoEvalMapValueErrorPropagates(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("bad", NewParenExpr([]Value{NewWord("no_such_word_y")}))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	if _, err := NewTop(r).Run([]Value{mv}); err == nil {
 		t.Error("map value error did not propagate")
 	}
@@ -411,7 +411,7 @@ func TestAutoEvalMapConsumedArg(t *testing.T) {
 	om.Set("a", NewParenExpr([]Value{NewWord("cadd"), NewInteger(1), NewInteger(1)}))
 	om.Set("b", NewInteger(2))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	out, err := NewTop(r).Run([]Value{NewWord("cmsize"), mv})
 	if err != nil {
 		t.Fatalf("consumed map: %v", err)
@@ -427,7 +427,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 	r := covRegistry(t, nil)
 	// Residual: a computed list at end of run evaluates in place.
 	lv := NewList([]Value{NewWord("cadd"), NewInteger(2), NewInteger(3)})
-	lv.Eval = true
+	SetEval(&lv, true)
 	out, err := NewTop(r).Run([]Value{lv})
 	if err != nil {
 		t.Fatalf("residual list: %v", err)
@@ -438,7 +438,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Consumed: the same list as a clen arg evaluates before the call.
 	lv2 := NewList([]Value{NewWord("cadd"), NewInteger(2), NewInteger(3)})
-	lv2.Eval = true
+	SetEval(&lv2, true)
 	out, err = NewTop(r).Run([]Value{NewWord("clen"), lv2})
 	if err != nil {
 		t.Fatalf("consumed list: %v", err)
@@ -449,7 +449,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Empty list short-circuits.
 	le := NewList(nil)
-	le.Eval = true
+	SetEval(&le, true)
 	out, err = NewTop(r).Run([]Value{le})
 	if err != nil || len(out) != 1 {
 		t.Fatalf("empty list: %v %s", err, renderAll(out))
@@ -457,7 +457,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Error inside a residual list propagates.
 	lbad := NewList([]Value{NewWord("no_such_word_z")})
-	lbad.Eval = true
+	SetEval(&lbad, true)
 	if _, err := NewTop(r).Run([]Value{lbad}); err == nil {
 		t.Error("list eval error did not propagate")
 	}

@@ -131,7 +131,7 @@ func (es *EmitState) storedDepRead(name string, v core.Value) bool {
 	if _, ok := es.reg.Defs.Top(name); !ok {
 		return false
 	}
-	if v.Dynamic {
+	if core.IsDynamic(&v) {
 		es.noteUnitLive(name)
 		return false
 	}

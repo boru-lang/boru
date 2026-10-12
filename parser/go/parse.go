@@ -252,8 +252,8 @@ func Parse(src string) ([]core.Value, error) {
 		}
 		// Top-level implicit maps (e.g. entire input is "a:x") must be
 		// auto-evaluated so expressions in values resolve.
-		if val.Implicit && !mv.Eval {
-			mv.Eval = true
+		if val.Implicit && !core.IsEval(&mv) {
+			core.SetEval(&mv, true)
 		}
 		return []core.Value{withPos(mv, rootPos)}, nil
 	case unclosedParen:
@@ -661,8 +661,8 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 		}
 		// In word context (top level), implicit maps from pair syntax
 		// (e.g. a:x) must be auto-evaluated so expressions resolve.
-		if val.Implicit && !mv.Eval {
-			mv.Eval = true
+		if val.Implicit && !core.IsEval(&mv) {
+			core.SetEval(&mv, true)
 		}
 		return mv, nil
 
@@ -678,7 +678,7 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 		}
 		// In word context (top level), implicit maps from pair syntax
 		// must be auto-evaluated so expressions resolve.
-		mv.Eval = true
+		core.SetEval(&mv, true)
 		return mv, nil
 
 	case jsonic.ListRef:

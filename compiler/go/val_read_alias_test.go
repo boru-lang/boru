@@ -190,7 +190,7 @@ func TestNoteValBindLiteralArms(t *testing.T) {
 		}
 	}
 	quoted := lit
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	es.noteValBind(cur, "kk", quoted)
 	if _, ok := cur.valBinds["kk"]; ok {
 		t.Error("a quoted literal records nothing")

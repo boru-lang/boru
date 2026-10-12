@@ -69,7 +69,7 @@ func TestTimeoutReturnType(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(100), body,
 	})
@@ -104,7 +104,7 @@ func TestTimeoutCallbackExecutes(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testflag")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(20), body,
 	})
@@ -159,7 +159,7 @@ func TestTimeoutNegativeErrors(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	_, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(-1), body,
 	})
@@ -177,7 +177,7 @@ func TestIntervalReturnType(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(100), body,
 	})
@@ -212,7 +212,7 @@ func TestIntervalCallbackRepeats(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testinc")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(20), body,
 	})
@@ -291,7 +291,7 @@ func TestIntervalZeroErrors(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	_, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(0), body,
 	})
@@ -319,7 +319,7 @@ func TestCancelTimeout(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testflag")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(50), body,
 	})
@@ -356,7 +356,7 @@ func TestCancelInterval(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testinc")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(20), body,
 	})
@@ -395,7 +395,7 @@ func TestCancelIdempotent(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(1000), body,
 	})

@@ -81,7 +81,7 @@ func allConcreteArgs(args []core.Value) bool {
 		if core.IsConcrete(&a) || core.IsBareTypeNode(&a) {
 			continue
 		}
-		if core.IsNoneShape(a) && !a.Dynamic {
+		if core.IsNoneShape(a) && !core.IsDynamic(&a) {
 			continue
 		}
 		return false
@@ -138,7 +138,7 @@ func DeepConcreteOptionsAt(idx int) func([]core.Value) bool {
 			return false
 		}
 		for _, a := range args {
-			if a.Dynamic {
+			if core.IsDynamic(&a) {
 				return false
 			}
 		}

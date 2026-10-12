@@ -23,7 +23,7 @@ func TestRecordParenReStep(t *testing.T) {
 	}
 	dynAny := func() Value {
 		v := NewCarrier(TAny)
-		v.Dynamic = true
+		SetDynamic(&v, true)
 		v.ID = "dyn-1"
 		return v
 	}
@@ -66,7 +66,7 @@ func TestRecordParenReStep(t *testing.T) {
 		},
 		{
 			name:     "a quoted lead records nothing",
-			tape:     []Value{func() Value { v := carrier(); v.Quoted = true; return v }(), NewInteger(2)},
+			tape:     []Value{func() Value { v := carrier(); SetQuoted(&v, true); return v }(), NewInteger(2)},
 			closeIdx: 3, want: false,
 			why: "a quoted value is inert on both lanes — the rewind pushes it, it does not call it",
 		},
@@ -122,7 +122,7 @@ func TestRecordParenReStep(t *testing.T) {
 					}
 				}
 				for _, v := range tc.tape {
-					if (IsFnTypedCarrier(&v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
+					if (IsFnTypedCarrier(&v) || IsDynamic(&v)) && !IsQuoted(&v) && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
 						t.Errorf("survivor %s is callable but unmarked: %v", v.ID, e.Registry.Check.ParenReSteppedFnIDs)
 					}
 				}
@@ -159,10 +159,10 @@ func TestMarkReStepped(t *testing.T) {
 		return v
 	}
 	dynAny := NewCarrier(TAny)
-	dynAny.Dynamic = true
+	SetDynamic(&dynAny, true)
 	dynAny.ID = "dyn-2"
 	quoted := carrier("fnc-q")
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
 	for _, v := range []Value{quoted, carrier(""), NewInteger(1), NewCarrier(TInteger)} {
 		e.markReStepped(v)

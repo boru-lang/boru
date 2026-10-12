@@ -292,7 +292,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 	if a := v.AscribedType(); a != nil {
 		view := ReparentValue(*v, a)
 		view.SetAscribed(nil)
-		view.Dynamic = false
+		SetDynamic(&view, false)
 		return SigTypeMatches(&view, t)
 	}
 	// Gradual (dynamic) carrier: matches the slot unless its bound is
@@ -304,7 +304,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 	// falls into the strict path below. The flag is cleared on the
 	// operand copy so the bound flows through `tand` as an ordinary
 	// carrier.
-	if v.Dynamic {
+	if IsDynamic(v) {
 		// A bound that conforms to the slot (X ⊑ t — the value IS a t), or a
 		// slot that conforms to the bound (t ⊑ X — the value MIGHT be a t, the
 		// gradual optimism), matches. This direct conformance check is needed
@@ -338,7 +338,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 					if IsBareTypeNode(&alt) {
 						probe = CarrierOfLiteral(alt)
 					}
-					probe.Dynamic = true
+					SetDynamic(&probe, true)
 					if SigTypeMatches(&probe, t) {
 						return true
 					}
@@ -346,7 +346,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 			}
 		}
 		bound := *v
-		bound.Dynamic = false
+		SetDynamic(&bound, false)
 		return !IsNeverShape(TandValues(bound, NewCarrier(t)))
 	}
 	if v.Is(t) {
@@ -357,7 +357,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 	// dispatch distributes over the abstract domain. The selected
 	// signature's returns are then refined per alternative by
 	// disjunctPartitionReturns (design/legacy/checker-accuracy-review.10.ignore A1).
-	if v.Carrier && !v.Dynamic && IsDisjunct(v) {
+	if v.Carrier && !IsDynamic(v) && IsDisjunct(v) {
 		di, err := AsDisjunct(*v)
 		if err == nil && len(di.Alternatives) > 0 {
 			all := true
@@ -744,5 +744,5 @@ func TagDeterminedSigs(sigs []Signature, n int) bool {
 // (whose own node, not its Parent, is what matches), not an ascribed view,
 // not a carrier or a dynamic value.
 func TagKeyable(v Value) bool {
-	return v.Parent != nil && !v.Carrier && !v.Dynamic && !IsBareTypeNode(&v) && v.AscribedType() == nil
+	return v.Parent != nil && !v.Carrier && !IsDynamic(&v) && !IsBareTypeNode(&v) && v.AscribedType() == nil
 }

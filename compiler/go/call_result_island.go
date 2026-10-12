@@ -232,7 +232,7 @@ func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p co
 		return core.Value{}, false
 	}
 	v := found.val
-	return v, found.srcSeq < 0 && found.src.kind != opLocal && core.IsSteplessValue(v) && !v.Carrier && !v.Dynamic
+	return v, found.srcSeq < 0 && found.src.kind != opLocal && core.IsSteplessValue(v) && !v.Carrier && !core.IsDynamic(&v)
 }
 
 // planCallResultRestarts plans the root's call-result islands: one per root

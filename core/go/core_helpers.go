@@ -496,8 +496,8 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					arg := args[i]
 					// Quote list params so they're treated as data values
 					// when referenced in the body, not expanded as code bodies.
-					if arg.Parent.Equal(TList) && !arg.Quoted {
-						arg.Quoted = true
+					if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+						SetQuoted(&arg, true)
 					}
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				}
@@ -557,8 +557,8 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 				arg := args[i]
 				// Quote list params so they're treated as data values
 				// when referenced in the body, not expanded as code bodies.
-				if arg.Parent.Equal(TList) && !arg.Quoted {
-					arg.Quoted = true
+				if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+					SetQuoted(&arg, true)
 				}
 				InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				names = append(names, p.Name)
@@ -656,7 +656,7 @@ func RetagTypedContainerValue(pat, arg Value) Value {
 	if !ok { //covergate:allow dispatch (matchSignature/checkParamContract) element-checks the concrete arg against pat and rejects any non-conformer with no_signature BEFORE param binding, so an arg reaching here always satisfies pat and Unify cannot fail
 		return arg
 	}
-	unified.Quoted = arg.Quoted // preserve the list-arg no-auto-eval quote
+	SetQuoted(&unified, IsQuoted(&arg)) // preserve the list-arg no-auto-eval quote
 	return unified
 }
 

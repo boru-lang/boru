@@ -81,8 +81,8 @@ func TestDynamicResultContagion(t *testing.T) {
 	listSig := &core.Signature{Returns: []*core.Type{core.TList}}
 
 	strict := CarrierResults(r, "w", listSig, []core.Value{core.NewCarrier(core.TString)}, core.SrcPos{}, nil, false)
-	if len(strict) != 1 || strict[0].Dynamic {
-		t.Errorf("strict args must yield a strict result, got Dynamic=%v", strict[0].Dynamic)
+	if len(strict) != 1 || core.IsDynamic(&strict[0]) {
+		t.Errorf("strict args must yield a strict result, got Dynamic=%v", core.IsDynamic(&strict[0]))
 	}
 
 	// A dynamic input + a CONCRETE, single-reachable CONTAINER return: the
@@ -90,8 +90,8 @@ func TestDynamicResultContagion(t *testing.T) {
 	// downstream `each` over such a declared-List return can now commit
 	// instead of declining "dynamic input at each".
 	cont := CarrierResults(r, "w", listSig, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, nil, false)
-	if len(cont) != 1 || cont[0].Dynamic {
-		t.Fatalf("a concrete container return stays strict over a dynamic input, got Dynamic=%v", cont[0].Dynamic)
+	if len(cont) != 1 || core.IsDynamic(&cont[0]) {
+		t.Fatalf("a concrete container return stays strict over a dynamic input, got Dynamic=%v", core.IsDynamic(&cont[0]))
 	}
 	if !cont[0].Parent.Equal(core.TList) {
 		t.Errorf("result bound = %s, want the declared return List", cont[0].Parent)
@@ -102,16 +102,16 @@ func TestDynamicResultContagion(t *testing.T) {
 	// forward/stack split detector).
 	intSig := &core.Signature{Returns: []*core.Type{core.TInteger}}
 	sc := CarrierResults(r, "w", intSig, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, nil, false)
-	if len(sc) != 1 || !sc[0].Dynamic {
-		t.Fatalf("a dynamic input + scalar return must stay dynamic, got Dynamic=%v", sc[0].Dynamic)
+	if len(sc) != 1 || !core.IsDynamic(&sc[0]) {
+		t.Fatalf("a dynamic input + scalar return must stay dynamic, got Dynamic=%v", core.IsDynamic(&sc[0]))
 	}
 
 	// A dynamic input + a declared ANY return IS input-dependent (the type
 	// is genuinely unknown), so the modality flows downstream as dynamic.
 	anySig := &core.Signature{Returns: []*core.Type{core.TAny}}
 	dyn := CarrierResults(r, "w", anySig, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, nil, false)
-	if len(dyn) != 1 || !dyn[0].Dynamic {
-		t.Fatalf("a dynamic input + Any return must stay dynamic, got Dynamic=%v", dyn[0].Dynamic)
+	if len(dyn) != 1 || !core.IsDynamic(&dyn[0]) {
+		t.Fatalf("a dynamic input + Any return must stay dynamic, got Dynamic=%v", core.IsDynamic(&dyn[0]))
 	}
 }
 
@@ -141,7 +141,7 @@ func TestDynamicFirstMatchPartition(t *testing.T) {
 	// print in canonical tcmp order (disjuncts are sorted at construction).
 	sig := &core.Signature{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TBoolean}}
 	out := CarrierResults(r, "wdiv", sig, []core.Value{intStr}, core.SrcPos{}, nil, false)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) {
 		t.Fatalf("expected a single dynamic result, got %v", out)
 	}
 	if got := out[0].String(); got != "dynamic(Atom tor Boolean)" {
@@ -180,8 +180,8 @@ func TestDynamicCarrierString(t *testing.T) {
 // toCarrier never strips a dynamic carrier (which would null its bound).
 func TestDynamicCarrierConstructors(t *testing.T) {
 	d := core.NewDynamicCarrier(core.TInteger)
-	if !d.Dynamic || !d.Carrier {
-		t.Fatalf("NewDynamicCarrier: Dynamic=%v Carrier=%v, want both true", d.Dynamic, d.Carrier)
+	if !core.IsDynamic(&d) || !d.Carrier {
+		t.Fatalf("NewDynamicCarrier: Dynamic=%v Carrier=%v, want both true", core.IsDynamic(&d), d.Carrier)
 	}
 	if !d.Parent.Equal(core.TInteger) {
 		t.Errorf("NewDynamicCarrier bound = %s, want Integer", d.Parent)
@@ -191,14 +191,14 @@ func TestDynamicCarrierConstructors(t *testing.T) {
 	disj := core.NewDynamicCarrierValue(
 		core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString)}),
 	)
-	if !disj.Dynamic || !core.IsDisjunct(&disj) {
-		t.Errorf("core.NewDynamicCarrierValue: Dynamic=%v IsDisjunct=%v, want both true", disj.Dynamic, core.IsDisjunct(&disj))
+	if !core.IsDynamic(&disj) || !core.IsDisjunct(&disj) {
+		t.Errorf("core.NewDynamicCarrierValue: Dynamic=%v IsDisjunct=%v, want both true", core.IsDynamic(&disj), core.IsDisjunct(&disj))
 	}
 
 	// toCarrier must return a dynamic carrier unchanged — same bound,
 	// flag intact.
 	got := toCarrier(d)
-	if !got.Dynamic || !got.Parent.Equal(core.TInteger) {
-		t.Errorf("toCarrier(dynamic) = Dynamic %v / %s, want dynamic Integer", got.Dynamic, got.Parent)
+	if !core.IsDynamic(&got) || !got.Parent.Equal(core.TInteger) {
+		t.Errorf("toCarrier(dynamic) = Dynamic %v / %s, want dynamic Integer", core.IsDynamic(&got), got.Parent)
 	}
 }

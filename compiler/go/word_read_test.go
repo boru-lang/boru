@@ -131,7 +131,7 @@ func TestWordReadReplayArms(t *testing.T) {
 	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 5})
 	es.NoteWordRead(x, "x", core.SrcPos{Row: 1, Col: 8})
 	quoted := g
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.wordReadName(rec, quoted) != "" {
 		t.Error("a quoted value is data")
 	}

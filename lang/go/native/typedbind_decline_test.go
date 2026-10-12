@@ -21,13 +21,13 @@ func TestRecordTypedBindOrFailToCompileConcreteDecline(t *testing.T) {
 	defer r.Check.Begin()()
 	defer r.Check.BeginCompilePass()()
 	dyn := core.NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	dyn.ID = ""
 	cons := core.NewCarrier(TAny)
 	out := recordTypedBindOrDeclineConcrete(r, func() core.TypedBindSpec {
 		return core.TypedBindSpec{Kind: core.TypedBindPredicate, Name: "zz", Describe: "Zz", Cons: &cons}
 	}, dyn, dyn, core.SrcPos{}, func() { markFnPredicateBindUncompilable(r, "zz") })
-	if !out.Dynamic {
+	if !IsDynamic(&out) {
 		t.Fatal("the declined record must return the bound value unchanged")
 	}
 	_, reason, _ := r.Check.Recorder().(*compiler.EmitState).Finalize(nil)
@@ -47,7 +47,7 @@ func TestMiniHookToksMaterialisableArms(t *testing.T) {
 		t.Fatal("a carrier token must not be materialisable")
 	}
 	dyn := NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	if miniHookToksMaterialisable([]core.Value{dyn}) {
 		t.Fatal("a dynamic token must not be materialisable")
 	}

@@ -86,7 +86,7 @@ func debugParseHandler(args []native.Value, _ map[string]native.Value, _ []nativ
 		return nil, r.BoruError("parse_error", fmt.Sprintf("Debug.parse: %v", perr), "Debug.parse")
 	}
 	lst := native.NewList(tokens)
-	lst.Quoted = true
+	native.SetQuoted(&lst, true)
 	return []native.Value{lst}, nil
 }
 

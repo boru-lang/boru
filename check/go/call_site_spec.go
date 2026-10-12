@@ -217,7 +217,7 @@ func specResidualMeetsReturns(residual []core.Value, returns []*core.Type) bool 
 	}
 	for i, v := range residual {
 		t := returns[i]
-		if v.Dynamic || v.Parent == nil || t == nil || v.Parent.ConformsTo(t) {
+		if core.IsDynamic(&v) || v.Parent == nil || t == nil || v.Parent.ConformsTo(t) {
 			continue
 		}
 		return false

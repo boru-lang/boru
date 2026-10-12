@@ -199,7 +199,7 @@ func TestOrderingReturnsFn(t *testing.T) {
 	// A dynamic operand is not determinate — no diagnostic.
 	before = len(r.Check.Diagnostics)
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	fn([]core.Value{dyn, core.NewInteger(1)}, r)
 	if len(r.Check.Diagnostics) != before {
 		t.Error("dynamic operand produced a static incomparable diagnostic")

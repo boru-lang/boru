@@ -28,6 +28,16 @@ func NewCarrier(t *Type) Value {
 	return v
 }
 
+// NewDynamicRecordCarrier is dynamic(Map) carrying the record schema
+// fields: the carrier a record-typed fn param or return is analysed under
+// (check's recordSchemaCarrier and recordReturnCarrier), with a fresh ID
+// per carrier because the bytecode compiler keys a frame local and a
+// recorded result by it. Built in one literal, the dynamic mark included.
+func NewDynamicRecordCarrier(fields *OrderedMap) Value {
+	return Value{ID: GenerateID(IDPrefixForType(TMap)), Parent: TMap, Carrier: true,
+		Data: RecordTypeInfo{Fields: fields}, occ: &flagsOnly[occDynamic]}
+}
+
 // NewDynamicCarrier constructs a bounded gradual carrier dynamic(t):
 // a carrier whose Parent is the BOUND t and whose Dynamic flag flips
 // matching to the not-disjoint rule (design/legacy/dynamic-modality-report.10.ignore).
@@ -36,7 +46,7 @@ func NewCarrier(t *Type) Value {
 // bound but cannot prove the exact type.
 func NewDynamicCarrier(t *Type) Value {
 	v := NewCarrier(t)
-	v.Dynamic = true
+	SetDynamic(&v, true)
 	return v
 }
 
@@ -70,7 +80,7 @@ func ValueCarrier(v Value) Value {
 		return NewCarrier(TNone)
 	}
 	c := NewCarrier(v.Parent)
-	c.Dynamic = v.Dynamic
+	SetDynamic(&c, IsDynamic(&v))
 	return c
 }
 
@@ -79,7 +89,7 @@ func ValueCarrier(v Value) Value {
 // dynamic modality, preserving its Parent/Data bound.
 func NewDynamicCarrierValue(bound Value) Value {
 	bound.Carrier = true
-	bound.Dynamic = true
+	SetDynamic(&bound, true)
 	return bound
 }
 
@@ -121,9 +131,9 @@ func CarrierTypedListOf(v Value) Value {
 	if IsTypeLiteral(&v) {
 		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
 	}
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		c := NewCarrier(v.Parent)
-		c.Dynamic = true
+		SetDynamic(&c, true)
 		return NewCarrierTypedListValue(c)
 	}
 	return NewCarrierTypedList(v.Parent)

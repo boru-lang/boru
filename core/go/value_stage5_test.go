@@ -232,13 +232,13 @@ func TestS5VFormatBigNonNil(t *testing.T) {
 
 func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 	l := NewEvalList([]Value{NewInteger(1)})
-	if !l.Eval || !l.Parent.Equal(TList) {
+	if !IsEval(&l) || !l.Parent.Equal(TList) {
 		t.Error("NewEvalList must mark Eval on a TList value")
 	}
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
 	m := NewEvalMap(om)
-	if !m.Eval || !m.Parent.Equal(TMap) {
+	if !IsEval(&m) || !m.Parent.Equal(TMap) {
 		t.Error("NewEvalMap must mark Eval on a TMap value")
 	}
 	im := NewImplicitMap(om)
@@ -644,7 +644,7 @@ func TestS5VIsUnboundSlot(t *testing.T) {
 		"a carrier":      NewCarrier(TInteger),
 		"a type node":    NewTypeLiteral(TInteger),
 		"an identity":    {ID: "slot-1"},
-		"a dynamic bit":  {Dynamic: true},
+		"a dynamic bit":  func() Value { var v Value; SetDynamic(&v, true); return v }(),
 		"a carrier bit":  {Carrier: true},
 		"a bare payload": {Data: IntPayload{N: 1}},
 	} {

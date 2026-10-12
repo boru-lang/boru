@@ -150,9 +150,9 @@ func TestBodyMapShapeQuotedData(t *testing.T) {
 		}),
 	}}})
 	quotedList := core.NewList([]core.Value{core.NewWord("qi"), core.NewSplice(core.NewInteger(1))})
-	quotedList.Quoted = true
+	core.SetQuoted(&quotedList, true)
 	inner := core.NewList([]core.Value{core.NewWord("qj")})
-	inner.Quoted = true
+	core.SetQuoted(&inner, true)
 	body := []core.Value{
 		core.NewWord("quote"), core.NewList([]core.Value{core.NewWord("qk"), inner}),
 		quotedList,

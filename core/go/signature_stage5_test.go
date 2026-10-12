@@ -80,7 +80,7 @@ func TestWt5SigTypeMatchesDynamicDisjoint(t *testing.T) {
 	// A dynamic carrier fails only provably-disjoint slots — the tand
 	// probe path (neither side conforms to the other).
 	v := NewCarrier(TInteger)
-	v.Dynamic = true
+	SetDynamic(&v, true)
 	if SigTypeMatches(&v, TString) {
 		t.Fatal("dynamic(Integer) must fail a provably-disjoint String slot")
 	}

@@ -268,7 +268,7 @@ func reachFnValue(name string) core.Value {
 		Signatures: []core.Signature{{Args: []*core.Type{core.TAny}, BarrierPos: 1}},
 	}
 	v := core.NewValueRaw(core.TFunction, &fd)
-	v.ReachGroup = true
+	core.SetReachGroup(&v, true)
 	return v
 }
 

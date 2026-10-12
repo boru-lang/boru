@@ -244,7 +244,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		// The interpreter's Function-slot arrival delivers a quoted fn
 		// UNQUOTED into the frame binding (stepWordVal's arrival path); the
 		// VM's CALL_USER binds the slot as delivered, so strip it here.
-		fnv.Quoted = false
+		core.SetQuoted(&fnv, false)
 		core.InstallFrameBinding(reg, w.Name, fnv)
 		installed = append(installed, w.Name)
 		converted++
@@ -321,7 +321,7 @@ func wordLeadNoMatch(lead core.Value, args []core.Value) bool {
 // of plain data re-steps to itself.
 func replayRegionLive(region []core.Value, words []compiler.DynFrameWord) bool {
 	for i, t := range region {
-		if core.IsAppliableFn(t) && (!t.Quoted || (i < len(words) && words[i].Name != "")) {
+		if core.IsAppliableFn(t) && (!core.IsQuoted(&t) || (i < len(words) && words[i].Name != "")) {
 			return true
 		}
 	}

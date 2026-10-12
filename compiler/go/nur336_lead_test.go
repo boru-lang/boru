@@ -120,7 +120,7 @@ func TestRawReadAndLeadReads(t *testing.T) {
 		t.Error("the evaluated reach token that read it")
 	}
 	quoted := reach
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.rawReachLead(tree, 1, []core.Value{core.NewParenExpr([]core.Value{quoted})}, []int{0, 0}) || es.rawReachLead(tree, 2, body, []int{0, 0}) {
 		t.Error("a quoted reach, or no raw read")
 	}
@@ -266,7 +266,7 @@ func TestSeatStackType(t *testing.T) {
 		t.Errorf("the type node by its ID: %+v %v", srcs, ok)
 	}
 	dyn := integer
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if _, _, _, ok := es.seatStack(lw, []core.Value{dyn}); ok {
 		t.Error("a dynamic value cannot be seated")
 	}

@@ -35,7 +35,7 @@ func TestOrderingDeterminate(t *testing.T) {
 		t.Error("bare carrier claims determinate")
 	}
 	dyn := core.NewInteger(1)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if orderingDeterminate(dyn) {
 		t.Error("dynamic value claims determinate")
 	}
@@ -83,7 +83,7 @@ func TestS5bEReturnsFnDeferredParamListPopsGenBindings(t *testing.T) {
 	// Body: a single evaluate-by-default list literal referencing the
 	// param — the deferred-list shape.
 	inner := core.NewList([]core.Value{core.NewWord("s5bec1")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	sig := core.FnSig{
 		Params: []core.FnParam{{Name: "s5bec1", Type: node}},
 		Impl:   core.Boru([]core.Value{inner}),
@@ -117,7 +117,7 @@ func TestS5bEReturnsFnUnboundReturnTypeParamDedupes(t *testing.T) {
 	rf := BuildFnBodyReturnsFn(r, "s5bei", sig, core.FnDefInfo{Gen: spec})
 
 	out := rf([]core.Value{core.NewInteger(1)}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) {
 		t.Fatalf("expected one dynamic(Any) carrier, got %v", out)
 	}
 	count := func() int {
@@ -399,10 +399,10 @@ func TestTypedListCarrierHelpers(t *testing.T) {
 func TestElementAndParamCarriers(t *testing.T) {
 	// Unknown element type → dynamic carrier.
 	ec := NewElementCarrier(core.TAny)
-	if !ec.Dynamic {
+	if !core.IsDynamic(&ec) {
 		t.Error("Any element carrier not dynamic")
 	}
-	if NewElementCarrier(core.TInteger).Dynamic {
+	if core.IsDynamic(addrOf(NewElementCarrier(core.TInteger))) {
 		t.Error("typed element carrier dynamic")
 	}
 
@@ -423,14 +423,14 @@ func TestElementAndParamCarriers(t *testing.T) {
 	}
 
 	// ParamInputCarrier: Any → dynamic; concrete stays strict.
-	if !ParamInputCarrier(core.TAny).Dynamic {
+	if !core.IsDynamic(addrOf(ParamInputCarrier(core.TAny))) {
 		t.Error("Any param carrier not dynamic")
 	}
-	if !ParamInputCarrier(nil).Dynamic {
+	if !core.IsDynamic(addrOf(ParamInputCarrier(nil))) {
 		t.Error("nil param carrier not dynamic")
 	}
 	pc := ParamInputCarrier(core.TInteger)
-	if pc.Dynamic || !pc.Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&pc) || !pc.Parent.Equal(core.TInteger) {
 		t.Errorf("Integer param carrier = %v", pc)
 	}
 }
@@ -444,7 +444,7 @@ func TestW9EvalFixedWindowToken(t *testing.T) {
 		t.Error("dynamic carrier is not evaluation-fixed")
 	}
 	und := core.NewInteger(1)
-	und.Undefined = true
+	core.SetUndefined(&und, true)
 	if evalFixedWindowToken(und) {
 		t.Error("undefined value is not evaluation-fixed")
 	}

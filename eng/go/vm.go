@@ -930,7 +930,7 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 // match runs over the positional args the bind would seat (shapeInputs), so
 // the match and the bind read one order.
 func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body *core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
-	if body.Quoted {
+	if core.IsQuoted(body) {
 		return nil, nil, false
 	}
 	fn, known := vc.closureUnit(cl)
@@ -971,7 +971,8 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body *core.Value, c
 	if cl.Render == "" {
 		if params, ok := closureSigParams(fn); ok {
 			cl.Render = core.FormatFnDef(core.FnDefInfo{Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: true})
-			out = core.Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
+			out = core.Value{Parent: body.Parent, Data: cl}
+			core.SetQuoted(&out, core.IsQuoted(body))
 		}
 	}
 	return append(append([]core.Value(nil), inputs...), out), nil, true
@@ -1594,7 +1595,7 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	}
 	// An INERT value — a `/v` read, or a fn value the landing parked as the
 	// interpreter's re-step did (landingWalk) — is data on both lanes too.
-	if fnVal.Quoted || !core.IsAppliableFn(fnVal) {
+	if core.IsQuoted(&fnVal) || !core.IsAppliableFn(fnVal) {
 		// Not callable: leave the value as the residual, matching the interpreter
 		// (it does not apply a non-Function). A trailing fn sits ON TOP of its
 		// args there, so rotate it up from the base; a leading fn stays below.
@@ -1745,7 +1746,7 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 		// (no read substitution to mirror). A Quoted fn stays data — the
 		// [args, fn] window IS the interpreter's residual for a quoted
 		// call result — and an unquoted one applies via the shared body.
-		if top := len(stack) - 1; top >= 0 && stack[top].Quoted {
+		if top := len(stack) - 1; top >= 0 && core.IsQuoted(&stack[top]) {
 			return stack, nil, nil
 		}
 		return vc.callDynTrailTop(reg, arg, stack, curDebug, pc, head)
@@ -1796,7 +1797,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING stack underflow")
 	}
 	v := stack[top]
-	if v.Quoted || !core.IsAppliableFn(v) {
+	if core.IsQuoted(&v) || !core.IsAppliableFn(v) {
 		if lword.Restart && lword.SkipTo > 0 {
 			// The paren apply after the word takes the value as its method
 			// (LandingWord.SkipTo), and data is none: the statement's own
@@ -2058,7 +2059,7 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 			return nil, nil, stampAt(landedUncalledError(reg, fnDef, v), curDebug, pc, reg)
 		}
 		parked := v
-		parked.Quoted = true
+		core.SetQuoted(&parked, true)
 		stack[top] = parked
 		return stack, nil, nil
 	case specAt >= 0:
@@ -2556,7 +2557,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	// arrival: RecordDynApply declines an EVENT-provenance fn (a direct call
 	// result, which the interpreter does NOT substitute and whose runtime
 	// quote must survive — PR #280 review), so it never reaches this op.
-	fnVal.Quoted = false
+	core.SetQuoted(&fnVal, false)
 	base := top - n
 	// The args sit BELOW the fn in stack order (deepest first). The interpreter
 	// binds a trailing fn's args TOP-DOWN (the top arg → the fn's first param);
@@ -2909,7 +2910,7 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		// `apply` over the same runtime value and raises exactly this).
 		return nil, nil, stampAt(fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", fnVal.Data), curDebug, pc, reg)
 	}
-	fnVal.Quoted = false // applyHandler: the parked value becomes a live call site
+	core.SetQuoted(&fnVal, false) // applyHandler: the parked value becomes a live call site
 	fnVal = core.MarkApplied(fnVal)
 	if vmNativeApplicable(vc.r, *fnDef) {
 		if results, done, err := vc.tryNativeFnApply(fnVal, args); done {
@@ -3104,14 +3105,14 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 		return append(stack[:base], results...), nil, nil
 	}
-	if spec.Paren && fnVal.Quoted && core.IsAppliableFn(fnVal) {
+	if spec.Paren && core.IsQuoted(&fnVal) && core.IsAppliableFn(fnVal) {
 		// A paren applies its lead over the values after it however the
 		// landing before it left the lead: parked, where the lead could not
 		// take the word after it (`(m.f y)` over a lambda of one Integer is
 		// 43), as a `/v` read of it is applied (`(m.f/v 7)`). NUR336.
-		fnVal.Quoted = false
+		core.SetQuoted(&fnVal, false)
 	}
-	if spec.Paren && !fnVal.Quoted && vc.parenMissesWindow(fnVal, args) {
+	if spec.Paren && !core.IsQuoted(&fnVal) && vc.parenMissesWindow(fnVal, args) {
 		// No signature of the lead takes exactly the paren's values, so the
 		// interpreter's paren does not apply it over them alone: it places a
 		// lambda that takes none, runs a named fn of none before them, and
@@ -3152,14 +3153,14 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 			return guard(results)
 		}
 	}
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok && !fnVal.Quoted {
+	if _, ok := fnVal.Data.(core.ClosurePayload); ok && !core.IsQuoted(&fnVal) {
 		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}
 		return guard(results)
 	}
-	if !core.IsAppliableFn(fnVal) || fnVal.Quoted {
+	if !core.IsAppliableFn(fnVal) || core.IsQuoted(&fnVal) {
 		// The shape claim failed outright: the read did not surface a live
 		// method value. The interpreter would leave it as data and continue
 		// with a DIFFERENT stack shape: where nothing after the apply reads
@@ -3226,7 +3227,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 		// A wrapper over a compiled closure applies the closure itself
 		// (callDynamic's arm; the closure arm above, under the same guard).
-		if _, isCl := inner.Data.(core.ClosurePayload); isCl && !inner.Quoted && core.MatchFnSig(fnVal, args) != nil {
+		if _, isCl := inner.Data.(core.ClosurePayload); isCl && !core.IsQuoted(&inner) && core.MatchFnSig(fnVal, args) != nil {
 			results, err := vc.invokeClosurePositional(vc.r, inner, iargs)
 			if err != nil {
 				return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -3538,7 +3539,7 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 	// through to the island, which places the leftovers as the interpreter does.
 	if n := len(window); n >= 2 {
 		fnVal := window[n-1]
-		if fnDef, isFn := fnVal.Data.(*core.FnDefInfo); isFn && !fnVal.Quoted &&
+		if fnDef, isFn := fnVal.Data.(*core.FnDefInfo); isFn && !core.IsQuoted(&fnVal) &&
 			core.IsAppliableFn(fnVal) && vmNativeApplicable(vc.r, *fnDef) &&
 			core.IsSteplessWindow(window[:n-1]) {
 			args := make([]core.Value, n-1)
@@ -3807,7 +3808,7 @@ func (vc *vmContext) invokeLoneToken(reg *core.Registry, fnVal core.Value, input
 // tape-coupled token (Word/Mark/Move/Forward/OpenParen/Splice) is re-stepped by
 // definition. A frame push does neither, so either one keeps the island.
 func dynFrameSimpleWindow(tokens []core.Value) bool {
-	if !core.IsAppliableFn(tokens[0]) || tokens[0].Quoted {
+	if !core.IsAppliableFn(tokens[0]) || core.IsQuoted(&tokens[0]) {
 		return false
 	}
 	for _, t := range tokens[1:] {
@@ -4420,7 +4421,7 @@ func (vc *vmContext) bindRootRead(reg *core.Registry, root bool, name string, v 
 	if !ok {
 		return func() {}
 	}
-	fnv.Quoted = false
+	core.SetQuoted(&fnv, false)
 	var written *core.Value
 	if top, bound := reg.Defs.TopEntry(name); bound && top.TypeDef == nil && core.IsAppliableFn(top.Body) {
 		reg.Defs.PopEntry(name)
@@ -4974,8 +4975,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			copy(nl, sigArgs)
 			for i := 0; i < fn.NParams && i < len(nl); i++ {
 				core.ClearAscribed(&nl[i])
-				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
-					nl[i].Quoted = true
+				if nl[i].Parent.Equal(core.TList) && !core.IsQuoted(&nl[i]) {
+					core.SetQuoted(&nl[i], true)
 				}
 			}
 			// Live, not symmetry: the plan-time match (PlanMatch, then
@@ -5557,8 +5558,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// interpreter's binding rule (core_helpers.go).
 			for i := 0; i < fn.NParams && i < len(nl); i++ {
 				core.ClearAscribed(&nl[i])
-				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
-					nl[i].Quoted = true
+				if nl[i].Parent.Equal(core.TList) && !core.IsQuoted(&nl[i]) {
+					core.SetQuoted(&nl[i], true)
 				}
 			}
 			// The re-check asks each predicate type again; RunPredicate's
@@ -5621,8 +5622,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// interpreter's binding rule (core_helpers.go).
 				nl[i] = stack[len(stack)-1-i]
 				core.ClearAscribed(&nl[i])
-				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
-					nl[i].Quoted = true
+				if nl[i].Parent.Equal(core.TList) && !core.IsQuoted(&nl[i]) {
+					core.SetQuoted(&nl[i], true)
 				}
 			}
 			preCall := stack

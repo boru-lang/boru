@@ -1179,7 +1179,7 @@ func TestW9TryCompileUserPolyArmCompileFails(t *testing.T) {
 	// so the whole poly set is kept in the interpreter.
 	def := func(p string) core.Signature {
 		inner := core.NewList([]core.Value{core.NewWord(p)})
-		inner.Eval = true
+		core.SetEval(&inner, true)
 		return core.Signature{
 			Params:  []core.FnParam{{Name: p, Type: core.TInteger}},
 			Returns: []*core.Type{core.TInteger},
@@ -1204,7 +1204,7 @@ func TestW9CompileUserPolyArmCompileFailures(t *testing.T) {
 
 	// A deferred-param-list body (eval list referencing a param) → -1,false.
 	inner := core.NewList([]core.Value{core.NewWord("p")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	deferredSig := &core.Signature{
 		Params: []core.FnParam{{Name: "p", Type: core.TInteger}},
 		Impl:   core.Boru([]core.Value{inner}),

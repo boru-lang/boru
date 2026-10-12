@@ -34,7 +34,9 @@ func TestPlacedWindowSplit(t *testing.T) {
 // closure, and nothing else — a lambda, a quoted fn, data.
 func TestNamedDispatchingFn(t *testing.T) {
 	fnv := func(p core.Payload, quoted bool) core.Value {
-		return core.Value{Parent: core.TFunction, Data: p, Quoted: quoted}
+		v := core.Value{Parent: core.TFunction, Data: p}
+		core.SetQuoted(&v, quoted)
+		return v
 	}
 	for _, c := range []struct {
 		why  string

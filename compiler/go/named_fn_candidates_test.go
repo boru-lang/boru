@@ -139,7 +139,7 @@ func TestNamedFnUnmatchedAtTail(t *testing.T) {
 		}
 	}
 	quoted := inc
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.namedFnUnmatchedAtTail(quoted) {
 		t.Error("a quoted value is data")
 	}
@@ -170,7 +170,7 @@ func TestPolyCallDeclineReasonMemberReadAndWreckage(t *testing.T) {
 		t.Errorf("an unknown word position proves nothing: %q", got)
 	}
 	quoted := v
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if got := es.polyCallDeclineReason("typeof", []core.Value{quoted}, nil, after); got != "" {
 		t.Errorf("a quoted member read is data: %q", got)
 	}
@@ -189,7 +189,7 @@ func TestPolyCallDeclineReasonMemberReadAndWreckage(t *testing.T) {
 	}
 	es.reg = nil
 	wreck := core.NewInteger(1)
-	wreck.FailedDispatch = true
+	core.SetFailedDispatch(&wreck, true)
 	if got := es.polyCallDeclineReason("add", []core.Value{wreck}, nil, after); !strings.Contains(got, "NUR186") {
 		t.Errorf("dispatch wreckage declines: %q", got)
 	}
@@ -332,7 +332,7 @@ func TestDefReadFnTailArity(t *testing.T) {
 		t.Errorf("a named read with a claimed arity: got %d %q", n, name)
 	}
 	quoted := v
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if n, _ := es.defReadFnTailArity(quoted); n != 0 {
 		t.Error("a quoted value is data")
 	}

@@ -10,7 +10,7 @@ import (
 func TestValueHasSentinelCoverage(t *testing.T) {
 	brk := core.NewWord("break")
 	quotedBrk := brk
-	quotedBrk.Quoted = true
+	core.SetQuoted(&quotedBrk, true)
 	cases := []struct {
 		name string
 		v    core.Value

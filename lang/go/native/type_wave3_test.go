@@ -243,7 +243,7 @@ func TestW3TypeAlgebraListFoldCheck(t *testing.T) {
 	// Direct: a non-concrete arg keeps the declared dynamic(Any).
 	fold := typeAlgebraListFold(tanyHandler)
 	out := fold([]Value{NewCarrier(TList)}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Errorf("typeAlgebraListFold carrier = %v, want dynamic Any", out)
 	}
 }

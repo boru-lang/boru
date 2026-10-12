@@ -13,9 +13,9 @@ import (
 // literal with nothing to evaluate, is.
 func TestAnyPendingActiveContainer(t *testing.T) {
 	pending := core.NewList([]core.Value{core.NewInteger(1), core.NewWord("add"), core.NewInteger(2)})
-	pending.Eval = true
+	core.SetEval(&pending, true)
 	inert := core.NewList([]core.Value{core.NewInteger(1)})
-	inert.Eval = true
+	core.SetEval(&inert, true)
 	if !anyPendingActiveContainer([]core.Value{core.NewInteger(5), pending}) {
 		t.Error("a window with a pending `[1 add 2]` must be refused")
 	}

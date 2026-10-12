@@ -25,7 +25,7 @@ func TestParkedMemberFn(t *testing.T) {
 	lam := n207Lambda()
 	named := core.NewFunction(core.FnDefInfo{Name: "one", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
 	quoted := lam
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	applied := n207Lambda()
 	fd := *applied.Data.(*core.FnDefInfo)
 	fd.Applied = true
@@ -162,7 +162,7 @@ func TestGradualHoldsFn(t *testing.T) {
 		t.Error("an Any result proven to hold a fn")
 	}
 	quoted := mk("viaClosure", core.TAny)
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	for name, v := range map[string]core.Value{
 		"no producer": mk("plain", core.TAny), "no id": mk("", core.TAny), "quoted": quoted,
 		"fn-typed (the strict paths own it)": mk("viaClosure", core.TFunction), "concrete": core.NewInteger(1),
@@ -183,7 +183,7 @@ func TestMemberLambdaShape(t *testing.T) {
 	}
 	pat := core.NewInteger(0)
 	quoted := n207Lambda()
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	twoSigs := n207Lambda()
 	fd := *twoSigs.Data.(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])

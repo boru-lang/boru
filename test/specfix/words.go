@@ -595,7 +595,7 @@ func registerEngSpecDefinition(r *core.Registry) {
 				Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 					v := args[0]
 					if v.Parent.Equal(core.TList) && v.Data != nil {
-						v.Quoted = true
+						core.SetQuoted(&v, true)
 					}
 					return []core.Value{v}, nil
 				}),

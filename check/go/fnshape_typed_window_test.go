@@ -46,7 +46,7 @@ func TestFnShapeTypedWindowNamedShape(t *testing.T) {
 		t.Fatalf("the window becomes the shape's two returns, tape len = %d", e.Tape.Len())
 	}
 	for i, want := range []*core.Type{core.TInteger, core.TString} {
-		if out := e.Tape.At(i); !out.Carrier || out.Dynamic || !out.Parent.Equal(want) {
+		if out := e.Tape.At(i); !out.Carrier || core.IsDynamic(&out) || !out.Parent.Equal(want) {
 			t.Errorf("return %d = %v, want a %s carrier", i, out, want.Name())
 		}
 	}
@@ -73,7 +73,7 @@ func TestFnShapeTypedWindowNotedClaim(t *testing.T) {
 	if !tryDynamicFnValueDispatch(e, 0) {
 		t.Fatal("the noted claim is applied")
 	}
-	if out := e.Tape.At(0); !out.Carrier || !out.Dynamic {
+	if out := e.Tape.At(0); !out.Carrier || !core.IsDynamic(&out) {
 		t.Errorf("an Any return is a dynamic value, got %v", out)
 	}
 	void, _ := FnShapeOfSpec(ftwShape())
@@ -91,9 +91,9 @@ func TestFnShapeTypedWindowDeclines(t *testing.T) {
 	defer done()
 	carrier := ftwNamed(t, r, "Ftw1", ftwShape(core.TInteger))
 	quoted := carrier
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	dynamic := carrier
-	dynamic.Dynamic = true
+	core.SetDynamic(&dynamic, true)
 	zero := ftwNamed(t, r, "Ftw0", core.FnUndefInfo{Sigs: []core.FnSigSpec{{Returns: []*core.Type{core.TInteger}}}})
 	arityOnly := core.NewCarrier(core.TFnUndef) // claimed, but not its returns
 	r.Check.NoteFnShape(arityOnly, core.FnShape{Arity: 1})

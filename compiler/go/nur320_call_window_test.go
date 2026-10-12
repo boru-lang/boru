@@ -157,7 +157,7 @@ func intOf(v core.Value, _ int) int64 {
 // TestWindowScalar pins the values a window carries as themselves.
 func TestWindowScalar(t *testing.T) {
 	dyn := core.NewInteger(1)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	for _, c := range []struct {
 		v    core.Value
 		want bool

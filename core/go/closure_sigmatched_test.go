@@ -10,10 +10,11 @@ func TestClosureSigMatched(t *testing.T) {
 	if got := ClosureSigMatched(plain); !ExactEqual(got, plain) {
 		t.Errorf("a non-closure value must pass through: %v", got)
 	}
-	cl := Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}, Quoted: true}
+	cl := Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}}
+	SetQuoted(&cl, true)
 	marked := ClosureSigMatched(cl)
 	mcl, ok := marked.Data.(ClosurePayload)
-	if !ok || !mcl.SigMatched || mcl.Unit != 3 || !marked.Quoted {
+	if !ok || !mcl.SigMatched || mcl.Unit != 3 || !IsQuoted(&marked) {
 		t.Errorf("the mark must set SigMatched on a copy keeping the payload and the quote: %v", marked)
 	}
 	if ocl := cl.Data.(ClosurePayload); ocl.SigMatched {

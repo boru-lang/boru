@@ -671,3 +671,9 @@ func NewBoundedTypeBody(node *core.Type, body core.Value) core.Value {
 // its FnDefInfo by pointer.
 func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
 func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
+
+// The occurrence flags (core/go/occurrence.go): read and written through
+// the holder, never as fields of the value.
+func IsQuoted(v *core.Value) bool         { return core.IsQuoted(v) }
+func IsFailedDispatch(v *core.Value) bool { return core.IsFailedDispatch(v) }
+func IsDynamic(v *core.Value) bool        { return core.IsDynamic(v) }

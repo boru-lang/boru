@@ -272,7 +272,7 @@ func TestS5ARunCheckStepBudget(t *testing.T) {
 func TestS5ARunQuotedParenExpr(t *testing.T) {
 	r := covRegistry(t, nil)
 	pe := NewParenExpr([]Value{NewInteger(1)})
-	pe.Quoted = true
+	SetQuoted(&pe, true)
 	out, err := NewTop(r).Run([]Value{pe})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -553,7 +553,7 @@ func TestS5AForwardScanQuotedParenExprSkips(t *testing.T) {
 		{Args: []*Type{TAny}, BarrierPos: 1},
 	}}
 	pe := NewParenExpr([]Value{NewInteger(1)})
-	pe.Quoted = true
+	SetQuoted(&pe, true)
 	e := s5aEng(t, r, []Value{NewWord("s5aw"), pe}, 0)
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
@@ -633,7 +633,7 @@ func TestS5AForwardScanReachCallHeadToken(t *testing.T) {
 	callee := NewFunction(FnDefInfo{Name: "s5acallee", Signatures: []Signature{
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
-	callee.ReachGroup = true
+	SetReachGroup(&callee, true)
 	e := s5aEng(t, r, []Value{NewWord("s5aw"), callee, NewInteger(5)}, 0)
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
@@ -651,7 +651,7 @@ func TestS5AForwardScanReachCallHeadAfterCollapse(t *testing.T) {
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
 	open := NewOpenParen()
-	open.ReachGroup = true
+	SetReachGroup(&open, true)
 	e := s5aEng(t, r, []Value{
 		NewWord("s5aw"), open, callee, NewCloseParen(), NewInteger(5),
 	}, 0)
@@ -947,7 +947,7 @@ func TestS5AStepWordUndefinedCheckMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !out[0].Undefined {
+	if len(out) != 1 || !IsUndefined(&out[0]) {
 		t.Errorf("residual = %v, want one Undefined atom", out)
 	}
 }
@@ -1080,7 +1080,7 @@ func TestS5AExecMatchMapEvalError(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewParenExpr([]Value{NewWord("s5a-missing")}))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	h := func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
 		return nil, nil
 	}
@@ -1130,7 +1130,7 @@ func TestS5AExecMatchUndefinedArgGradualizes(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	a := NewAtom("s5aund")
-	a.Undefined = true
+	SetUndefined(&a, true)
 	sig := &Signature{Args: []*Type{TAny}}
 	e := s5aEng(t, r, []Value{a, NewWord("s5awu")}, 1)
 	if err := e.execMatch(&MatchResult{
@@ -1366,7 +1366,7 @@ func TestS5AReachFnDispatchModMarksData(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5acallee", Signatures: []Signature{
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	dm := NewDispatchMod(DispatchModInfo{Val: true})
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, fnVal, dm}, 2)
 	if err := e.stepLiteral(); err != nil {
@@ -1384,7 +1384,7 @@ func TestS5AReachFnZeroArgPropertyCall(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5aprop", Signatures: []Signature{
 		{Impl: Go(h0), Returns: []*Type{TInteger}, BarrierPos: -1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, fnVal}, 2)
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
@@ -1422,10 +1422,10 @@ func TestS5AResolveConsumedInertTypeShape(t *testing.T) {
 
 	// Quoted arg: untouched.
 	q := NewTypedList(NewWord("Integer"))
-	q.Quoted = true
+	SetQuoted(&q, true)
 	m1 := &MatchResult{Sig: &Signature{Args: []*Type{TAny}}, Args: []Value{q}}
 	e.resolveConsumedInertTypeShape(m1, 0)
-	if !m1.Args[0].Quoted {
+	if !IsQuoted(&m1.Args[0]) {
 		t.Error("quoted arg mutated")
 	}
 
@@ -1482,7 +1482,7 @@ func TestS5AAutoEvalConsumedHelpers(t *testing.T) {
 func TestS5AAutoEvalListQuotedInertElem(t *testing.T) {
 	r := covRegistry(t, nil)
 	tq := NewTypedList(NewWord("Integer"))
-	tq.Quoted = true
+	SetQuoted(&tq, true)
 	lv, err := AutoEvalConsumedList(r, NewEvalList([]Value{tq}))
 	if err != nil {
 		t.Fatalf("AutoEvalConsumedList: %v", err)
@@ -1700,13 +1700,13 @@ func TestS5AExecFnDefLiteralClearsReachTag(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5afn0", Signatures: []Signature{
 		{Impl: Go(h0), Returns: []*Type{TInteger}, BarrierPos: -1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	e := s5aEng(t, r, []Value{fnVal}, 0)
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {
-		if e.Tape.At(i).ReachGroup {
+		if IsReachGroup(addrOf(e.Tape.At(i))) {
 			t.Errorf("ReachGroup tag survived at %d", i)
 		}
 	}

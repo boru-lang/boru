@@ -227,7 +227,7 @@ func TestReStepLandingStaysData(t *testing.T) {
 		}},
 	})
 	quoted := oneArg
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	for _, tc := range []struct {
 		name string
 		v    core.Value

@@ -424,7 +424,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		t.Error("a non-carrier disjunct value is never mixed")
 	}
 	dyn := mixed
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if carrierMixedConform(dyn, core.TInteger) {
 		t.Error("a dynamic carrier is handled elsewhere, never mixed")
 	}

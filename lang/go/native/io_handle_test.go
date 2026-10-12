@@ -180,7 +180,7 @@ func TestCloseWatcher(t *testing.T) {
 	}
 	// IO.close is polymorphic: it also stops a Watcher.
 	body := NewList([]Value{NewWord("drop")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	w := runBoru(t, r, []Value{NewWord("watch"), pathV("w.txt"), body})
 	if _, ok := asWatcherInfo(w[0]); !ok {
 		t.Fatalf("watch did not return a Watcher: %v", w[0])

@@ -137,7 +137,7 @@ func TestS5bEBuildFnBodyHandlerQuotesListParam(t *testing.T) {
 	meta := &FnFrameMeta{Name: "s5bef"}
 	h := buildFnBodyHandler(r, "s5bef", s, FnDefInfo{}, meta)
 	arg := NewList([]Value{NewInteger(1)})
-	if arg.Quoted {
+	if IsQuoted(&arg) {
 		t.Fatal("test premise: arg starts unquoted")
 	}
 	out, err := h([]Value{arg}, nil, nil, r)
@@ -149,8 +149,8 @@ func TestS5bEBuildFnBodyHandlerQuotesListParam(t *testing.T) {
 	}
 	// The installed frame binding must carry the quoted copy.
 	bound, ok := r.Defs.Top("s5bex")
-	if !ok || !bound.Quoted {
-		t.Errorf("list param must be installed quoted (ok=%v quoted=%v)", ok, bound.Quoted)
+	if !ok || !IsQuoted(&bound) {
+		t.Errorf("list param must be installed quoted (ok=%v quoted=%v)", ok, IsQuoted(&bound))
 	}
 }
 

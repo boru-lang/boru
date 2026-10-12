@@ -299,11 +299,11 @@ func TestInlineLitDepth(t *testing.T) {
 	m := core.NewOrderedMap()
 	m.Set("a", deoptTok("y", 42))
 	mp := deoptLit(core.NewMap(m), 40)
-	mp.Eval = true
+	core.SetEval(&mp, true)
 	if v, ok := literalTokenAt([]core.Value{mp}, deoptAt(40)); !ok || v.Pos() != deoptAt(40) {
 		t.Error("a pending map literal")
 	}
-	mp.Eval = false
+	core.SetEval(&mp, false)
 	if _, ok := literalTokenAt([]core.Value{mp}, deoptAt(40)); ok {
 		t.Error("a map not marked pending is no pending literal")
 	}

@@ -263,7 +263,7 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 			// poly re-matches at run time (as a `x:Any` param's does)
 			// instead of recovering to a strict no-match (2026-09-25).
 			if !proven {
-				val.Dynamic = true
+				SetDynamic(&val, true)
 			}
 			// A miss against a PROVEN (concrete) source is a guaranteed
 			// runtime unpack_error — flag it (a RuntimeMirror: the trap

@@ -132,7 +132,7 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 	at := &SrcPos{Row: 4, Col: 2, Src: "["}
 	pendingList := func(items ...Value) Value {
 		v := NewList(items)
-		v.Eval = true
+		SetEval(&v, true)
 		v.pos = at
 		return v
 	}
@@ -141,7 +141,7 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 		m := NewOrderedMap()
 		m.Set("a", NewParenExpr([]Value{NewInteger(1), NewWord("cadd"), NewInteger(2)}))
 		v := NewMap(m)
-		v.Eval = true
+		SetEval(&v, true)
 		v.pos = at
 		return v
 	}
@@ -161,14 +161,14 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 	}
 	untouched := func(name string, got Value) {
 		t.Helper()
-		if !got.Eval || !IsPendingActiveContainer(got) {
-			t.Errorf("%s: the literal must stay pending, got %v (eval=%v)", name, got, got.Eval)
+		if !IsEval(&got) || !IsPendingActiveContainer(got) {
+			t.Errorf("%s: the literal must stay pending, got %v (eval=%v)", name, got, IsEval(&got))
 		}
 	}
 	evaluated := func(name string, got Value, want string) {
 		t.Helper()
-		if got.Eval || got.String() != want || got.pos != at {
-			t.Errorf("%s: got %v (eval=%v pos=%v), want %s evaluated at the literal's position", name, got, got.Eval, got.pos, want)
+		if IsEval(&got) || got.String() != want || got.pos != at {
+			t.Errorf("%s: got %v (eval=%v pos=%v), want %s evaluated at the literal's position", name, got, IsEval(&got), got.pos, want)
 		}
 	}
 
@@ -189,7 +189,7 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 	untouched("raising list", run(NewTop(r), lead(TList), pendingList(NewInteger(1), NewWord("cadd"), NewString("s"))))
 
 	// MAY PARK (the lead is quoted, so the collapse does not apply it).
-	parks := func() Value { v := lead(TList); v.Quoted = true; return v }
+	parks := func() Value { v := lead(TList); SetQuoted(&v, true); return v }
 	if trailingWindowFits(parks(), []Value{sum()}) {
 		t.Fatal("a quoted lead proves nothing")
 	}

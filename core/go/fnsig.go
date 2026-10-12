@@ -197,7 +197,7 @@ func fnDefHasSigR(fnDef *FnDefInfo, want FnSigSpec, r *Registry) bool {
 // of a pending container argument (NUR337).
 func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 	for _, a := range sigArgs {
-		if a.Dynamic {
+		if IsDynamic(&a) {
 			return false
 		}
 	}

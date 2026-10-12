@@ -53,7 +53,7 @@ func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 	}
 
 	quoted := fnv
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if _, _, ran := vc.invokeFnValueClosure(r, &quoted, cl, nil); ran {
 		t.Error("a quoted closure is data, not a callee")
 	}

@@ -17,7 +17,7 @@ func TestRecordGradualWrapRecordsEveryGradualCarrier(t *testing.T) {
 	cleanup := r.Check.Begin()
 	defer cleanup()
 	typed := NewCarrier(TFunction)
-	if typed.Dynamic {
+	if IsDynamic(&typed) {
 		t.Fatal("fixture: a typed carrier is not dynamic")
 	}
 	out := []Value{NewDynamicCarrier(TFunction)}

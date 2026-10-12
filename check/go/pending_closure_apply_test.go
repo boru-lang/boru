@@ -54,7 +54,7 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 	}
 	rec.applyOK = true
 	fresh, ok := recordPendingClosureApply(rec, nil, args, carrierOut, core.SrcPos{})
-	if !ok || !fresh.Carrier || fresh.Parent != core.TInteger || fresh.ID == carrierOut[0].ID || fresh.Dynamic {
+	if !ok || !fresh.Carrier || fresh.Parent != core.TInteger || fresh.ID == carrierOut[0].ID || core.IsDynamic(&fresh) {
 		t.Errorf("a carrier out must freshen to a strict carrier of its type: %+v", fresh)
 	}
 	if len(rec.window) != 2 || !core.ValuesEqual(rec.window[0], args[1]) || !core.ValuesEqual(rec.window[1], args[0]) {
@@ -64,8 +64,8 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 		t.Error("the recorder must see the freshened out")
 	}
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
-	if fresh, ok := recordPendingClosureApply(rec, nil, args, []core.Value{dyn}, core.SrcPos{}); !ok || !fresh.Dynamic {
+	core.SetDynamic(&dyn, true)
+	if fresh, ok := recordPendingClosureApply(rec, nil, args, []core.Value{dyn}, core.SrcPos{}); !ok || !core.IsDynamic(&fresh) {
 		t.Error("a gradual out stays gradual")
 	}
 	if fresh, ok := recordPendingClosureApply(rec, nil, args, []core.Value{{}}, core.SrcPos{}); !ok || fresh.Parent != core.TAny {

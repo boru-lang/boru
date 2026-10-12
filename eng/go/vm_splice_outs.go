@@ -45,8 +45,8 @@ func spliceOutsSeat(want, got []core.Value) ([]core.Value, bool) {
 // map, a fn value, a Float, is never the same here: the run defers
 // (review of #522).
 func sameSpliceToken(a, b core.Value) bool {
-	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) || a.Quoted != b.Quoted || a.Eval != b.Eval ||
-		a.Carrier || b.Carrier || a.Dynamic || b.Dynamic {
+	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) || core.IsQuoted(&a) != core.IsQuoted(&b) || core.IsEval(&a) != core.IsEval(&b) ||
+		a.Carrier || b.Carrier || core.IsDynamic(&a) || core.IsDynamic(&b) {
 		return false
 	}
 	if ai, err := core.AsSplice(&a); err == nil {

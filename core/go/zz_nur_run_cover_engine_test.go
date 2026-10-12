@@ -123,7 +123,7 @@ func TestNurRunForRegionEvaluatesPendingResidual(t *testing.T) {
 	r.Defs.Push("i", NewInteger(7))   // the loop's index for this iteration
 	cont := &Loop{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, IterDepth: 2}
 	quoted := NewEvalList([]Value{NewWord("i")})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{
 		NewMark("m1"), NewEvalList([]Value{NewWord("i")}), quoted, NewMoveCont("m1", "for loop", cont),
@@ -368,13 +368,13 @@ func TestNurRunDispatchModQuotesPrecedingCarrier(t *testing.T) {
 		}
 		return e
 	}
-	if e := step(NewCarrier(TFunction)); !e.Tape.At(0).Quoted {
+	if e := step(NewCarrier(TFunction)); !IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a fn-typed carrier before the marker must be quoted")
 	}
-	if e := step(NewDynamicCarrier(TAny)); !e.Tape.At(0).Quoted {
+	if e := step(NewDynamicCarrier(TAny)); !IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a dynamic carrier before the marker must be quoted")
 	}
-	if e := step(NewInteger(5)); e.Tape.At(0).Quoted {
+	if e := step(NewInteger(5)); IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a concrete value before the marker stays unquoted")
 	}
 	step() // a marker with nothing before it is simply dropped
@@ -403,7 +403,7 @@ func TestNurRunTagReachCollapsedCarrierSurvivor(t *testing.T) {
 	tag(withID(NewCarrier(TFunction), "nrc-fn-carrier"), true)
 	tag(withID(NewDynamicCarrier(TAny), "nrc-dyn"), true)
 	quoted := withID(NewCarrier(TFunction), "nrc-quoted")
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	tag(quoted, true)
 	tag(withID(NewInteger(4), "nrc-int"), true)
 	tag(withID(NewCarrier(TFunction), "nrc-not-reach"), false)

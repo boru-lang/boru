@@ -19,7 +19,7 @@ func pendingMapLit(key string, v Value) Value {
 	m := NewOrderedMap()
 	m.Set(key, v)
 	out := NewMap(m)
-	out.Eval = true
+	SetEval(&out, true)
 	return out
 }
 
@@ -43,7 +43,7 @@ func TestPendingResidueMerge(t *testing.T) {
 
 func TestPendingLiteralSteps(t *testing.T) {
 	quoted := pendingLit(NewWord("x"))
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	ck := pendingMapLit("k", NewInteger(1))
 	ckm, _ := AsMutableMap(ck)
 	ckm.Meta = map[string]any{"ck": map[string]bool{"k": true}}

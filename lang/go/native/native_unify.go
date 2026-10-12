@@ -59,7 +59,7 @@ func unifyFoldable(v Value) bool {
 	if IsBareTypeNode(&v) {
 		return true
 	}
-	if v.Carrier || v.Dynamic || v.Undefined || !IsConcrete(&v) {
+	if v.Carrier || IsDynamic(&v) || IsUndefined(&v) || !IsConcrete(&v) {
 		return false
 	}
 	switch {

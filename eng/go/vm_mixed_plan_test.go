@@ -76,7 +76,7 @@ func TestMixedPlanApplyDeclines(t *testing.T) {
 	three, two := core.NewInteger(3), core.NewInteger(2)
 	good := mixedFn(false, mixedSig(ref, nil, intParam("a"), intParam("b")))
 	quoted := good
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	list := core.NewList([]core.Value{three})
 	unnamed := core.FnParam{Type: core.TInteger}
 	native := core.Signature{Params: []core.FnParam{intParam("a"), intParam("b")}, BarrierPos: -1, Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {

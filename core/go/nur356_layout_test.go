@@ -102,11 +102,11 @@ func TestDispatchLayoutWordPastReach(t *testing.T) {
 
 func TestIsPendingLiteral(t *testing.T) {
 	lit := NewList([]Value{NewWord("x")})
-	lit.Eval = true
+	SetEval(&lit, true)
 	quoted := lit
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	m := NewMap(NewOrderedMap())
-	m.Eval = true
+	SetEval(&m, true)
 	if !IsPendingLiteral(lit) || !IsPendingLiteral(m) || IsPendingLiteral(quoted) || IsPendingLiteral(NewDynamicCarrier(TList)) || IsPendingLiteral(NewInteger(1)) {
 		t.Error("IsPendingLiteral")
 	}

@@ -14,7 +14,7 @@ import (
 
 func restepGetArgs() []core.Value {
 	lst := core.NewList([]core.Value{core.NewWord("add"), core.NewInteger(1), core.NewInteger(2)})
-	lst.Quoted = true
+	core.SetQuoted(&lst, true)
 	return []core.Value{core.NewInteger(0), lst}
 }
 

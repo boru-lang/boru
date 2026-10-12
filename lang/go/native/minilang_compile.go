@@ -34,7 +34,7 @@ import (
 // reference).
 func miniHookToksMaterialisable(toks []Value) bool {
 	for _, v := range toks {
-		if v.Carrier || v.Dynamic {
+		if v.Carrier || IsDynamic(&v) {
 			return false
 		}
 		// An Extension payload (re's precompiled *regexp behind a mini

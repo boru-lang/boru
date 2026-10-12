@@ -723,7 +723,7 @@ func asValidate(r *Registry, target *Type, v Value) error {
 	if core.IsTypeLiteral(&v) || v.Parent == nil {
 		return decline()
 	}
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		// Tree lattice: two nodes overlap iff one is an ancestor of the
 		// other, so gradual admission is the two-way conformance test.
 		if v.Parent.ConformsTo(target) || target.ConformsTo(v.Parent) {
@@ -790,7 +790,7 @@ func asReturns(args []Value, r *Registry) []Value {
 	if verr := asValidate(r, target, v); verr != nil {
 		return degrade(verr)
 	}
-	if v.Dynamic && !v.Parent.ConformsTo(target) {
+	if IsDynamic(&v) && !v.Parent.ConformsTo(target) {
 		// Gradually admitted: statically all that is known post-as is
 		// "conforms to target" (the runtime validation guarantees it).
 		c := core.NewCarrier(target)
@@ -1190,7 +1190,7 @@ func typeAlgebraListFold(handler Handler) ReturnsFunc {
 		}
 		for i := 0; i < list.Len(); i++ {
 			e := list.Get(i)
-			if e.Carrier || e.Dynamic || e.Undefined {
+			if e.Carrier || IsDynamic(&e) || IsUndefined(&e) {
 				return dyn
 			}
 		}
@@ -1506,7 +1506,7 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 func convertScalarReturns(args []Value, r *Registry) []Value {
 	// args[0] is the TARGET type literal — the value IS its lattice node,
 	// so resolve it via ValueType (its .Parent is the node's parent).
-	if atUncaughtTopLevel(r) && len(args) == 2 && !args[1].Dynamic &&
+	if atUncaughtTopLevel(r) && len(args) == 2 && !IsDynamic(&args[1]) &&
 		args[1].Parent != nil && args[1].Parent.ConformsTo(TFloat) && ValueType(args[0]) != nil {
 		switch {
 		case ValueType(args[0]).ConformsTo(TBigInteger):

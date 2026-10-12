@@ -17,7 +17,7 @@ func TestCallDynTrailKeepQQuotedStaysData(t *testing.T) {
 	qfn := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 	}}})
-	qfn.Quoted = true
+	core.SetQuoted(&qfn, true)
 	p := &compiler.Program{
 		Consts: []core.Value{core.NewInteger(2), qfn},
 		Code: []compiler.Instr{
@@ -38,7 +38,7 @@ func TestCallDynTrailKeepQQuotedStaysData(t *testing.T) {
 	if n, _ := core.AsInteger(res[0]); n != 2 {
 		t.Errorf("the arg below the quoted fn must survive untouched, got %v", res[0])
 	}
-	if !res[1].Quoted {
+	if !core.IsQuoted(&res[1]) {
 		t.Error("the quoted fn's quote state must survive the op")
 	}
 }

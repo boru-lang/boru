@@ -318,7 +318,7 @@ func TestBindCarrier(t *testing.T) {
 	if got := bindCarrier(core.NewMap(nil)); !got.Parent.Equal(core.TMap) || got.Data == nil {
 		t.Errorf("a map keeps its container shape: %v", got)
 	}
-	if got := bindCarrier(core.Value{}); !got.Dynamic || !got.Carrier {
+	if got := bindCarrier(core.Value{}); !core.IsDynamic(&got) || !got.Carrier {
 		t.Errorf("a root literal is the gradual Any: %v", got)
 	}
 }

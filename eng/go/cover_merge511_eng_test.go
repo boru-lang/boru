@@ -95,7 +95,7 @@ func TestDispatchRematchPlansTheWrittenSplit(t *testing.T) {
 	}
 	vc := &vmContext{r: r}
 	body := core.NewList([]core.Value{core.NewWord("i")})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	// The window lists the stack run top down, then the written operands:
 	// `3 zzfor (mk)` is [3, [i]] with one written.
 	stack := []core.Value{body, core.NewInteger(3)}

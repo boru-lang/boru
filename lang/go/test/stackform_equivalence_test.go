@@ -119,7 +119,7 @@ func isFn(v core.Value) bool {
 // so a same-text fn from each is two modules to deq and one function to this
 // round trip. Stripping the home leaves everything the round trip is about.
 func fnValuesEqual(a, b core.Value) bool {
-	return a.Quoted == b.Quoted && core.DeepEqual(stripFnHome(a), stripFnHome(b))
+	return core.IsQuoted(&a) == core.IsQuoted(&b) && core.DeepEqual(stripFnHome(a), stripFnHome(b))
 }
 
 func stripFnHome(v core.Value) core.Value {

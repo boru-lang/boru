@@ -25,7 +25,7 @@ package core
 // its bound is the pass's best guess, so the run re-matches the live value.
 func gradualMatch(match *MatchResult) bool {
 	for _, a := range match.Args {
-		if a.Dynamic {
+		if IsDynamic(&a) {
 			return true
 		}
 	}
@@ -36,7 +36,7 @@ func gradualMatch(match *MatchResult) bool {
 // dynamic) whose type does not conform to its slot's.
 func optimisticMatch(match *MatchResult) bool {
 	for i, a := range match.Args {
-		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || a.Dynamic) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
+		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || IsDynamic(&a)) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
 			return true
 		}
 	}

@@ -184,7 +184,7 @@ func (e *Engine) readsDataBinding(tok, v Value) bool {
 		return false
 	}
 	top, ok := e.Registry.Defs.Top(w.Name)
-	return ok && top.ID == v.ID && !top.Dynamic && readsData(e.Registry, w.Name)
+	return ok && top.ID == v.ID && !IsDynamic(&top) && readsData(e.Registry, w.Name)
 }
 
 // layoutSurround reads what a dispatch's plan could reach around its
@@ -225,10 +225,10 @@ func (e *Engine) layoutSurround(below, after, nFwd int, live bool) (beneath, aft
 			afterToks = append(afterToks, tok)
 			continue
 		}
-		if w, err := AsWord(&tok); err == nil && !tok.Quoted && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
+		if w, err := AsWord(&tok); err == nil && !IsQuoted(&tok) && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
 			return beneath, append(afterToks, tok), liveIdx, true
 		}
-		if reach, known := e.forwardReachMax(); IsWord(&tok) && !tok.Quoted && known && nFwd+len(afterToks) >= reach {
+		if reach, known := e.forwardReachMax(); IsWord(&tok) && !IsQuoted(&tok) && known && nFwd+len(afterToks) >= reach {
 			return beneath, append(afterToks, tok), liveIdx, true
 		}
 		return nil, nil, nil, false
@@ -266,7 +266,7 @@ func (e *Engine) forwardReachMax() (int, bool) {
 // never a word, a marker, or a value with no ID.
 func liveBeneath(v Value) bool {
 	return v.ID != "" && !IsWord(&v) && !isEngineMarker(v) && !IsForward(&v) && !IsParenExpr(&v) &&
-		(v.Carrier || v.Dynamic || IsConcrete(&v))
+		(v.Carrier || IsDynamic(&v) || IsConcrete(&v))
 }
 
 // unmodifiedWord reports whether w carries no modifier the source wrote —
@@ -280,7 +280,7 @@ func unmodifiedWord(w WordInfo) bool {
 // boolean, an atom — or, beneath the operands (where values are already
 // resolved), a concrete list.
 func layoutConstant(v Value, lists bool) bool {
-	if !IsConcrete(&v) || v.Carrier || v.Dynamic || v.Quoted || v.Parent == nil {
+	if !IsConcrete(&v) || v.Carrier || IsDynamic(&v) || IsQuoted(&v) || v.Parent == nil {
 		return false
 	}
 	p := v.Parent

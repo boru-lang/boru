@@ -15,7 +15,7 @@ import (
 // match a Node-typed `get`/`set` receiver — the trie client's node-walker
 // cascade (`(nd kid-items)` / `build-row`-result → `get`).
 func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
-	dyn := func(b *core.Type) core.Value { v := core.NewCarrier(b); v.Dynamic = true; return v }
+	dyn := func(b *core.Type) core.Value { v := core.NewCarrier(b); core.SetDynamic(&v, true); return v }
 
 	// Positive: a dynamic container bound matches the broader Node slot
 	// (X ⊑ t), and a dynamic Node matches a narrower List/Map slot (t ⊑ X,

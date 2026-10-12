@@ -86,7 +86,7 @@ func TestTokenPathAndNestedToks(t *testing.T) {
 		t.Errorf("a position no token holds has no path: %v", got)
 	}
 	quoted := core.NewEvalList([]core.Value{core.NewInteger(1)})
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	for _, c := range []struct {
 		name string
 		v    core.Value

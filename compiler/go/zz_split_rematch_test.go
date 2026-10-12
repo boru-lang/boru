@@ -26,7 +26,7 @@ func TestW8DispatchRematchDeclines(t *testing.T) {
 	}
 	// A dynamic value with no provenance fails resolveOperand.
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	dyn.ID = ""
 	if es.RecordDispatchRematchValues("w", []core.Value{dyn}, 0, []int{0}, core.SrcPos{}) {
 		t.Error("an unresolvable operand must decline")

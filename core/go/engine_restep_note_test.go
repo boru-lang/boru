@@ -38,7 +38,7 @@ func TestNoteFnResultReSteps(t *testing.T) {
 	dyn := NewDynamicCarrier(TAny)
 	strict := NewCarrier(TInteger)
 	quoted := NewCarrier(TFunction)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	concrete := NewFunction(FnDefInfo{Name: "g"})
 
 	// run notes results over the tape [get drop] (the call at 0, drop after
@@ -139,10 +139,10 @@ func TestPlainReStepToken(t *testing.T) {
 func TestFnValueDispatchesAtPointerExport(t *testing.T) {
 	fn := NewFunction(FnDefInfo{Name: "g"})
 	quoted := fn
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
 	quotedClosure := closure
-	quotedClosure.Quoted = true
+	SetQuoted(&quotedClosure, true)
 	for _, c := range []struct {
 		v    Value
 		want bool

@@ -103,10 +103,10 @@ func TestMarkForwardLeftover(t *testing.T) {
 		return v
 	}
 	dynAny := NewCarrier(TAny)
-	dynAny.Dynamic = true
+	SetDynamic(&dynAny, true)
 	dynAny.ID = "dyn-2"
 	quoted := carrier("fnc-q")
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
 	for _, v := range []Value{quoted, carrier(""), NewInteger(1), NewCarrier(TInteger)} {
 		e.markForwardLeftover(v)
@@ -135,7 +135,7 @@ func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 	carrier := NewCarrier(TFunction)
 	carrier.ID = "fnc-r"
 	dyn := NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	dyn.ID = "dyn-r"
 	newEngine := func(tape ...Value) *Engine {
 		r := &Registry{Check: &CheckState{}}
@@ -149,7 +149,7 @@ func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 	}
 	e = newEngine(NewInteger(1))
 	quoted := carrier
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	idless := carrier
 	idless.ID = ""
 	e.noteWordRead(quoted, "g", SrcPos{})

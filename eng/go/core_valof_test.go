@@ -109,7 +109,7 @@ func TestRefSuffixReturnsFunctionValue(t *testing.T) {
 	if !v.Parent.Equal(core.TFunction) {
 		t.Errorf("top.Parent=%s, want Function", v.Parent.String())
 	}
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		t.Errorf("function value is Quoted — /v should produce unquoted in the new dispatch model")
 	}
 	fnDef, ok := core.FnDefOf(v.Data)
@@ -222,7 +222,7 @@ func TestRefStableInMap(t *testing.T) {
 		if !v.Parent.Equal(core.TFunction) {
 			t.Errorf("ops[%q].Parent=%s, want Function", name, v.Parent.String())
 		}
-		if v.Quoted {
+		if core.IsQuoted(&v) {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", name)
 		}
 		fnDef, ok := core.FnDefOf(v.Data)
@@ -295,7 +295,7 @@ func TestResolveRefDirect(t *testing.T) {
 	if !v.Parent.Equal(core.TFunction) {
 		t.Errorf("Parent=%s, want Function", v.Parent.String())
 	}
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		t.Error("returned function is Quoted — should be unquoted")
 	}
 	fnDef, _ := core.FnDefOf(v.Data)

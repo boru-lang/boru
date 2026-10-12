@@ -132,7 +132,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// would drop the only contract there is. `Type` aliases `Value`, so
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
-			!got.Dynamic && got.Parent != nil && !core.IsBareTypeNode(&got) && !got.Parent.Equal(core.TNone) {
+			!core.IsDynamic(&got) && got.Parent != nil && !core.IsBareTypeNode(&got) && !got.Parent.Equal(core.TNone) {
 			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
@@ -151,7 +151,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		if exp == nil || exp.Equal(core.TAny) {
 			continue
 		}
-		if got.Dynamic || got.Parent == nil || core.IsBareTypeNode(&got) || got.Parent.Equal(core.TNone) {
+		if core.IsDynamic(&got) || got.Parent == nil || core.IsBareTypeNode(&got) || got.Parent.Equal(core.TNone) {
 			continue
 		}
 		if !residualProvablyDisjoint(got, exp) {
@@ -613,7 +613,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 							})
 						}
 						c := core.NewCarrier(core.TAny)
-						c.Dynamic = true
+						core.SetDynamic(&c, true)
 						out[i] = c
 						continue
 					}
@@ -683,7 +683,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// Mark it dynamic for optimistic matching, mirroring the native
 				// `[Any]`-return handling in CarrierResults.
 				if t.Equal(core.TAny) {
-					c.Dynamic = true
+					core.SetDynamic(&c, true)
 				}
 				out[i] = c
 			}
@@ -895,7 +895,7 @@ func collapseTailApply(es core.EmitRecorder, fnUnit int, stk []core.Value) []cor
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	return []core.Value{out}
 }
 
@@ -925,7 +925,7 @@ func collapseElidedTailApply(body, stk []core.Value, oneValued bool) []core.Valu
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	return []core.Value{out}
 }
 
@@ -1079,7 +1079,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 			parent = core.TAny
 		}
 		fresh = core.NewCarrier(parent)
-		fresh.Dynamic = outs[0].Dynamic
+		core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
 	}
 	window := make([]core.Value, len(args))
 	for i, a := range args {
@@ -1144,14 +1144,14 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 		return core.Value{}, false
 	}
 	fd, isFn := core.FnDefOf(top.Data)
-	if !isFn || !fd.Anonymous || top.Quoted {
+	if !isFn || !fd.Anonymous || core.IsQuoted(&top) {
 		return core.Value{}, false
 	}
 	if own := fd.OwnSigs(); len(own) != 1 {
 		return core.Value{}, false
 	}
 	fresh := core.NewCarrier(outs[0].Parent)
-	fresh.Dynamic = outs[0].Dynamic
+	core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
 	if !es.RecordDynApplyName(name, args, top, fresh, pos) {
 		return core.Value{}, false
 	}
@@ -1331,11 +1331,11 @@ func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Valu
 		return core.NewCarrier(pt), true
 	case a.Carrier && core.IsDisjunct(&a):
 		nc := core.NewCarrier(pt)
-		nc.Dynamic = a.Dynamic
+		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
 	case !generic && a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
 		nc := core.NewCarrier(pt)
-		nc.Dynamic = a.Dynamic
+		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
 	}
 	return core.Value{}, false
@@ -1355,7 +1355,7 @@ func provenNarrowerReturn(t *core.Type, params []core.FnParam, stk []core.Value,
 		return core.Value{}, false
 	}
 	bv := stk[i]
-	if !bv.Carrier || bv.Dynamic || bv.Parent == nil || core.IsDisjunct(&bv) || bv.AscribedType() != nil {
+	if !bv.Carrier || core.IsDynamic(&bv) || bv.Parent == nil || core.IsDisjunct(&bv) || bv.AscribedType() != nil {
 		return core.Value{}, false
 	}
 	if !bv.Parent.Equal(core.TInteger) && !bv.Parent.Equal(core.TFloat) && !bv.Parent.Equal(core.TBoolean) {

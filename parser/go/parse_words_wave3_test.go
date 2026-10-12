@@ -355,7 +355,7 @@ func TestParseWave3TopLevelImplicitMapAutoEval(t *testing.T) {
 	if !vals[0].Parent.ConformsTo(core.TMap) {
 		t.Fatalf("a:1: expected a Map, got %s", vals[0].String())
 	}
-	if !vals[0].Eval {
+	if !core.IsEval(&vals[0]) {
 		t.Errorf("a:1: top-level implicit map must have Eval=true")
 	}
 }

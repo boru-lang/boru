@@ -332,7 +332,7 @@ func quietBranchAt(tree map[int]treeEvent, body []core.Value, tok int) int {
 // armLeavesNothing reports whether a branch arm is the body list tok and its
 // recorded fragment leaves no value.
 func armLeavesNothing(frag *EmitFragment, tok core.Value) bool {
-	return frag != nil && frag.residualN == 0 && tok.Parent.Equal(core.TList) && tok.Eval && !tok.Quoted
+	return frag != nil && frag.residualN == 0 && tok.Parent.Equal(core.TList) && core.IsEval(&tok) && !core.IsQuoted(&tok)
 }
 
 // unmodifiedWordInfo reports whether w carries no modifier the source wrote.
@@ -906,7 +906,7 @@ func (es *EmitState) doBefore(tree map[int]treeEvent, op EmitOperand, toks []cor
 // literalListTok reports whether v is a list literal as written: evaluated
 // and unquoted.
 func literalListTok(v core.Value) bool {
-	return v.Eval && !v.Quoted && v.Parent.Equal(core.TList)
+	return core.IsEval(&v) && !core.IsQuoted(&v) && v.Parent.Equal(core.TList)
 }
 
 // inSpan reports whether position p stands inside the span tokens at path's
@@ -1315,7 +1315,7 @@ func nestedToks(v core.Value) ([]core.Value, bool) {
 		toks, _ := core.AsParenExpr(&v)
 		return toks, true
 	}
-	if v.Parent.Equal(core.TList) && v.Eval && !v.Quoted {
+	if v.Parent.Equal(core.TList) && core.IsEval(&v) && !core.IsQuoted(&v) {
 		l, err := core.AsList(v)
 		return l.Slice(), err == nil
 	}
@@ -1419,7 +1419,7 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 			}
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			held++
-		case !core.IsConcrete(&rv) || rv.Carrier || rv.Dynamic:
+		case !core.IsConcrete(&rv) || rv.Carrier || core.IsDynamic(&rv):
 			return nil, 0, nil, false
 		default:
 			srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: rv})
@@ -1474,11 +1474,11 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 			held++
 			continue
 		}
-		if core.IsBareTypeNode(&v) && v.ID != "" && !v.Dynamic {
+		if core.IsBareTypeNode(&v) && v.ID != "" && !core.IsDynamic(&v) {
 			srcs = append(srcs, RestartSrc{Kind: RestartType, Val: v})
 			continue
 		}
-		if v.Carrier || v.Dynamic || !core.DeepConcrete(v) {
+		if v.Carrier || core.IsDynamic(&v) || !core.DeepConcrete(v) {
 			return nil, 0, nil, false
 		}
 		srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: v})
@@ -2510,7 +2510,7 @@ func (es *EmitState) rawReachLead(tree map[int]treeEvent, seq int, body []core.V
 	}
 	t := toks[path[len(path)-1]]
 	ri, err := core.AsReach(&t)
-	return err == nil && ri.Eval && !t.Quoted
+	return err == nil && ri.Eval && !core.IsQuoted(&t)
 }
 
 // rerunBranch reports whether ev is a branch a statement island may run

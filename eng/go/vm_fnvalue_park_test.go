@@ -116,8 +116,8 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 		resolved, forward []core.Value
 	}{
 		{"not a fn value", s, nil, []core.Value{s}},
-		{"a quoted value", func() core.Value { v := base; v.Quoted = true; return v }(), nil, []core.Value{s}},
-		{"a reach-grouped value", func() core.Value { v := base; v.ReachGroup = true; return v }(), nil, []core.Value{s}},
+		{"a quoted value", func() core.Value { v := base; core.SetQuoted(&v, true); return v }(), nil, []core.Value{s}},
+		{"a reach-grouped value", func() core.Value { v := base; core.SetReachGroup(&v, true); return v }(), nil, []core.Value{s}},
 		{"a macro", core.NewFunction(core.FnDefInfo{Anonymous: true, Macro: true, Signatures: []core.Signature{sig}}), nil, []core.Value{s}},
 		{"an apply-marked value", core.NewFunction(core.FnDefInfo{Anonymous: true, Applied: true, Signatures: []core.Signature{sig}}), nil, []core.Value{s}},
 		{"no signatures", core.NewFunction(core.FnDefInfo{Anonymous: true}), nil, []core.Value{s}},
@@ -125,7 +125,7 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 		{"a real 0-arg signature", core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{sig, parkSig(-1)}}), nil, []core.Value{s}},
 		{"a forward list (stepped: not its own result)", base, nil, []core.Value{core.NewList([]core.Value{s})}},
 		{"a word beneath (tape-coupled)", base, []core.Value{core.NewWord("w")}, nil},
-		{"a pending list beneath (evaluates at the end)", base, []core.Value{func() core.Value { v := core.NewList([]core.Value{s}); v.Eval = true; return v }()}, nil},
+		{"a pending list beneath (evaluates at the end)", base, []core.Value{func() core.Value { v := core.NewList([]core.Value{s}); core.SetEval(&v, true); return v }()}, nil},
 	}
 	for _, c := range cases {
 		if v, _ := fnValueNoMatchVerdict(r, c.fn, c.resolved, c.forward); v != noMatchUnproven {
@@ -149,9 +149,9 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 func TestResidualInert(t *testing.T) {
 	s := core.NewString("x")
 	pending := core.NewList([]core.Value{s})
-	pending.Eval = true
+	core.SetEval(&pending, true)
 	quotedPending := pending
-	quotedPending.Quoted = true
+	core.SetQuoted(&quotedPending, true)
 	for _, c := range []struct {
 		label string
 		v     core.Value

@@ -41,7 +41,7 @@ func undefinedWordCheckDiag(e *core.Engine, name string, pos core.SrcPos) core.C
 func drainUndefinedAtoms(e *core.Engine) {
 	for i := 0; i < e.Tape.Len(); i++ {
 		und := e.Tape.At(i)
-		if !und.Undefined || !e.Registry.Check.IsActive() {
+		if !core.IsUndefined(&und) || !e.Registry.Check.IsActive() {
 			continue
 		}
 		c := core.NewCarrier(core.TAny)
@@ -81,7 +81,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 // complexity gate.
 func tagCheckModeDefRead(e *core.Engine, top *core.Value, name string, pos core.SrcPos) {
 	switch {
-	case top.Dynamic:
+	case core.IsDynamic(top):
 		top.SetDynFrom(name)
 	case (core.IsFlexMap(*top) || core.IsFlexList(*top) || core.IsFlexXml(*top) || core.IsStore(*top) ||
 		core.IsModuleFamilyValue(*top)) && core.ModuleScopeBinding(e.Registry, name):
@@ -254,7 +254,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 			topPos = p
 		}
 	}
-	if !e.Tape.Ref(topPos).Dynamic {
+	if !core.IsDynamic(e.Tape.Ref(topPos)) {
 		return false
 	}
 	nxt := e.Pointer + 1
@@ -696,7 +696,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		if !core.IsRecordableLiteral(v) {
 			continue
 		}
-		if count == 0 && !v.Dynamic && !v.Quoted && core.IsFnTypedCarrier(&v) {
+		if count == 0 && !core.IsDynamic(&v) && !core.IsQuoted(&v) && core.IsFnTypedCarrier(&v) {
 			leadIdx = i
 		}
 		count++
@@ -706,8 +706,8 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		return closeIdx
 	}
 	last := e.Tape.At(lastIdx)
-	trailing := !last.Dynamic && !last.Quoted && core.IsFnTypedCarrier(&last)
-	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !last.Dynamic)
+	trailing := !core.IsDynamic(&last) && !core.IsQuoted(&last) && core.IsFnTypedCarrier(&last)
+	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !core.IsDynamic(&last))
 	if !trailing && !leading {
 		return closeIdx
 	}
@@ -716,7 +716,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		anchor = leadIdx
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	out = core.WithPos(out, e.Tape.At(anchor))
 	// Seat the collapsed carrier at the window's first recordable literal
 	// and splice every later one out.
@@ -1705,7 +1705,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// carrier was never recorded at all: `((mk 1) 2)` placed interpreted and
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
-	if !core.IsFnTypedCarrier(&v) && !(v.Dynamic && core.SigTypeMatches(&v, core.TFunction)) &&
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) &&
 		!core.IsFnValueResidual(v) && !es.MayBeFn(v.ID) {
 		if _, ok := es.MemberFnReadValue(v.ID); !ok {
 			return false

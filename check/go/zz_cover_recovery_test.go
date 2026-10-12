@@ -292,7 +292,7 @@ func TestZZCoverParenFnCollapseTrailing(t *testing.T) {
 		t.Fatalf("tape len = %d, want 4", e.Tape.Len())
 	}
 	out := e.Tape.At(2)
-	if !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) || out.ID == "" {
+	if !out.Carrier || !core.IsDynamic(&out) || !out.Parent.Equal(core.TAny) || out.ID == "" {
 		t.Errorf("collapsed window must seat one dynamic Any carrier with an ID, got %#v", out)
 	}
 	if !core.IsMark(e.Tape.Ref(1)) {
@@ -310,7 +310,7 @@ func TestZZCoverParenFnCollapseLeadingOneArg(t *testing.T) {
 		t.Fatalf("closeIdx = %d, want 2", got)
 	}
 	out := e.Tape.At(1)
-	if !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+	if !out.Carrier || !core.IsDynamic(&out) || !out.Parent.Equal(core.TAny) {
 		t.Errorf("leading apply must collapse to one dynamic Any carrier, got %#v", out)
 	}
 }
@@ -327,11 +327,11 @@ func TestZZCoverParenFnCollapseLeadingFnValueArg(t *testing.T) {
 	if got := checkModeParenFnCollapse(e, 0, 3); got != 2 {
 		t.Fatalf("closeIdx = %d, want 2 (an inert fn value collapses under the lead)", got)
 	}
-	if out := e.Tape.At(1); !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+	if out := e.Tape.At(1); !out.Carrier || !core.IsDynamic(&out) || !out.Parent.Equal(core.TAny) {
 		t.Errorf("leading apply over a fn value must collapse to one dynamic Any carrier, got %#v", out)
 	}
 	gradual := core.NewCarrier(core.TFunction)
-	gradual.Dynamic = true
+	core.SetDynamic(&gradual, true)
 	e2, fin2 := zzCollapseEng(t, true,
 		core.NewOpenParen(), zzFnCarrier(), gradual, core.NewCloseParen())
 	defer fin2()
@@ -1077,11 +1077,11 @@ func TestZZCoverReStepLandingGates(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
 	v.ID = "zzland2"
 	quoted := v
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	noID := core.NewDynamicCarrier(core.TAny)
 	noID.ID = ""
 	reachOpen := core.NewOpenParen()
-	reachOpen.ReachGroup = true
+	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {
 		name    string
 		tape    []core.Value
@@ -1133,7 +1133,7 @@ func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
 	v.ID = "zzland5"
 	reachOpen := core.NewOpenParen()
-	reachOpen.ReachGroup = true
+	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {
 		name string
 		tape []core.Value

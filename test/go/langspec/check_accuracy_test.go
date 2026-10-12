@@ -708,7 +708,7 @@ func stackTypeCovered(checked, actual []core.Value) bool {
 // typeCovered reports whether one checked carrier admits the runtime
 // value's type.
 func typeCovered(checked, actual core.Value) bool {
-	if checked.Dynamic {
+	if core.IsDynamic(&checked) {
 		return true
 	}
 	// A type-as-value actual (typeof / type-algebra / `make`-of-a-type /
@@ -779,7 +779,7 @@ func stackTypes(vs []core.Value) string {
 	parts := make([]string, len(vs))
 	for i, v := range vs {
 		parts[i] = v.Parent.Leaf()
-		if v.Dynamic {
+		if core.IsDynamic(&v) {
 			parts[i] = "dynamic(" + parts[i] + ")"
 		}
 	}

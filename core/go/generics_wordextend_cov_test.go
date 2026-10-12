@@ -489,7 +489,7 @@ func TestWalkBodyWords(t *testing.T) {
 	}
 	// Quoted values are opaque.
 	q := NewWord("hidden")
-	q.Quoted = true
+	SetQuoted(&q, true)
 	seen = nil
 	WalkBodyWords([]Value{q}, func(w WordInfo, _ Value) { seen = append(seen, w.Name) })
 	if len(seen) != 0 {

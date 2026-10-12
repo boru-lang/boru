@@ -496,9 +496,9 @@ func renderShapeValue(v core.Value) string {
 	b.WriteByte(':')
 	b.WriteString(strconv.Quote(pos.Src))
 	b.WriteString(",e=")
-	b.WriteByte(shapeBit(v.Eval))
+	b.WriteByte(shapeBit(core.IsEval(&v)))
 	b.WriteString(",q=")
-	b.WriteByte(shapeBit(v.Quoted))
+	b.WriteByte(shapeBit(core.IsQuoted(&v)))
 
 	if core.IsWord(&v) {
 		w, err := core.AsWord(&v)

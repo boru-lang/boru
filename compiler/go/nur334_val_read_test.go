@@ -25,7 +25,7 @@ func TestNoteValReadLiveSeatsALeakedName(t *testing.T) {
 	v.ID = "nur334-t"
 	at := core.SrcPos{Row: 1, Col: 43}
 	es.NoteValReadLive(&v, "t", at)
-	if v.ID == "nur334-t" || !v.Carrier || !v.Dynamic || !v.Parent.Equal(core.TInteger) {
+	if v.ID == "nur334-t" || !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) {
 		t.Fatalf("the read is seated live as a dynamic(Integer) carrier with its own identity — the computed body may have bound any type — got %+v", v)
 	}
 	if es.armReadCompileFailure != "" || es.pendingKeptRead != "" {
@@ -131,7 +131,7 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	v := core.NewCarrier(core.TInteger)
 	v.ID = "nur334-x"
 	es.NoteValReadLive(&v, "x", core.SrcPos{Row: 1, Col: 1})
-	if v.ID == "nur334-x" || !v.Carrier || v.Dynamic || !es.liveReadNames["x"] {
+	if v.ID == "nur334-x" || !v.Carrier || core.IsDynamic(&v) || !es.liveReadNames["x"] {
 		t.Fatalf("a literal leak's /v read is seated live, static: %+v", v)
 	}
 	// A computed-body leak of a concrete value the latch did not settle
@@ -142,7 +142,7 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	w := core.NewInteger(4)
 	w.ID = "nur334-y"
 	es.NoteValReadLive(&w, "y", core.SrcPos{Row: 1, Col: 1})
-	if w.Carrier || w.Dynamic || !es.liveReadNames["y"] {
+	if w.Carrier || core.IsDynamic(&w) || !es.liveReadNames["y"] {
 		t.Fatalf("an unlatched concrete read is seated as it stands: %+v", w)
 	}
 }
@@ -160,13 +160,13 @@ func TestBareLiveReadAfterComputedBodyIsGradualData(t *testing.T) {
 	v.ID = "gd-t"
 	es.noteKeptDefsRead(v.ID, "t")
 	es.NoteLiveRead(&v, "t", core.SrcPos{Row: 1, Col: 2})
-	if !v.Carrier || !v.Dynamic || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[v.ID] {
+	if !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[v.ID] {
 		t.Fatalf("a bare live read after a computed body is gradual data: %+v data=%v", v, es.liveDataIDs[v.ID])
 	}
 	w := core.NewInteger(0)
 	w.ID = "gd-w"
 	es.NoteValReadLive(&w, "t", core.SrcPos{Row: 1, Col: 4})
-	if !w.Dynamic || es.liveDataIDs[w.ID] || !es.liveReadIDs[w.ID] {
+	if !core.IsDynamic(&w) || es.liveDataIDs[w.ID] || !es.liveReadIDs[w.ID] {
 		t.Errorf("a /v seat is gradual and live, not a bare data read: %+v", w)
 	}
 }

@@ -394,7 +394,7 @@ func TestCanonValueShapes(t *testing.T) {
 	}
 	// Quoted lists wrap in (quote …) so the flag round-trips.
 	q := NewList([]Value{NewInteger(1)})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	if got := CanonValue(q); got != "(quote [1])" {
 		t.Errorf("quoted list canon = %q", got)
 	}
@@ -458,7 +458,7 @@ func TestCanonReachForms(t *testing.T) {
 		t.Errorf("multi-receiver = %q", got)
 	}
 	quoted := plain
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	if got := CanonValue(quoted); got != "(codequote m.a.b)" {
 		t.Errorf("quoted reach = %q", got)
 	}

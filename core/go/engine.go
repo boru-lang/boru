@@ -742,7 +742,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 			// FnDefInfo binding, so Defs.Top caught it above.)
 			return 0, false
 		}
-		if v.ReachGroup && !v.Quoted && isFnDefValue(v) && e.ReachFnWouldClaim(v, i+1) {
+		if IsReachGroup(&v) && !IsQuoted(&v) && isFnDefValue(v) && e.ReachFnWouldClaim(v, i+1) {
 			break // a reach-collapsed named fn with a claim is the next CALL — a barrier (NUR038)
 		}
 		if IsConcrete(&v) || v.Carrier {
@@ -1486,7 +1486,7 @@ func validateReturnTypesIn(reg *Registry, rc ReturnCheckInfo, results []Value, e
 		// Without this, a fn dispatched through a path that surfaces a dynamic
 		// body residual (module / mini-kind dispatch) wrongly fails its own
 		// declared-return check while the identical body called directly passes.
-		if got.Dynamic && reg != nil && reg.analysisActive() {
+		if IsDynamic(&got) && reg != nil && reg.analysisActive() {
 			continue
 		}
 		if !got.Is(exp) {
@@ -1984,7 +1984,7 @@ func (e *Engine) stepToken(val *Value) error {
 		// raw-capture pending forward (pendingForwardWantsRawParen) wants
 		// the paren collected as-is — both route through stepLiteral
 		// (push data / collect the forward arg) rather than expanding.
-		if val.Quoted || e.pendingForwardWantsRawParen() {
+		if IsQuoted(val) || e.pendingForwardWantsRawParen() {
 			return e.stepLiteral()
 		}
 		items, _ := AsParenExpr(val)
@@ -2775,7 +2775,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
-			placeholder.Undefined = true
+			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
 		}
@@ -2807,7 +2807,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 				SrcPos{Row: val.Pos().Row, Col: val.Pos().Col, Src: w.Name})
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
-			placeholder.Undefined = true
+			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
 		}
@@ -2910,7 +2910,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
-			placeholder.Undefined = true
+			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
 		}
@@ -3009,10 +3009,10 @@ func (e *Engine) deliverValRead(v, val Value) error {
 // pos is the READ's position (the word token's), which is where the
 // interpreter anchors the dispatch's errors (`cannot call `g“).
 func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
-	if v.Quoted {
+	if IsQuoted(&v) {
 		return
 	}
-	if IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
+	if IsFnTypedCarrier(&v) || (IsDynamic(&v) && SigTypeMatches(&v, TFunction)) {
 		e.Registry.analysisRecorder().NoteWordRead(v, name, pos)
 		// The collapse of a paren this read ends asks which it has — a
 		// value the rewind re-steps, or the model of a dispatch the
@@ -3226,8 +3226,8 @@ func (e *Engine) stepWord(val *Value) error {
 				// data it was where it was bound: `def g (m.f/v) end g 4` is
 				// 5 (NUR280; the marker drop quotes the member carrier,
 				// NUR277, and a def binds what the paren left).
-				if top.Quoted && (IsFnTypedCarrier(&top) || (top.Dynamic && SigTypeMatches(&top, TFunction))) {
-					top.Quoted = false
+				if IsQuoted(&top) && (IsFnTypedCarrier(&top) || (IsDynamic(&top) && SigTypeMatches(&top, TFunction))) {
+					SetQuoted(&top, false)
 				}
 				e.Registry.analysisRecorder().NoteDefRead(top.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(top.ID, derefPos(vpos))
@@ -3406,7 +3406,7 @@ func (e *Engine) stepWord(val *Value) error {
 		e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, derefPos(vpos)))
 		v := NewAtom(w.Name)
 		v.pos = vpos
-		v.Undefined = true
+		SetUndefined(&v, true)
 		e.Tape.Set(e.Pointer, v)
 		return nil
 	}
@@ -3765,7 +3765,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// binding, a container write, or a returned receiver (design/
 		// OPEN-WORDS.1.md §9's match-time-only rule).
 		ClearAscribed(&match.Args[i])
-		if match.Args[i].Eval && !match.Args[i].Quoted {
+		if IsEval(&match.Args[i]) && !IsQuoted(&match.Args[i]) {
 			if match.Args[i].Parent.Equal(TMap) &&
 				match.Args[i].Data != nil && !IsTypedMap(&match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
 				// NoEvalMapArgs (separate from the list-only
@@ -3829,7 +3829,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			return nil
 		}
 		e.resolveConsumedInertTypeShape(match, i)
-		match.Args[i].Eval = false
+		SetEval(&match.Args[i], false)
 		// A check-mode Undefined placeholder (a forward-referenced fn name, or
 		// an undefined word already diagnosed at its source) reaching a dispatch
 		// arg gradualizes to a dynamic Any carrier — otherwise the phantom
@@ -3838,7 +3838,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// stepWord; note the def-read so the dynamic-scope rescue still
 		// attributes it. Undefined is only ever set in check mode (stepWord
 		// errors at runtime), so this never masks a runtime error.
-		if match.Args[i].Undefined {
+		if IsUndefined(&match.Args[i]) {
 			c := NewDynamicCarrier(TAny)
 			if a, aerr := AsAtom(match.Args[i]); aerr == nil && a != "" {
 				e.Registry.analysisRecorder().NoteDefRead(c.ID, a)
@@ -4254,7 +4254,7 @@ func (e *Engine) noteCollectedLandings(sortedIndices []int) {
 	}
 	run -= e.forwardSplit()
 	for _, j := range sortedIndices[:max(run-1, 0)] {
-		if v := e.Tape.At(j); !v.Quoted && e.Registry.Check.StoodAsideLandingIDs[v.ID] {
+		if v := e.Tape.At(j); !IsQuoted(&v) && e.Registry.Check.StoodAsideLandingIDs[v.ID] {
 			es.NoteTakenLanding(v)
 		}
 	}
@@ -4305,7 +4305,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 	collected := e.Tape.At(top)
 	for j := lo; j < top; j++ {
 		v := e.Tape.At(j)
-		if v.Quoted || IsForward(&v) || IsMark(&v) || IsMove(&v) || IsOpenParen(&v) {
+		if IsQuoted(&v) || IsForward(&v) || IsMark(&v) || IsMove(&v) || IsOpenParen(&v) {
 			continue
 		}
 		if e.collectedPastStmtEnd(v.Pos(), collected) {
@@ -4315,10 +4315,10 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 			// value (NUR276: `do (mk) end s size`).
 			continue
 		}
-		if fwdOnly && !v.Carrier && !v.Dynamic {
+		if fwdOnly && !v.Carrier && !IsDynamic(&v) {
 			continue
 		}
-		if IsFnValueResidual(v) || IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
+		if IsFnValueResidual(v) || IsFnTypedCarrier(&v) || (IsDynamic(&v) && SigTypeMatches(&v, TFunction)) {
 			es.NoteCollectionHazard(v.ID)
 		}
 	}
@@ -4436,7 +4436,7 @@ func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
 func stampCallResultPositions(results []Value, pos SrcPos) {
 	for i := range results {
 		if p := results[i].Parent; p != nil &&
-			(p.Equal(TFunction) || (results[i].Dynamic && p.Equal(TAny))) {
+			(p.Equal(TFunction) || (IsDynamic(&results[i]) && p.Equal(TAny))) {
 			results[i] = WithPosAt(results[i], pos)
 		}
 	}
@@ -4791,7 +4791,7 @@ func (e *Engine) stepLiteral() error {
 	// they fall through to normal literal handling (pushed as data /
 	// collected as the forward arg). Otherwise expand and re-step (the
 	// nested-paren case).
-	if IsParenExpr(e.Tape.Ref(valIdx)) && !e.Tape.Ref(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
+	if IsParenExpr(e.Tape.Ref(valIdx)) && !IsQuoted(e.Tape.Ref(valIdx)) && !e.pendingForwardWantsRawParen() {
 		items, _ := AsParenExpr(e.Tape.Ref(valIdx))
 		e.Tape.Splice(valIdx, 1, e.expandParenExprScratch(items)...)
 		return nil
@@ -4808,7 +4808,7 @@ func (e *Engine) stepLiteral() error {
 	// rule 3, 2026-08-04 amendment — sugar.go), exactly like the
 	// ParenExpr and Reach expansions above. Quoted markers (captured
 	// data) and raw-capture collection fall through.
-	if IsSugar(e.Tape.Ref(valIdx)) && !e.Tape.Ref(valIdx).Quoted && !e.pendingForwardWantsRawParen() {
+	if IsSugar(e.Tape.Ref(valIdx)) && !IsQuoted(e.Tape.Ref(valIdx)) && !e.pendingForwardWantsRawParen() {
 		return e.stepSugar(valIdx)
 	}
 
@@ -4843,7 +4843,7 @@ func (e *Engine) stepLiteral() error {
 			// poisoned.
 			if rec := e.Registry.analysisRecorder(); rec.Active() &&
 				!IsConcrete(&info.Data) && !IsBareTypeNode(&info.Data) &&
-				(info.Data.Dynamic || info.Data.Parent == nil ||
+				(IsDynamic(&info.Data) || info.Data.Parent == nil ||
 					TList.ConformsTo(info.Data.Parent) || info.Data.Parent.ConformsTo(TList)) {
 				// COMPILE FAILURE-CLOSURE §9.2b: record the spread as an OpSpliceDyn
 				// event over the payload operand — the VM spreads a DATA
@@ -4886,8 +4886,8 @@ func (e *Engine) stepLiteral() error {
 			// and the residual layout applies it (resolveDynamicApply):
 			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR277).
 			if valIdx > 0 {
-				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
-					prev.Quoted = true
+				if prev := e.Tape.At(valIdx - 1); !IsQuoted(&prev) && (IsDynamic(&prev) || prev.Carrier) {
+					SetQuoted(&prev, true)
 					e.Tape.Set(valIdx-1, prev)
 					// And note the delivery as the peek notes the concrete
 					// value's (NUR280): a code body whose top is this read
@@ -4943,7 +4943,7 @@ func (e *Engine) stepLiteral() error {
 		// values are treated as data (not executed).
 		val := e.Tape.At(valIdx)
 		if val.Parent.Equal(TFunction) &&
-			val.Data != nil && !val.Quoted {
+			val.Data != nil && !IsQuoted(&val) {
 			if _, ok := val.Data.(*FnDefInfo); ok {
 				return e.execFnDefLiteral(valIdx)
 			}
@@ -4997,7 +4997,7 @@ func (e *Engine) stepLiteral() error {
 	// A collected value's reach-collapse tag is spent — the slot that
 	// admitted it (a Function slot / a quoted reference) has decided the
 	// call-vs-data question, and the tag must not ride into the binding.
-	val.ReachGroup = false
+	SetReachGroup(&val, false)
 	e.Tape.Remove(valIdx)
 
 	// After removal, adjust indices if valIdx was before them.
@@ -5121,7 +5121,7 @@ func (e *Engine) stepLiteral() error {
 // the slot asked for the raw body (NoEvalArgs / NoEvalMapArgs) or the
 // value is quoted.
 func (e *Engine) resolveConsumedInertTypeShape(match *MatchResult, i int) {
-	if match.Args[i].Quoted {
+	if IsQuoted(&match.Args[i]) {
 		return
 	}
 	if (match.Sig.NoEvalArgs != nil && match.Sig.NoEvalArgs[i]) ||
@@ -5197,7 +5197,7 @@ func (e *Engine) autoEvalStack() error {
 // false), so the deferred container is evaluated by the same routine a
 // consumer would have applied to it.
 func (e *Engine) autoEvalResidual(val Value) (Value, error) {
-	if !val.Quoted {
+	if !IsQuoted(&val) {
 		// Typed containers carry no Eval flag — resolve by shape.
 		if rv, ok := e.resolveInertTypeShape(val); ok {
 			return rv, nil
@@ -5683,7 +5683,7 @@ func lowerReach(info ReachInfo) []Value {
 // constructor-built reach (Eval=false, from `reach …`) or a codequote'd one
 // (Quoted) is data and is left alone.
 func isEvalReach(v *Value) bool {
-	if !IsReach(v) || v.Quoted {
+	if !IsReach(v) || IsQuoted(v) {
 		return false
 	}
 	info, _ := AsReach(v)
@@ -5700,7 +5700,7 @@ func expandReach(info ReachInfo) []Value {
 	// the get-chain and to let a `/` modifier apply to the whole path; it is
 	// not a call site, and treating it as one is what made `Mod.word arg`
 	// match against an empty argument window (NUR035).
-	span[0].ReachGroup = true
+	SetReachGroup(&span[0], true)
 	return span
 }
 
@@ -6238,8 +6238,8 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// The reach-collapse tag is spent the moment the call-vs-data
 	// decision is made here — it must never ride into a binding or a
 	// container (the Quoted transience discipline).
-	if val.ReachGroup {
-		val.ReachGroup = false
+	if IsReachGroup(&val) {
+		SetReachGroup(&val, false)
 		e.Tape.Set(valIdx, val)
 	}
 	// `apply`'s one-shot application signal is spent by the same rule and
@@ -6296,7 +6296,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// would consume the fn before the post-collapse marker peek could
 	// see it — so a marked 0-arg read defers like any other fn.
 	if valIdx > 0 && valIdx+1 < e.Tape.Len() &&
-		e.Tape.Ref(valIdx-1).ReachGroup && IsOpenParen(e.Tape.Ref(valIdx-1)) &&
+		IsReachGroup(e.Tape.Ref(valIdx-1)) && IsOpenParen(e.Tape.Ref(valIdx-1)) &&
 		IsCloseParen(e.Tape.Ref(valIdx+1)) &&
 		(!FnValueOnlyZeroArgSigs(fnDef) || e.dispatchModAt(valIdx+2)) {
 		e.Pointer++
@@ -6809,7 +6809,7 @@ func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefIn
 	// uncalled_function (`… set mem true  IO.seek 42 0`, the diag-surface
 	// parity gate, 2026-09-26). The plain pass keeps the value's own arm.
 	if !e.Registry.analysisActive() || !e.Registry.analysisCompiling() || valIdx != e.Pointer || fn == nil || len(fn.Signatures) == 0 ||
-		!fnDef.NamedDef() || fnDef.Macro || e.Tape.Ref(valIdx).Quoted || !FnHomeForeign(e.Registry, &fnDef) {
+		!fnDef.NamedDef() || fnDef.Macro || IsQuoted(e.Tape.Ref(valIdx)) || !FnHomeForeign(e.Registry, &fnDef) {
 		return false
 	}
 	reg, _ := FnHome(e.Registry, &fnDef)
@@ -6839,7 +6839,7 @@ func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefIn
 			}
 		}
 		if v.Carrier && v.Parent != nil && !IsBareTypeNode(&v) &&
-			(v.Dynamic || v.Parent.Equal(TAny) || v.Parent.ConformsTo(TDisjunct)) {
+			(IsDynamic(&v) || v.Parent.Equal(TAny) || v.Parent.ConformsTo(TDisjunct)) {
 			return true
 		}
 	}
@@ -7065,7 +7065,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// fn body analysed against generalised carrier args can fail to match
 	// for want of precision rather than because the program is wrong.
 	if e.Registry != nil && fnDef.NamedDef() &&
-		valIdx < e.Tape.Len() && !e.Tape.Ref(valIdx).Quoted {
+		valIdx < e.Tape.Len() && !IsQuoted(e.Tape.Ref(valIdx)) {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
 			pos := UncalledRaisePos(e.Tape.Ref(valIdx).Pos(), candidates)
@@ -7082,14 +7082,14 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				// see defWordExtension, which would otherwise read the failed
 				// call's locked signatures as a word-extension attempt.
 				fv := e.Tape.At(valIdx)
-				fv.FailedDispatch = true
+				SetFailedDispatch(&fv, true)
 				e.Tape.Set(valIdx, fv)
 				// A DEFINITE failure — every value the match examined is the
 				// value the runtime examines — raises at run time whatever the
 				// region: the enclosing `do` body models it (NUR134), and below
 				// the uncaught top level the compiled body unit raises it in
 				// place (a unit-scoped trap) instead of lowering the wreckage.
-				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !fv.Dynamic
+				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !IsDynamic(&fv)
 				if definite {
 					e.Registry.Check.NoteDefiniteRaise(e.Registry.Defs.Snapshot)
 				}
@@ -7260,7 +7260,7 @@ func UncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
 // sound, and the narrow version is the one that is obviously so.
 func uncalledDispatchDefinite(candidates []Value) bool {
 	for _, c := range candidates {
-		if !IsConcrete(&c) || c.Dynamic || c.Undefined ||
+		if !IsConcrete(&c) || IsDynamic(&c) || IsUndefined(&c) ||
 			IsWord(&c) || IsOpenParen(&c) || IsReach(&c) || IsParenExpr(&c) || IsInterpString(&c) {
 			return false
 		}
@@ -7412,7 +7412,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		// Dispatch ascription: consumed at delivery, exactly as execMatch
 		// strips it — the fn body binds the REAL value.
 		ClearAscribed(&args[i])
-		if args[i].Eval && !args[i].Quoted {
+		if IsEval(&args[i]) && !IsQuoted(&args[i]) {
 			if args[i].Parent.Equal(TMap) &&
 				args[i].Data != nil && !IsTypedMap(&args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {
 				noEval := sig.NoEvalMapArgs != nil && sig.NoEvalMapArgs[i]
@@ -7446,8 +7446,8 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 				}
 			}
 		}
-		args[i].Eval = false
-		args[i].Undefined = false
+		SetEval(&args[i], false)
+		SetUndefined(&args[i], false)
 	}
 
 	if capturedReg != nil && !capturedReg.SameHome(e.Registry) {
@@ -7823,8 +7823,8 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 		return
 	}
 	v := e.Tape.At(idx)
-	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
-		v.ReachGroup = true
+	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !IsQuoted(&v) {
+		SetReachGroup(&v, true)
 		e.Tape.Set(idx, v)
 	}
 	// Under the check pass the survivor may be a CARRIER — fn-typed, the
@@ -7835,7 +7835,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	// (callResultPlaced, NUR260), and a loop body that leaves one is the
 	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
 	// (CheckState.ReachSurvivorFnIDs).
-	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(&v) || v.Dynamic) {
+	if e.Registry != nil && e.Registry.analysisActive() && !IsQuoted(&v) && v.ID != "" && (IsFnTypedCarrier(&v) || IsDynamic(&v)) {
 		cs := e.Registry.Check
 		if cs.ReachSurvivorFnIDs == nil {
 			cs.ReachSurvivorFnIDs = map[string]bool{}
@@ -7905,7 +7905,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 		return 0
 	}
 	v := e.Tape.At(idx)
-	if v.ReachGroup {
+	if IsReachGroup(&v) {
 		// The VALUE-borne twin of the group exclusion: a dot-accessed named
 		// fn collapsed by an inner reach group (tagReachCollapsedFn) and now
 		// sitting alone in a USER paren. An unmarked dot-access to a
@@ -7959,7 +7959,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 	// at its site and never rebound. The general carrier is. Closing it means
 	// making the compiler's placement signal POSITIONAL like this one, rather
 	// than value-keyed — not widening the ID table further.
-	if !v.Quoted && (v.Dynamic || IsFnTypedCarrier(&v) || e.recorderMayBeFn(v)) {
+	if !IsQuoted(&v) && (IsDynamic(&v) || IsFnTypedCarrier(&v) || e.recorderMayBeFn(v)) {
 		// Ask the braid FIRST, and unconditionally. It is not only a
 		// predicate: it RECORDS the placement in ParenPlacedFnIDs for the
 		// compiler's residual lowering, which must not lower a placed lead
@@ -8004,7 +8004,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 // skip leaves an unspendable credit that silently swallows the NEXT real
 // literal — design/FN-VALUE-OPEN-WORK.0.md §5.2.
 func fnValueDispatchesAtPointer(v Value) bool {
-	return v.Parent.Equal(TFunction) && isFnDefValue(v) && !v.Quoted
+	return v.Parent.Equal(TFunction) && isFnDefValue(v) && !IsQuoted(&v)
 }
 
 // FnValueDispatchesAtPointer is the main loop's own dispatch predicate, for
@@ -8017,7 +8017,7 @@ func FnValueDispatchesAtPointer(v Value) bool {
 		return true
 	}
 	_, closure := v.Data.(ClosurePayload)
-	return closure && v.Parent.Equal(TFunction) && !v.Quoted
+	return closure && v.Parent.Equal(TFunction) && !IsQuoted(&v)
 }
 
 // noteFnResultReSteps is the check pass's RE-STEP note (NUR124). A native
@@ -8058,10 +8058,10 @@ func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Valu
 		return
 	}
 	for _, r := range results {
-		if r.Quoted || r.ID == "" || IsConcrete(&r) {
+		if IsQuoted(&r) || r.ID == "" || IsConcrete(&r) {
 			continue
 		}
-		if IsFnTypedCarrier(&r) || (r.Dynamic && SigTypeMatches(&r, TFunction)) {
+		if IsFnTypedCarrier(&r) || (IsDynamic(&r) && SigTypeMatches(&r, TFunction)) {
 			es.NoteFnResultReStep(r, next.Pos())
 		}
 	}
@@ -8073,7 +8073,7 @@ func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Valu
 // than a structural marker, a dispatch modifier, or a value the pass has
 // already placed there (a carrier, or anything without a source position).
 func plainReStepToken(t Value) bool {
-	if t.Pos().Row == 0 || t.Carrier || t.Dynamic {
+	if t.Pos().Row == 0 || t.Carrier || IsDynamic(&t) {
 		return false
 	}
 	if _, mod := AsDispatchMod(t); mod {
@@ -8281,7 +8281,7 @@ func (e *Engine) reachCallHeadBarrier(tok Value, scanIdx int) bool {
 // word calls. A dot read of a function is a call wherever it is written;
 // the reference is `m.f/v`.
 func ReachCallHeadBarrierOn(win CollectWindow, reg *Registry, tok Value, scanIdx int) bool {
-	if !tok.ReachGroup || tok.Quoted || !isFnDefValue(tok) {
+	if !IsReachGroup(&tok) || IsQuoted(&tok) || !isFnDefValue(tok) {
 		return false
 	}
 	return ReachFnWouldClaimOn(win, reg, tok, scanIdx+1)
@@ -8813,7 +8813,7 @@ func (e *Engine) noteParenStack(idx int) {
 // the TCO gate and the marker can never disagree about what the
 // eager teardown would evaluate.
 func isPendingResidualContainer(v *Value) bool {
-	if !v.Eval || v.Quoted || v.Parent == nil {
+	if !IsEval(v) || IsQuoted(v) || v.Parent == nil {
 		return false
 	}
 	if v.Parent.Equal(TMap) {
@@ -8898,7 +8898,7 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 				// bindings.
 				return nil
 			}
-			ev.Eval = false
+			SetEval(&ev, false)
 			e.Tape.Set(i, ev)
 		}
 	}
@@ -9447,7 +9447,7 @@ func (e *Engine) stepOpenParen() error {
 	// (stepCloseParen, NUR038) both read. The fresh marker must not
 	// silently wipe it — the pre-evaluated window path (evalParenGroupAt)
 	// steps the marker through here, unlike the main-loop path.
-	np.ReachGroup = e.Tape.Ref(e.Pointer).ReachGroup
+	SetReachGroup(&np, IsReachGroup(e.Tape.Ref(e.Pointer)))
 	e.Tape.Set(e.Pointer, np)
 	e.Pointer++
 	return nil
@@ -9597,7 +9597,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 	//     (`(f g/v)`, `(f ([n:Integer] => [n add 1]))`), and the leading
 	//     record admits it (RecordDynApplyLead binds it to the lead's
 	//     Function param, never applying it).
-	if last.Dynamic && !parenLeadArgTypedNonFn(last) {
+	if IsDynamic(&last) && !parenLeadArgTypedNonFn(last) {
 		return -1
 	}
 	for i := openIdx + 1; i < closeIdx; i++ {
@@ -9607,7 +9607,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 			// this scope (`(g x add 1)`: the model's `add` took `x`) is a
 			// collection hazard — the window's argument is that dispatch's
 			// result, not the lead's (NUR121).
-			if !v.Dynamic && !v.Quoted && IsFnTypedCarrier(&v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(v.ID) {
+			if !IsDynamic(&v) && !IsQuoted(&v) && IsFnTypedCarrier(&v) && es.DynApplyLeadEligible(v) && !es.CollectionHazard(v.ID) {
 				return i
 			}
 			break
@@ -9703,13 +9703,13 @@ func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, c
 			continue
 		}
 		if w.lead < 0 {
-			if v.Dynamic || v.Quoted || v.ID == "" || !IsFnTypedCarrier(&v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
+			if IsDynamic(&v) || IsQuoted(&v) || v.ID == "" || !IsFnTypedCarrier(&v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
 				return w, false
 			}
 			w.lead = i
 			continue
 		}
-		if IsFnValueResidual(v) || (v.Dynamic && !parenLeadArgTypedNonFn(v)) {
+		if IsFnValueResidual(v) || (IsDynamic(&v) && !parenLeadArgTypedNonFn(v)) {
 			return w, false
 		}
 		w.argIdxs = append(w.argIdxs, i)
@@ -9795,7 +9795,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	// over the frame's gradual input instead of the written argument:
 	// `xs each [(2 inc2/v) mul 10]` compiled 10 for the interpreter's 40
 	// (NUR180; a fn-typed carrier lead keeps the Any and the hazard).
-	if t := concreteFnSingleReturn(last); t != nil && !last.Dynamic && !es.ApplyPending(last.ID) {
+	if t := concreteFnSingleReturn(last); t != nil && !IsDynamic(&last) && !es.ApplyPending(last.ID) {
 		outType = t
 	}
 	out := NewCarrier(outType)
@@ -9810,8 +9810,8 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	// strict Any: the comparator convention's consumers were built on
 	// it, and a gradual result there declined an each body's residual
 	// ("result above a literal") that compiles today.
-	if last.Dynamic || es.ApplyPending(last.ID) {
-		out.Dynamic = true
+	if IsDynamic(&last) || es.ApplyPending(last.ID) {
+		SetDynamic(&out, true)
 	}
 	out.ID = GenerateID(IDPrefixForType(outType))
 	out.pos = last.pos
@@ -9896,7 +9896,7 @@ func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, las
 // the window (ProvenWindowMatch — the compiler's applyWindowFits asks the
 // same) under a lead the collapse applies: unquoted and not gradual.
 func trailingWindowFits(last Value, sigArgs []Value) bool {
-	return !last.Quoted && !last.Dynamic && ProvenWindowMatch(last, sigArgs)
+	return !IsQuoted(&last) && !IsDynamic(&last) && ProvenWindowMatch(last, sigArgs)
 }
 
 // evalTrailingContainer evaluates one pending container argument at sig
@@ -9905,7 +9905,7 @@ func trailingWindowFits(last Value, sigArgs []Value) bool {
 func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool) (Value, bool) {
 	isMap := v.Parent.Equal(TMap)
 	if (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
-		v.Eval = !fits
+		SetEval(&v, !fits)
 		return v, fits
 	}
 	var ev Value
@@ -9926,7 +9926,7 @@ func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool
 	}
 	// A bind-time evaluation that raised replaces nothing (ok false): the
 	// literal stays pending, and the recorder never takes it raw.
-	ev.Eval = false
+	SetEval(&ev, false)
 	ev.pos = v.pos
 	return ev, err == nil
 }
@@ -10054,7 +10054,7 @@ func parenTrailingFnApply(es EmitRecorder, last Value, count, lastIdx int) bool 
 	if count < 2 || lastIdx < 0 {
 		return false
 	}
-	if last.Dynamic {
+	if IsDynamic(&last) {
 		return last.ID != "" && es.ApplyPending(last.ID)
 	}
 	return IsFnValueResidual(last)
@@ -10089,7 +10089,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	// exclusion: a reach-lowered group's re-step IS the dispatch, while every
 	// other paren — user-written and fn frame alike — parks a collapsed
 	// Function as placed data (NUR073's BROAD verdict, clause 3).
-	wasReachGroup := e.Tape.Ref(openIdx).ReachGroup
+	wasReachGroup := IsReachGroup(e.Tape.Ref(openIdx))
 
 	// Resolve any forwards inside the paren scope via implicit end.
 	// We loop because resolving a forward may cause re-evaluation.
@@ -10325,7 +10325,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 		first, count, lastIdx := -1, 0, -1
 		for i := openIdx + 1; i < closeIdx; i++ {
 			if IsRecordableLiteral(e.Tape.At(i)) {
-				if count == 0 && e.Tape.Ref(i).Dynamic {
+				if count == 0 && IsDynamic(e.Tape.Ref(i)) {
 					first = i
 				}
 				count++
@@ -10514,7 +10514,7 @@ func (e *Engine) recordParenReStep(openIdx, closeIdx, park int, wasReachGroup bo
 // fn-typed carrier, or a dynamic value whose static bound does not exclude
 // Function.
 func (e *Engine) markReStepped(v Value) {
-	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
+	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || v.ID == "" {
 		return
 	}
 	if !e.mightBeCallable(v) {
@@ -10535,7 +10535,7 @@ func (e *Engine) markReStepped(v Value) {
 // which a re-step dispatches where the arm's own paren parked it; NUR317).
 // Requires a registry with check state.
 func (e *Engine) mightBeCallable(v Value) bool {
-	if IsFnTypedCarrier(&v) || (v.Dynamic && SigTypeMatches(&v, TFunction)) {
+	if IsFnTypedCarrier(&v) || (IsDynamic(&v) && SigTypeMatches(&v, TFunction)) {
 		return true
 	}
 	return e.recorderMayBeFn(v) || UnionMayBeFn(v)
@@ -10558,7 +10558,7 @@ func (e *Engine) recorderMayBeFn(v Value) bool {
 // statement's values. markReStepped's own gate applies (a quoted, ID-less,
 // concrete or non-callable value records nothing).
 func (e *Engine) markForwardLeftover(v Value) {
-	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
+	if e.Registry == nil || e.Registry.Check == nil || IsQuoted(&v) || v.ID == "" {
 		return
 	}
 	if !e.mightBeCallable(v) {
@@ -10961,7 +10961,7 @@ func (d patternDispatch) evalPatternOperand(i int, v Value) (Value, bool) {
 	if e.containerEscaped() {
 		return v, false
 	}
-	ev.Eval = false
+	SetEval(&ev, false)
 	ev.pos = v.pos
 	e.Tape.Set(i, ev)
 	e.patternEvalDid = true
@@ -11104,7 +11104,7 @@ func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
 		return true
 	}
 	et := SigArgType(sig, idx)
-	return top.Dynamic && et != nil && (et.ConformsTo(TFunction) || TypeIsFnShape(et))
+	return IsDynamic(&top) && et != nil && (et.ConformsTo(TFunction) || TypeIsFnShape(et))
 }
 
 // concreteArgsMatch reports whether every NON-Any-carrier operand still MATCHES
@@ -11220,7 +11220,7 @@ func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 	_, nFwd := e.rematchWrittenSplit(fn)
 	gradual := false
 	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
-		if v := e.Tape.At(i); v.Carrier || v.Dynamic {
+		if v := e.Tape.At(i); v.Carrier || IsDynamic(&v) {
 			gradual = true
 		}
 	}
@@ -11258,7 +11258,7 @@ func (e *Engine) withRenderedPrefix(window []int, fn *FnDefInfo) []int {
 	}
 	inexact := false
 	for _, v := range written[len(window):] {
-		if v.Carrier || v.Dynamic {
+		if v.Carrier || IsDynamic(&v) {
 			inexact = true
 		}
 	}
@@ -11383,7 +11383,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 			}
 		}
 		vals = append(vals, v)
-		if v.Undefined {
+		if IsUndefined(&v) {
 			return false
 		}
 		// A deferred-expression token (a reach path, an unexpanded paren
@@ -11435,7 +11435,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// before its match (NUR235: `[("a" add "b")]` is the list of the
 		// add's carrier) — is the same case: the report renders the
 		// elements' run-time values.
-		if v.Carrier || v.Dynamic || e.Registry.analysisValueCarriesCarrier(v) {
+		if v.Carrier || IsDynamic(&v) || e.Registry.analysisValueCarriesCarrier(v) {
 			needsRematch = true
 		}
 	}
@@ -11606,7 +11606,7 @@ func ArgTypeSummary(args []Value) string {
 		switch {
 		case a.Parent == nil:
 			parts[i] = "?"
-		case a.Dynamic:
+		case IsDynamic(&a):
 			parts[i] = "dynamic(" + a.Parent.Leaf() + ")"
 		default:
 			parts[i] = a.Parent.Leaf()

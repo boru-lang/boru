@@ -161,13 +161,14 @@ func TestSchemaConstOK(t *testing.T) {
 
 func TestIsInertQuotedParen(t *testing.T) {
 	// Quoted but not actually a paren-expr payload → AsParenExpr errors.
-	bad := Value{Parent: TParenExpr, Data: IntPayload{N: 1}, Quoted: true}
+	bad := Value{Parent: TParenExpr, Data: IntPayload{N: 1}}
+	SetQuoted(&bad, true)
 	if isInertQuotedParen(bad) {
 		t.Fatal("a non-paren payload should decline")
 	}
 	// Quoted paren with a carrier token → declines.
 	p := NewParenExpr([]Value{NewCarrier(TInteger)})
-	p.Quoted = true
+	SetQuoted(&p, true)
 	if isInertQuotedParen(p) {
 		t.Fatal("a carrier token should decline")
 	}

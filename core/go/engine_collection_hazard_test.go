@@ -43,7 +43,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 	fn := NewCarrier(TFunction)
 	dyn := NewDynamicCarrier(TAny)
 	quoted := NewCarrier(TFunction)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	five := NewInteger(5)
 
 	t.Run("marks the lead below the collected value", func(t *testing.T) {

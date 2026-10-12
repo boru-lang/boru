@@ -48,7 +48,7 @@ func tuiPolicyFirstMirror(word, polOp string, arity int,
 // to reproduce it.
 func tuiDynAnyReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	c := native.NewCarrier(native.TAny)
-	c.Dynamic = true
+	native.SetDynamic(&c, true)
 	return []native.Value{c}
 }
 

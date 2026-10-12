@@ -49,7 +49,7 @@ func polySeedFor(sigs []core.Signature, sig *core.Signature, args []core.Value) 
 	}
 	tags := make([]*core.Type, n)
 	for i, a := range args {
-		if a.Parent == nil || a.Dynamic || core.IsBareTypeNode(&a) || a.AscribedType() != nil {
+		if a.Parent == nil || core.IsDynamic(&a) || core.IsBareTypeNode(&a) || a.AscribedType() != nil {
 			return nil
 		}
 		// A quoted slot matches a strict carrier and a concrete value alike

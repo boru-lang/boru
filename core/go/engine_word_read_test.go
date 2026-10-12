@@ -59,7 +59,7 @@ func TestNoteWordReadClassifies(t *testing.T) {
 	e.noteWordRead(NewDynamicCarrier(TAny), "x", SrcPos{})
 	e.noteWordRead(NewCarrier(TInteger), "n", SrcPos{})
 	quoted := NewCarrier(TFunction)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e.noteWordRead(quoted, "q", SrcPos{})
 	if len(es.noted) != 2 || es.noted[0] != "g" || es.noted[1] != "x" {
 		t.Errorf("fn-typed and gradual reads are noted, a concrete or quoted one is not: %v", es.noted)

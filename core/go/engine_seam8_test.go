@@ -592,7 +592,7 @@ func TestW8ExecFnDefSigListAutoEval(t *testing.T) {
 	sig := &Signature{Params: []FnParam{{Type: TList}}, Returns: []*Type{TInteger}, Impl: Boru([]Value{NewInteger(42)}), BarrierPos: 0}
 	fnv := NewFunction(FnDefInfo{Signatures: []Signature{*sig}})
 	listArg := NewList([]Value{NewInteger(1), NewInteger(2)})
-	listArg.Eval = true
+	SetEval(&listArg, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{listArg, fnv}, StackHeadroom)
 	e.Pointer = 1
@@ -607,7 +607,7 @@ func TestW8ExecFnDefSigListAutoEvalError(t *testing.T) {
 	sig := &Signature{Params: []FnParam{{Type: TList}}, Returns: []*Type{TInteger}, Impl: Boru([]Value{NewInteger(42)}), BarrierPos: 0}
 	fnv := NewFunction(FnDefInfo{Signatures: []Signature{*sig}})
 	listArg := NewList([]Value{NewWord("w8_undefined_word")})
-	listArg.Eval = true
+	SetEval(&listArg, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{listArg, fnv}, StackHeadroom)
 	e.Pointer = 1
@@ -625,7 +625,7 @@ func TestW8ExecFnDefSigMapAutoEval(t *testing.T) {
 	m := NewOrderedMap()
 	m.Set("k", NewInteger(1))
 	mapArg := NewMap(m)
-	mapArg.Eval = true
+	SetEval(&mapArg, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{mapArg, fnv}, StackHeadroom)
 	e.Pointer = 1
@@ -642,7 +642,7 @@ func TestW8ExecFnDefSigMapAutoEvalError(t *testing.T) {
 	m := NewOrderedMap()
 	m.Set("k", NewWord("w8_undefined_word"))
 	mapArg := NewMap(m)
-	mapArg.Eval = true
+	SetEval(&mapArg, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{mapArg, fnv}, StackHeadroom)
 	e.Pointer = 1

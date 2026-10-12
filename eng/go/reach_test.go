@@ -78,7 +78,7 @@ func TestReachCanonRoundTrip(t *testing.T) {
 // A Quoted (codequote-captured) reach wraps in (codequote …) so it round-trips.
 func TestReachCanonQuotedWraps(t *testing.T) {
 	v := core.NewReach(core.ReachInfo{Receiver: []core.Value{core.NewWord("m")}, Segments: []core.ReachSeg{{KeyLit: core.NewWord("a")}}, Eval: true})
-	v.Quoted = true
+	core.SetQuoted(&v, true)
 	if got := core.CanonValue(v); got != "(codequote m.a)" {
 		t.Errorf("quoted reach canon = %q, want %q", got, "(codequote m.a)")
 	}

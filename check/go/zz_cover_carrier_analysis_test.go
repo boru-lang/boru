@@ -281,13 +281,13 @@ func TestZcaParamInputCarrierShapes(t *testing.T) {
 	// Untyped / explicitly-Any: a DYNAMIC carrier (gradual dispatch).
 	for _, tt := range []*core.Type{nil, core.TAny} {
 		c := ParamInputCarrier(tt)
-		if !c.Dynamic || !c.Carrier {
+		if !core.IsDynamic(&c) || !c.Carrier {
 			t.Errorf("ParamInputCarrier(%v) must be a dynamic carrier", tt)
 		}
 	}
 	// A concrete declared type stays a strict carrier.
 	c := ParamInputCarrier(core.TInteger)
-	if c.Dynamic || !c.Carrier || !c.Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&c) || !c.Carrier || !c.Parent.Equal(core.TInteger) {
 		t.Error("a concrete declared type must bind a strict typed carrier")
 	}
 	// A NAMED-UNION param binds the DISTRIBUTING disjunct carrier with
@@ -515,7 +515,7 @@ func TestZcaStripZeroOutResiduals(t *testing.T) {
 
 func TestZcaDeferredParamListResidual(t *testing.T) {
 	deferred := core.NewList([]core.Value{core.NewWord("c1")})
-	deferred.Eval = true
+	core.SetEval(&deferred, true)
 
 	// The def-node-binding shape: a lone unquoted evaluated list body
 	// naming a param returns the list raw.
@@ -530,7 +530,7 @@ func TestZcaDeferredParamListResidual(t *testing.T) {
 	}
 	// A body that references no param folds under the normal path.
 	other := core.NewList([]core.Value{core.NewWord("zca-other-q")})
-	other.Eval = true
+	core.SetEval(&other, true)
 	if _, ok := DeferredParamListResidual([]core.Value{other}, []string{"c1"}); ok {
 		t.Error("a body that references no param must decline")
 	}
@@ -539,7 +539,7 @@ func TestZcaDeferredParamListResidual(t *testing.T) {
 		t.Error("a multi-statement body must decline")
 	}
 	quoted := deferred
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if _, ok := DeferredParamListResidual([]core.Value{quoted}, []string{"c1"}); ok {
 		t.Error("a quoted list body must decline")
 	}
@@ -566,7 +566,7 @@ func TestZcaNarrowDynamicUsesTightens(t *testing.T) {
 	if !ok {
 		t.Fatal("the binding must survive the narrowing")
 	}
-	if !got.Dynamic {
+	if !core.IsDynamic(&got) {
 		t.Error("the narrowed binding stays a dynamic carrier")
 	}
 	if got.Parent == nil || !got.Parent.Equal(core.TList) {
@@ -683,7 +683,7 @@ func TestZcaReturnsFreshInstanceSchemaConcrete(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("fresh-instance returns %d values, want 1", len(out))
 	}
-	if !out[0].Carrier || !out[0].Dynamic {
+	if !out[0].Carrier || !core.IsDynamic(&out[0]) {
 		t.Error("a validated schema construction must be a dynamic instance carrier")
 	}
 	if rt, ok := out[0].Data.(core.RecordTypeInfo); !ok || rt.Fields == nil {
@@ -702,7 +702,7 @@ func TestZcaReturnsFreshInstanceSchemaConcrete(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("failing construction returns %d values, want 1", len(out))
 	}
-	if out[0].Dynamic {
+	if core.IsDynamic(&out[0]) {
 		t.Error("a failing construction must NOT ride the optimistic dynamic carrier")
 	}
 	if !out[0].Parent.Equal(core.ValueType(schema)) {
@@ -722,7 +722,7 @@ func TestZcaReturnsFreshInstanceRecordBodyAndMisc(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("record-body target returns %d values, want 1", len(out))
 	}
-	if !out[0].Carrier || !out[0].Dynamic {
+	if !out[0].Carrier || !core.IsDynamic(&out[0]) {
 		t.Error("a record-body construction must be a dynamic instance carrier")
 	}
 	if rt, ok := out[0].Data.(core.RecordTypeInfo); !ok || rt.Fields == nil {
@@ -938,7 +938,7 @@ func TestZcaAnalyseFnBodyUndefinedArgGradualized(t *testing.T) {
 	// the analysis boundary gradualizes it to a dynamic Any carrier —
 	// copy-on-write, so the caller's slice is untouched.
 	undef := core.NewAtom("zca-forward-q")
-	undef.Undefined = true
+	core.SetUndefined(&undef, true)
 	body := []core.Value{core.NewInteger(1)}
 	args := []core.Value{undef}
 
@@ -949,7 +949,7 @@ func TestZcaAnalyseFnBodyUndefinedArgGradualized(t *testing.T) {
 	if n, err := core.AsInteger(result[0]); err != nil || n != 1 {
 		t.Errorf("body residual = %v, want 1", result[0])
 	}
-	if !args[0].Undefined {
+	if !core.IsUndefined(&args[0]) {
 		t.Error("the caller's arg slice must be untouched (copy-on-write)")
 	}
 	// The memo key was built from the SANITIZED dynamic-Any arg, not the
@@ -1004,7 +1004,7 @@ func TestZcaAnalyseFnBodyInflightBails(t *testing.T) {
 	if _, ok := core.IsVariadicSpread(out[0]); ok {
 		t.Error("the armed bail must NOT be a variadic spread")
 	}
-	if !out[0].Parent.Equal(core.TAny) || out[0].Dynamic {
+	if !out[0].Parent.Equal(core.TAny) || core.IsDynamic(&out[0]) {
 		t.Errorf("armed bail = %v, want a strict Any carrier", out[0])
 	}
 }

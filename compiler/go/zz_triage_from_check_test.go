@@ -156,7 +156,7 @@ func TestS5bECodeEffectBareTypeResidualDeclines(t *testing.T) {
 	// and leaves the literal as the residual, which the []*Type domain
 	// cannot represent — the carrier conversion must decline.
 	body := core.NewList([]core.Value{core.NewWord("s5benoop"), core.NewTypeLiteral(core.TInteger)})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	if _, ok := AnalyseCodeEffectCarrier(r, body); ok {
 		t.Error("expected AnalyseCodeEffectCarrier to decline a bare-type-literal residual")
 	}
@@ -304,7 +304,7 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	single := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 	}}})
-	single.Dynamic = true
+	core.SetDynamic(&single, true)
 	esArg := NewEmitState()
 	seedProduced(esArg, single, 1)
 	if _, ok := esArg.RecordDynApply([]core.Value{carrierVal(core.TInteger)}, single, core.NewInteger(0), core.SrcPos{}); ok {
@@ -318,7 +318,7 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 		{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
 		{Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
 	}})
-	over.Dynamic = true
+	core.SetDynamic(&over, true)
 	esOver := NewEmitState()
 	seedProduced(esOver, over, 1)
 	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {

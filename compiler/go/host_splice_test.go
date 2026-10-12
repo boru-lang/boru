@@ -94,7 +94,7 @@ func TestDynBodyPolyOnGradualBody(t *testing.T) {
 	if dynBodyPoly(r, "for", args, body) {
 		t.Error("a typed List body over a concrete count bakes the committed sig")
 	}
-	body.Dynamic = true
+	core.SetDynamic(&body, true)
 	if !dynBodyPoly(r, "for", []core.Value{core.NewInteger(3), body}, body) {
 		t.Error("a gradual body re-matches at run time")
 	}

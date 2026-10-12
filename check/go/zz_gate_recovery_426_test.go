@@ -84,7 +84,7 @@ func wantSingleAnyCarrier(t *testing.T, tape []core.Value) {
 	if !got.Parent.Equal(core.TAny) {
 		t.Errorf("residual carrier type: got %v, want Any", got.Parent)
 	}
-	if got.Dynamic {
+	if core.IsDynamic(&got) {
 		t.Error("the arm builds core.NewCarrier(core.TAny), which is not dynamic")
 	}
 }

@@ -374,7 +374,7 @@ func getrObjectReturns(args []Value, r *Registry) []Value {
 // (the sig never produces a value).
 func getrNoneReturns(args []Value, r *Registry) []Value {
 	if r != nil && r.Check.IsActive() && len(args) == 2 &&
-		core.IsNoneShape(args[1]) && !args[1].Dynamic {
+		core.IsNoneShape(args[1]) && !IsDynamic(&args[1]) {
 		core.CheckAddUniqueDiagnostic(r, "not_found",
 			"getr: parent is None — nothing to read a key from", "getr", args[0].Pos())
 	}

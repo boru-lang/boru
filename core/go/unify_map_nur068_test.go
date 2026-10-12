@@ -128,7 +128,8 @@ func TestNur068NonCarrierRecordKeepsNominalCompileFailure(t *testing.T) {
 func TestNur068EmptySchemaCarrierFallsThrough(t *testing.T) {
 	// A record carrier with no readable schema (nil Fields) declines the
 	// admission and falls to the nominal compile failure.
-	rec := Value{Parent: TMap, Carrier: true, Dynamic: true, Data: RecordTypeInfo{}}
+	rec := Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{}}
+	SetDynamic(&rec, true)
 	pat := nur068Pattern()
 	if _, err := unifyMapFamily(rec, Shape(rec), pat, Shape(pat), nil); err == nil {
 		t.Fatal("nil-Fields record carrier must fall through to the compile failure")

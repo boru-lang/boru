@@ -106,7 +106,7 @@ func TestStoredLiveSeats(t *testing.T) {
 		t.Fatal("a class binding does not seat")
 	}
 	dyn := core.NewInteger(6)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	delete(es.fnRecs[unit].liveNames, "k")
 	if es.storedDepRead("k", dyn) || !es.unitLiveNames(unit)["k"] {
 		t.Fatal("a dynamic read is live already: noted, not seated")

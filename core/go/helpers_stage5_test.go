@@ -288,9 +288,9 @@ func TestStage5RetagTypedContainerValueArms(t *testing.T) {
 	pom := NewOrderedMap()
 	pom.Set("a", NewInteger(2))
 	plain := NewMap(pom)
-	plain.Quoted = true
+	SetQuoted(&plain, true)
 	got = RetagTypedContainerValue(pat, plain)
-	if !got.Quoted {
+	if !IsQuoted(&got) {
 		t.Error("the list-arg quote must survive the unify retag")
 	}
 	if !got.Parent.Equal(TMap) {

@@ -105,17 +105,17 @@ func TestW9AdoptShapeValueXml(t *testing.T) {
 func TestW9ShapeFieldRead(t *testing.T) {
 	// A disjunct read keeps its payload as a dynamic carrier value.
 	dj := check.ShapeFieldRead(core.NewDisjunct([]core.Value{core.NewString("x")}))
-	if !dj.Dynamic {
+	if !core.IsDynamic(&dj) {
 		t.Error("a disjunct read should be dynamic")
 	}
 	// A function-typed field keeps the dynamic(Any) hatch.
 	fn := check.ShapeFieldRead(core.NewFunction(core.FnDefInfo{}))
-	if !fn.Dynamic {
+	if !core.IsDynamic(&fn) {
 		t.Error("a function field should read dynamic(Any)")
 	}
 	// A nil-Parent value (no ValueType) also keeps dynamic(Any).
 	none := check.ShapeFieldRead(core.Value{})
-	if !none.Dynamic {
+	if !core.IsDynamic(&none) {
 		t.Error("a typeless value should read dynamic(Any)")
 	}
 }

@@ -78,7 +78,7 @@ func TestMayBeFnHelpers(t *testing.T) {
 		t.Error("a fn-typed carrier is fn-like as before")
 	}
 	quoted := br
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.mayBeFnUnsettled(quoted) {
 		t.Error("a quoted value is data")
 	}
@@ -108,7 +108,7 @@ func TestPolyCallDeclineReasonMayBeFn(t *testing.T) {
 		}
 	}
 	quoted := br
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if got := es.polyCallDeclineReason("add", []core.Value{quoted}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("a quoted operand is data: %q", got)
 	}

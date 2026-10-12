@@ -38,7 +38,7 @@ func TestLiteralMatchSure(t *testing.T) {
 	es := NewEmitState()
 	defer es.BindRegistry(r)()
 	lit := deoptLit(core.NewList([]core.Value{deoptTok("x", 7)}), 6)
-	lit.Eval = true
+	core.SetEval(&lit, true)
 	body := []core.Value{deoptTok("lw", 1), lit}
 	asm := EmitEvent{seq: 1, kind: evCall, call: emitCall{makeList: true, nout: 1, pos: deoptAt(6)}}
 	notAsm := EmitEvent{seq: 1, kind: evCall, call: emitCall{word: "iw", nout: 1, pos: deoptAt(6)}}
@@ -160,7 +160,7 @@ func TestSplitWordsAndWindowLiteral(t *testing.T) {
 		t.Errorf("a read's position, else its own: %v", ps)
 	}
 	lit := deoptLit(core.NewList([]core.Value{deoptTok("x", 7)}), 6)
-	lit.Eval = true
+	core.SetEval(&lit, true)
 	if op, ok := es.callWindowOp(lit, false, nil); !ok || op.kind != WinValue {
 		t.Errorf("a pending literal rides as written: %v %v", op, ok)
 	}
@@ -169,7 +169,7 @@ func TestSplitWordsAndWindowLiteral(t *testing.T) {
 func TestQuietBranchAt(t *testing.T) {
 	arm := func(col int) core.Value {
 		v := deoptLit(core.NewList([]core.Value{deoptTok("def", col+1)}), col)
-		v.Eval = true
+		core.SetEval(&v, true)
 		return v
 	}
 	body := []core.Value{deoptTok("if", 1), deoptTok("c", 4), arm(6), arm(20), deoptTok("keys", 30)}

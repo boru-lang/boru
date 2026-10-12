@@ -323,7 +323,7 @@ func keepsComputedDefs(spec *core.CallableSpec, body core.Value) bool {
 	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(&body) {
 		return false
 	}
-	return body.Dynamic || body.Parent == nil || body.Parent.ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent)
+	return core.IsDynamic(&body) || body.Parent == nil || body.Parent.ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent)
 }
 
 // bodyProvenFn reports whether a computed body operand provably arrives as an
@@ -391,7 +391,7 @@ func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bo
 	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier || keptReadMayBeFn(*v) {
 		return
 	}
-	v.Dynamic = true
+	core.SetDynamic(v, true)
 }
 
 // keptReadMayBeFn reports whether a read the latch would seat live holds a

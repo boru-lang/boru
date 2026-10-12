@@ -184,11 +184,11 @@ func TestApplyGuardNarrowing(t *testing.T) {
 	if narrowed.Parent == nil || !narrowed.Parent.ConformsTo(TInteger) {
 		t.Errorf("narrowed binding = %v, want Integer-conforming", narrowed)
 	}
-	if !narrowed.Dynamic {
+	if !IsDynamic(&narrowed) {
 		t.Error("a dynamic binding must stay dynamic through the meet")
 	}
 	restore()
-	if v, _ := r.Defs.Top("x"); v.Dynamic != src.Dynamic || v.ID != src.ID {
+	if v, _ := r.Defs.Top("x"); IsDynamic(&v) != IsDynamic(&src) || v.ID != src.ID {
 		t.Error("restore must pop the narrowing")
 	}
 
@@ -293,7 +293,7 @@ func TestApplyComplementNarrowing(t *testing.T) {
 	dyn := NewDynamicCarrier(TAny)
 	r.Defs.Push("x", dyn)
 	ApplyComplementNarrowing(r, cond)()
-	if v, _ := r.Defs.Top("x"); !v.Dynamic {
+	if v, _ := r.Defs.Top("x"); !IsDynamic(&v) {
 		t.Error("a dynamic binding's else path must stay gradual")
 	}
 

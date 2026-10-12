@@ -99,7 +99,7 @@ func TestTuiRunMirrorArms(t *testing.T) {
 	// The flagged shape: an app config with no update and no service.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{native.NewMap(native.NewOrderedMap())}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(native.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(native.TAny) {
 		t.Fatalf("run residual = %v, want one dynamic Any carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "tui_error" {
@@ -113,7 +113,7 @@ func TestTuiRunMirrorArms(t *testing.T) {
 	// run may not take the overload being modelled.
 	r2 := vaultMirrorRegistry(t)
 	dyn := native.NewMap(native.NewOrderedMap())
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	rf([]native.Value{dyn}, r2)
 	if len(r2.Check.Diagnostics) != 0 {
 		t.Fatalf("a dynamic app config must not be flagged, got %+v", r2.Check.Diagnostics)
@@ -136,7 +136,7 @@ func TestTuiServeMirrorArms(t *testing.T) {
 	// port-less serve never reaches the app config.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{native.NewMap(native.NewOrderedMap()), emptyApp}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(native.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(native.TAny) {
 		t.Fatalf("serve residual = %v, want one dynamic Any carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "tui_error" {

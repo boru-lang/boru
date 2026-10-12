@@ -125,7 +125,7 @@ func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward 
 // comment): the shapes whose unmatched step is execFnDefLiteral's no-match
 // fork over the value's own signatures.
 func fnValueParkable(reg *core.Registry, fnVal core.Value, fd core.FnDefInfo) bool {
-	if fnVal.Quoted || fnVal.ReachGroup || fd.Macro || fd.Applied || len(fd.Signatures) == 0 {
+	if core.IsQuoted(&fnVal) || core.IsReachGroup(&fnVal) || fd.Macro || fd.Applied || len(fd.Signatures) == 0 {
 		return false
 	}
 	if fd.NamedDef() && core.FnHomeForeign(reg, &fd) {
@@ -157,10 +157,10 @@ func residualInert(v core.Value) bool {
 	if tapeCoupled([]core.Value{v}) {
 		return false
 	}
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		return true
 	}
-	return !v.Eval && !core.IsTypedList(&v) && !core.IsTypedMap(&v) && !core.IsDisjunct(&v)
+	return !core.IsEval(&v) && !core.IsTypedList(&v) && !core.IsTypedMap(&v) && !core.IsDisjunct(&v)
 }
 
 // uncalledAt is the named value's raise for an unmatched window: the

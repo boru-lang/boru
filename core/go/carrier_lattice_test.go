@@ -21,7 +21,7 @@ func TestCarrierConstructors(t *testing.T) {
 	// Parent/Data bound rather than replacing it with a bare carrier.
 	bound := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
 	dyn := NewDynamicCarrierValue(bound)
-	if !dyn.Carrier || !dyn.Dynamic {
+	if !dyn.Carrier || !IsDynamic(&dyn) {
 		t.Error("NewDynamicCarrierValue must set both Carrier and Dynamic")
 	}
 	if !IsDisjunct(&dyn) {
@@ -132,7 +132,7 @@ func TestReturnsIdentity(t *testing.T) {
 func TestVariadicSpreadCarrier(t *testing.T) {
 	elem := NewTypeLiteral(TInteger)
 	sp := NewVariadicCarrier(elem)
-	if !sp.Carrier || !sp.Dynamic || !sp.Parent.Equal(TAny) {
+	if !sp.Carrier || !IsDynamic(&sp) || !sp.Parent.Equal(TAny) {
 		t.Errorf("variadic carrier = %v, want a dynamic Any carrier", sp)
 	}
 	got, ok := IsVariadicSpread(sp)
@@ -239,17 +239,17 @@ func TestFlattenAlternatives(t *testing.T) {
 
 func TestJoinCarriersDynamicContagion(t *testing.T) {
 	strict := JoinCarriers(NewCarrier(TInteger), NewCarrier(TInteger))
-	if strict.Dynamic {
+	if IsDynamic(&strict) {
 		t.Error("two strict arms must join strict")
 	}
 	// EITHER arm dynamic makes the merge dynamic — the gradual contagion
 	// rule (looser, never tighter).
 	left := JoinCarriers(NewDynamicCarrier(TInteger), NewCarrier(TString))
-	if !left.Dynamic || !left.Carrier {
+	if !IsDynamic(&left) || !left.Carrier {
 		t.Error("a dynamic left arm must make the merge dynamic")
 	}
 	right := JoinCarriers(NewCarrier(TString), NewDynamicCarrier(TInteger))
-	if !right.Dynamic {
+	if !IsDynamic(&right) {
 		t.Error("a dynamic right arm must make the merge dynamic")
 	}
 }
@@ -360,13 +360,13 @@ func TestJoinCarrierStacks(t *testing.T) {
 		t.Fatalf("padded depth = %d, want 2", len(padded))
 	}
 	for i, v := range padded {
-		if v.Dynamic {
+		if IsDynamic(&v) {
 			t.Errorf("padded slot %d went gradual; padding must stay strict", i)
 		}
 	}
 	// Padding on the other side takes the mirror branch.
 	padded = JoinCarrierStacks(nil, []Value{NewCarrier(TString)})
-	if len(padded) != 1 || padded[0].Dynamic {
+	if len(padded) != 1 || IsDynamic(&padded[0]) {
 		t.Errorf("mirror padding = %v, want one strict slot", padded)
 	}
 
@@ -376,17 +376,17 @@ func TestJoinCarrierStacks(t *testing.T) {
 	sentinel := JoinCarrierStacks(
 		[]Value{NewCarrier(TNone)},
 		[]Value{NewCarrier(TMap)})
-	if len(sentinel) != 1 || !sentinel[0].Dynamic {
+	if len(sentinel) != 1 || !IsDynamic(&sentinel[0]) {
 		t.Errorf("None-vs-value merge = %v, want a gradual result", sentinel)
 	}
 	// Neither None: stays strict.
 	strict := JoinCarrierStacks([]Value{NewCarrier(TInteger)}, []Value{NewCarrier(TString)})
-	if strict[0].Dynamic {
+	if IsDynamic(&strict[0]) {
 		t.Error("a value-vs-value merge must stay strict")
 	}
 	// BOTH None: also strict (the != test is false).
 	bothNone := JoinCarrierStacks([]Value{NewCarrier(TNone)}, []Value{NewCarrier(TNone)})
-	if bothNone[0].Dynamic {
+	if IsDynamic(&bothNone[0]) {
 		t.Error("a None-vs-None merge must stay strict")
 	}
 }

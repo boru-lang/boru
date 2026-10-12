@@ -146,7 +146,8 @@ func TestNUR317PlacementUndone(t *testing.T) {
 func TestDynBodySettledOp(t *testing.T) {
 	es := NewEmitState()
 	lead, sib := core.NewCarrier(core.TAny), core.NewInteger(5)
-	lead.Dynamic, lead.ID, sib.ID = true, "lead", "sib"
+	core.SetDynamic(&lead, true)
+	lead.ID, sib.ID = "lead", "sib"
 	res := []core.Value{lead, sib}
 	if _, settled := es.dynBodySettledOp(res); settled {
 		t.Error("no producer: not settled")
@@ -167,11 +168,11 @@ func TestDynBodySettledOp(t *testing.T) {
 // an unquoted or data carrier is not.
 func TestNUR318QuotedFnCarrier(t *testing.T) {
 	q := core.NewDynamicCarrier(core.TAny)
-	q.Quoted = true
+	core.SetQuoted(&q, true)
 	fq := core.NewCarrier(core.TFunction)
-	fq.Quoted = true
+	core.SetQuoted(&fq, true)
 	iq := core.NewCarrier(core.TInteger)
-	iq.Quoted = true
+	core.SetQuoted(&iq, true)
 	for _, c := range []struct {
 		why  string
 		v    core.Value

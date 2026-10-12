@@ -8,16 +8,16 @@ import "testing"
 // any other value to a carrier of its type, keeping its modality. The join
 // and the typed list take a type-literal arm or element the same way.
 func TestValueCarrier(t *testing.T) {
-	if c := ValueCarrier(NewTypeLiteral(TInteger)); !c.Carrier || c.Dynamic || !c.Parent.Equal(TType) {
+	if c := ValueCarrier(NewTypeLiteral(TInteger)); !c.Carrier || IsDynamic(&c) || !c.Parent.Equal(TType) {
 		t.Errorf("a type literal widens to a strict Type carrier, got %v", c)
 	}
 	if c := ValueCarrier(NewTypeLiteral(TNone)); !c.Carrier || !c.Parent.Equal(TNone) {
 		t.Errorf("the None literal widens to the None carrier, got %v", c)
 	}
-	if c := ValueCarrier(NewInteger(5)); !c.Carrier || c.Dynamic || !c.Parent.Equal(TInteger) {
+	if c := ValueCarrier(NewInteger(5)); !c.Carrier || IsDynamic(&c) || !c.Parent.Equal(TInteger) {
 		t.Errorf("a value widens to a carrier of its type, got %v", c)
 	}
-	if c := ValueCarrier(NewDynamicCarrier(TString)); !c.Dynamic || !c.Parent.Equal(TString) {
+	if c := ValueCarrier(NewDynamicCarrier(TString)); !IsDynamic(&c) || !c.Parent.Equal(TString) {
 		t.Errorf("a gradual value stays gradual, got %v", c)
 	}
 	// `if c [Integer] [5]`: a type arm joins as a Type value, never as a

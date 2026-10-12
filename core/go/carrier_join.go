@@ -107,9 +107,9 @@ func JoinCarriers(a, b Value) Value {
 		b = ValueCarrier(b)
 	}
 	out := JoinCarriersInner(a, b)
-	if a.Dynamic || b.Dynamic {
+	if IsDynamic(&a) || IsDynamic(&b) {
 		out.Carrier = true
-		out.Dynamic = true
+		SetDynamic(&out, true)
 	}
 	return out
 }
@@ -237,7 +237,7 @@ func joinBranchDef(a, b Value) Value {
 // narrowing's own doctrine — and every reference keeps its seat, because the
 // pre binding carries the same ID.
 func narrowedSameBinding(r *Registry, k string, v Value) bool {
-	if !v.Dynamic || v.ID == "" {
+	if !IsDynamic(&v) || v.ID == "" {
 		return false
 	}
 	pre, ok := r.Defs.Top(k)
@@ -446,7 +446,7 @@ func JoinCarrierStacks(a, b []Value) []Value {
 		// Looser, never tighter; a guard discharges the modality back to strict.
 		if aReal && bReal && (isNoneArm(ai) != isNoneArm(bi)) {
 			joined.Carrier = true
-			joined.Dynamic = true
+			SetDynamic(&joined, true)
 		}
 		out[i] = joined
 	}

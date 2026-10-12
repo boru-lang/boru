@@ -146,7 +146,7 @@ func TestDryPassConcretenessGate(t *testing.T) {
 		t.Error("a bare carrier arg must fail the dry-pass gate")
 	}
 	dynNone := core.NewCarrier(core.TNone)
-	dynNone.Dynamic = true
+	core.SetDynamic(&dynNone, true)
 	if allConcreteArgs([]core.Value{dynNone}) {
 		t.Error("a DYNAMIC none carrier must fail the dry-pass gate")
 	}

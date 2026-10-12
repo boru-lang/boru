@@ -135,7 +135,7 @@ func TestW9TypeAlgebraListFoldNonListConcrete(t *testing.T) {
 	fold := typeAlgebraListFold(tanyHandler)
 	// A concrete Map is IsConcrete but AsList yields nil → dynamic fallback.
 	out := fold([]Value{NewMap(NewOrderedMap())}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("non-list concrete arg should fall back to a dynamic carrier, got %v", Canon(out))
 	}
 }
@@ -148,7 +148,7 @@ func TestW9TypeAlgebraListFoldHandlerBadArity(t *testing.T) {
 	fold := typeAlgebraListFold(bad)
 	lst := NewList([]Value{NewInteger(1), NewInteger(2)})
 	out := fold([]Value{lst}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("a handler returning !=1 value should fall back to a dynamic carrier, got %v", Canon(out))
 	}
 }

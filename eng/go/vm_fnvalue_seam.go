@@ -55,7 +55,7 @@ import (
 //     is the compiler defect it is and it surfaces either way.
 func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
 	fd, ok := body.Data.(*core.FnDefInfo)
-	if !ok || body.Quoted {
+	if !ok || core.IsQuoted(&body) {
 		return nil, nil, false
 	}
 	args := make([]core.Value, len(inputs))
@@ -137,7 +137,7 @@ func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.
 // `main` ("function-valued operand at each"), so the release was S1a's and
 // the arm is what makes it sound.
 func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body *core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
-	if body.Quoted || !compiler.ClosureIsFnValue(body) {
+	if core.IsQuoted(body) || !compiler.ClosureIsFnValue(body) {
 		return nil, nil, false
 	}
 	p := vc.p
@@ -182,8 +182,8 @@ func deliverArgs(args []core.Value) []core.Value {
 	out := make([]core.Value, len(args))
 	for i, a := range args {
 		core.ClearAscribed(&a)
-		if a.Parent.Equal(core.TList) && !a.Quoted {
-			a.Quoted = true
+		if a.Parent.Equal(core.TList) && !core.IsQuoted(&a) {
+			core.SetQuoted(&a, true)
 		}
 		out[i] = a
 	}

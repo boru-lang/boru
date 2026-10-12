@@ -136,7 +136,7 @@ func arrivalGateEngine(t *testing.T, callee string, sigs []Signature) *Engine {
 	tagged := Value{Parent: TFunction, Data: &FnDefInfo{Name: "p", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: -1},
 	}}}
-	tagged.ReachGroup = true
+	SetReachGroup(&tagged, true)
 	sig2 := &Signature{Args: []*Type{TAny, TAny}, BarrierPos: -1}
 	e.Tape = NewTape([]Value{
 		NewInteger(1),
@@ -221,7 +221,7 @@ func TestNur038PolyReachBoundStopsAtCallHead(t *testing.T) {
 	tagged := Value{Parent: TFunction, Data: &FnDefInfo{Name: "p", Signatures: []Signature{
 		{Args: []*Type{TAny}, BarrierPos: -1},
 	}}}
-	tagged.ReachGroup = true
+	SetReachGroup(&tagged, true)
 
 	// A tagged fn with a claim is the NEXT call — the scan stops before
 	// it, exactly as a bare fn word would stop it.

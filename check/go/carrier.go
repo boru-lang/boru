@@ -110,7 +110,7 @@ func ReturnsListElemAt(i int) core.ReturnsFunc {
 func NewElementCarrier(t *core.Type) core.Value {
 	c := core.NewCarrier(t)
 	if t == nil || t.Equal(core.TAny) {
-		c.Dynamic = true
+		core.SetDynamic(&c, true)
 	}
 	return c
 }
@@ -146,8 +146,8 @@ func ElementCarrierFromValue(data core.Value) core.Value {
 // None).
 func ElementCarrierOf(data core.Value) core.Value {
 	c := NewElementCarrier(DataListElemTypeFromValue(data))
-	if ct, ok := data.Data.(core.ChildTypeInfo); ok && ct.Child.Carrier && ct.Child.Dynamic {
-		c.Dynamic = true
+	if ct, ok := data.Data.(core.ChildTypeInfo); ok && ct.Child.Carrier && core.IsDynamic(&ct.Child) {
+		core.SetDynamic(&c, true)
 	}
 	return c
 }
@@ -322,7 +322,7 @@ func toCarrier(v core.Value) core.Value {
 	// A dynamic carrier already IS a carrier; its Parent/Data is the
 	// gradual bound (which may be a disjunct). Return it unchanged so
 	// stripping never nulls the bound or clears the Dynamic flag.
-	if v.Dynamic {
+	if core.IsDynamic(&v) {
 		return v
 	}
 	// Keep lists and maps concrete for now — matchSignature relies
@@ -646,7 +646,7 @@ func ScalarFoldOperand(v core.Value) bool {
 	if core.IsInertConst(&v) {
 		return true
 	}
-	if v.Dynamic || v.Data == nil {
+	if core.IsDynamic(&v) || v.Data == nil {
 		return false
 	}
 	switch v.Data.(type) {
@@ -809,7 +809,7 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 		// (this missing_returns) remains, and a guard discharges the
 		// modality back to strict.
 		c := core.NewCarrier(core.TAny)
-		c.Dynamic = true
+		core.SetDynamic(&c, true)
 		out = []core.Value{c}
 	default:
 		out = make([]core.Value, len(sig.Returns))
@@ -831,7 +831,7 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 			// as strict Any). Mark it dynamic: optimistic matching,
 			// discharged back to strict by a guard.
 			if t.Equal(core.TAny) {
-				c.Dynamic = true
+				core.SetDynamic(&c, true)
 			}
 			out[i] = c
 		}
@@ -850,7 +850,7 @@ func shortWindowCarriers(sig *core.Signature) []core.Value {
 	out := make([]core.Value, len(sig.Returns))
 	for i, t := range sig.Returns {
 		c := core.NewCarrier(t)
-		c.Dynamic = t.Equal(core.TAny)
+		core.SetDynamic(&c, t.Equal(core.TAny))
 		out[i] = c
 	}
 	return out
@@ -865,7 +865,7 @@ func shortWindowCarriers(sig *core.Signature) []core.Value {
 // consumer that needs the concrete type; scalar returns gain nothing and their
 // strict form can spuriously trip the forward/stack split detector.
 func isConcreteContainerReturn(v core.Value) bool {
-	if v.Dynamic || v.Parent == nil {
+	if core.IsDynamic(&v) || v.Parent == nil {
 		return false
 	}
 	return v.Parent.ConformsTo(core.TList) || v.Parent.ConformsTo(core.TMap)
@@ -956,10 +956,10 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 		widenToAny := unknownSibling && isConcreteContainerReturn(out[0])
 		for i := range out {
 			out[i].Carrier = true
-			if keepStrict && !out[i].Dynamic && isConcreteContainerReturn(out[i]) {
+			if keepStrict && !core.IsDynamic(&out[i]) && isConcreteContainerReturn(out[i]) {
 				continue
 			}
-			out[i].Dynamic = true
+			core.SetDynamic(&out[i], true)
 		}
 		// First-match partition (design/legacy/dynamic-modality-report.10.ignore): a
 		// dynamic bound can reach MULTIPLE of the word's overloads, whose
@@ -1017,7 +1017,7 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 				if len(vrets) == 1 {
 					c := core.NewCarrier(vrets[0])
 					c.Carrier = true
-					c.Dynamic = true
+					core.SetDynamic(&c, true)
 					out = []core.Value{c}
 				} else {
 					alts := make([]core.Value, len(vrets))
@@ -1397,7 +1397,7 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 	hasStrictDisjunct := false
 	declaredDomain := true // every strict disjunct arg is a declared-union param binding
 	for _, a := range args {
-		if core.IsDisjunct(&a) && a.Carrier && !a.Dynamic {
+		if core.IsDisjunct(&a) && a.Carrier && !core.IsDynamic(&a) {
 			hasStrictDisjunct = true
 			if di, err := core.AsDisjunct(a); err != nil || !di.Declared {
 				declaredDomain = false
@@ -1522,7 +1522,7 @@ func disjunctCombosTakeSig(r *core.Registry, word string, args []core.Value, sig
 // per flattened alternative; any other value yields itself. It is the
 // per-argument expansion the disjunct cross product enumerates.
 func alternativeCarriers(a core.Value) []core.Value {
-	if core.IsDisjunct(&a) && a.Carrier && !a.Dynamic {
+	if core.IsDisjunct(&a) && a.Carrier && !core.IsDynamic(&a) {
 		lits := core.FlattenAlternatives(a)
 		out := make([]core.Value, 0, len(lits))
 		for _, lit := range lits {
@@ -1712,7 +1712,7 @@ func DynamicReachableOverloadCount(r *core.Registry, word string, args []core.Va
 			// is Never even though a runtime Integer instantiates T) — count
 			// the arm reachable so the ambiguous dispatch stays a runtime
 			// re-matched user poly instead of a wrong static commit.
-			if args[j].Dynamic && core.IsTypeParamNode(core.SigArgType(s, j)) {
+			if core.IsDynamic(&args[j]) && core.IsTypeParamNode(core.SigArgType(s, j)) {
 				continue
 			}
 			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
@@ -1808,7 +1808,7 @@ func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) [
 	// then looked reachable).
 	allUnknown := len(args) > 0
 	for _, a := range args {
-		if !a.Dynamic || a.Parent == nil || !a.Parent.Equal(core.TAny) {
+		if !core.IsDynamic(&a) || a.Parent == nil || !a.Parent.Equal(core.TAny) {
 			allUnknown = false
 			break
 		}
@@ -1887,13 +1887,13 @@ func narrowDynamicUses(r *core.Registry, word string, sig *core.Signature, args 
 		return
 	}
 	for i, a := range args {
-		if !a.Dynamic || a.DynFrom() == "" {
+		if !core.IsDynamic(&a) || a.DynFrom() == "" {
 			continue
 		}
 		// Only narrow a binding that is itself still dynamic (consistent
 		// with this value) — guards against a since-rebound name.
 		cur, ok := r.Defs.Top(a.DynFrom())
-		if !ok || !cur.Dynamic {
+		if !ok || !core.IsDynamic(&cur) {
 			continue
 		}
 		slot := core.SigArgType(sig, i)
@@ -1914,7 +1914,7 @@ func narrowDynamicUses(r *core.Registry, word string, sig *core.Signature, args 
 			continue
 		}
 		bound := cur
-		bound.Dynamic = false
+		core.SetDynamic(&bound, false)
 		bound.SetDynFrom("")
 		narrowed := core.TandValues(bound, core.NewCarrier(slot))
 		// A successful match guarantees a non-disjoint intersection; skip
@@ -2018,7 +2018,7 @@ func slotIsPolymorphic(r *core.Registry, word string, args []core.Value, i int, 
 				// declined no_signature, taking the `def h2` it fed with it
 				// (a false undefined_word, 2026-09-26).
 				bound := args[j]
-				bound.Dynamic = false
+				core.SetDynamic(&bound, false)
 				bound.SetDynFrom("")
 				if core.IsNeverShape(core.TandValues(bound, core.NewCarrier(st))) {
 					reach = false
@@ -2042,7 +2042,7 @@ func slotIsPolymorphic(r *core.Registry, word string, args []core.Value, i int, 
 // trigger for gradual contagion in CarrierResults.
 func AnyDynamicCarrier(vs []core.Value) bool {
 	for _, v := range vs {
-		if v.Dynamic {
+		if core.IsDynamic(&v) {
 			return true
 		}
 	}
@@ -2136,7 +2136,7 @@ func anyImpreciseCarrier(vs []core.Value) bool {
 // the static generic-record construction validation to fully-literal data;
 // carrier-bearing data defers to the runtime constructor.
 func valueTreeHasCarriers(v core.Value) bool {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier || core.IsDynamic(&v) {
 		return true
 	}
 	if m, err := core.AsMap(v); err == nil && m.Len() > 0 {
@@ -2188,7 +2188,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 			switch {
 			case m < 0 || m >= len(args):
 				out[i] = core.NewCarrier(core.TAny)
-			case !args[m].Carrier && !args[m].Dynamic:
+			case !args[m].Carrier && !core.IsDynamic(&args[m]):
 				// A concrete constructor target — a bare type node
 				// (`make Pathon …`, `make Foo …`) or a structural type body
 				// (`make P {}` for a class/record, whose literal carries an
@@ -2242,7 +2242,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 									// "out"`. Gradual, guard-discharged.
 									if rt.Fields != nil {
 										c.Data = rt
-										c.Dynamic = true
+										core.SetDynamic(&c, true)
 									}
 									out[i] = c
 									validated = true
@@ -2270,7 +2270,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 						if len(info.Params) == 0 {
 							if rt, rerr := core.AsRecordType(info.Body); rerr == nil && rt.Fields != nil {
 								c.Data = rt
-								c.Dynamic = true
+								core.SetDynamic(&c, true)
 							}
 						}
 						out[i] = c
@@ -2289,7 +2289,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				// rationale as the schema-record branches above).
 				if rt, ok := target.Data.(core.RecordTypeInfo); ok && rt.Fields != nil {
 					c.Data = rt
-					c.Dynamic = true
+					core.SetDynamic(&c, true)
 				}
 				out[i] = c
 			default:
@@ -2387,7 +2387,7 @@ func ReturnsNumericBinary() core.ReturnsFunc {
 			return []core.Value{core.NewCarrier(core.TFloat)}
 		case a.ConformsTo(core.TInteger) && b.ConformsTo(core.TInteger):
 			return []core.Value{core.NewCarrier(core.TInteger)}
-		case args[0].Dynamic || args[1].Dynamic:
+		case core.IsDynamic(&args[0]) || core.IsDynamic(&args[1]):
 			return []core.Value{core.NewDynamicCarrier(core.TNumber)}
 		case a.ConformsTo(core.TNumber) && b.ConformsTo(core.TNumber):
 			return []core.Value{core.NewCarrier(core.TNumber)}
@@ -2413,7 +2413,7 @@ func ReturnsNumericBinary() core.ReturnsFunc {
 func ReturnsAddConcat() core.ReturnsFunc {
 	return func(args []core.Value, _ *core.Registry) []core.Value {
 		for _, a := range args {
-			if !a.Dynamic && a.Parent != nil && a.Parent.ConformsTo(core.TString) {
+			if !core.IsDynamic(&a) && a.Parent != nil && a.Parent.ConformsTo(core.TString) {
 				return []core.Value{core.NewCarrier(core.TString)}
 			}
 		}
@@ -2433,7 +2433,7 @@ func ReturnsAddConcat() core.ReturnsFunc {
 // and a bare dynamic carrier are NOT mixed and return false: the split is
 // consistent, or is the dynamic path handled elsewhere.
 func carrierMixedConform(v core.Value, t *core.Type) bool {
-	if t == nil || !v.Carrier || core.IsConcrete(&v) || v.Dynamic {
+	if t == nil || !v.Carrier || core.IsConcrete(&v) || core.IsDynamic(&v) {
 		return false
 	}
 	alts := core.FlattenAlternatives(v)
@@ -2614,7 +2614,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				// rule at the branch join; Codex P2, PR #418 — a body that
 				// merely consumed a dynamic name through a typed slot
 				// recorded a phantom `def` a twin would replay).
-				if v.Dynamic && v.ID != "" && v.ID == pre.ID {
+				if core.IsDynamic(&v) && v.ID != "" && v.ID == pre.ID {
 					continue
 				}
 				j := core.JoinCarriers(v, pre)
@@ -3188,7 +3188,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// dispatch-arg gradualization in engine.go's match loop.
 	sanitized := false
 	for i := range args {
-		if !args[i].Undefined {
+		if !core.IsUndefined(&args[i]) {
 			continue
 		}
 		if !sanitized {
@@ -3372,7 +3372,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 // plain list that still carries a raw Word element — the unfolded def-node-binding
 // deferred residual a transparent fn body like `[[c1]]` returns.
 func IsDeferredWordList(v core.Value) bool {
-	if !v.Eval || v.Quoted || !v.Parent.Equal(core.TList) || v.Data == nil ||
+	if !core.IsEval(&v) || core.IsQuoted(&v) || !v.Parent.Equal(core.TList) || v.Data == nil ||
 		core.IsTypedList(&v) || core.IsTableType(v) {
 		return false
 	}
@@ -3408,7 +3408,7 @@ func DeferredParamListResidual(body []core.Value, paramNames []string) (core.Val
 		return core.Value{}, false
 	}
 	v := body[0]
-	if v.Quoted || !v.Eval || !v.Parent.Equal(core.TList) || v.Data == nil ||
+	if core.IsQuoted(&v) || !core.IsEval(&v) || !v.Parent.Equal(core.TList) || v.Data == nil ||
 		core.IsTypedList(&v) || core.IsTableType(v) {
 		return core.Value{}, false
 	}

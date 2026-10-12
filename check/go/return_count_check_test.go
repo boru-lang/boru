@@ -98,7 +98,7 @@ func TestReturnCountConformanceSkipsDynamicResiduals(t *testing.T) {
 	// from the runtime one — the count mirror must skip it.
 	r := countCheckRegistry(t)
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	stk := []core.Value{dyn, core.NewInteger(1)}
 	checkBodyReturnConformance(r, "dy", []*core.Type{core.TInteger}, nil, 0, true, stk, core.SrcPos{}, core.SrcPos{})
 	if len(r.Check.Diagnostics) != 0 {

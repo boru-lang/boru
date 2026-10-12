@@ -473,7 +473,7 @@ func applyReturns(args []Value, r *Registry) []Value {
 		// dispatches nothing, records nothing, and `5 M.inc/v apply`
 		// compiled to `[5 fn]` for the interpreter's 6 (NUR156). A word's
 		// own `/v` read (`inc/v`) is delivered unquoted and never met this.
-		out[0].Quoted = false
+		SetQuoted(&out[0], false)
 		out[0] = markApplied(out[0])
 	}
 	return out
@@ -496,7 +496,7 @@ func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 	if _, ok := v.Data.(*FnDefInfo); !ok {
 		return nil, fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", v.Data)
 	}
-	v.Quoted = false
+	SetQuoted(&v, false)
 	// ADR-016 (NUR077 §5 Hole 1): a fn whose ONLY signatures are 0-arg
 	// must apply the same way whatever its ORIGIN. The re-step reaches
 	// execFnDefLiteral's data gate, which parks a 0-arg ANONYMOUS value —
@@ -669,7 +669,7 @@ func checkModeGradualFn(reg *Registry, v Value) ([]Value, bool) {
 	// binding, e.g. `def x 5 x/u`) is provably NOT a function — let the strict
 	// handler flag it (a real illegal_ref), so the fallback never masks a
 	// genuine non-fn modifier error.
-	if (v.Dynamic && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TFunction) {
+	if (IsDynamic(&v) && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TFunction) {
 		return []Value{NewDynamicCarrier(TFunction)}, true
 	}
 	return nil, false

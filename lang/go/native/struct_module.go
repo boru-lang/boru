@@ -187,7 +187,7 @@ func structDataShapeReturns(i int) ReturnsFunc {
 func dynamicContainerKind(v Value) Value {
 	t := ValueType(v)
 	switch {
-	case t == nil || v.Dynamic && t.Equal(TAny):
+	case t == nil || IsDynamic(&v) && t.Equal(TAny):
 		return NewDynamicCarrier(TAny)
 	case t.ConformsTo(TMap):
 		return NewDynamicCarrier(TMap)
@@ -219,7 +219,7 @@ func d2DynamicTypedResidual(data Value) Value {
 	} else {
 		typed = core.NewCarrierTypedListValue(elem)
 	}
-	typed.Dynamic = true
+	SetDynamic(&typed, true)
 	typed.SetElemConstraint(elem)
 	return typed
 }
@@ -314,7 +314,7 @@ func reifyReturns(args []Value, r *Registry) []Value {
 		return dyn
 	}
 	target := args[0]
-	if target.Carrier || target.Dynamic {
+	if target.Carrier || IsDynamic(&target) {
 		return dyn // computed target — the class is unknown statically
 	}
 	// Dry pass (top-level, statically-known target + CONCRETE source):

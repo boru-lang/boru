@@ -618,10 +618,10 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					// Mark bodies Quoted so subsequent consumers
 					// (e.g. run-property's `get` retrieving them
 					// from the map) don't auto-evaluate them.
-					gen.Quoted = true
-					gen.Eval = false
-					prop.Quoted = true
-					prop.Eval = false
+					core.SetQuoted(&gen, true)
+					core.SetEval(&gen, false)
+					core.SetQuoted(&prop, true)
+					core.SetEval(&prop, false)
 					m := native.NewOrderedMap()
 					m.Set("name", native.NewString(name))
 					m.Set("gen", gen)

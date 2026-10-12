@@ -45,7 +45,7 @@ func flowBody() []core.Value {
 // not a word's code body.
 func flowArm(items ...core.Value) core.Value {
 	l := core.NewList(items)
-	l.Eval = true
+	core.SetEval(&l, true)
 	return l
 }
 

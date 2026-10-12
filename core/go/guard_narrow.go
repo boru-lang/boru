@@ -249,8 +249,8 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 					narrowed = meet
 					narrowed.ID = cur.ID
 				}
-				if cur.Dynamic && !deadArm {
-					narrowed.Dynamic = true
+				if IsDynamic(&cur) && !deadArm {
+					SetDynamic(&narrowed, true)
 				}
 			}
 			// Advisory (non-gating): the binding's STATIC type already
@@ -267,7 +267,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 			// work). A non-concrete strict carrier IS the declared-type
 			// record, so tag conformance is shape-independent. Dedup: fn
 			// bodies re-analyse per shape and fixpoint round.
-			if cur.Carrier && !IsConcrete(&cur) && !cur.Dynamic &&
+			if cur.Carrier && !IsConcrete(&cur) && !IsDynamic(&cur) &&
 				cur.Parent != nil && c.Type != nil &&
 				cur.Parent.ConformsTo(c.Type) {
 				detail := "guard is always true: " + c.Name + " is already " +
@@ -350,7 +350,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		// A DYNAMIC binding's else path stays gradual: the guard failed at
 		// runtime, but the binding's static type is Any (or a dynamic carrier),
 		// so subtracting T would wrongly forbid every later use. Leave it as-is.
-		if cur.Dynamic {
+		if IsDynamic(&cur) {
 			continue
 		}
 		// Else-branch narrowing: x had type `cur`; the guard `x is T`

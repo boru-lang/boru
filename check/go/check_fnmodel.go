@@ -62,7 +62,7 @@ func recordSchemaCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 		// so a fn reading >1 record param (`fn [[c:C d:D] …]`) miscompiles to a
 		// single local → RunCompiledStrict VM error / wrong local. Mint a
 		// unique node ID exactly as NewValueRaw does for ordinary values.
-		return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TMap)), Parent: core.TMap, Carrier: true, Dynamic: true, Data: core.RecordTypeInfo{Fields: pm.M}}, true
+		return core.NewDynamicRecordCarrier(pm.M), true
 	}
 	return core.Value{}, false
 }
@@ -90,7 +90,7 @@ func recordReturnCarrier(t *core.Type, pat *core.Value) (core.Value, bool) {
 		return core.Value{}, false
 	}
 	if pm, ok := pat.Data.(core.MapPayload); ok && pm.M != nil {
-		return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TMap)), Parent: core.TMap, Carrier: true, Dynamic: true, Data: core.RecordTypeInfo{Fields: pm.M}}, true
+		return core.NewDynamicRecordCarrier(pm.M), true
 	}
 	return core.Value{}, false
 }
@@ -173,13 +173,13 @@ func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 		v := core.NewTypedMap(ci.Child)
 		v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
 		v.Carrier = true
-		v.Dynamic = true // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
+		core.SetDynamic(&v, true) // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
 		return v, true
 	}
 	if core.IsTypedList(&pat) && (a.Parent.ConformsTo(core.TList) || a.Parent.Equal(core.TAny)) {
 		v := core.NewCarrierTypedListValue(ci.Child)
 		v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
-		v.Dynamic = true
+		core.SetDynamic(&v, true)
 		return v, true
 	}
 	return core.Value{}, false
@@ -200,13 +200,13 @@ func ParamBodyCarrier(p core.FnParam) core.Value {
 				v := core.NewTypedMap(ci.Child)
 				v.ID = core.GenerateID(core.IDPrefixForType(core.TMap))
 				v.Carrier = true
-				v.Dynamic = true
+				core.SetDynamic(&v, true)
 				return v
 			}
 			if core.IsTypedList(&pat) {
 				v := core.NewCarrierTypedListValue(ci.Child)
 				v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
-				v.Dynamic = true
+				core.SetDynamic(&v, true)
 				return v
 			}
 		}
@@ -255,7 +255,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 			continue
 		}
 		switch {
-		case a.Dynamic && pt != nil && !pt.Equal(core.TAny) && a.Parent != nil &&
+		case core.IsDynamic(&a) && pt != nil && !pt.Equal(core.TAny) && a.Parent != nil &&
 			!a.Parent.ConformsTo(pt):
 			// A gradual arg whose bound is NOT already within the declared
 			// (concrete) param type: re-bind the body's view of the param to a
@@ -273,9 +273,9 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 				out = append([]core.Value(nil), args...)
 			}
 			nc := core.NewCarrier(pt)
-			nc.Dynamic = true
+			core.SetDynamic(&nc, true)
 			out[i] = nc
-		case !a.Dynamic && a.Carrier && core.IsDisjunct(&a) && pt != nil && !pt.Equal(core.TAny):
+		case !core.IsDynamic(&a) && a.Carrier && core.IsDisjunct(&a) && pt != nil && !pt.Equal(core.TAny):
 			// A strict DISJUNCT carrier — the checker's ∀-abstraction of an
 			// unresolved overload's returns — narrows to the declared param
 			// type by the same contract as the armed-compile genArgs twin:
@@ -288,7 +288,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 				out = append([]core.Value(nil), args...)
 			}
 			out[i] = core.NewCarrier(pt)
-		case !a.Dynamic && pt != nil && pt.Equal(core.TAny) && a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(&a):
+		case !core.IsDynamic(&a) && pt != nil && pt.Equal(core.TAny) && a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(&a):
 			// A STRICT Any arg bound to a declared-`Any` param. The param is
 			// gradual by declaration (ParamInputCarrier gives dynamic Any), so a
 			// body word over it must match optimistically — a strict Any conforms
@@ -301,7 +301,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 				out = append([]core.Value(nil), args...)
 			}
 			nc := core.NewCarrier(core.TAny)
-			nc.Dynamic = true
+			core.SetDynamic(&nc, true)
 			out[i] = nc
 		}
 	}
@@ -328,7 +328,7 @@ func stackHasFnValue(stk []core.Value) bool {
 // the runtime count.
 func stackHasDynamic(stk []core.Value) bool {
 	for _, v := range stk {
-		if v.Dynamic {
+		if core.IsDynamic(&v) {
 			return true
 		}
 	}
@@ -346,7 +346,7 @@ func stackHasDynamic(stk []core.Value) bool {
 // stackHasDynamic), so only the approximation phantom lands here.
 func stackHasApproxAny(stk []core.Value) bool {
 	for _, v := range stk {
-		if v.Carrier && !v.Dynamic && v.Parent != nil && v.Parent.Equal(core.TAny) {
+		if v.Carrier && !core.IsDynamic(&v) && v.Parent != nil && v.Parent.Equal(core.TAny) {
 			return true
 		}
 	}

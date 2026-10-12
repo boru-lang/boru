@@ -2680,7 +2680,7 @@ func NewEmitState() *EmitState {
 // boundary's territory: its stack layout is the apply's contract).
 func residualForceOrder(ops []EmitOperand, vals []core.Value, data func(core.Value) bool) map[int]bool {
 	for _, v := range vals {
-		if (v.Dynamic || core.IsFnValueResidual(v)) && (data == nil || !data(v)) {
+		if (core.IsDynamic(&v) || core.IsFnValueResidual(v)) && (data == nil || !data(v)) {
 			return nil
 		}
 	}
@@ -4005,7 +4005,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// typed-list/typed-map bound ([:Any]) that trips IsTypeBody, but
 		// its ID-matched event genuinely produced it (the identity-
 		// preserving rebind in narrowDynamicUses).
-		if !core.IsTypeBody(&v) || v.Dynamic || es.eventInfo[pr.seq].typeOut {
+		if !core.IsTypeBody(&v) || core.IsDynamic(&v) || es.eventInfo[pr.seq].typeOut {
 			// An ENCLOSING-scope binding read (a module-scope `flex`, a computed
 			// module `def`) carries a producedBy event from the PARENT/module
 			// frame — unreachable from this fn unit's sim stack. Route it to a
@@ -4401,7 +4401,7 @@ func fnValueInputs(params []core.FnParam) (inputs []core.Value, names []string) 
 }
 
 func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOperand, bool) {
-	if es == nil || es.reg == nil || v.Carrier || v.Dynamic || v.Quoted {
+	if es == nil || es.reg == nil || v.Carrier || core.IsDynamic(&v) || core.IsQuoted(&v) {
 		// A QUOTED fn value is DATA the interpreter keeps unapplied; lowering
 		// it to an opClosure drops the Quoted flag, so the VM would
 		// auto-apply it (`[quote (fn …)]` returned then applied — PR #279
@@ -5389,7 +5389,7 @@ func (es *EmitState) CanSeatAcrossFragment(v core.Value) bool {
 // original, recursively. ok=false when any member's original is
 // unknown.
 func (es *EmitState) Materialise(v core.Value) (core.Value, bool) {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier || core.IsDynamic(&v) {
 		orig, ok := es.origByID[v.ID]
 		if !ok {
 			return v, false
@@ -8311,7 +8311,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// whole body on the interpreter (the interp-entry census's
 			// placed-in-body rows, 2026-09-23).
 			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag, u, len(args)) &&
-				!(rec.plainLambda() && len(bodyStk) == 1 && (bodyStk[0].Quoted || rec.valReads[bodyStk[0].ID] > 0)) {
+				!(rec.plainLambda() && len(bodyStk) == 1 && (core.IsQuoted(&bodyStk[0]) || rec.valReads[bodyStk[0].ID] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
 			}
@@ -8864,7 +8864,7 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 	sigArgs := make([]core.Value, len(args))
 	for i := range args {
 		a := args[len(args)-1-i]
-		if a.Dynamic {
+		if core.IsDynamic(&a) {
 			return false
 		}
 		sigArgs[i] = a
@@ -9000,7 +9000,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	// word substitution, mirroring the interpreter) applies. The VM op
 	// strips the STORED value's construction-time quote to mirror the read
 	// (callDynTrailTop), so an inline-quote must never record the apply.
-	if fn.Quoted && applyIdx < 0 {
+	if core.IsQuoted(&fn) && applyIdx < 0 {
 		return 0, false
 	}
 	// A lead a later dispatch collected past (NUR121): its argument is that
@@ -9175,7 +9175,7 @@ func (es *EmitState) RecordDynApplyName(name string, args []core.Value, fn, out 
 	if len(args) == 0 {
 		return false
 	}
-	if !core.IsFnValueResidual(fn) || fn.Quoted {
+	if !core.IsFnValueResidual(fn) || core.IsQuoted(&fn) {
 		return false
 	}
 	if !fnConcreteSingleValuedOrCarrier(fn) {
@@ -9347,7 +9347,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 	// (CheckState.ReachSurvivorFnIDs — `m.f` over `{f: g/v}`), both the
 	// interpreter's re-step at the iteration's end.
 	loopHazards := []func(core.Value) string{loopNamedFnHazard, func(v core.Value) string {
-		if v.Dynamic && v.ID != "" && es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] {
+		if core.IsDynamic(&v) && v.ID != "" && es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] {
 			return "is a reach group's survivor the interpreter re-steps per iteration (NUR129)"
 		}
 		return ""
@@ -9562,7 +9562,7 @@ func (es *EmitState) setLoopBodyApply(body *EmitFragment, bodyStk []core.Value) 
 	}
 	applyArgs := make([]EmitOperand, 0, len(bodyStk)-1)
 	for _, a := range bodyStk[1:] {
-		if a.Dynamic || core.IsFnValueResidual(a) {
+		if core.IsDynamic(&a) || core.IsFnValueResidual(a) {
 			return false
 		}
 		op, okArg := es.resolveOperand(a)
@@ -9657,7 +9657,7 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 	if es == nil || es.suspended > 0 || !es.Active() {
 		return
 	}
-	if v.Carrier || v.Dynamic || v.ID == "" {
+	if v.Carrier || core.IsDynamic(&v) || v.ID == "" {
 		return
 	}
 	es.origByID[v.ID] = v
@@ -10097,7 +10097,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		// would raise a no-match the interpreter never does. The poly seat
 		// declines the same operand (polyCallDeclineReason, NUR184); the
 		// rematch declines it too, and the caller's failure stands.
-		if core.IsFnTypedCarrier(&v) && !v.Quoted && es.parenReSteppedFn(v) && !es.applyPending(v.ID) {
+		if core.IsFnTypedCarrier(&v) && !core.IsQuoted(&v) && es.parenReSteppedFn(v) && !es.applyPending(v.ID) {
 			return false
 		}
 		// A READ-substituted fn-carrier window value (Stage 1's fn-carrier
@@ -10473,7 +10473,7 @@ func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
 	for i := 0; i+1 < len(residual); i++ {
 		v := residual[i]
 		pr, ok := es.producedBy[v.ID]
-		if !ok || !es.eventInfo[pr.seq].dynBodyResult || !(v.Dynamic || core.IsFnValueResidual(v)) {
+		if !ok || !es.eventInfo[pr.seq].dynBodyResult || !(core.IsDynamic(&v) || core.IsFnValueResidual(v)) {
 			continue
 		}
 		if nx, ok := es.producedBy[residual[i+1].ID]; ok && nx.seq == pr.seq {
@@ -10522,7 +10522,7 @@ func (es *EmitState) regionSettledOp(residual []core.Value) (Opcode, bool) {
 // would re-step.
 func regionValsMayBeCallable(vals []core.Value) bool {
 	for _, v := range vals {
-		if v.Dynamic || core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
+		if core.IsDynamic(&v) || core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
 			return true
 		}
 	}
@@ -10763,7 +10763,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 // lead — a Dynamic carrier that is neither concrete nor fn-typed (NUR269's
 // exemption from the registered-output elision above).
 func loneGradualApplyLead(word string, args []core.Value) bool {
-	return word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(&args[0]) && !core.IsFnTypedCarrier(&args[0])
+	return word == "apply" && len(args) == 1 && core.IsDynamic(&args[0]) && !core.IsConcrete(&args[0]) && !core.IsFnTypedCarrier(&args[0])
 }
 
 // recordCallCompileFailure classifies a dispatch the recorder cannot lower as a generic
@@ -11043,7 +11043,7 @@ func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) boo
 // run holds the fn value itself, which a word re-steps with its results like
 // any fn value — `m.f/v dup` is `7 7` interpreted (NUR318).
 func quotedFnCarrier(a core.Value) bool {
-	return a.Quoted && a.Carrier && (core.IsFnTypedCarrier(&a) || (a.Dynamic && core.SigTypeMatches(&a, core.TFunction)))
+	return core.IsQuoted(&a) && a.Carrier && (core.IsFnTypedCarrier(&a) || (core.IsDynamic(&a) && core.SigTypeMatches(&a, core.TFunction)))
 }
 
 // RecordCallOperands resolves a lowerable native dispatch's operands. It declines
@@ -11108,11 +11108,11 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// frame's tail markers and this very word are its candidates — so
 		// `[M.inc typeof]` answers nothing there where a record would hand
 		// typeof the fn (NUR186).
-		if (inertFn || sig.FnInertArgs[i]) && !a.FailedDispatch {
+		if (inertFn || sig.FnInertArgs[i]) && !core.IsFailedDispatch(&a) {
 			continue
 		}
 		reason := "function value reaches " + word + " (Stage 3)"
-		if a.FailedDispatch {
+		if core.IsFailedDispatch(&a) {
 			reason = "a named fn value the frame's re-step matched nothing for reaches " + word + ": the interpreter raises uncalled_function inside the body (NUR186)"
 		}
 		es.SiteCounts[SiteMeta]++
@@ -11363,13 +11363,13 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		return "fn value read from a container auto-dispatches (Stage 3)"
 	}
 	for _, a := range args {
-		if core.IsFnTypedCarrier(&a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
+		if core.IsFnTypedCarrier(&a) && !core.IsQuoted(&a) && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
 			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
 		}
 		// Dispatch WRECKAGE: a named fn value the check pass re-stepped and
 		// matched nothing for inside a fn body, where the interpreter raises
 		// (NUR186, the frame's tail markers as candidates).
-		if a.FailedDispatch {
+		if core.IsFailedDispatch(&a) {
 			return "a dispatch collected a named fn value the frame's re-step matched nothing for: the interpreter raises uncalled_function inside the body (NUR186)"
 		}
 		// A container MEMBER's fn value written BEFORE the word (`m.f typeof`,
@@ -11383,7 +11383,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		// compare-restrict.tsv): the park rule leaves it as data where it
 		// sits, and the word takes it exactly as the poly's window does
 		// (NUR188).
-		if _, member := es.MemberFnReadValue(a.ID); member && !a.Quoted && !es.applyPending(a.ID) && !es.placedValRead(a.ID) && !es.placedNotReStepped(a) {
+		if _, member := es.MemberFnReadValue(a.ID); member && !core.IsQuoted(&a) && !es.applyPending(a.ID) && !es.placedValRead(a.ID) && !es.placedNotReStepped(a) {
 			if rp := es.residualPos(a); rp.Row != 0 && pos.Row != 0 && srcPosBefore(rp, pos) {
 				return "a dispatch collected a container member's fn value the interpreter re-steps first (NUR188)"
 			}
@@ -11396,7 +11396,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		// so the window's overload and width are the wrong dispatch's (`7 if
 		// true one/v [2] add 1` recorded a three-operand window and raised an
 		// internal error where the interpreter answers [7 2]) (NUR159).
-		if es.MayBeFn(a.ID) && !a.Quoted && !es.applyPending(a.ID) {
+		if es.MayBeFn(a.ID) && !core.IsQuoted(&a) && !es.applyPending(a.ID) {
 			return "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 		}
 	}
@@ -13335,7 +13335,7 @@ func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
 	}
 	n := es.reStepNotes[pr.seq]
 	n.resume = resume
-	n.strict = n.strict || (core.IsFnTypedCarrier(&v) && !v.Dynamic)
+	n.strict = n.strict || (core.IsFnTypedCarrier(&v) && !core.IsDynamic(&v))
 	es.reStepNotes[pr.seq] = n
 }
 
@@ -13540,7 +13540,7 @@ func pendingApplyTail(rec *fnUnitRec, pend []pendingApply, bodyStk []core.Value,
 // member), and the merge must land it as it lands a named fn arm (NUR159);
 // read as data it compiled to `fn one` (NUR280's container twin).
 func branchArmMayBeFn(v core.Value) bool {
-	return core.IsFnValueResidual(v) || (v.Dynamic && !v.Quoted && core.SigTypeMatches(&v, core.TFunction))
+	return core.IsFnValueResidual(v) || (core.IsDynamic(&v) && !core.IsQuoted(&v) && core.SigTypeMatches(&v, core.TFunction))
 }
 
 // fnValueMayTakeArgs reports whether a fn VALUE in a branch arm may take
@@ -13616,7 +13616,7 @@ func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 // or a branch result an arm of which leaves a fn (armLeavesFn). The pass
 // reads such a carrier as data wherever its type does not say Function.
 func (es *EmitState) gradualHoldsFn(v core.Value) bool {
-	if v.ID == "" || !v.Carrier || v.Quoted || core.IsFnTypedCarrier(&v) {
+	if v.ID == "" || !v.Carrier || core.IsQuoted(&v) || core.IsFnTypedCarrier(&v) {
 		return false
 	}
 	if _, fn := es.producerReturnedClosureArity(v.ID); fn {
@@ -13835,7 +13835,7 @@ func (es *EmitState) claimedShape(id string) (core.FnShape, bool) {
 // reaches (unionLeadReStepped): `def r (if c [g/v] [0]) 3 r 5` is `3 7 5`,
 // the read's dispatch firing g between its neighbours (NUR319).
 func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
-	if es == nil || v.ID == "" || v.Quoted {
+	if es == nil || v.ID == "" || core.IsQuoted(&v) {
 		return false
 	}
 	pr, ok := es.producedBy[v.ID]
@@ -13860,10 +13860,10 @@ func (es *EmitState) fnLikeResidual(v core.Value) bool {
 	// arm may apply it: the verbatim island re-stepped the fn live, and
 	// `3 m.f/v 2` / `3 4 c.op/v` answered [3 3] / [3 5] compiled for the
 	// interpreter's [3 fn 2] / [3 4 fn] (NUR278).
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		return false
 	}
-	return v.Dynamic || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(&v) || es.mayBeFnUnsettled(v)
+	return core.IsDynamic(&v) || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(&v) || es.mayBeFnUnsettled(v)
 }
 
 // PendingClosureApply is the recorder seam the check pass's user-fn record
@@ -13920,7 +13920,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 		return false
 	}
 	lead := args[0]
-	if core.IsConcrete(&lead) || !lead.Dynamic || lead.ID == "" {
+	if core.IsConcrete(&lead) || !core.IsDynamic(&lead) || lead.ID == "" {
 		return false
 	}
 	// A lead the interpreter RE-STEPS where it stands — a container read the
@@ -14566,7 +14566,7 @@ func (es *EmitState) fnOpContract(op EmitOperand) (fnOpContract, bool) {
 		// A QUOTED lambda const (`quote (fn …)` returned) stays inert on
 		// the interpreter's re-step — `((mk) 2)` is `[fn 2]` — and the
 		// recorded event's op would leave the trailing residual `[2 fn]`.
-		if es.consts[op.idx].Quoted {
+		if core.IsQuoted(&es.consts[op.idx]) {
 			return fnOpContract{}, false
 		}
 		fd := es.consts[op.idx].Data.(*core.FnDefInfo)
@@ -14679,7 +14679,7 @@ func (es *EmitState) noteClosureShapeBind(v core.Value) {
 // signature of plain typed params.
 func memberLambdaShape(m core.Value) (core.FnShape, bool) {
 	fd, ok := core.FnDefOf(m.Data)
-	if !ok || m.Quoted || fd.Macro || len(fd.Captured) != 0 {
+	if !ok || core.IsQuoted(&m) || fd.Macro || len(fd.Captured) != 0 {
 		return core.FnShape{}, false
 	}
 	params, ok := lambdaOwnParams(*fd)
@@ -14700,7 +14700,7 @@ func memberLambdaShape(m core.Value) (core.FnShape, bool) {
 // (a strict or dynamic Any, a union reaching Function) — the carrier a user
 // fn's declared `Any` return mints over the closure its unit returns.
 func gradualFnCarrier(v core.Value) bool {
-	return v.Carrier && !v.Quoted && core.SigTypeMatches(&v, core.TFunction)
+	return v.Carrier && !core.IsQuoted(&v) && core.SigTypeMatches(&v, core.TFunction)
 }
 
 // appendResidualSeqs collects the producing-event seqs a residual's
@@ -15801,7 +15801,7 @@ func (es *EmitState) DynInputsProven(sig *core.Signature, args []core.Value) boo
 		return false
 	}
 	for i, a := range args {
-		if !a.Dynamic {
+		if !core.IsDynamic(&a) {
 			continue
 		}
 		// A widened gradual-Any operand: Parent conforms to nothing concrete,
@@ -15845,7 +15845,7 @@ func InterpBodyInert(v core.Value) bool {
 // isInertConstMember so leaf soundness (mutable-instance exclusion, canonical
 // type pointers) stays single-sourced.
 func InterpMemberInert(v core.Value) bool {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier || core.IsDynamic(&v) {
 		return false
 	}
 	if core.IsInterpString(&v) {
@@ -16127,7 +16127,7 @@ func isTypeBodyPayload(v core.Value) bool {
 // Consumed by the resolveOperand fn-unit marking (freshenConst) and the
 // enclosing-binding snapshot (snapshotCompoundBindingIDs).
 func freshenableConst(v core.Value) bool {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier || core.IsDynamic(&v) {
 		return false
 	}
 	switch v.Data.(type) {
@@ -16146,7 +16146,7 @@ func freshenableConst(v core.Value) bool {
 // is one function however often it is read.
 func freshFnLiteral(v core.Value) bool {
 	fd, ok := core.FnDefOf(v.Data)
-	return ok && !v.Carrier && !v.Dynamic && fd.Name == "" && len(fd.Captured) == 0
+	return ok && !v.Carrier && !core.IsDynamic(&v) && fd.Name == "" && len(fd.Captured) == 0
 }
 
 // planMarkWindow arms the mark-window island (L-DO part 2b) when the
@@ -16790,7 +16790,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// drop), as the run-time peek quotes the concrete value — `m.f/v 5` is
 	// `fn (Integer) 5` on the interpreter, and applied here it was 6
 	// (NUR277).
-	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !residual[0].Quoted && !es.methodShapeAnnotated(residual[0].ID) && !es.siblingCallOutputs(residual) &&
+	if !leadCrossed && len(residual) >= 2 && core.IsDynamic(&residual[0]) && !core.IsQuoted(&residual[0]) && !es.methodShapeAnnotated(residual[0].ID) && !es.siblingCallOutputs(residual) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
 	}
@@ -16830,7 +16830,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// carrier the pass holds, where the run-time peek quotes the concrete fn
 	// — `fn (Integer) 5` interpreted, and this arm applied it to 6 (NUR278).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(&residual[0]) &&
-		!residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
+		!core.IsQuoted(&residual[0]) && !es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
 		!es.forwardLeftoverFn(residual[0]) {
 		applyDynamic = !anyFnOrDynamicTail(residual)
 		// When the carrier's closure arity is statically recoverable (its
@@ -16883,7 +16883,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// the interpreter, and applied here it was `[5]` (NUR208).
 	// A union lead a re-step reaches is a conditional apply the same way
 	// (unionLeadReStepped, NUR317).
-	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) {
+	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !core.IsQuoted(&residual[0]) && !es.leadPlacedNotRead(residual[0]) {
 		if pr, ok := es.producedBy[residual[0].ID]; ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
@@ -16983,7 +16983,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		// A QUOTED dynamic value is data beside its neighbours (the `/v`
 		// marker's intent, recorded on the value by the standalone-marker
 		// drop; NUR277) — no boundary to decline on.
-		if residual[i].Dynamic && !residual[i].Quoted &&
+		if core.IsDynamic(&residual[i]) && !core.IsQuoted(&residual[i]) &&
 			core.SigTypeMatches(&residual[i], core.TFunction) {
 			if es.markWindowSeq != 0 {
 				return residual, OpCallDynMixedFromMark, ""
@@ -17026,7 +17026,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			// exactly as the interpreter's re-step leaves a quoted value —
 			// the paren park never asks for a quoted value, so no placement
 			// record exists to consult (`(f MathUtil.sqrt/v) 16.0`).
-			if residual[i].Quoted {
+			if core.IsQuoted(&residual[i]) {
 				continue
 			}
 			// A parked call result passes this RENDER gate only when the
@@ -17084,7 +17084,7 @@ func (lw *lowerer) claimParked(v core.Value) bool {
 // anyDynamicTail reports whether any residual entry after the first is dynamic.
 func anyDynamicTail(residual []core.Value) bool {
 	for i := 1; i < len(residual); i++ {
-		if residual[i].Dynamic {
+		if core.IsDynamic(&residual[i]) {
 			return true
 		}
 	}
@@ -17097,7 +17097,7 @@ func anyDynamicTail(residual []core.Value) bool {
 // detectors below — its runtime inhabitant is a function (IsFnTypedCarrier).
 func anyFnOrDynamicTail(residual []core.Value) bool {
 	for i := 1; i < len(residual); i++ {
-		if residual[i].Dynamic || core.IsFnValueResidual(residual[i]) ||
+		if core.IsDynamic(&residual[i]) || core.IsFnValueResidual(residual[i]) ||
 			core.IsFnTypedCarrier(&residual[i]) {
 			return true
 		}
@@ -17165,7 +17165,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	}
 	fnv := residual[1]
 	pr, isEvent := es.producedBy[fnv.ID]
-	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun ||
+	if !isEvent || pr.idx != 0 || core.IsQuoted(&fnv) || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun ||
 		es.runOperand(EmitOperand{kind: opEvent, idx: pr.seq}, es.frames[0], 0) {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
 		// which the pass records on the value; NUR277). A dyn-body RUN is
@@ -17180,7 +17180,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		return residual, false
 	}
 	arg := residual[0]
-	if _, argIsEvent := es.producedBy[arg.ID]; argIsEvent || arg.Dynamic ||
+	if _, argIsEvent := es.producedBy[arg.ID]; argIsEvent || core.IsDynamic(&arg) ||
 		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(&arg) {
 		return residual, false
 	}
@@ -17719,7 +17719,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	var forceOrder map[int]bool
 	residualHasFnOrDynamic := false
 	for _, rv := range residual {
-		if (rv.Dynamic || core.IsFnValueResidual(rv) || es.mayBeFnUnsettled(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
+		if (core.IsDynamic(&rv) || core.IsFnValueResidual(rv) || es.mayBeFnUnsettled(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
 			residualHasFnOrDynamic = true
 			break
 		}
@@ -18630,7 +18630,7 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		// (NUR277) or read through `/v` (placedValRead): `def f fn [[][Any]
 		// [g/v 5]]` is the count error over `[fn g 5]`, where the replay
 		// fired g first and listed `[7 5]` (NUR318).
-		if es.placedNotReStepped(v) || v.Quoted || es.placedValRead(v.ID) {
+		if es.placedNotReStepped(v) || core.IsQuoted(&v) || es.placedValRead(v.ID) {
 			continue
 		}
 		// A bare read seated live pushes data or defers (liveDataIDs): its
@@ -18640,7 +18640,7 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		if es.liveDataIDs[v.ID] {
 			continue
 		}
-		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
+		if core.IsDynamic(&v) || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
 			// The replay re-steps the window as a flat run of VALUES, so a
 			// statement boundary between the lead and a later entry is lost:
 			// `[M.inc ; 5]` re-stepped `fn 5` to 6 where the interpreter's
@@ -18762,7 +18762,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	if es.placedValRead(top.ID) {
 		return
 	}
-	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(&top)) {
+	if !es.MemberFnRead(top.ID) || !(core.IsDynamic(&top) || core.IsFnTypedCarrier(&top)) {
 		return
 	}
 	// A DEF-READ of the tagged member (`def f tbl.inc end each [f] xs`,
@@ -18982,7 +18982,7 @@ func (es *EmitState) ArmTailApply(stk []core.Value) []core.Value {
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	if _, ok := es.RecordDynApply(stk[:len(stk)-1], top, out, core.SrcPos{}); !ok {
 		return stk
 	}
@@ -19023,7 +19023,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
 	if pr, ok := es.producedBy[v.ID]; ok {
 		b.pr = pr
-	} else if fd, isFn := v.Data.(*core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !v.Quoted {
+	} else if fd, isFn := v.Data.(*core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !core.IsQuoted(&v) {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
 		// increment): no event, no const — its `/v` read builds the closure
 		// at the read site, so remember the literal and its captures'
@@ -19247,7 +19247,7 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 // arguments, neither quoted, `/v`-read nor paren-placed.
 func (es *EmitState) namedFnUnmatchedAtTail(v core.Value) bool {
 	fd, ok := core.FnDefOf(v.Data)
-	if !ok || v.Quoted || !fd.NamedDef() || fd.Macro || len(fd.OwnSigs()) == 0 {
+	if !ok || core.IsQuoted(&v) || !fd.NamedDef() || fd.Macro || len(fd.OwnSigs()) == 0 {
 		return false
 	}
 	if core.MatchFnSig(v, nil) != nil {
@@ -20590,7 +20590,7 @@ func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, e
 // its constant, a slot's value from the slot (src). The reads' positions
 // order them among the frame region's entries.
 func (es *EmitState) seatReads(rec *fnUnitRec, d *deoptPoint, id string, src RestartSrc) bool {
-	ok := src.Kind != RestartConst || (!src.Val.Carrier && !src.Val.Dynamic && core.DeepConcrete(src.Val))
+	ok := src.Kind != RestartConst || (!src.Val.Carrier && !core.IsDynamic(&src.Val) && core.DeepConcrete(src.Val))
 	for _, q := range rec.localReads[id] {
 		if ok && posAfter(d.start, q) {
 			es.noteSeatLit(rec, d, src, q)
@@ -20619,7 +20619,7 @@ func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, co
 			toks = append(toks, q)
 		}
 	}
-	if len(toks) == 0 || c.Carrier || c.Dynamic || !core.DeepConcrete(c) || consumedBefore(func(op EmitOperand) bool {
+	if len(toks) == 0 || c.Carrier || core.IsDynamic(&c) || !core.DeepConcrete(c) || consumedBefore(func(op EmitOperand) bool {
 		return op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) && core.CanonValue(es.consts[op.idx]) == canon
 	}, sameCanon, -1) > 0 {
 		return false
@@ -20796,7 +20796,7 @@ func seatDynFrameWords(cf *CompiledFn, pc int, words []DynFrameWord) {
 // fn-admitting carrier, no Function-expecting forward pending) on this
 // unit; a `/v` value with a pending `apply` is the apply word's own.
 func (es *EmitState) wordReadName(rec *fnUnitRec, v core.Value) string {
-	if es == nil || rec == nil || v.ID == "" || v.Quoted || es.applyPending(v.ID) {
+	if es == nil || rec == nil || v.ID == "" || core.IsQuoted(&v) || es.applyPending(v.ID) {
 		return ""
 	}
 	// A binding read both bare and by `/v` shares one value ID across two
@@ -20990,7 +20990,7 @@ func replayValueApplicables(window []core.Value, names []DynFrameWord) int {
 		if i < len(names) && names[i].Name != "" {
 			continue
 		}
-		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
+		if core.IsDynamic(&v) || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
 			n++
 		}
 	}
@@ -21018,7 +21018,7 @@ func replayLeadApplicables(window []core.Value, names []DynFrameWord) int {
 		switch {
 		case v.Parent != nil && v.Parent.ConformsTo(core.TFunction):
 			fnTyped++
-		case !v.Dynamic:
+		case !core.IsDynamic(&v):
 		case i < len(names) && names[i].Name != "":
 			gradualReads++
 		default:
@@ -21184,11 +21184,11 @@ func dynFrameWindow(u *emitUnit, rec *fnUnitRec, vals []core.Value) (int, bool) 
 // (`if c [(mk 1)]`), so only a LEAD over >=2 survivors — the shape the rewind
 // re-steps — is unmodelled here.
 func residualLeadReStepped(stk []core.Value) bool {
-	if len(stk) < 2 || stk[0].Quoted {
+	if len(stk) < 2 || core.IsQuoted(&stk[0]) {
 		return false
 	}
 	return core.IsFnTypedCarrier(&stk[0]) ||
-		(stk[0].Dynamic && core.SigTypeMatches(&stk[0], core.TFunction))
+		(core.IsDynamic(&stk[0]) && core.SigTypeMatches(&stk[0], core.TFunction))
 }
 
 // closureResidualHasUnappliedFn reports whether a closure body's residual
@@ -21229,7 +21229,7 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 				continue
 			}
 		}
-		dynMaybeFn := v.Dynamic && core.SigTypeMatches(&v, core.TFunction) && i+1 < len(bodyStk)
+		dynMaybeFn := core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction) && i+1 < len(bodyStk)
 		if core.IsFnTypedCarrier(&v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
 			return true
 		}
@@ -21291,7 +21291,7 @@ func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
 // `/v` read and a quoted value are data, and a value the recorder cannot
 // name is not a read.
 func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
-	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(&v) || es.placedValRead(v.ID) {
+	if core.IsQuoted(&v) || v.ID == "" || !core.IsFnTypedCarrier(&v) || es.placedValRead(v.ID) {
 		return 0, ""
 	}
 	name, read := es.DefReadName(v.ID)
@@ -21562,7 +21562,7 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 		// parks it (NUR313) until a re-step undoes the placement
 		// (branchPlacedHere, NUR317) — a question only for a value that may
 		// be a fn; data sits where it lands either way.
-		if !es.branchPlacedBy(v, ev.br) || !(core.IsFnTypedCarrier(&v) || (v.Dynamic && core.SigTypeMatches(&v, core.TFunction)) || core.IsFnValueResidual(v) || core.UnionMayBeFn(v)) {
+		if !es.branchPlacedBy(v, ev.br) || !(core.IsFnTypedCarrier(&v) || (core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) || core.IsFnValueResidual(v) || core.UnionMayBeFn(v)) {
 			return false
 		}
 	case evCall:

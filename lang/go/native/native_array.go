@@ -1820,9 +1820,9 @@ func foldAccCarrier(init Value) Value {
 	// optimistically rather than fail no_signature against a strict Any. Without
 	// this, `(do {n:0}) … [acc … get] fold` typed the accumulator strict Any and
 	// every `acc … get`/`add` in the body errored (radix's common-prefix-len).
-	if init.Dynamic {
+	if IsDynamic(&init) {
 		out.Carrier = true
-		out.Dynamic = true
+		SetDynamic(&out, true)
 	}
 	return out
 }

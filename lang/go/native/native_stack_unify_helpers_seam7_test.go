@@ -58,7 +58,7 @@ func TestSeam7ListEdgeElemReturns(t *testing.T) {
 	}
 	// Undefined edge element → fallback.
 	u := NewInteger(1)
-	u.Undefined = true
+	SetUndefined(&u, true)
 	if got := popNarrow([]Value{NewList([]Value{u})}, r); !got[1].Parent.ConformsTo(TAny) {
 		t.Fatalf("pop narrow undefined fallback: %v", got)
 	}
@@ -68,8 +68,8 @@ func TestSeam7ListEdgeElemReturns(t *testing.T) {
 	}
 	// Dynamic (but typed) edge element propagates its gradual claim.
 	got := popNarrow([]Value{NewList([]Value{NewDynamicCarrier(TInteger)})}, r)
-	if !got[1].Parent.ConformsTo(TInteger) || !got[1].Dynamic {
-		t.Fatalf("pop narrow dynamic element: %v dyn=%v", got[1].Parent, got[1].Dynamic)
+	if !got[1].Parent.ConformsTo(TInteger) || !IsDynamic(&got[1]) {
+		t.Fatalf("pop narrow dynamic element: %v dyn=%v", got[1].Parent, IsDynamic(&got[1]))
 	}
 	// Concrete edge element narrows to its type.
 	if got := popNarrow([]Value{NewList([]Value{NewInteger(9)})}, r); !got[1].Parent.ConformsTo(TInteger) {
@@ -151,8 +151,8 @@ func TestSeam7UnifyFoldReturns(t *testing.T) {
 		t.Fatalf("unifyFoldReturns disjunct: %v", dout)
 	}
 	// The folded result is a dynamic carrier (type-as-value ridden dynamic).
-	if !dout[0].Dynamic {
-		t.Fatalf("expected disjunct result ridden dynamic, got %v dyn=%v", dout[0].Parent, dout[0].Dynamic)
+	if !IsDynamic(&dout[0]) {
+		t.Fatalf("expected disjunct result ridden dynamic, got %v dyn=%v", dout[0].Parent, IsDynamic(&dout[0]))
 	}
 }
 

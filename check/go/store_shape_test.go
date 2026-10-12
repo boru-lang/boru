@@ -158,12 +158,12 @@ func TestShapeFieldRead(t *testing.T) {
 	// chained reads narrow too.
 	shaped := core.NewStoreShapeCarrier(core.TFlexMap, 0)
 	got := ShapeFieldRead(shaped)
-	if !got.Dynamic {
+	if !core.IsDynamic(&got) {
 		t.Error("a shaped field read must stay dynamic")
 	}
 	// A disjunct keeps its payload, dynamically.
 	dis := core.NewDisjunct([]core.Value{core.NewCarrier(core.TInteger), core.NewCarrier(core.TString)})
-	if got := ShapeFieldRead(dis); !got.Dynamic {
+	if got := ShapeFieldRead(dis); !core.IsDynamic(&got) {
 		t.Error("a disjunct field read must stay dynamic")
 	}
 	// A function-typed value keeps the dynamic(Any) hatch.
@@ -172,13 +172,13 @@ func TestShapeFieldRead(t *testing.T) {
 		Impl:    core.Boru([]core.Value{core.NewInteger(1)}),
 	}}}
 	got = ShapeFieldRead(core.NewFunction(fnDef))
-	if !got.Dynamic || !got.Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&got) || !got.Parent.Equal(core.TAny) {
 		t.Errorf("a dispatch-bearing field must read dynamic(Any), got %s", got.Parent.Leaf())
 	}
 	// An ordinary value reads back as a dynamic carrier of its type — a
 	// bound a guard discharges, never a strict commitment.
 	got = ShapeFieldRead(core.NewInteger(5))
-	if !got.Dynamic || !got.Parent.ConformsTo(core.TInteger) {
+	if !core.IsDynamic(&got) || !got.Parent.ConformsTo(core.TInteger) {
 		t.Errorf("an integer field must read dynamic(Integer), got %s", got.Parent.Leaf())
 	}
 }

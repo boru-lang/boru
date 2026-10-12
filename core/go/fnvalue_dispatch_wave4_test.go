@@ -179,7 +179,7 @@ func TestQuotedFnValueIsData(t *testing.T) {
 		nil,
 		parenBody(NewWord("a")),
 	)
-	fnv.Quoted = true
+	SetQuoted(&fnv, true)
 	out, err := NewTop(r).Run([]Value{fnv, NewInteger(5)})
 	if err != nil {
 		t.Fatalf("quoted fn: %v", err)
@@ -206,8 +206,8 @@ func TestFnValueDispatchModLeavesInert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch mod: %v", err)
 	}
-	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || out[0].Quoted {
-		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && out[0].Quoted)
+	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || IsQuoted(&out[0]) {
+		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && IsQuoted(&out[0]))
 	}
 }
 

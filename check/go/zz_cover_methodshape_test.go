@@ -211,7 +211,7 @@ func TestZZMSPlainCheckCollapseValueMethod(t *testing.T) {
 		t.Fatalf("collapse must splice [carrier, arg] to one value, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Dynamic || !out.Carrier || !out.Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out) || !out.Carrier || !out.Parent.Equal(core.TAny) {
 		t.Errorf("the collapse result must be dynamic(Any), got %v", out)
 	}
 	if !core.IsEnd(e.Tape.Ref(1)) {
@@ -571,7 +571,7 @@ func TestZZMSDynamicFnValueDispatch(t *testing.T) {
 		t.Fatalf("the collapse must consume the whole window, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Dynamic || !out.Carrier || !out.Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out) || !out.Carrier || !out.Parent.Equal(core.TAny) {
 		t.Errorf("the collapse result must be dynamic(Any), got %v", out)
 	}
 
@@ -654,7 +654,7 @@ func TestZZMSMemberFnArrivalDispatchSuccess(t *testing.T) {
 		t.Fatalf("the splice must claim the ARITY window only, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || out.Dynamic || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier || core.IsDynamic(&out) || !out.Parent.Equal(core.TInteger) {
 		t.Errorf("the modelled out must be the declared Integer carrier, got %v", out)
 	}
 	if !core.IsWord(e.Tape.Ref(1)) {

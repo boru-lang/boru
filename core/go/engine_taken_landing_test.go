@@ -71,7 +71,7 @@ func TestNoteCollectedLandings(t *testing.T) {
 	stoodAside(e)
 	e.noteCollectionHazards(nil, []int{0, 1})
 	quoted := NewDynamicCarrier(TAny)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	stoodAside(e, quoted)
 	e.Tape = NewTape([]Value{quoted, seven, add}, StackHeadroom)
 	e.noteCollectionHazards(nil, []int{0, 1})

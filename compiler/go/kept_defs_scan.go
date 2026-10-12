@@ -96,7 +96,7 @@ func (sc *keptDefsScan) value(v core.Value) bool {
 		// A computed binding: its run-time value is unknown, and one that
 		// may hold code (a list, a map, a fn, or anything) may be run.
 		t := v.Parent
-		return !(v.Dynamic || t == nil || t.ConformsTo(core.TList) || t.ConformsTo(core.TMap) ||
+		return !(core.IsDynamic(&v) || t == nil || t.ConformsTo(core.TList) || t.ConformsTo(core.TMap) ||
 			t.ConformsTo(core.TFunction) || core.TList.ConformsTo(t))
 	}
 	switch d := v.Data.(type) {

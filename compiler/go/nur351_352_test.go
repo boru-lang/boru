@@ -247,11 +247,12 @@ func TestPendingOperandRules(t *testing.T) {
 // pendingListAt finds the pending list literal written at p, at any depth.
 func TestPendingListAt(t *testing.T) {
 	inner := deoptLit(core.NewList([]core.Value{deoptLit(core.NewInteger(1), 8)}), 7)
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	outer := deoptLit(core.NewList([]core.Value{deoptTok("x", 5), inner}), 4)
-	outer.Eval = true
+	core.SetEval(&outer, true)
 	quoted := deoptLit(core.NewList([]core.Value{deoptLit(core.NewInteger(2), 12)}), 11)
-	quoted.Eval, quoted.Quoted = true, true
+	core.SetEval(&quoted, true)
+	core.SetQuoted(&quoted, true)
 	body := []core.Value{deoptTok("each", 1), outer, quoted}
 	if v, ok := pendingListAt(body, deoptAt(7)); !ok || v.Pos() != deoptAt(7) {
 		t.Errorf("the nested literal: %v %v", v, ok)
@@ -274,7 +275,7 @@ func TestPendingListAt(t *testing.T) {
 // the body, by window index; RenderWindow puts them back for the report.
 func TestPolyRawOperands(t *testing.T) {
 	lit := deoptLit(core.NewList([]core.Value{deoptLit(core.NewInteger(1), 7), deoptTok("add", 9)}), 6)
-	lit.Eval = true
+	core.SetEval(&lit, true)
 	body := []core.Value{deoptTok("each", 1), deoptTok("h", 3), lit}
 	events := []EmitEvent{
 		{seq: 1, kind: evCallUser},

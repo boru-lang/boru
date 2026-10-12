@@ -116,7 +116,7 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 	// Each unknown-type operand recovers: a strict Any, a gradual (dynamic)
 	// carrier, a union carrier, and a word whose binding is an Any carrier.
 	dyn := NewCarrier(TInteger)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	for name, operand := range map[string]Value{
 		"strict Any":      NewCarrier(TAny),
 		"gradual carrier": dyn,

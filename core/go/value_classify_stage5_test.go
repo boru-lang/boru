@@ -167,7 +167,7 @@ func TestS5CInertConstMapAndQuotedParen(t *testing.T) {
 		t.Error("a carrier-bearing map must decline")
 	}
 	quoted := NewParenExpr([]Value{NewWord("add"), NewInteger(1)})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	if !IsInertConst(&quoted) {
 		t.Error("a quoted inert paren bakes as code-as-data")
 	}
@@ -359,12 +359,12 @@ func TestIsSteplessValue(t *testing.T) {
 		t.Error("a bare type node carries no payload — IsSteplessValue must not admit it")
 	}
 	evalList := NewList([]Value{NewInteger(1)})
-	evalList.Eval = true
+	SetEval(&evalList, true)
 	if IsSteplessValue(evalList) {
 		t.Error("a list is not a scalar leaf — IsSteplessValue must not admit it")
 	}
 	evalInt := NewInteger(1)
-	evalInt.Eval = true
+	SetEval(&evalInt, true)
 	if IsSteplessValue(evalInt) {
 		t.Error("Eval marks a value the loop EVALUATES — an admitted payload with it set is still active")
 	}

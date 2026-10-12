@@ -572,7 +572,7 @@ func DefFormVia(base *Signature, offset int, genChain bool) func([]Value, map[st
 				// the deferred-collection path before the handler runs,
 				// and these positions are by construction parser operands
 				// the tail's own execMatch would have evaluated.
-				if v.Quoted || !IsConcrete(&v) {
+				if IsQuoted(&v) || !IsConcrete(&v) {
 					continue
 				}
 				var err error
@@ -890,7 +890,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	// inside a `for` loop) finds the name already bound to it and misfires the
 	// open-words merge as a spurious `locked_signature` compile failure instead of the
 	// real dispatch diagnostic. Fall through to the ordinary value binding.
-	if body.FailedDispatch {
+	if IsFailedDispatch(&body) {
 		return false, nil
 	}
 	fnDef, ok := body.Data.(*FnDefInfo)
@@ -1677,7 +1677,7 @@ func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Val
 // alone (no constraint Unifier — a union, a record shape, a refinement
 // decides by content).
 func carrierMembershipProven(r *Registry, body, constraint Value) bool {
-	if body.Dynamic || body.Parent == nil || !IsBareTypeNode(&constraint) {
+	if IsDynamic(&body) || body.Parent == nil || !IsBareTypeNode(&constraint) {
 		return false
 	}
 	node := CanonicalType(r, &constraint)

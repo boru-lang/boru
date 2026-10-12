@@ -222,7 +222,7 @@ func CanonValue(v Value) string {
 		}
 		parts = append(parts, canonSeqParts(lst.Elems(), canonChild)...)
 		body := "[" + joinCanonParts(parts) + "]"
-		if v.Quoted {
+		if IsQuoted(&v) {
 			return "(quote " + body + ")"
 		}
 		return body
@@ -642,7 +642,7 @@ func canonReach(v Value) string {
 			b.WriteString(canonReachToken(seg.KeyLit))
 		}
 	}
-	if v.Quoted {
+	if IsQuoted(&v) {
 		return "(codequote " + b.String() + ")"
 	}
 	return b.String()

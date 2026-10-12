@@ -45,7 +45,7 @@ func TestRefBuildsDispatchTable(t *testing.T) {
 		if !v.Parent.Equal(core.TFunction) {
 			t.Errorf("ops[%q].Parent = %s, want Function", key, v.Parent.String())
 		}
-		if v.Quoted {
+		if core.IsQuoted(&v) {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", key)
 		}
 		fnDef, ok := core.FnDefOf(v.Data)

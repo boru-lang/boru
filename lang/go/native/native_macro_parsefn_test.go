@@ -36,7 +36,7 @@ func TestParseFnExpandCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: a carrier parser under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("parse: carrier parser should yield a dynamic carrier, got %v", Canon(out))
 	}
 }
@@ -53,7 +53,7 @@ func TestParseFnNameBoundCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: a carrier fn binding under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("parse: carrier fn binding should yield a dynamic carrier, got %v", Canon(out))
 	}
 	if !r.Check.DefsUsed["p"] {
@@ -128,7 +128,7 @@ func TestParseFnDispatchRecordThreeArgs(t *testing.T) {
 	if !ok {
 		t.Fatal("recordParseLangFnDispatch should record with a dispatcher installed")
 	}
-	if !out.Dynamic {
+	if !IsDynamic(&out) {
 		t.Fatalf("fn-dispatch result should be a dynamic carrier, got %s", out.String())
 	}
 }

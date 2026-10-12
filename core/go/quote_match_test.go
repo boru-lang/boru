@@ -12,7 +12,7 @@ import "testing"
 // check-mode-only — at runtime the operand is concrete, so positionalMatch is
 // unaffected there. See design/legacy/module-fn-checkstate-ownership.2.ignore.
 func TestPositionalMatchQuoteArgRejectsNonConcreteCarrier(t *testing.T) {
-	dynAny := func() Value { c := NewCarrier(TAny); c.Dynamic = true; return c }
+	dynAny := func() Value { c := NewCarrier(TAny); SetDynamic(&c, true); return c }
 
 	// A dynamic Any carrier (a computed check-mode value) must NOT match a /q
 	// position, even though it optimistically conforms to TAtom.

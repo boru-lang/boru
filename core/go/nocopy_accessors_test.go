@@ -59,8 +59,8 @@ func TestTapeRefOutOfRangeIsAZeroCell(t *testing.T) {
 		if r == nil || r.Parent != nil || r.Data != nil {
 			t.Fatalf("Ref(%d) = %v, want the zero cell", i, r)
 		}
-		r.Quoted = true // a reader that wrote through it…
-		if tp.Ref(i).Quoted {
+		SetQuoted(r, true) // a reader that wrote through it…
+		if IsQuoted(tp.Ref(i)) {
 			t.Fatalf("Ref(%d): the zero cell must be cleared on every read", i)
 		}
 	}
@@ -104,5 +104,22 @@ func TestFnDispatchSigsCachedOnIdentity(t *testing.T) {
 	bare := FnDefInfo{Signatures: []Signature{one}} // no identity
 	if a, b := FnDispatchSigs(&bare), FnDispatchSigs(&bare); &a[0] == &b[0] {
 		t.Error("an identity-less payload has no cache")
+	}
+}
+
+// A dynamic record carrier is built whole: dynamic, a carrier, the schema,
+// and an ID of its own each time.
+func TestNewDynamicRecordCarrier(t *testing.T) {
+	fields := NewOrderedMap()
+	fields.Set("n", NewTypeLiteral(TInteger))
+	a, b := NewDynamicRecordCarrier(fields), NewDynamicRecordCarrier(fields)
+	if !IsDynamic(&a) || !a.Carrier || !a.Parent.Equal(TMap) {
+		t.Fatalf("want a dynamic Map carrier, got %v", a)
+	}
+	if ri, ok := a.Data.(RecordTypeInfo); !ok || ri.Fields != fields {
+		t.Fatalf("the carrier must hold the schema, got %T", a.Data)
+	}
+	if a.ID == "" || a.ID == b.ID {
+		t.Fatalf("each carrier needs its own ID: %q %q", a.ID, b.ID)
 	}
 }

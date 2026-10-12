@@ -115,7 +115,7 @@ func delMicronReturns(args []Value, r *Registry) []Value {
 func getrMicronReturns(args []Value, r *Registry) []Value {
 	out := getMicronReturns(args, r)
 	if r != nil && r.Check.IsActive() && len(args) == 2 && IsConcrete(&args[0]) &&
-		len(out) == 1 && out[0].Carrier && !out[0].Dynamic && out[0].Parent != nil && out[0].Parent.Equal(TNone) {
+		len(out) == 1 && out[0].Carrier && !IsDynamic(&out[0]) && out[0].Parent != nil && out[0].Parent.Equal(TNone) {
 		kind := "Micron"
 		if args[1].Parent != nil {
 			kind = args[1].Parent.Leaf()

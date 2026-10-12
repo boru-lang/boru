@@ -160,7 +160,7 @@ func vmNatives(parent *native.Registry) []native.NativeFunc {
 							fmt.Sprintf("Vm.parse: %v", perr), "Vm.parse")
 					}
 					lst := native.NewList(tokens)
-					lst.Quoted = true
+					native.SetQuoted(&lst, true)
 					return []native.Value{lst}, nil
 				}
 				return []native.Signature{{

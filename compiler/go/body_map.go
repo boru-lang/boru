@@ -160,7 +160,7 @@ func (w *bodyMapWalk) seq(toks []core.Value) {
 // quotedData hands v, quoted data, to the data walker (the data walker
 // reads it where it stands).
 func (w *bodyMapWalk) quotedData(v core.Value) {
-	v.Quoted = false
+	core.SetQuoted(&v, false)
 	if w.data != nil {
 		w.data.walk(v)
 		return
@@ -174,7 +174,7 @@ func (w *bodyMapWalk) quotedData(v core.Value) {
 // no walk can list — a splice, an interpolated hole, a sugar marker — makes
 // the body opaque.
 func (w *bodyMapWalk) walk(v core.Value) {
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		w.quotedData(v)
 		return
 	}

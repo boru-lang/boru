@@ -250,7 +250,7 @@ func TestCompiledComputedMapArg(t *testing.T) {
 		om.Set("a", core.NewParenExpr([]core.Value{core.NewWord("print"), core.NewInteger(5)}))
 		om.Set("b", core.NewInteger(2))
 		mv := core.NewMap(om)
-		mv.Eval = true
+		core.SetEval(&mv, true)
 		return []core.Value{core.NewWord("cmsize"), mv}
 	})
 	if got != "2" {
@@ -266,7 +266,7 @@ func TestCompiledConstFoldedMapArg(t *testing.T) {
 		om := core.NewOrderedMap()
 		om.Set("a", core.NewParenExpr([]core.Value{core.NewWord("cadd"), core.NewInteger(1), core.NewInteger(2)}))
 		mv := core.NewMap(om)
-		mv.Eval = true
+		core.SetEval(&mv, true)
 		return []core.Value{core.NewWord("cmsize"), mv}
 	})
 	if got != "1" {
@@ -280,7 +280,7 @@ func TestCompiledMapResidual(t *testing.T) {
 		om := core.NewOrderedMap()
 		om.Set("k", core.NewParenExpr([]core.Value{core.NewWord("print"), core.NewInteger(9)}))
 		mv := core.NewMap(om)
-		mv.Eval = true
+		core.SetEval(&mv, true)
 		return []core.Value{mv}
 	}, "{k:9}")
 }
@@ -295,7 +295,7 @@ func TestCompiledLoopBodyListArg(t *testing.T) {
 	}
 	runTolerant(t, setup, func() []core.Value {
 		lv := core.NewList([]core.Value{core.NewWord("i"), core.NewInteger(5)})
-		lv.Eval = true
+		core.SetEval(&lv, true)
 		return []core.Value{
 			core.NewWord("cfor"), core.NewInteger(3),
 			codeBody(core.NewWord("clen"), lv),

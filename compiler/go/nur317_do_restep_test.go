@@ -55,7 +55,7 @@ func TestNoteClosureReStep(t *testing.T) {
 // with a Function alternative — and not plain data.
 func TestValueMayBeFn(t *testing.T) {
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	union := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
 	union.Carrier = true
 	for _, c := range []struct {

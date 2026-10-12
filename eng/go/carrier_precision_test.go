@@ -41,7 +41,7 @@ func TestAnalyseFnBodyGradualizesUndefinedArg(t *testing.T) {
 	r.Check.Mode = true
 
 	und := core.NewAtom("phantom")
-	und.Undefined = true
+	core.SetUndefined(&und, true)
 	body := []core.Value{core.NewWord("x")} // trivial body returning the param
 
 	// The call must not panic and must produce a residual (the gradualized
@@ -50,7 +50,7 @@ func TestAnalyseFnBodyGradualizesUndefinedArg(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("AnalyseFnBody over an undefined arg produced no residual")
 	}
-	if got[0].Undefined {
+	if core.IsUndefined(&got[0]) {
 		t.Error("the residual must be gradualized, not a raw Undefined atom")
 	}
 

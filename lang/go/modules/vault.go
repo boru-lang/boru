@@ -387,7 +387,7 @@ func vaultDeclaredReturns(ret *native.Type) native.ReturnsFunc {
 	return func(_ []native.Value, _ *native.Registry) []native.Value {
 		c := native.NewCarrier(ret)
 		if ret.Equal(native.TAny) {
-			c.Dynamic = true
+			core.SetDynamic(&c, true)
 		}
 		return []native.Value{c}
 	}
@@ -410,7 +410,7 @@ func concreteArgsGate(n int) func([]native.Value) bool {
 			return false
 		}
 		for _, a := range args {
-			if a.Dynamic || !native.DeepKnown(a) {
+			if core.IsDynamic(&a) || !native.DeepKnown(a) {
 				return false
 			}
 		}

@@ -129,7 +129,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 		t.Fatalf("/v step errored: %v", err)
 	}
 	got := e.Tape.At(0)
-	if got.Undefined || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+	if IsUndefined(&got) || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
 		t.Errorf("a /v read of a carrier-bound name must substitute the carrier: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -144,7 +144,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "nope", ArgCount: -1, ForceVal: true}); err != nil {
 		t.Fatalf("/v step of an unbound name errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
+	if got := e.Tape.At(0); !IsUndefined(&got) {
 		t.Errorf("an unbound /v read must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
@@ -196,7 +196,7 @@ func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !IsFnTypedCarrier(&got) {
 		t.Errorf("plain check must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -231,7 +231,7 @@ func TestStepWordCompileCarrierMissStaysUndefined(t *testing.T) {
 	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("miss-arm stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
+	if got := e.Tape.At(0); !IsUndefined(&got) {
 		t.Errorf("a table miss must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
@@ -285,7 +285,7 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	if len(r.Check.Diagnostics) != 0 {
 		t.Errorf("a word carrier raised diagnostics: %v", r.Check.Diagnostics)
 	}
-	if got := e.Tape.At(0); got.Undefined || !got.Carrier || !got.Parent.Equal(TWord) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !got.Carrier || !got.Parent.Equal(TWord) {
 		t.Errorf("word carrier not collected as data: %v", got)
 	}
 }
@@ -415,7 +415,7 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("nested-body stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(&got) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !IsFnTypedCarrier(&got) {
 		t.Errorf("a nested body must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {

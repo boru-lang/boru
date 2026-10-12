@@ -1655,7 +1655,7 @@ func landingIsland(toks []core.Value, wordPos core.SrcPos) (int, []core.Value, b
 		return 0, nil, false
 	}
 	for i, t := range toks {
-		if items, err := core.AsParenExpr(&t); err == nil && !t.Quoted {
+		if items, err := core.AsParenExpr(&t); err == nil && !core.IsQuoted(&t) {
 			if opens, inner, ok := landingIsland(items, wordPos); ok {
 				tail := make([]core.Value, 0, len(inner)+1+len(toks)-i-1)
 				tail = append(tail, inner...)

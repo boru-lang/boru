@@ -360,8 +360,8 @@ func TestDeclaredReturnCarriersMissingReturns(t *testing.T) {
 	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TAny) {
 		t.Fatalf("fallback = %#v, want one Any carrier", out)
 	}
-	if !out[0].Dynamic || !out[0].Carrier {
-		t.Errorf("fallback carrier Dynamic=%v Carrier=%v, want a DYNAMIC Any carrier", out[0].Dynamic, out[0].Carrier)
+	if !core.IsDynamic(&out[0]) || !out[0].Carrier {
+		t.Errorf("fallback carrier Dynamic=%v Carrier=%v, want a DYNAMIC Any carrier", core.IsDynamic(&out[0]), out[0].Carrier)
 	}
 	if len(r.Check.Diagnostics) != 1 {
 		t.Fatalf("diagnostics = %v, want the one missing_returns", covCDDiagCodes(r))
@@ -385,7 +385,7 @@ func TestDeclaredReturnCarriersMissingReturns(t *testing.T) {
 	// carrier rides dynamic so typed consumers downstream still match.
 	anySig := &core.Signature{Returns: []*core.Type{core.TAny, core.TInteger}, Impl: covCDImpl()}
 	out = declaredReturnCarriers(r, "getq", anySig, nil, core.SrcPos{Row: 4, Col: 1})
-	if len(out) != 2 || !out[0].Dynamic || out[1].Dynamic {
+	if len(out) != 2 || !core.IsDynamic(&out[0]) || core.IsDynamic(&out[1]) {
 		t.Errorf("declared [Any Integer] = %#v, want dynamic Any + strict Integer", out)
 	}
 }
@@ -406,7 +406,7 @@ func TestDeclaredReturnCarriersRecordSchema(t *testing.T) {
 		Impl:           covCDImpl(),
 	}
 	out := declaredReturnCarriers(r, "mkq", sig, nil, core.SrcPos{Row: 5, Col: 1})
-	if len(out) != 1 || !out[0].Carrier || !out[0].Dynamic {
+	if len(out) != 1 || !out[0].Carrier || !core.IsDynamic(&out[0]) {
 		t.Fatalf("record return = %#v, want one dynamic carrier", out)
 	}
 	rt, ok := out[0].Data.(core.RecordTypeInfo)
@@ -458,7 +458,7 @@ func TestRecordReturnCarrierGates(t *testing.T) {
 		t.Error("an Options pattern must decline")
 	}
 	rc, ok := recordReturnCarrier(core.TMap, &pat)
-	if !ok || !rc.Carrier || !rc.Dynamic || rc.ID == "" {
+	if !ok || !rc.Carrier || !core.IsDynamic(&rc) || rc.ID == "" {
 		t.Fatalf("field-bag pattern = (%#v, %v), want a fresh dynamic schema carrier", rc, ok)
 	}
 	if rt, isRec := rc.Data.(core.RecordTypeInfo); !isRec || rt.Fields == nil {
@@ -492,7 +492,7 @@ func TestApplyGradualContagionStrictAdvisory(t *testing.T) {
 	args := []core.Value{core.NewDynamicCarrier(core.TInteger)}
 
 	out := applyGradualContagion(r, "strq", args, []core.Value{core.NewCarrier(core.TInteger)}, pos, false)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Carrier {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Carrier {
 		t.Fatalf("contagion result = %#v, want the declared return flipped dynamic", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "dynamic_dispatch" {
@@ -525,7 +525,7 @@ func TestApplyGradualContagionMixedArityMutator(t *testing.T) {
 	// reaches the value-returning siblings: model ONE dynamic value — the
 	// union of the reachable value returns.
 	out := applyGradualContagion(r, "mutq", args, nil, pos, false)
-	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !core.IsDynamic(&out[0]) {
 		t.Fatalf("mixed-arity model = %#v, want one dynamic Map|List disjunct", out)
 	}
 	if got := len(core.FlattenAlternatives(out[0])); got != 2 {
@@ -541,7 +541,7 @@ func TestApplyGradualContagionMixedArityMutator(t *testing.T) {
 		},
 	})
 	out = applyGradualContagion(r, "mut1q", args, nil, pos, false)
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TMap) || !out[0].Dynamic {
+	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TMap) || !core.IsDynamic(&out[0]) {
 		t.Fatalf("single-sibling model = %#v, want one dynamic Map carrier", out)
 	}
 
@@ -704,7 +704,7 @@ func TestDisjunctPartitionReturnsDeclines(t *testing.T) {
 		t.Error("no strict disjunct arg must decline")
 	}
 	dyn := covCDDisjunct(false, core.TInteger, core.TString)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if out, ok := disjunctPartitionReturns(r, "pcolq", []core.Value{dyn}, pos); ok || out != nil {
 		t.Error("a dynamic disjunct is not a strict partition operand")
 	}
@@ -753,7 +753,7 @@ func TestAlternativeCarriersExpansion(t *testing.T) {
 		t.Errorf("alternative types = %v, want [Integer String]", names)
 	}
 	for i, a := range alts {
-		if !a.Carrier || a.Dynamic {
+		if !a.Carrier || core.IsDynamic(&a) {
 			t.Errorf("alternative %d must be a strict carrier, got %#v", i, a)
 		}
 	}
@@ -764,7 +764,7 @@ func TestAlternativeCarriersExpansion(t *testing.T) {
 		t.Errorf("a plain carrier must yield itself, got %#v", got)
 	}
 	dyn := covCDDisjunct(false, core.TInteger, core.TString)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if got := alternativeCarriers(dyn); len(got) != 1 || !core.IsDisjunct(&got[0]) {
 		t.Errorf("a dynamic disjunct must yield itself, got %#v", got)
 	}

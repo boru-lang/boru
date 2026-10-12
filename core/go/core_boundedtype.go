@@ -86,7 +86,7 @@ func AsBoundedType(v Value) (*Type, error) {
 // the pass takes the literal, the common case.
 func TypeMembership(v Value) bool {
 	if v.Carrier {
-		return !v.Dynamic && v.Parent != nil && (v.Parent.Equal(TType) || v.Parent.Equal(TNone))
+		return !IsDynamic(&v) && v.Parent != nil && (v.Parent.Equal(TType) || v.Parent.Equal(TNone))
 	}
 	return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) ||
 		(v.Parent != nil && v.Parent.ConformsTo(TType))

@@ -42,7 +42,7 @@ func (u *BindingBodyUnifier) matchR(v Value, t *Type, r *Registry) bool {
 		// discipline: admit a carrier that could still be a member at
 		// runtime — dynamic, tagged at/below the minted node, or in the
 		// body's own family — and reject one that provably cannot be.
-		if v.Dynamic {
+		if IsDynamic(&v) {
 			return true
 		}
 		if v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {

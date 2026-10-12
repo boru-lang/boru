@@ -2362,7 +2362,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		// graduation). A DYNAMIC Error bound keeps the compile failure: there the
 		// runtime may not raise, the pass-through nets one where the caught
 		// path nets zero, and a fixed seat cannot carry both.
-		if !args[1].Dynamic && args[1].Parent != nil && args[1].Parent.ConformsTo(TError) {
+		if !IsDynamic(&args[1]) && args[1].Parent != nil && args[1].Parent.ConformsTo(TError) {
 			return nil
 		}
 		// The arity is variable, not unknown: ZERO on the caught path, ONE
@@ -2384,7 +2384,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 	// arm statically dead: the result is the handler's alone, no join. A
 	// dynamic(Error) bound keeps the join — the bound is best-effort, not
 	// proof, so the pass-through may still run.
-	if !args[1].Dynamic && args[1].Parent.ConformsTo(TError) {
+	if !IsDynamic(&args[1]) && args[1].Parent.ConformsTo(TError) {
 		return []Value{NewDynamicCarrier(stk[0].Parent)}
 	}
 	return []Value{NewDynamicCarrier(CommonAncestorType(args[1].Parent, stk[0].Parent))}

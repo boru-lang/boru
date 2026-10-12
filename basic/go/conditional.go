@@ -313,7 +313,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// (a NoEvalArgs body that is not inert data), so the program falls
 		// back and answers as the interpreter does. A KNOWN non-list — a
 		// scalar, a bare type node (`case 1 Integer`) — is the trap.
-		if !clauses.Dynamic && !clauses.Carrier {
+		if !IsDynamic(&clauses) && !clauses.Carrier {
 			r.Check.Recorder().RecordTrap("case_error",
 				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
 				"case", "", casePos)
@@ -459,13 +459,13 @@ func caseScalarPayload(v Value) bool {
 // riding as a concrete-payload carrier (the operand shape a
 // CompileScalarFold dispatch folds over).
 func caseKnownScalar(v Value) bool {
-	return !v.Dynamic && caseScalarPayload(v)
+	return !IsDynamic(&v) && caseScalarPayload(v)
 }
 
 // caseScalarConst reports whether a clause token is a scalar literal: a
 // concrete scalar payload, as the source wrote it.
 func caseScalarConst(v Value) bool {
-	return !v.Carrier && !v.Dynamic && caseScalarPayload(v)
+	return !v.Carrier && !IsDynamic(&v) && caseScalarPayload(v)
 }
 
 // caseStaticGuard decides one clause guard over the known scalar v, as
@@ -610,7 +610,7 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 		// A splice marker (`def g word [add]`) spills its tokens where the
 		// block is re-stepped, and those tokens reach the values around the
 		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
-		return top.Carrier || top.Dynamic || IsSplice(&top)
+		return top.Carrier || IsDynamic(&top) || IsSplice(&top)
 	}
 	fn := r.Lookup(w.Name)
 	return fn != nil && callReachesContext(fn)
@@ -667,7 +667,7 @@ func dropSynthesizedDeadArmWarnings(r *Registry, mark int) {
 // splices a list arm (NUR292), where a compiled chain or branch over the
 // value would hold the list itself.
 func mayRunAsCode(v Value) bool {
-	if !v.Carrier && !v.Dynamic {
+	if !v.Carrier && !IsDynamic(&v) {
 		return false
 	}
 	p := v.Parent

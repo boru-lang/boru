@@ -105,7 +105,7 @@ func TestReStepLandingWalk(t *testing.T) {
 	// An anonymous fn parks — inert, so the residual apply leaves it as data.
 	lam := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{oneInt}})
 	got, ent, err := vc.reStepLanding(r, 3, 0, []core.Value{lam}, seam7Dbg, 0, z)
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Quoted || !got[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(got) != 1 || !core.IsQuoted(&got[0]) || !got[0].Parent.Equal(core.TFunction) {
 		t.Errorf("an anonymous fn parks inert: got %v %v %v", got, ent, err)
 	}
 	after, ent, err := vc.callDynamic(r, 1, false, []core.Value{got[0], core.NewInteger(0)}, seam7Dbg, 0)
@@ -142,7 +142,7 @@ func TestReStepLandingWalk(t *testing.T) {
 	fd.Anonymous, fd.Name = true, ""
 	anon0 := core.NewFunction(fd)
 	got, ent, err = vcn.reStepLanding(rn, 3, 0, []core.Value{anon0}, seam7Dbg, 0, z)
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) || got[0].Quoted {
+	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) || core.IsQuoted(&got[0]) {
 		t.Errorf("an anonymous 0-arg value parks under a word: got %v %v %v", got, ent, err)
 	}
 

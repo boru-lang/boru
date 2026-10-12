@@ -34,7 +34,7 @@ func TestFnValueSeamDeclinesNonCalleeShapes(t *testing.T) {
 		t.Error("a token-list body is not the seam's")
 	}
 	quoted := fnValueWithRef(ref, nil, nil)
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if _, _, ran := vc.invokeFnValue(r, quoted, nil); ran {
 		t.Error("a quoted fn value is data, not a callee")
 	}

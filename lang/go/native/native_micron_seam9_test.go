@@ -38,7 +38,7 @@ func TestW9GetMicronReturnsBadArgs(t *testing.T) {
 	r := seam5Reg(t)
 	// Wrong arity → dynamic fallback (114.69,116.3).
 	out := getMicronReturns([]Value{NewString("only-one")}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("getMicronReturns bad args: expected dynamic carrier, got %v", out)
 	}
 }
@@ -55,7 +55,7 @@ func TestW9GetMicronReturnsConcreteReceiver(t *testing.T) {
 	// Present property "user": narrows to the field's carrier type
 	// (119.22 → 121.39 → NewCarrier(ft)).
 	out := getMicronReturns([]Value{NewString("user"), email}, r)
-	if len(out) != 1 || out[0].Dynamic {
+	if len(out) != 1 || IsDynamic(&out[0]) {
 		t.Fatalf("getMicronReturns user: expected concrete carrier, got %v", out)
 	}
 
@@ -97,7 +97,7 @@ func TestW9GetMicronReturnsCarrierDefaults(t *testing.T) {
 	if out = getMicronReturns([]Value{NewString("authority"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TString) {
 		t.Fatalf("hoston authority: expected String carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("port"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Dynamic {
+	if out = getMicronReturns([]Value{NewString("port"), NewCarrier(THoston)}, r); len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("hoston port: expected dynamic carrier, got %v", out)
 	}
 	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
@@ -134,7 +134,7 @@ func TestW9GetMicronReturnsSemveronCarrier(t *testing.T) {
 	// Optional per-instance fields stay dynamic.
 	for _, k := range []string{"prerelease", "build"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Dynamic {
+		if len(out) != 1 || !IsDynamic(&out[0]) {
 			t.Fatalf("semveron carrier %q: expected dynamic carrier, got %v", k, out)
 		}
 	}
@@ -156,7 +156,7 @@ func TestW9GetMicronReturnsNewLeafCarriers(t *testing.T) {
 	}
 	checkDyn := func(kind *Value, key string) {
 		out := getMicronReturns([]Value{NewString(key), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Dynamic {
+		if len(out) != 1 || !IsDynamic(&out[0]) {
 			t.Fatalf("%s.%s: expected dynamic carrier, got %v", kind.Name(), key, out)
 		}
 	}
@@ -229,7 +229,7 @@ Funcon`)
 	funLit := res[len(res)-1]
 	funCarrier := NewCarrier(CanonicalType(r, &funLit))
 	out = getMicronReturns([]Value{NewString("doit"), funCarrier}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("user schema function-field: expected dynamic carrier, got %v", out)
 	}
 }

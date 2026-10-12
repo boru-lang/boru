@@ -31,7 +31,7 @@ func TestGuardRestart(t *testing.T) {
 	got, ok = substToken(toks, []int{2, 1}, 1, v)
 	l, _ := core.AsList(got[2])
 	orig, _ := core.AsList(toks[2])
-	if !ok || !got[2].Eval || l.Get(1).String() != "7" || !core.IsParenExpr(addrOf(orig.Get(1))) {
+	if !ok || !core.IsEval(&got[2]) || l.Get(1).String() != "7" || !core.IsParenExpr(addrOf(orig.Get(1))) {
 		t.Errorf("a paren inside a list literal, the literal copied with its flags: %v %v", got, ok)
 	}
 	nested := []core.Value{core.NewParenExpr([]core.Value{core.NewInteger(1), core.NewParenExpr(nil)})}

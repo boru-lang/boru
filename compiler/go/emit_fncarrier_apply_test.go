@@ -65,7 +65,7 @@ func TestRecordDynApplyNameArms(t *testing.T) {
 		t.Error("a non-fn value must decline")
 	}
 	qfn := fn
-	qfn.Quoted = true
+	core.SetQuoted(&qfn, true)
 	if es.RecordDynApplyName("h", []core.Value{arg}, qfn, out, core.SrcPos{}) {
 		t.Error("a quoted fn must decline")
 	}
@@ -127,7 +127,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	carrier := core.NewCarrier(core.TFunction)
 	// Dynamic: the operand resolver's type-body screen exempts the
 	// checker's gradual stand-ins, which is what a real event out is.
-	carrier.Dynamic = true
+	core.SetDynamic(&carrier, true)
 	es.frames[0] = append(es.frames[0], EmitEvent{kind: evCall})
 	es.producedBy[carrier.ID] = producer{seq: 0}
 	out := core.NewCarrier(core.TInteger)
@@ -157,7 +157,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 			Signatures: []core.Signature{{
 				Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 			}}})
-		v.Dynamic = true
+		core.SetDynamic(&v, true)
 		return v
 	}
 	es2 := NewEmitState()
@@ -198,7 +198,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 		Signatures: []core.Signature{{
 			Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 		}}})
-	two.Dynamic = true
+	core.SetDynamic(&two, true)
 	es4 := NewEmitState()
 	es4.frames[0] = append(es4.frames[0], EmitEvent{kind: evCall})
 	es4.producedBy[two.ID] = producer{seq: 0}

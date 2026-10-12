@@ -97,7 +97,7 @@ func TestListShape(t *testing.T) {
 	}
 	fn := NewFunction(FnDefInfo{Name: "f", Signatures: []Signature{{}}})
 	q := NewList([]Value{NewInteger(1)})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	for name, v := range map[string]Value{
 		"empty": NewList(nil), "too long": NewList([]Value{NewInteger(1), NewInteger(2), NewInteger(3), NewInteger(4), NewInteger(5)}),
 		"fn element": NewList([]Value{fn}), "carrier element": NewList([]Value{NewCarrier(TInteger)}),

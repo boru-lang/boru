@@ -119,7 +119,7 @@ func FnValueZeroArg(v Value) bool {
 func IsSteplessValue(v Value) bool {
 	switch v.Data.(type) {
 	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload:
-		return IsConcrete(&v) && !v.Eval
+		return IsConcrete(&v) && !IsEval(&v)
 	}
 	return false
 }
@@ -153,7 +153,7 @@ func depBoundConst(b *DepBound) bool {
 }
 
 func IsInertConst(v *Value) bool {
-	if v.Carrier || v.Dynamic || IsBareTypeNode(v) {
+	if v.Carrier || IsDynamic(v) || IsBareTypeNode(v) {
 		return false
 	}
 	switch d := v.Data.(type) {
@@ -465,7 +465,7 @@ var DynStackShuffleWords = map[string]bool{
 // interpreter rebuilds `r:1.0` — so any carrier, or any payload this
 // walk doesn't know, declines.
 func typeBodyConstOK(v Value) bool {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier || IsDynamic(&v) {
 		return false
 	}
 	if IsBareTypeNode(&v) {
@@ -481,7 +481,7 @@ func typeBodyConstOK(v Value) bool {
 		// INSIDE a type body, even though isInertConst still (correctly) rejects
 		// the same instance standing alone or as a data-list member, where nothing
 		// freshens it. Const-folded by constFoldContainerVal.
-		if !m.Carrier && !m.Dynamic && isFreshenedInstance(m) {
+		if !m.Carrier && !IsDynamic(&m) && isFreshenedInstance(m) {
 			return true
 		}
 		return typeBodyConstOK(m) || IsInertConst(&m)
@@ -598,7 +598,7 @@ func schemaConstOK(s *TypeSchemaInfo) bool {
 // place, so it is NEVER baked here. Every token must itself be an inert const
 // member (Words / atoms / scalars / nested inert parens), via isInertConstMember.
 func isInertQuotedParen(v Value) bool {
-	if !v.Quoted || v.Carrier || v.Dynamic {
+	if !IsQuoted(&v) || v.Carrier || IsDynamic(&v) {
 		return false
 	}
 	toks, err := AsParenExpr(&v)
@@ -627,7 +627,7 @@ func isInertQuotedParen(v Value) bool {
 // safely (isInertConstMember screens out a bare type node). So the inert lens
 // pools into the const table like an atom or a path.
 func isInertReach(v Value) bool {
-	if !IsReach(&v) || v.Carrier || v.Dynamic {
+	if !IsReach(&v) || v.Carrier || IsDynamic(&v) {
 		return false
 	}
 	info, err := AsReach(&v)
@@ -643,7 +643,7 @@ func isInertReach(v Value) bool {
 		// key tokens themselves inert, no computed segment). An UNQUOTED
 		// receiver reach stays out: it is the structural token the engine
 		// lowers to a get-chain in place.
-		return v.Quoted && inertReachMember(v)
+		return IsQuoted(&v) && inertReachMember(v)
 	}
 	for _, seg := range info.Segments {
 		if seg.Computed || !IsInertConstMember(seg.KeyLit) {
@@ -662,7 +662,7 @@ func isInertReach(v Value) bool {
 // closure case, not bakeable data). At run time a poly `get` of the field
 // returns the fn, which the fn-value-call boundary (OpCallDynamic) applies.
 func IsInertConstMember(v Value) bool {
-	if !v.Carrier && !v.Dynamic {
+	if !v.Carrier && !IsDynamic(&v) {
 		// A Word token riding inside a quoted (non-eval) compound — what
 		// `macroexpand` returns as data (`[5 word(add) 5]`). Safe as a const
 		// MEMBER: the compound is pushed as inert data and never auto-evaluated
@@ -914,7 +914,7 @@ func allFieldsInert(m *OrderedMap, pred func(Value) bool) bool {
 // are fine — only a computed segment (a ParenExpr to run) or a non-inert
 // receiver/key token disqualifies it.
 func inertReachMember(v Value) bool {
-	if !IsReach(&v) || v.Carrier || v.Dynamic {
+	if !IsReach(&v) || v.Carrier || IsDynamic(&v) {
 		return false
 	}
 	info, err := AsReach(&v)

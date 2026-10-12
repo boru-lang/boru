@@ -169,7 +169,7 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 		}
 		bindings[p.Name] = operands[i]
 		q := operands[i]
-		q.Quoted = true
+		SetQuoted(&q, true)
 		InstallFrameBinding(r, p.Name, q)
 	}
 	for _, cb := range fnDef.Captured {
@@ -363,7 +363,7 @@ func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[s
 			return Value{}, err
 		}
 		nl := NewList(inner)
-		nl.Quoted = t.Quoted
+		SetQuoted(&nl, IsQuoted(&t))
 		return nl, nil
 	case IsParenExpr(&t):
 		toks, _ := AsParenExpr(&t)
@@ -502,7 +502,7 @@ func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 			return Value{}, err
 		}
 		nl := NewList(inner)
-		nl.Quoted = t.Quoted
+		SetQuoted(&nl, IsQuoted(&t))
 		return nl, nil
 	case IsParenExpr(&t):
 		pt, _ := AsParenExpr(&t)

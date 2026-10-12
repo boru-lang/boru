@@ -75,8 +75,8 @@ func flattenStamped(form *StackForm) ([]core.Value, map[string]bool) {
 			// recorded one was live. Eval undoes it — that is what the
 			// returned set is for.
 			v := o.V
-			if v.Parent != nil && v.Parent.Equal(core.TFunction) && !v.Quoted {
-				v.Quoted = true
+			if v.Parent != nil && v.Parent.Equal(core.TFunction) && !core.IsQuoted(&v) {
+				core.SetQuoted(&v, true)
 				stamped[core.Canon([]core.Value{o.V})] = true
 			}
 			out = append(out, v)
@@ -123,7 +123,7 @@ func flattenStamped(form *StackForm) ([]core.Value, map[string]bool) {
 				stamped[k] = true
 			}
 			lst := core.NewList(inner)
-			lst.Quoted = true
+			core.SetQuoted(&lst, true)
 			out = append(out, lst)
 		case DoEval:
 			out = append(out, core.NewWord("do"))
@@ -245,7 +245,7 @@ func unstamp(vals []core.Value, stamped map[string]bool) []core.Value {
 		return vals
 	}
 	for i, v := range vals {
-		if v.Quoted && v.Parent != nil && v.Parent.Equal(core.TFunction) &&
+		if core.IsQuoted(&v) && v.Parent != nil && v.Parent.Equal(core.TFunction) &&
 			stamped[core.Canon([]core.Value{unquotedCopy(v)})] {
 			vals[i] = unquotedCopy(v)
 		}
@@ -254,6 +254,6 @@ func unstamp(vals []core.Value, stamped map[string]bool) []core.Value {
 }
 
 func unquotedCopy(v core.Value) core.Value {
-	v.Quoted = false
+	core.SetQuoted(&v, false)
 	return v
 }

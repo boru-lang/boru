@@ -1887,8 +1887,8 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	for i, p := range sig.Params {
 		if p.Name != "" {
 			arg := args[i]
-			if arg.Parent.Equal(TList) && !arg.Quoted {
-				arg.Quoted = true
+			if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+				SetQuoted(&arg, true)
 			}
 			InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 			names = append(names, p.Name)

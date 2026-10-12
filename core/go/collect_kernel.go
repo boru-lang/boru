@@ -353,8 +353,8 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			if scanIdx+1 < win.Len() {
 				if _, marked := AsDispatchMod(win.At(scanIdx + 1)); marked {
 					win.Remove(scanIdx + 1)
-					res.Quoted = true
-					res.ReachGroup = true
+					SetQuoted(&res, true)
+					SetReachGroup(&res, true)
 					win.Set(scanIdx, res)
 				}
 			}
@@ -418,7 +418,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			// Step 4: a quote-captured ParenExpr (already Quoted) or a
 			// raw-capture forward position is left unevaluated so the
 			// matched sig captures the paren as code.
-			if tok.Quoted || rawParenForward(fn, pos) || rawFormForward(fn, pos) {
+			if IsQuoted(&tok) || rawParenForward(fn, pos) || rawFormForward(fn, pos) {
 				pos++
 				scanIdx++
 				continue
@@ -668,7 +668,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// compiled lane collects by value what the interpreter calls.
 				_, isFnPayload := top.Data.(*FnDefInfo)
 				isFnBinding := isFnPayload || IsFnTypedCarrier(&top) ||
-					(top.Dynamic && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
+					(IsDynamic(&top) && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
 				byValue := SigArgMatches(sig, fwd, &top) && (!isFnBinding || ww.ForceVal)
 				if byValue || expectedType.Equal(TAny) || gradualAny {
 					// A dispatching binding (FnDefInfo) planned as an
@@ -765,7 +765,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// its bare-word spelling would. One with no claim is an
 		// operand (a branch arm, a reference) and scans on, as
 		// does one filling this sig's own Function slot.
-		if tok.ReachGroup && !tok.Quoted && isFnDefValue(*tok) &&
+		if IsReachGroup(tok) && !IsQuoted(tok) && isFnDefValue(*tok) &&
 			h.ReachFnWouldClaim(*tok, scanIdx+1) {
 			break
 		}
@@ -920,7 +920,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// execFnDefLiteral's peek does (`def g M.w/v`: the fn arrives
 	// mid-collection before that peek can run); user-written reference
 	// expressions ((inc/v), (usurp sub2)) carry no tag.
-	if matches && val.ReachGroup && !val.Quoted {
+	if matches && IsReachGroup(&val) && !IsQuoted(&val) {
 		marked := false
 		if valIdx+1 < win.Len() {
 			if _, ok := AsDispatchMod(win.At(valIdx + 1)); ok {
@@ -932,7 +932,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 		case marked:
 			// `/v` data intent — collected as the reference, delivered
 			// below as a `/v` word read delivers it.
-			val.Quoted = true
+			SetQuoted(&val, true)
 		case fnValueHasZeroArgSig(val):
 			return ArrivalDispatchFn
 		case h.ReachFnWouldClaim(val, valIdx+1):
@@ -949,9 +949,9 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// lane applies it — `[1 2 3] each M.inc/v` was `[fn fn fn]` against
 	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
 	// (NUR078's `/v` spelling).
-	if matches && val.ReachGroup && val.Quoted && (isFnDefValue(val) || val.Carrier) {
-		val.Quoted = false
-		val.ReachGroup = false
+	if matches && IsReachGroup(&val) && IsQuoted(&val) && (isFnDefValue(val) || val.Carrier) {
+		SetQuoted(&val, false)
+		SetReachGroup(&val, false)
 		win.Set(valIdx, val)
 	}
 	if !matches {

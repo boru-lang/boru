@@ -39,14 +39,14 @@ func TestCollapseTailApplyArms(t *testing.T) {
 	}
 	stk := []core.Value{two, fnCarrier}
 	got := collapseTailApply(rec, 0, stk)
-	if len(got) != 1 || !got[0].Carrier || !got[0].Dynamic || got[0].Parent != core.TAny {
+	if len(got) != 1 || !got[0].Carrier || !core.IsDynamic(&got[0]) || got[0].Parent != core.TAny {
 		t.Errorf("the window [2 f] collapses to one gradual result: %v", got)
 	}
 	if len(stk) != 2 {
 		t.Error("the caller's residual must not be mutated")
 	}
 	fnVal := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	if got := collapseTailApply(rec, 0, []core.Value{one, fnVal}); len(got) != 1 || !got[0].Dynamic {
+	if got := collapseTailApply(rec, 0, []core.Value{one, fnVal}); len(got) != 1 || !core.IsDynamic(&got[0]) {
 		t.Error("a fn VALUE on top collapses too")
 	}
 }
@@ -76,7 +76,7 @@ func TestCollapseElidedTailApplyArms(t *testing.T) {
 		t.Error("a residual whose top is data stays")
 	}
 	got := collapseElidedTailApply([]core.Value{one, apply}, stk, true)
-	if len(got) != 1 || !got[0].Carrier || !got[0].Dynamic || got[0].Parent != core.TAny {
+	if len(got) != 1 || !got[0].Carrier || !core.IsDynamic(&got[0]) || got[0].Parent != core.TAny {
 		t.Errorf("the residual collapses to one gradual result: %v", got)
 	}
 	if len(stk) != 2 {

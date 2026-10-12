@@ -12,7 +12,7 @@ import "testing"
 func TestRank2ElemCarrierArms(t *testing.T) {
 	row := func(vs ...Value) Value { return NewList(vs) }
 	uniform := rank2ElemCarrier(row(row(NewInteger(1), NewInteger(2)), row(NewInteger(3), NewInteger(4))))
-	if uniform.Dynamic || IsDisjunct(&uniform) || !uniform.Parent.Equal(TInteger) {
+	if IsDynamic(&uniform) || IsDisjunct(&uniform) || !uniform.Parent.Equal(TInteger) {
 		t.Fatalf("uniform rows must give the plain strict element type, got %v", uniform)
 	}
 	mixed := rank2ElemCarrier(row(row(NewInteger(1), NewInteger(2)), row(NewString("a"), NewString("b"))))
@@ -25,7 +25,7 @@ func TestRank2ElemCarrierArms(t *testing.T) {
 		"no element":   row(row()),
 		"non-list row": row(row(NewInteger(1)), NewInteger(2)),
 	} {
-		if c := rank2ElemCarrier(data); !c.Dynamic {
+		if c := rank2ElemCarrier(data); !IsDynamic(&c) {
 			t.Fatalf("%s: a data argument the check pass cannot open must be the gradual Any carrier, got %v", name, c)
 		}
 	}

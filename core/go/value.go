@@ -1990,14 +1990,15 @@ type Value struct {
 	// (nil-safe, returns the zero SrcPos); external packages set it via
 	// SetPos since the field is unexported.
 	pos *SrcPos
-	// dynFrom is the binding name a dynamic carrier was resolved from
-	// (check mode ONLY — never read at runtime), behind a pointer so its
-	// 16-byte string doesn't ride on every runtime Value copy (nil for the
-	// overwhelming majority that are not check-mode dynamic carriers). It
-	// lets narrowing-through-use tighten that binding to dynamic(bound ∩
-	// slot) at a typed use so a later provably-disjoint use of the same
-	// name is caught. Read via DynFrom() (nil-safe), set via SetDynFrom.
-	dynFrom *string
+	// occ is this occurrence's state — the dispatch ascription, a gradual
+	// read's source binding, and the occurrence flags (quoted, eval,
+	// undefined, failed dispatch, reach group, dynamic) — behind one
+	// pointer to an immutable record (occurrence.go). nil for the
+	// overwhelming majority of values; a setter repoints this one header,
+	// never writes the record, so every other copy keeps what it had.
+	// Read and write through AscribedType/SetAscribed, DynFrom/SetDynFrom
+	// and IsQuoted/SetQuoted and their siblings.
+	occ *occurrence
 	// elem is the retained ELEMENT constraint of a concrete typed container
 	// ({:T} map / [:T] list), behind a pointer so its Value doesn't ride on
 	// every runtime copy (nil for the overwhelming majority — everything that
@@ -2010,17 +2011,6 @@ type Value struct {
 	// literal ({:[:Integer]}). Read via ElemConstraint() (nil-safe), set via
 	// SetElemConstraint. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 	elem *Value
-	// asc is the value's dispatch ASCRIPTION (`v as T` — design/
-	// OPEN-WORDS.1.md §9): an ancestor type that signature MATCHING treats
-	// as the value's tag while the value itself — payload, real Parent,
-	// rendering, equality — is untouched. Upcast-only (the `as` word
-	// declines a non-ancestor), match-time-only: every arg-delivery boundary
-	// (execMatch, fn-param binding, the VM call/bind/make ops) strips it,
-	// so the ascription selects exactly one dispatch and never leaks into
-	// handlers, bindings, containers, or results. Behind a pointer so the
-	// overwhelming majority of values (no ascription) don't carry it. Read
-	// via AscribedType() (nil-safe), set/clear via SetAscribed.
-	asc *Type
 	// modns marks a MAP value as a module NAMESPACE — the value `import`
 	// binds for each `export "Name" {…}`. Behind a nil-by-default pointer
 	// so the overwhelming majority of values carry no inline bytes for it
@@ -2036,37 +2026,11 @@ type Value struct {
 	// untouched: the facet holds a Value the kernel treats opaquely.
 	modns *ModuleNSInfo
 
-	// One-byte fields, clustered so they pack without padding.
+	// One-byte fields, clustered so they pack without padding: the kind
+	// flags. The occurrence flags are in the occ record.
 	IsInternal bool       // Word/__XX runtime markers — not user-facing
 	Origin     OriginKind // builtin / userdef
-	Quoted     bool       // produced by the quote word; prevents auto-evaluation
-	Eval       bool       // parser-created list that should auto-evaluate at end of Run
-	Undefined  bool       // atom created from an undefined word (error if left on result stack)
-	// FailedDispatch marks a named Function value that a dispatch attempt
-	// left on the tape because no signature matched. CHECK MODE ONLY: at
-	// runtime the failure raises at the dispatch site
-	// (design/legacy/FN-VALUE-DISPATCH.0.ignore), so no such value survives. Analysis
-	// continues past the finding, so the marker is how a later check-mode
-	// consumer tells dispatch wreckage from a value the program meant to
-	// produce (defWordExtension reads it).
-	FailedDispatch bool
-	// ReachGroup marks an OPEN-PAREN marker that the REACH LOWERING emitted
-	// rather than the user writing — the synthetic group `a.b` expands to
-	// (expandReach → lowerReach). A function value alone inside such a group
-	// must not dispatch there; see execFnDefLiteral. Only the open marker
-	// carries it, since that is the side the dispatch test looks at, and
-	// IsOpenParen keys on Parent alone so every other marker consumer is
-	// unaffected.
-	ReachGroup bool
-	Carrier    bool // static-typecheck carrier (type-only, Data stripped of concrete payload)
-	// Dynamic marks a carrier as a bounded gradual value (Elixir-style
-	// dynamic(T) — design/legacy/dynamic-modality-report.10.ignore). Implies Carrier.
-	// Its Parent/Data is a BOUND, not a proven type: at a signature
-	// boundary it matches the slot unless PROVABLY disjoint from it
-	// (not-disjoint rule), rather than by strict ConformsTo. Set only on
-	// carriers the checker cannot prove exactly (escape hatches); cleared
-	// by a successful guard, which discharges the gradual obligation.
-	Dynamic bool
+	Carrier    bool       // static-typecheck carrier (type-only, Data stripped of concrete payload)
 }
 
 // typeMeta carries the integer lattice fields of a type node, held behind
@@ -2245,21 +2209,26 @@ func (v *Value) SetPos(p SrcPos) {
 // DynFrom returns the check-mode binding name a dynamic carrier was
 // resolved from, or "" when unset. Nil-safe read of the pointer.
 func (v *Value) DynFrom() string {
-	if v.dynFrom == nil {
+	if v.occ == nil || v.occ.dynFrom == nil {
 		return ""
 	}
-	return *v.dynFrom
+	return *v.occ.dynFrom
 }
 
 // SetDynFrom records (name != "") or clears (name == "") the dynamic
 // carrier's origin binding. A check-mode-only path, so the *string it
 // allocates is off the runtime hot path.
 func (v *Value) SetDynFrom(name string) {
+	rec := occOf(v)
 	if name == "" {
-		v.dynFrom = nil
-		return
+		if rec.dynFrom == nil {
+			return
+		}
+		rec.dynFrom = nil
+	} else {
+		rec.dynFrom = &name
 	}
-	v.dynFrom = &name
+	setOcc(v, rec)
 }
 
 // ElemConstraint returns the retained element constraint of a concrete
@@ -2317,33 +2286,44 @@ func WithModuleNS(v Value, name string, module Value) Value {
 	return v
 }
 
-// AscribedType returns the value's dispatch ascription (`v as T`), or nil
-// for the overwhelming majority of values that carry none. Nil-safe read
-// of the pointer; see the asc field doc for the semantics.
+// AscribedType returns the value's dispatch ASCRIPTION (`v as T` —
+// design/OPEN-WORDS.1.md §9), or nil for the overwhelming majority of
+// values that carry none: an ancestor type that signature MATCHING treats
+// as the value's tag while the value itself — payload, real Parent,
+// rendering, equality — is untouched. Upcast-only (the `as` word declines a
+// non-ancestor), match-time-only: every arg-delivery boundary (execMatch,
+// fn-param binding, the VM call/bind/make ops) clears it, so the ascription
+// selects exactly one dispatch and never leaks into handlers, bindings,
+// containers, or results.
 func (v *Value) AscribedType() *Type {
-	return v.asc
+	if v.occ == nil {
+		return nil
+	}
+	return v.occ.asc
 }
 
 // SetAscribed attaches (t non-nil) or clears (t nil) the dispatch
-// ascription. The `as` word's handler is the sole attach site; the
-// arg-delivery boundaries (execMatch, fn-param binding, the VM call/bind/
-// make ops) clear it via StripAscribed.
+// ascription of this holder. The `as` word's handler is the sole attach
+// site; the arg-delivery boundaries clear it via ClearAscribed.
 func (v *Value) SetAscribed(t *Type) {
-	v.asc = t
+	if v.AscribedType() == t {
+		return
+	}
+	rec := occOf(v)
+	rec.asc = t
+	setOcc(v, rec)
 }
 
 // ClearAscribed drops the dispatch ascription of a value the caller owns —
 // an arg slot, a fresh result, its own stack cell or tape cell — in place:
 // StripAscribed without the copy in and the copy out.
-func ClearAscribed(v *Value) { v.asc = nil }
+func ClearAscribed(v *Value) { v.SetAscribed(nil) }
 
 // StripAscribed returns v without its dispatch ascription — the
 // arg-delivery form of the value. The no-ascription fast path returns v
 // unchanged (no copy cost on the hot path).
 func StripAscribed(v Value) Value {
-	if v.asc != nil {
-		v.asc = nil
-	}
+	ClearAscribed(&v)
 	return v
 }
 
@@ -2683,7 +2663,7 @@ func NewList(elems []Value) Value {
 // at the end of execution. Used by the parser for source-code lists.
 func NewEvalList(elems []Value) Value {
 	v := NewValueRaw(TList, ListPayload{Elems: elems})
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -2748,7 +2728,7 @@ func NewFlexMap(entries *OrderedMap) Value {
 // execution. Used by the parser for source-code maps.
 func NewEvalMap(entries *OrderedMap) Value {
 	v := NewValueRaw(TMap, MapPayload{M: entries})
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -2873,7 +2853,7 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // runtime value carries a Parent, a type node carries its metadata, and a
 // carrier is flagged — so the test is exact, not a heuristic.
 func (v *Value) IsUnboundSlot() bool {
-	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !v.Dynamic
+	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !IsDynamic(v)
 }
 
 func NewTypeLiteral(t *Type) Value {
@@ -4271,9 +4251,9 @@ func (v Value) String() string {
 	// modality is legible in traces / `boru check` output instead of
 	// masquerading as its bare bound (design/legacy/dynamic-modality-report.10.ignore).
 	// Render the bound by clearing the flag and recursing.
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		inner := v
-		inner.Dynamic = false
+		SetDynamic(&inner, false)
 		return "dynamic(" + inner.String() + ")"
 	}
 	// Behavior-driven format delegation: types that supply a custom

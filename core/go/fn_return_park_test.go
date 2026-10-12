@@ -26,7 +26,7 @@ func TestFnReturnPark(t *testing.T) {
 	fnv := NewFunction(FnDefInfo{Name: "parked"})
 
 	quoted := NewFunction(FnDefInfo{Name: "quoted"})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 
 	// A Function value REPARENTED to a refined function type. stepLiteral's
 	// dispatch guard requires Parent == TFunction, so this one would be
@@ -36,16 +36,16 @@ func TestFnReturnPark(t *testing.T) {
 	// The analysis pass's stand-in for a concrete Function: a DYNAMIC
 	// fn-typed carrier (a member read, a call result).
 	dynFn := NewCarrier(TFunction)
-	dynFn.Dynamic = true
+	SetDynamic(&dynFn, true)
 
 	quotedDyn := NewCarrier(TFunction)
-	quotedDyn.Dynamic = true
-	quotedDyn.Quoted = true
+	SetDynamic(&quotedDyn, true)
+	SetQuoted(&quotedDyn, true)
 
 	// A named fn collapsed out of a reach group (tagReachCollapsedFn):
 	// dot access to a function is a call, so the park must decline it.
 	reachTagged := NewFunction(FnDefInfo{Name: "m.f"})
-	reachTagged.ReachGroup = true
+	SetReachGroup(&reachTagged, true)
 
 	cases := []struct {
 		name          string

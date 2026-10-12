@@ -39,7 +39,7 @@ func TestUnmatchedLambdaBody(t *testing.T) {
 	}
 	body, cl := closure(0, compiler.ClosureInValue)
 	quoted := body
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	standsAside("a quoted body", quoted, cl, core.NewString("s"))
 	_, badCl := closure(9, compiler.ClosureInValue)
 	standsAside("a unit the closure cannot name", body, badCl, core.NewString("s"))

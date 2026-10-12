@@ -65,7 +65,7 @@ func TestErrorCountPoint(t *testing.T) {
 			body[2] = gtok(core.NewInteger(9), 5)
 		}},
 		{"a quoted body", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) {
-			body[3].Quoted = true
+			core.SetQuoted(&body[3], true)
 		}},
 	} {
 		es.argSites = map[int][]argSite{12: {{seq: 11}, {seq: 10}}}
@@ -160,7 +160,7 @@ func TestIslandCountPoint(t *testing.T) {
 		{"a handler that is no literal list", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) {
 			body[5] = gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 22)}), 21)
 		}},
-		{"a quoted body", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) { body[3].Quoted = true }},
+		{"a quoted body", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) { core.SetQuoted(&body[3], true) }},
 		{"a do not written before the word", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) {
 			body[2] = gtok(core.NewInteger(9), 5)
 		}},

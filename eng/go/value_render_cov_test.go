@@ -326,13 +326,13 @@ func TestTypedListAndMapConstructors(t *testing.T) {
 
 func TestEvalAndImplicitContainers(t *testing.T) {
 	el := core.NewEvalList([]core.Value{core.NewInteger(1)})
-	if !el.Eval {
+	if !core.IsEval(&el) {
 		t.Error("NewEvalList did not set Eval")
 	}
 	m := core.NewOrderedMap()
 	m.Set("a", core.NewInteger(1))
 	em := core.NewEvalMap(m)
-	if !em.Eval {
+	if !core.IsEval(&em) {
 		t.Error("NewEvalMap did not set Eval")
 	}
 	im := core.NewImplicitMap(m)

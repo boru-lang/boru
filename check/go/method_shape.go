@@ -64,7 +64,7 @@ import core "github.com/boru-lang/boru/core/go"
 // fn values, computed map keys, carriers, or undefined placeholders —
 // so the baked const IS the value the interpreter's handler receives.
 func evalFixedWindowToken(v core.Value) bool {
-	if v.Carrier || v.Dynamic || v.Undefined {
+	if v.Carrier || core.IsDynamic(&v) || core.IsUndefined(&v) {
 		return false
 	}
 	switch d := v.Data.(type) {
@@ -121,7 +121,7 @@ func modifiedAsData(e *core.Engine, valIdx int) bool {
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := r.Check.MethodShapeMember(v.ID)
@@ -151,8 +151,8 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 				args := make([]core.Value, len(positions))
 				for i, p := range positions {
 					args[i] = e.Tape.At(p)
-					args[i].Eval = false
-					args[i].Undefined = false
+					core.SetEval(&args[i], false)
+					core.SetUndefined(&args[i], false)
 				}
 				reps := make([]core.Value, shapedMethodReturnArity(e, sig, args, v.Pos()))
 				for i := range reps {
@@ -180,8 +180,8 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		args[i] = e.Tape.At(p)
-		args[i].Eval = false
-		args[i].Undefined = false
+		core.SetEval(&args[i], false)
+		core.SetUndefined(&args[i], false)
 	}
 	// Model the dispatch through the shared check-mode machinery (declared
 	// returns, folds, contagion — identical to a real dispatch of the inner
@@ -407,7 +407,7 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || !dynamicBoundConformsToFunction(v) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || !dynamicBoundConformsToFunction(v) {
 		return false
 	}
 	// The forward window: the same inert, evaluation-fixed statement-window
@@ -496,7 +496,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := es.MemberFnReadValue(v.ID)
@@ -543,8 +543,8 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 			return false
 		}
 		args[i-1] = tv
-		args[i-1].Eval = false
-		args[i-1].Undefined = false
+		core.SetEval(&args[i-1], false)
+		core.SetUndefined(&args[i-1], false)
 	}
 	// Model the dispatch SUSPENDED (a plain user fn's ReturnsFn records its
 	// own CALL_USER through core_helpers, not the outcome seam — a live probe
@@ -625,7 +625,7 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	r := e.Registry
 	v := e.Tape.At(valIdx)
 	gradual := !core.IsFnTypedCarrier(&v)
-	if v.Quoted || v.ID == "" || (gradual && !(v.Carrier && core.SigTypeMatches(&v, core.TFunction))) {
+	if core.IsQuoted(&v) || v.ID == "" || (gradual && !(v.Carrier && core.SigTypeMatches(&v, core.TFunction))) {
 		return false
 	}
 	name, read := es.DefReadName(v.ID)
@@ -735,8 +735,8 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 			return nil, unfitWindowToken
 		}
 		args[i-1] = tv
-		args[i-1].Eval = false
-		args[i-1].Undefined = false
+		core.SetEval(&args[i-1], false)
+		core.SetUndefined(&args[i-1], false)
 	}
 	return args, ""
 }
@@ -757,7 +757,7 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.Dynamic || v.ID == "" || !core.IsFnTypedCarrier(&v) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || v.ID == "" || !core.IsFnTypedCarrier(&v) {
 		return false
 	}
 	if _, bound := core.CheckFnCarrierBoundName(r, v.ID); !bound {
@@ -790,7 +790,7 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 // the types alone do not decide, a window the claim cannot fill.
 func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.Dynamic || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
 		return false
 	}
 	shape, ok := fnShapeTypedClaim(e.Registry, v)
@@ -908,7 +908,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		return
 	}
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.ID == "" || core.IsConcrete(&v) {
+	if core.IsQuoted(&v) || v.ID == "" || core.IsConcrete(&v) {
 		return
 	}
 	es.NoteDelivery(v)
@@ -935,7 +935,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
 	// the branch's own MayBeFn, which only a value arm sets, does not say so
 	// (NUR317).
-	if !core.IsFnTypedCarrier(&v) && !(v.Dynamic && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
@@ -1078,7 +1078,7 @@ func aloneInLiveReachGroup(e *core.Engine, valIdx int) bool {
 		return false
 	}
 	open := e.Tape.At(valIdx - 1)
-	return open.ReachGroup && core.IsOpenParen(&open) && core.IsCloseParen(e.Tape.Ref(valIdx+1))
+	return core.IsReachGroup(&open) && core.IsOpenParen(&open) && core.IsCloseParen(e.Tape.Ref(valIdx+1))
 }
 
 // nothingToCollectAfter reports whether the re-step of the value at valIdx has

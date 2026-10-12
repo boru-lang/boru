@@ -223,7 +223,7 @@ func (s selfKnowledge) body() native.NativeFunc {
 				for _, sig := range fn.OwnSigs() {
 					if len(sig.Body()) > 0 {
 						body := native.NewList(append([]native.Value(nil), sig.Body()...))
-						body.Quoted = true
+						native.SetQuoted(&body, true)
 						return []native.Value{body}, nil
 					}
 				}

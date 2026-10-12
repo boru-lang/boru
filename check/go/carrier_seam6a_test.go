@@ -129,7 +129,7 @@ func TestS6aGradualContagionStrictDedup(t *testing.T) {
 	if len(r.Check.Diagnostics) != 1 {
 		t.Errorf("duplicate dynamic_dispatch diagnostic added: %d", len(r.Check.Diagnostics))
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) {
 		t.Errorf("contagion should mark the result dynamic: %+v", out)
 	}
 }
@@ -275,7 +275,7 @@ func TestS6aNarrowDynamicUsesGuards(t *testing.T) {
 	b := core.NewDynamicCarrier(core.TAny)
 	b.SetDynFrom("s6a_rebound")
 	narrowDynamicUses(r, "w", sig, []core.Value{b})
-	if got, _ := r.Defs.Top("s6a_rebound"); got.Dynamic {
+	if got, _ := r.Defs.Top("s6a_rebound"); core.IsDynamic(&got) {
 		t.Error("a since-rebound name must stay untouched")
 	}
 
@@ -313,7 +313,7 @@ func TestS6aReturnsFreshInstanceParameterlessSchemaNonConcreteData(t *testing.T)
 	if len(out) != 1 {
 		t.Fatalf("out len = %d, want 1", len(out))
 	}
-	if !out[0].Parent.Equal(core.TMap) || !out[0].Dynamic {
+	if !out[0].Parent.Equal(core.TMap) || !core.IsDynamic(&out[0]) {
 		t.Errorf("want a dynamic Map carrier riding the field schema, got %+v", out[0])
 	}
 	if _, ok := out[0].Data.(core.RecordTypeInfo); !ok {
@@ -456,23 +456,23 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 func TestS6aIsDeferredWordListShapes(t *testing.T) {
 	// Parent=TList with a non-list payload: AsList fails.
 	bad := core.NewValueRaw(core.TList, core.IntPayload{N: 1})
-	bad.Eval = true
+	core.SetEval(&bad, true)
 	if IsDeferredWordList(bad) {
 		t.Error("a non-list payload must decline")
 	}
 
 	// A nested list containing a word: deferred.
 	inner := core.NewList([]core.Value{core.NewWord("w")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	outer := core.NewList([]core.Value{inner})
-	outer.Eval = true
+	core.SetEval(&outer, true)
 	if !IsDeferredWordList(outer) {
 		t.Error("a nested word-bearing list is deferred")
 	}
 
 	// No words anywhere: not deferred.
 	plain := core.NewList([]core.Value{core.NewInteger(1), core.NewList([]core.Value{core.NewInteger(2)})})
-	plain.Eval = true
+	core.SetEval(&plain, true)
 	if IsDeferredWordList(plain) {
 		t.Error("a word-free list is not deferred")
 	}

@@ -203,7 +203,7 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 		// machinery re-mints the result carrier and orphans the recorded
 		// event's identity — the elision then misses and the dispatch
 		// re-declines generically.)
-		j.Dynamic = true
+		core.SetDynamic(&j, true)
 		plan.outs[pos] = j
 		plan.joined[pos] = true
 	}

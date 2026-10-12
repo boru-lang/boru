@@ -71,7 +71,7 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	// the runtime rule the replay re-steps under.
 	u3, rec3 := daUnit("p0", "p1")
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	dyn.ID = "d0"
 	if !es.noteDynFrameReplay(u3, rec3, []core.Value{daFnCarrier("p0"), daFnCarrier("p1"), dyn}, 2) {
 		t.Error("a dynamic residual value must seat the replay")
@@ -98,7 +98,7 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	u5 := &emitUnit{localByID: map[string]int{"f": 0}}
 	rec5 := &fnUnitRec{nParams: 1, nUnnamed: 0, returns: []*core.Type{core.TAny}}
 	dyn2 := core.NewCarrier(core.TAny)
-	dyn2.Dynamic = true
+	core.SetDynamic(&dyn2, true)
 	dyn2.ID = "d1"
 	if es.noteDynFrameReplay(u5, rec5, []core.Value{daFnCarrier("f"), dyn2}, 1) {
 		t.Error("a Function + Dynamic window must keep the compile failure")
@@ -266,7 +266,7 @@ func TestReplayIsBodyTailSeqAnchor(t *testing.T) {
 	}
 	dynAt := func(id string) core.Value {
 		v := core.NewCarrier(core.TAny)
-		v.Dynamic = true
+		core.SetDynamic(&v, true)
 		v.ID = id
 		return v
 	}

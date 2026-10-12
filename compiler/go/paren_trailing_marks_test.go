@@ -58,7 +58,7 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 	unmarked := core.NewCarrier(core.TFunction)
 	unmarked.ID = "fnc-u"
 	quoted := marked
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil, core.SrcPos{}); got != "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)" {
 		t.Errorf("a re-step-marked carrier operand declines: %q", got)
 	}

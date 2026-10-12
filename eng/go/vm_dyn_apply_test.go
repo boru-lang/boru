@@ -36,7 +36,7 @@ func TestDynApplyEnterDeclines(t *testing.T) {
 
 	t.Run("quoted fn is data", func(t *testing.T) {
 		fn := dynApplyFn(nil, prog, 0)
-		fn.Quoted = true
+		core.SetQuoted(&fn, true)
 		if ent := vc.dynApplyEnter(fn, nil); ent != nil {
 			t.Fatal("a QUOTED fn is data — entering it turns `((mk) 2)` from " +
 				"[fn (Integer) 2] into [3], a silent wrong answer")
@@ -85,14 +85,14 @@ func TestDynApplyEnterQuotesListParams(t *testing.T) {
 	_ = r
 	fn := dynApplyFn([]core.FnParam{{Name: "l", Type: core.TList}}, vc.p, 0)
 	lst := core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if lst.Quoted {
+	if core.IsQuoted(&lst) {
 		t.Fatal("fixture list arrived already quoted — the assertion below would be vacuous")
 	}
 	ent := vc.dynApplyEnter(fn, []core.Value{lst})
 	if ent == nil {
 		t.Fatal("a matching list param must enter")
 	}
-	if !ent.locals[0].Quoted {
+	if !core.IsQuoted(&ent.locals[0]) {
 		t.Error("a LIST param must be delivered QUOTED, as OpCallUserPoly delivers it")
 	}
 }
@@ -139,7 +139,7 @@ func TestDynFrameSimpleWindow(t *testing.T) {
 	prog := oneConstProg(1)
 	fn := dynApplyFn(nil, prog, 0)
 	quoted := fn
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 
 	for _, tc := range []struct {
 		name string

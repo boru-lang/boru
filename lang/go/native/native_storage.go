@@ -1495,7 +1495,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// field absent at run time read optimistically and are discharged by
 	// a guard — recordSchemaFieldReturns never claims strictly. A union
 	// with no record alternative falls through unchanged.
-	if container.Dynamic {
+	if IsDynamic(&container) {
 		if di, err := AsDisjunct(container); err == nil {
 			for _, alt := range di.Alternatives {
 				if rt, ok := alt.Data.(RecordTypeInfo); ok && rt.Fields != nil {

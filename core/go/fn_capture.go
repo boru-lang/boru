@@ -131,7 +131,7 @@ func walkBodyTokens(body []Value, callback func(WordInfo, Value), sugarCB func(S
 
 func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarInfo, Value)) {
 	// Quoted values are data — skip.
-	if v.Quoted {
+	if IsQuoted(&v) {
 		return
 	}
 	// Bare Word: emit.
@@ -354,7 +354,7 @@ func ComputeFnValueCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 	for i := 0; i < len(body); i++ {
 		v := body[i]
-		if v.Quoted {
+		if IsQuoted(&v) {
 			continue
 		}
 		if _, isFn := v.Data.(*FnDefInfo); isFn {

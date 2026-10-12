@@ -258,7 +258,7 @@ func readHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 func readReturns(withOpts bool) ReturnsFunc {
 	dynAny := func() []Value {
 		c := NewCarrier(TAny)
-		c.Dynamic = true
+		SetDynamic(&c, true)
 		return []Value{c}
 	}
 	return func(args []Value, r *Registry) []Value {

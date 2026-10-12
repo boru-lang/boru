@@ -237,7 +237,7 @@ func TestProvenNarrowerReturn(t *testing.T) {
 	if _, ok := provenNarrowerReturn(core.TAny, []core.FnParam{{Name: "x", Type: core.TAny}}, []core.Value{ints}, 1, 0); ok {
 		t.Error("an Any-param fn's result stays gradual")
 	}
-	if c, ok := provenNarrowerReturn(core.TAny, typed, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || c.Dynamic {
+	if c, ok := provenNarrowerReturn(core.TAny, typed, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || core.IsDynamic(&c) {
 		t.Errorf("an Integer carrier under [Any] narrows, got %v %v", c, ok)
 	}
 	for name, c := range map[string]struct {

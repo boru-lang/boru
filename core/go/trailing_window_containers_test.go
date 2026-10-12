@@ -22,7 +22,7 @@ func TestProvenWindowMatch(t *testing.T) {
 		t.Error("a non-conforming argument proves nothing")
 	}
 	dyn := NewCarrier(TInteger)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	if ProvenWindowMatch(fnOf(one), []Value{dyn}) {
 		t.Error("a gradual argument proves nothing")
 	}
@@ -58,11 +58,11 @@ func TestProvenWindowMatch(t *testing.T) {
 // it stays pending, owed the residual sweep's evaluation (NUR337).
 func TestEvalTrailingContainerRawSlot(t *testing.T) {
 	body := NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)})
-	body.Eval = true
+	SetEval(&body, true)
 	m := NewOrderedMap()
 	m.Set("a", NewParenExpr([]Value{NewInteger(1), NewWord("add"), NewInteger(2)}))
 	mv := NewMap(m)
-	mv.Eval = true
+	SetEval(&mv, true)
 	if !IsPendingActiveContainer(body) || !IsPendingActiveContainer(mv) {
 		t.Fatal("both literals are pending active containers")
 	}
@@ -74,16 +74,16 @@ func TestEvalTrailingContainerRawSlot(t *testing.T) {
 		fits bool
 	}{{body, 0, true}, {body, 0, false}, {mv, 1, true}, {mv, 1, false}} {
 		got, ok := e.evalTrailingContainer(c.v, sig, c.p, c.fits)
-		if ok != c.fits || got.Eval == c.fits || !BearsActiveTokens(got) {
-			t.Errorf("raw slot %d (fits=%v): got %v ok=%v eval=%v", c.p, c.fits, got, ok, got.Eval)
+		if ok != c.fits || IsEval(&got) == c.fits || !BearsActiveTokens(got) {
+			t.Errorf("raw slot %d (fits=%v): got %v ok=%v eval=%v", c.p, c.fits, got, ok, IsEval(&got))
 		}
 	}
 	// NEGATIVE: a container with nothing to evaluate, a quoted one, and a
 	// scalar are not pending active containers.
 	inert := NewList([]Value{NewInteger(1)})
-	inert.Eval = true
+	SetEval(&inert, true)
 	quoted := body
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	for _, v := range []Value{inert, quoted, NewInteger(3)} {
 		if IsPendingActiveContainer(v) {
 			t.Errorf("%v must not be a pending active container", v)

@@ -80,7 +80,7 @@ func caseAlternatives(r *Registry, v Value) ([]Value, bool) {
 // an unrecognized shape) — the caller then abandons the whole check
 // rather than reason from a wrong model.
 func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
-	if a.Dynamic { //covergate:allow the root scrutinee is pre-checked by caseAlternatives, and disjunct alternatives are never Dynamic — JoinCarriers' gradual contagion makes a join with a dynamic arm dynamic as a WHOLE, and type-body alternatives (SimplifyDisjunctAlts / UnionCarrierForType) are literals or concretes
+	if IsDynamic(&a) { //covergate:allow the root scrutinee is pre-checked by caseAlternatives, and disjunct alternatives are never Dynamic — JoinCarriers' gradual contagion makes a join with a dynamic arm dynamic as a WHOLE, and type-body alternatives (SimplifyDisjunctAlts / UnionCarrierForType) are literals or concretes
 		return false
 	}
 	if IsDisjunct(&a) {
@@ -746,7 +746,7 @@ func checkCaseExhaustiveness(r *Registry, v Value, clauses Value, elems []Value)
 	// A DYNAMIC scrutinee has no static type to prove coverage against,
 	// so the clause list must carry its own catch-all: a trailing
 	// default, or an Any clause (the written equivalent).
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		if hasDefault || caseHasAnyClause(r, matches) {
 			return
 		}

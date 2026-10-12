@@ -10,7 +10,7 @@ import (
 // when it parks as a frame residual.
 func pendingList(elems ...Value) Value {
 	v := NewList(elems)
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -18,7 +18,7 @@ func pendingMap(k string, val Value) Value {
 	m := NewOrderedMap()
 	m.Set(k, val)
 	v := NewMap(m)
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -46,7 +46,7 @@ func TestStepDefCleanupResidualArms(t *testing.T) {
 	if err := e.stepDefCleanup(marker, idx); err != nil {
 		t.Fatalf("off-state cleanup: %v", err)
 	}
-	if !e.Tape.At(1).Eval {
+	if !IsEval(addrOf(e.Tape.At(1))) {
 		t.Fatal("EvalResidual=false must leave the residual pending")
 	}
 
@@ -55,7 +55,7 @@ func TestStepDefCleanupResidualArms(t *testing.T) {
 	if err := e.stepDefCleanup(marker, idx); err != nil {
 		t.Fatalf("on-state cleanup: %v", err)
 	}
-	if e.Tape.At(1).Eval {
+	if IsEval(addrOf(e.Tape.At(1))) {
 		t.Fatal("EvalResidual=true must evaluate the residual")
 	}
 
@@ -141,9 +141,9 @@ func TestBodyEvalsResidualGate(t *testing.T) {
 // share: only a plain, unevaluated, unquoted list/map counts — every
 // typed/schema container and every non-container stays out.
 func TestPendingResidualContainerArms(t *testing.T) {
-	pend := func(v Value) Value { v.Eval = true; return v }
+	pend := func(v Value) Value { SetEval(&v, true); return v }
 	quoted := pendingMap("a", NewInteger(1))
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	cases := []struct {
 		name string
 		v    Value
@@ -189,7 +189,7 @@ func TestResidualBottomUpAndBoundaryArms(t *testing.T) {
 	if err := e.stepDefCleanup(marker, 3); err != nil {
 		t.Fatalf("two-residual cleanup: %v", err)
 	}
-	if e.Tape.At(1).Eval || e.Tape.At(2).Eval {
+	if IsEval(addrOf(e.Tape.At(1))) || IsEval(addrOf(e.Tape.At(2))) {
 		t.Fatal("both pending residuals must evaluate")
 	}
 
@@ -201,7 +201,7 @@ func TestResidualBottomUpAndBoundaryArms(t *testing.T) {
 	if err := e2.stepDefCleanup(marker2, 1); err != nil {
 		t.Fatalf("boundary cleanup: %v", err)
 	}
-	if e2.Tape.At(0).Eval {
+	if IsEval(addrOf(e2.Tape.At(0))) {
 		t.Fatal("the tape-start residual must evaluate")
 	}
 }

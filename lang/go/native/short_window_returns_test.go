@@ -41,7 +41,7 @@ func TestNativeReturnsFnsGuardShortWindow(t *testing.T) {
 					}
 				}()
 				out := c.fn(args, r)
-				if len(out) != c.want || (c.want == 1 && (!out[0].Dynamic || !out[0].Parent.Equal(TAny))) {
+				if len(out) != c.want || (c.want == 1 && (!IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny))) {
 					t.Errorf("%s over %d operand(s) = %#v, want %d dynamic Any", c.name, n, out, c.want)
 				}
 			}()

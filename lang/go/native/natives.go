@@ -513,7 +513,7 @@ func impliesHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 // what it referred to at quote time.
 func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	v.Quoted = true
+	SetQuoted(&v, true)
 	return []Value{captureAtomReferent(v, r)}, nil
 }
 
@@ -522,7 +522,7 @@ func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 // atom value additionally captures its referent (see quoteWordHandler).
 func quoteAnyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	v.Quoted = true
+	SetQuoted(&v, true)
 	return []Value{captureAtomReferent(v, r)}, nil
 }
 
@@ -809,7 +809,7 @@ func listEdgeElemReturns(last bool) ReturnsFunc {
 		if last {
 			elem = list.Get(list.Len() - 1)
 		}
-		if elem.Undefined {
+		if IsUndefined(&elem) {
 			return fallback
 		}
 		et := ValueType(elem)
@@ -818,8 +818,8 @@ func listEdgeElemReturns(last bool) ReturnsFunc {
 		}
 		c := NewCarrier(et)
 		// A carrier / dynamic element propagates its own gradual claim.
-		if elem.Dynamic {
-			c.Dynamic = true
+		if IsDynamic(&elem) {
+			SetDynamic(&c, true)
 		}
 		return []Value{NewCarrier(TList), c}
 	}

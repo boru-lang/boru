@@ -257,7 +257,7 @@ func TestReachReceivers(t *testing.T) {
 	reach := core.NewReach(core.ReachInfo{Receiver: []core.Value{recv}, Segments: []core.ReachSeg{{KeyLit: core.NewString("f")}}})
 	nested := core.NewReach(core.ReachInfo{Receiver: []core.Value{reach}, Segments: []core.ReachSeg{{KeyLit: core.NewString("g")}}})
 	list := core.NewList([]core.Value{nested})
-	list.Eval = true
+	core.SetEval(&list, true)
 	at := map[core.SrcPos]bool{}
 	reachReceivers([]core.Value{core.NewParenExpr([]core.Value{list}), restartTok(1, 9)}, at)
 	if !at[core.SrcPos{Row: 1, Col: 4}] || len(at) != 1 {

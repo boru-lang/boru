@@ -333,7 +333,7 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 		for i, t := range returns {
 			c := native.NewCarrier(t)
 			if t.Equal(native.TAny) {
-				c.Dynamic = true
+				core.SetDynamic(&c, true)
 			}
 			fallback[i] = c
 		}
@@ -358,7 +358,7 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 // (stores, class instances, fn values, timers) are NOT inert — their
 // check-time state is not their runtime state — so they decline the fold.
 func parseFoldableValue(v native.Value) bool {
-	if v.Carrier || v.Dynamic || v.Undefined || !native.IsConcrete(&v) {
+	if v.Carrier || core.IsDynamic(&v) || core.IsUndefined(&v) || !native.IsConcrete(&v) {
 		return false
 	}
 	switch {

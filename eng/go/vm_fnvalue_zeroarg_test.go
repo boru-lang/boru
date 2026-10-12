@@ -110,9 +110,9 @@ func TestZeroArgFnValueDeclines(t *testing.T) {
 	ref := &compiler.CompiledFnRef{Prog: oneConstProg(42), Unit: 0}
 	one := core.NewInteger(1)
 	quoted := zeroArgFn("g", false, zeroArgUnitSig(ref))
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	pending := core.NewList([]core.Value{core.NewWord("g")})
-	pending.Eval = true
+	core.SetEval(&pending, true)
 	native := core.Signature{Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return nil, nil
 	})}

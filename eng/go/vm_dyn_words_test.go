@@ -74,7 +74,7 @@ func TestInstalledSigView(t *testing.T) {
 func TestReplayRegionLive(t *testing.T) {
 	fn := core.NewFunction(core.FnDefInfo{})
 	quoted := fn
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	five := core.NewInteger(5)
 	word := []compiler.DynFrameWord{{Name: "g"}}
 	if replayRegionLive([]core.Value{five, five}, nil) {

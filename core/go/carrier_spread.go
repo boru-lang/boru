@@ -36,7 +36,7 @@ type SpreadPayload struct {
 func NewVariadicCarrier(elem Value) Value {
 	v := NewValueRaw(TAny, SpreadPayload{Elem: elem})
 	v.Carrier = true
-	v.Dynamic = true
+	SetDynamic(&v, true)
 	return v
 }
 

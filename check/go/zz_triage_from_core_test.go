@@ -87,7 +87,7 @@ func TestReturnsFuncBuilders(t *testing.T) {
 		t.Errorf("string concat = %v", out)
 	}
 	dynamic := core.NewDynamicCarrier(core.TAny)
-	if out := ac([]core.Value{dynamic, core.NewCarrier(core.TInteger)}, nil); !out[0].Dynamic {
+	if out := ac([]core.Value{dynamic, core.NewCarrier(core.TInteger)}, nil); !core.IsDynamic(&out[0]) {
 		t.Errorf("gradual concat = %v", out)
 	}
 
@@ -126,12 +126,12 @@ func TestParamBodyCarrier(t *testing.T) {
 	// A {:T} param carrier must be DYNAMIC — the arg may be flex, so an in-place
 	// mutation in the body must runtime-rematch rather than preselect the
 	// immutable handler (the compile-vs-interpret divergence fix).
-	if v := ParamBodyCarrier(core.FnParam{Pattern: &mapPat, Type: core.TMap}); !core.IsTypedMap(&v) || !v.Dynamic {
-		t.Errorf("{:Integer} param → %s (dynamic=%v), want a dynamic typed-map carrier", v.Parent.String(), v.Dynamic)
+	if v := ParamBodyCarrier(core.FnParam{Pattern: &mapPat, Type: core.TMap}); !core.IsTypedMap(&v) || !core.IsDynamic(&v) {
+		t.Errorf("{:Integer} param → %s (dynamic=%v), want a dynamic typed-map carrier", v.Parent.String(), core.IsDynamic(&v))
 	}
 	listPat := core.NewCarrierTypedListValue(core.NewTypeLiteral(core.TInteger))
-	if v := ParamBodyCarrier(core.FnParam{Pattern: &listPat, Type: core.TList}); !core.IsTypedList(&v) || !v.Dynamic {
-		t.Errorf("[:Integer] param → %s (dynamic=%v), want a dynamic typed-list carrier", v.Parent.String(), v.Dynamic)
+	if v := ParamBodyCarrier(core.FnParam{Pattern: &listPat, Type: core.TList}); !core.IsTypedList(&v) || !core.IsDynamic(&v) {
+		t.Errorf("[:Integer] param → %s (dynamic=%v), want a dynamic typed-list carrier", v.Parent.String(), core.IsDynamic(&v))
 	}
 	// A non-typed-container param falls back to ParamInputCarrier (no pattern).
 	if v := ParamBodyCarrier(core.FnParam{Type: core.TInteger}); v.Parent == nil || !v.Parent.ConformsTo(core.TInteger) {

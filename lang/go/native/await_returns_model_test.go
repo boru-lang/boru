@@ -110,7 +110,7 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	if len(all) != 1 {
 		t.Fatalf("all: got %d residual values, want 1", len(all))
 	}
-	if !all[0].Dynamic {
+	if !IsDynamic(&all[0]) {
 		t.Errorf("all: residual is strict; a strict disjunct false-positives on list consumers")
 	}
 	di, err := AsDisjunct(all[0])

@@ -13,7 +13,7 @@ func TestUncalledDispatchDefiniteArms(t *testing.T) {
 	dyn := NewDynamicCarrier(TString)
 	carrier := NewCarrier(TString)
 	undef := NewString("x")
-	undef.Undefined = true
+	SetUndefined(&undef, true)
 
 	for _, tc := range []struct {
 		name string

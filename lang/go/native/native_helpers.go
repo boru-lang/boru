@@ -228,7 +228,7 @@ func returnsDivMod(detail string) ReturnsFunc {
 // silent.
 func checkBigFloatMix(r *Registry, args []Value) {
 	if !atUncaughtTopLevel(r) || len(args) != 2 ||
-		args[0].Dynamic || args[1].Dynamic ||
+		IsDynamic(&args[0]) || IsDynamic(&args[1]) ||
 		args[0].Parent == nil || args[1].Parent == nil ||
 		IsBareTypeNode(&args[0]) || IsBareTypeNode(&args[1]) {
 		return

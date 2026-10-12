@@ -81,7 +81,9 @@ func BodyEscaped(r *Registry) bool {
 func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
 	if cl, ok := body.Data.(ClosurePayload); ok && !cl.RetTrim {
 		cl.RetTrim = true
-		body = Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
+		quoted := IsQuoted(&body)
+		body = Value{Parent: body.Parent, Data: cl}
+		SetQuoted(&body, quoted)
 	}
 	return InvokeBody(r, body, inputs)
 }

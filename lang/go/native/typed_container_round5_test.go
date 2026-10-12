@@ -80,7 +80,7 @@ func TestSetpathResidualRetainsTag(t *testing.T) {
 	for _, src := range []string{`def xs:[:Integer] [1 2 3] xs`, `def m:{:Integer} {a:1} m`} {
 		v, _ := tcValue(t, src)
 		res := d2DynamicTypedResidual(v)
-		if !res.Dynamic {
+		if !IsDynamic(&res) {
 			t.Errorf("[%s] setpath residual should stay dynamic", src)
 		}
 		if ci, cerr := AsChildType(res); cerr != nil || !ci.Child.Equal(TInteger) {

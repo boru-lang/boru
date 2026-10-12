@@ -17,7 +17,7 @@ func TestCallBoruNamedDefersAnonymousContainerResidual(t *testing.T) {
 	r.Defs.Set("zzOuter", []Value{NewInteger(99)})
 
 	body := NewList([]Value{NewWord("zzOuter")})
-	body.Eval = true
+	SetEval(&body, true)
 	sig := &FnSig{Anonymous: true, Impl: Boru([]Value{body})}
 
 	got, err := r.CallBoruNamed(sig, nil, nil, "zz-defer")
@@ -55,7 +55,7 @@ func TestCallBoruNamedDefersAnonymousContainerResidual(t *testing.T) {
 	// …and an EVALUATING value that is not a plain list or map falls through
 	// the sweep's container arms to the same pass-through.
 	marked := NewString("zz")
-	marked.Eval = true
+	SetEval(&marked, true)
 	other := &FnSig{Anonymous: true, Impl: Boru([]Value{marked})}
 	ov, oerr := r.CallBoruNamed(other, nil, nil, "zz-defer-other")
 	if oerr != nil {
@@ -79,7 +79,7 @@ func TestCallBoruNamedDefersAnonymousContainerResidual(t *testing.T) {
 func TestCallBoruNamedDeferredSweepPropagatesError(t *testing.T) {
 	r := poolTestRegistry(t)
 	body := NewList([]Value{NewWord("zzNeverDefined")})
-	body.Eval = true
+	SetEval(&body, true)
 	sig := &FnSig{Anonymous: true, Impl: Boru([]Value{body})}
 
 	_, err := r.CallBoruNamed(sig, nil, nil, "zz-defer-err")

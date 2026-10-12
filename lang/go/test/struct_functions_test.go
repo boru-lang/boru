@@ -507,7 +507,7 @@ func TestWalkBeforeIdentity(t *testing.T) {
 	// Push the fn as a Quoted function value so it doesn't auto-execute
 	// before walk can consume it from the stack.
 	fnVal := native.NewFunction(fnDef)
-	fnVal.Quoted = true
+	native.SetQuoted(&fnVal, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -563,7 +563,7 @@ func TestWalkBeforeIdentityNested(t *testing.T) {
 	}
 
 	fnVal := native.NewFunction(fnDef)
-	fnVal.Quoted = true
+	native.SetQuoted(&fnVal, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -622,7 +622,7 @@ func TestWalkBeforeReplace(t *testing.T) {
 	}
 
 	fnVal := native.NewFunction(fnDef)
-	fnVal.Quoted = true
+	native.SetQuoted(&fnVal, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -669,7 +669,7 @@ func TestWalkBeforeReturnPath(t *testing.T) {
 	}
 
 	fnVal := native.NewFunction(fnDef)
-	fnVal.Quoted = true
+	native.SetQuoted(&fnVal, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -724,9 +724,9 @@ func TestWalkBeforeAfterIdentity(t *testing.T) {
 	}
 
 	fnVal1 := native.NewFunction(fnDef1)
-	fnVal1.Quoted = true
+	native.SetQuoted(&fnVal1, true)
 	fnVal2 := native.NewFunction(fnDef2)
-	fnVal2.Quoted = true
+	native.SetQuoted(&fnVal2, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -793,9 +793,9 @@ func TestWalkBeforeAfterPostOrder(t *testing.T) {
 	}
 
 	fnVal1 := native.NewFunction(fnDef1)
-	fnVal1.Quoted = true
+	native.SetQuoted(&fnVal1, true)
 	fnVal2 := native.NewFunction(fnDef2)
-	fnVal2.Quoted = true
+	native.SetQuoted(&fnVal2, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{
@@ -853,9 +853,9 @@ func TestWalkBeforeAfterNested(t *testing.T) {
 	}
 
 	fnVal1 := native.NewFunction(fnDef1)
-	fnVal1.Quoted = true
+	native.SetQuoted(&fnVal1, true)
 	fnVal2 := native.NewFunction(fnDef2)
-	fnVal2.Quoted = true
+	native.SetQuoted(&fnVal2, true)
 
 	eng := native.NewTop(reg)
 	result, err := eng.Run([]native.Value{

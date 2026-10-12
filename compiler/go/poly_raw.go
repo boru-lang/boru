@@ -65,7 +65,7 @@ func literalTokenAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 	for k, at := range path {
 		t := toks[at]
 		if k == len(path)-1 {
-			return t, t.Pos() == p && t.Eval && !t.Quoted && (t.Parent.Equal(core.TList) || t.Parent.Equal(core.TMap))
+			return t, t.Pos() == p && core.IsEval(&t) && !core.IsQuoted(&t) && (t.Parent.Equal(core.TList) || t.Parent.Equal(core.TMap))
 		}
 		toks, _ = nestedToks(t)
 	}

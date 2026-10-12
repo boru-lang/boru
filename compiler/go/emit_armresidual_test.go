@@ -75,7 +75,7 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	// on its own. Pinned as its own case, with the screen it takes named, so
 	// the two declines are never read as one.
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	dyn.ID = ""
 	if !core.SigTypeMatches(&dyn, core.TFunction) {
 		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what declines it")

@@ -265,7 +265,7 @@ func TestReturnsDynUnion(t *testing.T) {
 		t.Fatalf("want one result, got %d", len(out))
 	}
 	v := out[0]
-	if !v.Dynamic {
+	if !core.IsDynamic(&v) {
 		t.Error("a declared union result must stay DYNAMIC — a strict union declines gradual call sites")
 	}
 	if !core.IsDisjunct(&v) {

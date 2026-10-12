@@ -53,7 +53,7 @@ func TestDeepKnownDoesNotLowerUnknownOperands(t *testing.T) {
 	// A DYNAMIC operand was matched optimistically — declined even though
 	// it carries a payload, and declined nested too.
 	dyn := NewString("x")
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	if DeepKnown(dyn) {
 		t.Fatal("a dynamic value must not be DeepKnown")
 	}

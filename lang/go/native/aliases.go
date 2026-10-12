@@ -712,3 +712,11 @@ func ClosureIsFnValue(v *core.Value) bool { return compiler.ClosureIsFnValue(v) 
 // its FnDefInfo by pointer.
 func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
 func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
+
+// The occurrence flags (core/go/occurrence.go): read and written through
+// the holder, never as fields of the value.
+func SetQuoted(v *core.Value, on bool)    { core.SetQuoted(v, on) }
+func IsUndefined(v *core.Value) bool      { return core.IsUndefined(v) }
+func SetUndefined(v *core.Value, on bool) { core.SetUndefined(v, on) }
+func IsDynamic(v *core.Value) bool        { return core.IsDynamic(v) }
+func SetDynamic(v *core.Value, on bool)   { core.SetDynamic(v, on) }

@@ -677,7 +677,7 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 // intent for the argument slot, spent there; left on, the spliced fn would
 // sit inert as data.
 func appliedTransducer(fn Value) Value {
-	fn.Quoted = false
+	SetQuoted(&fn, false)
 	return fn
 }
 
@@ -913,7 +913,7 @@ func gradualMacroOperand(r *Registry, v Value) bool {
 	}
 	// A dynamic(Any) read, or an Atom-typed carrier (`{p: ini/q}.p` — a kind
 	// name the pass cannot read concretely).
-	return (v.Dynamic && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TAtom)
+	return (IsDynamic(&v) && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TAtom)
 }
 
 // parseSurfaceOperands maps the parse surface [kind|fn, opts?, source] to the
@@ -1162,8 +1162,8 @@ func recordParseLangDispatch(r *Registry, key, name string, fn Value, args []Val
 	// single `Any` slot, which every runtime value matches — the handler
 	// classifies it as the interpreter's `parse` does — so it is no unproven
 	// overload choice and records as a plain operand of that slot.
-	if fn.Dynamic && fn.Parent != nil && fn.Parent.Equal(TAny) {
-		fn.Dynamic = false
+	if IsDynamic(&fn) && fn.Parent != nil && fn.Parent.Equal(TAny) {
+		SetDynamic(&fn, false)
 	}
 	rec.RecordCall(name, sig,
 		[]Value{fn, source, opts}, outs, pos, true, false)
@@ -1235,8 +1235,8 @@ func recordMacroFnDispatch(r *Registry, key, name string, args []Value) (Value, 
 	// A GRADUAL leading operand rides the dispatch's `Any` slot, which every
 	// runtime value matches — the handler classifies it — so it records as
 	// a plain operand of that slot (recordParseLangFnDispatch's rule).
-	if ops[0].Dynamic && ops[0].Parent != nil && ops[0].Parent.Equal(TAny) {
-		ops[0].Dynamic = false
+	if IsDynamic(&ops[0]) && ops[0].Parent != nil && ops[0].Parent.Equal(TAny) {
+		SetDynamic(&ops[0], false)
 	}
 	// The dispatch raises what the macro WORD raises (a bad signature, the
 	// literal-name error), so it is stamped at the word, as the

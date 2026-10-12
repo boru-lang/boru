@@ -193,7 +193,7 @@ func TestCallBoruArms(t *testing.T) {
 		BarrierPos: 0,
 	}
 	lst := NewList([]Value{NewInteger(9)})
-	lst.Quoted = false
+	SetQuoted(&lst, false)
 	res, err := r.CallBoru(sigList, []Value{lst}, []CapturedBinding{{Name: "cap5", Value: NewInteger(2)}})
 	if err != nil || len(res) != 1 || !ValuesEqual(res[0], NewInteger(1)) {
 		t.Fatalf("named-list call: got %v, %v", res, err)

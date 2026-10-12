@@ -100,7 +100,7 @@ func TestZzFmRecordSchemaCarrier(t *testing.T) {
 	if !ok {
 		t.Fatal("record-shape pattern + Map carrier arg must produce a schema carrier")
 	}
-	if !rc.Carrier || !rc.Dynamic || !rc.Parent.Equal(core.TMap) {
+	if !rc.Carrier || !core.IsDynamic(&rc) || !rc.Parent.Equal(core.TMap) {
 		t.Errorf("schema carrier shape = %+v, want a dynamic Map carrier", rc)
 	}
 	ri, isRec := rc.Data.(core.RecordTypeInfo)
@@ -168,7 +168,7 @@ func TestZzFmNarrowArgsStrictDisjunct(t *testing.T) {
 	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TString) {
 		t.Fatalf("a strict disjunct carrier must narrow to the declared type, got %v", out)
 	}
-	if out[0].Dynamic {
+	if core.IsDynamic(&out[0]) {
 		t.Error("the strict-disjunct narrowing stays strict")
 	}
 }
@@ -176,7 +176,7 @@ func TestZzFmNarrowArgsStrictDisjunct(t *testing.T) {
 func TestZzFmNarrowArgsStrictAnyToAnyParam(t *testing.T) {
 	params := []core.FnParam{{Name: "nd", Type: core.TAny}}
 	out := narrowArgsToParams([]core.Value{core.NewCarrier(core.TAny)}, params)
-	if len(out) != 1 || !out[0].Dynamic || out[0].Parent == nil || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || out[0].Parent == nil || !out[0].Parent.Equal(core.TAny) {
 		t.Fatalf("a strict Any arg on a declared-Any param must lift to dynamic(Any), got %v", out)
 	}
 }
@@ -427,7 +427,7 @@ func TestZzFmReturnsFnDeferredListAnonymous(t *testing.T) {
 	defer done()
 
 	inner := core.NewList([]core.Value{core.NewWord("zzfmp1")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	sig := core.FnSig{
 		Params: []core.FnParam{{Name: "zzfmp1", Type: core.TInteger}},
 		Impl:   core.Boru([]core.Value{inner}),
@@ -457,7 +457,7 @@ func TestZzFmReturnsFnRecordSchemaCarrier(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmrec", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Dynamic {
+	if len(out) != 1 || !out[0].Carrier || !core.IsDynamic(&out[0]) {
 		t.Fatalf("record-return result = %#v, want one dynamic schema carrier", out)
 	}
 	rt, ok := out[0].Data.(core.RecordTypeInfo)
@@ -612,7 +612,7 @@ func TestZzFmReturnsFnDeclaredAnyIsDynamic(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmanyret", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TAny) {
 		t.Fatalf("declared-Any return = %+v, want dynamic(Any)", out)
 	}
 }
@@ -627,7 +627,7 @@ func TestZzFmReturnsFnZeroNetLeavesStrictAny(t *testing.T) {
 	sig := core.FnSig{Impl: core.Boru(nil)} // empty body, no declared returns
 	rf := BuildFnBodyReturnsFn(r, "zzfmzero", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Carrier || out[0].Dynamic || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !out[0].Carrier || core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TAny) {
 		t.Fatalf("zero-net residual = %+v, want one STRICT Any carrier", out)
 	}
 }
@@ -691,7 +691,7 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 		core.NewTypeLiteral(core.TBoolean), core.NewTypeLiteral(core.TString),
 	})
 	dj.Carrier = true
-	dj.Dynamic = true
+	core.SetDynamic(&dj, true)
 	args := []core.Value{
 		s5beAt(core.NewCarrier(core.TMap), 7, 1),
 		core.NewCarrier(core.TMap),
@@ -710,16 +710,16 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	if _, isRec := rec.startArgs[0].Data.(core.RecordTypeInfo); !isRec {
 		t.Errorf("genArgs[0] = %+v, want the record schema carrier", rec.startArgs[0])
 	}
-	if !core.IsTypedMap(&rec.startArgs[1]) || !rec.startArgs[1].Dynamic {
+	if !core.IsTypedMap(&rec.startArgs[1]) || !core.IsDynamic(&rec.startArgs[1]) {
 		t.Errorf("genArgs[1] = %+v, want a dynamic typed-map carrier", rec.startArgs[1])
 	}
 	if !rec.startArgs[2].Parent.Equal(core.TInteger) {
 		t.Errorf("genArgs[2] = %+v, want the declared Integer carrier (recovered call)", rec.startArgs[2])
 	}
-	if !rec.startArgs[3].Parent.Equal(core.TString) || !rec.startArgs[3].Dynamic {
+	if !rec.startArgs[3].Parent.Equal(core.TString) || !core.IsDynamic(&rec.startArgs[3]) {
 		t.Errorf("genArgs[3] = %+v, want dynamic String (disjunct narrowed, dynamic preserved)", rec.startArgs[3])
 	}
-	if !rec.startArgs[4].Parent.Equal(core.TAny) || !rec.startArgs[4].Dynamic {
+	if !rec.startArgs[4].Parent.Equal(core.TAny) || !core.IsDynamic(&rec.startArgs[4]) {
 		t.Errorf("genArgs[4] = %+v, want gradual Any (stored-gradual generalisation)", rec.startArgs[4])
 	}
 	// A root node (Any here) is a type VALUE: it generalises through

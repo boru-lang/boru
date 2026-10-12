@@ -715,7 +715,7 @@ func narrowLambdaInputs(inputs []core.Value, lam *core.Signature) []core.Value {
 			break
 		}
 		pt, in := lam.Params[i].Type, inputs[i]
-		if pt == nil || pt.Equal(core.TAny) || !in.Dynamic || !in.Parent.Equal(core.TAny) {
+		if pt == nil || pt.Equal(core.TAny) || !core.IsDynamic(&in) || !in.Parent.Equal(core.TAny) {
 			continue
 		}
 		if &out[0] == &inputs[0] {
@@ -1222,7 +1222,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// collection's family is unknown, so the InShape (pair vs KeyVal),
 		// and with it the runtime callback convention, is ambiguous. Bare
 		// type literals and non-container carriers decline as before.
-		if data.Dynamic || !data.Carrier || data.Parent == nil ||
+		if core.IsDynamic(&data) || !data.Carrier || data.Parent == nil ||
 			!(data.Parent.ConformsTo(core.TList) || data.Parent.ConformsTo(core.TMap)) {
 			return nil, ClosureInValue, false
 		}

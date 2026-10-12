@@ -79,7 +79,7 @@ func TestNoteClosureBodyReplayArms(t *testing.T) {
 		"untagged fn":      func(es *EmitState) []core.Value { return []core.Value{core.NewCarrier(core.TFunction)} },
 		"tagged data": func(es *EmitState) []core.Value {
 			v := memberRead(es, inc)
-			v.Dynamic = false
+			core.SetDynamic(&v, false)
 			v.Parent = core.TInteger
 			return []core.Value{v}
 		},

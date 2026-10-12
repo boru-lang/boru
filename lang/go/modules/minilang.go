@@ -716,7 +716,7 @@ func miniGexShapeReturns(args []native.Value, _ *native.Registry) []native.Value
 	}
 	subject := args[2]
 	st := native.ValueType(subject)
-	if st == nil || subject.Dynamic || st.Equal(native.TAny) {
+	if st == nil || core.IsDynamic(&subject) || st.Equal(native.TAny) {
 		return dyn
 	}
 	switch {

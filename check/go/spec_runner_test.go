@@ -130,7 +130,7 @@ var wordRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.:-]*$`)
 func renderCheck(stack []core.Value, diags []core.CheckDiagnostic) string {
 	parts := make([]string, len(stack))
 	for i, v := range stack {
-		if v.Dynamic {
+		if core.IsDynamic(&v) {
 			parts[i] = "dynamic(" + v.Parent.Leaf() + ")"
 		} else {
 			parts[i] = v.Parent.Leaf()

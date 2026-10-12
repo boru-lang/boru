@@ -177,7 +177,7 @@ func TestSkeletonArgsReal(t *testing.T) {
 		return lst.Slice()
 	}
 	quoted := NewList([]Value{NewWord("args")})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	for _, c := range []struct {
 		name string
 		body []Value
@@ -255,7 +255,7 @@ func TestSlowPathListParamQuoted(t *testing.T) {
 	if !ok {
 		t.Fatal("list param not installed")
 	}
-	if !bound.Quoted {
+	if !IsQuoted(&bound) {
 		t.Error("slow path must install list params Quoted (data, not code)")
 	}
 	popFrameEntry(t, r, "xs")

@@ -138,7 +138,7 @@ func TestS5BReachGroupDeferral(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	op := NewOpenParen()
-	op.ReachGroup = true
+	SetReachGroup(&op, true)
 	fnv := namedFnVal("nm",
 		[]FnParam{{Name: "n", Type: TInteger}}, []*Type{TInteger},
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
@@ -343,7 +343,7 @@ func TestS5BStackMatchAnalysisWreckage(t *testing.T) {
 	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
 		t.Fatalf("analysis mode must not raise: %v", err)
 	}
-	if !e.Tape.At(1).FailedDispatch {
+	if !IsFailedDispatch(addrOf(e.Tape.At(1))) {
 		t.Error("value must be marked FailedDispatch")
 	}
 	if got := diags(); len(got) != 1 || got[0].Code != "uncalled_function" || got[0].Row != 5 {
@@ -468,7 +468,7 @@ func TestS5BTagReachCollapsedFn(t *testing.T) {
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
 	e.Tape = NewTape([]Value{fnv}, StackHeadroom)
 	e.tagReachCollapsedFn(0, 2, true)
-	if !e.Tape.At(0).ReachGroup {
+	if !IsReachGroup(addrOf(e.Tape.At(0))) {
 		t.Error("named fn from a reach group must be tagged")
 	}
 }
@@ -525,7 +525,7 @@ func TestS5BReachCallHeadBarrier(t *testing.T) {
 	e := NewTop(r)
 	fd := FnDefInfo{Name: "g", Signatures: []Signature{{Args: []*Type{TInteger}, BarrierPos: 1}}}
 	tok := NewFunction(fd)
-	tok.ReachGroup = true
+	SetReachGroup(&tok, true)
 
 	// The claim test decides, whatever slot is open (NUR078 retired the
 	// Function-slot exemption): a claiming fn is a call head.
@@ -535,7 +535,7 @@ func TestS5BReachCallHeadBarrier(t *testing.T) {
 	}
 	// A /v-quoted fn is data, never a call head.
 	quoted := tok
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	if e.reachCallHeadBarrier(quoted, 0) {
 		t.Error("a quoted fn is data, no barrier")
 	}
@@ -772,7 +772,7 @@ func TestS5BCloseParenLeadingDynamicApply(t *testing.T) {
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	dyn := NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), dyn, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
 	if err := e.stepCloseParen(true, false); err != nil {
@@ -795,7 +795,7 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	es := newS5BEmit()
 	es.dynApplyOK = true
 	lead := NewCarrier(TAny)
-	lead.Dynamic = true
+	SetDynamic(&lead, true)
 	lead.ID = "lead-id"
 	es.pending = lead.ID
 	installS5BEmit(t, r, es)
@@ -805,7 +805,7 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if es.dynApplies != 1 || !es.lastOut.Dynamic || !es.lastOut.Carrier {
+	if es.dynApplies != 1 || !IsDynamic(&es.lastOut) || !es.lastOut.Carrier {
 		t.Errorf("the pending gradual lead records a trailing apply with a gradual out: calls=%d out=%+v", es.dynApplies, es.lastOut)
 	}
 	if e.Tape.Len() != 1 {
@@ -837,7 +837,7 @@ func TestS5BCloseParenLeadingDynamicFailedToCompile(t *testing.T) {
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	dyn := NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), dyn, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
 	if err := e.stepCloseParen(true, false); err != nil {
@@ -862,7 +862,7 @@ func TestS5BCloseParenLeadingFnTypedDynamicApply(t *testing.T) {
 	installS5BEmit(t, r, es)
 	e := NewTop(r)
 	lead := NewCarrier(TFunction)
-	lead.Dynamic = true
+	SetDynamic(&lead, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
 	if err := e.stepCloseParen(true, false); err != nil {
@@ -910,21 +910,21 @@ func TestS5BParenLeadFnApplyIdxGradualArgDeclines(t *testing.T) {
 
 	// A GRADUAL argument: its runtime value may be a function.
 	gradual := NewCarrier(TAny)
-	gradual.Dynamic = true
+	SetDynamic(&gradual, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, gradual, NewCloseParen()}, StackHeadroom)
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
 		t.Errorf("a gradual argument must decline the lead window, got %d", got)
 	}
 	// A gradual argument DECLARED a function stays declined.
 	gradualFn := NewCarrier(TFunction)
-	gradualFn.Dynamic = true
+	SetDynamic(&gradualFn, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, gradualFn, NewCloseParen()}, StackHeadroom)
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
 		t.Errorf("a gradual Function-typed argument must decline the lead window, got %d", got)
 	}
 	// A gradual argument whose declared bound EXCLUDES Function is admitted.
 	gradualInt := NewCarrier(TInteger)
-	gradualInt.Dynamic = true
+	SetDynamic(&gradualInt, true)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, gradualInt, NewCloseParen()}, StackHeadroom)
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
 		t.Errorf("a gradual Integer-typed argument must admit the lead window, got %d", got)
@@ -1215,7 +1215,7 @@ func TestS5BMatchSignatureReachFnBoundary(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	fnTok := NewFunction(FnDefInfo{Name: "g", Signatures: []Signature{{Args: []*Type{TInteger}, BarrierPos: 1}}})
-	fnTok.ReachGroup = true
+	SetReachGroup(&fnTok, true)
 	e.Tape = NewTape([]Value{NewWord("hd"), fnTok, NewInteger(5)}, StackHeadroom)
 	e.Pointer = 0
 	fn := &FnDefInfo{Name: "w", Signatures: []Signature{{Args: []*Type{TInteger}, BarrierPos: 1}}}
@@ -1451,7 +1451,7 @@ func TestS5BTrapOpenParenDeclines(t *testing.T) {
 func TestS5BTrapUndefinedOperandDeclines(t *testing.T) {
 	// An undefined-word placeholder declines (line 8659).
 	und := NewInteger(3)
-	und.Undefined = true
+	SetUndefined(&und, true)
 	e, _ := trapEngine(t, []Value{NewWord("hd"), und}, 0, []int{1})
 	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, trapFn(), SrcPos{}) {
 		t.Error("an undefined operand must decline")
@@ -1649,8 +1649,8 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 		t.Fatalf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(&out) {
-		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, out.Dynamic)
+	if !out.Carrier || IsDynamic(&out) || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(&out) {
+		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, IsDynamic(&out))
 	}
 	if es.lastOut.ID != out.ID || out.ID == "" {
 		t.Errorf("the recorded out is the tape's survivor: recorded %q tape %q", es.lastOut.ID, out.ID)
@@ -1664,7 +1664,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.Ref(0)) || e.Tape.At(0).Dynamic {
+	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.Ref(0)) || IsDynamic(addrOf(e.Tape.At(0))) {
 		t.Errorf("a Function answer types the out as a strict fn-typed carrier: %v", e.Tape.At(0))
 	}
 
@@ -1781,7 +1781,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	installS5BEmit(t, r, es)
 	e = NewTop(r)
 	lead := NewCarrier(TFunction)
-	lead.Dynamic = true
+	SetDynamic(&lead, true)
 	lead.ID = "T_dyn_lead"
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
@@ -1842,8 +1842,8 @@ func TestS5BCloseParenTrailingApplyConcreteReturn(t *testing.T) {
 	if es.dynApplies != 1 || e.Tape.Len() != 1 {
 		t.Fatalf("the concrete lead records one apply and collapses: applies=%d len=%d", es.dynApplies, e.Tape.Len())
 	}
-	if out := es.lastOut; !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) {
-		t.Errorf("the out carries the lead's declared return (a strict Integer), got %v dyn=%v", out, out.Dynamic)
+	if out := es.lastOut; !out.Carrier || IsDynamic(&out) || !out.Parent.Equal(TInteger) {
+		t.Errorf("the out carries the lead's declared return (a strict Integer), got %v dyn=%v", out, IsDynamic(&out))
 	}
 }
 

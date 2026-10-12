@@ -24,7 +24,7 @@ import (
 // exactly — a subtype could pick a more specific overload than the one the
 // specialised body committed.
 func ShapeOf(v Value, maxFields int) (Value, bool) {
-	if v.Parent != TMap || v.Dynamic || v.AscribedType() != nil {
+	if v.Parent != TMap || IsDynamic(&v) || v.AscribedType() != nil {
 		return Value{}, false
 	}
 	mp, ok := v.Data.(MapPayload)
@@ -46,7 +46,7 @@ func ShapeOf(v Value, maxFields int) (Value, bool) {
 // carrier (every other record carrier is gradual).
 func IsShapeCarrier(v Value) bool {
 	rt, ok := v.Data.(RecordTypeInfo)
-	return ok && rt.Fields != nil && v.Carrier && !v.Dynamic && v.Parent == TMap
+	return ok && rt.Fields != nil && v.Carrier && !IsDynamic(&v) && v.Parent == TMap
 }
 
 // ShapeHolds reports whether the runtime value v has shape's exact key set,
@@ -97,7 +97,7 @@ func ShapeKey(shape Value) string {
 // precisely (`xs get 0` is the element's carrier, `size xs` its length).
 // A List is copy-on-write too, so the shape holds for the frame.
 func ListShapeOf(v Value, maxElems int) (Value, bool) {
-	if v.Parent != TList || v.Dynamic || v.Carrier || v.Quoted || v.AscribedType() != nil {
+	if v.Parent != TList || IsDynamic(&v) || v.Carrier || IsQuoted(&v) || v.AscribedType() != nil {
 		return Value{}, false
 	}
 	lp, ok := v.Data.(ListPayload)
@@ -123,7 +123,7 @@ func IsListShapeGuard(v Value) bool {
 		return false
 	}
 	for _, e := range lp.Elems {
-		if !e.Carrier || e.Dynamic {
+		if !e.Carrier || IsDynamic(&e) {
 			return false
 		}
 	}

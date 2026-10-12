@@ -101,7 +101,7 @@ func TestClosureValueBridge(t *testing.T) {
 	})
 	t.Run("a quoted closure is data on both lanes", func(t *testing.T) {
 		quoted := closure
-		quoted.Quoted = true
+		SetQuoted(&quoted, true)
 		rt := &bridgeRuntime{bridge: true, params: 1}
 		if out := run(rt, quoted); len(out) != 2 || rt.calls != 0 {
 			t.Errorf("quoted: %v", out)
@@ -201,7 +201,7 @@ func TestModifierClosureShapes(t *testing.T) {
 	r := covRegistry(t, nil)
 	cl := Value{Parent: TFunction, Data: ClosurePayload{}}
 	quoted := cl
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 
 	// No bridge: every wrapper declines.
 	prev := InstallCompiledRuntime(noCompiledRuntime{})

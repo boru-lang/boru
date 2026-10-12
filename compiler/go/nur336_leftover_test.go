@@ -169,7 +169,7 @@ func TestNUR329UnexpandedToken(t *testing.T) {
 	carrier := reach
 	carrier.Carrier = true
 	dyn := reach
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	interp := core.NewInterpString([]core.InterpPart{{Lit: "s"}})
 	for _, c := range []struct {
 		v    core.Value

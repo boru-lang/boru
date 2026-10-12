@@ -117,7 +117,7 @@ func DeepKnown(v Value) bool {
 }
 
 func deepKnown(v Value, depth int) bool {
-	if depth > deepConcreteMaxDepth || v.Dynamic {
+	if depth > deepConcreteMaxDepth || IsDynamic(&v) {
 		return false
 	}
 	if !IsConcrete(&v) {

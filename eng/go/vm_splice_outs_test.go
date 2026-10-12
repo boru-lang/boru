@@ -12,7 +12,7 @@ import (
 // Anything else is the screen's loud defer.
 func TestSpliceOutsSeat(t *testing.T) {
 	splice := func(vals ...core.Value) core.Value { return core.NewSplice(core.NewList(vals)) }
-	quoted := func(v core.Value) core.Value { v.Quoted = true; return v }
+	quoted := func(v core.Value) core.Value { core.SetQuoted(&v, true); return v }
 	one, two, three := core.NewInteger(1), core.NewInteger(2), core.NewInteger(3)
 	want := []core.Value{splice(one, two), three}
 	kept, ok := spliceOutsSeat(want, []core.Value{splice(one, two), three})

@@ -72,14 +72,14 @@ func TestFlexListShapeWritersAndRead(t *testing.T) {
 		t.Fatalf("flex [] mints a FlexList shape: %v", f)
 	}
 	// An empty join reads dynamic(Any).
-	if out := getIntKeyReturns([]Value{NewInteger(0), f}, r); !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if out := getIntKeyReturns([]Value{NewInteger(0), f}, r); !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
 		t.Fatalf("an empty join reads dynamic(Any): %v", out)
 	}
 	m := NewOrderedMap()
 	m.Set("x", NewInteger(1))
 	flexGrowReturns("push")([]Value{NewMap(m), f}, r)
 	out := getIntKeyReturns([]Value{NewInteger(0), f}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.ConformsTo(TFlexMap) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.ConformsTo(TFlexMap) {
 		t.Fatalf("a pushed map reads back as a gradual FlexMap: %v", out)
 	}
 	// Indexed set and a concrete append join too.
@@ -91,14 +91,14 @@ func TestFlexListShapeWritersAndRead(t *testing.T) {
 	// A computed append source widens the join to dynamic(Any).
 	appendListReturns([]Value{NewCarrier(TList), f}, r)
 	v, _ := ss.LookupVals()
-	if !v.Dynamic || !v.Parent.Equal(TAny) {
+	if !IsDynamic(&v) || !v.Parent.Equal(TAny) {
 		t.Errorf("a computed append widens the element join to dynamic(Any): %v", v)
 	}
 	// A bare (unshaped) FlexList receiver: the writers are no-ops, the read
 	// stays dynamic(Any).
 	bare := NewCarrier(TFlexList)
 	flexGrowReturns("push")([]Value{NewInteger(1), bare}, r)
-	if out := getIntKeyReturns([]Value{NewInteger(0), bare}, r); !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if out := getIntKeyReturns([]Value{NewInteger(0), bare}, r); !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
 		t.Errorf("an unshaped FlexList reads dynamic(Any): %v", out)
 	}
 	// A typed list source keeps the D2 carrier (no shape).

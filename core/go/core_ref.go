@@ -102,7 +102,7 @@ func UsurpFunction(v Value) (Value, bool) {
 // for a closure the bridge cannot describe: the word then raises exactly as
 // it does for any non-function operand (NUR158).
 func closureShape(r *Registry, v Value) (FnDefInfo, bool) {
-	if _, isCl := v.Data.(ClosurePayload); !isCl || v.Quoted {
+	if _, isCl := v.Data.(ClosurePayload); !isCl || IsQuoted(&v) {
 		return FnDefInfo{}, false
 	}
 	bridged, ok := compiledRuntime.ClosureAsFnDef(r, v)

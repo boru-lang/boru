@@ -40,7 +40,7 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	fnv := namedFnVal("nm", []FnParam{{Name: "n", Type: TInteger}}, []*Type{TInteger},
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
 	op := NewOpenParen()
-	op.ReachGroup = true
+	SetReachGroup(&op, true)
 	out, err := NewTop(r).Run([]Value{
 		NewWord("cref2"), op, fnv, NewCloseParen(),
 		NewDispatchMod(DispatchModInfo{Val: true}), NewInteger(5),
@@ -51,8 +51,8 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	if renderAll(out) != "5" {
 		t.Errorf("cref2 over the marked group: %s, want 5", renderAll(out))
 	}
-	if fd, ok := FnDefOf(got.Data); !ok || fd.Name != "nm" || got.Quoted || got.ReachGroup {
-		t.Errorf("the reference must arrive unquoted and untagged: %v (quoted=%v tagged=%v)", got, got.Quoted, got.ReachGroup)
+	if fd, ok := FnDefOf(got.Data); !ok || fd.Name != "nm" || IsQuoted(&got) || IsReachGroup(&got) {
+		t.Errorf("the reference must arrive unquoted and untagged: %v (quoted=%v tagged=%v)", got, IsQuoted(&got), IsReachGroup(&got))
 	}
 
 	// Negative: without the marker the group's fn WOULD CLAIM the 5 — a
@@ -60,7 +60,7 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	// with nothing and raises.
 	r2 := nur078Registry(t, &got)
 	op2 := NewOpenParen()
-	op2.ReachGroup = true
+	SetReachGroup(&op2, true)
 	if _, err := NewTop(r2).Run([]Value{NewWord("cref2"), op2, fnv, NewCloseParen(), NewInteger(5)}); err == nil {
 		t.Error("an unmarked member read that would claim the next token must be a call head")
 	}
