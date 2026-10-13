@@ -21,6 +21,7 @@ package lang
 // the compile failure is visible.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -149,5 +150,38 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 		// No fallback re-runs it, so there is no compiled answer to compare:
 		// the failure is booked as the defect it is (compile_defect_test.go).
 		requireCompileDefect(t, c.src, gotC, errC)
+	}
+}
+
+// TestProbeRealDivergenceDeclinesOnTheRealCompile pins the closure probe's
+// one divergence from the real compile that holder-keyed recording leaves
+// (recordClosureDispatch's !realOk arm): `k` was bound by an event, so the
+// probe — a fresh recording state, resolving no recorder key of the real
+// pass — bakes the body's read of it as a constant and admits the body,
+// where the real compile reads it live and declines on the residual-order
+// hazard (the read precedes the body's rebind). Asserted through
+// CompileCheck: the refusal is the dispatch's own compile failure path,
+// and the interpreter's answer is the program's.
+func TestProbeRealDivergenceDeclinesOnTheRealCompile(t *testing.T) {
+	const src = `def k (size [1 2])  do [ k  def k 12  k ]`
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, cerr := a.CompileCheck(src)
+	if cerr != nil || prog != nil || !strings.Contains(reason, "residual read of `k` precedes its rebind in the same body") {
+		t.Fatalf("the real compile declines on the hazard: compiled=%v %q %v", prog != nil, reason, cerr)
+	}
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ierr := b.RunInterp(src); ierr != nil || fmt.Sprint(got) != "[2 12]" {
+		t.Errorf("the interpreter's answer: %v %v", got, ierr)
+	}
+	// A body that does not rebind what it read is admitted on both sides.
+	c, _ := New()
+	if prog, reason, _, _ := c.CompileCheck(`def k (size [1 2])  do [ k  def j 12  k ]`); prog == nil {
+		t.Errorf("a body that only reads the event-bound name compiles: %q", reason)
 	}
 }

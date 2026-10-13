@@ -42,7 +42,7 @@ func TestCallResultPointUnplaced(t *testing.T) {
 func TestTypeDeferredUnknownIndex(t *testing.T) {
 	es := &EmitState{}
 	reads := func(string) int { return 1 }
-	consumed := func(func(EmitOperand) bool, func(core.Value) bool, int) int { return 0 }
+	consumed := func(func(EmitOperand) bool, func(core.Value) bool) int { return 0 }
 	for _, idx := range []int{-1, 0} {
 		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, reads, consumed) {
 			t.Errorf("type index %d: an unknown type defers nothing", idx)

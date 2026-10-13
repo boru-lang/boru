@@ -27,6 +27,13 @@ import (
 // The row is pinned here rather than in lang/spec because it reaches the
 // dyn-body strategy, and the interp-entry census is a ratchet that may only
 // fall.
+//
+// Since the recorder keys a producer on its holder (no-copy phase 3) the
+// probe and the real compile agree on this row: the literals are constants
+// on both sides, where the identity-keyed recorder resolved the real pass's
+// `1` and `2` to events an earlier round produced under the same IDs. The
+// real-unit decline is no longer reached and stays as the guard of that
+// agreement (callable_words.go); the row pins the answer.
 func TestWholeResidualRegionDeclinesOnTheRealUnit(t *testing.T) {
 	const src = `for 2 [def b true  do [1 2 (if b [] [9 9])]]`
 	a, err := New()

@@ -20461,7 +20461,7 @@ func eventDefBound(events []EmitEvent, seq int) bool {
 // start against its consumptions there — is on the interpreter's stack at
 // deopt point d's start, where the compiled code pushes it late (`Integer
 // end (q.f 7)`, NUR336).
-func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsBefore func(string) int, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsBefore func(string) int, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool) int) bool {
 	if idx < 0 || idx >= len(es.types) {
 		return false
 	}
@@ -20472,7 +20472,7 @@ func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsB
 			n++
 		}
 	}
-	return n > consumedBefore(func(o EmitOperand) bool { return o.kind == opType && o.idx == idx }, nil, -1)
+	return n > consumedBefore(func(o EmitOperand) bool { return o.kind == opType && o.idx == idx }, nil)
 }
 
 // deoptDeferred is the deferred-operand accounting over the events the
@@ -20501,7 +20501,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		}
 		return n
 	}
-	consumedBefore := func(match func(EmitOperand) bool, matchVal func(core.Value) bool, bindSeq int) int {
+	consumedBefore := func(match func(EmitOperand) bool, matchVal func(core.Value) bool) int {
 		n := 0
 		count := func(op EmitOperand) {
 			if match(op) {
@@ -20520,9 +20520,6 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			if ev.kind != evDynBind || ev.dyn == nil {
 				continue
 			}
-			if bindSeq >= 0 && ev.dyn.srcSeq == bindSeq {
-				n++
-			}
 			// A def of a literal rides the literal verbatim (no operand):
 			// `def y 1` consumed its `1`.
 			if matchVal != nil && ev.dyn.srcSeq < 0 && ev.dyn.src.kind == opNone && ev.dyn.val.Data != nil && matchVal(ev.dyn.val) {
@@ -20533,17 +20530,19 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 	}
 	// deferredRead reports whether a read of the value id before the start
 	// is pushed after it; seat, when set, is where a unit's statement island
-	// finds that value instead, seated at each such read (seatReads).
-	deferredRead := func(id string, k core.RecKey, seat *RestartSrc) bool {
-		pr, hasPr := es.producerOfKey(k)
+	// finds that value instead, seated at each such read (seatReads). The
+	// reads are counted against the consumptions of the value's own slot.
+	// The event that produced the value is not consulted: a frame local is
+	// keyed by identity and a pooled constant keeps the first holder
+	// interned, so neither carries a recorder key this pass resolves
+	// (rec_key.go) — the producer lookup that stood here answered nothing
+	// once the recorder keyed producers on holders — and a read counted
+	// unconsumed defers the statement, the conservative answer.
+	deferredRead := func(id string, seat *RestartSrc) bool {
 		slot, isLocal := u.localByID[id]
-		bindSeq := -1
-		if hasPr {
-			bindSeq = pr.seq
-		}
 		reads, consumed := readsBefore(id), consumedBefore(func(op EmitOperand) bool {
-			return (op.kind == opEvent && hasPr && op.idx == pr.seq) || (op.kind == opLocal && isLocal && op.idx == slot)
-		}, nil, bindSeq)
+			return op.kind == opLocal && isLocal && op.idx == slot
+		}, nil)
 		if reads <= consumed {
 			return false
 		}
@@ -20553,7 +20552,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		if len(rec.localReads[core.IDOf(&c)]) > 0 {
 			var src RestartSrc
 			restartConst(&src, &c)
-			return deferredRead(core.IDOf(&c), core.RecKeyOf(&c), &src)
+			return deferredRead(core.IDOf(&c), &src)
 		}
 		if d.restart && d.frameHeld && es.seatLiteral(rec, d, c, consumedBefore) {
 			return false
@@ -20576,7 +20575,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		}
 		return tokens > 0 && tokens > consumedBefore(func(op EmitOperand) bool {
 			return op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) && core.CanonValue(es.consts[op.idx]) == canon
-		}, sameCanon, -1)
+		}, sameCanon)
 	}
 	deferred := func(op EmitOperand) bool {
 		switch op.kind {
@@ -20586,7 +20585,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			}
 		case opLocal:
 			for id, slot := range u.localByID {
-				if slot == op.idx && deferredRead(id, core.RecKey{}, &RestartSrc{Kind: RestartLocal, Idx: slot}) {
+				if slot == op.idx && deferredRead(id, &RestartSrc{Kind: RestartLocal, Idx: slot}) {
 					return true
 				}
 			}
@@ -20658,7 +20657,7 @@ type seatLit struct {
 // start and pushed late by the compiled code. A unit's statement island
 // seats every such read (none consumed) from the value's promoted slot
 // (seatLit.prod) and reports false; otherwise true.
-func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, events []EmitEvent, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, events []EmitEvent, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool) int) bool {
 	var reads []core.SrcPos
 	for i := range events {
 		if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq && core.IDOf(&ev.dyn.val) != "" {
@@ -20671,7 +20670,7 @@ func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, e
 	}
 	consumed := consumedBefore(func(op EmitOperand) bool {
 		return op.kind == opEvent && op.idx == seq && op.resIdx == 0
-	}, nil, -1)
+	}, nil)
 	if len(reads) <= consumed {
 		return false
 	}
@@ -20706,7 +20705,7 @@ func (es *EmitState) seatReads(rec *fnUnitRec, d *deoptPoint, id string, src Res
 // stack holds at the start and the island seats as a constant (d.lits). A
 // literal one of whose spellings before the start was consumed there cannot
 // be told apart and stays deferred.
-func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool) int) bool {
 	compound := isCompoundValue(&c)
 	canon := core.CanonValue(c)
 	sameCanon := func(v core.Value) bool {
@@ -20721,7 +20720,7 @@ func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, co
 	}
 	if len(toks) == 0 || c.Carrier || core.IsDynamic(&c) || !core.DeepConcrete(c) || consumedBefore(func(op EmitOperand) bool {
 		return op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) && core.CanonValue(es.consts[op.idx]) == canon
-	}, sameCanon, -1) > 0 {
+	}, sameCanon) > 0 {
 		return false
 	}
 	var src RestartSrc

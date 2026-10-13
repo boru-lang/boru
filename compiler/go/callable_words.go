@@ -966,7 +966,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// residual-order hazard declines the live read where it admitted the
 	// const. The real state is already marked with the hazard's reason;
 	// this decline hands the dispatch to its own compile failure path (first reason
-	// wins). `def k 5  do [ k  def k 9  k ]  do [ k  def k 12  k ]` pins it
+	// wins). `def k (size [1 2])  do [ k  def k 12  k ]` pins it
 	// (lang/go/analysis_order_test.go).
 	if !realOk || unit < 0 {
 		return false
@@ -989,23 +989,15 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// no fall-through: a row that compiled through the dyn-body strategy
 	// became a hard compile failure. Declining here hands the dispatch to its own
 	// compile failure path, which is where that strategy takes it.
-	if regionResidual && !closureResidualRegion(real, unit) {
-		// The units this compile just created are now ORPHANS: nothing
-		// records a dispatch to them, but Finalize lowers every unit in the
-		// table, and a compile failure there kills the PROGRAM. That is the trade
-		// fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
-		// reasoning is identical — an unreachable unit's lowering says
-		// nothing about the program — so take the same recovery: a trap stub
-		// that keeps unit indices aligned and fails loudly if ever entered.
-		// Only a FRESH unit is marked; a memo hit belongs to the dispatch
-		// that made it.
-		if unit == recsBefore {
-			for u := recsBefore; u < len(real.fnRecs); u++ {
-				if real.fnRecs[u] != nil {
-					real.fnRecs[u].stampOnly = true
-				}
-			}
-		}
+	//
+	// Since the recorder keys a producer on its holder (no-copy phase 3) the
+	// two agree on that row and on every shape the corpus and the variation
+	// lane build: an operand the probe cannot resolve is an enclosing read,
+	// which the real compile seats as a lookup — inert, as the probe's const
+	// is — or declines on above, on the residual-order hazard. The decline
+	// stays as the guard of that agreement.
+	if regionResidual && !closureResidualRegion(real, unit) { //covergate:allow §compiler probe/real agreement: since the recorder keys producers on holders the probe's unresolved operands are enclosing reads, which the real unit seats inert or declines on above (the !realOk arm), so its region shape matches the probe's
+		real.orphanFreshUnits(recsBefore, unit)
 		return false
 	}
 	// The closure latch for the arm-residency bridge: THIS unit, and
@@ -1030,6 +1022,26 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		extraOps[ex.slot] = EmitOperand{kind: opClosure, closureUnit: exUnit, closureCaps: ex.ops}
 	}
 	return real.RecordClosureCall(word, sig, args, spec.BodyPos, unit, capOps, extraOps, outs, retSpec, regionResidual, pos)
+}
+
+// orphanFreshUnits marks the units a declined compile just created as
+// stamp-only. Nothing records a dispatch to them, but Finalize lowers every
+// unit in the table, and a compile failure there kills the PROGRAM; that is
+// the trade fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
+// reasoning is identical — an unreachable unit's lowering says nothing about
+// the program — so they take the same recovery: a trap stub that keeps unit
+// indices aligned and fails loudly if ever entered. Only a FRESH unit (unit
+// is the first index this compile made) is marked; a memo hit belongs to the
+// dispatch that made it.
+func (es *EmitState) orphanFreshUnits(recsBefore, unit int) {
+	if unit != recsBefore {
+		return
+	}
+	for u := recsBefore; u < len(es.fnRecs); u++ {
+		if es.fnRecs[u] != nil {
+			es.fnRecs[u].stampOnly = true
+		}
+	}
 }
 
 // closureResidualExact reports whether a probe-compiled closure unit's residual
