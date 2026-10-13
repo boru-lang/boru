@@ -1568,7 +1568,7 @@ type EmitState struct {
 	freshenConst map[int]bool
 	// constKeep names, per freshened const-pool index, the value IDs of the
 	// enclosing bindings' containers the literal EMBEDS — the members the
-	// per-call clone keeps shared (Program.ConstKeep; core.CloneValueKeeping).
+	// per-call construction shares (Program.ConstKeep, planLiteralBuild).
 	constKeep map[int]map[string]bool
 	// fnRiskFields maps a constructed INSTANCE's value ID → the field keys
 	// holding genuinely-0-param fn values (noteFnRiskFields /
@@ -4132,8 +4132,8 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// OUTER literal fresh per call while the binding-read MEMBER keeps
 		// its shared instance (`def c [9] def mk fn [[] [List] [[c]]]` —
 		// `((mk) get 0) eq c` stays true, `(mk) eq (mk)` stays false). The
-		// fresh push clones the spine and KEEPS the embedded members
-		// (Program.ConstKeep, core.CloneValueKeeping); the shape declined
+		// fresh push constructs the spine and SHARES the embedded members
+		// (Program.ConstKeep, planLiteralBuild); the shape declined
 		// until 2026-09-24 (PR #225 P1's open item; kg/main.boru's
 		// `[[repo-entity] …]` was its real-program row).
 		if keep := embeddedEnclosingIDs(lit, es.units[len(es.units)-1].enclosingIDs); len(keep) > 0 {
@@ -4153,7 +4153,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 
 // embeddedEnclosingIDs collects, from a fn-unit body literal, the value IDs
 // of the ENCLOSING bindings' containers it embeds — the members a per-call
-// fresh push keeps shared (Program.ConstKeep) while cloning the literal's
+// fresh push shares (Program.ConstKeep) while constructing the literal's
 // own spine. A member that is an enclosing binding is kept whole (its
 // contents are the binding's, not the literal's); a member the literal
 // itself constructs is walked for embeddings of its own. Empty when the
@@ -4260,8 +4260,8 @@ func freshenFnUnitConsts(cf *CompiledFn, es *EmitState, rec *fnUnitRec, p *Progr
 		}
 		// Multiple read sites of ONE compound binding in an escape-capable unit:
 		// seat a single per-call construction in a fresh frame local, and rewrite
-		// every read to OpPushConstFreshLocal (lazy clone-on-first-read, shared
-		// thereafter). This is the "per-call local seat" the shared const cannot
+		// every read to OpPushConstFreshLocal (lazy construction on the first
+		// read, shared thereafter). This is the "per-call local seat" the shared const cannot
 		// give — one instance per call, shared by every read, fresh across calls,
 		// exactly the interpreter's `def x {…}` semantics. In-place rewrites only,
 		// so jump targets stay valid.
@@ -16116,14 +16116,14 @@ func isTypeBodyPayload(v core.Value) bool {
 // through `eq` (miscompile mechanism A,
 // design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). That is ListPayload and
 // MapPayload — sameContainer (compare.go) identifies them by backing array /
-// *OrderedMap pointer, and CloneValue mints both fresh. Everything else
+// *OrderedMap pointer, and the fresh push constructs both anew. Everything else
 // stays shared: scalars and Microns compare by value; type bodies, fn
 // values, and surfaces are identity-inert descriptors; XML literals are
 // parse-time constants in the INTERPRETER too (the same element instance is
 // spliced per call — probe-verified `(mk) eq (mk)` → true interpreted), so
 // sharing the pooled const IS parity there. The empty-list case needs no
 // exclusion: sameContainer treats all empty lists as the single empty list,
-// so interp (fresh empties, eq true) and VM (cloned empty, eq true) agree.
+// so interp (fresh empties, eq true) and VM (a constructed empty, eq true) agree.
 // Consumed by the resolveOperand fn-unit marking (freshenConst) and the
 // enclosing-binding snapshot (snapshotCompoundBindingIDs).
 func freshenableConst(v core.Value) bool {
@@ -18059,6 +18059,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 
 	lw.p.Consts = es.consts // interning may have grown during reconciliation
 	lw.p.ConstKeep = es.constKeep
+	planConstBuilds(lw.p)
 	lw.p.Types = es.types
 	lw.p.Fallbacks = es.fallbacks
 	lw.p.MaxStack = lw.maxDepth
@@ -20453,12 +20454,14 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 	}
 	deferredConst := func(c core.Value) bool {
 		if len(rec.localReads[core.IDOf(&c)]) > 0 {
-			return deferredRead(core.IDOf(&c), &RestartSrc{Kind: RestartConst, Val: c, Fresh: isCompoundValue(c)})
+			var src RestartSrc
+			restartConst(&src, &c)
+			return deferredRead(core.IDOf(&c), &src)
 		}
 		if d.restart && d.frameHeld && es.seatLiteral(rec, d, c, consumedBefore) {
 			return false
 		}
-		compound := isCompoundValue(c)
+		compound := isCompoundValue(&c)
 		if p := c.Pos(); compound && p.Row > 0 {
 			return posAfter(d.start, p)
 		}
@@ -20466,7 +20469,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		// position: its tokens before the start against its consumptions.
 		canon := core.CanonValue(c)
 		sameCanon := func(v core.Value) bool {
-			return !core.IsWord(&v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+			return !core.IsWord(&v) && isCompoundValue(&v) == compound && core.CanonValue(v) == canon
 		}
 		tokens := 0
 		for _, t := range rec.body {
@@ -20607,10 +20610,10 @@ func (es *EmitState) seatReads(rec *fnUnitRec, d *deoptPoint, id string, src Res
 // literal one of whose spellings before the start was consumed there cannot
 // be told apart and stays deferred.
 func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
-	compound := isCompoundValue(c)
+	compound := isCompoundValue(&c)
 	canon := core.CanonValue(c)
 	sameCanon := func(v core.Value) bool {
-		return !core.IsWord(&v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+		return !core.IsWord(&v) && isCompoundValue(&v) == compound && core.CanonValue(v) == canon
 	}
 	var toks []core.SrcPos
 	for _, t := range rec.body {
@@ -20624,10 +20627,24 @@ func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, co
 	}, sameCanon, -1) > 0 {
 		return false
 	}
+	var src RestartSrc
+	restartConst(&src, &c)
 	for _, q := range toks {
-		es.noteSeatLit(rec, d, RestartSrc{Kind: RestartConst, Val: c, Fresh: compound}, q)
+		es.noteSeatLit(rec, d, src, q)
 	}
 	return true
+}
+
+// restartConst makes src the island source of the literal c: c itself, or
+// — a compound the unit's code pushes fresh per evaluation — its
+// construction (Build), so the island seats a new instance as the
+// interpreter's stack would hold one.
+func restartConst(src *RestartSrc, c *core.Value) {
+	*src = RestartSrc{Kind: RestartConst, Val: *c}
+	if isCompoundValue(c) {
+		b := planLiteralBuild(&src.Val, nil)
+		src.Build = &b
+	}
 }
 
 // noteSeatLit adds the literal c written at q to d's seated literals, once,
@@ -20701,7 +20718,7 @@ func residualAfterRead(outs []EmitOperand, d *deoptPoint, ci int) []EmitOperand 
 }
 
 // isCompoundValue reports a list or map value (never pooled as a const).
-func isCompoundValue(v core.Value) bool {
+func isCompoundValue(v *core.Value) bool {
 	return v.Parent != nil && (v.Parent.Equal(core.TList) || v.Parent.Equal(core.TMap))
 }
 

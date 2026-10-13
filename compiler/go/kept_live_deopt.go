@@ -286,7 +286,7 @@ func (es *EmitState) pendingStart(events []EmitEvent, seq, ci int, body []core.V
 			forEachOperand(ev, func(op EmitOperand) {
 				if op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) {
 					p := es.consts[op.idx].Pos()
-					if p.Row == 0 && isCompoundValue(es.consts[op.idx]) {
+					if p.Row == 0 && isCompoundValue(&es.consts[op.idx]) {
 						// A literal the fold re-minted without its position
 						// (`{b:1} keys x`): the statement's earliest token
 						// spelling it before the start (NUR351).

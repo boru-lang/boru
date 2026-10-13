@@ -1506,14 +1506,14 @@ func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, star
 	if q := rv.Pos(); q.Row > 0 {
 		return !posAfter(start, q), true
 	}
-	if !isCompoundValue(rv) {
+	if !isCompoundValue(&rv) {
 		return false, false
 	}
 	canon := core.CanonValue(rv)
 	pre, in := 0, 0
 	for _, t := range es.rootBody {
 		q := t.Pos()
-		if core.IsWord(&t) || !isCompoundValue(t) || q.Row == 0 || core.CanonValue(t) != canon {
+		if core.IsWord(&t) || !isCompoundValue(&t) || q.Row == 0 || core.CanonValue(t) != canon {
 			continue
 		}
 		if posAfter(start, q) {

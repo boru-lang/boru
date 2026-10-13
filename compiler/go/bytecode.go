@@ -371,8 +371,9 @@ const (
 	// The following RET applies the CallBoru-path trim (CompiledFn.RetReplay).
 	OpCallDynFrame
 
-	// OpPushConstFresh pushes a deep clone of Consts[Arg] with fresh container
-	// identity (CloneValue) instead of the pooled instance. A compound VALUE
+	// OpPushConstFresh pushes a new construction of Consts[Arg] — its spine
+	// built from the shared parts (Program.ConstBuilds; LiteralBuild) —
+	// instead of the pooled instance. A compound VALUE
 	// literal written in a fn body is re-EVALUATED per call by the interpreter,
 	// constructing a fresh List/Map each time — so a pooled const pushed from a
 	// compiled fn unit must not leak one shared identity across calls
@@ -388,11 +389,12 @@ const (
 	// consumption declines before lowering. Captured containers arrive through
 	// capture slots (locals), never consts, so closure identity is preserved.
 	// A body literal that EMBEDS an enclosing binding's container (`[c]` with
-	// `def c [9]` outside the fn) clones its SPINE only: Program.ConstKeep
-	// names the embedded members by ID and the clone returns them as they
-	// are (core.CloneValueKeeping), so the outer is fresh per call and the
-	// member stays the binding's one instance — the interpreter's per-call
-	// construction over a read (since 2026-09-24; the shape declined before).
+	// `def c [9]` outside the fn) constructs its SPINE only: Program.ConstKeep
+	// names the embedded members by ID and the construction shares them as
+	// they are, so the outer is fresh per call and the member stays the
+	// binding's one instance — the interpreter's per-call construction over a
+	// read (since 2026-09-24; the shape declined before; a construction, no
+	// longer a keep-set clone, since no-copy phase 3).
 	OpPushConstFresh
 
 	// OpPushConstFreshLocal is the MULTI-read twin of OpPushConstFresh: a compound
@@ -403,10 +405,10 @@ const (
 	// The interpreter's semantics are exactly one construction per call, shared by
 	// every read — so every read site lowers to this op, keyed (Arg indexes
 	// Program.ConstLocals) to a {ConstIdx, Slot} pair: on first execution in a frame
-	// it deep-clones Consts[ConstIdx] into frame local Slot and pushes it; every
-	// later read pushes the seated local. The frame's locals start zero-valued
-	// (Parent==nil) and a compound clone always carries a Parent, so Parent==nil is
-	// an unambiguous "not yet seated this call" sentinel. Lazy init needs no
+	// it constructs Consts[ConstIdx] (Program.ConstBuilds) into frame local Slot and
+	// pushes it; every later read pushes the seated local. The frame's locals start
+	// zero-valued (Parent==nil) and a compound construction always carries a Parent,
+	// so Parent==nil is an unambiguous "not yet seated this call" sentinel. Lazy init needs no
 	// dominating construction site, so the in-place rewrite (freshenFnUnitConsts)
 	// leaves every jump target untouched. Only fn units emit it (main-unit literals
 	// evaluate once, straight-line).
@@ -1528,7 +1530,7 @@ type GlobalBindSpec struct {
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
-// the pooled Program.Consts entry to deep-clone once per call, Slot the fn-unit
+// the pooled Program.Consts entry to construct once per call, Slot the fn-unit
 // frame-local it is seated in and re-read from.
 type ConstLocalRef struct {
 	ConstIdx int
@@ -1877,22 +1879,28 @@ type Program struct {
 	ReplayReg  *core.Registry
 	DynMethods []DynMethodSpec
 	// ConstLocals backs OpPushConstFreshLocal: a {ConstIdx, Slot} pair naming the
-	// pooled const to deep-clone and the frame-local slot to seat it in, for a
+	// pooled const to construct and the frame-local slot to seat it in, for a
 	// multi-read compound body literal that needs one per-call construction shared
 	// across its read sites. Slot is frame-relative to the fn unit whose Code holds
 	// the op (each op appears in exactly one unit). Nil for programs with none.
 	ConstLocals []ConstLocalRef
 	// ConstKeep names, per const-pool index, the value IDs a FRESH push of
-	// that const keeps shared instead of cloning (core.CloneValueKeeping): the
-	// enclosing bindings' containers a fn-unit body literal embeds, whose
-	// identity the interpreter's per-call construction preserves while the
-	// literal's own spine is minted anew. Read by OpPushConstFresh and
-	// OpPushConstFreshLocal; absent for a const with no embedded binding.
+	// that const shares instead of constructing: the enclosing bindings'
+	// containers a fn-unit body literal embeds, whose identity the
+	// interpreter's per-call construction preserves while the literal's own
+	// spine is minted anew. Read when ConstBuilds are planned; absent for a
+	// const with no embedded binding.
 	ConstKeep map[int]map[string]bool
-	Fns       []CompiledFn
-	Debug     []core.SrcPos // 1:1 with Code
-	MaxStack  int           // a floor when the program loops (results accumulate)
-	NumLocals int
+	// ConstBuilds is, per const-pool index, the construction a FRESH push of
+	// that const runs (OpPushConstFresh, OpPushConstFreshLocal): the literal
+	// built from its shared parts on each evaluation, its ConstKeep members
+	// among them (planConstBuilds). Nil entries for every other const, and
+	// nil for a program with no fresh push.
+	ConstBuilds []*LiteralBuild
+	Fns         []CompiledFn
+	Debug       []core.SrcPos // 1:1 with Code
+	MaxStack    int           // a floor when the program loops (results accumulate)
+	NumLocals   int
 	// LocalNames maps a MAIN-unit frame local slot to its source name — a
 	// loop variable, a promoted body-local def — where one is known; "" for
 	// a spill temp. The did-you-mean pool of a compiled undefined_word reads
@@ -2101,10 +2109,11 @@ type RestartSrc struct {
 	Kind RestartSrcKind
 	Idx  int
 	Val  core.Value
-	// Fresh, on a RestartConst, marks a compound literal a fn unit's code
-	// pushes as a fresh instance per evaluation (OpPushConstFresh): the
-	// island seats a fresh copy too (NUR336's seated literals).
-	Fresh bool
+	// Build, on a RestartConst, is the construction of a compound literal a
+	// fn unit's code pushes as a fresh instance per evaluation
+	// (OpPushConstFresh): the island seats a fresh instance too, built as it
+	// says (NUR336's seated literals). Nil for a value seated as it is.
+	Build *LiteralBuild
 }
 
 // RestartSrcKind names where a RestartSrc's value lives when the island runs.

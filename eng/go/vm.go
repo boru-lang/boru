@@ -2312,8 +2312,8 @@ func (vc *vmContext) seatPrefix(reg *core.Registry, srcs []compiler.RestartSrc, 
 		prefix = prefix[:0]
 		for _, src := range srcs {
 			switch {
-			case src.Kind == compiler.RestartConst && src.Fresh:
-				prefix = append(prefix, core.WithFreshFnIdentity(core.CloneValueKeeping(src.Val, nil)))
+			case src.Kind == compiler.RestartConst && src.Build != nil:
+				prefix = append(prefix, buildLiteral(src.Build))
 			case src.Kind == compiler.RestartConst:
 				prefix = append(prefix, src.Val)
 			case src.Kind == compiler.RestartLocal && src.Idx < len(vc.restartLocals):
@@ -4637,14 +4637,14 @@ func (vc *vmContext) unwindDynBinds(base int) {
 //
 // seatConstLocal backs OpPushConstFreshLocal: a multi-read compound body literal
 // is constructed ONCE per call into frame local cl.Slot and shared by every read
-// site. Frame locals start zero-valued (Parent==nil) and a compound clone always
-// carries a Parent, so Parent==nil is an unambiguous "not yet seated this call"
-// sentinel — deep-clone on the first read of the call, re-use the seated instance
-// after. Interpreter parity for `def x {…}` read at several sites: one instance
-// per call, shared within a call, fresh across calls.
+// site. Frame locals start zero-valued (Parent==nil) and a compound construction
+// always carries a Parent, so Parent==nil is an unambiguous "not yet seated this
+// call" sentinel — construct on the first read of the call (Program.ConstBuilds),
+// re-use the seated instance after. Interpreter parity for `def x {…}` read at
+// several sites: one instance per call, shared within a call, fresh across calls.
 func seatConstLocal(p *compiler.Program, locals []core.Value, cl compiler.ConstLocalRef) core.Value {
 	if locals[cl.Slot].Parent == nil {
-		locals[cl.Slot] = core.WithFreshFnIdentity(core.CloneValueKeeping(p.Consts[cl.ConstIdx], p.ConstKeep[cl.ConstIdx]))
+		locals[cl.Slot] = buildLiteral(p.ConstBuilds[cl.ConstIdx])
 	}
 	return locals[cl.Slot]
 }
@@ -4772,14 +4772,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		case compiler.OpPushConst:
 			stack = append(stack, p.Consts[in.Arg])
 		case compiler.OpPushConstFresh:
-			// Mint a fresh container identity for a compound literal the
-			// enclosing fn unit re-evaluates per call — interpreter parity
-			// for `(mk) eq (mk)` (see OpPushConstFresh in bytecode.go); the
-			// enclosing bindings' containers the literal embeds stay shared
-			// (Program.ConstKeep).
-			// A fn literal the body constructs per evaluation is a new
-			// function per push (NUR288).
-			stack = append(stack, core.WithFreshFnIdentity(core.CloneValueKeeping(p.Consts[in.Arg], p.ConstKeep[int(in.Arg)])))
+			// Construct a compound literal the enclosing fn unit re-evaluates
+			// per call — interpreter parity for `(mk) eq (mk)` (see
+			// OpPushConstFresh in bytecode.go): a new spine over the shared
+			// parts, the enclosing bindings' containers the literal embeds
+			// among them (Program.ConstBuilds). A fn literal the body
+			// constructs per evaluation is a new function per push (NUR288).
+			stack = append(stack, buildLiteral(p.ConstBuilds[in.Arg]))
 		case compiler.OpPushConstFreshLocal:
 			// A multi-read compound body literal: construct ONE fresh instance per
 			// call, seated in a frame local, shared by every read site (see
