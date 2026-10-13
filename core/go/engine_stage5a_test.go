@@ -1390,28 +1390,43 @@ func TestS5AReachFnZeroArgPropertyCall(t *testing.T) {
 	}
 }
 
-// --- resolveConsumedInertTypeShape / resolveInertTypeShape ----------------
+// --- resolveConsumedInertTypeShape / resolveInertTypeShapeIn --------------
 
 func TestS5AResolveInertTypeShape(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := s5aEng(t, r, nil, 0)
 
-	// A typed list whose child word resolves.
-	if _, ok := e.resolveInertTypeShape(NewTypedList(NewWord("Integer"))); !ok {
+	// A typed list whose child word resolves — in its slot: the payload the
+	// slot was copied from (the program token's) keeps its word.
+	tok := NewTypedList(NewWord("Integer"))
+	slot := tok
+	if !e.resolveInertTypeShapeIn(&slot) {
 		t.Error("resolvable typed list not resolved")
 	}
+	if ci, _ := AsChildType(slot); IsWord(&ci.Child) {
+		t.Error("the slot's child was not resolved")
+	}
+	if ci, _ := AsChildType(tok); !IsWord(&ci.Child) {
+		t.Error("resolving the slot wrote the token it was copied from")
+	}
 	// A typed list whose child is already resolved.
-	if _, ok := e.resolveInertTypeShape(NewTypedList(NewTypeLiteral(TInteger))); ok {
+	done := NewTypedList(NewTypeLiteral(TInteger))
+	if e.resolveInertTypeShapeIn(&done) {
 		t.Error("already-resolved typed list reported changed")
 	}
 	// A disjunct with word alternatives resolves.
-	if _, ok := e.resolveInertTypeShape(NewDisjunct([]Value{NewWord("Integer"), NewWord("String")})); !ok {
+	dw := NewDisjunct([]Value{NewWord("Integer"), NewWord("String")})
+	if !e.resolveInertTypeShapeIn(&dw) {
 		t.Error("resolvable disjunct not resolved")
 	}
-	// An already-resolved disjunct does not.
+	// An already-resolved disjunct does not, and nothing else is a shape.
 	dv := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if _, ok := e.resolveInertTypeShape(dv); ok {
+	if e.resolveInertTypeShapeIn(&dv) {
 		t.Error("already-resolved disjunct reported changed")
+	}
+	n := NewInteger(1)
+	if e.resolveInertTypeShapeIn(&n) {
+		t.Error("an integer reported a resolved shape")
 	}
 }
 

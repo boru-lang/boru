@@ -79,6 +79,18 @@ func MintCarrierFrom(src *Value) Value {
 	return v
 }
 
+// MintCarrierKeeping constructs the check-mode carrier of src that is still
+// src to a recording pass: src's type, facets and occurrence — its identity
+// and recorder key included — around data, nil to drop the payload (a
+// literal stripped for the check pass) or src's own to keep it as the bound
+// (a disjunct's alternatives, a narrowed refinement). A carrier that is a
+// new value (a join, a derivation) is MintCarrierFrom's.
+func MintCarrierKeeping(src *Value, data Payload) Value {
+	v := mintFrom(src, src.Parent, data)
+	v.Carrier = true
+	return v
+}
+
 // MintElemTyped constructs the container src under the element constraint
 // *elem (a flex retag): the same payload — so a flex container keeps its
 // shared store and its identity — facets and occurrence, the element type

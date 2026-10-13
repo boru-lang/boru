@@ -202,9 +202,7 @@ func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *
 	if !IsConcrete(&concrete) {
 		// A carrier (a check-mode abstract map with no readable entries) tags
 		// gradually; its concrete elements are validated at runtime.
-		out := concrete
-		out.SetElemConstraint(childType)
-		return out, nil
+		return MintElemTyped(&concrete, &childType), nil
 	}
 	m, _ := AsMap(concrete) // concrete map-family (plain or flex) → readable
 	res, err := unifyMapValues(m, func(string) Value { return childType }, r)

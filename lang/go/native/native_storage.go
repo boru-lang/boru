@@ -1446,7 +1446,7 @@ func d2TypedContainerBound(container Value) (Value, bool) {
 	// exact narrowing needs the downstream dispatch fixed first; kept at the
 	// supertype until then. See design/TYPED-CONTAINER-TAG-RETENTION.0.md (R4).
 	if IsDisjunct(&child) {
-		return NewDynamicCarrierValue(CloneValue(child)), true
+		return NewDynamicCarrierValue(child), true
 	}
 	return NewDynamicCarrier(child.Parent), true
 }
@@ -1577,13 +1577,14 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// only the captured RNG state differs, and a closure-driver handler like
 	// rand-list-of does NOT itself draw from the RNG (the body does, against the
 	// module-export generator it names), so the resolved shape is seed-agnostic.
-	// Cloned for a fresh ID (the stored value's ID is shared with the map field
-	// and would collide in operand-provenance tracking). A NON-closure wrapper
-	// (`r.int`, RNG-bound) stays dynamic so it does not bake a seed-specific
-	// handler -- it takes the runtime CALL_DYNAMIC path instead.
+	// The member is read as itself (it was "cloned for a fresh ID", but a
+	// clone shares a fn value whole, identity and all). A NON-closure
+	// wrapper (`r.int`, RNG-bound) stays dynamic so it does not bake a
+	// seed-specific handler -- it takes the runtime CALL_DYNAMIC path
+	// instead.
 	if val.Parent.ConformsTo(TFunction) &&
 		isClosureBearingWrapper(val) {
-		return []Value{CloneValue(val)}
+		return []Value{val}
 	}
 	// On a PLAIN check (no compile pass recording) a stored fn value is read
 	// as itself, so the pass dispatches it over what follows exactly as the
@@ -1592,7 +1593,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// carrier below: its arrival is claimed through the shaped method model.
 	if r != nil && !r.Check.Recorder().Armed() && val.Parent.ConformsTo(TFunction) {
 		if _, ok := val.Data.(*FnDefInfo); ok {
-			return []Value{CloneValue(val)}
+			return []Value{val}
 		}
 	}
 	if val.Parent.ConformsTo(TFunction) ||
@@ -1614,9 +1615,9 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		return dyn
 	}
 	// A concrete LIST / MAP field folds to the stored CONTAINER value, not
-	// merely its type carrier: cloned so it carries a FRESH ID (the stored
-	// value's ID is shared with the map field and would collide in the
-	// emitter's operand-provenance tracking — `def a {b:5} [a.b]`). Folding
+	// merely its type carrier, under a FRESH ID (the stored value's ID is
+	// shared with the map field and would collide in the emitter's
+	// operand-provenance tracking — `def a {b:5} [a.b]`). Folding
 	// the concrete container lets a downstream `(m get "k") size` / `for`
 	// over the field see a concrete count instead of a carrier Integer, so
 	// a statically-empty collection's loop body is correctly pruned rather
@@ -1624,7 +1625,14 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// carrier — there is nothing to fold, and the ID-collision guard above
 	// is the reason we never returned the bare stored scalar.
 	if IsConcrete(&val) && (val.Parent.ConformsTo(TList) || val.Parent.ConformsTo(TMap)) {
-		return []Value{CloneValue(val)}
+		if _, flex := val.Data.(*FlexListData); flex || IsFlexMap(val) {
+			// A flex member's store is shared by design: the fold reads an
+			// instance of its own.
+			return []Value{CloneValue(val)}
+		}
+		// The stored container itself, under an identity of its own: its
+		// elements are shared (value semantics), so nothing is copied.
+		return []Value{core.MintFresh(&val)}
 	}
 	return []Value{elementReadCarrier(val)}
 }

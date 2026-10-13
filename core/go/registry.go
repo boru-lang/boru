@@ -2011,7 +2011,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		// is when the tape apply's consumer evaluates the same literal.
 		sweep := NewTop(r)
 		for i := range result {
-			if result[i], err = sweep.autoEvalResidual(result[i]); err != nil {
+			if err = sweep.autoEvalResidual(&result[i]); err != nil {
 				return nil, err
 			}
 			if sweep.containerEscaped() {

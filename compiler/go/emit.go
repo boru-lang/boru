@@ -5451,9 +5451,7 @@ func (es *EmitState) Materialise(v core.Value) (core.Value, bool) {
 			}
 		}
 		if rebuilt {
-			nv := v
-			nv.Data = core.ListPayload{Elems: elems}
-			return nv, true
+			return core.MintPayload(&v, core.ListPayload{Elems: elems}), true
 		}
 		return v, true
 	case core.MapPayload:
@@ -5480,9 +5478,7 @@ func (es *EmitState) Materialise(v core.Value) (core.Value, bool) {
 			}
 		}
 		if nm != nil {
-			nv := v
-			nv.Data = core.MapPayload{M: nm}
-			return nv, true
+			return core.MintPayload(&v, core.MapPayload{M: nm}), true
 		}
 		return v, true
 	}

@@ -108,9 +108,7 @@ func unifyCarrierVsTyped(a Value, sa ValueShape, b Value, sb ValueShape, typedSh
 		return Value{}, false
 	}
 	ct, _ := AsChildType(typed)
-	out := carrier
-	out.SetElemConstraint(ct.Child)
-	return out, true
+	return MintElemTyped(&carrier, &ct.Child), true
 }
 
 // unifyMapValues unifies the value at each key of m, sourcing the left side

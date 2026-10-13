@@ -4653,9 +4653,8 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 // forward-collection completion points where the word must re-dispatch
 // against the stack; callers set e.pointer themselves as needed.
 func (e *Engine) forceStackWord(idx int, w WordInfo) {
-	pos := e.Tape.Ref(idx).Pos()
 	nw := NewWordModified(w.Name, w.ArgCount, true, false)
-	nw.SetPos(pos) // preserve source position across force-stack rewrite
+	setPosRef(&nw, posOf(e.Tape.Ref(idx))) // the rewritten word keeps the cell's position
 	e.Tape.Set(idx, nw)
 }
 
@@ -5175,7 +5174,7 @@ func (e *Engine) stepLiteral() error {
 // that were created by the parser (Eval=true) and not explicitly quoted.
 // Runtime-created values (from word handlers, def bodies, etc.) are
 // not auto-evaluated. This is called at the end of Run().
-// resolveInertTypeShape resolves the type-name Words inside an inert
+// resolveInertTypeShapeIn resolves the type-name Words inside an inert
 // type-shaped value — a typed container's child (`[:String]`), a
 // disjunct's alternatives (the `{a?:T}` desugar) — through the
 // canonical cascade (ADR-012 rule 4). Auto-evaluation is consumption,
@@ -5194,37 +5193,38 @@ func (e *Engine) resolveConsumedInertTypeShape(match *MatchResult, i int) {
 		(match.Sig.NoEvalMapArgs != nil && match.Sig.NoEvalMapArgs[i]) {
 		return
 	}
-	if rv, ok := e.resolveInertTypeShape(match.Args[i]); ok {
-		match.Args[i] = rv
-	}
+	e.resolveInertTypeShapeIn(&match.Args[i])
 }
 
-func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
+// resolveInertTypeShapeIn resolves an inert type-shaped value (the doc
+// above) in the slot that holds it — an arg
+// slot, a result element, a tape cell, the caller's own — and reports
+// whether anything resolved. Only the slot's payload is replaced: the
+// payload it held, the program token's, is never written.
+func (e *Engine) resolveInertTypeShapeIn(slot *Value) bool {
 	switch {
-	case IsTypedList(&v) || IsTypedMap(&v):
-		ci, err := AsChildType(v)
-		if err != nil { //covergate:allow IsTypedList/IsTypedMap require a ChildTypeInfo payload, so AsChildType cannot fail here
-			return v, false
-		}
+	case IsTypedList(slot) || IsTypedMap(slot):
+		ci := slot.Data.(ChildTypeInfo) // IsTypedList/IsTypedMap require it
 		rc := ResolveWordsDeepR(ci.Child, e.Registry)
 		if ExactEqual(rc, ci.Child) {
-			return v, false
+			return false
 		}
-		// In-place Data replacement: Elements/Entries and every other
-		// field survive — only the child constraint resolves.
-		nd := ci
-		nd.Child = rc
-		out := v
-		out.Data = nd
-		return out, true
-	case IsDisjunct(&v):
-		rv := ResolveWordsDeepR(v, e.Registry)
-		if ExactEqual(rv, v) {
-			return v, false
+		// Elements/Entries and every other field survive — only the
+		// child constraint resolves.
+		ci.Child = rc
+		slot.Data = ci
+		return true
+	case IsDisjunct(slot):
+		rv := ResolveWordsDeepR(*slot, e.Registry)
+		if ExactEqual(rv, *slot) {
+			return false
 		}
-		return rv, true
+		// The resolver rebuilds a disjunct's payload alone (its
+		// alternatives), keeping the header: the payload is all that moves.
+		slot.Data = rv.Data
+		return true
 	}
-	return v, false
+	return false
 }
 
 // sweepResidual is the end-of-run sweep (autoEvalStack), bracketed by
@@ -5241,8 +5241,19 @@ func (e *Engine) sweepResidual() error {
 
 func (e *Engine) autoEvalStack() error {
 	for i := 0; i < e.Tape.Len(); i++ {
-		result, err := e.autoEvalResidual(e.Tape.At(i))
-		if err != nil {
+		if c := e.Tape.Ref(i); !isPendingResidualContainer(c) {
+			// Typed containers carry no Eval flag — they resolve by
+			// shape, in their cell; everything else stays as it is.
+			if !IsQuoted(c) {
+				e.resolveInertTypeShapeIn(c)
+			}
+			continue
+		}
+		// A pending literal evaluates to a new value, which replaces the
+		// cell (the evaluation may run sub-engines, so no cell pointer
+		// is held across it).
+		result := e.Tape.At(i)
+		if err := e.autoEvalResidual(&result); err != nil {
 			return err
 		}
 		if e.containerEscaped() {
@@ -5261,21 +5272,32 @@ func (e *Engine) autoEvalStack() error {
 // else passes through. Shared by autoEvalStack and by CallBoru's
 // post-teardown sweep of a DEFERRED lambda residual (ResidualEvalsInFrame
 // false), so the deferred container is evaluated by the same routine a
-// consumer would have applied to it.
-func (e *Engine) autoEvalResidual(val Value) (Value, error) {
-	if !IsQuoted(&val) {
-		// Typed containers carry no Eval flag — resolve by shape.
-		if rv, ok := e.resolveInertTypeShape(val); ok {
-			return rv, nil
-		}
+// consumer would have applied to it. It works in the holder val points at,
+// the caller's own: a resolved shape replaces the holder's payload, an
+// evaluation replaces its value.
+func (e *Engine) autoEvalResidual(val *Value) error {
+	if IsQuoted(val) {
+		return nil
 	}
-	if isPendingList(val) {
-		return e.autoEvalList(val, false)
+	// Typed containers carry no Eval flag — resolve by shape.
+	if e.resolveInertTypeShapeIn(val) {
+		return nil
 	}
-	if isPendingMap(val) {
-		return e.AutoEvalMap(val, false, false)
+	var ev Value
+	var err error
+	switch {
+	case isPendingList(*val):
+		ev, err = e.autoEvalList(*val, false)
+	case isPendingMap(*val):
+		ev, err = e.AutoEvalMap(*val, false, false)
+	default:
+		return nil
 	}
-	return val, nil
+	if err != nil {
+		return err
+	}
+	*val = ev
+	return nil
 }
 
 // containerEscaped reports whether a break/continue escaped the container
@@ -5372,9 +5394,7 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	// element resolves.
 	for i := range result {
 		ClearAscribed(&result[i])
-		if rv, ok := e.resolveInertTypeShape(result[i]); ok {
-			result[i] = rv
-		}
+		e.resolveInertTypeShapeIn(&result[i])
 	}
 	out := NewList(result)
 	// In RECORDING mode a list whose elements are COMPUTED (an event carrier, not
@@ -6033,8 +6053,8 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// An inert type-shaped value (`{a?:T}`'s desugared disjunct, a
 		// typed-container constraint) has no dispatches to run — it
 		// resolves its names directly.
-		if rv, ok := e.resolveInertTypeShape(v); ok {
-			out.Set(resolvedKey, rv)
+		if e.resolveInertTypeShapeIn(&v) {
+			out.Set(resolvedKey, v)
 			continue
 		}
 		// A scalar literal member is placed as it stands: it is its own
@@ -9208,15 +9228,13 @@ func (e *Engine) collectLoopRegion(cont *Loop, markIdx, moveIdx int) (escaped bo
 	for j := markIdx + 1; j < moveIdx; j++ {
 		v := e.Tape.At(j)
 		if isPendingResidualContainer(&v) {
-			ev, err := e.autoEvalResidual(v)
-			if err != nil {
+			if err := e.autoEvalResidual(&v); err != nil {
 				return false, err
 			}
 			if e.containerEscaped() {
 				cont.Results = cont.Results[:base]
 				return true, nil
 			}
-			v = ev
 		}
 		cont.Results = append(cont.Results, v)
 	}
@@ -9962,8 +9980,18 @@ func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, las
 		if !IsPendingActiveContainer(v) {
 			continue
 		}
-		if ev, ok := e.evalTrailingContainer(v, sig, p, fits); ok {
-			e.Tape.Set(idxs[n-1-p], ev)
+		idx := idxs[n-1-p]
+		if isMap := v.Parent.Equal(TMap); (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
+			// A slot that takes the raw body: the container stays as
+			// written, its auto-evaluation cleared in its cell where the
+			// window applies.
+			if fits {
+				SetEval(e.Tape.Ref(idx), false)
+			}
+			continue
+		}
+		if ev, ok := e.evalTrailingContainer(v, fits); ok {
+			e.Tape.Set(idx, ev)
 		}
 	}
 }
@@ -9975,15 +10003,12 @@ func trailingWindowFits(last Value, sigArgs []Value) bool {
 	return !IsQuoted(&last) && !IsDynamic(&last) && ProvenWindowMatch(last, sigArgs)
 }
 
-// evalTrailingContainer evaluates one pending container argument at sig
-// position p per evalTrailingWindowContainers' rule, reporting whether the
-// returned value replaces it (the value is meaningless when it does not).
-func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool) (Value, bool) {
+// evalTrailingContainer evaluates one pending container argument of a slot
+// that evaluates its body, per evalTrailingWindowContainers' rule, reporting
+// whether the returned value replaces it (the value is meaningless when it
+// does not).
+func (e *Engine) evalTrailingContainer(v Value, fits bool) (Value, bool) {
 	isMap := v.Parent.Equal(TMap)
-	if (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
-		SetEval(&v, !fits)
-		return v, fits
-	}
 	var ev Value
 	var err error
 	switch {

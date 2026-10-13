@@ -354,9 +354,13 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			if scanIdx+1 < win.Len() {
 				if _, marked := AsDispatchMod(win.At(scanIdx + 1)); marked {
 					win.Remove(scanIdx + 1)
+					// Marked in its cell, and on the copy this scan
+					// decides with.
+					c := win.Ref(scanIdx)
+					SetQuoted(c, true)
+					SetReachGroup(c, true)
 					SetQuoted(&res, true)
 					SetReachGroup(&res, true)
-					win.Set(scanIdx, res)
 				}
 			}
 			if h.IsReachCallHead(res, scanIdx) {
@@ -914,9 +918,9 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 }
 
 // arrivalReachGroup is CollectArrival for a matching arrival a REACH-LOWERED
-// group collapsed to (the transient ReachGroup tag). It edits a copy of its
-// own — the window may lose the `/v` marker after val, which moves cells —
-// and writes the window only where the arrival's value changes.
+// group collapsed to (the transient ReachGroup tag). It decides on a copy of
+// its own — the window may lose the `/v` marker after val, which moves cells
+// — and writes the arrival's cell only where its flags change.
 func arrivalReachGroup(h CollectHost, val Value, valIdx int) ArrivalVerdict {
 	win := h.Window()
 	// A named function that a REACH-LOWERED group collapsed to (the
@@ -967,9 +971,9 @@ func arrivalReachGroup(h CollectHost, val Value, valIdx int) ArrivalVerdict {
 	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
 	// (NUR078's `/v` spelling).
 	if IsQuoted(&val) && (isFnDefValue(val) || val.Carrier) {
-		SetQuoted(&val, false)
-		SetReachGroup(&val, false)
-		win.Set(valIdx, val)
+		c := win.Ref(valIdx)
+		SetQuoted(c, false)
+		SetReachGroup(c, false)
 	}
 	return ArrivalCollect
 }

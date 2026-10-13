@@ -87,9 +87,9 @@ func ValueCarrier(v Value) Value {
 // disjunct carrier for dynamic(A tor B), or a narrowed bound) to the
 // dynamic modality, preserving its Parent/Data bound.
 func NewDynamicCarrierValue(bound Value) Value {
-	bound.Carrier = true
-	SetDynamic(&bound, true)
-	return bound
+	v := MintCarrierKeeping(&bound, bound.Data)
+	SetDynamic(&v, true)
+	return v
 }
 
 // NewCarrierTypedList constructs a typed-list carrier — a list

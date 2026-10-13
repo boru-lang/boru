@@ -146,9 +146,7 @@ func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, 
 	if !IsConcrete(&concrete) {
 		// A carrier (a check-mode abstract list with no readable elements) tags
 		// gradually; its concrete elements are validated at runtime.
-		out := concrete
-		out.SetElemConstraint(childType)
-		return out, nil
+		return MintElemTyped(&concrete, &childType), nil
 	}
 	lst, _ := AsList(concrete) // concrete list-family (plain or flex) → readable
 	elems := lst.Slice()

@@ -107,9 +107,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 		}
 		nd := d
 		nd.Alternatives = SimplifyDisjunctAlts(alts)
-		out := v
-		out.Data = nd
-		return out
+		return MintPayload(&v, nd)
 	}
 	// Typed list / typed map: resolve the child constraint so a Word
 	// referring to a predicate type (e.g. `[:Pos]`) reaches its FnDef

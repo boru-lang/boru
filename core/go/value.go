@@ -1184,8 +1184,7 @@ func WithFreshFnIdentity(v Value) Value {
 	}
 	fd := *prev
 	fd.ident = &fnIdent{}
-	v.Data = &fd
-	return v
+	return MintPayload(&v, &fd)
 }
 
 // CapturedBinding is one lexically-captured name in a closure. The

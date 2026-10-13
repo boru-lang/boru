@@ -2093,8 +2093,7 @@ func (c *CheckState) ContextShape(store *StoreInstanceInfo, scope int) Value {
 		v = NewStoreShapeCarrier(TStore, scope)
 		c.CtxShapes[store] = v
 	}
-	SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
-	return v
+	return MintFresh(&v)
 }
 
 // BeginCompilePass is Begin() plus the compile-pass arming ritual shared

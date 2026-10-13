@@ -447,9 +447,9 @@ func toCarrier(v core.Value) core.Value {
 	if v.Carrier {
 		return v
 	}
-	v.Carrier = true
-	v.Data = nil
-	return v
+	// The literal's carrier keeps its identity: origByID recovers the
+	// literal from it.
+	return core.MintCarrierKeeping(&v, nil)
 }
 
 // checkModeLiteralWords are words whose adjacent String literal argument

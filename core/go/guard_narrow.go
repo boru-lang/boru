@@ -244,8 +244,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 					narrowed = NewCarrier(ValueType(meet))
 					ShareIdentity(&narrowed, &cur)
 				} else {
-					meet.Carrier = true
-					narrowed = meet
+					narrowed = MintCarrierKeeping(&meet, meet.Data)
 					ShareIdentity(&narrowed, &cur)
 				}
 				if IsDynamic(&cur) && !deadArm {
@@ -384,7 +383,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		if IsBareTypeNode(&narrowed) {
 			narrowed = NewCarrier(ValueType(narrowed))
 		} else {
-			narrowed.Carrier = true
+			narrowed = MintCarrierKeeping(&narrowed, narrowed.Data)
 		}
 		if ValuesEqual(narrowed, cur) {
 			// Complement did not refine cur (T disjoint from cur, or boru

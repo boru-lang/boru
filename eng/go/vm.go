@@ -903,7 +903,7 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 		}
 		withCaps := *fd
 		withCaps.Captured = bound
-		src.Data = &withCaps
+		src = core.MintPayload(cl.Source, &withCaps)
 	}
 	if sig := core.MatchFnSig(src, inputs); retTrim && sig != nil {
 		fd, _ := core.FnDefOf(src.Data) // the payload with this closure's captures bound
@@ -2434,12 +2434,14 @@ func substToken(toks []core.Value, path []int, span int, vs ...core.Value) ([]co
 		out = append(append(append(out, toks[:i]...), vs...), toks[i+span:]...)
 		return out, true
 	}
+	// This level is a new run sharing the other tokens; the token on the
+	// path is constructed around its substituted contents.
 	out := append([]core.Value(nil), toks...)
-	t := &out[i] // out is this level's own copy: rewrite the token in it
+	t := &toks[i]
 	if core.IsParenExpr(t) {
 		inner, _ := core.AsParenExpr(t)
 		sub, ok := substToken(inner, path[1:], span, vs...)
-		t.Data = core.ParenExprPayload{Toks: sub}
+		out[i] = core.MintPayload(t, core.ParenExprPayload{Toks: sub})
 		return out, ok
 	}
 	l, err := core.AsList(*t)
@@ -2447,7 +2449,7 @@ func substToken(toks []core.Value, path []int, span int, vs ...core.Value) ([]co
 		return nil, false
 	}
 	sub, ok := substToken(l.Elems(), path[1:], span, vs...)
-	t.Data = core.ListPayload{Elems: sub}
+	out[i] = core.MintPayload(t, core.ListPayload{Elems: sub})
 	return out, ok
 }
 
