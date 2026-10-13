@@ -116,7 +116,7 @@ func words(ws ...string) Value {
 
 // tlCall is `name [body] data` at row 4.
 func tlCall(name string, body, data Value) []Value {
-	w := WithPos(NewWord(name), Value{pos: &SrcPos{Row: 4, Col: 2}})
+	w := WithPosAt(NewWord(name), SrcPos{Row: 4, Col: 2})
 	return []Value{w, body, data}
 }
 

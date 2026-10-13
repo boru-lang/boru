@@ -384,7 +384,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			if err != nil {
 				return err
 			}
-			result.pos = tok.pos
+			setPosRef(&result, posOf(&tok))
 			win.Set(scanIdx, result)
 			pruneViable(pos, result)
 			pos++
@@ -403,7 +403,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			if err != nil {
 				return err
 			}
-			result.pos = tok.pos
+			setPosRef(&result, posOf(&tok))
 			win.Set(scanIdx, result)
 			pruneViable(pos, result)
 			pos++
@@ -473,7 +473,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 				if top, ok := h.DefTop(wi.Name); ok && IsSplice(top) {
 					if info, serr := AsSplice(top); serr == nil && spliceIsData(info) {
 						pe := NewParenExpr([]Value{tok})
-						pe.pos = tok.pos
+						setPosRef(&pe, posOf(&tok))
 						win.Set(scanIdx, pe)
 						continue
 					}
@@ -899,7 +899,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 		val.Parent.Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
 		w, _ := AsWord(val)
 		atom := NewAtom(w.Name)
-		atom.pos = val.pos // preserve source position across /q Word→Atom conversion
+		setPosRef(&atom, posOf(val)) // preserve source position across /q Word→Atom conversion
 		win.Set(valIdx, atom)
 		val = win.Ref(valIdx)
 		matches = true

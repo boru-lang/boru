@@ -202,8 +202,9 @@ const maxCallLoops = 64
 // takeCallLoop takes a call-region Loop from the registry's pool — or
 // mints one — set up for this call: the word, the region's description,
 // the driver's inputs and body, the word's position for the mark, the
-// move and the close paren (the minted tokens point at the Loop's own Pos,
-// so a reused Loop's tokens take the new call's position).
+// move and the close paren (the minted tokens point at the Loop's own
+// position, refreshed from Pos at every mint, so a reused Loop's tokens
+// take the new call's position).
 func (r *Registry) takeCallLoop(word, kind string, inputs []Value, body Value) *Loop {
 	var lp *Loop
 	if n := len(r.callLoops); n > 0 {
@@ -286,6 +287,7 @@ func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value
 // and the move on the first call, the sealing paren whenever the inert-input
 // span differs from the one it was minted for.
 func (lp *Loop) mint(argSpan int) {
+	lp.at.SrcPos, lp.at.only.pos = lp.Pos, &lp.at
 	if lp.mark.Parent == nil {
 		id := NextMarkID()
 		lp.mark = NewLoopMark(id, lp)
@@ -298,11 +300,13 @@ func (lp *Loop) mint(argSpan int) {
 			// sub-engine's residual — no position — rather than blaming
 			// the word. A call region's close paren takes the word's: the
 			// construct whose block let a signal out is where the report
-			// points (closeAtWord) — and its tokens point at the Loop's Pos
-			// whatever it holds now, as the Loop is reused call after call.
-			lp.mark.pos, lp.move.pos = &lp.Pos, &lp.Pos
+			// points (closeAtWord) — and its tokens point at the Loop's own
+			// position, which every mint refreshes from Pos, as the Loop is
+			// reused call after call.
+			setPosRef(&lp.mark, &lp.at)
+			setPosRef(&lp.move, &lp.at)
 			if lp.closeAtWord {
-				lp.close.pos = &lp.Pos
+				setPosRef(&lp.close, &lp.at)
 			}
 		}
 	}

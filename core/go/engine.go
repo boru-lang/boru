@@ -1087,7 +1087,7 @@ func attemptedWindowSplit(tape *Tape, pointer int, fn *FnDefInfo, written, prefi
 				s := &fn.Signatures[i]
 				if !s.Fallback && s.QuoteArgs != nil && s.QuoteArgs[0] {
 					atom := NewAtom(w.Name)
-					atom.pos = tape.Ref(pointer + 1).pos
+					setPosRef(&atom, posOf(tape.Ref(pointer+1)))
 					written = append(written, atom)
 					break
 				}
@@ -1367,11 +1367,11 @@ func (e *Engine) voidArgErrorFor(name string, pos SrcPos) *BoruError {
 // zero-Pos entries are touched, so values that already carry a position — a
 // stored fn passed through, a literal — are left alone.
 //
-// pos arrives as the CALL-SITE TOKEN's own *SrcPos and is shared onto the
-// stamped values rather than re-escaped per dispatch (positions are minted
-// once at parse and never mutated — the documented sharing rule on
-// Value.pos). A nil pos means the token carries no position: nothing to stamp.
-func stampResultPos(vals []Value, pos *SrcPos) {
+// pos arrives as the CALL-SITE TOKEN's own position and is shared onto the
+// stamped values rather than re-minted per dispatch (positions are minted
+// once at parse and never mutated — occurrence.go's sharing rule). A nil
+// pos means the token carries no position: nothing to stamp.
+func stampResultPos(vals []Value, pos *position) {
 	if pos == nil || pos.Row == 0 {
 		return
 	}
@@ -1382,11 +1382,11 @@ func stampResultPos(vals []Value, pos *SrcPos) {
 		switch {
 		case IsReturnCheck(&vals[i]):
 			if rc, err := AsReturnCheck(&vals[i]); err == nil && rc.Pos.Row == 0 {
-				rc.Pos = *pos
+				rc.Pos = pos.SrcPos
 				vals[i] = NewReturnCheck(rc)
 			}
 		case vals[i].Parent.Equal(TFunction):
-			vals[i].pos = pos
+			setPosRef(&vals[i], pos)
 		}
 	}
 }
@@ -2633,7 +2633,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 				e.Pointer = savedPointer
 				return err
 			}
-			result.pos = v.pos
+			setPosRef(&result, posOf(&v))
 			e.Tape.Set(e.Pointer, result)
 		case IsXmlInterp(&v):
 			// Mirror the InterpString case: a paren-wrapped interpolated
@@ -2643,7 +2643,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 				e.Pointer = savedPointer
 				return err
 			}
-			result.pos = v.pos
+			setPosRef(&result, posOf(&v))
 			e.Tape.Set(e.Pointer, result)
 		default:
 			if err := e.stepLiteral(); err != nil {
@@ -2774,7 +2774,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 		if e.Registry != nil && e.Registry.analysisActive() {
 			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
-			placeholder.pos = val.pos
+			setPosRef(&placeholder, posOf(&val))
 			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
@@ -2806,7 +2806,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "",
 				SrcPos{Row: val.Pos().Row, Col: val.Pos().Col, Src: w.Name})
 			placeholder := NewAtom(w.Name)
-			placeholder.pos = val.pos
+			setPosRef(&placeholder, posOf(&val))
 			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
@@ -2820,7 +2820,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			FullSource: e.effectiveSource(),
 		}
 	}
-	v.pos = val.pos
+	setPosRef(&v, posOf(&val))
 	if w.ForceVal {
 		// /uv: leave the usurped wrapper as inert data (mirrors /v) — it
 		// still dispatches if args follow or it is later stepped. As
@@ -2909,7 +2909,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			}
 			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
-			placeholder.pos = val.pos
+			setPosRef(&placeholder, posOf(&val))
 			SetUndefined(&placeholder, true)
 			e.Tape.Set(e.Pointer, placeholder)
 			return e.stepLiteral()
@@ -2955,7 +2955,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 		v = tagged
 		e.Registry.analysisRecorder().NoteValRead(IDOf(&v), w.Name)
 	}
-	v.pos = val.pos
+	setPosRef(&v, posOf(&val))
 	// A reference denotes DATA. When a parked forward in this paren
 	// scope is still collecting, deliver the reference through the
 	// normal literal step so it ARRIVES like any value and fills the
@@ -3063,7 +3063,7 @@ func (e *Engine) stepWord(val *Value) error {
 	// forward resolution, rearrangement, splices — and a cell pointer dies
 	// at the next edit. Read what the word step needs from its own cell
 	// once, here: its source position.
-	vpos := val.pos
+	vpos := posOf(val)
 
 	// /u modifier — see stepWordUsurp. Handled before the /v branch
 	// so the /uv combo usurps rather than plain-referencing.
@@ -3166,7 +3166,7 @@ func (e *Engine) stepWord(val *Value) error {
 		// so the real decision is available and the proxy is not needed.
 		push := NewTypeLiteral(entry.TypeDef)
 		e.noteBindingRead(w.Name, push)
-		push.pos = vpos
+		setPosRef(&push, vpos)
 		e.Tape.SetFrom(e.Pointer, &push)
 		return e.stepLiteral()
 	}
@@ -3207,7 +3207,7 @@ func (e *Engine) stepWord(val *Value) error {
 					if fwdIdx := e.pendingForwardIdx(); fwdIdx >= 0 {
 						if fwd, ferr := AsForward(e.Tape.Ref(fwdIdx)); ferr == nil && !bindsReferent(fwd.FuncName) {
 							pe := NewParenExpr([]Value{*val})
-							pe.pos = vpos
+							setPosRef(&pe, vpos)
 							e.Tape.Set(e.Pointer, pe)
 							return e.stepLiteral()
 						}
@@ -3294,7 +3294,7 @@ func (e *Engine) stepWord(val *Value) error {
 			// a pending collection that the pre-opacity parser literal
 			// used to satisfy or decline loudly.
 			lit := NewTypeLiteral(t)
-			lit.pos = vpos
+			setPosRef(&lit, vpos)
 			e.Tape.Set(e.Pointer, lit)
 			return e.stepLiteral()
 		}
@@ -3370,13 +3370,13 @@ func (e *Engine) stepWord(val *Value) error {
 			if e.Registry.analysisCompiling() {
 				e.Registry.Check.FnCarrierReadSubstituted = true
 			}
-			cv.pos = vpos
+			setPosRef(&cv, vpos)
 			e.Tape.Set(e.Pointer, cv)
 			return e.stepLiteral()
 		}
 		e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, derefPos(vpos)))
 		v := NewAtom(w.Name)
-		v.pos = vpos
+		setPosRef(&v, vpos)
 		SetUndefined(&v, true)
 		e.Tape.Set(e.Pointer, v)
 		return nil
@@ -3542,7 +3542,7 @@ func (e *Engine) stepWord(val *Value) error {
 // opaque S9 slot and so to the heap, is made only on the pass's path, not
 // on every interpreter def read (the one measured regression of the slot
 // conversion, TestInterpAllocCeilings).
-func (e *Engine) stepDefReadAnalysis(top Value, name string, vpos *SrcPos) error {
+func (e *Engine) stepDefReadAnalysis(top Value, name string, vpos *position) error {
 	// Remember which NAME produced this value (compile passes): if the
 	// value later has no compiled home in a fn unit, the read was a
 	// dynamic-scope reference and lowers to a runtime name lookup
@@ -4170,7 +4170,7 @@ func (e *Engine) stampHandlerResults(results []Value) {
 	if e.Pointer < 0 || e.Pointer >= e.Tape.Len() || IsLoopRegion(results) {
 		return
 	}
-	stampResultPos(results, e.Tape.Ref(e.Pointer).pos)
+	stampResultPos(results, posOf(e.Tape.Ref(e.Pointer)))
 }
 
 // maybeAddFnShapeHint wraps a signature_error from a fn-dispatch
@@ -4604,7 +4604,7 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 func (e *Engine) forceStackWord(idx int, w WordInfo) {
 	pos := e.Tape.Ref(idx).Pos()
 	nw := NewWordModified(w.Name, w.ArgCount, true, false)
-	nw.pos = &pos // preserve source position across force-stack rewrite
+	nw.SetPos(pos) // preserve source position across force-stack rewrite
 	e.Tape.Set(idx, nw)
 }
 
@@ -7210,7 +7210,7 @@ func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
 		argVals = append(argVals, e.Tape.At(i))
 	}
 	out := NewCarrier(TAny)
-	out.pos = fnv.pos
+	setPosRef(&out, posOf(&fnv))
 	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, out, fnv.Pos())
 	if !ok {
 		e.Registry.noteAmbiguousGradualSplit()
@@ -9529,7 +9529,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 		}
 	}
 	out := NewCarrier(TAny)
-	out.pos = fnVal.pos
+	setPosRef(&out, posOf(&fnVal))
 	if es.RecordDynMethod(fnVal, argVals, []Value{out}, "(paren apply)", fnVal.Pos()) {
 		e.Tape.Set(first, out)
 		for j := len(argIdxs) - 1; j >= 0; j-- {
@@ -9643,7 +9643,7 @@ func parenLeadArgTypedNonFn(v Value) bool {
 func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeIdx int) int {
 	lead := e.Tape.At(leadFn)
 	out := NewCarrier(TAny)
-	out.pos = lead.pos
+	setPosRef(&out, posOf(&lead))
 	// A one-value window: the callee either consumes it or the record
 	// declines, so there is no partial-consumption case to thread here.
 	if _, ok := es.RecordDynApplyLead([]Value{e.Tape.At(lastIdx)}, lead, out, lead.Pos()); ok {
@@ -9753,7 +9753,7 @@ func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWin
 		retType = TAny
 	}
 	out := NewCarrier(retType)
-	out.pos = fnVal.pos
+	setPosRef(&out, posOf(&fnVal))
 	// The recorder matched the window to the callee's own arity, so the
 	// record consumes the whole window or declines: there is no partial
 	// consumption to thread here.
@@ -9818,7 +9818,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 		SetDynamic(&out, true)
 	}
 	SetID(&out, GenerateID(IDPrefixForType(outType)))
-	out.pos = last.pos
+	setPosRef(&out, posOf(&last))
 	// consumed counts from the TOP of the window (the values
 	// nearest the fn). It is normally every arg, but a callee whose
 	// arity is provably smaller UNDER-APPLIES exactly as the
@@ -9931,7 +9931,7 @@ func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool
 	// A bind-time evaluation that raised replaces nothing (ok false): the
 	// literal stays pending, and the recorder never takes it raw.
 	SetEval(&ev, false)
-	ev.pos = v.pos
+	setPosRef(&ev, posOf(&v))
 	return ev, err == nil
 }
 
@@ -10966,7 +10966,7 @@ func (d patternDispatch) evalPatternOperand(i int, v Value) (Value, bool) {
 		return v, false
 	}
 	SetEval(&ev, false)
-	ev.pos = v.pos
+	setPosRef(&ev, posOf(&v))
 	e.Tape.Set(i, ev)
 	e.patternEvalDid = true
 	return ev, true

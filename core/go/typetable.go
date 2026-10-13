@@ -391,8 +391,8 @@ func (tt *TypeTable) MintType(name string, parent *Type) *Type {
 	if parent != nil {
 		def.ensureTMeta().Rank = externalBandFor(parent)
 	}
-	SetID(def, tt.mintID(parent))
-	tt.byID[IDOf(def)] = def
+	def.tmeta.id = tt.mintID(parent)
+	tt.byID[def.tmeta.id] = def
 	return def
 }
 
@@ -537,8 +537,7 @@ func (tt *TypeTable) RegisterType(path string, fixedID int, owner string, behavi
 
 	def := &Type{
 		Parent: parent,
-		tmeta:  &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: fixedID, Behavior: behavior, Owner: owner},
-		occ:    idOcc(id),
+		tmeta:  &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: fixedID, Behavior: behavior, Owner: owner, id: id},
 		Origin: OriginBuiltin,
 	}
 	def.tmeta.node = def
@@ -980,8 +979,7 @@ func (tt *TypeTable) registerBuiltin(d builtinDecl) {
 	}
 	def := &Type{
 		Parent:     parent,
-		tmeta:      &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: d.FixedID, Rank: d.Rank, Behavior: DefaultBehavior, Owner: OwnerKernel},
-		occ:        idOcc(id),
+		tmeta:      &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: d.FixedID, Rank: d.Rank, Behavior: DefaultBehavior, Owner: OwnerKernel, id: id},
 		IsInternal: d.IsInternal,
 		Origin:     OriginBuiltin,
 	}
@@ -1105,9 +1103,8 @@ func MintTestType(path string) *Type {
 		}
 	}
 	def := &Type{
-		tmeta:  &typeMeta{Name: parts[len(parts)-1], Behavior: DefaultBehavior, Owner: OwnerProgram},
+		tmeta:  &typeMeta{Name: parts[len(parts)-1], Behavior: DefaultBehavior, Owner: OwnerProgram, id: fmt.Sprintf("%st%011x", prefix, testTypeSeq)},
 		Parent: parent,
-		occ:    idOcc(fmt.Sprintf("%st%011x", prefix, testTypeSeq)),
 		Origin: OriginUserDef,
 	}
 	def.tmeta.node = def

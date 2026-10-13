@@ -103,7 +103,7 @@ func TestNUR358CoreLiteralEscapeRaises(t *testing.T) {
 	// The held position is the inner run's: a token after the signal
 	// inside the literal carries it.
 	r := nurReg(t)
-	after := WithPos(NewInteger(2), Value{pos: &SrcPos{Row: 3, Col: 7}})
+	after := WithPosAt(NewInteger(2), SrcPos{Row: 3, Col: 7})
 	_, err := NewTop(r).Run([]Value{NewEvalList([]Value{brk, after})})
 	if be, ok := err.(*BoruError); !ok || be.Row != 3 || be.Col != 7 {
 		t.Fatalf("Run = %v, want the escaped run's position 3:7", err)
@@ -286,7 +286,7 @@ func TestNUR365CoreParenOperandEscape(t *testing.T) {
 		}}})
 	}
 	brk := NewWord("nbrk")
-	after := WithPos(NewInteger(2), Value{pos: &SrcPos{Row: 4, Col: 9}})
+	after := WithPosAt(NewInteger(2), SrcPos{Row: 4, Col: 9})
 	r := nurReg(t)
 	fwd(r)
 	_, err := NewTop(r).Run([]Value{NewWord("nfw"), NewOpenParen(), NewInteger(1), brk, after, NewCloseParen()})

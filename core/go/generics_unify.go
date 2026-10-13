@@ -130,7 +130,7 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 		out.Set(k, resolved[i])
 	}
 	res := NewMap(out)
-	res.pos = v.pos
+	setPosRef(&res, posOf(&v))
 	return res
 }
 

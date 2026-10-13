@@ -319,7 +319,7 @@ func MapFieldFloat(m ReadMap, key string) (float64, bool) {
 // then has the source location even though the new value is
 // structurally unrelated to the input.
 func WithPos(v, src Value) Value {
-	v.pos = src.pos
+	setPosRef(&v, posOf(&src))
 	return v
 }
 
@@ -327,7 +327,7 @@ func WithPosAt(v Value, p SrcPos) Value {
 	if p.Row == 0 || v.Pos().Row != 0 {
 		return v
 	}
-	v.pos = &p
+	v.SetPos(p)
 	return v
 }
 

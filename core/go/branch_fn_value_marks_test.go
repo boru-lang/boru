@@ -101,7 +101,7 @@ func TestStepEndNotesBoundary(t *testing.T) {
 	rec := &mayBeFnRecorder{}
 	r.Check.Emit = rec
 	end := NewEnd()
-	end.pos = &SrcPos{Row: 3, Col: 9, Src: ";"}
+	end.SetPos(SrcPos{Row: 3, Col: 9, Src: ";"})
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(1), end}, StackHeadroom)
 	e.Pointer = 1

@@ -129,11 +129,11 @@ func (f *frameRecorder) TopFrameOnly() bool { return f.top }
 // mutable or a capturing fn.
 func TestEvalTrailingWindowContainersArms(t *testing.T) {
 	r := covRegistry(t, nil)
-	at := &SrcPos{Row: 4, Col: 2, Src: "["}
+	at := newPosition(SrcPos{Row: 4, Col: 2, Src: "["})
 	pendingList := func(items ...Value) Value {
 		v := NewList(items)
 		SetEval(&v, true)
-		v.pos = at
+		setPosRef(&v, at)
 		return v
 	}
 	sum := func() Value { return pendingList(NewInteger(1), NewWord("cadd"), NewInteger(2)) }
@@ -142,7 +142,7 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 		m.Set("a", NewParenExpr([]Value{NewInteger(1), NewWord("cadd"), NewInteger(2)}))
 		v := NewMap(m)
 		SetEval(&v, true)
-		v.pos = at
+		setPosRef(&v, at)
 		return v
 	}
 	lead := func(params ...*Type) Value {
@@ -167,8 +167,8 @@ func TestEvalTrailingWindowContainersArms(t *testing.T) {
 	}
 	evaluated := func(name string, got Value, want string) {
 		t.Helper()
-		if IsEval(&got) || got.String() != want || got.pos != at {
-			t.Errorf("%s: got %v (eval=%v pos=%v), want %s evaluated at the literal's position", name, got, IsEval(&got), got.pos, want)
+		if IsEval(&got) || got.String() != want || posOf(&got) != at {
+			t.Errorf("%s: got %v (eval=%v pos=%v), want %s evaluated at the literal's position", name, got, IsEval(&got), got.Pos(), want)
 		}
 	}
 

@@ -76,7 +76,7 @@ func TestSkeletonPerCallCopyIsolated(t *testing.T) {
 	popFrameEntry(t, r, "n")
 
 	// Mutate call 1's result the way execMatch does at the call site.
-	stampResultPos(out1, &SrcPos{Row: 41, Col: 7})
+	stampResultPos(out1, newPosition(SrcPos{Row: 41, Col: 7}))
 	stamped := false
 	for _, v := range out1 {
 		if IsReturnCheck(&v) {

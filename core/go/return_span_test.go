@@ -20,7 +20,7 @@ func TestReturnTypeErrorSpans(t *testing.T) {
 		Decl:     DeclSite{Pos: SrcPos{Row: 1, Col: 23, Src: "String"}},
 	}
 	got := NewInteger(42)
-	got.pos = &SrcPos{Row: 2, Col: 1, Src: "42"}
+	got.SetPos(SrcPos{Row: 2, Col: 1, Src: "42"})
 	ae := e.returnTypeError(rc, 1, TString, got)
 	if len(ae.Spans) != 2 {
 		t.Fatalf("want 2 spans, got %+v", ae.Spans)
@@ -48,7 +48,7 @@ func TestReturnTypeErrorSpanNegatives(t *testing.T) {
 	// (design/DIAGNOSTICS.0.md phase 7).
 	rc := ReturnCheckInfo{FuncName: "f", Pos: SrcPos{Row: 2, Col: 4}}
 	got := NewInteger(42)
-	got.pos = &SrcPos{Row: 2, Col: 4}
+	got.SetPos(SrcPos{Row: 2, Col: 4})
 	ae := e.returnTypeError(rc, 1, TString, got)
 	if len(ae.Spans) != 1 || ae.Spans[0].Label != "the returned value was produced here" {
 		t.Errorf("want exactly the value span, got %+v", ae.Spans)

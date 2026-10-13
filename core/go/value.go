@@ -1742,8 +1742,13 @@ type Loop struct {
 	// reused by every iteration: the one mark id, the sealing paren for
 	// the iteration's input span, the close paren and the move.
 	mark, open, close, move Value
-	openSpan                int
-	one                     [1]Value // a non-list body as its one token
+	// at is the position the synthetic tokens carry: Pos, refreshed each
+	// time the tokens are minted or reused, with the record that carries it
+	// alone, so a reused Loop's tokens take the new call's position with no
+	// record of their own.
+	at       position
+	openSpan int
+	one      [1]Value // a non-list body as its one token
 	// closeAtWord positions the region's close paren at the word too: a
 	// CALL region (CallRegion), whose block a signal escapes with no loop
 	// to take it, reports at the construct, where the pointer stands after
@@ -1951,24 +1956,16 @@ type Value struct {
 	// ensureTMeta so a mint site that forgets to allocate one cannot
 	// nil-panic.
 	tmeta *typeMeta
-	// pos is the source position for error reporting, behind a pointer so
-	// the ~24 inline bytes of SrcPos (Row/Col/Src) don't ride on every
-	// Value copy — nil means "unknown" (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore
-	// #1A, Pos follow-up). A position is minted once at parse time; the
-	// interpreter then THREADS it by copying the pointer (WithPos, the
-	// internal `.pos = other.pos` assignments), so no per-value SrcPos is
-	// allocated on the hot path and synthesized values (nil pos) carry
-	// none. The Src text is never mutated after parse, so sharing one
-	// *SrcPos across every copy of a value is sound. Read via Pos()
-	// (nil-safe, returns the zero SrcPos); external packages set it via
-	// SetPos since the field is unexported.
-	pos *SrcPos
-	// occ is this occurrence's state — the identity token, the dispatch
-	// ascription and a gradual read's source binding — behind one pointer
-	// to an immutable record (occurrence.go). nil for the overwhelming
-	// majority of values; a setter repoints this one header, never writes
-	// the record, so every other copy keeps what it had. Read and write
-	// through IDOf/SetID, AscribedType/SetAscribed and DynFrom/SetDynFrom.
+	// occ is this occurrence's state — the source position, the identity
+	// token, the dispatch ascription and a gradual read's source binding —
+	// behind one pointer to an immutable record (occurrence.go). nil for
+	// the overwhelming majority of values; a setter repoints this one
+	// header, never writes the record, so every other copy keeps what it
+	// had. Read and write through Pos/SetPos/WithPos, IDOf/SetID,
+	// AscribedType/SetAscribed and DynFrom/SetDynFrom. A position is minted
+	// once (at parse) with the record that carries it alone, and threading
+	// it onto a value with no other occurrence state shares that record:
+	// no allocation on the hot path, and synthesized values carry none.
 	occ *occurrence
 	// elem is the retained ELEMENT constraint of a concrete typed container
 	// ({:T} map / [:T] list), behind a pointer so its Value doesn't ride on
@@ -2082,6 +2079,12 @@ type typeMeta struct {
 	// type literal names its node (NodeOf) without a registry lookup by ID.
 	// nil for the metadata of an ad-hoc *Type no table registered.
 	node *Type
+	// id is the node's identity — the ID its table knows it by (byID) —
+	// and so the identity every literal copy of it reads (IDOf), unless a
+	// holder was given another (SetID). Identity is the node's, not an
+	// occurrence's: a type literal read stamps its site's position without
+	// a record of its own.
+	id string
 }
 
 // NodeOf is the lattice node t stands for: the node a type literal copies
@@ -2175,30 +2178,26 @@ func (v *Value) SetBehavior(b TypeBehavior) {
 }
 
 // Pos returns the value's source position, or the zero SrcPos (Row/Col 0
-// = unknown) when none is set. Nil-safe read of the pos pointer.
+// = unknown) when none is set. Nil-safe read of the occurrence record.
 func (v *Value) Pos() SrcPos {
-	if v.pos == nil {
+	if v.occ == nil || v.occ.pos == nil {
 		return SrcPos{}
 	}
-	return *v.pos
+	return v.occ.pos.SrcPos
 }
 
-// derefPos is Pos for a position read off a cell earlier (a word step
-// snapshots its cell's pos before the tape moves under it).
-func derefPos(p *SrcPos) SrcPos {
-	if p == nil {
-		return SrcPos{}
-	}
-	return *p
-}
-
-// SetPos attaches a source position, allocating a *SrcPos. Internal eng
-// code threads a position without allocating by copying the pos pointer
-// directly (`v.pos = other.pos`, as WithPos does); SetPos is the exported
-// entry point for the parser and lang layer, where the field is not
-// reachable and a fresh position is being minted anyway.
+// SetPos attaches a newly minted source position to this holder: one
+// allocation, the position and — when v holds other occurrence state — the
+// record carrying both. Code that threads an existing position copies the
+// reference instead (WithPos, setPosRef) and allocates nothing; SetPos is
+// the entry point for the parser and the lang layer, where a fresh
+// position is being minted anyway.
 func (v *Value) SetPos(p SrcPos) {
-	v.pos = &p
+	if v.occ == nil || posOnly(v.occ) {
+		v.occ = &newPosition(p).only
+		return
+	}
+	v.occ = newPositionedRecord(*v.occ, p)
 }
 
 // DynFrom returns the check-mode binding name a dynamic carrier was

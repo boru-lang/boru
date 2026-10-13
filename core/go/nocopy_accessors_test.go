@@ -211,8 +211,8 @@ func TestOccurrenceRecordIsTheHolders(t *testing.T) {
 // field belongs in the occurrence record, the type-node metadata or a
 // payload, not here.
 func TestValueHeaderSize(t *testing.T) {
-	if got := unsafe.Sizeof(Value{}); got > 72 {
-		t.Fatalf("Value header is %d bytes, want at most 72", got)
+	if got := unsafe.Sizeof(Value{}); got > 64 {
+		t.Fatalf("Value header is %d bytes, want at most 64", got)
 	}
 }
 

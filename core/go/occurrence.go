@@ -3,13 +3,24 @@ package core
 // The occurrence record (design/VALUE-NO-COPY.0.md §6 phase 3).
 //
 // A Value's header keeps what the value IS — its Parent, its payload, its
-// type-node facet (tmeta), its element constraint, its module-namespace
-// facet and the kind flags — and reaches the rest of its occurrence state
-// through one pointer: its identity token (the ID a type node is known by,
-// or a check pass's provenance key), the dispatch ascription (`v as T`) and
-// a gradual read's source binding (check mode). Most runtime values carry
-// none of it, so the pointer is nil and a copy of the header carries 8
-// bytes for all of it instead of the fields themselves.
+// type-node facet (tmeta, which also holds a type node's own identity), its
+// element constraint, its module-namespace facet and the kind flags — and
+// reaches the rest of its occurrence state through one pointer: its source
+// position, its identity token (a parsed token's, or a check pass's
+// provenance key; a copy of a type node reads the node's from tmeta unless
+// this holder was given another), the dispatch ascription (`v as T`) and a
+// gradual read's source binding (check mode). Most runtime values carry none
+// of it, so the pointer is nil and a copy of the header carries 8 bytes for
+// all of it instead of the fields themselves.
+//
+// A position is minted once (by the parser, or where a value is given a
+// position it did not have) together with the record that carries it ALONE
+// (position.only), so threading a position onto a value whose occurrence
+// holds nothing else — a fresh result, a type node's literal, a minted
+// marker — points the value at that record and allocates nothing. Only a
+// value that already holds other occurrence state (an identity, an
+// ascription, a source binding) and takes a DIFFERENT position needs a
+// record of its own.
 //
 // The record is immutable once a Value refers to it. A setter never writes
 // a record in place: it builds a new one and repoints the ONE Value it was
@@ -32,6 +43,47 @@ type occurrence struct {
 	id      string
 	asc     *Type
 	dynFrom *string
+	pos     *position
+}
+
+// position is a source position and the occurrence record that carries it
+// alone ({pos: this}), allocated as one object. Positions are immutable
+// once minted and shared by every holder they are threaded onto.
+type position struct {
+	SrcPos
+	only occurrence
+}
+
+// newPosition mints a position (and its own record).
+func newPosition(p SrcPos) *position {
+	np := &position{SrcPos: p}
+	np.only.pos = np
+	return np
+}
+
+// positionedRecord is a record and the position it carries, allocated as
+// one object: SetPos on a value that already holds other occurrence state.
+type positionedRecord struct {
+	at  position
+	rec occurrence
+}
+
+// newPositionedRecord is rec carrying a newly minted position p.
+func newPositionedRecord(rec occurrence, p SrcPos) *occurrence {
+	pr := &positionedRecord{at: position{SrcPos: p}, rec: rec}
+	pr.at.only.pos = &pr.at
+	pr.rec.pos = &pr.at
+	return &pr.rec
+}
+
+// idCleared is the identity a holder of a type node's copy is given when
+// its identity is cleared: the node's own (tmeta) would otherwise show
+// through. IDOf reads it as "".
+const idCleared = "\x00"
+
+// posOnly reports whether rec carries a position and nothing else.
+func posOnly(rec *occurrence) bool {
+	return rec.id == "" && rec.asc == nil && rec.dynFrom == nil
 }
 
 // occFlags are the per-occurrence flags, one bit each.
@@ -57,14 +109,53 @@ func occOf(v *Value) occurrence {
 	return *v.occ
 }
 
-// setOcc repoints v at a record holding rec: nil for the empty state, a new
-// record otherwise.
+// setOcc repoints v at a record holding rec: nil for the empty state, the
+// position's own record for a position alone, a new record otherwise.
 func setOcc(v *Value, rec occurrence) {
-	if rec == (occurrence{}) {
+	switch {
+	case rec == (occurrence{}):
 		v.occ = nil
+	case posOnly(&rec):
+		v.occ = &rec.pos.only
+	default:
+		v.occ = newOcc(rec)
+	}
+}
+
+// posOf is v's position, nil when it has none.
+func posOf(v *Value) *position {
+	if v.occ == nil {
+		return nil
+	}
+	return v.occ.pos
+}
+
+// setPosRef gives this holder of v the position p (nil clears it), keeping
+// the rest of its occurrence state. A value holding nothing else points at
+// the position's own record; only a value with other state and a different
+// position takes a new record.
+func setPosRef(v *Value, p *position) {
+	if v.occ == nil {
+		if p != nil {
+			v.occ = &p.only
+		}
 		return
 	}
-	v.occ = newOcc(rec)
+	if v.occ.pos == p {
+		return
+	}
+	rec := *v.occ
+	rec.pos = p
+	setOcc(v, rec)
+}
+
+// derefPos is the source position p stands for (the zero SrcPos for none):
+// a word step snapshots its cell's position before the tape moves under it.
+func derefPos(p *position) SrcPos {
+	if p == nil {
+		return SrcPos{}
+	}
+	return p.SrcPos
 }
 
 // newOcc allocates a record; a separate function so the allocation happens
@@ -223,23 +314,42 @@ func IsSigMatched(v *Value) bool { return occFlag(v, occSigMatched) }
 func SetSigMatched(v *Value, on bool) { setOccFlag(v, occSigMatched, on) }
 
 // IDOf is v's identity token: the canonical ID a type node (and every
-// literal copy of it) is known by, the provenance key a check pass mints
-// for a value it tracks, or "" for the overwhelming majority of runtime
-// values, which have none.
+// literal copy of it) is known by — the node's own, in its tmeta — the
+// provenance key a check pass mints for a value it tracks, a parsed token's
+// identity, or "" for the overwhelming majority of runtime values, which
+// have none.
 func IDOf(v *Value) string {
-	if v.occ == nil {
-		return ""
+	if v.occ != nil && v.occ.id != "" {
+		if v.occ.id == idCleared {
+			return ""
+		}
+		return v.occ.id
 	}
-	return v.occ.id
+	if v.tmeta != nil {
+		return v.tmeta.id
+	}
+	return ""
 }
 
 // SetID gives this holder of v the identity id ("" clears it); every other
-// copy keeps the identity it had.
+// copy keeps the identity it had. A copy of a type node that is given its
+// node's own identity back drops the override.
 func SetID(v *Value, id string) {
 	if IDOf(v) == id {
 		return
 	}
+	own := ""
+	if v.tmeta != nil {
+		own = v.tmeta.id
+	}
 	rec := occOf(v)
-	rec.id = id
+	switch {
+	case id == own:
+		rec.id = ""
+	case id == "":
+		rec.id = idCleared
+	default:
+		rec.id = id
+	}
 	setOcc(v, rec)
 }

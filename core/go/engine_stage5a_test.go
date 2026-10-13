@@ -143,11 +143,10 @@ func TestS5AUndefinedWordErrorVoidGroupHint(t *testing.T) {
 
 func TestS5AStampResultPos(t *testing.T) {
 	positioned := NewInteger(1)
-	positioned.pos = &SrcPos{Row: 9, Col: 1}
+	positioned.SetPos(SrcPos{Row: 9, Col: 1})
 	fnVal := NewFunction(FnDefInfo{Name: "f"})
 	vals := []Value{positioned, fnVal}
-	pos := SrcPos{Row: 3, Col: 2}
-	stampResultPos(vals, &pos)
+	stampResultPos(vals, newPosition(SrcPos{Row: 3, Col: 2}))
 	if vals[0].Pos().Row != 9 {
 		t.Errorf("positioned value restamped: %v", vals[0].Pos())
 	}
@@ -160,7 +159,7 @@ func TestS5AStampErrPos(t *testing.T) {
 	r := covRegistry(t, nil)
 	r.BaseFile = "s5a.boru"
 	tok := NewInteger(1)
-	tok.pos = &SrcPos{Row: 2, Col: 3, Src: "tok"}
+	tok.SetPos(SrcPos{Row: 2, Col: 3, Src: "tok"})
 	e := NewTop(r)
 	e.SetSource("line1\nline2")
 	e.Tape = NewTape([]Value{tok}, StackHeadroom)

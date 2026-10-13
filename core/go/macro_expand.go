@@ -101,7 +101,7 @@ func (e *Engine) scanMacroOperands(fnDef *FnDefInfo, arity, valIdx int) ([]Value
 				break // unbalanced — treat as a structural boundary
 			}
 			pe := NewParenExpr(inner)
-			pe.pos = t.pos
+			setPosRef(&pe, posOf(&t))
 			operands = append(operands, pe)
 			last = j
 			idx = j + 1
@@ -298,7 +298,7 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 			// binder → its fresh gensym (hygiene #1).
 			if g, ok := renames[w.Name]; ok {
 				gw := NewWord(g)
-				gw.pos = t.pos
+				setPosRef(&gw, posOf(&t))
 				out = append(out, gw)
 				continue
 			}
@@ -346,7 +346,7 @@ func asTemplateNode(v Value) Value {
 	if IsAtom(v) {
 		name, _ := AsAtom(v)
 		w := NewWord(name)
-		w.pos = v.pos
+		setPosRef(&w, posOf(&v))
 		return w
 	}
 	return v
