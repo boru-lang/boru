@@ -610,7 +610,7 @@ duplicated in lang.
 
 `RegisterType` is for types that are **global and
 wire-stable**: one identity for the whole process, a FixedID baked
-into serialised `Value.ID`s (matrix, time, fetch, the timers,
+into serialised Value IDs (`IDOf`; matrix, time, fetch, the timers,
 third-party plugins). It is NOT the path for a type that is
 **module-scoped or behaves like a boru `def`** — those are
 per-registry, have no FixedID, and must not bloat the builtin name
@@ -639,8 +639,8 @@ the public surface: `lang.Boru.DefineType` / `DefineTypeFromSource` /
 ## FixedID Allocation
 
 FixedIDs are baked into serialised Value IDs
-(`eng/go/typetable.go::formatFixedID` produces a 14-char ID
-embedded in `Value.ID`). Changing an existing type's FixedID is
+(`eng/go/typetable.go::formatFixedID` produces a 14-char ID, the
+node's `IDOf`). Changing an existing type's FixedID is
 a wire-compatibility break.
 
 Documented per-module ranges (see
@@ -792,9 +792,11 @@ a failing run lists the findings on the lines the change touched.
 
 **Reading a Value without copying it** (phase 1, 2026-10-12):
 
-- `Tape.Ref(i)`, `CollectWindow.Ref(i)`, `ReadList.Ref(i)` and
-  `DefTable.TopRef(name)` hand out a pointer to where the cell, the
-  element or the binding lives. A tape pointer dies at the tape's next
+- `Tape.Ref(i)`, `CollectWindow.Ref(i)`, `ReadList.Ref(i)`,
+  `DefTable.TopRef(name)` and `DefTable.TopValue(name)` (what the binding
+  denotes: a value binding's Body, a type binding's node) hand out a
+  pointer to where the cell, the element or the binding lives, and
+  `Tape.SetFrom(i, &v)` writes a cell from where the value lives. A tape pointer dies at the tape's next
   edit (Set, Insert, Remove, Splice, MoveGap, grow, Reload): read through
   it at once, and snapshot what you need before the tape moves —
   `stepWord` keeps its cell's `pos` for that reason. Never write through
@@ -817,6 +819,21 @@ a failing run lists the findings on the lines the change touched.
   "moved to heap" list.
 - `ClearAscribed(&slot)` drops a dispatch ascription from a slot the
   caller owns; `StripAscribed` stays for the copying form.
+
+**Occurrence state is the holder's** (phase 3, 2026-10-13;
+`core/go/occurrence.go`). A Value has no ID, ascription, source-binding
+or flag fields: the identity, the `as` ascription and a gradual read's
+source binding live in an immutable record behind one pointer (`occ`,
+nil for most values), and the occurrence flags — quoted, eval,
+undefined, failed dispatch, reach group, dynamic, applied, return-trimmed,
+signature-matched — are bits of the header. Read and write them through
+`IDOf`/`SetID`, `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom` and
+`IsQuoted`/`SetQuoted` and their siblings. A setter repoints or rewrites
+only the holder it is called on — the tape cell, the stack cell, the
+binding — never a record another copy shares, so it is a write to that
+slot, exactly as a by-value field was. Do not add a field to the header
+(`TestValueHeaderSize` pins it at 72 bytes): per-occurrence state belongs
+in the record or the flags, per-type state in `tmeta`.
 
 ## Type installation
 

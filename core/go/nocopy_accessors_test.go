@@ -181,6 +181,31 @@ func TestNewDynamicRecordCarrier(t *testing.T) {
 	}
 }
 
+// The occurrence record is the holder's: a setter repoints the one header
+// it is called on, another copy keeps the record it had, and clearing the
+// last field drops the record (nil, no allocation kept).
+func TestOccurrenceRecordIsTheHolders(t *testing.T) {
+	v := NewInteger(1)
+	v.SetDynFrom("x")
+	SetID(&v, "id-1")
+	kept := v
+	v.SetDynFrom("")
+	if v.DynFrom() != "" || kept.DynFrom() != "x" || IDOf(&v) != "id-1" {
+		t.Fatalf("a clear must reach this holder only: %q %q %q", v.DynFrom(), kept.DynFrom(), IDOf(&v))
+	}
+	v.SetDynFrom("") // nothing to clear: a no-op
+	SetID(&v, "")
+	if v.occ != nil {
+		t.Fatal("an empty record must not stay allocated")
+	}
+	if key := IdentityOnly("k"); IDOf(&key) != "k" || key.Parent != nil || key.Data != nil {
+		t.Fatalf("IdentityOnly carries the identity and nothing else: %v", key)
+	}
+	if empty := IdentityOnly(""); !empty.IsUnboundSlot() {
+		t.Fatal("IdentityOnly of no identity is the zero Value")
+	}
+}
+
 // The header only shrinks (design/VALUE-NO-COPY.0.md §6 phase 3): every
 // byte of it rides on each by-value copy the ratchet still allows, so a new
 // field belongs in the occurrence record, the type-node metadata or a

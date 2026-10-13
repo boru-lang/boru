@@ -777,7 +777,10 @@ Implementation: parser sets `Eval=true` on lists. `execMatch` runs
 `autoEvalList` on consumed list args unless `NoEvalArgs[i]` is set.
 `quote` sets `Quoted=true` (also suppresses auto-eval). End-of-`Run()`
 auto-evaluates only lists with `Eval=true && !Quoted` that were never
-consumed.
+consumed. Both are occurrence flags of the holder, not fields of the
+value: read and write them as `IsEval`/`SetEval` and
+`IsQuoted`/`SetQuoted` (`core/go/occurrence.go`), like `IsUndefined`,
+`IsReachGroup`, `IsDynamic` and the value's identity (`IDOf`/`SetID`).
 
 ### `def name <node>` binds a value; `word` splices
 
@@ -948,14 +951,16 @@ name index (`LookupBuiltinByName`).
   2 flip of design/legacy/TYPE-REPRESENTATION.1.ignore), `TopEntry(name)
   (DefEntry, bool)` (the raw entry: Body + TypeDef + Minted),
   `Has(name)`, `IsType(name)`, `Depth(name)`, `Stack(name) []Value`,
-  `Names()`.
+  `Names()`; and by reference, without the copy, `TopValue(name)
+  (*Value, bool)` (what Top returns, where it lives) and `TopRef(name)
+  (*DefEntry, bool)` — read-only, valid until name's stack changes.
 - writes — `Push(name, v)` (value binding),
   `PushType(name, def, body)` (type binding),
   `PushTypeAdopted(name, def, body)` (a type binding that ADOPTS an
   existing canonical node — the alias path; `undef` never retires
   it), `Pop(name) bool`,
-  `PopEntry(name) (DefEntry, bool)`, `Replace`, `Truncate`, `Delete`,
-  `Set`.
+  `PopEntry(name) (DefEntry, bool)`, `Replace`, `SetTopData` (the top
+  binding's payload, in place), `Truncate`, `Delete`, `Set`.
 - snapshot/restore — `Snapshot() map[string]int` / `Restore(snap)`,
   depth-based; pair around fn-body sandboxes and carrier-merge joins.
   (The predicate sandbox additionally clones `r.Types` to roll back
