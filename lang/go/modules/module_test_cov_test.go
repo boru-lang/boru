@@ -228,6 +228,28 @@ func TestTestCovCheckPropUnrecordableGen(t *testing.T) {
 	}
 }
 
+// TestTestCovCheckPropFlexBodies covers check-prop over flex bodies: the
+// raw-body frame runs a snapshot of a flex body's tokens (its view is
+// live, and the stamped sig is cached), and the property holds or fails as
+// a plain body's would.
+func TestTestCovCheckPropFlexBodies(t *testing.T) {
+	r := testRegistry(t)
+	for _, c := range []struct {
+		src  string
+		want bool
+	}{
+		{`Test.check-prop "fx" (flex (quote [42])) (flex (quote [40 gt])) 3 1 0`, true},
+		{`Test.check-prop "fy" (flex (quote [15])) (flex (quote [10 lt])) 2 1 0`, false},
+	} {
+		res := runTestBoru(t, r, c.src)
+		m, _ := native.AsMap(res[0])
+		okV, _ := m.Get("ok")
+		if ok, _ := okV.AsConcreteBoolean(); ok != c.want {
+			t.Errorf("%s: ok = %v, want %v (%v)", c.src, ok, c.want, res[0])
+		}
+	}
+}
+
 // TestTestCovShapeReturnsDirect covers the two check-mode shape hooks —
 // both return exactly one record-shaped carrier.
 func TestTestCovShapeReturnsDirect(t *testing.T) {

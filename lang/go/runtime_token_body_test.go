@@ -25,6 +25,11 @@ var runtimeTokenBodyRows = []struct {
 	{"a flex member body (L122)", `def bodies (flex {inc:(quote [add 1])}) end each bodies.inc [1 2]`, "[[2 3]]", true},
 	{"a flex get body (L123)", `def s (flex {}) end s set 'body' (quote [add 1]) drop end each (s get 'body') [1 2 3]`, "[[2 3 4]]", true},
 	{"a flex dot body (L124)", `def s (flex {}) end s set 'body' (quote [add 1]) drop end each s.body [1 2 3]`, "[[2 3 4]]", true},
+	// A flex list as the body: the stamp keeps a snapshot of its tokens (the
+	// flex's view is live), and an edit between applications is a new text,
+	// so the edited body runs.
+	{"a flex list as the body", `def b (flex (quote [add 1])) end each b [1 2]`, "[[2 3]]", true},
+	{"a flex body edited between applications runs its new tokens", `def b (flex (quote [add 1])) end each b [1] (b set 1 10) drop each b [1]`, "[[2] [11]]", true},
 	{"do over a fn's result (L136)", `def mk fn [[n:Integer][List][quote [1 add 2]]] end do (mk 0)`, "[3]", true},
 	{"if over a fn's result (L137)", `def mk fn [[n:Integer][List][quote [1 add 2]]] end if true (mk 0) [0]`, "[3]", true},
 	{"fold over a fn's result, the accumulator left beneath (L138)", `def mk fn [[n:Integer][List][quote [add 1]]] end fold (mk 0) [1 2 3] 0`, "[4]", true},

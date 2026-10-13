@@ -190,6 +190,34 @@ func TestSetRootBodyShares(t *testing.T) {
 	}
 }
 
+// TestStoredBodyTokens pins what a unit keeps of a stored code body: a plain
+// list's own array (nothing writes it), and a snapshot of a flex list's,
+// whose view is live — an edit to the flex after the compile must not
+// reach the tokens the unit kept.
+func TestStoredBodyTokens(t *testing.T) {
+	plain := core.NewList([]core.Value{core.NewWord("add"), core.NewInteger(1)})
+	pl, err := core.AsList(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := storedBodyTokens(&plain, pl); len(got) != 2 || &got[0] != &pl.Elems()[0] {
+		t.Errorf("a plain body's tokens are not its own array: %v", got)
+	}
+	flex := core.NewFlexList([]core.Value{core.NewWord("add"), core.NewInteger(1)})
+	fl, err := core.AsList(flex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := storedBodyTokens(&flex, fl)
+	if len(got) != 2 || &got[0] == &fl.Elems()[0] {
+		t.Fatalf("a flex body's tokens are its live view, not a snapshot: %v", got)
+	}
+	flex.Data.(*core.FlexListData).Elems[1] = core.NewInteger(10)
+	if n, ok := got[1].Data.(core.IntPayload); !ok || n.N != 1 {
+		t.Errorf("an edit to the flex reached the kept tokens: %v", got)
+	}
+}
+
 // TestRecordDynApplyNameNeedsAnArgument pins NUR162's guard on the name-routed
 // apply: a window with no argument records nothing (a 0-arg fn value at a
 // paren's tail is data on the interpreter).

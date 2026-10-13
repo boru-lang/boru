@@ -178,6 +178,20 @@ func TestMerge519MakeListReStepArms(t *testing.T) {
 		t.Errorf("a raising island builds no list, got %v", got)
 	}
 	wantErr(t, err, "cfail: boom")
+	// A noted word takes its literal's place in a run of the island's own —
+	// the island steps the word (bound to 7 here), not the value the window
+	// folded it to (5) — and the window the elements came from keeps its
+	// value.
+	r.Defs.Push("x", core.NewInteger(7))
+	noted := compiler.ListReStepSpec{N: 2, Fn: []int{0}, Island: true, Words: map[int]compiler.LandingWord{1: {Name: "x"}}}
+	win := []core.Value{quoting, core.NewInteger(5)}
+	got, err = vc.makeListReStep(r, noted, win, seam7Dbg, 0)
+	if err != nil || len(got) != 1 || got[0].String() != "[7]" {
+		t.Fatalf("the noted word takes the literal's place: %v / %v", got, err)
+	}
+	if n, ok := win[1].Data.(core.IntPayload); !ok || n.N != 5 {
+		t.Errorf("the window was written: %v", win[1])
+	}
 }
 
 // TestMerge519FnValueQuotesClosure pins fnValueQuotes over a compiled
