@@ -9,7 +9,7 @@ calc/go	11	9
 check/go	533	18
 cmd/go	23	0
 compiler/go	1402	25
-core/go	4454	68
+core/go	4451	68
 eng/go	525	132
 lang/go	4505	41
 parser/go	52	0

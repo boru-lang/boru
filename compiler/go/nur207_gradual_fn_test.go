@@ -27,11 +27,9 @@ func TestParkedMemberFn(t *testing.T) {
 	quoted := lam
 	core.SetQuoted(&quoted, true)
 	applied := n207Lambda()
-	fd := *applied.Data.(*core.FnDefInfo)
-	fd.Applied = true
-	applied.Data = &fd
+	core.SetApplied(&applied, true)
 	macro := n207Lambda()
-	fd = *macro.Data.(*core.FnDefInfo)
+	fd := *macro.Data.(*core.FnDefInfo)
 	fd.Macro = true
 	macro.Data = &fd
 	capturing := n207Lambda()

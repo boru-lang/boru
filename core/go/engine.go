@@ -6209,8 +6209,8 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 // module-internal words are available. Otherwise, body tokens are spliced
 // into the current engine's stack.
 // takeAppliedMark consumes `apply`'s one-shot application signal
-// (FnDefInfo.Applied) from the value at valIdx, returning the cleared value
-// and whether the mark was set.
+// (IsApplied) from the value at valIdx, returning the cleared value and
+// whether the mark was set.
 //
 // The mark answers "did someone ask to CALL this value here?", which is a
 // different question from "is this value data?" — the one
@@ -6224,14 +6224,11 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 // it must never ride into a binding or a container. Same one-shot
 // discipline as ReachGroup and the sealFnValue seal.
 func (e *Engine) takeAppliedMark(valIdx int, val Value) (Value, bool) {
-	fd, isFn := FnDefOf(val.Data)
-	if !isFn || !fd.Applied {
+	if _, isFn := val.Data.(*FnDefInfo); !isFn || !IsApplied(&val) {
 		return val, false
 	}
-	cleared := *fd
-	cleared.Applied = false
-	val.Data = &cleared
-	e.Tape.Set(valIdx, val)
+	SetApplied(&val, false)
+	SetApplied(e.Tape.Ref(valIdx), false)
 	return val, true
 }
 
@@ -6479,8 +6476,8 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// to its name, not auto-expand (it expands only via the named stepWord
 	// branch). See design/legacy/MACROS-PHASE1.10.ignore §5.
 	// EXCEPT when an application was explicitly ASKED for: `f/v apply`
-	// sets FnDefInfo.Applied (native_valof.go) for a 0-arg-only fn, and
-	// that is the one case where the value is not data. Without this the
+	// marks the value applied (MarkApplied, native_valof.go) for a
+	// 0-arg-only fn, and that is the one case where the value is not data. Without this the
 	// gate let ORIGIN decide — a named 0-arg fn dispatched, an anonymous
 	// one stayed inert — which ADR-016 forbids (NUR077 §5 Hole 1). Macros
 	// keep parking regardless: applying a macro is never a stack-value
@@ -8408,17 +8405,15 @@ func fnValueHasZeroArgSig(v Value) bool {
 // decision: the apply word's runtime handler, its check-mode model and the
 // VM's apply-word op all call it, so no two engines can disagree about
 // which values the re-step's inert-lambda gate must yield for (ADR-016,
-// NUR077 §5 Hole 1). Anything else is returned untouched. See
-// FnDefInfo.Applied for why the gate needs telling, and execFnDefLiteral
-// for where the mark is consumed and cleared.
+// NUR077 §5 Hole 1). Anything else is returned untouched. See IsApplied
+// for why the gate needs telling, and execFnDefLiteral for where the mark
+// is consumed and cleared.
 func MarkApplied(v Value) Value {
 	fd, ok := FnDefOf(v.Data)
 	if !ok || !FnValueOnlyZeroArgSigs(*fd) || !fd.Anonymous || fd.Macro {
 		return v
 	}
-	marked := *fd
-	marked.Applied = true
-	v.Data = &marked
+	SetApplied(&v, true)
 	return v
 }
 

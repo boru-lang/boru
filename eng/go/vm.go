@@ -858,7 +858,7 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 	// interpreter matches the stepped value, and declines to the stepping
 	// path when nothing matches (S1b-2; vm_fnvalue_seam.go). A seam that
 	// already matched it hands SigMatched args in signature order.
-	if !cl.SigMatched {
+	if !core.IsSigMatched(&body) {
 		if res, err, ran := vc.invokeFnValueClosure(reg, &body, cl, inputs); ran {
 			return res, err
 		}
@@ -867,10 +867,11 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		}
 	}
 	args := shapeInputs(cl, inputs)
-	if res, err, ran := vc.closureSourceStep(reg, cl, inputs, args); ran {
+	retTrim := core.IsRetTrim(&body)
+	if res, err, ran := vc.closureSourceStep(reg, cl, retTrim, inputs, args); ran {
 		return res, err
 	}
-	return vc.applyClosure(reg, cl, args)
+	return vc.applyClosure(reg, cl, retTrim, args)
 }
 
 // closureSourceStep hands one invocation of a callback body unit to the
@@ -883,8 +884,8 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 // handler's own interpreter lane runs it: through the fn-VALUE seam (RetTrim)
 // matched and called by InvokeCallbackFn, through the TOKEN seam stepped over
 // the inputs as InvokeBody's no-Invoker branch steps it. Data inputs run the
-// unit.
-func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayload, inputs, args []core.Value) ([]core.Value, error, bool) {
+// unit. retTrim is the closure value's fn-VALUE seam mark (core.IsRetTrim).
+func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayload, retTrim bool, inputs, args []core.Value) ([]core.Value, error, bool) {
 	if cl.Source == nil {
 		return nil, nil, false
 	}
@@ -904,7 +905,7 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 		withCaps.Captured = bound
 		src.Data = &withCaps
 	}
-	if sig := core.MatchFnSig(src, inputs); cl.RetTrim && sig != nil {
+	if sig := core.MatchFnSig(src, inputs); retTrim && sig != nil {
 		fd, _ := core.FnDefOf(src.Data) // the payload with this closure's captures bound
 		res, err := core.InvokeCallbackFn(reg, fd, sig, inputs)
 		return res, err, true
@@ -973,6 +974,9 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body *core.Value, c
 			cl.Render = core.FormatFnDef(core.FnDefInfo{Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: true})
 			out = core.Value{Parent: body.Parent, Data: cl}
 			core.SetQuoted(&out, core.IsQuoted(body))
+			// The seam marks rode in the payload until no-copy phase 3.
+			core.SetRetTrim(&out, core.IsRetTrim(body))
+			core.SetSigMatched(&out, core.IsSigMatched(body))
 		}
 	}
 	return append(append([]core.Value(nil), inputs...), out), nil, true
@@ -981,8 +985,9 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body *core.Value, c
 // applyClosure runs a closure's unit over args already in the unit's
 // positional order (the token seam's shaped inputs, a matched fn-value
 // closure's signature-ordered args, a bridge handler's dispatch args), with
-// the closure's own return contract applied to the residual.
-func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, args []core.Value) ([]core.Value, error) {
+// the closure's own return contract applied to the residual — the fn-VALUE
+// seam's discipline when retTrim (core.IsRetTrim) marks the value.
+func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, retTrim bool, args []core.Value) ([]core.Value, error) {
 	// A closure minted by ANOTHER program indexes that program's Fns table, so
 	// it runs in that program's own nested context rather than against vc.p
 	// (see closureProgram for why this became reachable).
@@ -1021,7 +1026,7 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	if err != nil {
 		return res, err
 	}
-	return checkClosureReturn(vc.r, cl, res, vc.p.Fns[cl.Unit].NUnnamed)
+	return checkClosureReturn(vc.r, cl, retTrim, res, vc.p.Fns[cl.Unit].NUnnamed)
 }
 
 // checkClosureReturn applies a CALLBACK fn value's own declared return to the
@@ -1054,7 +1059,7 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 // (`fn [[Integer][Integer][add 1 0]]`) leaves its untouched input at the
 // frame bottom exactly as the interpreter's frame does, and __RC discards up
 // to that many extra bottom values before counting.
-func checkClosureReturn(r *core.Registry, cl core.ClosurePayload, res []core.Value, nUnnamed int) ([]core.Value, error) {
+func checkClosureReturn(r *core.Registry, cl core.ClosurePayload, retTrim bool, res []core.Value, nUnnamed int) ([]core.Value, error) {
 	if len(cl.RetTypes) == 0 {
 		return res, nil
 	}
@@ -1070,7 +1075,7 @@ func checkClosureReturn(r *core.Registry, cl core.ClosurePayload, res []core.Val
 	// it at the calling word: `walk {mode:"breadth"} {a:1} cb/v` over a
 	// contract-breaking cb reports `: return value 1: …` at `walk`, where
 	// this seam said `cb:` at the reference (NUR347).
-	if cl.RetTrim {
+	if retTrim {
 		fn.Name = ""
 		return res, checkCallBoruContract(r, fn, res, core.SrcPos{})
 	}
@@ -1932,7 +1937,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// anything else, and the landing is a 0-arg window by construction, so
 		// the gate reads here exactly as it reads there. Applied is the one
 		// exception in both places — `f/v apply` asked for the application.
-		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
+		if (fnDef.Anonymous && !core.IsApplied(&v)) || fnDef.Macro {
 			return stack, nil, nil
 		}
 		// THE LANDING APPLIES OVER AN EMPTY WINDOW, so it is faithful only
@@ -2077,7 +2082,7 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		// a factory's `([] => [1])` is `[fn]`, and the sweep's do-catch cell
 		// answered 1 while this arm was missing). Applied is the one
 		// exception in both places.
-		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
+		if (fnDef.Anonymous && !core.IsApplied(&v)) || fnDef.Macro {
 			return stack, nil, nil
 		}
 		if lword.Restart && lword.SkipTo > 0 {
@@ -2695,7 +2700,7 @@ func valueTrailNoMatch(reg *core.Registry, fnVal core.Value, args []core.Value, 
 	if !ok || len(fd.OwnSigs()) == 0 || core.IsDelegationFnDef(*fd) || core.MatchFnSig(fnVal, args) != nil {
 		return false, nil
 	}
-	if (fd.Anonymous && !fd.Applied) || fd.Macro {
+	if (fd.Anonymous && !core.IsApplied(&fnVal)) || fd.Macro {
 		return true, nil
 	}
 	return false, stampAt(uncalledFunctionError(reg, *fd), curDebug, pc, reg)
@@ -3417,13 +3422,11 @@ func namedRuns(v core.Value) bool {
 }
 
 // appliedLead is fn value v marked to run where it is stepped — the name's
-// call (namedRuns) — as `apply` marks a fn of no argument
-// (FnDefInfo.Applied); any other value as it is.
+// call (namedRuns) — as `apply` marks a fn of no argument (core.IsApplied);
+// any other value as it is.
 func appliedLead(v core.Value) core.Value {
 	if fd, ok := core.FnDefOf(v.Data); ok && core.FnValueOnlyZeroArgSigs(*fd) {
-		marked := *fd
-		marked.Applied = true
-		v.Data = &marked
+		core.SetApplied(&v, true)
 	}
 	return v
 }
@@ -3755,7 +3758,7 @@ func replayLeadParks(lead core.Value, words []compiler.DynFrameWord) bool {
 	if !ok || (len(words) > 0 && words[0].Name != "") || !core.FnValueOnlyZeroArgSigs(*fd) {
 		return false
 	}
-	return (fd.Anonymous && !fd.Applied) || fd.Macro
+	return (fd.Anonymous && !core.IsApplied(&lead)) || fd.Macro
 }
 
 // loneTokenArity is the parameter count a stack-collecting re-step of a

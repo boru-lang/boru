@@ -1004,32 +1004,6 @@ type FnDefInfo struct {
 	// value for its whole life, because "this function is a membership
 	// test" is a property of what was written, not of one call site.
 	Predicate bool
-	// Applied is a ONE-SHOT signal that an application was explicitly
-	// ASKED for at this value — set only by `apply` (native_valof.go) on a
-	// fn whose only signatures are 0-arg, and consumed by the very next
-	// re-step in execFnDefLiteral, which clears it alongside ReachGroup
-	// under the same Quoted-transience discipline.
-	//
-	// It exists because the inert-lambda gate in execFnDefLiteral keys on
-	// Anonymous, and that gate is load-bearing: it is what makes
-	// `def f ([] => [42])` bind f to the FUNCTION rather than to 42. But
-	// keying an APPLICATION on it made ORIGIN decide the outcome, which
-	// ADR-016 forbids —
-	//
-	//	def z fn [[] [Integer] [42]]   z/v apply  ->  42
-	//	def f ([] => [42])             f/v apply  ->  fn f   (was)
-	//
-	// The flag separates the two questions the gate had conflated: "is
-	// this value data?" (origin) and "did someone ask to call it?"
-	// (this). A lambda sitting on the stack still parks; the same lambda
-	// behind an explicit `apply` dispatches through the ONE re-step path
-	// every other arity already uses, so natives keep their Go handlers,
-	// context mutations land in the caller's frame, and the check pass
-	// models the result by re-stepping exactly as runtime does.
-	//
-	// Macros are deliberately NOT covered: applying a macro is never a
-	// stack-value dispatch (design/legacy/MACROS-PHASE1.10.ignore §5, D4).
-	Applied bool
 
 	// ArgsReversed marks a value built by UsurpFunction (the `usurp` word and
 	// the `/u` modifier): its signatures' Params are the wrapped word's in
@@ -2025,8 +1999,9 @@ type Value struct {
 
 	// One-byte fields, clustered so they pack without padding: the kind
 	// flags, and the occurrence flags (quoted, eval, undefined, failed
-	// dispatch, reach group, dynamic — occurrence.go), read and written
-	// through IsQuoted/SetQuoted and their siblings.
+	// dispatch, reach group, dynamic, applied, return-trimmed, signature
+	// matched — occurrence.go), read and written through IsQuoted/SetQuoted
+	// and their siblings.
 	IsInternal bool       // Word/__XX runtime markers — not user-facing
 	Origin     OriginKind // builtin / userdef
 	Carrier    bool       // static-typecheck carrier (type-only, Data stripped of concrete payload)

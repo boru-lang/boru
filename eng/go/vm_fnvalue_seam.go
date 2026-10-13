@@ -152,7 +152,7 @@ func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body *core.Value, 
 		res, err := core.RunResolved(reg, inputs, core.BodyTokens(*body))
 		return res, err, true
 	}
-	res, err := vc.applyClosure(reg, cl, deliverArgs(args))
+	res, err := vc.applyClosure(reg, cl, core.IsRetTrim(body), deliverArgs(args))
 	return res, err, true
 }
 

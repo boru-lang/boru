@@ -70,7 +70,7 @@ func BodyEscaped(r *Registry) bool {
 // CallBoru discipline: the declared TYPES are checked over the aligned
 // residual, the COUNT is trimmed, never raised — enforceCallBoruReturns)
 // hands a compiled closure here, so the VM applies that same discipline
-// (ClosurePayload.RetTrim → checkClosureReturn). InvokeBody is the TOKEN
+// (IsRetTrim → checkClosureReturn). InvokeBody is the TOKEN
 // seam — each over a list, apply, a paren call — where the fn value is
 // stepped and __RC enforces the count; a closure must cross the seam its
 // handler's FnDefInfo path uses, or the lanes disagree: `walk … (m:Any =>
@@ -79,32 +79,30 @@ func BodyEscaped(r *Registry) bool {
 // (NUR120). Without the VM (no Invoker) a closure never reaches a handler,
 // so the fallback is InvokeBody's own.
 func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
-	if cl, ok := body.Data.(ClosurePayload); ok && !cl.RetTrim {
-		cl.RetTrim = true
-		quoted := IsQuoted(&body)
-		body = Value{Parent: body.Parent, Data: cl}
+	if _, ok := body.Data.(ClosurePayload); ok && !IsRetTrim(&body) {
+		// The value handed on keeps its quote and its seam marks (they rode
+		// in the payload until no-copy phase 3) and nothing else of the
+		// holder's, as it always has.
+		quoted, matched := IsQuoted(&body), IsSigMatched(&body)
+		body = Value{Parent: body.Parent, Data: body.Data}
 		SetQuoted(&body, quoted)
+		SetSigMatched(&body, matched)
+		SetRetTrim(&body, true)
 	}
 	return InvokeBody(r, body, inputs)
 }
 
 // ClosureSigMatched is the SigMatched mark on a closure VALUE (see
-// ClosurePayload.SigMatched): the seam that hands the args has matched the
-// closure's own signature, so the VM's invoker applies the unit positionally
-// instead of matching again in the token seam's order. A non-closure value
-// is returned unchanged.
+// IsSigMatched): the seam that hands the args has matched the closure's own
+// signature, so the VM's invoker applies the unit positionally instead of
+// matching again in the token seam's order. A non-closure value is returned
+// unchanged. The mark is the holder's flag: the value keeps its id, position
+// and every flag a later seam reads, and the payload is not copied.
 func ClosureSigMatched(v Value) Value {
-	cl, ok := v.Data.(ClosurePayload)
-	if !ok || cl.SigMatched {
-		return v
+	if _, ok := v.Data.(ClosurePayload); ok {
+		SetSigMatched(&v, true)
 	}
-	cl.SigMatched = true
-	// A whole-value copy with the payload replaced, never a rebuild from
-	// selected fields: the mark must not quietly drop the value's id,
-	// position or any flag a later seam reads.
-	out := v
-	out.Data = cl
-	return out
+	return v
 }
 
 // ClosureAsFnDef is the compiled runtime's closure bridge, reached from a

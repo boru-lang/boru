@@ -350,7 +350,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	}
 	// The bridge's handler runs AFTER the interpreter's dispatch matched
 	// the bridged signature, args in signature order: SigMatched, so the
-	// invoker applies the unit positionally (ClosurePayload.SigMatched).
+	// invoker applies the unit positionally (core.IsSigMatched).
 	body := core.ClosureSigMatched(v)
 	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)

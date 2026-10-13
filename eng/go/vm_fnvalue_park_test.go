@@ -119,7 +119,11 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 		{"a quoted value", func() core.Value { v := base; core.SetQuoted(&v, true); return v }(), nil, []core.Value{s}},
 		{"a reach-grouped value", func() core.Value { v := base; core.SetReachGroup(&v, true); return v }(), nil, []core.Value{s}},
 		{"a macro", core.NewFunction(core.FnDefInfo{Anonymous: true, Macro: true, Signatures: []core.Signature{sig}}), nil, []core.Value{s}},
-		{"an apply-marked value", core.NewFunction(core.FnDefInfo{Anonymous: true, Applied: true, Signatures: []core.Signature{sig}}), nil, []core.Value{s}},
+		{"an apply-marked value", func() core.Value {
+			v := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{sig}})
+			core.SetApplied(&v, true)
+			return v
+		}(), nil, []core.Value{s}},
 		{"no signatures", core.NewFunction(core.FnDefInfo{Anonymous: true}), nil, []core.Value{s}},
 		{"a modifier wrapper", core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{sig}, Wrap: core.WrapReverse, Wraps: &base}), nil, []core.Value{s}},
 		{"a real 0-arg signature", core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{sig, parkSig(-1)}}), nil, []core.Value{s}},

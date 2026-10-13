@@ -2083,7 +2083,7 @@ type RestartFirst struct {
 // Named marks a paren apply's lead that is a def-bound word
 // (DynMethodSpec.LeadName): the interpreter's paren calls it by name, so a fn
 // value there of no argument is written to run where it is stepped
-// (FnDefInfo.Applied), never parked as a lambda value would be.
+// (core.IsApplied), never parked as a lambda value would be.
 type RestartSubst struct {
 	Path   []int
 	Span   int

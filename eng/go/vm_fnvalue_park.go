@@ -125,7 +125,7 @@ func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward 
 // comment): the shapes whose unmatched step is execFnDefLiteral's no-match
 // fork over the value's own signatures.
 func fnValueParkable(reg *core.Registry, fnVal core.Value, fd core.FnDefInfo) bool {
-	if core.IsQuoted(&fnVal) || core.IsReachGroup(&fnVal) || fd.Macro || fd.Applied || len(fd.Signatures) == 0 {
+	if core.IsQuoted(&fnVal) || core.IsReachGroup(&fnVal) || fd.Macro || core.IsApplied(&fnVal) || len(fd.Signatures) == 0 {
 		return false
 	}
 	if fd.NamedDef() && core.FnHomeForeign(reg, &fd) {

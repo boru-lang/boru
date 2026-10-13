@@ -366,7 +366,7 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 // states it (core.FnValueOnlyZeroArgSigs).
 func parkedMemberFn(v core.Value) bool {
 	fd, ok := core.FnDefOf(v.Data)
-	if !ok || core.IsQuoted(&v) || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
+	if !ok || core.IsQuoted(&v) || v.Carrier || !fd.Anonymous || core.IsApplied(&v) || fd.Macro || len(fd.Captured) != 0 ||
 		!core.FnValueOnlyZeroArgSigs(*fd) {
 		return false
 	}

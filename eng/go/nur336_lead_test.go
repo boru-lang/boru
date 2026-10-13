@@ -94,7 +94,7 @@ func TestNamedRunsAndAppliedLead(t *testing.T) {
 	if !namedRuns(zero) || namedRuns(n336Fn("g", core.TAny)) || namedRuns(core.NewInteger(1)) {
 		t.Error("a fn of no argument only")
 	}
-	if fd := appliedLead(zero).Data.(*core.FnDefInfo); !fd.Applied {
+	if lead := appliedLead(zero); !core.IsApplied(&lead) {
 		t.Error("marked to run where it is stepped")
 	}
 	if got := appliedLead(core.NewInteger(1)); fmt.Sprint(got) != "1" {
@@ -170,7 +170,7 @@ func TestSubstIslandLeadArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	toks, _ = core.AsParenExpr(&got[0])
-	if fd, ok := toks[0].Data.(*core.FnDefInfo); !ok || !fd.Applied {
+	if _, ok := toks[0].Data.(*core.FnDefInfo); !ok || !core.IsApplied(&toks[0]) {
 		t.Errorf("the name's call of a fn of none: %v", toks)
 	}
 	if _, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0); err == nil {

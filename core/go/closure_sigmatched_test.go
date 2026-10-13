@@ -2,8 +2,8 @@ package core
 
 import "testing"
 
-// TestClosureSigMatched pins the SigMatched mark (ClosurePayload.SigMatched):
-// a closure value is returned as a marked copy, a marked one as itself, and a
+// TestClosureSigMatched pins the SigMatched mark (IsSigMatched): a closure
+// value is returned as a marked copy, a marked one as itself, and a
 // non-closure value untouched.
 func TestClosureSigMatched(t *testing.T) {
 	plain := NewInteger(1)
@@ -14,14 +14,13 @@ func TestClosureSigMatched(t *testing.T) {
 	SetQuoted(&cl, true)
 	marked := ClosureSigMatched(cl)
 	mcl, ok := marked.Data.(ClosurePayload)
-	if !ok || !mcl.SigMatched || mcl.Unit != 3 || !IsQuoted(&marked) {
+	if !ok || !IsSigMatched(&marked) || mcl.Unit != 3 || !IsQuoted(&marked) {
 		t.Errorf("the mark must set SigMatched on a copy keeping the payload and the quote: %v", marked)
 	}
-	if ocl := cl.Data.(ClosurePayload); ocl.SigMatched {
+	if IsSigMatched(&cl) {
 		t.Error("the stored closure must stay unmarked")
 	}
-	again := ClosureSigMatched(marked)
-	if acl := again.Data.(ClosurePayload); !acl.SigMatched {
+	if again := ClosureSigMatched(marked); !IsSigMatched(&again) {
 		t.Error("a marked closure stays marked")
 	}
 }

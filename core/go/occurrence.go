@@ -22,7 +22,8 @@ package core
 // writing.
 //
 // The occurrence FLAGS (quoted, eval, undefined, failed dispatch, reach
-// group, dynamic) are one byte of the header instead, in the padding the
+// group, dynamic, and the seam marks: applied, return-trimmed, signature
+// matched) are two bytes of the header instead, in the padding the
 // one-byte kind flags leave: the same per-holder rule, no pointer to
 // follow on a read, and no record to build on a write, which matters
 // because the engine clears a flag on every delivered argument and a
@@ -34,7 +35,7 @@ type occurrence struct {
 }
 
 // occFlags are the per-occurrence flags, one bit each.
-type occFlags uint8
+type occFlags uint16
 
 const (
 	occQuoted occFlags = 1 << iota
@@ -43,6 +44,9 @@ const (
 	occFailedDispatch
 	occReachGroup
 	occDynamic
+	occApplied
+	occRetTrim
+	occSigMatched
 )
 
 // occOf is the occurrence state of v by value (the zero record when none).
@@ -155,6 +159,68 @@ func SetDynamic(v *Value, on bool) { setOccFlag(v, occDynamic, on) }
 // key an ID-keyed table is asked with when all its caller holds is the ID
 // (a recorded landing's own value, a hazard's lead).
 func IdentityOnly(id string) Value { return Value{occ: idOcc(id)} }
+
+// IsApplied reports `apply`'s ONE-SHOT signal that an application was
+// explicitly ASKED for at this fn value — set only on a fn whose only
+// signatures are 0-arg (MarkApplied), and consumed by the very next
+// re-step in execFnDefLiteral, which clears it alongside ReachGroup under
+// the same Quoted-transience discipline.
+//
+// It exists because the inert-lambda gate in execFnDefLiteral keys on
+// Anonymous, and that gate is load-bearing: it is what makes `def f ([] =>
+// [42])` bind f to the FUNCTION rather than to 42. But keying an
+// APPLICATION on it made ORIGIN decide the outcome, which ADR-016 forbids —
+//
+//	def z fn [[] [Integer] [42]]   z/v apply  ->  42
+//	def f ([] => [42])             f/v apply  ->  fn f   (was)
+//
+// The flag separates the two questions the gate had conflated: "is this
+// value data?" (origin) and "did someone ask to call it?" (this). A lambda
+// sitting on the stack still parks; the same lambda behind an explicit
+// `apply` dispatches through the ONE re-step path every other arity
+// already uses, so natives keep their Go handlers, context mutations land
+// in the caller's frame, and the check pass models the result by
+// re-stepping exactly as runtime does. Macros are deliberately NOT covered:
+// applying a macro is never a stack-value dispatch
+// (design/legacy/MACROS-PHASE1.10.ignore §5, D4). The flag was a field of
+// the fn payload until no-copy phase 3, so setting it copied the payload.
+func IsApplied(v *Value) bool { return occFlag(v, occApplied) }
+
+// SetApplied marks or clears v's application signal, for this holder only.
+func SetApplied(v *Value, on bool) { setOccFlag(v, occApplied, on) }
+
+// IsRetTrim reports that a compiled closure VALUE was handed through the
+// fn-VALUE seam (InvokeCallbackBody): the handler would hand a FnDefInfo to
+// InvokeCallbackFn, whose CallBoru path checks the declared TYPES over the
+// aligned residual and never raises on the COUNT (enforceCallBoruReturns) —
+// walk's hooks, the map-iteration each/fold, filter's Function form. Off,
+// the closure came through the TOKEN seam (InvokeBody: each over a list,
+// apply, a paren call), where the fn value is stepped and __RC enforces the
+// count. Set on the holder at the seam, never on the stored closure: the
+// same closure can cross both.
+func IsRetTrim(v *Value) bool { return occFlag(v, occRetTrim) }
+
+// SetRetTrim marks or clears v's fn-VALUE seam crossing, for this holder
+// only.
+func SetRetTrim(v *Value, on bool) { setOccFlag(v, occRetTrim, on) }
+
+// IsSigMatched reports that the seam handing a compiled closure VALUE its
+// args has already matched the closure's OWN signature, with the args in
+// signature order: the closure bridge (a bridged FnDefInfo's handler —
+// closureAsWord, ClosureAsFnDef — runs after the interpreter's dispatch
+// matched), and a native seam that matched the value's contract over the
+// lambda-shaped args it hands (the map arm's KeyVal, filter's entry, walk's
+// payload). Off, the closure reached the TOKEN seam (InvokeBody: each over
+// a list, a paren call) with its inputs in STACK order, and a fn-VALUE
+// closure is matched there the way the interpreter matches a stepped value,
+// top down, before its unit runs, and declines to the stepping path when
+// nothing matches (S1b-2; eng/go/vm_fnvalue_seam.go). Set on the holder at
+// the seam, never on the stored closure.
+func IsSigMatched(v *Value) bool { return occFlag(v, occSigMatched) }
+
+// SetSigMatched marks or clears v's matched-signature seam mark, for this
+// holder only.
+func SetSigMatched(v *Value, on bool) { setOccFlag(v, occSigMatched, on) }
 
 // IDOf is v's identity token: the canonical ID a type node (and every
 // literal copy of it) is known by, the provenance key a check pass mints
