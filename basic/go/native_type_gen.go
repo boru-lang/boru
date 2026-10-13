@@ -323,7 +323,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 				fmt.Sprintf("of: Type bound must be a named type, got %s", bound.String()), "of",
 				"hint: name a structural bound first — def MapOrList (Map tor List), then MapOrList/t")
 		}
-		return []Value{NewBoundedType(CanonicalType(r, &bound))}, nil
+		return []Value{NewBoundedType(NodeOf(&bound))}, nil
 	}
 
 	var info *TypeSchemaInfo
@@ -331,7 +331,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	case IsTypeSchema(head):
 		info, _ = AsTypeSchema(head)
 	case IsBareTypeNode(&head):
-		node := CanonicalType(r, &head)
+		node := NodeOf(&head)
 		if si, ok := SchemaInfoOf(node); ok {
 			info = si
 		}

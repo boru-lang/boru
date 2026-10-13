@@ -749,7 +749,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		return nil, fmt.Errorf("make: first argument must be a type literal or record type, got %s", targetVal.String())
 	}
 
-	targetType := &targetVal
+	targetType := literalNode(&targetVal)
 	if srcVal.Parent.ConformsTo(targetType) {
 		return []Value{srcVal}, nil
 	}
@@ -762,7 +762,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// (design/legacy/CLASS-OBJECT.10.ignore §3c typed-defaults gap 1), so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed.
-	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
+	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
 		targetType = canon
 		base := builtinBaseOf(targetType)
 		if base != nil && base.ConformsTo(TScalar) {
@@ -1063,7 +1063,7 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	if targetVal.Data != nil {
 		return nil, fmt.Errorf("make: expected a type literal, got %s", targetVal.String())
 	}
-	targetType := &targetVal
+	targetType := literalNode(&targetVal)
 	if srcVal.Parent.ConformsTo(targetType) {
 		return []Value{srcVal}, nil
 	}
@@ -1074,7 +1074,7 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	// Without this, make silently returned a base-tagged value, so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed (design/legacy/CLASS-OBJECT.10.ignore §3c gap 1).
-	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
+	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
 		if base := builtinBaseOf(canon); base != nil && base.ConformsTo(TScalar) {
 			conv := srcVal
 			if !srcVal.Parent.ConformsTo(base) {

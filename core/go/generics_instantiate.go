@@ -222,7 +222,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		// Self of [(Box of [T])]) it is a genuinely new instantiation
 		// of the same schema.
 		if IsBareTypeNode(&head) {
-			hn := CanonicalType(r, &head)
+			hn := NodeOf(&head)
 			if sinfo, ok := SchemaInfoOf(hn); ok {
 				return InstantiateSchema(r, sinfo, args)
 			}
@@ -372,7 +372,7 @@ func substituteParamNode(r *Registry, t *Type, bindings map[string]Value, selfNo
 		return nil, fmt.Errorf("unbound type parameter %q", name)
 	}
 	if node := typeArgNode(b); node != nil {
-		return CanonicalType(r, node), nil
+		return NodeOf(node), nil
 	}
 	return nil, fmt.Errorf("type parameter %q: a generic fn-shape position needs a NAMED type argument, got %s", name, b.String())
 }

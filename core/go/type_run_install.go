@@ -66,7 +66,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 		// minted from the refinement the run computed, rendered as it is
 		// (the no-match's "declared pattern", the RET's "expected").
 		if target := mintRunType(r, body); target != nil && spec.Node != nil {
-			node := CanonicalType(r, spec.Node)
+			node := NodeOf(spec.Node)
 			forwardType(node, target)
 			node.ensureTMeta().Name = body.String()
 		}
@@ -81,7 +81,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 	// mint, and the adopted node's for an alias the run computed — Never for
 	// an empty interval, which the interpreter's signature slot renders.
 	if entry, ok := r.Defs.TopEntry(spec.Name); ok && entry.TypeDef != nil && spec.Node != nil {
-		node := CanonicalType(r, spec.Node)
+		node := NodeOf(spec.Node)
 		forwardType(node, entry.TypeDef)
 		node.ensureTMeta().Name = entry.TypeDef.Name()
 	}
@@ -154,7 +154,7 @@ func mintRunType(r *Registry, body Value) *Type {
 	var t *Type
 	switch {
 	case IsBareTypeNode(&body):
-		return CanonicalType(r, &body)
+		return NodeOf(&body)
 	case body.IsDepScalar():
 		di, _ := body.AsDepScalar() // IsDepScalar: the payload is a DepScalarInfo
 		t = r.Types.MintType(name, body.Parent)

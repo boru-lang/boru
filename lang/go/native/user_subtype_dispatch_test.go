@@ -210,7 +210,7 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 // (`Is`, ConformsTo) holds through that node. The def-table body is a
 // different value (the class schema payload, its own ID) and is NOT a
 // dispatchable stand-in — which is exactly why dispatch must resolve
-// names via LookupTypeName / CanonicalType, never via `&body`. See
+// names via LookupTypeName / NodeOf, never via `&body`. See
 // eng/go/CLAUDE.md "Canonical *Type Pointers".
 func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	r, _ := DefaultRegistry()

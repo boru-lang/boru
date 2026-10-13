@@ -2232,7 +2232,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 						if inst, ierr := core.InferAndInstantiateSchema(r, target, args[1-m]); ierr == nil {
 							if rt, rerr := core.AsRecordType(inst); rerr == nil {
 								if _, mkErr := core.MakeRecordR(rt, args[1-m], false, r); mkErr == nil {
-									c := core.NewCarrier(core.CanonicalType(r, core.ValueType(inst)))
+									c := core.NewCarrier(core.NodeOf(core.ValueType(inst)))
 									// Ride the instantiated FIELD SCHEMA on the
 									// instance carrier (the recordSchemaCarrier
 									// shape: dynamic + RecordTypeInfo payload) so a
@@ -2279,7 +2279,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				}
 				t := core.ValueType(target)
 				if r != nil {
-					t = core.CanonicalType(r, t)
+					t = core.NodeOf(t)
 				}
 				c := core.NewCarrier(t)
 				// A plain RECORD BODY target (`def TC refine Record […]` —

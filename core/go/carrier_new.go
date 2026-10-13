@@ -50,13 +50,12 @@ func NewDynamicCarrier(t *Type) Value {
 	return v
 }
 
-// carrierOfLiteral converts a bare type-literal value (the node
-// itself, as stored in DisjunctInfo.Alternatives) into a carrier OF
-// that node — i.e. Parent points at the literal's type, not at the
-// literal's lattice parent.
+// CarrierOfLiteral converts a bare type-literal value (a copy of the
+// node, as stored in DisjunctInfo.Alternatives) into a carrier OF that
+// node — i.e. Parent points at the literal's node, not at the literal's
+// lattice parent, and not at a copy of it.
 func CarrierOfLiteral(lit Value) Value {
-	lt := lit
-	return NewCarrier(&lt)
+	return NewCarrier(literalNode(&lit))
 }
 
 // ValueCarrier is the carrier a check-mode model widens the value v to: a

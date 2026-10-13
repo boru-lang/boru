@@ -1063,12 +1063,14 @@ accessors below.)
   `r.UpdateCtxStoreChain(orig, new)`.
 
 **Canonical type pointers**:
-- `CanonicalType(r, t) *Type` — resolve `t` to its canonical lattice
-  node via `r.Types.LookupByID`. Use whenever a `*Type` may have come
-  from `&v` of a by-value type-literal Value — `behave` Behavior
-  installs and LCA-walk identity must reach the canonical pointer,
-  not a stack-local copy. See
-  `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
+- `NodeOf(t) *Type` — the lattice node `t` stands for: a type
+  literal's metadata names its node, so any copy (`&v` of a by-value
+  type-literal Value, `NewTypeLiteral`'s result) resolves to it with
+  no registry; an ad-hoc `*Type` no table registered comes back
+  unchanged. Use whenever a `*Type` may have come from a literal —
+  `behave` Behavior installs and LCA-walk identity must reach the
+  node, not a copy. It replaced `CanonicalType(r, t)` (no-copy phase
+  3); see eng/go/CLAUDE.md "Canonical `*Type` Pointers".
 
 **Typed-def reparent**:
 - `ReparentValue(v, def) Value` — return a fresh copy of v with

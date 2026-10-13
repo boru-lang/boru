@@ -501,21 +501,14 @@ func TestX5ReparentSwappedElem(t *testing.T) {
 	src := NewInteger(5)
 	lit := NewTypeLiteral(TInteger)
 
-	// No registry on the chain: reparent to the literal's type directly.
-	got := reparentSwappedElem(src, lit, nil)
-	if n, _ := AsInteger(got); n != 5 {
-		t.Fatalf("expected the source payload back, got %v", got)
-	}
-
-	// An armed chain routes the type through CanonicalType.
-	r := x5reg(t)
-	got = reparentSwappedElem(src, lit, r)
-	if n, _ := AsInteger(got); n != 5 {
-		t.Fatalf("expected the source payload back, got %v", got)
+	// A swap reparents the source to the literal's node itself.
+	got := reparentSwappedElem(src, lit)
+	if n, _ := AsInteger(got); n != 5 || got.Parent != TInteger {
+		t.Fatalf("expected the source payload under the node, got %v", got)
 	}
 
 	// Non-swap results pass through untouched.
-	same := reparentSwappedElem(src, NewInteger(7), nil)
+	same := reparentSwappedElem(src, NewInteger(7))
 	if n, _ := AsInteger(same); n != 7 {
 		t.Fatalf("non-swap must pass through, got %v", same)
 	}

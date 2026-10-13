@@ -2345,7 +2345,7 @@ func micronInstantiateAt(typ, data Value, r *Registry) ([]Value, error) {
 		info, _ := AsMicronType(typ)
 		return makeMicronUser(info, data, r)
 	}
-	kind := CanonicalType(r, &typ)
+	kind := NodeOf(&typ)
 	switch {
 	case kind.Equal(TMicron):
 		return nil, &BoruError{Code: "type_error",

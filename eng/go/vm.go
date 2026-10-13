@@ -6746,7 +6746,7 @@ func checkReturnContract(r *core.Registry, fn *compiler.CompiledFn, stack []core
 	}
 	base := len(stack) - len(rets)
 	for k, exp := range rets {
-		if !stack[base+k].Is(core.CanonicalType(r, exp)) {
+		if !stack[base+k].Is(core.NodeOf(exp)) {
 			return stack, vmReturnTypeErr(r, fn, k+1, exp, stack[base+k], at)
 		}
 		// A declared return whose *Type degraded to Any carries its real
@@ -6792,7 +6792,7 @@ func checkCallBoruContract(r *core.Registry, fn *compiler.CompiledFn, res []core
 	n := len(res) - extra
 	for k := 0; k < n; k++ {
 		v := res[extra+k]
-		if !v.Is(core.CanonicalType(r, rets[k])) {
+		if !v.Is(core.NodeOf(rets[k])) {
 			return vmReturnTypeErr(r, fn, k+1, rets[k], v, at)
 		}
 		if pat := fn.ReturnPattern(k); pat != nil {

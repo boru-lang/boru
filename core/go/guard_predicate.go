@@ -130,7 +130,7 @@ func guardTripleType(r *Registry, param string, w0, w1, tv Value) (*Type, bool) 
 	if !IsBareTypeNode(&tv) || tv.Is(TNone) {
 		return nil, false
 	}
-	return CanonicalType(r, ValueType(tv)), true
+	return NodeOf(ValueType(tv)), true
 }
 
 // defsHasType reports whether name has a live def-table binding.

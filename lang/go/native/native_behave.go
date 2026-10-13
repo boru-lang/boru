@@ -313,7 +313,7 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	if err != nil {
 		return nil
 	}
-	target = core.CanonicalType(r, target)
+	target = core.NodeOf(target)
 	// Every slot's fn runs where a value of the target is handled, so a
 	// frame that handles one reaches it: the dynamic-scope rescue asks the
 	// call graph about it (NUR257).

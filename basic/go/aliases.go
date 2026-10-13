@@ -647,17 +647,17 @@ func NewTypeSchema(t *core.Type, info *core.TypeSchemaInfo) core.Value {
 func AttachGenBound(r *core.Registry, node *core.Type, p core.GenParam) {
 	core.AttachGenBound(r, node, p)
 }
-func TypeParamName(t *core.Type) string                       { return core.TypeParamName(t) }
-func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool)  { return core.SchemaInfoOf(t) }
-func CanonicalType(r *core.Registry, t *core.Type) *core.Type { return core.CanonicalType(r, t) }
-func ReparentValue(v core.Value, def *core.Type) core.Value   { return core.ReparentValue(v, def) }
-func IsBareTypeNode(v *core.Value) bool                       { return core.IsBareTypeNode(v) }
-func IsConcrete(v *core.Value) bool                           { return core.IsConcrete(v) }
-func IsTypeBody(v *core.Value) bool                           { return core.IsTypeBody(v) }
-func IsTypeLiteral(v *core.Value) bool                        { return core.IsTypeLiteral(v) }
-func NewValueRaw(t *core.Type, data core.Payload) core.Value  { return core.NewValueRaw(t, data) }
-func NewCarrier(t *core.Type) core.Value                      { return core.NewCarrier(t) }
-func NewDynamicCarrier(t *core.Type) core.Value               { return core.NewDynamicCarrier(t) }
+func TypeParamName(t *core.Type) string                      { return core.TypeParamName(t) }
+func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
+func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
+func ReparentValue(v core.Value, def *core.Type) core.Value  { return core.ReparentValue(v, def) }
+func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
+func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
+func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }
+func IsTypeLiteral(v *core.Value) bool                       { return core.IsTypeLiteral(v) }
+func NewValueRaw(t *core.Type, data core.Payload) core.Value { return core.NewValueRaw(t, data) }
+func NewCarrier(t *core.Type) core.Value                     { return core.NewCarrier(t) }
+func NewDynamicCarrier(t *core.Type) core.Value              { return core.NewDynamicCarrier(t) }
 func NewResourceType(t *core.Type, info core.ResourceTypeInfo) core.Value {
 	return core.NewResourceType(t, info)
 }
@@ -666,11 +666,6 @@ func NewBoundedType(bound *core.Type) core.Value { return core.NewBoundedType(bo
 func NewBoundedTypeBody(node *core.Type, body core.Value) core.Value {
 	return core.NewBoundedTypeBody(node, body)
 }
-
-// The fn payload's readers (core.FnDefOf, core.FnDefCopy): a fn value holds
-// its FnDefInfo by pointer.
-func FnDefOf(d any) (*core.FnDefInfo, bool)  { return core.FnDefOf(d) }
-func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
 
 // The occurrence state (core/go/occurrence.go): the identity and the flags,
 // read and written through the holder, never as fields of the value.

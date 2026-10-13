@@ -614,14 +614,14 @@ func unifySameOrSubtype(a, b Value) (Value, *UnifyError) {
 }
 
 // denotedType returns the lattice type the value denotes. For a bare
-// type literal the value IS the lattice node; for a carrier or
+// type literal it is the node the literal is a copy of; for a carrier or
 // concrete value it is the Parent. A Data==nil value with an empty ID
 // is a manually-constructed `Value{Parent: T}` (used in tests as a
 // stand-in for a value of type T); treat its Parent as the denoted
 // type since &v has no lattice identity to compare against.
 func denotedType(v Value) *Type {
 	if IsBareTypeNode(&v) && IDOf(&v) != "" {
-		return &v
+		return literalNode(&v)
 	}
 	return v.Parent
 }

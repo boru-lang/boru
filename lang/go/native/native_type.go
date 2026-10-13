@@ -492,7 +492,7 @@ func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		// `behave`) propagates to the LCA walk for sibling subtypes
 		// downstream. The prefab carries no Name; the paired `def`
 		// recognises it (core.IsRefinePrefab) and renames-and-binds.
-		anon := r.Types.MintRefinePrefab(CanonicalType(r, &base))
+		anon := r.Types.MintRefinePrefab(NodeOf(&base))
 		return []Value{NewTypeLiteral(anon)}, nil
 	}
 	return []Value{base}, nil
@@ -698,7 +698,7 @@ func asTargetType(r *Registry, t Value) (*Type, error) {
 			"as", "spell the target type by name: value as FlexMap")
 	}
 	tc := t
-	return CanonicalType(r, &tc), nil
+	return NodeOf(&tc), nil
 }
 
 // asValidate enforces the upcast-only rule: the value's own tag must

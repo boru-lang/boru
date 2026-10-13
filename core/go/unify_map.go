@@ -215,7 +215,7 @@ func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *
 		for _, k := range om.Keys() {
 			uv, _ := om.Get(k)
 			sv, _ := m.Get(k)
-			om.Set(k, reparentSwappedElem(sv, uv, r))
+			om.Set(k, reparentSwappedElem(sv, uv))
 		}
 	}
 	if IsFlexMap(concrete) {

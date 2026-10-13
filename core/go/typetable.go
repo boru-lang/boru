@@ -334,9 +334,15 @@ func (tt *TypeTable) mintID(parent *Type) string {
 // (Registry.Types.LookupByID) resolves them in the IMPORTING registry,
 // not only in the module sub-registry that minted them. Idempotent;
 // a same-ID re-adoption keeps the first pointer (canonical identity).
+// A literal adopts its node (NodeOf), and an ad-hoc node no table minted
+// becomes its metadata's node by adoption.
 func (tt *TypeTable) Adopt(t *Type) {
+	t = NodeOf(t)
 	if tt == nil || t == nil || IDOf(t) == "" {
 		return
+	}
+	if t.tmeta != nil && t.tmeta.node == nil {
+		t.tmeta.node = t
 	}
 	if _, exists := tt.byID[IDOf(t)]; !exists {
 		tt.byID[IDOf(t)] = t
@@ -374,6 +380,7 @@ func (tt *TypeTable) MintType(name string, parent *Type) *Type {
 		tmeta:  &typeMeta{Name: name, Depth: depthOf(parent), Behavior: DefaultBehavior, Owner: tt.MintOwner},
 		Origin: OriginUserDef,
 	}
+	def.tmeta.node = def
 	// User and external types share a single Rank band per kernel
 	// branch — they sit one band above the kernel positional ranks
 	// so they sort AFTER every kernel builtin in the same branch
@@ -534,6 +541,7 @@ func (tt *TypeTable) RegisterType(path string, fixedID int, owner string, behavi
 		occ:    idOcc(id),
 		Origin: OriginBuiltin,
 	}
+	def.tmeta.node = def
 	// External builtins share the user-/external-type band for
 	// their branch (one increment above the kernel positional band)
 	// so they sort after every kernel builtin in the same branch
@@ -977,6 +985,7 @@ func (tt *TypeTable) registerBuiltin(d builtinDecl) {
 		IsInternal: d.IsInternal,
 		Origin:     OriginBuiltin,
 	}
+	def.tmeta.node = def
 	tt.byID[id] = def
 	tt.bypath[d.Path] = def
 	if parent == nil {
@@ -1101,6 +1110,7 @@ func MintTestType(path string) *Type {
 		occ:    idOcc(fmt.Sprintf("%st%011x", prefix, testTypeSeq)),
 		Origin: OriginUserDef,
 	}
+	def.tmeta.node = def
 	if parent != nil {
 		def.ensureTMeta().Rank = externalBandFor(parent)
 	}

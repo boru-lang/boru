@@ -350,32 +350,6 @@ func ReparentValue(v Value, def *Type) Value {
 	return v
 }
 
-// CanonicalType resolves t to its canonical lattice node — the
-// pointer registered in TypeTable.byID for t.ID. If t is already
-// canonical, has no ID, or no registry is in scope, returns t
-// unchanged.
-//
-// Background: `type Type = Value`, so a "type literal" is a Value
-// carrying the lattice node's fields by value. Code that grabs
-// `&v` of such a stack-local Value gets a non-canonical pointer:
-// it compares Equal via ID, but mutations to fields like Behavior
-// (which `behave` writes through the canonical pointer) don't
-// propagate to the orphan copies. Every site that needs *Type
-// identity for a Value-shaped type literal — fn-sig parameter
-// resolution, refine subtype minting, behave validation — routes
-// through this helper so identity stays canonical at every hop.
-//
-// See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
-func CanonicalType(r *Registry, t *Type) *Type {
-	if t == nil || r == nil || IDOf(t) == "" {
-		return t
-	}
-	if canon := r.Types.LookupByID(IDOf(t)); canon != nil {
-		return canon
-	}
-	return t
-}
-
 // predicateSandbox holds the slice/map state that RunPredicate
 // snapshots before invoking a predicate body. DefStacks is NOT
 // included — CallBoru handles that itself. r.Check is preserved by

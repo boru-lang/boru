@@ -120,10 +120,9 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 		guardType := tv.Parent
 		switch {
 		case tv.IsDepScalar() && minted != nil:
-			guardType = CanonicalType(r, minted)
+			guardType = NodeOf(minted)
 		case tv.Data == nil:
-			gt := tv
-			guardType = &gt
+			guardType = literalNode(&tv)
 		}
 		out = append(out, GuardClause{Name: wx.Name, Type: guardType})
 	}

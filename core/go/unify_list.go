@@ -132,19 +132,14 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry
 // replace the element's data with the type name. Return the source
 // element reparented to the canonical minted type instead — the same
 // construction `def x:Foo 42` performs at scalar typed defs.
-// Non-swap results pass through untouched. r is the enclosing chain's
-// registry: when armed, the minted type is resolved to its canonical
-// node (CanonicalType) before the reparent, so a retagged element
-// carries the registry's own *Type pointer.
-func reparentSwappedElem(src, unified Value, r *Registry) Value {
+// Non-swap results pass through untouched. The minted type is its node
+// (NodeOf), so a retagged element carries the lattice's own *Type, not
+// the address of a copy of it.
+func reparentSwappedElem(src, unified Value) Value {
 	if !IsBareTypeNode(&unified) || !IsConcrete(&src) {
 		return unified
 	}
-	t := ValueType(unified)
-	if r != nil {
-		t = CanonicalType(r, t)
-	}
-	return ReparentValue(src, t)
+	return ReparentValue(src, NodeOf(ValueType(unified)))
 }
 
 func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
@@ -162,7 +157,7 @@ func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, 
 		return Value{}, err
 	}
 	for i := range result {
-		result[i] = reparentSwappedElem(elems[i], result[i], r)
+		result[i] = reparentSwappedElem(elems[i], result[i])
 	}
 	var out Value
 	if IsFlexList(concrete) {

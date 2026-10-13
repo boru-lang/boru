@@ -48,7 +48,7 @@ func RecordTypedDefMake(r *Registry, name string, typeArg, body Value, pos SrcPo
 	if sig == nil {
 		return Value{}, false
 	}
-	t := CanonicalType(r, ValueType(typeArg))
+	t := NodeOf(ValueType(typeArg))
 	// The check piece wraps this in toCarrier; here that call is provably
 	// the IDENTITY and is elided rather than dragging the strip machinery
 	// down with it. NewCarrier(t) leaves Data nil for every t except

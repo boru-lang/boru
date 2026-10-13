@@ -171,7 +171,7 @@ func makeTargetType(reg *Registry, targetVal Value) *Type {
 	if !isTypeLike(resolved) {
 		return nil
 	}
-	return CanonicalType(reg, ValueType(resolved))
+	return NodeOf(ValueType(resolved))
 }
 
 // HasMaker reports whether the make TARGET carries a constructor of its

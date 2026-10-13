@@ -107,7 +107,7 @@ func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
 		return expandCaseAlt(r, NewTypeLiteral(a.Parent), depth, out)
 	}
 	if IsBareTypeNode(&a) {
-		t := CanonicalType(r, &a)
+		t := NodeOf(&a)
 		if t.Equal(TBoolean) {
 			// Boolean is an opaque scalar leaf in the lattice, not a
 			// true|false disjunction — decompose it here so
@@ -212,7 +212,7 @@ func resolveCaseMatch(r *Registry, m Value) caseClauseMatch {
 		if tgt, ok := parseCaseIsPred(r, m); ok {
 			cm.pred = true
 			if IsBareTypeNode(&tgt) {
-				cm.isT = CanonicalType(r, &tgt)
+				cm.isT = NodeOf(&tgt)
 				return cm
 			}
 			if iv, ok := depScalarIval(tgt); ok {
@@ -452,7 +452,7 @@ func caseTypeCovers(at, t *Type) bool {
 // boundary applies here — [is Integer] is the explicit family check.
 func caseIsCovers(r *Registry, t *Type, alt Value) bool {
 	if IsBareTypeNode(&alt) {
-		at := CanonicalType(r, &alt)
+		at := NodeOf(&alt)
 		return at.ConformsTo(t)
 	}
 	if IsConcrete(&alt) {
@@ -484,7 +484,7 @@ func caseMatchCovers(r *Registry, m, alt Value, depth int) bool {
 		return false
 	}
 	if IsBareTypeNode(&m) {
-		t := CanonicalType(r, &m)
+		t := NodeOf(&m)
 		if dv, ok := core.UnionCarrierForType(t); ok {
 			// A named union/enum/disjunct type as a match covers what its
 			// members cover — the alternatives are recovered from the
@@ -493,7 +493,7 @@ func caseMatchCovers(r *Registry, m, alt Value, depth int) bool {
 			return caseMatchCovers(r, dv, alt, depth-1)
 		}
 		if IsBareTypeNode(&alt) {
-			return caseTypeCovers(CanonicalType(r, &alt), t)
+			return caseTypeCovers(NodeOf(&alt), t)
 		}
 		if IsConcrete(&alt) {
 			// Membership of the concrete alternative — runs the real
@@ -797,7 +797,7 @@ func checkCaseExhaustiveness(r *Registry, v Value, clauses Value, elems []Value)
 				continue
 			}
 			if IsBareTypeNode(&alt) {
-				covered[ai] = caseIvalsCover(ivals, CanonicalType(r, &alt))
+				covered[ai] = caseIvalsCover(ivals, NodeOf(&alt))
 				continue
 			}
 			if isInt, i, x, ok := CaseNumericValue(alt); ok {
@@ -882,7 +882,7 @@ func caseHasAnyClause(r *Registry, matches []caseClauseMatch) bool {
 			continue
 		}
 		m := cm.resolved
-		if IsBareTypeNode(&m) && CanonicalType(r, &m).Equal(TAny) {
+		if IsBareTypeNode(&m) && NodeOf(&m).Equal(TAny) {
 			return true
 		}
 	}

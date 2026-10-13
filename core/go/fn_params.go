@@ -345,7 +345,7 @@ func dottedParamType(r *Registry, elem Value) (FnParam, bool) {
 	if rErr != nil || !IsTypeLiteral(&reached) {
 		return FnParam{}, false
 	}
-	t := CanonicalType(r, &reached)
+	t := NodeOf(&reached)
 	return FnParam{Name: paramName, Type: t}, true
 }
 
@@ -649,7 +649,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// Word, String, or Atom: extract the name and resolve.
 	// LookupDefType already returns the canonical lattice node for
 	// bare type literals, and ResolveDefType canonicalizes its own
-	// Data==nil result via CanonicalType, so the resolved *Type is
+	// Data==nil result via NodeOf, so the resolved *Type is
 	// identity-stable at every hop.
 	//
 	// DepScalars are excluded: a String/Atom DepScalar has
@@ -738,19 +738,19 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// TypeDef refactor closed for NAMED types).
 	if IsClassType(&v) {
 		if oi, aerr := AsClassType(v); aerr == nil && oi.Type != nil {
-			return CanonicalType(r, oi.Type), nil, nil
+			return NodeOf(oi.Type), nil, nil
 		}
 	}
 	if IsSurfaceType(v) {
 		if si, aerr := AsSurfaceType(v); aerr == nil && si.Type != nil {
-			return CanonicalType(r, si.Type), nil, nil
+			return NodeOf(si.Type), nil, nil
 		}
 	}
 	if IsTypeSchema(v) {
 		// A bare schema as a param type means "any instantiation"
 		// (family membership by ancestry — D3 in GENERICS.10.md).
 		if ti, aerr := AsTypeSchema(v); aerr == nil && ti.Type != nil {
-			return CanonicalType(r, ti.Type), nil, nil
+			return NodeOf(ti.Type), nil, nil
 		}
 	}
 	// Bounded Type — `x:Map/t` ≡ `x:(Type of [Map])`: the slot takes
@@ -850,7 +850,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 // LookupDefType resolves a name to its type value via the type stack
 // first, then the def stack. Returns nil if neither carries a
 // type-body for that name. For a bare type-literal body, returns
-// the canonical lattice node (via CanonicalType) so downstream
+// the canonical lattice node (via NodeOf) so downstream
 // identity-sensitive uses (behave installs, sig dispatch) reach the
 // same *Type the kernel mints.
 func LookupDefType(r *Registry, name string) *Value {
@@ -860,7 +860,7 @@ func LookupDefType(r *Registry, name string) *Value {
 	if tv, ok := r.TopTypeBody(name); ok {
 		if IsTypeBody(&tv) {
 			if IsBareTypeNode(&tv) {
-				return CanonicalType(r, &tv)
+				return NodeOf(&tv)
 			}
 			return &tv
 		}
@@ -873,14 +873,14 @@ func LookupDefType(r *Registry, name string) *Value {
 		return nil
 	}
 	if IsBareTypeNode(&val) {
-		return CanonicalType(r, &val)
+		return NodeOf(&val)
 	}
 	return &val
 }
 
 // ResolveDefType converts a def'd type value (record, options, plain
 // type literal) into a sig type + pattern. For a bare type literal,
-// the *Type is canonicalized via CanonicalType so identity-sensitive
+// the *Type is canonicalized via NodeOf so identity-sensitive
 // downstream consumers (sig dispatch, behave installs) land on the
 // lattice's canonical pointer.
 func ResolveDefType(r *Registry, v Value) (*Type, *Value, error) {
@@ -897,10 +897,10 @@ func ResolveDefType(r *Registry, v Value) (*Type, *Value, error) {
 	if IsBareTypeNode(&v) {
 		// A bare type literal IS its lattice node post type/value
 		// merge — the denoted type is the value itself, not its
-		// supertype Parent. Route through CanonicalType so user-
+		// supertype Parent. Route through NodeOf so user-
 		// minted refine subtypes (`:Foo`) keep canonical identity
 		// in fn signatures.
-		return CanonicalType(r, &v), nil, nil
+		return NodeOf(&v), nil, nil
 	}
 	// Note: most populated-body cases (Object/Table/Disjunct/
 	// DepScalar/TypedList/TypedMap) are now handled at the

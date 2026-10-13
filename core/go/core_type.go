@@ -663,11 +663,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// body) accepted (NUR093). An alias claims the SAME type, so it
 		// binds the same node; the newtype/alias distinction stands —
 		// a newtype (`refine`) mints, an alias adopts. Route through
-		// CanonicalType so the adopted pointer is the canonical *Type
-		// and not a stack copy. The aliased family's SubtypeNamer rule
+		// NodeOf so the adopted pointer is the canonical *Type and not a
+		// stack copy. The aliased family's SubtypeNamer rule
 		// still applies (`def Mail Emailon` still declines), keeping the
 		// naming surface unchanged.
-		canon := CanonicalType(r, &body)
+		canon := NodeOf(&body)
 		if err := validateSubtypeNameFor(canon, name); err != nil {
 			return err
 		}

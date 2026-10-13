@@ -190,3 +190,62 @@ func TestValueHeaderSize(t *testing.T) {
 		t.Fatalf("Value header is %d bytes, want at most 72", got)
 	}
 }
+
+// A type literal names its node (decision 5): NodeOf answers the node for
+// the node itself and for any copy of it, needs no registry, and leaves an
+// ad-hoc *Type no table registered as it is.
+func TestNodeOfNamesTheNodeFromAnyCopy(t *testing.T) {
+	if NodeOf(nil) != nil {
+		t.Fatal("NodeOf(nil) must be nil")
+	}
+	r := newTestRegistry(t)
+	minted := r.Types.MintType("P3Node", TInteger)
+	lit := NewTypeLiteral(minted)
+	if NodeOf(minted) != minted || NodeOf(&lit) != minted || NodeOf(addrOf(NewTypeLiteral(TInteger))) != TInteger {
+		t.Fatal("a node and every copy of it name the node")
+	}
+	bare := &Type{Parent: TInteger}
+	adhoc := addrOf(withID(Type{tmeta: &typeMeta{Name: "P3AdHoc"}, Parent: TInteger}, "P3AdHoc"))
+	if NodeOf(bare) != bare || NodeOf(adhoc) != adhoc {
+		t.Fatal("an ad-hoc *Type no table registered stands for itself")
+	}
+	// Adopting an ad-hoc node registers it as its metadata's node; adopting
+	// a copy of a node registers the node, never the copy.
+	dyn := NewDynamicTypeTable()
+	dyn.Adopt(adhoc)
+	if NodeOf(addrOf(*adhoc)) != adhoc || dyn.LookupByID("P3AdHoc") != adhoc {
+		t.Fatal("an adopted ad-hoc node becomes the node its copies name")
+	}
+	dyn.Adopt(&lit)
+	if dyn.LookupByID(IDOf(minted)) != minted {
+		t.Fatal("adopting a literal registers its node")
+	}
+}
+
+// The helpers that hand out a type literal's *Type hand out its node; only
+// an ad-hoc literal, which has none, still yields a copy of itself.
+func TestLiteralTypeHelpersReturnTheNode(t *testing.T) {
+	lit := NewTypeLiteral(TInteger)
+	if ValueType(lit) != TInteger || TypeNodeOf(lit) != TInteger || denotedType(lit) != TInteger {
+		t.Fatal("a registered literal's type is its node")
+	}
+	if c := CarrierOfLiteral(lit); c.Parent != TInteger || !c.Carrier {
+		t.Fatalf("CarrierOfLiteral = %v, want a carrier of the node", c)
+	}
+	adhoc := withID(Type{tmeta: &typeMeta{Name: "P3Lit"}, Parent: TInteger}, "P3Lit")
+	for name, got := range map[string]*Type{
+		"ValueType": ValueType(adhoc), "TypeNodeOf": TypeNodeOf(adhoc),
+		"denotedType": denotedType(adhoc), "CarrierOfLiteral": CarrierOfLiteral(adhoc).Parent,
+	} {
+		if got == nil || got.Name() != "P3Lit" || IDOf(got) != "P3Lit" {
+			t.Errorf("%s of an ad-hoc literal = %v, want a copy of it", name, got)
+		}
+	}
+	if carrier := NewCarrier(TString); TypeNodeOf(carrier) != TString {
+		t.Error("a carrier's node is its Parent")
+	}
+	var sink *Type
+	if n := testing.AllocsPerRun(100, func() { sink = ValueType(lit) }); n != 0 || sink != TInteger {
+		t.Errorf("ValueType of a registered literal allocated %.0f times; its node costs nothing", n)
+	}
+}

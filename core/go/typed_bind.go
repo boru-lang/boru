@@ -41,16 +41,16 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
 		if spec.Def != nil {
-			out = ReparentValue(out, CanonicalType(r, spec.Def))
+			out = ReparentValue(out, NodeOf(spec.Def))
 		}
 		return out, nil
 	case TypedBindRefine:
 		// Mirrors defTypedHandler's bare-refine branch: unify against the
 		// nearest BUILTIN ancestor (walking past intervening user refines), then
-		// reparent a copy of the value to the newtype. CanonicalType keeps the
-		// *Type live for module-sub-registry mints (the main TypeTable misses
-		// their IDs and the carried pointer IS the canonical node).
-		def := CanonicalType(r, spec.Def)
+		// reparent a copy of the value to the newtype. NodeOf needs no table,
+		// so a module sub-registry's mint (whose ID the main TypeTable does
+		// not know) resolves to its own node.
+		def := NodeOf(spec.Def)
 		if def == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no refine target", spec.Name)
 		}

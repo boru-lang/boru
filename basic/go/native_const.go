@@ -63,7 +63,7 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		}
 	}
 
-	base := CanonicalType(r, v.Parent)
+	base := NodeOf(v.Parent)
 	canon := core.CanonValue(v)
 
 	// Intern per registry via a hidden type binding, so two

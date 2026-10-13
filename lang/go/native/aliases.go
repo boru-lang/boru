@@ -668,16 +668,16 @@ func SubstituteSelf(spec core.FnSigSpec, node *core.Type) core.FnSigSpec {
 func NewSurfaceType(t *core.Type, info *core.SurfaceInfo) core.Value {
 	return core.NewSurfaceType(t, info)
 }
-func CanonicalType(r *core.Registry, t *core.Type) *core.Type { return core.CanonicalType(r, t) }
-func IsBareTypeNode(v *core.Value) bool                       { return core.IsBareTypeNode(v) }
-func IsConcrete(v *core.Value) bool                           { return core.IsConcrete(v) }
-func IsTypeBody(v *core.Value) bool                           { return core.IsTypeBody(v) }
-func IsTypeLiteral(v *core.Value) bool                        { return core.IsTypeLiteral(v) }
-func NewValueRaw(t *core.Type, data core.Payload) core.Value  { return core.NewValueRaw(t, data) }
-func NewCarrier(t *core.Type) core.Value                      { return core.NewCarrier(t) }
-func NewElementCarrier(t *core.Type) core.Value               { return check.NewElementCarrier(t) }
-func NewCarrierTypedList(elem *core.Type) core.Value          { return core.NewCarrierTypedList(elem) }
-func NewDynamicCarrier(t *core.Type) core.Value               { return core.NewDynamicCarrier(t) }
+func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
+func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
+func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
+func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }
+func IsTypeLiteral(v *core.Value) bool                       { return core.IsTypeLiteral(v) }
+func NewValueRaw(t *core.Type, data core.Payload) core.Value { return core.NewValueRaw(t, data) }
+func NewCarrier(t *core.Type) core.Value                     { return core.NewCarrier(t) }
+func NewElementCarrier(t *core.Type) core.Value              { return check.NewElementCarrier(t) }
+func NewCarrierTypedList(elem *core.Type) core.Value         { return core.NewCarrierTypedList(elem) }
+func NewDynamicCarrier(t *core.Type) core.Value              { return core.NewDynamicCarrier(t) }
 func NewClassInstance(t *core.Type, info core.ClassInstanceInfo) core.Value {
 	return core.NewClassInstance(t, info)
 }

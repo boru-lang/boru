@@ -685,7 +685,7 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, r.BoruError("type_error",
 						"TypeUtil.nominal: argument must be a lattice-resident type", "nominal")
 				}
-				anon := r.Types.MintRefinePrefab(native.CanonicalType(r, base))
+				anon := r.Types.MintRefinePrefab(native.NodeOf(base))
 				return []native.Value{native.NewTypeLiteral(anon)}, nil
 			}),
 			Returns: []*native.Type{native.TType}, BarrierPos: -1,
@@ -713,7 +713,7 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, r.BoruError("type_error",
 						"TypeUtil.brand: base must be a lattice-resident type", "brand")
 				}
-				anon := r.Types.MintRefinePrefab(native.CanonicalType(r, base))
+				anon := r.Types.MintRefinePrefab(native.NodeOf(base))
 				anon.SetName("brand:" + tag)
 				return []native.Value{native.NewTypeLiteral(anon)}, nil
 			}),

@@ -846,23 +846,34 @@ it up.
 ## Canonical `*Type` Pointers (CRITICAL)
 
 Because `type Type = Value` a "type literal" is dual: a `Value`
-with `Data == nil` AND the canonical `*Type` registered in
-`TypeTable.byID`. Code that takes `&v` of a stack-local type-
-literal Value (or `NewTypeLiteral(t)`'s by-value return) gets a
-NON-canonical pointer. The orphan compares Equal via ID, but
-mutations to fields like `Behavior` — which `behave` writes
-through the canonical pointer — do not propagate to it. LCA walks
-landing on the orphan miss any user-installed Comparer.
+with `Data == nil` that is a COPY of its lattice node — the `*Type`
+a type table minted or registered (`TypeTable.byID`). Code that
+takes `&v` of a type-literal Value (or of `NewTypeLiteral(t)`'s
+by-value return) holds a pointer to the copy, not the node. Every
+copy shares the node's metadata (`tmeta`), so a `behave` rewrite
+reaches it, but pointer identity does not: a map keyed by `*Type`,
+an `a == b` fast path, or a Parent stamped on a new value would hold
+the copy.
 
-**The discipline:** whenever a `*Type` might have been obtained
-via `&v` from a by-value Value, route it through
-`eng.CanonicalType(r, t)` (re-exported as `native.CanonicalType`)
-before storing it or using it as an identity key. The helper looks
-up the canonical pointer via `r.Types.LookupByID(t.ID)` and falls
-back to `t` for types with no registered canonical (degenerate
-roots, test fixtures with empty IDs).
+**The discipline:** a `*Type` that may have come from a literal goes
+through `core.NodeOf(t)` (re-exported as `NodeOf` in `basic` and
+`native`) before it is stored, compared by pointer, or written
+through. The metadata names its node (`typeMeta.node`, set by every
+mint and registration — `MintType`, `RegisterType`, the builtin
+table, `Adopt`), so `NodeOf` needs no registry and cannot be misled
+by an ID another registry also minted; an ad-hoc `*Type` no table
+registered comes back unchanged. `ValueType`, `TypeNodeOf`,
+`CarrierOfLiteral` and `denotedType` already return the node
+(`literalNode`), and allocate only for an ad-hoc literal, which has
+none.
 
-Current call sites that must canonicalize:
+`NodeOf` retired `CanonicalType(r, t)` (no-copy phase 3, decision 5
+of design/VALUE-NO-COPY.0.md), which looked the pointer up by ID in
+one registry's table and handed back the copy itself for anything
+that table did not hold: a retired type, a sandbox's mint, another
+registry's type.
+
+Call sites that canonicalize this way include:
 
 - `core_type.go::InstallType` — bare type-literal body parent.
 - `fn_params.go::LookupDefType` — type-name → body lookup.

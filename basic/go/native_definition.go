@@ -1652,7 +1652,7 @@ func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Val
 	if unified.Carrier {
 		bound = unified
 	} else if IsBareTypeNode(&unified) && unified.Origin == core.OriginBuiltin {
-		bound = NewCarrier(CanonicalType(r, &unified))
+		bound = NewCarrier(NodeOf(&unified))
 	}
 	if reparent != nil {
 		bound = ReparentValue(bound, reparent)
@@ -1680,7 +1680,7 @@ func carrierMembershipProven(r *Registry, body, constraint Value) bool {
 	if IsDynamic(&body) || body.Parent == nil || !IsBareTypeNode(&constraint) {
 		return false
 	}
-	node := CanonicalType(r, &constraint)
+	node := NodeOf(&constraint)
 	return !core.HasConstraintUnify(node) && body.Parent.ConformsTo(node)
 }
 

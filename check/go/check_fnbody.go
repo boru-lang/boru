@@ -658,7 +658,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// over-dispatch invariant, checker-accuracy-review.10.md §3).
 				// Surface the alternatives so disjunctPartitionReturns joins
 				// the per-alternative dispatches, like an inline `tor` result.
-				if dv, ok := core.UnionCarrierForType(core.CanonicalType(r, t)); ok {
+				if dv, ok := core.UnionCarrierForType(core.NodeOf(t)); ok {
 					out[i] = dv
 					continue
 				}

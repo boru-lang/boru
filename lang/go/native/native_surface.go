@@ -120,7 +120,7 @@ func exposerNode(r *Registry, v Value) (*Type, error) {
 			return info.Type, nil
 		}
 	case IsBareTypeNode(&v):
-		if canon := CanonicalType(r, &v); canon != nil {
+		if canon := NodeOf(&v); canon != nil {
 			return canon, nil
 		}
 	}

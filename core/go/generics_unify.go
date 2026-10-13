@@ -514,7 +514,7 @@ func InferAndInstantiateSchema(r *Registry, schema Value, body Value) (Value, er
 // to its Parent.
 func GenBindingCarrier(r *Registry, b Value) Value {
 	if node := typeArgNode(b); node != nil {
-		return NewCarrier(CanonicalType(r, node))
+		return NewCarrier(NodeOf(node))
 	}
 	if IsDisjunct(&b) {
 		c := b
@@ -553,7 +553,7 @@ func InstallGenBindingMap(r *Registry, spec *GenSpecInfo, bindings map[string]Va
 		if node == nil {
 			node = b.Parent
 		}
-		r.Defs.PushType(p.Name, CanonicalType(r, node), b)
+		r.Defs.PushType(p.Name, NodeOf(node), b)
 		installed = append(installed, p.Name)
 	}
 	return installed

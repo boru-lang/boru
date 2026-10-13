@@ -211,7 +211,7 @@ Baron`)
 	// The name evaluates to the minted NODE (the Stage 2 flip), so the
 	// carrier's type is the node itself, not the result's Parent.
 	baronLit := res[len(res)-1]
-	baronCarrier := NewCarrier(CanonicalType(r, &baronLit))
+	baronCarrier := NewCarrier(NodeOf(&baronLit))
 
 	// Key not in the schema → None (162.3,162.36).
 	out := getMicronReturns([]Value{NewString("missing"), baronCarrier}, r)
@@ -227,7 +227,7 @@ Funcon`)
 		t.Fatalf("def Funcon: %v / %v", res, err)
 	}
 	funLit := res[len(res)-1]
-	funCarrier := NewCarrier(CanonicalType(r, &funLit))
+	funCarrier := NewCarrier(NodeOf(&funLit))
 	out = getMicronReturns([]Value{NewString("doit"), funCarrier}, r)
 	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("user schema function-field: expected dynamic carrier, got %v", out)

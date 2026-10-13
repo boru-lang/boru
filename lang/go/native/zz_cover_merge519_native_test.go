@@ -56,7 +56,7 @@ func TestMerge519BehaveReturnsSeesOnlyConcreteCheckCalls(t *testing.T) {
 	if pType == nil {
 		t.Fatal("P must be a type")
 	}
-	noted := func() bool { return r.Check.BehaveMakers[core.CanonicalType(r, pType)] }
+	noted := func() bool { return r.Check.BehaveMakers[core.NodeOf(pType)] }
 
 	name := NewString("make")
 

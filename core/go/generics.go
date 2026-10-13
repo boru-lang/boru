@@ -294,7 +294,7 @@ func MintTypeParam(r *Registry, p GenParam) *Type {
 	parent := TTypeParam
 	if p.HasBound {
 		if bnode := boundNode(p.Bound); bnode != nil {
-			parent = CanonicalType(r, bnode)
+			parent = NodeOf(bnode)
 		}
 	}
 	node := r.Types.MintType(p.Name, parent)
@@ -314,7 +314,7 @@ func AttachGenBound(r *Registry, node *Type, p GenParam) {
 	}
 	if p.HasBound {
 		if bn := boundNode(p.Bound); bn != nil {
-			node.Parent = CanonicalType(r, bn)
+			node.Parent = NodeOf(bn)
 		}
 	}
 }

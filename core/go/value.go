@@ -2046,8 +2046,8 @@ type typeMeta struct {
 	// optional capabilities); non-nil is the marker of a type node. A
 	// `behave` word rewrites it through the canonical *Type — and because
 	// every copy of a type Value shares this one *typeMeta, that rewrite is
-	// now visible through every copy, not just the canonical pointer (the
-	// orphan-*Type gap the CanonicalType discipline exists to paper over).
+	// visible through every copy, not just the node (and node, below, names
+	// the node from any copy: NodeOf).
 	Behavior TypeBehavior
 	// FixedID is >0 for builtin type nodes; 0 otherwise. Baked into the
 	// serialised Value ID (formatFixedID).
@@ -2101,6 +2101,26 @@ type typeMeta struct {
 	// bound only the run knows (NUR308, RunTypeInstall). Compiled references
 	// name this node; ForwardedType follows the forward to the run's.
 	RunForward *Type
+	// node is the lattice node this metadata belongs to — the *Type a type
+	// table minted or registered (MintType, RegisterType, the builtin
+	// table, Adopt). Every copy of a node shares its metadata, so every
+	// type literal names its node (NodeOf) without a registry lookup by ID.
+	// nil for the metadata of an ad-hoc *Type no table registered.
+	node *Type
+}
+
+// NodeOf is the lattice node t stands for: the node a type literal copies
+// (every copy shares the node's metadata, which names it), the node
+// itself, or t unchanged when no type table registered it (an ad-hoc
+// *Type). A *Type taken from a type literal — `&v`, NewTypeLiteral's
+// result, a value read by value — goes through NodeOf before it is
+// stored, compared by pointer, or written through: `behave` and every
+// LCA walk must reach the node every registry shares, not a copy of it.
+func NodeOf(t *Type) *Type {
+	if t == nil || t.tmeta == nil || t.tmeta.node == nil {
+		return t
+	}
+	return t.tmeta.node
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of
@@ -2863,16 +2883,30 @@ func NewTypeLiteral(t *Type) Value {
 	return *t
 }
 
-// typeNodeOf returns the lattice node a Data==nil value stands for.
-// A type literal IS its node. A carrier's node is its Parent — a
+// TypeNodeOf returns the lattice node a Data==nil value stands for: the
+// node a type literal is a copy of (NodeOf), or a carrier's Parent — a
 // carrier keeps Parent pointing at the type it carries. Used by the
-// renderers to recover the type name from either shape.
+// renderers and the carrier joins to recover the type from either shape.
 func TypeNodeOf(v Value) *Type {
 	if v.Carrier {
 		return v.Parent
 	}
-	return &v
+	return literalNode(&v)
 }
+
+// literalNode is the node the type literal v is a copy of, or — for an
+// ad-hoc literal no table registered, which names no node — a heap copy of
+// v, the only *Type it has. Unlike NodeOf it never answers v itself, so
+// v's address does not escape and a literal that names its node allocates
+// nothing; the copy is made in orphanType, on the ad-hoc path alone.
+func literalNode(v *Value) *Type {
+	if v.tmeta != nil && v.tmeta.node != nil {
+		return v.tmeta.node
+	}
+	return orphanType(*v)
+}
+
+func orphanType(v Value) *Type { return &v }
 
 // TypeNameOf returns the leaf name of the type v represents: a type
 // literal's own name, or any other value's Parent leaf. Used by
@@ -2893,12 +2927,12 @@ func TypePathOf(v Value) string {
 	return v.Parent.Path()
 }
 
-// ValueType returns the lattice node that is v's type: v itself when
-// v is a bare type literal (a type literal IS a lattice node), and
-// v's Parent for any concrete value or carrier.
+// ValueType returns the lattice node that is v's type: the node a bare
+// type literal is a copy of (NodeOf: a type literal stands for its node),
+// and v's Parent for any concrete value or carrier.
 func ValueType(v Value) *Type {
 	if IsBareTypeNode(&v) {
-		return &v
+		return literalNode(&v)
 	}
 	return v.Parent
 }

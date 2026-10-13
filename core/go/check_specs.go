@@ -101,9 +101,9 @@ const (
 // defTypedHandler's describeType), the reparent target type, and the
 // constraint VALUE for the kinds that validate against a self-contained value
 // (the predicate fn / the DepScalar). Def rides as a *Type pointer — the same
-// convention CompiledFn.Returns/Params use — resolved through CanonicalType at
-// run time, so a type minted in a module sub-registry (whose ID the main
-// TypeTable does not know) still reaches its live canonical node.
+// convention CompiledFn.Returns/Params use — resolved through NodeOf at run
+// time, which needs no table, so a type minted in a module sub-registry
+// (whose ID the main TypeTable does not know) still reaches its node.
 type TypedBindSpec struct {
 	Kind     TypedBindKind
 	Name     string

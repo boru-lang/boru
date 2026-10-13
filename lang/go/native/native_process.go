@@ -473,7 +473,7 @@ func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, er
 				t = core.TypeNameTable()[w.Name] // builtin / external names (Pid, Integer, …)
 			}
 			if t != nil {
-				c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
+				c.binds = append(c.binds, recvBind{name: k, t: NodeOf(t)})
 				continue
 			}
 			return recvClause{}, r.BoruErrorHint(code,
@@ -488,7 +488,7 @@ func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, er
 			if t == nil { //covergate:allow IsTypeLiteral(v) implies a bare type node, so core.ValueType returns a non-nil pointer; the t==nil default cannot fire (§native)
 				t = TAny
 			}
-			c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
+			c.binds = append(c.binds, recvBind{name: k, t: NodeOf(t)})
 		default:
 			return recvClause{}, r.BoruErrorHint(code,
 				fmt.Sprintf("%s: pattern field %q must be a Scalar routing tag or a Type binding slot, got %s", op, k, v.Parent.String()),

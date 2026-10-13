@@ -121,7 +121,7 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	// Parent — the same discrimination typeCovered makes before it decomposes
 	// a disjunct. Compared with Equal, not pointer identity: ValueType hands
 	// back the address of a by-value type literal, which is exactly the
-	// non-canonical pointer CanonicalType exists to resolve.
+	// non-canonical pointer NodeOf resolves.
 	if len(di.Alternatives) != 2 ||
 		!ValueType(di.Alternatives[0]).Equal(TList) ||
 		!ValueType(di.Alternatives[1]).Equal(TError) {
