@@ -650,3 +650,101 @@ builds its view, on the no-match diagnostic's cold path.
 The interpreter's allocation ceilings for the five loop shapes that
 dropped are lowered by their drop; the compiled lane's counts are where
 phase 1 left them.
+
+**Phase 3 — 2026-10-13.** Occurrence state leaves the value for its
+holder. The plan's slot record — a cell of `{V *Value; occurrence}` beside
+every tape cell, stack cell, arg slot, binding entry and pool entry —
+presupposes pointer cells, which is phase 4's representation; built under
+the by-value header it would have been a second copy of every cell type.
+Phase 3 takes the by-value header at its word instead: a slot's header IS
+the slot's own, so the occurrence state goes where a copy carries it in
+one pointer and a write reaches only the holder it is made through.
+
+- **The occurrence record** (`core/go/occurrence.go`). The identity (the
+  ID), the dispatch ascription (`v as T`) and a gradual read's source
+  binding live in an immutable record behind one pointer, nil for most
+  runtime values. A setter builds a new record, or clears the pointer,
+  for the one header it is called on; every other copy keeps the record
+  it had, so a write reaches exactly its holder, as a write to a by-value
+  field did (R3 under the by-value representation). The occurrence flags
+  — quoted, eval, undefined, failed dispatch, reach group, dynamic, and
+  the three seam marks that rode in payloads (`apply`'s one-shot mark in
+  `FnDefInfo`, a compiled closure's return-trim and signature-matched
+  marks in `ClosurePayload`) — are sixteen bits in the header's padding,
+  read and written through `IsQuoted`/`SetQuoted` and their siblings. A
+  flip is a bit write and never a payload copy: the apply mark copied a
+  232-byte `FnDefInfo`, and every fn-VALUE seam crossing re-boxed a
+  `ClosurePayload`. About 2,900 field accesses across every module were
+  rewritten by a type-checked tool.
+- **The header is 72 bytes, from 104** (`TestValueHeaderSize` pins it):
+  the ascription, the source binding and six one-byte flags went behind
+  the pointer first (104 → 88), the 16-byte ID second (88 → 72). Every
+  copy the ratchet still allows moves 31% fewer bytes, and every
+  `[]Value` is 31% smaller; the flags came back into the header's
+  padding once the ID joined the record, because a parsed token carries
+  an identity and the engine clears `Eval` on every delivered argument —
+  in the record that was a record per argument.
+- **A binding is read where it lives.** `DefTable.TopValue` is `Top` by
+  reference. stepWord's def substitution looks the name up once (it
+  looked twice) and copies the binding once, into the cell
+  (`Tape.SetFrom`); the analysis pass, which edits its read, copies it in
+  its own function. The collection kernel's `DefTop` seat, `upsertFnDef`
+  (which swaps the payload in place, `SetTopData`), the capture walks,
+  `ResolveRef` and the compiler's unit memo read through the pointer.
+- **Occurrence writes go to the slot.** The copy-modify-writeback
+  sequences over a cell the engine owns are writes in the cell, and a
+  forward arrival is read where it lies instead of copied per arrival.
+- **A type literal names its node** (decision 5). Every mint and
+  registration points the node's shared metadata back at the node, so
+  `NodeOf` answers the node from any copy, needs no registry, and cannot
+  be misled by an ID another registry also minted. `CanonicalType` and
+  its 57 calls are gone; the helpers that handed out a literal's `*Type`
+  as the address of a copy (`ValueType`, `TypeNodeOf`,
+  `CarrierOfLiteral`, `denotedType`, `make`'s target, an `is` guard's
+  narrowed type) hand out the node, so the pointer-keyed walks see one
+  node, and `ValueType` of a registered literal no longer allocates.
+
+The cost is one allocation more per identity minted: the string and its
+record, where the string was all. The check and compile benchmarks
+allocate 1–1.5% more (0.3% to 5.6% by shape) and move 15% fewer bytes,
+and run 6% faster; parsing mints one record per token. Runtime
+allocations are unchanged. The engine-entry census fell from 159 to 157
+(`runPooledSub` 3 → 1); its rows are not attributed, so the ceiling stays.
+
+Not done, with the reason. (1) `pos` stays in the header: behind the
+occurrence pointer a position would cost a record on every read stepWord
+stamps with its own site, and in the header it is already the holder's
+own eight bytes; a position that rides with the cell for free is pointer
+cells (phase 4). (2) The recorder still keys on the holder's ID
+(exceptions D4): re-keying the compile pass on (event, index) is work
+across the emitter's recording maps, not a representation change. (3) Fn
+names and homes still ride in the fn payload (D8), and the retag helpers
+still return copies (D6): both carry identity the parity gates pin, and
+under the by-value header neither copy is smaller for the change. (4)
+The VM's per-evaluation literal clones (D7) wait for construction ops.
+The gate §6 set — the family 2 and 3 tables empty, the listed files' vet
+counts mechanical only — needs those and the pointer cells: by count,
+phase 3 removes few copies (12,993 → 12,980). What it removes is size.
+
+| | phase 2 | phase 3 |
+|---|---:|---:|
+| Value header (bytes) | 104 | 72 |
+| non-test single-Value copies (vet) / bulk | 12,993 / 327 | 12,980 / 327 |
+| anchors, geomean time vs phase 2 (55 benchmarks, interleaved runs) | 1.000 | 0.881 |
+| interpreter lane / compiled lane vs phase 2 | 1.000 / 1.000 | 0.897 / 0.849 |
+| anchors vs phase 0 (chained through phase 2's 0.760) | 0.760 | 0.670 |
+| interpreter / compiled lane vs phase 0 (chained) | 0.708 / 0.802 | 0.635 / 0.681 |
+| bytes/op, anchors geomean vs phase 2 | 1.000 | 0.788 |
+| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,673 / 4,038 / 5,939 | 6,673 / 4,038 / 5,939 |
+| check / compile benchmarks: time, allocs vs phase 2 | 1.000 | 0.938, +1.5% / +1.1% |
+
+For decision 3 (phase 4 is a go/no-go on these numbers): §8 estimated
+phase 3 at −20 to −30% cumulative from the pre-policy code, and it
+measures −33% on the anchors. Copying is no longer where the time goes:
+on the interpreter's loop anchors `memmove` is about 1% of the CPU and
+`memclr` 2%, while `Type.Equal` alone is 12% (flat; the marker
+predicates' type tests) and the matcher (`PlanMatch`,
+`CollectCandidateScan`, `CollectForward`) is most of the rest. So the
+pointer switch would buy consistency — nothing left to police: D2, D4,
+D6–D8 and D10 retire together — rather than speed, which is the case §6
+anticipated; the next speed is in `Type.Equal` and the matcher.

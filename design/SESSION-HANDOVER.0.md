@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-12** (the no-copy decisions below; the pointer to the interpreter-performance handover is 2026-10-09's, the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2026-10-12's; the pointer to the interpreter-performance handover is 2026-10-09's, the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -50,6 +50,19 @@ Last updated: **2026-10-12** (the no-copy decisions below; the pointer to the in
 > ADR-008 gate has been red on main since #532/#533 (`loop_drivers.go`'s
 > `Describe` methods, `native_map_iter.go`, the debugger's marker arms);
 > that is not this work's, and it adds no uncovered statement of its own.
+
+> **2026-10-13:** phase 3 has landed on the same branch (§9 of
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md)): the occurrence state is the
+> holder's — identity, ascription and source binding in an immutable
+> record behind one pointer, every occurrence flag (the apply and closure
+> seam marks included) a bit of the header — so the header is 72 bytes
+> (from 104); bindings are read in place (`DefTable.TopValue`); a type
+> literal names its node (`NodeOf`) and `CanonicalType` is gone. The
+> anchors run at 0.881 of phase 2's time (0.67 of phase 0's, chained).
+> Exceptions D1, D3 and D5 are retired; D2, D4, D6–D8 are re-dated to
+> phase 4 with their reasons. Decision 3 (phase 4) is the maintainer's
+> next call, with the numbers in §9. `make cover-gate-check` is red on
+> main too (97 statements); not this work's.
 
 > ## Where things stand on 2026-10-05 — the baseline
 >
