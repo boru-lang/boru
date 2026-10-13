@@ -135,6 +135,38 @@ func TestDataStackSnapshotFallback(t *testing.T) {
 	}
 }
 
+// TestResolvedDataStopsAtTheLoopSeal: a snapshot taken inside a driven
+// loop's iteration shows only what the body sees, as the live CurrentStack
+// does — the region's sealing paren clears the values beneath it, and the
+// loop's mark (an engine marker) is filtered. A plain paren bounds nothing.
+func TestResolvedDataStopsAtTheLoopSeal(t *testing.T) {
+	lp := &core.Loop{}
+	inLoop := []native.Value{
+		native.NewInteger(1), core.NewLoopMark("_m1", lp), core.NewLoopOpen(lp, 1),
+		native.NewInteger(2), native.NewWord("mul"),
+	}
+	if got := resolvedData(inLoop, 4); native.Canon(got) != "2" {
+		t.Errorf("inside the region = %s, want the body's input alone", native.Canon(got))
+	}
+	plain := []native.Value{native.NewInteger(1), core.NewOpenParen(), native.NewInteger(2)}
+	if got := resolvedData(plain, 3); native.Canon(got) != "1 2" {
+		t.Errorf("past a plain paren = %s, want both values", native.Canon(got))
+	}
+}
+
+// TestInLoopBodyBeforeTheTape: a pointer before the tape lies in no loop
+// body — and reads no slot.
+func TestInLoopBodyBeforeTheTape(t *testing.T) {
+	lp := &core.Loop{}
+	stack := []native.Value{core.NewLoopMark("_m1", lp), native.NewInteger(2)}
+	if inLoopBody(stack, -1) {
+		t.Error("a negative pointer reported a loop body")
+	}
+	if inLoopBody(stack, 1) {
+		t.Error("a mark with no move after the pointer reported a loop body")
+	}
+}
+
 func TestParseLineSpec(t *testing.T) {
 	cases := []struct {
 		spec string

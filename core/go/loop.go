@@ -33,7 +33,9 @@ type LoopDriver interface {
 	// how it enters the tape, InvokeBody how the VM lane runs it). ok is
 	// false when the loop has no iteration left; err is the construct's
 	// own error (a structural fault the walk meets lazily), reported as
-	// the construct's, never wrapped as a body's.
+	// the construct's, never wrapped as a body's. Once Next has reported
+	// either, it is not called again: both lanes (spliceDrivenIteration,
+	// DriveLoop) end the loop there.
 	Next(it int) (inputs []Value, body Value, ok bool, err error)
 	// Collect takes iteration it's residual — the values its region left,
 	// bottom→top, the sub-engine protocol's result stack — valid only for

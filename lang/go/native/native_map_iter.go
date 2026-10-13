@@ -85,11 +85,10 @@ func (mb mapBody) quotation() bool { return !mb.lambda && !mb.closure }
 // quotationBody is the quotation as the body value the loop region steps:
 // a list whose BodyTokens are exactly mb.tokens — an EMPTY quotation
 // included, which stays the identity on its inputs (runQuotationBody's
-// rule) rather than reading, nil-backed, as a one-token body.
+// rule). newMapBody takes the tokens from Slice, which allocates even for
+// an empty list, so they are never nil and the list never reads,
+// nil-backed, as a one-token body.
 func (mb mapBody) quotationBody() Value {
-	if mb.tokens == nil {
-		return NewList([]Value{})
-	}
 	return NewList(mb.tokens)
 }
 

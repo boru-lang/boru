@@ -916,15 +916,14 @@ func CaseMatchHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 }
 
 // runCaseBody executes a case body whose RESULT the handler reads — a
-// predicate match, whose last value decides the clause: a code-body list
-// runs in a sub-engine with the captured value pushed first — the same
-// convention as the `error [handler]` block — so the block can consume it;
-// any other value is the result as-is. The matched block and the default
-// are the handler's result and run on the tape instead (caseBlockRegion).
+// predicate match, whose last value decides the clause, or under the VM the
+// matched block: the code-body list runs in a sub-engine with the captured
+// value pushed first — the same convention as the `error [handler]` block —
+// so the block can consume it. Both callers have tested isCodeBody first (a
+// non-body match unifies, a non-body block is the result as-is). The matched
+// block and the default are the handler's result and run on the tape instead
+// (caseBlockRegion).
 func runCaseBody(r *Registry, v Value, body Value) ([]Value, error) {
-	if !isCodeBody(body) {
-		return []Value{body}, nil
-	}
 	lst, _ := AsList(body)
 	// The captured value is a resolved input: it enters as stack data the
 	// block consumes, never re-stepped (arguments are inert; RunResolved).
