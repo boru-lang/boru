@@ -189,11 +189,17 @@ func TestWt5InstallTypeSchemaKinds(t *testing.T) {
 	if err := InstallType(r, "Wt5SchC", NewTypeSchema(TType, clsInfo)); err != nil {
 		t.Fatalf("InstallType class schema: %v", err)
 	}
-	if def := r.LookupTypeName("Wt5SchC"); def == nil || !def.Parent.Equal(TClass) {
+	def := r.LookupTypeName("Wt5SchC")
+	if def == nil || !def.Parent.Equal(TClass) {
 		t.Fatalf("class schema must mint under Class, got %v", def)
 	}
-	if clsInfo.Name != "Class/Wt5SchC" {
-		t.Fatalf("class schema name = %q", clsInfo.Name)
+	// The installed schema is constructed from the declaration, which is
+	// never written: one declaration may be installed under two names.
+	if got, _ := SchemaInfoOf(def); got == nil || got.Name != "Class/Wt5SchC" || got.Type != def {
+		t.Fatalf("installed class schema = %+v", got)
+	}
+	if clsInfo.Name != "" || clsInfo.Type != TType {
+		t.Fatalf("the declaration was completed in place: %q %v", clsInfo.Name, clsInfo.Type)
 	}
 
 	// An fn schema mints under FunctionSignature.
@@ -216,15 +222,23 @@ func TestWt5InstallTypeSurface(t *testing.T) {
 	if err := InstallType(r, "Wt5Surf", NewSurfaceType(TSurface, info)); err != nil {
 		t.Fatalf("InstallType surface body: %v", err)
 	}
-	if info.Name != "Surface/Wt5Surf" {
-		t.Fatalf("surface name = %q", info.Name)
+	body, _ := r.TopTypeBody("Wt5Surf")
+	installed, _ := AsSurfaceType(body)
+	if installed == nil || installed.Name != "Surface/Wt5Surf" {
+		t.Fatalf("installed surface = %+v", installed)
 	}
 	def := r.LookupTypeName("Wt5Surf")
 	if def == nil || !def.Parent.Equal(TSurface) {
 		t.Fatalf("surface must mint under Ideal/Surface, got %v", def)
 	}
-	if info.Type != def {
+	if installed.Type != def {
 		t.Fatal("the shared payload must carry the minted node")
+	}
+	// The declaration is never written (NewSurfaceType anchored it at the
+	// root it was built under): one declaration under two names is two
+	// surfaces.
+	if info.Name != "" || info.Type != TSurface {
+		t.Fatalf("the declaration was completed in place: %q %v", info.Name, info.Type)
 	}
 }
 

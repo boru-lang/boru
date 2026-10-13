@@ -476,7 +476,6 @@ var (
 	FormatValueJSON          = core.FormatValueJSON
 	NewAtom                  = core.NewAtom
 	AtomReferent             = core.AtomReferent
-	SetAtomReferent          = core.SetAtomReferent
 	NewBoolean               = core.NewBoolean
 	// NewCalendarDuration moved to lang/go/engine/native_temporal.go (Step 8).
 	StampFnValueInPlace      = compiler.StampFnValueInPlace
@@ -718,6 +717,7 @@ func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
 func IDOf(v *core.Value) string           { return core.IDOf(v) }
 func SetID(v *core.Value, id string)      { core.SetID(v, id) }
 func SetQuoted(v *core.Value, on bool)    { core.SetQuoted(v, on) }
+func SetAtomReferent(v, ref *core.Value)  { core.SetAtomReferent(v, ref) }
 func IsUndefined(v *core.Value) bool      { return core.IsUndefined(v) }
 func SetUndefined(v *core.Value, on bool) { core.SetUndefined(v, on) }
 func IsDynamic(v *core.Value) bool        { return core.IsDynamic(v) }

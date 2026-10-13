@@ -259,7 +259,8 @@ func TestS5VAtomReferent(t *testing.T) {
 	if _, ok := AtomReferent(a); ok {
 		t.Error("fresh atom has no referent")
 	}
-	a2 := SetAtomReferent(a, NewInteger(9))
+	a2, nine := a, NewInteger(9)
+	SetAtomReferent(&a2, &nine)
 	ref, ok := AtomReferent(a2)
 	if !ok {
 		t.Fatal("referent must be readable after SetAtomReferent")

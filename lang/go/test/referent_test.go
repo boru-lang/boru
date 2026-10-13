@@ -99,3 +99,17 @@ func TestReferentAtomEqualityUnaffected(t *testing.T) {
 		t.Errorf("(quote x) canon = %q, want x/q", got)
 	}
 }
+
+// TestReferentNestedAtomPerCall pins that the run-start pass stamps a
+// nested atom per run and writes nothing a later run reads. A behaviour
+// body runs on a top engine once per call, its nested list shared by every
+// call; the pass stamped that shared array in place, so the first call's
+// referent stuck for every later one ('7' '7' '7').
+func TestReferentNestedAtomPerCall(t *testing.T) {
+	src := `def Temp refine Integer end ` +
+		`behave canon/q (fn [[t:Temp][String][def k [a/q] def a 99 ((k 0 get) referent) canon]]) end ` +
+		`[(canon (make Temp 7)) (canon (make Temp 5)) (canon (make Temp 3))]`
+	if got := runReferent(t, src); got != `['7' '5' '3']` {
+		t.Errorf("nested referent per call = %s, want ['7' '5' '3']", got)
+	}
+}

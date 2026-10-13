@@ -514,7 +514,8 @@ func impliesHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
 	SetQuoted(&v, true)
-	return []Value{captureAtomReferent(v, r)}, nil
+	captureAtomReferent(&v, r)
+	return []Value{v}, nil
 }
 
 // quoteAnyHandler returns the value with Quoted=true, suppressing
@@ -523,25 +524,24 @@ func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 func quoteAnyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
 	SetQuoted(&v, true)
-	return []Value{captureAtomReferent(v, r)}, nil
+	captureAtomReferent(&v, r)
+	return []Value{v}, nil
 }
 
-// captureAtomReferent snapshots the current binding of an atom's name onto
-// the atom as its referent, when the value is an atom that has none yet and
-// the name is bound. Non-atoms and already-captured atoms are returned
-// unchanged.
-func captureAtomReferent(v Value, r *Registry) Value {
-	name, err := AsAtom(v)
+// captureAtomReferent gives this holder of an atom what its name is bound to
+// now as its referent, when it has none yet and the name is bound.
+// Non-atoms and already-captured atoms are left as they are.
+func captureAtomReferent(v *Value, r *Registry) {
+	name, err := AsAtom(*v)
 	if err != nil {
-		return v
+		return
 	}
-	if _, has := AtomReferent(v); has {
-		return v
+	if _, has := AtomReferent(*v); has {
+		return
 	}
-	if bound, ok := r.Defs.Top(name); ok {
-		return SetAtomReferent(v, bound)
+	if bound, ok := r.Defs.TopValue(name); ok {
+		SetAtomReferent(v, bound)
 	}
-	return v
 }
 
 // reachHandler builds an inert Reach over a receiver value (args[0]) and a

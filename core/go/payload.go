@@ -94,17 +94,13 @@ type BoolPayload struct{ B bool }
 // AtomPayload carries the unquoted-name payload for a Scalar/Atom value.
 // Constructed by NewAtom.
 //
-// Referent, when non-nil, is a snapshot of the value the atom's name was
-// bound to at the moment it was quoted (by the `quote` word) or when the
-// program was loaded (the run-start resolution pass) — it records what a
-// quoted name referred to. It is nil when the name was unbound at capture
-// time. Referent is METADATA ONLY: atom identity — equality, ordering,
-// canonical form — is by Name alone and must ignore Referent (see
-// valuesEqualDefault's TAtom case and CanonValue), so two atoms with the
-// same name stay equal regardless of what each referred to.
+// An atom is its name: what a quoted name referred to when it was quoted or
+// its program loaded (`referent`) is occurrence state of the holder that
+// captured it (AtomReferent, SetAtomReferent), never part of the payload, so
+// atom identity — equality, ordering, canonical form — is by Name alone and
+// two atoms with the same name stay equal whatever each referred to.
 type AtomPayload struct {
-	Name     string
-	Referent *Value
+	Name string
 }
 
 // PathonPayload wraps a PathonInfo for a Scalar/Micron/Pathon value.

@@ -21,9 +21,14 @@ func w4bSchema(t *testing.T, r *Registry, name string, params []GenParam,
 	PushGenBindings(r, spec)
 	body := mkBody(spec)
 	PopGenBindings(r, spec)
-	info := &TypeSchemaInfo{Params: spec.Params, Body: body, Kind: SchemaRecord}
-	if err := InstallType(r, name, NewTypeSchema(TType, info)); err != nil {
+	decl := &TypeSchemaInfo{Params: spec.Params, Body: body, Kind: SchemaRecord}
+	if err := InstallType(r, name, NewTypeSchema(TType, decl)); err != nil {
 		t.Fatalf("InstallType %s: %v", name, err)
+	}
+	// The schema the node was installed with, constructed from decl.
+	info, ok := SchemaInfoOf(r.LookupTypeName(name))
+	if !ok {
+		t.Fatalf("InstallType %s: no schema on the node", name)
 	}
 	return info
 }

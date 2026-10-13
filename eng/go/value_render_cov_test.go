@@ -356,7 +356,9 @@ func TestAtomReferent(t *testing.T) {
 	if _, ok := core.AtomReferent(a); ok {
 		t.Error("fresh atom should have no referent")
 	}
-	withRef := core.SetAtomReferent(a, core.NewInteger(42))
+	withRef := a
+	answer := core.NewInteger(42)
+	core.SetAtomReferent(&withRef, &answer)
 	ref, ok := core.AtomReferent(withRef)
 	if !ok {
 		t.Fatal("referent lost")
@@ -364,8 +366,18 @@ func TestAtomReferent(t *testing.T) {
 	if got, _ := core.AsInteger(ref); got != 42 {
 		t.Errorf("referent = %v", ref)
 	}
-	// Non-atoms have no referent.
-	if _, ok := core.AtomReferent(core.NewInteger(1)); ok {
+	// The referent is the holder's: the atom it was copied from captured
+	// none, and the two are still one atom.
+	if _, ok := core.AtomReferent(a); ok {
+		t.Error("a holder's referent reached the atom it was copied from")
+	}
+	if !core.DeepEqual(a, withRef) {
+		t.Error("a captured referent changed the atom's identity")
+	}
+	// Non-atoms have no referent, and take none.
+	n := core.NewInteger(1)
+	core.SetAtomReferent(&n, &answer)
+	if _, ok := core.AtomReferent(n); ok {
 		t.Error("integer claims an atom referent")
 	}
 }

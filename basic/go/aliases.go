@@ -472,7 +472,6 @@ var (
 	FormatValueJSON          = core.FormatValueJSON
 	NewAtom                  = core.NewAtom
 	AtomReferent             = core.AtomReferent
-	SetAtomReferent          = core.SetAtomReferent
 	NewBoolean               = core.NewBoolean
 	// NewCalendarDuration moved to lang/go/engine/native_temporal.go (Step 8).
 	StampModuleCallGates = core.StampModuleCallGates

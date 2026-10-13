@@ -1136,11 +1136,16 @@ func (r *Registry) upsertFnDef(name string, sigs ...Signature) {
 			sigs[i].BarrierPos = sigs[i].TotalArgs()
 		}
 	}
-	// If the top of the stack is already a FnDefInfo, update it in place.
+	// If the top of the stack is already a FnDefInfo, swap its payload in
+	// place for one carrying the merged signatures. The merged set is a new
+	// array: the previous payload's array is every earlier holder's — a
+	// Lookup, an `f/v` value, a table clone, a fork — and appending into its
+	// spare capacity, then sorting, would rewrite what they dispatch on.
 	if top, ok := r.Defs.TopValue(name); ok {
 		if prev, ok := FnDefOf(top.Data); ok {
 			fnDef := *prev
-			fnDef.Signatures = append(fnDef.Signatures, sigs...)
+			n := len(prev.Signatures)
+			fnDef.Signatures = append(prev.Signatures[:n:n], sigs...)
 			SortSignatures(fnDef.Signatures)
 			fnDef.MaxForwardArgs = calcMaxForwardArgs(fnDef.Signatures)
 			r.Defs.SetTopData(name, &fnDef)

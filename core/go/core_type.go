@@ -451,9 +451,9 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// Instantiation nodes mint as CHILDREN of this node at `of`
 		// time, so bare `Box` admits any instantiation by plain
 		// lattice ancestry.
-		info, _ := AsTypeSchema(body)
+		decl, _ := AsTypeSchema(body)
 		parent := TType
-		switch info.Kind {
+		switch decl.Kind {
 		case SchemaClass:
 			parent = TClass
 			r.RegisterPart("Class")
@@ -463,13 +463,14 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 			parent = TFnUndef
 		}
 		def := r.Types.MintType(name, parent)
-		// The declaration is COMPLETED here, not copied: a `gen` schema is a
-		// pointer payload its installer owns until this binding publishes it
-		// (the decl a `Self of [T]` reference and the unifier share), so its
-		// name and node are written once, in place, before anything else
-		// can hold the installed value.
-		info.Name = parent.Name() + "/" + name
-		info.Type = def
+		// The named schema is CONSTRUCTED from the declaration's parts, as
+		// the class arm's is: the declaration may already be published
+		// (`def b (gen …)  def Box b  def Bag b`) or replayed per element by
+		// a resident type bind (ApplyResidentTypeBind), and completing it in
+		// place renamed and re-anchored every node installed from it before.
+		// The binding and the unifier share the one named payload; a `Self
+		// of [T]` reference resolves through the node (SchemaInfoOf).
+		info := namedSchemaInfo(decl, parent.Name()+"/"+name, def)
 		InstallSchemaUnifier(def, info)
 		r.RegisterPart(name)
 		installTypeBinding(r, name, def, NewValueRaw(def, info))
@@ -478,16 +479,15 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// Ideal/Surface and attach a surfaceUnifier so dispatch / `is`
 		// consult the conformance set `exposes` fills in. The payload
 		// pointer is shared between body and unifier — a post-mint
-		// `exposes` is visible through both — and the declaration is
-		// COMPLETED here, not copied: its installer owns it until this
-		// binding publishes it, so its name and node are written once, in
-		// place.
-		info, _ := AsSurfaceType(body)
-		info.Name = "Surface/" + name
+		// `exposes` is visible through both — and it is CONSTRUCTED from
+		// the declaration's parts with a conformance set of its own, as the
+		// schema arm's is: one declaration bound under two names is two
+		// surfaces, and `exposes` one of them does not conform to the other.
+		decl, _ := AsSurfaceType(body)
 		r.RegisterPart("Surface")
 		r.RegisterPart(name)
 		def := r.Types.MintType(name, TSurface)
-		info.Type = def
+		info := namedSurfaceInfo(decl, "Surface/"+name, def)
 		installSurfaceUnifier(def, info, name)
 		installTypeBinding(r, name, def, NewValueRaw(def, info))
 	} else if isFnBodiedValue(body) && !IsDeclaredPredicateFn(body) {

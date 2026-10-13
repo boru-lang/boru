@@ -54,9 +54,11 @@ func TestS7ConstructorNilDefaults(t *testing.T) {
 	if s := NewStoreWithPrototype(nil, nil); s.Parent == nil {
 		t.Error("NewStoreWithPrototype(nil,...) must default its type")
 	}
-	// SetAtomReferent on a non-atom returns the value unchanged.
-	got := SetAtomReferent(NewInteger(1), NewInteger(2))
-	if n, _ := AsInteger(got); n != 1 {
+	// SetAtomReferent on a non-atom leaves it as it was.
+	got, two := NewInteger(1), NewInteger(2)
+	before := got.occ
+	SetAtomReferent(&got, &two)
+	if n, _ := AsInteger(got); n != 1 || got.occ != before {
 		t.Errorf("SetAtomReferent(non-atom) = %v, want unchanged 1", got)
 	}
 }

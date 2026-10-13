@@ -2794,29 +2794,31 @@ func NewAtom(name string) Value {
 	return NewValueRaw(TAtom, AtomPayload{Name: name})
 }
 
-// AtomReferent returns the value an atom's name was snapshotted to refer to,
-// if one was captured (by `quote` or the run-start resolution pass). ok=false
-// when v is not an atom or carries no referent.
+// AtomReferent returns the value an atom's name referred to when this holder
+// of it was quoted or its program loaded (`quote`, the run-start resolution
+// pass). ok=false when v is not an atom or this holder captured none.
 func AtomReferent(v Value) (Value, bool) {
-	ap, ok := v.Data.(AtomPayload)
-	if !ok || ap.Referent == nil {
+	if _, ok := v.Data.(AtomPayload); !ok || v.occ == nil || v.occ.referent == nil {
 		return Value{}, false
 	}
-	return *ap.Referent, true
+	return *v.occ.referent, true
 }
 
-// SetAtomReferent returns a copy of atom v carrying ref as its referent (a
-// snapshot of what its name refers to). Name, Quoted, and Pos are preserved.
-// Returns v unchanged when it is not an atom.
-func SetAtomReferent(v Value, ref Value) Value {
-	ap, ok := v.Data.(AtomPayload)
-	if !ok {
-		return v
+// SetAtomReferent gives this holder of the atom v the referent *ref, what its
+// name refers to now (occurrence state: every other copy keeps what it had,
+// and the atom's payload is never written). The referent is a reference to
+// the bound value, held where a later rebind does not reach it — under the
+// by-value header, one header copy (a capture, the exceptions list's C5). A
+// no-op when v is not an atom.
+func SetAtomReferent(v *Value, ref *Value) {
+	if _, ok := v.Data.(AtomPayload); !ok {
+		return
 	}
-	snap := ref
-	ap.Referent = &snap
-	v.Data = ap
-	return v
+	snap := new(Value)
+	*snap = *ref
+	rec := occOf(v)
+	rec.referent = snap
+	setOcc(v, rec)
 }
 
 // NewPathon creates a Pathon value from parts and an absolute flag.
@@ -3423,6 +3425,25 @@ func namedClassInfo(decl *ClassTypeInfo, root, name string) ClassTypeInfo {
 		Type:         decl.Type,
 		BinaryLayout: decl.BinaryLayout,
 	}
+}
+
+// namedSchemaInfo is the payload a `gen` schema declaration is installed
+// under as the type full: its parameters, body and kind, named and anchored
+// at the node minted for it. The declaration is never written.
+func namedSchemaInfo(decl *TypeSchemaInfo, full string, node *Type) *TypeSchemaInfo {
+	return &TypeSchemaInfo{Name: full, Params: decl.Params, Body: decl.Body, Kind: decl.Kind, Type: node}
+}
+
+// namedSurfaceInfo is the payload a surface declaration is installed under
+// as the type full: its required operations, a conformance set of its own
+// (seeded from the declaration's), named and anchored at the node minted
+// for it. The declaration is never written.
+func namedSurfaceInfo(decl *SurfaceInfo, full string, node *Type) *SurfaceInfo {
+	conform := make(map[string]bool, len(decl.Conform))
+	for id, ok := range decl.Conform {
+		conform[id] = ok
+	}
+	return &SurfaceInfo{Name: full, Required: decl.Required, Conform: conform, Type: node}
 }
 
 // NewClassInstance creates an object instance value of the given

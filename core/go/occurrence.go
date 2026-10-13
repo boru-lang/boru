@@ -8,10 +8,10 @@ package core
 // reaches the rest of its occurrence state through one pointer: its source
 // position, its identity token (a parsed token's, or a check pass's
 // provenance key; a copy of a type node reads the node's from tmeta unless
-// this holder was given another), the dispatch ascription (`v as T`) and a
-// gradual read's source binding (check mode). Most runtime values carry none
-// of it, so the pointer is nil and a copy of the header carries 8 bytes for
-// all of it instead of the fields themselves.
+// this holder was given another), the dispatch ascription (`v as T`), a
+// gradual read's source binding (check mode) and a quoted atom's referent.
+// Most runtime values carry none of it, so the pointer is nil and a copy of
+// the header carries 8 bytes for all of it instead of the fields themselves.
 //
 // A position is minted once (by the parser, or where a value is given a
 // position it did not have) together with the record that carries it ALONE
@@ -52,6 +52,13 @@ type occurrence struct {
 	// rec is the recorder key a recording pass stamped on this holder: the
 	// event that produced its value and the result index (RecKey).
 	rec RecKey
+	// referent is what this holder's atom named when it was quoted or its
+	// program loaded (SetAtomReferent): a reference to the value bound then,
+	// which a later rebind does not reach (a capture, the exceptions list's
+	// C5). The holder's, as an identity is: the atom's payload is its name
+	// alone, so atoms with one name stay one atom to equality and canonical
+	// form whatever each holder captured.
+	referent *Value
 }
 
 // RecKey is a recorded value's recorder key (design/VALUE-NO-COPY.0.md §5:
@@ -108,7 +115,7 @@ const idCleared = "\x00"
 
 // posOnly reports whether rec carries a position and nothing else.
 func posOnly(rec *occurrence) bool {
-	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil && rec.rec == RecKey{}
+	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil && rec.rec == RecKey{} && rec.referent == nil
 }
 
 // occFlags are the per-occurrence flags, one bit each.

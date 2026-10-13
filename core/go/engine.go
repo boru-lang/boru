@@ -1606,30 +1606,83 @@ func traceSigStr(name string, sig *Signature) string {
 // returned. Callers decide the shape they want: take [0] for a single
 // value, keep the slice for a list, or splice it back into a parent
 // tape.
-// resolveAtomReferents walks a loaded program and stamps each atom that has
-// no referent yet with a snapshot of what its name is currently bound to,
-// when such a binding exists. It recurses into list payloads so quoted
-// atoms nested in code/data lists are covered. Atom identity is unaffected
-// (the referent is metadata; see AtomPayload). Names with no current binding
-// are left unresolved — that is the honest "bound only at runtime" case.
-func resolveAtomReferents(r *Registry, vals []Value) {
-	for i := range vals {
-		switch data := vals[i].Data.(type) {
+// stampAtomReferents gives each atom among a loaded tape's cells that has no
+// referent yet what its name is bound to now, when it is bound: a write in
+// the cell, the atom's holder for this run (SetAtomReferent). A list cell of
+// the program — at or after from; the cells before it are the run's resolved
+// data, values a caller handed in — whose nested atoms take referents gets a
+// new list of its own (atomReferentsIn): the program's arrays, which every
+// run, call and fork of it shares, are never written. Atom identity is
+// unaffected (the referent is occurrence state; see AtomPayload). Names with
+// no current binding are left unresolved — the honest "bound only at
+// runtime" case.
+func stampAtomReferents(r *Registry, t *Tape, from int) {
+	for i, n := 0, t.Len(); i < n; i++ {
+		c := t.Ref(i)
+		switch data := c.Data.(type) {
 		case AtomPayload:
-			if data.Referent != nil {
+			if hasAtomReferent(c) {
 				continue
 			}
-			if bound, ok := r.Defs.Top(data.Name); ok {
-				vals[i] = SetAtomReferent(vals[i], bound)
+			if bound, ok := r.Defs.TopValue(data.Name); ok {
+				SetAtomReferent(c, bound)
 			}
 		case ListPayload:
-			// FlexListData is deliberately not handled: this walk runs
-			// on loaded program tapes, and flex nodes exist only at
-			// runtime — they can never appear here.
-			resolveAtomReferents(r, data.Elems)
+			if i < from {
+				continue
+			}
+			// The cell's own payload is replaced; the array it held is the
+			// program's and stays as it was.
+			if elems := atomReferentsIn(r, data.Elems); elems != nil {
+				c.Data = ListPayload{Elems: elems}
+			}
 		}
 	}
 }
+
+// atomReferentsIn is elems with every atom at any depth that has no
+// referent and names a bound def given one, built as a new array that shares
+// the other elements — nil when no atom took one, so a list none of whose
+// atoms is bound keeps its own array. FlexListData is deliberately not
+// handled: this walk runs on loaded programs, and flex nodes exist only at
+// runtime.
+func atomReferentsIn(r *Registry, elems []Value) []Value {
+	var out []Value
+	for i := range elems {
+		var bound *Value
+		var nested []Value
+		switch data := elems[i].Data.(type) {
+		case AtomPayload:
+			if hasAtomReferent(&elems[i]) {
+				continue
+			}
+			b, ok := r.Defs.TopValue(data.Name)
+			if !ok {
+				continue
+			}
+			bound = b
+		case ListPayload:
+			if nested = atomReferentsIn(r, data.Elems); nested == nil {
+				continue
+			}
+		default:
+			continue
+		}
+		if out == nil {
+			out = append([]Value(nil), elems...)
+		}
+		if bound != nil {
+			SetAtomReferent(&out[i], bound)
+		} else {
+			out[i].Data = ListPayload{Elems: nested}
+		}
+	}
+	return out
+}
+
+// hasAtomReferent reports whether this holder of an atom captured a
+// referent.
+func hasAtomReferent(v *Value) bool { return v.occ != nil && v.occ.referent != nil }
 
 func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// Observability seam (interp_entry.go): report this tree-walk entry to an
@@ -1716,22 +1769,6 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 		es.RememberStrippedOriginals(pre, input)
 	}
 
-	// Post-parse referent resolution: stamp each /q-style atom in the
-	// program with a snapshot of what its name refers to, for any name
-	// already bound when the program loads (pre-installed module/global
-	// defs). Names bound only later, during execution, stay unresolved here —
-	// the `quote` word captures those at quote time instead. Top engine only
-	// (sub-engines run fragments already walked) and not in check mode (the
-	// program has been stripped to carriers). Stamping happens on a private
-	// copy of the input BEFORE the tape is built, so the caller's slice is
-	// never mutated and the tape constructor owns a fully-prepared program.
-	prog := input
-	if e.IsTop && !e.Registry.analysisActive() {
-		prog = make([]Value, len(input))
-		copy(prog, input)
-		resolveAtomReferents(e.Registry, prog)
-	}
-
 	// Load the program onto the gap-buffer tape with bounded growth
 	// (NewTapeWith copies, so later splices never touch the caller's input
 	// slice). The tape grows at most N times by factor M and then fails
@@ -1743,12 +1780,24 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// up a fresh tape every execution. Falls back to a fresh tape when
 	// the existing buffer is too small. Per-run scratch state is cleared
 	// so nothing leaks across reuses.
-	if e.ReuseTape && e.Tape != nil && e.Tape.Reload(prog) {
+	if e.ReuseTape && e.Tape != nil && e.Tape.Reload(input) {
 		// The reused tape's ceiling came from its first program; this one
 		// gets at least what a fresh tape would have given it.
-		e.Tape.EnsureBoundsFor(len(prog), e.Registry.TapeConfig)
+		e.Tape.EnsureBoundsFor(len(input), e.Registry.TapeConfig)
 	} else {
-		e.Tape = NewTapeWith(prog, e.Registry.TapeConfig, e.tapeWarn)
+		e.Tape = NewTapeWith(input, e.Registry.TapeConfig, e.tapeWarn)
+	}
+	// Post-parse referent resolution: each /q-style atom in the program
+	// takes what its name refers to, for any name already bound when the
+	// program loads (pre-installed module/global defs). Names bound only
+	// later, during execution, stay unresolved here — the `quote` word
+	// captures those at quote time instead. Top engine only (sub-engines run
+	// fragments already walked) and not in check mode (the program has been
+	// stripped to carriers). The stamps are written in the tape's own cells,
+	// which the load just copied, so the caller's slice and the program's
+	// nested arrays are never written.
+	if e.IsTop && !e.Registry.analysisActive() {
+		stampAtomReferents(e.Registry, e.Tape, e.StartAt)
 	}
 	// Per-run scratch state is cleared on EVERY entry (not only the
 	// Reload branch) so a reused engine whose previous tape was too

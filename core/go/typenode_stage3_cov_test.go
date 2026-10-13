@@ -192,7 +192,8 @@ func TestS3SurfaceUnifierNodeArms(t *testing.T) {
 		t.Fatalf("surface node must carry a surfaceUnifier, got %T", e.TypeDef.Behavior())
 	}
 	exposer := r.Types.MintType("Class/S3Circle", TClass)
-	info.Conform[IDOf(exposer)] = true
+	installed, _ := AsSurfaceType(e.Body)
+	installed.Conform[IDOf(exposer)] = true
 
 	if _, err := u.Unify(node, node, nil); err != nil {
 		t.Errorf("node vs node must settle structurally: %v", err)
