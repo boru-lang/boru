@@ -52,7 +52,7 @@ func landingNativeReg(t *testing.T, name string, out func() ([]core.Value, error
 		t.Fatalf("%s did not register", name)
 	}
 	fd := core.FnDefInfo{Name: name, Registry: r, Signatures: inner.Signatures}
-	if !vmNativeApplicable(r, fd) {
+	if fdv := core.NewFunction(fd); !vmNativeApplicable(r, &fdv) {
 		t.Fatalf("%s fixture does not read as natively applicable", name)
 	}
 	return r, core.NewFunction(fd)
@@ -341,7 +341,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 			Impl: core.Boru([]core.Value{core.NewWord("zz-island-unresolved"), core.NewInteger(9)}),
 		}},
 	}
-	if vmNativeApplicable(r, islandRaiser) {
+	if irv := core.NewFunction(islandRaiser); vmNativeApplicable(r, &irv) {
 		t.Fatal("fixture reads as natively applicable — it would take the native arm, not the island")
 	}
 	if _, _, err := vc.reStepLanding(r, 0, 0, []core.Value{core.NewFunction(islandRaiser)}, seam7Dbg, 0, compiler.LandingWord{}); err == nil {

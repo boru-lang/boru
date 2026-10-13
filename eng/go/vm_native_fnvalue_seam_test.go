@@ -51,7 +51,7 @@ func TestApplyNativeFnValueTopDown(t *testing.T) {
 	}
 	one := goValueWith(1)
 	fd, _ := core.FnDefOf(one.Data)
-	if !vmNativeApplicable(r, *fd) {
+	if !vmNativeApplicable(r, &one) {
 		t.Fatal("a self-contained Go fn value applies natively")
 	}
 	out, done, err := vc.applyNativeFnValueTopDown(one, *fd, ints(1, 2, 3))

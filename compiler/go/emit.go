@@ -7400,7 +7400,7 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 		// (CompiledFn.Decl). A body that declines declines the program.
 		if fd, ok := outer.Data.(*core.FnDefInfo); ok {
 			for i := range fd.Signatures {
-				es.compileSpecOuterUnit(*fd, i)
+				es.compileSpecOuterUnit(*fd, core.FnNameOf(&outer), i)
 			}
 		}
 	}
@@ -7412,10 +7412,9 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 // labels a contract error with the binding's name, as the interpreter's
 // does.
 func (es *EmitState) compileSpecPlacementUnits(name string, fn core.Value) {
-	if fd, ok := core.FnDefCopy(fn.Data); ok {
-		fd.Name = name
+	if fd, ok := core.FnDefOf(fn.Data); ok {
 		for i := range fd.Signatures {
-			es.compileSpecOuterUnit(fd, i)
+			es.compileSpecOuterUnit(*fd, name, i)
 		}
 	}
 }
@@ -7440,11 +7439,11 @@ func sameOwnSigShapes(a, b core.Value) bool {
 // nothing and is left to the op's foreign-unit defer; a body that declines
 // declines the program (review of #466: a stored-handler compile was
 // count-agnostic and resolved an exported module fn's free names in main).
-func (es *EmitState) compileSpecOuterUnit(fd core.FnDefInfo, sigIdx int) int {
+func (es *EmitState) compileSpecOuterUnit(fd core.FnDefInfo, name string, sigIdx int) int {
 	if es == nil || es.reg == nil {
 		return -1
 	}
-	return check.CompileFnSigUnit(es.reg, fd, sigIdx)
+	return check.CompileFnSigUnitAs(es.reg, fd, name, sigIdx)
 }
 
 // NoteLiveRead seats a bare read of a generalised name AT ITS TOKEN (the

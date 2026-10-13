@@ -1259,10 +1259,8 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 				continue
 			}
 			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
-				if fnDef, ok := FnDefCopy(bv.Data); ok {
-					fnDef.Name = name
-					fnDef.Anonymous = false
-					entries = append(entries, fnDef)
+				if view, ok := FnDefOf(bv.Data); ok {
+					entries = append(entries, closureDispatchEntry(view, name))
 				}
 			}
 			continue
@@ -1278,6 +1276,17 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 		return nil, closureBound
 	}
 	return r.aggregateDispatch(name, entries), closureBound
+}
+
+// closureDispatchEntry constructs the entry a def-bound compiled closure
+// contributes to name's dispatch: the bridged view (ClosureAsFnDef's, fresh
+// per lookup) as the NAMED definition the interpreter's def made of it — a
+// new definition from the view's parts under the binding's name, never a
+// write into a payload a holder carries.
+func closureDispatchEntry(view *FnDefInfo, name string) FnDefInfo {
+	out := *view
+	out.Name, out.Anonymous = name, false
+	return out
 }
 
 // dispatchesAsWord reports whether a def-bound value is a DISPATCHING

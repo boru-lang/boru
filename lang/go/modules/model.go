@@ -321,15 +321,14 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 // stampActionFn compiles an action body to a detached unit at model build so
 // makeAction's InvokeCallback runs it on the VM (the net-codec / service-
 // handler precedent). StampFnValue clones, so the user's spec value stays
-// plain; the model's private copy takes the ACTION name — spec lambdas are
-// anonymous, and the name is what labels the stamp event and any action
-// error, on the compiled and interpreted paths alike. A decline (captures,
-// ineligible shape, stamping off) returns the input unchanged.
+// plain; the model's own holder of the value takes the ACTION name
+// (core.SetFnName — the holder's, never written into the definition) — spec
+// lambdas are anonymous, and the name is what labels the stamp event, on the
+// compiled and interpreted paths alike. A decline (captures, ineligible
+// shape, stamping off) returns the named holder otherwise unchanged.
 func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
-	if fd, ok := native.FnDefOf(fnVal.Data); ok && fd.Name == "" {
-		named := *fd
-		named.Name = name
-		fnVal.Data = &named
+	if _, ok := native.FnDefOf(fnVal.Data); ok && core.FnNameOf(&fnVal) == "" {
+		core.SetFnName(&fnVal, name)
 	}
 	stamped, _ := compiler.StampFnValue(r, fnVal)
 	return stamped
@@ -404,7 +403,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 				h.actErrs = append(h.actErrs, fmt.Errorf("action: no matching signature (declare one param for the model Map)"))
 				return model.ActionResult{OK: false}
 			}
-			res, err := core.InvokeCallbackFn(h.actionReg, fnInfo, sig, []native.Value{modelVal})
+			res, err := core.InvokeCallbackFnAs(h.actionReg, fnInfo, core.FnNameOf(&fnVal), sig, []native.Value{modelVal})
 			if err != nil {
 				h.actErrs = append(h.actErrs, fmt.Errorf("action: %w", err))
 				return model.ActionResult{OK: false}

@@ -52,7 +52,7 @@ func TestReStepLandingCandidateRaises(t *testing.T) {
 }
 
 func TestUncalledFunctionErrorWithoutRegistry(t *testing.T) {
-	err := uncalledFunctionError(nil, core.FnDefInfo{Name: "g"})
+	err := landedUncalledError(nil, core.NewFunction(core.FnDefInfo{Name: "g"}))
 	var be *core.BoruError
 	if !errors.As(err, &be) || be.Code != "uncalled_function" || be.FullSource != "" {
 		t.Errorf("no registry: no source text, got %v", err)

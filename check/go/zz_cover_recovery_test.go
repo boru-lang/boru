@@ -723,7 +723,8 @@ func zzAssumeCall(t *testing.T, r *core.Registry, word string, vals []core.Value
 	e := core.NewTop(r)
 	e.Tape = core.NewTape(vals, core.StackHeadroom)
 	e.Pointer = pointer
-	if err := checkModeAssumeSig(e, core.WordInfo{Name: word, ArgCount: -1}, fn, fallback, core.SrcPos{Row: 1, Col: 1}); err != nil {
+	home, _ := core.FnHome(r, fn)
+	if err := checkModeAssumeSig(e, core.WordInfo{Name: word, ArgCount: -1}, fn, home, fallback, core.SrcPos{Row: 1, Col: 1}); err != nil {
 		t.Fatalf("checkModeAssumeSig(%s): %v", word, err)
 	}
 	return e, fn

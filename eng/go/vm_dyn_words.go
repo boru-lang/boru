@@ -122,49 +122,62 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// word's result stamp (stampFnResultPos) survived the def and anchored
 	// `(h 5)` over `def h (FnUtil.compose …)` at the compose (NUR347).
 	v = dropFnPos(v)
+	switch v.Data.(type) {
+	case *core.FnDefInfo, core.ClosurePayload:
+	default:
+		return v
+	}
 	// A fn VALUE with its own definition — a factory's non-capturing lambda
-	// baked as a const, a `/v` reference — is renamed as installDef renames
-	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
-	// escapes as data renders under the def's name on both lanes (`def f
-	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
-	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
-	// const keeps its own payload, as the interpreter's binding copies do.
-	if fd, ok := core.FnDefOf(v.Data); ok {
-		if fd.Name == name {
-			return v
-		}
-		named := *fd
-		named.Name = name
-		v.Data = &named
-		return v
-	}
-	cl, ok := v.Data.(core.ClosurePayload)
-	if !ok || cl.RetName == name {
-		return v
-	}
-	// A binding renames whatever it binds, a named closure included —
-	// installDef sets the name unconditionally, so a def-bound closure
-	// handed to a Function param renders under the PARAM's name
+	// baked as a const, a `/v` reference — takes the name as installDef's
+	// binding does: a def-bound value that escapes as data renders under the
+	// def's name on both lanes (`def f (mk 1)  each f/v [1 2 3]` read `fn
+	// (String)` for the interpreter's `fn f(String)`, NUR168). A binding
+	// names whatever it binds, a named closure included — a def-bound
+	// closure handed to a Function param renders under the PARAM's name
 	// (`(w p/v)` reads `fn f(Integer)` on both engines; the thirty-first
-	// increment). The copy in this slot is renamed; the stored value keeps
-	// its own name, as the interpreter's binding copies do.
-	cl.RetName = name
-	// A value its binding names answers its contract where the NAME is
-	// written — the word that calls it (`h 5` reports at `h`, the
-	// interpreter's ReturnCheck stamped with the dispatching word) — never
-	// where the literal was constructed: the construction anchor goes, and
-	// the applying op stamps its own position (NUR347).
-	cl.RetPos = core.SrcPos{}
-	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
-		// The bridge's own signature, named — the render the interpreter's
-		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
-		// this value is only ever formatted.
-		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: compiler.ClosureIsAnonymous(&prog.Fns[cl.Unit], cl)})
-		}
+	// increment). The slot is named (core.SetFnName); the stored value keeps
+	// its own name, as the interpreter's binding copies do, and the payload
+	// is shared. A named closure answers its contract where the NAME is
+	// written — the word that calls it (`h 5` reports at `h`) — never where
+	// the literal was constructed: closureView drops the construction anchor
+	// of a named holder, and renders it under the name (NUR347).
+	if core.FnNameOf(&v) == name {
+		return v
 	}
-	v.Data = cl
+	core.SetFnName(&v, name)
 	return v
+}
+
+// closureView is the compiled closure v as this holder presents it: its
+// payload under the name a binding gave the holder (core.SetFnName), whose
+// construction anchor the naming clears — what a named holder's return
+// contract, no-match and frame name report against. ok is false for a value
+// that is no closure.
+func closureView(v *core.Value) (core.ClosurePayload, bool) {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok {
+		return cl, false
+	}
+	if name := core.HolderFnName(v); name != "" {
+		cl.RetName, cl.RetPos = name, core.SrcPos{}
+	}
+	return cl, true
+}
+
+// closureRender is the interpreter's rendering of the fn a binding names
+// `name` for the closure cl: the fn under that name over the unit's own
+// signature (closureSigParams). ok is false for a unit the render bridge
+// cannot describe, which keeps the closure's own rendering.
+func closureRender(cl *core.ClosurePayload, name string) (string, bool) {
+	prog, ok := cl.Prog.(*compiler.Program)
+	if !ok || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return "", false
+	}
+	params, ok := closureSigParams(&prog.Fns[cl.Unit])
+	if !ok {
+		return "", false
+	}
+	return core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}}), true
 }
 
 // writtenRun is how many of a replayed dispatch's arguments the interpreter's

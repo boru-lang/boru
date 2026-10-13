@@ -91,11 +91,13 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	// fn-carrier side table instead (native installAndRecordDef), which the
 	// parse/mini/emit value-form macros consult for name resolution.
 	if body.Parent.Equal(TFunction) {
-		fnDef, ok := FnDefCopy(body.Data)
+		// The bound fn is read where it lives; the binding's dispatch form
+		// is constructed under the binding's name below (installFnDef), so
+		// the payload is never copied to carry the name.
+		fnDef, ok := FnDefOf(body.Data)
 		if !ok {
 			return
 		}
-		fnDef.Name = name
 
 		// Module-wrapper rebinding: a trivial-delegation wrapper
 		// (`Body=[Word(inner)]`, all-unnamed params, carrying its own
@@ -111,7 +113,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
+		if rebound, ok := WrapperUnderName(r, name, *fnDef); ok {
 			r.Defs.Push(name, rebound)
 			if !shadow {
 				r.NoteBindTransition(BindDef, name, body.Pos())
@@ -151,7 +153,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			changed := false
 			for _, entry := range stack {
 				oldFn, ok := entry.Data.(*FnDefInfo)
-				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, fnDef) {
+				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, *fnDef) {
 					changed = true
 					dropped = entry
 					continue
@@ -234,7 +236,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// Compile this definition's own overloads and push a single
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
-		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		installFnDef(r, name, *fnDef, !shadow, isStackOnly)
 		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
 			// A FRESH capture-free def inside a branch arm the model cannot
 			// decide is speculative too (bound at run time only if the arm
@@ -270,21 +272,17 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 
 	// ClassTypeInfo body: set the proper name in the type hierarchy.
 	if IsClassType(&body) {
-		info, _ := AsClassType(body)
-		if info.Parent != nil {
-			// Child type: full name is Parent/Name (e.g. Ideal/Foo/Bar)
-			info.Name = info.Parent.Name + "/" + name
-		} else {
-			// Direct child of the Object kind: Ideal/Name
-			info.Name = "Ideal/" + name
-		}
+		// Child type: full name is Parent/Name (e.g. Ideal/Foo/Bar); a
+		// direct child of the Object kind is Ideal/Name.
+		decl, _ := AsClassType(body)
+		info := namedClassInfo(&decl, "Ideal", name)
 		// Register the name parts as known type parts.
 		for _, p := range strings.Split(info.Name, "/") {
 			r.RegisterPart(p)
 		}
 		// Preserve the body's *Type identity (set by the caller via
-		// NewClassType). InstallDef rewrites info.Name based on the
-		// def name and parent, then re-wraps the value — but the def
+		// NewClassType). InstallDef constructs the named info from the
+		// declaration's parts and wraps it anew — but the def
 		// itself stays the caller's choice. For builtin object types
 		// (Resource, Entity) the caller passes the canonical builtin
 		// *Type; for user-defined object types installed as defs the
@@ -461,7 +459,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			}
 			// A named call: the frame's return count on this path too
 			// (NUR191, CallBoruStrict).
-			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, fnDefCopy.Name, SrcPos{})
+			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, name, SrcPos{})
 		}
 		// Retag typed-container args up front so EVERY access path in the body —
 		// named binding, the args stack (args.N), and unnamed body-token pushes —
@@ -757,11 +755,9 @@ func InstallFnDef(r *Registry, name string, fnDef FnDefInfo, stackOnly ...bool) 
 // census). A registration proper (`def`, a module export) keeps it.
 func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnly ...bool) {
 	isStackOnly := len(stackOnly) > 0 && stackOnly[0]
-	entry := fnDef
-	entry.Name = name
-	entry.Signatures = compileFnSigs(r, name, fnDef, isStackOnly)
-	SortSignatures(entry.Signatures)
-	entry.MaxForwardArgs = calcMaxForwardArgs(entry.Signatures)
+	sigs := compileFnSigs(r, name, fnDef, isStackOnly)
+	SortSignatures(sigs)
+	entry := boundFnDef(&fnDef, name, sigs)
 	r.Defs.Push(name, NewFunction(entry))
 	// Construction-time body check (first-class, post-binding). Replaces the
 	// dynamic-help example eval's accidental side-channel: that eval ran each fn
@@ -782,6 +778,19 @@ func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnl
 	if hook && r.ready && r.OnRegisterHook != nil {
 		r.OnRegisterHook(name)
 	}
+}
+
+// boundFnDef constructs a binding's dispatch form: the authored definition
+// fd under the binding's name, with its dispatch-ready signatures — a new
+// function for the binding that shares fd's parts (its identity, home,
+// captures and metadata), never a write to fd (design/VALUE-NO-COPY.0.md
+// §5; the exceptions list's B6 constructions).
+func boundFnDef(fd *FnDefInfo, name string, sigs []Signature) FnDefInfo {
+	out := *fd
+	out.Name = name
+	out.Signatures = sigs
+	out.MaxForwardArgs = calcMaxForwardArgs(sigs)
+	return out
 }
 
 // compileFnSigs turns a definition's authored overloads into dispatch-

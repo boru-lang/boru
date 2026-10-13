@@ -21,7 +21,7 @@ type stubLensRuntime struct {
 	args   []Value
 }
 
-func (s *stubLensRuntime) StampDetached(_ *Registry, fd FnDefInfo, _ SrcPos) {
+func (s *stubLensRuntime) StampDetached(_ *Registry, fd *FnDefInfo, _ string, _ SrcPos) {
 	s.stamps++
 	if !s.land {
 		return
@@ -41,8 +41,9 @@ func (s *stubLensRuntime) InvokeCompiledStrict(_ *Registry, _ *Signature, args [
 	return s.res, s.err, s.ran
 }
 
-func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) { return v, false }
-func (s *stubLensRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
+func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool)    { return v, false }
+func (s *stubLensRuntime) ClosureRender(*ClosurePayload, string) (string, bool) { return "", false }
+func (s *stubLensRuntime) LazyStamp(*Registry, *FnDefInfo, string, *Signature, SrcPos) bool {
 	return false
 }
 

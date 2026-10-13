@@ -213,19 +213,24 @@ func TestDynApplyTopIslandStillRuns(t *testing.T) {
 
 // applyFrameName names an applied value's frame as the interpreter's step
 // does: `<fn>` for a nameless verbose `fn` (the stack-match path's frame),
-// the value's own name otherwise — empty for a nameless `=>` lambda.
+// the value's own name otherwise — empty for a nameless `=>` lambda. A name a
+// binding gave the holder is the value's name: a nameless verbose fn its def
+// named runs under that name.
 func TestApplyFrameName(t *testing.T) {
+	named := core.NewFunction(core.FnDefInfo{})
+	core.SetFnName(&named, "h")
 	for _, c := range []struct {
-		fd   core.FnDefInfo
+		v    core.Value
 		want string
 	}{
-		{core.FnDefInfo{}, core.FnValueFrameName},
-		{core.FnDefInfo{Anonymous: true}, ""},
-		{core.FnDefInfo{Name: "g"}, "g"},
-		{core.FnDefInfo{Name: "f", Anonymous: true}, "f"},
+		{core.NewFunction(core.FnDefInfo{}), core.FnValueFrameName},
+		{core.NewFunction(core.FnDefInfo{Anonymous: true}), ""},
+		{core.NewFunction(core.FnDefInfo{Name: "g"}), "g"},
+		{core.NewFunction(core.FnDefInfo{Name: "f", Anonymous: true}), "f"},
+		{named, "h"},
 	} {
-		if got := applyFrameName(c.fd); got != c.want {
-			t.Errorf("%+v: %q, want %q", c.fd, got, c.want)
+		if got := applyFrameName(&c.v); got != c.want {
+			t.Errorf("%v: %q, want %q", c.v, got, c.want)
 		}
 	}
 }
@@ -244,7 +249,8 @@ func TestFnValueReturnNamesLikeTheStep(t *testing.T) {
 		{core.FnDefInfo{Anonymous: true}, ": expected 1"},
 		{core.FnDefInfo{}, "<fn>: expected 1"},
 	} {
-		_, err, ran := checkFnValueReturn(r, c.fd, sig, two, 0, core.SrcPos{})
+		fnVal := core.NewFunction(c.fd)
+		_, err, ran := checkFnValueReturn(r, &fnVal, sig, two, 0, core.SrcPos{})
 		be, ok := err.(*core.BoruError)
 		if !ran || !ok || !strings.HasPrefix(be.Detail, c.prefix) {
 			t.Errorf("anonymous=%v: ran=%v err=%v, want a detail starting %q", c.fd.Anonymous, ran, err, c.prefix)

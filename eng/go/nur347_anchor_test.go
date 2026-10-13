@@ -48,8 +48,11 @@ func TestNUR347FnPosStamps(t *testing.T) {
 	cl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{RetPos: core.SrcPos{Row: 1, Col: 36}}}
 	cl.SetPos(core.SrcPos{Row: 1, Col: 37})
 	named := nameClosureValue(cl, "h")
-	if named.Pos().Row != 0 || named.Data.(core.ClosurePayload).RetPos.Row != 0 || named.Data.(core.ClosurePayload).RetName != "h" {
-		t.Fatalf("nameClosureValue: %v %+v", named.Pos(), named.Data)
+	if view, _ := closureView(&named); named.Pos().Row != 0 || view.RetPos.Row != 0 || view.RetName != "h" {
+		t.Fatalf("nameClosureValue: %v %+v", named.Pos(), view)
+	}
+	if own := named.Data.(core.ClosurePayload); own.RetPos.Col != 36 || own.RetName != "" {
+		t.Fatalf("the payload keeps its own anchor and name: %+v", own)
 	}
 }
 

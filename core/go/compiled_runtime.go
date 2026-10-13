@@ -27,15 +27,18 @@ type CompiledRuntime interface {
 	// instead of the fn-VALUE seam's trim discipline (NUR191).
 	InvokeCompiledStrict(r *Registry, sig *Signature, args []Value) (res []Value, err error, ran bool)
 	// StampDetached compiles and stamps a detached fn at install time
-	// (InstallType's runtime-stamping route). A decline is silent: the
-	// binding stays interpreter-dispatched.
-	StampDetached(r *Registry, fd FnDefInfo, pos SrcPos)
+	// (InstallType's runtime-stamping route), its stamp events attributed to
+	// name — passed beside the definition, never written into a copy of it.
+	// A decline is silent: the binding stays interpreter-dispatched.
+	StampDetached(r *Registry, fd *FnDefInfo, name string, pos SrcPos)
 	// LazyStamp is the detached stamp at FIRST APPLICATION (S1b of
 	// design/FULL-COMPILATION-REPLAN.0.md): a fn VALUE reaching a runtime
 	// seam with no compiled unit for the sig its application matched obtains
 	// one now, compiled at its home, memoised on the value. It reports
 	// whether the sig now carries a unit; the inactive default never does.
-	LazyStamp(r *Registry, fd FnDefInfo, sig *Signature, pos SrcPos) bool
+	// name attributes the stamp: the name the applied value's holder
+	// carries, passed beside the definition.
+	LazyStamp(r *Registry, fd *FnDefInfo, name string, sig *Signature, pos SrcPos) bool
 	// ClosureAsFnDef bridges a compiled closure VALUE (a ClosurePayload the
 	// interpreter meets on the tape — an island's sub-engine re-stepping a
 	// shuffled `each` element, NUR124's payload axis) to the FnDefInfo the
@@ -45,6 +48,11 @@ type CompiledRuntime interface {
 	// the value as data — outside a VM run, or for a unit the bridge cannot
 	// describe.
 	ClosureAsFnDef(r *Registry, v Value) (fnv Value, ok bool)
+	// ClosureRender is how a compiled closure renders under the name a
+	// binding gave its holder (SetFnName): the interpreter's rendering of
+	// the fn that name binds, over the unit's own signature. ok=false keeps
+	// the closure's own rendering — the inactive default always does.
+	ClosureRender(cl *ClosurePayload, name string) (string, bool)
 }
 
 // noCompiledRuntime is the interpreter-only default: every operation
@@ -58,13 +66,14 @@ func (noCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value
 func (noCompiledRuntime) InvokeCompiledStrict(*Registry, *Signature, []Value) ([]Value, error, bool) {
 	return nil, nil, false
 }
-func (noCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
-func (noCompiledRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
+func (noCompiledRuntime) StampDetached(*Registry, *FnDefInfo, string, SrcPos) {}
+func (noCompiledRuntime) LazyStamp(*Registry, *FnDefInfo, string, *Signature, SrcPos) bool {
 	return false
 }
 func (noCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 	return v, false
 }
+func (noCompiledRuntime) ClosureRender(*ClosurePayload, string) (string, bool) { return "", false }
 
 var compiledRuntime CompiledRuntime = noCompiledRuntime{}
 

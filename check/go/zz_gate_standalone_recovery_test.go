@@ -205,11 +205,11 @@ func TestGateStandaloneRecoverPolyPublishesBarredLayout(t *testing.T) {
 	}
 }
 
-// recoveryPolyOwner: a module NATIVE reached from outside as a fn value
-// carries its home on fn.Registry, where the word IS a builtin — the poly
-// re-match runs over that home. A foreign fn whose name is no builtin
-// there (a rebound copy), and a fn with no home, re-match over the
-// dispatching registry.
+// recoveryPolyOwner: a module NATIVE reached from outside as a fn value has
+// its home passed beside it, where the word IS a builtin — the poly re-match
+// runs over that home. A foreign fn whose name is no builtin there (a rebound
+// copy), and a fn with no home (core.FnHome resolves the dispatching
+// registry), re-match over the dispatching registry.
 func TestGateStandaloneRecoveryPolyOwnerForeignNative(t *testing.T) {
 	home := covRegistry(t, func(r *core.Registry) {
 		r.RegisterNativeFunc(core.NativeFunc{Name: "zgsnetq", Signatures: []core.Signature{{
@@ -220,13 +220,15 @@ func TestGateStandaloneRecoveryPolyOwnerForeignNative(t *testing.T) {
 	e := core.NewTop(r)
 
 	native := &core.FnDefInfo{Name: "zgsnetq", Registry: home}
-	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsnetq"}, native); got != home {
+	nativeHome, _ := core.FnHome(r, native)
+	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsnetq"}, nativeHome); got != home {
 		t.Error("a foreign module native re-matches over its home registry")
 	}
-	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsrebound"}, native); got != r {
+	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsrebound"}, nativeHome); got != r {
 		t.Error("a name that is no builtin of the home re-matches over the dispatching registry")
 	}
-	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsnetq"}, &core.FnDefInfo{Name: "zgsnetq"}); got != r {
+	unhomed, _ := core.FnHome(r, &core.FnDefInfo{Name: "zgsnetq"})
+	if got := recoveryPolyOwner(e, core.WordInfo{Name: "zgsnetq"}, unhomed); got != r {
 		t.Error("a fn with no home re-matches over the dispatching registry")
 	}
 }

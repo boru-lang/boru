@@ -40,23 +40,22 @@ func TestFnValueNoMatchVerdictParkAndRaise(t *testing.T) {
 	r := parkReg(t)
 	s := core.NewString("x")
 	anon, _ := parkFn("", true, parkSig(-1, intParam("a")))
-	if v, _ := fnValueNoMatchVerdict(r, anon, nil, []core.Value{s}); v != noMatchPark {
+	if v := fnValueNoMatchVerdict(r, anon, nil, []core.Value{s}); v != noMatchPark {
 		t.Errorf("an anonymous value over a rejected forward arg parks: %v", v)
 	}
-	if v, _ := fnValueNoMatchVerdict(r, anon, []core.Value{s}, nil); v != noMatchPark {
+	if v := fnValueNoMatchVerdict(r, anon, []core.Value{s}, nil); v != noMatchPark {
 		t.Errorf("an anonymous value over a rejected stack arg parks: %v", v)
 	}
 	named, _ := parkFn("g", false, parkSig(-1, intParam("a")))
-	v, fd := fnValueNoMatchVerdict(r, named, nil, []core.Value{s})
-	if v != noMatchRaise || fd.Name != "g" {
-		t.Errorf("a named value with a candidate raises: %v %q", v, fd.Name)
+	if v := fnValueNoMatchVerdict(r, named, nil, []core.Value{s}); v != noMatchRaise {
+		t.Errorf("a named value with a candidate raises: %v", v)
 	}
 	// With no candidate operand at all the named value is data too: nothing
 	// was offered to call it with. (A 2-param value over one rejected arg.)
-	if v, _ := fnValueNoMatchVerdict(r, named, nil, nil); v != noMatchPark {
+	if v := fnValueNoMatchVerdict(r, named, nil, nil); v != noMatchPark {
 		t.Errorf("a named value with no candidate parks: %v", v)
 	}
-	err := uncalledAt(r, named, fd, []core.Value{core.WithPosAt(s, core.SrcPos{Row: 1, Col: 9})})
+	err := uncalledAt(r, named, []core.Value{core.WithPosAt(s, core.SrcPos{Row: 1, Col: 9})})
 	if err.Code != "uncalled_function" || !strings.Contains(err.Detail, "'g'") || err.Row != 1 || err.Col != 9 {
 		t.Errorf("the raise is the interpreter's, at the candidate's position: %+v", err)
 	}
@@ -67,14 +66,14 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 	five, s := core.NewInteger(5), core.NewString("s")
 	// The plan picks: a forward arg the param admits.
 	fn, _ := parkFn("", true, parkSig(-1, intParam("a")))
-	if v, _ := fnValueNoMatchVerdict(r, fn, nil, []core.Value{five}); v != noMatchUnproven {
+	if v := fnValueNoMatchVerdict(r, fn, nil, []core.Value{five}); v != noMatchUnproven {
 		t.Errorf("a forward match is not a no-match: %v", v)
 	}
 	// The /s retry picks: the forward plan binds a='x' and fails b on the
 	// stack top; the all-stack plan binds a='s' (top), b=3.
 	two, _ := parkFn("", true, parkSig(-1, strParam("a"), intParam("b")))
 	stk, fwd := []core.Value{core.NewInteger(3), s}, []core.Value{core.NewString("x")}
-	if v, _ := fnValueNoMatchVerdict(r, two, stk, fwd); v != noMatchUnproven {
+	if v := fnValueNoMatchVerdict(r, two, stk, fwd); v != noMatchUnproven {
 		t.Errorf("a /s-retry match is not a no-match: %v", v)
 	}
 	// …and it is the RETRY that matched, not the first plan.
@@ -91,7 +90,7 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 	// The legacy pure-stack path picks: an all-UNNAMED signature reads its
 	// window bottom-up (param 0 = 5), where both plans read the top first.
 	unnamed, _ := parkFn("", true, parkSig(-1, core.FnParam{Type: core.TInteger}, core.FnParam{Type: core.TString}))
-	if v, _ := fnValueNoMatchVerdict(r, unnamed, []core.Value{five, s}, nil); v != noMatchUnproven {
+	if v := fnValueNoMatchVerdict(r, unnamed, []core.Value{five, s}, nil); v != noMatchUnproven {
 		t.Errorf("a legacy stack match is not a no-match: %v", v)
 	}
 	if !core.FnValueStackMatches(*unnamed.Data.(*core.FnDefInfo), []core.Value{five, s}) {
@@ -100,7 +99,7 @@ func TestFnValueNoMatchVerdictMatchesStayOnTheIsland(t *testing.T) {
 	// An all-stack signature has no forward plan to retry (the /s arm is
 	// skipped) and still parks when nothing admits the stack.
 	stackOnly, _ := parkFn("", true, parkSig(0, intParam("a")))
-	if v, _ := fnValueNoMatchVerdict(r, stackOnly, []core.Value{s}, nil); v != noMatchPark {
+	if v := fnValueNoMatchVerdict(r, stackOnly, []core.Value{s}, nil); v != noMatchPark {
 		t.Errorf("an all-stack value over a rejected stack arg parks: %v", v)
 	}
 }
@@ -132,7 +131,7 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 		{"a pending list beneath (evaluates at the end)", base, []core.Value{func() core.Value { v := core.NewList([]core.Value{s}); core.SetEval(&v, true); return v }()}, nil},
 	}
 	for _, c := range cases {
-		if v, _ := fnValueNoMatchVerdict(r, c.fn, c.resolved, c.forward); v != noMatchUnproven {
+		if v := fnValueNoMatchVerdict(r, c.fn, c.resolved, c.forward); v != noMatchUnproven {
 			t.Errorf("%s: must keep the island, got %v", c.label, v)
 		}
 	}
@@ -141,11 +140,11 @@ func TestFnValueNoMatchVerdictGuards(t *testing.T) {
 	other := parkReg(t)
 	foreign := baseFd
 	foreign.Registry = other
-	if v, _ := fnValueNoMatchVerdict(r, core.NewFunction(foreign), nil, []core.Value{s}); v != noMatchPark {
+	if v := fnValueNoMatchVerdict(r, core.NewFunction(foreign), nil, []core.Value{s}); v != noMatchPark {
 		t.Errorf("a foreign anonymous value parks: %v", v)
 	}
 	foreign.Anonymous, foreign.Name = false, "g"
-	if v, _ := fnValueNoMatchVerdict(r, core.NewFunction(foreign), nil, []core.Value{s}); v != noMatchUnproven {
+	if v := fnValueNoMatchVerdict(r, core.NewFunction(foreign), nil, []core.Value{s}); v != noMatchUnproven {
 		t.Errorf("a foreign named value must keep the island: %v", v)
 	}
 }

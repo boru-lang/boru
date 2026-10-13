@@ -1208,7 +1208,8 @@ type CompiledFnRef struct {
 type RestampBox struct {
 	mu     sync.Mutex
 	fd     core.FnDefInfo
-	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
+	name   string // the stamp events' name, passed beside fd (stampDetachedSig)
+	sigIdx int    // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
 	// keepsDefs: a TOKEN body's stamp (StampTokenBody) — the re-stamp opens
 	// the same keep-defs unit the first stamp did (NUR202).

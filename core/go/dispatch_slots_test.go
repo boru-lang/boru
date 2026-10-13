@@ -9,7 +9,7 @@ import "testing"
 // the post-cut core-only configuration.
 func TestInactiveCheckBraid(t *testing.T) {
 	inactiveCheckMixedFormAdvisories(nil, WordInfo{}, nil, nil, SrcPos{}, 0, 0)
-	if err := inactiveCheckModeAssumeSig(nil, WordInfo{}, nil, nil, SrcPos{}); err != nil {
+	if err := inactiveCheckModeAssumeSig(nil, WordInfo{}, nil, nil, nil, SrcPos{}); err != nil {
 		t.Fatal("inactive assumeSig must be nil error")
 	}
 	if got := inactiveCheckModeFallbackPositions(nil, 3); got != nil {

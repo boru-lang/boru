@@ -58,7 +58,7 @@ func armEntries(t *testing.T, r *core.Registry) *entryCollector {
 // the same answer core's inactive default gives (core compiled_runtime_test),
 // rather than a nil dereference inside the stamp.
 func TestLazyStampNilSigDeclines(t *testing.T) {
-	if (vmCompiledRuntime{}).LazyStamp(seam7Reg(t), core.FnDefInfo{Name: "f"}, nil, core.SrcPos{}) {
+	if (vmCompiledRuntime{}).LazyStamp(seam7Reg(t), &core.FnDefInfo{Name: "f"}, "f", nil, core.SrcPos{}) {
 		t.Error("a nil signature must report no unit")
 	}
 }
@@ -251,7 +251,7 @@ func TestReStepLandingFireIslands(t *testing.T) {
 			}),
 		}},
 	})
-	if vmNativeApplicable(r, *fn.Data.(*core.FnDefInfo)) {
+	if vmNativeApplicable(r, &fn) {
 		t.Fatal("fixture reads as natively applicable — it would take the native rung, not the island")
 	}
 	entries := armEntries(t, r)

@@ -50,7 +50,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if !es.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) || es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
 		t.Fatal("an outer fn value makes the install a replace")
 	}
-	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 {
+	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, "", 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, "", 0) != -1 {
 		t.Fatal("no recorder or no registry compiles nothing")
 	}
 	if fnSigsDeclared(lambda) || fnSigsDeclared(core.NewInteger(1)) || fnSigsDeclared(core.NewFunction(core.FnDefInfo{Name: "n", Signatures: []core.Signature{{}}})) || !fnSigsDeclared(fnv) {

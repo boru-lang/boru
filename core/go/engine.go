@@ -3455,7 +3455,8 @@ func (e *Engine) stepWord(val *Value) error {
 			if handled, herr := CheckBraid.CheckModeSurfaceShape(e, w, derefPos(vpos)); handled {
 				return herr
 			}
-			return CheckBraid.CheckModeAssumeSig(e, w, fn, &fn.Signatures[0], derefPos(vpos))
+			home, _ := FnHome(e.Registry, fn)
+			return CheckBraid.CheckModeAssumeSig(e, w, fn, home, &fn.Signatures[0], derefPos(vpos))
 		}
 		return e.sigError(w.Name, fn, derefPos(vpos))
 	}
@@ -6453,11 +6454,13 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// interpreter nets nothing, "for: body nets multiple values per
 	// iteration", 2026-09-26). See fnValueNoMatchRecovers for the gate.
 	if sig == nil && e.fnValueNoMatchRecovers(valIdx, fnDef, fn) {
-		rfn := *fn
-		rfn.Registry, _ = FnHome(e.Registry, &fnDef)
+		// The re-match runs over the VALUE's home (the module that minted
+		// it), passed beside the registry entry rather than rebound into a
+		// copy of it.
+		home, _ := FnHome(e.Registry, &fnDef)
 		pos := UncalledRaisePos(e.Tape.Ref(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
 		e.fnValueRecovery = true
-		err := CheckBraid.CheckModeAssumeSig(e, w, &rfn, &rfn.Signatures[0], pos)
+		err := CheckBraid.CheckModeAssumeSig(e, w, fn, home, &fn.Signatures[0], pos)
 		e.fnValueRecovery = false
 		return err
 	}
@@ -7291,7 +7294,12 @@ func uncalledDispatchDefinite(candidates []Value) bool {
 // a unit the bridge cannot describe, the closure stays data (ok=false).
 func (e *Engine) fnDefAtPointer(val Value) (Value, FnDefInfo, bool) {
 	if fnDef, ok := val.Data.(*FnDefInfo); ok {
-		return val, *fnDef, true
+		// The definition as this holder presents it: under the name a
+		// binding gave the holder (FnNameOf — a compiled frame's param, a
+		// def's store), the read every dispatch below makes of it.
+		view := *fnDef
+		view.Name = FnNameOf(&val)
+		return val, view, true
 	}
 	bridged, ok := compiledRuntime.ClosureAsFnDef(e.Registry, val)
 	if !ok {

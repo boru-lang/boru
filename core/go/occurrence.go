@@ -40,7 +40,12 @@ package core
 // because the engine clears a flag on every delivered argument and a
 // parsed token carries an identity (a record of its own).
 type occurrence struct {
-	id      string
+	id string
+	// name is the name a binding gave this holder's fn value (SetFnName):
+	// a frame's param, a def's store. It is the holder's, as a binding's
+	// name is the binding's — the fn's payload keeps the name it was
+	// constructed under.
+	name    string
 	asc     *Type
 	dynFrom *string
 	pos     *position
@@ -83,7 +88,7 @@ const idCleared = "\x00"
 
 // posOnly reports whether rec carries a position and nothing else.
 func posOnly(rec *occurrence) bool {
-	return rec.id == "" && rec.asc == nil && rec.dynFrom == nil
+	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil
 }
 
 // occFlags are the per-occurrence flags, one bit each.
@@ -351,5 +356,45 @@ func SetID(v *Value, id string) {
 	default:
 		rec.id = id
 	}
+	setOcc(v, rec)
+}
+
+// FnNameOf is the name a fn value answers to through this holder: the name
+// a binding gave the holder (SetFnName), else the name its payload was
+// constructed under — a fn definition's Name, a compiled closure's RetName
+// — and "" for an anonymous value or a value that is no fn.
+func FnNameOf(v *Value) string {
+	if v.occ != nil && v.occ.name != "" {
+		return v.occ.name
+	}
+	switch d := v.Data.(type) {
+	case *FnDefInfo:
+		return d.Name
+	case ClosurePayload:
+		return d.RetName
+	}
+	return ""
+}
+
+// HolderFnName is the name a binding gave this holder of a fn value
+// (SetFnName), "" when none did — the holder's own name, without the
+// payload's fallback.
+func HolderFnName(v *Value) string {
+	if v.occ == nil {
+		return ""
+	}
+	return v.occ.name
+}
+
+// SetFnName gives this holder of the fn value v the name a binding knows
+// it by — a frame's param, a def — and every other copy keeps the name it
+// had: the payload is shared, never copied to carry a binding's name (the
+// exceptions list's D8, retired in phase 3).
+func SetFnName(v *Value, name string) {
+	if HolderFnName(v) == name {
+		return
+	}
+	rec := occOf(v)
+	rec.name = name
 	setOcc(v, rec)
 }

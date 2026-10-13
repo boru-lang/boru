@@ -64,7 +64,7 @@ func (vc *vmContext) zeroArgFnValueApply(reg *core.Registry, fnVal core.Value, w
 		}
 		return nil, nil, true
 	}
-	return vc.runFnValueSig(reg, fnVal, *fd, sig, nil)
+	return vc.runFnValueSig(reg, fnVal, fd, sig, nil)
 }
 
 // boruSig reports whether sig runs a boru body.

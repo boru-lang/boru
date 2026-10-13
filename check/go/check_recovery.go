@@ -993,20 +993,24 @@ func recoverPoly(e *core.Engine, probe noMatchProber, w core.WordInfo, fn *core.
 // REGISTERED in. That is the dispatching registry for a core word, and for a
 // module word dispatched inside its own module body (e.Registry is then the
 // sub-registry). A module native reached from OUTSIDE as a fn value
-// (`Net.send-bytes`, execFnDefLiteral's recovery) carries its home on
-// fn.Registry, where the word IS a builtin, and its signatures are that
-// registry's own — the pair tryRecordPoly's identity guard checks
-// (2026-09-26). A bare word REBOUND by `unpack [send-bytes] Net` also carries
-// the home, but its signatures are copies, so the guard still refuses it and
-// it keeps "unmatched dispatch recovered".
-func recoveryPolyOwner(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo) *core.Registry {
-	if core.FnHomeForeign(e.Registry, fn) && fn.Registry.IsBuiltinWord(w.Name) {
-		return fn.Registry
+// (`Net.send-bytes`, execFnDefLiteral's recovery) has its home passed beside
+// it (core.FnHome — the dispatching registry for a fn that is not foreign),
+// where the word IS a builtin, and its signatures are that registry's own —
+// the pair tryRecordPoly's identity guard checks (2026-09-26). A bare word
+// REBOUND by `unpack [send-bytes] Net` also carries the home, but its
+// signatures are copies, so the guard still refuses it and it keeps
+// "unmatched dispatch recovered".
+func recoveryPolyOwner(e *core.Engine, w core.WordInfo, home *core.Registry) *core.Registry {
+	if home.IsBuiltinWord(w.Name) {
+		return home
 	}
 	return e.Registry
 }
 
-func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fallback *core.Signature, pos core.SrcPos) error {
+// checkModeAssumeSig recovers an unmatched dispatch of fn — a registry entry,
+// never a renamed or rebound copy of one — whose home (core.FnHome against
+// the dispatching registry) rides beside it.
+func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, home *core.Registry, fallback *core.Signature, pos core.SrcPos) error {
 	// Publish the dispatching word token for every ReturnsFn this recovery
 	// can invoke — the disjunct-partition combos, TryRecordRecoveredUserFn,
 	// the poly arms. The matched path publishes it in declaredReturnCarriers;
@@ -1015,7 +1019,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// PREVIOUS dispatch's cursor and keyed its region claim by that.
 	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
 	defer e.ClearRecoveryRaw()
-	owner := recoveryPolyOwner(e, w, fn)
+	owner := recoveryPolyOwner(e, w, home)
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
 	// with (or at least not contradicted by) the actual carrier

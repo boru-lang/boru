@@ -70,10 +70,10 @@ const (
 // written after it), whether the interpreter's step dispatches nothing — and
 // if so, whether it parks the value or raises — on an island that runs the
 // window: every value beneath must pass the end of its run unchanged.
-func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) (fnValueNoMatch, core.FnDefInfo) {
+func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) fnValueNoMatch {
 	for _, v := range resolved {
 		if !residualInert(v) {
-			return noMatchUnproven, core.FnDefInfo{}
+			return noMatchUnproven
 		}
 	}
 	return fnValueStepVerdict(reg, fnVal, resolved, forward)
@@ -83,42 +83,42 @@ func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forwa
 // that stays where it is — a landing's frame region, which no island run
 // sweeps (NUR344): the interpreter's step meets the values beneath as the
 // compiled stack holds them, a pending literal included.
-func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) (fnValueNoMatch, core.FnDefInfo) {
+func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) fnValueNoMatch {
 	fd, ok := core.FnDefOf(fnVal.Data)
 	if !ok || !fnValueParkable(reg, fnVal, *fd) {
-		return noMatchUnproven, *fd
+		return noMatchUnproven
 	}
 	for _, v := range forward {
 		if !core.IsSteplessValue(v) {
-			return noMatchUnproven, *fd
+			return noMatchUnproven
 		}
 	}
 	view := fnDispatchView(fd)
 	for i := range view.Signatures {
 		if s := &view.Signatures[i]; !s.Fallback && s.TotalArgs() == 0 {
-			return noMatchUnproven, *fd
+			return noMatchUnproven
 		}
 	}
 	window := make([]core.Value, 0, len(resolved)+1+len(forward))
 	window = append(append(append(window, resolved...), fnVal), forward...)
 	h := newRegionHostOver(reg, window)
-	w := core.WordInfo{Name: fd.Name, ArgCount: -1}
+	w := core.WordInfo{Name: core.FnNameOf(&fnVal), ArgCount: -1}
 	if planPicks(h, reg, &view, w, resolved) {
-		return noMatchUnproven, *fd
+		return noMatchUnproven
 	}
 	if view.HasForwardSigs() {
 		w.ForceStack = true
 		if planPicks(h, reg, &view, w, resolved) {
-			return noMatchUnproven, *fd
+			return noMatchUnproven
 		}
 	}
 	if core.FnValueStackMatches(*fd, resolved) {
-		return noMatchUnproven, *fd
+		return noMatchUnproven
 	}
 	if fd.NamedDef() && len(resolved)+len(forward) > 0 {
-		return noMatchRaise, *fd
+		return noMatchRaise
 	}
-	return noMatchPark, *fd
+	return noMatchPark
 }
 
 // fnValueParkable is the value-level half of the guards (see the file
@@ -128,7 +128,7 @@ func fnValueParkable(reg *core.Registry, fnVal core.Value, fd core.FnDefInfo) bo
 	if core.IsQuoted(&fnVal) || core.IsReachGroup(&fnVal) || fd.Macro || core.IsApplied(&fnVal) || len(fd.Signatures) == 0 {
 		return false
 	}
-	if fd.NamedDef() && core.FnHomeForeign(reg, &fd) {
+	if core.NamedFnValue(&fnVal) && core.FnHomeForeign(reg, &fd) {
 		return false
 	}
 	_, _, wrapped := core.UnwrapModifierChain(fnVal)
@@ -164,9 +164,10 @@ func residualInert(v core.Value) bool {
 }
 
 // uncalledAt is the named value's raise for an unmatched window: the
-// interpreter's code, detail and hint, at the position its step reports.
-func uncalledAt(reg *core.Registry, fnVal core.Value, fd core.FnDefInfo, candidates []core.Value) *core.BoruError {
-	return uncalledFunctionErrorAt(reg, fd.Name, core.UncalledRaisePos(fnVal.Pos(), candidates))
+// interpreter's code, detail and hint, under the name the value's holder
+// presents (core.FnNameOf), at the position its step reports.
+func uncalledAt(reg *core.Registry, fnVal core.Value, candidates []core.Value) *core.BoruError {
+	return uncalledFunctionErrorAt(reg, core.FnNameOf(&fnVal), core.UncalledRaisePos(fnVal.Pos(), candidates))
 }
 
 // callDynamicNoMatch is callDynamic's no-match arm over the window
@@ -184,7 +185,7 @@ func (vc *vmContext) callDynamicNoMatch(reg *core.Registry, fnVal core.Value, ar
 		}
 		resolved, forward = args, nil
 	}
-	switch verdict, fd := fnValueNoMatchVerdict(reg, fnVal, resolved, forward); verdict {
+	switch fnValueNoMatchVerdict(reg, fnVal, resolved, forward) {
 	case noMatchPark:
 		if !trailing {
 			return stack, true, nil
@@ -192,7 +193,7 @@ func (vc *vmContext) callDynamicNoMatch(reg *core.Registry, fnVal core.Value, ar
 		rotated := append(stack[:base:base], args...)
 		return append(rotated, fnVal), true, nil
 	case noMatchRaise:
-		return nil, true, stampAt(uncalledAt(reg, fnVal, fd, args), curDebug, pc, reg)
+		return nil, true, stampAt(uncalledAt(reg, fnVal, args), curDebug, pc, reg)
 	}
 	return nil, false, nil
 }

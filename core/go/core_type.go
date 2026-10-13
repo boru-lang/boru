@@ -412,13 +412,14 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// `make` can find it through the parent walk). The content
 		// layer (basic/go/micron.go) supplies both; without it the
 		// mint keeps DefaultBehavior.
-		info, _ := AsMicronType(body)
+		decl, _ := AsMicronType(body)
 		if err := validateSubtypeNameFor(body.Parent, name); err != nil {
 			return err
 		}
 		def := r.Types.MintType(name, body.Parent)
-		info.Name = name
-		info.Type = def
+		// The named kind is CONSTRUCTED from the declaration's parts; the
+		// anonymous declaration the family Ideal produced stays unnamed.
+		info := MicronTypeInfo{Name: name, Type: def, Fields: decl.Fields}
 		bhv := DefaultBehavior
 		if m, ok := body.Parent.Behavior().(MicronSubtypeMinter); ok {
 			bhv = m.MintSubtypeBehavior(def, &info)
@@ -426,16 +427,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		def.ensureTMeta().Behavior = bhv
 		installTypeBinding(r, name, def, NewValueRaw(def, info))
 	} else if IsClassType(&body) {
-		info, _ := AsClassType(body)
+		decl, _ := AsClassType(body)
 		// Object types are class types now — sealed nominal records rooted
 		// under Ideal/Class (the open Object container was removed).
-		rootName := "Class"
 		rootDef := TClass
-		if info.Parent != nil {
-			info.Name = info.Parent.Name + "/" + name
-		} else {
-			info.Name = rootName + "/" + name
-		}
+		info := namedClassInfo(&decl, "Class", name)
 		for _, p := range strings.Split(info.Name, "/") {
 			r.RegisterPart(p)
 		}
@@ -467,6 +463,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 			parent = TFnUndef
 		}
 		def := r.Types.MintType(name, parent)
+		// The declaration is COMPLETED here, not copied: a `gen` schema is a
+		// pointer payload its installer owns until this binding publishes it
+		// (the decl a `Self of [T]` reference and the unifier share), so its
+		// name and node are written once, in place, before anything else
+		// can hold the installed value.
 		info.Name = parent.Name() + "/" + name
 		info.Type = def
 		InstallSchemaUnifier(def, info)
@@ -477,7 +478,10 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// Ideal/Surface and attach a surfaceUnifier so dispatch / `is`
 		// consult the conformance set `exposes` fills in. The payload
 		// pointer is shared between body and unifier — a post-mint
-		// `exposes` is visible through both.
+		// `exposes` is visible through both — and the declaration is
+		// COMPLETED here, not copied: its installer owns it until this
+		// binding publishes it, so its name and node are written once, in
+		// place.
 		info, _ := AsSurfaceType(body)
 		info.Name = "Surface/" + name
 		r.RegisterPart("Surface")
@@ -540,12 +544,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// ordering note above stands).
 		if r.RuntimeStampingEnabled() {
 			if fd, isFn := body.Data.(*FnDefInfo); isFn {
-				// The stamp EVENT carries the type name so -compile-report
-				// (and the stamp-report gates) attribute the unit; the
-				// binding's payload Name stays empty (the canon note above).
-				named := *fd
-				named.Name = name
-				compiledRuntime.StampDetached(r, named, body.Pos())
+				// The stamp EVENT carries the type name — passed beside the
+				// definition — so -compile-report (and the stamp-report
+				// gates) attribute the unit; the binding's payload Name
+				// stays empty (the canon note above).
+				compiledRuntime.StampDetached(r, fd, name, body.Pos())
 			}
 		}
 		installPredicateUnifier(def, body, r, name)

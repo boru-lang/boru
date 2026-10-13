@@ -369,11 +369,12 @@ func InstallWordExtension(r *Registry, name string, ext FnDefInfo) error {
 	r.NoteBindTransition(BindDef, name, SrcPos{})
 	// Construction-time body check on the ADDED overloads only — the
 	// base's signatures were checked at their own construction, and
-	// re-analysing them here would duplicate their diagnostics.
-	added := ext
-	added.Name = name
-	added.Signatures = compiled
-	r.analysisFnConstructionPass(name, added)
+	// re-analysing them here would duplicate their diagnostics. ext is this
+	// call's own definition (a by-value parameter): its overloads become the
+	// compiled ones, and the word's name rides beside it — the pass analyses
+	// under its name argument, never a renamed copy.
+	ext.Signatures = compiled
+	r.analysisFnConstructionPass(name, ext)
 	if r.ready && r.OnRegisterHook != nil {
 		r.OnRegisterHook(name)
 	}

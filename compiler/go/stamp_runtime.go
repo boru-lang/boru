@@ -35,6 +35,14 @@ import core "github.com/boru-lang/boru/core/go"
 // value-level loops (StampFnValue / StampFnValueInPlace →
 // StampDetachedSig, COMPILE FAILURE-CLOSURE §7b).
 func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*CompiledFnRef, bool) {
+	return StampDetachedFnAs(r, fd, fd.Name, pos)
+}
+
+// StampDetachedFnAs is StampDetachedFn with the stamp event's name passed
+// beside the definition (a predicate type's name, which its fn payload does
+// not carry — the canon-ordering note in core.InstallTypeBody), never
+// written into a copy of it.
+func StampDetachedFnAs(r *core.Registry, fd core.FnDefInfo, name string, pos core.SrcPos) (*CompiledFnRef, bool) {
 	si, ok := firstStampableSig(fd)
 	if !ok {
 		// Not recorded: native-word bindings swept by the module-load loop
@@ -42,7 +50,7 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 		// noise, not an attempt.
 		return nil, false
 	}
-	return StampDetachedSig(r, fd, si, pos)
+	return stampDetachedSig(r, fd, name, si, pos, false)
 }
 
 // StampDetachedSig is the per-signature detached stamp: it compiles
@@ -57,7 +65,7 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // owns r (store words and codec resolution run on the registry executing
 // them, so this holds at every trigger site).
 func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos) (*CompiledFnRef, bool) {
-	return stampDetachedSig(r, fd, sigIdx, pos, false)
+	return stampDetachedSig(r, fd, fd.Name, sigIdx, pos, false)
 }
 
 // stampDetachedSig is StampDetachedSig with the unit's KEEP-DEFS mode:
@@ -69,8 +77,10 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 // cleanup): `def t 0 each [def t (t add 1) t] xs` over a gradual list read
 // 0 at every element, `[[1 1 1]]` for the interpreter's `[[1 2 3]]`
 // (NUR202). A fn VALUE's stamp keeps its frame-local defs — the
-// interpreter's CallBoru tears them down with the frame.
-func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos, keepsDefs bool) (*CompiledFnRef, bool) {
+// interpreter's CallBoru tears them down with the frame. name attributes the
+// stamp events: the name the value's holder carries (core.FnNameOf), passed
+// beside the definition.
+func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, name string, sigIdx int, pos core.SrcPos, keepsDefs bool) (*CompiledFnRef, bool) {
 	if r == nil || !r.RuntimeStampingEnabled() {
 		return nil, false
 	}
@@ -159,7 +169,7 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// The probe's latched reason when it gave one; the report printer
 		// substitutes a generic text for an empty reason (a compile failure path
 		// that never reached MarkUncompilable).
-		r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Reason: es.storedFnProbeReason})
+		r.RecordStampEvent(core.StampEvent{Name: name, Pos: pos, Reason: es.storedFnProbeReason})
 		return nil, false
 	}
 	ref := &CompiledFnRef{Unit: unit, depNames: deps}
@@ -189,7 +199,7 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// interprets, byte-identically. (Graduated from //covergate:allow: the
 		// variation sweep's module-body transform over a sift row reaches it —
 		// design/COVERAGE-ALLOWLIST.10.md graduation.)
-		r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Reason: "finalize left the unit unstamped"})
+		r.RecordStampEvent(core.StampEvent{Name: name, Pos: pos, Reason: "finalize left the unit unstamped"})
 		return nil, false
 	}
 	if len(deps) > 0 {
@@ -208,8 +218,8 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// invoke time (jitRestamp) instead of degrading permanently to CallBoru.
 	// fd here carries the §7a identity-minted capture clone, so a re-stamp
 	// needs no re-clone.
-	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs}
-	r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Stamped: true})
+	ref.Restamp = &RestampBox{fd: fd, name: name, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs}
+	r.RecordStampEvent(core.StampEvent{Name: name, Pos: pos, Stamped: true})
 	return ref, true
 }
 
@@ -243,7 +253,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 		return nil
 	}
 	box.Tries++
-	nr, ok := stampDetachedSig(r, box.fd, box.sigIdx, box.pos, box.keepsDefs)
+	nr, ok := stampDetachedSig(r, box.fd, box.name, box.sigIdx, box.pos, box.keepsDefs)
 	if !ok {
 		return nil
 	}
@@ -279,9 +289,12 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	// declined, and `-compile-report` lost the "gen" row the frontier ledger
 	// pins — while the body was, in fact, compiled. Reporting the outcome
 	// rather than this call's participation in it keeps the report true.
+	// The name a binding gave the value's holder attributes the stamp
+	// (core.FnNameOf — the payload's own name when no binding named it).
+	name := core.FnNameOf(&v)
 	for i := range fd.Signatures {
 		if CompiledRef(&fd.Signatures[i]) != nil {
-			r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: v.Pos(), Stamped: true})
+			r.RecordStampEvent(core.StampEvent{Name: name, Pos: v.Pos(), Stamped: true})
 			return v, false
 		}
 	}
@@ -305,7 +318,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 		if !storedSigEligible(&fd.Signatures[i]) {
 			continue
 		}
-		ref, ok := StampDetachedSig(home, *fd, i, v.Pos())
+		ref, ok := stampDetachedSig(home, *fd, name, i, v.Pos(), false)
 		if !ok {
 			continue
 		}
@@ -356,7 +369,7 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 		if !storedSigEligible(&fd.Signatures[i]) {
 			continue
 		}
-		ref, ok := StampDetachedSig(homeIP, *fd, i, v.Pos())
+		ref, ok := stampDetachedSig(homeIP, *fd, core.FnNameOf(&v), i, v.Pos(), false)
 		if !ok {
 			continue
 		}
@@ -392,6 +405,13 @@ type stampDeclined struct{}
 // stamp is per value, not per application — the interpreter behaviour is
 // byte-identical either way (slow, never wrong).
 func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) *CompiledFnRef {
+	return LazyStampFnSigAs(r, fd, fd.Name, sig, pos)
+}
+
+// LazyStampFnSigAs is LazyStampFnSig with the stamp's name passed beside the
+// definition: the name the applied value's holder carries (core.FnNameOf — a
+// binding names the holder, never a copy of its definition).
+func LazyStampFnSigAs(r *core.Registry, fd core.FnDefInfo, name string, sig *core.Signature, pos core.SrcPos) *CompiledFnRef {
 	impl, ok := sig.Impl.(*core.BoruImpl)
 	if !ok {
 		return nil
@@ -425,7 +445,7 @@ func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, po
 	// does (StampFnValue): a module export's free words resolve where it was
 	// written.
 	home, _ := core.FnHome(r, &fd)
-	ref, ok := StampDetachedSig(home, fd, idx, pos)
+	ref, ok := stampDetachedSig(home, fd, name, idx, pos, false)
 	if !ok {
 		impl.SetCompiled(stampDeclined{})
 		return nil
@@ -463,7 +483,7 @@ func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Ty
 		params[i] = core.FnParam{Type: t}
 	}
 	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
-	return stampDetachedSig(r, fd, 0, pos, true)
+	return stampDetachedSig(r, fd, fd.Name, 0, pos, true)
 }
 
 // bodyUndefs reports whether a token body unbinds a name with `undef`, in a

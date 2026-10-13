@@ -47,7 +47,7 @@ func TestSelfContainedGoFnAppliesOnOwnSigs(t *testing.T) {
 	}
 	seven := scFn("sclabel", 1, scConst(7))
 	fd := seven.Data.(*core.FnDefInfo)
-	if !core.IsSelfContainedGoFnDef(*fd) || !vmNativeApplicable(r, *fd) {
+	if !core.IsSelfContainedGoFnDef(*fd) || !vmNativeApplicable(r, &seven) {
 		t.Fatal("a self-contained Go-impl fn value is VM-native applicable")
 	}
 	vc := seam7VC(r)

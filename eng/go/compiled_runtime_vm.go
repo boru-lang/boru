@@ -89,7 +89,7 @@ func trimUnconsumedUnnamed(sig *core.Signature, res []core.Value) []core.Value {
 // hosts the apply, so a closure met outside any VM run stays data, as does
 // one whose program or unit the payload cannot name.
 func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Value, bool) {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := closureView(&v)
 	if !ok || r == nil || r.Invoker == nil {
 		return v, false
 	}
@@ -116,12 +116,17 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	return fnv, true
 }
 
-func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) {
-	// fd arrives with the stamp-event name applied by the caller; the
-	// ref lands on the shared *BoruImpl pointer (stampCompiledRef), so
-	// the same copy serves both calls.
-	if ref, stampOK := compiler.StampDetachedFn(r, fd, pos); stampOK {
-		compiler.StampCompiledRef(fd, ref)
+// ClosureRender renders a compiled closure under the name a binding gave
+// its holder (closureRender).
+func (vmCompiledRuntime) ClosureRender(cl *core.ClosurePayload, name string) (string, bool) {
+	return closureRender(cl, name)
+}
+
+func (vmCompiledRuntime) StampDetached(r *core.Registry, fd *core.FnDefInfo, name string, pos core.SrcPos) {
+	// The stamp-event name rides beside fd; the ref lands on the shared
+	// *BoruImpl pointer (stampCompiledRef) of the definition itself.
+	if ref, stampOK := compiler.StampDetachedFnAs(r, *fd, name, pos); stampOK {
+		compiler.StampCompiledRef(*fd, ref)
 	}
 }
 
@@ -129,9 +134,9 @@ func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos 
 // detached stamp made universal (compiler.LazyStampFnSig): it stamps, or
 // finds the earlier stamp of, the sig a fn VALUE's application matched, and
 // says whether the sig now carries a unit for InvokeCompiled to run.
-func (vmCompiledRuntime) LazyStamp(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) bool {
+func (vmCompiledRuntime) LazyStamp(r *core.Registry, fd *core.FnDefInfo, name string, sig *core.Signature, pos core.SrcPos) bool {
 	if sig == nil {
 		return false
 	}
-	return compiler.LazyStampFnSig(r, fd, sig, pos) != nil
+	return compiler.LazyStampFnSigAs(r, *fd, name, sig, pos) != nil
 }

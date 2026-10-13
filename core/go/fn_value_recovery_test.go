@@ -177,8 +177,8 @@ func TestExecFnDefLiteralFnValueRecovery(t *testing.T) {
 		sawPos      SrcPos
 	)
 	prev := CheckBraid.CheckModeAssumeSig
-	CheckBraid.CheckModeAssumeSig = func(e *Engine, _ WordInfo, fn *FnDefInfo, _ *Signature, pos SrcPos) error {
-		sawRecovery, sawReg, sawPos = e.fnValueRecovery, fn.Registry, pos
+	CheckBraid.CheckModeAssumeSig = func(e *Engine, _ WordInfo, _ *FnDefInfo, home *Registry, _ *Signature, pos SrcPos) error {
+		sawRecovery, sawReg, sawPos = e.fnValueRecovery, home, pos
 		return sentinel
 	}
 	t.Cleanup(func() { CheckBraid.CheckModeAssumeSig = prev })
@@ -193,7 +193,7 @@ func TestExecFnDefLiteralFnValueRecovery(t *testing.T) {
 		t.Errorf("fnValueRecovery must be set for the assume-sig call only (during %v, after %v)", sawRecovery, e.fnValueRecovery)
 	}
 	if sawReg != mod {
-		t.Errorf("the recovered fn must run on its home module registry, got %p want %p", sawReg, mod)
+		t.Errorf("the recovered fn's home module registry must ride beside it, got %p want %p", sawReg, mod)
 	}
 	if sawPos.Row != 6 {
 		t.Errorf("the recovery pos must borrow the operand's span, got %+v", sawPos)

@@ -225,6 +225,13 @@ func invokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 // FnHome picks the registry and the captures; see its comment for the two nil
 // cases.
 func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Value) ([]Value, error) {
+	return InvokeCallbackFnAs(r, fnDef, fnDef.nameOrEmpty(), sig, args)
+}
+
+// InvokeCallbackFnAs is InvokeCallbackFn for a fn value its holder names:
+// name — the name a binding gave the holder (FnNameOf), passed beside the
+// definition — attributes the first-application stamp.
+func InvokeCallbackFnAs(r *Registry, fnDef *FnDefInfo, name string, sig *Signature, args []Value) ([]Value, error) {
 	target, caps := FnHome(r, fnDef)
 	// The detached stamp at first application (S1b): a value with no unit for
 	// this sig obtains one now, at its home, memoised on the value — so the
@@ -233,7 +240,7 @@ func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Valu
 	// nil fnDef is a synthesized carrier sig with no fn value behind it (see
 	// FnHome): nothing to stamp.
 	if fnDef != nil {
-		compiledRuntime.LazyStamp(target, *fnDef, sig, SrcPos{})
+		compiledRuntime.LazyStamp(target, fnDef, name, sig, SrcPos{})
 	}
 	return InvokeCallback(target, sig, args, caps)
 }
@@ -329,7 +336,28 @@ func (fd *FnDefInfo) HasHome() bool {
 // conjunction carries the by-name dispatch and recursion semantics the
 // closure models decline and the no-match diagnostics report against.
 func (fd *FnDefInfo) NamedDef() bool {
-	return fd != nil && !fd.Anonymous && fd.Name != "" //sentinel:home the one compound reading of Name and Anonymous together
+	return fd.namedAs(fd.nameOrEmpty())
+}
+
+// namedAs is NamedDef under the name a holder presents the fn by
+// (FnNameOf): a binding names its holder, never the shared payload.
+func (fd *FnDefInfo) namedAs(name string) bool {
+	return fd != nil && !fd.Anonymous && name != "" //sentinel:home the one compound reading of a name and Anonymous together
+}
+
+// nameOrEmpty is fd's own name, "" for a nil fd.
+func (fd *FnDefInfo) nameOrEmpty() string {
+	if fd == nil {
+		return ""
+	}
+	return fd.Name
+}
+
+// NamedFnValue is NamedDef for the fn value v as its holder presents it:
+// under the name a binding gave the holder (FnNameOf), else its own.
+func NamedFnValue(v *Value) bool {
+	fd, ok := FnDefOf(v.Data)
+	return ok && fd.namedAs(FnNameOf(v))
 }
 
 // FnHomeLookup resolves the fn value's NAME in its home registry — the

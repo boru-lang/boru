@@ -3404,6 +3404,27 @@ func NewClassType(t *Type, info ClassTypeInfo) Value {
 	return NewValueRaw(t, info)
 }
 
+// namedClassInfo constructs the class decl declares, under its full type
+// path: the parent's path then name, or root then name for a direct child of
+// the class kind. A new info from decl's parts — never a write to decl, so
+// the anonymous declaration a `class` word produced (a pooled constant in a
+// compiled program, re-installed by the resident replay) stays unnamed. Its
+// merged-field cache starts empty: the named class computes its own.
+func namedClassInfo(decl *ClassTypeInfo, root, name string) ClassTypeInfo {
+	full := root + "/" + name
+	if decl.Parent != nil {
+		full = decl.Parent.Name + "/" + name
+	}
+	return ClassTypeInfo{
+		Fields:       decl.Fields,
+		Parent:       decl.Parent,
+		ID:           decl.ID,
+		Name:         full,
+		Type:         decl.Type,
+		BinaryLayout: decl.BinaryLayout,
+	}
+}
+
 // NewClassInstance creates an object instance value of the given
 // type. The caller must provide the type's *Type identity (typically
 // info.TypeRef.Type for the type currently being instantiated).
@@ -4530,13 +4551,23 @@ func kernelFormatDefault(v Value) string {
 	// map (a 600-line spill into error messages). See formatFnDef.
 	case isFnDefValue(v):
 		fd, _ := FnDefOf(v.Data)
-		return FormatFnDef(*fd)
-	case func() bool { cl, ok := v.Data.(ClosurePayload); return ok && cl.Render != "" }():
-		// A compiled closure carrying its source fn's interpreter rendering
-		// (CompiledFn.Render via OpPushClosure) — byte-identical to the
-		// interpreter's fn value in interpolation holes and print output.
+		return formatFnDefAs(fd, FnNameOf(&v))
+	case isClosureValue(v):
+		// A compiled closure renders as its source fn's interpreter
+		// rendering (CompiledFn.Render via OpPushClosure) — byte-identical
+		// to the interpreter's fn value in interpolation holes and print
+		// output — under the name a binding gave this holder, when one did
+		// (the compiled runtime describes the unit; CompiledRuntime).
 		cl, _ := v.Data.(ClosurePayload)
-		return cl.Render
+		if name := HolderFnName(&v); name != "" {
+			if r, ok := compiledRuntime.ClosureRender(&cl, name); ok {
+				return r
+			}
+		}
+		if cl.Render != "" {
+			return cl.Render
+		}
+		return fmt.Sprintf("%v(%v)", v.Parent, v.Data)
 	// TMap rendering moved to mapFormatBehavior in
 	// coretype_list_map_behaviors.go (Step 10). The top-of-function
 	// Behavior dispatch routes Map values (and TMap-rooted subtypes
@@ -4553,6 +4584,12 @@ func isFnDefValue(v Value) bool {
 	return ok
 }
 
+// isClosureValue reports whether v carries a compiled closure's payload.
+func isClosureValue(v Value) bool {
+	_, ok := v.Data.(ClosurePayload)
+	return ok
+}
+
 // formatFnDef renders a function value as a compact one-line summary:
 // `fn name(argTypes…)` per overload, e.g. `fn inc(Integer)` or
 // `fn (Integer, String) or (Float)`. It reads ONLY Name and the
@@ -4562,7 +4599,12 @@ func isFnDefValue(v Value) bool {
 // module exports map in particular). Anonymous lambdas have no Name and
 // render as `fn(args…)`.
 func FormatFnDef(fd FnDefInfo) string {
-	name := fd.Name
+	return formatFnDefAs(&fd, fd.Name)
+}
+
+// formatFnDefAs is FormatFnDef under the name a holder knows the fn by
+// (FnNameOf), which a binding may have given it in place of the payload's.
+func formatFnDefAs(fd *FnDefInfo, name string) string {
 	// Summarise the argument shapes. Prefer non-empty signatures; a
 	// synthesized 0-arg fallback alongside real overloads is noise here
 	// (it is not shown by `help` either), so drop empty sigs when any

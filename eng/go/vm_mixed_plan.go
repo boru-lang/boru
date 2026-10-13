@@ -68,7 +68,7 @@ func (vc *vmContext) mixedPlanApply(reg *core.Registry, window []core.Value) ([]
 	if !ok || (!fd.Anonymous && !legacyReMatchAgrees(*fd, window[:p-nStk], args)) {
 		return nil, nil, false
 	}
-	res, err, ran := vc.runFnValueSig(reg, fnVal, *fd, &own[0], args)
+	res, err, ran := vc.runFnValueSig(reg, fnVal, fd, &own[0], args)
 	if !ran || err != nil {
 		return nil, err, ran
 	}
@@ -96,7 +96,7 @@ func legacyReMatchAgrees(fd core.FnDefInfo, below, args []core.Value) bool {
 func mixedPlanArgs(reg *core.Registry, fd core.FnDefInfo, window []core.Value, p int) (nStk, nFwd int, args []core.Value, ok bool) {
 	view := fnDispatchView(&fd)
 	h := newRegionHostOver(reg, window)
-	w := core.WordInfo{Name: fd.Name, ArgCount: -1}
+	w := core.WordInfo{Name: core.FnNameOf(&window[p]), ArgCount: -1}
 	resolved := window[:p]
 	sig, positions, _ := core.PlanMatch(h, h.win, reg, &view, w, resolved, p, false, false, false)
 	if (sig == nil || sig.Fallback) && view.HasForwardSigs() {
