@@ -66,9 +66,11 @@ Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2
 > at 0.809 of phase 2's time (0.615 of phase 0's, chained). Of the
 > exceptions list's transitional class only D10, the by-value header, is
 > left; decision 3 (phase 4) is the maintainer's next call, with the
-> numbers in §9. The merged ADR-008 gate's last 35 statements and `make
-> cover-gate-check`'s 97 were closed on this branch before the second
-> pass (`970d0d50f`, `0490d8236`).
+> numbers in §9. At the branch head (22/n) the merged ADR-008 gate is
+> 100% (90,057 statements, 330 allowlisted) and `make cover-gate-check`
+> and `make cover-gate-core` are 100%; every `make ci-local` step passed
+> on the branch (the race, borudebug and wasm steps at 21/n), except
+> `vuln`, which this container cannot run (no `govulncheck`; advisory).
 
 > ## Where things stand on 2026-10-05 — the baseline
 >
