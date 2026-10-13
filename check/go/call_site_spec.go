@@ -119,9 +119,7 @@ func specialisedArgs(r *core.Registry, params []core.FnParam, args, genArgs []co
 		if specArgs == nil {
 			specArgs = append([]core.Value(nil), genArgs...)
 		}
-		c := a
-		core.SetID(&c, core.GenerateID(core.IDPrefixForType(c.Parent)))
-		specArgs[i] = c
+		specArgs[i] = core.MintFresh(&args[i])
 		specParams = append(specParams, i)
 		specFns = append(specFns, a)
 		suffix += "!spec" + strconv.Itoa(i) + "=" + id

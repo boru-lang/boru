@@ -903,17 +903,26 @@ See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
 ## Typed-Def Reparent
 
 Every typed-def path that rewraps a value's `Parent` to a refine
-subtype's `*Type` routes through `eng.ReparentValue(v, def)` (re-
-exported as `native.ReparentValue`). The helper returns a fresh
-by-value copy with `Parent` rebound — the `Payload`/`Pos`/`Quoted`/
-`Carrier`/`Eval` fields are preserved.
+subtype's `*Type` routes through `core.MintRetagged(&v, def)` (re-
+exported as `basic.MintRetagged`; lang calls core's directly). It
+CONSTRUCTS the retagged value from v's parts (`core/go/mint.go`, the
+B6 constructor family of design/VALUE-NO-COPY-EXCEPTIONS.0.md) — the
+payload, facets, position, identity and occurrence flags are v's, the
+`Parent` is def — and never writes v. It replaced `ReparentValue`,
+which returned a by-value copy with `Parent` overwritten (no-copy
+phase 3).
 
-The invariant the helper codifies: NEVER mutate `Parent` on a Value
+The invariant the constructor codifies: NEVER mutate `Parent` on a Value
 that was returned by `Unify` when Unify could have swapped to a
 type-literal side (`Unify(1, Foo-literal)` returns `Foo-literal`,
 not `1`, when Foo is a strict subtype of Integer). The refine-bare
 reparent originally got this wrong and stored the Foo type literal
-as the binding instead of the integer body.
+as the binding instead of the integer body. The rest of the family
+builds the other values that differ from an existing one in a single
+part: `MintPayload` (a new payload, e.g. a freshened class default or
+a stamped fn), `MintFresh`/`MintLike` (an identity of its own),
+`MintCarrierFrom` (a carrier join's result), `MintElemTyped` (a flex
+retag). Never write `x := v; x.Parent = t`.
 
 Current reparent callsites:
 

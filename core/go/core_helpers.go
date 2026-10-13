@@ -659,15 +659,14 @@ func RetagTypedContainerValue(pat, arg Value) Value {
 }
 
 // RetagFlexElem retags a flex container v so its element type is elemType,
-// returning v's header with the tag set (the FlexListData/FlexMapData pointer
-// stays shared — identity preserved). When elemType is itself a typed container
+// returning v constructed under the tag (MintElemTyped: the
+// FlexListData/FlexMapData pointer stays shared — identity preserved). When elemType is itself a typed container
 // (a nested {:{:T}} / [:[:T]] flex), v's EXISTING children are recursively
 // retagged IN PLACE so a nested write enforces the contract at every depth
 // (FlexDeepCopy makes the whole tree flex, so every child is a mutable flex
 // container). Fixes the nested-container invariant hole (#8, Codex round 8).
 func RetagFlexElem(v Value, elemType Value) Value {
-	out := v
-	out.SetElemConstraint(elemType)
+	out := MintElemTyped(&v, &elemType)
 	if IsTypedMap(&elemType) || IsTypedList(&elemType) {
 		if ci, err := AsChildType(elemType); err == nil {
 			retagFlexChildrenInPlace(v, ci.Child)

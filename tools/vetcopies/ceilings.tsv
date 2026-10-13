@@ -6,10 +6,10 @@
 module	value	bulk
 basic/go	1161	26
 calc/go	11	9
-check/go	529	18
+check/go	523	18
 cmd/go	23	0
-compiler/go	1341	25
-core/go	4420	68
+compiler/go	1339	25
+core/go	4419	68
 eng/go	524	132
 lang/go	4505	41
 parser/go	52	0

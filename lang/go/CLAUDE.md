@@ -1078,12 +1078,14 @@ accessors below.)
   3); see eng/go/CLAUDE.md "Canonical `*Type` Pointers".
 
 **Typed-def reparent**:
-- `ReparentValue(v, def) Value` — return a fresh copy of v with
-  `Parent` rebound to def. The single primitive every typed-def
-  reparent path uses (predicate / refine-bare / FnUndef branches).
-  The by-value copy is explicit so Unify-swap results (which may
-  return a type literal in the value position) can never be
-  silently mutated and stored as the binding.
+- `MintRetagged(&v, def) Value` — construct v's value under the type
+  def (v's payload, facets, position and identity; v itself is never
+  written). The single primitive every typed-def reparent path uses
+  (predicate / refine-bare / FnUndef branches), so Unify-swap results
+  (which may return a type literal in the value position) can never be
+  silently mutated and stored as the binding. It replaced
+  `ReparentValue` (no-copy phase 3); see eng/go/CLAUDE.md "Typed-Def
+  Reparent" for the rest of the constructor family.
 
 **Pos threading**:
 - `WithPos(v, src)` — return v with Pos copied from src. Use when a

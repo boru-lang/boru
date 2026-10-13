@@ -860,14 +860,13 @@ func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
 // `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` [0 0] for
 // [8 0] (measured 2026-09-22, NUR177). The declared-return path above mints
 // its carriers per call already; this is the undeclared path's equivalent,
-// and it is a shallow copy — a payload is the same value on every call, only
-// the identity is the call's own.
+// and each result is constructed from the residual's parts (MintFresh) — a
+// payload is the same value on every call, only the identity is the call's
+// own.
 func freshResidual(stk []core.Value) []core.Value {
 	out := make([]core.Value, len(stk))
-	for i, v := range stk {
-		c := v
-		core.SetID(&c, core.GenerateID(core.IDPrefixForType(c.Parent)))
-		out[i] = c
+	for i := range stk {
+		out[i] = core.MintFresh(&stk[i])
 	}
 	return out
 }
@@ -1071,8 +1070,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 		// its analysed payload under a fresh identity: a later `apply` over
 		// it re-steps the value and records through this same arm, resolving
 		// the fn to THIS apply's event.
-		fresh = outs[0]
-		core.SetID(&fresh, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+		fresh = core.MintFresh(&outs[0])
 	} else {
 		parent := outs[0].Parent
 		if parent == nil {

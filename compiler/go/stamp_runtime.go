@@ -337,9 +337,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	}
 	stamped := *fd
 	stamped.Signatures = sigs
-	out := v
-	out.Data = &stamped
-	return out, true
+	return core.MintPayload(&v, &stamped), true
 }
 
 // StampFnValueInPlace is StampFnValue for PRE-PUBLICATION values: it stamps

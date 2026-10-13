@@ -9841,7 +9841,6 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	if IsDynamic(&last) || es.ApplyPending(IDOf(&last)) {
 		SetDynamic(&out, true)
 	}
-	SetID(&out, GenerateID(IDPrefixForType(outType)))
 	setPosRef(&out, posOf(&last))
 	// consumed counts from the TOP of the window (the values
 	// nearest the fn). It is normally every arg, but a callee whose

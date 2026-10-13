@@ -78,3 +78,17 @@ func MintCarrierFrom(src *Value) Value {
 	SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
 	return v
 }
+
+// MintElemTyped constructs the container src under the element constraint
+// *elem (a flex retag): the same payload — so a flex container keeps its
+// shared store and its identity — facets and occurrence, the element type
+// elem's. The facet refers to *elem, which is never written after (R2); an
+// Any constraint is none.
+func MintElemTyped(src *Value, elem *Value) Value {
+	v := mintFrom(src, src.Parent, src.Data)
+	v.elem = nil
+	if elem.Parent != nil && !elem.Parent.Equal(TAny) {
+		v.elem = elem
+	}
+	return v
+}
