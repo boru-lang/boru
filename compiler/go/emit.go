@@ -414,10 +414,14 @@ type eventFlags struct {
 	// type (which mirrors the LAST value — a heterogeneous body like
 	// `for 2 [7 "x"]` binds Integer 7 while the carrier renders String).
 	firstElemType *core.Type
-	// spliceDyn marks an OpSpliceDyn event (§9.2b): its payload's provenance
-	// was reassigned to this event, so a re-read of the payload after the
-	// spread must decline (resolveResidualOperands).
-	spliceDyn bool
+	// spliceDyn marks an OpSpliceDyn event (§9.2b): a spread that keeps its
+	// payload's identity, so two spreads of one payload in the residual
+	// decline (resolveResidualOperands). spliceMany marks one whose payload
+	// may be a plain list — the spread's runtime count is the list's
+	// (core.SpliceExpand), which no frame slot holds (lowerer.spliceSpread);
+	// any other payload spreads to itself, one value.
+	spliceDyn  bool
+	spliceMany bool
 	// regionMayBeFn marks a REGION event whose run can leave a CALLABLE value.
 	// The two lanes disagree about one: the INTERPRETER re-steps a Function
 	// that arrives on its stack (or in a handler's spliced-back results), the
@@ -1729,6 +1733,14 @@ type EmitState struct {
 	// to a token-re-running native must not READ one. See
 	// recordCodeBodyClosureRead.
 	dynBoundClosures map[string]bool
+	// spliceBinds names the defs bound to a splice marker over a COMPUTED
+	// payload (`def d word xs` over a computed xs): the bind's twin replays
+	// the marker the pass captured, whose payload is the pass's carrier, so
+	// a code body the run steps against the registry (`do [d]`) would spread
+	// the placeholder — [7 [:Integer]] for the interpreter's [7 1 2].
+	// recordCodeBodyClosureRead declines such a read; the root's own reads
+	// spread the payload's operand (RecordSpliceDyn).
+	spliceBinds map[string]bool
 	// valReadIDs holds the IDs of `/v` reads aliasValRead traced to a
 	// def-bound produced fn value: data on both engines, never a paren
 	// that failed to collapse (argIsProducedClosure).
@@ -3978,6 +3990,13 @@ func (es *EmitState) producedInCurrentUnit(v *core.Value) bool {
 }
 
 func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
+	// A computed LIST splice's spread is one recorded result standing for
+	// the list's elements (eventFlags.spliceMany): only the program residual
+	// lays it out by count, so as an operand of anything else it resolves to
+	// nothing (consumesSpliceSpread).
+	if es.spliceSpreadOf(&v) {
+		return EmitOperand{}, false
+	}
 	// A `/v` read of a def-bound capturing fn literal (readOps) is the
 	// literal's closure operand, before any other resolution.
 	if op, ok := es.readOps[core.IDOf(&v)]; ok {
@@ -10656,8 +10675,15 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// interpreter's apply stamps lost, answering whatever the read answered
 	// (NUR269). Such an apply has no modelled overload and no tail window; it
 	// reaches the dynamic-lead decline below.
+	//
+	// Nor is a computed splice's spread such a registration: it is a value
+	// the dispatch reads and hands back (`7 d swap`), and the splice is no
+	// hook of this dispatch — eliding it laid the spread out as one value
+	// moved above the 7 ([1 2 7] for the interpreter's [7 2 1]). The
+	// dispatch records, and its operand resolution declines a list's
+	// spread (resolveOperand).
 	if len(outs) > 0 && !loneGradualApplyLead(word, args) {
-		if pr, ok := es.producerOf(&outs[0]); ok && !es.eventInfo[pr.seq].generic {
+		if pr, ok := es.producerOf(&outs[0]); ok && !es.eventInfo[pr.seq].generic && !es.eventInfo[pr.seq].spliceDyn {
 			return true
 		}
 	}
@@ -10958,7 +10984,7 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 // A duplicating shuffle (dup/over/…) mints fresh output IDs (ReturnsIdentity),
 // fails the multiset check, and falls through to the normal bake.
 func (es *EmitState) recordShuffleElided(word string, sig *core.Signature, args, outs []core.Value) bool {
-	if !check.AnyDynamicCarrier(args) || !es.dynamicStackShuffleOK(word, sig) {
+	if !check.AnyDynamicCarrier(args) || !es.dynamicStackShuffleOK(word, sig) || es.consumesSpliceSpread(args) {
 		return false
 	}
 	if len(outs) != len(args) {
@@ -12813,7 +12839,7 @@ func slotDeclaresFunction(sig *core.Signature, i int) bool {
 }
 
 func (es *EmitState) recordCodeBodyClosureRead(args []core.Value) bool {
-	if len(es.dynBoundClosures) == 0 {
+	if len(es.dynBoundClosures) == 0 && len(es.spliceBinds) == 0 {
 		return false
 	}
 	for i := range args {
@@ -12824,19 +12850,20 @@ func (es *EmitState) recordCodeBodyClosureRead(args []core.Value) bool {
 		if aerr != nil {
 			continue
 		}
-		body := make([]core.Value, 0, lst.Len())
-		for j := 0; j < lst.Len(); j++ {
-			body = append(body, lst.Get(j))
-		}
-		found := false
-		core.WalkBodyWords(body, func(w core.WordInfo, _ core.Value) {
-			if es.dynBoundClosures[w.Name] {
-				found = true
+		reason := ""
+		core.WalkBodyWords(lst.Elems(), func(w core.WordInfo, _ core.Value) {
+			switch {
+			case reason != "":
+			case es.dynBoundClosures[w.Name]:
+				reason = "code body reads a def-bound compiled closure (Stage 2)"
+			case es.spliceBinds[w.Name]:
+				// The bind twin replays the marker the pass captured, whose
+				// payload is the pass's carrier (spliceBinds).
+				reason = "code body reads `" + w.Name + "`, bound to a splice over a computed payload (its binding is the pass's placeholder)"
 			}
 		})
-		if found {
-			es.MarkUncompilable(
-				"code body reads a def-bound compiled closure (Stage 2)")
+		if reason != "" {
+			es.MarkUncompilable(reason)
 			return true
 		}
 	}
@@ -12937,6 +12964,12 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 			es.dynBoundClosures = map[string]bool{}
 		}
 		es.dynBoundClosures[name] = true
+	}
+	if info, err := core.AsSplice(&v); err == nil && !core.IsConcrete(&info.Data) {
+		if es.spliceBinds == nil {
+			es.spliceBinds = map[string]bool{}
+		}
+		es.spliceBinds[name] = true
 	}
 	// NOTE the def NAME of a produced fn value by its producing slot, so the
 	// lowering seats it on the value's promoted store (CompiledFn.StoreNames)
@@ -15342,9 +15375,40 @@ func (es *EmitState) RecordSpliceDyn(payload *core.Value, pos core.SrcPos) bool 
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	f.spliceDyn = true
+	f.spliceMany = spliceMaySpread(payload)
 	es.eventInfo[seq] = f
 	es.setProduced(payload, seq)
 	return true
+}
+
+// spliceSpreadOf reports whether v is the spread of a computed splice whose
+// payload may be a list (eventFlags.spliceMany): its runtime count is the
+// list's, where the pass holds one value.
+func (es *EmitState) spliceSpreadOf(v *core.Value) bool {
+	pr, ok := es.producerOf(v)
+	return ok && es.eventInfo[pr.seq].spliceMany
+}
+
+// consumesSpliceSpread reports whether a dispatch takes such a spread as an
+// operand: the pass modelled the spread as one value and the run spreads the
+// list, so the dispatch reads another window — `7 d swap` over a computed
+// [1 2] compiled the swap as a reorder of the spread and the 7, [1 2 7] for
+// the interpreter's [7 2 1]. Only the program residual absorbs a spread.
+func (es *EmitState) consumesSpliceSpread(args []core.Value) bool {
+	for i := range args {
+		if es.spliceSpreadOf(&args[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// spliceMaySpread reports whether a computed splice payload may expand to
+// a count other than one at run time: a plain list spreads its elements
+// (core.SpliceExpand), so a payload whose type is a list or admits one (Any,
+// a gradual bound) may; a fn, a map or a scalar spreads to itself.
+func spliceMaySpread(p *core.Value) bool {
+	return p.Parent != nil && !core.IsDynamic(p) && p.Parent.ConformsTo(core.TList)
 }
 
 // RecordClosureCall records a higher-order word's dispatch where the code BODY
@@ -17289,13 +17353,13 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 // fn body. A non-empty reason declines the program.
 func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value) ([]EmitOperand, string) {
 	// A dynamic splice's spread (§9.2b) keeps its payload's identity, so two
-	// spreads of one payload (`def xs (range 1 3) def d word xs d 7 d`)
+	// spreads of one payload (`def xs (range 1 3) def d word xs d xs d`)
 	// surface that identity twice in the residual, each a variadic result of
-	// its own splice event, and the residual's ordering would seat them in
-	// slots of a count neither has: decline (PR #279 review), the
-	// interpreter owns the shape. A re-read of the payload def after the
-	// splice (`d xs`) is no spread — its holder carries the payload's own
-	// producer — and compiles.
+	// its own splice event, which no seating lays out by count: decline (PR
+	// #279 review), the interpreter owns the shape. A re-read of the payload
+	// def after the splice (`d xs`) is no spread — its holder carries the
+	// payload's own producer — and compiles. (Spreads the residual's order
+	// would spill or promote decline at the lowering: lowerer.spliceSpread.)
 	seenSplice := map[string]bool{}
 	for _, rv := range residual {
 		if pr, ok := es.producerOf(&rv); ok && es.eventInfo[pr.seq].spliceDyn {

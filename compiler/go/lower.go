@@ -3293,9 +3293,19 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 			return false
 		}
 	}
-	for _, slot := range lw.vm {
+	for i, slot := range lw.vm {
 		if lw.catchPhantom(slot.seq) {
 			// A value-less body's latched count may be none (NUR222).
+			return false
+		}
+		if lw.spliceSpread(slot.seq) && (i != 0 || !opsLeadOnceWith(ops, slot)) {
+			// A computed splice's spread is the payload's count, and its
+			// spill takes the top element alone: the run survives only as
+			// the deepest value re-pushed first, the elements beneath its
+			// top never moving. Anywhere else the re-push lays out one
+			// value where the run spread several (`d xs e` over two
+			// computed lists ran [1 2 4 [1 2] 5] for the interpreter's
+			// [1 2 [1 2] 4 5]).
 			return false
 		}
 	}
@@ -3879,6 +3889,26 @@ func (lw *lowerer) catchPhantom(seq int) bool {
 	return lw.es != nil && lw.es.eventInfo[seq].catchPhantom
 }
 
+// opsLeadOnceWith reports whether the first of ops is slot's event result
+// and no later operand names it again.
+func opsLeadOnceWith(ops []EmitOperand, slot vmSlot) bool {
+	n := 0
+	for _, op := range ops {
+		if slotIs(slot, op) {
+			n++
+		}
+	}
+	return n == 1 && len(ops) > 0 && slotIs(slot, ops[0])
+}
+
+// spliceSpread reports whether the event at seq is a computed splice's
+// spread over a payload that may be a list (RecordSpliceDyn's spliceMany):
+// one recorded result standing for the list's elements, whose runtime count
+// no frame slot holds. A spread of any other payload is its one value.
+func (lw *lowerer) spliceSpread(seq int) bool {
+	return lw.es != nil && lw.es.eventInfo[seq].spliceMany
+}
+
 // opsHaveCatchVariadic reports whether any operand names an event the
 // do-catch latch made runtime-variable (eventFlags.catchVariadic).
 func (lw *lowerer) opsHaveCatchVariadic(ops []EmitOperand) bool {
@@ -4401,8 +4431,12 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// caught path deliver. A value-less `do` body's is not that: the
 		// latch (catchVariadic) seats the one Error a caught raise leaves,
 		// and the clean run leaves nothing (NUR222: `if [true] [do [1 drop]
-		// 2] [3]` underflowed STORE_LOCAL).
-		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq)) {
+		// 2] [3]` underflowed STORE_LOCAL). Nor is a computed splice's
+		// spread: its one recorded result stands for the payload's
+		// elements, and a store of it kept the top one where the residual
+		// re-pushed it — `def d word xs  def e word ys  d 7 e` over two
+		// computed lists ran [1 4 2 7 5] for the interpreter's [1 2 7 4 5].
+		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq) || lw.spliceSpread(ev.seq)) {
 			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
 		}
 		for i := c.nout - 1; i >= 0; i-- {
