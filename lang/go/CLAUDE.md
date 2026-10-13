@@ -1090,7 +1090,11 @@ accessors below.)
 **Pos threading**:
 - `WithPos(v, src)` — return v with Pos copied from src. Use when a
   handler constructs a new Value from an input — error reporting
-  downstream then has the source location.
+  downstream then has the source location. The position is shared (the
+  record it lives in), so threading allocates nothing.
+- `core.ThreadPos(&slot, &src)` (basic re-exports it as `ThreadPos`) —
+  the same, written in a slot the handler owns (its own results slice, a
+  value it just built) instead of copying the value out and back.
 
 ## Undefined Words (CRITICAL)
 

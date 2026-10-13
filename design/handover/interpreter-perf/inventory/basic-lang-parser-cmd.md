@@ -650,3 +650,203 @@ parse.go (and 5 in xml_literal.go) construct from source text. The hits are:
 | internal/test/test.go:264, 279 | read-only walks of a result stack | by-value-flow | no | — | — |
 | genhelp/main.go:161 | `prog := []native.Value{…}` construction | construction | — | — | — |
 | internal/vault/*, attach.go:172, buildrt.go:393 | `copy(` on `[]byte`/`[]string` | not Values | — | — | out of scope |
+
+## Phase 3 dispositions (families 2 and 3)
+
+Phase 3 checked every row above in family 2 (occurrence state copied,
+modified, written back: 42 rows) or family 3 (token runs copied onto a tape:
+71 rows), and found seven family-3 sites the inventory missed (N1–N7). The
+first pass, against `53c65d9ef`, left rows 21, 39, 47, 53, 62 and 101 and all
+of N1–N7 OPEN. Commits "No-copy phase 3 (13/n)" to "(15/n)" resolved them;
+"(16/n)" touches no file in these modules. Each resolution below is checked
+against `8daf96009`, and no row is open.
+
+Terms, with classes from `design/VALUE-NO-COPY-EXCEPTIONS.0.md`:
+
+- **gone (removed)**: the copy is deleted.
+- **gone (holder)**: the copy is the by-value header copy (D10) into a new
+  holder, and the occurrence write lands on that holder only.
+- **construction (B1, B4, B6)**: a value built from parts. B6 is the `Mint*`
+  family in `core/go/mint.go`, `MintFresh` included.
+- **C1**: the run reaches execution only through the tape's own copy.
+  **C1 (kept)**: the one copy kept for a body held across user code, handed
+  to a goroutine, or possibly flex.
+
+| disposition | family 2 | family 3 | total |
+|---|---:|---:|---:|
+| gone (removed) | 0 | 42 | 42 |
+| gone (holder) | 18 | 0 | 18 |
+| construction (B6) | 13 | 0 | 13 |
+| construction (B1) | 10 | 5 | 15 |
+| construction (B4) | 1 | 0 | 1 |
+| C1 | 0 | 19 | 19 |
+| C1 (kept) | 0 | 12 | 12 |
+| **total** | **42** | **78** | **120** |
+
+Against the first pass, the six OPEN rows became gone (removed) (21, 39, 62,
+101), gone (holder) (47) and construction (B6) (53), and N1–N7 are gone
+(removed). Row 108 moved from C1 (kept) to gone (removed): 15/n made the
+recorder share the program it used to copy.
+
+`inventory row` gives the inventory's own lines (`6780a6030`); an N row gives
+its line at `53c65d9ef`. `site at 8daf96009` was re-checked for every
+resolved row and in every file the commits touched. The other rows keep the
+first pass's lines, read at `53c65d9ef`, in files unchanged since. **was
+OPEN** marks a row the first pass left open.
+
+| # | inventory row | fam | site at 8daf96009 | disposition | how |
+|---|---|---|---|---|---|
+| 1 | native_definition.go:1024 predicate typed def `ReparentValue(out, def)` | 2 | basic/go/native_definition.go:1024 | construction (B6) | `out = MintRetagged(&out, def)`; `n`'s binding is never written |
+| 2 | native_definition.go:1054 `evalParenAnnotation` copy, then `Run` | 3 | basic/go/native_definition.go:1052-1053 | gone (removed) | the ParenExpr's own `Toks` go straight to `Run` |
+| 3 | native_definition.go:1540 refine-subtype `ReparentValue(body, def)` | 2 | basic/go/native_definition.go:1538 | construction (B6) | `MintRetagged(&body, def)` is the bound value; the Unify result is never retagged |
+| 4 | native_definition.go:1596 typed-container `ReparentValue(unified, reparent)` | 2 | basic/go/native_definition.go:1594 | construction (B6) | `unified = MintRetagged(&unified, reparent)` |
+| 5 | native_definition.go:1653-1660 `defNarrowedBodyBind` reparent | 2 | basic/go/native_definition.go:1651-1659 | construction (B6) | the local holder `bound` (D10) ends as `MintRetagged(&bound, reparent)` |
+| 6 | native_definition.go:1820 `var`: `body := elems.Slice()[1:]` | 3 | basic/go/native_definition.go:1818, 1870 | gone (removed) | `elems.Elems()[1:]`, a view, joins var's expansion, which the engine splices |
+| 7 | native_definition.go:1839/1857/1865/1880 `WithPos(NewWord(..), decl)` | 2 | basic/go/native_definition.go:1837, 1855, 1863, 1878 | construction (B1) | a fresh `NewWord` takes decl's position record before publication, allocating nothing |
+| 8 | native_definition.go:1858 `append(result, declElems.Slice()[1:]...)` | 3 | basic/go/native_definition.go:1856 | C1 | `declElems.Elems()[1:]` joins var's new run of synthesized tokens; the literal is never stepped |
+| 9 | native_definition.go:1909 `FnHandler` `elems := _lst.Slice()` | 3 | basic/go/native_definition.go:1907 | gone (removed) | `_lst.Elems()` → FnConstruct; the body template is ParseFnDef's one copy per construction (X3) |
+| 10 | native_definition.go:2166 `AfnHandler` `bodyElems = lst.Slice()` | 3 | basic/go/native_definition.go:2164 | C1 (kept) | one copy per afn construction, kept as `Boru(bodyElems)`; each call copies it onto the tape once |
+| 11 | native_definition.go:2255/2286 fnpred/fnsig `spec := _lst.Slice()` | 3 | basic/go/native_definition.go:2253, 2284 | gone (removed) | `_lst.Elems()`; fnpred builds a new triples spine for FnConstruct |
+| 12 | native_control.go:803 `DoEvalList` copy, then `sub.Run` | 3 | basic/go/native_control.go:800-806 | gone (removed) | `sub.Run(elems)` |
+| 13 | native_control.go:831 stepless `append([]Value(nil), elems...)` | 3 | basic/go/native_control.go:829 | construction (B1) | the evaluated list's new spine, one per `do`, elements shared |
+| 14 | native_control.go:835 `doEvalDataList` copy before `sub.Run` | 3 | basic/go/native_control.go:831 | gone (removed) | `New(r).Run(elems)` |
+| 15 | native_control.go:844 `DoEvalMapValue` `_lst.Slice()` | 3 | basic/go/native_control.go:839 | gone (removed) | `_lst.Elems()` |
+| 16 | native_control.go:881-884 `ifCondTokens` `NewMark(id, condSlice...)` + append | 3 | basic/go/native_control.go:871-890 (`ifMarkMoveTokens`) | C1 | `NewMark(id)` carries no body; mark, cond (`Elems`) and move form a new run the engine splices |
+| 17 | native_control.go:1589 `IfClauseHandler` `ifClause(_lst.Slice())` | 3 | basic/go/native_control.go:1584 | gone (removed) | `ifClause(_lst.Elems(), …)` |
+| 18 | native_control.go:1619 `CaseHandler` `CaseClauses(lst.Slice())` | 3 | basic/go/native_control.go:1614 | gone (removed) | `lst.Elems()` |
+| 19 | native_control.go:1631 `caseSubject` copy, then `Run` | 3 | basic/go/native_control.go:1625 | gone (removed) | `New(r).Run(lst.Elems())` |
+| 20 | native_control.go:1952 `nested := NewWord("if"); nested.SetPos(...)` | 2 | basic/go/native_control.go:1944-1945 (`ifClauseRecord`) | construction (B1) | `SetPos` on a word minted the line before |
+| 21 | native_control.go:1953 `rest := NewList(append(nil, elems[2:]...))` | 3 | basic/go/native_control.go:1900, 1946 (`ifClauseRecord`) | gone (removed) | **was OPEN**; 15/n: `_lst.Elems()` at :1900 replaces the `Slice`, and the nested list's own spine at :1946 stays (construction B1) |
+| 22 | native_control.go:2026/2036 `body := args[1]` → `RunForLoop` | 3 | basic/go/native_control.go:2019-2020, 2029, 2036 | C1 | the body passes by value (D10) into RunForLoop's kept template (row 37) |
+| 23 | native_control.go:2325 seeded catch body `append([NewCarrier(TError)], body.Slice()...)` | 3 | basic/go/native_control.go:2318-2319 (`ErrorReturnsFn`) | C1 | `body.Elems()`; the seeded run is assembled once, and RunCarrierBody runs it (core/go/carrier_body.go:183) |
+| 24 | conditional.go:6-20 `spliceArg` copy into `( … )` | 3 | basic/go/conditional.go:6-21 | C1 | assembles `(`, the elements and `)` into a new run per selected branch, which the engine splices |
+| 25 | conditional.go:45-64 `ifClause` cond `Slice`, `NewMark(id, condSlice...)` | 3 | basic/go/conditional.go:45-70 | C1 | `NewMark(id)` carries no body; the region is assembled from the cond's `Elems` (:59-64) |
+| 26 | conditional.go:54 `IfCont{Then, Else}` in the move marker | 3 | basic/go/conditional.go:64; native_control.go:883 | C1 | the arms are spliceArg's runs; stepMoveIf splices the chosen one (core/go/engine.go:9378) and never steps them in place |
+| 27 | conditional.go:126-134 `caseNormalizeClauses` `NewList(append(nil, rest...))` | 3 | basic/go/conditional.go:133 | construction (B1) | a new list spine over the open-call tail |
+| 28 | conditional.go:331/781 `caseNormalizeClauses(r, lst.Slice())` | 3 | basic/go/conditional.go:331, 781 | gone (removed) | `lst.Elems()` |
+| 29 | conditional.go:480 `caseStaticGuard` `v.Carrier = false` | 2 | basic/go/conditional.go:479-480 | gone (holder) | the by-value param `v` (D10) clears its own Carrier bit; the check-stack scrutinee is untouched |
+| 30 | conditional.go:489 `caseStaticGuard` `toks := ml.Slice()` | 3 | basic/go/conditional.go:489, 497 | gone (removed) | `ml.Elems()` → RunResolved, which now loads `[v]` and the tokens as two parts (X2) |
+| 31 | conditional.go:872/883 `caseGuardTokens`/`caseBlockTokens` `append([v], ml.Slice()...)` | 3 | basic/go/conditional.go:869-886 | C1 | one assembly of `[v, clause…]` over `Elems()` per guard or block; callers re-append (R2) |
+| 32 | conditional.go:931 `runCaseBody` `RunResolved(r, [v], lst.Slice())` | 3 | basic/go/conditional.go:930 | gone (removed) | `lst.Elems()` |
+| 33 | whileloop.go:24-25 cond/body `Slice()`, copied again at 28/30 | 3 | basic/go/whileloop.go:25-26 | gone (removed) | one `Slice` per region; condCopy and bodyCopy are gone |
+| 34 | whileloop.go:28/30 condCopy/bodyCopy → `Loop{Body, WhileCond}` | 3 | basic/go/whileloop.go:25-34 | C1 (kept) | the Loop's two templates, spliced between fresh markers each round (core/go/engine.go:9284, 9309); the body arg admits a FlexList, so the snapshot is real |
+| 35 | whileloop.go:43-48 `NewMark(id, condCopy...)` + condTokens copy | 3 | basic/go/whileloop.go:39-45 | C1 | the mark carries no body; the first region is assembled from the template and spliced |
+| 36 | forloop.go:27 `bodySlice := _lst.Slice()`, copied again at 34/54 | 3 | basic/go/forloop.go:29 | gone (removed) | one copy |
+| 37 | forloop.go:34 bodyCopy → `Loop.Body` | 3 | basic/go/forloop.go:29, 44 | C1 (kept) | the Loop's template; each iteration splices it between a fresh mark and move (stepMoveCont, core/go/engine.go:9204) |
+| 38 | forloop.go:50-54 `NewMark(id, bodySlice...)` + bodyTokens copy | 3 | basic/go/forloop.go:50-54 | C1 | the mark carries no body; the first iteration is assembled from the template and spliced |
+| 39 | native_type_gen.go:161 `copy(body, toks)`, then `sub.Run(body)` | 3 | basic/go/native_type_gen.go:159-160 | gone (removed) | **was OPEN**; 15/n: `sub.Run(toks)`, and Run copies the ParenExpr's tokens onto its tape once (C1) |
+| 40 | native_const.go:76 interned hit `ReparentValue(v, entry.TypeDef)` | 2 | basic/go/native_const.go:76 | construction (B6) | `MintRetagged(&v, entry.TypeDef)`; the exemplar keeps its type |
+| 41 | native_const.go:94 `ReparentValue(v, node)` | 2 | basic/go/native_const.go:94 | construction (B6) | `MintRetagged(&v, node)` |
+| 42 | case_exhaustive.go:861 `caseNormalizeClauses(r, lst.Slice())` | 3 | basic/go/case_exhaustive.go:861 | gone (removed) | `lst.Elems()` |
+| 43 | micron.go:2338 `out[i] = WithPos(out[i], data)` | 2 | basic/go/micron.go:2335-2340 | construction (B1) | `out` holds values micronInstantiateAt just built; since 15/n `ThreadPos(&out[i], &data)` (:2338) writes the position in the slot (R4) |
+| 44 | micron.go:2420 `ReparentValue(out[0], kind)` | 2 | basic/go/micron.go:2420 | construction (B6) | `MintRetagged(&out[0], kind)` on the fresh micron |
+| 45 | natives.go:515-517 `quoteWordHandler` `v := args[0]; v.Quoted = true` | 2 | lang/go/native/natives.go:514-519 | gone (holder) | copy at :515, `SetQuoted(&v, true)` at :516 on that header; the arg slot and its binding keep theirs |
+| 46 | natives.go:524-526 `quoteAnyHandler` | 2 | lang/go/native/natives.go:524-529 | gone (holder) | the same: copy at :525, write at :526 |
+| 47 | natives.go:533-546 `captureAtomReferent` → `SetAtomReferent` | 2 | lang/go/native/natives.go:531-545; core/go/value.go:2812-2821 | gone (holder) | **was OPEN**; 13/n: the referent is the holder's occurrence state; `captureAtomReferent` takes the holder (`v *Value`), and `SetAtomReferent(v, ref *Value)` repoints only that holder's record; the payload is the name alone |
+| 48 | natives.go:612 `wordHandler` `NewSplice(args[0])` | 3 | lang/go/native/natives.go:611-613 | C1 | the marker holds the template; each firing splices SpliceExpand's view (core/go/engine.go:4949-4956), never stepping it in place |
+| 49 | native_storage.go:560-590 `d2AdoptTyped` in-place retag of a flex child | 2 | lang/go/native/native_storage.go:578-581; core/go/core_helpers.go:680-686 | construction (B6) | `RetagFlexElem` is `MintElemTyped(&v, &elemType)`; nested children retag in the shared flex store (B7) |
+| 50 | native_storage.go:1449 `NewDynamicCarrierValue(CloneValue(child))` | 2 | lang/go/native/native_storage.go:1448-1449 | gone (holder) | the stale clone is removed (R1, 14/n); `child` arrives by value (D10), and NewDynamicCarrierValue now mints its carrier from that holder (`MintCarrierKeeping`, core/go/carrier_new.go:89-93) |
+| 51 | native_storage.go:1586 `CloneValue(val)` closure-bearing wrapper | 2 | lang/go/native/native_storage.go:1585-1587 | gone (holder) | the stale clone is removed (R1, 14/n): `[]Value{val}` fills a new result slot, and nothing is written |
+| 52 | native_storage.go:1595 `CloneValue(val)` plain FnDefInfo read | 2 | lang/go/native/native_storage.go:1594-1596 | gone (holder) | as row 51 |
+| 53 | native_storage.go:1627 `CloneValue(val)` concrete list/map member | 2 | lang/go/native/native_storage.go:1627-1636 | construction (B6) | **was OPEN**; 14/n: `core.MintFresh(&val)` (:1635), the stored container under a fresh identity with its elements shared; a flex member keeps `CloneValue` (:1631; A1's cloner, an independent instance the fold reads) |
+| 54 | native_array.go:1559-1572 `eachHandler` → `StartLoop(newEachListDriver(...))` | 3 | lang/go/native/native_array.go:1559-1572 | C1 | no copy at the site; each region splices the list's own elements (core/go/loop.go:289-293) |
+| 55 | native_array.go:1731 check model `input` = vals + `bodyList.Slice()`, then `sub.Run` | 3 | lang/go/native/native_array.go:1729-1746 (`analyseHigherOrderBodyVals`) | C1 | `bodyList.Elems()`: one assembly of inputs and body, then Run |
+| 56 | loop_drivers.go driver structs hold `body` Value fields | 3 | lang/go/native/native_array.go:2036, 2056, 2091, 2129, 2135, 2211, 2281 (StartLoop) | C1 | the driver hands `body` to the region builder by value; no token copy at the site (the `acc`/`result` fields are family 4) |
+| 57 | native_type.go:753-755 `asHandler` `out := args[1]; out.SetAscribed(target)` | 2 | lang/go/native/native_type.go:753-755 | gone (holder) | copy at :753; `SetAscribed` (core/go/value.go:2301) repoints `out`'s record only (E9) |
+| 58 | native_type.go:789-803 `asReturns` | 2 | lang/go/native/native_type.go:789-802 | gone (holder) | `out := v` (:800), then `SetAscribed` (:801) on that holder; the gradual arm builds a fresh `NewCarrier` |
+| 59 | native_behave.go:212 `body := append([]Value{}, sig.Body()...)` | 3 | lang/go/native/native_behave.go:212, 229 | C1 (kept) | one copy per `behave` install, held by the behaviour slot across user code |
+| 60 | native_behave.go:787 `userUnify` `ReparentValue(top, u.unifyTarget)` | 2 | lang/go/native/native_behave.go:786-787 | construction (B6) | `top = core.MintRetagged(&top, u.unifyTarget)` |
+| 61 | native_behave.go:1016 stepless `append([]Value(nil), body...)` | 3 | lang/go/native/native_behave.go:1015-1016 | construction (B1) | the result stack's own spine; the stored body is never handed out |
+| 62 | native_behave.go:1018 `RunPooledTop(r, append([]Value{}, body...))` | 3 | lang/go/native/native_behave.go:1018 | gone (removed) | **was OPEN**; 15/n: `core.RunPooledTop(r, body)`; with the top engine's private copy also gone (13/n), the tape load is the one copy (C1) |
+| 63 | native_process.go:205 `spawn` make+copy of `bodyList.Slice()` | 3 | lang/go/native/native_process.go:204, 257 | C1 (kept) | one copy, the spawned goroutine's own (E1 carve-out) |
+| 64 | native_process.go:423/441 receive `after`/pattern bodies `copy(body, bodyList.Slice())` | 3 | lang/go/native/native_process.go:421, 437 | C1 (kept) | one `Slice` each, kept across the wait (E1 carve-out) |
+| 65 | native_process.go:592 `runClauseBody` copy, then `Run` | 3 | lang/go/native/native_process.go:585-588 | gone (removed) | `New(r).Run(body)` |
+| 66 | native_temporal_await.go:121 `branchBody` `return body.Slice()` | 3 | lang/go/native/native_temporal_await.go:108-121 (`branchTokens`) | gone (removed) | off the run path: its slice feeds only a read-only walk, and the run path reads `_lst.Elems()` (R3) |
+| 67 | native_temporal_await.go:340 `interpretBranchBody(reg, _lst.Slice())` | 3 | lang/go/native/native_temporal_await.go:340 | gone (removed) | `_lst.Elems()` |
+| 68 | native_temporal_await.go:362 `copy(input, body)`, then `sub.Run` | 3 | lang/go/native/native_temporal_await.go:356-361 | gone (removed) | `New(reg).Run(body)` |
+| 69 | native_temporal_timeout.go:17-18 make+copy of two `Slice()`s | 3 | lang/go/native/native_temporal_timeout.go:16-17, 30 | gone (removed) | `input = _lst.Elems()`; `sub.Run(input)` |
+| 70 | io_watch.go:124 `copy(tokens, bodyList.Slice())` | 3 | lang/go/native/io_watch.go:123, 146-152 | C1 (kept) | one copy, the watch goroutine's own (E1 carve-out); each event assembles `[event, tokens…]` for Run |
+| 71 | log_span.go:418 `Run(append(nil, body.Slice()...))` | 3 | lang/go/native/log_span.go:418 | gone (removed) | `New(r).Run(body.Elems())` |
+| 72 | native_module_module.go:374 `copy(input, elems)`, then run | 3 | lang/go/native/native_module_module.go:384 | gone (removed) | `sub.Run(elems)`; callers pass `_lst.Elems()` |
+| 73 | native_macro.go:336/370 macro spec `Slice`; `bodyElems = bl.Slice()` stored | 3 | lang/go/native/native_macro.go:336, 370 | C1 (kept) | :370 is the macro's kept body template (as afn); :336 only reads the two-element spec (R3) |
+| 74 | native_macro.go:594-622 `NewSplice(NewList(...))` | 3 | lang/go/native/native_macro.go:594, 596, 620, 622, 668, 670 | construction (B1) | fresh lists in fresh splice markers |
+| 75 | native_macro.go:678-682 `appliedTransducer` `fn.Quoted = false` | 2 | lang/go/native/native_macro.go:679-682 | gone (holder) | `SetQuoted(&fn, false)` on the by-value param; the stored transducer keeps its quote |
+| 76 | native_macro.go:1166 `fn.Dynamic = false` before `RecordCall` | 2 | lang/go/native/native_macro.go:1169-1171 (`recordParseLangDispatch`) | gone (holder) | `SetDynamic(&fn, false)` on the param; the check-stack carrier keeps Dynamic |
+| 77 | native_macro.go:1234-1239 `ops := append(nil, args...); ops[0].Dynamic = false` | 2 | lang/go/native/native_macro.go:1238-1243 (`recordMacroFnDispatch`) | gone (holder) | a new operand list (C6) whose cell 0 is a new holder; the dispatcher's args are untouched |
+| 78 | native_valof.go:476-477 `applyReturns` | 2 | lang/go/native/native_valof.go:466-478 | gone (holder) | `ReturnsIdentity(0)`'s fresh slice; `SetQuoted` and MarkApplied's bit land on `out[0]` only |
+| 79 | native_valof.go:492-499 `applyHandler` `v := args[0]; v.Quoted = false; markApplied` | 2 | lang/go/native/native_valof.go:492-499, 529 | gone (holder) | copy at :492; `SetQuoted` (:499) and `SetApplied` through MarkApplied (:529) are header bits of the result holder (E10) |
+| 80 | stackform/eval.go:76-80 `v := o.V; v.Quoted = true` | 2 | lang/go/stackform/eval.go:77-82 | gone (holder) | `SetQuoted(&v, true)` on the copy; `PushLit.V` stays unquoted for the next Eval |
+| 81 | stackform/eval.go:256-259 `unquotedCopy` | 2 | lang/go/stackform/eval.go:243-259 | gone (holder) | `SetQuoted(&v, false)` on the param, stored into the run's own result slice |
+| 82 | stackform.go:45 `PushLit{V}` re-pushed every run | 3 | lang/go/stackform/stackform.go:44-46; eval.go:196-197 | C1 | each Eval assembles the literals into a new run that `core.NewTop(reg).Run` loads; `PushLit.V` is never written |
+| 83 | native_misc.go:687/867/886/903 `RunModuleBody(r, _lst.Slice())` | 3 | lang/go/native/native_misc.go:687, 867, 886, 903 | gone (removed) | `_lst.Elems()` / `_lst2.Elems()` |
+| 84 | native_misc.go:962 `parallel` `elems := _lst.Slice()` | 3 | lang/go/native/native_misc.go:957-971 (`doAwait`) | C1 | each branch runs `interpretBranchBody(reg, _lst.Elems())`; the `Slice` copies only the branch list, read while dispatching (R3) |
+| 85 | native_math.go:478 `doEvalList(r, lst.Slice())` | 3 | lang/go/native/native_math.go:478 | gone (removed) | `lst.Elems()` |
+| 86 | native_map_iter.go:75 `mapBody{tokens: bl.Slice()}` | 3 | lang/go/native/native_map_iter.go:75 | C1 (kept) | the quotation's one copy, held across user code; each entry runs in a loop region or through RunResolved (:206) |
+| 87 | walk_core.go:162 `h.tokens = bl.Slice()` | 3 | lang/go/native/walk_core.go:160 | C1 (kept) | the hook's one copy; each visit runs through RunResolved (native_map_iter.go:206) |
+| 88 | native_unpack.go:266 `val.Dynamic = true` | 2 | lang/go/native/native_unpack.go:257-267 | construction (B1) | the flag is set only on the miss path's fresh `NewCarrier(TAny)`; a hit binds the entry unmodified |
+| 89 | io_filetype.go:49 `ReparentValue(NewAtom(name), kind)` | 2 | lang/go/native/io_filetype.go:49-50 | construction (B6) | `MintRetagged(&atom, fileType)` on a fresh atom |
+| 90 | io_stream.go:68 the same | 2 | lang/go/native/io_stream.go:68-69 | construction (B6) | `MintRetagged(&atom, streamKind)` on a fresh atom |
+| 91 | fresh-value facet and flag writes: native_storage.go:675/693/703-704/762/787/2112; native_array.go:1824-1825; native_flex.go:157; native_misc.go:258-262; native_make.go:97/99; struct_module.go:210-224; stackform/eval.go:126 | 2 | lang/go/native/native_storage.go:673-675, 692-693, 702-704, 760-762, 785-787, 2118-2120; native_array.go:1823-1826; native_flex.go:156-157; native_misc.go:260-261; native_make.go:96-99; struct_module.go:215-223; lang/go/stackform/eval.go:125-126 | construction (B1) | each target is minted on the lines before and written before publication |
+| 92 | test.go:304/357/500 `native.New(r).Run(body.Slice())` | 3 | lang/go/modules/test.go:303, 356, 499 | gone (removed) | `body.Elems()` |
+| 93 | test.go:616-628 `property` gen/prop Quoted/Eval, stored in a new map | 2 | lang/go/modules/test.go:613-632 | gone (holder) | copies `gen` and `prop` (:615-616); `SetQuoted`/`SetEval` (:620-623) write those holders, which the new map stores |
+| 94 | test.go:828 `bodyTokensOf` `return lst.Slice()` | 3 | lang/go/modules/test.go:817-828 (`storedBodyArg`) | C1 (kept) | the raw gen tokens, kept for the shrink path, which now hands them on uncopied (N6) |
+| 95 | test.go:1478 `InvokeBody(parent, body, append(nil, inputs.Slice()...))` | 3 | lang/go/modules/test.go:1483 | C1 (kept) | one `inputs.Slice()`, which the seam may keep (core/go/loop.go:102-103); InvokeBody's RunResolved loads inputs and body as two parts |
+| 96 | debug.go:88-89, vm.go:162-163 `lst := NewList(tokens); lst.Quoted = true` | 2 | lang/go/modules/debug.go:88-89; vm.go:162-163 | construction (B1) | fresh lists |
+| 97 | debug.go:349/389/563 `RunTrace`/`sub.Run(append(nil, body.Slice()...))` | 3 | lang/go/modules/debug.go:349, 389, 563 | gone (removed) | `body.Elems()` |
+| 98 | debug.go:440 `stackform.Compile(sub, append(nil, body.Slice()...))` | 3 | lang/go/modules/debug.go:440 | gone (removed) | `stackform.Compile(sub, body.Elems())` |
+| 99 | debug_step.go:43 `runStepped(r, append(nil, body.Slice()...))` | 3 | lang/go/modules/debug_step.go:43 | gone (removed) | `runStepped(r, body.Elems())`, then `sub.Run` |
+| 100 | scry.go:224-226 `NewList(append(nil, sig.Body()...)); body.Quoted = true` | 3 | lang/go/modules/scry.go:225-226 | construction (B1) | a new spine over the fn body's elements, one per call, flagged before it is returned |
+| 101 | rand.go:448 `bodyTokens := body.Slice()`, re-run N times | 3 | lang/go/modules/rand.go:448, 470 | gone (removed) | **was OPEN**; 15/n: the per-iteration copy is gone; `RunPooled(r, bodyTokens)` (:470) hands :448's one copy to Run, which copies it onto its tape (C1) |
+| 102 | parselang.go:579-586 `copy(sigs, fd.Signatures)`; `bv.Data = fd` | 2 | lang/go/modules/parselang.go:571-589 (`closureFnView`) | construction (B4) | `bv` is the fn value closureFnDef just minted (eng/go/vm_dyn_words.go:445); the edited payload copy is boxed into it before publication (E8) |
+| 103 | model.go:328-333 `stampActionFn` `fd.Name = name; fnVal.Data = fd` | 2 | lang/go/modules/model.go:329-335 | gone (holder) | `core.SetFnName(&fnVal, name)` names this holder's record without copying the payload |
+| 104 | parselang.go:336, vault.go:389, tui_mirror.go:51 `c := NewCarrier(t); c.Dynamic = true` | 2 | lang/go/modules/parselang.go:334-336; vault.go:388-390; tui_mirror.go:50-51 | construction (B1) | fresh carriers |
+| 105 | test_coverage.go:226 `native.New(r).Run(body.Slice())` | 3 | lang/go/modules/test_coverage.go:226 | gone (removed) | `body.Elems()` |
+| 106 | type.go:717 `anon.SetName` on a fresh refine prefab | 2 | lang/go/modules/type.go:715-716 | construction (B6) | `MintRefinePrefab` mints the node; its name is set before the literal is returned |
+| 107 | boru.go:480-520 `CompileCheck` reuses `values` for two `compilePass` runs | 3 | lang/go/boru.go:480-520, 539-541 | C1 | each pass strips `values` into a new carrier array (check/go/carrier.go:479-490) and loads that, so the retry sees pristine tokens |
+| 108 | boru.go:537 `es.SetRootBody(values)` | 3 | lang/go/boru.go:537; compiler/go/emit.go:8504-8511 | gone (removed) | **was C1 (kept)**; 15/n: the recorder holds the program's own tokens, clamped, instead of a copy; nothing writes them |
+| 109 | boru.go:541/348/983 `engine.Run(values)` | 3 | lang/go/boru.go:348, 541, 983 | C1 | Run copies onto its tape once; the top engine's private copy is gone (13/n) |
+| 110 | parser parse.go:83-88 `withPos` param copy, `SetPos`, return | 2 | parser/go/parse.go:83-88 (callers 229 … 1515) | construction (B1) | every caller passes a value it has just built (R2) |
+| 111 | parse.go:256/665/681 `mv.Eval = true` | 2 | parser/go/parse.go:255-256, 664-665, 681 | construction (B1) | `SetEval` on the map convertMapData just returned |
+| 112 | parse.go:421 `reachInfo.Receiver, reachInfo.Eval = nil, false` | 2 | parser/go/parse.go:419-423 | construction (B1) | a fresh ReachInfo struct, set before NewReach; not a Value header |
+| 113 | cmd/go dap.go:66/172 `tokens` → `RunProgram` | 3 | cmd/go/internal/debugger/dap.go:66, 172; debugger.go:380-412 | C1 | `engine.Run(tokens)` (debugger.go:412); no copy at the site |
+| N1 | not in the inventory; test.go:183 preamble `append(nil, parsed...)` before `Run` | 3 | lang/go/modules/test.go:188 | gone (removed) | **was OPEN**; 15/n: `sub.Run(parsed)`, and Run copies the package-level parse onto its tape once (C1) |
+| N2 | not in the inventory; repl.go:82 preamble copy | 3 | lang/go/modules/repl.go:85 | gone (removed) | **was OPEN**; 15/n: `sub.Run(replParsed)` |
+| N3 | not in the inventory; vault_tui.go:98 preamble copy | 3 | lang/go/modules/vault_tui.go:100 | gone (removed) | **was OPEN**; 15/n: `sub.Run(vaultTuiParsed)` |
+| N4 | not in the inventory; sift.go:95 preamble copy | 3 | lang/go/modules/sift.go:97 | gone (removed) | **was OPEN**; 15/n: `sub.Run(siftParsed)` |
+| N5 | not in the inventory; cli.go:114 preamble copy | 3 | lang/go/modules/cli.go:116 | gone (removed) | **was OPEN**; 15/n: `sub.Run(cliParsed)` |
+| N6 | not in the inventory; test.go:1108 `stackform.Compile(parent, append(nil, genBody...))` | 3 | lang/go/modules/test.go:1113 | gone (removed) | **was OPEN**; 15/n: `stackform.Compile(parent, genBody)`; Compile's top engine copies it onto its tape once (lang/go/stackform/compile.go:36-40) |
+| N7 | not in the inventory; test.go:861 check-prop `native.Boru(append(nil, core.BodyTokens(body)...))` | 3 | lang/go/modules/test.go:859-866 | gone (removed) | **was OPEN**; 15/n: a plain body's own tokens (`BodyTokens` is a view); a flex body keeps its snapshot (:860-861; B3, a fixed read of a live body the stamped sig caches) |
+
+### Residuals and cross-module notes
+
+- **R1** (stale `CloneValue` calls on immutable payloads, native_storage.go:1449,
+  :1586, :1595 at `53c65d9ef`): gone (removed), 14/n. The sites read
+  `NewDynamicCarrierValue(child)` (:1449) and `[]Value{val}` (:1587, :1596): a
+  clone shares an immutable payload whole.
+- **R2** (the check-mode case desugar re-appends each guard run,
+  basic/go/conditional.go:788, :899-903): unchanged. These are temps (arrays of
+  references), left until a profile shows them.
+- **R3** (read-only `Slice()` residues: native_temporal_await.go:121,
+  native_macro.go:336, native_misc.go:962): unchanged. `Elems()` would do (E2
+  hygiene).
+- **R4** (micron results copied out and back to take a position,
+  basic/go/micron.go:2338): gone (in place), 15/n. `core.ThreadPos`
+  (core/go/util.go:330) threads the position into the caller's own results.
+- **X1** (`resolveAtomReferents` stamped the nested lists of kept bodies
+  through their shared arrays): fixed in core, 13/n. `stampAtomReferents`
+  (core/go/engine.go:1599-1621, called at :1807) stamps the tape's own cells
+  after the load, and `atomReferentsIn` (:1629-1661) rebuilds a nested list
+  whose atoms take referents as a new list sharing its other elements. The
+  referent is occurrence state (core/go/occurrence.go:68).
+- **X2** (two copies per run inside core): fixed. RunResolved and CallBoru load
+  the prefix and the body as two parts through `Engine.RunParts`
+  (core/go/engine.go:1684; engine_pool.go:46-62; registry.go:1950), 15/n, and
+  a top engine no longer takes a private copy, 13/n. A check-mode run still
+  joins the parts, because its strip builds a new carrier run anyway.
+- **X3** (ParseFnDef's body copy per fn construction, core/go/fn_def.go:74):
+  unchanged. It is row 9's template, mirrored by afn (row 10), and is C1
+  (kept).
+- **X4** (E11 residue: `&v` of a local copy handed out as a `*Type`): fixed,
+  15/n. tisNode (lang/go/native/native_type.go:1038-1043), baseHandler
+  (:1152-1161) and latticeNode (lang/go/modules/type.go:175-180) answer the node
+  through `NodeOf`.

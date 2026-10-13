@@ -821,19 +821,46 @@ a failing run lists the findings on the lines the change touched.
   caller owns; `StripAscribed` stays for the copying form.
 
 **Occurrence state is the holder's** (phase 3, 2026-10-13;
-`core/go/occurrence.go`). A Value has no ID, ascription, source-binding
-or flag fields: the identity, the `as` ascription and a gradual read's
-source binding live in an immutable record behind one pointer (`occ`,
-nil for most values), and the occurrence flags — quoted, eval,
-undefined, failed dispatch, reach group, dynamic, applied, return-trimmed,
-signature-matched — are bits of the header. Read and write them through
-`IDOf`/`SetID`, `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom` and
-`IsQuoted`/`SetQuoted` and their siblings. A setter repoints or rewrites
-only the holder it is called on — the tape cell, the stack cell, the
-binding — never a record another copy shares, so it is a write to that
-slot, exactly as a by-value field was. Do not add a field to the header
-(`TestValueHeaderSize` pins it at 72 bytes): per-occurrence state belongs
-in the record or the flags, per-type state in `tmeta`.
+`core/go/occurrence.go`). A Value has no ID, position, ascription,
+source-binding, name or flag fields: the identity, the source position,
+the `as` ascription, a gradual read's source binding, the name a binding
+gave a fn value, the recorder key and a quoted atom's referent live in an
+immutable record behind one pointer (`occ`, nil for most values), and the
+occurrence flags — quoted, eval, undefined, failed dispatch, reach group,
+dynamic, applied, return-trimmed, signature-matched — are bits of the
+header. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
+`WithPos`/`ThreadPos` to share another value's position record, which
+allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
+`FnNameOf`/`SetFnName`, `RecKeyOf`/`SetRecKey`,
+`AtomReferent`/`SetAtomReferent` and `IsQuoted`/`SetQuoted` and their
+siblings. A setter repoints or rewrites only the holder it is called on —
+the tape cell, the stack cell, the binding — never a record another copy
+shares, so it is a write to that slot, exactly as a by-value field was.
+Do not add a field to the header (`TestValueHeaderSize` pins it at 64
+bytes): per-occurrence state belongs in the record or the flags,
+per-type state in `tmeta`.
+
+Three consequences to keep:
+
+- **A binding names its holder.** `def a (f/v)` gives the holder the name
+  (`SetFnName`); the fn payload keeps the name it was constructed under and
+  is never copied to carry another. Read a fn value's name with
+  `FnNameOf`, not `FnDefInfo.Name`.
+- **The recorder keys a producer on the holder** (`compiler/go/rec_key.go`):
+  an event stamps `RecKey` on the holders its results flow on, and a later
+  event asks the holder's key — never the value's identity, which two
+  holders of one payload share.
+- **A handler's results are not written.** `execMatch` stamps the call
+  site's position on them in the tape cells the splice copies them into
+  (`stampResultCells`), and the VM stamps a run of its own built from them
+  when a stamp is owed (`stampFnResultPos`), so a handler may hand back a
+  run it shares — a leaf fn frame returns its memoized skeleton. A
+  consumer that must change a result builds its own value or run and
+  never writes the handler's (the callback seams and collectors are not
+  yet audited for this; exceptions E5). A run given as parts goes onto
+  the tape with `Tape.SpliceRuns`/`ReloadRuns`/`NewTapeWithRuns` or
+  `Engine.RunParts`, each part copied once; do not assemble a buffer for
+  the tape to copy again.
 
 ## Type installation
 

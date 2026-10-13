@@ -652,99 +652,162 @@ dropped are lowered by their drop; the compiled lane's counts are where
 phase 1 left them.
 
 **Phase 3 — 2026-10-13.** Occurrence state leaves the value for its
-holder. The plan's slot record — a cell of `{V *Value; occurrence}` beside
-every tape cell, stack cell, arg slot, binding entry and pool entry —
-presupposes pointer cells, which is phase 4's representation; built under
-the by-value header it would have been a second copy of every cell type.
+holder, and the inventories' families 2 and 3 have no open row. The
+plan's slot record — a cell of `{V *Value; occurrence}` beside every tape
+cell, stack cell, arg slot, binding entry and pool entry — presupposes
+pointer cells, which is phase 4's representation; built under the
+by-value header it would have been a second copy of every cell type.
 Phase 3 takes the by-value header at its word instead: a slot's header IS
 the slot's own, so the occurrence state goes where a copy carries it in
-one pointer and a write reaches only the holder it is made through.
+one pointer and a write reaches only the holder it is made through. It
+landed in two passes, the second (8/n–17/n) after a review found the
+first stopped short of the gate.
 
-- **The occurrence record** (`core/go/occurrence.go`). The identity (the
-  ID), the dispatch ascription (`v as T`) and a gradual read's source
-  binding live in an immutable record behind one pointer, nil for most
-  runtime values. A setter builds a new record, or clears the pointer,
-  for the one header it is called on; every other copy keeps the record
-  it had, so a write reaches exactly its holder, as a write to a by-value
-  field did (R3 under the by-value representation). The occurrence flags
-  — quoted, eval, undefined, failed dispatch, reach group, dynamic, and
-  the three seam marks that rode in payloads (`apply`'s one-shot mark in
+- **The occurrence record** (`core/go/occurrence.go`). The identity, the
+  source position, the dispatch ascription (`v as T`), a gradual read's
+  source binding, the name a binding gave a fn value, the recorder key
+  and a quoted atom's referent live in an immutable record behind one
+  pointer, nil for most runtime values. A setter builds a new record, or
+  clears the pointer, for the one header it is called on; every other
+  copy keeps the record it had, so a write reaches exactly its holder, as
+  a write to a by-value field did (R3 under the by-value representation).
+  A position is minted once together with a record that carries it alone,
+  so threading a position onto a value whose occurrence holds nothing else
+  shares that record and allocates nothing. The occurrence flags —
+  quoted, eval, undefined, failed dispatch, reach group, dynamic, and the
+  three seam marks that rode in payloads (`apply`'s one-shot mark in
   `FnDefInfo`, a compiled closure's return-trim and signature-matched
   marks in `ClosurePayload`) — are sixteen bits in the header's padding,
   read and written through `IsQuoted`/`SetQuoted` and their siblings. A
-  flip is a bit write and never a payload copy: the apply mark copied a
-  232-byte `FnDefInfo`, and every fn-VALUE seam crossing re-boxed a
-  `ClosurePayload`. About 2,900 field accesses across every module were
-  rewritten by a type-checked tool.
-- **The header is 72 bytes, from 104** (`TestValueHeaderSize` pins it):
+  flip is a bit write and never a payload copy. About 2,900 field
+  accesses across every module were rewritten by a type-checked tool.
+- **The header is 64 bytes, from 104** (`TestValueHeaderSize` pins it):
   the ascription, the source binding and six one-byte flags went behind
-  the pointer first (104 → 88), the 16-byte ID second (88 → 72). Every
-  copy the ratchet still allows moves 31% fewer bytes, and every
-  `[]Value` is 31% smaller; the flags came back into the header's
-  padding once the ID joined the record, because a parsed token carries
-  an identity and the engine clears `Eval` on every delivered argument —
-  in the record that was a record per argument.
+  the pointer first (104 → 88), the 16-byte ID second (88 → 72), the
+  position third (72 → 64). Every copy the ratchet still allows moves 38%
+  fewer bytes, and every `[]Value` is 38% smaller.
 - **A binding is read where it lives.** `DefTable.TopValue` is `Top` by
-  reference. stepWord's def substitution looks the name up once (it
-  looked twice) and copies the binding once, into the cell
-  (`Tape.SetFrom`); the analysis pass, which edits its read, copies it in
-  its own function. The collection kernel's `DefTop` seat, `upsertFnDef`
-  (which swaps the payload in place, `SetTopData`), the capture walks,
-  `ResolveRef` and the compiler's unit memo read through the pointer.
+  reference. stepWord's def substitution looks the name up once and
+  copies the binding once, into the cell (`Tape.SetFrom`); the collection
+  kernel's `DefTop` seat, `upsertFnDef`, the capture walks, `ResolveRef`
+  and the compiler's unit memo read through the pointer.
+- **A binding names its holder** (D8 → E16). `def a (f/v)` gives the
+  holder the name (`SetFnName`/`FnNameOf`); the fn payload keeps the name
+  it was constructed under and is never copied to carry another. A fn
+  value's dispatch reads its payload by pointer and makes a view only for
+  a holder another binding named, where every fn-value dispatch copied the
+  232-byte payload to carry the name.
+- **The recorder keys a value's producer on its holder** (D4 → E13). An
+  event stamps `RecKey` — pass, generation, event, result index — on the
+  holders its results flow on (`compiler/go/rec_key.go`), and a later
+  event asks the holder's key, never the value's identity: one payload
+  under two recorder identities is two holders, and a seated live read no
+  longer turns the binding it read into a carrier. `producedBy` and the
+  identity re-mints that kept two productions apart are gone.
+- **Retags and fresh identities are constructions** (D6 → E14). The B6
+  family in `core/go/mint.go` — `MintRetagged`, `MintLike`, `MintFresh`,
+  `MintPayload`, `MintCarrierFrom`, `MintCarrierKeeping`, `MintElemTyped` —
+  builds a value from its source's parts; `ReparentValue`, the
+  copy-and-overwrite retags and the `x := y; SetID(&x, …)` re-mints are
+  gone. The VM builds a literal's per-evaluation instance from the pooled
+  constant's shared parts instead of deep-cloning it (D7 → E15).
 - **Occurrence writes go to the slot.** The copy-modify-writeback
-  sequences over a cell the engine owns are writes in the cell, and a
-  forward arrival is read where it lies instead of copied per arrival.
+  sequences over a cell the engine owns are writes in the cell: inert type
+  shapes resolve in their slot, the end-of-run sweep no longer copies
+  every cell out and back, the collection kernel's flags are written in
+  the window, a forward arrival is read where it lies.
+- **Positions are stamped in the holder** (D2 → E12). `execMatch` stamps
+  the call site's position on a handler's results in the tape cells it
+  splices them into (`stampResultCells`), and the VM, when a positionless
+  fn result owes the op's position, stamps a run of its own built from the
+  results (`stampFnResultPos`); neither writes the handler's slice. So a
+  leaf fn frame with no unnamed-arg cell is the memoized skeleton itself at
+  run time, read by every call and fork; it was copied per call.
+- **A token run is copied once, onto the tape.** `Tape.SpliceRuns`,
+  `ReloadRuns`, `NewTapeWithRuns` and `Engine.RunParts` take a run as
+  parts laid end to end. A fn frame (head, shared body, tail), a loop's
+  next iteration, a `for`/`while` continuation, a sealed literal region,
+  a paren or reach group, a callback with inputs, a module-fn call
+  (CallBoru) and the VM's islands copy each run once, where each staged
+  it in a buffer or concatenated it first; the engine's `loopTokens` and
+  `peScratch` staging buffers are gone, the VM reads its stack windows
+  where they lie, and compile-time body snapshots share the run nothing
+  writes. A run a handler builds from parts is assembled once and copied
+  by the tape (C1).
+- **Three writes through shared payloads, found by the audit.** The
+  run-start referent pass stamped a fn or behaviour body's nested arrays
+  in place, so the first call's referent stuck for good (E4, now the
+  holder's occurrence state); `upsertFnDef` merged signatures into the
+  previous array's spare capacity and sorted it, reordering what an
+  earlier holder dispatched on; `InstallTypeBody` completed a schema or
+  surface declaration in place, so one declaration bound under two names
+  renamed the first type. Each is fixed by construction, with a test that
+  fails on its parent.
 - **A type literal names its node** (decision 5). Every mint and
   registration points the node's shared metadata back at the node, so
   `NodeOf` answers the node from any copy, needs no registry, and cannot
   be misled by an ID another registry also minted. `CanonicalType` and
   its 57 calls are gone; the helpers that handed out a literal's `*Type`
-  as the address of a copy (`ValueType`, `TypeNodeOf`,
-  `CarrierOfLiteral`, `denotedType`, `make`'s target, an `is` guard's
-  narrowed type) hand out the node, so the pointer-keyed walks see one
-  node, and `ValueType` of a registered literal no longer allocates.
+  as the address of a copy hand out the node.
 
-The cost is one allocation more per identity minted: the string and its
-record, where the string was all. The check and compile benchmarks
-allocate 1–1.5% more (0.3% to 5.6% by shape) and move 15% fewer bytes,
-and run 6% faster; parsing mints one record per token. Runtime
-allocations are unchanged. The engine-entry census fell from 159 to 157
-(`runPooledSub` 3 → 1); its rows are not attributed, so the ceiling stays.
+The gate §6 set holds. Every family-2 and family-3 row of the four
+inventories has a disposition and none is open (each inventory's "Phase
+3 dispositions" section): 405 rows (core-value 72, core-engine 102,
+basic-lang 120, eng-check-compiler 111), of which 215 copies are gone —
+the write made in place or in the holder, or the copy removed — 117 are
+constructions (B1, B4, B6, R4), 71 are cell copies kept as C1 or C2 (a
+run copied once onto a tape, a stack or an island), one is A1 and one
+D10 (a read misfiled as family 2). And the listed files' copy findings
+are the mechanical kind: of the 2,383 findings in `engine.go`, `vm.go`,
+`carrier.go`, `emit.go`, `kept_defs.go`, `native_definition.go` and
+`native_type.go`, 1,340 pass a value to a call, 330 are by-value
+parameters, 201 range variables, 201 assignments, 116 bulk copies (a run
+appended or copied), 110 returns and 85 literals — the by-value traffic
+pointer cells would retire. None copies a value to write it back over
+its source: a scan for a copied local that is later written finds 18,
+each a new holder's own state — a quote, a fn name, an ascription, a
+flag cleared on an argument slot.
 
-Not done, with the reason. (1) `pos` stays in the header: behind the
-occurrence pointer a position would cost a record on every read stepWord
-stamps with its own site, and in the header it is already the holder's
-own eight bytes; a position that rides with the cell for free is pointer
-cells (phase 4). (2) The recorder still keys on the holder's ID
-(exceptions D4): re-keying the compile pass on (event, index) is work
-across the emitter's recording maps, not a representation change. (3) Fn
-names and homes still ride in the fn payload (D8), and the retag helpers
-still return copies (D6): both carry identity the parity gates pin, and
-under the by-value header neither copy is smaller for the change. (4)
-The VM's per-evaluation literal clones (D7) wait for construction ops.
-The gate §6 set — the family 2 and 3 tables empty, the listed files' vet
-counts mechanical only — needs those and the pointer cells: by count,
-phase 3 removes few copies (12,993 → 12,980). What it removes is size.
+Two findings on the way, outside the copy work. An exhaustive
+differential of the compiled lane against the interpreter (30,940
+programs of up to four def, read, splice, `do` and stack atoms), run to
+check the recorder re-key, found a miscompile class that predates this
+plan — a computed list splice's spread taken as one operand — fixed
+separately (`14a8d3bac`); and 24 `add` over a list where the compiled lane
+raises an internal error for the interpreter's `signature_error`, an
+error-parity gap left as it is.
 
-| | phase 2 | phase 3 |
-|---|---:|---:|
-| Value header (bytes) | 104 | 72 |
-| non-test single-Value copies (vet) / bulk | 12,993 / 327 | 12,980 / 327 |
-| anchors, geomean time vs phase 2 (55 benchmarks, interleaved runs) | 1.000 | 0.881 |
-| interpreter lane / compiled lane vs phase 2 | 1.000 / 1.000 | 0.897 / 0.849 |
-| anchors vs phase 0 (chained through phase 2's 0.760) | 0.760 | 0.670 |
-| interpreter / compiled lane vs phase 0 (chained) | 0.708 / 0.802 | 0.635 / 0.681 |
-| bytes/op, anchors geomean vs phase 2 | 1.000 | 0.788 |
-| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,673 / 4,038 / 5,939 | 6,673 / 4,038 / 5,939 |
-| check / compile benchmarks: time, allocs vs phase 2 | 1.000 | 0.938, +1.5% / +1.1% |
+The cost is one allocation more per identity minted (the string and its
+record, where the string was all): the check and compile benchmarks
+allocate 1.2% more than phase 2's (−0.8% to +5.6% by shape), move 20%
+fewer bytes, and run 9% faster (five interleaved rounds, 16/n's head).
+The engine-entry census fell from 159 to 157 (`runPooledSub` 3 → 1); its
+rows are not attributed, so the ceiling stays. The runtime numbers below
+are 16/n's head against phase 2's, five interleaved rounds of each
+binary, the minimum of each benchmark (17/n's VM change copies only
+where a native's fn result owes the op's position, a rare case).
+
+| | phase 2 | phase 3, first pass | phase 3 |
+|---|---:|---:|---:|
+| Value header (bytes) | 104 | 72 | 64 |
+| non-test single-Value copies (vet) / bulk | 12,993 / 327 | 12,980 / 327 | 12,799 / 291 |
+| anchors, geomean time vs phase 2 (55 benchmarks, interleaved runs) | 1.000 | 0.881 | 0.809 |
+| interpreter lane / compiled lane vs phase 2 | 1.000 / 1.000 | 0.897 / 0.849 | 0.844 / 0.751 |
+| anchors vs phase 0 (chained through phase 2's 0.760) | 0.760 | 0.670 | 0.615 |
+| interpreter / compiled lane vs phase 0 (chained) | 0.708 / 0.802 | 0.635 / 0.681 | 0.598 / 0.602 |
+| bytes/op, anchors geomean vs phase 2 | 1.000 | 0.788 | 0.653 |
+| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,673 / 4,038 / 5,939 | 6,673 / 4,038 / 5,939 | 6,265 / 3,833 / 5,433 |
+| check / compile benchmarks: time; allocs vs phase 2 | 1.000 / 1.000 | 0.938; +1.5% / +1.1% | 0.913 / 0.916; +1.4% / +1.0% |
 
 For decision 3 (phase 4 is a go/no-go on these numbers): §8 estimated
 phase 3 at −20 to −30% cumulative from the pre-policy code, and it
-measures −33% on the anchors. Copying is no longer where the time goes:
-on the interpreter's loop anchors `memmove` is about 1% of the CPU and
-`memclr` 2%, while `Type.Equal` alone is 12% (flat; the marker
-predicates' type tests) and the matcher (`PlanMatch`,
-`CollectCandidateScan`, `CollectForward`) is most of the rest. So the
-pointer switch would buy consistency — nothing left to police: D2, D4,
-D6–D8 and D10 retire together — rather than speed, which is the case §6
-anticipated; the next speed is in `Type.Equal` and the matcher.
+measures −38% on the anchors. Copying is no longer where the time goes:
+profiled at 16/n's head, the interpreter's loop anchors (`for_tight`,
+`compare_loop`, `map_get`) spend about 1% of the CPU in `memmove`, 1.5%
+in `memclr` and 1.3% in `duffcopy`, while `Type.Equal` alone is 13%
+(flat; the marker predicates' type tests) and the matcher (`PlanMatch`,
+`CollectCandidateScan`, `CollectForward`: 18–32% each, cumulative and
+overlapping) is most of the rest. What the pointer switch would retire
+is D10 alone — every other transitional allowance is gone — so it would
+buy consistency rather than speed, the case §6 anticipated; the next
+speed is in `Type.Equal` and the matcher.

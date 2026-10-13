@@ -469,3 +469,155 @@ Per-file tables follow. Columns: `line | site | kind | load-bearing? | what shar
 ## Files with no Value-copy hits
 
 eng/go: `compiled_runtime_vm.go`, `vm_args_debug.go`, `vm_args_release.go`, `vm_callback_unit.go`, `vm_poly_barrier.go`, `vm_poly_cache.go`, `vm_poly_seed.go`. check/go: `check_make.go`, `indexcheck.go`. compiler/go: `arm_pending.go`, `branch_carried.go` (its `seed = &init` at 203 is an `EmitOperand`, not a Value), `call_result_island.go`, `compiler_dispatch_record.go` beyond the rows above, `dispatch_hooks_install.go`, `do_restep.go`, `dyn_body_one.go`, `fit_restart.go`, `fn_local.go`, `kept_defs.go` beyond the rows above, `prefix_island.go`, `read_site_guard.go`, `region_capture.go`, `region_complete.go`, `region_oracle.go`, `region_record.go`, `region_route.go`, `region_validate.go`, `root_read_statement.go`, `stored_live.go`, `taken_landing.go` (zero-sentinel only), `user_poly_plan.go`.
+
+## Phase 3 dispositions (families 2 and 3)
+
+The 111 rows above that fall in family 2 (occurrence state copied, modified and written back: 69 rows) or family 3 (a token run copied before the tape copies it: 42 rows) were audited against 53c65d9ef ("No-copy phase 3 (12/n)"), which left 30 of them OPEN: 4 in family 2 and 26 in family 3. 14/n (1e3660d2f) closed the family-2 rows and 15/n (1d787b4a9) the family-3 rows; 13/n (8151f6903) and 16/n (8daf96009) made the related changes listed after the table. Each resolution was checked in the code at 8daf96009, and no row is open. Rows that were not OPEN keep the audit's disposition, with its evidence shortened.
+
+Sites are file:line at 8daf96009. Files untouched since 53c65d9ef keep the audit's line numbers; lines in changed files were mapped through the diff and matched by content. The "inventory row" column names a row of the tables above (lines from 6780a6030). Classes are those of [VALUE-NO-COPY-EXCEPTIONS.0.md](../../../VALUE-NO-COPY-EXCEPTIONS.0.md).
+
+- **gone (holder)**: a by-value header copy (D10) delivers the value into a holder the code owns (a frame slot, window slot, stack cell, binding or local), and the occurrence write lands on that holder only.
+- **gone (in place)**: the write is on a slot the code owns, with no copy before it.
+- **gone (removed)**: the copy no longer exists; the site uses the value or run where it lies.
+- **gone (no copy)**: a reference sub-slice; there never was a copy.
+- **construction (B1, B4, B6)**: a new value or run built from parts. **construction + C1**: such a run, which the tape then loads once.
+- **C1** and **C2**: a tape-cell copy and a pool-buffer copy. **D10**: the by-value header copy.
+
+| disposition | family 2 | family 3 | total | of these, OPEN at 53c65d9ef |
+|---|---|---|---|---|
+| gone (holder) | 48 | 0 | 48 | 0 |
+| gone (in place) | 4 | 0 | 4 | 0 |
+| gone (removed) | 2 | 22 | 24 | 19 |
+| gone (removed) + construction | 0 | 2 | 2 | 2 |
+| gone (no copy) | 0 | 1 | 1 | 0 |
+| construction (B1, B4, B6) | 14 | 1 | 15 | 4 |
+| construction + C1 | 0 | 4 | 4 | 4 |
+| C1 | 0 | 9 | 9 | 1 |
+| C2 | 0 | 3 | 3 | 0 |
+| D10, misfiled (a family-1 read) | 1 | 0 | 1 | 0 |
+| OPEN | 0 | 0 | 0 | - |
+| total | 69 | 42 | 111 | 30 |
+
+A disposition ending "OPEN until 14/n" or "OPEN until 15/n" marks a row that was OPEN at 53c65d9ef, and the commit that closed it.
+
+| # | inventory row | fam | site at 8daf96009 | disposition | how |
+|---|---|---|---|---|---|
+| 1 | vm.go 568-606 `nameFrameFns` | 2 | eng/go/vm.go:569-602 | gone (holder) | `core.SetFnName(&locals[i], name)` on the callee's own slot (600; a closure through nameClosureValue, 579); no payload copy remains |
+| 2 | vm.go 893-903 `closureSourceStep` | 2 | eng/go/vm.go:896-906 | construction (B4); OPEN until 14/n | `src = core.MintPayload(cl.Source, &withCaps)` (906): this closure's captures in a new value that keeps the Source's identity, as before; the table's Source is only read |
+| 3 | vm.go 965-966 closure re-mint with Render | 2 | eng/go/vm.go:971-979 (`unmatchedLambdaBody`) | construction (B4) | a fresh `core.Value{Parent: body.Parent, Data: cl}` (975), its seam bits set before publication |
+| 4 | vm.go 1200-1205, 1479-1482 poly windows + `stampFnArgPos` | 2 | eng/go/vm.go:1210-1214 (callPoly); 1495-1498 (matchUserPoly) | gone (holder) | positions stamped (1412) only on the fresh window's slots (1210-1212) |
+| 5 | vm.go 1303 `callPoly` StripAscribed | 2 | eng/go/vm.go:1310-1313 | gone (holder) | `ClearAscribed(&args[i])` on the match result over the fresh window |
+| 6 | vm.go 1378 `stampFnPos` | 2 | eng/go/vm.go:1376-1396; callers 1362, 2867, 5263 | gone (holder) | stampFnPos stamps its by-value parameter, assigned back to the local `fnVal` (2843, 2867); stampFnResultPos (1362, 5263) stamps a run of the VM's own, built from the results only when a stamp is owed, and never the handler's (17/n) |
+| 7 | vm.go 1396 `stampFnArgPos` (+1205) | 2 | eng/go/vm.go:1407-1414; callers 1214, 5165, 6835 | gone (holder) | writes only window slots, the VM's arg scratch (5162) or popped stack cells (6834) |
+| 8 | vm.go 2050-2052 landingWalk park | 2 | eng/go/vm.go:2071-2073 | gone (holder) | `parked := v`, a by-value parameter, is quoted and stored in the cell |
+| 9 | vm.go 2405-2432 `substToken` | 2 | eng/go/vm.go:2425-2458 (2448, 2456) | construction (B6); OPEN until 14/n | `out[i] = core.MintPayload(&toks[i], …)` around the substituted run; the original token is read, never written |
+| 10 | vm.go 2549, 3102 `fnVal.Quoted = false` | 2 | eng/go/vm.go:2568, 3120 | gone (holder) | SetQuoted on the local `fnVal := stack[top]` (2547, 3033) |
+| 11 | vm.go 2902-2903 applyHandler mirror | 2 | eng/go/vm.go:2920-2921 | gone (holder) | SetQuoted and MarkApplied, both header bits, on the local `fnVal`; no FnDefInfo copy |
+| 12 | vm.go 3416 `appliedLead` | 2 | eng/go/vm.go:3431-3436 | gone (holder) | SetApplied on the by-value parameter; FnValueOnlyZeroArgSigs reads the payload by pointer (3432, 16/n) |
+| 13 | vm.go 4109 `bindDynScope` strip | 2 | eng/go/vm.go:4137, 4151, 4153 | gone (holder) | `StripAscribed(stack[top])` builds the binding's holder, pushed or installed as is |
+| 14 | vm.go 4511 `bindGlobal` strip (PEEK) | 2 | eng/go/vm.go:4539, 4563 | gone (holder) | the binding gets a StripAscribed copy (4539); the peeked cell is renamed in its own header (4563) |
+| 15 | vm.go 4795-4802 OpStoreLocal | 2 | eng/go/vm.go:4822-4829 | gone (holder) | `stored := StripAscribed(stack[top])` is renamed (SetFnName) and stored in the slot |
+| 16 | vm.go 4832-4838 OpMakeList | 2 | eng/go/vm.go:4859-4865 | gone (holder) | ClearAscribed on the new list's own array (B1) |
+| 17 | vm.go 4962-4968, 5540-5550, 5603-5614 CALL_USER(_POLY) entry | 2 | eng/go/vm.go:4989-4995, 5568-5578, 5631-5642 | gone (holder) | ClearAscribed and SetQuoted on the callee's slots after `copy(nl, sigArgs)` |
+| 18 | vm.go 5011-5020 OpPushClosure | 2 | eng/go/vm.go:5028-5052 | construction (B4) | a fresh `core.Value{Parent: TFunction, Data: cl}` (5033), edited before publication |
+| 19 | vm.go 5053 OpPushType `NewTypeLiteral` | 2 | eng/go/vm.go:5080 | gone (holder) | a D10 header copy of the canonical node into the cell; nothing writes the node |
+| 20 | vm.go 5120-5135 OpCallNative strip | 2 | eng/go/vm.go:5147-5165 | gone (holder) | ClearAscribed and stampFnArgPos on the VM's arg-scratch slots |
+| 21 | vm.go 5355/5358 OpBindTyped → ReparentValue | 2 | eng/go/vm.go:5383, 5386 | construction (B6) | RunTypedBind retags with MintRetagged; ReparentValue is gone |
+| 22 | vm.go 5835 ApplyResidentBind strip | 2 | eng/go/vm.go:5864 | gone (holder) | the binding receives a StripAscribed copy; the peeked cell is untouched |
+| 23 | vm.go 6004 OpRet strip | 2 | eng/go/vm.go:6032-6034 | gone (in place) | ClearAscribed on the VM's own residual cells, with no copy |
+| 24 | vm.go 6805-6813 makeMap | 2 | eng/go/vm.go:6834-6841 | gone (holder) | positions stamped on popped cells the VM owns; each map entry gets a StripAscribed holder |
+| 25 | vm_dyn_words.go 74-76 `nameStoredClosure` | 2 | eng/go/vm_dyn_words.go:74-76 | gone (holder) | delegates to nameClosureValue (row 27) |
+| 26 | vm_dyn_words.go 107-113 `dropFnPos` | 2 | eng/go/vm_dyn_words.go:110-115; callers vm.go:5772, 5796 | gone (holder) | SetPos on the by-value parameter, assigned back to the same frame local |
+| 27 | vm_dyn_words.go 117-165 `nameClosureValue` | 2 | eng/go/vm_dyn_words.go:117-149 | gone (holder) | `core.SetFnName(&v, name)` (147) on the parameter; closureView (156) builds the named view on read |
+| 28 | vm_dyn_words.go 246 `fnv.Quoted = false` | 2 | eng/go/vm_dyn_words.go:262-263 | gone (holder) | SetQuoted on closureAsWord's local, installed as a new frame binding |
+| 29 | vm_dyn_apply.go 214-224 `dynApplyEnter` | 2 | eng/go/vm_dyn_apply.go:216-227 | gone (holder) | `copy(locals, args)`, then ClearAscribed and SetQuoted on the frame slots |
+| 30 | vm_fnvalue_seam.go 182-190 `deliverArgs` | 2 | eng/go/vm_fnvalue_seam.go:181-190 | gone (holder) | the range copy `a` is edited and stored in a fresh `out` |
+| 31 | vm_generic.go 180-215, 221 binding read, strip | 2 | eng/go/vm_generic.go:189-206, 221 | gone (holder) | `Defs.Top` returns by value into `args[i]`; ClearAscribed on that slot |
+| 32 | vm_list_restep.go 67 strip | 2 | eng/go/vm_list_restep.go:75 | gone (holder) | ClearAscribed on the new list's own `elems` |
+| 33 | vm_markwindow.go 47-49 strip | 2 | eng/go/vm_markwindow.go:48-51 | gone (holder) | `elems[i] = stack[m+i]`, then ClearAscribed on it |
+| 34 | vm.go 2294-2320 `seatPrefix` fresh const / type [D7] | 2 | eng/go/vm.go:2325, 2327, 2340 | construction (B1/B4) | `buildLiteral(src.Build)` builds the spine, a fn under a fresh identity; a type is a D10 node copy |
+| 35 | vm.go 4440-4457 `seatDeoptPrefix` | 2 | eng/go/vm.go:4464-4491 (4485) | gone (holder) | a RestartConst delivered by value, a RestartType as a node header copy, into the prefix slot |
+| 36 | vm.go 4633-4634 `seatConstLocal` [D7] | 2 | eng/go/vm.go:4660-4663 | construction (B1) | `buildLiteral(p.ConstBuilds[…])` into the slot, once per call |
+| 37 | vm.go 4769 OpPushConstFresh [D7] | 2 | eng/go/vm.go:4789-4796 | construction (B1/B4) | `buildLiteral(p.ConstBuilds[in.Arg])` (4796) |
+| 38 | carrier.go 307-452 `toCarrier` | 2 | check/go/carrier.go:307-452 (452) | construction (B6); OPEN until 14/n | `core.MintCarrierKeeping(&v, nil)`, keeping the identity by which origByID recovers the literal |
+| 39 | carrier.go 690-697 args projection ID | 2 | check/go/carrier.go:686-707 (695, 697) | gone (holder) | SetID and RecordArgsProjection on `top`, `r.Args.Top()`'s by-value copy |
+| 40 | carrier.go 1894-1952 narrowing (1916-1918) | 2 | check/go/carrier.go:1895-1952 | gone (holder) | facets cleared on the probe holder `bound := cur`; the constructed intersection shares cur's identity (1950) |
+| 41 | carrier.go 2020-2022 reachability probe | 2 | check/go/carrier.go:2020-2026 | gone (holder) | `bound := args[j]` is a probe holder; the args keep their facets |
+| 42 | carrier.go 3497-3500 `resolveTypeNameArgs` | 2 | check/go/carrier.go:3482-3507 (3499-3500) | gone (holder) | a node header copy (D10) in the local `lit`, given the token's position in place by ThreadPos (3500, 16/n) |
+| 43 | check_fnbody.go 646 `CloneValue` "fresh ID" | 2 | check/go/check_fnbody.go:651 | gone (removed) | `out[i] = bv` (E7) |
+| 44 | check_fnbody.go 864-871 `freshResidual` | 2 | check/go/check_fnbody.go:870-875 | construction (B6) | `core.MintFresh(&stk[i])` |
+| 45 | check_fnbody.go 1070-1074 `recordFnValueApplyFallback` | 2 | check/go/check_fnbody.go:1077 | construction (B6) | `core.MintFresh(&outs[0])` |
+| 46 | check_fnmodel.go 142-143 `nur068ReturnCarrier` | 2 | check/go/check_fnmodel.go:142-143 | gone (holder) | `sv := bv; SetID(&sv, …)` writes sv's own record; MintFresh would be the family's spelling |
+| 47 | check_fnmodel.go 167, 197 `pat := *p.Pattern` | 2 | check/go/check_fnmodel.go:167, 197 | D10 (misfiled) | a read-only deref (AsChildType, IsTypedMap) that writes nothing: family 1 |
+| 48 | check_recovery.go 82-96 `tagCheckModeDefRead` | 2 | check/go/check_recovery.go:82-96 | gone (holder) | `top` points at core's per-read holder, never at the binding |
+| 49 | call_site_spec.go 122-124 ID re-mint | 2 | check/go/call_site_spec.go:122 | construction (B6) | `core.MintFresh(&args[i])` |
+| 50 | method_shape.go 151-155, 180-184, 539-547, 725-739 (4 twins) | 2 | check/go/method_shape.go:153-155, 182-184, 545-547, 737-739 | gone (holder) | SetEval and SetUndefined on a fresh window's slot; the tape cells keep their flags |
+| 51 | store_shape.go 228-241 `ShapeFieldRead` | 2 | check/go/store_shape.go:230-235 | gone (holder) | NewDynamicCarrierValue sets header bits on its by-value parameter; the recorded shape value is untouched |
+| 52 | carrier.go 981-989, 1018-1027, 2340-2344, 1666, 3268 `NewTypeLiteral` | 2 | check/go/carrier.go:983, 1025, 1666, 2342, 3268 | gone (holder) | node header copies (D10) as alternatives, probes or constructions; none is written |
+| 53 | carrier.go 1524-1531 `CarrierOfLiteral` orphan | 2 | check/go/carrier.go:1524-1531 (1529) | gone (removed) | CarrierOfLiteral is NewCarrier over the canonical node; the `lt := lit; &lt` orphan is gone |
+| 54 | emit.go 5425-5427, 5454-5456 `Materialise` | 2 | compiler/go/emit.go:5430-5496 (5464, 5491) | construction (B6); OPEN until 14/n | `core.MintPayload(&v, …)` around the rebuilt list or map payload |
+| 55 | emit.go 7463-7560 `NoteLiveRead`/`seatLiveRead` | 2 | compiler/go/emit.go:7497-7595 (7575) | gone (holder) | SetID and setProduced through `v`, core's per-read holder, where the recorder key lives |
+| 56 | emit.go 10241-10246 `RecordTypedBind` | 2 | compiler/go/emit.go:10253-10277 (10274) | gone (holder) | SetID and setProduced on the by-value `out` returned as the binding; `in` keeps its identity |
+| 57 | emit.go 10272-10277 `RecordTypedBindRun` | 2 | compiler/go/emit.go:10285-10308 (10305) | gone (holder) | as RecordTypedBind |
+| 58 | emit.go 10431-10441 de-collision (RecordCall) | 2 | compiler/go/emit.go:10444-10473 (10460, 10470) | gone (in place) | SetID and setProducedAt on the dispatch's own fresh result slice |
+| 59 | emit.go 11520-11530 de-collision (poly multi-result) | 2 | compiler/go/emit.go:11558-11567 (11564) | gone (in place) | as RecordCall's |
+| 60 | compiler_dispatch_record.go 1555-1561 de-collision | 2 | compiler/go/compiler_dispatch_record.go:1547-1568 (1564) | gone (in place) | produceRunOuts writes the run's own `outs` |
+| 61 | compiler_dispatch_record.go 350-358 `tryFoldParkedMemberFn` | 2 | compiler/go/compiler_dispatch_record.go:343-360 (356) | gone (holder) | SetID on `member`, readFnMemberValue's by-value copy; the element keeps its ID |
+| 62 | emit.go 11434 `NewTypeLiteral` | 2 | compiler/go/emit.go:11470 | gone (holder) | a local operand holder, read only by resolveOperand |
+| 63 | emit.go 20966-20971 anchored `SetPos` | 2 | compiler/go/emit.go:21080-21085 | gone (holder) | `anchored := append(nil, window…)` makes new holders; SetPos writes only those |
+| 64 | kept_defs.go 103-118 `keptReadSeatedLive` | 2 | compiler/go/kept_defs.go:103-118 (114, 117) | gone (holder) | core's read holder is replaced by a constructed carrier; the binding stays concrete |
+| 65 | kept_defs.go 352-376 `NoteValReadLive` | 2 | compiler/go/kept_defs.go:352-376 | gone (holder) | `v` is the `/v` path's local holder in core |
+| 66 | kept_defs.go 390-395 `computedLeakGradual` | 2 | compiler/go/kept_defs.go:390-395 (394) | gone (holder) | SetDynamic on the same read holder |
+| 67 | body_map.go 163 `quotedData` | 2 | compiler/go/body_map.go:162-169 | gone (holder) | SetQuoted on the by-value parameter of a read-only walk |
+| 68 | stamp_runtime.go 264-330 `StampFnValue` | 2 | compiler/go/stamp_runtime.go:274-341 (340) | construction (B6) | the payload is edited on `stamped := *fd` and boxed by `core.MintPayload(&v, &stamped)` |
+| 69 | eager_literal.go 91-105 probe window | 2 | compiler/go/eager_literal.go:92-104 | gone (holder) | a read-only window of const and node copies |
+| 70 | vm.go 1704-1710, 2607-2612, 2660-2662, 3244-3246, 4006-4008 island assembly | 3 | eng/go/vm.go:1720-1728, 2626-2638, 2679-2682, 3262-3265, 4034-4038 | C1 | each builds a new run from operands (and `fb.Tokens`) that islandRun loads once (373), or under a foreign registry runIslandResolved (377), which no longer concatenates |
+| 71 | vm.go 2147-2152 `landingDeopt` | 3 | eng/go/vm.go:2170-2177 | gone (removed) + construction (B1); OPEN until 15/n | the prefix is the frame region itself (2170); the tokens (opens, the value, the island) are a run built once (2171-2175) |
+| 72 | vm.go 2276 statement island (+ `seatPrefix` copy) | 3 | eng/go/vm.go:2299; seatPrefix 2316-2347 | gone (removed); OPEN until 15/n | the island is passed as is (2299); seatPrefix returns the frame region (2319) or builds its own run from srcs (2321) |
+| 73 | vm.go 2374 loop continuation `Results` | 3 | eng/go/vm.go:2399 | C2 | the continuation's own result list, which the interpreter's loop appends to |
+| 74 | vm.go 2376-2380 loop-continuation tokens | 3 | eng/go/vm.go:2401-2406 | construction + C1; OPEN until 15/n | the run (mark, island, MoveCont, `lc.After`) is built once and loaded once, after seatPrefix's prefix |
+| 75 | vm.go 3501 `callDynamicMixed` window | 3 | eng/go/vm.go:3520 (3582, 3584) | gone (removed); OPEN until 15/n | `window := stack[base:]`; every lane only reads it, and the stack is rewritten when the op returns |
+| 76 | vm.go 3649-3650 `callDynFrame` | 3 | eng/go/vm.go:3672-3673 (3746) | gone (removed); OPEN until 15/n | prefix and tokens are stack views; a frame entry copies its args into its own locals |
+| 77 | vm.go 4216 deopt island | 3 | eng/go/vm.go:4244 (4262) | gone (removed); OPEN until 15/n | `tokens := body[spec.Token:]`, a sub-slice of the unit body |
+| 78 | vm.go 4277 live deopt | 3 | eng/go/vm.go:4300-4305 | gone (removed); OPEN until 15/n | `spec.Island` or `body[spec.Token:]`, passed as is |
+| 79 | vm.go 4313 call-result island | 3 | eng/go/vm.go:4341 | gone (removed); OPEN until 15/n | `stack[base:]` goes to stopRestart, whose substitution copies the stop values into its own run |
+| 80 | vm.go 4337 root-end results | 3 | eng/go/vm.go:4365 | gone (removed); OPEN until 15/n | `runIslandResolved(reg, stack[:base], stack[base:])` |
+| 81 | vm.go 4377 re-step deopt | 3 | eng/go/vm.go:4401-4409; deoptPrefix 4504-4512 | construction + C1; OPEN until 15/n | the run (results, then the body tail) is built once (4405); deoptPrefix builds its own prefix |
+| 82 | vm.go 6133 loop-result re-step | 3 | eng/go/vm.go:6162 | gone (removed); OPEN until 15/n | `runIslandResolved(reg, nil, res)` |
+| 83 | vm_dyn_words.go 209-210 `callDynFrameWords` | 3 | eng/go/vm_dyn_words.go:225-226 (307) | gone (removed) + construction; OPEN until 15/n | the prefix is the frame region (225); the tokens stay a copy-on-write run (226), since words convert in it |
+| 84 | vm_list_restep.go 23 `elems` | 3 | eng/go/vm_list_restep.go:23 | construction (B1) | the new list's array, from the popped cells |
+| 85 | vm_list_restep.go 26 `tokens` | 3 | eng/go/vm_list_restep.go:28, 42-45, 59-62 | gone (removed); OPEN until 15/n | the island runs `elems` itself; a run of its own is copied only when a noted word replaces an element, and is then a construction |
+| 86 | vm_list_restep.go 63 | 3 | eng/go/vm_list_restep.go:71 | C2 | results copied out of the pooled engine's buffer |
+| 87 | vm_defer.go 67-69 `runIslandResolved` | 3 | eng/go/vm_defer.go:65-83 (74) | C1; OPEN until 15/n | `e.RunParts(inputs, tokens)` loads the two parts onto the tape; no concatenation |
+| 88 | vm_defer.go 76 | 3 | eng/go/vm_defer.go:75-77 | C2 | results copied out of the pooled sub-engine |
+| 89 | vm_do_restep.go 33 | 3 | eng/go/vm_do_restep.go:33 | gone (removed); OPEN until 15/n | `runIslandResolved(reg, nil, results)` |
+| 90 | vm_dyn_body_one.go 101-106 `splicePayload` | 3 | eng/go/vm_dyn_body_one.go:101-107 | gone (removed) | nothing is spliced onto the stack; the one caller is a read-only predicate |
+| 91 | vm_generic.go 123-125 window toks | 3 | eng/go/vm_generic.go:123-134 | C1 | built from frame values, the word and slot tokens; NewTape copies it once |
+| 92 | region_host.go 99-103 `newRegionHost` | 3 | eng/go/region_host.go:92-105 | C1 | built from `d.Slots[i].Token`; NewTape copies it once (104) |
+| 93 | region_oracle.go 52-58 | 3 | eng/go/region_oracle.go:51-62 | C1 | as newRegionHost |
+| 94 | vm_poly_nomatch.go 190 `splitBeneath` | 3 | eng/go/vm_poly_nomatch.go:186-205 (190) | construction + C1; OPEN until 15/n | with live slots, a run that differs from the table's Beneath (this call's live values); planSplitOver then assembles the window |
+| 95 | vm_poly_nomatch.go 287-288 `nativeSplitRaise` | 3 | eng/go/vm_poly_nomatch.go:283-290 (287-288) | construction + C1; OPEN until 15/n | the args with the body substituted; planSplitOver then assembles the window |
+| 96 | vm_rematch.go 140-147 `planSplitOver` | 3 | eng/go/vm_rematch.go:138-156 | C1 | built from beneath, stack, word, written and after; PlanMatch reads it as a slice (154), and NewTape copies it once |
+| 97 | vm_token_body.go 112, 115 | 3 | eng/go/vm_token_body.go:112, 115 | gone (removed) | `lst.Len()` and `lst.Elems()` |
+| 98 | vm_token_body.go stamped body | 3 | eng/go/vm_token_body.go:134-138 | gone (removed); OPEN until 15/n | StampTokenBody takes `lst.Elems()`; a flex body keeps a `Slice()` snapshot (B3) |
+| 99 | carrier.go 479-490 `StripToCarriers` | 3 | check/go/carrier.go:479-489 | C1 | the check-mode run, built in a new slice and loaded once |
+| 100 | check_fnbody.go 329-333 `bodyCopy` | 3 | check/go/check_fnbody.go:332-333 | gone (removed); OPEN until 15/n | `bodyToks` is the sig's own body, capacity-clamped (`sigBody[:n:n]`) |
+| 101 | spec_fn_unit.go 56 | 3 | check/go/spec_fn_unit.go:66-67 | gone (removed); OPEN until 15/n | as `bodyToks` |
+| 102 | check_recovery.go 447 | 3 | check/go/check_recovery.go:447 | gone (removed); OPEN until 15/n | `RunContainerSub(r, items, false)`; the sub-engine's load is the one copy |
+| 103 | emit.go 1491, 8475-8481 `SetRootBody` | 3 | compiler/go/emit.go:8504-8511 (8510) | gone (removed); OPEN until 15/n | `es.rootBody = body[:len(body):len(body)]`, the program's own tokens |
+| 104 | emit.go 4710, 4780 stored bodies | 3 | compiler/go/emit.go:4749, 4819; storedBodyTokens 4726-4731 | gone (removed); OPEN until 15/n | the list's own array (`lst.Elems()`); a flex body keeps a `Slice()` snapshot (B3) |
+| 105 | emit.go 12819-12822 gather | 3 | compiler/go/emit.go:12849-12879 (12862) | gone (removed) | no gather remains: WalkBodyWords reads `lst.Elems()` (14a8d3bac) |
+| 106 | callable_words.go 360 `bodyToks` | 3 | compiler/go/callable_words.go:360 | gone (removed); OPEN until 15/n | `storedBodyTokens(&body, bodyList)`, as the stored bodies |
+| 107 | kept_live_deopt.go 705-710 | 3 | compiler/go/kept_live_deopt.go:708-710 | C1 | a new island body (nested tokens spliced in), built once per lowering |
+| 108 | landing_restart.go 1319-1320 `nestedToks` | 3 | compiler/go/landing_restart.go:1313-1323 (1320) | gone (removed); OPEN until 15/n | `l.Elems()`, the list literal's own array |
+| 109 | lower.go 1655-1663 landing tail | 3 | compiler/go/lower.go:1653-1669 (1660) | C1 | the island tail, built once at lowering |
+| 110 | lower.go 857, 4106-4111 island sub-slices | 3 | compiler/go/lower.go:1455, 1489, 4140, 5629, 5667, 5788 | gone (no copy) | `lw.landingBody[r.token:]` reference sub-slices, never written |
+| 111 | user_poly.go 304 | 3 | compiler/go/user_poly.go:305-306 | gone (removed); OPEN until 15/n | as `bodyToks` |
+
+Related changes since 53c65d9ef:
+
+- Rows 98, 104, 106 and 108 now share a list literal's array. At 53c65d9ef that was unsafe: core's atom-referent pass wrote nested list arrays in place (exceptions E4). 13/n retired that write: the referent goes in the tape's own cell, and a nested list that takes one is rebuilt as a new list (core/go/engine.go:1599-1662).
+- Row 79 relies on substIsland copying the stop values into the island run (substToken). At 8daf96009 its Reach arm (eng/go/vm.go:2264-2267) kept the slice itself as a reach's receiver, which only the lowering made safe: it never marks a results substitution Reach (compiler/go/call_result_island.go:119 and landing_restart.go:858 build the results plans, and landing_restart.go:2446 builds the only reach plan). 17/n makes it hold by construction: the Reach arm gives the group a receiver of its own (`[]core.Value{vs[0]}`), so substIsland reads a slot or stack source where it lies (a one-cell view, no copy) and keeps no view of the VM's.
+- At 8daf96009 the VM's stampFnResultPos (eng/go/vm.go:1376-1380) stamped a positionless fn result in the handler's results slice: sound only while a handler returns a slice it owns, which 16/n's shared leaf skeleton no longer promises. 17/n makes the VM's stamp a construction: when a stamp is owed it builds a run of its own from the results and stamps that, and the handler's run is left as it was, as its interpreter twin (core's stampResultCells) leaves it.
+- FnValueOnlyZeroArgSigs takes `*FnDefInfo` since 16/n (core/go/engine.go:8541), so its 13 call sites in eng (8), check (1) and compiler (4) no longer copy the payload.
+- 15/n removed regionHost's span buffer behind ScratchParenSpan; the collection seam's method is SpliceGroup (eng/go/region_host.go:167-169, over core.SpliceGroupSpan).
