@@ -46,7 +46,8 @@ func NewFileType() *Type {
 // newFileTypeAtom returns the FileType atom for a name, tagged with the given
 // FileType node so its static and runtime types agree.
 func newFileTypeAtom(name string, fileType *Type) Value {
-	return core.ReparentValue(core.NewAtom(name), fileType)
+	atom := core.NewAtom(name)
+	return core.MintRetagged(&atom, fileType)
 }
 
 // fileTypeName classifies a FileInfo into its FileType atom name.

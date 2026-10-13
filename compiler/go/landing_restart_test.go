@@ -146,15 +146,16 @@ func TestRestartReruns(t *testing.T) {
 func TestRootPreStart(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, promoted: map[int]int{4: 7}}
+	prods := map[string]producer{"held": {seq: 3}, "slot": {seq: 4, idx: 1}, "mine": {seq: 8}}
 	val := func(id string, row, col int) core.Value {
 		v := core.NewInteger(1)
 		core.SetID(&v, id)
+		if pr, ok := prods[id]; ok {
+			es.stampProduced(&v, pr.seq, pr.idx)
+		}
 		v.SetPos(core.SrcPos{Row: row, Col: col})
 		return v
 	}
-	es.producedBy["held"] = producer{seq: 3}
-	es.producedBy["slot"] = producer{seq: 4, idx: 1}
-	es.producedBy["mine"] = producer{seq: 8}
 	start := core.SrcPos{Row: 2, Col: 1}
 	residual := []core.Value{val("k", 1, 1), val("held", 0, 0), val("slot", 0, 0), val("mine", 0, 0), val("after", 3, 1)}
 	srcs, held, _, ok := es.rootPreStart(lw, nil, residual, -1, start, 8)

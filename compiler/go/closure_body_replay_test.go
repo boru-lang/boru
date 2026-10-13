@@ -176,12 +176,12 @@ func TestProducedFnCarrierInFnUnit(t *testing.T) {
 	es := NewEmitState()
 	produced := core.NewCarrier(core.TFunction)
 	core.SetID(&produced, "T_factory_result")
-	es.producedBy = map[string]producer{core.IDOf(&produced): {seq: 7}}
+	es.stampProduced(&produced, 7, 0)
 	if es.producedFnCarrierInFnUnit(produced) {
 		t.Error("the program unit keeps its residual arms")
 	}
 	es, rec, _, _ := wordReadUnit(t)
-	es.producedBy = map[string]producer{core.IDOf(&produced): {seq: 7}}
+	es.stampProduced(&produced, 7, 0)
 	if !es.producedFnCarrierInFnUnit(produced) {
 		t.Error("a produced fn carrier inside a fn unit registers")
 	}
@@ -229,7 +229,7 @@ func TestNoteWordReadDefReadName(t *testing.T) {
 	if rec.wordReadNames[core.IDOf(&outer)] != "" || rec.wordReads[core.IDOf(&outer)] != 0 {
 		t.Errorf("an enclosing-scope read that is no def read records nothing: %q %d", rec.wordReadNames[core.IDOf(&outer)], rec.wordReads[core.IDOf(&outer)])
 	}
-	es.NoteDefRead(core.IDOf(&outer), "f")
+	es.NoteDefRead(core.IDOf(&outer), core.RecKeyOf(&outer), "f")
 	es.NoteWordRead(outer, "f", pos)
 	if rec.wordReadNames[core.IDOf(&outer)] != "f" || rec.wordReadPos[core.IDOf(&outer)] != pos || rec.wordReadFirst[core.IDOf(&outer)] != pos {
 		t.Errorf("a def read names itself at the read: %q %v %v", rec.wordReadNames[core.IDOf(&outer)], rec.wordReadPos[core.IDOf(&outer)], rec.wordReadFirst[core.IDOf(&outer)])
@@ -252,7 +252,7 @@ func TestNoteClosureBodyReplayDefRead(t *testing.T) {
 	inc := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
 	es, u, rec, elem := closureBodyUnit(t)
 	top := memberRead(es, inc)
-	es.NoteDefRead(core.IDOf(&top), "f")
+	es.NoteDefRead(core.IDOf(&top), core.RecKeyOf(&top), "f")
 	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
 	if rec.dynFrameW != 0 || rec.retReplay {
 		t.Errorf("a def read with no word name is the read model's: must not arm (w=%d)", rec.dynFrameW)

@@ -2471,8 +2471,8 @@ func IDPrefixForType(t *Type) string {
 
 // checkPassDepth counts the process's live check/compile passes
 // (CheckState.Begin / BeginCompilePass). Value IDs exist for exactly one
-// consumer class — the emit recorder's provenance maps, which key
-// producedBy / locals / captures on the ID minted at value creation and
+// consumer class — the emit recorder's identity-keyed tables, which key
+// locals / captures / def reads on the ID minted at value creation and
 // shared across copies — and that machinery only runs during a pass. A
 // full audit (design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore Phase B) found NO
 // run-mode reader of a concrete value's ID, so minting is gated: pure

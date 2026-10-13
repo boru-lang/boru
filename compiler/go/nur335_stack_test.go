@@ -57,9 +57,7 @@ func TestNoteStatementStack(t *testing.T) {
 func TestSeatStack(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, promoted: map[int]int{4: 7}}
-	es.producedBy["slot"] = producer{seq: 4, idx: 1}
-	es.producedBy["held"] = producer{seq: 3}
-	srcs, held, slots, ok := es.seatStack(lw, []core.Value{n335Val("slot", 0, 0), n335Val("held", 0, 0), n335Val("lit", 1, 1)})
+	srcs, held, slots, ok := es.seatStack(lw, []core.Value{stamped(es, n335Val("slot", 0, 0), 4, 1), stamped(es, n335Val("held", 0, 0), 3, 0), n335Val("lit", 1, 1)})
 	if !ok || held != 1 || len(srcs) != 3 || srcs[0].Kind != RestartLocal || srcs[0].Idx != 8 ||
 		srcs[1].Kind != RestartStack || srcs[2].Kind != RestartConst || len(slots) != 1 || slots[0] != (vmSlot{seq: 3}) {
 		t.Errorf("each value where the root keeps it: %+v held=%d slots=%v ok=%v", srcs, held, slots, ok)

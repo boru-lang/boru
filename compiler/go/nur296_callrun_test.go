@@ -16,10 +16,12 @@ import (
 func TestNoteArgSites(t *testing.T) {
 	es := NewEmitState()
 	es.readPos = map[string]core.SrcPos{"r": gpos(15)}
-	es.producedBy["p"] = producer{seq: 4}
 	val := func(id string, col int) core.Value {
 		v := core.NewInteger(1)
 		core.SetID(&v, id)
+		if id == "p" {
+			es.stampProduced(&v, 4, 0)
+		}
 		v.SetPos(gpos(col))
 		return v
 	}
@@ -248,7 +250,7 @@ func TestClaimParked(t *testing.T) {
 		v := core.NewInteger(1)
 		core.SetID(&v, id)
 		if seq > 0 {
-			es.producedBy[id] = producer{seq: seq, idx: idx}
+			es.stampProduced(&v, seq, idx)
 		}
 		return v
 	}

@@ -55,7 +55,7 @@ func TestDynScopeRescueReaderFallback(t *testing.T) {
 	// FnNameStack carries the reader.
 	r.Check.FnNameStack = []string{"reader"}
 	v := core.NewCarrier(core.TAny)
-	es.NoteDefRead(core.IDOf(&v), "dsv")
+	es.NoteDefRead(core.IDOf(&v), core.RecKeyOf(&v), "dsv")
 	op, ok := es.dynScopeRescue(v)
 	if !ok || op.kind != opDynScope {
 		t.Fatalf("rescue via FnNameStack fallback: op=%+v ok=%v", op, ok)

@@ -35,7 +35,7 @@ func NewBoundedType(bound *Type) Value {
 // rendering and identity while satisfaction unifies against the body
 // (the disjunct fold admits each alternative's literals).
 func NewBoundedTypeBody(node *Type, body Value) Value {
-	return NewValueRaw(TType, ChildTypeInfo{Child: ReparentValue(body, node)})
+	return NewValueRaw(TType, ChildTypeInfo{Child: MintRetagged(&body, node)})
 }
 
 // boundedBoundNode returns the lattice node a bounded Type's Child

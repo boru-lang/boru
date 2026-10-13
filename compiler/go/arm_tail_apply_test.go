@@ -32,7 +32,7 @@ func TestArmTailApplyArms(t *testing.T) {
 	if got := es.ArmTailApply(stk); len(got) != 2 || len(u.pendingApply) != 1 {
 		t.Fatal("a window the recorder declines passes through")
 	}
-	seedProduced(es, fn, 1)
+	seedProduced(es, &stk[1], 1) // the stack's holder is the one the arm reads
 	before := len(es.frames[0])
 	got := es.ArmTailApply(stk)
 	if len(got) != 1 || !core.IsDynamic(&got[0]) || got[0].Parent != core.TAny || !got[0].Carrier {

@@ -1021,7 +1021,7 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	var reparentTo *Type
 	if typeName != "" && core.PredicateInputType(constraint) != nil {
 		if def := r.LookupTypeName(typeName); def != nil && def.Origin != core.OriginBuiltin {
-			out = ReparentValue(out, def)
+			out = MintRetagged(&out, def)
 			reparentTo = def
 		}
 	}
@@ -1535,7 +1535,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 					return core.TypedBindSpec{
 						Kind: core.TypedBindRefine, Name: name, Describe: describeType(), Def: def,
 					}
-				}, body, ReparentValue(body, def), defPos,
+				}, body, MintRetagged(&body, def), defPos,
 					func() { markRefineDefUncompilable(r, name, body) })
 				return InstallAndRecordDef(r, name, bound, defPos)
 			}
@@ -1591,7 +1591,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		return InstallAndRecordDef(r, name, bound, defPos)
 	}
 	if reparent != nil {
-		unified = ReparentValue(unified, reparent)
+		unified = MintRetagged(&unified, reparent)
 	}
 	return InstallAndRecordDef(r, name, unified, defPos)
 }
@@ -1655,7 +1655,7 @@ func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Val
 		bound = NewCarrier(NodeOf(&unified))
 	}
 	if reparent != nil {
-		bound = ReparentValue(bound, reparent)
+		bound = MintRetagged(&bound, reparent)
 	}
 	es := r.Check.Recorder()
 	if _, fnMember := UnifyR(NewCarrier(TFunction), constraint, r); fnMember && carrierMayHoldFn(body) {

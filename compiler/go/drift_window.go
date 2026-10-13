@@ -137,7 +137,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	ops = append(ops, ConstOperand(es.intern(wordTok)))
 	for p := topPos; p >= minPos; p-- {
 		v := e.Tape.At(p)
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicResult {
+		if pr, ok := es.producerOf(&v); ok && es.eventInfo[pr.seq].variadicResult {
 			return false
 		}
 		op, ok := es.resolveOperand(v)
@@ -169,7 +169,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: w.Name, ops: ops, nout: 1, pos: wordTok.Pos(), dynMixed: true,
 	}})
-	es.setProducedAt(out, seq, 0)
+	es.setProducedAt(&out, seq, 0)
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	es.eventInfo[seq] = f

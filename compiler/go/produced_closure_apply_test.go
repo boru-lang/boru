@@ -42,7 +42,7 @@ func TestPendingClosureApply(t *testing.T) {
 
 func TestProducedFnValue(t *testing.T) {
 	es := NewEmitState()
-	if es.producedFnValue("nope") {
+	if es.producedFnValue(read("nope")) {
 		t.Fatal("an unknown id is not a produced fn value")
 	}
 	// A closure a user call's unit returns.
@@ -50,21 +50,21 @@ func TestProducedFnValue(t *testing.T) {
 		&fnUnitRec{outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}},
 		&fnUnitRec{nParams: 1})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy["closure"] = producer{seq: 0}
-	if !es.producedFnValue("closure") {
+	pClosure := producedAs(es, core.Value{}, "closure", 0, 0)
+	if !es.producedFnValue(&pClosure) {
 		t.Fatal("a closure a unit returns is a produced fn value")
 	}
 	// The result of a compiled fn-value apply (the staged combinators' inner
 	// apply nets the next closure).
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 1, kind: evCall, call: emitCall{word: wordDynApply}})
-	es.producedBy["applied"] = producer{seq: 1}
-	if !es.producedFnValue("applied") {
+	pApplied := producedAs(es, core.Value{}, "applied", 1, 0)
+	if !es.producedFnValue(&pApplied) {
 		t.Fatal("a fn-value apply's result is a produced fn value")
 	}
 	// A plain native call's result is neither.
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 2, kind: evCall, call: emitCall{word: "add"}})
-	es.producedBy["sum"] = producer{seq: 2}
-	if es.producedFnValue("sum") {
+	pSum := producedAs(es, core.Value{}, "sum", 2, 0)
+	if es.producedFnValue(&pSum) {
 		t.Fatal("a native call's result is not a produced fn value")
 	}
 }

@@ -32,7 +32,7 @@ func TestRebuildXmlFromTmplArms(t *testing.T) {
 		t.Fatalf("rebuild = %s, want <p a=\"v7\"/> (literal+hole attr, empty text hole)", got)
 	}
 
-	if (&compiler.EmitState{}).RecordInterpXml(core.XmlTmpl{}, []core.Value{core.NewInteger(1)}, core.Value{}, core.SrcPos{}) {
+	if (&compiler.EmitState{}).RecordInterpXml(core.XmlTmpl{}, []core.Value{core.NewInteger(1)}, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("an inactive EmitState must decline RecordInterpXml")
 	}
 }

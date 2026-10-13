@@ -670,14 +670,14 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 		}
 		return decline(why)
 	}
-	out := shapedReadOut(r, core.IDOf(&v))
-	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
+	outs := []core.Value{shapedReadOut(r, core.IDOf(&v))}
+	if !es.RecordDynMethod(v, args, outs, name, v.Pos()) {
 		if gradual {
 			return false
 		}
 		return decline("an operand has no compiled home")
 	}
-	e.Tape.Splice(valIdx, 1+n, out)
+	e.Tape.Splice(valIdx, 1+n, outs[0])
 	return true
 }
 
@@ -935,7 +935,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
 	// the branch's own MayBeFn, which only a value arm sets, does not say so
 	// (NUR317).
-	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(core.IDOf(&v)) && !core.UnionMayBeFn(v) {
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(core.RecKeyOf(&v)) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step

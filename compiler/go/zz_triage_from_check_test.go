@@ -261,23 +261,23 @@ func TestRecordUserPolyCallGuards(t *testing.T) {
 
 func TestRecordDynApplyDeclines(t *testing.T) {
 	// Inactive → false.
-	if _, ok := inactiveEmitState().RecordDynApply(nil, core.NewCarrier(core.TFunction), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := inactiveEmitState().RecordDynApply(nil, core.NewCarrier(core.TFunction), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApply should decline")
 	}
 	// Non-fn callee → false.
 	es := NewEmitState()
-	if _, ok := es.RecordDynApply(nil, core.NewInteger(5), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply(nil, core.NewInteger(5), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("non-fn callee should decline")
 	}
 	// Fn-typed carrier but unresolvable → false.
-	if _, ok := es.RecordDynApply(nil, core.NewCarrier(core.TFunction), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply(nil, core.NewCarrier(core.TFunction), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("unresolvable fn callee should decline")
 	}
 	// Fn resolves (a dynamic fn carrier resolves to an event operand), but an
 	// ARG is itself a fn value → false.
 	fn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(es, fn, 1)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewCarrier(core.TFunction)}, fn, core.NewInteger(0), core.SrcPos{}); ok {
+	seedProduced(es, &fn, 1)
+	if _, ok := es.RecordDynApply([]core.Value{core.NewCarrier(core.TFunction)}, fn, addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("fn-valued arg should decline")
 	}
 	// Under the `apply` WORD (a pending entry for the lead) a fn-valued arg
@@ -285,11 +285,11 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	// (A fresh state: the decline above is the event-lead compile failure, which
 	// marks the state uncompilable.)
 	esW := NewEmitState()
-	seedProduced(esW, fn, 1)
+	seedProduced(esW, &fn, 1)
 	argFn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(esW, argFn, 2)
+	seedProduced(esW, &argFn, 2)
 	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: core.IDOf(&fn)})
-	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, core.NewInteger(0), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
+	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, addrOf(core.NewInteger(0)), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
 		t.Fatal("a fn-valued arg beneath the apply word records")
 	}
 	if len(esW.units[len(esW.units)-1].pendingApply) != 0 {
@@ -306,8 +306,8 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	}}})
 	core.SetDynamic(&single, true)
 	esArg := NewEmitState()
-	seedProduced(esArg, single, 1)
-	if _, ok := esArg.RecordDynApply([]core.Value{carrierVal(core.TInteger)}, single, core.NewInteger(0), core.SrcPos{}); ok {
+	seedProduced(esArg, &single, 1)
+	if _, ok := esArg.RecordDynApply([]core.Value{carrierVal(core.TInteger)}, single, addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("unresolvable arg should decline")
 	}
 
@@ -320,8 +320,8 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	}})
 	core.SetDynamic(&over, true)
 	esOver := NewEmitState()
-	seedProduced(esOver, over, 1)
-	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
+	seedProduced(esOver, &over, 1)
+	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}); ok {
 		t.Fatal("an overloaded callee has no provable arity — the event lead must decline")
 	}
 	if esOver.Compilable {
@@ -332,38 +332,38 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 func TestRecordLoopCompileFailures(t *testing.T) {
 	// body == nil.
 	es := NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("nil loop body should decline")
 	}
 	// range of unknown provenance (start unresolvable).
 	es = NewEmitState()
-	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unresolvable range should decline")
 	}
 	// computed start/step (start resolves to an event, not a const).
 	es = NewEmitState()
 	start := core.NewCarrier(core.TInteger)
-	seedProduced(es, start, 1)
-	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	seedProduced(es, &start, 1)
+	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("computed loop start should decline")
 	}
 	// iterator slot not registered (all-const range, empty body).
 	es = NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unregistered iterator should decline")
 	}
 }
 
 func TestRecordFallbackGuards(t *testing.T) {
-	if inactiveEmitState().RecordFallback(core.FallbackSpan{}, nil, core.NewInteger(0), core.SrcPos{}) {
+	if inactiveEmitState().RecordFallback(core.FallbackSpan{}, nil, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("inactive RecordFallback should decline")
 	}
 	es := NewEmitState()
-	if es.RecordFallback(core.FallbackSpan{}, []core.Value{carrierVal(core.TInteger)}, core.NewInteger(0), core.SrcPos{}) {
+	if es.RecordFallback(core.FallbackSpan{}, []core.Value{carrierVal(core.TInteger)}, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("unresolvable fallback input should decline")
 	}
 }

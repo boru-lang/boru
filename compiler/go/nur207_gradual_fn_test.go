@@ -113,25 +113,23 @@ func TestArmsLeaveFnAndReadPoison(t *testing.T) {
 		}
 	}
 	// A nested branch's merge is a carrier the inner flag proves.
-	es.producedBy = map[string]producer{"inner": {seq: 4}}
 	es.eventInfo[4] = eventFlags{armLeavesFn: true}
-	inner := core.NewCarrier(core.TAny)
-	core.SetID(&inner, "inner")
+	inner := producedAs(es, core.NewCarrier(core.TAny), "inner", 4, 0)
 	if !es.armsLeaveFn(core.BranchRecord{ThenValue: &inner}) {
 		t.Error("a nested branch that leaves a fn leaves it through the outer arm")
 	}
 	// The read of a def bound to such a result poisons the placement gate.
-	es.noteMayBeFnRead("inner", "g")
+	es.noteMayBeFnRead("inner", core.RecKeyOf(&inner), "g")
 	if es.armReadCompileFailure != "" {
 		t.Fatal("a read of a value no def marked poisons nothing")
 	}
 	es.noteFnLeavingBind(inner)
-	es.noteMayBeFnRead("inner", "g")
+	es.noteMayBeFnRead("inner", core.RecKeyOf(&inner), "g")
 	if !strings.Contains(es.armReadCompileFailure, "read of `g`") || !strings.Contains(es.armReadCompileFailure, "NUR207") {
 		t.Errorf("the read declines under NUR207, got %q", es.armReadCompileFailure)
 	}
 	es.armReadCompileFailure = ""
-	es.noteMayBeFnRead("nobody", "g")
+	es.noteMayBeFnRead("nobody", core.RecKey{}, "g")
 	if es.armReadCompileFailure != "" {
 		t.Error("an unproduced read poisons nothing")
 	}
@@ -150,10 +148,13 @@ func TestGradualHoldsFn(t *testing.T) {
 		EmitEvent{seq: 7, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 1}},
 		EmitEvent{seq: 9, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}})
 	es.eventInfo[5] = eventFlags{armLeavesFn: true}
-	es.producedBy = map[string]producer{"viaBranch": {seq: 7}, "viaClosure": {seq: 9}, "plain": {seq: 3}}
+	seqs := map[string]int{"viaBranch": 7, "viaClosure": 9, "plain": 3}
 	mk := func(id string, t *core.Type) core.Value {
 		v := core.NewCarrier(t)
 		core.SetID(&v, id)
+		if seq, ok := seqs[id]; ok {
+			es.stampProduced(&v, seq, 0)
+		}
 		return v
 	}
 	if !es.gradualHoldsFn(mk("viaBranch", core.TAny)) || !es.gradualHoldsFn(mk("viaClosure", core.TAny)) {
@@ -241,7 +242,7 @@ func TestRecordUserCallDeclinesGradualFnArg(t *testing.T) {
 		}
 		es.fnRecs[unit].paramTypes = []*core.Type{c.param}
 		seq := es.appendEvent(EmitEvent{kind: evBranch, br: &emitBranch{}})
-		es.setProduced(arg, seq)
+		es.setProduced(&arg, seq)
 		es.eventInfo[seq] = eventFlags{armLeavesFn: true}
 		es.RecordUserCall(unit, "g", []core.Value{arg}, nil, core.SrcPos{Row: 1, Col: 3}, core.SrcPos{Row: 1, Col: 1})
 		declined := !es.Compilable && strings.Contains(es.Reason, "parameter not typed Function (NUR207)")
@@ -255,9 +256,7 @@ func TestRecordUserCallDeclinesGradualFnArg(t *testing.T) {
 func TestApplyOverGradualLeadIsPending(t *testing.T) {
 	es := NewEmitState()
 	es.units = []*emitUnit{{}}
-	lead := core.NewDynamicCarrier(core.TAny)
-	core.SetID(&lead, "lead")
-	es.producedBy = map[string]producer{"lead": {seq: 3}}
+	lead := producedAs(es, core.NewDynamicCarrier(core.TAny), "lead", 3, 0)
 	es.eventInfo[3] = eventFlags{}
 	sig := &core.Signature{Args: []*core.Type{core.TFunction}}
 	if !es.recordCallElided("apply", sig, []core.Value{lead}, []core.Value{lead}, core.SrcPos{}) {
@@ -289,16 +288,16 @@ func TestNoteFnLeavingBind(t *testing.T) {
 		EmitEvent{seq: 9, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}},
 		EmitEvent{seq: 7, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 2}})
 	es.eventInfo[5] = eventFlags{armLeavesFn: true}
-	es.producedBy = map[string]producer{"claimed": {seq: 9}, "unclaimed": {seq: 7}, "fnTyped": {seq: 7}, "branch": {seq: 5}}
+	seqs := map[string]int{"claimed": 9, "unclaimed": 7, "fnTyped": 7, "branch": 5}
 	carrier := func(id string, ty *core.Type) core.Value {
 		v := core.NewDynamicCarrier(ty)
 		core.SetID(&v, id)
+		es.stampProduced(&v, seqs[id], 0)
 		return v
 	}
 	claimed := carrier("claimed", core.TAny)
 	reg.Check.NoteFnShape(claimed, core.FnShape{Arity: 0})
-	fnTyped := core.NewCarrier(core.TFunction)
-	core.SetID(&fnTyped, "fnTyped")
+	fnTyped := producedAs(es, core.NewCarrier(core.TFunction), "fnTyped", 7, 0)
 	for _, v := range []core.Value{claimed, carrier("unclaimed", core.TAny), fnTyped, carrier("branch", core.TAny), {}} {
 		es.noteFnLeavingBind(v)
 	}

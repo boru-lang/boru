@@ -110,14 +110,22 @@ func TestForRangeLiveStartDeclines(t *testing.T) {
 		"for: computed range start/step", "[6]")
 }
 
-// TestSplicePayloadReReadDeclines — a dynamic splice reassigns its payload's
-// provenance to the spread, so a re-read of the payload def after the splice
-// surfaces the SAME value twice in the program residual; the re-read would
-// resolve to the spread, so the program declines beside the interpreter's
-// answer.
+// TestSplicePayloadReReadDeclines — a dynamic splice's spread keeps its
+// payload's identity, so two spreads of one payload surface that identity
+// twice in the program residual, each a variadic result its order would seat
+// in a slot: the program declines beside the interpreter's answer. A re-read
+// of the payload def after the spread is no spread: its holder carries the
+// payload's own producer (the recorder keys on the holder, not the
+// identity), so it compiles to the interpreter's answer — it declined while
+// the recorder resolved the identity to the splice.
 func TestSplicePayloadReReadDeclines(t *testing.T) {
-	requireLoudDecline(t, `def xs (range 1 3) def d word xs d xs`,
-		"splice payload re-read after the spread", "[1 2 [1 2]]")
+	requireLoudDecline(t, `def xs (range 1 3) def d word xs d 7 d`,
+		"splice payload re-read after the spread", "[1 2 7 1 2]")
+	src := `def xs (range 1 3) def d word xs d xs`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != "[1 2 [1 2]]" || fmt.Sprint(gotI) != "[1 2 [1 2]]" {
+		t.Errorf("%q: compiled=%v %v/%v, interp %v/%v, want [1 2 [1 2]] on both lanes", src, compiled, gotC, errC, gotI, errI)
+	}
 }
 
 // TestModifierWrapperShapeClaimBounds — a def-bound modifier wrapper's shape

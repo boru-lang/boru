@@ -90,7 +90,7 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	// for arms): the operand names its producing seq, which RewritePromotedRefs
 	// rewrites to the frame slot planValueDefLocals allocated.
 	produced := core.NewCarrier(core.TInteger)
-	es.setProduced(produced, 4)
+	es.setProduced(&produced, 4)
 	evArm := &EmitFragment{}
 	es.captureArmResidual(evArm, []core.Value{core.NewInteger(1), produced})
 	if len(evArm.residualOps) != 2 || evArm.residualOps[1].kind != opEvent || evArm.residualOps[1].idx != 4 {

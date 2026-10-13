@@ -67,7 +67,7 @@ func TestHazardLeadDeclinesEveryLowering(t *testing.T) {
 	}
 	// RecordDynApply: the marked fn declines without marking the program.
 	out := core.NewCarrier(core.TInteger)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, lead, out, core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, lead, &out, core.SrcPos{}); ok {
 		t.Error("a marked lead must decline the apply record")
 	}
 	if !es.Compilable {

@@ -163,8 +163,9 @@ func TestForwardFitsListsTheViableCandidates(t *testing.T) {
 	}
 	// A region's seat beneath holds any count: every reaching candidate.
 	reg := withFreshID(NewCarrier(TList))
+	SetRecKey(&reg, RecKey{Pass: 1, Seq: 1})
 	e, match, _ = fitEngine(t, reg)
-	e.Registry.Check.Emit = &regionRecorder{region: map[string]bool{IDOf(&reg): true}}
+	e.Registry.Check.Emit = &regionRecorder{region: map[RecKey]bool{RecKeyOf(&reg): true}}
 	if fits := e.forwardFits(match); len(fits[0]) != 2 {
 		t.Errorf("a region beneath: unbounded, got %+v", fits)
 	}

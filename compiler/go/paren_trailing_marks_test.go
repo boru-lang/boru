@@ -84,19 +84,18 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 // const answers true.
 func TestProducedConstLambdaGuards(t *testing.T) {
 	es := NewEmitState()
-	if es.producedConstLambda("nothing") {
+	if es.producedConstLambda(read("nothing")) {
 		t.Error("an unproduced id is not a const lambda")
 	}
 	fnc := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1}}, Anonymous: true})
 	es.consts = []core.Value{core.NewInteger(1), fnc}
 	unit := len(es.fnRecs)
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{name: "mk"})
-	seed := func(op EmitOperand) string {
-		id := "res"
+	seed := func(op EmitOperand) *core.Value {
 		es.fnRecs[unit].outOps = []EmitOperand{op}
 		es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{unit: unit}, seq: 1}}}
-		es.producedBy = map[string]producer{id: {seq: 1, idx: 0}}
-		return id
+		res := producedAs(es, core.Value{}, "res", 1, 0)
+		return &res
 	}
 	if es.producedConstLambda(seed(EmitOperand{kind: opLocal, idx: 0})) {
 		t.Error("a returned local is not a const")

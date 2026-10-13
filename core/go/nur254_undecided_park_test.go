@@ -12,7 +12,7 @@ type undecidedRecorder struct {
 }
 
 func (u *undecidedRecorder) Active() bool { return true }
-func (u *undecidedRecorder) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) {
+func (u *undecidedRecorder) RecordDynApply([]Value, Value, *Value, SrcPos) (int, bool) {
 	u.calls++
 	return u.consumed, u.ok
 }

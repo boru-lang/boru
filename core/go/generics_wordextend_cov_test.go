@@ -276,7 +276,7 @@ func TestInstallWordExtensionMergeAndDispatch(t *testing.T) {
 	}
 
 	// Dispatch: the anchored overload works, the locked Integer one remains.
-	out, err := NewTop(r).Run([]Value{NewWord("cadd"), ReparentValue(NewString("a"), covStrT), NewString("b")})
+	out, err := NewTop(r).Run([]Value{NewWord("cadd"), MintRetagged(addrOf(NewString("a")), covStrT), NewString("b")})
 	if err != nil {
 		t.Fatalf("extended string call: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestNewWordExtensionAndTransplant(t *testing.T) {
 	if err := TransplantExtension(r, ext, "cov:module", ""); err != nil {
 		t.Fatalf("TransplantExtension: %v", err)
 	}
-	flagVal := ReparentValue(NewBoolean(true), flagT)
+	flagVal := MintRetagged(addrOf(NewBoolean(true)), flagT)
 	out, err := NewTop(r).Run([]Value{NewWord("cadd"), flagVal, NewBoolean(true)})
 	if err != nil {
 		t.Fatalf("transplanted call: %v", err)

@@ -46,7 +46,7 @@ func (es *EmitState) strictFnOperandProven(v core.Value, op EmitOperand) bool {
 	case opEvent:
 		return op.resIdx == 0 && es.strictNativeFnResult(op.idx)
 	case opLocal:
-		pr, ok := es.producedBy[core.IDOf(&v)]
+		pr, ok := es.producerOf(&v)
 		return ok && pr.idx == 0 && es.strictNativeFnResult(pr.seq)
 	}
 	return false
@@ -92,7 +92,7 @@ func (es *EmitState) provenFnDef(v core.Value, op EmitOperand) (core.FnDefInfo, 
 		// A promoted value-def (`def c (mk)` then `c/v`) reads its frame
 		// slot, which holds exactly the producing event's result; a param or
 		// a loop iterator has no producer and stays unproven.
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.idx == 0 {
+		if pr, ok := es.producerOf(&v); ok && pr.idx == 0 {
 			return es.seqFnDef(pr.seq)
 		}
 	}

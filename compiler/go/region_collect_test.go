@@ -88,7 +88,7 @@ func TestRegionCollectShapeDeclinesTheNearMisses(t *testing.T) {
 	plain := es6.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzadd", nout: 1}})
 	out := core.NewInteger(3)
 	core.SetID(&out, core.GenerateID("zzrc"))
-	es6.setProduced(out, plain)
+	es6.setProduced(&out, plain)
 	rcList(es6, rcRegionOp(plain))
 	if _, _, ok := es6.regionCollectShape(es6.frames[0]); ok {
 		t.Error("a list literal over a fixed result is the ordinary MAKE_LIST")

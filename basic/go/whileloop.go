@@ -172,7 +172,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		}
 		iter := NewCarrier(TInteger)
 		es.RegisterLocal(IDOf(&iter))
-		es.RecordWhile(condFrag, bodyFrag, condStk, stk, IDOf(&iter), out, args[0].Pos())
+		es.RecordWhile(condFrag, bodyFrag, condStk, stk, IDOf(&iter), &out, args[0].Pos())
 		return []Value{out}
 	}
 	if len(stk) == 0 {

@@ -38,7 +38,7 @@ func TestNoteValReadLiveSeatsALeakedName(t *testing.T) {
 	if ev.kind != evCall || !ev.call.live || !ev.call.liveRef || ev.call.pos != at {
 		t.Errorf("a live `/v` event at the read's token, got %+v", ev)
 	}
-	if pr, ok := es.producedBy[core.IDOf(&v)]; !ok || pr.seq != ev.seq {
+	if pr, ok := es.producerOf(&v); !ok || pr.seq != ev.seq {
 		t.Errorf("the read's producer is the live event: %v %v", pr, ok)
 	}
 	// It lowers to the value spelling's lookup (OpLookupDynScopeRef), where

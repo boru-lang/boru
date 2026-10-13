@@ -958,7 +958,9 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	recsBefore := len(real.fnRecs)
 	unit, realOk := compile(bodyToks, paramNames, captures)
 	// REACHABLE since Stage 4b (unit_memo.go), not a defensive arm: the
-	// probe carries no producedBy, so an enclosing binding read whose value
+	// probe resolves no event of the real pass (a fresh recording state,
+	// whose pass number the real recorder keys do not carry), so an
+	// enclosing binding read whose value
 	// an EVENT produced (`k` after a leaking `do` rebound it) bakes as a
 	// const in the probe and routes LIVE in the real compile — and the
 	// residual-order hazard declines the live read where it admitted the
@@ -972,8 +974,9 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// The REGION shapes are a SHAPE test, so they must be re-asked of the
 	// REAL unit — and this is not belt-and-braces, it is the same probe/real
 	// divergence the decline above documents, seen from the other side. The
-	// probe carries no producedBy, so an enclosing binding read that an EVENT
-	// produces bakes there as a CONST and routes LIVE in the real compile.
+	// probe resolves no event of the real pass, so an enclosing binding read
+	// that an EVENT produces bakes there as a CONST and routes LIVE in the
+	// real compile.
 	// closureResidualExact survives that because it counts operands and the
 	// count does not change; regionPrefixShapeOps does not, because it
 	// requires everything beneath the run to be INERT, and a const-in-probe /
@@ -1468,7 +1471,7 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 	if p == nil || (!p.ConformsTo(core.TFlexList) && !p.ConformsTo(core.TFlexMap)) {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return false
 	}

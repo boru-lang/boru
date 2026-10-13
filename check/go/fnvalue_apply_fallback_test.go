@@ -14,7 +14,7 @@ type fakeApplyRec struct {
 	ok bool
 }
 
-func (f fakeApplyRec) RecordDynApplyName(string, []core.Value, core.Value, core.Value, core.SrcPos) bool {
+func (f fakeApplyRec) RecordDynApplyName(string, []core.Value, core.Value, *core.Value, core.SrcPos) bool {
 	return f.ok
 }
 
@@ -74,7 +74,7 @@ func TestRecordFnValueApplyFallbackArms(t *testing.T) {
 		t.Fatal("the qualifying shape must record")
 	}
 	if !fresh.Carrier || core.IDOf(&fresh) == core.IDOf(&carrierOut[0]) {
-		t.Errorf("the out must be a FRESH carrier (shared IDs overwrite producedBy): %v", fresh)
+		t.Errorf("the out must be a FRESH carrier (one identity per call site): %v", fresh)
 	}
 	// The recorder declining leaves the caller on the unit-call path.
 	recNo := fakeApplyRec{EmitRecorder: core.TheInactiveEmit, ok: false}

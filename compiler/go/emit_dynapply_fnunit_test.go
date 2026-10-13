@@ -274,7 +274,7 @@ func TestReplayIsBodyTailSeqAnchor(t *testing.T) {
 	// The window's producer is the trace's LAST event: a tail — arm.
 	es := NewEmitState()
 	res := dynAt("r1")
-	es.producedBy[core.IDOf(&res)] = producer{seq: 7}
+	es.stampProduced(&res, 7, 0)
 	frag := &EmitFragment{events: []EmitEvent{evSeq(3), evSeq(7)}}
 	if !es.replayIsBodyTail(frag, []core.Value{core.NewInteger(1), res}) {
 		t.Error("a window produced by the trace's last event is the body tail")
@@ -283,7 +283,7 @@ func TestReplayIsBodyTailSeqAnchor(t *testing.T) {
 	// "x"]`): the replay would reorder its effects behind the apply — decline.
 	es2 := NewEmitState()
 	res2 := dynAt("r2")
-	es2.producedBy[core.IDOf(&res2)] = producer{seq: 3}
+	es2.stampProduced(&res2, 3, 0)
 	frag2 := &EmitFragment{events: []EmitEvent{evSeq(3), evSeq(7)}}
 	if es2.replayIsBodyTail(frag2, []core.Value{core.NewInteger(1), res2}) {
 		t.Error("an event recorded after the window's producer must decline")

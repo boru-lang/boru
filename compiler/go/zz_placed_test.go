@@ -249,7 +249,7 @@ func TestDriftWindowVariadicOperandDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	dyn := core.NewDynamicCarrier(core.TAny)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzvar", nout: 1}})
-	es.setProducedAt(dyn, seq, 0)
+	es.setProducedAt(&dyn, seq, 0)
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	es.eventInfo[seq] = f
@@ -271,7 +271,7 @@ func TestDriftWindowUnresolvableOperandDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	dyn := core.NewDynamicCarrier(core.TAny)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzev", nout: 1}})
-	es.setProducedAt(dyn, seq, 0)
+	es.setProducedAt(&dyn, seq, 0)
 	orphan := core.NewCarrier(core.TInteger) // non-dynamic carrier, no event, no orig
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{orphan, dyn, core.NewWord("add"), core.NewInteger(1)}, core.StackHeadroom)
@@ -291,7 +291,7 @@ func TestRecordCallCompileFailureComputedRangeList(t *testing.T) {
 	lst := core.NewCarrier(core.TList)
 	core.SetID(&lst, core.GenerateID(core.IDPrefixForType(core.TList)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, nout: 1, makeList: true}})
-	es.setProduced(lst, seq)
+	es.setProduced(&lst, seq)
 	if !es.recordCallCompileFailure("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
 		t.Fatal("the computed-range-list arm must classify the compile failure")
 	}
@@ -317,8 +317,8 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	other := core.NewCarrier(core.TString)
 	core.SetID(&other, core.GenerateID(core.IDPrefixForType(core.TString)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz", nout: 2}})
-	es.setProduced(fnOut, seq)
-	es.producedBy[core.IDOf(&other)] = producer{seq: seq, idx: 1}
+	es.setProduced(&fnOut, seq)
+	es.stampProduced(&other, seq, 1)
 	if _, ok := es.SplitEventRegionBind("zzf", fnOut); ok {
 		t.Error("a Function-typed first result must decline (parked-fn screen)")
 	}
@@ -329,7 +329,7 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	iOut := core.NewCarrier(core.TInteger)
 	core.SetID(&iOut, core.GenerateID(core.IDPrefixForType(core.TInteger)))
 	fseq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz2", nout: 2}})
-	es.setProduced(iOut, fseq)
+	es.setProduced(&iOut, fseq)
 	closeFrag()
 	es.TakeFragment()
 	if _, ok := es.SplitEventRegionBind("zzg", iOut); ok {
@@ -360,7 +360,7 @@ func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
 	out := core.NewInteger(7)
-	es.producedBy[core.IDOf(&out)] = producer{}
+	es.stampProduced(&out, 0, 0)
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "case", sig, bodyArgs("step"), []core.Value{out}, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {

@@ -29,13 +29,13 @@ func TestNoteValBindArms(t *testing.T) {
 	if len(cur.valBinds) != 0 {
 		t.Fatalf("a non-fn value and a fn value no event produced record nothing: %v", cur.valBinds)
 	}
-	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
+	es.stampProduced(&fn, 3, 0)
 	es.reg.Defs.Push("p", fn)
 	es.valBindEpoch = map[string]int{"p": 2}
 	es.noteValBind(cur, "p", fn)
 	b, ok := cur.valBinds["p"]
-	if !ok || b.pr.seq != 3 || b.top != core.IDOf(&fn) || b.gen != es.reg.Defs.Gen("p") || b.epoch != 2 {
-		t.Fatalf("a produced fn value records its producer, the entry on top, the generation and the epoch: %+v", b)
+	if !ok || b.key != core.RecKeyOf(&fn) || b.top != core.IDOf(&fn) || b.gen != es.reg.Defs.Gen("p") || b.epoch != 2 {
+		t.Fatalf("a produced fn value records its recorder key, the entry on top, the generation and the epoch: %+v", b)
 	}
 	// A bind inside a branch or loop body records like any other (the
 	// thirty-third increment): its arm's rollback moves the generation and
@@ -56,46 +56,49 @@ func TestNoteValBindArms(t *testing.T) {
 
 func TestAliasValReadArms(t *testing.T) {
 	es := NewEmitState()
-	es.aliasValRead("r0", "")
-	es.aliasValRead("r0", "p")
-	if len(es.producedBy) != 0 {
+	r0 := read("r0")
+	es.aliasValRead(r0, "")
+	es.aliasValRead(r0, "p")
+	if _, ok := es.producerOf(r0); ok {
 		t.Fatal("no name, no registry: nothing aliased")
 	}
 	bare := &EmitState{reg: newTestRegistry(t)}
-	bare.aliasValRead("r0", "p")
-	if bare.producedBy != nil {
+	bare.aliasValRead(r0, "p")
+	if _, ok := bare.producerOf(r0); ok {
 		t.Fatal("no unit: nothing aliased")
 	}
 	es.reg = newTestRegistry(t)
-	es.aliasValRead("r0", "p")
-	if _, ok := es.producedBy["r0"]; ok {
+	es.aliasValRead(r0, "p")
+	if _, ok := es.producerOf(r0); ok {
 		t.Fatal("no bind of the name: nothing aliased")
 	}
 	fn := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	core.SetID(&fn, "T_fn")
-	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
+	es.stampProduced(&fn, 3, 0)
 	es.reg.Defs.Push("p", fn)
 	es.valBindEpoch = map[string]int{"p": 1}
 	cur := es.units[0]
 	es.noteValBind(cur, "p", fn)
 	// A later dyn-bind of the name anywhere (the epoch) stales the entry.
 	es.valBindEpoch["p"] = 2
-	es.aliasValRead("r1", "p")
-	if _, ok := es.producedBy["r1"]; ok {
+	r1 := read("r1")
+	es.aliasValRead(r1, "p")
+	if _, ok := es.producerOf(r1); ok {
 		t.Fatal("a moved epoch: nothing aliased")
 	}
 	es.valBindEpoch["p"] = 1
 	// The generation unchanged: aliased, and remembered as a value read.
-	es.aliasValRead("r1", "p")
-	if pr, ok := es.producedBy["r1"]; !ok || pr.seq != 3 || !es.valReadIDs["r1"] {
+	es.aliasValRead(r1, "p")
+	if pr, ok := es.producerOf(r1); !ok || pr.seq != 3 || !es.valReadIDs["r1"] {
 		t.Fatalf("an unmoved binding aliases the read to the bind's producer: %+v %v", pr, es.valReadIDs)
 	}
 	// The generation moved but the bind's entry is on top again (a frame
 	// binding of the name came and went): aliased.
 	es.reg.Defs.Push("p", core.NewInteger(9))
 	es.reg.Defs.PopEntry("p")
-	es.aliasValRead("r2", "p")
-	if pr, ok := es.producedBy["r2"]; !ok || pr.seq != 3 {
+	r2 := read("r2")
+	es.aliasValRead(r2, "p")
+	if pr, ok := es.producerOf(r2); !ok || pr.seq != 3 {
 		t.Fatal("the same entry on top again aliases")
 	}
 	// Another entry on top (a rebind the recorder did not see): not aliased;
@@ -103,18 +106,20 @@ func TestAliasValReadArms(t *testing.T) {
 	other := core.NewInteger(9)
 	core.SetID(&other, "T_other")
 	es.reg.Defs.Push("p", other)
-	es.aliasValRead("r3", "p")
+	r3 := read("r3")
+	es.aliasValRead(r3, "p")
 	es.reg.Defs.PopEntry("p")
 	es.reg.Defs.Push("p", core.NewInteger(9))
-	es.aliasValRead("r3", "p")
-	if _, ok := es.producedBy["r3"]; ok {
+	es.aliasValRead(r3, "p")
+	if _, ok := es.producerOf(r3); ok {
 		t.Fatal("another entry on top, or one without an id: nothing aliased")
 	}
 	// The name unbound: not aliased.
 	es.reg.Defs.PopEntry("p")
 	es.reg.Defs.PopEntry("p")
-	es.aliasValRead("r4", "p")
-	if _, ok := es.producedBy["r4"]; ok {
+	r4 := read("r4")
+	es.aliasValRead(r4, "p")
+	if _, ok := es.producerOf(r4); ok {
 		t.Fatal("an unbound name: nothing aliased")
 	}
 }
@@ -124,15 +129,17 @@ func TestNoteValReadAliasesWithoutAnOpenUnit(t *testing.T) {
 	es.reg = newTestRegistry(t)
 	fn := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	core.SetID(&fn, "T_fn")
-	es.producedBy[core.IDOf(&fn)] = producer{seq: 3}
+	es.stampProduced(&fn, 3, 0)
 	es.reg.Defs.Push("p", fn)
 	es.noteValBind(es.units[0], "p", fn)
-	es.NoteValRead("r1", "p")
-	if pr, ok := es.producedBy["r1"]; !ok || pr.seq != 3 || len(es.fnRecs) != 0 {
+	r1 := read("r1")
+	es.NoteValRead(r1, "p")
+	if pr, ok := es.producerOf(r1); !ok || pr.seq != 3 || len(es.fnRecs) != 0 {
 		t.Fatalf("the program unit's read aliases with no fn unit open: %+v", pr)
 	}
-	es.NoteValRead("", "p")
-	if _, ok := es.producedBy[""]; ok {
+	blank := &core.Value{}
+	es.NoteValRead(blank, "p")
+	if _, ok := es.producerOf(blank); ok {
 		t.Fatal("an empty id records nothing")
 	}
 }
@@ -143,7 +150,7 @@ func TestArgIsProducedClosureSkipsValRead(t *testing.T) {
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
 	v := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	core.SetID(&v, "T_closure")
-	es.producedBy[core.IDOf(&v)] = producer{seq: 0}
+	es.stampProduced(&v, 0, 0)
 	sig := &core.Signature{Args: []*core.Type{core.TAny}}
 	if !es.argIsProducedClosure("typeof", sig, []core.Value{v}) || es.Compilable {
 		t.Fatal("a produced closure at an Any slot declines")
@@ -214,14 +221,14 @@ func TestAliasValReadLiteralArms(t *testing.T) {
 	es.noteValBind(cur, "kk", lit)
 	// The captured name rebound since the def: no alias.
 	es.valBindEpoch["n"] = 3
-	es.aliasValRead("r1", "kk")
+	es.aliasValRead(read("r1"), "kk")
 	if _, ok := es.readOps["r1"]; ok {
 		t.Fatal("a moved capture epoch declines")
 	}
 	es.valBindEpoch["n"] = 2
 	// The capture has no operand home here, so the closure cannot be
 	// built: no alias, nothing cached.
-	es.aliasValRead("r2", "kk")
+	es.aliasValRead(read("r2"), "kk")
 	if _, ok := es.readOps["r2"]; ok || cur.valBinds["kk"].op != nil {
 		t.Fatal("an unbuildable closure declines and caches nothing")
 	}

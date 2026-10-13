@@ -74,7 +74,7 @@ func TestNoteMemberFnReadGuards(t *testing.T) {
 
 func TestRecordInterpCompileFailures(t *testing.T) {
 	es := NewEmitState()
-	if es.RecordInterp(nil, nil, core.NewInteger(0), core.SrcPos{}) {
+	if es.RecordInterp(nil, nil, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("no holes should decline")
 	}
 }
@@ -103,7 +103,7 @@ func TestRecordDynMethodGuards(t *testing.T) {
 	}
 	// fn resolves, an arg is unresolvable → declines.
 	fn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(es, fn, 1)
+	seedProduced(es, &fn, 1)
 	if es.RecordDynMethod(fn, []core.Value{carrierVal(core.TInteger)}, nil, "m", core.SrcPos{}) {
 		t.Fatal("unresolvable method arg should decline")
 	}

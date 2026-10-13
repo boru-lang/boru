@@ -19,8 +19,8 @@ type fakePendingRec struct {
 }
 
 func (f *fakePendingRec) PendingClosureApply([]core.Value) (core.Value, bool) { return f.fn, f.has }
-func (f *fakePendingRec) RecordDynApply(args []core.Value, _, out core.Value, _ core.SrcPos) (int, bool) {
-	f.window, f.out = args, out
+func (f *fakePendingRec) RecordDynApply(args []core.Value, _ core.Value, out *core.Value, _ core.SrcPos) (int, bool) {
+	f.window, f.out = args, *out
 	return len(args), f.applyOK
 }
 
@@ -84,7 +84,7 @@ type fakeOrderRec struct {
 	named bool
 }
 
-func (f *fakeOrderRec) RecordDynApplyName(string, []core.Value, core.Value, core.Value, core.SrcPos) bool {
+func (f *fakeOrderRec) RecordDynApplyName(string, []core.Value, core.Value, *core.Value, core.SrcPos) bool {
 	f.named = true
 	return true
 }

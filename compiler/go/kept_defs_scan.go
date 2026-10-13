@@ -49,7 +49,7 @@ func (es *EmitState) provenBodyTokens(body core.Value) ([]core.Value, bool) {
 		}
 		op, ok = es.producerReturnedOutOpSeq(op.idx)
 	case opLocal:
-		pr, produced := es.producedBy[core.IDOf(&body)]
+		pr, produced := es.producerOf(&body)
 		if !produced || pr.idx != 0 {
 			return nil, false
 		}

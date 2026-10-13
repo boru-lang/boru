@@ -23,7 +23,7 @@ func TestTryFoldStaticIndexArgsProjection(t *testing.T) {
 		recv := core.NewList([]core.Value{core.NewInteger(3), core.NewInteger(4)})
 		core.SetID(&recv, "ARGS")
 		es.argsProjSeq = map[string]int{core.IDOf(&recv): 7}
-		es.producedBy[core.IDOf(&recv)] = producer{seq: 7}
+		es.stampProduced(&recv, 7, 0)
 		es.frames[0] = []EmitEvent{{seq: 7, kind: evCall, call: emitCall{word: "args", nout: 1}}}
 		if trailing {
 			es.frames[0] = append(es.frames[0], EmitEvent{seq: 8, kind: evDynBind, dyn: &emitDynBind{name: "xs", srcSeq: 7, residentTwin: -1}})
@@ -48,7 +48,7 @@ func TestTryFoldStaticIndexArgsProjection(t *testing.T) {
 	if n, err := core.AsInteger(outs[0]); err != nil || n != 4 {
 		t.Fatalf("the fold must hand on the element, got %v", outs[0])
 	}
-	if len(es.frames[0]) != 0 || len(es.argsProjSeq) != 0 || es.AlreadyProduced(core.IDOf(&recv)) {
+	if len(es.frames[0]) != 0 || len(es.argsProjSeq) != 0 || es.AlreadyProduced(core.RecKeyOf(&recv)) {
 		t.Fatal("the retracted projection must leave no event, note or producer behind")
 	}
 }

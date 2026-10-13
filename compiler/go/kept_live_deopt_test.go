@@ -147,22 +147,24 @@ func TestPlanDeoptsDropsUnservedLivePoints(t *testing.T) {
 func TestRootHeldBeneath(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, promoted: map[int]int{4: 7}}
-	es.producedBy["held"] = producer{seq: 3}
-	es.producedBy["slot"] = producer{seq: 4}
 	start := core.SrcPos{Row: 2, Col: 1}
 	for _, c := range []struct {
 		name string
 		id   string
+		seq  int // the producing event, 0 for none
 		pos  core.SrcPos
 		want bool
 	}{
-		{"an event's result on the stack", "held", core.SrcPos{}, true},
-		{"one promoted to a slot", "slot", core.SrcPos{}, false},
-		{"a literal laid out at the end", "k", core.SrcPos{Row: 1, Col: 1}, false},
-		{"a literal with no position", "np", core.SrcPos{}, false},
+		{"an event's result on the stack", "held", 3, core.SrcPos{}, true},
+		{"one promoted to a slot", "slot", 4, core.SrcPos{}, false},
+		{"a literal laid out at the end", "k", 0, core.SrcPos{Row: 1, Col: 1}, false},
+		{"a literal with no position", "np", 0, core.SrcPos{}, false},
 	} {
 		v := core.NewInteger(1)
 		core.SetID(&v, c.id)
+		if c.seq > 0 {
+			es.stampProduced(&v, c.seq, 0)
+		}
 		v.SetPos(c.pos)
 		if got := es.rootHeldBeneath(lw, nil, []core.Value{v}, start, 8); got != c.want {
 			t.Errorf("%s: rootHeldBeneath = %v, want %v", c.name, got, c.want)

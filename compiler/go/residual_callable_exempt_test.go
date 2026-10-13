@@ -22,8 +22,8 @@ func TestResidualCallableExempt(t *testing.T) {
 	loose := core.NewDynamicCarrier(core.TAny)
 	idless := core.NewDynamicCarrier(core.TAny)
 	core.SetID(&idless, "")
-	for i, v := range []core.Value{read, copied, result, twice} {
-		es.producedBy[core.IDOf(&v)] = producer{seq: i + 1}
+	for i, v := range []*core.Value{&read, &copied, &result, &twice} {
+		es.stampProduced(v, i+1, 0)
 	}
 	reads := map[string]rootWordRead{
 		core.IDOf(&read):   {name: "j", reads: []core.SrcPos{{Row: 1, Col: 1}}},

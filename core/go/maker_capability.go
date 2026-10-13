@@ -104,7 +104,7 @@ func conformMakerResult(target *Type, out Value) (Value, error) {
 		}
 		if base := builtinBaseOf(target); base != nil &&
 			out.Parent.Origin == OriginBuiltin && out.Parent.ConformsTo(base) {
-			return ReparentValue(out, target), nil
+			return MintRetagged(&out, target), nil
 		}
 	}
 	return Value{}, &BoruError{

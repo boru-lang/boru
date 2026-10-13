@@ -290,7 +290,7 @@ func SigTypeMatches(v *Value, t *Type) bool {
 	// matchSignature arms, positionalMatch, the VM's guarded-native
 	// contract and poly re-match — so this one arm is the whole rule.
 	if a := v.AscribedType(); a != nil {
-		view := ReparentValue(*v, a)
+		view := MintRetagged(v, a)
 		view.SetAscribed(nil)
 		SetDynamic(&view, false)
 		return SigTypeMatches(&view, t)

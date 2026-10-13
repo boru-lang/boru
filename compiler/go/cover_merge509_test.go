@@ -89,7 +89,7 @@ func TestRecordLoopRefusesATypeRangeStart(t *testing.T) {
 	es := NewEmitState()
 	start := core.NewTypeLiteral(core.TInteger)
 	core.SetID(&start, "T1")
-	es.RecordLoop(start, core.NewInteger(3), core.NewInteger(1), &EmitFragment{}, nil, "", "i", core.Value{}, 0, core.SrcPos{})
+	es.RecordLoop(start, core.NewInteger(3), core.NewInteger(1), &EmitFragment{}, nil, "", "i", &core.Value{}, 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("a type range start declines")
 	}

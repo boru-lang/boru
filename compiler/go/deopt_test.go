@@ -37,7 +37,7 @@ func deoptUnit(t *testing.T, tail []core.Value, readCol int, rest ...EmitEvent) 
 	u := es.units[len(es.units)-1]
 	rec := es.fnRecs[unit]
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
+	es.stampProduced(&j, 1, 0)
 	events := []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0), ConstOperand(es.internUnpooled(core.NewString("f")))}}},
 		{seq: 2, kind: evDynBind, dyn: &emitDynBind{name: "j", srcSeq: 1, pos: deoptAt(28)}},
@@ -649,7 +649,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	}
 	parent := es.fnRecs[parentUnit]
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
+	es.stampProduced(&j, 1, 0)
 	// The parent's root frame so far: `def j (m get "f")`.
 	es.frames[parent.rootFrame] = []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0)}}},
@@ -695,7 +695,7 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	p3, _, _ := es3.StartFnCompile("k", "h", nil, []core.Value{m3}, []*core.Type{core.TAny}, []string{"m"}, nil, false, core.SrcPos{})
 	parent3 := es3.fnRecs[p3]
 	j3 := core.NewDynamicCarrier(core.TAny)
-	es3.producedBy[core.IDOf(&j3)] = producer{seq: 1}
+	es3.stampProduced(&j3, 1, 0)
 	es3.frames[parent3.rootFrame] = []EmitEvent{
 		{seq: 1, kind: evCall, call: emitCall{word: "get", nout: 1, pos: deoptAt(33), ops: []EmitOperand{localOperand(0)}}},
 		{seq: 2, kind: evDynBind, dyn: &emitDynBind{name: "j", srcSeq: 1, pos: deoptAt(28)}},
@@ -793,17 +793,17 @@ func TestSeatUnitDeoptsUnpromoted(t *testing.T) {
 // the body residual and that frame is closed.
 func TestProducedInCurrentUnit(t *testing.T) {
 	es := NewEmitState()
-	es.producedBy["own"] = producer{seq: 7}
-	es.producedBy["outer"] = producer{seq: 2}
+	pOwn := producedAs(es, core.Value{}, "own", 7, 0)
+	pOuter := producedAs(es, core.Value{}, "outer", 2, 0)
 
-	if es.producedInCurrentUnit("own") {
+	if es.producedInCurrentUnit(&pOwn) {
 		t.Error("no open unit: nothing is this unit's own")
 	}
 
 	// A nil record (a slot reserved before its unit opened) declines.
 	es.fnRecs = append(es.fnRecs, nil)
 	es.openUnitRecs = []int{0}
-	if es.producedInCurrentUnit("own") {
+	if es.producedInCurrentUnit(&pOwn) {
 		t.Error("a nil unit record declines")
 	}
 
@@ -816,28 +816,28 @@ func TestProducedInCurrentUnit(t *testing.T) {
 	es.fnRecs = append(es.fnRecs, rec)
 	es.openUnitRecs = []int{1}
 	es.fragFloors = []int{5}
-	if !es.producedInCurrentUnit("own") || es.producedInCurrentUnit("outer") {
+	if !es.producedInCurrentUnit(&pOwn) || es.producedInCurrentUnit(&pOuter) {
 		t.Error("recording: seq at or above the unit's frame floor is its own, below it is not")
 	}
-	if es.producedInCurrentUnit("absent") {
+	if es.producedInCurrentUnit(read("absent")) {
 		t.Error("a value with no producing event is never this unit's own")
 	}
 
 	// Out of range (the frame already popped, no frag yet) declines, and so
 	// does frame 0 — the root frame is nobody's unit and has no floor.
 	rec.rootFrame = 9
-	if es.producedInCurrentUnit("own") {
+	if es.producedInCurrentUnit(&pOwn) {
 		t.Error("a rootFrame past the live floors declines")
 	}
 	rec.rootFrame = 0
-	if es.producedInCurrentUnit("own") {
+	if es.producedInCurrentUnit(&pOwn) {
 		t.Error("the root frame has no floor of its own")
 	}
 	rec.rootFrame = 1
 
 	// Finish: the root frame is closed, so the fragment carries the floor.
 	rec.frag = &EmitFragment{startSeq: 5}
-	if !es.producedInCurrentUnit("own") || es.producedInCurrentUnit("outer") {
+	if !es.producedInCurrentUnit(&pOwn) || es.producedInCurrentUnit(&pOuter) {
 		t.Error("finish: the fragment's startSeq is the floor")
 	}
 }

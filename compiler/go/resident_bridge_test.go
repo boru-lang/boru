@@ -73,7 +73,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 		es.fnRecs[0].frag.events[1].dyn.residentTwin != 1 {
 		t.Fatalf("total match must stamp both events and place both twins (placed=%d)", placed(es))
 	}
-	es.NoteDefRead("some-id", "x")
+	es.NoteDefRead("some-id", core.RecKey{}, "x")
 	if !es.Compilable || es.armReadCompileFailure != "" {
 		t.Fatalf("a root read of an adopted name must not poison the placement gate (Compilable=%v, compile failure %q)",
 			es.Compilable, es.armReadCompileFailure)
@@ -225,7 +225,7 @@ func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
 	if !es.armBoundTypeNames["Big"] {
 		t.Fatal("an adopted type name must join the read fence — its DEPTH is body-run-dependent and it has no live read")
 	}
-	es.NoteDefRead("some-id", "Big")
+	es.NoteDefRead("some-id", core.RecKey{}, "Big")
 	if !es.Compilable || !strings.Contains(es.armReadCompileFailure, "read of `Big` after a multi-run body binds it") ||
 		!strings.HasPrefix(es.armReadCompileFailure, "twin regime: ") {
 		t.Fatalf("a root read of an arm-bound type name must poison the placement gate (Compilable=%v, compile failure %q)",

@@ -360,7 +360,7 @@ func TestProvenBodyTokens(t *testing.T) {
 		{seq: 2, kind: evCallUser, uc: emitUserCall{unit: 1, nout: 1}},
 		{seq: 3, kind: evCallUser, uc: emitUserCall{unit: 2, nout: 1}},
 	}
-	es.producedBy[core.IDOf(&body)] = producer{seq: 1}
+	es.stampProduced(&body, 1, 0)
 	toks, ok := es.provenBodyTokens(body)
 	if !ok || len(toks) != 1 {
 		t.Fatalf("a factory call returning a const list proves its tokens: %v %v", toks, ok)
@@ -371,31 +371,31 @@ func TestProvenBodyTokens(t *testing.T) {
 	if es.bodyPlainData(body) {
 		t.Error("`[add]` is not plain data: a word")
 	}
-	es.producedBy[core.IDOf(&body)] = producer{seq: 3}
+	es.stampProduced(&body, 3, 0)
 	if es.bodyBindsNothing(r, body) {
 		t.Error("`[def]` binds")
 	}
-	es.producedBy[core.IDOf(&body)] = producer{seq: 2}
+	es.stampProduced(&body, 2, 0)
 	if _, ok := es.provenBodyTokens(body); ok || es.bodyPlainData(body) || es.bodyBindsNothing(r, body) {
 		t.Error("a const that is not a list proves nothing")
 	}
 	es.consts = append(es.consts, core.NewList([]core.Value{core.NewInteger(1), core.NewString("a")}))
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{outOps: []EmitOperand{{kind: opConst, idx: 3}}})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 4, kind: evCallUser, uc: emitUserCall{unit: 3, nout: 1}})
-	es.producedBy[core.IDOf(&body)] = producer{seq: 4}
+	es.stampProduced(&body, 4, 0)
 	if !es.bodyPlainData(body) {
 		t.Error("`[1 'a']` is plain data")
 	}
-	es.producedBy[core.IDOf(&body)] = producer{seq: 1, idx: 1}
+	es.stampProduced(&body, 1, 1)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a second result proves nothing")
 	}
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 5, kind: evCall, call: emitCall{word: "get", nout: 1}})
-	es.producedBy[core.IDOf(&body)] = producer{seq: 5}
+	es.stampProduced(&body, 5, 0)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a native's result proves nothing")
 	}
-	delete(es.producedBy, core.IDOf(&body))
+	core.SetRecKey(&body, core.RecKey{}) // no producer
 	es.units[0].localByID[core.IDOf(&body)] = 0
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a local with no producer proves nothing")
@@ -404,11 +404,11 @@ func TestProvenBodyTokens(t *testing.T) {
 	// (the promoted value-def read inside a body) proves through its
 	// producer.
 	es.units = append(es.units, &emitUnit{capID: map[string]bool{core.IDOf(&body): true}, localByID: map[string]int{core.IDOf(&body): 0}})
-	es.producedBy[core.IDOf(&body)] = producer{seq: 1}
+	es.stampProduced(&body, 1, 0)
 	if toks, ok := es.provenBodyTokens(body); !ok || len(toks) != 1 {
 		t.Errorf("a captured factory result proves its tokens: %v %v", toks, ok)
 	}
-	es.producedBy[core.IDOf(&body)] = producer{seq: 1, idx: 1}
+	es.stampProduced(&body, 1, 1)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a captured second result proves nothing")
 	}

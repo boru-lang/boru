@@ -2417,7 +2417,7 @@ func micronInstantiateAt(typ, data Value, r *Registry) ([]Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []Value{ReparentValue(out[0], kind)}, nil
+		return []Value{MintRetagged(&out[0], kind)}, nil
 	}
 	return nil, &BoruError{Code: "type_error",
 		Detail: "make: " + kind.Name() + " has no field schema — define one with refine Micron {fields}"}

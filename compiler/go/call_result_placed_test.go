@@ -26,7 +26,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 	if es.callResultPlaced(v) {
 		t.Error("a value no event produced is not a call result")
 	}
-	es.producedBy = map[string]producer{"v-res": {seq: 41}}
+	es.stampProduced(&v, 41, 0)
 	if es.callResultPlaced(v) {
 		t.Error("a producer seq with no event in the frame resolves to nothing")
 	}
@@ -56,7 +56,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 		t.Error("a member-read lead is the arrival model's")
 	}
 	es = NewEmitState()
-	es.producedBy = map[string]producer{"v-res": {seq: 41}}
+	es.stampProduced(&v, 41, 0)
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 41, kind: evCallUser, uc: emitUserCall{nout: 1}})
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -74,7 +74,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 	frag := &EmitFragment{events: []EmitEvent{{seq: 77, kind: evCallUser, uc: emitUserCall{nout: 1}}}}
 	w := core.NewInteger(2)
 	core.SetID(&w, "v-frag")
-	es.producedBy["v-frag"] = producer{seq: 77}
+	es.stampProduced(&w, 77, 0)
 	if !es.callResultPlacedIn(w, frag) {
 		t.Error("a unit's own call result is found in its captured fragment")
 	}
@@ -155,7 +155,7 @@ func TestCallResultRenderKnown(t *testing.T) {
 	if es.callResultRenderKnown(core.NewInteger(1)) || es.callResultRenderKnown(v) {
 		t.Error("an identity-less or unproduced value has no known render")
 	}
-	es.producedBy = map[string]producer{"v-r": {seq: 9}}
+	es.stampProduced(&v, 9, 0)
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 9, kind: evCall, call: emitCall{word: "w", nout: 1}})
 	if es.callResultRenderKnown(v) {
 		t.Error("a native call's result is not a compiled closure")

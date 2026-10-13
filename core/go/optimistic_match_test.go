@@ -275,14 +275,14 @@ func TestExecMatchPublishesTheOptimisticRecords(t *testing.T) {
 	}
 }
 
-// regionRecorder answers RegionResult for a chosen set of ids; everything
-// else is the inactive no-op.
+// regionRecorder answers RegionResult for a chosen set of recorder keys;
+// everything else is the inactive no-op.
 type regionRecorder struct {
 	inactiveEmit
-	region map[string]bool
+	region map[RecKey]bool
 }
 
-func (m *regionRecorder) RegionResult(id string) bool { return m.region[id] }
+func (m *regionRecorder) RegionResult(k RecKey) bool { return m.region[k] }
 
 // TestOptimisticOuterOverARegionSeat pins NUR340: an operand that is a
 // runtime-counted region's modelled seat — a loop's `[:Integer]` for the
@@ -293,19 +293,28 @@ func (m *regionRecorder) RegionResult(id string) bool { return m.region[id] }
 func TestOptimisticOuterOverARegionSeat(t *testing.T) {
 	e, match, indices := optimisticEngine(t)
 	seat := withFreshID(NewCarrier(TMap))
+	// The seat's producing event stamped it — after its identity, which
+	// would clear the key.
+	SetRecKey(&seat, RecKey{Pass: 1, Seq: 1})
 	concrete := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], seat, match.Args[2]}, Name: "fold"}
-	rec := &regionRecorder{region: map[string]bool{IDOf(&seat): true}}
+	rec := &regionRecorder{region: map[RecKey]bool{RecKeyOf(&seat): true}}
 	e.Registry.Check.Emit = rec
 	t.Cleanup(func() { e.Registry.Check.Emit = nil })
 	if o := e.optimisticOuter(concrete, indices); o == nil || o.Word != "fold" || IDOf(&o.Vals[2]) != IDOf(&seat) {
 		t.Fatalf("a region seat at a conforming slot is an optimistic match; got %+v", o)
 	}
-	rec.region = map[string]bool{}
+	rec.region = map[RecKey]bool{}
 	if o := e.optimisticOuter(concrete, indices); o != nil {
 		t.Errorf("a conforming match over no region seat publishes nothing, got %+v", o)
 	}
-	anon := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], NewCarrier(TMap), match.Args[2]}, Name: "fold"}
-	rec.region = map[string]bool{"": true}
+	// An id-less operand is not asked about, even one carrying a key the
+	// recorder vouches for. (A carrier is minted with an identity: clear it,
+	// then stamp — SetID clears the key.)
+	idless := NewCarrier(TMap)
+	SetID(&idless, "")
+	SetRecKey(&idless, RecKey{Pass: 1, Seq: 2})
+	anon := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], idless, match.Args[2]}, Name: "fold"}
+	rec.region = map[RecKey]bool{RecKeyOf(&idless): true}
 	if o := e.optimisticOuter(anon, indices); o != nil {
 		t.Errorf("an operand with no id is no region seat, got %+v", o)
 	}

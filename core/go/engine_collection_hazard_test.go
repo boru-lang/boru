@@ -23,7 +23,7 @@ func (h *hazardEmit) CollectionHazard(id string) bool {
 	return h.marked[id]
 }
 func (h *hazardEmit) DynApplyLeadEligible(Value) bool { return h.leadOK }
-func (h *hazardEmit) RecordDynApply(args []Value, fn, out Value, pos SrcPos) (int, bool) {
+func (h *hazardEmit) RecordDynApply(args []Value, fn Value, out *Value, pos SrcPos) (int, bool) {
 	return len(args), h.applyOK
 }
 

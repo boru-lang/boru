@@ -29,7 +29,7 @@ func wordReadUnit(t *testing.T) (*EmitState, *fnUnitRec, core.Value, core.Value)
 func TestNoteWordReadArms(t *testing.T) {
 	es := NewEmitState()
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "g", core.SrcPos{})
-	es.NoteValRead("id", "n")
+	es.NoteValRead(read("id"), "n")
 	if len(es.fnRecs) != 0 {
 		t.Fatal("no open unit: nothing to record on")
 	}
@@ -37,7 +37,7 @@ func TestNoteWordReadArms(t *testing.T) {
 	es.NoteWordRead(core.Value{}, "g", core.SrcPos{})
 	es.NoteWordRead(g, "", core.SrcPos{})
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "other", core.SrcPos{})
-	es.NoteValRead("", "n")
+	es.NoteValRead(read(""), "n")
 	if rec.wordReadNames != nil || rec.valReads != nil {
 		t.Errorf("empty ids/names and a non-local value note nothing: %v %v", rec.wordReadNames, rec.valReads)
 	}
@@ -49,13 +49,13 @@ func TestNoteWordReadArms(t *testing.T) {
 	if rec.wordReadNames[core.IDOf(&x)] != "x" || rec.wordReadPos[core.IDOf(&g)].Col != 7 {
 		t.Errorf("both reads keep their name and position: %v %v", rec.wordReadNames, rec.wordReadPos)
 	}
-	es.NoteValRead(core.IDOf(&g), "n")
+	es.NoteValRead(&g, "n")
 	if rec.valReads[core.IDOf(&g)] != 1 {
 		t.Errorf("a /v read counts: %v", rec.valReads)
 	}
 	es.Compilable = false
 	es.NoteWordRead(g, "g", core.SrcPos{})
-	es.NoteValRead(core.IDOf(&g), "n")
+	es.NoteValRead(&g, "n")
 	if rec.wordReads[core.IDOf(&g)] != 1 || rec.valReads[core.IDOf(&g)] != 1 {
 		t.Error("an inactive state records nothing")
 	}
@@ -78,7 +78,7 @@ func TestCreditWordReadArms(t *testing.T) {
 	}
 	es.NoteWordRead(g, "g", core.SrcPos{})
 	es.RegisterTrailingApply(core.IDOf(&g), 1)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, g, core.NewCarrier(core.TInteger), core.SrcPos{}); !ok {
+	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, g, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}); !ok {
 		t.Fatal("a plain paren apply over a carrier lead records")
 	}
 	if rec.wordReadCredit[core.IDOf(&g)] != 2 {
@@ -110,7 +110,7 @@ func TestWordReadAccounting(t *testing.T) {
 	if r := es.wordReadAccounting(rec); r != "" {
 		t.Errorf("a read seated in the replay window passes: %q", r)
 	}
-	es.NoteValRead(core.IDOf(&g), "n")
+	es.NoteValRead(&g, "n")
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "read both bare and by /v") {
 		t.Errorf("a mixed read declines: %q", r)
 	}
@@ -263,13 +263,13 @@ func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	if rec.wordReadNames[core.IDOf(&j)] != "" {
 		t.Error("a value neither local nor produced here is not this unit's read")
 	}
-	es.producedBy[core.IDOf(&j)] = producer{seq: 3}
+	es.stampProduced(&j, 3, 0)
 	es.NoteWordRead(j, "j", core.SrcPos{Row: 1, Col: 40})
 	if rec.wordReadNames[core.IDOf(&j)] != "j" || rec.wordReads[core.IDOf(&j)] != 0 || rec.wordReadPos[core.IDOf(&j)].Col != 40 {
 		t.Errorf("a body-local producer's value is named at its read, gradual: %v %v %v", rec.wordReadNames, rec.wordReads, rec.wordReadPos)
 	}
 	k := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&k)] = producer{seq: 2}
+	es.stampProduced(&k, 2, 0)
 	if u.enclosingBindIDs == nil {
 		u.enclosingBindIDs = map[string]bool{}
 	}
@@ -281,7 +281,7 @@ func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	if es.wordReadName(rec, j) != "j" {
 		t.Error("the produced value reads as its word")
 	}
-	es.NoteValRead(core.IDOf(&j), "n")
+	es.NoteValRead(&j, "n")
 	if es.wordReadName(rec, j) != "" {
 		t.Error("a binding read both bare and by /v is the accounting's, never a seat")
 	}
@@ -299,7 +299,7 @@ func TestReplayIsBodyTailWordReadAnchor(t *testing.T) {
 		return EmitEvent{seq: seq, kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: col}}}
 	}
 	j := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&j)] = producer{seq: 1}
+	es.stampProduced(&j, 1, 0)
 	j.SetPos(core.SrcPos{Row: 1, Col: 50})
 	frag := &EmitFragment{events: []EmitEvent{evAt(1, 33), evAt(2, 45)}}
 	if !es.replayIsBodyTailAnchored(frag, []core.Value{j}, []bool{true}) {
@@ -313,7 +313,7 @@ func TestReplayIsBodyTailWordReadAnchor(t *testing.T) {
 		t.Error("an event after the read reorders — decline")
 	}
 	r := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&r)] = producer{seq: 2}
+	es.stampProduced(&r, 2, 0)
 	frag = &EmitFragment{events: []EmitEvent{evAt(1, 33), evAt(2, 45), evAt(3, 48)}}
 	if !es.replayIsBodyTailAnchored(frag, []core.Value{r, j}, []bool{false, true}) {
 		t.Error("an event after the produced value's seq but before the read is admitted")

@@ -49,6 +49,26 @@ type occurrence struct {
 	asc     *Type
 	dynFrom *string
 	pos     *position
+	// rec is the recorder key a recording pass stamped on this holder: the
+	// event that produced its value and the result index (RecKey).
+	rec RecKey
+}
+
+// RecKey is a recorded value's recorder key (design/VALUE-NO-COPY.0.md §5:
+// recorder identity is keyed by (event, result index)): the event of a
+// recording pass that produced this holder's value and the value's index
+// among that event's results. The recorder stamps it on the holder an
+// event's results flow on (SetRecKey) and reads it back from whichever copy
+// of that holder reaches a later event (RecKeyOf) — provenance carried with
+// the occurrence, as a position is, never looked up through the value's
+// identity token. Pass and Gen are the recorder's own bookkeeping: which
+// recording pass stamped the key, and which issuance of Seq (a rolled-back
+// round reissues its event numbers). The zero key is "no producer".
+type RecKey struct {
+	Pass uint32
+	Gen  uint32
+	Seq  int32
+	Idx  int32
 }
 
 // position is a source position and the occurrence record that carries it
@@ -88,7 +108,7 @@ const idCleared = "\x00"
 
 // posOnly reports whether rec carries a position and nothing else.
 func posOnly(rec *occurrence) bool {
-	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil
+	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil && rec.rec == RecKey{}
 }
 
 // occFlags are the per-occurrence flags, one bit each.
@@ -338,7 +358,9 @@ func IDOf(v *Value) string {
 
 // SetID gives this holder of v the identity id ("" clears it); every other
 // copy keeps the identity it had. A copy of a type node that is given its
-// node's own identity back drops the override.
+// node's own identity back drops the override. A new identity is a new
+// value to a recording pass: the holder's recorder key goes with the old
+// one (ShareIdentity carries both).
 func SetID(v *Value, id string) {
 	if IDOf(v) == id {
 		return
@@ -356,6 +378,38 @@ func SetID(v *Value, id string) {
 	default:
 		rec.id = id
 	}
+	rec.rec = RecKey{}
+	setOcc(v, rec)
+}
+
+// ShareIdentity gives this holder of dst src's identity and recorder key:
+// dst is the same value as src to a recording pass (a narrowed binding, a
+// fold keeping its result's identity, a join of two arms that only
+// narrowed one binding).
+func ShareIdentity(dst, src *Value) {
+	SetID(dst, IDOf(src))
+	SetRecKey(dst, RecKeyOf(src))
+}
+
+// RecKeyOf is the recorder key a recording pass stamped on this holder of v
+// (SetRecKey), the zero key when none did.
+func RecKeyOf(v *Value) RecKey {
+	if v.occ == nil {
+		return RecKey{}
+	}
+	return v.occ.rec
+}
+
+// SetRecKey stamps this holder of v with the recorder key k (the zero key
+// clears it); every other copy keeps the key it had, so a stamp reaches the
+// results an event hands on and the copies made of them after, never a
+// binding or an argument the event read.
+func SetRecKey(v *Value, k RecKey) {
+	if RecKeyOf(v) == k {
+		return
+	}
+	rec := occOf(v)
+	rec.rec = k
 	setOcc(v, rec)
 }
 

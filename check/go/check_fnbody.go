@@ -1085,7 +1085,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 	for i, a := range args {
 		window[len(args)-1-i] = a
 	}
-	if _, ok := es.RecordDynApply(window, fn, fresh, pos); !ok {
+	if _, ok := es.RecordDynApply(window, fn, &fresh, pos); !ok {
 		return core.Value{}, false
 	}
 	return fresh, true
@@ -1122,8 +1122,10 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	}
 	// The memoised body analysis returns the SAME residual value (same ID)
 	// for every call of one shape, so recording each apply against the
-	// shared out would overwrite producedBy and resolve every residual
-	// slot to the LAST apply (probe: `(h 5) (h 10)` compiled [17 17]).
+	// shared out would give every call site's result one identity (while
+	// the recorder resolved producers through the identity, every residual
+	// slot resolved to the LAST apply — probe: `(h 5) (h 10)` compiled
+	// [17 17]).
 	// Freshen a CARRIER out per call site — the caller substitutes it —
 	// and decline a concrete out (freshening would erase its value).
 	if !outs[0].Carrier || outs[0].Parent == nil {
@@ -1152,7 +1154,7 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	}
 	fresh := core.NewCarrier(outs[0].Parent)
 	core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
-	if !es.RecordDynApplyName(name, args, top, fresh, pos) {
+	if !es.RecordDynApplyName(name, args, top, &fresh, pos) {
 		return core.Value{}, false
 	}
 	return fresh, true

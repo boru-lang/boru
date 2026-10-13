@@ -21,8 +21,8 @@ import (
 func TestMarkWindowShapeFragmentAnchorDeclines(t *testing.T) {
 	es := NewEmitState()
 	v0, v1 := core.NewCarrier(core.TAny), core.NewCarrier(core.TAny)
-	es.producedBy[core.IDOf(&v0)] = producer{seq: 3, idx: 0}
-	es.producedBy[core.IDOf(&v1)] = producer{seq: 3, idx: 1}
+	es.stampProduced(&v0, 3, 0)
+	es.stampProduced(&v1, 3, 1)
 	es.eventInfo[3] = eventFlags{variadicResult: true}
 	if seq, ok := es.markWindowShape([]core.Value{v0, v1}, nil); ok {
 		t.Fatalf("fragment anchor must decline, got seq %d", seq)

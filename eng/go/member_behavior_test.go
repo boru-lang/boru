@@ -36,7 +36,7 @@ func TestMemberBehaviorWiring(t *testing.T) {
 	}
 	// A value tagged with the type (the analogue of a stream handle) is a
 	// member regardless of its tag — the predicate decides.
-	if !addrOf(core.ReparentValue(core.NewInteger(8), Even)).Is(Even) {
+	if !addrOf(core.MintRetagged(addrOf(core.NewInteger(8)), Even)).Is(Even) {
 		t.Error("an Even-tagged 8 should be Even")
 	}
 
@@ -56,7 +56,7 @@ func TestMemberBehaviorWiring(t *testing.T) {
 	// Canon — a member renders by its lattice family (an Integer), not
 	// routed through the behavior's Format. The FormatDelegate marker the
 	// helper supplies is what keeps this working for a minted non-builtin.
-	if got := core.Canon([]core.Value{core.ReparentValue(core.NewInteger(8), Even)}); got != "8" {
+	if got := core.Canon([]core.Value{core.MintRetagged(addrOf(core.NewInteger(8)), Even)}); got != "8" {
 		t.Errorf("canon of an Even-tagged 8 = %q, want %q", got, "8")
 	}
 

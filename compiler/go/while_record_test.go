@@ -19,13 +19,13 @@ func whileFixture() (es *EmitState, cond, body *EmitFragment, cv, out core.Value
 	es = NewEmitState()
 	es.RegisterLocal("it")
 	cv = carrierVal(core.TBoolean)
-	seedProduced(es, cv, 1)
+	seedProduced(es, &cv, 1)
 	return es, &EmitFragment{}, &EmitFragment{}, cv, core.NewCarrier(core.TList)
 }
 
 func TestRecordWhileRecordsOnTheCountedFrame(t *testing.T) {
 	es, cond, body, cv, out := whileFixture()
-	es.RecordWhile(cond, body, []core.Value{cv}, nil, "it", out, core.SrcPos{})
+	es.RecordWhile(cond, body, []core.Value{cv}, nil, "it", &out, core.SrcPos{})
 	if !es.Compilable {
 		t.Fatalf("a one-value condition over a captured body must record, declined %q", es.Reason)
 	}
@@ -75,19 +75,19 @@ func TestRecordWhileCompileFailures(t *testing.T) {
 		want   string
 	}{
 		{"no condition fragment", func(es *EmitState, _, body *EmitFragment, cv, out core.Value) {
-			es.RecordWhile(nil, body, []core.Value{cv}, nil, "it", out, core.SrcPos{})
+			es.RecordWhile(nil, body, []core.Value{cv}, nil, "it", &out, core.SrcPos{})
 		}, "while: body not captured"},
 		{"no body fragment", func(es *EmitState, cond, _ *EmitFragment, cv, out core.Value) {
-			es.RecordWhile(cond, nil, []core.Value{cv}, nil, "it", out, core.SrcPos{})
+			es.RecordWhile(cond, nil, []core.Value{cv}, nil, "it", &out, core.SrcPos{})
 		}, "while: body not captured"},
 		{"empty condition", func(es *EmitState, cond, body *EmitFragment, _, out core.Value) {
-			es.RecordWhile(cond, body, nil, nil, "it", out, core.SrcPos{})
+			es.RecordWhile(cond, body, nil, nil, "it", &out, core.SrcPos{})
 		}, "while: condition nets 0 values, not one"},
 		{"two-value condition", func(es *EmitState, cond, body *EmitFragment, cv, out core.Value) {
-			es.RecordWhile(cond, body, []core.Value{core.NewInteger(1), cv}, nil, "it", out, core.SrcPos{})
+			es.RecordWhile(cond, body, []core.Value{core.NewInteger(1), cv}, nil, "it", &out, core.SrcPos{})
 		}, "while: condition nets 2 values, not one"},
 		{"condition of unknown provenance", func(es *EmitState, cond, body *EmitFragment, _, out core.Value) {
-			es.RecordWhile(cond, body, []core.Value{carrierVal(core.TBoolean)}, nil, "it", out, core.SrcPos{})
+			es.RecordWhile(cond, body, []core.Value{carrierVal(core.TBoolean)}, nil, "it", &out, core.SrcPos{})
 		}, "while: condition of unknown provenance"},
 	}
 	for _, c := range cases {
@@ -103,7 +103,7 @@ func TestRecordWhileCompileFailures(t *testing.T) {
 	}
 	// Inactive: nothing is recorded and nothing panics.
 	es := inactiveEmitState()
-	es.RecordWhile(&EmitFragment{}, &EmitFragment{}, []core.Value{core.NewBoolean(true)}, nil, "it", core.NewCarrier(core.TList), core.SrcPos{})
+	es.RecordWhile(&EmitFragment{}, &EmitFragment{}, []core.Value{core.NewBoolean(true)}, nil, "it", addrOf(core.NewCarrier(core.TList)), core.SrcPos{})
 	if len(es.frames[0]) != 0 {
 		t.Error("an inactive recorder must record nothing")
 	}

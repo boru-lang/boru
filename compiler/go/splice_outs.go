@@ -56,7 +56,7 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 	if !es.Active() || core.IDOf(&v) == "" || !concreteSplice(v) {
 		return
 	}
-	pr, produced := es.producedBy[core.IDOf(&v)]
+	pr, produced := es.producerOf(&v)
 	outs := es.spliceOuts[pr.seq]
 	if !produced || outs == nil {
 		return
@@ -66,12 +66,12 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 		return
 	}
 	ev.call.nout--
-	delete(es.producedBy, core.IDOf(&v))
-	for _, o := range outs {
-		if p, ok := es.producedBy[core.IDOf(&o)]; ok && p.seq == pr.seq && p.idx > pr.idx {
-			es.producedBy[core.IDOf(&o)] = producer{seq: p.seq, idx: p.idx - 1}
-		}
+	// The marker leaves the event's results, and every result after it
+	// answers one place lower (producerOf reads firedIdx).
+	if es.firedIdx == nil {
+		es.firedIdx = map[int][]int{}
 	}
+	es.firedIdx[pr.seq] = append(es.firedIdx[pr.seq], pr.idx)
 	if es.firedSplices == nil {
 		es.firedSplices = map[int]map[string]bool{}
 	}

@@ -48,7 +48,7 @@ type zcaEmit struct {
 	checkpoints int
 	rollbacks   int
 	branchArms  int
-	zeroOut     map[string]bool
+	zeroOut     map[core.RecKey]bool
 	uncomp      []string
 }
 
@@ -56,7 +56,7 @@ func zcaNewEmit() *zcaEmit {
 	return &zcaEmit{
 		EmitRecorder: core.TheInactiveEmit,
 		carried:      map[string]bool{},
-		zeroOut:      map[string]bool{},
+		zeroOut:      map[core.RecKey]bool{},
 	}
 }
 
@@ -79,10 +79,10 @@ func (s *zcaEmit) Checkpoint() core.EmitCheckpoint {
 	s.checkpoints++
 	return nil
 }
-func (s *zcaEmit) Rollback(core.EmitCheckpoint)   { s.rollbacks++ }
-func (s *zcaEmit) ArmBranchCapture()              { s.branchArms++ }
-func (s *zcaEmit) ZeroOutProduced(id string) bool { return s.zeroOut[id] }
-func (s *zcaEmit) MarkUncompilable(reason string) { s.uncomp = append(s.uncomp, reason) }
+func (s *zcaEmit) Rollback(core.EmitCheckpoint)       { s.rollbacks++ }
+func (s *zcaEmit) ArmBranchCapture()                  { s.branchArms++ }
+func (s *zcaEmit) ZeroOutProduced(k core.RecKey) bool { return s.zeroOut[k] }
+func (s *zcaEmit) MarkUncompilable(reason string)     { s.uncomp = append(s.uncomp, reason) }
 
 // zcaGoImpl adapts a plain function to the native-func impl shape.
 func zcaGoImpl(f func(args []core.Value) []core.Value) *core.GoImpl {
@@ -482,8 +482,11 @@ func TestZcaStripZeroOutResiduals(t *testing.T) {
 	done := r.Check.Begin()
 	defer done()
 
+	// Each value carries the recorder key its producing event stamped.
 	phantom := core.NewCarrier(core.TNone)
+	core.SetRecKey(&phantom, core.RecKey{Pass: 1, Seq: 1})
 	real := core.NewCarrier(core.TInteger)
+	core.SetRecKey(&real, core.RecKey{Pass: 1, Seq: 2})
 
 	// Recording inactive: the stack passes through untouched (the
 	// zeroOut flag is only set during the compile pass).
@@ -496,7 +499,7 @@ func TestZcaStripZeroOutResiduals(t *testing.T) {
 	// the real residual kept.
 	es := zcaNewEmit()
 	es.active = true
-	es.zeroOut[core.IDOf(&phantom)] = true
+	es.zeroOut[core.RecKeyOf(&phantom)] = true
 	r.Check.Emit = es
 	got = stripZeroOutResiduals(r, []core.Value{phantom, real})
 	if len(got) != 1 {

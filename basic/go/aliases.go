@@ -650,7 +650,7 @@ func AttachGenBound(r *core.Registry, node *core.Type, p core.GenParam) {
 func TypeParamName(t *core.Type) string                      { return core.TypeParamName(t) }
 func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
 func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
-func ReparentValue(v core.Value, def *core.Type) core.Value  { return core.ReparentValue(v, def) }
+func MintRetagged(v *core.Value, def *core.Type) core.Value  { return core.MintRetagged(v, def) }
 func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
 func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
 func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }

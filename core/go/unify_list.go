@@ -139,7 +139,7 @@ func reparentSwappedElem(src, unified Value) Value {
 	if !IsBareTypeNode(&unified) || !IsConcrete(&src) {
 		return unified
 	}
-	return ReparentValue(src, NodeOf(ValueType(unified)))
+	return MintRetagged(&src, NodeOf(ValueType(unified)))
 }
 
 func unifyTypedListWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {

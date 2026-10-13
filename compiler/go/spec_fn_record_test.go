@@ -174,7 +174,7 @@ func TestSpecFnFailingToCompileSeatsAndFinalize(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 	es := NewEmitState()
 	es.specFnNames = map[string]bool{"f": true}
-	es.NoteValRead("id", "f")
+	es.NoteValRead(read("id"), "f")
 	if es.Compilable || !strings.Contains(es.Reason, "value read of the conditionally-defined fn `f`") {
 		t.Fatalf("a /v read declines: %q", es.Reason)
 	}

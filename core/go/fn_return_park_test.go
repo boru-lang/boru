@@ -31,7 +31,7 @@ func TestFnReturnPark(t *testing.T) {
 	// A Function value REPARENTED to a refined function type. stepLiteral's
 	// dispatch guard requires Parent == TFunction, so this one would be
 	// PUSHED, not called — parking it would drop its OnPushLit.
-	refined := ReparentValue(NewFunction(FnDefInfo{Name: "refined"}), TAny)
+	refined := MintRetagged(addrOf(NewFunction(FnDefInfo{Name: "refined"})), TAny)
 
 	// The analysis pass's stand-in for a concrete Function: a DYNAMIC
 	// fn-typed carrier (a member read, a call result).

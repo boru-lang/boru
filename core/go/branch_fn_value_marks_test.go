@@ -8,17 +8,17 @@ import "testing"
 // fnReturnPark asks it before the braid, and stepEnd notes every statement
 // boundary's position for the residual's apply arms.
 
-// mayBeFnRecorder answers MayBeFn for a chosen set of ids and records the
-// statement boundaries it is told about; everything else is the inactive
-// no-op.
+// mayBeFnRecorder answers MayBeFn for a chosen set of recorder keys and
+// records the statement boundaries it is told about; everything else is the
+// inactive no-op.
 type mayBeFnRecorder struct {
 	inactiveEmit
-	maybe  map[string]bool
+	maybe  map[RecKey]bool
 	ends   []SrcPos
 	stacks [][]Value
 }
 
-func (m *mayBeFnRecorder) MayBeFn(id string) bool    { return m.maybe[id] }
+func (m *mayBeFnRecorder) MayBeFn(k RecKey) bool     { return m.maybe[k] }
 func (m *mayBeFnRecorder) NoteStatementEnd(p SrcPos) { m.ends = append(m.ends, p) }
 func (m *mayBeFnRecorder) NoteStatementStack(_ SrcPos, stack []Value) {
 	m.stacks = append(m.stacks, stack)
@@ -27,14 +27,18 @@ func (m *mayBeFnRecorder) NoteStatementStack(_ SrcPos, stack []Value) {
 // TestMightBeCallableAsksRecorder: a value neither fn-typed nor dynamic —
 // a branch result whose merge widened the fn arm's type — is marked by
 // markReStepped and markForwardLeftover exactly when the recorder says it
-// may be a fn; the nil guards answer false without a registry, without
-// check state or without an id.
+// may be a fn (by the recorder key its producing event stamped); the nil
+// guards answer false without a registry, without check state or without
+// an id.
 func TestMightBeCallableAsksRecorder(t *testing.T) {
+	// Each value is stamped AFTER its identity: SetID clears the key.
 	branch := NewCarrier(TAny)
 	SetID(&branch, "br-1")
+	SetRecKey(&branch, RecKey{Pass: 1, Seq: 1})
 	other := NewCarrier(TAny)
 	SetID(&other, "br-2")
-	rec := &mayBeFnRecorder{maybe: map[string]bool{"br-1": true}}
+	SetRecKey(&other, RecKey{Pass: 1, Seq: 2})
+	rec := &mayBeFnRecorder{maybe: map[RecKey]bool{RecKeyOf(&branch): true}}
 	e := &Engine{Registry: &Registry{Check: &CheckState{Emit: rec}}}
 	for _, v := range []Value{branch, other} {
 		e.markReStepped(v)
@@ -50,7 +54,11 @@ func TestMightBeCallableAsksRecorder(t *testing.T) {
 	if !e.mightBeCallable(NewCarrier(TFunction)) {
 		t.Error("a fn-typed carrier is callable without asking the recorder")
 	}
+	// An id-less value is not asked about, even one carrying the vouched key
+	// (a carrier is minted with an identity: clear it, then stamp).
 	noID := NewCarrier(TAny)
+	SetID(&noID, "")
+	SetRecKey(&noID, RecKeyOf(&branch))
 	for _, tc := range []struct {
 		name string
 		e    *Engine
@@ -75,7 +83,8 @@ func TestMightBeCallableAsksRecorder(t *testing.T) {
 func TestFnReturnParkAsksRecorder(t *testing.T) {
 	branch := NewCarrier(TAny)
 	SetID(&branch, "br-1")
-	rec := &mayBeFnRecorder{maybe: map[string]bool{"br-1": true}}
+	SetRecKey(&branch, RecKey{Pass: 1, Seq: 1})
+	rec := &mayBeFnRecorder{maybe: map[RecKey]bool{RecKeyOf(&branch): true}}
 	asked := 0
 	prev := CheckBraid.ParenPlacedFnCarrier
 	defer func() { CheckBraid.ParenPlacedFnCarrier = prev }()

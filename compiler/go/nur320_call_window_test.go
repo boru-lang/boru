@@ -101,7 +101,7 @@ func TestCallWindowOps(t *testing.T) {
 		t.Fatalf("an empty window is a window: %#v", w)
 	}
 
-	es.producedBy["ev"] = producer{seq: 4, idx: 1}
+	es.stampProduced(&ev, 4, 1)
 	es.units[0].localByID["loc"] = 3
 	es.NoteCallWindow("f", at, []core.Value{arg, core.NewInteger(7), ev, core.NewAtom("q")}, 0, nil, false, false)
 	w := es.callWindowOps("f", at, []core.Value{arg})
@@ -122,7 +122,7 @@ func TestCallWindowOps(t *testing.T) {
 	}
 	reg.Defs.Push("a", loc)
 	es.reg = reg
-	es.NoteDefRead("loc", "a")
+	es.NoteDefRead("loc", core.RecKey{}, "a")
 	es.NoteCallWindow("f", at, []core.Value{loc}, 0, nil, false, false)
 	if w := es.callWindowOps("f", at, nil); len(w) != 1 || w[0].kind != WinLocal || w[0].idx != 3 {
 		t.Fatalf("a stable local read: %#v", w)

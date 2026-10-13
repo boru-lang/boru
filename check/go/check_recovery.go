@@ -46,7 +46,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 		}
 		c := core.NewCarrier(core.TAny)
 		if a, aerr := core.AsAtom(und); aerr == nil && a != "" {
-			e.Registry.Check.Recorder().NoteDefRead(core.IDOf(&c), a)
+			e.Registry.Check.Recorder().NoteDefRead(core.IDOf(&c), core.RecKeyOf(&c), a)
 		}
 		e.Tape.Set(i, c)
 	}
@@ -357,7 +357,7 @@ func valueCarriesCarrier(v core.Value) bool {
 // program (NUR331). The event is the value's truth, so the fold declines and the
 // container records over it.
 func bindingProduced(r *core.Registry, bound core.Value) bool {
-	return core.IDOf(&bound) != "" && r.Check.Recorder().AlreadyProduced(core.IDOf(&bound))
+	return core.IDOf(&bound) != "" && r.Check.Recorder().AlreadyProduced(core.RecKeyOf(&bound))
 }
 
 // exprRefsCarrier reports whether a folded container expression references a
@@ -1710,7 +1710,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
 	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) &&
-		!core.IsFnValueResidual(v) && !es.MayBeFn(core.IDOf(&v)) {
+		!core.IsFnValueResidual(v) && !es.MayBeFn(core.RecKeyOf(&v)) {
 		if _, ok := es.MemberFnReadValue(core.IDOf(&v)); !ok {
 			return false
 		}

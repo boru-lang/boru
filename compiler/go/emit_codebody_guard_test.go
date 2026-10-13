@@ -74,7 +74,7 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		&fnUnitRec{outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}},
 		&fnUnitRec{nParams: 1})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy[core.IDOf(&fn)] = producer{seq: 0}
+	es.stampProduced(&fn, 0, 0)
 	// The `apply` word's one-arg overload over a CONCRETE closure value is
 	// the pending-apply path (the twenty-eighth increment), never this
 	// compile failure; its two-arg Reach overload holds the closure as data and
@@ -94,7 +94,7 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 	// by the word, not stranded (the dynamic-lead group, 2026-09-22): it
 	// takes the pending-apply path, so the guard stands aside here too.
 	carrier := core.NewCarrier(core.TFunction)
-	es.producedBy[core.IDOf(&carrier)] = producer{seq: 0}
+	es.stampProduced(&carrier, 0, 0)
 	if es.argIsProducedClosure("apply", nil, []core.Value{carrier}) {
 		t.Fatal("apply over a produced fn-typed carrier is the pending apply's, not this compile failure")
 	}
@@ -151,15 +151,15 @@ func TestRecordDynBindNotesOnlyConcreteClosures(t *testing.T) {
 		es.fnRecs = []*fnUnitRec{{nParams: 1, outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}}}
 		es.frames[0] = append(es.frames[0], EmitEvent{seq: 1, kind: evCallUser, uc: emitUserCall{unit: 0}})
 		carrier := core.NewCarrier(core.TFunction)
-		seedProduced(es, carrier, 1)
+		seedProduced(es, &carrier, 1)
 		concrete := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 			Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 		}}})
-		seedProduced(es, concrete, 1)
+		seedProduced(es, &concrete, 1)
 		return es, carrier, concrete
 	}
 	es, carrier, concrete := mk()
-	if !es.producerReturnedClosure(core.IDOf(&carrier)) || !es.producerReturnedClosure(core.IDOf(&concrete)) {
+	if !es.producerReturnedClosure(&carrier) || !es.producerReturnedClosure(&concrete) {
 		t.Fatal("fixture: both values must be produced closures")
 	}
 	es.RecordDynBind("f", carrier, core.SrcPos{})

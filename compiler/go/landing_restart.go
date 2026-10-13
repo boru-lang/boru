@@ -1400,7 +1400,7 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 		return nil, 0, nil, false
 	}
 	for i, rv := range residual {
-		pr, produced := es.producedBy[core.IDOf(&rv)]
+		pr, produced := es.producerOf(&rv)
 		if reads[i] {
 			if before[core.IDOf(&rv)] == 0 {
 				break
@@ -1464,7 +1464,7 @@ func (es *EmitState) stackAtStart(tok int) ([]core.Value, bool) {
 func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
 	slots = []vmSlot{}
 	for _, v := range stack {
-		if pr, produced := es.producedBy[core.IDOf(&v)]; produced {
+		if pr, produced := es.producerOf(&v); produced {
 			if slot, promoted := lw.promoted[pr.seq]; promoted {
 				srcs = append(srcs, RestartSrc{Kind: RestartLocal, Idx: slot + pr.idx})
 				continue
@@ -1495,7 +1495,7 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 // by the top-level tokens spelling it, when they all stand on one side of
 // start.
 func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, start core.SrcPos, firstSeq int) (own, known bool) {
-	if pr, produced := es.producedBy[core.IDOf(&rv)]; produced {
+	if pr, produced := es.producerOf(&rv); produced {
 		if te, in := tree[pr.seq]; in {
 			if p := eventPos(*te.ev); p.Row > 0 {
 				return !posAfter(start, p), true
@@ -1550,7 +1550,7 @@ func (es *EmitState) boundReadsBefore(tree map[int]treeEvent, residual []core.Va
 		if !isBound {
 			continue
 		}
-		if _, produced := es.producedBy[core.IDOf(&rv)]; !produced && !containsPos(poss, rv.Pos()) {
+		if _, produced := es.producerOf(&rv); !produced && !containsPos(poss, rv.Pos()) {
 			continue
 		}
 		reads[i] = true

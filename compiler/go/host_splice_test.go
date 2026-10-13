@@ -62,7 +62,7 @@ func TestHostedSpliceAdmitted(t *testing.T) {
 	core.SetID(&out, "loop-out")
 	es.hostSplices = []int{2}
 	es.frames[0] = []EmitEvent{{seq: 1}, {seq: 2}}
-	es.producedBy[core.IDOf(&out)] = producer{seq: 2}
+	es.stampProduced(&out, 2, 0)
 	if reason, ok := es.hostedSpliceAdmitted([]core.Value{out}); !ok {
 		t.Fatalf("the last event, its one result the whole residual: admitted, got %q", reason)
 	}

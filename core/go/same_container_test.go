@@ -22,7 +22,7 @@ func TestSameContainerIsIdentityWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	sub := r.Types.MintType("S", TFlexMap)
-	refined := ReparentValue(m, sub)
+	refined := MintRetagged(&m, sub)
 	if !SameContainer(refined, refined) {
 		t.Error("a refined flex map is the same container as itself")
 	}

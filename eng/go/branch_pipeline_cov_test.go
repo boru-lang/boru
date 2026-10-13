@@ -54,7 +54,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		taken := lit
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(),
+			Then: frag, ThenStk: stk, Out: &out, Pos: args[0].Pos(),
 		})
 		return []core.Value{out}
 	}
@@ -85,7 +85,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			Cond: args[0], HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 		})
 		if !es.Recorder().Active() {
 			return nil
@@ -101,7 +101,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	testRecorderState(es).RecordBranch(core.BranchRecord{
 		Cond: args[0], HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 	})
 	return []core.Value{out}
 }

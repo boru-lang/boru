@@ -27,8 +27,16 @@ func TestTrapHeldBeneath(t *testing.T) {
 	fresh := func(stack ...core.Value) (*EmitState, *lowerer) {
 		es := NewEmitState()
 		es.rootBody, es.trapAt = body, 8
-		es.producedBy[core.IDOf(&held)] = producer{seq: 3}
-		es.producedBy[core.IDOf(&slot)] = producer{seq: 4}
+		// The told stack's holders are the ones read: stamp them as the
+		// results of their events.
+		for i := range stack {
+			switch core.IDOf(&stack[i]) {
+			case "held":
+				es.stampProduced(&stack[i], 3, 0)
+			case "slot":
+				es.stampProduced(&stack[i], 4, 0)
+			}
+		}
 		if stack != nil {
 			es.rootStmtStacks = map[core.SrcPos][]core.Value{deoptAt(3): stack}
 		}
@@ -103,21 +111,23 @@ func TestNoteSpliceFired(t *testing.T) {
 		es := NewEmitState()
 		es.Compilable = true
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 3}})
-		outs := []core.Value{one, fired, three}
-		for i, o := range outs {
+		// The call's results are these holders, stamped for this state.
+		for i, o := range []*core.Value{&one, &fired, &three} {
 			es.setProducedAt(o, seq, i)
 		}
-		es.noteSpliceOuts(seq, outs)
+		es.noteSpliceOuts(seq, []core.Value{one, fired, three})
 		return es
 	}
 	es := fresh()
-	seq := es.producedBy[core.IDOf(&fired)].seq
+	seq := es.producerSeq(&fired)
 	es.NoteSpliceFired(fired, core.SrcPos{})
 	ev := es.eventBySeq(seq)
-	if ev.call.nout != 2 || es.producedBy[core.IDOf(&three)] != (producer{seq: seq, idx: 1}) || es.producedBy[core.IDOf(&one)] != (producer{seq: seq}) {
-		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, es.producedBy[core.IDOf(&three)], es.producedBy[core.IDOf(&one)])
+	p3, _ := es.producerOf(&three)
+	p1, _ := es.producerOf(&one)
+	if ev.call.nout != 2 || p3 != (producer{seq: seq, idx: 1}) || p1 != (producer{seq: seq}) {
+		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, p3, p1)
 	}
-	if _, still := es.producedBy[core.IDOf(&fired)]; still || !es.firedSplices[seq][core.IDOf(&fired)] {
+	if _, still := es.producerOf(&fired); still || !es.firedSplices[seq][core.IDOf(&fired)] {
 		t.Error("the fired marker is forgotten and noted fired")
 	}
 	lw := &lowerer{es: es}
@@ -189,11 +199,10 @@ func TestSpliceNotesRollBack(t *testing.T) {
 	es := NewEmitState()
 	record := func() int {
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2}})
-		outs := []core.Value{marker, three}
-		for i, o := range outs {
+		for i, o := range []*core.Value{&marker, &three} {
 			es.setProducedAt(o, seq, i)
 		}
-		es.noteSpliceOuts(seq, outs)
+		es.noteSpliceOuts(seq, []core.Value{marker, three})
 		return seq
 	}
 	cp := es.Checkpoint()

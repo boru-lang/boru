@@ -118,12 +118,12 @@ func TestFoldedEscapeSites(t *testing.T) {
 			recordDispatchOutcome(reg, "apply", nil, []core.Value{c}, nil, pos, nil)
 		}},
 		{"a list literal", "a list literal", func(es *EmitState, reg *core.Registry, lam core.Value) {
-			es.RecordMakeList(reg, []core.Value{lam}, core.NewList([]core.Value{lam}), pos)
+			es.RecordMakeList(reg, []core.Value{lam}, addrOf(core.NewList([]core.Value{lam})), pos)
 		}},
 		{"a map literal", "a map literal", func(es *EmitState, reg *core.Registry, lam core.Value) {
 			om := core.NewOrderedMap()
 			om.Set("f", lam)
-			es.RecordMakeMap(reg, []string{"f"}, []core.Value{lam}, false, core.NewMap(om), pos)
+			es.RecordMakeMap(reg, []string{"f"}, []core.Value{lam}, false, addrOf(core.NewMap(om)), pos)
 		}},
 		{"a baked container operand", "a container literal", func(es *EmitState, reg *core.Registry, lam core.Value) {
 			es.resolveOperand(core.NewList([]core.Value{lam}))
@@ -132,7 +132,7 @@ func TestFoldedEscapeSites(t *testing.T) {
 			es.RecordDynBind("k", core.NewList([]core.Value{lam}), pos)
 		}},
 		{"a /v read", "a `/v` read of `k`", func(es *EmitState, reg *core.Registry, lam core.Value) {
-			es.NoteValRead(core.IDOf(&lam), "k")
+			es.NoteValRead(&lam, "k")
 		}},
 		{"an if condition", "an `if` condition", func(es *EmitState, reg *core.Registry, lam core.Value) {
 			es.carryFoldedTaint(core.BranchRecord{Cond: lam})
@@ -188,17 +188,17 @@ func TestFoldedTaintFollowsBranchAndCall(t *testing.T) {
 	defer done()
 	out := core.NewDynamicCarrier(core.TAny)
 	two := core.NewInteger(2)
-	es.carryFoldedTaint(core.BranchRecord{ThenValue: &lam, ElsValue: &two, Out: out})
+	es.carryFoldedTaint(core.BranchRecord{ThenValue: &lam, ElsValue: &two, Out: &out})
 	if !es.foldedMembers[core.IDOf(&out)] || es.armReadCompileFailure != "" {
 		t.Errorf("an arm value makes the merge folded, poisoning nothing (%q)", es.armReadCompileFailure)
 	}
 	body := core.NewDynamicCarrier(core.TAny)
-	es.carryFoldedTaint(core.BranchRecord{ThenStk: []core.Value{two}, ElsStk: []core.Value{lam}, Out: body})
+	es.carryFoldedTaint(core.BranchRecord{ThenStk: []core.Value{two}, ElsStk: []core.Value{lam}, Out: &body})
 	if !es.foldedMembers[core.IDOf(&body)] {
 		t.Error("an arm body leaving it makes the merge folded")
 	}
 	plain := core.NewDynamicCarrier(core.TAny)
-	es.carryFoldedTaint(core.BranchRecord{ThenValue: &two, Out: plain})
+	es.carryFoldedTaint(core.BranchRecord{ThenValue: &two, Out: &plain})
 	es.carryFoldedTaint(core.BranchRecord{ThenValue: &lam})
 	if es.foldedMembers[core.IDOf(&plain)] || es.foldedMembers[""] {
 		t.Error("data arms, or no merge value, taint nothing")
@@ -208,8 +208,8 @@ func TestFoldedTaintFollowsBranchAndCall(t *testing.T) {
 	defer rbDone()
 	rb.noteFolded(lam)
 	merged := core.NewDynamicCarrier(core.TAny)
-	rb.RecordBranch(core.BranchRecord{Cond: core.NewInteger(1), HasElse: true, ThenValue: &lam, ElsValue: &two, Out: merged})
-	if !rb.Compilable || !rb.foldedMembers[core.IDOf(&merged)] || !rb.eventInfo[rb.producedBy[core.IDOf(&merged)].seq].armLeavesFn {
+	rb.RecordBranch(core.BranchRecord{Cond: core.NewInteger(1), HasElse: true, ThenValue: &lam, ElsValue: &two, Out: &merged})
+	if !rb.Compilable || !rb.foldedMembers[core.IDOf(&merged)] || !rb.eventInfo[rb.producerSeq(&merged)].armLeavesFn {
 		t.Errorf("a branch over the folded arm records, flags and taints its merge (%q)", rb.Reason)
 	}
 	// A named fn unit returning it: its call results are folded.
@@ -258,11 +258,11 @@ func TestGradualReadAccounting(t *testing.T) {
 	defer done()
 	es.gradualClaims = map[string]bool{"j1": true, "j2": true}
 	reg.Check.NoteFnShape(withID(core.Value{}, "j1"), core.FnShape{Arity: 0})
-	if _, ok := es.producerReturnedClosureArity("j1"); ok {
+	if _, ok := es.producerReturnedClosureArity(read("j1")); ok {
 		t.Error("a gradual claim is the def-read model's alone: no other shape reader sees it")
 	}
 	// The read the model is stepping answers once; a re-step does not.
-	es.NoteDefRead("j1", "j")
+	es.NoteDefRead("j1", core.RecKey{}, "j")
 	if es.pendingGradualRead != "j1" {
 		t.Fatalf("a gradual claim's read is pending, got %q", es.pendingGradualRead)
 	}
@@ -277,8 +277,8 @@ func TestGradualReadAccounting(t *testing.T) {
 		t.Fatalf("a read the model saw poisons nothing, got %q", es.armReadCompileFailure)
 	}
 	// A read the model never sees — `def k j` — declines at the next event.
-	es.NoteDefRead("j1", "j")
-	es.NoteDefRead("j2", "j")
+	es.NoteDefRead("j1", core.RecKey{}, "j")
+	es.NoteDefRead("j2", core.RecKey{}, "j")
 	if !strings.Contains(es.armReadCompileFailure, "read of `j`") || !strings.Contains(es.armReadCompileFailure, "NUR216") {
 		t.Errorf("an unseen gradual read declines, got %q", es.armReadCompileFailure)
 	}
@@ -291,7 +291,7 @@ func TestGradualReadAccounting(t *testing.T) {
 	}
 	es.armReadCompileFailure = ""
 	es.trapAt = 2
-	es.NoteDefRead("j1", "j")
+	es.NoteDefRead("j1", core.RecKey{}, "j")
 	es.flushGradualRead()
 	if es.armReadCompileFailure != "" {
 		t.Error("past a terminal trap the read is unreachable and poisons nothing")
@@ -300,7 +300,7 @@ func TestGradualReadAccounting(t *testing.T) {
 	// A folded carrier's claimed read is the model's to fire: pending until
 	// its dispatch, and inside a unit it declines.
 	es.noteFolded(withID(core.Value{}, "j1"))
-	es.NoteDefRead("j1", "j")
+	es.NoteDefRead("j1", core.RecKey{}, "j")
 	es.DefReadName("j1")
 	if es.pendingFoldedFire != "j1" || es.armReadCompileFailure != "" {
 		t.Errorf("a top-level folded read awaits its fire, got %q/%q", es.pendingFoldedFire, es.armReadCompileFailure)
@@ -310,7 +310,7 @@ func TestGradualReadAccounting(t *testing.T) {
 	// observer walks the open records on a read).
 	es.fnRecs = []*fnUnitRec{{}}
 	es.openUnitRecs = []int{0}
-	es.NoteDefRead("j1", "j")
+	es.NoteDefRead("j1", core.RecKey{}, "j")
 	es.DefReadName("j1")
 	n207WantEscape(t, es, "a folded read in a unit", "a def-bound read inside a fn or code body")
 }

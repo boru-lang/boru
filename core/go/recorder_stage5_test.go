@@ -10,6 +10,8 @@ import "testing"
 // dispatch-slots / analysis-hooks pin tests.
 func TestInactiveEmitMethodArms(t *testing.T) {
 	e := TheInactiveEmit
+	// A stamped recorder key: the inactive recorder vouches for none.
+	k := RecKey{Pass: 1, Seq: 1}
 
 	// --- activity / lifecycle.
 	if e.Armed() {
@@ -51,7 +53,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.StoredGradualActive() {
 		t.Fatal("inactive StoredGradualActive must be false")
 	}
-	if e.RecordSpliceDyn(Value{}, SrcPos{}) {
+	if e.RecordSpliceDyn(&Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordSpliceDyn must decline")
 	}
 	e.NoteShapedRead("id")
@@ -72,19 +74,19 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, SrcPos{}, "w", SrcPos{})
 	e.HoldRegion("w", SrcPos{})()
 	e.NoteCallWindow("w", SrcPos{}, nil, 0, nil, false, false)
-	if n, ok := e.RecordDynApply(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
+	if n, ok := e.RecordDynApply(nil, Value{}, &Value{}, SrcPos{}); ok || n != 0 {
 		t.Fatal("inactive RecordDynApply must decline with no consumed args")
 	}
-	if n, ok := e.RecordDynApplyLead(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
+	if n, ok := e.RecordDynApplyLead(nil, Value{}, &Value{}, SrcPos{}); ok || n != 0 {
 		t.Fatal("inactive RecordDynApplyLead must decline with no consumed args")
 	}
-	if e.RecordDynApplyName("h", nil, Value{}, Value{}, SrcPos{}) {
+	if e.RecordDynApplyName("h", nil, Value{}, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordDynApplyName must decline")
 	}
 	if e.DynApplyLeadEligible(Value{}) {
 		t.Fatal("inactive DynApplyLeadEligible must be false")
 	}
-	if _, ok := e.ProducedLeadApplies("x", nil); ok {
+	if _, ok := e.ProducedLeadApplies(&Value{}, nil); ok {
 		t.Fatal("inactive ProducedLeadApplies must decline")
 	}
 	if e.RecordDynMethod(Value{}, nil, nil, "w", SrcPos{}) {
@@ -93,7 +95,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteReStepLanding(Value{}, SrcPos{})
 	e.NoteDelivery(Value{})
 	e.NoteTakenLanding(Value{})
-	if e.RecordFallback(FallbackSpan{}, nil, Value{}, SrcPos{}) {
+	if e.RecordFallback(FallbackSpan{}, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordFallback must decline")
 	}
 	if e.RecordTrap("code", "detail", "w", "hint", SrcPos{}) {
@@ -116,15 +118,15 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if got, ok := e.RecordTypedBind(TypedBindSpec{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
 		t.Fatal("inactive RecordTypedBind must pass out through and decline")
 	}
-	if e.RecordMakeList(nil, nil, Value{}, SrcPos{}) {
+	if e.RecordMakeList(nil, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordMakeList must decline")
 	}
-	if e.RecordMakeListInner(nil, nil, Value{}, SrcPos{}) {
+	if e.RecordMakeListInner(nil, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordMakeListInner must decline")
 	}
 	// The 2026-09-25 seams: the args projection, the run-time bind and its
 	// dispatch, the container-read paren lead.
-	if e.RecordArgsProjection(nil, nil, Value{}, SrcPos{}) {
+	if e.RecordArgsProjection(nil, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordArgsProjection must decline")
 	}
 	e.NoteRuntimeBind("x")
@@ -139,23 +141,23 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive RecordTypedBindRun must pass out through and decline")
 	}
 	e.NoteRuntimeDefDispatch("T")
-	if e.ContainerReadResult("id") {
+	if e.ContainerReadResult(k) {
 		t.Fatal("inactive ContainerReadResult must decline")
 	}
-	if e.RecordMakeMap(nil, nil, nil, false, Value{}, SrcPos{}) {
+	if e.RecordMakeMap(nil, nil, nil, false, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordMakeMap must decline")
 	}
-	if e.RecordInterp(nil, nil, Value{}, SrcPos{}) {
+	if e.RecordInterp(nil, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordInterp must decline")
 	}
 	e.RegisterTrailingApply("id", 1)
 	if e.ApplyPending("id") {
 		t.Fatal("inactive ApplyPending must be false")
 	}
-	if e.MayBeFn("id") {
+	if e.MayBeFn(k) {
 		t.Fatal("inactive MayBeFn must be false")
 	}
-	if e.RegionResult("id") {
+	if e.RegionResult(k) {
 		t.Fatal("inactive RegionResult must be false")
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
@@ -183,10 +185,10 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if got, ok := e.Materialise(v); ok || !ValuesEqual(got, v) {
 		t.Fatal("inactive Materialise must pass through and decline")
 	}
-	if e.ZeroOutProduced("id") {
+	if e.ZeroOutProduced(k) {
 		t.Fatal("inactive ZeroOutProduced must be false")
 	}
-	if e.AlreadyProduced("id") {
+	if e.AlreadyProduced(k) {
 		t.Fatal("inactive AlreadyProduced must be false")
 	}
 
@@ -195,9 +197,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.MarkValueDef(Value{})
 	e.RecordDefRebind("n", Value{}, SrcPos{})
 	e.RecordDynBind("n", Value{}, SrcPos{})
-	e.NoteDefRead("id", "n")
+	e.NoteDefRead("id", k, "n")
 	e.NoteWordRead(Value{}, "n", SrcPos{})
-	e.NoteValRead("id", "n")
+	e.NoteValRead(&Value{}, "n")
 	e.NoteValReadLive(&Value{}, "n", SrcPos{})
 	e.NoteFrozenRead("n", FrozenBakeValue, 0)
 	e.NotifyNameRebound("n")
@@ -231,9 +233,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatalf("inactive TakeFragment must be nil, got %v", frag)
 	}
 	e.RecordBranch(BranchRecord{})
-	e.RecordLoop(Value{}, Value{}, Value{}, nil, nil, "iter", "i", Value{}, 0, SrcPos{})
-	e.RecordWhile(nil, nil, nil, nil, "iter", Value{}, SrcPos{})
-	if e.RecordInterpXml(XmlTmpl{}, nil, Value{}, SrcPos{}) {
+	e.RecordLoop(Value{}, Value{}, Value{}, nil, nil, "iter", "i", &Value{}, 0, SrcPos{})
+	e.RecordWhile(nil, nil, nil, nil, "iter", &Value{}, SrcPos{})
+	if e.RecordInterpXml(XmlTmpl{}, nil, &Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordInterpXml must decline")
 	}
 	e.BeginLoopCarried()

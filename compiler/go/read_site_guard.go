@@ -59,7 +59,7 @@ type siteKey struct {
 // produced, in the innermost frame (a fn-typed read has its own strict
 // accounting; a value no event produced — a param — has no producer home).
 func (es *EmitState) noteReadSite(v core.Value, name string, pos core.SrcPos, owner *fnUnitRec) {
-	pr, produced := es.producedBy[core.IDOf(&v)]
+	pr, produced := es.producerOf(&v)
 	if core.IsFnTypedCarrier(&v) || !produced {
 		return
 	}

@@ -236,7 +236,7 @@ func TestCatchVariadicLatch(t *testing.T) {
 	}
 	// The inactive recorder accepts the call as a no-op.
 	core.TheInactiveEmit.SetCatchVariadic(true)
-	if core.TheInactiveEmit.RecordInterpXml(core.XmlTmpl{}, nil, core.Value{}, core.SrcPos{}) {
+	if core.TheInactiveEmit.RecordInterpXml(core.XmlTmpl{}, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("the inactive recorder must decline RecordInterpXml")
 	}
 }
@@ -460,7 +460,7 @@ func TestFoldFullStackGates(t *testing.T) {
 	es = NewEmitState()
 	vres := core.NewCarrier(core.TInteger)
 	core.SetID(&vres, "v1")
-	es.producedBy["v1"] = producer{seq: 7}
+	es.stampProduced(&vres, 7, 0)
 	es.eventInfo[7] = eventFlags{variadicResult: true}
 	if _, ok := es.FoldFullStack("depth", nil, []core.Value{vres}); ok {
 		t.Error("a variadic producer must decline — its runtime count is not its model count")
@@ -495,7 +495,7 @@ func TestFoldFullStackWords(t *testing.T) {
 	es = NewEmitState()
 	ev := core.NewCarrier(core.TInteger)
 	core.SetID(&ev, "e1")
-	es.producedBy["e1"] = producer{seq: 4}
+	es.stampProduced(&ev, 4, 0)
 	es.eventInfo[4] = eventFlags{}
 	st := []core.Value{ev, ffsConst("c3", 30)}
 	out, ok = es.FoldFullStack("pick", []core.Value{core.NewInteger(1)}, st)
@@ -927,7 +927,7 @@ func TestFinalizeSkipsPoisonedStoredRef(t *testing.T) {
 	// The zeroOut-phantom residual is the minimal shape that finalizes
 	// successfully (TestFinalizeResidualArms uses the same setup).
 	phantom := core.NewInteger(1)
-	es.producedBy[core.IDOf(&phantom)] = producer{seq: 1}
+	es.stampProduced(&phantom, 1, 0)
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f

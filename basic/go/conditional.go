@@ -740,9 +740,9 @@ func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, b
 	if swapped {
 		word = "__casestack"
 	}
-	subject := NewDynamicCarrier(TAny)
-	es.RecordPolyCall(word, []Value{v}, []Value{subject}, pos, r, nil)
-	return subject, es.CanSeatAcrossFragment(subject)
+	outs := []Value{NewDynamicCarrier(TAny)}
+	es.RecordPolyCall(word, []Value{v}, outs, pos, r, nil)
+	return outs[0], es.CanSeatAcrossFragment(outs[0])
 }
 
 // caseCodeBodyRecord is CaseReturnsFn's RECORDING path for a code-body

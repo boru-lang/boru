@@ -1078,7 +1078,7 @@ func if3Returns(args []Value, r *Registry, spliced bool) []Value {
 		recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
+			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: pos, Joins: joins,
 			Pending: armResidue(spliced, thenPending.Merge(elsePending)), SweptArms: !spliced,
 		}))
 		// The phantom None is only meaningful while bytecode recording is
@@ -1105,7 +1105,7 @@ func if3Returns(args []Value, r *Registry, spliced bool) []Value {
 	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
+		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: pos, Joins: joins,
 		Pending: armResidue(spliced, thenPending.Merge(elsePending)), SweptArms: !spliced,
 	}))
 	return []Value{out}
@@ -1151,7 +1151,7 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos, splic
 		out := NewCarrier(TNone)
 		recorderState(es).RecordBranch(BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+			Then: frag, ThenStk: stk, Out: &out, Pos: pos, Joins: joins,
 		})
 		if !es.Recorder().Active() {
 			return nil
@@ -1171,7 +1171,7 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos, splic
 	out := stk[len(stk)-1]
 	recorderState(es).RecordBranch(BranchRecord{
 		ConstCond: &taken, HasElse: true,
-		Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+		Then: frag, ThenStk: stk, Out: &out, Pos: pos, Joins: joins,
 		Pending: armResidue(spliced, pending), SweptArms: !spliced,
 	})
 	return []Value{out}
@@ -1560,7 +1560,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// guard — RecordBranch lowers that with no merge slot.
 	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
-		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: pos, Joins: joins,
+		Then: thenFrag, ThenStk: thenStk, Out: &out, Pos: pos, Joins: joins,
 		Pending: armResidue(spliced, thenPending), SweptArms: !spliced,
 	}))
 	// A 0-value statement guard's phantom None only belongs on the carrier
@@ -2181,7 +2181,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, IDOf(&iter), iterName, out, regionN, args[countArg].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, IDOf(&iter), iterName, &out, regionN, args[countArg].Pos())
 	}
 	// A body that nets ZERO values per iteration (every pass drops / is pure
 	// side effect) leaves the stack untouched at run time — BOTH engines net

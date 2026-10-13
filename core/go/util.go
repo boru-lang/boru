@@ -331,24 +331,13 @@ func WithPosAt(v Value, p SrcPos) Value {
 	return v
 }
 
-// ReparentValue returns a copy of v with its Parent rebound to def.
-// The single primitive every typed-def reparent path uses (predicate
-// types, ObjectInstance dispatch on Person, FnUndef function-shape
-// binding, refine-bare scalar subtypes). Payload, Pos, Quoted,
-// Carrier, Eval are preserved unchanged.
-//
-// The discipline this codifies: NEVER mutate `Parent` on a Value
-// that was returned by Unify when Unify could have swapped to a
-// type-literal side. The refine-bare reparent originally got this
-// wrong and stored the Foo type literal as the binding instead of
-// the integer body. Using this helper makes the by-value copy
-// explicit and the mistake unreachable.
-//
-// See `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
-func ReparentValue(v Value, def *Type) Value {
-	v.Parent = def
-	return v
-}
+// (ReparentValue stood here: a copy of v with its Parent rebound. It is
+// MintRetagged now (mint.go) — the typed-def reparent constructed from the
+// source's parts, never a copy with a field overwritten. The discipline it
+// codified stands: NEVER write `Parent` on a Value that Unify returned when
+// Unify could have swapped to a type-literal side; the refine-bare reparent
+// once stored the Foo type literal as the binding instead of the integer
+// body. See design/legacy/TYPE-CANONICALIZATION.10.ignore.)
 
 // predicateSandbox holds the slice/map state that RunPredicate
 // snapshots before invoking a predicate body. DefStacks is NOT

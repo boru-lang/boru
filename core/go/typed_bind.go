@@ -41,7 +41,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
 		if spec.Def != nil {
-			out = ReparentValue(out, NodeOf(spec.Def))
+			out = MintRetagged(&out, NodeOf(spec.Def))
 		}
 		return out, nil
 	case TypedBindRefine:
@@ -67,7 +67,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 				fmt.Sprintf("def %s: value %s does not unify with declared type %s",
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
-		return ReparentValue(v, def), nil
+		return MintRetagged(&v, def), nil
 	case TypedBindRunMembership:
 		if spec.Cons == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no constraint", spec.Name)

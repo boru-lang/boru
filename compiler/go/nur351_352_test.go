@@ -184,7 +184,7 @@ func TestRootStackHeld(t *testing.T) {
 		t.Error("an untold stack holds nothing")
 	}
 	run := core.NewDynamicCarrier(core.TAny)
-	es.producedBy[core.IDOf(&run)] = producer{seq: 7}
+	es.stampProduced(&run, 7, 0)
 	es.rootStmtStacks = map[core.SrcPos][]core.Value{end.Pos(): {run}}
 	if held := es.rootStackHeld(lw, 2); !held[7] || len(held) != 1 {
 		t.Errorf("the body's run is held beneath the statement: %v", held)

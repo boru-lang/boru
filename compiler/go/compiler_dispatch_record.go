@@ -138,7 +138,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// lowered its clause bodies as inline events with no name bake, so it is
 	// not a leak path and keeps compiling; see bodyRefsFnLocalFn for the
 	// scope rule.
-	if es := r.Check.Recorder(); es.Active() && !(len(out) == 1 && es.AlreadyProduced(core.IDOf(&out[0]))) {
+	if es := r.Check.Recorder(); es.Active() && !(len(out) == 1 && es.AlreadyProduced(core.RecKeyOf(&out[0]))) {
 		if names, valueRead := check.BodyRefsFnLocalFns(r, sig, args); len(names) > 0 {
 			// The seventy-second increment: a capture-free local fn's def is
 			// placed as a registry-visible install for the frame
@@ -419,7 +419,7 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 			// read that recorded its dispatch (recordCallElided) — is on the
 			// runtime stack; folding over it would orphan that event, so the
 			// consumer records a real dispatch over it instead.
-			if es.AlreadyProduced(core.IDOf(&a)) {
+			if es.AlreadyProduced(core.RecKeyOf(&a)) {
 				return false
 			}
 			sawModule = true
@@ -1127,8 +1127,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled
 	// loop body (`do [for 3 [1]]`) models [1 1 1] as the SAME Value, whose
-	// shared ID would collapse producedBy to the LAST result index and decline
-	// "call results reordered" at the residual. Unlike the generic RecordCall
+	// shared ID makes the N runtime values one to every identity-keyed table
+	// the recorder keeps (while it resolved producers through the identity,
+	// the registration collapsed to the LAST result index and declined "call
+	// results reordered" at the residual). Unlike the generic RecordCall
 	// (which skips same-event collisions — dup/swap identity is the DUP
 	// lowering's job), a dyn-body CALL_NATIVE's results are N distinct runtime
 	// stack values, so every repeated out mints a fresh ID; an out that IS one
@@ -1314,7 +1316,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// would DOUBLE-record (the island fallback PLUS the structured event),
 	// leaving the extra event unconsumed on the simulated stack. Skip it; the
 	// generic RecordCall path that follows likewise early-returns.
-	if es.AlreadyProduced(core.IDOf(&outs[0])) {
+	if es.AlreadyProduced(core.RecKeyOf(&outs[0])) {
 		return false
 	}
 	// A pure typed word (get/make/is/typeof/size/type-algebra) is
@@ -1443,14 +1445,14 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	}
 	real, isReal := es.(*EmitState)
 	if !isReal || sig.Callable == nil || !sig.Callable.StripsUnconsumedInput {
-		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, &outs[0], pos)
 	}
 	// A strip-input word's island (`error`) runs a handler the closure path
 	// refused, whose caught run is the handler's own count — `[drop 5 6]`
 	// leaves two — where the pass modelled one (NUR301). Its run is a
 	// region, of anything the interpreter left, and a run a `do` whose body
 	// ends in it carries (runOperand, as a dyn-body run's).
-	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, &outs[0], pos)
 	if ok {
 		f := real.eventInfo[seq]
 		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun, f.stripIsland = true, true, true, true, true
@@ -1523,9 +1525,12 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 //
 // Carrier-identity de-collision, extended to INTRA-event repeats: the modeled
 // outs of such a sub-run may repeat one value — an unrolled loop body (`do
-// [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID would
-// collapse producedBy to the LAST result index and decline "call results
-// reordered" at the residual. Unlike the generic RecordCall (which skips
+// [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID makes the N
+// runtime values one to every identity-keyed table the recorder keeps (a
+// frame local, a def read, a read site; while the recorder resolved producers
+// through the identity, the registration collapsed to the LAST result index
+// and declined "call results reordered" at the residual). Each holder is
+// stamped with its own index either way. Unlike the generic RecordCall (which skips
 // same-event collisions — dup/swap identity is the DUP lowering's job), the
 // results here are N distinct runtime stack values, so every repeated out
 // mints a fresh ID; an out that IS one of the call's inputs keeps its ID (a
@@ -1546,12 +1551,12 @@ func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
 	}
 	seen := make(map[string]bool, len(outs))
 	for i := range outs {
-		_, prior := es.producedBy[core.IDOf(&outs[i])]
+		_, prior := es.producerOf(&outs[i])
 		// An IDENTITY-LESS registry-instance out (a module-export instance
 		// minted outside any check pass — `do [M 3]`, §9.1) gets a fresh ID
 		// too: without one the engine's tape tracking cannot place it (the
-		// region inverted around it) and producedBy cannot link it to this
-		// event. NARROW to ExtensionPayload instances — scalar outs elided
+		// region inverted around it) and no recorder key links it to this
+		// event (an identity-less holder is never stamped). NARROW to ExtensionPayload instances — scalar outs elided
 		// by the mode-gated ID discipline must STAY elided (a blanket mint
 		// miscompiled the each-body value-def promotion).
 		_, isExt := outs[i].Data.(core.ExtensionPayload)
@@ -1559,6 +1564,6 @@ func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
 			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 		}
 		seen[core.IDOf(&outs[i])] = true
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 }

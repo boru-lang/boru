@@ -18,9 +18,7 @@ import (
 func nfState() (*EmitState, core.Value) {
 	es := NewEmitState()
 	es.frames = [][]EmitEvent{{{kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: 5}}, seq: 1}}}
-	es.producedBy = map[string]producer{"v": {seq: 1, idx: 0}}
-	v := core.NewCarrier(core.TFunction)
-	core.SetID(&v, "v")
+	v := producedAs(es, core.NewCarrier(core.TFunction), "v", 1, 0)
 	return es, v
 }
 
@@ -286,7 +284,7 @@ func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
 	}
 	es.reg = nil
 	es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{nout: 1}, seq: 1}}}
-	es.producedBy = map[string]producer{"c": {seq: 1, idx: 0}}
+	es.stampProduced(&carrier, 1, 0)
 	if es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil, &emitUnit{localByID: map[string]int{}}, 0) {
 		t.Error("a user fn's returned closure parked where it landed is data")
 	}

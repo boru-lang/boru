@@ -25,7 +25,7 @@ func TestVarBodyCaptureCompiles(t *testing.T) {
 		{"capture in var body", `def f fn [[xs:List] [List] [ ([0 1 2] each [var [[i] xs i dot end]]) ]] ([10 20 30] f)`},
 		{"capture, reach into element", `def data [{a:1} {a:2}] (data each [var [[s] (s dot a/q)]])`},
 		// Decline point 3: a loop body capturing an enclosing COMPUTED def (not a
-		// param). The captured value carries a producedBy entry from the parent
+		// param). The captured value carries a recorder key from the parent
 		// frame; the body must read its own capture SLOT (resolveOperand capID),
 		// and the parent must PROMOTE the computed def to a frame local so the
 		// closureCaps operand is a re-pushable local carrying the right VALUE

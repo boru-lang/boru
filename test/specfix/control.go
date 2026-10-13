@@ -127,7 +127,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		taken := lit
 		recorderState(es).RecordBranch(core.BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(),
+			Then: frag, ThenStk: stk, Out: &out, Pos: args[0].Pos(),
 		})
 		return []core.Value{out}
 	}
@@ -161,7 +161,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		recorderState(es).RecordBranch(core.BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 		})
 		if !es.Recorder().Active() {
 			return nil
@@ -172,7 +172,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	recorderState(es).RecordBranch(core.BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 	})
 	return []core.Value{out}
 }
@@ -263,7 +263,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", &out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}
@@ -518,7 +518,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", &out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}

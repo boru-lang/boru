@@ -10,7 +10,9 @@ import (
 type wordReadEmit struct {
 	EmitRecorder
 	noted []string
-	vals  []string
+	// vals are the identities of the holders NoteValRead was handed, one per
+	// read.
+	vals []string
 	// valNames are the binding names NoteValRead was handed, one per read.
 	valNames []string
 }
@@ -19,8 +21,8 @@ func (w *wordReadEmit) Active() bool { return true }
 func (w *wordReadEmit) NoteWordRead(v Value, name string, _ SrcPos) {
 	w.noted = append(w.noted, name)
 }
-func (w *wordReadEmit) NoteValRead(id, name string) {
-	w.vals = append(w.vals, id)
+func (w *wordReadEmit) NoteValRead(v *Value, name string) {
+	w.vals = append(w.vals, IDOf(v))
 	w.valNames = append(w.valNames, name)
 }
 

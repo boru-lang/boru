@@ -63,9 +63,9 @@ func (s *s5bEmit) RecordDynMethod(fn Value, args, outs []Value, word string, pos
 	return s.dynMethodOK
 }
 func (s *s5bEmit) ApplyPending(id string) bool { return id != "" && id == s.pending }
-func (s *s5bEmit) RecordDynApply(args []Value, fn, out Value, pos SrcPos) (int, bool) {
+func (s *s5bEmit) RecordDynApply(args []Value, fn Value, out *Value, pos SrcPos) (int, bool) {
 	s.dynApplies++
-	s.lastOut = out
+	s.lastOut = *out
 	if s.dynApplyConsumed > 0 {
 		return s.dynApplyConsumed, s.dynApplyOK
 	}
@@ -74,11 +74,11 @@ func (s *s5bEmit) RecordDynApply(args []Value, fn, out Value, pos SrcPos) (int, 
 
 // RecordDynApplyLead tallies with the trailing record: the stub's tests
 // assert the count of apply records, whichever spelling seated them.
-func (s *s5bEmit) RecordDynApplyLead(args []Value, fn, out Value, pos SrcPos) (int, bool) {
+func (s *s5bEmit) RecordDynApplyLead(args []Value, fn Value, out *Value, pos SrcPos) (int, bool) {
 	return s.RecordDynApply(args, fn, out, pos)
 }
 func (s *s5bEmit) DynApplyLeadEligible(Value) bool { return s.leadEligible }
-func (s *s5bEmit) ProducedLeadApplies(_ string, args []Value) (*Type, bool) {
+func (s *s5bEmit) ProducedLeadApplies(_ *Value, args []Value) (*Type, bool) {
 	s.producedArgs = args
 	return s.producedRet, s.producedOK
 }

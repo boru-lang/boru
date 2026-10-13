@@ -179,7 +179,7 @@ func TestW9EmptyFlexHookOperand(t *testing.T) {
 		es := NewEmitState()
 		v := core.NewCarrier(core.TFlexList)
 		core.SetID(&v, "w9flex")
-		es.producedBy[core.IDOf(&v)] = producer{seq: es.seq, idx: 0}
+		es.stampProduced(&v, es.seq, 0)
 		return es, v
 	}
 

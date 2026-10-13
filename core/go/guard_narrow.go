@@ -218,15 +218,15 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 	for _, c := range clauses {
 		narrowed := NewCarrier(c.Type)
 		// is-narrowing is a static-only refinement: at runtime the binding is
-		// UNCHANGED, so the narrowed carrier must keep the source's value ID — its
-		// provenance (param slot / producing event). NewCarrier mints a FRESH ID
-		// with no producedBy/localByID entry, so resolveOperand fails ("fn call
-		// operand of unknown provenance") when the narrowed value feeds a user
-		// call — the stats as-summary `if (x is List) [build x] [x]` shape. The
+		// UNCHANGED, so the narrowed carrier must keep the source's identity and
+		// recorder key (ShareIdentity) — its provenance (param slot / producing
+		// event). NewCarrier mints a FRESH ID with no recorder key and no
+		// localByID entry, so resolveOperand fails ("fn call operand of unknown
+		// provenance") when the narrowed value feeds a user call — the stats as-summary `if (x is List) [build x] [x]` shape. The
 		// slot already holds the right runtime value because it IS the same
 		// binding, so no value-passing half is needed (unlike a closure capture).
 		if cur, ok := r.Defs.Top(c.Name); ok {
-			SetID(&narrowed, IDOf(&cur))
+			ShareIdentity(&narrowed, &cur)
 			// MEET the guard type with the binding's current (abstract) carrier
 			// rather than overwriting it with a bare NewCarrier(c.Type): an
 			// incompatible pair collapses to Never — a DEAD then-arm the runtime
@@ -242,11 +242,11 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 					deadArm = true
 				} else if IsBareTypeNode(&meet) {
 					narrowed = NewCarrier(ValueType(meet))
-					SetID(&narrowed, IDOf(&cur))
+					ShareIdentity(&narrowed, &cur)
 				} else {
 					meet.Carrier = true
 					narrowed = meet
-					SetID(&narrowed, IDOf(&cur))
+					ShareIdentity(&narrowed, &cur)
 				}
 				if IsDynamic(&cur) && !deadArm {
 					SetDynamic(&narrowed, true)
@@ -396,7 +396,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		// complement type, so it must resolve to cur's provenance. Set AFTER the
 		// ValuesEqual(narrowed, cur) check above so the "did not refine" early-out
 		// (which can compare by ID) is unaffected.
-		SetID(&narrowed, IDOf(&cur))
+		ShareIdentity(&narrowed, &cur)
 		r.Defs.Push(c.Name, narrowed)
 		pushed = append(pushed, applied{name: c.Name})
 	}

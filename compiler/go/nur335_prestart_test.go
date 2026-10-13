@@ -42,19 +42,15 @@ func TestStatementPushed(t *testing.T) {
 	es := NewEmitState()
 	start := core.SrcPos{Row: 2, Col: 1}
 	tree := map[int]treeEvent{3: n335Call(3, 1, 4), 5: n335Call(5, 2, 6), 6: n335Call(6, 0, 0)}
-	es.producedBy["early"] = producer{seq: 3}
-	es.producedBy["mine"] = producer{seq: 5}
-	es.producedBy["nopos"] = producer{seq: 6}
-	es.producedBy["gone"] = producer{seq: 2}
 	for _, c := range []struct {
 		name       string
 		rv         core.Value
 		own, known bool
 	}{
-		{"an event written before the statement", n335Val("early", 0, 0), false, true},
-		{"an event written in it, however late recorded", n335Val("mine", 0, 0), true, true},
-		{"an event with no position, recorded at its first event", n335Val("nopos", 0, 0), true, true},
-		{"an event the tree does not hold, recorded before it", n335Val("gone", 0, 0), false, true},
+		{"an event written before the statement", stamped(es, n335Val("early", 0, 0), 3, 0), false, true},
+		{"an event written in it, however late recorded", stamped(es, n335Val("mine", 0, 0), 5, 0), true, true},
+		{"an event with no position, recorded at its first event", stamped(es, n335Val("nopos", 0, 0), 6, 0), true, true},
+		{"an event the tree does not hold, recorded before it", stamped(es, n335Val("gone", 0, 0), 2, 0), false, true},
 		{"a literal written before it", n335Val("lit", 1, 2), false, true},
 		{"a literal written in it", n335Val("lit", 2, 3), true, true},
 		{"a scalar with no position", n335Val("lit", 0, 0), false, false},
@@ -132,9 +128,8 @@ func TestBoundReadsBefore(t *testing.T) {
 	if _, reads, ok := es.boundReadsBefore(def(k), []core.Value{n335Val("k", 1, 1)}, start); !ok || reads[0] {
 		t.Errorf("the same value at another token is no read: reads=%v ok=%v", reads, ok)
 	}
-	es.producedBy["k"] = producer{seq: 0}
 	es.rootLocalReads = map[string][]core.SrcPos{"k": {in}}
-	if before, reads, ok := es.boundReadsBefore(def(k), []core.Value{n335Val("k", 0, 0)}, start); !ok || !reads[0] || before["k"] != 0 {
+	if before, reads, ok := es.boundReadsBefore(def(k), []core.Value{stamped(es, n335Val("k", 0, 0), 0, 0)}, start); !ok || !reads[0] || before["k"] != 0 {
 		t.Errorf("a def-bound event result is read where its reads are: before=%v reads=%v ok=%v", before, reads, ok)
 	}
 	if !containsPos([]core.SrcPos{pre, in}, in) || containsPos([]core.SrcPos{pre}, in) {

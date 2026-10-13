@@ -856,7 +856,11 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 				// as a value, so it declines as a speculative family's `/v`
 				// read does: no live home for the read.
 				if r.Check.SpecFnNames[kind] && r.Check.SpecArmDepth == 0 {
-					r.Check.Recorder().NoteValRead(IDOf(&top), kind)
+					// The note's own copy: the read only declines, and &top
+					// toward the recorder would move every parse's binding
+					// read to the heap.
+					read := top
+					r.Check.Recorder().NoteValRead(&read, kind)
 				}
 				return parseFnExpand(top, args, r)
 			}

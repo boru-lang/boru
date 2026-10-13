@@ -96,7 +96,7 @@ func TestResidualApplies(t *testing.T) {
 	word := core.NewWord("add")
 	read := v
 	core.SetID(&read, "r")
-	es.producedBy["r"] = producer{seq: 1}
+	es.stampProduced(&read, 1, 0)
 	es.defReads = map[string]string{"r": "j"}
 	for name, c := range map[string]struct {
 		dynOp    Opcode
@@ -164,14 +164,14 @@ func TestGuardRootLandings(t *testing.T) {
 		t.Error("an event that applies the value is the landing's partner: no guard")
 	}
 	es.frames[0] = es.frames[0][:1]
-	es.landingOwn = map[int]landingStep{1: {beneath: true, id: "v"}}
+	es.landingOwn = map[int]landingStep{1: {beneath: true, id: "v", key: core.RecKeyOf(&v)}}
 	es.guardRootLandings(lw, 0, []core.Value{v, k})
 	if code[0].Arg != 1|LandingBeneathGuard {
 		t.Errorf("no apply re-steps the value: guarded, got %d", code[0].Arg)
 	}
 	placed, pv, pk := n286State()
 	placed.frames[0][0] = EmitEvent{seq: 1, kind: evCallUser, uc: emitUserCall{nout: 1}}
-	placed.landingOwn = map[int]landingStep{1: {beneath: true, id: "v"}}
+	placed.landingOwn = map[int]landingStep{1: {beneath: true, id: "v", key: core.RecKeyOf(&pv)}}
 	pcode := []Instr{{Op: OpReStepLanding}}
 	plw := &lowerer{es: placed, code: &pcode, rootBeneathLandings: [][2]int{{0, 1}}}
 	placed.guardRootLandings(plw, 0, []core.Value{pk, pv})

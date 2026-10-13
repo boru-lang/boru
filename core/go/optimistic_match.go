@@ -70,7 +70,7 @@ func (e *Engine) ForwardSplit() int { return e.forwardSplit() }
 func (e *Engine) regionMatch(match *MatchResult) bool {
 	rec := e.Registry.analysisRecorder()
 	for _, a := range match.Args {
-		if IDOf(&a) != "" && rec.RegionResult(IDOf(&a)) {
+		if IDOf(&a) != "" && rec.RegionResult(RecKeyOf(&a)) {
 			return true
 		}
 	}

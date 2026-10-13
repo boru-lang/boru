@@ -22,14 +22,14 @@ func TestProducerReturnedClosureArityClaim(t *testing.T) {
 	defer r.Check.Begin()()
 	out := core.NewCarrier(core.TFunction)
 	r.Check.NoteFnShape(out, core.FnShape{Arity: 2})
-	if n, ok := es.producerReturnedClosureArity(core.IDOf(&out)); !ok || n != 2 {
+	if n, ok := es.producerReturnedClosureArity(&out); !ok || n != 2 {
 		t.Errorf("a claimed carrier's arity = %d/%v, want 2", n, ok)
 	}
-	if _, ok := es.producerReturnedClosureArity("T_unclaimed"); ok {
+	if _, ok := es.producerReturnedClosureArity(read("T_unclaimed")); ok {
 		t.Error("an unclaimed, unproduced ID has no arity")
 	}
 	es.reg = nil
-	if _, ok := es.producerReturnedClosureArity(core.IDOf(&out)); ok {
+	if _, ok := es.producerReturnedClosureArity(&out); ok {
 		t.Error("with no registry there is no claim table to consult")
 	}
 }
@@ -39,7 +39,7 @@ func TestDefReadName(t *testing.T) {
 	if _, ok := es.DefReadName("T_x"); ok {
 		t.Error("no reads recorded")
 	}
-	es.NoteDefRead("T_x", "k")
+	es.NoteDefRead("T_x", core.RecKey{}, "k")
 	if name, ok := es.DefReadName("T_x"); !ok || name != "k" {
 		t.Errorf("DefReadName = %q/%v, want k", name, ok)
 	}
@@ -97,10 +97,8 @@ func TestNoteClosureShapeBindArms(t *testing.T) {
 		{nParams: 1, outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}},
 		{nParams: 1, outOps: []EmitOperand{{kind: opEvent, idx: 0}}},
 	}
-	es.producedBy = map[string]producer{"T_h": {seq: 41}}
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 41, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}})
-	carrier := core.NewCarrier(core.TFunction)
-	core.SetID(&carrier, "T_h")
+	carrier := producedAs(es, core.NewCarrier(core.TFunction), "T_h", 41, 0)
 	es.noteClosureShapeBind(carrier) // no registry: nothing to write to
 	r, err := core.NewRegistry()
 	if err != nil {

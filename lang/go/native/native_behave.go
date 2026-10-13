@@ -784,7 +784,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 			}
 		}
 		if u.unifyTarget.IsAncestor(tp) && !tp.Equal(u.unifyTarget) {
-			top = core.ReparentValue(top, u.unifyTarget)
+			top = core.MintRetagged(&top, u.unifyTarget)
 		}
 	}
 	return top, nil

@@ -85,7 +85,7 @@ func TestBranchLeadDecline(t *testing.T) {
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
-	es.producedBy[core.IDOf(&lead)] = producer{seq: 7}
+	es.stampProduced(&lead, 7, 0)
 	if why := es.branchLeadDecline(lead); why != "" {
 		t.Errorf("a placed branch is data, no apply to decline: %q", why)
 	}
@@ -154,7 +154,8 @@ func TestDynBodySettledOp(t *testing.T) {
 	if _, settled := es.dynBodySettledOp(res); settled {
 		t.Error("no producer: not settled")
 	}
-	es.producedBy[core.IDOf(&lead)], es.producedBy[core.IDOf(&sib)] = producer{seq: 3}, producer{seq: 3, idx: 1}
+	es.stampProduced(&res[0], 3, 0) // the residual's holders are the ones read
+	es.stampProduced(&res[1], 3, 1)
 	es.eventInfo[3] = eventFlags{dynBodyResult: true}
 	if op, settled := es.dynBodySettledOp(res); !settled || op != 0 {
 		t.Errorf("no mark window: seats as it stands, got %v %v", op, settled)
@@ -204,11 +205,11 @@ func TestNUR319UnionReadReStepped(t *testing.T) {
 	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
 	u.Carrier = true
 	core.SetID(&u, "u")
-	es.producedBy[core.IDOf(&u)] = producer{seq: 7}
+	es.stampProduced(&u, 7, 0)
 	if es.unionLeadReStepped(u, 7) || es.mayBeFnUnsettled(u) {
 		t.Error("an unread placed union is no re-step")
 	}
-	es.NoteDefRead(core.IDOf(&u), "r")
+	es.NoteDefRead(core.IDOf(&u), core.RecKeyOf(&u), "r")
 	if !es.unionLeadReStepped(u, 7) || !es.mayBeFnUnsettled(u) {
 		t.Error("a bare read of the def dispatches it")
 	}
@@ -228,14 +229,14 @@ func TestNUR317PlacedBranchNotReStepped(t *testing.T) {
 	}})
 	v := core.NewDynamicCarrier(core.TAny)
 	core.SetID(&v, "v")
-	es.producedBy[core.IDOf(&v)] = producer{seq: 7}
+	es.stampProduced(&v, 7, 0)
 	es.NoteFnResultReStep(v, core.SrcPos{})
 	if len(es.reStepNotes) != 0 {
 		t.Errorf("a placed branch's value takes no re-step note: %v", es.reStepNotes)
 	}
 	w := core.NewDynamicCarrier(core.TAny)
 	core.SetID(&w, "w")
-	es.producedBy[core.IDOf(&w)] = producer{seq: 9}
+	es.stampProduced(&w, 9, 0)
 	es.NoteFnResultReStep(w, core.SrcPos{})
 	if _, ok := es.reStepNotes[9]; !ok {
 		t.Error("a call's result keeps its re-step note")

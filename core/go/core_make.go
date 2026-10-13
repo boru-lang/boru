@@ -447,7 +447,10 @@ func FreshenDefault(v Value) Value {
 	if !containsSharedMutable(v) {
 		return v
 	}
-	out := v
+	// The freshened value is CONSTRUCTED around its new payload
+	// (MintPayload): the same type, facets and occurrence as v, the
+	// mutable contents its own.
+	data := v.Data
 	switch {
 	case IsWeakFlexNode(v):
 		// Freshen re-establishes the weak representation: strong slots
@@ -456,11 +459,11 @@ func FreshenDefault(v Value) Value {
 		// referent nobody holds would be dead on arrival.
 		switch wd := v.Data.(type) {
 		case *WeakFlexMapData:
-			out.Data = CloneWeakFlexMapData(wd, FreshenDefault)
+			data = CloneWeakFlexMapData(wd, FreshenDefault)
 		case *WeakFlexListData:
-			out.Data = CloneWeakFlexListData(wd, FreshenDefault)
+			data = CloneWeakFlexListData(wd, FreshenDefault)
 		case *WeakFlexXmlData:
-			out.Data = CloneWeakFlexXmlData(wd, FreshenDefault, freshenAttrMap)
+			data = CloneWeakFlexXmlData(wd, FreshenDefault, freshenAttrMap)
 		}
 	case IsClassInstance(v):
 		info, err := AsClassInstance(v)
@@ -474,7 +477,7 @@ func FreshenDefault(v Value) Value {
 		}
 		ninfo := info // struct copy: TypeRef stays shared (class instances are flat, no prototype)
 		ninfo.Fields = fields
-		out.Data = ninfo
+		data = ninfo
 	case IsStore(v):
 		si, err := AsStore(v)
 		if err != nil || si == nil {
@@ -485,10 +488,10 @@ func FreshenDefault(v Value) Value {
 		for k, val := range si.Data {
 			nsi.Data[k] = FreshenDefault(val)
 		}
-		out.Data = &nsi
+		data = &nsi
 	case v.Parent.ConformsTo(TMap):
 		// Plain Map and FlexMap share the MapPayload shape; the Parent
-		// tag (kept by the struct copy) preserves the flavor.
+		// tag (kept by the construction) preserves the flavor.
 		m, err := AsMap(v)
 		if err != nil || m == nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return v
@@ -498,7 +501,7 @@ func FreshenDefault(v Value) Value {
 			val, _ := m.Get(k)
 			om.Set(k, FreshenDefault(val))
 		}
-		out.Data = MapPayload{M: om}
+		data = MapPayload{M: om}
 	case v.Parent.ConformsTo(TList):
 		lst, err := AsList(v)
 		if err != nil || lst.IsNil() {
@@ -509,12 +512,12 @@ func FreshenDefault(v Value) Value {
 			elems[i] = FreshenDefault(lst.Get(i))
 		}
 		if IsFlexList(v) {
-			out.Data = &FlexListData{Elems: elems}
+			data = &FlexListData{Elems: elems}
 		} else {
-			out.Data = ListPayload{Elems: elems}
+			data = ListPayload{Elems: elems}
 		}
 	}
-	return out
+	return MintPayload(&v, data)
 }
 
 // freshenAttrMap freshens an XML attribute map for FreshenDefault's
@@ -774,7 +777,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 				}
 				conv = c
 			}
-			return []Value{ReparentValue(conv, targetType)}, nil
+			return []Value{MintRetagged(&conv, targetType)}, nil
 		}
 	}
 
@@ -1084,7 +1087,7 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 				}
 				conv = c
 			}
-			return []Value{ReparentValue(conv, canon)}, nil
+			return []Value{MintRetagged(&conv, canon)}, nil
 		}
 	}
 	result, err := MakeConvert(srcVal, targetType)

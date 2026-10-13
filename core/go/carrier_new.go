@@ -168,14 +168,13 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 // Example: swap is ReturnsIdentity(1, 0); over is ReturnsIdentity(0, 1, 0).
 //
 // A DUPLICATED source index (dup `(0, 0)`, over `(0, 1, 0)`) would otherwise
-// return the same Value — one Value.ID — for several stack outputs, which
-// the bytecode emitter's per-value provenance (emit.go producedBy) cannot
-// tell apart: a `dup`-bodied higher-order word (`each [dup add]`) records
-// both of add's operands onto the LAST output, so the operand layout declines
-// them as "not adjacent." Each output of a repeated source gets a fresh
-// identity (the carrier-identity DUP path) so the N copies stay distinct;
-// the source's own provenance is left untouched (no output keeps its ID).
-// Identity-only — runtime dispatch is unaffected (ReturnsFn is check-mode).
+// hand back one value — one identity — as several stack outputs. The
+// recorder tells event results apart by their (event, index) key now, but a
+// pass also tracks values by identity (reads, captures, folds), so each
+// output of a repeated source is MINTED with an identity of its own
+// (MintFresh — the carrier-identity DUP path): the N copies are N values,
+// and the source keeps its own identity and producer. Identity-only —
+// runtime dispatch is unaffected (ReturnsFn is check-mode).
 func ReturnsIdentity(mapping ...int) ReturnsFunc {
 	return func(args []Value, _ *Registry) []Value {
 		counts := make(map[int]int, len(mapping))
@@ -184,15 +183,14 @@ func ReturnsIdentity(mapping ...int) ReturnsFunc {
 		}
 		out := make([]Value, len(mapping))
 		for i, m := range mapping {
-			if m < 0 || m >= len(args) {
+			switch {
+			case m < 0 || m >= len(args):
 				out[i] = NewCarrier(TAny)
-				continue
+			case counts[m] > 1:
+				out[i] = MintFresh(&args[m])
+			default:
+				out[i] = args[m]
 			}
-			v := args[m] // struct copy: the ID write below is local to v.
-			if counts[m] > 1 {
-				SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
-			}
-			out[i] = v
 		}
 		return out
 	}

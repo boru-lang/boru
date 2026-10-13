@@ -197,7 +197,7 @@ func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	v := core.NewCarrier(core.TInteger)
 	before := core.IDOf(&v)
 	es.NoteLiveRead(&v, "k", readAt)
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if core.IDOf(&v) == before || !ok || es.defReads[core.IDOf(&v)] != "k" || len(es.frames[0]) != 1 || !es.frames[0][0].call.live || es.frames[0][0].call.nout != 1 {
 		t.Fatalf("a live read gets its own identity and a one-result live event: id changed=%v produced=%v events=%d", core.IDOf(&v) != before, ok, len(es.frames[0]))
 	}

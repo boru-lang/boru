@@ -101,9 +101,17 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 		{`def k 5  for 2 [ k  def k 9  1 ]`,
 			"for: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
 		// A `do` result is a computed value, so the second body's read of
-		// it is live, and the same hazard applies inside that body.
+		// it is live: no event produced the binding it reads (the first
+		// body's result is another holder of the value, with a recorder key
+		// of its own), so the read is seated as a lookup at its own position,
+		// ahead of the rebind, and the body compiles. The program declines
+		// where its hazard-free twin (`do [ 7  def k 12  k ]`) always did:
+		// at the root's promotion of the do's variadic result. While the
+		// recorder resolved the read through the identity it shares with the
+		// first body's result, the read was a residual re-push and the body
+		// declined first, on the hazard.
 		{`def k 5  do [ k  def k 9  k ]  do [ k  def k 12  k ]`,
-			"fn do$body: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
+			"do: variadic result promoted to frame slots (runtime count differs from the static seat)"},
 		// A multi-run body reading a name it rebinds: the read is
 		// iteration-varying, its residual re-push would trail the resident
 		// install, so the closure declines. Since S1a (2026-09-19, each

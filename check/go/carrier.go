@@ -585,7 +585,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 		// faithfully at run time, and eliding the event would strand every
 		// lowering that anchors on a condition EVENT (computed-arm `if`,
 		// variadic-else claims — the emit goldens pin this).
-		core.SetID(&folded, core.IDOf(&out[0])) // keep the recorder's result identity
+		core.ShareIdentity(&folded, &out[0]) // keep the recorder's result identity
 		out[0] = folded
 	}
 	out = applyGradualContagion(r, word, args, out, pos, tailConsumed)
@@ -600,7 +600,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 			return out
 		}
 		for i := range partOut {
-			core.SetID(&partOut[i], core.IDOf(&out[i]))
+			core.ShareIdentity(&partOut[i], &out[i])
 		}
 		return partOut
 	}
@@ -694,7 +694,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 					if core.IDOf(&top) == "" {
 						core.SetID(&top, core.GenerateID(core.IDPrefixForType(core.TList)))
 					}
-					es.RecordArgsProjection(r, lst.Slice(), top, pos)
+					es.RecordArgsProjection(r, lst.Slice(), &top, pos)
 				}
 			}
 			// In compile mode `args.N` folds to a frame local (PUSH_LOCAL N)
@@ -1944,10 +1944,10 @@ func narrowDynamicUses(r *core.Registry, word string, sig *core.Signature, args 
 		// `def nodes (tree get "nodes")` narrowed to List at its first typed
 		// use lost the get event's provenance, so every LATER read of the
 		// name declined ("fn call operand of unknown provenance" — the
-		// decision eval-tree walkers). Re-stamp the current binding's ID so
-		// the recorder's producedBy still resolves the rebound name to its
-		// original producer.
-		core.SetID(&narrowed, core.IDOf(&cur))
+		// decision eval-tree walkers). Share the current binding's identity
+		// and recorder key, so the recorder still resolves the rebound name
+		// to its original producer.
+		core.ShareIdentity(&narrowed, &cur)
 		name := a.DynFrom()
 		pushed := core.NewDynamicCarrierValue(narrowed)
 		r.Defs.Push(name, pushed)
@@ -2165,12 +2165,12 @@ func valueTreeHasCarriers(v core.Value) bool {
 //   - Identity. A type literal is dual (eng CLAUDE.md "Canonical *Type
 //     Pointers"): its Value.ID IS the type's lattice identity, so every
 //     `make P {}` returns the SAME P-literal value (one Value.ID). The
-//     bytecode lowerer's per-value provenance (emit.go's producedBy) then
-//     cannot tell two instances apart — it resolves both operands of a
-//     downstream `(make P {}) (make P {}) eq` onto the LAST make, leaving
-//     one simulated-stack slot where the binary op needs two ("stack
-//     discipline underflow"). A fresh carrier ID keeps each construction a
-//     distinct operand.
+//     bytecode lowerer's identity-keyed tables then cannot tell two
+//     instances apart — while it resolved producers through the identity,
+//     both operands of a downstream `(make P {}) (make P {}) eq` resolved
+//     onto the LAST make, leaving one simulated-stack slot where the binary
+//     op needs two ("stack discipline underflow"). A fresh carrier ID keeps
+//     each construction a distinct operand.
 //   - Faithfulness. The runtime result is a VALUE of type P, not the type
 //     literal P; a carrier of P is the same shape CarrierResults gives every
 //     other declared return, and conformance sees the instance's type.
@@ -3197,7 +3197,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 		}
 		c := core.NewDynamicCarrier(core.TAny)
 		if a, aerr := core.AsAtom(args[i]); aerr == nil && a != "" {
-			r.Check.Recorder().NoteDefRead(core.IDOf(&c), a)
+			r.Check.Recorder().NoteDefRead(core.IDOf(&c), core.RecKeyOf(&c), a)
 		}
 		args[i] = core.WithPos(c, args[i])
 	}
@@ -3230,7 +3230,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	r.Check.FnAnalysisCounts[quotaKey]++
 	// The quota is a CHECK-mode accuracy/step-budget heuristic: past the quota
 	// it fabricates a declared-return `declaredReturnBail` carrier that no event
-	// produced. That carrier has no producedBy entry, so a real COMPILE pass —
+	// produced. That carrier carries no recorder key, so a real COMPILE pass —
 	// which must lower the body's true residual to an operand — cannot resolve
 	// it and declines "fn <name>: body result of unknown provenance" (the trie
 	// `match-go` / recursive-collector shape, pushed past the name-keyed count
@@ -3448,7 +3448,7 @@ func stripZeroOutResiduals(r *core.Registry, stk []core.Value) []core.Value {
 	}
 	filtered := make([]core.Value, 0, len(stk))
 	for _, v := range stk {
-		if es.ZeroOutProduced(core.IDOf(&v)) {
+		if es.ZeroOutProduced(core.RecKeyOf(&v)) {
 			continue
 		}
 		filtered = append(filtered, v)

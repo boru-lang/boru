@@ -48,7 +48,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if folded, ok := e.FoldFullStack("w", nil, nil); folded != nil || ok {
 		t.Fatal("inactive FoldFullStack should decline")
 	}
-	if e.RecordSpliceDyn(core.Value{}, core.SrcPos{}) {
+	if e.RecordSpliceDyn(&core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordSpliceDyn should decline")
 	}
 	e.NoteShapedRead("id")
@@ -64,13 +64,13 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.RecordUserCall(0, "w", nil, nil, core.SrcPos{}, core.SrcPos{})
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, core.SrcPos{}, "w", core.SrcPos{})
 	e.HoldRegion("w", core.SrcPos{})()
-	if _, ok := e.RecordDynApply(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+	if _, ok := e.RecordDynApply(nil, core.Value{}, &core.Value{}, core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApply should decline")
 	}
-	if _, ok := e.RecordDynApplyLead(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+	if _, ok := e.RecordDynApplyLead(nil, core.Value{}, &core.Value{}, core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApplyLead should decline")
 	}
-	if _, ok := e.ProducedLeadApplies("x", nil); ok {
+	if _, ok := e.ProducedLeadApplies(read("x"), nil); ok {
 		t.Fatal("inactive ProducedLeadApplies should decline")
 	}
 	if e.RecordDynMethod(core.Value{}, nil, nil, "w", core.SrcPos{}) {
@@ -81,10 +81,10 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.NoteTakenLanding(core.Value{})
 	e.NoteStatementEnd(core.SrcPos{})
 	e.NoteLandingNext(core.Value{}, core.LandingNextEnd, false, core.Value{})
-	if e.MayBeFn("id") {
+	if e.MayBeFn(core.RecKey{}) {
 		t.Fatal("inactive MayBeFn should be false")
 	}
-	if e.RecordFallback(core.FallbackSpan{}, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordFallback(core.FallbackSpan{}, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordFallback should decline")
 	}
 	if e.RecordTrap("c", "d", "w", "h", core.SrcPos{}) {
@@ -94,16 +94,16 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || core.IDOf(&out) != core.IDOf(&in) {
 		t.Fatalf("inactive RecordTypedBind = %v %v", out, ok)
 	}
-	if e.RecordMakeList(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeList(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeList should decline")
 	}
-	if e.RecordMakeListInner(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeListInner(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeListInner should decline")
 	}
-	if e.RecordMakeMap(nil, nil, nil, false, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeMap(nil, nil, nil, false, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeMap should decline")
 	}
-	if e.RecordInterp(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordInterp(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordInterp should decline")
 	}
 	e.RegisterTrailingApply("id", 1)
@@ -117,7 +117,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if v, ok := e.Materialise(in); ok || core.IDOf(&v) != core.IDOf(&in) {
 		t.Fatalf("inactive materialise = %v %v", v, ok)
 	}
-	if e.ZeroOutProduced("id") || e.AlreadyProduced("id") {
+	if e.ZeroOutProduced(core.RecKey{}) || e.AlreadyProduced(core.RecKey{}) {
 		t.Fatal("inactive produced probes should be false")
 	}
 
@@ -166,7 +166,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 // RecordSpliceDyn's decline arms (§9.2b): an inactive state and an
 // unresolvable payload both leave the compile failure standing.
 func TestRecordSpliceDynDeclines(t *testing.T) {
-	if (&EmitState{}).RecordSpliceDyn(core.Value{}, core.SrcPos{}) {
+	if (&EmitState{}).RecordSpliceDyn(&core.Value{}, core.SrcPos{}) {
 		t.Error("an inactive EmitState must decline")
 	}
 	r := covRegistry(t, nil)
@@ -175,7 +175,7 @@ func TestRecordSpliceDynDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	es.BindRegistry(r)
 	orphan := core.NewCarrier(core.TList) // no event, no local, no const home
-	if es.RecordSpliceDyn(orphan, core.SrcPos{}) {
+	if es.RecordSpliceDyn(&orphan, core.SrcPos{}) {
 		t.Error("an unresolvable payload must decline")
 	}
 }
@@ -325,7 +325,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		taken := lit
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(),
+			Then: frag, ThenStk: stk, Out: &out, Pos: args[0].Pos(),
 		})
 		return []core.Value{out}
 	}
@@ -356,7 +356,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			Cond: args[0], HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 		})
 		if !es.Recorder().Active() {
 			return nil
@@ -372,7 +372,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	testRecorderState(es).RecordBranch(core.BranchRecord{
 		Cond: args[0], HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 	})
 	return []core.Value{out}
 }

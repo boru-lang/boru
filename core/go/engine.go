@@ -621,10 +621,10 @@ func (e *Engine) runPrefix() []Value {
 	prefix := ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	es := e.Registry.analysisRecorder()
 	for i, v := range prefix {
-		if es.ZeroOutProduced(IDOf(&v)) {
+		if es.ZeroOutProduced(RecKeyOf(&v)) {
 			kept := append([]Value(nil), prefix[:i]...)
 			for _, w := range prefix[i+1:] {
-				if !es.ZeroOutProduced(IDOf(&w)) {
+				if !es.ZeroOutProduced(RecKeyOf(&w)) {
 					kept = append(kept, w)
 				}
 			}
@@ -2883,14 +2883,14 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			// dispatches.
 			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
 				e.Registry.noteAnalysisUse(w.Name)
-				e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), w.Name)
+				e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), RecKeyOf(&cv), w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(IDOf(&cv), val.Pos())
 				// The value spelling is noted here as on the Defs path
 				// below: the residual lowering must know the delivery is
 				// INERT — `def c (mk 1) end 2 c/v 10` islanded the window
 				// and applied the closure, `[2 11]` for the interpreter's
 				// `[2 fn 10]` (NUR185; callResultPlaced's placedValRead).
-				e.Registry.analysisRecorder().NoteValRead(IDOf(&cv), w.Name)
+				e.Registry.analysisRecorder().NoteValRead(&cv, w.Name)
 				if e.Registry.analysisCompiling() {
 					e.Registry.Check.FnCarrierReadSubstituted = true
 				}
@@ -2949,11 +2949,12 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 		// hook). The value spelling reads the same binding, so it takes the
 		// same note — first, since seating it mints the read's own identity.
 		// Tag a COPY and write it back, as stepWord's tag does: &v toward
-		// the recorder would heap-allocate every `/v` read.
+		// the recorder would heap-allocate every `/v` read. The value note
+		// stamps the same copy (an alias of the bound value's producer).
 		tagged := v
 		e.Registry.analysisRecorder().NoteValReadLive(&tagged, w.Name, val.Pos())
+		e.Registry.analysisRecorder().NoteValRead(&tagged, w.Name)
 		v = tagged
-		e.Registry.analysisRecorder().NoteValRead(IDOf(&v), w.Name)
 	}
 	setPosRef(&v, posOf(&val))
 	// A reference denotes DATA. When a parked forward in this paren
@@ -3360,7 +3361,7 @@ func (e *Engine) stepWord(val *Value) error {
 				return err
 			}
 			e.Registry.noteAnalysisUse(w.Name)
-			e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), w.Name)
+			e.Registry.analysisRecorder().NoteDefRead(IDOf(&cv), RecKeyOf(&cv), w.Name)
 			e.Registry.analysisRecorder().NoteLocalRead(IDOf(&cv), derefPos(vpos))
 			e.noteWordRead(cv, w.Name, derefPos(vpos))
 			// Mark a COMPILE pass: if it ends in a compile failure anyway, the
@@ -3558,7 +3559,7 @@ func (e *Engine) stepDefReadAnalysis(top Value, name string, vpos *position) err
 	if IsQuoted(&top) && (IsFnTypedCarrier(&top) || (IsDynamic(&top) && SigTypeMatches(&top, TFunction))) {
 		SetQuoted(&top, false)
 	}
-	e.Registry.analysisRecorder().NoteDefRead(IDOf(&top), name)
+	e.Registry.analysisRecorder().NoteDefRead(IDOf(&top), RecKeyOf(&top), name)
 	e.Registry.analysisRecorder().NoteLocalRead(IDOf(&top), derefPos(vpos))
 	e.noteWordRead(top, name, derefPos(vpos))
 	// Freeze discipline: a CONCRETE module-scope binding read inside an
@@ -3853,7 +3854,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		if IsUndefined(&match.Args[i]) {
 			c := NewDynamicCarrier(TAny)
 			if a, aerr := AsAtom(match.Args[i]); aerr == nil && a != "" {
-				e.Registry.analysisRecorder().NoteDefRead(IDOf(&c), a)
+				e.Registry.analysisRecorder().NoteDefRead(IDOf(&c), RecKeyOf(&c), a)
 			}
 			match.Args[i] = WithPos(c, match.Args[i])
 		}
@@ -4865,9 +4866,14 @@ func (e *Engine) stepLiteral() error {
 				// (only the program residual absorbs it; fixed-arity
 				// consumers keep declining). An unresolvable payload keeps
 				// the compile failure.
-				if !rec.RecordSpliceDyn(info.Data, e.Tape.Ref(valIdx).Pos()) {
+				// The record stamps its own copy of the payload, which the
+				// expansion below then spreads (&info.Data toward the
+				// recorder would move every splice's info to the heap).
+				payload := info.Data
+				if !rec.RecordSpliceDyn(&payload, e.Tape.Ref(valIdx).Pos()) {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
+				info.Data = payload
 			}
 			// The marker leaves the stack the pass models: a recorded
 			// result it was is consumed here (NoteSpliceFired, NUR348).
@@ -4905,7 +4911,7 @@ func (e *Engine) stepLiteral() error {
 					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
 					// values on both lanes.
 					if e.Registry.analysisActive() {
-						e.Registry.analysisRecorder().NoteValRead(IDOf(prev), "")
+						e.Registry.analysisRecorder().NoteValRead(prev, "")
 					}
 				}
 			}
@@ -5332,7 +5338,11 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 			switch {
 			case e.IsTop:
 				// Top-level (frames==1): the canonical case, evaluated once.
-				es.RecordMakeList(e.Registry, result, out, val.Pos())
+				// The record stamps a copy the recording branch owns (&out
+				// would move every list evaluation's result to the heap).
+				rec := out
+				es.RecordMakeList(e.Registry, result, &rec, val.Pos())
+				out = rec
 			case consumed || e.ElemEvalRecordable:
 				// A CONSUMED computed list ARG inside a fn body / closure
 				// (`make Array [i 99]`, `f [j (g x)]`): the interpreter auto-evaluates
@@ -5346,7 +5356,9 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 				// baking OpMakeList would diverge — it stays unresolved and falls back.
 				// A stateful generator never reaches here: its body is a NoEval arg,
 				// so execMatch does not auto-evaluate it as a data list.
-				es.RecordMakeListInner(e.Registry, result, out, val.Pos())
+				rec := out
+				es.RecordMakeListInner(e.Registry, result, &rec, val.Pos())
+				out = rec
 			}
 		}
 	}
@@ -5377,7 +5389,7 @@ func (e *Engine) evalInterpString(val Value) (Value, error) {
 		// fall back. Mirrors RecordMakeMap — re-assembled per run, no const bake.
 		out := NewCarrier(TString)
 		if es := e.Registry.analysisRecorder(); es.Active() {
-			if !holesOK || !es.RecordInterp(parts, holes, out, val.Pos()) {
+			if !holesOK || !es.RecordInterp(parts, holes, &out, val.Pos()) {
 				es.MarkUncompilable("interpolated string with a runtime-computed part")
 			}
 		}
@@ -5480,7 +5492,7 @@ func (e *Engine) EvalXmlInterp(val Value) (Value, error) {
 		// and falls back, exactly as the string sibling.
 		if es := e.Registry.analysisRecorder(); es.Active() {
 			out := NewCarrier(TXml)
-			if !holesOK || !es.RecordInterpXml(tmpl, holes, out, val.Pos()) {
+			if !holesOK || !es.RecordInterpXml(tmpl, holes, &out, val.Pos()) {
 				es.MarkUncompilable("interpolated XML with a runtime-computed part")
 			}
 			return out, nil
@@ -5846,7 +5858,7 @@ func (e *Engine) foldedReferenceIdentity(folded Value, dataMap bool, run func() 
 		return folded
 	}
 	if result, err := run(); err == nil && len(result) == 1 && IDOf(&result[0]) != "" {
-		SetID(&folded, IDOf(&result[0]))
+		ShareIdentity(&folded, &result[0])
 	}
 	return folded
 }
@@ -6010,8 +6022,10 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() && !e.containerEscaped() {
 			if es := e.Registry.analysisRecorder(); es.Armed() {
 				if lv, _ := out.Get(resolvedKey); lv.Parent.Equal(TList) && !IsInertConst(&lv) {
-					if lp, isList := lv.Data.(ListPayload); isList {
-						es.RecordMakeListInner(e.Registry, lp.Elems, lv, lv.Pos())
+					if lp, isList := lv.Data.(ListPayload); isList && es.RecordMakeListInner(e.Registry, lp.Elems, &lv, lv.Pos()) {
+						// The member is the assembly's result: the map under
+						// construction holds the holder the record stamped.
+						out.Set(resolvedKey, lv)
 					}
 				}
 			}
@@ -6066,7 +6080,9 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			for i, k := range keys {
 				vals[i], _ = out.Get(k)
 			}
-			es.RecordMakeMap(e.Registry, keys, vals, out.Implicit, res, val.Pos())
+			rec := res
+			es.RecordMakeMap(e.Registry, keys, vals, out.Implicit, &rec, val.Pos())
+			res = rec
 		}
 	}
 	return res, nil
@@ -6385,7 +6401,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 			// sits (placedValRead) — a named fn at a frame's tail is
 			// returned, not the zero-argument call NUR186 declines.
 			if e.Registry != nil && e.Registry.analysisActive() {
-				e.Registry.analysisRecorder().NoteValRead(IDOf(e.Tape.Ref(valIdx)), "")
+				e.Registry.analysisRecorder().NoteValRead(e.Tape.Ref(valIdx), "")
 			}
 			e.Pointer++
 			return nil
@@ -7214,7 +7230,7 @@ func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
 	}
 	out := NewCarrier(TAny)
 	setPosRef(&out, posOf(&fnv))
-	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, out, fnv.Pos())
+	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, &out, fnv.Pos())
 	if !ok {
 		e.Registry.noteAmbiguousGradualSplit()
 		return false
@@ -9524,7 +9540,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// map field — is admitted the same way (2026-09-25): the guarded op
 	// applies whatever the read yields and defers on a non-callable value,
 	// exactly as the interpreter's paren leaves a non-fn lead as data.
-	if !es.MemberFnRead(IDOf(&fnVal)) && !IsFnTypedCarrier(&fnVal) && !es.ContainerReadResult(IDOf(&fnVal)) {
+	if !es.MemberFnRead(IDOf(&fnVal)) && !IsFnTypedCarrier(&fnVal) && !es.ContainerReadResult(RecKeyOf(&fnVal)) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}
@@ -9536,10 +9552,10 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 			argIdxs = append(argIdxs, i)
 		}
 	}
-	out := NewCarrier(TAny)
-	setPosRef(&out, posOf(&fnVal))
-	if es.RecordDynMethod(fnVal, argVals, []Value{out}, "(paren apply)", fnVal.Pos()) {
-		e.Tape.Set(first, out)
+	outs := []Value{NewCarrier(TAny)}
+	setPosRef(&outs[0], posOf(&fnVal))
+	if es.RecordDynMethod(fnVal, argVals, outs, "(paren apply)", fnVal.Pos()) {
+		e.Tape.Set(first, outs[0])
 		for j := len(argIdxs) - 1; j >= 0; j-- {
 			e.Tape.Remove(argIdxs[j])
 			closeIdx--
@@ -9654,7 +9670,7 @@ func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeI
 	setPosRef(&out, posOf(&lead))
 	// A one-value window: the callee either consumes it or the record
 	// declines, so there is no partial-consumption case to thread here.
-	if _, ok := es.RecordDynApplyLead([]Value{e.Tape.At(lastIdx)}, lead, out, lead.Pos()); ok {
+	if _, ok := es.RecordDynApplyLead([]Value{e.Tape.At(lastIdx)}, lead, &out, lead.Pos()); ok {
 		e.Tape.Set(leadFn, out)
 		e.Tape.Remove(lastIdx)
 		closeIdx--
@@ -9726,7 +9742,7 @@ func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, c
 		}
 		w.argIdxs = append(w.argIdxs, i)
 	}
-	ret, ok := es.ProducedLeadApplies(IDOf(e.Tape.Ref(w.lead)), e.producedLeadArgs(w))
+	ret, ok := es.ProducedLeadApplies(e.Tape.Ref(w.lead), e.producedLeadArgs(w))
 	w.ret = ret
 	return w, ok
 }
@@ -9765,7 +9781,7 @@ func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWin
 	// The recorder matched the window to the callee's own arity, so the
 	// record consumes the whole window or declines: there is no partial
 	// consumption to thread here.
-	if _, ok := es.RecordDynApplyLead(e.producedLeadArgs(w), fnVal, out, fnVal.Pos()); ok {
+	if _, ok := es.RecordDynApplyLead(e.producedLeadArgs(w), fnVal, &out, fnVal.Pos()); ok {
 		e.Tape.Set(w.lead, out)
 		for j := len(w.argIdxs) - 1; j >= 0; j-- {
 			e.Tape.Remove(w.argIdxs[j])
@@ -9833,7 +9849,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	// interpreter does — `(1 2 (mk 4))` with a 1-arg adder nets
 	// [1, 6] — so only the consumed SUFFIX collapses and the deeper
 	// values stay on the tape as residual.
-	if consumed, ok := es.RecordDynApply(argVals, last, out, last.Pos()); ok {
+	if consumed, ok := es.RecordDynApply(argVals, last, &out, last.Pos()); ok {
 		e.Tape.Set(lastIdx, out)
 		for j := len(argIdxs) - 1; j >= len(argIdxs)-consumed; j-- {
 			e.Tape.Remove(argIdxs[j])
@@ -10560,7 +10576,7 @@ func (e *Engine) recorderMayBeFn(v Value) bool {
 	if e.Registry == nil || e.Registry.Check == nil || IDOf(&v) == "" {
 		return false
 	}
-	return e.Registry.Check.Recorder().MayBeFn(IDOf(&v))
+	return e.Registry.Check.Recorder().MayBeFn(RecKeyOf(&v))
 }
 
 // markForwardLeftover records v as a fn-valued survivor a paren under a

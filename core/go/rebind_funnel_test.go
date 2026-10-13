@@ -45,7 +45,7 @@ func (f *funnelRecorder) NoteFrozenRead(name string, bake FrozenBake, gen int64)
 // NoteDefRead is captured too: a TYPE read must register its value ID against
 // the name exactly as a value read does, or the compiler's resolveOperand can
 // name one kind of read and not the other.
-func (f *funnelRecorder) NoteDefRead(id, name string) {
+func (f *funnelRecorder) NoteDefRead(id string, _ RecKey, name string) {
 	if f.defReads == nil {
 		f.defReads = map[string]string{}
 	}

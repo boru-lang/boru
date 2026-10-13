@@ -140,9 +140,10 @@ func (es *EmitState) boundLocalOperand(slot int, name, id string) EmitOperand {
 func typeOperand(idx int) EmitOperand { return EmitOperand{kind: opType, idx: idx} }
 
 // producer locates a recorded value: the producing event's seq and which of
-// that event's results it is (idx 0 for the common single-result case). P5
-// generalised producedBy from a bare seq so a multi-result call's N outputs
-// stay distinguishable when a downstream operand resolves one of them.
+// that event's results it is (idx 0 for the common single-result case) — what
+// the recorder key its holder carries resolves to (rec_key.go). P5 generalised
+// it from a bare seq so a multi-result call's N outputs stay distinguishable
+// when a downstream operand resolves one of them.
 type producer struct{ seq, idx int }
 
 // argSite is where one argument of a call was written: pos, a read's own
@@ -162,7 +163,7 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 		sites[i] = argSite{pos: a.Pos(), seq: -1}
 		if p, read := es.readPos[core.IDOf(&a)]; read && core.IDOf(&a) != "" {
 			sites[i].pos = p
-		} else if pr, produced := es.producedBy[core.IDOf(&a)]; produced && core.IDOf(&a) != "" {
+		} else if pr, produced := es.producerOf(&a); produced && core.IDOf(&a) != "" {
 			sites[i].seq = pr.seq
 		}
 	}
@@ -1515,7 +1516,14 @@ type EmitState struct {
 	// (stamp_report.go). Set only on a probe failure; the compile-time
 	// bake ignores it.
 	storedFnProbeReason string
-	producedBy          map[string]producer // value ID → producing (event seq, result idx)
+	// The recorder keys (rec_key.go): which event result a value is is the
+	// (event, index) its holder carries, not a table keyed by the value's
+	// identity — this pass's number, each event seq's generation (moved on
+	// when the event retires), and the result indexes a fired splice took
+	// out of an event's results.
+	recPass  uint32
+	seqGen   []uint32
+	firedIdx map[int][]int
 	// argSites is where each argument of a call event was written, by event
 	// seq (noteArgSites): the tokens a statement island may write the call's
 	// run over (callRun, NUR296).
@@ -1867,7 +1875,7 @@ type EmitState struct {
 	// eventInfo holds the per-event compile flags, keyed by event seq. It
 	// consolidates the former parallel zeroOutSeq/typeOut/valueDefs/genericSeq
 	// maps: each is a "property of event N", read via a producer's seq
-	// (producedBy[id].seq), so they stay seq-keyed rather than moving onto the
+	// (producerOf(&v).seq), so they stay seq-keyed rather than moving onto the
 	// value-copied EmitEvent struct (a flag set after append wouldn't reach the
 	// frame/fragment copies).
 	eventInfo map[int]eventFlags
@@ -2085,7 +2093,7 @@ type emitUnit struct {
 	reg *core.Registry
 	// capID marks the value IDs that are this unit's CAPTURES (enclosing-scope
 	// values bound into trailing slots). A capture's value may ALSO carry a
-	// producedBy entry from the ENCLOSING unit (a computed `def a (h add 1)`
+	// recorder key from the ENCLOSING unit (a computed `def a (h add 1)`
 	// snapshotted into the closure) — that event lives in the parent and is
 	// unreachable here, so the body must resolve the reference to its own
 	// capture SLOT, not the parent event. resolveOperand consults this to
@@ -2360,6 +2368,7 @@ type fnUnitRec struct {
 	// read both ways, else the unit declines (wordReadAccounting, NUR123).
 	wordReads     map[string]int
 	wordReadNames map[string]string
+	wordReadKeys  map[string]core.RecKey // the read value's recorder key, per ID
 	wordReadPos   map[string]core.SrcPos // the LAST bare read's position, per ID
 	wordReadFirst map[string]core.SrcPos // the FIRST bare read's position, per ID (a deopt begins there)
 	// localReads is every bare read's position per value ID on this unit
@@ -2663,7 +2672,6 @@ func NewEmitState() *EmitState {
 		frames:     [][]EmitEvent{nil},
 		units:      []*emitUnit{{localByID: map[string]int{}}},
 		fnUnits:    map[string]int{},
-		producedBy: map[string]producer{},
 		eventInfo:  map[int]eventFlags{},
 		constIdx:   map[string]int{},
 		typeIdx:    map[string]int{},
@@ -2783,7 +2791,7 @@ func (es *EmitState) replayForceOrder(ops []EmitOperand) map[int]bool {
 // forkForProbe returns a throwaway recording state for compiling a closure body
 // speculatively (recordClosureDispatch's probe), seeded so a RECURSIVE call
 // inside the body resolves to the enclosing in-progress unit. The closure body's
-// emission (events / code / producedBy / consts) is FRESH — a failure discards it
+// emission (events / code / recorder keys / consts) is FRESH — a failure discards it
 // without touching the real program. But the fn-unit resolution tables
 // (fnUnits / fnRecs / units) are COPIED from the real state: a self-recursive call
 // (`… msd-go` inside an `each` body) is then a fnUnits HIT against the enclosing
@@ -3037,22 +3045,22 @@ func (es *EmitState) Sites() map[string]int {
 // zeroOutProduced reports whether the value id was produced by an event
 // whose outputs were zeroed (the 0-output `if` phantom None) — the residual
 // strip probe (stripZeroOutResiduals).
-func (es *EmitState) ZeroOutProduced(id string) bool {
+func (es *EmitState) ZeroOutProduced(k core.RecKey) bool {
 	if es == nil {
 		return false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOfKey(k)
 	return ok && es.eventInfo[pr.seq].zeroOut
 }
 
 // alreadyProduced reports whether the value id already has a recorded
 // producer event — the double-record guard (a structured ReturnsFn hook may
 // have recorded the dispatch before the generic path sees it).
-func (es *EmitState) AlreadyProduced(id string) bool {
+func (es *EmitState) AlreadyProduced(k core.RecKey) bool {
 	if es == nil {
 		return false
 	}
-	_, ok := es.producedBy[id]
+	_, ok := es.producerOfKey(k)
 	return ok
 }
 
@@ -3703,7 +3711,7 @@ func (es *EmitState) inlineLitDepth() int {
 // ObjectInstance that can inherit the type literal's ID, so a later
 // type operand (`(make Point {}) is Point`) would otherwise resolve
 // the `Point` literal to the make event.
-func (es *EmitState) setProduced(out core.Value, seq int) {
+func (es *EmitState) setProduced(out *core.Value, seq int) {
 	es.setProducedAt(out, seq, 0)
 }
 
@@ -3713,18 +3721,19 @@ func (es *EmitState) setProduced(out core.Value, seq int) {
 // the LAST registration wins; the lowerer's operand layout then declines the
 // ambiguous consume (sound: the program falls back) until carrier-identity
 // (the next runtime-independence item) mints distinct ids.
-func (es *EmitState) setProducedAt(out core.Value, seq, idx int) {
+func (es *EmitState) setProducedAt(out *core.Value, seq, idx int) {
 	// An identity-less value (a runtime mint under the mode-gated ID
 	// elision — value.go checkPassDepth) must NEVER key the provenance
 	// map: a "" insert would make every later ""-ID lookup a false hit
 	// (all identity-less values would alias one producer) — an active
 	// miscompile. Skipping keeps "" lookups guaranteed misses, which
-	// degrade to dynScopeRescue / failure.
-	if core.IDOf(&out) == "" {
+	// degrade to dynScopeRescue / failure. A record with no result (a
+	// branch record's absent Out) stamps nothing.
+	if out == nil || core.IDOf(out) == "" {
 		return
 	}
-	es.producedBy[core.IDOf(&out)] = producer{seq: seq, idx: idx}
-	if core.IsTypeBody(&out) {
+	es.stampProduced(out, seq, idx)
+	if core.IsTypeBody(out) {
 		f := es.eventInfo[seq]
 		f.typeOut = true
 		es.eventInfo[seq] = f
@@ -3744,7 +3753,7 @@ func (es *EmitState) MarkValueDef(v core.Value) {
 	if es == nil || !es.Compilable {
 		return
 	}
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.idx == 0 {
+	if pr, ok := es.producerOf(&v); ok && pr.idx == 0 {
 		f := es.eventInfo[pr.seq]
 		f.valueDef = true
 		es.eventInfo[pr.seq] = f
@@ -3788,7 +3797,7 @@ func (es *EmitState) SplitLoopRegionBind(name string, v core.Value) (core.Value,
 		// miscompiled [5 0 5 0] vs [5 5 5 5]).
 		return core.Value{}, false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 {
 		return core.Value{}, false
 	}
@@ -3850,7 +3859,7 @@ func (es *EmitState) SplitEventRegionBind(name string, v core.Value) (core.Value
 	if (name[0] == '_' || name[0] == '$') && !es.recordsFilteredDynBind() { //covergate:allow the guard above already requires len(units)==1 && reg!=nil && FnBodyDepth==0 — recordsFilteredDynBind's root disjunct — so the predicate is true here by construction; asked anyway so this gate and RecordDynBind's stay one predicate (NUR116) (§compiler)
 		return core.Value{}, false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 {
 		return core.Value{}, false
 	}
@@ -3938,8 +3947,8 @@ func (es *EmitState) eventBySeq(seq int) *EmitEvent {
 // just performed, so the lambda answered `fn` for the interpreter's 42. The
 // same shape in a plain fn body always agreed, which is what located the
 // override rather than `do` or the deopt.
-func (es *EmitState) producedInCurrentUnit(id string) bool {
-	pr, ok := es.producedBy[id]
+func (es *EmitState) producedInCurrentUnit(v *core.Value) bool {
+	pr, ok := es.producerOf(v)
 	if !ok || len(es.openUnitRecs) == 0 {
 		return false
 	}
@@ -3975,17 +3984,17 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		return op, true
 	}
 	// A CAPTURE of the CURRENT unit overrides events-first: the captured value
-	// may carry a producedBy entry from the ENCLOSING unit (a computed
+	// may carry a recorder key from the ENCLOSING unit (a computed
 	// `def a (h add 1)` snapshotted into a closure), but that event lives in the
 	// parent frame and is unreachable from inside the body — the reference must
 	// resolve to this unit's own capture SLOT. Without this the each/scan/…$body
 	// reference resolved to the parent event and declined "branch reads enclosing
-	// computation". A param capture has no producedBy entry, so this only changes
+	// computation". A param capture carries no recorder key, so this only changes
 	// the computed-capture case. (The captured VALUE is carried correctly by the
 	// parent-side promotion of the computed def — see forEachOperand /
 	// promoteOperand closureCaps handling.)
 	if cur := es.units[len(es.units)-1]; cur != nil && cur.capID[core.IDOf(&v)] {
-		if slot, ok := cur.localByID[core.IDOf(&v)]; ok && !es.producedInCurrentUnit(core.IDOf(&v)) {
+		if slot, ok := cur.localByID[core.IDOf(&v)]; ok && !es.producedInCurrentUnit(&v) {
 			return localOperand(slot), true
 		}
 	}
@@ -3994,7 +4003,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// agree), and the event is then the value's stack-discipline truth
 	// — the branch pushed it. A plain param/iterator reference has no
 	// producing event and resolves to its local slot.
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
+	if pr, ok := es.producerOf(&v); ok {
 		// A type operand whose ID matches a producing event whose own
 		// output was NOT a type is an ID collision (a `make` result
 		// inheriting the type literal's ID): resolve it as its own type
@@ -4007,7 +4016,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// preserving rebind in narrowDynamicUses).
 		if !core.IsTypeBody(&v) || core.IsDynamic(&v) || es.eventInfo[pr.seq].typeOut {
 			// An ENCLOSING-scope binding read (a module-scope `flex`, a computed
-			// module `def`) carries a producedBy event from the PARENT/module
+			// module `def`) carries a recorder key from the PARENT/module
 			// frame — unreachable from this fn unit's sim stack. Route it to a
 			// dynamic-scope lookup (OpLookupDynScope) so the VM re-resolves the
 			// live binding per call, exactly as the interpreter reads the name
@@ -4021,7 +4030,8 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			// the compiled-closure machinery — a fn-body-local computed fn
 			// def (`def g fn [[xs:List][List][def a5 (mk 5)  each [a5]
 			// xs]]`), absent from Defs and so from the snapshot; the closure
-			// body's probe (no producedBy) rescued it live and the real
+			// body's probe (no real-pass recorder key resolves there)
+			// rescued it live and the real
 			// compile seated the parent's event, unreachable from the
 			// closure's frame, and the two verdicts must be about the same
 			// unit (NUR192, 2026-09-24). The rescue's reachability model
@@ -4029,7 +4039,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			// body) and the binding unit's OpBindDynScope twin installs the
 			// closure the lookup then reads (the VM's bindDynScope).
 			if cur := es.units[len(es.units)-1]; cur != nil && len(es.units) > 1 &&
-				(cur.enclosingBindIDs[core.IDOf(&v)] || (es.isDefRead(v) && core.IsFnTypedCarrier(&v) && !es.producedInCurrentUnit(core.IDOf(&v)))) {
+				(cur.enclosingBindIDs[core.IDOf(&v)] || (es.isDefRead(v) && core.IsFnTypedCarrier(&v) && !es.producedInCurrentUnit(&v))) {
 				if op, ok := es.dynScopeRescue(v); ok {
 					return op, true
 				}
@@ -5344,7 +5354,7 @@ func (es *EmitState) OperandRepushable(v core.Value) bool {
 	}
 	// An event operand is the value's stack-discipline truth (pushed once);
 	// it cannot be re-pushed for a second reference.
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut) {
+	if pr, ok := es.producerOf(&v); ok && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut) {
 		return false
 	}
 	if _, ok := es.units[len(es.units)-1].localByID[core.IDOf(&v)]; ok {
@@ -5377,7 +5387,7 @@ func (es *EmitState) CanSeatAcrossFragment(v core.Value) bool {
 	if es.OperandRepushable(v) {
 		return true
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	return ok && pr.idx == 0 && (!core.IsTypeBody(&v) || es.eventInfo[pr.seq].typeOut)
 }
 
@@ -5558,12 +5568,12 @@ func eventDivergesDeep(ev *EmitEvent) bool {
 func (es *EmitState) stripZeroOutPhantoms(stk []core.Value) []core.Value {
 	kept := stk
 	for i, rv := range stk {
-		pr, ok := es.producedBy[core.IDOf(&rv)]
+		pr, ok := es.producerOf(&rv)
 		if ok && es.eventInfo[pr.seq].zeroOut {
 			// First phantom found: copy the prefix and filter the rest.
 			kept = append([]core.Value(nil), stk[:i]...)
 			for _, r := range stk[i:] {
-				if p, o := es.producedBy[core.IDOf(&r)]; o && es.eventInfo[p.seq].zeroOut {
+				if p, o := es.producerOf(&r); o && es.eventInfo[p.seq].zeroOut {
 					continue
 				}
 				kept = append(kept, r)
@@ -5867,7 +5877,7 @@ func (es *EmitState) branchArmsRetPinned(b core.BranchRecord) bool {
 		if len(stk) != 1 {
 			return false
 		}
-		pr, ok := es.producedBy[core.IDOf(&stk[0])]
+		pr, ok := es.producerOf(&stk[0])
 		return ok && es.retPinnedVariadic(pr.seq)
 	}
 	if b.ConstCond != nil {
@@ -5927,7 +5937,7 @@ func (es *EmitState) armOutVariadic(stk []core.Value) bool {
 	if len(stk) == 0 {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&stk[len(stk)-1])]
+	pr, ok := es.producerOf(&stk[len(stk)-1])
 	return ok && es.eventInfo[pr.seq].variadicResult
 }
 
@@ -6806,8 +6816,8 @@ func (es *EmitState) RecordRuntimeDispatch(word string, sig *core.Signature, arg
 	}
 	es.SiteCounts[SiteDynamic]++
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}})
-	for i, out := range outs {
-		es.setProducedAt(out, seq, i)
+	for i := range outs {
+		es.setProducedAt(&outs[i], seq, i)
 	}
 }
 
@@ -7561,7 +7571,7 @@ func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, r
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
-	es.setProduced(*v, seq)
+	es.setProduced(v, seq)
 	return seq
 }
 
@@ -7592,7 +7602,7 @@ func (es *EmitState) mutableRefCarrierRead(v core.Value) bool {
 // capture, a carried slot, a promoted value). An identity-less value has
 // none.
 func (es *EmitState) readHasHome(v core.Value) bool {
-	_, produced := es.producedBy[core.IDOf(&v)]
+	_, produced := es.producerOf(&v)
 	local := false
 	if n := len(es.units); n > 0 && es.units[n-1] != nil {
 		_, local = es.units[n-1].localByID[core.IDOf(&v)]
@@ -7617,7 +7627,7 @@ func (es *EmitState) placeRoutedLiveSlots(d *RegionDesc, args []core.Value) {
 		if d.Slots[i].Source != SlotWordRef || !es.liveReadIDs[core.IDOf(&args[i])] {
 			continue
 		}
-		if pr, ok := es.producedBy[core.IDOf(&args[i])]; ok {
+		if pr, ok := es.producerOf(&args[i]); ok {
 			if es.livePlaceholders == nil {
 				es.livePlaceholders = map[int]bool{}
 			}
@@ -7920,14 +7930,11 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 		es.twinPlaced[idx] = false
 	}
 	es.twinAdoptions = es.twinAdoptions[:cp.twinAdoptions]
-	// Provenance entries minted after cp belong to the discarded round's
-	// carriers (fresh ids never referenced again); drop them, mirroring
-	// StartFnCompile's fn-unit cleanup so the live map stays tight.
-	for id, pr := range es.producedBy {
-		if pr.seq > cp.seq {
-			delete(es.producedBy, id)
-		}
-	}
+	// The discarded round's events retire: a value it produced (a carrier
+	// of the round, never referenced again) resolves to no event, and the
+	// next round's reissued numbers start a new generation, mirroring
+	// StartFnCompile's fn-unit cleanup.
+	es.retireSeqs(cp.seq+1, es.seq)
 	// Every per-event note is keyed by event seq, and the seqs above the
 	// checkpoint are reissued by the next round: a discarded round's note
 	// would otherwise land on whatever event the stabilised round records
@@ -7950,6 +7957,7 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 	dropKeysAbove(es.landingWord, cp.seq)
 	dropKeysAbove(es.spliceOuts, cp.seq)
 	dropKeysAbove(es.firedSplices, cp.seq)
+	dropKeysAbove(es.firedIdx, cp.seq)
 	for id, seq := range es.argsProjSeq {
 		if seq > cp.seq {
 			delete(es.argsProjSeq, id)
@@ -8114,7 +8122,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			ops := make([]EmitOperand, 0, len(bodyStk))
 			vals := make([]core.Value, 0, len(bodyStk))
 			for _, v := range bodyStk {
-				if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].zeroOut {
+				if pr, ok := es.producerOf(&v); ok && es.eventInfo[pr.seq].zeroOut {
 					continue
 				}
 				// A body that RETURNS an anonymous capture-free lambda (the factory
@@ -8395,11 +8403,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		// compile. Negligible at current fn densities; revisit (e.g. track
 		// per-unit produced IDs) if deeply nested fn-heavy programs make
 		// compile time bite.
-		for id, pr := range es.producedBy {
-			if pr.seq > rec.frag.startSeq {
-				delete(es.producedBy, id)
-			}
-		}
+		es.retireSeqs(rec.frag.startSeq+1, es.seq)
 		rec.numLoc = u.numLocals
 		rec.slotNames = unitSlotNames(u)
 		rec.finished = true
@@ -8655,7 +8659,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		es.eventInfo[seq] = f
 	}
 	for i := range outs {
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 }
 
@@ -8727,7 +8731,7 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteDynamic]++
 	for i := range outs {
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 	es.lastUserPoly = &lastUserPolyNote{word: word, seq: seq, nout: len(outs)}
 }
@@ -8784,7 +8788,7 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 	if _, isLocal := u.localByID[core.IDOf(&v)]; !isLocal {
 		return false
 	}
-	if _, produced := es.producedBy[core.IDOf(&v)]; produced && !u.capID[core.IDOf(&v)] {
+	if _, produced := es.producerOf(&v); produced && !u.capID[core.IDOf(&v)] {
 		return false
 	}
 	return true
@@ -8836,7 +8840,7 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 // does today, so the caller treats "unknown" as "no trim" on the concrete path
 // and keeps the standing failure only on the event lead.
 func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
-	if arity, known := es.producerReturnedClosureArity(core.IDOf(&fn)); known {
+	if arity, known := es.producerReturnedClosureArity(&fn); known {
 		return arity, true
 	}
 	fd, isFn := fn.Data.(*core.FnDefInfo)
@@ -8874,7 +8878,7 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 	if _, isFn := fn.Data.(*core.FnDefInfo); isFn {
 		return false // own signatures, none of which provably admits the window
 	}
-	s, ok := es.producerReturnedClosureShape(core.IDOf(&fn))
+	s, ok := es.producerReturnedClosureShape(&fn)
 	if !ok || len(s.Params) != len(sigArgs) {
 		return false
 	}
@@ -8910,7 +8914,7 @@ func anyPendingActiveContainer(args []core.Value) bool {
 	return false
 }
 
-func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+func (es *EmitState) RecordDynApply(args []core.Value, fn core.Value, out *core.Value, pos core.SrcPos) (int, bool) {
 	return es.recordDynApply(args, fn, out, pos, false)
 }
 
@@ -8925,13 +8929,13 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 // trailing window keeps declining such an argument: there the value was a
 // token the interpreter stepped, and nothing established it is not an
 // applicable of its own.
-func (es *EmitState) RecordDynApplyLead(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+func (es *EmitState) RecordDynApplyLead(args []core.Value, fn core.Value, out *core.Value, pos core.SrcPos) (int, bool) {
 	return es.recordDynApply(args, fn, out, pos, true)
 }
 
 // recordDynApply is the body of RecordDynApply and RecordDynApplyLead; lead
 // selects the leading window's fn-valued-argument admission.
-func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos, lead bool) (int, bool) {
+func (es *EmitState) recordDynApply(args []core.Value, fn core.Value, out *core.Value, pos core.SrcPos, lead bool) (int, bool) {
 	// A lead that carries no position of its own — the check pass's carrier
 	// for a bare fn-typed binding read (`g` in `(g 5)`) — anchors the event
 	// at the READ's token, which noteWordRead recorded for the unit: the
@@ -9160,7 +9164,7 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 // the caller declines a quoted binding up front. Scoped to the TOP-LEVEL
 // frame — a def site inside a fn unit records its bind in that unit's
 // fragment, out of this scan's reach, and declines.
-func (es *EmitState) RecordDynApplyName(name string, args []core.Value, fn, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordDynApplyName(name string, args []core.Value, fn core.Value, out *core.Value, pos core.SrcPos) bool {
 	if !es.Active() || name == "" || len(es.units) != 1 {
 		return false
 	}
@@ -9262,7 +9266,7 @@ func (es *EmitState) captureArmResidual(frag *EmitFragment, stk []core.Value) {
 // dispatch's result carrier — registered so the dispatch isn't
 // re-recorded, and marked VARIADIC at lowering, so only the program
 // residual may absorb the accumulation.
-func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID, iterName string, out core.Value, regionN int, pos core.SrcPos) {
+func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID, iterName string, out *core.Value, regionN int, pos core.SrcPos) {
 	body := asFragment(bodyRef)
 	if !es.Active() {
 		return
@@ -9309,7 +9313,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 // any other count declines (the empty condition's runtime error keeps the
 // interpreter's fallback). Body classification, the iterator slot, the
 // event and its result marks are RecordLoop's (recordLoopEvent).
-func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk, bodyStk []core.Value, iterID string, out core.Value, pos core.SrcPos) {
+func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk, bodyStk []core.Value, iterID string, out *core.Value, pos core.SrcPos) {
 	cond, body := asFragment(condRef), asFragment(bodyRef)
 	if !es.Active() {
 		return
@@ -9340,7 +9344,7 @@ func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk,
 // iterator slot, the event and its result marks. A caller's own failure
 // (failure != "") is raised here under the loop's word, so the two loops
 // share one failure site.
-func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragment, bodyStk []core.Value, iterID string, out core.Value, regionN int, failure string) {
+func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragment, bodyStk []core.Value, iterID string, out *core.Value, regionN int, failure string) {
 	// The per-iteration hazards a loop body's residual is asked about
 	// (NUR129): a named fn value, and a reach group's DYNAMIC survivor
 	// (CheckState.ReachSurvivorFnIDs — `m.f` over `{f: g/v}`), both the
@@ -9437,7 +9441,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 				return
 			}
 			lp.bodyOut, lp.hasBodyOut = bodyOut, true
-			if pr, okP := es.producedBy[core.IDOf(&bodyStk[0])]; okP && bodyOut.kind == opEvent &&
+			if pr, okP := es.producerOf(&bodyStk[0]); okP && bodyOut.kind == opEvent &&
 				es.eventInfo[pr.seq].splitBound &&
 				!core.SigTypeMatches(&bodyStk[0], core.TFunction) {
 				// The body's sole residual is a SPLIT-BOUND region (S9.2a: `for 3
@@ -9583,13 +9587,13 @@ func (es *EmitState) setLoopBodyApply(body *EmitFragment, bodyStk []core.Value) 
 // declines via anyDynamicCarrier, preserving soundness). Returns false
 // when an input's provenance is unknown — the caller then lets the
 // normal failure stand.
-func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, out *core.Value, pos core.SrcPos) bool {
 	_, ok := es.recordFallback(span, ins, out, pos)
 	return ok
 }
 
 // recordFallback is RecordFallback, with the island event's seq.
-func (es *EmitState) recordFallback(span core.FallbackSpan, ins []core.Value, out core.Value, pos core.SrcPos) (int, bool) {
+func (es *EmitState) recordFallback(span core.FallbackSpan, ins []core.Value, out *core.Value, pos core.SrcPos) (int, bool) {
 	if !es.Active() {
 		return 0, false
 	}
@@ -9613,7 +9617,7 @@ func (es *EmitState) recordFallback(span core.FallbackSpan, ins []core.Value, ou
 	// in what is emitted; the mark is what stops a consumer seating the run
 	// at a fixed count. `error` over a maybe-raising body is the producer:
 	// the caught path nets zero, the pass-through nets one.
-	if callVariadicRegion([]core.Value{out}) {
+	if callVariadicRegion([]core.Value{*out}) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		f.variadicRegion = true
@@ -9726,7 +9730,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if core.IDOf(&v) == "" {
 			return nil, false
 		}
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
+		if pr, ok := es.producerOf(&v); ok {
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
 			}
@@ -9787,7 +9791,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		// today, because a read is not event-produced and the deopt
 		// machinery covers it.
 		for _, v := range preserved {
-			if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
+			if _, produced := es.producerOf(&v); !produced {
 				continue
 			}
 			if core.IsFnValueResidual(v) || core.SigTypeMatches(&v, core.TFunction) {
@@ -9803,7 +9807,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		// the interpreter: no fold.
 		idx := -1
 		for i, seen := len(preserved)-1, 0; i >= 0; i-- {
-			if phantoms > 0 && es.ZeroOutProduced(core.IDOf(&preserved[i])) {
+			if phantoms > 0 && es.ZeroOutProduced(core.RecKeyOf(&preserved[i])) {
 				continue
 			}
 			if seen == int(nn) {
@@ -9868,9 +9872,8 @@ func (es *EmitState) splitLiveProducers(l *core.DispatchLayout) ([]splitLive, bo
 	var out []splitLive
 	for _, at := range l.Live {
 		// Live indexes Beneath (core layoutSurround).
-		id := core.IDOf(&l.Beneath[at])
-		pr, ok := es.producedBy[id]
-		if !ok || (len(es.units) > 1 && !es.producedInCurrentUnit(id)) {
+		pr, ok := es.producerOf(&l.Beneath[at])
+		if !ok || (len(es.units) > 1 && !es.producedInCurrentUnit(&l.Beneath[at])) {
 			return nil, false
 		}
 		out = append(out, splitLive{at: at, prod: pr})
@@ -10242,7 +10245,7 @@ func (es *EmitState) RecordTypedBind(spec core.TypedBindSpec, in, out core.Value
 		word: wordTypedBind, ops: []EmitOperand{op}, nout: 1, pos: pos, typedBind: &sp,
 	}})
 	core.SetID(&out, core.GenerateID(core.IDPrefixForType(out.Parent)))
-	es.setProduced(out, seq)
+	es.setProduced(&out, seq)
 	return out, true
 }
 
@@ -10273,7 +10276,7 @@ func (es *EmitState) RecordTypedBindRun(spec core.TypedBindSpec, cons, in, out c
 		word: wordTypedBind, ops: ops, nout: 1, pos: pos, typedBind: &sp,
 	}})
 	core.SetID(&out, core.GenerateID(core.IDPrefixForType(out.Parent)))
-	es.setProduced(out, seq)
+	es.setProduced(&out, seq)
 	return out, true
 }
 
@@ -10429,7 +10432,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		if core.IDOf(&outs[i]) == "" && core.IsModuleFamilyValue(outs[i]) {
 			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 		}
-		if pr, ok := es.producedBy[core.IDOf(&outs[i])]; ok && pr.seq != seq {
+		if pr, ok := es.producerOf(&outs[i]); ok && pr.seq != seq {
 			if argIDs == nil {
 				argIDs = make(map[string]bool, len(args))
 				for _, a := range args {
@@ -10440,7 +10443,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 				core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 			}
 		}
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 }
 
@@ -10450,7 +10453,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 // every fn-value-call classification: none of those arms can read a count.
 func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 	for _, v := range residual {
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicRegion {
+		if pr, ok := es.producerOf(&v); ok && es.eventInfo[pr.seq].variadicRegion {
 			return true
 		}
 	}
@@ -10471,11 +10474,11 @@ func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
 	for i := 0; i+1 < len(residual); i++ {
 		v := residual[i]
-		pr, ok := es.producedBy[core.IDOf(&v)]
+		pr, ok := es.producerOf(&v)
 		if !ok || !es.eventInfo[pr.seq].dynBodyResult || !(core.IsDynamic(&v) || core.IsFnValueResidual(v)) {
 			continue
 		}
-		if nx, ok := es.producedBy[core.IDOf(&residual[i+1])]; ok && nx.seq == pr.seq {
+		if nx, ok := es.producerOf(&residual[i+1]); ok && nx.seq == pr.seq {
 			return true
 		}
 	}
@@ -10565,7 +10568,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// widened carriers' identities.
 	if lp := es.lastUserPoly; lp != nil && lp.word == word && len(outs) == lp.nout {
 		for i := range outs {
-			es.setProducedAt(outs[i], lp.seq, i)
+			es.setProducedAt(&outs[i], lp.seq, i)
 		}
 		es.lastUserPoly = nil
 		return true
@@ -10583,7 +10586,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// time and raises apply's own no-match over anything else, or declines.
 	if word == "apply" && len(args) == 1 && len(outs) == 1 && len(es.units) > 0 && !core.IsFnTypedCarrier(&args[0]) &&
 		(gradualFnCarrier(args[0]) || es.gradualHoldsFn(args[0])) {
-		if pr, ok := es.producedBy[core.IDOf(&outs[0])]; ok && !es.eventInfo[pr.seq].generic {
+		if pr, ok := es.producerOf(&outs[0]); ok && !es.eventInfo[pr.seq].generic {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos})
 			return true
@@ -10607,7 +10610,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// branch's own id, so the registered-output arm below took it for the
 	// branch's and elided it, and the application was lost (`[fn]` for the
 	// interpreter's 42).
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(core.IDOf(&args[0])) || es.producedConstLambda(core.IDOf(&args[0])) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(core.IDOf(&args[0]))) {
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(&args[0]) || es.producedConstLambda(&args[0]) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(&args[0])) {
 		if _, isFn := args[0].Data.(*core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: core.IDOf(&args[0]), pos: pos, fn: args[0]})
@@ -10654,7 +10657,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// (NUR269). Such an apply has no modelled overload and no tail window; it
 	// reaches the dynamic-lead decline below.
 	if len(outs) > 0 && !loneGradualApplyLead(word, args) {
-		if pr, ok := es.producedBy[core.IDOf(&outs[0])]; ok && !es.eventInfo[pr.seq].generic {
+		if pr, ok := es.producerOf(&outs[0]); ok && !es.eventInfo[pr.seq].generic {
 			return true
 		}
 	}
@@ -11395,7 +11398,7 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value,
 		// so the window's overload and width are the wrong dispatch's (`7 if
 		// true one/v [2] add 1` recorded a three-operand window and raised an
 		// internal error where the interpreter answers [7 2]) (NUR159).
-		if es.MayBeFn(core.IDOf(&a)) && !core.IsQuoted(&a) && !es.applyPending(core.IDOf(&a)) {
+		if es.MayBeFn(core.RecKeyOf(&a)) && !core.IsQuoted(&a) && !es.applyPending(core.IDOf(&a)) {
 			return "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 		}
 	}
@@ -11501,7 +11504,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		// A 0-output poly (a side-effect word like the test framework's
 		// `test-record`) produces no stack value to register.
 	case 1:
-		es.setProduced(outs[0], seq)
+		es.setProduced(&outs[0], seq)
 	default:
 		// A multi-result poly (flex `pop` → [remaining, popped]) seats each
 		// result under its own index — the same per-index registration the
@@ -11523,10 +11526,10 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 			}
 		}
 		for i := range outs {
-			if pr, ok := es.producedBy[core.IDOf(&outs[i])]; ok && pr.seq != seq && !argIDs[core.IDOf(&outs[i])] {
+			if pr, ok := es.producerOf(&outs[i]); ok && pr.seq != seq && !argIDs[core.IDOf(&outs[i])] {
 				core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
 			}
-			es.setProducedAt(outs[i], seq, i)
+			es.setProducedAt(&outs[i], seq, i)
 		}
 	}
 	return true
@@ -11701,14 +11704,14 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
 	// result parks (calleeUnit's doc).
-	if pr, ok := es.producedBy[core.IDOf(&fn)]; ok {
+	if pr, ok := es.producerOf(&fn); ok {
 		if op, ok := es.eventProducedFnOp(pr.seq, 0); ok && op.kind == opClosure && op.closureUnit >= 0 && op.closureUnit < len(es.fnRecs) {
 			call.calleeUnit, call.calleeKnown = op.closureUnit, true
 		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	for i := range outs {
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 	return true
 }
@@ -11781,7 +11784,7 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 	if !es.Active() {
 		return
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
@@ -11976,7 +11979,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	if !es.Active() {
 		return
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
@@ -12018,7 +12021,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		if es.landingOwn == nil {
 			es.landingOwn = map[int]landingStep{}
 		}
-		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: core.IDOf(&v)}
+		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: core.IDOf(&v), key: core.RecKeyOf(&v)}
 	}
 	if w, err := core.AsWord(&word); err == nil && w.Name != "" && !defRead {
 		if es.landingWord == nil {
@@ -12031,12 +12034,18 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 }
 
 // landingStep is one noted step of a landed value (landingOwn): what followed
-// it, whether values sat beneath it in its frame, and the value's id.
+// it, whether values sat beneath it in its frame, and the value's id and
+// recorder key.
 type landingStep struct {
 	next    core.LandingNext
 	beneath bool
 	id      string
+	key     core.RecKey
 }
+
+// held is the landed value as a query over it reads it: its identity and
+// the recorder key its holder carried (heldAs).
+func (l landingStep) held() core.Value { return heldAs(l.id, l.key) }
 
 // landingWordAt is the function word noted after the event seq's landing
 // (the zero LandingWord when none was, or the note was not a word).
@@ -12153,7 +12162,7 @@ func (es *EmitState) landingCollects(seq int) bool {
 func (es *EmitState) guardRootLandings(lw *lowerer, dynOp Opcode, residual []core.Value) {
 	for _, l := range lw.rootBeneathLandings {
 		pc, seq := l[0], l[1]
-		if es.callResultPlaced(core.IdentityOnly(es.landingOwn[seq].id)) || es.residualApplies(dynOp, residual, seq) || eventApplies(es.frames[0], seq, lw.promoted) {
+		if es.callResultPlaced(es.landingOwn[seq].held()) || es.residualApplies(dynOp, residual, seq) || eventApplies(es.frames[0], seq, lw.promoted) {
 			continue
 		}
 		(*lw.code)[pc].Arg |= LandingBeneathGuard
@@ -12188,7 +12197,7 @@ func (es *EmitState) guardUnitLandings(flw *lowerer, rec *fnUnitRec) {
 	}
 	for _, l := range flw.rootBeneathLandings {
 		pc, seq := l[0], l[1]
-		if es.callResultPlaced(core.IdentityOnly(es.landingOwn[seq].id)) || eventApplies(rec.frag.events, seq, flw.promoted) || frameReplays(rec, seq, flw.promoted) {
+		if es.callResultPlaced(es.landingOwn[seq].held()) || eventApplies(rec.frag.events, seq, flw.promoted) || frameReplays(rec, seq, flw.promoted) {
 			continue
 		}
 		(*flw.code)[pc].Arg |= LandingBeneathGuard
@@ -12226,7 +12235,7 @@ func frameReplays(rec *fnUnitRec, seq int, promoted map[int]int) bool {
 // re-steps over what sits beneath the READ.
 func (es *EmitState) residualApplies(dynOp Opcode, residual []core.Value, seq int) bool {
 	is := func(v core.Value) bool {
-		pr, ok := es.producedBy[core.IDOf(&v)]
+		pr, ok := es.producerOf(&v)
 		return ok && pr.seq == seq && pr.idx == 0 && !es.isDefRead(v)
 	}
 	switch dynOp {
@@ -12287,7 +12296,7 @@ func (es *EmitState) residualPos(v core.Value) core.SrcPos {
 	if es.isDefRead(v) {
 		return core.SrcPos{}
 	}
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && core.IDOf(&v) != "" {
+	if pr, ok := es.producerOf(&v); ok && core.IDOf(&v) != "" {
 		if ev := es.eventBySeq(pr.seq); ev != nil {
 			if pos := eventPos(*ev); pos.Row != 0 {
 				return pos
@@ -12339,7 +12348,7 @@ func (es *EmitState) crossesBoundary(v core.Value, rest []core.Value) bool {
 // the word's result, a Function-typed one its reference — which only the
 // run-time overload walk the landing does not do yet can tell apart.
 func (es *EmitState) wordFollowsLanding(v core.Value) bool {
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	return ok && pr.idx == 0 && es.landingNext[pr.seq] == core.LandingNextWord
 }
 
@@ -12359,7 +12368,7 @@ func (es *EmitState) siblingCallOutputs(residual []core.Value) bool {
 	if len(residual) < 2 {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&residual[0])]
+	pr, ok := es.producerOf(&residual[0])
 	if !ok || core.IDOf(&residual[0]) == "" {
 		return false
 	}
@@ -12367,7 +12376,7 @@ func (es *EmitState) siblingCallOutputs(residual []core.Value) bool {
 		return false
 	}
 	for _, r := range residual[1:] {
-		if q, ok := es.producedBy[core.IDOf(&r)]; !ok || core.IDOf(&r) == "" || q.seq != pr.seq {
+		if q, ok := es.producerOf(&r); !ok || core.IDOf(&r) == "" || q.seq != pr.seq {
 			return false
 		}
 	}
@@ -12594,7 +12603,7 @@ func zeroArgFnOut(outs []core.Value) bool {
 // An unclassified note (FrozenBakeNone) is DROPPED rather than recorded as
 // some default: the failure it would produce names a bake, and naming the
 // wrong one is worse than the caller's bug going unrecorded here.
-func (es *EmitState) NoteDefRead(id, name string) {
+func (es *EmitState) NoteDefRead(id string, k core.RecKey, name string) {
 	if !es.Active() || id == "" || name == "" {
 		return
 	}
@@ -12615,7 +12624,7 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		}
 		return
 	}
-	es.noteMayBeFnRead(id, name)
+	es.noteMayBeFnRead(id, k, name)
 	if es.gradualClaims[id] {
 		es.flushGradualRead()
 		es.pendingGradualRead = id
@@ -12764,7 +12773,7 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		// stranded: recordCallElided registers it as the unit's (or the
 		// program's) pending apply and the tail lowering applies it over the
 		// residual beneath (the dynamic-lead group, 2026-09-22).
-		if core.IsFnTypedCarrier(&args[0]) && es.producerReturnedClosure(core.IDOf(&args[0])) {
+		if core.IsFnTypedCarrier(&args[0]) && es.producerReturnedClosure(&args[0]) {
 			return false
 		}
 	}
@@ -12778,7 +12787,7 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		if es.valReadIDs[core.IDOf(&args[i])] {
 			continue
 		}
-		if es.producerReturnedClosure(core.IDOf(&args[i])) {
+		if es.producerReturnedClosure(&args[i]) {
 			es.MarkUncompilable(
 				"computed closure at a word's argument slot (its apply did not collapse — Stage 2)")
 			return true
@@ -12923,7 +12932,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// `do [(h 1)]` over a lambda factory's closure compiled and raised
 	// `undefined word: g` (the captured param) for the interpreter's 8,
 	// and `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`.
-	if es.producerReturnedClosure(core.IDOf(&v)) && core.IsConcrete(&v) {
+	if es.producerReturnedClosure(&v) && core.IsConcrete(&v) {
 		if es.dynBoundClosures == nil {
 			es.dynBoundClosures = map[string]bool{}
 		}
@@ -12937,7 +12946,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// value it binds, closure or not, and the unnamed const escaped as data
 	// under the interpreter's named copy (`def f (mk 1)  each f/v [1 2 3]`
 	// read `fn (String)` for `fn f(String)`, NUR168).
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok && (es.producedFnValue(core.IDOf(&v)) || es.producedConstLambda(core.IDOf(&v))) {
+	if pr, ok := es.producerOf(&v); ok && (es.producedFnValue(&v) || es.producedConstLambda(&v)) {
 		if es.defNameAt == nil {
 			es.defNameAt = map[seqIdx]string{}
 		}
@@ -12949,7 +12958,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if slot, ok := cur.localByID[core.IDOf(&v)]; ok && cur.capID[core.IDOf(&v)] {
 		// A CAPTURE of the CURRENT unit overrides events-first, mirroring
 		// resolveOperand's capID override (emit.go ~1241): the captured value
-		// may still carry a producedBy entry from the ENCLOSING unit (a
+		// may still carry a recorder key from the ENCLOSING unit (a
 		// persistent module-scope instance built by a parent `def`, or a
 		// computed def snapshotted into the closure) whose event lives in the
 		// parent frame and is unreachable here — so binding from that foreign
@@ -12960,7 +12969,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		// JoinCarriers ID-reuse case (a branch result reusing a live local's
 		// ID) to the local instead of the branch event.
 		src = localOperand(slot)
-	} else if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.idx == 0 {
+	} else if pr, ok := es.producerOf(&v); ok && pr.idx == 0 {
 		srcSeq = pr.seq
 	} else if slot, ok := cur.localByID[core.IDOf(&v)]; ok {
 		src = localOperand(slot)
@@ -12986,7 +12995,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 			es.rootComputedBindIDs = map[string]bool{}
 		}
 		es.rootComputedBindIDs[core.IDOf(&v)] = true
-		es.NoteDefRead(core.IDOf(&v), name)
+		es.NoteDefRead(core.IDOf(&v), core.RecKeyOf(&v), name)
 	}
 	spliceDepth := -1
 	if plb := es.pendingLoopBind; plb != nil {
@@ -13325,7 +13334,7 @@ func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
 	// the `if` stood: the arm's paren parked it (NUR313) — `def f fn [[][Any]
 	// [if c [(mkl)] [0] 5]] end f` returns `fn l 5` to its count check,
 	// where the deopt applied l to the 5.
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || es.branchPlacesAt(pr.seq) {
 		return
 	}
@@ -13390,11 +13399,11 @@ func (es *EmitState) ApplyPending(id string) bool { return es.applyPending(id) }
 // EmitRecorder doc): the value is a branch result one of whose arms is a fn
 // VALUE. The residual's fn-value arms and the re-step landing's note ask it
 // beside the static fn tests, which the merge's widened type defeats.
-func (es *EmitState) MayBeFn(id string) bool {
-	if es == nil || id == "" {
+func (es *EmitState) MayBeFn(k core.RecKey) bool {
+	if es == nil {
 		return false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOfKey(k)
 	return ok && es.eventInfo[pr.seq].mayBeFn
 }
 
@@ -13404,11 +13413,11 @@ func (es *EmitState) MayBeFn(id string) bool {
 // variadic native region — so a dispatch the pass matched over it is matched
 // optimistically, and a trap met under it is that dispatch's rematch
 // (core Engine.optimisticOuter, NUR340).
-func (es *EmitState) RegionResult(id string) bool {
-	if es == nil || id == "" {
+func (es *EmitState) RegionResult(k core.RecKey) bool {
+	if es == nil {
 		return false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOfKey(k)
 	if !ok {
 		return false
 	}
@@ -13562,7 +13571,7 @@ func fnValueMayTakeArgs(v core.Value) bool {
 // settled and `7 if true (mk) [2]` lays out as the pair on both lanes
 // (read as unsettled, the trailing arm rotated it to `[fn 7]`).
 func (es *EmitState) branchArmMayTakeArgs(v core.Value) bool {
-	if n, ok := es.producerReturnedClosureArity(core.IDOf(&v)); ok {
+	if n, ok := es.producerReturnedClosureArity(&v); ok {
 		return n > 0
 	}
 	return fnValueMayTakeArgs(v)
@@ -13570,11 +13579,11 @@ func (es *EmitState) branchArmMayTakeArgs(v core.Value) bool {
 
 // mayBeFnArgsOf reports whether id is a branch result with an ARG-TAKING fn
 // arm (eventFlags.mayBeFnArgs), whatever settled it since.
-func (es *EmitState) mayBeFnArgsOf(id string) bool {
-	if es == nil || id == "" {
+func (es *EmitState) mayBeFnArgsOf(k core.RecKey) bool {
+	if es == nil {
 		return false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOfKey(k)
 	return ok && es.eventInfo[pr.seq].mayBeFnArgs
 }
 
@@ -13618,10 +13627,10 @@ func (es *EmitState) gradualHoldsFn(v core.Value) bool {
 	if core.IDOf(&v) == "" || !v.Carrier || core.IsQuoted(&v) || core.IsFnTypedCarrier(&v) {
 		return false
 	}
-	if _, fn := es.producerReturnedClosureArity(core.IDOf(&v)); fn {
+	if _, fn := es.producerReturnedClosureArity(&v); fn {
 		return true
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	return ok && es.eventLeavesFn(pr.seq, 0)
 }
 
@@ -13647,11 +13656,11 @@ func (es *EmitState) eventLeavesFn(seq, depth int) bool {
 // x`), and delivers the RENAMED value for `x/v` (`fn x`), where the
 // lowering substitutes the branch's own value for every read. The read
 // declines through the arm-read seam, as an arm-bound read does (NUR159).
-func (es *EmitState) noteMayBeFnRead(id, name string) {
+func (es *EmitState) noteMayBeFnRead(id string, k core.RecKey, name string) {
 	if es == nil || es.trapAt != 0 || es.armReadCompileFailure != "" {
 		return
 	}
-	if es.mayBeFnArgsOf(id) {
+	if es.mayBeFnArgsOf(k) {
 		es.armReadCompileFailure = "read of `" + name + "`, bound to a branch result whose fn arm takes arguments: " +
 			"the interpreter dispatches the name as a word over the live stack, which the value substitution cannot seat (NUR159)"
 		return
@@ -13677,8 +13686,8 @@ func (es *EmitState) carryFoldedTaint(b core.BranchRecord) {
 			arms = append(arms, *p)
 		}
 	}
-	if core.IDOf(&b.Out) != "" && es.anyFolded(arms) {
-		es.noteFolded(b.Out)
+	if b.Out != nil && core.IDOf(b.Out) != "" && es.anyFolded(arms) {
+		es.noteFolded(*b.Out)
 	}
 }
 
@@ -13802,7 +13811,7 @@ func (es *EmitState) noteFnLeavingBind(v core.Value) {
 	if core.IDOf(&v) == "" {
 		return
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	leaves := (ok && es.eventInfo[pr.seq].armLeavesFn) || (v.Carrier && es.isFolded(v) && !es.gradualClaims[core.IDOf(&v)])
 	if !leaves && es.gradualHoldsFn(v) {
 		_, claimed := es.claimedShape(core.IDOf(&v))
@@ -13837,7 +13846,7 @@ func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
 	if es == nil || core.IDOf(&v) == "" || core.IsQuoted(&v) {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok {
 		return false
 	}
@@ -13932,7 +13941,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 	// below. A `/v` read or a user paren's placed result (`nd (m get "inc")
 	// apply` — its re-step ran inside the sealed paren, over nothing) is the
 	// inert value this event models.
-	if pr, produced := es.producedBy[core.IDOf(&lead)]; produced && !es.valReadNoted[core.IDOf(&lead)] && !es.parenPlacedMemberFn(lead) {
+	if pr, produced := es.producerOf(&lead); produced && !es.valReadNoted[core.IDOf(&lead)] && !es.parenPlacedMemberFn(lead) {
 		if _, landed := es.landingAfter[pr.seq]; landed {
 			return false
 		}
@@ -13949,7 +13958,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 	es.creditWordRead(core.IDOf(&lead))
 	es.SiteCounts[SiteMono]++
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{fnOp, argOp}, nout: 1, pos: pos, dynApply: 1, dynApplyUnquote: true, dynApplyOne: true}})
-	es.setProduced(outs[0], seq)
+	es.setProduced(&outs[0], seq)
 	return true
 }
 
@@ -13971,11 +13980,11 @@ func (es *EmitState) MemberFnRead(id string) bool {
 // carrier (callbacks.tsv L61, `((reg.cb) 5)`, 2026-09-25): the guarded
 // OpCallDynMethod applies the runtime value and DEFERS on a non-callable
 // value or a result-count mismatch, the same contract the tagged read takes.
-func (es *EmitState) ContainerReadResult(id string) bool {
-	if es == nil || es.producedBy == nil {
+func (es *EmitState) ContainerReadResult(k core.RecKey) bool {
+	if es == nil {
 		return false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOfKey(k)
 	if !ok {
 		return false
 	}
@@ -14215,8 +14224,8 @@ func concreteIntKey(args []core.Value) (int64, bool) {
 // producerWord returns the word of the event that produced value id, when id
 // resolves to a recorded event (not a const / local / unproduced value). Used to
 // gate makelist on its elements being core-builtin (deterministic) results.
-func (es *EmitState) producerWord(id string) (string, bool) {
-	pr, ok := es.producedBy[id]
+func (es *EmitState) producerWord(v *core.Value) (string, bool) {
+	pr, ok := es.producerOf(v)
 	if !ok {
 		return "", false
 	}
@@ -14260,13 +14269,14 @@ func isGetFamilyWord(w string) bool {
 // The word built the runtime value with exactly that many params, so the
 // claim is a statement of construction like the two arms below, and the
 // def-bound wrapper's apply classifies like a compiled factory's closure.
-func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
+func (es *EmitState) producerReturnedClosureArity(v *core.Value) (int, bool) {
+	id := core.IDOf(v)
 	if es.reg != nil && !es.gradualClaims[id] {
 		if n, ok := es.reg.Check.FnShapeArity(id); ok {
 			return n, true
 		}
 	}
-	s, ok := es.producerReturnedClosureShape(id)
+	s, ok := es.producerReturnedClosureShape(v)
 	return s.Arity, ok
 }
 
@@ -14275,8 +14285,8 @@ func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
 // — or, for the result of a recorded fn-value apply, the shape the applied
 // closure RETURNS (eventProducedFnShape's apply arm: the curried chain's
 // next level).
-func (es *EmitState) producerReturnedClosureShape(id string) (core.FnShape, bool) {
-	pr, ok := es.producedBy[id]
+func (es *EmitState) producerReturnedClosureShape(v *core.Value) (core.FnShape, bool) {
+	pr, ok := es.producerOf(v)
 	if !ok {
 		return core.FnShape{}, false
 	}
@@ -14474,7 +14484,8 @@ func (es *EmitState) eventInAnyFrame(seq int) *EmitEvent {
 // dispatch collecting over the read's statement, modelled at the read
 // (check's tryShapedFnReadArrival) or declined by the residual classifier,
 // never a paren window's re-step.
-func (es *EmitState) ProducedLeadApplies(id string, args []core.Value) (*core.Type, bool) {
+func (es *EmitState) ProducedLeadApplies(v *core.Value, args []core.Value) (*core.Type, bool) {
+	id := core.IDOf(v)
 	if !es.Active() || id == "" {
 		return nil, false
 	}
@@ -14493,7 +14504,7 @@ func (es *EmitState) ProducedLeadApplies(id string, args []core.Value) (*core.Ty
 	if _, read := es.defReads[id]; read {
 		return nil, false
 	}
-	pr, ok := es.producedBy[id]
+	pr, ok := es.producerOf(v)
 	if !ok {
 		return nil, false
 	}
@@ -14654,7 +14665,7 @@ func (es *EmitState) noteClosureShapeBind(v core.Value) {
 	if _, claimed := es.reg.Check.FnShapeOf(core.IDOf(&v)); claimed {
 		return
 	}
-	s, ok := es.producerReturnedClosureShape(core.IDOf(&v))
+	s, ok := es.producerReturnedClosureShape(&v)
 	if !ok {
 		if m, member := es.MemberFnReadValue(core.IDOf(&v)); member {
 			s, ok = memberLambdaShape(m)
@@ -14729,8 +14740,8 @@ func appendResidualSeqs(dst []int, ops []EmitOperand) []int {
 // call ran for id's producer — the factory's one returned value, or
 // ok=false when the producer is anything else (a native call, a
 // multi-output unit, an unknown id).
-func (es *EmitState) producerReturnedOutOp(id string) (EmitOperand, bool) {
-	pr, ok := es.producedBy[id]
+func (es *EmitState) producerReturnedOutOp(v *core.Value) (EmitOperand, bool) {
+	pr, ok := es.producerOf(v)
 	if !ok {
 		return EmitOperand{}, false
 	}
@@ -14762,18 +14773,18 @@ func (es *EmitState) producerReturnedOutOpSeq(seq int) (EmitOperand, bool) {
 // whose inner apply nets the next closure). Either is a runtime fn value
 // the apply op applies from its producer operand — the `apply` word's
 // pending-application arm (recordCallElided) admits both.
-func (es *EmitState) producedFnValue(id string) bool {
-	if es.producerReturnedClosure(id) {
+func (es *EmitState) producedFnValue(v *core.Value) bool {
+	if es.producerReturnedClosure(v) {
 		return true
 	}
-	w, ok := es.producerWord(id)
+	w, ok := es.producerWord(v)
 	return ok && w == wordDynApply
 }
 
 // mayBeFnBranchResult reports whether id is the result of a BRANCH event
 // with an fn-valued arm (eventFlags.mayBeFn) — NUR208's `apply` lead.
-func (es *EmitState) mayBeFnBranchResult(id string) bool {
-	pr, ok := es.producedBy[id]
+func (es *EmitState) mayBeFnBranchResult(v *core.Value) bool {
+	pr, ok := es.producerOf(v)
 	return ok && es.eventInfo[pr.seq].mayBeFn
 }
 
@@ -14803,7 +14814,7 @@ func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
 	if u := es.openUnitRec(); u == nil || (u.closure && !u.plainLambda()) {
 		return false
 	}
-	_, produced := es.producedBy[core.IDOf(&v)]
+	_, produced := es.producerOf(&v)
 	return produced
 }
 
@@ -14812,8 +14823,8 @@ func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
 // invokable only through the VM's re-entrant runner — the property the two
 // callers below guard. A capture-free lambda the fold baked as a CONST is
 // an ordinary interpreter-invokable fn value and is deliberately not one.
-func (es *EmitState) producerReturnedClosure(id string) bool {
-	op, ok := es.producerReturnedOutOp(id)
+func (es *EmitState) producerReturnedClosure(v *core.Value) bool {
+	op, ok := es.producerReturnedOutOp(v)
 	return ok && op.kind == opClosure
 }
 
@@ -14833,8 +14844,8 @@ func (es *EmitState) producerReturnedClosure(id string) bool {
 // where constLambdaArity's OpCallDynamic callers keep it out.
 // producedFnValue itself stays narrow: its other callers need a closure
 // payload for the VM's re-entrant runner, which a baked const is not.
-func (es *EmitState) producedConstLambda(id string) bool {
-	op, ok := es.producerReturnedOutOp(id)
+func (es *EmitState) producedConstLambda(v *core.Value) bool {
+	op, ok := es.producerReturnedOutOp(v)
 	if !ok || op.kind != opConst || op.idx < 0 || op.idx >= len(es.consts) {
 		return false
 	}
@@ -14891,7 +14902,7 @@ func lambdaOwnParams(fd core.FnDefInfo) ([]core.FnParam, bool) {
 // computed range list.
 func makeListRange(es *EmitState, args []core.Value) bool {
 	for i := range args {
-		if w, ok := es.producerWord(core.IDOf(&args[i])); ok && w == wordMakeList {
+		if w, ok := es.producerWord(&args[i]); ok && w == wordMakeList {
 			return true
 		}
 	}
@@ -14906,7 +14917,7 @@ func makeListRange(es *EmitState, args []core.Value) bool {
 // which pops them and pushes the list. Returns false — leaving es untouched, so
 // the list stays an unresolvable residual and the program falls back — when an
 // element has no compiled home (e.g. a fn value, a nested dynamic carrier).
-func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out *core.Value, pos core.SrcPos) bool {
 	if !es.Active() {
 		return false
 	}
@@ -14934,8 +14945,8 @@ func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core
 // element (tryFoldStaticIndex) can RETRACT it when it is still the frame's
 // last event — the indexed read keeps lowering to the bare local, and a
 // projection some other consumer took stays put.
-func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
-	if !es.Active() || core.IDOf(&out) == "" {
+func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, out *core.Value, pos core.SrcPos) bool {
+	if !es.Active() || core.IDOf(out) == "" {
 		return false
 	}
 	if !es.RecordMakeListInner(r, ins, out, pos) {
@@ -14945,9 +14956,9 @@ func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, ou
 		es.argsProjSeq = map[string]int{}
 	}
 	// No lookup miss to guard: RecordMakeListInner's one success path
-	// registers out at its OpMakeList event (setProduced), and out has the
-	// identity setProduced keys on (checked above).
-	es.argsProjSeq[core.IDOf(&out)] = es.producedBy[core.IDOf(&out)].seq
+	// stamps out as its OpMakeList event's result (setProduced).
+	pr, _ := es.producerOf(out)
+	es.argsProjSeq[core.IDOf(out)] = pr.seq
 	return true
 }
 
@@ -14968,7 +14979,7 @@ func (es *EmitState) retractArgsProjection(id string) bool {
 		return false
 	}
 	es.frames[n] = fr[:len(fr)-1]
-	delete(es.producedBy, id)
+	es.retireSeqs(seq, seq)
 	delete(es.eventInfo, seq)
 	delete(es.argsProjSeq, id)
 	return true
@@ -14981,7 +14992,7 @@ func (es *EmitState) retractArgsProjection(id string) bool {
 // is itself a CONSUMED-in-frame operand of the enclosing OpMakeMap — there the
 // top-frame guard does NOT apply (OpMakeList re-assembles from its operands per
 // run, exactly like OpMakeMap, so it is sound in a fn body / branch / loop).
-func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out *core.Value, pos core.SrcPos) bool {
 	// A SUSPENDED recorder (a higher-order body run for type inference —
 	// analyseHigherOrderBodyVals suspends recording) records no events. The
 	// autoEvalList / autoEvalMap CONSUMED-list callers gate on Armed() (a
@@ -15132,7 +15143,7 @@ func (es *EmitState) listReStepSpec(ins []core.Value, ops []EmitOperand) *ListRe
 			spec.Fn = append(spec.Fn, i)
 			// The literal after it written as a word: a `/q` slot takes the
 			// word (NUR219), which the landing noted.
-			if pr, ok := es.producedBy[core.IDOf(&v)]; ok && i+1 < len(ins) && es.landingWord[pr.seq].Collected && ops[len(ins)-2-i].kind == opConst {
+			if pr, ok := es.producerOf(&v); ok && i+1 < len(ins) && es.landingWord[pr.seq].Collected && ops[len(ins)-2-i].kind == opConst {
 				if spec.Words == nil {
 					spec.Words = map[int]LandingWord{}
 				}
@@ -15164,7 +15175,7 @@ func (es *EmitState) listReStepSpec(ins []core.Value, ops []EmitOperand) *ListRe
 // current scope, so it is sound inside a fn body / branch arm: the OpMakeMap
 // re-assembles from its operands per call, never frozen, and is never a deferred
 // residual. No top-frame restriction here.
-func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.Value, implicit bool, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.Value, implicit bool, out *core.Value, pos core.SrcPos) bool {
 	if !es.Active() || len(keys) != len(vals) || len(keys) == 0 {
 		return false
 	}
@@ -15240,7 +15251,7 @@ func (es *EmitState) NoteInPlaceSlot(tok, result core.Value) {
 // loop — no top-frame restriction. Returns false, leaving es untouched (the
 // caller then marks the program uncompilable and it falls back), when a hole has
 // no compiled home or did not produce exactly one value.
-func (es *EmitState) RecordInterp(parts []core.InterpPart, holeVals []core.Value, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordInterp(parts []core.InterpPart, holeVals []core.Value, out *core.Value, pos core.SrcPos) bool {
 	if !es.Active() || len(holeVals) == 0 {
 		return false
 	}
@@ -15278,7 +15289,7 @@ func (es *EmitState) RecordInterp(parts []core.InterpPart, holeVals []core.Value
 // depth-first walk — the same order the hole dispatches recorded their
 // events). Returns false, leaving es untouched, when a hole has no
 // compiled home — the caller then declines and the program falls back.
-func (es *EmitState) RecordInterpXml(tmpl core.XmlTmpl, holeVals []core.Value, out core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordInterpXml(tmpl core.XmlTmpl, holeVals []core.Value, out *core.Value, pos core.SrcPos) bool {
 	if !es.Active() || len(holeVals) == 0 {
 		return false
 	}
@@ -15307,7 +15318,7 @@ func (es *EmitState) RecordInterpXml(tmpl core.XmlTmpl, holeVals []core.Value, o
 // count is the payload's own — so only the program residual absorbs it. The
 // The spread result gets a FRESH carrier (distinct provenance) so it never
 // clobbers the payload def's own producer.
-func (es *EmitState) RecordSpliceDyn(payload core.Value, pos core.SrcPos) bool {
+func (es *EmitState) RecordSpliceDyn(payload *core.Value, pos core.SrcPos) bool {
 	if !es.Active() {
 		return false
 	}
@@ -15319,7 +15330,7 @@ func (es *EmitState) RecordSpliceDyn(payload core.Value, pos core.SrcPos) bool {
 		// dyn-body backstop / the failure, both parity-faithful.
 		return false
 	}
-	op, ok := es.resolveOperand(payload)
+	op, ok := es.resolveOperand(*payload)
 	if !ok {
 		return false
 	}
@@ -15448,7 +15459,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 			if i == bodyPos {
 				continue
 			}
-			if pr, ok := es.producedBy[core.IDOf(&args[i])]; ok && es.eventInfo[pr.seq].variadicResult {
+			if pr, ok := es.producerOf(&args[i]); ok && es.eventInfo[pr.seq].variadicResult {
 				f := es.eventInfo[seq]
 				f.variadicResult = true
 				// The strip's result is real stack values exactly when
@@ -15472,14 +15483,15 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	if regionResidual {
 		// A count-agnostic region residual makes this dispatch a RUN: its
 		// outs are N distinct runtime stack values, so a repeated modeled
-		// value (an unrolled loop body — `do [7 for 3 [1]]`) must not
-		// collapse producedBy to its last index. Same registration the
-		// dyn-body backstop uses, and for the same reason.
+		// value (an unrolled loop body — `do [7 for 3 [1]]`) must not be one
+		// value to the recorder's identity-keyed tables (it collapsed to its
+		// last index while producers resolved through the identity). Same
+		// registration the dyn-body backstop uses, and for the same reason.
 		es.produceRunOuts(args, outs, seq)
 		return true
 	}
 	for i := range outs {
-		es.setProducedAt(outs[i], seq, i)
+		es.setProducedAt(&outs[i], seq, i)
 	}
 	return true
 }
@@ -16195,12 +16207,12 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 	if len(residual) < 2 {
 		return 0, false
 	}
-	pr, ok := es.producedBy[core.IDOf(&residual[0])]
+	pr, ok := es.producerOf(&residual[0])
 	if !ok || !es.eventInfo[pr.seq].variadicResult {
 		return 0, false
 	}
 	for _, rv := range residual {
-		p2, ok := es.producedBy[core.IDOf(&rv)]
+		p2, ok := es.producerOf(&rv)
 		if !ok || es.eventInfo[p2.seq].zeroOut {
 			return 0, false // a non-event entry would need a re-push the window forbids
 		}
@@ -16242,9 +16254,9 @@ func (es *EmitState) excusePrefixRegion(residual []core.Value, forceOrder map[in
 
 // regionPrefixShapeOps is regionPrefixShape read off a unit's RESOLVED
 // OPERANDS rather than its residual values. A fn unit needs the operand form:
-// the residual values a body leaves carry identities the recorder does not
-// index in producedBy (a branch merge's carrier is minted at the join, not by
-// the event), so the value walk finds no producer and declines a shape the
+// the residual values a body leaves carry no recorder key of the event (a
+// branch merge's carrier is minted at the join, not by the event), so the
+// value walk finds no producer and declines a shape the
 // operands state plainly — `do [1 (if b [] [9 9])]` resolves to
 // [CONST, EVENT(the branch)] and nothing else has to be inferred.
 //
@@ -16330,7 +16342,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 	if len(residual) < 2 {
 		return 0, false
 	}
-	pr, ok := es.producedBy[core.IDOf(&residual[len(residual)-1])]
+	pr, ok := es.producerOf(&residual[len(residual)-1])
 	if !ok {
 		return 0, false
 	}
@@ -16348,7 +16360,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 	// all), which is what makes the prefix pushable after the run.
 	i := len(residual) - 1
 	for i > 0 {
-		p, isEvent := es.producedBy[core.IDOf(&residual[i-1])]
+		p, isEvent := es.producerOf(&residual[i-1])
 		if !isEvent || p.seq != pr.seq {
 			break
 		}
@@ -16358,7 +16370,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 		return 0, false // the run IS the whole residual; no prefix to seat
 	}
 	for _, rv := range residual[:i] {
-		if _, isEvent := es.producedBy[core.IDOf(&rv)]; isEvent {
+		if _, isEvent := es.producerOf(&rv); isEvent {
 			return 0, false
 		}
 	}
@@ -16649,12 +16661,12 @@ func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
 // variadicSiblings reports whether every value in vals is a result of ONE
 // runtime-variable call (variadicSiblingLead's event class).
 func (es *EmitState) variadicSiblings(vals []core.Value) bool {
-	first, ok := es.producedBy[core.IDOf(&vals[0])]
+	first, ok := es.producerOf(&vals[0])
 	if !ok {
 		return false
 	}
 	for _, v := range vals[1:] {
-		if pr, ok := es.producedBy[core.IDOf(&v)]; !ok || pr.seq != first.seq {
+		if pr, ok := es.producerOf(&v); !ok || pr.seq != first.seq {
 			return false
 		}
 	}
@@ -16678,7 +16690,7 @@ func (es *EmitState) variadicSiblings(vals []core.Value) bool {
 // placed data until a re-step undoes that (callResultPlaced's branch case,
 // branchPlacedBy).
 func (es *EmitState) branchLeadDecline(lead core.Value) string {
-	if pr, ok := es.producedBy[core.IDOf(&lead)]; ok && es.splitArmMayBeFn(pr.seq) {
+	if pr, ok := es.producerOf(&lead); ok && es.splitArmMayBeFn(pr.seq) {
 		return "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
 	}
 	return ""
@@ -16839,7 +16851,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		// closure (miscompile mechanism E). Decline; the interpreter applies
 		// the chain faithfully.
 		if applyDynamic {
-			arity, known := es.producerReturnedClosureArity(core.IDOf(&residual[0]))
+			arity, known := es.producerReturnedClosureArity(&residual[0])
 			if known && arity != len(residual)-1 {
 				return residual, 0, "fn-value apply arity mismatch — curried chain or partial apply (Stage 3)"
 			}
@@ -16883,7 +16895,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// A union lead a re-step reaches is a conditional apply the same way
 	// (unionLeadReStepped, NUR317).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !core.IsQuoted(&residual[0]) && !es.leadPlacedNotRead(residual[0]) {
-		if pr, ok := es.producedBy[core.IDOf(&residual[0])]; ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
+		if pr, ok := es.producerOf(&residual[0]); ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
 	}
@@ -17058,7 +17070,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 // rules (callResultPlacedIn).
 func (lw *lowerer) claimParked(v core.Value) bool {
 	es := lw.es
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || core.IDOf(&v) == "" || pr.idx != 0 {
 		return false
 	}
@@ -17116,7 +17128,7 @@ func anyFnOrDynamicTail(residual []core.Value) bool {
 func (es *EmitState) replayedCallEntries(residual []core.Value) int {
 	n := 0
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && es.eventInfo[pr.seq].replayedCall {
+		if pr, ok := es.producerOf(&rv); ok && es.eventInfo[pr.seq].replayedCall {
 			n++
 		}
 	}
@@ -17149,7 +17161,7 @@ func (es *EmitState) claimSpliceApplies(lw *lowerer, dynOp Opcode, residual []co
 // rotated as if it were one (`[1 5 2]` for the interpreter's `[5 1 2]`,
 // measured 2026-09-26 on main), and its elements were never the apply's.
 func (es *EmitState) markSpliceApplied(lw *lowerer, fn core.Value) {
-	pr, ok := es.producedBy[core.IDOf(&fn)]
+	pr, ok := es.producerOf(&fn)
 	if !ok || pr.idx != 0 || !es.eventInfo[pr.seq].spliceDyn {
 		return
 	}
@@ -17163,7 +17175,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		return residual, false
 	}
 	fnv := residual[1]
-	pr, isEvent := es.producedBy[core.IDOf(&fnv)]
+	pr, isEvent := es.producerOf(&fnv)
 	if !isEvent || pr.idx != 0 || core.IsQuoted(&fnv) || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun ||
 		es.runOperand(EmitOperand{kind: opEvent, idx: pr.seq}, es.frames[0], 0) {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
@@ -17179,7 +17191,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		return residual, false
 	}
 	arg := residual[0]
-	if _, argIsEvent := es.producedBy[core.IDOf(&arg)]; argIsEvent || core.IsDynamic(&arg) ||
+	if _, argIsEvent := es.producerOf(&arg); argIsEvent || core.IsDynamic(&arg) ||
 		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(&arg) {
 		return residual, false
 	}
@@ -17221,7 +17233,7 @@ func (es *EmitState) trailingWindowApplyShape(residual []core.Value) bool {
 			return false
 		}
 	}
-	pr, ok := es.producedBy[core.IDOf(&residual[last])]
+	pr, ok := es.producerOf(&residual[last])
 	return ok && pr.idx == 0
 }
 
@@ -17256,7 +17268,7 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 	if es.methodShapeAnnotated(core.IDOf(&residual[dynIdx])) {
 		return 0, false
 	}
-	if pr, ok := es.producedBy[core.IDOf(&residual[dynIdx])]; !ok || pr.idx != 0 {
+	if pr, ok := es.producerOf(&residual[dynIdx]); !ok || pr.idx != 0 {
 		return 0, false // not event-produced — cannot promote to a local
 	}
 	// An entry ABOVE the value pushed past a statement boundary its re-step
@@ -17276,15 +17288,17 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 // loop result is allowed here (the program residual may absorb it), unlike a
 // fn body. A non-empty reason declines the program.
 func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value) ([]EmitOperand, string) {
-	// A dynamic splice (§9.2b) reassigns its payload's provenance to the
-	// spread event, so a re-read of the payload def AFTER the splice
-	// (`def xs (range 1 3) def d word xs d xs`) surfaces the SAME payload
-	// value twice in the residual — the spread and the re-read. The re-read
-	// would resolve to the variadic spread instead of the original list, so
-	// decline (PR #279 review): the interpreter owns the re-read shape.
+	// A dynamic splice's spread (§9.2b) keeps its payload's identity, so two
+	// spreads of one payload (`def xs (range 1 3) def d word xs d 7 d`)
+	// surface that identity twice in the residual, each a variadic result of
+	// its own splice event, and the residual's ordering would seat them in
+	// slots of a count neither has: decline (PR #279 review), the
+	// interpreter owns the shape. A re-read of the payload def after the
+	// splice (`d xs`) is no spread — its holder carries the payload's own
+	// producer — and compiles.
 	seenSplice := map[string]bool{}
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && es.eventInfo[pr.seq].spliceDyn {
+		if pr, ok := es.producerOf(&rv); ok && es.eventInfo[pr.seq].spliceDyn {
 			if seenSplice[core.IDOf(&rv)] {
 				return nil, "splice payload re-read after the spread (Stage 2)"
 			}
@@ -17293,7 +17307,7 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 	}
 	ops := make([]EmitOperand, 0, len(residual))
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok {
+		if pr, ok := es.producerOf(&rv); ok {
 			if es.eventInfo[pr.seq].zeroOut {
 				continue
 			}
@@ -17626,7 +17640,7 @@ func (es *EmitState) hostedSpliceAdmitted(residual []core.Value) (string, bool) 
 		if len(top) == 0 || top[len(top)-1].seq != seq {
 			return "for: a computed body is hosted only as the program's last statement (a later statement could read a binding the spliced body changed)", false
 		}
-		if len(residual) != 1 || es.producedBy[core.IDOf(&residual[0])].seq != seq {
+		if len(residual) != 1 || es.producerSeq(&residual[0]) != seq {
 			return "for: a computed body is hosted only over an empty stack (the interpreter's splice reads and leaves values beneath the loop)", false
 		}
 	}
@@ -17684,7 +17698,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// then plan + rewrite before lowering.
 	var residualSeqs []int
 	for _, rv := range residual {
-		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && pr.idx == 0 {
+		if pr, ok := es.producerOf(&rv); ok && pr.idx == 0 {
 			residualSeqs = append(residualSeqs, pr.seq)
 		}
 	}
@@ -17726,7 +17740,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if !residualHasFnOrDynamic {
 		seenLiteral, outOfOrder := false, false
 		for _, rv := range residual {
-			pr, isEvent := es.producedBy[core.IDOf(&rv)]
+			pr, isEvent := es.producerOf(&rv)
 			if isEvent && pr.idx == 0 && !es.eventInfo[pr.seq].zeroOut {
 				if seenLiteral {
 					outOfOrder = true
@@ -18168,7 +18182,7 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 	var atResidual map[string]rootWordRead
 	for _, id := range ids {
 		r := es.rootWordReads[id]
-		pr := es.producedBy[id]
+		pr, _ := es.producerOfKey(r.key)
 		seq := pr.seq
 		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, pr.idx, lw.promoted); ci >= 0 {
 			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual, es.readFits(&es.frames[0][ci], id, direct))
@@ -18275,7 +18289,7 @@ func (es *EmitState) residualCallableExempt(residual []core.Value, reads map[str
 			exempt[core.IDOf(&rv)] = count[core.IDOf(&rv)] <= len(r.reads)
 			continue
 		}
-		if _, produced := es.producedBy[core.IDOf(&rv)]; produced && count[core.IDOf(&rv)] == 1 {
+		if _, produced := es.producerOf(&rv); produced && count[core.IDOf(&rv)] == 1 {
 			exempt[core.IDOf(&rv)] = true
 		}
 	}
@@ -18428,7 +18442,7 @@ func (es *EmitState) seatRootResidualReads(lw *lowerer, reads map[string]rootWor
 			default:
 				// A guard reads the value's own slot when it has one: the
 				// entries above may be a runtime-variable region.
-				if slot, promoted := lw.promoted[es.producedBy[core.IDOf(&rv)].seq]; promoted {
+				if slot, promoted := lw.promoted[es.producerSeq(&rv)]; promoted {
 					spec.Slot, spec.Depth = slot, -1
 				}
 			}
@@ -18471,7 +18485,7 @@ func (es *EmitState) rootResidualIsland(lw *lowerer, r rootWordRead, residual []
 // depth from the top is static.
 func (es *EmitState) rootResidualStatic(lw *lowerer, residual []core.Value, at int) bool {
 	for _, rv := range residual[at+1:] {
-		if pr, ok := es.producedBy[core.IDOf(&rv)]; ok && lw.variadic[pr.seq] {
+		if pr, ok := es.producerOf(&rv); ok && lw.variadic[pr.seq] {
 			return false
 		}
 	}
@@ -18692,7 +18706,7 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 // CALL_DYN_FRAME, NUR242). Such a window does not arm.
 func (es *EmitState) windowHasVariadicRun(window []core.Value) bool {
 	for _, v := range window {
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && es.eventInfo[pr.seq].variadicResult {
+		if pr, ok := es.producerOf(&v); ok && es.eventInfo[pr.seq].variadicResult {
 			return true
 		}
 	}
@@ -18803,7 +18817,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		// event, not a slot — resolveOperand's events-first rule — and is
 		// this unit's read all the same; an ENCLOSING-scope binding's
 		// value (enclosingBindIDs, resolveOperand's own test) is not.
-		if _, produced := es.producedBy[core.IDOf(&v)]; !produced || u.enclosingBindIDs[core.IDOf(&v)] {
+		if _, produced := es.producerOf(&v); !produced || u.enclosingBindIDs[core.IDOf(&v)] {
 			// A DEF-BOUND binding of an enclosing scope — a module-scope
 			// `def f tbl.inc` read inside an each body (NUR156, the
 			// quotation-body def reads) — is the interpreter's WORD dispatch
@@ -18816,12 +18830,12 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 			// consumption keeps the slot push it has today rather than
 			// declining a unit whose value semantics may still agree.
 			if es.isDefRead(v) {
-				rec.noteWordReadName(core.IDOf(&v), name, pos)
+				rec.noteWordReadName(core.IDOf(&v), core.RecKeyOf(&v), name, pos)
 			}
 			return
 		}
 	}
-	rec.noteWordReadName(core.IDOf(&v), name, pos)
+	rec.noteWordReadName(core.IDOf(&v), core.RecKeyOf(&v), name, pos)
 	if !u.capID[core.IDOf(&v)] {
 		// A capture's value is the enclosing unit's producer's, with no home
 		// in this frame but its slot: no site guard serves it.
@@ -18845,6 +18859,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // position (first first) — rootWordReads' entry.
 type rootWordRead struct {
 	id    string
+	key   core.RecKey // the read value's recorder key
 	name  string
 	reads []core.SrcPos
 }
@@ -18863,7 +18878,7 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 	if core.IsFnTypedCarrier(&v) || !es.isDefRead(v) || pos.Row == 0 {
 		return
 	}
-	if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
+	if _, produced := es.producerOf(&v); !produced {
 		return
 	}
 	if es.rootWordReads == nil {
@@ -18871,7 +18886,7 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 	}
 	es.noteReadSite(v, name, pos, nil)
 	r := es.rootWordReads[core.IDOf(&v)]
-	r.id, r.name = core.IDOf(&v), name
+	r.id, r.key, r.name = core.IDOf(&v), core.RecKeyOf(&v), name
 	r.reads = append(r.reads, pos)
 	es.rootWordReads[core.IDOf(&v)] = r
 }
@@ -18879,12 +18894,14 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 // noteWordReadName records a bare read's binding NAME and position on the
 // unit — the replay's word table (dynFrameWordsFor) and the trailing apply's
 // head name read them. The strict count (wordReads) is the caller's call.
-func (rec *fnUnitRec) noteWordReadName(id, name string, pos core.SrcPos) {
+func (rec *fnUnitRec) noteWordReadName(id string, k core.RecKey, name string, pos core.SrcPos) {
 	if rec.wordReadNames == nil {
 		rec.wordReadNames = map[string]string{}
+		rec.wordReadKeys = map[string]core.RecKey{}
 		rec.wordReadPos = map[string]core.SrcPos{}
 	}
 	rec.wordReadNames[id] = name
+	rec.wordReadKeys[id] = k
 	rec.wordReadPos[id] = pos
 	if rec.wordReadFirst == nil {
 		rec.wordReadFirst = map[string]core.SrcPos{}
@@ -18928,7 +18945,13 @@ func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
 }
 
 // NoteValRead counts a `/v` read on the innermost open unit (EmitRecorder).
-func (es *EmitState) NoteValRead(id, name string) {
+// v is the read's holder: an alias of a bound value's producer is stamped on
+// it (aliasValRead).
+func (es *EmitState) NoteValRead(v *core.Value, name string) {
+	id := ""
+	if v != nil {
+		id = core.IDOf(v)
+	}
 	// A `/v` read of a speculative fn family's value (a conditional def —
 	// RecordSpeculativeFnDef) would bake the fn where the interpreter may
 	// have no binding at all: its dispatches route, its value has no live
@@ -18946,8 +18969,8 @@ func (es *EmitState) NoteValRead(id, name string) {
 	if es.foldedMembers[id] && name != "" {
 		es.foldedEscape("a `/v` read of `" + name + "`")
 	}
-	es.noteMayBeFnRead(id, name)
-	es.aliasValRead(id, name)
+	es.noteMayBeFnRead(id, core.RecKeyOf(v), name)
+	es.aliasValRead(v, name)
 	if es.valReadNoted == nil {
 		es.valReadNoted = map[string]bool{}
 	}
@@ -18983,7 +19006,7 @@ func (es *EmitState) ArmTailApply(stk []core.Value) []core.Value {
 	}
 	out := core.NewCarrier(core.TAny)
 	core.SetDynamic(&out, true)
-	if _, ok := es.RecordDynApply(stk[:len(stk)-1], top, out, core.SrcPos{}); !ok {
+	if _, ok := es.RecordDynApply(stk[:len(stk)-1], top, &out, core.SrcPos{}); !ok {
 		return stk
 	}
 	return []core.Value{out}
@@ -18991,7 +19014,7 @@ func (es *EmitState) ArmTailApply(stk []core.Value) []core.Value {
 
 // valBind is one unit-local dyn-bind of a produced fn value (emitUnit.valBinds).
 type valBind struct {
-	pr    producer
+	key   core.RecKey // the bound value's recorder key (its producer's)
 	gen   int64
 	top   string // the installed entry's ID (Defs.Top at the bind)
 	epoch int    // valBindEpoch[name] at the bind
@@ -19021,8 +19044,8 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 		return
 	}
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
-		b.pr = pr
+	if _, ok := es.producerOf(&v); ok {
+		b.key = core.RecKeyOf(&v)
 	} else if fd, isFn := v.Data.(*core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !core.IsQuoted(&v) {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
 		// increment): no event, no const — its `/v` read builds the closure
@@ -19053,10 +19076,11 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 // stored closure to w where the read used to decline "fn call operand of
 // unknown provenance". The alias is remembered (valReadIDs) for the
 // argument-slot guard: the value spelling is data on both engines.
-func (es *EmitState) aliasValRead(id, name string) {
+func (es *EmitState) aliasValRead(v *core.Value, name string) {
 	if name == "" || es.reg == nil || len(es.units) == 0 {
 		return
 	}
+	id := core.IDOf(v)
 	cur := es.units[len(es.units)-1]
 	b, ok := cur.valBinds[name]
 	if !ok || es.valBindEpoch[name] != b.epoch {
@@ -19098,7 +19122,9 @@ func (es *EmitState) aliasValRead(id, name string) {
 		}
 		es.readOps[id] = *b.op
 	} else {
-		es.producedBy[id] = b.pr
+		// The read is the bound value to the recorder: its key, so it
+		// resolves exactly while the bound value's event stands.
+		core.SetRecKey(v, b.key)
 	}
 	if es.valReadIDs == nil {
 		es.valReadIDs = map[string]bool{}
@@ -19588,7 +19614,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		if u.capID[id] {
 			slot = u.localByID[id]
 		} else {
-			pr, produced := es.producedBy[id]
+			pr, produced := es.producerOfKey(rec.wordReadKeys[id])
 			if !produced || u.enclosingBindIDs[id] {
 				continue
 			}
@@ -20436,8 +20462,8 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 	// deferredRead reports whether a read of the value id before the start
 	// is pushed after it; seat, when set, is where a unit's statement island
 	// finds that value instead, seated at each such read (seatReads).
-	deferredRead := func(id string, seat *RestartSrc) bool {
-		pr, hasPr := es.producedBy[id]
+	deferredRead := func(id string, k core.RecKey, seat *RestartSrc) bool {
+		pr, hasPr := es.producerOfKey(k)
 		slot, isLocal := u.localByID[id]
 		bindSeq := -1
 		if hasPr {
@@ -20455,7 +20481,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		if len(rec.localReads[core.IDOf(&c)]) > 0 {
 			var src RestartSrc
 			restartConst(&src, &c)
-			return deferredRead(core.IDOf(&c), &src)
+			return deferredRead(core.IDOf(&c), core.RecKeyOf(&c), &src)
 		}
 		if d.restart && d.frameHeld && es.seatLiteral(rec, d, c, consumedBefore) {
 			return false
@@ -20488,7 +20514,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			}
 		case opLocal:
 			for id, slot := range u.localByID {
-				if slot == op.idx && deferredRead(id, &RestartSrc{Kind: RestartLocal, Idx: slot}) {
+				if slot == op.idx && deferredRead(id, core.RecKey{}, &RestartSrc{Kind: RestartLocal, Idx: slot}) {
 					return true
 				}
 			}
@@ -21089,7 +21115,7 @@ func (es *EmitState) replayIsBodyTailAnchored(frag *EmitFragment, window []core.
 			}
 			continue
 		}
-		if pr, ok := es.producedBy[core.IDOf(&v)]; ok && pr.seq > anchorSeq {
+		if pr, ok := es.producerOf(&v); ok && pr.seq > anchorSeq {
 			anchorSeq = pr.seq
 		}
 	}
@@ -21241,7 +21267,7 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 		// it and a fn value applies to what lies beneath (15, measured) —
 		// that value keeps the shapes below.
 		if slot, isIn := u.localByID[core.IDOf(&v)]; isIn && core.IDOf(&v) != "" && slot < nInputs && slot == i {
-			if _, produced := es.producedBy[core.IDOf(&v)]; !produced {
+			if _, produced := es.producerOf(&v); !produced {
 				continue
 			}
 		}
@@ -21266,7 +21292,7 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 // (TestModuleFnStampedAtLoadAndRerouted's decliner and the curried chain's
 // pending collection caught the drafts that read them so).
 func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
-	pr, produced := es.producedBy[core.IDOf(&v)]
+	pr, produced := es.producerOf(&v)
 	if !produced {
 		// A def READ of a placed closure carries the placed value's ID and
 		// no body event, but a bare name always calls (ADR-011): `0 fold
@@ -21539,7 +21565,7 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok {
 		return false
 	}
@@ -21676,7 +21702,7 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok {
 		return false
 	}
@@ -21711,7 +21737,7 @@ func (es *EmitState) branchResultRenderKnown(v core.Value) bool {
 	if es == nil || core.IDOf(&v) == "" {
 		return false
 	}
-	pr, ok := es.producedBy[core.IDOf(&v)]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 {
 		return false
 	}

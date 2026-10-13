@@ -9,8 +9,8 @@ import (
 // fifty-seventh increment), and the unreachable-unit recovery it needs.
 //
 // closureResidualRegion is a SHAPE test, and the probe it is first asked of
-// does not see the shape the real compile builds: the probe carries no
-// producedBy, so an enclosing binding read that an EVENT produces bakes there
+// does not see the shape the real compile builds: the probe resolves no event
+// of the real pass, so an enclosing binding read that an EVENT produces bakes there
 // as a CONST and routes live in the real compile. closureResidualExact
 // survives that because it COUNTS operands and the count does not change;
 // regionPrefixShapeOps does not, because it requires everything beneath the

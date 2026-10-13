@@ -4,18 +4,18 @@
 # down: UPDATE=1 lowers them to the counts; a sanctioned new copy raises one
 # by hand, naming its row in design/VALUE-NO-COPY-EXCEPTIONS.0.md.
 module	value	bulk
-basic/go	1180	26
+basic/go	1161	26
 calc/go	11	9
-check/go	533	18
+check/go	529	18
 cmd/go	23	0
-compiler/go	1402	25
-core/go	4451	68
-eng/go	525	132
+compiler/go	1341	25
+core/go	4420	68
+eng/go	524	132
 lang/go	4505	41
 parser/go	52	0
 test/go	0	0
 tools/piecetool	0	0
 tools/vetcopies	0	0
 test/solardemo	0	0
-test/specfix	298	8
+test/specfix	293	8
 wpg	0	0

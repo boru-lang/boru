@@ -181,8 +181,8 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 	if core.IDOf(&v) == "" {
 		return callWinOp{}, false
 	}
-	if pr, ok := es.producedBy[core.IDOf(&v)]; ok {
-		if len(es.units) > 1 && !es.producedInCurrentUnit(core.IDOf(&v)) {
+	if pr, ok := es.producerOf(&v); ok {
+		if len(es.units) > 1 && !es.producedInCurrentUnit(&v) {
 			return callWinOp{}, false
 		}
 		return callWinOp{kind: WinStack, op: EventOperand(pr.seq, pr.idx)}, true

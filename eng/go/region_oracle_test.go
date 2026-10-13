@@ -309,7 +309,7 @@ func TestRegionOracleContainerIdentity(t *testing.T) {
 	// does — the same object under the same tag reproduces; the same
 	// store under another tag is another value.
 	sub := reg.Types.MintType("S", core.TFlexList)
-	refined := core.ReparentValue(one, sub)
+	refined := core.MintRetagged(&one, sub)
 	reg.Defs.Push("k", refined)
 	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), refined}); ev.Outcome != "reproduced" {
 		t.Errorf("a refined flex list, the same object under the same tag, reproduces: %+v", ev)

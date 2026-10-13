@@ -46,7 +46,7 @@ func TestForwardSlotOfGeneralisedNameRoutes(t *testing.T) {
 	}
 	// The read's event becomes a placeholder for the routed dispatch.
 	es.placeRoutedLiveSlots(d, []core.Value{v, core.NewInteger(1)})
-	pr := es.producedBy[core.IDOf(&v)]
+	pr, _ := es.producerOf(&v)
 	if !es.livePlaceholders[pr.seq] {
 		t.Fatalf("the routed slot's read is a placeholder: %v", es.livePlaceholders)
 	}
