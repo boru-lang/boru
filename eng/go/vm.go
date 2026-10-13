@@ -1359,7 +1359,7 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 	if err := vc.screenResults(results, "poly result at "+pr.Word, curDebug, pc); err != nil {
 		return nil, err
 	}
-	stampFnResultPos(results, curDebug, pc)
+	results = stampFnResultPos(results, curDebug, pc)
 	return append(stack[:len(stack)-n], results...), nil
 }
 
@@ -1373,26 +1373,44 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 // interpreted, and reported "source position unknown" compiled, the member
 // read leaving the value unstamped (NUR347). A value that already carries a
 // position keeps it, as the interpreter's does.
-func stampFnResultPos(results []core.Value, debug []core.SrcPos, pc int) {
+//
+// The results are the handler's, and a handler may hand back a run it
+// shares — a leaf fn frame's memoized skeleton, which the interpreter
+// splices without writing it (stampResultCells stamps the tape cells). So
+// the stamp is never written into results: when one is owed, the run the
+// VM goes on with is its own, built from them, and the handler's is left
+// as it was.
+func stampFnResultPos(results []core.Value, debug []core.SrcPos, pc int) []core.Value {
+	var own []core.Value
 	for i := range results {
-		stampFnPosIn(&results[i], debug, pc)
+		if !fnPosOwed(&results[i], debug, pc) {
+			continue
+		}
+		if own == nil {
+			own = make([]core.Value, len(results))
+			copy(own, results)
+		}
+		own[i].SetPos(debug[pc])
 	}
+	if own == nil {
+		return results
+	}
+	return own
 }
 
 // stampFnPos is stampFnResultPos over one value: v with the op's position
 // when v is a positionless fn value and the op has one, else v unchanged.
 func stampFnPos(v core.Value, debug []core.SrcPos, pc int) core.Value {
-	stampFnPosIn(&v, debug, pc)
+	if fnPosOwed(&v, debug, pc) {
+		v.SetPos(debug[pc])
+	}
 	return v
 }
 
-// stampFnPosIn is stampFnPos on a value the caller owns, stamped in place:
-// a fresh result in the call's own results slice, never a shared value.
-func stampFnPosIn(v *core.Value, debug []core.SrcPos, pc int) {
-	if pc < 0 || pc >= len(debug) || debug[pc].Row == 0 || v.Pos().Row != 0 || !v.Parent.Equal(core.TFunction) {
-		return
-	}
-	v.SetPos(debug[pc])
+// fnPosOwed reports whether v takes the op's position: a positionless fn
+// value, under an op that has one.
+func fnPosOwed(v *core.Value, debug []core.SrcPos, pc int) bool {
+	return pc >= 0 && pc < len(debug) && debug[pc].Row != 0 && v.Pos().Row == 0 && v.Parent.Equal(core.TFunction)
 }
 
 // stampFnArgPos gives each positionless NAMED fn value among a native call's
@@ -2240,7 +2258,7 @@ func laterIterationDefer(reg *core.Registry, curDebug []core.SrcPos, pc int) err
 // island does.
 func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartSubst, stop []core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	for k := len(substs) - 1; k >= 0; k-- {
-		sb := substs[k]
+		sb := &substs[k]
 		var vs []core.Value
 		i := sb.Src.Idx
 		switch {
@@ -2255,16 +2273,18 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		case sb.Src.Kind == compiler.RestartGuard && len(stop) == 1:
 			vs = stop
 		case sb.Src.Kind == compiler.RestartLocal && i >= 0 && i < len(vc.restartLocals):
-			vs = []core.Value{vc.restartLocals[i]}
+			vs = vc.restartLocals[i : i+1]
 		case sb.Src.Kind == compiler.RestartStack && i >= 0 && frameBase+i < len(stack):
-			vs = []core.Value{stack[frameBase+i]}
+			vs = stack[frameBase+i : frameBase+i+1]
 		default:
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
 		if sb.Reach && len(vs) == 1 {
 			// A paren apply's lead its member read left as it is: written as
-			// the reach-lowered group the read's token steps as (NUR336).
-			vs = []core.Value{core.NewReach(core.ReachInfo{Receiver: vs, Eval: true})}
+			// the reach-lowered group the read's token steps as (NUR336). The
+			// group keeps its receiver, so the receiver is a run of its own:
+			// vs is where the stop holds the value — a slot, the VM stack.
+			vs = []core.Value{core.NewReach(core.ReachInfo{Receiver: []core.Value{vs[0]}, Eval: true})}
 		} else if sb.Named && len(vs) == 1 && namedRuns(vs[0]) {
 			// A def-bound word's fn the paren's dispatch of the name runs
 			// (NUR336).
@@ -5260,7 +5280,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil && !stepped {
 				return nil, err
 			}
-			stampFnResultPos(results, curDebug, pc)
+			results = stampFnResultPos(results, curDebug, pc)
 			if stepped || (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
 				// A do whose run's count the program's seat does not hold
 				// (SigRef.CountCheck, NUR222): its statement runs again, the

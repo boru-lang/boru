@@ -1001,7 +1001,7 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 // [[t:Temp][String]['T']])`) runs no interpreter on a compiled run (the
 // interp-entry census's code-bodies.tsv row). The two exclusions are the
 // ways a top engine's run of scalar literals is NOT the identity:
-// resolveAtomReferents stamps an atom's referent, and the end-of-run gen
+// stampAtomReferents stamps an atom's referent, and the end-of-run gen
 // check raises on a spec some enclosing `gen` left pending. Everything else
 // runs as before.
 //

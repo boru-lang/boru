@@ -30,10 +30,18 @@ func TestNUR347FnPosStamps(t *testing.T) {
 	if got := addrOf(stampFnPos(core.NewInteger(1), debug, 0)).Pos(); got.Row != 0 {
 		t.Fatalf("a non-fn value was stamped: %v", got)
 	}
+	// The results stay the handler's: a stamp owed is written in a run of
+	// the VM's own, and a run owing none goes on as it is.
 	res := []core.Value{fn, core.NewInteger(1)}
-	stampFnResultPos(res, debug, 0)
-	if res[0].Pos().Row != 1 || res[1].Pos().Row != 0 {
-		t.Fatalf("stampFnResultPos: %v %v", res[0].Pos(), res[1].Pos())
+	got := stampFnResultPos(res, debug, 0)
+	if got[0].Pos().Row != 1 || got[1].Pos().Row != 0 {
+		t.Fatalf("stampFnResultPos: %v %v", got[0].Pos(), got[1].Pos())
+	}
+	if res[0].Pos().Row != 0 {
+		t.Fatalf("stampFnResultPos wrote the handler's run: %v", res[0].Pos())
+	}
+	if same := stampFnResultPos(got, debug, 0); &same[0] != &got[0] {
+		t.Fatal("a run owing no stamp was rebuilt")
 	}
 	if got := addrOf(dropFnPos(own)).Pos(); got.Row != 0 {
 		t.Fatalf("dropFnPos kept %v", got)

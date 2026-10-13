@@ -156,13 +156,18 @@ func TestSubstIslandLeadArms(t *testing.T) {
 	lead := n336Fn("f", core.TAny)
 	island := []core.Value{core.NewParenExpr([]core.Value{core.NewWord("m"), core.NewInteger(7)})}
 	guard := compiler.RestartSrc{Kind: compiler.RestartGuard}
-	got, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Reach: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0)
+	stop := []core.Value{lead}
+	got, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Reach: true}}, stop, 0, nil, seam7Dbg, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	toks, _ := core.AsParenExpr(&got[0])
 	if ri, err := core.AsReach(&toks[0]); err != nil || !ri.Eval || len(ri.Receiver) != 1 {
 		t.Errorf("the reach group of the value: %v %v", toks, err)
+	} else if &ri.Receiver[0] == &stop[0] {
+		// The group keeps its receiver; the stop's run is the VM's (a stack
+		// view, a slot) and moves on.
+		t.Error("the reach group's receiver is the stop's run, not its own")
 	}
 	zero := n336Fn("g")
 	got, err = vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{zero}, 0, nil, seam7Dbg, 0)
