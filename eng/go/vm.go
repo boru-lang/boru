@@ -2165,7 +2165,9 @@ func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compil
 	if len(lword.Island) == 0 || lword.RetPC < 0 || top < frameBase {
 		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING bad deopt entry")
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:top]...)
+	// The frame region itself is the prefix: the island's load copies it,
+	// and nothing writes the stack before then.
+	prefix := stack[frameBase:top]
 	tokens := make([]core.Value, 0, lword.Opens+1+len(lword.Island))
 	for i := 0; i < lword.Opens; i++ {
 		tokens = append(tokens, core.NewOpenParen())
@@ -2294,7 +2296,7 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 		return nil, nil, err
 	}
 	snapshot := reg.Defs.Snapshot()
-	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), island...))
+	results, err := runIslandResolved(reg, prefix, island)
 	if !root {
 		core.TruncateFrameDefs(reg, snapshot)
 	}
@@ -2312,9 +2314,11 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 // residual's earlier entries may live elsewhere — srcs, each where the
 // compiled code keeps it.
 func (vc *vmContext) seatPrefix(reg *core.Registry, srcs []compiler.RestartSrc, depth, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
-	prefix := append([]core.Value(nil), stack[frameBase:frameBase+depth]...)
+	// The frame region itself, read where it lies: the island's load copies
+	// it. Seated from srcs, the prefix is a run of its own.
+	prefix := stack[frameBase : frameBase+depth]
 	if len(srcs) > 0 {
-		prefix = prefix[:0]
+		prefix = make([]core.Value, 0, len(srcs))
 		for _, src := range srcs {
 			switch {
 			case src.Kind == compiler.RestartConst && src.Build != nil:
@@ -3511,7 +3515,9 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 		return nil, vmErrAt(curDebug, pc, "CALL_DYNAMIC_MIXED underflow")
 	}
 	base := len(stack) - w
-	window := append([]core.Value(nil), stack[base:]...)
+	// The window is read where it lies: every lane below only reads it, and
+	// the stack is rewritten only when this op returns.
+	window := stack[base:]
 	// A STEPLESS window is its own residual. The island is here because the
 	// COMPILER could not rule out a callable value interior to the window; when
 	// the runtime values turn out to be plain data, the interpreter places every
@@ -3659,8 +3665,12 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 		return nil, nil, vmErrAt(curDebug, pc, "CALL_DYN_FRAME underflow")
 	}
 	base := len(stack) - w
-	prefix := append([]core.Value(nil), stack[frameBase:base]...)
-	tokens := append([]core.Value(nil), stack[base:]...)
+	// The frame region and the token region are read where they lie: every
+	// lane below only reads them (a frame push copies its args into its own
+	// locals, a nested unit runs on a fresh stack), and the stack is
+	// rewritten only when this op returns.
+	prefix := stack[frameBase:base]
+	tokens := stack[base:]
 	// The Apply kernel reaches the replay window when the token region is a fn
 	// followed by plain data. The region is then exactly [fn, args…] — the same
 	// thing CALL_DYNAMIC's leading form hands dynApplyEnter, and RunResolved
@@ -4231,7 +4241,7 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 			prefix = append(prefix[:i], prefix[i+1:]...)
 		}
 	}
-	tokens := append([]core.Value(nil), body[spec.Token:]...)
+	tokens := body[spec.Token:]
 	// A ROOT read's binding is its def's plain write (bindGlobal pushes the
 	// runtime value), where the interpreter's `def` INSTALLS a fn value —
 	// its signatures compiled, its body runnable — and the island's first
@@ -4292,7 +4302,7 @@ func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool,
 		tokens = body[spec.Token:]
 	}
 	snapshot := reg.Defs.Snapshot()
-	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), tokens...))
+	results, err := runIslandResolved(reg, prefix, tokens)
 	if !root {
 		core.TruncateFrameDefs(reg, snapshot)
 	}
@@ -4328,7 +4338,7 @@ func (vc *vmContext) callResultRestart(reg *core.Registry, is *compiler.StmtIsla
 		fb = frames[len(frames)-1].stackBase
 	}
 	vc.restartLocals = locals
-	ns, ent, err := vc.stopRestart(reg, is, append([]core.Value(nil), stack[base:]...), fb, stack[:base], curDebug, pc)
+	ns, ent, err := vc.stopRestart(reg, is, stack[base:], fb, stack[:base], curDebug, pc)
 	vc.restartLocals = nil
 	return ns, ent, err
 }
@@ -4352,7 +4362,7 @@ func callResultAt(p *compiler.Program, unit, pc int) *compiler.StmtIsland {
 // residual is the program's.
 func (vc *vmContext) rootEndResults(reg *core.Registry, stack []core.Value, base int, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	vc.rootEndStep = false
-	results, err := runIslandResolved(reg, stack[:base], append([]core.Value(nil), stack[base:]...))
+	results, err := runIslandResolved(reg, stack[:base], stack[base:])
 	if err != nil {
 		return nil, stampAt(err, curDebug, pc, reg)
 	}
@@ -6149,7 +6159,7 @@ func (vc *vmContext) loopExitReStep(reg *core.Registry, lp vmLoop, stack []core.
 	if base != lp.frameBase || (lp.exitPC < len(code) && code[lp.exitPC].Op != compiler.OpRet) {
 		return nil, vmDefer(vc.r, debug, pc, "vm:loop-result-restep", "a loop's result is a fn value the interpreter re-steps where the loop stood, over values the compiled loop cannot hand it (NUR314); the compiled runtime cannot execute it")
 	}
-	out, err := runIslandResolved(reg, nil, append([]core.Value(nil), res...))
+	out, err := runIslandResolved(reg, nil, res)
 	if err != nil {
 		return nil, stampAt(err, debug, pc, reg)
 	}

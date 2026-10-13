@@ -128,8 +128,14 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 		for i, in := range inputs {
 			types[i] = core.TokenBodyInputType(in)
 		}
-		// The stamped unit keeps its body: a copy of its own.
-		r, ok := compiler.StampTokenBody(reg, lst.Slice(), types, body.Pos())
+		// The stamped unit keeps its body: the list's own array, which a
+		// plain list never writes — a flex list's view is live, so it keeps
+		// a snapshot.
+		toks := lst.Elems()
+		if _, flex := body.Data.(*core.FlexListData); flex {
+			toks = lst.Slice()
+		}
+		r, ok := compiler.StampTokenBody(reg, toks, types, body.Pos())
 		if !ok {
 			reg.SetTokenBodyStamp(key, tokenBodyDeclined{})
 			return nil, nil, false

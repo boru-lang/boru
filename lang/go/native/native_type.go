@@ -1033,12 +1033,11 @@ func tisHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 }
 
 // tisNode returns the lattice node a value denotes for `tis`: a bare type
-// literal IS its node (a by-value copy, so &v carries the right ID / In /
-// Out / Parent — mirroring isHandler's `bNode := &b`); any other value's
-// node is its tag, v.Parent.
+// literal denotes the node it is a copy of (NodeOf); any other value's node
+// is its tag, v.Parent.
 func tisNode(v Value) *Type {
 	if IsBareTypeNode(&v) {
-		return &v
+		return NodeOf(&v)
 	}
 	return v.Parent
 }
@@ -1152,11 +1151,11 @@ func guardHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 
 func baseHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	v := args[0]
-	// For a type literal the denoted lattice node is &v (the value
-	// IS the type); for a concrete value it's v.Parent.
+	// For a type literal the denoted lattice node is the node it copies
+	// (NodeOf); for a concrete value it's v.Parent.
 	var t *Type
 	if IsBareTypeNode(&v) {
-		t = &v
+		t = NodeOf(&v)
 	} else {
 		t = v.Parent
 	}

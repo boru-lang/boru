@@ -1897,7 +1897,7 @@ func ifClauseRecord(r *Registry, list Value) []Value {
 	}
 	pos := r.Check.CurCallPos
 	_lst, _ := AsList(list)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	for len(elems) >= 2 && !isCodeBody(elems[0]) {
 		if !ifClauseStaticCond(elems[0]) {
 			ifClauseDecline(r, "a clause condition that is neither a code body nor a scalar (its truthiness is not decided at compile time)", pos)

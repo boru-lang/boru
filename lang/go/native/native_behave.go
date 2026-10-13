@@ -1015,7 +1015,7 @@ func runBehaviorBody(r *Registry, body []Value) ([]Value, error) {
 	if behaviorBodyStepless(r, body) {
 		return append([]Value(nil), body...), nil
 	}
-	return core.RunPooledTop(r, append([]Value{}, body...))
+	return core.RunPooledTop(r, body)
 }
 
 // behaviorBodyStepless reports whether runBehaviorBody may answer body

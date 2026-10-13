@@ -80,12 +80,6 @@ func RegionCannotEval(err error) bool {
 type regionHost struct {
 	reg *core.Registry
 	win *core.Tape
-
-	// span backs ScratchParenSpan, mirroring the interpreter's per-engine
-	// reusable buffer: the contract is that the returned slice is valid only
-	// until the caller splices, so one buffer per host is enough and a fresh
-	// allocation per call would be waste on the hottest path a collection has.
-	span []core.Value
 }
 
 // newRegionHost seats a host on a descriptor's tokens and a live registry.
@@ -162,19 +156,16 @@ func (h *regionHost) ExpandSugarAt(core.Value, int, int, []core.ViableSig) (bool
 // real flag costs nothing and cannot go stale if that changes.
 func (h *regionHost) FlowInterrupted() bool { return h.reg.FlowCtrl != core.FlowNone }
 
-// ScratchParenSpan wraps items in paren markers, exactly as the
-// interpreter's expandParenExprScratch does — the kernel splices the span
-// in place of a ParenExpr and expects to meet the OpenParen on its next
-// step. The first draft returned the bare items, and the COLLECT oracle's
-// first corpus walk found what that does: a word bound to a data splice is
-// rewritten to ParenExpr([w]), spliced back to the bare `w`, rewritten
-// again, forever (`def vs word [2,3] add vs`). The seam's contract is the
-// interpreter's shape, marker for marker.
-func (h *regionHost) ScratchParenSpan(items []core.Value) []core.Value {
-	h.span = append(h.span[:0], core.NewOpenParen())
-	h.span = append(h.span, items...)
-	h.span = append(h.span, core.NewCloseParen())
-	return h.span
+// SpliceGroup splices items in paren markers into the window, exactly as the
+// interpreter does (core.SpliceGroupSpan, the one implementation) — the
+// kernel splices the group in place of a ParenExpr or a Reach and expects to
+// meet the OpenParen on its next step. A first draft spliced the bare items,
+// and the COLLECT oracle's first corpus walk found what that does: a word
+// bound to a data splice is rewritten to ParenExpr([w]), spliced back to the
+// bare `w`, rewritten again, forever (`def vs word [2,3] add vs`). The seam's
+// contract is the interpreter's shape, marker for marker.
+func (h *regionHost) SpliceGroup(i, count int, items []core.Value, reach bool) {
+	core.SpliceGroupSpan(h.win, i, count, items, reach)
 }
 
 // --- classifications: delegated to core's shared implementations ---

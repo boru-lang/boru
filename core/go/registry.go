@@ -667,10 +667,6 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	// The other per-run Value scratch buffers pin the same way: a loop's
 	// re-mark tokens, a paren expansion's span, the matcher's resolved
 	// window, and its exclusion set (exceptions list C2).
-	clear(e.loopTokens[:cap(e.loopTokens)])
-	e.loopTokens = e.loopTokens[:0]
-	clear(e.peScratch[:cap(e.peScratch)])
-	e.peScratch = e.peScratch[:0]
 	clear(e.resolvedScratch[:cap(e.resolvedScratch)])
 	e.resolvedScratch = e.resolvedScratch[:0]
 	clear(e.excludeScratch)
@@ -1843,8 +1839,9 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	// Observability seam (interp_entry.go): the interpreter fn-call path.
 	r.noteInterp("CallBoru")
-	// Build token sequence (same as InstallFnDef handler).
-	var tokens []Value
+	// The unnamed arguments, the run's resolved prefix (in the InstallFnDef
+	// handler's frame order).
+	var unnamed []Value
 	var names []string
 
 	// A LEAF body — one that binds nothing and constructs no inner fn
@@ -1906,16 +1903,15 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 			InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 			names = append(names, p.Name)
 		} else {
-			tokens = append(tokens, args[i])
+			unnamed = append(unnamed, args[i])
 		}
 	}
 	// The unnamed-arg prefix assembled above is call-site-resolved data;
 	// stepping starts after it (arguments are inert — the sub-engine twin
 	// of FrameOpenInfo.ArgSpan; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
-	unnamedCount := len(tokens)
-	// append COPIES the shared body into tokens' backing array; the
-	// intermediate make+copy this used to do was a second copy per call.
-	tokens = append(tokens, sig.Body()...)
+	// The prefix and the shared body load onto the tape as two parts
+	// (RunParts), the body copied once, straight onto it.
+	unnamedCount := len(unnamed)
 
 	// Snapshot DefStacks lengths before body execution so we can
 	// clean up any defs created during body execution (Issue 2
@@ -1951,7 +1947,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	sub.StartAt = unnamedCount
 	sub.debugLabel = label
 	sub.DeferResidual = deferResidual
-	result, err := sub.Run(tokens)
+	result, err := sub.RunParts(unnamed, sig.Body())
 	if len(result) > 0 {
 		result = append([]Value(nil), result...)
 	}

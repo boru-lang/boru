@@ -180,13 +180,12 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 		},
 	})
 
-	tokens := append([]native.Value(nil), parsed...)
 	sub := native.New(modReg)
 	// C4 attribution (plan Phase 10): the preamble run IS the module load —
 	// a sanctioned interpreter entry reported under its named seam, so a
 	// compiled program's `import "boru:test"` adds zero UNattributed entries.
 	restoreAtt := modReg.SetInterpAttribution("module-load")
-	_, runErr := sub.Run(tokens)
+	_, runErr := sub.Run(parsed)
 	restoreAtt()
 	if runErr != nil {
 		return native.ModuleDesc{}, fmt.Errorf("test: run preamble: %w", runErr)
@@ -855,10 +854,16 @@ func checkPropBody(parent *native.Registry, sigC *native.FnSig, params []native.
 	if sigC != nil {
 		return core.InvokeCallback(parent, sigC, inputs, nil)
 	}
+	// The body's own tokens: a plain list's array is never written. A flex
+	// body is live, and the stamped sig is cached, so it keeps a snapshot.
+	toks := core.BodyTokens(body)
+	if native.IsFlexList(body) {
+		toks = append([]native.Value(nil), toks...)
+	}
 	sig := native.StampBodySig(parent, &native.FnSig{
 		Params:     params,
 		Returns:    []*native.Type{native.TAny},
-		Impl:       native.Boru(append([]native.Value(nil), core.BodyTokens(body)...)),
+		Impl:       native.Boru(toks),
 		BarrierPos: -1,
 	}, body, inputs)
 	if compiler.CompiledRef(sig) != nil {
@@ -1105,7 +1110,7 @@ func shrinkFailingProgram(
 		return native.NewNone(), "", 0, false
 	}
 	parent.Defs.Push("r", native.NewMap(randMap))
-	_, initialForm, err := stackform.Compile(parent, append([]native.Value(nil), genBody...))
+	_, initialForm, err := stackform.Compile(parent, genBody)
 	parent.Defs.Pop("r")
 	if err != nil || initialForm == nil || initialForm.Len() == 0 {
 		return native.NewNone(), "", 0, false

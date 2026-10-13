@@ -170,18 +170,23 @@ func TestDynTrailAnchorsAtTheRead(t *testing.T) {
 	}
 }
 
-// TestSetRootBodyCopies pins SetRootBody: nil-safe, and the seated tokens are
-// a copy the caller's later edits do not reach.
-func TestSetRootBodyCopies(t *testing.T) {
+// TestSetRootBodyShares pins SetRootBody: nil-safe, and the seated tokens
+// are the program's own — nothing writes a program's tokens — clamped, so an
+// append to the seated body reallocates instead of writing past the
+// program's end.
+func TestSetRootBodyShares(t *testing.T) {
 	var nilES *EmitState
 	nilES.SetRootBody([]core.Value{core.NewInteger(1)})
 
 	es := NewEmitState()
-	body := []core.Value{core.NewInteger(1), core.NewInteger(2)}
+	body := make([]core.Value, 2, 4)
+	body[0], body[1] = core.NewInteger(1), core.NewInteger(2)
 	es.SetRootBody(body)
-	body[0] = core.NewInteger(9)
-	if len(es.rootBody) != 2 || es.rootBody[0].String() != "1" {
-		t.Errorf("the root body is a copy: %v", es.rootBody)
+	if len(es.rootBody) != 2 || &es.rootBody[0] != &body[0] {
+		t.Errorf("the root body is not the program's own: %v", es.rootBody)
+	}
+	if cap(es.rootBody) != 2 {
+		t.Errorf("the seated body's capacity is %d, want it clamped to its length", cap(es.rootBody))
 	}
 }
 

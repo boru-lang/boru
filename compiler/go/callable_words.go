@@ -357,7 +357,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	if inputs == nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return false
 	}
-	bodyToks := bodyList.Slice()
+	bodyToks := storedBodyTokens(&body, bodyList)
 
 	// Lexical captures: body words resolving to an ENCLOSING fn's binding
 	// (a param or body-local of a fn currently being compiled) ride as the

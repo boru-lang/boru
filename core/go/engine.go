@@ -127,27 +127,12 @@ type Engine struct {
 	fwdSplitAt  int
 	fwdSplitPos SrcPos
 	fwdSplitN   int
-	// loopTokens is a reusable scratch buffer for stepMoveCont's per-
-	// iteration `mark + body + move` re-splice (for/each-style loops run
-	// their body in place on this tape — design/legacy/INTERPRETER-SPEED-PLAN.10.ignore
-	// #4). Tape.Splice COPIES the tokens in, so the buffer is free the
-	// moment Splice returns; a nested loop's stepMoveCont builds+splices
-	// atomically before control returns, so a single engine-owned buffer is
-	// reentrancy-safe.
-	loopTokens []Value
 	// sealed holds the sealed-region Loops (sealed.go), one per nesting
 	// depth of literal evaluation; sealDepth is the depth live now. A
 	// region at a depth is minted once and reused by every later literal
 	// evaluated at that depth, so a literal costs no allocation of its own.
 	sealed    []*Loop
 	sealDepth int
-	// peScratch is the reusable span buffer for expandParenExprScratch:
-	// a ParenExpr expands to `( items… )` immediately before a
-	// Tape.Splice (which copies the tokens in), so the buffer is free the
-	// moment the splice returns — same lifetime argument as loopTokens.
-	// The runPooledSub expansion sites keep the allocating variant (a
-	// sub-engine run intervenes there).
-	peScratch []Value
 	// resolvedScratch / excludeScratch are reusable buffers for
 	// effectiveResolved's two per-dispatch allocations — the resolved-stack
 	// snapshot and the forward-exclusion set — which forward-collecting
@@ -156,8 +141,8 @@ type Engine struct {
 	// dispatch, and its returned slice is consumed only by matchSignature —
 	// which merely READS it by index and never retains it — before any
 	// further dispatch runs. So one engine-owned buffer per engine is
-	// aliasing- and reentrancy-safe by the same argument as rrValues /
-	// loopTokens above. Both are reset at the top of effectiveResolved;
+	// aliasing- and reentrancy-safe by the same argument as rrValues above.
+	// Both are reset at the top of effectiveResolved;
 	// excludeScratch is never returned (fully consumed inside the scan).
 	resolvedScratch []Value
 	excludeScratch  map[int]bool
@@ -1598,14 +1583,6 @@ func traceSigStr(name string, sig *Signature) string {
 	return name + "(" + strings.Join(args, ", ") + ")"
 }
 
-// Run executes the input values through the stack machine and returns
-// the residual stack — there is no single "result value". After the
-// pointer walks off the end, end-of-input cleanup runs (resolve
-// pending forwards, reject stray `(`, strip mark/move markers,
-// auto-evaluate leftover lists/maps); whatever Values remain are
-// returned. Callers decide the shape they want: take [0] for a single
-// value, keep the slice for a list, or splice it back into a parent
-// tape.
 // stampAtomReferents gives each atom among a loaded tape's cells that has no
 // referent yet what its name is bound to now, when it is bound: a write in
 // the cell, the atom's holder for this run (SetAtomReferent). A list cell of
@@ -1684,7 +1661,28 @@ func atomReferentsIn(r *Registry, elems []Value) []Value {
 // referent.
 func hasAtomReferent(v *Value) bool { return v.occ != nil && v.occ.referent != nil }
 
-func (e *Engine) Run(input []Value) (result []Value, runErr error) {
+// Run executes the input values through the stack machine and returns
+// the residual stack — there is no single "result value". After the
+// pointer walks off the end, end-of-input cleanup runs (resolve
+// pending forwards, reject stray `(`, strip mark/move markers,
+// auto-evaluate leftover lists/maps); whatever Values remain are
+// returned. Callers decide the shape they want: take [0] for a single
+// value, keep the slice for a list, or splice it back into a parent
+// tape.
+func (e *Engine) Run(input []Value) ([]Value, error) {
+	return e.run(nil, input)
+}
+
+// RunParts is Run over the program prefix followed by body, loaded onto the
+// tape part by part — each copied once, straight onto it — so a caller whose
+// program is a resolved prefix (a callback's inputs, a frame's unnamed
+// arguments, an island's beneath) and a body never assembles the two first.
+// The caller's StartAt still says where stepping starts.
+func (e *Engine) RunParts(prefix, body []Value) ([]Value, error) {
+	return e.run(prefix, body)
+}
+
+func (e *Engine) run(prefix, input []Value) (result []Value, runErr error) {
 	// Observability seam (interp_entry.go): report this tree-walk entry to an
 	// armed frontier hook. One atomic load when unarmed.
 	e.Registry.noteInterp("Engine.Run")
@@ -1764,6 +1762,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 		// this run returns so a sub-engine's registry (an inline module's
 		// body) does not outlive its run on the recorder.
 		defer es.BindRegistry(e.Registry)()
+		if len(prefix) > 0 {
+			// The pass strips the whole program to carriers, a new run of
+			// its own: the parts are joined for it.
+			input = append(append(make([]Value, 0, len(prefix)+len(input)), prefix...), input...)
+			prefix = nil
+		}
 		pre := input
 		input = e.Registry.analysisStripToCarriers(input)
 		es.RememberStrippedOriginals(pre, input)
@@ -1780,12 +1784,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// up a fresh tape every execution. Falls back to a fresh tape when
 	// the existing buffer is too small. Per-run scratch state is cleared
 	// so nothing leaks across reuses.
-	if e.ReuseTape && e.Tape != nil && e.Tape.Reload(input) {
+	if e.ReuseTape && e.Tape != nil && e.Tape.ReloadRuns(prefix, input) {
 		// The reused tape's ceiling came from its first program; this one
 		// gets at least what a fresh tape would have given it.
-		e.Tape.EnsureBoundsFor(len(input), e.Registry.TapeConfig)
+		e.Tape.EnsureBoundsFor(len(prefix)+len(input), e.Registry.TapeConfig)
 	} else {
-		e.Tape = NewTapeWith(input, e.Registry.TapeConfig, e.tapeWarn)
+		e.Tape = NewTapeWithRuns(e.Registry.TapeConfig, e.tapeWarn, prefix, input)
 	}
 	// Post-parse referent resolution: each /q-style atom in the program
 	// takes what its name refers to, for any name already bound when the
@@ -2037,7 +2041,7 @@ func (e *Engine) stepToken(val *Value) error {
 			return e.stepLiteral()
 		}
 		items, _ := AsParenExpr(val)
-		e.Tape.Splice(e.Pointer, 1, e.expandParenExprScratch(items)...)
+		SpliceGroupSpan(e.Tape, e.Pointer, 1, items, false)
 
 	case IsReach(val):
 		// A parsed Reach (dot-access node, m.a.b — Eval=true) evaluates
@@ -2055,7 +2059,7 @@ func (e *Engine) stepToken(val *Value) error {
 			// a Reach collects nothing further, its key is bound in the
 			// chain.) Lower to its get-chain marker span in place.
 			// design/STRICT-FORWARD-BARRIER.0.md.
-			e.Tape.Splice(e.Pointer, 1, expandReach(info)...)
+			SpliceGroupSpan(e.Tape, e.Pointer, 1, lowerReach(info), true)
 		} else {
 			return e.stepLiteral()
 		}
@@ -2428,7 +2432,11 @@ func (e *Engine) ExpandSugarAt(tok Value, pos, i int, viable []ViableSig) (bool,
 
 func (e *Engine) FlowInterrupted() bool { return e.Registry.FlowCtrl != FlowNone }
 
-func (e *Engine) ScratchParenSpan(items []Value) []Value { return e.expandParenExprScratch(items) }
+// SpliceGroup is the collection seat's group splice (CollectHost) over this
+// engine's tape.
+func (e *Engine) SpliceGroup(i, count int, items []Value, reach bool) {
+	SpliceGroupSpan(e.Tape, i, count, items, reach)
+}
 
 // DefTop is the collection seat's binding lookup. Under an ANALYSIS pass a
 // name def-bound to a computed fn — `def f (mk 10)`, whose value is the
@@ -4854,7 +4862,7 @@ func (e *Engine) stepLiteral() error {
 	// nested-paren case).
 	if IsParenExpr(e.Tape.Ref(valIdx)) && !IsQuoted(e.Tape.Ref(valIdx)) && !e.pendingForwardWantsRawParen() {
 		items, _ := AsParenExpr(e.Tape.Ref(valIdx))
-		e.Tape.Splice(valIdx, 1, e.expandParenExprScratch(items)...)
+		SpliceGroupSpan(e.Tape, valIdx, 1, items, false)
 		return nil
 	}
 	// A Reach reaching stepLiteral (nested in a collapsing span, or a
@@ -4862,7 +4870,7 @@ func (e *Engine) stepLiteral() error {
 	// ParenExpr (Reach Phase B). Quoted/raw-pending reaches fall through.
 	if isEvalReach(e.Tape.Ref(valIdx)) && !e.pendingForwardWantsRawParen() {
 		info, _ := AsReach(e.Tape.Ref(valIdx))
-		e.Tape.Splice(valIdx, 1, expandReach(info)...)
+		SpliceGroupSpan(e.Tape, valIdx, 1, lowerReach(info), true)
 		return nil
 	}
 	// A sugar marker lowers to its word expansion in place (ADR-012
@@ -5343,9 +5351,12 @@ func AutoEvalConsumedMap(r *Registry, v Value, dataMap bool) (Value, error) {
 // lower INLINE into the enclosing unit (OpMakeList / OpInterp assembly), so
 // an ambient-context write inside it must decline rather than compile one
 // scope too shallow. kind names the region for the trace and the debugger.
-func (e *Engine) runInlineCtxRegion(input []Value, kind string, elemEvalRecordable bool) ([]Value, error) {
+func (e *Engine) runInlineCtxRegion(input []Value, kind string, elemEvalRecordable, group bool) ([]Value, error) {
 	if !e.Registry.analysisActive() {
-		return e.runSealed(input, kind, elemEvalRecordable)
+		return e.runSealed(input, kind, elemEvalRecordable, group)
+	}
+	if group {
+		input = expandParenExpr(input)
 	}
 	es := e.Registry.analysisRecorder()
 	es.PushInlineCtxBoundary()
@@ -5378,7 +5389,7 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	}
 	// A sealed region copies the elements onto the tape itself, and a
 	// sub-engine's Run copies its program onto its own.
-	result, err := e.runInlineCtxRegion(elems.elems, "list literal", e.IsTop || consumed || e.ElemEvalRecordable)
+	result, err := e.runInlineCtxRegion(elems.elems, "list literal", e.IsTop || consumed || e.ElemEvalRecordable, false)
 	if err != nil {
 		return Value{}, err
 	}
@@ -5488,7 +5499,7 @@ func (e *Engine) evalInterpParts(parts []InterpPart) (s string, dynamic bool, ho
 			buf.WriteString(part.Lit)
 			continue
 		}
-		result, runErr := e.runInlineCtxRegion(part.Expr, "interpolation hole", false)
+		result, runErr := e.runInlineCtxRegion(part.Expr, "interpolation hole", false, false)
 		if runErr != nil {
 			return "", dynamic, nil, false, runErr
 		}
@@ -5682,7 +5693,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 			// layer push), but its events lower inline into OpInterpXml's
 			// enclosing unit (NUR054 — the attribute holes ride evalInterpParts
 			// and are bracketed there).
-			results, err := e.runInlineCtxRegion(c.Expr, "interpolation hole", false)
+			results, err := e.runInlineCtxRegion(c.Expr, "interpolation hole", false, false)
 			if err != nil {
 				return Value{}, false, nil, false, err
 			}
@@ -5719,17 +5730,21 @@ func expandParenExpr(items []Value) []Value {
 	return span
 }
 
-// expandParenExprScratch is expandParenExpr into the engine's reusable
-// span buffer, for the call sites that Splice the span into the tape
-// immediately (the splice copies the tokens, freeing the buffer). Not
-// for spans handed to a sub-engine run — those use the allocating
-// variant above.
-func (e *Engine) expandParenExprScratch(items []Value) []Value {
-	span := append(e.peScratch[:0], NewOpenParen())
-	span = append(span, items...)
-	span = append(span, NewCloseParen())
-	e.peScratch = span
-	return span
+// SpliceGroupSpan replaces count cells of t at i with items wrapped in paren
+// markers — a ParenExpr's tokens, or a Reach's lowered get-chain — the span
+// the in-place collapse machinery (stepCloseParen / preEvalParens)
+// evaluates, each part copied once, straight onto t. reach tags the group
+// as reach-lowered, so a function value it resolves to does not dispatch
+// inside it (execFnDefLiteral): the group exists to scope the get-chain and
+// to let a `/` modifier apply to the whole path; it is not a call site, and
+// treating it as one is what made `Mod.word arg` match against an empty
+// argument window (NUR035).
+func SpliceGroupSpan(t *Tape, i, count int, items []Value, reach bool) {
+	open, shut := [1]Value{NewOpenParen()}, [1]Value{NewCloseParen()}
+	if reach {
+		SetReachGroup(&open[0], true)
+	}
+	t.SpliceRuns(i, count, open[:], items, shut[:])
 }
 
 // lowerReach turns a Reach into its equivalent get/getr chain tokens:
@@ -5739,7 +5754,21 @@ func (e *Engine) expandParenExprScratch(items []Value) []Value {
 // dot-access ParenExpr, so wrapping it with expandParenExpr and running it
 // in place reproduces exact get/getr semantics.
 func lowerReach(info ReachInfo) []Value {
-	out := make([]Value, 0, len(info.Receiver)+len(info.Segments)*2)
+	return appendLoweredReach(make([]Value, 0, len(info.Receiver)+len(info.Segments)*2), info)
+}
+
+// lowerReachGroup is lowerReach's chain wrapped in paren markers, the span
+// expandParenExpr would make of it, built in one array: the run a reach is
+// handed to a sub-engine or a unit as.
+func lowerReachGroup(info ReachInfo) []Value {
+	out := make([]Value, 0, len(info.Receiver)+len(info.Segments)*2+2)
+	out = append(out, NewOpenParen())
+	out = appendLoweredReach(out, info)
+	return append(out, NewCloseParen())
+}
+
+// appendLoweredReach appends info's get-chain to out (lowerReach).
+func appendLoweredReach(out []Value, info ReachInfo) []Value {
 	out = append(out, info.Receiver...)
 	var anchor Value
 	if len(info.Receiver) > 0 {
@@ -5782,20 +5811,6 @@ func isEvalReach(v *Value) bool {
 	return info.Eval
 }
 
-// expandReach returns the marker span an Eval Reach evaluates to — its
-// lowered get-chain wrapped in paren markers, run in place exactly like a
-// ParenExpr (Stage-1 lowering).
-func expandReach(info ReachInfo) []Value {
-	span := expandParenExpr(lowerReach(info))
-	// Tag the group as reach-lowered so a function value it resolves to does
-	// not dispatch inside it (execFnDefLiteral). The group exists to scope
-	// the get-chain and to let a `/` modifier apply to the whole path; it is
-	// not a call site, and treating it as one is what made `Mod.word arg`
-	// match against an empty argument window (NUR035).
-	SetReachGroup(&span[0], true)
-	return span
-}
-
 // ApplyReach evaluates a Reach against a concrete receiver value — the lens
 // "get" (design/REACH.10.md §7). The reach's own Receiver tokens are ignored
 // (a receiverless lens has none); recv becomes the base and the segments
@@ -5822,8 +5837,7 @@ func ApplyReach(r *Registry, info ReachInfo, recv Value) (Value, error) {
 		// frontier owes; the VM piece no longer produces that pair.
 		defer bailReplayAttribution(r, verr)()
 	}
-	toks := lowerReach(ReachInfo{Receiver: []Value{recv}, Segments: info.Segments})
-	res, err := RunPooledSub(r, expandParenExpr(toks), false)
+	res, err := RunPooledSub(r, lowerReachGroup(ReachInfo{Receiver: []Value{recv}, Segments: info.Segments}), false)
 	return lastReachResult(res, err)
 }
 
@@ -5884,7 +5898,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 		if folded, ok := e.constFoldContainerVal(items); ok {
 			if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
 				return e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
-					return e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
+					return e.runInlineCtxRegion(items, "map member", e.IsTop || consumed || e.ElemEvalRecordable, true)
 				}), true, nil
 			}
 		}
@@ -5895,7 +5909,7 @@ func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (
 	// results resolve as the map's operands (RecordMakeMap). Off that bracket
 	// — the bare pooled sub-run this used to be — a member the fold declined
 	// left the map with no compiled home.
-	result, err := e.runInlineCtxRegion(expandParenExpr(items), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
+	result, err := e.runInlineCtxRegion(items, "map member", e.IsTop || consumed || e.ElemEvalRecordable, true)
 	if err != nil {
 		return Value{}, false, err
 	}
@@ -5957,7 +5971,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// Computed key: evaluate the key text as boru code to get
 		// the actual string key. E.g., {[a]:1} with def a 'x' → {x:1}
 		if ckSet[key] {
-			keyResult, err := e.runSealed([]Value{NewWord(key)}, "map key", false)
+			keyResult, err := e.runSealed([]Value{NewWord(key)}, "map key", false, false)
 			if err != nil {
 				return Value{}, fmt.Errorf("computed key [%s]: %w", key, err)
 			}
@@ -6012,7 +6026,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// in the same inline region as a paren member.
 		if isEvalReach(&v) {
 			info, _ := AsReach(&v)
-			result, err := e.runInlineCtxRegion(lowerReach(info), "map member", e.IsTop || consumed || e.ElemEvalRecordable)
+			result, err := e.runInlineCtxRegion(lowerReach(info), "map member", e.IsTop || consumed || e.ElemEvalRecordable, false)
 			if err != nil {
 				return Value{}, err
 			}
@@ -6067,7 +6081,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// Evaluate each value as a sealed region of its own (a pooled
 		// sub-engine under analysis): a member's context layer is the
 		// member's.
-		result, err := e.runSealed([]Value{v}, "map member", e.IsTop || consumed || e.ElemEvalRecordable)
+		result, err := e.runSealed([]Value{v}, "map member", e.IsTop || consumed || e.ElemEvalRecordable, false)
 		if err != nil {
 			return Value{}, err
 		}
@@ -7720,13 +7734,12 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		defSnapshot = e.Registry.Defs.Snapshot()
 	}
 
-	// Append the sig's body tokens directly: append COPIES them into
-	// tokens' backing array, and sig.Body() (the shared BoruImpl.Body) is
-	// never mutated here, so the previous intermediate make+copy was a
-	// redundant per-call allocation (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
-	tokens = append(tokens, sig.Body()...)
-
-	tokens = AppendFrameTail(tokens, FrameTailSpec{
+	// The frame splices as three parts — the open marker with the unnamed
+	// args (tokens), the sig's body (the shared BoruImpl.Body, never
+	// written), the cleanup tail — each copied once, straight onto the
+	// tape: the body is not assembled into a per-call buffer first.
+	var tailArr [3]Value
+	tail := AppendFrameTail(tailArr[:0], FrameTailSpec{
 		Registry:       e.Registry,
 		Snapshot:       defSnapshot,
 		SkipCleanup:    leaf,
@@ -7739,7 +7752,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		Pos:            callPos,
 		EvalResidual:   ResidualEvalsInFrame(anonymous, sig.Body()),
 	})
-	tokens = append(tokens, NewCloseParen())
+	tail = append(tail, NewCloseParen())
 
 	// Report the application to an installed Recorder with an EMPTY name,
 	// which stackform.Replayable declines (NUR077).
@@ -7773,16 +7786,16 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 				dst++
 			}
 		}
-		e.Tape.Splice(dst, valIdx+1-dst, tokens...)
+		e.Tape.SpliceRuns(dst, valIdx+1-dst, tokens, sig.Body(), tail)
 		e.Pointer = firstArgIdx
 	} else if nArgs == 0 {
-		e.Tape.Splice(valIdx, 1, tokens...)
+		e.Tape.SpliceRuns(valIdx, 1, tokens, sig.Body(), tail)
 	} else {
 		argStart := valIdx - nArgs
 		if argStart < 0 {
 			argStart = 0
 		}
-		e.Tape.Splice(argStart, valIdx+1-argStart, tokens...)
+		e.Tape.SpliceRuns(argStart, valIdx+1-argStart, tokens, sig.Body(), tail)
 		e.Pointer = argStart
 	}
 
@@ -9164,21 +9177,16 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		// Generate new mark ID.
 		id := NextMarkID()
 
-		// Build replacement `mark + body + move` into a reused scratch
-		// buffer. The mark carries no body: a continuation's move never
+		// Splice the replacement `mark + body + move` part by part: the body
+		// is copied once, straight onto the tape, and cont.Body is never
+		// written. The mark carries no body: a continuation's move never
 		// replays one (stepMove hands it to this function first), and the
-		// Loop holds cont.Body for every iteration. Tape.Splice copies the
-		// whole token run into the tape, leaving cont.Body untouched.
-		body := cont.Body
-		tokens := e.loopTokens[:0]
-		tokens = append(tokens, NewMark(id))
-		tokens = append(tokens, body...)
-		tokens = append(tokens, NewMoveCont(id, info.Reason, cont))
-		e.loopTokens = tokens
+		// Loop holds cont.Body for every iteration.
+		mark, move := [1]Value{NewMark(id)}, [1]Value{NewMoveCont(id, info.Reason, cont)}
 
 		// Remove old mark ID, register new one.
 		delete(e.marks, info.To)
-		e.Tape.Splice(markIdx, moveIdx-markIdx+1, tokens...)
+		e.Tape.SpliceRuns(markIdx, moveIdx-markIdx+1, mark[:], cont.Body, move[:])
 		if e.marks == nil {
 			e.marks = make(map[string]bool)
 		}
@@ -9298,18 +9306,14 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 }
 
 // spliceWhileRegion replaces the current mark..move span with a fresh
-// mark + region + move triple (the same reused-scratch shape as
-// stepMoveCont's re-mark) and points the engine at the new mark.
+// mark + region + move triple (stepMoveCont's re-mark, the region copied
+// once, straight onto the tape) and points the engine at the new mark.
 func (e *Engine) spliceWhileRegion(markIdx, moveIdx int, info MoveInfo, region []Value, note string) {
 	id := NextMarkID()
-	tokens := e.loopTokens[:0]
-	tokens = append(tokens, NewMark(id))
-	tokens = append(tokens, region...)
-	tokens = append(tokens, NewMoveCont(id, info.Reason, info.Cont))
-	e.loopTokens = tokens
+	mark, move := [1]Value{NewMark(id)}, [1]Value{NewMoveCont(id, info.Reason, info.Cont)}
 
 	delete(e.marks, info.To)
-	e.Tape.Splice(markIdx, moveIdx-markIdx+1, tokens...)
+	e.Tape.SpliceRuns(markIdx, moveIdx-markIdx+1, mark[:], region, move[:])
 	if e.marks == nil {
 		e.marks = make(map[string]bool)
 	}

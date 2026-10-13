@@ -326,7 +326,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		declaredReturnPatterns = nil
 	}
 	declSite := s.Decl
-	bodyCopy := append([]core.Value(nil), s.Body()...)
+	// The sig's own body: a fn body's array is never written, and every
+	// analysis and run copies what it steps. Clamped, so an append
+	// reallocates.
+	sigBody := s.Body()
+	bodyToks := sigBody[:len(sigBody):len(sigBody)]
 	// The sig's own body slice, uncopied: its backing array identifies THIS
 	// construction of the lambda to the recorder's pending-apply lookup
 	// (PendingClosureApply) — the applied value's sig holds the same array.
@@ -401,13 +405,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// through to the normal analysis + unit compile, where the list is
 		// assembled in-frame against the param (fixed at call time, which the
 		// unit models exactly).
-		if raw, ok := DeferredParamListResidual(bodyCopy, paramNames); ok && fnDef.Anonymous {
+		if raw, ok := DeferredParamListResidual(bodyToks, paramNames); ok && fnDef.Anonymous {
 			// An afn is never generic (afnHandler declares no type params, so
 			// fnDef.Gen is nil whenever fnDef.Anonymous), hence genNames is empty
 			// here — no gen-binding cleanup is needed before the early return. A
 			// generic NAMED fn with a deferred-list body is not anonymous, so it
 			// falls through to the normal path, which pops genNames below.
-			AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, args, capturesCopy, declaredReturns, fnDef.Anonymous)
+			AnalyseFnBody(r, nameCopy, paramNames, bodyToks, args, capturesCopy, declaredReturns, fnDef.Anonymous)
 			return []core.Value{raw}
 		}
 		// Always analyse the body so diagnostics emitted by stepWord
@@ -544,26 +548,26 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			// site), but it keeps the compiled error from reporting an
 			// unknown position. Empty body falls back to a zero pos.
 			var fnPos core.SrcPos
-			if len(bodyCopy) > 0 {
-				fnPos = bodyCopy[0].Pos()
+			if len(bodyToks) > 0 {
+				fnPos = bodyToks[0].Pos()
 			}
-			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyCopy, captures: capturesCopy, params: sigParams, paramNames: paramNames,
+			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyToks, captures: capturesCopy, params: sigParams, paramNames: paramNames,
 				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
 				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
-			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
+			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyToks, sigParams, args, genArgs); fnUnit < 0 {
 				fnUnit = uc.compile(genArgs, "")
 			}
 		}
-		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
+		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyToks, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
 		stk = collapseTailApply(es, fnUnit, stk)
-		stk = collapseElidedTailApply(bodyCopy, stk, fnDef.Anonymous || len(declaredReturns) == 1)
+		stk = collapseElidedTailApply(bodyToks, stk, fnDef.Anonymous || len(declaredReturns) == 1)
 		for i := len(genNames) - 1; i >= 0; i-- {
 			r.Defs.Pop(genNames[i])
 		}
 		if genSpec == nil {
 			checkBodyReturnConformance(r, nameCopy, declaredReturns, declaredReturnPatterns,
 				unnamedParamCount(sigParams), allConcreteArgs(args), stk,
-				bodyStartPos(bodyCopy), bodySpanEnd(bodyCopy))
+				bodyStartPos(bodyToks), bodySpanEnd(bodyToks))
 		}
 		if len(declaredReturns) > 0 {
 			out := make([]core.Value, len(declaredReturns))

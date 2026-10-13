@@ -157,9 +157,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			spec.Bound = append(spec.Bound, prov.Name)
 
 			sub := New(r)
-			body := make([]Value, len(toks))
-			copy(body, toks)
-			out, err := sub.Run(body)
+			out, err := sub.Run(toks)
 			if err != nil {
 				return fail(fmt.Errorf("gen: parameter %s: %w", w.Name, err))
 			}

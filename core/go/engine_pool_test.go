@@ -221,13 +221,11 @@ func TestPutSubEngineClearsScratch(t *testing.T) {
 func TestPutSubEngineClearsEveryScratch(t *testing.T) {
 	r := poolTestRegistry(t)
 	e := r.TakeSubEngine()
-	e.loopTokens = append(e.loopTokens, NewInteger(1))
-	e.peScratch = append(e.peScratch, NewInteger(2))
 	e.resolvedScratch = append(e.resolvedScratch, NewInteger(3))
 	e.excludeScratch = map[int]bool{4: true}
 	r.PutSubEngine(e)
 	pooled := r.TakeSubEngine() // LIFO: the same engine back
-	for name, buf := range map[string][]Value{"loopTokens": pooled.loopTokens, "peScratch": pooled.peScratch, "resolvedScratch": pooled.resolvedScratch} {
+	for name, buf := range map[string][]Value{"resolvedScratch": pooled.resolvedScratch} {
 		if len(buf) != 0 {
 			t.Fatalf("%s not reset to empty: len %d", name, len(buf))
 		}

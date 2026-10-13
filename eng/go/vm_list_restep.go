@@ -23,7 +23,9 @@ func (vc *vmContext) makeListReStep(reg *core.Registry, spec compiler.ListReStep
 	elems := append([]core.Value(nil), stack[base:]...)
 	hazard, quotes, inert := false, false, true
 	fn := map[int]bool{}
-	tokens := append([]core.Value(nil), elems...)
+	// The island's run is the elements themselves unless a noted word takes
+	// an element's place: then a run of its own (copied on that write).
+	var tokens []core.Value
 	for _, i := range spec.Fn {
 		fn[i] = true
 		if dynBodyValueReSteps(elems[i]) {
@@ -37,6 +39,9 @@ func (vc *vmContext) makeListReStep(reg *core.Registry, spec compiler.ListReStep
 				continue
 			}
 			if w, noted := spec.Words[i+1]; noted {
+				if tokens == nil {
+					tokens = append([]core.Value(nil), elems...)
+				}
 				tokens[i+1] = core.WithPosAt(core.NewWord(w.Name), w.Pos)
 			} else {
 				quotes = true
@@ -50,6 +55,9 @@ func (vc *vmContext) makeListReStep(reg *core.Registry, spec compiler.ListReStep
 		if !spec.Island || quotes || !inert {
 			return nil, vmDefer(reg, curDebug, pc, "vm:list-restep",
 				"a list literal's element is a fn value the interpreter re-steps over its neighbours, where the compiled list holds it as data (NUR295); the compiled runtime cannot execute it")
+		}
+		if tokens == nil {
+			tokens = elems
 		}
 		results, err := vc.islandRun(reg, tokens)
 		if err != nil {

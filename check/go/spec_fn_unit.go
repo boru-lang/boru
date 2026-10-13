@@ -62,7 +62,9 @@ func CompileFnSigUnitAs(caller *core.Registry, fnDef core.FnDefInfo, name string
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
-	body := append([]core.Value(nil), s.Body()...)
+	// The sig's own body (never written), clamped so an append reallocates.
+	sigBody := s.Body()
+	body := sigBody[:len(sigBody):len(sigBody)]
 	var fnPos core.SrcPos
 	if len(body) > 0 {
 		fnPos = body[0].Pos()

@@ -161,21 +161,47 @@ func GrowthCeiling(initial, maxGrows int, factor float64) int {
 // by cfg. warn (may be nil) receives one-time 90/95/99% capacity
 // warnings.
 func NewTapeWith(vals []Value, cfg TapeConfig, warn func(string)) *Tape {
-	// resolve guarantees initial >= len(vals) (its final clamp raises
-	// initial to progLen), so no re-check is needed here.
-	initial, maxGrows, factor := cfg.Resolve(len(vals))
+	return NewTapeWithRuns(cfg, warn, vals)
+}
+
+// NewTapeWithRuns is NewTapeWith over a program given as runs laid end to
+// end — a run's resolved prefix and the body it steps — each copied once,
+// straight onto the tape, never assembled in a buffer first.
+func NewTapeWithRuns(cfg TapeConfig, warn func(string), runs ...[]Value) *Tape {
+	n := runsLen(runs)
+	// resolve guarantees initial >= n (its final clamp raises initial to
+	// progLen), so no re-check is needed here.
+	initial, maxGrows, factor := cfg.Resolve(n)
 	buf := make([]Value, initial)
-	copy(buf, vals)
-	return &Tape{
+	t := &Tape{
 		buf:      buf,
-		forwards: countForwards(vals),
-		gapStart: len(vals),
 		gapEnd:   initial,
 		maxCap:   GrowthCeiling(initial, maxGrows, factor),
 		maxGrows: maxGrows,
 		grows0:   maxGrows,
 		factor:   factor,
 		warn:     warn,
+	}
+	t.fillRuns(runs)
+	return t
+}
+
+// runsLen is the total length of runs.
+func runsLen(runs [][]Value) int {
+	n := 0
+	for _, r := range runs {
+		n += len(r)
+	}
+	return n
+}
+
+// fillRuns copies runs into the gap at its start, in order: the caller has
+// made room for all of them.
+func (t *Tape) fillRuns(runs [][]Value) {
+	for _, r := range runs {
+		copy(t.buf[t.gapStart:], r)
+		t.gapStart += len(r)
+		t.forwards += countForwards(r)
 	}
 }
 
@@ -196,22 +222,28 @@ func NewTapeWith(vals []Value, cfg TapeConfig, warn func(string)) *Tape {
 // every reload was a fifth of an `each` over a fn value and of a `do`
 // body on the interpreter (each callback is one pooled reload).
 func (t *Tape) Reload(vals []Value) bool {
-	if cap(t.buf) < len(vals) {
+	return t.ReloadRuns(vals)
+}
+
+// ReloadRuns is Reload over a program given as runs laid end to end (see
+// NewTapeWithRuns), each copied once, straight onto the tape.
+func (t *Tape) ReloadRuns(runs ...[]Value) bool {
+	lo := runsLen(runs)
+	if cap(t.buf) < lo {
 		return false
 	}
 	n := cap(t.buf)
 	t.buf = t.buf[:n]
-	lo := len(vals)
 	if t.gapStart > lo {
 		zero(t.buf[lo:t.gapStart]) // the old prefix the new program does not overwrite
 	}
 	if tail := max(t.gapEnd, lo); tail < n {
 		zero(t.buf[tail:n]) // the old tail above the gap
 	}
-	copy(t.buf, vals)
-	t.gapStart = len(vals)
+	t.gapStart = 0
+	t.forwards = 0
+	t.fillRuns(runs)
 	t.gapEnd = n
-	t.forwards = countForwards(vals)
 	t.maxGrows = t.grows0
 	t.exhausted = false
 	t.warned = [3]bool{}
@@ -475,6 +507,37 @@ func (t *Tape) Splice(i, count int, repl ...Value) {
 	copy(t.buf[t.gapStart:], repl)
 	t.gapStart += len(repl)
 	t.forwards += countForwards(repl)
+}
+
+// SpliceRuns is Splice with the replacement given as runs laid end to end —
+// a region's markers around a body, a frame's arguments before it — each
+// copied once, straight into the gap: a replacement built from parts is
+// never assembled in a buffer first.
+func (t *Tape) SpliceRuns(i, count int, runs ...[]Value) {
+	if i < 0 {
+		i = 0
+	}
+	if max := t.Len(); i > max {
+		i = max
+	}
+	if count < 0 {
+		count = 0
+	}
+	if avail := t.Len() - i; count > avail {
+		count = avail
+	}
+	t.MoveGap(i)
+	for k := 0; k < count; k++ {
+		if IsForward(&t.buf[t.gapEnd+k]) {
+			t.forwards--
+		}
+		t.buf[t.gapEnd+k] = Value{}
+	}
+	t.gapEnd += count
+	if !t.grow(runsLen(runs)) {
+		return // ceiling hit; engine aborts loudly on the next step
+	}
+	t.fillRuns(runs)
 }
 
 // Prefix returns the contiguous region below logical index end, when end

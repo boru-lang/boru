@@ -113,9 +113,11 @@ type CollectHost interface {
 	// return) was raised inside an evaluation, which abandons the walk to
 	// the enclosing frame.
 	FlowInterrupted() bool
-	// ScratchParenSpan wraps items in paren markers using the host's
-	// reusable span buffer — valid only until the caller splices it.
-	ScratchParenSpan(items []Value) []Value
+	// SpliceGroup replaces count tokens of the window at i with items
+	// wrapped in paren markers (SpliceGroupSpan) — a ParenExpr's tokens, a
+	// Reach's lowered get-chain (reach tags the group) — each part copied
+	// once, straight into the window.
+	SpliceGroup(i, count int, items []Value, reach bool)
 
 	// --- classifications: pure questions against the live binding set ---
 
@@ -429,7 +431,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 				continue
 			}
 			peItems, _ := AsParenExpr(&tok)
-			win.Splice(scanIdx, 1, h.ScratchParenSpan(peItems)...)
+			h.SpliceGroup(scanIdx, 1, peItems, false)
 			continue
 		}
 
@@ -450,7 +452,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			// function word that collects its own args stops the scan
 			// (below). design/STRICT-FORWARD-BARRIER.0.md.
 			info, _ := AsReach(&tok)
-			win.Splice(scanIdx, 1, expandReach(info)...)
+			h.SpliceGroup(scanIdx, 1, lowerReach(info), true)
 			continue
 		}
 

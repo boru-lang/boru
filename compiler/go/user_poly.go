@@ -301,7 +301,9 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 // runtime value against the same placeholder membership). Returns ok=false on
 // any compile failure, leaving the caller to keep the original MarkUncompilable.
 func compileUserPolyArm(r *core.Registry, es core.EmitRecorder, word string, s *core.Signature, owner core.FnDefInfo) (int, bool) {
-	body := append([]core.Value(nil), s.Body()...)
+	// The sig's own body (never written), clamped so an append reallocates.
+	sigBody := s.Body()
+	body := sigBody[:len(sigBody):len(sigBody)]
 	if len(body) == 0 {
 		return -1, false
 	}

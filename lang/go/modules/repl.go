@@ -79,11 +79,10 @@ func BuildReplModule(parent *native.Registry) (native.ModuleDesc, error) {
 		},
 	})
 
-	tokens := append([]native.Value(nil), replParsed...)
 	sub := native.New(modReg)
 	// C4 attribution: the preamble run IS the module load (see boru:test).
 	restoreAtt := modReg.SetInterpAttribution("module-load")
-	_, runErr := sub.Run(tokens)
+	_, runErr := sub.Run(replParsed)
 	restoreAtt()
 	if runErr != nil {
 		return native.ModuleDesc{}, fmt.Errorf("repl: run preamble: %w", runErr)

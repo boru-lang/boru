@@ -253,17 +253,6 @@ func (r *Registry) putCallLoop(lp *Loop) {
 	r.callLoops = append(r.callLoops, lp)
 }
 
-// loopRegionTokens builds one iteration's token run into buf: the loop's
-// mark, the sealing paren with its inert-input span, the inputs, the body's
-// tokens, the close paren and the move. The synthetic tokens are minted
-// once per loop and reused — one mark id for the loop's life (the region
-// is replaced in place, so the id is on the tape exactly once), the paren
-// re-minted only when the input span changes — so an iteration allocates
-// nothing of its own. The mark and the move carry the owning word's
-// position, so an error the loop itself raises at its move (stampErrPos
-// reads the pointer's token) is reported at the word, as a handler's error
-// is.
-
 // IsLoopRegion reports whether a handler's results are a driven loop's
 // first region (StartLoop's tokens) rather than values: the region's body
 // tokens are the program's own and keep their positions — execMatch does
@@ -275,12 +264,33 @@ func IsLoopRegion(results []Value) bool {
 	info, _ := AsMark(&results[0])
 	return info.Loop != nil
 }
+
+// loopRegionTokens builds one iteration's token run into buf: the loop's
+// mark, the sealing paren with its inert-input span, the inputs, the body's
+// tokens, the close paren and the move. The synthetic tokens are minted
+// once per loop and reused — one mark id for the loop's life (the region
+// is replaced in place, so the id is on the tape exactly once), the paren
+// re-minted only when the input span changes — so an iteration allocates
+// nothing of its own. The mark and the move carry the owning word's
+// position, so an error the loop itself raises at its move (stampErrPos
+// reads the pointer's token) is reported at the word, as a handler's error
+// is.
 func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value {
 	lp.mint(len(inputs))
 	out := append(buf[:0], lp.mark, lp.open)
 	out = append(out, inputs...)
 	out = append(out, lp.bodyTokens(body)...)
 	return append(out, lp.close, lp.move)
+}
+
+// spliceLoopRegion splices an iteration's token run (loopRegionTokens) over
+// count cells of t at i, part by part: the inputs and the body are copied
+// once, straight onto the tape.
+func spliceLoopRegion(t *Tape, i, count int, lp *Loop, inputs []Value, body Value) {
+	lp.mint(len(inputs))
+	head := [2]Value{lp.mark, lp.open}
+	tail := [2]Value{lp.close, lp.move}
+	t.SpliceRuns(i, count, head[:], inputs, lp.bodyTokens(body), tail[:])
 }
 
 // mint makes the loop's synthetic tokens once — the mark, the close paren
@@ -460,8 +470,7 @@ func (e *Engine) spliceDrivenIteration(markIdx, moveIdx int, info MoveInfo) erro
 	// re-stepping the mark — the pointer lands on the sealing paren, whose
 	// step skips the inputs as ever (one Run-loop step fewer per element).
 	lp.Iter++
-	e.loopTokens = loopRegionTokens(e.loopTokens, lp, inputs, body)
-	e.Tape.Splice(markIdx, moveIdx-markIdx+1, e.loopTokens...)
+	spliceLoopRegion(e.Tape, markIdx, moveIdx-markIdx+1, lp, inputs, body)
 	e.beginLoopIteration(lp)
 	e.Pointer = markIdx + 1
 	if e.trace != nil {

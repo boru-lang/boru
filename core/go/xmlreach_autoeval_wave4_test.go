@@ -6,7 +6,7 @@ import (
 )
 
 // Coverage for the XML-interpolation evaluator (EvalXmlInterp /
-// BuildXmlFromTmpl), the Reach lowering trio (lowerReach / expandReach /
+// BuildXmlFromTmpl), the Reach lowering trio (lowerReach / SpliceGroupSpan /
 // ApplyReach), and the container auto-eval arms (autoEvalMap /
 // autoEvalList / evalInterpString / evalParenExprResults) in engine.go.
 // Reuses covRegistry from compile_pipeline_cov_test.go.
@@ -187,9 +187,16 @@ func TestLowerReachShape(t *testing.T) {
 	if !IsParenExpr(&toks[6]) {
 		t.Errorf("computed key did not lower to a ParenExpr: %v", toks[6])
 	}
-	span := expandReach(info)
-	if !IsOpenParen(&span[0]) || !IsCloseParen(&span[len(span)-1]) {
-		t.Error("expandReach did not wrap in paren markers")
+	// Spliced in place, the chain is a reach-tagged paren group; built as
+	// a run of its own (a sub-engine's, a lens unit's), an untagged one.
+	tp := NewTape([]Value{NewInteger(0), NewReach(info), NewInteger(9)}, StackHeadroom)
+	SpliceGroupSpan(tp, 1, 1, toks, true)
+	if tp.Len() != len(toks)+4 || !IsOpenParen(tp.Ref(1)) || !IsReachGroup(tp.Ref(1)) || !IsCloseParen(tp.Ref(len(toks)+2)) {
+		t.Errorf("SpliceGroupSpan did not splice a reach group: %v", tp.Snapshot())
+	}
+	span := lowerReachGroup(info)
+	if len(span) != len(toks)+2 || !IsOpenParen(&span[0]) || IsReachGroup(&span[0]) || !IsCloseParen(&span[len(span)-1]) {
+		t.Errorf("lowerReachGroup did not wrap the chain in paren markers: %v", span)
 	}
 }
 

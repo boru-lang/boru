@@ -323,6 +323,12 @@ func WithPos(v, src Value) Value {
 	return v
 }
 
+// ThreadPos gives this holder dst src's position — the record src's
+// position lives in, shared, so it allocates nothing — keeping dst's other
+// occurrence state: WithPos for a slot the caller owns, written in place
+// instead of copied out and back.
+func ThreadPos(dst, src *Value) { setPosRef(dst, posOf(src)) }
+
 func WithPosAt(v Value, p SrcPos) Value {
 	if p.Row == 0 || v.Pos().Row != 0 {
 		return v

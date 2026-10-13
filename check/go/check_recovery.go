@@ -444,7 +444,7 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	// fold needs a real value, so Mode is off for its duration) — without
 	// the explicit tag its interpreter entries would report unattributed.
 	restoreAtt := r.SetInterpAttribution("check:const-fold")
-	res, err := core.RunContainerSub(r, append([]core.Value(nil), items...), false)
+	res, err := core.RunContainerSub(r, items, false)
 	restoreAtt()
 	r.Check.Mode = prev
 	// A break/continue escaping the expression (a container member's run,

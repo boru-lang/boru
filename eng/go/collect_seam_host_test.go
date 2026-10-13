@@ -37,9 +37,8 @@ func (w *seamWindow) Splice(i, count int, repl ...core.Value) {
 // evaluation half records that it was asked, which is all this test needs —
 // the VM's real adapter runs a compiled fragment there.
 type seamHost struct {
-	reg  *core.Registry
-	win  *seamWindow
-	span []core.Value
+	reg *core.Registry
+	win *seamWindow
 
 	calls map[string]int
 }
@@ -73,10 +72,9 @@ func (h *seamHost) ExpandSugarAt(tok core.Value, pos, i int, viable []core.Viabl
 
 func (h *seamHost) FlowInterrupted() bool { h.note("FlowInterrupted"); return false }
 
-func (h *seamHost) ScratchParenSpan(items []core.Value) []core.Value {
-	h.note("ScratchParenSpan")
-	h.span = append(h.span[:0], items...)
-	return h.span
+func (h *seamHost) SpliceGroup(i, count int, items []core.Value, _ bool) {
+	h.note("SpliceGroup")
+	h.win.Splice(i, count, items...)
 }
 
 func (h *seamHost) DefTop(name string) (*core.Value, bool) {

@@ -69,10 +69,10 @@ func compiledLensSig(r *Registry, lu *lensUnit, segs []ReachSeg) *Signature {
 		return nil
 	}
 	lu.once.Do(func() {
-		body := expandParenExpr(lowerReach(ReachInfo{
+		body := lowerReachGroup(ReachInfo{
 			Receiver: []Value{NewWord(lensParam)},
 			Segments: segs,
-		}))
+		})
 		fd := FnDefInfo{Signatures: []FnSig{{
 			Params:     []FnParam{{Name: lensParam, Type: TAny}},
 			Returns:    []*Type{TAny},

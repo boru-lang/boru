@@ -1317,7 +1317,7 @@ func nestedToks(v core.Value) ([]core.Value, bool) {
 	}
 	if v.Parent.Equal(core.TList) && core.IsEval(&v) && !core.IsQuoted(&v) {
 		l, err := core.AsList(v)
-		return l.Slice(), err == nil
+		return l.Elems(), err == nil
 	}
 	return nil, false
 }

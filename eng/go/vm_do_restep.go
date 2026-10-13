@@ -30,7 +30,7 @@ func (vc *vmContext) doReStep(reg *core.Registry, s *compiler.SigRef, results []
 	if !isolated && slices.ContainsFunc(results, takesArgsAtPointer) {
 		return nil, vmDefer(reg, debug, pc, "vm:do-restep", s.Word+"'s result is a fn value the interpreter re-steps where the `do` stood, over values the compiled `do` cannot hand it (NUR317); the compiled runtime cannot execute it")
 	}
-	out, err := runIslandResolved(reg, nil, append([]core.Value(nil), results...))
+	out, err := runIslandResolved(reg, nil, results)
 	if err != nil {
 		return nil, stampAt(err, debug, pc, reg)
 	}

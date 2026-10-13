@@ -4720,6 +4720,16 @@ func firstStampableSig(fd core.FnDefInfo) (int, bool) {
 	return -1, false
 }
 
+// storedBodyTokens is a stored code body's tokens as a unit keeps them: the
+// list's own array, which a plain list never writes, or a snapshot of a flex
+// list's, whose view is live.
+func storedBodyTokens(body *core.Value, lst core.ReadList) []core.Value {
+	if _, flex := body.Data.(*core.FlexListData); flex {
+		return lst.Slice()
+	}
+	return lst.Elems()
+}
+
 // compileStoredBody compiles a NoEvalArgs CODE-BODY list (spawn's process body) to
 // a 0-param unit and returns a synthetic fn-value carrier holding both the raw
 // Body tokens (interpreter fallback) and a CompiledFnRef (registered for the
@@ -4736,7 +4746,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if err != nil || lst.IsNil() {
 		return core.Value{}, false
 	}
-	tokens := lst.Slice()
+	tokens := storedBodyTokens(&bodyList, lst)
 	if len(tokens) == 0 || bodyToksHaveSentinel(tokens) {
 		return core.Value{}, false
 	}
@@ -4806,7 +4816,7 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	if err != nil || lst.IsNil() {
 		return core.Value{}, false
 	}
-	tokens := lst.Slice()
+	tokens := storedBodyTokens(&bodyList, lst)
 	if len(tokens) == 0 || bodyToksHaveSentinel(tokens) {
 		return core.Value{}, false
 	}
@@ -8487,15 +8497,17 @@ func (es *EmitState) SetUnitSpecialisation(unit int, params []int, fns []core.Va
 
 // SetUnitBody seats a fn unit's source body tokens (EmitRecorder): the
 // stream a per-read deopt hands to the interpreter (planDeopts, NUR123).
-// SetRootBody seats the PROGRAM's own tokens (a copy), the body a top-level
-// landing's `/q` claim hands to the interpreter from the word on (NUR190,
-// LandingWord.Deopt). A host that compiles without seating them keeps the
-// loud defer at such a claim.
+// SetRootBody seats the PROGRAM's own tokens (shared: nothing writes them),
+// the body a top-level landing's `/q` claim hands to the interpreter from the
+// word on (NUR190, LandingWord.Deopt). A host that compiles without seating
+// them keeps the loud defer at such a claim.
 func (es *EmitState) SetRootBody(body []core.Value) {
 	if es == nil {
 		return
 	}
-	es.rootBody = append([]core.Value(nil), body...)
+	// The program's own tokens, which nothing writes; clamped, so an append
+	// reallocates.
+	es.rootBody = body[:len(body):len(body)]
 }
 
 func (es *EmitState) SetUnitBody(unit int, body []core.Value) {

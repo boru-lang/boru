@@ -116,28 +116,23 @@ func TestRegionHostEvaluationsDecline(t *testing.T) {
 	}
 }
 
-// ScratchParenSpan reuses one buffer, per the seam's contract that the result
-// is valid only until the caller splices. The assertion is that the CONTENT is
-// right and the buffer is REUSED — a fresh allocation per call would pass a
-// content-only check while costing an allocation on a collection's hottest
-// path.
-func TestRegionHostScratchSpanReuses(t *testing.T) {
-	h, _ := newHost(t)
-	// The span is the interpreter's shape: the items BETWEEN paren markers.
-	// A span without them is what the kernel splices in for a ParenExpr, so
-	// it would never meet an OpenParen on its next step — the first corpus
-	// walk of the COLLECT oracle spun forever on exactly that.
-	first := h.ScratchParenSpan([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if len(first) != 4 || !core.IsOpenParen(&first[0]) || !core.IsCloseParen(&first[3]) ||
-		core.CanonValue(first[1]) != "1" || core.CanonValue(first[2]) != "2" {
-		t.Fatalf("span = %v, want ( 1 2 )", first)
+// SpliceGroup splices the interpreter's shape into the window: the items
+// BETWEEN paren markers, in place of the token they replace. A splice
+// without the markers is what the kernel would leave for a ParenExpr, so it
+// would never meet an OpenParen on its next step — the first corpus walk of
+// the COLLECT oracle spun forever on exactly that. A reach group's open
+// marker carries the reach tag.
+func TestRegionHostSpliceGroup(t *testing.T) {
+	h, _ := newHost(t, core.NewInteger(0), core.NewInteger(9))
+	h.SpliceGroup(1, 0, []core.Value{core.NewInteger(1), core.NewInteger(2)}, false)
+	win := h.Window()
+	if win.Len() != 6 || !core.IsOpenParen(win.Ref(1)) || core.IsReachGroup(win.Ref(1)) || !core.IsCloseParen(win.Ref(4)) ||
+		core.CanonValue(*win.Ref(2)) != "1" || core.CanonValue(*win.Ref(3)) != "2" || core.CanonValue(*win.Ref(5)) != "9" {
+		t.Fatalf("window = %v, want 0 ( 1 2 ) 9", h.win.Snapshot())
 	}
-	second := h.ScratchParenSpan([]core.Value{core.NewInteger(3)})
-	if len(second) != 3 || core.CanonValue(second[1]) != "3" {
-		t.Fatalf("second span = %v, want ( 3 )", second)
-	}
-	if &first[:1][0] != &second[0] {
-		t.Error("the span buffer must be reused, not reallocated per call")
+	h.SpliceGroup(0, 1, []core.Value{core.NewInteger(3)}, true)
+	if !core.IsOpenParen(win.Ref(0)) || !core.IsReachGroup(win.Ref(0)) || core.CanonValue(*win.Ref(1)) != "3" || !core.IsCloseParen(win.Ref(2)) {
+		t.Fatalf("reach group = %v, want a tagged ( 3 )", h.win.Snapshot())
 	}
 }
 

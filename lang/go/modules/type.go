@@ -174,8 +174,7 @@ func stripNoneFromField(t native.Value) native.Value {
 
 func latticeNode(v native.Value) *native.Type {
 	if native.IsBareTypeNode(&v) {
-		node := v
-		return &node
+		return native.NodeOf(&v)
 	}
 	return v.Parent
 }

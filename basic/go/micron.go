@@ -2335,7 +2335,7 @@ func micronConstruct(base, arg Value, r *Registry) ([]Value, error) {
 func micronInstantiate(typ, data Value, r *Registry) ([]Value, error) {
 	out, err := micronInstantiateAt(typ, data, r)
 	for i := range out {
-		out[i] = WithPos(out[i], data)
+		ThreadPos(&out[i], &data)
 	}
 	return out, err
 }

@@ -220,7 +220,9 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	if !replayRegionLive(region, words) {
 		return stack, true, nil
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:base]...)
+	// The frame region is read where it lies (the island's load copies it);
+	// the tokens are this replay's own, written as words convert.
+	prefix := stack[frameBase:base]
 	tokens := append([]core.Value(nil), region...)
 	var installed []string
 	converted := 0

@@ -58,20 +58,20 @@ func vmDeferAlt(r *core.Registry, curDebug []core.SrcPos, pc int, site, msg stri
 // runIslandResolved is RunResolved with the island flow-escape contract
 // (Engine.flowUnwind): a break/continue escaping the run tears down the
 // island's live frames and returns no values, leaving the registry FlowCtrl
-// flag set for the VM to translate (escapedFlow).
+// flag set for the VM to translate (escapedFlow). The inputs and the tokens
+// load onto the island's tape as two parts (Engine.RunParts), each copied
+// once: a caller hands its own slices — a view of the stack, a lowered
+// island, a run it built — and nothing writes them.
 func runIslandResolved(r *core.Registry, inputs, tokens []core.Value) ([]core.Value, error) {
 	// Census seam: core.RunResolved emits "RunResolved" here; this is its
 	// island twin, so it names itself rather than reporting only the
 	// Engine.Run its pooled sub-engine emits.
 	r.NoteInterp("vm:island-resolved")
-	input := make([]core.Value, len(inputs)+len(tokens))
-	copy(input, inputs)
-	copy(input[len(inputs):], tokens)
 	e := r.TakeSubEngine()
 	e.IsTop = false
 	e.StartAt = len(inputs)
 	e.FlowUnwind = true
-	res, err := e.Run(input)
+	res, err := e.RunParts(inputs, tokens)
 	if len(res) > 0 {
 		res = append([]core.Value(nil), res...)
 	}

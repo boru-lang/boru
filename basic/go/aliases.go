@@ -650,6 +650,7 @@ func TypeParamName(t *core.Type) string                      { return core.TypeP
 func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
 func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
 func MintRetagged(v *core.Value, def *core.Type) core.Value  { return core.MintRetagged(v, def) }
+func ThreadPos(dst, src *core.Value)                         { core.ThreadPos(dst, src) }
 func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
 func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
 func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }

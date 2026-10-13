@@ -84,11 +84,16 @@ func (e *Engine) sealsLiterals() bool {
 // (sealsLiterals). kind names the region for the trace and the debugger;
 // elemEvalRecordable configures the sub-engine (Engine.ElemEvalRecordable)
 // and means nothing to the region, whose evaluation is never recorded.
-func (e *Engine) runSealed(toks []Value, kind string, elemEvalRecordable bool) ([]Value, error) {
+// group runs toks as a paren group (a ParenExpr member's tokens): wrapped in
+// paren markers, as expandParenExpr would wrap them.
+func (e *Engine) runSealed(toks []Value, kind string, elemEvalRecordable, group bool) ([]Value, error) {
 	if !e.sealsLiterals() {
+		if group {
+			toks = expandParenExpr(toks)
+		}
 		return RunContainerSub(e.Registry, toks, elemEvalRecordable)
 	}
-	return e.evalSealed(toks, kind)
+	return e.evalSealed(toks, kind, group)
 }
 
 // takeSealed hands out the sealed-region Loop for the current nesting
@@ -110,14 +115,22 @@ func (e *Engine) takeSealed(kind string) (*Loop, *sealedDriver) {
 	return lp, drv
 }
 
-// sealedRegionTokens builds a sealed region's token run into buf: the
-// loop's mark, its sealing paren (no inert inputs — the elements are
-// stepped from the first), the elements, the close paren and the move.
-func sealedRegionTokens(buf []Value, lp *Loop, toks []Value) []Value {
+// spliceSealedRegion splices a sealed region's token run at i: the loop's
+// mark, its sealing paren (no inert inputs — the elements are stepped from
+// the first), the elements — in paren markers of their own for a group —
+// the close paren and the move. The elements are copied once, straight onto
+// the tape.
+func spliceSealedRegion(t *Tape, i int, lp *Loop, toks []Value, group bool) {
 	lp.mint(0)
-	out := append(buf[:0], lp.mark, lp.open)
-	out = append(out, toks...)
-	return append(out, lp.close, lp.move)
+	if group {
+		head := [3]Value{lp.mark, lp.open, NewOpenParen()}
+		tail := [3]Value{NewCloseParen(), lp.close, lp.move}
+		t.SpliceRuns(i, 0, head[:], toks, tail[:])
+		return
+	}
+	head := [2]Value{lp.mark, lp.open}
+	tail := [2]Value{lp.close, lp.move}
+	t.SpliceRuns(i, 0, head[:], toks, tail[:])
 }
 
 // evalSealed evaluates toks as a sealed region of this tape (see the file
@@ -145,7 +158,7 @@ func sealedRegionTokens(buf []Value, lp *Loop, toks []Value) []Value {
 // unmatched `(` among the elements, or a token that steps past the region),
 // and then the elements' own run's report stands: unmatched opening
 // parenthesis.
-func (e *Engine) evalSealed(toks []Value, kind string) ([]Value, error) {
+func (e *Engine) evalSealed(toks []Value, kind string, group bool) ([]Value, error) {
 	saved := e.Pointer
 	at := min(max(saved+1, 0), e.Tape.Len())
 	tail := e.Tape.Len() - at
@@ -155,8 +168,7 @@ func (e *Engine) evalSealed(toks []Value, kind string) ([]Value, error) {
 		e.releaseSealed(drv, hold)
 		e.sealDepth--
 	}()
-	e.loopTokens = sealedRegionTokens(e.loopTokens, lp, toks)
-	e.Tape.Splice(at, 0, e.loopTokens...)
+	spliceSealedRegion(e.Tape, at, lp, toks, group)
 	e.Pointer = at
 	for step := 0; !drv.done; step++ {
 		if e.stepsTaken-e.budgetBase >= e.stepLimit {
