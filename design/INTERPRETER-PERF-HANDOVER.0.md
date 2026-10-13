@@ -138,9 +138,11 @@ is independent of the policy and still open.
 > **2026-10-12, later:** phases 0 to 2 have landed; §9 of the review
 > records each with its numbers.
 >
-> **2026-10-13:** phase 3 has landed too (header 104 → 72 bytes, the
-> occurrence state the holder's, `NodeOf` for `CanonicalType`; anchors
-> 0.881 of phase 2). Decision 3 — phase 4 — now has its numbers in §9.
+> **2026-10-13:** phase 3 has landed too (header 104 → 64 bytes, the
+> occurrence state the holder's, `NodeOf` for `CanonicalType`, the
+> recorder keyed on the holder, a token run copied once; anchors 0.809 of
+> phase 2, 0.615 of phase 0). Decision 3 — phase 4 — now has its numbers
+> in §9.
 
 From the no-copy review (its §7 has the detail and a recommendation for
 each):

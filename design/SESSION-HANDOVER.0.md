@@ -52,17 +52,23 @@ Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2
 > that is not this work's, and it adds no uncovered statement of its own.
 
 > **2026-10-13:** phase 3 has landed on the same branch (§9 of
-> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md)): the occurrence state is the
-> holder's — identity, ascription and source binding in an immutable
-> record behind one pointer, every occurrence flag (the apply and closure
-> seam marks included) a bit of the header — so the header is 72 bytes
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md)), in two passes. The
+> occurrence state is the holder's — identity, position, ascription,
+> source binding, a binding's name for a fn value, the recorder key and
+> a quoted atom's referent in an immutable record behind one pointer,
+> every occurrence flag a bit of the header — so the header is 64 bytes
 > (from 104); bindings are read in place (`DefTable.TopValue`); a type
-> literal names its node (`NodeOf`) and `CanonicalType` is gone. The
-> anchors run at 0.881 of phase 2's time (0.67 of phase 0's, chained).
-> Exceptions D1, D3 and D5 are retired; D2, D4, D6–D8 are re-dated to
-> phase 4 with their reasons. Decision 3 (phase 4) is the maintainer's
-> next call, with the numbers in §9. `make cover-gate-check` is red on
-> main too (97 statements); not this work's.
+> literal names its node (`NodeOf`) and `CanonicalType` is gone; the
+> recorder keys a producer on its holder (`RecKey`); retags and fresh
+> identities are constructions (`core/go/mint.go`); a token run is
+> copied once, onto the tape. Every family-2 and family-3 row of the
+> four inventories has a disposition and none is open. The anchors run
+> at 0.809 of phase 2's time (0.615 of phase 0's, chained). Of the
+> exceptions list's transitional class only D10, the by-value header, is
+> left; decision 3 (phase 4) is the maintainer's next call, with the
+> numbers in §9. The merged ADR-008 gate's last 35 statements and `make
+> cover-gate-check`'s 97 were closed on this branch before the second
+> pass (`970d0d50f`, `0490d8236`).
 
 > ## Where things stand on 2026-10-05 — the baseline
 >
