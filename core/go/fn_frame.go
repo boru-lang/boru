@@ -156,7 +156,7 @@ type FrameTailSpec struct {
 	// Returns / UnnamedCount / FuncName / Pos populate the ReturnCheck;
 	// no ReturnCheck is emitted when Returns is empty. A zero Pos means
 	// "stamp later": execMatch stamps handler-produced ReturnChecks
-	// with the call-site position (stampResultPos keys on Pos.Row == 0).
+	// with the call-site position (stampResultCells keys on Pos.Row == 0).
 	Returns []*Type
 	// ReturnPatterns mirrors Returns positionally: the structural
 	// constraint for a declared return whose *Type degraded to Any.

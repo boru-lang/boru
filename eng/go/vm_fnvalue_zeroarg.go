@@ -43,7 +43,7 @@ import (
 // interpreter's tape.
 func (vc *vmContext) zeroArgFnValueApply(reg *core.Registry, fnVal core.Value, window []core.Value) ([]core.Value, error, bool) {
 	fd, ok := core.FnDefOf(fnVal.Data)
-	if !ok || fd.Anonymous || !core.FnValueOnlyZeroArgSigs(*fd) || !fnValueParkable(reg, fnVal, *fd) {
+	if !ok || fd.Anonymous || !core.FnValueOnlyZeroArgSigs(fd) || !fnValueParkable(reg, fnVal, *fd) {
 		return nil, nil, false
 	}
 	for _, v := range window {

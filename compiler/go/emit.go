@@ -13601,7 +13601,7 @@ func fnValueMayTakeArgs(v core.Value) bool {
 	if !ok {
 		return true
 	}
-	return !core.FnValueOnlyZeroArgSigs(*fd)
+	return !core.FnValueOnlyZeroArgSigs(fd)
 }
 
 // branchArmMayTakeArgs is fnValueMayTakeArgs for a branch ARM's value, asking
@@ -13643,7 +13643,7 @@ func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
 			return false
 		}
 		fd, ok := core.FnDefOf(v.Data)
-		return !ok || v.Carrier || !fd.NamedDef() || fd.Macro || !core.FnValueOnlyZeroArgSigs(*fd)
+		return !ok || v.Carrier || !fd.NamedDef() || fd.Macro || !core.FnValueOnlyZeroArgSigs(fd)
 	}
 	for _, p := range []*core.Value{b.ThenValue, b.ElsValue} {
 		if p != nil && leaves(*p) {
@@ -18861,7 +18861,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 		return
 	}
 	if mv, ok := es.MemberFnReadValue(core.IDOf(&top)); ok {
-		if fd, isFn := mv.Data.(*core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(*fd) {
+		if fd, isFn := mv.Data.(*core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(fd) {
 			return
 		}
 	}

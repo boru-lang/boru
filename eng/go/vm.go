@@ -1364,7 +1364,7 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 }
 
 // stampFnResultPos is the compiled mirror of the interpreter's
-// stampResultPos (core engine.go, execMatch): a fn VALUE a native word hands
+// stampResultCells (core engine.go, execMatch): a fn VALUE a native word hands
 // back without a position of its own takes the dispatching word's — the op's
 // debug position, the token the interpreter's pointer stood on. The position
 // is what a later application of the value anchors its return-contract error
@@ -1959,7 +1959,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// none can quote-capture the following word. Standing aside costs
 		// nothing — the read keeps today's residual apply, which is what
 		// answered these correctly before the landing existed.
-		if !core.FnValueOnlyZeroArgSigs(*fnDef) {
+		if !core.FnValueOnlyZeroArgSigs(fnDef) {
 			return stack, nil, nil
 		}
 		return vc.landingFire(reg, v, stack, top, curDebug, pc)
@@ -2621,7 +2621,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	// dispatches under the name its def baked (NUR239). An event-produced or
 	// `/v`-delivered lead has no name to dispatch under, and keeps the
 	// no-match below.
-	if fd, ok := fnVal.Data.(*core.FnDefInfo); ok && n > 0 && head.Name != "" && core.FnValueOnlyZeroArgSigs(*fd) {
+	if fd, ok := fnVal.Data.(*core.FnDefInfo); ok && n > 0 && head.Name != "" && core.FnValueOnlyZeroArgSigs(fd) {
 		core.InstallFrameBinding(reg, head.Name, fnVal)
 		island := make([]core.Value, 0, n+1)
 		if !head.Leading {
@@ -2861,7 +2861,7 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 	if cl, ok := closureView(&fnVal); ok {
 		// The `apply` word hands the value back marked, and the interpreter
 		// stamps a positionless fn result with the dispatching word's
-		// position (stampResultPos) before the re-step applies it: a
+		// position (stampResultCells) before the re-step applies it: a
 		// factory's lambda applied by `apply` answers its contract at the
 		// `apply` (NUR347's anchor rule).
 		fnVal = stampFnPos(fnVal, curDebug, pc)
@@ -3422,14 +3422,14 @@ func (vc *vmContext) namedMissRaise(spec *compiler.DynMethodSpec, fnVal core.Val
 // `9 7`). appliedLead writes it so.
 func namedRuns(v core.Value) bool {
 	fd, ok := v.Data.(*core.FnDefInfo)
-	return ok && core.FnValueOnlyZeroArgSigs(*fd)
+	return ok && core.FnValueOnlyZeroArgSigs(fd)
 }
 
 // appliedLead is fn value v marked to run where it is stepped — the name's
 // call (namedRuns) — as `apply` marks a fn of no argument (core.IsApplied);
 // any other value as it is.
 func appliedLead(v core.Value) core.Value {
-	if fd, ok := core.FnDefOf(v.Data); ok && core.FnValueOnlyZeroArgSigs(*fd) {
+	if fd, ok := core.FnDefOf(v.Data); ok && core.FnValueOnlyZeroArgSigs(fd) {
 		core.SetApplied(&v, true)
 	}
 	return v
@@ -3455,7 +3455,7 @@ func (vc *vmContext) placesAlone(v core.Value, args []core.Value, alone bool) bo
 	if !ok {
 		return false
 	}
-	if core.FnValueOnlyZeroArgSigs(*fd) {
+	if core.FnValueOnlyZeroArgSigs(fd) {
 		return true
 	}
 	own := fd.OwnSigs()
@@ -3765,7 +3765,7 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 // 42), so it is not parked.
 func replayLeadParks(lead core.Value, words []compiler.DynFrameWord) bool {
 	fd, ok := lead.Data.(*core.FnDefInfo)
-	if !ok || (len(words) > 0 && words[0].Name != "") || !core.FnValueOnlyZeroArgSigs(*fd) {
+	if !ok || (len(words) > 0 && words[0].Name != "") || !core.FnValueOnlyZeroArgSigs(fd) {
 		return false
 	}
 	return (fd.Anonymous && !core.IsApplied(&lead)) || fd.Macro

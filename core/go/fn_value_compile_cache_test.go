@@ -32,50 +32,50 @@ func TestCompiledFnDefForCachesPerIdentityAndRegistry(t *testing.T) {
 	r := newTestRegistry(t)
 	fd := cacheFnValue(t, "", CapturedBinding{Name: "k", Value: NewInteger(1)})
 
-	first := compiledFnDefFor(r, fd)
+	first := compiledFnDefFor(r, &fd)
 	if first == nil || len(first.Signatures) != 1 || first.Signatures[0].DispatchHandler() == nil {
 		t.Fatalf("compiled form = %+v, want one sig with the body-runner attached", first)
 	}
 	// A COPY of the value (the same token, the same lists) hits.
 	copyOf := fd
-	if again := compiledFnDefFor(r, copyOf); again != first {
+	if again := compiledFnDefFor(r, &copyOf); again != first {
 		t.Error("a second dispatch of the same value must reuse the compiled form")
 	}
 	// Another registry compiles its own form (the body-runner closes over
 	// the registry) and takes the cache over.
 	r2 := newTestRegistry(t)
-	other := compiledFnDefFor(r2, fd)
+	other := compiledFnDefFor(r2, &fd)
 	if other == first {
 		t.Error("a different registry must not share the compiled form")
 	}
-	if compiledFnDefFor(r2, fd) != other {
+	if compiledFnDefFor(r2, &fd) != other {
 		t.Error("the other registry's form must be cached in turn")
 	}
-	if compiledFnDefFor(r, fd) == other {
+	if compiledFnDefFor(r, &fd) == other {
 		t.Error("the first registry must recompile after the cache moved registries")
 	}
 	// A REBUILT signature list under the same token (a looked-up name's
 	// aggregate regenerates its slice) recompiles.
 	rebuilt := fd
 	rebuilt.Signatures = append([]Signature(nil), fd.Signatures...)
-	cur := compiledFnDefFor(r, fd)
-	if compiledFnDefFor(r, rebuilt) == cur {
+	cur := compiledFnDefFor(r, &fd)
+	if compiledFnDefFor(r, &rebuilt) == cur {
 		t.Error("a rebuilt signature list must recompile")
 	}
 	// A list of another LENGTH under the same token — an overload appended
 	// in place — recompiles too.
 	grown := fd
 	grown.Signatures = append(fd.Signatures[:1:1], fd.Signatures[0])
-	cur = compiledFnDefFor(r, fd)
-	if compiledFnDefFor(r, grown) == cur {
+	cur = compiledFnDefFor(r, &fd)
+	if compiledFnDefFor(r, &grown) == cur {
 		t.Error("a signature list of another length must recompile")
 	}
 	// The same token under another NAME compiles under that name: the
 	// frame's diagnostics carry it.
 	renamed := fd
 	renamed.Name = "alias"
-	cur = compiledFnDefFor(r, fd)
-	if named := compiledFnDefFor(r, renamed); named == cur || named.Name != "alias" {
+	cur = compiledFnDefFor(r, &fd)
+	if named := compiledFnDefFor(r, &renamed); named == cur || named.Name != "alias" {
 		t.Errorf("a renamed copy must compile under its own name, got %q (same form: %v)", named.Name, named == cur)
 	}
 }
@@ -92,8 +92,8 @@ func TestCompiledFnDefForWithoutIdentityCompilesEveryTime(t *testing.T) {
 			Impl:       Boru([]Value{NewWord("x")}),
 		}},
 	}
-	a := compiledFnDefFor(r, fd)
-	b := compiledFnDefFor(r, fd)
+	a := compiledFnDefFor(r, &fd)
+	b := compiledFnDefFor(r, &fd)
 	if a == nil || b == nil || a == b {
 		t.Error("a payload with no identity has nowhere to cache and compiles each time")
 	}

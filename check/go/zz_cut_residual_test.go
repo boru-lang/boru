@@ -727,7 +727,7 @@ func TestW8AnonFnCheckModeUnnamedParamsStackActiveSlot(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewInteger(2), core.NewInteger(3), core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 2
-	if err := e.ExecFnDefSigStackMatch(2, fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(2, &fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }

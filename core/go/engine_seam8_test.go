@@ -377,7 +377,7 @@ func TestW8ExecFnDefStackMatchCheckZeroArg(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -392,7 +392,7 @@ func TestW8ExecFnDefStackMatchCheckZeroArgEmptyBody(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -409,7 +409,7 @@ func TestW8ExecFnDefStackMatchCheckNamed(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(2), NewInteger(3), NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 2
-	if err := e.ExecFnDefSigStackMatch(2, fnDef, []Value{NewInteger(2), NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(2, &fnDef, []Value{NewInteger(2), NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -426,7 +426,7 @@ func TestW8ExecFnDefStackMatchCheckUnnamed(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(2), NewInteger(3), NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 2
-	if err := e.ExecFnDefSigStackMatch(2, fnDef, []Value{NewInteger(2), NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(2, &fnDef, []Value{NewInteger(2), NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -446,7 +446,7 @@ func TestW8ExecFnDefStackMatchNamedPatternUnifyFail(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(3), NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -465,7 +465,7 @@ func TestW8ExecFnDefStackMatchUnnamedTypeMismatch(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(3), NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -484,7 +484,7 @@ func TestW8ExecFnDefStackMatchUnnamedPatternUnifyFail(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(3), NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -820,7 +820,7 @@ func TestW8ExecFnDefStackMatchUnnamedMapPatternFail(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{arg}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }

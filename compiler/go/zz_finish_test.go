@@ -47,7 +47,7 @@ func TestW8ExecFnDefStackMatchCheckFnValueUnnamed(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewInteger(3), core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []core.Value{core.NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []core.Value{core.NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }

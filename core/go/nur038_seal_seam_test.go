@@ -257,19 +257,19 @@ func TestNur038FnValueSigShapes(t *testing.T) {
 
 	// fnValueOnlyZeroArgSigs: all-0-arg is a property fn; any arg-taking
 	// sig, a sig-less value, or a fallback-only value is not.
-	if !FnValueOnlyZeroArgSigs(FnDefInfo{Name: "p", Signatures: []Signature{zero}}) {
+	if !FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "p", Signatures: []Signature{zero}}) {
 		t.Error("an all-0-arg fn is a property read")
 	}
-	if !FnValueOnlyZeroArgSigs(FnDefInfo{Name: "pf", Signatures: []Signature{zero, fb}}) {
+	if !FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "pf", Signatures: []Signature{zero, fb}}) {
 		t.Error("a synthetic Fallback does not disqualify a property fn")
 	}
-	if FnValueOnlyZeroArgSigs(FnDefInfo{Name: "m", Signatures: []Signature{zero, one}}) {
+	if FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "m", Signatures: []Signature{zero, one}}) {
 		t.Error("a mixed fn keeps the NUR035 deferral")
 	}
-	if FnValueOnlyZeroArgSigs(FnDefInfo{Name: "s"}) {
+	if FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "s"}) {
 		t.Error("a sig-less value proves nothing")
 	}
-	if FnValueOnlyZeroArgSigs(FnDefInfo{Name: "fo", Signatures: []Signature{fb}}) {
+	if FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "fo", Signatures: []Signature{fb}}) {
 		t.Error("a fallback-only value proves nothing")
 	}
 }

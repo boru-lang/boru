@@ -64,7 +64,7 @@ func gate426Call(t *testing.T, r *core.Registry, body []core.Value, returns []*c
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewInteger(7), core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []core.Value{core.NewInteger(7)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []core.Value{core.NewInteger(7)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 	return e.Tape.Snapshot()

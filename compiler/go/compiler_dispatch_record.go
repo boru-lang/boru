@@ -367,7 +367,7 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 func parkedMemberFn(v core.Value) bool {
 	fd, ok := core.FnDefOf(v.Data)
 	if !ok || core.IsQuoted(&v) || v.Carrier || !fd.Anonymous || core.IsApplied(&v) || fd.Macro || len(fd.Captured) != 0 ||
-		!core.FnValueOnlyZeroArgSigs(*fd) {
+		!core.FnValueOnlyZeroArgSigs(fd) {
 		return false
 	}
 	// A fallback overload makes the landing's aggregate view unmodelled

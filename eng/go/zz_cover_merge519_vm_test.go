@@ -111,7 +111,7 @@ func TestMerge519DynTrailZeroArgLeadRaises(t *testing.T) {
 			Impl: core.Boru([]core.Value{core.NewWord("cfail"), core.NewInteger(1)}),
 		}},
 	})
-	if !core.FnValueOnlyZeroArgSigs(*lead.Data.(*core.FnDefInfo)) {
+	if !core.FnValueOnlyZeroArgSigs(lead.Data.(*core.FnDefInfo)) {
 		t.Fatal("the lead must take no argument")
 	}
 	vc := seam7VC(r)

@@ -32,6 +32,13 @@ package core
 // slot's own, and the record its header points at is never shared for
 // writing.
 //
+// One record is the exception, by design: a pooled Loop's position (Loop.at,
+// loop.go) is re-aimed when the Loop is reused at another call site, and
+// only the loop's own synthetic tokens — its mark, parens and move, which
+// live inside the one region it runs — refer to it. Nothing threads a loop
+// token's position onto a value (a call's results take the call-site word's,
+// stampResultCells), so no value that outlives the region sees it change.
+//
 // The occurrence FLAGS (quoted, eval, undefined, failed dispatch, reach
 // group, dynamic, and the seam marks: applied, return-trimmed, signature
 // matched) are two bytes of the header instead, in the padding the

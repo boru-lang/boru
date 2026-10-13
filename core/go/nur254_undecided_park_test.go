@@ -78,7 +78,7 @@ func TestNUR254RecordUndecidedApply(t *testing.T) {
 		e := NewTop(r)
 		e.Tape = NewTape([]Value{NewInteger(9), NewCarrier(TInteger), NewFunction(fd)}, StackHeadroom)
 		e.Pointer = 2
-		err = e.ExecFnDefSigStackMatch(2, fd, []Value{NewInteger(9), NewCarrier(TInteger)})
+		err = e.ExecFnDefSigStackMatch(2, &fd, []Value{NewInteger(9), NewCarrier(TInteger)})
 		return e, rec, err
 	}
 	e, rec, err := run(true)

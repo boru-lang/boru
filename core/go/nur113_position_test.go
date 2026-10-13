@@ -31,7 +31,7 @@ func TestWithPosAt(t *testing.T) {
 
 // TestAnalysisFunctionResultTakesCallPosition pins NUR113's core half: the
 // check-mode dispatch seam stamps a positionless FUNCTION result with the
-// call's own position, the equivalent of the interpreter's stampResultPos.
+// call's own position, the equivalent of the interpreter's stampResultCells.
 //
 // It matters because a module export is handed back verbatim, built at
 // module-construction time with no position, and it is the token a later VALUE

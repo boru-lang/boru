@@ -114,7 +114,7 @@ func TestModuleGateStackMatchArm(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 0
-	err := e.ExecFnDefSigStackMatch(0, fnDef, nil)
+	err := e.ExecFnDefSigStackMatch(0, &fnDef, nil)
 	if err == nil || !strings.Contains(err.Error(), "module export denied") {
 		t.Fatalf("the stack-match path must gate a stamped module fn, got %v", err)
 	}
@@ -126,7 +126,7 @@ func TestModuleGateStackMatchArm(t *testing.T) {
 	e2 := NewTop(r)
 	e2.Tape = NewTape([]Value{NewFunction(allowed)}, StackHeadroom)
 	e2.Pointer = 0
-	if err := e2.ExecFnDefSigStackMatch(0, allowed, nil); err != nil {
+	if err := e2.ExecFnDefSigStackMatch(0, &allowed, nil); err != nil {
 		t.Errorf("an unruled export must dispatch: %v", err)
 	}
 }

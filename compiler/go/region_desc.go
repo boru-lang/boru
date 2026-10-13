@@ -186,7 +186,7 @@ type ClosureRetSpec struct {
 	// Pos is the fn VALUE's own source position — where the reference that
 	// produced this callback was written (`cbad/v`), not where the calling
 	// word sits. It is the interpreter's ReturnCheckInfo.Pos, stamped onto
-	// the Function value by stampResultPos, so carrying it here is what makes
+	// the Function value by stampResultCells, so carrying it here is what makes
 	// the compiled diagnostic point at the same token the interpreter's does.
 	Pos core.SrcPos
 	// Source is the callback fn VALUE itself (ClosurePayload.Source): the

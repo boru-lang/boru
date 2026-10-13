@@ -561,7 +561,7 @@ type ClosurePayload struct {
 	Source *Value
 	// RetPos is where the callback REFERENCE was written (`cbad/v`), which is
 	// the position the interpreter anchors a return-contract error on: its
-	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultPos
+	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultCells
 	// as the reference produces it. A compiled unit's RET has no call site to
 	// read, so the closure path carries it here — without it the compiled
 	// diagnostic agrees in value and taxonomy but loses the position, which

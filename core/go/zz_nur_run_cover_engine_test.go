@@ -517,7 +517,7 @@ func TestNurRunDefiniteFailureRecordsUnitTrap(t *testing.T) {
 			e := NewTop(r)
 			e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
 			e.Pointer = 1
-			if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+			if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{arg}); err != nil {
 				t.Fatalf("analysis must not raise: %v", err)
 			}
 			if len(rec.unitTraps) != tc.wantTraps {

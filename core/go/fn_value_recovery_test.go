@@ -123,7 +123,7 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 		"union carrier":   NewCarrier(TDisjunct),
 		"bound word":      NewWord("fvr-any"),
 	} {
-		if !eng(operand).fnValueNoMatchRecovers(1, fnDef, fn) {
+		if !eng(operand).fnValueNoMatchRecovers(1, &fnDef, fn) {
 			t.Errorf("%s: an unknown-type operand must recover", name)
 		}
 	}
@@ -134,18 +134,18 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 		"definite carrier": NewCarrier(TString),
 		"unbound word":     NewWord("fvr-unbound"),
 	} {
-		if eng(operand).fnValueNoMatchRecovers(1, fnDef, fn) {
+		if eng(operand).fnValueNoMatchRecovers(1, &fnDef, fn) {
 			t.Errorf("%s: a definite operand must not recover", name)
 		}
 	}
 
 	// A foreign name that is not a registered native there declines.
 	local := FnDefInfo{Name: "fvr-local", Registry: mod}
-	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, local, fn) {
+	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &local, fn) {
 		t.Error("a non-native foreign fn must not recover")
 	}
 	// An at-home fn value declines at the first gate.
-	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, FnDefInfo{Name: "fvr-send", Registry: r}, fn) {
+	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &FnDefInfo{Name: "fvr-send", Registry: r}, fn) {
 		t.Error("an at-home fn value must not recover")
 	}
 	// An overload no poly re-match can drive declines: a callable spec, a
@@ -160,7 +160,7 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 	bodied.Impl = &BoruImpl{Body: []Value{NewInteger(1)}}
 	for name, s := range map[string]Signature{"callable": callable, "no-eval": noEval, "quoted": quoted, "body": bodied} {
 		bad := &FnDefInfo{Name: "fvr-send", Signatures: []Signature{pnmSig(0, TInteger, TString), s}}
-		if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, fnDef, bad) {
+		if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &fnDef, bad) {
 			t.Errorf("%s: an undrivable overload must not recover", name)
 		}
 	}

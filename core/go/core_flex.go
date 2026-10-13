@@ -398,7 +398,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		if refusal != nil {
 			return nil, weakRefusalError(reg, "make", "WeakFlexMap", refusal)
 		}
-		out = WithPos(out, srcVal)
+		ThreadPos(&out, &srcVal)
 		// Weak keeps {:T}, like flex: the constraint rides the header
 		// elem on flex/adopted sources, and the ChildTypeInfo payload
 		// on a concrete typed-map literal.
@@ -420,7 +420,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		if refusal != nil {
 			return nil, weakRefusalError(reg, "make", "WeakFlexList", refusal)
 		}
-		out = WithPos(out, srcVal)
+		ThreadPos(&out, &srcVal)
 		// Weak keeps [:T], like flex (header elem or typed-literal payload).
 		if elem, ok := srcVal.ElemConstraint(); ok {
 			out.SetElemConstraint(elem)

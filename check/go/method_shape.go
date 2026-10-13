@@ -329,7 +329,7 @@ func inertStatementWindow(e *core.Engine, valIdx int) (winEnd int, ok bool) {
 // must answer this question identically, so there is exactly one
 // implementation.
 func allZeroArgSigs(fn *core.FnDefInfo) bool {
-	return core.FnValueOnlyZeroArgSigs(*fn)
+	return core.FnValueOnlyZeroArgSigs(fn)
 }
 
 // fnDefName names a function value for a compile failure message.

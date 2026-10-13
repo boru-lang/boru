@@ -1345,10 +1345,12 @@ func (e *Engine) voidArgErrorFor(name string, pos SrcPos) *BoruError {
 		pos)
 }
 
-// stampResultPos stamps pos onto handler-produced values that lack a source
-// position: ReturnCheck markers (so a return-type error built later knows the
-// call site) and freshly-constructed Function values (so an anonymous
-// `fn`/`afn` value carries its construction site for downstream errors). Only
+// stampResultCells stamps pos onto the n handler results spliced at start
+// that lack a source position — ReturnCheck markers (so a return-type error
+// built later knows the call site) and Function values (so an anonymous
+// `fn`/`afn` value carries its construction site for downstream errors) —
+// in their tape cells, the results' holders: the handler's own slice, which
+// may be a frame skeleton every call shares, is never written. Only
 // zero-Pos entries are touched, so values that already carry a position — a
 // stored fn passed through, a literal — are left alone.
 //
@@ -1356,22 +1358,23 @@ func (e *Engine) voidArgErrorFor(name string, pos SrcPos) *BoruError {
 // stamped values rather than re-minted per dispatch (positions are minted
 // once at parse and never mutated — occurrence.go's sharing rule). A nil
 // pos means the token carries no position: nothing to stamp.
-func stampResultPos(vals []Value, pos *position) {
+func (e *Engine) stampResultCells(start, n int, pos *position) {
 	if pos == nil || pos.Row == 0 {
 		return
 	}
-	for i := range vals {
-		if vals[i].Pos().Row != 0 {
+	for i := start; i < start+n && i < e.Tape.Len(); i++ {
+		c := e.Tape.Ref(i)
+		if c.Pos().Row != 0 {
 			continue
 		}
 		switch {
-		case IsReturnCheck(&vals[i]):
-			if rc, err := AsReturnCheck(&vals[i]); err == nil && rc.Pos.Row == 0 {
+		case IsReturnCheck(c):
+			if rc, err := AsReturnCheck(c); err == nil && rc.Pos.Row == 0 {
 				rc.Pos = pos.SrcPos
-				vals[i] = NewReturnCheck(rc)
+				e.Tape.Set(i, NewReturnCheck(rc))
 			}
-		case vals[i].Parent.Equal(TFunction):
-			setPosRef(&vals[i], pos)
+		case c.Parent.Equal(TFunction):
+			setPosRef(c, pos)
 		}
 	}
 }
@@ -4049,7 +4052,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)
 		// Stamp a positionless FUNCTION result with this call's position,
 		// AFTER the recorder has re-IDed the outputs — the interpreter's
-		// stampResultPos equivalent for the check pass. A module export
+		// stampResultCells equivalent for the check pass. A module export
 		// (`Assert.not-equal`) is handed back verbatim by moduleNSGetReturns
 		// with no position of its own, and it is the token a later VALUE
 		// dispatch reads its own position from, so without this every opcode
@@ -4057,7 +4060,8 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		stampCallResultPositions(results, pos)
 		e.noteFnResultReSteps(match.Sig, callEnd, results)
 		e.noteCollectionHazards(match.Sig, sortedIndices)
-		return e.spliceMatchResults(match, sortedIndices, n, results)
+		e.spliceMatchResults(match, sortedIndices, n, results)
+		return nil
 	}
 
 	// Compute context (cheap O(1) call).
@@ -4176,7 +4180,10 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		}
 	}
 
-	e.stampHandlerResults(results)
+	// The call-site position the results take where they lack one, read
+	// before the splice replaces the word; they are stamped in their tape
+	// cells after it (stampResultCells), never in the handler's slice.
+	resultPos := e.handlerResultPos(results)
 
 	// Full frame replacement: the callee's frame (the handler result,
 	// a complete `( body… tail )` carrying its own ReturnCheck)
@@ -4187,13 +4194,12 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if fullReplace != nil {
 		e.Tape.Splice(fullReplace.FrameOpen, fullReplace.CloseIdx+1-fullReplace.FrameOpen, results...)
 		e.Pointer = fullReplace.FrameOpen
+		e.stampResultCells(fullReplace.FrameOpen, len(results), resultPos)
 		e.Registry.TCO.Replaced++
 		return nil
 	}
 
-	if err := e.spliceMatchResults(match, sortedIndices, n, results); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-		return err
-	}
+	e.stampResultCells(e.spliceMatchResults(match, sortedIndices, n, results), len(results), resultPos)
 	// ParkResult words (notably `valof`) leave their result as inert data at
 	// the call site rather than re-stepping it: advance the pointer past the
 	// spliced result so an unquoted Function value does NOT auto-dispatch
@@ -4219,17 +4225,17 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	return nil
 }
 
-// stampHandlerResults stamps a handler's fresh ReturnCheck markers and
-// Function values that lack a position with the call-site word's position
-// (stampResultPos), so a return-type error (named-fn body or anonymous fn
-// value) points at the call/construction rather than the last textual
-// occurrence of the name. A driven loop's first region (IsLoopRegion) is
-// not stamped: its body tokens are the program's own and keep theirs.
-func (e *Engine) stampHandlerResults(results []Value) {
+// handlerResultPos is the position a handler's ReturnCheck markers and
+// Function values that lack one take (stampResultCells) — the call-site
+// word's, so a return-type error (named-fn body or anonymous fn value)
+// points at the call/construction rather than the last textual occurrence
+// of the name. A driven loop's first region (IsLoopRegion) takes none: its
+// body tokens are the program's own and keep theirs.
+func (e *Engine) handlerResultPos(results []Value) *position {
 	if e.Pointer < 0 || e.Pointer >= e.Tape.Len() || IsLoopRegion(results) {
-		return
+		return nil
 	}
-	stampResultPos(results, posOf(e.Tape.Ref(e.Pointer)))
+	return posOf(e.Tape.Ref(e.Pointer))
 }
 
 // maybeAddFnShapeHint wraps a signature_error from a fn-dispatch
@@ -4480,7 +4486,7 @@ func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
 // and carrier-based check-mode execution so both paths stay in parity.
 // stampCallResultPositions gives each positionless FUNCTION or dynamic-Any
 // result the position of the call that produced it — the check-pass
-// equivalent of the interpreter's stampResultPos, and the compiled half of
+// equivalent of the interpreter's stampResultCells, and the compiled half of
 // NUR113.
 //
 // Both shapes are load-bearing, and neither is obvious:
@@ -4512,7 +4518,9 @@ func stampCallResultPositions(results []Value, pos SrcPos) {
 	}
 }
 
-func (e *Engine) spliceMatchResults(match *MatchResult, sortedIndices []int, n int, results []Value) error {
+// spliceMatchResults replaces the matched word and its n arguments with
+// results and reports the tape index the results start at.
+func (e *Engine) spliceMatchResults(match *MatchResult, sortedIndices []int, n int, results []Value) int {
 	if len(sortedIndices) == n && n > 0 {
 		firstArgIdx := sortedIndices[0]
 
@@ -4534,10 +4542,12 @@ func (e *Engine) spliceMatchResults(match *MatchResult, sortedIndices []int, n i
 		// Splice out the compacted garbage, insert results.
 		e.Tape.Splice(dst, e.Pointer+1-dst, results...)
 		e.Pointer = firstArgIdx
+		return dst
 	} else if n == 0 {
 		// No args, just replace the word with results.
 		e.Tape.Splice(e.Pointer, 1, results...)
 		// Pointer stays at same position to re-examine results.
+		return e.Pointer
 	} else {
 		// Fallback: simple contiguous splice.
 		argStart := e.Pointer - n
@@ -4548,7 +4558,7 @@ func (e *Engine) spliceMatchResults(match *MatchResult, sortedIndices []int, n i
 		e.Pointer = argStart
 	}
 
-	return nil
+	return e.Pointer
 }
 
 // rearrangeForForward reorders the N = stackArgs + forwardArgs resolved
@@ -6431,13 +6441,13 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// it falls through to the name-lookup branch below. Anonymous closures
 	// keep their own sigs even when they captured a module registry.
 	var fn *FnDefInfo
-	foreignReg := FnHomeForeign(e.Registry, &fnDef)
+	foreignReg := FnHomeForeign(e.Registry, fnDef)
 	if len(fnDef.Signatures) > 0 && (fnDef.Anonymous || !foreignReg) {
-		reg, _ := FnHome(e.Registry, &fnDef)
+		reg, _ := FnHome(e.Registry, fnDef)
 		fn = compiledFnDefFor(reg, fnDef)
 	}
 	if fn == nil && fnDef.Name != "" {
-		reg, _ := FnHome(e.Registry, &fnDef)
+		reg, _ := FnHome(e.Registry, fnDef)
 		fn = reg.Lookup(fnDef.Name)
 	}
 	if fn == nil && len(fnDef.Signatures) > 0 {
@@ -6556,7 +6566,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 		// The re-match runs over the VALUE's home (the module that minted
 		// it), passed beside the registry entry rather than rebound into a
 		// copy of it.
-		home, _ := FnHome(e.Registry, &fnDef)
+		home, _ := FnHome(e.Registry, fnDef)
 		pos := UncalledRaisePos(e.Tape.Ref(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
 		e.fnValueRecovery = true
 		err := CheckBraid.CheckModeAssumeSig(e, w, fn, home, &fn.Signatures[0], pos)
@@ -6646,7 +6656,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// Body-less sigs and a real Go Handler — it must dispatch straight
 	// through execMatch below, exactly like any other native, so we require
 	// a body-bearing own sig before entering this branch.
-	if FnHomeForeign(e.Registry, &fnDef) {
+	if FnHomeForeign(e.Registry, fnDef) {
 		ownSigs := fnDef.OwnSigs()
 		var wrapperSig *FnSig
 		// Select the own sig CORRESPONDING TO THE MATCHED sig — same
@@ -6736,7 +6746,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// IS the interpreter's dispatch. Interpretation is unchanged — Reg is
 	// read only at the check-mode carrierResults seam (execMatch:2625).
 	match := &MatchResult{Sig: sig, Positions: positions, Name: fnDef.Name}
-	if FnHomeForeign(e.Registry, &fnDef) {
+	if FnHomeForeign(e.Registry, fnDef) {
 		match.Reg = fnDef.Registry
 	}
 	if len(positions) > 0 {
@@ -6905,7 +6915,7 @@ func (e *Engine) recordDispatch(name string, arity int, results []Value) {
 //     match failed, and at run time it is one concrete value. A window of
 //     definite operands is a definite mismatch, which the interpreter parks
 //     — and so does this path, unchanged.
-func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefInfo) bool {
+func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef, fn *FnDefInfo) bool {
 	// NamedDef and !Quoted: the interpreter's no-match RAISES only for a named,
 	// unquoted value (the uncalled_function arm below); any other value parks
 	// silently, which a poly re-match cannot replay.
@@ -6918,10 +6928,10 @@ func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefIn
 	// uncalled_function (`… set mem true  IO.seek 42 0`, the diag-surface
 	// parity gate, 2026-09-26). The plain pass keeps the value's own arm.
 	if !e.Registry.analysisActive() || !e.Registry.analysisCompiling() || valIdx != e.Pointer || fn == nil || len(fn.Signatures) == 0 ||
-		!fnDef.NamedDef() || fnDef.Macro || IsQuoted(e.Tape.Ref(valIdx)) || !FnHomeForeign(e.Registry, &fnDef) {
+		!fnDef.NamedDef() || fnDef.Macro || IsQuoted(e.Tape.Ref(valIdx)) || !FnHomeForeign(e.Registry, fnDef) {
 		return false
 	}
-	reg, _ := FnHome(e.Registry, &fnDef)
+	reg, _ := FnHome(e.Registry, fnDef)
 	if reg == nil || reg == e.Registry || !reg.IsBuiltinWord(fnDef.Name) {
 		return false
 	}
@@ -7092,7 +7102,7 @@ func stackSlotAdmits(sig *Signature, j int, v Value) bool {
 	return SigArgMatches(sig, j, &v) && (isTypeArg || !rejectsTypeLiteral(v, SigArgType(sig, j)))
 }
 
-func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []Value) error {
+func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef *FnDefInfo, resolved []Value) error {
 	resolvedIdx := e.ResolvedIndicesBefore(len(resolved))
 	checkMode := e.Registry != nil && e.Registry.analysisMode() && fnDef.Anonymous
 	// A NON-anonymous body-bearing fn VALUE reached as a CALL while the
@@ -7110,7 +7120,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// body must run via CallBoru in that registry — the execFnDefLiteral
 	// sub-registry branch handles them) and macros.
 	checkFnValue := e.Registry != nil && e.Registry.analysisMode() && !fnDef.Anonymous && !fnDef.Macro &&
-		!FnHomeForeign(e.Registry, &fnDef) &&
+		!FnHomeForeign(e.Registry, fnDef) &&
 		e.Registry.analysisRecorder().Active()
 	ownSigs := fnDef.OwnSigs()
 	if i, named := stackMatchSig(ownSigs, resolved); i >= 0 {
@@ -7135,7 +7145,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 			return CheckBraid.SpliceAnonCheckResult(e, valIdx, nArgs, sig, args, fnDef.Captured)
 		}
 		if checkFnValue && len(sig.Body()) > 0 {
-			return CheckBraid.SpliceFnValueCheckResult(e, valIdx, nArgs, fnDef, sig, args)
+			return CheckBraid.SpliceFnValueCheckResult(e, valIdx, nArgs, *fnDef, sig, args)
 		}
 		return e.execFnDefSig(valIdx, sig, args, fnDef.Registry, fnDef.Anonymous)
 	}
@@ -7391,22 +7401,27 @@ func uncalledDispatchDefinite(candidates []Value) bool {
 // closure on the tape, so a parked copy could escape into a binding and
 // keep applying through a finished run's invoker). Outside a VM run, or for
 // a unit the bridge cannot describe, the closure stays data (ok=false).
-func (e *Engine) fnDefAtPointer(val Value) (Value, FnDefInfo, bool) {
+func (e *Engine) fnDefAtPointer(val Value) (Value, *FnDefInfo, bool) {
 	if fnDef, ok := val.Data.(*FnDefInfo); ok {
-		// The definition as this holder presents it: under the name a
-		// binding gave the holder (FnNameOf — a compiled frame's param, a
-		// def's store), the read every dispatch below makes of it.
-		view := *fnDef
-		view.Name = FnNameOf(&val)
-		return val, view, true
+		// The definition as this holder presents it: the payload itself,
+		// read where it lives and never written — or, when a binding gave
+		// the holder another name (FnNameOf — a compiled frame's param, a
+		// def's store), a view under that name for this dispatch alone,
+		// the read every dispatch below makes of it.
+		if name := FnNameOf(&val); name != fnDef.Name {
+			view := *fnDef
+			view.Name = name
+			return val, &view, true
+		}
+		return val, fnDef, true
 	}
 	bridged, ok := compiledRuntime.ClosureAsFnDef(e.Registry, val)
 	if !ok {
-		return val, FnDefInfo{}, false
+		return val, nil, false
 	}
 	val = WithPos(bridged, val)
 	fnDef, ok := FnDefOf(val.Data)
-	return val, *fnDef, ok
+	return val, fnDef, ok
 }
 
 // compileFnDef produces the compiled-dispatch view of a constructed
@@ -8516,14 +8531,14 @@ func fnValueHasZeroArgSig(v Value) bool {
 // is consumed and cleared.
 func MarkApplied(v Value) Value {
 	fd, ok := FnDefOf(v.Data)
-	if !ok || !FnValueOnlyZeroArgSigs(*fd) || !fd.Anonymous || fd.Macro {
+	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
 		return v
 	}
 	SetApplied(&v, true)
 	return v
 }
 
-func FnValueOnlyZeroArgSigs(fd FnDefInfo) bool {
+func FnValueOnlyZeroArgSigs(fd *FnDefInfo) bool {
 	real := false
 	for i := range fd.Signatures {
 		if fd.Signatures[i].Fallback {

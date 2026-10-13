@@ -139,20 +139,34 @@ func TestS5AUndefinedWordErrorVoidGroupHint(t *testing.T) {
 	}
 }
 
-// --- stampResultPos / stampErrPos -----------------------------------------
+// --- stampResultCells / stampErrPos ---------------------------------------
 
 func TestS5AStampResultPos(t *testing.T) {
+	r := covRegistry(t, nil)
 	positioned := NewInteger(1)
 	positioned.SetPos(SrcPos{Row: 9, Col: 1})
 	fnVal := NewFunction(FnDefInfo{Name: "f"})
-	vals := []Value{positioned, fnVal}
-	stampResultPos(vals, newPosition(SrcPos{Row: 3, Col: 2}))
-	if vals[0].Pos().Row != 9 {
-		t.Errorf("positioned value restamped: %v", vals[0].Pos())
+	rc := NewReturnCheck(ReturnCheckInfo{FuncName: "f", Returns: []*Type{TInteger}})
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(0), positioned, fnVal, rc}, StackHeadroom)
+	at := newPosition(SrcPos{Row: 3, Col: 2})
+	e.stampResultCells(1, 3, at)
+	if e.Tape.Ref(1).Pos().Row != 9 {
+		t.Errorf("positioned value restamped: %v", e.Tape.Ref(1).Pos())
 	}
-	if vals[1].Pos().Row != 3 {
-		t.Errorf("function value not stamped: %v", vals[1].Pos())
+	if e.Tape.Ref(2).Pos().Row != 3 {
+		t.Errorf("function value not stamped: %v", e.Tape.Ref(2).Pos())
 	}
+	if got, _ := AsReturnCheck(e.Tape.Ref(3)); got.Pos.Row != 3 {
+		t.Errorf("return check not stamped: %v", got.Pos)
+	}
+	if fnVal.Pos().Row != 0 {
+		t.Error("stamping a cell wrote the value it was copied from")
+	}
+	// No position, nothing stamped; a range past the tape is bounded.
+	e.stampResultCells(0, 99, nil)
+	e.stampResultCells(0, 99, newPosition(SrcPos{}))
+	e.stampResultCells(2, 99, at)
 }
 
 func TestS5AStampErrPos(t *testing.T) {
@@ -1261,8 +1275,8 @@ func TestS5ASpliceMatchResultsCompactsSurvivor(t *testing.T) {
 	e := engWithTape(t, []Value{
 		NewInteger(1), NewAtom("x"), NewInteger(2), NewWord("cadd"),
 	}, 3)
-	if err := e.spliceMatchResults(nil, []int{0, 2}, 2, []Value{NewInteger(9)}); err != nil {
-		t.Fatalf("spliceMatchResults: %v", err)
+	if at := e.spliceMatchResults(nil, []int{0, 2}, 2, []Value{NewInteger(9)}); at != 1 {
+		t.Fatalf("spliceMatchResults placed the results at %d, want 1", at)
 	}
 	if e.Tape.Len() != 2 {
 		t.Fatalf("tape len = %d, want 2", e.Tape.Len())

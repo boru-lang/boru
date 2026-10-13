@@ -120,7 +120,7 @@ func TestW8AnonFnCheckModeZeroArgActiveSlot(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -141,7 +141,7 @@ func TestW8AnonFnCheckModeEmptyBodyActiveSlot(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -173,7 +173,7 @@ func TestW8AnonFnCheckModeNamedParamsStackActiveSlot(t *testing.T) {
 		core.StackHeadroom,
 	)
 	e.Pointer = 2
-	if err := e.ExecFnDefSigStackMatch(2, fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(2, &fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }

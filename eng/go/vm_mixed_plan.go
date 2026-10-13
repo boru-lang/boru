@@ -61,7 +61,7 @@ func (vc *vmContext) mixedPlanApply(reg *core.Registry, window []core.Value) ([]
 		return nil, nil, false
 	}
 	own := fd.OwnSigs()
-	if len(own) != 1 || !boruSig(&own[0]) || core.FnValueOnlyZeroArgSigs(*fd) || !allParamsNamed(own[0].Params) {
+	if len(own) != 1 || !boruSig(&own[0]) || core.FnValueOnlyZeroArgSigs(fd) || !allParamsNamed(own[0].Params) {
 		return nil, nil, false
 	}
 	nStk, nFwd, args, ok := mixedPlanArgs(reg, *fd, window, p)

@@ -77,9 +77,8 @@ func TestS7RearrangeForForwardZeroTotal(t *testing.T) {
 func TestS7SpliceMatchResultsFallback(t *testing.T) {
 	// len(sortedIndices) != n and n != 0 → contiguous fallback splice.
 	e := engWithTape(t, []Value{NewInteger(1), NewInteger(2), NewInteger(3), NewWord("w")}, 3)
-	err := e.spliceMatchResults(&MatchResult{}, nil, 2, []Value{NewInteger(99)})
-	if err != nil {
-		t.Fatalf("spliceMatchResults: %v", err)
+	if at := e.spliceMatchResults(&MatchResult{}, nil, 2, []Value{NewInteger(99)}); at != 1 {
+		t.Fatalf("spliceMatchResults placed the results at %d, want 1", at)
 	}
 	// argStart = pointer(3)-n(2) = 1; [1..3] replaced by [99].
 	if e.Pointer != 1 {
@@ -90,8 +89,8 @@ func TestS7SpliceMatchResultsFallback(t *testing.T) {
 func TestS7SpliceMatchResultsFallbackClampsArgStart(t *testing.T) {
 	// pointer < n → argStart clamps to 0.
 	e := engWithTape(t, []Value{NewInteger(1), NewWord("w")}, 1)
-	if err := e.spliceMatchResults(&MatchResult{}, nil, 5, []Value{NewInteger(7)}); err != nil {
-		t.Fatalf("spliceMatchResults: %v", err)
+	if at := e.spliceMatchResults(&MatchResult{}, nil, 5, []Value{NewInteger(7)}); at != 0 {
+		t.Fatalf("spliceMatchResults placed the results at %d, want 0", at)
 	}
 	if e.Pointer != 0 {
 		t.Errorf("pointer = %d, want 0 (clamped)", e.Pointer)

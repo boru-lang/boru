@@ -396,13 +396,15 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// body, and the cleanup tail (the nil-snapshot DefCleanup carrying
 	// the names to tear down, the zero-Pos ReturnCheck) never vary
 	// between calls. Build that
-	// skeleton ONCE here and per call only copy it with the arg values
-	// patched in — the old per-call rebuild minted ~7 ID-stamped tokens
-	// per frame (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). The per-call
-	// COPY is mandatory: execMatch's stampResultPos mutates the returned
-	// slice (ReturnCheck Pos, fn-value pos), and ForkConcurrent engines
-	// share this handler. Nothing keys on the shared tokens' Value.IDs —
-	// the tail probe and unwindFrameTail match structurally.
+	// skeleton ONCE here, and per call hand it back as it is — or, when
+	// the frame has unnamed-arg cells, a copy with the arg values patched
+	// in. The old per-call rebuild minted ~7 ID-stamped tokens per frame
+	// (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). Nothing writes
+	// the skeleton: execMatch stamps the results' positions in the tape
+	// cells it splices them into (stampResultCells), so every call and
+	// every ForkConcurrent engine sharing this handler reads one immutable
+	// run. Nothing keys on the shared tokens' Value.IDs — the tail probe and
+	// unwindFrameTail match structurally.
 	var (
 		skeleton   []Value
 		unnamedIdx []int // param positions whose args splice into the frame head
@@ -471,16 +473,31 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// (see the construction-time comment above).
 		if !needsFrameState {
 			r.PushFnBaseline(nil)
-			// ONE allocation holds the frame's tokens and, past them, its
-			// args copy, pushed lazily (ArgsStack.PushLazy): the list a
-			// reader sees is built only when code the frame runs reads
-			// `args` — a literal read, a word macro bound after the fn, a
-			// computed body — and is always the call's real list (NUR350).
-			// The token slice handed back is capped at the skeleton, so no
-			// append to it can reach the args.
+			// The args copy is pushed lazily (ArgsStack.PushLazy): the
+			// list a reader sees is built only when code the frame runs
+			// reads `args` — a literal read, a word macro bound after the
+			// fn, a computed body — and is always the call's real list
+			// (NUR350). At run time a frame with no unnamed-arg cell is the
+			// skeleton itself; a frame with them — or any frame under an
+			// analysis pass, whose recorder stamps its key on a dispatch's
+			// results — is a copy patched with this call's args, ONE
+			// allocation holding the tokens and, past them, the args copy.
+			// Either token slice is capped at the skeleton, so no append to
+			// it can reach the args or the skeleton's spare.
 			n := len(skeleton)
-			buf := make([]Value, n+len(args))
-			argsCopy := buf[n:]
+			out := skeleton[:n:n]
+			var argsCopy []Value
+			if len(unnamedIdx) == 0 && !r.analysisActive() {
+				argsCopy = make([]Value, len(args))
+			} else {
+				buf := make([]Value, n+len(args))
+				argsCopy = buf[n:]
+				out = buf[:n:n]
+				copy(out, skeleton)
+				for k, i := range unnamedIdx {
+					out[1+k] = args[i]
+				}
+			}
 			copy(argsCopy, args)
 			if err := r.Args.PushLazy(argsCopy); err != nil {
 				r.PopFnBaseline()
@@ -499,11 +516,6 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					}
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				}
-			}
-			out := buf[:n:n]
-			copy(out, skeleton)
-			for k, i := range unnamedIdx {
-				out[1+k] = args[i]
 			}
 			return out, nil
 		}

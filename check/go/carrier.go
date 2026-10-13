@@ -3497,7 +3497,7 @@ func resolveTypeNameArgs(args []core.Value) []core.Value {
 			out = append([]core.Value{}, args...)
 		}
 		lit := core.NewTypeLiteral(t)
-		lit = core.WithPos(lit, a)
+		core.ThreadPos(&lit, &a)
 		out[i] = lit
 	}
 	if out == nil {

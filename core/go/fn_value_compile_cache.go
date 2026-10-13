@@ -43,16 +43,16 @@ func sameList[T any](a, b []T) bool {
 // was built for this registry from these very lists, a fresh compile
 // (which replaces the cache) otherwise. A payload with no identity — a
 // synthesized FnDefInfo literal — compiles every time, as before.
-func compiledFnDefFor(reg *Registry, fnDef FnDefInfo) *FnDefInfo {
+func compiledFnDefFor(reg *Registry, fnDef *FnDefInfo) *FnDefInfo {
 	id := fnDef.ident
 	if id == nil {
-		return compileFnDef(reg, fnDef)
+		return compileFnDef(reg, *fnDef)
 	}
 	if c := id.dispatch.Load(); c != nil && c.reg == reg && c.name == fnDef.Name &&
 		sameList(c.sigs, fnDef.Signatures) && sameList(c.caps, fnDef.Captured) {
 		return c.fn
 	}
-	fn := compileFnDef(reg, fnDef)
+	fn := compileFnDef(reg, *fnDef)
 	id.dispatch.Store(&compiledFnDef{
 		reg:  reg,
 		name: fnDef.Name,

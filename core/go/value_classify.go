@@ -91,7 +91,7 @@ func FnValueZeroArg(v Value) bool {
 	if !fnValueHasZeroArgSig(v) {
 		return false // no genuine 0-arg overload: needs args, lands as data
 	}
-	if FnValueOnlyZeroArgSigs(*d) {
+	if FnValueOnlyZeroArgSigs(d) {
 		return true // pure property fn: auto-fires in both representations
 	}
 	for i := range d.Signatures {

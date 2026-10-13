@@ -256,7 +256,7 @@ func TestS5BCheckFnValueSpliceArms(t *testing.T) {
 		e := NewTop(r)
 		e.Tape = NewTape(tape, StackHeadroom)
 		e.Pointer = valIdx
-		if err := e.ExecFnDefSigStackMatch(valIdx, fnDef, resolved); err != nil {
+		if err := e.ExecFnDefSigStackMatch(valIdx, &fnDef, resolved); err != nil {
 			t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 		}
 		return called
@@ -307,7 +307,7 @@ func TestS5BStackMatchMapPatternDecline(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{val, NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{val})
+	err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{val})
 	if err == nil || !strings.Contains(err.Error(), "matched no signature") {
 		t.Fatalf("want uncalled_function error, got %v", err)
 	}
@@ -340,7 +340,7 @@ func TestS5BStackMatchAnalysisWreckage(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{arg}); err != nil {
 		t.Fatalf("analysis mode must not raise: %v", err)
 	}
 	if !IsFailedDispatch(addrOf(e.Tape.At(1))) {
@@ -396,7 +396,7 @@ func TestS5BStackMatchDefiniteTrapMirrors(t *testing.T) {
 			e := NewTop(r)
 			e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
 			e.Pointer = 1
-			if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+			if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{arg}); err != nil {
 				t.Fatalf("analysis mode must not raise: %v", err)
 			}
 			got := r.Check.Diagnostics
