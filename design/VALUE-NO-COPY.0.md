@@ -429,6 +429,53 @@ pointer switch buys consistency (no copies to police) rather than speed,
 and that is a legitimate reason to do it, but it should be chosen with
 the numbers on the table.
 
+**Phase 4 as built (decided 2026-10-16).** The maintainer chose to go
+ahead with phase 3's numbers on the table (§9). The representation is §5's
+design taken literally, with one naming choice: the slot record
+`{V *Value; occurrence}` keeps the name `Value`, and the shared, immutable
+part gets a type of its own.
+
+- `Value` is a holder handle: a pointer to the value's shared content,
+  the holder's occurrence record and its occurrence flags (24 bytes).
+  Every slot the paragraph above lists — tape and stack cells, argument
+  slots, list elements, map entries, bindings, captures, pool entries —
+  holds one by value, and copying it is copying a cell record (R4: not a
+  copy). The occurrence state phase 3 gave each holder stays the holder's.
+- The content — the payload, the parent, the type metadata, the element
+  constraint, the module-namespace facet and the kind flags — is
+  immutable once published and shared by every holder. It is unexported:
+  every module reads it through accessors (`DataOf`, `ParentOf`,
+  `IsCarrier`, `OriginOf`, `IsInternal`), and a holder that needs
+  different content gets new content (`SetData`, `SetParent`,
+  `SetCarrier` construct it; nothing writes published content).
+- Why not `*Value` everywhere, as the paragraph above says: a bare
+  pointer has nowhere to keep the occurrence state phase 3 gave each
+  holder, so every slot would need the record beside it anyway —
+  `args []Cell`, `[]Cell` elements — and that record is the handle.
+  Keeping its name keeps the 870 handler signatures, the slices, maps and
+  struct fields and the `Value{}` sentinels (the zero handle: no content)
+  as they are. What changes is every access to the five public fields —
+  about 4,600 reads, 160 writes and 450 keyed literals across the
+  modules (a type-checked tool rewrites them) — and core's own content
+  reads. A scan of every module found no `==` between non-test Values, no
+  Value map key and no address taken of a public field: nothing whose
+  meaning the switch would change silently.
+- Allocation: a mint allocates its content unless it is interned. Small
+  integers, the two booleans, none, the empty string and every type
+  literal (which shares its node's content) cost nothing; the rest is
+  heap-allocated and measured, with a per-run slab in reserve.
+- Enforcement: the `noCopy` marker moves to the content, so `make
+  vet-copies` counts copies of content (only core's constructors could
+  make one), and a copy of a run of holders is the exceptions list's
+  class C. The ceilings are re-anchored when the switch lands, and D10
+  retires.
+- Steps, each green on the gates: (1) the accessors and the mechanical
+  rewrite of every module, behaviour-neutral on the phase-3 layout; (2)
+  the fields unexported and the layout switched, with interning; (3)
+  measure and tune; (4) the ratchet, the exceptions list, the guides.
+  The language does not change: this is representation only, and the
+  langspec gates and the differential lanes are the oracle.
+
 **Phase 5 — value semantics by construction (any time after phase 3).**
 Decision 2 keeps list and map value semantics: a word returns a new
 container whose elements are the receiver's own, and no spec row
