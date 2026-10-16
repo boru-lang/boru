@@ -2203,10 +2203,12 @@ type typeMeta struct {
 // stored, compared by pointer, or written through: `behave` and every
 // LCA walk must reach the node every registry shares, not a copy of it.
 func NodeOf(t *Type) *Type {
-	if t == nil || t.body().tmeta == nil || t.body().tmeta.node == nil {
-		return t
+	if t != nil {
+		if d := t.d; d != nil && d.tmeta != nil && d.tmeta.node != nil {
+			return d.tmeta.node
+		}
 	}
-	return t.body().tmeta.node
+	return t
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of
@@ -2214,10 +2216,12 @@ func NodeOf(t *Type) *Type {
 // pre-allocate a typeMeta cannot nil-panic. v must be addressable (a
 // *Type or an addressable Value).
 func (v *Value) ensureTMeta() *typeMeta {
-	if v.body().tmeta == nil {
-		v.cow().tmeta = &typeMeta{}
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta
 	}
-	return v.body().tmeta
+	tm := &typeMeta{}
+	v.cow().tmeta = tm
+	return tm
 }
 
 // SetName sets the type-node leaf name, allocating the typeMeta if
@@ -2232,10 +2236,10 @@ func (v *Value) SetName(name string) {
 // nil for an ordinary value (no tmeta). A non-nil result is the marker of
 // a type node, exactly as the inline field was.
 func (v *Value) Behavior() TypeBehavior {
-	if v.body().tmeta == nil {
-		return nil
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Behavior
 	}
-	return v.body().tmeta.Behavior
+	return nil
 }
 
 // TypeBody returns the structural content the type node was declared
@@ -2245,10 +2249,10 @@ func (v *Value) Behavior() TypeBehavior {
 // ordinary value both answer false. The returned Value is a copy; the
 // stored content is written once at install and never mutated.
 func (v *Value) TypeBody() (Value, bool) {
-	if v.body().tmeta == nil || v.body().tmeta.Body == nil {
-		return Value{}, false
+	if d := v.d; d != nil && d.tmeta != nil && d.tmeta.Body != nil {
+		return *d.tmeta.Body, true
 	}
-	return *v.body().tmeta.Body, true
+	return Value{}, false
 }
 
 // SetTypeBody records the node's declared structural content. Called
@@ -2432,20 +2436,20 @@ func StripAscribed(v Value) Value {
 // Name is the nil-safe read of the type-node leaf name — "" for an
 // ordinary value (no tmeta), matching the old empty inline field.
 func (v *Value) Name() string {
-	if v.body().tmeta == nil {
-		return ""
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Name
 	}
-	return v.body().tmeta.Name
+	return ""
 }
 
 // OwnerID is the nil-safe read of the type node's registration/mint
 // provenance (design/OPEN-WORDS.1.md §4) — "" for an ordinary value or
 // an unowned ad-hoc type. See typeMeta.Owner for the sentinel table.
 func (v *Value) OwnerID() string {
-	if v.body().tmeta == nil {
-		return ""
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Owner
 	}
-	return v.body().tmeta.Owner
+	return ""
 }
 
 // SetOwner stamps the type node's provenance. Registration/mint paths
@@ -2459,24 +2463,39 @@ func (v *Value) SetOwner(owner string) {
 // integer fields — 0 when tmeta is absent (every ordinary runtime value,
 // where these were always zero when they were inline fields).
 func (v *Value) FixedID() int {
-	if v.body().tmeta == nil {
-		return 0
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.FixedID
 	}
-	return v.body().tmeta.FixedID
+	return 0
 }
 
 func (v *Value) Rank() int {
-	if v.body().tmeta == nil {
-		return 0
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Rank
 	}
-	return v.body().tmeta.Rank
+	return 0
 }
 
-func (v *Value) Depth() int { return int(v.body().depth) }
+func (v *Value) Depth() int {
+	if d := v.d; d != nil {
+		return int(d.depth)
+	}
+	return 0
+}
 
-func (v *Value) In() int { return int(v.body().in) }
+func (v *Value) In() int {
+	if d := v.d; d != nil {
+		return int(d.in)
+	}
+	return 0
+}
 
-func (v *Value) Out() int { return int(v.body().out) }
+func (v *Value) Out() int {
+	if d := v.d; d != nil {
+		return int(d.out)
+	}
+	return 0
+}
 
 // idState is the package-level ID source: a monotone atomic counter
 // whose successive values are run through a splitmix64 finalizer to
@@ -2975,8 +2994,8 @@ func TypeNodeOf(v Value) *Type {
 // v's address does not escape and a literal that names its node allocates
 // nothing; the copy is made in orphanType, on the ad-hoc path alone.
 func literalNode(v *Value) *Type {
-	if v.body().tmeta != nil && v.body().tmeta.node != nil {
-		return v.body().tmeta.node
+	if d := v.d; d != nil && d.tmeta != nil && d.tmeta.node != nil {
+		return d.tmeta.node
 	}
 	return orphanType(*v)
 }

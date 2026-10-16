@@ -339,12 +339,15 @@ func (t *Type) Equal(other *Type) bool {
 	// (IsWord / IsOpenParen / IsForward / …), which test a token's builtin
 	// Parent against a builtin marker on every step and almost always
 	// mismatch. The labels live in the datum, one pointer from the node.
-	td, od := t.body(), other.body()
-	if td.in > 0 && od.in > 0 {
-		return td.in == od.in
-	}
-	if tm, om := td.tmeta, od.tmeta; tm != nil && tm == om {
-		return true
+	// One read of each datum; a handle with none has no labels or metadata
+	// and compares by identity alone.
+	if td, od := t.d, other.d; td != nil && od != nil {
+		if td.in > 0 && od.in > 0 {
+			return td.in == od.in
+		}
+		if td.tmeta != nil && td.tmeta == od.tmeta {
+			return true
+		}
 	}
 	return IDOf(t) != "" && IDOf(t) == IDOf(other)
 }

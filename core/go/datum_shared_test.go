@@ -38,6 +38,9 @@ func TestValueOfAndTheZeroDatum(t *testing.T) {
 	if zero.Data() != nil || zero.Parent() != nil || zero.IsInternal() || zero.Carrier() || zero.Origin() != 0 {
 		t.Fatal("the zero Value reads as the zero datum")
 	}
+	if zero.In() != 0 || zero.Out() != 0 || zero.Depth() != 0 || zero.Rank() != 0 || zero.Name() != "" {
+		t.Fatal("the zero Value has no labels, depth or type metadata")
+	}
 }
 
 // A body write through one handle reaches that handle alone: the datum

@@ -82,13 +82,11 @@ Last updated: **2026-10-15** (no-copy phase 4 below; phase 3 is 2026-10-13's, th
 > Values with nothing per instance share an init-time datum (booleans,
 > none, "", integers in [-1024, 4095], markers, probes); the engine's
 > markers and compiled closures allocate their payload with their datum.
-> On the 55 anchors phase 4 runs at 0.946–0.964 of phase 3 (interpreter
-> 1.024–1.039, compiled 0.855–0.885), 0.58–0.59 of phase 0; check and
-> compile 0.90; every interpreter allocation guard is below phase 3 and
+> On the 55 anchors phase 4 runs at 0.920 of phase 3 (interpreter 0.987,
+> compiled 0.846), 0.566 of phase 0; check and compile 0.87–0.90; every interpreter allocation guard is below phase 3 and
 > its ceiling is lowered. Phase 5 (value semantics by construction) holds
 > with it: a container's elements are handles. Open: the naming (`Datum`/`Value` against the
-> plan's `*Value`/cell — a mechanical rename, the maintainer's call), the
-> interpreter's remaining 2–4% (type-metadata reads, the matcher), and
+> plan's `*Value`/cell — a mechanical rename, the maintainer's call) and
 > `WordInfo`'s separate payload box. Every module's suite and the
 > langspec corpus pass; see the PR for the gates.
 

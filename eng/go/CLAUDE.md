@@ -794,6 +794,12 @@ a cell record, the exceptions list's C1 and R4 — never the value.
   `v.IsInternal()`, `v.Origin()`, `v.Carrier()` (value receivers, so a
   map element or a call's result reads directly), and in core
   `v.body()`. The zero Value has no Datum and reads as the zero datum.
+  A hot accessor in core reads the datum pointer once, in one guard
+  (`if d := v.d; d != nil && d.tmeta != nil { … }`), never as a chain of
+  `body()` calls: each inlined guard runs its own coverage counters, and
+  the merged ADR-008 gate instruments every package, so a chained
+  accessor nearly doubled the instrumented runtime of the check-heavy
+  langspec tests (design/VALUE-NO-COPY.0.md §9, phase 4).
 - A body write through a handle — `SetData`, `SetParent`, `SetCarrier`,
   `SetOrigin`, and core's `cow()` — gives THAT holder a
   Datum of its own built from the old one's parts (copy-on-write), so it

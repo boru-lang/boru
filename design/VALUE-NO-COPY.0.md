@@ -897,15 +897,15 @@ cell type; and every API that took or returned a `Value` still does.
 |---|---:|---:|
 | Value (bytes) | 64 header | 24 handle + a shared 64-byte Datum |
 | non-test copies of the value structure (vet) / bulk | 12,799 / 291 | 0 / 0 |
-| anchors, geomean time vs phase 3 (55 benchmarks, two runs of five interleaved rounds) | 1.000 | 0.946–0.964 |
-| interpreter / compiled lane vs phase 3 | 1.000 / 1.000 | 1.024–1.039 / 0.855–0.885 |
-| anchors vs phase 0 (chained through phase 3's 0.615) | 0.615 | 0.582–0.593 |
+| anchors, geomean time vs phase 3 (55 benchmarks, five interleaved rounds) | 1.000 | 0.920 |
+| interpreter / compiled lane vs phase 3 | 1.000 / 1.000 | 0.987 / 0.846 |
+| anchors vs phase 0 (chained through phase 3's 0.615) | 0.615 | 0.566 |
 | allocs/op, bytes/op, anchors geomean vs phase 3 | 1.000 / 1.000 | 0.903 / 0.659 |
 | interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,265 / 3,833 / 5,433 | 5,633 / 3,631 / 5,031 |
 | compiled allocs/op: `for_tight` / `do_body` / `recursion_tail` | 644 / 312 / 5,753 | 413 / 312 / 6,001 |
-| check / compile benchmarks: time; allocs vs phase 3 | 1.000 / 1.000 | 0.903 / 0.907; +0.7% |
+| check / compile benchmarks: time; allocs vs phase 3 | 1.000 / 1.000 | 0.873 / 0.903; +0.7% |
 | tape benchmarks (`BenchmarkTape*`), geomean vs phase 3 | 1.000 | ≈0.45 |
-| kernel micro-benchmarks (`BenchmarkKernel*` but the map) vs phase 3 | 1.000 | 1.09–1.24 |
+| kernel micro-benchmarks (`BenchmarkKernel*`, the ordered map aside) vs phase 3 | 1.000 | 0.98–1.11 |
 | parse benchmarks vs phase 3 | 1.000 | 1.02 |
 
 Every interpreter allocation guard is below its phase-3 count, so each
@@ -919,13 +919,28 @@ range, which is why parsing is 2% slower, compiled `recursion_tail` (an
 accumulator past 4,095) allocates 4% more, and the check and compile
 passes allocate 0.7% more while moving 24% fewer bytes. A read of a body
 field follows one pointer more: the kernel micro-benchmarks, which do
-nothing but compare, unify and canonicalise a handful of values, run
-9–24% slower, and the interpreter lane is 2–4% behind phase 3 on the
-anchors while the compiled lane, whose stacks and locals copy 24 bytes
-where they copied 64, is 11–15% ahead. Copying is gone; what remains of
-the interpreter's time is where §9's phase-3 profile put it — `Type.Equal`,
+nothing but compare, unify and canonicalise a handful of values, run up
+to 11% slower, while the interpreter lane is 1% ahead of phase 3 on the
+anchors and the compiled lane, whose stacks and locals copy 24 bytes
+where they copied 64, 15% ahead. Copying is gone; what remains of the
+interpreter's time is where §9's phase-3 profile put it — `Type.Equal`,
 the matcher and type-metadata reads (`Behavior`, `Name`, `Rank` are a
 datum and a `tmeta` away from a node).
+
+**The accessors' shape is a coverage cost.** The rewrite first spelled a
+type node's metadata reads as `v.body().tmeta.F` behind a
+`v.body().tmeta == nil` test — two `body()` calls, each a guarded
+function — and `Type.Equal` called `body()` twice. That cost little in a
+plain build, but under the merged ADR-008 gate, which instruments every
+package (`-coverpkg` over the tree), each inlined accessor runs its own
+coverage counters: `TestDiagnosticSurfaceParity` took 221 s instrumented
+against phase 3's 128 s, test/go's profile overran its 45-minute timeout,
+and `TestVariationDifferential`'s 30-second hang detector fired under
+the load. Reading the datum pointer once, in one guard
+(`if d := v.d; d != nil && d.tmeta != nil`), brought the instrumented
+run back to 128 s and made the plain build faster too (the interpreter
+lane went from 1.02–1.04 of phase 3 to 0.99). Write a hot accessor as one
+guard over `v.d`, never as a chain of `body()` calls.
 
 Not done, with the reason:
 
