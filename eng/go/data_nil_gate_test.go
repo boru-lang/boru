@@ -44,7 +44,10 @@ func TestNoRawDataNilProbes(t *testing.T) {
 		"data_nil_gate_test.go":       true, // this gate (mentions the pattern in prose)
 	}
 
-	probe := regexp.MustCompile(`\.Data\s*==\s*nil`)
+	// `.Data()` since no-copy phase 4 split the Value into a handle and its
+	// Datum (the payload is read through the accessor); the field spelling
+	// stays matched for a Datum read in place.
+	probe := regexp.MustCompile(`\.Data(\(\))?\s*==\s*nil`)
 	var offenders []string
 
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {

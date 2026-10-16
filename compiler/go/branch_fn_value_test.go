@@ -22,13 +22,10 @@ func bfState() (*EmitState, core.Value, core.Value) {
 		{kind: evBranch, br: &emitBranch{pos: core.SrcPos{Row: 1, Col: 5}}, seq: 1},
 		{kind: evBranch, br: &emitBranch{pos: core.SrcPos{Row: 1, Col: 30}}, seq: 2},
 	}}
-	es.producedBy = map[string]producer{"br": {seq: 1, idx: 0}, "br0": {seq: 2, idx: 0}}
 	es.eventInfo[1] = eventFlags{mayBeFn: true, mayBeFnArgs: true}
 	es.eventInfo[2] = eventFlags{mayBeFn: true}
-	br := core.NewCarrier(core.TAny)
-	br.ID = "br"
-	br0 := core.NewCarrier(core.TAny)
-	br0.ID = "br0"
+	br := producedAs(es, core.NewCarrier(core.TAny), "br", 1, 0)
+	br0 := producedAs(es, core.NewCarrier(core.TAny), "br0", 2, 0)
 	return es, br, br0
 }
 
@@ -55,17 +52,18 @@ func TestFnValueMayTakeArgs(t *testing.T) {
 
 func TestMayBeFnHelpers(t *testing.T) {
 	var nilES *EmitState
-	if nilES.MayBeFn("br") || nilES.mayBeFnArgsOf("br") || nilES.mayBeFnUnsettled(core.Value{ID: "br"}) || nilES.crossesBoundary(core.Value{ID: "br"}, nil) {
+	if nilES.MayBeFn(core.RecKey{Pass: 1, Seq: 1}) || nilES.mayBeFnArgsOf(core.RecKey{Pass: 1, Seq: 1}) || nilES.mayBeFnUnsettled(withID(core.Value{}, "br")) || nilES.crossesBoundary(withID(core.Value{}, "br"), nil) {
 		t.Error("a nil state answers false everywhere")
 	}
 	es, br, br0 := bfState()
-	if es.MayBeFn("") || es.MayBeFn("nothing") || es.mayBeFnArgsOf("") || es.mayBeFnArgsOf("nothing") {
-		t.Error("an empty or unproduced id is no branch result")
+	other := core.RecKey{Pass: es.passNo() + 1, Seq: 1} // another pass's stamp
+	if es.MayBeFn(core.RecKey{}) || es.MayBeFn(other) || es.mayBeFnArgsOf(core.RecKey{}) || es.mayBeFnArgsOf(other) {
+		t.Error("an unstamped or foreign key is no branch result")
 	}
-	if !es.MayBeFn("br") || !es.MayBeFn("br0") {
+	if !es.MayBeFn(core.RecKeyOf(&br)) || !es.MayBeFn(core.RecKeyOf(&br0)) {
 		t.Error("both branch results may be fns")
 	}
-	if !es.mayBeFnArgsOf("br") || es.mayBeFnArgsOf("br0") {
+	if !es.mayBeFnArgsOf(core.RecKeyOf(&br)) || es.mayBeFnArgsOf(core.RecKeyOf(&br0)) {
 		t.Error("only the arg-taking arm's result is unsettled")
 	}
 	if !es.mayBeFnUnsettled(br) || es.mayBeFnUnsettled(br0) {
@@ -78,7 +76,7 @@ func TestMayBeFnHelpers(t *testing.T) {
 		t.Error("a fn-typed carrier is fn-like as before")
 	}
 	quoted := br
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.mayBeFnUnsettled(quoted) {
 		t.Error("a quoted value is data")
 	}
@@ -104,11 +102,11 @@ func TestPolyCallDeclineReasonMayBeFn(t *testing.T) {
 	want := "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 	for _, v := range []core.Value{br, br0} {
 		if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), v}, nil, core.SrcPos{}); got != want {
-			t.Errorf("%s: a branch result under a poly declines, got %q", v.ID, got)
+			t.Errorf("%s: a branch result under a poly declines, got %q", core.IDOf(&v), got)
 		}
 	}
 	quoted := br
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if got := es.polyCallDeclineReason("add", []core.Value{quoted}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("a quoted operand is data: %q", got)
 	}
@@ -123,23 +121,23 @@ func TestPolyCallDeclineReasonMayBeFn(t *testing.T) {
 
 func TestNoteMayBeFnRead(t *testing.T) {
 	var nilES *EmitState
-	nilES.noteMayBeFnRead("br", "x") // no panic: an unknown id is nothing to poison
-	es, _, _ := bfState()
-	es.noteMayBeFnRead("br0", "r")
+	nilES.noteMayBeFnRead("br", core.RecKey{}, "x") // no panic: an unknown id is nothing to poison
+	es, br, br0 := bfState()
+	es.noteMayBeFnRead("br0", core.RecKeyOf(&br0), "r")
 	if es.armReadCompileFailure != "" {
 		t.Errorf("a settled (only-0-arg) result's read is fine: %q", es.armReadCompileFailure)
 	}
-	es.noteMayBeFnRead("br", "x")
+	es.noteMayBeFnRead("br", core.RecKeyOf(&br), "x")
 	if !strings.Contains(es.armReadCompileFailure, "read of `x`") || !strings.Contains(es.armReadCompileFailure, "NUR159") {
 		t.Errorf("an arg-taking result's read poisons the placement gate: %q", es.armReadCompileFailure)
 	}
-	es.noteMayBeFnRead("br", "y")
+	es.noteMayBeFnRead("br", core.RecKeyOf(&br), "y")
 	if !strings.Contains(es.armReadCompileFailure, "read of `x`") {
 		t.Error("the first poison stands")
 	}
-	es, _, _ = bfState()
+	es, br, _ = bfState()
 	es.trapAt = 3
-	es.noteMayBeFnRead("br", "x")
+	es.noteMayBeFnRead("br", core.RecKeyOf(&br), "x")
 	if es.armReadCompileFailure != "" {
 		t.Error("after a terminal trap the read is unreachable: no poison")
 	}
@@ -207,8 +205,7 @@ func TestStatementBoundaryCrossing(t *testing.T) {
 		{kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: 20}}, seq: 2},
 		{kind: evCall, call: emitCall{}, seq: 3},
 	}}
-	es.producedBy = map[string]producer{"a": {seq: 1}, "b": {seq: 2}, "c": {seq: 3}}
-	a, b, c := core.Value{ID: "a"}, core.Value{ID: "b"}, core.Value{ID: "c"}
+	a, b, c := producedAs(es, core.Value{}, "a", 1, 0), producedAs(es, core.Value{}, "b", 2, 0), producedAs(es, core.Value{}, "c", 3, 0)
 	if es.crossesBoundary(a, []core.Value{b}) {
 		t.Error("no boundary recorded: nothing crosses")
 	}

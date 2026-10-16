@@ -57,7 +57,7 @@ func TestLiveDeoptArms(t *testing.T) {
 	core.InstallDef(r, "s", splice)
 	ref := compiler.DeoptSpec{Name: "s", Slot: -1, Depth: -1, Token: 2, RetPC: 9, Live: true, Ref: true, Model: core.TInteger}
 	st, fired, err = vc.deoptIfFn(r, body[:3], true, &ref, 0, nil, nil, seam7Dbg, 0)
-	if err != nil || !fired || len(st) != 1 || !core.IsSplice(st[0]) {
+	if err != nil || !fired || len(st) != 1 || !core.IsSplice(&st[0]) {
 		t.Errorf("a root island leaves the splice as the program does: %v %v %v", st, fired, err)
 	}
 	if _, _, err := vc.deoptIfFn(r, body[:3], false, &ref, 0, nil, nil, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "tape-coupled deopt result") {

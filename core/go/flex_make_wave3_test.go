@@ -77,7 +77,7 @@ func TestAdoptIntoFlexPassThroughs(t *testing.T) {
 	}
 
 	// Non-concrete (type literal) passes through.
-	if v, err := AdoptIntoFlex(NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(v) {
+	if v, err := AdoptIntoFlex(NewTypeLiteral(TMap)); err != nil || !IsBareTypeNode(&v) {
 		t.Errorf("type literal: v=%v err=%v", v, err)
 	}
 	// Scalars pass through.
@@ -266,16 +266,16 @@ func TestMakeScalarHandlerRefinementNewtype(t *testing.T) {
 	if err != nil {
 		t.Fatalf("make Foo 1: %v", err)
 	}
-	if !out[0].Parent.Equal(foo) {
-		t.Errorf("make Foo 1 parent = %v, want Foo", out[0].Parent)
+	if !out[0].Parent().Equal(foo) {
+		t.Errorf("make Foo 1 parent = %v, want Foo", out[0].Parent())
 	}
 	// A non-conforming source converts through the builtin base first.
 	out, err = MakeScalarHandler([]Value{NewTypeLiteral(foo), NewString("42")}, nil, nil, r)
 	if err != nil {
 		t.Fatalf("make Foo '42': %v", err)
 	}
-	if n, _ := AsInteger(out[0]); n != 42 || !out[0].Parent.Equal(foo) {
-		t.Errorf("make Foo '42' = %v (parent %v)", out[0], out[0].Parent)
+	if n, _ := AsInteger(out[0]); n != 42 || !out[0].Parent().Equal(foo) {
+		t.Errorf("make Foo '42' = %v (parent %v)", out[0], out[0].Parent())
 	}
 
 	// builtinBaseOf: walks to the first builtin ancestor, nil when none.
@@ -425,7 +425,7 @@ func TestResolveFieldType(t *testing.T) {
 		t.Fatalf("InstallType: %v", err)
 	}
 	got := ResolveFieldType(r, NewString("FooT"))
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Errorf("FooT did not resolve to a type body: %v", got)
 	}
 

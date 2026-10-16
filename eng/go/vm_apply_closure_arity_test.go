@@ -24,14 +24,14 @@ func TestCallDynApplyClosureArity(t *testing.T) {
 		Params: []*core.Type{core.TInteger, core.TInteger},
 	}}}
 	vc := &vmContext{p: prog, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: prog, Unit: 0, Captures: []core.Value{core.NewInteger(1)}, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: prog, Unit: 0, Captures: []core.Value{core.NewInteger(1)}, Ident: core.NewFnIdentity()})
 	// Two param slots over a one-wide window: the re-step, which leaves the
 	// closure parked above the value (the interpreter's under-application).
 	got, ent, err := vc.callDynApply(r, 1, []core.Value{core.NewInteger(4), cl}, seam7Dbg, 0, false)
 	if err != nil || ent != nil || len(got) != 2 {
 		t.Fatalf("a closure of another arity takes the re-step and parks: %v %v %v", got, ent, err)
 	}
-	if n, _ := core.AsInteger(got[0]); n != 4 || !got[1].Parent.Equal(core.TFunction) {
+	if n, _ := core.AsInteger(got[0]); n != 4 || !got[1].Parent().Equal(core.TFunction) {
 		t.Errorf("the value stays beneath the parked closure: %v", got)
 	}
 	// The event form commits exactly one result: the parked pair defers.

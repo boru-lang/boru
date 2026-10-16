@@ -142,7 +142,7 @@ func composeAltActions(acts []tabnasabnf.ActionFn) tabnas.AltAction {
 
 // asParseGrammar unwraps a Grammar carrier, or errors with a clear message.
 func asParseGrammar(v native.Value, word string, r *native.Registry) (*parseGrammar, error) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if ok {
 		if g, ok := ep.Body.(*parseGrammar); ok {
 			return g, nil
@@ -446,7 +446,7 @@ func parseSpecHandler(args []native.Value, _ map[string]native.Value, _ []native
 // LENIENT: a non-concrete section or field value (a carrier riding in
 // the map) is skipped, never flagged.
 func parseSpecReturns(args []native.Value, r *native.Registry) []native.Value {
-	if r != nil && r.Check.IsActive() && len(args) == 2 && native.IsConcrete(args[1]) {
+	if r != nil && r.Check.IsActive() && len(args) == 2 && native.IsConcrete(&args[1]) {
 		scratch := &parseGrammar{j: tabnas.Make(), markActions: tabnasabnf.ActionsMap{}}
 		if err := applySpecMap(scratch, args[1], r, true); err != nil {
 			code, detail := "parse_bad_spec", err.Error()
@@ -484,7 +484,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 		if !ok {
 			return nil, nil
 		}
-		if lenient && !native.IsConcrete(v) {
+		if lenient && !native.IsConcrete(&v) {
 			return nil, nil
 		}
 		sm, _ := native.AsMap(v)
@@ -506,7 +506,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 		return err
 	}
 	schemaV := 0
-	if vv, ok := m.Get("v"); ok && !(lenient && !native.IsConcrete(vv)) {
+	if vv, ok := m.Get("v"); ok && !(lenient && !native.IsConcrete(&vv)) {
 		n, verr := vv.AsConcreteInteger()
 		if verr != nil {
 			return r.BoruError("parse_bad_spec",
@@ -550,12 +550,12 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 		}
 		fv, _ := am.Get(ref)
 		fns := []native.Value{fv}
-		if fv.Parent.ConformsTo(native.TList) && native.IsConcrete(fv) {
+		if fv.Parent().ConformsTo(native.TList) && native.IsConcrete(&fv) {
 			lst, _ := native.AsList(fv)
-			fns = lst.Slice()
+			fns = lst.Elems()
 		}
 		for _, fn := range fns {
-			if lenient && !native.IsConcrete(fn) {
+			if lenient && !native.IsConcrete(&fn) {
 				continue
 			}
 			if !isCallableValue(fn) {
@@ -573,7 +573,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 	}
 	for _, name := range tmKeys(rm) {
 		specEntry, _ := rm.Get(name)
-		if lenient && !native.IsConcrete(specEntry) {
+		if lenient && !native.IsConcrete(&specEntry) {
 			continue
 		}
 		gs, rerr := ruleMapToSpec(g, name, specEntry, r)
@@ -590,22 +590,22 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 	}
 
 	// abnf: String | {src:… start:… tag:… builtins:… marks:…} | [entry …]
-	if v, ok := m.Get("abnf"); ok && !(lenient && !native.IsConcrete(v)) {
+	if v, ok := m.Get("abnf"); ok && !(lenient && !native.IsConcrete(&v)) {
 		entries := []native.Value{v}
-		if v.Parent.ConformsTo(native.TList) && native.IsConcrete(v) {
+		if v.Parent().ConformsTo(native.TList) && native.IsConcrete(&v) {
 			lst, _ := native.AsList(v)
-			entries = lst.Slice()
+			entries = lst.Elems()
 		}
 		for _, e := range entries {
-			if lenient && !native.IsConcrete(e) {
+			if lenient && !native.IsConcrete(&e) {
 				continue
 			}
 			var src string
 			var opts native.Value
 			switch {
-			case e.Parent.ConformsTo(native.TString) && native.IsConcrete(e):
+			case e.Parent().ConformsTo(native.TString) && native.IsConcrete(&e):
 				src, _ = e.AsConcreteString()
-			case e.Parent.ConformsTo(native.TMap) && native.IsConcrete(e):
+			case e.Parent().ConformsTo(native.TMap) && native.IsConcrete(&e):
 				em, _ := native.AsMap(e)
 				s, ok := native.MapFieldString(em, "src")
 				if em == nil || !ok {
@@ -630,7 +630,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 	}
 	for _, name := range tmKeys(mm) {
 		ev, _ := mm.Get(name)
-		if lenient && !native.IsConcrete(ev) {
+		if lenient && !native.IsConcrete(&ev) {
 			continue
 		}
 		em, _ := native.AsMap(ev)
@@ -644,7 +644,7 @@ func applySpecMap(g *parseGrammar, specV native.Value, r *native.Registry, lenie
 				fmt.Sprintf("Parse.spec: matcher %s: priority must be an Integer", name), "Parse.spec")
 		}
 		fn, ok := em.Get("fn")
-		if !ok || (!isCallableValue(fn) && !(lenient && !native.IsConcrete(fn))) {
+		if !ok || (!isCallableValue(fn) && !(lenient && !native.IsConcrete(&fn))) {
 			return r.BoruError("parse_bad_matcher",
 				fmt.Sprintf("Parse.spec: matcher %s: fn must be a Function", name), "Parse.spec")
 		}
@@ -894,7 +894,7 @@ func (g *parseGrammar) wrapMatcher(fn native.Value) tabnas.LexMatcher {
 			return nil
 		}
 		top := res[len(res)-1]
-		if !native.IsConcrete(top) || top.Parent.ConformsTo(native.TNone) {
+		if !native.IsConcrete(&top) || top.Parent().ConformsTo(native.TNone) {
 			return nil // no match
 		}
 		m, _ := native.AsMap(top)
@@ -941,10 +941,7 @@ func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]na
 	if sig == nil {
 		return nil, fmt.Errorf("no matching callback signature")
 	}
-	var fnDef *native.FnDefInfo
-	if fd, ok := fn.Data.(native.FnDefInfo); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := fn.Data().(*native.FnDefInfo) // read, never written: the payload itself
 	// InvokeCallbackFn, not r.CallBoru: a matcher/action written in the grammar's
 	// own module resolves its free words there
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and the body is offered to the VM before
@@ -1047,10 +1044,10 @@ func altMapToSpec(g *parseGrammar, gs *tabnas.GrammarSpec, altV native.Value, ru
 	}
 	if bv, ok := m.Get("b"); ok {
 		switch {
-		case bv.Parent.ConformsTo(native.TInteger) && native.IsConcrete(bv):
+		case bv.Parent().ConformsTo(native.TInteger) && native.IsConcrete(&bv):
 			n, _ := bv.AsConcreteInteger()
 			alt.B = int(n)
-		case bv.Parent.ConformsTo(native.TString) && native.IsConcrete(bv):
+		case bv.Parent().ConformsTo(native.TString) && native.IsConcrete(&bv):
 			s, _ := bv.AsConcreteString()
 			alt.B = s
 		}
@@ -1061,7 +1058,7 @@ func altMapToSpec(g *parseGrammar, gs *tabnas.GrammarSpec, altV native.Value, ru
 			counters := map[string]int{}
 			for _, k := range nm.Keys() {
 				cv, _ := nm.Get(k)
-				if cv.Parent.ConformsTo(native.TInteger) && native.IsConcrete(cv) {
+				if cv.Parent().ConformsTo(native.TInteger) && native.IsConcrete(&cv) {
 					ci, _ := cv.AsConcreteInteger()
 					counters[k] = int(ci)
 				}
@@ -1076,7 +1073,7 @@ func altMapToSpec(g *parseGrammar, gs *tabnas.GrammarSpec, altV native.Value, ru
 			g.inlineSeq++
 			gs.Ref[ref] = g.wrapAction(av)
 			alt.A = ref
-		case av.Parent.ConformsTo(native.TString) && native.IsConcrete(av):
+		case av.Parent().ConformsTo(native.TString) && native.IsConcrete(&av):
 			s, _ := av.AsConcreteString()
 			alt.A = s
 			// A string ref (e.g. '@hit') names an action registered via
@@ -1086,7 +1083,7 @@ func altMapToSpec(g *parseGrammar, gs *tabnas.GrammarSpec, altV native.Value, ru
 			if acts, ok := g.markActions[s]; ok && len(acts) > 0 {
 				gs.Ref[s] = composeAltActions(acts)
 			}
-		case av.Parent.ConformsTo(native.TList) && native.IsConcrete(av):
+		case av.Parent().ConformsTo(native.TList) && native.IsConcrete(&av):
 			// The tabnas list-of-actions form: refs and inline fns run
 			// in order, each seeing the previous action's node.
 			lst, _ := native.AsList(av)
@@ -1099,7 +1096,7 @@ func altMapToSpec(g *parseGrammar, gs *tabnas.GrammarSpec, altV native.Value, ru
 					g.inlineSeq++
 					gs.Ref[ref] = g.wrapAction(el)
 					refs = append(refs, ref)
-				case el.Parent.ConformsTo(native.TString) && native.IsConcrete(el):
+				case el.Parent().ConformsTo(native.TString) && native.IsConcrete(&el):
 					s, _ := el.AsConcreteString()
 					if acts, ok := g.markActions[s]; ok && len(acts) > 0 {
 						gs.Ref[s] = composeAltActions(acts)
@@ -1177,14 +1174,14 @@ func specAnyMap(m native.ReadMap) map[string]any {
 
 func specAnyValue(v native.Value) any {
 	switch {
-	case v.Parent.ConformsTo(native.TInteger) && native.IsConcrete(v):
+	case v.Parent().ConformsTo(native.TInteger) && native.IsConcrete(&v):
 		n, _ := v.AsConcreteInteger()
 		return int(n)
-	case v.Parent.ConformsTo(native.TMap) && native.IsConcrete(v):
+	case v.Parent().ConformsTo(native.TMap) && native.IsConcrete(&v):
 		if m, _ := native.AsMap(v); m != nil {
 			return specAnyMap(m)
 		}
-	case v.Parent.ConformsTo(native.TList) && native.IsConcrete(v):
+	case v.Parent().ConformsTo(native.TList) && native.IsConcrete(&v):
 		if l, err := native.AsList(v); err == nil {
 			out := make([]any, l.Len())
 			for i := 0; i < l.Len(); i++ {
@@ -1199,9 +1196,9 @@ func specAnyValue(v native.Value) any {
 // isCallableValue reports whether v is a function-like value (a Function or an
 // FnDef) usable as an inline grammar action.
 func isCallableValue(v native.Value) bool {
-	if v.Parent == native.TFunction {
+	if v.Parent() == native.TFunction {
 		return true
 	}
-	_, ok := v.Data.(native.FnDefInfo)
+	_, ok := v.Data().(*native.FnDefInfo)
 	return ok
 }

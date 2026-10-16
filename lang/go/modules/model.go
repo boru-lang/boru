@@ -156,7 +156,7 @@ func registerModelWord(tModel *native.Type, subReg *native.Registry, exports *na
 
 // asModelHandle unwraps a Model value's *modelHandle.
 func asModelHandle(v native.Value) (*modelHandle, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -181,7 +181,7 @@ type parsedSpec struct {
 // assembles the model Build/Watch.
 func modelNewHandlerFor(tModel *native.Type) native.Handler {
 	return func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-		if !native.IsConcrete(args[0]) {
+		if !native.IsConcrete(&args[0]) {
 			return nil, r.BoruError("model_bad_spec", "new: spec must be a concrete Map", "new")
 		}
 		specMap, merr := native.AsMap(args[0])
@@ -264,7 +264,7 @@ func parseSpec(specMap native.ReadMap, h *modelHandle, r *native.Registry) (pars
 			"e.g. Model.new {src:'service: name: \"orders\"'}")
 	}
 
-	if v, ok := specMap.Get("args"); ok && native.IsConcrete(v) {
+	if v, ok := specMap.Get("args"); ok && native.IsConcrete(&v) {
 		if m, mok := native.ValueToAny(v).(map[string]any); mok {
 			ps.args = m
 		}
@@ -275,7 +275,7 @@ func parseSpec(specMap native.ReadMap, h *modelHandle, r *native.Registry) (pars
 	if order, ok := mapStrList(specMap, "order"); ok {
 		ps.order = order
 	}
-	if w, ok := specMap.Get("watch"); ok && native.IsConcrete(w) {
+	if w, ok := specMap.Get("watch"); ok && native.IsConcrete(&w) {
 		if wm, werr := native.AsMap(w); werr == nil {
 			mod, _ := mapBool(wm, "mod")
 			add, _ := mapBool(wm, "add")
@@ -299,7 +299,7 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 	if !ok {
 		return nil, nil
 	}
-	if !native.IsConcrete(av) {
+	if !native.IsConcrete(&av) {
 		return nil, r.BoruError("model_bad_action", "new: actions must be a Map", "new")
 	}
 	am, aerr := native.AsMap(av)
@@ -321,14 +321,14 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 // stampActionFn compiles an action body to a detached unit at model build so
 // makeAction's InvokeCallback runs it on the VM (the net-codec / service-
 // handler precedent). StampFnValue clones, so the user's spec value stays
-// plain; the model's private copy takes the ACTION name — spec lambdas are
-// anonymous, and the name is what labels the stamp event and any action
-// error, on the compiled and interpreted paths alike. A decline (captures,
-// ineligible shape, stamping off) returns the input unchanged.
+// plain; the model's own holder of the value takes the ACTION name
+// (core.SetFnName — the holder's, never written into the definition) — spec
+// lambdas are anonymous, and the name is what labels the stamp event, on the
+// compiled and interpreted paths alike. A decline (captures, ineligible
+// shape, stamping off) returns the named holder otherwise unchanged.
 func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
-	if fd, ok := fnVal.Data.(native.FnDefInfo); ok && fd.Name == "" {
-		fd.Name = name
-		fnVal.Data = fd
+	if _, ok := native.FnDefOf(fnVal.Data()); ok && core.FnNameOf(&fnVal) == "" {
+		core.SetFnName(&fnVal, name)
 	}
 	stamped, _ := compiler.StampFnValue(r, fnVal)
 	return stamped
@@ -338,10 +338,10 @@ func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.V
 // An entry is either a Function directly (step defaults to post) or a Map
 // {run:Function, step:'pre'|'post'|'all'}.
 func actionFnAndStep(name string, entry native.Value, r *native.Registry) (native.Value, model.Step, error) {
-	if _, ok := entry.Data.(native.FnDefInfo); ok {
+	if _, ok := entry.Data().(*native.FnDefInfo); ok {
 		return entry, model.StepPost, nil
 	}
-	if native.IsConcrete(entry) {
+	if native.IsConcrete(&entry) {
 		if m, err := native.AsMap(entry); err == nil {
 			run, hasRun := m.Get("run")
 			if !hasRun {
@@ -349,7 +349,7 @@ func actionFnAndStep(name string, entry native.Value, r *native.Registry) (nativ
 					fmt.Sprintf("new: action %q map needs a 'run' Function", name), "new",
 					"e.g. actions:{gen:{run:([m:Any] => [...]), step:'post'}}")
 			}
-			if _, ok := run.Data.(native.FnDefInfo); !ok {
+			if _, ok := run.Data().(*native.FnDefInfo); !ok {
 				return native.Value{}, "", r.BoruError("model_bad_action",
 					fmt.Sprintf("new: action %q 'run' must be a Function", name), "new")
 			}
@@ -390,10 +390,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 	// The fn's own definition is hoisted out of the type-assert so the action
 	// closure can hand it to InvokeCallbackFn: a model action written in another
 	// module must resolve its free words there (design/FUNCTION-VALUE-SCOPE.0.md).
-	var fnInfo *native.FnDefInfo
-	if fd, ok := fnVal.Data.(native.FnDefInfo); ok {
-		fnInfo = &fd
-	}
+	fnInfo, _ := fnVal.Data().(*native.FnDefInfo) // read, never written: the payload itself
 	return model.ActionDef{
 		Step: step,
 		Run: func(mdl map[string]any, _ *model.Build, _ *model.BuildContext) model.ActionResult {
@@ -406,7 +403,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 				h.actErrs = append(h.actErrs, fmt.Errorf("action: no matching signature (declare one param for the model Map)"))
 				return model.ActionResult{OK: false}
 			}
-			res, err := core.InvokeCallbackFn(h.actionReg, fnInfo, sig, []native.Value{modelVal})
+			res, err := core.InvokeCallbackFnAs(h.actionReg, fnInfo, core.FnNameOf(&fnVal), sig, []native.Value{modelVal})
 			if err != nil {
 				h.actErrs = append(h.actErrs, fmt.Errorf("action: %w", err))
 				return model.ActionResult{OK: false}
@@ -425,7 +422,7 @@ func interpretActionResult(res []native.Value) model.ActionResult {
 	if b, err := last.AsConcreteBoolean(); err == nil {
 		return model.ActionResult{OK: b}
 	}
-	if native.IsConcrete(last) {
+	if native.IsConcrete(&last) {
 		if m, err := native.AsMap(last); err == nil {
 			ok := true
 			if v, has := m.Get("ok"); has {
@@ -636,7 +633,7 @@ func (synthFileInfo) Sys() any           { return nil }
 
 func mapStr(m native.ReadMap, key string) (string, bool) {
 	v, ok := m.Get(key)
-	if !ok || !native.IsConcrete(v) {
+	if !ok || !native.IsConcrete(&v) {
 		return "", false
 	}
 	s, err := v.AsConcreteString()
@@ -660,7 +657,7 @@ func mapBool(m native.ReadMap, key string) (bool, bool) {
 
 func mapStrList(m native.ReadMap, key string) ([]string, bool) {
 	v, ok := m.Get(key)
-	if !ok || !native.IsConcrete(v) {
+	if !ok || !native.IsConcrete(&v) {
 		return nil, false
 	}
 	lst, err := native.AsList(v)

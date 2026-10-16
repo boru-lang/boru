@@ -48,7 +48,7 @@ func RecordTypedDefMake(r *Registry, name string, typeArg, body Value, pos SrcPo
 	if sig == nil {
 		return Value{}, false
 	}
-	t := CanonicalType(r, ValueType(typeArg))
+	t := NodeOf(ValueType(typeArg))
 	// The check piece wraps this in toCarrier; here that call is provably
 	// the IDENTITY and is elided rather than dragging the strip machinery
 	// down with it. NewCarrier(t) leaves Data nil for every t except
@@ -56,9 +56,9 @@ func RecordTypedDefMake(r *Registry, name string, typeArg, body Value, pos SrcPo
 	// argument unchanged on both of those shapes — the `Parent is TList or
 	// TMap` early-out, and the `v.Data == nil` type-literal early-out. t is
 	// a class / resource node here, so it takes the second.
-	carrier := NewCarrier(t)
-	es.RecordCall("make", typedDefMakeSig(sig, name), []Value{typeArg, body}, []Value{carrier}, pos, false, false)
-	return carrier, true
+	outs := []Value{NewCarrier(t)}
+	es.RecordCall("make", typedDefMakeSig(sig, name), []Value{typeArg, body}, outs, pos, false, false)
+	return outs[0], true
 }
 
 // typedDefMakeSig is make's signature with its handler's failure wrapped as

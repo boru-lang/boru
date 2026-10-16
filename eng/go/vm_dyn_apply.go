@@ -144,11 +144,14 @@ func applyRetContract(unit *compiler.CompiledFn, name string, sig *core.Signatur
 // returning `fn [[s:String][Integer][s]]` raised `<fn>: return value 1: …`
 // interpreted and `: return value 1: …` compiled, with the lambda twin `:`
 // on both lanes.
-func applyFrameName(fd core.FnDefInfo) string {
-	if !fd.Anonymous && !fd.NamedDef() {
+//
+// The name is the holder's (core.FnNameOf — a binding names the holder, never
+// a copy of its definition), so the value is passed, not a renamed view.
+func applyFrameName(v *core.Value) string {
+	if fd, ok := core.FnDefOf(v.Data()); ok && !fd.Anonymous && !core.NamedFnValue(v) {
 		return core.FnValueFrameName
 	}
-	return fd.Name
+	return core.FnNameOf(v)
 }
 
 // dynApplyEnter reports how to enter a dynamically-applied fn VALUE on the VM,
@@ -164,8 +167,7 @@ func applyFrameName(fd core.FnDefInfo) string {
 // against p.Fns — and hosting it nested would reintroduce the body bracket this
 // file exists to avoid. Those keep the island.
 func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnter {
-	fd, isFn := fnVal.Data.(core.FnDefInfo)
-	if !isFn {
+	if _, isFn := fnVal.Data().(*core.FnDefInfo); !isFn {
 		return nil
 	}
 	// A QUOTED fn is DATA, not a callee. The island got this for free — the
@@ -179,21 +181,21 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	//
 	// IsAppliableFn alone does not exclude a quoted value (callDynApplyTop
 	// tests `|| fnVal.Quoted` separately for the same reason).
-	if fnVal.Quoted {
+	if core.IsQuoted(&fnVal) {
 		return nil
 	}
 	sig := core.MatchFnSig(fnVal, args)
 	if sig == nil {
 		return nil
 	}
-	return vc.dynApplyEnterSig(fd, sig, args, fnVal.Pos())
+	return vc.dynApplyEnterSig(&fnVal, sig, args, fnVal.Pos())
 }
 
-// dynApplyEnterSig is dynApplyEnter past the match: enter fd's overload sig —
-// one the caller already selected by the interpreter's rule — over args, or
-// nil when that overload has no in-program unit of the matching shape. at is
-// the applied value's position (dynEnter.at).
-func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, args []core.Value, at core.SrcPos) *dynEnter {
+// dynApplyEnterSig is dynApplyEnter past the match: enter the fn value
+// fnVal's overload sig — one the caller already selected by the interpreter's
+// rule — over args, or nil when that overload has no in-program unit of the
+// matching shape. at is the applied value's position (dynEnter.at).
+func (vc *vmContext) dynApplyEnterSig(fnVal *core.Value, sig *core.Signature, args []core.Value, at core.SrcPos) *dynEnter {
 	ref := compiler.CompiledRef(sig)
 	if ref == nil || ref.Prog != vc.p || ref.Unit < 0 || ref.Unit >= len(vc.p.Fns) {
 		return nil
@@ -218,12 +220,12 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 	// references are data — the compiled mirror of the interpreter's binding
 	// rule (core_helpers.go).
 	for i := 0; i < fn.NParams && i < len(locals); i++ {
-		locals[i] = core.StripAscribed(locals[i])
-		if locals[i].Parent.Equal(core.TList) && !locals[i].Quoted {
-			locals[i].Quoted = true
+		core.ClearAscribed(&locals[i])
+		if locals[i].Parent().Equal(core.TList) && !core.IsQuoted(&locals[i]) {
+			core.SetQuoted(&locals[i], true)
 		}
 	}
-	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, applyFrameName(fd), sig), allForward: allForwardSig(sig), at: at}
+	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, applyFrameName(fnVal), sig), allForward: allForwardSig(sig), at: at}
 }
 
 // dynApplyForeign applies a fn VALUE whose matched overload carries a
@@ -252,8 +254,8 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 // frame push: a hosted unit has run, effects and all, before its results
 // can be counted.
 func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
-	fd, isFn := fnVal.Data.(core.FnDefInfo)
-	if !isFn || fnVal.Quoted {
+	fd, isFn := fnVal.Data().(*core.FnDefInfo)
+	if !isFn || core.IsQuoted(&fnVal) {
 		return nil, false, nil
 	}
 	sig := core.MatchFnSig(fnVal, args)
@@ -271,12 +273,12 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 		// and applied at a shaped method (`def f (mk 1) end do [f 'z']`,
 		// the interp-entry census's fn-value.tsv:L334) islanded for want
 		// of one. A body the stamp declines keeps the island.
-		ref = compiler.LazyStampFnSig(vc.r, fd, sig, fnVal.Pos())
+		ref = compiler.LazyStampFnSigAs(vc.r, *fd, core.FnNameOf(&fnVal), sig, fnVal.Pos())
 	}
 	if ref == nil || ref.Prog == nil || ref.Prog == vc.p {
 		return nil, false, nil
 	}
-	home, _ := core.FnHome(vc.r, &fd)
+	home, _ := core.FnHome(vc.r, fd)
 	if !ref.DepsFresh(home) {
 		if ref = ref.JitRestamp(home); ref == nil || ref.Prog == nil {
 			return nil, false, nil
@@ -294,7 +296,7 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 	// `m.f 5` where the interpreter raises the count error (NUR252).
 	res, _, err = vc.runForeignUnit(ref, args, true)
 	if err == nil {
-		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(fd), sig), res, 0, true, core.SrcPos{})
+		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(&fnVal), sig), res, 0, true, core.SrcPos{})
 	}
 	return res, true, err
 }

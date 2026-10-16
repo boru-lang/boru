@@ -21,7 +21,7 @@ func buildWidget(kind string, fields []string, values []native.Value, opts nativ
 	for i, f := range fields {
 		m.Set(f, values[i])
 	}
-	if opts.Data != nil {
+	if opts.Data() != nil {
 		om, err := native.RequireConcreteMap(opts, word)
 		if err != nil {
 			return nil, r.BoruError("tui_error", word+": options must be a Map", word)
@@ -217,7 +217,8 @@ func tuiEditHandler(args []native.Value, _ map[string]native.Value, _ []native.V
 	if v, ok := ev.Get("mods"); ok {
 		if l, lErr := native.RequireConcreteList(v, "edit"); lErr == nil {
 			for i := 0; i < l.Len(); i++ {
-				if s, sErr := l.Get(i).AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
+				el := l.Get(i)
+				if s, sErr := el.AsConcreteString(); sErr == nil && (s == "ctrl" || s == "alt") {
 					ctrl = true
 				}
 			}

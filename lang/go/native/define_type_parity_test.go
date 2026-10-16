@@ -57,7 +57,7 @@ func TestDefineTypeGoBoruParity(t *testing.T) {
 		}
 		assertParity(t, "atom-enum", boru, go_, probes)
 		// Spot-check the verdicts are the intended ones.
-		if !NewAtom("red").Is(go_) || NewAtom("blue").Is(go_) || NewInteger(3).Is(go_) {
+		if !addrOf(NewAtom("red")).Is(go_) || addrOf(NewAtom("blue")).Is(go_) || addrOf(NewInteger(3)).Is(go_) {
 			t.Error("Go atom enum gave an unexpected verdict")
 		}
 	})
@@ -71,7 +71,7 @@ func TestDefineTypeGoBoruParity(t *testing.T) {
 			t.Fatalf("DefineEnum: %v", err)
 		}
 		assertParity(t, "type-union", boru, go_, probes)
-		if !NewInteger(3).Is(go_) || !NewString("x").Is(go_) || NewBoolean(true).Is(go_) {
+		if !addrOf(NewInteger(3)).Is(go_) || !addrOf(NewString("x")).Is(go_) || addrOf(NewBoolean(true)).Is(go_) {
 			t.Error("Go type union gave an unexpected verdict")
 		}
 	})
@@ -84,7 +84,7 @@ func TestDefineTypeGoBoruParity(t *testing.T) {
 			t.Fatalf("DefineType: %v", err)
 		}
 		assertParity(t, "negation", boru, go_, probes)
-		if NewString("x").Is(go_) || !NewInteger(3).Is(go_) {
+		if addrOf(NewString("x")).Is(go_) || !addrOf(NewInteger(3)).Is(go_) {
 			t.Error("Go negation gave an unexpected verdict")
 		}
 	})

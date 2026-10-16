@@ -18,15 +18,24 @@ package core
 // through to its name / type resolution. resolveModuleExport and the Test
 // module's twin both call this; the rule lives here once.
 func HomeExportedFn(v Value, modReg *Registry) (Value, bool) {
-	fnDef, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefOf(v.Data())
 	if !ok {
 		return v, false
 	}
-	if !fnDef.HasHome() {
-		fnDef.Registry = modReg
+	if fd.HasHome() && !fd.Registry.SameHome(modReg) {
+		return v, true
 	}
-	if fnDef.Registry.SameHome(modReg) {
-		return NewFunction(fnDef), true
+	return NewFunction(exportedFnDef(fd, modReg)), true
+}
+
+// exportedFnDef constructs the definition a module exports for fd: fd's parts
+// homed at modReg when fd carries no home of its own (a Go-built value the
+// module adopts), its own home otherwise. A new definition — the export is a
+// new value — never a write to fd, which the module's bindings still hold.
+func exportedFnDef(fd *FnDefInfo, modReg *Registry) FnDefInfo {
+	out := *fd
+	if !fd.HasHome() {
+		out.Registry = modReg
 	}
-	return v, true
+	return out
 }

@@ -39,7 +39,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 	build := func(twinNames, eventNames []string) *EmitState {
 		es := NewEmitState()
 		es.BindRegistry(r)
-		end := es.MultiRunBodyGuard(r, body.ID)
+		end := es.MultiRunBodyGuard(r, core.IDOf(&body))
 		for _, n := range twinNames {
 			es.RecordBindTwin(core.BindTransition{Kind: core.BindDef, Name: n, Depth: 1, Pos: pos},
 				core.DefEntry{Body: core.NewInteger(5)})
@@ -73,7 +73,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 		es.fnRecs[0].frag.events[1].dyn.residentTwin != 1 {
 		t.Fatalf("total match must stamp both events and place both twins (placed=%d)", placed(es))
 	}
-	es.NoteDefRead("some-id", "x")
+	es.NoteDefRead("some-id", core.RecKey{}, "x")
 	if !es.Compilable || es.armReadCompileFailure != "" {
 		t.Fatalf("a root read of an adopted name must not poison the placement gate (Compilable=%v, compile failure %q)",
 			es.Compilable, es.armReadCompileFailure)
@@ -88,7 +88,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 
 	// Leftover twin (the var-pair class: an undef kind in the bracket).
 	es = build([]string{"x"}, []string{"x"})
-	end := es.MultiRunBodyGuard(r, body.ID)
+	end := es.MultiRunBodyGuard(r, core.IDOf(&body))
 	es.RecordBindTwin(core.BindTransition{Kind: core.BindDef, Name: "x", Depth: 1, Pos: pos},
 		core.DefEntry{Body: core.NewInteger(5)})
 	es.RecordBindTwin(core.BindTransition{Kind: core.BindUndef, Name: "r"}, core.DefEntry{})
@@ -100,7 +100,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 
 	// A def-replace twin is a shape the bridge carries no op for.
 	es = build([]string{}, []string{"x"})
-	end = es.MultiRunBodyGuard(r, body.ID)
+	end = es.MultiRunBodyGuard(r, core.IDOf(&body))
 	es.RecordBindTwin(core.BindTransition{Kind: core.BindDefReplace, Name: "x", Depth: 1, Pos: pos},
 		core.DefEntry{Body: core.NewInteger(5)})
 	end()
@@ -112,7 +112,7 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 	// A VALUE def whose captured entry carries a TYPE node: the install arm
 	// would install a runtime value under a name the entry says is a type.
 	es = build([]string{}, []string{"x"})
-	end = es.MultiRunBodyGuard(r, body.ID)
+	end = es.MultiRunBodyGuard(r, core.IDOf(&body))
 	es.RecordBindTwin(core.BindTransition{Kind: core.BindDef, Name: "x", Depth: 1, Pos: pos},
 		core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger})
 	end()
@@ -205,7 +205,7 @@ func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
 	build := func(kind core.BindKind, evTypeInstall bool) *EmitState {
 		es := NewEmitState()
 		es.BindRegistry(r)
-		end := es.MultiRunBodyGuard(r, body.ID)
+		end := es.MultiRunBodyGuard(r, core.IDOf(&body))
 		es.RecordBindTwin(core.BindTransition{Kind: kind, Name: "Big", Depth: 1, Pos: defPos},
 			core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger, Minted: true})
 		end()
@@ -225,7 +225,7 @@ func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
 	if !es.armBoundTypeNames["Big"] {
 		t.Fatal("an adopted type name must join the read fence — its DEPTH is body-run-dependent and it has no live read")
 	}
-	es.NoteDefRead("some-id", "Big")
+	es.NoteDefRead("some-id", core.RecKey{}, "Big")
 	if !es.Compilable || !strings.Contains(es.armReadCompileFailure, "read of `Big` after a multi-run body binds it") ||
 		!strings.HasPrefix(es.armReadCompileFailure, "twin regime: ") {
 		t.Fatalf("a root read of an arm-bound type name must poison the placement gate (Compilable=%v, compile failure %q)",
@@ -256,7 +256,7 @@ func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
 		}), 1, 9),
 	})
 	depBody.SetPos(core.SrcPos{Row: 1, Col: 0})
-	end := esDep.MultiRunBodyGuard(r, depBody.ID)
+	end := esDep.MultiRunBodyGuard(r, core.IDOf(&depBody))
 	esDep.RecordBindTwin(core.BindTransition{Kind: core.BindTypeInstall, Name: "Big", Depth: 1, Pos: defPos},
 		core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger, Minted: true})
 	end()

@@ -22,11 +22,11 @@ func TestCallResultPlacedArms(t *testing.T) {
 	if es.callResultPlaced(v) {
 		t.Error("an identity-less value has no producer")
 	}
-	v.ID = "v-res"
+	core.SetID(&v, "v-res")
 	if es.callResultPlaced(v) {
 		t.Error("a value no event produced is not a call result")
 	}
-	es.producedBy = map[string]producer{"v-res": {seq: 41}}
+	es.stampProduced(&v, 41, 0)
 	if es.callResultPlaced(v) {
 		t.Error("a producer seq with no event in the frame resolves to nothing")
 	}
@@ -51,12 +51,12 @@ func TestCallResultPlacedArms(t *testing.T) {
 		t.Error("a def-read lead dispatches (a bare name always calls)")
 	}
 	delete(es.defReads, "v-res")
-	es.NoteMemberFnRead("v-res", core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "f"}})
+	es.NoteMemberFnRead("v-res", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "f"}}))
 	if es.callResultPlaced(v) {
 		t.Error("a member-read lead is the arrival model's")
 	}
 	es = NewEmitState()
-	es.producedBy = map[string]producer{"v-res": {seq: 41}}
+	es.stampProduced(&v, 41, 0)
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 41, kind: evCallUser, uc: emitUserCall{nout: 1}})
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -73,8 +73,8 @@ func TestCallResultPlacedArms(t *testing.T) {
 	// before the frame stack.
 	frag := &EmitFragment{events: []EmitEvent{{seq: 77, kind: evCallUser, uc: emitUserCall{nout: 1}}}}
 	w := core.NewInteger(2)
-	w.ID = "v-frag"
-	es.producedBy["v-frag"] = producer{seq: 77}
+	core.SetID(&w, "v-frag")
+	es.stampProduced(&w, 77, 0)
 	if !es.callResultPlacedIn(w, frag) {
 		t.Error("a unit's own call result is found in its captured fragment")
 	}
@@ -85,8 +85,8 @@ func TestCallResultPlacedArms(t *testing.T) {
 	// The arrival apply of a USER member parks; a dyn-method over a word
 	// that is not a user fn (a Go-impl member, the paren-apply pseudo-word)
 	// keeps its arm, as does a multi-output one.
-	r.Defs.Push("mkr", core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "mkr",
-		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}})
+	r.Defs.Push("mkr", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "mkr",
+		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}}))
 	es.frames[0][0] = EmitEvent{seq: 41, kind: evCall, call: emitCall{word: "mkr", nout: 1,
 		dynMethod: &DynMethodSpec{Word: "mkr", NArgs: 1, NOut: 1}}}
 	if !es.callResultPlaced(v) {
@@ -129,13 +129,13 @@ func TestUserMemberFn(t *testing.T) {
 	if es.userMemberFn("n") {
 		t.Error("a scalar binding is not a user fn")
 	}
-	r.Defs.Push("g", core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g",
-		Signatures: []core.Signature{{}}}})
+	r.Defs.Push("g", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g",
+		Signatures: []core.Signature{{}}}}))
 	if es.userMemberFn("g") {
 		t.Error("a fn with no boru body (a Go-impl fn) is not a user fn")
 	}
-	r.Defs.Push("u", core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "u",
-		Signatures: []core.Signature{{}, {Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}})
+	r.Defs.Push("u", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "u",
+		Signatures: []core.Signature{{}, {Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}}))
 	if !es.userMemberFn("u") {
 		t.Error("a boru body on any overload makes a user fn")
 	}
@@ -147,7 +147,7 @@ func TestUserMemberFn(t *testing.T) {
 func TestCallResultRenderKnown(t *testing.T) {
 	var nilES *EmitState
 	v := core.NewInteger(1)
-	v.ID = "v-r"
+	core.SetID(&v, "v-r")
 	if nilES.callResultRenderKnown(v) {
 		t.Error("a nil recorder knows no render")
 	}
@@ -155,7 +155,7 @@ func TestCallResultRenderKnown(t *testing.T) {
 	if es.callResultRenderKnown(core.NewInteger(1)) || es.callResultRenderKnown(v) {
 		t.Error("an identity-less or unproduced value has no known render")
 	}
-	es.producedBy = map[string]producer{"v-r": {seq: 9}}
+	es.stampProduced(&v, 9, 0)
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 9, kind: evCall, call: emitCall{word: "w", nout: 1}})
 	if es.callResultRenderKnown(v) {
 		t.Error("a native call's result is not a compiled closure")
@@ -200,7 +200,7 @@ func TestCallResultRenderKnown(t *testing.T) {
 	if es.callResultRenderKnown(v) {
 		t.Error("a non-fn const is not a rendered closure")
 	}
-	es.consts = []core.Value{{Parent: core.TFunction, Data: core.FnDefInfo{Anonymous: true}}}
+	es.consts = []core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}})}
 	if !es.callResultRenderKnown(v) {
 		t.Error("a const fn value renders as the interpreter formats it")
 	}

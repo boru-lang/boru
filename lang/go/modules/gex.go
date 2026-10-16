@@ -109,17 +109,17 @@ func miniGexHandler(args []native.Value, _ map[string]native.Value, _ []native.V
 	subject := args[2]
 
 	switch {
-	case native.IsConcrete(subject) && subject.Parent.ConformsTo(native.TList):
+	case native.IsConcrete(&subject) && subject.Parent().ConformsTo(native.TList):
 		elems, _ := native.AsList(subject)
 		var out []native.Value
-		for _, e := range elems.Slice() {
+		for _, e := range elems.Elems() {
 			if re.MatchString(native.ValToString(e)) {
 				out = append(out, e)
 			}
 		}
 		return []native.Value{native.NewList(out)}, nil
 
-	case native.IsConcrete(subject) && subject.Parent.ConformsTo(native.TMap):
+	case native.IsConcrete(&subject) && subject.Parent().ConformsTo(native.TMap):
 		m, _ := native.AsMap(subject)
 		out := native.NewOrderedMap()
 		for _, k := range m.Keys() {

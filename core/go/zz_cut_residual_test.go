@@ -244,8 +244,8 @@ func covWords(r *Registry) {
 	})
 	undefImpl := Go(func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 		name := ""
-		if IsWord(args[0]) {
-			w, _ := AsWord(args[0])
+		if IsWord(&args[0]) {
+			w, _ := AsWord(&args[0])
 			name = w.Name
 		} else if IsAtom(args[0]) {
 			name, _ = AsAtom(args[0])

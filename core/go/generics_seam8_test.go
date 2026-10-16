@@ -48,7 +48,7 @@ func TestW8TypeArgNodeSurface(t *testing.T) {
 	r := w8reg(t)
 	node := r.Types.MintType("W8Surf", TAny)
 	sv := NewSurfaceType(node, &SurfaceInfo{Type: node})
-	if got := typeArgNode(sv); got == nil || got.ID != node.ID {
+	if got := typeArgNode(sv); got == nil || IDOf(got) != IDOf(node) {
 		t.Fatalf("typeArgNode of a surface must return its minted node, got %v", got)
 	}
 }
@@ -90,7 +90,7 @@ func TestW8SubstituteSelfInFlightNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Self head resolving to the in-flight node must not error: %v", err)
 	}
-	if !IsBareTypeNode(got) || got.ID != selfNode.ID {
+	if !IsBareTypeNode(&got) || IDOf(&got) != IDOf(selfNode) {
 		t.Fatalf("expected the self node literal, got %v", got)
 	}
 }
@@ -161,7 +161,7 @@ func TestW8SubstituteFnUndefArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("non-FnUndefInfo TFnUndef value must pass through: %v", err)
 	}
-	if _, ok := got.Data.(IntPayload); !ok {
+	if _, ok := got.Data().(IntPayload); !ok {
 		t.Fatal("value should be returned unchanged")
 	}
 

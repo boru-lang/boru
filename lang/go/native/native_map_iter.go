@@ -53,7 +53,7 @@ type mapBody struct {
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	if IsCompiledClosure(body) {
 		mb := mapBody{closure: true, body: body}
-		if ClosureIsFnValue(body) {
+		if ClosureIsFnValue(&body) {
 			if fnv, ok := ClosureAsFnDef(reg, body); ok {
 				mb.sigFn = fnv
 				mb.body = ClosureSigMatched(body)
@@ -61,14 +61,14 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 		}
 		return mb, nil
 	}
-	if body.Parent.ConformsTo(TFunction) {
+	if body.Parent().ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
-		if fd, ok := body.Data.(FnDefInfo); ok {
-			mb.fnDef = &fd
+		if fd, ok := body.Data().(*FnDefInfo); ok {
+			mb.fnDef = fd // read, never written: the payload itself
 		}
 		return mb, nil
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return mapBody{}, reg.BoruError(word+"_error", word+": body must be a quotation list or a lambda", word)
 	}
 	bl, _ := AsList(body)
@@ -85,11 +85,10 @@ func (mb mapBody) quotation() bool { return !mb.lambda && !mb.closure }
 // quotationBody is the quotation as the body value the loop region steps:
 // a list whose BodyTokens are exactly mb.tokens — an EMPTY quotation
 // included, which stays the identity on its inputs (runQuotationBody's
-// rule) rather than reading, nil-backed, as a one-token body.
+// rule). newMapBody takes the tokens from Slice, which allocates even for
+// an empty list, so they are never nil and the list never reads,
+// nil-backed, as a one-token body.
 func (mb mapBody) quotationBody() Value {
-	if mb.tokens == nil {
-		return NewList([]Value{})
-	}
 	return NewList(mb.tokens)
 }
 
@@ -102,7 +101,7 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 	if mb.closure {
 		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
 		// against the value's own signature (sigFn) before the unit runs.
-		if mb.sigFn.Data != nil {
+		if mb.sigFn.Data() != nil {
 			args := []Value{NewKeyVal(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
@@ -140,7 +139,7 @@ func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) 
 	}
 	if mb.closure {
 		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
-		if mb.sigFn.Data != nil {
+		if mb.sigFn.Data() != nil {
 			args := []Value{acc, NewKeyVal(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
@@ -227,10 +226,10 @@ func runQuotationBody(reg *Registry, tokens []Value, pushed []Value) (Value, boo
 // divergence). A NON-concrete value (a Map type literal, a carrier) keeps
 // the word's own error: the interpreter reaches that branch as well.
 func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
-	if IsConcrete(v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
+	if IsConcrete(&v) && !v.Parent().ConformsTo(TMap) && !v.Parent().ConformsTo(TList) {
 		return nil, reg.BoruError("signature_error", core.NoMatchDetail(word), word)
 	}
-	if !IsConcrete(v) || !v.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&v) || !v.Parent().ConformsTo(TMap) {
 		return nil, reg.BoruError(word+"_error", word+": expected a concrete map", word)
 	}
 	m, _ := AsMap(v)

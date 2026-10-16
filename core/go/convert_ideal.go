@@ -29,7 +29,7 @@ type IdealConverter interface {
 // Parent chain for the nearest IdealConverter. Falls back to an empty Map
 // when nothing in the chain converts (the Ideal root always does).
 func ConvertIdealToMap(v Value) (Value, error) {
-	for t := ValueType(v); t != nil; t = t.Parent {
+	for t := ValueType(v); t != nil; t = t.Parent() {
 		c, ok := t.Behavior().(IdealConverter)
 		if !ok {
 			continue
@@ -45,7 +45,7 @@ func ConvertIdealToMap(v Value) (Value, error) {
 
 // ConvertIdealToList converts an Ideal value to a List by the same walk.
 func ConvertIdealToList(v Value) (Value, error) {
-	for t := ValueType(v); t != nil; t = t.Parent {
+	for t := ValueType(v); t != nil; t = t.Parent() {
 		c, ok := t.Behavior().(IdealConverter)
 		if !ok {
 			continue
@@ -98,6 +98,7 @@ func init() {
 type objectConvertBehavior struct{}
 
 func (objectConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (objectConvertBehavior) matchesAsDefault()           {}
 func (objectConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (objectConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (objectConvertBehavior) ToMap(v Value) (Value, error) {
@@ -150,6 +151,7 @@ func orderedMapValues(m *OrderedMap) []Value {
 type storeConvertBehavior struct{}
 
 func (storeConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (storeConvertBehavior) matchesAsDefault()           {}
 func (storeConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (storeConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (storeConvertBehavior) ToMap(v Value) (Value, error) {
@@ -179,6 +181,7 @@ func storeEntryMap(v Value) *OrderedMap {
 type errorConvertBehavior struct{}
 
 func (errorConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (errorConvertBehavior) matchesAsDefault()           {}
 func (errorConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (errorConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (errorConvertBehavior) ToMap(v Value) (Value, error) {
@@ -212,11 +215,12 @@ func (errorConvertBehavior) ToList(v Value) (Value, error) {
 type reachConvertBehavior struct{}
 
 func (reachConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (reachConvertBehavior) matchesAsDefault()           {}
 func (reachConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (reachConvertBehavior) Format(v Value) string       { return canonReach(v) }
 
 func (reachConvertBehavior) ToMap(v Value) (Value, error) {
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return NewMap(NewOrderedMap()), nil
 	}
@@ -247,7 +251,7 @@ func (reachConvertBehavior) ToMap(v Value) (Value, error) {
 }
 
 func (reachConvertBehavior) ToList(v Value) (Value, error) {
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return NewList(nil), nil
 	}
@@ -282,10 +286,11 @@ func init() {
 type tableConvertBehavior struct{}
 
 func (tableConvertBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (tableConvertBehavior) matchesAsDefault()           {}
 func (tableConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (tableConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (tableConvertBehavior) ToList(v Value) (Value, error) {
-	td, ok := v.Data.(TableData)
+	td, ok := v.Data().(TableData)
 	if !ok {
 		return NewList(nil), nil
 	}
@@ -293,7 +298,7 @@ func (tableConvertBehavior) ToList(v Value) (Value, error) {
 }
 func (tableConvertBehavior) ToMap(v Value) (Value, error) {
 	out := NewOrderedMap()
-	td, ok := v.Data.(TableData)
+	td, ok := v.Data().(TableData)
 	if !ok || td.Record.Fields == nil {
 		return NewMap(out), nil
 	}

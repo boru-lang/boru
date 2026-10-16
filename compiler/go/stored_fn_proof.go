@@ -46,7 +46,7 @@ func (es *EmitState) strictFnOperandProven(v core.Value, op EmitOperand) bool {
 	case opEvent:
 		return op.resIdx == 0 && es.strictNativeFnResult(op.idx)
 	case opLocal:
-		pr, ok := es.producedBy[v.ID]
+		pr, ok := es.producerOf(&v)
 		return ok && pr.idx == 0 && es.strictNativeFnResult(pr.seq)
 	}
 	return false
@@ -92,7 +92,7 @@ func (es *EmitState) provenFnDef(v core.Value, op EmitOperand) (core.FnDefInfo, 
 		// A promoted value-def (`def c (mk)` then `c/v`) reads its frame
 		// slot, which holds exactly the producing event's result; a param or
 		// a loop iterator has no producer and stays unproven.
-		if pr, ok := es.producedBy[v.ID]; ok && pr.idx == 0 {
+		if pr, ok := es.producerOf(&v); ok && pr.idx == 0 {
 			return es.seqFnDef(pr.seq)
 		}
 	}
@@ -104,8 +104,8 @@ func (es *EmitState) constFnDef(idx int) (core.FnDefInfo, bool) {
 	if idx < 0 || idx >= len(es.consts) {
 		return core.FnDefInfo{}, false
 	}
-	fd, isFn := es.consts[idx].Data.(core.FnDefInfo)
-	return fd, isFn
+	fd, isFn := core.FnDefOf(es.consts[idx].Data())
+	return *fd, isFn
 }
 
 // seqFnDef is event seq's single result when it is an interpreter fn value
@@ -145,11 +145,11 @@ func (es *EmitState) constMemberFn(c *emitCall) (core.FnDefInfo, bool) {
 		vals[i] = es.consts[op.idx]
 	}
 	member, ok := readFnMemberValue(vals)
-	if !ok || !core.IsConcrete(member) {
+	if !ok || !core.IsConcrete(&member) {
 		return core.FnDefInfo{}, false
 	}
-	fd, isFn := member.Data.(core.FnDefInfo)
-	return fd, isFn
+	fd, isFn := core.FnDefOf(member.Data())
+	return *fd, isFn
 }
 
 // storedFnNeedsDynEnv reports whether recording a store-fn dispatch whose

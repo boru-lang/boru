@@ -139,28 +139,41 @@ func TestS5AUndefinedWordErrorVoidGroupHint(t *testing.T) {
 	}
 }
 
-// --- stampResultPos / stampErrPos -----------------------------------------
+// --- stampResultCells / stampErrPos ---------------------------------------
 
 func TestS5AStampResultPos(t *testing.T) {
+	r := covRegistry(t, nil)
 	positioned := NewInteger(1)
-	positioned.pos = &SrcPos{Row: 9, Col: 1}
+	positioned.SetPos(SrcPos{Row: 9, Col: 1})
 	fnVal := NewFunction(FnDefInfo{Name: "f"})
-	vals := []Value{positioned, fnVal}
-	pos := SrcPos{Row: 3, Col: 2}
-	stampResultPos(vals, &pos)
-	if vals[0].Pos().Row != 9 {
-		t.Errorf("positioned value restamped: %v", vals[0].Pos())
+	rc := NewReturnCheck(ReturnCheckInfo{FuncName: "f", Returns: []*Type{TInteger}})
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(0), positioned, fnVal, rc}, StackHeadroom)
+	at := newPosition(SrcPos{Row: 3, Col: 2})
+	e.stampResultCells(1, 3, at)
+	if e.Tape.Ref(1).Pos().Row != 9 {
+		t.Errorf("positioned value restamped: %v", e.Tape.Ref(1).Pos())
 	}
-	if vals[1].Pos().Row != 3 {
-		t.Errorf("function value not stamped: %v", vals[1].Pos())
+	if e.Tape.Ref(2).Pos().Row != 3 {
+		t.Errorf("function value not stamped: %v", e.Tape.Ref(2).Pos())
 	}
+	if got, _ := AsReturnCheck(e.Tape.Ref(3)); got.Pos.Row != 3 {
+		t.Errorf("return check not stamped: %v", got.Pos)
+	}
+	if fnVal.Pos().Row != 0 {
+		t.Error("stamping a cell wrote the value it was copied from")
+	}
+	// No position, nothing stamped; a range past the tape is bounded.
+	e.stampResultCells(0, 99, nil)
+	e.stampResultCells(0, 99, newPosition(SrcPos{}))
+	e.stampResultCells(2, 99, at)
 }
 
 func TestS5AStampErrPos(t *testing.T) {
 	r := covRegistry(t, nil)
 	r.BaseFile = "s5a.boru"
 	tok := NewInteger(1)
-	tok.pos = &SrcPos{Row: 2, Col: 3, Src: "tok"}
+	tok.SetPos(SrcPos{Row: 2, Col: 3, Src: "tok"})
 	e := NewTop(r)
 	e.SetSource("line1\nline2")
 	e.Tape = NewTape([]Value{tok}, StackHeadroom)
@@ -195,7 +208,7 @@ func TestS5AStripTapeAscriptions(t *testing.T) {
 	v.SetAscribed(TInteger)
 	e := engWithTape(t, []Value{v}, 0)
 	e.stripTapeAscriptions(0, 1)
-	if e.Tape.At(0).AscribedType() != nil {
+	if addrOf(e.Tape.At(0)).AscribedType() != nil {
 		t.Error("ascription not stripped")
 	}
 }
@@ -272,12 +285,12 @@ func TestS5ARunCheckStepBudget(t *testing.T) {
 func TestS5ARunQuotedParenExpr(t *testing.T) {
 	r := covRegistry(t, nil)
 	pe := NewParenExpr([]Value{NewInteger(1)})
-	pe.Quoted = true
+	SetQuoted(&pe, true)
 	out, err := NewTop(r).Run([]Value{pe})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !IsParenExpr(out[0]) {
+	if len(out) != 1 || !IsParenExpr(&out[0]) {
 		t.Errorf("residual = %v, want the quoted ParenExpr", out)
 	}
 }
@@ -480,7 +493,7 @@ func TestS5AForwardScanParenNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsOpenParen(e.Tape.At(2)) {
+	if !IsOpenParen(e.Tape.Ref(2)) {
 		t.Error("unconsumed paren was evaluated")
 	}
 }
@@ -496,7 +509,7 @@ func TestS5AForwardScanInterpStringNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsInterpString(e.Tape.At(2)) {
+	if !IsInterpString(e.Tape.Ref(2)) {
 		t.Error("unconsumed interp string was evaluated")
 	}
 }
@@ -527,7 +540,7 @@ func TestS5AForwardScanXmlNotConsumed(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsXmlInterp(e.Tape.At(2)) {
+	if !IsXmlInterp(e.Tape.Ref(2)) {
 		t.Error("unconsumed xml interp was evaluated")
 	}
 }
@@ -542,7 +555,7 @@ func TestS5AForwardScanXmlEval(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if IsXmlInterp(e.Tape.At(1)) {
+	if IsXmlInterp(e.Tape.Ref(1)) {
 		t.Error("xml interp not evaluated in place")
 	}
 }
@@ -553,12 +566,12 @@ func TestS5AForwardScanQuotedParenExprSkips(t *testing.T) {
 		{Args: []*Type{TAny}, BarrierPos: 1},
 	}}
 	pe := NewParenExpr([]Value{NewInteger(1)})
-	pe.Quoted = true
+	SetQuoted(&pe, true)
 	e := s5aEng(t, r, []Value{NewWord("s5aw"), pe}, 0)
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsParenExpr(e.Tape.At(1)) {
+	if !IsParenExpr(e.Tape.Ref(1)) {
 		t.Error("quoted ParenExpr was expanded")
 	}
 }
@@ -573,7 +586,7 @@ func TestS5AForwardScanInertReachSkips(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if !IsReach(e.Tape.At(1)) {
+	if !IsReach(e.Tape.Ref(1)) {
 		t.Error("inert reach was expanded")
 	}
 }
@@ -605,7 +618,7 @@ func TestS5AForwardScanSugarExpansion(t *testing.T) {
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
 	}
-	if IsSugar(e.Tape.At(1)) {
+	if IsSugar(e.Tape.Ref(1)) {
 		t.Error("sugar marker not expanded")
 	}
 }
@@ -633,7 +646,7 @@ func TestS5AForwardScanReachCallHeadToken(t *testing.T) {
 	callee := NewFunction(FnDefInfo{Name: "s5acallee", Signatures: []Signature{
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
-	callee.ReachGroup = true
+	SetReachGroup(&callee, true)
 	e := s5aEng(t, r, []Value{NewWord("s5aw"), callee, NewInteger(5)}, 0)
 	if err := e.resolveForwardArgs(fn, WordInfo{Name: "s5aw", ArgCount: -1}); err != nil {
 		t.Fatalf("resolveForwardArgs: %v", err)
@@ -651,7 +664,7 @@ func TestS5AForwardScanReachCallHeadAfterCollapse(t *testing.T) {
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
 	open := NewOpenParen()
-	open.ReachGroup = true
+	SetReachGroup(&open, true)
 	e := s5aEng(t, r, []Value{
 		NewWord("s5aw"), open, callee, NewCloseParen(), NewInteger(5),
 	}, 0)
@@ -687,8 +700,8 @@ func TestS5AEvalParenGroupGuardFacts(t *testing.T) {
 		t.Fatalf("evalParenGroupAt: %v", err)
 	}
 	res := e.Tape.At(0)
-	if _, ok := res.Data.(GuardFactInfo); !ok {
-		t.Errorf("guard fact not attached: %T", res.Data)
+	if _, ok := res.Data().(GuardFactInfo); !ok {
+		t.Errorf("guard fact not attached: %T", res.Data())
 	}
 }
 
@@ -752,7 +765,7 @@ func TestS5AUsurpUndefinedCheckMode(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordUsurp("s5a-missing", false)}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -762,7 +775,7 @@ func TestS5AUsurpNonFnCheckMode(t *testing.T) {
 	InstallDef(r, "s5aval", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordUsurp("s5aval", false)}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	found := false
@@ -786,7 +799,7 @@ func TestS5AUsurpBarrierCommit(t *testing.T) {
 	e := s5aEng(t, r, []Value{
 		NewInteger(1), NewInteger(2), NewWord("cadd"), fwd, NewWordUsurp("cneg", false),
 	}, 4)
-	if err := e.stepWord(e.Tape.At(4)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(4)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	if e.Pointer != 2 {
@@ -798,7 +811,7 @@ func TestS5ARefUndefinedCheckMode(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5a-missing")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -814,11 +827,11 @@ func TestS5AValDynamicCarrierCheckMode(t *testing.T) {
 	InstallDef(r, "s5adyn", c)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5adyn")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	got := e.Tape.At(0)
-	if !got.Carrier || !got.Parent.Equal(TAny) {
+	if !got.Carrier() || !got.Parent().Equal(TAny) {
 		t.Errorf("/v did not surface the binding's own carrier: %v", got)
 	}
 }
@@ -828,7 +841,7 @@ func TestS5ARefNonFnCheckMode(t *testing.T) {
 	InstallDef(r, "s5aval", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWordRef("s5aval")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -841,7 +854,7 @@ func TestS5ARefArrivesAtPendingForward(t *testing.T) {
 		FuncIndex: 0, Sig: caddSig,
 	})
 	e := s5aEng(t, r, []Value{NewWord("cadd"), fwd, NewWordRef("cneg")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -860,7 +873,7 @@ func TestS5AStepWordFormArgCapture(t *testing.T) {
 	sig := &Signature{Args: []*Type{TAny}, FormArgs: map[int]bool{0: true}, BarrierPos: 1}
 	fwd := NewForward(ForwardInfo{FuncName: "s5ahost", ExpectedArgs: 1, FuncIndex: 0, Sig: sig})
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, NewWord("s5araw")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -891,7 +904,7 @@ func TestS5AStepWordTypeBodyFnShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !IsBareTypeNode(out[0]) || !out[0].Equal(TFunction) {
+	if len(out) != 1 || !IsBareTypeNode(&out[0]) || !out[0].Equal(TFunction) {
 		t.Errorf("a type name must denote its node: %v", out)
 	}
 }
@@ -901,7 +914,7 @@ func TestS5AStepWordDefReadCheckMode(t *testing.T) {
 	InstallDef(r, "s5anum", NewInteger(5))
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewWord("s5anum")}, 0)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -915,11 +928,11 @@ func TestS5AStepWordSplicePendingForward(t *testing.T) {
 		FuncIndex: 0, Sig: caddSig,
 	})
 	e := s5aEng(t, r, []Value{NewWord("cadd"), fwd, NewWord("s5asp")}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	// The splice-bound word was wrapped as (w) and expanded to markers.
-	if !IsOpenParen(e.Tape.At(2)) {
+	if !IsOpenParen(e.Tape.Ref(2)) {
 		t.Errorf("splice word not wrapped as a group: %v", e.Tape.At(2))
 	}
 }
@@ -947,7 +960,7 @@ func TestS5AStepWordUndefinedCheckMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(out) != 1 || !out[0].Undefined {
+	if len(out) != 1 || !IsUndefined(&out[0]) {
 		t.Errorf("residual = %v, want one Undefined atom", out)
 	}
 }
@@ -971,7 +984,7 @@ func TestS5ACheckModeFallbackRetry(t *testing.T) {
 	r := s5aFallbackReg(t)
 	s5aCheckOn(t, r)
 	e := s5aEng(t, r, []Value{NewString("x"), NewWord("s5afb")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -985,7 +998,7 @@ func TestS5ACheckModeSurfaceShapeHandles(t *testing.T) {
 	}
 	defer func() { CheckBraid.CheckModeSurfaceShape = saved }()
 	e := s5aEng(t, r, []Value{NewString("x"), NewWord("s5afb")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -1029,7 +1042,7 @@ func TestS5ADriftWindowRecorderHook(t *testing.T) {
 	e := s5aEng(t, r, []Value{
 		NewInteger(1), NewInteger(2), NewWordModified("cadd", -1, true, false),
 	}, 2)
-	if err := e.stepWord(e.Tape.At(2)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 }
@@ -1051,7 +1064,7 @@ func TestS5APolicyGateWordDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := s5aEng(t, r, []Value{NewWord("cadd")}, 0)
-	err := e.stepWord(e.Tape.At(0))
+	err := e.stepWord(e.Tape.Ref(0))
 	if err == nil || !strings.Contains(err.Error(), "s5a policy denies word") {
 		t.Fatalf("stepWord = %v, want policy denial", err)
 	}
@@ -1080,7 +1093,7 @@ func TestS5AExecMatchMapEvalError(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewParenExpr([]Value{NewWord("s5a-missing")}))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	h := func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
 		return nil, nil
 	}
@@ -1130,7 +1143,7 @@ func TestS5AExecMatchUndefinedArgGradualizes(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	a := NewAtom("s5aund")
-	a.Undefined = true
+	SetUndefined(&a, true)
 	sig := &Signature{Args: []*Type{TAny}}
 	e := s5aEng(t, r, []Value{a, NewWord("s5awu")}, 1)
 	if err := e.execMatch(&MatchResult{
@@ -1180,7 +1193,7 @@ func TestS5AFullStackCheckFold(t *testing.T) {
 	defer func() { r.Check.Emit = saved }()
 
 	e := s5aEng(t, r, []Value{NewInteger(1), NewWord("s5afs")}, 1)
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
 		t.Fatalf("stepWord: %v", err)
 	}
 	if e.Tape.Len() != 1 {
@@ -1262,8 +1275,8 @@ func TestS5ASpliceMatchResultsCompactsSurvivor(t *testing.T) {
 	e := engWithTape(t, []Value{
 		NewInteger(1), NewAtom("x"), NewInteger(2), NewWord("cadd"),
 	}, 3)
-	if err := e.spliceMatchResults(nil, []int{0, 2}, 2, []Value{NewInteger(9)}); err != nil {
-		t.Fatalf("spliceMatchResults: %v", err)
+	if at := e.spliceMatchResults(nil, []int{0, 2}, 2, []Value{NewInteger(9)}); at != 1 {
+		t.Fatalf("spliceMatchResults placed the results at %d, want 1", at)
 	}
 	if e.Tape.Len() != 2 {
 		t.Fatalf("tape len = %d, want 2", e.Tape.Len())
@@ -1305,7 +1318,7 @@ func TestS5AStepLiteralExpandsParenExpr(t *testing.T) {
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
-	if e.Tape.Len() != 3 || !IsOpenParen(e.Tape.At(0)) {
+	if e.Tape.Len() != 3 || !IsOpenParen(e.Tape.Ref(0)) {
 		t.Errorf("ParenExpr not expanded: len=%d", e.Tape.Len())
 	}
 }
@@ -1321,7 +1334,7 @@ func TestS5AStepLiteralSpliceDynRecording(t *testing.T) {
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
-	if IsSplice(e.Tape.At(0)) {
+	if IsSplice(e.Tape.Ref(0)) {
 		t.Error("splice marker not expanded")
 	}
 }
@@ -1366,7 +1379,7 @@ func TestS5AReachFnDispatchModMarksData(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5acallee", Signatures: []Signature{
 		{Args: []*Type{TInteger}, BarrierPos: 1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	dm := NewDispatchMod(DispatchModInfo{Val: true})
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, fnVal, dm}, 2)
 	if err := e.stepLiteral(); err != nil {
@@ -1384,35 +1397,50 @@ func TestS5AReachFnZeroArgPropertyCall(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5aprop", Signatures: []Signature{
 		{Impl: Go(h0), Returns: []*Type{TInteger}, BarrierPos: -1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	e := s5aEng(t, r, []Value{NewWord("s5ahost"), fwd, fnVal}, 2)
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
 }
 
-// --- resolveConsumedInertTypeShape / resolveInertTypeShape ----------------
+// --- resolveConsumedInertTypeShape / resolveInertTypeShapeIn --------------
 
 func TestS5AResolveInertTypeShape(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := s5aEng(t, r, nil, 0)
 
-	// A typed list whose child word resolves.
-	if _, ok := e.resolveInertTypeShape(NewTypedList(NewWord("Integer"))); !ok {
+	// A typed list whose child word resolves — in its slot: the payload the
+	// slot was copied from (the program token's) keeps its word.
+	tok := NewTypedList(NewWord("Integer"))
+	slot := tok
+	if !e.resolveInertTypeShapeIn(&slot) {
 		t.Error("resolvable typed list not resolved")
 	}
+	if ci, _ := AsChildType(slot); IsWord(&ci.Child) {
+		t.Error("the slot's child was not resolved")
+	}
+	if ci, _ := AsChildType(tok); !IsWord(&ci.Child) {
+		t.Error("resolving the slot wrote the token it was copied from")
+	}
 	// A typed list whose child is already resolved.
-	if _, ok := e.resolveInertTypeShape(NewTypedList(NewTypeLiteral(TInteger))); ok {
+	done := NewTypedList(NewTypeLiteral(TInteger))
+	if e.resolveInertTypeShapeIn(&done) {
 		t.Error("already-resolved typed list reported changed")
 	}
 	// A disjunct with word alternatives resolves.
-	if _, ok := e.resolveInertTypeShape(NewDisjunct([]Value{NewWord("Integer"), NewWord("String")})); !ok {
+	dw := NewDisjunct([]Value{NewWord("Integer"), NewWord("String")})
+	if !e.resolveInertTypeShapeIn(&dw) {
 		t.Error("resolvable disjunct not resolved")
 	}
-	// An already-resolved disjunct does not.
+	// An already-resolved disjunct does not, and nothing else is a shape.
 	dv := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if _, ok := e.resolveInertTypeShape(dv); ok {
+	if e.resolveInertTypeShapeIn(&dv) {
 		t.Error("already-resolved disjunct reported changed")
+	}
+	n := NewInteger(1)
+	if e.resolveInertTypeShapeIn(&n) {
+		t.Error("an integer reported a resolved shape")
 	}
 }
 
@@ -1422,10 +1450,10 @@ func TestS5AResolveConsumedInertTypeShape(t *testing.T) {
 
 	// Quoted arg: untouched.
 	q := NewTypedList(NewWord("Integer"))
-	q.Quoted = true
+	SetQuoted(&q, true)
 	m1 := &MatchResult{Sig: &Signature{Args: []*Type{TAny}}, Args: []Value{q}}
 	e.resolveConsumedInertTypeShape(m1, 0)
-	if !m1.Args[0].Quoted {
+	if !IsQuoted(&m1.Args[0]) {
 		t.Error("quoted arg mutated")
 	}
 
@@ -1443,7 +1471,7 @@ func TestS5AResolveConsumedInertTypeShape(t *testing.T) {
 	}
 	e.resolveConsumedInertTypeShape(m3, 0)
 	ci, err := AsChildType(m3.Args[0])
-	if err != nil || IsWord(ci.Child) {
+	if err != nil || IsWord(&ci.Child) {
 		t.Errorf("typed-list child not resolved: %v", m3.Args[0])
 	}
 }
@@ -1455,7 +1483,7 @@ func TestS5AAutoEvalStackResolvesInertShape(t *testing.T) {
 		t.Fatalf("autoEvalStack: %v", err)
 	}
 	ci, err := AsChildType(e.Tape.At(0))
-	if err != nil || IsWord(ci.Child) {
+	if err != nil || IsWord(&ci.Child) {
 		t.Errorf("typed-list child not resolved on the residual stack: %v", e.Tape.At(0))
 	}
 }
@@ -1482,14 +1510,14 @@ func TestS5AAutoEvalConsumedHelpers(t *testing.T) {
 func TestS5AAutoEvalListQuotedInertElem(t *testing.T) {
 	r := covRegistry(t, nil)
 	tq := NewTypedList(NewWord("Integer"))
-	tq.Quoted = true
+	SetQuoted(&tq, true)
 	lv, err := AutoEvalConsumedList(r, NewEvalList([]Value{tq}))
 	if err != nil {
 		t.Fatalf("AutoEvalConsumedList: %v", err)
 	}
 	lst, _ := AsList(lv)
 	ci, cerr := AsChildType(lst.Get(0))
-	if cerr != nil || IsWord(ci.Child) {
+	if cerr != nil || IsWord(&ci.Child) {
 		t.Errorf("quoted typed-list element not resolved: %v", lst.Get(0))
 	}
 }
@@ -1535,7 +1563,7 @@ func TestS5AInterpStringMultiValueHole(t *testing.T) {
 func TestS5AInterpStringDynamicHole(t *testing.T) {
 	r := covRegistry(t, nil)
 	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier }
+	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
 	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
 	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
 	saved := r.Check.Emit
@@ -1548,7 +1576,7 @@ func TestS5AInterpStringDynamicHole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evalInterpString: %v", err)
 	}
-	if !got.Carrier || !got.Parent.Equal(TString) {
+	if !got.Carrier() || !got.Parent().Equal(TString) {
 		t.Errorf("dynamic interp = %v, want String carrier", got)
 	}
 }
@@ -1556,7 +1584,7 @@ func TestS5AInterpStringDynamicHole(t *testing.T) {
 func TestS5AXmlInterpDynamic(t *testing.T) {
 	r := covRegistry(t, nil)
 	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier }
+	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
 	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
 	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
 	saved := r.Check.Emit
@@ -1579,7 +1607,7 @@ func TestS5AXmlInterpDynamic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvalXmlInterp: %v", err)
 	}
-	if !got.Carrier || !got.Parent.Equal(TXml) {
+	if !got.Carrier() || !got.Parent().Equal(TXml) {
 		t.Errorf("dynamic xml interp = %v, want Xml carrier", got)
 	}
 }
@@ -1603,10 +1631,10 @@ func TestS5AAutoEvalMapVarietyOfValues(t *testing.T) {
 		t.Fatalf("AutoEvalMap: %v", err)
 	}
 	gm, _ := AsMap(got)
-	if tv, ok := gm.Get("t"); !ok || IsWord(func() Value { ci, _ := AsChildType(tv); return ci.Child }()) {
+	if tv, ok := gm.Get("t"); !ok || IsWord(addrOf(func() Value { ci, _ := AsChildType(tv); return ci.Child }())) {
 		t.Errorf("typed-list value not resolved: %v", tv)
 	}
-	if sv, ok := gm.Get("s"); !ok || !sv.Parent.Equal(TList) {
+	if sv, ok := gm.Get("s"); !ok || !sv.Parent().Equal(TList) {
 		t.Errorf("multi-result value not wrapped in a list: %v", sv)
 	}
 	if av, ok := gm.Get("a"); !ok || av.AscribedType() != nil {
@@ -1700,13 +1728,13 @@ func TestS5AExecFnDefLiteralClearsReachTag(t *testing.T) {
 	fnVal := NewFunction(FnDefInfo{Name: "s5afn0", Signatures: []Signature{
 		{Impl: Go(h0), Returns: []*Type{TInteger}, BarrierPos: -1},
 	}})
-	fnVal.ReachGroup = true
+	SetReachGroup(&fnVal, true)
 	e := s5aEng(t, r, []Value{fnVal}, 0)
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("stepLiteral: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {
-		if e.Tape.At(i).ReachGroup {
+		if IsReachGroup(addrOf(e.Tape.At(i))) {
 			t.Errorf("ReachGroup tag survived at %d", i)
 		}
 	}
@@ -1753,7 +1781,7 @@ func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
 	r := covRegistry(t, nil)
 	s5aCheckOn(t, r)
 	fold := NewFlexList([]Value{NewInteger(1)})
-	fold.ID = "flex-fold"
+	SetID(&fold, "flex-fold")
 	savedCE := CheckBraid.ConcreteEvalOnce
 	CheckBraid.ConcreteEvalOnce = func(*Engine, []Value) (Value, bool) { return fold, true }
 	defer func() { CheckBraid.ConcreteEvalOnce = savedCE }()
@@ -1785,14 +1813,14 @@ func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
 	}
 
 	for k, v := range eval() {
-		if v.ID == "" || v.ID == fold.ID {
-			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, v.ID)
+		if IDOf(&v) == "" || IDOf(&v) == IDOf(&fold) {
+			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, IDOf(&v))
 		}
 	}
 	stub.armed = false
 	for k, v := range eval() {
-		if v.ID != fold.ID {
-			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, v.ID)
+		if IDOf(&v) != IDOf(&fold) {
+			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, IDOf(&v))
 		}
 	}
 }

@@ -51,7 +51,7 @@ func (lw *lowerer) scopeEvent(seq int) *EmitEvent {
 // any depth of the body's parens and list literals — or false when none is.
 func pendingListAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 	t, ok := literalTokenAt(body, p)
-	return t, ok && t.Parent.Equal(core.TList)
+	return t, ok && t.Parent().Equal(core.TList)
 }
 
 // literalTokenAt is the pending list or map literal token of body written
@@ -65,7 +65,7 @@ func literalTokenAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 	for k, at := range path {
 		t := toks[at]
 		if k == len(path)-1 {
-			return t, t.Pos() == p && t.Eval && !t.Quoted && (t.Parent.Equal(core.TList) || t.Parent.Equal(core.TMap))
+			return t, t.Pos() == p && core.IsEval(&t) && !core.IsQuoted(&t) && (t.Parent().Equal(core.TList) || t.Parent().Equal(core.TMap))
 		}
 		toks, _ = nestedToks(t)
 	}
@@ -87,7 +87,7 @@ func (es *EmitState) writtenPositions(args []core.Value, nFwd int) []core.SrcPos
 	out := make([]core.SrcPos, 0, nFwd)
 	for i := 0; i < nFwd && i < len(args); i++ {
 		p := args[i].Pos()
-		if rp, ok := es.readPos[args[i].ID]; ok && args[i].ID != "" {
+		if rp, ok := es.readPos[core.IDOf(&args[i])]; ok && core.IDOf(&args[i]) != "" {
 			p = rp
 		}
 		out = append(out, p)
@@ -114,7 +114,7 @@ func (lw *lowerer) splitWords(sp *PolySplit, wordPos core.SrcPos, fwdPos []core.
 	var words map[int]core.Value
 	for i, p := range fwdPos {
 		j := bodyTokenAt(toks, p)
-		if _, known := sp.Words[i]; known || j <= at || !core.IsWord(toks[j]) {
+		if _, known := sp.Words[i]; known || j <= at || !core.IsWord(&toks[j]) {
 			continue
 		}
 		if words == nil {

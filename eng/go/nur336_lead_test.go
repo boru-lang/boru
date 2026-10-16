@@ -28,7 +28,7 @@ func n336Fn(name string, types ...*core.Type) core.Value {
 }
 
 func n336Closure(unit int) core.Value {
-	return core.NewValueRaw(core.TFunction, core.ClosurePayload{Unit: unit})
+	return core.NewValueRaw(core.TFunction, &core.ClosurePayload{Unit: unit})
 }
 
 func TestParenMissesWindow(t *testing.T) {
@@ -62,9 +62,9 @@ func TestPlacesAlone(t *testing.T) {
 	seven := core.NewInteger(7)
 	two := []core.Value{seven, seven}
 	twoSigs := n336Fn("f", core.TAny)
-	fd := twoSigs.Data.(core.FnDefInfo)
+	fd := *twoSigs.Data().(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])
-	twoSigs.Data = fd
+	twoSigs.SetData(&fd)
 	for _, c := range []struct {
 		name  string
 		v     core.Value
@@ -94,7 +94,7 @@ func TestNamedRunsAndAppliedLead(t *testing.T) {
 	if !namedRuns(zero) || namedRuns(n336Fn("g", core.TAny)) || namedRuns(core.NewInteger(1)) {
 		t.Error("a fn of no argument only")
 	}
-	if fd := appliedLead(zero).Data.(core.FnDefInfo); !fd.Applied {
+	if lead := appliedLead(zero); !core.IsApplied(&lead) {
 		t.Error("marked to run where it is stepped")
 	}
 	if got := appliedLead(core.NewInteger(1)); fmt.Sprint(got) != "1" {
@@ -139,11 +139,11 @@ func TestNamedLeadPlaces(t *testing.T) {
 		t.Errorf("the name's call, then its values: %v %v", res, err)
 	}
 	raising := n336Fn("g")
-	fd := raising.Data.(core.FnDefInfo)
+	fd := raising.Data().(*core.FnDefInfo)
 	fd.Signatures[0].Impl = core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return nil, fmt.Errorf("boom")
 	})
-	raising.Data = fd
+	raising.SetData(fd)
 	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(7), raising}, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("the name's call raising: %v", err)
 	}
@@ -156,21 +156,26 @@ func TestSubstIslandLeadArms(t *testing.T) {
 	lead := n336Fn("f", core.TAny)
 	island := []core.Value{core.NewParenExpr([]core.Value{core.NewWord("m"), core.NewInteger(7)})}
 	guard := compiler.RestartSrc{Kind: compiler.RestartGuard}
-	got, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Reach: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0)
+	stop := []core.Value{lead}
+	got, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Reach: true}}, stop, 0, nil, seam7Dbg, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	toks, _ := core.AsParenExpr(got[0])
-	if ri, err := core.AsReach(toks[0]); err != nil || !ri.Eval || len(ri.Receiver) != 1 {
+	toks, _ := core.AsParenExpr(&got[0])
+	if ri, err := core.AsReach(&toks[0]); err != nil || !ri.Eval || len(ri.Receiver) != 1 {
 		t.Errorf("the reach group of the value: %v %v", toks, err)
+	} else if &ri.Receiver[0] == &stop[0] {
+		// The group keeps its receiver; the stop's run is the VM's (a stack
+		// view, a slot) and moves on.
+		t.Error("the reach group's receiver is the stop's run, not its own")
 	}
 	zero := n336Fn("g")
 	got, err = vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{zero}, 0, nil, seam7Dbg, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	toks, _ = core.AsParenExpr(got[0])
-	if fd, ok := toks[0].Data.(core.FnDefInfo); !ok || !fd.Applied {
+	toks, _ = core.AsParenExpr(&got[0])
+	if _, ok := toks[0].Data().(*core.FnDefInfo); !ok || !core.IsApplied(&toks[0]) {
 		t.Errorf("the name's call of a fn of none: %v", toks)
 	}
 	if _, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0); err == nil {
@@ -188,7 +193,7 @@ func TestStatementRestartSeatsTypes(t *testing.T) {
 		t.Errorf("the type beneath the statement: %v %v", stack, err)
 	}
 	gone := core.NewTypeLiteral(core.TInteger)
-	gone.ID = "no-such-type"
+	core.SetID(&gone, "no-such-type")
 	if _, _, err := vc.statementRestart(r, []compiler.RestartSrc{{Kind: compiler.RestartType, Val: gone}}, []core.Value{core.NewInteger(5)}, 0, 1, true, 0, nil, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "unresolvable statement-island type") {
 		t.Errorf("a type no table holds: %v", err)
 	}

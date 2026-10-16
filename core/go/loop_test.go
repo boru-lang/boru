@@ -116,7 +116,7 @@ func words(ws ...string) Value {
 
 // tlCall is `name [body] data` at row 4.
 func tlCall(name string, body, data Value) []Value {
-	w := WithPos(NewWord(name), Value{pos: &SrcPos{Row: 4, Col: 2}})
+	w := WithPosAt(NewWord(name), SrcPos{Row: 4, Col: 2})
 	return []Value{w, body, data}
 }
 
@@ -156,7 +156,7 @@ func TestDrivenLoopRunsOnTheTape(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("inert input: %s / %v", renderAll(out), err)
 	}
-	if lst, _ := AsList(out[0]); lst.Len() != 1 || !lst.Get(0).Parent.Equal(TFunction) {
+	if lst, _ := AsList(out[0]); lst.Len() != 1 || !lst.Get(0).Parent().Equal(TFunction) {
 		t.Fatalf("inert input: the element was not kept as the fn value: %s", renderAll(out))
 	}
 }
@@ -526,7 +526,7 @@ func TestCallRegion(t *testing.T) {
 	// A Function-valued input is inert: the body sees the value, unapplied.
 	fnv := NewFunction(FnDefInfo{Name: "fv"})
 	out, err = NewTop(r).Run(tlCall("tcall", NewList([]Value{}), fnv))
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Fatalf("inert input: %s / %v", renderAll(out), err)
 	}
 	// A break inside the body is the enclosing loop's.
@@ -583,7 +583,7 @@ func TestCallLoopPool(t *testing.T) {
 		t.Fatalf("after one call: %s / %v, pool %d (want 1)", renderAll(out), err, len(r.callLoops))
 	}
 	first := r.callLoops[0]
-	id, _ := AsMark(first.mark)
+	id, _ := AsMark(&first.mark)
 	// The next call reuses the Loop and its mark id; two live at once (a
 	// call inside a call's body) take two.
 	prog := tlCall("tcall", NewList(tlCall("tcall", words("cdub"), NewInteger(5))), NewInteger(0))
@@ -591,7 +591,7 @@ func TestCallLoopPool(t *testing.T) {
 	if err != nil || renderAll(out) != "0 | 10" || len(r.callLoops) != 2 || r.callLoops[1] != first {
 		t.Fatalf("nested calls: %s / %v, pool %d (want 2, the first Loop back on top)", renderAll(out), err, len(r.callLoops))
 	}
-	if again, _ := AsMark(first.mark); again.ID != id.ID {
+	if again, _ := AsMark(&first.mark); again.ID != id.ID {
 		t.Fatalf("the reused Loop's mark id changed: %s -> %s", id.ID, again.ID)
 	}
 	// A region a fault abandons keeps its Loop out of the pool.

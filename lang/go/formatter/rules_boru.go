@@ -209,8 +209,8 @@ func boolRuleField(v core.Value, field string) (bool, error) {
 	if b, err := v.AsConcreteBoolean(); err == nil {
 		return b, nil
 	}
-	if core.IsWord(v) {
-		if info, werr := core.AsWord(v); werr == nil {
+	if core.IsWord(&v) {
+		if info, werr := core.AsWord(&v); werr == nil {
 			switch info.Name {
 			case "true":
 				return true, nil
@@ -230,7 +230,8 @@ func stringListField(v core.Value, field string) ([]string, error) {
 	}
 	out := make([]string, lst.Len())
 	for i := 0; i < lst.Len(); i++ {
-		s, serr := lst.Get(i).AsConcreteString()
+		el := lst.Get(i)
+		s, serr := el.AsConcreteString()
 		if serr != nil {
 			return nil, fmt.Errorf("fmt rules: %s[%d] must be a String: %w", field, i, serr)
 		}

@@ -195,7 +195,7 @@ func errorFieldReturns(args []Value, r *Registry) []Value {
 		// and decline native compilation (compiled-coverage compile failure gate).
 		return dyn
 	}
-	if len(args) < 1 || !IsConcrete(args[0]) {
+	if len(args) < 1 || !IsConcrete(&args[0]) {
 		return dyn
 	}
 	switch getKey(args[0]) {

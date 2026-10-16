@@ -22,6 +22,15 @@ import (
 // the shadow from the clobber on, so no dispatch would compile the outer,
 // and the routed op needs the live signature's own unit.
 func CompileFnSigUnit(caller *core.Registry, fnDef core.FnDefInfo, sigIdx int) int {
+	return CompileFnSigUnitAs(caller, fnDef, fnDef.Name, sigIdx)
+}
+
+// CompileFnSigUnitAs is CompileFnSigUnit under name — the binding a placed
+// family member is defined under, passed beside the definition rather than
+// written into a copy of it: the unit's analysis key, its frame name and the
+// label its RET puts on a contract error are the binding's, as the
+// interpreter's are.
+func CompileFnSigUnitAs(caller *core.Registry, fnDef core.FnDefInfo, name string, sigIdx int) int {
 	if caller == nil || caller.Check == nil || sigIdx < 0 || sigIdx >= len(fnDef.Signatures) {
 		return -1
 	}
@@ -53,13 +62,15 @@ func CompileFnSigUnit(caller *core.Registry, fnDef core.FnDefInfo, sigIdx int) i
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
-	body := append([]core.Value(nil), s.Body()...)
+	// The sig's own body (never written), clamped so an append reallocates.
+	sigBody := s.Body()
+	body := sigBody[:len(sigBody):len(sigBody)]
 	var fnPos core.SrcPos
 	if len(body) > 0 {
 		fnPos = body[0].Pos()
 	}
-	key := FnAnalysisKey(r.AnalysisScopeID(), fnDef.Name, inputs, fnDef.Captured, body)
-	unit, finish, ok := es.StartFnCompile(key, fnDef.Name, r, inputs, compileReturns, paramNames, fnDef.Captured, fnDef.Gen != nil, fnPos)
+	key := FnAnalysisKey(r.AnalysisScopeID(), name, inputs, fnDef.Captured, body)
+	unit, finish, ok := es.StartFnCompile(key, name, r, inputs, compileReturns, paramNames, fnDef.Captured, fnDef.Gen != nil, fnPos)
 	if !ok {
 		return -1
 	}
@@ -69,7 +80,7 @@ func CompileFnSigUnit(caller *core.Registry, fnDef core.FnDefInfo, sigIdx int) i
 	es.SetUnitDecl(unit, s.Decl)
 	if finish != nil {
 		delete(r.Check.FnSummaries, key)
-		finish(AnalyseFnBody(r, fnDef.Name, paramNames, body, inputs, fnDef.Captured, declaredReturns, fnDef.Anonymous))
+		finish(AnalyseFnBody(r, name, paramNames, body, inputs, fnDef.Captured, declaredReturns, fnDef.Anonymous))
 	}
 	return unit
 }

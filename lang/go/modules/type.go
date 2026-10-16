@@ -88,7 +88,7 @@ func BuildTypeModule(parent *native.Registry) (native.ModuleDesc, error) {
 // ---- Common helpers ----
 
 func typeBodyArg(v native.Value, opName string, r *native.Registry) (native.Value, error) {
-	if !native.IsTypeBody(v) {
+	if !native.IsTypeBody(&v) {
 		return native.Value{}, r.BoruError("type_error",
 			fmt.Sprintf("%s: argument must be a type, got %s", opName, v.String()), opName)
 	}
@@ -106,11 +106,11 @@ func typeBodyArg(v native.Value, opName string, r *native.Registry) (native.Valu
 // strict equality — set-algebra over those is reserved for future
 // work.
 func altSubtypes(alt, target native.Value) bool {
-	if native.IsBareTypeNode(alt) && native.IsBareTypeNode(target) {
+	if native.IsBareTypeNode(&alt) && native.IsBareTypeNode(&target) {
 		aNode := &alt
 		tNode := &target
-		for d := aNode; d != nil; d = d.Parent {
-			if d.ID != "" && tNode.ID != "" && d.ID == tNode.ID {
+		for d := aNode; d != nil; d = d.Parent() {
+			if core.IDOf(d) != "" && core.IDOf(tNode) != "" && core.IDOf(d) == core.IDOf(tNode) {
 				return true
 			}
 			if d == tNode { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
@@ -131,7 +131,7 @@ func fieldsOf(v native.Value) *native.OrderedMap {
 	case native.IsRecordType(v):
 		rec, _ := native.AsRecordType(v)
 		return rec.Fields
-	case native.IsClassType(v):
+	case native.IsClassType(&v):
 		info, _ := native.AsClassType(v)
 		return info.AllFields()
 	}
@@ -153,7 +153,7 @@ func constructRecordOrObjectLike(original native.Value, newFields *native.Ordere
 }
 
 func stripNoneFromField(t native.Value) native.Value {
-	if !native.IsDisjunct(t) {
+	if !native.IsDisjunct(&t) {
 		return t
 	}
 	disj, _ := native.AsDisjunct(t)
@@ -173,11 +173,10 @@ func stripNoneFromField(t native.Value) native.Value {
 }
 
 func latticeNode(v native.Value) *native.Type {
-	if native.IsBareTypeNode(v) {
-		node := v
-		return &node
+	if native.IsBareTypeNode(&v) {
+		return native.NodeOf(&v)
 	}
-	return v.Parent
+	return v.Parent()
 }
 
 // fnSigs returns the signature list for a Function / FnDef / FnUndef value.
@@ -205,10 +204,10 @@ func returnsofResult(fn native.Value, r *native.Registry) (native.Value, error) 
 }
 
 func fnSigs(v native.Value, opName string, r *native.Registry) ([]native.FnSig, error) {
-	if fn, ok := v.Data.(native.FnDefInfo); ok {
+	if fn, ok := v.Data().(*native.FnDefInfo); ok {
 		return fn.OwnSigs(), nil
 	}
-	if fnu, ok := v.Data.(native.FnUndefInfo); ok {
+	if fnu, ok := v.Data().(native.FnUndefInfo); ok {
 		out := make([]native.FnSig, len(fnu.Sigs))
 		for i, s := range fnu.Sigs {
 			out[i] = native.FnSig{Params: s.Params, Returns: s.Returns}
@@ -221,7 +220,7 @@ func fnSigs(v native.Value, opName string, r *native.Registry) ([]native.FnSig, 
 
 // fieldNames decodes a list of field-name atoms/strings into []string.
 func fieldNames(list native.Value, opName string, r *native.Registry) ([]string, error) {
-	if !native.IsConcrete(list) {
+	if !native.IsConcrete(&list) {
 		return nil, r.BoruError("type_error",
 			opName+": expected a concrete list of field names", opName)
 	}
@@ -233,7 +232,7 @@ func fieldNames(list native.Value, opName string, r *native.Registry) ([]string,
 		case native.IsAtom(e):
 			a, _ := native.AsAtom(e)
 			out = append(out, a)
-		case e.Parent != nil && e.Parent.Equal(native.TString):
+		case e.Parent() != nil && e.Parent().Equal(native.TString):
 			s, _ := native.AsString(e)
 			out = append(out, s)
 		default:
@@ -578,10 +577,10 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, err
 				}
 				node := latticeNode(t)
-				if node == nil || node.Parent == nil {
+				if node == nil || node.Parent() == nil {
 					return []native.Value{native.NewTypeLiteral(native.TAny)}, nil
 				}
-				return []native.Value{native.NewTypeLiteral(node.Parent)}, nil
+				return []native.Value{native.NewTypeLiteral(node.Parent())}, nil
 			}),
 			Returns: []*native.Type{native.TType}, BarrierPos: -1,
 		}},
@@ -602,8 +601,8 @@ var typeModuleNatives = []native.NativeFunc{
 				if node == nil { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
 					return []native.Value{native.NewTypeLiteral(native.TAny)}, nil
 				}
-				for node.Parent != nil && !node.Parent.Equal(native.TAny) {
-					node = node.Parent
+				for node.Parent() != nil && !node.Parent().Equal(native.TAny) {
+					node = node.Parent()
 				}
 				return []native.Value{native.NewTypeLiteral(node)}, nil
 			}),
@@ -633,14 +632,14 @@ var typeModuleNatives = []native.NativeFunc{
 				aNode := latticeNode(a)
 				bNode := latticeNode(b)
 				seen := map[string]*native.Type{}
-				for d := aNode; d != nil; d = d.Parent {
-					if d.ID != "" {
-						seen[d.ID] = d
+				for d := aNode; d != nil; d = d.Parent() {
+					if core.IDOf(d) != "" {
+						seen[core.IDOf(d)] = d
 					}
 				}
-				for d := bNode; d != nil; d = d.Parent {
-					if d.ID != "" {
-						if hit, ok := seen[d.ID]; ok {
+				for d := bNode; d != nil; d = d.Parent() {
+					if core.IDOf(d) != "" {
+						if hit, ok := seen[core.IDOf(d)]; ok {
 							return []native.Value{native.NewTypeLiteral(hit)}, nil
 						}
 					}
@@ -685,7 +684,7 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, r.BoruError("type_error",
 						"TypeUtil.nominal: argument must be a lattice-resident type", "nominal")
 				}
-				anon := r.Types.MintRefinePrefab(native.CanonicalType(r, base))
+				anon := r.Types.MintRefinePrefab(native.NodeOf(base))
 				return []native.Value{native.NewTypeLiteral(anon)}, nil
 			}),
 			Returns: []*native.Type{native.TType}, BarrierPos: -1,
@@ -713,7 +712,7 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, r.BoruError("type_error",
 						"TypeUtil.brand: base must be a lattice-resident type", "brand")
 				}
-				anon := r.Types.MintRefinePrefab(native.CanonicalType(r, base))
+				anon := r.Types.MintRefinePrefab(native.NodeOf(base))
 				anon.SetName("brand:" + tag)
 				return []native.Value{native.NewTypeLiteral(anon)}, nil
 			}),

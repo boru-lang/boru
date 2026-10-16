@@ -101,12 +101,12 @@ func TestStoredLiveSeats(t *testing.T) {
 	if es.storedDepRead("helper", fnv) || es.storedDepRead("k", core.NewWord("k")) {
 		t.Fatal("a dispatching binding and an active token do not seat")
 	}
-	cls := core.Value{Parent: core.TAny, Data: &core.ClassTypeInfo{}}
+	cls := core.ValueOf(&core.Datum{Parent: core.TAny, Data: &core.ClassTypeInfo{}})
 	if es.storedDepRead("k", cls) {
 		t.Fatal("a class binding does not seat")
 	}
 	dyn := core.NewInteger(6)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	delete(es.fnRecs[unit].liveNames, "k")
 	if es.storedDepRead("k", dyn) || !es.unitLiveNames(unit)["k"] {
 		t.Fatal("a dynamic read is live already: noted, not seated")

@@ -115,14 +115,14 @@ func TestMerge519ArmSpliceHandlerValueArms(t *testing.T) {
 	r := merge519Registry(t)
 
 	typed := merge519Parse(t, "[:Integer 1 2]")
-	if len(typed) != 1 || !IsTypedList(typed[0]) {
+	if len(typed) != 1 || !IsTypedList(&typed[0]) {
 		t.Fatalf("want one typed list, got %v", typed)
 	}
 	out, err := ArmSpliceHandler(typed, nil, nil, r)
 	if err != nil {
 		t.Fatalf("typed-list arm: %v", err)
 	}
-	if len(out) != 1 || !IsTypedList(out[0]) || fmt.Sprint(out[0]) != fmt.Sprint(typed[0]) {
+	if len(out) != 1 || !IsTypedList(&out[0]) || fmt.Sprint(out[0]) != fmt.Sprint(typed[0]) {
 		t.Errorf("a typed-list arm is its own value: got %v", out)
 	}
 
@@ -148,12 +148,12 @@ func TestMerge519FnUndefReparentTarget(t *testing.T) {
 		t.Fatalf("def M fnsig: %v", err)
 	}
 	shape, ok := r.TopTypeBody("M")
-	if !ok || !shape.Parent.Equal(TFnUndef) {
+	if !ok || !shape.Parent().Equal(TFnUndef) {
 		t.Fatalf("M must bind an FnUndef type body, got %v (ok=%v)", shape, ok)
 	}
 
 	want := r.LookupTypeName("M")
-	if want == nil || want.Origin == core.OriginBuiltin {
+	if want == nil || want.Origin() == core.OriginBuiltin {
 		t.Fatalf("M must be a user type, got %v", want)
 	}
 	if got := fnUndefReparentTarget(r, shape, "M"); got != want {

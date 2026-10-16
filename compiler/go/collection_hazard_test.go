@@ -38,7 +38,7 @@ func TestCollectionHazardNote(t *testing.T) {
 	if !es.applyPending("x") || es.applyPending("y") {
 		t.Error("a pending apply reads back exactly")
 	}
-	if es.hazardLead(core.Value{ID: "x"}) {
+	if es.hazardLead(withID(core.Value{}, "x")) {
 		t.Error("an apply-pending value is the apply word's, never a hazard lead")
 	}
 }
@@ -56,18 +56,18 @@ func TestHazardLeadDeclinesEveryLowering(t *testing.T) {
 	if _, op, reason := es.resolveDynamicApply(lw, residual); op != OpCallDynamic || reason != "" {
 		t.Fatalf("an unmarked carrier lead keeps the lowering: op=%v reason=%q", op, reason)
 	}
-	es.NoteCollectionHazard(lead.ID)
+	es.NoteCollectionHazard(core.IDOf(&lead))
 	if _, op, reason := es.resolveDynamicApply(lw, residual); op != 0 || !strings.Contains(reason, "NUR121") {
 		t.Errorf("a marked carrier lead must decline: op=%v reason=%q", op, reason)
 	}
 	dyn := core.NewDynamicCarrier(core.TAny)
-	es.NoteCollectionHazard(dyn.ID)
+	es.NoteCollectionHazard(core.IDOf(&dyn))
 	if _, op, reason := es.resolveDynamicApply(lw, []core.Value{dyn, core.NewInteger(5)}); op != 0 || !strings.Contains(reason, "NUR121") {
 		t.Errorf("a marked dynamic lead must decline: op=%v reason=%q", op, reason)
 	}
 	// RecordDynApply: the marked fn declines without marking the program.
 	out := core.NewCarrier(core.TInteger)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, lead, out, core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, lead, &out, core.SrcPos{}); ok {
 		t.Error("a marked lead must decline the apply record")
 	}
 	if !es.Compilable {

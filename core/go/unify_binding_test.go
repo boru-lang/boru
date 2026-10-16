@@ -27,7 +27,7 @@ func TestBindingAliasAdoptsCanonicalNode(t *testing.T) {
 	}
 	// A raw base value dispatches into the alias — the transparent
 	// reading `42 is Foo` always had.
-	if !NewInteger(42).Is(entry.TypeDef) {
+	if !addrOf(NewInteger(42)).Is(entry.TypeDef) {
 		t.Error("42 must satisfy the adopted Integer node")
 	}
 }
@@ -52,7 +52,7 @@ func TestBindingAliasAdoptsUserNode(t *testing.T) {
 	if aliasEntry.Minted {
 		t.Error("alias of a user node must not claim the mint")
 	}
-	if aliasEntry.TypeDef.ID != nomEntry.TypeDef.ID {
+	if IDOf(aliasEntry.TypeDef) != IDOf(nomEntry.TypeDef) {
 		t.Error("alias must adopt the refine node's identity")
 	}
 }
@@ -141,28 +141,28 @@ func TestBindingBodySingleton(t *testing.T) {
 		t.Errorf("Body() must recover the declared singleton, got %v", u.Body())
 	}
 	// Membership: the inhabitant passes, everything else declines.
-	if !NewInteger(1).Is(node) {
+	if !addrOf(NewInteger(1)).Is(node) {
 		t.Error("1 must inhabit One")
 	}
-	if NewInteger(2).Is(node) {
+	if addrOf(NewInteger(2)).Is(node) {
 		t.Error("2 must not inhabit One")
 	}
 	// A bare type literal is not an inhabitant — it takes the lattice walk.
-	if NewTypeLiteral(TInteger).Is(node) {
+	if addrOf(NewTypeLiteral(TInteger)).Is(node) {
 		t.Error("the Integer literal is not an inhabitant of One")
 	}
 	// Carrier over-approximation: dynamic, tagged-at-node, and
 	// body-family carriers stay admissible; a foreign family declines.
-	if !NewDynamicCarrier(TAny).Is(node) {
+	if !addrOf(NewDynamicCarrier(TAny)).Is(node) {
 		t.Error("a dynamic carrier must stay admissible")
 	}
-	if !NewCarrier(node).Is(node) {
+	if !addrOf(NewCarrier(node)).Is(node) {
 		t.Error("a carrier tagged at the node must stay admissible")
 	}
-	if !NewCarrier(TInteger).Is(node) {
+	if !addrOf(NewCarrier(TInteger)).Is(node) {
 		t.Error("a base-family carrier must stay admissible")
 	}
-	if NewCarrier(TString).Is(node) {
+	if addrOf(NewCarrier(TString)).Is(node) {
 		t.Error("a foreign-family carrier must decline")
 	}
 }
@@ -183,12 +183,12 @@ func TestBindingBodyRecordShape(t *testing.T) {
 	}
 	member := NewOrderedMap()
 	member.Set("x", NewInteger(1))
-	if !NewMap(member).Is(node) {
+	if !addrOf(NewMap(member)).Is(node) {
 		t.Error("{x:1} must inhabit the record shape")
 	}
 	wrong := NewOrderedMap()
 	wrong.Set("y", NewInteger(9))
-	if NewMap(wrong).Is(node) {
+	if addrOf(NewMap(wrong)).Is(node) {
 		t.Error("{y:9} must not inhabit the record shape")
 	}
 }

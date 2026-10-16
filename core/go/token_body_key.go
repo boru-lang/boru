@@ -38,9 +38,9 @@ func TokenBodyKey(body Value, tokens []Value) (string, bool) {
 			b.WriteString(strconv.Itoa(p.Col))
 			b.WriteByte(' ')
 		}
-	case body.ID != "":
+	case IDOf(&body) != "":
 		b.WriteString("id:")
-		b.WriteString(body.ID)
+		b.WriteString(IDOf(&body))
 	default:
 		return "", false
 	}
@@ -52,7 +52,7 @@ func TokenBodyKey(body Value, tokens []Value) (string, bool) {
 // text names it (TokenBodyKey).
 func TokenBodyContentKeyable(tokens []Value) bool {
 	for _, tok := range tokens {
-		switch d := tok.Data.(type) {
+		switch d := tok.Data().(type) {
 		case WordInfo:
 			continue
 		case ListPayload:
@@ -61,7 +61,7 @@ func TokenBodyContentKeyable(tokens []Value) bool {
 			}
 			continue
 		}
-		if tok.Parent == nil || !tok.Parent.ConformsTo(TScalar) {
+		if tok.Parent() == nil || !tok.Parent().ConformsTo(TScalar) {
 			return false
 		}
 	}
@@ -71,8 +71,8 @@ func TokenBodyContentKeyable(tokens []Value) bool {
 // TokenBodyInputType is the type a run-time stamp declares for one seam
 // input: its concrete Parent, Any for a value with none.
 func TokenBodyInputType(v Value) *Type {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return TAny
 	}
-	return v.Parent
+	return v.Parent()
 }

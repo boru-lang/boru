@@ -101,7 +101,7 @@ func (es *EmitState) noteKeptDefsRead(id, name string) {
 // may hold a fn value stays an observer: a fn is interned as a const, which
 // the carrier would not stop.
 func (es *EmitState) keptReadSeatedLive(v *core.Value) {
-	if v.ID == "" || es.pendingKeptRead != v.ID {
+	if core.IDOf(v) == "" || es.pendingKeptRead != core.IDOf(v) {
 		return
 	}
 	name := es.pendingKeptName
@@ -110,11 +110,11 @@ func (es *EmitState) keptReadSeatedLive(v *core.Value) {
 		es.noteKeptDefsObserver("the read of `" + name + "`")
 		return
 	}
-	if core.IsTypeLiteral(*v) {
+	if core.IsTypeLiteral(v) {
 		*v = core.WithPos(core.ValueCarrier(*v), *v) // a type VALUE (NUR323)
 		return
 	}
-	*v = core.WithPos(core.NewCarrier(v.Parent), *v)
+	*v = core.WithPos(core.NewCarrier(v.Parent()), *v)
 }
 
 // flushKeptRead makes a pending read an observer: nothing seated it live
@@ -207,8 +207,8 @@ func (es *EmitState) operandMayInvoke(op EmitOperand) bool {
 			return false
 		}
 		v := es.consts[op.idx]
-		_, isFn := v.Data.(core.FnDefInfo)
-		return isFn || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
+		_, isFn := v.Data().(*core.FnDefInfo)
+		return isFn || (v.Parent() != nil && v.Parent().ConformsTo(core.TFunction))
 	}
 	return true
 }
@@ -320,10 +320,10 @@ func (es *EmitState) keptDefsFreshRead(id, name string) bool {
 // run time, so the check pass modelled none of its binding changes — and that
 // may be a code LIST (a Function callback runs in a frame of its own).
 func keepsComputedDefs(spec *core.CallableSpec, body core.Value) bool {
-	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(body) {
+	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(&body) {
 		return false
 	}
-	return body.Dynamic || body.Parent == nil || body.Parent.ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent)
+	return core.IsDynamic(&body) || body.Parent() == nil || body.Parent().ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent())
 }
 
 // bodyProvenFn reports whether a computed body operand provably arrives as an
@@ -350,11 +350,11 @@ func (es *EmitState) bodyProvenFn(body core.Value) bool {
 // value the model holds as a possible fn (keptReadMayBeFn) stays unseated, as
 // the bare read's does, so a pending one becomes an observer and declines.
 func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos) {
-	if !es.Active() || v == nil || v.ID == "" || name == "" {
+	if !es.Active() || v == nil || core.IDOf(v) == "" || name == "" {
 		return
 	}
-	if !es.keptDefsFreshRead(v.ID, name) {
-		es.noteKeptDefsRead(v.ID, name)
+	if !es.keptDefsFreshRead(core.IDOf(v), name) {
+		es.noteKeptDefsRead(core.IDOf(v), name)
 	}
 	keepLive, rootLive := es.keptLeakLive(*v, name)
 	if !keepLive && !rootLive {
@@ -388,10 +388,10 @@ func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos
 // literal body's leak keeps its exact type (the pass ran its tokens), and a
 // value that may be a fn stays as keptReadSeatedLive left it.
 func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bool) {
-	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier || keptReadMayBeFn(*v) {
+	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier() || keptReadMayBeFn(*v) {
 		return
 	}
-	v.Dynamic = true
+	core.SetDynamic(v, true)
 }
 
 // keptReadMayBeFn reports whether a read the latch would seat live holds a
@@ -400,5 +400,5 @@ func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bo
 // as a const the carrier would not stop, and an untyped value has no type
 // to carry.
 func keptReadMayBeFn(v core.Value) bool {
-	return core.IsAppliableFn(v) || v.Parent == nil || v.Parent.ConformsTo(core.TFunction)
+	return core.IsAppliableFn(v) || v.Parent() == nil || v.Parent().ConformsTo(core.TFunction)
 }

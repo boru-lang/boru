@@ -24,10 +24,10 @@ import (
 func RenderCheck(stack []core.Value, diags []core.CheckDiagnostic) string {
 	parts := make([]string, len(stack))
 	for i, v := range stack {
-		if v.Dynamic {
-			parts[i] = "dynamic(" + v.Parent.Leaf() + ")"
+		if core.IsDynamic(&v) {
+			parts[i] = "dynamic(" + v.Parent().Leaf() + ")"
 		} else {
-			parts[i] = v.Parent.Leaf()
+			parts[i] = v.Parent().Leaf()
 		}
 	}
 	s := strings.Join(parts, " ")

@@ -20,10 +20,10 @@ import "fmt"
 
 func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	list := args[0]
-	if !list.Parent.Equal(TList) {
+	if !list.Parent().Equal(TList) {
 		return nil, r.BoruError("record_error", "record: argument must be a list", "record")
 	}
-	if !IsConcrete(list) {
+	if !IsConcrete(&list) {
 		return nil, r.BoruError("record_error", "record: argument must be a concrete list, got type literal", "record")
 	}
 	elems, _ := AsList(list)
@@ -31,8 +31,8 @@ func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("record_error", "record: list must have at least one field", "record")
 	}
 	fields := NewOrderedMap()
-	for _, elem := range elems.Slice() {
-		if !elem.Parent.Equal(TMap) {
+	for _, elem := range elems.Elems() {
+		if !elem.Parent().Equal(TMap) {
 			return nil, fmt.Errorf("record: each element must be a pair (map), got %s", elem.String())
 		}
 		m, err := AsMutableMap(elem)
@@ -70,7 +70,7 @@ func parseObjectFields(fieldsMap *OrderedMap, r *Registry) *OrderedMap {
 // through objectWithParentHandler and propagates the Class flag.
 func classHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fieldsVal := args[0]
-	if !fieldsVal.Parent.Equal(TMap) {
+	if !fieldsVal.Parent().Equal(TMap) {
 		if spec := r.TakePendingGen(); spec != nil {
 			PopGenBindings(r, spec)
 		}
@@ -113,7 +113,7 @@ func objectWithParentHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 	fieldsVal := args[0]
 	parentVal := args[1]
 
-	if !fieldsVal.Parent.Equal(TMap) {
+	if !fieldsVal.Parent().Equal(TMap) {
 		return nil, fmt.Errorf("object: first argument must be a map of field definitions, got %s", fieldsVal.String())
 	}
 	m, err := AsMutableMap(fieldsVal)
@@ -121,7 +121,7 @@ func objectWithParentHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 		return nil, fmt.Errorf("object: first argument must be a concrete map, got %s", fieldsVal.String())
 	}
 
-	if !IsClassType(parentVal) {
+	if !IsClassType(&parentVal) {
 		return nil, fmt.Errorf("object: parent must be an object type, got %s", parentVal.String())
 	}
 	parentInfo, _ := AsClassType(parentVal)

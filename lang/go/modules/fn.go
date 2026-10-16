@@ -69,7 +69,7 @@ func BuildFnUtilModule(parent *native.Registry) (native.ModuleDesc, error) {
 // fn-util row declines compilation (the frontier ledger) — so the closure
 // arm waits for the §5.8 campaign to make it reachable, with coverage.
 func fnUtilArg(v native.Value, opName string, r *native.Registry) (native.Value, error) {
-	if _, ok := v.Data.(native.FnDefInfo); ok {
+	if _, ok := v.Data().(*native.FnDefInfo); ok {
 		return v, nil
 	}
 	return native.Value{}, r.BoruError("type_error",
@@ -81,8 +81,8 @@ func fnUtilArg(v native.Value, opName string, r *native.Registry) (native.Value,
 // interpreter FnDefInfo qualifies — a compiled closure carries no
 // signature surface to reshape.
 func fnUtilSigArg(v native.Value, opName string, r *native.Registry) (native.FnDefInfo, error) {
-	if fd, ok := v.Data.(native.FnDefInfo); ok {
-		return fd, nil
+	if fd, ok := v.Data().(*native.FnDefInfo); ok {
+		return *fd, nil
 	}
 	return native.FnDefInfo{}, r.BoruError("type_error",
 		fmt.Sprintf("%s: argument must be a function value with a signature (a compiled closure or non-function cannot be reshaped), got %s", opName, v.String()), opName)
@@ -116,10 +116,7 @@ func invokeFnUtil(r *native.Registry, opName string, fn native.Value, args []nat
 	if gi, ok := sig.Impl.(*core.GoImpl); ok {
 		return gi.Handler(args, nil, nil, r)
 	}
-	var fnDef *native.FnDefInfo
-	if fd, ok := fn.Data.(native.FnDefInfo); ok {
-		fnDef = &fd
-	}
+	fnDef, _ := fn.Data().(*native.FnDefInfo) // read, never written: the payload itself
 	return core.InvokeCallbackFn(r, fnDef, sig, args)
 }
 
@@ -193,7 +190,7 @@ func fnOperandArity(args []native.Value) (int, bool) {
 	if len(args) == 0 {
 		return 0, false
 	}
-	fd, ok := args[0].Data.(native.FnDefInfo)
+	fd, ok := args[0].Data().(*native.FnDefInfo)
 	if !ok {
 		return 0, false
 	}

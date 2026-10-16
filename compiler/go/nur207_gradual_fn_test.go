@@ -25,23 +25,21 @@ func TestParkedMemberFn(t *testing.T) {
 	lam := n207Lambda()
 	named := core.NewFunction(core.FnDefInfo{Name: "one", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
 	quoted := lam
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	applied := n207Lambda()
-	fd := applied.Data.(core.FnDefInfo)
-	fd.Applied = true
-	applied.Data = fd
+	core.SetApplied(&applied, true)
 	macro := n207Lambda()
-	fd = macro.Data.(core.FnDefInfo)
+	fd := *macro.Data().(*core.FnDefInfo)
 	fd.Macro = true
-	macro.Data = fd
+	macro.SetData(&fd)
 	capturing := n207Lambda()
-	fd = capturing.Data.(core.FnDefInfo)
+	fd = *capturing.Data().(*core.FnDefInfo)
 	fd.Captured = []core.CapturedBinding{{Name: "k", Value: core.NewInteger(1)}}
-	capturing.Data = fd
+	capturing.SetData(&fd)
 	fallback := n207Lambda()
-	fd = fallback.Data.(core.FnDefInfo)
+	fd = *fallback.Data().(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, core.Signature{Fallback: true})
-	fallback.Data = fd
+	fallback.SetData(&fd)
 	noSigs := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	if !parkedMemberFn(lam) {
 		t.Error("an anonymous capture-free only-0-arg lambda parks at every value landing")
@@ -83,7 +81,7 @@ func TestTryFoldParkedMemberFn(t *testing.T) {
 	if !tryFoldParkedMemberFn(reg, "dot", []core.Value{key, m}, outs) {
 		t.Fatal("the parking member of a concrete container folds")
 	}
-	if _, isFn := outs[0].Data.(core.FnDefInfo); !isFn || outs[0].Carrier {
+	if _, isFn := outs[0].Data().(*core.FnDefInfo); !isFn || outs[0].Carrier() {
 		t.Errorf("the out is the member value itself, got %v", outs[0])
 	}
 	es.Compilable = false
@@ -115,25 +113,23 @@ func TestArmsLeaveFnAndReadPoison(t *testing.T) {
 		}
 	}
 	// A nested branch's merge is a carrier the inner flag proves.
-	es.producedBy = map[string]producer{"inner": {seq: 4}}
 	es.eventInfo[4] = eventFlags{armLeavesFn: true}
-	inner := core.NewCarrier(core.TAny)
-	inner.ID = "inner"
+	inner := producedAs(es, core.NewCarrier(core.TAny), "inner", 4, 0)
 	if !es.armsLeaveFn(core.BranchRecord{ThenValue: &inner}) {
 		t.Error("a nested branch that leaves a fn leaves it through the outer arm")
 	}
 	// The read of a def bound to such a result poisons the placement gate.
-	es.noteMayBeFnRead("inner", "g")
+	es.noteMayBeFnRead("inner", core.RecKeyOf(&inner), "g")
 	if es.armReadCompileFailure != "" {
 		t.Fatal("a read of a value no def marked poisons nothing")
 	}
 	es.noteFnLeavingBind(inner)
-	es.noteMayBeFnRead("inner", "g")
+	es.noteMayBeFnRead("inner", core.RecKeyOf(&inner), "g")
 	if !strings.Contains(es.armReadCompileFailure, "read of `g`") || !strings.Contains(es.armReadCompileFailure, "NUR207") {
 		t.Errorf("the read declines under NUR207, got %q", es.armReadCompileFailure)
 	}
 	es.armReadCompileFailure = ""
-	es.noteMayBeFnRead("nobody", "g")
+	es.noteMayBeFnRead("nobody", core.RecKey{}, "g")
 	if es.armReadCompileFailure != "" {
 		t.Error("an unproduced read poisons nothing")
 	}
@@ -152,17 +148,20 @@ func TestGradualHoldsFn(t *testing.T) {
 		EmitEvent{seq: 7, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 1}},
 		EmitEvent{seq: 9, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}})
 	es.eventInfo[5] = eventFlags{armLeavesFn: true}
-	es.producedBy = map[string]producer{"viaBranch": {seq: 7}, "viaClosure": {seq: 9}, "plain": {seq: 3}}
+	seqs := map[string]int{"viaBranch": 7, "viaClosure": 9, "plain": 3}
 	mk := func(id string, t *core.Type) core.Value {
 		v := core.NewCarrier(t)
-		v.ID = id
+		core.SetID(&v, id)
+		if seq, ok := seqs[id]; ok {
+			es.stampProduced(&v, seq, 0)
+		}
 		return v
 	}
 	if !es.gradualHoldsFn(mk("viaBranch", core.TAny)) || !es.gradualHoldsFn(mk("viaClosure", core.TAny)) {
 		t.Error("an Any result proven to hold a fn")
 	}
 	quoted := mk("viaClosure", core.TAny)
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	for name, v := range map[string]core.Value{
 		"no producer": mk("plain", core.TAny), "no id": mk("", core.TAny), "quoted": quoted,
 		"fn-typed (the strict paths own it)": mk("viaClosure", core.TFunction), "concrete": core.NewInteger(1),
@@ -183,11 +182,11 @@ func TestMemberLambdaShape(t *testing.T) {
 	}
 	pat := core.NewInteger(0)
 	quoted := n207Lambda()
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	twoSigs := n207Lambda()
-	fd := twoSigs.Data.(core.FnDefInfo)
+	fd := *twoSigs.Data().(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])
-	twoSigs.Data = fd
+	twoSigs.SetData(&fd)
 	bodiless := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}}})
 	for name, v := range map[string]core.Value{
 		"a pattern param":  n207Lambda(core.FnParam{Type: core.TInteger, Pattern: &pat}),
@@ -211,21 +210,21 @@ func TestNoteClosureShapeBindMemberClaim(t *testing.T) {
 	es, reg, done := beginRegionPass(t)
 	defer done()
 	read := core.NewDynamicCarrier(core.TAny)
-	es.NoteMemberFnRead(read.ID, n207Lambda(core.FnParam{Type: core.TInteger}))
+	es.NoteMemberFnRead(core.IDOf(&read), n207Lambda(core.FnParam{Type: core.TInteger}))
 	es.noteClosureShapeBind(read)
-	if s, ok := reg.Check.FnShapeOf(read.ID); !ok || s.Arity != 1 {
+	if s, ok := reg.Check.FnShapeOf(core.IDOf(&read)); !ok || s.Arity != 1 {
 		t.Errorf("a def of a pinpointed member read claims the member's shape, got %+v/%v", s, ok)
 	}
 	unfit := core.NewDynamicCarrier(core.TAny)
-	es.NoteMemberFnRead(unfit.ID, core.NewFunction(core.FnDefInfo{Name: "inc"}))
+	es.NoteMemberFnRead(core.IDOf(&unfit), core.NewFunction(core.FnDefInfo{Name: "inc"}))
 	es.noteClosureShapeBind(unfit)
-	if _, ok := reg.Check.FnShapeOf(unfit.ID); ok {
+	if _, ok := reg.Check.FnShapeOf(core.IDOf(&unfit)); ok {
 		t.Error("a member the claim cannot describe claims nothing")
 	}
 	data := core.NewDynamicCarrier(core.TInteger)
-	es.NoteMemberFnRead(data.ID, n207Lambda())
+	es.NoteMemberFnRead(core.IDOf(&data), n207Lambda())
 	es.noteClosureShapeBind(data)
-	if _, ok := reg.Check.FnShapeOf(data.ID); ok {
+	if _, ok := reg.Check.FnShapeOf(core.IDOf(&data)); ok {
 		t.Error("a carrier whose bound excludes a fn claims nothing")
 	}
 }
@@ -243,7 +242,7 @@ func TestRecordUserCallDeclinesGradualFnArg(t *testing.T) {
 		}
 		es.fnRecs[unit].paramTypes = []*core.Type{c.param}
 		seq := es.appendEvent(EmitEvent{kind: evBranch, br: &emitBranch{}})
-		es.setProduced(arg, seq)
+		es.setProduced(&arg, seq)
 		es.eventInfo[seq] = eventFlags{armLeavesFn: true}
 		es.RecordUserCall(unit, "g", []core.Value{arg}, nil, core.SrcPos{Row: 1, Col: 3}, core.SrcPos{Row: 1, Col: 1})
 		declined := !es.Compilable && strings.Contains(es.Reason, "parameter not typed Function (NUR207)")
@@ -257,9 +256,7 @@ func TestRecordUserCallDeclinesGradualFnArg(t *testing.T) {
 func TestApplyOverGradualLeadIsPending(t *testing.T) {
 	es := NewEmitState()
 	es.units = []*emitUnit{{}}
-	lead := core.NewDynamicCarrier(core.TAny)
-	lead.ID = "lead"
-	es.producedBy = map[string]producer{"lead": {seq: 3}}
+	lead := producedAs(es, core.NewDynamicCarrier(core.TAny), "lead", 3, 0)
 	es.eventInfo[3] = eventFlags{}
 	sig := &core.Signature{Args: []*core.Type{core.TFunction}}
 	if !es.recordCallElided("apply", sig, []core.Value{lead}, []core.Value{lead}, core.SrcPos{}) {
@@ -291,16 +288,16 @@ func TestNoteFnLeavingBind(t *testing.T) {
 		EmitEvent{seq: 9, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 0}},
 		EmitEvent{seq: 7, kind: evCallUser, uc: emitUserCall{nout: 1, unit: 2}})
 	es.eventInfo[5] = eventFlags{armLeavesFn: true}
-	es.producedBy = map[string]producer{"claimed": {seq: 9}, "unclaimed": {seq: 7}, "fnTyped": {seq: 7}, "branch": {seq: 5}}
+	seqs := map[string]int{"claimed": 9, "unclaimed": 7, "fnTyped": 7, "branch": 5}
 	carrier := func(id string, ty *core.Type) core.Value {
 		v := core.NewDynamicCarrier(ty)
-		v.ID = id
+		core.SetID(&v, id)
+		es.stampProduced(&v, seqs[id], 0)
 		return v
 	}
 	claimed := carrier("claimed", core.TAny)
 	reg.Check.NoteFnShape(claimed, core.FnShape{Arity: 0})
-	fnTyped := core.NewCarrier(core.TFunction)
-	fnTyped.ID = "fnTyped"
+	fnTyped := producedAs(es, core.NewCarrier(core.TFunction), "fnTyped", 7, 0)
 	for _, v := range []core.Value{claimed, carrier("unclaimed", core.TAny), fnTyped, carrier("branch", core.TAny), {}} {
 		es.noteFnLeavingBind(v)
 	}

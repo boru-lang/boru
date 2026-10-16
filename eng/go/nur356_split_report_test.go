@@ -15,7 +15,7 @@ func TestSplitReportTape(t *testing.T) {
 		t.Error("no words: the plan's own tape")
 	}
 	got := splitReportTape(win, 0, map[int]core.Value{1: core.NewWord("l"), 7: core.NewWord("far")})
-	if got == win || got.Len() != 3 || !core.IsWord(got.At(2)) || core.IsWord(win.At(2)) {
+	if got == win || got.Len() != 3 || !core.IsWord(got.Ref(2)) || core.IsWord(win.Ref(2)) {
 		t.Errorf("the word at written index 1 stands at tape 2: %v", got)
 	}
 }

@@ -10,7 +10,7 @@ import "testing"
 func TestForwardFnCallIsTheBoundary(t *testing.T) {
 	fnv := NewFunction(FnDefInfo{Name: "g", Signatures: []Signature{{Impl: Boru([]Value{NewInteger(1)})}}})
 	dyn := NewCarrier(TAny)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	r := covRegistry(t, func(r *Registry) {
 		r.Defs.Push("g", fnv)
 		r.Defs.Push("fc", NewCarrier(TFunction))

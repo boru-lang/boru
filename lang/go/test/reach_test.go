@@ -16,7 +16,7 @@ func TestReachConstructorIsInert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(res) != 1 || !core.IsReach(res[0]) {
+	if len(res) != 1 || !core.IsReach(&res[0]) {
 		t.Fatalf("reach should yield an inert Reach value, got %v", res)
 	}
 }
@@ -28,7 +28,7 @@ func TestReachConstructorEncodesOps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	info, err := core.AsReach(res[0])
+	info, err := core.AsReach(&res[0])
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -92,10 +92,10 @@ func TestReceiverlessReachIsInertLens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(res) != 1 || !core.IsReach(res[0]) {
+	if len(res) != 1 || !core.IsReach(&res[0]) {
 		t.Fatalf("$.name should be an inert Reach value, got %v", res)
 	}
-	info, _ := core.AsReach(res[0])
+	info, _ := core.AsReach(&res[0])
 	if len(info.Receiver) != 0 || info.Eval {
 		t.Fatalf("$.name must be receiverless + inert, got %+v", info)
 	}
@@ -121,7 +121,7 @@ func TestReachApplyAndRebind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rebind: %v", err)
 	}
-	if len(res) != 1 || !core.IsReach(res[0]) {
+	if len(res) != 1 || !core.IsReach(&res[0]) {
 		t.Fatalf("rebind should yield a Reach value, got %v", res)
 	}
 }

@@ -25,7 +25,7 @@ package core
 // its bound is the pass's best guess, so the run re-matches the live value.
 func gradualMatch(match *MatchResult) bool {
 	for _, a := range match.Args {
-		if a.Dynamic {
+		if IsDynamic(&a) {
 			return true
 		}
 	}
@@ -36,7 +36,7 @@ func gradualMatch(match *MatchResult) bool {
 // dynamic) whose type does not conform to its slot's.
 func optimisticMatch(match *MatchResult) bool {
 	for i, a := range match.Args {
-		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || a.Dynamic) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
+		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier() || IsDynamic(&a)) && a.Parent() != nil && !a.Parent().ConformsTo(slot) {
 			return true
 		}
 	}
@@ -49,7 +49,7 @@ func optimisticMatch(match *MatchResult) bool {
 // pointer and position); none otherwise, which is also what a dispatch that
 // collected nothing forward has.
 func (e *Engine) forwardSplit() int {
-	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.At(e.Pointer).Pos() == e.fwdSplitPos {
+	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.Ref(e.Pointer).Pos() == e.fwdSplitPos {
 		return e.fwdSplitN
 	}
 	return 0
@@ -70,7 +70,7 @@ func (e *Engine) ForwardSplit() int { return e.forwardSplit() }
 func (e *Engine) regionMatch(match *MatchResult) bool {
 	rec := e.Registry.analysisRecorder()
 	for _, a := range match.Args {
-		if a.ID != "" && rec.RegionResult(a.ID) {
+		if IDOf(&a) != "" && rec.RegionResult(RecKeyOf(&a)) {
 			return true
 		}
 	}
@@ -110,7 +110,7 @@ func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch 
 	}
 	pos := SrcPos{}
 	if e.Pointer < e.Tape.Len() {
-		pos = e.Tape.At(e.Pointer).Pos()
+		pos = e.Tape.Ref(e.Pointer).Pos()
 	}
 	return &OuterMatch{Word: match.Name, Vals: vals, NFwd: nFwd, Written: written, Pos: pos}
 }
@@ -132,17 +132,17 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 		!(optimisticMatch(match) || gradualMatch(match)) || e.Pointer >= e.Tape.Len() {
 		return nil
 	}
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	nFwd := e.forwardSplit()
 	if err != nil || w.ArgCount != -1 || (w.ForceStack && nFwd == 0) || w.ForceForward || w.ForceVal || w.ForceUsurp || nFwd > n {
 		return nil
 	}
-	if e.voidArgErrorFor(w.Name, e.Tape.At(e.Pointer).Pos()) != nil || e.IsFnShapeTypedBindingContext() {
+	if e.voidArgErrorFor(w.Name, e.Tape.Ref(e.Pointer).Pos()) != nil || e.IsFnShapeTypedBindingContext() {
 		return nil
 	}
 	for i := 0; i < n; i++ {
 		at := e.Pointer - 1 - i
-		if indices[i] != at || at < 0 || match.Args[i].ID == "" || e.Tape.At(at).ID != match.Args[i].ID {
+		if indices[i] != at || at < 0 || IDOf(&match.Args[i]) == "" || IDOf(e.Tape.Ref(at)) != IDOf(&match.Args[i]) {
 			return nil
 		}
 	}

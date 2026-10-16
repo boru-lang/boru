@@ -10,33 +10,34 @@ import "strings"
 type listFormatBehavior struct{}
 
 func (listFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (listFormatBehavior) matchesAsDefault()           {}
 func (listFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (listFormatBehavior) Format(v Value) string {
-	if tt, ok := v.Data.(TableTypeInfo); ok {
+	if tt, ok := v.Data().(TableTypeInfo); ok {
 		return formatFieldBag("table", tt.Record.Fields)
 	}
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		rowParts := make([]string, len(td.Rows))
 		for i, row := range td.Rows {
 			rowParts[i] = row.String()
 		}
 		return formatFieldBag("table", td.Record.Fields) + "[" + strings.Join(rowParts, " ") + "]"
 	}
-	if mp, ok := v.Data.(MaterializerPayload); ok {
+	if mp, ok := v.Data().(MaterializerPayload); ok {
 		td, err := mp.M.Materialize()
 		if err != nil {
 			return "query(error:" + err.Error() + ")"
 		}
 		return formatTableDataAsList(td)
 	}
-	if mz, ok := v.Data.(Materializer); ok {
+	if mz, ok := v.Data().(Materializer); ok {
 		td, err := mz.Materialize()
 		if err != nil {
 			return "query(error:" + err.Error() + ")"
 		}
 		return formatTableDataAsList(td)
 	}
-	if ct, ok := v.Data.(ChildTypeInfo); ok {
+	if ct, ok := v.Data().(ChildTypeInfo); ok {
 		// Include any inline elements (`[:Integer 1 2 3]`) — dropping
 		// them made String lossy where canon keeps them (found by the
 		// TS parser stream-parity diff).
@@ -48,7 +49,7 @@ func (listFormatBehavior) Format(v Value) string {
 		return "[" + strings.Join(parts, " ") + "]"
 	}
 	_lst, _ := AsList(v)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	parts := make([]string, 0, len(elems))
 	for i := 0; i < len(elems); i++ {
 		// Display-only: collapse a parser-grouped dot chain
@@ -75,22 +76,22 @@ func (listFormatBehavior) Format(v Value) string {
 // all-bare-Word shape is re-sugared; nested-group receivers (`(expr).k`)
 // and computed `(expr)` keys (`m.(expr)`) render verbatim.
 func resugarDotChain(elems []Value, i int) (string, int, bool) {
-	if !IsOpenParen(elems[i]) || i+1 >= len(elems) || !IsWord(elems[i+1]) {
+	if !IsOpenParen(&elems[i]) || i+1 >= len(elems) || !IsWord(&elems[i+1]) {
 		return "", 0, false
 	}
-	recv, _ := AsWord(elems[i+1])
+	recv, _ := AsWord(&elems[i+1])
 	var b strings.Builder
 	b.WriteString(recv.Name)
 	j := i + 2
-	for j+1 < len(elems) && IsWord(elems[j]) {
-		verb, _ := AsWord(elems[j])
+	for j+1 < len(elems) && IsWord(&elems[j]) {
+		verb, _ := AsWord(&elems[j])
 		if !IsGetWord(verb.Name) && !IsGetrWord(verb.Name) {
 			break
 		}
-		if !IsWord(elems[j+1]) {
+		if !IsWord(&elems[j+1]) {
 			return "", 0, false // computed / non-word key — leave verbatim
 		}
-		key, _ := AsWord(elems[j+1])
+		key, _ := AsWord(&elems[j+1])
 		if IsGetrWord(verb.Name) {
 			b.WriteString("!.")
 		} else {
@@ -99,7 +100,7 @@ func resugarDotChain(elems []Value, i int) (string, int, bool) {
 		b.WriteString(key.Name)
 		j += 2
 	}
-	if j == i+2 || j >= len(elems) || !IsCloseParen(elems[j]) {
+	if j == i+2 || j >= len(elems) || !IsCloseParen(&elems[j]) {
 		return "", 0, false // no segment consumed, or no clean close
 	}
 	return b.String(), j, true
@@ -141,9 +142,10 @@ func formatFieldBag(name string, fields *OrderedMap) string {
 type mapFormatBehavior struct{}
 
 func (mapFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (mapFormatBehavior) matchesAsDefault()           {}
 func (mapFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (mapFormatBehavior) Format(v Value) string {
-	if ct, ok := v.Data.(ChildTypeInfo); ok {
+	if ct, ok := v.Data().(ChildTypeInfo); ok {
 		// Include any inline entries (`{:Integer a:1}`) — the map twin
 		// of the typed-list element render above.
 		parts := make([]string, 0, len(ct.Entries)+1)
@@ -153,10 +155,10 @@ func (mapFormatBehavior) Format(v Value) string {
 		}
 		return "{" + strings.Join(parts, " ") + "}"
 	}
-	if rt, ok := v.Data.(RecordTypeInfo); ok {
+	if rt, ok := v.Data().(RecordTypeInfo); ok {
 		return formatFieldBag("record", rt.Fields)
 	}
-	if ot, ok := v.Data.(OptionsTypeInfo); ok {
+	if ot, ok := v.Data().(OptionsTypeInfo); ok {
 		return formatFieldBag("options", ot.Fields)
 	}
 	m, _ := AsMap(v)

@@ -46,8 +46,8 @@ func TestIslandPrefixIsAScalarConstant(t *testing.T) {
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{nout: 1}})
 	produced := core.NewInteger(3)
-	produced.ID = core.GenerateID(core.IDPrefixForType(produced.Parent))
-	es.setProducedAt(produced, seq, 0)
+	core.SetID(&produced, core.GenerateID(core.IDPrefixForType(produced.Parent())))
+	es.setProducedAt(&produced, seq, 0)
 	for _, v := range []core.Value{produced, core.NewCarrier(core.TInteger), core.NewList([]core.Value{core.NewInteger(1)})} {
 		if _, ok := es.islandPrefixOperand(v); ok {
 			t.Errorf("%v is no inert prefix", v)
@@ -108,14 +108,14 @@ func TestResidualIslandShapes(t *testing.T) {
 	}
 	other := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{nout: 1}})
 	out := core.NewCarrier(core.TAny)
-	es.setProducedAt(out, other, 0)
+	es.setProducedAt(&out, other, 0)
 	if _, ok := es.residualIsland(es.frames[0], []core.Value{core.NewInteger(9), out}); ok {
 		t.Error("a last event that is no run is no island")
 	}
 	es = NewEmitState()
 	r := islandRun(es)
 	run := core.NewCarrier(core.TAny)
-	es.setProducedAt(run, r, 0)
+	es.setProducedAt(&run, r, 0)
 	if _, ok := es.residualIsland(es.frames[0], []core.Value{run}); ok {
 		t.Error("a run with nothing beneath needs no island")
 	}
@@ -135,7 +135,7 @@ func TestResidualIslandShapes(t *testing.T) {
 	}
 	es = NewEmitState()
 	r = islandRun(es, EventOperand(99, 0))
-	es.setProducedAt(run, r, 0)
+	es.setProducedAt(&run, r, 0)
 	if _, ok := es.residualIsland(es.frames[0], []core.Value{core.NewInteger(9), run}); ok {
 		t.Error("a run whose operand comes from outside its block is no island")
 	}
@@ -240,7 +240,7 @@ func TestPrefixIslandArmsOpensAndCloses(t *testing.T) {
 	es2 := NewEmitState()
 	r2 := islandRun(es2)
 	run := core.NewCarrier(core.TAny)
-	es2.setProducedAt(run, r2, 0)
+	es2.setProducedAt(&run, r2, 0)
 	lw2 := &lowerer{}
 	es2.planPrefixIsland(lw2, []core.Value{core.NewInteger(9), run})
 	if lw2.island == nil || lw2.island.list != 0 {

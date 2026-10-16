@@ -71,7 +71,7 @@ func TestBodyMapShape(t *testing.T) {
 	inner.Set("n", core.NewWord("mv"))
 	f := bodyMapShape(r, bodyMapSchema(map[string]core.Value{
 		"a": core.NewList([]core.Value{core.NewWord("i"), core.NewParenExpr([]core.Value{core.NewWord("pw")})}),
-		"b": core.NewList([]core.Value{reach, core.NewMap(inner), {Data: core.MapPayload{}}}),
+		"b": core.NewList([]core.Value{reach, core.NewMap(inner), core.ValueOf(&core.Datum{Data: core.MapPayload{}})}),
 		"c": core.NewList([]core.Value{core.NewInteger(1), core.NewWord("break")}),
 	}))
 	if f.computed || f.opaque {
@@ -122,7 +122,7 @@ func TestBodyMapShapeReadsCallees(t *testing.T) {
 	defer done()
 	r.Register("zzbmleaf", core.Signature{Impl: core.Boru([]core.Value{core.NewWord("i")}), BarrierPos: -1})
 	r.Register("zzbmmid", core.Signature{Impl: core.Boru([]core.Value{core.NewWord("zzbmleaf"), core.NewWord("zzbmmid")}), BarrierPos: -1})
-	lambda := core.Value{Data: core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewWord("lv")})}}}}
+	lambda := core.ValueOf(&core.Datum{Data: &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewWord("lv")})}}}})
 	f := bodyMapShape(r, bodyMapSchema(map[string]core.Value{"a": core.NewList([]core.Value{core.NewWord("zzbmmid"), lambda})}))
 	for _, n := range []string{"zzbmmid", "zzbmleaf", "i", "lv"} {
 		if !f.names[n] {
@@ -150,9 +150,9 @@ func TestBodyMapShapeQuotedData(t *testing.T) {
 		}),
 	}}})
 	quotedList := core.NewList([]core.Value{core.NewWord("qi"), core.NewSplice(core.NewInteger(1))})
-	quotedList.Quoted = true
+	core.SetQuoted(&quotedList, true)
 	inner := core.NewList([]core.Value{core.NewWord("qj")})
-	inner.Quoted = true
+	core.SetQuoted(&inner, true)
 	body := []core.Value{
 		core.NewWord("quote"), core.NewList([]core.Value{core.NewWord("qk"), inner}),
 		quotedList,

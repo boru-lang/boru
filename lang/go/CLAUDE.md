@@ -53,7 +53,11 @@ Language-agnostic content stays at the top of each component:
   Sub-files:
   - `aliases.go` — re-exports the eng kernel's exported types/funcs
     as `native.Foo` so the rest of the lang code can stay
-    eng-agnostic.
+    eng-agnostic. A function that takes a `*Value` is re-exported as a
+    WRAPPER func, never a function variable: a call through a
+    variable is indirect, so it cannot inline and every `&v` handed
+    to it escapes to the heap (`make vet-copies`' fnvaralias check
+    fails on one).
   - `basic_shim.go` — the same pattern one layer up: re-exports the
     fundamental-word registration groups, handler internals, and
     Scalar/Time surface that moved to `basic/go` (ADR-013), under
@@ -645,9 +649,11 @@ Concretely:
 
 ### Capture semantics: shallow snapshot
 
-The captured `Value` is a struct copy. Pointer-backed payloads (`Map`,
-`Store`, `Array`, `Timer`, `Interval`) **share the underlying state**
-with the outer binding, so mutations cross the capture boundary:
+The capture holds a reference to the value bound at capture time: a
+`Value` handle on the binding's shared `Datum`, never a copy of the value
+(design/VALUE-NO-COPY-EXCEPTIONS.0.md C5). Pointer-backed payloads
+(`Map`, `Store`, `Array`, `Timer`, `Interval`) **share the underlying
+state** with the outer binding, so mutations cross the capture boundary:
 
 ```
 def pair (fn [[] [List] [
@@ -773,7 +779,10 @@ Implementation: parser sets `Eval=true` on lists. `execMatch` runs
 `autoEvalList` on consumed list args unless `NoEvalArgs[i]` is set.
 `quote` sets `Quoted=true` (also suppresses auto-eval). End-of-`Run()`
 auto-evaluates only lists with `Eval=true && !Quoted` that were never
-consumed.
+consumed. Both are occurrence flags of the holder, not fields of the
+value: read and write them as `IsEval`/`SetEval` and
+`IsQuoted`/`SetQuoted` (`core/go/occurrence.go`), like `IsUndefined`,
+`IsReachGroup`, `IsDynamic` and the value's identity (`IDOf`/`SetID`).
 
 ### `def name <node>` binds a value; `word` splices
 
@@ -944,14 +953,16 @@ name index (`LookupBuiltinByName`).
   2 flip of design/legacy/TYPE-REPRESENTATION.1.ignore), `TopEntry(name)
   (DefEntry, bool)` (the raw entry: Body + TypeDef + Minted),
   `Has(name)`, `IsType(name)`, `Depth(name)`, `Stack(name) []Value`,
-  `Names()`.
+  `Names()`; and by reference, without the copy, `TopValue(name)
+  (*Value, bool)` (what Top returns, where it lives) and `TopRef(name)
+  (*DefEntry, bool)` — read-only, valid until name's stack changes.
 - writes — `Push(name, v)` (value binding),
   `PushType(name, def, body)` (type binding),
   `PushTypeAdopted(name, def, body)` (a type binding that ADOPTS an
   existing canonical node — the alias path; `undef` never retires
   it), `Pop(name) bool`,
-  `PopEntry(name) (DefEntry, bool)`, `Replace`, `Truncate`, `Delete`,
-  `Set`.
+  `PopEntry(name) (DefEntry, bool)`, `Replace`, `SetTopData` (the top
+  binding's payload, in place), `Truncate`, `Delete`, `Set`.
 - snapshot/restore — `Snapshot() map[string]int` / `Restore(snap)`,
   depth-based; pair around fn-body sandboxes and carrier-merge joins.
   (The predicate sandbox additionally clones `r.Types` to roll back
@@ -982,6 +993,10 @@ the underlying state. Adding direct field access regresses the
 consolidation and will be flagged in code review.
 
 **Concrete-value guards** (panic-prevention, type-literal vs concrete):
+These predicates read the value through a pointer (`IsBareTypeNode(&v)`,
+`IsConcrete(&args[i])`, `IsWord(e.Tape.Ref(i))`) — the no-copy rule of
+eng/go/CLAUDE.md "Values are not copied".
+
 - `IsBareTypeNode(v)` — true if `Data == nil` and not a carrier (v IS
   its own lattice node). INCLUDES None/Any/Never; use for naming,
   ordering, and lattice-identity dispatch.
@@ -999,14 +1014,14 @@ consolidation and will be flagged in code review.
   type-algebra words) so a name and an inline body are one case.
 - `IsConcrete(v)` — true if `Data != nil` and not a carrier. NOT the
   negation of `Data == nil`: a list/map carrier has `Data != nil` yet
-  is not concrete. Never write the raw `v.Data == nil` probe in
+  is not concrete. Never write the raw `v.Data() == nil` probe in
   consumer code — see eng/go/CLAUDE.md "Payload-presence vs value-mode".
 - `RequireConcreteList(v, op) (ReadList, error)` — unwraps a list-typed
   Value or returns an error when the value is a type literal/carrier.
 - `RequireConcreteMap(v, op) (ReadMap, error)` — same for maps.
 
 Handlers that take `TList`/`TMap`/`TAny` args should guard with
-`!IsConcrete(args[i])` (or use the `RequireConcreteX` helpers) before
+`!IsConcrete(&args[i])` (or use the `RequireConcreteX` helpers) before
 calling `AsList(v)`/`AsMap(v)` — otherwise carriers and type literals
 panic on `.Len()`. (`AsList` / `AsMap` are free functions in eng, not
 methods on `Value`; the method surface is `Is`, `String`, the node-
@@ -1055,25 +1070,33 @@ accessors below.)
   `r.UpdateCtxStoreChain(orig, new)`.
 
 **Canonical type pointers**:
-- `CanonicalType(r, t) *Type` — resolve `t` to its canonical lattice
-  node via `r.Types.LookupByID`. Use whenever a `*Type` may have come
-  from `&v` of a by-value type-literal Value — `behave` Behavior
-  installs and LCA-walk identity must reach the canonical pointer,
-  not a stack-local copy. See
-  `design/legacy/TYPE-CANONICALIZATION.10.ignore`.
+- `NodeOf(t) *Type` — the lattice node `t` stands for: a type
+  literal's metadata names its node, so any copy (`&v` of a by-value
+  type-literal Value, `NewTypeLiteral`'s result) resolves to it with
+  no registry; an ad-hoc `*Type` no table registered comes back
+  unchanged. Use whenever a `*Type` may have come from a literal —
+  `behave` Behavior installs and LCA-walk identity must reach the
+  node, not a copy. It replaced `CanonicalType(r, t)` (no-copy phase
+  3); see eng/go/CLAUDE.md "Canonical `*Type` Pointers".
 
 **Typed-def reparent**:
-- `ReparentValue(v, def) Value` — return a fresh copy of v with
-  `Parent` rebound to def. The single primitive every typed-def
-  reparent path uses (predicate / refine-bare / FnUndef branches).
-  The by-value copy is explicit so Unify-swap results (which may
-  return a type literal in the value position) can never be
-  silently mutated and stored as the binding.
+- `MintRetagged(&v, def) Value` — construct v's value under the type
+  def (v's payload, facets, position and identity; v itself is never
+  written). The single primitive every typed-def reparent path uses
+  (predicate / refine-bare / FnUndef branches), so Unify-swap results
+  (which may return a type literal in the value position) can never be
+  silently mutated and stored as the binding. It replaced
+  `ReparentValue` (no-copy phase 3); see eng/go/CLAUDE.md "Typed-Def
+  Reparent" for the rest of the constructor family.
 
 **Pos threading**:
 - `WithPos(v, src)` — return v with Pos copied from src. Use when a
   handler constructs a new Value from an input — error reporting
-  downstream then has the source location.
+  downstream then has the source location. The position is shared (the
+  record it lives in), so threading allocates nothing.
+- `core.ThreadPos(&slot, &src)` (basic re-exports it as `ThreadPos`) —
+  the same, written in a slot the handler owns (its own results slice, a
+  value it just built) instead of copying the value out and back.
 
 ## Undefined Words (CRITICAL)
 
@@ -1221,11 +1244,11 @@ Key patterns to follow:
 - **Guard conversion functions.** `valueToAny()` and `valueToMap()` in
   `native/transform.go` have nil-Data guards. If you add new
   conversion helpers, include the same guard.
-- **Engine builtin handlers.** Check `args[N].Data == nil` before calling
+- **Engine builtin handlers.** Check `args[N].Data() == nil` before calling
   `AsMap(args[N])`/`AsList(args[N])` on arguments matched via
   `TMap`/`TList`/`TAny` signatures. See `native_accessor_dotr.go`
   for the canonical pattern.
-- **Prefer `val, ok := v.Data.(Type)` over `v.Data.(Type)`.** The
+- **Prefer `val, ok := v.Data().(Type)` over `v.Data().(Type)`.** The
   two-value form never panics; the single-value form panics on mismatch.
 - **Write tests that use `recover()`.** For any new word or native
   function, add a test case in `TestTypeLiteralNoPanic` or

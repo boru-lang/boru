@@ -44,9 +44,9 @@ func TestValuesEqualStoreShapedCarriers(t *testing.T) {
 // to the rendering compare — never walk a nil ReadMap. Positive (same
 // rendering) and negative (different rendering) pinned for both families.
 func TestValuesEqualUnreadableNodePayloads(t *testing.T) {
-	mapA := Value{Parent: TMap, Data: WordInfo{Name: "w1"}}
-	mapA2 := Value{Parent: TMap, Data: WordInfo{Name: "w1"}}
-	mapB := Value{Parent: TMap, Data: WordInfo{Name: "w2"}}
+	mapA := Value{d: &Datum{Parent: TMap, Data: WordInfo{Name: "w1"}}}
+	mapA2 := Value{d: &Datum{Parent: TMap, Data: WordInfo{Name: "w1"}}}
+	mapB := Value{d: &Datum{Parent: TMap, Data: WordInfo{Name: "w2"}}}
 	if !valuesEqualDefault(mapA, mapA2) {
 		t.Error("map-family unreadable payloads with equal rendering must compare equal")
 	}
@@ -54,9 +54,9 @@ func TestValuesEqualUnreadableNodePayloads(t *testing.T) {
 		t.Error("map-family unreadable payloads with different rendering must compare unequal")
 	}
 
-	lstA := Value{Parent: TList, Data: WordInfo{Name: "w1"}}
-	lstA2 := Value{Parent: TList, Data: WordInfo{Name: "w1"}}
-	lstB := Value{Parent: TList, Data: WordInfo{Name: "w2"}}
+	lstA := Value{d: &Datum{Parent: TList, Data: WordInfo{Name: "w1"}}}
+	lstA2 := Value{d: &Datum{Parent: TList, Data: WordInfo{Name: "w1"}}}
+	lstB := Value{d: &Datum{Parent: TList, Data: WordInfo{Name: "w2"}}}
 	if !valuesEqualDefault(lstA, lstA2) {
 		t.Error("list-family unreadable payloads with equal rendering must compare equal")
 	}

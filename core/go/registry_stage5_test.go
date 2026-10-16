@@ -164,14 +164,14 @@ func TestResolveTypeLiteralDefClassBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	lit := NewTypeLiteral(TInteger)
-	if name := TypeNameByID(lit.ID); name != "Integer" {
+	if name := TypeNameByID(IDOf(&lit)); name != "Integer" {
 		t.Fatalf("precondition: TypeNameByID = %q, want Integer", name)
 	}
 	cv := NewClassType(TInteger, ClassTypeInfo{Fields: NewOrderedMap(), Name: "Class/Stage5"})
 	r.Defs.Push("Integer", cv)
 	defer r.Defs.Pop("Integer")
 	got := ResolveTypeLiteralDef(lit, r)
-	if !IsClassType(got) {
+	if !IsClassType(&got) {
 		t.Fatalf("literal must resolve to the class binding, got %s", got.String())
 	}
 }
@@ -193,7 +193,7 @@ func TestCallBoruArms(t *testing.T) {
 		BarrierPos: 0,
 	}
 	lst := NewList([]Value{NewInteger(9)})
-	lst.Quoted = false
+	SetQuoted(&lst, false)
 	res, err := r.CallBoru(sigList, []Value{lst}, []CapturedBinding{{Name: "cap5", Value: NewInteger(2)}})
 	if err != nil || len(res) != 1 || !ValuesEqual(res[0], NewInteger(1)) {
 		t.Fatalf("named-list call: got %v, %v", res, err)
@@ -329,7 +329,7 @@ func TestResolveTypedNameValueArms(t *testing.T) {
 	if v, name, ok := r.ResolveTypedNameValue(NewWord("stage5val")); !ok || name != "stage5val" || !ValuesEqual(v, NewInteger(4)) {
 		t.Fatal("def-bound word must resolve to its binding")
 	}
-	if v, name, ok := r.ResolveTypedNameValue(NewWord("Integer")); !ok || name != "Integer" || !IsBareTypeNode(v) {
+	if v, name, ok := r.ResolveTypedNameValue(NewWord("Integer")); !ok || name != "Integer" || !IsBareTypeNode(&v) {
 		t.Fatal("builtin type name must resolve to its literal")
 	}
 	if _, name, ok := r.ResolveTypedNameValue(NewWord("Zz-stage5-missing")); ok || name != "Zz-stage5-missing" {
@@ -367,7 +367,7 @@ func TestRunPredicateArms(t *testing.T) {
 		t.Fatal("non-fn constraint must error")
 	}
 	// TFunction-shaped but no FnDefInfo payload.
-	if _, _, err := r.RunPredicate(Value{Parent: TFunction}, NewInteger(2)); err == nil {
+	if _, _, err := r.RunPredicate(Value{d: &Datum{Parent: TFunction}}, NewInteger(2)); err == nil {
 		t.Fatal("payload-less constraint must error")
 	}
 	// No signature takes ONE value: the candidate is not a member — the

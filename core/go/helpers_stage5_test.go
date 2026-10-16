@@ -20,7 +20,7 @@ import (
 func TestStage5InstallDefFnBadPayload(t *testing.T) {
 	r := newTestRegistry(t)
 	// Parent says Function but the payload is not FnDefInfo: nothing binds.
-	bad := Value{Parent: TFunction, Data: ListPayload{}}
+	bad := Value{d: &Datum{Parent: TFunction, Data: ListPayload{}}}
 	InstallDef(r, "st5badfn", bad)
 	if _, ok := r.Defs.Top("st5badfn"); ok {
 		t.Error("a Function-parented non-FnDefInfo body must install nothing")
@@ -56,7 +56,7 @@ func TestStage5InstallDefOverlapRemoval(t *testing.T) {
 	if len(stack) != 2 {
 		t.Fatalf("post-redefinition stack depth = %d, want 2 (String kept + new Integer)", len(stack))
 	}
-	oldest, ok := stack[0].Data.(FnDefInfo)
+	oldest, ok := FnDefOf(stack[0].Data())
 	if !ok {
 		t.Fatal("oldest entry is not an fn def")
 	}
@@ -114,7 +114,7 @@ func TestStage5InstallDefModuleWrapperRebind(t *testing.T) {
 	if !ok {
 		t.Fatal("wrapper rebinding installed nothing")
 	}
-	fd, ok := top.Data.(FnDefInfo)
+	fd, ok := FnDefCopy(top.Data())
 	if !ok {
 		t.Fatal("rebound entry is not an fn def")
 	}
@@ -142,7 +142,7 @@ func TestStage5InstallDefModuleWrapperRebind(t *testing.T) {
 	if !ok {
 		t.Fatal("mixed wrapper installed nothing")
 	}
-	fd, ok = top.Data.(FnDefInfo)
+	fd, ok = FnDefCopy(top.Data())
 	if !ok || len(fd.Signatures) == 0 {
 		t.Fatal("mixed wrapper entry is not an fn def")
 	}
@@ -267,7 +267,7 @@ func TestStage5RetagTypedContainerValueArms(t *testing.T) {
 	// Non-typed-container pattern: pass-through.
 	plainPat := NewTypeLiteral(TMap)
 	arg := NewInteger(1)
-	if got := RetagTypedContainerValue(plainPat, arg); got.ID != arg.ID {
+	if got := RetagTypedContainerValue(plainPat, arg); IDOf(&got) != IDOf(&arg) {
 		t.Error("a non-container pattern must pass the arg through")
 	}
 
@@ -288,13 +288,13 @@ func TestStage5RetagTypedContainerValueArms(t *testing.T) {
 	pom := NewOrderedMap()
 	pom.Set("a", NewInteger(2))
 	plain := NewMap(pom)
-	plain.Quoted = true
+	SetQuoted(&plain, true)
 	got = RetagTypedContainerValue(pat, plain)
-	if !got.Quoted {
+	if !IsQuoted(&got) {
 		t.Error("the list-arg quote must survive the unify retag")
 	}
-	if !got.Parent.Equal(TMap) {
-		t.Errorf("unify retag parent = %v", got.Parent)
+	if !got.Parent().Equal(TMap) {
+		t.Errorf("unify retag parent = %v", got.Parent())
 	}
 }
 
@@ -399,13 +399,13 @@ func TestStage5CowDelRootAndNested(t *testing.T) {
 	child := &StoreInstanceInfo{TypeName: "Object/Store", Data: map[string]Value{}}
 	CowSet(r.Contexts.Top(), "st5child", NewStoreValue(nil, child), r)
 	live, _ := r.Contexts.Top().Get("st5child")
-	cs, ok := live.Data.(*StoreInstanceInfo)
+	cs, ok := live.Data().(*StoreInstanceInfo)
 	if !ok {
 		t.Fatalf("child not a store: %v", live)
 	}
 	CowSet(cs, "inner", NewInteger(42), r)
 	live, _ = r.Contexts.Top().Get("st5child")
-	cs, _ = live.Data.(*StoreInstanceInfo)
+	cs, _ = live.Data().(*StoreInstanceInfo)
 	if cs == nil {
 		t.Fatal("child lost after nested set")
 	}
@@ -414,7 +414,7 @@ func TestStage5CowDelRootAndNested(t *testing.T) {
 	if !ok {
 		t.Fatal("child binding lost after nested delete")
 	}
-	rs, _ := reread.Data.(*StoreInstanceInfo)
+	rs, _ := reread.Data().(*StoreInstanceInfo)
 	if rs == nil {
 		t.Fatal("child no longer a store after nested delete")
 	}
@@ -471,7 +471,7 @@ func TestStage5IsTypeBodyArms(t *testing.T) {
 		{"host type body", NewValueRaw(TAny, ExtensionPayload{Body: stage5HostBody{}})},
 	}
 	for _, c := range cases {
-		if !IsTypeBody(c.v) {
+		if !IsTypeBody(&c.v) {
 			t.Errorf("IsTypeBody(%s) = false, want true", c.name)
 		}
 	}
@@ -481,7 +481,7 @@ func TestStage5PredicateInputTypeArms(t *testing.T) {
 	if got := PredicateInputType(Value{}); got != nil {
 		t.Errorf("nil-parent value: got %v", got)
 	}
-	if got := PredicateInputType(Value{Parent: TFunction, Data: ListPayload{}}); got != nil {
+	if got := PredicateInputType(Value{d: &Datum{Parent: TFunction, Data: ListPayload{}}}); got != nil {
 		t.Errorf("non-FnDefInfo payload: got %v", got)
 	}
 	undeclared := func(pt *Type) Value {
@@ -656,8 +656,8 @@ func TestStage5ExpandOptionalSigsNamedPresentParam(t *testing.T) {
 	}
 	sawA := false
 	for _, tok := range sigs[1].Body() {
-		if IsWord(tok) {
-			if w, err := AsWord(tok); err == nil && w.Name == "a" {
+		if IsWord(&tok) {
+			if w, err := AsWord(&tok); err == nil && w.Name == "a" {
 				sawA = true
 			}
 		}

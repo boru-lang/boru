@@ -95,7 +95,7 @@ func probeSlots(sig *Signature, written []Value) (CandidateFailure, bool) {
 			// skips these the same way).
 			continue
 		}
-		if !SigArgMatches(sig, i, written[i]) {
+		if !SigArgMatches(sig, i, &written[i]) {
 			return CandidateFailure{Sig: sig, Kind: candSlotType, SlotIdx: i,
 				Expected: SigArgType(sig, i), Got: written[i], Score: i}, true
 		}
@@ -113,7 +113,7 @@ func slotAdmits(sig *Signature, i int, v Value) bool {
 	if sig.QuoteArgs != nil && sig.QuoteArgs[i] {
 		return true
 	}
-	return SigArgMatches(sig, i, v)
+	return SigArgMatches(sig, i, &v)
 }
 
 // patternRejects reports whether a declared slot pattern DEFINITELY
@@ -121,7 +121,7 @@ func slotAdmits(sig *Signature, i int, v Value) bool {
 // position, minus the tape/forward machinery (the probe holds resolved
 // values, so the forward-leniency skips do not apply).
 func patternRejects(pattern Value, v Value) bool {
-	if pattern.Carrier {
+	if pattern.Carrier() {
 		// A check-mode placeholder for a COMPUTED pattern — the real
 		// value is unknown, so the probe cannot judge it.
 		return false
@@ -132,10 +132,10 @@ func patternRejects(pattern Value, v Value) bool {
 		// cannot blame the slot.
 		return false
 	}
-	if pattern.Parent.Equal(TMap) && v.Parent.Equal(TMap) &&
-		pattern.Data != nil && v.Data != nil &&
+	if pattern.Parent().Equal(TMap) && v.Parent().Equal(TMap) &&
+		pattern.Data() != nil && v.Data() != nil &&
 		!IsOptionsType(pattern) &&
-		!IsRecordType(v) && !IsTypedMap(v) && !IsOptionsType(v) {
+		!IsRecordType(v) && !IsTypedMap(&v) && !IsOptionsType(v) {
 		return !OpenUnifyMap(pattern, v)
 	}
 	// Negation patterns take the direct path, mirroring patternsOk's

@@ -15,7 +15,7 @@ func TestWithFreshFnIdentity(t *testing.T) {
 		t.Error("a function is eq to itself")
 	}
 	n := NewInteger(3)
-	if got := WithFreshFnIdentity(n); got.Data != n.Data {
+	if got := WithFreshFnIdentity(n); got.Data() != n.Data() {
 		t.Error("a value that is no fn is returned as it is")
 	}
 }

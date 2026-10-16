@@ -26,7 +26,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile(t *testing.T) {
 	if op != OpCallDynamic || reason != "" {
 		t.Fatalf("an event-provenance carrier lead must keep the lowering: op=%v reason=%q", op, reason)
 	}
-	es.defReads = map[string]string{lead.ID: "k"}
+	es.defReads = map[string]string{core.IDOf(&lead): "k"}
 	_, op, reason = es.resolveDynamicApply(lw, residual)
 	if op != 0 || !strings.Contains(reason, "def-bound computed fn apply") {
 		t.Fatalf("a read-substituted lead with unknown closure shape must decline: op=%v reason=%q", op, reason)
@@ -42,7 +42,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile(t *testing.T) {
 func TestRecordDispatchRematchDeclinesReadSubstitutedCarrier(t *testing.T) {
 	es := NewEmitState()
 	carrier := core.NewCarrier(core.TFunction)
-	es.defReads = map[string]string{carrier.ID: "q"}
+	es.defReads = map[string]string{core.IDOf(&carrier): "q"}
 	if es.RecordDispatchRematchValues("add", []core.Value{core.NewInteger(1), carrier}, 0, []int{0}, core.SrcPos{}) {
 		t.Error("a read-substituted fn-carrier window value must decline the rematch")
 	}
@@ -58,24 +58,24 @@ func TestRecordDynApplyNameArms(t *testing.T) {
 	out := core.NewCarrier(core.TAny)
 	arg := core.NewInteger(5)
 
-	if es.RecordDynApplyName("", []core.Value{arg}, fn, out, core.SrcPos{}) {
+	if es.RecordDynApplyName("", []core.Value{arg}, fn, &out, core.SrcPos{}) {
 		t.Error("an empty name must decline")
 	}
-	if es.RecordDynApplyName("h", []core.Value{arg}, core.NewInteger(1), out, core.SrcPos{}) {
+	if es.RecordDynApplyName("h", []core.Value{arg}, core.NewInteger(1), &out, core.SrcPos{}) {
 		t.Error("a non-fn value must decline")
 	}
 	qfn := fn
-	qfn.Quoted = true
-	if es.RecordDynApplyName("h", []core.Value{arg}, qfn, out, core.SrcPos{}) {
+	core.SetQuoted(&qfn, true)
+	if es.RecordDynApplyName("h", []core.Value{arg}, qfn, &out, core.SrcPos{}) {
 		t.Error("a quoted fn must decline")
 	}
 	multi := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TAny, core.TAny}, BarrierPos: -1,
 	}}})
-	if es.RecordDynApplyName("h", []core.Value{arg}, multi, out, core.SrcPos{}) {
+	if es.RecordDynApplyName("h", []core.Value{arg}, multi, &out, core.SrcPos{}) {
 		t.Error("a multi-return fn must decline")
 	}
-	if es.RecordDynApplyName("h", []core.Value{arg}, fn, out, core.SrcPos{}) {
+	if es.RecordDynApplyName("h", []core.Value{arg}, fn, &out, core.SrcPos{}) {
 		t.Error("a name with no recorded def-site bind must decline")
 	}
 
@@ -83,7 +83,7 @@ func TestRecordDynApplyNameArms(t *testing.T) {
 	bound := core.NewCarrier(core.TFunction)
 	es.frames[0] = append(es.frames[0], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "h", srcSeq: 4}})
 	seqBefore := len(es.frames[0])
-	if !es.RecordDynApplyName("h", []core.Value{arg}, fn, out, core.SrcPos{}) {
+	if !es.RecordDynApplyName("h", []core.Value{arg}, fn, &out, core.SrcPos{}) {
 		t.Fatal("a bound name with a resolvable arg must record")
 	}
 	if len(es.frames[0]) != seqBefore+1 {
@@ -92,24 +92,24 @@ func TestRecordDynApplyNameArms(t *testing.T) {
 	// A def site with NO operand home declines.
 	es2 := NewEmitState()
 	es2.frames[0] = append(es2.frames[0], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "h", srcSeq: -1}})
-	if es2.RecordDynApplyName("h", []core.Value{arg}, fn, out, core.SrcPos{}) {
+	if es2.RecordDynApplyName("h", []core.Value{arg}, fn, &out, core.SrcPos{}) {
 		t.Error("a def site with no operand home must decline")
 	}
 	// An fn-valued ARG declines.
 	es3 := NewEmitState()
 	es3.frames[0] = append(es3.frames[0], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "h", srcSeq: 4}})
-	if es3.RecordDynApplyName("h", []core.Value{fn}, fn, out, core.SrcPos{}) {
+	if es3.RecordDynApplyName("h", []core.Value{fn}, fn, &out, core.SrcPos{}) {
 		t.Error("an fn-valued arg must decline")
 	}
 	// An UNRESOLVABLE arg (a provenance-less carrier) declines.
-	if es3.RecordDynApplyName("h", []core.Value{core.NewCarrier(core.TInteger)}, fn, out, core.SrcPos{}) {
+	if es3.RecordDynApplyName("h", []core.Value{core.NewCarrier(core.TInteger)}, fn, &out, core.SrcPos{}) {
 		t.Error("an unresolvable arg must decline")
 	}
 	// A def site recorded with a SRC operand (a capture/local slot) is the
 	// other resolution arm.
 	es4 := NewEmitState()
 	es4.frames[0] = append(es4.frames[0], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "h", src: localOperand(0), srcSeq: -1}})
-	if !es4.RecordDynApplyName("h", []core.Value{arg}, fn, out, core.SrcPos{}) {
+	if !es4.RecordDynApplyName("h", []core.Value{arg}, fn, &out, core.SrcPos{}) {
 		t.Error("a src-operand def site must record")
 	}
 	_ = bound
@@ -127,11 +127,11 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	carrier := core.NewCarrier(core.TFunction)
 	// Dynamic: the operand resolver's type-body screen exempts the
 	// checker's gradual stand-ins, which is what a real event out is.
-	carrier.Dynamic = true
+	core.SetDynamic(&carrier, true)
 	es.frames[0] = append(es.frames[0], EmitEvent{kind: evCall})
-	es.producedBy[carrier.ID] = producer{seq: 0}
+	es.stampProduced(&carrier, 0, 0)
 	out := core.NewCarrier(core.TInteger)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, carrier, out, core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, carrier, &out, core.SrcPos{}); ok {
 		t.Fatal("an unprovable event-provenance carrier lead must decline")
 	}
 	if es.Compilable || es.Reason == "" {
@@ -157,14 +157,14 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 			Signatures: []core.Signature{{
 				Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 			}}})
-		v.Dynamic = true
+		core.SetDynamic(&v, true)
 		return v
 	}
 	es2 := NewEmitState()
 	fn := mkFn()
 	es2.frames[0] = append(es2.frames[0], EmitEvent{kind: evCall})
-	es2.producedBy[fn.ID] = producer{seq: 0}
-	if _, ok := es2.RecordDynApply([]core.Value{core.NewInteger(5)}, fn, core.NewCarrier(core.TInteger), core.SrcPos{}); !ok {
+	es2.stampProduced(&fn, 0, 0)
+	if _, ok := es2.RecordDynApply([]core.Value{core.NewInteger(5)}, fn, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}); !ok {
 		t.Fatalf("a sig-proven event lead must record (reason %q)", es2.Reason)
 	}
 	rec := es2.frames[0][len(es2.frames[0])-1]
@@ -175,8 +175,8 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es3 := NewEmitState()
 	fn3 := mkFn()
 	es3.frames[0] = append(es3.frames[0], EmitEvent{kind: evCall})
-	es3.producedBy[fn3.ID] = producer{seq: 0}
-	consumed, ok := es3.RecordDynApply([]core.Value{core.NewInteger(1), core.NewInteger(2)}, fn3, core.NewCarrier(core.TInteger), core.SrcPos{})
+	es3.stampProduced(&fn3, 0, 0)
+	consumed, ok := es3.RecordDynApply([]core.Value{core.NewInteger(1), core.NewInteger(2)}, fn3, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{})
 	if !ok {
 		t.Fatalf("a wider window must UNDER-APPLY, not decline (reason %q)", es3.Reason)
 	}
@@ -198,11 +198,11 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 		Signatures: []core.Signature{{
 			Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 		}}})
-	two.Dynamic = true
+	core.SetDynamic(&two, true)
 	es4 := NewEmitState()
 	es4.frames[0] = append(es4.frames[0], EmitEvent{kind: evCall})
-	es4.producedBy[two.ID] = producer{seq: 0}
-	if _, ok := es4.RecordDynApply([]core.Value{core.NewInteger(5)}, two, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
+	es4.stampProduced(&two, 0, 0)
+	if _, ok := es4.RecordDynApply([]core.Value{core.NewInteger(5)}, two, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}); ok {
 		t.Fatal("a window NARROWER than the callee's arity must decline")
 	}
 	if es4.Compilable {

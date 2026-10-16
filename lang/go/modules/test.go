@@ -180,13 +180,12 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 		},
 	})
 
-	tokens := append([]native.Value(nil), parsed...)
 	sub := native.New(modReg)
 	// C4 attribution (plan Phase 10): the preamble run IS the module load —
 	// a sanctioned interpreter entry reported under its named seam, so a
 	// compiled program's `import "boru:test"` adds zero UNattributed entries.
 	restoreAtt := modReg.SetInterpAttribution("module-load")
-	_, runErr := sub.Run(tokens)
+	_, runErr := sub.Run(parsed)
 	restoreAtt()
 	if runErr != nil {
 		return native.ModuleDesc{}, fmt.Errorf("test: run preamble: %w", runErr)
@@ -210,7 +209,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 // what RunModuleBody does internally but is duplicated here because
 // BuildTestModule manages its own modReg.
 func resolveExport(modReg *native.Registry, exports map[string]*native.OrderedMap, name string, mapArg native.Value) ([]native.Value, error) {
-	if !native.IsConcrete(mapArg) {
+	if !native.IsConcrete(&mapArg) {
 		return nil, fmt.Errorf("test/export: value must be a concrete map")
 	}
 	rawMap, _ := native.AsMap(mapArg)
@@ -233,10 +232,10 @@ func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 	}
 	var name string
 	switch {
-	case native.IsWord(v):
-		w, _ := native.AsWord(v)
+	case native.IsWord(&v):
+		w, _ := native.AsWord(&v)
 		name = w.Name
-	case v.Parent.ConformsTo(native.TString):
+	case v.Parent().ConformsTo(native.TString):
 		name, _ = native.AsString(v)
 	case native.IsAtom(v):
 		name, _ = native.AsAtom(v)
@@ -301,7 +300,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 						if err != nil {
 							return err
 						}
-						_, e := native.New(r).Run(body.Slice())
+						_, e := native.New(r).Run(body.Elems())
 						return e
 					}
 					run.mu.Lock()
@@ -354,7 +353,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 						return nil, err
 					}
 					run.runCase(r, name, func() error {
-						_, e := native.New(r).Run(body.Slice())
+						_, e := native.New(r).Run(body.Elems())
 						return e
 					})
 					return nil, nil
@@ -497,7 +496,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					if compiled {
 						_, runErr = native.InvokeBody(r, args[0], nil)
 					} else {
-						_, runErr = native.New(r).Run(body.Slice())
+						_, runErr = native.New(r).Run(body.Elems())
 					}
 					if runErr == nil {
 						return nil, r.BoruError("assertion_failure",
@@ -576,7 +575,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					run.mu.Lock()
 					defer run.mu.Unlock()
 					path := make([]string, 0, pathList.Len())
-					for _, p := range pathList.Slice() {
+					for _, p := range pathList.Elems() {
 						s, _ := native.AsString(p)
 						path = append(path, s)
 					}
@@ -618,10 +617,10 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					// Mark bodies Quoted so subsequent consumers
 					// (e.g. run-property's `get` retrieving them
 					// from the map) don't auto-evaluate them.
-					gen.Quoted = true
-					gen.Eval = false
-					prop.Quoted = true
-					prop.Eval = false
+					core.SetQuoted(&gen, true)
+					core.SetEval(&gen, false)
+					core.SetQuoted(&prop, true)
+					core.SetEval(&prop, false)
 					m := native.NewOrderedMap()
 					m.Set("name", native.NewString(name))
 					m.Set("gen", gen)
@@ -816,7 +815,7 @@ func runSkipProp(parent *native.Registry, args []native.Value) ([]native.Value, 
 // fallback. A raw list (interpreter mode, or a body the compile declined)
 // yields tokens only, and the caller builds today's throwaway CallBoru sig.
 func storedBodyArg(arg native.Value, what string) (*native.FnSig, []native.Value, error) {
-	if fd, ok := arg.Data.(native.FnDefInfo); ok && len(fd.Signatures) == 1 {
+	if fd, ok := arg.Data().(*native.FnDefInfo); ok && len(fd.Signatures) == 1 {
 		if impl, isBoru := fd.Signatures[0].Impl.(*core.BoruImpl); isBoru && compiler.CompiledRef(&fd.Signatures[0]) != nil {
 			return &fd.Signatures[0], impl.Body, nil
 		}
@@ -855,10 +854,16 @@ func checkPropBody(parent *native.Registry, sigC *native.FnSig, params []native.
 	if sigC != nil {
 		return core.InvokeCallback(parent, sigC, inputs, nil)
 	}
+	// The body's own tokens: a plain list's array is never written. A flex
+	// body is live, and the stamped sig is cached, so it keeps a snapshot.
+	toks := core.BodyTokens(body)
+	if native.IsFlexList(body) {
+		toks = append([]native.Value(nil), toks...)
+	}
 	sig := native.StampBodySig(parent, &native.FnSig{
 		Params:     params,
 		Returns:    []*native.Type{native.TAny},
-		Impl:       native.Boru(append([]native.Value(nil), core.BodyTokens(body)...)),
+		Impl:       native.Boru(toks),
 		BarrierPos: -1,
 	}, body, inputs)
 	if compiler.CompiledRef(sig) != nil {
@@ -995,7 +1000,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 			failingIter = i
 			failingInput = input
 			failingError = native.NewError(parent.BoruError("check_prop_error",
-				fmt.Sprintf("property returned non-Boolean (%s)", propTop.Parent.String()),
+				fmt.Sprintf("property returned non-Boolean (%s)", propTop.Parent().String()),
 				"Test.check-prop"))
 			break
 		}
@@ -1019,7 +1024,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 	shrunkInput := failingInput
 	shrunkSource := ""
 	shrunkCost := int64(0)
-	if failed && !native.IsNone(failingInput) && failingIter >= 0 {
+	if failed && !native.IsNone(&failingInput) && failingIter >= 0 {
 		genSv, genSrc, genCost, genOK := shrinkFailingProgram(
 			parent, genBody, propSigC, args[2], seed+failingIter, maxShrinks)
 		if genOK {
@@ -1105,7 +1110,7 @@ func shrinkFailingProgram(
 		return native.NewNone(), "", 0, false
 	}
 	parent.Defs.Push("r", native.NewMap(randMap))
-	_, initialForm, err := stackform.Compile(parent, append([]native.Value(nil), genBody...))
+	_, initialForm, err := stackform.Compile(parent, genBody)
 	parent.Defs.Pop("r")
 	if err != nil || initialForm == nil || initialForm.Len() == 0 {
 		return native.NewNone(), "", 0, false
@@ -1475,7 +1480,7 @@ func invokeSubject(parent *native.Registry, name string, inputArg native.Value) 
 		return nil, err
 	}
 	body := native.NewList(dottedWordTokens(name))
-	stack, runErr := native.InvokeBody(parent, body, append([]native.Value(nil), inputs.Slice()...))
+	stack, runErr := native.InvokeBody(parent, body, inputs.Slice())
 	if runErr != nil {
 		return []native.Value{native.NewError(runErr)}, nil
 	}
@@ -1510,14 +1515,14 @@ func dottedWordTokens(name string) []native.Value {
 // truthy. This keeps `Assert.ok` aligned with the language's other
 // boolean coercion sites without introducing a new rule.
 func isTruthy(v native.Value) bool {
-	if native.IsNone(v) {
+	if native.IsNone(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(native.TBoolean) {
+	if v.Parent().ConformsTo(native.TBoolean) {
 		b, _ := native.AsBoolean(v)
 		return b
 	}
-	if native.IsBareTypeNode(v) {
+	if native.IsBareTypeNode(&v) {
 		return false
 	}
 	return true

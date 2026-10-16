@@ -146,39 +146,39 @@ func TestSignedZeroEqualityUnchanged(t *testing.T) {
 func TestSignedZeroGuards(t *testing.T) {
 	nz := negZero()
 	// isNegZeroFloat: only the concrete Float -0.0 qualifies.
-	if !isNegZeroFloat(nz) {
-		t.Error("isNegZeroFloat(-0.0) = false")
+	if !isNegZeroFloat(addrOf(nz)) {
+		t.Error("isNegZeroFloat(addrOf(-0.0)) = false")
 	}
 	for _, v := range []Value{fv(0), fv(-5), NewInteger(0), NewString("x"), bigDecZero(t, true)} {
-		if isNegZeroFloat(v) {
-			t.Errorf("isNegZeroFloat(%v) = true, want false", v)
+		if isNegZeroFloat(addrOf(v)) {
+			t.Errorf("isNegZeroFloat(addrOf(%v)) = true, want false", v)
 		}
 	}
 	// A Float carrier conforms to TFloat but has no payload — the
 	// AsFloat error branch.
-	if isNegZeroFloat(NewCarrier(TFloat)) {
-		t.Error("isNegZeroFloat(Float carrier) = true, want false")
+	if isNegZeroFloat(addrOf(NewCarrier(TFloat))) {
+		t.Error("isNegZeroFloat(addrOf(Float carrier)) = true, want false")
 	}
 	// isZeroNumber: zero magnitude across leaves; NaN fails toRatExact.
 	for _, v := range []Value{fv(0), nz, NewInteger(0), bigDecZero(t, false)} {
-		if !isZeroNumber(v) {
-			t.Errorf("isZeroNumber(%v) = false, want true", v)
+		if !isZeroNumber(addrOf(v)) {
+			t.Errorf("isZeroNumber(addrOf(%v)) = false, want true", v)
 		}
 	}
 	for _, v := range []Value{fv(1), NewInteger(3), NewString("0"), fv(math.NaN())} {
-		if isZeroNumber(v) {
-			t.Errorf("isZeroNumber(%v) = true, want false", v)
+		if isZeroNumber(addrOf(v)) {
+			t.Errorf("isZeroNumber(addrOf(%v)) = true, want false", v)
 		}
 	}
 	// signedZeroPair: needs a -0.0 on one side AND zero magnitude on both.
-	if !signedZeroPair(nz, fv(0)) || !signedZeroPair(NewInteger(0), nz) {
-		t.Error("signedZeroPair(±0 pair) = false, want true")
+	if !signedZeroPair(addrOf(nz), addrOf(fv(0))) || !signedZeroPair(addrOf(NewInteger(0)), addrOf(nz)) {
+		t.Error("signedZeroPair(addrOf(±0 pair)) = false, want true")
 	}
-	if signedZeroPair(fv(0), NewInteger(0)) {
-		t.Error("signedZeroPair(+0, +0) = true, want false (no -0.0 side)")
+	if signedZeroPair(addrOf(fv(0)), addrOf(NewInteger(0))) {
+		t.Error("signedZeroPair(addrOf(+0), addrOf(+0)) = true, want false (no -0.0 side)")
 	}
-	if signedZeroPair(nz, fv(5)) {
-		t.Error("signedZeroPair(-0.0, 5.0) = true, want false (non-zero side)")
+	if signedZeroPair(addrOf(nz), addrOf(fv(5))) {
+		t.Error("signedZeroPair(addrOf(-0.0), addrOf(5.0)) = true, want false (non-zero side)")
 	}
 	// signedZeroOrder arms.
 	if got := signedZeroOrder(nz, negZero()); got != 0 {

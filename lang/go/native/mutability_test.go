@@ -278,7 +278,7 @@ func TestAsMapReturnsReadMap(t *testing.T) {
 		t.Fatal("AsMap should return nil/error for Object instance")
 	}
 	// But Fields are mutable via the ClassInstanceInfo
-	oi := inst.Data.(ClassInstanceInfo)
+	oi := inst.Data().(ClassInstanceInfo)
 	oi.Fields.Set("v", NewInteger(42))
 	v3, _ := oi.Fields.Get("v")
 	_as8, _ := AsInteger(v3)

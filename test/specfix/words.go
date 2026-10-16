@@ -27,7 +27,7 @@ var specReplayCounter int
 // type-lattice core.
 func RegisterSpecWords(r *core.Registry) {
 	toFloat := func(v core.Value) float64 {
-		if v.Parent.ConformsTo(core.TInteger) {
+		if v.Parent().ConformsTo(core.TInteger) {
 			n, _ := core.AsInteger(v)
 			return float64(n)
 		}
@@ -36,7 +36,7 @@ func RegisterSpecWords(r *core.Registry) {
 	}
 	numericBinary := func(intOp func(a, b int64) int64, floatOp func(a, b float64) float64) core.Handler {
 		return func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-			if args[0].Parent.ConformsTo(core.TInteger) && args[1].Parent.ConformsTo(core.TInteger) {
+			if args[0].Parent().ConformsTo(core.TInteger) && args[1].Parent().ConformsTo(core.TInteger) {
 				a, _ := core.AsInteger(args[0])
 				b, _ := core.AsInteger(args[1])
 				return []core.Value{core.NewInteger(intOp(a, b))}, nil
@@ -75,7 +75,7 @@ func RegisterSpecWords(r *core.Registry) {
 		Signatures: []core.Signature{{
 			Args: []*core.Type{core.TNumber}, BarrierPos: 1,
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-				if args[0].Parent.ConformsTo(core.TInteger) {
+				if args[0].Parent().ConformsTo(core.TInteger) {
 					n, _ := core.AsInteger(args[0])
 					return []core.Value{core.NewInteger(-n)}, nil
 				}
@@ -329,7 +329,7 @@ func RegisterSpecWords(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 				_lst, _ := core.AsList(args[0])
-				body := _lst.Slice()
+				body := _lst.Elems()
 				specReplayCounter++
 				id := fmt.Sprintf("__replayq_%d", specReplayCounter)
 				out := make([]core.Value, 0, len(body)+2)
@@ -414,8 +414,8 @@ func registerEngSpecDefinition(r *core.Registry) {
 			return nil, err
 		}
 		reg.Check.RecordDef(name, core.SrcPos{})
-		if info, ok := args[1].Data.(core.FnDefInfo); ok {
-			core.InstallFnDef(reg, name, info)
+		if info, ok := args[1].Data().(*core.FnDefInfo); ok {
+			core.InstallFnDef(reg, name, *info)
 			return nil, nil
 		}
 		// Through the LEDGERED installer, never a bare Defs.Push: the twin
@@ -439,7 +439,7 @@ func registerEngSpecDefinition(r *core.Registry) {
 			return nil, &core.BoruError{Code: "type_error", Detail: "def " + name + ": name clash — already a type"}
 		}
 		constraint, _ := nameMap.Get(name)
-		if resolved, _, _ := reg.ResolveTypedNameValue(constraint); resolved.Data != nil || resolved.Parent != nil {
+		if resolved, _, _ := reg.ResolveTypedNameValue(constraint); resolved.Data() != nil || resolved.Parent() != nil {
 			constraint = resolved
 		}
 		body := args[1]
@@ -449,8 +449,8 @@ func registerEngSpecDefinition(r *core.Registry) {
 				Detail: "def " + name + ": value " + body.String() + " does not satisfy declared type " + constraint.String(),
 			}
 		}
-		if info, ok := body.Data.(core.FnDefInfo); ok {
-			core.InstallFnDef(reg, name, info)
+		if info, ok := body.Data().(*core.FnDefInfo); ok {
+			core.InstallFnDef(reg, name, *info)
 			return nil, nil
 		}
 		core.InstallDef(reg, name, body) // ledgered — see plainDef
@@ -481,11 +481,11 @@ func registerEngSpecDefinition(r *core.Registry) {
 		if err := core.ValidateWordName(name); err != nil {
 			return nil, err
 		}
-		if !core.IsConcrete(args[2]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
+		if !core.IsConcrete(&args[2]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
 			return nil, &core.BoruError{Code: "type_error", Detail: "def fn: body must be a concrete list"}
 		}
 		lst, _ := core.AsList(args[2])
-		elems := lst.Slice()
+		elems := lst.Elems()
 		if len(elems) == 0 || len(elems)%3 != 0 {
 			return nil, &core.BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
 		}
@@ -557,11 +557,11 @@ func registerEngSpecDefinition(r *core.Registry) {
 			Args:       []*core.Type{core.TList},
 			NoEvalArgs: map[int]bool{0: true},
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, reg *core.Registry) ([]core.Value, error) {
-				if !core.IsConcrete(args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
+				if !core.IsConcrete(&args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
 					return nil, &core.BoruError{Code: "type_error", Detail: "fn: argument must be a concrete list"}
 				}
 				lst, _ := core.AsList(args[0])
-				elems := lst.Slice()
+				elems := lst.Elems()
 				if len(elems) == 0 || len(elems)%3 != 0 {
 					return nil, &core.BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
 				}
@@ -594,8 +594,8 @@ func registerEngSpecDefinition(r *core.Registry) {
 				NoEvalArgs: map[int]bool{0: true},
 				Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 					v := args[0]
-					if v.Parent.Equal(core.TList) && v.Data != nil {
-						v.Quoted = true
+					if v.Parent().Equal(core.TList) && v.Data() != nil {
+						core.SetQuoted(&v, true)
 					}
 					return []core.Value{v}, nil
 				}),
@@ -773,22 +773,22 @@ func registerEngSpecTypeWords(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 				list := args[0]
-				if !core.IsConcrete(list) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
+				if !core.IsConcrete(&list) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
 					return nil, &core.BoruError{Code: "type_error", Detail: "enum: argument must be a concrete list"}
 				}
 				var childType core.Value
 				hasChild := false
-				if core.IsTypedList(list) {
+				if core.IsTypedList(&list) {
 					ci, _ := core.AsChildType(list)
 					childType = ci.Child
-					hasChild = childType.Parent != nil
+					hasChild = childType.Parent() != nil
 				}
 				elems, _ := core.AsList(list)
 				alts := make([]core.Value, 0, elems.Len())
 				for i := 0; i < elems.Len(); i++ {
 					e := elems.Get(i)
-					if core.IsWord(e) {
-						w, _ := core.AsWord(e)
+					if core.IsWord(&e) {
+						w, _ := core.AsWord(&e)
 						e = core.NewAtom(w.Name)
 					}
 					if hasChild && !core.IsValueOfType(e, childType) {
@@ -835,13 +835,13 @@ func registerEngSpecStorage(r *core.Registry) {
 		// Reachable since the Stage 2 flip: a class NAME in the value
 		// slot dispatches as its minted node (`set x 5 P`), and the
 		// type-literal guard declines it — mirroring production.
-		if !core.IsConcrete(container) {
+		if !core.IsConcrete(&container) {
 			return nil, fmt.Errorf("set: cannot set field on type literal")
 		}
 		key := core.StoreKey(args[0])
-		oi, ok := container.Data.(core.ClassInstanceInfo)
+		oi, ok := container.Data().(core.ClassInstanceInfo)
 		if !ok {
-			return nil, fmt.Errorf("set: expected an Object instance, got %s", container.Parent.String())
+			return nil, fmt.Errorf("set: expected an Object instance, got %s", container.Parent().String())
 		}
 		oi.Fields.Set(key, args[1])
 		return nil, nil
@@ -849,12 +849,12 @@ func registerEngSpecStorage(r *core.Registry) {
 	getNodeH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		key := args[0]
 		container := args[1]
-		if !core.IsConcrete(container) { //covergate:allow runtime-only handler: dispatch never binds a bare type node into a value slot and runtime values are never carriers; mirrors the production storage word where check mode can reach this
+		if !core.IsConcrete(&container) { //covergate:allow runtime-only handler: dispatch never binds a bare type node into a value slot and runtime values are never carriers; mirrors the production storage word where check mode can reach this
 			return nil, fmt.Errorf("get: cannot access property on type literal")
 		}
-		if key.Parent.ConformsTo(core.TInteger) {
+		if key.Parent().ConformsTo(core.TInteger) {
 			idx, _ := core.AsInteger(key)
-			if list, _ := core.AsList(container); !list.IsNil() && container.Parent.ConformsTo(core.TList) {
+			if list, _ := core.AsList(container); !list.IsNil() && container.Parent().ConformsTo(core.TList) {
 				i := int(idx)
 				if i < 0 || i >= list.Len() {
 					return []core.Value{core.NewTypeLiteral(core.TNone)}, nil
@@ -875,7 +875,7 @@ func registerEngSpecStorage(r *core.Registry) {
 	getObjectH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		key := args[0]
 		container := args[1]
-		if !core.IsConcrete(container) { //covergate:allow runtime-only handler: dispatch never binds a bare type node into a value slot and runtime values are never carriers; mirrors the production storage word where check mode can reach this
+		if !core.IsConcrete(&container) { //covergate:allow runtime-only handler: dispatch never binds a bare type node into a value slot and runtime values are never carriers; mirrors the production storage word where check mode can reach this
 			return nil, fmt.Errorf("get: cannot access property on type literal")
 		}
 		k := core.GetKey(key)
@@ -926,10 +926,10 @@ func registerEngSpecStorage(r *core.Registry) {
 func registerEngSpecObjectRecord(r *core.Registry) {
 	recordH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 		list := args[0]
-		if !list.Parent.Equal(core.TList) { //covergate:allow sole caller refineCtorH pre-checks Parent==List; kept to mirror the production record word, which is dispatched directly
+		if !list.Parent().Equal(core.TList) { //covergate:allow sole caller refineCtorH pre-checks Parent==List; kept to mirror the production record word, which is dispatched directly
 			return nil, fmt.Errorf("record: argument must be a list")
 		}
-		if !core.IsConcrete(list) {
+		if !core.IsConcrete(&list) {
 			return nil, fmt.Errorf("record: argument must be a concrete list, got type literal")
 		}
 		elems, _ := core.AsList(list)
@@ -937,8 +937,8 @@ func registerEngSpecObjectRecord(r *core.Registry) {
 			return nil, fmt.Errorf("record: list must have at least one field")
 		}
 		fields := core.NewOrderedMap()
-		for _, elem := range elems.Slice() {
-			if !elem.Parent.Equal(core.TMap) {
+		for _, elem := range elems.Elems() {
+			if !elem.Parent().Equal(core.TMap) {
 				return nil, fmt.Errorf("record: each element must be a pair (map), got %s", elem.String())
 			}
 			m, err := core.AsMutableMap(elem)
@@ -965,14 +965,14 @@ func registerEngSpecObjectRecord(r *core.Registry) {
 	objectWithParentH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 		fieldsVal := args[0]
 		parentVal := args[1]
-		if !fieldsVal.Parent.Equal(core.TMap) {
+		if !fieldsVal.Parent().Equal(core.TMap) {
 			return nil, fmt.Errorf("object: first argument must be a map of field definitions, got %s", fieldsVal.String())
 		}
 		m, err := core.AsMutableMap(fieldsVal)
 		if err != nil {
 			return nil, fmt.Errorf("object: first argument must be a concrete map, got %s", fieldsVal.String())
 		}
-		if !core.IsClassType(parentVal) { //covergate:allow sole caller refineCtorH pre-checks IsClassType(base); kept to mirror the production object word, which is dispatched directly
+		if !core.IsClassType(&parentVal) { //covergate:allow sole caller refineCtorH pre-checks IsClassType(base); kept to mirror the production object word, which is dispatched directly
 			return nil, fmt.Errorf("object: parent must be an object type, got %s", parentVal.String())
 		}
 		parentInfo, _ := core.AsClassType(parentVal)
@@ -1008,17 +1008,17 @@ func registerEngSpecObjectRecord(r *core.Registry) {
 		// A NAMED base/argument evaluates to its minted node (the Stage 2
 		// flip); the kind dispatch operates on the declared structural
 		// content the node records — mirroring refinePlain.
-		if body, ok := core.TypeContentOf(base); ok && core.IsBareTypeNode(base) {
+		if body, ok := core.TypeContentOf(base); ok && core.IsBareTypeNode(&base) {
 			base = body
 		}
-		if body, ok := core.TypeContentOf(arg); ok && core.IsBareTypeNode(arg) {
+		if body, ok := core.TypeContentOf(arg); ok && core.IsBareTypeNode(&arg) {
 			arg = body
 		}
-		if core.IsClassType(base) {
+		if core.IsClassType(&base) {
 			return objectWithParentH([]core.Value{arg, base}, nil, nil, reg)
 		}
-		if core.IsBareTypeNode(base) && base.Equal(core.TRecord) {
-			if !arg.Parent.Equal(core.TList) {
+		if core.IsBareTypeNode(&base) && base.Equal(core.TRecord) {
+			if !arg.Parent().Equal(core.TList) {
 				return nil, fmt.Errorf("refine Record: a record takes a list of field pairs")
 			}
 			return recordH([]core.Value{arg}, nil, nil, reg)
@@ -1029,7 +1029,7 @@ func registerEngSpecObjectRecord(r *core.Registry) {
 	// type unchanged; the paired `def` mints a fresh subtype of it.
 	refineBareCtorH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		base := args[0]
-		if !core.IsTypeBody(base) {
+		if !core.IsTypeBody(&base) {
 			return nil, fmt.Errorf("refine: argument must be a type, got %s", base.String())
 		}
 		return []core.Value{base}, nil
@@ -1066,7 +1066,7 @@ func registerEngSpecInspect(r *core.Registry) {
 			return []core.Value{buildTypeInspection(name, tv)}, nil
 		}
 		if top, ok := r.Defs.Top(name); ok {
-			if core.IsTypeBody(top) && !top.Parent.Equal(core.TFunction) && !top.Parent.Equal(core.TFunction) {
+			if core.IsTypeBody(&top) && !top.Parent().Equal(core.TFunction) && !top.Parent().Equal(core.TFunction) {
 				return []core.Value{buildTypeInspection(name, top)}, nil
 			}
 		}
@@ -1153,11 +1153,11 @@ func buildTypeInspection(name string, tv core.Value) core.Value {
 		result.Set("name", core.NewString(name))
 	}
 
-	if core.IsBareTypeNode(tv) || core.IsTypeBody(tv) || core.IsRecordShape(tv) {
+	if core.IsBareTypeNode(&tv) || core.IsTypeBody(&tv) || core.IsRecordShape(tv) {
 		result.Set("type", core.NewString("Type"))
 		result.Set("struct", core.NewString(core.TypeNameOf(tv)))
 	} else {
-		result.Set("type", core.NewString(tv.Parent.Leaf()))
+		result.Set("type", core.NewString(tv.Parent().Leaf()))
 	}
 
 	switch {
@@ -1181,7 +1181,7 @@ func buildTypeInspection(name string, tv core.Value) core.Value {
 		}
 		result.Set("fields", core.NewMap(fields))
 
-	case core.IsClassType(tv):
+	case core.IsClassType(&tv):
 		result.Set("kind", core.NewAtom("object"))
 		oi, _ := core.AsClassType(tv)
 		if oi.Parent != nil {
@@ -1205,7 +1205,7 @@ func buildTypeInspection(name string, tv core.Value) core.Value {
 		}
 		result.Set("fields", core.NewMap(fields))
 
-	case core.IsDisjunct(tv):
+	case core.IsDisjunct(&tv):
 		result.Set("kind", core.NewAtom("disjunct"))
 		di, _ := core.AsDisjunct(tv)
 		alts := make([]core.Value, len(di.Alternatives))
@@ -1214,19 +1214,19 @@ func buildTypeInspection(name string, tv core.Value) core.Value {
 		}
 		result.Set("alternatives", core.NewList(alts))
 
-	case core.IsTypedList(tv):
+	case core.IsTypedList(&tv):
 		result.Set("kind", core.NewAtom("typed_list"))
 		ci, _ := core.AsChildType(tv)
 		result.Set("child", core.NewString(core.TypePathOf(ci.Child)))
 
-	case core.IsTypedMap(tv):
+	case core.IsTypedMap(&tv):
 		result.Set("kind", core.NewAtom("typed_map"))
 		ci, _ := core.AsChildType(tv)
 		result.Set("child", core.NewString(core.TypePathOf(ci.Child)))
 
 	case core.ValueType(tv).Equal(core.TFnUndef):
 		result.Set("kind", core.NewAtom("function_shape"))
-		uInfo, _ := tv.Data.(core.FnUndefInfo)
+		uInfo, _ := tv.Data().(core.FnUndefInfo)
 		sigs := make([]core.Value, 0, len(uInfo.Sigs))
 		for _, spec := range uInfo.Sigs {
 			sig := core.NewOrderedMap()
@@ -1247,7 +1247,7 @@ func buildTypeInspection(name string, tv core.Value) core.Value {
 	case tv.IsDepScalar():
 		result.Set("kind", core.NewAtom("dependent_scalar"))
 		info, _ := tv.AsDepScalar()
-		result.Set("leaf", core.NewString(tv.Parent.Name()))
+		result.Set("leaf", core.NewString(tv.Parent().Name()))
 		if info.Lo != nil {
 			lo := core.NewOrderedMap()
 			lo.Set("kind", core.NewString(core.BoundToKind(info.Lo, true).String()))
@@ -1280,14 +1280,14 @@ func registerEngSpecFnSig(r *core.Registry) {
 			Args:       []*core.Type{core.TList},
 			NoEvalArgs: map[int]bool{0: true},
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, reg *core.Registry) ([]core.Value, error) {
-				if !core.IsConcrete(args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
+				if !core.IsConcrete(&args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
 					return nil, &core.BoruError{
 						Code:   "fnsig_invalid_spec",
 						Detail: "fnsig: argument must be a concrete list",
 					}
 				}
 				lst, _ := core.AsList(args[0])
-				spec := lst.Slice()
+				spec := lst.Elems()
 				if len(spec) == 0 || len(spec)%2 != 0 {
 					return nil, &core.BoruError{
 						Code:   "fnsig_invalid_spec",
@@ -1358,7 +1358,7 @@ func registerEngSpecBoolean(r *core.Registry) {
 // to exercise the kernel's sub-engine semantics.
 func registerEngSpecDo(r *core.Registry) {
 	listH := func(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
-		if !core.IsConcrete(args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
+		if !core.IsConcrete(&args[0]) { //covergate:allow raw NoEval List slot: the matcher only binds a parsed list literal here, which is always concrete
 			return nil, &core.BoruError{
 				Code:   "type_error",
 				Detail: "do: argument must be a concrete list, got type literal",
@@ -1366,7 +1366,7 @@ func registerEngSpecDo(r *core.Registry) {
 		}
 		lst, _ := core.AsList(args[0])
 		sub := core.New(r)
-		input := append([]core.Value{}, lst.Slice()...)
+		input := append([]core.Value{}, lst.Elems()...)
 		result, err := sub.Run(input)
 		if err != nil {
 			return []core.Value{core.NewError(err)}, nil
@@ -1394,12 +1394,10 @@ func registerEngSpecDo(r *core.Registry) {
 // Records, options, table types, typed lists / maps are left
 // untouched — only plain concrete lists and maps are walked.
 func doEvalMapValue(r *core.Registry, v core.Value) (core.Value, error) {
-	if v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(v) && !core.IsTableType(v) {
+	if v.Parent().Equal(core.TList) && v.Data() != nil && !core.IsTypedList(&v) && !core.IsTableType(v) {
 		lst, _ := core.AsList(v)
 		sub := core.New(r)
-		input := make([]core.Value, lst.Len())
-		copy(input, lst.Slice())
-		results, err := sub.Run(input)
+		results, err := sub.Run(lst.Elems())
 		if err != nil {
 			return core.Value{}, err
 		}
@@ -1408,7 +1406,7 @@ func doEvalMapValue(r *core.Registry, v core.Value) (core.Value, error) {
 		}
 		return core.NewList(results), nil
 	}
-	if v.Parent.Equal(core.TMap) && v.Data != nil && !core.IsTypedMap(v) && !core.IsRecordType(v) && !core.IsOptionsType(v) {
+	if v.Parent().Equal(core.TMap) && v.Data() != nil && !core.IsTypedMap(&v) && !core.IsRecordType(v) && !core.IsOptionsType(v) {
 		// AsMap succeeds for every payload the predicate above admits
 		// (MapPayload / weak-flex; typed maps are excluded) — same
 		// unguarded shape as the production DoEvalMapValue in basic.

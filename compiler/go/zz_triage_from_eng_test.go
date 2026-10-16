@@ -236,7 +236,7 @@ func TestCatchVariadicLatch(t *testing.T) {
 	}
 	// The inactive recorder accepts the call as a no-op.
 	core.TheInactiveEmit.SetCatchVariadic(true)
-	if core.TheInactiveEmit.RecordInterpXml(core.XmlTmpl{}, nil, core.Value{}, core.SrcPos{}) {
+	if core.TheInactiveEmit.RecordInterpXml(core.XmlTmpl{}, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("the inactive recorder must decline RecordInterpXml")
 	}
 }
@@ -250,7 +250,8 @@ func TestCatchVariadicGenericRecordCall(t *testing.T) {
 	sig := &core.Signature{CompileEffect: core.CompileFallbackBody}
 	a, b := core.NewInteger(1), core.NewInteger(2)
 	outA, outB := core.NewInteger(10), core.NewInteger(20)
-	outA.ID, outB.ID = "outA", "outB"
+	core.SetID(&outA, "outA")
+	core.SetID(&outB, "outB")
 
 	es.SetCatchVariadic(true)
 	es.RecordCall("do", sig, []core.Value{a, b}, []core.Value{outA, outB}, core.SrcPos{}, false, false)
@@ -452,14 +453,14 @@ func TestFoldFullStackGates(t *testing.T) {
 	}
 	es = NewEmitState()
 	dyn := core.NewCarrier(core.TAny)
-	dyn.ID = "u1"
+	core.SetID(&dyn, "u1")
 	if _, ok := es.FoldFullStack("depth", nil, []core.Value{dyn}); ok {
 		t.Error("an unknown-provenance carrier must decline")
 	}
 	es = NewEmitState()
 	vres := core.NewCarrier(core.TInteger)
-	vres.ID = "v1"
-	es.producedBy["v1"] = producer{seq: 7}
+	core.SetID(&vres, "v1")
+	es.stampProduced(&vres, 7, 0)
 	es.eventInfo[7] = eventFlags{variadicResult: true}
 	if _, ok := es.FoldFullStack("depth", nil, []core.Value{vres}); ok {
 		t.Error("a variadic producer must decline — its runtime count is not its model count")
@@ -480,12 +481,12 @@ func TestFoldFullStackWords(t *testing.T) {
 	es := NewEmitState()
 	es.units[0].localByID["L1"] = 0
 	local := core.NewCarrier(core.TInteger)
-	local.ID = "L1"
+	core.SetID(&local, "L1")
 	out, ok := es.FoldFullStack("depth", nil, append([]core.Value{local}, stack...))
 	if !ok || len(out) != 4 {
 		t.Fatalf("depth fold = %d values (ok=%v), want 4", len(out), ok)
 	}
-	if n, err := core.AsInteger(out[3]); err != nil || n != 3 || out[3].ID == "" {
+	if n, err := core.AsInteger(out[3]); err != nil || n != 3 || core.IDOf(&out[3]) == "" {
 		t.Errorf("depth top = %v, want concrete 3 with an ID", out[3])
 	}
 
@@ -493,12 +494,12 @@ func TestFoldFullStackWords(t *testing.T) {
 	// promoted to a value-def local for the double reference.
 	es = NewEmitState()
 	ev := core.NewCarrier(core.TInteger)
-	ev.ID = "e1"
-	es.producedBy["e1"] = producer{seq: 4}
+	core.SetID(&ev, "e1")
+	es.stampProduced(&ev, 4, 0)
 	es.eventInfo[4] = eventFlags{}
 	st := []core.Value{ev, ffsConst("c3", 30)}
 	out, ok = es.FoldFullStack("pick", []core.Value{core.NewInteger(1)}, st)
-	if !ok || len(out) != 3 || out[2].ID != "e1" {
+	if !ok || len(out) != 3 || core.IDOf(&out[2]) != "e1" {
 		t.Fatalf("pick fold = %v (ok=%v), want the e1 copy on top", out, ok)
 	}
 	if !es.eventInfo[4].valueDef {
@@ -509,7 +510,7 @@ func TestFoldFullStackWords(t *testing.T) {
 	// raises there — the fallback keeps the raise).
 	es = NewEmitState()
 	carrierN := core.NewCarrier(core.TInteger)
-	carrierN.ID = "n1"
+	core.SetID(&carrierN, "n1")
 	if _, ok := es.FoldFullStack("pick", []core.Value{carrierN}, stack); ok {
 		t.Error("a non-concrete n must decline")
 	}
@@ -524,7 +525,7 @@ func TestFoldFullStackWords(t *testing.T) {
 	es = NewEmitState()
 	st3 := []core.Value{ffsConst("c1", 1), ffsConst("c2", 2), ffsConst("c3", 3)}
 	out, ok = es.FoldFullStack("roll", []core.Value{core.NewInteger(1)}, st3)
-	if !ok || len(out) != 3 || out[0].ID != "c1" || out[1].ID != "c3" || out[2].ID != "c2" {
+	if !ok || len(out) != 3 || core.IDOf(&out[0]) != "c1" || core.IDOf(&out[1]) != "c3" || core.IDOf(&out[2]) != "c2" {
 		t.Fatalf("roll fold = %v (ok=%v), want [c1 c3 c2]", out, ok)
 	}
 }
@@ -738,7 +739,7 @@ func TestQuoteOperandInertOKFlag(t *testing.T) {
 		return nil
 	}
 
-	inertAtom := core.Value{Parent: core.TAtom, Data: core.AtomPayload{Name: "k"}}
+	inertAtom := core.ValueOf(&core.Datum{Parent: core.TAtom, Data: core.AtomPayload{Name: "k"}})
 	carrierArg := core.NewCarrier(core.TAtom) // not inert — no concrete payload to bake
 
 	// Flagged + inert operand → bypass the quoted-operand compile failure (bakeable).
@@ -926,7 +927,7 @@ func TestFinalizeSkipsPoisonedStoredRef(t *testing.T) {
 	// The zeroOut-phantom residual is the minimal shape that finalizes
 	// successfully (TestFinalizeResidualArms uses the same setup).
 	phantom := core.NewInteger(1)
-	es.producedBy[phantom.ID] = producer{seq: 1}
+	es.stampProduced(&phantom, 1, 0)
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f

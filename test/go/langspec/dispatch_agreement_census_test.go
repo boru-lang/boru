@@ -121,13 +121,13 @@ func windowComparable(v core.Value, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if core.IsWord(v) || core.IsForward(v) || core.IsMark(v) || core.IsMove(v) {
+	if core.IsWord(&v) || core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) {
 		return false
 	}
-	if !core.IsConcrete(v) && !core.IsBareTypeNode(v) {
+	if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
 		return false
 	}
-	if v.Parent != nil && v.Parent.Equal(core.TList) {
+	if v.Parent() != nil && v.Parent().Equal(core.TList) {
 		if rl, err := core.AsList(v); err == nil {
 			for i := 0; i < rl.Len(); i++ {
 				if ev, ok := rl.GetOk(i); ok && !windowComparable(ev, depth+1) {
@@ -136,7 +136,7 @@ func windowComparable(v core.Value, depth int) bool {
 			}
 		}
 	}
-	if v.Parent != nil && v.Parent.Equal(core.TMap) {
+	if v.Parent() != nil && v.Parent().Equal(core.TMap) {
 		if rm, err := core.AsMap(v); err == nil && rm != nil {
 			for _, k := range rm.Keys() {
 				if mv, ok := rm.Get(k); ok && !windowComparable(mv, depth+1) {

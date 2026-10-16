@@ -101,8 +101,8 @@ func TestFnAnalysisKeyNilParentArg(t *testing.T) {
 		}
 	}()
 	noneArm := core.NewDynamicCarrierValue(core.NewTypeLiteral(core.TNone)) // Parent == nil
-	if noneArm.Parent != nil {
-		t.Fatalf("test fixture invalid: expected a nil-Parent None carrier, got Parent=%v", noneArm.Parent)
+	if noneArm.Parent() != nil {
+		t.Fatalf("test fixture invalid: expected a nil-Parent None carrier, got Parent=%v", noneArm.Parent())
 	}
 	args := []core.Value{noneArm, core.NewCarrier(core.TMap)}
 	caps := []core.CapturedBinding{{Name: "seed", Value: noneArm}}

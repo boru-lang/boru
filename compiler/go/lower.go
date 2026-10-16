@@ -240,7 +240,7 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 		src, pop, pushCopy = localOperand(slot), true, true
 	case src.kind == opLocal:
 		pop, pushCopy = true, true
-	case src.kind == opNone && core.IsInertConst(d.val):
+	case src.kind == opNone && core.IsInertConst(&d.val):
 		src, pop, pushCopy = ConstOperand(lw.es.internUnpooled(d.val)), true, true
 	default:
 		return "arm-resident def `" + d.name + "` of unknown provenance"
@@ -299,13 +299,13 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 // collectRootBindConsumes mirrors this exactly (it decides whose producer
 // keeps its value on the stack for the bind to pop), so both read one rule.
 func rootBindWritesBack(d *emitDynBind) bool {
-	if !d.root || core.IsBareTypeNode(d.val) {
+	if !d.root || core.IsBareTypeNode(&d.val) {
 		return false
 	}
 	if d.srcSeq < 0 {
-		return !core.IsConcrete(d.val)
+		return !core.IsConcrete(&d.val)
 	}
-	switch d.val.Data.(type) {
+	switch d.val.Data().(type) {
 	case core.IntPayload, core.FloatPayload, core.StrPayload, core.BoolPayload, core.AtomPayload,
 		core.PathonPayload, core.NonePayload, core.BigIntPayload, core.DecimalPayload,
 		core.TimePayload, core.DurationPayload, core.TimezonePayload:
@@ -559,7 +559,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// resolveOperand recovers it as a const/local — the same slot the
 			// binding's reads resolve to, so the written-back value IS the
 			// instance the program uses). Anything else declines.
-			if core.IsInertConst(d.val) {
+			if core.IsInertConst(&d.val) {
 				src = ConstOperand(lw.es.internUnpooled(d.val))
 			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal || op.kind == opType) {
 				src = op
@@ -680,7 +680,7 @@ func (lw *lowerer) storeBindInto(d *emitDynBind, armSlot int, what string, consu
 		return ""
 	case src.kind == opNone:
 		// dynBindStorable admitted only an inert literal here.
-		if !core.IsInertConst(d.val) {
+		if !core.IsInertConst(&d.val) {
 			return what + " `" + d.name + "` of unknown provenance"
 		}
 		src = ConstOperand(lw.es.internUnpooled(d.val))
@@ -703,7 +703,7 @@ func (lw *lowerer) twinInstalls(idx int) bool {
 		return false
 	}
 	e := lw.p.BindTwinEntries[idx]
-	return e.TypeDef == nil && (core.IsConcrete(e.Body) || core.IsBareTypeNode(e.Body))
+	return e.TypeDef == nil && (core.IsConcrete(&e.Body) || core.IsBareTypeNode(&e.Body))
 }
 
 // noteTwin records a just-lowered PUSH-kind twin as the pending pair for
@@ -1655,7 +1655,7 @@ func landingIsland(toks []core.Value, wordPos core.SrcPos) (int, []core.Value, b
 		return 0, nil, false
 	}
 	for i, t := range toks {
-		if items, err := core.AsParenExpr(t); err == nil && !t.Quoted {
+		if items, err := core.AsParenExpr(&t); err == nil && !core.IsQuoted(&t) {
 			if opens, inner, ok := landingIsland(items, wordPos); ok {
 				tail := make([]core.Value, 0, len(inner)+1+len(toks)-i-1)
 				tail = append(tail, inner...)
@@ -3293,9 +3293,19 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 			return false
 		}
 	}
-	for _, slot := range lw.vm {
+	for i, slot := range lw.vm {
 		if lw.catchPhantom(slot.seq) {
 			// A value-less body's latched count may be none (NUR222).
+			return false
+		}
+		if lw.spliceSpread(slot.seq) && (i != 0 || !opsLeadOnceWith(ops, slot)) {
+			// A computed splice's spread is the payload's count, and its
+			// spill takes the top element alone: the run survives only as
+			// the deepest value re-pushed first, the elements beneath its
+			// top never moving. Anywhere else the re-push lays out one
+			// value where the run spread several (`d xs e` over two
+			// computed lists ran [1 2 4 [1 2] 5] for the interpreter's
+			// [1 2 [1 2] 4 5]).
 			return false
 		}
 	}
@@ -3329,7 +3339,7 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 // entry but the exempt ones (EmitState.residualCallableExempt).
 func residualMayBeCallable(vals []core.Value, exempt map[string]bool) bool {
 	for _, v := range vals {
-		if !exempt[v.ID] && regionValsMayBeCallable([]core.Value{v}) {
+		if !exempt[core.IDOf(&v)] && regionValsMayBeCallable([]core.Value{v}) {
 			return true
 		}
 	}
@@ -3879,6 +3889,26 @@ func (lw *lowerer) catchPhantom(seq int) bool {
 	return lw.es != nil && lw.es.eventInfo[seq].catchPhantom
 }
 
+// opsLeadOnceWith reports whether the first of ops is slot's event result
+// and no later operand names it again.
+func opsLeadOnceWith(ops []EmitOperand, slot vmSlot) bool {
+	n := 0
+	for _, op := range ops {
+		if slotIs(slot, op) {
+			n++
+		}
+	}
+	return n == 1 && len(ops) > 0 && slotIs(slot, ops[0])
+}
+
+// spliceSpread reports whether the event at seq is a computed splice's
+// spread over a payload that may be a list (RecordSpliceDyn's spliceMany):
+// one recorded result standing for the list's elements, whose runtime count
+// no frame slot holds. A spread of any other payload is its one value.
+func (lw *lowerer) spliceSpread(seq int) bool {
+	return lw.es != nil && lw.es.eventInfo[seq].spliceMany
+}
+
 // opsHaveCatchVariadic reports whether any operand names an event the
 // do-catch latch made runtime-variable (eventFlags.catchVariadic).
 func (lw *lowerer) opsHaveCatchVariadic(ops []EmitOperand) bool {
@@ -4401,8 +4431,12 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// caught path deliver. A value-less `do` body's is not that: the
 		// latch (catchVariadic) seats the one Error a caught raise leaves,
 		// and the clean run leaves nothing (NUR222: `if [true] [do [1 drop]
-		// 2] [3]` underflowed STORE_LOCAL).
-		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq)) {
+		// 2] [3]` underflowed STORE_LOCAL). Nor is a computed splice's
+		// spread: its one recorded result stands for the payload's
+		// elements, and a store of it kept the top one where the residual
+		// re-pushed it — `def d word xs  def e word ys  d 7 e` over two
+		// computed lists ran [1 4 2 7 5] for the interpreter's [1 2 7 4 5].
+		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq) || lw.spliceSpread(ev.seq)) {
 			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
 		}
 		for i := c.nout - 1; i >= 0; i-- {
@@ -4761,7 +4795,7 @@ func (lw *lowerer) fallbackFlowOps(fb *emitFallback) []core.SrcPos {
 	span := lw.es.fallbacks[fb.spanIdx]
 	out := make([]core.SrcPos, 0, len(span.Tokens))
 	for _, t := range span.Tokens {
-		if p, read := lw.es.readPos[t.ID]; read && t.ID != "" {
+		if p, read := lw.es.readPos[core.IDOf(&t)]; read && core.IDOf(&t) != "" {
 			out = append(out, p)
 			continue
 		}

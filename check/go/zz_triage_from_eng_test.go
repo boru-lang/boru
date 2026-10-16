@@ -128,7 +128,7 @@ func TestDryPassOperandsCanonicalisesNone(t *testing.T) {
 	// canonicalisation is needed).
 	args := []core.Value{core.NewTypeLiteral(core.TNone), core.NewInteger(1)}
 	got := dryPassOperands(args)
-	if !core.IsNone(got[0]) {
+	if !core.IsNone(&got[0]) {
 		t.Errorf("none literal not canonicalised: %v", got[0])
 	}
 	if n, err := core.AsInteger(got[1]); err != nil || n != 1 {
@@ -146,7 +146,7 @@ func TestDryPassConcretenessGate(t *testing.T) {
 		t.Error("a bare carrier arg must fail the dry-pass gate")
 	}
 	dynNone := core.NewCarrier(core.TNone)
-	dynNone.Dynamic = true
+	core.SetDynamic(&dynNone, true)
 	if allConcreteArgs([]core.Value{dynNone}) {
 		t.Error("a DYNAMIC none carrier must fail the dry-pass gate")
 	}
@@ -249,7 +249,7 @@ func TestW9MintFlexShapeCarrierDeclines(t *testing.T) {
 	}
 	// A TMap-tagged value whose payload is NOT a map payload passes the
 	// concrete/conforms guards but declines at AsMap (err arm).
-	badMap := core.Value{Parent: core.TMap, Data: core.ListPayload{}}
+	badMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.ListPayload{}})
 	if _, ok := MintFlexShapeCarrier(badMap, 0); ok {
 		t.Error("a non-map payload must decline at AsMap")
 	}

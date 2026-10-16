@@ -11,7 +11,7 @@ func TestArmResidualSweepBrackets(t *testing.T) {
 		t.Fatal(err)
 	}
 	lit := NewList([]Value{NewInteger(1), NewInteger(2)})
-	lit.Eval = true
+	SetEval(&lit, true)
 	for _, arm := range []bool{true, false} {
 		e := New(r)
 		e.ArmBody = arm

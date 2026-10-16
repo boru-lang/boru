@@ -66,7 +66,7 @@ func createRecordHandler(args []Value, ctx map[string]Value, stack []Value, r *R
 func createHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	rec, _ := AsMap(args[0])
 	_lst, _ := AsList(args[1])
-	rows := _lst.Slice()
+	rows := _lst.Elems()
 
 	idVal, ok := rec.Get("id")
 	if !ok {
@@ -79,7 +79,7 @@ func createHandler(args []Value, ctx map[string]Value, stack []Value, r *Registr
 
 	// Check for duplicate id.
 	for _, row := range rows {
-		if !row.Parent.ConformsTo(TMap) {
+		if !row.Parent().ConformsTo(TMap) {
 			continue
 		}
 		m, _ := AsMap(row)

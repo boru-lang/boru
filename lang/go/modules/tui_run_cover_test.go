@@ -54,7 +54,7 @@ func TestTuiRunConfigOptionArms(t *testing.T) {
 	vb2.Inject(tuikit.Event{Tag: "key", Key: "c", Char: "c", Mods: []string{"ctrl"}})
 	reg2 := trcRegWithBackend(t, vb2)
 	if v := trcApp(t, reg2,
-		`Tui.run {ctrl-c: "quit"  update: ([s:Map e:Map] => [s])  view: ([s:Map] => [Tui.spacer])}`); v.Data == nil {
+		`Tui.run {ctrl-c: "quit"  update: ([s:Map e:Map] => [s])  view: ([s:Map] => [Tui.spacer])}`); v.Data() == nil {
 		t.Fatal("explicit ctrl-c quit returned no state")
 	}
 	// a non-concrete config map is rejected before anything opens
@@ -88,7 +88,7 @@ func TestTuiRunPolicyLazyAndBackendFailure(t *testing.T) {
 	reg := trcRegWithBackend(t, vb)
 	reg.Procs = nil
 	if v := trcApp(t, reg,
-		`Tui.run {update: ([s:Map e:Map] => [s])  view: ([s:Map] => [Tui.spacer])}`); v.Data == nil {
+		`Tui.run {update: ([s:Map e:Map] => [s])  view: ([s:Map] => [Tui.spacer])}`); v.Data() == nil {
 		t.Fatal("lazy-runtime run returned no state")
 	}
 	if reg.Procs == nil {

@@ -22,14 +22,14 @@ func TestCoverPR505MainLazyStampNeedsASig(t *testing.T) {
 	r := stampReg(t)
 	r.EnableRuntimeStamping()
 	defer r.DisableRuntimeStamping()
-	if rt.LazyStamp(r, core.FnDefInfo{Name: "lz"}, nil, core.SrcPos{}) {
+	if rt.LazyStamp(r, &core.FnDefInfo{Name: "lz"}, "lz", nil, core.SrcPos{}) {
 		t.Error("a nil signature has no unit to stamp")
 	}
 	goSig := core.Signature{Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return nil, nil
 	})}
 	native := core.FnDefInfo{Name: "lz", Signatures: []core.Signature{goSig}}
-	if rt.LazyStamp(r, native, &native.Signatures[0], core.SrcPos{}) {
+	if rt.LazyStamp(r, &native, native.Name, &native.Signatures[0], core.SrcPos{}) {
 		t.Error("a Go-implemented signature has no boru body to stamp")
 	}
 	boru := core.FnDefInfo{Name: "lz", Signatures: []core.Signature{{
@@ -37,7 +37,7 @@ func TestCoverPR505MainLazyStampNeedsASig(t *testing.T) {
 		Returns: []*core.Type{core.TInteger},
 		Impl:    core.Boru([]core.Value{core.NewWord("n")}),
 	}}}
-	if !rt.LazyStamp(r, boru, &boru.Signatures[0], core.SrcPos{}) || compiler.CompiledRef(&boru.Signatures[0]) == nil {
+	if !rt.LazyStamp(r, &boru, boru.Name, &boru.Signatures[0], core.SrcPos{}) || compiler.CompiledRef(&boru.Signatures[0]) == nil {
 		t.Error("a boru body on an armed registry stamps, and the sig carries the unit")
 	}
 }

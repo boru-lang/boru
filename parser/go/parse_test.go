@@ -10,24 +10,24 @@ import (
 
 // valuesEqual compares two core.Value instances for equality.
 func valuesEqual(a, b core.Value) bool {
-	if !a.Parent.Equal(b.Parent) {
+	if !a.Parent().Equal(b.Parent()) {
 		return false
 	}
 	switch {
-	case core.IsWord(a):
-		aw, _ := core.AsWord(a)
-		bw, _ := core.AsWord(b)
+	case core.IsWord(&a):
+		aw, _ := core.AsWord(&a)
+		bw, _ := core.AsWord(&b)
 		return aw.Name == bw.Name &&
 			aw.ArgCount == bw.ArgCount &&
 			aw.ForceStack == bw.ForceStack &&
 			aw.ForceForward == bw.ForceForward
-	case core.IsOpenParen(a):
+	case core.IsOpenParen(&a):
 		return true
-	case a.Parent.ConformsTo(core.TString):
+	case a.Parent().ConformsTo(core.TString):
 		as, _ := core.AsString(a)
 		bs, _ := core.AsString(b)
 		return as == bs
-	case a.Parent.ConformsTo(core.TInteger):
+	case a.Parent().ConformsTo(core.TInteger):
 		an, _ := core.AsInteger(a)
 		bn, _ := core.AsInteger(b)
 		return an == bn
@@ -758,20 +758,20 @@ func TestParseTypedListMap(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !core.IsTypedList(got[0]) {
+	if !core.IsTypedList(&got[0]) {
 		t.Fatalf("expected typed list, got %s", got[0])
 	}
 	ct0a, _ := core.AsChildType(got[0])
 	child := ct0a.Child
-	if !child.Parent.Equal(core.TMap) {
-		t.Errorf("expected child type map, got %s", child.Parent)
+	if !child.Parent().Equal(core.TMap) {
+		t.Errorf("expected child type map, got %s", child.Parent())
 	}
 	m, _ := core.AsMap(child)
 	xVal, ok := m.Get("x")
 	if !ok {
 		t.Fatalf("expected key 'x' in child map")
 	}
-	if w, err := core.AsWord(xVal); err != nil || w.Name != "Number" {
+	if w, err := core.AsWord(&xVal); err != nil || w.Name != "Number" {
 		t.Errorf("expected x to be word(Number), got %s (TestParseTypedListMap)", xVal)
 	}
 }
@@ -804,7 +804,7 @@ func TestParseTypedListMapChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsTypedList(got[0]) {
+	if len(got) != 1 || !core.IsTypedList(&got[0]) {
 		t.Fatalf("expected 1 typed list, got %v", got)
 	}
 	ct0b, _ := core.AsChildType(got[0])
@@ -878,20 +878,20 @@ func TestParseTypedMapConcreteChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsTypedMap(got[0]) {
+	if len(got) != 1 || !core.IsTypedMap(&got[0]) {
 		t.Fatalf("expected 1 typed map, got %v", got)
 	}
 	ct0c, _ := core.AsChildType(got[0])
 	child0c := ct0c.Child
-	if !child0c.Parent.Equal(core.TMap) {
-		t.Errorf("expected child type map, got %s", child0c.Parent)
+	if !child0c.Parent().Equal(core.TMap) {
+		t.Errorf("expected child type map, got %s", child0c.Parent())
 	}
 	m, _ := core.AsMap(child0c)
 	xVal, ok := m.Get("x")
 	if !ok {
 		t.Fatalf("expected key 'x' in child map")
 	}
-	if w, err := core.AsWord(xVal); err != nil || w.Name != "Number" {
+	if w, err := core.AsWord(&xVal); err != nil || w.Name != "Number" {
 		t.Errorf("expected x to be word(Number), got %s (TestParseTypedMapConcreteChild)", xVal)
 	}
 }
@@ -907,8 +907,8 @@ func TestParseExplicitList(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !got[0].Parent.Equal(core.TList) {
-		t.Fatalf("expected list, got %s", got[0].Parent)
+	if !got[0].Parent().Equal(core.TList) {
+		t.Fatalf("expected list, got %s", got[0].Parent())
 	}
 	_lst, _ := core.AsList(got[0])
 	elems := _lst.Slice()
@@ -944,16 +944,16 @@ func TestParseMapWithList(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !got[0].Parent.Equal(core.TMap) {
-		t.Fatalf("expected map, got %s", got[0].Parent)
+	if !got[0].Parent().Equal(core.TMap) {
+		t.Fatalf("expected map, got %s", got[0].Parent())
 	}
 	m, _ := core.AsMap(got[0])
 	xVal, ok := m.Get("x")
 	if !ok {
 		t.Fatal("expected key 'x'")
 	}
-	if !xVal.Parent.Equal(core.TList) {
-		t.Errorf("expected list, got %s", xVal.Parent)
+	if !xVal.Parent().Equal(core.TList) {
+		t.Errorf("expected list, got %s", xVal.Parent())
 	}
 	_lst, _ := core.AsList(xVal)
 	elems := _lst.Slice()
@@ -973,13 +973,13 @@ func TestParseMapWithBooleans(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	aVal, _ := m.Get("a")
-	aw, _ := core.AsWord(aVal)
-	if !core.IsWord(aVal) || aw.Name != "true" {
+	aw, _ := core.AsWord(&aVal)
+	if !core.IsWord(&aVal) || aw.Name != "true" {
 		t.Errorf("expected word(true), got %s", aVal)
 	}
 	bVal, _ := m.Get("b")
-	bw, _ := core.AsWord(bVal)
-	if !core.IsWord(bVal) || bw.Name != "false" {
+	bw, _ := core.AsWord(&bVal)
+	if !core.IsWord(&bVal) || bw.Name != "false" {
 		t.Errorf("expected word(false), got %s", bVal)
 	}
 }
@@ -1011,7 +1011,7 @@ func TestParseMapWithTypeName(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	xVal, _ := m.Get("x")
-	if w, err := core.AsWord(xVal); err != nil || w.Name != "Number" {
+	if w, err := core.AsWord(&xVal); err != nil || w.Name != "Number" {
 		t.Errorf("expected word(Number) — the parser is type-name-opaque, got %s", xVal)
 	}
 }
@@ -1027,8 +1027,8 @@ func TestParseMapWithNestedMap(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	aVal, _ := m.Get("a")
-	if !aVal.Parent.Equal(core.TMap) {
-		t.Errorf("expected nested map, got %s", aVal.Parent)
+	if !aVal.Parent().Equal(core.TMap) {
+		t.Errorf("expected nested map, got %s", aVal.Parent())
 	}
 }
 
@@ -1121,14 +1121,14 @@ func TestParseDataMapWithNil(t *testing.T) {
 	m, _ := core.AsMap(got[0])
 	// b should be word "true" (word context)
 	bVal, _ := m.Get("b")
-	bw2, _ := core.AsWord(bVal)
-	if !core.IsWord(bVal) || bw2.Name != "true" {
+	bw2, _ := core.AsWord(&bVal)
+	if !core.IsWord(&bVal) || bw2.Name != "true" {
 		t.Errorf("expected word(true), got %s", bVal)
 	}
 	// c should be word "false" (word context)
 	cVal, _ := m.Get("c")
-	cw2, _ := core.AsWord(cVal)
-	if !core.IsWord(cVal) || cw2.Name != "false" {
+	cw2, _ := core.AsWord(&cVal)
+	if !core.IsWord(&cVal) || cw2.Name != "false" {
 		t.Errorf("expected word(false), got %s", cVal)
 	}
 }
@@ -1146,13 +1146,13 @@ func TestParseDataMapWithNestedList(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	xVal, _ := m.Get("x")
-	if !xVal.Parent.Equal(core.TMap) {
-		t.Fatalf("expected nested map, got %s", xVal.Parent)
+	if !xVal.Parent().Equal(core.TMap) {
+		t.Fatalf("expected nested map, got %s", xVal.Parent())
 	}
 	inner, _ := core.AsMap(xVal)
 	yVal, _ := inner.Get("y")
-	if !yVal.Parent.Equal(core.TList) {
-		t.Errorf("expected list, got %s", yVal.Parent)
+	if !yVal.Parent().Equal(core.TList) {
+		t.Errorf("expected list, got %s", yVal.Parent())
 	}
 }
 
@@ -1189,16 +1189,16 @@ func TestParseDataListWithBoolAndNil(t *testing.T) {
 	}
 	// With word context in lists, true/false become words (resolved at runtime),
 	// and null becomes a word (resolved to atom at runtime).
-	ew0, _ := core.AsWord(elems[0])
-	ew1, _ := core.AsWord(elems[1])
-	ew2, _ := core.AsWord(elems[2])
-	if !core.IsWord(elems[0]) || ew0.Name != "true" {
+	ew0, _ := core.AsWord(&elems[0])
+	ew1, _ := core.AsWord(&elems[1])
+	ew2, _ := core.AsWord(&elems[2])
+	if !core.IsWord(&elems[0]) || ew0.Name != "true" {
 		t.Errorf("expected word(true), got %s", elems[0])
 	}
-	if !core.IsWord(elems[1]) || ew1.Name != "false" {
+	if !core.IsWord(&elems[1]) || ew1.Name != "false" {
 		t.Errorf("expected word(false), got %s", elems[1])
 	}
-	if !core.IsWord(elems[2]) || ew2.Name != "null" {
+	if !core.IsWord(&elems[2]) || ew2.Name != "null" {
 		t.Errorf("expected word(null), got %s", elems[2])
 	}
 }
@@ -1214,8 +1214,8 @@ func TestParseFloatNumber(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !got[0].Parent.ConformsTo(core.TFloat) {
-		t.Errorf("expected decimal type, got %s", got[0].Parent)
+	if !got[0].Parent().ConformsTo(core.TFloat) {
+		t.Errorf("expected decimal type, got %s", got[0].Parent())
 	}
 }
 
@@ -1228,8 +1228,8 @@ func TestParseFloatInExpression(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("expected 3 values, got %d", len(got))
 	}
-	if !got[0].Parent.ConformsTo(core.TFloat) {
-		t.Errorf("expected decimal, got %s", got[0].Parent)
+	if !got[0].Parent().ConformsTo(core.TFloat) {
+		t.Errorf("expected decimal, got %s", got[0].Parent())
 	}
 }
 
@@ -1244,8 +1244,8 @@ func TestParseMapWithFloat(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	xVal, _ := m.Get("x")
-	if !xVal.Parent.ConformsTo(core.TFloat) {
-		t.Errorf("expected decimal, got %s", xVal.Parent)
+	if !xVal.Parent().ConformsTo(core.TFloat) {
+		t.Errorf("expected decimal, got %s", xVal.Parent())
 	}
 }
 
@@ -1281,8 +1281,8 @@ func TestParseIntegerLiteralExact(t *testing.T) {
 			t.Errorf("Parse(%q): expected 1 value, got %d", c.src, len(got))
 			continue
 		}
-		if !got[0].Parent.ConformsTo(core.TInteger) {
-			t.Errorf("Parse(%q): expected Integer, got %s", c.src, got[0].Parent)
+		if !got[0].Parent().ConformsTo(core.TInteger) {
+			t.Errorf("Parse(%q): expected Integer, got %s", c.src, got[0].Parent())
 			continue
 		}
 		n, aerr := core.AsInteger(got[0])
@@ -1342,8 +1342,8 @@ func TestParseBasePrefixedExact(t *testing.T) {
 			t.Errorf("Parse(%q) error: %v", c.src, err)
 			continue
 		}
-		if !got[0].Parent.ConformsTo(core.TInteger) {
-			t.Errorf("Parse(%q): expected Integer, got %s", c.src, got[0].Parent)
+		if !got[0].Parent().ConformsTo(core.TInteger) {
+			t.Errorf("Parse(%q): expected Integer, got %s", c.src, got[0].Parent())
 			continue
 		}
 		if n, _ := core.AsInteger(got[0]); n != c.want {
@@ -1484,8 +1484,8 @@ func TestParseNonDecimalLiteralsPreserved(t *testing.T) {
 			t.Errorf("Parse(%q) error: %v", src, err)
 			continue
 		}
-		if !got[0].Parent.ConformsTo(core.TInteger) {
-			t.Errorf("Parse(%q): expected Integer, got %s", src, got[0].Parent)
+		if !got[0].Parent().ConformsTo(core.TInteger) {
+			t.Errorf("Parse(%q): expected Integer, got %s", src, got[0].Parent())
 			continue
 		}
 		if n, _ := core.AsInteger(got[0]); n != want {
@@ -1498,8 +1498,8 @@ func TestParseNonDecimalLiteralsPreserved(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(%q) error: %v", src, err)
 		}
-		if !got[0].Parent.ConformsTo(core.TFloat) {
-			t.Errorf("Parse(%q): expected Float, got %s", src, got[0].Parent)
+		if !got[0].Parent().ConformsTo(core.TFloat) {
+			t.Errorf("Parse(%q): expected Float, got %s", src, got[0].Parent())
 		}
 	}
 }
@@ -1513,8 +1513,8 @@ func TestParseIntegerLiteralExactInMap(t *testing.T) {
 	}
 	m, _ := core.AsMap(got[0])
 	xVal, _ := m.Get("x")
-	if !xVal.Parent.ConformsTo(core.TInteger) {
-		t.Fatalf("expected Integer, got %s", xVal.Parent)
+	if !xVal.Parent().ConformsTo(core.TInteger) {
+		t.Fatalf("expected Integer, got %s", xVal.Parent())
 	}
 	if n, _ := core.AsInteger(xVal); n != 9007199254740993 {
 		t.Errorf("map value: got %d, want 9007199254740993", n)
@@ -1530,8 +1530,8 @@ func TestParseSpecialFloatLiterals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(%q) error: %v", src, err)
 		}
-		if !got[0].Parent.ConformsTo(core.TFloat) {
-			t.Errorf("Parse(%q): expected Float, got %s", src, got[0].Parent)
+		if !got[0].Parent().ConformsTo(core.TFloat) {
+			t.Errorf("Parse(%q): expected Float, got %s", src, got[0].Parent())
 			return
 		}
 		f, _ := core.AsNumber(got[0])
@@ -1570,8 +1570,8 @@ func TestParseListWithMap(t *testing.T) {
 	if len(elems) != 1 {
 		t.Fatalf("expected 1 element, got %d", len(elems))
 	}
-	if !elems[0].Parent.Equal(core.TMap) {
-		t.Errorf("expected map element, got %s", elems[0].Parent)
+	if !elems[0].Parent().Equal(core.TMap) {
+		t.Errorf("expected map element, got %s", elems[0].Parent())
 	}
 }
 
@@ -1610,10 +1610,10 @@ func TestParseListWithDottedWord(t *testing.T) {
 	if len(elems) != 1 {
 		t.Fatalf("expected 1 element (the dot-chain Reach), got %d", len(elems))
 	}
-	if !core.IsReach(elems[0]) {
+	if !core.IsReach(&elems[0]) {
 		t.Fatalf("expected element to be a Reach, got %s", elems[0])
 	}
-	info, _ := core.AsReach(elems[0])
+	info, _ := core.AsReach(&elems[0])
 	if len(info.Receiver) != 1 || len(info.Segments) != 1 {
 		t.Fatalf("expected receiver[foo] + 1 segment, got %+v", info)
 	}
@@ -1629,10 +1629,10 @@ func TestParseReceiverlessReach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsReach(got[0]) {
+	if len(got) != 1 || !core.IsReach(&got[0]) {
 		t.Fatalf("expected a single Reach value, got %d: %v", len(got), got)
 	}
-	info, _ := core.AsReach(got[0])
+	info, _ := core.AsReach(&got[0])
 	if len(info.Receiver) != 0 {
 		t.Fatalf("receiverless reach must have empty Receiver, got %+v", info.Receiver)
 	}
@@ -1647,7 +1647,7 @@ func TestParseReceiverlessReach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error ($!.x): %v", err)
 	}
-	info, _ = core.AsReach(got[0])
+	info, _ = core.AsReach(&got[0])
 	if len(info.Receiver) != 0 || info.Eval || len(info.Segments) != 1 || !info.Segments[0].Getr {
 		t.Fatalf("$!.x: want receiverless inert getr reach, got %+v", info)
 	}
@@ -1751,7 +1751,7 @@ func TestParseDottedWordInExpression(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 values (1 <Reach>), got %d: %v", len(got), got)
 	}
-	if !core.IsReach(got[1]) {
+	if !core.IsReach(&got[1]) {
 		t.Fatalf("expected got[1] to be the dot-chain Reach, got %s", got[1])
 	}
 }
@@ -1766,7 +1766,7 @@ func TestParseDottedMapValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !got[0].Parent.Equal(core.TMap) {
+	if len(got) != 1 || !got[0].Parent().Equal(core.TMap) {
 		t.Fatalf("expected a single map value, got %d: %v", len(got), got)
 	}
 }
@@ -1813,7 +1813,7 @@ func TestParseDottedWordStillWorksInWordContext(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 values, got %d: %v", len(got), got)
 	}
-	if !core.IsReach(got[1]) {
+	if !core.IsReach(&got[1]) {
 		t.Fatalf("expected got[1] to be the dot-chain Reach, got %s", got[1])
 	}
 }
@@ -1829,8 +1829,8 @@ func TestParseTopLevelMap(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !got[0].Parent.Equal(core.TMap) {
-		t.Errorf("expected map, got %s", got[0].Parent)
+	if !got[0].Parent().Equal(core.TMap) {
+		t.Errorf("expected map, got %s", got[0].Parent())
 	}
 }
 
@@ -1873,7 +1873,7 @@ func TestParseMapWithStringValues(t *testing.T) {
 	m, _ := core.AsMap(got[0])
 	xVal, _ := m.Get("x")
 	xValS, _ := core.AsString(xVal)
-	if !xVal.Parent.ConformsTo(core.TString) || xValS != "hello" {
+	if !xVal.Parent().ConformsTo(core.TString) || xValS != "hello" {
 		t.Errorf("expected string hello, got %s", xVal)
 	}
 }
@@ -1938,11 +1938,11 @@ func TestParseDataMapNilValue(t *testing.T) {
 	m, _ := core.AsMap(got[0])
 	// Type names stay opaque Words in data context (ADR-012 rule 4).
 	eVal, _ := m.Get("e")
-	if w, err := core.AsWord(eVal); err != nil || w.Name != "Number" {
+	if w, err := core.AsWord(&eVal); err != nil || w.Name != "Number" {
 		t.Errorf("expected word(Number), got %s", eVal)
 	}
 	fVal, _ := m.Get("f")
-	if w, err := core.AsWord(fVal); err != nil || w.Name != "Any" {
+	if w, err := core.AsWord(&fVal); err != nil || w.Name != "Any" {
 		t.Errorf("expected word(Any), got %s", fVal)
 	}
 }
@@ -2043,16 +2043,16 @@ func TestParseSlashFModifier(t *testing.T) {
 func TestFloatToValueWholeNumber(t *testing.T) {
 	// Whole number float → integer
 	v := floatToValue(42.0)
-	if !v.Parent.ConformsTo(core.TInteger) {
-		t.Errorf("expected integer, got %s", v.Parent)
+	if !v.Parent().ConformsTo(core.TInteger) {
+		t.Errorf("expected integer, got %s", v.Parent())
 	}
 }
 
 func TestFloatToValueFractional(t *testing.T) {
 	// Fractional float → decimal
 	v := floatToValue(3.14)
-	if !v.Parent.ConformsTo(core.TFloat) {
-		t.Errorf("expected decimal, got %s", v.Parent)
+	if !v.Parent().ConformsTo(core.TFloat) {
+		t.Errorf("expected decimal, got %s", v.Parent())
 	}
 }
 
@@ -2116,21 +2116,21 @@ func TestResolveTextValueTypes(t *testing.T) {
 		input string
 		check func(core.Value) bool
 	}{
-		{"true", func(v core.Value) bool { b, _ := core.AsBoolean(v); return v.Parent.ConformsTo(core.TBoolean) && b }},
-		{"false", func(v core.Value) bool { b, _ := core.AsBoolean(v); return v.Parent.ConformsTo(core.TBoolean) && !b }},
+		{"true", func(v core.Value) bool { b, _ := core.AsBoolean(v); return v.Parent().ConformsTo(core.TBoolean) && b }},
+		{"false", func(v core.Value) bool { b, _ := core.AsBoolean(v); return v.Parent().ConformsTo(core.TBoolean) && !b }},
 		// Type names are NOT resolved (ADR-012 rule 4) — they are data
 		// here, Atoms, like any other bare name.
 		{"Number", func(v core.Value) bool {
 			s, _ := core.AsAtom(v)
-			return v.Parent.ConformsTo(core.TAtom) && s == "Number"
+			return v.Parent().ConformsTo(core.TAtom) && s == "Number"
 		}},
 		{"String", func(v core.Value) bool {
 			s, _ := core.AsAtom(v)
-			return v.Parent.ConformsTo(core.TAtom) && s == "String"
+			return v.Parent().ConformsTo(core.TAtom) && s == "String"
 		}},
 		{"hello", func(v core.Value) bool {
 			s, _ := core.AsAtom(v)
-			return v.Parent.ConformsTo(core.TAtom) && s == "hello"
+			return v.Parent().ConformsTo(core.TAtom) && s == "hello"
 		}},
 	}
 	for _, tt := range tests {
@@ -2149,7 +2149,7 @@ func TestConvertTopLevelValueBool(t *testing.T) {
 		t.Fatal(err)
 	}
 	b1, _ := core.AsBoolean(v)
-	if !v.Parent.ConformsTo(core.TBoolean) || !b1 {
+	if !v.Parent().ConformsTo(core.TBoolean) || !b1 {
 		t.Errorf("expected true, got %s", v)
 	}
 	v, err = convertTopLevelValue(false, &parseDepth{})
@@ -2157,7 +2157,7 @@ func TestConvertTopLevelValueBool(t *testing.T) {
 		t.Fatal(err)
 	}
 	b2, _ := core.AsBoolean(v)
-	if !v.Parent.ConformsTo(core.TBoolean) || b2 {
+	if !v.Parent().ConformsTo(core.TBoolean) || b2 {
 		t.Errorf("expected false, got %s", v)
 	}
 }
@@ -2188,7 +2188,7 @@ func TestConvertDataValueBool(t *testing.T) {
 		t.Fatal(err)
 	}
 	b3, _ := core.AsBoolean(v)
-	if !v.Parent.ConformsTo(core.TBoolean) || !b3 {
+	if !v.Parent().ConformsTo(core.TBoolean) || !b3 {
 		t.Errorf("expected true, got %s", v)
 	}
 }
@@ -2217,8 +2217,8 @@ func TestConvertDataValueRawMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !v.Parent.Equal(core.TMap) {
-		t.Errorf("expected map, got %s", v.Parent)
+	if !v.Parent().Equal(core.TMap) {
+		t.Errorf("expected map, got %s", v.Parent())
 	}
 }
 
@@ -2228,7 +2228,7 @@ func TestConvertDataValueRawMapWithChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !core.IsTypedMap(v) {
+	if !core.IsTypedMap(&v) {
 		t.Errorf("expected typed map, got %s", v)
 	}
 }
@@ -2238,8 +2238,8 @@ func TestConvertTopLevelValueRawMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !v.Parent.Equal(core.TMap) {
-		t.Errorf("expected map, got %s", v.Parent)
+	if !v.Parent().Equal(core.TMap) {
+		t.Errorf("expected map, got %s", v.Parent())
 	}
 }
 
@@ -2248,7 +2248,7 @@ func TestConvertTopLevelValueRawMapWithChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !core.IsTypedMap(v) {
+	if !core.IsTypedMap(&v) {
 		t.Errorf("expected typed map, got %s", v)
 	}
 }
@@ -2274,7 +2274,7 @@ func TestParseWordDirectCoverage(t *testing.T) {
 			t.Errorf("parseWord(%q) expected error", tt.input)
 		}
 		if tt.ok {
-			vw, _ := core.AsWord(v)
+			vw, _ := core.AsWord(&v)
 			if vw.Name != tt.name {
 				t.Errorf("parseWord(%q) name = %q, want %q", tt.input, vw.Name, tt.name)
 			}
@@ -2320,16 +2320,16 @@ func TestParseImplicitMapInList(t *testing.T) {
 		t.Fatalf("expected 1 value, got %d", len(vals))
 	}
 	list := vals[0]
-	if !list.Parent.Equal(core.TList) {
-		t.Fatalf("expected list, got %s", list.Parent)
+	if !list.Parent().Equal(core.TList) {
+		t.Fatalf("expected list, got %s", list.Parent())
 	}
 	_lst, _ := core.AsList(list)
 	elems := _lst.Slice()
 	if len(elems) != 1 {
 		t.Fatalf("expected 1 element in list, got %d", len(elems))
 	}
-	if !elems[0].Parent.Equal(core.TMap) {
-		t.Fatalf("expected map element, got %s", elems[0].Parent)
+	if !elems[0].Parent().Equal(core.TMap) {
+		t.Fatalf("expected map element, got %s", elems[0].Parent())
 	}
 	m, _ := core.AsMutableMap(elems[0])
 	if !m.Implicit {
@@ -2356,8 +2356,8 @@ func TestParseExplicitMapInList(t *testing.T) {
 	if len(elems) != 1 {
 		t.Fatalf("expected 1 element in list, got %d", len(elems))
 	}
-	if !elems[0].Parent.Equal(core.TMap) {
-		t.Fatalf("expected map element, got %s", elems[0].Parent)
+	if !elems[0].Parent().Equal(core.TMap) {
+		t.Fatalf("expected map element, got %s", elems[0].Parent())
 	}
 	m, _ := core.AsMutableMap(elems[0])
 	if m.Implicit {
@@ -2374,8 +2374,8 @@ func TestParseExplicitMapTopLevel(t *testing.T) {
 	if len(vals) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(vals))
 	}
-	if !vals[0].Parent.Equal(core.TMap) {
-		t.Fatalf("expected map, got %s", vals[0].Parent)
+	if !vals[0].Parent().Equal(core.TMap) {
+		t.Fatalf("expected map, got %s", vals[0].Parent())
 	}
 	m, _ := core.AsMutableMap(vals[0])
 	if m.Implicit {
@@ -2394,14 +2394,14 @@ func TestParseOptionalFieldDisjunct(t *testing.T) {
 	}
 	m, _ := core.AsMap(vals[0])
 	if m == nil {
-		t.Fatalf("core.AsMap() returned nil, value: %s (data: %T)", vals[0].String(), vals[0].Data)
+		t.Fatalf("core.AsMap() returned nil, value: %s (data: %T)", vals[0].String(), vals[0].Data())
 	}
 	keys := m.Keys()
 	if len(keys) != 1 || keys[0] != "a" {
 		t.Errorf("expected key 'a', got %v", keys)
 	}
 	val, _ := m.Get("a")
-	if !core.IsDisjunct(val) {
+	if !core.IsDisjunct(&val) {
 		t.Fatalf("expected disjunct for optional field, got %s", val.String())
 	}
 	dj, _ := core.AsDisjunct(val)
@@ -2422,7 +2422,7 @@ func TestParseOptionalFieldDisjunct(t *testing.T) {
 	seenWord := false
 	want := map[*core.Type]bool{core.TNone: false, core.TAbsent: false}
 	for _, alt := range alts {
-		if w, err := core.AsWord(alt); err == nil && w.Name == "Integer" {
+		if w, err := core.AsWord(&alt); err == nil && w.Name == "Integer" {
 			seenWord = true
 		}
 		for ty := range want {
@@ -2534,11 +2534,11 @@ func TestParseOptionalFieldMixed(t *testing.T) {
 		t.Fatalf("core.AsMap() returned nil")
 	}
 	aVal, _ := m.Get("a")
-	if core.IsDisjunct(aVal) {
+	if core.IsDisjunct(&aVal) {
 		t.Errorf("expected 'a' to NOT be a disjunct, got %s", aVal.String())
 	}
 	bVal, _ := m.Get("b")
-	if !core.IsDisjunct(bVal) {
+	if !core.IsDisjunct(&bVal) {
 		t.Errorf("expected 'b' to be a disjunct, got %s", bVal.String())
 	}
 }
@@ -2560,14 +2560,14 @@ func TestParseOptionalFieldInList(t *testing.T) {
 	}
 	m, _ := core.AsMutableMap(elems[0])
 	if m == nil {
-		t.Fatalf("expected map element, got %s (data: %T)", elems[0].String(), elems[0].Data)
+		t.Fatalf("expected map element, got %s (data: %T)", elems[0].String(), elems[0].Data())
 	}
 	keys := m.Keys()
 	if len(keys) != 1 || keys[0] != "x" {
 		t.Errorf("expected key 'x', got %v", keys)
 	}
 	val, _ := m.Get("x")
-	if !core.IsDisjunct(val) {
+	if !core.IsDisjunct(&val) {
 		t.Errorf("expected disjunct for x, got %s", val.String())
 	}
 }
@@ -2583,7 +2583,7 @@ func TestParseComputedKey(t *testing.T) {
 	}
 	m, _ := core.AsMap(vals[0])
 	if m == nil {
-		t.Fatalf("core.AsMap() returned nil, value: %s (data: %T)", vals[0].String(), vals[0].Data)
+		t.Fatalf("core.AsMap() returned nil, value: %s (data: %T)", vals[0].String(), vals[0].Data())
 	}
 	keys := m.Keys()
 	if len(keys) != 1 || keys[0] != "x" {
@@ -2623,8 +2623,8 @@ func TestParseBacktickSimpleInterpolation(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(got))
 	}
-	if !core.IsInterpString(got[0]) {
-		t.Fatalf("expected InterpString, got %s", got[0].Parent)
+	if !core.IsInterpString(&got[0]) {
+		t.Fatalf("expected InterpString, got %s", got[0].Parent())
 	}
 	parts, _ := core.AsInterpString(got[0])
 	if len(parts) != 2 {
@@ -2635,7 +2635,7 @@ func TestParseBacktickSimpleInterpolation(t *testing.T) {
 		t.Errorf("part 0: expected literal 'hello ', got %+v", parts[0])
 	}
 	// Part 1: expression [Word(name)]
-	if parts[1].Expr == nil || len(parts[1].Expr) != 1 || !core.IsWord(parts[1].Expr[0]) {
+	if parts[1].Expr == nil || len(parts[1].Expr) != 1 || !core.IsWord(&parts[1].Expr[0]) {
 		t.Errorf("part 1: expected expression with Word(name), got %+v", parts[1])
 	}
 }
@@ -2646,7 +2646,7 @@ func TestParseBacktickMultipleInterpolations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsInterpString(got[0]) {
+	if len(got) != 1 || !core.IsInterpString(&got[0]) {
 		t.Fatalf("expected 1 InterpString value, got %d values", len(got))
 	}
 	parts, _ := core.AsInterpString(got[0])
@@ -2662,7 +2662,7 @@ func TestParseBacktickExpressionInterpolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsInterpString(got[0]) {
+	if len(got) != 1 || !core.IsInterpString(&got[0]) {
 		t.Fatalf("expected 1 InterpString value")
 	}
 	parts, _ := core.AsInterpString(got[0])
@@ -2681,7 +2681,7 @@ func TestParseBacktickNestedBraces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if len(got) != 1 || !core.IsInterpString(got[0]) {
+	if len(got) != 1 || !core.IsInterpString(&got[0]) {
 		t.Fatalf("expected 1 InterpString value")
 	}
 }

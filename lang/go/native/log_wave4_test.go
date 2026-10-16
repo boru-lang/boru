@@ -617,10 +617,10 @@ func TestW4LogShapeFns(t *testing.T) {
 	r, lsr, _ := w4LogEnv(t)
 	// Logger / span / instrument shape functions return concrete instance
 	// maps so dot-access method reads resolve statically.
-	if out := loggerShapeReturns(lsr)(nil, r); len(out) != 1 || !IsConcrete(out[0]) {
+	if out := loggerShapeReturns(lsr)(nil, r); len(out) != 1 || !IsConcrete(&out[0]) {
 		t.Errorf("loggerShapeReturns = %v", out)
 	}
-	if out := spanShapeReturns(lsr)(nil, r); len(out) != 1 || !IsConcrete(out[0]) {
+	if out := spanShapeReturns(lsr)(nil, r); len(out) != 1 || !IsConcrete(&out[0]) {
 		t.Errorf("spanShapeReturns = %v", out)
 	}
 	// with-span's ReturnsFn walks a concrete body…

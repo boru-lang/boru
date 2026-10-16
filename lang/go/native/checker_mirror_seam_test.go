@@ -54,7 +54,7 @@ func TestSetListIndexReturnsGuards(t *testing.T) {
 	r := mirrorReg(t)
 	// Short arg slice: the List model without a bounds check.
 	out := setListIndexReturns([]Value{NewInteger(0)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TList) {
+	if len(out) != 1 || !out[0].Parent().Equal(TList) {
 		t.Errorf("short-args residual = %v, want one List carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -112,7 +112,7 @@ func TestRaiseReturnsGuards(t *testing.T) {
 func TestReturnsDivModNonZeroDelegates(t *testing.T) {
 	r := mirrorReg(t)
 	out := returnsDivMod("division by zero")([]Value{NewInteger(2), NewInteger(10)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+	if len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 		t.Errorf("non-zero divisor residual = %v, want Integer carrier", out)
 	}
 }
@@ -180,7 +180,7 @@ func TestIsStaticZeroIntDivisorBigDecimalGuard(t *testing.T) {
 	// A BigDecimal-typed value whose payload is not a decimal (defensive
 	// seam — the sealed-payload rules make this a hand-built shape only)
 	// answers false rather than claiming a zero divisor.
-	v := Value{Parent: TBigDecimal, Data: IntPayload{N: 0}}
+	v := ValueOf(&Datum{Parent: TBigDecimal, Data: IntPayload{N: 0}})
 	if isStaticZeroIntDivisor(v) {
 		t.Error("non-decimal payload wrongly classified as a zero divisor")
 	}

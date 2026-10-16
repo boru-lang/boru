@@ -33,9 +33,9 @@ func TestModuleRecursionGetsTCO(t *testing.T) {
 	if len(res) != 2 || res[0].String() != "1275" {
 		t.Fatalf("res = %v, want [1275 <fn>]", res)
 	}
-	fd, ok := res[1].Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(res[1].Data())
 	if !ok || fd.Registry == nil {
-		t.Fatalf("MU.fact/v did not return a module fn value: %T", res[1].Data)
+		t.Fatalf("MU.fact/v did not return a module fn value: %T", res[1].Data())
 	}
 	if reg.TCO.Detected != 0 {
 		t.Errorf("main registry detected %d; module recursion runs on the module registry", reg.TCO.Detected)
@@ -71,7 +71,7 @@ func TestModuleRecursionDeepConstantSpace(t *testing.T) {
 	if len(res) != 2 || res[0].String() != "50005000" {
 		t.Fatalf("res[0] = %v, want 50005000", res)
 	}
-	fd, _ := res[1].Data.(core.FnDefInfo)
+	fd, _ := core.FnDefOf(res[1].Data())
 	if fd.Registry == nil || fd.Registry.TCO.Replaced != 9999 {
 		t.Fatalf("module replaced = %d, want 9999", fd.Registry.TCO.Replaced)
 	}
@@ -97,7 +97,7 @@ func TestModuleKillSwitchPropagates(t *testing.T) {
 	if res[0].String() != "1275" {
 		t.Fatalf("result with Disable = %v, want 1275 (semantics never depend on TCO)", res[0])
 	}
-	fd, _ := res[1].Data.(core.FnDefInfo)
+	fd, _ := core.FnDefOf(res[1].Data())
 	if fd.Registry == nil {
 		t.Fatal("no module registry on the exported fn")
 	}

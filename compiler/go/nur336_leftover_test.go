@@ -135,17 +135,17 @@ func TestNUR336ToldAt(t *testing.T) {
 
 func TestNUR347NoteFnArgPos(t *testing.T) {
 	es := NewEmitState()
-	fn := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "h"}, ID: "fnid"}
+	fn := withID(core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "h"}}), "fnid")
 	fn.SetPos(core.SrcPos{Row: 1, Col: 101})
 	unread := fn
-	unread.ID = "other"
+	core.SetID(&unread, "other")
 	noID := fn
-	noID.ID = ""
+	core.SetID(&noID, "")
 	noPos := fn
 	noPos.SetPos(core.SrcPos{})
 	es.valReadNoted = map[string]bool{"fnid": true, "n": true}
 	n := core.NewInteger(5)
-	n.ID = "n"
+	core.SetID(&n, "n")
 	n.SetPos(core.SrcPos{Row: 1, Col: 3})
 	es.noteFnArgPos(1, []core.Value{n, fn})
 	if got := es.fnArgPos[1]; len(got) != 2 || got[0].Row != 0 || got[1].Col != 101 {
@@ -156,7 +156,7 @@ func TestNUR347NoteFnArgPos(t *testing.T) {
 		t.Error("no qualifying argument keeps nothing")
 	}
 	carrier := core.NewCarrier(core.TFunction)
-	carrier.ID = "fnid"
+	core.SetID(&carrier, "fnid")
 	carrier.SetPos(core.SrcPos{Row: 2, Col: 1})
 	es.noteFnArgPos(3, []core.Value{carrier})
 	if got := es.fnArgPos[3]; len(got) != 1 || got[0].Row != 2 {
@@ -167,9 +167,9 @@ func TestNUR347NoteFnArgPos(t *testing.T) {
 func TestNUR329UnexpandedToken(t *testing.T) {
 	reach := core.NewReachFromKeys(core.NewWord("m"), []core.Value{core.NewAtom("b")})
 	carrier := reach
-	carrier.Carrier = true
+	carrier.SetCarrier(true)
 	dyn := reach
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	interp := core.NewInterpString([]core.InterpPart{{Lit: "s"}})
 	for _, c := range []struct {
 		v    core.Value

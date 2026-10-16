@@ -12,7 +12,7 @@ test:
 	go test ./...
 
 vet:
-	go vet ./...
+	go vet -copylocks=false ./...
 
 fmt:
 	gofmt -w .
@@ -31,15 +31,15 @@ vuln:
 # Scans native/native_*.go (the language-layer primitives, post engine→native
 # consolidation in May 2026).
 lint-assertions:
-	@echo "Checking for unsafe .Data.(Type) assertions in runtime handlers..."
+	@echo "Checking for unsafe .Data().(Type) assertions in runtime handlers..."
 	@HITS=$$(find native -name 'native_*.go' ! -name '*_test.go' \
-		-exec grep -Hn '\.Data\.(' {} \; \
+		-exec grep -Hn '\.Data\(()\)\?\.(' {} \; \
 		| grep -v ',.*:=' | grep -v '\.(type)' \
 		| grep -v '// lint:allow-assert'); \
 	if [ -n "$$HITS" ]; then \
-		echo "FAIL: unsafe .Data.(Type) assertions found:"; \
+		echo "FAIL: unsafe .Data().(Type) assertions found:"; \
 		echo "$$HITS"; \
-		echo "Use the two-value form: v, ok := x.Data.(Type)"; \
+		echo "Use the two-value form: v, ok := x.Data().(Type)"; \
 		exit 1; \
 	fi
 	@echo "OK: no unsafe assertions found"

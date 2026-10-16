@@ -97,7 +97,7 @@ func TestHomeExportedFn(t *testing.T) {
 	}
 	sig := []Signature{{Params: []FnParam{{Name: "n", Type: TInteger}}, Impl: Boru([]Value{NewWord("n")})}}
 
-	if v, isFn := HomeExportedFn(NewInteger(7), mod); isFn || !v.Parent.ConformsTo(TInteger) {
+	if v, isFn := HomeExportedFn(NewInteger(7), mod); isFn || !v.Parent().ConformsTo(TInteger) {
 		t.Errorf("a non-fn export is not a fn and is returned as-is: %v %v", isFn, v)
 	}
 
@@ -113,13 +113,13 @@ func TestHomeExportedFn(t *testing.T) {
 	fresh := func(v Value) bool { return v.Pos() == SrcPos{} }
 
 	v, isFn := HomeExportedFn(read(FnDefInfo{Name: "native", Signatures: sig}), mod)
-	fd, _ := v.Data.(FnDefInfo)
+	fd, _ := FnDefCopy(v.Data())
 	if !isFn || fd.Registry != mod || !fresh(v) {
 		t.Errorf("a Go-built export is adopted into the module and minted afresh: isFn %v home %p (want %p) pos %v", isFn, fd.Registry, mod, v.Pos())
 	}
 
 	v, isFn = HomeExportedFn(read(FnDefInfo{Name: "own", Registry: mod, Signatures: sig}), mod)
-	fd, _ = v.Data.(FnDefInfo)
+	fd, _ = FnDefCopy(v.Data())
 	if !isFn || fd.Registry != mod || !fresh(v) {
 		t.Errorf("the module's own fn is minted afresh at home: isFn %v home %p pos %v", isFn, fd.Registry, v.Pos())
 	}
@@ -128,7 +128,7 @@ func TestHomeExportedFn(t *testing.T) {
 	}
 
 	v, isFn = HomeExportedFn(read(FnDefInfo{Name: "theirs", Registry: other, Signatures: sig}), mod)
-	fd, _ = v.Data.(FnDefInfo)
+	fd, _ = FnDefCopy(v.Data())
 	if !isFn || fd.Registry != other || fresh(v) {
 		t.Errorf("a re-exported foreign fn passes through untouched: isFn %v home %p (want %p) pos %v", isFn, fd.Registry, other, v.Pos())
 	}

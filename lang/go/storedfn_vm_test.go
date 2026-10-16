@@ -105,7 +105,7 @@ func registerStash(t *testing.T) *Boru {
 // carries a compiled-unit ref, or nil.
 func firstStampedHandler(prog *compiler.Program) *core.Signature {
 	for _, c := range prog.Consts {
-		fd, ok := c.Data.(core.FnDefInfo)
+		fd, ok := c.Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
@@ -186,7 +186,7 @@ func TestInvokeCallbackVMAndFallbackAgree(t *testing.T) {
 // not — used to reach an UN-stamped handler for the fallback path.
 func firstHandlerSig(prog *compiler.Program) *core.Signature {
 	for _, c := range prog.Consts {
-		fd, ok := c.Data.(core.FnDefInfo)
+		fd, ok := c.Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
@@ -272,7 +272,7 @@ func TestStoredFnMultiOverloadStampsPerSig(t *testing.T) {
 	}
 	stamped := 0
 	for _, c := range prog.Consts {
-		fd, ok := c.Data.(core.FnDefInfo)
+		fd, ok := c.Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
@@ -295,7 +295,7 @@ func TestStoredFnMultiOverloadStampsPerSig(t *testing.T) {
 	}
 	stamped2 := 0
 	for _, c := range prog2.Consts {
-		fd, ok := c.Data.(core.FnDefInfo)
+		fd, ok := c.Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
@@ -319,7 +319,7 @@ func TestStoredFnMultiOverloadStampsPerSig(t *testing.T) {
 	}
 	refs := map[*compiler.CompiledFnRef]bool{}
 	for _, c := range prog3.Consts {
-		fd, ok := c.Data.(core.FnDefInfo)
+		fd, ok := c.Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}

@@ -41,12 +41,12 @@ func undefinedWordCheckDiag(e *core.Engine, name string, pos core.SrcPos) core.C
 func drainUndefinedAtoms(e *core.Engine) {
 	for i := 0; i < e.Tape.Len(); i++ {
 		und := e.Tape.At(i)
-		if !und.Undefined || !e.Registry.Check.IsActive() {
+		if !core.IsUndefined(&und) || !e.Registry.Check.IsActive() {
 			continue
 		}
 		c := core.NewCarrier(core.TAny)
 		if a, aerr := core.AsAtom(und); aerr == nil && a != "" {
-			e.Registry.Check.Recorder().NoteDefRead(c.ID, a)
+			e.Registry.Check.Recorder().NoteDefRead(core.IDOf(&c), core.RecKeyOf(&c), a)
 		}
 		e.Tape.Set(i, c)
 	}
@@ -81,7 +81,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 // complexity gate.
 func tagCheckModeDefRead(e *core.Engine, top *core.Value, name string, pos core.SrcPos) {
 	switch {
-	case top.Dynamic:
+	case core.IsDynamic(top):
 		top.SetDynFrom(name)
 	case (core.IsFlexMap(*top) || core.IsFlexList(*top) || core.IsFlexXml(*top) || core.IsStore(*top) ||
 		core.IsModuleFamilyValue(*top)) && core.ModuleScopeBinding(e.Registry, name):
@@ -162,12 +162,12 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 	// nearest scope boundary. The first data value found is "stranded".
 	for i := minStack - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if core.IsOpenParen(v) || core.IsCloseParen(v) || core.IsForward(v) || core.IsDefCleanup(v) ||
-			v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
-			v.Parent.ConformsTo(core.TInternal) || v.Parent.ConformsTo(core.TReturnCheck) {
+		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsDefCleanup(&v) ||
+			v.Parent().ConformsTo(core.TMark) || v.Parent().ConformsTo(core.TMove) ||
+			v.Parent().ConformsTo(core.TInternal) || v.Parent().ConformsTo(core.TReturnCheck) {
 			return // scope boundary: nothing stranded in this scope
 		}
-		if !core.IsConcrete(v) && !core.IsBareTypeNode(v) {
+		if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
 			continue // structural residue, keep scanning
 		}
 		// Sibling-operand heuristic: only flag a stranded value the word
@@ -254,7 +254,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 			topPos = p
 		}
 	}
-	if !e.Tape.At(topPos).Dynamic {
+	if !core.IsDynamic(e.Tape.Ref(topPos)) {
 		return false
 	}
 	nxt := e.Pointer + 1
@@ -300,11 +300,11 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 	// regardless of what it is.
 	for i := minStack - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
-		if core.IsOpenParen(v) || core.IsCloseParen(v) || core.IsForward(v) || core.IsEnd(v) || core.IsDefCleanup(v) {
+		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsEnd(&v) || core.IsDefCleanup(&v) {
 			return // scope / statement boundary
 		}
-		if v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
-			v.Parent.ConformsTo(core.TInternal) || v.Parent.ConformsTo(core.TReturnCheck) {
+		if v.Parent().ConformsTo(core.TMark) || v.Parent().ConformsTo(core.TMove) ||
+			v.Parent().ConformsTo(core.TInternal) || v.Parent().ConformsTo(core.TReturnCheck) {
 			continue // pure structural marker between the operand and its neighbour
 		}
 		// First data value directly below the operand. Only a CONTAINER MEMBER
@@ -314,7 +314,7 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 		// Function value here (a `c/v` param ref, a factory closure) is a
 		// DIFFERENT boundary (M2a `apply`, the residual leading/trailing apply) with
 		// its own handling — do NOT claim it, or those decline with the wrong reason.
-		if es.MemberFnRead(v.ID) {
+		if es.MemberFnRead(core.IDOf(&v)) {
 			es.MarkUncompilable("member fn value auto-applies mid-expression (fn-value-call boundary, Stage 3)")
 		}
 		return
@@ -327,10 +327,10 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 // interpolation bake probe above; at run time there are no carriers, so
 // the walk is check-mode-only work.
 func valueCarriesCarrier(v core.Value) bool {
-	if v.Carrier {
+	if v.Carrier() {
 		return true
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.ListPayload:
 		for _, e := range d.Elems {
 			if valueCarriesCarrier(e) {
@@ -357,7 +357,7 @@ func valueCarriesCarrier(v core.Value) bool {
 // program (NUR331). The event is the value's truth, so the fold declines and the
 // container records over it.
 func bindingProduced(r *core.Registry, bound core.Value) bool {
-	return bound.ID != "" && r.Check.Recorder().AlreadyProduced(bound.ID)
+	return core.IDOf(&bound) != "" && r.Check.Recorder().AlreadyProduced(core.RecKeyOf(&bound))
 }
 
 // exprRefsCarrier reports whether a folded container expression references a
@@ -376,16 +376,16 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			if found {
 				return
 			}
-			if core.IsWord(v) {
-				if w, err := core.AsWord(v); err == nil {
-					if bound, ok := r.Defs.Top(w.Name); ok && (bound.Carrier || bindingProduced(r, bound)) {
+			if core.IsWord(&v) {
+				if w, err := core.AsWord(&v); err == nil {
+					if bound, ok := r.Defs.Top(w.Name); ok && (bound.Carrier() || bindingProduced(r, bound)) {
 						found = true
 						return
 					}
 				}
 			}
-			if core.IsParenExpr(v) {
-				if toks, err := core.AsParenExpr(v); err == nil {
+			if core.IsParenExpr(&v) {
+				if toks, err := core.AsParenExpr(&v); err == nil {
 					walk(toks)
 				}
 				continue
@@ -393,8 +393,8 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			// A Reach can hide a carrier in its receiver or a computed key
 			// (`m.(k)` with a def-local carrier `k`): recurse into both so the
 			// fold declines rather than baking the carrier's check-time value.
-			if core.IsReach(v) {
-				if ri, err := core.AsReach(v); err == nil {
+			if core.IsReach(&v) {
+				if ri, err := core.AsReach(&v); err == nil {
 					walk(ri.Receiver)
 					for i := range ri.Segments {
 						if ri.Segments[i].Computed {
@@ -405,7 +405,7 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 				continue
 			}
 			if lst, err := core.AsList(v); err == nil && !lst.IsNil() {
-				walk(lst.Slice())
+				walk(lst.Elems())
 				continue
 			}
 			if mp, err := core.AsMap(v); err == nil && mp != nil {
@@ -444,7 +444,7 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	// fold needs a real value, so Mode is off for its duration) — without
 	// the explicit tag its interpreter entries would report unattributed.
 	restoreAtt := r.SetInterpAttribution("check:const-fold")
-	res, err := core.RunContainerSub(r, append([]core.Value(nil), items...), false)
+	res, err := core.RunContainerSub(r, items, false)
 	restoreAtt()
 	r.Check.Mode = prev
 	// A break/continue escaping the expression (a container member's run,
@@ -456,7 +456,7 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	}
 	changed := r.Defs.ChangedSince(snap)
 	r.Defs.RestoreEntriesSnapshot(snap)
-	if escaped || changed || err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
+	if escaped || changed || err != nil || len(res) != 1 || !core.IsConcrete(&res[0]) {
 		return core.Value{}, false
 	}
 	return res[0], true
@@ -624,7 +624,7 @@ func noteSpeculativeBarrierCommit(e *core.Engine, fwd core.ForwardInfo) {
 	detail := fwd.FuncName + " committed with " +
 		strconv.Itoa(fwd.CollectedArgs+fwd.StackArgs) + " argument(s) at a statement boundary"
 	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
-		if bw, err := core.AsWord(e.Tape.At(e.Pointer)); err == nil {
+		if bw, err := core.AsWord(e.Tape.Ref(e.Pointer)); err == nil {
 			detail += " (`" + bw.Name + "`)"
 		}
 	}
@@ -696,7 +696,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		if !core.IsRecordableLiteral(v) {
 			continue
 		}
-		if count == 0 && !v.Dynamic && !v.Quoted && core.IsFnTypedCarrier(v) {
+		if count == 0 && !core.IsDynamic(&v) && !core.IsQuoted(&v) && core.IsFnTypedCarrier(&v) {
 			leadIdx = i
 		}
 		count++
@@ -706,8 +706,8 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		return closeIdx
 	}
 	last := e.Tape.At(lastIdx)
-	trailing := !last.Dynamic && !last.Quoted && core.IsFnTypedCarrier(last)
-	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !last.Dynamic)
+	trailing := !core.IsDynamic(&last) && !core.IsQuoted(&last) && core.IsFnTypedCarrier(&last)
+	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !core.IsDynamic(&last))
 	if !trailing && !leading {
 		return closeIdx
 	}
@@ -716,9 +716,8 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 		anchor = leadIdx
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
-	out.ID = core.GenerateID(core.IDPrefixForType(core.TAny))
-	out = core.WithPos(out, e.Tape.At(anchor))
+	core.SetDynamic(&out, true)
+	core.ThreadPos(&out, e.Tape.Ref(anchor))
 	// Seat the collapsed carrier at the window's first recordable literal
 	// and splice every later one out.
 	seat := -1
@@ -757,19 +756,19 @@ func checkModeFallbackPositions(e *core.Engine, n int) []int {
 	depth := 0
 	for i := e.Pointer + 1; remaining > 0 && i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if core.IsCloseParen(v) {
+		if core.IsCloseParen(&v) {
 			if depth == 0 {
 				break
 			}
 			depth--
 			continue
 		}
-		if core.IsOpenParen(v) {
+		if core.IsOpenParen(&v) {
 			depth++
 			continue
 		}
-		if core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
-			core.IsReturnCheck(v) || core.IsDefCleanup(v) {
+		if core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) ||
+			core.IsReturnCheck(&v) || core.IsDefCleanup(&v) {
 			continue
 		}
 		positions = append(positions, i)
@@ -814,19 +813,19 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 	// most `limit` compatible tokens.
 	for i := e.Pointer + 1; len(forward) < limit && i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if core.IsCloseParen(v) {
+		if core.IsCloseParen(&v) {
 			if depth == 0 {
 				break
 			}
 			depth--
 			continue
 		}
-		if core.IsOpenParen(v) {
+		if core.IsOpenParen(&v) {
 			depth++
 			continue
 		}
-		if core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
-			core.IsReturnCheck(v) || core.IsDefCleanup(v) {
+		if core.IsForward(&v) || core.IsMark(&v) || core.IsMove(&v) ||
+			core.IsReturnCheck(&v) || core.IsDefCleanup(&v) {
 			continue
 		}
 		if !fallbackTokenCompatible(s, len(forward), v) {
@@ -869,10 +868,10 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 // an Any carrier (the scoring's wildcard), a raw word the dispatch has not
 // yet resolved.
 func fallbackTokenCompatible(s *core.Signature, idx int, v core.Value) bool {
-	if core.IsWord(v) || v.Parent == nil || v.Parent.Equal(core.TAny) {
+	if core.IsWord(&v) || v.Parent() == nil || v.Parent().Equal(core.TAny) {
 		return true
 	}
-	return core.SigArgMatches(s, idx, v)
+	return core.SigArgMatches(s, idx, &v)
 }
 
 // checkModeAssumeSig is the recovery path for unmatched signatures in
@@ -910,17 +909,17 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 		// (e.g. a generic fn's surface-bounded `x:T` param inside
 		// AnalyseFnBody, design/legacy/GENERICS.10.ignore Phase 5) is visible to
 		// the S2 scan.
-		if core.IsWord(v) {
-			if wv, werr := core.AsWord(v); werr == nil {
+		if core.IsWord(&v) {
+			if wv, werr := core.AsWord(&v); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wv.Name); ok {
 					v = top
 				}
 			}
 		}
-		if v.Parent == nil {
+		if v.Parent() == nil {
 			continue
 		}
-		info, ok := core.SurfaceInfoOf(v.Parent)
+		info, ok := core.SurfaceInfoOf(v.Parent())
 		if !ok {
 			continue
 		}
@@ -934,7 +933,7 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 	if sinfo == nil {
 		return false, nil
 	}
-	undef, ok := shape.Data.(core.FnUndefInfo)
+	undef, ok := shape.Data().(core.FnUndefInfo)
 	if !ok || len(undef.Sigs) == 0 {
 		return false, nil
 	}
@@ -994,20 +993,24 @@ func recoverPoly(e *core.Engine, probe noMatchProber, w core.WordInfo, fn *core.
 // REGISTERED in. That is the dispatching registry for a core word, and for a
 // module word dispatched inside its own module body (e.Registry is then the
 // sub-registry). A module native reached from OUTSIDE as a fn value
-// (`Net.send-bytes`, execFnDefLiteral's recovery) carries its home on
-// fn.Registry, where the word IS a builtin, and its signatures are that
-// registry's own — the pair tryRecordPoly's identity guard checks
-// (2026-09-26). A bare word REBOUND by `unpack [send-bytes] Net` also carries
-// the home, but its signatures are copies, so the guard still refuses it and
-// it keeps "unmatched dispatch recovered".
-func recoveryPolyOwner(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo) *core.Registry {
-	if core.FnHomeForeign(e.Registry, fn) && fn.Registry.IsBuiltinWord(w.Name) {
-		return fn.Registry
+// (`Net.send-bytes`, execFnDefLiteral's recovery) has its home passed beside
+// it (core.FnHome — the dispatching registry for a fn that is not foreign),
+// where the word IS a builtin, and its signatures are that registry's own —
+// the pair tryRecordPoly's identity guard checks (2026-09-26). A bare word
+// REBOUND by `unpack [send-bytes] Net` also carries the home, but its
+// signatures are copies, so the guard still refuses it and it keeps
+// "unmatched dispatch recovered".
+func recoveryPolyOwner(e *core.Engine, w core.WordInfo, home *core.Registry) *core.Registry {
+	if home.IsBuiltinWord(w.Name) {
+		return home
 	}
 	return e.Registry
 }
 
-func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fallback *core.Signature, pos core.SrcPos) error {
+// checkModeAssumeSig recovers an unmatched dispatch of fn — a registry entry,
+// never a renamed or rebound copy of one — whose home (core.FnHome against
+// the dispatching registry) rides beside it.
+func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, home *core.Registry, fallback *core.Signature, pos core.SrcPos) error {
 	// Publish the dispatching word token for every ReturnsFn this recovery
 	// can invoke — the disjunct-partition combos, TryRecordRecoveredUserFn,
 	// the poly arms. The matched path publishes it in declaredReturnCarriers;
@@ -1016,7 +1019,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// PREVIOUS dispatch's cursor and keyed its region claim by that.
 	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
 	defer e.ClearRecoveryRaw()
-	owner := recoveryPolyOwner(e, w, fn)
+	owner := recoveryPolyOwner(e, w, home)
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
 	// with (or at least not contradicted by) the actual carrier
@@ -1045,10 +1048,10 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		compatible := true
 		for j, p := range pos {
 			av := e.Tape.At(p)
-			if av.Parent.Equal(core.TAny) {
+			if av.Parent().Equal(core.TAny) {
 				continue
 			}
-			if core.SigArgMatches(s, j, av) {
+			if core.SigArgMatches(s, j, &av) {
 				score++
 				continue
 			}
@@ -1607,7 +1610,7 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 	}
 	for i := 0; i+1 < len(residual); i++ {
 		v := residual[i]
-		if !fnBodiedTypeNode(v) || core.IsBareTypeNode(residual[i+1]) {
+		if !fnBodiedTypeNode(v) || core.IsBareTypeNode(&residual[i+1]) {
 			continue
 		}
 		// Prefer the SOURCE token over the node's own name: they agree for
@@ -1656,7 +1659,7 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 // CONTENT rather than on predicate-ness is what makes the multi-argument
 // combinators — `def K fn [[a:Any b:Any][Any][a]] end` — visible too.
 func fnBodiedTypeNode(v core.Value) bool {
-	if !core.IsBareTypeNode(v) {
+	if !core.IsBareTypeNode(&v) {
 		return false
 	}
 	content, ok := core.TypeContentOf(v)
@@ -1680,7 +1683,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 		return false
 	}
 	v := e.Tape.At(idx)
-	if v.ID == "" {
+	if core.IDOf(&v) == "" {
 		return false
 	}
 	// FOUR shapes place, and they are one decision with one record.
@@ -1706,9 +1709,9 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// carrier was never recorded at all: `((mk 1) 2)` placed interpreted and
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) &&
-		!core.IsFnValueResidual(v) && !es.MayBeFn(v.ID) {
-		if _, ok := es.MemberFnReadValue(v.ID); !ok {
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) &&
+		!core.IsFnValueResidual(v) && !es.MayBeFn(core.RecKeyOf(&v)) {
+		if _, ok := es.MemberFnReadValue(core.IDOf(&v)); !ok {
 			return false
 		}
 	}
@@ -1720,7 +1723,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	if cs.ParenPlacedFnIDs == nil {
 		cs.ParenPlacedFnIDs = map[string]bool{}
 	}
-	cs.ParenPlacedFnIDs[v.ID] = true
+	cs.ParenPlacedFnIDs[core.IDOf(&v)] = true
 	return true
 }
 
@@ -1738,15 +1741,15 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		av := e.Tape.At(p)
-		if core.IsWord(av) {
-			if wi, werr := core.AsWord(av); werr == nil {
+		if core.IsWord(&av) {
+			if wi, werr := core.AsWord(&av); werr == nil {
 				if top, ok := e.Registry.Defs.Top(wi.Name); ok {
 					av = top
 					e.Registry.Check.RecordUse(wi.Name)
 				}
 			}
 		}
-		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
+		if core.IsConcrete(&av) && av.Parent() != nil && av.Parent().ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
 			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
 				// The interpreter's failed match never evaluates the
 				// literal: its report renders it as written, so a trap built

@@ -9,7 +9,7 @@ import (
 // withID stamps an identity on a value built outside a check pass, where
 // core.NewValueRaw leaves it empty.
 func withID(v core.Value, id string) core.Value {
-	v.ID = id
+	core.SetID(&v, id)
 	return v
 }
 
@@ -81,9 +81,9 @@ func TestRegionDrivableInPlaceTokens(t *testing.T) {
 func TestVariadicSiblingLead(t *testing.T) {
 	es := NewEmitState()
 	a, b, c := withID(core.NewInteger(1), "a"), withID(core.NewInteger(2), "b"), withID(core.NewInteger(3), "c")
-	es.producedBy[a.ID] = producer{seq: 1, idx: 0}
-	es.producedBy[b.ID] = producer{seq: 1, idx: 1}
-	es.producedBy[c.ID] = producer{seq: 2, idx: 0}
+	es.stampProduced(&a, 1, 0)
+	es.stampProduced(&b, 1, 1)
+	es.stampProduced(&c, 2, 0)
 
 	if es.variadicSiblingLead([]core.Value{a, b}) {
 		t.Error("a fixed-count call's results are not settled by this rule")

@@ -73,7 +73,7 @@ func (s selfKnowledge) deps() native.NativeFunc {
 				}
 				seen := map[string]bool{}
 				var names []string
-				native.WalkBodyWords(body.Slice(), func(w native.WordInfo, _ native.Value) {
+				native.WalkBodyWords(body.Elems(), func(w native.WordInfo, _ native.Value) {
 					if w.Name == "" || seen[w.Name] {
 						return
 					}
@@ -223,7 +223,7 @@ func (s selfKnowledge) body() native.NativeFunc {
 				for _, sig := range fn.OwnSigs() {
 					if len(sig.Body()) > 0 {
 						body := native.NewList(append([]native.Value(nil), sig.Body()...))
-						body.Quoted = true
+						native.SetQuoted(&body, true)
 						return []native.Value{body}, nil
 					}
 				}

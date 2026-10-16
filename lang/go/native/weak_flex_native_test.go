@@ -199,7 +199,7 @@ func TestWeakReturnsFnsArityGuards(t *testing.T) {
 		{"append xml", weakAppendXmlReturns, TWeakFlexXml},
 	} {
 		out := tc.fn(nil, r)
-		if len(out) != 1 || !out[0].Parent.Equal(tc.want) {
+		if len(out) != 1 || !out[0].Parent().Equal(tc.want) {
 			t.Errorf("%s: guard residual = %v, want one carrier of the declared weak type", tc.name, out)
 		}
 	}

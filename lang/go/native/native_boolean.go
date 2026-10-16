@@ -65,7 +65,7 @@ var booleanNatives = []NativeFunc{
 // anyHandler returns true iff any element of the list is truthy.
 // Empty list returns false (the identity for OR).
 func anyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return []Value{NewBoolean(false)}, nil
 	}
 	list, _ := AsList(args[0])
@@ -81,7 +81,7 @@ func anyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 // allHandler returns true iff every element of the list is truthy.
 // Empty list returns true (the identity for AND).
 func allHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return []Value{NewBoolean(true)}, nil
 	}
 	list, _ := AsList(args[0])
@@ -125,7 +125,7 @@ func operandJoinReturns(args []Value, _ *Registry) []Value {
 // selection is unknown, so it falls back to the operand join — unchanged.
 func foldOrJoin(handler func([]Value, map[string]Value, []Value, *Registry) ([]Value, error)) func([]Value, *Registry) []Value {
 	return func(args []Value, r *Registry) []Value {
-		if len(args) == 2 && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if len(args) == 2 && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			if out, err := handler(args, nil, nil, r); err == nil && len(out) == 1 {
 				return out
 			}

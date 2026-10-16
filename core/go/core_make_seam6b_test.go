@@ -138,9 +138,9 @@ func TestS6b0ContainsSharedMutableCarrier(t *testing.T) {
 func TestS6b0FreshenDefaultNilStorePayload(t *testing.T) {
 	// A typed-nil *StoreInstanceInfo payload: IsStore matches, AsStore
 	// yields a nil pointer — FreshenDefault must return v unchanged.
-	v := Value{Parent: TStore, Data: (*StoreInstanceInfo)(nil)}
+	v := Value{d: &Datum{Parent: TStore, Data: (*StoreInstanceInfo)(nil)}}
 	out := FreshenDefault(v)
-	if out.Data != v.Data {
+	if out.Data() != v.Data() {
 		t.Error("nil store payload must pass through unchanged")
 	}
 }
@@ -150,7 +150,7 @@ func TestS6b0FreshenDefaultNilBackedFlexList(t *testing.T) {
 	// guard returns the value unchanged.
 	v := NewFlexList(nil)
 	out := FreshenDefault(v)
-	if out.Data != v.Data {
+	if out.Data() != v.Data() {
 		t.Error("nil-backed flex list must pass through unchanged")
 	}
 }
@@ -160,7 +160,7 @@ func TestS6b0FreshenDefaultFlexMapCopies(t *testing.T) {
 	m.Set("k", NewInteger(3))
 	v := NewFlexMap(m)
 	out := FreshenDefault(v)
-	if out.Data == v.Data {
+	if out.Data() == v.Data() {
 		t.Fatal("flex map default must be freshened to a new payload")
 	}
 	om, err := AsMutableMap(out)
@@ -394,7 +394,7 @@ func TestS6b0ResolveFieldTypeWordUnbound(t *testing.T) {
 	r := newTestRegistry(t)
 	w := NewWord("S6b0Und")
 	out := ResolveFieldType(r, w)
-	if !IsWord(out) {
+	if !IsWord(&out) {
 		t.Errorf("unbound capitalised word must pass through, got %v", out)
 	}
 }

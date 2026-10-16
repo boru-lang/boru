@@ -14,8 +14,8 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '267526902222705605');
-INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '4288490158176844919');
+INSERT INTO input_files VALUES ('../AGENTS.md', '6843024056992995220', 15419);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
 INSERT INTO input_files VALUES ('../STYLE-GUIDE.md', '3527342302034149151', 16295);
@@ -45,16 +45,16 @@ INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '59656315
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
-INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '3764270809544189057', 17644);
+INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '5304747189411776299', 18796);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '2574920545089865532', 183827);
 INSERT INTO input_files VALUES ('../design/NUR-ROUND6-HANDOVER.0.md', '8014059356792532768', 14152);
 INSERT INTO input_files VALUES ('../design/NUR-RUN-HANDOFF.0.md', '2640723508142864479', 280357);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '6362463872929681453', 16140);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7042806167894054599', 119208);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '8426899337155038574', 123167);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
-INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '4697432564749662338', 31160);
+INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '4923243313778157816', 61324);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
 INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
@@ -72,16 +72,17 @@ INSERT INTO input_files VALUES ('../design/legacy/TYPE-REPRESENTATION.1.ignore',
 INSERT INTO input_files VALUES ('../design/legacy/checker-compiler-completeness-review.0.ignore', '5006798924669363812', 44251);
 INSERT INTO input_files VALUES ('../editors/tree-sitter/bindings/go/go.mod', '8359550297204300245', 134);
 INSERT INTO input_files VALUES ('../eng/go/go.mod', '1395838019470277805', 800);
-INSERT INTO input_files VALUES ('../go.work', '3757042855308333246', 546);
+INSERT INTO input_files VALUES ('../go.work', '7270614868522160120', 565);
 INSERT INTO input_files VALUES ('../lang/go/go.mod', '729147395552432810', 2463);
 INSERT INTO input_files VALUES ('../parser/go/go.mod', '8990721982208133206', 350);
 INSERT INTO input_files VALUES ('../test/go/go.mod', '5812574713479453703', 3027);
 INSERT INTO input_files VALUES ('../test/solardemo/go.mod', '8784937342672483810', 59);
 INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425', 1242);
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
+INSERT INTO input_files VALUES ('../tools/vetcopies/go.mod', '6319204921462677590', 498);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
-INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6585610741718224556', 102676);
+INSERT INTO input_files VALUES ('<go tree: modules + packages>', '3995991076067646553', 646);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '2680823283954252547', 102941);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -227,6 +228,10 @@ INSERT INTO sources VALUES ('src:gomod:tools-piecetool', 'text', 'tools/piecetoo
   "derived_from": "code",
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:gomod:tools-vetcopies', 'text', 'tools/vetcopies/go.mod', 'tools/vetcopies go.mod', NULL, 'gomod-tools-vetcopies', 'primary', '{
+  "derived_from": "code",
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO sources VALUES ('src:gomod:wpg', 'text', 'wpg/go.mod', 'wpg go.mod', NULL, 'gomod-wpg', 'primary', '{
   "derived_from": "code",
   "repository": "boru-lang/boru"
@@ -321,7 +326,7 @@ INSERT INTO entity_attributes VALUES ('ent:Document:1913611373576952100', 'role'
 INSERT INTO entities VALUES ('ent:Document:203047846460430642', 'Document', 'design/DECLARATIVE-GRAMMAR.0.md', 'design/declarative-grammar.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:203047846460430642', 'role', 'the shared declarative tabnas grammar artifact (parser/go/grammar.json): contract, loader pair, and the batch-migration state');
 INSERT INTO entities VALUES ('ent:Document:203462101593576208', 'Document', 'design/VALUE-NO-COPY.0.md', 'design/value-no-copy.0.md', 'accepted');
-INSERT INTO entity_attributes VALUES ('ent:Document:203462101593576208', 'role', 'the review of the maintainer''s 2026-10-09 policy that Value structures are never copied and may be modified in situ, written before any code changed: the policy is three changes in one sentence (a representation change, since core.Value is a 104-byte struct go vet counts 15,235 non-test single-value copies of, bulk slice copies on top; a storage change, since the per-occurrence state a copy protects must move from the shared value into the slot that holds it; and a language change for list and map value semantics), the seven hazard classes in-situ writes would hit, the design the plan converges on (an immutable shared value, an occurrence record in each slot, contents constructed per evaluation), a phased plan with a go vet no-copy ratchet, the decisions it needs, and the estimate: copy and zero routines are 23-25% of CPU on both lanes, pointer receivers alone gave 11%, phases 1-3 are estimated at 20-30%, and a heap-allocated pointer representation measured 2.7x slower than today on a copy-dominated loop. Its companions are VALUE-NO-COPY-EXCEPTIONS.0.md (the sanctioned copies) and VALUE-NO-COPY-MEASUREMENTS.0.md');
+INSERT INTO entity_attributes VALUES ('ent:Document:203462101593576208', 'role', 'the review of the maintainer''s 2026-10-09 policy that Value structures are never copied and may be modified in situ, written before any code changed: the policy is three changes in one sentence (a representation change, since core.Value is a 104-byte struct go vet counts 15,235 non-test single-value copies of, bulk slice copies on top; a storage change, since the per-occurrence state a copy protects must move from the shared value into the slot that holds it; and a language change for list and map value semantics), the seven hazard classes in-situ writes would hit, the design the plan converges on (an immutable shared value, an occurrence record in each slot, contents constructed per evaluation), a phased plan with a go vet no-copy ratchet, the five decisions it needed (made on 2026-10-12: a new container sharing its elements is construction, lists and maps keep value semantics, phase 4 is decided on phase 3''s numbers, the sanctioned copies are approved as written, type Type = Value stays), and the estimate: copy and zero routines are 23-25% of CPU on both lanes, pointer receivers alone gave 11%, phases 1-3 are estimated at 20-30%, and a heap-allocated pointer representation measured 2.7x slower than today on a copy-dominated loop. Its companions are VALUE-NO-COPY-EXCEPTIONS.0.md (the sanctioned copies) and VALUE-NO-COPY-MEASUREMENTS.0.md');
 INSERT INTO entities VALUES ('ent:Document:208373100487963948', 'Document', 'design/PAREN-RESTEP-RULE.0.md', 'design/paren-restep-rule.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:208373100487963948', 'role', 'the measured statement of when a paren-collapsed function is PLACED and when it is re-stepped into a CALL, superseding NUR101''s 2026-08-26 place-uniformly ruling whose premise it falsifies. The rule: a Function a paren placed is re-stepped exactly when it leads TWO OR MORE survivors of an enclosing group that closes with a paren rewind — a user paren, an fn frame, or an if/for/do body — while the program top level, list literals and map literals do not rewind; placement is the one-survivor case and the enclosing group is a SECOND decision taken one paren out, not a context that modifies the first. The ruling had been implemented by deleting fnReturnPark''s survivor-count clause on the reasoning that the count was never the right question; it is, and deleting it turned (x:Integer => [x mul 2] 5) from 10 into fn (Integer) 5 and broke seven suites. The defect was the COMPILER''S, in both directions, and there were five silent miscompiles: (mk 1) 2 and (mk2 5) 10 applied what the interpreter places, while [((mk 1) 2)] and two if-arm shapes placed what it applies — ((mk 1) 2) compiling correctly at the top level only by ACCIDENT, because the outer paren collapses and the pair reaches the program residual where the carrier arm applies it. The fix is a matched PAIR of records taken at the collapse, the last moment the two spellings are distinguishable — ParenPlacedFnIDs and the new ParenReSteppedFnIDs — read by the residual lowering, the branch-arm merge and the list-literal assembly, which is what lets [(mk 1) 2] keep compiling while [((mk 1) 2)], byte-identical in its elements, refuses. Value divergences on the 16-shape probe: five to zero. Also the finding of how they survived a 100%-covered parity suite (NUR106): Stage J flipped lang.Run to the compiled path and 75 parity assertions across five files still read it as their interpreter oracle, comparing the compiled lane against itself; the sweep to RunInterp surfaced NUR107 on the very test that had pinned that claim as non-reproducing');
 INSERT INTO entities VALUES ('ent:Document:2160474245302207298', 'Document', 'design/FULL-COMPILATION-ASSESSMENT.0.md', 'design/full-compilation-assessment.0.md', 'accepted');
@@ -342,7 +347,7 @@ INSERT INTO entity_attributes VALUES ('ent:Document:373024332343379636', 'role',
 INSERT INTO entities VALUES ('ent:Document:3904106568037504161', 'Document', 'AGENTS.md', 'agents.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:3955423872539901697', 'Document', 'HOWTO.md', 'howto.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:4099203920617049978', 'Document', 'design/INTERPRETER-PERF-HANDOVER.0.md', 'design/interpreter-perf-handover.0.md', 'accepted');
-INSERT INTO entity_attributes VALUES ('ent:Document:4099203920617049978', 'role', 'the handover page for the interpreter-performance session of 2026-10-08/09: main at 6780a6030 after #452, #532 (fn-call paths inline on the caller''s tape, twelve fn kinds 41% faster on the interpreter lane) and #533 (the collection words driven as loops on the tape, container literals as sealed regions, a native''s tail body run returned as a call region); which natives still run a sub-engine and why; the Value no-copy policy the maintainer set on 2026-10-09, reviewed but not started, with where to begin; the seven decisions waiting on the maintainer (five from the no-copy review, the leaf rule''s call-time hole recorded as U16, the callback seam''s contract); the follow-ups found and not done; answers given in the session that exist nowhere else; the lessons that cost time; and the saved work in design/handover/interpreter-perf/ (four copy inventories, a vet no-copy marker patch, a pointer-receiver patch, nine two-lane probe corpora with their outputs on main, and every scratch harness and benchmark source)');
+INSERT INTO entity_attributes VALUES ('ent:Document:4099203920617049978', 'role', 'the handover page for the interpreter-performance session of 2026-10-08/09: main at 6780a6030 after #452, #532 (fn-call paths inline on the caller''s tape, twelve fn kinds 41% faster on the interpreter lane) and #533 (the collection words driven as loops on the tape, container literals as sealed regions, a native''s tail body run returned as a call region); which natives still run a sub-engine and why; the Value no-copy policy the maintainer set on 2026-10-09, reviewed but not started, with where to begin; the seven decisions it handed to the maintainer (the no-copy review''s five, made on 2026-10-12; the leaf rule''s call-time hole recorded as U16 and the callback seam''s contract, still open); the follow-ups found and not done; answers given in the session that exist nowhere else; the lessons that cost time; and the saved work in design/handover/interpreter-perf/ (four copy inventories, a vet no-copy marker patch, a pointer-receiver patch, nine two-lane probe corpora with their outputs on main, and every scratch harness and benchmark source)');
 INSERT INTO entities VALUES ('ent:Document:4163489813681141089', 'Document', 'README.md', 'readme.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:4472215996454426427', 'Document', 'design/legacy/GO-MODULE-GRAPH.0.ignore', 'design/legacy/go-module-graph.0.ignore', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:4472215996454426427', 'role', 'the measured Go-side snapshot: the module inventory, the direct-require graph and its twelve-edge transitive reduction, and per-module coverage in both columns — the merged ADR-008 gate and each module''s own standalone suite');
@@ -575,6 +580,11 @@ INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6519065918608370232', 
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6519065918608370232', 'parent_module', 'wpg');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6519065918608370232', 'path', 'wpg/wasm');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6519065918608370232', 'unit', 'go-package');
+INSERT INTO entities VALUES ('ent:SoftwareModule:6593066646693189802', 'SoftwareModule', 'tools/vetcopies module', 'tools/vetcopies module', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6593066646693189802', 'go_module', 'github.com/boru-lang/boru/tools/vetcopies');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6593066646693189802', 'path', 'tools/vetcopies');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6593066646693189802', 'unit', 'go-module');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6593066646693189802', 'workspace_member', 'true');
 INSERT INTO entities VALUES ('ent:SoftwareModule:6620088040961392708', 'SoftwareModule', 'test/go/sweep package', 'test/go/sweep package', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6620088040961392708', 'go_module', 'github.com/boru-lang/boru/test/go');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:6620088040961392708', 'parent_module', 'test/go');
@@ -723,6 +733,8 @@ INSERT INTO assertions VALUES ('ast:2688597691752512641', 'ent:Document:37302433
 INSERT INTO assertion_evidence VALUES ('ast:2688597691752512641', 'src:full-compilation', 'title', 'Full compilation — the total lowering design', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:2717924021842468202', 'ent:Document:5313783338663858074', 'supports', 'entity', 'ent:SoftwareModule:6880687338933514154', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:2717924021842468202', 'src:reload-invalidation', '5. The design', 'replace the per-invoke DepSnap walk with a per-ref valid', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:2723634099132606794', 'ent:SoftwareModule:6593066646693189802', 'has_attribute', 'literal', NULL, '"github.com/boru-lang/boru/tools/vetcopies"', 'String', 'go-module-path', NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:2723634099132606794', 'src:gomod:tools-vetcopies', 'module directive', 'module github.com/boru-lang/boru/tools/vetcopies', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:2842860731666198978', 'ent:SoftwareModule:5043963598097582234', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:2842860731666198978', 'src:go-tree', 'test/go/oraclegate', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:2885829807177355299', 'ent:Document:1850714206785125371', 'supports', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -837,6 +849,8 @@ INSERT INTO assertions VALUES ('ast:4950098273738144333', 'ent:SoftwareModule:45
 INSERT INTO assertion_evidence VALUES ('ast:4950098273738144333', 'src:gomod:test-solardemo', 'module directive', 'module github.com/boru-lang/boru/test/solardemo', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:496242448796722317', 'ent:SoftwareModule:6620088040961392708', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:496242448796722317', 'src:go-tree', 'test/go/sweep', NULL, 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:5120386744242056981', 'ent:SoftwareModule:6593066646693189802', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:5120386744242056981', 'src:go-work', 'use block', './tools/vetcopies', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5214003688923155039', 'ent:SoftwareModule:6706536563979604982', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:5214003688923155039', 'src:go-work', 'use block', './parser/go', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5232848138471645414', 'ent:SoftwareModule:1512478893295979458', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);

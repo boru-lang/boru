@@ -27,11 +27,11 @@ import (
 // Records go through the standard value→any path; Arrays, Tables and other
 // Ideals are projected through their IdealConverter.
 func docToAny(v native.Value) any {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return nil
 	}
 	switch {
-	case v.Parent.ConformsTo(native.TMap):
+	case v.Parent().ConformsTo(native.TMap):
 		m, err := native.AsMap(v)
 		if err != nil || m == nil { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
 			return native.ValueToAny(v)
@@ -42,11 +42,11 @@ func docToAny(v native.Value) any {
 			out[k] = docToAny(vv)
 		}
 		return out
-	case v.Parent.ConformsTo(native.TList):
+	case v.Parent().ConformsTo(native.TList):
 		// Plain List, or a Table (a TList value carrying TableData that AsList
 		// can't read — project its rows via the Ideal converter).
 		if lst, err := native.AsList(v); err == nil {
-			return sliceToAny(lst.Slice())
+			return sliceToAny(lst.Elems())
 		}
 		return idealListToAny(v)
 	case native.IsClassInstance(v):
@@ -79,7 +79,7 @@ func idealListToAny(v native.Value) any {
 	if err != nil {
 		return native.ValueToAny(v)
 	}
-	return sliceToAny(lst.Slice())
+	return sliceToAny(lst.Elems())
 }
 
 func sliceToAny(elems []native.Value) []any {

@@ -45,8 +45,8 @@ const (
 func Shape(v Value) ValueShape {
 	// Special root types first — they're identified by lattice node,
 	// not by payload shape.
-	t := v.Parent
-	if v.Data == nil && !v.Carrier && v.ID != "" {
+	t := v.Parent()
+	if v.Data() == nil && !v.Carrier() && IDOf(&v) != "" {
 		t = &v
 	}
 	if t.Equal(TNever) {
@@ -65,7 +65,7 @@ func Shape(v Value) ValueShape {
 	// Payload-shaped values come next — they win over plain Data==nil
 	// classification because a Disjunct/DepScalar/FnUndef payload is
 	// the discriminator, not the Parent.
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return ShapeDisjunct
 	}
 	if IsNegation(v) {
@@ -74,16 +74,16 @@ func Shape(v Value) ValueShape {
 	if v.IsDepScalar() {
 		return ShapeDepScalar
 	}
-	if _, ok := v.Data.(FnUndefInfo); ok {
+	if _, ok := v.Data().(FnUndefInfo); ok {
 		return ShapeFnUndef
 	}
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data().(*FnDefInfo); ok {
 		return ShapeFunction
 	}
-	if _, ok := v.Data.(ClassInstanceInfo); ok {
+	if _, ok := v.Data().(ClassInstanceInfo); ok {
 		return ShapeObjectInstance
 	}
-	if _, ok := v.Data.(ClassTypeInfo); ok {
+	if _, ok := v.Data().(ClassTypeInfo); ok {
 		return ShapeObjectType
 	}
 
@@ -93,8 +93,8 @@ func Shape(v Value) ValueShape {
 	// a concrete FlexMap carries a MapPayload and lands on ShapeMap.
 	if t.Equal(TMap) || t.Equal(TFlexMap) || t.Equal(TWeakFlexMap) {
 		switch {
-		case v.Data == nil:
-			if v.Carrier {
+		case v.Data() == nil:
+			if v.Carrier() {
 				return ShapeCarrier
 			}
 			return ShapeTypeLiteral
@@ -102,7 +102,7 @@ func Shape(v Value) ValueShape {
 			return ShapeRecord
 		case IsOptionsType(v):
 			return ShapeOptions
-		case IsTypedMap(v):
+		case IsTypedMap(&v):
 			return ShapeTypedMap
 		default:
 			return ShapeMap
@@ -113,14 +113,14 @@ func Shape(v Value) ValueShape {
 	// FlexList carries *FlexListData and lands on ShapeList.
 	if t.Equal(TList) || t.Equal(TFlexList) || t.Equal(TWeakFlexList) {
 		switch {
-		case v.Data == nil:
-			if v.Carrier {
+		case v.Data() == nil:
+			if v.Carrier() {
 				return ShapeCarrier
 			}
 			return ShapeTypeLiteral
 		case IsTableType(v):
 			return ShapeTable
-		case IsTypedList(v):
+		case IsTypedList(&v):
 			return ShapeTypedList
 		default:
 			return ShapeList
@@ -128,8 +128,8 @@ func Shape(v Value) ValueShape {
 	}
 
 	// Bare type literal vs carrier vs concrete scalar.
-	if v.Data == nil {
-		if v.Carrier {
+	if v.Data() == nil {
+		if v.Carrier() {
 			return ShapeCarrier
 		}
 		return ShapeTypeLiteral

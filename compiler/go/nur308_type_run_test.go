@@ -97,7 +97,7 @@ func TestRecordTypedBindRun(t *testing.T) {
 
 	es := NewEmitState()
 	out, ok := es.RecordTypedBindRun(spec, cons, in, in, core.SrcPos{})
-	if !ok || out.ID == in.ID {
+	if !ok || core.IDOf(&out) == core.IDOf(&in) {
 		t.Fatalf("a concrete value over an inline constraint records, under a fresh ID: %v %v", out, ok)
 	}
 	evs := es.frames[0]

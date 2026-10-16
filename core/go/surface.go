@@ -34,7 +34,7 @@ func NewSurfaceType(t *Type, info *SurfaceInfo) Value {
 
 // IsSurfaceType reports whether v carries a surface payload.
 func IsSurfaceType(v Value) bool {
-	_, ok := v.Data.(*SurfaceInfo)
+	_, ok := v.Data().(*SurfaceInfo)
 	return ok
 }
 
@@ -42,9 +42,9 @@ func IsSurfaceType(v Value) bool {
 // shared across every copy of the surface's type literal — mutating
 // Conform through it is how `exposes` registers conformance.
 func AsSurfaceType(v Value) (*SurfaceInfo, error) {
-	info, ok := v.Data.(*SurfaceInfo)
+	info, ok := v.Data().(*SurfaceInfo)
 	if !ok {
-		return nil, fmt.Errorf("AsSurfaceType: not a surface type value (got %T)", v.Data)
+		return nil, fmt.Errorf("AsSurfaceType: not a surface type value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -58,13 +58,13 @@ func SubstituteSelf(spec FnSigSpec, node *Type) FnSigSpec {
 		Returns: make([]*Type, len(spec.Returns)),
 	}
 	for i, p := range spec.Params {
-		if p.Type != nil && p.Type.ID == TSelf.ID {
+		if p.Type != nil && IDOf(p.Type) == IDOf(TSelf) {
 			p.Type = node
 		}
 		out.Params[i] = p
 	}
 	for i, t := range spec.Returns {
-		if t != nil && t.ID == TSelf.ID {
+		if t != nil && IDOf(t) == IDOf(TSelf) {
 			t = node
 		}
 		out.Returns[i] = t
@@ -97,7 +97,7 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("distinct surfaces do not unify", a, b)
 	}
-	if IsConcrete(other) {
+	if IsConcrete(&other) {
 		if other.Is(info.Type) {
 			return other, nil
 		}
@@ -105,19 +105,19 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 	}
 	var node *Type
 	switch {
-	case IsClassType(other):
+	case IsClassType(&other):
 		oi, _ := AsClassType(other)
 		node = oi.Type
-	case IsBareTypeNode(other):
+	case IsBareTypeNode(&other):
 		node = &other
-	case other.Carrier:
+	case other.Carrier():
 		// A check-mode carrier denotes its Parent type — so
 		// `def x:Shape (make Circle {…})` unifies statically when
 		// Circle exposes Shape.
-		node = other.Parent
+		node = other.Parent()
 	}
-	for p := node; p != nil; p = p.Parent {
-		if info.Conform[p.ID] {
+	for p := node; p != nil; p = p.Parent() {
+		if info.Conform[IDOf(p)] {
 			return other, nil
 		}
 	}
@@ -155,11 +155,11 @@ func (*surfaceUnifier) ContentMembership() {}
 // set. Type literals pass through to the default walk — a bare
 // Shape-literal is "the type itself", not an inhabitant.
 func (s *surfaceUnifier) Match(v Value, t *Type) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(s.prev).Match(v, t)
 	}
-	for p := v.Parent; p != nil; p = p.Parent {
-		if s.info.Conform[p.ID] {
+	for p := v.Parent(); p != nil; p = p.Parent() {
+		if s.info.Conform[IDOf(p)] {
 			return true
 		}
 	}
@@ -183,8 +183,8 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// with the Circle node), exactly the cases the surface fold
 	// decided for the body. A same-node (or node-free) pair settles
 	// structurally.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(s)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(s)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(s)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(s)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}
@@ -192,13 +192,13 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	if bSelf {
 		node, candidate = b, a
 	}
-	if IsBareTypeNode(candidate) {
+	if IsBareTypeNode(&candidate) {
 		// Type-level containment: the candidate NODE (or an ancestor)
 		// must be in the conformance set — the literal-vs-literal walk
 		// unifySurface runs for the body.
 		cn := &candidate
-		for p := cn; p != nil; p = p.Parent {
-			if s.info.Conform[p.ID] {
+		for p := cn; p != nil; p = p.Parent() {
+			if s.info.Conform[IDOf(p)] {
 				return candidate, nil
 			}
 		}
@@ -225,7 +225,7 @@ func (s *surfaceUnifier) Format(v Value) string {
 // the check-mode dispatch path (S2) to type a required operation on a
 // surface-typed carrier via the contract's shape.
 func SurfaceInfoOf(t *Type) (*SurfaceInfo, bool) {
-	for p := t; p != nil; p = p.Parent {
+	for p := t; p != nil; p = p.Parent() {
 		if su, ok := p.Behavior().(*surfaceUnifier); ok {
 			return su.info, true
 		}

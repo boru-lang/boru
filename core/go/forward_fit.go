@@ -44,7 +44,7 @@ func ForwardValueFits(sig *Signature, k int, v Value) bool {
 		return true
 	}
 	expected := SigArgType(sig, k)
-	if !SigArgMatches(sig, k, v) && !expected.Equal(TAny) {
+	if !SigArgMatches(sig, k, &v) && !expected.Equal(TAny) {
 		return false
 	}
 	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[k]
@@ -99,7 +99,7 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 	if nFwd == 0 || match.Sig == nil || nFwd > len(match.Args) {
 		return nil
 	}
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	if err != nil {
 		return nil
 	}
@@ -122,13 +122,13 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 	var out map[int][]ForwardFit
 	for k := 0; k < nFwd; k++ {
 		a := match.Args[k]
-		if (!a.Carrier && !a.Dynamic) || fitProven(match.Sig, k, a) {
+		if (!a.Carrier() && !IsDynamic(&a)) || fitProven(match.Sig, k, a) {
 			continue
 		}
 		fits := []ForwardFit{}
 		for i := range fn.Signatures {
 			s := &fn.Signatures[i]
-			if s.Fallback || k >= s.TotalArgs() || !forwardReaches(s, w, k) || !SigArgMatches(s, k, a) || fitProven(s, k, a) ||
+			if s.Fallback || k >= s.TotalArgs() || !forwardReaches(s, w, k) || !SigArgMatches(s, k, &a) || fitProven(s, k, a) ||
 				!altViable(s, k, stack, unbounded) {
 				continue
 			}
@@ -165,7 +165,7 @@ func (e *Engine) stackBeneath(match *MatchResult, nFwd int) (stack []Value, unbo
 	stack = append(stack, match.Args[nFwd:]...)
 	for i := len(below) - n - 1; i >= 0; i-- {
 		v := e.Tape.At(below[i])
-		if v.ID != "" && rec.RegionResult(v.ID) {
+		if IDOf(&v) != "" && rec.RegionResult(RecKeyOf(&v)) {
 			return nil, true
 		}
 		stack = append(stack, v)
@@ -184,7 +184,7 @@ func altViable(sig *Signature, k int, stack []Value, unbounded bool) bool {
 		return false
 	}
 	for j := 0; j < need && j < len(stack); j++ {
-		if !SigArgMatches(sig, k+j, stack[j]) {
+		if !SigArgMatches(sig, k+j, &stack[j]) {
 			return false
 		}
 	}
@@ -210,7 +210,7 @@ func fitProven(sig *Signature, k int, a Value) bool {
 	if expected.Equal(TAny) {
 		return true
 	}
-	return !a.Dynamic && a.Parent != nil && !a.Parent.Equal(TAny) && a.Parent.ConformsTo(expected)
+	return !IsDynamic(&a) && a.Parent() != nil && !a.Parent().Equal(TAny) && a.Parent().ConformsTo(expected)
 }
 
 // publishForwardFits publishes forwardFits for the dispatch's record and

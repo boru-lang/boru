@@ -45,7 +45,7 @@ func flowBody() []core.Value {
 // not a word's code body.
 func flowArm(items ...core.Value) core.Value {
 	l := core.NewList(items)
-	l.Eval = true
+	core.SetEval(&l, true)
 	return l
 }
 
@@ -138,7 +138,7 @@ func TestCallFlowOps(t *testing.T) {
 func TestFallbackFlowOps(t *testing.T) {
 	es := NewEmitState()
 	read := deoptLit(core.NewList(nil), 30)
-	read.ID = "fb-read"
+	core.SetID(&read, "fb-read")
 	es.readPos = map[string]core.SrcPos{"fb-read": deoptAt(9)}
 	es.fallbacks = []core.FallbackSpan{{Tokens: []core.Value{deoptTok("do", 7), read}}}
 	got := (&lowerer{es: es}).fallbackFlowOps(&emitFallback{spanIdx: 0})

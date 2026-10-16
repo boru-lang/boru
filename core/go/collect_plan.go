@@ -103,7 +103,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	// key in the imported map), and inspect-style name capture.
 	preferWordSig := false
 	if pointer+1 < win.Len() {
-		next := win.At(pointer + 1)
+		next := win.Ref(pointer + 1)
 		if IsWord(next) {
 			preferWordSig = true
 		}
@@ -210,7 +210,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			if len(resolved) >= remaining {
 				canStack := true
 				for j := 0; j < remaining; j++ {
-					stackVal := resolved[len(resolved)-1-j]
+					stackVal := &resolved[len(resolved)-1-j]
 					if !SigArgMatches(sig, fwd+j, stackVal) {
 						canStack = false
 						break
@@ -271,7 +271,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		gradualStack := false
 		for j := 0; j < remaining; j++ {
 			ri := len(resolvedIdx) - 1 - j
-			stackVal := resolved[ri]
+			stackVal := &resolved[ri]
 			sigIdx := fwd + j
 
 			// /q is a forward-only rule (see Signature.QuoteArgs doc).
@@ -281,7 +281,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// The branch below is defensive only — a stack Atom matches
 			// an [Atom/q, ...] sig via the regular sigTypeMatches path
 			// just below, no /q involvement required.
-			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Parent.Equal(TWord) {
+			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Parent().Equal(TWord) {
 				if !TAtom.ConformsTo(SigArgType(sig, sigIdx)) {
 					allMatch = false
 					break
@@ -294,7 +294,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// Any-conforms-to-everything rule — it belongs to a value overload.
 			// Mirrors the forward-scan and positionalMatch /q guards. Inert at
 			// runtime (operands are concrete there).
-			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier && !IsConcrete(stackVal) && !stackVal.Parent.ConformsTo(TAtom) {
+			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier() && !IsConcrete(stackVal) && !stackVal.Parent().ConformsTo(TAtom) {
 				allMatch = false
 				break
 			}
@@ -304,14 +304,14 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				// from it might have matched here (and been grabbed). Remember
 				// it; if a forward-collecting overload is then selected, the
 				// split is ambiguous (noteSplit at the return points).
-				if checkActive && j == 0 && reg.analysisMixedConform(stackVal, SigArgType(sig, sigIdx)) {
+				if checkActive && j == 0 && reg.analysisMixedConform(*stackVal, SigArgType(sig, sigIdx)) {
 					mixedCarrierRejectIdx = resolvedIdx[ri]
 				}
 				allMatch = false
 				break
 			}
 			isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[sigIdx]
-			if !isTypeArg && rejectsTypeLiteral(stackVal, SigArgType(sig, sigIdx)) {
+			if !isTypeArg && rejectsTypeLiteral(*stackVal, SigArgType(sig, sigIdx)) {
 				allMatch = false
 				break
 			}
@@ -383,8 +383,8 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 // unprovenStackOperand reports a stack operand matched on no proof — a
 // carrier whose static type does not conform to the slot, so the runtime
 // value may miss it (NUR305).
-func unprovenStackOperand(v Value, slot *Type) bool {
-	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
+func unprovenStackOperand(v *Value, slot *Type) bool {
+	return !IsConcrete(v) && !v.Parent().ConformsTo(slot)
 }
 
 // gradualWindowAmbiguous reports a compile-pass window that took fwd forward
@@ -409,7 +409,7 @@ func allStackWindowAmbiguous(e *Engine, fn *FnDefInfo, w WordInfo, sig *Signatur
 			top, at = p, i
 		}
 	}
-	if at < 0 || !unprovenStackOperand(e.Tape.At(top), SigArgType(sig, at)) {
+	if at < 0 || !unprovenStackOperand(e.Tape.Ref(top), SigArgType(sig, at)) {
 		return false
 	}
 	si := len(fn.Signatures)

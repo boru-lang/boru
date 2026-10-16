@@ -35,7 +35,7 @@ func TestTorHandlerSimplifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TorHandler dup: %v", err)
 	}
-	if IsDisjunct(out[0]) {
+	if IsDisjunct(&out[0]) {
 		t.Error("duplicate union stayed a disjunct")
 	}
 	// Never is the identity.
@@ -43,7 +43,7 @@ func TestTorHandlerSimplifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TorHandler never: %v", err)
 	}
-	if IsDisjunct(out[0]) {
+	if IsDisjunct(&out[0]) {
 		t.Error("Never did not drop out of the union")
 	}
 	// Never tor Never collapses to Never.
@@ -72,12 +72,12 @@ func TestTorHandlerDeMorgan(t *testing.T) {
 
 func TestTorReturnsFn(t *testing.T) {
 	out := TorReturnsFn([]Value{NewTypeLiteral(TString), NewTypeLiteral(TInteger)}, nil)
-	if !IsDisjunct(out[0]) {
+	if !IsDisjunct(&out[0]) {
 		t.Errorf("TorReturnsFn = %v, want a disjunct", out[0])
 	}
 	// Wrong arity degrades to an Any carrier.
 	out = TorReturnsFn([]Value{NewTypeLiteral(TString)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TorReturnsFn bad arity = %v, want Any carrier", out[0])
 	}
 	// The De Morgan fold applies in carrier mode too.
@@ -115,7 +115,7 @@ func TestTandValuesDistributesOverDisjuncts(t *testing.T) {
 	union := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
 	// (Integer tor String) tand Integer = Integer.
 	got := TandValues(union, NewTypeLiteral(TInteger))
-	if IsDisjunct(got) || !(&got).Equal(TInteger) {
+	if IsDisjunct(&got) || !(&got).Equal(TInteger) {
 		t.Errorf("distribution = %v, want Integer", got)
 	}
 	// (Integer tor String) tand Boolean = Never.
@@ -125,7 +125,7 @@ func TestTandValuesDistributesOverDisjuncts(t *testing.T) {
 	// Disjunct-vs-disjunct cross product keeps both compatible arms.
 	other := NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TInteger)})
 	both := TandValues(union, other)
-	if !IsDisjunct(both) {
+	if !IsDisjunct(&both) {
 		t.Errorf("union tand union = %v, want a 2-alt disjunct", both)
 	}
 }
@@ -138,7 +138,7 @@ func TestTandValuesDeMorgan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("(tnot A) tand (tnot B) = %v, want a negation", got)
 	}
-	if !IsDisjunct(ni.Inner) {
+	if !IsDisjunct(&ni.Inner) {
 		t.Errorf("negation inner = %v, want (Integer tor String)", ni.Inner)
 	}
 }
@@ -176,11 +176,11 @@ func TestTandReturnsFn(t *testing.T) {
 	}
 	// A non-type operand degrades to the declared Any.
 	out = TandReturnsFn([]Value{NewInteger(1), NewTypeLiteral(TInteger)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TandReturnsFn concrete operand = %v, want Any carrier", out[0])
 	}
 	out = TandReturnsFn([]Value{NewTypeLiteral(TInteger)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TandReturnsFn bad arity = %v, want Any carrier", out[0])
 	}
 }
@@ -241,11 +241,11 @@ func TestTnotHandlerAndReturnsFn(t *testing.T) {
 		t.Errorf("TnotHandler = %v, want a negation", out[0])
 	}
 	cout := TnotReturnsFn([]Value{NewTypeLiteral(TString)}, nil)
-	if !IsNegation(cout[0]) || !cout[0].Carrier {
+	if !IsNegation(cout[0]) || !cout[0].Carrier() {
 		t.Errorf("TnotReturnsFn = %v, want a negation carrier", cout[0])
 	}
 	cout = TnotReturnsFn(nil, nil)
-	if !cout[0].Carrier || !cout[0].Parent.Equal(TAny) {
+	if !cout[0].Carrier() || !cout[0].Parent().Equal(TAny) {
 		t.Errorf("TnotReturnsFn bad arity = %v, want Any carrier", cout[0])
 	}
 }
@@ -309,21 +309,21 @@ func TestBoundToKind(t *testing.T) {
 func TestNewDepScalarValidation(t *testing.T) {
 	// Unsupported base → None-parented zero value.
 	v := NewDepScalar(DepGT, NewList(nil))
-	if !v.Parent.Equal(TNone) {
-		t.Errorf("list-bound DepScalar parent = %v, want None", v.Parent)
+	if !v.Parent().Equal(TNone) {
+		t.Errorf("list-bound DepScalar parent = %v, want None", v.Parent())
 	}
 	// Multi-bit kind does not decompose.
 	v = NewDepScalar(DepGT|DepLT, NewInteger(1))
-	if !v.Parent.Equal(TNone) {
-		t.Errorf("multi-bit DepScalar parent = %v, want None", v.Parent)
+	if !v.Parent().Equal(TNone) {
+		t.Errorf("multi-bit DepScalar parent = %v, want None", v.Parent())
 	}
 	// String base works.
 	sv := NewDepScalar(DepLT, NewString("m"))
-	if !sv.Parent.Equal(TString) || !sv.IsDepScalar() {
+	if !sv.Parent().Equal(TString) || !sv.IsDepScalar() {
 		t.Errorf("string DepScalar = %v", sv)
 	}
 	// AsDepScalar on a non-DepScalar errors.
-	if _, err := NewInteger(1).AsDepScalar(); err == nil {
+	if _, err := addrOf(NewInteger(1)).AsDepScalar(); err == nil {
 		t.Error("AsDepScalar on plain integer succeeded")
 	}
 }
@@ -466,7 +466,7 @@ func TestMakeDepScalarSig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gte handler: %v", err)
 	}
-	if !out[0].IsDepScalar() || !out[0].Parent.Equal(TInteger) {
+	if !out[0].IsDepScalar() || !out[0].Parent().Equal(TInteger) {
 		t.Errorf("gte result = %v", out[0])
 	}
 	// Concrete arg where the type literal belongs.
@@ -538,13 +538,13 @@ func TestInstalledDepScalarType(t *testing.T) {
 	if node == nil {
 		t.Fatal("W4bBig not bound")
 	}
-	if !NewInteger(100).Is(node) {
+	if !addrOf(NewInteger(100)).Is(node) {
 		t.Error("100 is not Big")
 	}
-	if NewInteger(5).Is(node) {
+	if addrOf(NewInteger(5)).Is(node) {
 		t.Error("5 is Big")
 	}
-	if NewString("hi").Is(node) {
+	if addrOf(NewString("hi")).Is(node) {
 		t.Error("'hi' is Big")
 	}
 	// A carrier already tagged as the predicate type passes nominally.
@@ -553,7 +553,7 @@ func TestInstalledDepScalarType(t *testing.T) {
 		t.Error("Big carrier rejected by Big")
 	}
 	// The bare literal passes through the default walk (not an inhabitant).
-	if NewTypeLiteral(node).Is(node) != true {
+	if addrOf(NewTypeLiteral(node)).Is(node) != true {
 		t.Log("bare literal routed through the default walk")
 	}
 }
@@ -568,10 +568,10 @@ func TestInstalledDisjunctType(t *testing.T) {
 	if node == nil {
 		t.Fatal("W4bIntOrStr not bound")
 	}
-	if !NewInteger(1).Is(node) || !NewString("s").Is(node) {
+	if !addrOf(NewInteger(1)).Is(node) || !addrOf(NewString("s")).Is(node) {
 		t.Error("disjunct alternatives rejected")
 	}
-	if NewBoolean(true).Is(node) {
+	if addrOf(NewBoolean(true)).Is(node) {
 		t.Error("boolean admitted by (Integer tor String)")
 	}
 }
@@ -585,10 +585,10 @@ func TestInstalledNegationType(t *testing.T) {
 	if node == nil {
 		t.Fatal("W4bNotStr not bound")
 	}
-	if !NewInteger(5).Is(node) {
+	if !addrOf(NewInteger(5)).Is(node) {
 		t.Error("5 rejected by (tnot String)")
 	}
-	if NewString("s").Is(node) {
+	if addrOf(NewString("s")).Is(node) {
 		t.Error("'s' admitted by (tnot String)")
 	}
 }
@@ -635,7 +635,7 @@ func TestUnifyNegationDirect(t *testing.T) {
 
 func TestUnifyDisjunctDirect(t *testing.T) {
 	disj := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if got, ok := Unify(disj, NewInteger(4)); !ok || !IsConcrete(got) {
+	if got, ok := Unify(disj, NewInteger(4)); !ok || !IsConcrete(&got) {
 		t.Errorf("4 vs (Integer tor String) = %v, %v", got, ok)
 	}
 	if _, ok := Unify(disj, NewBoolean(true)); ok {
@@ -643,7 +643,7 @@ func TestUnifyDisjunctDirect(t *testing.T) {
 	}
 	// Any preserves the disjunct.
 	got, ok := Unify(disj, NewTypeLiteral(TAny))
-	if !ok || !IsDisjunct(got) {
+	if !ok || !IsDisjunct(&got) {
 		t.Errorf("Any vs disjunct = %v, %v", got, ok)
 	}
 	// Map alternative uses open (subset) matching.
@@ -705,7 +705,7 @@ func TestUnifyBoundedType(t *testing.T) {
 	if !ok {
 		t.Fatal("Map literal rejected by Type of [Map]")
 	}
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Errorf("unified = %v", got)
 	}
 	// Outside the bound: rejected.

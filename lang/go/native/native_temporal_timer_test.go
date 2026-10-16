@@ -69,7 +69,7 @@ func TestTimeoutReturnType(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(100), body,
 	})
@@ -79,10 +79,10 @@ func TestTimeoutReturnType(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 value, got %d: %v", len(result), result)
 	}
-	if result[0].Parent.Name() != "Timeout" {
-		t.Fatalf("expected Timeout, got %s", result[0].Parent)
+	if result[0].Parent().Name() != "Timeout" {
+		t.Fatalf("expected Timeout, got %s", result[0].Parent())
 	}
-	ti, _ := result[0].Data.(*TimeoutInfo), true
+	ti, _ := result[0].Data().(*TimeoutInfo), true
 	if ti.Timer != nil {
 		ti.Timer.Stop()
 	}
@@ -104,14 +104,14 @@ func TestTimeoutCallbackExecutes(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testflag")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(20), body,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result) != 1 || result[0].Parent.Name() != "Timeout" {
+	if len(result) != 1 || result[0].Parent().Name() != "Timeout" {
 		t.Fatalf("expected Timeout result, got %v", result)
 	}
 
@@ -144,7 +144,7 @@ func TestTimeoutWithWordCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result) != 1 || result[0].Parent.Name() != "Timeout" {
+	if len(result) != 1 || result[0].Parent().Name() != "Timeout" {
 		t.Fatalf("expected Timeout result, got %v", result)
 	}
 
@@ -159,7 +159,7 @@ func TestTimeoutNegativeErrors(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	_, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(-1), body,
 	})
@@ -177,7 +177,7 @@ func TestIntervalReturnType(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(100), body,
 	})
@@ -187,10 +187,10 @@ func TestIntervalReturnType(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 value, got %d: %v", len(result), result)
 	}
-	if result[0].Parent.Name() != "Interval" {
-		t.Fatalf("expected Interval, got %s", result[0].Parent)
+	if result[0].Parent().Name() != "Interval" {
+		t.Fatalf("expected Interval, got %s", result[0].Parent())
 	}
-	ii, _ := result[0].Data.(*IntervalInfo), true
+	ii, _ := result[0].Data().(*IntervalInfo), true
 	if ii.Ticker != nil {
 		ii.Ticker.Stop()
 		close(ii.Done)
@@ -212,7 +212,7 @@ func TestIntervalCallbackRepeats(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testinc")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(20), body,
 	})
@@ -224,7 +224,7 @@ func TestIntervalCallbackRepeats(t *testing.T) {
 	time.Sleep(120 * time.Millisecond)
 
 	// Cancel.
-	ii, _ := result[0].Data.(*IntervalInfo), true
+	ii, _ := result[0].Data().(*IntervalInfo), true
 	ii.Ticker.Stop()
 	close(ii.Done)
 
@@ -268,7 +268,7 @@ func TestIntervalWithWordCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result) != 1 || result[0].Parent.Name() != "Interval" {
+	if len(result) != 1 || result[0].Parent().Name() != "Interval" {
 		t.Fatalf("expected Interval result, got %v", result)
 	}
 
@@ -277,7 +277,7 @@ func TestIntervalWithWordCallback(t *testing.T) {
 	// Cancel BEFORE asserting: an uncancelled ticker outlives the test and
 	// races every later one — which is exactly how this handler's previous
 	// "coverage" was obtained.
-	ii, _ := result[0].Data.(*IntervalInfo), true
+	ii, _ := result[0].Data().(*IntervalInfo), true
 	ii.Ticker.Stop()
 	close(ii.Done)
 
@@ -291,7 +291,7 @@ func TestIntervalZeroErrors(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	_, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(0), body,
 	})
@@ -319,7 +319,7 @@ func TestCancelTimeout(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testflag")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(50), body,
 	})
@@ -356,7 +356,7 @@ func TestCancelInterval(t *testing.T) {
 
 	e := NewTop(reg)
 	body := NewList([]Value{NewWord("testinc")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("interval"), NewInteger(20), body,
 	})
@@ -395,7 +395,7 @@ func TestCancelIdempotent(t *testing.T) {
 	registerIOWords(reg)
 	e := NewTop(reg)
 	body := NewList([]Value{NewInteger(1)})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	result, err := e.Run([]Value{
 		NewWord("timeout"), NewInteger(1000), body,
 	})

@@ -45,7 +45,7 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry)
 	bLit := sb == ShapeTypeLiteral && denotedType(b).Equal(TMap)
 	if aLit {
 		if sb == ShapeRecord {
-			if b.Carrier {
+			if b.Carrier() {
 				return b, nil
 			}
 			return Value{}, unifyFail("Map type literal does not unify with Record", a, b)
@@ -61,7 +61,7 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry)
 	}
 	if bLit {
 		if sa == ShapeRecord {
-			if a.Carrier {
+			if a.Carrier() {
 				return a, nil
 			}
 			return Value{}, unifyFail("Map type literal does not unify with Record", a, b)
@@ -199,12 +199,10 @@ func unifyConcreteMaps(aMap, bMap ReadMap, r *Registry) (Value, *UnifyError) {
 // See design/TYPED-CONTAINER-TAG-RETENTION.0.md. r is the enclosing
 // chain's registry, handed to every value unify and to the reparent.
 func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(concrete) {
+	if !IsConcrete(&concrete) {
 		// A carrier (a check-mode abstract map with no readable entries) tags
 		// gradually; its concrete elements are validated at runtime.
-		out := concrete
-		out.SetElemConstraint(childType)
-		return out, nil
+		return MintElemTyped(&concrete, &childType), nil
 	}
 	m, _ := AsMap(concrete) // concrete map-family (plain or flex) → readable
 	res, err := unifyMapValues(m, func(string) Value { return childType }, r)
@@ -215,7 +213,7 @@ func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *
 		for _, k := range om.Keys() {
 			uv, _ := om.Get(k)
 			sv, _ := m.Get(k)
-			om.Set(k, reparentSwappedElem(sv, uv, r))
+			om.Set(k, reparentSwappedElem(sv, uv))
 		}
 	}
 	if IsFlexMap(concrete) {
@@ -291,9 +289,9 @@ func unifyRecordTypes(a, b RecordTypeInfo, r *Registry) (Value, *UnifyError) {
 func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, bool, *UnifyError) {
 	var rec, m Value
 	switch {
-	case sa == ShapeRecord && a.Carrier && (sb == ShapeMap || sb == ShapeTypedMap):
+	case sa == ShapeRecord && a.Carrier() && (sb == ShapeMap || sb == ShapeTypedMap):
 		rec, m = a, b
-	case sb == ShapeRecord && b.Carrier && (sa == ShapeMap || sa == ShapeTypedMap):
+	case sb == ShapeRecord && b.Carrier() && (sa == ShapeMap || sa == ShapeTypedMap):
 		rec, m = b, a
 	default:
 		return Value{}, false, nil
@@ -322,7 +320,7 @@ func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShap
 	// under a TMap parent, a Go-API-built MapPayload{M: nil} — AsMap boxes
 	// that nil *OrderedMap in a non-nil ReadMap, so an interface-nil guard
 	// misses it) declines to the nominal compile failure instead of dereferencing.
-	pm, pok := m.Data.(MapPayload)
+	pm, pok := m.Data().(MapPayload)
 	if !pok || pm.M == nil {
 		return Value{}, false, nil
 	}

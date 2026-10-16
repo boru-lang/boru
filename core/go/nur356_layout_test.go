@@ -16,26 +16,26 @@ func nur356LayoutEngine(t *testing.T, tape []Value) *Engine {
 }
 
 func TestDispatchLayoutWordReads(t *testing.T) {
-	three, five := withID(NewInteger(3)), withID(NewInteger(5))
+	three, five := withFreshID(NewInteger(3)), withFreshID(NewInteger(5))
 	l := NewWord("l")
 	e := nur356LayoutEngine(t, []Value{NewWord("ea"), three, l})
 	e.Registry.Defs.Push("l", five)
 	args := []Value{three, five}
 	restore := e.PublishLayout(args, []int{1, 2}, SrcPos{})
-	if got := e.Registry.Check.LayoutFor(args); got == nil || got.NFwd != 2 || !IsWord(got.Words[1]) || len(got.Words) != 1 {
+	if got := e.Registry.Check.LayoutFor(args); got == nil || got.NFwd != 2 || !IsWord(addrOf(got.Words[1])) || len(got.Words) != 1 {
 		t.Errorf("ea 3 l: the word read rides as written; got %+v", got)
 	}
 	restore()
 
 	for name, prep := range map[string]func(e *Engine) []Value{
 		"a word bound to a fn": func(e *Engine) []Value {
-			fn := withID(NewFunction(FnDefInfo{Name: "k", Signatures: []Signature{{}}}))
+			fn := withFreshID(NewFunction(FnDefInfo{Name: "k", Signatures: []Signature{{}}}))
 			e.Registry.Defs.Push("l", fn)
 			return []Value{three, fn}
 		},
 		"an unbound word": func(e *Engine) []Value { return []Value{three, five} },
 		"a gradual binding": func(e *Engine) []Value {
-			g := withID(NewDynamicCarrier(TInteger))
+			g := withFreshID(NewDynamicCarrier(TInteger))
 			e.Registry.Defs.Push("l", g)
 			return []Value{three, g}
 		},
@@ -67,12 +67,12 @@ func TestDispatchLayoutWordReads(t *testing.T) {
 }
 
 func TestDispatchLayoutWordPastReach(t *testing.T) {
-	three, list := withID(NewInteger(3)), withID(NewList([]Value{NewInteger(1)}))
+	three, list := withFreshID(NewInteger(3)), withFreshID(NewList([]Value{NewInteger(1)}))
 	m := NewWord("m")
 	e := nur356LayoutEngine(t, []Value{NewWord("ea"), three, list, m})
 	args := []Value{three, list}
 	restore := e.PublishLayout(args, []int{1, 2}, SrcPos{})
-	if got := e.Registry.Check.LayoutFor(args); got == nil || len(got.After) != 1 || !IsWord(got.After[0]) {
+	if got := e.Registry.Check.LayoutFor(args); got == nil || len(got.After) != 1 || !IsWord(&got.After[0]) {
 		t.Errorf("ea 3 [1] m: m stands past every reach; got %+v", got)
 	}
 	restore()
@@ -102,11 +102,11 @@ func TestDispatchLayoutWordPastReach(t *testing.T) {
 
 func TestIsPendingLiteral(t *testing.T) {
 	lit := NewList([]Value{NewWord("x")})
-	lit.Eval = true
+	SetEval(&lit, true)
 	quoted := lit
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	m := NewMap(NewOrderedMap())
-	m.Eval = true
+	SetEval(&m, true)
 	if !IsPendingLiteral(lit) || !IsPendingLiteral(m) || IsPendingLiteral(quoted) || IsPendingLiteral(NewDynamicCarrier(TList)) || IsPendingLiteral(NewInteger(1)) {
 		t.Error("IsPendingLiteral")
 	}

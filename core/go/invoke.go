@@ -70,7 +70,7 @@ func BodyEscaped(r *Registry) bool {
 // CallBoru discipline: the declared TYPES are checked over the aligned
 // residual, the COUNT is trimmed, never raised — enforceCallBoruReturns)
 // hands a compiled closure here, so the VM applies that same discipline
-// (ClosurePayload.RetTrim → checkClosureReturn). InvokeBody is the TOKEN
+// (IsRetTrim → checkClosureReturn). InvokeBody is the TOKEN
 // seam — each over a list, apply, a paren call — where the fn value is
 // stepped and __RC enforces the count; a closure must cross the seam its
 // handler's FnDefInfo path uses, or the lanes disagree: `walk … (m:Any =>
@@ -79,30 +79,30 @@ func BodyEscaped(r *Registry) bool {
 // (NUR120). Without the VM (no Invoker) a closure never reaches a handler,
 // so the fallback is InvokeBody's own.
 func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
-	if cl, ok := body.Data.(ClosurePayload); ok && !cl.RetTrim {
-		cl.RetTrim = true
-		body = Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
+	if _, ok := body.Data().(*ClosurePayload); ok && !IsRetTrim(&body) {
+		// The value handed on keeps its quote and its seam marks (they rode
+		// in the payload until no-copy phase 3) and nothing else of the
+		// holder's, as it always has.
+		quoted, matched := IsQuoted(&body), IsSigMatched(&body)
+		body = Value{d: &Datum{Parent: body.Parent(), Data: body.Data()}}
+		SetQuoted(&body, quoted)
+		SetSigMatched(&body, matched)
+		SetRetTrim(&body, true)
 	}
 	return InvokeBody(r, body, inputs)
 }
 
 // ClosureSigMatched is the SigMatched mark on a closure VALUE (see
-// ClosurePayload.SigMatched): the seam that hands the args has matched the
-// closure's own signature, so the VM's invoker applies the unit positionally
-// instead of matching again in the token seam's order. A non-closure value
-// is returned unchanged.
+// IsSigMatched): the seam that hands the args has matched the closure's own
+// signature, so the VM's invoker applies the unit positionally instead of
+// matching again in the token seam's order. A non-closure value is returned
+// unchanged. The mark is the holder's flag: the value keeps its id, position
+// and every flag a later seam reads, and the payload is not copied.
 func ClosureSigMatched(v Value) Value {
-	cl, ok := v.Data.(ClosurePayload)
-	if !ok || cl.SigMatched {
-		return v
+	if _, ok := v.Data().(*ClosurePayload); ok {
+		SetSigMatched(&v, true)
 	}
-	cl.SigMatched = true
-	// A whole-value copy with the payload replaced, never a rebuild from
-	// selected fields: the mark must not quietly drop the value's id,
-	// position or any flag a later seam reads.
-	out := v
-	out.Data = cl
-	return out
+	return v
 }
 
 // ClosureAsFnDef is the compiled runtime's closure bridge, reached from a
@@ -225,6 +225,13 @@ func invokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 // FnHome picks the registry and the captures; see its comment for the two nil
 // cases.
 func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Value) ([]Value, error) {
+	return InvokeCallbackFnAs(r, fnDef, fnDef.nameOrEmpty(), sig, args)
+}
+
+// InvokeCallbackFnAs is InvokeCallbackFn for a fn value its holder names:
+// name — the name a binding gave the holder (FnNameOf), passed beside the
+// definition — attributes the first-application stamp.
+func InvokeCallbackFnAs(r *Registry, fnDef *FnDefInfo, name string, sig *Signature, args []Value) ([]Value, error) {
 	target, caps := FnHome(r, fnDef)
 	// The detached stamp at first application (S1b): a value with no unit for
 	// this sig obtains one now, at its home, memoised on the value — so the
@@ -233,7 +240,7 @@ func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Valu
 	// nil fnDef is a synthesized carrier sig with no fn value behind it (see
 	// FnHome): nothing to stamp.
 	if fnDef != nil {
-		compiledRuntime.LazyStamp(target, *fnDef, sig, SrcPos{})
+		compiledRuntime.LazyStamp(target, fnDef, name, sig, SrcPos{})
 	}
 	return InvokeCallback(target, sig, args, caps)
 }
@@ -302,7 +309,7 @@ func (fd *FnDefInfo) ShapeModelHomed() bool {
 func MarkShapeModel(inst *OrderedMap) {
 	for _, k := range inst.Keys() {
 		mv, _ := inst.Get(k)
-		if fd, ok := mv.Data.(FnDefInfo); ok && fd.HasHome() {
+		if fd, ok := mv.Data().(*FnDefInfo); ok && fd.HasHome() {
 			fd.Registry.ShapeModel = true
 		}
 	}
@@ -329,7 +336,28 @@ func (fd *FnDefInfo) HasHome() bool {
 // conjunction carries the by-name dispatch and recursion semantics the
 // closure models decline and the no-match diagnostics report against.
 func (fd *FnDefInfo) NamedDef() bool {
-	return fd != nil && !fd.Anonymous && fd.Name != "" //sentinel:home the one compound reading of Name and Anonymous together
+	return fd.namedAs(fd.nameOrEmpty())
+}
+
+// namedAs is NamedDef under the name a holder presents the fn by
+// (FnNameOf): a binding names its holder, never the shared payload.
+func (fd *FnDefInfo) namedAs(name string) bool {
+	return fd != nil && !fd.Anonymous && name != "" //sentinel:home the one compound reading of a name and Anonymous together
+}
+
+// nameOrEmpty is fd's own name, "" for a nil fd.
+func (fd *FnDefInfo) nameOrEmpty() string {
+	if fd == nil {
+		return ""
+	}
+	return fd.Name
+}
+
+// NamedFnValue is NamedDef for the fn value v as its holder presents it:
+// under the name a binding gave the holder (FnNameOf), else its own.
+func NamedFnValue(v *Value) bool {
+	fd, ok := FnDefOf(v.Data())
+	return ok && fd.namedAs(FnNameOf(v))
 }
 
 // FnHomeLookup resolves the fn value's NAME in its home registry — the
@@ -414,13 +442,13 @@ func runPooledSub(r *Registry, input []Value, elemEvalRecordable, container bool
 	return out, nil
 }
 
-// bodyTokens returns the executable token sequence for a code body: a concrete
-// list's elements (the common case — `[mul 2]`), or the value itself wrapped
-// as a singleton for a non-list body. Mirrors what the handlers extracted via
-// `AsList(body).Slice()` before splicing.
+// BodyTokens returns the executable token sequence for a code body: a
+// concrete list's own elements (the common case — `[mul 2]`; ReadList.Elems,
+// not a copy: every caller reads them or copies them into the program it
+// runs), or the value itself wrapped as a singleton for a non-list body.
 func BodyTokens(body Value) []Value {
 	if lst, err := AsList(body); err == nil && !lst.IsNil() {
-		return lst.Slice()
+		return lst.Elems()
 	}
 	return []Value{body}
 }

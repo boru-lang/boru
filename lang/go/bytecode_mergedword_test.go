@@ -69,7 +69,7 @@ const mergedFlagModule = `import module [` +
 
 // open-words.tsv:72 — a MIXED tuple (one builtin + one user-minted type)
 // anchors the transplanted signature; the module-minted Flag param rides
-// SetUnitParamTypes as a *Type pointer (the CanonicalType rule).
+// SetUnitParamTypes as a *Type pointer (the NodeOf rule).
 func TestMergedWordSeam_MixedTuple(t *testing.T) {
 	mergedWordCompilesNative(t,
 		`import module [def Flag (refine Boolean) `+

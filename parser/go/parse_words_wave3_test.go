@@ -48,10 +48,10 @@ func wantParseErrWave3(t *testing.T, src, sub string) {
 // wordNameWave3 asserts v is a Word and returns its info.
 func wordNameWave3(t *testing.T, v core.Value, ctx string) core.WordInfo {
 	t.Helper()
-	if !core.IsWord(v) {
+	if !core.IsWord(&v) {
 		t.Fatalf("%s: expected a Word, got %s", ctx, v.String())
 	}
-	w, err := core.AsWord(v)
+	w, err := core.AsWord(&v)
 	if err != nil {
 		t.Fatalf("%s: AsWord: %v", ctx, err)
 	}
@@ -62,7 +62,7 @@ func wordNameWave3(t *testing.T, v core.Value, ctx string) core.WordInfo {
 
 func TestParseWave3NoneLiteral(t *testing.T) {
 	vals := mustParseWave3(t, "none")
-	if len(vals) != 1 || !core.IsNone(vals[0]) {
+	if len(vals) != 1 || !core.IsNone(&vals[0]) {
 		t.Fatalf("none: expected the unique None value, got %v", vals)
 	}
 }
@@ -106,7 +106,7 @@ func TestParseWave3MarkerTokens(t *testing.T) {
 		}
 	}
 	vals := mustParseWave3(t, ")")
-	if len(vals) != 1 || !core.IsCloseParen(vals[0]) {
+	if len(vals) != 1 || !core.IsCloseParen(&vals[0]) {
 		t.Fatalf("bare `)`: expected a close-paren marker, got %v", vals)
 	}
 	// A trailing `!` with no following `.` stays a bare `!` word.
@@ -204,7 +204,7 @@ func TestParseWave3WordContextTypePath(t *testing.T) {
 	if len(vals) != 1 {
 		t.Fatalf("Scalar/Number/Integer: expected one value, got %v", vals)
 	}
-	if w, err := core.AsWord(vals[0]); err != nil || w.Name != "Scalar/Number/Integer" {
+	if w, err := core.AsWord(&vals[0]); err != nil || w.Name != "Scalar/Number/Integer" {
 		t.Fatalf("Scalar/Number/Integer: expected word(Scalar/Number/Integer), got %v", vals)
 	}
 }
@@ -272,7 +272,7 @@ func TestParseWave3BigNumEdges(t *testing.T) {
 	}
 	for src, want := range cases {
 		vals := mustParseWave3(t, src)
-		if len(vals) != 1 || !vals[0].Parent.ConformsTo(core.TBigDecimal) {
+		if len(vals) != 1 || !vals[0].Parent().ConformsTo(core.TBigDecimal) {
 			t.Fatalf("%q: expected one BigDecimal, got %v", src, vals)
 		}
 		if got := vals[0].String(); got != want {
@@ -282,7 +282,7 @@ func TestParseWave3BigNumEdges(t *testing.T) {
 	// `+0d5`: a digit after `+` is not a minilang name start, so the
 	// big-number matcher claims the signed literal.
 	vals := mustParseWave3(t, "+0d5")
-	if len(vals) != 1 || !vals[0].Parent.ConformsTo(core.TBigInteger) {
+	if len(vals) != 1 || !vals[0].Parent().ConformsTo(core.TBigInteger) {
 		t.Fatalf("+0d5: expected one BigInteger, got %v", vals)
 	}
 	n, _ := core.AsBigInteger(vals[0])
@@ -352,10 +352,10 @@ func TestParseWave3TopLevelImplicitMapAutoEval(t *testing.T) {
 	if len(vals) != 1 {
 		t.Fatalf("a:1: got %d values, want 1", len(vals))
 	}
-	if !vals[0].Parent.ConformsTo(core.TMap) {
+	if !vals[0].Parent().ConformsTo(core.TMap) {
 		t.Fatalf("a:1: expected a Map, got %s", vals[0].String())
 	}
-	if !vals[0].Eval {
+	if !core.IsEval(&vals[0]) {
 		t.Errorf("a:1: top-level implicit map must have Eval=true")
 	}
 }

@@ -59,16 +59,16 @@ var arithOps = []string{"add", "sub", "mul", "div", "mod", "pow"}
 // field values recurse element-wise (Maps and Lists are not exposed on
 // the public op words — only reachable inside a Micron field).
 func applyScalarBinaryOp(r *Registry, op string, left, right Value) (Value, error) {
-	if !IsConcrete(left) || !IsConcrete(right) {
+	if !IsConcrete(&left) || !IsConcrete(&right) {
 		return Value{}, opCrossTypeError(r, op, left, right)
 	}
-	lp, rp := left.Parent, right.Parent
+	lp, rp := left.Parent(), right.Parent()
 	switch {
 	case lp.ConformsTo(TNumber) && rp.ConformsTo(TNumber):
 		ops, _ := towerOpsFor(op)
 		// towerApply computes args[1] OP args[0]; pass (right, left) so
 		// the result is the natural left OP right.
-		out, err := towerApply(ops, right, left, r)
+		out, err := towerApply(ops, &right, &left, r)
 		if err != nil {
 			return Value{}, err
 		}
@@ -108,10 +108,10 @@ func opCrossTypeError(r *Registry, op string, left, right Value) error {
 }
 
 func typeLeaf(v Value) string {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return "?"
 	}
-	return v.Parent.Leaf()
+	return v.Parent().Leaf()
 }
 
 // ---- String / Atom occurrence package ----
@@ -278,7 +278,7 @@ func booleanArithHandler(op string) Handler {
 // CoreDefault match over a carrier proves nothing.
 func booleanArithReturns(op string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			core.CheckAddUniqueDiagnostic(r, "type_error", booleanArithDetail(op), op, args[0].Pos())
 		}
 		return []Value{}
@@ -291,7 +291,7 @@ func booleanArithReturns(op string) ReturnsFunc {
 // same kind (core operations apply within a kind, not across); Qion and
 // Pathon are hand-written, every other kind uses the field-wise default.
 func micronBinaryOp(r *Registry, op string, left, right Value) (Value, error) {
-	lk, rk := left.Parent, right.Parent
+	lk, rk := left.Parent(), right.Parent()
 	if lk == nil || rk == nil || !lk.Equal(rk) {
 		return Value{}, r.BoruError("type_error",
 			fmt.Sprintf("%s: %s and %s are different Micron kinds — core operations apply within a kind, not across",
@@ -321,7 +321,7 @@ func micronFieldwiseOp(r *Registry, op string, left, right Value) (Value, error)
 		if rv, ok := rf.Get(k); ok {
 			ov, oerr := applyScalarBinaryOp(r, op, lv, rv)
 			if oerr != nil {
-				return Value{}, micronFieldError(r, op, left.Parent, k, oerr)
+				return Value{}, micronFieldError(r, op, left.Parent(), k, oerr)
 			}
 			result.Set(k, ov)
 		} else {
@@ -334,7 +334,7 @@ func micronFieldwiseOp(r *Registry, op string, left, right Value) (Value, error)
 			result.Set(k, rv)
 		}
 	}
-	return remakeMicron(r, left.Parent, result)
+	return remakeMicron(r, left.Parent(), result)
 }
 
 // remakeMicron reconstructs a Micron of the given kind from a primary
@@ -392,7 +392,7 @@ func qionOp(r *Registry, op string, left, right Value) (Value, error) {
 		m := NewOrderedMap()
 		m.Set("code", lc)
 		m.Set("amount", sum)
-		return remakeMicron(r, left.Parent, m)
+		return remakeMicron(r, left.Parent(), m)
 	default:
 		return Value{}, r.BoruErrorHint("type_error",
 			op+": is not defined between two Qion values — only add and sub (same currency) are", op,
@@ -592,7 +592,7 @@ func mirrorOpError(r *Registry, op string, err error, pos core.SrcPos) {
 // detail. The residual is the declared result type either way.
 func seqOpReturns(op string, elem *Type, h Handler) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && len(args) == 2 && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			if _, err := h(args, nil, nil, r); err != nil {
 				mirrorOpError(r, op, err, args[0].Pos())
 			}
@@ -620,16 +620,16 @@ func seqOpReturns(op string, elem *Type, h Handler) ReturnsFunc {
 // right-hand path) stay with the runtime handler either way.
 func micronOpReturns(op string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if len(args) != 2 || args[0].Parent == nil || args[1].Parent == nil {
+		if len(args) != 2 || args[0].Parent() == nil || args[1].Parent() == nil {
 			return []Value{NewCarrier(TMicron)}
 		}
-		if atUncaughtTopLevel(r) && IsConcrete(args[0]) && IsConcrete(args[1]) {
+		if atUncaughtTopLevel(r) && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
 			if _, err := micronBinaryOp(r, op, args[1], args[0]); err != nil {
 				mirrorOpError(r, op, err, args[0].Pos())
 			}
 		}
-		if args[0].Parent.Equal(args[1].Parent) {
-			return []Value{NewCarrier(args[0].Parent)}
+		if args[0].Parent().Equal(args[1].Parent()) {
+			return []Value{NewCarrier(args[0].Parent())}
 		}
 		return []Value{NewCarrier(TMicron)}
 	}

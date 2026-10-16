@@ -513,8 +513,9 @@ func impliesHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 // what it referred to at quote time.
 func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	v.Quoted = true
-	return []Value{captureAtomReferent(v, r)}, nil
+	SetQuoted(&v, true)
+	captureAtomReferent(&v, r)
+	return []Value{v}, nil
 }
 
 // quoteAnyHandler returns the value with Quoted=true, suppressing
@@ -522,26 +523,25 @@ func quoteWordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 // atom value additionally captures its referent (see quoteWordHandler).
 func quoteAnyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	v.Quoted = true
-	return []Value{captureAtomReferent(v, r)}, nil
+	SetQuoted(&v, true)
+	captureAtomReferent(&v, r)
+	return []Value{v}, nil
 }
 
-// captureAtomReferent snapshots the current binding of an atom's name onto
-// the atom as its referent, when the value is an atom that has none yet and
-// the name is bound. Non-atoms and already-captured atoms are returned
-// unchanged.
-func captureAtomReferent(v Value, r *Registry) Value {
-	name, err := AsAtom(v)
+// captureAtomReferent gives this holder of an atom what its name is bound to
+// now as its referent, when it has none yet and the name is bound.
+// Non-atoms and already-captured atoms are left as they are.
+func captureAtomReferent(v *Value, r *Registry) {
+	name, err := AsAtom(*v)
 	if err != nil {
-		return v
+		return
 	}
-	if _, has := AtomReferent(v); has {
-		return v
+	if _, has := AtomReferent(*v); has {
+		return
 	}
-	if bound, ok := r.Defs.Top(name); ok {
-		return SetAtomReferent(v, bound)
+	if bound, ok := r.Defs.TopValue(name); ok {
+		SetAtomReferent(v, bound)
 	}
-	return v
 }
 
 // reachHandler builds an inert Reach over a receiver value (args[0]) and a
@@ -558,7 +558,7 @@ func reachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if err != nil {
 		return nil, err
 	}
-	segs, err := decodeReachSegments(keys.Slice(), r)
+	segs, err := decodeReachSegments(keys.Elems(), r)
 	if err != nil {
 		return nil, err
 	}
@@ -577,8 +577,8 @@ func decodeReachSegments(elems []Value, r *Registry) ([]ReachSeg, error) {
 		}
 		seg := ReachSeg{Getr: getrNext}
 		getrNext = false
-		if IsParenExpr(el) {
-			toks, _ := AsParenExpr(el)
+		if IsParenExpr(&el) {
+			toks, _ := AsParenExpr(&el)
 			seg.Computed = true
 			seg.KeyExpr = toks
 		} else {
@@ -595,8 +595,8 @@ func decodeReachSegments(elems []Value, r *Registry) ([]ReachSeg, error) {
 // isReachBang reports whether a key-list element is the `!` getr marker (a
 // bare `!` lexes to a word; an atom `!` covers the quoted form).
 func isReachBang(v Value) bool {
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		return w.Name == "!"
 	}
 	if IsAtom(v) {
@@ -617,11 +617,11 @@ func folderOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	optsVal := args[0]
 	pathVal := args[1]
 	if !IsPathon(pathVal) {
-		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent.String())
+		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent().String())
 	}
 	parents := true
 	if optsMap, _ := AsMap(optsVal); optsMap != nil {
-		if v, ok := optsMap.Get("parents"); ok && v.Parent.ConformsTo(TBoolean) {
+		if v, ok := optsMap.Get("parents"); ok && v.Parent().ConformsTo(TBoolean) {
 			parents, _ = AsBoolean(v)
 		}
 	}
@@ -633,7 +633,7 @@ func folderOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 func folderHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	pathVal := args[0]
 	if !IsPathon(pathVal) {
-		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent.String())
+		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent().String())
 	}
 	_as1, _ := AsPathon(pathVal)
 	return doFolder(_as1, true, reg)
@@ -685,9 +685,9 @@ func stackCollectHandler(args []Value, _ map[string]Value, stack []Value, _ *Reg
 func stackCollectCheckFullStackFn(_ []Value, stack []Value, _ *Registry) []Value {
 	elem := TAny
 	if len(stack) > 0 {
-		elem = stack[0].Parent
+		elem = stack[0].Parent()
 		for i := 1; i < len(stack); i++ {
-			elem = CommonAncestorType(elem, stack[i].Parent)
+			elem = CommonAncestorType(elem, stack[i].Parent())
 		}
 	}
 	return append(append([]Value(nil), stack...), NewCarrierTypedList(elem))
@@ -762,9 +762,9 @@ func startInterval(tt TemporalModuleTypes, args []Value, r *Registry, isList boo
 
 // cancelTimeoutHandler stops a pending Timeout timer.
 func cancelTimeoutHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	ti, ok := args[0].Data.(*TimeoutInfo)
+	ti, ok := args[0].Data().(*TimeoutInfo)
 	if !ok {
-		return nil, r.BoruError("cancel-timeout_error", fmt.Sprintf("cancel-timeout: not a Timeout value (got %s)", args[0].Parent), "cancel-timeout")
+		return nil, r.BoruError("cancel-timeout_error", fmt.Sprintf("cancel-timeout: not a Timeout value (got %s)", args[0].Parent()), "cancel-timeout")
 	}
 	if ti.Timer != nil {
 		ti.Timer.Stop()
@@ -776,9 +776,9 @@ func cancelTimeoutHandler(args []Value, _ map[string]Value, _ []Value, r *Regist
 // cancelIntervalofHandler stops a running Interval ticker and signals its
 // goroutine to exit.
 func cancelIntervalofHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	ii, ok := args[0].Data.(*IntervalInfo)
+	ii, ok := args[0].Data().(*IntervalInfo)
 	if !ok {
-		return nil, r.BoruError("cancel-interval_error", fmt.Sprintf("cancel-interval: not an Interval value (got %s)", args[0].Parent), "cancel-interval")
+		return nil, r.BoruError("cancel-interval_error", fmt.Sprintf("cancel-interval: not an Interval value (got %s)", args[0].Parent()), "cancel-interval")
 	}
 	if ii.Ticker != nil {
 		ii.Ticker.Stop()
@@ -798,7 +798,7 @@ func cancelIntervalofHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 func listEdgeElemReturns(last bool) ReturnsFunc {
 	return func(args []Value, _ *Registry) []Value {
 		fallback := []Value{NewCarrier(TList), NewDynamicCarrier(TAny)}
-		if len(args) != 1 || !IsConcrete(args[0]) {
+		if len(args) != 1 || !IsConcrete(&args[0]) {
 			return fallback
 		}
 		list, err := AsList(args[0])
@@ -809,7 +809,7 @@ func listEdgeElemReturns(last bool) ReturnsFunc {
 		if last {
 			elem = list.Get(list.Len() - 1)
 		}
-		if elem.Undefined {
+		if IsUndefined(&elem) {
 			return fallback
 		}
 		et := ValueType(elem)
@@ -818,8 +818,8 @@ func listEdgeElemReturns(last bool) ReturnsFunc {
 		}
 		c := NewCarrier(et)
 		// A carrier / dynamic element propagates its own gradual claim.
-		if elem.Dynamic {
-			c.Dynamic = true
+		if IsDynamic(&elem) {
+			SetDynamic(&c, true)
 		}
 		return []Value{NewCarrier(TList), c}
 	}

@@ -1987,24 +1987,24 @@ func (c *CheckState) LookupContextType(key string) (Value, bool) {
 //     so the guard is re-homed, never weakened;
 //   - macros stay data (applied only by name).
 func (c *CheckState) NoteMethodShape(out, member Value) {
-	if !c.IsActive() || out.ID == "" {
+	if !c.IsActive() || IDOf(&out) == "" {
 		return
 	}
-	fd, ok := member.Data.(FnDefInfo)
+	fd, ok := FnDefOf(member.Data())
 	if !ok || !fd.HasHome() || fd.Name == "" || fd.Macro {
 		return
 	}
-	if !IsDelegationFnDef(fd) {
+	if !IsDelegationFnDef(*fd) {
 		return
 	}
 	if c.MethodShapes == nil {
 		c.MethodShapes = map[string]Value{}
 	}
-	c.MethodShapes[out.ID] = member
+	c.MethodShapes[IDOf(&out)] = member
 	// Mirror the annotation into the recorder so the get-family read
 	// guards (recordCallCompileFailure / RecordPolyCall) can skip their
 	// auto-dispatch compile failure for a read the landing model owns.
-	c.Emit.NoteShapedRead(out.ID)
+	c.Emit.NoteShapedRead(IDOf(&out))
 }
 
 // methodShapeMember returns the annotated member for a carrier ID.
@@ -2047,13 +2047,13 @@ type FnShape struct {
 // records, and a negative arity — a handler that raises rather than build
 // the wrapper (`partial` over a 0-param fn) — is no claim.
 func (c *CheckState) NoteFnShape(out Value, s FnShape) {
-	if !c.IsActive() || out.ID == "" || s.Arity < 0 {
+	if !c.IsActive() || IDOf(&out) == "" || s.Arity < 0 {
 		return
 	}
 	if c.FnShapes == nil {
 		c.FnShapes = map[string]FnShape{}
 	}
-	c.FnShapes[out.ID] = s
+	c.FnShapes[IDOf(&out)] = s
 }
 
 // FnShapeOf returns the shape claimed for a computed-fn carrier ID.
@@ -2093,8 +2093,7 @@ func (c *CheckState) ContextShape(store *StoreInstanceInfo, scope int) Value {
 		v = NewStoreShapeCarrier(TStore, scope)
 		c.CtxShapes[store] = v
 	}
-	v.ID = GenerateID(IDPrefixForType(v.Parent))
-	return v
+	return MintFresh(&v)
 }
 
 // BeginCompilePass is Begin() plus the compile-pass arming ritual shared

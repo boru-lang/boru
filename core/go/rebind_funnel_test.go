@@ -45,7 +45,7 @@ func (f *funnelRecorder) NoteFrozenRead(name string, bake FrozenBake, gen int64)
 // NoteDefRead is captured too: a TYPE read must register its value ID against
 // the name exactly as a value read does, or the compiler's resolveOperand can
 // name one kind of read and not the other.
-func (f *funnelRecorder) NoteDefRead(id, name string) {
+func (f *funnelRecorder) NoteDefRead(id string, _ RecKey, name string) {
 	if f.defReads == nil {
 		f.defReads = map[string]string{}
 	}
@@ -132,13 +132,13 @@ func TestBindingReadsNoteThroughTheFunnel(t *testing.T) {
 		{
 			"stepWord, a value read",
 			func(r *Registry) { r.Defs.Push("k", NewInteger(5)) },
-			func(e *Engine) error { return e.stepWord(e.Tape.At(0)) },
+			func(e *Engine) error { return e.stepWord(e.Tape.Ref(0)) },
 			FrozenBakeValue,
 		},
 		{
 			"stepWord, a type read",
 			func(r *Registry) { r.Defs.PushType("k", TInteger, NewTypeLiteral(TInteger)) },
-			func(e *Engine) error { return e.stepWord(e.Tape.At(0)) },
+			func(e *Engine) error { return e.stepWord(e.Tape.Ref(0)) },
 			FrozenBakeType,
 		},
 		{
@@ -253,13 +253,13 @@ func TestUninstallTypeArms(t *testing.T) {
 
 	minted := r.Types.MintType("Mz", TInteger)
 	r.Defs.PushType("Mz", minted, NewTypeLiteral(minted))
-	if r.Types.LookupByID(minted.ID) == nil {
+	if r.Types.LookupByID(IDOf(minted)) == nil {
 		t.Fatal("the minted node must be in the ID index before the undef")
 	}
 	if !UninstallType(r, "Mz") {
 		t.Fatal("a bound type must be removed")
 	}
-	if r.Types.LookupByID(minted.ID) != nil {
+	if r.Types.LookupByID(IDOf(minted)) != nil {
 		t.Error("a MINTED node must be retired with its binding")
 	}
 }

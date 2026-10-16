@@ -173,7 +173,7 @@ func (qb *QueryBuilder) ensureJoinSources() ([]string, error) {
 		if !ok {
 			return tmpNames, fmt.Errorf("join: unknown table %q", j.Table)
 		}
-		td, ok := val.Data.(TableData)
+		td, ok := val.Data().(TableData)
 		if !ok {
 			return tmpNames, fmt.Errorf("join: %q has no table data", j.Table)
 		}
@@ -206,7 +206,7 @@ func (qb *QueryBuilder) mergedSchema() RecordTypeInfo {
 			// Try the original name if it was remapped to a temp table.
 			continue
 		}
-		td, ok := val.Data.(TableData)
+		td, ok := val.Data().(TableData)
 		if !ok {
 			continue
 		}
@@ -391,7 +391,7 @@ func toQueryBuilder(r *Registry, v Value) (QueryBuilder, error) {
 	if qb, ok := unwrapQB(v); ok {
 		return qb.clone(), nil
 	}
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		return NewQueryBuilder(r, td), nil
 	}
 	return QueryBuilder{}, fmt.Errorf("argument is not a table or query")
@@ -458,14 +458,14 @@ func (qb QueryBuilder) SourceRecord() RecordTypeInfo {
 // QueryBuilder values (subquery results carried as data). Shared by
 // the select column list and the where/having condition list.
 func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
-	if !list.Parent.Equal(TList) {
+	if !list.Parent().Equal(TList) {
 		return list, nil
 	}
 	_lst, err := AsList(list)
 	if err != nil {
 		return list, nil
 	}
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return list, nil
 	}
@@ -473,7 +473,7 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	// Recurse into nested lists that are not themselves query results.
 	work := make([]Value, len(elems))
 	for i, e := range elems {
-		if e.Parent.Equal(TList) && !isTableOrQuery(e) {
+		if e.Parent().Equal(TList) && !isTableOrQuery(e) {
 			resolved, err := resolveParenSubExprs(r, e)
 			if err != nil {
 				return Value{}, err
@@ -487,7 +487,7 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	// Fast path: no paren markers at this level.
 	hasParen := false
 	for _, e := range work {
-		if IsOpenParen(e) {
+		if IsOpenParen(&e) {
 			hasParen = true
 			break
 		}
@@ -500,13 +500,13 @@ func resolveParenSubExprs(r *Registry, list Value) (Value, error) {
 	var out []Value
 	i := 0
 	for i < len(work) {
-		if IsOpenParen(work[i]) {
+		if IsOpenParen(&work[i]) {
 			depth := 1
 			j := i + 1
 			for j < len(work) && depth > 0 {
-				if IsOpenParen(work[j]) {
+				if IsOpenParen(&work[j]) {
 					depth++
-				} else if IsCloseParen(work[j]) {
+				} else if IsCloseParen(&work[j]) {
 					depth--
 				}
 				j++
@@ -558,25 +558,25 @@ type columnSpec struct {
 //   - [[cast age integer a]]     — CAST("age" AS INTEGER) AS "a"
 func parseColumnSpec(colList Value) ([]columnSpec, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	cols := make([]columnSpec, 0, len(elems))
 	for _, e := range elems {
 		switch {
-		case e.Parent.Equal(TAtom):
+		case e.Parent().Equal(TAtom):
 			_as6, _ := AsAtom(e)
 			cols = append(cols, columnSpec{Name: _as6})
-		case e.Parent.ConformsTo(TString):
+		case e.Parent().ConformsTo(TString):
 			_as7, _ := AsString(e)
 			cols = append(cols, columnSpec{Name: _as7})
-		case IsWord(e):
+		case IsWord(&e):
 			// A word that appears in the column list without evaluation
 			// is treated as a column name OR as an aggregate function name.
-			_as8, _ := AsWord(e)
+			_as8, _ := AsWord(&e)
 			wname := _as8.Name
 			cols = append(cols, columnSpec{Name: wname})
-		case e.Parent.Equal(TList):
+		case e.Parent().Equal(TList):
 			_lst, _ := AsList(e)
-			pair := _lst.Slice()
+			pair := _lst.Elems()
 			if len(pair) < 2 {
 				return nil, fmt.Errorf("select: column spec list must have at least 2 elements")
 			}
@@ -632,7 +632,7 @@ func parseColumnSpec(colList Value) ([]columnSpec, error) {
 			}
 			cols = append(cols, columnSpec{Name: name, Alias: alias})
 		default:
-			return nil, fmt.Errorf("select: unsupported column spec type: %s", e.Parent)
+			return nil, fmt.Errorf("select: unsupported column spec type: %s", e.Parent())
 		}
 	}
 	return cols, nil
@@ -641,16 +641,16 @@ func parseColumnSpec(colList Value) ([]columnSpec, error) {
 // nameFromValue extracts a name from an atom, string, or word value.
 // Unlike valueToColName, this also recognizes unevaluated word values.
 func nameFromValue(v Value) string {
-	if v.Parent.Equal(TAtom) {
+	if v.Parent().Equal(TAtom) {
 		_as9, _ := AsAtom(v)
 		return _as9
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as10, _ := AsString(v)
 		return _as10
 	}
-	if IsWord(v) {
-		_as11, _ := AsWord(v)
+	if IsWord(&v) {
+		_as11, _ := AsWord(&v)
 		return _as11.Name
 	}
 	return ""
@@ -747,16 +747,16 @@ func sqlTypeToBoruType(sqlType string) *Type {
 
 // valueToColName extracts the string content from an atom, string, or word value.
 func valueToColName(v Value) string {
-	if v.Parent.Equal(TAtom) {
+	if v.Parent().Equal(TAtom) {
 		_as12, _ := AsAtom(v)
 		return _as12
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as13, _ := AsString(v)
 		return _as13
 	}
-	if IsWord(v) {
-		_as14, _ := AsWord(v)
+	if IsWord(&v) {
+		_as14, _ := AsWord(&v)
 		return _as14.Name
 	}
 	return ""
@@ -768,13 +768,13 @@ func valueToColName(v Value) string {
 // Returns (QueryBuilder{}, false) when v is not a query builder.
 func unwrapQB(v Value) (QueryBuilder, bool) {
 	// Current wrapper: the lazy MaterializerPayload produced by wrapQB.
-	if mp, ok := v.Data.(MaterializerPayload); ok {
+	if mp, ok := v.Data().(MaterializerPayload); ok {
 		if qb, ok := mp.M.(QueryBuilder); ok {
 			return qb, true
 		}
 	}
 	// Back-compat: the older ExtensionPayload-wrapped form.
-	if ep, ok := v.Data.(ExtensionPayload); ok {
+	if ep, ok := v.Data().(ExtensionPayload); ok {
 		if qb, ok := ep.Body.(QueryBuilder); ok {
 			return qb, true
 		}
@@ -815,7 +815,7 @@ var logicalOps = map[string]string{
 //	[... and/or ...]                           — logical connectives
 func buildWhereClause(condList Value) (string, error) {
 	_lst, _ := AsList(condList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "1=1", nil
 	}
@@ -833,7 +833,7 @@ func buildWhereClause(condList Value) (string, error) {
 				return "", fmt.Errorf("incomplete condition: expected condition after not")
 			}
 			// If followed by a sub-list, negate the whole group.
-			if elems[i].Parent.Equal(TList) {
+			if elems[i].Parent().Equal(TList) {
 				inner, err := buildWhereClause(elems[i])
 				if err != nil {
 					return "", err
@@ -872,7 +872,7 @@ func buildWhereClause(condList Value) (string, error) {
 
 		// --- Sub-list (parenthesized group) ---
 		// [[col op val or col op val] and ...]  → (...) AND ...
-		if elems[i].Parent.Equal(TList) {
+		if elems[i].Parent().Equal(TList) {
 			inner, err := buildWhereClause(elems[i])
 			if err != nil {
 				return "", err
@@ -918,7 +918,7 @@ func parseSingleCondition(elems []Value, start int) (string, int, error) {
 	i := start
 	col := valueToColName(elems[i])
 	if col == "" {
-		return "", i, fmt.Errorf("expected column name, got %s", elems[i].Parent)
+		return "", i, fmt.Errorf("expected column name, got %s", elems[i].Parent())
 	}
 	i++
 
@@ -1073,7 +1073,7 @@ func parseSingleCondition(elems []Value, start int) (string, int, error) {
 // buildInList converts a list value to a comma-separated SQL value list.
 // If the value is a table result (from a subquery), extracts the first column values.
 func buildInList(v Value) (string, error) {
-	if !v.Parent.Equal(TList) {
+	if !v.Parent().Equal(TList) {
 		// Single value
 		sql, err := valueToSQL(v)
 		if err != nil {
@@ -1083,7 +1083,7 @@ func buildInList(v Value) (string, error) {
 	}
 
 	// Check for subquery result: TableData or QueryBuilder.
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		return buildInListFromTable(td)
 	}
 	if qb, ok := unwrapQB(v); ok {
@@ -1095,7 +1095,7 @@ func buildInList(v Value) (string, error) {
 	}
 
 	_lst, _ := AsList(v)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty IN list")
 	}
@@ -1145,7 +1145,7 @@ func buildInListFromTable(td TableData) (string, error) {
 
 // isTableOrQuery returns true if the Value wraps a TableData or QueryBuilder.
 func isTableOrQuery(v Value) bool {
-	if _, ok := v.Data.(TableData); ok {
+	if _, ok := v.Data().(TableData); ok {
 		return true
 	}
 	if _, ok := unwrapQB(v); ok {
@@ -1178,7 +1178,7 @@ func scalarFromTable(td TableData) (Value, error) {
 // resolveScalarValue extracts a scalar value from a Value that may be a
 // TableData or QueryBuilder (result of a scalar subquery).
 func resolveScalarValue(v Value) (Value, error) {
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		return scalarFromTable(td)
 	}
 	if qb, ok := unwrapQB(v); ok {
@@ -1194,35 +1194,35 @@ func resolveScalarValue(v Value) (Value, error) {
 // valueToSQL converts a Value to a SQL literal string.
 func valueToSQL(v Value) (string, error) {
 	switch {
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		_as23, _ := AsString(v)
 		return "'" + strings.ReplaceAll(_as23, "'", "''") + "'", nil
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		_as24, _ := AsInteger(v)
 		return fmt.Sprintf("%d", _as24), nil
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as25, _ := AsBoolean(v)
 		if _as25 {
 			return "'true'", nil
 		}
 		return "'false'", nil
-	case v.Parent.Equal(TAtom):
+	case v.Parent().Equal(TAtom):
 		_as26, _ := AsAtom(v)
 		return "'" + strings.ReplaceAll(_as26, "'", "''") + "'", nil
-	case v.Parent.Equal(TNone):
+	case v.Parent().Equal(TNone):
 		return "NULL", nil
-	case v.Parent.Equal(TWord):
-		_as27, _ := AsWord(v)
+	case v.Parent().Equal(TWord):
+		_as27, _ := AsWord(&v)
 		return "'" + strings.ReplaceAll(_as27.Name, "'", "''") + "'", nil
 	default:
-		return "", fmt.Errorf("unsupported value type in condition: %s", v.Parent)
+		return "", fmt.Errorf("unsupported value type in condition: %s", v.Parent())
 	}
 }
 
 // buildGroupByClause translates a column list into a SQL GROUP BY clause.
 func buildGroupByClause(colList Value) (string, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty group by column list")
 	}
@@ -1230,7 +1230,7 @@ func buildGroupByClause(colList Value) (string, error) {
 	for _, e := range elems {
 		name := valueToColName(e)
 		if name == "" {
-			return "", fmt.Errorf("groupby: expected column name, got %s", e.Parent)
+			return "", fmt.Errorf("groupby: expected column name, got %s", e.Parent())
 		}
 		parts = append(parts, quoteIdent(name))
 	}
@@ -1241,7 +1241,7 @@ func buildGroupByClause(colList Value) (string, error) {
 // Supports dot-separated qualified names: [a.id eq b.id]
 func buildJoinCondition(condList Value) (string, error) {
 	_lst, _ := AsList(condList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "1=1", nil
 	}
@@ -1251,7 +1251,7 @@ func buildJoinCondition(condList Value) (string, error) {
 	for i < len(elems) {
 		lhs := valueToColName(elems[i])
 		if lhs == "" {
-			return "", fmt.Errorf("expected column name, got %s", elems[i].Parent)
+			return "", fmt.Errorf("expected column name, got %s", elems[i].Parent())
 		}
 		i++
 
@@ -1272,7 +1272,7 @@ func buildJoinCondition(condList Value) (string, error) {
 
 		rhs := valueToColName(elems[i])
 		if rhs == "" {
-			return "", fmt.Errorf("expected column name on right side of join condition, got %s", elems[i].Parent)
+			return "", fmt.Errorf("expected column name on right side of join condition, got %s", elems[i].Parent())
 		}
 		i++
 
@@ -1308,7 +1308,7 @@ func quoteJoinCol(name string) string {
 //   - [1, 2 desc]                    — positional (1-based)
 func buildOrderClause(colList Value) (string, error) {
 	_lst, _ := AsList(colList)
-	elems := _lst.Slice()
+	elems := _lst.Elems()
 	if len(elems) == 0 {
 		return "", fmt.Errorf("empty order column list")
 	}
@@ -1343,7 +1343,7 @@ func buildOrderClause(colList Value) (string, error) {
 	for i < len(elems) {
 		e := elems[i]
 
-		if e.Parent.ConformsTo(TInteger) {
+		if e.Parent().ConformsTo(TInteger) {
 			_as28, _ := AsInteger(e)
 			parts = append(parts, fmt.Sprintf("%d", _as28))
 			i++
@@ -1352,7 +1352,7 @@ func buildOrderClause(colList Value) (string, error) {
 
 		name := valueToColName(e)
 		if name == "" {
-			return "", fmt.Errorf("expected column name, position, or modifier, got %s", e.Parent)
+			return "", fmt.Errorf("expected column name, position, or modifier, got %s", e.Parent())
 		}
 		lower := strings.ToLower(name)
 

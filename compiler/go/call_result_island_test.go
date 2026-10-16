@@ -42,7 +42,7 @@ func TestCallResultPointUnplaced(t *testing.T) {
 func TestTypeDeferredUnknownIndex(t *testing.T) {
 	es := &EmitState{}
 	reads := func(string) int { return 1 }
-	consumed := func(func(EmitOperand) bool, func(core.Value) bool, int) int { return 0 }
+	consumed := func(func(EmitOperand) bool, func(core.Value) bool) int { return 0 }
 	for _, idx := range []int{-1, 0} {
 		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, reads, consumed) {
 			t.Errorf("type index %d: an unknown type defers nothing", idx)
@@ -115,7 +115,7 @@ func TestHeldReadPlanGuards(t *testing.T) {
 func TestBoundReadValueGuards(t *testing.T) {
 	p := core.SrcPos{Row: 1, Col: 1}
 	three := core.NewInteger(3)
-	three.ID = "r1"
+	core.SetID(&three, "r1")
 	bind := func(seq int, name string, v core.Value) treeEvent {
 		return treeEvent{ev: &EmitEvent{seq: seq, kind: evDynBind, dyn: &emitDynBind{name: name, val: v, srcSeq: -1, src: EmitOperand{kind: opEvent}}}}
 	}
@@ -138,7 +138,7 @@ func TestBoundReadValueGuards(t *testing.T) {
 	}
 	// Two defs sharing one value identity: the name read picks the binding.
 	four := core.NewInteger(4)
-	four.ID = "r1"
+	core.SetID(&four, "r1")
 	alias := map[int]treeEvent{1: bind(1, "a", three), 2: bind(2, "b", four)}
 	if v, ok := boundReadValue(alias, r1, p, "b"); !ok || v.String() != "4" {
 		t.Errorf("the read of b is b's binding, not a's: %v %v", v, ok)
@@ -150,7 +150,7 @@ func TestBoundReadValueGuards(t *testing.T) {
 		t.Error("a name bound to the value twice is ambiguous and written as nothing")
 	}
 	list := core.NewList(nil)
-	list.ID = "r3"
+	core.SetID(&list, "r3")
 	if _, ok := boundReadValue(map[int]treeEvent{1: bind(1, "l", list)}, map[string][]core.SrcPos{"r3": {p}}, p, "l"); ok {
 		t.Error("a compound binding is not written as a constant")
 	}

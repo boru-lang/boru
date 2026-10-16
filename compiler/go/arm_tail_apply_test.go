@@ -26,16 +26,16 @@ func TestArmTailApplyArms(t *testing.T) {
 		t.Fatal("a top that is no pending apply passes through")
 	}
 	u := es.units[len(es.units)-1]
-	u.pendingApply = []pendingApply{{id: fn.ID, pos: core.SrcPos{Row: 1, Col: 9}}}
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fn), pos: core.SrcPos{Row: 1, Col: 9}}}
 	// The fn resolves to nothing: the recorder declines, the residual and
 	// the pending entry stand.
 	if got := es.ArmTailApply(stk); len(got) != 2 || len(u.pendingApply) != 1 {
 		t.Fatal("a window the recorder declines passes through")
 	}
-	seedProduced(es, fn, 1)
+	seedProduced(es, &stk[1], 1) // the stack's holder is the one the arm reads
 	before := len(es.frames[0])
 	got := es.ArmTailApply(stk)
-	if len(got) != 1 || !got[0].Dynamic || got[0].Parent != core.TAny || !got[0].Carrier {
+	if len(got) != 1 || !core.IsDynamic(&got[0]) || got[0].Parent() != core.TAny || !got[0].Carrier() {
 		t.Fatalf("a pending fn over the arm's window nets one gradual value: %v", got)
 	}
 	if len(u.pendingApply) != 0 || len(es.frames[0]) != before+1 {

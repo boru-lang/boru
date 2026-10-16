@@ -43,7 +43,7 @@ func TestNUR056MakerBuildsItsOwnValues(t *testing.T) {
 		t.Fatalf("NewRegistry: %v", err)
 	}
 	ty := makerType(t, r, "NUR056Built", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(1.5), target), nil
+		return MintRetagged(addrOf(NewFloat(1.5)), target), nil
 	})
 	// The source is ignored by this constructor, which is the point: a
 	// Maker decides how a value is built, not merely how one is coerced.
@@ -55,7 +55,7 @@ func TestNUR056MakerBuildsItsOwnValues(t *testing.T) {
 		t.Fatalf("MakeValue: %v", err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("result must be a %s, got %s", ty, out.Parent)
+		t.Fatalf("result must be a %s, got %s", ty, out.Parent())
 	}
 }
 
@@ -78,7 +78,7 @@ func TestNUR056NoMakerDeclines(t *testing.T) {
 func TestNUR056MakerIsInheritedDownTheChain(t *testing.T) {
 	r, _ := NewRegistry()
 	base := makerType(t, r, "NUR056Base", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(7), target), nil
+		return MintRetagged(addrOf(NewFloat(7)), target), nil
 	})
 	sub := r.Types.MintType("NUR056Sub", base)
 	out, ok, err := makerCapability(sub, NewString("x"))
@@ -88,7 +88,7 @@ func TestNUR056MakerIsInheritedDownTheChain(t *testing.T) {
 	// …and the target handed to the body is the type being CONSTRUCTED,
 	// not the one that supplied the body.
 	if !out.Is(sub) {
-		t.Fatalf("result must be a %s, got %s", sub, out.Parent)
+		t.Fatalf("result must be a %s, got %s", sub, out.Parent())
 	}
 }
 
@@ -143,7 +143,7 @@ func TestNUR056BaseTypedResultIsReparented(t *testing.T) {
 		t.Fatalf("a base-typed result must be accepted: ok=%v err=%v", ok, err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("…and reparented to the target, got %s", out.Parent)
+		t.Fatalf("…and reparented to the target, got %s", out.Parent())
 	}
 }
 
@@ -152,7 +152,7 @@ func TestNUR056BaseTypedResultIsReparented(t *testing.T) {
 func TestNUR056TryMakeResolvesItsTarget(t *testing.T) {
 	r, _ := NewRegistry()
 	ty := makerType(t, r, "NUR056Try", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(3), target), nil
+		return MintRetagged(addrOf(NewFloat(3)), target), nil
 	})
 	out, ok, err := TryMake(r, NewTypeLiteral(ty), NewString("x"))
 	if !ok || err != nil {
@@ -181,14 +181,14 @@ func TestNUR056TryMakeResolvesItsTarget(t *testing.T) {
 func TestNUR056MakeConvertConsultsTheMaker(t *testing.T) {
 	r, _ := NewRegistry()
 	ty := makerType(t, r, "NUR056Field", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(9), target), nil
+		return MintRetagged(addrOf(NewFloat(9)), target), nil
 	})
 	out, err := MakeConvert(NewString("ignored"), ty)
 	if err != nil {
 		t.Fatalf("MakeConvert: %v", err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("MakeConvert must use the target's constructor, got %s", out.Parent)
+		t.Fatalf("MakeConvert must use the target's constructor, got %s", out.Parent())
 	}
 	// The unclaimed path is untouched.
 	if _, err := MakeConvert(NewString("2.5"), TFloat); err != nil {
@@ -202,7 +202,7 @@ func TestNUR056MakeConvertConsultsTheMaker(t *testing.T) {
 // reached only one of them would be silently absent from the others.
 func TestNUR056EveryMakeHandlerConsultsTheMaker(t *testing.T) {
 	build := func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(42), target), nil
+		return MintRetagged(addrOf(NewFloat(42)), target), nil
 	}
 	for _, tc := range []struct {
 		name    string
@@ -258,7 +258,7 @@ func TestNUR056ConcreteValueIsNotAMakeTarget(t *testing.T) {
 		t.Fatalf("NewRegistry: %v", err)
 	}
 	ty := makerType(t, r, "NUR056Target", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(1), target), nil
+		return MintRetagged(addrOf(NewFloat(1)), target), nil
 	})
 	// The positive: the TYPE claims construction.
 	if _, ok, _ := TryMake(r, NewTypeLiteral(ty), NewString("x")); !ok {
@@ -266,7 +266,7 @@ func TestNUR056ConcreteValueIsNotAMakeTarget(t *testing.T) {
 	}
 	// The negative twin: a VALUE of that very type must not, even though
 	// its type carries the Maker.
-	inhabitant := ReparentValue(NewFloat(2), ty)
+	inhabitant := MintRetagged(addrOf(NewFloat(2)), ty)
 	if _, ok, _ := TryMake(r, inhabitant, NewString("x")); ok {
 		t.Fatal("a concrete value must not be read as a make target")
 	}
@@ -283,7 +283,7 @@ func TestNUR056SiblingRefinementIsNotLaundered(t *testing.T) {
 	}
 	sibling := r.Types.MintType("NUR056Sibling", TFloat)
 	ty := makerType(t, r, "NUR056Launder", TFloat, func(*Type, Value) (Value, error) {
-		return ReparentValue(NewFloat(5), sibling), nil
+		return MintRetagged(addrOf(NewFloat(5)), sibling), nil
 	})
 	_, ok, err := makerCapability(ty, NewString("x"))
 	if !ok || err == nil {
@@ -339,7 +339,7 @@ func TestNUR056OptionsFormConsultsTheMaker(t *testing.T) {
 		t.Fatalf("NewRegistry: %v", err)
 	}
 	ty := makerType(t, r, "NUR056Opts", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(11), target), nil
+		return MintRetagged(addrOf(NewFloat(11)), target), nil
 	})
 	opts := NewOrderedMap()
 	opts.Set("base", NewBoolean(true))
@@ -360,7 +360,7 @@ func TestNUR056HasMakerAnswersForTheCheckPass(t *testing.T) {
 		t.Fatalf("NewRegistry: %v", err)
 	}
 	ty := makerType(t, r, "NUR056Has", TFloat, func(target *Type, _ Value) (Value, error) {
-		return ReparentValue(NewFloat(1), target), nil
+		return MintRetagged(addrOf(NewFloat(1)), target), nil
 	})
 	if !HasMaker(r, NewTypeLiteral(ty)) {
 		t.Error("a Maker-carrying target must be recognised")

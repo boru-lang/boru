@@ -38,7 +38,7 @@ func TestRegionEndDrainsForwardSoNextRegionFindsNone(t *testing.T) {
 		t.Fatalf("stepEnd: %v", err)
 	}
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			t.Fatalf("stepEnd must drain the parked forward; found one at %d", i)
 		}
 	}

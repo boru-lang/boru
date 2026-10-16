@@ -126,11 +126,11 @@ func TestW3Enum(t *testing.T) {
 	// enumReturns: concrete args fold to the real enum; a carrier falls
 	// back to the bare TEnum carrier.
 	out := enumReturns([]Value{NewList([]Value{NewAtom("a")})}, nil)
-	if len(out) != 1 || !IsDisjunct(out[0]) {
+	if len(out) != 1 || !IsDisjunct(&out[0]) {
 		t.Errorf("enumReturns concrete = %v, want an enum value", out)
 	}
 	out = enumReturns([]Value{NewCarrier(TList)}, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(TEnum) {
+	if len(out) != 1 || !out[0].Parent().Equal(TEnum) {
 		t.Errorf("enumReturns carrier = %v, want TEnum carrier", out)
 	}
 }
@@ -149,7 +149,7 @@ func TestW3TypeofReturns(t *testing.T) {
 	}
 	// Direct: a carrier arg keeps the bare Type carrier.
 	out := typeofReturns([]Value{NewCarrier(TInteger)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TType) {
+	if len(out) != 1 || !out[0].Parent().Equal(TType) {
 		t.Errorf("typeofReturns carrier = %v, want Type carrier", out)
 	}
 }
@@ -190,7 +190,7 @@ func TestW3Guard(t *testing.T) {
 		t.Fatalf("guardReturns = %v", out)
 	}
 	out = guardReturns(nil, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !out[0].Parent().Equal(TAny) {
 		t.Errorf("guardReturns() = %v, want Any carrier", out)
 	}
 }
@@ -243,7 +243,7 @@ func TestW3TypeAlgebraListFoldCheck(t *testing.T) {
 	// Direct: a non-concrete arg keeps the declared dynamic(Any).
 	fold := typeAlgebraListFold(tanyHandler)
 	out := fold([]Value{NewCarrier(TList)}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Errorf("typeAlgebraListFold carrier = %v, want dynamic Any", out)
 	}
 }

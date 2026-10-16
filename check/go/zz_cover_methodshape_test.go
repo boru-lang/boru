@@ -81,7 +81,7 @@ func zzmsAnnotate(t *testing.T, r *core.Registry, member core.Value) (core.Value
 	done := r.Check.Begin()
 	carrier := core.NewDynamicCarrier(core.TAny)
 	r.Check.NoteMethodShape(carrier, member)
-	if _, ok := r.Check.MethodShapeMember(carrier.ID); !ok {
+	if _, ok := r.Check.MethodShapeMember(core.IDOf(&carrier)); !ok {
 		done()
 		t.Fatal("test premise: the delegation member must be annotated")
 	}
@@ -211,10 +211,10 @@ func TestZZMSPlainCheckCollapseValueMethod(t *testing.T) {
 		t.Fatalf("collapse must splice [carrier, arg] to one value, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Dynamic || !out.Carrier || !out.Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out) || !out.Carrier() || !out.Parent().Equal(core.TAny) {
 		t.Errorf("the collapse result must be dynamic(Any), got %v", out)
 	}
-	if !core.IsEnd(e.Tape.At(1)) {
+	if !core.IsEnd(e.Tape.Ref(1)) {
 		t.Error("the statement boundary must survive the splice")
 	}
 }
@@ -241,7 +241,7 @@ func TestZZMSPlainCheckCollapseSideEffectMethod(t *testing.T) {
 	if !TryShapedMethodDispatch(e, 0) {
 		t.Fatal("the collapse must consume a side-effect-only apply too")
 	}
-	if e.Tape.Len() != 1 || !core.IsEnd(e.Tape.At(0)) {
+	if e.Tape.Len() != 1 || !core.IsEnd(e.Tape.Ref(0)) {
 		t.Fatalf("a 0-return method must collapse to NO values, tape len = %d", e.Tape.Len())
 	}
 	if len(rfArgs) != 1 {
@@ -275,7 +275,7 @@ func TestZZMSPlainCheckCollapseDeclines(t *testing.T) {
 	if TryShapedMethodDispatch(e1, 0) {
 		t.Error("a non-inert window must decline the collapse")
 	}
-	if e1.Tape.Len() != 3 || e1.Tape.At(0).ID != c1.ID {
+	if e1.Tape.Len() != 3 || core.IDOf(addrOf(e1.Tape.At(0))) != core.IDOf(&c1) {
 		t.Error("a declined collapse must leave the tape untouched")
 	}
 
@@ -418,7 +418,7 @@ func TestZZMSCompilePassModelRecordsDynMethod(t *testing.T) {
 	if call.word != "zzmsadd" {
 		t.Errorf("recorded word = %q, want the member's inner name", call.word)
 	}
-	if call.fn.ID != carrier.ID {
+	if core.IDOf(&call.fn) != core.IDOf(&carrier) {
 		t.Error("the event's fn operand must be the dot-read carrier (the runtime value)")
 	}
 	if len(call.args) != 1 || len(call.outs) != 1 {
@@ -428,7 +428,7 @@ func TestZZMSCompilePassModelRecordsDynMethod(t *testing.T) {
 		t.Fatalf("the model must splice carrier+window to the results, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the modelled result must be the declared Integer carrier, got %v", out)
 	}
 	if len(rec.reasons) != 0 {
@@ -491,7 +491,7 @@ func TestZZMSCompilePassUnconsumedPendingDeclines(t *testing.T) {
 	if r.Check.PendingMethodApply != nil {
 		t.Error("the decline must clear the pending apply")
 	}
-	if e.Tape.Len() != 3 || e.Tape.At(0).ID != carrier.ID {
+	if e.Tape.Len() != 3 || core.IDOf(addrOf(e.Tape.At(0))) != core.IDOf(&carrier) {
 		t.Error("the declined model must leave the tape untouched")
 	}
 }
@@ -571,7 +571,7 @@ func TestZZMSDynamicFnValueDispatch(t *testing.T) {
 		t.Fatalf("the collapse must consume the whole window, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Dynamic || !out.Carrier || !out.Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out) || !out.Carrier() || !out.Parent().Equal(core.TAny) {
 		t.Errorf("the collapse result must be dynamic(Any), got %v", out)
 	}
 
@@ -617,7 +617,7 @@ func zzmsArrivalFix(t *testing.T, member core.Value) (*core.Registry, *zzmsRecor
 	rec := newZZMSRecorder()
 	r.Check.Emit = rec
 	carrier := core.NewDynamicCarrier(core.TAny)
-	rec.members = map[string]core.Value{carrier.ID: member}
+	rec.members = map[string]core.Value{core.IDOf(&carrier): member}
 	return r, rec, carrier, done
 }
 
@@ -644,8 +644,8 @@ func TestZZMSMemberFnArrivalDispatchSuccess(t *testing.T) {
 		t.Fatalf("exactly one RecordDynMethod event, got %d", len(rec.dynCalls))
 	}
 	call := rec.dynCalls[0]
-	if call.word != "zzmsarr" || call.fn.ID != carrier.ID {
-		t.Errorf("event = %q over %q, want the member name over the read carrier", call.word, call.fn.ID)
+	if call.word != "zzmsarr" || core.IDOf(&call.fn) != core.IDOf(&carrier) {
+		t.Errorf("event = %q over %q, want the member name over the read carrier", call.word, core.IDOf(&call.fn))
 	}
 	if len(call.args) != 1 || len(call.outs) != 1 {
 		t.Errorf("recorded arity = %d args / %d outs, want 1/1", len(call.args), len(call.outs))
@@ -654,10 +654,10 @@ func TestZZMSMemberFnArrivalDispatchSuccess(t *testing.T) {
 		t.Fatalf("the splice must claim the ARITY window only, tape len = %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || out.Dynamic || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || core.IsDynamic(&out) || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the modelled out must be the declared Integer carrier, got %v", out)
 	}
-	if !core.IsWord(e.Tape.At(1)) {
+	if !core.IsWord(e.Tape.Ref(1)) {
 		t.Error("the token after the arity window belongs to the NEXT dispatch")
 	}
 }

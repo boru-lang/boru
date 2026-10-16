@@ -36,16 +36,16 @@ import (
 // reports its ChildTypeInfo.Len refinement when present. A plain
 // (unrefined) carrier, a non-list, or a type literal reports false.
 func StaticListLen(v core.Value) (int, bool) {
-	if !v.Parent.ConformsTo(core.TList) {
+	if !v.Parent().ConformsTo(core.TList) {
 		return 0, false
 	}
-	if core.IsConcrete(v) {
+	if core.IsConcrete(&v) {
 		if list, err := core.AsList(v); err == nil && !list.IsNil() {
 			return list.Len(), true
 		}
 		return 0, false
 	}
-	if ct, ok := v.Data.(core.ChildTypeInfo); ok && ct.Len != nil {
+	if ct, ok := v.Data().(core.ChildTypeInfo); ok && ct.Len != nil {
 		return *ct.Len, true
 	}
 	return 0, false
@@ -70,7 +70,7 @@ func minIndex(idx core.Value) (int64, bool) {
 		}
 		return n, true
 	}
-	if core.IsConcrete(idx) && idx.Parent.Equal(core.TInteger) {
+	if core.IsConcrete(&idx) && idx.Parent().Equal(core.TInteger) {
 		n, err := idx.AsConcreteInteger()
 		if err != nil {
 			return 0, false
@@ -98,7 +98,7 @@ func maxIndex(idx core.Value) (int64, bool) {
 		}
 		return n, true
 	}
-	if core.IsConcrete(idx) && idx.Parent.Equal(core.TInteger) {
+	if core.IsConcrete(&idx) && idx.Parent().Equal(core.TInteger) {
 		n, err := idx.AsConcreteInteger()
 		if err != nil {
 			return 0, false
@@ -172,7 +172,7 @@ func CheckAtIndices(r *core.Registry, indices, data core.Value, word string) {
 	if !ok {
 		return
 	}
-	if !core.IsConcrete(indices) || !indices.Parent.ConformsTo(core.TList) {
+	if !core.IsConcrete(&indices) || !indices.Parent().ConformsTo(core.TList) {
 		return
 	}
 	list, err := core.AsList(indices)

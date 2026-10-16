@@ -76,7 +76,7 @@ func DescribeName(r *Registry, w io.Writer, name string) {
 			if body, bok := TypeContentOf(bound); bok {
 				bound = body
 			}
-			if IsClassType(bound) {
+			if IsClassType(&bound) {
 				fmt.Fprint(w, formatTypeSchema(name, bound))
 				return
 			}

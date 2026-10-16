@@ -32,7 +32,7 @@ var ErrNoExactEqualer = errors.New("no exact equaler")
 // the pair. A body that ERRORS is a decline, not inequality: ExactEqual is
 // total and has no error channel, the rule deepEqualCapability states.
 func exactEqualCapability(a, b Value) (result bool, ok bool) {
-	for t := lowestCommonAncestor(ValueType(a), ValueType(b)); t != nil; t = t.Parent {
+	for t := lowestCommonAncestor(ValueType(a), ValueType(b)); t != nil; t = t.Parent() {
 		ee, is := t.Behavior().(ExactEqualer)
 		if !is {
 			continue

@@ -54,7 +54,7 @@ func ParseFnDef(r *Registry, list []Value) (FnDefInfo, error) {
 		outputSig := list[i+1]
 		body := list[i+2]
 
-		if !inputSig.Parent.Equal(TList) {
+		if !inputSig.Parent().Equal(TList) {
 			inputSig = NewList([]Value{inputSig})
 		}
 
@@ -69,7 +69,7 @@ func ParseFnDef(r *Registry, list []Value) (FnDefInfo, error) {
 		}
 
 		var bodyElems []Value
-		if body.Parent.Equal(TList) && body.Data != nil {
+		if body.Parent().Equal(TList) && body.Data() != nil {
 			_lst, _ := AsList(body)
 			bodyElems = _lst.Slice()
 		} else {
@@ -113,7 +113,7 @@ func ParseFnUndefSpec(r *Registry, list []Value) (FnUndefInfo, error) {
 		inputSig := list[i]
 		outputSig := list[i+1]
 
-		if !inputSig.Parent.Equal(TList) {
+		if !inputSig.Parent().Equal(TList) {
 			inputSig = NewList([]Value{inputSig})
 		}
 
@@ -151,7 +151,7 @@ func sigDeclPos(sig Value) SrcPos {
 	if p := sig.Pos(); p.Row > 0 {
 		return p
 	}
-	if sig.Parent.Equal(TMap) && sig.Data != nil {
+	if sig.Parent().Equal(TMap) && sig.Data() != nil {
 		if m, err := AsMutableMap(sig); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				v, _ := m.Get(k)
@@ -161,9 +161,9 @@ func sigDeclPos(sig Value) SrcPos {
 			}
 		}
 	}
-	if sig.Parent.Equal(TList) && sig.Data != nil {
+	if sig.Parent().Equal(TList) && sig.Data() != nil {
 		if l, err := AsList(sig); err == nil {
-			for _, e := range l.Slice() {
+			for _, e := range l.Elems() {
 				if p := sigDeclPos(e); p.Row > 0 {
 					return p
 				}

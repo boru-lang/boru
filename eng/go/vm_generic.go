@@ -165,7 +165,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		// word bound to a dispatching definition) at the written position
 		// the sig-order index names (the index rule).
 		if specAt < len(d.Slots) {
-			if wi, err := core.AsWord(d.Slots[specAt].Token); err == nil {
+			if wi, err := core.AsWord(&d.Slots[specAt].Token); err == nil {
 				return nil, -1, nil, stampAt(core.StrandedForwardDiag(reg.Source, d.Word, nf-specAt, wi.Name, core.BarrierReceiverWord(reg, wi.Name), d.Pos), curDebug, pc, reg)
 			}
 		}
@@ -182,7 +182,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	for i, at := range positions {
 		if at > pointer {
 			tok := h.win.At(at)
-			if wi, err := core.AsWord(tok); err == nil {
+			if wi, err := core.AsWord(&tok); err == nil {
 				if wi.ForceVal || wi.ForceUsurp {
 					return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-word-form", "DISPATCH_GENERIC at "+d.Word+": a modified word in the claim; the compiled runtime cannot execute it")
 				}
@@ -218,7 +218,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			return nil, -1, nil, err
 		}
 		for i := range args {
-			args[i] = core.StripAscribed(args[i])
+			core.ClearAscribed(&args[i])
 		}
 		results, err := h(args, reg.Contexts.TopData(), nil, reg)
 		if err != nil {

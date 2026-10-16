@@ -36,8 +36,8 @@ func TestCurryOrStackRearrangesClaimedStack(t *testing.T) {
 	// parked at the rescue's word index.
 	found := false
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsWord(e.Tape.At(i)) {
-			if w, err := AsWord(e.Tape.At(i)); err == nil && w.Name == "czadd" {
+		if IsWord(e.Tape.Ref(i)) {
+			if w, err := AsWord(e.Tape.Ref(i)); err == nil && w.Name == "czadd" {
 				found = true
 			}
 		}

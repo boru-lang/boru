@@ -197,7 +197,7 @@ func TestSubstituteTypeParamsWordAndRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unrelated word: %v", err)
 	}
-	w, _ := AsWord(same)
+	w, _ := AsWord(&same)
 	if w.Name != "unrelated" {
 		t.Errorf("unrelated word rewritten to %v", same)
 	}
@@ -276,7 +276,7 @@ func TestInstallWordExtensionMergeAndDispatch(t *testing.T) {
 	}
 
 	// Dispatch: the anchored overload works, the locked Integer one remains.
-	out, err := NewTop(r).Run([]Value{NewWord("cadd"), ReparentValue(NewString("a"), covStrT), NewString("b")})
+	out, err := NewTop(r).Run([]Value{NewWord("cadd"), MintRetagged(addrOf(NewString("a")), covStrT), NewString("b")})
 	if err != nil {
 		t.Fatalf("extended string call: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestNewWordExtensionAndTransplant(t *testing.T) {
 	if err := TransplantExtension(r, ext, "cov:module", ""); err != nil {
 		t.Fatalf("TransplantExtension: %v", err)
 	}
-	flagVal := ReparentValue(NewBoolean(true), flagT)
+	flagVal := MintRetagged(addrOf(NewBoolean(true)), flagT)
 	out, err := NewTop(r).Run([]Value{NewWord("cadd"), flagVal, NewBoolean(true)})
 	if err != nil {
 		t.Fatalf("transplanted call: %v", err)
@@ -489,7 +489,7 @@ func TestWalkBodyWords(t *testing.T) {
 	}
 	// Quoted values are opaque.
 	q := NewWord("hidden")
-	q.Quoted = true
+	SetQuoted(&q, true)
 	seen = nil
 	WalkBodyWords([]Value{q}, func(w WordInfo, _ Value) { seen = append(seen, w.Name) })
 	if len(seen) != 0 {

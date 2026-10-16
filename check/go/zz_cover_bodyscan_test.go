@@ -72,7 +72,7 @@ func TestValueHasSentinelIgnoresQuotedFlag(t *testing.T) {
 	// Doc: quote marks the LIST as data, not its tokens as
 	// non-executable — a quoted `break` handed to do/each is live.
 	q := core.NewList([]core.Value{core.NewWord("break")})
-	q.Quoted = true
+	core.SetQuoted(&q, true)
 	if !BodyHasSentinel(q) {
 		t.Error("a quoted list's break is a live sentinel — .Quoted must not be honoured")
 	}

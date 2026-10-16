@@ -6,8 +6,8 @@ import "testing"
 // depth of a container, and nothing else (the map-literal const fold's
 // exclusion, the container-member calls, 2026-09-22).
 func TestContainsCapturingFn(t *testing.T) {
-	plain := Value{Parent: TFunction, Data: FnDefInfo{Name: "inc"}}
-	closure := Value{Parent: TFunction, Data: FnDefInfo{Name: "adder", Captured: []CapturedBinding{{Name: "k", Value: NewInteger(1)}}}}
+	plain := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "inc"}}}
+	closure := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "adder", Captured: []CapturedBinding{{Name: "k", Value: NewInteger(1)}}}}}
 	if containsCapturingFn(plain) {
 		t.Error("a capture-free fn value is not a closure")
 	}

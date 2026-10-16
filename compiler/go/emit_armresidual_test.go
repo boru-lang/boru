@@ -75,9 +75,9 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	// on its own. Pinned as its own case, with the screen it takes named, so
 	// the two declines are never read as one.
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
-	dyn.ID = ""
-	if !core.SigTypeMatches(dyn, core.TFunction) {
+	core.SetDynamic(&dyn, true)
+	core.SetID(&dyn, "")
+	if !core.SigTypeMatches(&dyn, core.TFunction) {
 		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what declines it")
 	}
 	dynArm := &EmitFragment{}
@@ -90,7 +90,7 @@ func TestCaptureArmResidualArms(t *testing.T) {
 	// for arms): the operand names its producing seq, which RewritePromotedRefs
 	// rewrites to the frame slot planValueDefLocals allocated.
 	produced := core.NewCarrier(core.TInteger)
-	es.setProduced(produced, 4)
+	es.setProduced(&produced, 4)
 	evArm := &EmitFragment{}
 	es.captureArmResidual(evArm, []core.Value{core.NewInteger(1), produced})
 	if len(evArm.residualOps) != 2 || evArm.residualOps[1].kind != opEvent || evArm.residualOps[1].idx != 4 {

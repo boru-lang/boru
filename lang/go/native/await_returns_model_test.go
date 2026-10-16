@@ -19,8 +19,8 @@ func wantResidual(t *testing.T, label string, got []Value, want *Type) {
 	if len(got) != 1 {
 		t.Fatalf("%s: got %d residual values, want 1", label, len(got))
 	}
-	if got[0].Parent != want {
-		t.Errorf("%s: residual %v, want %v", label, got[0].Parent, want)
+	if got[0].Parent() != want {
+		t.Errorf("%s: residual %v, want %v", label, got[0].Parent(), want)
 	}
 }
 
@@ -99,9 +99,9 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	// full has no error escape: always a List, and a list of MAPS.
 	full := awaitResidual(nil, "full", nonEmpty)
 	wantResidual(t, "full", full, TList)
-	ci, ok := full[0].Data.(ChildTypeInfo)
-	if !ok || ci.Child.Parent != TMap {
-		t.Errorf("full: element carrier %+v (typed=%v), want a Map", full[0].Data, ok)
+	ci, ok := full[0].Data().(ChildTypeInfo)
+	if !ok || ci.Child.Parent() != TMap {
+		t.Errorf("full: element carrier %+v (typed=%v), want a Map", full[0].Data(), ok)
 	}
 
 	// all is List-or-Error, named as a dynamic union so the claim does not
@@ -110,7 +110,7 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	if len(all) != 1 {
 		t.Fatalf("all: got %d residual values, want 1", len(all))
 	}
-	if !all[0].Dynamic {
+	if !IsDynamic(&all[0]) {
 		t.Errorf("all: residual is strict; a strict disjunct false-positives on list consumers")
 	}
 	di, err := AsDisjunct(all[0])
@@ -121,7 +121,7 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	// Parent — the same discrimination typeCovered makes before it decomposes
 	// a disjunct. Compared with Equal, not pointer identity: ValueType hands
 	// back the address of a by-value type literal, which is exactly the
-	// non-canonical pointer CanonicalType exists to resolve.
+	// non-canonical pointer NodeOf resolves.
 	if len(di.Alternatives) != 2 ||
 		!ValueType(di.Alternatives[0]).Equal(TList) ||
 		!ValueType(di.Alternatives[1]).Equal(TError) {

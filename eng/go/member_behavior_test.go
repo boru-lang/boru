@@ -24,19 +24,19 @@ func TestMemberBehaviorWiring(t *testing.T) {
 	Even := r.Types.MintMemberType("Even", core.TInteger, even)
 
 	// Match (v.Is) — the dispatch / fast path.
-	if !core.NewInteger(4).Is(Even) {
+	if !addrOf(core.NewInteger(4)).Is(Even) {
 		t.Error("4 should be Even")
 	}
-	if core.NewInteger(3).Is(Even) {
+	if addrOf(core.NewInteger(3)).Is(Even) {
 		t.Error("3 must not be Even")
 	}
 	// A wrong-family value is rejected, not mis-admitted.
-	if core.NewString("x").Is(Even) {
+	if addrOf(core.NewString("x")).Is(Even) {
 		t.Error("a String must not be Even")
 	}
 	// A value tagged with the type (the analogue of a stream handle) is a
 	// member regardless of its tag — the predicate decides.
-	if !core.ReparentValue(core.NewInteger(8), Even).Is(Even) {
+	if !addrOf(core.MintRetagged(addrOf(core.NewInteger(8)), Even)).Is(Even) {
 		t.Error("an Even-tagged 8 should be Even")
 	}
 
@@ -56,12 +56,12 @@ func TestMemberBehaviorWiring(t *testing.T) {
 	// Canon — a member renders by its lattice family (an Integer), not
 	// routed through the behavior's Format. The FormatDelegate marker the
 	// helper supplies is what keeps this working for a minted non-builtin.
-	if got := core.Canon([]core.Value{core.ReparentValue(core.NewInteger(8), Even)}); got != "8" {
+	if got := core.Canon([]core.Value{core.MintRetagged(addrOf(core.NewInteger(8)), Even)}); got != "8" {
 		t.Errorf("canon of an Even-tagged 8 = %q, want %q", got, "8")
 	}
 
 	// The bare type literal is "the type itself", not an inhabitant.
-	if lit.Is(Even) && !core.IsBareTypeNode(lit) {
+	if lit.Is(Even) && !core.IsBareTypeNode(&lit) {
 		t.Error("unexpected: a concrete value masquerading as the literal")
 	}
 }

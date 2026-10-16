@@ -12,7 +12,7 @@ func TestCanonValue(t *testing.T) {
 	m.Set("b", core.NewAtom("foo"))
 
 	quotedList := core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	quotedList.Quoted = true
+	core.SetQuoted(&quotedList, true)
 
 	cases := []struct {
 		name string

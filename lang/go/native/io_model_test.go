@@ -28,7 +28,7 @@ func modelPathon(t *testing.T, r *Registry, path string) Value {
 // carrier of typ.
 func wantOneCarrier(t *testing.T, out []Value, typ *Type, label string) {
 	t.Helper()
-	if len(out) != 1 || out[0].Dynamic || !out[0].Parent.Equal(typ) {
+	if len(out) != 1 || IsDynamic(&out[0]) || !out[0].Parent().Equal(typ) {
 		t.Fatalf("%s residual = %v, want one %s carrier", label, out, typ.Leaf())
 	}
 }
@@ -36,7 +36,7 @@ func wantOneCarrier(t *testing.T, out []Value, typ *Type, label string) {
 // wantDynAny asserts the model declined to the declared dynamic Any.
 func wantDynAny(t *testing.T, out []Value, label string) {
 	t.Helper()
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
 		t.Fatalf("%s residual = %v, want one dynamic Any carrier", label, out)
 	}
 }
@@ -84,7 +84,7 @@ func TestReadReturnsRouting(t *testing.T) {
 	// Bytes. Caught as a live soundness violation:
 	//   IO.read p {enc:e}   check: String   runtime: Bytes
 	computedEnc := mapOfKV("enc", NewCarrier(TString))
-	if !core.IsConcrete(computedEnc) {
+	if !core.IsConcrete(&computedEnc) {
 		t.Fatal("fixture: a map with a carrier field must still be IsConcrete — that is the trap being guarded")
 	}
 	wantDynAny(t, rf2([]Value{p, computedEnc}, r), "computed enc field")
@@ -101,7 +101,7 @@ func TestWriteReturnsIdentity(t *testing.T) {
 	// a write-then-read chain.
 	p := modelPathon(t, r, "mem://w.txt")
 	out := rf([]Value{p, NewString("hello")}, r)
-	if len(out) != 1 || !core.IsConcrete(out[0]) {
+	if len(out) != 1 || !core.IsConcrete(&out[0]) {
 		t.Fatalf("concrete write residual = %v, want the Pathon back", out)
 	}
 	if !core.ValuesEqual(out[0], p) {
@@ -128,16 +128,16 @@ func TestStatSpaceShapeReturns(t *testing.T) {
 	// stat: a dynamic Record∪None union whose record alternative carries
 	// the full buildStatRecord field set.
 	out := statShapeReturns(TAtom)(nil, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("stat shape = %v, want one dynamic carrier", out)
 	}
 	di, err := AsDisjunct(out[0])
 	if err != nil || len(di.Alternatives) != 2 {
 		t.Fatalf("stat bound = (%v, %v), want a two-alternative disjunct", di, err)
 	}
-	rt, ok := di.Alternatives[0].Data.(core.RecordTypeInfo)
+	rt, ok := di.Alternatives[0].Data().(core.RecordTypeInfo)
 	if !ok {
-		t.Fatalf("stat map alternative = %T, want a record schema", di.Alternatives[0].Data)
+		t.Fatalf("stat map alternative = %T, want a record schema", di.Alternatives[0].Data())
 	}
 	for _, field := range []string{"name", "path", "type", "size", "mode", "mtime", "owner", "group", "target", "xattr"} {
 		if _, ok := rt.Fields.Get(field); !ok {
@@ -152,18 +152,18 @@ func TestStatSpaceShapeReturns(t *testing.T) {
 	// def-slot aliasing lesson — a shared hoisted bound aliased three
 	// reads onto one compiled slot).
 	again := statShapeReturns(TAtom)(nil, r)
-	if out[0].ID != "" && out[0].ID == again[0].ID {
+	if IDOf(&out[0]) != "" && IDOf(&out[0]) == IDOf(&again[0]) {
 		t.Error("stat shape reuses one value identity across invocations")
 	}
 
 	// space: a dynamic record schema of the filesystem-stats fields.
 	sout := spaceShapeReturns()(nil, r)
-	if len(sout) != 1 || !sout[0].Dynamic {
+	if len(sout) != 1 || !IsDynamic(&sout[0]) {
 		t.Fatalf("space shape = %v, want one dynamic carrier", sout)
 	}
-	srt, ok := sout[0].Data.(core.RecordTypeInfo)
+	srt, ok := sout[0].Data().(core.RecordTypeInfo)
 	if !ok {
-		t.Fatalf("space bound = %T, want a record schema", sout[0].Data)
+		t.Fatalf("space bound = %T, want a record schema", sout[0].Data())
 	}
 	for _, field := range []string{"total", "free", "available", "bsize", "type"} {
 		if _, ok := srt.Fields.Get(field); !ok {
@@ -178,13 +178,13 @@ func TestGetNodeReturnsDynamicDisjunctSchema(t *testing.T) {
 	// A dynamic Record∪None receiver resolves a schema field GRADUALLY.
 	recv := statShapeReturns(TAtom)(nil, r)[0]
 	out := getNodeReturns([]Value{NewString("size"), recv}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(TInteger) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TInteger) {
 		t.Fatalf("schema field through the union = %v, want dynamic Integer", out)
 	}
 	// A field outside the schema keeps dynamic Any (an open map at run
 	// time may carry it).
 	out = getNodeReturns([]Value{NewString("bogus"), recv}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
 		t.Fatalf("unknown field through the union = %v, want dynamic Any", out)
 	}
 	// A dynamic union with NO record alternative (env's String∪None)
@@ -193,13 +193,13 @@ func TestGetNodeReturnsDynamicDisjunctSchema(t *testing.T) {
 		NewTypeLiteral(TString), NewTypeLiteral(TNone),
 	}))
 	out = getNodeReturns([]Value{NewString("size"), strUnion}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
 		t.Fatalf("recordless union = %v, want dynamic Any", out)
 	}
 	// A dynamic NON-disjunct receiver (plain dynamic Any) declines the
 	// probe and keeps the fallback.
 	out = getNodeReturns([]Value{NewString("size"), NewDynamicCarrier(TAny)}, r)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
 		t.Fatalf("plain dynamic receiver = %v, want dynamic Any", out)
 	}
 }
@@ -298,7 +298,7 @@ func TestIOValidationMirrors(t *testing.T) {
 	// nothing to encode (AsConcreteString rejects it by design).
 	r11 := mirrorReg(t)
 	dep := core.NewDepScalar(core.DepGT, NewInteger(3))
-	if !core.IsConcrete(dep) {
+	if !core.IsConcrete(&dep) {
 		t.Fatal("fixture: a DepScalar constraint must be concrete — otherwise the gate, not this arm, declines")
 	}
 	w([]Value{p, dep, mapOfKV("enc", NewString("latin1"))}, r11)
@@ -318,7 +318,7 @@ func TestIOValidationMirrors(t *testing.T) {
 	// The residual still comes from writeReturns: a concrete Pathon
 	// target is handed back verbatim.
 	out := w([]Value{p, NewString("hi"), mapOfKV("enc", NewString("utf8"))}, r8)
-	if len(out) != 1 || !core.IsConcrete(out[0]) {
+	if len(out) != 1 || !core.IsConcrete(&out[0]) {
 		t.Fatalf("write residual = %v, want the concrete Pathon back", out)
 	}
 }

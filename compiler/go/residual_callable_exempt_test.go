@@ -21,13 +21,13 @@ func TestResidualCallableExempt(t *testing.T) {
 	twice := core.NewDynamicCarrier(core.TAny)
 	loose := core.NewDynamicCarrier(core.TAny)
 	idless := core.NewDynamicCarrier(core.TAny)
-	idless.ID = ""
-	for i, v := range []core.Value{read, copied, result, twice} {
-		es.producedBy[v.ID] = producer{seq: i + 1}
+	core.SetID(&idless, "")
+	for i, v := range []*core.Value{&read, &copied, &result, &twice} {
+		es.stampProduced(v, i+1, 0)
 	}
 	reads := map[string]rootWordRead{
-		read.ID:   {name: "j", reads: []core.SrcPos{{Row: 1, Col: 1}}},
-		copied.ID: {name: "k", reads: []core.SrcPos{{Row: 1, Col: 5}}},
+		core.IDOf(&read):   {name: "j", reads: []core.SrcPos{{Row: 1, Col: 1}}},
+		core.IDOf(&copied): {name: "k", reads: []core.SrcPos{{Row: 1, Col: 5}}},
 	}
 	residual := []core.Value{read, copied, copied, result, twice, twice, loose, idless}
 	exempt := es.residualCallableExempt(residual, reads)
@@ -42,8 +42,8 @@ func TestResidualCallableExempt(t *testing.T) {
 		{twice, false, "a call result held twice"},
 		{loose, false, "an entry no event produced"},
 	} {
-		if exempt[c.v.ID] != c.want {
-			t.Errorf("%s: exempt %v, want %v", c.what, exempt[c.v.ID], c.want)
+		if exempt[core.IDOf(&c.v)] != c.want {
+			t.Errorf("%s: exempt %v, want %v", c.what, exempt[core.IDOf(&c.v)], c.want)
 		}
 	}
 	if exempt[""] {
@@ -67,7 +67,8 @@ func TestResidualCallableExempt(t *testing.T) {
 // pick or roll fold sets it, a depth fold does not.
 func TestFoldFullStackLatchesShuffle(t *testing.T) {
 	a, b := core.NewInteger(1), core.NewInteger(2)
-	a.ID, b.ID = core.GenerateID("S_"), core.GenerateID("S_")
+	core.SetID(&a, core.GenerateID("S_"))
+	core.SetID(&b, core.GenerateID("S_"))
 	es := NewEmitState()
 	if _, ok := es.FoldFullStack("depth", nil, []core.Value{a, b}); !ok || es.shuffleFolded {
 		t.Fatalf("depth folds without latching (ok=%v latched=%v)", ok, es.shuffleFolded)

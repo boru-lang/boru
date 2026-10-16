@@ -80,10 +80,10 @@ func AsBytesValue(v Value) ([]byte, bool) { return AsBytes(v) }
 
 // AsBytes extracts the backing slice of a Bytes value.
 func AsBytes(v Value) ([]byte, bool) {
-	if v.Parent == nil || !v.Parent.ConformsTo(TBytes) {
+	if v.Parent() == nil || !v.Parent().ConformsTo(TBytes) {
 		return nil, false
 	}
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := v.Data().(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -148,7 +148,7 @@ func (BytesBehavior) Equal(a, b Value) bool {
 // opening with the type-literal-first rule so a bare `Bytes` literal
 // sorts below every concrete value (two literals bubble to Rank).
 func (BytesBehavior) Compare(a, b Value) (int, error) {
-	aLit, bLit := IsBareTypeNode(a), IsBareTypeNode(b)
+	aLit, bLit := IsBareTypeNode(&a), IsBareTypeNode(&b)
 	switch {
 	case aLit && bLit:
 		return 0, core.ErrNoComparer

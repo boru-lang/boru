@@ -21,7 +21,7 @@ func freshFlexMap(t *testing.T) Value {
 
 func freshWeakMap() (Value, *WeakFlexMapData) {
 	v := NewWeakFlexMap()
-	return v, v.Data.(*WeakFlexMapData)
+	return v, v.Data().(*WeakFlexMapData)
 }
 
 // ── classification ───────────────────────────────────────────────────
@@ -51,17 +51,17 @@ func TestClassifyWeakHandles(t *testing.T) {
 	for _, v := range []Value{fm, fl, fx, wm, wl, wx, st, oi, ri} {
 		slot, refusal := classifyWeak(v)
 		if refusal != nil {
-			t.Fatalf("handle %T refused: %+v", v.Data, refusal)
+			t.Fatalf("handle %T refused: %+v", v.Data(), refusal)
 		}
 		if slot.ref == nil {
-			t.Fatalf("handle %T stored strongly", v.Data)
+			t.Fatalf("handle %T stored strongly", v.Data())
 		}
 		got, alive := slot.ref.revive()
 		if !alive {
-			t.Fatalf("handle %T dead while pinned", v.Data)
+			t.Fatalf("handle %T dead while pinned", v.Data())
 		}
-		if got.Parent == nil || !got.Parent.Equal(v.Parent) {
-			t.Fatalf("revived %T lost its Parent tag", v.Data)
+		if got.Parent() == nil || !got.Parent().Equal(v.Parent()) {
+			t.Fatalf("revived %T lost its Parent tag", v.Data())
 		}
 	}
 	// Class/Resource instances with nil Fields are NOT weak-eligible.
@@ -70,7 +70,7 @@ func TestClassifyWeakHandles(t *testing.T) {
 		NewValueRaw(TMap, ResourceInstanceInfo{}),
 	} {
 		if _, refusal := classifyWeak(v); refusal == nil {
-			t.Fatalf("nil-Fields instance %T accepted", v.Data)
+			t.Fatalf("nil-Fields instance %T accepted", v.Data())
 		}
 	}
 }
@@ -78,7 +78,7 @@ func TestClassifyWeakHandles(t *testing.T) {
 func TestClassifyWeakRefusals(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
-	fnVal := NewValueRaw(TFunction, FnDefInfo{Name: "f"})
+	fnVal := NewValueRaw(TFunction, &FnDefInfo{Name: "f"})
 	errVal := NewValueRaw(TAny, ErrorInfo{Message: "boom"})
 	record := NewRecordType(NewOrderedMap())
 	cases := []struct {
@@ -254,7 +254,7 @@ func TestWeakMapCollection(t *testing.T) {
 
 func TestWeakListCollection(t *testing.T) {
 	wl := NewWeakFlexList()
-	wd := wl.Data.(*WeakFlexListData)
+	wd := wl.Data().(*WeakFlexListData)
 	if r := wd.Append(NewInteger(7)); r != nil {
 		t.Fatalf("refused: %+v", r)
 	}
@@ -272,7 +272,7 @@ func TestWeakListCollection(t *testing.T) {
 
 func TestWeakXmlCollection(t *testing.T) {
 	wx := NewWeakFlexXml("root")
-	wd := wx.Data.(*WeakFlexXmlData)
+	wd := wx.Data().(*WeakFlexXmlData)
 	if r := wd.AppendChild(NewString("text")); r != nil {
 		t.Fatalf("refused: %+v", r)
 	}
@@ -298,7 +298,7 @@ func TestWeakXmlCollection(t *testing.T) {
 // ── list index / bounds interplay ────────────────────────────────────
 
 func TestWeakListSetIndex(t *testing.T) {
-	wd := NewWeakFlexList().Data.(*WeakFlexListData)
+	wd := NewWeakFlexList().Data().(*WeakFlexListData)
 	if r := wd.Append(NewInteger(1)); r != nil {
 		t.Fatal("append refused")
 	}
@@ -359,13 +359,13 @@ func TestCloneWeakData(t *testing.T) {
 	if snap.Len() != 2 {
 		t.Fatalf("clone lost entries: %d", snap.Len())
 	}
-	wl := NewWeakFlexList().Data.(*WeakFlexListData)
+	wl := NewWeakFlexList().Data().(*WeakFlexListData)
 	wl.Append(NewInteger(1))
 	wl.Append(live)
 	if got := CloneWeakFlexListData(wl, ident); len(got.snapshotElems()) != 2 {
 		t.Fatal("list clone lost elements")
 	}
-	wx := NewWeakFlexXml("t").Data.(*WeakFlexXmlData)
+	wx := NewWeakFlexXml("t").Data().(*WeakFlexXmlData)
 	wx.SetAttr("a", NewInteger(1))
 	wx.AppendChild(live)
 	nx := CloneWeakFlexXmlData(wx, ident, func(m *OrderedMap) *OrderedMap { return m })
@@ -380,26 +380,26 @@ func TestCloneValueWeakArms(t *testing.T) {
 	wd.SetValue("n", NewInteger(1))
 	cl := CloneValue(wm)
 	if !IsWeakFlexMap(cl) {
-		t.Fatalf("clone changed kind: %s", cl.Parent.String())
+		t.Fatalf("clone changed kind: %s", cl.Parent().String())
 	}
-	if sameContainer(cl.Data, wm.Data) {
+	if sameContainer(cl.Data(), wm.Data()) {
 		t.Fatal("clone shares the container")
 	}
 	// Shared payload appears once (seen-cache) inside one clone call.
 	pair := NewList([]Value{wm, wm})
 	cp := CloneValue(pair)
 	lst, _ := AsList(cp)
-	if !sameContainer(lst.Get(0).Data, lst.Get(1).Data) {
+	if !sameContainer(lst.Get(0).Data(), lst.Get(1).Data()) {
 		t.Fatal("seen-cache miss: one payload cloned twice")
 	}
 	wlv := NewWeakFlexList()
-	wlv.Data.(*WeakFlexListData).Append(NewInteger(1))
+	wlv.Data().(*WeakFlexListData).Append(NewInteger(1))
 	if !IsWeakFlexList(CloneValue(wlv)) {
 		t.Fatal("list clone changed kind")
 	}
 	lp := NewList([]Value{wlv, wlv})
 	lc, _ := AsList(CloneValue(lp))
-	if !sameContainer(lc.Get(0).Data, lc.Get(1).Data) {
+	if !sameContainer(lc.Get(0).Data(), lc.Get(1).Data()) {
 		t.Fatal("list seen-cache miss")
 	}
 	wxv := NewWeakFlexXml("t")
@@ -408,7 +408,7 @@ func TestCloneValueWeakArms(t *testing.T) {
 	}
 	xp := NewList([]Value{wxv, wxv})
 	xc, _ := AsList(CloneValue(xp))
-	if !sameContainer(xc.Get(0).Data, xc.Get(1).Data) {
+	if !sameContainer(xc.Get(0).Data(), xc.Get(1).Data()) {
 		t.Fatal("xml seen-cache miss")
 	}
 }
@@ -418,23 +418,23 @@ func TestFreshenDefaultWeakArm(t *testing.T) {
 	wd.SetValue("n", NewInteger(1))
 	fr := FreshenDefault(wm)
 	if !IsWeakFlexMap(fr) {
-		t.Fatalf("freshen changed kind: %s", fr.Parent.String())
+		t.Fatalf("freshen changed kind: %s", fr.Parent().String())
 	}
-	if sameContainer(fr.Data, wm.Data) {
+	if sameContainer(fr.Data(), wm.Data()) {
 		t.Fatal("freshen shared the container")
 	}
 	wl := NewWeakFlexList()
-	wl.Data.(*WeakFlexListData).Append(NewInteger(1))
+	wl.Data().(*WeakFlexListData).Append(NewInteger(1))
 	if !IsWeakFlexList(FreshenDefault(wl)) {
 		t.Fatal("list freshen changed kind")
 	}
 	wx := NewWeakFlexXml("t")
-	wx.Data.(*WeakFlexXmlData).SetAttr("a", NewInteger(1))
+	wx.Data().(*WeakFlexXmlData).SetAttr("a", NewInteger(1))
 	fx := FreshenDefault(wx)
 	if !IsWeakFlexXml(fx) {
 		t.Fatal("xml freshen changed kind")
 	}
-	if fx.Data.(*WeakFlexXmlData).Attr.Len() != 1 {
+	if fx.Data().(*WeakFlexXmlData).Attr.Len() != 1 {
 		t.Fatal("xml freshen lost attrs")
 	}
 	if m := freshenAttrMap(nil); m == nil || m.Len() != 0 {
@@ -459,14 +459,14 @@ func TestWeakSeamArms(t *testing.T) {
 	}
 	// AsList arm.
 	wl := NewWeakFlexList()
-	wl.Data.(*WeakFlexListData).Append(NewInteger(1))
+	wl.Data().(*WeakFlexListData).Append(NewInteger(1))
 	lst, err := AsList(wl)
 	if err != nil || lst.Len() != 1 {
 		t.Fatalf("AsList arm: %v", err)
 	}
 	// xmlParts arm.
 	wx := NewWeakFlexXml("t")
-	wx.Data.(*WeakFlexXmlData).AppendChild(NewString("hi"))
+	wx.Data().(*WeakFlexXmlData).AppendChild(NewString("hi"))
 	tag, _, cren, ok := xmlParts(wx)
 	if !ok || tag != "t" || len(cren) != 1 {
 		t.Fatal("xmlParts weak arm")
@@ -484,24 +484,24 @@ func TestWeakSeamArms(t *testing.T) {
 		t.Fatalf("weak list shape = %v", Shape(wl))
 	}
 	// sameContainer weak arms (match and mismatch).
-	if !sameContainer(wm.Data, wm.Data) {
+	if !sameContainer(wm.Data(), wm.Data()) {
 		t.Fatal("weak map not self-identical")
 	}
 	other, _ := freshWeakMap()
-	if sameContainer(wm.Data, other.Data) {
+	if sameContainer(wm.Data(), other.Data()) {
 		t.Fatal("distinct weak maps identical")
 	}
-	if sameContainer(wl.Data, NewWeakFlexList().Data) {
+	if sameContainer(wl.Data(), NewWeakFlexList().Data()) {
 		t.Fatal("distinct weak lists identical")
 	}
-	if !sameContainer(wl.Data, wl.Data) {
+	if !sameContainer(wl.Data(), wl.Data()) {
 		t.Fatal("weak list not self-identical")
 	}
 	wx2 := NewWeakFlexXml("u")
-	if sameContainer(wx.Data, wx2.Data) {
+	if sameContainer(wx.Data(), wx2.Data()) {
 		t.Fatal("distinct weak xml identical")
 	}
-	if !sameContainer(wx.Data, wx.Data) {
+	if !sameContainer(wx.Data(), wx.Data()) {
 		t.Fatal("weak xml not self-identical")
 	}
 
@@ -510,16 +510,16 @@ func TestWeakSeamArms(t *testing.T) {
 		t.Fatal("containsFlex misses weak")
 	}
 	ad, err := AdoptIntoFlex(wm)
-	if err != nil || !sameContainer(ad.Data, wm.Data) {
+	if err != nil || !sameContainer(ad.Data(), wm.Data()) {
 		t.Fatal("AdoptIntoFlex did not share the weak handle")
 	}
 	nd, err := NodeDeepCopy(wm)
-	if err != nil || !nd.Parent.Equal(TMap) {
-		t.Fatalf("NodeDeepCopy: %v %s", err, nd.Parent.String())
+	if err != nil || !nd.Parent().Equal(TMap) {
+		t.Fatalf("NodeDeepCopy: %v %s", err, nd.Parent().String())
 	}
 	fd, err := FlexDeepCopy(wm)
-	if err != nil || !fd.Parent.Equal(TFlexMap) {
-		t.Fatalf("FlexDeepCopy: %v %s", err, fd.Parent.String())
+	if err != nil || !fd.Parent().Equal(TFlexMap) {
+		t.Fatalf("FlexDeepCopy: %v %s", err, fd.Parent().String())
 	}
 
 	// canon arms.
@@ -797,7 +797,7 @@ func TestWeakMapDeleteKey(t *testing.T) {
 
 func TestWeakXmlDeleteAttr(t *testing.T) {
 	v := NewWeakFlexXml("a")
-	wd := v.Data.(*WeakFlexXmlData)
+	wd := v.Data().(*WeakFlexXmlData)
 
 	// No attribute map at all (the constructor allocates one, but a
 	// zero-struct payload — the same shape TestWeakMapSetValueZeroStruct

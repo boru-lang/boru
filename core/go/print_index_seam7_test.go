@@ -20,7 +20,7 @@ func (m s7Mz) Materialize() (TableData, error) {
 }
 func (s7Mz) SourceRecord() RecordTypeInfo { return RecordTypeInfo{Fields: NewOrderedMap()} }
 func (s7Mz) payloadMarker()               {}
-func (s7Mz) IsTypeContent(*Value) bool    { return false }
+func (s7Mz) IsTypeContent(*Type) bool     { return false }
 
 // --- print.go -------------------------------------------------------------
 
@@ -71,7 +71,7 @@ func TestS7FormatValueJSONArms(t *testing.T) {
 		t.Errorf("depscalar JSON = %q", got)
 	}
 	// A None-parent value that is not the none sentinel -> "null" case arm.
-	if got := FormatValueJSON(Value{Parent: TNone, Data: IntPayload{N: 1}}); got != "null" {
+	if got := FormatValueJSON(Value{d: &Datum{Parent: TNone, Data: IntPayload{N: 1}}}); got != "null" {
 		t.Errorf("None-parent JSON = %q, want null", got)
 	}
 	// A float takes the default arm.

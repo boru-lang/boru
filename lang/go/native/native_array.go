@@ -653,7 +653,7 @@ func arrayWordErrCode(word string) string {
 // hand-rolled format exactly; it deliberately does NOT delegate to eng's
 // RequireConcreteList, whose message format differs.
 func requireListArg(r *Registry, v Value, word, what string) (ReadList, error) {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return ReadList{}, r.BoruError(arrayWordErrCode(word), word+": expected "+what, word)
 	}
 	list, _ := AsList(v)
@@ -666,7 +666,7 @@ func requireListArg(r *Registry, v Value, word, what string) (ReadList, error) {
 // code/detail format; no unwrapping.
 func requireConcreteArgs(r *Registry, word, what string, vals ...Value) error {
 	for _, v := range vals {
-		if !IsConcrete(v) {
+		if !IsConcrete(&v) {
 			return r.BoruError(arrayWordErrCode(word), word+": expected "+what, word)
 		}
 	}
@@ -786,7 +786,7 @@ func computeShape(v Value) []int {
 		return dims
 	}
 	first := list.Get(0)
-	if !first.Parent.ConformsTo(TList) || !IsConcrete(first) {
+	if !first.Parent().ConformsTo(TList) || !IsConcrete(&first) {
 		return dims
 	}
 	_lst, _ := AsList(first)
@@ -794,7 +794,7 @@ func computeShape(v Value) []int {
 	for i := 1; i < list.Len(); i++ {
 		sub := list.Get(i)
 		_subLst, _ := AsList(sub)
-		if !sub.Parent.ConformsTo(TList) || !IsConcrete(sub) || _subLst.Len() != firstLen {
+		if !sub.Parent().ConformsTo(TList) || !IsConcrete(&sub) || _subLst.Len() != firstLen {
 			return dims
 		}
 	}
@@ -872,7 +872,7 @@ func flattenList(v Value) []Value {
 	var result []Value
 	for i := 0; i < list.Len(); i++ {
 		elem := list.Get(i)
-		if elem.Parent.ConformsTo(TList) && elem.Data != nil {
+		if elem.Parent().ConformsTo(TList) && elem.Data() != nil {
 			result = append(result, flattenList(elem)...)
 		} else {
 			result = append(result, elem)
@@ -916,7 +916,7 @@ func arrTransposeHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 		return []Value{NewList(nil)}, nil
 	}
 	first := outer.Get(0)
-	if !first.Parent.ConformsTo(TList) || !IsConcrete(first) {
+	if !first.Parent().ConformsTo(TList) || !IsConcrete(&first) {
 		return nil, r.BoruError("transpose_error", "transpose: expected rank-2 list", "transpose")
 	}
 	_lst, _ := AsList(first)
@@ -924,7 +924,7 @@ func arrTransposeHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 	for i := 1; i < outer.Len(); i++ {
 		sub := outer.Get(i)
 		_subLst, _ := AsList(sub)
-		if !sub.Parent.ConformsTo(TList) || !IsConcrete(sub) || _subLst.Len() != cols {
+		if !sub.Parent().ConformsTo(TList) || !IsConcrete(&sub) || _subLst.Len() != cols {
 			return nil, r.BoruError("transpose_error", "transpose: expected rectangular rank-2 list", "transpose")
 		}
 	}
@@ -1343,7 +1343,7 @@ type deqGrouper struct {
 // guessing which argument was wrong and why, so the message says the
 // word, the offending type and the fix.
 func groupKeyContent(r *Registry, key Value) (string, error) {
-	if !key.Parent.ConformsTo(TString) {
+	if !key.Parent().ConformsTo(TString) {
 		return "", r.BoruError(
 			arrayWordErrCode("group"),
 			"group: grouping keys must be Strings; got "+TypeNameOf(key)+
@@ -1553,8 +1553,8 @@ func pairsReturnsFn(args []Value, _ *Registry) []Value {
 // the overload by the runtime type). Unreachable in the interpreter: matchSignature
 // gates a Map away from a TList sig and vice-versa, so these only redirect on the
 // compiled committed-overload path. See CallableSpec.CrossCollectionTokenShape.
-func collIsConcreteMap(v Value) bool  { return IsConcrete(v) && v.Parent.ConformsTo(TMap) }
-func collIsConcreteList(v Value) bool { return IsConcrete(v) && v.Parent.ConformsTo(TList) }
+func collIsConcreteMap(v Value) bool  { return IsConcrete(&v) && v.Parent().ConformsTo(TMap) }
+func collIsConcreteList(v Value) bool { return IsConcrete(&v) && v.Parent().ConformsTo(TList) }
 
 func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	if collIsConcreteMap(args[1]) {
@@ -1576,7 +1576,7 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 // (args[0]) to every element of the data list (args[1]) — `each $.name people`
 // → the list of names. The reach acts as an arity-1 accessor function.
 func eachReachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	info, err := AsReach(args[0])
+	info, err := AsReach(&args[0])
 	if err != nil {
 		return nil, fmt.Errorf("each: %w", err)
 	}
@@ -1599,7 +1599,7 @@ func eachReachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry
 // each element via the Reach (args[0]), then returns the data list (args[1])
 // sorted by those keys — `sortby $.age people`.
 func sortbyReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	info, err := AsReach(args[0])
+	info, err := AsReach(&args[0])
 	if err != nil {
 		return nil, fmt.Errorf("sortby: %w", err)
 	}
@@ -1660,7 +1660,7 @@ func eachReturnsFn(args []Value, r *Registry) []Value {
 	// calls, 2026-09-22). An anonymous lambda's placeholder Any, an Any
 	// return and a multi-return fn keep the untyped list, as does a fn-typed
 	// CARRIER callback (the body analysis below finds no list body).
-	if fd, ok := args[0].Data.(FnDefInfo); ok && !fd.Anonymous {
+	if fd, ok := args[0].Data().(*FnDefInfo); ok && !fd.Anonymous {
 		if sig, has := fd.FirstOwnSig(); has && len(sig.Returns) == 1 && sig.Returns[0] != nil && !sig.Returns[0].Equal(TAny) {
 			return []Value{NewCarrierTypedList(sig.Returns[0])}
 		}
@@ -1718,8 +1718,8 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	// Codex P1 on #421) — and additionally latches this run's twin-table
 	// range keyed by the body's identity, the seat the arm-residency
 	// bridge pairs against the compiled per-invocation unit's def sites.
-	defer r.Check.Recorder().MultiRunBodyGuard(r, body.ID)()
-	if !IsConcrete(body) {
+	defer r.Check.Recorder().MultiRunBodyGuard(r, IDOf(&body))()
+	if !IsConcrete(&body) {
 		return nil
 	}
 	bodyList, _ := AsList(body)
@@ -1728,7 +1728,7 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	}
 	input := make([]Value, 0, len(vals)+bodyList.Len())
 	input = append(input, vals...)
-	input = append(input, bodyList.Slice()...)
+	input = append(input, bodyList.Elems()...)
 	sub := New(r)
 	// A higher-order body (each/fold/scan/outer/inner/…) is CONDITIONALLY
 	// reached — the collection may be empty, so the body runs zero times.
@@ -1805,14 +1805,14 @@ func foldAccumFixedPoint(r *Registry, body Value, initAcc Value, elemCarrier Val
 func foldAccCarrier(init Value) Value {
 	var out Value
 	switch {
-	case init.Parent.ConformsTo(TList):
+	case init.Parent().ConformsTo(TList):
 		out = CarrierTypedListOf(ElementCarrierOf(init))
-	case init.Parent.ConformsTo(TMap):
+	case init.Parent().ConformsTo(TMap):
 		out = NewCarrier(TMap)
-	case core.IsTypeLiteral(init):
+	case core.IsTypeLiteral(&init):
 		out = core.ValueCarrier(init) // a type VALUE seed (NUR323)
 	default:
-		out = NewCarrier(init.Parent)
+		out = NewCarrier(init.Parent())
 	}
 	// A gradual (dynamic) seed yields a gradual accumulator: a seed of
 	// statically-unknown type (`(do {…})`, a get-result threaded as the init)
@@ -1820,9 +1820,9 @@ func foldAccCarrier(init Value) Value {
 	// optimistically rather than fail no_signature against a strict Any. Without
 	// this, `(do {n:0}) … [acc … get] fold` typed the accumulator strict Any and
 	// every `acc … get`/`add` in the body errored (radix's common-prefix-len).
-	if init.Dynamic {
-		out.Carrier = true
-		out.Dynamic = true
+	if IsDynamic(&init) {
+		out.SetCarrier(true)
+		SetDynamic(&out, true)
 	}
 	return out
 }
@@ -1919,7 +1919,7 @@ func staticEmptyFoldDetail(coll Value) string {
 	if n, ok := StaticListLen(coll); ok && n == 0 {
 		return "fold: empty list with no initial value"
 	}
-	if IsConcrete(coll) && coll.Parent.ConformsTo(TMap) {
+	if IsConcrete(&coll) && coll.Parent().ConformsTo(TMap) {
 		if m, _ := AsMap(coll); m != nil && m.Len() == 0 {
 			return "fold: empty map with no initial value"
 		}
@@ -1944,17 +1944,17 @@ func staticEmptyFoldDetail(coll Value) string {
 // carrier: the honest answer when there is no element to take a type from.
 func rank2ElemCarrier(data Value) Value {
 	rows, err := AsList(data)
-	if err != nil || !IsConcrete(data) {
+	if err != nil || !IsConcrete(&data) {
 		return NewElementCarrier(TAny)
 	}
 	var elems []Value
 	for i := 0; i < rows.Len(); i++ {
 		row := rows.Get(i)
-		if !row.Parent.ConformsTo(TList) || !IsConcrete(row) {
+		if !row.Parent().ConformsTo(TList) || !IsConcrete(&row) {
 			return NewElementCarrier(TAny)
 		}
 		rl, _ := AsList(row)
-		elems = append(elems, rl.Slice()...)
+		elems = append(elems, rl.Elems()...)
 	}
 	if len(elems) == 0 {
 		return NewElementCarrier(TAny)
@@ -2021,7 +2021,7 @@ func staticEmptyLaneDetail(args []Value) string {
 		return ""
 	}
 	rows, err := AsList(args[2])
-	if err != nil || !IsConcrete(args[2]) || rows.Len() == 0 {
+	if err != nil || !IsConcrete(&args[2]) || rows.Len() == 0 {
 		return ""
 	}
 	if n, ok := StaticListLen(rows.Get(0)); ok && n == 0 {
@@ -2103,7 +2103,7 @@ func outerReturnsFn(args []Value, r *Registry) []Value {
 	// outer produces a 2D list: TList<TList<body-result>>.
 	innerElem := TAny
 	if len(stk) > 0 {
-		innerElem = stk[len(stk)-1].Parent
+		innerElem = stk[len(stk)-1].Parent()
 	}
 	inner := NewCarrierTypedList(innerElem)
 	return []Value{NewCarrierTypedListValue(inner)}
@@ -2119,7 +2119,7 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	right, _ := AsList(args[3])
 
 	// 1D case: zip then fold
-	if left.Len() > 0 && !left.Get(0).Parent.ConformsTo(TList) {
+	if left.Len() > 0 && !left.Get(0).Parent().ConformsTo(TList) {
 		if left.Len() != right.Len() {
 			return nil, reg.BoruError("inner_error", "inner: vectors must have same length", "inner")
 		}
@@ -2215,7 +2215,7 @@ func eachrankHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 // spine: a scalar is 0, a flat list 1, a list of lists 2, and so on.
 func listDepth(v Value) int {
 	d := 0
-	for v.Parent.ConformsTo(TList) && IsConcrete(v) {
+	for v.Parent().ConformsTo(TList) && IsConcrete(&v) {
 		list, _ := AsList(v)
 		d++
 		if list.Len() == 0 {
@@ -2248,14 +2248,14 @@ func foldaxisHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		return []Value{NewList([]Value{})}, nil
 	}
 	// Validate a rectangular rank-2 list.
-	if !rows.Get(0).Parent.ConformsTo(TList) || !IsConcrete(rows.Get(0)) {
+	if !rows.Get(0).Parent().ConformsTo(TList) || !IsConcrete(rows.Ref(0)) {
 		return nil, reg.BoruError("foldaxis_error", "foldaxis: expected a rank-2 list", "foldaxis")
 	}
 	first, _ := AsList(rows.Get(0))
 	cols := first.Len()
 	for i := 1; i < rows.Len(); i++ {
 		ri, _ := AsList(rows.Get(i))
-		if !rows.Get(i).Parent.ConformsTo(TList) || !IsConcrete(rows.Get(i)) || ri.Len() != cols {
+		if !rows.Get(i).Parent().ConformsTo(TList) || !IsConcrete(rows.Ref(i)) || ri.Len() != cols {
 			return nil, reg.BoruError("foldaxis_error", "foldaxis: expected a rectangular rank-2 list", "foldaxis")
 		}
 	}

@@ -402,7 +402,7 @@ func TestSeam7CallDynApplyTopArms(t *testing.T) {
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
 	wantErr(t, err, "cannot call `apply`")
 	wantErr(t, err, "the arguments were 9 (an Integer) and 5 (an Integer)")
-	odd := core.Value{Parent: core.TFunction, Data: core.IntPayload{N: 1}}
+	odd := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: core.IntPayload{N: 1}})
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), odd}, seam7Dbg, 0)
 	wantErr(t, err, "carries no FnDefInfo")
 }
@@ -525,7 +525,7 @@ func TestSeam7FlowSignalHostedResidual(t *testing.T) {
 			t.Fatalf("%s: want an escape with %d value(s), got %#v", c.name, c.vals+len(c.want), err)
 		}
 		for i, p := range c.want {
-			if got := fe.residual[c.vals+i]; !got.Parent.Equal(core.TNone) || got.Pos() != p {
+			if got := fe.residual[c.vals+i]; !got.Parent().Equal(core.TNone) || got.Pos() != p {
 				t.Errorf("%s: stand-in %d = %v at %v, want None at %v", c.name, i, got, got.Pos(), p)
 			}
 		}
@@ -637,7 +637,7 @@ func seam7DelegReg(t *testing.T) (r *core.Registry, inc, fail core.Value) {
 
 func TestSeam7DelegationApplySuccess(t *testing.T) {
 	r, inc, _ := seam7DelegReg(t)
-	if !core.IsDelegationFnDef(inc.Data.(core.FnDefInfo)) {
+	if !core.IsDelegationFnDef(*inc.Data().(*core.FnDefInfo)) {
 		t.Fatal("cinc wrapper is not recognised as a delegation fn")
 	}
 	vc := seam7VC(r)
@@ -760,7 +760,7 @@ func seam7UserFail(r *core.Registry) core.Value {
 func TestSeam7IslandApplyErrorArms(t *testing.T) {
 	r, _, _ := seam7DelegReg(t)
 	fn := seam7UserFail(r)
-	if core.IsDelegationFnDef(fn.Data.(core.FnDefInfo)) {
+	if core.IsDelegationFnDef(*fn.Data().(*core.FnDefInfo)) {
 		t.Fatal("user fail fn should NOT be a trivial delegation")
 	}
 	vc := seam7VC(r)
@@ -873,7 +873,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return []core.Value{core.NewInteger(n * 3)}, nil
 		}),
 	}}})
-	core.NormalizeSig(&one.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&one.Data().(*core.FnDefInfo).Signatures[0])
 	got, ent, err := vc.callDynApply(r, 1, []core.Value{core.NewInteger(5), one}, seam7Dbg, 0, true)
 	if err != nil || ent != nil || len(got) != 1 {
 		t.Fatalf("a 1-arg fn over its one arg commits one result: %v %v %v", got, ent, err)
@@ -887,7 +887,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return []core.Value{core.NewInteger(42)}, nil
 		}),
 	}}})
-	core.NormalizeSig(&zero.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&zero.Data().(*core.FnDefInfo).Signatures[0])
 	// The tail form (one=false) keeps whatever the re-step leaves: the 0-arg
 	// fn fires and its result lands ABOVE the untouched receiver, exactly
 	// the interpreter's [4 42].
@@ -909,10 +909,10 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 	wantInternal(t, err, "apply over a lens value")
 	// closureUnit: a payload naming no program or a unit beyond it names no
 	// unit (such a closure is invoked as it is, and the invoker answers).
-	if _, known := vc.closureUnit(core.ClosurePayload{Prog: nil, Unit: 0}); known {
+	if _, known := vc.closureUnit(&core.ClosurePayload{Prog: nil, Unit: 0}); known {
 		t.Error("no program: no unit")
 	}
-	if _, known := vc.closureUnit(core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0}); known {
+	if _, known := vc.closureUnit(&core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0}); known {
 		t.Error("a unit beyond the program: no unit")
 	}
 	// The resolved re-step surfaces the island's own error.
@@ -922,7 +922,7 @@ func TestSeam7CallDynApplyOneArms(t *testing.T) {
 			return nil, fmt.Errorf("boom")
 		}),
 	}}})
-	core.NormalizeSig(&bad.Data.(core.FnDefInfo).Signatures[0])
+	core.NormalizeSig(&bad.Data().(*core.FnDefInfo).Signatures[0])
 	if _, err := vc.applyReStep(nil, bad, []core.Value{core.NewInteger(1)}, seam7Dbg, 0); err == nil {
 		t.Error("the island's error rides out of the re-step")
 	}

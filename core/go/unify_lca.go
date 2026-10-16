@@ -60,11 +60,11 @@ func dispatchUnifier(a, b Value, r *Registry) (Value, *UnifyError, bool) {
 	// pairs a Function-branch value with a FunctionSignature-branch
 	// node, whose LCA (Type) knows no membership rule, yet Mapper's
 	// FnUndefUnifier is exactly the rule to consult.
-	case IsBareTypeNode(b) && !IsBareTypeNode(a):
+	case IsBareTypeNode(&b) && !IsBareTypeNode(&a):
 		starts = []*Type{bType}
-	case IsBareTypeNode(a) && !IsBareTypeNode(b):
+	case IsBareTypeNode(&a) && !IsBareTypeNode(&b):
 		starts = []*Type{aType}
-	case IsBareTypeNode(a) && IsBareTypeNode(b):
+	case IsBareTypeNode(&a) && IsBareTypeNode(&b):
 		// TWO bare nodes: a type-level pair. Either side's kind may
 		// own the rule (`OptNum unify None` — the disjunct node's
 		// alternatives admit the None literal), and their LCA may not
@@ -76,7 +76,7 @@ func dispatchUnifier(a, b Value, r *Registry) (Value, *UnifyError, bool) {
 	}
 
 	for _, start := range starts {
-		for t := start; t != nil; t = t.Parent {
+		for t := start; t != nil; t = t.Parent() {
 			u, ok := unifierOf(t.Behavior())
 			if !ok {
 				continue

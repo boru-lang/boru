@@ -49,10 +49,10 @@ import core "github.com/boru-lang/boru/core/go"
 // ok=false for anything else (a real store value, a bare carrier, a
 // concrete container).
 func StoreShapeOf(v core.Value) (*core.StoreShapeInfo, bool) {
-	if !v.Carrier {
+	if !v.Carrier() {
 		return nil, false
 	}
-	ss, ok := v.Data.(*core.StoreShapeInfo)
+	ss, ok := v.Data().(*core.StoreShapeInfo)
 	return ss, ok
 }
 
@@ -85,8 +85,8 @@ func MintFlexShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	if depth > flexShapeMaxDepth {
 		return core.Value{}, false
 	}
-	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TMap) ||
-		core.IsRecordType(src) || core.IsOptionsType(src) || core.IsTypedMap(src) {
+	if !core.IsConcrete(&src) || src.Parent() == nil || !src.Parent().ConformsTo(core.TMap) ||
+		core.IsRecordType(src) || core.IsOptionsType(src) || core.IsTypedMap(&src) {
 		return core.Value{}, false
 	}
 	m, err := core.AsMap(src)
@@ -97,8 +97,8 @@ func MintFlexShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	ss, _ := StoreShapeOf(out)
 	for _, k := range m.Keys() {
 		fv, _ := m.Get(k)
-		if fv.Parent == nil || fv.Parent.ConformsTo(core.TFunction) ||
-			core.IsReach(fv) || core.IsSplice(fv) {
+		if fv.Parent() == nil || fv.Parent().ConformsTo(core.TFunction) ||
+			core.IsReach(&fv) || core.IsSplice(&fv) {
 			continue // dispatch-bearing: absent key reads dynamic(Any)
 		}
 		ss.RecordKey(k, AdoptShapeValue(fv, depth+1))
@@ -125,8 +125,8 @@ func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	if depth > flexShapeMaxDepth {
 		return core.Value{}, false
 	}
-	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TList) ||
-		core.IsTypedList(src) || core.IsTableType(src) {
+	if !core.IsConcrete(&src) || src.Parent() == nil || !src.Parent().ConformsTo(core.TList) ||
+		core.IsTypedList(&src) || core.IsTableType(src) {
 		return core.Value{}, false
 	}
 	l, err := core.AsList(src)
@@ -135,7 +135,7 @@ func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	}
 	out := core.NewStoreShapeCarrier(core.TFlexList, 0)
 	ss, _ := StoreShapeOf(out)
-	for _, el := range l.Slice() {
+	for _, el := range l.Elems() {
 		ss.RecordVal(AdoptShapeValue(el, depth+1))
 	}
 	return out, true
@@ -165,7 +165,7 @@ func poisonShapes(v core.Value, seen map[*core.StoreShapeInfo]bool, depth int) {
 		}
 		ss.Poison()
 	}
-	switch p := v.Data.(type) {
+	switch p := v.Data().(type) {
 	case core.ListPayload:
 		nested = append(nested, p.Elems...)
 	case core.MapPayload:
@@ -186,7 +186,7 @@ func poisonShapes(v core.Value, seen map[*core.StoreShapeInfo]bool, depth int) {
 // anything else — a FlexMap / patrun / context shape keys its writes, so an
 // element read or write must not reach its Vals.
 func FlexListShapeOf(v core.Value) (*core.StoreShapeInfo, bool) {
-	if v.Parent == nil || !v.Parent.ConformsTo(core.TFlexList) {
+	if v.Parent() == nil || !v.Parent().ConformsTo(core.TFlexList) {
 		return nil, false
 	}
 	return StoreShapeOf(v)
@@ -208,11 +208,11 @@ func AdoptShapeValue(v core.Value, depth int) core.Value {
 	if nested, ok := MintFlexListShapeCarrier(v, depth); ok {
 		return nested
 	}
-	if core.IsConcrete(v) && v.Parent != nil {
+	if core.IsConcrete(&v) && v.Parent() != nil {
 		switch {
-		case v.Parent.ConformsTo(core.TXml):
+		case v.Parent().ConformsTo(core.TXml):
 			return core.NewCarrier(core.TFlexXml)
-		case v.Parent.ConformsTo(core.TList):
+		case v.Parent().ConformsTo(core.TList):
 			return core.NewCarrier(core.TFlexList)
 		}
 	}
@@ -231,7 +231,7 @@ func ShapeFieldRead(v core.Value) core.Value {
 	if _, ok := StoreShapeOf(v); ok {
 		return core.NewDynamicCarrierValue(v)
 	}
-	if core.IsDisjunct(v) {
+	if core.IsDisjunct(&v) {
 		return core.NewDynamicCarrierValue(v)
 	}
 	ft := core.ValueType(v)

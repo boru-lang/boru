@@ -23,8 +23,8 @@ func TestS5bEReturnsFnArmedRootCarrierArg(t *testing.T) {
 	// A root-node arg (nil Parent): the armed generalisation must keep it
 	// as a carrier rather than calling NewCarrier(nil).
 	anyLit := core.NewTypeLiteral(core.TAny)
-	if anyLit.Parent != nil {
-		t.Fatalf("test premise: the Any literal is its own root (nil Parent), got %v", anyLit.Parent)
+	if anyLit.Parent() != nil {
+		t.Fatalf("test premise: the Any literal is its own root (nil Parent), got %v", anyLit.Parent())
 	}
 	out := rf([]core.Value{anyLit}, r)
 	if out == nil {
@@ -54,7 +54,7 @@ func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 	defer done()
 	carrier := core.NewDynamicCarrier(core.TAny)
 	r.Check.NoteMethodShape(carrier, member)
-	if _, ok := r.Check.MethodShapeMember(carrier.ID); !ok {
+	if _, ok := r.Check.MethodShapeMember(core.IDOf(&carrier)); !ok {
 		t.Fatal("genuine-0-arg delegation member must be annotated")
 	}
 	e := z9Engine(t, r, []core.Value{carrier, core.NewWord("z9unmodelable")})
@@ -159,7 +159,7 @@ func TestCarrierResultsPartitionCountMismatchKeepsRecorded(t *testing.T) {
 	r.RegisterNativeFunc(core.NativeFunc{Name: "ljmis", Signatures: []core.Signature{{
 		Args: []*core.Type{core.TAny}, BarrierPos: -1, Impl: impl,
 		ReturnsFn: func(args []core.Value, _ *core.Registry) []core.Value {
-			if len(args) == 1 && core.IsDisjunct(args[0]) {
+			if len(args) == 1 && core.IsDisjunct(&args[0]) {
 				return []core.Value{core.NewCarrier(core.TInteger), core.NewCarrier(core.TString)}
 			}
 			return []core.Value{core.NewCarrier(core.TInteger)}

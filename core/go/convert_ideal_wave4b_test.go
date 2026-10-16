@@ -174,7 +174,7 @@ func TestConvertClassInstance(t *testing.T) {
 		t.Errorf("second field = %v", ll.Get(1))
 	}
 	// ClassFields exposes the flat field map; nil-safe.
-	ci, _ := inst.Data.(ClassInstanceInfo)
+	ci, _ := inst.Data().(ClassInstanceInfo)
 	if ClassFields(&ci).Len() != 2 {
 		t.Error("ClassFields lost fields")
 	}
@@ -291,12 +291,12 @@ func TestConvertReachValue(t *testing.T) {
 	m, _ = ConvertIdealToMap(multi)
 	mm, _ = AsMap(m)
 	recv, _ := mm.Get("receiver")
-	if !recv.Parent.ConformsTo(TList) {
+	if !recv.Parent().ConformsTo(TList) {
 		t.Errorf("multi-token receiver = %v, want a list", recv)
 	}
 	l, _ = ConvertIdealToList(multi)
 	ll, _ = AsList(l)
-	if ll.Len() != 2 || !ll.Get(1).Parent.ConformsTo(TList) {
+	if ll.Len() != 2 || !ll.Get(1).Parent().ConformsTo(TList) {
 		t.Errorf("computed key list = %v", l)
 	}
 	// Non-reach payloads degrade to {} / [].

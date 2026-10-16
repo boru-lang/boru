@@ -53,7 +53,7 @@ func TestUnnamedFnArgInertViaValue(t *testing.T) {
 	}
 	// Anonymous copy: a lone anonymous fn value is data by rule (the
 	// export-map shape), so it survives the paren group as the argument.
-	fd := bound.Data.(FnDefInfo)
+	fd := *bound.Data().(*FnDefInfo)
 	fd.Name = ""
 	fd.Anonymous = true
 	fnVal := NewFunction(fd)
@@ -90,7 +90,7 @@ func TestLoneUnnamedFnArgStaysData(t *testing.T) {
 	defineFn(t, r, "mkai3", typedFnBody("x", "Integer", "Integer",
 		NewWord("x"), NewWord("mul"), NewInteger(3)))
 	bound, _ := r.Defs.Top("mkai3")
-	fd := bound.Data.(FnDefInfo)
+	fd := *bound.Data().(*FnDefInfo)
 	fd.Name = ""
 	fd.Anonymous = true
 	fnVal := NewFunction(fd)
@@ -100,8 +100,8 @@ func TestLoneUnnamedFnArgStaysData(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("residual = %v, want the held fn", res)
 	}
-	if _, ok := res[0].Data.(FnDefInfo); !ok {
-		t.Fatalf("lone unnamed fn arg did not survive as data: got %s", res[0].Parent.String())
+	if _, ok := res[0].Data().(*FnDefInfo); !ok {
+		t.Fatalf("lone unnamed fn arg did not survive as data: got %s", res[0].Parent().String())
 	}
 }
 

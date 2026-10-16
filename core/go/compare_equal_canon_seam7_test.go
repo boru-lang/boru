@@ -13,7 +13,7 @@ import "testing"
 func TestS7ValuesEqualDefaultBoundedUnreadable(t *testing.T) {
 	// A bounded Type whose Child denotes no lattice node makes
 	// AsBoundedType fail; equality must return false.
-	bad := NewValueRaw(TType, ChildTypeInfo{Child: Value{Data: IntPayload{N: 1}}})
+	bad := NewValueRaw(TType, ChildTypeInfo{Child: Value{d: &Datum{Data: IntPayload{N: 1}}}})
 	if valuesEqualDefault(bad, bad) {
 		t.Error("unreadable bounded Type must not compare equal")
 	}
@@ -66,8 +66,8 @@ func TestS7CompareListElemsArms(t *testing.T) {
 		t.Errorf("longer list should sort after: c=%d err=%v", c, err)
 	}
 	// Element comparison error: elements with a nil lattice type.
-	ea := NewList([]Value{{Data: IntPayload{N: 1}}})
-	eb := NewList([]Value{{Data: IntPayload{N: 2}}})
+	ea := NewList([]Value{{d: &Datum{Data: IntPayload{N: 1}}}})
+	eb := NewList([]Value{{d: &Datum{Data: IntPayload{N: 2}}}})
 	if _, err := compareListElems(ea, eb); err == nil {
 		t.Error("element with nil type must surface a compare error")
 	}
@@ -84,9 +84,9 @@ func TestS7CompareMapEntriesArms(t *testing.T) {
 	}
 	// Same key set but a value with a nil lattice type -> compare error.
 	ma := NewOrderedMap()
-	ma.Set("x", Value{Data: IntPayload{N: 1}})
+	ma.Set("x", Value{d: &Datum{Data: IntPayload{N: 1}}})
 	mb := NewOrderedMap()
-	mb.Set("x", Value{Data: IntPayload{N: 2}})
+	mb.Set("x", Value{d: &Datum{Data: IntPayload{N: 2}}})
 	if _, err := compareMapEntries(NewMap(ma), NewMap(mb)); err == nil {
 		t.Error("map value with nil type must surface a compare error")
 	}
@@ -95,13 +95,13 @@ func TestS7CompareMapEntriesArms(t *testing.T) {
 // --- compare.go -----------------------------------------------------------
 
 func TestS7CompareValuesNilType(t *testing.T) {
-	if _, err := CompareValues(Value{Data: IntPayload{N: 1}}, NewInteger(1)); err == nil {
+	if _, err := CompareValues(Value{d: &Datum{Data: IntPayload{N: 1}}}, NewInteger(1)); err == nil {
 		t.Error("a value with a nil lattice type must fail to compare")
 	}
 }
 
 func TestS7TcmpHandlerError(t *testing.T) {
-	args := []Value{NewInteger(1), {Data: IntPayload{N: 1}}}
+	args := []Value{NewInteger(1), {d: &Datum{Data: IntPayload{N: 1}}}}
 	if _, err := TcmpHandler(args, nil, nil, nil); err == nil {
 		t.Error("tcmp with a nil-typed operand must error")
 	}
@@ -109,16 +109,16 @@ func TestS7TcmpHandlerError(t *testing.T) {
 
 func TestS7SameContainerXmlAndFlex(t *testing.T) {
 	xe := NewXmlElement("a", nil, []Value{NewString("x")})
-	if !sameContainer(xe.Data, xe.Data) {
+	if !sameContainer(xe.Data(), xe.Data()) {
 		t.Error("an xml element aliases itself")
 	}
 	fx := NewFlexXml("a", nil, nil)
-	if !sameContainer(fx.Data, fx.Data) {
+	if !sameContainer(fx.Data(), fx.Data()) {
 		t.Error("a flex-xml store aliases itself")
 	}
 	// Distinct flex-xml stores are not the same container.
 	fx2 := NewFlexXml("a", nil, nil)
-	if sameContainer(fx.Data, fx2.Data) {
+	if sameContainer(fx.Data(), fx2.Data()) {
 		t.Error("two distinct flex-xml stores are not the same container")
 	}
 }
@@ -140,12 +140,12 @@ func TestS7HasContainerIdentity(t *testing.T) {
 	}
 	for _, v := range identity {
 		if !HasContainerIdentity(v) {
-			t.Errorf("%s (%T) compares by container identity but is not reported as such", v.Parent, v.Data)
+			t.Errorf("%s (%T) compares by container identity but is not reported as such", v.Parent(), v.Data())
 		}
 		// The mirror property that makes the predicate meaningful: the
 		// value aliases ITSELF under sameContainer.
-		if !sameContainer(v.Data, v.Data) {
-			t.Errorf("%T does not alias itself — the arms have drifted apart", v.Data)
+		if !sameContainer(v.Data(), v.Data()) {
+			t.Errorf("%T does not alias itself — the arms have drifted apart", v.Data())
 		}
 	}
 	// Scalars compare BY VALUE, so they keep folding. The immutable
@@ -158,7 +158,7 @@ func TestS7HasContainerIdentity(t *testing.T) {
 	}
 	for _, v := range byValue {
 		if HasContainerIdentity(v) {
-			t.Errorf("%s (%T) compares by value and must keep folding", v.Parent, v.Data)
+			t.Errorf("%s (%T) compares by value and must keep folding", v.Parent(), v.Data())
 		}
 	}
 	// A payload with no aliasable identity at all (table data) is not a
@@ -178,7 +178,7 @@ func TestS7DeepEqualTypedListFallback(t *testing.T) {
 }
 
 func TestS7DeepEqualFlatInstanceArms(t *testing.T) {
-	cls := &Type{tmeta: &typeMeta{Name: "S7Cls"}, ID: "S7Cls"}
+	cls := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "S7Cls"}}}, "S7Cls"))
 	// One instance with a nil Fields map -> false via the nil-guard.
 	nilFields := NewClassInstance(cls, ClassInstanceInfo{})
 	if DeepEqual(nilFields, nilFields) {
@@ -210,26 +210,26 @@ func TestS7ScalarFormatDelegateMarkers(t *testing.T) {
 func TestS7NumberCompareBigOptOut(t *testing.T) {
 	// numIsBig on the left, but the payload is unreadable and the other
 	// side is not a rat-exact number -> ErrNoComparer opt-out.
-	big := Value{Parent: TBigInteger, Data: StrPayload{S: "x"}}
+	big := Value{d: &Datum{Parent: TBigInteger, Data: StrPayload{S: "x"}}}
 	if _, err := (numberCompareBehavior{}).Compare(big, NewString("y")); err != ErrNoComparer {
 		t.Errorf("unreadable big operand should opt out with ErrNoComparer, got %v", err)
 	}
 }
 
 func TestS7ToRatExactErrorArms(t *testing.T) {
-	if _, ok := toRatExact(Value{Parent: TBigDecimal, Data: StrPayload{S: "x"}}); ok {
+	if _, ok := toRatExact(Value{d: &Datum{Parent: TBigDecimal, Data: StrPayload{S: "x"}}}); ok {
 		t.Error("unreadable BigDecimal payload must not convert")
 	}
-	if _, ok := toRatExact(Value{Parent: TBigInteger, Data: StrPayload{S: "x"}}); ok {
+	if _, ok := toRatExact(Value{d: &Datum{Parent: TBigInteger, Data: StrPayload{S: "x"}}}); ok {
 		t.Error("unreadable BigInteger payload must not convert")
 	}
-	if _, ok := toRatExact(Value{Parent: TInteger, Data: StrPayload{S: "x"}}); ok {
+	if _, ok := toRatExact(Value{d: &Datum{Parent: TInteger, Data: StrPayload{S: "x"}}}); ok {
 		t.Error("unreadable Integer payload must not convert")
 	}
 }
 
 func TestS7NonFiniteRankBadFloat(t *testing.T) {
-	if r, ok := nonFiniteRank(Value{Parent: TFloat, Data: StrPayload{S: "x"}}); ok || r != 0 {
+	if r, ok := nonFiniteRank(Value{d: &Datum{Parent: TFloat, Data: StrPayload{S: "x"}}}); ok || r != 0 {
 		t.Errorf("unreadable Float payload must not rank: r=%d ok=%v", r, ok)
 	}
 }
@@ -272,11 +272,11 @@ func TestS7IdealSizeBehavior(t *testing.T) {
 
 func TestS7CanonValueEdges(t *testing.T) {
 	// A carrier with a nil Parent has no type node -> "none".
-	if got := CanonValue(Value{Carrier: true}); got != "none" {
+	if got := CanonValue(Value{d: &Datum{Carrier: true}}); got != "none" {
 		t.Errorf("nil-parent carrier canon = %q, want none", got)
 	}
 	// A bounded Type with an unreadable bound falls back to String().
-	bad := NewValueRaw(TType, ChildTypeInfo{Child: Value{Data: IntPayload{N: 1}}})
+	bad := NewValueRaw(TType, ChildTypeInfo{Child: Value{d: &Datum{Data: IntPayload{N: 1}}}})
 	if got := CanonValue(bad); got != bad.String() {
 		t.Errorf("unreadable bounded canon = %q, want String() = %q", got, bad.String())
 	}

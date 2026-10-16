@@ -179,7 +179,7 @@ func TestFetchAccessorHandlers(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("status", NewInteger(200))
 	resp := NewMap(om)
-	resp.Parent = ft.Response
+	resp.SetParent(ft.Response)
 
 	// getr succeeds on a present field (the miss half is pinned by the
 	// spec rows; this is the half they cannot reach through `do/error`).
@@ -195,7 +195,7 @@ func TestFetchAccessorHandlers(t *testing.T) {
 	// panic.
 	lit := NewTypeLiteral(ft.Response)
 	if got, hErr := fetchGetHandler([]Value{NewAtom("status"), lit}, nil, nil, r); hErr != nil ||
-		len(got) != 1 || !IsBareTypeNode(got[0]) {
+		len(got) != 1 || !IsBareTypeNode(&got[0]) {
 		t.Errorf("dot on a type literal = %v %v, want none", got, hErr)
 	}
 	if _, sErr := fetchGetrHandler([]Value{NewAtom("status"), lit}, nil, nil, r); sErr == nil {

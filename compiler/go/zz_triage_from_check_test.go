@@ -156,7 +156,7 @@ func TestS5bECodeEffectBareTypeResidualDeclines(t *testing.T) {
 	// and leaves the literal as the residual, which the []*Type domain
 	// cannot represent — the carrier conversion must decline.
 	body := core.NewList([]core.Value{core.NewWord("s5benoop"), core.NewTypeLiteral(core.TInteger)})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	if _, ok := AnalyseCodeEffectCarrier(r, body); ok {
 		t.Error("expected AnalyseCodeEffectCarrier to decline a bare-type-literal residual")
 	}
@@ -212,26 +212,26 @@ func TestMaterialiseRebuild(t *testing.T) {
 	// List whose member is a stripped carrier recoverable to a concrete int.
 	member := core.NewCarrier(core.TInteger)
 	orig := core.NewInteger(7)
-	es.origByID[member.ID] = orig
+	es.origByID[core.IDOf(&member)] = orig
 	lst := core.NewList([]core.Value{member})
 	got, ok := es.Materialise(lst)
 	if !ok {
 		t.Fatal("list with a recoverable member should materialise")
 	}
-	lp, isList := got.Data.(core.ListPayload)
-	if !isList || len(lp.Elems) != 1 || lp.Elems[0].Carrier {
+	lp, isList := got.Data().(core.ListPayload)
+	if !isList || len(lp.Elems) != 1 || lp.Elems[0].Carrier() {
 		t.Fatalf("rebuilt list member not recovered: %v", got)
 	}
 
 	// Map with nil backing → not materialisable.
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if _, ok := es.Materialise(nilMap); ok {
 		t.Fatal("nil-map should not materialise")
 	}
 
 	// Map with a recoverable member gets rebuilt.
 	m2 := core.NewCarrier(core.TInteger)
-	es.origByID[m2.ID] = core.NewInteger(11)
+	es.origByID[core.IDOf(&m2)] = core.NewInteger(11)
 	om := core.NewOrderedMap()
 	om.Set("k", m2)
 	mp := core.NewMap(om)
@@ -239,11 +239,11 @@ func TestMaterialiseRebuild(t *testing.T) {
 	if !ok2 {
 		t.Fatal("map with a recoverable member should materialise")
 	}
-	mpOut, isMap := got2.Data.(core.MapPayload)
+	mpOut, isMap := got2.Data().(core.MapPayload)
 	if !isMap || mpOut.M == nil {
 		t.Fatalf("rebuilt map missing backing: %v", got2)
 	}
-	if rv, _ := mpOut.M.Get("k"); rv.Carrier {
+	if rv, _ := mpOut.M.Get("k"); rv.Carrier() {
 		t.Fatal("rebuilt map member not recovered")
 	}
 }
@@ -261,23 +261,23 @@ func TestRecordUserPolyCallGuards(t *testing.T) {
 
 func TestRecordDynApplyDeclines(t *testing.T) {
 	// Inactive → false.
-	if _, ok := inactiveEmitState().RecordDynApply(nil, core.NewCarrier(core.TFunction), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := inactiveEmitState().RecordDynApply(nil, core.NewCarrier(core.TFunction), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApply should decline")
 	}
 	// Non-fn callee → false.
 	es := NewEmitState()
-	if _, ok := es.RecordDynApply(nil, core.NewInteger(5), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply(nil, core.NewInteger(5), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("non-fn callee should decline")
 	}
 	// Fn-typed carrier but unresolvable → false.
-	if _, ok := es.RecordDynApply(nil, core.NewCarrier(core.TFunction), core.NewInteger(0), core.SrcPos{}); ok {
+	if _, ok := es.RecordDynApply(nil, core.NewCarrier(core.TFunction), addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("unresolvable fn callee should decline")
 	}
 	// Fn resolves (a dynamic fn carrier resolves to an event operand), but an
 	// ARG is itself a fn value → false.
 	fn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(es, fn, 1)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewCarrier(core.TFunction)}, fn, core.NewInteger(0), core.SrcPos{}); ok {
+	seedProduced(es, &fn, 1)
+	if _, ok := es.RecordDynApply([]core.Value{core.NewCarrier(core.TFunction)}, fn, addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("fn-valued arg should decline")
 	}
 	// Under the `apply` WORD (a pending entry for the lead) a fn-valued arg
@@ -285,11 +285,11 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	// (A fresh state: the decline above is the event-lead compile failure, which
 	// marks the state uncompilable.)
 	esW := NewEmitState()
-	seedProduced(esW, fn, 1)
+	seedProduced(esW, &fn, 1)
 	argFn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(esW, argFn, 2)
-	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: fn.ID})
-	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, core.NewInteger(0), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
+	seedProduced(esW, &argFn, 2)
+	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: core.IDOf(&fn)})
+	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, addrOf(core.NewInteger(0)), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
 		t.Fatal("a fn-valued arg beneath the apply word records")
 	}
 	if len(esW.units[len(esW.units)-1].pendingApply) != 0 {
@@ -304,10 +304,10 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	single := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 	}}})
-	single.Dynamic = true
+	core.SetDynamic(&single, true)
 	esArg := NewEmitState()
-	seedProduced(esArg, single, 1)
-	if _, ok := esArg.RecordDynApply([]core.Value{carrierVal(core.TInteger)}, single, core.NewInteger(0), core.SrcPos{}); ok {
+	seedProduced(esArg, &single, 1)
+	if _, ok := esArg.RecordDynApply([]core.Value{carrierVal(core.TInteger)}, single, addrOf(core.NewInteger(0)), core.SrcPos{}); ok {
 		t.Fatal("unresolvable arg should decline")
 	}
 
@@ -318,10 +318,10 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 		{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
 		{Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
 	}})
-	over.Dynamic = true
+	core.SetDynamic(&over, true)
 	esOver := NewEmitState()
-	seedProduced(esOver, over, 1)
-	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
+	seedProduced(esOver, &over, 1)
+	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}); ok {
 		t.Fatal("an overloaded callee has no provable arity — the event lead must decline")
 	}
 	if esOver.Compilable {
@@ -332,38 +332,38 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 func TestRecordLoopCompileFailures(t *testing.T) {
 	// body == nil.
 	es := NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("nil loop body should decline")
 	}
 	// range of unknown provenance (start unresolvable).
 	es = NewEmitState()
-	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unresolvable range should decline")
 	}
 	// computed start/step (start resolves to an event, not a const).
 	es = NewEmitState()
 	start := core.NewCarrier(core.TInteger)
-	seedProduced(es, start, 1)
-	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	seedProduced(es, &start, 1)
+	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("computed loop start should decline")
 	}
 	// iterator slot not registered (all-const range, empty body).
 	es = NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", addrOf(core.NewInteger(0)), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unregistered iterator should decline")
 	}
 }
 
 func TestRecordFallbackGuards(t *testing.T) {
-	if inactiveEmitState().RecordFallback(core.FallbackSpan{}, nil, core.NewInteger(0), core.SrcPos{}) {
+	if inactiveEmitState().RecordFallback(core.FallbackSpan{}, nil, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("inactive RecordFallback should decline")
 	}
 	es := NewEmitState()
-	if es.RecordFallback(core.FallbackSpan{}, []core.Value{carrierVal(core.TInteger)}, core.NewInteger(0), core.SrcPos{}) {
+	if es.RecordFallback(core.FallbackSpan{}, []core.Value{carrierVal(core.TInteger)}, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("unresolvable fallback input should decline")
 	}
 }
@@ -372,7 +372,7 @@ func TestRecordTypedBindDeclines(t *testing.T) {
 	es := NewEmitState()
 	// Concrete body → declines (returns out unchanged, false).
 	in := core.NewInteger(5)
-	if out, ok := es.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || out.ID != in.ID {
+	if out, ok := es.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || core.IDOf(&out) != core.IDOf(&in) {
 		t.Fatal("concrete typed-bind body should decline")
 	}
 	// Non-concrete but unresolvable body → declines.

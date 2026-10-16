@@ -134,13 +134,13 @@ func oracleCandidates(p *compiler.Program, code []compiler.Instr, pc int, d *com
 // the arrival loop evaluates an active list and converts a quotation on
 // delivery, and a group is an evaluation this host declines outright.
 func oracleStopPresentable(tok core.Value) bool {
-	if core.IsWord(tok) {
+	if core.IsWord(&tok) {
 		return true
 	}
-	if _, kind := core.StaticForwardTypeOf(tok); kind != core.FwdValue {
+	if _, kind := core.StaticForwardTypeOf(&tok); kind != core.FwdValue {
 		return false
 	}
-	return !tok.Parent.ConformsTo(core.TList) && !tok.Parent.ConformsTo(core.TMap)
+	return !tok.Parent().ConformsTo(core.TList) && !tok.Parent().ConformsTo(core.TMap)
 }
 
 // oracleSameValue is the agreement test for a live word slot: is the value
@@ -158,7 +158,7 @@ func oracleStopPresentable(tok core.Value) bool {
 // Never by rendering either, which would walk a container's whole payload
 // on every execution of a loop body that names it.
 func oracleSameValue(live, pushed core.Value) bool {
-	if live.ID != "" && live.ID == pushed.ID {
+	if core.IDOf(&live) != "" && core.IDOf(&live) == core.IDOf(&pushed) {
 		return true
 	}
 	if core.HasContainerIdentity(live) || core.HasContainerIdentity(pushed) {
@@ -269,7 +269,7 @@ func (vc *vmContext) collectOracle(p *compiler.Program, code []compiler.Instr, p
 		}
 		// A SlotWordRef token is a word by Phase A's construction; an
 		// unbound name resolves to nothing, which is a disagreement too.
-		wi, _ := core.AsWord(s.Token)
+		wi, _ := core.AsWord(&s.Token)
 		pushed := stack[top-i]
 		live, ok := reg.Defs.Top(wi.Name)
 		if ok && oracleSameValue(live, pushed) {

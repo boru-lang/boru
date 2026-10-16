@@ -221,9 +221,24 @@ test-race:
 # vet and lint run in every module in parallel (scripts/each-module.sh;
 # JOBS=1 for the sequential form): golangci-lint over the thirteen modules
 # took 127 s in sequence on CI, under 10 s four at a time with a warm cache.
+#
+# vet runs WITHOUT copylocks: core.Value carries a zero-size noCopy marker,
+# so copylocks reports every by-value copy of a Value. Those copies are the
+# no-copy ratchet's to count (vet-copies below), and so is a copy of any
+# other lock; .golangci.yml turns govet's copylocks off to match.
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 vet:
-	@scripts/each-module.sh -j $(JOBS) go vet ./...
+	@scripts/each-module.sh -j $(JOBS) go vet -copylocks=false ./...
+
+# The no-copy ratchet (design/VALUE-NO-COPY.0.md, phase 0): per go.work
+# module, the non-test copies of a core.Value that copylocks reports and the
+# bulk copies of a []core.Value (copy, variadic append) that
+# tools/vetcopies's bulkcopy analyzer reports, each held to its ceiling in
+# tools/vetcopies/ceilings.tsv. UPDATE=1 lowers the ceilings to the current
+# counts; nothing raises one but a hand edit naming its exceptions row.
+.PHONY: vet-copies
+vet-copies:
+	@scripts/vet-copies.sh
 
 fmt:
 	@set -e; for m in $(MODULES); do \

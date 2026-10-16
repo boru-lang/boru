@@ -651,14 +651,14 @@ func TestCompareTypesTiebreaks(t *testing.T) {
 
 func TestTypeDepthAndRankFallbacks(t *testing.T) {
 	// Ad-hoc types without cached Depth/Rank walk their chains.
-	adhoc := &Type{tmeta: &typeMeta{Name: "W4bAdhoc"}, Parent: TInteger}
+	adhoc := &Type{d: &Datum{tmeta: &typeMeta{Name: "W4bAdhoc"}, Parent: TInteger}}
 	if got := typeDepth(adhoc); got != TInteger.Depth()+1 {
 		t.Errorf("typeDepth(adhoc) = %d, want %d", got, TInteger.Depth()+1)
 	}
 	if rankOf(adhoc) != TInteger.Rank() {
 		t.Error("rankOf fallback did not walk to the parent")
 	}
-	orphan := &Type{tmeta: &typeMeta{Name: "W4bOrphan"}}
+	orphan := &Type{d: &Datum{tmeta: &typeMeta{Name: "W4bOrphan"}}}
 	if rankOf(orphan) != 0 {
 		t.Error("rank of chainless type not 0")
 	}

@@ -16,7 +16,7 @@ import (
 // nothing recorded; a dispatch-bearing element poisons the join.
 func TestMintFlexListShapeCarrierRecordsElementJoin(t *testing.T) {
 	out, ok := MintFlexListShapeCarrier(core.NewList([]core.Value{mkMap("x", core.NewInteger(1))}), 0)
-	if !ok || !out.Carrier || !out.Parent.Equal(core.TFlexList) {
+	if !ok || !out.Carrier() || !out.Parent().Equal(core.TFlexList) {
 		t.Fatalf("a concrete plain list must mint a FlexList shape carrier, got %v", out)
 	}
 	ss, ok := FlexListShapeOf(out)
@@ -27,7 +27,7 @@ func TestMintFlexListShapeCarrierRecordsElementJoin(t *testing.T) {
 	if !ok {
 		t.Fatal("the element join must be recorded")
 	}
-	if _, ok := StoreShapeOf(el); !ok || !el.Parent.Equal(core.TFlexMap) {
+	if _, ok := StoreShapeOf(el); !ok || !el.Parent().Equal(core.TFlexMap) {
 		t.Errorf("a map element adopts to a FlexMap shape, got %v", el)
 	}
 	empty, ok := MintFlexListShapeCarrier(core.NewList(nil), 0)
@@ -63,7 +63,7 @@ func TestMintFlexListShapeCarrierDeclines(t *testing.T) {
 		{"non-list", core.NewInteger(3)},
 		{"a map", mkMap("k", core.NewInteger(1))},
 		{"a typed list (the D2 tag owns it)", core.NewTypedListWithElements(core.NewTypeLiteral(core.TInteger), []core.Value{core.NewInteger(1)})},
-		{"a list-tagged non-list payload", core.Value{Parent: core.TList, Data: core.MapPayload{}}},
+		{"a list-tagged non-list payload", core.ValueOf(&core.Datum{Parent: core.TList, Data: core.MapPayload{}})},
 	}
 	for _, c := range cases {
 		if _, ok := MintFlexListShapeCarrier(c.v, 0); ok {
@@ -99,7 +99,7 @@ func TestAdoptShapeValueLists(t *testing.T) {
 	}
 	typed := core.NewTypedListWithElements(core.NewTypeLiteral(core.TInteger), []core.Value{core.NewInteger(1)})
 	bare := AdoptShapeValue(typed, 0)
-	if _, ok := StoreShapeOf(bare); ok || !bare.Carrier || !bare.Parent.Equal(core.TFlexList) {
+	if _, ok := StoreShapeOf(bare); ok || !bare.Carrier() || !bare.Parent().Equal(core.TFlexList) {
 		t.Errorf("a typed list keeps the bare FlexList carrier, got %v", bare)
 	}
 }

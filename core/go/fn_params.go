@@ -65,10 +65,10 @@ import (
 //
 // Returns the FnParam list, the BarrierPos, or a parse error.
 func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
-	if !inputSig.Parent.Equal(TList) {
+	if !inputSig.Parent().Equal(TList) {
 		return nil, 0, fmt.Errorf("function spec: input signature must be a list")
 	}
-	if !IsConcrete(inputSig) {
+	if !IsConcrete(&inputSig) {
 		return nil, 0, fmt.Errorf("function spec: input signature must be a concrete list, got type literal")
 	}
 	elems, _ := AsList(inputSig)
@@ -82,8 +82,8 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 	for i := 0; i < elems.Len(); i++ {
 		elem := elems.Get(i)
 
-		_as1, _ := AsWord(elem)
-		if IsWord(elem) && _as1.Name == "?" {
+		_as1, _ := AsWord(&elem)
+		if IsWord(&elem) && _as1.Name == "?" {
 			if len(params) > 0 {
 				params[len(params)-1].Optional = true
 			}
@@ -101,7 +101,7 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 		// dependent atom type like `(Atom gt foo/q)` shares Parent=TAtom
 		// but is a predicate constraint, handled by ResolveSigType's
 		// pattern path).
-		if elem.Parent.Equal(TAtom) && IsConcrete(elem) && !elem.IsDepScalar() {
+		if elem.Parent().Equal(TAtom) && IsConcrete(&elem) && !elem.IsDepScalar() {
 			if tn, aerr := AsAtom(elem); aerr == nil {
 				if qt, qerr := lookupTypeNameInRegistry(r, tn); qerr == nil {
 					params = append(params, FnParam{Type: qt, Quote: true})
@@ -112,8 +112,8 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 			}
 		}
 
-		_as2, _ := AsWord(elem)
-		if IsWord(elem) && (_as2.Name == "|" || _as2.Name == "__SB") {
+		_as2, _ := AsWord(&elem)
+		if IsWord(&elem) && (_as2.Name == "|" || _as2.Name == "__SB") {
 			// `|` is the canonical barrier marker; `__SB` (Stack
 			// Barrier) is its alias for environments where a bare
 			// `|` is awkward to type (shell pipelines, etc.).
@@ -122,7 +122,7 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 		}
 
 		switch {
-		case elem.Parent.Equal(TMap) && elem.Data != nil:
+		case elem.Parent().Equal(TMap) && elem.Data() != nil:
 			m, err := AsMutableMap(elem)
 			if err == nil && m != nil && m.Implicit {
 				keys := m.Keys()
@@ -140,7 +140,7 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 				if terr != nil {
 					return nil, 0, terr
 				}
-				if IsDisjunct(typeVal) {
+				if IsDisjunct(&typeVal) {
 					_as3, _ := AsDisjunct(typeVal)
 					alts := _as3.Alternatives
 					for _, alt := range alts {
@@ -165,7 +165,7 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 				// Parent=TAtom but is a DepScalar predicate — excluded,
 				// it takes ResolveSigType's pattern path). See the
 				// unnamed `T/q` branch above for the capture semantics.
-				if typeVal.Parent.Equal(TAtom) && IsConcrete(typeVal) && !typeVal.IsDepScalar() {
+				if typeVal.Parent().Equal(TAtom) && IsConcrete(&typeVal) && !typeVal.IsDepScalar() {
 					tn, aerr := AsAtom(typeVal)
 					if aerr == nil {
 						if err := ValidateWordName(name); err != nil {
@@ -200,8 +200,8 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 				params = append(params, FnParam{Type: paramType, Pattern: pattern})
 			}
 
-		case IsWord(elem):
-			_as4, _ := AsWord(elem)
+		case IsWord(&elem):
+			_as4, _ := AsWord(&elem)
 			name := _as4.Name
 			// `name:*Type` colon-delimited form. Used by minimal
 			// tokenizers (e.g. the borueng spec runner, whose
@@ -250,23 +250,23 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 			}
 			params = append(params, FnParam{Type: paramType})
 
-		case IsBareTypeNode(elem):
+		case IsBareTypeNode(&elem):
 			elemType := elem
 			params = append(params, FnParam{Type: &elemType})
 
-		case elem.Parent.ConformsTo(TInteger):
+		case elem.Parent().ConformsTo(TInteger):
 			pat := elem
 			params = append(params, FnParam{Type: TInteger, Pattern: &pat})
 
-		case elem.Parent.ConformsTo(TBoolean):
+		case elem.Parent().ConformsTo(TBoolean):
 			pat := elem
 			params = append(params, FnParam{Type: TBoolean, Pattern: &pat})
 
-		case elem.Parent.ConformsTo(TString):
+		case elem.Parent().ConformsTo(TString):
 			pat := elem
 			params = append(params, FnParam{Type: TString, Pattern: &pat})
 
-		case IsReach(elem):
+		case IsReach(&elem):
 			// Dotted TYPE annotation: `mat:MatrixUtil.Matrix` (the implicit
 			// pair folds into the Reach's receiver) or a bare unnamed
 			// `MatrixUtil.Matrix`. Resolved at fn-construction time against
@@ -296,7 +296,7 @@ func dottedParamType(r *Registry, elem Value) (FnParam, bool) {
 	if r == nil {
 		return FnParam{}, false
 	}
-	info, err := AsReach(elem)
+	info, err := AsReach(&elem)
 	if err != nil || len(info.Receiver) != 1 || len(info.Segments) == 0 {
 		return FnParam{}, false
 	}
@@ -309,23 +309,23 @@ func dottedParamType(r *Registry, elem Value) (FnParam, bool) {
 	baseWord := ""
 	recv := info.Receiver[0]
 	switch {
-	case IsWord(recv):
-		w, wErr := AsWord(recv)
+	case IsWord(&recv):
+		w, wErr := AsWord(&recv)
 		if wErr != nil {
 			return FnParam{}, false
 		}
 		baseWord = w.Name
-	case recv.Parent != nil && recv.Parent.Equal(TMap) && IsConcrete(recv):
+	case recv.Parent() != nil && recv.Parent().Equal(TMap) && IsConcrete(&recv):
 		m, mErr := AsMap(recv)
 		if mErr != nil || m.Len() != 1 {
 			return FnParam{}, false
 		}
 		key := m.Keys()[0]
 		val, _ := m.Get(key)
-		if !IsWord(val) {
+		if !IsWord(&val) {
 			return FnParam{}, false
 		}
-		w, wErr := AsWord(val)
+		w, wErr := AsWord(&val)
 		if wErr != nil {
 			return FnParam{}, false
 		}
@@ -342,10 +342,10 @@ func dottedParamType(r *Registry, elem Value) (FnParam, bool) {
 	}
 	// unit rides along: dropping it would rebuild the lens cache per call.
 	reached, rErr := ApplyReach(r, ReachInfo{Segments: info.Segments, unit: info.unit}, base)
-	if rErr != nil || !IsTypeLiteral(reached) {
+	if rErr != nil || !IsTypeLiteral(&reached) {
 		return FnParam{}, false
 	}
-	t := CanonicalType(r, &reached)
+	t := NodeOf(&reached)
 	return FnParam{Name: paramName, Type: t}, true
 }
 
@@ -406,7 +406,7 @@ func keywordParam(name, kw string) FnParam {
 // used to be discarded here, which is what let a declared union return go
 // unenforced (its *Type degrades to Any, so the pattern IS the contract).
 func ParseFnReturns(r *Registry, outputSig Value) ([]*Type, []*Value, error) {
-	if !outputSig.Parent.Equal(TList) || !IsConcrete(outputSig) {
+	if !outputSig.Parent().Equal(TList) || !IsConcrete(&outputSig) {
 		sig, err := resolveReturnSlot(r, outputSig, 0)
 		if err != nil {
 			return nil, nil, err
@@ -426,7 +426,7 @@ func ParseFnReturns(r *Registry, outputSig Value) ([]*Type, []*Value, error) {
 	}
 	types := make([]*Type, elems.Len())
 	var pats []*Value
-	for i, e := range elems.Slice() {
+	for i, e := range elems.Elems() {
 		sig, err := resolveReturnSlot(r, e, i)
 		if err != nil {
 			return nil, nil, err
@@ -475,10 +475,10 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 			typeVal = exp[0]
 		}
 	}
-	if !IsParenExpr(typeVal) || r == nil {
+	if !IsParenExpr(&typeVal) || r == nil {
 		return typeVal, nil
 	}
-	items, _ := AsParenExpr(typeVal)
+	items, _ := AsParenExpr(&typeVal)
 	sub := New(r)
 	input := make([]Value, 0, len(items)+2)
 	input = append(input, NewOpenParen())
@@ -501,13 +501,13 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 		// it is (NUR325).
 		r.analysisRecorder().NoteRuntimeDependent()
 	}
-	if v := result[0]; v.Carrier && IsNegation(v) {
+	if v := result[0]; v.Carrier() && IsNegation(v) {
 		// A negation the pass built exactly (tnot's ReturnsFn negates the
 		// operand itself) but flagged a carrier: the annotation is that
 		// type, as the run's is. Kept a carrier, the signature's pattern
 		// was an abstract value the pass's match admitted 5 at, where the
 		// run's `(tnot Integer)` refuses it (NUR326).
-		v.Carrier = false
+		v.SetCarrier(false)
 		return v, nil
 	}
 	return result[0], nil
@@ -521,10 +521,10 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 // content itself (`(tnot Integer)`, whose ReturnsFn builds the negation
 // exactly) is the run's type.
 func AnnotationRunDependent(v Value) bool {
-	if v.Carrier && !IsTypeBody(v) {
+	if v.Carrier() && !IsTypeBody(&v) {
 		return true
 	}
-	if IsTypedList(v) || IsTypedMap(v) {
+	if IsTypedList(&v) || IsTypedMap(&v) {
 		ci, _ := AsChildType(v)
 		return AnnotationRunDependent(ci.Child)
 	}
@@ -560,8 +560,8 @@ func unwrapNamedReturn(r *Registry, v Value) (Value, error) {
 	// consumers of the production parser: ParseFnParams accepts
 	// `[y:Integer]` as a param from either tokenizer, and the output
 	// slot would have rejected the same token as a type name.
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		idx := strings.Index(w.Name, ":")
 		if idx <= 0 {
 			return v, nil
@@ -573,7 +573,7 @@ func unwrapNamedReturn(r *Registry, v Value) (Value, error) {
 		inner.SetPos(v.Pos())
 		return inner, nil
 	}
-	if !v.Parent.Equal(TMap) || v.Data == nil {
+	if !v.Parent().Equal(TMap) || v.Data() == nil {
 		return v, nil
 	}
 	m, err := AsMutableMap(v)
@@ -643,13 +643,13 @@ func noteRuntimeSigType(r *Registry, v Value) {
 }
 
 func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return ValueType(v), nil, nil
 	}
 	// Word, String, or Atom: extract the name and resolve.
 	// LookupDefType already returns the canonical lattice node for
 	// bare type literals, and ResolveDefType canonicalizes its own
-	// Data==nil result via CanonicalType, so the resolved *Type is
+	// Data==nil result via NodeOf, so the resolved *Type is
 	// identity-stable at every hop.
 	//
 	// DepScalars are excluded: a String/Atom DepScalar has
@@ -658,13 +658,13 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// silently, name="" would then fail the kernel-name lookup. The
 	// scalar-pattern branch below catches DepScalars correctly
 	// (kind = the base type, pattern = the DepScalar Value).
-	if (IsWord(v) || v.Parent.ConformsTo(TString) || v.Parent.ConformsTo(TAtom)) && !v.IsDepScalar() {
+	if (IsWord(&v) || v.Parent().ConformsTo(TString) || v.Parent().ConformsTo(TAtom)) && !v.IsDepScalar() {
 		var name string
 		switch {
-		case IsWord(v):
-			w, _ := AsWord(v)
+		case IsWord(&v):
+			w, _ := AsWord(&v)
 			name = w.Name
-		case v.Parent.ConformsTo(TAtom):
+		case v.Parent().ConformsTo(TAtom):
 			// An Atom carries AtomPayload, not StrPayload, so AsString
 			// answers ("", err) here and every lookup below then misses
 			// on the empty name. That was invisible while an
@@ -727,7 +727,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 		// could never be a type name, so it is the string itself. And a
 		// WORD is always a name: a bare lowercase word in a type slot is
 		// a typo, not a literal (eng/go/standalone_tail_test.go pins it).
-		if IsWord(v) || looksLikeTypeName(name) {
+		if IsWord(&v) || looksLikeTypeName(name) {
 			return nil, nil, err
 		}
 	}
@@ -736,21 +736,21 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// instantiation body itself. Without these branches they fell to
 	// the TAny tail: a silent wildcard (the same degradation the
 	// TypeDef refactor closed for NAMED types).
-	if IsClassType(v) {
+	if IsClassType(&v) {
 		if oi, aerr := AsClassType(v); aerr == nil && oi.Type != nil {
-			return CanonicalType(r, oi.Type), nil, nil
+			return NodeOf(oi.Type), nil, nil
 		}
 	}
 	if IsSurfaceType(v) {
 		if si, aerr := AsSurfaceType(v); aerr == nil && si.Type != nil {
-			return CanonicalType(r, si.Type), nil, nil
+			return NodeOf(si.Type), nil, nil
 		}
 	}
 	if IsTypeSchema(v) {
 		// A bare schema as a param type means "any instantiation"
 		// (family membership by ancestry — D3 in GENERICS.10.md).
 		if ti, aerr := AsTypeSchema(v); aerr == nil && ti.Type != nil {
-			return CanonicalType(r, ti.Type), nil, nil
+			return NodeOf(ti.Type), nil, nil
 		}
 	}
 	// Bounded Type — `x:Map/t` ≡ `x:(Type of [Map])`: the slot takes
@@ -768,7 +768,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// An inline negation (`x:(tnot Integer)`) the same way: it fell to the
 	// TAny tail and admitted the very values it excludes, where the named
 	// form refuses them (NUR326).
-	if IsDisjunct(v) || IsNegation(v) {
+	if IsDisjunct(&v) || IsNegation(v) {
 		if p, ok := runSigPattern(r, v); ok {
 			return TAny, &p, nil
 		}
@@ -785,34 +785,34 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// to the TAny tail: a wildcard slot (NUR009).
 	if v.IsDepScalar() {
 		if p, ok := runSigPattern(r, v); ok {
-			return v.Parent, &p, nil
+			return v.Parent(), &p, nil
 		}
 		pattern := v
-		return v.Parent, &pattern, nil
+		return v.Parent(), &pattern, nil
 	}
-	if v.Data != nil && (v.Parent.ConformsTo(TInteger) ||
-		v.Parent.ConformsTo(TFloat) ||
-		v.Parent.ConformsTo(TBoolean) ||
-		v.Parent.ConformsTo(TString) ||
-		v.Parent.ConformsTo(TAtom)) {
+	if v.Data() != nil && (v.Parent().ConformsTo(TInteger) ||
+		v.Parent().ConformsTo(TFloat) ||
+		v.Parent().ConformsTo(TBoolean) ||
+		v.Parent().ConformsTo(TString) ||
+		v.Parent().ConformsTo(TAtom)) {
 		pattern := v
 		var kind *Type
 		switch {
-		case v.Parent.ConformsTo(TInteger):
+		case v.Parent().ConformsTo(TInteger):
 			kind = TInteger
-		case v.Parent.ConformsTo(TFloat):
+		case v.Parent().ConformsTo(TFloat):
 			kind = TFloat
-		case v.Parent.ConformsTo(TBoolean):
+		case v.Parent().ConformsTo(TBoolean):
 			kind = TBoolean
-		case v.Parent.ConformsTo(TString):
+		case v.Parent().ConformsTo(TString):
 			kind = TString
 		default:
 			kind = TAtom
 		}
 		return kind, &pattern, nil
 	}
-	if v.Parent.Equal(TMap) {
-		if IsTypedMap(v) {
+	if v.Parent().Equal(TMap) {
+		if IsTypedMap(&v) {
 			resolved, err := ResolveChildTypeExpr(r, v)
 			if err != nil {
 				return nil, nil, err
@@ -827,8 +827,8 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 		resolved := ResolveSigRecordFields(r, v)
 		return TMap, &resolved, nil
 	}
-	if v.Parent.Equal(TList) {
-		if IsTypedList(v) {
+	if v.Parent().Equal(TList) {
+		if IsTypedList(&v) {
 			// A ParenExpr child (`xs:[:(Pair of [String Integer])]`)
 			// evaluates now; a child Word naming a live gen placeholder
 			// (`xs:[:T]`) resolves to the placeholder literal NOW — the
@@ -850,7 +850,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 // LookupDefType resolves a name to its type value via the type stack
 // first, then the def stack. Returns nil if neither carries a
 // type-body for that name. For a bare type-literal body, returns
-// the canonical lattice node (via CanonicalType) so downstream
+// the canonical lattice node (via NodeOf) so downstream
 // identity-sensitive uses (behave installs, sig dispatch) reach the
 // same *Type the kernel mints.
 func LookupDefType(r *Registry, name string) *Value {
@@ -858,9 +858,9 @@ func LookupDefType(r *Registry, name string) *Value {
 		return nil
 	}
 	if tv, ok := r.TopTypeBody(name); ok {
-		if IsTypeBody(tv) {
-			if IsBareTypeNode(tv) {
-				return CanonicalType(r, &tv)
+		if IsTypeBody(&tv) {
+			if IsBareTypeNode(&tv) {
+				return NodeOf(&tv)
 			}
 			return &tv
 		}
@@ -869,18 +869,18 @@ func LookupDefType(r *Registry, name string) *Value {
 	if !ok {
 		return nil
 	}
-	if !IsTypeBody(val) {
+	if !IsTypeBody(&val) {
 		return nil
 	}
-	if IsBareTypeNode(val) {
-		return CanonicalType(r, &val)
+	if IsBareTypeNode(&val) {
+		return NodeOf(&val)
 	}
 	return &val
 }
 
 // ResolveDefType converts a def'd type value (record, options, plain
 // type literal) into a sig type + pattern. For a bare type literal,
-// the *Type is canonicalized via CanonicalType so identity-sensitive
+// the *Type is canonicalized via NodeOf so identity-sensitive
 // downstream consumers (sig dispatch, behave installs) land on the
 // lattice's canonical pointer.
 func ResolveDefType(r *Registry, v Value) (*Type, *Value, error) {
@@ -894,13 +894,13 @@ func ResolveDefType(r *Registry, v Value) (*Type, *Value, error) {
 		pat := NewOptionsType(_as6.Fields)
 		return TMap, &pat, nil
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		// A bare type literal IS its lattice node post type/value
 		// merge — the denoted type is the value itself, not its
-		// supertype Parent. Route through CanonicalType so user-
+		// supertype Parent. Route through NodeOf so user-
 		// minted refine subtypes (`:Foo`) keep canonical identity
 		// in fn signatures.
-		return CanonicalType(r, &v), nil, nil
+		return NodeOf(&v), nil, nil
 	}
 	// Note: most populated-body cases (Object/Table/Disjunct/
 	// DepScalar/TypedList/TypedMap) are now handled at the

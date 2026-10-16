@@ -132,7 +132,7 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 	if n == 0 || len(at) != n || !e.Registry.analysisRecorder().Active() {
 		return nil
 	}
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	if err != nil || !unmodifiedWord(w) {
 		return nil
 	}
@@ -151,10 +151,10 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 		if i >= k {
 			want = e.Pointer - (i - k) - 1
 		}
-		if at[i] != want || want < 0 || want >= e.Tape.Len() || args[i].ID == "" {
+		if at[i] != want || want < 0 || want >= e.Tape.Len() || IDOf(&args[i]) == "" {
 			return nil
 		}
-		if tok := e.Tape.At(want); tok.ID != args[i].ID {
+		if tok := e.Tape.At(want); IDOf(&tok) != IDOf(&args[i]) {
 			// A written word whose data binding is the operand: the plan
 			// read it and left the word on the tape (Words).
 			if i >= k || !e.readsDataBinding(tok, args[i]) {
@@ -179,12 +179,12 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 // nothing (a fn binding is a collection barrier instead, and a gradual one
 // may be either).
 func (e *Engine) readsDataBinding(tok, v Value) bool {
-	w, err := AsWord(tok)
+	w, err := AsWord(&tok)
 	if err != nil || w.ForceVal {
 		return false
 	}
 	top, ok := e.Registry.Defs.Top(w.Name)
-	return ok && top.ID == v.ID && !top.Dynamic && readsData(e.Registry, w.Name)
+	return ok && IDOf(&top) == IDOf(&v) && !IsDynamic(&top) && readsData(e.Registry, w.Name)
 }
 
 // layoutSurround reads what a dispatch's plan could reach around its
@@ -202,7 +202,7 @@ func (e *Engine) readsDataBinding(tok, v Value) bool {
 // at it (NUR356).
 func (e *Engine) layoutSurround(below, after, nFwd int, live bool) (beneath, afterToks []Value, liveIdx []int, ok bool) {
 	var fromTop []bool
-	for i := below; i >= 0 && !IsOpenParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i-- {
+	for i := below; i >= 0 && !IsOpenParen(e.Tape.Ref(i)) && !IsEnd(e.Tape.Ref(i)); i-- {
 		v := e.Tape.At(i)
 		isLive := false
 		if !layoutConstant(v, true) {
@@ -219,16 +219,16 @@ func (e *Engine) layoutSurround(below, after, nFwd int, live bool) (beneath, aft
 			liveIdx = append(liveIdx, len(fromTop)-1-j)
 		}
 	}
-	for i := after; i < e.Tape.Len() && !IsCloseParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i++ {
+	for i := after; i < e.Tape.Len() && !IsCloseParen(e.Tape.Ref(i)) && !IsEnd(e.Tape.Ref(i)); i++ {
 		tok := e.Tape.At(i)
 		if layoutConstant(tok, false) {
 			afterToks = append(afterToks, tok)
 			continue
 		}
-		if w, err := AsWord(tok); err == nil && !tok.Quoted && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
+		if w, err := AsWord(&tok); err == nil && !IsQuoted(&tok) && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
 			return beneath, append(afterToks, tok), liveIdx, true
 		}
-		if reach, known := e.forwardReachMax(); IsWord(tok) && !tok.Quoted && known && nFwd+len(afterToks) >= reach {
+		if reach, known := e.forwardReachMax(); IsWord(&tok) && !IsQuoted(&tok) && known && nFwd+len(afterToks) >= reach {
 			return beneath, append(afterToks, tok), liveIdx, true
 		}
 		return nil, nil, nil, false
@@ -240,7 +240,7 @@ func (e *Engine) layoutSurround(below, after, nFwd int, live bool) (beneath, aft
 // the pointer can claim (effectiveForwardLimit, an all-forward barrier its
 // arity), and false when the pointer holds no word the registry names.
 func (e *Engine) forwardReachMax() (int, bool) {
-	w, err := AsWord(e.Tape.At(e.Pointer))
+	w, err := AsWord(e.Tape.Ref(e.Pointer))
 	if err != nil {
 		return 0, false
 	}
@@ -265,8 +265,8 @@ func (e *Engine) forwardReachMax() (int, bool) {
 // — a call's result, a carrier — which a record can place by its identity:
 // never a word, a marker, or a value with no ID.
 func liveBeneath(v Value) bool {
-	return v.ID != "" && !IsWord(v) && !isEngineMarker(v) && !IsForward(v) && !IsParenExpr(v) &&
-		(v.Carrier || v.Dynamic || IsConcrete(v))
+	return IDOf(&v) != "" && !IsWord(&v) && !isEngineMarker(v) && !IsForward(&v) && !IsParenExpr(&v) &&
+		(v.Carrier() || IsDynamic(&v) || IsConcrete(&v))
 }
 
 // unmodifiedWord reports whether w carries no modifier the source wrote —
@@ -280,10 +280,10 @@ func unmodifiedWord(w WordInfo) bool {
 // boolean, an atom — or, beneath the operands (where values are already
 // resolved), a concrete list.
 func layoutConstant(v Value, lists bool) bool {
-	if !IsConcrete(v) || v.Carrier || v.Dynamic || v.Quoted || v.Parent == nil {
+	if !IsConcrete(&v) || v.Carrier() || IsDynamic(&v) || IsQuoted(&v) || v.Parent() == nil {
 		return false
 	}
-	p := v.Parent
+	p := v.Parent()
 	return p.ConformsTo(TNumber) || p.ConformsTo(TString) || p.ConformsTo(TBoolean) || p.ConformsTo(TAtom) ||
 		(lists && p.ConformsTo(TList))
 }

@@ -514,8 +514,8 @@ func TestParseCovParserReturns(t *testing.T) {
 	done := r.Check.Begin()
 	defer done()
 	out := parseParserReturns([]native.Value{native.NewInteger(0)}, r)
-	if len(out) != 1 || out[0].Dynamic || native.IsConcrete(out[0]) ||
-		!out[0].Parent.ConformsTo(native.TFunction) {
+	if len(out) != 1 || native.IsDynamic(&out[0]) || native.IsConcrete(&out[0]) ||
+		!out[0].Parent().ConformsTo(native.TFunction) {
 		t.Errorf("expected one plain Function carrier, got %v", out)
 	}
 }

@@ -12,7 +12,7 @@ func TestDeepConcreteScalars(t *testing.T) {
 		NewInteger(1), NewString("s"), NewBoolean(true), NewAtom("a"), NewNone(),
 	} {
 		if !DeepConcrete(v) {
-			t.Errorf("%s is concrete and has no interior — it must be deep-concrete", v.Parent)
+			t.Errorf("%s is concrete and has no interior — it must be deep-concrete", v.Parent())
 		}
 	}
 	// A carrier is not concrete at any depth.
@@ -33,7 +33,7 @@ func TestDeepConcreteRejectsCarrierInterior(t *testing.T) {
 	m := NewOrderedMap()
 	m.Set("enc", NewCarrier(TString))
 	optsMap := NewMap(m)
-	if !IsConcrete(optsMap) {
+	if !IsConcrete(&optsMap) {
 		t.Fatal("fixture: a map literal with a carrier field is still IsConcrete — that IS the trap")
 	}
 	if DeepConcrete(optsMap) {
@@ -41,7 +41,7 @@ func TestDeepConcreteRejectsCarrierInterior(t *testing.T) {
 	}
 
 	lst := NewList([]Value{NewInteger(1), NewCarrier(TInteger)})
-	if !IsConcrete(lst) {
+	if !IsConcrete(&lst) {
 		t.Fatal("fixture: a list literal with a carrier element is still IsConcrete")
 	}
 	if DeepConcrete(lst) {

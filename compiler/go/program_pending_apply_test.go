@@ -19,7 +19,7 @@ func TestProgramPendingApply(t *testing.T) {
 	}
 	es := NewEmitState()
 	fn := core.NewCarrier(core.TFunction)
-	fn.ID = "fn-p"
+	core.SetID(&fn, "fn-p")
 	residual := []core.Value{core.NewInteger(5), fn}
 	if es.programPendingApplyTop(residual) {
 		t.Error("no pending entry: nothing to lower")

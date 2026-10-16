@@ -236,12 +236,12 @@ func TestProcessCoverSendableViolations(t *testing.T) {
 		v    Value
 		want string
 	}{
-		{"object", Value{Parent: TMap, Data: core.ClassInstanceInfo{}}, "Object"},
-		{"table", Value{Parent: TMap, Data: core.TableData{}}, "Table"},
-		{"flex", Value{Parent: TList, Data: &core.FlexListData{}}, "Flex"},
+		{"object", core.ValueOf(&core.Datum{Parent: TMap, Data: core.ClassInstanceInfo{}}), "Object"},
+		{"table", core.ValueOf(&core.Datum{Parent: TMap, Data: core.TableData{}}), "Table"},
+		{"flex", core.ValueOf(&core.Datum{Parent: TList, Data: &core.FlexListData{}}), "Flex"},
 		{"store-in-list", NewList([]Value{
 			NewInteger(1),
-			{Parent: TStore, Data: &core.StoreInstanceInfo{}},
+			core.ValueOf(&core.Datum{Parent: TStore, Data: &core.StoreInstanceInfo{}}),
 		}), "Store"},
 		{"clean-list", NewList([]Value{NewInteger(1), NewString("a")}), ""},
 	}
@@ -408,7 +408,7 @@ func TestProcessCoverBindClauseRefusals(t *testing.T) {
 		t.Error("non-map message must refuse binding slots")
 	}
 	// Map-conforming value with no OrderedMap payload (AsMap returns nil).
-	if _, ok := bindSlots(c.binds, Value{Parent: TMap, Data: core.TableData{}}); ok {
+	if _, ok := bindSlots(c.binds, core.ValueOf(&core.Datum{Parent: TMap, Data: core.TableData{}})); ok {
 		t.Error("map-typed value without an OrderedMap payload must refuse")
 	}
 	// Field missing.

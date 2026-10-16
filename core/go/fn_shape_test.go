@@ -73,15 +73,15 @@ func TestNoteFnShapeArms(t *testing.T) {
 		t.Fatal("an unidentified carrier and a negative count are no claim")
 	}
 	r.Check.NoteFnShape(out, FnShape{Arity: 2, Result: &FnShape{Arity: 1}})
-	if n, ok := r.Check.FnShapeArity(out.ID); !ok || n != 2 {
+	if n, ok := r.Check.FnShapeArity(IDOf(&out)); !ok || n != 2 {
 		t.Errorf("claim = %d/%v, want 2", n, ok)
 	}
-	if s, ok := r.Check.FnShapeOf(out.ID); !ok || s.Result == nil || s.Result.Arity != 1 {
+	if s, ok := r.Check.FnShapeOf(IDOf(&out)); !ok || s.Result == nil || s.Result.Arity != 1 {
 		t.Errorf("the result shape rides with the claim, got %+v/%v", s, ok)
 	}
 	zero := NewCarrier(TFunction)
 	r.Check.NoteFnShape(zero, FnShape{})
-	if n, ok := r.Check.FnShapeArity(zero.ID); !ok || n != 0 {
+	if n, ok := r.Check.FnShapeArity(IDOf(&zero)); !ok || n != 0 {
 		t.Errorf("a 0-param wrapper is a claim: %d/%v", n, ok)
 	}
 	if _, ok := r.Check.FnShapeArity(""); ok {
@@ -91,11 +91,11 @@ func TestNoteFnShapeArms(t *testing.T) {
 		t.Error("an unclaimed ID has no claim")
 	}
 	var none *CheckState
-	if _, ok := none.FnShapeArity(out.ID); ok {
+	if _, ok := none.FnShapeArity(IDOf(&out)); ok {
 		t.Error("a nil check state has no claim")
 	}
 	// The header clone carries the claims; the next Begin resets them.
-	if n, ok := r.Check.Clone().FnShapeArity(out.ID); !ok || n != 2 {
+	if n, ok := r.Check.Clone().FnShapeArity(IDOf(&out)); !ok || n != 2 {
 		t.Error("Clone must carry the fn shapes")
 	}
 	done()

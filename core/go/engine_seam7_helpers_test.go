@@ -10,16 +10,25 @@ import (
 	"testing"
 )
 
-// --- resolveAtomReferents -------------------------------------------------
+// --- stampAtomReferents ---------------------------------------------------
 
-func TestS7ResolveAtomReferentsSkipsResolved(t *testing.T) {
+// TestS7StampAtomReferentsSkipsResolved — an atom that already captured a
+// referent keeps it, on the tape and nested in a list, whatever its name is
+// bound to when the run loads; a nested list of such atoms is not rebuilt.
+func TestS7StampAtomReferentsSkipsResolved(t *testing.T) {
 	r := covRegistry(t, nil)
-	a := SetAtomReferent(NewAtom("x"), NewInteger(5))
-	vals := []Value{a}
-	resolveAtomReferents(r, vals) // already has a referent → continue
-	// Value unchanged (still has the same referent).
-	if !IsAtom(vals[0]) {
-		t.Fatal("expected atom preserved")
+	r.Defs.Push("x", NewInteger(9))
+	a := NewAtom("x")
+	five := NewInteger(5)
+	SetAtomReferent(&a, &five)
+	inner := []Value{a}
+	tape := NewTapeWith([]Value{a, NewList(inner)}, r.TapeConfig, nil)
+	stampAtomReferents(r, tape, 0)
+	if ref, _ := AtomReferent(*tape.Ref(0)); ref.String() != "5" {
+		t.Errorf("a captured referent was replaced: %v", ref)
+	}
+	if got := tape.Ref(1).Data().(ListPayload).Elems; &got[0] != &inner[0] {
+		t.Error("a list of captured atoms was rebuilt")
 	}
 }
 

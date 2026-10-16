@@ -64,10 +64,10 @@ import core "github.com/boru-lang/boru/core/go"
 // fn values, computed map keys, carriers, or undefined placeholders —
 // so the baked const IS the value the interpreter's handler receives.
 func evalFixedWindowToken(v core.Value) bool {
-	if v.Carrier || v.Dynamic || v.Undefined {
+	if v.Carrier() || core.IsDynamic(&v) || core.IsUndefined(&v) {
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.IntPayload, core.StrPayload, core.BoolPayload, core.FloatPayload, core.AtomPayload,
 		core.BigIntPayload, core.DecimalPayload:
 		return true
@@ -107,10 +107,10 @@ func evalFixedWindowToken(v core.Value) bool {
 // standalone-marker drop, NUR277).
 func modifiedAsData(e *core.Engine, valIdx int) bool {
 	i := valIdx + 1
-	if i < e.Tape.Len() && core.IsCloseParen(e.Tape.At(i)) && valIdx > 0 && core.IsOpenParen(e.Tape.At(valIdx-1)) {
+	if i < e.Tape.Len() && core.IsCloseParen(e.Tape.Ref(i)) && valIdx > 0 && core.IsOpenParen(e.Tape.Ref(valIdx-1)) {
 		i++
 	}
-	return i < e.Tape.Len() && core.IsDispatchMod(e.Tape.At(i))
+	return i < e.Tape.Len() && core.IsDispatchMod(e.Tape.Ref(i))
 }
 
 // TryShapedMethodDispatch models the interpreter's auto-dispatch of an
@@ -121,10 +121,10 @@ func modifiedAsData(e *core.Engine, valIdx int) bool {
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || core.IDOf(&v) == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
-	member, ok := r.Check.MethodShapeMember(v.ID)
+	member, ok := r.Check.MethodShapeMember(core.IDOf(&v))
 	if !ok {
 		return false
 	}
@@ -151,8 +151,8 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 				args := make([]core.Value, len(positions))
 				for i, p := range positions {
 					args[i] = e.Tape.At(p)
-					args[i].Eval = false
-					args[i].Undefined = false
+					core.SetEval(&args[i], false)
+					core.SetUndefined(&args[i], false)
 				}
 				reps := make([]core.Value, shapedMethodReturnArity(e, sig, args, v.Pos()))
 				for i := range reps {
@@ -176,12 +176,12 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 		}
 		return false
 	}
-	fnDef, _ := member.Data.(core.FnDefInfo) // validated by shapedMethodApplyWindow
+	fnDef, _ := core.FnDefOf(member.Data()) // validated by shapedMethodApplyWindow
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		args[i] = e.Tape.At(p)
-		args[i].Eval = false
-		args[i].Undefined = false
+		core.SetEval(&args[i], false)
+		core.SetUndefined(&args[i], false)
 	}
 	// Model the dispatch through the shared check-mode machinery (declared
 	// returns, folds, contagion — identical to a real dispatch of the inner
@@ -208,11 +208,11 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 // compile-pass model (which runs the real dispatch) and the plain-check
 // collapse (which folds the apply to dynamic(Any)).
 func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*core.Signature, []int, bool) {
-	fnDef, ok := member.Data.(core.FnDefInfo)
+	fnDef, ok := member.Data().(*core.FnDefInfo)
 	if !ok {
 		return nil, nil, false
 	}
-	fn := core.FnHomeLookup(&fnDef)
+	fn := core.FnHomeLookup(fnDef)
 	if fn == nil {
 		return nil, nil, false
 	}
@@ -295,7 +295,7 @@ func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*co
 // scanner below — it must stay aligned with what the interpreter's own
 // forward collection treats as a hard stop.
 func statementWindowBoundary(v core.Value) bool {
-	return core.IsMark(v) || core.IsMove(v) || core.IsCloseParen(v) || core.IsEnd(v)
+	return core.IsMark(&v) || core.IsMove(&v) || core.IsCloseParen(&v) || core.IsEnd(&v)
 }
 
 // inertStatementWindow scans the statement window after valIdx: every
@@ -329,12 +329,12 @@ func inertStatementWindow(e *core.Engine, valIdx int) (winEnd int, ok bool) {
 // must answer this question identically, so there is exactly one
 // implementation.
 func allZeroArgSigs(fn *core.FnDefInfo) bool {
-	return core.FnValueOnlyZeroArgSigs(*fn)
+	return core.FnValueOnlyZeroArgSigs(fn)
 }
 
 // fnDefName names a function value for a compile failure message.
 func fnDefName(v core.Value) string {
-	if fd, ok := v.Data.(core.FnDefInfo); ok && fd.Name != "" {
+	if fd, ok := v.Data().(*core.FnDefInfo); ok && fd.Name != "" {
 		return fd.Name
 	}
 	return "fn value"
@@ -364,7 +364,7 @@ func shapedMethodReturnArity(e *core.Engine, sig *core.Signature, args []core.Va
 // dynamic(String|None) etc. must strand its trailing values as data (the
 // runtime never calls them), keeping the residual stack depth honest.
 func dynamicBoundConformsToFunction(v core.Value) bool {
-	if v.Parent.ConformsTo(core.TFunction) {
+	if v.Parent().ConformsTo(core.TFunction) {
 		return true
 	}
 	if disj, err := core.AsDisjunct(v); err == nil {
@@ -407,7 +407,7 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || !dynamicBoundConformsToFunction(v) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || !dynamicBoundConformsToFunction(v) {
 		return false
 	}
 	// The forward window: the same inert, evaluation-fixed statement-window
@@ -496,15 +496,15 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
+	if !core.IsDynamic(&v) || core.IsQuoted(&v) || core.IDOf(&v) == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
-	member, ok := es.MemberFnReadValue(v.ID)
+	member, ok := es.MemberFnReadValue(core.IDOf(&v))
 	if !ok {
 		return false
 	}
 	decline := func() bool { return declineMemberFnArrival(es, member) }
-	fnDef, _ := member.Data.(core.FnDefInfo) // validated by memberFnReadValue
+	fnDef, _ := core.FnDefOf(member.Data()) // validated by memberFnReadValue
 	if !fnDef.NamedDef() || fnDef.Macro || len(fnDef.Captured) != 0 {
 		return decline()
 	}
@@ -543,8 +543,8 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 			return false
 		}
 		args[i-1] = tv
-		args[i-1].Eval = false
-		args[i-1].Undefined = false
+		core.SetEval(&args[i-1], false)
+		core.SetUndefined(&args[i-1], false)
 	}
 	// Model the dispatch SUSPENDED (a plain user fn's ReturnsFn records its
 	// own CALL_USER through core_helpers, not the outcome seam — a live probe
@@ -624,15 +624,15 @@ func declineArrival(es core.EmitRecorder, reason string) bool {
 func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	gradual := !core.IsFnTypedCarrier(v)
-	if v.Quoted || v.ID == "" || (gradual && !(v.Carrier && core.SigTypeMatches(v, core.TFunction))) {
+	gradual := !core.IsFnTypedCarrier(&v)
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || (gradual && !(v.Carrier() && core.SigTypeMatches(&v, core.TFunction))) {
 		return false
 	}
-	name, read := es.DefReadName(v.ID)
+	name, read := es.DefReadName(core.IDOf(&v))
 	if !read {
 		return false
 	}
-	shape, claimed := r.Check.FnShapeOf(v.ID)
+	shape, claimed := r.Check.FnShapeOf(core.IDOf(&v))
 	if !claimed {
 		return false
 	}
@@ -670,14 +670,14 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 		}
 		return decline(why)
 	}
-	out := shapedReadOut(r, v.ID)
-	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
+	outs := []core.Value{shapedReadOut(r, core.IDOf(&v))}
+	if !es.RecordDynMethod(v, args, outs, name, v.Pos()) {
 		if gradual {
 			return false
 		}
 		return decline("an operand has no compiled home")
 	}
-	e.Tape.Splice(valIdx, 1+n, out)
+	e.Tape.Splice(valIdx, 1+n, outs[0])
 	return true
 }
 
@@ -692,7 +692,7 @@ func functionWordInWindow(e *core.Engine, valIdx, n int) bool {
 		if evalFixedWindowToken(tv) {
 			continue
 		}
-		return core.IsWord(tv) && !core.IsDispatchMod(tv) && landingNextForWord(e, tv) == core.LandingNextWord
+		return core.IsWord(&tv) && !core.IsDispatchMod(&tv) && landingNextForWord(e, tv) == core.LandingNextWord
 	}
 	return false
 }
@@ -731,12 +731,12 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 		if !evalFixedWindowToken(tv) {
 			return nil, unfixedWindowToken
 		}
-		if i-1 < len(shape.Params) && shape.Params[i-1] != nil && !core.SigTypeMatches(tv, shape.Params[i-1]) {
+		if i-1 < len(shape.Params) && shape.Params[i-1] != nil && !core.SigTypeMatches(&tv, shape.Params[i-1]) {
 			return nil, unfitWindowToken
 		}
 		args[i-1] = tv
-		args[i-1].Eval = false
-		args[i-1].Undefined = false
+		core.SetEval(&args[i-1], false)
+		core.SetUndefined(&args[i-1], false)
 	}
 	return args, ""
 }
@@ -757,20 +757,20 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.Dynamic || v.ID == "" || !core.IsFnTypedCarrier(v) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !core.IsFnTypedCarrier(&v) {
 		return false
 	}
-	if _, bound := core.CheckFnCarrierBoundName(r, v.ID); !bound {
+	if _, bound := core.CheckFnCarrierBoundName(r, core.IDOf(&v)); !bound {
 		return false
 	}
-	shape, claimed := r.Check.FnShapeOf(v.ID)
+	shape, claimed := r.Check.FnShapeOf(core.IDOf(&v))
 	if !claimed {
 		return false
 	}
 	if _, why := shapedFnReadWindow(e, valIdx, shape); why != "" {
 		return false
 	}
-	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, v.ID))
+	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, core.IDOf(&v)))
 	return true
 }
 
@@ -790,7 +790,7 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 // the types alone do not decide, a window the claim cannot fill.
 func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.Dynamic || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !v.Carrier() || !core.TypeIsFnShape(v.Parent()) {
 		return false
 	}
 	shape, ok := fnShapeTypedClaim(e.Registry, v)
@@ -819,14 +819,14 @@ func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 // the named shape node that types it. One signature of plain parameters,
 // or no claim.
 func fnShapeTypedClaim(r *core.Registry, v core.Value) (core.FnShape, bool) {
-	if s, ok := r.Check.FnShapeOf(v.ID); ok {
+	if s, ok := r.Check.FnShapeOf(core.IDOf(&v)); ok {
 		return s, s.ReturnsKnown
 	}
-	content, ok := core.TypeContentOf(*v.Parent)
+	content, ok := core.TypeContentOf(*v.Parent())
 	if !ok {
 		return core.FnShape{}, false
 	}
-	info, ok := content.Data.(core.FnUndefInfo)
+	info, ok := content.Data().(core.FnUndefInfo)
 	if !ok {
 		return core.FnShape{}, false
 	}
@@ -908,7 +908,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		return
 	}
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.ID == "" || core.IsConcrete(v) {
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || core.IsConcrete(&v) {
 		return
 	}
 	es.NoteDelivery(v)
@@ -935,7 +935,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
 	// the branch's own MayBeFn, which only a value arm sets, does not say so
 	// (NUR317).
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
+	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(core.RecKeyOf(&v)) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
@@ -966,7 +966,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		// the literal after it reaches the residual arms only after the
 		// def — `def j (5 do [(mk)] 7) end 1 j` is `[8 1 5]`, and the arms
 		// saw `fn 7 1 5`. A dispatch modifier is data intent, no collection.
-		if core.IsDispatchMod(e.Tape.At(valIdx + 1)) {
+		if core.IsDispatchMod(e.Tape.Ref(valIdx + 1)) {
 			return
 		}
 		if inDefGroup(e, valIdx) {
@@ -977,7 +977,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		// Elsewhere the residual arms model the collection (`1 m.f 7`), and
 		// a later dispatch that takes the value beside the one after it
 		// notes the landing then (NUR349).
-		noteStoodAside(r.Check, v.ID)
+		noteStoodAside(r.Check, core.IDOf(&v))
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())
@@ -998,7 +998,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	next, word := core.LandingNextEnd, core.Value{}
 	if valIdx+1 < e.Tape.Len() {
 		next = core.LandingNextBoundary
-		if tv := e.Tape.At(valIdx + 1); core.IsWord(tv) {
+		if tv := e.Tape.At(valIdx + 1); core.IsWord(&tv) {
 			next, word = landingNextForWord(e, tv), tv
 		}
 	}
@@ -1023,15 +1023,15 @@ func inDefGroup(e *core.Engine, valIdx int) bool {
 	for i := valIdx - 1; i >= 0; i-- {
 		t := e.Tape.At(i)
 		switch {
-		case core.IsCloseParen(t):
+		case core.IsCloseParen(&t):
 			depth++
-		case core.IsOpenParen(t) && depth > 0:
+		case core.IsOpenParen(&t) && depth > 0:
 			depth--
-		case core.IsOpenParen(t):
-			if i < 2 || !core.IsWord(e.Tape.At(i-1)) {
+		case core.IsOpenParen(&t):
+			if i < 2 || !core.IsWord(e.Tape.Ref(i-1)) {
 				return false
 			}
-			w, _ := core.AsWord(e.Tape.At(i - 2))
+			w, _ := core.AsWord(e.Tape.Ref(i - 2))
 			return w.Name == "def"
 		}
 	}
@@ -1051,7 +1051,7 @@ func inDefGroup(e *core.Engine, valIdx int) bool {
 // binding store, so a native is an FnDefInfo binding DefTop already finds,
 // and a name DefTop misses has no stack for Lookup to aggregate either.
 func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
-	ww, _ := core.AsWord(tv)
+	ww, _ := core.AsWord(&tv)
 	// A `/v` word denotes its binding's VALUE — a fn binding's reference —
 	// and the forward phase collects it like any value-bound word (NUR078:
 	// the modifier, never the slot type, makes a fn name a reference): `m.g
@@ -1061,7 +1061,7 @@ func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 		return core.LandingNextValue
 	}
 	if top, ok := e.DefTop(ww.Name); ok {
-		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+		if _, isFn := top.Data().(*core.FnDefInfo); !isFn {
 			return core.LandingNextValue
 		}
 		return core.LandingNextWord
@@ -1078,7 +1078,7 @@ func aloneInLiveReachGroup(e *core.Engine, valIdx int) bool {
 		return false
 	}
 	open := e.Tape.At(valIdx - 1)
-	return open.ReachGroup && core.IsOpenParen(open) && core.IsCloseParen(e.Tape.At(valIdx+1))
+	return core.IsReachGroup(&open) && core.IsOpenParen(&open) && core.IsCloseParen(e.Tape.Ref(valIdx+1))
 }
 
 // nothingToCollectAfter reports whether the re-step of the value at valIdx has
@@ -1096,12 +1096,12 @@ func nothingToCollectAfter(e *core.Engine, valIdx int) bool {
 	// it as "nothing to collect" and land a call on the one read written
 	// specifically not to be one: `m.f/v` answers `fn h` interpreted and
 	// answered 42 compiled while this rung was missing.
-	if core.IsDispatchMod(tv) {
+	if core.IsDispatchMod(&tv) {
 		return false
 	}
 	// A boundary ends the statement and a WORD stops the forward phase, so in
 	// both cases the re-step has nothing written after it to take. Anything
 	// else is a token the collection could reach, and the alone-island would
 	// not.
-	return statementWindowBoundary(tv) || core.IsWord(tv)
+	return statementWindowBoundary(tv) || core.IsWord(&tv)
 }

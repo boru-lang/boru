@@ -57,7 +57,7 @@ func TestS6b0FlexDeepCopyNestedTypeBodyErrors(t *testing.T) {
 
 func TestS6b0FlexDeepCopyXmlArms(t *testing.T) {
 	// A concrete Xml-family value without element parts.
-	bad := Value{Parent: TXml, Data: StrPayload{S: "x"}}
+	bad := Value{d: &Datum{Parent: TXml, Data: StrPayload{S: "x"}}}
 	if _, err := FlexDeepCopy(bad); err == nil ||
 		!strings.Contains(err.Error(), "flex: cannot make a flex copy") {
 		t.Errorf("non-element xml payload: %v", err)
@@ -135,7 +135,7 @@ func TestS6b0AdoptIntoFlexUnreadableListPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdoptIntoFlex: %v", err)
 	}
-	if out.Data != tt.Data {
+	if out.Data() != tt.Data() {
 		t.Error("a list-family type body must pass through unchanged")
 	}
 }
@@ -147,7 +147,7 @@ func TestS6b0MakeNodeHandlerUnavailableKind(t *testing.T) {
 	r.Ideals.Register(&Ideal{
 		Name:    "S6b0NodeKind",
 		Enabled: false,
-		Accepts: func(v Value) bool { return IsBareTypeNode(v) && v.Equal(TBoolean) },
+		Accepts: func(v Value) bool { return IsBareTypeNode(&v) && v.Equal(TBoolean) },
 	})
 	_, err := MakeNodeHandler([]Value{NewTypeLiteral(TBoolean), NewInteger(1)}, nil, nil, r)
 	if err == nil || !strings.Contains(err.Error(), "S6b0NodeKind type-kind is not available") {

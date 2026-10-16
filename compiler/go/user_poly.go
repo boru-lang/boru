@@ -203,7 +203,7 @@ func tryCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string,
 		// machinery re-mints the result carrier and orphans the recorded
 		// event's identity — the elision then misses and the dispatch
 		// re-declines generically.)
-		j.Dynamic = true
+		core.SetDynamic(&j, true)
 		plan.outs[pos] = j
 		plan.joined[pos] = true
 	}
@@ -275,13 +275,13 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 	}
 	stack := r.Defs.Stack(word)
 	for i := len(stack) - 1; i >= 0; i-- {
-		fnDef, ok := stack[i].Data.(core.FnDefInfo)
+		fnDef, ok := stack[i].Data().(*core.FnDefInfo)
 		if !ok {
 			continue
 		}
 		for j := range fnDef.Signatures {
 			if fnDef.Signatures[j].Impl == impl {
-				return fnDef, true
+				return *fnDef, true
 			}
 		}
 	}
@@ -301,7 +301,9 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 // runtime value against the same placeholder membership). Returns ok=false on
 // any compile failure, leaving the caller to keep the original MarkUncompilable.
 func compileUserPolyArm(r *core.Registry, es core.EmitRecorder, word string, s *core.Signature, owner core.FnDefInfo) (int, bool) {
-	body := append([]core.Value(nil), s.Body()...)
+	// The sig's own body (never written), clamped so an append reallocates.
+	sigBody := s.Body()
+	body := sigBody[:len(sigBody):len(sigBody)]
 	if len(body) == 0 {
 		return -1, false
 	}

@@ -67,7 +67,7 @@ func TestVMBindResidentTypeArm(t *testing.T) {
 	// binding must leave the first element's node resolvable.
 	core.ApplyResidentBind(r, "Tq", true, core.Value{})
 	rest, ok := r.Defs.TopEntry("Tq")
-	if !ok || rest.TypeDef == nil || r.Types.LookupByID(rest.TypeDef.ID) == nil {
+	if !ok || rest.TypeDef == nil || r.Types.LookupByID(core.IDOf(rest.TypeDef)) == nil {
 		t.Fatalf("after one undef the remaining Tq node is unresolvable (%+v) — the arm shared one node", rest)
 	}
 }

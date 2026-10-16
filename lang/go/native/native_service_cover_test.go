@@ -53,7 +53,7 @@ func TestServiceCoverNewServiceValueFlexFallback(t *testing.T) {
 	// A RecordTypeInfo value has Parent=TMap yet no map payload, so
 	// FlexDeepCopy declines it and NewServiceValue falls back to the
 	// plain (non-flex) map state.
-	rec := Value{Parent: TMap, Data: RecordTypeInfo{Fields: NewOrderedMap()}}
+	rec := ValueOf(&Datum{Parent: TMap, Data: RecordTypeInfo{Fields: NewOrderedMap()}})
 	om := NewOrderedMap()
 	om.Set("rec", rec)
 	svc := NewServiceValue(om)
@@ -62,8 +62,8 @@ func TestServiceCoverNewServiceValueFlexFallback(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("state-of on fallback service: %v / %v", out, err)
 	}
-	if !out[0].Parent.Equal(TMap) || out[0].Parent.Equal(TFlexMap) {
-		t.Errorf("fallback state must be a plain Map, got %v", out[0].Parent)
+	if !out[0].Parent().Equal(TMap) || out[0].Parent().Equal(TFlexMap) {
+		t.Errorf("fallback state must be a plain Map, got %v", out[0].Parent())
 	}
 	m, mErr := AsMap(out[0])
 	if mErr != nil || m == nil {
@@ -81,8 +81,8 @@ func TestServiceCoverNewServiceValueFlexFallback(t *testing.T) {
 	if fErr != nil || len(fout) != 1 {
 		t.Fatalf("state-of on flex service: %v / %v", fout, fErr)
 	}
-	if !fout[0].Parent.Equal(TFlexMap) {
-		t.Errorf("flexable state must be a flex map, got %v", fout[0].Parent)
+	if !fout[0].Parent().Equal(TFlexMap) {
+		t.Errorf("flexable state must be a flex map, got %v", fout[0].Parent())
 	}
 }
 

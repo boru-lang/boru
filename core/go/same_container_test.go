@@ -22,7 +22,7 @@ func TestSameContainerIsIdentityWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	sub := r.Types.MintType("S", TFlexMap)
-	refined := ReparentValue(m, sub)
+	refined := MintRetagged(&m, sub)
 	if !SameContainer(refined, refined) {
 		t.Error("a refined flex map is the same container as itself")
 	}
@@ -43,7 +43,7 @@ func TestSameContainerIsIdentityWithTag(t *testing.T) {
 	if SameContainer(NewInteger(1), NewInteger(1)) {
 		t.Error("a scalar has no container identity")
 	}
-	nilParent := Value{Data: MapPayload{M: NewOrderedMap()}}
+	nilParent := Value{d: &Datum{Data: MapPayload{M: NewOrderedMap()}}}
 	if SameContainer(nilParent, nilParent) {
 		t.Error("a value with no tag has no container identity to compare")
 	}

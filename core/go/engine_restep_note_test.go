@@ -15,7 +15,7 @@ func newReStepEmit() *reStepEmit {
 }
 
 func (h *reStepEmit) Active() bool                              { return h.active }
-func (h *reStepEmit) NoteFnResultReStep(v Value, resume SrcPos) { h.noted[v.ID] = resume }
+func (h *reStepEmit) NoteFnResultReStep(v Value, resume SrcPos) { h.noted[IDOf(&v)] = resume }
 
 // TestNoteFnResultReSteps pins WHICH results the check pass notes as
 // re-stepped into a dispatch attempt, and which it leaves alone: a fn-typed
@@ -38,7 +38,7 @@ func TestNoteFnResultReSteps(t *testing.T) {
 	dyn := NewDynamicCarrier(TAny)
 	strict := NewCarrier(TInteger)
 	quoted := NewCarrier(TFunction)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	concrete := NewFunction(FnDefInfo{Name: "g"})
 
 	// run notes results over the tape [get drop] (the call at 0, drop after
@@ -54,16 +54,16 @@ func TestNoteFnResultReSteps(t *testing.T) {
 
 	t.Run("a fn-typed or gradual result before a plain token is noted there", func(t *testing.T) {
 		noted := run(newReStepEmit(), native, plain, 0, 0, fn, dyn, strict, quoted, concrete)
-		if noted[fn.ID] != at(9) || noted[dyn.ID] != at(9) {
+		if noted[IDOf(&fn)] != at(9) || noted[IDOf(&dyn)] != at(9) {
 			t.Errorf("the fn-typed and the gradual result note the resume token: %v", noted)
 		}
-		if _, ok := noted[strict.ID]; ok {
+		if _, ok := noted[IDOf(&strict)]; ok {
 			t.Error("a strict non-fn carrier is data on both lanes")
 		}
-		if _, ok := noted[quoted.ID]; ok {
+		if _, ok := noted[IDOf(&quoted)]; ok {
 			t.Error("a quoted value is data on both lanes")
 		}
-		if _, ok := noted[concrete.ID]; ok {
+		if _, ok := noted[IDOf(&concrete)]; ok {
 			t.Error("a concrete fn is dispatched by the pass itself")
 		}
 	})
@@ -139,10 +139,10 @@ func TestPlainReStepToken(t *testing.T) {
 func TestFnValueDispatchesAtPointerExport(t *testing.T) {
 	fn := NewFunction(FnDefInfo{Name: "g"})
 	quoted := fn
-	quoted.Quoted = true
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	SetQuoted(&quoted, true)
+	closure := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	quotedClosure := closure
-	quotedClosure.Quoted = true
+	SetQuoted(&quotedClosure, true)
 	for _, c := range []struct {
 		v    Value
 		want bool
@@ -150,7 +150,7 @@ func TestFnValueDispatchesAtPointerExport(t *testing.T) {
 		if got := FnValueDispatchesAtPointer(c.v); got != c.want {
 			t.Errorf("%v: %v", c.v, got)
 		}
-		if _, cl := c.v.Data.(ClosurePayload); !cl && FnValueDispatchesAtPointer(c.v) != fnValueDispatchesAtPointer(c.v) {
+		if _, cl := c.v.Data().(*ClosurePayload); !cl && FnValueDispatchesAtPointer(c.v) != fnValueDispatchesAtPointer(c.v) {
 			t.Errorf("%v: the exported predicate must agree with the main loop's", c.v)
 		}
 	}

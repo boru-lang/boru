@@ -25,7 +25,7 @@ func TestS6aGradualContagionZeroOutSingleValueSibling(t *testing.T) {
 	defer done()
 	out := applyGradualContagion(r, "s6aset1",
 		[]core.Value{core.NewDynamicCarrier(core.TAny)}, nil, core.SrcPos{}, false)
-	if len(out) != 1 || !out[0].Dynamic || !out[0].Parent.Equal(core.TInteger) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent().Equal(core.TInteger) {
 		t.Errorf("0-out mutator over dynamic receiver should model one dynamic Integer: %+v", out)
 	}
 }
@@ -39,7 +39,7 @@ func TestS6aGradualContagionZeroOutSingleValueSibling(t *testing.T) {
 // configuration.
 func TestInactiveDispatchBraid(t *testing.T) {
 	inactiveDispatchRecordOutcome(nil, "", nil, nil, nil, core.SrcPos{}, nil)
-	if v, ok := inactiveDispatchTryFoldScalarConst(nil, nil, nil); ok || core.IsConcrete(v) {
+	if v, ok := inactiveDispatchTryFoldScalarConst(nil, nil, nil); ok || core.IsConcrete(&v) {
 		t.Fatal("inactive scalar fold must decline")
 	}
 	if inactiveDispatchTryRecordPoly(nil, "", nil, nil, nil, core.SrcPos{}, false, nil, false, nil) {

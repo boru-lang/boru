@@ -67,14 +67,14 @@ func TestValueNamesKnownShapes(t *testing.T) {
 	r := newTestRegistry(t)
 	es.reg = r
 	r.Defs.Push("zzkn", core.NewInteger(1))
-	if es.valueNamesKnown(core.Value{Parent: core.TMap, Data: core.MapPayload{}}) {
+	if es.valueNamesKnown(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{}})) {
 		t.Error("a map with no payload names nothing")
 	}
-	paren := core.Value{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2), core.NewWord("zzkn")}}}
+	paren := core.ValueOf(&core.Datum{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2), core.NewWord("zzkn")}}})
 	if !es.valueNamesKnown(paren) {
 		t.Error("a paren token naming a bound name is known")
 	}
-	quiet := core.Value{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2)}}}
+	quiet := core.ValueOf(&core.Datum{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2)}}})
 	if es.valueNamesKnown(quiet) {
 		t.Error("a paren of data names nothing")
 	}
@@ -98,7 +98,7 @@ func TestBranchResultRenderKnownDecidedArms(t *testing.T) {
 	branch := func(b *emitBranch) core.Value {
 		seq := es.appendEvent(EmitEvent{kind: evBranch, br: b})
 		v := core.NewCarrier(core.TFunction)
-		es.setProducedAt(v, seq, 0)
+		es.setProducedAt(&v, seq, 0)
 		return v
 	}
 	if !es.branchResultRenderKnown(branch(&emitBranch{constCond: &yes, hasThenOut: true, thenOut: closure})) {
@@ -149,7 +149,7 @@ func TestSiblingCallOutputsNeedsAProducer(t *testing.T) {
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evCallUser})
 	b := core.NewCarrier(core.TInteger)
-	es.setProducedAt(b, seq, 0)
+	es.setProducedAt(&b, seq, 0)
 	if es.siblingCallOutputs([]core.Value{core.NewInteger(1), b}) {
 		t.Error("a written first entry is not a call's output")
 	}
@@ -211,7 +211,7 @@ func TestRootResidualIslandNeedsTheWrittenOrder(t *testing.T) {
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evLoop, loop: &emitLoop{}})
 	read, region := core.NewCarrier(core.TAny), core.NewCarrier(core.TList)
-	es.setProducedAt(region, seq, 0)
+	es.setProducedAt(&region, seq, 0)
 	residual := []core.Value{read, region}
 	lw := &lowerer{variadic: map[int]bool{seq: true}}
 	if es.rootResidualStatic(lw, residual, 0) {

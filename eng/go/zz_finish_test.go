@@ -98,7 +98,7 @@ func TestCompiledComputedListArg(t *testing.T) {
 	// compiled program must agree with the interpreter.
 	got := runDifferential(t, nil, func() []core.Value {
 		lv := core.NewList([]core.Value{core.NewWord("cadd"), core.NewInteger(2), core.NewInteger(3), core.NewEnd(), core.NewInteger(9)})
-		lv.Eval = true
+		core.SetEval(&lv, true)
 		return []core.Value{core.NewWord("clen"), lv}
 	})
 	if got != "2" {

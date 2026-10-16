@@ -15,7 +15,7 @@ func TestTokenBodyKeying(t *testing.T) {
 	one := core.NewInteger(1)
 	text := []core.Value{add, one, core.NewList([]core.Value{core.NewString("s")})}
 	body := core.NewList(text)
-	body.ID = ""
+	core.SetID(&body, "")
 	k1, ok := tokenBodyKey(body, text, []core.Value{core.NewInteger(5)})
 	if !ok || k1[:4] != "txt:" || k1[len(k1)-len("/1,Integer"):] != "/1,Integer" {
 		t.Fatalf("a text body keys by its text and input shape: %q %v", k1, ok)
@@ -28,11 +28,11 @@ func TestTokenBodyKeying(t *testing.T) {
 	om.Set("a", one)
 	ref := []core.Value{core.NewMap(om), core.NewWord("size")}
 	withID := core.NewList(ref)
-	withID.ID = "L_body"
+	core.SetID(&withID, "L_body")
 	if k, ok := tokenBodyKey(withID, ref, nil); !ok || k != "id:L_body/0" {
 		t.Fatalf("a reference-bearing body keys by its ID: %q %v", k, ok)
 	}
-	withID.ID = ""
+	core.SetID(&withID, "")
 	if _, ok := tokenBodyKey(withID, ref, nil); ok {
 		t.Fatal("a reference-bearing body with no ID is not named")
 	}

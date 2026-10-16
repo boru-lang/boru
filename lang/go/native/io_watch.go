@@ -78,7 +78,7 @@ func NewWatcherType() *Type {
 
 // asWatcherInfo unwraps a Watcher handle's payload.
 func asWatcherInfo(v Value) (*WatcherInfo, bool) {
-	ext, ok := v.Data.(ExtensionPayload)
+	ext, ok := v.Data().(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -116,15 +116,14 @@ func watchRel(root, evPath string) string {
 func doWatchWord(args []Value, r *Registry, watcherType *Type, opts Value) ([]Value, error) {
 	path := extractPath(args[0])
 	body := args[1]
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return nil, r.BoruError("watch_error", "watch: the callback body must be a concrete list", "watch")
 	}
 	bodyList, _ := AsList(body)
-	tokens := make([]Value, bodyList.Len())
-	copy(tokens, bodyList.Slice())
+	tokens := bodyList.Slice() // the watch goroutine's own copy
 
 	recursive, match, hasMatch := false, "", false
-	if IsConcrete(opts) {
+	if IsConcrete(&opts) {
 		recursive = mapBoolOpt(opts, "recursive", false)
 		match, hasMatch = mapStrOpt(opts, "match")
 	}
@@ -164,7 +163,7 @@ const watchOverflowOp = "overflow"
 func doUnwatchWord(args []Value, r *Registry) ([]Value, error) {
 	wi, ok := asWatcherInfo(args[0])
 	if !ok {
-		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: not a Watcher handle (got %s)", args[0].Parent), "unwatch")
+		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: not a Watcher handle (got %s)", args[0].Parent()), "unwatch")
 	}
 	if err := wi.Stop(); err != nil {
 		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: %v", err), "unwatch")

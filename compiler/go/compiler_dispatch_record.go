@@ -40,7 +40,7 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 	for i, a := range args {
 		// A type literal at a declared type slot — `convert Bytes "m"`'s
 		// target — is compile-time known by construction.
-		if sig.TypeArgs[i] && core.IsBareTypeNode(a) {
+		if sig.TypeArgs[i] && core.IsBareTypeNode(&a) {
 			continue
 		}
 		if !check.ScalarFoldOperand(a) {
@@ -55,7 +55,7 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 	if !ok || !core.ConstFoldAgrees(one, two) {
 		return core.Value{}, false
 	}
-	if !core.IsInertConst(one) {
+	if !core.IsInertConst(&one) {
 		return core.Value{}, false
 	}
 	return one, true
@@ -113,7 +113,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 				// claim its signature's window; a computed-key read tags alone
 				// and the model declines (the stranded-fn compile failure stands).
 				member, _ := readFnMemberValue(args)
-				es.NoteMemberFnRead(out[0].ID, member)
+				es.NoteMemberFnRead(core.IDOf(&out[0]), member)
 			} else if rec, isEmit := es.(*EmitState); isEmit {
 				// A CONSTRUCTED-instance receiver is a carrier here (the make
 				// result — payload inspection sees only the schema), so the
@@ -123,7 +123,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 				// the fix for the pre-existing `o.f 21 eq 42` stranded-apply
 				// miscompile.
 				if member, ok := rec.instanceFnMember(args); ok {
-					rec.NoteMemberFnRead(out[0].ID, member)
+					rec.NoteMemberFnRead(core.IDOf(&out[0]), member)
 				}
 			}
 		}
@@ -138,7 +138,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// lowered its clause bodies as inline events with no name bake, so it is
 	// not a leak path and keeps compiling; see bodyRefsFnLocalFn for the
 	// scope rule.
-	if es := r.Check.Recorder(); es.Active() && !(len(out) == 1 && es.AlreadyProduced(out[0].ID)) {
+	if es := r.Check.Recorder(); es.Active() && !(len(out) == 1 && es.AlreadyProduced(core.RecKeyOf(&out[0]))) {
 		if names, valueRead := check.BodyRefsFnLocalFns(r, sig, args); len(names) > 0 {
 			// The seventy-second increment: a capture-free local fn's def is
 			// placed as a registry-visible install for the frame
@@ -217,11 +217,11 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 // `args` list — the value the `args` word reads (core_helpers.go pushes it
 // per call; `args.N` is its static index read).
 func isFrameArgsList(es *EmitState, v core.Value) bool {
-	if es == nil || es.reg == nil || es.reg.Args == nil || v.ID == "" {
+	if es == nil || es.reg == nil || es.reg.Args == nil || core.IDOf(&v) == "" {
 		return false
 	}
 	top, ok, err := es.reg.Args.Top()
-	return err == nil && ok && top.ID == v.ID
+	return err == nil && ok && core.IDOf(&top) == core.IDOf(&v)
 }
 
 // tryFoldReStepWord folds a `get` / `getr` read whose check-mode result is a
@@ -246,12 +246,12 @@ func tryFoldReStepWord(r *core.Registry, word string, args, outs []core.Value) b
 	if !es.Active() || (!core.IsGetWord(word) && !core.IsGetrWord(word)) || len(args) != 2 || len(outs) != 1 {
 		return false
 	}
-	if !core.IsWord(outs[0]) || core.IsBareTypeNode(outs[0]) {
+	if !core.IsWord(&outs[0]) || core.IsBareTypeNode(&outs[0]) {
 		return false
 	}
 	key, recv := args[0], args[1]
-	return core.IsConcrete(recv) && recv.Parent.ConformsTo(core.TList) &&
-		core.IsConcrete(key) && key.Parent.ConformsTo(core.TInteger)
+	return core.IsConcrete(&recv) && recv.Parent().ConformsTo(core.TList) &&
+		core.IsConcrete(&key) && key.Parent().ConformsTo(core.TInteger)
 }
 
 // tryFoldReStepCase folds a `case` whose check-mode result is a LIVE WORD
@@ -270,7 +270,7 @@ func tryFoldReStepCase(r *core.Registry, word string, sig *core.Signature, outs 
 	if word != "case" || !r.Check.Recorder().Active() || sig == nil || sig.FnFrame() != nil || len(outs) != 1 {
 		return false
 	}
-	return core.IsWord(outs[0]) && !core.IsBareTypeNode(outs[0])
+	return core.IsWord(&outs[0]) && !core.IsBareTypeNode(&outs[0])
 }
 
 // tryFoldStaticIndex folds a `get` / `getr` over a CONCRETE list with a STATIC,
@@ -288,8 +288,8 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 		return false
 	}
 	key, recv := args[0], args[1]
-	if !recv.Parent.ConformsTo(core.TList) || !core.IsConcrete(recv) ||
-		!key.Parent.ConformsTo(core.TInteger) || !core.IsConcrete(key) {
+	if !recv.Parent().ConformsTo(core.TList) || !core.IsConcrete(&recv) ||
+		!key.Parent().ConformsTo(core.TInteger) || !core.IsConcrete(&key) {
 		return false
 	}
 	n, err := core.AsInteger(key)
@@ -316,14 +316,14 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 	// named binding read via /v" (module-fnvalue-boundary.tsv:L24) — and
 	// the unfolded event's receiver has no compiled home (the VM keeps no
 	// args stack), so the exclusion turned four such rows into declines.
-	if (core.IsFnTypedCarrier(elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
+	if (core.IsFnTypedCarrier(&elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
 		return false
 	}
 	// An `args` projection with a recorded home (RecordArgsProjection):
 	// the fold retracts its OpMakeList when nothing else consumed it, and
 	// stands aside — the get records over the produced list — when it
 	// cannot.
-	if !es.retractArgsProjection(recv.ID) {
+	if !es.retractArgsProjection(core.IDOf(&recv)) {
 		return false
 	}
 	outs[0] = elem
@@ -353,7 +353,7 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 	// (core.IsInertConst's FnDefInfo arm), so its consumer interns it. The
 	// folded value takes its own identity, so the escape fence
 	// (foldedEscape) can follow it.
-	member.ID = core.GenerateID(core.IDPrefixForType(member.Parent))
+	core.SetID(&member, core.GenerateID(core.IDPrefixForType(member.Parent())))
 	es.noteFolded(member)
 	outs[0] = member
 	return true
@@ -365,8 +365,8 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 // anonymous park (execFnDefLiteral), read through the one predicate that
 // states it (core.FnValueOnlyZeroArgSigs).
 func parkedMemberFn(v core.Value) bool {
-	fd, ok := v.Data.(core.FnDefInfo)
-	if !ok || v.Quoted || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
+	fd, ok := core.FnDefOf(v.Data())
+	if !ok || core.IsQuoted(&v) || v.Carrier() || !fd.Anonymous || core.IsApplied(&v) || fd.Macro || len(fd.Captured) != 0 ||
 		!core.FnValueOnlyZeroArgSigs(fd) {
 		return false
 	}
@@ -419,13 +419,13 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 			// read that recorded its dispatch (recordCallElided) — is on the
 			// runtime stack; folding over it would orphan that event, so the
 			// consumer records a real dispatch over it instead.
-			if es.AlreadyProduced(a.ID) {
+			if es.AlreadyProduced(core.RecKeyOf(&a)) {
 				return false
 			}
 			sawModule = true
-		case core.IsBareTypeNode(a):
+		case core.IsBareTypeNode(&a):
 			// a type operand (the target of `convert Map …` / `… is Module`)
-		case core.IsInertConst(a):
+		case core.IsInertConst(&a):
 			// an inert const operand (a quoted key atom, a scalar)
 		default:
 			return false // a runtime / non-const operand — not a compile-time fold
@@ -463,9 +463,9 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 		return false
 	}
 	switch {
-	case core.IsInertConst(one):
+	case core.IsInertConst(&one):
 		outs[0] = one // ride as an inert const
-	case core.IsBareTypeNode(one) && one.ID != "":
+	case core.IsBareTypeNode(&one) && core.IDOf(&one) != "":
 		outs[0] = one // ride as a type operand (OpPushType)
 	default:
 		return false
@@ -499,7 +499,7 @@ func concreteHandlerEval(r *core.Registry, sig *core.Signature, args []core.Valu
 	if err != nil || len(res) != 1 {
 		return core.Value{}, false
 	}
-	if core.IsConcrete(res[0]) || (core.IsBareTypeNode(res[0]) && res[0].ID != "") {
+	if core.IsConcrete(&res[0]) || (core.IsBareTypeNode(&res[0]) && core.IDOf(&res[0]) != "") {
 		return res[0], true
 	}
 	return core.Value{}, false
@@ -548,7 +548,7 @@ func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, ou
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(core.FnDefInfo); ok {
+		if _, ok := a.Data().(*core.FnDefInfo); ok {
 			return false
 		}
 	}
@@ -632,7 +632,7 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 	// than silently ride a mutator's argument.
 	if sig.CompileEffect.Has(core.CompileQuoteInert) {
 		for i := range args {
-			if sig.QuoteArgs[i] && !core.IsInertConst(args[i]) {
+			if sig.QuoteArgs[i] && !core.IsInertConst(&args[i]) {
 				return false
 			}
 		}
@@ -642,7 +642,7 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 		if !sig.QuoteArgs[i] {
 			continue
 		}
-		if _, ok := args[i].Data.(core.AtomPayload); !ok || !core.IsInertConst(args[i]) {
+		if _, ok := args[i].Data().(core.AtomPayload); !ok || !core.IsInertConst(&args[i]) {
 			return false
 		}
 	}
@@ -667,11 +667,11 @@ func isModuleInnerSig(r *core.Registry, word string, sig *core.Signature) bool {
 			}
 			for _, k := range em.Keys() {
 				v, _ := em.Get(k)
-				fd, ok := v.Data.(core.FnDefInfo)
+				fd, ok := v.Data().(*core.FnDefInfo)
 				if !ok || fd.Name != word {
 					continue
 				}
-				inner := core.FnHomeLookup(&fd)
+				inner := core.FnHomeLookup(fd)
 				if inner == nil {
 					continue
 				}
@@ -839,7 +839,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(core.FnDefInfo); ok {
+		if _, ok := a.Data().(*core.FnDefInfo); ok {
 			return false
 		}
 	}
@@ -931,7 +931,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 		// and only a COMPUTED list — tokens that exist only at run time (a
 		// module fn's returned clause list) — takes this backstop.
 		bp, ok := soleNoEvalSlot(sig, len(args))
-		if !ok || core.IsConcrete(args[bp]) || len(outs) == 0 {
+		if !ok || core.IsConcrete(&args[bp]) || len(outs) == 0 {
 			return false
 		}
 		// A STRUCTURED-LOWERING word (`for`) has no body run of its own to
@@ -967,7 +967,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// capitalised def / import inside the baked body re-runs a registry
 	// mutation the check pass already applied and half-rolled-back (the
 	// do-unit registry-replay miscompile — see bodyHasReplayHazard).
-	if core.IsConcrete(body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
+	if core.IsConcrete(&body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
 		return false
 	}
 	// An error HANDLER (`error`, StripsUnconsumedInput) takes the dyn-body
@@ -976,13 +976,13 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// (0 for `[drop]`, 1 for a pass-through), a region below (NUR300). A
 	// CONCRETE handler body the closure path declined keeps its decline
 	// (region_stack_read_test.go's two witnesses).
-	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
+	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(&body) {
 		return false
 	}
 	// Every OTHER code-body slot the handler re-runs (walk's optional ascend
 	// hook, sig position 3) is held to the same two rules.
 	for i := range args {
-		if i == bp || !sig.NoEvalArgs[i] || !core.IsConcrete(args[i]) {
+		if i == bp || !sig.NoEvalArgs[i] || !core.IsConcrete(&args[i]) {
 			continue
 		}
 		if check.BodyHasSentinelDeep(r, args[i]) || bodyHasReplayHazard(args[i]) {
@@ -1073,10 +1073,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// runtime net count / overload is genuinely variable — keeps the marking.
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
-	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
+	fixedValueEval := core.IsConcrete(&body) && !core.IsDynamic(&body) && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	// A LITERAL body a closure probe found to leave a run (noteBodyRun,
 	// NUR294) is not modelled exactly: it takes a computed body's marks.
-	litRun := core.IsConcrete(body) && es.takeBodyRun(body)
+	litRun := core.IsConcrete(&body) && es.takeBodyRun(body)
 	if !fixedValueEval {
 		f.variadicResult = true
 		// A COMPUTED body's run (NUR210): a literal body the backstop took
@@ -1086,7 +1086,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// body ends in it leaves the run's count, not one seat.
 		cs := sig.Callable
 		f.dynBodyRun = cs != nil && (cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs || cs.StripsUnconsumedInput) &&
-			(!core.IsConcrete(body) || body.Dynamic || litRun)
+			(!core.IsConcrete(&body) || core.IsDynamic(&body) || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
 	// values where the check pass models one dynamic(Any) out, and so does a
@@ -1103,7 +1103,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// check pass models. A region that may leave a callable is demoted to a
 	// runtime-checked single value where a fixed seat consumes it
 	// (dyn_body_one.go), rather than declined.
-	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
+	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(&body) || litRun) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
 			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
@@ -1127,8 +1127,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled
 	// loop body (`do [for 3 [1]]`) models [1 1 1] as the SAME Value, whose
-	// shared ID would collapse producedBy to the LAST result index and decline
-	// "call results reordered" at the residual. Unlike the generic RecordCall
+	// shared ID makes the N runtime values one to every identity-keyed table
+	// the recorder keeps (while it resolved producers through the identity,
+	// the registration collapsed to the LAST result index and declined "call
+	// results reordered" at the residual). Unlike the generic RecordCall
 	// (which skips same-event collisions — dup/swap identity is the DUP
 	// lowering's job), a dyn-body CALL_NATIVE's results are N distinct runtime
 	// stack values, so every repeated out mints a fresh ID; an out that IS one
@@ -1187,11 +1189,11 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 			fnSlot = i
 		}
 	}
-	if fnSlot < 0 || core.IsConcrete(args[fnSlot]) || !args[fnSlot].Dynamic {
+	if fnSlot < 0 || core.IsConcrete(&args[fnSlot]) || !core.IsDynamic(&args[fnSlot]) {
 		return false
 	}
 	for i := range args {
-		if sig.QuoteArgs[i] && (!sig.CompileEffect.Has(core.CompileQuoteInert) || !core.IsInertConst(args[i])) {
+		if sig.QuoteArgs[i] && (!sig.CompileEffect.Has(core.CompileQuoteInert) || !core.IsInertConst(&args[i])) {
 			return false
 		}
 	}
@@ -1218,7 +1220,7 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 // POLY re-match over the word's own overloads) rather than baking the sig the
 // check committed — recordDynBodyCall's rule, stated there.
 func dynBodyPoly(r *core.Registry, word string, args []core.Value, body core.Value) bool {
-	return body.Dynamic || check.AnyAnyCarrier(args) ||
+	return core.IsDynamic(&body) || check.AnyAnyCarrier(args) ||
 		(check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2)
 }
 
@@ -1306,7 +1308,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// regression on islandCeiling) for no gain — the reach form has no body to
 	// run. Decline so it declines; the lens-as-const value/apply/getpath forms
 	// (which do not route here) still compile natively.
-	if sig.Callable != nil && sig.Callable.BodyPos < len(args) && core.IsReach(args[sig.Callable.BodyPos]) {
+	if sig.Callable != nil && sig.Callable.BodyPos < len(args) && core.IsReach(&args[sig.Callable.BodyPos]) {
 		return false
 	}
 	// A dispatch whose output is already recorded was handled by a structured
@@ -1314,7 +1316,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// would DOUBLE-record (the island fallback PLUS the structured event),
 	// leaving the extra event unconsumed on the simulated stack. Skip it; the
 	// generic RecordCall path that follows likewise early-returns.
-	if es.AlreadyProduced(outs[0].ID) {
+	if es.AlreadyProduced(core.RecKeyOf(&outs[0])) {
 		return false
 	}
 	// A pure typed word (get/make/is/typeof/size/type-algebra) is
@@ -1359,7 +1361,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 		// re-resolves it against the registry's lattice at run time, the
 		// same place OpPushType resolves canonical types. It is never
 		// threaded (a stack PUSH_TYPE would mis-order the dispatch).
-		if core.IsBareTypeNode(a) && a.ID != "" {
+		if core.IsBareTypeNode(&a) && core.IDOf(&a) != "" {
 			if len(ins) > 0 {
 				return false
 			}
@@ -1367,14 +1369,14 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 			continue
 		}
 		cv, ok := es.Materialise(a)
-		baked := ok && core.IsConcrete(cv)
+		baked := ok && core.IsConcrete(&cv)
 		if baked && sig.NoEvalArgs[i] {
 			// A code body: legitimately contains words, but every one
 			// must be VM-resolvable (no check-time def carriers).
 			if !check.BodyFreeForFallback(r, cv) {
 				return false
 			}
-		} else if baked && !core.IsInertConst(cv) {
+		} else if baked && !core.IsInertConst(&cv) {
 			// A baked data arg must be DEEPLY concrete plain data — a
 			// carrier element anywhere (e.g. a def-bound list whose
 			// interior the check pass stripped) would bake a type-only
@@ -1443,14 +1445,14 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	}
 	real, isReal := es.(*EmitState)
 	if !isReal || sig.Callable == nil || !sig.Callable.StripsUnconsumedInput {
-		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, &outs[0], pos)
 	}
 	// A strip-input word's island (`error`) runs a handler the closure path
 	// refused, whose caught run is the handler's own count — `[drop 5 6]`
 	// leaves two — where the pass modelled one (NUR301). Its run is a
 	// region, of anything the interpreter left, and a run a `do` whose body
 	// ends in it carries (runOperand, as a dyn-body run's).
-	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, &outs[0], pos)
 	if ok {
 		f := real.eventInfo[seq]
 		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun, f.stripIsland = true, true, true, true, true
@@ -1507,10 +1509,10 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 			break
 		}
 		v := args[j]
-		if v.Carrier && v.Parent != nil && v.Parent.Equal(core.TAny) {
+		if v.Carrier() && v.Parent() != nil && v.Parent().Equal(core.TAny) {
 			continue
 		}
-		if !core.SigTypeMatches(v, t) {
+		if !core.SigTypeMatches(&v, t) {
 			return false
 		}
 	}
@@ -1523,9 +1525,12 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 //
 // Carrier-identity de-collision, extended to INTRA-event repeats: the modeled
 // outs of such a sub-run may repeat one value — an unrolled loop body (`do
-// [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID would
-// collapse producedBy to the LAST result index and decline "call results
-// reordered" at the residual. Unlike the generic RecordCall (which skips
+// [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID makes the N
+// runtime values one to every identity-keyed table the recorder keeps (a
+// frame local, a def read, a read site; while the recorder resolved producers
+// through the identity, the registration collapsed to the LAST result index
+// and declined "call results reordered" at the residual). Each holder is
+// stamped with its own index either way. Unlike the generic RecordCall (which skips
 // same-event collisions — dup/swap identity is the DUP lowering's job), the
 // results here are N distinct runtime stack values, so every repeated out
 // mints a fresh ID; an out that IS one of the call's inputs keeps its ID (a
@@ -1542,23 +1547,23 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
 	argIDs := make(map[string]bool, len(args))
 	for _, a := range args {
-		argIDs[a.ID] = true
+		argIDs[core.IDOf(&a)] = true
 	}
 	seen := make(map[string]bool, len(outs))
 	for i := range outs {
-		_, prior := es.producedBy[outs[i].ID]
+		_, prior := es.producerOf(&outs[i])
 		// An IDENTITY-LESS registry-instance out (a module-export instance
 		// minted outside any check pass — `do [M 3]`, §9.1) gets a fresh ID
 		// too: without one the engine's tape tracking cannot place it (the
-		// region inverted around it) and producedBy cannot link it to this
-		// event. NARROW to ExtensionPayload instances — scalar outs elided
+		// region inverted around it) and no recorder key links it to this
+		// event (an identity-less holder is never stamped). NARROW to ExtensionPayload instances — scalar outs elided
 		// by the mode-gated ID discipline must STAY elided (a blanket mint
 		// miscompiled the each-body value-def promotion).
-		_, isExt := outs[i].Data.(core.ExtensionPayload)
-		if (outs[i].ID == "" && isExt) || ((prior || seen[outs[i].ID]) && !argIDs[outs[i].ID]) {
-			outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
+		_, isExt := outs[i].Data().(core.ExtensionPayload)
+		if (core.IDOf(&outs[i]) == "" && isExt) || ((prior || seen[core.IDOf(&outs[i])]) && !argIDs[core.IDOf(&outs[i])]) {
+			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent())))
 		}
-		seen[outs[i].ID] = true
-		es.setProducedAt(outs[i], seq, i)
+		seen[core.IDOf(&outs[i])] = true
+		es.setProducedAt(&outs[i], seq, i)
 	}
 }

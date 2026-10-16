@@ -33,9 +33,9 @@ func TestDisassembleNamesASignaturelessNativeCall(t *testing.T) {
 // with no identity to compare — answers false rather than dereferencing.
 func TestIsFrameArgsList(t *testing.T) {
 	frame := core.NewList(nil)
-	frame.ID = "args-frame"
+	core.SetID(&frame, "args-frame")
 	other := core.NewList(nil)
-	other.ID = "other-list"
+	core.SetID(&other, "other-list")
 	stack := core.NewArgsStack()
 	if err := stack.Push(frame); err != nil {
 		t.Fatal(err)

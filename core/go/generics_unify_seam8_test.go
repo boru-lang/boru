@@ -24,7 +24,7 @@ func TestW8ResolveChildTypeExprTypedMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("typed-map child expr should resolve: %v", err)
 	}
-	if !IsTypedMap(got) {
+	if !IsTypedMap(&got) {
 		t.Fatalf("expected a typed map, got %v", got)
 	}
 }
@@ -37,7 +37,7 @@ func TestW8ResolveChildTypeExprTypedListElements(t *testing.T) {
 	if err != nil {
 		t.Fatalf("typed-list-with-elements child expr should resolve: %v", err)
 	}
-	if !IsTypedList(got) {
+	if !IsTypedList(&got) {
 		t.Fatalf("expected a typed list, got %v", got)
 	}
 }

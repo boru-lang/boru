@@ -112,7 +112,7 @@ func TestDynBodyOneAt(t *testing.T) {
 func TestBodyPlainCount(t *testing.T) {
 	es := NewEmitState()
 	body := core.NewDynamicCarrier(core.TList)
-	body.ID = "mk-out"
+	core.SetID(&body, "mk-out")
 	if _, ok := es.bodyPlainCount(body); ok {
 		t.Fatal("an unresolvable operand has no static count")
 	}
@@ -126,12 +126,12 @@ func TestBodyPlainCount(t *testing.T) {
 		es.frames[0] = append(es.frames[0], EmitEvent{seq: i + 1, kind: evCallUser, uc: emitUserCall{unit: i, nout: 1}})
 	}
 	for seq, want := range map[int]int{1: 1, 2: 2} {
-		es.producedBy[body.ID] = producer{seq: seq}
+		es.stampProduced(&body, seq, 0)
 		if n, ok := es.bodyPlainCount(body); !ok || n != want {
 			t.Errorf("seq %d: count %d/%v, want %d", seq, n, ok, want)
 		}
 	}
-	es.producedBy[body.ID] = producer{seq: 3}
+	es.stampProduced(&body, 3, 0)
 	if _, ok := es.bodyPlainCount(body); ok || es.bodyPlainData(body) {
 		t.Error("a dispatch modifier is no pushed value")
 	}

@@ -21,6 +21,7 @@ package lang
 // the compile failure is visible.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -101,9 +102,17 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 		{`def k 5  for 2 [ k  def k 9  1 ]`,
 			"for: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
 		// A `do` result is a computed value, so the second body's read of
-		// it is live, and the same hazard applies inside that body.
+		// it is live: no event produced the binding it reads (the first
+		// body's result is another holder of the value, with a recorder key
+		// of its own), so the read is seated as a lookup at its own position,
+		// ahead of the rebind, and the body compiles. The program declines
+		// where its hazard-free twin (`do [ 7  def k 12  k ]`) always did:
+		// at the root's promotion of the do's variadic result. While the
+		// recorder resolved the read through the identity it shares with the
+		// first body's result, the read was a residual re-push and the body
+		// declined first, on the hazard.
 		{`def k 5  do [ k  def k 9  k ]  do [ k  def k 12  k ]`,
-			"fn do$body: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
+			"do: variadic result promoted to frame slots (runtime count differs from the static seat)"},
 		// A multi-run body reading a name it rebinds: the read is
 		// iteration-varying, its residual re-push would trail the resident
 		// install, so the closure declines. Since S1a (2026-09-19, each
@@ -141,5 +150,38 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 		// No fallback re-runs it, so there is no compiled answer to compare:
 		// the failure is booked as the defect it is (compile_defect_test.go).
 		requireCompileDefect(t, c.src, gotC, errC)
+	}
+}
+
+// TestProbeRealDivergenceDeclinesOnTheRealCompile pins the closure probe's
+// one divergence from the real compile that holder-keyed recording leaves
+// (recordClosureDispatch's !realOk arm): `k` was bound by an event, so the
+// probe — a fresh recording state, resolving no recorder key of the real
+// pass — bakes the body's read of it as a constant and admits the body,
+// where the real compile reads it live and declines on the residual-order
+// hazard (the read precedes the body's rebind). Asserted through
+// CompileCheck: the refusal is the dispatch's own compile failure path,
+// and the interpreter's answer is the program's.
+func TestProbeRealDivergenceDeclinesOnTheRealCompile(t *testing.T) {
+	const src = `def k (size [1 2])  do [ k  def k 12  k ]`
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, cerr := a.CompileCheck(src)
+	if cerr != nil || prog != nil || !strings.Contains(reason, "residual read of `k` precedes its rebind in the same body") {
+		t.Fatalf("the real compile declines on the hazard: compiled=%v %q %v", prog != nil, reason, cerr)
+	}
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ierr := b.RunInterp(src); ierr != nil || fmt.Sprint(got) != "[2 12]" {
+		t.Errorf("the interpreter's answer: %v %v", got, ierr)
+	}
+	// A body that does not rebind what it read is admitted on both sides.
+	c, _ := New()
+	if prog, reason, _, _ := c.CompileCheck(`def k (size [1 2])  do [ k  def j 12  k ]`); prog == nil {
+		t.Errorf("a body that only reads the event-bound name compiles: %q", reason)
 	}
 }

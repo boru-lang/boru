@@ -180,7 +180,7 @@ func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit i
 // hand-built NewClosure(nil, …) boxes a TYPED nil, so the type assertion
 // SUCCEEDS and only the pointer test separates "no identity" from "a real
 // foreign program" — the same typed-nil trap the S3 plan installers document.
-func (vc *vmContext) closureProgram(cl core.ClosurePayload) (*compiler.Program, bool) {
+func (vc *vmContext) closureProgram(cl *core.ClosurePayload) (*compiler.Program, bool) {
 	p, ok := cl.Prog.(*compiler.Program)
 	return p, ok && p != nil && p != vc.p
 }

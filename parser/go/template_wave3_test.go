@@ -131,7 +131,7 @@ func TestTemplateWave3Boundaries(t *testing.T) {
 	// Unterminated WITH a hole: auto-closes to an InterpString.
 	for _, src := range []string{"`${x}", "`${x"} {
 		vals := mustParseWave3(t, src)
-		if len(vals) != 1 || !core.IsInterpString(vals[0]) {
+		if len(vals) != 1 || !core.IsInterpString(&vals[0]) {
 			t.Errorf("%q: expected one InterpString, got %v", src, vals)
 		}
 	}
@@ -161,7 +161,7 @@ func TestTemplateWave3InterpNested(t *testing.T) {
 		t.Fatalf("{a:`${1}`}: AsMap: %v", err)
 	}
 	v, ok := m.Get("a")
-	if !ok || !core.IsInterpString(v) {
+	if !ok || !core.IsInterpString(&v) {
 		t.Errorf("{a:`${1}`}: value %v is not an InterpString", v)
 	}
 }

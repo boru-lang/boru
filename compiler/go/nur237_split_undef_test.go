@@ -16,7 +16,7 @@ func TestSplitUndefExposesLive(t *testing.T) {
 			t.Fatal(err)
 		}
 		reg.Defs.Push("x", below)
-		reg.Defs.Push("x", core.Value{ID: "joined"})
+		reg.Defs.Push("x", withID(core.Value{}, "joined"))
 		es := NewEmitState()
 		es.reg = reg
 		es.loopSplitBinds = map[string]bool{"x": true}
@@ -24,27 +24,27 @@ func TestSplitUndefExposesLive(t *testing.T) {
 		es.units[0].localByID = map[string]int{"joined": 2}
 		return es
 	}
-	if !setup(core.Value{ID: "split"}).splitUndefExposesLive("x") {
+	if !setup(withID(core.Value{}, "split")).splitUndefExposesLive("x") {
 		t.Error("the split's own binding under the join is read live")
 	}
 	for why, es := range map[string]*EmitState{
 		"a binding under the join the slot holds": func() *EmitState {
-			es := setup(core.Value{ID: "earlier"})
+			es := setup(withID(core.Value{}, "earlier"))
 			es.units[0].localByID["earlier"] = 2
 			return es
 		}(),
 		"a loop carries the name": func() *EmitState {
-			es := setup(core.Value{ID: "split"})
+			es := setup(withID(core.Value{}, "split"))
 			es.loopCarried = []*loopCarriedScope{{slots: map[string]int{"x": 3}}}
 			return es
 		}(),
 		"no join seated the name": func() *EmitState {
-			es := setup(core.Value{ID: "split"})
+			es := setup(withID(core.Value{}, "split"))
 			es.units[0].nameSlots = nil
 			return es
 		}(),
 		"a name that is not split-bound": func() *EmitState {
-			es := setup(core.Value{ID: "split"})
+			es := setup(withID(core.Value{}, "split"))
 			es.loopSplitBinds = nil
 			return es
 		}(),
@@ -54,7 +54,7 @@ func TestSplitUndefExposesLive(t *testing.T) {
 		}
 	}
 	// One level: nothing lies under the join.
-	es := setup(core.Value{ID: "split"})
+	es := setup(withID(core.Value{}, "split"))
 	es.reg.Defs.Pop("x")
 	if es.splitUndefExposesLive("x") {
 		t.Error("an undef of the name's only level exposes nothing")

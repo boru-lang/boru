@@ -23,7 +23,7 @@ func TestEvalFixedWindowToken(t *testing.T) {
 	}
 	for _, v := range fixed {
 		if !evalFixedWindowToken(v) {
-			t.Errorf("%s must be evaluation-fixed", v.Parent.Leaf())
+			t.Errorf("%s must be evaluation-fixed", v.Parent().Leaf())
 		}
 	}
 
@@ -35,7 +35,7 @@ func TestEvalFixedWindowToken(t *testing.T) {
 	}
 	for _, v := range notFixed {
 		if evalFixedWindowToken(v) {
-			t.Errorf("%s must NOT be evaluation-fixed", v.Parent.Leaf())
+			t.Errorf("%s must NOT be evaluation-fixed", v.Parent().Leaf())
 		}
 	}
 

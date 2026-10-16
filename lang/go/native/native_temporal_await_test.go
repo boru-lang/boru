@@ -22,7 +22,7 @@ func TestAwaitAllDefault(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)}),
 		NewList([]Value{NewInteger(3), NewWord("add"), NewInteger(4)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
@@ -55,7 +55,7 @@ func TestAwaitAllWithError(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)}),
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
@@ -80,7 +80,7 @@ func TestAwaitAllRunsInParallel(t *testing.T) {
 		NewList([]Value{NewWord("sleep"), NewInteger(50), NewInteger(2)}),
 		NewList([]Value{NewWord("sleep"), NewInteger(50), NewInteger(3)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	start := time.Now()
 	result, err := e.Run([]Value{NewWord("await"), inner})
@@ -108,7 +108,7 @@ func TestAwaitAllEmpty(t *testing.T) {
 	e := NewTop(reg)
 
 	inner := NewList([]Value{})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -140,7 +140,7 @@ func TestAwaitFull(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)}),
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -217,7 +217,7 @@ func TestAwaitFirst(t *testing.T) {
 		NewList([]Value{NewInteger(42)}),
 		NewList([]Value{NewWord("sleep"), NewInteger(100), NewInteger(99)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -247,7 +247,7 @@ func TestAwaitFirstWithError(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 		NewList([]Value{NewWord("sleep"), NewInteger(50), NewInteger(99)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -277,7 +277,7 @@ func TestAwaitAny(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 		NewList([]Value{NewInteger(42)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -307,7 +307,7 @@ func TestAwaitAnyAllReject(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 		NewList([]Value{NewInteger(2), NewWord("div"), NewInteger(0)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -332,7 +332,7 @@ func TestAwaitAnyFirstSuccess(t *testing.T) {
 		NewList([]Value{NewWord("sleep"), NewInteger(100), NewInteger(1), NewWord("div"), NewInteger(0)}),
 		NewList([]Value{NewInteger(7)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -359,7 +359,7 @@ func TestAwaitWithSleep(t *testing.T) {
 		NewList([]Value{NewWord("sleep"), NewInteger(20), NewInteger(1)}),
 		NewList([]Value{NewWord("sleep"), NewInteger(40), NewInteger(2)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
@@ -390,7 +390,7 @@ func TestAwaitAllMultipleErrors(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewWord("div"), NewInteger(0)}),
 		NewList([]Value{NewInteger(2), NewWord("div"), NewInteger(0)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
@@ -414,7 +414,7 @@ func TestAwaitFullAllSucceed(t *testing.T) {
 		NewList([]Value{NewInteger(10)}),
 		NewList([]Value{NewInteger(20)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err != nil {
@@ -452,7 +452,7 @@ func TestAwaitInvalidMode(t *testing.T) {
 	inner := NewList([]Value{
 		NewList([]Value{NewInteger(1)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	_, err := e.Run([]Value{NewWord("await"), optsVal, inner})
 	if err == nil {
@@ -494,7 +494,7 @@ func TestAwaitNonListElement(t *testing.T) {
 		NewInteger(42),
 		NewString("hello"),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {
@@ -530,7 +530,7 @@ func TestAwaitMultiValueBranch(t *testing.T) {
 		NewList([]Value{NewInteger(1), NewInteger(2), NewInteger(3)}),
 		NewList([]Value{NewInteger(42)}),
 	})
-	inner.Quoted = true
+	SetQuoted(&inner, true)
 
 	result, err := e.Run([]Value{NewWord("await"), inner})
 	if err != nil {

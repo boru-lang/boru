@@ -54,10 +54,10 @@ func (es *EmitState) noteKeptLiveRead(seq int, v core.Value, name string, pos co
 		es.keptLiveReads = map[int]keptLiveRead{}
 	}
 	var model *core.Type
-	if v.Parent != nil && !v.Parent.ConformsTo(core.TType) {
-		model = v.Parent
+	if v.Parent() != nil && !v.Parent().ConformsTo(core.TType) {
+		model = v.Parent()
 	}
-	es.keptLiveReads[seq] = keptLiveRead{id: v.ID, name: name, pos: pos, ref: ref, model: model}
+	es.keptLiveReads[seq] = keptLiveRead{id: core.IDOf(&v), name: name, pos: pos, ref: ref, model: model}
 }
 
 // keptLiveSeqs lists the kept live reads among events and the branch arms
@@ -286,7 +286,7 @@ func (es *EmitState) pendingStart(events []EmitEvent, seq, ci int, body []core.V
 			forEachOperand(ev, func(op EmitOperand) {
 				if op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) {
 					p := es.consts[op.idx].Pos()
-					if p.Row == 0 && isCompoundValue(es.consts[op.idx]) {
+					if p.Row == 0 && isCompoundValue(&es.consts[op.idx]) {
 						// A literal the fold re-minted without its position
 						// (`{b:1} keys x`): the statement's earliest token
 						// spelling it before the start (NUR351).
@@ -373,12 +373,12 @@ func (es *EmitState) collectorToken(body []core.Value, ev *EmitEvent, readTok in
 		return -1
 	}
 	t := bodyTokenAt(body, p)
-	if t < 0 || t >= readTok || readTok >= len(body) || !core.IsWord(body[readTok]) {
+	if t < 0 || t >= readTok || readTok >= len(body) || !core.IsWord(&body[readTok]) {
 		// Only a bare word read is collected by its value's type: a reach
 		// or a paren holding the read is collected whatever it holds.
 		return -1
 	}
-	w, err := core.AsWord(body[t])
+	w, err := core.AsWord(&body[t])
 	if err != nil || w.ForceVal {
 		return -1
 	}
@@ -388,7 +388,7 @@ func (es *EmitState) collectorToken(body []core.Value, ev *EmitEvent, readTok in
 	for b := t + 1; b < readTok; b++ {
 		// A function word between them is a barrier: forward collection
 		// never runs past it (`do b drop for 1 [t drop]`).
-		if bw, err := core.AsWord(body[b]); err == nil && !bw.ForceVal && es.lookupWord(bw.Name) != nil {
+		if bw, err := core.AsWord(&body[b]); err == nil && !bw.ForceVal && es.lookupWord(bw.Name) != nil {
 			return -1
 		}
 	}
@@ -427,13 +427,13 @@ func (es *EmitState) trapBeforeStaleRead(pos core.SrcPos) bool {
 	if len(path) == 0 || toks[path[len(path)-1]].Pos() != pos {
 		return false
 	}
-	for k := path[len(path)-1] + 1; k < len(toks) && !core.IsEnd(toks[k]); k++ {
-		w, err := core.AsWord(toks[k])
+	for k := path[len(path)-1] + 1; k < len(toks) && !core.IsEnd(&toks[k]); k++ {
+		w, err := core.AsWord(&toks[k])
 		if err != nil {
 			continue
 		}
 		if top, bound := es.reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+			if _, isFn := top.Data().(*core.FnDefInfo); !isFn {
 				return true
 			}
 			continue
@@ -451,7 +451,7 @@ func (es *EmitState) trapBeforeStaleRead(pos core.SrcPos) bool {
 func spelledBefore(body []core.Value, c core.Value, first, end int) int {
 	canon := core.CanonValue(c)
 	for t := max(first, 0); t < end && t < len(body); t++ {
-		if !core.IsWord(body[t]) && core.CanonValue(body[t]) == canon {
+		if !core.IsWord(&body[t]) && core.CanonValue(body[t]) == canon {
 			return t
 		}
 	}
@@ -556,7 +556,7 @@ func eventToken(body []core.Value, ev *EmitEvent) int {
 // one of the words, or 0 when none is.
 func wordBefore(body []core.Value, t int, words ...string) int {
 	for k := t; k >= 0 && k >= t-4; k-- {
-		if w, err := core.AsWord(body[k]); err == nil && slices.Contains(words, w.Name) {
+		if w, err := core.AsWord(&body[k]); err == nil && slices.Contains(words, w.Name) {
 			return k
 		}
 	}
@@ -596,7 +596,7 @@ func unplacedBeforeRead(events []EmitEvent, k, seq int) bool {
 // w`: [3 3] for [3]). A word with an event there ran as a call of its own
 // (`drop t`), and one that runs after the test is pendingStart's.
 func silentWordBefore(body []core.Value, ran []EmitEvent, t int) bool {
-	if !core.IsWord(body[t-1]) {
+	if !core.IsWord(&body[t-1]) {
 		return false
 	}
 	for i := range ran {
@@ -686,10 +686,10 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 func (es *EmitState) spliceBody(pos core.SrcPos) ([]core.Value, bool) {
 	body := es.rootBody
 	t := bodyTokenContaining(body, pos)
-	if t < 3 || !literalListTok(body[t]) || !isWordNamed(body[t-1], "word") || !isWordNamed(body[t-3], "def") || !core.IsWord(body[t-2]) {
+	if t < 3 || !literalListTok(body[t]) || !isWordNamed(body[t-1], "word") || !isWordNamed(body[t-3], "def") || !core.IsWord(&body[t-2]) {
 		return nil, false
 	}
-	name, _ := core.AsWord(body[t-2])
+	name, _ := core.AsWord(&body[t-2])
 	fire := -1
 	for k := range body {
 		names := map[string]bool{}
@@ -712,7 +712,7 @@ func (es *EmitState) spliceBody(pos core.SrcPos) ([]core.Value, bool) {
 
 // isWordNamed reports whether v is a bare word token named name.
 func isWordNamed(v core.Value, name string) bool {
-	w, err := core.AsWord(v)
+	w, err := core.AsWord(&v)
 	return err == nil && w.Name == name && !w.ForceVal
 }
 

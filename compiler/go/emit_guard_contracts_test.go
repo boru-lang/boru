@@ -22,11 +22,11 @@ import (
 // beside it.
 func TestEmbeddedEnclosingIDsNilStoreMember(t *testing.T) {
 	enclosing := core.NewList([]core.Value{core.NewInteger(9)})
-	enclosing.ID = "enc-1"
+	core.SetID(&enclosing, "enc-1")
 	nilStore := core.NewMap(nil)
-	nilStore.ID = "own-map"
+	core.SetID(&nilStore, "own-map")
 	inner := core.NewList([]core.Value{nilStore, enclosing})
-	inner.ID = "own-list"
+	core.SetID(&inner, "own-list")
 	keep := embeddedEnclosingIDs(core.NewList([]core.Value{inner}), map[string]bool{"enc-1": true})
 	if len(keep) != 1 || !keep["enc-1"] {
 		t.Fatalf("keep = %v, want exactly the enclosing member", keep)
@@ -76,9 +76,9 @@ func TestBranchArmsRetPinnedBothArmsDiverge(t *testing.T) {
 	if es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: brk, Els: cont}) {
 		t.Error("a branch whose arms both diverge reaches no merge, so nothing is ret-pinned")
 	}
-	pinned := core.Value{ID: "pinned-1"}
+	pinned := withID(core.Value{}, "pinned-1")
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 1}})
-	es.producedBy[pinned.ID] = producer{seq: seq}
+	es.stampProduced(&pinned, seq, 0)
 	es.eventInfo[seq] = eventFlags{dynBodyResult: true}
 	els := &EmitFragment{events: []EmitEvent{{kind: evCall, call: emitCall{word: "do", nout: 1}}}}
 	if !es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: brk, Els: els, ElsStk: []core.Value{pinned}}) {
@@ -100,7 +100,7 @@ func TestRecordRuntimeBindDispatchUnresolvedOperand(t *testing.T) {
 	sig := &core.Signature{Args: []*core.Type{core.TList, core.TMap}, Impl: core.Go(nil, core.RunInCheck())}
 	names := core.NewList([]core.Value{core.NewAtom("a")})
 	src := core.NewCarrier(core.TMap)
-	src.ID = "src-without-home"
+	core.SetID(&src, "src-without-home")
 
 	es := NewEmitState()
 	es.reg = r
@@ -131,19 +131,19 @@ func TestRecordRuntimeBindDispatchUnresolvedOperand(t *testing.T) {
 // get dispatch's result answers "yes".
 func TestContainerReadResultNilSafe(t *testing.T) {
 	var nilES *EmitState
-	if nilES.ContainerReadResult("r") {
+	if nilES.ContainerReadResult(core.RecKey{}) {
 		t.Error("a nil EmitState must decline")
 	}
-	if (&EmitState{}).ContainerReadResult("r") {
+	if (&EmitState{}).ContainerReadResult(core.RecKey{Pass: 1}) {
 		t.Error("an EmitState with no provenance table must decline")
 	}
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "get", nout: 1}})
-	es.producedBy["read-1"] = producer{seq: seq}
-	if !es.ContainerReadResult("read-1") {
+	pRead1 := producedAs(es, core.Value{}, "read-1", seq, 0)
+	if !es.ContainerReadResult(core.RecKeyOf(&pRead1)) {
 		t.Error("a recorded get dispatch's result is a container read")
 	}
-	if es.ContainerReadResult("unrecorded") {
+	if es.ContainerReadResult(core.RecKey{}) {
 		t.Error("a value with no producer is no container read")
 	}
 }
@@ -179,33 +179,34 @@ func TestRecordArgsProjectionDeclines(t *testing.T) {
 	}
 	list := func(id string) core.Value {
 		v := core.NewList(nil)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	params := []core.Value{core.NewInteger(1), core.NewInteger(2)}
 
 	es := NewEmitState()
 	es.Compilable = false
-	if es.RecordArgsProjection(r, params, list("proj-0"), core.SrcPos{}) {
+	if es.RecordArgsProjection(r, params, addrOf(list("proj-0")), core.SrcPos{}) {
 		t.Error("an inactive recorder records nothing")
 	}
 	es = NewEmitState()
-	if es.RecordArgsProjection(r, params, list(""), core.SrcPos{}) {
+	if es.RecordArgsProjection(r, params, addrOf(list("")), core.SrcPos{}) {
 		t.Error("an identity-less projection cannot be remembered, so it is not recorded")
 	}
 	noHome := core.NewCarrier(core.TInteger)
-	noHome.ID = "param-without-home"
-	if es.RecordArgsProjection(r, []core.Value{noHome}, list("proj-1"), core.SrcPos{}) {
+	core.SetID(&noHome, "param-without-home")
+	if es.RecordArgsProjection(r, []core.Value{noHome}, addrOf(list("proj-1")), core.SrcPos{}) {
 		t.Error("a param with no compiled home leaves the projection unrecorded")
 	}
 	if len(es.argsProjSeq) != 0 || len(es.frames[0]) != 0 {
 		t.Errorf("a declined projection leaves the recorder untouched (%d projections, %d events)", len(es.argsProjSeq), len(es.frames[0]))
 	}
-	if !es.RecordArgsProjection(r, params, list("proj-2"), core.SrcPos{}) {
+	proj2 := list("proj-2")
+	if !es.RecordArgsProjection(r, params, &proj2, core.SrcPos{}) {
 		t.Fatal("placed params record the projection")
 	}
-	if seq, ok := es.argsProjSeq["proj-2"]; !ok || es.producedBy["proj-2"].seq != seq || !es.frames[0][len(es.frames[0])-1].call.makeList {
-		t.Errorf("the projection is remembered at its OpMakeList event (argsProjSeq=%v producedBy=%v)", es.argsProjSeq, es.producedBy["proj-2"])
+	if seq, ok := es.argsProjSeq["proj-2"]; !ok || es.producerSeq(&proj2) != seq || !es.frames[0][len(es.frames[0])-1].call.makeList {
+		t.Errorf("the projection is remembered at its OpMakeList event (argsProjSeq=%v producer=%v)", es.argsProjSeq, es.producerSeq(&proj2))
 	}
 }
 
@@ -307,12 +308,10 @@ func TestCallResultRenderKnownProducerOffFrame(t *testing.T) {
 	fi := es.internUnpooled(storedFnBody(core.NewString("T")))
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{ConstOperand(fi)}}}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy["res-1"] = producer{seq: seq}
-	if !es.callResultRenderKnown(core.Value{ID: "res-1"}) {
+	if !es.callResultRenderKnown(producedAs(es, core.Value{}, "res-1", seq, 0)) {
 		t.Error("a user call returning a baked fn const renders known")
 	}
-	es.producedBy["res-2"] = producer{seq: seq + 100}
-	if es.callResultRenderKnown(core.Value{ID: "res-2"}) {
+	if es.callResultRenderKnown(producedAs(es, core.Value{}, "res-2", seq+100, 0)) {
 		t.Error("a producer outside the current frame answers no")
 	}
 }
@@ -325,14 +324,14 @@ func TestCallResultRenderKnownProducerOffFrame(t *testing.T) {
 // a nil / identity-less query all answer no.
 func TestBranchResultRenderKnownArms(t *testing.T) {
 	var nilES *EmitState
-	if nilES.branchResultRenderKnown(core.Value{ID: "b"}) {
+	if nilES.branchResultRenderKnown(withID(core.Value{}, "b")) {
 		t.Error("a nil EmitState must decline")
 	}
 	es := NewEmitState()
 	if es.branchResultRenderKnown(core.Value{}) {
 		t.Error("an identity-less value must decline")
 	}
-	lam := es.internUnpooled(core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Anonymous: true}})
+	lam := es.internUnpooled(core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}}))
 	es.fnRecs = []*fnUnitRec{{render: "fn (Integer)"}, {}}
 	rendered := EmitOperand{kind: opClosure, closureUnit: 0}
 	unrendered := EmitOperand{kind: opClosure, closureUnit: 1}
@@ -353,8 +352,7 @@ func TestBranchResultRenderKnownArms(t *testing.T) {
 	} {
 		seq := es.appendEvent(EmitEvent{kind: evBranch, br: c.br})
 		id := fmt.Sprintf("branch-%d", seq)
-		es.producedBy[id] = producer{seq: seq}
-		if got := es.branchResultRenderKnown(core.Value{ID: id}); got != c.want {
+		if got := es.branchResultRenderKnown(producedAs(es, core.Value{}, id, seq, 0)); got != c.want {
 			t.Errorf("%s: branchResultRenderKnown = %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -368,11 +366,11 @@ func TestBranchResultRenderKnownArms(t *testing.T) {
 func TestApplyChainStepsShapes(t *testing.T) {
 	val := func(id string) core.Value {
 		v := core.NewInteger(1)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	x, y := val("x"), val("y")
-	f, g := core.Value{ID: "f"}, core.Value{ID: "g"}
+	f, g := withID(core.Value{}, "f"), withID(core.Value{}, "g")
 	fnArg := fnVal()
 	pend := []pendingApply{{id: "f"}, {id: "g"}}
 	locals := func(n int) []EmitOperand {

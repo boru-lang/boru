@@ -76,7 +76,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// `def mk fn [[][Any][42]] end mk mk add 1` is `[42 43]`, where the
 	// match over two carriers took `add (Bytes, Bytes)` all-stack and the
 	// poly re-match answered `[84 1]` (NUR287).
-	if !e.Tape.At(topPos).Dynamic {
+	if !core.IsDynamic(e.Tape.Ref(topPos)) {
 		return false
 	}
 	fwdIdx := e.Pointer + 1
@@ -103,7 +103,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// settled boundary.
 	for i := fwdIdx + 1; i < e.Tape.Len(); i++ {
 		t := e.Tape.At(i)
-		if !core.IsEnd(t) && !core.IsDefCleanup(t) {
+		if !core.IsEnd(&t) && !core.IsDefCleanup(&t) {
 			return false
 		}
 	}
@@ -114,7 +114,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// defect, not a settled boundary.
 	for i := 0; i < minPos; i++ {
 		t := e.Tape.At(i)
-		if !core.IsEnd(t) && !core.IsDefCleanup(t) {
+		if !core.IsEnd(&t) && !core.IsDefCleanup(&t) {
 			return false
 		}
 	}
@@ -137,7 +137,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	ops = append(ops, ConstOperand(es.intern(wordTok)))
 	for p := topPos; p >= minPos; p-- {
 		v := e.Tape.At(p)
-		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicResult {
+		if pr, ok := es.producerOf(&v); ok && es.eventInfo[pr.seq].variadicResult {
 			return false
 		}
 		op, ok := es.resolveOperand(v)
@@ -156,7 +156,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		// (ADR-011): the interpreter's read dispatches the fn, and so does the
 		// island's step of it — `each [def v (mk) v add 1] [1]` over a paren-
 		// placed fn islanded `( v )` and met the open paren (NUR363).
-		readDispatches := es.isDefRead(v) && !es.placedValRead(v.ID)
+		readDispatches := es.isDefRead(v) && !es.placedValRead(core.IDOf(&v))
 		if es.callResultPlaced(v) || (es.placedNotReStepped(v) && !readDispatches) {
 			ops = append(ops, ConstOperand(es.intern(core.NewCloseParen())), op, ConstOperand(es.intern(core.NewOpenParen())))
 			continue
@@ -169,7 +169,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: w.Name, ops: ops, nout: 1, pos: wordTok.Pos(), dynMixed: true,
 	}})
-	es.setProducedAt(out, seq, 0)
+	es.setProducedAt(&out, seq, 0)
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	es.eventInfo[seq] = f

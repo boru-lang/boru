@@ -193,32 +193,50 @@ func TestRunPooledDropsGrownTape(t *testing.T) {
 }
 
 // TestPutSubEngineClearsScratch pins that returning a sub-engine to the pool
-// releases the forward-collection scratch buffers (rrValues / rrReordered):
-// their slots are zeroed to capacity so a pooled idle engine cannot pin a
-// prior call's (possibly large) collected-arg payloads, while the backing
-// arrays are retained for reuse.
+// releases the forward-collection scratch buffer (rrValues): its slots are
+// zeroed to capacity so a pooled idle engine cannot pin a prior call's
+// (possibly large) collected-arg payloads, while the backing array is
+// retained for reuse.
 func TestPutSubEngineClearsScratch(t *testing.T) {
 	r := poolTestRegistry(t)
 	e := r.TakeSubEngine()
 	e.rrValues = append(e.rrValues, NewInteger(1), NewInteger(2))
-	e.rrReordered = append(e.rrReordered, NewInteger(3))
 	r.PutSubEngine(e)
 	if len(r.enginePool) != 1 {
 		t.Fatalf("engine not pooled: pool size %d", len(r.enginePool))
 	}
 	pooled := r.TakeSubEngine() // LIFO: the same engine back
-	if len(pooled.rrValues) != 0 || len(pooled.rrReordered) != 0 {
-		t.Fatalf("scratch not reset to empty: rrValues len %d rrReordered len %d",
-			len(pooled.rrValues), len(pooled.rrReordered))
+	if len(pooled.rrValues) != 0 {
+		t.Fatalf("scratch not reset to empty: rrValues len %d", len(pooled.rrValues))
 	}
 	for i, v := range pooled.rrValues[:cap(pooled.rrValues)] {
 		if v != (Value{}) {
 			t.Fatalf("rrValues[%d] not zeroed after pooling: %+v", i, v)
 		}
 	}
-	for i, v := range pooled.rrReordered[:cap(pooled.rrReordered)] {
-		if v != (Value{}) {
-			t.Fatalf("rrReordered[%d] not zeroed after pooling: %+v", i, v)
+}
+
+// …and every other per-run Value scratch buffer the same way (exceptions
+// list C2): a pooled engine pins no Value of its last run.
+func TestPutSubEngineClearsEveryScratch(t *testing.T) {
+	r := poolTestRegistry(t)
+	e := r.TakeSubEngine()
+	e.resolvedScratch = append(e.resolvedScratch, NewInteger(3))
+	e.excludeScratch = map[int]bool{4: true}
+	r.PutSubEngine(e)
+	pooled := r.TakeSubEngine() // LIFO: the same engine back
+	for name, buf := range map[string][]Value{"resolvedScratch": pooled.resolvedScratch} {
+		if len(buf) != 0 {
+			t.Fatalf("%s not reset to empty: len %d", name, len(buf))
 		}
+		full := buf[:cap(buf)]
+		for i := range full {
+			if full[i] != (Value{}) {
+				t.Fatalf("%s[%d] not zeroed after pooling", name, i)
+			}
+		}
+	}
+	if len(pooled.excludeScratch) != 0 {
+		t.Fatalf("excludeScratch not cleared: %v", pooled.excludeScratch)
 	}
 }

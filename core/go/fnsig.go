@@ -137,21 +137,29 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 // chain's registry threaded through to the Pattern-compatibility unify
 // (see fnSigSatisfiesSpecR).
 func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
-	uInfo, ok := undef.Data.(FnUndefInfo)
+	uInfo, ok := undef.Data().(FnUndefInfo)
 	if !ok {
 		return false
 	}
-	fnDef, ok := fnVal.Data.(FnDefInfo)
+	return fnSpecsAdmitR(uInfo.Sigs, fnVal, r)
+}
+
+// fnSpecsAdmitR is the signature rule over the specs themselves: fnVal is a
+// function value with an overload satisfying every spec. The fn-shape
+// unifier holds its specs and asks this directly, without minting an
+// FnUndef value per test.
+func fnSpecsAdmitR(specs []FnSigSpec, fnVal Value, r *Registry) bool {
+	fnDef, ok := fnVal.Data().(*FnDefInfo)
 	if !ok {
 		return false
 	}
-	if len(uInfo.Sigs) == 0 {
+	if len(specs) == 0 {
 		// An empty constraint trivially matches any function. Treat
 		// this as an authoring error in practice — but it's well
 		// defined.
 		return true
 	}
-	for _, want := range uInfo.Sigs {
+	for _, want := range specs {
 		if !fnDefHasSigR(fnDef, want, r) {
 			return false
 		}
@@ -165,12 +173,12 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 // fallback excluded) so both boru fns and Go-implemented words are
 // considered. The variance rule is delegated to FnSigSatisfiesSpec.
 func FnDefHasSig(fnDef FnDefInfo, want FnSigSpec) bool {
-	return fnDefHasSigR(fnDef, want, nil)
+	return fnDefHasSigR(&fnDef, want, nil)
 }
 
 // fnDefHasSigR is FnDefHasSig with the enclosing unify chain's registry
 // threaded through (see fnSigSatisfiesSpecR).
-func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
+func fnDefHasSigR(fnDef *FnDefInfo, want FnSigSpec, r *Registry) bool {
 	for _, s := range fnDef.OwnSigs() {
 		if fnSigSatisfiesSpecR(s, want, r) {
 			return true
@@ -189,7 +197,7 @@ func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
 // of a pending container argument (NUR337).
 func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 	for _, a := range sigArgs {
-		if a.Dynamic {
+		if IsDynamic(&a) {
 			return false
 		}
 	}
@@ -198,7 +206,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 		return false
 	}
 	for i, p := range sig.Params {
-		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(sigArgs[i]) {
+		if p.Pattern != nil && !p.Pattern.Carrier() && !IsConcrete(&sigArgs[i]) {
 			return false
 		}
 	}
@@ -220,7 +228,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 // own signatures to consult and answers nil, so a caller must treat nil as "no
 // opinion" unless it has already established that the value carries sigs.
 func MatchFnSig(fn Value, args []Value) *FnSig {
-	fnDef, ok := fn.Data.(FnDefInfo)
+	fnDef, ok := fn.Data().(*FnDefInfo)
 	if !ok {
 		return nil
 	}
@@ -241,10 +249,10 @@ func MatchFnSig(fn Value, args []Value) *FnSig {
 				match = false
 				break
 			}
-			if p.Pattern != nil && !p.Pattern.Carrier {
+			if p.Pattern != nil && !p.Pattern.Carrier() {
 				pat := *p.Pattern
-				if pat.Parent.Equal(TMap) && args[j].Parent.Equal(TMap) &&
-					pat.Data != nil && args[j].Data != nil {
+				if pat.Parent().Equal(TMap) && args[j].Parent().Equal(TMap) &&
+					pat.Data() != nil && args[j].Data() != nil {
 					if !OpenUnifyMap(pat, args[j]) {
 						match = false
 						break

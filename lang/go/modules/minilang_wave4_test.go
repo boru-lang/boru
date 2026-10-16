@@ -470,10 +470,10 @@ func TestMiniWave4XpNav(t *testing.T) {
 	if v := xpNumberToValue(2.5); v.String() != "2.5" {
 		t.Errorf("fractional xp number = %q", v.String())
 	}
-	if _, err := xpNumberToValue(math.Inf(1)).AsConcreteFloat(); err != nil {
+	if _, err := addrOf(xpNumberToValue(math.Inf(1))).AsConcreteFloat(); err != nil {
 		t.Error("infinite xp number should stay Float")
 	}
-	if _, err := xpNumberToValue(math.NaN()).AsConcreteFloat(); err != nil {
+	if _, err := addrOf(xpNumberToValue(math.NaN())).AsConcreteFloat(); err != nil {
 		t.Error("NaN xp number should stay Float")
 	}
 	if got := xpResultToList("s"); len(got) != 1 || got[0].String() != "'s'" {

@@ -81,7 +81,7 @@ func TestS7CommitBarrierSuccessfulCommit(t *testing.T) {
 	}
 	// The forward marker was removed and the word force-stacked.
 	for i := 0; i < e.Tape.Len(); i++ {
-		if IsForward(e.Tape.At(i)) {
+		if IsForward(e.Tape.Ref(i)) {
 			t.Error("forward marker should have been removed on commit")
 		}
 	}

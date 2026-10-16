@@ -86,10 +86,10 @@ func TestValueConstructors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if !c.value.Parent.ConformsTo(c.want) {
-				t.Errorf("Parent = %v does not match expected %v", c.value.Parent, c.want)
+			if !c.value.Parent().ConformsTo(c.want) {
+				t.Errorf("Parent = %v does not match expected %v", c.value.Parent(), c.want)
 			}
-			if !core.IsConcrete(c.value) {
+			if !core.IsConcrete(&c.value) {
 				t.Error("Data should not be nil for a concrete value")
 			}
 		})
@@ -99,16 +99,16 @@ func TestValueConstructors(t *testing.T) {
 func TestTypeLiteralVsConcrete(t *testing.T) {
 	lit := core.NewTypeLiteral(core.TString)
 	concrete := core.NewString("hello")
-	if !core.IsTypeLiteral(lit) {
+	if !core.IsTypeLiteral(&lit) {
 		t.Error("type literal should be IsTypeLiteral")
 	}
-	if core.IsConcrete(lit) {
+	if core.IsConcrete(&lit) {
 		t.Error("type literal should NOT be IsConcrete")
 	}
-	if core.IsTypeLiteral(concrete) {
+	if core.IsTypeLiteral(&concrete) {
 		t.Error("concrete string should NOT be IsTypeLiteral")
 	}
-	if !core.IsConcrete(concrete) {
+	if !core.IsConcrete(&concrete) {
 		t.Error("concrete string should be IsConcrete")
 	}
 }

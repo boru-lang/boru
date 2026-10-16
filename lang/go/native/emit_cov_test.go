@@ -97,22 +97,22 @@ func TestEmitOptsSchemaKinds(t *testing.T) {
 			t.Errorf("EmitOptsSchema(%s) ok = false", kind)
 			continue
 		}
-		if !v.Parent.ConformsTo(TMap) {
-			t.Errorf("EmitOptsSchema(%s) is not map-family: %s", kind, v.Parent)
+		if !v.Parent().ConformsTo(TMap) {
+			t.Errorf("EmitOptsSchema(%s) is not map-family: %s", kind, v.Parent())
 		}
 	}
 	if _, ok := EmitOptsSchema("bogus"); ok {
 		t.Error("EmitOptsSchema(bogus) ok = true, want false")
 	}
 	auto := EmitAutoOptsSchema()
-	if !auto.Parent.ConformsTo(TMap) {
-		t.Errorf("EmitAutoOptsSchema not map-family: %s", auto.Parent)
+	if !auto.Parent().ConformsTo(TMap) {
+		t.Errorf("EmitAutoOptsSchema not map-family: %s", auto.Parent())
 	}
 }
 
 func TestNaturalEmitKind(t *testing.T) {
 	xml := NewXmlElement("t", nil, nil)
-	tdVal := Value{Parent: TList, Data: covTableNameAge().td}
+	tdVal := ValueOf(&Datum{Parent: TList, Data: covTableNameAge().td})
 
 	cases := []struct {
 		name string
@@ -130,7 +130,7 @@ func TestNaturalEmitKind(t *testing.T) {
 		{"float", NewFloat(1.5), "json", true},
 		{"boolean", NewBoolean(true), "json", true},
 		{"atom", NewAtom("a"), "json", true},
-		{"none", Value{Parent: TNone}, "json", true},
+		{"none", ValueOf(&Datum{Parent: TNone}), "json", true},
 		{"word has no natural kind", NewWord("w"), "", false},
 	}
 	for _, c := range cases {
@@ -150,7 +150,7 @@ func TestEncodeJSONShapes(t *testing.T) {
 		"f", NewFloat(2.5),
 		"b", NewBoolean(true),
 		"b2", NewBoolean(false),
-		"none", Value{Parent: TNone},
+		"none", ValueOf(&Datum{Parent: TNone}),
 		"at", NewAtom("tom"),
 		"lst", NewList([]Value{NewInteger(1), NewInteger(2)}),
 		"em", covEmitMap(),
@@ -243,7 +243,7 @@ func TestEncodeYAMLMapAndList(t *testing.T) {
 	v := covEmitMap(
 		"s", NewString("x"),
 		"n", NewInteger(5),
-		"none", Value{Parent: TNone},
+		"none", ValueOf(&Datum{Parent: TNone}),
 		"em", covEmitMap(),
 		"el", NewList([]Value{}),
 		"sub", covEmitMap("k", NewString("v")),
@@ -345,7 +345,7 @@ func TestYamlScalarQuoting(t *testing.T) {
 
 func TestEncodeTabularTableAndOpts(t *testing.T) {
 	tbl := covTableNameAge()
-	tdVal := Value{Parent: TList, Data: tbl.td}
+	tdVal := ValueOf(&Datum{Parent: TList, Data: tbl.td})
 
 	kinds := EmitKinds()
 	csv, err := kinds[3].Encode(tdVal, map[string]any{"separation": ";"})
@@ -365,7 +365,7 @@ func TestEncodeTabularTableAndOpts(t *testing.T) {
 
 	// A Table with an empty schema renders empty.
 	empty := TableData{Record: RecordTypeInfo{Fields: NewOrderedMap()}}
-	got, err := encodeTabular(Value{Parent: TList, Data: empty}, ",", "csv")
+	got, err := encodeTabular(ValueOf(&Datum{Parent: TList, Data: empty}), ",", "csv")
 	if err != nil || got != "" {
 		t.Errorf("empty-schema table = (%q,%v), want empty", got, err)
 	}
@@ -434,7 +434,7 @@ func TestEncodeTabularMaterializer(t *testing.T) {
 	}
 
 	// A non-query extension payload is not materializable.
-	bad := Value{Parent: TList, Data: ExtensionPayload{Body: 42}}
+	bad := ValueOf(&Datum{Parent: TList, Data: ExtensionPayload{Body: 42}})
 	_, err = encodeTabular(bad, ",", "csv")
 	if err == nil || EmitErrorCode(err) != "emit_unsupported" {
 		t.Errorf("non-query payload: expected emit_unsupported, got %v", err)
@@ -477,7 +477,7 @@ func TestEncodeTOMLRejections(t *testing.T) {
 		t.Errorf("list top: expected emit_unsupported, got %v", err)
 	}
 	// None has no TOML representation.
-	_, err = encodeTOML(covEmitMap("n", Value{Parent: TNone}), nil)
+	_, err = encodeTOML(covEmitMap("n", ValueOf(&Datum{Parent: TNone})), nil)
 	if err == nil {
 		t.Error("None value: expected error, got nil")
 	}
@@ -492,7 +492,7 @@ func TestEncodeTOMLRejections(t *testing.T) {
 		t.Error("array of arrays: expected error, got nil")
 	}
 	// Errors propagate out of nested tables.
-	_, err = encodeTOML(covEmitMap("t", covEmitMap("bad", Value{Parent: TNone})), nil)
+	_, err = encodeTOML(covEmitMap("t", covEmitMap("bad", ValueOf(&Datum{Parent: TNone}))), nil)
 	if err == nil {
 		t.Error("nested table with None: expected error, got nil")
 	}
@@ -543,7 +543,7 @@ func TestEncodeINIRejections(t *testing.T) {
 		t.Error("nested section: expected error, got nil")
 	}
 	// iniScalar falls back to String() for non-scalar-leaf shapes.
-	none := Value{Parent: TNone}
+	none := ValueOf(&Datum{Parent: TNone})
 	if got := iniScalar(none); got != none.String() {
 		t.Errorf("iniScalar(None) = %q, want String() fallback %q", got, none.String())
 	}
@@ -653,7 +653,7 @@ func TestEmitEdgeBranches(t *testing.T) {
 	}
 
 	// None inside a TOML array is a scalar with no TOML form.
-	if _, err := encodeTOML(covEmitMap("arr", NewList([]Value{{Parent: TNone}})), nil); err == nil {
+	if _, err := encodeTOML(covEmitMap("arr", NewList([]Value{ValueOf(&Datum{Parent: TNone})})), nil); err == nil {
 		t.Error("None in toml array: expected error, got nil")
 	}
 

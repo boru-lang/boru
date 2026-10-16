@@ -140,7 +140,7 @@ func TestEngineLtTotalOrder(t *testing.T) {
 	}
 	// tcmp keeps the cross-branch total order: Integer ranks below List.
 	result := runBoru(t, r, []Value{NewInteger(1), NewWord("tcmp"), NewList([]Value{NewInteger(2)})})
-	if len(result) != 1 || !result[0].Parent.Equal(TInteger) {
+	if len(result) != 1 || !result[0].Parent().Equal(TInteger) {
 		t.Errorf("1 tcmp [2] = %v, want an Integer", result)
 	}
 }
@@ -337,7 +337,7 @@ func TestEngineReadWithOpts(t *testing.T) {
 	opts := NewOrderedMap()
 	opts.Set("fmt", NewString("lines"))
 	result := runBoru(t, r, []Value{NewWord("read"), pathV("data.txt"), NewMap(opts)})
-	if len(result) != 1 || !result[0].Parent.Equal(TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(TList) {
 		t.Errorf("read with lines fmt = %v, want list", result)
 	}
 	_lst, _ := AsList(result[0])
@@ -360,7 +360,7 @@ func TestEngineReadJSON(t *testing.T) {
 	opts := NewOrderedMap()
 	opts.Set("fmt", NewString("json"))
 	result := runBoru(t, r, []Value{NewWord("read"), pathV("data.json"), NewMap(opts)})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Errorf("read json = %v, want map", result)
 	}
 }

@@ -682,11 +682,11 @@ func (s *Session) renderHistoryList() {
 
 // wordNameAt returns the name of the Word about to execute, if any.
 func wordNameAt(stack []native.Value, pointer int) (string, bool) {
-	if pointer < 0 || pointer >= len(stack) || !native.IsWord(stack[pointer]) {
+	if pointer < 0 || pointer >= len(stack) || !native.IsWord(&stack[pointer]) {
 		return "", false
 	}
 	// IsWord guarantees the payload; AsWord's error arm is unreachable.
-	w, _ := native.AsWord(stack[pointer])
+	w, _ := native.AsWord(&stack[pointer])
 	return w.Name, true
 }
 
@@ -701,13 +701,13 @@ func liveFrameDepth(stack []native.Value, pointer int) int {
 	var frames []bool
 	for i := 0; i < pointer; i++ {
 		switch {
-		case native.IsOpenParen(stack[i]):
-			isFrame := native.IsFrameOpen(stack[i])
+		case native.IsOpenParen(&stack[i]):
+			isFrame := native.IsFrameOpen(&stack[i])
 			frames = append(frames, isFrame)
 			if isFrame {
 				depth++
 			}
-		case native.IsCloseParen(stack[i]):
+		case native.IsCloseParen(&stack[i]):
 			if n := len(frames); n > 0 {
 				if frames[n-1] {
 					depth--
@@ -947,10 +947,10 @@ func resolvedData(stack []native.Value, pointer int) []native.Value {
 	}
 	vals := make([]native.Value, 0, n)
 	for _, v := range stack[:n] {
-		if native.IsOpenParen(v) {
+		if native.IsOpenParen(&v) {
 			// A loop region's sealing paren bounds the view, as the live
 			// CurrentStack bounds it: the body sees nothing beneath it.
-			if _, sealed := v.Data.(native.LoopOpenInfo); sealed {
+			if _, sealed := v.Data().(native.LoopOpenInfo); sealed {
 				vals = vals[:0]
 			}
 			continue
@@ -967,9 +967,9 @@ func resolvedData(stack []native.Value, pointer int) []native.Value {
 // bookkeeping rather than program data — the same classes the live
 // CurrentStack view filters.
 func isEngineMarker(v native.Value) bool {
-	return native.IsWord(v) || native.IsForward(v) || native.IsMark(v) ||
-		native.IsMove(v) || native.IsOpenParen(v) || native.IsCloseParen(v) ||
-		native.IsEnd(v) || native.IsDefCleanup(v) || native.IsReturnCheck(v)
+	return native.IsWord(&v) || native.IsForward(&v) || native.IsMark(&v) ||
+		native.IsMove(&v) || native.IsOpenParen(&v) || native.IsCloseParen(&v) ||
+		native.IsEnd(&v) || native.IsDefCleanup(&v) || native.IsReturnCheck(&v)
 }
 
 // detach puts the session in its terminal mode and disarms the per-step
@@ -1284,18 +1284,18 @@ func inLoopBody(stack []native.Value, pointer int) bool {
 		return false
 	}
 	for i := pointer; i < len(stack); i++ {
-		if !native.IsMove(stack[i]) {
+		if !native.IsMove(&stack[i]) {
 			continue
 		}
-		info, _ := native.AsMove(stack[i])
+		info, _ := native.AsMove(&stack[i])
 		if info.Cont == nil || info.Cont.Driver == nil {
 			continue
 		}
 		for j := min(pointer, len(stack)) - 1; j >= 0; j-- {
-			if !native.IsMark(stack[j]) {
+			if !native.IsMark(&stack[j]) {
 				continue
 			}
-			if m, _ := native.AsMark(stack[j]); m.ID == info.To {
+			if m, _ := native.AsMark(&stack[j]); m.ID == info.To {
 				return true
 			}
 		}
@@ -1313,15 +1313,15 @@ func liveFrames(stack []native.Value, pointer int) []frameInfo {
 	}
 	var out []frameInfo
 	for i := 0; i < pointer; i++ {
-		if !native.IsFrameOpen(stack[i]) {
+		if !native.IsFrameOpen(&stack[i]) {
 			continue
 		}
 		depth, closed := 0, -1
 		for j := i; j < len(stack); j++ {
 			switch {
-			case native.IsOpenParen(stack[j]):
+			case native.IsOpenParen(&stack[j]):
 				depth++
-			case native.IsCloseParen(stack[j]):
+			case native.IsCloseParen(&stack[j]):
 				depth--
 			}
 			if depth == 0 {
@@ -1332,7 +1332,7 @@ func liveFrames(stack []native.Value, pointer int) []frameInfo {
 		if closed >= 0 && closed < pointer {
 			continue // the frame already closed — not live
 		}
-		if info, err := native.AsFrameOpen(stack[i]); err == nil && info.Meta != nil {
+		if info, err := native.AsFrameOpen(&stack[i]); err == nil && info.Meta != nil {
 			out = append(out, frameInfo{name: info.Meta.Name, installs: info.Meta.InstallNames})
 		}
 	}

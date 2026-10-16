@@ -209,7 +209,7 @@ func TestS6aDynOutNativeOKFnValueDataDeclines(t *testing.T) {
 	r := newTestRegistry(t)
 	armEmit(r)
 	sig := &core.Signature{Args: []*core.Type{core.TAny}}
-	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn"})}
+	args := []core.Value{core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "s6afn"})}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adynv", sig, args, outs) {
 		t.Error("a concrete fn-valued arg must decline the dyn-out bake")
@@ -234,7 +234,7 @@ func TestS6aTryRecordPolyFnValueDataDeclines(t *testing.T) {
 		t.Fatalf("registration: %v", err)
 	}
 	sig := &r.Lookup("s6apolyv").Signatures[0]
-	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn2"})}
+	args := []core.Value{core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "s6afn2"})}
 	if tryRecordPoly(r, "s6apolyv", sig, args, []core.Value{core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, false, nil, false, nil) {
 		t.Error("a concrete fn-valued arg must not poly")
 	}
@@ -249,7 +249,7 @@ func TestDriftWindowVariadicOperandDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	dyn := core.NewDynamicCarrier(core.TAny)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzvar", nout: 1}})
-	es.setProducedAt(dyn, seq, 0)
+	es.setProducedAt(&dyn, seq, 0)
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	es.eventInfo[seq] = f
@@ -271,7 +271,7 @@ func TestDriftWindowUnresolvableOperandDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	dyn := core.NewDynamicCarrier(core.TAny)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzev", nout: 1}})
-	es.setProducedAt(dyn, seq, 0)
+	es.setProducedAt(&dyn, seq, 0)
 	orphan := core.NewCarrier(core.TInteger) // non-dynamic carrier, no event, no orig
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{orphan, dyn, core.NewWord("add"), core.NewInteger(1)}, core.StackHeadroom)
@@ -289,9 +289,9 @@ func TestRecordCallCompileFailureComputedRangeList(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	es.BindRegistry(r)
 	lst := core.NewCarrier(core.TList)
-	lst.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+	core.SetID(&lst, core.GenerateID(core.IDPrefixForType(core.TList)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, nout: 1, makeList: true}})
-	es.setProduced(lst, seq)
+	es.setProduced(&lst, seq)
 	if !es.recordCallCompileFailure("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
 		t.Fatal("the computed-range-list arm must classify the compile failure")
 	}
@@ -313,12 +313,12 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 
 	// A 2-out call event whose idx-0 result is Function-typed.
 	fnOut := core.NewCarrier(core.TFunction)
-	fnOut.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+	core.SetID(&fnOut, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	other := core.NewCarrier(core.TString)
-	other.ID = core.GenerateID(core.IDPrefixForType(core.TString))
+	core.SetID(&other, core.GenerateID(core.IDPrefixForType(core.TString)))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz", nout: 2}})
-	es.setProduced(fnOut, seq)
-	es.producedBy[other.ID] = producer{seq: seq, idx: 1}
+	es.setProduced(&fnOut, seq)
+	es.stampProduced(&other, seq, 1)
 	if _, ok := es.SplitEventRegionBind("zzf", fnOut); ok {
 		t.Error("a Function-typed first result must decline (parked-fn screen)")
 	}
@@ -327,9 +327,9 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	// fragment, close it, then ask for the split — eventBySeq misses.
 	closeFrag := es.beginFragment()
 	iOut := core.NewCarrier(core.TInteger)
-	iOut.ID = core.GenerateID(core.IDPrefixForType(core.TInteger))
+	core.SetID(&iOut, core.GenerateID(core.IDPrefixForType(core.TInteger)))
 	fseq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zz2", nout: 2}})
-	es.setProduced(iOut, fseq)
+	es.setProduced(&iOut, fseq)
 	closeFrag()
 	es.TakeFragment()
 	if _, ok := es.SplitEventRegionBind("zzg", iOut); ok {
@@ -360,7 +360,7 @@ func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
 	out := core.NewInteger(7)
-	es.producedBy[out.ID] = producer{}
+	es.stampProduced(&out, 0, 0)
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "case", sig, bodyArgs("step"), []core.Value{out}, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {

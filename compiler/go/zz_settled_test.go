@@ -48,11 +48,11 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if folded, ok := e.FoldFullStack("w", nil, nil); folded != nil || ok {
 		t.Fatal("inactive FoldFullStack should decline")
 	}
-	if e.RecordSpliceDyn(core.Value{}, core.SrcPos{}) {
+	if e.RecordSpliceDyn(&core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordSpliceDyn should decline")
 	}
 	e.NoteShapedRead("id")
-	if v, ok := e.MemberFnReadValue("id"); ok || v.Data != nil {
+	if v, ok := e.MemberFnReadValue("id"); ok || v.Data() != nil {
 		t.Fatal("inactive memberFnReadValue should miss")
 	}
 
@@ -64,13 +64,13 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.RecordUserCall(0, "w", nil, nil, core.SrcPos{}, core.SrcPos{})
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, core.SrcPos{}, "w", core.SrcPos{})
 	e.HoldRegion("w", core.SrcPos{})()
-	if _, ok := e.RecordDynApply(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+	if _, ok := e.RecordDynApply(nil, core.Value{}, &core.Value{}, core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApply should decline")
 	}
-	if _, ok := e.RecordDynApplyLead(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+	if _, ok := e.RecordDynApplyLead(nil, core.Value{}, &core.Value{}, core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApplyLead should decline")
 	}
-	if _, ok := e.ProducedLeadApplies("x", nil); ok {
+	if _, ok := e.ProducedLeadApplies(read("x"), nil); ok {
 		t.Fatal("inactive ProducedLeadApplies should decline")
 	}
 	if e.RecordDynMethod(core.Value{}, nil, nil, "w", core.SrcPos{}) {
@@ -81,29 +81,29 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.NoteTakenLanding(core.Value{})
 	e.NoteStatementEnd(core.SrcPos{})
 	e.NoteLandingNext(core.Value{}, core.LandingNextEnd, false, core.Value{})
-	if e.MayBeFn("id") {
+	if e.MayBeFn(core.RecKey{}) {
 		t.Fatal("inactive MayBeFn should be false")
 	}
-	if e.RecordFallback(core.FallbackSpan{}, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordFallback(core.FallbackSpan{}, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordFallback should decline")
 	}
 	if e.RecordTrap("c", "d", "w", "h", core.SrcPos{}) {
 		t.Fatal("inactive RecordTrap should decline")
 	}
 	in := core.NewInteger(3)
-	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || out.ID != in.ID {
+	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || core.IDOf(&out) != core.IDOf(&in) {
 		t.Fatalf("inactive RecordTypedBind = %v %v", out, ok)
 	}
-	if e.RecordMakeList(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeList(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeList should decline")
 	}
-	if e.RecordMakeListInner(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeListInner(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeListInner should decline")
 	}
-	if e.RecordMakeMap(nil, nil, nil, false, core.Value{}, core.SrcPos{}) {
+	if e.RecordMakeMap(nil, nil, nil, false, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordMakeMap should decline")
 	}
-	if e.RecordInterp(nil, nil, core.Value{}, core.SrcPos{}) {
+	if e.RecordInterp(nil, nil, &core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordInterp should decline")
 	}
 	e.RegisterTrailingApply("id", 1)
@@ -114,10 +114,10 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if e.DynInputsProven(nil, nil) {
 		t.Fatal("inactive dynInputsProven should be false")
 	}
-	if v, ok := e.Materialise(in); ok || v.ID != in.ID {
+	if v, ok := e.Materialise(in); ok || core.IDOf(&v) != core.IDOf(&in) {
 		t.Fatalf("inactive materialise = %v %v", v, ok)
 	}
-	if e.ZeroOutProduced("id") || e.AlreadyProduced("id") {
+	if e.ZeroOutProduced(core.RecKey{}) || e.AlreadyProduced(core.RecKey{}) {
 		t.Fatal("inactive produced probes should be false")
 	}
 
@@ -166,7 +166,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 // RecordSpliceDyn's decline arms (§9.2b): an inactive state and an
 // unresolvable payload both leave the compile failure standing.
 func TestRecordSpliceDynDeclines(t *testing.T) {
-	if (&EmitState{}).RecordSpliceDyn(core.Value{}, core.SrcPos{}) {
+	if (&EmitState{}).RecordSpliceDyn(&core.Value{}, core.SrcPos{}) {
 		t.Error("an inactive EmitState must decline")
 	}
 	r := covRegistry(t, nil)
@@ -175,7 +175,7 @@ func TestRecordSpliceDynDeclines(t *testing.T) {
 	es := r.Check.Emit.(*EmitState)
 	es.BindRegistry(r)
 	orphan := core.NewCarrier(core.TList) // no event, no local, no const home
-	if es.RecordSpliceDyn(orphan, core.SrcPos{}) {
+	if es.RecordSpliceDyn(&orphan, core.SrcPos{}) {
 		t.Error("an unresolvable payload must decline")
 	}
 }
@@ -185,7 +185,7 @@ func TestMaterialiseMapPrefixCopy(t *testing.T) {
 	// A 2-key map whose SECOND key is the changed (recoverable) member: the
 	// rebuild copies the unchanged prefix, then patches the second.
 	c := core.NewCarrier(core.TInteger)
-	es.origByID[c.ID] = core.NewInteger(9)
+	es.origByID[core.IDOf(&c)] = core.NewInteger(9)
 	om := core.NewOrderedMap()
 	om.Set("a", core.NewInteger(1)) // unchanged prefix
 	om.Set("b", c)                  // changed → triggers prefix copy
@@ -193,11 +193,11 @@ func TestMaterialiseMapPrefixCopy(t *testing.T) {
 	if !ok {
 		t.Fatal("map with a recoverable member should materialise")
 	}
-	mp := got.Data.(core.MapPayload)
-	if bv, _ := mp.M.Get("b"); bv.Carrier {
+	mp := got.Data().(core.MapPayload)
+	if bv, _ := mp.M.Get("b"); bv.Carrier() {
 		t.Fatal("changed member not recovered")
 	}
-	if av, _ := mp.M.Get("a"); av.Carrier {
+	if av, _ := mp.M.Get("a"); av.Carrier() {
 		t.Fatal("unchanged prefix member should survive")
 	}
 }
@@ -230,16 +230,16 @@ func TestPayloadMarkersInvoke(t *testing.T) {
 		core.NonePayload{},
 		core.ExtensionPayload{},
 		core.WordInfo{},
-		core.ForwardInfo{},
-		core.MarkInfo{},
-		core.MoveInfo{},
+		&core.ForwardInfo{},
+		&core.MarkInfo{},
+		&core.MoveInfo{},
 		core.SpliceInfo{},
 		core.ReturnCheckInfo{},
 		core.DefCleanupInfo{},
 		core.GuardFactInfo{},
 		core.FrameOpenInfo{},
 		core.ModuleDesc{},
-		core.FnDefInfo{},
+		&core.FnDefInfo{},
 		core.FnUndefInfo{},
 		core.DisjunctInfo{},
 		core.NegationInfo{},
@@ -269,9 +269,9 @@ func TestPayloadMarkersInvoke(t *testing.T) {
 		core.ErrorInfo{},
 		core.CalDurationData{},
 		core.DepScalarInfo{},
-		core.ClosurePayload{},
+		&core.ClosurePayload{},
 		core.PathonInfo{},
-		core.NewNone().Data,
+		core.NewNone().Data(),
 	}
 	for _, p := range payloads {
 		_ = p // the list itself is the pin: every entry satisfies Payload
@@ -292,7 +292,7 @@ func TestS7EvalXmlInterpCheckModeDynamicFailsToCompile(t *testing.T) {
 		t.Fatalf("EvalXmlInterp: %v", err)
 	}
 	// A dynamic interpolation under an active recorder yields an Xml carrier.
-	if !out.Carrier || !strings.Contains(out.Parent.Leaf(), "Xml") {
+	if !out.Carrier() || !strings.Contains(out.Parent().Leaf(), "Xml") {
 		t.Errorf("expected an Xml carrier, got %v", out)
 	}
 }
@@ -325,13 +325,13 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		taken := lit
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(),
+			Then: frag, ThenStk: stk, Out: &out, Pos: args[0].Pos(),
 		})
 		return []core.Value{out}
 	}
 
 	armOf := func(arg core.Value, then bool) (*EmitFragment, []core.Value, map[string]core.Value, *core.Value) {
-		if core.IsConcrete(arg) && arg.Parent.ConformsTo(core.TList) {
+		if core.IsConcrete(&arg) && arg.Parent().ConformsTo(core.TList) {
 			var restore func()
 			if then {
 				restore = core.ApplyGuardNarrowing(r, args[0])
@@ -356,7 +356,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 		testRecorderState(es).RecordBranch(core.BranchRecord{
 			Cond: args[0], HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 		})
 		if !es.Recorder().Active() {
 			return nil
@@ -372,7 +372,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	testRecorderState(es).RecordBranch(core.BranchRecord{
 		Cond: args[0], HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
 	})
 	return []core.Value{out}
 }
@@ -509,7 +509,7 @@ func TestInterpBodyInertBoundary(t *testing.T) {
 	// NEGATIVE: a carrier/dynamic InterpString (render only known at run time)
 	// must NOT bake — a stale check-mode render would diverge.
 	cInterp := interp
-	cInterp.Carrier = true
+	cInterp.SetCarrier(true)
 	if InterpMemberInert(cInterp) {
 		t.Error("InterpMemberInert(carrier `v${k}`) = true; a carrier InterpString must not bake")
 	}
@@ -533,10 +533,10 @@ func TestInterpBodyInertBoundary(t *testing.T) {
 	// fn scope noEvalBodiesInertScoped uses isInertConst, which keeps the body
 	// declined so it does not compile instead of baking a
 	// frame-local ${name} that would resolve against the registry.
-	if core.IsInertConst(interp) {
+	if core.IsInertConst(&interp) {
 		t.Error("isInertConst(`v${k}`) = true; the strict whitelist must NOT admit an InterpString")
 	}
-	if core.IsInertConst(core.NewList([]core.Value{interp})) {
+	if core.IsInertConst(addrOf(core.NewList([]core.Value{interp}))) {
 		t.Error("isInertConst([`v${k}`]) = true; the strict whitelist must keep an InterpString body declined")
 	}
 }
@@ -553,9 +553,9 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 	// isInertConst declines reaches here. A capture-free MACRO module fn (Registry
 	// set, Macro true) is exactly that case — resolveOperand declines it, so the
 	// `IsConcrete && no-captures` arm is what places the const operand.
-	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Registry: r, Macro: true}}
+	fn := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
+			Registry: r, Macro: true}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if !ok {
 		t.Fatalf("a capture-free fn that resolveOperand declines must bake as a const here")

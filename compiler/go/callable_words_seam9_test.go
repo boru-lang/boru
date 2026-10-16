@@ -29,7 +29,7 @@ func TestW9MutableInstanceRef(t *testing.T) {
 	}
 	// A value with a nil Parent but a concrete payload is not (and is not a
 	// bare type node, so it reaches the p==nil guard).
-	if mutableInstanceRef(core.Value{Data: core.IntPayload{N: 1}}) {
+	if mutableInstanceRef(core.ValueOf(&core.Datum{Data: core.IntPayload{N: 1}})) {
 		t.Error("a nil-Parent concrete value is not a mutable instance ref")
 	}
 	// A bare type node is excluded.
@@ -161,16 +161,16 @@ func TestW9KeyValCarrierRegistered(t *testing.T) {
 	// fallback probe is gone (ADR-012 stage 2). The v field carries the
 	// element type; a nil registry is fine (the parameter is unused).
 	out := keyValCarrier(nil, core.TInteger)
-	if !out.Parent.Equal(core.TKeyVal) {
-		t.Errorf("keyValCarrier should tag with TKeyVal, got %v", out.Parent)
+	if !out.Parent().Equal(core.TKeyVal) {
+		t.Errorf("keyValCarrier should tag with TKeyVal, got %v", out.Parent())
 	}
 	m, err := core.AsMap(out)
 	if err != nil {
 		t.Fatalf("keyValCarrier payload should be a readable map, got err=%v", err)
 	}
 	v, ok := m.Get(core.KeyValV)
-	if !ok || !v.Parent.Equal(core.TInteger) {
-		t.Errorf("the v field should carry the element type, got ok=%v %v", ok, v.Parent)
+	if !ok || !v.Parent().Equal(core.TInteger) {
+		t.Errorf("the v field should carry the element type, got ok=%v %v", ok, v.Parent())
 	}
 }
 
@@ -178,8 +178,8 @@ func TestW9EmptyFlexHookOperand(t *testing.T) {
 	newES := func() (*EmitState, core.Value) {
 		es := NewEmitState()
 		v := core.NewCarrier(core.TFlexList)
-		v.ID = "w9flex"
-		es.producedBy[v.ID] = producer{seq: es.seq, idx: 0}
+		core.SetID(&v, "w9flex")
+		es.stampProduced(&v, es.seq, 0)
 		return es, v
 	}
 

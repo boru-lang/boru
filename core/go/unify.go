@@ -131,10 +131,10 @@ func isR(v Value, t *Type, r *Registry) bool {
 // predicate-type branch (NUR099: the parameter-count route it replaced
 // was ADR-016's arity-keyed exception, and is gone).
 func IsDeclaredPredicateFn(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFunction) {
+	if v.Parent() == nil || !v.Parent().Equal(TFunction) {
 		return false
 	}
-	info, ok := v.Data.(FnDefInfo)
+	info, ok := v.Data().(*FnDefInfo)
 	return ok && info.Predicate
 }
 
@@ -142,12 +142,13 @@ func IsDeclaredPredicateFn(v Value) bool {
 // — `fnpred`'s half of the pair above. Total: a value carrying no FnDefInfo
 // comes back unchanged, so a caller never has to guard the payload shape.
 func MarkPredicateFn(v Value) Value {
-	info, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefOf(v.Data())
 	if !ok {
 		return v
 	}
+	info := *fd
 	info.Predicate = true
-	return NewValueRaw(v.Parent, info)
+	return NewValueRaw(v.Parent(), &info)
 }
 
 // resolvePredicateRef returns the predicate type's lattice NODE when v
@@ -174,19 +175,19 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 	}
 	var name string
 	switch {
-	case IsWord(v):
-		w, _ := AsWord(v)
+	case IsWord(&v):
+		w, _ := AsWord(&v)
 		name = w.Name
-	case v.Parent != nil && v.Parent.ConformsTo(TAtom) && v.Data != nil:
+	case v.Parent() != nil && v.Parent().ConformsTo(TAtom) && v.Data() != nil:
 		w, _ := AsAtom(v)
 		name = w
-	case IsBareTypeNode(v) && v.ID != "" && v.Name() != "":
+	case IsBareTypeNode(&v) && IDOf(&v) != "" && v.Name() != "":
 		name = v.Name()
 	case IsDeclaredPredicateFn(v):
 		// Direct FnDef body — try the FnDef's Name field. Predicate
 		// types installed via `def Pos fnpred […]` carry Name="Pos" on
 		// their FnDef payload after InstallType wires the binding.
-		if info, ok := v.Data.(FnDefInfo); ok {
+		if info, ok := v.Data().(*FnDefInfo); ok {
 			name = info.Name
 		}
 		if name == "" {
@@ -230,8 +231,8 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 // Value-ID equality is kept as a secondary probe for pass-minted values
 // whose payloads were rebuilt (aggregate clones re-slice Signatures).
 func sameFnConstruction(a, b Value) bool {
-	ai, aok := a.Data.(FnDefInfo)
-	bi, bok := b.Data.(FnDefInfo)
+	ai, aok := a.Data().(*FnDefInfo)
+	bi, bok := FnDefOf(b.Data())
 	if !aok || !bok {
 		return false
 	}
@@ -239,7 +240,7 @@ func sameFnConstruction(a, b Value) bool {
 		&ai.Signatures[0] == &bi.Signatures[0] {
 		return true
 	}
-	return a.ID != "" && a.ID == b.ID
+	return IDOf(&a) != "" && IDOf(&a) == IDOf(&b)
 }
 
 // disjunctHasPredicate reports whether any alternative in the
@@ -270,7 +271,7 @@ func unifyResolvedPredicate(def *Type, candidate Value, r *Registry) (Value, *Un
 // alternative via unifyInner with r so predicate-fn alternatives are
 // evaluated correctly.
 func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (val.Parent().Equal(TAny) || (&val).Equal(TAny)) {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 	for _, alt := range disj.Alternatives {
@@ -310,19 +311,19 @@ func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 				return a, nil
 			}
 		}
-		if def, ok := resolvePredicateRef(a, r); ok && b.Data != nil {
+		if def, ok := resolvePredicateRef(a, r); ok && b.Data() != nil {
 			return unifyResolvedPredicate(def, b, r)
 		}
-		if def, ok := resolvePredicateRef(b, r); ok && a.Data != nil {
+		if def, ok := resolvePredicateRef(b, r); ok && a.Data() != nil {
 			return unifyResolvedPredicate(def, a, r)
 		}
-		if IsDisjunct(a) {
+		if IsDisjunct(&a) {
 			disj, _ := AsDisjunct(a)
 			if disjunctHasPredicate(disj) {
 				return unifyDisjunctR(disj, b, r)
 			}
 		}
-		if IsDisjunct(b) {
+		if IsDisjunct(&b) {
 			disj, _ := AsDisjunct(b)
 			if disjunctHasPredicate(disj) {
 				return unifyDisjunctR(disj, a, r)
@@ -350,8 +351,8 @@ func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 	// evaluated to the DisjunctInfo body (the Stage 2 flip,
 	// design/legacy/TYPE-REPRESENTATION.1.ignore). One side only — a pair of
 	// constraint nodes keeps the table order.
-	aCons := IsBareTypeNode(a) && HasConstraintUnify(&a)
-	bCons := IsBareTypeNode(b) && HasConstraintUnify(&b)
+	aCons := IsBareTypeNode(&a) && HasConstraintUnify(&a)
+	bCons := IsBareTypeNode(&b) && HasConstraintUnify(&b)
 	if aCons != bCons {
 		if v, err, hit := dispatchUnifier(a, b, r); hit {
 			return v, err
@@ -487,8 +488,8 @@ func init() {
 			// Any yields the other (more specific) side.
 			return other, nil
 		}},
-		{func(v Value, _ ValueShape) bool { return IsClassType(v) }, unifyObjectType},
-		{func(v Value, _ ValueShape) bool { return typeParamLitNode(v) != nil }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
+		{func(v Value, _ ValueShape) bool { return IsClassType(&v) }, unifyObjectType},
+		{func(v Value, _ ValueShape) bool { return isTypeParamLit(&v) }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
 			return unifyTypeParam(ruling, typeParamLitNode(ruling), other, r)
 		}},
 	}
@@ -534,7 +535,7 @@ func foldDegenRoot(name string, root ValueShape) func(Value, Value, *Registry) (
 		// root — without this the `is` handler's post-unify parent-equality
 		// check wrongly rejected the match. Two literals (or two values)
 		// keep the prior first-checked (`ruling`) side.
-		if IsConcrete(other) && !IsConcrete(ruling) {
+		if IsConcrete(&other) && !IsConcrete(&ruling) {
 			return other, nil
 		}
 		return ruling, nil
@@ -548,14 +549,14 @@ func foldDegenRoot(name string, root ValueShape) func(Value, Value, *Registry) (
 // chain's registry, threaded into the membership walk (isR).
 func unifyObjectType(a, b Value, r *Registry) (Value, *UnifyError) {
 	ot, other := a, b
-	if !IsClassType(ot) {
+	if !IsClassType(&ot) {
 		ot, other = b, a
 	}
 	oi, err := AsClassType(ot)
 	if err != nil || oi.Type == nil {
 		return Value{}, unifyFail("object type has no minted node (declare it with def)", a, b)
 	}
-	if IsClassType(other) {
+	if IsClassType(&other) {
 		ooi, oerr := AsClassType(other)
 		if oerr == nil && ooi.ID == oi.ID {
 			return ot, nil
@@ -563,7 +564,7 @@ func unifyObjectType(a, b Value, r *Registry) (Value, *UnifyError) {
 		return Value{}, unifyFail("distinct object types do not unify", a, b)
 	}
 	// A bare node literal: the class node itself (or a subclass node).
-	if IsBareTypeNode(other) {
+	if IsBareTypeNode(&other) {
 		if (&other).ConformsTo(oi.Type) {
 			return other, nil
 		}
@@ -586,10 +587,10 @@ func unifySameOrSubtype(a, b Value) (Value, *UnifyError) {
 	bType := denotedType(b)
 
 	// Type literal unifies with any concrete whose type matches.
-	if IsBareTypeNode(a) && b.Data != nil && bType.ConformsTo(aType) {
+	if IsBareTypeNode(&a) && b.Data() != nil && bType.ConformsTo(aType) {
 		return b, nil
 	}
-	if IsBareTypeNode(b) && a.Data != nil && aType.ConformsTo(bType) {
+	if IsBareTypeNode(&b) && a.Data() != nil && aType.ConformsTo(bType) {
 		return a, nil
 	}
 
@@ -613,14 +614,14 @@ func unifySameOrSubtype(a, b Value) (Value, *UnifyError) {
 }
 
 // denotedType returns the lattice type the value denotes. For a bare
-// type literal the value IS the lattice node; for a carrier or
+// type literal it is the node the literal is a copy of; for a carrier or
 // concrete value it is the Parent. A Data==nil value with an empty ID
 // is a manually-constructed `Value{Parent: T}` (used in tests as a
 // stand-in for a value of type T); treat its Parent as the denoted
 // type since &v has no lattice identity to compare against.
 func denotedType(v Value) *Type {
-	if IsBareTypeNode(v) && v.ID != "" {
-		return &v
+	if IsBareTypeNode(&v) && IDOf(&v) != "" {
+		return literalNode(&v)
 	}
-	return v.Parent
+	return v.Parent()
 }

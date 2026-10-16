@@ -105,8 +105,8 @@ func (s *SQLiteStore) StoreTable(name string, td TableData) error {
 	colTypes := make([]*Type, len(columns))
 	for i, col := range columns {
 		fieldVal, _ := td.Record.Fields.Get(col)
-		colTypes[i] = fieldVal.Parent
-		colDefs[i] = quoteIdent(col) + " " + boruTypeToSQLType(fieldVal.Parent)
+		colTypes[i] = fieldVal.Parent()
+		colDefs[i] = quoteIdent(col) + " " + boruTypeToSQLType(fieldVal.Parent())
 	}
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", quoteIdent(name), strings.Join(colDefs, ", "))
 	if _, err := s.db.Exec(createSQL); err != nil {
@@ -198,7 +198,7 @@ func (s *SQLiteStore) Query(querySQL string, schema *RecordTypeInfo) (TableData,
 		colTypes[i] = TString // default
 		if schema != nil {
 			if fieldVal, ok := schema.Fields.Get(col); ok {
-				colTypes[i] = fieldVal.Parent
+				colTypes[i] = fieldVal.Parent()
 			}
 		}
 	}
@@ -238,25 +238,25 @@ func (s *SQLiteStore) Query(querySQL string, schema *RecordTypeInfo) (TableData,
 // boruValueToSQLParam converts a boru Value to a Go value suitable for
 // a SQL parameter placeholder, respecting the target column type.
 func boruValueToSQLParam(v Value, colType *Type) interface{} {
-	if v.Parent.Equal(TNone) {
+	if v.Parent().Equal(TNone) {
 		return nil
 	}
 
 	switch {
 	case colType.ConformsTo(TInteger):
 		// Column wants INTEGER. Coerce the value.
-		if v.Parent.ConformsTo(TInteger) {
+		if v.Parent().ConformsTo(TInteger) {
 			_as0, _ := AsInteger(v)
 			return _as0
 		}
 		// String that looks numeric → parse it.
-		if v.Parent.ConformsTo(TString) {
+		if v.Parent().ConformsTo(TString) {
 			_as1, _ := AsString(v)
 			if n, err := strconv.ParseInt(_as1, 10, 64); err == nil {
 				return n
 			}
 		}
-		if v.Parent.ConformsTo(TBoolean) {
+		if v.Parent().ConformsTo(TBoolean) {
 			_as2, _ := AsBoolean(v)
 			if _as2 {
 				return int64(1)
@@ -268,15 +268,15 @@ func boruValueToSQLParam(v Value, colType *Type) interface{} {
 
 	case colType.ConformsTo(TNumber):
 		// Column wants REAL.
-		if v.Parent.ConformsTo(TFloat) {
+		if v.Parent().ConformsTo(TFloat) {
 			_as3, _ := AsFloat(v)
 			return _as3
 		}
-		if v.Parent.ConformsTo(TInteger) {
+		if v.Parent().ConformsTo(TInteger) {
 			_as4, _ := AsInteger(v)
 			return float64(_as4)
 		}
-		if v.Parent.ConformsTo(TString) {
+		if v.Parent().ConformsTo(TString) {
 			_as5, _ := AsString(v)
 			if f, err := strconv.ParseFloat(_as5, 64); err == nil {
 				return f
@@ -286,14 +286,14 @@ func boruValueToSQLParam(v Value, colType *Type) interface{} {
 
 	case colType.ConformsTo(TBoolean):
 		// Column stored as INTEGER (0/1).
-		if v.Parent.ConformsTo(TBoolean) {
+		if v.Parent().ConformsTo(TBoolean) {
 			_as6, _ := AsBoolean(v)
 			if _as6 {
 				return int64(1)
 			}
 			return int64(0)
 		}
-		if v.Parent.ConformsTo(TString) {
+		if v.Parent().ConformsTo(TString) {
 			_as7, _ := AsString(v)
 			if _as7 == "true" {
 				return int64(1)
@@ -304,7 +304,7 @@ func boruValueToSQLParam(v Value, colType *Type) interface{} {
 
 	default:
 		// TEXT column.
-		if v.Parent.ConformsTo(TString) {
+		if v.Parent().ConformsTo(TString) {
 			_as8, _ := AsString(v)
 			return _as8
 		}

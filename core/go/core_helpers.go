@@ -90,12 +90,14 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	// The def word's handler records the carrier in the check-scoped
 	// fn-carrier side table instead (native installAndRecordDef), which the
 	// parse/mini/emit value-form macros consult for name resolution.
-	if body.Parent.Equal(TFunction) {
-		fnDef, ok := body.Data.(FnDefInfo)
+	if body.Parent().Equal(TFunction) {
+		// The bound fn is read where it lives; the binding's dispatch form
+		// is constructed under the binding's name below (installFnDef), so
+		// the payload is never copied to carry the name.
+		fnDef, ok := FnDefOf(body.Data())
 		if !ok {
 			return
 		}
-		fnDef.Name = name
 
 		// Module-wrapper rebinding: a trivial-delegation wrapper
 		// (`Body=[Word(inner)]`, all-unnamed params, carrying its own
@@ -111,7 +113,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
+		if rebound, ok := WrapperUnderName(r, name, *fnDef); ok {
 			r.Defs.Push(name, rebound)
 			if !shadow {
 				r.NoteBindTransition(BindDef, name, body.Pos())
@@ -150,8 +152,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			filtered := stack[:0:0]
 			changed := false
 			for _, entry := range stack {
-				oldFn, ok := entry.Data.(FnDefInfo)
-				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
+				oldFn, ok := entry.Data().(*FnDefInfo)
+				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, *fnDef) {
 					changed = true
 					dropped = entry
 					continue
@@ -234,7 +236,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// Compile this definition's own overloads and push a single
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
-		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		installFnDef(r, name, *fnDef, !shadow, isStackOnly)
 		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
 			// A FRESH capture-free def inside a branch arm the model cannot
 			// decide is speculative too (bound at run time only if the arm
@@ -259,8 +261,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	}
 
 	// FnUndefInfo body (from fn word in pair mode): remove targeted signatures.
-	if body.Parent.Equal(TFnUndef) {
-		undefInfo, ok := body.Data.(FnUndefInfo)
+	if body.Parent().Equal(TFnUndef) {
+		undefInfo, ok := body.Data().(FnUndefInfo)
 		if !ok {
 			return
 		}
@@ -269,27 +271,23 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	}
 
 	// ClassTypeInfo body: set the proper name in the type hierarchy.
-	if IsClassType(body) {
-		info, _ := AsClassType(body)
-		if info.Parent != nil {
-			// Child type: full name is Parent/Name (e.g. Ideal/Foo/Bar)
-			info.Name = info.Parent.Name + "/" + name
-		} else {
-			// Direct child of the Object kind: Ideal/Name
-			info.Name = "Ideal/" + name
-		}
+	if IsClassType(&body) {
+		// Child type: full name is Parent/Name (e.g. Ideal/Foo/Bar); a
+		// direct child of the Object kind is Ideal/Name.
+		decl, _ := AsClassType(body)
+		info := namedClassInfo(&decl, "Ideal", name)
 		// Register the name parts as known type parts.
 		for _, p := range strings.Split(info.Name, "/") {
 			r.RegisterPart(p)
 		}
 		// Preserve the body's *Type identity (set by the caller via
-		// NewClassType). InstallDef rewrites info.Name based on the
-		// def name and parent, then re-wraps the value — but the def
+		// NewClassType). InstallDef constructs the named info from the
+		// declaration's parts and wraps it anew — but the def
 		// itself stays the caller's choice. For builtin object types
 		// (Resource, Entity) the caller passes the canonical builtin
 		// *Type; for user-defined object types installed as defs the
 		// caller is responsible for minting first.
-		def := body.Parent
+		def := body.Parent()
 		if def == nil {
 			def = TClass
 		}
@@ -398,13 +396,15 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// body, and the cleanup tail (the nil-snapshot DefCleanup carrying
 	// the names to tear down, the zero-Pos ReturnCheck) never vary
 	// between calls. Build that
-	// skeleton ONCE here and per call only copy it with the arg values
-	// patched in — the old per-call rebuild minted ~7 ID-stamped tokens
-	// per frame (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). The per-call
-	// COPY is mandatory: execMatch's stampResultPos mutates the returned
-	// slice (ReturnCheck Pos, fn-value pos), and ForkConcurrent engines
-	// share this handler. Nothing keys on the shared tokens' Value.IDs —
-	// the tail probe and unwindFrameTail match structurally.
+	// skeleton ONCE here, and per call hand it back as it is — or, when
+	// the frame has unnamed-arg cells, a copy with the arg values patched
+	// in. The old per-call rebuild minted ~7 ID-stamped tokens per frame
+	// (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). Nothing writes
+	// the skeleton: execMatch stamps the results' positions in the tape
+	// cells it splices them into (stampResultCells), so every call and
+	// every ForkConcurrent engine sharing this handler reads one immutable
+	// run. Nothing keys on the shared tokens' Value.IDs — the tail probe and
+	// unwindFrameTail match structurally.
 	var (
 		skeleton   []Value
 		unnamedIdx []int // param positions whose args splice into the frame head
@@ -461,7 +461,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			}
 			// A named call: the frame's return count on this path too
 			// (NUR191, CallBoruStrict).
-			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, fnDefCopy.Name, SrcPos{})
+			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, name, SrcPos{})
 		}
 		// Retag typed-container args up front so EVERY access path in the body —
 		// named binding, the args stack (args.N), and unnamed body-token pushes —
@@ -473,16 +473,31 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// (see the construction-time comment above).
 		if !needsFrameState {
 			r.PushFnBaseline(nil)
-			// ONE allocation holds the frame's tokens and, past them, its
-			// args copy, pushed lazily (ArgsStack.PushLazy): the list a
-			// reader sees is built only when code the frame runs reads
-			// `args` — a literal read, a word macro bound after the fn, a
-			// computed body — and is always the call's real list (NUR350).
-			// The token slice handed back is capped at the skeleton, so no
-			// append to it can reach the args.
+			// The args copy is pushed lazily (ArgsStack.PushLazy): the
+			// list a reader sees is built only when code the frame runs
+			// reads `args` — a literal read, a word macro bound after the
+			// fn, a computed body — and is always the call's real list
+			// (NUR350). At run time a frame with no unnamed-arg cell is the
+			// skeleton itself; a frame with them — or any frame under an
+			// analysis pass, whose recorder stamps its key on a dispatch's
+			// results — is a copy patched with this call's args, ONE
+			// allocation holding the tokens and, past them, the args copy.
+			// Either token slice is capped at the skeleton, so no append to
+			// it can reach the args or the skeleton's spare.
 			n := len(skeleton)
-			buf := make([]Value, n+len(args))
-			argsCopy := buf[n:]
+			out := skeleton[:n:n]
+			var argsCopy []Value
+			if len(unnamedIdx) == 0 && !r.analysisActive() {
+				argsCopy = make([]Value, len(args))
+			} else {
+				buf := make([]Value, n+len(args))
+				argsCopy = buf[n:]
+				out = buf[:n:n]
+				copy(out, skeleton)
+				for k, i := range unnamedIdx {
+					out[1+k] = args[i]
+				}
+			}
 			copy(argsCopy, args)
 			if err := r.Args.PushLazy(argsCopy); err != nil {
 				r.PopFnBaseline()
@@ -496,16 +511,11 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					arg := args[i]
 					// Quote list params so they're treated as data values
 					// when referenced in the body, not expanded as code bodies.
-					if arg.Parent.Equal(TList) && !arg.Quoted {
-						arg.Quoted = true
+					if arg.Parent().Equal(TList) && !IsQuoted(&arg) {
+						SetQuoted(&arg, true)
 					}
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				}
-			}
-			out := buf[:n:n]
-			copy(out, skeleton)
-			for k, i := range unnamedIdx {
-				out[1+k] = args[i]
 			}
 			return out, nil
 		}
@@ -557,8 +567,8 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 				arg := args[i]
 				// Quote list params so they're treated as data values
 				// when referenced in the body, not expanded as code bodies.
-				if arg.Parent.Equal(TList) && !arg.Quoted {
-					arg.Quoted = true
+				if arg.Parent().Equal(TList) && !IsQuoted(&arg) {
+					SetQuoted(&arg, true)
 				}
 				InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				names = append(names, p.Name)
@@ -622,7 +632,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 // tags; a non-container param or a non-concrete arg passes through. Applied at
 // every param-binding site (execFnDefSig / CallBoru / InstallFnDef).
 func RetagTypedContainerParam(p FnParam, arg Value) Value {
-	if p.Pattern == nil || !IsConcrete(arg) {
+	if p.Pattern == nil || !IsConcrete(&arg) {
 		return arg
 	}
 	return RetagTypedContainerValue(*p.Pattern, arg)
@@ -642,7 +652,7 @@ func RetagTypedContainerParam(p FnParam, arg Value) Value {
 // its elements conform; no re-validate, no rebuild. A plain (immutable) arg is
 // re-unified — that validates AND recursively re-tags nested containers.
 func RetagTypedContainerValue(pat, arg Value) Value {
-	if !IsTypedMap(pat) && !IsTypedList(pat) {
+	if !IsTypedMap(&pat) && !IsTypedList(&pat) {
 		return arg
 	}
 	if IsFlexList(arg) || IsFlexMap(arg) {
@@ -656,21 +666,20 @@ func RetagTypedContainerValue(pat, arg Value) Value {
 	if !ok { //covergate:allow dispatch (matchSignature/checkParamContract) element-checks the concrete arg against pat and rejects any non-conformer with no_signature BEFORE param binding, so an arg reaching here always satisfies pat and Unify cannot fail
 		return arg
 	}
-	unified.Quoted = arg.Quoted // preserve the list-arg no-auto-eval quote
+	SetQuoted(&unified, IsQuoted(&arg)) // preserve the list-arg no-auto-eval quote
 	return unified
 }
 
 // RetagFlexElem retags a flex container v so its element type is elemType,
-// returning v's header with the tag set (the FlexListData/FlexMapData pointer
-// stays shared — identity preserved). When elemType is itself a typed container
+// returning v constructed under the tag (MintElemTyped: the
+// FlexListData/FlexMapData pointer stays shared — identity preserved). When elemType is itself a typed container
 // (a nested {:{:T}} / [:[:T]] flex), v's EXISTING children are recursively
 // retagged IN PLACE so a nested write enforces the contract at every depth
 // (FlexDeepCopy makes the whole tree flex, so every child is a mutable flex
 // container). Fixes the nested-container invariant hole (#8, Codex round 8).
 func RetagFlexElem(v Value, elemType Value) Value {
-	out := v
-	out.SetElemConstraint(elemType)
-	if IsTypedMap(elemType) || IsTypedList(elemType) {
+	out := MintElemTyped(&v, &elemType)
+	if IsTypedMap(&elemType) || IsTypedList(&elemType) {
 		if ci, err := AsChildType(elemType); err == nil {
 			retagFlexChildrenInPlace(v, ci.Child)
 		}
@@ -706,7 +715,7 @@ func isTypedContainerParam(p FnParam) bool {
 		return false
 	}
 	pat := *p.Pattern
-	return IsTypedMap(pat) || IsTypedList(pat)
+	return IsTypedMap(&pat) || IsTypedList(&pat)
 }
 
 // RetagTypedContainerArgs retags every concrete {:T}/[:T] argument with its
@@ -722,7 +731,7 @@ func RetagTypedContainerArgs(params []FnParam, args []Value) []Value {
 	out := args
 	cloned := false
 	for i := 0; i < len(args) && i < len(params); i++ {
-		if !IsConcrete(args[i]) || !isTypedContainerParam(params[i]) {
+		if !IsConcrete(&args[i]) || !isTypedContainerParam(params[i]) {
 			continue
 		}
 		if !cloned {
@@ -757,11 +766,9 @@ func InstallFnDef(r *Registry, name string, fnDef FnDefInfo, stackOnly ...bool) 
 // census). A registration proper (`def`, a module export) keeps it.
 func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnly ...bool) {
 	isStackOnly := len(stackOnly) > 0 && stackOnly[0]
-	entry := fnDef
-	entry.Name = name
-	entry.Signatures = compileFnSigs(r, name, fnDef, isStackOnly)
-	SortSignatures(entry.Signatures)
-	entry.MaxForwardArgs = calcMaxForwardArgs(entry.Signatures)
+	sigs := compileFnSigs(r, name, fnDef, isStackOnly)
+	SortSignatures(sigs)
+	entry := boundFnDef(&fnDef, name, sigs)
 	r.Defs.Push(name, NewFunction(entry))
 	// Construction-time body check (first-class, post-binding). Replaces the
 	// dynamic-help example eval's accidental side-channel: that eval ran each fn
@@ -782,6 +789,19 @@ func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnl
 	if hook && r.ready && r.OnRegisterHook != nil {
 		r.OnRegisterHook(name)
 	}
+}
+
+// boundFnDef constructs a binding's dispatch form: the authored definition
+// fd under the binding's name, with its dispatch-ready signatures — a new
+// function for the binding that shares fd's parts (its identity, home,
+// captures and metadata), never a write to fd (design/VALUE-NO-COPY.0.md
+// §5; the exceptions list's B6 constructions).
+func boundFnDef(fd *FnDefInfo, name string, sigs []Signature) FnDefInfo {
+	out := *fd
+	out.Name = name
+	out.Signatures = sigs
+	out.MaxForwardArgs = calcMaxForwardArgs(sigs)
+	return out
 }
 
 // compileFnSigs turns a definition's authored overloads into dispatch-
@@ -889,7 +909,7 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 	// from depth 2 to 1 while recording delta 0.)
 	for _, spec := range specs.Sigs {
 		for j := len(stack) - 1; j >= 0; j-- {
-			fnDef, ok := stack[j].Data.(FnDefInfo)
+			fnDef, ok := stack[j].Data().(*FnDefInfo)
 			if !ok {
 				continue
 			}
@@ -960,7 +980,7 @@ func CoerceBoolean(v Value) bool {
 	// so empty flex containers are falsey exactly like empty plain
 	// ones (PR #123 review note).
 	case nodeFamily(ValueType(v)).Equal(TList):
-		if !IsConcrete(v) {
+		if !IsConcrete(&v) {
 			return false
 		}
 		if elems, err := AsMutableList(v); err == nil {
@@ -969,7 +989,7 @@ func CoerceBoolean(v Value) bool {
 		// Non-[]Value list backings (table types, query builders) are truthy.
 		return true
 	case nodeFamily(ValueType(v)).Equal(TMap):
-		if !IsConcrete(v) {
+		if !IsConcrete(&v) {
 			return false
 		}
 		if om, err := AsMutableMap(v); err == nil {
@@ -1012,7 +1032,7 @@ func CowSet(store *StoreInstanceInfo, key string, val Value, r *Registry) {
 	}
 
 	// Track parent for nested Store values.
-	if childStore, ok := val.Data.(*StoreInstanceInfo); ok {
+	if childStore, ok := val.Data().(*StoreInstanceInfo); ok {
 		childStore.Parent = newStore
 		childStore.ParentKey = key
 	}
@@ -1103,7 +1123,7 @@ func CowDel(store *StoreInstanceInfo, key string, r *Registry) {
 // concrete shape (the payload Body being opaque). See
 // design/IDEAL.10.md §6.
 func IsHostTypeBody(v Value) bool {
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := v.Data().(ExtensionPayload)
 	if !ok {
 		return false
 	}
@@ -1123,7 +1143,7 @@ func IsHostTypeBody(v Value) bool {
 // IsLiteralTypeBody at the `type` install site, so paths that need
 // to discriminate code-bodies / fn-bodies / data-defs from explicit
 // type shapes (e.g. `inspect`) keep using IsTypeBody and stay sharp.
-func IsTypeBody(v Value) bool {
+func IsTypeBody(v *Value) bool {
 	// A bare lattice node IS a type; everything else asks its sealed
 	// payload through the one recognition seam (Payload.IsTypeContent,
 	// design/legacy/TYPE-REPRESENTATION.1.ignore §N4). The 18-arm shape
@@ -1137,10 +1157,10 @@ func IsTypeBody(v Value) bool {
 	// identity is a type body (a fn shape / predicate candidate),
 	// Data-bearing or check-mode carrier alike — exactly the legacy
 	// enumeration's parent-keyed arms.
-	if v.Parent != nil && (v.Parent.Equal(TFnUndef) || v.Parent.Equal(TFunction)) {
+	if v.Parent() != nil && (v.Parent().Equal(TFnUndef) || v.Parent().Equal(TFunction)) {
 		return true
 	}
-	return v.Data != nil && v.Data.IsTypeContent(&v)
+	return v.Data() != nil && v.Data().IsTypeContent(v.Parent())
 }
 
 // PredicateInputType returns the concrete input type of a declared
@@ -1161,13 +1181,13 @@ func IsTypeBody(v Value) bool {
 // Positive] …])` would have no dispatch surface — no value's Parent
 // is ever Positive.
 func PredicateInputType(v Value) *Type {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return nil
 	}
-	if !v.Parent.Equal(TFunction) {
+	if !v.Parent().Equal(TFunction) {
 		return nil
 	}
-	info, ok := v.Data.(FnDefInfo)
+	info, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return nil
 	}
@@ -1199,23 +1219,23 @@ func PredicateInputType(v Value) *Type {
 // installType to relax the strict IsTypeBody check in a way that
 // doesn't pollute the inspect / fn-shape paths.
 func IsLiteralTypeBody(v Value) bool {
-	if IsNone(v) {
+	if IsNone(&v) {
 		return true
 	}
 	switch {
-	case v.Parent.ConformsTo(TInteger),
-		v.Parent.ConformsTo(TFloat),
-		v.Parent.ConformsTo(TNumber),
-		v.Parent.ConformsTo(TString),
-		v.Parent.ConformsTo(TBoolean),
-		v.Parent.ConformsTo(TAtom),
-		v.Parent.ConformsTo(TMicron):
-		return v.Data != nil
+	case v.Parent().ConformsTo(TInteger),
+		v.Parent().ConformsTo(TFloat),
+		v.Parent().ConformsTo(TNumber),
+		v.Parent().ConformsTo(TString),
+		v.Parent().ConformsTo(TBoolean),
+		v.Parent().ConformsTo(TAtom),
+		v.Parent().ConformsTo(TMicron):
+		return v.Data() != nil
 	}
-	if v.Parent.Equal(TList) && v.Data != nil {
+	if v.Parent().Equal(TList) && v.Data() != nil {
 		return true
 	}
-	if v.Parent.Equal(TMap) && v.Data != nil {
+	if v.Parent().Equal(TMap) && v.Data() != nil {
 		return true
 	}
 	return false
@@ -1276,10 +1296,10 @@ outer:
 				continue
 			}
 			// cand's type is a strict subtype of other's.
-			if IsBareTypeNode(cand) && IsBareTypeNode(other) {
+			if IsBareTypeNode(&cand) && IsBareTypeNode(&other) {
 				continue outer
 			}
-			if IsConcrete(cand) && IsBareTypeNode(other) {
+			if IsConcrete(&cand) && IsBareTypeNode(&other) {
 				continue outer
 			}
 		}
@@ -1352,16 +1372,16 @@ func BaseValue(t *Type) (Value, error) {
 // For disjunctions (e.g. string|none), returns the base of the first
 // non-none alternative.
 func BaseValueForConstraint(constraint Value) (Value, error) {
-	if IsDisjunct(constraint) {
+	if IsDisjunct(&constraint) {
 		di, _ := AsDisjunct(constraint)
 		for _, alt := range di.Alternatives {
-			if IsTypeLiteral(alt) {
+			if IsTypeLiteral(&alt) {
 				return BaseValue(ValueType(alt))
 			}
 		}
 		return NewTypeLiteral(TNone), nil
 	}
-	if IsBareTypeNode(constraint) {
+	if IsBareTypeNode(&constraint) {
 		return BaseValue(ValueType(constraint))
 	}
 	return Value{}, fmt.Errorf("base: cannot determine base value for %s", constraint.String())
@@ -1380,7 +1400,7 @@ func omittedDefaultValue(p FnParam) (Value, error) {
 			m := NewOrderedMap()
 			for _, k := range oi.Fields.Keys() {
 				fv, _ := oi.Fields.Get(k)
-				if IsTypeBody(fv) {
+				if IsTypeBody(&fv) {
 					continue
 				}
 				m.Set(k, fv)
@@ -1516,7 +1536,7 @@ func ExpandOptionalSigs(name string, sigs []FnSig) []FnSig {
 // so it stays truthy — the same direction the non-Big arm takes for an
 // unreadable payload.
 func bigNumIsZero(v Value) bool {
-	if v.Parent.ConformsTo(TBigInteger) {
+	if v.Parent().ConformsTo(TBigInteger) {
 		bi, err := AsBigInteger(v)
 		return err == nil && bi != nil && bi.Sign() == 0
 	}

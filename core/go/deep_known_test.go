@@ -53,7 +53,7 @@ func TestDeepKnownDoesNotLowerUnknownOperands(t *testing.T) {
 	// A DYNAMIC operand was matched optimistically — declined even though
 	// it carries a payload, and declined nested too.
 	dyn := NewString("x")
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	if DeepKnown(dyn) {
 		t.Fatal("a dynamic value must not be DeepKnown")
 	}
@@ -64,7 +64,7 @@ func TestDeepKnownDoesNotLowerUnknownOperands(t *testing.T) {
 	}
 
 	// A nil-backed map payload has no interior to walk.
-	if DeepKnown(Value{Parent: TMap, Data: MapPayload{}}) {
+	if DeepKnown(Value{d: &Datum{Parent: TMap, Data: MapPayload{}}}) {
 		t.Fatal("a nil-backed map payload must not be DeepKnown")
 	}
 }

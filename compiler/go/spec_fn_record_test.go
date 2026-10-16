@@ -50,7 +50,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if !es.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) || es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
 		t.Fatal("an outer fn value makes the install a replace")
 	}
-	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 {
+	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, "", 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, "", 0) != -1 {
 		t.Fatal("no recorder or no registry compiles nothing")
 	}
 	if fnSigsDeclared(lambda) || fnSigsDeclared(core.NewInteger(1)) || fnSigsDeclared(core.NewFunction(core.FnDefInfo{Name: "n", Signatures: []core.Signature{{}}})) || !fnSigsDeclared(fnv) {
@@ -174,7 +174,7 @@ func TestSpecFnFailingToCompileSeatsAndFinalize(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 	es := NewEmitState()
 	es.specFnNames = map[string]bool{"f": true}
-	es.NoteValRead("id", "f")
+	es.NoteValRead(read("id"), "f")
 	if es.Compilable || !strings.Contains(es.Reason, "value read of the conditionally-defined fn `f`") {
 		t.Fatalf("a /v read declines: %q", es.Reason)
 	}

@@ -10,13 +10,13 @@ import "testing"
 // preserved): the real leaf was narrowDynamicUses. A def-bound dynamic Any
 // (a computed get result) consumed at a typed slot rebinds the NAME to a
 // narrowed bound, but TandValues assembled that bound as a fresh Value —
-// fresh ID, no producedBy home — so every LATER read of the name declined.
+// fresh ID, no recorded producer — so every LATER read of the name declined.
 // Two-part fix:
 //
-//  1. narrowDynamicUses re-stamps the narrowed rebind with the current
-//     binding's ID (the narrowing refines the STATIC bound of the SAME
-//     runtime value — no new value exists at run time), so producedBy still
-//     resolves the name to its original producing event.
+//  1. narrowDynamicUses gives the narrowed rebind the current binding's
+//     identity and recorder key (the narrowing refines the STATIC bound of
+//     the SAME runtime value — no new value exists at run time), so the
+//     recorder still resolves the name to its original producing event.
 //  2. resolveOperand's type-operand ID-collision guard exempts DYNAMIC
 //     carriers: the narrowed bound can be a typed-list shape ([:Any]) that
 //     trips IsTypeBody, but a dynamic carrier is a gradual VALUE stand-in,

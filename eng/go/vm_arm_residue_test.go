@@ -58,7 +58,7 @@ func armEntries(t *testing.T, r *core.Registry) *entryCollector {
 // the same answer core's inactive default gives (core compiled_runtime_test),
 // rather than a nil dereference inside the stamp.
 func TestLazyStampNilSigDeclines(t *testing.T) {
-	if (vmCompiledRuntime{}).LazyStamp(seam7Reg(t), core.FnDefInfo{Name: "f"}, nil, core.SrcPos{}) {
+	if (vmCompiledRuntime{}).LazyStamp(seam7Reg(t), &core.FnDefInfo{Name: "f"}, "f", nil, core.SrcPos{}) {
 		t.Error("a nil signature must report no unit")
 	}
 }
@@ -251,7 +251,7 @@ func TestReStepLandingFireIslands(t *testing.T) {
 			}),
 		}},
 	})
-	if vmNativeApplicable(r, fn.Data.(core.FnDefInfo)) {
+	if vmNativeApplicable(r, &fn) {
 		t.Fatal("fixture reads as natively applicable — it would take the native rung, not the island")
 	}
 	entries := armEntries(t, r)
@@ -283,7 +283,7 @@ func TestReStepLandingIslandRaises(t *testing.T) {
 	r := seam7Reg(t)
 	r.StepLimit = 1
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	_, _, err := vc.reStepLanding(r, 0, 0, []core.Value{{Parent: core.TFunction}}, []core.SrcPos{{Row: 4, Col: 2}}, 0, compiler.LandingWord{})
+	_, _, err := vc.reStepLanding(r, 0, 0, []core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction})}, []core.SrcPos{{Row: 4, Col: 2}}, 0, compiler.LandingWord{})
 	wantErr(t, err, "evaluation_limit")
 	if ae, ok := err.(*core.BoruError); !ok || ae.Row != 4 {
 		t.Errorf("the island's raise must be stamped at the landing, got %v", err)

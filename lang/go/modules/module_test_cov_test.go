@@ -156,7 +156,7 @@ func TestTestCovInvokeAtomAndOutcomes(t *testing.T) {
 	}
 	// A subject that leaves nothing returns None.
 	out3 := runTestBoru(t, r, `def noop fn [[] [] []]  Test.invoke noop/q []`)
-	if !native.IsNone(out3[len(out3)-1]) {
+	if !native.IsNone(&out3[len(out3)-1]) {
 		t.Errorf("empty-stack invoke should return None, got %v", out3[len(out3)-1])
 	}
 }
@@ -195,7 +195,7 @@ func TestTestCovCheckPropErrorArms(t *testing.T) {
 				t.Fatalf("%s should fail the property", c.name)
 			}
 			errV, _ := m.Get("error")
-			if native.IsNone(errV) {
+			if native.IsNone(&errV) {
 				t.Fatalf("%s should record an error", c.name)
 			}
 			if !strings.Contains(errV.String(), c.errWant) {
@@ -225,6 +225,28 @@ func TestTestCovCheckPropUnrecordableGen(t *testing.T) {
 	}
 	if shrunk > failing {
 		t.Errorf("shrunk-input %d must be <= failing-input %d", shrunk, failing)
+	}
+}
+
+// TestTestCovCheckPropFlexBodies covers check-prop over flex bodies: the
+// raw-body frame runs a snapshot of a flex body's tokens (its view is
+// live, and the stamped sig is cached), and the property holds or fails as
+// a plain body's would.
+func TestTestCovCheckPropFlexBodies(t *testing.T) {
+	r := testRegistry(t)
+	for _, c := range []struct {
+		src  string
+		want bool
+	}{
+		{`Test.check-prop "fx" (flex (quote [42])) (flex (quote [40 gt])) 3 1 0`, true},
+		{`Test.check-prop "fy" (flex (quote [15])) (flex (quote [10 lt])) 2 1 0`, false},
+	} {
+		res := runTestBoru(t, r, c.src)
+		m, _ := native.AsMap(res[0])
+		okV, _ := m.Get("ok")
+		if ok, _ := okV.AsConcreteBoolean(); ok != c.want {
+			t.Errorf("%s: ok = %v, want %v (%v)", c.src, ok, c.want, res[0])
+		}
 	}
 }
 
@@ -259,21 +281,21 @@ func TestTestCovResolveTestExportDirect(t *testing.T) {
 	// A Function value without a registry gains one.
 	fn := native.NewFunction(native.FnDefInfo{Name: "f"})
 	got := resolveTestExport(r, fn)
-	if info, ok := got.Data.(native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := got.Data().(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("Function without registry should be stamped with modReg")
 	}
 
 	// An FnDef-parented value keeps its parent.
 	fd := native.NewFunction(native.FnDefInfo{Name: "g"})
 	got2 := resolveTestExport(r, fd)
-	if !got2.Parent.Equal(native.TFunction) {
-		t.Errorf("FnDef parent should be preserved, got %s", got2.Parent.String())
+	if !got2.Parent().Equal(native.TFunction) {
+		t.Errorf("FnDef parent should be preserved, got %s", got2.Parent().String())
 	}
 
 	// A Function that already carries a registry is returned as-is.
 	fn3 := native.NewFunction(native.FnDefInfo{Name: "h", Registry: r})
 	got3 := resolveTestExport(r, fn3)
-	if info, ok := got3.Data.(native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := got3.Data().(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("already-stamped Function should keep its registry")
 	}
 
@@ -287,7 +309,7 @@ func TestTestCovResolveTestExportDirect(t *testing.T) {
 	// A bound def holding a registry-less Function gets stamped too.
 	r.Defs.Push("bound-fn", native.NewFunction(native.FnDefInfo{Name: "bf"}))
 	res2 := resolveTestExport(r, native.NewWord("bound-fn"))
-	if info, ok := res2.Data.(native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := res2.Data().(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("bound Function should be stamped with modReg")
 	}
 
@@ -346,7 +368,7 @@ func TestTestCovResolveTestExportTypeBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := resolveTestExport(r, native.NewWord("CovT"))
-	if !native.IsBareTypeNode(res) {
+	if !native.IsBareTypeNode(&res) {
 		t.Errorf("a type binding should resolve to its type body, got %s", res.String())
 	}
 }
@@ -406,14 +428,14 @@ func TestTestCovIsTruthyDirect(t *testing.T) {
 // and dotted subject names.
 func TestTestCovDottedWordTokensDirect(t *testing.T) {
 	plain := dottedWordTokens("sqrt")
-	if len(plain) != 1 || !native.IsWord(plain[0]) {
+	if len(plain) != 1 || !native.IsWord(&plain[0]) {
 		t.Fatalf("plain name should expand to one Word, got %v", plain)
 	}
 	dotted := dottedWordTokens("A.b.c")
 	if len(dotted) != 5 {
 		t.Fatalf("A.b.c should expand to 5 tokens, got %v", dotted)
 	}
-	w, _ := native.AsWord(dotted[1])
+	w, _ := native.AsWord(&dotted[1])
 	if w.Name != "dot" {
 		t.Errorf("second token should be the dot word, got %v", dotted[1])
 	}

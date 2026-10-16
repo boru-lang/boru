@@ -91,7 +91,7 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
 func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
-	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body)) {
+	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(&entry.Body) && !IsBareTypeNode(&entry.Body)) {
 		return nil
 	}
 	switch {
@@ -158,10 +158,10 @@ func ReserveTypeParts(r *Registry, name string) {
 func applyTwinSigUndef(r *Registry, name string, removed Value) {
 	stack := r.Defs.Stack(name)
 	for j := len(stack) - 1; j >= 0; j-- {
-		if stack[j].ID != removed.ID {
+		if IDOf(&stack[j]) != IDOf(&removed) {
 			continue
 		}
-		if removed.ID == "" && !ValuesEqual(stack[j], removed) {
+		if IDOf(&removed) == "" && !ValuesEqual(stack[j], removed) {
 			continue
 		}
 		rest := append([]Value(nil), stack[:j]...)

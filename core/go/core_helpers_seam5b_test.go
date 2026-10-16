@@ -83,7 +83,7 @@ func TestS5bEInstallDefFnUndefBadPayload(t *testing.T) {
 	r := newTestRegistry(t)
 	// Parent says FnUndef but the payload is not FnUndefInfo: InstallDef
 	// must return without binding anything.
-	bad := Value{Parent: TFnUndef, Data: ListPayload{}}
+	bad := Value{d: &Datum{Parent: TFnUndef, Data: ListPayload{}}}
 	InstallDef(r, "s5beundef", bad)
 	if _, ok := r.Defs.Top("s5beundef"); ok {
 		t.Error("bad FnUndef payload must not install a binding")
@@ -123,8 +123,8 @@ func TestS5bEInstallDefClassTypeNaming(t *testing.T) {
 	if info.Name != "Ideal/S5beR" {
 		t.Errorf("root class name = %q, want Ideal/S5beR", info.Name)
 	}
-	if got.Parent == nil || !got.Parent.Equal(TClass) {
-		t.Errorf("root class def parent = %v, want TClass", got.Parent)
+	if got.Parent() == nil || !got.Parent().Equal(TClass) {
+		t.Errorf("root class def parent = %v, want TClass", got.Parent())
 	}
 }
 
@@ -137,7 +137,7 @@ func TestS5bEBuildFnBodyHandlerQuotesListParam(t *testing.T) {
 	meta := &FnFrameMeta{Name: "s5bef"}
 	h := buildFnBodyHandler(r, "s5bef", s, FnDefInfo{}, meta)
 	arg := NewList([]Value{NewInteger(1)})
-	if arg.Quoted {
+	if IsQuoted(&arg) {
 		t.Fatal("test premise: arg starts unquoted")
 	}
 	out, err := h([]Value{arg}, nil, nil, r)
@@ -149,8 +149,8 @@ func TestS5bEBuildFnBodyHandlerQuotesListParam(t *testing.T) {
 	}
 	// The installed frame binding must carry the quoted copy.
 	bound, ok := r.Defs.Top("s5bex")
-	if !ok || !bound.Quoted {
-		t.Errorf("list param must be installed quoted (ok=%v quoted=%v)", ok, bound.Quoted)
+	if !ok || !IsQuoted(&bound) {
+		t.Errorf("list param must be installed quoted (ok=%v quoted=%v)", ok, IsQuoted(&bound))
 	}
 }
 
@@ -264,7 +264,7 @@ func TestS5bESimplifyDisjunctConcreteSubsumedByLiteral(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected the concrete 5 to be subsumed by Number, got %v", out)
 	}
-	if !IsBareTypeNode(out[0]) {
+	if !IsBareTypeNode(&out[0]) {
 		t.Errorf("survivor should be the Number literal, got %v", out[0])
 	}
 }
@@ -291,8 +291,8 @@ func TestS5bEExpandOptionalSigsUnnamedAndBarrierClamp(t *testing.T) {
 	// The unnamed present param is spliced via (args N dot).
 	sawArgs := false
 	for _, tok := range exp.Body() {
-		if IsWord(tok) {
-			if w, _ := AsWord(tok); w.Name == "args" {
+		if IsWord(&tok) {
+			if w, _ := AsWord(&tok); w.Name == "args" {
 				sawArgs = true
 			}
 		}
@@ -314,7 +314,7 @@ func TestS5bEResolveRefNilAndTypeBinding(t *testing.T) {
 	if !ok {
 		t.Fatal("type binding should resolve")
 	}
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		t.Errorf("expected the stored type body, got %v", v)
 	}
 }
@@ -489,7 +489,7 @@ func TestS5bESubstituteSelfReturns(t *testing.T) {
 		Returns: []*Type{TSelf, nil},
 	}
 	out := SubstituteSelf(spec, TInteger)
-	if out.Returns[0] == nil || out.Returns[0].ID != TInteger.ID {
+	if out.Returns[0] == nil || IDOf(out.Returns[0]) != IDOf(TInteger) {
 		t.Errorf("Self return not substituted: %v", out.Returns[0])
 	}
 	if out.Returns[1] != nil {
@@ -510,17 +510,17 @@ func TestS5bEUnifySurfaceClassTypeOperand(t *testing.T) {
 	info := &SurfaceInfo{
 		Name:     "S5beS2",
 		Required: NewOrderedMap(),
-		Conform:  map[string]bool{TClass.ID: true},
+		Conform:  map[string]bool{IDOf(TClass): true},
 		Type:     TSurface,
 	}
 	surf := NewValueRaw(TSurface, info)
 	other := NewClassType(TClass, ClassTypeInfo{Name: "Ideal/S5beK", Fields: NewOrderedMap()})
-	other.Carrier = true // abstract: routes to the type-containment switch
+	other.SetCarrier(true) // abstract: routes to the type-containment switch
 	got, err := unifySurface(surf, other)
 	if err != nil {
 		t.Fatalf("class type conforming via Conform set should unify: %v", err)
 	}
-	if !IsClassType(got) {
+	if !IsClassType(&got) {
 		t.Errorf("unify result should be the class-type side, got %v", got)
 	}
 }
@@ -541,10 +541,10 @@ func TestS5bESurfaceUnifierFallbacks(t *testing.T) {
 
 func TestS5bEMapFieldPayloadMismatch(t *testing.T) {
 	m := NewOrderedMap()
-	m.Set("s", Value{Parent: TString, Data: IntPayload{N: 1}})
-	m.Set("i", Value{Parent: TInteger, Data: StrPayload{S: "x"}})
-	m.Set("b", Value{Parent: TBoolean, Data: StrPayload{S: "x"}})
-	m.Set("f", Value{Parent: TFloat, Data: StrPayload{S: "x"}})
+	m.Set("s", Value{d: &Datum{Parent: TString, Data: IntPayload{N: 1}}})
+	m.Set("i", Value{d: &Datum{Parent: TInteger, Data: StrPayload{S: "x"}}})
+	m.Set("b", Value{d: &Datum{Parent: TBoolean, Data: StrPayload{S: "x"}}})
+	m.Set("f", Value{d: &Datum{Parent: TFloat, Data: StrPayload{S: "x"}}})
 
 	if _, ok := MapFieldString(m, "s"); ok {
 		t.Error("MapFieldString must fail on a non-string payload")

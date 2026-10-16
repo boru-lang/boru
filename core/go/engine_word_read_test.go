@@ -10,7 +10,9 @@ import (
 type wordReadEmit struct {
 	EmitRecorder
 	noted []string
-	vals  []string
+	// vals are the identities of the holders NoteValRead was handed, one per
+	// read.
+	vals []string
 	// valNames are the binding names NoteValRead was handed, one per read.
 	valNames []string
 }
@@ -19,8 +21,8 @@ func (w *wordReadEmit) Active() bool { return true }
 func (w *wordReadEmit) NoteWordRead(v Value, name string, _ SrcPos) {
 	w.noted = append(w.noted, name)
 }
-func (w *wordReadEmit) NoteValRead(id, name string) {
-	w.vals = append(w.vals, id)
+func (w *wordReadEmit) NoteValRead(v *Value, name string) {
+	w.vals = append(w.vals, IDOf(v))
 	w.valNames = append(w.valNames, name)
 }
 
@@ -59,7 +61,7 @@ func TestNoteWordReadClassifies(t *testing.T) {
 	e.noteWordRead(NewDynamicCarrier(TAny), "x", SrcPos{})
 	e.noteWordRead(NewCarrier(TInteger), "n", SrcPos{})
 	quoted := NewCarrier(TFunction)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e.noteWordRead(quoted, "q", SrcPos{})
 	if len(es.noted) != 2 || es.noted[0] != "g" || es.noted[1] != "x" {
 		t.Errorf("fn-typed and gradual reads are noted, a concrete or quoted one is not: %v", es.noted)

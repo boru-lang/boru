@@ -86,7 +86,7 @@ func debugParseHandler(args []native.Value, _ map[string]native.Value, _ []nativ
 		return nil, r.BoruError("parse_error", fmt.Sprintf("Debug.parse: %v", perr), "Debug.parse")
 	}
 	lst := native.NewList(tokens)
-	lst.Quoted = true
+	native.SetQuoted(&lst, true)
 	return []native.Value{lst}, nil
 }
 
@@ -138,8 +138,8 @@ func debugNatives() []native.NativeFunc {
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					v := args[0]
 					typeName := "Any"
-					if v.Parent != nil {
-						typeName = v.Parent.String()
+					if v.Parent() != nil {
+						typeName = v.Parent().String()
 					}
 					fmt.Fprintf(r.Output, "%s = %s\n", typeName, native.FormatForPrint(v))
 					return []native.Value{v}, nil
@@ -346,7 +346,7 @@ func debugNatives() []native.NativeFunc {
 					if err != nil {
 						return nil, err
 					}
-					res, terr := native.RunTrace(r, append([]native.Value(nil), body.Slice()...), r.Output)
+					res, terr := native.RunTrace(r, body.Elems(), r.Output)
 					if terr != nil {
 						return nil, terr
 					}
@@ -386,7 +386,7 @@ func debugNatives() []native.NativeFunc {
 					// so the interpreter is not a fallback here — it is the
 					// instrument. Compiling the body would empty the tally.
 					restoreAtt := r.SetInterpAttribution("debug-observe")
-					_, rerr := sub.Run(append([]native.Value(nil), body.Slice()...))
+					_, rerr := sub.Run(body.Elems())
 					restoreAtt()
 					if rerr != nil {
 						return nil, rerr
@@ -437,7 +437,7 @@ func debugNatives() []native.NativeFunc {
 					if derr != nil {
 						return nil, derr
 					}
-					_, form, cerr := stackform.Compile(sub, append([]native.Value(nil), body.Slice()...))
+					_, form, cerr := stackform.Compile(sub, body.Elems())
 					if cerr != nil {
 						return nil, r.BoruError("debug_error",
 							fmt.Sprintf("Debug.disasm: %v", cerr), "Debug.disasm")
@@ -536,7 +536,7 @@ func bodyAnalysisReturns(fixed *native.Type) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		if len(args) > 0 {
 			body := args[0]
-			if native.IsConcrete(body) && body.Parent != nil && body.Parent.ConformsTo(native.TList) {
+			if native.IsConcrete(&body) && body.Parent() != nil && body.Parent().ConformsTo(native.TList) {
 				native.RunCarrierBody(r, body)
 			}
 		}
@@ -560,7 +560,7 @@ func runCounted(parent *native.Registry, bodyVal native.Value, op string) ([]nat
 	// different machine and answer a different number — this is interpretation
 	// the end state must PERMIT, not interpretation it forbids.
 	restoreAtt := parent.SetInterpAttribution("debug-observe")
-	res, rerr := sub.Run(append([]native.Value(nil), body.Slice()...))
+	res, rerr := sub.Run(body.Elems())
 	restoreAtt()
 	if rerr != nil {
 		return nil, 0, rerr
@@ -646,7 +646,7 @@ func profileRows(counts map[string]int) native.Value {
 func sizeOfValue(v native.Value) int {
 	const nodeOverhead = int(unsafe.Sizeof(native.Value{}))
 	size := nodeOverhead
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return size
 	}
 	switch {
@@ -656,7 +656,7 @@ func sizeOfValue(v native.Value) int {
 		}
 	case isListValue(v):
 		if lst, lerr := native.AsList(v); lerr == nil && !lst.IsNil() {
-			for _, e := range lst.Slice() {
+			for _, e := range lst.Elems() {
 				size += sizeOfValue(e)
 			}
 		}
@@ -687,7 +687,7 @@ func (c *shapeCensus) walk(v native.Value, depth int) {
 	case isListValue(v):
 		c.lists++
 		if lst, lerr := native.AsList(v); lerr == nil && !lst.IsNil() {
-			for _, e := range lst.Slice() {
+			for _, e := range lst.Elems() {
 				c.walk(e, depth+1)
 			}
 		}
@@ -714,13 +714,13 @@ func (c *shapeCensus) walk(v native.Value, depth int) {
 // even though they share the family Parent) are classified as plain nodes
 // and never reach an accessor — the no-panic discipline.
 func isStringValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TString)
+	return native.IsConcrete(&v) && v.Is(native.TString)
 }
 
 func isListValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TList)
+	return native.IsConcrete(&v) && v.Is(native.TList)
 }
 
 func isMapValue(v native.Value) bool {
-	return native.IsConcrete(v) && v.Is(native.TMap)
+	return native.IsConcrete(&v) && v.Is(native.TMap)
 }

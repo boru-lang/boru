@@ -25,7 +25,7 @@ func TestClosureAsFnDefArms(t *testing.T) {
 	}}
 	closure := compiler.NewClosure(prog, 0, nil)
 
-	if v, ok := rt.ClosureAsFnDef(r, core.NewInteger(1)); ok || !v.Parent.Equal(core.TInteger) {
+	if v, ok := rt.ClosureAsFnDef(r, core.NewInteger(1)); ok || !v.Parent().Equal(core.TInteger) {
 		t.Error("not a closure: declined with the value")
 	}
 	if _, ok := rt.ClosureAsFnDef(r, closure); ok {
@@ -53,9 +53,9 @@ func TestClosureAsFnDefArms(t *testing.T) {
 	if !ok {
 		t.Fatal("a lambda unit with a contract bridges")
 	}
-	fd, isFn := fnv.Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(fnv.Data())
 	if !isFn || len(fd.Signatures) != 1 || !fd.Anonymous || fd.Signatures[0].TotalArgs() != 1 {
-		t.Fatalf("one signature over the unit's param, Anonymous as the lambda: %+v", fd)
+		t.Fatalf("one signature over the unit's param, Anonymous as the lambda: %+v", *fd)
 	}
 	out, err := fd.Signatures[0].DispatchHandler()([]core.Value{core.NewInteger(5)}, nil, nil, r)
 	if err != nil || len(out) != 1 || len(seen) != 1 {
@@ -73,7 +73,7 @@ func TestClosureAsFnDefArms(t *testing.T) {
 	// where the interpreter's named fn value fires.
 	prog.Fns[0].Lambda = false
 	fnv, _ = rt.ClosureAsFnDef(r, closure)
-	if fd := fnv.Data.(core.FnDefInfo); fd.Anonymous {
+	if fd := fnv.Data().(*core.FnDefInfo); fd.Anonymous {
 		t.Error("a named unit's bridge is not anonymous")
 	}
 }

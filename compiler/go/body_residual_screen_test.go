@@ -27,8 +27,8 @@ func TestOpsHaveVariadicResult(t *testing.T) {
 }
 
 // regionPrefixShapeOps is the OPERAND form of the region-prefix shape, which
-// a fn unit needs because the residual VALUES a body leaves carry identities
-// producedBy does not index (a branch merge's carrier is minted at the join).
+// a fn unit needs because the residual VALUES a body leaves carry no recorder
+// key of the event (a branch merge's carrier is minted at the join).
 // Its three conditions, each in both directions.
 func TestRegionPrefixShapeOps(t *testing.T) {
 	es := NewEmitState()

@@ -62,6 +62,17 @@ jobs:
       - run: scripts/ci-steps.sh lint-assertions
       - run: scripts/ci-steps.sh lint
 
+  # The no-copy ratchet (design/VALUE-NO-COPY.0.md, phase 0): every
+  # module's copies of a core.Value, single and bulk, held to the ceilings
+  # in tools/vetcopies/ceilings.tsv. The vet lanes above run without
+  # copylocks, so this job is also the one that sees a copied sync.Mutex.
+  vet-copies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh vet-copies
+
   # The module suites, three ways: the small modules together; lang/go
   # split into its root package and the rest; cmd/go with test/go's
   # non-corpus packages.

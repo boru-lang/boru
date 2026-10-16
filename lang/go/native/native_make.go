@@ -62,9 +62,9 @@ func makeScalarReturns() ReturnsFunc {
 			// analysis time (PR #346 review). A failed construction falls
 			// through to the fresh carrier — the validation above already
 			// carried the diagnostic.
-			if r != nil && core.IsBareTypeNode(args[0]) && core.IsConcrete(args[1]) {
+			if r != nil && core.IsBareTypeNode(&args[0]) && core.IsConcrete(&args[1]) {
 				if id := r.Ideals.For(args[0]); id != nil && id.PureInstantiate && id.Instantiate != nil {
-					if out, err := id.Instantiate(args[0], args[1], r); err == nil && len(out) == 1 && core.IsConcrete(out[0]) {
+					if out, err := id.Instantiate(args[0], args[1], r); err == nil && len(out) == 1 && core.IsConcrete(&out[0]) {
 						return out
 					}
 				}
@@ -85,7 +85,7 @@ func makeNodeReturns() ReturnsFunc {
 	fresh := ReturnsFreshInstance(0)
 	return func(args []Value, r *Registry) []Value {
 		out := fresh(args, r)
-		if len(args) != 2 || len(out) != 1 || !core.IsBareTypeNode(args[0]) {
+		if len(args) != 2 || len(out) != 1 || !core.IsBareTypeNode(&args[0]) {
 			return out
 		}
 		target, src := args[0], args[1]

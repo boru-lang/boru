@@ -106,7 +106,7 @@ func bodyMapShape(r *core.Registry, schema core.Value) bodyMapFacts {
 		data: &bodyMapWalk{facts: &quoted, reg: r, seen: map[string]bool{}}}
 	for _, k := range m.Keys() {
 		v, _ := m.Get(k)
-		if !core.IsConcrete(v) {
+		if !core.IsConcrete(&v) {
 			facts.computed = true
 			continue
 		}
@@ -150,7 +150,7 @@ type bodyMapWalk struct {
 func (w *bodyMapWalk) seq(toks []core.Value) {
 	for i := 0; i < len(toks); i++ {
 		w.walk(toks[i])
-		if wi, err := core.AsWord(toks[i]); err == nil && wi.Name == "quote" && i+1 < len(toks) && !core.IsParenExpr(toks[i+1]) {
+		if wi, err := core.AsWord(&toks[i]); err == nil && wi.Name == "quote" && i+1 < len(toks) && !core.IsParenExpr(&toks[i+1]) {
 			i++
 			w.quotedData(toks[i])
 		}
@@ -160,7 +160,7 @@ func (w *bodyMapWalk) seq(toks []core.Value) {
 // quotedData hands v, quoted data, to the data walker (the data walker
 // reads it where it stands).
 func (w *bodyMapWalk) quotedData(v core.Value) {
-	v.Quoted = false
+	core.SetQuoted(&v, false)
 	if w.data != nil {
 		w.data.walk(v)
 		return
@@ -174,20 +174,20 @@ func (w *bodyMapWalk) quotedData(v core.Value) {
 // no walk can list — a splice, an interpolated hole, a sugar marker — makes
 // the body opaque.
 func (w *bodyMapWalk) walk(v core.Value) {
-	if v.Quoted {
+	if core.IsQuoted(&v) {
 		w.quotedData(v)
 		return
 	}
-	if core.IsSplice(v) || core.IsInterpString(v) || core.IsXmlInterp(v) || core.IsSugar(v) {
+	if core.IsSplice(&v) || core.IsInterpString(&v) || core.IsXmlInterp(&v) || core.IsSugar(&v) {
 		w.facts.opaque = true
 		return
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.WordInfo:
 		w.facts.names[d.Name] = true
 		w.callee(d.Name)
-	case core.FnDefInfo:
-		w.fnBodies(&d)
+	case *core.FnDefInfo:
+		w.fnBodies(d)
 	case core.ListPayload:
 		w.seq(d.Elems)
 	case core.MapPayload:

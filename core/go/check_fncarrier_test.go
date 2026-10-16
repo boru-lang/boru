@@ -96,11 +96,11 @@ func TestStepWordCompileCarrierSubstitute(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("substituting stepWord errored: %v", err)
 	}
 	got := e.Tape.At(0)
-	if !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+	if !got.Carrier() || got.Parent() == nil || !got.Parent().ConformsTo(TFunction) {
 		t.Errorf("stepWord did not substitute the carrier: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -129,7 +129,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 		t.Fatalf("/v step errored: %v", err)
 	}
 	got := e.Tape.At(0)
-	if got.Undefined || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+	if IsUndefined(&got) || !got.Carrier() || got.Parent() == nil || !got.Parent().ConformsTo(TFunction) {
 		t.Errorf("a /v read of a carrier-bound name must substitute the carrier: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -144,7 +144,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "nope", ArgCount: -1, ForceVal: true}); err != nil {
 		t.Fatalf("/v step of an unbound name errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
+	if got := e.Tape.At(0); !IsUndefined(&got) {
 		t.Errorf("an unbound /v read must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
@@ -164,7 +164,7 @@ func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
 	NoteCheckFnCarrierBind(r, "f", NewCarrier(TFunction))
 	r.Defs.Push("d", NewInteger(7))
 	e := NewTop(r)
-	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
+	if got, ok := e.DefTop("f"); !ok || !got.Carrier() || !got.Parent().ConformsTo(TFunction) {
 		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
 	}
 	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
@@ -193,10 +193,10 @@ func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !IsFnTypedCarrier(&got) {
 		t.Errorf("plain check must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -228,10 +228,10 @@ func TestStepWordCompileCarrierMissStaysUndefined(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("nope")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("miss-arm stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
+	if got := e.Tape.At(0); !IsUndefined(&got) {
 		t.Errorf("a table miss must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
@@ -253,7 +253,7 @@ func TestCheckFnCarrierBoundName(t *testing.T) {
 		t.Error("an empty table must miss")
 	}
 	carrier := NewCarrier(TFunction)
-	carrier.ID = "v1"
+	SetID(&carrier, "v1")
 	NoteCheckFnCarrierBind(r, "f1", carrier)
 	name, hit := CheckFnCarrierBoundName(r, "v1")
 	if !hit || name != "f1" {
@@ -279,13 +279,13 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	carrier := NewCarrier(TWord)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{carrier}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord over a word carrier errored: %v", err)
 	}
 	if len(r.Check.Diagnostics) != 0 {
 		t.Errorf("a word carrier raised diagnostics: %v", r.Check.Diagnostics)
 	}
-	if got := e.Tape.At(0); got.Undefined || !got.Carrier || !got.Parent.Equal(TWord) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !got.Carrier() || !got.Parent().Equal(TWord) {
 		t.Errorf("word carrier not collected as data: %v", got)
 	}
 }
@@ -412,10 +412,10 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("nested-body stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !IsFnTypedCarrier(&got) {
 		t.Errorf("a nested body must read the bound fn carrier, got %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -458,7 +458,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("h")}, StackHeadroom)
 	e.Pointer = 3
-	err := e.stepWord(e.Tape.At(3))
+	err := e.stepWord(e.Tape.Ref(3))
 	if err == nil || !strings.Contains(err.Error(), "strict rule") {
 		t.Fatalf("a fn word read under a pending forward strands it, got %v", err)
 	}
@@ -468,10 +468,10 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e = NewTop(r)
 	e.Tape = NewTape([]Value{fwdMarker("cadd", 3, 2, 0), NewInteger(3), NewInteger(4), NewWord("cadd"), NewWord("h")}, StackHeadroom)
 	e.Pointer = 4
-	if err := e.stepWord(e.Tape.At(4)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(4)); err != nil {
 		t.Fatalf("a committing barrier returns nil, got %v", err)
 	}
-	if IsWord(e.Tape.At(e.Tape.Len()-1)) == false {
+	if IsWord(e.Tape.Ref(e.Tape.Len()-1)) == false {
 		t.Error("the read stays a word for its own step once the forward fires")
 	}
 	// A gradual carrier is no barrier: it is substituted as before.
@@ -480,7 +480,7 @@ func TestStepWordCarrierFnIsABarrier(t *testing.T) {
 	e = NewTop(r)
 	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("g")}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepWord(e.Tape.At(3)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(3)); err != nil {
 		t.Errorf("a gradual carrier's read is not a barrier, got %v", err)
 	}
 }

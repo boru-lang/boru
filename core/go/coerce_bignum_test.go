@@ -17,14 +17,14 @@ func TestCoerceBooleanBigLeaves(t *testing.T) {
 		if !ok {
 			t.Fatalf("SetString(%q)", s)
 		}
-		return Value{Parent: TBigInteger, Data: BigIntPayload{N: n}}
+		return Value{d: &Datum{Parent: TBigInteger, Data: BigIntPayload{N: n}}}
 	}
 	bigDec := func(s string) Value {
 		d, _, err := apd.NewFromString(s)
 		if err != nil {
 			t.Fatalf("NewFromString(%q): %v", s, err)
 		}
-		return Value{Parent: TBigDecimal, Data: DecimalPayload{D: d}}
+		return Value{d: &Datum{Parent: TBigDecimal, Data: DecimalPayload{D: d}}}
 	}
 
 	cases := []struct {
@@ -56,7 +56,7 @@ func TestCoerceBooleanBigLeaves(t *testing.T) {
 // unreadable payload. Reachable only by hand-constructing a mismatched
 // Value, which is exactly what a host plugin could hand the kernel.
 func TestBigNumIsZeroUnreadablePayload(t *testing.T) {
-	badInt := Value{Parent: TBigInteger, Data: IntPayload{N: 0}}
+	badInt := Value{d: &Datum{Parent: TBigInteger, Data: IntPayload{N: 0}}}
 	if bigNumIsZero(badInt) {
 		t.Error("BigInteger with a non-BigInt payload must not report zero")
 	}
@@ -64,17 +64,17 @@ func TestBigNumIsZeroUnreadablePayload(t *testing.T) {
 		t.Error("…and must stay truthy")
 	}
 
-	badDec := Value{Parent: TBigDecimal, Data: IntPayload{N: 0}}
+	badDec := Value{d: &Datum{Parent: TBigDecimal, Data: IntPayload{N: 0}}}
 	if bigNumIsZero(badDec) {
 		t.Error("BigDecimal with a non-Decimal payload must not report zero")
 	}
 
-	nilInt := Value{Parent: TBigInteger, Data: BigIntPayload{N: nil}}
+	nilInt := Value{d: &Datum{Parent: TBigInteger, Data: BigIntPayload{N: nil}}}
 	if bigNumIsZero(nilInt) {
 		t.Error("BigInteger with a nil *big.Int must not report zero")
 	}
 
-	nilDec := Value{Parent: TBigDecimal, Data: DecimalPayload{D: nil}}
+	nilDec := Value{d: &Datum{Parent: TBigDecimal, Data: DecimalPayload{D: nil}}}
 	if bigNumIsZero(nilDec) {
 		t.Error("BigDecimal with a nil *apd.Decimal must not report zero")
 	}

@@ -37,18 +37,18 @@ func (u *BindingBodyUnifier) Match(v Value, t *Type) bool {
 // made from inside a unify, so it keeps the chain's registry rather
 // than starting an unarmed one.
 func (u *BindingBodyUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if v.Carrier {
+	if v.Carrier() {
 		// Sound check-mode over-approximation, the FnUndefUnifier
 		// discipline: admit a carrier that could still be a member at
 		// runtime — dynamic, tagged at/below the minted node, or in the
 		// body's own family — and reject one that provably cannot be.
-		if v.Dynamic {
+		if IsDynamic(&v) {
 			return true
 		}
-		if v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
+		if v.Parent() != nil && t != nil && v.Parent().ConformsTo(t) {
 			return true
 		}
-		return v.Parent != nil && u.body.Parent != nil && v.Parent.ConformsTo(u.body.Parent)
+		return v.Parent() != nil && u.body.Parent() != nil && v.Parent().ConformsTo(u.body.Parent())
 	}
 	return matchMembership(v, t, u.prev, func(v Value) bool {
 		_, uerr := unifyWithin(v, u.body, r)

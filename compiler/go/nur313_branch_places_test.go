@@ -59,7 +59,7 @@ func TestSplitArmMayBeFn(t *testing.T) {
 		t.Error("an event's value may be a fn")
 	}
 	es.frames[0][0].br = &emitBranch{thenIsVal: true, hasThenOut: true, els: body, hasElsOut: true,
-		elsOut: ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}))}
+		elsOut: ConstOperand(es.intern(core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}})))}
 	if !es.splitArmMayBeFn(7) {
 		t.Error("a fn const in the placed else arm is a fn")
 	}
@@ -77,7 +77,7 @@ func TestSplitArmMayBeFn(t *testing.T) {
 // branch whose every arm places (placed data, not an apply) does not.
 func TestBranchLeadDecline(t *testing.T) {
 	es := NewEmitState()
-	lead := core.Value{Parent: core.TAny, ID: "lead"}
+	lead := withID(core.ValueOf(&core.Datum{Parent: core.TAny}), "lead")
 	if why := es.branchLeadDecline(lead); why != "" {
 		t.Errorf("no producer: %q", why)
 	}
@@ -85,7 +85,7 @@ func TestBranchLeadDecline(t *testing.T) {
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
-	es.producedBy[lead.ID] = producer{seq: 7}
+	es.stampProduced(&lead, 7, 0)
 	if why := es.branchLeadDecline(lead); why != "" {
 		t.Errorf("a placed branch is data, no apply to decline: %q", why)
 	}
@@ -96,8 +96,8 @@ func TestBranchLeadDecline(t *testing.T) {
 	es.NoteDelivery(lead)
 	es.NoteDelivery(lead)
 	es.NoteDelivery(core.Value{})
-	if es.deliveries[lead.ID] != 2 {
-		t.Errorf("deliveries: %d", es.deliveries[lead.ID])
+	if es.deliveries[core.IDOf(&lead)] != 2 {
+		t.Errorf("deliveries: %d", es.deliveries[core.IDOf(&lead)])
 	}
 	if _, ok := es.deliveries[""]; ok {
 		t.Error("a value with no ID is not counted")
@@ -114,7 +114,8 @@ func TestNUR317PlacementUndone(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	u.Carrier, u.ID = true, "u"
+	u.SetCarrier(true)
+	core.SetID(&u, "u")
 	if !es.branchPlacedHere(u, 7) || es.unionLeadReStepped(u, 7) {
 		t.Error("no re-step: the branch places its join")
 	}
@@ -146,12 +147,15 @@ func TestNUR317PlacementUndone(t *testing.T) {
 func TestDynBodySettledOp(t *testing.T) {
 	es := NewEmitState()
 	lead, sib := core.NewCarrier(core.TAny), core.NewInteger(5)
-	lead.Dynamic, lead.ID, sib.ID = true, "lead", "sib"
+	core.SetDynamic(&lead, true)
+	core.SetID(&lead, "lead")
+	core.SetID(&sib, "sib")
 	res := []core.Value{lead, sib}
 	if _, settled := es.dynBodySettledOp(res); settled {
 		t.Error("no producer: not settled")
 	}
-	es.producedBy[lead.ID], es.producedBy[sib.ID] = producer{seq: 3}, producer{seq: 3, idx: 1}
+	es.stampProduced(&res[0], 3, 0) // the residual's holders are the ones read
+	es.stampProduced(&res[1], 3, 1)
 	es.eventInfo[3] = eventFlags{dynBodyResult: true}
 	if op, settled := es.dynBodySettledOp(res); !settled || op != 0 {
 		t.Errorf("no mark window: seats as it stands, got %v %v", op, settled)
@@ -167,11 +171,11 @@ func TestDynBodySettledOp(t *testing.T) {
 // an unquoted or data carrier is not.
 func TestNUR318QuotedFnCarrier(t *testing.T) {
 	q := core.NewDynamicCarrier(core.TAny)
-	q.Quoted = true
+	core.SetQuoted(&q, true)
 	fq := core.NewCarrier(core.TFunction)
-	fq.Quoted = true
+	core.SetQuoted(&fq, true)
 	iq := core.NewCarrier(core.TInteger)
-	iq.Quoted = true
+	core.SetQuoted(&iq, true)
 	for _, c := range []struct {
 		why  string
 		v    core.Value
@@ -199,12 +203,13 @@ func TestNUR319UnionReadReStepped(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	u.Carrier, u.ID = true, "u"
-	es.producedBy[u.ID] = producer{seq: 7}
+	u.SetCarrier(true)
+	core.SetID(&u, "u")
+	es.stampProduced(&u, 7, 0)
 	if es.unionLeadReStepped(u, 7) || es.mayBeFnUnsettled(u) {
 		t.Error("an unread placed union is no re-step")
 	}
-	es.NoteDefRead(u.ID, "r")
+	es.NoteDefRead(core.IDOf(&u), core.RecKeyOf(&u), "r")
 	if !es.unionLeadReStepped(u, 7) || !es.mayBeFnUnsettled(u) {
 		t.Error("a bare read of the def dispatches it")
 	}
@@ -223,15 +228,15 @@ func TestNUR317PlacedBranchNotReStepped(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "v"
-	es.producedBy[v.ID] = producer{seq: 7}
+	core.SetID(&v, "v")
+	es.stampProduced(&v, 7, 0)
 	es.NoteFnResultReStep(v, core.SrcPos{})
 	if len(es.reStepNotes) != 0 {
 		t.Errorf("a placed branch's value takes no re-step note: %v", es.reStepNotes)
 	}
 	w := core.NewDynamicCarrier(core.TAny)
-	w.ID = "w"
-	es.producedBy[w.ID] = producer{seq: 9}
+	core.SetID(&w, "w")
+	es.stampProduced(&w, 9, 0)
 	es.NoteFnResultReStep(w, core.SrcPos{})
 	if _, ok := es.reStepNotes[9]; !ok {
 		t.Error("a call's result keeps its re-step note")

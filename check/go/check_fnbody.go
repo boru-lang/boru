@@ -132,7 +132,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// would drop the only contract there is. `Type` aliases `Value`, so
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
-			!got.Dynamic && got.Parent != nil && !core.IsBareTypeNode(got) && !got.Parent.Equal(core.TNone) {
+			!core.IsDynamic(&got) && got.Parent() != nil && !core.IsBareTypeNode(&got) && !got.Parent().Equal(core.TNone) {
 			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
@@ -151,7 +151,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		if exp == nil || exp.Equal(core.TAny) {
 			continue
 		}
-		if got.Dynamic || got.Parent == nil || core.IsBareTypeNode(got) || got.Parent.Equal(core.TNone) {
+		if core.IsDynamic(&got) || got.Parent() == nil || core.IsBareTypeNode(&got) || got.Parent().Equal(core.TNone) {
 			continue
 		}
 		if !residualProvablyDisjoint(got, exp) {
@@ -240,8 +240,8 @@ func checkRecordShapeArgs(r *core.Registry, name string, paramPatterns []*core.V
 			continue
 		}
 		val := args[i]
-		if !pat.Parent.Equal(core.TMap) || !val.Parent.Equal(core.TMap) ||
-			!core.IsConcrete(*pat) || !core.IsConcrete(val) {
+		if !pat.Parent().Equal(core.TMap) || !val.Parent().Equal(core.TMap) ||
+			!core.IsConcrete(pat) || !core.IsConcrete(&val) {
 			continue
 		}
 		pMap, _ := core.AsMap(*pat)
@@ -269,10 +269,10 @@ func checkRecordShapeArgs(r *core.Registry, name string, paramPatterns []*core.V
 				})
 				continue
 			}
-			if core.IsBareTypeNode(pv) && !av.Parent.ConformsTo(pv.Parent) && !av.Parent.Equal(core.TAny) {
+			if core.IsBareTypeNode(&pv) && !av.Parent().ConformsTo(pv.Parent()) && !av.Parent().Equal(core.TAny) {
 				r.Check.AddDiagnostic(core.CheckDiagnostic{
 					Code:   "record_shape_mismatch",
-					Detail: "argument to " + name + ": field " + key + " expected " + pv.Parent.String() + ", got " + av.Parent.String(),
+					Detail: "argument to " + name + ": field " + key + " expected " + pv.Parent().String() + ", got " + av.Parent().String(),
 					Word:   name,
 				})
 			}
@@ -326,7 +326,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		declaredReturnPatterns = nil
 	}
 	declSite := s.Decl
-	bodyCopy := append([]core.Value(nil), s.Body()...)
+	// The sig's own body: a fn body's array is never written, and every
+	// analysis and run copies what it steps. Clamped, so an append
+	// reallocates.
+	sigBody := s.Body()
+	bodyToks := sigBody[:len(sigBody):len(sigBody)]
 	// The sig's own body slice, uncopied: its backing array identifies THIS
 	// construction of the lambda to the recorder's pending-apply lookup
 	// (PendingClosureApply) — the applied value's sig holds the same array.
@@ -401,13 +405,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// through to the normal analysis + unit compile, where the list is
 		// assembled in-frame against the param (fixed at call time, which the
 		// unit models exactly).
-		if raw, ok := DeferredParamListResidual(bodyCopy, paramNames); ok && fnDef.Anonymous {
+		if raw, ok := DeferredParamListResidual(bodyToks, paramNames); ok && fnDef.Anonymous {
 			// An afn is never generic (afnHandler declares no type params, so
 			// fnDef.Gen is nil whenever fnDef.Anonymous), hence genNames is empty
 			// here — no gen-binding cleanup is needed before the early return. A
 			// generic NAMED fn with a deferred-list body is not anonymous, so it
 			// falls through to the normal path, which pops genNames below.
-			AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, args, capturesCopy, declaredReturns, fnDef.Anonymous)
+			AnalyseFnBody(r, nameCopy, paramNames, bodyToks, args, capturesCopy, declaredReturns, fnDef.Anonymous)
 			return []core.Value{raw}
 		}
 		// Always analyse the body so diagnostics emitted by stepWord
@@ -507,12 +511,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// parents keep the precise strict generalisation below.
 					if pt := sigParams[i].Type; es.StoredGradualActive() &&
 						(pt == nil || pt.Equal(core.TAny)) &&
-						a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(a) {
+						a.Parent() != nil && a.Parent().Equal(core.TAny) && !core.IsBareTypeNode(&a) {
 						genArgs[i] = ParamInputCarrier(core.TAny)
 						continue
 					}
 				}
-				if a.Parent == nil || core.IsTypeLiteral(a) {
+				if a.Parent() == nil || core.IsTypeLiteral(&a) {
 					// A type literal's Parent is its supertype, not its type
 					// (NUR323), and a root node's (None / Any / Never) is nil:
 					// core.ValueCarrier widens a type to a Type carrier and the
@@ -523,7 +527,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					genArgs[i] = core.ValueCarrier(a)
 					continue
 				}
-				genArgs[i] = core.NewCarrier(a.Parent)
+				genArgs[i] = core.NewCarrier(a.Parent())
 			}
 			// Key the compiled unit on the GENERALISED args, matching the body
 			// analysis (AnalyseFnBody runs on genArgs) and the FnSummaries memo. A
@@ -544,26 +548,26 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			// site), but it keeps the compiled error from reporting an
 			// unknown position. Empty body falls back to a zero pos.
 			var fnPos core.SrcPos
-			if len(bodyCopy) > 0 {
-				fnPos = bodyCopy[0].Pos()
+			if len(bodyToks) > 0 {
+				fnPos = bodyToks[0].Pos()
 			}
-			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyCopy, captures: capturesCopy, params: sigParams, paramNames: paramNames,
+			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyToks, captures: capturesCopy, params: sigParams, paramNames: paramNames,
 				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
 				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
-			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
+			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyToks, sigParams, args, genArgs); fnUnit < 0 {
 				fnUnit = uc.compile(genArgs, "")
 			}
 		}
-		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
+		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyToks, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
 		stk = collapseTailApply(es, fnUnit, stk)
-		stk = collapseElidedTailApply(bodyCopy, stk, fnDef.Anonymous || len(declaredReturns) == 1)
+		stk = collapseElidedTailApply(bodyToks, stk, fnDef.Anonymous || len(declaredReturns) == 1)
 		for i := len(genNames) - 1; i >= 0; i-- {
 			r.Defs.Pop(genNames[i])
 		}
 		if genSpec == nil {
 			checkBodyReturnConformance(r, nameCopy, declaredReturns, declaredReturnPatterns,
 				unnamedParamCount(sigParams), allConcreteArgs(args), stk,
-				bodyStartPos(bodyCopy), bodySpanEnd(bodyCopy))
+				bodyStartPos(bodyToks), bodySpanEnd(bodyToks))
 		}
 		if len(declaredReturns) > 0 {
 			out := make([]core.Value, len(declaredReturns))
@@ -613,7 +617,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 							})
 						}
 						c := core.NewCarrier(core.TAny)
-						c.Dynamic = true
+						core.SetDynamic(&c, true)
 						out[i] = c
 						continue
 					}
@@ -624,10 +628,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// abstract Function carrier. The carrier has no FnDefInfo, so
 				// binding it (`def g (mkfn)`) and later referencing `g` would
 				// fail to dispatch (undefined_word) — the closure-render gap.
-				// Cloned for a fresh ID (operand-provenance, like the concrete
-				// list/map fold in getNodeReturns). Only for a concrete fn
-				// residual aligned to this return slot; anything else keeps the
-				// carrier below.
+				// The value itself, not a clone: CloneValue hands a Function
+				// back unchanged (a fn payload is immutable), so the clone this
+				// once made bought no fresh ID. Only for a concrete fn residual
+				// aligned to this return slot; anything else keeps the carrier
+				// below.
 				//
 				// PLAIN-CHECK ONLY (!Compiling): during a REAL compile pass the
 				// emitter models a returned closure through its own PUSH_CLOSURE
@@ -641,9 +646,9 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure as before.
 				if !r.Check.Compiling &&
 					t.ConformsTo(core.TFunction) && len(stk) >= len(declaredReturns) {
-					if bv := stk[len(stk)-len(declaredReturns)+i]; core.IsConcrete(bv) &&
-						bv.Parent.ConformsTo(core.TFunction) {
-						out[i] = core.CloneValue(bv)
+					if bv := stk[len(stk)-len(declaredReturns)+i]; core.IsConcrete(&bv) &&
+						bv.Parent().ConformsTo(core.TFunction) {
+						out[i] = bv
 						continue
 					}
 				}
@@ -657,7 +662,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// over-dispatch invariant, checker-accuracy-review.10.md §3).
 				// Surface the alternatives so disjunctPartitionReturns joins
 				// the per-alternative dispatches, like an inline `tor` result.
-				if dv, ok := core.UnionCarrierForType(core.CanonicalType(r, t)); ok {
+				if dv, ok := core.UnionCarrierForType(core.NodeOf(t)); ok {
 					out[i] = dv
 					continue
 				}
@@ -682,7 +687,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// Mark it dynamic for optimistic matching, mirroring the native
 				// `[Any]`-return handling in CarrierResults.
 				if t.Equal(core.TAny) {
-					c.Dynamic = true
+					core.SetDynamic(&c, true)
 				}
 				out[i] = c
 			}
@@ -859,14 +864,13 @@ func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
 // `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` [0 0] for
 // [8 0] (measured 2026-09-22, NUR177). The declared-return path above mints
 // its carriers per call already; this is the undeclared path's equivalent,
-// and it is a shallow copy — a payload is the same value on every call, only
-// the identity is the call's own.
+// and each result is constructed from the residual's parts (MintFresh) — a
+// payload is the same value on every call, only the identity is the call's
+// own.
 func freshResidual(stk []core.Value) []core.Value {
 	out := make([]core.Value, len(stk))
-	for i, v := range stk {
-		c := v
-		c.ID = core.GenerateID(core.IDPrefixForType(c.Parent))
-		out[i] = c
+	for i := range stk {
+		out[i] = core.MintFresh(&stk[i])
 	}
 	return out
 }
@@ -890,11 +894,11 @@ func collapseTailApply(es core.EmitRecorder, fnUnit int, stk []core.Value) []cor
 		return stk
 	}
 	top := stk[len(stk)-1]
-	if !core.IsFnTypedCarrier(top) && !core.IsFnValueResidual(top) {
+	if !core.IsFnTypedCarrier(&top) && !core.IsFnValueResidual(top) {
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	return []core.Value{out}
 }
 
@@ -917,14 +921,14 @@ func collapseElidedTailApply(body, stk []core.Value, oneValued bool) []core.Valu
 	if !oneValued || len(body) == 0 || len(stk) < 2 {
 		return stk
 	}
-	if w, err := core.AsWord(body[len(body)-1]); err != nil || w.Name != "apply" {
+	if w, err := core.AsWord(&body[len(body)-1]); err != nil || w.Name != "apply" {
 		return stk
 	}
-	if !core.IsFnTypedCarrier(stk[len(stk)-1]) {
+	if !core.IsFnTypedCarrier(&stk[len(stk)-1]) {
 		return stk
 	}
 	out := core.NewCarrier(core.TAny)
-	out.Dynamic = true
+	core.SetDynamic(&out, true)
 	return []core.Value{out}
 }
 
@@ -1065,26 +1069,25 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 		return core.Value{}, false
 	}
 	var fresh core.Value
-	if _, isFn := outs[0].Data.(core.FnDefInfo); isFn {
+	if _, isFn := outs[0].Data().(*core.FnDefInfo); isFn {
 		// A fn VALUE result (the next closure of a staged combinator) keeps
 		// its analysed payload under a fresh identity: a later `apply` over
 		// it re-steps the value and records through this same arm, resolving
 		// the fn to THIS apply's event.
-		fresh = outs[0]
-		fresh.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+		fresh = core.MintFresh(&outs[0])
 	} else {
-		parent := outs[0].Parent
+		parent := outs[0].Parent()
 		if parent == nil {
 			parent = core.TAny
 		}
 		fresh = core.NewCarrier(parent)
-		fresh.Dynamic = outs[0].Dynamic
+		core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
 	}
 	window := make([]core.Value, len(args))
 	for i, a := range args {
 		window[len(args)-1-i] = a
 	}
-	if _, ok := es.RecordDynApply(window, fn, fresh, pos); !ok {
+	if _, ok := es.RecordDynApply(window, fn, &fresh, pos); !ok {
 		return core.Value{}, false
 	}
 	return fresh, true
@@ -1121,16 +1124,18 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	}
 	// The memoised body analysis returns the SAME residual value (same ID)
 	// for every call of one shape, so recording each apply against the
-	// shared out would overwrite producedBy and resolve every residual
-	// slot to the LAST apply (probe: `(h 5) (h 10)` compiled [17 17]).
+	// shared out would give every call site's result one identity (while
+	// the recorder resolved producers through the identity, every residual
+	// slot resolved to the LAST apply — probe: `(h 5) (h 10)` compiled
+	// [17 17]).
 	// Freshen a CARRIER out per call site — the caller substitutes it —
 	// and decline a concrete out (freshening would erase its value).
-	if !outs[0].Carrier || outs[0].Parent == nil {
+	if !outs[0].Carrier() || outs[0].Parent() == nil {
 		return core.Value{}, false
 	}
 	nonConcrete := false
 	for _, cb := range captures {
-		if !core.IsConcrete(cb.Value) {
+		if !core.IsConcrete(&cb.Value) {
 			nonConcrete = true
 			break
 		}
@@ -1142,16 +1147,16 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	if !ok {
 		return core.Value{}, false
 	}
-	fd, isFn := top.Data.(core.FnDefInfo)
-	if !isFn || !fd.Anonymous || top.Quoted {
+	fd, isFn := core.FnDefOf(top.Data())
+	if !isFn || !fd.Anonymous || core.IsQuoted(&top) {
 		return core.Value{}, false
 	}
 	if own := fd.OwnSigs(); len(own) != 1 {
 		return core.Value{}, false
 	}
-	fresh := core.NewCarrier(outs[0].Parent)
-	fresh.Dynamic = outs[0].Dynamic
-	if !es.RecordDynApplyName(name, args, top, fresh, pos) {
+	fresh := core.NewCarrier(outs[0].Parent())
+	core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
+	if !es.RecordDynApplyName(name, args, top, &fresh, pos) {
 		return core.Value{}, false
 	}
 	return fresh, true
@@ -1275,9 +1280,9 @@ func refinementUndecided(pattern, got core.Value) bool {
 		return false
 	}
 	if pattern.IsDepScalar() {
-		return !residualProvablyDisjoint(got, pattern.Parent)
+		return !residualProvablyDisjoint(got, pattern.Parent())
 	}
-	if core.IsDisjunct(pattern) {
+	if core.IsDisjunct(&pattern) {
 		di, _ := core.AsDisjunct(pattern) // IsDisjunct: the payload is a DisjunctInfo
 		for _, alt := range di.Alternatives {
 			if refinementUndecided(alt, got) {
@@ -1322,19 +1327,19 @@ func refinementUndecided(pattern, got core.Value) bool {
 // call — narrowing to it compiled generics-fn.tsv L54's `unbox` body and ran
 // the call on the interpreter's generic host (an interp-entry census row).
 func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Value, bool) {
-	if pt == nil || pt.Equal(core.TAny) || core.IsBareTypeNode(a) {
+	if pt == nil || pt.Equal(core.TAny) || core.IsBareTypeNode(&a) {
 		return core.Value{}, false
 	}
 	switch {
-	case a.Parent != nil && a.Parent.Equal(core.TAny):
+	case a.Parent() != nil && a.Parent().Equal(core.TAny):
 		return core.NewCarrier(pt), true
-	case a.Carrier && core.IsDisjunct(a):
+	case a.Carrier() && core.IsDisjunct(&a):
 		nc := core.NewCarrier(pt)
-		nc.Dynamic = a.Dynamic
+		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
-	case !generic && a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
+	case !generic && a.Carrier() && a.Parent() != nil && !core.HasConstraintUnify(pt) && !a.Parent().ConformsTo(pt):
 		nc := core.NewCarrier(pt)
-		nc.Dynamic = a.Dynamic
+		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
 	}
 	return core.Value{}, false
@@ -1354,13 +1359,13 @@ func provenNarrowerReturn(t *core.Type, params []core.FnParam, stk []core.Value,
 		return core.Value{}, false
 	}
 	bv := stk[i]
-	if !bv.Carrier || bv.Dynamic || bv.Parent == nil || core.IsDisjunct(bv) || bv.AscribedType() != nil {
+	if !bv.Carrier() || core.IsDynamic(&bv) || bv.Parent() == nil || core.IsDisjunct(&bv) || bv.AscribedType() != nil {
 		return core.Value{}, false
 	}
-	if !bv.Parent.Equal(core.TInteger) && !bv.Parent.Equal(core.TFloat) && !bv.Parent.Equal(core.TBoolean) {
+	if !bv.Parent().Equal(core.TInteger) && !bv.Parent().Equal(core.TFloat) && !bv.Parent().Equal(core.TBoolean) {
 		return core.Value{}, false
 	}
-	return core.NewCarrier(bv.Parent), true
+	return core.NewCarrier(bv.Parent()), true
 }
 
 // allParamsTyped reports whether every param declares a type other than

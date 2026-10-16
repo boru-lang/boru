@@ -106,7 +106,7 @@ func TestLambdaReturnCountParity(t *testing.T) {
 // the declared TYPES are checked over the aligned residual and the COUNT is
 // never raised — `walk`'s hooks, `each`/`fold` over a MAP, `filter`'s
 // Function form. A compiled closure crosses the same seam through
-// InvokeCallbackBody (ClosurePayload.RetTrim), and a compiled FnDefInfo's
+// InvokeCallbackBody (core.IsRetTrim), and a compiled FnDefInfo's
 // unit through enterCallbackUnit, so both lanes trim: the lambda's placeholder
 // count never raises here (the token seam above is where it does), and a
 // NAMED fn's declared count never raises here either — the compiled lane

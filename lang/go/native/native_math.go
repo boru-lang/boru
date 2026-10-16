@@ -145,9 +145,9 @@ func returnsIntFaultOn(base ReturnsFunc, op string, faultFn func(a, b int64) err
 	return func(args []Value, r *Registry) []Value {
 		checkBigFloatMix(r, args)
 		if atUncaughtTopLevel(r) && len(args) == 2 &&
-			IsConcrete(args[0]) && IsConcrete(args[1]) &&
-			args[0].Parent.ConformsTo(TInteger) && args[1].Parent.ConformsTo(TInteger) &&
-			!args[0].Parent.ConformsTo(TBigInteger) && !args[1].Parent.ConformsTo(TBigInteger) {
+			IsConcrete(&args[0]) && IsConcrete(&args[1]) &&
+			args[0].Parent().ConformsTo(TInteger) && args[1].Parent().ConformsTo(TInteger) &&
+			!args[0].Parent().ConformsTo(TBigInteger) && !args[1].Parent().ConformsTo(TBigInteger) {
 			a, aerr := args[0].AsConcreteInteger()
 			b, berr := args[1].AsConcreteInteger()
 			if aerr == nil && berr == nil {
@@ -450,14 +450,14 @@ func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 	// when the bytecode VM drives this dispatch (the body operand lowered to
 	// OpPushClosure). Both run within the scoped context below.
 	closure := IsCompiledClosure(body)
-	if !closure && (!IsConcrete(body) || !body.Parent.ConformsTo(TList)) {
+	if !closure && (!IsConcrete(&body) || !body.Parent().ConformsTo(TList)) {
 		return nil, r.BoruError("type_error", "with-decimal: body must be a concrete list", "with-decimal")
 	}
 
 	r.Contexts.Push(r.Contexts.Top())
 	defer r.Contexts.Pop()
 	store := r.Contexts.Top()
-	if store != nil && IsConcrete(opts) {
+	if store != nil && IsConcrete(&opts) {
 		if m, _ := AsMap(opts); m != nil {
 			if pv, ok := m.Get("precision"); ok {
 				store.Set(decimalPrecKey, pv)
@@ -475,7 +475,7 @@ func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 		return InvokeBody(r, body, nil)
 	}
 	lst, _ := AsList(body)
-	return doEvalList(r, lst.Slice())
+	return doEvalList(r, lst.Elems())
 }
 
 func addConcatHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {

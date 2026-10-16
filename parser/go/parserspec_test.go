@@ -332,7 +332,7 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 		}
 		switch wantKind {
 		case "list":
-			if core.IsTypedList(cur) || cur.Parent == nil || !cur.Parent.Equal(core.TList) {
+			if core.IsTypedList(&cur) || cur.Parent() == nil || !cur.Parent().Equal(core.TList) {
 				t.Fatalf("%s depth %d: level %d is not an untyped List", kind, depth, level+1)
 			}
 			items, err := core.AsList(cur)
@@ -341,7 +341,7 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 			}
 			cur = items.Get(0)
 		case "map":
-			if core.IsTypedMap(cur) || cur.Parent == nil || !cur.Parent.Equal(core.TMap) {
+			if core.IsTypedMap(&cur) || cur.Parent() == nil || !cur.Parent().Equal(core.TMap) {
 				t.Fatalf("%s depth %d: level %d is not an untyped Map", kind, depth, level+1)
 			}
 			entries, err := core.AsMap(cur)
@@ -354,18 +354,18 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 			}
 			cur = next
 		case "paren":
-			if !core.IsParenExpr(cur) {
+			if !core.IsParenExpr(&cur) {
 				t.Fatalf("%s depth %d: level %d is not a ParenExpr", kind, depth, level+1)
 			}
-			items, err := core.AsParenExpr(cur)
+			items, err := core.AsParenExpr(&cur)
 			if err != nil || len(items) != 1 {
 				t.Fatalf("%s depth %d: level %d ParenExpr does not contain exactly one item", kind, depth, level+1)
 			}
 			cur = items[0]
 		case "typed-list", "typed-map":
-			isRightKind := core.IsTypedList(cur)
+			isRightKind := core.IsTypedList(&cur)
 			if wantKind == "typed-map" {
-				isRightKind = core.IsTypedMap(cur)
+				isRightKind = core.IsTypedMap(&cur)
 			}
 			if !isRightKind {
 				t.Fatalf("%s depth %d: level %d has the wrong typed-container kind", kind, depth, level+1)
@@ -381,7 +381,7 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 	}
 
 	if kind == "typed-list" || kind == "typed-map" {
-		word, err := core.AsWord(cur)
+		word, err := core.AsWord(&cur)
 		if err != nil || word.Name != "Integer" {
 			t.Fatalf("%s depth %d: terminal is not the word Integer", kind, depth)
 		}
@@ -474,7 +474,7 @@ func renderShapeChildEntries(entries []core.ChildEntry) string {
 }
 
 func renderShapeOptionalValue(v core.Value) string {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return "none"
 	}
 	return renderShapeValue(v)
@@ -496,12 +496,12 @@ func renderShapeValue(v core.Value) string {
 	b.WriteByte(':')
 	b.WriteString(strconv.Quote(pos.Src))
 	b.WriteString(",e=")
-	b.WriteByte(shapeBit(v.Eval))
+	b.WriteByte(shapeBit(core.IsEval(&v)))
 	b.WriteString(",q=")
-	b.WriteByte(shapeBit(v.Quoted))
+	b.WriteByte(shapeBit(core.IsQuoted(&v)))
 
-	if core.IsWord(v) {
-		w, err := core.AsWord(v)
+	if core.IsWord(&v) {
+		w, err := core.AsWord(&v)
 		if err == nil {
 			b.WriteString(",w={name=")
 			b.WriteString(strconv.Quote(w.Name))
@@ -541,10 +541,10 @@ func renderShapeValue(v core.Value) string {
 		b.WriteByte('}')
 	}
 
-	if core.IsTypedList(v) || core.IsTypedMap(v) {
+	if core.IsTypedList(&v) || core.IsTypedMap(&v) {
 		if child, err := core.AsChildType(v); err == nil {
 			kind := "list"
-			if core.IsTypedMap(v) {
+			if core.IsTypedMap(&v) {
 				kind = "map"
 			}
 			b.WriteString(",typed={kind=")
@@ -557,13 +557,13 @@ func renderShapeValue(v core.Value) string {
 			b.WriteString(renderShapeChildEntries(child.Entries))
 			b.WriteByte('}')
 		}
-	} else if core.IsParenExpr(v) {
-		if items, err := core.AsParenExpr(v); err == nil {
+	} else if core.IsParenExpr(&v) {
+		if items, err := core.AsParenExpr(&v); err == nil {
 			b.WriteString(",paren=")
 			b.WriteString(renderShapeValues(items))
 		}
-	} else if core.IsReach(v) {
-		if reach, err := core.AsReach(v); err == nil {
+	} else if core.IsReach(&v) {
+		if reach, err := core.AsReach(&v); err == nil {
 			b.WriteString(",reach={eval=")
 			b.WriteByte(shapeBit(reach.Eval))
 			b.WriteString(",recv=")

@@ -18,9 +18,9 @@ func TestEvalLiteralsOnlyMatchesTheEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	lst := core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	lst.ID = "L_shrink"
+	core.SetID(&lst, "L_shrink")
 	qlst := core.NewList([]core.Value{core.NewInteger(3)})
-	qlst.Quoted = true
+	core.SetQuoted(&qlst, true)
 	om := core.NewOrderedMap()
 	om.Set("a", core.NewInteger(1))
 	for _, v := range []core.Value{core.NewInteger(7), core.NewString("b"), lst, qlst, core.NewMap(om)} {
@@ -37,8 +37,8 @@ func TestEvalLiteralsOnlyMatchesTheEngine(t *testing.T) {
 		if err != nil || len(engine) != 1 {
 			t.Fatalf("%v: the engine's replay %v %v", v, engine, err)
 		}
-		if core.Canon(got) != core.Canon(engine) || got[0].ID != engine[0].ID || got[0].Quoted != engine[0].Quoted {
-			t.Errorf("%v: the direct answer %v (id %q quoted %v) is not the engine's %v (id %q quoted %v)", v, got, got[0].ID, got[0].Quoted, engine, engine[0].ID, engine[0].Quoted)
+		if core.Canon(got) != core.Canon(engine) || core.IDOf(&got[0]) != core.IDOf(&engine[0]) || core.IsQuoted(&got[0]) != core.IsQuoted(&engine[0]) {
+			t.Errorf("%v: the direct answer %v (id %q quoted %v) is not the engine's %v (id %q quoted %v)", v, got, core.IDOf(&got[0]), core.IsQuoted(&got[0]), engine, core.IDOf(&engine[0]), core.IsQuoted(&engine[0]))
 		}
 	}
 	// Two pushes are two values, in order.

@@ -18,14 +18,14 @@ import (
 // integer list came back as strings. sliceResultItem unboxes via its
 // Value case.
 func valueToSliceArg(v Value) interface{} {
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as3, _ := AsString(v)
 		return _as3
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		list, _ := AsList(v)
 		result := make([]interface{}, list.Len())
-		for i, elem := range list.Slice() {
+		for i, elem := range list.Elems() {
 			result[i] = elem
 		}
 		return result
@@ -64,7 +64,7 @@ func sliceResult(result interface{}) ([]Value, error) {
 // and downstream writes stay enforced (#4, round 3). A string source has no
 // element tag, so d2RetainElem no-ops there.
 func sliceRetain(res []Value, err error, src Value) ([]Value, error) {
-	if err == nil && len(res) == 1 && res[0].Parent.ConformsTo(TList) {
+	if err == nil && len(res) == 1 && res[0].Parent().ConformsTo(TList) {
 		res[0] = d2RetainElem(res[0], src)
 	}
 	return res, err

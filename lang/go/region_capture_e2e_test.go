@@ -452,7 +452,7 @@ func findRegionLeading(prog *compiler.Program, word, tok string) *compiler.Regio
 		if d.Word != word || len(d.Slots) == 0 {
 			continue
 		}
-		if wi, err := core.AsWord(d.Slots[0].Token); err == nil && wi.Name == tok {
+		if wi, err := core.AsWord(&d.Slots[0].Token); err == nil && wi.Name == tok {
 			return d
 		}
 	}

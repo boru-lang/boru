@@ -40,7 +40,7 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	fnv := namedFnVal("nm", []FnParam{{Name: "n", Type: TInteger}}, []*Type{TInteger},
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
 	op := NewOpenParen()
-	op.ReachGroup = true
+	SetReachGroup(&op, true)
 	out, err := NewTop(r).Run([]Value{
 		NewWord("cref2"), op, fnv, NewCloseParen(),
 		NewDispatchMod(DispatchModInfo{Val: true}), NewInteger(5),
@@ -51,8 +51,8 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	if renderAll(out) != "5" {
 		t.Errorf("cref2 over the marked group: %s, want 5", renderAll(out))
 	}
-	if fd, ok := got.Data.(FnDefInfo); !ok || fd.Name != "nm" || got.Quoted || got.ReachGroup {
-		t.Errorf("the reference must arrive unquoted and untagged: %v (quoted=%v tagged=%v)", got, got.Quoted, got.ReachGroup)
+	if fd, ok := FnDefOf(got.Data()); !ok || fd.Name != "nm" || IsQuoted(&got) || IsReachGroup(&got) {
+		t.Errorf("the reference must arrive unquoted and untagged: %v (quoted=%v tagged=%v)", got, IsQuoted(&got), IsReachGroup(&got))
 	}
 
 	// Negative: without the marker the group's fn WOULD CLAIM the 5 — a
@@ -60,7 +60,7 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	// with nothing and raises.
 	r2 := nur078Registry(t, &got)
 	op2 := NewOpenParen()
-	op2.ReachGroup = true
+	SetReachGroup(&op2, true)
 	if _, err := NewTop(r2).Run([]Value{NewWord("cref2"), op2, fnv, NewCloseParen(), NewInteger(5)}); err == nil {
 		t.Error("an unmarked member read that would claim the next token must be a call head")
 	}
@@ -73,8 +73,8 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	for _, kind := range []SugarKind{SugarUsurp, SugarStackArgs, SugarForwardArgs, SugarForceArity} {
 		tape := NewTape([]Value{NewWord("usurp"), reach}, StackHeadroom)
 		placeModifierOperand(tape, kind, 1)
-		items, err := AsParenExpr(tape.At(1))
-		if err != nil || len(items) != 1 || !IsReach(items[0]) {
+		items, err := AsParenExpr(tape.Ref(1))
+		if err != nil || len(items) != 1 || !IsReach(&items[0]) {
 			t.Errorf("kind %v: the reach operand must be wrapped in a paren, got %v", kind, tape.At(1))
 		}
 	}
@@ -82,11 +82,11 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	// the tape, an inert (non-evaluating) reach.
 	tape := NewTape([]Value{reach}, StackHeadroom)
 	placeModifierOperand(tape, SugarAngle, 0)
-	if !IsReach(tape.At(0)) {
+	if !IsReach(tape.Ref(0)) {
 		t.Error("a non-modifier sugar must leave the reach alone")
 	}
 	placeModifierOperand(tape, SugarUsurp, 1)
-	if tape.Len() != 1 || !IsReach(tape.At(0)) {
+	if tape.Len() != 1 || !IsReach(tape.Ref(0)) {
 		t.Error("an index past the tape must change nothing")
 	}
 	lit := NewTape([]Value{NewInteger(3)}, StackHeadroom)
@@ -96,7 +96,7 @@ func TestNUR078PlaceModifierOperand(t *testing.T) {
 	}
 	inert := NewTape([]Value{NewReachFromKeys(NewWord("m"), []Value{NewAtom("a")})}, StackHeadroom)
 	placeModifierOperand(inert, SugarUsurp, 0)
-	if !IsReach(inert.At(0)) {
+	if !IsReach(inert.Ref(0)) {
 		t.Error("an inert reach is data already and must be left alone")
 	}
 }

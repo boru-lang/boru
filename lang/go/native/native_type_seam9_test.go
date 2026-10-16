@@ -96,12 +96,12 @@ func TestW9MakeOptionalTypeCollapsesToOne(t *testing.T) {
 	// `Any | None` simplifies to a single alternative (Any absorbs None), so
 	// makeOptionalType returns simplified[0] rather than a Disjunct.
 	out := makeOptionalType(NewTypeLiteral(TAny))
-	if IsDisjunct(out) {
+	if IsDisjunct(&out) {
 		t.Fatalf("Any|None should collapse to one alt, got disjunct %s", out.String())
 	}
 	// Positive pair: a plain type gains a None alternative (a 2-alt disjunct).
 	opt := makeOptionalType(NewTypeLiteral(TInteger))
-	if !IsDisjunct(opt) {
+	if !IsDisjunct(&opt) {
 		t.Fatalf("Integer should become Integer|None disjunct, got %s", opt.String())
 	}
 	// And an already-optional disjunct is returned unchanged (idempotent).
@@ -135,7 +135,7 @@ func TestW9TypeAlgebraListFoldNonListConcrete(t *testing.T) {
 	fold := typeAlgebraListFold(tanyHandler)
 	// A concrete Map is IsConcrete but AsList yields nil → dynamic fallback.
 	out := fold([]Value{NewMap(NewOrderedMap())}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("non-list concrete arg should fall back to a dynamic carrier, got %v", Canon(out))
 	}
 }
@@ -148,7 +148,7 @@ func TestW9TypeAlgebraListFoldHandlerBadArity(t *testing.T) {
 	fold := typeAlgebraListFold(bad)
 	lst := NewList([]Value{NewInteger(1), NewInteger(2)})
 	out := fold([]Value{lst}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("a handler returning !=1 value should fall back to a dynamic carrier, got %v", Canon(out))
 	}
 }

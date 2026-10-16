@@ -53,7 +53,7 @@ func TestShapeOfAndHolds(t *testing.T) {
 		"too wide":       shapeTestMap("a", NewInteger(1), "b", NewInteger(2), "c", NewInteger(3)),
 		"fn field":       shapeTestMap("a", fn),
 		"carrier field":  shapeTestMap("a", NewCarrier(TInteger)),
-		"ideal field":    shapeTestMap("a", Value{Parent: TReach, Data: NewInteger(1).Data}),
+		"ideal field":    shapeTestMap("a", Value{d: &Datum{Parent: TReach, Data: NewInteger(1).Data()}}),
 		"dynamic field":  shapeTestMap("a", NewDynamicCarrier(TInteger)),
 		"bare field":     shapeTestMap("a", NewTypeLiteral(TInteger)),
 		"ascribed field": shapeTestMap("a", ascField),
@@ -97,7 +97,7 @@ func TestListShape(t *testing.T) {
 	}
 	fn := NewFunction(FnDefInfo{Name: "f", Signatures: []Signature{{}}})
 	q := NewList([]Value{NewInteger(1)})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	for name, v := range map[string]Value{
 		"empty": NewList(nil), "too long": NewList([]Value{NewInteger(1), NewInteger(2), NewInteger(3), NewInteger(4), NewInteger(5)}),
 		"fn element": NewList([]Value{fn}), "carrier element": NewList([]Value{NewCarrier(TInteger)}),

@@ -317,8 +317,8 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			// the module registry it was written in (NUR128: a module
 			// body's own check is inactive, so a dead branch in an exported
 			// fn was reported only when someone called it).
-			if fd, isFn := ev.Data.(FnDefInfo); isFn {
-				NoteFnBodyPendingIn(parent, modReg, fd)
+			if fd, isFn := ev.Data().(*FnDefInfo); isFn {
+				NoteFnBodyPendingIn(parent, modReg, *fd)
 			}
 		}
 		exports[name] = resolved
@@ -338,7 +338,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			{
 				Args: []*Type{TAtom, TMap},
 				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-					if !IsConcrete(eargs[1]) {
+					if !IsConcrete(&eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as1, _ := eargs[0].AsConcreteAtom()
@@ -351,7 +351,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			{
 				Args: []*Type{TString, TMap},
 				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-					if !IsConcrete(eargs[1]) {
+					if !IsConcrete(&eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as2, _ := eargs[0].AsConcreteString()
@@ -370,8 +370,6 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// quoted value whose text happens to name a word (`"def"`, `"print"`)
 	// stays a string, the same contract `do` and every other evaluator
 	// honour.
-	input := make([]Value, len(elems))
-	copy(input, elems)
 	// The module's identity is drawn BEFORE the body runs so every type
 	// the body mints (refine / class) is owner-stamped with this
 	// module's token — the provenance the ownership-anchored signature
@@ -383,7 +381,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// C4 attribution (plan Phase 10): the body run IS the module load — a
 	// sanctioned interpreter entry reported under its named seam.
 	restoreAtt := modReg.SetInterpAttribution("module-load")
-	_, err = sub.Run(input)
+	_, err = sub.Run(elems)
 	restoreAtt()
 	if err != nil {
 		return ModuleDesc{}, err
@@ -796,10 +794,10 @@ func adoptEscapedTypes(r *Registry, desc ModuleDesc) {
 	for _, exportMap := range desc.Exports {
 		for _, key := range exportMap.Keys() {
 			v, _ := exportMap.Get(key)
-			if !IsBareTypeNode(v) {
+			if !IsBareTypeNode(&v) {
 				continue
 			}
-			canonical := desc.Src.Types.LookupByID(v.ID)
+			canonical := desc.Src.Types.LookupByID(IDOf(&v))
 			if canonical == nil {
 				continue // a builtin literal — the VM's Builtin fallback covers it
 			}
@@ -825,7 +823,7 @@ func installRenamedExports(r *Registry, desc ModuleDesc, renameList []Value) err
 	linkModuleDebugParent(r, desc)
 	mod := NewModuleInstance(desc)
 
-	if renameList[0].Parent.Equal(TList) {
+	if renameList[0].Parent().Equal(TList) {
 		// Multiple rename pairs: [[from1 to1] [from2 to2] ...]
 		for _, pair := range renameList {
 			pairElems, _ := AsList(pair)
@@ -884,7 +882,7 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// map, which auto-evaluates to the bound fn as data — must carry the
 	// module registry so it executes in module scope (resolving module-
 	// private words) when called after import.
-	if fnDef, ok := v.Data.(FnDefInfo); ok {
+	if fnDef, ok := v.Data().(*FnDefInfo); ok {
 		// An exported word (the public API) IS used — record it so check mode
 		// does not falsely flag every exported impl as unused_def. The `name/v`
 		// reference form auto-evaluates to the bound fn HERE (as data), so the
@@ -900,10 +898,10 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// registry. After auto-eval this path is reached mainly in check
 	// mode and for type/value names that resolved to themselves.
 	var name string
-	if IsWord(v) {
-		_as3, _ := AsWord(v)
+	if IsWord(&v) {
+		_as3, _ := AsWord(&v)
 		name = _as3.Name
-	} else if v.Parent.ConformsTo(TString) {
+	} else if v.Parent().ConformsTo(TString) {
 		name, _ = AsString(v)
 	} else if IsAtom(v) {
 		name, _ = AsAtom(v)
@@ -1044,15 +1042,15 @@ func ensureExportsBound(r *Registry, desc ModuleDesc) {
 
 // valToAtomOrString extracts a string from a Value that is an atom, string, or word.
 func valToAtomOrString(v Value) string {
-	if IsWord(v) {
-		_as4, _ := AsWord(v)
+	if IsWord(&v) {
+		_as4, _ := AsWord(&v)
 		return _as4.Name
 	}
 	if IsAtom(v) {
 		_as5, _ := AsAtom(v)
 		return _as5
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as6, _ := AsString(v)
 		return _as6
 	}

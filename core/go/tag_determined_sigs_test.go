@@ -13,10 +13,10 @@ func TestTagDeterminedSigs(t *testing.T) {
 	withPattern := []Signature{{Params: []FnParam{{Type: TInteger, Pattern: &pat}}}}
 	typeArg := []Signature{{Args: []*Type{TInteger}, TypeArgs: map[int]bool{0: true}}}
 	options := []Signature{{Args: []*Type{TOptions}}}
-	user := &Type{Origin: OriginUserDef}
+	user := &Type{d: &Datum{Origin: OriginUserDef}}
 	userArg := []Signature{{Args: []*Type{user}}}
 	nilArg := []Signature{{Args: []*Type{nil}}}
-	content := &Type{Origin: OriginBuiltin, tmeta: &typeMeta{Behavior: typeMembershipBehavior{}}}
+	content := &Type{d: &Datum{Origin: OriginBuiltin, tmeta: &typeMeta{Behavior: typeMembershipBehavior{}}}}
 	contentArg := []Signature{{Args: []*Type{content}}}
 	for name, sigs := range map[string][]Signature{
 		"pattern": withPattern, "type-literal slot": typeArg, "Options": options,

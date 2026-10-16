@@ -124,7 +124,7 @@ func TestSeatProgramResidualScreensACallable(t *testing.T) {
 	// A DYNAMIC entry counts as possibly-callable too: the model does not
 	// bound it, and the screen is deliberately wide here (NUR129's trade).
 	dyn := core.NewCarrier(core.TInteger)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	lw = rbLowerer(1)
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
 	if lw.seatProgramResidual(ops, []core.Value{core.NewInteger(9), dyn}, nil, core.SrcPos{}) == "" {

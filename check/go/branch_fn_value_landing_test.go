@@ -11,33 +11,33 @@ import (
 // arm the merge's widened type hides (the recorder's MayBeFn), and the
 // park's check-side twin records such a survivor's placement.
 
-// mayBeFnEmit is TheInactiveEmit with Active() on, a chosen MayBeFn set and
-// a record of every landing it is told about.
+// mayBeFnEmit is TheInactiveEmit with Active() on, a chosen MayBeFn set (by
+// recorder key) and a record of every landing it is told about.
 type mayBeFnEmit struct {
 	core.EmitRecorder
-	maybe   map[string]bool
+	maybe   map[core.RecKey]bool
 	landed  []string
 	next    []core.LandingNext
 	beneath []bool
 	words   []string
 }
 
-func (m *mayBeFnEmit) Active() bool           { return true }
-func (m *mayBeFnEmit) MayBeFn(id string) bool { return m.maybe[id] }
+func (m *mayBeFnEmit) Active() bool               { return true }
+func (m *mayBeFnEmit) MayBeFn(k core.RecKey) bool { return m.maybe[k] }
 func (m *mayBeFnEmit) NoteReStepLanding(v core.Value, _ core.SrcPos) {
-	m.landed = append(m.landed, v.ID)
+	m.landed = append(m.landed, core.IDOf(&v))
 }
 func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, beneath bool, word core.Value) {
 	m.next = append(m.next, next)
 	m.beneath = append(m.beneath, beneath)
 	name := ""
-	if w, err := core.AsWord(word); err == nil {
+	if w, err := core.AsWord(&word); err == nil {
 		name = w.Name
 	}
 	m.words = append(m.words, name)
 }
 
-func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*core.Engine, *mayBeFnEmit, func()) {
+func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[core.RecKey]bool) (*core.Engine, *mayBeFnEmit, func()) {
 	t.Helper()
 	r := covRegistry(t, nil)
 	fin := r.Check.Begin()
@@ -55,9 +55,13 @@ func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*cor
 // where it is a COLLECTING landing (NUR298) unless the token is a dispatch
 // modifier.
 func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
+	// The branch's event stamped its result — after the identity, which
+	// would clear the key.
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-land"
-	e, rec, fin := mayBeFnEngine(t, []core.Value{branch}, map[string]bool{"br-land": true})
+	core.SetID(&branch, "br-land")
+	core.SetRecKey(&branch, core.RecKey{Pass: 1, Seq: 1})
+	vouched := map[core.RecKey]bool{core.RecKeyOf(&branch): true}
+	e, rec, fin := mayBeFnEngine(t, []core.Value{branch}, vouched)
 	defer fin()
 	noteReStepLanding(e, 0)
 	if len(rec.landed) != 1 || rec.landed[0] != "br-land" {
@@ -71,7 +75,7 @@ func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
 		t.Errorf("a plain carrier the recorder does not vouch for is not callable: %v", rec.landed)
 	}
 
-	e, rec, fin = mayBeFnEngine(t, []core.Value{branch, core.NewInteger(5)}, map[string]bool{"br-land": true})
+	e, rec, fin = mayBeFnEngine(t, []core.Value{branch, core.NewInteger(5)}, vouched)
 	defer fin()
 	noteReStepLanding(e, 0)
 	if len(rec.landed) != 0 {
@@ -81,13 +85,13 @@ func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
 	group := func(after core.Value) []core.Value {
 		return []core.Value{core.NewWord("def"), core.NewWord("j"), core.NewOpenParen(), core.NewInteger(5), branch, after, core.NewCloseParen()}
 	}
-	e, rec, fin = mayBeFnEngine(t, group(core.NewInteger(7)), map[string]bool{"br-land": true})
+	e, rec, fin = mayBeFnEngine(t, group(core.NewInteger(7)), vouched)
 	defer fin()
 	noteReStepLanding(e, 4)
 	if len(rec.landed) != 1 || len(rec.next) != 1 || rec.next[0] != core.LandingNextCollect {
 		t.Errorf("in a def's group a collectable token makes a collecting landing: %v %v", rec.landed, rec.next)
 	}
-	e, rec, fin = mayBeFnEngine(t, group(core.NewDispatchMod(core.DispatchModInfo{Val: true})), map[string]bool{"br-land": true})
+	e, rec, fin = mayBeFnEngine(t, group(core.NewDispatchMod(core.DispatchModInfo{Val: true})), vouched)
 	defer fin()
 	noteReStepLanding(e, 4)
 	if len(rec.landed) != 0 {
@@ -129,8 +133,9 @@ func TestInDefGroup(t *testing.T) {
 // that place.
 func TestParenPlacedFnCarrierAdmitsMayBeFn(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-park"
-	e, _, fin := mayBeFnEngine(t, []core.Value{branch}, map[string]bool{"br-park": true})
+	core.SetID(&branch, "br-park")
+	core.SetRecKey(&branch, core.RecKey{Pass: 1, Seq: 1})
+	e, _, fin := mayBeFnEngine(t, []core.Value{branch}, map[core.RecKey]bool{core.RecKeyOf(&branch): true})
 	defer fin()
 	if !parenPlacedFnCarrier(e, 0) || !e.Registry.Check.ParenPlacedFnIDs["br-park"] {
 		t.Errorf("a may-be-fn survivor is placed and recorded: %v", e.Registry.Check.ParenPlacedFnIDs)
@@ -148,8 +153,9 @@ func TestParenPlacedFnCarrierAdmitsMayBeFn(t *testing.T) {
 // only with a candidate after it and nothing beneath).
 func TestNoteReStepLandingNotesNext(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
-	branch.ID = "br-next"
-	maybe := map[string]bool{"br-next": true}
+	core.SetID(&branch, "br-next")
+	core.SetRecKey(&branch, core.RecKey{Pass: 1, Seq: 1})
+	maybe := map[core.RecKey]bool{core.RecKeyOf(&branch): true}
 	for _, tc := range []struct {
 		name    string
 		tape    []core.Value
@@ -191,7 +197,7 @@ func TestNoteReStepLandingNotesNext(t *testing.T) {
 		// none.
 		wantWord := ""
 		if tc.next == core.LandingNextWord || tc.next == core.LandingNextValue {
-			w, _ := core.AsWord(tc.tape[1])
+			w, _ := core.AsWord(&tc.tape[1])
 			wantWord = w.Name
 		}
 		if rec.words[0] != wantWord {

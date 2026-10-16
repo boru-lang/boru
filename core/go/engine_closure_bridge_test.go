@@ -19,7 +19,7 @@ type bridgeRuntime struct {
 }
 
 func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
-	if _, ok := v.Data.(ClosurePayload); !ok || !b.bridge {
+	if _, ok := v.Data().(*ClosurePayload); !ok || !b.bridge {
 		return v, false
 	}
 	params := make([]FnParam, b.params)
@@ -35,7 +35,7 @@ func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 		return []Value{NewInteger(n * 3)}, nil
 	})}
 	NormalizeSig(&sig)
-	cl, _ := v.Data.(ClosurePayload)
+	cl, _ := v.Data().(*ClosurePayload)
 	return NewFunctionIdentified(FnDefInfo{Signatures: []Signature{sig}, Anonymous: true}, cl.Ident), true
 }
 
@@ -46,7 +46,7 @@ func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 // boru bodies) — while a declined bridge, a quoted closure and a parked
 // 0-arg anonymous one stay data.
 func TestClosureValueBridge(t *testing.T) {
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	closure := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	run := func(rt *bridgeRuntime, tokens ...Value) []Value {
 		t.Helper()
 		prev := InstallCompiledRuntime(rt)
@@ -101,7 +101,7 @@ func TestClosureValueBridge(t *testing.T) {
 	})
 	t.Run("a quoted closure is data on both lanes", func(t *testing.T) {
 		quoted := closure
-		quoted.Quoted = true
+		SetQuoted(&quoted, true)
 		rt := &bridgeRuntime{bridge: true, params: 1}
 		if out := run(rt, quoted); len(out) != 2 || rt.calls != 0 {
 			t.Errorf("quoted: %v", out)
@@ -132,7 +132,7 @@ func TestClosureValueBridge(t *testing.T) {
 // IsCompiledClosureValue reports a ClosurePayload payload (the test-side
 // twin of compiler.IsCompiledClosure, which core cannot import).
 func IsCompiledClosureValue(v Value) bool {
-	_, ok := v.Data.(ClosurePayload)
+	_, ok := v.Data().(*ClosurePayload)
 	return ok
 }
 
@@ -150,13 +150,13 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 	prev := InstallCompiledRuntime(rt)
 	defer InstallCompiledRuntime(prev)
 	r := covRegistry(t, nil)
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	closure := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	r.Defs.Push("a5", closure)
 
-	if dispatchesAsWord(closure, r) || r.Lookup("a5") != nil {
+	if dispatchesAsWord(&closure, r) || r.Lookup("a5") != nil {
 		t.Fatal("outside a run the bound closure is data: no dispatch, no lookup aggregate")
 	}
-	if dispatchesAsWord(closure, nil) {
+	if dispatchesAsWord(&closure, nil) {
 		t.Error("a nil registry hosts no dispatch")
 	}
 	// The nil computed without an invoker must not outlive the run that
@@ -166,7 +166,7 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 	}
 
 	r.Invoker = func(_ *Registry, _ Value, _ []Value) ([]Value, error) { return nil, nil }
-	if !dispatchesAsWord(closure, r) {
+	if !dispatchesAsWord(&closure, r) {
 		t.Fatal("under a run's invoker the bound closure dispatches as a word")
 	}
 	fn := r.Lookup("a5")
@@ -199,9 +199,9 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 // a QUOTED closure, a negative arity, or no bridge at all (outside a run).
 func TestModifierClosureShapes(t *testing.T) {
 	r := covRegistry(t, nil)
-	cl := Value{Parent: TFunction, Data: ClosurePayload{}}
+	cl := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	quoted := cl
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 
 	// No bridge: every wrapper declines.
 	prev := InstallCompiledRuntime(noCompiledRuntime{})
@@ -221,7 +221,7 @@ func TestModifierClosureShapes(t *testing.T) {
 		"force-arity":   func(v Value) (Value, bool) { return ForceArityClosure(r, v, 1) },
 	} {
 		w, ok := wrap(cl)
-		if !ok || !w.Parent.Equal(TFunction) {
+		if !ok || !w.Parent().Equal(TFunction) {
 			t.Errorf("%s over a bridged closure must wrap it: ok=%v %v", name, ok, w)
 		}
 		if _, ok := wrap(NewInteger(1)); ok {

@@ -273,7 +273,7 @@ func TestS6aIsModuleInnerSigGuards(t *testing.T) {
 	r := newTestRegistry(t)
 	sub := newTestRegistry(t)
 	em := core.NewOrderedMap()
-	em.Set("s6aw", core.NewValueRaw(core.TFunction, core.FnDefInfo{Registry: sub, Name: "s6aw"}))
+	em.Set("s6aw", core.NewValueRaw(core.TFunction, &core.FnDefInfo{Registry: sub, Name: "s6aw"}))
 	r.Modules.MarkLoaded("s6amod", core.ModuleDesc{
 		ID: "s6amod",
 		Exports: map[string]*core.OrderedMap{
@@ -306,7 +306,7 @@ func TestEmitStateNilReceiver(t *testing.T) {
 	if es.Sites() != nil {
 		t.Fatal("nil Sites should be nil")
 	}
-	if es.ZeroOutProduced("x") || es.AlreadyProduced("x") {
+	if es.ZeroOutProduced(core.RecKey{Pass: 1}) || es.AlreadyProduced(core.RecKey{Pass: 1}) {
 		t.Fatal("nil produced probes should be false")
 	}
 	if es.UnitVariadic(0) {
@@ -333,10 +333,10 @@ func TestEmitStateNilReceiver(t *testing.T) {
 	}
 }
 
-// seedProduced makes v resolve to an event operand: resolveOperand finds a
-// producedBy entry (and v is not a type body, so the events-first arm wins).
-func seedProduced(es *EmitState, v core.Value, seq int) {
-	es.producedBy[v.ID] = producer{seq: seq, idx: 0}
+// seedProduced makes v resolve to an event operand: resolveOperand finds its
+// recorder key (and v is not a type body, so the events-first arm wins).
+func seedProduced(es *EmitState, v *core.Value, seq int) {
+	es.stampProduced(v, seq, 0)
 }
 
 // residualReadStable's no-name arm: a value never noted as a def read (or a
@@ -351,7 +351,7 @@ func TestResidualReadStableNoName(t *testing.T) {
 // §9.8 dyn-bind skip): only a value the window actually holds reads.
 func TestWindowReadsID(t *testing.T) {
 	w := core.NewCarrier(core.TFunction)
-	w.ID = "g1"
+	core.SetID(&w, "g1")
 	if !windowReadsID([]core.Value{w}, "g1") {
 		t.Error("a window value's own ID must read")
 	}
@@ -362,19 +362,19 @@ func TestWindowReadsID(t *testing.T) {
 
 func TestStripZeroOutPhantomsKeepsNonPhantom(t *testing.T) {
 	// Mint inside a pass so the values carry the compile identities the
-	// producedBy bookkeeping keys on (runtime mints elide IDs).
+	// recorder's stamps require (runtime mints elide IDs).
 	c := &core.CheckState{}
 	defer c.Begin()()
 	es := NewEmitState()
 	phantom := core.NewInteger(1)
 	kept := core.NewInteger(2)
-	seedProduced(es, phantom, 1)
+	seedProduced(es, &phantom, 1)
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f
-	seedProduced(es, kept, 2) // eventInfo[2].zeroOut defaults false
+	seedProduced(es, &kept, 2) // eventInfo[2].zeroOut defaults false
 	got := es.stripZeroOutPhantoms([]core.Value{phantom, kept})
-	if len(got) != 1 || got[0].ID != kept.ID {
+	if len(got) != 1 || core.IDOf(&got[0]) != core.IDOf(&kept) {
 		t.Fatalf("strip = %v, want just the kept value", got)
 	}
 }
@@ -388,7 +388,7 @@ func TestSetLoopBodyApplyDeclines(t *testing.T) {
 	// bodyStk[0] resolves to an event (dynamic fn carrier); a fn-valued
 	// trailing arg → false.
 	fn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(es, fn, 1)
+	seedProduced(es, &fn, 1)
 	if es.setLoopBodyApply(&EmitFragment{}, []core.Value{fn, core.NewCarrier(core.TFunction)}) {
 		t.Fatal("fn-valued loop-apply arg should decline")
 	}
@@ -397,7 +397,7 @@ func TestSetLoopBodyApplyDeclines(t *testing.T) {
 func TestInstanceFnFieldRiskUnresolvableKey(t *testing.T) {
 	es := NewEmitState()
 	inst := instanceVal(mapOfFields())
-	es.fnRiskFields = map[string]map[string]bool{inst.ID: {"f": true}}
+	es.fnRiskFields = map[string]map[string]bool{core.IDOf(&inst): {"f": true}}
 	// No concrete key among args → any tracked field is risky → true.
 	if !es.instanceFnFieldRisk([]core.Value{inst}) {
 		t.Fatal("unresolvable key over a tracked instance should be risky")
@@ -415,8 +415,8 @@ func TestInstanceFnFieldRiskUnresolvableKey(t *testing.T) {
 func TestProducerWordMiss(t *testing.T) {
 	es := NewEmitState()
 	v := core.NewInteger(1)
-	seedProduced(es, v, 99) // producedBy hit, but no frame event with seq 99
-	if _, ok := es.producerWord(v.ID); ok {
+	seedProduced(es, &v, 99) // a producer, but no frame event with seq 99
+	if _, ok := es.producerWord(&v); ok {
 		t.Fatal("no matching frame event should miss")
 	}
 }
@@ -424,37 +424,37 @@ func TestProducerWordMiss(t *testing.T) {
 func TestProducerReturnedClosureArity(t *testing.T) {
 	// id not produced → false.
 	es := NewEmitState()
-	if _, ok := es.producerReturnedClosureArity("nope"); ok {
+	if _, ok := es.producerReturnedClosureArity(read("nope")); ok {
 		t.Fatal("unproduced id should decline")
 	}
 	// produced, but the frame has only a non-matching seq → loop then trailing miss.
 	es = NewEmitState()
-	es.producedBy["x"] = producer{seq: 99}
+	x := producedAs(es, core.Value{}, "x", 99, 0)
 	es.frames[0] = []EmitEvent{{seq: 1, kind: evCall}}
-	if _, ok := es.producerReturnedClosureArity("x"); ok {
+	if _, ok := es.producerReturnedClosureArity(&x); ok {
 		t.Fatal("no matching seq should decline")
 	}
 	// matching evCallUser with an out-of-range unit → false.
 	es = NewEmitState()
-	es.producedBy["u"] = producer{seq: 5}
+	u := producedAs(es, core.Value{}, "u", 5, 0)
 	es.frames[0] = []EmitEvent{{seq: 5, kind: evCallUser, uc: emitUserCall{unit: 99}}}
-	if _, ok := es.producerReturnedClosureArity("u"); ok {
+	if _, ok := es.producerReturnedClosureArity(&u); ok {
 		t.Fatal("out-of-range unit should decline")
 	}
 	// matching unit whose rec is not a single closure out → false.
 	es = NewEmitState()
-	es.producedBy["u"] = producer{seq: 5}
+	u = producedAs(es, core.Value{}, "u", 5, 0)
 	es.fnRecs = []*fnUnitRec{{}}
 	es.frames[0] = []EmitEvent{{seq: 5, kind: evCallUser, uc: emitUserCall{unit: 0}}}
-	if _, ok := es.producerReturnedClosureArity("u"); ok {
+	if _, ok := es.producerReturnedClosureArity(&u); ok {
 		t.Fatal("non-closure out should decline")
 	}
 	// closure out whose closureUnit is out of range → false.
 	es = NewEmitState()
-	es.producedBy["u"] = producer{seq: 5}
+	u = producedAs(es, core.Value{}, "u", 5, 0)
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{{kind: opClosure, closureUnit: 99}}}}
 	es.frames[0] = []EmitEvent{{seq: 5, kind: evCallUser, uc: emitUserCall{unit: 0}}}
-	if _, ok := es.producerReturnedClosureArity("u"); ok {
+	if _, ok := es.producerReturnedClosureArity(&u); ok {
 		t.Fatal("out-of-range closureUnit should decline")
 	}
 }
@@ -468,9 +468,9 @@ func TestConstLambdaArity(t *testing.T) {
 	boru := func() core.SigImpl { return &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}} }
 	lam := func(name, module string, sigs ...core.Signature) core.Value {
 		v := fnVal(sigs...)
-		fd := v.Data.(core.FnDefInfo)
+		fd := *v.Data().(*core.FnDefInfo)
 		fd.Name, fd.Module = name, module
-		v.Data = fd
+		v.SetData(&fd)
 		return v
 	}
 	twoParam := core.Signature{Params: []core.FnParam{{Name: "a"}, {Name: "z"}}, Impl: boru()}
@@ -514,22 +514,22 @@ func TestConstLambdaArity(t *testing.T) {
 // not.
 func TestProducerReturnedClosureConstArm(t *testing.T) {
 	es := NewEmitState()
-	es.producedBy["u"] = producer{seq: 5}
+	u := producedAs(es, core.Value{}, "u", 5, 0)
 	lam := fnVal(core.Signature{Params: []core.FnParam{{Name: "x"}}, Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}})
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{ConstOperand(es.internUnpooled(lam))}}}
 	es.frames[0] = []EmitEvent{{seq: 5, kind: evCallUser, uc: emitUserCall{unit: 0}}}
-	if arity, ok := es.producerReturnedClosureArity("u"); !ok || arity != 1 {
+	if arity, ok := es.producerReturnedClosureArity(&u); !ok || arity != 1 {
 		t.Errorf("a baked lambda's arity = (%d,%v), want (1,true)", arity, ok)
 	}
-	if es.producerReturnedClosure("u") {
+	if es.producerReturnedClosure(&u) {
 		t.Error("a baked lambda const is not a compiled closure payload")
 	}
 	es.fnRecs[0].outOps = []EmitOperand{{kind: opClosure, closureUnit: 1}}
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{nParams: 3})
-	if !es.producerReturnedClosure("u") {
+	if !es.producerReturnedClosure(&u) {
 		t.Error("a closure out op IS a compiled closure payload")
 	}
-	if _, ok := es.producerReturnedOutOp("nope"); ok {
+	if _, ok := es.producerReturnedOutOp(read("nope")); ok {
 		t.Error("an unproduced id has no out op")
 	}
 }
@@ -563,7 +563,7 @@ func TestNoEvalBodiesInertSentinel(t *testing.T) {
 func TestInternCompoundEmptyID(t *testing.T) {
 	es := NewEmitState()
 	lst := core.NewList([]core.Value{core.NewInteger(1)})
-	lst.ID = "" // a compound with no ID takes the un-pooled append path
+	core.SetID(&lst, "") // a compound with no ID takes the un-pooled append path
 	if idx := es.intern(lst); idx != 0 || len(es.consts) != 1 {
 		t.Fatalf("empty-id compound intern = %d (consts=%d)", idx, len(es.consts))
 	}
@@ -581,9 +581,9 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	// The program then falls back faithfully. (Anonymous capturing lambdas whose
 	// body compiles DO resolve to an opClosure — see
 	// lang/go's TestPatrunFnValueStoreCompiles / TestReturnedCapturingClosureApply.)
-	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}
+	fn := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
+			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if ok {
 		t.Fatalf("captured non-anonymous fn must NOT resolve as a const bake: ops=%+v", ops)
@@ -671,7 +671,7 @@ func TestMixedDynamicApplyShape(t *testing.T) {
 	}
 	es2 := NewEmitState()
 	es2.reg = r
-	r.Check.MethodShapes = map[string]core.Value{dyn.ID: core.NewInteger(0)}
+	r.Check.MethodShapes = map[string]core.Value{core.IDOf(&dyn): core.NewInteger(0)}
 	if _, ok := es2.mixedDynamicApplyShape(residual); ok {
 		t.Fatal("annotated interior carrier should decline")
 	}
@@ -707,18 +707,18 @@ func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	// Anonymous lambda with an unresolvable capture → declines.
 	es := NewEmitState()
 	es.reg = r
-	withCap := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true,
+	withCap := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true,
 			Captured:   []core.CapturedBinding{{Name: "c", Value: core.NewCarrier(core.TInteger)}},
-			Signatures: []core.Signature{{}}}}
+			Signatures: []core.Signature{{}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(withCap, core.SrcPos{}); ok {
 		t.Fatal("unresolvable capture should decline")
 	}
 	// Anonymous lambda with more than one own signature → declines.
 	es = NewEmitState()
 	es.reg = r
-	multiSig := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}
+	multiSig := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(multiSig, core.SrcPos{}); ok {
 		t.Fatal("multi-sig lambda should decline")
 	}
@@ -736,8 +736,8 @@ func TestTryReturnedClosureProbeFails(t *testing.T) {
 		Returns:    []*core.Type{core.TInteger},
 		BarrierPos: -1,
 	}
-	v := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}
+	v := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(v, core.SrcPos{}); ok {
 		t.Fatal("an uncompilable lambda body should decline")
 	}
@@ -752,7 +752,7 @@ func TestStartFnCompileFinishZeroOut(t *testing.T) {
 	// A body residual entry that is a 0-output statement guard's phantom is
 	// skipped in the finish resolution.
 	phantom := core.NewInteger(1)
-	es.producedBy[phantom.ID] = producer{seq: 1}
+	es.stampProduced(&phantom, 1, 0)
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f
@@ -764,8 +764,8 @@ func TestStartFnCompileFinishDynTrail(t *testing.T) {
 	_, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	arg := core.NewInteger(5)
 	fn := core.NewDynamicCarrier(core.TFunction)
-	es.producedBy[fn.ID] = producer{seq: 1} // resolves to an event
-	es.RegisterTrailingApply(fn.ID, 1)      // arity 1 == len(bodyStk)-1
+	es.stampProduced(&fn, 1, 0)                 // resolves to an event
+	es.RegisterTrailingApply(core.IDOf(&fn), 1) // arity 1 == len(bodyStk)-1
 	finish([]core.Value{arg, fn})
 }
 
@@ -775,9 +775,9 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	u := es.units[len(es.units)-1]
 	fnHead := core.NewDynamicCarrier(core.TFunction)
 	fnLast := core.NewDynamicCarrier(core.TFunction)
-	es.producedBy[fnHead.ID] = producer{seq: 1}
-	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []pendingApply{{id: fnLast.ID, pos: core.SrcPos{Row: 1, Col: 9}}}
+	es.stampProduced(&fnHead, 1, 0)
+	es.stampProduced(&fnLast, 2, 0)
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fnLast), pos: core.SrcPos{Row: 1, Col: 9}}}
 	// bodyStk[:last] carries a fn VALUE: an argument of the pending apply
 	// (the thirty-first increment — `(a:Any => [b:Any => [a/v]]) p/v apply`
 	// hands the lambda to the pair), so the whole residual is the window.
@@ -789,9 +789,9 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	es = NewEmitState()
 	_, finish, _ = es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	u = es.units[len(es.units)-1]
-	es.producedBy[fnHead.ID] = producer{seq: 1}
-	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []pendingApply{{id: fnHead.ID}}
+	es.stampProduced(&fnHead, 1, 0)
+	es.stampProduced(&fnLast, 2, 0)
+	u.pendingApply = []pendingApply{{id: core.IDOf(&fnHead)}}
 	finish([]core.Value{fnHead, fnLast})
 	if es.Compilable {
 		t.Fatal("a mid-body pending apply should decline")
@@ -810,7 +810,7 @@ func TestFinalizeResidualArms(t *testing.T) {
 	// A zeroOut phantom in the residual is skipped, yielding an empty program.
 	es := NewEmitState()
 	phantom := core.NewInteger(1)
-	es.producedBy[phantom.ID] = producer{seq: 1}
+	es.stampProduced(&phantom, 1, 0)
 	f := es.eventInfo[1]
 	f.zeroOut = true
 	es.eventInfo[1] = f
@@ -884,7 +884,7 @@ func TestComputedArmCondOKDirect(t *testing.T) {
 
 func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
 	// MapPayload with nil backing map → no keep (the nil-map guard).
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if keep := embeddedEnclosingIDs(nilMap, map[string]bool{}); keep != nil {
 		t.Fatalf("nil-map should embed nothing: %v", keep)
 	}
@@ -893,7 +893,7 @@ func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
 	om := core.NewOrderedMap()
 	om.Set("k", member)
 	mp := core.NewMap(om)
-	if keep := embeddedEnclosingIDs(mp, map[string]bool{member.ID: true}); len(keep) != 1 || !keep[member.ID] {
+	if keep := embeddedEnclosingIDs(mp, map[string]bool{core.IDOf(&member): true}); len(keep) != 1 || !keep[core.IDOf(&member)] {
 		t.Fatalf("map embedding an enclosing compound should keep it: %v", keep)
 	}
 }
@@ -924,7 +924,7 @@ func TestReadsFnMember(t *testing.T) {
 		t.Fatal("list loop fn should be reported")
 	}
 	// nil-backed map → skipped.
-	if readsFnMember([]core.Value{{Parent: core.TMap, Data: core.MapPayload{M: nil}}}) {
+	if readsFnMember([]core.Value{core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})}) {
 		t.Fatal("nil map should be skipped")
 	}
 	// map, no key → loop finds the fn.
@@ -961,7 +961,7 @@ func TestContainerFnAutoDispatchRisk(t *testing.T) {
 	if !containerFnAutoDispatchRisk([]core.Value{core.NewList([]core.Value{fn})}) {
 		t.Fatal("list loop 0-arg fn should be risky")
 	}
-	if containerFnAutoDispatchRisk([]core.Value{{Parent: core.TMap, Data: core.MapPayload{M: nil}}}) {
+	if containerFnAutoDispatchRisk([]core.Value{core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})}) {
 		t.Fatal("nil map should be skipped")
 	}
 	if !containerFnAutoDispatchRisk([]core.Value{s7MapOf("f", fn)}) {
@@ -981,7 +981,7 @@ func TestInterpMemberInert(t *testing.T) {
 		t.Fatal("carrier list member should not be inert")
 	}
 	// nil-backed map → false.
-	if InterpMemberInert(core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}) {
+	if InterpMemberInert(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})) {
 		t.Fatal("nil map should not be inert")
 	}
 	// map of inert members → true.
@@ -997,7 +997,7 @@ func TestInterpMemberInert(t *testing.T) {
 func TestInterpMemberInertBadInterp(t *testing.T) {
 	// A value whose Parent is TInterpString but whose payload is not an
 	// InterpStringPayload → AsInterpString errors → not inert.
-	bad := core.Value{Parent: core.TInterpString, Data: core.IntPayload{N: 1}}
+	bad := core.ValueOf(&core.Datum{Parent: core.TInterpString, Data: core.IntPayload{N: 1}})
 	if InterpMemberInert(bad) {
 		t.Fatal("a malformed interp-string should not be inert")
 	}
@@ -1005,7 +1005,7 @@ func TestInterpMemberInertBadInterp(t *testing.T) {
 
 func TestValueRefsNameMap(t *testing.T) {
 	// nil-backed map → false.
-	if valueRefsName(core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}) {
+	if valueRefsName(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})) {
 		t.Fatal("nil map references no name")
 	}
 	// map whose member is a Word → true.
@@ -1015,7 +1015,7 @@ func TestValueRefsNameMap(t *testing.T) {
 }
 
 func TestIsTypeBodyPayload(t *testing.T) {
-	if !isTypeBodyPayload(core.Value{Data: core.ChildTypeInfo{}}) {
+	if !isTypeBodyPayload(core.ValueOf(&core.Datum{Data: core.ChildTypeInfo{}})) {
 		t.Fatal("ChildTypeInfo is a type-body payload")
 	}
 	if isTypeBodyPayload(core.NewInteger(1)) {
@@ -1042,13 +1042,13 @@ func TestResolveOperandIdentitylessCompoundRescued(t *testing.T) {
 	// One extra unit puts resolution inside a compiled fn frame.
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}})
 
-	blank := core.Value{Parent: core.TList, Data: core.ListPayload{Elems: []core.Value{core.NewInteger(1)}}} // no ID
+	blank := core.ValueOf(&core.Datum{Parent: core.TList, Data: core.ListPayload{Elems: []core.Value{core.NewInteger(1)}}}) // no ID
 	if _, ok := es.resolveOperand(blank); ok {
 		t.Error("identity-less compound inside a fn unit must be rescued, not placed")
 	}
 	// Positive twin: the same compound minted with an identity resolves.
 	minted := core.NewList([]core.Value{core.NewInteger(1)})
-	if minted.ID == "" {
+	if core.IDOf(&minted) == "" {
 		t.Fatal("test premise: pass-minted list should carry an ID")
 	}
 	if _, ok := es.resolveOperand(minted); !ok {
@@ -1179,7 +1179,7 @@ func TestW9TryCompileUserPolyArmCompileFails(t *testing.T) {
 	// so the whole poly set is kept in the interpreter.
 	def := func(p string) core.Signature {
 		inner := core.NewList([]core.Value{core.NewWord(p)})
-		inner.Eval = true
+		core.SetEval(&inner, true)
 		return core.Signature{
 			Params:  []core.FnParam{{Name: p, Type: core.TInteger}},
 			Returns: []*core.Type{core.TInteger},
@@ -1204,7 +1204,7 @@ func TestW9CompileUserPolyArmCompileFailures(t *testing.T) {
 
 	// A deferred-param-list body (eval list referencing a param) → -1,false.
 	inner := core.NewList([]core.Value{core.NewWord("p")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	deferredSig := &core.Signature{
 		Params: []core.FnParam{{Name: "p", Type: core.TInteger}},
 		Impl:   core.Boru([]core.Value{inner}),
@@ -1228,20 +1228,20 @@ func TestRecordMakeListCompileFailures(t *testing.T) {
 	// Not the top frame → declines.
 	es := NewEmitState()
 	es.frames = append(es.frames, nil)
-	if es.RecordMakeList(nil, []core.Value{core.NewInteger(1)}, core.NewInteger(0), core.SrcPos{}) {
+	if es.RecordMakeList(nil, []core.Value{core.NewInteger(1)}, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("non-top-frame make-list should decline")
 	}
 	// A bare type node element with a canonical ID INTERNS as a type
 	// operand and records (ADR-010 / NUR051 — `[a None]` is data)…
 	es = NewEmitState()
-	if !es.RecordMakeListInner(nil, []core.Value{core.NewTypeLiteral(core.TInteger)}, core.NewInteger(0), core.SrcPos{}) {
+	if !es.RecordMakeListInner(nil, []core.Value{core.NewTypeLiteral(core.TInteger)}, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("type-node element with a canonical ID should intern and record")
 	}
 	// …while one with NO canonical ID has no runtime home → declines.
 	es = NewEmitState()
 	noID := core.NewTypeLiteral(core.TInteger)
-	noID.ID = ""
-	if es.RecordMakeListInner(nil, []core.Value{noID}, core.NewInteger(0), core.SrcPos{}) {
+	core.SetID(&noID, "")
+	if es.RecordMakeListInner(nil, []core.Value{noID}, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("type node with no canonical ID should decline")
 	}
 }
@@ -1249,20 +1249,20 @@ func TestRecordMakeListCompileFailures(t *testing.T) {
 func TestRecordMakeMapCompileFailures(t *testing.T) {
 	es := NewEmitState()
 	// length mismatch → declines.
-	if es.RecordMakeMap(nil, []string{"a"}, nil, false, core.NewInteger(0), core.SrcPos{}) {
+	if es.RecordMakeMap(nil, []string{"a"}, nil, false, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("key/val mismatch should decline")
 	}
 	// A bare type node value with a canonical ID INTERNS as a type
 	// operand and records (ADR-010 / NUR051 — `{r: None}` is data)…
 	es = NewEmitState()
-	if !es.RecordMakeMap(nil, []string{"a"}, []core.Value{core.NewTypeLiteral(core.TInteger)}, false, core.NewInteger(0), core.SrcPos{}) {
+	if !es.RecordMakeMap(nil, []string{"a"}, []core.Value{core.NewTypeLiteral(core.TInteger)}, false, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("type-node value with a canonical ID should intern and record")
 	}
 	// …while one with NO canonical ID has no runtime home → declines.
 	es = NewEmitState()
 	noID := core.NewTypeLiteral(core.TInteger)
-	noID.ID = ""
-	if es.RecordMakeMap(nil, []string{"a"}, []core.Value{noID}, false, core.NewInteger(0), core.SrcPos{}) {
+	core.SetID(&noID, "")
+	if es.RecordMakeMap(nil, []string{"a"}, []core.Value{noID}, false, addrOf(core.NewInteger(0)), core.SrcPos{}) {
 		t.Fatal("type node with no canonical ID should decline")
 	}
 }
@@ -1308,11 +1308,11 @@ func TestFnValueInputsPatternParamDefaultsAny(t *testing.T) {
 	if len(inputs) != 2 || len(names) != 2 || names[0] != "p" || names[1] != "q" {
 		t.Fatalf("inputs/names = %v %v", inputs, names)
 	}
-	if inputs[0].Parent == nil || !inputs[0].Parent.Equal(core.TAny) {
-		t.Errorf("a pattern-only param must bind an Any carrier, got %v", inputs[0].Parent)
+	if inputs[0].Parent() == nil || !inputs[0].Parent().Equal(core.TAny) {
+		t.Errorf("a pattern-only param must bind an Any carrier, got %v", inputs[0].Parent())
 	}
-	if !inputs[1].Parent.Equal(core.TInteger) {
-		t.Errorf("a typed param must keep its type, got %v", inputs[1].Parent)
+	if !inputs[1].Parent().Equal(core.TInteger) {
+		t.Errorf("a typed param must keep its type, got %v", inputs[1].Parent())
 	}
 }
 
@@ -1322,20 +1322,20 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 	// setProducedAt with an identity-less value: no entry — a later ""
 	// lookup is a guaranteed miss, and no other value can false-hit it.
 	blank := core.NewInteger(1) // runtime mint → "" ID
-	if blank.ID != "" {
+	if core.IDOf(&blank) != "" {
 		t.Fatal("test premise: runtime mint should be identity-less")
 	}
-	es.setProducedAt(blank, 3, 0)
-	if _, ok := es.producedBy[""]; ok {
-		t.Error("setProducedAt keyed the provenance map on \"\"")
+	es.setProducedAt(&blank, 3, 0)
+	if core.RecKeyOf(&blank) != (core.RecKey{}) {
+		t.Error("setProducedAt stamped an identity-less value")
 	}
 	// Positive twin: a minted value registers normally.
 	end := core.BeginIDMintScope()
 	minted := core.NewInteger(2)
 	end()
-	es.setProducedAt(minted, 4, 0)
-	if pr, ok := es.producedBy[minted.ID]; !ok || pr.seq != 4 {
-		t.Error("minted value did not register in producedBy")
+	es.setProducedAt(&minted, 4, 0)
+	if pr, ok := es.producerOf(&minted); !ok || pr.seq != 4 {
+		t.Error("minted value was not stamped as the event's result")
 	}
 
 	// RegisterLocal: "" declines with -1 and never inserts; two distinct
@@ -1364,7 +1364,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 // skipped, a non-fn member misses, and a bool-only tag (zero member) reports
 // no pinpointed value.
 func TestReadFnMemberValueArms(t *testing.T) {
-	fn := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}}
+	fn := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}})
 	om := core.NewOrderedMap()
 	om.Set("f", fn)
 	fnMap := core.NewMap(om)
@@ -1379,7 +1379,7 @@ func TestReadFnMemberValueArms(t *testing.T) {
 		t.Errorf("a leading carrier arg must be skipped, not decline the walk")
 	}
 	// A nil-backed map payload is skipped.
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if _, ok := readFnMemberValue([]core.Value{nilMap, key}); ok {
 		t.Errorf("a nil-backed map cannot pinpoint a member")
 	}
@@ -1401,7 +1401,7 @@ func TestReadFnMemberValueArms(t *testing.T) {
 		t.Errorf("an untagged id must not report a pinpointed value")
 	}
 	es.NoteMemberFnRead("rich", fn)
-	if got, ok := es.MemberFnReadValue("rich"); !ok || !core.IsConcrete(got) {
+	if got, ok := es.MemberFnReadValue("rich"); !ok || !core.IsConcrete(&got) {
 		t.Errorf("a rich tag must report the member")
 	}
 }
@@ -1443,7 +1443,7 @@ func TestW9TryCompileUserPolyEarlyReturns(t *testing.T) {
 func TestDynApplyLeadEligible(t *testing.T) {
 	fnCarrier := func(id string) core.Value {
 		v := core.NewCarrier(core.TFunction)
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 
@@ -1521,8 +1521,9 @@ func TestDynApplyLeadEligible(t *testing.T) {
 	es = NewEmitState()
 	u = openUnit(es, &fnUnitRec{nParams: 1})
 	u.localByID["g1"] = 0
-	es.producedBy["g1"] = producer{seq: 3}
-	if es.DynApplyLeadEligible(fnCarrier("g1")) {
+	g1 := fnCarrier("g1")
+	es.stampProduced(&g1, 3, 0)
+	if es.DynApplyLeadEligible(g1) {
 		t.Error("an event-provenance lead must decline")
 	}
 
@@ -1537,8 +1538,9 @@ func TestDynApplyLeadEligible(t *testing.T) {
 	}
 	u.localByID["c1"] = 1
 	u.capID["c1"] = true
-	es.producedBy["c1"] = producer{seq: 5}
-	if !es.DynApplyLeadEligible(fnCarrier("c1")) {
+	c1 := fnCarrier("c1")
+	es.stampProduced(&c1, 5, 0)
+	if !es.DynApplyLeadEligible(c1) {
 		t.Error("a captured slot with a parent-unit event entry must stay eligible")
 	}
 }

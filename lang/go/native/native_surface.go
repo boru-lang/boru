@@ -39,7 +39,7 @@ func surfaceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
 		v = ResolveWordValue(v)
-		if !v.Parent.Equal(TFnUndef) {
+		if !v.Parent().Equal(TFnUndef) {
 			return nil, r.BoruError("surface_error",
 				fmt.Sprintf("surface: operation %q must be an fnsig shape (e.g. {%s: fnsig [[Self] [Float]]}), got %s",
 					key, key, v.String()), "surface")
@@ -63,7 +63,7 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 
 	// A NAMED surface evaluates to its node (the Stage 2 flip); the
 	// shared payload is the node's recorded content.
-	if body, ok := TypeContentOf(surfVal); ok && IsBareTypeNode(surfVal) {
+	if body, ok := TypeContentOf(surfVal); ok && IsBareTypeNode(&surfVal) {
 		surfVal = body
 	}
 	sinfo, err := AsSurfaceType(surfVal)
@@ -75,14 +75,14 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	if boruErr != nil {
 		return nil, boruErr
 	}
-	if sinfo.Conform[node.ID] {
+	if sinfo.Conform[IDOf(node)] {
 		return nil, nil
 	}
 
 	var gaps []string
 	for _, op := range sinfo.Required.Keys() {
 		shapeVal, _ := sinfo.Required.Get(op)
-		undef, ok := shapeVal.Data.(FnUndefInfo)
+		undef, ok := shapeVal.Data().(FnUndefInfo)
 		if !ok {
 			gaps = append(gaps, fmt.Sprintf("%s: required shape is not statically known (declare it with fnsig)", op))
 			continue
@@ -104,7 +104,7 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 			fmt.Sprintf("exposes: %s does not expose %s:\n  %s",
 				node.Name(), sinfo.Name, strings.Join(gaps, "\n  ")), "exposes")
 	}
-	sinfo.Conform[node.ID] = true
+	sinfo.Conform[IDOf(node)] = true
 	return nil, nil
 }
 
@@ -114,13 +114,13 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // bare type literals (builtins, refine newtypes) ARE their node.
 func exposerNode(r *Registry, v Value) (*Type, error) {
 	switch {
-	case IsClassType(v):
+	case IsClassType(&v):
 		info, _ := AsClassType(v)
 		if info.Type != nil {
 			return info.Type, nil
 		}
-	case IsBareTypeNode(v):
-		if canon := CanonicalType(r, &v); canon != nil {
+	case IsBareTypeNode(&v):
+		if canon := NodeOf(&v); canon != nil {
 			return canon, nil
 		}
 	}

@@ -522,7 +522,7 @@ func TestEngineCoreRecordMakePositional(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("make"), recType, NewList([]Value{NewInteger(1), NewString("hello")}),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("make record = %v, want map", result)
 	}
 	m, _ := AsMap(result[0])
@@ -550,7 +550,7 @@ func TestEngineCoreRecordMakeMap(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("make"), recType, NewMap(src),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("make record from map = %v, want map", result)
 	}
 	m, _ := AsMap(result[0])
@@ -628,7 +628,7 @@ func TestEngineCoreModuleSimple(t *testing.T) {
 		NewMap(singleMap("v", NewString("val"))),
 	})
 	result := runBoru(t, r, []Value{NewWord("module"), moduleBody})
-	if len(result) != 1 || !result[0].Parent.Equal(TModuleInst) {
+	if len(result) != 1 || !result[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("module should return a Module, got %v", result)
 	}
 	desc, _ := asModuleDesc(result[0])
@@ -949,7 +949,7 @@ func TestEngineCorePeekForwardAtom(t *testing.T) {
 		NewWord("def"), NewWord("atom-val"), NewAtom("myatom"), NewEnd(),
 		NewWord("atom-val"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TAtom) {
+	if len(result) != 1 || !result[0].Parent().Equal(TAtom) {
 		t.Errorf("def atom-val 'myatom = %v, want atom", result)
 	}
 }
@@ -1014,7 +1014,7 @@ func TestEngineCoreTypeNameResolution(t *testing.T) {
 	// Type names resolve to type literals
 	for _, name := range []string{"Number", "String", "Boolean", "Integer", "Float", "List", "Map", "Atom"} {
 		result := runBoru(t, r, []Value{NewWord(name)})
-		if len(result) != 1 || result[0].Data != nil {
+		if len(result) != 1 || result[0].Data() != nil {
 			t.Errorf("%s should resolve to type literal, got %v", name, result)
 		}
 	}
@@ -1308,7 +1308,7 @@ func TestEngineCoreFnExplicitMapPatternE2E(t *testing.T) {
 	found := false
 	for _, v := range result {
 		_as47, _ := AsString(v)
-		if v.Parent.ConformsTo(TString) && _as47 == "matched" {
+		if v.Parent().ConformsTo(TString) && _as47 == "matched" {
 			found = true
 		}
 	}
@@ -1390,7 +1390,7 @@ func TestEngineCoreMakeRecordWithBase(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("make"), recType, NewMap(src), NewMap(opts),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("make with base = %v, want map", result)
 	}
 	m, _ := AsMap(result[0])
@@ -1448,9 +1448,9 @@ func TestEngineCoreResolveFieldTypeList(t *testing.T) {
 	list := NewList([]Value{NewString("string"), NewString("tor"), NewString("none")})
 	v := ResolveFieldType(r, list)
 	// Should produce a disjunction
-	if !IsDisjunct(v) {
+	if !IsDisjunct(&v) {
 		// If it didn't produce a disjunction, at least it shouldn't crash
-		t.Logf("ResolveFieldType list = %v (type %s)", v, v.Parent)
+		t.Logf("ResolveFieldType list = %v (type %s)", v, v.Parent())
 	}
 }
 
@@ -1607,7 +1607,7 @@ func TestEngineCoreMakeRecordNamed(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("make"), recType, src,
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("make record named = %v, want map", result)
 	}
 	m, _ := AsMap(result[0])
@@ -1727,7 +1727,7 @@ func TestEngineCoreResolveWordValue(t *testing.T) {
 		t.Errorf("ResolveWordValue(None) = %v, want None", v)
 	}
 	v = ResolveWordValue(NewWord("other"))
-	if !v.Parent.Equal(TAtom) {
+	if !v.Parent().Equal(TAtom) {
 		t.Errorf("ResolveWordValue(other) = %v, want atom", v)
 	}
 	// Non-word passthrough

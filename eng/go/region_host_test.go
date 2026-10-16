@@ -25,7 +25,7 @@ func regionDesc(toks ...core.Value) *compiler.RegionDesc {
 	slots := make([]compiler.SlotDesc, 0, len(toks))
 	for _, t := range toks {
 		s := compiler.SlotDesc{Token: t}
-		if core.IsWord(t) {
+		if core.IsWord(&t) {
 			s.Source = compiler.SlotWordRef
 		} else {
 			s.Source = compiler.SlotConst
@@ -116,28 +116,23 @@ func TestRegionHostEvaluationsDecline(t *testing.T) {
 	}
 }
 
-// ScratchParenSpan reuses one buffer, per the seam's contract that the result
-// is valid only until the caller splices. The assertion is that the CONTENT is
-// right and the buffer is REUSED — a fresh allocation per call would pass a
-// content-only check while costing an allocation on a collection's hottest
-// path.
-func TestRegionHostScratchSpanReuses(t *testing.T) {
-	h, _ := newHost(t)
-	// The span is the interpreter's shape: the items BETWEEN paren markers.
-	// A span without them is what the kernel splices in for a ParenExpr, so
-	// it would never meet an OpenParen on its next step — the first corpus
-	// walk of the COLLECT oracle spun forever on exactly that.
-	first := h.ScratchParenSpan([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if len(first) != 4 || !core.IsOpenParen(first[0]) || !core.IsCloseParen(first[3]) ||
-		core.CanonValue(first[1]) != "1" || core.CanonValue(first[2]) != "2" {
-		t.Fatalf("span = %v, want ( 1 2 )", first)
+// SpliceGroup splices the interpreter's shape into the window: the items
+// BETWEEN paren markers, in place of the token they replace. A splice
+// without the markers is what the kernel would leave for a ParenExpr, so it
+// would never meet an OpenParen on its next step — the first corpus walk of
+// the COLLECT oracle spun forever on exactly that. A reach group's open
+// marker carries the reach tag.
+func TestRegionHostSpliceGroup(t *testing.T) {
+	h, _ := newHost(t, core.NewInteger(0), core.NewInteger(9))
+	h.SpliceGroup(1, 0, []core.Value{core.NewInteger(1), core.NewInteger(2)}, false)
+	win := h.Window()
+	if win.Len() != 6 || !core.IsOpenParen(win.Ref(1)) || core.IsReachGroup(win.Ref(1)) || !core.IsCloseParen(win.Ref(4)) ||
+		core.CanonValue(*win.Ref(2)) != "1" || core.CanonValue(*win.Ref(3)) != "2" || core.CanonValue(*win.Ref(5)) != "9" {
+		t.Fatalf("window = %v, want 0 ( 1 2 ) 9", h.win.Snapshot())
 	}
-	second := h.ScratchParenSpan([]core.Value{core.NewInteger(3)})
-	if len(second) != 3 || core.CanonValue(second[1]) != "3" {
-		t.Fatalf("second span = %v, want ( 3 )", second)
-	}
-	if &first[:1][0] != &second[0] {
-		t.Error("the span buffer must be reused, not reallocated per call")
+	h.SpliceGroup(0, 1, []core.Value{core.NewInteger(3)}, true)
+	if !core.IsOpenParen(win.Ref(0)) || !core.IsReachGroup(win.Ref(0)) || core.CanonValue(*win.Ref(1)) != "3" || !core.IsCloseParen(win.Ref(2)) {
+		t.Fatalf("reach group = %v, want a tagged ( 3 )", h.win.Snapshot())
 	}
 }
 
@@ -173,7 +168,7 @@ func TestRegionHostResolvesFnCarrierUnderAnalysis(t *testing.T) {
 	}
 	end := reg.Check.Begin()
 	defer end()
-	if v, ok := h.DefTop("f"); !ok || !v.Carrier || !v.Parent.ConformsTo(core.TFunction) {
+	if v, ok := h.DefTop("f"); !ok || !v.Carrier() || !v.Parent().ConformsTo(core.TFunction) {
 		t.Errorf("under analysis the table-bound carrier resolves: %v/%v", v, ok)
 	}
 	if _, ok := h.DefTop("zz"); ok {
@@ -193,18 +188,18 @@ func TestRegionHostResolvesWordSlotsLive(t *testing.T) {
 		t.Fatal("k must start unbound")
 	}
 	reg.Defs.Push("k", core.NewInteger(5))
-	if v, ok := h.DefTop("k"); !ok || core.CanonValue(v) != "5" {
-		t.Fatalf("DefTop after bind = %v/%v, want 5", core.CanonValue(v), ok)
+	if v, ok := h.DefTop("k"); !ok || core.CanonValue(*v) != "5" {
+		t.Fatalf("DefTop after bind = %v/%v, want 5", v, ok)
 	}
 	reg.Defs.Push("k", core.NewInteger(9))
-	if v, _ := h.DefTop("k"); core.CanonValue(v) != "9" {
-		t.Errorf("DefTop after rebind = %s, want 9 — the slot must not be frozen", core.CanonValue(v))
+	if v, _ := h.DefTop("k"); core.CanonValue(*v) != "9" {
+		t.Errorf("DefTop after rebind = %s, want 9 — the slot must not be frozen", core.CanonValue(*v))
 	}
 	if !reg.Defs.Pop("k") {
 		t.Fatal("pop")
 	}
-	if v, _ := h.DefTop("k"); core.CanonValue(v) != "5" {
-		t.Errorf("DefTop after undef = %s, want 5", core.CanonValue(v))
+	if v, _ := h.DefTop("k"); core.CanonValue(*v) != "5" {
+		t.Errorf("DefTop after undef = %s, want 5", core.CanonValue(*v))
 	}
 }
 
@@ -237,9 +232,9 @@ func TestRegionHostClassificationsFollowTheRegistry(t *testing.T) {
 	// …and `/v` opts out, which is the exact subtlety the seam exists to keep
 	// in one implementation. A host that read only "is it bound" would miss it.
 	vTok := core.NewWord("f")
-	if wi, err := core.AsWord(vTok); err == nil {
+	if wi, err := core.AsWord(&vTok); err == nil {
 		wi.ForceVal = true
-		vTok.Data = wi
+		vTok.SetData(wi)
 	}
 	if h.IsFnWordBarrier(vTok) {
 		t.Error("`f/v` parks the fn as data and must NOT be a barrier")
@@ -249,7 +244,7 @@ func TestRegionHostClassificationsFollowTheRegistry(t *testing.T) {
 	// the one classification that cannot drift between hosts. Asserted against
 	// core's own answer rather than a transcribed constant.
 	gotV, gotK := h.StaticForwardType(core.NewInteger(1))
-	wantV, wantK := core.StaticForwardTypeOf(core.NewInteger(1))
+	wantV, wantK := core.StaticForwardTypeOf(addrOf(core.NewInteger(1)))
 	if core.CanonValue(gotV) != core.CanonValue(wantV) || gotK != wantK {
 		t.Errorf("StaticForwardType = %s/%v, want core's own answer %s/%v",
 			core.CanonValue(gotV), gotK, core.CanonValue(wantV), wantK)
@@ -267,8 +262,8 @@ func reachFnValue(name string) core.Value {
 		Name:       name,
 		Signatures: []core.Signature{{Args: []*core.Type{core.TAny}, BarrierPos: 1}},
 	}
-	v := core.NewValueRaw(core.TFunction, fd)
-	v.ReachGroup = true
+	v := core.NewValueRaw(core.TFunction, &fd)
+	core.SetReachGroup(&v, true)
 	return v
 }
 

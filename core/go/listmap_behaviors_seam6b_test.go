@@ -22,7 +22,7 @@ type s6b5MatPayload struct {
 }
 
 func (s6b5MatPayload) payloadMarker()                    {}
-func (s6b5MatPayload) IsTypeContent(*Value) bool         { return false }
+func (s6b5MatPayload) IsTypeContent(*Type) bool          { return false }
 func (m s6b5MatPayload) Materialize() (TableData, error) { return m.td, m.err }
 func (m s6b5MatPayload) SourceRecord() RecordTypeInfo    { return m.td.Record }
 
@@ -93,7 +93,7 @@ func TestS6b5ResugarDotChainShapes(t *testing.T) {
 func TestS6b5MapFormatNonMapPayload(t *testing.T) {
 	// Parent says Map but the payload is not readable as one: the
 	// Behavior renders the empty-map form instead of panicking.
-	bad := Value{Parent: TMap, Data: ListPayload{}}
+	bad := Value{d: &Datum{Parent: TMap, Data: ListPayload{}}}
 	if got := (mapFormatBehavior{}).Format(bad); got != "{}" {
 		t.Errorf("Format(non-map payload) = %q, want {}", got)
 	}

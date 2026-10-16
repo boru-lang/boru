@@ -55,7 +55,7 @@ func TestS7A_NewEmitLangFnValidation(t *testing.T) {
 	if _, err := NewEmitLangFn(EmitLangSpec{Name: "not a word", Handler: s7aEmitHandler}); err == nil {
 		t.Error("NewEmitLangFn: an invalid word name should error")
 	}
-	if v, err := NewEmitLangFn(EmitLangSpec{Name: "okv", Handler: s7aEmitHandler}); err != nil || !native.IsConcrete(v) {
+	if v, err := NewEmitLangFn(EmitLangSpec{Name: "okv", Handler: s7aEmitHandler}); err != nil || !native.IsConcrete(&v) {
 		t.Errorf("NewEmitLangFn should build a concrete fn value, got %v (err %v)", v, err)
 	}
 

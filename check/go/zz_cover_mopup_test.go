@@ -228,8 +228,8 @@ func TestTagCheckModeDefReadFlexArm(t *testing.T) {
 func TestAdoptShapeValueXml(t *testing.T) {
 	x := core.NewXmlElement("div", core.NewOrderedMap(), nil)
 	got := AdoptShapeValue(x, 0)
-	if !got.Carrier || !got.Parent.ConformsTo(core.TFlexXml) {
-		t.Errorf("a concrete xml adopts to a FlexXml carrier, got %s", got.Parent.Leaf())
+	if !got.Carrier() || !got.Parent().ConformsTo(core.TFlexXml) {
+		t.Errorf("a concrete xml adopts to a FlexXml carrier, got %s", got.Parent().Leaf())
 	}
 }
 
@@ -265,21 +265,21 @@ func TestReturnsDynUnion(t *testing.T) {
 		t.Fatalf("want one result, got %d", len(out))
 	}
 	v := out[0]
-	if !v.Dynamic {
+	if !core.IsDynamic(&v) {
 		t.Error("a declared union result must stay DYNAMIC — a strict union declines gradual call sites")
 	}
-	if !core.IsDisjunct(v) {
-		t.Errorf("the bound must be the alternative set, got %s", v.Parent.Leaf())
+	if !core.IsDisjunct(&v) {
+		t.Errorf("the bound must be the alternative set, got %s", v.Parent().Leaf())
 	}
 	// Each invocation mints a FRESH identity. A shared bound identity
 	// aliases every call site's modelled result — the def binder then
 	// collapses separate effectful evaluations into one slot, a proven
 	// miscompile (TestReadLineStdinAdvances, lang/go/test).
 	w := f(nil, r)[0]
-	if v.ID != "" && v.ID == w.ID {
+	if core.IDOf(&v) != "" && core.IDOf(&v) == core.IDOf(&w) {
 		t.Error("two invocations must not share a value ID")
 	}
-	if w.ID == "" {
+	if core.IDOf(&w) == "" {
 		t.Error("inside a check pass the modelled result must carry a minted ID")
 	}
 }

@@ -37,8 +37,8 @@ func testRegistry(t *testing.T) *core.Registry {
 // member read — `ops.inc`'s value in the body.
 func memberRead(es *EmitState, member core.Value) core.Value {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "T_member_" + core.GenerateID("m")
-	es.NoteMemberFnRead(v.ID, member)
+	core.SetID(&v, "T_member_"+core.GenerateID("m"))
+	es.NoteMemberFnRead(core.IDOf(&v), member)
 	return v
 }
 
@@ -46,7 +46,7 @@ func memberRead(es *EmitState, member core.Value) core.Value {
 // member read above the element arms the whole-frame replay over the token
 // region; every other top keeps the unit as it was.
 func TestNoteClosureBodyReplayArms(t *testing.T) {
-	inc := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
+	inc := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
 	es, u, rec, elem := closureBodyUnit(t)
 	top := memberRead(es, inc)
 	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
@@ -56,8 +56,8 @@ func TestNoteClosureBodyReplayArms(t *testing.T) {
 	// A fn-typed tagged read arms too.
 	es, u, rec, elem = closureBodyUnit(t)
 	fnTop := core.NewCarrier(core.TFunction)
-	fnTop.ID = "T_fn_member"
-	es.NoteMemberFnRead(fnTop.ID, inc)
+	core.SetID(&fnTop, "T_fn_member")
+	es.NoteMemberFnRead(core.IDOf(&fnTop), inc)
 	es.noteClosureBodyReplay(u, rec, []core.Value{elem, fnTop})
 	if rec.dynFrameW != 1 {
 		t.Errorf("a fn-typed tagged read arms: w=%d", rec.dynFrameW)
@@ -79,18 +79,18 @@ func TestNoteClosureBodyReplayArms(t *testing.T) {
 		"untagged fn":      func(es *EmitState) []core.Value { return []core.Value{core.NewCarrier(core.TFunction)} },
 		"tagged data": func(es *EmitState) []core.Value {
 			v := memberRead(es, inc)
-			v.Dynamic = false
-			v.Parent = core.TInteger
+			core.SetDynamic(&v, false)
+			v.SetParent(core.TInteger)
 			return []core.Value{v}
 		},
 		"zero-arg member": func(es *EmitState) []core.Value {
-			z := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "z", Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}})
+			z := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "z", Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}})
 			return []core.Value{memberRead(es, z)}
 		},
 		"placed": func(es *EmitState) []core.Value {
 			v := memberRead(es, inc)
 			es.reg = testRegistry(t)
-			es.reg.Check.ParenPlacedFnIDs = map[string]bool{v.ID: true}
+			es.reg.Check.ParenPlacedFnIDs = map[string]bool{core.IDOf(&v): true}
 			return []core.Value{v}
 		},
 	} {
@@ -111,8 +111,8 @@ func TestNoteDynFrameReplayPlaced(t *testing.T) {
 	u := es.units[len(es.units)-1]
 	es.reg = testRegistry(t)
 	placed := core.NewDynamicCarrier(core.TAny)
-	placed.ID = "T_placed"
-	es.reg.Check.ParenPlacedFnIDs = map[string]bool{placed.ID: true}
+	core.SetID(&placed, "T_placed")
+	es.reg.Check.ParenPlacedFnIDs = map[string]bool{core.IDOf(&placed): true}
 	if !es.noteDynFrameReplay(u, rec, []core.Value{core.NewInteger(5), placed}, 1) || rec.dynFrameW != 0 {
 		t.Errorf("a placed value alone is data: no replay, no decline (w=%d)", rec.dynFrameW)
 	}
@@ -123,7 +123,7 @@ func TestNoteDynFrameReplayPlaced(t *testing.T) {
 		t.Error("windowHasPlaced reads the placed mark")
 	}
 	// The same value RE-STEPPED by an enclosing paren is an applicable again.
-	es.reg.Check.ParenReSteppedFnIDs = map[string]bool{placed.ID: true}
+	es.reg.Check.ParenReSteppedFnIDs = map[string]bool{core.IDOf(&placed): true}
 	if es.windowHasPlaced([]core.Value{placed}) {
 		t.Error("a re-stepped value is not placed")
 	}
@@ -137,8 +137,8 @@ func TestResidualForceOrderPlaced(t *testing.T) {
 	es, rec, _, _ := wordReadUnit(t)
 	es.reg = testRegistry(t)
 	placed := core.NewDynamicCarrier(core.TAny)
-	placed.ID = "T_placed2"
-	es.reg.Check.ParenPlacedFnIDs = map[string]bool{placed.ID: true}
+	core.SetID(&placed, "T_placed2")
+	es.reg.Check.ParenPlacedFnIDs = map[string]bool{core.IDOf(&placed): true}
 	// [literal, placed]: the placed event result above the inert literal
 	// is the out-of-order shape the promotion re-pushes in order.
 	ops := []EmitOperand{{kind: opLocal}, EventOperand(3, 0)}
@@ -175,18 +175,18 @@ func TestResidualForceOrderPlaced(t *testing.T) {
 func TestProducedFnCarrierInFnUnit(t *testing.T) {
 	es := NewEmitState()
 	produced := core.NewCarrier(core.TFunction)
-	produced.ID = "T_factory_result"
-	es.producedBy = map[string]producer{produced.ID: {seq: 7}}
+	core.SetID(&produced, "T_factory_result")
+	es.stampProduced(&produced, 7, 0)
 	if es.producedFnCarrierInFnUnit(produced) {
 		t.Error("the program unit keeps its residual arms")
 	}
 	es, rec, _, _ := wordReadUnit(t)
-	es.producedBy = map[string]producer{produced.ID: {seq: 7}}
+	es.stampProduced(&produced, 7, 0)
 	if !es.producedFnCarrierInFnUnit(produced) {
 		t.Error("a produced fn carrier inside a fn unit registers")
 	}
 	unproduced := core.NewCarrier(core.TFunction)
-	unproduced.ID = "T_param"
+	core.SetID(&unproduced, "T_param")
 	if es.producedFnCarrierInFnUnit(unproduced) || es.producedFnCarrierInFnUnit(core.NewInteger(5)) {
 		t.Error("an unproduced carrier or data never registers here")
 	}
@@ -223,24 +223,24 @@ func TestUndoProbeStamps(t *testing.T) {
 func TestNoteWordReadDefReadName(t *testing.T) {
 	es, _, rec, _ := closureBodyUnit(t)
 	outer := core.NewCarrier(core.TFunction)
-	outer.ID = "T_outer_fn"
+	core.SetID(&outer, "T_outer_fn")
 	pos := core.SrcPos{Row: 1, Col: 7}
 	es.NoteWordRead(outer, "f", pos)
-	if rec.wordReadNames[outer.ID] != "" || rec.wordReads[outer.ID] != 0 {
-		t.Errorf("an enclosing-scope read that is no def read records nothing: %q %d", rec.wordReadNames[outer.ID], rec.wordReads[outer.ID])
+	if rec.wordReadNames[core.IDOf(&outer)] != "" || rec.wordReads[core.IDOf(&outer)] != 0 {
+		t.Errorf("an enclosing-scope read that is no def read records nothing: %q %d", rec.wordReadNames[core.IDOf(&outer)], rec.wordReads[core.IDOf(&outer)])
 	}
-	es.NoteDefRead(outer.ID, "f")
+	es.NoteDefRead(core.IDOf(&outer), core.RecKeyOf(&outer), "f")
 	es.NoteWordRead(outer, "f", pos)
-	if rec.wordReadNames[outer.ID] != "f" || rec.wordReadPos[outer.ID] != pos || rec.wordReadFirst[outer.ID] != pos {
-		t.Errorf("a def read names itself at the read: %q %v %v", rec.wordReadNames[outer.ID], rec.wordReadPos[outer.ID], rec.wordReadFirst[outer.ID])
+	if rec.wordReadNames[core.IDOf(&outer)] != "f" || rec.wordReadPos[core.IDOf(&outer)] != pos || rec.wordReadFirst[core.IDOf(&outer)] != pos {
+		t.Errorf("a def read names itself at the read: %q %v %v", rec.wordReadNames[core.IDOf(&outer)], rec.wordReadPos[core.IDOf(&outer)], rec.wordReadFirst[core.IDOf(&outer)])
 	}
-	if rec.wordReads[outer.ID] != 0 {
-		t.Errorf("a def read is never accounted strictly: %d", rec.wordReads[outer.ID])
+	if rec.wordReads[core.IDOf(&outer)] != 0 {
+		t.Errorf("a def read is never accounted strictly: %d", rec.wordReads[core.IDOf(&outer)])
 	}
 	// A second read keeps the FIRST position.
 	es.NoteWordRead(outer, "f", core.SrcPos{Row: 2, Col: 1})
-	if rec.wordReadFirst[outer.ID] != pos {
-		t.Errorf("wordReadFirst keeps the first read: %v", rec.wordReadFirst[outer.ID])
+	if rec.wordReadFirst[core.IDOf(&outer)] != pos {
+		t.Errorf("wordReadFirst keeps the first read: %v", rec.wordReadFirst[core.IDOf(&outer)])
 	}
 }
 
@@ -249,10 +249,10 @@ func TestNoteWordReadDefReadName(t *testing.T) {
 // its binding NAME, and the window then carries the word table (the VM
 // re-steps the entry as the word: `cannot call `f“ on a no-match).
 func TestNoteClosureBodyReplayDefRead(t *testing.T) {
-	inc := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
+	inc := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
 	es, u, rec, elem := closureBodyUnit(t)
 	top := memberRead(es, inc)
-	es.NoteDefRead(top.ID, "f")
+	es.NoteDefRead(core.IDOf(&top), core.RecKeyOf(&top), "f")
 	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
 	if rec.dynFrameW != 0 || rec.retReplay {
 		t.Errorf("a def read with no word name is the read model's: must not arm (w=%d)", rec.dynFrameW)

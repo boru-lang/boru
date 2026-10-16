@@ -37,7 +37,7 @@ func jsonifyDefaultHandler(args []Value, ctx map[string]Value, stack []Value, r 
 // structurally impossible and MongoDB-style $-keys round-trip through
 // reify's unescape. Output is pure JSON (design/legacy/CLASS-OBJECT.10.ignore §3e).
 func valueToAnySer(v Value) any {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil
 	}
 	if IsClassInstance(v) {
@@ -72,7 +72,7 @@ func valueToAnySer(v Value) any {
 		}
 		return out
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		if m, _ := AsMap(v); m != nil {
 			out := make(map[string]any, m.Len())
 			for _, key := range m.Keys() {
@@ -82,9 +82,9 @@ func valueToAnySer(v Value) any {
 			return out
 		}
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if _lst, _ := AsList(v); !_lst.IsNil() {
-			elems := _lst.Slice()
+			elems := _lst.Elems()
 			out := make([]any, len(elems))
 			for i, elem := range elems {
 				out[i] = valueToAnySer(elem)

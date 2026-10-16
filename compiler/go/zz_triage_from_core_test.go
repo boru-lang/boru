@@ -76,10 +76,10 @@ import (
 func TestRecordDynApplyPendingConsume(t *testing.T) {
 	es := NewEmitState()
 	fn := core.NewDynamicCarrier(core.TFunction)
-	seedProduced(es, fn, 1)
-	es.units[len(es.units)-1].pendingApply = []pendingApply{{id: fn.ID}}
+	seedProduced(es, &fn, 1)
+	es.units[len(es.units)-1].pendingApply = []pendingApply{{id: core.IDOf(&fn)}}
 	out := core.NewInteger(0)
-	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(10)}, fn, out, core.SrcPos{}); !ok {
+	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(10)}, fn, &out, core.SrcPos{}); !ok {
 		t.Fatal("resolvable apply with pending entry should record")
 	}
 	if len(es.units[len(es.units)-1].pendingApply) != 0 {
@@ -94,13 +94,14 @@ func TestRecordPolyCallGuard(t *testing.T) {
 	es := NewEmitState()
 	o1 := core.NewDynamicCarrier(core.TFlexList)
 	o2 := core.NewDynamicCarrier(core.TAny)
-	if !es.RecordPolyCall("pop", nil, []core.Value{o1, o2}, core.SrcPos{}, nil, nil) {
+	pops := []core.Value{o1, o2}
+	if !es.RecordPolyCall("pop", nil, pops, core.SrcPos{}, nil, nil) {
 		t.Fatal("multi-out poly call should record")
 	}
-	pr1, ok1 := es.producedBy[o1.ID]
-	pr2, ok2 := es.producedBy[o2.ID]
+	pr1, ok1 := es.producerOf(&pops[0])
+	pr2, ok2 := es.producerOf(&pops[1])
 	if !ok1 || !ok2 {
-		t.Fatal("both results should register in producedBy")
+		t.Fatal("both results should be stamped as the event's")
 	}
 	if pr1.idx != 0 || pr2.idx != 1 {
 		t.Errorf("result indices = %d,%d, want 0,1", pr1.idx, pr2.idx)
@@ -116,36 +117,37 @@ func TestRecordPolyCallGuard(t *testing.T) {
 		t.Fatal("inactive multi-out poly call should decline")
 	}
 
-	// De-collision: a later result whose ID collides with an EARLIER event's
-	// output (different seq) is re-minted so provenance lookups stay distinct —
-	// UNLESS that ID is an input passthrough (a receiver flowing straight
+	// De-collision: a later result that IS an EARLIER event's output (a
+	// holder stamped by a different seq — a handler handing a stale value
+	// back) is re-minted, so the ID-keyed side tables tell the two apart —
+	// UNLESS its ID is an input passthrough (a receiver flowing straight
 	// through), which keeps its identity.
 	es2 := NewEmitState()
 	a := core.NewDynamicCarrier(core.TFlexList)
-	if !es2.RecordPolyCall("pop", nil, []core.Value{a, core.NewDynamicCarrier(core.TAny)}, core.SrcPos{}, nil, nil) {
+	seed := []core.Value{a, core.NewDynamicCarrier(core.TAny)}
+	if !es2.RecordPolyCall("pop", nil, seed, core.SrcPos{}, nil, nil) {
 		t.Fatal("seed poly should record")
 	}
-	// A second poly whose first result reuses a's ID, with a NOT among the
-	// args → the colliding result is re-minted. (RecordPolyCall mutates the
-	// outs SLICE in place, so observe the element, not the local copy.)
-	c := core.NewDynamicCarrier(core.TFlexList)
-	c.ID = a.ID
+	// A second poly whose first result is the seed's result, with a NOT
+	// among the args → the colliding result is re-minted. (RecordPolyCall
+	// mutates the outs SLICE in place, so observe the element, not the
+	// local copy.)
+	c := seed[0]
 	outs2 := []core.Value{c, core.NewDynamicCarrier(core.TAny)}
 	if !es2.RecordPolyCall("shift", nil, outs2, core.SrcPos{}, nil, nil) {
 		t.Fatal("collision poly should record")
 	}
-	if outs2[0].ID == a.ID {
+	if core.IDOf(&outs2[0]) == core.IDOf(&a) {
 		t.Error("a colliding non-passthrough result ID should be re-minted")
 	}
 	// A third poly whose result reuses a's ID WHILE a is passed as an arg →
 	// the passthrough exemption keeps the ID.
-	d := core.NewDynamicCarrier(core.TAny)
-	d.ID = a.ID
+	d := seed[0]
 	outs3 := []core.Value{d, core.NewDynamicCarrier(core.TAny)}
-	if !es2.RecordPolyCall("shift", []core.Value{a}, outs3, core.SrcPos{}, nil, nil) {
+	if !es2.RecordPolyCall("shift", []core.Value{seed[0]}, outs3, core.SrcPos{}, nil, nil) {
 		t.Fatal("passthrough poly should record")
 	}
-	if outs3[0].ID != a.ID {
+	if core.IDOf(&outs3[0]) != core.IDOf(&a) {
 		t.Error("a passthrough result ID should be preserved")
 	}
 }
@@ -161,7 +163,7 @@ func TestFnCompileDoesNotLowerIdentitylessCapture(t *testing.T) {
 	if !ok {
 		t.Fatal("BeginCompilePass did not install an EmitState")
 	}
-	blankCap := core.Value{Parent: core.TInteger, Data: core.IntPayload{N: 5}} // hand-built: no ID
+	blankCap := core.ValueOf(&core.Datum{Parent: core.TInteger, Data: core.IntPayload{N: 5}}) // hand-built: no ID
 	_, fin, started := es.StartFnCompile("k", "f", nil, nil, nil, nil,
 		[]core.CapturedBinding{{Name: "x", Value: blankCap}}, false, core.SrcPos{})
 	if started && fin != nil {

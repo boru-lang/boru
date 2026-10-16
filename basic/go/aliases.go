@@ -129,7 +129,13 @@ type (
 	Type                 = core.Type
 	Value                = core.Value
 	WordInfo             = core.WordInfo
+	// Datum is what a Value handle refers to (design/VALUE-NO-COPY.0.md
+	// phase 4): construct one in a literal handed to ValueOf.
+	Datum = core.Datum
 )
+
+// ValueOf is a handle on a datum the caller has just constructed (core.ValueOf).
+func ValueOf(d *Datum) Value { return core.ValueOf(d) }
 
 // Well-known *Type values — re-exported for convenience.
 var (
@@ -283,14 +289,11 @@ var (
 	AnalyseLoopBody          = core.RunLoopBodyAnalysis
 	AsAtom                   = core.AsAtom
 	AsChildType              = core.AsChildType
-	AsDefCleanup             = core.AsDefCleanup
 	AsDisjunct               = core.AsDisjunct
 	AsError                  = core.AsError
 	AsInterpString           = core.AsInterpString
 	AsList                   = core.AsList
 	AsMap                    = core.AsMap
-	AsMark                   = core.AsMark
-	AsMove                   = core.AsMove
 	AsMutableList            = core.AsMutableList
 	AsMutableMap             = core.AsMutableMap
 	AsFlexList               = core.AsFlexList
@@ -307,60 +310,34 @@ var (
 	AsResourceInstance       = core.AsResourceInstance
 	AsResourceType           = core.AsResourceType
 	AsOptionsType            = core.AsOptionsType
-	AsParenExpr              = core.AsParenExpr
 	AsRecordType             = core.AsRecordType
-	AsReturnCheck            = core.AsReturnCheck
 	AsStore                  = core.AsStore
 	AsTableType              = core.AsTableType
 	IsAtom                   = core.IsAtom
-	IsBoolean                = core.IsBoolean
-	IsCloseParen             = core.IsCloseParen
-	IsDefCleanup             = core.IsDefCleanup
-	IsDisjunct               = core.IsDisjunct
-	IsEnd                    = core.IsEnd
 	IsError                  = core.IsError
-	IsForward                = core.IsForward
-	IsFrameOpen              = core.IsFrameOpen
-	AsFrameOpen              = core.AsFrameOpen
 	IsImplicitMap            = core.IsImplicitMap
-	IsInterpString           = core.IsInterpString
-	IsMark                   = core.IsMark
-	IsSplice                 = core.IsSplice
-	AsSplice                 = core.AsSplice
 	Canon                    = core.Canon
-	IsMove                   = core.IsMove
-	IsNone                   = core.IsNone
 	IsNoneShape              = core.IsNoneShape
 	IsClassInstance          = core.IsClassInstance
-	IsClassType              = core.IsClassType
 	IsResourceInstance       = core.IsResourceInstance
 	IsResourceType           = core.IsResourceType
 	IsFlatInstance           = core.IsFlatInstance
-	IsOpenParen              = core.IsOpenParen
 	IsOptionsType            = core.IsOptionsType
-	IsParenExpr              = core.IsParenExpr
 	PendingLiteralSteps      = core.PendingLiteralSteps
-	IsReach                  = core.IsReach
-	AsReach                  = core.AsReach
 	NewReach                 = core.NewReach
 	NewReachFromKeys         = core.NewReachFromKeys
 	ApplyReach               = core.ApplyReach
 	IsPathon                 = core.IsPathon
 	IsRecordType             = core.IsRecordType
-	IsReturnCheck            = core.IsReturnCheck
 	IsStore                  = core.IsStore
 	IsTableType              = core.IsTableType
 	IsTypeValue              = core.IsTypeValue
-	IsTypedList              = core.IsTypedList
-	IsTypedMap               = core.IsTypedMap
 	IsFlexMap                = core.IsFlexMap
 	IsFlexList               = core.IsFlexList
 	IsFlexNode               = core.IsFlexNode
 	IsValueOfType            = core.IsValueOfType
-	IsWord                   = core.IsWord
 	AsBoolean                = core.AsBoolean
 	AsFloat                  = core.AsFloat
-	AsForward                = core.AsForward
 	AsInteger                = core.AsInteger
 	AsNumber                 = core.AsNumber
 	AsFloatApprox            = core.AsFloatApprox
@@ -368,12 +345,9 @@ var (
 	AsBigDecimal             = core.AsBigDecimal
 	AsPathon                 = core.AsPathon
 	AsString                 = core.AsString
-	AsWord                   = core.AsWord
-	BaseValue                = core.BaseValue
 	BaseValueForConstraint   = core.BaseValueForConstraint
 	BoundToKind              = core.BoundToKind
 	CoerceBoolean            = core.CoerceBoolean
-	CommonAncestorType       = core.CommonAncestorType
 	CompareValues            = core.CompareValues
 	CowSet                   = core.CowSet
 	CowDel                   = core.CowDel
@@ -397,29 +371,21 @@ var (
 	NewTypedMapWithEntries   = core.NewTypedMapWithEntries
 	FlattenDisjunctAlts      = core.FlattenDisjunctAlts
 	FnDefHasSig              = core.FnDefHasSig
-	SubstituteSelf           = core.SubstituteSelf
 	NewGenSpec               = core.NewGenSpec
 	IsGenSpec                = core.IsGenSpec
 	AsGenSpec                = core.AsGenSpec
 	NewGenParamValue         = core.NewGenParamValue
 	IsGenParamValue          = core.IsGenParamValue
 	AsGenParamValue          = core.AsGenParamValue
-	NewTypeSchema            = core.NewTypeSchema
 	IsTypeSchema             = core.IsTypeSchema
 	AsTypeSchema             = core.AsTypeSchema
 	NewGenInstRef            = core.NewGenInstRef
 	IsGenInstRef             = core.IsGenInstRef
 	AsGenInstRef             = core.AsGenInstRef
 	MintTypeParam            = core.MintTypeParam
-	AttachGenBound           = core.AttachGenBound
-	IsTypeParamNode          = core.IsTypeParamNode
-	TypeParamName            = core.TypeParamName
 	PushGenBindings          = core.PushGenBindings
 	PopGenBindings           = core.PopGenBindings
 	InstantiateSchema        = core.InstantiateSchema
-	SubstituteTypeParams     = core.SubstituteTypeParams
-	SchemaInfoOf             = core.SchemaInfoOf
-	NewSurfaceType           = core.NewSurfaceType
 	AsSurfaceType            = core.AsSurfaceType
 	IsSurfaceType            = core.IsSurfaceType
 	FnDefsOverlap            = core.FnDefsOverlap
@@ -429,21 +395,17 @@ var (
 	BuiltinIDForPath         = core.BuiltinIDForPath
 	MintTestType             = core.MintTestType
 	NewSugar                 = core.NewSugar
-	IsSugar                  = core.IsSugar
 	AsSugar                  = core.AsSugar
 	SugarExpansion           = core.SugarExpansion
 	GenerateID               = core.GenerateID
 	GenerateObjectTypeID     = core.GenerateObjectTypeID
 	BeginIDMintScope         = core.BeginIDMintScope
-	IDPrefixForType          = core.IDPrefixForType
-	CanonicalType            = core.CanonicalType
 	ResetModuleExportGrowth  = core.ResetModuleExportGrowth
 	MakeClassFieldValue      = core.MakeClassFieldValue
 	MakeClassInstance        = core.MakeClassInstance
 	MakeResource             = core.MakeResource
 	ClassFields              = core.ClassFields
 	FlatInstanceFields       = core.FlatInstanceFields
-	ReparentValue            = core.ReparentValue
 	InstallDef               = core.InstallDef
 	InstallFnDef             = core.InstallFnDef
 	InstallWordExtension     = core.InstallWordExtension
@@ -458,16 +420,12 @@ var (
 	OwnerLang                = core.OwnerLang
 	OwnerProgram             = core.OwnerProgram
 	NewPathonFromString      = core.NewPathonFromString
-	IsBareTypeNode           = core.IsBareTypeNode
 	IsCapitalisedName        = core.IsCapitalisedName
-	IsConcrete               = core.IsConcrete
 	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsFnValueResidual        = core.IsFnValueResidual
 	IsGenMemoName            = core.IsGenMemoName
 	IsRecordShape            = core.IsRecordShape
-	IsTypeBody               = core.IsTypeBody
-	IsTypeLiteral            = core.IsTypeLiteral
 	JoinCarrierStacks        = core.JoinCarrierStacks
 	JoinCarriers             = core.JoinCarriers
 	FoldVariadicArms         = core.FoldVariadicArms
@@ -482,7 +440,6 @@ var (
 	MapFieldInteger          = core.MapFieldInteger
 	MapFieldString           = core.MapFieldString
 	MatchSignature           = core.MatchSignature
-	NewValueRaw              = core.NewValueRaw
 	NewSplice                = core.NewSplice
 	LiteralCondValue         = core.LiteralCondValue
 	BoolWord                 = core.BoolWord
@@ -521,10 +478,8 @@ var (
 	FormatValueJSON          = core.FormatValueJSON
 	NewAtom                  = core.NewAtom
 	AtomReferent             = core.AtomReferent
-	SetAtomReferent          = core.SetAtomReferent
 	NewBoolean               = core.NewBoolean
 	// NewCalendarDuration moved to lang/go/engine/native_temporal.go (Step 8).
-	NewCarrier           = core.NewCarrier
 	StampModuleCallGates = core.StampModuleCallGates
 	// The fn-carrier side table moved down to core (check_fncarrier.go)
 	// so the engine's compile-pass undefined-word branches can consult it.
@@ -534,10 +489,8 @@ var (
 	CheckFnCarrierBoundName  = core.CheckFnCarrierBoundName
 	DropCheckFnCarrierBind   = core.DropCheckFnCarrierBind
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
-	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
 	CarrierTypedListOf       = core.CarrierTypedListOf
-	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).
 	// NewDate / NewDateTime moved to lang/go/engine/native_temporal.go (Step 8).
@@ -576,44 +529,34 @@ var (
 	FormatBigDecimal         = core.FormatBigDecimal
 	NewInterpString          = core.NewInterpString
 	// NewInterval moved to lang/go/engine/native_misc.go (Step 8).
-	NewList               = core.NewList
-	NewFlexList           = core.NewFlexList
-	NewMap                = core.NewMap
-	NewFlexMap            = core.NewFlexMap
-	NewMark               = core.NewMark
-	NewMove               = core.NewMove
-	NewMoveCont           = core.NewMoveCont
-	NewMoveIf             = core.NewMoveIf
-	NewClassInstance      = core.NewClassInstance
-	NewClassType          = core.NewClassType
-	NewResourceInstance   = core.NewResourceInstance
-	NewResourceType       = core.NewResourceType
-	NewOpenParen          = core.NewOpenParen
-	NewCloseParen         = core.NewCloseParen
-	NewEnd                = core.NewEnd
-	NewOptionsType        = core.NewOptionsType
-	NewOrderedMap         = core.NewOrderedMap
-	NewParenExpr          = core.NewParenExpr
-	NewPathon             = core.NewPathon
-	NewPathonVol          = core.NewPathonVol
-	NewRecordType         = core.NewRecordType
-	NewRegistry           = core.NewRegistry
-	NewReturnCheck        = core.NewReturnCheck
-	NewStore              = core.NewStore
-	NewStoreValue         = core.NewStoreValue
-	NewStoreWithPrototype = core.NewStoreWithPrototype
-	NewString             = core.NewString
-	NewXmlElement         = core.NewXmlElement
-	NewTableType          = core.NewTableType
+	NewList        = core.NewList
+	NewFlexList    = core.NewFlexList
+	NewMap         = core.NewMap
+	NewFlexMap     = core.NewFlexMap
+	NewMark        = core.NewMark
+	NewMove        = core.NewMove
+	NewMoveCont    = core.NewMoveCont
+	NewMoveIf      = core.NewMoveIf
+	NewOpenParen   = core.NewOpenParen
+	NewCloseParen  = core.NewCloseParen
+	NewEnd         = core.NewEnd
+	NewOptionsType = core.NewOptionsType
+	NewOrderedMap  = core.NewOrderedMap
+	NewParenExpr   = core.NewParenExpr
+	NewPathon      = core.NewPathon
+	NewPathonVol   = core.NewPathonVol
+	NewRecordType  = core.NewRecordType
+	NewRegistry    = core.NewRegistry
+	NewReturnCheck = core.NewReturnCheck
+	NewString      = core.NewString
+	NewXmlElement  = core.NewXmlElement
+	NewTableType   = core.NewTableType
 	// NewTimeOfDay moved to lang/go/engine/native_temporal.go (Step 8).
 	// NewTimeout moved to lang/go/engine/native_misc.go (Step 8).
 	// NewTimezone moved to lang/go/engine/native_temporal.go (Step 8).
 	NewTop                 = core.NewTop
 	NewType                = core.NewType
-	NewTypeLiteral         = core.NewTypeLiteral
 	NewVariadicCarrier     = core.NewVariadicCarrier
-	NewBoundedType         = core.NewBoundedType
-	NewBoundedTypeBody     = core.NewBoundedTypeBody
 	NewTypedList           = core.NewTypedList
 	NewTypedMap            = core.NewTypedMap
 	NewWord                = core.NewWord
@@ -685,3 +628,54 @@ const (
 	SugarGenApply    = core.SugarGenApply
 	SugarGenDefault  = core.SugarGenDefault
 )
+
+// Re-exports of functions that read a Value through a pointer. They are
+// wrapper functions rather than variables, so a call is direct: it can
+// inline, and escape analysis sees that the pointer does not escape (a
+// call through a function variable would move every &v to the heap).
+func AsMove(v *core.Value) (core.MoveInfo, error)              { return core.AsMove(v) }
+func AsParenExpr(v *core.Value) ([]core.Value, error)          { return core.AsParenExpr(v) }
+func IsDisjunct(v *core.Value) bool                            { return core.IsDisjunct(v) }
+func IsSplice(v *core.Value) bool                              { return core.IsSplice(v) }
+func IsNone(v *core.Value) bool                                { return core.IsNone(v) }
+func IsClassType(v *core.Value) bool                           { return core.IsClassType(v) }
+func IsParenExpr(v *core.Value) bool                           { return core.IsParenExpr(v) }
+func IsReach(v *core.Value) bool                               { return core.IsReach(v) }
+func IsTypedList(v *core.Value) bool                           { return core.IsTypedList(v) }
+func IsTypedMap(v *core.Value) bool                            { return core.IsTypedMap(v) }
+func IsWord(v *core.Value) bool                                { return core.IsWord(v) }
+func AsWord(v *core.Value) (core.WordInfo, error)              { return core.AsWord(v) }
+func CommonAncestorType(a *core.Type, b *core.Type) *core.Type { return core.CommonAncestorType(a, b) }
+func NewTypeSchema(t *core.Type, info *core.TypeSchemaInfo) core.Value {
+	return core.NewTypeSchema(t, info)
+}
+func AttachGenBound(r *core.Registry, node *core.Type, p core.GenParam) {
+	core.AttachGenBound(r, node, p)
+}
+func TypeParamName(t *core.Type) string                      { return core.TypeParamName(t) }
+func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
+func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
+func MintRetagged(v *core.Value, def *core.Type) core.Value  { return core.MintRetagged(v, def) }
+func ThreadPos(dst, src *core.Value)                         { core.ThreadPos(dst, src) }
+func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
+func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
+func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }
+func IsTypeLiteral(v *core.Value) bool                       { return core.IsTypeLiteral(v) }
+func NewValueRaw(t *core.Type, data core.Payload) core.Value { return core.NewValueRaw(t, data) }
+func NewCarrier(t *core.Type) core.Value                     { return core.NewCarrier(t) }
+func NewDynamicCarrier(t *core.Type) core.Value              { return core.NewDynamicCarrier(t) }
+func NewResourceType(t *core.Type, info core.ResourceTypeInfo) core.Value {
+	return core.NewResourceType(t, info)
+}
+func NewTypeLiteral(t *core.Type) core.Value     { return core.NewTypeLiteral(t) }
+func NewBoundedType(bound *core.Type) core.Value { return core.NewBoundedType(bound) }
+func NewBoundedTypeBody(node *core.Type, body core.Value) core.Value {
+	return core.NewBoundedTypeBody(node, body)
+}
+
+// The occurrence state (core/go/occurrence.go): the identity and the flags,
+// read and written through the holder, never as fields of the value.
+func IDOf(v *core.Value) string           { return core.IDOf(v) }
+func IsQuoted(v *core.Value) bool         { return core.IsQuoted(v) }
+func IsFailedDispatch(v *core.Value) bool { return core.IsFailedDispatch(v) }
+func IsDynamic(v *core.Value) bool        { return core.IsDynamic(v) }

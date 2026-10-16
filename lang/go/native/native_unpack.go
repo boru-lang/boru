@@ -216,7 +216,7 @@ func unpackModuleExportHandler(args []Value, _ map[string]Value, _ []Value, r *R
 // prove nothing.
 func unpackSource(src Value, r *Registry) (get func(string) (Value, bool), keys []string, proven bool, err error) {
 	switch {
-	case IsConcrete(src):
+	case IsConcrete(&src):
 		if m, mErr := AsMap(src); mErr == nil && m != nil {
 			return m.Get, m.Keys(), true, nil
 		}
@@ -263,7 +263,7 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 			// poly re-matches at run time (as a `x:Any` param's does)
 			// instead of recovering to a strict no-match (2026-09-25).
 			if !proven {
-				val.Dynamic = true
+				SetDynamic(&val, true)
 			}
 			// A miss against a PROVEN (concrete) source is a guaranteed
 			// runtime unpack_error — flag it (a RuntimeMirror: the trap
@@ -321,7 +321,7 @@ func unpackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	if err != nil {
 		return nil, err
 	}
-	for _, el := range names.Slice() {
+	for _, el := range names.Elems() {
 		name := defName(el)
 		if err := bindUnpackEntry(r, name, name, get, proven, el.Pos()); err != nil {
 			return nil, err

@@ -50,17 +50,17 @@ func covRegistry(t *testing.T, extra func(*core.Registry)) *core.Registry {
 
 func ffsConst(id string, n int64) core.Value {
 	v := core.NewInteger(n)
-	v.ID = id
+	core.SetID(&v, id)
 	return v
 }
 
 func fnVal(sigs ...core.Signature) core.Value {
-	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction, Data: core.FnDefInfo{Signatures: sigs}}
+	return withID(core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 }
 
 // instanceVal builds a flat class instance whose fields map is `om`.
 func instanceVal(om *core.OrderedMap) core.Value {
-	return core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TAny)), Parent: core.TAny, Data: core.ClassInstanceInfo{Fields: om}}
+	return withID(core.ValueOf(&core.Datum{Parent: core.TAny, Data: core.ClassInstanceInfo{Fields: om}}), core.GenerateID(core.IDPrefixForType(core.TAny)))
 }
 
 func mapOf2(key string, v core.Value) *core.OrderedMap {
@@ -228,7 +228,7 @@ func zzDriftWord() (core.WordInfo, *core.Signature) {
 }
 
 func cifSplice(v core.Value) []core.Value {
-	if v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(v) && !core.IsTableType(v) {
+	if v.Parent().Equal(core.TList) && v.Data() != nil && !core.IsTypedList(&v) && !core.IsTableType(v) {
 		elems, _ := core.AsList(v)
 		out := make([]core.Value, 0, elems.Len()+2)
 		out = append(out, core.NewOpenParen())
@@ -342,8 +342,8 @@ func covWords(r *core.Registry) {
 	})
 	undefImpl := core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 		name := ""
-		if core.IsWord(args[0]) {
-			w, _ := core.AsWord(args[0])
+		if core.IsWord(&args[0]) {
+			w, _ := core.AsWord(&args[0])
 			name = w.Name
 		} else if core.IsAtom(args[0]) {
 			name, _ = core.AsAtom(args[0])

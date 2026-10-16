@@ -52,25 +52,25 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 		return false
 	}
 	v := e.Body
-	if IsAppliableFn(v) || IsSplice(v) || IsReach(v) || IsWord(v) || IsMark(v) || IsMove(v) {
+	if IsAppliableFn(v) || IsSplice(&v) || IsReach(&v) || IsWord(&v) || IsMark(&v) || IsMove(&v) {
 		return false
 	}
 	if _, hit := CheckFnCarrierBind(r, name); hit {
 		return false
 	}
-	if id := r.Check.SpecUndefCarriers[name]; id != "" && v.ID == id {
+	if id := r.Check.SpecUndefCarriers[name]; id != "" && IDOf(&v) == id {
 		return true
 	}
 	noteRebind(r, name)
-	c := NewCarrier(v.Parent)
-	if IsTypeLiteral(v) {
+	c := NewCarrier(v.Parent())
+	if IsTypeLiteral(&v) {
 		c = ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
 	}
 	r.Defs.Replace(name, c)
 	if r.Check.SpecUndefCarriers == nil {
 		r.Check.SpecUndefCarriers = map[string]string{}
 	}
-	r.Check.SpecUndefCarriers[name] = c.ID
+	r.Check.SpecUndefCarriers[name] = IDOf(&c)
 	r.Check.SpecUndefGen++
 	return true
 }

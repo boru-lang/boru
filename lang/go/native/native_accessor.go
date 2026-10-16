@@ -164,12 +164,12 @@ func accessorGetrSignatures() []Signature {
 func hasNodeHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return []Value{NewBoolean(false)}, nil
 	}
-	if key.Parent.ConformsTo(TInteger) {
+	if key.Parent().ConformsTo(TInteger) {
 		idx, _ := AsInteger(key)
-		if list, _ := AsList(container); !list.IsNil() && container.Parent.ConformsTo(TList) {
+		if list, _ := AsList(container); !list.IsNil() && container.Parent().ConformsTo(TList) {
 			i := int(idx)
 			return []Value{NewBoolean(i >= 0 && i < list.Len())}, nil
 		}
@@ -190,7 +190,7 @@ func hasNodeHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 
 func hasObjectHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return []Value{NewBoolean(false)}, nil
 	}
 	k := getKey(args[0])
@@ -244,7 +244,7 @@ func hasXmlHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 // raise. (Module NAMESPACE presence — export fields + synthetics — rides
 // the plain-map hasNodeHandler above.)
 func hasModuleInstHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-	if !IsConcrete(args[1]) {
+	if !IsConcrete(&args[1]) {
 		return []Value{NewBoolean(false)}, nil
 	}
 	_, ok := moduleGet(args[1], getKey(args[0]))
@@ -281,7 +281,7 @@ func returnsGetrIndexChecked(args []Value, r *Registry) []Value {
 // declared-Any sig produced before this mirror.
 func getrXmlReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 2 || !IsConcrete(args[0]) {
+	if len(args) != 2 || !IsConcrete(&args[0]) {
 		return dyn
 	}
 	switch k := getKey(args[0]); k {
@@ -294,7 +294,7 @@ func getrXmlReturns(args []Value, r *Registry) []Value {
 	default:
 		// A bare `Xml` type literal in the value slot would signature-
 		// error at runtime, not not_found — exclude it from the claim.
-		if r != nil && r.Check.IsActive() && !IsBareTypeNode(args[1]) {
+		if r != nil && r.Check.IsActive() && !IsBareTypeNode(&args[1]) {
 			core.CheckAddUniqueDiagnostic(r, "not_found",
 				fmt.Sprintf("getr: Xml has no field %q (tag / attr / cren)", k), "getr", args[0].Pos())
 		}
@@ -320,16 +320,16 @@ func getrNodeReturns(args []Value, r *Registry) []Value {
 	}
 	out := getNodeReturns(args, r)
 	if r == nil || !r.Check.IsActive() || len(args) != 2 ||
-		!IsConcrete(args[0]) || !IsConcrete(args[1]) {
+		!IsConcrete(&args[0]) || !IsConcrete(&args[1]) {
 		return out
 	}
 	key, container := args[0], args[1]
-	if container.Parent.ConformsTo(TList) && !key.Parent.ConformsTo(TInteger) {
+	if container.Parent().ConformsTo(TList) && !key.Parent().ConformsTo(TInteger) {
 		core.CheckAddUniqueDiagnostic(r, "getr_error",
-			fmt.Sprintf("getr: expected a map, got %s", container.Parent.String()), "getr", key.Pos())
+			fmt.Sprintf("getr: expected a map, got %s", container.Parent().String()), "getr", key.Pos())
 		return out
 	}
-	if m, err := AsMap(container); err == nil && m != nil && container.Parent.ConformsTo(TMap) {
+	if m, err := AsMap(container); err == nil && m != nil && container.Parent().ConformsTo(TMap) {
 		if _, ok := m.Get(getKey(key)); !ok {
 			core.CheckAddUniqueDiagnostic(r, "not_found",
 				fmt.Sprintf("getr: key %q not found in map", getKey(key)), "getr", key.Pos())
@@ -348,10 +348,10 @@ func getrNodeReturns(args []Value, r *Registry) []Value {
 func getrObjectReturns(args []Value, r *Registry) []Value {
 	out := getObjectReturns(args, r)
 	if r == nil || !r.Check.IsActive() || len(args) != 2 ||
-		!IsConcrete(args[0]) || args[1].Parent == nil {
+		!IsConcrete(&args[0]) || args[1].Parent() == nil {
 		return out
 	}
-	body, ok := r.TopTypeBody(args[1].Parent.Leaf())
+	body, ok := r.TopTypeBody(args[1].Parent().Leaf())
 	if !ok {
 		return out
 	}
@@ -374,7 +374,7 @@ func getrObjectReturns(args []Value, r *Registry) []Value {
 // (the sig never produces a value).
 func getrNoneReturns(args []Value, r *Registry) []Value {
 	if r != nil && r.Check.IsActive() && len(args) == 2 &&
-		core.IsNoneShape(args[1]) && !args[1].Dynamic {
+		core.IsNoneShape(args[1]) && !IsDynamic(&args[1]) {
 		core.CheckAddUniqueDiagnostic(r, "not_found",
 			"getr: parent is None — nothing to read a key from", "getr", args[0].Pos())
 	}
@@ -413,12 +413,12 @@ func srcOf(r *Registry) string {
 func getrMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("getr_error", "getr: cannot access property on type literal", "getr")
 	}
 	// Integer key on list.
-	if key.Parent.ConformsTo(TInteger) {
-		if list, _ := AsList(container); !list.IsNil() && container.Parent.ConformsTo(TList) {
+	if key.Parent().ConformsTo(TInteger) {
+		if list, _ := AsList(container); !list.IsNil() && container.Parent().ConformsTo(TList) {
 			_as3, _ := AsInteger(key)
 			idx := int(_as3)
 			// index_out_of_range is the code this very condition's
@@ -446,7 +446,7 @@ func getrMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 		// forty lines up (getrNodeReturns) — which was already coded while
 		// the runtime path was not.
 		return nil, r.BoruError("getr_error",
-			fmt.Sprintf("getr: expected a map, got %s", container.Parent.String()), "getr")
+			fmt.Sprintf("getr: expected a map, got %s", container.Parent().String()), "getr")
 	}
 	val, ok := m.Get(k)
 	if !ok {
@@ -461,7 +461,7 @@ func getrMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 func getrObjectHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("getr_error", "getr: cannot access property on type literal", "getr")
 	}
 	k := getKey(key)

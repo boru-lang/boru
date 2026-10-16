@@ -171,7 +171,8 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 		`def xs [add 1 2]  do [word xs]`,
 		// A LOOP inside a do body: the unrolled model repeats ONE value
 		// ([1 1 1] as the same Value), so tryRecordDynBody's intra-event ID
-		// de-collision mints fresh result identities — without it, producedBy
+		// de-collision mints fresh result identities — without it, while the
+		// recorder resolved producers through the identity, the registration
 		// collapsed to the last index and the residual declined "call results
 		// reordered". Value above / below the run, and a computed range.
 		`do [for 3 [1]]`,

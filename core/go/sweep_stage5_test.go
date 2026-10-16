@@ -85,7 +85,7 @@ func TestSweepConvertBehaviorDelegates(t *testing.T) {
 func TestSweepUnionTypeSingleton(t *testing.T) {
 	// Duplicate alternatives dedupe to a single bare literal.
 	u := UnionType(NewTypeLiteral(TInteger), NewTypeLiteral(TInteger))
-	if !IsBareTypeNode(u) || (&u).Leaf() != "Integer" {
+	if !IsBareTypeNode(&u) || (&u).Leaf() != "Integer" {
 		t.Errorf("UnionType singleton = %v", u)
 	}
 }
@@ -220,7 +220,7 @@ func TestSweepMakeNodeHandlerRegisteredKindPrecedence(t *testing.T) {
 		Name:    "SweepKind",
 		Enabled: true,
 		Accepts: func(base Value) bool {
-			return base.Data == nil && !base.Carrier && base.ID == TFlexMap.ID
+			return base.Data() == nil && !base.Carrier() && IDOf(&base) == IDOf(TFlexMap)
 		},
 		Instantiate: func(typ, data Value, _ *Registry) ([]Value, error) {
 			return []Value{NewString("sweep-made")}, nil
@@ -286,7 +286,7 @@ func TestSweepForceForwardFunction(t *testing.T) {
 	if !ok {
 		t.Fatal("ForceForwardFunction declined a function value")
 	}
-	wf, wok := wrapped.Data.(FnDefInfo)
+	wf, wok := FnDefOf(wrapped.Data())
 	if !wok || len(wf.Signatures) != 1 {
 		t.Fatalf("wrapper shape wrong: %v", wrapped)
 	}
@@ -429,7 +429,7 @@ func TestSweepDepScalarEdges(t *testing.T) {
 		Hi: &DepBound{Value: NewInteger(9)},
 	}
 	comp := complementWithinBase(TInteger, interval)
-	if !IsDisjunct(comp) {
+	if !IsDisjunct(&comp) {
 		t.Errorf("interval complement should be a disjunct: %v", comp)
 	}
 	// complementWithinBase: upper-only → flipped lower bound.
@@ -454,8 +454,8 @@ func TestSweepSuggestNamesDistanceOrder(t *testing.T) {
 
 func TestSweepNewKeyVal(t *testing.T) {
 	kv := NewKeyVal("name", NewInteger(7), 1, 3)
-	if !kv.Parent.Equal(TKeyVal) {
-		t.Fatalf("KeyVal parent = %v", kv.Parent)
+	if !kv.Parent().Equal(TKeyVal) {
+		t.Fatalf("KeyVal parent = %v", kv.Parent())
 	}
 	m, err := AsMap(kv)
 	if err != nil {
@@ -546,7 +546,7 @@ func TestSweepNodifyValue(t *testing.T) {
 	// A registered Nodifier terminates the walk with its projection.
 	r := newTestRegistry(t)
 	nt := r.Types.MintTypeWithBehavior("SweepNodify", TIdeal, sweepNodifier{})
-	out, err = NodifyValue(Value{Parent: nt})
+	out, err = NodifyValue(Value{d: &Datum{Parent: nt}})
 	if err != nil {
 		t.Fatalf("NodifyValue custom: %v", err)
 	}
@@ -733,7 +733,7 @@ func TestSweepMemberBehaviorArms(t *testing.T) {
 	if !b.Match(NewInteger(2), mt) {
 		t.Error("a member value should Match")
 	}
-	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2), nil); uerr != nil || !IsConcrete(out) {
+	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2), nil); uerr != nil || !IsConcrete(&out) {
 		t.Errorf("member Unify = %v, %v", out, uerr)
 	}
 	if _, err := b.Compare(NewInteger(1), NewInteger(2)); err == nil {

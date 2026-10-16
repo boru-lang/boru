@@ -102,7 +102,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 // runCarrierBody is the one body runner; residue is the ArmBody run's
 // Engine.armResidue (none for a kept or condition run).
 func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, adds map[string]Value, residue PendingResidue) {
-	if body.Data == nil {
+	if body.Data() == nil {
 		return nil, nil, residue
 	}
 	elems, err := AsList(body)
@@ -136,7 +136,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	case keep && condFrag:
 		defer r.Check.Recorder().CondBodyGuard()()
 	case keep:
-		defer r.Check.Recorder().KeepDefsBodyGuard(r, body.ID)()
+		defer r.Check.Recorder().KeepDefsBodyGuard(r, IDOf(&body))()
 	default:
 		defer r.Check.Recorder().BodyAnalysisGuard()()
 	}
@@ -144,8 +144,6 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// Snapshot def-stack depths (all known names).
 	snapshot := r.Defs.Snapshot()
 
-	tokens := make([]Value, elems.Len())
-	copy(tokens, elems.Slice())
 	sub := New(r)
 	sub.ElemEvalRecordable = recordable
 	sub.ArmBody = !keep && !condFrag
@@ -182,7 +180,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 		// runs unconditionally, so its undefs are real on both engines.
 		r.Check.PushSpecBaseline(snapshot)
 	}
-	result, err := sub.Run(tokens)
+	result, err := sub.Run(elems.Elems())
 	if raiseCond {
 		r.Check.PopSpecBaseline()
 		r.Check.CondBodyDepth--

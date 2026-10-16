@@ -13,7 +13,7 @@ import "testing"
 // fail, and it drives every "compare errored" guard in depscalar.go.
 func w8NilTypeVal() Value {
 	v := NewInteger(5)
-	v.Parent = nil
+	v.SetParent(nil)
 	return v
 }
 
@@ -101,7 +101,7 @@ func TestW8CombineDepScalarsIntervalCompareError(t *testing.T) {
 func TestW8ComplementWithinBaseUnbounded(t *testing.T) {
 	// An info with neither bound complements to the bare base literal.
 	got := complementWithinBase(TInteger, DepScalarInfo{})
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Fatalf("expected a bare type literal, got %v", got)
 	}
 	if !ValueType(got).Equal(TInteger) {

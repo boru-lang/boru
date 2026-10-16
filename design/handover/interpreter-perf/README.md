@@ -19,6 +19,7 @@ main at `6780a6030`.
 | `patches/pointer-receivers.patch` | the first step of phase 1: pointer receivers on 20 of `Value`'s 23 value-receiver methods |
 | `probes/*.txt` | two-lane probe corpora, one program per line |
 | `probes/*.out` | each corpus's output on `6780a6030`, from the harness below |
+| `tools/valuesplit.go.txt` | phase 4's type-checked rewrite (2026-10-15): body-field reads to accessors, writes to copy-on-write setters, keyed literals to `Datum` constructors, over every module and five build configurations; see "The phase-4 rewrite" below |
 
 The inventories were written by four parallel read-only review passes and
 reconciled into [../../VALUE-NO-COPY.0.md](../../VALUE-NO-COPY.0.md); their
@@ -758,6 +759,26 @@ func main() {
 	fmt.Printf("pointer         %4d bytes\n", unsafe.Sizeof(uintptr(0)))
 }
 ```
+
+## The phase-4 rewrite
+
+`tools/valuesplit.go.txt` is the tool that split `core.Value` into a
+handle and its `Datum` (design/VALUE-NO-COPY.0.md §9, phase 4). It ran on
+the phase-3 tree, BEFORE the struct changed, because it needs the old
+field selections to type-check: it loads every module's packages with
+tests under five configurations (the default, `-tags "borudebug
+specgen"`, `GOOS=windows`, `GOOS=darwin`, `GOOS=js GOARCH=wasm`),
+records each edit as an insertion or a small replacement keyed by byte
+offset (so nested selectors compose and duplicate test variants dedupe),
+and reports what it will not rewrite — a multi-assignment, `&x.F`, a
+literal mixing body and handle keys, a literal in a file that names
+`Value` through neither a `core` import nor a package alias — for a hand
+edit. That came to 19 sites. To run it, save it as `main.go` in a scratch
+module that requires `golang.org/x/tools`, build it with `GOWORK=off`, and
+run it from the repo root with `-root <repo> <module dirs…>` (`-n` for a
+dry run); then splice the new struct in and fix what the compiler names.
+The same shape of tool would do the `Value` → `Cell`, `Datum` → `Value`
+rename §9 leaves open.
 
 ## Where the other numbers live
 

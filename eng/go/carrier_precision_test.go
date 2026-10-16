@@ -14,7 +14,7 @@ import (
 func TestLiteralCondValueGuardFactPrev(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		elem := core.NewCarrier(core.TBoolean)
-		elem.Data = core.GuardFactInfo{Prev: core.BoolPayload{B: want}}
+		elem.SetData(core.GuardFactInfo{Prev: core.BoolPayload{B: want}})
 		got, ok := core.LiteralCondValue(core.NewList([]core.Value{elem}))
 		if !ok || got != want {
 			t.Errorf("LiteralCondValue(Prev=%v) = %v/%v, want %v/true", want, got, ok, want)
@@ -23,7 +23,7 @@ func TestLiteralCondValueGuardFactPrev(t *testing.T) {
 	// NEGATIVE: a GuardFactInfo whose Prev is NOT a BoolPayload does not decide
 	// the cond (falls through the wrapper read).
 	elem := core.NewCarrier(core.TBoolean)
-	elem.Data = core.GuardFactInfo{Prev: core.IntPayload{N: 1}}
+	elem.SetData(core.GuardFactInfo{Prev: core.IntPayload{N: 1}})
 	if _, ok := core.LiteralCondValue(core.NewList([]core.Value{elem})); ok {
 		t.Error("a non-Boolean Prev must not decide the cond")
 	}
@@ -41,7 +41,7 @@ func TestAnalyseFnBodyGradualizesUndefinedArg(t *testing.T) {
 	r.Check.Mode = true
 
 	und := core.NewAtom("phantom")
-	und.Undefined = true
+	core.SetUndefined(&und, true)
 	body := []core.Value{core.NewWord("x")} // trivial body returning the param
 
 	// The call must not panic and must produce a residual (the gradualized
@@ -50,7 +50,7 @@ func TestAnalyseFnBodyGradualizesUndefinedArg(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("AnalyseFnBody over an undefined arg produced no residual")
 	}
-	if got[0].Undefined {
+	if core.IsUndefined(&got[0]) {
 		t.Error("the residual must be gradualized, not a raw Undefined atom")
 	}
 

@@ -18,7 +18,7 @@ const maxPositionedWriteSize = int64(1) << 40 // 1 TiB
 
 // mapStrOpt reads one string key from an options map, reporting presence.
 func mapStrOpt(opts Value, key string) (string, bool) {
-	if !opts.Parent.Equal(TMap) || !IsConcrete(opts) {
+	if !opts.Parent().Equal(TMap) || !IsConcrete(&opts) {
 		return "", false
 	}
 	m, _ := AsMap(opts)

@@ -322,14 +322,14 @@ func (es *EmitState) publishBodyStart(bodyID string, r *core.Registry, defs *cor
 // nothing (a body that is neither once-run nor multi-run keeps-defs, or one
 // whose guard never ran) — the re-run then runs where it always did.
 func (es *EmitState) takeBodyEnv(body core.Value, spec core.CallableSpec) *bodyRunEnv {
-	if es == nil || body.ID == "" || !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) {
+	if es == nil || core.IDOf(&body) == "" || !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) {
 		return nil
 	}
-	bs, ok := es.bodyStarts[body.ID]
+	bs, ok := es.bodyStarts[core.IDOf(&body)]
 	if !ok {
 		return nil
 	}
-	delete(es.bodyStarts, body.ID)
+	delete(es.bodyStarts, core.IDOf(&body))
 	return &bodyRunEnv{start: bs.defs, reg: bs.reg, multi: spec.BodyMultiRunKeepsDefs}
 }
 
@@ -374,8 +374,8 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 	}
 	if env.multi {
 		for _, name := range table.Names() {
-			sv, _ := table.Top(name)
-			ev, present := r.Defs.Top(name)
+			sv, _ := table.TopValue(name) // a listed name is bound
+			ev, present := r.Defs.TopValue(name)
 			if !present {
 				return nil, false
 			}
@@ -383,7 +383,7 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 			// without one (outside a pass), by equality. An empty id on both
 			// sides must not read as "same", or a runtime-minted rebind would
 			// pass as its own start binding.
-			if sv.ID == ev.ID && (sv.ID != "" || core.ValuesEqual(sv, ev)) {
+			if core.IDOf(sv) == core.IDOf(ev) && (core.IDOf(sv) != "" || core.ValuesEqual(*sv, *ev)) {
 				continue
 			}
 			if entry, _ := table.TopEntry(name); entry.TypeDef != nil {
@@ -391,10 +391,10 @@ func (env *bodyRunEnv) enter(r *core.Registry) (*core.DefTable, bool) {
 				// type installs already, so the start binding stands here.
 				continue
 			}
-			if core.IsFnValueResidual(sv) || core.IsFnValueResidual(ev) {
+			if core.IsFnValueResidual(*sv) || core.IsFnValueResidual(*ev) {
 				return nil, false
 			}
-			table.Replace(name, core.JoinCarriers(bindCarrier(sv), bindCarrier(ev)))
+			table.Replace(name, core.JoinCarriers(bindCarrier(*sv), bindCarrier(*ev)))
 		}
 	}
 	return r.SwapDefs(table), true
@@ -413,21 +413,21 @@ func (env *bodyRunEnv) exit(r *core.Registry, prev *core.DefTable) {
 // its container shape (the ChildTypeInfo a concrete-container slot needs);
 // a nil-Parent root literal is the gradual Any.
 func bindCarrier(v core.Value) core.Value {
-	if v.Carrier {
+	if v.Carrier() {
 		return v
 	}
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return core.NewDynamicCarrier(core.TAny)
 	}
 	switch {
-	case core.IsTypeLiteral(v):
+	case core.IsTypeLiteral(&v):
 		return core.ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
-	case v.Parent.ConformsTo(core.TList):
+	case v.Parent().ConformsTo(core.TList):
 		return core.NewCarrier(core.TList)
-	case v.Parent.ConformsTo(core.TMap):
+	case v.Parent().ConformsTo(core.TMap):
 		return core.NewCarrier(core.TMap)
 	}
-	return core.NewCarrier(v.Parent)
+	return core.NewCarrier(v.Parent())
 }
 
 // --- the residual-order hazard ----------------------------------------------
@@ -532,14 +532,14 @@ func (es *EmitState) residualReadHazard(v core.Value, op EmitOperand, frag *Emit
 	case opDynScope:
 		name := v.DynFrom()
 		if name == "" {
-			name = es.defReads[v.ID]
+			name = es.defReads[core.IDOf(&v)]
 		}
 		if name != "" && es.bindHazard[readKey{name, fid}] {
 			return "residual read of `" + name + "` precedes its rebind in the same body (Stage 4b)"
 		}
 	case opLocal:
 		if es.storeHazard[slotKey{op.idx, fid}] {
-			name := es.defReads[v.ID]
+			name := es.defReads[core.IDOf(&v)]
 			if name == "" {
 				name = "a loop-carried def"
 			}
@@ -570,7 +570,7 @@ func firstHazard(v core.Value, hazards []func(core.Value) string) string {
 // (Integer)]`), and a dynamic residual keeps its compile (the common `for
 // 3 [(f i)]` family) as the record asks.
 func loopNamedFnHazard(v core.Value) string {
-	if fd, isFn := v.Data.(core.FnDefInfo); isFn && !v.Quoted && !v.Carrier && fd.NamedDef() {
+	if fd, isFn := v.Data().(*core.FnDefInfo); isFn && !core.IsQuoted(&v) && !v.Carrier() && fd.NamedDef() {
 		return "is a named fn value the interpreter re-steps per iteration (NUR129)"
 	}
 	return ""

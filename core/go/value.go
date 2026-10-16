@@ -33,6 +33,14 @@ func (l ReadList) Get(i int) Value {
 	return l.elems[i]
 }
 
+// Ref returns a pointer to the element at index i, so a reader takes it
+// where it lives instead of copying it out. The elements are shared by
+// every holder of the list, so never write through it.
+// Internal use only — caller must ensure 0 <= i < Len().
+func (l ReadList) Ref(i int) *Value {
+	return &l.elems[i]
+}
+
 // GetOk returns the element at index i and true, or the zero Value and false
 // if i is out of bounds. Safe for use at system boundaries.
 func (l ReadList) GetOk(i int) (Value, bool) {
@@ -52,6 +60,23 @@ func (l ReadList) Slice() []Value {
 	out := make([]Value, len(l.elems))
 	copy(out, l.elems)
 	return out
+}
+
+// Elems returns the list's own elements, not a copy. Take it to read: walk
+// it by index (`for i := range xs { v := &xs[i] … }`), spread or copy it into
+// a slice you own, or hand it to a reader that copies what it keeps —
+// Engine.Run copies its program onto its tape. Never write into it: the
+// elements are shared by every holder of the list. Its capacity is clamped to
+// its length, so an append reallocates instead of writing past the end into
+// storage another list may share. Like Slice it is never nil, so a caller's
+// nil test means the same with either. A flex list's view is live: a write
+// through the flex list during the walk shows in it, so a walk that runs user
+// code which may write the same list wants Slice.
+func (l ReadList) Elems() []Value {
+	if l.elems == nil {
+		return []Value{}
+	}
+	return l.elems[:len(l.elems):len(l.elems)]
 }
 
 // IsNil reports whether this ReadList has no backing data.
@@ -979,32 +1004,6 @@ type FnDefInfo struct {
 	// value for its whole life, because "this function is a membership
 	// test" is a property of what was written, not of one call site.
 	Predicate bool
-	// Applied is a ONE-SHOT signal that an application was explicitly
-	// ASKED for at this value — set only by `apply` (native_valof.go) on a
-	// fn whose only signatures are 0-arg, and consumed by the very next
-	// re-step in execFnDefLiteral, which clears it alongside ReachGroup
-	// under the same Quoted-transience discipline.
-	//
-	// It exists because the inert-lambda gate in execFnDefLiteral keys on
-	// Anonymous, and that gate is load-bearing: it is what makes
-	// `def f ([] => [42])` bind f to the FUNCTION rather than to 42. But
-	// keying an APPLICATION on it made ORIGIN decide the outcome, which
-	// ADR-016 forbids —
-	//
-	//	def z fn [[] [Integer] [42]]   z/v apply  ->  42
-	//	def f ([] => [42])             f/v apply  ->  fn f   (was)
-	//
-	// The flag separates the two questions the gate had conflated: "is
-	// this value data?" (origin) and "did someone ask to call it?"
-	// (this). A lambda sitting on the stack still parks; the same lambda
-	// behind an explicit `apply` dispatches through the ONE re-step path
-	// every other arity already uses, so natives keep their Go handlers,
-	// context mutations land in the caller's frame, and the check pass
-	// models the result by re-stepping exactly as runtime does.
-	//
-	// Macros are deliberately NOT covered: applying a macro is never a
-	// stack-value dispatch (design/legacy/MACROS-PHASE1.10.ignore §5, D4).
-	Applied bool
 
 	// ArgsReversed marks a value built by UsurpFunction (the `usurp` word and
 	// the `/u` modifier): its signatures' Params are the wrapped word's in
@@ -1133,6 +1132,9 @@ type fnIdent struct {
 	// copies go (an instance's method slot, a list of callbacks, the tape)
 	// and dies with it. Atomic: forked engines apply one value concurrently.
 	dispatch atomic.Pointer[compiledFnDef]
+	// view caches the function's dispatch-ordered signature list
+	// (FnDispatchSigs), keyed by the authored list it was built from.
+	view atomic.Pointer[sigView]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value
@@ -1176,13 +1178,13 @@ func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
 // per push (OpPushConstFresh) — `def mk fn [[][Any][([x:Any] => [x])]] end
 // mk mk eq` is false on both lanes (NUR288).
 func WithFreshFnIdentity(v Value) Value {
-	fd, ok := v.Data.(FnDefInfo)
+	prev, ok := FnDefOf(v.Data())
 	if !ok {
 		return v
 	}
+	fd := *prev
 	fd.ident = &fnIdent{}
-	v.Data = fd
-	return v
+	return MintPayload(&v, &fd)
 }
 
 // CapturedBinding is one lexically-captured name in a closure. The
@@ -1256,6 +1258,36 @@ func (fn *FnDefInfo) FirstOwnSig() (*Signature, bool) {
 		}
 	}
 	return nil, false
+}
+
+// A fn value's payload is held by pointer (*FnDefInfo), so a reader takes it
+// where it lives instead of copying 232 bytes out of the box. A payload is
+// never written once it is in a Value: a change is made on a copy
+// (FnDefCopy) and boxed as a new payload.
+
+// zeroFnDef is the payload FnDefOf hands a reader whose value is not a fn:
+// the zero FnDefInfo a failed by-value assertion used to yield. It is shared
+// and never written.
+var zeroFnDef FnDefInfo
+
+// FnDefOf returns the fn payload d holds and true, or the shared zero
+// FnDefInfo and false when d is not one — for a reader that reads the
+// payload whether or not the value is a fn. Never write through the result.
+func FnDefOf(d any) (*FnDefInfo, bool) {
+	if fd, ok := d.(*FnDefInfo); ok {
+		return fd, true
+	}
+	return &zeroFnDef, false
+}
+
+// FnDefCopy returns a copy of the fn payload d holds and true, or the zero
+// FnDefInfo and false — for a caller that edits the payload and boxes the
+// result as a new one (&copy).
+func FnDefCopy(d any) (FnDefInfo, bool) {
+	if fd, ok := d.(*FnDefInfo); ok {
+		return *fd, true
+	}
+	return FnDefInfo{}, false
 }
 
 // FnSigSpec describes a signature specification without a body, used for
@@ -1564,7 +1596,7 @@ func (si *StoreInstanceInfo) Set(key string, val Value) {
 	}
 	si.Data[key] = val
 	// Track parent relationship for nested Stores.
-	if childStore, ok := val.Data.(*StoreInstanceInfo); ok {
+	if childStore, ok := val.Data().(*StoreInstanceInfo); ok {
 		childStore.Parent = si
 		childStore.ParentKey = key
 	}
@@ -1591,7 +1623,7 @@ func NextMarkID() string {
 // enabling replay when the move fires.
 type MarkInfo struct {
 	ID   string  // unique identifier for this mark
-	Body []Value // original content to replay (set by the move on first encounter)
+	Body []Value // original content a plain move replays (empty under a continuation move)
 	// Loop is the DRIVEN loop this mark opens an iteration of (loop.go):
 	// stepping the mark begins the iteration — the scoped context Store the
 	// sub-engine protocol pushed per body run — so every annotation of the
@@ -1709,8 +1741,13 @@ type Loop struct {
 	// reused by every iteration: the one mark id, the sealing paren for
 	// the iteration's input span, the close paren and the move.
 	mark, open, close, move Value
-	openSpan                int
-	one                     [1]Value // a non-list body as its one token
+	// at is the position the synthetic tokens carry: Pos, refreshed each
+	// time the tokens are minted or reused, with the record that carries it
+	// alone, so a reused Loop's tokens take the new call's position with no
+	// record of their own.
+	at       position
+	openSpan int
+	one      [1]Value // a non-list body as its one token
 	// closeAtWord positions the region's close paren at the word too: a
 	// CALL region (CallRegion), whose block a signal escapes with no loop
 	// to take it, reports at the construct, where the pointer stands after
@@ -1802,7 +1839,7 @@ const (
 func UnwrapModifierChain(v Value) (base Value, reverse bool, ok bool) {
 	base = v
 	for depth := 0; depth < 64; depth++ {
-		fd, isFn := base.Data.(FnDefInfo)
+		fd, isFn := base.Data().(*FnDefInfo)
 		if !isFn || fd.Wraps == nil {
 			return base, reverse, ok
 		}
@@ -1886,15 +1923,56 @@ type ForwardInfo struct {
 //
 // Each ID is the prefix followed by 12 lowercase hex characters.
 //
-// Field order is chosen to eliminate alignment padding: the three
-// 16-byte fields (ID, DynFrom, Data) and the three pointers come first,
-// then every one-byte field is clustered at the tail so the seven bools
-// plus Origin pack into a single 8-byte-aligned run with no gaps. This is
-// a pure layout choice — fields are still accessed by name — and it took
-// the struct from 96 to 80 bytes on its own (design/
-// INTERPRETER-SPEED-PLAN.10.md #1A, bool-packing follow-up).
+// A Value is a HANDLE (design/VALUE-NO-COPY.0.md §6 phase 4): one holder's
+// reference to the Datum that is what the value IS — its payload, its
+// Parent, its type-node metadata and facets — together with that holder's
+// occurrence state (occurrence.go). The Datum is shared by every holder of
+// the value and is never copied: it is constructed (NewValueRaw, ValueOf,
+// the mint family) and, once a holder has been copied anywhere, never
+// written. A write to a body field through a handle — SetData, SetParent,
+// SetCarrier, SetOrigin, and in core the cow() writes —
+// gives THAT holder a datum of its own built from the old one's parts, so
+// it reaches exactly the holder it is made through, as a write to a
+// by-value field of the old 64-byte header did. Copying a Value copies the
+// reference and the occurrence (24 bytes): a cell record in the sense of
+// the exceptions list's C1 and R4, never a copy of the value.
+//
+// The zero Value has no Datum; every accessor reads it as the zero datum
+// (nil Data, nil Parent, no flags), as the zero header read before.
 type Value struct {
-	ID string
+	// d is the shared, immutable Datum (nil for the zero Value). Read it
+	// through the accessors (Data, Parent, IsInternal, Origin, Carrier, and
+	// body() in core), never by a field path that could write it.
+	d *Datum
+	// occ is this occurrence's state — the source position, the identity
+	// token, the dispatch ascription and a gradual read's source binding —
+	// behind one pointer to an immutable record (occurrence.go). nil for
+	// the overwhelming majority of values; a setter repoints this one
+	// handle, never writes the record, so every other copy keeps what it
+	// had. Read and write through Pos/SetPos/WithPos, IDOf/SetID,
+	// AscribedType/SetAscribed and DynFrom/SetDynFrom. A position is minted
+	// once (at parse) with the record that carries it alone, and threading
+	// it onto a value with no other occurrence state shares that record:
+	// no allocation on the hot path, and synthesized values carry none.
+	occ *occurrence
+	// flags are the occurrence flags (quoted, eval, undefined, failed
+	// dispatch, reach group, dynamic, applied, return-trimmed, signature
+	// matched — occurrence.go), read and written through IsQuoted/SetQuoted
+	// and their siblings.
+	flags occFlags
+}
+
+// Datum is what a value IS, shared by every handle on it (Value). It is
+// never copied: go vet's copylocks analyzer reports a copy (the noCopy
+// marker; `make vet-copies` holds every module to zero), and a handle that
+// must differ in a body field builds a new Datum from the old one's parts
+// (Value.cow). Construct one with a composite literal handed to ValueOf, or
+// through NewValueRaw and the mint family; once a handle on it has been
+// copied, nothing writes it.
+type Datum struct {
+	// noCopy makes go vet's copylocks analyzer report every by-value copy of
+	// a Datum (zero size, placed first so it adds no padding).
+	noCopy noCopy
 	// Data is the kernel-known data payload; see payload.go for variants.
 	Data Payload
 
@@ -1904,108 +1982,149 @@ type Value struct {
 	Parent *Type
 	// tmeta holds type-node metadata — the leaf Name, the five integer
 	// lattice fields (FixedID, Rank, Depth, In, Out), and the Behavior —
-	// behind ONE pointer instead of ~72 inline bytes on every Value. The
-	// struct is copied by value on every stack push, arg, and tape cell,
-	// so shrinking it cuts the interpreter's ~15% duffcopy cost (design/
-	// INTERPRETER-SPEED-PLAN.10.md #1A). These fields are set once at type
-	// registration, so a Value copy shares the SAME *typeMeta (an orphan
-	// `&v`-derived *Type reads the identical metadata as its canonical
-	// node — the property the old inline fields gave for free). Nil on
-	// ordinary runtime values; the Name/FixedID/Rank/Depth/In/Out/Behavior
-	// accessors return the zero value for nil. Writers go through
-	// ensureTMeta so a mint site that forgets to allocate one cannot
-	// nil-panic.
+	// behind ONE pointer. These fields are set once at type registration,
+	// so every handle on a type node's datum — and every datum built from
+	// its parts — shares the SAME *typeMeta. Nil on ordinary runtime
+	// values; the Name/FixedID/Rank/Depth/In/Out/Behavior accessors return
+	// the zero value for nil. Writers go through ensureTMeta so a mint site
+	// that forgets to allocate one cannot nil-panic.
 	tmeta *typeMeta
-	// pos is the source position for error reporting, behind a pointer so
-	// the ~24 inline bytes of SrcPos (Row/Col/Src) don't ride on every
-	// Value copy — nil means "unknown" (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore
-	// #1A, Pos follow-up). A position is minted once at parse time; the
-	// interpreter then THREADS it by copying the pointer (WithPos, the
-	// internal `.pos = other.pos` assignments), so no per-value SrcPos is
-	// allocated on the hot path and synthesized values (nil pos) carry
-	// none. The Src text is never mutated after parse, so sharing one
-	// *SrcPos across every copy of a value is sound. Read via Pos()
-	// (nil-safe, returns the zero SrcPos); external packages set it via
-	// SetPos since the field is unexported.
-	pos *SrcPos
-	// dynFrom is the binding name a dynamic carrier was resolved from
-	// (check mode ONLY — never read at runtime), behind a pointer so its
-	// 16-byte string doesn't ride on every runtime Value copy (nil for the
-	// overwhelming majority that are not check-mode dynamic carriers). It
-	// lets narrowing-through-use tighten that binding to dynamic(bound ∩
-	// slot) at a typed use so a later provably-disjoint use of the same
-	// name is caught. Read via DynFrom() (nil-safe), set via SetDynFrom.
-	dynFrom *string
 	// elem is the retained ELEMENT constraint of a concrete typed container
-	// ({:T} map / [:T] list), behind a pointer so its Value doesn't ride on
-	// every runtime copy (nil for the overwhelming majority — everything that
-	// is not a concrete typed container). Construction (unifyTyped*WithConcrete)
-	// is the sole origin; it lets a concrete {:T} value stay CONCRETE (Data is
-	// still the MapPayload/ListPayload, AsMap/AsList/IsConcrete unchanged) while
-	// carrying the element type that write-enforcement (set/setpath/merge) and
-	// strict reads consult. The constraint is the child Value verbatim — a bare
-	// type literal, a disjunct ({:(A tor B)}), or a nested typed-container
-	// literal ({:[:Integer]}). Read via ElemConstraint() (nil-safe), set via
-	// SetElemConstraint. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
+	// ({:T} map / [:T] list), behind a pointer (nil for the overwhelming
+	// majority — everything that is not a concrete typed container).
+	// Construction (unifyTyped*WithConcrete) is the sole origin; it lets a
+	// concrete {:T} value stay CONCRETE (Data is still the
+	// MapPayload/ListPayload, AsMap/AsList/IsConcrete unchanged) while
+	// carrying the element type that write-enforcement (set/setpath/merge)
+	// and strict reads consult. The constraint is the child Value verbatim —
+	// a bare type literal, a disjunct ({:(A tor B)}), or a nested
+	// typed-container literal ({:[:Integer]}). Read via ElemConstraint()
+	// (nil-safe), set via SetElemConstraint. See
+	// design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 	elem *Value
-	// asc is the value's dispatch ASCRIPTION (`v as T` — design/
-	// OPEN-WORDS.1.md §9): an ancestor type that signature MATCHING treats
-	// as the value's tag while the value itself — payload, real Parent,
-	// rendering, equality — is untouched. Upcast-only (the `as` word
-	// declines a non-ancestor), match-time-only: every arg-delivery boundary
-	// (execMatch, fn-param binding, the VM call/bind/make ops) strips it,
-	// so the ascription selects exactly one dispatch and never leaks into
-	// handlers, bindings, containers, or results. Behind a pointer so the
-	// overwhelming majority of values (no ascription) don't carry it. Read
-	// via AscribedType() (nil-safe), set/clear via SetAscribed.
-	asc *Type
 	// modns marks a MAP value as a module NAMESPACE — the value `import`
-	// binds for each `export "Name" {…}`. Behind a nil-by-default pointer
-	// so the overwhelming majority of values carry no inline bytes for it
-	// (the pos/dynFrom/elem/asc discipline). The map's own payload IS the
-	// export set; the facet carries only the PROVENANCE the retired
-	// Ideal/ModuleExport wrapper used to encode — the export name
-	// (`$name`) and the owning Module descriptor (`$module`) — so an
-	// exported fn stays a Function, an exported constant stays that
-	// constant, and an exported type stays a plain type (NUR038:
-	// provenance is a facet on a plain value, never a wrapper
-	// type that masks the value). Read via ModuleNSOf (nil-safe free
-	// function); set via WithModuleNS. The Sealed-Payload rule is
-	// untouched: the facet holds a Value the kernel treats opaquely.
+	// binds for each `export "Name" {…}`. Behind a nil-by-default pointer.
+	// The map's own payload IS the export set; the facet carries only the
+	// PROVENANCE the retired Ideal/ModuleExport wrapper used to encode — the
+	// export name (`$name`) and the owning Module descriptor (`$module`) — so
+	// an exported fn stays a Function, an exported constant stays that
+	// constant, and an exported type stays a plain type (NUR038: provenance
+	// is a facet on a plain value, never a wrapper type that masks the
+	// value). Read via ModuleNSOf (nil-safe free function); set via
+	// WithModuleNS. The Sealed-Payload rule is untouched: the facet holds a
+	// Value the kernel treats opaquely.
 	modns *ModuleNSInfo
 
-	// One-byte fields, clustered so they pack without padding.
+	// The kind flags, clustered at the tail so they pack.
 	IsInternal bool       // Word/__XX runtime markers — not user-facing
 	Origin     OriginKind // builtin / userdef
-	Quoted     bool       // produced by the quote word; prevents auto-evaluation
-	Eval       bool       // parser-created list that should auto-evaluate at end of Run
-	Undefined  bool       // atom created from an undefined word (error if left on result stack)
-	// FailedDispatch marks a named Function value that a dispatch attempt
-	// left on the tape because no signature matched. CHECK MODE ONLY: at
-	// runtime the failure raises at the dispatch site
-	// (design/legacy/FN-VALUE-DISPATCH.0.ignore), so no such value survives. Analysis
-	// continues past the finding, so the marker is how a later check-mode
-	// consumer tells dispatch wreckage from a value the program meant to
-	// produce (defWordExtension reads it).
-	FailedDispatch bool
-	// ReachGroup marks an OPEN-PAREN marker that the REACH LOWERING emitted
-	// rather than the user writing — the synthetic group `a.b` expands to
-	// (expandReach → lowerReach). A function value alone inside such a group
-	// must not dispatch there; see execFnDefLiteral. Only the open marker
-	// carries it, since that is the side the dispatch test looks at, and
-	// IsOpenParen keys on Parent alone so every other marker consumer is
-	// unaffected.
-	ReachGroup bool
-	Carrier    bool // static-typecheck carrier (type-only, Data stripped of concrete payload)
-	// Dynamic marks a carrier as a bounded gradual value (Elixir-style
-	// dynamic(T) — design/legacy/dynamic-modality-report.10.ignore). Implies Carrier.
-	// Its Parent/Data is a BOUND, not a proven type: at a signature
-	// boundary it matches the slot unless PROVABLY disjoint from it
-	// (not-disjoint rule), rather than by strict ConformsTo. Set only on
-	// carriers the checker cannot prove exactly (escape hatches); cleared
-	// by a successful guard, which discharges the gradual obligation.
-	Dynamic bool
+	Carrier    bool       // static-typecheck carrier (type-only, Data stripped of concrete payload)
+
+	// in/out are a type node's DFS nested-set interval within the STATIC
+	// builtin lattice: in is the pre-order entry number, out the largest
+	// entry number in the node's subtree. A descendant d of an ancestor a
+	// satisfies a.in <= d.in <= a.out, so IsAncestor is an O(1) range test
+	// instead of a parent-chain walk, and two labelled nodes are the same
+	// node exactly when their in labels match (Type.Equal). Assigned once,
+	// in place on each builtin node's datum, by labelIntervals at
+	// builtin-table construction; 0 = unlabelled (minted, external, or
+	// ad-hoc types, and a datum built before the labelling), which routes
+	// both through their structural paths. In the datum rather than the
+	// type metadata so the hot comparisons read one pointer, not two; the
+	// datum's allocation size class has room for them.
+	in, out int32
+	// depth is a type node's parent-chain length (root = 1); 0 = unset
+	// (ad-hoc *Type), which typeDepth answers by walking. Stamped once, at
+	// the node's construction (MintType, RegisterType, the builtin table),
+	// and read on every LCA walk — so it is here, one pointer from the node,
+	// beside the labels, in the room the size class leaves.
+	depth int32
 }
+
+// zeroDatum is what a handle with no Datum reads as. Never written: every
+// write goes through cow, which builds a new Datum.
+var zeroDatum Datum
+
+// ValueOf is a handle on d, which the caller has just constructed and hands
+// over: nothing else may hold or write d afterwards except through handles.
+func ValueOf(d *Datum) Value { return Value{d: d} }
+
+// body is v's datum for reading (the zero datum when v has none). Never
+// write through it: cow is the one way to change a body field.
+func (v Value) body() *Datum {
+	if v.d != nil {
+		return v.d
+	}
+	return &zeroDatum
+}
+
+// cow gives this handle a datum of its own, built from the parts of the one
+// it had, and returns it for the caller to write: a write to a body field
+// then reaches exactly this holder, as a write to the by-value header's
+// field did. Every other handle keeps the datum it shared.
+func (v *Value) cow() *Datum {
+	nd := new(Datum)
+	copyDatumParts(nd, v.d)
+	v.d = nd
+	return nd
+}
+
+// copyDatumParts gives nd the parts of o (nothing when o is nil), field by
+// field: a Datum is never copied whole.
+func copyDatumParts(nd, o *Datum) {
+	if o == nil {
+		return
+	}
+	nd.Data, nd.Parent, nd.tmeta, nd.elem, nd.modns = o.Data, o.Parent, o.tmeta, o.elem, o.modns
+	nd.IsInternal, nd.Origin, nd.Carrier = o.IsInternal, o.Origin, o.Carrier
+	nd.in, nd.out, nd.depth = o.in, o.out, o.depth
+}
+
+// Data is v's payload (nil for the zero Value).
+func (v Value) Data() Payload {
+	if v.d == nil {
+		return nil
+	}
+	return v.d.Data
+}
+
+// Parent is v's node above it in the lattice: a value's type, a type node's
+// supertype (nil for the zero Value and the lattice roots).
+func (v Value) Parent() *Type {
+	if v.d == nil {
+		return nil
+	}
+	return v.d.Parent
+}
+
+// IsInternal reports whether v is a runtime marker (Word/__XX), not
+// user-facing.
+func (v Value) IsInternal() bool { return v.d != nil && v.d.IsInternal }
+
+// Origin is v's provenance kind (builtin / userdef).
+func (v Value) Origin() OriginKind {
+	if v.d == nil {
+		return 0
+	}
+	return v.d.Origin
+}
+
+// Carrier reports whether v is a static-typecheck carrier (type-only, Data
+// stripped of its concrete payload).
+func (v Value) Carrier() bool { return v.d != nil && v.d.Carrier }
+
+// SetData gives this holder the payload p (copy-on-write: see cow).
+func (v *Value) SetData(p Payload) { v.cow().Data = p }
+
+// SetParent gives this holder the parent t (copy-on-write: see cow).
+func (v *Value) SetParent(t *Type) { v.cow().Parent = t }
+
+// SetOrigin gives this holder the provenance kind o (copy-on-write: see cow).
+func (v *Value) SetOrigin(o OriginKind) { v.cow().Origin = o }
+
+// SetCarrier marks or clears this holder as a static-typecheck carrier
+// (copy-on-write: see cow).
+func (v *Value) SetCarrier(on bool) { v.cow().Carrier = on }
 
 // typeMeta carries the integer lattice fields of a type node, held behind
 // Value.tmeta so ordinary values don't pay 40 inline bytes for metadata
@@ -2020,8 +2139,8 @@ type typeMeta struct {
 	// optional capabilities); non-nil is the marker of a type node. A
 	// `behave` word rewrites it through the canonical *Type — and because
 	// every copy of a type Value shares this one *typeMeta, that rewrite is
-	// now visible through every copy, not just the canonical pointer (the
-	// orphan-*Type gap the CanonicalType discipline exists to paper over).
+	// visible through every copy, not just the node (and node, below, names
+	// the node from any copy: NodeOf).
 	Behavior TypeBehavior
 	// FixedID is >0 for builtin type nodes; 0 otherwise. Baked into the
 	// serialised Value ID (formatFixedID).
@@ -2029,19 +2148,6 @@ type typeMeta struct {
 	// Rank is the unified lattice rank — the total order CompareValues /
 	// compareTypes use for every cross-type ordering.
 	Rank int
-	// Depth is the parent-chain length (root = 1); 0 = unset (ad-hoc
-	// *Type). Cached for typeDepth / LCA.
-	Depth int
-	// In/Out are the DFS nested-set interval of a type node within the
-	// STATIC builtin lattice: In is the pre-order entry number, Out the
-	// largest entry number in the node's subtree. A descendant d of an
-	// ancestor a satisfies a.In <= d.In <= a.Out, so IsAncestor is an O(1)
-	// range test instead of a parent-chain walk. Assigned once by
-	// labelIntervals at builtin-table construction; 0 = unlabelled
-	// (minted, external, or ad-hoc types), which routes IsAncestor through
-	// the walk.
-	In  int
-	Out int
 	// Owner is the registration/mint provenance of the type node — the
 	// authority the ownership-anchored signature rules check against
 	// (design/OPEN-WORDS.1.md §4): OwnerKernel for kernel builtins and
@@ -2075,6 +2181,34 @@ type typeMeta struct {
 	// bound only the run knows (NUR308, RunTypeInstall). Compiled references
 	// name this node; ForwardedType follows the forward to the run's.
 	RunForward *Type
+	// node is the lattice node this metadata belongs to — the *Type a type
+	// table minted or registered (MintType, RegisterType, the builtin
+	// table, Adopt). Every copy of a node shares its metadata, so every
+	// type literal names its node (NodeOf) without a registry lookup by ID.
+	// nil for the metadata of an ad-hoc *Type no table registered.
+	node *Type
+	// id is the node's identity — the ID its table knows it by (byID) —
+	// and so the identity every literal copy of it reads (IDOf), unless a
+	// holder was given another (SetID). Identity is the node's, not an
+	// occurrence's: a type literal read stamps its site's position without
+	// a record of its own.
+	id string
+}
+
+// NodeOf is the lattice node t stands for: the node a type literal copies
+// (every copy shares the node's metadata, which names it), the node
+// itself, or t unchanged when no type table registered it (an ad-hoc
+// *Type). A *Type taken from a type literal — `&v`, NewTypeLiteral's
+// result, a value read by value — goes through NodeOf before it is
+// stored, compared by pointer, or written through: `behave` and every
+// LCA walk must reach the node every registry shares, not a copy of it.
+func NodeOf(t *Type) *Type {
+	if t != nil {
+		if d := t.d; d != nil && d.tmeta != nil && d.tmeta.node != nil {
+			return d.tmeta.node
+		}
+	}
+	return t
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of
@@ -2082,10 +2216,12 @@ type typeMeta struct {
 // pre-allocate a typeMeta cannot nil-panic. v must be addressable (a
 // *Type or an addressable Value).
 func (v *Value) ensureTMeta() *typeMeta {
-	if v.tmeta == nil {
-		v.tmeta = &typeMeta{}
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta
 	}
-	return v.tmeta
+	tm := &typeMeta{}
+	v.cow().tmeta = tm
+	return tm
 }
 
 // SetName sets the type-node leaf name, allocating the typeMeta if
@@ -2099,11 +2235,11 @@ func (v *Value) SetName(name string) {
 // Behavior is the nil-safe read of the type node's pluggable dispatch —
 // nil for an ordinary value (no tmeta). A non-nil result is the marker of
 // a type node, exactly as the inline field was.
-func (v Value) Behavior() TypeBehavior {
-	if v.tmeta == nil {
-		return nil
+func (v *Value) Behavior() TypeBehavior {
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Behavior
 	}
-	return v.tmeta.Behavior
+	return nil
 }
 
 // TypeBody returns the structural content the type node was declared
@@ -2112,11 +2248,11 @@ func (v Value) Behavior() TypeBehavior {
 // kind with no structure (a builtin, a bare refine newtype) and an
 // ordinary value both answer false. The returned Value is a copy; the
 // stored content is written once at install and never mutated.
-func (v Value) TypeBody() (Value, bool) {
-	if v.tmeta == nil || v.tmeta.Body == nil {
-		return Value{}, false
+func (v *Value) TypeBody() (Value, bool) {
+	if d := v.d; d != nil && d.tmeta != nil && d.tmeta.Body != nil {
+		return *d.tmeta.Body, true
 	}
-	return *v.tmeta.Body, true
+	return Value{}, false
 }
 
 // SetTypeBody records the node's declared structural content. Called
@@ -2136,10 +2272,10 @@ func (v *Value) SetTypeBody(body Value) {
 // Stage 2 flip) and an inline body are one case
 // (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 func TypeContentOf(v Value) (Value, bool) {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.TypeBody()
 	}
-	if v.Data != nil && v.Data.IsTypeContent(&v) {
+	if v.Data() != nil && v.Data().IsTypeContent(v.Parent()) {
 		return v, true
 	}
 	return Value{}, false
@@ -2154,52 +2290,62 @@ func (v *Value) SetBehavior(b TypeBehavior) {
 }
 
 // Pos returns the value's source position, or the zero SrcPos (Row/Col 0
-// = unknown) when none is set. Nil-safe read of the pos pointer.
-func (v Value) Pos() SrcPos {
-	if v.pos == nil {
+// = unknown) when none is set. Nil-safe read of the occurrence record.
+func (v *Value) Pos() SrcPos {
+	if v.occ == nil || v.occ.pos == nil {
 		return SrcPos{}
 	}
-	return *v.pos
+	return v.occ.pos.SrcPos
 }
 
-// SetPos attaches a source position, allocating a *SrcPos. Internal eng
-// code threads a position without allocating by copying the pos pointer
-// directly (`v.pos = other.pos`, as WithPos does); SetPos is the exported
-// entry point for the parser and lang layer, where the field is not
-// reachable and a fresh position is being minted anyway.
+// SetPos attaches a newly minted source position to this holder: one
+// allocation, the position and — when v holds other occurrence state — the
+// record carrying both. Code that threads an existing position copies the
+// reference instead (WithPos, setPosRef) and allocates nothing; SetPos is
+// the entry point for the parser and the lang layer, where a fresh
+// position is being minted anyway.
 func (v *Value) SetPos(p SrcPos) {
-	v.pos = &p
+	if v.occ == nil || posOnly(v.occ) {
+		v.occ = &newPosition(p).only
+		return
+	}
+	v.occ = newPositionedRecord(*v.occ, p)
 }
 
 // DynFrom returns the check-mode binding name a dynamic carrier was
 // resolved from, or "" when unset. Nil-safe read of the pointer.
-func (v Value) DynFrom() string {
-	if v.dynFrom == nil {
+func (v *Value) DynFrom() string {
+	if v.occ == nil || v.occ.dynFrom == nil {
 		return ""
 	}
-	return *v.dynFrom
+	return *v.occ.dynFrom
 }
 
 // SetDynFrom records (name != "") or clears (name == "") the dynamic
 // carrier's origin binding. A check-mode-only path, so the *string it
 // allocates is off the runtime hot path.
 func (v *Value) SetDynFrom(name string) {
+	rec := occOf(v)
 	if name == "" {
-		v.dynFrom = nil
-		return
+		if rec.dynFrom == nil {
+			return
+		}
+		rec.dynFrom = nil
+	} else {
+		rec.dynFrom = &name
 	}
-	v.dynFrom = &name
+	setOcc(v, rec)
 }
 
 // ElemConstraint returns the retained element constraint of a concrete
 // typed container ({:T} map / [:T] list) and true, or a zero Value and
 // false when v carries no tag (the common case). Nil-safe read of the
 // pointer. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
-func (v Value) ElemConstraint() (Value, bool) {
-	if v.elem == nil {
+func (v *Value) ElemConstraint() (Value, bool) {
+	if v.body().elem == nil {
 		return Value{}, false
 	}
-	return *v.elem, true
+	return *v.body().elem, true
 }
 
 // SetElemConstraint attaches (c present) or clears (c a zero/bare-Any
@@ -2207,11 +2353,11 @@ func (v Value) ElemConstraint() (Value, bool) {
 // Construction (unifyTyped*WithConcrete) is the sole caller; an Any child
 // clears the tag (an untyped container is not element-constrained).
 func (v *Value) SetElemConstraint(c Value) {
-	if c.Parent == nil || c.Parent.Equal(TAny) {
-		v.elem = nil
+	if c.Parent() == nil || c.Parent().Equal(TAny) {
+		v.cow().elem = nil
 		return
 	}
-	v.elem = &c
+	v.cow().elem = &c
 }
 
 // ModuleNSInfo is the module-namespace facet a bound export map carries
@@ -2233,7 +2379,7 @@ type ModuleNSInfo struct {
 // the overwhelming majority of values that are not bound module
 // namespaces. Nil-safe.
 func ModuleNSOf(v Value) *ModuleNSInfo {
-	return v.modns
+	return v.body().modns
 }
 
 // WithModuleNS returns v (a plain export Map) carrying the module-
@@ -2242,52 +2388,68 @@ func ModuleNSOf(v Value) *ModuleNSInfo {
 // namespace wherever it flows (re-export, def-binding, container
 // storage) without the value ever ceasing to be a plain Map.
 func WithModuleNS(v Value, name string, module Value) Value {
-	v.modns = &ModuleNSInfo{Name: name, Module: module}
+	v.cow().modns = &ModuleNSInfo{Name: name, Module: module}
 	return v
 }
 
-// AscribedType returns the value's dispatch ascription (`v as T`), or nil
-// for the overwhelming majority of values that carry none. Nil-safe read
-// of the pointer; see the asc field doc for the semantics.
-func (v Value) AscribedType() *Type {
-	return v.asc
+// AscribedType returns the value's dispatch ASCRIPTION (`v as T` —
+// design/OPEN-WORDS.1.md §9), or nil for the overwhelming majority of
+// values that carry none: an ancestor type that signature MATCHING treats
+// as the value's tag while the value itself — payload, real Parent,
+// rendering, equality — is untouched. Upcast-only (the `as` word declines a
+// non-ancestor), match-time-only: every arg-delivery boundary (execMatch,
+// fn-param binding, the VM call/bind/make ops) clears it, so the ascription
+// selects exactly one dispatch and never leaks into handlers, bindings,
+// containers, or results.
+func (v *Value) AscribedType() *Type {
+	if v.occ == nil {
+		return nil
+	}
+	return v.occ.asc
 }
 
 // SetAscribed attaches (t non-nil) or clears (t nil) the dispatch
-// ascription. The `as` word's handler is the sole attach site; the
-// arg-delivery boundaries (execMatch, fn-param binding, the VM call/bind/
-// make ops) clear it via StripAscribed.
+// ascription of this holder. The `as` word's handler is the sole attach
+// site; the arg-delivery boundaries clear it via ClearAscribed.
 func (v *Value) SetAscribed(t *Type) {
-	v.asc = t
+	if v.AscribedType() == t {
+		return
+	}
+	rec := occOf(v)
+	rec.asc = t
+	setOcc(v, rec)
 }
+
+// ClearAscribed drops the dispatch ascription of a value the caller owns —
+// an arg slot, a fresh result, its own stack cell or tape cell — in place:
+// StripAscribed without the copy in and the copy out.
+func ClearAscribed(v *Value) { v.SetAscribed(nil) }
 
 // StripAscribed returns v without its dispatch ascription — the
 // arg-delivery form of the value. The no-ascription fast path returns v
 // unchanged (no copy cost on the hot path).
 func StripAscribed(v Value) Value {
-	if v.asc != nil {
-		v.asc = nil
-	}
+	ClearAscribed(&v)
 	return v
 }
 
 // Name is the nil-safe read of the type-node leaf name — "" for an
 // ordinary value (no tmeta), matching the old empty inline field.
-func (v Value) Name() string {
-	if v.tmeta == nil {
-		return ""
+func (v *Value) Name() string {
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Name
 	}
-	return v.tmeta.Name
+	return ""
 }
 
 // OwnerID is the nil-safe read of the type node's registration/mint
 // provenance (design/OPEN-WORDS.1.md §4) — "" for an ordinary value or
 // an unowned ad-hoc type. See typeMeta.Owner for the sentinel table.
-func (v Value) OwnerID() string {
-	if v.tmeta == nil {
-		return ""
+func (v *Value) OwnerID() string {
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Owner
 	}
-	return v.tmeta.Owner
+	return ""
 }
 
 // SetOwner stamps the type node's provenance. Registration/mint paths
@@ -2300,39 +2462,39 @@ func (v *Value) SetOwner(owner string) {
 // FixedID / Rank / Depth / In / Out are nil-safe reads of the lattice
 // integer fields — 0 when tmeta is absent (every ordinary runtime value,
 // where these were always zero when they were inline fields).
-func (v Value) FixedID() int {
-	if v.tmeta == nil {
-		return 0
+func (v *Value) FixedID() int {
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.FixedID
 	}
-	return v.tmeta.FixedID
+	return 0
 }
 
-func (v Value) Rank() int {
-	if v.tmeta == nil {
-		return 0
+func (v *Value) Rank() int {
+	if d := v.d; d != nil && d.tmeta != nil {
+		return d.tmeta.Rank
 	}
-	return v.tmeta.Rank
+	return 0
 }
 
-func (v Value) Depth() int {
-	if v.tmeta == nil {
-		return 0
+func (v *Value) Depth() int {
+	if d := v.d; d != nil {
+		return int(d.depth)
 	}
-	return v.tmeta.Depth
+	return 0
 }
 
-func (v Value) In() int {
-	if v.tmeta == nil {
-		return 0
+func (v *Value) In() int {
+	if d := v.d; d != nil {
+		return int(d.in)
 	}
-	return v.tmeta.In
+	return 0
 }
 
-func (v Value) Out() int {
-	if v.tmeta == nil {
-		return 0
+func (v *Value) Out() int {
+	if d := v.d; d != nil {
+		return int(d.out)
 	}
-	return v.tmeta.Out
+	return 0
 }
 
 // idState is the package-level ID source: a monotone atomic counter
@@ -2403,8 +2565,8 @@ func IDPrefixForType(t *Type) string {
 	if t == nil {
 		return "T_"
 	}
-	for d := t; d != nil; d = d.Parent {
-		if d.Parent == nil || d.Parent.FixedID() == anyFixedID {
+	for d := t; d != nil; d = d.Parent() {
+		if d.Parent() == nil || d.Parent().FixedID() == anyFixedID {
 			switch d.Name() {
 			case "Scalar":
 				return "S_"
@@ -2421,8 +2583,8 @@ func IDPrefixForType(t *Type) string {
 
 // checkPassDepth counts the process's live check/compile passes
 // (CheckState.Begin / BeginCompilePass). Value IDs exist for exactly one
-// consumer class — the emit recorder's provenance maps, which key
-// producedBy / locals / captures on the ID minted at value creation and
+// consumer class — the emit recorder's identity-keyed tables, which key
+// locals / captures / def reads on the ID minted at value creation and
 // shared across copies — and that machinery only runs during a pass. A
 // full audit (design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore Phase B) found NO
 // run-mode reader of a concrete value's ID, so minting is gated: pure
@@ -2469,12 +2631,12 @@ func BeginIDMintScope() func() {
 // key), so a runtime-minted value flowing into a LATER pass degrades to
 // a conservative compile fallback rather than a miscompile.
 func NewValueRaw(t *Type, data Payload) Value {
-	v := Value{
+	v := Value{d: &Datum{
 		Parent: t,
 		Data:   data,
-	}
+	}}
 	if data == nil || checkPassDepth.Load() > 0 {
-		v.ID = GenerateID(IDPrefixForType(t))
+		SetID(&v, GenerateID(IDPrefixForType(t)))
 	}
 	return v
 }
@@ -2494,7 +2656,7 @@ func NewValueRaw(t *Type, data Payload) Value {
 // emptiness without resorting to a length comparison.
 func NewString(s string) Value {
 	if s == "" {
-		return NewValueRaw(TStringEmpty, StrPayload{S: s})
+		return sharedValue(&emptyStringDatum)
 	}
 	return NewValueRaw(TStringProper, StrPayload{S: s})
 }
@@ -2504,6 +2666,9 @@ func NewString(s string) Value {
 // Signature.Patterns, not through a per-value type-path leaf. See
 // the NewString comment for the rationale.
 func NewInteger(n int64) Value {
+	if n >= smallIntMin && n <= smallIntMax {
+		return sharedValue(&smallIntDatums[n-smallIntMin])
+	}
 	return NewValueRaw(TInteger, IntPayload{N: n})
 }
 
@@ -2595,7 +2760,10 @@ func FormatBigDecimal(d *apd.Decimal) string {
 // NewBoolean creates a boolean value. The boolean payload (true/false) is the
 // value; there are no Boolean/True or Boolean/False sub-types.
 func NewBoolean(b bool) Value {
-	return NewValueRaw(TBoolean, BoolPayload{B: b})
+	if b {
+		return sharedValue(&trueDatum)
+	}
+	return sharedValue(&falseDatum)
 }
 
 // NewList creates a list value from a slice of Values.
@@ -2607,7 +2775,7 @@ func NewList(elems []Value) Value {
 // at the end of execution. Used by the parser for source-code lists.
 func NewEvalList(elems []Value) Value {
 	v := NewValueRaw(TList, ListPayload{Elems: elems})
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -2648,16 +2816,16 @@ func NewXmlInterp(tmpl XmlTmpl) Value {
 }
 
 // IsXmlInterp reports whether v is an interpolated XML literal skeleton.
-func IsXmlInterp(v Value) bool {
-	return v.Parent.Equal(TXmlInterp)
+func IsXmlInterp(v *Value) bool {
+	return v.Parent().Equal(TXmlInterp)
 }
 
 // AsXmlInterp returns the template backing an interpolated XML skeleton.
 func AsXmlInterp(v Value) (XmlTmpl, error) {
-	if xi, ok := v.Data.(XmlInterpPayload); ok {
+	if xi, ok := v.Data().(XmlInterpPayload); ok {
 		return xi.Tmpl, nil
 	}
-	return XmlTmpl{}, fmt.Errorf("AsXmlInterp: not an xml-interp value (got %T)", v.Data)
+	return XmlTmpl{}, fmt.Errorf("AsXmlInterp: not an xml-interp value (got %T)", v.Data())
 }
 
 // NewFlexMap creates a mutable FlexMap value. It reuses MapPayload —
@@ -2672,7 +2840,7 @@ func NewFlexMap(entries *OrderedMap) Value {
 // execution. Used by the parser for source-code maps.
 func NewEvalMap(entries *OrderedMap) Value {
 	v := NewValueRaw(TMap, MapPayload{M: entries})
-	v.Eval = true
+	SetEval(&v, true)
 	return v
 }
 
@@ -2704,10 +2872,10 @@ func NewImplicitMap(entries *OrderedMap) Value {
 // `{x:Integer}` or `[x:Integer]` inside an fn sig). Used to
 // discriminate record-shape patterns from concrete maps.
 func IsImplicitMap(v Value) bool {
-	if !v.Parent.Equal(TMap) || v.Data == nil {
+	if !v.Parent().Equal(TMap) || v.Data() == nil {
 		return false
 	}
-	if mp, ok := v.Data.(MapPayload); ok {
+	if mp, ok := v.Data().(MapPayload); ok {
 		return mp.M != nil && mp.M.Implicit
 	}
 	return false
@@ -2744,29 +2912,31 @@ func NewAtom(name string) Value {
 	return NewValueRaw(TAtom, AtomPayload{Name: name})
 }
 
-// AtomReferent returns the value an atom's name was snapshotted to refer to,
-// if one was captured (by `quote` or the run-start resolution pass). ok=false
-// when v is not an atom or carries no referent.
+// AtomReferent returns the value an atom's name referred to when this holder
+// of it was quoted or its program loaded (`quote`, the run-start resolution
+// pass). ok=false when v is not an atom or this holder captured none.
 func AtomReferent(v Value) (Value, bool) {
-	ap, ok := v.Data.(AtomPayload)
-	if !ok || ap.Referent == nil {
+	if _, ok := v.Data().(AtomPayload); !ok || v.occ == nil || v.occ.referent == nil {
 		return Value{}, false
 	}
-	return *ap.Referent, true
+	return *v.occ.referent, true
 }
 
-// SetAtomReferent returns a copy of atom v carrying ref as its referent (a
-// snapshot of what its name refers to). Name, Quoted, and Pos are preserved.
-// Returns v unchanged when it is not an atom.
-func SetAtomReferent(v Value, ref Value) Value {
-	ap, ok := v.Data.(AtomPayload)
-	if !ok {
-		return v
+// SetAtomReferent gives this holder of the atom v the referent *ref, what its
+// name refers to now (occurrence state: every other copy keeps what it had,
+// and the atom's payload is never written). The referent is a reference to
+// the bound value, held where a later rebind does not reach it — under the
+// by-value header, one header copy (a capture, the exceptions list's C5). A
+// no-op when v is not an atom.
+func SetAtomReferent(v *Value, ref *Value) {
+	if _, ok := v.Data().(AtomPayload); !ok {
+		return
 	}
-	snap := ref
-	ap.Referent = &snap
-	v.Data = ap
-	return v
+	snap := new(Value)
+	*snap = *ref
+	rec := occOf(v)
+	rec.referent = snap
+	setOcc(v, rec)
 }
 
 // NewPathon creates a Pathon value from parts and an absolute flag.
@@ -2796,8 +2966,8 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // (the branch-carried def). No value the engine mints is the zero Value: a
 // runtime value carries a Parent, a type node carries its metadata, and a
 // carrier is flagged — so the test is exact, not a heuristic.
-func (v Value) IsUnboundSlot() bool {
-	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !v.Dynamic
+func (v *Value) IsUnboundSlot() bool {
+	return IDOf(v) == "" && v.Data() == nil && v.Parent() == nil && v.body().tmeta == nil && !v.Carrier() && !IsDynamic(v)
 }
 
 func NewTypeLiteral(t *Type) Value {
@@ -2807,44 +2977,58 @@ func NewTypeLiteral(t *Type) Value {
 	return *t
 }
 
-// typeNodeOf returns the lattice node a Data==nil value stands for.
-// A type literal IS its node. A carrier's node is its Parent — a
+// TypeNodeOf returns the lattice node a Data==nil value stands for: the
+// node a type literal is a copy of (NodeOf), or a carrier's Parent — a
 // carrier keeps Parent pointing at the type it carries. Used by the
-// renderers to recover the type name from either shape.
+// renderers and the carrier joins to recover the type from either shape.
 func TypeNodeOf(v Value) *Type {
-	if v.Carrier {
-		return v.Parent
+	if v.Carrier() {
+		return v.Parent()
 	}
-	return &v
+	return literalNode(&v)
 }
+
+// literalNode is the node the type literal v is a copy of, or — for an
+// ad-hoc literal no table registered, which names no node — a heap copy of
+// v, the only *Type it has. Unlike NodeOf it never answers v itself, so
+// v's address does not escape and a literal that names its node allocates
+// nothing; the copy is made in orphanType, on the ad-hoc path alone.
+func literalNode(v *Value) *Type {
+	if d := v.d; d != nil && d.tmeta != nil && d.tmeta.node != nil {
+		return d.tmeta.node
+	}
+	return orphanType(*v)
+}
+
+func orphanType(v Value) *Type { return &v }
 
 // TypeNameOf returns the leaf name of the type v represents: a type
 // literal's own name, or any other value's Parent leaf. Used by
 // inspect and rendering paths that display a type's name.
 func TypeNameOf(v Value) string {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.Leaf()
 	}
-	return v.Parent.Leaf()
+	return v.Parent().Leaf()
 }
 
 // TypePathOf returns the slash path of the type v represents: a type
 // literal's own path, or any other value's Parent path.
 func TypePathOf(v Value) string {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return v.Path()
 	}
-	return v.Parent.Path()
+	return v.Parent().Path()
 }
 
-// ValueType returns the lattice node that is v's type: v itself when
-// v is a bare type literal (a type literal IS a lattice node), and
-// v's Parent for any concrete value or carrier.
+// ValueType returns the lattice node that is v's type: the node a bare
+// type literal is a copy of (NodeOf: a type literal stands for its node),
+// and v's Parent for any concrete value or carrier.
 func ValueType(v Value) *Type {
-	if IsBareTypeNode(v) {
-		return &v
+	if IsBareTypeNode(&v) {
+		return literalNode(&v)
 	}
-	return v.Parent
+	return v.Parent()
 }
 
 // noneSentinel is the non-nil Data payload that distinguishes the
@@ -2857,7 +3041,7 @@ type noneSentinel struct{}
 // NewNone creates the value `none` — the unique inhabitant of the
 // None type. Distinct from NewTypeLiteral(TNone) (the type itself).
 func NewNone() Value {
-	return NewValueRaw(TNone, NonePayload{})
+	return sharedValue(&noneDatum)
 }
 
 // Is reports whether v satisfies type t, routed through t.Behavior.
@@ -2871,14 +3055,18 @@ func NewNone() Value {
 // not encounter this state because every Type registered through
 // the kernel paths carries a non-nil Behavior, but the method
 // defends against it anyway.
-func (v Value) Is(t *Type) bool {
+func (v *Value) Is(t *Type) bool {
 	if t == nil {
 		return false
 	}
-	if t.Behavior() == nil {
-		return v.Parent.ConformsTo(t)
+	switch b := t.Behavior().(type) {
+	case nil:
+		return v.Parent().ConformsTo(t)
+	case defaultMatcher:
+		return defaultMatch(v, t)
+	default:
+		return b.Match(*v, t)
 	}
-	return t.Behavior().Match(v, t)
 }
 
 // IsNone reports whether v is the value `none` (not the None type
@@ -2886,14 +3074,14 @@ func (v Value) Is(t *Type) bool {
 // `none` carries a NonePayload/noneSentinel marker; the bare type
 // literal `None` is just a by-value copy of TNone with Data=nil.
 // Use IsNoneShape for the broader "is this any form of None" check.
-func IsNone(v Value) bool {
-	if !v.Parent.Equal(TNone) {
+func IsNone(v *Value) bool {
+	if !v.Parent().Equal(TNone) {
 		return false
 	}
-	if _, ok := v.Data.(NonePayload); ok {
+	if _, ok := v.Data().(NonePayload); ok {
 		return true
 	}
-	_, ok := v.Data.(noneSentinel)
+	_, ok := v.Data().(noneSentinel)
 	return ok
 }
 
@@ -2912,16 +3100,16 @@ func IsNone(v Value) bool {
 // from "None" (capital, the type) use IsNone for the strict check;
 // dispatch and comparison sites use IsNoneShape.
 func IsNoneShape(v Value) bool {
-	if IsNone(v) {
+	if IsNone(&v) {
 		return true
 	}
-	if v.Data != nil {
+	if v.Data() != nil {
 		return false
 	}
-	if v.Parent.Equal(TNone) {
+	if v.Parent().Equal(TNone) {
 		return true
 	}
-	return !v.Carrier && (&v).Equal(TNone)
+	return !v.Carrier() && (&v).Equal(TNone)
 }
 
 // NewWord creates a word value (function reference) with no modifiers.
@@ -2970,7 +3158,7 @@ func NewWordUsurp(name string, forceVal bool) Value {
 
 // NewForward creates a forward primitive value for forward argument tracking.
 func NewForward(info ForwardInfo) Value {
-	return NewValueRaw(TForward, info)
+	return sharedValue(newCoDatum(TForward, info))
 }
 
 // newMarkerValue mints a payload-less STRUCTURAL marker (paren / end).
@@ -2982,31 +3170,31 @@ func NewForward(info ForwardInfo) Value {
 // so eager marker IDs were a per-op allocation for nothing; during a
 // parse or check/compile pass (checkPassDepth > 0) markers mint exactly
 // as before.
-func newMarkerValue(t *Type) Value {
-	v := Value{Parent: t}
+func newMarkerValue(d *Datum) Value {
+	v := Value{d: d}
 	if checkPassDepth.Load() > 0 {
-		v.ID = GenerateID(IDPrefixForType(t))
+		SetID(&v, GenerateID(IDPrefixForType(d.Parent)))
 	}
 	return v
 }
 
 // NewOpenParen creates an open-paren marker value for sub-expression scoping.
 func NewOpenParen() Value {
-	return newMarkerValue(TOpenParen)
+	return newMarkerValue(&openParenDatum)
 }
 
 // NewCloseParen creates a close-paren marker value. Emitted by the
 // parser for `)` so the engine can recognise it by Parent identity
 // instead of by string compare.
 func NewCloseParen() Value {
-	return newMarkerValue(TCloseParen)
+	return newMarkerValue(&closeParenDatum)
 }
 
 // NewEnd creates an end-marker value (the `end` / `;` keyword).
 // Emitted by the parser so the engine can recognise it by Parent
 // identity instead of by string compare.
 func NewEnd() Value {
-	return newMarkerValue(TEnd)
+	return newMarkerValue(&endDatum)
 }
 
 // NewParenExpr creates a paren expression value containing items to evaluate.
@@ -3041,16 +3229,16 @@ func NewReachFromKeys(receiver Value, keys []Value) Value {
 }
 
 // IsReach reports whether v is an Ideal/Reach value.
-func IsReach(v Value) bool {
-	return v.Parent.Equal(TReach)
+func IsReach(v *Value) bool {
+	return v.Parent().Equal(TReach)
 }
 
 // AsReach returns the ReachInfo of a Reach value.
-func AsReach(v Value) (ReachInfo, error) {
-	if ri, ok := v.Data.(ReachInfo); ok {
+func AsReach(v *Value) (ReachInfo, error) {
+	if ri, ok := v.Data().(ReachInfo); ok {
 		return ri, nil
 	}
-	return ReachInfo{}, fmt.Errorf("AsReach: not a reach value (got %T)", v.Data)
+	return ReachInfo{}, fmt.Errorf("AsReach: not a reach value (got %T)", v.Data())
 }
 
 // InterpPart represents one segment of an interpolated string.
@@ -3149,25 +3337,27 @@ func NewInterpString(parts []InterpPart) Value {
 }
 
 // NewMark creates a mark value with the given unique ID and the body to
-// replay when the corresponding move fires. The body should contain
-// the original values between the mark and its paired move.
+// replay when the corresponding plain move (NewMove) fires. The body should
+// contain the original values between the mark and its paired move. A mark
+// paired with a continuation move (NewMoveCont, NewMoveIf) takes no body:
+// that move never replays one, its Loop or IfCont holds what it needs.
 func NewMark(id string, body ...Value) Value {
 	b := make([]Value, len(body))
 	copy(b, body)
-	return NewValueRaw(TMark, MarkInfo{ID: id, Body: b})
+	return sharedValue(newCoDatum(TMark, MarkInfo{ID: id, Body: b}))
 }
 
 // NewMove creates a move value targeting the mark with the given ID.
 // The reason string describes why this move exists (used in error messages).
 func NewMove(to string, reason string) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason})
+	return sharedValue(newCoDatum(TMove, MoveInfo{To: to, Reason: reason}))
 }
 
 // NewLoopMark creates the mark that opens an iteration of a DRIVEN loop:
 // stepping it begins the iteration (loop.go). The mark stores no body — the
 // driver replays the body each iteration.
 func NewLoopMark(id string, lp *Loop) Value {
-	return NewValueRaw(TMark, MarkInfo{ID: id, Loop: lp})
+	return sharedValue(newCoDatum(TMark, MarkInfo{ID: id, Loop: lp}))
 }
 
 // NewLoopOpen creates the open paren that seals a driven loop's iteration
@@ -3178,12 +3368,12 @@ func NewLoopOpen(lp *Loop, argSpan int) Value {
 
 // NewMoveCont creates a move value with loop continuation state.
 func NewMoveCont(to, reason string, cont *Loop) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason, Cont: cont})
+	return sharedValue(newCoDatum(TMove, MoveInfo{To: to, Reason: reason, Cont: cont}))
 }
 
 // NewMoveIf creates a move value with if-statement continuation state.
 func NewMoveIf(to, reason string, ifCont *IfCont) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason, IfCont: ifCont})
+	return sharedValue(newCoDatum(TMove, MoveInfo{To: to, Reason: reason, IfCont: ifCont}))
 }
 
 // NewFunction creates a function reference value. The underlying data is a
@@ -3220,7 +3410,7 @@ func NewFunction(info FnDefInfo) Value {
 			info.Signatures[i].Anonymous = true
 		}
 	}
-	return NewValueRaw(TFunction, info)
+	return NewValueRaw(TFunction, &info)
 }
 
 // NewFnUndef creates a function undef spec value for targeted signature removal.
@@ -3334,6 +3524,46 @@ func NewClassType(t *Type, info ClassTypeInfo) Value {
 	return NewValueRaw(t, info)
 }
 
+// namedClassInfo constructs the class decl declares, under its full type
+// path: the parent's path then name, or root then name for a direct child of
+// the class kind. A new info from decl's parts — never a write to decl, so
+// the anonymous declaration a `class` word produced (a pooled constant in a
+// compiled program, re-installed by the resident replay) stays unnamed. Its
+// merged-field cache starts empty: the named class computes its own.
+func namedClassInfo(decl *ClassTypeInfo, root, name string) ClassTypeInfo {
+	full := root + "/" + name
+	if decl.Parent != nil {
+		full = decl.Parent.Name + "/" + name
+	}
+	return ClassTypeInfo{
+		Fields:       decl.Fields,
+		Parent:       decl.Parent,
+		ID:           decl.ID,
+		Name:         full,
+		Type:         decl.Type,
+		BinaryLayout: decl.BinaryLayout,
+	}
+}
+
+// namedSchemaInfo is the payload a `gen` schema declaration is installed
+// under as the type full: its parameters, body and kind, named and anchored
+// at the node minted for it. The declaration is never written.
+func namedSchemaInfo(decl *TypeSchemaInfo, full string, node *Type) *TypeSchemaInfo {
+	return &TypeSchemaInfo{Name: full, Params: decl.Params, Body: decl.Body, Kind: decl.Kind, Type: node}
+}
+
+// namedSurfaceInfo is the payload a surface declaration is installed under
+// as the type full: its required operations, a conformance set of its own
+// (seeded from the declaration's), named and anchored at the node minted
+// for it. The declaration is never written.
+func namedSurfaceInfo(decl *SurfaceInfo, full string, node *Type) *SurfaceInfo {
+	conform := make(map[string]bool, len(decl.Conform))
+	for id, ok := range decl.Conform {
+		conform[id] = ok
+	}
+	return &SurfaceInfo{Name: full, Required: decl.Required, Conform: conform, Type: node}
+}
+
 // NewClassInstance creates an object instance value of the given
 // type. The caller must provide the type's *Type identity (typically
 // info.TypeRef.Type for the type currently being instantiated).
@@ -3435,14 +3665,14 @@ func NewError(err error) Value {
 
 // IsError reports whether this value is an error.
 func IsError(v Value) bool {
-	return v.Parent.Equal(TError)
+	return v.Parent().Equal(TError)
 }
 
 // AsError returns the ErrorInfo for an error value.
 func AsError(v Value) (ErrorInfo, error) {
-	info, ok := v.Data.(ErrorInfo)
+	info, ok := v.Data().(ErrorInfo)
 	if !ok {
-		return ErrorInfo{}, fmt.Errorf("AsError: not an error value (got %T)", v.Data)
+		return ErrorInfo{}, fmt.Errorf("AsError: not an error value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -3472,78 +3702,78 @@ type IntervalInfo struct {
 // IsInterval and AsInterval moved to lang/go/engine/native_misc.go (Step 8).
 
 // IsWord reports whether this value is a word (function reference).
-func IsWord(v Value) bool {
-	return v.Parent.Equal(TWord)
+func IsWord(v *Value) bool {
+	return v.Parent().Equal(TWord)
 }
 
 // IsForward reports whether this value is a forward primitive.
-func IsForward(v Value) bool {
-	return v.Parent.Equal(TForward)
+func IsForward(v *Value) bool {
+	return v.Parent().Equal(TForward)
 }
 
 // IsBoolean reports whether this value is a boolean type.
-func IsBoolean(v Value) bool {
-	return v.Parent.ConformsTo(TBoolean)
+func IsBoolean(v *Value) bool {
+	return v.Parent().ConformsTo(TBoolean)
 }
 
 // IsOpenParen reports whether this value is an open-paren marker.
-func IsOpenParen(v Value) bool {
-	return v.Parent.Equal(TOpenParen)
+func IsOpenParen(v *Value) bool {
+	return v.Parent().Equal(TOpenParen)
 }
 
 // IsCloseParen reports whether this value is a close-paren marker.
-func IsCloseParen(v Value) bool {
-	return v.Parent.Equal(TCloseParen)
+func IsCloseParen(v *Value) bool {
+	return v.Parent().Equal(TCloseParen)
 }
 
 // IsEnd reports whether this value is an end-marker.
-func IsEnd(v Value) bool {
-	return v.Parent.Equal(TEnd)
+func IsEnd(v *Value) bool {
+	return v.Parent().Equal(TEnd)
 }
 
 // IsParenExpr reports whether this value is a paren expression.
-func IsParenExpr(v Value) bool {
-	return v.Parent.Equal(TParenExpr)
+func IsParenExpr(v *Value) bool {
+	return v.Parent().Equal(TParenExpr)
 }
 
 // AsParenExpr returns the items in a paren expression value.
-func AsParenExpr(v Value) ([]Value, error) {
-	if pp, ok := v.Data.(ParenExprPayload); ok {
+func AsParenExpr(v *Value) ([]Value, error) {
+	if pp, ok := v.Data().(ParenExprPayload); ok {
 		return pp.Toks, nil
 	}
-	return nil, fmt.Errorf("AsParenExpr: not a paren-expr value (got %T)", v.Data)
+	return nil, fmt.Errorf("AsParenExpr: not a paren-expr value (got %T)", v.Data())
 }
 
 // IsInterpString reports whether this value is an interpolated string.
-func IsInterpString(v Value) bool {
-	return v.Parent.Equal(TInterpString)
+func IsInterpString(v *Value) bool {
+	return v.Parent().Equal(TInterpString)
 }
 
 // AsInterpString returns the parts of an interpolated string value.
 func AsInterpString(v Value) ([]InterpPart, error) {
-	if ip, ok := v.Data.(InterpStringPayload); ok {
+	if ip, ok := v.Data().(InterpStringPayload); ok {
 		return ip.Parts, nil
 	}
-	return nil, fmt.Errorf("AsInterpString: not an interp-string value (got %T)", v.Data)
+	return nil, fmt.Errorf("AsInterpString: not an interp-string value (got %T)", v.Data())
 }
 
 // IsMark reports whether this value is a mark.
-func IsMark(v Value) bool {
-	return v.Parent.Equal(TMark)
+func IsMark(v *Value) bool {
+	return v.Parent().Equal(TMark)
 }
 
 // AsMark returns the MarkInfo, panics if not a mark.
-func AsMark(v Value) (MarkInfo, error) {
-	info, ok := v.Data.(MarkInfo)
+func AsMark(v *Value) (MarkInfo, error) {
+	info, ok := v.Data().(*MarkInfo)
 	if !ok {
-		return MarkInfo{}, fmt.Errorf("AsMark: not a mark value (got %T)", v.Data)
+		return MarkInfo{}, fmt.Errorf("AsMark: not a mark value (got %T)", v.Data())
 	}
-	return info, nil
+	return *info, nil
 }
 
 // IsMove reports whether this value is a move.
-func IsMove(v Value) bool {
-	return v.Parent.Equal(TMove)
+func IsMove(v *Value) bool {
+	return v.Parent().Equal(TMove)
 }
 
 // NewSplice wraps a value in an __SP (splice) marker. When the marker reaches
@@ -3553,15 +3783,15 @@ func NewSplice(v Value) Value {
 }
 
 // IsSplice reports whether this value is an __SP splice marker.
-func IsSplice(v Value) bool {
-	return v.Parent.Equal(TSplice)
+func IsSplice(v *Value) bool {
+	return v.Parent().Equal(TSplice)
 }
 
 // AsSplice returns the SpliceInfo, erroring if not a splice value.
-func AsSplice(v Value) (SpliceInfo, error) {
-	info, ok := v.Data.(SpliceInfo)
+func AsSplice(v *Value) (SpliceInfo, error) {
+	info, ok := v.Data().(SpliceInfo)
 	if !ok {
-		return SpliceInfo{}, fmt.Errorf("AsSplice: not a splice value (got %T)", v.Data)
+		return SpliceInfo{}, fmt.Errorf("AsSplice: not a splice value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -3586,40 +3816,40 @@ func NewDispatchMod(info DispatchModInfo) Value {
 }
 
 // IsDispatchMod reports whether v is a Word/__DM marker.
-func IsDispatchMod(v Value) bool { return v.Parent.Equal(TDispatchMod) }
+func IsDispatchMod(v *Value) bool { return v.Parent().Equal(TDispatchMod) }
 
 // AsDispatchMod returns the DispatchModInfo if v is a Word/__DM marker.
 func AsDispatchMod(v Value) (DispatchModInfo, bool) {
-	info, ok := v.Data.(DispatchModInfo)
+	info, ok := v.Data().(DispatchModInfo)
 	return info, ok
 }
 
 // AsMove returns the MoveInfo, panics if not a move.
-func AsMove(v Value) (MoveInfo, error) {
-	info, ok := v.Data.(MoveInfo)
+func AsMove(v *Value) (MoveInfo, error) {
+	info, ok := v.Data().(*MoveInfo)
 	if !ok {
-		return MoveInfo{}, fmt.Errorf("AsMove: not a move value (got %T)", v.Data)
+		return MoveInfo{}, fmt.Errorf("AsMove: not a move value (got %T)", v.Data())
 	}
-	return info, nil
+	return *info, nil
 }
 
 // IsReturnCheck reports whether this value is a return-check marker.
-func IsReturnCheck(v Value) bool {
-	return v.Parent.Equal(TReturnCheck)
+func IsReturnCheck(v *Value) bool {
+	return v.Parent().Equal(TReturnCheck)
 }
 
 // AsReturnCheck returns the ReturnCheckInfo, panics if not a return-check.
-func AsReturnCheck(v Value) (ReturnCheckInfo, error) {
-	info, ok := v.Data.(ReturnCheckInfo)
+func AsReturnCheck(v *Value) (ReturnCheckInfo, error) {
+	info, ok := v.Data().(ReturnCheckInfo)
 	if !ok {
-		return ReturnCheckInfo{}, fmt.Errorf("AsReturnCheck: not a return-check value (got %T)", v.Data)
+		return ReturnCheckInfo{}, fmt.Errorf("AsReturnCheck: not a return-check value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsDefCleanup reports whether this value is a def-cleanup marker.
-func IsDefCleanup(v Value) bool {
-	return v.Parent.Equal(TDefCleanup)
+func IsDefCleanup(v *Value) bool {
+	return v.Parent().Equal(TDefCleanup)
 }
 
 // AsDefCleanup returns the DefCleanupInfo, panics if not a def-cleanup.
@@ -3631,10 +3861,10 @@ func (dc DefCleanupInfo) FrameOn(r *Registry) bool {
 	return dc.Registry == r //sentinel:home a frame's registry is compared by identity: the teardown pops that registry's stacks
 }
 
-func AsDefCleanup(v Value) (DefCleanupInfo, error) {
-	info, ok := v.Data.(DefCleanupInfo)
+func AsDefCleanup(v *Value) (DefCleanupInfo, error) {
+	info, ok := v.Data().(DefCleanupInfo)
 	if !ok {
-		return DefCleanupInfo{}, fmt.Errorf("AsDefCleanup: not a def-cleanup value (got %T)", v.Data)
+		return DefCleanupInfo{}, fmt.Errorf("AsDefCleanup: not a def-cleanup value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -3642,32 +3872,32 @@ func AsDefCleanup(v Value) (DefCleanupInfo, error) {
 // IsDisjunct reports whether this value is a disjunction type — a
 // plain Disjunct (Type/Disjunct) or any subtype such as an Enum
 // (Type/Disjunct/Enum).
-func IsDisjunct(v Value) bool {
-	_, ok := v.Data.(DisjunctInfo)
-	return ok && v.Parent.ConformsTo(TDisjunct)
+func IsDisjunct(v *Value) bool {
+	_, ok := v.Data().(DisjunctInfo)
+	return ok && v.Parent().ConformsTo(TDisjunct)
 }
 
 // AsDisjunct returns the DisjunctInfo, panics if not a disjunct.
 func AsDisjunct(v Value) (DisjunctInfo, error) {
-	info, ok := v.Data.(DisjunctInfo)
+	info, ok := v.Data().(DisjunctInfo)
 	if !ok {
-		return DisjunctInfo{}, fmt.Errorf("AsDisjunct: not a disjunct value (got %T)", v.Data)
+		return DisjunctInfo{}, fmt.Errorf("AsDisjunct: not a disjunct value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsNegation reports whether v is a negation (complement) type value.
 func IsNegation(v Value) bool {
-	_, ok := v.Data.(NegationInfo)
-	return ok && v.Parent.ConformsTo(TNegation)
+	_, ok := v.Data().(NegationInfo)
+	return ok && v.Parent().ConformsTo(TNegation)
 }
 
 // AsNegation returns the NegationInfo payload, or an error if v is not
 // a negation value.
 func AsNegation(v Value) (NegationInfo, error) {
-	info, ok := v.Data.(NegationInfo)
+	info, ok := v.Data().(NegationInfo)
 	if !ok {
-		return NegationInfo{}, fmt.Errorf("AsNegation: not a negation value (got %T)", v.Data)
+		return NegationInfo{}, fmt.Errorf("AsNegation: not a negation value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -3677,31 +3907,31 @@ func AsNegation(v Value) (NegationInfo, error) {
 // object type, regardless of where its Parent sits in the lattice — a
 // builtin like Resource is an object type whose Parent is the peer
 // Ideal kind Ideal/Resource, not a descendant of Ideal/Object.
-func IsClassType(v Value) bool {
-	_, ok := v.Data.(ClassTypeInfo)
+func IsClassType(v *Value) bool {
+	_, ok := v.Data().(ClassTypeInfo)
 	return ok
 }
 
 // AsClassType returns the ClassTypeInfo, panics if not an object type.
 func AsClassType(v Value) (ClassTypeInfo, error) {
-	info, ok := v.Data.(ClassTypeInfo)
+	info, ok := v.Data().(ClassTypeInfo)
 	if !ok {
-		return ClassTypeInfo{}, fmt.Errorf("AsClassType: not an object type value (got %T)", v.Data)
+		return ClassTypeInfo{}, fmt.Errorf("AsClassType: not an object type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsStore reports whether this value is a Store instance.
 func IsStore(v Value) bool {
-	_, ok := v.Data.(*StoreInstanceInfo)
-	return ok && v.Parent.ConformsTo(TStore)
+	_, ok := v.Data().(*StoreInstanceInfo)
+	return ok && v.Parent().ConformsTo(TStore)
 }
 
 // AsStore returns the StoreInstanceInfo pointer. Returns an error if not a store.
 func AsStore(v Value) (*StoreInstanceInfo, error) {
-	si, ok := v.Data.(*StoreInstanceInfo)
+	si, ok := v.Data().(*StoreInstanceInfo)
 	if !ok {
-		return nil, fmt.Errorf("AsStore: not a store value (got %T)", v.Data)
+		return nil, fmt.Errorf("AsStore: not a store value (got %T)", v.Data())
 	}
 	return si, nil
 }
@@ -3709,45 +3939,45 @@ func AsStore(v Value) (*StoreInstanceInfo, error) {
 // IsClassInstance reports whether this value is an object instance.
 // Payload-based — see IsClassType.
 func IsClassInstance(v Value) bool {
-	_, ok := v.Data.(ClassInstanceInfo)
+	_, ok := v.Data().(ClassInstanceInfo)
 	return ok
 }
 
 // AsClassInstance returns the ClassInstanceInfo, panics if not an object instance.
 func AsClassInstance(v Value) (ClassInstanceInfo, error) {
-	info, ok := v.Data.(ClassInstanceInfo)
+	info, ok := v.Data().(ClassInstanceInfo)
 	if !ok {
-		return ClassInstanceInfo{}, fmt.Errorf("AsClassInstance: not an object instance value (got %T)", v.Data)
+		return ClassInstanceInfo{}, fmt.Errorf("AsClassInstance: not an object instance value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsResourceType reports whether v is a Resource/Entity type descriptor.
 func IsResourceType(v Value) bool {
-	_, ok := v.Data.(ResourceTypeInfo)
+	_, ok := v.Data().(ResourceTypeInfo)
 	return ok
 }
 
 // AsResourceType returns the ResourceTypeInfo, or an error if v is not one.
 func AsResourceType(v Value) (ResourceTypeInfo, error) {
-	info, ok := v.Data.(ResourceTypeInfo)
+	info, ok := v.Data().(ResourceTypeInfo)
 	if !ok {
-		return ResourceTypeInfo{}, fmt.Errorf("AsResourceType: not a resource type value (got %T)", v.Data)
+		return ResourceTypeInfo{}, fmt.Errorf("AsResourceType: not a resource type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsResourceInstance reports whether v is a Resource/Entity instance.
 func IsResourceInstance(v Value) bool {
-	_, ok := v.Data.(ResourceInstanceInfo)
+	_, ok := v.Data().(ResourceInstanceInfo)
 	return ok
 }
 
 // AsResourceInstance returns the ResourceInstanceInfo, or an error if v is not one.
 func AsResourceInstance(v Value) (ResourceInstanceInfo, error) {
-	info, ok := v.Data.(ResourceInstanceInfo)
+	info, ok := v.Data().(ResourceInstanceInfo)
 	if !ok {
-		return ResourceInstanceInfo{}, fmt.Errorf("AsResourceInstance: not a resource instance value (got %T)", v.Data)
+		return ResourceInstanceInfo{}, fmt.Errorf("AsResourceInstance: not a resource instance value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -3761,7 +3991,7 @@ func AsResourceInstance(v Value) (ResourceInstanceInfo, error) {
 // FlatInstanceFields / flatInstanceParts) so the two representations
 // stay in lockstep.
 func IsFlatInstance(v Value) bool {
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case ClassInstanceInfo, ResourceInstanceInfo:
 		return true
 	}
@@ -3791,7 +4021,7 @@ func FlatInstanceFields(v Value) (*OrderedMap, bool) {
 // instance. The Fields map is not copied — callers that mutate must
 // copy first (see FlatInstanceFields).
 func FlatInstanceParts(v Value) (fields *OrderedMap, schemaKeys []string, ok bool) {
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ClassInstanceInfo:
 		if d.TypeRef != nil {
 			schemaKeys = d.TypeRef.AllFields().Keys()
@@ -3809,20 +4039,20 @@ func FlatInstanceParts(v Value) (fields *OrderedMap, schemaKeys []string, ok boo
 // IsAtom reports whether this value is an atom.
 // IsPathon reports whether this value is a Path.
 func IsPathon(v Value) bool {
-	_, ok := v.Data.(PathonPayload)
-	return ok && v.Parent.Equal(TPathon)
+	_, ok := v.Data().(PathonPayload)
+	return ok && v.Parent().Equal(TPathon)
 }
 
 // AsPathon returns the PathonInfo, or an error if the value is not a path.
 func AsPathon(v Value) (PathonInfo, error) {
-	if pp, ok := v.Data.(PathonPayload); ok {
+	if pp, ok := v.Data().(PathonPayload); ok {
 		return pp.Info, nil
 	}
-	return PathonInfo{}, fmt.Errorf("AsPathon: not a path value (got %T)", v.Data)
+	return PathonInfo{}, fmt.Errorf("AsPathon: not a path value (got %T)", v.Data())
 }
 
 func IsAtom(v Value) bool {
-	return v.Parent.ConformsTo(TAtom)
+	return v.Parent().ConformsTo(TAtom)
 }
 
 // payloadOf unwraps the payload variant P from v — the ONE nil-check +
@@ -3832,12 +4062,12 @@ func IsAtom(v Value) bool {
 // hand-rolled messages the accessors carried before unification.
 func payloadOf[P Payload](v Value, name, kind string) (P, error) {
 	var zero P
-	if v.Data == nil {
+	if v.Data() == nil {
 		return zero, fmt.Errorf("%s: nil data", name)
 	}
-	p, ok := v.Data.(P)
+	p, ok := v.Data().(P)
 	if !ok {
-		return zero, fmt.Errorf("%s: not %s value (got %T)", name, kind, v.Data)
+		return zero, fmt.Errorf("%s: not %s value (got %T)", name, kind, v.Data())
 	}
 	return p, nil
 }
@@ -3849,60 +4079,60 @@ func AsAtom(v Value) (string, error) {
 }
 
 // IsTypedList reports whether this value is a typed list (has child type constraint).
-func IsTypedList(v Value) bool {
-	_, ok := v.Data.(ChildTypeInfo)
-	return ok && v.Parent.Equal(TList)
+func IsTypedList(v *Value) bool {
+	_, ok := v.Data().(ChildTypeInfo)
+	return ok && v.Parent().Equal(TList)
 }
 
 // IsTypedMap reports whether this value is a typed map (has child type constraint).
-func IsTypedMap(v Value) bool {
-	_, ok := v.Data.(ChildTypeInfo)
-	return ok && v.Parent.Equal(TMap)
+func IsTypedMap(v *Value) bool {
+	_, ok := v.Data().(ChildTypeInfo)
+	return ok && v.Parent().Equal(TMap)
 }
 
 // IsRecordType reports whether this value is a record type (map with field schema).
 func IsRecordType(v Value) bool {
-	_, ok := v.Data.(RecordTypeInfo)
-	return ok && v.Parent.Equal(TMap)
+	_, ok := v.Data().(RecordTypeInfo)
+	return ok && v.Parent().Equal(TMap)
 }
 
 // AsRecordType returns the RecordTypeInfo, panics if not a record type.
 func AsRecordType(v Value) (RecordTypeInfo, error) {
-	info, ok := v.Data.(RecordTypeInfo)
+	info, ok := v.Data().(RecordTypeInfo)
 	if !ok {
-		return RecordTypeInfo{}, fmt.Errorf("AsRecordType: not a record type value (got %T)", v.Data)
+		return RecordTypeInfo{}, fmt.Errorf("AsRecordType: not a record type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsOptionsType reports whether this value is an options type (map with defaults/constraints).
 func IsOptionsType(v Value) bool {
-	_, ok := v.Data.(OptionsTypeInfo)
-	return ok && v.Parent.Equal(TMap)
+	_, ok := v.Data().(OptionsTypeInfo)
+	return ok && v.Parent().Equal(TMap)
 }
 
 // AsOptionsType returns the OptionsTypeInfo, panics if not an options type.
 func AsOptionsType(v Value) (OptionsTypeInfo, error) {
-	info, ok := v.Data.(OptionsTypeInfo)
+	info, ok := v.Data().(OptionsTypeInfo)
 	if !ok {
-		return OptionsTypeInfo{}, fmt.Errorf("AsOptionsType: not an options type value (got %T)", v.Data)
+		return OptionsTypeInfo{}, fmt.Errorf("AsOptionsType: not an options type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // IsTableType reports whether this value is a table type (list with record schema).
 func IsTableType(v Value) bool {
-	if v.Parent.Equal(TList) {
-		if _, ok := v.Data.(TableTypeInfo); ok {
+	if v.Parent().Equal(TList) {
+		if _, ok := v.Data().(TableTypeInfo); ok {
 			return true
 		}
-		if _, ok := v.Data.(TableData); ok {
+		if _, ok := v.Data().(TableData); ok {
 			return true
 		}
-		if _, ok := v.Data.(MaterializerPayload); ok {
+		if _, ok := v.Data().(MaterializerPayload); ok {
 			return true
 		}
-		if _, ok := v.Data.(Materializer); ok {
+		if _, ok := v.Data().(Materializer); ok {
 			return true
 		}
 	}
@@ -3911,47 +4141,47 @@ func IsTableType(v Value) bool {
 
 // AsTableType returns the TableTypeInfo, panics if not a table type.
 func AsTableType(v Value) (TableTypeInfo, error) {
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		return TableTypeInfo{Record: td.Record}, nil
 	}
-	if mp, ok := v.Data.(MaterializerPayload); ok {
+	if mp, ok := v.Data().(MaterializerPayload); ok {
 		return TableTypeInfo{Record: mp.M.SourceRecord()}, nil
 	}
-	if mz, ok := v.Data.(Materializer); ok {
+	if mz, ok := v.Data().(Materializer); ok {
 		return TableTypeInfo{Record: mz.SourceRecord()}, nil
 	}
-	info, ok := v.Data.(TableTypeInfo)
+	info, ok := v.Data().(TableTypeInfo)
 	if !ok {
-		return TableTypeInfo{}, fmt.Errorf("AsTableType: not a table type value (got %T)", v.Data)
+		return TableTypeInfo{}, fmt.Errorf("AsTableType: not a table type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // AsChildType returns the ChildTypeInfo, panics if not a typed list or typed map.
 func AsChildType(v Value) (ChildTypeInfo, error) {
-	info, ok := v.Data.(ChildTypeInfo)
+	info, ok := v.Data().(ChildTypeInfo)
 	if !ok {
-		return ChildTypeInfo{}, fmt.Errorf("AsChildType: not a child type value (got %T)", v.Data)
+		return ChildTypeInfo{}, fmt.Errorf("AsChildType: not a child type value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // AsWord returns the WordInfo, panics if not a word.
-func AsWord(v Value) (WordInfo, error) {
-	info, ok := v.Data.(WordInfo)
+func AsWord(v *Value) (WordInfo, error) {
+	info, ok := v.Data().(WordInfo)
 	if !ok {
-		return WordInfo{}, fmt.Errorf("AsWord: not a word value (got %T)", v.Data)
+		return WordInfo{}, fmt.Errorf("AsWord: not a word value (got %T)", v.Data())
 	}
 	return info, nil
 }
 
 // AsForward returns the ForwardInfo, panics if not a forward.
-func AsForward(v Value) (ForwardInfo, error) {
-	info, ok := v.Data.(ForwardInfo)
+func AsForward(v *Value) (ForwardInfo, error) {
+	info, ok := v.Data().(*ForwardInfo)
 	if !ok {
-		return ForwardInfo{}, fmt.Errorf("AsForward: not a forward value (got %T)", v.Data)
+		return ForwardInfo{}, fmt.Errorf("AsForward: not a forward value (got %T)", v.Data())
 	}
-	return info, nil
+	return *info, nil
 }
 
 // AsString returns the string payload. Returns "" if Data is nil (type literal).
@@ -3990,11 +4220,11 @@ func AsBigDecimal(v Value) (*apd.Decimal, error) {
 // would reopen the precision-loss trap across ~60 callers). Code that
 // genuinely wants a lossy Big→float64 projection must call AsFloatApprox.
 func AsNumber(v Value) (float64, error) {
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		return AsFloat(v)
 	}
-	if v.Parent.ConformsTo(TBigInteger) || v.Parent.ConformsTo(TBigDecimal) {
-		return 0, fmt.Errorf("AsNumber: %s is arbitrary-precision; use AsFloatApprox for a lossy float64", v.Parent)
+	if v.Parent().ConformsTo(TBigInteger) || v.Parent().ConformsTo(TBigDecimal) {
+		return 0, fmt.Errorf("AsNumber: %s is arbitrary-precision; use AsFloatApprox for a lossy float64", v.Parent())
 	}
 	n, err := AsInteger(v)
 	return float64(n), err
@@ -4006,7 +4236,7 @@ func AsNumber(v Value) (float64, error) {
 // IEEE classifiers) — never reach for it where exactness is required.
 func AsFloatApprox(v Value) (float64, error) {
 	switch {
-	case v.Parent.ConformsTo(TBigInteger):
+	case v.Parent().ConformsTo(TBigInteger):
 		n, err := AsBigInteger(v)
 		if err != nil {
 			return 0, err
@@ -4014,7 +4244,7 @@ func AsFloatApprox(v Value) (float64, error) {
 		f := new(big.Float).SetInt(n)
 		out, _ := f.Float64()
 		return out, nil
-	case v.Parent.ConformsTo(TBigDecimal):
+	case v.Parent().ConformsTo(TBigDecimal):
 		d, err := AsBigDecimal(v)
 		if err != nil {
 			return 0, err
@@ -4040,31 +4270,31 @@ func AsBoolean(v Value) (bool, error) {
 // reported as errors so callers can't silently treat a non-list
 // value as an empty list.
 func AsList(v Value) (ReadList, error) {
-	if v.Data == nil {
+	if v.Data() == nil {
 		return ReadList{}, fmt.Errorf("AsList: nil data")
 	}
 	// Post Step 5c variant first; legacy []Value second.
-	if lp, ok := v.Data.(ListPayload); ok {
+	if lp, ok := v.Data().(ListPayload); ok {
 		return ReadList{elems: lp.Elems}, nil
 	}
-	if fd, ok := v.Data.(*FlexListData); ok {
+	if fd, ok := v.Data().(*FlexListData); ok {
 		return ReadList{elems: fd.Elems}, nil
 	}
 	// Weak flex list: swept strong snapshot (see AsMap's weak arm).
-	if wd, ok := v.Data.(*WeakFlexListData); ok {
+	if wd, ok := v.Data().(*WeakFlexListData); ok {
 		return ReadList{elems: wd.snapshotElems()}, nil
 	}
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := v.Data().(TableData); ok {
 		return ReadList{elems: td.Rows}, nil
 	}
-	if mp, ok := v.Data.(MaterializerPayload); ok {
+	if mp, ok := v.Data().(MaterializerPayload); ok {
 		td, err := mp.M.Materialize()
 		if err != nil {
 			return ReadList{}, fmt.Errorf("AsList: materialize: %w", err)
 		}
 		return ReadList{elems: td.Rows}, nil
 	}
-	if mz, ok := v.Data.(Materializer); ok {
+	if mz, ok := v.Data().(Materializer); ok {
 		td, err := mz.Materialize()
 		if err != nil {
 			return ReadList{}, fmt.Errorf("AsList: materialize: %w", err)
@@ -4074,26 +4304,26 @@ func AsList(v Value) (ReadList, error) {
 	// Typed list carrying both a child constraint and concrete
 	// elements (`[v0 :T v1]`). Surface the elements so list-aware
 	// operations (lengthq, firstq, is) see them.
-	if ci, ok := v.Data.(ChildTypeInfo); ok && len(ci.Elements) > 0 {
+	if ci, ok := v.Data().(ChildTypeInfo); ok && len(ci.Elements) > 0 {
 		return ReadList{elems: ci.Elements}, nil
 	}
-	return ReadList{}, fmt.Errorf("AsList: not a list payload (got %T)", v.Data)
+	return ReadList{}, fmt.Errorf("AsList: not a list payload (got %T)", v.Data())
 }
 
 // AsMutableList returns the underlying []Value slice for mutation.
 // Only valid for internal construction paths — never for immutable Node values.
 // Returns an error if the value lacks a mutable list payload.
 func AsMutableList(v Value) ([]Value, error) {
-	if v.Data == nil {
+	if v.Data() == nil {
 		return nil, fmt.Errorf("AsMutableList: nil data")
 	}
-	if lp, ok := v.Data.(ListPayload); ok {
+	if lp, ok := v.Data().(ListPayload); ok {
 		return lp.Elems, nil
 	}
-	if fd, ok := v.Data.(*FlexListData); ok {
+	if fd, ok := v.Data().(*FlexListData); ok {
 		return fd.Elems, nil
 	}
-	return nil, fmt.Errorf("AsMutableList: not a list payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsMutableList: not a list payload (got %T)", v.Data())
 }
 
 // AsFlexList returns the pointer-backed element store of a FlexList
@@ -4102,13 +4332,13 @@ func AsMutableList(v Value) ([]Value, error) {
 // the payload observes the change. Returns an error for anything that
 // is not a concrete FlexList.
 func AsFlexList(v Value) (*FlexListData, error) {
-	if v.Data == nil {
+	if v.Data() == nil {
 		return nil, fmt.Errorf("AsFlexList: nil data")
 	}
-	if fd, ok := v.Data.(*FlexListData); ok {
+	if fd, ok := v.Data().(*FlexListData); ok {
 		return fd, nil
 	}
-	return nil, fmt.Errorf("AsFlexList: not a flex list payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsFlexList: not a flex list payload (got %T)", v.Data())
 }
 
 // NewFlexXml creates a mutable Node/Xml/FlexXml element. attr may be nil
@@ -4124,19 +4354,19 @@ func NewFlexXml(tag string, attr *OrderedMap, cren []Value) Value {
 // AsFlexXml returns the pointer-backed FlexXmlData of a FlexXml value;
 // mutators reassign through it so every Value copy observes the change.
 func AsFlexXml(v Value) (*FlexXmlData, error) {
-	if fd, ok := v.Data.(*FlexXmlData); ok {
+	if fd, ok := v.Data().(*FlexXmlData); ok {
 		return fd, nil
 	}
-	return nil, fmt.Errorf("AsFlexXml: not a flex xml payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsFlexXml: not a flex xml payload (got %T)", v.Data())
 }
 
 // AsXmlElement returns the XmlElementPayload backing a Node/Xml value,
 // or an error when v is a type literal or a non-Xml value.
 func AsXmlElement(v Value) (XmlElementPayload, error) {
-	if x, ok := v.Data.(XmlElementPayload); ok {
+	if x, ok := v.Data().(XmlElementPayload); ok {
 		return x, nil
 	}
-	return XmlElementPayload{}, fmt.Errorf("AsXmlElement: not an Xml element payload (got %T)", v.Data)
+	return XmlElementPayload{}, fmt.Errorf("AsXmlElement: not an Xml element payload (got %T)", v.Data())
 }
 
 // AsMap returns a read-only view of the map payload.
@@ -4145,42 +4375,42 @@ func AsXmlElement(v Value) (XmlElementPayload, error) {
 // reported as errors so callers can't silently treat a non-map
 // value as an empty map.
 func AsMap(v Value) (ReadMap, error) {
-	if v.Data == nil {
+	if v.Data() == nil {
 		return nil, fmt.Errorf("AsMap: nil data")
 	}
-	if mp, ok := v.Data.(MapPayload); ok {
+	if mp, ok := v.Data().(MapPayload); ok {
 		return mp.M, nil
 	}
 	// Weak flex map: sweep dead slots and materialize a STRONG
 	// snapshot, so the whole read vocabulary observes one consistent
 	// world per operation (design/FLEX-ATTRS.1.md §4.3).
-	if wd, ok := v.Data.(*WeakFlexMapData); ok {
+	if wd, ok := v.Data().(*WeakFlexMapData); ok {
 		return wd.snapshot(), nil
 	}
 	// Typed map carrying both a child constraint and concrete entries
 	// (`{k:v :T}`). Surface the entries as an OrderedMap so map-aware
 	// operations see them.
-	if ci, ok := v.Data.(ChildTypeInfo); ok && len(ci.Entries) > 0 {
+	if ci, ok := v.Data().(ChildTypeInfo); ok && len(ci.Entries) > 0 {
 		om := NewOrderedMap()
 		for _, e := range ci.Entries {
 			om.Set(e.Key, e.Value)
 		}
 		return om, nil
 	}
-	return nil, fmt.Errorf("AsMap: not a map payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsMap: not a map payload (got %T)", v.Data())
 }
 
 // AsMutableMap returns the underlying *OrderedMap for mutation. Only valid
 // for Object instances and internal construction — never for Node values.
 // Returns an error if the value lacks a mutable map payload.
 func AsMutableMap(v Value) (*OrderedMap, error) {
-	if v.Data == nil {
+	if v.Data() == nil {
 		return nil, fmt.Errorf("AsMutableMap: nil data")
 	}
-	if mp, ok := v.Data.(MapPayload); ok {
+	if mp, ok := v.Data().(MapPayload); ok {
 		return mp.M, nil
 	}
-	return nil, fmt.Errorf("AsMutableMap: not a map payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsMutableMap: not a map payload (got %T)", v.Data())
 }
 
 // String returns a human-readable representation.
@@ -4189,9 +4419,9 @@ func (v Value) String() string {
 	// modality is legible in traces / `boru check` output instead of
 	// masquerading as its bare bound (design/legacy/dynamic-modality-report.10.ignore).
 	// Render the bound by clearing the flag and recursing.
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		inner := v
-		inner.Dynamic = false
+		SetDynamic(&inner, false)
 		return "dynamic(" + inner.String() + ")"
 	}
 	// Behavior-driven format delegation: types that supply a custom
@@ -4215,8 +4445,8 @@ func (v Value) String() string {
 	if v.IsDepScalar() {
 		return renderDepScalar(v)
 	}
-	if v.Data != nil && v.Parent != nil {
-		for t := v.Parent; t != nil; t = t.Parent {
+	if v.Data() != nil && v.Parent() != nil {
+		for t := v.Parent(); t != nil; t = t.Parent() {
 			if t.Behavior() == nil || t.Behavior() == DefaultBehavior {
 				continue
 			}
@@ -4273,10 +4503,10 @@ func kernelFormatDefault(v Value) string {
 			return "Type"
 		}
 		return n.Leaf() + "/t"
-	case IsWord(v) && !IsSugar(v):
-		w, _ := AsWord(v)
+	case IsWord(&v) && !IsSugar(&v):
+		w, _ := AsWord(&v)
 		return fmt.Sprintf("word(%s)", w.Name)
-	case IsSugar(v):
+	case IsSugar(&v):
 		info, _ := AsSugar(v)
 		switch info.Kind {
 		case SugarForceArity:
@@ -4289,38 +4519,38 @@ func kernelFormatDefault(v Value) string {
 			return fmt.Sprintf("sugar(%s %v)", info.Kind, info.Items)
 		}
 		return fmt.Sprintf("sugar(%s)", info.Kind)
-	case IsForward(v):
-		f, _ := AsForward(v)
+	case IsForward(&v):
+		f, _ := AsForward(&v)
 		return fmt.Sprintf("forward(%s,%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs)
-	case IsOpenParen(v):
+	case IsOpenParen(&v):
 		return "("
-	case IsCloseParen(v):
+	case IsCloseParen(&v):
 		return ")"
-	case IsEnd(v):
+	case IsEnd(&v):
 		return "end"
-	case IsParenExpr(v):
-		_pe, _ := AsParenExpr(v)
+	case IsParenExpr(&v):
+		_pe, _ := AsParenExpr(&v)
 		return fmt.Sprintf("paren(%v)", _pe)
-	case IsInterpString(v):
+	case IsInterpString(&v):
 		// A readable structural render (`interp('a ' ${word(x)})`) —
 		// previously this fell to the %v fallback and dumped the raw
 		// payload struct (`word()({[{ [42]}]})`), which leaked into
 		// debug output and the parser stream oracle.
 		parts, _ := AsInterpString(v)
 		return renderInterpParts(parts)
-	case IsXmlInterp(v):
+	case IsXmlInterp(&v):
 		// Same repair for the XML template skeleton: render the source
 		// form with ${…} holes instead of the payload struct dump.
 		tmpl, _ := AsXmlInterp(v)
 		return "interp-xml(" + renderXmlTmplSrc(tmpl) + ")"
-	case IsMark(v):
-		_as2, _ := AsMark(v)
+	case IsMark(&v):
+		_as2, _ := AsMark(&v)
 		if _as2.Loop != nil {
 			return fmt.Sprintf("mark(%s,%s)", _as2.ID, _as2.Loop.Describe())
 		}
 		return fmt.Sprintf("mark(%s)", _as2.ID)
-	case IsMove(v):
-		m, _ := AsMove(v)
+	case IsMove(&v):
+		m, _ := AsMove(&v)
 		if m.Cont != nil {
 			// A loop's move renders its annotation — the construct, the
 			// iteration, the index — so a tape snapshot in the trace or
@@ -4328,20 +4558,20 @@ func kernelFormatDefault(v Value) string {
 			return fmt.Sprintf("move(%s,%s,%s)", m.To, m.Reason, m.Cont.Describe())
 		}
 		return fmt.Sprintf("move(%s,%s)", m.To, m.Reason)
-	case IsReturnCheck(v):
-		rc, _ := AsReturnCheck(v)
+	case IsReturnCheck(&v):
+		rc, _ := AsReturnCheck(&v)
 		return fmt.Sprintf("returncheck(%s)", rc.FuncName)
-	case IsDefCleanup(v):
+	case IsDefCleanup(&v):
 		return "__dc"
 	case IsError(v):
 		_as3, _ := AsError(v)
 		return fmt.Sprintf("error(%s)", _as3.Message)
-	case IsNone(v):
+	case IsNone(&v):
 		// The VALUE none (NonePayload, Data non-nil) — lowercase, like
 		// the source literal and eng.Canon. The None TYPE literal has
 		// Data==nil and takes the next arm, rendering capital `None`.
 		return "none"
-	case v.Data == nil:
+	case v.Data() == nil:
 		// Type literal (or carrier) with no specific value — render as
 		// the type's leaf name; type names are globally unique so the
 		// leaf alone is unambiguous.
@@ -4352,28 +4582,28 @@ func kernelFormatDefault(v Value) string {
 		// numeric counterparts) true, so without this case the value
 		// payload would be cast to the wrong concrete type.
 		return renderDepScalar(v)
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		s, _ := AsString(v)
 		return fmt.Sprintf("'%s'", s)
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		s, _ := AsAtom(v)
 		return s
 	// Big leaves come before Integer/Float: they don't conform to either,
 	// but listing them first keeps the numeric arms grouped and guards
 	// against a future widening of those checks.
-	case v.Parent.ConformsTo(TBigInteger):
+	case v.Parent().ConformsTo(TBigInteger):
 		n, _ := AsBigInteger(v)
 		return FormatBigInteger(n)
-	case v.Parent.ConformsTo(TBigDecimal):
+	case v.Parent().ConformsTo(TBigDecimal):
 		d, _ := AsBigDecimal(v)
 		return FormatBigDecimal(d)
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		_as4, _ := AsFloat(v)
 		return formatFloat(_as4)
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		n, _ := AsInteger(v)
 		return fmt.Sprintf("%d", n)
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as5, _ := AsBoolean(v)
 		if _as5 {
 			return "true"
@@ -4415,8 +4645,8 @@ func kernelFormatDefault(v Value) string {
 			name = oi.TypeRef.Name
 		case oi.TypeRef != nil:
 			name = "Ideal/Class/" + oi.TypeRef.ID
-		case v.Parent != nil:
-			name = v.Parent.Leaf()
+		case v.Parent() != nil:
+			name = v.Parent().Leaf()
 		default:
 			name = "Class"
 		}
@@ -4427,18 +4657,18 @@ func kernelFormatDefault(v Value) string {
 		switch {
 		case ri.TypeRef != nil && ri.TypeRef.Name != "":
 			name = ri.TypeRef.Name
-		case v.Parent != nil:
-			name = v.Parent.Leaf()
+		case v.Parent() != nil:
+			name = v.Parent().Leaf()
 		}
 		return formatFieldBag(name, ri.Fields)
-	case IsClassType(v):
+	case IsClassType(&v):
 		ot, _ := AsClassType(v)
 		name := ot.Name
 		if name == "" {
 			name = "Ideal/Class/" + ot.ID
 		}
 		return formatFieldBag("object<"+name+">", ot.AllFields())
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		di, _ := AsDisjunct(v)
 		parts := make([]string, len(di.Alternatives))
 		for i, alt := range di.Alternatives {
@@ -4449,7 +4679,7 @@ func kernelFormatDefault(v Value) string {
 		ni, _ := AsNegation(v)
 		// Parenthesise a compound inner so `tnot (A tor B)` doesn't misread
 		// as `(tnot A) tor B`.
-		if IsDisjunct(ni.Inner) || IsNegation(ni.Inner) {
+		if IsDisjunct(&ni.Inner) || IsNegation(ni.Inner) {
 			return "tnot (" + ni.Inner.String() + ")"
 		}
 		return "tnot " + ni.Inner.String()
@@ -4459,27 +4689,43 @@ func kernelFormatDefault(v Value) string {
 	// — including its captured *Registry and the module's entire exports
 	// map (a 600-line spill into error messages). See formatFnDef.
 	case isFnDefValue(v):
-		fd, _ := v.Data.(FnDefInfo)
-		return FormatFnDef(fd)
-	case func() bool { cl, ok := v.Data.(ClosurePayload); return ok && cl.Render != "" }():
-		// A compiled closure carrying its source fn's interpreter rendering
-		// (CompiledFn.Render via OpPushClosure) — byte-identical to the
-		// interpreter's fn value in interpolation holes and print output.
-		cl, _ := v.Data.(ClosurePayload)
-		return cl.Render
+		fd, _ := FnDefOf(v.Data())
+		return formatFnDefAs(fd, FnNameOf(&v))
+	case isClosureValue(v):
+		// A compiled closure renders as its source fn's interpreter
+		// rendering (CompiledFn.Render via OpPushClosure) — byte-identical
+		// to the interpreter's fn value in interpolation holes and print
+		// output — under the name a binding gave this holder, when one did
+		// (the compiled runtime describes the unit; CompiledRuntime).
+		cl, _ := v.Data().(*ClosurePayload)
+		if name := HolderFnName(&v); name != "" {
+			if r, ok := compiledRuntime.ClosureRender(cl, name); ok {
+				return r
+			}
+		}
+		if cl.Render != "" {
+			return cl.Render
+		}
+		return fmt.Sprintf("%v(%v)", v.Parent(), v.Data())
 	// TMap rendering moved to mapFormatBehavior in
 	// coretype_list_map_behaviors.go (Step 10). The top-of-function
 	// Behavior dispatch routes Map values (and TMap-rooted subtypes
 	// like RecordType/OptionsType) there.
 	default:
-		return fmt.Sprintf("%v(%v)", v.Parent, v.Data)
+		return fmt.Sprintf("%v(%v)", v.Parent(), v.Data())
 	}
 }
 
 // isFnDefValue reports whether v carries an FnDefInfo payload (a fn or
 // lambda value, Parent TFunction).
 func isFnDefValue(v Value) bool {
-	_, ok := v.Data.(FnDefInfo)
+	_, ok := v.Data().(*FnDefInfo)
+	return ok
+}
+
+// isClosureValue reports whether v carries a compiled closure's payload.
+func isClosureValue(v Value) bool {
+	_, ok := v.Data().(*ClosurePayload)
 	return ok
 }
 
@@ -4492,7 +4738,12 @@ func isFnDefValue(v Value) bool {
 // module exports map in particular). Anonymous lambdas have no Name and
 // render as `fn(args…)`.
 func FormatFnDef(fd FnDefInfo) string {
-	name := fd.Name
+	return formatFnDefAs(&fd, fd.Name)
+}
+
+// formatFnDefAs is FormatFnDef under the name a holder knows the fn by
+// (FnNameOf), which a binding may have given it in place of the payload's.
+func formatFnDefAs(fd *FnDefInfo, name string) string {
 	// Summarise the argument shapes. Prefer non-empty signatures; a
 	// synthesized 0-arg fallback alongside real overloads is noise here
 	// (it is not shown by `help` either), so drop empty sigs when any
@@ -4520,21 +4771,21 @@ func FormatFnDef(fd FnDefInfo) string {
 // or a Node that contains a leaf that is a type.
 func IsTypeValue(v Value) bool {
 	// Type literal: Data==nil with a real type (not None).
-	if v.Data == nil && !IsNoneShape(v) {
+	if v.Data() == nil && !IsNoneShape(v) {
 		return true
 	}
 
 	// Options type, record type, typed list/map, table type, object type.
-	if IsOptionsType(v) || IsRecordType(v) || IsTypedList(v) ||
-		IsTypedMap(v) || IsTableType(v) || IsClassType(v) {
+	if IsOptionsType(v) || IsRecordType(v) || IsTypedList(&v) ||
+		IsTypedMap(&v) || IsTableType(v) || IsClassType(&v) {
 		return true
 	}
 
 	// Concrete list: check each element recursively.
-	if v.Parent.ConformsTo(TList) && v.Data != nil {
+	if v.Parent().ConformsTo(TList) && v.Data() != nil {
 		elems, _ := AsList(v)
 		if !elems.IsNil() {
-			for _, elem := range elems.Slice() {
+			for _, elem := range elems.Elems() {
 				if IsTypeValue(elem) {
 					return true
 				}
@@ -4543,7 +4794,7 @@ func IsTypeValue(v Value) bool {
 	}
 
 	// Concrete map: check each value recursively.
-	if v.Parent.ConformsTo(TMap) && v.Data != nil {
+	if v.Parent().ConformsTo(TMap) && v.Data() != nil {
 		m, _ := AsMap(v)
 		if m != nil {
 			for _, key := range m.Keys() {
@@ -4557,3 +4808,10 @@ func IsTypeValue(v Value) bool {
 
 	return false
 }
+
+// noCopy is a zero-size marker: its Lock and Unlock methods make go vet's
+// copylocks analyzer treat Value as a no-copy type and report every copy.
+type noCopy struct{}
+
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}

@@ -15,11 +15,11 @@ import (
 // the numeric lattice with no Type alternative.
 func TestMerge519JoinedElementCarrierTypeLiteral(t *testing.T) {
 	typeLit := core.NewTypeLiteral(core.TInteger)
-	if !core.IsTypeLiteral(typeLit) || typeLit.Parent.Equal(core.TInteger) {
-		t.Fatalf("precondition: an Integer type literal is parented off Integer, got %v", typeLit.Parent)
+	if !core.IsTypeLiteral(&typeLit) || typeLit.Parent().Equal(core.TInteger) {
+		t.Fatalf("precondition: an Integer type literal is parented off Integer, got %v", typeLit.Parent())
 	}
 
-	if got := elementJoinCarrier(typeLit); !got.Parent.Equal(core.TType) || got.Parent.Equal(typeLit.Parent) {
+	if got := elementJoinCarrier(typeLit); !got.Parent().Equal(core.TType) || got.Parent().Equal(typeLit.Parent()) {
 		t.Errorf("a type literal element joins as its Type carrier, got %v", got)
 	}
 
@@ -50,7 +50,7 @@ func joinMentions(v core.Value, want *core.Type) bool {
 	if n := core.TypeNodeOf(v); n != nil && n.Equal(want) {
 		return true
 	}
-	if di, ok := v.Data.(core.DisjunctInfo); ok {
+	if di, ok := v.Data().(core.DisjunctInfo); ok {
 		for _, alt := range di.Alternatives {
 			if joinMentions(alt, want) {
 				return true

@@ -65,13 +65,13 @@ func TestWt5SigTypeMatchesAscription(t *testing.T) {
 	// `v as T` dispatches as if tagged with the ascribed ancestor.
 	v := NewInteger(5)
 	(&v).SetAscribed(TNumber)
-	if !SigTypeMatches(v, TNumber) {
+	if !SigTypeMatches(&v, TNumber) {
 		t.Fatal("ascribed value must match at the ascribed type")
 	}
 	// The view is the ascribed tag, not the concrete one.
 	w := NewInteger(5)
 	(&w).SetAscribed(TString)
-	if SigTypeMatches(w, TInteger) {
+	if SigTypeMatches(&w, TInteger) {
 		t.Fatal("ascription must override the concrete tag for matching")
 	}
 }
@@ -80,11 +80,11 @@ func TestWt5SigTypeMatchesDynamicDisjoint(t *testing.T) {
 	// A dynamic carrier fails only provably-disjoint slots — the tand
 	// probe path (neither side conforms to the other).
 	v := NewCarrier(TInteger)
-	v.Dynamic = true
-	if SigTypeMatches(v, TString) {
+	SetDynamic(&v, true)
+	if SigTypeMatches(&v, TString) {
 		t.Fatal("dynamic(Integer) must fail a provably-disjoint String slot")
 	}
-	if !SigTypeMatches(v, TNumber) {
+	if !SigTypeMatches(&v, TNumber) {
 		t.Fatal("dynamic(Integer) must match a Number slot")
 	}
 }
@@ -92,13 +92,13 @@ func TestWt5SigTypeMatchesDynamicDisjoint(t *testing.T) {
 func TestWt5SigTypeMatchesDisjunctCarrier(t *testing.T) {
 	// A strict disjunct carrier matches iff EVERY alternative matches.
 	all := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TFloat)})
-	all.Carrier = true
-	if !SigTypeMatches(all, TNumber) {
+	all.SetCarrier(true)
+	if !SigTypeMatches(&all, TNumber) {
 		t.Fatal("all-alternatives-match disjunct carrier must match")
 	}
 	mixed := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	mixed.Carrier = true
-	if SigTypeMatches(mixed, TInteger) {
+	mixed.SetCarrier(true)
+	if SigTypeMatches(&mixed, TInteger) {
 		t.Fatal("a failing alternative must fail the whole carrier")
 	}
 }
@@ -107,15 +107,15 @@ func TestWt5SigTypeMatchesOptionsArms(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("a", NewTypeLiteral(TInteger))
 	// An Options type body matches an Options slot.
-	if !SigTypeMatches(NewOptionsType(fields), TOptions) {
+	if !SigTypeMatches(addrOf(NewOptionsType(fields)), TOptions) {
 		t.Fatal("Options type body must match an Options slot")
 	}
 	// A plain concrete map matches an Options slot.
-	if !SigTypeMatches(wt5KindMap("api"), TOptions) {
+	if !SigTypeMatches(addrOf(wt5KindMap("api")), TOptions) {
 		t.Fatal("concrete map must match an Options slot")
 	}
 	// An Options-tagged carrier matches a Map-family slot.
-	if !SigTypeMatches(NewCarrier(TOptions), TMap) {
+	if !SigTypeMatches(addrOf(NewCarrier(TOptions)), TMap) {
 		t.Fatal("Options carrier must match a Map slot")
 	}
 }
@@ -123,26 +123,26 @@ func TestWt5SigTypeMatchesOptionsArms(t *testing.T) {
 func TestWt5SigArgMatchesTypeArgsArms(t *testing.T) {
 	anySlot := &Signature{Args: []*Type{TAny}, TypeArgs: map[int]bool{0: true}}
 	// Carriers are values, not types — rejected at TypeArgs slots.
-	if SigArgMatches(anySlot, 0, NewCarrier(TInteger)) {
+	if SigArgMatches(anySlot, 0, addrOf(NewCarrier(TInteger))) {
 		t.Fatal("carrier must be rejected at a TypeArgs slot")
 	}
 	// A bare type literal denotes its lattice node.
-	if !SigArgMatches(anySlot, 0, NewTypeLiteral(TInteger)) {
+	if !SigArgMatches(anySlot, 0, addrOf(NewTypeLiteral(TInteger))) {
 		t.Fatal("bare type literal must be accepted at a TypeArgs slot")
 	}
 	// DepScalar bodies are constraints, not bare literals.
-	if SigArgMatches(anySlot, 0, NewDepScalar(DepGT, NewInteger(1))) {
+	if SigArgMatches(anySlot, 0, addrOf(NewDepScalar(DepGT, NewInteger(1)))) {
 		t.Fatal("DepScalar body must be rejected at a TypeArgs slot")
 	}
 	// A structural type body matches via its lattice family.
 	fields := NewOrderedMap()
 	fields.Set("x", NewTypeLiteral(TInteger))
 	mapSlot := &Signature{Args: []*Type{TMap}, TypeArgs: map[int]bool{0: true}}
-	if !SigArgMatches(mapSlot, 0, NewRecordType(fields)) {
+	if !SigArgMatches(mapSlot, 0, addrOf(NewRecordType(fields))) {
 		t.Fatal("record type body must be accepted at a Map TypeArgs slot")
 	}
 	// A concrete non-type value is not a type.
-	if SigArgMatches(anySlot, 0, NewInteger(5)) {
+	if SigArgMatches(anySlot, 0, addrOf(NewInteger(5))) {
 		t.Fatal("concrete scalar must be rejected at a TypeArgs slot")
 	}
 }

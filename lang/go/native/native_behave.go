@@ -265,7 +265,7 @@ func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.T
 	if target == nil {
 		return be, nil, sig, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
 	}
-	if target.Origin == core.OriginBuiltin {
+	if target.Origin() == core.OriginBuiltin {
 		return be, nil, sig, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
 	}
 	return be, target, sig, nil
@@ -294,15 +294,15 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	if len(args) < 2 {
 		return nil
 	}
-	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) {
+	if r == nil || !r.Check.IsActive() || !IsConcrete(&args[0]) {
 		return nil
 	}
 	fnVal := args[1]
-	if !IsConcrete(fnVal) {
+	if !IsConcrete(&fnVal) {
 		// A container member's fn read as a gradual carrier: the pass
 		// tagged the value the read resolved (NoteFnMemberRead), which the
 		// run installs — seen through for the call graph alone (NUR257).
-		member, ok := r.Check.FnMemberRead(fnVal.ID)
+		member, ok := r.Check.FnMemberRead(IDOf(&fnVal))
 		if !ok {
 			return nil
 		}
@@ -313,14 +313,14 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	if err != nil {
 		return nil
 	}
-	target = core.CanonicalType(r, target)
+	target = core.NodeOf(target)
 	// Every slot's fn runs where a value of the target is handled, so a
 	// frame that handles one reaches it: the dynamic-scope rescue asks the
 	// call graph about it (NUR257).
-	if fd, isFn := fnVal.Data.(core.FnDefInfo); isFn {
-		r.Check.NoteBehaveReader(target, fd)
+	if fd, isFn := fnVal.Data().(*core.FnDefInfo); isFn {
+		r.Check.NoteBehaveReader(target, *fd)
 	}
-	if name == "make" && IsConcrete(args[1]) {
+	if name == "make" && IsConcrete(&args[1]) {
 		r.Check.NoteBehaveMaker(target)
 	}
 	return nil
@@ -329,17 +329,17 @@ func behaveReturns(args []Value, r *Registry) []Value {
 // extractFnDefInfo unwraps a TFunction value into its
 // FnDefInfo payload. Returns an error for anything else.
 func extractFnDefInfo(v Value) (core.FnDefInfo, error) {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return core.FnDefInfo{}, errors.New("fn arg is nil")
 	}
-	if !v.Parent.Equal(core.TFunction) {
-		return core.FnDefInfo{}, fmt.Errorf("fn arg must be a Function (got %s)", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		return core.FnDefInfo{}, fmt.Errorf("fn arg must be a Function (got %s)", v.Parent().String())
 	}
-	info, ok := v.Data.(core.FnDefInfo)
+	info, ok := v.Data().(*core.FnDefInfo)
 	if !ok {
-		return core.FnDefInfo{}, fmt.Errorf("fn arg has invalid payload (%T)", v.Data)
+		return core.FnDefInfo{}, fmt.Errorf("fn arg has invalid payload (%T)", v.Data())
 	}
-	return info, nil
+	return *info, nil
 }
 
 // validateCompareSig enforces shape `[[T T] [Integer] [body]]` and
@@ -654,8 +654,8 @@ func (u *userBehavior) runCompareBody(a, b Value) (int, error) {
 		return 0, fmt.Errorf("behave compare %s: body produced no result", u.typeName)
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TInteger) {
-		return 0, fmt.Errorf("behave compare %s: body must return Integer, got %s", u.typeName, top.Parent.String())
+	if !top.Parent().ConformsTo(core.TInteger) {
+		return 0, fmt.Errorf("behave compare %s: body must return Integer, got %s", u.typeName, top.Parent().String())
 	}
 	n, err := core.AsInteger(top)
 	if err != nil {
@@ -771,7 +771,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 	// an Item-refine), which is a supertype of the target; reparent
 	// to the target so the user sees an Item-typed value back.
 	if u.unifyTarget != nil {
-		tp := top.Parent
+		tp := top.Parent()
 		matches := tp.Equal(u.unifyTarget) ||
 			tp.IsAncestor(u.unifyTarget) ||
 			u.unifyTarget.IsAncestor(tp)
@@ -784,7 +784,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 			}
 		}
 		if u.unifyTarget.IsAncestor(tp) && !tp.Equal(u.unifyTarget) {
-			top = core.ReparentValue(top, u.unifyTarget)
+			top = core.MintRetagged(&top, u.unifyTarget)
 		}
 	}
 	return top, nil
@@ -837,9 +837,9 @@ func (u *userBehavior) runTruthyBody(v Value) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !top.Parent.ConformsTo(core.TBoolean) {
+	if !top.Parent().ConformsTo(core.TBoolean) {
 		return false, fmt.Errorf("behave truthy %s: body must return Boolean, got %s",
-			u.typeName, top.Parent.String())
+			u.typeName, top.Parent().String())
 	}
 	return core.AsBoolean(top)
 }
@@ -900,9 +900,9 @@ func (u *userBehavior) runEqualityBody(body []Value, slot string, a, b Value) (b
 		return false, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TBoolean) {
+	if !top.Parent().ConformsTo(core.TBoolean) {
 		return false, fmt.Errorf("behave %s %s: body must return Boolean, got %s",
-			slot, u.typeName, top.Parent.String())
+			slot, u.typeName, top.Parent().String())
 	}
 	return core.AsBoolean(top)
 }
@@ -930,7 +930,7 @@ func (u *userBehavior) Size(v Value) int {
 	u.inSize = true
 	defer func() { u.inSize = false }()
 	top, err := u.runUnaryBody(u.sizeBody, v, "size")
-	if err != nil || !top.Parent.ConformsTo(core.TInteger) {
+	if err != nil || !top.Parent().ConformsTo(core.TInteger) {
 		return sizeAbove()
 	}
 	n, err := core.AsInteger(top)
@@ -1001,7 +1001,7 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 // [[t:Temp][String]['T']])`) runs no interpreter on a compiled run (the
 // interp-entry census's code-bodies.tsv row). The two exclusions are the
 // ways a top engine's run of scalar literals is NOT the identity:
-// resolveAtomReferents stamps an atom's referent, and the end-of-run gen
+// stampAtomReferents stamps an atom's referent, and the end-of-run gen
 // check raises on a spec some enclosing `gen` left pending. Everything else
 // runs as before.
 //
@@ -1015,7 +1015,7 @@ func runBehaviorBody(r *Registry, body []Value) ([]Value, error) {
 	if behaviorBodyStepless(r, body) {
 		return append([]Value(nil), body...), nil
 	}
-	return core.RunPooledTop(r, append([]Value{}, body...))
+	return core.RunPooledTop(r, body)
 }
 
 // behaviorBodyStepless reports whether runBehaviorBody may answer body
@@ -1025,7 +1025,7 @@ func behaviorBodyStepless(r *Registry, body []Value) bool {
 		return false
 	}
 	for _, v := range body {
-		if _, isAtom := v.Data.(core.AtomPayload); isAtom {
+		if _, isAtom := v.Data().(core.AtomPayload); isAtom {
 			return false
 		}
 	}
@@ -1048,8 +1048,8 @@ func (u *userBehavior) runCanonBody(v Value) (string, error) {
 		return "", fmt.Errorf("body produced no result")
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TString) {
-		return "", fmt.Errorf("body must return String, got %s", top.Parent.String())
+	if !top.Parent().ConformsTo(core.TString) {
+		return "", fmt.Errorf("body must return String, got %s", top.Parent().String())
 	}
 	s, err := core.AsString(top)
 	if err != nil {

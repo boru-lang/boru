@@ -7,7 +7,7 @@ import "testing"
 // preserved verbatim as the equivalence ORACLE: the seam must answer
 // exactly as the enumeration did, for every payload kind.
 func isTypeBodyLegacy(v Value) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return true
 	}
 	if IsImplicitMap(v) {
@@ -22,22 +22,22 @@ func isTypeBodyLegacy(v Value) bool {
 	if IsTableType(v) {
 		return true
 	}
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return true
 	}
 	if IsNegation(v) {
 		return true
 	}
-	if IsTypedList(v) {
+	if IsTypedList(&v) {
 		return true
 	}
-	if IsTypedMap(v) {
+	if IsTypedMap(&v) {
 		return true
 	}
 	if IsBoundedType(v) {
 		return true
 	}
-	if IsClassType(v) {
+	if IsClassType(&v) {
 		return true
 	}
 	if IsSurfaceType(v) {
@@ -49,10 +49,10 @@ func isTypeBodyLegacy(v Value) bool {
 	if v.IsDepScalar() {
 		return true
 	}
-	if v.Parent.Equal(TFnUndef) {
+	if v.Parent().Equal(TFnUndef) {
 		return true
 	}
-	if v.Parent.Equal(TFunction) {
+	if v.Parent().Equal(TFunction) {
 		return true
 	}
 	if IsMicronType(v) {
@@ -81,7 +81,7 @@ func TestIsTypeContentMirrorsLegacy(t *testing.T) {
 
 	disjunct := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewNone()})
 	misparentedDisjunct := disjunct
-	misparentedDisjunct.Parent = TList // shared variant at the wrong identity
+	misparentedDisjunct.SetParent(TList) // shared variant at the wrong identity
 
 	typedList := NewValueRaw(TList, ChildTypeInfo{Child: NewTypeLiteral(TInteger)})
 	typedMap := NewValueRaw(TMap, ChildTypeInfo{Child: NewTypeLiteral(TInteger)})
@@ -119,7 +119,7 @@ func TestIsTypeContentMirrorsLegacy(t *testing.T) {
 		{"host instance", NewExtension(TScalar, struct{}{})},
 	}
 	for _, c := range cases {
-		if got, want := IsTypeBody(c.v), isTypeBodyLegacy(c.v); got != want {
+		if got, want := IsTypeBody(&c.v), isTypeBodyLegacy(c.v); got != want {
 			t.Errorf("%s: IsTypeBody=%v, legacy oracle=%v", c.name, got, want)
 		}
 	}
@@ -133,8 +133,8 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 		DecimalPayload{}, StrPayload{}, BoolPayload{}, AtomPayload{},
 		PathonPayload{}, MicronPayload{}, ListPayload{}, ParenExprPayload{},
 		InterpStringPayload{}, TimePayload{}, DurationPayload{},
-		TimezonePayload{}, NonePayload{}, WordInfo{}, ForwardInfo{},
-		MarkInfo{}, MoveInfo{}, SpliceInfo{}, SugarInfo{},
+		TimezonePayload{}, NonePayload{}, WordInfo{}, &ForwardInfo{},
+		&MarkInfo{}, &MoveInfo{}, SpliceInfo{}, SugarInfo{},
 		ReturnCheckInfo{}, DefCleanupInfo{}, FrameOpenInfo{},
 		ModuleDesc{}, ClassInstanceInfo{}, DispatchModInfo{},
 		ErrorInfo{}, GenInstRef{}, GenParam{}, PathonInfo{},
@@ -147,7 +147,7 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 	}
 	owner := NewInteger(1)
 	for i, p := range ordinary {
-		if p.IsTypeContent(&owner) {
+		if p.IsTypeContent(owner.Parent()) {
 			t.Errorf("ordinary payload %d (%T) must not be type content off its identity", i, p)
 		}
 	}
@@ -166,7 +166,7 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 	guarded := []Payload{
 		DisjunctInfo{}, NegationInfo{}, ChildTypeInfo{}, RecordTypeInfo{},
 		OptionsTypeInfo{}, TableTypeInfo{}, TableData{},
-		MaterializerPayload{}, FnUndefInfo{}, FnDefInfo{}, MapPayload{},
+		MaterializerPayload{}, FnUndefInfo{}, &FnDefInfo{}, MapPayload{},
 	}
 	for i, p := range guarded {
 		if p.IsTypeContent(nil) {
@@ -216,7 +216,7 @@ func TestTypeBodyStamp(t *testing.T) {
 		t.Fatalf("disjunct install: %v", err)
 	}
 	mb, ok := r.LookupTypeName("PtcMaybe").TypeBody()
-	if !ok || !IsDisjunct(mb) {
+	if !ok || !IsDisjunct(&mb) {
 		t.Errorf("the disjunct body must be recoverable from the node, got %v ok=%v", mb, ok)
 	}
 }

@@ -80,11 +80,11 @@ func TestSetpathResidualRetainsTag(t *testing.T) {
 	for _, src := range []string{`def xs:[:Integer] [1 2 3] xs`, `def m:{:Integer} {a:1} m`} {
 		v, _ := tcValue(t, src)
 		res := d2DynamicTypedResidual(v)
-		if !res.Dynamic {
+		if !IsDynamic(&res) {
 			t.Errorf("[%s] setpath residual should stay dynamic", src)
 		}
 		if ci, cerr := AsChildType(res); cerr != nil || !ci.Child.Equal(TInteger) {
-			t.Errorf("[%s] setpath residual child = %v (err %v), want Integer", src, res.Parent, cerr)
+			t.Errorf("[%s] setpath residual child = %v (err %v), want Integer", src, res.Parent(), cerr)
 		}
 		if e, ok := res.ElemConstraint(); !ok || !e.Equal(TInteger) {
 			t.Errorf("[%s] setpath residual lost its elem pointer", src)
@@ -92,7 +92,7 @@ func TestSetpathResidualRetainsTag(t *testing.T) {
 	}
 	// An untyped receiver keeps the plain dynamic carrier (no tag).
 	u, _ := tcValue(t, `def u [1 2 3] u`)
-	if _, ok := d2DynamicTypedResidual(u).ElemConstraint(); ok {
+	if _, ok := addrOf(d2DynamicTypedResidual(u)).ElemConstraint(); ok {
 		t.Errorf("untyped setpath residual should carry no elem tag")
 	}
 }

@@ -45,7 +45,7 @@ func i2gState(t *testing.T) *EmitState {
 // i2gRecord is the shape If2ReturnsFn hands the recorder for a then arm that
 // nets nothing: no else, an empty then-stack, and the phantom None the caller
 // registers as the branch result. `frag` is the arm fragment under test.
-func i2gRecord(frag core.EmitFragmentRef, out core.Value) core.BranchRecord {
+func i2gRecord(frag core.EmitFragmentRef, out *core.Value) core.BranchRecord {
 	return core.BranchRecord{
 		Cond:    core.NewBoolean(true),
 		HasElse: false,
@@ -60,7 +60,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	// `if 5 6`), so the recorder has no events to lower on the true path.
 	es := i2gState(t)
 	out := core.NewCarrier(core.TNone)
-	es.RecordBranch(i2gRecord(i2gNilFragmentRef(), out))
+	es.RecordBranch(i2gRecord(i2gNilFragmentRef(), &out))
 
 	if es.Compilable {
 		t.Fatal("a 2-arg if whose then arm was never captured must decline the program")
@@ -74,7 +74,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	if es.SiteCounts[SiteMono] != 0 {
 		t.Errorf("a declined branch must append no event, got %d mono sites", es.SiteCounts[SiteMono])
 	}
-	if _, ok := es.producedBy[out.ID]; ok {
+	if _, ok := es.producerOf(&out); ok {
 		t.Error("a declined branch must not register its result as produced")
 	}
 
@@ -83,7 +83,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	// zeroOut branch, no merge slot — and the program stays compilable.
 	es2 := i2gState(t)
 	out2 := core.NewCarrier(core.TNone)
-	es2.RecordBranch(i2gRecord(&EmitFragment{}, out2))
+	es2.RecordBranch(i2gRecord(&EmitFragment{}, &out2))
 
 	if !es2.Compilable {
 		t.Fatalf("a captured 0-value then arm must record, got compile failure %q", es2.Reason)
@@ -91,7 +91,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	if es2.SiteCounts[SiteMono] != 1 {
 		t.Fatalf("a recorded branch = %d mono sites, want 1", es2.SiteCounts[SiteMono])
 	}
-	pr, ok := es2.producedBy[out2.ID]
+	pr, ok := es2.producerOf(&out2)
 	if !ok {
 		t.Fatal("the recorded branch must register its (phantom None) result, so RecordCall's double-record guard elides the dispatch")
 	}

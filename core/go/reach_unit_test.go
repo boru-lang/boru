@@ -21,7 +21,7 @@ type stubLensRuntime struct {
 	args   []Value
 }
 
-func (s *stubLensRuntime) StampDetached(_ *Registry, fd FnDefInfo, _ SrcPos) {
+func (s *stubLensRuntime) StampDetached(_ *Registry, fd *FnDefInfo, _ string, _ SrcPos) {
 	s.stamps++
 	if !s.land {
 		return
@@ -41,8 +41,9 @@ func (s *stubLensRuntime) InvokeCompiledStrict(_ *Registry, _ *Signature, args [
 	return s.res, s.err, s.ran
 }
 
-func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) { return v, false }
-func (s *stubLensRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
+func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool)    { return v, false }
+func (s *stubLensRuntime) ClosureRender(*ClosurePayload, string) (string, bool) { return "", false }
+func (s *stubLensRuntime) LazyStamp(*Registry, *FnDefInfo, string, *Signature, SrcPos) bool {
 	return false
 }
 
@@ -144,7 +145,7 @@ func TestCompiledLensSigCachesTheDecline(t *testing.T) {
 // the propagation fn_params.go depends on when it rebuilds a ReachInfo around
 // the same lens.
 func TestNewReachCarriesTheLensCache(t *testing.T) {
-	fresh, err := AsReach(NewReach(ReachInfo{Segments: lensSegs()}))
+	fresh, err := AsReach(addrOf(NewReach(ReachInfo{Segments: lensSegs()})))
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestNewReachCarriesTheLensCache(t *testing.T) {
 	}
 
 	existing := &lensUnit{}
-	carried, err := AsReach(NewReach(ReachInfo{Segments: lensSegs(), unit: existing}))
+	carried, err := AsReach(addrOf(NewReach(ReachInfo{Segments: lensSegs(), unit: existing})))
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestApplyReachLanes(t *testing.T) {
 
 	recv := NewInteger(7)
 	segs := lensSegs()
-	info, err := AsReach(NewReach(ReachInfo{Segments: segs}))
+	info, err := AsReach(addrOf(NewReach(ReachInfo{Segments: segs})))
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestApplyReachLanes(t *testing.T) {
 	// interpreted chain owns the answer. `7.a` is not a field read, so this
 	// errors — which is the point: it proves the fallback actually ran rather
 	// than the stub answering.
-	declining, err := AsReach(NewReach(ReachInfo{Segments: segs}))
+	declining, err := AsReach(addrOf(NewReach(ReachInfo{Segments: segs})))
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -244,7 +245,7 @@ func TestApplyReachBailReplayAttribution(t *testing.T) {
 
 	lane := func(declined error) []string {
 		t.Helper()
-		info, aErr := AsReach(NewReach(ReachInfo{Segments: lensSegs()}))
+		info, aErr := AsReach(addrOf(NewReach(ReachInfo{Segments: lensSegs()})))
 		if aErr != nil {
 			t.Fatalf("AsReach: %v", aErr)
 		}

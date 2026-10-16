@@ -21,12 +21,22 @@ func TestTrapHeldBeneath(t *testing.T) {
 	trap := EmitEvent{seq: 8, kind: evTrap, trap: EmitTrap{pos: deoptAt(9)}}
 	tree := rootTreeEvents([]EmitEvent{trap}, false)
 	held, slot, lit, orphan := core.NewCarrier(core.TAny), core.NewCarrier(core.TAny), core.NewInteger(4), core.NewCarrier(core.TAny)
-	held.ID, slot.ID, orphan.ID = "held", "slot", "orphan"
+	core.SetID(&held, "held")
+	core.SetID(&slot, "slot")
+	core.SetID(&orphan, "orphan")
 	fresh := func(stack ...core.Value) (*EmitState, *lowerer) {
 		es := NewEmitState()
 		es.rootBody, es.trapAt = body, 8
-		es.producedBy[held.ID] = producer{seq: 3}
-		es.producedBy[slot.ID] = producer{seq: 4}
+		// The told stack's holders are the ones read: stamp them as the
+		// results of their events.
+		for i := range stack {
+			switch core.IDOf(&stack[i]) {
+			case "held":
+				es.stampProduced(&stack[i], 3, 0)
+			case "slot":
+				es.stampProduced(&stack[i], 4, 0)
+			}
+		}
 		if stack != nil {
 			es.rootStmtStacks = map[core.SrcPos][]core.Value{deoptAt(3): stack}
 		}
@@ -94,38 +104,42 @@ func TestNoteSpliceFired(t *testing.T) {
 		return core.NewSplice(core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)}))
 	}
 	one, fired, three := core.NewInteger(1), marker(), core.NewInteger(3)
-	one.ID, fired.ID, three.ID = "one", "fired", "three"
+	core.SetID(&one, "one")
+	core.SetID(&fired, "fired")
+	core.SetID(&three, "three")
 	fresh := func() *EmitState {
 		es := NewEmitState()
 		es.Compilable = true
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 3}})
-		outs := []core.Value{one, fired, three}
-		for i, o := range outs {
+		// The call's results are these holders, stamped for this state.
+		for i, o := range []*core.Value{&one, &fired, &three} {
 			es.setProducedAt(o, seq, i)
 		}
-		es.noteSpliceOuts(seq, outs)
+		es.noteSpliceOuts(seq, []core.Value{one, fired, three})
 		return es
 	}
 	es := fresh()
-	seq := es.producedBy[fired.ID].seq
+	seq := es.producerSeq(&fired)
 	es.NoteSpliceFired(fired, core.SrcPos{})
 	ev := es.eventBySeq(seq)
-	if ev.call.nout != 2 || es.producedBy[three.ID] != (producer{seq: seq, idx: 1}) || es.producedBy[one.ID] != (producer{seq: seq}) {
-		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, es.producedBy[three.ID], es.producedBy[one.ID])
+	p3, _ := es.producerOf(&three)
+	p1, _ := es.producerOf(&one)
+	if ev.call.nout != 2 || p3 != (producer{seq: seq, idx: 1}) || p1 != (producer{seq: seq}) {
+		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, p3, p1)
 	}
-	if _, still := es.producedBy[fired.ID]; still || !es.firedSplices[seq][fired.ID] {
+	if _, still := es.producerOf(&fired); still || !es.firedSplices[seq][core.IDOf(&fired)] {
 		t.Error("the fired marker is forgotten and noted fired")
 	}
 	lw := &lowerer{es: es}
-	if outs := lw.spliceOutsAt(seq); len(outs) != 3 || !core.IsSplice(outs[1]) {
+	if outs := lw.spliceOutsAt(seq); len(outs) != 3 || !core.IsSplice(&outs[1]) {
 		t.Errorf("every splice fired: the call carries the results the pass stepped: %v", outs)
 	}
 
 	// The markers left alone.
 	computed := core.NewSplice(core.NewCarrier(core.TList))
-	computed.ID = "computed-marker"
+	core.SetID(&computed, "computed-marker")
 	unnoted := marker()
-	unnoted.ID = "unnoted"
+	core.SetID(&unnoted, "unnoted")
 	for _, c := range []struct {
 		name string
 		es   func() *EmitState
@@ -180,15 +194,15 @@ func TestNoteSpliceFired(t *testing.T) {
 // is owed there.
 func TestSpliceNotesRollBack(t *testing.T) {
 	marker, three := core.NewSplice(core.NewList([]core.Value{core.NewInteger(1)})), core.NewInteger(3)
-	marker.ID, three.ID = "marker", "three"
+	core.SetID(&marker, "marker")
+	core.SetID(&three, "three")
 	es := NewEmitState()
 	record := func() int {
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2}})
-		outs := []core.Value{marker, three}
-		for i, o := range outs {
+		for i, o := range []*core.Value{&marker, &three} {
 			es.setProducedAt(o, seq, i)
 		}
-		es.noteSpliceOuts(seq, outs)
+		es.noteSpliceOuts(seq, []core.Value{marker, three})
 		return seq
 	}
 	cp := es.Checkpoint()

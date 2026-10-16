@@ -540,7 +540,7 @@ func stripQuoteArgs(sigs []Signature) []Signature {
 // runtime handler re-checks the concrete value). See
 // design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 func d2WriteConforms(elem, v Value) bool {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return true
 	}
 	_, ok := Unify(elem, v)
@@ -568,7 +568,7 @@ func d2AdoptTyped(r *Registry, container, v Value, word string) (Value, error) {
 			fmt.Sprintf("%s: value %s does not conform to element type %s", word, v.String(), elem.String()),
 			word)
 	}
-	if IsTypedMap(elem) || IsTypedList(elem) {
+	if IsTypedMap(&elem) || IsTypedList(&elem) {
 		// Nested typed container — store the recursively-tagged value. A FLEX child
 		// is by-reference: Unify above validated it but rebuilt a DETACHED copy
 		// (unifyTyped*WithConcrete's flex branch allocates a fresh store), so a
@@ -642,9 +642,9 @@ func d2ReTagContainer(r *Registry, typedSrc, result Value, word string) (Value, 
 	}
 	var constraint Value
 	switch {
-	case result.Parent.ConformsTo(TMap):
+	case result.Parent().ConformsTo(TMap):
 		constraint = core.NewTypedMap(elem)
-	case result.Parent.ConformsTo(TList):
+	case result.Parent().ConformsTo(TList):
 		constraint = core.NewCarrierTypedListValue(elem)
 	default:
 		return result, nil
@@ -700,7 +700,7 @@ func d2TypedMapResidual(src Value) Value {
 		return NewCarrier(TMap)
 	}
 	v := core.NewTypedMap(elem)
-	v.Carrier = true
+	v.SetCarrier(true)
 	v.SetElemConstraint(elem)
 	return v
 }
@@ -796,7 +796,7 @@ func delFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	container := args[1]
 	m, err := AsMutableMap(container)
 	if err != nil {
-		return nil, r.BoruError("del_error", "del: expected a FlexMap, got "+container.Parent.String(), "del")
+		return nil, r.BoruError("del_error", "del: expected a FlexMap, got "+container.Parent().String(), "del")
 	}
 	m.Delete(StoreKey(args[0]))
 	return []Value{container}, nil
@@ -812,7 +812,7 @@ func delWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 	wd, err := AsWeakFlexMap(container)
 	if err != nil {
 		return nil, r.BoruError("del_error",
-			"del: expected a WeakFlexMap, got "+container.Parent.String(), "del")
+			"del: expected a WeakFlexMap, got "+container.Parent().String(), "del")
 	}
 	wd.DeleteKey(StoreKey(args[0]))
 	return []Value{container}, nil
@@ -840,7 +840,7 @@ func delFlexXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	fd, err := AsFlexXml(container)
 	if err != nil {
 		return nil, r.BoruError("del_error",
-			"del: expected a FlexXml, got "+container.Parent.String(), "del")
+			"del: expected a FlexXml, got "+container.Parent().String(), "del")
 	}
 	if fd.Attr != nil {
 		fd.Attr.Delete(StoreKey(args[0]))
@@ -856,7 +856,7 @@ func delWeakFlexXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 	wd, err := AsWeakFlexXml(container)
 	if err != nil {
 		return nil, r.BoruError("del_error",
-			"del: expected a WeakFlexXml, got "+container.Parent.String(), "del")
+			"del: expected a WeakFlexXml, got "+container.Parent().String(), "del")
 	}
 	wd.DeleteAttr(StoreKey(args[0]))
 	return []Value{container}, nil
@@ -870,7 +870,7 @@ func delStoreHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	store, err := AsStore(args[1])
 	if err != nil {
 		return nil, reg.BoruError("del_error",
-			"del: expected a Store, got "+args[1].Parent.String(), "del")
+			"del: expected a Store, got "+args[1].Parent().String(), "del")
 	}
 	CowDel(store, StoreKey(args[0]), reg)
 	return nil, nil
@@ -928,8 +928,8 @@ func delClassInstanceHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 
 func delClassDetail(args []Value) string {
 	name := "Class"
-	if len(args) == 2 && args[1].Parent != nil {
-		name = args[1].Parent.Leaf()
+	if len(args) == 2 && args[1].Parent() != nil {
+		name = args[1].Parent().Leaf()
 	}
 	return fmt.Sprintf("del: %s fields are sealed — a declared field cannot be removed", name)
 }
@@ -957,8 +957,8 @@ const delListHint = "removing an element shifts the tail, which `set` does not d
 
 func delListDetail(args []Value) string {
 	name := "List"
-	if len(args) == 2 && args[1].Parent != nil {
-		name = args[1].Parent.Leaf()
+	if len(args) == 2 && args[1].Parent() != nil {
+		name = args[1].Parent().Leaf()
 	}
 	return fmt.Sprintf("del: cannot remove an element of a %s by index", name)
 }
@@ -1014,10 +1014,10 @@ func delFlexMapReturns(args []Value, r *Registry) []Value {
 // — reports false and the caller stays silent (the runtime write-time
 // check still guards those instances through their retained TypeRef).
 func classSchemaOf(r *Registry, recv Value) (ClassTypeInfo, bool) {
-	if recv.Parent == nil {
+	if recv.Parent() == nil {
 		return ClassTypeInfo{}, false
 	}
-	if body, ok := r.TopTypeBody(recv.Parent.Leaf()); ok {
+	if body, ok := r.TopTypeBody(recv.Parent().Leaf()); ok {
 		if info, err := AsClassType(body); err == nil {
 			return info, true
 		}
@@ -1032,7 +1032,7 @@ func classSchemaOf(r *Registry, recv Value) (ClassTypeInfo, bool) {
 // top-level straight line; a carrier value, unresolvable schema, or
 // computed key keeps the declared no-residual model silently.
 func setClassInstanceReturns(args []Value, r *Registry) []Value {
-	if !atUncaughtTopLevel(r) || len(args) != 3 || !IsConcrete(args[0]) {
+	if !atUncaughtTopLevel(r) || len(args) != 3 || !IsConcrete(&args[0]) {
 		return []Value{}
 	}
 	info, ok := classSchemaOf(r, args[2])
@@ -1045,14 +1045,14 @@ func setClassInstanceReturns(args []Value, r *Registry) []Value {
 	if !declared {
 		name := info.Name
 		if name == "" {
-			name = args[2].Parent.Name()
+			name = args[2].Parent().Name()
 		}
 		core.CheckAddUniqueDiagnostic(r, "sealed_field",
 			fmt.Sprintf("set: %q is not a field of %s (fields: %s)", key, name, strings.Join(all.Keys(), " ")),
 			"set", args[0].Pos())
 		return []Value{}
 	}
-	if IsConcrete(args[1]) {
+	if IsConcrete(&args[1]) {
 		if _, err := MakeClassFieldValue(args[1], constraint, r); err != nil {
 			core.CheckAddUniqueDiagnostic(r, "type_error",
 				fmt.Sprintf("set: field %q: %s", key, err.Error()), "set", args[0].Pos())
@@ -1063,12 +1063,12 @@ func setClassInstanceReturns(args []Value, r *Registry) []Value {
 
 func setClassInstanceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	container := args[2]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("set_error", "set: cannot set field on type literal", "set")
 	}
-	oi, ok := container.Data.(ClassInstanceInfo)
+	oi, ok := container.Data().(ClassInstanceInfo)
 	if !ok {
-		return nil, fmt.Errorf("set: expected a class instance, got %s", container.Parent.String())
+		return nil, fmt.Errorf("set: expected a class instance, got %s", container.Parent().String())
 	}
 	key := StoreKey(args[0])
 	val := args[1]
@@ -1078,7 +1078,7 @@ func setClassInstanceHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 		if !declared {
 			name := oi.TypeRef.Name
 			if name == "" {
-				name = container.Parent.Name()
+				name = container.Parent().Name()
 			}
 			return nil, r.BoruErrorHint("sealed_field",
 				fmt.Sprintf("set: %q is not a field of %s (fields: %s)", key, name, strings.Join(all.Keys(), " ")),
@@ -1103,7 +1103,7 @@ func setFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	container := args[2]
 	m, err := AsMutableMap(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a FlexMap, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a FlexMap, got "+container.Parent().String(), "set")
 	}
 	// A typed flex map ({:T}) enforces its element tag on an IN-PLACE write and
 	// stores the recursively re-tagged value — flex only toggles mutability, it
@@ -1131,7 +1131,7 @@ func setWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 	container := args[2]
 	wd, err := AsWeakFlexMap(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a WeakFlexMap, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a WeakFlexMap, got "+container.Parent().String(), "set")
 	}
 	// A typed weak map ({:T}) enforces its element tag on a write,
 	// exactly like the flex column — weakness never drops the element
@@ -1160,7 +1160,7 @@ func weakValueMirror(r *Registry, v Value, word, container string) {
 	// literal, or ANY None-shaped check value — None has a single
 	// inhabitant, so even a None carrier is provably the none the
 	// runtime declines.
-	if !IsConcrete(v) && !core.IsBareTypeNode(v) && !core.IsNoneShape(v) {
+	if !IsConcrete(&v) && !core.IsBareTypeNode(&v) && !core.IsNoneShape(v) {
 		return
 	}
 	if refusal := core.ClassifyWeakRefusal(v); refusal != nil {
@@ -1219,7 +1219,7 @@ func setWeakFlexListHandler(args []Value, _ map[string]Value, _ []Value, r *Regi
 	container := args[2]
 	wd, err := AsWeakFlexList(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a WeakFlexList, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a WeakFlexList, got "+container.Parent().String(), "set")
 	}
 	asInt, ierr := args[0].AsConcreteInteger()
 	if ierr != nil {
@@ -1249,7 +1249,7 @@ func setWeakFlexXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 	container := args[2]
 	wd, err := AsWeakFlexXml(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a WeakFlexXml, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a WeakFlexXml, got "+container.Parent().String(), "set")
 	}
 	wd.SetAttr(StoreKey(args[0]), args[1])
 	return []Value{container}, nil
@@ -1259,7 +1259,7 @@ func setFlexListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 	container := args[2]
 	fd, err := AsFlexList(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a FlexList, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a FlexList, got "+container.Parent().String(), "set")
 	}
 	asInt, ierr := args[0].AsConcreteInteger()
 	if ierr != nil {
@@ -1289,7 +1289,7 @@ func setFlexXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	container := args[2]
 	fd, err := AsFlexXml(container)
 	if err != nil {
-		return nil, r.BoruError("set_error", "set: expected a FlexXml, got "+container.Parent.String(), "set")
+		return nil, r.BoruError("set_error", "set: expected a FlexXml, got "+container.Parent().String(), "set")
 	}
 	name := StoreKey(args[0])
 	if !core.IsValidXmlName(name) {
@@ -1359,11 +1359,11 @@ func getrXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // sound to resolve from an abstract instance carrier. A plain RNG-bound
 // wrapper (rand-int) has no CallableSpec and stays dynamic.
 func isClosureBearingWrapper(v Value) bool {
-	fd, ok := v.Data.(FnDefInfo)
+	fd, ok := FnDefOf(v.Data())
 	if !ok {
 		return false
 	}
-	inner := FnHomeLookup(&fd)
+	inner := FnHomeLookup(fd)
 	if inner == nil {
 		return false
 	}
@@ -1405,7 +1405,7 @@ func recordSchemaFieldReturns(rt RecordTypeInfo, key Value) []Value {
 	// `mini re` result carrier) propagates the nested schema so a
 	// chained read (`r.fst.m`) narrows too. Same gradual modality as
 	// the flat field case: dynamic, discharged by a guard at run time.
-	if nested, ok := fv.Data.(RecordTypeInfo); ok && nested.Fields != nil {
+	if nested, ok := fv.Data().(RecordTypeInfo); ok && nested.Fields != nil {
 		return []Value{NewDynamicCarrierValue(NewRecordType(nested.Fields))}
 	}
 	ft := ValueType(fv)
@@ -1432,7 +1432,7 @@ func d2TypedContainerBound(container Value) (Value, bool) {
 		return Value{}, false
 	}
 	child := ci.Child
-	if child.Parent == nil || child.Parent.Equal(TAny) {
+	if child.Parent() == nil || child.Parent().Equal(TAny) {
 		return Value{}, false
 	}
 	// A disjunct element ({:(String tor Integer)}) keeps its DisjunctInfo bound;
@@ -1445,10 +1445,10 @@ func d2TypedContainerBound(container Value) (Value, bool) {
 	// (r get 1)` over an each-produced typed list folded differently). The
 	// exact narrowing needs the downstream dispatch fixed first; kept at the
 	// supertype until then. See design/TYPED-CONTAINER-TAG-RETENTION.0.md (R4).
-	if IsDisjunct(child) {
-		return NewDynamicCarrierValue(CloneValue(child)), true
+	if IsDisjunct(&child) {
+		return NewDynamicCarrierValue(child), true
 	}
-	return NewDynamicCarrier(child.Parent), true
+	return NewDynamicCarrier(child.Parent()), true
 }
 
 func getNodeReturns(args []Value, r *Registry) []Value {
@@ -1463,7 +1463,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		return out
 	}
 	key, container := args[0], args[1]
-	if !IsConcrete(key) {
+	if !IsConcrete(&key) {
 		return dyn
 	}
 	// A record-schema carrier (a record-typed param reparented at the call
@@ -1475,14 +1475,14 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// guard — never a committed strict op on a possibly-absent field (the
 	// Array<T> OOB→None lesson). A field outside the schema, or a dispatch-
 	// bearing (Function/FnDef) field, keeps dynamic Any.
-	if rt, ok := container.Data.(RecordTypeInfo); ok && rt.Fields != nil {
+	if rt, ok := container.Data().(RecordTypeInfo); ok && rt.Fields != nil {
 		// A SHAPE carrier (a call-site shape specialisation's Map param,
 		// core.ShapeOf): the unit's entry guard proved the exact key set and
 		// every value's tag, and a plain Map is copy-on-write, so a field in
 		// the shape reads STRICT at its tag.
 		if core.IsShapeCarrier(container) {
 			if fv, hit := rt.Fields.Get(getKey(key)); hit {
-				return []Value{NewCarrier(fv.Parent)}
+				return []Value{NewCarrier(fv.Parent())}
 			}
 		}
 		return recordSchemaFieldReturns(rt, key)
@@ -1495,10 +1495,10 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// field absent at run time read optimistically and are discharged by
 	// a guard — recordSchemaFieldReturns never claims strictly. A union
 	// with no record alternative falls through unchanged.
-	if container.Dynamic {
+	if IsDynamic(&container) {
 		if di, err := AsDisjunct(container); err == nil {
 			for _, alt := range di.Alternatives {
-				if rt, ok := alt.Data.(RecordTypeInfo); ok && rt.Fields != nil {
+				if rt, ok := alt.Data().(RecordTypeInfo); ok && rt.Fields != nil {
 					return recordSchemaFieldReturns(rt, key)
 				}
 			}
@@ -1530,20 +1530,20 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// fn declared `[TestCase]`): `type Type = Value`, and the record-refine
 	// lattice node carries its RecordTypeInfo body — recover the field
 	// schema from the canonical node so instance field reads narrow too.
-	if container.Carrier && container.Parent != nil {
-		if rt, ok := container.Parent.Data.(RecordTypeInfo); ok && rt.Fields != nil {
+	if container.Carrier() && container.Parent() != nil {
+		if rt, ok := container.Parent().Data().(RecordTypeInfo); ok && rt.Fields != nil {
 			return recordSchemaFieldReturns(rt, key)
 		}
 	}
 	// D2 Part B: a TYPED-map carrier ({:T}) narrows the read to its declared
 	// element type. A concrete map falls through to the exact per-key narrowing
 	// below; an untyped carrier keeps dynamic(Any).
-	if !IsConcrete(container) && IsTypedMap(container) {
+	if !IsConcrete(&container) && IsTypedMap(&container) {
 		if b, ok := d2TypedContainerBound(container); ok {
 			return []Value{b}
 		}
 	}
-	if !IsConcrete(container) || !container.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&container) || !container.Parent().ConformsTo(TMap) {
 		return dyn
 	}
 	m, err := AsMap(container)
@@ -1577,26 +1577,27 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// only the captured RNG state differs, and a closure-driver handler like
 	// rand-list-of does NOT itself draw from the RNG (the body does, against the
 	// module-export generator it names), so the resolved shape is seed-agnostic.
-	// Cloned for a fresh ID (the stored value's ID is shared with the map field
-	// and would collide in operand-provenance tracking). A NON-closure wrapper
-	// (`r.int`, RNG-bound) stays dynamic so it does not bake a seed-specific
-	// handler -- it takes the runtime CALL_DYNAMIC path instead.
-	if val.Parent.ConformsTo(TFunction) &&
+	// The member is read as itself (it was "cloned for a fresh ID", but a
+	// clone shares a fn value whole, identity and all). A NON-closure
+	// wrapper (`r.int`, RNG-bound) stays dynamic so it does not bake a
+	// seed-specific handler -- it takes the runtime CALL_DYNAMIC path
+	// instead.
+	if val.Parent().ConformsTo(TFunction) &&
 		isClosureBearingWrapper(val) {
-		return []Value{CloneValue(val)}
+		return []Value{val}
 	}
 	// On a PLAIN check (no compile pass recording) a stored fn value is read
 	// as itself, so the pass dispatches it over what follows exactly as the
 	// run does — `def m {a:size/v}  m.a [1 2 3]` leaves one Integer, not the
 	// member and its argument (NUR112). The compile pass keeps the dynamic
 	// carrier below: its arrival is claimed through the shaped method model.
-	if r != nil && !r.Check.Recorder().Armed() && val.Parent.ConformsTo(TFunction) {
-		if _, ok := val.Data.(FnDefInfo); ok {
-			return []Value{CloneValue(val)}
+	if r != nil && !r.Check.Recorder().Armed() && val.Parent().ConformsTo(TFunction) {
+		if _, ok := val.Data().(*FnDefInfo); ok {
+			return []Value{val}
 		}
 	}
-	if val.Parent.ConformsTo(TFunction) ||
-		IsReach(val) || IsSplice(val) {
+	if val.Parent().ConformsTo(TFunction) ||
+		IsReach(&val) || IsSplice(&val) {
 		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):
 		// a NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
 		// stays dynamic — the runtime instance carries per-call state, so the
@@ -1606,7 +1607,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		// NoteMethodShape vets the member (delegation wrapper only, never a
 		// genuine 0-arg overload — the miscompile-E auto-dispatch class stays
 		// declined); everything it declines keeps the bare dynamic Any.
-		if r != nil && val.Parent.ConformsTo(TFunction) {
+		if r != nil && val.Parent().ConformsTo(TFunction) {
 			out := NewDynamicCarrier(TAny)
 			r.Check.NoteMethodShape(out, val)
 			return []Value{out}
@@ -1614,17 +1615,24 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		return dyn
 	}
 	// A concrete LIST / MAP field folds to the stored CONTAINER value, not
-	// merely its type carrier: cloned so it carries a FRESH ID (the stored
-	// value's ID is shared with the map field and would collide in the
-	// emitter's operand-provenance tracking — `def a {b:5} [a.b]`). Folding
+	// merely its type carrier, under a FRESH ID (the stored value's ID is
+	// shared with the map field and would collide in the emitter's
+	// operand-provenance tracking — `def a {b:5} [a.b]`). Folding
 	// the concrete container lets a downstream `(m get "k") size` / `for`
 	// over the field see a concrete count instead of a carrier Integer, so
 	// a statically-empty collection's loop body is correctly pruned rather
 	// than analysed over Any (module-test:38). Scalars keep the type
 	// carrier — there is nothing to fold, and the ID-collision guard above
 	// is the reason we never returned the bare stored scalar.
-	if IsConcrete(val) && (val.Parent.ConformsTo(TList) || val.Parent.ConformsTo(TMap)) {
-		return []Value{CloneValue(val)}
+	if IsConcrete(&val) && (val.Parent().ConformsTo(TList) || val.Parent().ConformsTo(TMap)) {
+		if _, flex := val.Data().(*FlexListData); flex || IsFlexMap(val) {
+			// A flex member's store is shared by design: the fold reads an
+			// instance of its own.
+			return []Value{CloneValue(val)}
+		}
+		// The stored container itself, under an identity of its own: its
+		// elements are shared (value semantics), so nothing is copied.
+		return []Value{core.MintFresh(&val)}
 	}
 	return []Value{elementReadCarrier(val)}
 }
@@ -1669,7 +1677,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// D2 Part B: an index read over a TYPED-list carrier ([:T]) narrows to its
 	// declared element type. A concrete list falls through to the exact per-index
 	// narrowing below; an untyped carrier keeps dynamic(Any).
-	if len(args) == 2 && IsConcrete(args[0]) && !IsConcrete(args[1]) && IsTypedList(args[1]) {
+	if len(args) == 2 && IsConcrete(&args[0]) && !IsConcrete(&args[1]) && IsTypedList(&args[1]) {
 		if b, ok := d2TypedContainerBound(args[1]); ok {
 			return []Value{b}
 		}
@@ -1687,8 +1695,8 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 			return dyn
 		}
 	}
-	if len(args) != 2 || !IsConcrete(args[0]) || !IsConcrete(args[1]) ||
-		!args[1].Parent.ConformsTo(TList) {
+	if len(args) != 2 || !IsConcrete(&args[0]) || !IsConcrete(&args[1]) ||
+		!args[1].Parent().ConformsTo(TList) {
 		return dyn
 	}
 	idx, err := AsInteger(args[0])
@@ -1714,11 +1722,11 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// the same way and models the call it makes; the compile pass emits
 	// nothing for the read (compiler.tryFoldReStepWord). A bare type node is
 	// a type literal, data like any other, and keeps the carrier below.
-	if IsWord(el) && !IsBareTypeNode(el) {
+	if IsWord(&el) && !IsBareTypeNode(&el) {
 		return []Value{el}
 	}
-	if el.Parent.ConformsTo(TFunction) ||
-		IsReach(el) || IsSplice(el) {
+	if el.Parent().ConformsTo(TFunction) ||
+		IsReach(&el) || IsSplice(&el) {
 		return dyn
 	}
 	// A QUOTED CODE element (a dispatch-table entry — `def ops [quote [1
@@ -1737,13 +1745,13 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	// Integer key: list index access.
-	if key.Parent.ConformsTo(TInteger) {
+	if key.Parent().ConformsTo(TInteger) {
 		idx, _ := AsInteger(key)
-		if list, _ := AsList(container); !list.IsNil() && container.Parent.ConformsTo(TList) {
+		if list, _ := AsList(container); !list.IsNil() && container.Parent().ConformsTo(TList) {
 			i := int(idx)
 			if i < 0 || i >= list.Len() {
 				return []Value{NewTypeLiteral(TNone)}, nil
@@ -1780,10 +1788,10 @@ func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // lower a fn-value call and decline).
 func getObjectReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if r == nil || len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {
+	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent() == nil {
 		return dyn
 	}
-	body, ok := r.TopTypeBody(args[1].Parent.Leaf())
+	body, ok := r.TopTypeBody(args[1].Parent().Leaf())
 	if !ok {
 		return dyn
 	}
@@ -1805,7 +1813,7 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 	// note the declared signature by the carrier's id, so the plain check's
 	// shape window models the member's apply as a named shape's is (NUR096).
 	// A plain check only — the compile pass keeps its own member models.
-	if info, ok := fv.Data.(FnUndefInfo); ok && !r.Check.Recorder().Armed() {
+	if info, ok := fv.Data().(FnUndefInfo); ok && !r.Check.Recorder().Armed() {
 		if s, claim := check.FnShapeOfSpec(info); claim {
 			r.Check.NoteFnShape(out, s)
 		}
@@ -1821,12 +1829,12 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 // schema is reachable via TopTypeBody like a class type's.
 func getResourceReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if r == nil || len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {
+	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent() == nil {
 		return dyn
 	}
 	// Resource/Entity are def bindings, not type bindings, so resolve
 	// the schema through the def store by the instance's type name.
-	info, ok := lookupResourceTypeByName(r, args[1].Parent.Leaf())
+	info, ok := lookupResourceTypeByName(r, args[1].Parent().Leaf())
 	if !ok {
 		return dyn
 	}
@@ -1844,7 +1852,7 @@ func getResourceReturns(args []Value, r *Registry) []Value {
 func getObjectHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	key := args[0]
 	container := args[1]
-	if !IsConcrete(container) {
+	if !IsConcrete(&container) {
 		return nil, r.BoruError("get_error", "get: cannot access property on type literal", "get")
 	}
 	k := getKey(key)
@@ -1879,7 +1887,7 @@ func getNoneHandler(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Va
 func setStoreHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	store, err := AsStore(args[2])
 	if err != nil {
-		return nil, fmt.Errorf("set: expected a Store, got %s", args[2].Parent.String())
+		return nil, fmt.Errorf("set: expected a Store, got %s", args[2].Parent().String())
 	}
 	key := StoreKey(args[0])
 	CowSet(store, key, args[1], reg)
@@ -1910,7 +1918,7 @@ func setStoreReturnsFn(args []Value, r *Registry) []Value {
 func getStoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	store, err := AsStore(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("get: expected a Store, got %s", args[1].Parent.String())
+		return nil, fmt.Errorf("get: expected a Store, got %s", args[1].Parent().String())
 	}
 	key := getKey(args[0])
 	val, ok := store.Get(key)
@@ -1934,7 +1942,7 @@ func getStoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 func getrStoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	store, err := AsStore(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("getr: expected a Store, got %s", args[1].Parent.String())
+		return nil, fmt.Errorf("getr: expected a Store, got %s", args[1].Parent().String())
 	}
 	key := getKey(args[0])
 	val, ok := store.Get(key)

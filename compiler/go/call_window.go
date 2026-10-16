@@ -168,9 +168,9 @@ func windowStopPrefix(es *EmitState, out []callWinOp, pw pendingWindow, args []c
 // holding the new value, where the interpreter's window holds the one
 // read).
 func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) (callWinOp, bool) {
-	if v.ID != "" {
+	if core.IDOf(&v) != "" {
 		for i := range args {
-			if args[i].ID == v.ID {
+			if core.IDOf(&args[i]) == core.IDOf(&v) {
 				return callWinOp{kind: WinArg, idx: i}, true
 			}
 		}
@@ -178,16 +178,16 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 	if windowScalar(v) || unexpandedToken(v) || core.IsPendingLiteral(v) {
 		return callWinOp{kind: WinValue, value: v}, true
 	}
-	if v.ID == "" {
+	if core.IDOf(&v) == "" {
 		return callWinOp{}, false
 	}
-	if pr, ok := es.producedBy[v.ID]; ok {
-		if len(es.units) > 1 && !es.producedInCurrentUnit(v.ID) {
+	if pr, ok := es.producerOf(&v); ok {
+		if len(es.units) > 1 && !es.producedInCurrentUnit(&v) {
 			return callWinOp{}, false
 		}
 		return callWinOp{kind: WinStack, op: EventOperand(pr.seq, pr.idx)}, true
 	}
-	if slot, ok := es.units[len(es.units)-1].localByID[v.ID]; ok && stable {
+	if slot, ok := es.units[len(es.units)-1].localByID[core.IDOf(&v)]; ok && stable {
 		return callWinOp{kind: WinLocal, idx: slot}, true
 	}
 	return callWinOp{}, false
@@ -196,10 +196,10 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 // windowScalar reports whether v is a definite scalar or atom — a value the
 // pass knows is the run's, which the window may carry as itself.
 func windowScalar(v core.Value) bool {
-	if v.Carrier || v.Dynamic || !core.IsConcrete(v) || v.Parent == nil {
+	if v.Carrier() || core.IsDynamic(&v) || !core.IsConcrete(&v) || v.Parent() == nil {
 		return false
 	}
-	return v.Parent.ConformsTo(core.TScalar) || core.IsAtom(v)
+	return v.Parent().ConformsTo(core.TScalar) || core.IsAtom(v)
 }
 
 // unexpandedToken reports whether v is a reach or template token a failed
@@ -208,5 +208,5 @@ func windowScalar(v core.Value) bool {
 // report names the token itself (`m.b (a Reach)`), which is the run's own
 // source, so a window or a rematch carries it as itself (NUR329).
 func unexpandedToken(v core.Value) bool {
-	return (core.IsReach(v) || core.IsInterpString(v)) && !v.Carrier && !v.Dynamic
+	return (core.IsReach(&v) || core.IsInterpString(&v)) && !v.Carrier() && !core.IsDynamic(&v)
 }

@@ -656,16 +656,20 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	e.DeferResidual = false
 	e.stepLimit = StepLimitFor(r, DefaultSubStepLimit)
 	// Release any Values still held in the forward-collection scratch
-	// buffers before the engine idles in the pool. rearrangeForForward
+	// buffer before the engine idles in the pool. rearrangeForForward
 	// leaves the last call's collected args (which can be large list/map
-	// payloads) in rrValues/rrReordered; without clearing, a pooled engine
-	// would pin that transient data for the pool's lifetime, and a later
-	// shorter call would leave stale tail entries pinned. Zero every slot up
-	// to capacity but keep the backing arrays so the buffers stay reusable.
+	// payloads) in rrValues; without clearing, a pooled engine would pin
+	// that transient data for the pool's lifetime, and a later shorter call
+	// would leave stale tail entries pinned. Zero every slot up to capacity
+	// but keep the backing array so the buffer stays reusable.
 	clear(e.rrValues[:cap(e.rrValues)])
 	e.rrValues = e.rrValues[:0]
-	clear(e.rrReordered[:cap(e.rrReordered)])
-	e.rrReordered = e.rrReordered[:0]
+	// The other per-run Value scratch buffers pin the same way: a loop's
+	// re-mark tokens, a paren expansion's span, the matcher's resolved
+	// window, and its exclusion set (exceptions list C2).
+	clear(e.resolvedScratch[:cap(e.resolvedScratch)])
+	e.resolvedScratch = e.resolvedScratch[:0]
+	clear(e.excludeScratch)
 	r.enginePool = append(r.enginePool, e)
 }
 
@@ -731,14 +735,14 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 	// collapsed region's parens leave the tape.
 	out := make([]Value, 0, end)
 	for _, v := range snap[:end] {
-		if IsOpenParen(v) {
-			if _, sealed := v.Data.(LoopOpenInfo); sealed {
+		if IsOpenParen(&v) {
+			if _, sealed := v.Data().(LoopOpenInfo); sealed {
 				out = out[:0]
 			}
 			continue
 		}
-		if IsCloseParen(v) || IsForward(v) ||
-			IsMark(v) || IsMove(v) || IsEnd(v) || IsWord(v) {
+		if IsCloseParen(&v) || IsForward(&v) ||
+			IsMark(&v) || IsMove(&v) || IsEnd(&v) || IsWord(&v) {
 			continue
 		}
 		out = append(out, v)
@@ -1128,14 +1132,19 @@ func (r *Registry) upsertFnDef(name string, sigs ...Signature) {
 			sigs[i].BarrierPos = sigs[i].TotalArgs()
 		}
 	}
-	// If the top of the stack is already a FnDefInfo, update it in place.
-	if top, ok := r.Defs.Top(name); ok {
-		if fnDef, ok := top.Data.(FnDefInfo); ok {
-			fnDef.Signatures = append(fnDef.Signatures, sigs...)
+	// If the top of the stack is already a FnDefInfo, swap its payload in
+	// place for one carrying the merged signatures. The merged set is a new
+	// array: the previous payload's array is every earlier holder's — a
+	// Lookup, an `f/v` value, a table clone, a fork — and appending into its
+	// spare capacity, then sorting, would rewrite what they dispatch on.
+	if top, ok := r.Defs.TopValue(name); ok {
+		if prev, ok := FnDefOf(top.Data()); ok {
+			fnDef := *prev
+			n := len(prev.Signatures)
+			fnDef.Signatures = append(prev.Signatures[:n:n], sigs...)
 			SortSignatures(fnDef.Signatures)
 			fnDef.MaxForwardArgs = calcMaxForwardArgs(fnDef.Signatures)
-			top.Data = fnDef
-			r.Defs.Replace(name, top)
+			r.Defs.SetTopData(name, &fnDef)
 			return
 		}
 	}
@@ -1242,7 +1251,7 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
-		if _, isClosure := stack[i].Data.(ClosurePayload); isClosure {
+		if _, isClosure := stack[i].Data().(*ClosurePayload); isClosure {
 			closureBound = true
 			// Only under a run's invoker (dispatchesAsWord's own gate, kept
 			// here too rather than trusting the hook to ask): outside a run
@@ -1251,16 +1260,14 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 				continue
 			}
 			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
-				if fnDef, ok := bv.Data.(FnDefInfo); ok {
-					fnDef.Name = name
-					fnDef.Anonymous = false
-					entries = append(entries, fnDef)
+				if view, ok := FnDefOf(bv.Data()); ok {
+					entries = append(entries, closureDispatchEntry(view, name))
 				}
 			}
 			continue
 		}
-		if fnDef, ok := stack[i].Data.(FnDefInfo); ok {
-			entries = append(entries, fnDef)
+		if fnDef, ok := stack[i].Data().(*FnDefInfo); ok {
+			entries = append(entries, *fnDef)
 			if fnDef.Extends != "" {
 				break
 			}
@@ -1272,15 +1279,26 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	return r.aggregateDispatch(name, entries), closureBound
 }
 
+// closureDispatchEntry constructs the entry a def-bound compiled closure
+// contributes to name's dispatch: the bridged view (ClosureAsFnDef's, fresh
+// per lookup) as the NAMED definition the interpreter's def made of it — a
+// new definition from the view's parts under the binding's name, never a
+// write into a payload a holder carries.
+func closureDispatchEntry(view *FnDefInfo, name string) FnDefInfo {
+	out := *view
+	out.Name, out.Anonymous = name, false
+	return out
+}
+
 // dispatchesAsWord reports whether a def-bound value is a DISPATCHING
 // definition the word step must route through Lookup rather than
 // substitute: a fn definition, a class, or a compiled closure a run's
 // invoker can bridge (lookupUncachedBridged).
-func dispatchesAsWord(v Value, r *Registry) bool {
-	switch v.Data.(type) {
-	case FnDefInfo, *ClassTypeInfo:
+func dispatchesAsWord(v *Value, r *Registry) bool {
+	switch v.Data().(type) {
+	case *FnDefInfo, *ClassTypeInfo:
 		return true
-	case ClosurePayload:
+	case *ClosurePayload:
 		return r != nil && r.Invoker != nil
 	}
 	return false
@@ -1393,7 +1411,7 @@ func (r *Registry) fnFallbackSig(name string) Signature {
 			// dispatched (the fnCourtesyDispatches guard in engine.go), so
 			// the only shape reaching the Impl without a 0-arg handler
 			// falls straight through to the shared no-match error.
-			if _, ok := top.Data.(FnDefInfo); ok {
+			if _, ok := top.Data().(*FnDefInfo); ok {
 				if fn := r.Lookup(name); fn != nil {
 					for i := range fn.Signatures {
 						sig := &fn.Signatures[i]
@@ -1530,7 +1548,7 @@ func BinaryIntOpNative(name string, op func(a, b int64) (int64, error)) NativeFu
 
 // ValToString converts any scalar Value to its string representation.
 func ValToString(v Value) string {
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return v.String()
 	}
 	switch {
@@ -1540,19 +1558,19 @@ func ValToString(v Value) string {
 		// so without this case AsString would crash on the wrong
 		// payload type.
 		return renderDepScalar(v)
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		_as8, _ := AsString(v)
 		return _as8
 	case IsAtom(v):
 		_as9, _ := AsAtom(v)
 		return _as9
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		_as10, _ := AsFloat(v)
 		return formatFloat(_as10)
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		_as11, _ := AsInteger(v)
 		return strconv.FormatInt(_as11, 10)
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as12, _ := AsBoolean(v)
 		if _as12 {
 			return "true"
@@ -1561,8 +1579,8 @@ func ValToString(v Value) string {
 	case IsPathon(v):
 		_as13, _ := AsPathon(v)
 		return _as13.String()
-	case IsWord(v):
-		_as14, _ := AsWord(v)
+	case IsWord(&v):
+		_as14, _ := AsWord(&v)
 		return _as14.Name
 	default:
 		return v.String()
@@ -1669,7 +1687,7 @@ func (r *Registry) ForgetTypePartsSince(snap map[string]bool) int {
 // fallback is retained only for value-side ObjectType installations
 // from outside the type word (e.g. legacy RegisterResource paths).
 func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
-	if v.Data != nil || reg == nil || v.Carrier {
+	if v.Data() != nil || reg == nil || v.Carrier() {
 		return v
 	}
 	// The node records its declared content (Value.TypeBody —
@@ -1682,12 +1700,12 @@ func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
 	// A type literal IS its lattice node (by-value copy), so the
 	// canonical identity is the value's own ID, not v.Parent.ID (the
 	// supertype's ID).
-	name := TypeNameByID(v.ID)
+	name := TypeNameByID(IDOf(&v))
 	if name == "" {
 		return v
 	}
 	if top, ok := reg.Defs.TopEntry(name); ok && top.TypeDef == nil &&
-		(IsClassType(top.Body) || IsResourceType(top.Body)) {
+		(IsClassType(&top.Body) || IsResourceType(top.Body)) {
 		// Value-side ObjectType installations from outside the type
 		// word (legacy RegisterResource paths) — a VALUE binding whose
 		// body is the schema.
@@ -1712,14 +1730,14 @@ func ResourceDefKey(name string) string { return "__resource:" + name }
 
 // StoreKey converts a Value to a string key for the store.
 func StoreKey(v Value) string {
-	if !IsConcrete(v) {
-		return v.Parent.String()
+	if !IsConcrete(&v) {
+		return v.Parent().String()
 	}
-	if IsWord(v) {
-		_as15, _ := AsWord(v)
+	if IsWord(&v) {
+		_as15, _ := AsWord(&v)
 		return _as15.Name
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as16, _ := AsString(v)
 		return _as16
 	}
@@ -1727,22 +1745,22 @@ func StoreKey(v Value) string {
 		_as17, _ := AsAtom(v)
 		return _as17
 	}
-	if v.Parent.ConformsTo(TInteger) {
+	if v.Parent().ConformsTo(TInteger) {
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10)
 	}
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		f, _ := AsFloat(v)
 		return FormatFloat(f)
 	}
-	if v.Parent.ConformsTo(TBoolean) {
+	if v.Parent().ConformsTo(TBoolean) {
 		b, _ := AsBoolean(v)
 		if b {
 			return "true"
 		}
 		return "false"
 	}
-	return fmt.Sprintf("%v", v.Data)
+	return fmt.Sprintf("%v", v.Data())
 }
 
 // RegisterNativeFunc installs a NativeFunc into the registry, converts
@@ -1821,8 +1839,9 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	// Observability seam (interp_entry.go): the interpreter fn-call path.
 	r.noteInterp("CallBoru")
-	// Build token sequence (same as InstallFnDef handler).
-	var tokens []Value
+	// The unnamed arguments, the run's resolved prefix (in the InstallFnDef
+	// handler's frame order).
+	var unnamed []Value
 	var names []string
 
 	// A LEAF body — one that binds nothing and constructs no inner fn
@@ -1878,22 +1897,21 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	for i, p := range sig.Params {
 		if p.Name != "" {
 			arg := args[i]
-			if arg.Parent.Equal(TList) && !arg.Quoted {
-				arg.Quoted = true
+			if arg.Parent().Equal(TList) && !IsQuoted(&arg) {
+				SetQuoted(&arg, true)
 			}
 			InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 			names = append(names, p.Name)
 		} else {
-			tokens = append(tokens, args[i])
+			unnamed = append(unnamed, args[i])
 		}
 	}
 	// The unnamed-arg prefix assembled above is call-site-resolved data;
 	// stepping starts after it (arguments are inert — the sub-engine twin
 	// of FrameOpenInfo.ArgSpan; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
-	unnamedCount := len(tokens)
-	// append COPIES the shared body into tokens' backing array; the
-	// intermediate make+copy this used to do was a second copy per call.
-	tokens = append(tokens, sig.Body()...)
+	// The prefix and the shared body load onto the tape as two parts
+	// (RunParts), the body copied once, straight onto it.
+	unnamedCount := len(unnamed)
 
 	// Snapshot DefStacks lengths before body execution so we can
 	// clean up any defs created during body execution (Issue 2
@@ -1929,7 +1947,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	sub.StartAt = unnamedCount
 	sub.debugLabel = label
 	sub.DeferResidual = deferResidual
-	result, err := sub.Run(tokens)
+	result, err := sub.RunParts(unnamed, sig.Body())
 	if len(result) > 0 {
 		result = append([]Value(nil), result...)
 	}
@@ -1989,7 +2007,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		// is when the tape apply's consumer evaluates the same literal.
 		sweep := NewTop(r)
 		for i := range result {
-			if result[i], err = sweep.autoEvalResidual(result[i]); err != nil {
+			if err = sweep.autoEvalResidual(&result[i]); err != nil {
 				return nil, err
 			}
 			if sweep.containerEscaped() {
@@ -2050,7 +2068,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// ascription is scoped to a dispatch WITHIN the body and cannot ride
 	// out into the caller (design/OPEN-WORDS.1.md §9).
 	for i := range result {
-		result[i] = StripAscribed(result[i])
+		ClearAscribed(&result[i])
 	}
 	return result, nil
 }
@@ -2174,10 +2192,10 @@ func (r *Registry) LookupTypeName(name string) *Type {
 // downstream error messages can surface "type Bbd" rather than the
 // rendered value form.
 func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, ok bool) {
-	if !IsWord(v) {
+	if !IsWord(&v) {
 		return v, "", true
 	}
-	w, _ := AsWord(v)
+	w, _ := AsWord(&v)
 	rv, hit := r.ResolveTypedName(w.Name)
 	if hit {
 		return rv, w.Name, true
@@ -2222,12 +2240,12 @@ func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, 
 // fn value and the candidate's canonical form.
 func predMemoKey(constraint, candidate Value) string {
 	key := "|" + Canon([]Value{candidate})
-	if constraint.ID != "" {
-		return constraint.ID + key
+	if IDOf(&constraint) != "" {
+		return IDOf(&constraint) + key
 	}
 	// The interpreter's predicate fn carries no value ID (the check pass
 	// mints those): its first signature's boru body is the identity.
-	fd, ok := constraint.Data.(FnDefInfo)
+	fd, ok := constraint.Data().(*FnDefInfo)
 	if !ok {
 		return ""
 	}
@@ -2264,7 +2282,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	// commit and at a statement end), so a predicate body's effects happen
 	// once per dispatch on both lanes. Analysis keeps its own path.
 	memoKey := ""
-	if !r.analysisActive() && IsConcrete(candidate) {
+	if !r.analysisActive() && IsConcrete(&candidate) {
 		memoKey = predMemoKey(constraint, candidate)
 		if memoKey != "" {
 			if hit, ok := r.predMemo[memoKey]; ok {
@@ -2285,12 +2303,12 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 			}
 		}()
 	}
-	if !constraint.Parent.Equal(TFunction) {
-		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent.String())
+	if !constraint.Parent().Equal(TFunction) {
+		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent().String())
 	}
-	fnDef, ok := constraint.Data.(FnDefInfo)
+	fnDef, ok := constraint.Data().(*FnDefInfo)
 	if !ok {
-		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data)
+		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data())
 	}
 	// CheckMode: a CARRIER candidate is accepted without running the body —
 	// the analyser's proper optimism, so it keeps flowing past the typed
@@ -2301,7 +2319,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	// statically as it is at run time, where the pass's plan used to claim
 	// the slot (NUR141). A run that errors admits, as before.
 	analysis := r != nil && r.analysisMode()
-	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate)) {
+	if analysis && (!IsConcrete(&candidate) || IsBareTypeNode(&candidate)) {
 		return candidate, true, nil
 	}
 	// Membership is a ONE-VALUE APPLICATION of the predicate: the candidate
@@ -2333,7 +2351,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 		r.Check.Mode = false
 		defs := r.Defs.Snapshot()
 		restoreAtt := r.SetInterpAttribution("check:predicate")
-		out, matched, err = r.runPredicateBody(fnDef, predSig, candidate)
+		out, matched, err = r.runPredicateBody(*fnDef, predSig, candidate)
 		restoreAtt()
 		r.Defs.Restore(defs)
 		r.Check.Mode = prevMode
@@ -2342,7 +2360,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 		}
 		return out, matched, nil
 	}
-	return r.runPredicateBody(fnDef, predSig, candidate)
+	return r.runPredicateBody(*fnDef, predSig, candidate)
 }
 
 // predicateBodyPure reports whether a predicate's body is a function of its
@@ -2359,14 +2377,14 @@ func predicateBodyPure(r *Registry, predSig *FnSig) bool {
 	var pure func(items []Value) bool
 	pure = func(items []Value) bool {
 		for _, it := range items {
-			if w, err := AsWord(it); err == nil {
+			if w, err := AsWord(&it); err == nil {
 				if w.Name == param || !userDefined(r, w.Name) {
 					continue
 				}
 				return false
 			}
 			if lst, err := AsList(it); err == nil && !lst.IsNil() {
-				if !pure(lst.Slice()) {
+				if !pure(lst.Elems()) {
 					return false
 				}
 			}
@@ -2384,7 +2402,7 @@ func userDefined(r *Registry, name string) bool {
 	if !ok {
 		return false
 	}
-	fd, isFn := v.Data.(FnDefInfo)
+	fd, isFn := v.Data().(*FnDefInfo)
 	if !isFn {
 		return true
 	}
@@ -2457,8 +2475,8 @@ func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate V
 	}
 	inputT := predSig.Params[0].Type
 	booleanIsValue := inputT != nil && TBoolean.ConformsTo(inputT)
-	if !booleanIsValue && out.Parent != nil && out.Parent.Equal(TBoolean) && out.Data != nil {
-		if b, ok := out.Data.(BoolPayload); ok {
+	if !booleanIsValue && out.Parent() != nil && out.Parent().Equal(TBoolean) && out.Data() != nil {
+		if b, ok := out.Data().(BoolPayload); ok {
 			if !b.B {
 				return out, false, nil
 			}

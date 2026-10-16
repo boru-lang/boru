@@ -292,10 +292,10 @@ func TestZZCoverParenFnCollapseTrailing(t *testing.T) {
 		t.Fatalf("tape len = %d, want 4", e.Tape.Len())
 	}
 	out := e.Tape.At(2)
-	if !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) || out.ID == "" {
+	if !out.Carrier() || !core.IsDynamic(&out) || !out.Parent().Equal(core.TAny) || core.IDOf(&out) == "" {
 		t.Errorf("collapsed window must seat one dynamic Any carrier with an ID, got %#v", out)
 	}
-	if !core.IsMark(e.Tape.At(1)) {
+	if !core.IsMark(e.Tape.Ref(1)) {
 		t.Error("the non-recordable Mark must survive the collapse")
 	}
 }
@@ -310,7 +310,7 @@ func TestZZCoverParenFnCollapseLeadingOneArg(t *testing.T) {
 		t.Fatalf("closeIdx = %d, want 2", got)
 	}
 	out := e.Tape.At(1)
-	if !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+	if !out.Carrier() || !core.IsDynamic(&out) || !out.Parent().Equal(core.TAny) {
 		t.Errorf("leading apply must collapse to one dynamic Any carrier, got %#v", out)
 	}
 }
@@ -320,18 +320,18 @@ func TestZZCoverParenFnCollapseLeadingFnValueArg(t *testing.T) {
 	// (S1b's apply shapes, 2026-09-22): the lead collects the value, one
 	// call on both engines. A GRADUAL fn-typed argument does not — it may
 	// be a bare fn word at run time.
-	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "inc"}}
+	fnVal := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "inc"}})
 	e, fin := zzCollapseEng(t, true,
 		core.NewOpenParen(), zzFnCarrier(), fnVal, core.NewCloseParen())
 	defer fin()
 	if got := checkModeParenFnCollapse(e, 0, 3); got != 2 {
 		t.Fatalf("closeIdx = %d, want 2 (an inert fn value collapses under the lead)", got)
 	}
-	if out := e.Tape.At(1); !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+	if out := e.Tape.At(1); !out.Carrier() || !core.IsDynamic(&out) || !out.Parent().Equal(core.TAny) {
 		t.Errorf("leading apply over a fn value must collapse to one dynamic Any carrier, got %#v", out)
 	}
 	gradual := core.NewCarrier(core.TFunction)
-	gradual.Dynamic = true
+	core.SetDynamic(&gradual, true)
 	e2, fin2 := zzCollapseEng(t, true,
 		core.NewOpenParen(), zzFnCarrier(), gradual, core.NewCloseParen())
 	defer fin2()
@@ -398,7 +398,7 @@ func TestZZCoverSpliceFnValueCheckResult(t *testing.T) {
 		t.Fatalf("tape len = %d, want 1 (args + fn literal replaced by the result)", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("declared-return fn value must splice an Integer carrier, got %#v", out)
 	}
 	if e.Pointer != 0 {
@@ -498,7 +498,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 
 func TestZZCoverStrandedMemberFn(t *testing.T) {
 	memfn := core.NewDynamicCarrier(core.TAny)
-	memfn.ID = "zzmemfn1"
+	core.SetID(&memfn, "zzmemfn1")
 
 	// The hazard: a member-fn read directly beneath the consumed operand
 	// (a structural Mark between them is skipped) — decline.
@@ -586,7 +586,7 @@ func TestZZCoverSurfaceShapeTypesRequiredOp(t *testing.T) {
 		t.Fatalf("tape len = %d, want 1 (word + arg replaced by the shape's return)", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("call must type as the contract's declared return, got %#v", out)
 	}
 }
@@ -608,7 +608,7 @@ func TestZZCoverSurfaceShapeResolvesDefBoundWord(t *testing.T) {
 	if err != nil || !handled {
 		t.Fatalf("def-bound surface carrier must be handled: (%v, %v)", handled, err)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("tape = %d values, want the single shape-return carrier", e.Tape.Len())
 	}
 }
@@ -723,7 +723,8 @@ func zzAssumeCall(t *testing.T, r *core.Registry, word string, vals []core.Value
 	e := core.NewTop(r)
 	e.Tape = core.NewTape(vals, core.StackHeadroom)
 	e.Pointer = pointer
-	if err := checkModeAssumeSig(e, core.WordInfo{Name: word, ArgCount: -1}, fn, fallback, core.SrcPos{Row: 1, Col: 1}); err != nil {
+	home, _ := core.FnHome(r, fn)
+	if err := checkModeAssumeSig(e, core.WordInfo{Name: word, ArgCount: -1}, fn, home, fallback, core.SrcPos{Row: 1, Col: 1}); err != nil {
 		t.Fatalf("checkModeAssumeSig(%s): %v", word, err)
 	}
 	return e, fn
@@ -753,7 +754,7 @@ func TestZZCoverAssumeSigDisjunctPartitionFallthrough(t *testing.T) {
 	defer done()
 	e, _ := zzAssumeCall(t, r, "zzr-poly2",
 		[]core.Value{zzDisjunctIS(), core.NewWord("zzr-poly2")}, 1, nil)
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Fatalf("partition join must be spliced as the result, tape len = %d", e.Tape.Len())
 	}
 	if zzHasDiag(r, "no_signature") {
@@ -783,7 +784,7 @@ func TestZZCoverAssumeSigDisjunctPolyRecorded(t *testing.T) {
 	if gotWord != "zzr-poly2" || !gotStraddle || gotDynRecovery {
 		t.Errorf("straddle poly record: word=%q straddle=%v dynRecovery=%v", gotWord, gotStraddle, gotDynRecovery)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("recorded straddle must splice the join, tape len = %d", e.Tape.Len())
 	}
 }
@@ -802,7 +803,7 @@ func TestZZCoverAssumeSigDisjunctSingleUserFn(t *testing.T) {
 		t.Fatalf("tape len = %d, want 1", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the sole sig's ReturnsFn result must be spliced, got %#v", out)
 	}
 }
@@ -828,7 +829,7 @@ func TestZZCoverAssumeSigDisjunctUserPolyPlan(t *testing.T) {
 	if len(plan.subbed) == 0 {
 		t.Error("the record site must substitute the joined outs into the plan")
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("user-poly record must splice the join, tape len = %d", e.Tape.Len())
 	}
 }
@@ -862,7 +863,7 @@ func TestZZCoverAssumeSigAnyCarrierPolyRecovery(t *testing.T) {
 	if !wasActiveDuringResults {
 		t.Error("recording must be resumed by the time the poly record runs")
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("recorded poly must splice the results, tape len = %d", e.Tape.Len())
 	}
 }
@@ -887,7 +888,7 @@ func TestZZCoverAssumeSigAnyCarrierDoesNotLowerAndDiagnoses(t *testing.T) {
 	if !zzHasDiag(r, "no_signature") {
 		t.Error("a plain pass with no best fit must report no_signature")
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("assumed results must still be spliced, tape len = %d", e.Tape.Len())
 	}
 }
@@ -912,7 +913,7 @@ func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 	if len(es.uncomp) != 0 {
 		t.Errorf("a recorded rematch must not latch a compile failure, marks = %v", es.uncomp)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("the rematch splices the modelled results, tape len = %d", e.Tape.Len())
 	}
 }
@@ -933,7 +934,7 @@ func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 		t.Errorf("the recovered user fn must not decline, marks = %v", es.uncomp)
 	}
 	out := e.Tape.At(0)
-	if e.Tape.Len() != 1 || !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if e.Tape.Len() != 1 || !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the sole sig's returns must be spliced, got %#v", out)
 	}
 	if zzHasDiag(r, "no_signature") {
@@ -967,7 +968,7 @@ func TestZZCoverAssumeSigImpreciseCarrierPolyRecovery(t *testing.T) {
 	if len(es.uncomp) != 0 {
 		t.Errorf("a recorded poly must not decline, marks = %v", es.uncomp)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("the recovered dispatch splices its results, tape len = %d", e.Tape.Len())
 	}
 }
@@ -987,7 +988,7 @@ func TestZZCoverAssumeSigResolvesForwardWordArg(t *testing.T) {
 		t.Fatalf("tape len = %d, want 1", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the ReturnsFn result must be spliced, got %#v", out)
 	}
 }
@@ -1004,7 +1005,7 @@ func TestZZCoverAssumeSigAutoEvalsRawMapOperand(t *testing.T) {
 	rawMap := mapOf("line", core.NewWord("zzrmw"))
 	e, _ := zzAssumeCall(t, r, "zzr-map1",
 		[]core.Value{rawMap, core.NewWord("zzr-map1")}, 1, nil)
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("the assumed map dispatch splices its declared return, tape len = %d", e.Tape.Len())
 	}
 }
@@ -1031,7 +1032,7 @@ func TestZZCoverAssumeSigArityFallbackPrefersSatisfiableReturnsFn(t *testing.T) 
 		t.Fatalf("tape len = %d, want 1 (the 1-arg window spliced)", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the satisfiable ReturnsFn sig's carrier must be spliced, got %#v", out)
 	}
 }
@@ -1075,13 +1076,13 @@ func TestZZCoverSurfaceShapeDeclinesNonFnsigShape(t *testing.T) {
 // inside a LIVE reach group, where execFnDefLiteral defers rather than calls.
 func TestZZCoverReStepLandingGates(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland2"
+	core.SetID(&v, "zzland2")
 	quoted := v
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	noID := core.NewDynamicCarrier(core.TAny)
-	noID.ID = ""
+	core.SetID(&noID, "")
 	reachOpen := core.NewOpenParen()
-	reachOpen.ReachGroup = true
+	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {
 		name    string
 		tape    []core.Value
@@ -1117,8 +1118,8 @@ func TestZZCoverReStepLandingGates(t *testing.T) {
 // landing calls the one read written specifically not to be one.
 func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland4"
-	mod := core.Value{Parent: core.TDispatchMod, Data: core.DispatchModInfo{}}
+	core.SetID(&v, "zzland4")
+	mod := core.ValueOf(&core.Datum{Parent: core.TDispatchMod, Data: core.DispatchModInfo{}})
 	e, _, fin := zzDriftEng(t, []core.Value{v, mod}, 0)
 	defer fin()
 	if nothingToCollectAfter(e, 0) {
@@ -1131,9 +1132,9 @@ func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
 // user's own paren — whose call IS the user's — still lands.
 func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland5"
+	core.SetID(&v, "zzland5")
 	reachOpen := core.NewOpenParen()
-	reachOpen.ReachGroup = true
+	core.SetReachGroup(&reachOpen, true)
 	for _, tc := range []struct {
 		name string
 		tape []core.Value

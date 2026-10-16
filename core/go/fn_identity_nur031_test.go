@@ -39,7 +39,7 @@ func TestNUR031FnDeqIgnoresTheBindingName(t *testing.T) {
 	body := []Value{NewInteger(1)}
 	f := nur031Fn(t, r, "f", body)
 	a := nur031Fn(t, r, "a", body)
-	if sameFnIdentity(f.Data.(FnDefInfo), a.Data.(FnDefInfo)) {
+	if sameFnIdentity(*f.Data().(*FnDefInfo), *a.Data().(*FnDefInfo)) {
 		t.Fatal("two constructions are two identities — the canon path must answer")
 	}
 	if !DeepEqual(f, a) {
@@ -123,7 +123,7 @@ func TestNUR031IdentitySurvivesRebinding(t *testing.T) {
 	}
 	// The aggregate really was rebuilt per name — otherwise this test would
 	// pass on the old Signatures-array key and prove nothing.
-	if &ar.Data.(FnDefInfo).Signatures[0] == &br.Data.(FnDefInfo).Signatures[0] {
+	if &ar.Data().(*FnDefInfo).Signatures[0] == &br.Data().(*FnDefInfo).Signatures[0] {
 		t.Fatal("expected per-name aggregates with distinct Signatures arrays")
 	}
 }
@@ -136,7 +136,7 @@ func TestNUR031UntokenedPayloadsAreNotReferenceEqual(t *testing.T) {
 	if sameFnIdentity(a, a) {
 		t.Fatal("a payload with no identity token is not reference-equal")
 	}
-	if tokened, ok := NewFunction(a).Data.(FnDefInfo); !ok || !sameFnIdentity(tokened, tokened) {
+	if tokened, ok := NewFunction(a).Data().(*FnDefInfo); !ok || !sameFnIdentity(*tokened, *tokened) {
 		t.Fatal("…but NewFunction mints one, and a fn is eq to itself")
 	}
 }
@@ -186,7 +186,7 @@ func TestNUR031TypeValueDeqKeyMatchesDeq(t *testing.T) {
 	// not on which declarer produced it.
 	pv := NewDisjunct([]Value{NewString("a"), NewString("b")})
 	qv := NewEnum([]Value{NewString("a"), NewString("b")})
-	if !IsTypeBody(pv) || !IsTypeBody(qv) {
+	if !IsTypeBody(&pv) || !IsTypeBody(&qv) {
 		t.Fatal("fixture: both values must be type bodies")
 	}
 	if !DeepEqual(pv, pv) {
@@ -220,9 +220,9 @@ func TestNUR031TypeValueDeqKeyMatchesDeq(t *testing.T) {
 // compares. Without this the two engines would disagree about `deq` on
 // the same function.
 func TestNUR031CompiledClosureDeqMatchesTheInterpreter(t *testing.T) {
-	a := NewValueRaw(TFunction, ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
-	twin := NewValueRaw(TFunction, ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
-	other := NewValueRaw(TFunction, ClosurePayload{Unit: 2, Render: "fn [[][Integer][2]]"})
+	a := NewValueRaw(TFunction, &ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
+	twin := NewValueRaw(TFunction, &ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
+	other := NewValueRaw(TFunction, &ClosurePayload{Unit: 2, Render: "fn [[][Integer][2]]"})
 	if !DeepEqual(a, a) {
 		t.Fatal("a closure must be deq to itself")
 	}
@@ -260,7 +260,7 @@ func TestNUR031ClosureCapturesAreContent(t *testing.T) {
 	r, _ := NewRegistry()
 	body := []Value{NewInteger(1)}
 	mk := func(captured Value) FnDefInfo {
-		fd, _ := nur031Fn(t, r, "adder", body).Data.(FnDefInfo)
+		fd, _ := FnDefCopy(nur031Fn(t, r, "adder", body).Data())
 		fd.ident = nil // two separate constructions, so canon must answer
 		fd.Captured = []CapturedBinding{{Name: "x", Value: captured}}
 		return fd
@@ -294,7 +294,7 @@ func TestNUR031ClosureCapturesAreContent(t *testing.T) {
 func TestNUR031NilAndModuleScopesAreDifferentContent(t *testing.T) {
 	r, _ := NewRegistry()
 	body := []Value{NewInteger(1)}
-	owned, _ := nur031Fn(t, r, "f", body).Data.(FnDefInfo)
+	owned, _ := FnDefCopy(nur031Fn(t, r, "f", body).Data())
 	local := owned
 	local.ident = nil
 	local.Registry = nil

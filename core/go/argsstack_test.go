@@ -26,8 +26,8 @@ func TestArgsStackLazy(t *testing.T) {
 		t.Fatalf("lazy entry = %v, want [7 8]", first)
 	}
 	again, _, _ := as.Top()
-	if again.ID != first.ID || again.String() != first.String() {
-		t.Errorf("a second read = %v (%s), want the first read's value %v (%s)", again, again.ID, first, first.ID)
+	if IDOf(&again) != IDOf(&first) || again.String() != first.String() {
+		t.Errorf("a second read = %v (%s), want the first read's value %v (%s)", again, IDOf(&again), first, IDOf(&first))
 	}
 	// Truncate over a lazy entry, then Pop past a lazy one never read.
 	_ = as.PushLazy([]Value{NewInteger(9)})
@@ -36,7 +36,7 @@ func TestArgsStackLazy(t *testing.T) {
 		t.Fatalf("Depth after Truncate = %d, want 2", as.Depth())
 	}
 	_ = as.PushLazy(nil)
-	if empty, _, _ := as.Top(); !IsConcrete(empty) || empty.String() != NewList(nil).String() {
+	if empty, _, _ := as.Top(); !IsConcrete(&empty) || empty.String() != NewList(nil).String() {
 		t.Errorf("a lazy entry of no values reads %v, want []", empty)
 	}
 	for k := 0; k < 2; k++ {
@@ -54,7 +54,7 @@ func TestArgsStackPushPopTop(t *testing.T) {
 	as := NewArgsStack()
 
 	// Empty state.
-	if v, ok, err := as.Top(); err != nil || ok || v.Data != nil {
+	if v, ok, err := as.Top(); err != nil || ok || v.Data() != nil {
 		t.Errorf("empty Top = (%v, %v, %v), want (zero, false, nil)", v, ok, err)
 	}
 	if popped, err := as.Pop(); err != nil || popped {
@@ -109,7 +109,7 @@ func TestArgsStackNilReceiver(t *testing.T) {
 		t.Errorf("nil Pop err = %v, want errArgsStackNil", err)
 	}
 	v, ok, err := as.Top()
-	if ok || v.Data != nil {
+	if ok || v.Data() != nil {
 		t.Errorf("nil Top = (%v, %v, ...), want (zero, false, ...)", v, ok)
 	}
 	if !errors.Is(err, errArgsStackNil) {

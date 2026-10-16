@@ -16,7 +16,7 @@ import (
 
 func TestS6aJoinedElementCarrierNilMapPayload(t *testing.T) {
 	m := core.NewMap(core.NewOrderedMap())
-	m.Data = core.MapPayload{M: nil}
+	m.SetData(core.MapPayload{M: nil})
 	if _, ok := joinedElementCarrier(m); ok {
 		t.Error("nil-backed MapPayload must decline")
 	}
@@ -64,7 +64,7 @@ func TestS6aScalarFoldOperandBigNumPayloads(t *testing.T) {
 // two clones of one stored list and pruned the live branch.
 func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 	dataList := core.NewList([]core.Value{core.NewInteger(1)})
-	if !core.IsInertConst(dataList) {
+	if !core.IsInertConst(&dataList) {
 		t.Fatal("fixture: a data-only list must be an inert const — otherwise this test proves nothing")
 	}
 	if ScalarFoldOperand(dataList) {
@@ -73,7 +73,7 @@ func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 	m := core.NewOrderedMap()
 	m.Set("a", core.NewInteger(1))
 	dataMap := core.NewMap(m)
-	if !core.IsInertConst(dataMap) {
+	if !core.IsInertConst(&dataMap) {
 		t.Fatal("fixture: a data-only map must be an inert const")
 	}
 	if ScalarFoldOperand(dataMap) {
@@ -93,7 +93,7 @@ func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 		core.NewInteger(0), core.NewString("s"), core.NewBoolean(false), core.NewAtom("a"),
 	} {
 		if !ScalarFoldOperand(v) {
-			t.Errorf("%s must remain a scalar fold operand", v.Parent)
+			t.Errorf("%s must remain a scalar fold operand", v.Parent())
 		}
 	}
 }
@@ -129,7 +129,7 @@ func TestS6aGradualContagionStrictDedup(t *testing.T) {
 	if len(r.Check.Diagnostics) != 1 {
 		t.Errorf("duplicate dynamic_dispatch diagnostic added: %d", len(r.Check.Diagnostics))
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) {
 		t.Errorf("contagion should mark the result dynamic: %+v", out)
 	}
 }
@@ -176,7 +176,7 @@ func TestS6aBodyFreeForFallbackLiteralAndTypeWords(t *testing.T) {
 
 func strictDisjunct(alts ...core.Value) core.Value {
 	d := core.NewDisjunct(alts)
-	d.Carrier = true
+	d.SetCarrier(true)
 	return d
 }
 
@@ -275,7 +275,7 @@ func TestS6aNarrowDynamicUsesGuards(t *testing.T) {
 	b := core.NewDynamicCarrier(core.TAny)
 	b.SetDynFrom("s6a_rebound")
 	narrowDynamicUses(r, "w", sig, []core.Value{b})
-	if got, _ := r.Defs.Top("s6a_rebound"); got.Dynamic {
+	if got, _ := r.Defs.Top("s6a_rebound"); core.IsDynamic(&got) {
 		t.Error("a since-rebound name must stay untouched")
 	}
 
@@ -313,11 +313,11 @@ func TestS6aReturnsFreshInstanceParameterlessSchemaNonConcreteData(t *testing.T)
 	if len(out) != 1 {
 		t.Fatalf("out len = %d, want 1", len(out))
 	}
-	if !out[0].Parent.Equal(core.TMap) || !out[0].Dynamic {
+	if !out[0].Parent().Equal(core.TMap) || !core.IsDynamic(&out[0]) {
 		t.Errorf("want a dynamic Map carrier riding the field schema, got %+v", out[0])
 	}
-	if _, ok := out[0].Data.(core.RecordTypeInfo); !ok {
-		t.Errorf("want RecordTypeInfo payload, got %T", out[0].Data)
+	if _, ok := out[0].Data().(core.RecordTypeInfo); !ok {
+		t.Errorf("want RecordTypeInfo payload, got %T", out[0].Data())
 	}
 }
 
@@ -344,7 +344,7 @@ func TestS6aJoinCarriersWidthCapCollapses(t *testing.T) {
 	a := mk(1, 5)
 	b := mk(6, 10)
 	got := core.JoinCarriersInner(a, b)
-	if !got.Carrier || !got.Parent.Equal(core.TInteger) || core.IsDisjunct(got) {
+	if !got.Carrier() || !got.Parent().Equal(core.TInteger) || core.IsDisjunct(&got) {
 		t.Errorf("10 alternatives must collapse to a plain Integer carrier, got %+v", got)
 	}
 }
@@ -446,7 +446,7 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 		t.Fatalf("summary len = %d, want 1", len(got))
 	}
 	// The refined hypothesis must cover BOTH rounds' types.
-	if got[0].Parent.Equal(core.TInteger) && !core.IsDisjunct(got[0]) {
+	if got[0].Parent().Equal(core.TInteger) && !core.IsDisjunct(&got[0]) {
 		t.Errorf("summary did not widen past round 1: %+v", got[0])
 	}
 }
@@ -456,23 +456,23 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 func TestS6aIsDeferredWordListShapes(t *testing.T) {
 	// Parent=TList with a non-list payload: AsList fails.
 	bad := core.NewValueRaw(core.TList, core.IntPayload{N: 1})
-	bad.Eval = true
+	core.SetEval(&bad, true)
 	if IsDeferredWordList(bad) {
 		t.Error("a non-list payload must decline")
 	}
 
 	// A nested list containing a word: deferred.
 	inner := core.NewList([]core.Value{core.NewWord("w")})
-	inner.Eval = true
+	core.SetEval(&inner, true)
 	outer := core.NewList([]core.Value{inner})
-	outer.Eval = true
+	core.SetEval(&outer, true)
 	if !IsDeferredWordList(outer) {
 		t.Error("a nested word-bearing list is deferred")
 	}
 
 	// No words anywhere: not deferred.
 	plain := core.NewList([]core.Value{core.NewInteger(1), core.NewList([]core.Value{core.NewInteger(2)})})
-	plain.Eval = true
+	core.SetEval(&plain, true)
 	if IsDeferredWordList(plain) {
 		t.Error("a word-free list is not deferred")
 	}

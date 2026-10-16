@@ -55,7 +55,7 @@ func inactiveRegionRecorder(CollectWindow, *Registry, WordInfo, int) {}
 // a configuration where analysis mode cannot be meaningfully armed.
 var CheckBraid = struct {
 	CheckMixedFormAdvisories     func(e *Engine, w WordInfo, sig *Signature, positions []int, pos SrcPos, fwdCount, stkCount int)
-	CheckModeAssumeSig           func(e *Engine, w WordInfo, fn *FnDefInfo, fallback *Signature, pos SrcPos) error
+	CheckModeAssumeSig           func(e *Engine, w WordInfo, fn *FnDefInfo, home *Registry, fallback *Signature, pos SrcPos) error
 	CheckModeFallbackPositions   func(e *Engine, n int) []int
 	CheckModeParenFnCollapse     func(e *Engine, openIdx, closeIdx int) int
 	CheckModeSurfaceShape        func(e *Engine, w WordInfo, pos SrcPos) (bool, error)
@@ -128,7 +128,7 @@ var CheckBraid = struct {
 func inactiveCheckMixedFormAdvisories(e *Engine, w WordInfo, sig *Signature, positions []int, pos SrcPos, fwdCount, stkCount int) {
 }
 
-func inactiveCheckModeAssumeSig(e *Engine, w WordInfo, fn *FnDefInfo, fallback *Signature, pos SrcPos) error {
+func inactiveCheckModeAssumeSig(e *Engine, w WordInfo, fn *FnDefInfo, home *Registry, fallback *Signature, pos SrcPos) error {
 	return nil
 }
 

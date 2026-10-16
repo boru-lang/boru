@@ -395,7 +395,7 @@ func sysFsStore(r *Registry) *StoreInstanceInfo {
 	if !ok {
 		return nil
 	}
-	sysStore, ok := sysVal.Data.(*StoreInstanceInfo)
+	sysStore, ok := sysVal.Data().(*StoreInstanceInfo)
 	if !ok {
 		return nil
 	}
@@ -403,7 +403,7 @@ func sysFsStore(r *Registry) *StoreInstanceInfo {
 	if !ok {
 		return nil
 	}
-	fsStore, ok := fsVal.Data.(*StoreInstanceInfo)
+	fsStore, ok := fsVal.Data().(*StoreInstanceInfo)
 	if !ok {
 		return nil
 	}
@@ -417,7 +417,7 @@ func fsFlag(fsStore *StoreInstanceInfo, key string) bool {
 		return false
 	}
 	asBool, _ := AsBoolean(v)
-	return v.Parent.ConformsTo(TBoolean) && asBool
+	return v.Parent().ConformsTo(TBoolean) && asBool
 }
 
 // HostEnvOps returns the installed environment view, or nil when the host

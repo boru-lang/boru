@@ -174,8 +174,8 @@ func TestPublishBodyStart(t *testing.T) {
 func TestTakeBodyEnv(t *testing.T) {
 	es, r := memoState(t)
 	body := core.NewList([]core.Value{core.NewInteger(1)})
-	body.ID = "body-1" // ids are minted inside a pass; the test supplies one
-	es.publishBodyStart(body.ID, r, core.NewDefTable(), false)
+	core.SetID(&body, "body-1") // ids are minted inside a pass; the test supplies one
+	es.publishBodyStart(core.IDOf(&body), r, core.NewDefTable(), false)
 	if es.takeBodyEnv(body, core.CallableSpec{}) != nil {
 		t.Error("a body that neither keeps nor multi-runs defs needs no environment")
 	}
@@ -250,10 +250,10 @@ func TestBodyRunEnvMulti(t *testing.T) {
 		t.Fatal("a value rebind joins rather than declines")
 	}
 	k, _ := r.Defs.Top("k")
-	if core.IsConcrete(k) || !k.Carrier {
+	if core.IsConcrete(&k) || !k.Carrier() {
 		t.Errorf("a rebound name reads as a carrier inside the environment, got %v", k)
 	}
-	if s, _ := r.Defs.Top("same"); s.String() != "1" || s.Carrier {
+	if s, _ := r.Defs.Top("same"); s.String() != "1" || s.Carrier() {
 		t.Errorf("an unchanged name keeps its start binding: %v", s)
 	}
 	if e, _ := r.Defs.TopEntry("T"); e.TypeDef != core.TInteger {
@@ -306,19 +306,19 @@ func TestBodyRunEnvCarriesInstalledTypes(t *testing.T) {
 // container's shape, and reads a root literal as the gradual Any.
 func TestBindCarrier(t *testing.T) {
 	c := core.NewCarrier(core.TString)
-	if got := bindCarrier(c); !got.Carrier || got.Parent != c.Parent {
+	if got := bindCarrier(c); !got.Carrier() || got.Parent() != c.Parent() {
 		t.Error("a carrier is itself")
 	}
-	if got := bindCarrier(core.NewInteger(5)); !got.Carrier || core.IsConcrete(got) || !got.Parent.Equal(core.TInteger) {
+	if got := bindCarrier(core.NewInteger(5)); !got.Carrier() || core.IsConcrete(&got) || !got.Parent().Equal(core.TInteger) {
 		t.Errorf("a scalar widens to its type carrier: %v", got)
 	}
-	if got := bindCarrier(core.NewList(nil)); !got.Parent.Equal(core.TList) || got.Data == nil {
+	if got := bindCarrier(core.NewList(nil)); !got.Parent().Equal(core.TList) || got.Data() == nil {
 		t.Errorf("a list keeps its container shape: %v", got)
 	}
-	if got := bindCarrier(core.NewMap(nil)); !got.Parent.Equal(core.TMap) || got.Data == nil {
+	if got := bindCarrier(core.NewMap(nil)); !got.Parent().Equal(core.TMap) || got.Data() == nil {
 		t.Errorf("a map keeps its container shape: %v", got)
 	}
-	if got := bindCarrier(core.Value{}); !got.Dynamic || !got.Carrier {
+	if got := bindCarrier(core.Value{}); !core.IsDynamic(&got) || !got.Carrier() {
 		t.Errorf("a root literal is the gradual Any: %v", got)
 	}
 }
@@ -332,8 +332,8 @@ func TestBindCarrier(t *testing.T) {
 func TestResidualReadHazardIsFragmentKeyed(t *testing.T) {
 	es, _ := memoState(t)
 	v := core.NewInteger(5)
-	v.ID = "v-k"
-	es.defReads = map[string]string{v.ID: "k"}
+	core.SetID(&v, "v-k")
+	es.defReads = map[string]string{core.IDOf(&v): "k"}
 	dyn := dynScopeOperand(0)
 
 	// Root: no fragment, a read then a bind.
@@ -371,8 +371,8 @@ func TestResidualReadHazardIsFragmentKeyed(t *testing.T) {
 	endB()
 	b := es.captured
 	z := core.NewInteger(1)
-	z.ID = "v-z"
-	es.defReads[z.ID] = "z"
+	core.SetID(&z, "v-z")
+	es.defReads[core.IDOf(&z)] = "z"
 	if es.residualReadHazard(z, dyn, a) != "" || es.residualReadHazard(z, dyn, b) != "" {
 		t.Error("sibling fragments do not share a hazard")
 	}
@@ -383,8 +383,8 @@ func TestResidualReadHazardIsFragmentKeyed(t *testing.T) {
 	es.noteFragRead("w")
 	endC()
 	w := core.NewInteger(2)
-	w.ID = "v-w"
-	es.defReads[w.ID] = "w"
+	core.SetID(&w, "v-w")
+	es.defReads[core.IDOf(&w)] = "w"
 	if es.residualReadHazard(w, dyn, es.captured) != "" {
 		t.Error("a read after the bind re-pushes the rebound value, which is the interpreter's")
 	}
@@ -396,8 +396,8 @@ func TestResidualReadHazardIsFragmentKeyed(t *testing.T) {
 func TestResidualReadHazardOperandKinds(t *testing.T) {
 	es, _ := memoState(t)
 	v := core.NewInteger(5)
-	v.ID = "v-k"
-	es.defReads = map[string]string{v.ID: "k"}
+	core.SetID(&v, "v-k")
+	es.defReads = map[string]string{core.IDOf(&v): "k"}
 	es.noteFragRead("k")
 	es.noteStoreHazard("k", 3)
 	if es.residualReadHazard(v, ConstOperand(0), nil) != "" || es.residualReadHazard(v, EventOperand(1, 0), nil) != "" {
@@ -410,7 +410,7 @@ func TestResidualReadHazardOperandKinds(t *testing.T) {
 		t.Error("another slot is untouched")
 	}
 	anon := core.NewInteger(7)
-	anon.ID = "v-anon"
+	core.SetID(&anon, "v-anon")
 	if got := es.residualReadHazard(anon, localOperand(3), nil); !strings.Contains(got, "a loop-carried def") {
 		t.Errorf("a slot read with no name falls back to the generic noun: %q", got)
 	}
@@ -420,7 +420,7 @@ func TestResidualReadHazardOperandKinds(t *testing.T) {
 		t.Error("a DynFrom-tagged read names its binding without a defReads entry")
 	}
 	unnamed := core.NewInteger(8)
-	unnamed.ID = "v-unnamed"
+	core.SetID(&unnamed, "v-unnamed")
 	if es.residualReadHazard(unnamed, dynScopeOperand(0), nil) != "" {
 		t.Error("an unnameable dyn-scope read cannot be judged, so it passes")
 	}
@@ -490,7 +490,7 @@ func TestResidualStandsIsTheSharedCompileFailureSite(t *testing.T) {
 	es := NewEmitState()
 	es.Compilable = true
 	v := core.NewInteger(1)
-	v.ID = "v-stands"
+	core.SetID(&v, "v-stands")
 	if !es.residualStands("fn f: ", v, ConstOperand(0), true, nil, "body result") || !es.Compilable {
 		t.Errorf("a resolved, hazard-free residual must stand; got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}

@@ -63,7 +63,9 @@ func TestCompiledAllocCeilings(t *testing.T) {
 		{"compare_loop", "", `for 200 [gt i 100]`, 1150},
 		{"if_scalar", "", `for 200 [if (gt i 100) [1] [0]]`, 1150},
 		{"if_listcond", "", `for 200 [if [i gt 100] [1] [0]]`, 1150},
-		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 1950},
+		// for_tight LOWERED 2026-10-15 by its measured drop (644 -> 413,
+		// no-copy phase 4): the loop's small integers share their datums.
+		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 1719},
 		{"recursion_nontail", `def s fn [[n:Integer] [Integer] [if (n lte 0) [0] [n add (s (n sub 1))]]] end`, `s 200`, 2450},
 		{"recursion_tail", `def s2 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [s2 (n sub 1) (acc add n)]]] end`, `s2 1000 0`, 13000},
 		// Island reuse keeps a hot island in a loop at interpreter-level

@@ -110,14 +110,67 @@ func TestForRangeLiveStartDeclines(t *testing.T) {
 		"for: computed range start/step", "[6]")
 }
 
-// TestSplicePayloadReReadDeclines — a dynamic splice reassigns its payload's
-// provenance to the spread, so a re-read of the payload def after the splice
-// surfaces the SAME value twice in the program residual; the re-read would
-// resolve to the spread, so the program declines beside the interpreter's
-// answer.
+// TestSplicePayloadReReadDeclines — a dynamic splice's spread keeps its
+// payload's identity, so two spreads of one payload surface that identity
+// twice in the program residual, each a variadic result its order would seat
+// in a slot: the program declines beside the interpreter's answer. A re-read
+// of the payload def after the spread is no spread: its holder carries the
+// payload's own producer (the recorder keys on the holder, not the
+// identity), so it compiles to the interpreter's answer — it declined while
+// the recorder resolved the identity to the splice.
 func TestSplicePayloadReReadDeclines(t *testing.T) {
-	requireLoudDecline(t, `def xs (range 1 3) def d word xs d xs`,
-		"splice payload re-read after the spread", "[1 2 [1 2]]")
+	requireLoudDecline(t, `def xs (range 1 3) def d word xs d xs d`,
+		"splice payload re-read after the spread", "[1 2 [1 2] 1 2]")
+	src := `def xs (range 1 3) def d word xs d xs`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != "[1 2 [1 2]]" || fmt.Sprint(gotI) != "[1 2 [1 2]]" {
+		t.Errorf("%q: compiled=%v %v/%v, interp %v/%v, want [1 2 [1 2]] on both lanes", src, compiled, gotC, errC, gotI, errI)
+	}
+}
+
+// TestSpliceSpreadPromotionDeclines — a computed splice's spread is one
+// recorded result standing for the payload's elements. Where the residual's
+// order promotes it to a frame slot (a value between two spreads) or the
+// residual's rebuild spills it to one, the store kept only the top element
+// and the re-push laid it out of order — `d 7 e` over two computed lists ran
+// [1 4 2 7 5] compiled, `d xs e` [1 2 4 [1 2] 5] — so both decline beside
+// the interpreter's answer. Spreads the residual lays out in place compile.
+func TestSpliceSpreadPromotionDeclines(t *testing.T) {
+	const two = `def xs (range 1 3) def ys (range 4 6) def d word xs def e word ys `
+	requireLoudDecline(t, two+`d 7 e`, "variadic result promoted to frame slots", "[1 2 7 4 5]")
+	requireLoudDecline(t, two+`d xs e`, "residual shape beyond Stage 1", "[1 2 [1 2] 4 5]")
+	// A word that takes the spread as one operand reads another window on
+	// the run, which spreads the list: `swap` was elided as a reorder of
+	// the spread and the 7 ([1 2 7] for [7 2 1]). The spread resolves to no
+	// operand, so every such consumer declines as over any unresolved
+	// operand, and only the program residual lays a spread out.
+	requireLoudDecline(t, two+`7 d swap`, "operand of unknown provenance or not statically materialisable at swap", "[7 2 1]")
+	requireLoudDecline(t, two+`d xs swap`, "operand of unknown provenance or not statically materialisable at swap", "[1 [1 2] 2]")
+	// A code body the run steps against the registry reads the bind twin's
+	// marker, whose payload is the pass's carrier: `do [d]` spread the
+	// placeholder ([7 [:Integer]] for [7 1 2]), so it declines. A concrete
+	// payload's marker is the value itself and compiles.
+	requireLoudDecline(t, two+`7 do [d]`, "bound to a splice over a computed payload", "[7 1 2]")
+	// A user fn's operand resolves to nothing over a spread, as any word's.
+	requireLoudDecline(t, two+`def f fn [[x:Any][Any][x]] end d f`, "fn call operand of unknown provenance", "[1 2]")
+	for _, c := range []struct{ src, want string }{
+		{two + `d e`, "[1 2 4 5]"},
+		{two + `d`, "[1 2]"},
+		// A payload that is no list at the pass's word spreads to itself:
+		// a gradual member read, or a fn, is one value either way.
+		{`def m {f: [1 2]} end def dbl word m.f end 7 dbl swap`, "[7 2 1]"},
+		{`def xs [1 2] def d word xs 7 do [d]`, "[7 1 2]"},
+		// A code body naming no splice-bound def compiles beside one.
+		{two + `7 do [8]`, "[7 8]"},
+		// A spread the residual leaves deepest and lays out first survives
+		// the rebuild's spill: the elements beneath its top never move.
+		{two + `def b (2 add 3) d b b dup`, "[1 2 5 5 5]"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: compiled=%v %v/%v, interp %v/%v, want %s on both lanes", c.src, compiled, gotC, errC, gotI, errI, c.want)
+		}
+	}
 }
 
 // TestModifierWrapperShapeClaimBounds — a def-bound modifier wrapper's shape

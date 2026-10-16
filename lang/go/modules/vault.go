@@ -263,7 +263,8 @@ func vaultCollectParams(op vaultOp, args []native.Value, r *native.Registry) (ma
 			}
 			items := make([]any, 0, lst.Len())
 			for j := 0; j < lst.Len(); j++ {
-				s, sErr := lst.Get(j).AsConcreteString()
+				el := lst.Get(j)
+				s, sErr := el.AsConcreteString()
 				if sErr != nil {
 					return nil, vaultUsage(r, op.name, p.name+": elements must be Strings")
 				}
@@ -386,7 +387,7 @@ func vaultDeclaredReturns(ret *native.Type) native.ReturnsFunc {
 	return func(_ []native.Value, _ *native.Registry) []native.Value {
 		c := native.NewCarrier(ret)
 		if ret.Equal(native.TAny) {
-			c.Dynamic = true
+			core.SetDynamic(&c, true)
 		}
 		return []native.Value{c}
 	}
@@ -409,7 +410,7 @@ func concreteArgsGate(n int) func([]native.Value) bool {
 			return false
 		}
 		for _, a := range args {
-			if a.Dynamic || !native.DeepKnown(a) {
+			if core.IsDynamic(&a) || !native.DeepKnown(a) {
 				return false
 			}
 		}
@@ -431,7 +432,7 @@ func argsMatchDeclared(args []native.Value, declared []*native.Type) bool {
 		return false
 	}
 	for i, a := range args {
-		if a.Parent == nil || !a.Parent.ConformsTo(declared[i]) {
+		if a.Parent() == nil || !a.Parent().ConformsTo(declared[i]) {
 			return false
 		}
 	}

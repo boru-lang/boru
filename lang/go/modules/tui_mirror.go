@@ -48,7 +48,7 @@ func tuiPolicyFirstMirror(word, polOp string, arity int,
 // to reproduce it.
 func tuiDynAnyReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	c := native.NewCarrier(native.TAny)
-	c.Dynamic = true
+	native.SetDynamic(&c, true)
 	return []native.Value{c}
 }
 
@@ -68,7 +68,7 @@ func tuiOpenMirror() native.ReturnsFunc {
 				// (RecordTypeInfo, OptionsTypeInfo, ChildTypeInfo) share
 				// Parent=TMap and satisfy the signature, but AsMap cannot
 				// expose them, so the handler raises this exact error.
-				if !args[0].Parent.Equal(native.TMap) {
+				if !args[0].Parent().Equal(native.TMap) {
 					return nil
 				}
 				return r.BoruError("tui_error", "open: options must be a Map", "open")

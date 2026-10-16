@@ -109,20 +109,20 @@ func TestSpliceValueAPI(t *testing.T) {
 	inner := NewInteger(7)
 	sp := NewSplice(inner)
 
-	if !IsSplice(sp) {
+	if !IsSplice(&sp) {
 		t.Fatalf("IsSplice(NewSplice(...)) = false, want true")
 	}
-	if IsSplice(inner) {
+	if IsSplice(&inner) {
 		t.Errorf("IsSplice on a plain integer = true, want false")
 	}
-	info, err := AsSplice(sp)
+	info, err := AsSplice(&sp)
 	if err != nil {
 		t.Fatalf("AsSplice: unexpected error %v", err)
 	}
 	if got, _ := AsInteger(info.Data); got != 7 {
 		t.Errorf("AsSplice payload = %v, want 7", got)
 	}
-	if _, err := AsSplice(inner); err == nil {
+	if _, err := AsSplice(&inner); err == nil {
 		t.Errorf("AsSplice on a non-splice value: expected error, got none")
 	}
 }
@@ -141,7 +141,7 @@ func TestSpliceTypedListSplicesAsValue(t *testing.T) {
 		NewTypeLiteral(TInteger),
 		[]Value{NewInteger(1), NewInteger(2), NewInteger(3)},
 	)
-	if !IsTypedList(typed) {
+	if !IsTypedList(&typed) {
 		t.Fatalf("fixture is not a typed list")
 	}
 	out, err := NewTop(r).Run([]Value{NewSplice(typed)})
@@ -153,7 +153,7 @@ func TestSpliceTypedListSplicesAsValue(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("typed list splice produced %d stack entries, want 1: %q", len(out), Canon(out))
 	}
-	if !IsTypedList(out[0]) {
+	if !IsTypedList(&out[0]) {
 		t.Errorf("spliced value is not the original typed list: %q", Canon(out))
 	}
 }

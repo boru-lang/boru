@@ -56,7 +56,7 @@ func TestMergeReturnsTypedResidual(t *testing.T) {
 		t.Errorf("mergeReturns residual lost the {:Integer} tag (chained writes would escape check)")
 	}
 	if ci, cerr := AsChildType(res[0]); cerr != nil || !ci.Child.Equal(TInteger) {
-		t.Errorf("mergeReturns residual child = %v (err %v), want Integer", res[0].Parent, cerr)
+		t.Errorf("mergeReturns residual child = %v (err %v), want Integer", res[0].Parent(), cerr)
 	}
 	// Untyped operands → a plain dynamic carrier (no tag).
 	u1, _ := tcValue(t, `def a {x:1} a`)

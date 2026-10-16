@@ -447,7 +447,7 @@ func TestVaultRegisterContracts(t *testing.T) {
 // vaultAnyToValue: every shape projects, map keys sort, and an
 // unrecognised shape degrades to its string form.
 func TestVaultAnyToValueShapes(t *testing.T) {
-	if v := vaultAnyToValue(nil); native.IsConcrete(v) || !v.Is(native.TNone) {
+	if v := vaultAnyToValue(nil); native.IsConcrete(&v) || !v.Is(native.TNone) {
 		t.Fatalf("nil = %v", v)
 	}
 	if v := vaultAnyToValue(7); mustInt(t, v) != 7 {
@@ -456,11 +456,11 @@ func TestVaultAnyToValueShapes(t *testing.T) {
 	if v := vaultAnyToValue(int64(8)); mustInt(t, v) != 8 {
 		t.Fatalf("int64 = %v", v)
 	}
-	f, err := vaultAnyToValue(1.25).AsConcreteFloat()
+	f, err := addrOf(vaultAnyToValue(1.25)).AsConcreteFloat()
 	if err != nil || f != 1.25 {
 		t.Fatalf("float = %v %v", f, err)
 	}
-	b, err := vaultAnyToValue(true).AsConcreteBoolean()
+	b, err := addrOf(vaultAnyToValue(true)).AsConcreteBoolean()
 	if err != nil || !b {
 		t.Fatalf("bool = %v %v", b, err)
 	}

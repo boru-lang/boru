@@ -131,7 +131,7 @@ func (es *EmitState) storedDepRead(name string, v core.Value) bool {
 	if _, ok := es.reg.Defs.Top(name); !ok {
 		return false
 	}
-	if v.Dynamic {
+	if core.IsDynamic(&v) {
 		es.noteUnitLive(name)
 		return false
 	}
@@ -218,11 +218,11 @@ func (es *EmitState) noteLiveNameTransition(name string) {
 // dispatchingBinding reports whether a binding is one the lookup op cannot
 // push — the arms OpLookupDynScope defers on.
 func dispatchingBinding(v core.Value) bool {
-	switch v.Data.(type) {
-	case core.FnDefInfo, *core.ClassTypeInfo:
+	switch v.Data().(type) {
+	case *core.FnDefInfo, *core.ClassTypeInfo:
 		return true
 	}
-	return core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v)
+	return core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v)
 }
 
 // compileLiveLeadUnits gives every own signature of v, name's current
@@ -235,8 +235,8 @@ func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 		es.declineUndef(name, liveLeadUndeclared)
 		return
 	}
-	fd := v.Data.(core.FnDefInfo)
+	fd := v.Data().(*core.FnDefInfo)
 	for i := range fd.Signatures {
-		check.CompileFnSigUnit(es.reg, fd, i)
+		check.CompileFnSigUnit(es.reg, *fd, i)
 	}
 }

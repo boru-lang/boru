@@ -61,7 +61,7 @@ func TestSeam7BuildLoggerInstanceInitError(t *testing.T) {
 
 	// loggerShapeReturns falls back to a bare Map carrier on init error.
 	got := loggerShapeReturns(lsr)(nil, r)
-	if len(got) != 1 || !got[0].Parent.ConformsTo(TMap) {
+	if len(got) != 1 || !got[0].Parent().ConformsTo(TMap) {
 		t.Fatalf("loggerShapeReturns fallback: %v", got)
 	}
 }

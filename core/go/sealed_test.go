@@ -279,7 +279,7 @@ func TestSealedSteplessStripsAscription(t *testing.T) {
 		t.Fatalf("Run = %s / %v", renderAll(out), err)
 	}
 	lst, _ := AsList(out[0])
-	if lst.Len() != 2 || lst.Get(0).AscribedType() != nil {
-		t.Fatalf("the stored element keeps its ascription: %v", lst.Get(0).AscribedType())
+	if lst.Len() != 2 || addrOf(lst.Get(0)).AscribedType() != nil {
+		t.Fatalf("the stored element keeps its ascription: %v", addrOf(lst.Get(0)).AscribedType())
 	}
 }

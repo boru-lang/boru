@@ -19,8 +19,8 @@ func TestCloneMapIndependence(t *testing.T) {
 	clone := core.CloneValue(orig)
 
 	// The clone's nested map must be a distinct *OrderedMap.
-	cloneInnerV, _ := clone.Data.(core.MapPayload).M.Get("inner")
-	cloneInner := cloneInnerV.Data.(core.MapPayload).M
+	cloneInnerV, _ := clone.Data().(core.MapPayload).M.Get("inner")
+	cloneInner := cloneInnerV.Data().(core.MapPayload).M
 	if cloneInner == inner {
 		t.Fatal("clone shares the original's nested *OrderedMap")
 	}
@@ -77,8 +77,8 @@ func TestCloneListSharedSubstructurePreserved(t *testing.T) {
 	cl, _ := core.AsList(clone)
 	a := cl.Get(0)
 	b := cl.Get(1)
-	fa, _ := a.Data.(*core.FlexListData)
-	fb, _ := b.Data.(*core.FlexListData)
+	fa, _ := a.Data().(*core.FlexListData)
+	fb, _ := b.Data().(*core.FlexListData)
 	if fa == nil || fb == nil {
 		t.Fatal("flexlist payloads missing after clone")
 	}
@@ -90,10 +90,10 @@ func TestCloneListSharedSubstructurePreserved(t *testing.T) {
 func TestClonePreservesRefineType(t *testing.T) {
 	pos := core.MintTestType("Scalar/Number/Integer/Pos")
 	v := core.NewInteger(5)
-	v.Parent = pos // a refine-subtyped integer
+	v.SetParent(pos) // a refine-subtyped integer
 	clone := core.CloneValue(v)
-	if !clone.Parent.Equal(pos) {
-		t.Errorf("clone Parent = %v, want the Pos refine type", clone.Parent)
+	if !clone.Parent().Equal(pos) {
+		t.Errorf("clone Parent = %v, want the Pos refine type", clone.Parent())
 	}
 }
 
@@ -119,7 +119,7 @@ func TestCloneTypeLiteralNoPanic(t *testing.T) {
 	c := core.CloneValue(orig)
 	// A type literal IS its lattice node and has no payload; the clone is
 	// the same node (shared, immutable).
-	if c.ID != orig.ID || !core.ValueType(c).Equal(core.ValueType(orig)) {
+	if core.IDOf(&c) != core.IDOf(&orig) || !core.ValueType(c).Equal(core.ValueType(orig)) {
 		t.Error("type-literal clone is not the same lattice node")
 	}
 }
@@ -138,8 +138,8 @@ func TestCloneExtensionDeepCloner(t *testing.T) {
 	orig := core.NewExtension(ft, fakeBody{data: []int{1, 2, 3}})
 	clone := core.CloneValue(orig)
 
-	ob := orig.Data.(core.ExtensionPayload).Body.(fakeBody)
-	cb := clone.Data.(core.ExtensionPayload).Body.(fakeBody)
+	ob := orig.Data().(core.ExtensionPayload).Body.(fakeBody)
+	cb := clone.Data().(core.ExtensionPayload).Body.(fakeBody)
 	cb.data[0] = 99
 	if ob.data[0] != 1 {
 		t.Error("DeepCloner clone shares the original body slice")

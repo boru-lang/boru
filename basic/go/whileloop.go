@@ -11,42 +11,36 @@ package basic
 // per-iteration values; `break` ends the loop with the values collected
 // so far, `continue` abandons the current body round.
 func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
-	if !IsConcrete(cond) {
+	if !IsConcrete(&cond) {
 		return nil, r.BoruError("while_error",
 			"while: condition must be a concrete list, got type literal", "while")
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		return nil, r.BoruError("while_error",
 			"while: body must be a concrete list, got type literal", "while")
 	}
+	// The Loop replays these copies of the two regions every iteration.
 	condLst, _ := AsList(cond)
 	bodyLst, _ := AsList(body)
 	condSlice := condLst.Slice()
 	bodySlice := bodyLst.Slice()
 
-	condCopy := make([]Value, len(condSlice))
-	copy(condCopy, condSlice)
-	bodyCopy := make([]Value, len(bodySlice))
-	copy(bodyCopy, bodySlice)
-
 	cont := &Loop{
 		Registry:  r,
 		Word:      "while",
 		Count:     -1,
-		Body:      bodyCopy,
-		WhileCond: condCopy,
+		Body:      bodySlice,
+		WhileCond: condSlice,
 		CondPos:   cond.Pos(),
 	}
 
 	// First region: the condition. Its move fires stepMoveWhile with
 	// WhileInBody false, which reads the region's last value and either
-	// splices the body or finishes the loop.
+	// splices the body or finishes the loop. The mark carries no body.
 	id := NextMarkID()
-	tokens := make([]Value, 0, len(condCopy)+2)
-	tokens = append(tokens, NewMark(id, condCopy...))
-	condTokens := make([]Value, len(condCopy))
-	copy(condTokens, condCopy)
-	tokens = append(tokens, condTokens...)
+	tokens := make([]Value, 0, len(condSlice)+2)
+	tokens = append(tokens, NewMark(id))
+	tokens = append(tokens, condSlice...)
 	tokens = append(tokens, NewMoveCont(id, "while loop", cont))
 	return tokens, nil
 }
@@ -177,8 +171,8 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 			return []Value{out}
 		}
 		iter := NewCarrier(TInteger)
-		es.RegisterLocal(iter.ID)
-		es.RecordWhile(condFrag, bodyFrag, condStk, stk, iter.ID, out, args[0].Pos())
+		es.RegisterLocal(IDOf(&iter))
+		es.RecordWhile(condFrag, bodyFrag, condStk, stk, IDOf(&iter), &out, args[0].Pos())
 		return []Value{out}
 	}
 	if len(stk) == 0 {
@@ -196,8 +190,8 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// soundness oracle reads this stack directly — and a List where the
 	// runtime leaves N scalars is a false claim (measured: 5 violations
 	// the moment the while rows entered the main corpus, control.tsv §7).
-	elem := NewTypeLiteral(top.Parent)
-	if IsDisjunct(top) {
+	elem := NewTypeLiteral(top.Parent())
+	if IsDisjunct(&top) {
 		elem = top
 	}
 	// A body that nets MORE THAN ONE value per round leaves one of EACH on
@@ -213,7 +207,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// one the fifty-first increment graduated, whose last value is a
 	// concrete Integer over a body that also leaves the flex container.
 	for _, v := range stk {
-		if v.Parent != top.Parent {
+		if v.Parent() != top.Parent() {
 			elem = NewTypeLiteral(TAny)
 			break
 		}
@@ -230,5 +224,5 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 // not known at all.
 func emptyWhileCond(cond Value) bool {
 	lst, err := AsList(cond)
-	return err == nil && IsConcrete(cond) && lst.Len() == 0
+	return err == nil && IsConcrete(&cond) && lst.Len() == 0
 }

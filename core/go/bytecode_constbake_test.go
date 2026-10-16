@@ -27,7 +27,7 @@ func TestIsInertConstRejectsMutableInstances(t *testing.T) {
 		{"class-instance", NewClassInstance(TClass, ClassInstanceInfo{})},
 	}
 	for _, m := range mutable {
-		if IsInertConst(m.v) {
+		if IsInertConst(&m.v) {
 			t.Errorf("isInertConst(%s) = true; a mutable instance type must NOT be const-bakeable "+
 				"(a pooled const is pushed by the same pointer every iteration — an in-place "+
 				"mutator would corrupt it). See isInertConst's MUTATION-SAFETY note before "+
@@ -38,7 +38,7 @@ func TestIsInertConstRejectsMutableInstances(t *testing.T) {
 		if IsInertConstMember(m.v) {
 			t.Errorf("isInertConstMember(%s) = true; a mutable instance must not ride inside a const compound", m.name)
 		}
-		if IsInertConst(NewList([]Value{m.v})) {
+		if IsInertConst(addrOf(NewList([]Value{m.v}))) {
 			t.Errorf("isInertConst([%s]) = true; a list holding a mutable instance must not bake", m.name)
 		}
 	}
@@ -57,7 +57,7 @@ func TestIsInertConstRejectsMutableInstances(t *testing.T) {
 		{"int-list", NewList([]Value{NewInteger(1), NewInteger(2)})},
 	}
 	for _, c := range inert {
-		if !IsInertConst(c.v) {
+		if !IsInertConst(&c.v) {
 			t.Errorf("isInertConst(%s) = false; an immutable scalar/compound must stay const-bakeable", c.name)
 		}
 	}
@@ -84,28 +84,28 @@ func TestIsInertConstXmlLiteral(t *testing.T) {
 
 	// POSITIVE — an immutable element with inert interior bakes, standalone and
 	// as a member of a const compound.
-	if !IsInertConst(xml) {
+	if !IsInertConst(&xml) {
 		t.Errorf(`isInertConst(<a x="1"><b/>hi</a>) = false; an immutable Node/Xml literal with an inert interior must be const-bakeable`)
 	}
-	if !IsInertConst(NewList([]Value{xml})) {
+	if !IsInertConst(addrOf(NewList([]Value{xml}))) {
 		t.Error("isInertConst([<a/>…]) = false; a list of immutable XML literals must bake")
 	}
 
 	// NEGATIVE — the MUTABLE FlexXml twin must never bake, standalone or nested.
 	flex := NewFlexXml("a", nil, nil)
-	if IsInertConst(flex) {
+	if IsInertConst(&flex) {
 		t.Error("isInertConst(flex <a/>) = true; the MUTABLE FlexXml must NOT const-bake " +
 			"(an in-place set/append would corrupt a pooled const across iterations)")
 	}
 	if IsInertConstMember(flex) {
 		t.Error("isInertConstMember(flex <a/>) = true; a mutable FlexXml must not ride inside a const compound")
 	}
-	if IsInertConst(NewList([]Value{flex})) {
+	if IsInertConst(addrOf(NewList([]Value{flex}))) {
 		t.Error("isInertConst([flex <a/>]) = true; a list holding a mutable FlexXml must not bake")
 	}
 	// A mutable FlexXml CHILD must keep its containing immutable element off the
 	// const path too (the interior member check must catch it).
-	if IsInertConst(NewXmlElement("p", nil, []Value{flex})) {
+	if IsInertConst(addrOf(NewXmlElement("p", nil, []Value{flex}))) {
 		t.Error("isInertConst(<p>{flex}</p>) = true; an immutable element wrapping a mutable FlexXml child must not bake")
 	}
 }
@@ -125,7 +125,7 @@ func TestIsInertConstTableTypeBody(t *testing.T) {
 	dataTable := NewTableType(RecordTypeInfo{Fields: dataFields})
 
 	// POSITIVE — a Table over a data-only record schema bakes as a const.
-	if !IsInertConst(dataTable) {
+	if !IsInertConst(&dataTable) {
 		t.Errorf("isInertConst(Table{name:String value:Integer}) = false; a Table type over a "+
 			"data-only record must be const-bakeable (it is a thin wrapper over RecordTypeInfo, "+
 			"which already bakes). Disassemble: %v", dataTable)
@@ -140,7 +140,7 @@ func TestIsInertConstTableTypeBody(t *testing.T) {
 	carrierFields := NewOrderedMap()
 	carrierFields.Set("rows", NewCarrier(TList))
 	carrierTable := NewTableType(RecordTypeInfo{Fields: carrierFields})
-	if IsInertConst(carrierTable) {
+	if IsInertConst(&carrierTable) {
 		t.Error("isInertConst(Table over carrier-bearing record) = true; a carrier interior must " +
 			"keep the structural type body off the const pool")
 	}
@@ -171,13 +171,13 @@ func TestInertReachMember(t *testing.T) {
 		t.Error("inertReachMember(r.int) = false; a dot-access reach must ride as a const member")
 	}
 	body := NewList([]Value{dotReach, NewInteger(0), NewInteger(9)})
-	if !IsInertConst(body) {
+	if !IsInertConst(&body) {
 		t.Error("isInertConst([r.int 0 9]) = false; a code body of inert tokens + a reach must bake")
 	}
 	// …but the SAME reach standalone is NOT an inert const — at the engine
 	// pointer it expands in place, so it must reach the runtime as code, never
 	// frozen into the const pool.
-	if IsInertConst(dotReach) {
+	if IsInertConst(&dotReach) {
 		t.Error("isInertConst(r.int) = true; a standalone dot-access reach must stay OUT of the const pool")
 	}
 
@@ -192,7 +192,7 @@ func TestInertReachMember(t *testing.T) {
 	if inertReachMember(computedReach) {
 		t.Error("inertReachMember(p.(k)) = true; a computed segment is code and must decline")
 	}
-	if IsInertConst(NewList([]Value{computedReach})) {
+	if IsInertConst(addrOf(NewList([]Value{computedReach}))) {
 		t.Error("isInertConst([p.(k)]) = true; a reach with a computed segment must keep the body off the const path")
 	}
 }

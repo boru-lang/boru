@@ -26,7 +26,7 @@ func CheckMakeConstruction(r *core.Registry, target, src core.Value, pos core.Sr
 		return
 	}
 	target = core.ResolveTypeLiteralDef(target, r)
-	if !core.IsConcrete(src) || src.Parent == nil || !src.Parent.ConformsTo(core.TMap) {
+	if !core.IsConcrete(&src) || src.Parent() == nil || !src.Parent().ConformsTo(core.TMap) {
 		return
 	}
 	provided, _ := core.AsMap(src)
@@ -36,7 +36,7 @@ func CheckMakeConstruction(r *core.Registry, target, src core.Value, pos core.Sr
 	var allFields *core.OrderedMap
 	var label string
 	switch {
-	case core.IsClassType(target):
+	case core.IsClassType(&target):
 		ot, err := core.AsClassType(target)
 		if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return
@@ -76,13 +76,13 @@ func CheckMakeConstruction(r *core.Registry, target, src core.Value, pos core.Sr
 		if !hasVal {
 			// Same has-default probe the runtime constructors use: a
 			// schema slot with a payload is a concrete default.
-			if constraint.Data != nil {
+			if constraint.Data() != nil {
 				continue
 			}
 			diag(fmt.Sprintf("make: missing field %q for %s", key, label))
 			continue
 		}
-		if !core.IsConcrete(val) {
+		if !core.IsConcrete(&val) {
 			continue
 		}
 		if _, err := core.MakeClassFieldValue(val, constraint, r); err != nil {

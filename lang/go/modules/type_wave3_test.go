@@ -133,11 +133,11 @@ func TestTypeRequiredDisjunctEdgesWave3(t *testing.T) {
 	}
 	// Direct: the all-None disjunct keeps its shape.
 	d := native.NewDisjunct([]native.Value{native.NewNone(), native.NewNone()})
-	if !native.IsDisjunct(d) {
+	if !native.IsDisjunct(&d) {
 		t.Fatal("hand-built all-None disjunct did not stay a disjunct")
 	}
 	out := stripNoneFromField(d)
-	if !native.IsDisjunct(out) {
+	if !native.IsDisjunct(&out) {
 		t.Errorf("stripNoneFromField(all-None) = %s, want the input disjunct back", out.String())
 	}
 	// And a non-disjunct field is returned as-is.

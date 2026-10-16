@@ -118,8 +118,8 @@ func (tensorFormatBehavior) Match(v native.Value, t *native.Type) bool {
 	// payload to rank; match by FAMILY KIND instead, gated on v's Parent
 	// chain actually carrying this module's Behavior so an unrelated user
 	// type that happens to be named "Matrix" cannot slip in.
-	if v.Parent != nil && isTensorFamilyNode(v.Parent) {
-		vk := tensorKindName(v.Parent)
+	if v.Parent() != nil && isTensorFamilyNode(v.Parent()) {
+		vk := tensorKindName(v.Parent())
 		tk := tensorKindName(t)
 		return tk == "Tensor" || vk == tk
 	}
@@ -130,7 +130,7 @@ func (tensorFormatBehavior) Match(v native.Value, t *native.Type) bool {
 // by MintTensorTypes — identified by the module's own Behavior, the one
 // marker every per-import mint shares and nothing else can forge.
 func isTensorFamilyNode(t *native.Type) bool {
-	for n := t; n != nil; n = n.Parent {
+	for n := t; n != nil; n = n.Parent() {
 		if _, ok := n.Behavior().(tensorFormatBehavior); ok {
 			return true
 		}
@@ -143,7 +143,7 @@ func (tensorFormatBehavior) Equal(a, b native.Value) bool {
 }
 
 func (tensorFormatBehavior) Format(v native.Value) string {
-	kind := tensorKindName(v.Parent)
+	kind := tensorKindName(v.Parent())
 	if td, ok := tensorPayload(v); ok {
 		return kind + "(" + shapeString(td.Shape) + ")"
 	}
@@ -164,7 +164,7 @@ func (tensorFormatBehavior) Size(v native.Value) int {
 // state) and user refines (`def UMat refine (MatrixUtil.Matrix)`)
 // report their kind through their ancestry.
 func tensorKindName(vt *core.Type) string {
-	for t := vt; t != nil; t = t.Parent {
+	for t := vt; t != nil; t = t.Parent() {
 		switch t.Name() {
 		case "Vector", "Matrix", "Tensor":
 			return t.Name()
@@ -190,7 +190,7 @@ func shapeString(shape []int) string {
 
 // tensorPayload extracts the TensorData payload from a tensor value.
 func tensorPayload(v native.Value) (TensorData, bool) {
-	if ep, ok := v.Data.(core.ExtensionPayload); ok {
+	if ep, ok := v.Data().(core.ExtensionPayload); ok {
 		td, ok := ep.Body.(TensorData)
 		return td, ok
 	}

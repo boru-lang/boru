@@ -66,10 +66,10 @@ func TestX5TapeReloadTooSmall(t *testing.T) {
 
 func TestX5TapeBoundsGuards(t *testing.T) {
 	tp := NewTape(x5Vals(3), 4)
-	if v := tp.At(-1); v.Data != nil {
+	if v := tp.At(-1); v.Data() != nil {
 		t.Fatal("out-of-range At returns the zero Value")
 	}
-	if v := tp.At(99); v.Data != nil {
+	if v := tp.At(99); v.Data() != nil {
 		t.Fatal("past-end At returns the zero Value")
 	}
 	tp.Set(-1, NewInteger(9)) // ignored
@@ -373,13 +373,13 @@ func TestX5MakeBoruErrorAtAndSigArgs(t *testing.T) {
 
 func TestX5CarrierOfLiteral(t *testing.T) {
 	c := CarrierOfLiteral(NewTypeLiteral(TInteger))
-	if !c.Carrier {
+	if !c.Carrier() {
 		t.Fatal("the result is a carrier")
 	}
-	if c.Parent == nil || !c.Parent.Equal(TInteger) {
-		t.Fatalf("the carrier's parent is the literal's node, got %v", c.Parent)
+	if c.Parent() == nil || !c.Parent().Equal(TInteger) {
+		t.Fatalf("the carrier's parent is the literal's node, got %v", c.Parent())
 	}
-	if !strings.Contains(c.Parent.String(), "Integer") {
-		t.Fatalf("unexpected parent render %q", c.Parent.String())
+	if !strings.Contains(c.Parent().String(), "Integer") {
+		t.Fatalf("unexpected parent render %q", c.Parent().String())
 	}
 }

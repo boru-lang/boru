@@ -527,7 +527,8 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	//   - the dyn-body intra-event ID de-collision became produceRunOuts and
 	//     is shared, because a closure dispatch over a region is a RUN too:
 	//     `do [7 for 3 [1]]` models [1 1 1] as one Value, and registering it
-	//     plainly collapses producedBy to the last index.
+	//     plainly collapsed the registration to the last index (while the
+	//     recorder resolved producers through the identity).
 	//
 	// Worth keeping: the ledger entry was WRONG about the mechanism while
 	// being right that the row was red, and the wrongness was inherited — the

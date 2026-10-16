@@ -430,10 +430,10 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 	// declared structural content, which the node records
 	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). Bare bases with no content
 	// (refine Integer, refine P) pass through unchanged.
-	if body, ok := TypeContentOf(base); ok && IsBareTypeNode(base) {
+	if body, ok := TypeContentOf(base); ok && IsBareTypeNode(&base) {
 		base = body
 	}
-	if body, ok := TypeContentOf(arg); ok && IsBareTypeNode(arg) {
+	if body, ok := TypeContentOf(arg); ok && IsBareTypeNode(&arg) {
 		arg = body
 	}
 	ideal := r.Ideals.For(base)
@@ -465,7 +465,7 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 // `behave` — see design/legacy/TYPE-UNIFORM.10.ignore.
 func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	base := args[0]
-	if !IsTypeBody(base) {
+	if !IsTypeBody(&base) {
 		return nil, r.BoruError("type_error",
 			fmt.Sprintf("refine: argument must be a type, got %s", base.String()),
 			"refine")
@@ -477,7 +477,7 @@ func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	// the alias path (`def Foo Integer`, where the body remains the
 	// input type literal verbatim) — without this differentiation the
 	// two surfaces would be indistinguishable downstream.
-	if IsBareTypeNode(base) {
+	if IsBareTypeNode(&base) {
 		// A NAMED base evaluates to its node (the Stage 2 flip). When
 		// the node records declared content (a Micron/record schema, a
 		// predicate constraint), return that content verbatim so the
@@ -492,7 +492,7 @@ func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		// `behave`) propagates to the LCA walk for sibling subtypes
 		// downstream. The prefab carries no Name; the paired `def`
 		// recognises it (core.IsRefinePrefab) and renames-and-binds.
-		anon := r.Types.MintRefinePrefab(CanonicalType(r, &base))
+		anon := r.Types.MintRefinePrefab(NodeOf(&base))
 		return []Value{NewTypeLiteral(anon)}, nil
 	}
 	return []Value{base}, nil
@@ -511,7 +511,7 @@ func installIdeals(r *Registry) {
 			// (`def Bar refine Foo {…}`). The bare-Object form is
 			// REMOVED: classes are defined with the `class` word
 			// (design/legacy/CLASS-OBJECT.10.ignore — no deprecated aliases).
-			if IsClassType(base) {
+			if IsClassType(&base) {
 				return objectWithParentHandler([]Value{arg, base}, nil, nil, r)
 			}
 			return nil, r.BoruErrorHint("refine_error",
@@ -524,14 +524,14 @@ func installIdeals(r *Registry) {
 		rec.Construct = func(base, arg Value, r *Registry) ([]Value, error) {
 			// Records have no subtyping — only the bare Record literal
 			// is a valid construction base.
-			if base.Data != nil {
+			if base.Data() != nil {
 				return nil, r.BoruError("type_error",
 					"refine: a record type has no subtyping — construct a Record from the bare Record literal",
 					"refine")
 			}
 			// A record takes a LIST of field pairs — field order is
 			// part of a record type's identity.
-			if !arg.Parent.Equal(TList) {
+			if !arg.Parent().Equal(TList) {
 				return nil, r.BoruError("type_error",
 					"refine Record: a record takes a list of field pairs, e.g. [a:Integer b:String]",
 					"refine")
@@ -541,7 +541,7 @@ func installIdeals(r *Registry) {
 	}
 	if tbl := r.Ideals.Get("Table"); tbl != nil {
 		tbl.Construct = func(base, arg Value, r *Registry) ([]Value, error) {
-			if base.Data != nil {
+			if base.Data() != nil {
 				return nil, r.BoruError("type_error",
 					"refine: a table type has no subtyping — construct a Table from the bare Table literal",
 					"refine")
@@ -578,7 +578,7 @@ func installIdeals(r *Registry) {
 	r.Ideals.Register(&core.Ideal{
 		Name:    "BinarySpec",
 		Enabled: true,
-		Accepts: func(v Value) bool { return IsBareTypeNode(v) && v.Equal(bspec) },
+		Accepts: func(v Value) bool { return IsBareTypeNode(&v) && v.Equal(bspec) },
 		Construct: func(base, arg Value, r *Registry) ([]Value, error) {
 			segs, err := readBitSegments(arg, r, "refine")
 			if err != nil {
@@ -611,7 +611,7 @@ func installIdeals(r *Registry) {
 // `tcmp` / `is` over the enum lost its members (compare.tsv). A non-concrete
 // element list falls back to the bare TEnum carrier.
 func enumReturns(args []Value, _ *Registry) []Value {
-	if len(args) == 1 && IsConcrete(args[0]) {
+	if len(args) == 1 && IsConcrete(&args[0]) {
 		if out, err := enumHandler(args, nil, nil, nil); err == nil {
 			return out
 		}
@@ -621,22 +621,22 @@ func enumReturns(args []Value, _ *Registry) []Value {
 
 func enumHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	list := args[0]
-	if !IsConcrete(list) {
+	if !IsConcrete(&list) {
 		return nil, &BoruError{Code: "type_error", Detail: "enum: argument must be a concrete list"}
 	}
 	var childType Value
 	hasChild := false
-	if IsTypedList(list) {
+	if IsTypedList(&list) {
 		ci, _ := AsChildType(list)
 		childType = ci.Child
-		hasChild = childType.Parent != nil
+		hasChild = childType.Parent() != nil
 	}
 	elems, _ := AsList(list)
 	alts := make([]Value, 0, elems.Len())
 	for i := 0; i < elems.Len(); i++ {
 		e := elems.Get(i)
-		if IsWord(e) {
-			w, _ := AsWord(e)
+		if IsWord(&e) {
+			w, _ := AsWord(&e)
 			e = NewAtom(w.Name)
 		}
 		if hasChild && !IsValueOfType(e, childType) {
@@ -670,7 +670,7 @@ func typeofReturns(args []Value, r *Registry) []Value {
 	// literal that collides at a later `def` — so the compile path keeps the
 	// bare Type carrier. In pure check the refinement is what lets
 	// `def One (typeof (const 1))` get a valid singleton type body.
-	if r != nil && !r.Check.Compiling && len(args) == 1 && IsConcrete(args[0]) {
+	if r != nil && !r.Check.Compiling && len(args) == 1 && IsConcrete(&args[0]) {
 		return []Value{TypeOf(args[0])}
 	}
 	return []Value{NewCarrier(TType)}
@@ -692,13 +692,13 @@ func typeofHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 // bodies (records, predicates, disjuncts) and plain values decline with
 // as_error rather than silently ascribing something dispatch cannot walk.
 func asTargetType(r *Registry, t Value) (*Type, error) {
-	if !core.IsTypeLiteral(t) {
+	if !core.IsTypeLiteral(&t) {
 		return nil, r.BoruErrorHint("as_error",
 			"as needs a type to dispatch as, got "+t.String(),
 			"as", "spell the target type by name: value as FlexMap")
 	}
 	tc := t
-	return CanonicalType(r, &tc), nil
+	return NodeOf(&tc), nil
 }
 
 // asValidate enforces the upcast-only rule: the value's own tag must
@@ -712,26 +712,26 @@ func asValidate(r *Registry, target *Type, v Value) error {
 	decline := func() error {
 		name := target.Leaf()
 		own := "nothing"
-		if v.Parent != nil {
-			own = v.Parent.Leaf()
+		if v.Parent() != nil {
+			own = v.Parent().Leaf()
 		}
 		return r.BoruErrorHint("as_error",
 			"as: "+name+" is not a supertype of the value's type "+own+
 				" — as widens dispatch only",
 			"as", "ascribe an ancestor of the value's own type; to construct a subtype use def x:"+name+" instead")
 	}
-	if core.IsTypeLiteral(v) || v.Parent == nil {
+	if core.IsTypeLiteral(&v) || v.Parent() == nil {
 		return decline()
 	}
-	if v.Dynamic {
+	if IsDynamic(&v) {
 		// Tree lattice: two nodes overlap iff one is an ancestor of the
 		// other, so gradual admission is the two-way conformance test.
-		if v.Parent.ConformsTo(target) || target.ConformsTo(v.Parent) {
+		if v.Parent().ConformsTo(target) || target.ConformsTo(v.Parent()) {
 			return nil
 		}
 		return decline()
 	}
-	if !v.Parent.ConformsTo(target) {
+	if !v.Parent().ConformsTo(target) {
 		return decline()
 	}
 	return nil
@@ -790,7 +790,7 @@ func asReturns(args []Value, r *Registry) []Value {
 	if verr := asValidate(r, target, v); verr != nil {
 		return degrade(verr)
 	}
-	if v.Dynamic && !v.Parent.ConformsTo(target) {
+	if IsDynamic(&v) && !v.Parent().ConformsTo(target) {
 		// Gradually admitted: statically all that is known post-as is
 		// "conforms to target" (the runtime validation guarantees it).
 		c := core.NewCarrier(target)
@@ -824,9 +824,9 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// Behavior (HasConstraintUnify — predicate / DepScalar / disjunct /
 	// negation / FnUndef / surface) keep the node: the bare-node branch
 	// consults the Behavior directly (the one-predicate doctrine).
-	if IsBareTypeNode(b) {
+	if IsBareTypeNode(&b) {
 		if content, ok := TypeContentOf(b); ok {
-			if IsClassType(content) || IsTableType(content) || core.IsMicronType(content) ||
+			if IsClassType(&content) || IsTableType(content) || core.IsMicronType(content) ||
 				!core.HasConstraintUnify(&b) {
 				b = content
 			}
@@ -846,16 +846,16 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// bare-refine bodies have Data==nil so they already route through
 	// the b.Data==nil branch below; only Object/Table bodies need
 	// this redirect.
-	if (IsClassType(b) || IsTableType(b) || core.IsMicronType(b)) && b.Parent != nil {
-		latticeNode := b.Parent
-		return []Value{NewBoolean(a.Parent.Equal(latticeNode) || a.Parent.IsSubtypeOf(latticeNode))}, nil
+	if (IsClassType(&b) || IsTableType(b) || core.IsMicronType(b)) && b.Parent() != nil {
+		latticeNode := b.Parent()
+		return []Value{NewBoolean(a.Parent().Equal(latticeNode) || a.Parent().IsSubtypeOf(latticeNode))}, nil
 	}
 	// Surface RHS: membership is the conformance set, answered by the
 	// minted node's surfaceUnifier via the v.Is(t) doctrine — explicit
 	// `exposes` declarations only, walking a's parent chain so subclass
 	// instances of an exposer conform.
-	if IsSurfaceType(b) && b.Parent != nil {
-		return []Value{NewBoolean(a.Is(b.Parent))}, nil
+	if IsSurfaceType(b) && b.Parent() != nil {
+		return []Value{NewBoolean(a.Is(b.Parent()))}, nil
 	}
 	// Note: a consolidation attempt to delegate structural-pattern
 	// RHS (typed list, typed map, record shape) to IsValueOfType was
@@ -865,10 +865,10 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// but answer different sub-questions. Real consolidation requires
 	// choosing one shape semantic and migrating the loser; that's a
 	// separate design call documented in PLAN.md.
-	if b.Parent.Equal(TFnUndef) && IsAtom(a) {
+	if b.Parent().Equal(TFnUndef) && IsAtom(a) {
 		name, _ := AsAtom(a)
 		if top, ok := r.Defs.Top(name); ok {
-			if top.Parent.Equal(TFunction) {
+			if top.Parent().Equal(TFunction) {
 				a = top
 			}
 		}
@@ -878,14 +878,14 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// minted subtype of Function (the boru:minilang partial kinds,
 	// MiniLang.Re / …) and must fall through to the type-literal
 	// branch below, where a.Is(bNode) runs its member predicate.
-	if b.Parent.Equal(TFunction) && !IsBareTypeNode(b) {
+	if b.Parent().Equal(TFunction) && !IsBareTypeNode(&b) {
 		_, matched, err := r.RunPredicate(b, a)
 		if err != nil {
 			return []Value{NewBoolean(false)}, nil
 		}
 		return []Value{NewBoolean(matched)}, nil
 	}
-	if IsBareTypeNode(b) {
+	if IsBareTypeNode(&b) {
 		// b is a type literal; its denoted lattice node is &b (a
 		// type literal is a by-value copy of its node). Post the
 		// Any-root unification TType.Parent == TAny, so the old
@@ -899,10 +899,10 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// FunctionSignature value. Concrete scalars / lists / maps
 			// and the value `none` are not types; carriers are abstract
 			// values, not types.
-			if a.Carrier {
+			if a.Carrier() {
 				return []Value{NewBoolean(false)}, nil
 			}
-			return []Value{NewBoolean(IsBareTypeNode(a) || IsTypeBody(a) || IsRecordShape(a) || a.Parent.ConformsTo(TType))}, nil
+			return []Value{NewBoolean(IsBareTypeNode(&a) || IsTypeBody(&a) || IsRecordShape(a) || a.Parent().ConformsTo(TType))}, nil
 		}
 		if bNode.ConformsTo(TType) {
 			// Type/-rooted subtype RHS (`Function` / `Disjunct` / `Enum`
@@ -919,7 +919,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// edge-types-2's DIVERGENCE PIN), so `is` keeps its stricter
 			// answer through the Unify + value-identity path below:
 			// `42 is (P tor String)` is false while `42 g` dispatches.
-			if !core.IsDisjunctTypeNode(b) || !IsConcrete(a) {
+			if !core.IsDisjunctTypeNode(b) || !IsConcrete(&a) {
 				return []Value{NewBoolean(a.Is(bNode))}, nil
 			}
 		}
@@ -936,7 +936,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		// short-circuit family relationships and would reject a
 		// user-minted subtype (e.g. `def Foo refine List`) against
 		// its base family literal.
-		if IsBareTypeNode(a) {
+		if IsBareTypeNode(&a) {
 			aNode := &a
 			return []Value{NewBoolean(aNode.Equal(bNode) || aNode.IsSubtypeOf(bNode))}, nil
 		}
@@ -963,7 +963,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// admission (the unified result being the alternative's bare
 			// node, not the value) is declined: `42 is (P tor String)` is
 			// false while `42 g` dispatches.
-			if !core.IsDisjunctTypeNode(b) || !IsConcrete(a) {
+			if !core.IsDisjunctTypeNode(b) || !IsConcrete(&a) {
 				return []Value{NewBoolean(true)}, nil
 			}
 		}
@@ -973,7 +973,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		return []Value{NewBoolean(false)}, nil
 	}
 	resolved := ResolveWordsDeep(a)
-	if !unified.Parent.Equal(resolved.Parent) {
+	if !unified.Parent().Equal(resolved.Parent()) {
 		return []Value{NewBoolean(false)}, nil
 	}
 	if !ValuesEqual(unified, resolved) {
@@ -993,10 +993,10 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 // rejects non-type values from either side.
 func teqHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	a, b := args[1], args[0]
-	if !IsTypeBody(a) || !IsTypeBody(b) {
+	if !IsTypeBody(&a) || !IsTypeBody(&b) {
 		return []Value{NewBoolean(false)}, nil
 	}
-	if IsBareTypeNode(a) && IsBareTypeNode(b) {
+	if IsBareTypeNode(&a) && IsBareTypeNode(&b) {
 		aNode := &a
 		bNode := &b
 		return []Value{NewBoolean(aNode.Equal(bNode))}, nil
@@ -1033,14 +1033,13 @@ func tisHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 }
 
 // tisNode returns the lattice node a value denotes for `tis`: a bare type
-// literal IS its node (a by-value copy, so &v carries the right ID / In /
-// Out / Parent — mirroring isHandler's `bNode := &b`); any other value's
-// node is its tag, v.Parent.
+// literal denotes the node it is a copy of (NodeOf); any other value's node
+// is its tag, v.Parent.
 func tisNode(v Value) *Type {
-	if IsBareTypeNode(v) {
-		return &v
+	if IsBareTypeNode(&v) {
+		return NodeOf(&v)
 	}
-	return v.Parent
+	return v.Parent()
 }
 
 // ---- tpartial ----
@@ -1069,14 +1068,14 @@ func tpartialHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	t := args[0]
 	// A NAMED type evaluates to its node (the Stage 2 flip); the
 	// fields to partialize are the node's recorded content.
-	if body, ok := TypeContentOf(t); ok && IsBareTypeNode(t) {
+	if body, ok := TypeContentOf(t); ok && IsBareTypeNode(&t) {
 		t = body
 	}
 	switch {
 	case IsRecordType(t):
 		rec, _ := AsRecordType(t)
 		return []Value{NewRecordType(partializeFields(rec.Fields))}, nil
-	case IsClassType(t):
+	case IsClassType(&t):
 		info, _ := AsClassType(t)
 		newFields := partializeFields(info.AllFields())
 		id := GenerateObjectTypeID()
@@ -1140,7 +1139,7 @@ func guardHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 	val := args[0]
 	cond, err := args[1].AsConcreteBoolean()
 	if err != nil {
-		return nil, fmt.Errorf("guard: condition must be Boolean, got %s", args[1].Parent.String())
+		return nil, fmt.Errorf("guard: condition must be Boolean, got %s", args[1].Parent().String())
 	}
 	if cond {
 		return []Value{val}, nil
@@ -1152,13 +1151,13 @@ func guardHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 
 func baseHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	v := args[0]
-	// For a type literal the denoted lattice node is &v (the value
-	// IS the type); for a concrete value it's v.Parent.
+	// For a type literal the denoted lattice node is the node it copies
+	// (NodeOf); for a concrete value it's v.Parent.
 	var t *Type
-	if IsBareTypeNode(v) {
-		t = &v
+	if IsBareTypeNode(&v) {
+		t = NodeOf(&v)
 	} else {
-		t = v.Parent
+		t = v.Parent()
 	}
 	result, err := BaseValue(t)
 	if err != nil {
@@ -1181,7 +1180,7 @@ func baseHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Va
 func typeAlgebraListFold(handler Handler) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
 		dyn := []Value{NewDynamicCarrier(TAny)}
-		if len(args) != 1 || !IsConcrete(args[0]) {
+		if len(args) != 1 || !IsConcrete(&args[0]) {
 			return dyn
 		}
 		list, err := AsList(args[0])
@@ -1190,7 +1189,7 @@ func typeAlgebraListFold(handler Handler) ReturnsFunc {
 		}
 		for i := 0; i < list.Len(); i++ {
 			e := list.Get(i)
-			if e.Carrier || e.Dynamic || e.Undefined {
+			if e.Carrier() || IsDynamic(&e) || IsUndefined(&e) {
 				return dyn
 			}
 		}
@@ -1203,7 +1202,7 @@ func typeAlgebraListFold(handler Handler) ReturnsFunc {
 		// checked disjunct as a union CARRIER of its alternatives instead.
 		// Ride it as a dynamic carrier bound to the disjunct — same value
 		// knowledge, gradual modality.
-		if IsDisjunct(out[0]) {
+		if IsDisjunct(&out[0]) {
 			return []Value{NewDynamicCarrierValue(out[0])}
 		}
 		return out
@@ -1211,7 +1210,7 @@ func typeAlgebraListFold(handler Handler) ReturnsFunc {
 }
 
 func tanyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("tany_error", "tany: expected a concrete list", "tany")
 	}
 	list, _ := AsList(args[0])
@@ -1237,7 +1236,7 @@ func tanyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 }
 
 func tallHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("tall_error", "tall: expected a concrete list", "tall")
 	}
 	list, _ := AsList(args[0])
@@ -1314,7 +1313,7 @@ func convertBoolOptsHandler(args []Value, named map[string]Value, body []Value, 
 			"convert Boolean: the options form needs a target, an options map and a source",
 			"convert")
 	}
-	if IsConcrete(args[1]) {
+	if IsConcrete(&args[1]) {
 		if m, err := AsMap(args[1]); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				want, known := convertBoolOptsKinds[k]
@@ -1324,7 +1323,7 @@ func convertBoolOptsHandler(args []Value, named map[string]Value, body []Value, 
 						"convert", "known options are base, truthy, accuracy, places")
 				}
 				v, _ := m.Get(k)
-				if v.Parent == nil || v.Parent.ConformsTo(TNone) || v.Parent.ConformsTo(want) {
+				if v.Parent() == nil || v.Parent().ConformsTo(TNone) || v.Parent().ConformsTo(want) {
 					continue
 				}
 				return nil, r.BoruError("convert_error",
@@ -1356,7 +1355,7 @@ func yamlTruthy(s string) (val bool, ok bool) {
 // source — falls back to the ordinary presence coercion (CoerceBoolean).
 // It never raises.
 func coerceBooleanTruthy(src Value) bool {
-	if src.Parent.ConformsTo(TString) {
+	if src.Parent().ConformsTo(TString) {
 		if val, ok := yamlTruthy(ValToString(src)); ok {
 			return val
 		}
@@ -1371,7 +1370,7 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 		if base == "" {
 			return NewString(ValToString(src)), nil
 		}
-		if !src.Parent.ConformsTo(TInteger) {
+		if !src.Parent().ConformsTo(TInteger) {
 			return Value{}, fmt.Errorf("convert: base %q only supported for integer to string", base)
 		}
 		n, _ := AsInteger(src)
@@ -1393,10 +1392,10 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 	case targetType.ConformsTo(TFloat):
 		// Big → Float is a deliberately lossy projection (the exact
 		// value is approximated to the nearest binary float64).
-		if src.Parent.ConformsTo(TBigInteger) || src.Parent.ConformsTo(TBigDecimal) {
+		if src.Parent().ConformsTo(TBigInteger) || src.Parent().ConformsTo(TBigDecimal) {
 			f, err := AsFloatApprox(src)
 			if err != nil {
-				return Value{}, fmt.Errorf("convert: cannot convert %s to float", src.Parent.Leaf())
+				return Value{}, fmt.Errorf("convert: cannot convert %s to float", src.Parent().Leaf())
 			}
 			return NewFloat(f), nil
 		}
@@ -1416,14 +1415,14 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 	case targetType.ConformsTo(TNumber) || targetType.ConformsTo(TInteger):
 		// Big → Integer: BigInteger range-checks int64; BigDecimal
 		// truncates toward zero, then range-checks.
-		if src.Parent.ConformsTo(TBigInteger) {
+		if src.Parent().ConformsTo(TBigInteger) {
 			n, _ := AsBigInteger(src)
 			if !n.IsInt64() {
 				return Value{}, fmt.Errorf("convert: %s overflows Integer (int64) range", FormatBigInteger(n))
 			}
 			return NewInteger(n.Int64()), nil
 		}
-		if src.Parent.ConformsTo(TBigDecimal) {
+		if src.Parent().ConformsTo(TBigDecimal) {
 			n, err := bigDecimalToBigIntTrunc(src)
 			if err != nil {
 				return Value{}, err
@@ -1440,11 +1439,11 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 		// A base implies a string source in a particular radix, so the
 		// fast path only applies to the plain (base == "") form.
 		if base == "" {
-			if src.Parent.ConformsTo(TInteger) {
+			if src.Parent().ConformsTo(TInteger) {
 				n, _ := AsInteger(src)
 				return NewInteger(n), nil
 			}
-			if src.Parent.ConformsTo(TFloat) {
+			if src.Parent().ConformsTo(TFloat) {
 				f, _ := AsFloat(src)
 				if math.IsNaN(f) || math.IsInf(f, 0) || f < float64(math.MinInt64) || f >= float64(math.MaxInt64) {
 					return Value{}, fmt.Errorf("convert: %s overflows Integer (int64) range", ValToString(src))
@@ -1506,8 +1505,8 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 func convertScalarReturns(args []Value, r *Registry) []Value {
 	// args[0] is the TARGET type literal — the value IS its lattice node,
 	// so resolve it via ValueType (its .Parent is the node's parent).
-	if atUncaughtTopLevel(r) && len(args) == 2 && !args[1].Dynamic &&
-		args[1].Parent != nil && args[1].Parent.ConformsTo(TFloat) && ValueType(args[0]) != nil {
+	if atUncaughtTopLevel(r) && len(args) == 2 && !IsDynamic(&args[1]) &&
+		args[1].Parent() != nil && args[1].Parent().ConformsTo(TFloat) && ValueType(args[0]) != nil {
 		switch {
 		case ValueType(args[0]).ConformsTo(TBigInteger):
 			core.CheckAddUniqueDiagnostic(r, "convert_error",
@@ -1531,17 +1530,17 @@ func convertScalarReturns(args []Value, r *Registry) []Value {
 // if a truncating projection is really wanted).
 func convertToBigInteger(src Value, base string) (Value, error) {
 	switch {
-	case src.Parent.ConformsTo(TBigInteger):
+	case src.Parent().ConformsTo(TBigInteger):
 		return src, nil
-	case src.Parent.ConformsTo(TBigDecimal):
+	case src.Parent().ConformsTo(TBigDecimal):
 		n, err := bigDecimalToBigIntTrunc(src)
 		if err != nil {
 			return Value{}, err
 		}
 		return NewBigInteger(n), nil
-	case src.Parent.ConformsTo(TFloat):
+	case src.Parent().ConformsTo(TFloat):
 		return Value{}, fmt.Errorf("convert: cannot convert Float to BigInteger (a binary Float is inexact; convert to Integer first)")
-	case src.Parent.ConformsTo(TInteger):
+	case src.Parent().ConformsTo(TInteger):
 		i, _ := src.AsConcreteInteger()
 		return NewBigInteger(big.NewInt(i)), nil
 	default:
@@ -1576,18 +1575,18 @@ func convertToBigDecimal(src Value, base string) (Value, error) {
 		return Value{}, fmt.Errorf("convert: base %q is not supported for BigDecimal", base)
 	}
 	switch {
-	case src.Parent.ConformsTo(TBigDecimal):
+	case src.Parent().ConformsTo(TBigDecimal):
 		return src, nil
-	case src.Parent.ConformsTo(TBigInteger):
+	case src.Parent().ConformsTo(TBigInteger):
 		n, _ := AsBigInteger(src)
 		d, _, err := apd.NewFromString(n.String())
 		if err != nil { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 			return Value{}, fmt.Errorf("convert: cannot convert %s to BigDecimal", FormatBigInteger(n))
 		}
 		return NewBigDecimal(d), nil
-	case src.Parent.ConformsTo(TFloat):
+	case src.Parent().ConformsTo(TFloat):
 		return Value{}, fmt.Errorf("convert: cannot convert Float to BigDecimal (a binary Float is already rounded; build the BigDecimal from a String or the 0d literal)")
-	case src.Parent.ConformsTo(TInteger):
+	case src.Parent().ConformsTo(TInteger):
 		i, _ := src.AsConcreteInteger()
 		return NewBigDecimal(apd.New(i, 0)), nil
 	default:
@@ -1723,7 +1722,7 @@ func applyFloatSign(f float64, d *apd.Decimal) *apd.Decimal {
 func convertIdealHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	target := args[0]
 	src := args[1]
-	if target.Data != nil {
+	if target.Data() != nil {
 		return nil, r.BoruError("convert_error", "convert: first argument must be a type literal (Map or List)", "convert")
 	}
 	t := ValueType(target)
@@ -1748,8 +1747,8 @@ func convertIdealHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 func convert2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	targetType := args[0]
 	src := args[1]
-	if targetType.Data != nil {
-		return nil, r.BoruError("convert_error", fmt.Sprintf("convert: first argument must be a type literal, got %s", targetType.Parent), "convert")
+	if targetType.Data() != nil {
+		return nil, r.BoruError("convert_error", fmt.Sprintf("convert: first argument must be a type literal, got %s", targetType.Parent()), "convert")
 	}
 	result, err := convertTo(src, ValueType(targetType), "")
 	if err != nil {
@@ -1762,8 +1761,8 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	targetType := args[0]
 	opts := args[1]
 	src := args[2]
-	if targetType.Data != nil {
-		return nil, r.BoruError("convert_error", fmt.Sprintf("convert: first argument must be a type literal, got %s", targetType.Parent), "convert")
+	if targetType.Data() != nil {
+		return nil, r.BoruError("convert_error", fmt.Sprintf("convert: first argument must be a type literal, got %s", targetType.Parent()), "convert")
 	}
 
 	base := ""
@@ -1771,7 +1770,7 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	accuracy := ""
 	var places int64
 	placesSet := false
-	if opts.Data != nil {
+	if opts.Data() != nil {
 		m, _ := AsMap(opts)
 		if m != nil {
 			if bv, ok := m.Get("base"); ok {
@@ -1780,10 +1779,10 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			if tv, ok := m.Get("truthy"); ok {
 				truthy, _ = AsBoolean(tv)
 			}
-			if av, ok := m.Get("accuracy"); ok && av.Parent != nil && av.Parent.ConformsTo(TString) {
+			if av, ok := m.Get("accuracy"); ok && av.Parent() != nil && av.Parent().ConformsTo(TString) {
 				accuracy = ValToString(av)
 			}
-			if pv, ok := m.Get("places"); ok && pv.Parent != nil && pv.Parent.ConformsTo(TInteger) {
+			if pv, ok := m.Get("places"); ok && pv.Parent() != nil && pv.Parent().ConformsTo(TInteger) {
 				places, _ = AsInteger(pv)
 				placesSet = true
 			}
@@ -1802,7 +1801,7 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// binary Float is inexact). It applies only to a Float → BigDecimal
 	// conversion; for any other source/target it is inert, exactly like
 	// truthy on a non-Boolean target.
-	if accuracy != "" && src.Parent.ConformsTo(TFloat) && ValueType(targetType).ConformsTo(TBigDecimal) {
+	if accuracy != "" && src.Parent().ConformsTo(TFloat) && ValueType(targetType).ConformsTo(TBigDecimal) {
 		f, err := src.AsConcreteFloat()
 		if err != nil {
 			return nil, fmt.Errorf("convert: Float source must be a concrete value, not a dependent-type constraint")

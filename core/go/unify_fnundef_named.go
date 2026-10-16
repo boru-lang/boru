@@ -51,17 +51,17 @@ func (f *FnUndefUnifier) Match(v Value, t *Type) bool {
 // matchR is Match with the enclosing unify chain's registry threaded
 // into the signature rule's Pattern-compatibility unify (see isR).
 func (f *FnUndefUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return baseBehavior(f.prev).Match(v, t)
 	}
 	// A carrier (abstract value) carries no signatures to inspect. Admit
 	// it when it could still be a function, so the checker does not
 	// reject a program the runtime accepts — the sound over-approximation
 	// the negation unifier makes for the same reason.
-	if v.Carrier {
-		return v.Parent.ConformsTo(TFunction) || v.Parent.Equal(TAny)
+	if v.Carrier() {
+		return v.Parent().ConformsTo(TFunction) || v.Parent().Equal(TAny)
 	}
-	return fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), v, r)
+	return fnSpecsAdmitR(f.sigs, v, r)
 }
 
 // Unify admits a concrete function candidate by the same structural
@@ -80,8 +80,8 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// shape's node; the fn-shape structural unifier handles the
 	// candidate (function value, carrier, or another fn shape) exactly
 	// as the ShapeFnUndef fold handled it for the body.
-	aSelf := IsBareTypeNode(a) && a.Behavior() == TypeBehavior(f)
-	bSelf := IsBareTypeNode(b) && b.Behavior() == TypeBehavior(f)
+	aSelf := IsBareTypeNode(&a) && a.Behavior() == TypeBehavior(f)
+	bSelf := IsBareTypeNode(&b) && b.Behavior() == TypeBehavior(f)
 	if aSelf == bSelf {
 		return unifySameOrSubtype(a, b)
 	}
@@ -89,15 +89,15 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	if aSelf {
 		candidate = b
 	}
-	if candidate.Carrier || !IsConcrete(candidate) {
+	if candidate.Carrier() || !IsConcrete(&candidate) {
 		// Sound over-approximation, mirroring Match's carrier arm.
-		if candidate.Parent != nil && (candidate.Parent.ConformsTo(TFunction) ||
-			candidate.Parent.Equal(TAny) || candidate.Parent.Equal(TFnUndef)) {
+		if candidate.Parent() != nil && (candidate.Parent().ConformsTo(TFunction) ||
+			candidate.Parent().Equal(TAny) || candidate.Parent().Equal(TFnUndef)) {
 			return candidate, nil
 		}
 		return Value{}, unifyFail("value is not a "+f.typeName+" function", a, b)
 	}
-	if fnUndefMatchesFnDefR(NewValueRaw(TFnUndef, FnUndefInfo{Sigs: f.sigs}), candidate, r) {
+	if fnSpecsAdmitR(f.sigs, candidate, r) {
 		return candidate, nil
 	}
 	return Value{}, unifyFail("function does not satisfy fn shape "+f.typeName, a, b)

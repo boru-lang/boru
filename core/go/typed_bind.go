@@ -41,22 +41,22 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
 		if spec.Def != nil {
-			out = ReparentValue(out, CanonicalType(r, spec.Def))
+			out = MintRetagged(&out, NodeOf(spec.Def))
 		}
 		return out, nil
 	case TypedBindRefine:
 		// Mirrors defTypedHandler's bare-refine branch: unify against the
 		// nearest BUILTIN ancestor (walking past intervening user refines), then
-		// reparent a copy of the value to the newtype. CanonicalType keeps the
-		// *Type live for module-sub-registry mints (the main TypeTable misses
-		// their IDs and the carried pointer IS the canonical node).
-		def := CanonicalType(r, spec.Def)
+		// reparent a copy of the value to the newtype. NodeOf needs no table,
+		// so a module sub-registry's mint (whose ID the main TypeTable does
+		// not know) resolves to its own node.
+		def := NodeOf(spec.Def)
 		if def == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no refine target", spec.Name)
 		}
-		root := def.Parent
-		for root != nil && root.Origin == OriginUserDef {
-			root = root.Parent
+		root := def.Parent()
+		for root != nil && root.Origin() == OriginUserDef {
+			root = root.Parent()
 		}
 		if root == nil {
 			return Value{}, fmt.Errorf("def %s: refine subtype %s has no builtin ancestor",
@@ -67,7 +67,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 				fmt.Sprintf("def %s: value %s does not unify with declared type %s",
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
-		return ReparentValue(v, def), nil
+		return MintRetagged(&v, def), nil
 	case TypedBindRunMembership:
 		if spec.Cons == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no constraint", spec.Name)

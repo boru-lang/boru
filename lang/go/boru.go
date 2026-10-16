@@ -359,12 +359,12 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 
 	stack := make([]string, len(result))
 	for i, v := range result {
-		if v.Dynamic {
+		if core.IsDynamic(&v) {
 			// Surface the gradual modality in the residual stack so a
 			// dynamic carrier is distinguishable from a strict one.
-			stack[i] = "dynamic(" + v.Parent.Leaf() + ")"
+			stack[i] = "dynamic(" + v.Parent().Leaf() + ")"
 		} else {
-			stack[i] = v.Parent.Leaf()
+			stack[i] = v.Parent().Leaf()
 		}
 	}
 
@@ -996,16 +996,16 @@ func convertResults(result []core.Value) []any {
 			// pull a zero value from the DepScalarInfo payload. Route
 			// through String() to render as "(Integer gte 5)".
 			out[i] = v.String()
-		case native.IsBareTypeNode(v):
+		case native.IsBareTypeNode(&v):
 			// Type literal (e.g. `typeof x` result, a bare `Integer`
 			// or user-minted Foo literal): render its type name
 			// rather than trying to extract an Integer/String payload
 			// that isn't there.
 			out[i] = v.String()
-		case v.Parent.ConformsTo(native.TInteger):
+		case v.Parent().ConformsTo(native.TInteger):
 			n, _ := native.AsInteger(v)
 			out[i] = n
-		case v.Parent.ConformsTo(native.TString):
+		case v.Parent().ConformsTo(native.TString):
 			s, _ := native.AsString(v)
 			out[i] = s
 		default:

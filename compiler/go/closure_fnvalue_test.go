@@ -26,26 +26,26 @@ func TestClosureIsFnValue(t *testing.T) {
 	}
 	prog := &Program{Fns: []CompiledFn{fnUnit, {Name: "do$body"}}}
 
-	if ClosureIsFnValue(core.NewInteger(1)) {
+	if ClosureIsFnValue(addrOf(core.NewInteger(1))) {
 		t.Error("a non-closure value is no fn-value closure")
 	}
-	if ClosureIsFnValue(NewClosure(nil, 0, nil)) {
+	if ClosureIsFnValue(addrOf(NewClosure(nil, 0, nil))) {
 		t.Error("a closure with no program identity reads as data")
 	}
-	if ClosureIsFnValue(NewClosure(prog, 5, nil)) {
+	if ClosureIsFnValue(addrOf(NewClosure(prog, 5, nil))) {
 		t.Error("a unit the program cannot name reads as data")
 	}
-	if ClosureIsFnValue(NewClosure(prog, 1, nil)) {
+	if ClosureIsFnValue(addrOf(NewClosure(prog, 1, nil))) {
 		t.Error("a callback body unit's closure is no fn value")
 	}
 	shaped := NewClosure(prog, 0, nil)
-	cl := shaped.Data.(core.ClosurePayload)
+	cl := shaped.Data().(*core.ClosurePayload)
 	cl.InShape = ClosureInKeyVal
-	shaped.Data = cl
-	if ClosureIsFnValue(shaped) {
+	shaped.SetData(cl)
+	if ClosureIsFnValue(&shaped) {
 		t.Error("a closure in a word's callback shape is that word's body, not a fn value")
 	}
-	if !ClosureIsFnValue(NewClosure(prog, 0, nil)) {
+	if !ClosureIsFnValue(addrOf(NewClosure(prog, 0, nil))) {
 		t.Error("a fn value's closure in the plain value shape is one")
 	}
 }

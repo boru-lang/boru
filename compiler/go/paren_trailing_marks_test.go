@@ -13,7 +13,7 @@ import (
 // cases answer true.
 func TestPlacedValReadAndForwardLeftoverGuards(t *testing.T) {
 	var nilES *EmitState
-	if nilES.placedValRead("x") || nilES.forwardLeftoverFn(core.Value{ID: "x"}) {
+	if nilES.placedValRead("x") || nilES.forwardLeftoverFn(withID(core.Value{}, "x")) {
 		t.Error("a nil state answers false")
 	}
 	es := NewEmitState()
@@ -24,11 +24,11 @@ func TestPlacedValReadAndForwardLeftoverGuards(t *testing.T) {
 	if !es.placedValRead("x") {
 		t.Error("a noted /v read with no registry is placed")
 	}
-	if es.forwardLeftoverFn(core.Value{ID: "x"}) {
+	if es.forwardLeftoverFn(withID(core.Value{}, "x")) {
 		t.Error("no registry: no leftover mark")
 	}
 	es.reg = &core.Registry{}
-	if !es.placedValRead("x") || es.forwardLeftoverFn(core.Value{ID: "x"}) {
+	if !es.placedValRead("x") || es.forwardLeftoverFn(withID(core.Value{}, "x")) {
 		t.Error("a registry with no check state: placed, no leftover mark")
 	}
 	es.reg.Check = &core.CheckState{
@@ -41,7 +41,7 @@ func TestPlacedValReadAndForwardLeftoverGuards(t *testing.T) {
 	if es.placedValRead("y") {
 		t.Error("y is also read bare: the word dispatch wins")
 	}
-	if !es.forwardLeftoverFn(core.Value{ID: "z"}) || es.forwardLeftoverFn(core.Value{ID: ""}) || es.forwardLeftoverFn(core.Value{ID: "x"}) {
+	if !es.forwardLeftoverFn(withID(core.Value{}, "z")) || es.forwardLeftoverFn(withID(core.Value{}, "")) || es.forwardLeftoverFn(withID(core.Value{}, "x")) {
 		t.Error("the leftover mark is keyed by value ID")
 	}
 }
@@ -54,11 +54,11 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 	es := NewEmitState()
 	es.reg = &core.Registry{Check: &core.CheckState{ParenReSteppedFnIDs: map[string]bool{"fnc-r": true}}}
 	marked := core.NewCarrier(core.TFunction)
-	marked.ID = "fnc-r"
+	core.SetID(&marked, "fnc-r")
 	unmarked := core.NewCarrier(core.TFunction)
-	unmarked.ID = "fnc-u"
+	core.SetID(&unmarked, "fnc-u")
 	quoted := marked
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil, core.SrcPos{}); got != "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)" {
 		t.Errorf("a re-step-marked carrier operand declines: %q", got)
 	}
@@ -84,19 +84,18 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 // const answers true.
 func TestProducedConstLambdaGuards(t *testing.T) {
 	es := NewEmitState()
-	if es.producedConstLambda("nothing") {
+	if es.producedConstLambda(read("nothing")) {
 		t.Error("an unproduced id is not a const lambda")
 	}
 	fnc := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1}}, Anonymous: true})
 	es.consts = []core.Value{core.NewInteger(1), fnc}
 	unit := len(es.fnRecs)
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{name: "mk"})
-	seed := func(op EmitOperand) string {
-		id := "res"
+	seed := func(op EmitOperand) *core.Value {
 		es.fnRecs[unit].outOps = []EmitOperand{op}
 		es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{unit: unit}, seq: 1}}}
-		es.producedBy = map[string]producer{id: {seq: 1, idx: 0}}
-		return id
+		res := producedAs(es, core.Value{}, "res", 1, 0)
+		return &res
 	}
 	if es.producedConstLambda(seed(EmitOperand{kind: opLocal, idx: 0})) {
 		t.Error("a returned local is not a const")

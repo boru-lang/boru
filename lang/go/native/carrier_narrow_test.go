@@ -18,7 +18,7 @@ func TestApplyComplementNarrowing(t *testing.T) {
 		NewTypeLiteral(TInteger),
 		NewTypeLiteral(TString),
 	})
-	disjunct.Carrier = true
+	disjunct.SetCarrier(true)
 	r.Defs.Push("x", disjunct)
 
 	// Build a condition list simulating `x is Integer`.
@@ -37,7 +37,7 @@ func TestApplyComplementNarrowing(t *testing.T) {
 	top, _ := r.Defs.Top("x")
 	// Narrowing produces a carrier (Parent=String, Carrier=true) —
 	// check the Parent, not the value's own identity.
-	if !top.Parent.Equal(TString) {
+	if !top.Parent().Equal(TString) {
 		t.Errorf("expected top to narrow to String, got %s", top.String())
 	}
 }
@@ -89,7 +89,7 @@ func TestApplyComplementNarrowingSupertypeGuard(t *testing.T) {
 		NewTypeLiteral(TInteger),
 		NewTypeLiteral(TString),
 	})
-	disjunct.Carrier = true
+	disjunct.SetCarrier(true)
 	r.Defs.Push("x", disjunct)
 
 	cond := NewEvalList([]Value{
@@ -102,7 +102,7 @@ func TestApplyComplementNarrowingSupertypeGuard(t *testing.T) {
 	defer restore()
 
 	top, _ := r.Defs.Top("x")
-	if !top.Parent.Equal(TString) {
+	if !top.Parent().Equal(TString) {
 		t.Errorf("expected x to narrow to String (Integer excluded as a Number), got %s", top.String())
 	}
 }

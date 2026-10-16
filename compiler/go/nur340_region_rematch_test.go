@@ -71,22 +71,29 @@ func TestArmNonEmpty(t *testing.T) {
 func TestRegionResultReadsTheRegionMarks(t *testing.T) {
 	es := NewEmitState()
 	loop, native, plain := core.NewCarrier(core.TList), core.NewCarrier(core.TAny), core.NewCarrier(core.TInteger)
-	loop.ID, native.ID, plain.ID = "loop", "native", "plain"
-	es.setProduced(loop, 1)
-	es.setProduced(native, 2)
-	es.setProduced(plain, 3)
+	core.SetID(&loop, "loop")
+	core.SetID(&native, "native")
+	core.SetID(&plain, "plain")
+	es.setProduced(&loop, 1)
+	es.setProduced(&native, 2)
+	es.setProduced(&plain, 3)
 	es.eventInfo[1] = eventFlags{variadicResult: true}
 	es.eventInfo[2] = eventFlags{variadicRegion: true}
 	for _, c := range []struct {
-		id   string
+		name string
+		k    core.RecKey
 		want bool
-	}{{"loop", true}, {"native", true}, {"plain", false}, {"unproduced", false}, {"", false}} {
-		if got := es.RegionResult(c.id); got != c.want {
-			t.Errorf("RegionResult(%q) = %v, want %v", c.id, got, c.want)
+	}{
+		{"loop", core.RecKeyOf(&loop), true}, {"native", core.RecKeyOf(&native), true},
+		{"plain", core.RecKeyOf(&plain), false}, {"unproduced", core.RecKeyOf(read("unproduced")), false},
+		{"another pass's", core.RecKey{Pass: es.passNo() + 1, Seq: 1}, false},
+	} {
+		if got := es.RegionResult(c.k); got != c.want {
+			t.Errorf("RegionResult(%s) = %v, want %v", c.name, got, c.want)
 		}
 	}
 	var nilES *EmitState
-	if nilES.RegionResult("loop") {
+	if nilES.RegionResult(core.RecKey{}) {
 		t.Error("a nil recorder vouches for no region")
 	}
 }

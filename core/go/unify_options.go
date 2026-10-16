@@ -25,13 +25,13 @@ func unifyOptionsFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Regis
 	}
 
 	// Bare Map type literal vs Options → preserve the Options schema.
-	if !IsConcrete(concrete) {
+	if !IsConcrete(&concrete) {
 		return NewOptionsType(opts.Fields), nil
 	}
 
 	// Options only accepts plain concrete maps, never structural map
 	// subtypes (Record / TypedMap / nested Options).
-	if IsRecordType(concrete) || IsTypedMap(concrete) || IsOptionsType(concrete) {
+	if IsRecordType(concrete) || IsTypedMap(&concrete) || IsOptionsType(concrete) {
 		return Value{}, unifyFail("Options only unifies with a plain Map", a, b)
 	}
 
@@ -85,7 +85,7 @@ func unifyOptionsPair(a, b OptionsTypeInfo, r *Registry) (Value, *UnifyError) {
 //   - Type literal (Data==nil) → fail (requires a value)
 //   - Disjunct → None if present, else first concrete alternative, else fail
 func optionsDefault(v Value) (Value, bool) {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		disj, _ := AsDisjunct(v)
 		alts := disj.Alternatives
 		for _, alt := range alts {
@@ -94,7 +94,7 @@ func optionsDefault(v Value) (Value, bool) {
 			}
 		}
 		for _, alt := range alts {
-			if alt.Data != nil && !IsDisjunct(alt) {
+			if alt.Data() != nil && !IsDisjunct(&alt) {
 				return alt, true
 			}
 		}
@@ -103,7 +103,7 @@ func optionsDefault(v Value) (Value, bool) {
 	if IsNoneShape(v) {
 		return v, true
 	}
-	if v.Data != nil {
+	if v.Data() != nil {
 		return v, true
 	}
 	return Value{}, false
@@ -144,7 +144,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 		}
 		fieldSchema, _ := pot.Fields.Get(key)
 		def, dok := optionsDefault(fieldSchema)
-		if !dok || !IsConcrete(def) {
+		if !dok || !IsConcrete(&def) {
 			continue // required field, or None/unset default — leave absent
 		}
 		if filled == nil {
@@ -168,7 +168,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 	// slot; rebuilding it as a plain Map would silently drop mutability, so
 	// downstream `set` would copy instead of mutating in place. Plain Map
 	// and FlexMap share the MapPayload shape — only the Parent tag differs.
-	if m.Parent.ConformsTo(TFlexMap) {
+	if m.Parent().ConformsTo(TFlexMap) {
 		return NewFlexMap(filled)
 	}
 	return NewMap(filled)
@@ -182,7 +182,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 //
 // r is the enclosing chain's registry, handed to the type-literal arm.
 func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
-	if IsDisjunct(optVal) {
+	if IsDisjunct(&optVal) {
 		disj, _ := AsDisjunct(optVal)
 		for _, alt := range disj.Alternatives {
 			if unified, err := unifyOptionsField(alt, cVal, r); err == nil {
@@ -191,9 +191,9 @@ func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("no disjunct alternative matched", optVal, cVal)
 	}
-	if optVal.Data != nil {
+	if optVal.Data() != nil {
 		baseType := optionsBaseType(optVal)
-		if cVal.Parent.ConformsTo(baseType) {
+		if cVal.Parent().ConformsTo(baseType) {
 			return cVal, nil
 		}
 		return Value{}, unifyFail("value does not match field's base type", optVal, cVal)
@@ -206,21 +206,21 @@ func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
 // TInteger.
 func optionsBaseType(v Value) *Type {
 	switch {
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		return TInteger
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		return TFloat
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		return TString
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		return TBoolean
-	case v.Parent.Equal(TMap):
+	case v.Parent().Equal(TMap):
 		return TMap
-	case v.Parent.Equal(TList):
+	case v.Parent().Equal(TList):
 		return TList
-	case v.Parent.Equal(TNone):
+	case v.Parent().Equal(TNone):
 		return TNone
 	default:
-		return v.Parent
+		return v.Parent()
 	}
 }

@@ -60,7 +60,7 @@ func TestWatchWordDeliversEvents(t *testing.T) {
 
 	// watch d [snoop] — each event record is passed to the snoop native.
 	body := NewList([]Value{NewWord("snoop")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	res := runBoru(t, r, []Value{NewWord("watch"), pathV("d"), body})
 	if len(res) != 1 {
 		t.Fatalf("watch returned %d values", len(res))
@@ -69,8 +69,8 @@ func TestWatchWordDeliversEvents(t *testing.T) {
 	if !ok {
 		t.Fatalf("watch returned %v, want a Watcher handle", res[0])
 	}
-	if res[0].Parent.Name() != "Watcher" {
-		t.Errorf("watcher type = %s", res[0].Parent)
+	if res[0].Parent().Name() != "Watcher" {
+		t.Errorf("watcher type = %s", res[0].Parent())
 	}
 	if !strings.Contains(res[0].String(), "Watcher(") {
 		t.Errorf("watcher renders as %s", res[0])
@@ -119,7 +119,7 @@ func TestWatchWordOptsFilter(t *testing.T) {
 	r, snapshot := watchReg(t)
 	runBoru(t, r, []Value{NewWord("folder"), pathV("d")})
 	body := NewList([]Value{NewWord("snoop")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	opts := NewOrderedMap()
 	opts.Set("recursive", NewBoolean(true))
 	opts.Set("match", NewString("*.txt"))
@@ -164,7 +164,7 @@ func TestWatchRel(t *testing.T) {
 func TestWatchWordErrors(t *testing.T) {
 	r, _ := watchReg(t)
 	body := NewList([]Value{NewWord("snoop")})
-	body.Quoted = true
+	SetQuoted(&body, true)
 	// Watching an absent path errors.
 	if err := runBoruError(t, r, []Value{NewWord("watch"), pathV("ghost"), body}); err == nil {
 		t.Error("expected watch of an absent path to error")

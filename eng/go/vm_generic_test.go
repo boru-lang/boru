@@ -344,7 +344,7 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 		p, reg := genericWorld(t)
 		reg.Defs.Push("k", core.NewList([]core.Value{core.NewInteger(4)}))
 		out, err := RunProgram(p, reg)
-		if err != nil || len(out) != 1 || !out[0].Quoted {
+		if err != nil || len(out) != 1 || !core.IsQuoted(&out[0]) {
 			t.Errorf("a list param binds quoted, as the interpreter's binding rule quotes it: out=%v err=%v", out, err)
 		}
 	})

@@ -40,7 +40,7 @@ func installStandaloneMicronIdeal(r *core.Registry) {
 		Name:    "Micron",
 		Enabled: true,
 		Accepts: func(v core.Value) bool {
-			return core.IsMicronType(v) || (core.IsBareTypeNode(v) && (&v).ConformsTo(core.TMicron))
+			return core.IsMicronType(v) || (core.IsBareTypeNode(&v) && (&v).ConformsTo(core.TMicron))
 		},
 		Instantiate: func(typ, data core.Value, _ *core.Registry) ([]core.Value, error) {
 			if (&typ).Equal(core.TPathon) {

@@ -37,7 +37,7 @@ func TestBarrierBars(t *testing.T) {
 // within the operands, answered only for the dispatch's own slice, and
 // unpublished by the restore.
 func TestPublishWritten(t *testing.T) {
-	args := []Value{withID(NewInteger(1)), withID(NewInteger(2))}
+	args := []Value{withFreshID(NewInteger(1)), withFreshID(NewInteger(2))}
 	e := layoutEngine(t, append(append([]Value{}, args...), NewWord("w")), 2)
 	for _, n := range []int{0, -1, 3} {
 		e.PublishWritten(args, n)()
@@ -71,11 +71,11 @@ func TestPublishWritten(t *testing.T) {
 // last rearrangement's count when it laid out the word at the pointer, and
 // none otherwise.
 func TestForwardSplitExported(t *testing.T) {
-	e := layoutEngine(t, []Value{withID(NewInteger(1)), NewWord("w")}, 1)
+	e := layoutEngine(t, []Value{withFreshID(NewInteger(1)), NewWord("w")}, 1)
 	if e.ForwardSplit() != 0 {
 		t.Error("no rearrangement: no split")
 	}
-	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, e.Tape.At(e.Pointer).Pos()
+	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, 1, addrOf(e.Tape.At(e.Pointer)).Pos()
 	if e.ForwardSplit() != 1 {
 		t.Errorf("the word's own rearrangement: got %d", e.ForwardSplit())
 	}

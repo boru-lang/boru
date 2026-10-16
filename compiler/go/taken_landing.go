@@ -30,7 +30,7 @@ func (es *EmitState) NoteTakenLanding(v core.Value) {
 	if !es.Active() {
 		return
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producerOf(&v)
 	if !ok || es.isDefRead(v) {
 		return
 	}

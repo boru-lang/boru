@@ -22,7 +22,7 @@ func TestProvenWindowMatch(t *testing.T) {
 		t.Error("a non-conforming argument proves nothing")
 	}
 	dyn := NewCarrier(TInteger)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	if ProvenWindowMatch(fnOf(one), []Value{dyn}) {
 		t.Error("a gradual argument proves nothing")
 	}
@@ -41,7 +41,7 @@ func TestProvenWindowMatch(t *testing.T) {
 	shape := NewOrderedMap()
 	shape.Set("a", NewCarrier(TInteger))
 	mapCarrier := NewMap(shape)
-	mapCarrier.Carrier = true
+	mapCarrier.SetCarrier(true)
 	mapSig := FnSig{Params: []FnParam{{Name: "m", Type: TMap, Pattern: &mapPat}}, Returns: []*Type{TAny}}
 	if MatchFnSig(fnOf(mapSig), []Value{mapCarrier}) == nil {
 		t.Fatal("the map pattern must admit the shaped carrier by open unification")
@@ -54,36 +54,62 @@ func TestProvenWindowMatch(t *testing.T) {
 // TestEvalTrailingContainerRawSlot: a pending container at a signature
 // position that takes its argument RAW (NoEvalArgs / NoEvalMapArgs) is never
 // evaluated by the collapse — under a fitting window it is the callee's code
-// body, bound as written and marked consumed; under a window that may park
-// it stays pending, owed the residual sweep's evaluation (NUR337).
+// body, bound as written and marked consumed in its own cell; under a window
+// that may park it stays pending, owed the residual sweep's evaluation
+// (NUR337).
 func TestEvalTrailingContainerRawSlot(t *testing.T) {
+	r := covRegistry(t, nil)
 	body := NewList([]Value{NewInteger(1), NewWord("add"), NewInteger(2)})
-	body.Eval = true
+	SetEval(&body, true)
 	m := NewOrderedMap()
 	m.Set("a", NewParenExpr([]Value{NewInteger(1), NewWord("add"), NewInteger(2)}))
 	mv := NewMap(m)
-	mv.Eval = true
+	SetEval(&mv, true)
 	if !IsPendingActiveContainer(body) || !IsPendingActiveContainer(mv) {
 		t.Fatal("both literals are pending active containers")
 	}
-	sig := &Signature{NoEvalArgs: map[int]bool{0: true}, NoEvalMapArgs: map[int]bool{1: true}}
-	e := &Engine{}
-	for _, c := range []struct {
-		v    Value
-		p    int
-		fits bool
-	}{{body, 0, true}, {body, 0, false}, {mv, 1, true}, {mv, 1, false}} {
-		got, ok := e.evalTrailingContainer(c.v, sig, c.p, c.fits)
-		if ok != c.fits || got.Eval == c.fits || !BearsActiveTokens(got) {
-			t.Errorf("raw slot %d (fits=%v): got %v ok=%v eval=%v", c.p, c.fits, got, ok, got.Eval)
+	// lead is a one-param fn taking its argument raw.
+	lead := func(ty *Type, rawMap bool) Value {
+		sig := FnSig{Params: []FnParam{{Type: ty}}, Returns: []*Type{TAny}, BarrierPos: 1}
+		if rawMap {
+			sig.NoEvalMapArgs = map[int]bool{0: true}
+		} else {
+			sig.NoEvalArgs = map[int]bool{0: true}
 		}
+		return NewFunction(FnDefInfo{Anonymous: true, Signatures: []FnSig{sig}})
+	}
+	for _, c := range []struct {
+		name      string
+		lead, arg Value
+		fits      bool
+	}{
+		{"list, fitting", lead(TList, false), body, true},
+		{"list, may park", lead(TInteger, false), body, false},
+		{"map, fitting", lead(TMap, true), mv, true},
+		{"map, may park", lead(TInteger, true), mv, false},
+	} {
+		if trailingWindowFits(c.lead, []Value{c.arg}) != c.fits {
+			t.Fatalf("%s: the window's fit is not the case's", c.name)
+		}
+		e := NewTop(r)
+		e.Tape = NewTape([]Value{NewOpenParen(), c.arg, c.lead, NewCloseParen()}, StackHeadroom)
+		e.evalTrailingWindowContainers(c.lead, 0, 3, 2)
+		got := e.Tape.At(1)
+		if IsEval(&got) == c.fits || !BearsActiveTokens(got) {
+			t.Errorf("%s: got %v eval=%v", c.name, got, IsEval(&got))
+		}
+	}
+	// The literal the window held is the caller's: a consumed mark went to
+	// the cell alone.
+	if !IsEval(&body) || !IsEval(&mv) {
+		t.Error("a raw slot's consumed mark reached the literal the cell was copied from")
 	}
 	// NEGATIVE: a container with nothing to evaluate, a quoted one, and a
 	// scalar are not pending active containers.
 	inert := NewList([]Value{NewInteger(1)})
-	inert.Eval = true
+	SetEval(&inert, true)
 	quoted := body
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	for _, v := range []Value{inert, quoted, NewInteger(3)} {
 		if IsPendingActiveContainer(v) {
 			t.Errorf("%v must not be a pending active container", v)

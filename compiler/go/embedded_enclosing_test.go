@@ -13,22 +13,22 @@ import (
 // nil table is not, and a literal embedding no binding owes none.
 func TestEmbeddedEnclosingIDs(t *testing.T) {
 	bindC := core.NewList([]core.Value{core.NewInteger(9)})
-	bindC.ID = "bind-c"
+	core.SetID(&bindC, "bind-c")
 	insideC := core.NewList([]core.Value{core.NewInteger(1)})
-	insideC.ID = "inside-c"
+	core.SetID(&insideC, "inside-c")
 	bindD := core.NewList([]core.Value{insideC})
-	bindD.ID = "bind-d"
+	core.SetID(&bindD, "bind-d")
 	enclosing := map[string]bool{"bind-c": true, "bind-d": true, "inside-c": true}
 
 	om := core.NewOrderedMap()
 	om.Set("d", bindD)
 	om.Set("n", core.NewInteger(2))
 	mapLit := core.NewMap(om)
-	mapLit.ID = "lit-map"
+	core.SetID(&mapLit, "lit-map")
 	nested := core.NewList([]core.Value{core.NewString("s"), bindC})
-	nested.ID = "lit-nested"
+	core.SetID(&nested, "lit-nested")
 	outer := core.NewList([]core.Value{nested, mapLit, core.NewInteger(3)})
-	outer.ID = "lit-outer"
+	core.SetID(&outer, "lit-outer")
 
 	keep := embeddedEnclosingIDs(outer, enclosing)
 	if len(keep) != 2 || !keep["bind-c"] || !keep["bind-d"] {

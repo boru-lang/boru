@@ -21,9 +21,14 @@ func w4bSchema(t *testing.T, r *Registry, name string, params []GenParam,
 	PushGenBindings(r, spec)
 	body := mkBody(spec)
 	PopGenBindings(r, spec)
-	info := &TypeSchemaInfo{Params: spec.Params, Body: body, Kind: SchemaRecord}
-	if err := InstallType(r, name, NewTypeSchema(TType, info)); err != nil {
+	decl := &TypeSchemaInfo{Params: spec.Params, Body: body, Kind: SchemaRecord}
+	if err := InstallType(r, name, NewTypeSchema(TType, decl)); err != nil {
 		t.Fatalf("InstallType %s: %v", name, err)
+	}
+	// The schema the node was installed with, constructed from decl.
+	info, ok := SchemaInfoOf(r.LookupTypeName(name))
+	if !ok {
+		t.Fatalf("InstallType %s: no schema on the node", name)
 	}
 	return info
 }
@@ -123,7 +128,7 @@ func TestTypeParamNodesAndBounds(t *testing.T) {
 		t.Error("Integer claims placeholderhood")
 	}
 	// An unconstrained placeholder admits anything.
-	if !NewInteger(1).Is(free) || !NewString("s").Is(free) {
+	if !addrOf(NewInteger(1)).Is(free) || !addrOf(NewString("s")).Is(free) {
 		t.Error("unconstrained placeholder rejected a value")
 	}
 	// A bounded placeholder admits by Is-membership in the bound.
@@ -131,19 +136,19 @@ func TestTypeParamNodesAndBounds(t *testing.T) {
 	if IsUnconstrainedTypeParam(bounded) {
 		t.Error("bounded placeholder claims unconstrained")
 	}
-	if !NewInteger(1).Is(bounded) {
+	if !addrOf(NewInteger(1)).Is(bounded) {
 		t.Error("Integer rejected by extends Number")
 	}
-	if NewString("s").Is(bounded) {
+	if addrOf(NewString("s")).Is(bounded) {
 		t.Error("String admitted by extends Number")
 	}
-	if bounded.Parent == nil || !bounded.Parent.Equal(TNumber) {
+	if bounded.Parent() == nil || !bounded.Parent().Equal(TNumber) {
 		t.Error("bounded placeholder not reparented at its bound")
 	}
 	// A compound bound (disjunct) routes through Unify.
 	disjB := MintTypeParam(r, GenParam{Name: "D", HasBound: true,
 		Bound: NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})})
-	if !NewInteger(1).Is(disjB) || NewBoolean(true).Is(disjB) {
+	if !addrOf(NewInteger(1)).Is(disjB) || addrOf(NewBoolean(true)).Is(disjB) {
 		t.Error("disjunct bound membership broken")
 	}
 	// Format renders the parameter name on a bare literal.
@@ -156,10 +161,10 @@ func TestTypeParamNodesAndBounds(t *testing.T) {
 	if IsUnconstrainedTypeParam(late) {
 		t.Error("AttachGenBound did not land the bound")
 	}
-	if late.Parent == nil || !late.Parent.Equal(TString) {
+	if late.Parent() == nil || !late.Parent().Equal(TString) {
 		t.Error("AttachGenBound did not reparent")
 	}
-	if !NewString("s").Is(late) || NewInteger(1).Is(late) {
+	if !addrOf(NewString("s")).Is(late) || addrOf(NewInteger(1)).Is(late) {
 		t.Error("retrofitted bound not consulted")
 	}
 }
@@ -190,14 +195,14 @@ func TestSchemaUnifierAndInfoOf(t *testing.T) {
 	// path an instantiation node takes — it mints as a child of the
 	// schema node).
 	child := r.Types.MintType("W4bBoxChild", node)
-	if !NewTypeLiteral(child).Is(node) {
+	if !addrOf(NewTypeLiteral(child)).Is(node) {
 		t.Error("child literal does not conform to the schema node")
 	}
 	if _, err := InstantiateSchema(r, info, []Value{NewTypeLiteral(TInteger)}); err != nil {
 		t.Fatalf("InstantiateSchema: %v", err)
 	}
 	// A plain value does not.
-	if NewInteger(1).Is(node) {
+	if addrOf(NewInteger(1)).Is(node) {
 		t.Error("integer conforms to the schema node")
 	}
 }
@@ -293,7 +298,7 @@ func TestSubstituteTypeParamsShapes(t *testing.T) {
 	}
 	// A word naming nothing passes through.
 	got, _ = SubstituteTypeParams(r, NewWord("unrelated"), bindings, nil)
-	if !IsWord(got) {
+	if !IsWord(&got) {
 		t.Errorf("unrelated word rewritten: %v", got)
 	}
 	// The Self word resolves to the in-flight node.
@@ -378,7 +383,7 @@ func TestSubstituteTypeParamsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fn shape: %v", err)
 	}
-	fi, ok := got.Data.(FnUndefInfo)
+	fi, ok := got.Data().(FnUndefInfo)
 	if !ok {
 		t.Fatalf("fn shape result = %v", got)
 	}
@@ -477,7 +482,7 @@ func TestInstantiateSchemaSelfRecursion(t *testing.T) {
 		t.Fatal("next field lost")
 	}
 	// The knot ties back to the in-flight instantiation node.
-	if !IsBareTypeNode(next) || next.Parent == nil || !next.Parent.Equal(info.Type) {
+	if !IsBareTypeNode(&next) || next.Parent() == nil || !next.Parent().Equal(info.Type) {
 		t.Errorf("next = %v, want the instantiation node literal", next)
 	}
 }
@@ -489,7 +494,7 @@ func TestSchemaShortNameAndCanonArg(t *testing.T) {
 	if schemaShortName(&TypeSchemaInfo{Name: "Plain"}) != "Plain" {
 		t.Error("plain short name broken")
 	}
-	if schemaShortName(&TypeSchemaInfo{Type: &Type{tmeta: &typeMeta{Name: "NodeName"}}}) != "NodeName" {
+	if schemaShortName(&TypeSchemaInfo{Type: &Type{d: &Datum{tmeta: &typeMeta{Name: "NodeName"}}}}) != "NodeName" {
 		t.Error("node-name fallback broken")
 	}
 	if schemaShortName(&TypeSchemaInfo{}) != "<schema>" {
@@ -532,7 +537,7 @@ func TestResolveSigChildParam(t *testing.T) {
 	tl := NewTypedList(NewWord("T"))
 	got := ResolveSigChildParam(r, tl)
 	ci, _ := AsChildType(got)
-	if !IsBareTypeNode(ci.Child) || TypeParamName(&ci.Child) != "T" {
+	if !IsBareTypeNode(&ci.Child) || TypeParamName(&ci.Child) != "T" {
 		t.Errorf("resolved child = %v", ci.Child)
 	}
 	// Typed map form.
@@ -558,14 +563,14 @@ func TestResolveSigChildParam(t *testing.T) {
 	passthru := NewTypedList(NewWord("NoSuchParam"))
 	got = ResolveSigChildParam(r, passthru)
 	ci, _ = AsChildType(got)
-	if !IsWord(ci.Child) {
+	if !IsWord(&ci.Child) {
 		t.Error("unrelated word child rewritten")
 	}
 	// Non-childtype values and nil registries pass through.
-	if v := ResolveSigChildParam(r, NewInteger(1)); !IsConcrete(v) {
+	if v := ResolveSigChildParam(r, NewInteger(1)); !IsConcrete(&v) {
 		t.Error("integer rewritten")
 	}
-	if v := ResolveSigChildParam(nil, tl); !IsTypedList(v) {
+	if v := ResolveSigChildParam(nil, tl); !IsTypedList(&v) {
 		t.Error("nil registry rewrote the value")
 	}
 	// A literal child (already resolved) passes through.
@@ -605,11 +610,11 @@ func TestResolveSigRecordFields(t *testing.T) {
 		t.Fatalf("AsMap: %v", err)
 	}
 	pretty, _ := gm.Get("pretty")
-	if !IsBareTypeNode(pretty) || !ValueType(pretty).Equal(TBoolean) {
+	if !IsBareTypeNode(&pretty) || !ValueType(pretty).Equal(TBoolean) {
 		t.Errorf("builtin field = %v (want the Boolean type)", pretty)
 	}
 	param, _ := gm.Get("param")
-	if !IsBareTypeNode(param) || TypeParamName(&param) != "T" {
+	if !IsBareTypeNode(&param) || TypeParamName(&param) != "T" {
 		t.Errorf("type-param field = %v", param)
 	}
 	rec, _ := gm.Get("rec")
@@ -617,11 +622,11 @@ func TestResolveSigRecordFields(t *testing.T) {
 		t.Errorf("user-type field = %v (want the record body)", rec)
 	}
 	nope, _ := gm.Get("nope")
-	if !IsWord(nope) {
+	if !IsWord(&nope) {
 		t.Errorf("word naming no type rewritten: %v", nope)
 	}
 	status, _ := gm.Get("status")
-	if !IsConcrete(status) {
+	if !IsConcrete(&status) {
 		t.Errorf("literal value pattern rewritten: %v", status)
 	}
 
@@ -634,11 +639,11 @@ func TestResolveSigRecordFields(t *testing.T) {
 	exprFields.Set("bad", NewParenExpr([]Value{NewWord("noSuchWordAtAll")}))
 	em, _ := AsMap(ResolveSigRecordFields(r, NewMap(exprFields)))
 	one, _ := em.Get("one")
-	if !IsBareTypeNode(one) || !ValueType(one).Equal(TInteger) {
+	if !IsBareTypeNode(&one) || !ValueType(one).Equal(TInteger) {
 		t.Errorf("field type expression = %v (want the Integer type)", one)
 	}
 	for _, k := range []string{"two", "val", "bad"} {
-		if fv, _ := em.Get(k); !IsParenExpr(fv) {
+		if fv, _ := em.Get(k); !IsParenExpr(&fv) {
 			t.Errorf("field %q rewritten: %v", k, fv)
 		}
 	}
@@ -653,7 +658,7 @@ func TestResolveSigRecordFields(t *testing.T) {
 	av, _ := nm.Get("a")
 	im, _ := AsMap(av)
 	bv, _ := im.Get("b")
-	if !IsBareTypeNode(bv) || !ValueType(bv).Equal(TInteger) {
+	if !IsBareTypeNode(&bv) || !ValueType(bv).Equal(TInteger) {
 		t.Errorf("nested field = %v (want the Integer type)", bv)
 	}
 
@@ -663,18 +668,18 @@ func TestResolveSigRecordFields(t *testing.T) {
 	inertFields.Set("a", NewInteger(1))
 	inertFields.Set("b", NewMap(NewOrderedMap()))
 	inert := NewMap(inertFields)
-	if out := ResolveSigRecordFields(r, inert); out.ID != inert.ID {
+	if out := ResolveSigRecordFields(r, inert); IDOf(&out) != IDOf(&inert) {
 		t.Errorf("all-concrete field map rebuilt: %v", out)
 	}
 
 	// Non-map values, an empty payload, and a nil registry pass through.
-	if v := ResolveSigRecordFields(r, NewInteger(1)); !IsConcrete(v) {
+	if v := ResolveSigRecordFields(r, NewInteger(1)); !IsConcrete(&v) {
 		t.Error("integer rewritten")
 	}
-	if v := ResolveSigRecordFields(r, NewMap(nil)); v.Data == nil {
+	if v := ResolveSigRecordFields(r, NewMap(nil)); v.Data() == nil {
 		t.Error("nil-backed map rewritten")
 	}
-	if v := ResolveSigRecordFields(nil, NewMap(fields)); !v.Parent.Equal(TMap) {
+	if v := ResolveSigRecordFields(nil, NewMap(fields)); !v.Parent().Equal(TMap) {
 		t.Error("nil registry rewrote the value")
 	}
 }
@@ -708,13 +713,13 @@ func TestResolveChildTypeExpr(t *testing.T) {
 	}
 	// Non-paren children and non-typed values pass through.
 	plain := NewTypedList(NewTypeLiteral(TString))
-	if got, err := ResolveChildTypeExpr(r, plain); err != nil || !IsTypedList(got) {
+	if got, err := ResolveChildTypeExpr(r, plain); err != nil || !IsTypedList(&got) {
 		t.Error("plain typed list rewritten")
 	}
-	if got, err := ResolveChildTypeExpr(r, NewInteger(1)); err != nil || !IsConcrete(got) {
+	if got, err := ResolveChildTypeExpr(r, NewInteger(1)); err != nil || !IsConcrete(&got) {
 		t.Error("integer rewritten")
 	}
-	if got, err := ResolveChildTypeExpr(nil, plain); err != nil || !IsTypedList(got) {
+	if got, err := ResolveChildTypeExpr(nil, plain); err != nil || !IsTypedList(&got) {
 		t.Error("nil registry rewrote the value")
 	}
 }
@@ -731,7 +736,7 @@ func TestUnifyTypeParamAndLitNode(t *testing.T) {
 		t.Error("typeParamLitNode overclaims")
 	}
 	// Same placeholder on both sides.
-	if got, err := unifyTypeParam(lit, pn, NewTypeLiteral(pn), nil); err != nil || !IsBareTypeNode(got) {
+	if got, err := unifyTypeParam(lit, pn, NewTypeLiteral(pn), nil); err != nil || !IsBareTypeNode(&got) {
 		t.Errorf("T vs T = %v, %v", got, err)
 	}
 	// A value satisfying the bound is admitted.
@@ -777,7 +782,7 @@ func TestInferGenBindings(t *testing.T) {
 	pat := NewTypedList(NewTypeLiteral(pn))
 	lparams := []FnParam{{Name: "xs", Type: TList, Pattern: &pat}}
 	b = InferGenBindings(spec, lparams, []Value{NewList([]Value{NewInteger(1), NewString("s")})})
-	if bv, ok := b["T"]; !ok || !IsDisjunct(bv) {
+	if bv, ok := b["T"]; !ok || !IsDisjunct(&bv) {
 		t.Errorf("mixed-list binding = %v", b["T"])
 	}
 	// A typed-list ARG contributes its child constraint directly.
@@ -835,7 +840,7 @@ func TestInferSchemaBindingsAndInstantiate(t *testing.T) {
 	ri, _ := AsRecordType(inst)
 	fv, _ := ri.Fields.Get("value")
 	// typeof "s" is the exact leaf (a String subtype), so check by family.
-	if !IsBareTypeNode(fv) || !(&fv).ConformsTo(TString) {
+	if !IsBareTypeNode(&fv) || !(&fv).ConformsTo(TString) {
 		t.Errorf("inferred field = %v", fv)
 	}
 	// An uninferable, undefaulted parameter is a loud unbound_param.
@@ -862,22 +867,22 @@ func TestGenBindingCarrierAndInstall(t *testing.T) {
 	r := newTestRegistry(t)
 	// A node binding becomes a carrier of that node.
 	c := GenBindingCarrier(r, NewTypeLiteral(TInteger))
-	if !c.Carrier || !c.Parent.Equal(TInteger) {
+	if !c.Carrier() || !c.Parent().Equal(TInteger) {
 		t.Errorf("node carrier = %v", c)
 	}
 	// A tor-merged disjunct stays a disjunct carrier.
 	c = GenBindingCarrier(r, NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)}))
-	if !c.Carrier || !IsDisjunct(c) {
+	if !c.Carrier() || !IsDisjunct(&c) {
 		t.Errorf("disjunct carrier = %v", c)
 	}
 	// A concrete value falls back to its Parent.
 	c = GenBindingCarrier(r, NewInteger(5))
-	if !c.Carrier || !c.Parent.Equal(TInteger) {
+	if !c.Carrier() || !c.Parent().Equal(TInteger) {
 		t.Errorf("value carrier = %v", c)
 	}
 	// A payload-bearing value with no Parent degrades to Any.
-	c = GenBindingCarrier(r, Value{Data: IntPayload{N: 1}})
-	if !c.Carrier || !c.Parent.Equal(TAny) {
+	c = GenBindingCarrier(r, Value{d: &Datum{Data: IntPayload{N: 1}}})
+	if !c.Carrier() || !c.Parent().Equal(TAny) {
 		t.Errorf("parentless carrier = %v", c)
 	}
 

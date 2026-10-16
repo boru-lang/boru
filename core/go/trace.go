@@ -24,8 +24,8 @@ const (
 // TraceColorize returns a colored string representation of a Value for trace output.
 func TraceColorize(v Value) string {
 	switch {
-	case IsWord(v):
-		w, _ := AsWord(v)
+	case IsWord(&v):
+		w, _ := AsWord(&v)
 		if w.ForceStack {
 			return cYellow + w.Name + "/s" + cReset
 		}
@@ -33,8 +33,8 @@ func TraceColorize(v Value) string {
 			return cYellow + w.Name + "/f" + cReset
 		}
 		return cYellow + w.Name + cReset
-	case IsForward(v):
-		f, _ := AsForward(v)
+	case IsForward(&v):
+		f, _ := AsForward(&v)
 		// A speculative forward (a slot the plan filled with a word
 		// that will dispatch rather than arrive) is marked spec@k so
 		// the plan-vs-arrival divergence is visible in traces. See
@@ -44,13 +44,13 @@ func TraceColorize(v Value) string {
 				f.FuncName, f.CollectedArgs, f.ExpectedArgs, f.SpeculativeAt) + cReset
 		}
 		return cMagenta + fmt.Sprintf("→%s(%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs) + cReset
-	case IsOpenParen(v):
+	case IsOpenParen(&v):
 		return cDim + "(" + cReset
-	case v.Data == nil:
+	case v.Data() == nil:
 		// Type literal — render the value's OWN type name (it IS its
 		// lattice node), not its parent (which is the supertype).
 		return cCyan + TypeNodeOf(v).String() + cReset
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		// Unwrap via the accessor: v.Data is the sealed StrPayload
 		// struct, and %q on the struct renders `{"x"}` not `"x"`.
 		s, err := AsString(v)
@@ -58,33 +58,33 @@ func TraceColorize(v Value) string {
 			return cGreen + v.String() + cReset
 		}
 		return cGreen + fmt.Sprintf("%q", s) + cReset
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		n, err := AsInteger(v)
 		if err != nil {
 			return cBlue + v.String() + cReset
 		}
 		return cBlue + fmt.Sprintf("%d", n) + cReset
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as0, _ := AsBoolean(v)
 		if _as0 {
 			return cCyan + "true" + cReset
 		}
 		return cCyan + "false" + cReset
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		s, err := AsAtom(v)
 		if err != nil {
-			return cRed + fmt.Sprintf("%v", v.Data) + cReset
+			return cRed + fmt.Sprintf("%v", v.Data()) + cReset
 		}
 		return cRed + s + cReset
-	case v.Parent.ConformsTo(TList):
+	case v.Parent().ConformsTo(TList):
 		_lst, _ := AsList(v)
-		elems := _lst.Slice()
+		elems := _lst.Elems()
 		parts := make([]string, len(elems))
 		for i, e := range elems {
 			parts[i] = TraceColorize(e)
 		}
 		return cDim + "[" + cReset + strings.Join(parts, " ") + cDim + "]" + cReset
-	case v.Parent.ConformsTo(TMap):
+	case v.Parent().ConformsTo(TMap):
 		m, _ := AsMap(v)
 		if m == nil {
 			return cWhite + v.String() + cReset
@@ -125,12 +125,11 @@ func TraceVisibleLen(s string) int {
 // exported algorithm primitives that lang's registration calls into.
 
 func TraceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, fmt.Errorf("trace: argument must be a concrete list, got type literal")
 	}
 	_lst, _ := AsList(args[0])
-	elems := _lst.Slice()
-	return RunTrace(r, elems, r.Output)
+	return RunTrace(r, _lst.Elems(), r.Output)
 }
 
 // RunTrace executes tokens in a sub-engine with tracing enabled,

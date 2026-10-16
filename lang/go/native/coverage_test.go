@@ -46,8 +46,8 @@ func TestUnifyDisjunctMatch(t *testing.T) {
 	if !ok {
 		t.Fatal("expected unification to succeed")
 	}
-	if !result.Parent.ConformsTo(TString) {
-		t.Errorf("expected string type, got %s", result.Parent)
+	if !result.Parent().ConformsTo(TString) {
+		t.Errorf("expected string type, got %s", result.Parent())
 	}
 }
 
@@ -60,7 +60,7 @@ func TestUnifyDisjunctNone(t *testing.T) {
 		t.Fatal("expected unification to succeed")
 	}
 	if !IsNoneShape(result) {
-		t.Errorf("expected none type, got %s", result.Parent)
+		t.Errorf("expected none type, got %s", result.Parent())
 	}
 }
 
@@ -82,7 +82,7 @@ func TestUnifyDisjunctWithAny(t *testing.T) {
 	if !ok {
 		t.Fatal("expected unification to succeed")
 	}
-	if !IsDisjunct(result) {
+	if !IsDisjunct(&result) {
 		t.Errorf("expected disjunct, got %s", result)
 	}
 }
@@ -103,8 +103,8 @@ func TestUnifyDisjunctMapOpen(t *testing.T) {
 	if !ok {
 		t.Fatal("expected open map unification to succeed")
 	}
-	if !result.Parent.Equal(TMap) {
-		t.Errorf("expected map, got %s", result.Parent)
+	if !result.Parent().Equal(TMap) {
+		t.Errorf("expected map, got %s", result.Parent())
 	}
 }
 
@@ -150,8 +150,8 @@ func TestValuesEqualTableTypes(t *testing.T) {
 	f2 := NewOrderedMap()
 	f2.Set("x", NewTypeLiteral(TNumber))
 
-	tt1 := Value{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: f1}}}
-	tt2 := Value{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: f2}}}
+	tt1 := ValueOf(&Datum{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: f1}}})
+	tt2 := ValueOf(&Datum{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: f2}}})
 	if !ValuesEqual(tt1, tt2) {
 		t.Error("expected equal table types")
 	}
@@ -254,7 +254,7 @@ func TestUnifyTypedMaps(t *testing.T) {
 	if !ok {
 		t.Fatal("expected typed map unification to succeed")
 	}
-	if !IsTypedMap(result) {
+	if !IsTypedMap(&result) {
 		t.Errorf("expected typed map, got %s", result)
 	}
 }
@@ -268,8 +268,8 @@ func TestUnifyTypedMapWithConcrete(t *testing.T) {
 	if !ok {
 		t.Fatal("expected unification to succeed")
 	}
-	if !result.Parent.Equal(TMap) {
-		t.Errorf("expected map, got %s", result.Parent)
+	if !result.Parent().Equal(TMap) {
+		t.Errorf("expected map, got %s", result.Parent())
 	}
 }
 
@@ -312,8 +312,8 @@ func TestUnifyListLiteralWithConcrete(t *testing.T) {
 	if !ok {
 		t.Fatal("expected list type to unify with concrete list")
 	}
-	if !result.Parent.Equal(TList) {
-		t.Errorf("expected list, got %s", result.Parent)
+	if !result.Parent().Equal(TList) {
+		t.Errorf("expected list, got %s", result.Parent())
 	}
 }
 
@@ -325,8 +325,8 @@ func TestUnifyMapLiteralWithConcrete(t *testing.T) {
 	if !ok {
 		t.Fatal("expected map type to unify with concrete map")
 	}
-	if !result.Parent.Equal(TMap) {
-		t.Errorf("expected map, got %s", result.Parent)
+	if !result.Parent().Equal(TMap) {
+		t.Errorf("expected map, got %s", result.Parent())
 	}
 }
 
@@ -1103,7 +1103,7 @@ func TestFormatForPrintTable(t *testing.T) {
 	row := NewOrderedMap()
 	row.Set("name", NewString("alice"))
 	td := TableData{Record: rec, Rows: []Value{NewMap(row)}}
-	out := FormatForPrint(Value{Parent: TList, Data: td})
+	out := FormatForPrint(ValueOf(&Datum{Parent: TList, Data: td}))
 	if !strings.Contains(out, "name") || !strings.Contains(out, "alice") {
 		t.Errorf("expected table with 'name' and 'alice', got %q", out)
 	}
@@ -1112,7 +1112,7 @@ func TestFormatForPrintTable(t *testing.T) {
 func TestFormatForPrintEmptyTable(t *testing.T) {
 	rec := RecordTypeInfo{Fields: NewOrderedMap()}
 	td := TableData{Record: rec, Rows: nil}
-	out := FormatForPrint(Value{Parent: TList, Data: td})
+	out := FormatForPrint(ValueOf(&Datum{Parent: TList, Data: td}))
 	if out != "(empty table)" {
 		t.Errorf("expected '(empty table)', got %q", out)
 	}

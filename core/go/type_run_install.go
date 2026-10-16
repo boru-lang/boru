@@ -31,13 +31,13 @@ func hasUnknownRefinement(v Value, depth int) bool {
 	if depth > 32 {
 		return false
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		if body, ok := v.TypeBody(); ok {
 			return hasUnknownRefinement(body, depth+1)
 		}
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case DepScalarInfo:
 		return !depBoundConst(d.Lo) || !depBoundConst(d.Hi)
 	case DisjunctInfo:
@@ -66,7 +66,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 		// minted from the refinement the run computed, rendered as it is
 		// (the no-match's "declared pattern", the RET's "expected").
 		if target := mintRunType(r, body); target != nil && spec.Node != nil {
-			node := CanonicalType(r, spec.Node)
+			node := NodeOf(spec.Node)
 			forwardType(node, target)
 			node.ensureTMeta().Name = body.String()
 		}
@@ -81,7 +81,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 	// mint, and the adopted node's for an alias the run computed — Never for
 	// an empty interval, which the interpreter's signature slot renders.
 	if entry, ok := r.Defs.TopEntry(spec.Name); ok && entry.TypeDef != nil && spec.Node != nil {
-		node := CanonicalType(r, spec.Node)
+		node := NodeOf(spec.Node)
 		forwardType(node, entry.TypeDef)
 		node.ensureTMeta().Name = entry.TypeDef.Name()
 	}
@@ -91,7 +91,7 @@ func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
 // forwardType forwards the pass's node to the run's. A node forwarded to
 // itself (the run re-installed the very node) is left alone.
 func forwardType(node, target *Type) {
-	if node == target || node.ID == target.ID {
+	if node == target || IDOf(node) == IDOf(target) {
 		return
 	}
 	m := node.ensureTMeta()
@@ -103,10 +103,10 @@ func forwardType(node, target *Type) {
 // installed (RunTypeInstall), or returns t unchanged.
 func ForwardedType(t *Type) *Type {
 	for i := 0; t != nil && i < 8; i++ {
-		if t.tmeta == nil || t.tmeta.RunForward == nil {
+		if t.body().tmeta == nil || t.body().tmeta.RunForward == nil {
 			return t
 		}
-		t = t.tmeta.RunForward
+		t = t.body().tmeta.RunForward
 	}
 	return t
 }
@@ -136,7 +136,7 @@ func (f forwardingBehavior) Unify(a, b Value, r *Registry) (Value, *UnifyError) 
 
 // forwardedOperand is v with a forwarded node replaced by the run's node.
 func forwardedOperand(v Value) Value {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return v
 	}
 	if t := ForwardedType(&v); t != &v {
@@ -153,19 +153,19 @@ func mintRunType(r *Registry, body Value) *Type {
 	name := body.String()
 	var t *Type
 	switch {
-	case IsBareTypeNode(body):
-		return CanonicalType(r, &body)
+	case IsBareTypeNode(&body):
+		return NodeOf(&body)
 	case body.IsDepScalar():
 		di, _ := body.AsDepScalar() // IsDepScalar: the payload is a DepScalarInfo
-		t = r.Types.MintType(name, body.Parent)
-		installDepScalarUnifier(t, body.Parent, di, name)
-	case IsDisjunct(body):
+		t = r.Types.MintType(name, body.Parent())
+		installDepScalarUnifier(t, body.Parent(), di, name)
+	case IsDisjunct(&body):
 		di, _ := AsDisjunct(body) // IsDisjunct: the payload is a DisjunctInfo
-		t = r.Types.MintType(name, body.Parent)
+		t = r.Types.MintType(name, body.Parent())
 		installDisjunctUnifier(t, di.Alternatives, name)
 	case IsNegation(body):
 		ni, _ := AsNegation(body) // IsNegation: the payload is a NegationInfo
-		t = r.Types.MintType(name, body.Parent)
+		t = r.Types.MintType(name, body.Parent())
 		installNegationUnifier(t, ni.Inner, name)
 	default:
 		return nil
@@ -189,7 +189,7 @@ func runSigPattern(r *Registry, v Value) (Value, bool) {
 	// and then the interpreter's slot is Never itself — a slot TYPE, where
 	// this slot is the base with a pattern, and no forward turns one into
 	// the other. The word building the signature declines instead.
-	if di, ok := v.Data.(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
+	if di, ok := v.Data().(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
 		r.analysisRecorder().NoteRuntimeDependent()
 		return Value{}, false
 	}

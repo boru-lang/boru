@@ -111,7 +111,7 @@ var GenNatives = []NativeFunc{
 // constraints (`(T extends Container of [T])`) and later-parameter
 // references to earlier ones work without special casing.
 func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("gen_error", "gen: needs a concrete list of type parameters", "gen")
 	}
 	lst, _ := AsList(args[0])
@@ -126,10 +126,10 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		return nil, err
 	}
 
-	for _, entry := range lst.Slice() {
+	for _, entry := range lst.Elems() {
 		switch {
-		case IsWord(entry):
-			w, _ := AsWord(entry)
+		case IsWord(&entry):
+			w, _ := AsWord(&entry)
 			if err := validateGenParamName(r, w.Name, seen); err != nil {
 				return fail(err)
 			}
@@ -139,13 +139,13 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			spec.Bound = append(spec.Bound, p.Name)
 			spec.Params = append(spec.Params, p)
 
-		case IsParenExpr(entry):
-			toks, _ := AsParenExpr(entry)
-			if len(toks) == 0 || !IsWord(toks[0]) {
+		case IsParenExpr(&entry):
+			toks, _ := AsParenExpr(&entry)
+			if len(toks) == 0 || !IsWord(&toks[0]) {
 				return fail(r.BoruError("gen_error",
 					"gen: a parenthesised parameter entry must start with the parameter name, e.g. (T extends Comparable)", "gen"))
 			}
-			w, _ := AsWord(toks[0])
+			w, _ := AsWord(&toks[0])
 			if err := validateGenParamName(r, w.Name, seen); err != nil {
 				return fail(err)
 			}
@@ -157,9 +157,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			spec.Bound = append(spec.Bound, prov.Name)
 
 			sub := New(r)
-			body := make([]Value, len(toks))
-			copy(body, toks)
-			out, err := sub.Run(body)
+			out, err := sub.Run(toks)
 			if err != nil {
 				return fail(fmt.Errorf("gen: parameter %s: %w", w.Name, err))
 			}
@@ -171,7 +169,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			switch {
 			case IsGenParamValue(out[0]):
 				p, _ = AsGenParamValue(out[0])
-			case IsBareTypeNode(out[0]) && TypeParamName(&out[0]) == w.Name:
+			case IsBareTypeNode(&out[0]) && TypeParamName(&out[0]) == w.Name:
 				// `(T)` — parens around a bare parameter.
 				p = GenParam{Name: w.Name}
 			default:
@@ -227,7 +225,7 @@ func ExtendsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 			fmt.Sprintf("extends: left side must be a gen type parameter, got %s", ph.String()), "extends",
 			"hint: `extends` declares a parameter bound inside gen [...] — e.g. gen [(T extends Comparable)]")
 	}
-	if !IsTypeLiteral(bound) && !IsTypeBody(bound) {
+	if !IsTypeLiteral(&bound) && !IsTypeBody(&bound) {
 		return nil, r.BoruError("extends_error",
 			fmt.Sprintf("extends: bound must be a type, got %s", bound.String()), "extends")
 	}
@@ -262,7 +260,7 @@ func DefaultBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 // the stack) is the schema; the forward list holds the type arguments.
 // A Self head (inside a schema body, D5) defers via GenInstRef.
 func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !IsConcrete(args[0]) {
+	if !IsConcrete(&args[0]) {
 		return nil, r.BoruError("type_error", "of: needs a concrete list of type arguments", "of")
 	}
 	head := ResolveWordValue(args[1])
@@ -274,7 +272,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 
 	// Self head: always deferred — resolved when the enclosing schema
 	// instantiates (D5).
-	if IsBareTypeNode(head) && head.ID == TSelf.ID {
+	if IsBareTypeNode(&head) && IDOf(&head) == IDOf(TSelf) {
 		return []Value{NewGenInstRef(GenInstRef{Head: head, Args: argv})}, nil
 	}
 
@@ -284,7 +282,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// `(Type of [Map])`). The bound must denote a single lattice node
 	// (a builtin or a NAMED user type, including named disjuncts);
 	// structural bodies have no single node to conform to.
-	if IsBareTypeNode(head) && head.ID == TType.ID {
+	if IsBareTypeNode(&head) && IDOf(&head) == IDOf(TType) {
 		if len(argv) != 1 {
 			return nil, r.BoruError("type_error",
 				fmt.Sprintf("of: Type takes exactly one bound, got %d", len(argv)), "of")
@@ -298,8 +296,8 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		switch raw := lst.Get(0); {
 		case IsAtom(raw):
 			boundName, _ = AsAtom(raw)
-		case IsWord(raw):
-			w, _ := AsWord(raw)
+		case IsWord(&raw):
+			w, _ := AsWord(&raw)
 			boundName = w.Name
 		}
 		if boundName != "" {
@@ -307,7 +305,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// predicate) carries its body so satisfaction can unify
 			// against it; a nominal type (refine) carries its literal.
 			if def := r.LookupTypeName(boundName); def != nil {
-				if body, ok := r.TopTypeBody(boundName); ok && !IsBareTypeNode(body) {
+				if body, ok := r.TopTypeBody(boundName); ok && !IsBareTypeNode(&body) {
 					return []Value{NewBoundedTypeBody(def, body)}, nil
 				}
 				return []Value{NewBoundedType(def)}, nil
@@ -318,20 +316,20 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			}
 		}
 		bound := argv[0]
-		if !IsBareTypeNode(bound) {
+		if !IsBareTypeNode(&bound) {
 			return nil, r.BoruErrorHint("type_error",
 				fmt.Sprintf("of: Type bound must be a named type, got %s", bound.String()), "of",
 				"hint: name a structural bound first — def MapOrList (Map tor List), then MapOrList/t")
 		}
-		return []Value{NewBoundedType(CanonicalType(r, &bound))}, nil
+		return []Value{NewBoundedType(NodeOf(&bound))}, nil
 	}
 
 	var info *TypeSchemaInfo
 	switch {
 	case IsTypeSchema(head):
 		info, _ = AsTypeSchema(head)
-	case IsBareTypeNode(head):
-		node := CanonicalType(r, &head)
+	case IsBareTypeNode(&head):
+		node := NodeOf(&head)
 		if si, ok := SchemaInfoOf(node); ok {
 			info = si
 		}
@@ -349,7 +347,7 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// check mode (§7.6).
 	if r.Check.IsActive() {
 		for _, a := range argv {
-			if IsBareTypeNode(a) && a.ID == TNever.ID {
+			if IsBareTypeNode(&a) && IDOf(&a) == IDOf(TNever) {
 				r.Check.AddDiagnostic(CheckDiagnostic{
 					Code:   "static_warning",
 					Detail: "of: instantiation with Never is value-uninhabited",
@@ -367,8 +365,8 @@ func OfHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 // auto-evaluated, but builtin type names inside word-context lists can
 // survive as words), everything else passes through.
 func resolveTypeArg(r *Registry, v Value) Value {
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		if tv, ok := r.ResolveTypedName(w.Name); ok {
 			return tv
 		}

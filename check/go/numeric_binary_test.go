@@ -39,16 +39,16 @@ func TestReturnsNumericBinaryNumberResult(t *testing.T) {
 		{"strict any⊕dynamic(any)", core.NewCarrier(core.TAny), core.NewDynamicCarrier(core.TAny), core.TNumber, true},
 	} {
 		out := nb([]core.Value{c.a, c.b}, nil)
-		if len(out) != 1 || !out[0].Parent.Equal(c.want) || out[0].Dynamic != c.dynamic {
-			t.Errorf("%s: got %v (dynamic=%v), want %s (dynamic=%v)", c.name, out, len(out) == 1 && out[0].Dynamic, c.want.Name(), c.dynamic)
+		if len(out) != 1 || !out[0].Parent().Equal(c.want) || core.IsDynamic(&out[0]) != c.dynamic {
+			t.Errorf("%s: got %v (dynamic=%v), want %s (dynamic=%v)", c.name, out, len(out) == 1 && core.IsDynamic(&out[0]), c.want.Name(), c.dynamic)
 		}
 	}
 	// Negative: a Number operand never yields an Integer, and a Float leaf
 	// still wins over the Number rule.
-	if out := nb([]core.Value{core.NewCarrier(core.TNumber), core.NewCarrier(core.TNumber)}, nil); out[0].Parent.Equal(core.TInteger) {
+	if out := nb([]core.Value{core.NewCarrier(core.TNumber), core.NewCarrier(core.TNumber)}, nil); out[0].Parent().Equal(core.TInteger) {
 		t.Errorf("number⊕number must not type as Integer: %v", out)
 	}
-	if out := nb([]core.Value{core.NewCarrier(core.TNumber), core.NewCarrier(core.TFloat)}, nil); !out[0].Parent.Equal(core.TFloat) {
+	if out := nb([]core.Value{core.NewCarrier(core.TNumber), core.NewCarrier(core.TFloat)}, nil); !out[0].Parent().Equal(core.TFloat) {
 		t.Errorf("number⊕float = %v, want Float", out)
 	}
 }

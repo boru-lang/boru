@@ -29,17 +29,17 @@ func ovImpl() *core.GoImpl {
 
 func TestNewCarrierTypedListLenRefinement(t *testing.T) {
 	v := NewCarrierTypedListLen(core.TInteger, 3)
-	if !v.Carrier {
+	if !v.Carrier() {
 		t.Fatal("result must be a carrier")
 	}
-	if !v.Parent.ConformsTo(core.TList) {
-		t.Fatalf("result parent = %s, want a List", v.Parent.Leaf())
+	if !v.Parent().ConformsTo(core.TList) {
+		t.Fatalf("result parent = %s, want a List", v.Parent().Leaf())
 	}
-	ct, ok := v.Data.(core.ChildTypeInfo)
+	ct, ok := v.Data().(core.ChildTypeInfo)
 	if !ok {
-		t.Fatalf("Data = %T, want core.ChildTypeInfo", v.Data)
+		t.Fatalf("Data = %T, want core.ChildTypeInfo", v.Data())
 	}
-	if ct.Child.Parent == nil || !ct.Child.Parent.Equal(core.TInteger) {
+	if ct.Child.Parent() == nil || !ct.Child.Parent().Equal(core.TInteger) {
 		t.Error("element carrier must carry the given element type (Integer)")
 	}
 	if ct.Len == nil || *ct.Len != 3 {
@@ -76,7 +76,7 @@ func TestComboTypeNamesRendering(t *testing.T) {
 // returns its lattice node, whose Behavior is a *core.PredicateUnifier.
 func covPredicateType(t *testing.T, r *core.Registry, name string) *core.Type {
 	t.Helper()
-	pred := core.MarkPredicateFn(core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	pred := core.MarkPredicateFn(core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params:  []core.FnParam{{Name: "n", Type: core.TInteger}},
 		Returns: []*core.Type{core.TBoolean},
 		Impl:    core.Boru([]core.Value{core.NewBoolean(true)}),
@@ -222,7 +222,7 @@ func TestAnyDisjunctCarrierShapes(t *testing.T) {
 		core.NewTypeLiteral(core.TAny),
 	})
 	unionCarrier := union
-	unionCarrier.Carrier = true
+	unionCarrier.SetCarrier(true)
 
 	if !anyDisjunctCarrier([]core.Value{core.NewInteger(1), unionCarrier}) {
 		t.Error("a union carrier among the operands must be detected")
@@ -375,7 +375,7 @@ func TestAdjacentToLiteralWordWindow(t *testing.T) {
 	// import-adjacent string is kept concrete so the import handler can
 	// resolve and analyse the target.
 	out := StripToCarriers([]core.Value{imp, str})
-	if !core.IsConcrete(out[1]) {
+	if !core.IsConcrete(&out[1]) {
 		t.Error("the import-adjacent string must survive carrier-stripping")
 	}
 }
@@ -387,7 +387,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger),
 		core.NewTypeLiteral(core.TString),
 	})
-	mixed.Carrier = true
+	mixed.SetCarrier(true)
 
 	// Integer|String vs Integer: one alternative conforms, one rejects —
 	// the forward/stack split is ambiguous.
@@ -400,7 +400,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger),
 		core.NewTypeLiteral(core.TFloat),
 	})
-	pure.Carrier = true
+	pure.SetCarrier(true)
 	if carrierMixedConform(pure, core.TNumber) {
 		t.Error("all-conforming alternatives are pure, not mixed")
 	}
@@ -424,7 +424,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		t.Error("a non-carrier disjunct value is never mixed")
 	}
 	dyn := mixed
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if carrierMixedConform(dyn, core.TInteger) {
 		t.Error("a dynamic carrier is handled elsewhere, never mixed")
 	}

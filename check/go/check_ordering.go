@@ -50,8 +50,8 @@ func OrderingReturnsFn(handler core.Handler, result *core.Type) core.ReturnsFunc
 // the runtime's. A dynamic / gradual carrier never qualifies: its
 // family is genuinely unknown.
 func orderingDeterminate(v core.Value) bool {
-	if v.Dynamic {
+	if core.IsDynamic(&v) {
 		return false
 	}
-	return core.IsConcrete(v) || core.IsNoneShape(v) || core.IsBareTypeNode(v)
+	return core.IsConcrete(&v) || core.IsNoneShape(v) || core.IsBareTypeNode(&v)
 }

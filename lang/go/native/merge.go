@@ -39,7 +39,7 @@ func mergeHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry
 //	[a,b,c] merge {1:d} → [a,d,c]
 func mergeListMapHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	_lst, _ := AsList(args[0])
-	list := _lst.Slice()
+	list := _lst.Elems()
 	m, _ := AsMap(args[1])
 	if list == nil || m == nil {
 		return nil, r.BoruError("merge_error", "merge: expected concrete list and map", "merge")
@@ -87,7 +87,7 @@ func mergeListMapHandler(args []Value, ctx map[string]Value, stack []Value, r *R
 func mergeMapListHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	m, _ := AsMap(args[0])
 	_lst, _ := AsList(args[1])
-	list := _lst.Slice()
+	list := _lst.Elems()
 	if m == nil || list == nil {
 		return nil, r.BoruError("merge_error", "merge: expected concrete map and list", "merge")
 	}

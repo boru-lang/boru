@@ -16,7 +16,7 @@ func TestKeyValIsMapSubtype(t *testing.T) {
 	if !e.Is(TMap) {
 		t.Errorf("KeyVal is not a Map (it must be a Map subtype)")
 	}
-	if got := e.Parent.Leaf(); got != "KeyVal" {
+	if got := e.Parent().Leaf(); got != "KeyVal" {
 		t.Errorf("type leaf = %q, want KeyVal", got)
 	}
 }
@@ -67,10 +67,10 @@ func TestKeyValNominal(t *testing.T) {
 	om.Set("v", NewInteger(1))
 	om.Set("i", NewInteger(0))
 	om.Set("n", NewInteger(3))
-	if NewMap(om).Is(TKeyVal) {
+	if addrOf(NewMap(om)).Is(TKeyVal) {
 		t.Errorf("a plain map with k/v/i/n fields must NOT be a KeyVal")
 	}
-	if NewInteger(1).Is(TKeyVal) {
+	if addrOf(NewInteger(1)).Is(TKeyVal) {
 		t.Errorf("an Integer must not be a KeyVal")
 	}
 }

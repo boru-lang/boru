@@ -295,16 +295,16 @@ func TestUnifySubtypeWithSupertype(t *testing.T) {
 	for i := 1; i < len(levels); i++ {
 		for j := 0; j < i; j++ {
 			t.Run(fmt.Sprintf("%s_with_%s", levels[i], levels[j]), func(t *testing.T) {
-				child := Value{Parent: mustTestType(t, levels[i]), Data: nil}
-				parent := Value{Parent: mustTestType(t, levels[j]), Data: nil}
+				child := ValueOf(&Datum{Parent: mustTestType(t, levels[i]), Data: nil})
+				parent := ValueOf(&Datum{Parent: mustTestType(t, levels[j]), Data: nil})
 
 				// child unify parent
 				result, ok := Unify(child, parent)
 				if !ok {
 					t.Fatalf("Unify(%s, %s) should succeed", levels[i], levels[j])
 				}
-				if !result.Parent.Equal(mustTestType(t, levels[i])) {
-					t.Errorf("Unify(%s, %s) = %s, want %s", levels[i], levels[j], result.Parent, levels[i])
+				if !result.Parent().Equal(mustTestType(t, levels[i])) {
+					t.Errorf("Unify(%s, %s) = %s, want %s", levels[i], levels[j], result.Parent(), levels[i])
 				}
 
 				// parent unify child (reversed)
@@ -312,8 +312,8 @@ func TestUnifySubtypeWithSupertype(t *testing.T) {
 				if !ok {
 					t.Fatalf("Unify(%s, %s) should succeed", levels[j], levels[i])
 				}
-				if !result.Parent.Equal(mustTestType(t, levels[i])) {
-					t.Errorf("Unify(%s, %s) = %s, want %s", levels[j], levels[i], result.Parent, levels[i])
+				if !result.Parent().Equal(mustTestType(t, levels[i])) {
+					t.Errorf("Unify(%s, %s) = %s, want %s", levels[j], levels[i], result.Parent(), levels[i])
 				}
 			})
 		}
@@ -329,16 +329,16 @@ func TestUnifyAnyWithDeepTypes(t *testing.T) {
 			path += fmt.Sprintf("/Sub%d", i)
 		}
 		t.Run(fmt.Sprintf("depth_%d", depth), func(t *testing.T) {
-			specific := Value{Parent: mustTestType(t, path), Data: nil}
-			any := Value{Parent: TAny, Data: nil}
+			specific := ValueOf(&Datum{Parent: mustTestType(t, path), Data: nil})
+			any := ValueOf(&Datum{Parent: TAny, Data: nil})
 
 			// any unify specific
 			result, ok := Unify(any, specific)
 			if !ok {
 				t.Fatal("Unify(any, specific) should succeed")
 			}
-			if !result.Parent.Equal(mustTestType(t, path)) {
-				t.Errorf("result type = %s, want %s", result.Parent, path)
+			if !result.Parent().Equal(mustTestType(t, path)) {
+				t.Errorf("result type = %s, want %s", result.Parent(), path)
 			}
 
 			// specific unify any
@@ -346,8 +346,8 @@ func TestUnifyAnyWithDeepTypes(t *testing.T) {
 			if !ok {
 				t.Fatal("Unify(specific, any) should succeed")
 			}
-			if !result.Parent.Equal(mustTestType(t, path)) {
-				t.Errorf("result type = %s, want %s", result.Parent, path)
+			if !result.Parent().Equal(mustTestType(t, path)) {
+				t.Errorf("result type = %s, want %s", result.Parent(), path)
 			}
 		})
 	}
@@ -363,8 +363,8 @@ func TestUnifySiblingTypesFails(t *testing.T) {
 	}
 	for _, pair := range siblings {
 		t.Run(fmt.Sprintf("%s_vs_%s", pair[0], pair[1]), func(t *testing.T) {
-			a := Value{Parent: mustTestType(t, pair[0]), Data: nil}
-			b := Value{Parent: mustTestType(t, pair[1]), Data: nil}
+			a := ValueOf(&Datum{Parent: mustTestType(t, pair[0]), Data: nil})
+			b := ValueOf(&Datum{Parent: mustTestType(t, pair[1]), Data: nil})
 			_, ok := Unify(a, b)
 			if ok {
 				t.Errorf("Unify(%s, %s) should fail for siblings", pair[0], pair[1])
@@ -377,7 +377,7 @@ func TestUnifySiblingTypesFails(t *testing.T) {
 
 func TestUnifyIntegerWithNumberType(t *testing.T) {
 	val := NewInteger(42) // type: number/integer/42
-	numType := Value{Parent: TNumber, Data: nil}
+	numType := ValueOf(&Datum{Parent: TNumber, Data: nil})
 
 	// integer literal is subtype of number → should unify, returning the literal
 	result, ok := Unify(val, numType)
@@ -393,7 +393,7 @@ func TestUnifyIntegerWithNumberType(t *testing.T) {
 
 func TestUnifyIntegerWithIntegerType(t *testing.T) {
 	val := NewInteger(7) // type: number/integer/7
-	intType := Value{Parent: TInteger, Data: nil}
+	intType := ValueOf(&Datum{Parent: TInteger, Data: nil})
 
 	// number/integer/7 is subtype of number/integer → should unify
 	result, ok := Unify(val, intType)
@@ -448,18 +448,18 @@ func TestUnifyDeepHierarchy7Levels(t *testing.T) {
 	t6 := mustTestType(t, "A/B")
 	t7 := mustTestType(t, "A")
 
-	deepest := Value{Parent: t1, Data: nil}
+	deepest := ValueOf(&Datum{Parent: t1, Data: nil})
 	ancestors := []*Type{t2, t3, t4, t5, t6, t7}
 
 	for _, anc := range ancestors {
-		ancestor := Value{Parent: anc, Data: nil}
+		ancestor := ValueOf(&Datum{Parent: anc, Data: nil})
 		result, ok := Unify(deepest, ancestor)
 		if !ok {
 			t.Fatalf("Unify(%s, %s) should succeed", t1, anc)
 		}
 		// Should return the deeper (more specific) type
-		if !result.Parent.Equal(t1) {
-			t.Errorf("Unify(%s, %s) = %s, want %s", t1, anc, result.Parent, t1)
+		if !result.Parent().Equal(t1) {
+			t.Errorf("Unify(%s, %s) = %s, want %s", t1, anc, result.Parent(), t1)
 		}
 	}
 }
@@ -474,8 +474,8 @@ func TestUnifyIncompatibleHierarchiesFails(t *testing.T) {
 	}
 	for _, pair := range tests {
 		t.Run(fmt.Sprintf("%s_vs_%s", pair[0], pair[1]), func(t *testing.T) {
-			a := Value{Parent: mustTestType(t, pair[0]), Data: nil}
-			b := Value{Parent: mustTestType(t, pair[1]), Data: nil}
+			a := ValueOf(&Datum{Parent: mustTestType(t, pair[0]), Data: nil})
+			b := ValueOf(&Datum{Parent: mustTestType(t, pair[1]), Data: nil})
 			_, ok := Unify(a, b)
 			if ok {
 				t.Errorf("Unify(%s, %s) should fail for incompatible hierarchies", pair[0], pair[1])
@@ -487,8 +487,8 @@ func TestUnifyIncompatibleHierarchiesFails(t *testing.T) {
 // --- Unify none with deep type fails ---
 
 func TestUnifyNoneWithDeepTypeFails(t *testing.T) {
-	none := Value{Parent: TNone, Data: nil}
-	deep := Value{Parent: mustTestType(t, "A/B/C/D/E/F/G"), Data: nil}
+	none := ValueOf(&Datum{Parent: TNone, Data: nil})
+	deep := ValueOf(&Datum{Parent: mustTestType(t, "A/B/C/D/E/F/G"), Data: nil})
 	_, ok := Unify(none, deep)
 	if ok {
 		t.Error("Unify(none, deep-type) should fail")
@@ -502,8 +502,8 @@ func TestUnifyNoneWithDeepTypeFails(t *testing.T) {
 // --- Unify none with none succeeds ---
 
 func TestUnifyNoneWithNoneSucceeds(t *testing.T) {
-	a := Value{Parent: TNone, Data: nil}
-	b := Value{Parent: TNone, Data: nil}
+	a := ValueOf(&Datum{Parent: TNone, Data: nil})
+	b := ValueOf(&Datum{Parent: TNone, Data: nil})
 	_, ok := Unify(a, b)
 	if !ok {
 		t.Error("Unify(none, none) should succeed")
@@ -531,7 +531,7 @@ func TestMatchSignatureDeepTypeHierarchy(t *testing.T) {
 	// A value with the deepest type should match the most specific signature.
 	// A carrier stands for the value: a payload-less non-carrier is a TYPE
 	// literal, which a value slot refuses (NUR323).
-	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big/Huge"), Carrier: true}
+	val := ValueOf(&Datum{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big/Huge"), Carrier: true})
 	stack := []Value{val}
 	m := MatchSignature(sigs, stack, WordInfo{ArgCount: -1})
 	if m == nil {
@@ -553,7 +553,7 @@ func TestMatchSignatureMidLevelType(t *testing.T) {
 	SortSignatures(sigs)
 
 	// A value at depth 6 should match the deepest available signature (depth 4)
-	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big"), Carrier: true} // a value, not the type (NUR323)
+	val := ValueOf(&Datum{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big"), Carrier: true}) // a value, not the type (NUR323)
 	stack := []Value{val}
 	m := MatchSignature(sigs, stack, WordInfo{ArgCount: -1})
 	if m == nil {
@@ -633,26 +633,26 @@ func TestUnifyMapsWithMismatchedValuesFails(t *testing.T) {
 
 func TestUnifySymmetry(t *testing.T) {
 	pairs := [][2]Value{
-		{Value{Parent: mustTestType(t, "A/B/C"), Data: nil}, Value{Parent: mustTestType(t, "A/B"), Data: nil}},
-		{Value{Parent: mustTestType(t, "Number/Integer"), Data: nil}, Value{Parent: mustTestType(t, "Number"), Data: nil}},
-		{Value{Parent: TAny, Data: nil}, Value{Parent: mustTestType(t, "X/Y/Z/W"), Data: nil}},
-		{NewInteger(5), Value{Parent: TNumber, Data: nil}},
-		{NewInteger(5), Value{Parent: TInteger, Data: nil}},
+		{ValueOf(&Datum{Parent: mustTestType(t, "A/B/C"), Data: nil}), ValueOf(&Datum{Parent: mustTestType(t, "A/B"), Data: nil})},
+		{ValueOf(&Datum{Parent: mustTestType(t, "Number/Integer"), Data: nil}), ValueOf(&Datum{Parent: mustTestType(t, "Number"), Data: nil})},
+		{ValueOf(&Datum{Parent: TAny, Data: nil}), ValueOf(&Datum{Parent: mustTestType(t, "X/Y/Z/W"), Data: nil})},
+		{NewInteger(5), ValueOf(&Datum{Parent: TNumber, Data: nil})},
+		{NewInteger(5), ValueOf(&Datum{Parent: TInteger, Data: nil})},
 	}
 
 	for _, pair := range pairs {
-		t.Run(fmt.Sprintf("%s_vs_%s", pair[0].Parent, pair[1].Parent), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s_vs_%s", pair[0].Parent(), pair[1].Parent()), func(t *testing.T) {
 			r1, ok1 := Unify(pair[0], pair[1])
 			r2, ok2 := Unify(pair[1], pair[0])
 			if ok1 != ok2 {
 				t.Fatalf("asymmetric unification: (%s,%s)=%v but (%s,%s)=%v",
-					pair[0].Parent, pair[1].Parent, ok1,
-					pair[1].Parent, pair[0].Parent, ok2)
+					pair[0].Parent(), pair[1].Parent(), ok1,
+					pair[1].Parent(), pair[0].Parent(), ok2)
 			}
-			if ok1 && !r1.Parent.Equal(r2.Parent) {
+			if ok1 && !r1.Parent().Equal(r2.Parent()) {
 				t.Errorf("asymmetric result: Unify(%s,%s)=%s but Unify(%s,%s)=%s",
-					pair[0].Parent, pair[1].Parent, r1.Parent,
-					pair[1].Parent, pair[0].Parent, r2.Parent)
+					pair[0].Parent(), pair[1].Parent(), r1.Parent(),
+					pair[1].Parent(), pair[0].Parent(), r2.Parent())
 			}
 		})
 	}
@@ -736,7 +736,7 @@ func TestMatchSignatureEfficiencyThousandsOfSiblings(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < numSiblings; i++ {
-		val := Value{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Carrier: true} // a value, not the type (NUR323)
+		val := ValueOf(&Datum{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Carrier: true}) // a value, not the type (NUR323)
 		m := MatchSignature(sigs, []Value{val}, WordInfo{ArgCount: -1})
 		if m == nil {
 			t.Fatalf("A/B/%d should match signature [A/B]", i)
@@ -761,18 +761,18 @@ func TestUnifyEfficiencyThousandsOfSiblings(t *testing.T) {
 		t.Skip("perf timing assertion; skipped under -short (race lane)")
 	}
 	const numSiblings = 10_000
-	parentVal := Value{Parent: mustTestType(t, "A/B"), Data: nil}
+	parentVal := ValueOf(&Datum{Parent: mustTestType(t, "A/B"), Data: nil})
 
 	start := time.Now()
 	for i := 0; i < numSiblings; i++ {
-		child := Value{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Data: nil}
+		child := ValueOf(&Datum{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Data: nil})
 		result, ok := Unify(child, parentVal)
 		if !ok {
 			t.Fatalf("Unify(A/B/%d, A/B) should succeed", i)
 		}
 		// Should return the child (narrower type)
-		if result.Parent.Leaf() != fmt.Sprintf("%d", i) {
-			t.Fatalf("Unify(A/B/%d, A/B) returned wrong type: %s", i, result.Parent)
+		if result.Parent().Leaf() != fmt.Sprintf("%d", i) {
+			t.Fatalf("Unify(A/B/%d, A/B) returned wrong type: %s", i, result.Parent())
 		}
 	}
 	elapsed := time.Since(start)

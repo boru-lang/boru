@@ -175,7 +175,7 @@ func TestS6b2ResolveSigTypeSurfaceValue(t *testing.T) {
 	if err != nil || pat != nil {
 		t.Fatalf("surface value: err=%v pat=%v", err, pat)
 	}
-	if typ == nil || typ.ID != TSurface.ID {
+	if typ == nil || IDOf(typ) != IDOf(TSurface) {
 		t.Errorf("surface param type = %v, want the surface node", typ)
 	}
 }
@@ -188,7 +188,7 @@ func TestS6b2ResolveSigTypeSchemaValue(t *testing.T) {
 	if err != nil || pat != nil {
 		t.Fatalf("schema value: err=%v pat=%v", err, pat)
 	}
-	if typ == nil || typ.ID != node.ID {
+	if typ == nil || IDOf(typ) != IDOf(node) {
 		t.Errorf("schema param type = %v, want the minted schema node", typ)
 	}
 }
@@ -252,7 +252,7 @@ func TestS6b2LookupDefTypeArms(t *testing.T) {
 	// Def-stack bare type literal: canonicalized lattice node.
 	r.Defs.Push("S6b2Alias", NewTypeLiteral(TInteger))
 	got = LookupDefType(r, "S6b2Alias")
-	if got == nil || !IsBareTypeNode(*got) || got.ID != TInteger.ID {
+	if got == nil || !IsBareTypeNode(got) || IDOf(got) != IDOf(TInteger) {
 		t.Errorf("bare-literal def binding must canonicalize to Integer, got %v", got)
 	}
 }
@@ -267,7 +267,7 @@ func TestS6b2ResolveDefTypeFallthrough(t *testing.T) {
 
 func TestS6b2ResolveTypeNameNever(t *testing.T) {
 	typ, err := ResolveTypeName("Never")
-	if err != nil || typ == nil || typ.ID != TNever.ID {
+	if err != nil || typ == nil || IDOf(typ) != IDOf(TNever) {
 		t.Errorf("ResolveTypeName(Never) = %v (%v), want TNever", typ, err)
 	}
 }

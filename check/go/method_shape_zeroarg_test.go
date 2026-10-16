@@ -151,7 +151,7 @@ func TestNoteMethodShapeDeclinesNonDelegation(t *testing.T) {
 	}}})
 	out := core.NewDynamicCarrier(core.TAny)
 	r.Check.NoteMethodShape(out, realBody)
-	if _, ok := r.Check.MethodShapeMember(out.ID); ok {
+	if _, ok := r.Check.MethodShapeMember(core.IDOf(&out)); ok {
 		t.Error("a non-delegation member must not be annotated")
 	}
 }

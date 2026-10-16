@@ -242,7 +242,7 @@ func TestRegionOracleWindowPresentsOperands(t *testing.T) {
 	d.Slots = append(d.Slots, compiler.SlotDesc{Source: compiler.SlotNone, Token: core.NewWord("tail")})
 	d.Slots[1] = compiler.SlotDesc{Source: compiler.SlotLocal, Idx: 0, Token: core.NewWord("b")}
 	win := regionOracleWindow(d, stack)
-	if len(win) != 3 || !core.IsWord(win[0]) || core.CanonValue(win[1]) != "1" || !core.IsWord(win[2]) {
+	if len(win) != 3 || !core.IsWord(&win[0]) || core.CanonValue(win[1]) != "1" || !core.IsWord(&win[2]) {
 		t.Fatalf("window = %v: want [word k, the pushed 1, word tail]", win)
 	}
 }
@@ -299,7 +299,7 @@ func TestRegionOracleContainerIdentity(t *testing.T) {
 	// clone's provenance ID) agrees with itself before any equality is
 	// asked.
 	tagged := core.NewInteger(7)
-	tagged.ID = "T_same-provenance"
+	core.SetID(&tagged, "T_same-provenance")
 	reg.Defs.Push("k", tagged)
 	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), tagged}); ev.Outcome != "reproduced" {
 		t.Errorf("the same ID is the same value: %+v", ev)
@@ -309,7 +309,7 @@ func TestRegionOracleContainerIdentity(t *testing.T) {
 	// does — the same object under the same tag reproduces; the same
 	// store under another tag is another value.
 	sub := reg.Types.MintType("S", core.TFlexList)
-	refined := core.ReparentValue(one, sub)
+	refined := core.MintRetagged(&one, sub)
 	reg.Defs.Push("k", refined)
 	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), refined}); ev.Outcome != "reproduced" {
 		t.Errorf("a refined flex list, the same object under the same tag, reproduces: %+v", ev)

@@ -64,7 +64,7 @@ func gate426Call(t *testing.T, r *core.Registry, body []core.Value, returns []*c
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewInteger(7), core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 1
-	if err := e.ExecFnDefSigStackMatch(1, fnDef, []core.Value{core.NewInteger(7)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(1, &fnDef, []core.Value{core.NewInteger(7)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 	return e.Tape.Snapshot()
@@ -78,13 +78,13 @@ func wantSingleAnyCarrier(t *testing.T, tape []core.Value) {
 		t.Fatalf("residual: got %d values %v, want exactly 1", len(tape), tape)
 	}
 	got := tape[0]
-	if !got.Carrier {
+	if !got.Carrier() {
 		t.Errorf("residual must be a carrier, got %#v", got)
 	}
-	if !got.Parent.Equal(core.TAny) {
-		t.Errorf("residual carrier type: got %v, want Any", got.Parent)
+	if !got.Parent().Equal(core.TAny) {
+		t.Errorf("residual carrier type: got %v, want Any", got.Parent())
 	}
-	if got.Dynamic {
+	if core.IsDynamic(&got) {
 		t.Error("the arm builds core.NewCarrier(core.TAny), which is not dynamic")
 	}
 }
@@ -137,7 +137,7 @@ func TestGaterecovery426ProductiveBodySkipsTheFallback(t *testing.T) {
 	if len(tape) != 1 {
 		t.Fatalf("residual: got %d values %v, want exactly 1", len(tape), tape)
 	}
-	if tape[0].Carrier && tape[0].Parent.Equal(core.TAny) {
+	if tape[0].Carrier() && tape[0].Parent().Equal(core.TAny) {
 		t.Error("a productive body must not be replaced by the arm's Any fallback")
 	}
 }

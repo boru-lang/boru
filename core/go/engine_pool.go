@@ -46,17 +46,20 @@ func RunPooledTop(r *Registry, tokens []Value) ([]Value, error) {
 func RunResolved(r *Registry, inputs, tokens []Value) ([]Value, error) {
 	// Observability seam (interp_entry.go): the callback-style body path.
 	r.noteInterp("RunResolved")
-	input := make([]Value, len(inputs)+len(tokens))
-	copy(input, inputs)
-	copy(input[len(inputs):], tokens)
-	return runPooledAt(r, input, len(inputs), false)
+	// The inputs and the body load onto the tape as two parts, each copied
+	// once (Engine.RunParts).
+	return runPooledParts(r, inputs, tokens, len(inputs), false)
 }
 
 func runPooledAt(r *Registry, tokens []Value, startAt int, top bool) ([]Value, error) {
+	return runPooledParts(r, nil, tokens, startAt, top)
+}
+
+func runPooledParts(r *Registry, prefix, tokens []Value, startAt int, top bool) ([]Value, error) {
 	e := r.TakeSubEngine()
 	e.IsTop = top
 	e.StartAt = startAt
-	res, err := e.Run(tokens)
+	res, err := e.RunParts(prefix, tokens)
 	if len(res) > 0 {
 		res = append([]Value(nil), res...)
 	}

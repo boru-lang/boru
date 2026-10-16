@@ -8,7 +8,9 @@
 #
 #   always              gofmt on the changed Go files; vet and golangci-lint
 #                       on the touched modules, in parallel
-#                       (scripts/each-module.sh)
+#                       (scripts/each-module.sh), and the no-copy ratchet
+#                       on them (scripts/vet-copies.sh; every module when
+#                       the ratchet itself changed)
 #   lang/go touched     the assertion lint
 #   a Go module touched its unit tests — every package of a small module;
 #                       for lang/go and cmd/go the changed packages only
@@ -106,13 +108,20 @@ if [ -n "$go_files" ]; then
   lane "gofmt on $(echo "$go_files" | grep -c .) changed Go files" fmt_check
 fi
 if [ -n "$touched_modules" ]; then
-  lane "vet ($touched_modules )" scripts/each-module.sh -m "$touched_modules" go vet ./...
+  lane "vet ($touched_modules )" scripts/each-module.sh -m "$touched_modules" go vet -copylocks=false ./...
   if command -v golangci-lint > /dev/null; then
     lane "golangci-lint ($touched_modules )" scripts/each-module.sh -m "$touched_modules" golangci-lint run ./...
   else
     failed=1; lanes+=("golangci-lint: MISSING — go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0")
   fi
   case " $touched_modules " in *" lang/go "*) lane "lint-assertions" make -s -C lang/go lint-assertions ;; esac
+fi
+# The no-copy ratchet on the touched modules, or on every module when the
+# ratchet itself (its tool, its ceilings, its script) changed.
+if echo "$changed" | grep -q '^tools/vetcopies/\|^scripts/vet-copies\.sh$\|^go\.work$'; then
+  lane "vet-copies (every module)" scripts/vet-copies.sh
+elif [ -n "$touched_modules" ]; then
+  lane "vet-copies ($touched_modules )" scripts/vet-copies.sh -m "$(echo $touched_modules)"
 fi
 
 # ---- unit tests of what changed, and the smoke corpus, side by side ----------

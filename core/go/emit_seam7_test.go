@@ -21,7 +21,7 @@ func TestRecorderAccessorFallback(t *testing.T) {
 // --- direct-call helpers -------------------------------------------------
 
 func fnVal(sigs ...Signature) Value {
-	return Value{ID: GenerateID(IDPrefixForType(TFunction)), Parent: TFunction, Data: FnDefInfo{Signatures: sigs}}
+	return withID(Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Signatures: sigs}}}, GenerateID(IDPrefixForType(TFunction)))
 }
 
 // zeroArgFn is a genuine 0-param fn value (two 0-arg sigs → real + phantom),
@@ -83,15 +83,15 @@ func TestAllInertAndFields(t *testing.T) {
 
 func TestTypeBodyConstOKChildType(t *testing.T) {
 	// Child not const-safe → false.
-	bad := Value{Data: ChildTypeInfo{Child: NewCarrier(TInteger)}}
+	bad := Value{d: &Datum{Data: ChildTypeInfo{Child: NewCarrier(TInteger)}}}
 	if typeBodyConstOK(bad) {
 		t.Fatal("carrier child should decline")
 	}
 	// Child ok, but an entry value is not const-safe → false.
-	badEntry := Value{Data: ChildTypeInfo{
+	badEntry := Value{d: &Datum{Data: ChildTypeInfo{
 		Child:   NewInteger(1),
 		Entries: []ChildEntry{{Key: "k", Value: NewCarrier(TInteger)}},
-	}}
+	}}}
 	if typeBodyConstOK(badEntry) {
 		t.Fatal("carrier entry should decline")
 	}
@@ -99,19 +99,19 @@ func TestTypeBodyConstOKChildType(t *testing.T) {
 
 func TestIsInertConstPayloadArms(t *testing.T) {
 	// Micron instance → inert.
-	micron := Value{Parent: TAny, Data: MicronPayload{Fields: NewOrderedMap()}}
-	if !IsInertConst(micron) {
+	micron := Value{d: &Datum{Parent: TAny, Data: MicronPayload{Fields: NewOrderedMap()}}}
+	if !IsInertConst(&micron) {
 		t.Fatal("a Micron instance should be inert")
 	}
 	// nil-backed map → not inert.
-	if IsInertConst(Value{Parent: TMap, Data: MapPayload{M: nil}}) {
+	if IsInertConst(&Value{d: &Datum{Parent: TMap, Data: MapPayload{M: nil}}}) {
 		t.Fatal("nil map should not be inert")
 	}
 	// XML element whose attribute value is a carrier → not inert.
 	attr := NewOrderedMap()
 	attr.Set("x", NewCarrier(TInteger))
-	xml := Value{Parent: TAny, Data: XmlElementPayload{Tag: "a", Attr: attr}}
-	if IsInertConst(xml) {
+	xml := Value{d: &Datum{Parent: TAny, Data: XmlElementPayload{Tag: "a", Attr: attr}}}
+	if IsInertConst(&xml) {
 		t.Fatal("carrier attribute should decline")
 	}
 }
@@ -161,13 +161,14 @@ func TestSchemaConstOK(t *testing.T) {
 
 func TestIsInertQuotedParen(t *testing.T) {
 	// Quoted but not actually a paren-expr payload → AsParenExpr errors.
-	bad := Value{Parent: TParenExpr, Data: IntPayload{N: 1}, Quoted: true}
+	bad := Value{d: &Datum{Parent: TParenExpr, Data: IntPayload{N: 1}}}
+	SetQuoted(&bad, true)
 	if isInertQuotedParen(bad) {
 		t.Fatal("a non-paren payload should decline")
 	}
 	// Quoted paren with a carrier token → declines.
 	p := NewParenExpr([]Value{NewCarrier(TInteger)})
-	p.Quoted = true
+	SetQuoted(&p, true)
 	if isInertQuotedParen(p) {
 		t.Fatal("a carrier token should decline")
 	}
@@ -191,7 +192,7 @@ func TestInertReachMemberSeam7(t *testing.T) {
 		t.Fatal("an integer is not a reach member")
 	}
 	// IsReach by parent but the payload is not ReachInfo → AsReach errors.
-	if inertReachMember(Value{Parent: TReach, Data: IntPayload{N: 1}}) {
+	if inertReachMember(Value{d: &Datum{Parent: TReach, Data: IntPayload{N: 1}}}) {
 		t.Fatal("a non-reach payload should decline")
 	}
 	// A reach whose receiver token is a carrier → declines.
@@ -204,7 +205,7 @@ func TestInertReachMemberSeam7(t *testing.T) {
 func TestIsInertConstMemberParenErr(t *testing.T) {
 	// A value that IsParenExpr by parent but whose payload is not a
 	// ParenExprPayload → AsParenExpr errors → not an inert member.
-	bad := Value{Parent: TParenExpr, Data: IntPayload{N: 1}}
+	bad := Value{d: &Datum{Parent: TParenExpr, Data: IntPayload{N: 1}}}
 	if IsInertConstMember(bad) {
 		t.Fatal("a non-paren paren-typed value should not be an inert member")
 	}
@@ -214,7 +215,7 @@ func TestIsInertConstMemberParenErr(t *testing.T) {
 
 func TestTypeBodyConstOKElements(t *testing.T) {
 	// Child ok, but an Elements entry is a carrier → allInert fails.
-	v := Value{Data: ChildTypeInfo{Child: NewInteger(1), Elements: []Value{NewCarrier(TInteger)}}}
+	v := Value{d: &Datum{Data: ChildTypeInfo{Child: NewInteger(1), Elements: []Value{NewCarrier(TInteger)}}}}
 	if typeBodyConstOK(v) {
 		t.Fatal("a carrier element should decline")
 	}
@@ -255,7 +256,7 @@ func TestInactiveConstructorSlots(t *testing.T) {
 // ReachInfo (AsReach errors) declines the standalone lens test exactly as
 // the member test does — the const table never pools a malformed reach.
 func TestIsInertReachForeignPayload(t *testing.T) {
-	if isInertReach(Value{Parent: TReach, Data: IntPayload{N: 1}}) {
+	if isInertReach(Value{d: &Datum{Parent: TReach, Data: IntPayload{N: 1}}}) {
 		t.Fatal("a non-reach payload should decline")
 	}
 }

@@ -26,26 +26,26 @@ func TestFnReturnPark(t *testing.T) {
 	fnv := NewFunction(FnDefInfo{Name: "parked"})
 
 	quoted := NewFunction(FnDefInfo{Name: "quoted"})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 
 	// A Function value REPARENTED to a refined function type. stepLiteral's
 	// dispatch guard requires Parent == TFunction, so this one would be
 	// PUSHED, not called — parking it would drop its OnPushLit.
-	refined := ReparentValue(NewFunction(FnDefInfo{Name: "refined"}), TAny)
+	refined := MintRetagged(addrOf(NewFunction(FnDefInfo{Name: "refined"})), TAny)
 
 	// The analysis pass's stand-in for a concrete Function: a DYNAMIC
 	// fn-typed carrier (a member read, a call result).
 	dynFn := NewCarrier(TFunction)
-	dynFn.Dynamic = true
+	SetDynamic(&dynFn, true)
 
 	quotedDyn := NewCarrier(TFunction)
-	quotedDyn.Dynamic = true
-	quotedDyn.Quoted = true
+	SetDynamic(&quotedDyn, true)
+	SetQuoted(&quotedDyn, true)
 
 	// A named fn collapsed out of a reach group (tagReachCollapsedFn):
 	// dot access to a function is a call, so the park must decline it.
 	reachTagged := NewFunction(FnDefInfo{Name: "m.f"})
-	reachTagged.ReachGroup = true
+	SetReachGroup(&reachTagged, true)
 
 	cases := []struct {
 		name          string
@@ -139,14 +139,14 @@ func TestFnReturnPark(t *testing.T) {
 // that here: a parser-produced open paren must not read as a frame, and both
 // machine-generated constructors must.
 func TestFrameOpenIsMachineGeneratedOnly(t *testing.T) {
-	if IsFrameOpen(NewOpenParen()) {
+	if IsFrameOpen(addrOf(NewOpenParen())) {
 		t.Error("a plain source-written open paren reads as a fn frame — frame teardown would fire on user parens")
 	}
 	meta := &FnFrameMeta{}
-	if !IsFrameOpen(NewFrameOpen(meta)) {
+	if !IsFrameOpen(addrOf(NewFrameOpen(meta))) {
 		t.Error("NewFrameOpen does not read as a fn frame — frame machinery would never engage")
 	}
-	if !IsFrameOpen(NewFrameOpenSpan(meta, 2)) {
+	if !IsFrameOpen(addrOf(NewFrameOpenSpan(meta, 2))) {
 		t.Error("NewFrameOpenSpan does not read as a fn frame — frames with a resolved-arg span would not engage")
 	}
 }

@@ -22,11 +22,11 @@ func TestIdealRegistry_ForResolvesByAccepts(t *testing.T) {
 	ir := core.NewIdealRegistry()
 	ir.Register(&core.Ideal{
 		Name: "Stringy", Enabled: true,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TString) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TString) },
 	})
 	ir.Register(&core.Ideal{
 		Name: "Inty", Enabled: true,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TInteger) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TInteger) },
 	})
 	if id := ir.For(core.NewString("x")); id == nil || id.Name != "Stringy" {
 		t.Errorf("For(string) = %v, want Stringy", id)
@@ -98,11 +98,11 @@ func TestIdealRegistry_Match(t *testing.T) {
 	ir := core.NewIdealRegistry()
 	ir.Register(&core.Ideal{
 		Name: "Off", Enabled: false,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TString) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TString) },
 	})
 	ir.Register(&core.Ideal{
 		Name: "On", Enabled: true,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TInteger) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TInteger) },
 	})
 	if id := ir.Match(core.NewString("x")); id == nil || id.Name != "Off" {
 		t.Errorf("Match(string) = %v, want Off (Match reports disabled kinds)", id)
@@ -146,11 +146,11 @@ func TestIdeal_Refines(t *testing.T) {
 	ir := core.NewIdealRegistry()
 	base := &core.Ideal{
 		Name: "Tensor", Enabled: true,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TInteger) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TInteger) },
 	}
 	ref := &core.Ideal{
 		Name: "Matrix", Enabled: true, Refines: base,
-		Accepts: func(v core.Value) bool { return v.Parent.ConformsTo(core.TString) },
+		Accepts: func(v core.Value) bool { return v.Parent().ConformsTo(core.TString) },
 	}
 	ir.Register(base)
 	ir.Register(ref)
@@ -187,7 +187,7 @@ func TestIsHostTypeBody(t *testing.T) {
 	if !core.IsHostTypeBody(typeVal) {
 		t.Error("IsHostTypeBody(marked extension) = false, want true")
 	}
-	if !core.IsTypeBody(typeVal) {
+	if !core.IsTypeBody(&typeVal) {
 		t.Error("IsTypeBody(host type body) = false, want true")
 	}
 	// An ExtensionPayload whose Body does not embed HostTypeBody is an
@@ -196,7 +196,7 @@ func TestIsHostTypeBody(t *testing.T) {
 	if core.IsHostTypeBody(instVal) {
 		t.Error("IsHostTypeBody(plain extension) = true, want false")
 	}
-	if core.IsTypeBody(instVal) {
+	if core.IsTypeBody(&instVal) {
 		t.Error("IsTypeBody(plain extension instance) = true, want false")
 	}
 	if core.IsHostTypeBody(core.NewInteger(1)) {

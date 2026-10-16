@@ -92,8 +92,8 @@ func TestWt5FreshenDefaultFlexList(t *testing.T) {
 	if !IsFlexList(fresh) {
 		t.Fatalf("freshened flex list must stay flex, got %v", fresh)
 	}
-	od, _ := orig.Data.(*FlexListData)
-	fd, _ := fresh.Data.(*FlexListData)
+	od, _ := orig.Data().(*FlexListData)
+	fd, _ := fresh.Data().(*FlexListData)
 	if od == nil || fd == nil || od == fd {
 		t.Fatal("freshening must produce a new FlexListData identity")
 	}
@@ -119,7 +119,7 @@ func TestWt5MakeClassFieldValueArms(t *testing.T) {
 	cinfo := ClassTypeInfo{Name: "Class/Wt5Inner", Type: ct, Fields: NewOrderedMap()}
 	constraint := NewClassType(ct, cinfo)
 	inst := NewClassInstance(ct, ClassInstanceInfo{TypeRef: &cinfo, Fields: NewOrderedMap()})
-	if got, err := MakeClassFieldValue(inst, constraint, r); err != nil || !got.Parent.Equal(ct) {
+	if got, err := MakeClassFieldValue(inst, constraint, r); err != nil || !got.Parent().Equal(ct) {
 		t.Fatalf("class instance vs its class constraint = %v %v", got, err)
 	}
 }
@@ -128,9 +128,9 @@ func TestWt5MakeClassFieldValueArms(t *testing.T) {
 
 func TestWt5NewPathonFromString(t *testing.T) {
 	v := NewPathonFromString("/a/b")
-	p, ok := v.Data.(PathonPayload)
+	p, ok := v.Data().(PathonPayload)
 	if !ok || !p.Info.Abs || len(p.Info.Parts) != 2 || p.Info.Parts[0] != "a" {
-		t.Fatalf("NewPathonFromString = %+v", v.Data)
+		t.Fatalf("NewPathonFromString = %+v", v.Data())
 	}
 }
 
@@ -197,7 +197,7 @@ func TestWt5MakeHandlerUnavailableIdeal(t *testing.T) {
 	r.Ideals.Register(&Ideal{
 		Name:    "Wt5Kind",
 		Enabled: false,
-		Accepts: func(v Value) bool { return v.ID != "" && v.ID == mark.ID },
+		Accepts: func(v Value) bool { return IDOf(&v) != "" && IDOf(&v) == IDOf(mark) },
 	})
 	if _, err := MakeHandler([]Value{NewTypeLiteral(mark), NewInteger(1)}, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not available in this registry") {
@@ -369,13 +369,13 @@ func TestWt5ResolveFieldTypeArms(t *testing.T) {
 
 	// A bare Word resolves through the builtin arm.
 	got := ResolveFieldType(r, NewWord("Integer"))
-	if !IsBareTypeNode(got) || !(&got).Equal(TInteger) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TInteger) {
 		t.Fatalf("builtin word = %v", got)
 	}
 
 	// Typed containers resolve deep through the registry-armed resolver.
 	tl := NewTypedList(NewTypeLiteral(TInteger))
-	if got := ResolveFieldType(r, tl); !IsTypedList(got) {
+	if got := ResolveFieldType(r, tl); !IsTypedList(&got) {
 		t.Fatalf("typed list constraint = %v", got)
 	}
 }

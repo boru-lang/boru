@@ -190,9 +190,10 @@ func RetagAndAdvise(r *Registry, word string, receiver, result Value) (Value, er
 
 The walk mirrors the `Comparer` LCA walk (`compare.go:74-91`) and `Sizer`
 (`size.go:17-24`):
-`for t := CanonicalType(r, result.Parent); t != nil && t.Origin != OriginBuiltin; t = t.Parent`.
-`CanonicalType` is mandatory at every step — `behave` writes through the
-canonical pointer (see eng/go/CLAUDE.md "Canonical `*Type` Pointers").
+`for t := NodeOf(result.Parent); t != nil && t.Origin != OriginBuiltin; t = t.Parent`.
+`NodeOf` (which replaced `CanonicalType` in no-copy phase 3) is mandatory at
+every step — `behave` writes through the node (see eng/go/CLAUDE.md
+"Canonical `*Type` Pointers").
 `builtinBaseOf` already exists (`core_make.go:599-608`) and is package-private
 to eng, which is where these helpers live. The gate is **`Equal`**, not
 `ConformsTo` — that is what keeps Flex refines out (FlexList *conforms to*

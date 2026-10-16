@@ -205,7 +205,7 @@ func TestReplayable(t *testing.T) {
 // when it does.
 func TestFlattenStampsThroughQuote(t *testing.T) {
 	fn := core.NewFunction(core.FnDefInfo{Name: "held"})
-	if fn.Quoted {
+	if core.IsQuoted(&fn) {
 		t.Fatal("fixture must start unquoted")
 	}
 
@@ -222,7 +222,7 @@ func TestFlattenStampsThroughQuote(t *testing.T) {
 	if err != nil || inner.Len() != 1 {
 		t.Fatalf("nested body did not flatten to a one-element list: %v", tokens[0])
 	}
-	if !inner.Get(0).Quoted {
+	if !core.IsQuoted(inner.Ref(0)) {
 		t.Error("the nested Function was not marked inert — it would dispatch on replay")
 	}
 }

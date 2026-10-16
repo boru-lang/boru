@@ -152,20 +152,20 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 // TFlexList carrier, not the concrete store). Bare type nodes are excluded:
 // a class/flex TYPE literal is not an instance.
 func mutableInstanceRef(v core.Value) bool {
-	if core.IsBareTypeNode(v) {
+	if core.IsBareTypeNode(&v) {
 		return false
 	}
 	if core.IsFlexNode(v) || core.IsClassInstance(v) {
 		return true
 	}
-	p := v.Parent
+	p := v.Parent()
 	if p == nil {
 		return false
 	}
 	if p.ConformsTo(core.TFlexMap) || p.ConformsTo(core.TFlexList) || p.ConformsTo(core.TFlexXml) {
 		return true
 	}
-	return v.Carrier && p.ConformsTo(core.TClass)
+	return v.Carrier() && p.ConformsTo(core.TClass)
 }
 
 // moduleScopeMutableCaptures extends a closure body's lexical captures with
@@ -236,7 +236,7 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 // ambiguity gate, so admitting the capture never introduces an unsound dispatch
 // — it just resolves the operand.
 func moduleScopeInstanceCarrier(v core.Value) bool {
-	return !core.IsBareTypeNode(v) && !core.IsConcrete(v) && v.Carrier
+	return !core.IsBareTypeNode(&v) && !core.IsConcrete(&v) && v.Carrier()
 }
 
 // tryRecordClosure attempts to compile a code-body higher-order word's body to
@@ -307,8 +307,8 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// Routing such words to the dyn-body seat instead was measured and
 	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
 	// rows importing a module whose fn defs a computed value declined with it.
-	_, bodyIsLambda := body.Data.(core.FnDefInfo)
-	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(body) && !bodyIsLambda
+	_, bodyIsLambda := body.Data().(*core.FnDefInfo)
+	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(&body) && !bodyIsLambda
 	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
 		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
 		// A CompileDynBody word DECLINES instead: tryRecordDynBody records a
@@ -327,13 +327,13 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// the lambda body against that representative shape so `p.value`/`kv.v`
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
-	if fd, isFn := body.Data.(core.FnDefInfo); isFn {
-		return tryRecordLambdaClosure(r, word, spec, sig, args, body, &fd, extraLamSlots, outs, pos)
+	if fd, isFn := body.Data().(*core.FnDefInfo); isFn {
+		return tryRecordLambdaClosure(r, word, spec, sig, args, body, fd, extraLamSlots, outs, pos)
 	}
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
 	// positionally off the stack.
-	if !core.IsConcrete(body) {
+	if !core.IsConcrete(&body) {
 		return false
 	}
 	bodyList, err := core.AsList(body)
@@ -357,7 +357,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	if inputs == nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return false
 	}
-	bodyToks := bodyList.Slice()
+	bodyToks := storedBodyTokens(&body, bodyList)
 
 	// Lexical captures: body words resolving to an ENCLOSING fn's binding
 	// (a param or body-local of a fn currently being compiled) ride as the
@@ -682,13 +682,13 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		if lam.QuoteArgs[i] || pt.ConformsTo(core.TAtom) {
 			return nil, false
 		}
-		if shape == ClosureInKeyVal && inputs[i].Parent.ConformsTo(core.TMap) {
+		if shape == ClosureInKeyVal && inputs[i].Parent().ConformsTo(core.TMap) {
 			if !pt.ConformsTo(core.TMap) && !core.TMap.ConformsTo(pt) {
 				return nil, false
 			}
 			continue
 		}
-		if !core.SigTypeMatches(inputs[i], pt) {
+		if !core.SigTypeMatches(&inputs[i], pt) {
 			return nil, false
 		}
 	}
@@ -715,7 +715,7 @@ func narrowLambdaInputs(inputs []core.Value, lam *core.Signature) []core.Value {
 			break
 		}
 		pt, in := lam.Params[i].Type, inputs[i]
-		if pt == nil || pt.Equal(core.TAny) || !in.Dynamic || !in.Parent.Equal(core.TAny) {
+		if pt == nil || pt.Equal(core.TAny) || !core.IsDynamic(&in) || !in.Parent().Equal(core.TAny) {
 			continue
 		}
 		if &out[0] == &inputs[0] {
@@ -819,7 +819,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	}
 	extras := make([]extraHook, 0, len(extraLamSlots))
 	for _, slot := range extraLamSlots {
-		fd, isFn := args[slot].Data.(core.FnDefInfo)
+		fd, isFn := args[slot].Data().(*core.FnDefInfo)
 		if !isFn { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
@@ -827,7 +827,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		if !insOK { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
-		lam, lamOK := lambdaHookCompatible(r, &fd, hookIns, hookShape, false, false)
+		lam, lamOK := lambdaHookCompatible(r, fd, hookIns, hookShape, false, false)
 		if !lamOK {
 			return false
 		}
@@ -958,13 +958,15 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	recsBefore := len(real.fnRecs)
 	unit, realOk := compile(bodyToks, paramNames, captures)
 	// REACHABLE since Stage 4b (unit_memo.go), not a defensive arm: the
-	// probe carries no producedBy, so an enclosing binding read whose value
+	// probe resolves no event of the real pass (a fresh recording state,
+	// whose pass number the real recorder keys do not carry), so an
+	// enclosing binding read whose value
 	// an EVENT produced (`k` after a leaking `do` rebound it) bakes as a
 	// const in the probe and routes LIVE in the real compile — and the
 	// residual-order hazard declines the live read where it admitted the
 	// const. The real state is already marked with the hazard's reason;
 	// this decline hands the dispatch to its own compile failure path (first reason
-	// wins). `def k 5  do [ k  def k 9  k ]  do [ k  def k 12  k ]` pins it
+	// wins). `def k (size [1 2])  do [ k  def k 12  k ]` pins it
 	// (lang/go/analysis_order_test.go).
 	if !realOk || unit < 0 {
 		return false
@@ -972,8 +974,9 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// The REGION shapes are a SHAPE test, so they must be re-asked of the
 	// REAL unit — and this is not belt-and-braces, it is the same probe/real
 	// divergence the decline above documents, seen from the other side. The
-	// probe carries no producedBy, so an enclosing binding read that an EVENT
-	// produces bakes there as a CONST and routes LIVE in the real compile.
+	// probe resolves no event of the real pass, so an enclosing binding read
+	// that an EVENT produces bakes there as a CONST and routes LIVE in the
+	// real compile.
 	// closureResidualExact survives that because it counts operands and the
 	// count does not change; regionPrefixShapeOps does not, because it
 	// requires everything beneath the run to be INERT, and a const-in-probe /
@@ -986,23 +989,15 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// no fall-through: a row that compiled through the dyn-body strategy
 	// became a hard compile failure. Declining here hands the dispatch to its own
 	// compile failure path, which is where that strategy takes it.
-	if regionResidual && !closureResidualRegion(real, unit) {
-		// The units this compile just created are now ORPHANS: nothing
-		// records a dispatch to them, but Finalize lowers every unit in the
-		// table, and a compile failure there kills the PROGRAM. That is the trade
-		// fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
-		// reasoning is identical — an unreachable unit's lowering says
-		// nothing about the program — so take the same recovery: a trap stub
-		// that keeps unit indices aligned and fails loudly if ever entered.
-		// Only a FRESH unit is marked; a memo hit belongs to the dispatch
-		// that made it.
-		if unit == recsBefore {
-			for u := recsBefore; u < len(real.fnRecs); u++ {
-				if real.fnRecs[u] != nil {
-					real.fnRecs[u].stampOnly = true
-				}
-			}
-		}
+	//
+	// Since the recorder keys a producer on its holder (no-copy phase 3) the
+	// two agree on that row and on every shape the corpus and the variation
+	// lane build: an operand the probe cannot resolve is an enclosing read,
+	// which the real compile seats as a lookup — inert, as the probe's const
+	// is — or declines on above, on the residual-order hazard. The decline
+	// stays as the guard of that agreement.
+	if regionResidual && !closureResidualRegion(real, unit) { //covergate:allow §compiler probe/real agreement: since the recorder keys producers on holders the probe's unresolved operands are enclosing reads, which the real unit seats inert or declines on above (the !realOk arm), so its region shape matches the probe's
+		real.orphanFreshUnits(recsBefore, unit)
 		return false
 	}
 	// The closure latch for the arm-residency bridge: THIS unit, and
@@ -1027,6 +1022,26 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		extraOps[ex.slot] = EmitOperand{kind: opClosure, closureUnit: exUnit, closureCaps: ex.ops}
 	}
 	return real.RecordClosureCall(word, sig, args, spec.BodyPos, unit, capOps, extraOps, outs, retSpec, regionResidual, pos)
+}
+
+// orphanFreshUnits marks the units a declined compile just created as
+// stamp-only. Nothing records a dispatch to them, but Finalize lowers every
+// unit in the table, and a compile failure there kills the PROGRAM; that is
+// the trade fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
+// reasoning is identical — an unreachable unit's lowering says nothing about
+// the program — so they take the same recovery: a trap stub that keeps unit
+// indices aligned and fails loudly if ever entered. Only a FRESH unit (unit
+// is the first index this compile made) is marked; a memo hit belongs to the
+// dispatch that made it.
+func (es *EmitState) orphanFreshUnits(recsBefore, unit int) {
+	if unit != recsBefore {
+		return
+	}
+	for u := recsBefore; u < len(es.fnRecs); u++ {
+		if es.fnRecs[u] != nil {
+			es.fnRecs[u].stampOnly = true
+		}
+	}
 }
 
 // closureResidualExact reports whether a probe-compiled closure unit's residual
@@ -1213,7 +1228,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		return nil, ClosureInValue, false
 	}
 	data := args[spec.BodyPos+1] // the data operand follows the body operand
-	if !core.IsConcrete(data) {
+	if !core.IsConcrete(&data) {
 		// A COMPUTED collection (`filter (…lambda) (keys kv)`) arrives as a
 		// typed CARRIER. A typed, NON-dynamic List/Map carrier is admitted:
 		// its element type reads off the carrier exactly as off a concrete
@@ -1222,14 +1237,14 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// collection's family is unknown, so the InShape (pair vs KeyVal),
 		// and with it the runtime callback convention, is ambiguous. Bare
 		// type literals and non-container carriers decline as before.
-		if data.Dynamic || !data.Carrier || data.Parent == nil ||
-			!(data.Parent.ConformsTo(core.TList) || data.Parent.ConformsTo(core.TMap)) {
+		if core.IsDynamic(&data) || !data.Carrier() || data.Parent() == nil ||
+			!(data.Parent().ConformsTo(core.TList) || data.Parent().ConformsTo(core.TMap)) {
 			return nil, ClosureInValue, false
 		}
 	}
 	elem := check.DataListElemTypeFromValue(data)
-	isMap := data.Parent.ConformsTo(core.TMap)
-	isList := data.Parent.ConformsTo(core.TList)
+	isMap := data.Parent().ConformsTo(core.TMap)
+	isList := data.Parent().ConformsTo(core.TList)
 	switch word {
 	case "filter":
 		switch {
@@ -1272,8 +1287,8 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// the accumulator carries the seed's type, the entry rides as a KeyVal.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
-			accC := core.NewCarrier(acc.Parent)
-			if core.IsTypeLiteral(acc) {
+			accC := core.NewCarrier(acc.Parent())
+			if core.IsTypeLiteral(&acc) {
 				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
 			}
 			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
@@ -1290,7 +1305,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			// as the map branch above, same answer shape.
 			accT := elem
 			if len(args) > spec.BodyPos+2 {
-				accT = args[spec.BodyPos+2].Parent
+				accT = args[spec.BodyPos+2].Parent()
 			}
 			return []core.Value{check.ElementCarrierOf(data), core.NewCarrier(accT)}, ClosureInStackPair, true
 		}
@@ -1428,7 +1443,7 @@ func (es *EmitState) extraNoEvalHookSlots(sig *core.Signature, spec core.Callabl
 		if es.emptyFlexHookOperand(args[i]) {
 			continue
 		}
-		if _, isFn := args[i].Data.(core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
+		if _, isFn := args[i].Data().(*core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
 			lamSlots = append(lamSlots, i)
 			continue
 		}
@@ -1464,11 +1479,11 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 	if len(es.units) != 1 || len(es.frames) != 1 {
 		return false
 	}
-	p := v.Parent
+	p := v.Parent()
 	if p == nil || (!p.ConformsTo(core.TFlexList) && !p.ConformsTo(core.TFlexMap)) {
 		return false
 	}
-	pr, ok := es.producedBy[v.ID]
+	pr, ok := es.producerOf(&v)
 	if !ok || pr.idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return false
 	}
@@ -1525,7 +1540,7 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 // ZERO members ([] or {}) — the only construction input emptyFlexHookOperand
 // accepts, so the flex provably starts with no elements.
 func emptyContainerConst(v core.Value) bool {
-	if !core.IsConcrete(v) {
+	if !core.IsConcrete(&v) {
 		return false
 	}
 	if lst, err := core.AsList(v); err == nil && !lst.IsNil() {

@@ -28,8 +28,8 @@ type x5DelegatingBehavior struct{ x5StubBehavior }
 func (x5DelegatingBehavior) FormatDelegate() {}
 
 func x5UserType(name string, parent *Type, b TypeBehavior) *Type {
-	t := &Type{tmeta: &typeMeta{Name: name, Behavior: b}, ID: name, Parent: parent}
-	t.Origin = OriginUserDef
+	t := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: name, Behavior: b}, Parent: parent}}, name))
+	t.SetOrigin(OriginUserDef)
 	return t
 }
 
@@ -171,7 +171,7 @@ func TestX5UnifySurfaceSurfacePairs(t *testing.T) {
 }
 
 func TestX5UnifySurfaceConcreteMembership(t *testing.T) {
-	node, sv, info := x5Surface("X5Shp3", map[string]bool{TInteger.ID: true})
+	node, sv, info := x5Surface("X5Shp3", map[string]bool{IDOf(TInteger): true})
 	installSurfaceUnifier(node, info, "X5Shp3")
 
 	// A concrete integer conforms via the surfaceUnifier walk.
@@ -189,14 +189,14 @@ func TestX5UnifySurfaceConcreteMembership(t *testing.T) {
 }
 
 func TestX5UnifySurfaceAbstractArms(t *testing.T) {
-	_, sv, _ := x5Surface("X5Shp4", map[string]bool{TInteger.ID: true})
+	_, sv, _ := x5Surface("X5Shp4", map[string]bool{IDOf(TInteger): true})
 
 	// Bare type node in the conformance set: containment.
 	got, uerr := unifySurface(sv, NewTypeLiteral(TInteger))
 	if uerr != nil {
 		t.Fatalf("conforming bare node: %v", uerr)
 	}
-	if !IsBareTypeNode(got) {
+	if !IsBareTypeNode(&got) {
 		t.Fatalf("expected the narrower type back, got %v", got)
 	}
 	// Carrier of a conforming type.
@@ -204,7 +204,7 @@ func TestX5UnifySurfaceAbstractArms(t *testing.T) {
 	if uerr != nil {
 		t.Fatalf("conforming carrier: %v", uerr)
 	}
-	if !got.Carrier {
+	if !got.Carrier() {
 		t.Fatalf("expected the carrier back, got %v", got)
 	}
 	// Non-conforming bare node walks off the chain and rejects.
@@ -214,7 +214,7 @@ func TestX5UnifySurfaceAbstractArms(t *testing.T) {
 }
 
 func TestX5SurfaceUnifierMatchFormatAndInfoOf(t *testing.T) {
-	node, sv, info := x5Surface("X5Shp5", map[string]bool{TInteger.ID: true})
+	node, sv, info := x5Surface("X5Shp5", map[string]bool{IDOf(TInteger): true})
 	info.Required.Set("area", NewFnUndef(FnUndefInfo{}))
 	installSurfaceUnifier(node, info, "X5Shp5")
 	su := node.Behavior().(*surfaceUnifier)
@@ -420,7 +420,7 @@ func TestX5StepSugarSplices(t *testing.T) {
 	if err := e.stepSugar(0); err != nil {
 		t.Fatalf("stepSugar: %v", err)
 	}
-	if w, err := AsWord(e.Tape.At(0)); err != nil || w.Name != "x5usurp" {
+	if w, err := AsWord(e.Tape.Ref(0)); err != nil || w.Name != "x5usurp" {
 		t.Fatalf("marker must splice to its bound word, got %v", e.Tape.At(0))
 	}
 }

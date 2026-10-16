@@ -215,11 +215,11 @@ func TestFnMiscStage5MergeCaptures(t *testing.T) {
 }
 
 func TestFnMiscStage5AsFrameOpenError(t *testing.T) {
-	if _, err := AsFrameOpen(NewInteger(1)); err == nil {
+	if _, err := AsFrameOpen(addrOf(NewInteger(1))); err == nil {
 		t.Error("a non-frame value must error")
 	}
 	meta := &FnFrameMeta{}
-	info, err := AsFrameOpen(NewFrameOpen(meta))
+	info, err := AsFrameOpen(addrOf(NewFrameOpen(meta)))
 	if err != nil || info.Meta != meta {
 		t.Errorf("frame-open roundtrip = %+v, %v", info, err)
 	}

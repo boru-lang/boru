@@ -32,7 +32,7 @@ func intResult(t *testing.T, vals []native.Value) int64 {
 	}
 	n, err := core.AsInteger(vals[0])
 	if err != nil {
-		t.Fatalf("expected Integer, got %s: %v", vals[0].Parent.String(), err)
+		t.Fatalf("expected Integer, got %s: %v", vals[0].Parent().String(), err)
 	}
 	return n
 }
@@ -162,9 +162,9 @@ func TestClosureTopLevelFnHasNoCaptures(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(out))
 	}
-	fnDef, ok := out[0].Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(out[0].Data())
 	if !ok {
-		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data)
+		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data())
 	}
 	if fnDef.Captured != nil {
 		t.Errorf("top-level fn Captured = %v, want nil", fnDef.Captured)
@@ -184,9 +184,9 @@ func TestClosureInnerFnHasCaptures(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(out))
 	}
-	fnDef, ok := out[0].Data.(core.FnDefInfo)
+	fnDef, ok := core.FnDefOf(out[0].Data())
 	if !ok {
-		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data)
+		t.Fatalf("payload type = %T, want FnDefInfo", out[0].Data())
 	}
 	if len(fnDef.Captured) != 1 {
 		t.Fatalf("expected 1 capture, got %d: %v", len(fnDef.Captured), fnDef.Captured)
@@ -217,7 +217,7 @@ func TestClosureParamShadowsCapture(t *testing.T) {
 	}
 	s, err := core.AsString(out[0])
 	if err != nil {
-		t.Fatalf("expected String, got %s: %v", out[0].Parent.String(), err)
+		t.Fatalf("expected String, got %s: %v", out[0].Parent().String(), err)
 	}
 	if s != "hello" {
 		t.Errorf("got %q, want \"hello\"", s)
@@ -280,11 +280,11 @@ add5 3`
 		t.Fatalf("got %d results, want 1: %v", len(out), out)
 	}
 	v := out[0]
-	if !v.Carrier {
+	if !v.Carrier() {
 		t.Errorf("expected carrier in check mode, got %v", v)
 	}
-	if !v.Parent.Equal(core.TInteger) {
-		t.Errorf("carrier Parent = %s, want Integer (capture flowed through factory→def→call)", v.Parent.String())
+	if !v.Parent().Equal(core.TInteger) {
+		t.Errorf("carrier Parent = %s, want Integer (capture flowed through factory→def→call)", v.Parent().String())
 	}
 }
 
@@ -318,8 +318,8 @@ func TestClosureCheckModeAnalyseFnBodyUsesCaptures(t *testing.T) {
 		t.Fatalf("got %d residual values, want 1: %v", len(result), result)
 	}
 	v := result[0]
-	if !v.Parent.Equal(core.TInteger) {
-		t.Errorf("residual Parent = %s, want Integer (capture flowed through)", v.Parent.String())
+	if !v.Parent().Equal(core.TInteger) {
+		t.Errorf("residual Parent = %s, want Integer (capture flowed through)", v.Parent().String())
 	}
 
 	// Confirm captures are NOT leaked: x should not exist at module
@@ -385,8 +385,8 @@ func TestClosureArgsStaysDynamic(t *testing.T) {
 	}
 	// captured-lam was invoked with no args, so its `args` should
 	// be an empty list — not outer's [42].
-	if !out[0].Parent.Equal(core.TList) {
-		t.Fatalf("expected list, got %s", out[0].Parent.String())
+	if !out[0].Parent().Equal(core.TList) {
+		t.Fatalf("expected list, got %s", out[0].Parent().String())
 	}
 	lst, _ := core.AsList(out[0])
 	if lst.Len() != 0 {

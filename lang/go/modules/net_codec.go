@@ -184,7 +184,7 @@ func readDecodeStep(res native.Value) decodeStep {
 		return decodeStep{invalid: "decode must return a {msg rest} or {need} map"}
 	}
 	if nv, ok := mp.Get("need"); ok {
-		if !native.IsConcrete(nv) {
+		if !native.IsConcrete(&nv) {
 			return decodeStep{invalid: "decode {need:} must be an Integer"}
 		}
 		return decodeStep{need: true}
@@ -206,7 +206,7 @@ func readDecodeStep(res native.Value) decodeStep {
 
 func listenSvcHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	svc := args[1]
-	if !svc.Parent.ConformsTo(native.TService) {
+	if !svc.Parent().ConformsTo(native.TService) {
 		return nil, r.BoruError("net_error", "listen: second argument must be a Service", "listen")
 	}
 	optsMap, err := native.RequireConcreteMap(args[0], "listen")
@@ -367,7 +367,7 @@ func withMeta(msg native.Value, peer native.Value, overrides map[string]native.V
 	for k, v := range overrides {
 		out.Set(k, v)
 	}
-	if native.IsConcrete(peer) {
+	if native.IsConcrete(&peer) {
 		out.Set("@peer", peer)
 	}
 	return native.NewMap(out)
@@ -922,7 +922,7 @@ func renderHTTPBody(v native.Value) ([]byte, string) {
 	if s, err := core.AsString(v); err == nil {
 		return []byte(s), "text/plain; charset=utf-8"
 	}
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return nil, ""
 	}
 	if data, err := valueToJSON(v); err == nil {
@@ -1014,7 +1014,7 @@ func anyJSONToValue(v any) native.Value {
 }
 
 func valueToJSON(v native.Value) ([]byte, error) {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return []byte("null"), nil
 	}
 	return json.Marshal(jsonReady(native.ValueToAny(v)))

@@ -60,7 +60,7 @@ func miniMathHandler(args []native.Value, _ map[string]native.Value, _ []native.
 
 	// Variable bindings come from the named params (opts). Each must be numeric.
 	vars := map[string]mval{}
-	if native.IsConcrete(args[1]) {
+	if native.IsConcrete(&args[1]) {
 		if m, merr := native.AsMap(args[1]); merr == nil && m != nil {
 			for _, k := range m.Keys() {
 				v, _ := m.Get(k)
@@ -229,17 +229,17 @@ func evalApply(val []any, vars map[string]mval, depth int) (mval, error) {
 // boruToMval coerces a bound param value to an mval, preserving its boru numeric
 // domain (Integer → integer-domain, Float → float-domain).
 func boruToMval(v native.Value) (mval, bool) {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return mval{}, false
 	}
 	switch {
-	case v.Parent.ConformsTo(native.TInteger):
+	case v.Parent().ConformsTo(native.TInteger):
 		n, err := native.AsInteger(v)
 		if err != nil {
 			return mval{}, false
 		}
 		return mval{i: n, isInt: true}, true
-	case v.Parent.ConformsTo(native.TFloat):
+	case v.Parent().ConformsTo(native.TFloat):
 		f, err := native.AsFloat(v)
 		if err != nil {
 			return mval{}, false

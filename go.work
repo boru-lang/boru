@@ -17,6 +17,7 @@ use (
 	./parser/go
 	./test/go
 	./tools/piecetool
+	./tools/vetcopies
 	./test/solardemo
 	./test/specfix
 	./wpg

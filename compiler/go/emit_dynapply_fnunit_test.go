@@ -22,7 +22,7 @@ func daUnit(ids ...string) (*emitUnit, *fnUnitRec) {
 
 func daFnCarrier(id string) core.Value {
 	v := core.NewCarrier(core.TFunction)
-	v.ID = id
+	core.SetID(&v, id)
 	return v
 }
 
@@ -71,8 +71,8 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	// the runtime rule the replay re-steps under.
 	u3, rec3 := daUnit("p0", "p1")
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
-	dyn.ID = "d0"
+	core.SetDynamic(&dyn, true)
+	core.SetID(&dyn, "d0")
 	if !es.noteDynFrameReplay(u3, rec3, []core.Value{daFnCarrier("p0"), daFnCarrier("p1"), dyn}, 2) {
 		t.Error("a dynamic residual value must seat the replay")
 	}
@@ -86,7 +86,7 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	u4 := &emitUnit{localByID: map[string]int{"f": 0, "g": 1, "x": 2}}
 	rec4 := &fnUnitRec{nParams: 3, nUnnamed: 0, returns: []*core.Type{core.TAny}}
 	xv := core.NewCarrier(core.TInteger)
-	xv.ID = "x"
+	core.SetID(&xv, "x")
 	if es.noteDynFrameReplay(u4, rec4, []core.Value{daFnCarrier("f"), daFnCarrier("g"), xv}, 2) {
 		t.Error("a window with two applicable fn values must keep the compile failure")
 	}
@@ -98,8 +98,8 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	u5 := &emitUnit{localByID: map[string]int{"f": 0}}
 	rec5 := &fnUnitRec{nParams: 1, nUnnamed: 0, returns: []*core.Type{core.TAny}}
 	dyn2 := core.NewCarrier(core.TAny)
-	dyn2.Dynamic = true
-	dyn2.ID = "d1"
+	core.SetDynamic(&dyn2, true)
+	core.SetID(&dyn2, "d1")
 	if es.noteDynFrameReplay(u5, rec5, []core.Value{daFnCarrier("f"), dyn2}, 1) {
 		t.Error("a Function + Dynamic window must keep the compile failure")
 	}
@@ -191,7 +191,7 @@ func TestSetLoopBodyApplySourceOrderGate(t *testing.T) {
 	// apply — decline.
 	es, _ = newES()
 	cfn := core.NewCarrier(core.TFunction)
-	cfn.ID = "cfn"
+	core.SetID(&cfn, "cfn")
 	es.origByID["cfn"] = core.NewFunction(core.FnDefInfo{Name: "", Signatures: []core.Signature{{Returns: []*core.Type{core.TAny}, BarrierPos: -1}}})
 	body = &EmitFragment{}
 	if es.setLoopBodyApply(body, []core.Value{cfn, arg(1, 10)}) {
@@ -266,15 +266,15 @@ func TestReplayIsBodyTailSeqAnchor(t *testing.T) {
 	}
 	dynAt := func(id string) core.Value {
 		v := core.NewCarrier(core.TAny)
-		v.Dynamic = true
-		v.ID = id
+		core.SetDynamic(&v, true)
+		core.SetID(&v, id)
 		return v
 	}
 
 	// The window's producer is the trace's LAST event: a tail — arm.
 	es := NewEmitState()
 	res := dynAt("r1")
-	es.producedBy[res.ID] = producer{seq: 7}
+	es.stampProduced(&res, 7, 0)
 	frag := &EmitFragment{events: []EmitEvent{evSeq(3), evSeq(7)}}
 	if !es.replayIsBodyTail(frag, []core.Value{core.NewInteger(1), res}) {
 		t.Error("a window produced by the trace's last event is the body tail")
@@ -283,7 +283,7 @@ func TestReplayIsBodyTailSeqAnchor(t *testing.T) {
 	// "x"]`): the replay would reorder its effects behind the apply — decline.
 	es2 := NewEmitState()
 	res2 := dynAt("r2")
-	es2.producedBy[res2.ID] = producer{seq: 3}
+	es2.stampProduced(&res2, 3, 0)
 	frag2 := &EmitFragment{events: []EmitEvent{evSeq(3), evSeq(7)}}
 	if es2.replayIsBodyTail(frag2, []core.Value{core.NewInteger(1), res2}) {
 		t.Error("an event recorded after the window's producer must decline")

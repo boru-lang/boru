@@ -14,10 +14,10 @@ package core
 // maps) contains a token the interpreter evaluates or re-steps — a word, a
 // paren expression, an interpolation, a splice or reach marker.
 func BearsActiveTokens(v Value) bool {
-	if IsWord(v) || IsParenExpr(v) || IsInterpString(v) || IsSplice(v) || IsReach(v) {
+	if IsWord(&v) || IsParenExpr(&v) || IsInterpString(&v) || IsSplice(&v) || IsReach(&v) {
 		return true
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ListPayload:
 		for _, e := range d.Elems {
 			if BearsActiveTokens(e) {
@@ -45,7 +45,7 @@ func BearsActiveTokens(v Value) bool {
 // its own data: the consuming dispatch evaluates it first, so a compiled
 // operand must never carry it as a baked raw token (NUR337).
 func IsPendingActiveContainer(v Value) bool {
-	return isPendingResidualContainer(v) && BearsActiveTokens(v)
+	return isPendingResidualContainer(&v) && BearsActiveTokens(v)
 }
 
 // ModuleScopeBinding reports whether name's active binding sits at module /
@@ -84,7 +84,7 @@ func ModuleScopeBinding(r *Registry, name string) bool {
 // representations. Merging the two arms = extending the compiled
 // landing model, not editing this predicate.
 func FnValueZeroArg(v Value) bool {
-	d, ok := v.Data.(FnDefInfo)
+	d, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -117,9 +117,9 @@ func FnValueZeroArg(v Value) bool {
 // are left out because nothing measured needs them yet: admitting a payload
 // costs a proof each time.
 func IsSteplessValue(v Value) bool {
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload:
-		return IsConcrete(v) && !v.Eval
+		return IsConcrete(&v) && !IsEval(&v)
 	}
 	return false
 }
@@ -149,14 +149,14 @@ func IsSteplessWindow(vs []Value) bool {
 // depBoundConst reports whether a refinement's bound side is absent or an
 // inert const (NUR308).
 func depBoundConst(b *DepBound) bool {
-	return b == nil || IsInertConst(b.Value)
+	return b == nil || IsInertConst(&b.Value)
 }
 
-func IsInertConst(v Value) bool {
-	if v.Carrier || v.Dynamic || IsBareTypeNode(v) {
+func IsInertConst(v *Value) bool {
+	if v.Carrier() || IsDynamic(v) || IsBareTypeNode(v) {
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload,
 		PathonPayload, NonePayload, BigIntPayload, DecimalPayload,
 		TimePayload, DurationPayload, TimezonePayload:
@@ -180,9 +180,9 @@ func IsInertConst(v Value) bool {
 		// module-scope `def crlf (convert Bytes "\r\n")` bake into a
 		// stored-fn unit (mini-s3's recv-until delimiter) with freshness
 		// still owned by the existing frozen-read / dep-snapshot gates.
-		for t := v.Parent; t != nil; t = t.Parent {
+		for t := v.Parent(); t != nil; t = t.Parent() {
 			if cb, ok := t.Behavior().(ConstBakeable); ok {
-				return cb.BakeableConst(v)
+				return cb.BakeableConst(*v)
 			}
 		}
 		return false
@@ -190,7 +190,7 @@ func IsInertConst(v Value) bool {
 		// A Micron type body (`refine Micron {fields}`): structural
 		// descriptor like the RecordTypeInfo arm below — sound when its
 		// field map is carrier-free.
-		return typeBodyConstOK(v)
+		return typeBodyConstOK(*v)
 	case DepScalarInfo:
 		// A predicate / refinement type (`Integer gt 10`): self-contained
 		// (base family + bound, no registry, no canonical-pointer hazard per
@@ -212,7 +212,7 @@ func IsInertConst(v Value) bool {
 		// when every field default is data (no method fn-values). A
 		// Table type (`Test.TestSet`) is a thin wrapper over its row
 		// RecordType, so it folds whenever that record does.
-		return typeBodyConstOK(v)
+		return typeBodyConstOK(*v)
 	case FnUndefInfo:
 		// A function SIGNATURE value (`fnsig [[Integer] [String]]`,
 		// `typeof (Mapper of [Integer String])`): pure descriptor data —
@@ -222,7 +222,7 @@ func IsInertConst(v Value) bool {
 		// signature at run time. A pattern-bearing param (rare in signatures)
 		// could embed non-const data, so it declines conservatively.
 		return fnSigConstOK(d)
-	case FnDefInfo:
+	case *FnDefInfo:
 		// A function VALUE used as DATA — a residual (`f/v`), a map/list member
 		// (`{b:f/v}`), or an introspection operand (`arityof (fn …)`) — NOT a
 		// call site. It bakes as a const only with no closure state: no captured
@@ -313,7 +313,7 @@ func IsInertConst(v Value) bool {
 		// isInertReach: only the non-eval, no-receiver, all-literal-key shape
 		// qualifies — the dot-access Eval reach (which the engine expands in
 		// place) is excluded.
-		return isInertReach(v)
+		return isInertReach(*v)
 	case ParenExprPayload:
 		// A codequote'd (Quoted) ParenExpr — `codequote (1 add 2)` →
 		// `paren([1 word(add) 2])`. It is immutable CODE-AS-DATA: stepLiteral
@@ -323,7 +323,7 @@ func IsInertConst(v Value) bool {
 		// re-stepped in place, so it is NEVER a const — gate strictly on Quoted.
 		// Its tokens must themselves be inert members (Words / atoms / scalars /
 		// nested inert parens), screened by isInertConstMember.
-		return isInertQuotedParen(v)
+		return isInertQuotedParen(*v)
 	case *TypeSchemaInfo:
 		// An installed generic schema (`def Box gen [T] class {value:T}`). The
 		// schema is immutable data — its instantiation memo lives in the
@@ -354,9 +354,9 @@ func IsInertConst(v Value) bool {
 // class.tsv's fn-members rows). The VM's dynamic-call
 // ops stay faithful either way: a value that turns out not to be callable is
 // left as data (callDynamic's IsAppliableFn arm).
-func IsFnTypedCarrier(v Value) bool {
-	return v.Carrier && v.Parent != nil &&
-		(v.Parent.ConformsTo(TFunction) || TypeIsFnShape(v.Parent))
+func IsFnTypedCarrier(v *Value) bool {
+	return v.Carrier() && v.Parent() != nil &&
+		(v.Parent().ConformsTo(TFunction) || TypeIsFnShape(v.Parent()))
 }
 
 // UnionMayBeFn reports whether v is a union carrier one of whose
@@ -365,11 +365,11 @@ func IsFnTypedCarrier(v Value) bool {
 // union, which conforms to no fn type, and it is neither dynamic nor the
 // branch's value once a word hands it back under a fresh ID.
 func UnionMayBeFn(v Value) bool {
-	if !v.Carrier || !IsDisjunct(v) {
+	if !v.Carrier() || !IsDisjunct(&v) {
 		return false
 	}
 	for _, alt := range FlattenAlternatives(v) {
-		if IsFnTypedCarrier(CarrierOfLiteral(alt)) {
+		if c := CarrierOfLiteral(alt); IsFnTypedCarrier(&c) {
 			return true
 		}
 	}
@@ -406,10 +406,10 @@ func IsFnValueResidual(v Value) bool {
 // of one is a compile-time constant (runtime export growth is
 // ledger-modelled — module_export_growth.go).
 func IsModuleFamilyValue(v Value) bool {
-	if !IsConcrete(v) || v.Parent == nil {
+	if !IsConcrete(&v) || v.Parent() == nil {
 		return false
 	}
-	return ModuleNSOf(v) != nil || v.Parent.Equal(TModule)
+	return ModuleNSOf(v) != nil || v.Parent().Equal(TModule)
 }
 
 // constFoldAgrees reports whether two const-fold probe evaluations produced
@@ -436,10 +436,10 @@ func ConstFoldAgrees(a, b Value) bool { return CanonValue(a) == CanonValue(b) }
 // isAppliableFn reports whether a runtime value is a callable the interpreter
 // would auto-apply: a Function-typed value or an FnDefInfo payload.
 func IsAppliableFn(v Value) bool {
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data().(*FnDefInfo); ok {
 		return true
 	}
-	return v.Parent != nil && v.Parent.ConformsTo(TFunction)
+	return v.Parent() != nil && v.Parent().ConformsTo(TFunction)
 }
 
 // dynStackShuffleWords is the closed set of Forth-style stack words whose
@@ -465,10 +465,10 @@ var DynStackShuffleWords = map[string]bool{
 // interpreter rebuilds `r:1.0` — so any carrier, or any payload this
 // walk doesn't know, declines.
 func typeBodyConstOK(v Value) bool {
-	if v.Carrier || v.Dynamic {
+	if v.Carrier() || IsDynamic(&v) {
 		return false
 	}
-	if IsBareTypeNode(v) {
+	if IsBareTypeNode(&v) {
 		return true
 	}
 	memberOK := func(m Value) bool {
@@ -481,12 +481,12 @@ func typeBodyConstOK(v Value) bool {
 		// INSIDE a type body, even though isInertConst still (correctly) rejects
 		// the same instance standing alone or as a data-list member, where nothing
 		// freshens it. Const-folded by constFoldContainerVal.
-		if !m.Carrier && !m.Dynamic && isFreshenedInstance(m) {
+		if !m.Carrier() && !IsDynamic(&m) && isFreshenedInstance(m) {
 			return true
 		}
-		return typeBodyConstOK(m) || IsInertConst(m)
+		return typeBodyConstOK(m) || IsInertConst(&m)
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case RecordTypeInfo:
 		return allFieldsInert(d.Fields, memberOK)
 	case OptionsTypeInfo:
@@ -538,7 +538,7 @@ func typeBodyConstOK(v Value) bool {
 func fnSigConstOK(info FnUndefInfo) bool {
 	for _, sig := range info.Sigs {
 		for _, p := range sig.Params {
-			if p.Pattern != nil && !(IsInertConst(*p.Pattern) || typeBodyConstOK(*p.Pattern)) {
+			if p.Pattern != nil && !(IsInertConst(p.Pattern) || typeBodyConstOK(*p.Pattern)) {
 				return false
 			}
 		}
@@ -557,7 +557,7 @@ func surfaceConstOK(s *SurfaceInfo) bool {
 		return true
 	}
 	return allFieldsInert(s.Required, func(v Value) bool {
-		return IsInertConst(v) || typeBodyConstOK(v)
+		return IsInertConst(&v) || typeBodyConstOK(v)
 	})
 }
 
@@ -576,7 +576,7 @@ func schemaConstOK(s *TypeSchemaInfo) bool {
 	// live — so bare type nodes cover them and no Word-member escape
 	// hatch is needed (the pre-opacity isParam plumbing is gone).
 	memberOK := func(m Value) bool {
-		return IsBareTypeNode(m) || typeBodyConstOK(m) || IsInertConst(m)
+		return IsBareTypeNode(&m) || typeBodyConstOK(m) || IsInertConst(&m)
 	}
 	for _, p := range s.Params {
 		if p.HasBound && !memberOK(p.Bound) {
@@ -598,10 +598,10 @@ func schemaConstOK(s *TypeSchemaInfo) bool {
 // place, so it is NEVER baked here. Every token must itself be an inert const
 // member (Words / atoms / scalars / nested inert parens), via isInertConstMember.
 func isInertQuotedParen(v Value) bool {
-	if !v.Quoted || v.Carrier || v.Dynamic {
+	if !IsQuoted(&v) || v.Carrier() || IsDynamic(&v) {
 		return false
 	}
-	toks, err := AsParenExpr(v)
+	toks, err := AsParenExpr(&v)
 	if err != nil {
 		return false
 	}
@@ -627,10 +627,10 @@ func isInertQuotedParen(v Value) bool {
 // safely (isInertConstMember screens out a bare type node). So the inert lens
 // pools into the const table like an atom or a path.
 func isInertReach(v Value) bool {
-	if !IsReach(v) || v.Carrier || v.Dynamic {
+	if !IsReach(&v) || v.Carrier() || IsDynamic(&v) {
 		return false
 	}
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return false
 	}
@@ -643,7 +643,7 @@ func isInertReach(v Value) bool {
 		// key tokens themselves inert, no computed segment). An UNQUOTED
 		// receiver reach stays out: it is the structural token the engine
 		// lowers to a get-chain in place.
-		return v.Quoted && inertReachMember(v)
+		return IsQuoted(&v) && inertReachMember(v)
 	}
 	for _, seg := range info.Segments {
 		if seg.Computed || !IsInertConstMember(seg.KeyLit) {
@@ -662,7 +662,7 @@ func isInertReach(v Value) bool {
 // closure case, not bakeable data). At run time a poly `get` of the field
 // returns the fn, which the fn-value-call boundary (OpCallDynamic) applies.
 func IsInertConstMember(v Value) bool {
-	if !v.Carrier && !v.Dynamic {
+	if !v.Carrier() && !IsDynamic(&v) {
 		// A Word token riding inside a quoted (non-eval) compound — what
 		// `macroexpand` returns as data (`[5 word(add) 5]`). Safe as a const
 		// MEMBER: the compound is pushed as inert data and never auto-evaluated
@@ -671,7 +671,7 @@ func IsInertConstMember(v Value) bool {
 		// behaviour (unlike a bare type node — the canonical-*Type hazard — which
 		// is deliberately NOT admitted here). The standalone isInertConst switch
 		// still rejects a bare Word, so a top-level word never bakes as code.
-		if IsWord(v) {
+		if IsWord(&v) {
 			return true
 		}
 		// A bare type node as a structural-pattern MEMBER — the type leaves of
@@ -685,10 +685,10 @@ func IsInertConstMember(v Value) bool {
 		// isInertConst switch still rejects a bare type node, so a top-level type
 		// operand keeps reaching the runtime via the by-ID type table
 		// (OpPushType), the canonical path that survives a later `behave`.
-		if IsBareTypeNode(v) && v.ID != "" {
+		if IsBareTypeNode(&v) && IDOf(&v) != "" {
 			return true
 		}
-		if fd, ok := v.Data.(FnDefInfo); ok {
+		if fd, ok := v.Data().(*FnDefInfo); ok {
 			// A fn value carries its HOME registry from construction (a
 			// main-file fn as much as a module export), so the home says
 			// nothing about mutability: the value is immutable code either
@@ -712,7 +712,7 @@ func IsInertConstMember(v Value) bool {
 		// differential-identical. Its receiver / literal-key tokens must
 		// themselves be inert members (Words / atoms / scalars, canonical
 		// Parents); a COMPUTED segment (a paren to evaluate) is code, so decline.
-		if IsReach(v) {
+		if IsReach(&v) {
 			return inertReachMember(v)
 		}
 		// A deferred paren expression (`(add 1 2)`, `(k)`) riding inside a
@@ -725,8 +725,8 @@ func IsInertConstMember(v Value) bool {
 		// differential-identically. Its tokens must themselves be inert members
 		// (Words / atoms / scalars / nested inert parens) — a token that would
 		// drag in a carrier or mutable instance declines.
-		if IsParenExpr(v) {
-			toks, err := AsParenExpr(v)
+		if IsParenExpr(&v) {
+			toks, err := AsParenExpr(&v)
 			if err != nil {
 				return false
 			}
@@ -748,8 +748,8 @@ func IsInertConstMember(v Value) bool {
 		// be inert members; the standalone isInertConst switch still
 		// rejects a bare marker, so a top-level marker never bakes as
 		// code.
-		if sinfo, ok := AsSugar(v); ok && IsSugar(v) {
-			if sinfo.Head.Parent != nil && !IsInertConstMember(sinfo.Head) {
+		if sinfo, ok := AsSugar(v); ok && IsSugar(&v) {
+			if sinfo.Head.Parent() != nil && !IsInertConstMember(sinfo.Head) {
 				return false
 			}
 			for _, it := range sinfo.Items {
@@ -760,7 +760,7 @@ func IsInertConstMember(v Value) bool {
 			return true
 		}
 	}
-	return IsInertConst(v)
+	return IsInertConst(&v)
 }
 
 // isDelegationFnDef reports whether a Function VALUE is a trivial-delegation
@@ -914,10 +914,10 @@ func allFieldsInert(m *OrderedMap, pred func(Value) bool) bool {
 // are fine — only a computed segment (a ParenExpr to run) or a non-inert
 // receiver/key token disqualifies it.
 func inertReachMember(v Value) bool {
-	if !IsReach(v) || v.Carrier || v.Dynamic {
+	if !IsReach(&v) || v.Carrier() || IsDynamic(&v) {
 		return false
 	}
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return false
 	}

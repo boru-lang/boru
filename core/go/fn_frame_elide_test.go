@@ -56,13 +56,13 @@ func TestElideTailFrameRunsTeardownAndKeepsShell(t *testing.T) {
 	}
 
 	// Tape: marker gone, shell intact — (ₘ 1 f __RC )
-	isInt := func(v Value) bool { return v.Parent.Equal(TInteger) && IsConcrete(v) }
-	want := []func(Value) bool{IsFrameOpen, isInt, IsWord, IsReturnCheck, IsCloseParen}
+	isInt := func(v *Value) bool { return v.Parent().Equal(TInteger) && IsConcrete(v) }
+	want := []func(*Value) bool{IsFrameOpen, isInt, IsWord, IsReturnCheck, IsCloseParen}
 	if e.Tape.Len() != len(want) {
 		t.Fatalf("tape has %d tokens after elision, want %d", e.Tape.Len(), len(want))
 	}
 	for i, pred := range want {
-		if !pred(e.Tape.At(i)) {
+		if !pred(e.Tape.Ref(i)) {
 			t.Errorf("tape[%d] = %v, wrong token class", i, e.Tape.At(i))
 		}
 	}
@@ -95,7 +95,7 @@ func TestElideTailFrameNoReturnCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Shell without RC: (ₘ f )
-	if e.Tape.Len() != 3 || !IsFrameOpen(e.Tape.At(0)) || !IsWord(e.Tape.At(1)) || !IsCloseParen(e.Tape.At(2)) {
+	if e.Tape.Len() != 3 || !IsFrameOpen(e.Tape.Ref(0)) || !IsWord(e.Tape.Ref(1)) || !IsCloseParen(e.Tape.Ref(2)) {
 		t.Fatalf("tape after elision = %d tokens, want (ₘ f )", e.Tape.Len())
 	}
 }

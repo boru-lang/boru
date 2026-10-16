@@ -29,7 +29,7 @@ func TestFnIdentityKey(t *testing.T) {
 	if !okb || ka != kb || !strings.HasPrefix(ka, "c") {
 		t.Errorf("two bridges of one closure key alike by its sequence: %q vs %q", ka, kb)
 	}
-	for _, v := range []Value{NewInteger(1), {Parent: TFunction, Data: FnDefInfo{Name: "hand-built"}}} {
+	for _, v := range []Value{NewInteger(1), {d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "hand-built"}}}} {
 		if k, ok := FnIdentityKey(v); ok {
 			t.Errorf("%v has no identity, got key %q", v, k)
 		}

@@ -46,7 +46,7 @@ func TestMiniFnExpandCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mini: a carrier fn under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("mini: carrier fn should yield a dynamic carrier, got %v", Canon(out))
 	}
 }
@@ -59,7 +59,7 @@ func TestEmitFnExpandCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emit: a carrier fn under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("emit: carrier fn should yield a dynamic carrier, got %v", Canon(out))
 	}
 }
@@ -75,7 +75,7 @@ func TestMiniFnNameBoundCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mini: a carrier fn binding under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("mini: carrier fn binding should yield a dynamic carrier, got %v", Canon(out))
 	}
 	if !r.Check.DefsUsed["p"] {
@@ -92,7 +92,7 @@ func TestEmitFnNameBoundCarrier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emit: a carrier fn binding under analysis must degrade, got %v", err)
 	}
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("emit: carrier fn binding should yield a dynamic carrier, got %v", Canon(out))
 	}
 	if !r.Check.DefsUsed["p"] {

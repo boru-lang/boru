@@ -234,14 +234,25 @@ type defaultBehavior struct{}
 // callers writing custom Behaviors can embed or fall through to it.
 var DefaultBehavior TypeBehavior = defaultBehavior{}
 
-func (defaultBehavior) Match(v Value, t *Type) bool {
+func (defaultBehavior) Match(v Value, t *Type) bool { return defaultMatch(&v, t) }
+
+// defaultMatch is the default Match, reading the value in place.
+func defaultMatch(v *Value, t *Type) bool {
 	// A bare type literal IS a lattice node — test it directly. Any
 	// other value (concrete, or a carrier) is tested by its Parent.
 	if IsBareTypeNode(v) {
 		return v.ConformsTo(t)
 	}
-	return v.Parent.ConformsTo(t)
+	return v.Parent().ConformsTo(t)
 }
+
+// defaultMatcher marks a Behavior whose Match IS the default one (the
+// default itself, and the format- and conversion-only Behaviors that
+// delegate to it), so Value.Is can run defaultMatch on the value where it
+// lives: an interface Match call takes the Value by copy.
+type defaultMatcher interface{ matchesAsDefault() }
+
+func (defaultBehavior) matchesAsDefault() {}
 
 func (defaultBehavior) Format(v Value) string {
 	// Bypass Value.String's Behavior walk: the walk skips

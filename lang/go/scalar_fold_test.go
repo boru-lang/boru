@@ -52,9 +52,9 @@ func TestScalarConstFold(t *testing.T) {
 		if len(out) != 1 {
 			t.Fatalf("%q: %d residuals", c.src, len(out))
 		}
-		b, ok := out[0].Data.(core.BoolPayload)
+		b, ok := out[0].Data().(core.BoolPayload)
 		if !ok {
-			t.Errorf("%q: residual not a concrete boolean (Data=%T carrier=%v)", c.src, out[0].Data, out[0].Carrier)
+			t.Errorf("%q: residual not a concrete boolean (Data=%T carrier=%v)", c.src, out[0].Data(), out[0].Carrier())
 			continue
 		}
 		if b.B != c.want {
@@ -68,10 +68,10 @@ func TestScalarConstFold(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("fn-body eq: %d residuals", len(out))
 	}
-	if _, concrete := out[0].Data.(core.BoolPayload); concrete {
+	if _, concrete := out[0].Data().(core.BoolPayload); concrete {
 		// x inside the body is a param carrier — folding it would claim
 		// knowledge the checker does not have.
-		if !out[0].Carrier {
+		if !out[0].Carrier() {
 			t.Errorf("fn-body eq over a param folded concretely; must stay a carrier")
 		}
 	}

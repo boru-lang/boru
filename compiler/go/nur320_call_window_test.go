@@ -80,13 +80,13 @@ func TestClaimHeldWindow(t *testing.T) {
 func TestCallWindowOps(t *testing.T) {
 	at := core.SrcPos{Row: 1, Col: 1}
 	arg := core.NewCarrier(core.TAny)
-	arg.ID = "arg"
+	core.SetID(&arg, "arg")
 	ev := core.NewCarrier(core.TAny)
-	ev.ID = "ev"
+	core.SetID(&ev, "ev")
 	loc := core.NewCarrier(core.TAny)
-	loc.ID = "loc"
+	core.SetID(&loc, "loc")
 	lost := core.NewCarrier(core.TAny)
-	lost.ID = "lost"
+	core.SetID(&lost, "lost")
 
 	es := NewEmitState()
 	if es.callWindowOps("f", at, nil) != nil {
@@ -101,7 +101,7 @@ func TestCallWindowOps(t *testing.T) {
 		t.Fatalf("an empty window is a window: %#v", w)
 	}
 
-	es.producedBy["ev"] = producer{seq: 4, idx: 1}
+	es.stampProduced(&ev, 4, 1)
 	es.units[0].localByID["loc"] = 3
 	es.NoteCallWindow("f", at, []core.Value{arg, core.NewInteger(7), ev, core.NewAtom("q")}, 0, nil, false, false)
 	w := es.callWindowOps("f", at, []core.Value{arg})
@@ -122,7 +122,7 @@ func TestCallWindowOps(t *testing.T) {
 	}
 	reg.Defs.Push("a", loc)
 	es.reg = reg
-	es.NoteDefRead("loc", "a")
+	es.NoteDefRead("loc", core.RecKey{}, "a")
 	es.NoteCallWindow("f", at, []core.Value{loc}, 0, nil, false, false)
 	if w := es.callWindowOps("f", at, nil); len(w) != 1 || w[0].kind != WinLocal || w[0].idx != 3 {
 		t.Fatalf("a stable local read: %#v", w)
@@ -157,7 +157,7 @@ func intOf(v core.Value, _ int) int64 {
 // TestWindowScalar pins the values a window carries as themselves.
 func TestWindowScalar(t *testing.T) {
 	dyn := core.NewInteger(1)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	for _, c := range []struct {
 		v    core.Value
 		want bool
@@ -175,7 +175,7 @@ func TestWindowScalar(t *testing.T) {
 		}
 	}
 	untyped := core.NewInteger(1)
-	untyped.Parent = nil
+	untyped.SetParent(nil)
 	if windowScalar(untyped) {
 		t.Error("a value with no type is no scalar")
 	}
@@ -250,7 +250,7 @@ func TestNamedFnValueSpec(t *testing.T) {
 func TestClosureCallsAtLanding(t *testing.T) {
 	p := &Program{Fns: []CompiledFn{{Lambda: true}, {Lambda: true, NArgs: 1}}}
 	mk := func(unit int, named bool, prog any) core.Value {
-		return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Named: named}}
+		return core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{Prog: prog, Unit: unit, Named: named}})
 	}
 	for name, c := range map[string]struct {
 		v    core.Value
@@ -267,7 +267,7 @@ func TestClosureCallsAtLanding(t *testing.T) {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
 	}
-	if !ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{}) || ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{Named: true}) || ClosureIsAnonymous(nil, core.ClosurePayload{}) {
+	if !ClosureIsAnonymous(&p.Fns[0], &core.ClosurePayload{}) || ClosureIsAnonymous(&p.Fns[0], &core.ClosurePayload{Named: true}) || ClosureIsAnonymous(nil, &core.ClosurePayload{}) {
 		t.Error("anonymous: a lambda unit's closure without a name")
 	}
 }
@@ -278,7 +278,7 @@ func TestClosureCallsAtLanding(t *testing.T) {
 func TestCallWindowOpEmptyIdentity(t *testing.T) {
 	es := NewEmitState()
 	c := core.NewCarrier(core.TAny)
-	c.ID = ""
+	core.SetID(&c, "")
 	if _, ok := es.callWindowOp(c, false, nil); ok {
 		t.Fatal("a carrier with no identity has no home")
 	}

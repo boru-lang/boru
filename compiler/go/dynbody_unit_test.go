@@ -69,7 +69,7 @@ func TestGradualAmbiguityMarksUncompilable(t *testing.T) {
 	}
 	body := core.NewList([]core.Value{core.NewInteger(1)})
 	data := core.NewCarrier(core.TAny)
-	data.Dynamic = true
+	core.SetDynamic(&data, true)
 	outs := []core.Value{core.NewCarrier(core.TList)}
 	if !tryRecordClosure(r, "grady", sig, []core.Value{body, data}, outs, core.SrcPos{}) {
 		t.Fatalf("gradual ambiguity without a poly re-match must be OWNED (true)")
@@ -98,7 +98,7 @@ func TestTryRecordDynBodyDeclines(t *testing.T) {
 	// An operand with no compiled home (an unregistered carrier) declines.
 	sig2 := &core.Signature{Callable: &core.CallableSpec{BodyPos: 0}, CompileEffect: core.CompileDynBody}
 	ghost := core.NewCarrier(core.TList)
-	ghost.Dynamic = true
+	core.SetDynamic(&ghost, true)
 	if tryRecordDynBody(r, "do", sig2, []core.Value{ghost}, outs, core.SrcPos{}) {
 		t.Errorf("unresolvable operand must decline")
 	}

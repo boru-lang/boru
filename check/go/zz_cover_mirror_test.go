@@ -35,7 +35,7 @@ func TestDeepConcreteOptionsGate(t *testing.T) {
 	// FIELD inside a concrete map. The field accessors read it as absent
 	// or malformed, so a validator would flag a correct program.
 	computed := optsMapOf("tcp", core.NewCarrier(core.TInteger))
-	if !core.IsConcrete(computed) {
+	if !core.IsConcrete(&computed) {
 		t.Fatal("fixture: a map with a carrier field is still IsConcrete — that is the trap")
 	}
 	if DeepConcreteOptions([]core.Value{computed}) {
@@ -87,7 +87,7 @@ func TestMirrorReturnsDiagnostics(t *testing.T) {
 			return &core.BoruError{Code: "net_error", Detail: "listen: options need tcp: (or unix:)"}
 		}, base)
 	out := coded(args, r)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TString) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TString) {
 		t.Fatalf("residual = %v, want the base model's String", out)
 	}
 	if len(r.Check.Diagnostics) != 1 {

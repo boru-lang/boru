@@ -10,10 +10,10 @@ import "testing"
 func TestForwardOperandValue(t *testing.T) {
 	r := newTestRegistry(t)
 	r.Defs.Push("k", NewInteger(1))
-	r.Defs.Push("fnk", Value{Parent: TFunction, Data: FnDefInfo{Name: "fnk"}})
+	r.Defs.Push("fnk", Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "fnk"}}})
 	e := NewTop(r)
 	lit := NewInteger(7)
-	if v, ok := e.ForwardOperandValue(lit); !ok || v.Data != lit.Data {
+	if v, ok := e.ForwardOperandValue(lit); !ok || v.Data() != lit.Data() {
 		t.Errorf("a literal is itself: %v %v", v, ok)
 	}
 	word := NewWord("k")
@@ -22,7 +22,7 @@ func TestForwardOperandValue(t *testing.T) {
 		t.Errorf("a word bound to a literal is its value at the word: %v %v", v, ok)
 	}
 	for name, want := range map[string]Value{"true": NewBoolean(true), "false": NewBoolean(false)} {
-		if v, ok := e.ForwardOperandValue(NewWord(name)); !ok || v.Data != want.Data || !v.Parent.Equal(want.Parent) {
+		if v, ok := e.ForwardOperandValue(NewWord(name)); !ok || v.Data() != want.Data() || !v.Parent().Equal(want.Parent()) {
 			t.Errorf("the reserved literal word %s is its value: %v %v", name, v, ok)
 		}
 	}

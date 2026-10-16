@@ -274,7 +274,7 @@ func miniXPathHandler(args []native.Value, _ map[string]native.Value, _ []native
 	doc := args[2]
 	if !native.IsXmlValue(doc) {
 		return nil, r.BoruErrorHint("mini_error",
-			"xp: expected an Xml element, got "+doc.Parent.String(), "lang_xp",
+			"xp: expected an Xml element, got "+doc.Parent().String(), "lang_xp",
 			"the xp document must be a Node/Xml value (an <tag>…</tag> literal)")
 	}
 	expr, perr := miniCompiledXPath(src)

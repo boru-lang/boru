@@ -38,7 +38,7 @@ func TestW9GetMicronReturnsBadArgs(t *testing.T) {
 	r := seam5Reg(t)
 	// Wrong arity → dynamic fallback (114.69,116.3).
 	out := getMicronReturns([]Value{NewString("only-one")}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("getMicronReturns bad args: expected dynamic carrier, got %v", out)
 	}
 }
@@ -55,13 +55,13 @@ func TestW9GetMicronReturnsConcreteReceiver(t *testing.T) {
 	// Present property "user": narrows to the field's carrier type
 	// (119.22 → 121.39 → NewCarrier(ft)).
 	out := getMicronReturns([]Value{NewString("user"), email}, r)
-	if len(out) != 1 || out[0].Dynamic {
+	if len(out) != 1 || IsDynamic(&out[0]) {
 		t.Fatalf("getMicronReturns user: expected concrete carrier, got %v", out)
 	}
 
 	// Absent property → NewCarrier(TNone) (126.3,126.36).
 	out = getMicronReturns([]Value{NewString("nope"), email}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("getMicronReturns absent: expected None carrier, got %v", out)
 	}
 }
@@ -71,36 +71,36 @@ func TestW9GetMicronReturnsCarrierDefaults(t *testing.T) {
 
 	// Pathon carrier, key that is neither "parts" nor "abs" → None (137.3,137.36).
 	out := getMicronReturns([]Value{NewString("zzz"), NewCarrier(TPathon)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("pathon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Urlon carrier, unknown key → None (152.3,152.36).
 	out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TUrlon)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("urlon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Ipon carrier: typed fields narrow, unknown key → None (160.3,160.36).
-	if out = getMicronReturns([]Value{NewString("addr"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TString) {
+	if out = getMicronReturns([]Value{NewString("addr"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TString) {
 		t.Fatalf("ipon addr: expected String carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("version"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+	if out = getMicronReturns([]Value{NewString("version"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 		t.Fatalf("ipon version: expected Integer carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("ipon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Hoston carrier: host/authority narrow to String, port stays dynamic,
 	// unknown key → None (168.3,168.36).
-	if out = getMicronReturns([]Value{NewString("authority"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TString) {
+	if out = getMicronReturns([]Value{NewString("authority"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent().Equal(TString) {
 		t.Fatalf("hoston authority: expected String carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("port"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Dynamic {
+	if out = getMicronReturns([]Value{NewString("port"), NewCarrier(THoston)}, r); len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("hoston port: expected dynamic carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("hoston carrier default: expected None carrier, got %v", out)
 	}
 }
@@ -112,34 +112,34 @@ func TestW9GetMicronReturnsSemveronCarrier(t *testing.T) {
 	intKeys := []string{"major", "minor", "patch"}
 	for _, k := range intKeys {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+		if len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 			t.Fatalf("semveron carrier %q: expected Integer carrier, got %v", k, out)
 		}
 	}
 	for _, k := range []string{"release", "version"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TString) {
+		if len(out) != 1 || !out[0].Parent().Equal(TString) {
 			t.Fatalf("semveron carrier %q: expected String carrier, got %v", k, out)
 		}
 	}
-	if out := getMicronReturns([]Value{NewString("stable"), sv}, r); len(out) != 1 || !out[0].Parent.Equal(TBoolean) {
+	if out := getMicronReturns([]Value{NewString("stable"), sv}, r); len(out) != 1 || !out[0].Parent().Equal(TBoolean) {
 		t.Fatalf("semveron carrier stable: expected Boolean carrier, got %v", out)
 	}
 	for _, k := range []string{"prereleaseParts", "buildParts"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+		if len(out) != 1 || !out[0].Parent().ConformsTo(TList) {
 			t.Fatalf("semveron carrier %q: expected List carrier, got %v", k, out)
 		}
 	}
 	// Optional per-instance fields stay dynamic.
 	for _, k := range []string{"prerelease", "build"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Dynamic {
+		if len(out) != 1 || !IsDynamic(&out[0]) {
 			t.Fatalf("semveron carrier %q: expected dynamic carrier, got %v", k, out)
 		}
 	}
 	// Unknown key → None.
-	if out := getMicronReturns([]Value{NewString("zzz"), sv}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out := getMicronReturns([]Value{NewString("zzz"), sv}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("semveron carrier default: expected None carrier, got %v", out)
 	}
 }
@@ -150,19 +150,19 @@ func TestW9GetMicronReturnsNewLeafCarriers(t *testing.T) {
 	// unknown key to None (covers the per-leaf carrier switch arms).
 	check := func(kind *Value, key string, want *Value) {
 		out := getMicronReturns([]Value{NewString(key), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(want) {
+		if len(out) != 1 || !out[0].Parent().Equal(want) {
 			t.Fatalf("%s.%s: expected %s carrier, got %v", kind.Name(), key, want.Name(), out)
 		}
 	}
 	checkDyn := func(kind *Value, key string) {
 		out := getMicronReturns([]Value{NewString(key), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Dynamic {
+		if len(out) != 1 || !IsDynamic(&out[0]) {
 			t.Fatalf("%s.%s: expected dynamic carrier, got %v", kind.Name(), key, out)
 		}
 	}
 	checkNone := func(kind *Value) {
 		out := getMicronReturns([]Value{NewString("zzz"), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+		if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 			t.Fatalf("%s default: expected None carrier, got %v", kind.Name(), out)
 		}
 	}
@@ -211,11 +211,11 @@ Baron`)
 	// The name evaluates to the minted NODE (the Stage 2 flip), so the
 	// carrier's type is the node itself, not the result's Parent.
 	baronLit := res[len(res)-1]
-	baronCarrier := NewCarrier(CanonicalType(r, &baronLit))
+	baronCarrier := NewCarrier(NodeOf(&baronLit))
 
 	// Key not in the schema → None (162.3,162.36).
 	out := getMicronReturns([]Value{NewString("missing"), baronCarrier}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("user schema key-miss: expected None carrier, got %v", out)
 	}
 
@@ -227,9 +227,9 @@ Funcon`)
 		t.Fatalf("def Funcon: %v / %v", res, err)
 	}
 	funLit := res[len(res)-1]
-	funCarrier := NewCarrier(CanonicalType(r, &funLit))
+	funCarrier := NewCarrier(NodeOf(&funLit))
 	out = getMicronReturns([]Value{NewString("doit"), funCarrier}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("user schema function-field: expected dynamic carrier, got %v", out)
 	}
 }

@@ -181,14 +181,14 @@ func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitO
 // buys is that the failure mode is an UNDER-claim, which defers, rather than
 // an over-claim, which miscompiles.
 func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Value) bool {
-	if arg.ID == "" {
+	if core.IDOf(&arg) == "" {
 		return false
 	}
 	if s.Source == SlotWordRef {
 		if reg == nil {
 			return false
 		}
-		wi, err := core.AsWord(s.Token)
+		wi, err := core.AsWord(&s.Token)
 		if err != nil {
 			return false
 		}
@@ -196,11 +196,11 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 		// seated with its own identity) is the slot's operand as surely as
 		// the binding itself: it is a read of exactly this word, minted at
 		// this token.
-		if es.liveReadIDs[arg.ID] && es.defReads[arg.ID] == wi.Name {
+		if es.liveReadIDs[core.IDOf(&arg)] && es.defReads[core.IDOf(&arg)] == wi.Name {
 			return true
 		}
 		top, ok := reg.Defs.Top(wi.Name)
-		return ok && top.ID == arg.ID
+		return ok && core.IDOf(&top) == core.IDOf(&arg)
 	}
 	// A token the kernel evaluated in place (an interpolation, an XML
 	// literal) reaches the dispatch as the value it produced, a fresh
@@ -209,7 +209,7 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 	// the dispatch runs (the interpolation's own event, or a constant), so
 	// the claim covers the slot and the routed op reads it off the stack
 	// rather than asking its host for an evaluation it cannot perform.
-	return s.Token.ID == arg.ID || es.inPlaceFrom[arg.ID] == s.Token.ID
+	return core.IDOf(&s.Token) == core.IDOf(&arg) || es.inPlaceFrom[core.IDOf(&arg)] == core.IDOf(&s.Token)
 }
 
 // fnScopedWord reports whether a word token names a binding that lives inside
@@ -229,7 +229,7 @@ func fnScopedWord(reg *core.Registry, tok core.Value) bool {
 	if reg == nil || len(reg.FnBaselines) == 0 {
 		return false
 	}
-	wi, err := core.AsWord(tok)
+	wi, err := core.AsWord(&tok)
 	if err != nil {
 		return false
 	}

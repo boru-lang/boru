@@ -55,7 +55,7 @@ func applyRecorded(v core.Value) bool {
 // fn value, a fn-typed carrier, a gradual value whose bound admits one, or a
 // union with a Function alternative.
 func valueMayBeFn(v core.Value) bool {
-	return core.IsFnValueResidual(v) || core.IsFnTypedCarrier(v) || (v.Dynamic && core.SigTypeMatches(v, core.TFunction)) || core.UnionMayBeFn(v)
+	return core.IsFnValueResidual(v) || core.IsFnTypedCarrier(&v) || (core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) || core.UnionMayBeFn(v)
 }
 
 // noteBodyReStep records a LITERAL body whose compiled residual a closure
@@ -67,14 +67,14 @@ func (es *EmitState) noteBodyReStep(body core.Value) {
 	if es.bodyReSteps == nil {
 		es.bodyReSteps = map[string]bool{}
 	}
-	es.bodyReSteps[body.ID] = true
+	es.bodyReSteps[core.IDOf(&body)] = true
 }
 
 // takeBodyReStep reports and clears noteBodyReStep's record for body.
 func (es *EmitState) takeBodyReStep(body core.Value) bool {
-	if !es.bodyReSteps[body.ID] {
+	if !es.bodyReSteps[core.IDOf(&body)] {
 		return false
 	}
-	delete(es.bodyReSteps, body.ID)
+	delete(es.bodyReSteps, core.IDOf(&body))
 	return true
 }

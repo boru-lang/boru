@@ -120,7 +120,7 @@ func TestRawReadAndLeadReads(t *testing.T) {
 		t.Error("the evaluated reach token that read it")
 	}
 	quoted := reach
-	quoted.Quoted = true
+	core.SetQuoted(&quoted, true)
 	if es.rawReachLead(tree, 1, []core.Value{core.NewParenExpr([]core.Value{quoted})}, []int{0, 0}) || es.rawReachLead(tree, 2, body, []int{0, 0}) {
 		t.Error("a quoted reach, or no raw read")
 	}
@@ -245,7 +245,7 @@ func TestPlanRematchRestartDeclines(t *testing.T) {
 	}
 	es.frames[0] = []EmitEvent{trap(2, core.SrcPos{Row: 1, Col: 7})}
 	carrier := n335Val("c", 1, 1)
-	carrier.Carrier = true
+	carrier.SetCarrier(true)
 	es.rootStmtStacks[end.Pos()] = []core.Value{carrier}
 	if plan(es) {
 		t.Error("a told stack holding a carrier cannot be seated")
@@ -262,11 +262,11 @@ func TestSeatStackType(t *testing.T) {
 	lw := &lowerer{es: es, promoted: map[int]int{}}
 	integer := core.NewTypeLiteral(core.TInteger)
 	srcs, _, _, ok := es.seatStack(lw, []core.Value{integer})
-	if !ok || len(srcs) != 1 || srcs[0].Kind != RestartType || srcs[0].Val.ID != integer.ID {
+	if !ok || len(srcs) != 1 || srcs[0].Kind != RestartType || core.IDOf(&srcs[0].Val) != core.IDOf(&integer) {
 		t.Errorf("the type node by its ID: %+v %v", srcs, ok)
 	}
 	dyn := integer
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	if _, _, _, ok := es.seatStack(lw, []core.Value{dyn}); ok {
 		t.Error("a dynamic value cannot be seated")
 	}

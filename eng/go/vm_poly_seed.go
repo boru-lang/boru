@@ -58,7 +58,7 @@ func seedGuardHolds(pr *compiler.PolyRef, window []core.Value) bool {
 		return false
 	}
 	for i, v := range window {
-		if !core.TagKeyable(v) || (pr.SeedTags != nil && v.Parent != pr.SeedTags[i]) {
+		if !core.TagKeyable(v) || (pr.SeedTags != nil && v.Parent() != pr.SeedTags[i]) {
 			return false
 		}
 	}

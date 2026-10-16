@@ -44,11 +44,11 @@ func TestProvenFnDefConstAndLocal(t *testing.T) {
 	if es.strictFnOperandProven(carrier, localOperand(0)) {
 		t.Error("a local with no producer (a param) is unproven")
 	}
-	es.producedBy[carrier.ID] = producer{seq: 7, idx: 1}
+	es.stampProduced(&carrier, 7, 1)
 	if es.strictFnOperandProven(carrier, localOperand(0)) {
 		t.Error("a local holding a non-first result is unproven")
 	}
-	es.producedBy[carrier.ID] = producer{seq: 7}
+	es.stampProduced(&carrier, 7, 0)
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{ConstOperand(fi)}}}
 	es.frames[0] = []EmitEvent{{seq: 7, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}}}
 	if !es.strictFnOperandProven(carrier, localOperand(0)) {
@@ -178,7 +178,7 @@ func TestRecordStoredFnDyn(t *testing.T) {
 		key := es.internUnpooled(core.NewAtom("c"))
 		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "dot", nout: 1, ops: []EmitOperand{ConstOperand(m), ConstOperand(key)}}})
 		v := core.NewDynamicCarrier(core.TAny)
-		es.producedBy[v.ID] = producer{seq: seq}
+		es.stampProduced(&v, seq, 0)
 		return v
 	}
 	name := core.NewAtom("canon")
@@ -239,7 +239,7 @@ func TestRecordStoredFnDyn(t *testing.T) {
 		{"an unproven payload (a flex member, a closure)", storedFnSig(), func(es *EmitState) []core.Value {
 			seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "dot", nout: 1, ops: []EmitOperand{localOperand(0), localOperand(1)}}})
 			v := core.NewDynamicCarrier(core.TAny)
-			es.producedBy[v.ID] = producer{seq: seq}
+			es.stampProduced(&v, seq, 0)
 			return []core.Value{name, v}
 		}, nil},
 	} {
@@ -262,10 +262,10 @@ func TestStrictStoreSlotRequiresProvenFn(t *testing.T) {
 	// A factory's typed Function result whose unit returns a compiled
 	// closure: the handler would be handed a ClosurePayload.
 	carrier := core.NewCarrier(core.TFunction)
-	carrier.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+	core.SetID(&carrier, core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{{kind: opClosure}}}}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy[carrier.ID] = producer{seq: seq}
+	es.stampProduced(&carrier, seq, 0)
 	// A fn-typed result is a type body: its event says it produced one.
 	es.eventInfo[seq] = eventFlags{typeOut: true}
 	if _, ok := es.RecordCallOperands("compose", sig, []core.Value{carrier}); ok {
@@ -279,7 +279,7 @@ func TestStrictStoreSlotRequiresProvenFn(t *testing.T) {
 	fi := es.internUnpooled(storedFnBody(core.NewString("T")))
 	es.fnRecs = []*fnUnitRec{{outOps: []EmitOperand{ConstOperand(fi)}}}
 	seq = es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
-	es.producedBy[carrier.ID] = producer{seq: seq}
+	es.stampProduced(&carrier, seq, 0)
 	es.eventInfo[seq] = eventFlags{typeOut: true}
 	if ops, ok := es.RecordCallOperands("compose", sig, []core.Value{carrier}); !ok || len(ops) != 1 {
 		t.Errorf("a proven fn operand records: ok=%v ops=%+v reason=%q", ok, ops, es.Reason)
@@ -420,15 +420,15 @@ func TestStrictNativeFnResultProven(t *testing.T) {
 	if _, ok := es.provenFnDef(v, EventOperand(1, 0)); ok {
 		t.Error("the wrapper's body is unknown: provenFnDef must decline it")
 	}
-	es.producedBy[v.ID] = producer{seq: 1}
+	es.stampProduced(&v, 1, 0)
 	if !es.strictFnOperandProven(v, localOperand(0)) {
 		t.Error("a promoted def of the native's result is proven")
 	}
-	es.producedBy[v.ID] = producer{seq: 1, idx: 1}
+	es.stampProduced(&v, 1, 1)
 	if es.strictFnOperandProven(v, localOperand(0)) {
 		t.Error("a promoted def of a non-first result is unproven")
 	}
-	delete(es.producedBy, v.ID)
+	core.SetRecKey(&v, core.RecKey{}) // no producer
 	if es.strictFnOperandProven(v, localOperand(0)) {
 		t.Error("a local with no producer is unproven")
 	}
@@ -438,10 +438,10 @@ func TestStrictNativeFnResultProven(t *testing.T) {
 // PR #511): a `${expr}` hole resolves names at run time, so an interpolated
 // string or XML template counts as naming.
 func TestValueRefsNameInterpolation(t *testing.T) {
-	if !valueRefsName(core.Value{Data: core.InterpStringPayload{}}) {
+	if !valueRefsName(core.ValueOf(&core.Datum{Data: core.InterpStringPayload{}})) {
 		t.Error("an interpolated string counts as naming")
 	}
-	if !valueRefsName(core.Value{Data: core.XmlInterpPayload{}}) {
+	if !valueRefsName(core.ValueOf(&core.Datum{Data: core.XmlInterpPayload{}})) {
 		t.Error("an XML template counts as naming")
 	}
 	if valueRefsName(core.NewString("plain")) {

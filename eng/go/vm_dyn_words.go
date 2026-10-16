@@ -90,25 +90,25 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // dispatched by what the payload rename would change, so their home keeps
 // them as the program's later uses need them (NUR285).
 func renamesAsData(v core.Value) bool {
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := v.Data().(*core.FnDefInfo); ok {
 		if !fd.HasHome() {
 			return false
 		}
 		for i := range fd.Signatures {
-			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(b[0]) {
+			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(&b[0]) {
 				return false
 			}
 		}
 		return true
 	}
-	_, closure := v.Data.(core.ClosurePayload)
+	_, closure := v.Data().(*core.ClosurePayload)
 	return closure
 }
 
 // dropFnPos is v without a position when v is a fn value that carries one:
 // what a binding holds, whose reads are the name's (nameClosureValue).
 func dropFnPos(v core.Value) core.Value {
-	if v.Pos().Row != 0 && v.Parent.Equal(core.TFunction) {
+	if v.Pos().Row != 0 && v.Parent().Equal(core.TFunction) {
 		v.SetPos(core.SrcPos{})
 	}
 	return v
@@ -122,48 +122,64 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// word's result stamp (stampFnResultPos) survived the def and anchored
 	// `(h 5)` over `def h (FnUtil.compose …)` at the compose (NUR347).
 	v = dropFnPos(v)
+	switch v.Data().(type) {
+	case *core.FnDefInfo, *core.ClosurePayload:
+	default:
+		return v
+	}
 	// A fn VALUE with its own definition — a factory's non-capturing lambda
-	// baked as a const, a `/v` reference — is renamed as installDef renames
-	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
-	// escapes as data renders under the def's name on both lanes (`def f
-	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
-	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
-	// const keeps its own payload, as the interpreter's binding copies do.
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
-		if fd.Name == name {
-			return v
-		}
-		fd.Name = name
-		v.Data = fd
-		return v
-	}
-	cl, ok := v.Data.(core.ClosurePayload)
-	if !ok || cl.RetName == name {
-		return v
-	}
-	// A binding renames whatever it binds, a named closure included —
-	// installDef sets the name unconditionally, so a def-bound closure
-	// handed to a Function param renders under the PARAM's name
+	// baked as a const, a `/v` reference — takes the name as installDef's
+	// binding does: a def-bound value that escapes as data renders under the
+	// def's name on both lanes (`def f (mk 1)  each f/v [1 2 3]` read `fn
+	// (String)` for the interpreter's `fn f(String)`, NUR168). A binding
+	// names whatever it binds, a named closure included — a def-bound
+	// closure handed to a Function param renders under the PARAM's name
 	// (`(w p/v)` reads `fn f(Integer)` on both engines; the thirty-first
-	// increment). The copy in this slot is renamed; the stored value keeps
-	// its own name, as the interpreter's binding copies do.
-	cl.RetName = name
-	// A value its binding names answers its contract where the NAME is
-	// written — the word that calls it (`h 5` reports at `h`, the
-	// interpreter's ReturnCheck stamped with the dispatching word) — never
-	// where the literal was constructed: the construction anchor goes, and
-	// the applying op stamps its own position (NUR347).
-	cl.RetPos = core.SrcPos{}
-	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
-		// The bridge's own signature, named — the render the interpreter's
-		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
-		// this value is only ever formatted.
-		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: compiler.ClosureIsAnonymous(&prog.Fns[cl.Unit], cl)})
-		}
+	// increment). The slot is named (core.SetFnName); the stored value keeps
+	// its own name, as the interpreter's binding copies do, and the payload
+	// is shared. A named closure answers its contract where the NAME is
+	// written — the word that calls it (`h 5` reports at `h`) — never where
+	// the literal was constructed: closureView drops the construction anchor
+	// of a named holder, and renders it under the name (NUR347).
+	if core.FnNameOf(&v) == name {
+		return v
 	}
-	v.Data = cl
+	core.SetFnName(&v, name)
 	return v
+}
+
+// closureView is the compiled closure v as this holder presents it: its
+// payload under the name a binding gave the holder (core.SetFnName), whose
+// construction anchor the naming clears — what a named holder's return
+// contract, no-match and frame name report against. ok is false for a value
+// that is no closure.
+func closureView(v *core.Value) (core.ClosurePayload, bool) {
+	clp, ok := v.Data().(*core.ClosurePayload)
+	if !ok {
+		return core.ClosurePayload{}, false
+	}
+	// A view: the payload is the value's, shared by every holder.
+	cl := *clp
+	if name := core.HolderFnName(v); name != "" {
+		cl.RetName, cl.RetPos = name, core.SrcPos{}
+	}
+	return cl, true
+}
+
+// closureRender is the interpreter's rendering of the fn a binding names
+// `name` for the closure cl: the fn under that name over the unit's own
+// signature (closureSigParams). ok is false for a unit the render bridge
+// cannot describe, which keeps the closure's own rendering.
+func closureRender(cl *core.ClosurePayload, name string) (string, bool) {
+	prog, ok := cl.Prog.(*compiler.Program)
+	if !ok || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return "", false
+	}
+	params, ok := closureSigParams(&prog.Fns[cl.Unit])
+	if !ok {
+		return "", false
+	}
+	return core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}}), true
 }
 
 // writtenRun is how many of a replayed dispatch's arguments the interpreter's
@@ -206,7 +222,9 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	if !replayRegionLive(region, words) {
 		return stack, true, nil
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:base]...)
+	// The frame region is read where it lies (the island's load copies it);
+	// the tokens are this replay's own, written as words convert.
+	prefix := stack[frameBase:base]
 	tokens := append([]core.Value(nil), region...)
 	var installed []string
 	converted := 0
@@ -231,7 +249,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		// (NotifyNameRebound) is what guarantees the binding still holds
 		// the value the unit captured.
 		if top, bound := reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(core.FnDefInfo); isFn {
+			if _, isFn := top.Data().(*core.FnDefInfo); isFn {
 				if i == 0 {
 					lead = top
 				}
@@ -243,7 +261,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		// The interpreter's Function-slot arrival delivers a quoted fn
 		// UNQUOTED into the frame binding (stepWordVal's arrival path); the
 		// VM's CALL_USER binds the slot as delivered, so strip it here.
-		fnv.Quoted = false
+		core.SetQuoted(&fnv, false)
 		core.InstallFrameBinding(reg, w.Name, fnv)
 		installed = append(installed, w.Name)
 		converted++
@@ -320,7 +338,7 @@ func wordLeadNoMatch(lead core.Value, args []core.Value) bool {
 // of plain data re-steps to itself.
 func replayRegionLive(region []core.Value, words []compiler.DynFrameWord) bool {
 	for i, t := range region {
-		if core.IsAppliableFn(t) && (!t.Quoted || (i < len(words) && words[i].Name != "")) {
+		if core.IsAppliableFn(t) && (!core.IsQuoted(&t) || (i < len(words) && words[i].Name != "")) {
 			return true
 		}
 	}
@@ -336,7 +354,7 @@ func replayRegionLive(region []core.Value, words []compiler.DynFrameWord) bool {
 // closure's own return contract applies there). Declines a closure whose
 // unit this context cannot resolve.
 func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value, bool) {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok {
 		return v, true
 	}
@@ -349,7 +367,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	}
 	// The bridge's handler runs AFTER the interpreter's dispatch matched
 	// the bridged signature, args in signature order: SigMatched, so the
-	// invoker applies the unit positionally (ClosurePayload.SigMatched).
+	// invoker applies the unit positionally (core.IsSigMatched).
 	body := core.ClosureSigMatched(v)
 	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
@@ -398,7 +416,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 	}
 	sig := core.Signature{Params: params, BarrierPos: len(params)}
 	core.NormalizeSig(&sig)
-	probe := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{sig}}}
+	probe := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{sig}}})
 	return core.MatchFnSig(probe, args) != nil
 }
 
@@ -413,7 +431,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // is what parks a 0-arg lambda VALUE nothing calls at the pointer (ADR-016's
 // gate), so the value-path bridge parks in the same places the
 // interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+func closureFnDef(fn *compiler.CompiledFn, cl *core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
 	fd, ok := closureSigView(fn, cl)
 	if !ok {
 		return core.Value{}, false
@@ -437,7 +455,7 @@ func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(a
 // it, so it needs no invoker (the placeholder one it used to build was a
 // function no path could call). ok=false for a unit that recorded no
 // contract.
-func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDefInfo, bool) {
+func closureSigView(fn *compiler.CompiledFn, cl *core.ClosurePayload) (core.FnDefInfo, bool) {
 	params, ok := closureSigParams(fn)
 	if !ok {
 		return core.FnDefInfo{}, false
@@ -491,7 +509,7 @@ func callWindowAt(r *core.Registry, name string, p *compiler.Program, unit, pc i
 			continue
 		case !o.Fwd:
 			prefix = append(prefix, v)
-		case stop < 0 && !core.IsConcrete(v):
+		case stop < 0 && !core.IsConcrete(&v):
 			stop = len(win)
 		}
 		win = append(win, v)
@@ -527,7 +545,7 @@ func callWindowValue(o compiler.CallWindowOperand, args, stack, locals []core.Va
 // unit): the interpreter's re-step could apply it over values beneath it
 // (LandingBeneathGuard, NUR286).
 func landedFnTakesArgs(v core.Value) bool {
-	fnDef, ok := v.Data.(core.FnDefInfo)
+	fnDef, ok := v.Data().(*core.FnDefInfo)
 	if !ok {
 		return compiler.ClosureTakesArgs(v)
 	}

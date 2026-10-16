@@ -146,10 +146,10 @@ func (e *Engine) noteBindingRead(name string, v Value) {
 	}
 	gen := e.Registry.Defs.Gen(name)
 	switch {
-	case IsBareTypeNode(v):
-		e.Registry.analysisRecorder().NoteDefRead(v.ID, name)
+	case IsBareTypeNode(&v):
+		e.Registry.analysisRecorder().NoteDefRead(IDOf(&v), RecKeyOf(&v), name)
 		e.Registry.analysisRecorder().NoteFrozenRead(name, FrozenBakeType, gen)
-	case IsConcrete(v):
+	case IsConcrete(&v):
 		e.Registry.analysisRecorder().NoteFrozenRead(name, FrozenBakeValue, gen)
 	}
 }

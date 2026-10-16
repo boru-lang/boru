@@ -371,8 +371,9 @@ const (
 	// The following RET applies the CallBoru-path trim (CompiledFn.RetReplay).
 	OpCallDynFrame
 
-	// OpPushConstFresh pushes a deep clone of Consts[Arg] with fresh container
-	// identity (CloneValue) instead of the pooled instance. A compound VALUE
+	// OpPushConstFresh pushes a new construction of Consts[Arg] — its spine
+	// built from the shared parts (Program.ConstBuilds; LiteralBuild) —
+	// instead of the pooled instance. A compound VALUE
 	// literal written in a fn body is re-EVALUATED per call by the interpreter,
 	// constructing a fresh List/Map each time — so a pooled const pushed from a
 	// compiled fn unit must not leak one shared identity across calls
@@ -388,11 +389,12 @@ const (
 	// consumption declines before lowering. Captured containers arrive through
 	// capture slots (locals), never consts, so closure identity is preserved.
 	// A body literal that EMBEDS an enclosing binding's container (`[c]` with
-	// `def c [9]` outside the fn) clones its SPINE only: Program.ConstKeep
-	// names the embedded members by ID and the clone returns them as they
-	// are (core.CloneValueKeeping), so the outer is fresh per call and the
-	// member stays the binding's one instance — the interpreter's per-call
-	// construction over a read (since 2026-09-24; the shape declined before).
+	// `def c [9]` outside the fn) constructs its SPINE only: Program.ConstKeep
+	// names the embedded members by ID and the construction shares them as
+	// they are, so the outer is fresh per call and the member stays the
+	// binding's one instance — the interpreter's per-call construction over a
+	// read (since 2026-09-24; the shape declined before; a construction, no
+	// longer a keep-set clone, since no-copy phase 3).
 	OpPushConstFresh
 
 	// OpPushConstFreshLocal is the MULTI-read twin of OpPushConstFresh: a compound
@@ -403,10 +405,10 @@ const (
 	// The interpreter's semantics are exactly one construction per call, shared by
 	// every read — so every read site lowers to this op, keyed (Arg indexes
 	// Program.ConstLocals) to a {ConstIdx, Slot} pair: on first execution in a frame
-	// it deep-clones Consts[ConstIdx] into frame local Slot and pushes it; every
-	// later read pushes the seated local. The frame's locals start zero-valued
-	// (Parent==nil) and a compound clone always carries a Parent, so Parent==nil is
-	// an unambiguous "not yet seated this call" sentinel. Lazy init needs no
+	// it constructs Consts[ConstIdx] (Program.ConstBuilds) into frame local Slot and
+	// pushes it; every later read pushes the seated local. The frame's locals start
+	// zero-valued (Parent==nil) and a compound construction always carries a Parent,
+	// so Parent==nil is an unambiguous "not yet seated this call" sentinel. Lazy init needs no
 	// dominating construction site, so the in-place rewrite (freshenFnUnitConsts)
 	// leaves every jump target untouched. Only fn units emit it (main-unit literals
 	// evaluate once, straight-line).
@@ -1033,14 +1035,14 @@ const (
 // it reads as whichever program is running, which is only ever right for a
 // value that is inspected rather than invoked.
 func NewClosure(prog *Program, unit int, captures []core.Value) core.Value {
-	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()}}
+	return core.NewClosureValue(core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()})
 }
 
 // ClosureWantsKeyVal reports whether v is a compiled closure whose body expects
 // a map entry presented as a KeyVal (the map-iteration lambda convention), so a
 // map-iteration handler wraps the entry rather than passing the bare value.
 func ClosureWantsKeyVal(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	return ok && cl.InShape == ClosureInKeyVal
 }
 
@@ -1058,7 +1060,7 @@ func UnitIsFnValue(fn *CompiledFn) bool {
 // ANONYMOUS fn value (`afn` / `=>`): the interpreter parks such a value,
 // unapplied, where nothing supplies an argument (ADR-016's gate); a named
 // one — a `fn` literal, cl.Named — calls (NUR321).
-func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
+func ClosureIsAnonymous(fn *CompiledFn, cl *core.ClosurePayload) bool {
 	return fn != nil && fn.Lambda && !cl.Named
 }
 
@@ -1067,7 +1069,7 @@ func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
 // takes no argument — its only call form is nullary, and a name always
 // calls (NUR321). An anonymous value, or one that needs arguments, parks.
 func ClosureCallsAtLanding(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok || !cl.Named {
 		return false
 	}
@@ -1082,8 +1084,8 @@ func ClosureCallsAtLanding(v core.Value) bool {
 // whose unit takes an argument: a landing over values beneath it is where
 // the interpreter's re-step could apply it over them (LandingBeneathGuard).
 func ClosureTakesArgs(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
-	if !ok || !ClosureIsFnValue(v) {
+	cl, ok := v.Data().(*core.ClosurePayload)
+	if !ok || !ClosureIsFnValue(&v) {
 		return false
 	}
 	prog, _ := cl.Prog.(*Program)
@@ -1098,8 +1100,8 @@ func ClosureTakesArgs(v core.Value) bool {
 // map arm, the stack's top-down order at the token seam), never run blind
 // like a callback body unit (S1b-2). A closure minted by a program the
 // running one cannot name reads as data here, as it does to the bridge.
-func ClosureIsFnValue(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+func ClosureIsFnValue(v *core.Value) bool {
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok || cl.InShape != ClosureInValue {
 		return false
 	}
@@ -1116,7 +1118,7 @@ func ClosureIsFnValue(v core.Value) bool {
 // differently from a plain code body (e.g. map iteration hands a lambda a
 // KeyVal but a body the value) must discriminate on this.
 func IsCompiledClosure(v core.Value) bool {
-	_, ok := v.Data.(core.ClosurePayload)
+	_, ok := v.Data().(*core.ClosurePayload)
 	return ok
 }
 
@@ -1206,7 +1208,8 @@ type CompiledFnRef struct {
 type RestampBox struct {
 	mu     sync.Mutex
 	fd     core.FnDefInfo
-	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
+	name   string // the stamp events' name, passed beside fd (stampDetachedSig)
+	sigIdx int    // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
 	// keepsDefs: a TOKEN body's stamp (StampTokenBody) — the re-stamp opens
 	// the same keep-defs unit the first stamp did (NUR202).
@@ -1528,7 +1531,7 @@ type GlobalBindSpec struct {
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
-// the pooled Program.Consts entry to deep-clone once per call, Slot the fn-unit
+// the pooled Program.Consts entry to construct once per call, Slot the fn-unit
 // frame-local it is seated in and re-read from.
 type ConstLocalRef struct {
 	ConstIdx int
@@ -1877,22 +1880,28 @@ type Program struct {
 	ReplayReg  *core.Registry
 	DynMethods []DynMethodSpec
 	// ConstLocals backs OpPushConstFreshLocal: a {ConstIdx, Slot} pair naming the
-	// pooled const to deep-clone and the frame-local slot to seat it in, for a
+	// pooled const to construct and the frame-local slot to seat it in, for a
 	// multi-read compound body literal that needs one per-call construction shared
 	// across its read sites. Slot is frame-relative to the fn unit whose Code holds
 	// the op (each op appears in exactly one unit). Nil for programs with none.
 	ConstLocals []ConstLocalRef
 	// ConstKeep names, per const-pool index, the value IDs a FRESH push of
-	// that const keeps shared instead of cloning (core.CloneValueKeeping): the
-	// enclosing bindings' containers a fn-unit body literal embeds, whose
-	// identity the interpreter's per-call construction preserves while the
-	// literal's own spine is minted anew. Read by OpPushConstFresh and
-	// OpPushConstFreshLocal; absent for a const with no embedded binding.
+	// that const shares instead of constructing: the enclosing bindings'
+	// containers a fn-unit body literal embeds, whose identity the
+	// interpreter's per-call construction preserves while the literal's own
+	// spine is minted anew. Read when ConstBuilds are planned; absent for a
+	// const with no embedded binding.
 	ConstKeep map[int]map[string]bool
-	Fns       []CompiledFn
-	Debug     []core.SrcPos // 1:1 with Code
-	MaxStack  int           // a floor when the program loops (results accumulate)
-	NumLocals int
+	// ConstBuilds is, per const-pool index, the construction a FRESH push of
+	// that const runs (OpPushConstFresh, OpPushConstFreshLocal): the literal
+	// built from its shared parts on each evaluation, its ConstKeep members
+	// among them (planConstBuilds). Nil entries for every other const, and
+	// nil for a program with no fresh push.
+	ConstBuilds []*LiteralBuild
+	Fns         []CompiledFn
+	Debug       []core.SrcPos // 1:1 with Code
+	MaxStack    int           // a floor when the program loops (results accumulate)
+	NumLocals   int
 	// LocalNames maps a MAIN-unit frame local slot to its source name — a
 	// loop variable, a promoted body-local def — where one is known; "" for
 	// a spill temp. The did-you-mean pool of a compiled undefined_word reads
@@ -2083,7 +2092,7 @@ type RestartFirst struct {
 // Named marks a paren apply's lead that is a def-bound word
 // (DynMethodSpec.LeadName): the interpreter's paren calls it by name, so a fn
 // value there of no argument is written to run where it is stepped
-// (FnDefInfo.Applied), never parked as a lambda value would be.
+// (core.IsApplied), never parked as a lambda value would be.
 type RestartSubst struct {
 	Path   []int
 	Span   int
@@ -2101,10 +2110,11 @@ type RestartSrc struct {
 	Kind RestartSrcKind
 	Idx  int
 	Val  core.Value
-	// Fresh, on a RestartConst, marks a compound literal a fn unit's code
-	// pushes as a fresh instance per evaluation (OpPushConstFresh): the
-	// island seats a fresh copy too (NUR336's seated literals).
-	Fresh bool
+	// Build, on a RestartConst, is the construction of a compound literal a
+	// fn unit's code pushes as a fresh instance per evaluation
+	// (OpPushConstFresh): the island seats a fresh instance too, built as it
+	// says (NUR336's seated literals). Nil for a value seated as it is.
+	Build *LiteralBuild
 }
 
 // RestartSrcKind names where a RestartSrc's value lives when the island runs.
@@ -2601,16 +2611,16 @@ func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
 	if !bound {
 		return true
 	}
-	switch v.Data.(type) {
-	case core.FnDefInfo, *core.ClassTypeInfo:
+	switch v.Data().(type) {
+	case *core.FnDefInfo, *core.ClassTypeInfo:
 		if !d.Ref {
 			return true
 		}
 	}
-	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+	if core.IsSplice(&v) || core.IsReach(&v) || core.IsWord(&v) || core.IsMark(&v) || core.IsMove(&v) {
 		return true
 	}
-	return d.Model != nil && (core.IsTypeLiteral(v) || !core.SigTypeMatches(v, d.Model))
+	return d.Model != nil && (core.IsTypeLiteral(&v) || !core.SigTypeMatches(&v, d.Model))
 }
 
 // specNote renders a specialised unit's guards for the disassembler:
@@ -2695,7 +2705,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		switch in.Op {
 		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope, OpForPublish:
 			c := p.Consts[in.Arg]
-			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
+			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent().Leaf())
 		case OpCallNative:
 			s := p.Sigs[in.Arg]
 			if s.Sig == nil {

@@ -41,7 +41,7 @@ func TestStage5ShapeRecordKey(t *testing.T) {
 	// widens to a bare Integer carrier rather than keeping either value.
 	s.RecordKey("k", NewInteger(2))
 	got, _ = s.LookupKey("k")
-	if !got.Carrier {
+	if !got.Carrier() {
 		t.Errorf("joined entry = %v, want a carrier", got)
 	}
 	if !ValueType(got).Equal(TInteger) {
@@ -88,7 +88,7 @@ func TestStage5ShapeRecordVal(t *testing.T) {
 	// A second write joins, widening to a bare Integer carrier.
 	s.RecordVal(NewInteger(2))
 	got, _ = s.LookupVals()
-	if !got.Carrier || !ValueType(got).Equal(TInteger) {
+	if !got.Carrier() || !ValueType(got).Equal(TInteger) {
 		t.Errorf("joined vals = %v, want an Integer carrier", got)
 	}
 

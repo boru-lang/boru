@@ -92,7 +92,7 @@ func TestS6b0InstallTypeForeignRefinePrefab(t *testing.T) {
 func TestS6b0AsBoundedTypeUndenotingChild(t *testing.T) {
 	// A child that neither is a bare literal nor carries a Parent:
 	// the bound denotes no lattice node.
-	v := NewValueRaw(TType, ChildTypeInfo{Child: Value{Parent: nil, Data: IntPayload{N: 1}}})
+	v := NewValueRaw(TType, ChildTypeInfo{Child: Value{d: &Datum{Parent: nil, Data: IntPayload{N: 1}}}})
 	if _, err := AsBoundedType(v); err == nil ||
 		!strings.Contains(err.Error(), "does not denote a lattice node") {
 		t.Fatalf("expected no-node error, got %v", err)
@@ -123,7 +123,7 @@ func TestS6b0UnifyBoundedTypePairs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("literal-vs-bounded: %v", err)
 	}
-	if !IsBareTypeNode(got) || !(&got).Equal(TInteger) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TInteger) {
 		t.Errorf("the conforming literal must survive, got %v", got)
 	}
 }
@@ -143,13 +143,13 @@ func TestS6b0TypeMembershipBehaviorDelegates(t *testing.T) {
 
 func TestS6b0UnionTypeEmptyIsNever(t *testing.T) {
 	got := UnionType(NewDisjunct(nil), NewDisjunct(nil))
-	if !IsBareTypeNode(got) || !(&got).Equal(TNever) {
+	if !IsBareTypeNode(&got) || !(&got).Equal(TNever) {
 		t.Errorf("empty union = %v, want Never", got)
 	}
 }
 
 func TestS6b0IsNeverShapeSentinel(t *testing.T) {
-	sentinel := Value{Parent: TNever, Data: NonePayload{}}
+	sentinel := Value{d: &Datum{Parent: TNever, Data: NonePayload{}}}
 	if !IsNeverShape(sentinel) {
 		t.Error("a Parent=Never sentinel is a Never shape")
 	}

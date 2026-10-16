@@ -6,7 +6,7 @@ import (
 )
 
 // Coverage for the XML-interpolation evaluator (EvalXmlInterp /
-// BuildXmlFromTmpl), the Reach lowering trio (lowerReach / expandReach /
+// BuildXmlFromTmpl), the Reach lowering trio (lowerReach / SpliceGroupSpan /
 // ApplyReach), and the container auto-eval arms (autoEvalMap /
 // autoEvalList / evalInterpString / evalParenExprResults) in engine.go.
 // Reuses covRegistry from compile_pipeline_cov_test.go.
@@ -22,7 +22,7 @@ func registerDotWords(r *Registry) {
 			switch {
 			case IsAtom(args[0]):
 				key, _ = AsAtom(args[0])
-			case args[0].Parent.ConformsTo(TString):
+			case args[0].Parent().ConformsTo(TString):
 				key, _ = AsString(args[0])
 			default:
 				key = ValToString(args[0])
@@ -127,13 +127,13 @@ func TestQuotedAndInertReachStayData(t *testing.T) {
 	r := covRegistry(t, registerDotWords)
 	m := mapOf("a", NewInteger(1))
 	q := NewReach(ReachInfo{Receiver: []Value{m}, Segments: []ReachSeg{{KeyLit: NewString("a")}}, Eval: true})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	inert := NewReachFromKeys(m, []Value{NewString("a")})
 	out, err := NewTop(r).Run([]Value{q, inert})
 	if err != nil {
 		t.Fatalf("inert reach: %v", err)
 	}
-	if len(out) != 2 || !IsReach(out[0]) || !IsReach(out[1]) {
+	if len(out) != 2 || !IsReach(&out[0]) || !IsReach(&out[1]) {
 		t.Errorf("reaches evaluated: %s", renderAll(out))
 	}
 }
@@ -179,17 +179,24 @@ func TestLowerReachShape(t *testing.T) {
 	if len(toks) != 7 {
 		t.Fatalf("lowered token count = %d: %v", len(toks), toks)
 	}
-	w1, _ := AsWord(toks[1])
-	w3, _ := AsWord(toks[3])
+	w1, _ := AsWord(&toks[1])
+	w3, _ := AsWord(&toks[3])
 	if w1.Name != "dot" || w3.Name != "dotr" {
 		t.Errorf("chain words = %s %s", w1.Name, w3.Name)
 	}
-	if !IsParenExpr(toks[6]) {
+	if !IsParenExpr(&toks[6]) {
 		t.Errorf("computed key did not lower to a ParenExpr: %v", toks[6])
 	}
-	span := expandReach(info)
-	if !IsOpenParen(span[0]) || !IsCloseParen(span[len(span)-1]) {
-		t.Error("expandReach did not wrap in paren markers")
+	// Spliced in place, the chain is a reach-tagged paren group; built as
+	// a run of its own (a sub-engine's, a lens unit's), an untagged one.
+	tp := NewTape([]Value{NewInteger(0), NewReach(info), NewInteger(9)}, StackHeadroom)
+	SpliceGroupSpan(tp, 1, 1, toks, true)
+	if tp.Len() != len(toks)+4 || !IsOpenParen(tp.Ref(1)) || !IsReachGroup(tp.Ref(1)) || !IsCloseParen(tp.Ref(len(toks)+2)) {
+		t.Errorf("SpliceGroupSpan did not splice a reach group: %v", tp.Snapshot())
+	}
+	span := lowerReachGroup(info)
+	if len(span) != len(toks)+2 || !IsOpenParen(&span[0]) || IsReachGroup(&span[0]) || !IsCloseParen(&span[len(span)-1]) {
+		t.Errorf("lowerReachGroup did not wrap the chain in paren markers: %v", span)
 	}
 }
 
@@ -292,7 +299,7 @@ func TestXmlInterpExprErrorPropagates(t *testing.T) {
 func evalMapVal(t *testing.T, r *Registry, om *OrderedMap) Value {
 	t.Helper()
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	out, err := NewTop(r).Run([]Value{mv})
 	if err != nil {
 		t.Fatalf("map auto-eval: %v", err)
@@ -339,7 +346,7 @@ func TestAutoEvalMapValueArms(t *testing.T) {
 	check("s", "keep")
 	check("x", "z")
 	check("r", "7")
-	if v, _ := m.Get("multi"); !v.Parent.Equal(TList) {
+	if v, _ := m.Get("multi"); !v.Parent().Equal(TList) {
 		t.Errorf("multi-result paren did not become a list: %v", v)
 	}
 }
@@ -370,7 +377,7 @@ func TestAutoEvalMapComputedKeyError(t *testing.T) {
 	om.Set("no_such_key_word", NewInteger(1))
 	om.Meta = map[string]any{"ck": map[string]bool{"no_such_key_word": true}}
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	_, err := NewTop(r).Run([]Value{mv})
 	if err == nil || !strings.Contains(err.Error(), "computed key") {
 		t.Errorf("computed key error = %v", err)
@@ -382,7 +389,7 @@ func TestAutoEvalMapValueErrorPropagates(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("bad", NewParenExpr([]Value{NewWord("no_such_word_y")}))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	if _, err := NewTop(r).Run([]Value{mv}); err == nil {
 		t.Error("map value error did not propagate")
 	}
@@ -411,7 +418,7 @@ func TestAutoEvalMapConsumedArg(t *testing.T) {
 	om.Set("a", NewParenExpr([]Value{NewWord("cadd"), NewInteger(1), NewInteger(1)}))
 	om.Set("b", NewInteger(2))
 	mv := NewMap(om)
-	mv.Eval = true
+	SetEval(&mv, true)
 	out, err := NewTop(r).Run([]Value{NewWord("cmsize"), mv})
 	if err != nil {
 		t.Fatalf("consumed map: %v", err)
@@ -427,7 +434,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 	r := covRegistry(t, nil)
 	// Residual: a computed list at end of run evaluates in place.
 	lv := NewList([]Value{NewWord("cadd"), NewInteger(2), NewInteger(3)})
-	lv.Eval = true
+	SetEval(&lv, true)
 	out, err := NewTop(r).Run([]Value{lv})
 	if err != nil {
 		t.Fatalf("residual list: %v", err)
@@ -438,7 +445,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Consumed: the same list as a clen arg evaluates before the call.
 	lv2 := NewList([]Value{NewWord("cadd"), NewInteger(2), NewInteger(3)})
-	lv2.Eval = true
+	SetEval(&lv2, true)
 	out, err = NewTop(r).Run([]Value{NewWord("clen"), lv2})
 	if err != nil {
 		t.Fatalf("consumed list: %v", err)
@@ -449,7 +456,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Empty list short-circuits.
 	le := NewList(nil)
-	le.Eval = true
+	SetEval(&le, true)
 	out, err = NewTop(r).Run([]Value{le})
 	if err != nil || len(out) != 1 {
 		t.Fatalf("empty list: %v %s", err, renderAll(out))
@@ -457,7 +464,7 @@ func TestAutoEvalListResidualAndConsumed(t *testing.T) {
 
 	// Error inside a residual list propagates.
 	lbad := NewList([]Value{NewWord("no_such_word_z")})
-	lbad.Eval = true
+	SetEval(&lbad, true)
 	if _, err := NewTop(r).Run([]Value{lbad}); err == nil {
 		t.Error("list eval error did not propagate")
 	}

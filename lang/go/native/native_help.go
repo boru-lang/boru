@@ -180,21 +180,22 @@ func BuildQualifiedFuncInfo(r *Registry, name string) *help.FuncInfo {
 	if !ok {
 		return nil
 	}
-	fnDef, ok := exp.Data.(FnDefInfo)
+	fnDef, ok := exp.Data().(*FnDefInfo)
 	if !ok {
 		return nil
 	}
-	return FnDefFuncInfo(name, &fnDef)
+	return FnDefFuncInfo(name, fnDef)
 }
 
 // FnDefFromValue unwraps an FnDefInfo carried by a function Value (e.g. a
 // module export's wrapper), for callers outside the engine package that hold
 // the Value but not the payload. ok=false when v is not an FnDef.
 func FnDefFromValue(v Value) (*FnDefInfo, bool) {
-	fn, ok := v.Data.(FnDefInfo)
+	src, ok := FnDefOf(v.Data())
 	if !ok {
 		return nil, false
 	}
+	fn := *src // a copy: callers edit it (modules' export provenance)
 	return &fn, true
 }
 
@@ -217,7 +218,7 @@ func sigKeywordSlots(sig Signature) map[int]string {
 		// IsConcrete filters bare atom nodes / type literals, so the
 		// AsAtom below always yields the name (err path is a plain skip,
 		// no separate branch).
-		if !sig.QuoteArgs[i] || !IsConcrete(pat) || !pat.Parent.ConformsTo(TAtom) {
+		if !sig.QuoteArgs[i] || !IsConcrete(&pat) || !pat.Parent().ConformsTo(TAtom) {
 			continue
 		}
 		if name, err := AsAtom(pat); err == nil {
@@ -276,7 +277,7 @@ func sigArgDisplay(sig *Signature, i int, t *Type) string {
 	}
 	ni, _ := AsNegation(pat) // payload presence guaranteed by IsNegation
 	inner := ni.Inner
-	if IsBareTypeNode(inner) {
+	if IsBareTypeNode(&inner) {
 		return "(tnot " + (&inner).Leaf() + ")"
 	}
 	return "(tnot " + inner.String() + ")"

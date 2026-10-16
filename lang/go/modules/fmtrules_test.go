@@ -92,7 +92,7 @@ func TestFmtRulesValueShape(t *testing.T) {
 	cv := rulesToValue(custom)
 	cm, _ := native.AsMap(cv)
 	cam, _ := native.AsMap(func() native.Value { x, _ := cm.Get("attach"); return x }())
-	if s, _ := func() native.Value { x, _ := cam.Get("colon"); return x }().AsConcreteString(); s != "next" {
+	if s, _ := addrOf(func() native.Value { x, _ := cam.Get("colon"); return x }()).AsConcreteString(); s != "next" {
 		t.Errorf("next-only colon rendered as %q, want next", s)
 	}
 
@@ -104,7 +104,7 @@ func TestFmtRulesValueShape(t *testing.T) {
 	dup.AttachPrev = append(dup.AttachPrev, formatter.NdColon)
 	dm, _ := native.AsMap(rulesToValue(dup))
 	dam, _ := native.AsMap(func() native.Value { x, _ := dm.Get("attach"); return x }())
-	if s, _ := func() native.Value { x, _ := dam.Get("colon"); return x }().AsConcreteString(); s != "both" {
+	if s, _ := addrOf(func() native.Value { x, _ := dam.Get("colon"); return x }()).AsConcreteString(); s != "both" {
 		t.Errorf("duplicated colon rendered as %q, want both", s)
 	}
 }

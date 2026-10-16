@@ -42,8 +42,8 @@ import (
 // (see the file comment). window is what lies beneath the value on the
 // interpreter's tape.
 func (vc *vmContext) zeroArgFnValueApply(reg *core.Registry, fnVal core.Value, window []core.Value) ([]core.Value, error, bool) {
-	fd, ok := fnVal.Data.(core.FnDefInfo)
-	if !ok || fd.Anonymous || !core.FnValueOnlyZeroArgSigs(fd) || !fnValueParkable(reg, fnVal, fd) {
+	fd, ok := core.FnDefOf(fnVal.Data())
+	if !ok || fd.Anonymous || !core.FnValueOnlyZeroArgSigs(fd) || !fnValueParkable(reg, fnVal, *fd) {
 		return nil, nil, false
 	}
 	for _, v := range window {

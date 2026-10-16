@@ -97,7 +97,7 @@ func tryRecordRegion(win core.CollectWindow, reg *core.Registry, w core.WordInfo
 	if es.pendingRegions == nil {
 		es.pendingRegions = map[regionKey]pendingRegion{}
 	}
-	pos := win.At(at).Pos()
+	pos := win.Ref(at).Pos()
 	desc := &RegionDesc{
 		Lead:  LeadWord,
 		Word:  w.Name,

@@ -85,11 +85,15 @@ func w9SetFileOps(t *testing.T, r *Registry, ops capabilities.FileOps) {
 
 func TestW9CaptureAtomReferentAlreadyBound(t *testing.T) {
 	r := seam5Reg(t)
-	// An atom that already carries a referent short-circuits (457.36,459.3).
-	atom := SetAtomReferent(NewAtom("x"), NewInteger(5))
-	out := captureAtomReferent(atom, r)
-	if _, has := AtomReferent(out); !has {
-		t.Fatalf("captureAtomReferent must preserve existing referent")
+	// An atom that already carries a referent short-circuits: a binding of
+	// its name made since does not replace it.
+	atom := NewAtom("x")
+	five := NewInteger(5)
+	SetAtomReferent(&atom, &five)
+	r.Defs.Push("x", NewInteger(9))
+	captureAtomReferent(&atom, r)
+	if ref, has := AtomReferent(atom); !has || ref.String() != "5" {
+		t.Fatalf("captureAtomReferent must preserve existing referent, got %v (%v)", ref, has)
 	}
 }
 

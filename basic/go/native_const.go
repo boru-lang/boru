@@ -42,11 +42,11 @@ var ConstNative = NativeFunc{
 
 func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	v := args[0]
-	if !IsConcrete(v) {
+	if !IsConcrete(&v) {
 		return nil, r.BoruError("const_error",
 			fmt.Sprintf("const: needs a concrete value, got %s", v.String()), "const")
 	}
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case ClassInstanceInfo, ResourceInstanceInfo:
 		return nil, r.BoruErrorHint("const_error",
 			"const: a mutable instance cannot pin a value", "const",
@@ -56,14 +56,14 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			"const: a mutable Store cannot pin a value", "const",
 			"const exemplars must be immutable — scalars, Lists, or Maps")
 	}
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		if f, err := core.AsFloat(v); err == nil && math.IsNaN(f) {
 			return nil, r.BoruError("const_error",
 				"const: NaN cannot pin a value (NaN is not equal to itself)", "const")
 		}
 	}
 
-	base := CanonicalType(r, v.Parent)
+	base := NodeOf(v.Parent())
 	canon := core.CanonValue(v)
 
 	// Intern per registry via a hidden type binding, so two
@@ -71,9 +71,9 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// (Bindings made inside fn bodies are scope-cleaned like any def;
 	// a re-mint in another scope is semantically identical — Match is
 	// by value, not node identity.)
-	key := "__const:" + base.ID + ":" + canon
+	key := "__const:" + IDOf(base) + ":" + canon
 	if entry, ok := r.Defs.TopEntry(key); ok && entry.TypeDef != nil {
-		return []Value{ReparentValue(v, entry.TypeDef)}, nil
+		return []Value{MintRetagged(&v, entry.TypeDef)}, nil
 	}
 
 	// The singleton type's membership is "equals the exemplar within the
@@ -88,8 +88,8 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// defers to the lattice walk.
 	exemplar := v
 	node := r.Types.MintMemberType(canon, base, func(x Value) bool {
-		return x.Parent != nil && x.Parent.ConformsTo(exemplar.Parent) && DeepEqual(x, exemplar)
+		return x.Parent() != nil && x.Parent().ConformsTo(exemplar.Parent()) && DeepEqual(x, exemplar)
 	})
 	r.Defs.PushType(key, node, NewTypeLiteral(node))
-	return []Value{ReparentValue(v, node)}, nil
+	return []Value{MintRetagged(&v, node)}, nil
 }

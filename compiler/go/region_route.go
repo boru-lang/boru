@@ -93,7 +93,7 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
-		if wi, err := core.AsWord(d.Slots[i].Token); err == nil {
+		if wi, err := core.AsWord(&d.Slots[i].Token); err == nil {
 			// A name a loop carries lives in a frame slot, not in the
 			// registry the routed op reads (EmitState.carriedNames): the
 			// committed call and its bake stay, decided before any note is
@@ -123,10 +123,10 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 func regionDrivable(d *RegionDesc) bool {
 	for i := range d.Slots {
 		tok := d.Slots[i].Token
-		if _, kind := core.StaticForwardTypeOf(tok); kind != core.FwdValue && !core.IsWord(tok) {
+		if _, kind := core.StaticForwardTypeOf(&tok); kind != core.FwdValue && !core.IsWord(&tok) {
 			return false
 		}
-		if wi, err := core.AsWord(tok); err == nil && !plainWord(wi) {
+		if wi, err := core.AsWord(&tok); err == nil && !plainWord(wi) {
 			return false
 		}
 		if core.HasContainerIdentity(tok) {
@@ -140,7 +140,7 @@ func regionDrivable(d *RegionDesc) bool {
 		// host cannot do (vm:generic-declined): the region is not drivable.
 		// Inside the claim it is already a value on the stack (the recorder's
 		// in-place link, slotIsOperand).
-		if i >= d.NFwd && (core.IsInterpString(tok) || core.IsXmlInterp(tok)) {
+		if i >= d.NFwd && (core.IsInterpString(&tok) || core.IsXmlInterp(&tok)) {
 			return false
 		}
 	}

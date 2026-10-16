@@ -89,11 +89,56 @@ func (dt *DefTable) Top(name string) (Value, bool) {
 	if len(ds) == 0 {
 		return Value{}, false
 	}
-	e := ds[len(ds)-1]
+	e := &ds[len(ds)-1]
 	if e.TypeDef != nil {
 		return NewTypeLiteral(e.TypeDef), true
 	}
 	return e.Body, true
+}
+
+// TopRef returns the most recent binding for name where it lives, or
+// (nil, false) if name is unbound: the reader's view of the binding
+// without copying it out. The pointer is valid until name's binding stack
+// next changes (a push may move the stack), and it is never written
+// through — a binding is shared by every reader of the name.
+func (dt *DefTable) TopRef(name string) (*DefEntry, bool) {
+	if dt == nil {
+		return nil, false
+	}
+	ds := dt.stacks[name]
+	if len(ds) == 0 {
+		return nil, false
+	}
+	return &ds[len(ds)-1], true
+}
+
+// TopValue is Top read where the binding lives: a pointer to what name's
+// most recent binding denotes — a value binding's Body, a type binding's
+// lattice node itself — or (nil, false) if name is unbound. Like TopRef,
+// it is valid until name's binding stack next changes and is never written
+// through: the binding is every reader's, and a type node is the lattice's.
+func (dt *DefTable) TopValue(name string) (*Value, bool) {
+	e, ok := dt.TopRef(name)
+	if !ok {
+		return nil, false
+	}
+	if e.TypeDef != nil {
+		return e.TypeDef, true
+	}
+	return &e.Body, true
+}
+
+// SetTopData swaps the payload of name's top binding in place: Replace for
+// a writer that changes only the payload, without copying the binding out
+// and back. Returns false (a no-op) if name is unbound.
+func (dt *DefTable) SetTopData(name string, data Payload) bool {
+	e, ok := dt.TopRef(name)
+	if !ok {
+		return false
+	}
+	dt.touch(name)
+	e.Body.SetData(data)
+	return true
 }
 
 // TopEntry returns the most recent binding (body plus the type def, if
@@ -395,7 +440,7 @@ func sameDefEntry(a, b DefEntry) bool {
 		return false
 	}
 	x, y := a.Body, b.Body
-	if x.ID != y.ID || x.Parent != y.Parent || x.pos != y.pos {
+	if IDOf(&x) != IDOf(&y) || x.Parent() != y.Parent() || posOf(&x) != posOf(&y) {
 		return false
 	}
 	if HasContainerIdentity(x) || HasContainerIdentity(y) {

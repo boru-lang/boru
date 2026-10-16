@@ -14,6 +14,7 @@ import "strings"
 type xmlBehavior struct{}
 
 func (xmlBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.Match(v, t) }
+func (xmlBehavior) matchesAsDefault()           {}
 
 func (xmlBehavior) Format(v Value) string {
 	tag, attr, cren, ok := xmlParts(v)
@@ -45,7 +46,7 @@ func (xmlBehavior) Equal(a, b Value) bool {
 // Format / Equal / the conversion walks treat both element shapes
 // uniformly. See design/XML-LITERAL.0.md §5.
 func xmlParts(v Value) (tag string, attr *OrderedMap, cren []Value, ok bool) {
-	switch x := v.Data.(type) {
+	switch x := v.Data().(type) {
 	case XmlElementPayload:
 		return x.Tag, x.Attr, x.Cren, true
 	case *FlexXmlData:
@@ -107,7 +108,7 @@ func formatXmlInto(b *strings.Builder, tag string, attr *OrderedMap, cren []Valu
 // xmlChildText extracts the raw string of a text/scalar child without
 // the quoting that Value.String adds to a String value.
 func xmlChildText(v Value) string {
-	if sp, ok := v.Data.(StrPayload); ok {
+	if sp, ok := v.Data().(StrPayload); ok {
 		return sp.S
 	}
 	return v.String()

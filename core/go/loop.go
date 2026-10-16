@@ -33,7 +33,9 @@ type LoopDriver interface {
 	// how it enters the tape, InvokeBody how the VM lane runs it). ok is
 	// false when the loop has no iteration left; err is the construct's
 	// own error (a structural fault the walk meets lazily), reported as
-	// the construct's, never wrapped as a body's.
+	// the construct's, never wrapped as a body's. Once Next has reported
+	// either, it is not called again: both lanes (spliceDrivenIteration,
+	// DriveLoop) end the loop there.
 	Next(it int) (inputs []Value, body Value, ok bool, err error)
 	// Collect takes iteration it's residual — the values its region left,
 	// bottom→top, the sub-engine protocol's result stack — valid only for
@@ -200,8 +202,9 @@ const maxCallLoops = 64
 // takeCallLoop takes a call-region Loop from the registry's pool — or
 // mints one — set up for this call: the word, the region's description,
 // the driver's inputs and body, the word's position for the mark, the
-// move and the close paren (the minted tokens point at the Loop's own Pos,
-// so a reused Loop's tokens take the new call's position).
+// move and the close paren (the minted tokens point at the Loop's own
+// position, refreshed from Pos at every mint, so a reused Loop's tokens
+// take the new call's position).
 func (r *Registry) takeCallLoop(word, kind string, inputs []Value, body Value) *Loop {
 	var lp *Loop
 	if n := len(r.callLoops); n > 0 {
@@ -250,6 +253,18 @@ func (r *Registry) putCallLoop(lp *Loop) {
 	r.callLoops = append(r.callLoops, lp)
 }
 
+// IsLoopRegion reports whether a handler's results are a driven loop's
+// first region (StartLoop's tokens) rather than values: the region's body
+// tokens are the program's own and keep their positions — execMatch does
+// not stamp them with the word's, as it stamps a handler's fresh values.
+func IsLoopRegion(results []Value) bool {
+	if len(results) == 0 || !IsMark(&results[0]) {
+		return false
+	}
+	info, _ := AsMark(&results[0])
+	return info.Loop != nil
+}
+
 // loopRegionTokens builds one iteration's token run into buf: the loop's
 // mark, the sealing paren with its inert-input span, the inputs, the body's
 // tokens, the close paren and the move. The synthetic tokens are minted
@@ -260,18 +275,6 @@ func (r *Registry) putCallLoop(lp *Loop) {
 // position, so an error the loop itself raises at its move (stampErrPos
 // reads the pointer's token) is reported at the word, as a handler's error
 // is.
-
-// IsLoopRegion reports whether a handler's results are a driven loop's
-// first region (StartLoop's tokens) rather than values: the region's body
-// tokens are the program's own and keep their positions — execMatch does
-// not stamp them with the word's, as it stamps a handler's fresh values.
-func IsLoopRegion(results []Value) bool {
-	if len(results) == 0 || !IsMark(results[0]) {
-		return false
-	}
-	info, _ := AsMark(results[0])
-	return info.Loop != nil
-}
 func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value {
 	lp.mint(len(inputs))
 	out := append(buf[:0], lp.mark, lp.open)
@@ -280,11 +283,22 @@ func loopRegionTokens(buf []Value, lp *Loop, inputs []Value, body Value) []Value
 	return append(out, lp.close, lp.move)
 }
 
+// spliceLoopRegion splices an iteration's token run (loopRegionTokens) over
+// count cells of t at i, part by part: the inputs and the body are copied
+// once, straight onto the tape.
+func spliceLoopRegion(t *Tape, i, count int, lp *Loop, inputs []Value, body Value) {
+	lp.mint(len(inputs))
+	head := [2]Value{lp.mark, lp.open}
+	tail := [2]Value{lp.close, lp.move}
+	t.SpliceRuns(i, count, head[:], inputs, lp.bodyTokens(body), tail[:])
+}
+
 // mint makes the loop's synthetic tokens once — the mark, the close paren
 // and the move on the first call, the sealing paren whenever the inert-input
 // span differs from the one it was minted for.
 func (lp *Loop) mint(argSpan int) {
-	if lp.mark.Parent == nil {
+	lp.at.SrcPos, lp.at.only.pos = lp.Pos, &lp.at
+	if lp.mark.Parent() == nil {
 		id := NextMarkID()
 		lp.mark = NewLoopMark(id, lp)
 		lp.close = NewCloseParen()
@@ -296,15 +310,17 @@ func (lp *Loop) mint(argSpan int) {
 			// sub-engine's residual — no position — rather than blaming
 			// the word. A call region's close paren takes the word's: the
 			// construct whose block let a signal out is where the report
-			// points (closeAtWord) — and its tokens point at the Loop's Pos
-			// whatever it holds now, as the Loop is reused call after call.
-			lp.mark.pos, lp.move.pos = &lp.Pos, &lp.Pos
+			// points (closeAtWord) — and its tokens point at the Loop's own
+			// position, which every mint refreshes from Pos, as the Loop is
+			// reused call after call.
+			setPosRef(&lp.mark, &lp.at)
+			setPosRef(&lp.move, &lp.at)
 			if lp.closeAtWord {
-				lp.close.pos = &lp.Pos
+				setPosRef(&lp.close, &lp.at)
 			}
 		}
 	}
-	if lp.open.Parent == nil || lp.openSpan != argSpan {
+	if lp.open.Parent() == nil || lp.openSpan != argSpan {
 		lp.open, lp.openSpan = NewLoopOpen(lp, argSpan), argSpan
 	}
 }
@@ -360,7 +376,7 @@ func (lp *Loop) Describe() string {
 // resolved unnamed arguments (FrameOpenInfo) or a driven loop region's
 // inputs (LoopOpenInfo); 0 for a plain paren.
 func openArgSpan(v Value) int {
-	switch info := v.Data.(type) {
+	switch info := v.Data().(type) {
 	case FrameOpenInfo:
 		return info.ArgSpan
 	case LoopOpenInfo:
@@ -454,8 +470,7 @@ func (e *Engine) spliceDrivenIteration(markIdx, moveIdx int, info MoveInfo) erro
 	// re-stepping the mark — the pointer lands on the sealing paren, whose
 	// step skips the inputs as ever (one Run-loop step fewer per element).
 	lp.Iter++
-	e.loopTokens = loopRegionTokens(e.loopTokens, lp, inputs, body)
-	e.Tape.Splice(markIdx, moveIdx-markIdx+1, e.loopTokens...)
+	spliceLoopRegion(e.Tape, markIdx, moveIdx-markIdx+1, lp, inputs, body)
 	e.beginLoopIteration(lp)
 	e.Pointer = markIdx + 1
 	if e.trace != nil {
@@ -506,10 +521,10 @@ func (e *Engine) abandonDrivenLoops(from, to int) {
 	}
 	for i := max(from, 0); i < to; i++ {
 		v := e.Tape.At(i)
-		if !IsMove(v) {
+		if !IsMove(&v) {
 			continue
 		}
-		info, _ := AsMove(v)
+		info, _ := AsMove(&v)
 		if info.Cont == nil || info.Cont.Driver == nil || !e.marks[info.To] {
 			continue
 		}
@@ -535,10 +550,10 @@ func (e *Engine) wrapLoopFault(from, to int, err error) error {
 	}
 	for i := from; i < to; i++ {
 		v := e.Tape.At(i)
-		if !IsMove(v) {
+		if !IsMove(&v) {
 			continue
 		}
-		info, _ := AsMove(v)
+		info, _ := AsMove(&v)
 		if info.Cont == nil || info.Cont.Driver == nil || !e.marks[info.To] {
 			continue
 		}

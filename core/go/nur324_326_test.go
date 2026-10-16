@@ -19,10 +19,10 @@ func TestNoneLiteralIsAUnionMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	noneLit := NewTypeLiteral(TNone)
-	if !noneLit.Is(maybe) || !NewNone().Is(maybe) || !NewInteger(5).Is(maybe) {
+	if !noneLit.Is(maybe) || !addrOf(NewNone()).Is(maybe) || !addrOf(NewInteger(5)).Is(maybe) {
 		t.Error("the None literal, none and 5 are all members of (Integer tor None)")
 	}
-	if NewTypeLiteral(TInteger).Is(maybe) || NewString("s").Is(maybe) {
+	if addrOf(NewTypeLiteral(TInteger)).Is(maybe) || addrOf(NewString("s")).Is(maybe) {
 		t.Error("a type literal and a String are no members")
 	}
 	if rejectsTypeLiteral(noneLit, maybe) || !rejectsTypeLiteral(NewTypeLiteral(TInteger), maybe) {
@@ -46,7 +46,7 @@ func TestNoneLiteralIsAUnionMember(t *testing.T) {
 // alternative; a carrier holding its type (tnot's negation) is the type.
 func TestAnnotationRunDependent(t *testing.T) {
 	neg := NegateType(NewTypeLiteral(TInteger))
-	neg.Carrier = true
+	neg.SetCarrier(true)
 	for _, c := range []struct {
 		name string
 		v    Value
@@ -78,11 +78,11 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 	// The pass's values for `(1 add 2)` and `(tnot Integer)`, bound as the
 	// annotation's word reads them (core runs no word's analysis half).
 	neg := NegateType(NewTypeLiteral(TInteger))
-	neg.Carrier = true
+	neg.SetCarrier(true)
 	r.Defs.Push("zzsum", NewCarrier(TInteger))
 	r.Defs.Push("zzneg", neg)
 	got, err := EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzsum")}), "x")
-	if err != nil || !got.Carrier || rec.dependents != 1 {
+	if err != nil || !got.Carrier() || rec.dependents != 1 {
 		t.Fatalf("a carrier annotation notes the word run-dependent: %v %v %d", got, err, rec.dependents)
 	}
 	// A typed container whose paren child the pass evaluates to a carrier
@@ -91,7 +91,7 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 		t.Fatalf("a run-dependent child notes the word: %v %d", err, rec.dependents)
 	}
 	got, err = EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzneg")}), "x")
-	if err != nil || got.Carrier || !IsNegation(got) || rec.dependents != 2 {
+	if err != nil || got.Carrier() || !IsNegation(got) || rec.dependents != 2 {
 		t.Fatalf("tnot's negation is the type itself and notes nothing: %v %v %d", got, err, rec.dependents)
 	}
 	kind, pat, err := ResolveSigType(r, got)
@@ -121,7 +121,7 @@ func TestInstallTypeResolvesAParenChild(t *testing.T) {
 	}
 	got, ok := r.TopTypeBody("Zints")
 	ci, cerr := AsChildType(got)
-	if !ok || cerr != nil || IsParenExpr(ci.Child) || !(&ci.Child).Equal(TInteger) {
+	if !ok || cerr != nil || IsParenExpr(&ci.Child) || !(&ci.Child).Equal(TInteger) {
 		t.Fatalf("the installed child is Integer, not a paren: %v %v", got, cerr)
 	}
 	if err := InstallType(r, "Zbad", NewTypedList(NewParenExpr([]Value{NewWord("nosuchword")}))); err == nil {

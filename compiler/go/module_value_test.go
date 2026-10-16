@@ -42,13 +42,13 @@ func TestModuleResidualStable(t *testing.T) {
 		t.Error("a read with no name (no DynFrom tag, no def-read entry) cannot be re-read")
 	}
 	// The def-read table is the second name channel.
-	nameless.ID = "v-ns"
+	core.SetID(&nameless, "v-ns")
 	es.defReads = map[string]string{"v-ns": "X"}
 	if es.moduleResidualStable(nameless) {
 		t.Error("a DIFFERENT namespace instance under the same name is not the read's")
 	}
 	same := ns
-	same.ID = "v-ns"
+	core.SetID(&same, "v-ns")
 	if !es.moduleResidualStable(same) {
 		t.Error("the def-read name resolves the same instance")
 	}
@@ -83,7 +83,7 @@ func TestModuleResidualStable(t *testing.T) {
 func TestParenPlacementProbesDeclineWithoutIdentity(t *testing.T) {
 	var nilES *EmitState
 	v := core.NewInteger(1)
-	v.ID = "v-1"
+	core.SetID(&v, "v-1")
 	if nilES.parenReSteppedFn(v) || nilES.parenPlacedMemberFn(v) {
 		t.Error("a nil recorder places nothing")
 	}

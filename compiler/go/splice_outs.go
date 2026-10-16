@@ -43,8 +43,8 @@ func (es *EmitState) noteSpliceOuts(seq int, outs []core.Value) {
 // payload — one the pass stepped token for token (a computed payload's
 // spread is RecordSpliceDyn's, and renders as no run's marker).
 func concreteSplice(v core.Value) bool {
-	info, err := core.AsSplice(v)
-	return err == nil && core.IsConcrete(info.Data)
+	info, err := core.AsSplice(&v)
+	return err == nil && core.IsConcrete(&info.Data)
 }
 
 // NoteSpliceFired takes a fired splice marker v out of the results of the
@@ -53,10 +53,10 @@ func concreteSplice(v core.Value) bool {
 // move down one place, and the call leaves one value fewer. Nothing for any
 // other marker, or when inactive.
 func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
-	if !es.Active() || v.ID == "" || !concreteSplice(v) {
+	if !es.Active() || core.IDOf(&v) == "" || !concreteSplice(v) {
 		return
 	}
-	pr, produced := es.producedBy[v.ID]
+	pr, produced := es.producerOf(&v)
 	outs := es.spliceOuts[pr.seq]
 	if !produced || outs == nil {
 		return
@@ -66,19 +66,19 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 		return
 	}
 	ev.call.nout--
-	delete(es.producedBy, v.ID)
-	for _, o := range outs {
-		if p, ok := es.producedBy[o.ID]; ok && p.seq == pr.seq && p.idx > pr.idx {
-			es.producedBy[o.ID] = producer{seq: p.seq, idx: p.idx - 1}
-		}
+	// The marker leaves the event's results, and every result after it
+	// answers one place lower (producerOf reads firedIdx).
+	if es.firedIdx == nil {
+		es.firedIdx = map[int][]int{}
 	}
+	es.firedIdx[pr.seq] = append(es.firedIdx[pr.seq], pr.idx)
 	if es.firedSplices == nil {
 		es.firedSplices = map[int]map[string]bool{}
 	}
 	if es.firedSplices[pr.seq] == nil {
 		es.firedSplices[pr.seq] = map[string]bool{}
 	}
-	es.firedSplices[pr.seq][v.ID] = true
+	es.firedSplices[pr.seq][core.IDOf(&v)] = true
 }
 
 // spliceOutsAt is the SigRef.SpliceOuts of the call seq: the results the
@@ -90,7 +90,7 @@ func (lw *lowerer) spliceOutsAt(seq int) []core.Value {
 	}
 	outs := lw.es.spliceOuts[seq]
 	for _, v := range outs {
-		if core.IsSplice(v) && !lw.es.firedSplices[seq][v.ID] {
+		if core.IsSplice(&v) && !lw.es.firedSplices[seq][core.IDOf(&v)] {
 			return nil
 		}
 	}

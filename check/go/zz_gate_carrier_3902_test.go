@@ -57,10 +57,10 @@ func TestGatecarrier3902RefineWidensArity(t *testing.T) {
 	if len(out) != 2 {
 		t.Fatalf("refined summary must carry the widened arity, got %d value(s): %+v", len(out), out)
 	}
-	if !out[0].Carrier || !out[0].Parent.Equal(core.TInteger) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(core.TInteger) {
 		t.Errorf("position 0 must stay an Integer carrier: %+v", out[0])
 	}
-	if !out[1].Carrier {
+	if !out[1].Carrier() {
 		t.Errorf("position 1 must be a carrier joined from the padded None arm: %+v", out[1])
 	}
 	if got := r.Check.FnSummaries[key]; len(got) != 2 {

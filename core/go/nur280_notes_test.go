@@ -17,14 +17,14 @@ func TestNUR280PeekNotesTheDelivery(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	fnv := anonFnVal([]FnParam{{Name: "a", Type: TInteger}}, nil, parenBody(NewWord("a")))
-	fnv.ID = "T_peek_fn"
+	SetID(&fnv, "T_peek_fn")
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{fnv, NewDispatchMod(DispatchModInfo{Val: true})}, StackHeadroom)
 	if err := e.execFnDefLiteral(0); err != nil {
 		t.Fatalf("peek errored: %v", err)
 	}
-	if e.Tape.Len() != 1 || e.Pointer != 1 || e.Tape.At(0).Quoted {
-		t.Errorf("the marker must be consumed and the value delivered unquoted: len=%d ptr=%d quoted=%v", e.Tape.Len(), e.Pointer, e.Tape.At(0).Quoted)
+	if e.Tape.Len() != 1 || e.Pointer != 1 || IsQuoted(addrOf(e.Tape.At(0))) {
+		t.Errorf("the marker must be consumed and the value delivered unquoted: len=%d ptr=%d quoted=%v", e.Tape.Len(), e.Pointer, IsQuoted(addrOf(e.Tape.At(0))))
 	}
 	if len(es.vals) != 1 || es.vals[0] != "T_peek_fn" {
 		t.Errorf("the delivery must be noted as a value read: %v", es.vals)
@@ -40,14 +40,14 @@ func TestNUR280MarkerDropNotesTheCarrier(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	c := NewDynamicCarrier(TAny)
-	c.ID = "T_member_read"
+	SetID(&c, "T_member_read")
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{c, NewDispatchMod(DispatchModInfo{Val: true})}, StackHeadroom)
 	e.Pointer = 1
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("marker drop errored: %v", err)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Quoted {
+	if e.Tape.Len() != 1 || !IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Errorf("the marker must be dropped and the carrier quoted: len=%d", e.Tape.Len())
 	}
 	if len(es.vals) != 1 || es.vals[0] != "T_member_read" {
@@ -60,8 +60,8 @@ func TestNUR280MarkerDropNotesTheCarrier(t *testing.T) {
 	if err := e.stepLiteral(); err != nil {
 		t.Fatalf("marker drop errored: %v", err)
 	}
-	if e.Tape.Len() != 1 || e.Tape.At(0).Quoted || len(es.vals) != 1 {
-		t.Errorf("a concrete value is left alone: quoted=%v notes=%v", e.Tape.At(0).Quoted, es.vals)
+	if e.Tape.Len() != 1 || IsQuoted(addrOf(e.Tape.At(0))) || len(es.vals) != 1 {
+		t.Errorf("a concrete value is left alone: quoted=%v notes=%v", IsQuoted(addrOf(e.Tape.At(0))), es.vals)
 	}
 }
 
@@ -74,12 +74,12 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
 	g := NewDynamicCarrier(TAny)
-	g.ID = "T_bound_member"
-	g.Quoted = true
+	SetID(&g, "T_bound_member")
+	SetQuoted(&g, true)
 	r.Defs.Push("g", g)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("g")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("bare read errored: %v", err)
 	}
 	if len(es.noted) != 1 || es.noted[0] != "g" {
@@ -87,12 +87,12 @@ func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	}
 	// Negative: a quoted Integer carrier is data — not noted.
 	n := NewCarrier(TInteger)
-	n.ID = "T_bound_int"
-	n.Quoted = true
+	SetID(&n, "T_bound_int")
+	SetQuoted(&n, true)
 	r.Defs.Push("n", n)
 	e.Tape = NewTape([]Value{NewWord("n")}, StackHeadroom)
 	e.Pointer = 0
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("bare read errored: %v", err)
 	}
 	if len(es.noted) != 1 {

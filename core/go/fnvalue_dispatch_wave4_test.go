@@ -109,7 +109,7 @@ func TestAnonFnValueZeroArgIsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("0-arg anon: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Errorf("0-arg lambda did not stay data: %s", renderAll(out))
 	}
 }
@@ -118,9 +118,7 @@ func TestAnonFnValueZeroArgIsData(t *testing.T) {
 // application mark — what lang's applyHandler stamps to say a call was
 // asked for at this site.
 func applied(v Value) Value {
-	fd := v.Data.(FnDefInfo)
-	fd.Applied = true
-	v.Data = fd
+	SetApplied(&v, true)
 	return v
 }
 
@@ -155,19 +153,19 @@ func TestAnonFnValueZeroArgAppliedDispatches(t *testing.T) {
 func TestAppliedMarkIsOneShot(t *testing.T) {
 	r := covRegistry(t, nil)
 	fnv := anonFnVal(nil, nil, parenBody(NewInteger(99)))
-	fd := fnv.Data.(FnDefInfo)
+	fd := *fnv.Data().(*FnDefInfo)
 	fd.Macro = true
-	fd.Applied = true
-	fnv.Data = fd
+	fnv.SetData(&fd)
+	SetApplied(&fnv, true)
 
 	out, err := NewTop(r).Run([]Value{fnv})
 	if err != nil {
 		t.Fatalf("applied macro value: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Fatalf("a macro value must park as data, got %s", renderAll(out))
 	}
-	if got, ok := out[0].Data.(FnDefInfo); !ok || got.Applied {
+	if _, ok := out[0].Data().(*FnDefInfo); !ok || IsApplied(&out[0]) {
 		t.Errorf("the Applied mark must not survive the re-step, got %+v", out[0])
 	}
 }
@@ -179,13 +177,13 @@ func TestQuotedFnValueIsData(t *testing.T) {
 		nil,
 		parenBody(NewWord("a")),
 	)
-	fnv.Quoted = true
+	SetQuoted(&fnv, true)
 	out, err := NewTop(r).Run([]Value{fnv, NewInteger(5)})
 	if err != nil {
 		t.Fatalf("quoted fn: %v", err)
 	}
 	// The quoted value never dispatched; both it and 5 remain.
-	if len(out) != 2 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 2 || !out[0].Parent().Equal(TFunction) {
 		t.Errorf("quoted fn dispatched: %s", renderAll(out))
 	}
 }
@@ -206,8 +204,8 @@ func TestFnValueDispatchModLeavesInert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch mod: %v", err)
 	}
-	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || out[0].Quoted {
-		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && out[0].Quoted)
+	if len(out) != 2 || !out[0].Parent().Equal(TFunction) || IsQuoted(&out[0]) {
+		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && IsQuoted(&out[0]))
 	}
 }
 
@@ -350,7 +348,7 @@ func TestMacroFnValueIsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("macro value: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Errorf("macro value dispatched: %s", renderAll(out))
 	}
 }
@@ -377,7 +375,7 @@ func TestUnresolvableFnValueIsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unresolvable fn value: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Errorf("unresolvable fn value not left as data: %s", renderAll(out))
 	}
 }

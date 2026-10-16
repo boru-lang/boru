@@ -21,11 +21,21 @@ package core
 // NewCarrierTypedList / NewCarrierTypedListValue.
 func NewCarrier(t *Type) Value {
 	v := NewValueRaw(t, nil)
-	v.Carrier = true
+	v.SetCarrier(true)
 	if t.Equal(TList) || t.Equal(TMap) {
-		v.Data = ChildTypeInfo{Child: Value{Parent: TAny, Carrier: true}}
+		v.SetData(ChildTypeInfo{Child: Value{d: &Datum{Parent: TAny, Carrier: true}}})
 	}
 	return v
+}
+
+// NewDynamicRecordCarrier is dynamic(Map) carrying the record schema
+// fields: the carrier a record-typed fn param or return is analysed under
+// (check's recordSchemaCarrier and recordReturnCarrier), with a fresh ID
+// per carrier because the bytecode compiler keys a frame local and a
+// recorded result by it. Built in one literal, the dynamic mark included.
+func NewDynamicRecordCarrier(fields *OrderedMap) Value {
+	return Value{d: &Datum{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}},
+		occ: idOcc(GenerateID(IDPrefixForType(TMap))), flags: occDynamic}
 }
 
 // NewDynamicCarrier constructs a bounded gradual carrier dynamic(t):
@@ -36,17 +46,16 @@ func NewCarrier(t *Type) Value {
 // bound but cannot prove the exact type.
 func NewDynamicCarrier(t *Type) Value {
 	v := NewCarrier(t)
-	v.Dynamic = true
+	SetDynamic(&v, true)
 	return v
 }
 
-// carrierOfLiteral converts a bare type-literal value (the node
-// itself, as stored in DisjunctInfo.Alternatives) into a carrier OF
-// that node — i.e. Parent points at the literal's type, not at the
-// literal's lattice parent.
+// CarrierOfLiteral converts a bare type-literal value (a copy of the
+// node, as stored in DisjunctInfo.Alternatives) into a carrier OF that
+// node — i.e. Parent points at the literal's node, not at the literal's
+// lattice parent, and not at a copy of it.
 func CarrierOfLiteral(lit Value) Value {
-	lt := lit
-	return NewCarrier(&lt)
+	return NewCarrier(literalNode(&lit))
 }
 
 // ValueCarrier is the carrier a check-mode model widens the value v to: a
@@ -64,13 +73,13 @@ func CarrierOfLiteral(lit Value) Value {
 // None literal is a value at dispatch and widens to the None carrier.
 func ValueCarrier(v Value) Value {
 	switch {
-	case IsTypeLiteral(v):
+	case IsTypeLiteral(&v):
 		return NewCarrier(TType)
-	case IsBareTypeNode(v):
+	case IsBareTypeNode(&v):
 		return NewCarrier(TNone)
 	}
-	c := NewCarrier(v.Parent)
-	c.Dynamic = v.Dynamic
+	c := NewCarrier(v.Parent())
+	SetDynamic(&c, IsDynamic(&v))
 	return c
 }
 
@@ -78,9 +87,9 @@ func ValueCarrier(v Value) Value {
 // disjunct carrier for dynamic(A tor B), or a narrowed bound) to the
 // dynamic modality, preserving its Parent/Data bound.
 func NewDynamicCarrierValue(bound Value) Value {
-	bound.Carrier = true
-	bound.Dynamic = true
-	return bound
+	v := MintCarrierKeeping(&bound, bound.Data())
+	SetDynamic(&v, true)
+	return v
 }
 
 // NewCarrierTypedList constructs a typed-list carrier — a list
@@ -91,7 +100,7 @@ func NewDynamicCarrierValue(bound Value) Value {
 // element carrier via dataListElemType.
 func NewCarrierTypedList(elem *Type) Value {
 	v := NewTypedList(NewCarrier(elem))
-	v.Carrier = true
+	v.SetCarrier(true)
 	return v
 }
 
@@ -101,7 +110,7 @@ func NewCarrierTypedList(elem *Type) Value {
 // needs more structure than a bare Parent.
 func NewCarrierTypedListValue(child Value) Value {
 	v := NewTypedList(child)
-	v.Carrier = true
+	v.SetCarrier(true)
 	return v
 }
 
@@ -115,18 +124,18 @@ func NewCarrierTypedListValue(child Value) Value {
 // another overload (NUR316: `ys each [add 1]` over a list `each` built from
 // such a read answered [[1]] for [['s1']]).
 func CarrierTypedListOf(v Value) Value {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return NewCarrierTypedListValue(v)
 	}
-	if IsTypeLiteral(v) {
+	if IsTypeLiteral(&v) {
 		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
 	}
-	if v.Dynamic {
-		c := NewCarrier(v.Parent)
-		c.Dynamic = true
+	if IsDynamic(&v) {
+		c := NewCarrier(v.Parent())
+		SetDynamic(&c, true)
 		return NewCarrierTypedListValue(c)
 	}
-	return NewCarrierTypedList(v.Parent)
+	return NewCarrierTypedList(v.Parent())
 }
 
 // UnionCarrierForType returns the DISTRIBUTING carrier for a user-defined
@@ -146,7 +155,7 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 		return Value{}, false
 	}
 	dv := NewDisjunct(SimplifyDisjunctAlts(du.Alternatives))
-	dv.Carrier = true
+	dv.SetCarrier(true)
 	return dv, true
 }
 
@@ -159,14 +168,13 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 // Example: swap is ReturnsIdentity(1, 0); over is ReturnsIdentity(0, 1, 0).
 //
 // A DUPLICATED source index (dup `(0, 0)`, over `(0, 1, 0)`) would otherwise
-// return the same Value — one Value.ID — for several stack outputs, which
-// the bytecode emitter's per-value provenance (emit.go producedBy) cannot
-// tell apart: a `dup`-bodied higher-order word (`each [dup add]`) records
-// both of add's operands onto the LAST output, so the operand layout declines
-// them as "not adjacent." Each output of a repeated source gets a fresh
-// identity (the carrier-identity DUP path) so the N copies stay distinct;
-// the source's own provenance is left untouched (no output keeps its ID).
-// Identity-only — runtime dispatch is unaffected (ReturnsFn is check-mode).
+// hand back one value — one identity — as several stack outputs. The
+// recorder tells event results apart by their (event, index) key now, but a
+// pass also tracks values by identity (reads, captures, folds), so each
+// output of a repeated source is MINTED with an identity of its own
+// (MintFresh — the carrier-identity DUP path): the N copies are N values,
+// and the source keeps its own identity and producer. Identity-only —
+// runtime dispatch is unaffected (ReturnsFn is check-mode).
 func ReturnsIdentity(mapping ...int) ReturnsFunc {
 	return func(args []Value, _ *Registry) []Value {
 		counts := make(map[int]int, len(mapping))
@@ -175,15 +183,14 @@ func ReturnsIdentity(mapping ...int) ReturnsFunc {
 		}
 		out := make([]Value, len(mapping))
 		for i, m := range mapping {
-			if m < 0 || m >= len(args) {
+			switch {
+			case m < 0 || m >= len(args):
 				out[i] = NewCarrier(TAny)
-				continue
+			case counts[m] > 1:
+				out[i] = MintFresh(&args[m])
+			default:
+				out[i] = args[m]
 			}
-			v := args[m] // struct copy: the ID write below is local to v.
-			if counts[m] > 1 {
-				v.ID = GenerateID(IDPrefixForType(v.Parent))
-			}
-			out[i] = v
 		}
 		return out
 	}

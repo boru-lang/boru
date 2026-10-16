@@ -36,8 +36,8 @@ func rpState(t *testing.T) *EmitState {
 func rpLoop(es *EmitState, lp emitLoop) (int, core.Value) {
 	seq := es.appendEvent(EmitEvent{kind: evLoop, loop: &lp})
 	out := core.NewCarrier(core.TList)
-	out.ID = core.GenerateID("zzrp")
-	es.setProduced(out, seq)
+	core.SetID(&out, core.GenerateID("zzrp"))
+	es.setProduced(&out, seq)
 	f := es.eventInfo[seq]
 	f.variadicResult = true
 	es.eventInfo[seq] = f
@@ -71,8 +71,8 @@ func TestRegionPrefixShapeAdmitsTheInertPrefix(t *testing.T) {
 	// where its event left it — beneath the region already, so the ordinary
 	// seating seats both in order and this plan must stand aside.
 	prior := core.NewInteger(7)
-	prior.ID = core.GenerateID("zzrp")
-	es.setProduced(prior, es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzprior", nout: 1}}))
+	core.SetID(&prior, core.GenerateID("zzrp"))
+	es.setProduced(&prior, es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzprior", nout: 1}}))
 	if _, ok := es.regionPrefixShape([]core.Value{prior, out}, es.frames[0]); ok {
 		t.Error("an event-produced prefix entry is not inert")
 	}

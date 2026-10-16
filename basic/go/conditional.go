@@ -4,7 +4,7 @@ package basic
 // its elements are returned wrapped in parens so the main engine evaluates
 // them as a sub-expression. Scalars are returned as-is.
 func spliceArg(v Value) []Value {
-	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(v) && !IsTableType(v) {
+	if v.Parent().Equal(TList) && v.Data() != nil && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		// Append element-wise: Slice() would copy the backing once into a
 		// throwaway slice and append would copy it AGAIN into result —
@@ -25,7 +25,7 @@ func spliceArg(v Value) []Value {
 // list — i.e. something to be evaluated as a code body rather than used
 // as a literal value.
 func isCodeBody(v Value) bool {
-	return v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(v) && !IsTableType(v)
+	return v.Parent().Equal(TList) && v.Data() != nil && !IsTypedList(&v) && !IsTableType(v)
 }
 
 // ifClause turns the element slice of a clause-list `[c1 b1 c2 b2 … else]`
@@ -56,10 +56,10 @@ func ifClause(elems []Value, pos SrcPos) []Value {
 
 	if isCodeBody(cond) {
 		_lst, _ := AsList(cond)
-		condSlice := _lst.Slice()
+		condSlice := _lst.Elems()
 		id := NextMarkID()
 		tokens := make([]Value, 0, len(condSlice)+2)
-		tokens = append(tokens, NewMark(id, condSlice...))
+		tokens = append(tokens, NewMark(id))
 		tokens = append(tokens, condSlice...)
 		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}), pos))
 		return tokens
@@ -81,15 +81,15 @@ func ifClause(elems []Value, pos SrcPos) []Value {
 // NOT bound to a function keep their atom-match reading (`case c/q [ red
 // "R" … ]`), so only provably-uncallable-as-match heads change meaning.
 func IsCaseOpenCallHead(r *Registry, m Value) bool {
-	if !IsWord(m) {
+	if !IsWord(&m) {
 		return false
 	}
-	w, _ := AsWord(m)
+	w, _ := AsWord(&m)
 	bound, ok := r.ResolveTypedName(w.Name)
 	if !ok {
 		return false
 	}
-	return bound.Parent.Equal(TFunction)
+	return bound.Parent().Equal(TFunction)
 }
 
 // caseDefaultStart returns the index where the clause list's trailing
@@ -163,8 +163,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 			// structurally. A bare word resolves through the def table
 			// first so user types and def'd values work as matches.
 			m := match
-			if IsWord(m) {
-				w, _ := AsWord(m)
+			if IsWord(&m) {
+				w, _ := AsWord(&m)
 				if bound, ok := r.ResolveTypedName(w.Name); ok {
 					m = bound
 				} else {
@@ -185,8 +185,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 			// client; any expression producing one value works. An
 			// evaluation error or multi-value result keeps the raw
 			// ParenExpr (which then simply fails to unify).
-			if IsParenExpr(m) {
-				if toks, perr := AsParenExpr(m); perr == nil {
+			if IsParenExpr(&m) {
+				if toks, perr := AsParenExpr(&m); perr == nil {
 					input := make([]Value, 0, len(toks)+2)
 					input = append(input, NewOpenParen())
 					input = append(input, toks...)
@@ -313,7 +313,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// (a NoEvalArgs body that is not inert data), so the program falls
 		// back and answers as the interpreter does. A KNOWN non-list — a
 		// scalar, a bare type node (`case 1 Integer`) — is the trap.
-		if !clauses.Dynamic && !clauses.Carrier {
+		if !IsDynamic(&clauses) && !clauses.Carrier() {
 			r.Check.Recorder().RecordTrap("case_error",
 				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
 				"case", "", casePos)
@@ -328,7 +328,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// block up front (NUR048/G9), so the coverage pass, the compile
 	// desugar, and the branch join all see the standard shape and lower
 	// the arm exactly like a matched block.
-	elems := caseNormalizeClauses(r, lst.Slice())
+	elems := caseNormalizeClauses(r, lst.Elems())
 	// Static coverage pass (case_exhaustive.go) — BEFORE the compile-desugar /
 	// plain-check paths diverge, so both report identical findings: a
 	// default-less case whose clauses don't cover the scrutinee's static type
@@ -447,7 +447,7 @@ func caseStaticBlock(r *Registry, v Value, elems []Value) (block Value, taken, d
 // caseScalarPayload reports whether v's payload is a plain scalar's — the
 // value itself, immutable, with no registry behind it.
 func caseScalarPayload(v Value) bool {
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload, BigIntPayload, DecimalPayload:
 		return true
 	}
@@ -459,13 +459,13 @@ func caseScalarPayload(v Value) bool {
 // riding as a concrete-payload carrier (the operand shape a
 // CompileScalarFold dispatch folds over).
 func caseKnownScalar(v Value) bool {
-	return !v.Dynamic && caseScalarPayload(v)
+	return !IsDynamic(&v) && caseScalarPayload(v)
 }
 
 // caseScalarConst reports whether a clause token is a scalar literal: a
 // concrete scalar payload, as the source wrote it.
 func caseScalarConst(v Value) bool {
-	return !v.Carrier && !v.Dynamic && caseScalarPayload(v)
+	return !v.Carrier() && !IsDynamic(&v) && caseScalarPayload(v)
 }
 
 // caseStaticGuard decides one clause guard over the known scalar v, as
@@ -477,7 +477,7 @@ func caseScalarConst(v Value) bool {
 // predicate may have an effect the run observes at the case, which running
 // it here would perform at check time instead.
 func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
-	v.Carrier = false // a known scalar's payload IS its value
+	v.SetCarrier(false) // a known scalar's payload IS its value
 	if !isCodeBody(m) {
 		if !caseScalarConst(m) {
 			return false, false
@@ -486,7 +486,7 @@ func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
 		return matched, true
 	}
 	ml, _ := AsList(m)
-	toks := ml.Slice()
+	toks := ml.Elems()
 	if !caseFoldablePredicate(r, toks) {
 		return false, false
 	}
@@ -514,13 +514,13 @@ func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
 // at the case.
 func caseFoldablePredicate(r *Registry, toks []Value) bool {
 	for _, t := range toks {
-		if !IsWord(t) {
+		if !IsWord(&t) {
 			if !caseScalarConst(t) {
 				return false
 			}
 			continue
 		}
-		w, _ := AsWord(t)
+		w, _ := AsWord(&t)
 		if w.ForceVal {
 			return false
 		}
@@ -528,7 +528,7 @@ func caseFoldablePredicate(r *Registry, toks []Value) bool {
 			if caseScalarConst(top) {
 				continue // a name bound to a known scalar steps to it
 			}
-			if _, isFn := top.Data.(FnDefInfo); !isFn {
+			if _, isFn := top.Data().(*FnDefInfo); !isFn {
 				return false
 			}
 		}
@@ -596,21 +596,21 @@ func caseReStepsBlock(r *Registry, elems []Value) bool {
 // operands runs alike wherever it is stepped, as the chain's arm runs it;
 // a `/v` reference parks the value.
 func caseBlockReSteps(r *Registry, b Value) bool {
-	if !IsWord(b) {
+	if !IsWord(&b) {
 		return false
 	}
-	w, _ := AsWord(b)
+	w, _ := AsWord(&b)
 	if w.ForceVal {
 		return false
 	}
 	if top, ok := r.Defs.Top(w.Name); ok {
-		if fd, isFn := top.Data.(FnDefInfo); isFn {
-			return callReachesContext(&fd)
+		if fd, isFn := top.Data().(*FnDefInfo); isFn {
+			return callReachesContext(fd)
 		}
 		// A splice marker (`def g word [add]`) spills its tokens where the
 		// block is re-stepped, and those tokens reach the values around the
 		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
-		return top.Carrier || top.Dynamic || IsSplice(top)
+		return top.Carrier() || IsDynamic(&top) || IsSplice(&top)
 	}
 	fn := r.Lookup(w.Name)
 	return fn != nil && callReachesContext(fn)
@@ -667,10 +667,10 @@ func dropSynthesizedDeadArmWarnings(r *Registry, mark int) {
 // splices a list arm (NUR292), where a compiled chain or branch over the
 // value would hold the list itself.
 func mayRunAsCode(v Value) bool {
-	if !v.Carrier && !v.Dynamic {
+	if !v.Carrier() && !IsDynamic(&v) {
 		return false
 	}
-	p := v.Parent
+	p := v.Parent()
 	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
 }
 
@@ -690,7 +690,7 @@ func codeGuards(r *Registry, cond Value, thenValue, elseValue *Value) (condGuard
 		return false, false, false
 	}
 	armGuard := func(v *Value) bool {
-		return v != nil && mayRunAsCode(*v) && !v.Parent.ConformsTo(TList)
+		return v != nil && mayRunAsCode(*v) && !v.Parent().ConformsTo(TList)
 	}
 	return mayRunAsCode(cond), armGuard(thenValue), armGuard(elseValue)
 }
@@ -740,9 +740,9 @@ func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, b
 	if swapped {
 		word = "__casestack"
 	}
-	subject := NewDynamicCarrier(TAny)
-	es.RecordPolyCall(word, []Value{v}, []Value{subject}, pos, r, nil)
-	return subject, es.CanSeatAcrossFragment(subject)
+	outs := []Value{NewDynamicCarrier(TAny)}
+	es.RecordPolyCall(word, []Value{v}, outs, pos, r, nil)
+	return outs[0], es.CanSeatAcrossFragment(outs[0])
 }
 
 // caseCodeBodyRecord is CaseReturnsFn's RECORDING path for a code-body
@@ -778,7 +778,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 	}
 	if isCodeBody(clauses) {
 		if lst, _ := AsList(clauses); !lst.IsNil() {
-			elems := caseNormalizeClauses(r, lst.Slice())
+			elems := caseNormalizeClauses(r, lst.Elems())
 			if len(elems) == 3 && !isCodeBody(elems[1]) && !isCodeBody(elems[2]) {
 				if caseReStepDeclined(r, es, elems) {
 					return dynAny
@@ -821,7 +821,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 // model, and before it the pass reported nothing here. Plain check (no
 // recorder armed) is unchanged, as it is for `if` conditions.
 func keepScrutineeBindings(r *Registry, v Value) {
-	if !r.Check.Recorder().Armed() || !IsConcrete(v) {
+	if !r.Check.Recorder().Armed() || !IsConcrete(&v) {
 		return
 	}
 	nDiag := len(r.Check.Diagnostics)
@@ -869,7 +869,7 @@ func CaseBranchJoin(r *Registry, v Value, elems []Value) []Value {
 func caseGuardTokens(v Value, m Value) []Value {
 	if isCodeBody(m) {
 		ml, _ := AsList(m)
-		return append([]Value{v}, ml.Slice()...)
+		return append([]Value{v}, ml.Elems()...)
 	}
 	return []Value{v, m, NewWord("__casematch")}
 }
@@ -880,7 +880,7 @@ func caseGuardTokens(v Value, m Value) []Value {
 func caseBlockTokens(v Value, b Value) []Value {
 	if isCodeBody(b) {
 		bl, _ := AsList(b)
-		return append([]Value{v}, bl.Slice()...)
+		return append([]Value{v}, bl.Elems()...)
 	}
 	return []Value{b}
 }
@@ -916,17 +916,16 @@ func CaseMatchHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 }
 
 // runCaseBody executes a case body whose RESULT the handler reads — a
-// predicate match, whose last value decides the clause: a code-body list
-// runs in a sub-engine with the captured value pushed first — the same
-// convention as the `error [handler]` block — so the block can consume it;
-// any other value is the result as-is. The matched block and the default
-// are the handler's result and run on the tape instead (caseBlockRegion).
+// predicate match, whose last value decides the clause, or under the VM the
+// matched block: the code-body list runs in a sub-engine with the captured
+// value pushed first — the same convention as the `error [handler]` block —
+// so the block can consume it. Both callers have tested isCodeBody first (a
+// non-body match unifies, a non-body block is the result as-is). The matched
+// block and the default are the handler's result and run on the tape instead
+// (caseBlockRegion).
 func runCaseBody(r *Registry, v Value, body Value) ([]Value, error) {
-	if !isCodeBody(body) {
-		return []Value{body}, nil
-	}
 	lst, _ := AsList(body)
 	// The captured value is a resolved input: it enters as stack data the
 	// block consumes, never re-stepped (arguments are inert; RunResolved).
-	return RunResolved(r, []Value{v}, lst.Slice())
+	return RunResolved(r, []Value{v}, lst.Elems())
 }

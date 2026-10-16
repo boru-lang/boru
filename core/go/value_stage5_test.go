@@ -50,6 +50,29 @@ func TestS5VReadListAndSortedKeys(t *testing.T) {
 	}
 }
 
+// Elems is the list's own storage, not a copy, with its capacity clamped so
+// an append cannot write into a neighbour's spare capacity; like Slice it is
+// never nil.
+func TestReadListElemsIsTheListsOwnStorage(t *testing.T) {
+	backing := make([]Value, 2, 4)
+	backing[0], backing[1] = NewInteger(1), NewInteger(2)
+	rl := NewReadList(backing)
+	els := rl.Elems()
+	if len(els) != 2 || &els[0] != &backing[0] {
+		t.Fatal("Elems must be the list's own elements")
+	}
+	if cap(els) != 2 {
+		t.Fatalf("Elems capacity = %d, want it clamped to the length 2", cap(els))
+	}
+	grown := append(els, NewInteger(3))
+	if &grown[0] == &backing[0] {
+		t.Error("an append to Elems must reallocate, not write past the list's end")
+	}
+	if empty := (ReadList{}).Elems(); empty == nil || len(empty) != 0 {
+		t.Errorf("Elems of a nil list = %v, want a non-nil empty slice", empty)
+	}
+}
+
 // --- CompileEffect.Has ----------------------------------------------------
 
 func TestS5VCompileEffectHas(t *testing.T) {
@@ -81,7 +104,7 @@ func TestS5VOwnSigsFallbackFilter(t *testing.T) {
 func TestS5VReturnPatternInRange(t *testing.T) {
 	pat := NewTypeLiteral(TInteger)
 	rc := ReturnCheckInfo{ReturnPatterns: []*Value{&pat}}
-	if got := rc.ReturnPattern(0); got == nil || !IsBareTypeNode(*got) {
+	if got := rc.ReturnPattern(0); got == nil || !IsBareTypeNode(got) {
 		t.Errorf("ReturnPattern(0) = %v, want the stored pattern", got)
 	}
 	if rc.ReturnPattern(1) != nil {
@@ -209,13 +232,13 @@ func TestS5VFormatBigNonNil(t *testing.T) {
 
 func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 	l := NewEvalList([]Value{NewInteger(1)})
-	if !l.Eval || !l.Parent.Equal(TList) {
+	if !IsEval(&l) || !l.Parent().Equal(TList) {
 		t.Error("NewEvalList must mark Eval on a TList value")
 	}
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
 	m := NewEvalMap(om)
-	if !m.Eval || !m.Parent.Equal(TMap) {
+	if !IsEval(&m) || !m.Parent().Equal(TMap) {
 		t.Error("NewEvalMap must mark Eval on a TMap value")
 	}
 	im := NewImplicitMap(om)
@@ -223,7 +246,7 @@ func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 		t.Error("NewImplicitMap must produce an implicit map")
 	}
 	e := NewEnum([]Value{NewAtom("a"), NewAtom("b")})
-	if !e.Parent.Equal(TEnum) || !IsDisjunct(e) {
+	if !e.Parent().Equal(TEnum) || !IsDisjunct(&e) {
 		t.Error("NewEnum must build a TEnum-tagged disjunct")
 	}
 }
@@ -236,7 +259,8 @@ func TestS5VAtomReferent(t *testing.T) {
 	if _, ok := AtomReferent(a); ok {
 		t.Error("fresh atom has no referent")
 	}
-	a2 := SetAtomReferent(a, NewInteger(9))
+	a2, nine := a, NewInteger(9)
+	SetAtomReferent(&a2, &nine)
 	ref, ok := AtomReferent(a2)
 	if !ok {
 		t.Fatal("referent must be readable after SetAtomReferent")
@@ -265,16 +289,16 @@ func TestS5VTypeNameAndPathOf(t *testing.T) {
 
 func TestS5VIsNilBehaviorFallback(t *testing.T) {
 	bare := &Type{} // no tmeta => Behavior() is nil
-	if NewInteger(1).Is(bare) {
+	if addrOf(NewInteger(1)).Is(bare) {
 		t.Error("Integer must not conform to an unrelated bare node")
 	}
-	if NewInteger(1).Is(nil) {
+	if addrOf(NewInteger(1)).Is(nil) {
 		t.Error("Is(nil) must be false")
 	}
 }
 
 func TestS5VIsNoneShapeCarrierForm(t *testing.T) {
-	if !IsNoneShape(Value{Parent: TNone}) {
+	if !IsNoneShape(Value{d: &Datum{Parent: TNone}}) {
 		t.Error("hand-built Value{Parent: TNone} is a None shape")
 	}
 }
@@ -345,10 +369,10 @@ func TestS5VDisjunctAltLessCanonTiebreak(t *testing.T) {
 
 func TestS5VAccessorErrorArms(t *testing.T) {
 	notIt := NewInteger(1)
-	if _, err := AsSplice(notIt); err == nil {
+	if _, err := AsSplice(&notIt); err == nil {
 		t.Error("AsSplice(int) must error")
 	}
-	if _, err := AsMove(notIt); err == nil {
+	if _, err := AsMove(&notIt); err == nil {
 		t.Error("AsMove(int) must error")
 	}
 	if _, err := AsDisjunct(notIt); err == nil {
@@ -557,7 +581,7 @@ func TestS5VKernelFormatInstanceAndTypeArms(t *testing.T) {
 		t.Errorf("negation compound = %q", got)
 	}
 	// A compiled closure carrying its source rendering.
-	cl := NewValueRaw(TFunction, ClosurePayload{Render: "fn zed"})
+	cl := NewValueRaw(TFunction, &ClosurePayload{Render: "fn zed"})
 	if got := kernelFormatDefault(cl); got != "fn zed" {
 		t.Errorf("closure render = %q", got)
 	}
@@ -613,17 +637,17 @@ func TestS5VIsTypeValue(t *testing.T) {
 // the engine mints: a runtime value carries a Parent, a type node its
 // metadata, a carrier its flag, an identity-only or dynamic value its bit.
 func TestS5VIsUnboundSlot(t *testing.T) {
-	if !(Value{}).IsUnboundSlot() {
+	if !addrOf((Value{})).IsUnboundSlot() {
 		t.Error("the zero Value is the unbound slot")
 	}
 	for name, v := range map[string]Value{
 		"an integer":     NewInteger(1),
 		"a carrier":      NewCarrier(TInteger),
 		"a type node":    NewTypeLiteral(TInteger),
-		"an identity":    {ID: "slot-1"},
-		"a dynamic bit":  {Dynamic: true},
-		"a carrier bit":  {Carrier: true},
-		"a bare payload": {Data: IntPayload{N: 1}},
+		"an identity":    withID(Value{}, "slot-1"),
+		"a dynamic bit":  func() Value { var v Value; SetDynamic(&v, true); return v }(),
+		"a carrier bit":  {d: &Datum{Carrier: true}},
+		"a bare payload": {d: &Datum{Data: IntPayload{N: 1}}},
 	} {
 		if v.IsUnboundSlot() {
 			t.Errorf("%s is not the unbound slot", name)

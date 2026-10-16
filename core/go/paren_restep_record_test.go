@@ -18,13 +18,13 @@ import "testing"
 func TestRecordParenReStep(t *testing.T) {
 	carrier := func() Value {
 		v := NewCarrier(TFunction)
-		v.ID = "fnc-1"
+		SetID(&v, "fnc-1")
 		return v
 	}
 	dynAny := func() Value {
 		v := NewCarrier(TAny)
-		v.Dynamic = true
-		v.ID = "dyn-1"
+		SetDynamic(&v, true)
+		SetID(&v, "dyn-1")
 		return v
 	}
 
@@ -66,13 +66,13 @@ func TestRecordParenReStep(t *testing.T) {
 		},
 		{
 			name:     "a quoted lead records nothing",
-			tape:     []Value{func() Value { v := carrier(); v.Quoted = true; return v }(), NewInteger(2)},
+			tape:     []Value{func() Value { v := carrier(); SetQuoted(&v, true); return v }(), NewInteger(2)},
 			closeIdx: 3, want: false,
 			why: "a quoted value is inert on both lanes — the rewind pushes it, it does not call it",
 		},
 		{
 			name:     "an ID-less lead records nothing",
-			tape:     []Value{func() Value { v := carrier(); v.ID = ""; return v }(), NewInteger(2)},
+			tape:     []Value{func() Value { v := carrier(); SetID(&v, ""); return v }(), NewInteger(2)},
 			closeIdx: 3, want: false,
 			why: "the record is keyed by value ID; without one there is nothing the compiler could read back",
 		},
@@ -115,15 +115,15 @@ func TestRecordParenReStep(t *testing.T) {
 				for id := range e.Registry.Check.ParenReSteppedFnIDs {
 					found := false
 					for _, v := range tc.tape {
-						found = found || v.ID == id
+						found = found || IDOf(&v) == id
 					}
 					if !found {
 						t.Errorf("recorded an ID no survivor carries: %s", id)
 					}
 				}
 				for _, v := range tc.tape {
-					if (IsFnTypedCarrier(v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
-						t.Errorf("survivor %s is callable but unmarked: %v", v.ID, e.Registry.Check.ParenReSteppedFnIDs)
+					if (IsFnTypedCarrier(&v) || IsDynamic(&v)) && !IsQuoted(&v) && IDOf(&v) != "" && !e.Registry.Check.ParenReSteppedFnIDs[IDOf(&v)] {
+						t.Errorf("survivor %s is callable but unmarked: %v", IDOf(&v), e.Registry.Check.ParenReSteppedFnIDs)
 					}
 				}
 			}
@@ -155,14 +155,14 @@ func TestRecordParenReStep(t *testing.T) {
 func TestMarkReStepped(t *testing.T) {
 	carrier := func(id string) Value {
 		v := NewCarrier(TFunction)
-		v.ID = id
+		SetID(&v, id)
 		return v
 	}
 	dynAny := NewCarrier(TAny)
-	dynAny.Dynamic = true
-	dynAny.ID = "dyn-2"
+	SetDynamic(&dynAny, true)
+	SetID(&dynAny, "dyn-2")
 	quoted := carrier("fnc-q")
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
 	for _, v := range []Value{quoted, carrier(""), NewInteger(1), NewCarrier(TInteger)} {
 		e.markReStepped(v)

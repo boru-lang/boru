@@ -94,7 +94,7 @@ func TestB3BooleanNonConcrete(t *testing.T) {
 func TestB3OperandJoinArity(t *testing.T) {
 	// operandJoinReturns with != 2 args -> Any carrier fallback.
 	got := operandJoinReturns([]Value{NewInteger(1)}, nil)
-	if len(got) != 1 || !got[0].Parent.ConformsTo(TAny) {
+	if len(got) != 1 || !got[0].Parent().ConformsTo(TAny) {
 		t.Fatalf("operandJoin arity!=2 must yield an Any carrier, got %v", got)
 	}
 	// Positive pair: two operands join their carriers.

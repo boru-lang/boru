@@ -88,7 +88,7 @@ func wantErrContaining(t *testing.T, err error, sub string) {
 // directly with args — the runtime dispatch path minus the engine.
 func applyWrapper(t *testing.T, r *native.Registry, w native.Value, args ...native.Value) ([]native.Value, error) {
 	t.Helper()
-	fd, ok := w.Data.(native.FnDefInfo)
+	fd, ok := native.FnDefOf(w.Data())
 	if !ok {
 		t.Fatalf("wrapper is not a Function: %v", w)
 	}
@@ -136,8 +136,8 @@ func TestFnUtilShapeGuards(t *testing.T) {
 	// memoize over a multi-overload fn declines (the frontier rows pin
 	// curry's twin in-language).
 	two := native.FnDefInfo{Name: "two", Signatures: []core.Signature{
-		fnAdd1().Data.(native.FnDefInfo).Signatures[0],
-		fnTwoOut().Data.(native.FnDefInfo).Signatures[0],
+		fnAdd1().Data().(*native.FnDefInfo).Signatures[0],
+		fnTwoOut().Data().(*native.FnDefInfo).Signatures[0],
 	}}
 	_, err = fnUtilHandler(t, "memoize")([]native.Value{native.NewFunction(two)}, nil, nil, r)
 	wantErrContaining(t, err, "exactly one signature")
@@ -324,7 +324,7 @@ func TestFnUtilConstIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := out[0].Data.(native.FnDefInfo); !ok {
+	if _, ok := out[0].Data().(*native.FnDefInfo); !ok {
 		t.Fatalf("identity invoked its Function argument: %v", out[0])
 	}
 	out, err = fnUtilHandler(t, "_f_const")([]native.Value{native.NewString("k")}, nil, nil, r)
@@ -346,21 +346,21 @@ func TestFnShapeReturnsClaims(t *testing.T) {
 	r := fnUtilReg(t)
 	defer r.Check.Begin()()
 	outs := fnShapeReturns(fnShapeConst(2))(nil, r)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Fatalf("the result is one Function carrier, got %v", outs)
 	}
-	if n, ok := r.Check.FnShapeArity(outs[0].ID); !ok || n != 2 {
+	if n, ok := r.Check.FnShapeArity(core.IDOf(&outs[0])); !ok || n != 2 {
 		t.Errorf("a constant arity is claimed: %d/%v", n, ok)
 	}
 	outs = fnShapeReturns(fnShapeFromOperand(0))(nil, r)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Fatalf("an unknown arity still mints the carrier, got %v", outs)
 	}
-	if _, ok := r.Check.FnShapeArity(outs[0].ID); ok {
+	if _, ok := r.Check.FnShapeArity(core.IDOf(&outs[0])); ok {
 		t.Error("an unknown arity makes no claim")
 	}
 	outs = fnShapeReturns(fnShapeConst(1))(nil, nil)
-	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+	if len(outs) != 1 || !core.IsFnTypedCarrier(&outs[0]) {
 		t.Errorf("with no registry the carrier alone is minted, got %v", outs)
 	}
 }

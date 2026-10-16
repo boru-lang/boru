@@ -56,10 +56,10 @@ func TestMembershipGoBoruParity(t *testing.T) {
 
 	// And the verdicts are the expected ones (not merely "equal but both
 	// wrong"): only integers > 10 are members.
-	if !NewInteger(11).Is(posGo) || NewInteger(10).Is(posGo) || NewString("x").Is(posGo) {
+	if !addrOf(NewInteger(11)).Is(posGo) || addrOf(NewInteger(10)).Is(posGo) || addrOf(NewString("x")).Is(posGo) {
 		t.Error("Go member type gave an unexpected verdict")
 	}
-	if !NewInteger(11).Is(posBoru) || NewInteger(10).Is(posBoru) || NewString("x").Is(posBoru) {
+	if !addrOf(NewInteger(11)).Is(posBoru) || addrOf(NewInteger(10)).Is(posBoru) || addrOf(NewString("x")).Is(posBoru) {
 		t.Error("boru predicate type gave an unexpected verdict")
 	}
 }

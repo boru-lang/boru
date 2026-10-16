@@ -108,7 +108,7 @@ func TestW8ExtractFnDefInfoNilParent(t *testing.T) {
 
 func TestW8ExtractFnDefInfoBadPayload(t *testing.T) {
 	// A Function-typed value whose payload is a StrPayload, not FnDefInfo.
-	v := Value{Parent: TFunction, Data: NewString("not-a-fndefinfo").Data}
+	v := core.ValueOf(&core.Datum{Parent: TFunction, Data: NewString("not-a-fndefinfo").Data()})
 	if _, err := extractFnDefInfo(v); err == nil {
 		t.Fatal("extractFnDefInfo: Function value with wrong payload must error")
 	}
@@ -121,7 +121,7 @@ func TestW8BehaveHandlerFnNoSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fnVal := Value{Parent: TFunction, Data: core.FnDefInfo{}} // no signatures
+	fnVal := core.ValueOf(&core.Datum{Parent: TFunction, Data: &core.FnDefInfo{}}) // no signatures
 	_, herr := behaveHandler([]Value{NewAtom("compare"), fnVal}, nil, nil, r)
 	if herr == nil {
 		t.Fatal("behave: fn with no signatures must error")
@@ -141,12 +141,12 @@ func TestW8BehaveHandlerTargetNil(t *testing.T) {
 	}
 	t.Cleanup(func() { delete(behaviors, "w8fake") })
 
-	fnVal := Value{Parent: TFunction, Data: core.FnDefInfo{
+	fnVal := core.ValueOf(&core.Datum{Parent: TFunction, Data: &core.FnDefInfo{
 		Signatures: []Signature{{
 			Params:  []FnParam{{Type: TInteger}},
 			Returns: []*Type{TInteger},
 		}},
-	}}
+	}})
 	_, herr := behaveHandler([]Value{NewAtom("w8fake"), fnVal}, nil, nil, r)
 	if herr == nil {
 		t.Fatal("behave: nil target type must error")
@@ -242,7 +242,7 @@ func TestW8RunCompareBodyIntegerNilData(t *testing.T) {
 	}
 	// An Integer-typed value with nil Data: ConformsTo(Integer) is true
 	// but AsInteger fails, reaching the AsInteger-error guard.
-	u := &userBehavior{registry: r, typeName: "Foo", compareBody: []Value{{Parent: TInteger}}}
+	u := &userBehavior{registry: r, typeName: "Foo", compareBody: []Value{core.ValueOf(&core.Datum{Parent: TInteger})}}
 	if _, err := u.runCompareBody(NewInteger(1), NewInteger(2)); err == nil {
 		t.Fatal("runCompareBody with Integer-typed nil-Data result must error")
 	}
@@ -395,7 +395,7 @@ func TestW8RunCanonBodyStringNilData(t *testing.T) {
 	}
 	// A String-typed value with nil Data: ConformsTo(String) is true but
 	// AsString fails, reaching the AsString-error guard.
-	u := &userBehavior{registry: r, typeName: "Foo", canonBody: []Value{{Parent: TString}}}
+	u := &userBehavior{registry: r, typeName: "Foo", canonBody: []Value{core.ValueOf(&core.Datum{Parent: TString})}}
 	if _, err := u.runCanonBody(NewInteger(1)); err == nil {
 		t.Fatal("runCanonBody with String-typed nil-Data result must error")
 	}

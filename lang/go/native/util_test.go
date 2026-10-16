@@ -13,20 +13,20 @@ import (
 // --- IsTypeLiteral / IsConcrete ---
 
 func TestIsTypeLiteral_BareTypeLiteral(t *testing.T) {
-	if !IsTypeLiteral(NewTypeLiteral(TInteger)) {
+	if !IsTypeLiteral(addrOf(NewTypeLiteral(TInteger))) {
 		t.Errorf("Integer type literal: IsTypeLiteral=false, want true")
 	}
 }
 
 func TestIsTypeLiteral_ConcreteValue(t *testing.T) {
-	if IsTypeLiteral(NewInteger(42)) {
+	if IsTypeLiteral(addrOf(NewInteger(42))) {
 		t.Errorf("concrete Integer: IsTypeLiteral=true, want false")
 	}
 }
 
 func TestIsTypeLiteral_Carrier(t *testing.T) {
 	c := NewCarrier(TInteger)
-	if IsTypeLiteral(c) {
+	if IsTypeLiteral(&c) {
 		t.Errorf("carrier: IsTypeLiteral=true, want false (carriers are not literals)")
 	}
 }
@@ -35,32 +35,32 @@ func TestIsTypeLiteral_None(t *testing.T) {
 	// None is the unit type AND its only inhabitant; treat it as a
 	// value, not a type literal, so consumers don't try to "use" it
 	// as a constraint.
-	if IsTypeLiteral(NewTypeLiteral(TNone)) {
+	if IsTypeLiteral(addrOf(NewTypeLiteral(TNone))) {
 		t.Errorf("None: IsTypeLiteral=true, want false (None is a value, not a type)")
 	}
 }
 
 func TestIsConcrete_ConcreteValue(t *testing.T) {
-	if !IsConcrete(NewInteger(42)) {
+	if !IsConcrete(addrOf(NewInteger(42))) {
 		t.Errorf("concrete Integer: IsConcrete=false, want true")
 	}
 }
 
 func TestIsConcrete_TypeLiteral(t *testing.T) {
-	if IsConcrete(NewTypeLiteral(TInteger)) {
+	if IsConcrete(addrOf(NewTypeLiteral(TInteger))) {
 		t.Errorf("type literal: IsConcrete=true, want false")
 	}
 }
 
 func TestIsConcrete_Carrier(t *testing.T) {
-	if IsConcrete(NewCarrier(TInteger)) {
+	if IsConcrete(addrOf(NewCarrier(TInteger))) {
 		t.Errorf("carrier: IsConcrete=true, want false")
 	}
 }
 
 func TestIsConcrete_NoneIsConcrete(t *testing.T) {
 	// Mirror image of IsTypeLiteral: None counts as concrete.
-	if IsConcrete(NewTypeLiteral(TNone)) {
+	if IsConcrete(addrOf(NewTypeLiteral(TNone))) {
 		// IsConcrete needs Data != nil, and None's Data IS nil.
 		// So IsConcrete(None) should be FALSE — None is neither
 		// a type literal (per IsTypeLiteral) nor concrete in the
@@ -461,7 +461,7 @@ func TestResolveTypedName_NilRegistry(t *testing.T) {
 // --- AsConcreteX accessors ---
 
 func TestAsConcreteString_Concrete(t *testing.T) {
-	s, err := NewString("hi").AsConcreteString()
+	s, err := addrOf(NewString("hi")).AsConcreteString()
 	if err != nil || s != "hi" {
 		t.Errorf("got (%q, %v), want (\"hi\", nil)", s, err)
 	}
@@ -476,7 +476,7 @@ func TestAsConcreteString_DepScalarRejected(t *testing.T) {
 }
 
 func TestAsConcreteInteger_Concrete(t *testing.T) {
-	n, err := NewInteger(42).AsConcreteInteger()
+	n, err := addrOf(NewInteger(42)).AsConcreteInteger()
 	if err != nil || n != 42 {
 		t.Errorf("got (%d, %v), want (42, nil)", n, err)
 	}
@@ -491,7 +491,7 @@ func TestAsConcreteInteger_DepScalarRejected(t *testing.T) {
 }
 
 func TestAsConcreteFloat_Concrete(t *testing.T) {
-	f, err := NewFloat(1.5).AsConcreteFloat()
+	f, err := addrOf(NewFloat(1.5)).AsConcreteFloat()
 	if err != nil || f != 1.5 {
 		t.Errorf("got (%v, %v), want (1.5, nil)", f, err)
 	}
@@ -506,7 +506,7 @@ func TestAsConcreteFloat_DepScalarRejected(t *testing.T) {
 }
 
 func TestAsConcreteBoolean_Concrete(t *testing.T) {
-	b, err := NewBoolean(true).AsConcreteBoolean()
+	b, err := addrOf(NewBoolean(true)).AsConcreteBoolean()
 	if err != nil || !b {
 		t.Errorf("got (%v, %v), want (true, nil)", b, err)
 	}
@@ -521,7 +521,7 @@ func TestAsConcreteBoolean_DepScalarRejected(t *testing.T) {
 }
 
 func TestAsConcreteAtom_Concrete(t *testing.T) {
-	a, err := NewAtom("foo").AsConcreteAtom()
+	a, err := addrOf(NewAtom("foo")).AsConcreteAtom()
 	if err != nil || a != "foo" {
 		t.Errorf("got (%q, %v), want (\"foo\", nil)", a, err)
 	}
@@ -578,7 +578,7 @@ func TestResolveTypedNameValue_WordUnresolved(t *testing.T) {
 	}
 	// out should be the original Word (unchanged) so callers can
 	// continue with it.
-	if !IsWord(out) {
+	if !IsWord(&out) {
 		t.Errorf("unresolved word: out.IsWord=false")
 	}
 }
@@ -600,7 +600,7 @@ func TestRunPredicate_BadPayload(t *testing.T) {
 	// closest we can express to "not a FnDefInfo" — the value
 	// satisfies Payload but is the wrong variant. RunPredicate must
 	// detect the mismatch at runtime.
-	v := Value{Parent: TFunction, Data: StrPayload{S: "not a FnDefInfo"}}
+	v := ValueOf(&Datum{Parent: TFunction, Data: StrPayload{S: "not a FnDefInfo"}})
 	_, _, err := r.RunPredicate(v, NewInteger(42))
 	if err == nil {
 		t.Fatalf("expected error for invalid FnDef payload")
@@ -612,7 +612,7 @@ func TestRunPredicate_BadPayload(t *testing.T) {
 // raises (NUR100).
 func TestRunPredicate_ZeroArgPredicate(t *testing.T) {
 	r, _ := NewRegistry()
-	v := Value{Parent: TFunction, Data: FnDefInfo{}}
+	v := ValueOf(&Datum{Parent: TFunction, Data: &FnDefInfo{}})
 	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
 		t.Fatalf("a sig-less predicate admits nothing: %v %v", matched, err)
 	}
@@ -620,9 +620,9 @@ func TestRunPredicate_ZeroArgPredicate(t *testing.T) {
 
 func TestRunPredicate_MultiArgPredicate(t *testing.T) {
 	r, _ := NewRegistry()
-	v := Value{Parent: TFunction, Data: FnDefInfo{
+	v := ValueOf(&Datum{Parent: TFunction, Data: &FnDefInfo{
 		Signatures: []FnSig{{Params: []FnParam{{Type: TAny}, {Type: TAny}}, BarrierPos: -1}},
-	}}
+	}})
 	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
 		t.Fatalf("a two-param predicate admits nothing: %v %v", matched, err)
 	}
@@ -681,7 +681,7 @@ func TestFlattenDisjunctAlts_DisjunctWithBadPayload(t *testing.T) {
 	// payload that AsDisjunct can't unwrap. The helper should
 	// fall back gracefully to a single-element slice rather than
 	// returning nil or panicking.
-	v := Value{Parent: TDisjunct, Data: StrPayload{S: "not a DisjunctInfo"}}
+	v := ValueOf(&Datum{Parent: TDisjunct, Data: StrPayload{S: "not a DisjunctInfo"}})
 	alts := FlattenDisjunctAlts(v)
 	if len(alts) != 1 {
 		t.Fatalf("got %d alts, want 1 (graceful fallback)", len(alts))

@@ -20,7 +20,7 @@ func TestCaptureRegionSlotsWrittenOrder(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("captured %d slots, want 3 (stops at `end`)", len(got))
 	}
-	if !core.IsWord(got[0].Token) {
+	if !core.IsWord(&got[0].Token) {
 		t.Errorf("slot 0 should be the word token, got %v", got[0].Token)
 	}
 	if v, _ := core.AsInteger(got[2].Token); v != 2 {

@@ -12,7 +12,7 @@ gated commits cut allocations 50–80% per shape, dropped GC from ~35% to
 ~11% of CPU, and made recursion 4.6× faster than the original baseline —
 and the profile is now DIFFUSE (no cost above ~6% flat). The remaining
 gap (fib ~215×, loops ~60× Python) is the execution model itself:
-per-token dispatch over 72-byte values with per-call overload matching.
+per-token dispatch over 64-byte values with per-call overload matching.
 
 CPython is not a tree-walker. Its "interpreter" parses to bytecode and
 runs a tight dispatch loop — exactly boru's compiled mode, which already

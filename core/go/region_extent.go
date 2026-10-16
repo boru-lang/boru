@@ -61,9 +61,9 @@ func RegionEnd(w CollectWindow, from int) int {
 	for i := from; i < n; i++ {
 		v := w.At(i)
 		switch {
-		case IsOpenParen(v):
+		case IsOpenParen(&v):
 			depth++
-		case IsCloseParen(v):
+		case IsCloseParen(&v):
 			// A close paren at depth 0 ends the region: it belongs to a
 			// group that OPENED before `from`, so the region sits inside
 			// that group and cannot outlive it.
@@ -71,7 +71,7 @@ func RegionEnd(w CollectWindow, from int) int {
 				return i
 			}
 			depth--
-		case IsEnd(v):
+		case IsEnd(&v):
 			// `end` inside a nested group ends that group's statement, not
 			// this region.
 			if depth == 0 {

@@ -94,10 +94,10 @@ func TestW8SpliceFnCheckTailCompaction(t *testing.T) {
 	if got := e.Tape.Len(); got != 2 {
 		t.Fatalf("tape len = %d, want 2 (marker + carrier)", got)
 	}
-	if !core.IsForward(e.Tape.At(0)) {
+	if !core.IsForward(e.Tape.Ref(0)) {
 		t.Errorf("tape[0] = %+v, want the Forward marker compacted down", e.Tape.At(0))
 	}
-	if got := e.Tape.At(1); !got.Carrier || !got.Parent.Equal(core.TAny) {
+	if got := e.Tape.At(1); !got.Carrier() || !got.Parent().Equal(core.TAny) {
 		t.Errorf("tape[1] = %+v, want the spliced Any carrier", got)
 	}
 }
@@ -120,7 +120,7 @@ func TestW8AnonFnCheckModeZeroArgActiveSlot(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -141,7 +141,7 @@ func TestW8AnonFnCheckModeEmptyBodyActiveSlot(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewFunction(fnDef)}, core.StackHeadroom)
 	e.Pointer = 0
-	if err := e.ExecFnDefSigStackMatch(0, fnDef, nil); err != nil {
+	if err := e.ExecFnDefSigStackMatch(0, &fnDef, nil); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -173,7 +173,7 @@ func TestW8AnonFnCheckModeNamedParamsStackActiveSlot(t *testing.T) {
 		core.StackHeadroom,
 	)
 	e.Pointer = 2
-	if err := e.ExecFnDefSigStackMatch(2, fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
+	if err := e.ExecFnDefSigStackMatch(2, &fnDef, []core.Value{core.NewInteger(2), core.NewInteger(3)}); err != nil {
 		t.Fatalf("ExecFnDefSigStackMatch: %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func TestOrderingReturnsFn(t *testing.T) {
 	// Cross-family determinate operands: diagnostic recorded.
 	before := len(r.Check.Diagnostics)
 	out := fn([]core.Value{core.NewString("a"), core.NewInteger(1)}, r)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(core.TBoolean) {
+	if len(out) != 1 || !out[0].Carrier() || !out[0].Parent().Equal(core.TBoolean) {
 		t.Fatalf("OrderingReturnsFn result = %v, want Boolean carrier", out)
 	}
 	if len(r.Check.Diagnostics) != before+1 {
@@ -199,7 +199,7 @@ func TestOrderingReturnsFn(t *testing.T) {
 	// A dynamic operand is not determinate — no diagnostic.
 	before = len(r.Check.Diagnostics)
 	dyn := core.NewCarrier(core.TAny)
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	fn([]core.Value{dyn, core.NewInteger(1)}, r)
 	if len(r.Check.Diagnostics) != before {
 		t.Error("dynamic operand produced a static incomparable diagnostic")
@@ -225,7 +225,7 @@ func TestRunCarrierBodyAndStacksEqual(t *testing.T) {
 	stk := core.RunCarrierBody(r, core.NewList([]core.Value{
 		core.NewWord("cadd"), core.NewInteger(1), core.NewInteger(2),
 	}))
-	if len(stk) != 1 || !stk[0].Parent.ConformsTo(core.TInteger) {
+	if len(stk) != 1 || !stk[0].Parent().ConformsTo(core.TInteger) {
 		t.Errorf("core.RunCarrierBody residual = %v", stk)
 	}
 	// A non-concrete body yields nil.

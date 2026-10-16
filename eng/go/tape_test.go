@@ -347,7 +347,7 @@ func TestTapeReload(t *testing.T) {
 	if tp.Len() != 1 {
 		t.Fatalf("after Reload Len = %d, want 1", tp.Len())
 	}
-	if n, _ := tp.At(0).AsConcreteInteger(); n != 9 {
+	if n, _ := addrOf(tp.At(0)).AsConcreteInteger(); n != 9 {
 		t.Errorf("Reload content = %d, want 9", n)
 	}
 

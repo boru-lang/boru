@@ -245,19 +245,19 @@ func TestContextTypeTracking(t *testing.T) {
 	defer done()
 	r.Check.RecordContextSet("k", NewCarrier(TInteger))
 	v, ok := r.Check.LookupContextType("k")
-	if !ok || !v.Parent.Equal(TInteger) {
+	if !ok || !v.Parent().Equal(TInteger) {
 		t.Errorf("recorded carrier = %v, %v", v, ok)
 	}
 	// A second write joins the carriers.
 	r.Check.RecordContextSet("k", NewCarrier(TString))
 	v, _ = r.Check.LookupContextType("k")
-	if v.Parent.Equal(TInteger) {
+	if v.Parent().Equal(TInteger) {
 		t.Errorf("joined carrier still plain Integer: %v", v)
 	}
 	// Empty keys are ignored; misses degrade to Any.
 	r.Check.RecordContextSet("", NewCarrier(TInteger))
 	v, ok = r.Check.LookupContextType("absent")
-	if ok || !v.Parent.Equal(TAny) {
+	if ok || !v.Parent().Equal(TAny) {
 		t.Errorf("miss = %v, %v", v, ok)
 	}
 	var nilC *CheckState
@@ -394,7 +394,7 @@ func TestCanonValueShapes(t *testing.T) {
 	}
 	// Quoted lists wrap in (quote …) so the flag round-trips.
 	q := NewList([]Value{NewInteger(1)})
-	q.Quoted = true
+	SetQuoted(&q, true)
 	if got := CanonValue(q); got != "(quote [1])" {
 		t.Errorf("quoted list canon = %q", got)
 	}
@@ -458,7 +458,7 @@ func TestCanonReachForms(t *testing.T) {
 		t.Errorf("multi-receiver = %q", got)
 	}
 	quoted := plain
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	if got := CanonValue(quoted); got != "(codequote m.a.b)" {
 		t.Errorf("quoted reach = %q", got)
 	}
@@ -496,23 +496,23 @@ func TestConcreteAccessorsRejectDepScalars(t *testing.T) {
 		t.Error("DepScalar read as concrete atom")
 	}
 	// The happy paths still unwrap.
-	if n, err := NewInteger(4).AsConcreteInteger(); err != nil || n != 4 {
+	if n, err := addrOf(NewInteger(4)).AsConcreteInteger(); err != nil || n != 4 {
 		t.Error("integer accessor broken")
 	}
-	if s, err := NewString("x").AsConcreteString(); err != nil || s != "x" {
+	if s, err := addrOf(NewString("x")).AsConcreteString(); err != nil || s != "x" {
 		t.Error("string accessor broken")
 	}
 	// Atoms satisfy the textual-content contract of AsConcreteString.
-	if s, err := NewAtom("tag").AsConcreteString(); err != nil || s != "tag" {
+	if s, err := addrOf(NewAtom("tag")).AsConcreteString(); err != nil || s != "tag" {
 		t.Error("atom-as-string accessor broken")
 	}
-	if f, err := NewFloat(2.5).AsConcreteFloat(); err != nil || f != 2.5 {
+	if f, err := addrOf(NewFloat(2.5)).AsConcreteFloat(); err != nil || f != 2.5 {
 		t.Error("float accessor broken")
 	}
-	if b, err := NewBoolean(true).AsConcreteBoolean(); err != nil || !b {
+	if b, err := addrOf(NewBoolean(true)).AsConcreteBoolean(); err != nil || !b {
 		t.Error("boolean accessor broken")
 	}
-	if a, err := NewAtom("z").AsConcreteAtom(); err != nil || a != "z" {
+	if a, err := addrOf(NewAtom("z")).AsConcreteAtom(); err != nil || a != "z" {
 		t.Error("atom accessor broken")
 	}
 }

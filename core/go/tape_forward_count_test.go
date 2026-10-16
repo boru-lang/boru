@@ -15,7 +15,7 @@ import "testing"
 func recountForwards(t *Tape) int {
 	n := 0
 	for i := 0; i < t.Len(); i++ {
-		if IsForward(t.At(i)) {
+		if IsForward(t.Ref(i)) {
 			n++
 		}
 	}

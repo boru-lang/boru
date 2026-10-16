@@ -75,11 +75,11 @@ func TestNaNRelationalUnordered(t *testing.T) {
 }
 
 func TestIsNaNValueGuards(t *testing.T) {
-	if !isNaNValue(fv(math.NaN())) {
+	if !isNaNValue(addrOf(fv(math.NaN()))) {
 		t.Error("isNaNValue(NaN) = false")
 	}
 	for _, v := range []Value{fv(1.5), fv(math.Inf(1)), NewInteger(3), NewString("x"), NewTypeLiteral(TFloat)} {
-		if isNaNValue(v) {
+		if isNaNValue(&v) {
 			t.Errorf("isNaNValue(%v) = true, want false", v)
 		}
 	}

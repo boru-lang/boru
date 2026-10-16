@@ -17,12 +17,12 @@ func TestTypeNameTableConsistency(t *testing.T) {
 			t.Errorf("TypeNameTable[%q] has nil Def", name)
 			continue
 		}
-		if ft.ID == "" {
+		if IDOf(ft) == "" {
 			continue // tolerate transitional entries
 		}
-		got := TypeNameByID(ft.ID)
+		got := TypeNameByID(IDOf(ft))
 		if got != name {
-			t.Errorf("TypeNameByID(%s) = %q, want %q", ft.ID, got, name)
+			t.Errorf("TypeNameByID(%s) = %q, want %q", IDOf(ft), got, name)
 		}
 	}
 }

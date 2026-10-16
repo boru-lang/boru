@@ -35,7 +35,7 @@ func TestSeam7RefHandler(t *testing.T) {
 
 	// Positive: resolve a bound fn.
 	out, err := valofHandler([]Value{NewAtom("f")}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Fatalf("valofHandler positive: %v / %v", out, err)
 	}
 	// Missing name.
@@ -186,7 +186,7 @@ func TestSeam7ApplyRebindHandlers(t *testing.T) {
 	}
 	// Function-typed value with no FnDefInfo payload.
 	bad := NewInteger(1)
-	bad.Parent = TFunction
+	bad.SetParent(TFunction)
 	if _, err := applyHandler([]Value{bad}, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "FnDefInfo") {
 		t.Fatalf("expected apply FnDefInfo error, got %v", err)
@@ -236,7 +236,7 @@ func TestSeam7GradualWrapHelpers(t *testing.T) {
 	}
 	// A dynamic Any carrier gradual-wraps to a Function carrier.
 	if out, ok := checkModeGradualFn(r, NewDynamicCarrier(TAny)); !ok ||
-		len(out) != 1 || !out[0].Parent.ConformsTo(TFunction) {
+		len(out) != 1 || !out[0].Parent().ConformsTo(TFunction) {
 		t.Fatalf("dynamic Any carrier must gradual-wrap, got %v / %v", out, ok)
 	}
 }

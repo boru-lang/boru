@@ -333,7 +333,7 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 		for i, t := range returns {
 			c := native.NewCarrier(t)
 			if t.Equal(native.TAny) {
-				c.Dynamic = true
+				core.SetDynamic(&c, true)
 			}
 			fallback[i] = c
 		}
@@ -358,11 +358,11 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 // (stores, class instances, fn values, timers) are NOT inert — their
 // check-time state is not their runtime state — so they decline the fold.
 func parseFoldableValue(v native.Value) bool {
-	if v.Carrier || v.Dynamic || v.Undefined || !native.IsConcrete(v) {
+	if v.Carrier() || core.IsDynamic(&v) || core.IsUndefined(&v) || !native.IsConcrete(&v) {
 		return false
 	}
 	switch {
-	case v.Parent.ConformsTo(native.TList):
+	case v.Parent().ConformsTo(native.TList):
 		l, err := native.AsList(v)
 		if err != nil || l.IsNil() {
 			return false
@@ -373,7 +373,7 @@ func parseFoldableValue(v native.Value) bool {
 			}
 		}
 		return true
-	case v.Parent.ConformsTo(native.TMap):
+	case v.Parent().ConformsTo(native.TMap):
 		m, err := native.AsMap(v)
 		if err != nil || m == nil {
 			return false
@@ -386,7 +386,7 @@ func parseFoldableValue(v native.Value) bool {
 		}
 		return true
 	default:
-		return v.Parent.ConformsTo(native.TScalar) || v.Parent.Equal(native.TNone)
+		return v.Parent().ConformsTo(native.TScalar) || v.Parent().Equal(native.TNone)
 	}
 }
 
@@ -395,10 +395,10 @@ func parseFoldableValue(v native.Value) bool {
 // `{file:…}` map raises `parse_file_unsupported` (deferred in v1); anything
 // else is a clear error.
 func resolveParseSource(v native.Value, r *native.Registry) (string, error) {
-	if v.Parent.ConformsTo(native.TString) && native.IsConcrete(v) {
+	if v.Parent().ConformsTo(native.TString) && native.IsConcrete(&v) {
 		return v.AsConcreteString()
 	}
-	if v.Parent.Equal(native.TMap) && native.IsConcrete(v) {
+	if v.Parent().Equal(native.TMap) && native.IsConcrete(&v) {
 		m, _ := native.AsMap(v)
 		if m == nil {
 			return "", r.BoruError("parse_bad_source", "parse: source map is empty", "parse")
@@ -461,7 +461,7 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 			fnVal = bv
 		}
 	}
-	fnDef, ok := fnVal.Data.(native.FnDefInfo)
+	fnDef, ok := native.FnDefCopy(fnVal.Data())
 	if !ok {
 		return nil, r.BoruErrorHint("parse_error",
 			"parse: the parser is not a usable function value", "parse",
@@ -570,11 +570,12 @@ func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value
 // cannot name — stays the data it is (bridged=false).
 func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 	bv, ok := native.ClosureAsFnDef(r, v)
-	fd, isFn := bv.Data.(native.FnDefInfo)
-	cl, isCl := v.Data.(core.ClosurePayload)
+	src, isFn := native.FnDefOf(bv.Data())
+	cl, isCl := v.Data().(*core.ClosurePayload)
 	if !ok || !isFn || !isCl {
 		return v, false
 	}
+	fd := *src
 	sigs := make([]native.Signature, len(fd.Signatures))
 	copy(sigs, fd.Signatures)
 	for i := range sigs {
@@ -583,7 +584,7 @@ func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 		}
 	}
 	fd.Signatures = sigs
-	bv.Data = fd
+	bv.SetData(&fd)
 	return bv, true
 }
 

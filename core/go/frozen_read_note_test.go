@@ -48,7 +48,7 @@ func TestStepWordTypeReadNotesFrozenBake(t *testing.T) {
 	e.Registry.Defs.PushType("T", TInteger, NewTypeLiteral(TInteger))
 
 	e.Tape = NewTape([]Value{NewWord("T")}, StackHeadroom)
-	if err := e.stepWord(e.Tape.At(0)); err != nil {
+	if err := e.stepWord(e.Tape.Ref(0)); err != nil {
 		t.Fatalf("stepWord errored: %v", err)
 	}
 	if got, ok := rec.got["T"]; !ok || got != FrozenBakeType {

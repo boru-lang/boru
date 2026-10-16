@@ -85,9 +85,9 @@ func CanonValue(v Value) string {
 	// bare atoms) which doesn't match Canon's source-shape conventions
 	// (e.g. `name/q` atoms, quoted strings). CanonValue's own switch
 	// below preserves those.
-	if v.Data != nil && v.Parent != nil {
-		for t := v.Parent; t != nil; t = t.Parent {
-			if t.Origin == OriginBuiltin {
+	if v.Data() != nil && v.Parent() != nil {
+		for t := v.Parent(); t != nil; t = t.Parent() {
+			if t.Origin() == OriginBuiltin {
 				continue
 			}
 			if t.Behavior() == nil || t.Behavior() == DefaultBehavior {
@@ -100,9 +100,9 @@ func CanonValue(v Value) string {
 		}
 	}
 	switch {
-	case IsNone(v):
+	case IsNone(&v):
 		return "none"
-	case IsCloseParen(v):
+	case IsCloseParen(&v):
 		// A STRAY `)` — one the parser could not pair, so it survives as a
 		// value rather than closing a group. Canon had no arm, so the
 		// payload-less fallthrough rendered it as the empty string and
@@ -111,7 +111,7 @@ func CanonValue(v Value) string {
 		// unmatched OPENING paren never reaches here, because that is a
 		// parse error rather than a value.
 		return ")"
-	case IsDispatchMod(v):
+	case IsDispatchMod(&v):
 		// The `/v` / `/q` group modifier the parser emits AFTER a paren or
 		// dotted-path group. Canon had no arm for it, so each engine fell
 		// through to a DIFFERENT debug spelling — Go to
@@ -125,7 +125,7 @@ func CanonValue(v Value) string {
 			return "/q"
 		}
 		return "/q" //covergate:allow IsDispatchMod is exactly `Parent == TDispatchMod`, and NewDispatchMod is the only constructor of that type — the payload is always a DispatchModInfo
-	case IsEnd(v):
+	case IsEnd(&v):
 		// `end` is the WORD and `;` is its synonym (REFERENCE.md:415), so
 		// the canonical source for either is `end`. This arm was missing,
 		// and the payload-less fallthrough below rendered the marker as the
@@ -133,9 +133,9 @@ func CanonValue(v Value) string {
 		// `1`, silently dropping the collection barrier. Value.String has
 		// always rendered it `end` (value.go); only canon disagreed.
 		return "end"
-	case v.Data == nil:
+	case v.Data() == nil:
 		if t := TypeNodeOf(v); t != nil {
-			if name := TypeNameByID(t.ID); name != "" {
+			if name := TypeNameByID(IDOf(t)); name != "" {
 				return name
 			}
 			return t.Leaf()
@@ -143,28 +143,28 @@ func CanonValue(v Value) string {
 		return "none"
 	case v.IsDepScalar():
 		return v.String()
-	case v.Parent.ConformsTo(TBigInteger):
+	case v.Parent().ConformsTo(TBigInteger):
 		n, _ := AsBigInteger(v)
 		return FormatBigInteger(n)
-	case v.Parent.ConformsTo(TBigDecimal):
+	case v.Parent().ConformsTo(TBigDecimal):
 		d, _ := AsBigDecimal(v)
 		return FormatBigDecimal(d)
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10)
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		f, _ := AsFloat(v)
 		return FormatFloat(f)
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		s, _ := AsString(v)
 		return canonString(s)
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		b, _ := AsBoolean(v)
 		if b {
 			return "true"
 		}
 		return "false"
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		s, _ := AsAtom(v)
 		return s + "/q"
 	case IsBoundedType(v):
@@ -208,7 +208,7 @@ func CanonValue(v Value) string {
 			return v.String()
 		}
 		return "(flex {" + joinCanonEntries(m, canonChild) + "})"
-	case v.Parent.ConformsTo(TList) && v.Data != nil:
+	case v.Parent().ConformsTo(TList) && v.Data() != nil:
 		lst, _ := AsList(v)
 		parts := make([]string, 0, lst.Len()+1)
 		// A TYPED list keeps its element-type tag: `[:Integer 1 2]` is the
@@ -217,23 +217,23 @@ func CanonValue(v Value) string {
 		// it is there. AsList returns the ELEMENTS alone, so canon used to
 		// render `[1 2]` and `[:Integer]` collapsed to `[]`: a canonical
 		// render that does not parse back as the same value.
-		if ct, ok := v.Data.(ChildTypeInfo); ok {
+		if ct, ok := v.Data().(ChildTypeInfo); ok {
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 		}
-		parts = append(parts, canonSeqParts(lst.Slice(), canonChild)...)
+		parts = append(parts, canonSeqParts(lst.Elems(), canonChild)...)
 		body := "[" + joinCanonParts(parts) + "]"
-		if v.Quoted {
+		if IsQuoted(&v) {
 			return "(quote " + body + ")"
 		}
 		return body
-	case v.Parent.Equal(TMap) && v.Data != nil:
+	case v.Parent().Equal(TMap) && v.Data() != nil:
 		// A typed MAP keeps its value-type tag, for the same reason a typed
 		// list keeps its element tag. Canon was inconsistent in both
 		// directions here: a bare `{:String}` fell past the AsMap guard to
 		// Value.String and leaked the debug spelling `{:word(String)}`,
 		// while `{:Integer a:1}` reached joinEntries and lost the tag
 		// entirely as `{a:1}`.
-		if ct, ok := v.Data.(ChildTypeInfo); ok {
+		if ct, ok := v.Data().(ChildTypeInfo); ok {
 			parts := make([]string, 0, len(ct.Entries)+1)
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 			for _, e := range ct.Entries {
@@ -246,9 +246,9 @@ func CanonValue(v Value) string {
 			return v.String()
 		}
 		return "{" + joinCanonEntries(m, canonChild) + "}"
-	case IsReach(v):
+	case IsReach(&v):
 		return canonReach(v)
-	case IsWord(v):
+	case IsWord(&v):
 		// A word renders as its NAME plus any `/`-modifier suffix — the
 		// source that re-parses to this word value (ADR-015). The modifiers
 		// ride in the payload, and dropping them made canon say something
@@ -263,9 +263,9 @@ func CanonValue(v Value) string {
 		// re-parses to exactly this Word — whether it is later dispatched is
 		// evaluation, which canon does not model (a paren body and a type
 		// tag already spelled their words bare). Decided with NUR072.
-		w, _ := AsWord(v)
+		w, _ := AsWord(&v)
 		return w.Name + canonWordModifiers(w)
-	case IsSugar(v):
+	case IsSugar(&v):
 		// Sugar markers have a surface spelling of their own; without one
 		// they fell through to the debug dump `sugar(angle Box [word(…)])`
 		// (NUR059).
@@ -275,13 +275,13 @@ func CanonValue(v Value) string {
 			}
 		}
 		return v.String()
-	case IsParenExpr(v):
+	case IsParenExpr(&v):
 		// `(1 add 2)` rather than `paren([1 word(add) 2])` (NUR059). The
 		// body renders through canonReachTokens, which keeps words bare —
 		// inside a group they are CODE, not atom data.
-		toks, _ := AsParenExpr(v)
+		toks, _ := AsParenExpr(&v)
 		return canonParen(toks)
-	case IsDisjunct(v):
+	case IsDisjunct(&v):
 		// Alternatives joined by ` tor ` — the word form, so the rendering
 		// re-reads as source. Each alternative renders through CANON: an
 		// atom bare, a type literal as its leaf name, anything else as its
@@ -295,19 +295,19 @@ func CanonValue(v Value) string {
 		parts := make([]string, len(di.Alternatives))
 		for i, alt := range di.Alternatives {
 			switch {
-			case alt.Parent != nil && alt.Parent.Equal(TAtom) && alt.Data != nil:
+			case alt.Parent() != nil && alt.Parent().Equal(TAtom) && alt.Data() != nil:
 				parts[i], _ = AsAtom(alt)
-			case alt.Data == nil:
+			case alt.Data() == nil:
 				parts[i] = TypeNodeOf(alt).Leaf()
 			default:
 				parts[i] = CanonValue(alt)
 			}
 		}
 		return strings.Join(parts, " tor ")
-	case IsInterpString(v):
+	case IsInterpString(&v):
 		parts, _ := AsInterpString(v)
 		return canonTemplate(parts)
-	case IsXmlInterp(v):
+	case IsXmlInterp(&v):
 		tmpl, _ := AsXmlInterp(v)
 		return canonXmlTmpl(tmpl)
 	case isFnDefValue(v):
@@ -319,8 +319,8 @@ func CanonValue(v Value) string {
 		// closure environment is not part of its identity for ordering,
 		// and dumping it would spill the module exports map (the leak
 		// formatFnDef fixed for String()). See canonFnDef.
-		fd, _ := v.Data.(FnDefInfo)
-		return canonFnDef(fd)
+		fd, _ := FnDefOf(v.Data())
+		return canonFnDef(*fd)
 	default:
 		return v.String()
 	}
@@ -336,7 +336,7 @@ func CanonValue(v Value) string {
 // (compareStructural), so a leading `(` there would silently reorder unions.
 // The TS engine mirrors this (eng/ts/src/canon.ts::canonChild).
 func canonChild(v Value) string {
-	if IsDisjunct(v) {
+	if IsDisjunct(&v) {
 		return "(" + CanonValue(v) + ")"
 	}
 	return CanonValue(v)
@@ -348,13 +348,13 @@ func canonChild(v Value) string {
 // Integer type node — and rendering it through the generic value path would
 // leak the debug spelling `word(Integer)` into what is meant to be source.
 func canonTypeTag(v Value) string {
-	if IsWord(v) {
+	if IsWord(&v) {
 		// The modifier suffix rides along (NUR059): an angle argument can
 		// be a modifier-bearing word (`Box<a/v>`, `Box<a/2>`), and emitting
 		// the bare name would drop it — the same silent loss this record
 		// exists to remove, reintroduced one level down. A tag that carries
 		// no modifier renders exactly as before.
-		w, _ := AsWord(v)
+		w, _ := AsWord(&v)
 		return w.Name + canonWordModifiers(w)
 	}
 	return canonChild(v)
@@ -365,21 +365,21 @@ func canonTypeTag(v Value) string {
 // recursively, anything else via CanonValue.
 func canonReachToken(v Value) string {
 	switch {
-	case IsWord(v):
+	case IsWord(&v):
 		// Bare NAME plus any modifier suffix (NUR059). A reach SEGMENT
 		// never carries one — the parser peels a trailing `/mod` off the
 		// final key and applies it to the whole reach — so segments render
 		// exactly as before (`m.a`, not `m.a/q`). A word inside a PAREN
 		// body can carry one, and `(x/v)` losing its `/v` would be the
 		// same defect this record removes.
-		w, _ := AsWord(v)
+		w, _ := AsWord(&v)
 		return w.Name + canonWordModifiers(w)
-	case IsParenExpr(v):
-		toks, _ := AsParenExpr(v)
+	case IsParenExpr(&v):
+		toks, _ := AsParenExpr(&v)
 		return canonParen(toks)
-	case IsReach(v):
+	case IsReach(&v):
 		return canonReach(v)
-	case IsEnd(v):
+	case IsEnd(&v):
 		// The end marker renders as `;` inside a reach, never as `end`.
 		// A bare `end` in reach-token position is a WORD — a field name in
 		// a segment, an ordinary word in a paren body (NUR066) — so
@@ -420,7 +420,7 @@ func isLambdaFold(toks []Value) bool {
 		return false
 	}
 	info, ok := AsSugar(toks[1])
-	return ok && IsSugar(toks[1]) && info.Kind == SugarLambda
+	return ok && IsSugar(&toks[1]) && info.Kind == SugarLambda
 }
 
 // canonSeqParts renders a value SEQUENCE — a list's elements, a paren body,
@@ -446,7 +446,7 @@ func canonSeqParts(vals []Value, render func(Value) string) []string {
 // groupModifierText is the suffix letter(s) a group-modifier marker was
 // written as, or !ok for any other value.
 func groupModifierText(v Value) (string, bool) {
-	if !IsSugar(v) {
+	if !IsSugar(&v) {
 		return "", false
 	}
 	info, _ := AsSugar(v)
@@ -615,7 +615,7 @@ func canonXmlTmpl(t XmlTmpl) string {
 // §6). A Quoted (codequote-captured) reach wraps in (codequote …) so it
 // round-trips, mirroring the list quote convention.
 func canonReach(v Value) string {
-	info, err := AsReach(v)
+	info, err := AsReach(&v)
 	if err != nil {
 		return v.String()
 	}
@@ -642,7 +642,7 @@ func canonReach(v Value) string {
 			b.WriteString(canonReachToken(seg.KeyLit))
 		}
 	}
-	if v.Quoted {
+	if IsQuoted(&v) {
 		return "(codequote " + b.String() + ")"
 	}
 	return b.String()
@@ -787,8 +787,8 @@ func canonSugar(info SugarInfo) (string, bool) {
 		return "+" + info.Name + "'" + canonMiniSrc(info.Src) + "'", true
 	case SugarTypeBound:
 		if len(info.Items) == 1 {
-			if l, err := AsList(info.Items[0]); err == nil && !l.IsNil() && l.Len() == 1 && IsAtom(l.Slice()[0]) {
-				name, _ := AsAtom(l.Slice()[0])
+			if l, err := AsList(info.Items[0]); err == nil && !l.IsNil() && l.Len() == 1 && IsAtom(l.Get(0)) {
+				name, _ := AsAtom(l.Get(0))
 				return name + "/t", true
 			}
 		}

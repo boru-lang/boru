@@ -123,7 +123,7 @@ func TestNurRunForRegionEvaluatesPendingResidual(t *testing.T) {
 	r.Defs.Push("i", NewInteger(7))   // the loop's index for this iteration
 	cont := &Loop{Registry: r, IterName: "i", Current: 0, End: 1, Step: 1, IterDepth: 2}
 	quoted := NewEvalList([]Value{NewWord("i")})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{
 		NewMark("m1"), NewEvalList([]Value{NewWord("i")}), quoted, NewMoveCont("m1", "for loop", cont),
@@ -213,7 +213,7 @@ func TestNurRunWhileEmptyConditionAnchorsAtCondition(t *testing.T) {
 func TestNurRunPolyNoMatchSpecBorrowsOperandPosition(t *testing.T) {
 	fn := &FnDefInfo{Name: "nrcpoly", Signatures: []Signature{{Params: []FnParam{{Name: "s", Type: TString}}}}}
 	positioned := NewInteger(5)
-	positioned.ID = "nrc-poly-a"
+	SetID(&positioned, "nrc-poly-a")
 	positioned.SetPos(SrcPos{Row: 1, Col: 1})
 
 	p := polyNoMatchProbe{ok: true, written: []Value{positioned}, stackVals: []Value{positioned}}
@@ -228,7 +228,7 @@ func TestNurRunPolyNoMatchSpecBorrowsOperandPosition(t *testing.T) {
 	}
 
 	bare := NewInteger(6)
-	bare.ID = "nrc-poly-b"
+	SetID(&bare, "nrc-poly-b")
 	q := polyNoMatchProbe{ok: true, written: []Value{bare}, stackVals: []Value{bare}}
 	if spec := q.Spec(fn, []Value{bare}); spec == nil || spec.Pos.Row != 0 {
 		t.Fatalf("no positioned operand: the spec stays unpositioned, got %+v", spec)
@@ -300,7 +300,7 @@ func TestNurRunExecMatchParksForeignFnReturn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(out) != 2 || out[0].String() != "3" || !out[1].Parent.Equal(TFunction) {
+	if len(out) != 2 || out[0].String() != "3" || !out[1].Parent().Equal(TFunction) {
 		t.Fatalf("the returned fn must be parked beside the 3, got %s", renderAll(out))
 	}
 
@@ -339,7 +339,7 @@ func TestNurRunExecFnDefSigParksForeignFnReturn(t *testing.T) {
 	}
 
 	e := run(NewWord("nrcmk"))
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(TFunction) || e.Pointer != 1 {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent().Equal(TFunction) || e.Pointer != 1 {
 		t.Fatalf("a returned fn must be parked: tape %s, pointer %d", renderAll(e.Tape.Snapshot()), e.Pointer)
 	}
 	e = run(NewInteger(42))
@@ -368,13 +368,13 @@ func TestNurRunDispatchModQuotesPrecedingCarrier(t *testing.T) {
 		}
 		return e
 	}
-	if e := step(NewCarrier(TFunction)); !e.Tape.At(0).Quoted {
+	if e := step(NewCarrier(TFunction)); !IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a fn-typed carrier before the marker must be quoted")
 	}
-	if e := step(NewDynamicCarrier(TAny)); !e.Tape.At(0).Quoted {
+	if e := step(NewDynamicCarrier(TAny)); !IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a dynamic carrier before the marker must be quoted")
 	}
-	if e := step(NewInteger(5)); e.Tape.At(0).Quoted {
+	if e := step(NewInteger(5)); IsQuoted(addrOf(e.Tape.At(0))) {
 		t.Fatal("a concrete value before the marker stays unquoted")
 	}
 	step() // a marker with nothing before it is simply dropped
@@ -391,7 +391,7 @@ func TestNurRunTagReachCollapsedCarrierSurvivor(t *testing.T) {
 		e.Tape = NewTape([]Value{v, NewInteger(0), NewInteger(0)}, StackHeadroom)
 		e.tagReachCollapsedFn(0, 2, wasReach)
 	}
-	withID := func(v Value, id string) Value { v.ID = id; return v }
+	withID := func(v Value, id string) Value { SetID(&v, id); return v }
 
 	tag(withID(NewCarrier(TFunction), "nrc-inactive"), true)
 	if r.Check.ReachSurvivorFnIDs != nil {
@@ -403,7 +403,7 @@ func TestNurRunTagReachCollapsedCarrierSurvivor(t *testing.T) {
 	tag(withID(NewCarrier(TFunction), "nrc-fn-carrier"), true)
 	tag(withID(NewDynamicCarrier(TAny), "nrc-dyn"), true)
 	quoted := withID(NewCarrier(TFunction), "nrc-quoted")
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	tag(quoted, true)
 	tag(withID(NewInteger(4), "nrc-int"), true)
 	tag(withID(NewCarrier(TFunction), "nrc-not-reach"), false)
@@ -517,7 +517,7 @@ func TestNurRunDefiniteFailureRecordsUnitTrap(t *testing.T) {
 			e := NewTop(r)
 			e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
 			e.Pointer = 1
-			if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+			if err := e.ExecFnDefSigStackMatch(1, &fnDef, []Value{arg}); err != nil {
 				t.Fatalf("analysis must not raise: %v", err)
 			}
 			if len(rec.unitTraps) != tc.wantTraps {

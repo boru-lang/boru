@@ -63,7 +63,7 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			if r == nil || seen[w.Name] {
 				return
 			}
-			bound, ok := r.Defs.Top(w.Name)
+			bound, ok := r.Defs.TopValue(w.Name)
 			if !ok {
 				return
 			}
@@ -72,11 +72,11 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			// — installs into this frame exactly as the word itself would,
 			// so it is the word for this rule (Codex P1 on #532: the CallBoru
 			// path's unconditional snapshots used to cover the alias).
-			if fd, isFn := bound.Data.(FnDefInfo); isFn && fnValueIsBindingWord(r, &fd) {
+			if fd, isFn := bound.Data().(*FnDefInfo); isFn && fnValueIsBindingWord(r, fd) {
 				needs = true
 				return
 			}
-			info, ok := bound.Data.(SpliceInfo)
+			info, ok := bound.Data().(SpliceInfo)
 			if !ok {
 				return
 			}
@@ -131,12 +131,12 @@ func walkBodyTokens(body []Value, callback func(WordInfo, Value), sugarCB func(S
 
 func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarInfo, Value)) {
 	// Quoted values are data — skip.
-	if v.Quoted {
+	if IsQuoted(&v) {
 		return
 	}
 	// Bare Word: emit.
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		callback(w, v)
 		return
 	}
@@ -144,11 +144,11 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// value streams it carries (an Angle marker's gen-params head and
 	// use-site type args re-enter the body when the engine lowers the
 	// marker, so the words inside them are genuine body references).
-	if info, ok := AsSugar(v); ok && IsSugar(v) {
+	if info, ok := AsSugar(v); ok && IsSugar(&v) {
 		if sugarCB != nil {
 			sugarCB(info, v)
 		}
-		if info.Head.Parent != nil {
+		if info.Head.Parent() != nil {
 			walkBodyValue(info.Head, callback, sugarCB)
 		}
 		for _, it := range info.Items {
@@ -158,28 +158,28 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	}
 	// Nested FnDefInfo: opaque. Its captures were resolved at its
 	// own construction; don't descend.
-	if _, ok := v.Data.(FnDefInfo); ok {
+	if _, ok := v.Data().(*FnDefInfo); ok {
 		return
 	}
 	// List payload: recurse.
-	if v.Parent.Equal(TList) && v.Data != nil {
+	if v.Parent().Equal(TList) && v.Data() != nil {
 		lst, _ := AsList(v)
-		for _, e := range lst.Slice() {
+		for _, e := range lst.Elems() {
 			walkBodyValue(e, callback, sugarCB)
 		}
 		return
 	}
 	// Paren-expr payload (stored inside map values when a paren
 	// group appears as a data position): walk the inner tokens.
-	if IsParenExpr(v) {
-		toks, _ := AsParenExpr(v)
+	if IsParenExpr(&v) {
+		toks, _ := AsParenExpr(&v)
 		for _, t := range toks {
 			walkBodyValue(t, callback, sugarCB)
 		}
 		return
 	}
 	// Interpolated string: walk each expression part.
-	if IsInterpString(v) {
+	if IsInterpString(&v) {
 		parts, _ := AsInterpString(v)
 		for _, p := range parts {
 			for _, t := range p.Expr {
@@ -191,13 +191,13 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// Interpolated XML literal: walk every ${...} expression in the
 	// skeleton (attribute values and child holes, recursively) so a
 	// closure over `<p>${x}</p>` captures `x`.
-	if IsXmlInterp(v) {
+	if IsXmlInterp(&v) {
 		tmpl, _ := AsXmlInterp(v)
 		walkXmlTmplExprs(tmpl, callback, sugarCB)
 		return
 	}
 	// Map payload: walk each value (keys are strings, not Words).
-	if v.Parent.Equal(TMap) && v.Data != nil {
+	if v.Parent().Equal(TMap) && v.Data() != nil {
 		m, _ := AsMap(v)
 		if m == nil {
 			return
@@ -215,8 +215,8 @@ func walkBodyValue(v Value, callback func(WordInfo, Value), sugarCB func(SugarIn
 	// over `x.field` must capture `x`) and for check-mode use-recording (the
 	// receiver `def` is genuinely used). Literal bare-word keys (`.code`) are
 	// field names, not references, and are NOT walked.
-	if IsReach(v) {
-		if info, err := AsReach(v); err == nil {
+	if IsReach(&v) {
+		if info, err := AsReach(&v); err == nil {
 			for _, t := range info.Receiver {
 				walkBodyValue(t, callback, sugarCB)
 			}
@@ -354,31 +354,31 @@ func ComputeFnValueCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 	for i := 0; i < len(body); i++ {
 		v := body[i]
-		if v.Quoted {
+		if IsQuoted(&v) {
 			continue
 		}
-		if _, isFn := v.Data.(FnDefInfo); isFn {
+		if _, isFn := v.Data().(*FnDefInfo); isFn {
 			continue // nested closure: its defs are its own
 		}
-		if w, err := AsWord(v); err == nil {
+		if w, err := AsWord(&v); err == nil {
 			switch w.Name {
 			case "def":
 				// def NAME … — NAME is the next bare-word token.
 				if i+1 < len(body) {
-					if nw, nerr := AsWord(body[i+1]); nerr == nil && nw.Name != "" {
+					if nw, nerr := AsWord(&body[i+1]); nerr == nil && nw.Name != "" {
 						locals[nw.Name] = true
 					}
 				}
 			case "var":
 				// var [[NAME …] body] — the decl list's first element holds the
 				// temporary names; they desugar to `def NAME` at run time.
-				if i+1 < len(body) && body[i+1].Parent.Equal(TList) && body[i+1].Data != nil {
+				if i+1 < len(body) && body[i+1].Parent().Equal(TList) && body[i+1].Data() != nil {
 					if outer, lerr := AsList(body[i+1]); lerr == nil {
-						elems := outer.Slice()
-						if len(elems) > 0 && elems[0].Parent.Equal(TList) && elems[0].Data != nil {
+						elems := outer.Elems()
+						if len(elems) > 0 && elems[0].Parent().Equal(TList) && elems[0].Data() != nil {
 							if decls, derr := AsList(elems[0]); derr == nil {
-								for _, d := range decls.Slice() {
-									if dw, dwe := AsWord(d); dwe == nil && dw.Name != "" {
+								for _, d := range decls.Elems() {
+									if dw, dwe := AsWord(&d); dwe == nil && dw.Name != "" {
 										locals[dw.Name] = true
 									}
 								}
@@ -388,12 +388,12 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 				}
 			}
 		}
-		if v.Parent.Equal(TList) && v.Data != nil {
+		if v.Parent().Equal(TList) && v.Data() != nil {
 			if lst, lerr := AsList(v); lerr == nil {
-				CollectBodyLocalDefs(lst.Slice(), locals)
+				CollectBodyLocalDefs(lst.Elems(), locals)
 			}
-		} else if IsParenExpr(v) {
-			if toks, perr := AsParenExpr(v); perr == nil {
+		} else if IsParenExpr(&v) {
+			if toks, perr := AsParenExpr(&v); perr == nil {
 				CollectBodyLocalDefs(toks, locals)
 			}
 		}
@@ -463,8 +463,8 @@ func fnValueIsBindingWord(r *Registry, fd *FnDefInfo) bool {
 		return false
 	}
 	for w := range frameStateWords {
-		if top, ok := r.Defs.Top(w); ok {
-			if tfd, isFn := top.Data.(FnDefInfo); isFn && tfd.ident == fd.ident {
+		if top, ok := r.Defs.TopValue(w); ok {
+			if tfd, isFn := top.Data().(*FnDefInfo); isFn && tfd.ident == fd.ident {
 				return true
 			}
 		}

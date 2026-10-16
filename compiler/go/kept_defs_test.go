@@ -158,7 +158,7 @@ func TestKeptDefsInvoker(t *testing.T) {
 		t.Errorf("with no kept-defs unit an island invokes nothing: %q", w)
 	}
 	es.keptDefsUnitWord = "do"
-	es.consts = []core.Value{core.NewInteger(1), {Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}}
+	es.consts = []core.Value{core.NewInteger(1), core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}})}
 	for name, ev := range map[string]EmitEvent{
 		"an island":                      {kind: evFallback},
 		"a fn-value apply":               {kind: evCall, call: emitCall{dynApply: 1}},
@@ -261,7 +261,7 @@ func TestKeepsComputedDefs(t *testing.T) {
 		"a Function callback":                {multi, core.NewCarrier(core.TFunction), false},
 		"a concrete body":                    {once, core.NewList(words("add")), false},
 		"a word that keeps no defs":          {&core.CallableSpec{}, core.NewCarrier(core.TList), false},
-		"a typeless carrier may be anything": {once, core.Value{Carrier: true}, true},
+		"a typeless carrier may be anything": {once, core.ValueOf(&core.Datum{Carrier: true}), true},
 	} {
 		if got := keepsComputedDefs(c.spec, c.body); got != c.want {
 			t.Errorf("%s: keepsComputedDefs=%v, want %v", name, got, c.want)
@@ -315,7 +315,7 @@ func TestKeptDefsScan(t *testing.T) {
 		"a recursive fn is visited once":      {words("rec"), true},
 		"a paren group":                       {[]core.Value{core.NewParenExpr(words("add"))}, true},
 		"a Integer carrier":                   {[]core.Value{core.NewCarrier(core.TInteger)}, true},
-		"a fn value":                          {[]core.Value{{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}}}}, true},
+		"a fn value":                          {[]core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}}})}, true},
 		"a def at the body's top level":       {words("def"), false},
 		"an undef":                            {words("undef"), false},
 		"an unresolved name":                  {words("zz"), false},
@@ -327,7 +327,7 @@ func TestKeptDefsScan(t *testing.T) {
 		"a splice":                            {[]core.Value{core.NewSplice(core.NewInteger(1))}, false},
 		"a List carrier":                      {[]core.Value{core.NewCarrier(core.TList)}, false},
 		"an interpolation":                    {[]core.Value{core.NewInterpString([]core.InterpPart{{Lit: "a"}})}, false},
-		"a closure":                           {[]core.Value{{Parent: core.TFunction, Data: core.ClosurePayload{}}}, false},
+		"a closure":                           {[]core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{}})}, false},
 		"a body nested past the walk's bound": {[]core.Value{nested}, false},
 	} {
 		if got := scan(c.toks...); got != c.want {
@@ -335,7 +335,7 @@ func TestKeptDefsScan(t *testing.T) {
 		}
 	}
 	// A nil-map payload walks as empty.
-	if !scan(core.Value{Parent: core.TMap, Data: core.MapPayload{}}) {
+	if !scan(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{}})) {
 		t.Error("an empty map payload binds nothing")
 	}
 }
@@ -349,7 +349,7 @@ func TestProvenBodyTokens(t *testing.T) {
 	// event; the dynamic stand-in keeps a typed-list carrier's type-body
 	// identity out of this fixture's way.
 	body := core.NewDynamicCarrier(core.TList)
-	body.ID = "mk-out"
+	core.SetID(&body, "mk-out")
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Fatal("an unresolvable operand proves nothing")
 	}
@@ -360,7 +360,7 @@ func TestProvenBodyTokens(t *testing.T) {
 		{seq: 2, kind: evCallUser, uc: emitUserCall{unit: 1, nout: 1}},
 		{seq: 3, kind: evCallUser, uc: emitUserCall{unit: 2, nout: 1}},
 	}
-	es.producedBy[body.ID] = producer{seq: 1}
+	es.stampProduced(&body, 1, 0)
 	toks, ok := es.provenBodyTokens(body)
 	if !ok || len(toks) != 1 {
 		t.Fatalf("a factory call returning a const list proves its tokens: %v %v", toks, ok)
@@ -371,44 +371,44 @@ func TestProvenBodyTokens(t *testing.T) {
 	if es.bodyPlainData(body) {
 		t.Error("`[add]` is not plain data: a word")
 	}
-	es.producedBy[body.ID] = producer{seq: 3}
+	es.stampProduced(&body, 3, 0)
 	if es.bodyBindsNothing(r, body) {
 		t.Error("`[def]` binds")
 	}
-	es.producedBy[body.ID] = producer{seq: 2}
+	es.stampProduced(&body, 2, 0)
 	if _, ok := es.provenBodyTokens(body); ok || es.bodyPlainData(body) || es.bodyBindsNothing(r, body) {
 		t.Error("a const that is not a list proves nothing")
 	}
 	es.consts = append(es.consts, core.NewList([]core.Value{core.NewInteger(1), core.NewString("a")}))
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{outOps: []EmitOperand{{kind: opConst, idx: 3}}})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 4, kind: evCallUser, uc: emitUserCall{unit: 3, nout: 1}})
-	es.producedBy[body.ID] = producer{seq: 4}
+	es.stampProduced(&body, 4, 0)
 	if !es.bodyPlainData(body) {
 		t.Error("`[1 'a']` is plain data")
 	}
-	es.producedBy[body.ID] = producer{seq: 1, idx: 1}
+	es.stampProduced(&body, 1, 1)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a second result proves nothing")
 	}
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 5, kind: evCall, call: emitCall{word: "get", nout: 1}})
-	es.producedBy[body.ID] = producer{seq: 5}
+	es.stampProduced(&body, 5, 0)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a native's result proves nothing")
 	}
-	delete(es.producedBy, body.ID)
-	es.units[0].localByID[body.ID] = 0
+	core.SetRecKey(&body, core.RecKey{}) // no producer
+	es.units[0].localByID[core.IDOf(&body)] = 0
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a local with no producer proves nothing")
 	}
 	// A capture slot of the open unit whose value a factory call produced
 	// (the promoted value-def read inside a body) proves through its
 	// producer.
-	es.units = append(es.units, &emitUnit{capID: map[string]bool{body.ID: true}, localByID: map[string]int{body.ID: 0}})
-	es.producedBy[body.ID] = producer{seq: 1}
+	es.units = append(es.units, &emitUnit{capID: map[string]bool{core.IDOf(&body): true}, localByID: map[string]int{core.IDOf(&body): 0}})
+	es.stampProduced(&body, 1, 0)
 	if toks, ok := es.provenBodyTokens(body); !ok || len(toks) != 1 {
 		t.Errorf("a captured factory result proves its tokens: %v %v", toks, ok)
 	}
-	es.producedBy[body.ID] = producer{seq: 1, idx: 1}
+	es.stampProduced(&body, 1, 1)
 	if _, ok := es.provenBodyTokens(body); ok {
 		t.Error("a captured second result proves nothing")
 	}
@@ -416,12 +416,12 @@ func TestProvenBodyTokens(t *testing.T) {
 
 func TestBodyProvenFn(t *testing.T) {
 	es := NewEmitState()
-	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}
+	fnVal := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}})
 	if !es.bodyProvenFn(fnVal) {
 		t.Error("a const fn value is a proven callback")
 	}
 	unresolved := core.NewCarrier(core.TList)
-	unresolved.ID = "nowhere"
+	core.SetID(&unresolved, "nowhere")
 	if es.bodyProvenFn(unresolved) {
 		t.Error("an unresolvable body is not")
 	}

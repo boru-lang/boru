@@ -66,13 +66,13 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 
 	dyn := NewDynamicTypeTable()
 	dyn.Adopt(minted)
-	if dyn.LookupByID(minted.ID) != minted {
+	if dyn.LookupByID(IDOf(minted)) != minted {
 		t.Error("adopted type not resolvable by ID")
 	}
 	// Idempotent: a same-ID re-adoption keeps the first pointer.
 	clone := *minted
 	dyn.Adopt(&clone)
-	if dyn.LookupByID(minted.ID) != minted {
+	if dyn.LookupByID(IDOf(minted)) != minted {
 		t.Error("re-adoption replaced the canonical pointer")
 	}
 	// Nil / empty-ID no-ops.
@@ -83,7 +83,7 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 
 	// Retire removes the identity.
 	dyn.Retire(minted)
-	if dyn.LookupByID(minted.ID) != nil {
+	if dyn.LookupByID(IDOf(minted)) != nil {
 		t.Error("retired type still resolvable")
 	}
 	dyn.Retire(nil)
@@ -91,8 +91,8 @@ func TestTypeTableAdoptAndRetire(t *testing.T) {
 }
 
 func TestBuiltinIDForPath(t *testing.T) {
-	if got := BuiltinIDForPath(TInteger.Path()); got != TInteger.ID {
-		t.Errorf("BuiltinIDForPath(Integer) = %q, want %q", got, TInteger.ID)
+	if got := BuiltinIDForPath(TInteger.Path()); got != IDOf(TInteger) {
+		t.Errorf("BuiltinIDForPath(Integer) = %q, want %q", got, IDOf(TInteger))
 	}
 	if BuiltinIDForPath("No/Such/Path") != "" {
 		t.Error("bogus path yielded an ID")
@@ -156,7 +156,7 @@ func TestSetIDSeedDeterminism(t *testing.T) {
 func TestXmlInterpAccessors(t *testing.T) {
 	tmpl := XmlTmpl{Tag: "div"}
 	v := NewXmlInterp(tmpl)
-	if !IsXmlInterp(v) {
+	if !IsXmlInterp(&v) {
 		t.Fatal("NewXmlInterp not recognised")
 	}
 	got, err := AsXmlInterp(v)
@@ -171,10 +171,10 @@ func TestXmlInterpAccessors(t *testing.T) {
 func TestNewReachFromKeys(t *testing.T) {
 	m := mapOf("a", NewInteger(1))
 	rv := NewReachFromKeys(m, []Value{NewString("a")})
-	if !IsReach(rv) {
+	if !IsReach(&rv) {
 		t.Fatal("not a reach value")
 	}
-	info, err := AsReach(rv)
+	info, err := AsReach(&rv)
 	if err != nil {
 		t.Fatalf("AsReach: %v", err)
 	}
@@ -190,15 +190,15 @@ func TestNewReachFromKeys(t *testing.T) {
 }
 
 func TestIsBooleanPredicate(t *testing.T) {
-	if !IsBoolean(NewBoolean(true)) {
+	if !IsBoolean(addrOf(NewBoolean(true))) {
 		t.Error("boolean not boolean")
 	}
-	if IsBoolean(NewInteger(1)) {
+	if IsBoolean(addrOf(NewInteger(1))) {
 		t.Error("integer boolean")
 	}
 	// A bare Boolean TYPE LITERAL is not a boolean VALUE: its Parent is
 	// the literal's supertype, not TBoolean.
-	if IsBoolean(NewTypeLiteral(TBoolean)) {
+	if IsBoolean(addrOf(NewTypeLiteral(TBoolean))) {
 		t.Error("Boolean literal misread as a boolean value")
 	}
 }
@@ -285,9 +285,9 @@ func TestUninstallFnSigs(t *testing.T) {
 	if len(stack) != 1 {
 		t.Fatalf("after undef: stack depth = %d", len(stack))
 	}
-	fd, _ := stack[0].Data.(FnDefInfo)
+	fd, _ := FnDefOf(stack[0].Data())
 	if len(fd.OwnSigs()) != 1 || !fd.OwnSigs()[0].Params[0].Type.Equal(TInteger) {
-		t.Errorf("wrong entry removed: %+v", fd)
+		t.Errorf("wrong entry removed: %+v", *fd)
 	}
 	// A spec matching nothing is a no-op; an unbound name too.
 	UninstallFnSigs(r, "w3fn", FnUndefInfo{Sigs: []FnSigSpec{{
@@ -324,13 +324,13 @@ func TestCowSetPropagatesThroughStores(t *testing.T) {
 	child := &StoreInstanceInfo{TypeName: root.TypeName, Data: map[string]Value{}}
 	CowSet(r.Contexts.Top(), "child", NewStoreValue(nil, child), r)
 	liveChild, _ := r.Contexts.Top().Get("child")
-	cs, ok := liveChild.Data.(*StoreInstanceInfo)
+	cs, ok := liveChild.Data().(*StoreInstanceInfo)
 	if !ok {
 		t.Fatalf("child not a store: %v", liveChild)
 	}
 	CowSet(cs, "inner", NewInteger(42), r)
 	reread, _ := r.Contexts.Top().Get("child")
-	rs, _ := reread.Data.(*StoreInstanceInfo)
+	rs, _ := reread.Data().(*StoreInstanceInfo)
 	if rs == nil {
 		t.Fatal("child store lost after nested COW")
 	}

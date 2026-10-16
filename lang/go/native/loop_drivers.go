@@ -441,7 +441,7 @@ func (d *eachrankDriver) nextCell() (Value, bool, error) {
 	}
 	for {
 		for depth > 0 {
-			if !cell.Parent.ConformsTo(TList) || !IsConcrete(cell) {
+			if !cell.Parent().ConformsTo(TList) || !IsConcrete(&cell) {
 				return Value{}, false, d.reg.BoruError("eachrank_error", fmt.Sprintf("eachrank: rank exceeds nesting depth at %v", cell), "eachrank")
 			}
 			list, _ := AsList(cell)
@@ -522,15 +522,13 @@ type foldaxisDriver struct {
 	acc    Value
 	result []Value
 	in     [2]Value
-	done   bool
 }
 
 // advance moves to the next (lane, element) step, seeding each lane as it
-// is entered and raising the empty-lane error where the handler did.
+// is entered and raising the empty-lane error where the handler did. It
+// is not called again once it has reported the end or an error: neither
+// loop lane asks a driver for an iteration past those (LoopDriver.Next).
 func (d *foldaxisDriver) advance() (bool, error) {
-	if d.done {
-		return false, nil
-	}
 	for {
 		if d.k == 0 || d.k >= len(d.lanes[d.lane]) {
 			if d.k > 0 {
@@ -538,12 +536,10 @@ func (d *foldaxisDriver) advance() (bool, error) {
 				d.lane++
 			}
 			if d.lane >= len(d.lanes) {
-				d.done = true
 				return false, nil
 			}
 			lane := d.lanes[d.lane]
 			if len(lane) == 0 {
-				d.done = true
 				return false, d.reg.BoruError("foldaxis_error", fmt.Sprintf("foldaxis: lane %d is empty (no initial value)", d.lane), "foldaxis")
 			}
 			d.acc, d.k = lane[0], 1
@@ -645,8 +641,8 @@ func (d *filterDriver) Collect(it int, res []Value) error {
 		return d.reg.BoruError("filter_error", fmt.Sprintf("filter: %s: body produced no result", label), "filter")
 	}
 	top := res[len(res)-1]
-	if !top.Parent.ConformsTo(TBoolean) || !IsConcrete(top) {
-		return d.reg.BoruError("filter_error", fmt.Sprintf("filter: %s: body must produce a Boolean, got %s", label, top.Parent.Name()), "filter")
+	if !top.Parent().ConformsTo(TBoolean) || !IsConcrete(&top) {
+		return d.reg.BoruError("filter_error", fmt.Sprintf("filter: %s: body must produce a Boolean, got %s", label, top.Parent().Name()), "filter")
 	}
 	if b, _ := AsBoolean(top); b {
 		if d.isMap() {

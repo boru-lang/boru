@@ -15,7 +15,7 @@ import (
 // match a Node-typed `get`/`set` receiver — the trie client's node-walker
 // cascade (`(nd kid-items)` / `build-row`-result → `get`).
 func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
-	dyn := func(b *core.Type) core.Value { v := core.NewCarrier(b); v.Dynamic = true; return v }
+	dyn := func(b *core.Type) core.Value { v := core.NewCarrier(b); core.SetDynamic(&v, true); return v }
 
 	// Positive: a dynamic container bound matches the broader Node slot
 	// (X ⊑ t), and a dynamic Node matches a narrower List/Map slot (t ⊑ X,
@@ -35,7 +35,7 @@ func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
 		{"dynamic(Any) vs Node", dyn(core.TAny), core.TNode},
 	}
 	for _, c := range match {
-		if !core.SigTypeMatches(c.v, c.slot) {
+		if !core.SigTypeMatches(&c.v, c.slot) {
 			t.Errorf("%s: expected match, got false", c.name)
 		}
 	}
@@ -52,7 +52,7 @@ func TestDynamicCarrierMatchesNodeFamily(t *testing.T) {
 		{"dynamic(List) vs String", dyn(core.TList), core.TString},
 	}
 	for _, c := range noMatch {
-		if core.SigTypeMatches(c.v, c.slot) {
+		if core.SigTypeMatches(&c.v, c.slot) {
 			t.Errorf("%s: expected NO match (provably disjoint), got true", c.name)
 		}
 	}

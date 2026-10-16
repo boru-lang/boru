@@ -27,29 +27,29 @@ func PrintstrHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 func FormatForPrint(v Value) string {
 	// The value `none` (the unique inhabitant of None, Data != nil
 	// sentinel) prints as "none".
-	if IsNone(v) {
+	if IsNone(&v) {
 		return "none"
 	}
 	// Type literals (Data==nil) — print as the leaf of the type path
 	// (e.g. Integer → "Integer", List → "List"). Type names are
 	// globally unique. The None type literal prints as "None".
-	if v.Data == nil {
+	if v.Data() == nil {
 		return TypeNodeOf(v).Leaf()
 	}
 
 	// Table: formatted with headers and aligned columns.
 	if IsTableType(v) {
-		if td, ok := v.Data.(TableData); ok {
+		if td, ok := v.Data().(TableData); ok {
 			return formatTable(td)
 		}
-		if mp, ok := v.Data.(MaterializerPayload); ok {
+		if mp, ok := v.Data().(MaterializerPayload); ok {
 			td, err := mp.M.Materialize()
 			if err != nil {
 				return "query(error:" + err.Error() + ")"
 			}
 			return formatTable(td)
 		}
-		if mz, ok := v.Data.(Materializer); ok {
+		if mz, ok := v.Data().(Materializer); ok {
 			td, err := mz.Materialize()
 			if err != nil {
 				return "query(error:" + err.Error() + ")"
@@ -72,7 +72,7 @@ func FormatForPrint(v Value) string {
 	}
 
 	// String: printed as-is (no quotes).
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as0, _ := AsString(v)
 		return _as0
 	}
@@ -83,12 +83,12 @@ func FormatForPrint(v Value) string {
 	}
 
 	// Map: JSON-like output.
-	if v.Parent.Equal(TMap) {
+	if v.Parent().Equal(TMap) {
 		return formatMapJSON(v)
 	}
 
 	// List: JSON-like output.
-	if v.Parent.Equal(TList) && v.Data != nil {
+	if v.Parent().Equal(TList) && v.Data() != nil {
 		return formatListJSON(v)
 	}
 
@@ -114,7 +114,7 @@ func formatMapJSON(v Value) string {
 func formatListJSON(v Value) string {
 	elems, _ := AsList(v)
 	parts := make([]string, elems.Len())
-	for i, e := range elems.Slice() {
+	for i, e := range elems.Elems() {
 		parts[i] = FormatValueJSON(e)
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
@@ -127,7 +127,7 @@ func FormatValueJSON(v Value) string {
 	if IsNoneShape(v) {
 		return "null"
 	}
-	if v.Data == nil {
+	if v.Data() == nil {
 		// Type literal — render the leaf, quoted as a JSON string.
 		return fmt.Sprintf("%q", TypeNodeOf(v).Leaf())
 	}
@@ -139,23 +139,23 @@ func FormatValueJSON(v Value) string {
 		return fmt.Sprintf("%q", s)
 	}
 	switch {
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		_as1, _ := AsString(v)
 		return fmt.Sprintf("%q", _as1)
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		_as2, _ := AsInteger(v)
 		return fmt.Sprintf("%d", _as2)
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as3, _ := AsBoolean(v)
 		if _as3 {
 			return "true"
 		}
 		return "false"
-	case v.Parent.Equal(TNone):
+	case v.Parent().Equal(TNone):
 		return "null"
-	case v.Parent.Equal(TMap):
+	case v.Parent().Equal(TMap):
 		return formatMapJSON(v)
-	case v.Parent.Equal(TList):
+	case v.Parent().Equal(TList):
 		return formatListJSON(v)
 	default:
 		return v.String()

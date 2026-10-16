@@ -43,16 +43,16 @@ func sameList[T any](a, b []T) bool {
 // was built for this registry from these very lists, a fresh compile
 // (which replaces the cache) otherwise. A payload with no identity — a
 // synthesized FnDefInfo literal — compiles every time, as before.
-func compiledFnDefFor(reg *Registry, fnDef FnDefInfo) *FnDefInfo {
+func compiledFnDefFor(reg *Registry, fnDef *FnDefInfo) *FnDefInfo {
 	id := fnDef.ident
 	if id == nil {
-		return compileFnDef(reg, fnDef)
+		return compileFnDef(reg, *fnDef)
 	}
 	if c := id.dispatch.Load(); c != nil && c.reg == reg && c.name == fnDef.Name &&
 		sameList(c.sigs, fnDef.Signatures) && sameList(c.caps, fnDef.Captured) {
 		return c.fn
 	}
-	fn := compileFnDef(reg, fnDef)
+	fn := compileFnDef(reg, *fnDef)
 	id.dispatch.Store(&compiledFnDef{
 		reg:  reg,
 		name: fnDef.Name,
@@ -61,4 +61,45 @@ func compiledFnDefFor(reg *Registry, fnDef FnDefInfo) *FnDefInfo {
 		fn:   fn,
 	})
 	return fn
+}
+
+// sigView is a function's dispatch-ordered signature list (FnDispatchSigs)
+// with the authored list it was built from, by identity (sameList).
+type sigView struct {
+	src  []Signature
+	sigs []Signature
+}
+
+// FnDispatchSigs returns fd's signatures as the interpreter's step matches a
+// fn value under them (compileFnDef's view, without the body runners a match
+// needs): each with its all-forward barrier resolved and normalised, sorted
+// into dispatch order. It is built once per function identity and authored
+// list and shared by every caller after: never write into it. A payload with
+// no identity builds it on every call.
+func FnDispatchSigs(fd *FnDefInfo) []Signature {
+	id := fd.ident
+	if id == nil {
+		return dispatchSigs(fd.Signatures)
+	}
+	if c := id.view.Load(); c != nil && sameList(c.src, fd.Signatures) {
+		return c.sigs
+	}
+	sigs := dispatchSigs(fd.Signatures)
+	id.view.Store(&sigView{src: fd.Signatures, sigs: sigs})
+	return sigs
+}
+
+func dispatchSigs(src []Signature) []Signature {
+	sigs := make([]Signature, len(src))
+	for i := range src {
+		s := src[i]
+		s.Params = append([]FnParam(nil), s.Params...)
+		if s.BarrierPos == BarrierAllForward {
+			s.BarrierPos = len(s.Params)
+		}
+		NormalizeSig(&s)
+		sigs[i] = s
+	}
+	SortSignatures(sigs)
+	return sigs
 }

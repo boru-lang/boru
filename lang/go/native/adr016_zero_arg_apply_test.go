@@ -2,6 +2,8 @@ package native
 
 import (
 	"testing"
+
+	core "github.com/boru-lang/boru/core/go"
 )
 
 // runTail evaluates src and returns its trailing value.
@@ -69,7 +71,7 @@ func TestADR016ApplyKeepsArgTakingFnInert(t *testing.T) {
 		if err != nil {
 			t.Fatalf("applyHandler %q: %v", src, err)
 		}
-		if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+		if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 			t.Errorf("%q: an arg-taking fn must come back as the FUNCTION for "+
 				"the re-step to bind its args, got %v", src, out)
 		}
@@ -89,11 +91,10 @@ func TestADR016AppliedMarkIsNotACall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applyHandler: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Fatalf("apply must MARK, not call: want the Function back, got %v", out)
 	}
-	fd, ok := out[0].Data.(FnDefInfo)
-	if !ok || !fd.Applied {
+	if _, ok := FnDefOf(out[0].Data()); !ok || !core.IsApplied(&out[0]) {
 		t.Errorf("want the one-shot Applied mark set for the re-step, got %+v", out[0])
 	}
 }

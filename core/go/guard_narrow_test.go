@@ -56,13 +56,13 @@ func TestLiteralCondValue(t *testing.T) {
 	// carrier; the decided Boolean must be read straight through the
 	// wrapper or the unreachable-branch analysis goes silent.
 	wrapped := NewValueRaw(TBoolean, GuardFactInfo{Prev: BoolPayload{B: true}})
-	wrapped.Carrier = true
+	wrapped.SetCarrier(true)
 	if v, ok := LiteralCondValue(guardCond(wrapped)); !ok || !v {
 		t.Errorf("wrapped cond = %v/%v, want true", v, ok)
 	}
 	// A wrapper with no decided Prev falls through to the other arms.
 	undecided := NewValueRaw(TBoolean, GuardFactInfo{Toks: []Value{NewWord("x")}})
-	undecided.Carrier = true
+	undecided.SetCarrier(true)
 	if _, ok := LiteralCondValue(guardCond(undecided)); ok {
 		t.Error("an undecided wrapped cond must not report a literal")
 	}
@@ -125,7 +125,7 @@ func TestExtractGuardClausesPositive(t *testing.T) {
 	wrapped := NewValueRaw(TBoolean, GuardFactInfo{
 		Toks: []Value{NewWord("y"), isW, NewTypeLiteral(TString)},
 	})
-	wrapped.Carrier = true
+	wrapped.SetCarrier(true)
 	got = extractGuardClauses(r, wrapped)
 	if len(got) != 1 || got[0].Name != "y" || !got[0].Type.Equal(TString) {
 		t.Fatalf("paren-form clauses = %+v, want one y:String clause", got)
@@ -178,17 +178,17 @@ func TestApplyGuardNarrowing(t *testing.T) {
 	if !ok {
 		t.Fatal("narrowing must push a binding")
 	}
-	if narrowed.ID != src.ID {
-		t.Errorf("narrowed ID = %q, want the source's %q", narrowed.ID, src.ID)
+	if IDOf(&narrowed) != IDOf(&src) {
+		t.Errorf("narrowed ID = %q, want the source's %q", IDOf(&narrowed), IDOf(&src))
 	}
-	if narrowed.Parent == nil || !narrowed.Parent.ConformsTo(TInteger) {
+	if narrowed.Parent() == nil || !narrowed.Parent().ConformsTo(TInteger) {
 		t.Errorf("narrowed binding = %v, want Integer-conforming", narrowed)
 	}
-	if !narrowed.Dynamic {
+	if !IsDynamic(&narrowed) {
 		t.Error("a dynamic binding must stay dynamic through the meet")
 	}
 	restore()
-	if v, _ := r.Defs.Top("x"); v.Dynamic != src.Dynamic || v.ID != src.ID {
+	if v, _ := r.Defs.Top("x"); IsDynamic(&v) != IsDynamic(&src) || IDOf(&v) != IDOf(&src) {
 		t.Error("restore must pop the narrowing")
 	}
 
@@ -197,7 +197,7 @@ func TestApplyGuardNarrowing(t *testing.T) {
 	r = w8reg(t)
 	r.Check.Mode = true
 	ApplyGuardNarrowing(r, cond)
-	if v, ok := r.Defs.Top("x"); !ok || !v.Parent.Equal(TInteger) {
+	if v, ok := r.Defs.Top("x"); !ok || !v.Parent().Equal(TInteger) {
 		t.Errorf("unbound narrowing = %v/%v, want a plain Integer carrier", v, ok)
 	}
 }
@@ -293,7 +293,7 @@ func TestApplyComplementNarrowing(t *testing.T) {
 	dyn := NewDynamicCarrier(TAny)
 	r.Defs.Push("x", dyn)
 	ApplyComplementNarrowing(r, cond)()
-	if v, _ := r.Defs.Top("x"); !v.Dynamic {
+	if v, _ := r.Defs.Top("x"); !IsDynamic(&v) {
 		t.Error("a dynamic binding's else path must stay gradual")
 	}
 
@@ -302,15 +302,15 @@ func TestApplyComplementNarrowing(t *testing.T) {
 	r = w8reg(t)
 	r.Check.Mode = true
 	union := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	union.Carrier = true
+	union.SetCarrier(true)
 	src := union
 	r.Defs.Push("x", src)
 	restore := ApplyComplementNarrowing(r, cond)
 	narrowed, _ := r.Defs.Top("x")
-	if narrowed.ID != src.ID {
-		t.Errorf("complement ID = %q, want the source's %q", narrowed.ID, src.ID)
+	if IDOf(&narrowed) != IDOf(&src) {
+		t.Errorf("complement ID = %q, want the source's %q", IDOf(&narrowed), IDOf(&src))
 	}
-	if narrowed.Parent.ConformsTo(TInteger) {
+	if narrowed.Parent().ConformsTo(TInteger) {
 		t.Errorf("complement = %v, still admits Integer", narrowed)
 	}
 	restore()
@@ -382,7 +382,7 @@ func TestGuardClausePredicateImplied(t *testing.T) {
 	// requires three tokens, so the list spelling never gets here.
 	predCond := func(toks ...Value) Value {
 		v := NewValueRaw(TBoolean, GuardFactInfo{Toks: toks})
-		v.Carrier = true
+		v.SetCarrier(true)
 		return v
 	}
 	cond := predCond(NewWord("islist"), NewWord("xs"))
@@ -412,7 +412,7 @@ func TestGuardClausePredicateImplied(t *testing.T) {
 	// The THEN arm narrows on the fact…
 	r.Check.Mode = true
 	restore := ApplyGuardNarrowing(r, cond)
-	if v, _ := r.Defs.Top("xs"); v.Parent == nil || !v.Parent.ConformsTo(TList) {
+	if v, _ := r.Defs.Top("xs"); v.Parent() == nil || !v.Parent().ConformsTo(TList) {
 		t.Errorf("then-arm binding = %v, want List-conforming", v)
 	}
 	restore()

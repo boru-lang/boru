@@ -187,7 +187,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// a raw code-list. Run the former via RunUnit on the fork, the latter via a
 	// fresh interpreter sub-engine.
 	var compiledRef *compiler.CompiledFnRef
-	if fd, ok := args[0].Data.(core.FnDefInfo); ok {
+	if fd, ok := args[0].Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			if ref := compiler.CompiledRef(&fd.Signatures[i]); ref != nil && ref.Prog != nil {
 				compiledRef = ref
@@ -201,8 +201,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		if err != nil {
 			return nil, err
 		}
-		tokens = make([]Value, bodyList.Len())
-		copy(tokens, bodyList.Slice())
+		tokens = bodyList.Slice() // the spawned goroutine's own copy
 	}
 	bound := core.DefaultMailboxBound
 	overflow := core.OverflowBlock
@@ -291,7 +290,7 @@ func resolveSendTarget(r *Registry, v Value) *core.Process {
 // message is sendable. Plain List/Map are sendable (they are deep-copied
 // at the boundary); Store / Object / Table / Flex nodes are declined.
 func sendableViolation(v Value) string {
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case *core.StoreInstanceInfo:
 		return "Store"
 	case core.ClassInstanceInfo:
@@ -345,7 +344,7 @@ func registerHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	name := ValToString(args[0])
 	p, ok := asPid(args[1])
 	if !ok {
-		return nil, r.BoruError("process_error", "register: expected a Pid, got "+args[1].Parent.String(), "register")
+		return nil, r.BoruError("process_error", "register: expected a Pid, got "+args[1].Parent().String(), "register")
 	}
 	if name == "" {
 		return nil, r.BoruError("process_error", "register: name must be non-empty", "register")
@@ -407,7 +406,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 	for i := 0; i < len(elems); i++ {
 		e := elems[i]
 		// `after <ms> [body]` — the timeout clause.
-		if w, ok := e.Data.(core.WordInfo); ok && w.Name == "after" {
+		if w, ok := e.Data().(core.WordInfo); ok && w.Name == "after" {
 			if i+2 >= len(elems) {
 				return nil, nil, r.BoruError("receive_error", "receive: `after` needs <ms> and [body]", "receive")
 			}
@@ -419,16 +418,14 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 			if bErr != nil {
 				return nil, nil, r.BoruError("receive_error", "receive: `after` body must be a list", "receive")
 			}
-			body := make([]Value, bodyList.Len())
-			copy(body, bodyList.Slice())
-			after = &recvAfter{ms: ms, body: body}
+			after = &recvAfter{ms: ms, body: bodyList.Slice()}
 			i += 2
 			continue
 		}
 		// `{pattern} [body]` pair.
-		if !IsConcrete(e) || !e.Parent.ConformsTo(TMap) {
+		if !IsConcrete(&e) || !e.Parent().ConformsTo(TMap) {
 			return nil, nil, r.BoruError("receive_error",
-				"receive: expected a {pattern} map (or `after`), got "+e.Parent.String(), "receive")
+				"receive: expected a {pattern} map (or `after`), got "+e.Parent().String(), "receive")
 		}
 		if i+1 >= len(elems) {
 			return nil, nil, r.BoruError("receive_error", "receive: pattern has no [body]", "receive")
@@ -437,8 +434,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 		if bErr != nil {
 			return nil, nil, r.BoruError("receive_error", "receive: clause body must be a list", "receive")
 		}
-		body := make([]Value, bodyList.Len())
-		copy(body, bodyList.Slice())
+		body := bodyList.Slice()
 		clause, cErr := splitClausePattern(r, e, "receive", "receive_error")
 		if cErr != nil {
 			return nil, nil, cErr
@@ -471,13 +467,13 @@ func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, er
 		// The clause list is NoEvalArgs (raw), so a type name in the
 		// pattern map arrives as an unevaluated Word — resolve it against
 		// the active type bindings/builtins (`reply: Pid`, `n: Integer`).
-		if w, ok := v.Data.(core.WordInfo); ok {
+		if w, ok := v.Data().(core.WordInfo); ok {
 			t := r.LookupTypeName(w.Name) // user `def Foo …` type bindings
 			if t == nil {
 				t = core.TypeNameTable()[w.Name] // builtin / external names (Pid, Integer, …)
 			}
 			if t != nil {
-				c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
+				c.binds = append(c.binds, recvBind{name: k, t: NodeOf(t)})
 				continue
 			}
 			return recvClause{}, r.BoruErrorHint(code,
@@ -485,17 +481,17 @@ func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, er
 				op, "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
 		}
 		switch {
-		case IsConcrete(v) && v.Parent.ConformsTo(TScalar):
+		case IsConcrete(&v) && v.Parent().ConformsTo(TScalar):
 			c.route[k] = ValToString(v)
-		case IsTypeLiteral(v):
+		case IsTypeLiteral(&v):
 			t := core.ValueType(v)
 			if t == nil { //covergate:allow IsTypeLiteral(v) implies a bare type node, so core.ValueType returns a non-nil pointer; the t==nil default cannot fire (§native)
 				t = TAny
 			}
-			c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
+			c.binds = append(c.binds, recvBind{name: k, t: NodeOf(t)})
 		default:
 			return recvClause{}, r.BoruErrorHint(code,
-				fmt.Sprintf("%s: pattern field %q must be a Scalar routing tag or a Type binding slot, got %s", op, k, v.Parent.String()),
+				fmt.Sprintf("%s: pattern field %q must be a Scalar routing tag or a Type binding slot, got %s", op, k, v.Parent().String()),
 				op, "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
 		}
 	}
@@ -518,11 +514,11 @@ func routeMessage(clauses []recvClause, msg Value) int {
 		pm.Add(c.route, &h)
 	}
 	subj := map[string]string{}
-	if IsConcrete(msg) && msg.Parent.ConformsTo(TMap) {
+	if IsConcrete(&msg) && msg.Parent().ConformsTo(TMap) {
 		if mp, _ := AsMap(msg); mp != nil {
 			for _, k := range mp.Keys() {
 				v, _ := mp.Get(k)
-				if IsConcrete(v) && v.Parent.ConformsTo(TScalar) {
+				if IsConcrete(&v) && v.Parent().ConformsTo(TScalar) {
 					subj[k] = ValToString(v)
 				}
 			}
@@ -558,7 +554,7 @@ func bindSlots(slots []recvBind, msg Value) ([]recvBinding, bool) {
 	if len(slots) == 0 {
 		return nil, true
 	}
-	if !IsConcrete(msg) || !msg.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&msg) || !msg.Parent().ConformsTo(TMap) {
 		return nil, false
 	}
 	mp, _ := AsMap(msg)
@@ -588,9 +584,7 @@ type recvBinding struct {
 // frame bindings (shadowing, torn down afterwards).
 func runClauseBody(r *Registry, binds []recvBinding, body []Value) ([]Value, error) {
 	return withSlotBindings(r, binds, func() ([]Value, error) {
-		tokens := make([]Value, len(body))
-		copy(tokens, body)
-		return New(r).Run(tokens)
+		return New(r).Run(body)
 	})
 }
 

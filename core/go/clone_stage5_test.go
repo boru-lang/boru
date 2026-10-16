@@ -15,10 +15,10 @@ import (
 func TestStage5CloneTypeLiteralSharesValue(t *testing.T) {
 	lit := NewTypeLiteral(TInteger)
 	cl := CloneValue(lit)
-	if !IsBareTypeNode(cl) || !ValueType(cl).Equal(TInteger) {
+	if !IsBareTypeNode(&cl) || !ValueType(cl).Equal(TInteger) {
 		t.Errorf("clone of a type literal = %v, want the literal back", cl)
 	}
-	if cl.ID != lit.ID {
+	if IDOf(&cl) != IDOf(&lit) {
 		t.Error("a payload-free literal is shared, not re-minted")
 	}
 }
@@ -53,7 +53,7 @@ func TestStage5CloneMapDeepAndMeta(t *testing.T) {
 	if _, ok := om.Get("b"); ok {
 		t.Error("writing the clone must not touch the original")
 	}
-	if cl.ID == m.ID {
+	if IDOf(&cl) == IDOf(&m) {
 		t.Error("a container clone gets a fresh ID")
 	}
 }
@@ -146,8 +146,8 @@ func TestStage5CloneStoreGraph(t *testing.T) {
 	}
 	v1, _ := cm.Get("s1")
 	v2, _ := cm.Get("s2")
-	c1, ok1 := v1.Data.(*StoreInstanceInfo)
-	c2, ok2 := v2.Data.(*StoreInstanceInfo)
+	c1, ok1 := v1.Data().(*StoreInstanceInfo)
+	c2, ok2 := v2.Data().(*StoreInstanceInfo)
 	if !ok1 || !ok2 {
 		t.Fatal("clone lost the store payloads")
 	}
@@ -174,7 +174,7 @@ func TestStage5CloneStoreGraph(t *testing.T) {
 		t.Error("clone tombstone map must be independent")
 	}
 	// The nested store's COW back-link is re-established onto the CLONE.
-	cc, ok := c1.Data["child"].Data.(*StoreInstanceInfo)
+	cc, ok := c1.Data["child"].Data().(*StoreInstanceInfo)
 	if !ok {
 		t.Fatal("nested store lost in the clone")
 	}
@@ -201,9 +201,9 @@ func TestStage5CloneClassInstance(t *testing.T) {
 	iv := NewClassInstance(TClass, ClassInstanceInfo{TypeRef: ct, Fields: fields})
 
 	cl := CloneValue(iv)
-	ci, ok := cl.Data.(ClassInstanceInfo)
+	ci, ok := cl.Data().(ClassInstanceInfo)
 	if !ok {
-		t.Fatalf("clone payload = %T, want ClassInstanceInfo", cl.Data)
+		t.Fatalf("clone payload = %T, want ClassInstanceInfo", cl.Data())
 	}
 	if ci.TypeRef != ct {
 		t.Error("TypeRef is a shared immutable descriptor")
@@ -225,9 +225,9 @@ func TestStage5CloneTable(t *testing.T) {
 		TableName: "stage5t",
 	})
 	cl := CloneValue(tv)
-	td, ok := cl.Data.(TableData)
+	td, ok := cl.Data().(TableData)
 	if !ok {
-		t.Fatalf("clone payload = %T, want TableData", cl.Data)
+		t.Fatalf("clone payload = %T, want TableData", cl.Data())
 	}
 	if td.TableName != "stage5t" {
 		t.Errorf("TableName = %q", td.TableName)
@@ -238,7 +238,7 @@ func TestStage5CloneTable(t *testing.T) {
 	if n, err := AsInteger(td.Rows[0]); err != nil || n != 1 {
 		t.Errorf("row 0 = %v (%v), want 1", td.Rows[0], err)
 	}
-	if cl.ID == tv.ID {
+	if IDOf(&cl) == IDOf(&tv) {
 		t.Error("a table clone gets a fresh ID")
 	}
 }
@@ -289,9 +289,9 @@ func TestStage5CloneExtensionPayload(t *testing.T) {
 	body := &stage5CloneBody{N: 7}
 	v := NewValueRaw(TAny, ExtensionPayload{Body: body})
 	cl := CloneValue(v)
-	ep, ok := cl.Data.(ExtensionPayload)
+	ep, ok := cl.Data().(ExtensionPayload)
 	if !ok {
-		t.Fatalf("clone payload = %T, want ExtensionPayload", cl.Data)
+		t.Fatalf("clone payload = %T, want ExtensionPayload", cl.Data())
 	}
 	nb, ok := ep.Body.(*stage5CloneBody)
 	if !ok {
@@ -307,7 +307,7 @@ func TestStage5CloneExtensionPayload(t *testing.T) {
 	// No DeepCloner: the whole value is shared as-is.
 	ov := NewValueRaw(TAny, ExtensionPayload{Body: stage5OpaqueBody{N: 3}})
 	ocl := CloneValue(ov)
-	if ocl.ID != ov.ID {
+	if IDOf(&ocl) != IDOf(&ov) {
 		t.Error("an opaque host body is shared, not re-minted")
 	}
 }

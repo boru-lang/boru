@@ -22,7 +22,7 @@ func TestGensymUniqueAndMonotonic(t *testing.T) {
 	for i := 0; i < l.Len(); i++ {
 		v := l.Get(i)
 		if !core.IsAtom(v) {
-			t.Fatalf("gensym[%d] should be an Atom, got %s", i, v.Parent)
+			t.Fatalf("gensym[%d] should be an Atom, got %s", i, v.Parent())
 		}
 		name, _ := core.AsAtom(v)
 		if !strings.HasPrefix(name, "tmp$g") {

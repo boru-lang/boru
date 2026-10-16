@@ -529,7 +529,7 @@ func TestPathOfAndTypeOf(t *testing.T) {
 		t.Errorf("PathOf(Integer) = %v", p)
 	}
 	tv := TypeOf(NewInteger(3))
-	if !IsTypeLiteral(tv) {
+	if !IsTypeLiteral(&tv) {
 		t.Errorf("TypeOf(3) = %v, want a type literal", tv)
 	}
 	if !tv.Equal(TInteger) {
@@ -570,7 +570,7 @@ func TestInstallTypeAlias(t *testing.T) {
 	if !ok {
 		t.Fatal("CovAlias has no bound body")
 	}
-	if !IsTypeLiteral(body) {
+	if !IsTypeLiteral(&body) {
 		t.Errorf("alias body = %v, want a type literal", body)
 	}
 }
@@ -609,7 +609,7 @@ func TestInstallTypeRefinePrefab(t *testing.T) {
 	if entry.TypeDef == nil {
 		t.Fatal("CovPos binding carries no minted type")
 	}
-	if NewInteger(1).Is(entry.TypeDef) {
+	if addrOf(NewInteger(1)).Is(entry.TypeDef) {
 		t.Error("plain Integer must not match the bare-refine newtype")
 	}
 }

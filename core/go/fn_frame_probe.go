@@ -111,25 +111,25 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 	// truncation-only marker closes no frame.
 	i := e.Pointer + 1
 	closersAhead := 0
-	for i < e.Tape.Len() && IsCloseParen(e.Tape.At(i)) {
+	for i < e.Tape.Len() && IsCloseParen(e.Tape.Ref(i)) {
 		closersAhead++
 		i++
 	}
-	if i >= e.Tape.Len() || !IsDefCleanup(e.Tape.At(i)) {
+	if i >= e.Tape.Len() || !IsDefCleanup(e.Tape.Ref(i)) {
 		return scan, false
 	}
-	dc, _ := AsDefCleanup(e.Tape.At(i))
+	dc, _ := AsDefCleanup(e.Tape.Ref(i))
 	if !dc.PopFrame {
 		return scan, false
 	}
 	scan.TailStart = i
 	scan.Names = dc.Names
 	i++
-	if i < e.Tape.Len() && IsReturnCheck(e.Tape.At(i)) {
+	if i < e.Tape.Len() && IsReturnCheck(e.Tape.Ref(i)) {
 		scan.RCIdx = i
 		i++
 	}
-	if i >= e.Tape.Len() || !IsCloseParen(e.Tape.At(i)) {
+	if i >= e.Tape.Len() || !IsCloseParen(e.Tape.Ref(i)) {
 		return scan, false
 	}
 	scan.CloseIdx = i
@@ -142,26 +142,26 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 	for j := start - 1; j >= 0; j-- {
 		v := e.Tape.At(j)
 		switch {
-		case IsFrameOpen(v):
+		case IsFrameOpen(&v):
 			if opensBelow != closersAhead {
 				return scan, false
 			}
-			info, err := AsFrameOpen(v)
+			info, err := AsFrameOpen(&v)
 			if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 				return scan, false
 			}
 			scan.FrameOpen = j
 			scan.Meta = info.Meta
 			return scan, true
-		case IsOpenParen(v):
+		case IsOpenParen(&v):
 			opensBelow++
-		case IsForward(v), IsWord(v), IsMark(v), IsMove(v),
-			IsCloseParen(v), IsEnd(v), IsDefCleanup(v),
-			IsReturnCheck(v), IsSplice(v):
+		case IsForward(&v), IsWord(&v), IsMark(&v), IsMove(&v),
+			IsCloseParen(&v), IsEnd(&v), IsDefCleanup(&v),
+			IsReturnCheck(&v), IsSplice(&v):
 			return scan, false
-		case IsConcrete(v):
+		case IsConcrete(&v):
 			scan.ValuesBelow = true
-			if isPendingResidualContainer(v) {
+			if isPendingResidualContainer(&v) {
 				scan.PendingEvalBelow = true
 			}
 		default:

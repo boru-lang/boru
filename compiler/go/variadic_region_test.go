@@ -56,7 +56,7 @@ func TestResidualHasVariadicRegionFindsTheRecordedEvent(t *testing.T) {
 
 	plain := core.NewInteger(99)
 	region := vrSpread()
-	region.ID = core.GenerateID("zzrg")
+	core.SetID(&region, core.GenerateID("zzrg"))
 
 	// Nothing recorded yet: an unproduced value is not a region, which is
 	// also the arm every const-only residual takes.
@@ -65,7 +65,7 @@ func TestResidualHasVariadicRegionFindsTheRecordedEvent(t *testing.T) {
 	}
 
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzawait", nout: 1}})
-	es.setProduced(region, seq)
+	es.setProduced(&region, seq)
 
 	// Produced, but recorded as an ORDINARY event — the flag is what marks a
 	// region, not the carrier's shape, so provenance alone must not trip it.

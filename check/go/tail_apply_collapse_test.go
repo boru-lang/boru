@@ -28,7 +28,7 @@ func TestCollapseTailApplyArms(t *testing.T) {
 		t.Error("no tail apply: the residual stays")
 	}
 	rec := fakeTailRec{EmitRecorder: core.TheInactiveEmit, n: 1, ok: true}
-	if got := collapseTailApply(rec, 0, []core.Value{fnCarrier}); len(got) != 1 || !core.IsFnTypedCarrier(got[0]) {
+	if got := collapseTailApply(rec, 0, []core.Value{fnCarrier}); len(got) != 1 || !core.IsFnTypedCarrier(&got[0]) {
 		t.Error("a residual shorter than the window stays")
 	}
 	if got := collapseTailApply(rec, 0, []core.Value{one, two, fnCarrier}); len(got) != 3 {
@@ -39,14 +39,14 @@ func TestCollapseTailApplyArms(t *testing.T) {
 	}
 	stk := []core.Value{two, fnCarrier}
 	got := collapseTailApply(rec, 0, stk)
-	if len(got) != 1 || !got[0].Carrier || !got[0].Dynamic || got[0].Parent != core.TAny {
+	if len(got) != 1 || !got[0].Carrier() || !core.IsDynamic(&got[0]) || got[0].Parent() != core.TAny {
 		t.Errorf("the window [2 f] collapses to one gradual result: %v", got)
 	}
 	if len(stk) != 2 {
 		t.Error("the caller's residual must not be mutated")
 	}
 	fnVal := core.NewFunction(core.FnDefInfo{Anonymous: true})
-	if got := collapseTailApply(rec, 0, []core.Value{one, fnVal}); len(got) != 1 || !got[0].Dynamic {
+	if got := collapseTailApply(rec, 0, []core.Value{one, fnVal}); len(got) != 1 || !core.IsDynamic(&got[0]) {
 		t.Error("a fn VALUE on top collapses too")
 	}
 }
@@ -66,7 +66,7 @@ func TestCollapseElidedTailApplyArms(t *testing.T) {
 	if got := collapseElidedTailApply(nil, stk, true); len(got) != 2 {
 		t.Error("an empty body: nothing to read")
 	}
-	if got := collapseElidedTailApply([]core.Value{apply}, []core.Value{fnCarrier}, true); len(got) != 1 || !core.IsFnTypedCarrier(got[0]) {
+	if got := collapseElidedTailApply([]core.Value{apply}, []core.Value{fnCarrier}, true); len(got) != 1 || !core.IsFnTypedCarrier(&got[0]) {
 		t.Error("a one-value residual stays")
 	}
 	if got := collapseElidedTailApply([]core.Value{one, core.NewWord("add")}, stk, true); len(got) != 2 {
@@ -76,7 +76,7 @@ func TestCollapseElidedTailApplyArms(t *testing.T) {
 		t.Error("a residual whose top is data stays")
 	}
 	got := collapseElidedTailApply([]core.Value{one, apply}, stk, true)
-	if len(got) != 1 || !got[0].Carrier || !got[0].Dynamic || got[0].Parent != core.TAny {
+	if len(got) != 1 || !got[0].Carrier() || !core.IsDynamic(&got[0]) || got[0].Parent() != core.TAny {
 		t.Errorf("the residual collapses to one gradual result: %v", got)
 	}
 	if len(stk) != 2 {

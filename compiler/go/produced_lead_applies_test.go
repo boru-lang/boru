@@ -26,8 +26,18 @@ func chainState() *EmitState {
 		{seq: 2, kind: evCall, call: emitCall{word: wordDynApply, nout: 1, ops: []EmitOperand{EventOperand(1, 0), {kind: opConst}}}},
 		{seq: 3, kind: evCall, call: emitCall{word: wordDynApply, nout: 1, ops: []EmitOperand{EventOperand(2, 0), {kind: opConst}}}},
 	}}
-	es.producedBy = map[string]producer{"c1": {seq: 1}, "o1": {seq: 2}, "o2": {seq: 3}}
 	return es
+}
+
+// chainHeld is the chain's value under id as its holder reaches a query:
+// stamped as its event's result ("c1", "o1", "o2"), or a bare read.
+func chainHeld(es *EmitState, id string) *core.Value {
+	seq, ok := map[string]int{"c1": 1, "o1": 2, "o2": 3}[id]
+	if !ok {
+		return read(id)
+	}
+	v := producedAs(es, core.Value{}, id, seq, 0)
+	return &v
 }
 
 func intArgs(ns ...int64) []core.Value {
@@ -43,15 +53,15 @@ func intArgs(ns ...int64) []core.Value {
 // against the window, level by level down the chain.
 func TestProducedLeadApplies(t *testing.T) {
 	es := chainState()
-	ret, ok := es.ProducedLeadApplies("c1", intArgs(2))
+	ret, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2))
 	if !ok || ret == nil || !ret.Equal(core.TFunction) {
 		t.Errorf("the factory's closure over one Integer applies and nets a Function (its declared return): (%v, %v)", ret, ok)
 	}
-	ret, ok = es.ProducedLeadApplies("o1", intArgs(3))
+	ret, ok = es.ProducedLeadApplies(chainHeld(es, "o1"), intArgs(3))
 	if !ok || ret == nil || !ret.Equal(core.TInteger) {
 		t.Errorf("the first apply's result is unit 2's closure (unit 1's out-op), declared Integer: got (%v, %v)", ret, ok)
 	}
-	if _, ok = es.ProducedLeadApplies("o2", intArgs(4)); ok {
+	if _, ok = es.ProducedLeadApplies(chainHeld(es, "o2"), intArgs(4)); ok {
 		t.Error("the second apply's result is unit 2's add event — no closure to apply")
 	}
 	// Declines.
@@ -65,34 +75,34 @@ func TestProducedLeadApplies(t *testing.T) {
 		"a Number carrier": {"c1", []core.Value{core.NewCarrier(core.TNumber)}},
 		"empty id":         {"", intArgs(2)},
 	} {
-		if _, ok := es.ProducedLeadApplies(c.id, c.args); ok {
+		if _, ok := es.ProducedLeadApplies(chainHeld(es, c.id), c.args); ok {
 			t.Errorf("%s: must decline", name)
 		}
 	}
 	es.defReads = map[string]string{"c1": "h"}
-	if _, ok := es.ProducedLeadApplies("c1", intArgs(2)); ok {
+	if _, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2)); ok {
 		t.Error("a def-read binding is the read model's, never the paren's")
 	}
 	delete(es.defReads, "c1")
 	es.fnRecs[1].paramPatterns = []*core.Value{{}}
-	if _, ok := es.ProducedLeadApplies("c1", intArgs(2)); ok {
+	if _, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2)); ok {
 		t.Error("a param pattern is not a static contract")
 	}
 	es.fnRecs[1].paramTypes = nil
-	if _, ok := es.ProducedLeadApplies("c1", intArgs(2)); ok {
+	if _, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2)); ok {
 		t.Error("a unit with no recorded params has no contract")
 	}
 	// An unnamed-param frame keeps the whole-frame replay (NUR180).
 	es = chainState()
 	es.fnRecs = append(es.fnRecs, &fnUnitRec{name: "each$body", nParams: 1, nUnnamed: 1})
 	es.openUnitRecs = append(es.openUnitRecs, 3)
-	if _, ok := es.ProducedLeadApplies("c1", intArgs(2)); ok {
+	if _, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2)); ok {
 		t.Error("inside an unnamed-param frame the arm stands aside")
 	}
 	// Inactive.
 	es = chainState()
 	es.Compilable = false
-	if _, ok := es.ProducedLeadApplies("c1", intArgs(2)); ok {
+	if _, ok := es.ProducedLeadApplies(chainHeld(es, "c1"), intArgs(2)); ok {
 		t.Error("an inactive recorder answers nothing")
 	}
 }
@@ -167,7 +177,7 @@ func TestFnOpContract(t *testing.T) {
 	}
 	// An Any return over a const-lambda out-op is a Function too; over
 	// anything else it stays Any.
-	lam := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	lam := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger},
 		Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -201,7 +211,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 1}); ok {
 		t.Error("a const 7 is no lambda")
 	}
-	undeclared := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	undeclared := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger, Optional: true}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -209,7 +219,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 2}); ok {
 		t.Error("an optional param is not a static contract")
 	}
-	quoteP := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	quoteP := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TAtom, Quote: true}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})
@@ -217,7 +227,7 @@ func TestFnOpContract(t *testing.T) {
 	if _, ok := es.fnOpContract(EmitOperand{kind: opConst, idx: 3}); ok {
 		t.Error("a /q param is not a static contract")
 	}
-	plain := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	plain := core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Type: core.TInteger}},
 		Impl:   &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}},
 	}}})

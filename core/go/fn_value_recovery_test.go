@@ -89,7 +89,7 @@ func fvrModule(t *testing.T) *Registry {
 
 // fvrFnValue is the module native read as a fn value (`Mod.fvr-send`).
 func fvrFnValue(mod *Registry, name string) Value {
-	return Value{Parent: TFunction, Data: FnDefInfo{Name: name, Registry: mod}}
+	return Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: name, Registry: mod}}}
 }
 
 // fvrCompiling arms a compile pass on r and pins the fallback window.
@@ -116,14 +116,14 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 	// Each unknown-type operand recovers: a strict Any, a gradual (dynamic)
 	// carrier, a union carrier, and a word whose binding is an Any carrier.
 	dyn := NewCarrier(TInteger)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	for name, operand := range map[string]Value{
 		"strict Any":      NewCarrier(TAny),
 		"gradual carrier": dyn,
 		"union carrier":   NewCarrier(TDisjunct),
 		"bound word":      NewWord("fvr-any"),
 	} {
-		if !eng(operand).fnValueNoMatchRecovers(1, fnDef, fn) {
+		if !eng(operand).fnValueNoMatchRecovers(1, &fnDef, fn) {
 			t.Errorf("%s: an unknown-type operand must recover", name)
 		}
 	}
@@ -134,18 +134,18 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 		"definite carrier": NewCarrier(TString),
 		"unbound word":     NewWord("fvr-unbound"),
 	} {
-		if eng(operand).fnValueNoMatchRecovers(1, fnDef, fn) {
+		if eng(operand).fnValueNoMatchRecovers(1, &fnDef, fn) {
 			t.Errorf("%s: a definite operand must not recover", name)
 		}
 	}
 
 	// A foreign name that is not a registered native there declines.
 	local := FnDefInfo{Name: "fvr-local", Registry: mod}
-	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, local, fn) {
+	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &local, fn) {
 		t.Error("a non-native foreign fn must not recover")
 	}
 	// An at-home fn value declines at the first gate.
-	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, FnDefInfo{Name: "fvr-send", Registry: r}, fn) {
+	if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &FnDefInfo{Name: "fvr-send", Registry: r}, fn) {
 		t.Error("an at-home fn value must not recover")
 	}
 	// An overload no poly re-match can drive declines: a callable spec, a
@@ -160,7 +160,7 @@ func TestFnValueNoMatchRecoversGate(t *testing.T) {
 	bodied.Impl = &BoruImpl{Body: []Value{NewInteger(1)}}
 	for name, s := range map[string]Signature{"callable": callable, "no-eval": noEval, "quoted": quoted, "body": bodied} {
 		bad := &FnDefInfo{Name: "fvr-send", Signatures: []Signature{pnmSig(0, TInteger, TString), s}}
-		if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, fnDef, bad) {
+		if eng(NewCarrier(TAny)).fnValueNoMatchRecovers(1, &fnDef, bad) {
 			t.Errorf("%s: an undrivable overload must not recover", name)
 		}
 	}
@@ -177,8 +177,8 @@ func TestExecFnDefLiteralFnValueRecovery(t *testing.T) {
 		sawPos      SrcPos
 	)
 	prev := CheckBraid.CheckModeAssumeSig
-	CheckBraid.CheckModeAssumeSig = func(e *Engine, _ WordInfo, fn *FnDefInfo, _ *Signature, pos SrcPos) error {
-		sawRecovery, sawReg, sawPos = e.fnValueRecovery, fn.Registry, pos
+	CheckBraid.CheckModeAssumeSig = func(e *Engine, _ WordInfo, _ *FnDefInfo, home *Registry, _ *Signature, pos SrcPos) error {
+		sawRecovery, sawReg, sawPos = e.fnValueRecovery, home, pos
 		return sentinel
 	}
 	t.Cleanup(func() { CheckBraid.CheckModeAssumeSig = prev })
@@ -193,7 +193,7 @@ func TestExecFnDefLiteralFnValueRecovery(t *testing.T) {
 		t.Errorf("fnValueRecovery must be set for the assume-sig call only (during %v, after %v)", sawRecovery, e.fnValueRecovery)
 	}
 	if sawReg != mod {
-		t.Errorf("the recovered fn must run on its home module registry, got %p want %p", sawReg, mod)
+		t.Errorf("the recovered fn's home module registry must ride beside it, got %p want %p", sawReg, mod)
 	}
 	if sawPos.Row != 6 {
 		t.Errorf("the recovery pos must borrow the operand's span, got %+v", sawPos)

@@ -35,7 +35,7 @@ func unifyFlexLiteral(a Value, sa ValueShape, b Value, sb ValueShape, flexType *
 	// flex type (a WeakFlex* value, a user `refine FlexMap` newtype)
 	// satisfies the parent literal — ordinary nominal subtyping. Plain
 	// nodes still do not qualify (they sit ABOVE the flex type).
-	if IsConcrete(other) && other.Parent != nil && other.Parent.ConformsTo(flexType) {
+	if IsConcrete(&other) && other.Parent() != nil && other.Parent().ConformsTo(flexType) {
 		return other, true, nil
 	}
 	// Gradual: a check-mode CARRIER tagged at (or under) the flex type
@@ -46,7 +46,7 @@ func unifyFlexLiteral(a Value, sa ValueShape, b Value, sb ValueShape, flexType *
 	// while the identical program unifies at run time — the flex-retag
 	// gap that blocked pure-Boru sorted nodes (design/OPEN-WORDS.1.md
 	// follow-up).
-	if other.Carrier && other.Parent != nil && other.Parent.ConformsTo(flexType) {
+	if other.Carrier() && other.Parent() != nil && other.Parent().ConformsTo(flexType) {
 		return other, true, nil
 	}
 	return Value{}, true, unifyFail(name+" type literal needs a concrete "+name, lit, other)
@@ -104,13 +104,11 @@ func unifyCarrierVsTyped(a Value, sa ValueShape, b Value, sb ValueShape, typedSh
 	// disjoint from the container family) must fall through to the ordinary
 	// narrowing / disjointness rules, NOT be optimistically tagged here — that
 	// over-broad match suppressed the dynamic narrowing-through-use diagnostic.
-	if carrier.Parent == nil || !carrier.Parent.ConformsTo(flexType) {
+	if carrier.Parent() == nil || !carrier.Parent().ConformsTo(flexType) {
 		return Value{}, false
 	}
 	ct, _ := AsChildType(typed)
-	out := carrier
-	out.SetElemConstraint(ct.Child)
-	return out, true
+	return MintElemTyped(&carrier, &ct.Child), true
 }
 
 // unifyMapValues unifies the value at each key of m, sourcing the left side

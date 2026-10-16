@@ -38,7 +38,7 @@ func reifyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	input := args[1]
 
 	// JSON-text form: decode to a generic tree first.
-	if input.Parent.ConformsTo(TString) && IsConcrete(input) {
+	if input.Parent().ConformsTo(TString) && IsConcrete(&input) {
 		text, _ := AsString(input)
 		var raw any
 		if err := json.Unmarshal([]byte(text), &raw); err != nil {
@@ -89,7 +89,7 @@ func reifyFromAnyMapOrdered(target Value, m map[string]any, keys []string, r *Re
 		case k == "$class":
 			if s, ok := v.(string); ok {
 				className = s
-			} else if val, isVal := v.(Value); isVal && val.Parent.ConformsTo(TString) {
+			} else if val, isVal := v.(Value); isVal && val.Parent().ConformsTo(TString) {
 				className, _ = AsString(val)
 			} else {
 				return nil, r.BoruError("reify_error", "reify: $class must be a string", "reify")
@@ -148,7 +148,7 @@ func resolveReifyTarget(target Value, className string, r *Registry) (*core.Clas
 	if body, ok := core.TypeContentOf(target); ok {
 		target = body
 	}
-	if IsClassType(target) {
+	if IsClassType(&target) {
 		info, _ := AsClassType(target)
 		if className != "" && className != classShortName(&info) {
 			return nil, r.BoruError("reify_error",
@@ -156,7 +156,7 @@ func resolveReifyTarget(target Value, className string, r *Registry) (*core.Clas
 		}
 		return &info, nil
 	}
-	if di, ok := target.Data.(DisjunctInfo); ok {
+	if di, ok := target.Data().(DisjunctInfo); ok {
 		if className == "" {
 			return nil, r.BoruError("reify_error",
 				"reify: a union target needs a $class key to select the member", "reify")
@@ -165,10 +165,10 @@ func resolveReifyTarget(target Value, className string, r *Registry) (*core.Clas
 		for _, alt := range di.Alternatives {
 			// A named member arrives as its NODE; its schema is the
 			// node's recorded content.
-			if body, ok := TypeContentOf(alt); ok && IsBareTypeNode(alt) {
+			if body, ok := TypeContentOf(alt); ok && IsBareTypeNode(&alt) {
 				alt = body
 			}
-			if !IsClassType(alt) {
+			if !IsClassType(&alt) {
 				continue
 			}
 			info, _ := AsClassType(alt)
@@ -202,13 +202,13 @@ func classShortName(info *core.ClassTypeInfo) string {
 func reifyFieldValue(raw any, constraint Value, r *Registry) (Value, error) {
 	// A NAMED field constraint holds the class NODE (the Stage 2 flip);
 	// hydration needs the schema recorded on it.
-	if IsBareTypeNode(constraint) {
-		if body, ok := constraint.TypeBody(); ok && IsClassType(body) {
+	if IsBareTypeNode(&constraint) {
+		if body, ok := constraint.TypeBody(); ok && IsClassType(&body) {
 			constraint = body
 		}
 	}
 	// Nested class field + map input → recursive hydration.
-	if IsClassType(constraint) {
+	if IsClassType(&constraint) {
 		switch m := raw.(type) {
 		case map[string]any:
 			res, err := reifyFromAnyMap(constraint, m, r)
@@ -262,7 +262,7 @@ func reifyFieldValue(raw any, constraint Value, r *Registry) (Value, error) {
 // for a concrete default. Predicate/disjunction constraints return nil
 // (no single conversion target — the value must already conform).
 func targetTypeOf(constraint Value) *core.Type {
-	if IsBareTypeNode(constraint) {
+	if IsBareTypeNode(&constraint) {
 		return core.ValueType(constraint)
 	}
 	// A DepScalar predicate constraint ((Float gte 0.0)) recovers
@@ -270,13 +270,13 @@ func targetTypeOf(constraint Value) *core.Type {
 	// the make path after conversion, so a JSON integer 5 can become
 	// the Float 5.0 the predicate wants without loosening the bound.
 	if constraint.IsDepScalar() {
-		return constraint.Parent
+		return constraint.Parent()
 	}
 	if pt := core.PredicateInputType(constraint); pt != nil {
 		return pt
 	}
-	if IsConcrete(constraint) && !core.IsTypeBody(constraint) {
-		return constraint.Parent
+	if IsConcrete(&constraint) && !core.IsTypeBody(&constraint) {
+		return constraint.Parent()
 	}
 	return nil
 }

@@ -82,7 +82,7 @@ func reportNatives() []native.NativeFunc {
 // the colon. Falls back to FormatForPrint for non-Map values so the
 // word is safe to call on heterogeneous inputs.
 func formatRecord(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
 	m, err := native.RequireConcreteMap(v, "Report.record")
@@ -117,13 +117,13 @@ func formatRecord(v native.Value) string {
 // from the union of keys (in first-seen order) and an ad-hoc table is
 // rendered.
 func formatTableValue(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
 	if native.IsTableType(v) {
 		return native.FormatForPrint(v)
 	}
-	if !v.Parent.Equal(native.TList) {
+	if !v.Parent().Equal(native.TList) {
 		return native.FormatForPrint(v)
 	}
 	rows, err := native.AsList(v)
@@ -135,8 +135,8 @@ func formatTableValue(v native.Value) string {
 	}
 	cols := []string{}
 	seen := map[string]bool{}
-	for _, row := range rows.Slice() {
-		if !row.Parent.Equal(native.TMap) || !native.IsConcrete(row) {
+	for _, row := range rows.Elems() {
+		if !row.Parent().Equal(native.TMap) || !native.IsConcrete(&row) {
 			return native.FormatForPrint(v)
 		}
 		rm, _ := native.AsMap(row)
@@ -151,7 +151,7 @@ func formatTableValue(v native.Value) string {
 		}
 	}
 	cells := make([][]string, rows.Len())
-	for i, row := range rows.Slice() {
+	for i, row := range rows.Elems() {
 		cells[i] = make([]string, len(cols))
 		rm, _ := native.AsMap(row)
 		for j, c := range cols {
@@ -203,10 +203,10 @@ func formatTableValue(v native.Value) string {
 // formatListValue renders a list one element per line, indexed.
 // Falls back to FormatForPrint when v is not a concrete list.
 func formatListValue(v native.Value) string {
-	if !native.IsConcrete(v) {
+	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
-	if !v.Parent.Equal(native.TList) {
+	if !v.Parent().Equal(native.TList) {
 		return native.FormatForPrint(v)
 	}
 	rows, err := native.AsList(v)
@@ -218,7 +218,7 @@ func formatListValue(v native.Value) string {
 	}
 	idxWidth := len(fmt.Sprintf("%d", rows.Len()-1))
 	var b strings.Builder
-	for i, e := range rows.Slice() {
+	for i, e := range rows.Elems() {
 		if i > 0 {
 			b.WriteByte('\n')
 		}

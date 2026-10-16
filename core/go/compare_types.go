@@ -33,7 +33,7 @@ func compareTypes(a, b *Type) int {
 	if c := strings.Compare(a.Name(), b.Name()); c != 0 {
 		return c
 	}
-	return strings.Compare(a.ID, b.ID)
+	return strings.Compare(IDOf(a), IDOf(b))
 }
 
 // rankOf returns t's unified lattice Rank. Builtins, MintType, and
@@ -41,7 +41,7 @@ func compareTypes(a, b *Type) int {
 // returns t.Rank directly; the parent-chain walk is a fallback for a
 // *Type assembled without one (chiefly in tests).
 func rankOf(t *Type) int {
-	for ; t != nil; t = t.Parent {
+	for ; t != nil; t = t.Parent() {
 		if t.Rank() != 0 {
 			return t.Rank()
 		}
@@ -59,7 +59,7 @@ func typeDepth(t *Type) int {
 		return t.Depth()
 	}
 	d := 0
-	for ; t != nil; t = t.Parent {
+	for ; t != nil; t = t.Parent() {
 		d++
 	}
 	return d
@@ -86,11 +86,11 @@ func cmpInt(a, b int) int {
 // deliberate use of a rendered form as an ordering key beyond String,
 // Word, and Atom.
 func compareStructural(a, b Value) (int, error) {
-	if IsConcrete(a) && IsConcrete(b) {
-		if a.Parent.ConformsTo(TList) {
+	if IsConcrete(&a) && IsConcrete(&b) {
+		if a.Parent().ConformsTo(TList) {
 			return compareListElems(a, b)
 		}
-		if a.Parent.ConformsTo(TMap) {
+		if a.Parent().ConformsTo(TMap) {
 			return compareMapEntries(a, b)
 		}
 	}

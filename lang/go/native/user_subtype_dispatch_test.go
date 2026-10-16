@@ -76,11 +76,11 @@ func TestUserTypeBindingShape_ObjectRefinement(t *testing.T) {
 	if !ok {
 		t.Fatal("Foo not installed as a type")
 	}
-	if !IsConcrete(body) {
+	if !IsConcrete(&body) {
 		t.Error("ObjectType body should have Data != nil")
 	}
-	if body.Parent == nil || body.Parent.Leaf() != "Foo" {
-		t.Errorf("body.Parent should be Foo lattice node, got %v", body.Parent)
+	if body.Parent() == nil || body.Parent().Leaf() != "Foo" {
+		t.Errorf("body.Parent should be Foo lattice node, got %v", body.Parent())
 	}
 
 	// 3. ResolveSigType (the dispatcher's entry point) consults the
@@ -188,18 +188,18 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 	if !ok {
 		t.Fatal("Pos not installed")
 	}
-	if !IsBareTypeNode(body) {
-		t.Errorf("bare-refine body should be a bare type node, got Data=%T", body.Data)
+	if !IsBareTypeNode(&body) {
+		t.Errorf("bare-refine body should be a bare type node, got Data=%T", body.Data())
 	}
 	def := r.LookupTypeName("Pos")
 	if def == nil {
 		t.Fatal("LookupTypeName(Pos) = nil")
 	}
-	if NewInteger(42).Is(def) {
+	if addrOf(NewInteger(42)).Is(def) {
 		t.Error("42.Is(Pos lattice node) = true — newtype membership must be nominal, a plain Integer is not a Pos")
 	}
 	bNode := body
-	if NewInteger(42).Is(&bNode) {
+	if addrOf(NewInteger(42)).Is(&bNode) {
 		t.Error("42.Is(&body) = true — the def-table body must not admit untagged base values either")
 	}
 }
@@ -210,7 +210,7 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 // (`Is`, ConformsTo) holds through that node. The def-table body is a
 // different value (the class schema payload, its own ID) and is NOT a
 // dispatchable stand-in — which is exactly why dispatch must resolve
-// names via LookupTypeName / CanonicalType, never via `&body`. See
+// names via LookupTypeName / NodeOf, never via `&body`. See
 // eng/go/CLAUDE.md "Canonical *Type Pointers".
 func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	r, _ := DefaultRegistry()
@@ -236,13 +236,13 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	if def == nil {
 		t.Fatal("LookupTypeName(Foo) = nil")
 	}
-	if inst.Parent.ID != def.ID {
-		t.Errorf("instance tag %q is not the minted lattice node %q", inst.Parent.ID, def.ID)
+	if IDOf(inst.Parent()) != IDOf(def) {
+		t.Errorf("instance tag %q is not the minted lattice node %q", IDOf(inst.Parent()), IDOf(def))
 	}
 	if !inst.Is(def) {
 		t.Error("instance.Is(Foo lattice node) = false — class membership broken")
 	}
-	if !inst.Parent.ConformsTo(def) {
+	if !inst.Parent().ConformsTo(def) {
 		t.Error("instance.Parent.ConformsTo(Foo lattice node) = false")
 	}
 
@@ -250,8 +250,8 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	// its own ID — a non-canonical stand-in that membership checks must
 	// not be routed through.
 	body, _ := r.TopTypeBody("Foo")
-	if inst.Parent.ID == body.ID {
-		t.Errorf("def-table body unexpectedly IS the lattice node (%q) — canonical-pointer docs need updating", body.ID)
+	if IDOf(inst.Parent()) == IDOf(&body) {
+		t.Errorf("def-table body unexpectedly IS the lattice node (%q) — canonical-pointer docs need updating", IDOf(&body))
 	}
 }
 
@@ -276,10 +276,10 @@ func TestDisjunctMembershipRequiresCanonicalNode(t *testing.T) {
 	if def == nil {
 		t.Fatal("LookupTypeName(Maybe) = nil")
 	}
-	if !NewInteger(42).Is(def) {
+	if !addrOf(NewInteger(42)).Is(def) {
 		t.Error("42.Is(Maybe) = false — the Integer alternative must be admitted")
 	}
-	if NewString("x").Is(def) {
+	if addrOf(NewString("x")).Is(def) {
 		t.Error(`"x".Is(Maybe) = true — String is not an alternative and must be rejected`)
 	}
 
@@ -288,7 +288,7 @@ func TestDisjunctMembershipRequiresCanonicalNode(t *testing.T) {
 	// canonical — update eng/go/CLAUDE.md "Canonical *Type Pointers".
 	body, _ := r.TopTypeBody("Maybe")
 	bNode := body
-	if NewInteger(42).Is(&bNode) {
+	if addrOf(NewInteger(42)).Is(&bNode) {
 		t.Error("42.Is(&body) = true — non-canonical body pointer unexpectedly dispatches membership")
 	}
 }

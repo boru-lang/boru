@@ -15,6 +15,18 @@ attempted.
 Per repo policy (`ADR.md` header, `lang/go/CLAUDE.md` § "ADRs — only on
 explicit instruction") this stays a `design/` note. No ADR entry is proposed.
 
+> **Two seams below have moved (2026-10-13, no-copy phase 3,
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) §9).** `EmitState.producedBy` is
+> gone: the recorder keys a value's producer on its holder — a `RecKey`
+> (pass, generation, event, result index) in the holder's occurrence record
+> (`core/go/occurrence.go`, `compiler/go/rec_key.go`) — never on the value's
+> ID, so two holders of one payload are two recorded values. And
+> `stampResultPos` became `stampResultCells`: `execMatch` stamps the call
+> site's position in the tape cells a handler's results are spliced into,
+> never in the handler's returned slice. A provenance mark would ride the
+> same occurrence record, beside the recorder key. The text below predates
+> both.
+
 ---
 
 ## 1. The idea, and what it buys

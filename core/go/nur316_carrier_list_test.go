@@ -7,7 +7,7 @@ import "testing"
 // element's type is strict.
 func TestCarrierTypedListOf(t *testing.T) {
 	dyn := NewCarrier(TInteger)
-	dyn.Dynamic = true
+	SetDynamic(&dyn, true)
 	for _, c := range []struct {
 		why     string
 		v       Value
@@ -17,12 +17,12 @@ func TestCarrierTypedListOf(t *testing.T) {
 		{"a gradual element", dyn, true},
 	} {
 		ci, err := AsChildType(CarrierTypedListOf(c.v))
-		if err != nil || !ci.Child.Parent.Equal(TInteger) || ci.Child.Dynamic != c.dynamic {
-			t.Errorf("%s: child %v dynamic=%v (err %v), want Integer dynamic=%v", c.why, ci.Child.Parent, ci.Child.Dynamic, err, c.dynamic)
+		if err != nil || !ci.Child.Parent().Equal(TInteger) || IsDynamic(&ci.Child) != c.dynamic {
+			t.Errorf("%s: child %v dynamic=%v (err %v), want Integer dynamic=%v", c.why, ci.Child.Parent(), IsDynamic(&ci.Child), err, c.dynamic)
 		}
 	}
 	d := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if ci, err := AsChildType(CarrierTypedListOf(d)); err != nil || !IsDisjunct(ci.Child) {
+	if ci, err := AsChildType(CarrierTypedListOf(d)); err != nil || !IsDisjunct(&ci.Child) {
 		t.Errorf("a disjunct element stands as it is: %v (err %v)", ci.Child, err)
 	}
 }

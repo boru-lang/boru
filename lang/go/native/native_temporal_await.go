@@ -67,20 +67,20 @@ type parallelResult struct {
 // TestAwaitOpaqueRefIsNotRefusedWithoutAMutable holding the other side so
 // the fallback cannot grow into declining map keys and branch-locals.
 func sharedMutableKind(v Value) string {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return ""
 	}
 	switch {
-	case v.Parent.ConformsTo(TFlexMap), v.Parent.ConformsTo(TWeakFlexMap):
+	case v.Parent().ConformsTo(TFlexMap), v.Parent().ConformsTo(TWeakFlexMap):
 		return "FlexMap"
-	case v.Parent.ConformsTo(TFlexList), v.Parent.ConformsTo(TWeakFlexList):
+	case v.Parent().ConformsTo(TFlexList), v.Parent().ConformsTo(TWeakFlexList):
 		return "FlexList"
-	case v.Parent.ConformsTo(TStore):
+	case v.Parent().ConformsTo(TStore):
 		return "Store"
-	case v.Parent.ConformsTo(TTable):
+	case v.Parent().ConformsTo(TTable):
 		return "Table"
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ClassInstanceInfo:
 		return "Object"
 	case ListPayload:
@@ -106,7 +106,7 @@ func sharedMutableKind(v Value) string {
 // the raw token list (interpreted) or the BoruImpl body carried by a
 // compiled fn-value (the shape runParallelBranch unwraps via RunUnit).
 func branchTokens(elem Value) []Value {
-	if fd, ok := elem.Data.(core.FnDefInfo); ok {
+	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			if a, isBoru := fd.Signatures[i].Impl.(*core.BoruImpl); isBoru {
 				return a.Body
@@ -229,7 +229,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 			if inspect(w.Name, bound) {
 				return
 			}
-			if fd, isFn := bound.Data.(FnDefInfo); isFn {
+			if fd, isFn := bound.Data().(*FnDefInfo); isFn {
 				for _, c := range fd.Captured {
 					if inspect(c.Name, c.Value) {
 						return
@@ -321,7 +321,7 @@ func makeBranchForks(r *Registry, elems []Value) ([]*Registry, error) {
 // pattern) and runs via RunUnit on the fork; a raw list runs as an
 // interpreter sub-program; anything else is returned as a single value.
 func runParallelBranch(reg *Registry, elem Value) parallelResult {
-	if fd, ok := elem.Data.(core.FnDefInfo); ok {
+	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			ref := compiler.CompiledRef(&fd.Signatures[i])
 			if ref == nil || ref.Prog == nil {
@@ -335,9 +335,9 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 			return branchOutcome(result, runErr)
 		}
 	}
-	if elem.Parent.ConformsTo(TList) && elem.Data != nil && !IsTypedList(elem) && !IsTableType(elem) {
+	if elem.Parent().ConformsTo(TList) && elem.Data() != nil && !IsTypedList(&elem) && !IsTableType(elem) {
 		_lst, _ := AsList(elem)
-		return interpretBranchBody(reg, _lst.Slice())
+		return interpretBranchBody(reg, _lst.Elems())
 	}
 	// Non-list element: just return it as-is.
 	return parallelResult{values: []Value{elem}}
@@ -357,10 +357,7 @@ func interpretBranchBody(reg *Registry, body []Value) parallelResult {
 	if len(body) == 0 {
 		return branchOutcome(nil, nil)
 	}
-	sub := New(reg)
-	input := make([]Value, len(body))
-	copy(input, body)
-	result, runErr := sub.Run(input)
+	result, runErr := New(reg).Run(body)
 	return branchOutcome(result, runErr)
 }
 
@@ -545,7 +542,7 @@ func awaitUnknownMode(r *Registry, mode string) error {
 // doAwait returns the empty List and the program runs.
 func awaitParallelsEmpty(parallels Value) bool {
 	lst, err := AsList(parallels)
-	return err == nil && len(lst.Slice()) == 0
+	return err == nil && lst.Len() == 0
 }
 
 // awaitModeGate accepts a call only when BOTH operands the validator reads
@@ -555,7 +552,7 @@ func awaitParallelsEmpty(parallels Value) bool {
 // Len() alone, and the elements are unevaluated code bodies that deep
 // concreteness would decline for no reason.
 func awaitModeGate(args []Value) bool {
-	return len(args) == 2 && DeepConcreteOptionsAt(0)(args) && IsConcrete(args[1])
+	return len(args) == 2 && DeepConcreteOptionsAt(0)(args) && IsConcrete(&args[1])
 }
 
 // awaitModeMirror flags an unknown {mode:} at check time.
@@ -621,7 +618,7 @@ func awaitModeName(v Value, def string) string {
 // a runtime `first`/`any` mode is reachable, so the model is the variadic
 // spread, not a one-seat Any (NUR067).
 func awaitOptsReturns(args []Value, r *Registry) []Value {
-	if len(args) < 2 || !IsConcrete(args[0]) {
+	if len(args) < 2 || !IsConcrete(&args[0]) {
 		return awaitVariadicResult(r)
 	}
 	return awaitResidual(r, awaitOptsMode(args[0]), args[1])
@@ -711,12 +708,12 @@ func awaitVariadicResult(r *Registry) []Value {
 // only the variadic claim covers both.
 func awaitResidual(r *Registry, mode string, parallels Value) []Value {
 	if mode == "first" || mode == "any" {
-		if IsConcrete(parallels) && awaitParallelsEmpty(parallels) {
+		if IsConcrete(&parallels) && awaitParallelsEmpty(parallels) {
 			return []Value{NewCarrier(TList)}
 		}
 		return awaitVariadicResult(r)
 	}
-	if !IsConcrete(parallels) {
+	if !IsConcrete(&parallels) {
 		return []Value{NewCarrier(TAny)}
 	}
 	if awaitParallelsEmpty(parallels) {

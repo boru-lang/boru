@@ -252,8 +252,8 @@ func Parse(src string) ([]core.Value, error) {
 		}
 		// Top-level implicit maps (e.g. entire input is "a:x") must be
 		// auto-evaluated so expressions in values resolve.
-		if val.Implicit && !mv.Eval {
-			mv.Eval = true
+		if val.Implicit && !core.IsEval(&mv) {
+			core.SetEval(&mv, true)
 		}
 		return []core.Value{withPos(mv, rootPos)}, nil
 	case unclosedParen:
@@ -512,10 +512,10 @@ func startsDot(items []any, j int) bool {
 // `$` sentinel — the marker for a receiverless reach (`$.name` → a lens). The
 // receiver emits as a single Word("$") (see emitPrimary / convertTopLevelValue).
 func isDollarReceiver(recv []core.Value) bool {
-	if len(recv) != 1 || !core.IsWord(recv[0]) {
+	if len(recv) != 1 || !core.IsWord(&recv[0]) {
 		return false
 	}
-	w, _ := core.AsWord(recv[0])
+	w, _ := core.AsWord(&recv[0])
 	return w.Name == "$"
 }
 
@@ -661,8 +661,8 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 		}
 		// In word context (top level), implicit maps from pair syntax
 		// (e.g. a:x) must be auto-evaluated so expressions resolve.
-		if val.Implicit && !mv.Eval {
-			mv.Eval = true
+		if val.Implicit && !core.IsEval(&mv) {
+			core.SetEval(&mv, true)
 		}
 		return mv, nil
 
@@ -678,7 +678,7 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 		}
 		// In word context (top level), implicit maps from pair syntax
 		// must be auto-evaluated so expressions resolve.
-		mv.Eval = true
+		core.SetEval(&mv, true)
 		return mv, nil
 
 	case jsonic.ListRef:
@@ -933,7 +933,7 @@ func convertMapData(m map[string]any, implicit bool, d *parseDepth, meta ...map[
 			// re-simplifies the disjunct after resolving the name, which
 			// restores the `{a?:T}` ≡ `{a:(T tor None tor Absent)}`
 			// canonical equality at every consumption boundary.
-			if !implicit && !core.IsWord(child) {
+			if !implicit && !core.IsWord(&child) {
 				alts = core.SimplifyDisjunctAlts(alts)
 			}
 			child = core.NewDisjunct(alts)
@@ -1501,7 +1501,7 @@ func wordBaseName(text string) string {
 // instead of rewriting it to `end`. `m.;` therefore stays the error it was
 // rather than silently reading a field called `end`.
 func reachSegmentName(keyItem any, key core.Value, pos core.SrcPos) core.Value {
-	if core.IsWord(key) {
+	if core.IsWord(&key) {
 		return key
 	}
 	node, _ := deSite(keyItem)

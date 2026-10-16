@@ -257,11 +257,11 @@ func diagValueDepth(v Value, depth int) string {
 		// its debug form (`(1 add 1)`, not `paren([1 word(add) 1])`; NUR235).
 		return CanonValue(v)
 	}
-	if v.Parent == nil || !IsConcrete(v) {
+	if v.Parent() == nil || !IsConcrete(&v) {
 		return v.String()
 	}
-	isList := v.Parent.ConformsTo(TList)
-	isMap := v.Parent.ConformsTo(TMap)
+	isList := v.Parent().ConformsTo(TList)
+	isMap := v.Parent().ConformsTo(TMap)
 	if !isList && !isMap {
 		return v.String()
 	}
@@ -281,7 +281,7 @@ func diagValueDepth(v Value, depth int) string {
 			// here. It has no elements to walk and renders itself.
 			return v.String()
 		}
-		elems := lst.Slice()
+		elems := lst.Elems()
 		parts, _ := diagHead(len(elems), func(i int) string {
 			return diagValueDepth(elems[i], depth+1)
 		})
@@ -303,7 +303,7 @@ func diagValueDepth(v Value, depth int) string {
 // diagCodeToken reports whether v is a token of unevaluated code a
 // diagnostic may meet inside a pending literal it renders.
 func diagCodeToken(v Value) bool {
-	return IsWord(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsSugar(v)
+	return IsWord(&v) || IsParenExpr(&v) || IsReach(&v) || IsInterpString(&v) || IsSugar(&v)
 }
 
 // diagHead renders the first diagMaxListHead of n entries through render
@@ -364,8 +364,8 @@ func describeStackTypes(tape *Tape, pointer int) string {
 		if t := ValueType(v); t != nil {
 			label = t.String()
 		}
-		if IsWord(v) {
-			w, _ := AsWord(v)
+		if IsWord(&v) {
+			w, _ := AsWord(&v)
 			label = "word(" + w.Name + ")"
 		} else if IsAtom(v) {
 			a, _ := AsAtom(v)
@@ -375,16 +375,16 @@ func describeStackTypes(tape *Tape, pointer int) string {
 			// into a ConformsTo(TString)/AsString path that would
 			// silently produce an empty label.
 			label = s
-		} else if v.Parent.ConformsTo(TString) {
+		} else if v.Parent().ConformsTo(TString) {
 			s, _ := AsString(v)
 			if len(s) > 20 {
 				s = s[:20] + "..."
 			}
 			label = "'" + s + "'"
-		} else if v.Parent.ConformsTo(TInteger) {
+		} else if v.Parent().ConformsTo(TInteger) {
 			n, _ := AsInteger(v)
 			label = strconv.FormatInt(n, 10)
-		} else if v.Parent.ConformsTo(TFloat) {
+		} else if v.Parent().ConformsTo(TFloat) {
 			f, _ := AsFloat(v)
 			label = formatFloat(f)
 		}

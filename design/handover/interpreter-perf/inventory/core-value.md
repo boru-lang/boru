@@ -635,3 +635,104 @@ Column key — kind: `explicit-copy` (a Value, payload struct, Value slice or Va
 - The policy as stated covers the `Value` header. Three other copy layers exist and are NOT forbidden by it, but the inventory above shows where they interlock: (a) payload STRUCT copies on every `v.Data.(X)` assert and re-box (`FnDefInfo`, `ClassTypeInfo`, `DisjunctInfo`, `ListPayload`), (b) container copies (`[]Value`, `*OrderedMap`) that implement plain Map/List copy-returning `set` and the flex/never-mixed invariants (core_flex.go), (c) `Signature`/`FnSig` struct copies (compileFnSigs, ExpandOptionalSigs, deadsig, record_typed_def). Converting `Value` to a pointer while leaving (a) by value keeps every "copy the payload, change Name/Type/ident, re-box" site; converting (a) to pointer payloads removes them but makes payload mutation shared too.
 - The sites that would behave IDENTICALLY in place (safe first moves): `Value.String`'s `inner := v` (L4193), `MarkPredicateFn`, `WithModuleNS`, `NewDynamicCarrierValue` on freshly cloned input, every `WithPos`/`SetElemConstraint`/flag write on a freshly constructed value, the read-only `Slice()` consumers, `AllFields`/`FlatInstanceFields` read views, `DeqIndex.vals`, `UnifyError.A/B`, `BranchJoin.Pre/Joined`, `carrier_body` `adds`.
 - The sites that need a NEW CONSTRUCT before the policy can hold: (1) an occurrence cell (or tape-cell metadata) for type literals and for every re-run token sequence; (2) a per-binding attribute store (`DefEntry`) for `Quoted`, the registered Name, the typed-container tag on flex params, and macro-operand quoting; (3) a stack-cell/dispatch-plan slot for `as` ascriptions and `ClosurePayload` seam flags; (4) a provenance key that is not the value's ID for check-mode shadows and joins; (5) a `MintRetagged`/`MintCarrierFrom` constructor family so `ReparentValue`, `FreshenDefault`, `JoinCarriersInner`, `ReturnsIdentity`, `RetagFlexElem` and `cloner.withPayload` build from parts instead of starting from a copy.
+
+## Phase 3 dispositions (families 2 and 3)
+
+Checked against 8daf96009. Every family-2 row of this inventory (occurrence state copied, modified and written back: kinds A, B and F, the `NewTypeLiteral` node copies of kind G and the copy-local facet setters) and every family-3 row (token runs copied onto a tape) has a disposition in the vocabulary of `design/VALUE-NO-COPY-EXCEPTIONS.0.md`. There are 72 rows, 58 in family 2 and 14 in family 3; a site the inventory lists under both A and F counts once. A first pass against 53c65d9ef left 11 rows OPEN: three writes through a shared payload (O1–O3) and eight copy-then-overwrite forms where B6 asks for a constructor (O4–O11). 8151f6903 (13/n) fixed O1–O3 and 1e3660d2f (14/n) fixed O4–O11; 8daf96009 (16/n) also dropped a leaf frame's per-call skeleton copy (row 61), and 1d787b4a9 (15/n) leaves every disposition here as it was. Each fix was read in the code at 8daf96009. No row is open.
+
+Besides the exceptions list's classes, a row is **gone (holder)** when its write now reaches only the occurrence state of the holder it is made through (R3; the header copy that makes that holder is D10's), **gone (in place)** when a slot is written through its own pointer with no copy, and **gone (removed)** when the copy no longer exists.
+
+| disposition | family 2 | family 3 | total |
+| --- | ---: | ---: | ---: |
+| gone (holder) | 18 | 0 | 18 |
+| gone (holder) + construction (B1) | 1 | 0 | 1 |
+| gone (in place) | 1 | 0 | 1 |
+| gone (removed) | 3 | 1 | 4 |
+| construction (B6) | 32 | 0 | 32 |
+| construction (B4) | 2 | 0 | 2 |
+| construction (B1) | 0 | 2 | 2 |
+| A1 | 1 | 0 | 1 |
+| C1 (tape cells) | 0 | 11 | 11 |
+| OPEN | 0 | 0 | 0 |
+| **total** | **58** | **14** | **72** |
+
+Since the first pass the OPEN rows have become nine B6 constructions (O2, O3, O5–O11), one B4 construction (O4) and one holder write with a B1 construction (O1). Row 61 is still C1, but a frame with no unnamed-arg cell no longer copies its skeleton per call.
+
+In the table, `inventory row` uses this inventory's own line numbers (§2). `site at 8daf96009` is core/go non-test code unless noted. Where a file changed after 53c65d9ef the site was re-located; a line in a file unchanged since then is the first pass's (53c65d9ef) and holds at 8daf96009. A bare line number in `how` is in the site's file. Snapshots, container element arrays and map rebuilds, sentinels, by-value struct fields and writes on fresh values (kind A′) are in neither family and are not listed.
+
+| # | inventory row | fam | site at 8daf96009 | disposition | how |
+| --- | --- | --- | --- | --- | --- |
+| 1 | util.go 321-324 `WithPos(v, src)` | 2 | util.go:321-324 | gone (holder) | `setPosRef` repoints only the by-value param's record (D10); `ThreadPos` (util.go:330, 15/n) is the in-place form for a slot the caller owns |
+| 2 | util.go 326-332 `WithPosAt` | 2 | util.go:332-338 | gone (holder) | `SetPos` on the param copy builds a record for that header only |
+| 3 | util.go 348-351 `ReparentValue` (definition) | 2 | util.go:340-346 (tombstone comment) | gone (removed) | replaced by `MintRetagged` (mint.go:60-62); no non-test call site repo-wide |
+| 4 | core_make.go L777 `ReparentValue(conv, targetType)` | 2 | core_make.go:780 | construction (B6) | `MintRetagged(&conv, targetType)`, the target being the node (`literalNode`/`NodeOf`, 755, 768) |
+| 5 | core_make.go L1087 `ReparentValue(conv, canon)` | 2 | core_make.go:1090 | construction (B6) | `MintRetagged(&conv, canon)` |
+| 6 | unify_list.go L147 `reparentSwappedElem` | 2 | unify_list.go:137-143 | construction (B6) | `MintRetagged(&src, NodeOf(ValueType(unified)))`, stored into the fresh result |
+| 7 | typed_bind.go L44 | 2 | typed_bind.go:44 | construction (B6) | `MintRetagged(&out, NodeOf(spec.Def))` |
+| 8 | typed_bind.go L70 | 2 | typed_bind.go:70 | construction (B6) | `MintRetagged(&v, def)` |
+| 9 | value.go 1178-1186 `WithFreshFnIdentity` | 2 | value.go:1180-1188 (sole caller eng/go/literal_build.go:37) | construction (B4); was O4 (14/n) | `return MintPayload(&v, &fd)` (1187) around a payload with a new `fnIdent`; the pooled const is never written |
+| 10 | value.go 2158-2174 `Pos`/`SetPos` | 2 | value.go:2181-2200 | gone (holder) | the position is in the occurrence record; `SetPos` repoints the receiver's record only |
+| 11 | value.go 2176-2193 `DynFrom`/`SetDynFrom` | 2 | value.go:2204-2225 | gone (holder) | `SetDynFrom` builds a new record for the one header |
+| 12 | value.go 2198-2216 `ElemConstraint`/`SetElemConstraint` (copy-local facet) | 2 | value.go:2231-2248 | construction (B6) | a receiver-only facet write; core's callers all tag fresh results (core_flex.go ×8, unify_list.go:166, unify_map.go:223) since rows 35-37 construct |
+| 13 | value.go 2221-2250 `WithModuleNS` | 2 | value.go:2277-2280 | construction (B6) | the sole caller passes a just-minted map (lang/go/native/native_module_types.go:62), tagged before publication (R2) |
+| 14 | value.go 2252-2273 `AscribedType`/`SetAscribed`/`StripAscribed` | 2 | value.go:2291-2321 | gone (holder) | the ascription is in the occurrence record; `StripAscribed(v)` is `ClearAscribed(&v)` on the param copy (E9) |
+| 15 | value.go 2761-2771 `SetAtomReferent` with `resolveAtomReferents` (E4) | 2 | occurrence.go:68; value.go:2812-2821; engine.go:1599-1661 (`stampAtomReferents`, `atomReferentsIn`), 1807 | gone (holder) + construction (B1); was O1 (13/n) | the referent is the holder's occurrence state, stamped in the loaded tape's own cells; a nested list whose atoms take referents becomes a new list sharing its other elements; `AtomPayload` is the name alone (payload.go:102-104) |
+| 16 | value.go 2803-2808 `NewTypeLiteral` (`return *t`) | 2 | value.go:2854-2859 | gone (holder) | still a header copy of the node (D10); the node's identity is `tmeta.id` (`IDOf`, occurrence.go:360) and stamps write only the copy's header and record (E11) |
+| 17 | value.go 3200-3225 `NewFunction` (Signatures cloned before stamping `Anonymous`) | 2 | value.go:3271-3295 | construction (B4) | the constructor's own payload, cloned copy-on-write only when a stamp is needed |
+| 18 | value.go 3332-3349 `NewClassType`/`NewResourceType` (`info.Type = t`) | 2 | value.go:3403-3406, 3456-3459 | construction (B6) | writes its own by-value argument; install paths pass a constructed `namedClassInfo` (value.go:3414-3427) |
+| 19 | value.go 4187-4196 `Value.String` (`inner := v`) | 2 | value.go:4303-4307 | gone (holder) | `SetDynamic(&inner, false)` is a bit write on a local copy |
+| 20 | clone.go 74-78 `cloner.withPayload` | 2 | clone.go:68-73 | construction (B6) | `MintLike(&v, data)` (mint.go:38-42): parts plus a fresh identity, A1 semantics |
+| 21 | clone.go 128-144 TableData/ErrorInfo `nd := p` | 2 | clone.go:126-136 | A1 | the clone's own payload built from p's parts (`StructUtil.clone`, `send`) |
+| 22 | payload.go 499-602 `ClosurePayload` RetTrim/SigMatched seam flags | 2 | occurrence.go:131-141, 331-353; invoke.go:86-91, 101-106; eng/go/vm.go:978-979 | gone (holder) | the flags are bits of the holder's header, set at the seams; `ClosurePayload` carries none and is never re-boxed (E10) |
+| 23 | payload.go 440-449 `GuardFactInfo` (Boolean carrier Data re-boxed) | 2 | engine.go:2762-2763 | gone (in place) | `res := e.Tape.Ref(scanIdx); res.Data = GuardFactInfo{…}` writes the engine's own cell through its pointer |
+| 24 | core_helpers.go 55-328 (L98) `installDef` `fnDef.Name = name` | 2 | core_helpers.go:97, 239 → 767-772, 799-805 | construction (B6) | the payload is read where it lives (`FnDefOf`, 97); the binding gets `boundFnDef`'s form boxed by `NewFunction(entry)` (772); f's payload is never written |
+| 25 | core_helpers.go 270-299 class body rename and re-mint | 2 | core_helpers.go:274-296 | construction (B6) | `namedClassInfo(&decl, "Ideal", name)` (278) + `NewClassType(def, info)` (294) |
+| 26 | core_helpers.go 330-368 `WrapperUnderName` | 2 | core_helpers.go:328-360 | construction (B6) | `NewFunction(FnDefInfo{Name: name, …, ident: inner.ident})` (351) |
+| 27 | core_helpers.go L500, L561 `arg.Quoted = true` at param bind | 2 | core_helpers.go:511-517, 567-573; registry.go:1899-1903 | gone (holder) | `SetQuoted(&arg, true)` on the binding's own copy; `args`, the args copy and the unnamed cells keep the unquoted header (E10) |
+| 28 | core_helpers.go 644-661 `RetagTypedContainerValue` `unified.Quoted = arg.Quoted` | 2 | core_helpers.go:669 | gone (holder) | `SetQuoted(&unified, IsQuoted(&arg))` on Unify's result, which becomes the binding |
+| 29 | core_helpers.go 670-682 `RetagFlexElem` (`out := v; out.SetElemConstraint`) | 2 | core_helpers.go:680-688 | construction (B6) | `MintElemTyped(&v, &elemType)` (mint.go:99-106); the children's in-place retag in the shared flex store (`retagFlexChildrenInPlace`, 694) is B7 |
+| 30 | core_helpers.go 758-786 `installFnDef` (`entry := fnDef; entry.Name = name`) | 2 | core_helpers.go:767-772, 799-805 | construction (B6) | `boundFnDef` builds the dispatch form (an E8 editor copy) and `NewFunction` (772) boxes it; the source is never written |
+| 31 | core_helpers.go 794-850 `compileFnSigs` (`s := sig`, `fnDefCopy := fnDef`, `cs := s`) | 2 | core_helpers.go:814-867 | construction (B6) | compiled sigs are new objects (a `BoruImpl` each); authored sigs are never written; `fnDefCopy` is the handler's capture snapshot (C5-like) |
+| 32 | macro_expand.go 165-174 `q := operands[i]; q.Quoted = true` | 2 | macro_expand.go:166-173 | gone (holder) | `SetQuoted(&q, true)` on the copy bound in the frame (173); `bindings[p.Name]` keeps the unquoted form (170) |
+| 33 | core_make.go 446-517 `FreshenDefault` (`out := v`) | 2 | core_make.go:446-521 | construction (B6) | `MintPayload(&v, data)` (520) around the payload rebuilt per arm |
+| 34 | unify.go 144-151 `MarkPredicateFn` | 2 | unify.go:144-152 | construction (B6) | an E8 editor copy `info := *fd` boxed by `NewValueRaw(v.Parent, &info)`; fnpred's input is never written |
+| 35 | unify_fold.go 92-114 `out := carrier; out.SetElemConstraint` | 2 | unify_fold.go:110-111 | construction (B6); was O6 (14/n) | `MintElemTyped(&carrier, &ct.Child)` (111) |
+| 36 | unify_list.go 154-155 carrier tag | 2 | unify_list.go:146-149 | construction (B6); was O7 (14/n) | `MintElemTyped(&concrete, &childType)` (149) |
+| 37 | unify_map.go 205-207 carrier tag | 2 | unify_map.go:202-205 | construction (B6); was O8 (14/n) | `MintElemTyped(&concrete, &childType)` (205) |
+| 38 | resolve.go 96-113 disjunct re-simplify (`nd := d; out := v; out.Data = nd`) | 2 | resolve.go:96-111 | construction (B6); was O5 (14/n) | `MintPayload(&v, nd)` (110) |
+| 39 | carrier_join.go 145-153 `JoinCarriersInner` (`out := a; …; out.ID = GenerateID`) | 2 | carrier_join.go:139-153 | construction (B6) | `MintCarrierFrom(&a)` (152; mint.go:75-80) |
+| 40 | carrier_join.go 218-224 `joinBranchDef` (`out.ID = a.ID`) | 2 | carrier_join.go:216-222 | gone (holder) | `ShareIdentity(&out, &a)` (219) writes only the fresh join's record |
+| 41 | carrier_join.go 398-407 `condBoundCarrier` | 2 | carrier_join.go:396-405 | construction (B6) | `JoinCarriers(v, v)` reaches the `MintCarrierFrom` arm |
+| 42 | carrier_new.go 47-50 `CarrierOfLiteral` (`lt := lit; NewCarrier(&lt)`) | 2 | carrier_new.go:57-59 | gone (removed) | `NewCarrier(literalNode(&lit))`: the node pointer, no copy |
+| 43 | carrier_new.go 80-84 `NewDynamicCarrierValue` | 2 | carrier_new.go:89-93 | construction (B6); was O9 (14/n) | `MintCarrierKeeping(&bound, bound.Data)` (90; mint.go:88-92), then `SetDynamic` on the new value |
+| 44 | carrier_new.go 170-190 `ReturnsIdentity` (`v := args[m]; v.ID = …`) | 2 | carrier_new.go:178-197 | construction (B6) | `MintFresh(&args[m])` (190) |
+| 45 | guard_narrow.go 209-308 then-arm narrowing | 2 | guard_narrow.go:219-252 | construction (B6); was O10 (14/n) | `MintCarrierKeeping(&meet, meet.Data)` (247) in place of flipping `Carrier` on TandValues' result; `ShareIdentity` (229, 245, 248) and `SetDynamic` (251) write the new holder |
+| 46 | guard_narrow.go 316-420 else-arm narrowing | 2 | guard_narrow.go:368-399 | construction (B6); was O11 (14/n) | `MintCarrierKeeping(&narrowed, narrowed.Data)` (386); `ShareIdentity` (398) writes the new holder |
+| 47 | core_type.go 401-706 `InstallTypeBody`, Micron arm L419-427 | 2 | core_type.go:406-428 | construction (B6) | `MicronTypeInfo{Name: name, Type: def, Fields: decl.Fields}` + `NewValueRaw` (422, 428) |
+| 48 | the same, class arm L440-447 | 2 | core_type.go:429-444 | construction (B6) | `namedClassInfo(&decl, "Class", name)` + `NewClassType` (434, 443) |
+| 49 | the same, gen-schema arm L465-474 | 2 | core_type.go:445-476 | construction (B6); was O2 (13/n) | `namedSchemaInfo(decl, …, def)` (473; value.go:3432-3434) builds the named payload from the declaration's parts; the declaration is never written |
+| 50 | the same, surface arm L480-488 | 2 | core_type.go:477-492 | construction (B6); was O3 (13/n) | `namedSurfaceInfo(decl, "Surface/"+name, def)` (490; value.go:3440-3446) builds it with a conformance set of its own |
+| 51 | the same, predicate arm `named := fd; named.Name = name` L546-549 | 2 | core_type.go:545-552 | gone (removed) | the name is passed beside: `StampDetached(r, fd, name, body.Pos())` (551) → `StampDetachedFnAs` (compiler/go/stamp_runtime.go:45) |
+| 52 | record_typed_def.go 66-77 `wrapped := *sig` | 2 | record_typed_def.go:66-77 | construction (B6) | a per-def wrapping `Signature` (not a Value) around make's handler; make's registered sig is never written |
+| 53 | typed_bind.go 108-114 `RunTypedBindCons` (`s := *spec; s.Cons = &cons`) | 2 | typed_bind.go:108-114 | gone (holder) | `s` is the call's own `TypedBindSpec` (check_specs.go:107-118); the program's spec is never written |
+| 54 | sugar.go L135 `WithPos(NewTypeLiteral(TType), src)` | 2 | sugar.go:135 | gone (holder) | the literal is a fresh holder; the position goes to its record and `TType`'s `tmeta` is untouched |
+| 55 | core_type.go L76 `PathOf`, L98 `TypeOf` (node copies as user data) | 2 | core_type.go:76, 98 | gone (holder) | the elements and the result are header copies, so later stamps reach only them |
+| 56 | fill literals as data: core_make.go L89-91 `noneVal`; core_helpers.go L1342/L1362 `BaseValue*`; unify_options.go L93 | 2 | core_make.go:89; core_helpers.go:1362, 1382; unify_options.go:93 | gone (holder) | `TNone` header copies stored as data; stamps reach only the copy |
+| 57 | type_run_install.go L198 `runSigPattern` | 2 | type_run_install.go:198 | gone (holder) | the pattern is a header copy; `NodeOf` recovers the node |
+| 58 | transient literal operands: unify_map L138/L330 `absentVal`, typed_bind L65, guard_narrow L102/L241/L370, guard_predicate, resolve.go L50-52, carrier_join L69, carrier_spread L68/75/81, `forwardedOperand`, core_make L1311 | 2 | unify_map.go:138, 328; typed_bind.go:65; guard_narrow.go:102, 240, 368; guard_predicate.go:127; resolve.go:51; carrier_join.go:69; carrier_spread.go:75, 81; type_run_install.go:143; core_make.go:1314; unify.go:265, 267, 402, 405 | gone (holder) | never stamped: read-only operands, or new holders returned |
+| 59 | value.go 3154-3158 `NewMark(id, body…)` `make`+`copy` | 3 | value.go:3225-3229 | gone (removed) | no production caller passes a body (engine.go:9200, 9328; eng/go/vm.go:2402; basic/go); only the fixture test/specfix/words.go:336 does (E2) |
+| 60 | core_helpers.go L425 skeleton `append(skeleton, s.Body()...)` | 3 | core_helpers.go:425 | C1 | copied once per signature install into the handler's skeleton and never written after |
+| 61 | core_helpers.go L505-507 per-call `copy(out, skeleton)` | 3 | core_helpers.go:487-500; engine.go:1361-1380 (called at 4197, 4202) | C1; changed in 16/n | a frame with no unnamed-arg cell is the shared skeleton itself, the tape's splice its one copy (the per-call copy D2 kept is gone); one with arg cells, or under an analysis pass, is a patched copy (496-499); `stampResultCells` (was `stampResultPos`) stamps the tape cells after the splice, never the handler's slice |
+| 62 | core_helpers.go L595 non-leaf `append(result, s.Body()...)` | 3 | core_helpers.go:605 | C1 | the per-call frame expansion's own array; C1 names the site |
+| 63 | core_helpers.go L1464 `ExpandOptionalSigs` (default value embedded as a body token) | 3 | core_helpers.go:1484 | C1 | the generated body is built once per install and reaches the tape per call through rows 60-62 |
+| 64 | sugar.go L136 `append([]Value{tt, of}, info.Items...)` | 3 | sugar.go:136 | construction (B1) | a new ParenExpr per firing over an array of its own; the marker's Items are only read |
+| 65 | sugar.go L158 `NewEvalList(info.Items)` | 3 | sugar.go:158; engine.go:5378-5402 | C1 | the list shares Items; its evaluation (`autoEvalList`) copies them onto the tape or into a fresh list |
+| 66 | sugar.go 175-190 `stepSugar` splice | 3 | sugar.go:175-189 | C1 | `e.Tape.Splice(valIdx, 1, exp...)` (187) |
+| 67 | macro_expand.go 23-51 `execMacro` re-splices the cached expansion | 3 | macro_expand.go:49; engine.go:4949-4956 | C1 | `NewSplice(NewList(expanded))` shares the cache array; the marker step copies it into cells (`SpliceExpand` + `Tape.Splice`) and nothing writes the cache |
+| 68 | macro_expand.go 71-127 `scanMacroOperands` | 3 | macro_expand.go:71-121 | construction (B1) | operand forms are constructed from copies of tape cells; the tape is never written |
+| 69 | macro_expand.go 180-182 template body `make`+`copy` before `Run` | 3 | macro_expand.go:181 | C1 | `New(r).Run(sig.Body())`: the tape load is the one copy (E1) |
+| 70 | macro_expand.go 325-341 `Run([]Value{operand})` | 3 | macro_expand.go:331 | C1 | a non-top sub-run whose tape load is the copy; the operand is never written |
+| 71 | core_make.go 1328-1337 `ResolveFieldType` input copy | 3 | core_make.go:1330-1343 | C1 | `input` is a constructed program (strings re-minted as words) that the sub-engine's `Run` loads |
+| 72 | carrier_body.go 147-148 copy of a copy before `sub.Run` | 3 | carrier_body.go:183 | C1 | `sub.Run(elems.Elems())`; the double copy is gone (E2) |
+
+**Outside this inventory.** The first pass also found sites that belong to the core-engine and check inventories; they are not counted above. `resolveInertTypeShape`'s `out := v; out.Data = nd` is gone (in place): `resolveInertTypeShapeIn` (engine.go:5222) replaces the payload in the slot that holds it (14/n). `ContextShape`'s `SetID` re-mint of a value copied out of its cache map is construction, `return MintFresh(&v)` (check_state.go:2096, 14/n). The private top-level program copy that existed only for `resolveAtomReferents` went with O1 (13/n). The redundant `body.ensureTMeta().Name` write (core_type.go:578) is unchanged and harmless.

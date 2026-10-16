@@ -11,10 +11,10 @@ import "testing"
 // identity handed to NewFunctionIdentified mints afresh, as NewFunction does.
 func TestClosureIdentity(t *testing.T) {
 	id := NewFnIdentity()
-	c1 := Value{Parent: TFunction, Data: ClosurePayload{Ident: id}}
+	c1 := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Ident: id}}}
 	c2 := c1
-	other := Value{Parent: TFunction, Data: ClosurePayload{Ident: NewFnIdentity()}}
-	bare := Value{Parent: TFunction, Data: ClosurePayload{}}
+	other := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Ident: NewFnIdentity()}}}
+	bare := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	if !ExactEqual(c1, c2) {
 		t.Error("two copies of one closure are one function")
 	}
@@ -34,7 +34,7 @@ func TestClosureIdentity(t *testing.T) {
 		t.Error("another function, or data, is not the closure")
 	}
 	minted := NewFunctionIdentified(FnDefInfo{}, FnIdentity{})
-	if md := minted.Data.(FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
+	if md := minted.Data().(*FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
 		t.Error("a zero identity mints afresh")
 	}
 	// Two plain fns still compare by their own tokens (the closure arm is
@@ -71,11 +71,11 @@ func TestParenTrailingFnApply(t *testing.T) {
 		t.Error("a non-dynamic last value is the fn it is")
 	}
 	dyn := NewDynamicCarrier(TAny)
-	dyn.ID = "lead"
+	SetID(&dyn, "lead")
 	other := NewDynamicCarrier(TAny)
-	other.ID = "other"
+	SetID(&other, "other")
 	noID := NewDynamicCarrier(TAny)
-	noID.ID = ""
+	SetID(&noID, "")
 	if !parenTrailingFnApply(rec, dyn, 2, 1) || parenTrailingFnApply(rec, other, 2, 1) || parenTrailingFnApply(rec, noID, 2, 1) {
 		t.Error("a dynamic last value is the lead exactly when the apply word holds it pending")
 	}
@@ -85,13 +85,13 @@ func TestParenTrailingFnApply(t *testing.T) {
 	// MarkApplied: only an anonymous, non-macro fn whose every signature
 	// is 0-arg takes the mark.
 	zero := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{{BarrierPos: 0}}})
-	if fd := MarkApplied(zero).Data.(FnDefInfo); !fd.Applied {
+	if marked := MarkApplied(zero); !IsApplied(&marked) {
 		t.Error("a 0-arg anonymous fn is marked")
 	}
-	if fd := MarkApplied(fn).Data.(FnDefInfo); fd.Applied {
+	if marked := MarkApplied(fn); IsApplied(&marked) {
 		t.Error("a fn with no 0-arg signature is untouched")
 	}
-	if MarkApplied(NewInteger(1)).Data.(IntPayload).N != 1 {
+	if MarkApplied(NewInteger(1)).Data().(IntPayload).N != 1 {
 		t.Error("data is untouched")
 	}
 }

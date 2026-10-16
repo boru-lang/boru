@@ -29,7 +29,7 @@ func TestNativeSplitRaiseIsTheInterpretersPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := core.NewList([]core.Value{core.NewWord("add")})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	closure, s, zero := core.NewInteger(99), core.NewString("s"), core.NewInteger(0)
 	sp := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body}
 	err := nativeSplitRaise(r, "zzfold", sp, []core.Value{closure, s, zero}, []core.SrcPos{{Row: 1, Col: 3}}, 0)
@@ -75,7 +75,7 @@ func TestNativeSplitRaisePlansTheSurround(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := core.NewList([]core.Value{core.NewWord("add")})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	closure, s, zero := core.NewInteger(99), core.NewString("s"), core.NewInteger(0)
 	sp := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body, Beneath: []core.Value{core.NewInteger(7)}, After: []core.Value{core.NewWord("zzfold")}}
 	err := nativeSplitRaise(r, "zzfold", sp, []core.Value{closure, s, zero}, []core.SrcPos{{Row: 1, Col: 5}}, 0)

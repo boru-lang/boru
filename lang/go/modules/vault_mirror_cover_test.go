@@ -86,7 +86,7 @@ func TestVaultUsageMirrorArms(t *testing.T) {
 	// the run may not take the overload being modelled.
 	r4 := vaultMirrorRegistry(t)
 	dyn := vaultMap("alias", "a")
-	dyn.Dynamic = true
+	core.SetDynamic(&dyn, true)
 	rf([]native.Value{dyn}, r4)
 	if len(r4.Check.Diagnostics) != 0 {
 		t.Fatalf("a dynamic operand must not be flagged, got %+v", r4.Check.Diagnostics)
@@ -172,7 +172,7 @@ func TestVaultDeclaredReturns(t *testing.T) {
 
 	// A concrete return is one STRICT carrier of that type.
 	out := vaultDeclaredReturns(native.TString)(nil, r)
-	if len(out) != 1 || out[0].Dynamic || !out[0].Parent.Equal(native.TString) {
+	if len(out) != 1 || core.IsDynamic(&out[0]) || !out[0].Parent().Equal(native.TString) {
 		t.Fatalf("String residual = %v, want one strict String carrier", out)
 	}
 
@@ -180,7 +180,7 @@ func TestVaultDeclaredReturns(t *testing.T) {
 	// Any conforms to no typed slot and would poison every consumer
 	// downstream, which is why declaredReturnCarriers marks it too.
 	anyOut := vaultDeclaredReturns(native.TAny)(nil, r)
-	if len(anyOut) != 1 || !anyOut[0].Dynamic || !anyOut[0].Parent.Equal(native.TAny) {
+	if len(anyOut) != 1 || !core.IsDynamic(&anyOut[0]) || !anyOut[0].Parent().Equal(native.TAny) {
 		t.Fatalf("Any residual = %v, want one dynamic Any carrier", anyOut)
 	}
 }
@@ -191,7 +191,7 @@ func TestVaultIdentityMirrorArms(t *testing.T) {
 	// The flagged shape: an empty alias names no credential.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{native.NewString("")}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TVaultIdentity) {
+	if len(out) != 1 || !out[0].Parent().Equal(TVaultIdentity) {
 		t.Fatalf("identity residual = %v, want one VaultIdentity carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "vault_error" {

@@ -144,10 +144,10 @@ func TestNoteLoopFreshArms(t *testing.T) {
 	}
 	es.NoteLoopFresh("n", joined)
 	u := es.units[0]
-	if es.loopCarried[1].slots["n"] != 3 || u.localByID[joined.ID] != 3 || u.numLocals != 0 {
-		t.Fatalf("the enclosing loop's cell is reused: slots=%v local=%d numLocals=%d", es.loopCarried[1].slots, u.localByID[joined.ID], u.numLocals)
+	if es.loopCarried[1].slots["n"] != 3 || u.localByID[core.IDOf(&joined)] != 3 || u.numLocals != 0 {
+		t.Fatalf("the enclosing loop's cell is reused: slots=%v local=%d numLocals=%d", es.loopCarried[1].slots, u.localByID[core.IDOf(&joined)], u.numLocals)
 	}
-	if !es.carriedNames["n"] || u.boundLocals[joined.ID] != "n" || !u.loopFresh[joined.ID] {
+	if !es.carriedNames["n"] || u.boundLocals[core.IDOf(&joined)] != "n" || !u.loopFresh[core.IDOf(&joined)] {
 		t.Error("the fresh binding is carried and read bound-checked")
 	}
 }
@@ -160,28 +160,61 @@ func TestDynTrailAnchorsAtTheRead(t *testing.T) {
 	unit, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	arg := core.NewInteger(5)
 	fn := core.NewDynamicCarrier(core.TFunction)
-	es.producedBy[fn.ID] = producer{seq: 1}
+	es.stampProduced(&fn, 1, 0)
 	read := core.SrcPos{Row: 2, Col: 7}
-	es.fnRecs[unit].noteWordReadName(fn.ID, "g", read)
-	es.RegisterTrailingApply(fn.ID, 1)
+	es.fnRecs[unit].noteWordReadName(core.IDOf(&fn), core.RecKeyOf(&fn), "g", read)
+	es.RegisterTrailingApply(core.IDOf(&fn), 1)
 	finish([]core.Value{arg, fn})
 	if rec := es.fnRecs[unit]; rec.dynTrailPos != read {
 		t.Errorf("the apply anchors at the read: %v, want %v", rec.dynTrailPos, read)
 	}
 }
 
-// TestSetRootBodyCopies pins SetRootBody: nil-safe, and the seated tokens are
-// a copy the caller's later edits do not reach.
-func TestSetRootBodyCopies(t *testing.T) {
+// TestSetRootBodyShares pins SetRootBody: nil-safe, and the seated tokens
+// are the program's own — nothing writes a program's tokens — clamped, so an
+// append to the seated body reallocates instead of writing past the
+// program's end.
+func TestSetRootBodyShares(t *testing.T) {
 	var nilES *EmitState
 	nilES.SetRootBody([]core.Value{core.NewInteger(1)})
 
 	es := NewEmitState()
-	body := []core.Value{core.NewInteger(1), core.NewInteger(2)}
+	body := make([]core.Value, 2, 4)
+	body[0], body[1] = core.NewInteger(1), core.NewInteger(2)
 	es.SetRootBody(body)
-	body[0] = core.NewInteger(9)
-	if len(es.rootBody) != 2 || es.rootBody[0].String() != "1" {
-		t.Errorf("the root body is a copy: %v", es.rootBody)
+	if len(es.rootBody) != 2 || &es.rootBody[0] != &body[0] {
+		t.Errorf("the root body is not the program's own: %v", es.rootBody)
+	}
+	if cap(es.rootBody) != 2 {
+		t.Errorf("the seated body's capacity is %d, want it clamped to its length", cap(es.rootBody))
+	}
+}
+
+// TestStoredBodyTokens pins what a unit keeps of a stored code body: a plain
+// list's own array (nothing writes it), and a snapshot of a flex list's,
+// whose view is live — an edit to the flex after the compile must not
+// reach the tokens the unit kept.
+func TestStoredBodyTokens(t *testing.T) {
+	plain := core.NewList([]core.Value{core.NewWord("add"), core.NewInteger(1)})
+	pl, err := core.AsList(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := storedBodyTokens(&plain, pl); len(got) != 2 || &got[0] != &pl.Elems()[0] {
+		t.Errorf("a plain body's tokens are not its own array: %v", got)
+	}
+	flex := core.NewFlexList([]core.Value{core.NewWord("add"), core.NewInteger(1)})
+	fl, err := core.AsList(flex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := storedBodyTokens(&flex, fl)
+	if len(got) != 2 || &got[0] == &fl.Elems()[0] {
+		t.Fatalf("a flex body's tokens are its live view, not a snapshot: %v", got)
+	}
+	flex.Data().(*core.FlexListData).Elems[1] = core.NewInteger(10)
+	if n, ok := got[1].Data().(core.IntPayload); !ok || n.N != 1 {
+		t.Errorf("an edit to the flex reached the kept tokens: %v", got)
 	}
 }
 
@@ -190,9 +223,9 @@ func TestSetRootBodyCopies(t *testing.T) {
 // paren's tail is data on the interpreter).
 func TestRecordDynApplyNameNeedsAnArgument(t *testing.T) {
 	es := NewEmitState()
-	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
-		Data: core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}}
-	if es.RecordDynApplyName("h", nil, fn, core.NewCarrier(core.TInteger), core.SrcPos{}) {
+	fn := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
+	if es.RecordDynApplyName("h", nil, fn, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}) {
 		t.Fatal("an apply over no argument records nothing")
 	}
 	if len(es.frames[0]) != 0 || !es.Compilable {
@@ -210,8 +243,8 @@ func TestSiblingCallOutputsNeedsTwo(t *testing.T) {
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser})
 	a, b := core.NewCarrier(core.TInteger), core.NewCarrier(core.TInteger)
-	es.setProducedAt(a, seq, 0)
-	es.setProducedAt(b, seq, 1)
+	es.setProducedAt(&a, seq, 0)
+	es.setProducedAt(&b, seq, 1)
 	if es.siblingCallOutputs([]core.Value{a}) {
 		t.Error("a lone call output has no siblings")
 	}
@@ -247,9 +280,9 @@ func TestSeatDeoptPointUnpromotedGuard(t *testing.T) {
 // kept-member walk: a nested map member with no entries table embeds
 // nothing, and an enclosing binding's container beside it is kept whole.
 func TestEmbeddedEnclosingIDsSkipsAnEmptyMapMember(t *testing.T) {
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	member := core.NewList([]core.Value{core.NewInteger(9)})
-	member.ID = "enc"
+	core.SetID(&member, "enc")
 	lit := core.NewList([]core.Value{nilMap, core.NewList([]core.Value{nilMap, member})})
 	keep := embeddedEnclosingIDs(lit, map[string]bool{"enc": true})
 	if len(keep) != 1 || !keep["enc"] {
@@ -269,7 +302,7 @@ func TestBranchArmsRetPinnedDivergingArms(t *testing.T) {
 		t.Error("two diverging arms are not ret-pinned")
 	}
 	pinned := core.NewCarrier(core.TInteger)
-	es.producedBy[pinned.ID] = producer{seq: 5}
+	es.stampProduced(&pinned, 5, 0)
 	es.eventInfo[5] = eventFlags{dynBodyResult: true}
 	if !es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: &EmitFragment{}, ThenStk: []core.Value{pinned}, Els: brk}) {
 		t.Error("a dyn-body result beside a diverging arm is ret-pinned")
@@ -286,7 +319,7 @@ func TestRecordRuntimeDispatchUnresolvedOperand(t *testing.T) {
 
 	es := NewEmitState()
 	src := core.NewCarrier(core.TMap)
-	es.RegisterLocal(src.ID)
+	es.RegisterLocal(core.IDOf(&src))
 	es.pendingRuntimeBindCall = true
 	es.RecordRuntimeDispatch("unpack", sig, []core.Value{core.NewInteger(1), src}, nil, pos)
 	if evs := es.frames[0]; !es.Compilable || len(evs) != 1 || evs[0].call.word != "unpack" || len(evs[0].call.ops) != 2 || evs[0].call.nout != 0 {
@@ -334,11 +367,11 @@ func TestDynTrailSkipsAFnValuedArgument(t *testing.T) {
 		es := NewEmitState()
 		unit, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 		fn := core.NewDynamicCarrier(core.TFunction)
-		es.producedBy[fn.ID] = producer{seq: 2}
+		es.stampProduced(&fn, 2, 0)
 		if core.IsFnValueResidual(c.arg) {
-			es.producedBy[c.arg.ID] = producer{seq: 1}
+			es.stampProduced(&c.arg, 1, 0)
 		}
-		es.RegisterTrailingApply(fn.ID, 1)
+		es.RegisterTrailingApply(core.IDOf(&fn), 1)
 		finish([]core.Value{c.arg, fn})
 		if got := es.fnRecs[unit].dynTrailArity; got != c.want {
 			t.Errorf("arg %v: dynTrailArity = %d, want %d", c.arg, got, c.want)
@@ -355,16 +388,16 @@ func TestTrailingWindowDeclinesAFnValuedArgument(t *testing.T) {
 	setup := func() (*EmitState, core.Value, core.Value) {
 		es := NewEmitState()
 		fn, arg := core.NewCarrier(core.TFunction), core.NewCarrier(core.TFunction)
-		es.RegisterLocal(fn.ID)
-		es.RegisterLocal(arg.ID)
+		es.RegisterLocal(core.IDOf(&fn))
+		es.RegisterLocal(core.IDOf(&arg))
 		return es, fn, arg
 	}
 	es, fn, arg := setup()
-	if n, ok := es.RecordDynApply([]core.Value{arg}, fn, core.NewCarrier(core.TAny), core.SrcPos{}); ok || n != 0 || len(es.frames[0]) != 0 {
+	if n, ok := es.RecordDynApply([]core.Value{arg}, fn, addrOf(core.NewCarrier(core.TAny)), core.SrcPos{}); ok || n != 0 || len(es.frames[0]) != 0 {
 		t.Fatalf("a trailing window over a fn-valued argument declines: %d %v", n, ok)
 	}
 	es, fn, arg = setup()
-	if n, ok := es.RecordDynApplyLead([]core.Value{arg}, fn, core.NewCarrier(core.TAny), core.SrcPos{}); !ok || n != 1 || len(es.frames[0]) != 1 {
+	if n, ok := es.RecordDynApplyLead([]core.Value{arg}, fn, addrOf(core.NewCarrier(core.TAny)), core.SrcPos{}); !ok || n != 1 || len(es.frames[0]) != 1 {
 		t.Fatalf("a leading window collects its fn-valued argument: %d %v", n, ok)
 	}
 }
@@ -378,38 +411,38 @@ func TestRecordArgsProjectionArms(t *testing.T) {
 	param := core.NewCarrier(core.TInteger)
 	list := func() core.Value {
 		v := core.NewList([]core.Value{param})
-		v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TList)))
 		return v
 	}
 
 	declined := NewEmitState()
 	declined.MarkUncompilable("x")
-	if declined.RecordArgsProjection(nil, []core.Value{param}, list(), core.SrcPos{}) {
+	if declined.RecordArgsProjection(nil, []core.Value{param}, addrOf(list()), core.SrcPos{}) {
 		t.Error("a declined recorder records nothing")
 	}
 	es := NewEmitState()
-	if es.RecordArgsProjection(nil, []core.Value{param}, core.NewList([]core.Value{param}), core.SrcPos{}) {
+	if es.RecordArgsProjection(nil, []core.Value{param}, addrOf(core.NewList([]core.Value{param})), core.SrcPos{}) {
 		t.Error("an identity-less list records nothing")
 	}
-	if es.RecordArgsProjection(nil, []core.Value{param}, list(), core.SrcPos{}) || len(es.argsProjSeq) != 0 {
+	if es.RecordArgsProjection(nil, []core.Value{param}, addrOf(list()), core.SrcPos{}) || len(es.argsProjSeq) != 0 {
 		t.Error("a param with no compiled home records nothing")
 	}
 
-	es.RegisterLocal(param.ID)
+	es.RegisterLocal(core.IDOf(&param))
 	out := list()
-	if !es.RecordArgsProjection(nil, []core.Value{param}, out, core.SrcPos{}) {
+	if !es.RecordArgsProjection(nil, []core.Value{param}, &out, core.SrcPos{}) {
 		t.Fatal("a projection over the param locals records")
 	}
-	if seq, ok := es.argsProjSeq[out.ID]; !ok || seq != es.producedBy[out.ID].seq {
+	if seq, ok := es.argsProjSeq[core.IDOf(&out)]; !ok || seq != es.producerSeq(&out) {
 		t.Fatalf("the projection's event is remembered: %v", es.argsProjSeq)
 	}
-	if !es.retractArgsProjection(out.ID) || len(es.frames[0]) != 0 {
+	if !es.retractArgsProjection(core.IDOf(&out)) || len(es.frames[0]) != 0 {
 		t.Fatal("the frame's last event is retracted")
 	}
 	kept := list()
-	es.RecordArgsProjection(nil, []core.Value{param}, kept, core.SrcPos{})
+	es.RecordArgsProjection(nil, []core.Value{param}, &kept, core.SrcPos{})
 	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "w"}})
-	if es.retractArgsProjection(kept.ID) || len(es.frames[0]) != 2 {
+	if es.retractArgsProjection(core.IDOf(&kept)) || len(es.frames[0]) != 2 {
 		t.Error("a projection another event follows stays put")
 	}
 }
@@ -421,14 +454,14 @@ func TestTrailingApplyParksACallResult(t *testing.T) {
 	es := NewEmitState()
 	es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{nout: 1}, seq: 1}}}
 	fnv := core.NewCarrier(core.TFunction)
-	es.producedBy[fnv.ID] = producer{seq: 1}
+	es.stampProduced(&fnv, 1, 0)
 	lw := &lowerer{vm: []vmSlot{{seq: 1, idx: 0}}}
 	residual := []core.Value{core.NewInteger(7), fnv}
 	if _, ok := es.trailingApply(lw, residual); ok {
 		t.Error("a parked call result is data over the literal beneath")
 	}
-	es.appliedByWord = map[string]bool{fnv.ID: true}
-	if rot, ok := es.trailingApply(lw, residual); !ok || rot[0].ID != fnv.ID {
+	es.appliedByWord = map[string]bool{core.IDOf(&fnv): true}
+	if rot, ok := es.trailingApply(lw, residual); !ok || core.IDOf(&rot[0]) != core.IDOf(&fnv) {
 		t.Errorf("an `apply` word applies the parked result: %v %v", rot, ok)
 	}
 }
@@ -439,7 +472,7 @@ func TestTrailingApplyParksACallResult(t *testing.T) {
 func TestResidualSpliceReRead(t *testing.T) {
 	es := NewEmitState()
 	payload := core.NewCarrier(core.TList)
-	es.producedBy[payload.ID] = producer{seq: 1}
+	es.stampProduced(&payload, 1, 0)
 	es.eventInfo[1] = eventFlags{spliceDyn: true}
 	if _, reason := es.resolveResidualOperands(&lowerer{}, []core.Value{payload, payload}); reason != "splice payload re-read after the spread (Stage 2)" {
 		t.Errorf("a re-read after the spread declines: %q", reason)
@@ -456,7 +489,7 @@ func TestResidualSpliceReRead(t *testing.T) {
 func TestCallResultRenderKnownOffFrame(t *testing.T) {
 	es := NewEmitState()
 	v := core.NewCarrier(core.TFunction)
-	es.producedBy[v.ID] = producer{seq: 9}
+	es.stampProduced(&v, 9, 0)
 	if es.callResultRenderKnown(v) {
 		t.Error("a producer outside the current frame has no known render")
 	}
@@ -472,7 +505,7 @@ func TestApplyChainStepsCarriers(t *testing.T) {
 		if fn {
 			v = core.NewCarrier(core.TFunction)
 		}
-		v.ID = id
+		core.SetID(&v, id)
 		return v
 	}
 	x, h, f, g := val("x", false), val("h", true), val("f", true), val("g", true)

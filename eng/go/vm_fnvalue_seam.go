@@ -54,8 +54,8 @@ import (
 //     that had printed did not print twice; nothing re-runs now, so the bail
 //     is the compiler defect it is and it surfaces either way.
 func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
-	fd, ok := body.Data.(core.FnDefInfo)
-	if !ok || body.Quoted {
+	fd, ok := body.Data().(*core.FnDefInfo)
+	if !ok || core.IsQuoted(&body) {
 		return nil, nil, false
 	}
 	args := make([]core.Value, len(inputs))
@@ -74,16 +74,16 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 // foreign arm, the freshness dance, the hosted nested run and the value's
 // own return contract — or report ran=false where the stepping path must
 // answer (no unit, a stale one past its budget, a shape drift).
-func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.FnDefInfo, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
-	home, caps := core.FnHome(reg, &fd)
+func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd *core.FnDefInfo, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	home, caps := core.FnHome(reg, fd)
 	ref := compiler.CompiledRef(sig)
 	if ref == nil {
-		ref = compiler.LazyStampFnSig(reg, fd, sig, body.Pos())
+		ref = compiler.LazyStampFnSigAs(reg, *fd, core.FnNameOf(&body), sig, body.Pos())
 	}
 	if ref == nil || ref.Prog == nil {
 		return nil, nil, false
 	}
-	if core.FnHomeForeign(reg, &fd) {
+	if core.FnHomeForeign(reg, fd) {
 		// The interpreter's own foreign arm, minus the tape: the residual is
 		// the call's results in place of the consumed inputs and the value.
 		res, err := core.InvokeCallback(home, sig, deliverArgs(args), caps)
@@ -117,7 +117,7 @@ func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.
 		// re-runs now: the bail is the defect it is and it surfaces.
 		return res, err, true
 	}
-	return checkFnValueReturn(reg, fd, sig, res, unit.NUnnamed, body.Pos())
+	return checkFnValueReturn(reg, &body, sig, res, unit.NUnnamed, body.Pos())
 }
 
 // invokeFnValueClosure is the token seam's arm for a fn-VALUE CLOSURE — a
@@ -136,12 +136,12 @@ func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.
 // interpreter's `[fn (Integer) 3]` — and every such shape was a compile failure on
 // `main` ("function-valued operand at each"), so the release was S1a's and
 // the arm is what makes it sound.
-func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
-	if body.Quoted || !compiler.ClosureIsFnValue(body) {
+func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body *core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
+	if core.IsQuoted(body) || !compiler.ClosureIsFnValue(body) {
 		return nil, nil, false
 	}
 	p := vc.p
-	if fp, foreign := vc.closureProgram(cl); foreign {
+	if fp, foreign := vc.closureProgram(&cl); foreign {
 		p = fp
 	}
 	args := make([]core.Value, len(inputs))
@@ -149,10 +149,10 @@ func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, c
 		args[len(inputs)-1-i] = v
 	}
 	if !closureMatchesArgs(&p.Fns[cl.Unit], args) {
-		res, err := core.RunResolved(reg, inputs, core.BodyTokens(body))
+		res, err := core.RunResolved(reg, inputs, core.BodyTokens(*body))
 		return res, err, true
 	}
-	res, err := vc.applyClosure(reg, cl, deliverArgs(args))
+	res, err := vc.applyClosure(reg, cl, core.IsRetTrim(body), deliverArgs(args))
 	return res, err, true
 }
 
@@ -181,9 +181,9 @@ func (vc *vmContext) hostFnValueUnit(reg *core.Registry, ref *compiler.CompiledF
 func deliverArgs(args []core.Value) []core.Value {
 	out := make([]core.Value, len(args))
 	for i, a := range args {
-		a = core.StripAscribed(a)
-		if a.Parent.Equal(core.TList) && !a.Quoted {
-			a.Quoted = true
+		core.ClearAscribed(&a)
+		if a.Parent().Equal(core.TList) && !core.IsQuoted(&a) {
+			core.SetQuoted(&a, true)
 		}
 		out[i] = a
 	}
@@ -197,7 +197,7 @@ func deliverArgs(args []core.Value) []core.Value {
 // that many before counting), then the declared types — checkClosureReturn's
 // non-trimming branch, over the value's sig instead of a closure payload. A
 // value declaring no returns passes its residual through untouched.
-func checkFnValueReturn(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, res []core.Value, nUnnamed int, at core.SrcPos) ([]core.Value, error, bool) {
+func checkFnValueReturn(r *core.Registry, fnVal *core.Value, sig *core.Signature, res []core.Value, nUnnamed int, at core.SrcPos) ([]core.Value, error, bool) {
 	if len(sig.Returns) == 0 {
 		return res, nil, true
 	}
@@ -205,7 +205,7 @@ func checkFnValueReturn(r *core.Registry, fd core.FnDefInfo, sig *core.Signature
 	// (NUR239); a nameless `=>` lambda's is unnamed (applyFrameName —
 	// `each m.f [1]` over `{f: ([x:Integer] => [x x])}` said `<fn>:` here
 	// for the interpreter's `:`).
-	fn := &compiler.CompiledFn{Name: applyFrameName(fd), Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
+	fn := &compiler.CompiledFn{Name: applyFrameName(fnVal), Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
 	if extra := len(res) - len(sig.Returns); extra > nUnnamed {
 		return res, vmReturnCountErr(r, fn, len(sig.Returns), len(res)-nUnnamed, res[nUnnamed:], at), true
 	}

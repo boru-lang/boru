@@ -28,7 +28,7 @@ type TensorTypeInfo struct {
 
 // tensorTypeInfo extracts a TensorTypeInfo from a constructed-type value.
 func tensorTypeInfo(v native.Value) (TensorTypeInfo, bool) {
-	if ep, ok := v.Data.(core.ExtensionPayload); ok {
+	if ep, ok := v.Data().(core.ExtensionPayload); ok {
 		ti, ok := ep.Body.(TensorTypeInfo)
 		return ti, ok
 	}
@@ -79,7 +79,7 @@ func registerTensorIdeals(r *native.Registry, tt TensorModuleTypes) {
 // a type of my kind", the question `type` and `make` ask of a target.
 func tensorAccepts(vt *core.Type, kind string) func(native.Value) bool {
 	return func(v native.Value) bool {
-		if native.IsBareTypeNode(v) {
+		if native.IsBareTypeNode(&v) {
 			// A bare type literal IS its lattice node (by-value copy
 			// post the type/value merge), so test the value's own
 			// identity, not v.Parent (which is the supertype).
@@ -94,7 +94,7 @@ func tensorAccepts(vt *core.Type, kind string) func(native.Value) bool {
 // builds a shaped type from `refine <kind> <shape-spec>`.
 func tensorConstruct(kind string, vt *core.Type) func(base, arg native.Value, r *native.Registry) ([]native.Value, error) {
 	return func(base, arg native.Value, r *native.Registry) ([]native.Value, error) {
-		if base.Data != nil {
+		if base.Data() != nil {
 			return nil, r.BoruError("type_error",
 				fmt.Sprintf("refine %s: a shaped tensor type has no subtyping — construct from the bare %s literal", kind, kind),
 				"refine")

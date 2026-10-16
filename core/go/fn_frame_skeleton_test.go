@@ -19,7 +19,7 @@ func skelHandler(t *testing.T, r *Registry, name string) Handler {
 	if !ok {
 		t.Fatalf("%s not installed", name)
 	}
-	fd, ok := top.Data.(FnDefInfo)
+	fd, ok := FnDefOf(top.Data())
 	if !ok {
 		t.Fatalf("%s is not an FnDef", name)
 	}
@@ -53,61 +53,77 @@ func popFrameEntry(t *testing.T, r *Registry, names ...string) {
 	}
 }
 
-// TestSkeletonPerCallCopyIsolated pins the mandatory-copy invariant: the
-// handler's returned slice is a fresh copy of the memoized skeleton, so
-// stampResultPos's in-place ReturnCheck mutation on one call's result can
-// never leak into the next call (or, under ForkConcurrent, a sibling's).
-func TestSkeletonPerCallCopyIsolated(t *testing.T) {
+// TestSkeletonSharedAndStampedInTheTape pins the skeleton's sharing: at run
+// time a leaf frame with no unnamed-arg cell IS the memoized skeleton, the
+// same array on every call (and, under ForkConcurrent, every sibling's),
+// because nothing writes it — execMatch stamps the call site's position on
+// the results in the tape cells it splices them into (stampResultCells). A
+// return-type error still points at the call, and the skeleton's
+// ReturnCheck keeps its zero position for the next call. A frame with an
+// unnamed-arg cell gets a patched copy per call.
+func TestSkeletonSharedAndStampedInTheTape(t *testing.T) {
 	r := covRegistry(t, nil)
 	InstallFnDef(r, "leafrc", FnDefInfo{
 		Signatures: []Signature{{
 			Params:     []FnParam{{Name: "n", Type: TInteger}},
-			Returns:    []*Type{TInteger},
+			Returns:    []*Type{TString},
 			Impl:       Boru([]Value{NewWord("n")}),
 			BarrierPos: BarrierAllForward,
 		}},
 	})
 	h := skelHandler(t, r, "leafrc")
-
 	out1, err := h([]Value{NewInteger(1)}, nil, nil, r)
 	if err != nil {
 		t.Fatalf("call 1: %v", err)
 	}
 	popFrameEntry(t, r, "n")
-
-	// Mutate call 1's result the way execMatch does at the call site.
-	stampResultPos(out1, &SrcPos{Row: 41, Col: 7})
-	stamped := false
-	for _, v := range out1 {
-		if IsReturnCheck(v) {
-			rc, _ := AsReturnCheck(v)
-			if rc.Pos.Row == 41 {
-				stamped = true
-			}
-		}
-	}
-	if !stamped {
-		t.Fatal("stampResultPos did not stamp call 1's ReturnCheck — test premise broken")
-	}
-
 	out2, err := h([]Value{NewInteger(2)}, nil, nil, r)
 	if err != nil {
 		t.Fatalf("call 2: %v", err)
 	}
 	popFrameEntry(t, r, "n")
+	if len(out1) == 0 || &out1[0] != &out2[0] || cap(out1) != len(out1) {
+		t.Fatal("a frame with no unnamed-arg cell must be the shared skeleton, capped at its length")
+	}
 
-	// Call 2's copy must carry the pristine zero Pos, not call 1's stamp.
-	for _, v := range out2 {
-		if IsReturnCheck(v) {
-			rc, _ := AsReturnCheck(v)
-			if rc.Pos.Row != 0 {
-				t.Fatalf("call 2's ReturnCheck carries call 1's stamp (Row=%d) — skeleton shared, not copied", rc.Pos.Row)
+	// The call site's position reaches the return check through the tape.
+	call := NewWord("leafrc")
+	call.SetPos(SrcPos{Row: 41, Col: 7})
+	_, err = NewTop(r).Run([]Value{call, NewInteger(3)})
+	be, ok := err.(*BoruError)
+	if !ok || be.Row != 41 {
+		t.Fatalf("the return-type error = %v, want one at the call site (row 41)", err)
+	}
+	for i := range out1 {
+		if IsReturnCheck(&out1[i]) {
+			if rc, _ := AsReturnCheck(&out1[i]); rc.Pos.Row != 0 {
+				t.Fatalf("the shared skeleton's ReturnCheck took a call's stamp (Row=%d)", rc.Pos.Row)
 			}
 		}
 	}
-	// Negative: the two calls must not share a backing array at all.
-	if len(out1) > 0 && len(out2) > 0 && &out1[0] == &out2[0] {
-		t.Fatal("both calls returned the same backing array")
+
+	// An unnamed-arg cell: a patched copy per call.
+	InstallFnDef(r, "leafu", FnDefInfo{
+		Signatures: []Signature{{
+			Params:     []FnParam{{Type: TInteger}},
+			Returns:    []*Type{TInteger},
+			Impl:       Boru([]Value{NewInteger(0), NewWord("add")}),
+			BarrierPos: BarrierAllForward,
+		}},
+	})
+	hu := skelHandler(t, r, "leafu")
+	u1, err := hu([]Value{NewInteger(1)}, nil, nil, r)
+	if err != nil {
+		t.Fatalf("unnamed call 1: %v", err)
+	}
+	popFrameEntry(t, r)
+	u2, err := hu([]Value{NewInteger(2)}, nil, nil, r)
+	if err != nil {
+		t.Fatalf("unnamed call 2: %v", err)
+	}
+	popFrameEntry(t, r)
+	if &u1[0] == &u2[0] || u1[1].String() != "1" || u2[1].String() != "2" {
+		t.Fatalf("an unnamed-arg frame must be a per-call copy patched with its arg: %v / %v", u1, u2)
 	}
 }
 
@@ -133,7 +149,7 @@ func TestSkeletonInterleavedParams(t *testing.T) {
 	}
 	popFrameEntry(t, r, "a", "b")
 
-	info, err := AsFrameOpen(out[0])
+	info, err := AsFrameOpen(&out[0])
 	if err != nil {
 		t.Fatalf("out[0] is not a frame open: %v", err)
 	}
@@ -177,7 +193,7 @@ func TestSkeletonArgsReal(t *testing.T) {
 		return lst.Slice()
 	}
 	quoted := NewList([]Value{NewWord("args")})
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	for _, c := range []struct {
 		name string
 		body []Value
@@ -255,7 +271,7 @@ func TestSlowPathListParamQuoted(t *testing.T) {
 	if !ok {
 		t.Fatal("list param not installed")
 	}
-	if !bound.Quoted {
+	if !IsQuoted(&bound) {
 		t.Error("slow path must install list params Quoted (data, not code)")
 	}
 	popFrameEntry(t, r, "xs")
@@ -272,7 +288,7 @@ func TestSlowPathUnnamedParamSpan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("slow-path call: %v", err)
 	}
-	info, err := AsFrameOpen(out[0])
+	info, err := AsFrameOpen(&out[0])
 	if err != nil || info.ArgSpan != 1 {
 		t.Fatalf("slow path FrameOpenSpan: ArgSpan=%d err=%v, want 1", info.ArgSpan, err)
 	}

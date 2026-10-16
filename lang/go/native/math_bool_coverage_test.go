@@ -198,7 +198,7 @@ func TestBoolTorNonBoolean(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	if !IsDisjunct(result[0]) {
+	if !IsDisjunct(&result[0]) {
 		t.Errorf("expected disjunct, got %s", result[0])
 	}
 }

@@ -76,8 +76,8 @@ func runChainStart(events []EmitEvent, at int) (int, bool) {
 // the island pushes at its mark: a scalar constant, which re-steps as itself.
 // Anything else (an event result, a container, a fn value) declines.
 func (es *EmitState) islandPrefixOperand(v core.Value) (EmitOperand, bool) {
-	if _, produced := es.producedBy[v.ID]; produced || !core.IsConcrete(v) || v.Parent == nil ||
-		!v.Parent.ConformsTo(core.TScalar) || es.fnLikeResidual(v) {
+	if _, produced := es.producerOf(&v); produced || !core.IsConcrete(&v) || v.Parent() == nil ||
+		!v.Parent().ConformsTo(core.TScalar) || es.fnLikeResidual(v) {
 		return EmitOperand{}, false
 	}
 	op, ok := es.resolveOperand(v)
@@ -142,7 +142,7 @@ func (es *EmitState) inertConst(idx int) bool {
 		return false
 	}
 	c := es.consts[idx]
-	return core.IsConcrete(c) && c.Parent != nil && c.Parent.ConformsTo(core.TScalar)
+	return core.IsConcrete(&c) && c.Parent() != nil && c.Parent().ConformsTo(core.TScalar)
 }
 
 // excuseIslandRegion drops the run the residual island will re-step from the
@@ -167,7 +167,7 @@ func (es *EmitState) residualIsland(events []EmitEvent, residual []core.Value) (
 	}
 	i := len(residual)
 	for i > 0 {
-		pr, ok := es.producedBy[residual[i-1].ID]
+		pr, ok := es.producerOf(&residual[i-1])
 		if !ok || pr.seq != r.seq {
 			break
 		}
@@ -300,17 +300,17 @@ func (es *EmitState) noteBodyRun(body core.Value) {
 	if es.bodyRuns == nil {
 		es.bodyRuns = map[string]bool{}
 	}
-	es.bodyRuns[body.ID] = true
+	es.bodyRuns[core.IDOf(&body)] = true
 }
 
 // takeBodyRun reports and clears noteBodyRun's record for body. A body with
 // no ID shares the one empty key, which can only mark a body a run it is
 // not — conservative: the run's rules are faithful to one value too.
 func (es *EmitState) takeBodyRun(body core.Value) bool {
-	if !es.bodyRuns[body.ID] {
+	if !es.bodyRuns[core.IDOf(&body)] {
 		return false
 	}
-	delete(es.bodyRuns, body.ID)
+	delete(es.bodyRuns, core.IDOf(&body))
 	return true
 }
 

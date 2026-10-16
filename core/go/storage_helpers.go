@@ -16,11 +16,11 @@ import (
 // FormatFloat / FormatInt forms, matching the language's
 // printing rules.
 func GetKey(v Value) string {
-	if IsWord(v) {
-		w, _ := AsWord(v)
+	if IsWord(&v) {
+		w, _ := AsWord(&v)
 		return w.Name
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		s, _ := AsString(v)
 		return s
 	}
@@ -28,20 +28,20 @@ func GetKey(v Value) string {
 		a, _ := AsAtom(v)
 		return a
 	}
-	if v.Parent.ConformsTo(TInteger) {
+	if v.Parent().ConformsTo(TInteger) {
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10)
 	}
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		f, _ := AsFloat(v)
 		return FormatFloat(f)
 	}
-	if v.Parent.ConformsTo(TBoolean) {
+	if v.Parent().ConformsTo(TBoolean) {
 		b, _ := AsBoolean(v)
 		if b {
 			return "true"
 		}
 		return "false"
 	}
-	return fmt.Sprintf("%v", v.Data)
+	return fmt.Sprintf("%v", v.Data())
 }

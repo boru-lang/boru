@@ -51,7 +51,7 @@ func TestS5CBearsActiveTokens(t *testing.T) {
 	if BearsActiveTokens(NewMap(pm)) {
 		t.Error("a plain scalar map bears no active tokens")
 	}
-	if BearsActiveTokens(Value{Parent: TMap, Data: MapPayload{}}) {
+	if BearsActiveTokens(Value{d: &Datum{Parent: TMap, Data: MapPayload{}}}) {
 		t.Error("a nil-backed map payload bears no active tokens")
 	}
 	if BearsActiveTokens(NewInteger(1)) {
@@ -84,16 +84,16 @@ func TestS5CModuleScopeBinding(t *testing.T) {
 // --- IsInertConst: ExtensionPayload capability walk ------------------------
 
 func TestS5CInertConstExtensionCapability(t *testing.T) {
-	yes := Value{Parent: newC5BakeType(true), Data: ExtensionPayload{Body: 1}}
-	if !IsInertConst(yes) {
+	yes := Value{d: &Datum{Parent: newC5BakeType(true), Data: ExtensionPayload{Body: 1}}}
+	if !IsInertConst(&yes) {
 		t.Error("ConstBakeable(true) extension must bake")
 	}
-	no := Value{Parent: newC5BakeType(false), Data: ExtensionPayload{Body: 1}}
-	if IsInertConst(no) {
+	no := Value{d: &Datum{Parent: newC5BakeType(false), Data: ExtensionPayload{Body: 1}}}
+	if IsInertConst(&no) {
 		t.Error("ConstBakeable(false) extension must decline")
 	}
-	nocap := Value{Parent: TAny, Data: ExtensionPayload{Body: 1}}
-	if IsInertConst(nocap) {
+	nocap := Value{d: &Datum{Parent: TAny, Data: ExtensionPayload{Body: 1}}}
+	if IsInertConst(&nocap) {
 		t.Error("an extension with no ConstBakeable in its chain must decline")
 	}
 }
@@ -103,54 +103,54 @@ func TestS5CInertConstExtensionCapability(t *testing.T) {
 func TestS5CInertConstDescriptorArms(t *testing.T) {
 	mf := NewOrderedMap()
 	mf.Set("a", NewTypeLiteral(TInteger))
-	micron := Value{Parent: TMicron, Data: MicronTypeInfo{Fields: mf}}
-	if !IsInertConst(micron) {
+	micron := Value{d: &Datum{Parent: TMicron, Data: MicronTypeInfo{Fields: mf}}}
+	if !IsInertConst(&micron) {
 		t.Error("a carrier-free Micron type body bakes")
 	}
-	dep := Value{Parent: TInteger, Data: DepScalarInfo{}}
-	if !IsInertConst(dep) {
+	dep := Value{d: &Datum{Parent: TInteger, Data: DepScalarInfo{}}}
+	if !IsInertConst(&dep) {
 		t.Error("a dependent-scalar predicate bakes by value")
 	}
-	fnsig := Value{Parent: TFnUndef, Data: FnUndefInfo{
+	fnsig := Value{d: &Datum{Parent: TFnUndef, Data: FnUndefInfo{
 		Sigs: []FnSigSpec{{Params: []FnParam{{Type: TInteger}}}},
-	}}
-	if !IsInertConst(fnsig) {
+	}}}
+	if !IsInertConst(&fnsig) {
 		t.Error("a pattern-free fn signature value bakes")
 	}
 	req := NewOrderedMap()
 	req.Set("area", NewInteger(1))
-	surf := Value{Parent: TSurface, Data: &SurfaceInfo{Type: TSurface, Required: req}}
-	if !IsInertConst(surf) {
+	surf := Value{d: &Datum{Parent: TSurface, Data: &SurfaceInfo{Type: TSurface, Required: req}}}
+	if !IsInertConst(&surf) {
 		t.Error("a surface with inert required shapes bakes")
 	}
-	schema := Value{Parent: TClass, Data: &TypeSchemaInfo{
+	schema := Value{d: &Datum{Parent: TClass, Data: &TypeSchemaInfo{
 		Type: TClass,
 		Body: NewTypeLiteral(TInteger),
 		Params: []GenParam{
 			{Name: "T", HasBound: true, Bound: NewTypeLiteral(TInteger)},
 			{Name: "U", HasDefault: true, Default: NewTypeLiteral(TString)},
 		},
-	}}
-	if !IsInertConst(schema) {
+	}}}
+	if !IsInertConst(&schema) {
 		t.Error("a data-only generic schema bakes")
 	}
 }
 
 func TestS5CInertConstFnDefArms(t *testing.T) {
 	captured := NewFunction(FnDefInfo{Captured: []CapturedBinding{{Name: "x", Value: NewInteger(1)}}})
-	if IsInertConst(captured) {
+	if IsInertConst(&captured) {
 		t.Error("a capturing fn value must decline")
 	}
 	pure := NewFunction(FnDefInfo{})
-	if !IsInertConst(pure) {
+	if !IsInertConst(&pure) {
 		t.Error("a registry-free fn value bakes")
 	}
 	moduleFn := NewFunction(FnDefInfo{Registry: &Registry{}})
-	if !IsInertConst(moduleFn) {
+	if !IsInertConst(&moduleFn) {
 		t.Error("a non-macro module fn value bakes as data")
 	}
 	macro := NewFunction(FnDefInfo{Registry: &Registry{}, Macro: true})
-	if IsInertConst(macro) {
+	if IsInertConst(&macro) {
 		t.Error("a macro must decline")
 	}
 }
@@ -158,21 +158,21 @@ func TestS5CInertConstFnDefArms(t *testing.T) {
 func TestS5CInertConstMapAndQuotedParen(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
-	if !IsInertConst(NewMap(om)) {
+	if !IsInertConst(addrOf(NewMap(om))) {
 		t.Error("an all-inert map bakes")
 	}
 	bad := NewOrderedMap()
 	bad.Set("c", NewCarrier(TInteger))
-	if IsInertConst(NewMap(bad)) {
+	if IsInertConst(addrOf(NewMap(bad))) {
 		t.Error("a carrier-bearing map must decline")
 	}
 	quoted := NewParenExpr([]Value{NewWord("add"), NewInteger(1)})
-	quoted.Quoted = true
-	if !IsInertConst(quoted) {
+	SetQuoted(&quoted, true)
+	if !IsInertConst(&quoted) {
 		t.Error("a quoted inert paren bakes as code-as-data")
 	}
 	unquoted := NewParenExpr([]Value{NewInteger(1)})
-	if IsInertConst(unquoted) {
+	if IsInertConst(&unquoted) {
 		t.Error("an unquoted paren is re-stepped and must decline")
 	}
 }
@@ -180,10 +180,10 @@ func TestS5CInertConstMapAndQuotedParen(t *testing.T) {
 // --- fn shape predicates ---------------------------------------------------
 
 func TestS5CFnShapePredicates(t *testing.T) {
-	if !IsFnTypedCarrier(NewCarrier(TFunction)) {
+	if !IsFnTypedCarrier(addrOf(NewCarrier(TFunction))) {
 		t.Error("a Function-typed carrier is an fn-typed carrier")
 	}
-	if IsFnTypedCarrier(NewFunction(FnDefInfo{})) {
+	if IsFnTypedCarrier(addrOf(NewFunction(FnDefInfo{}))) {
 		t.Error("a concrete fn value is not a carrier")
 	}
 	if !IsFnValueResidual(NewFunction(FnDefInfo{})) {
@@ -192,7 +192,7 @@ func TestS5CFnShapePredicates(t *testing.T) {
 	if !IsAppliableFn(NewFunction(FnDefInfo{})) {
 		t.Error("an FnDefInfo payload is appliable")
 	}
-	if !IsAppliableFn(Value{Parent: TFunction}) {
+	if !IsAppliableFn(Value{d: &Datum{Parent: TFunction}}) {
 		t.Error("a Function-typed value is appliable")
 	}
 	if IsAppliableFn(NewInteger(1)) {
@@ -208,37 +208,37 @@ func TestS5CFnShapePredicates(t *testing.T) {
 func TestS5CTypeBodyConstOKArms(t *testing.T) {
 	fresh := NewOrderedMap()
 	fresh.Set("xs", NewFlexList(nil))
-	rec := Value{Parent: TMap, Data: RecordTypeInfo{Fields: fresh}}
+	rec := Value{d: &Datum{Parent: TMap, Data: RecordTypeInfo{Fields: fresh}}}
 	if !typeBodyConstOK(rec) {
 		t.Error("a record whose default is a freshened instance bakes")
 	}
 	of := NewOrderedMap()
 	of.Set("o", NewTypeLiteral(TInteger))
-	opts := Value{Parent: TMap, Data: OptionsTypeInfo{Fields: of}}
+	opts := Value{d: &Datum{Parent: TMap, Data: OptionsTypeInfo{Fields: of}}}
 	if !typeBodyConstOK(opts) {
 		t.Error("an inert options body bakes")
 	}
-	child := Value{Parent: TList, Data: ChildTypeInfo{
+	child := Value{d: &Datum{Parent: TList, Data: ChildTypeInfo{
 		Child:    NewTypeLiteral(TInteger),
 		Elements: []Value{NewInteger(1)},
 		Entries:  []ChildEntry{{Key: "k", Value: NewInteger(2)}},
-	}}
+	}}}
 	if !typeBodyConstOK(child) {
 		t.Error("an inert typed-container body bakes")
 	}
-	dis := Value{Parent: TDisjunct, Data: DisjunctInfo{Alternatives: []Value{NewTypeLiteral(TInteger)}}}
+	dis := Value{d: &Datum{Parent: TDisjunct, Data: DisjunctInfo{Alternatives: []Value{NewTypeLiteral(TInteger)}}}}
 	if !typeBodyConstOK(dis) {
 		t.Error("an inert disjunct body bakes")
 	}
 	cf := NewOrderedMap()
 	cf.Set("a", NewTypeLiteral(TInteger))
-	class := Value{Parent: TClass, Data: ClassTypeInfo{Fields: cf}}
+	class := Value{d: &Datum{Parent: TClass, Data: ClassTypeInfo{Fields: cf}}}
 	if !typeBodyConstOK(class) {
 		t.Error("a data-only class body bakes")
 	}
 	mf := NewOrderedMap()
 	mf.Set("m", NewTypeLiteral(TString))
-	micron := Value{Parent: TMicron, Data: MicronTypeInfo{Fields: mf}}
+	micron := Value{d: &Datum{Parent: TMicron, Data: MicronTypeInfo{Fields: mf}}}
 	if !typeBodyConstOK(micron) {
 		t.Error("an inert Micron type body bakes")
 	}
@@ -252,7 +252,7 @@ func TestS5CInertReachAndConstMembers(t *testing.T) {
 		t.Error("a receiverless literal-key lens is inert")
 	}
 	lit := NewTypeLiteral(TInteger)
-	if lit.ID == "" {
+	if IDOf(&lit) == "" {
 		t.Fatal("kernel type literals carry an ID")
 	}
 	if !IsInertConstMember(lit) {
@@ -314,17 +314,17 @@ func TestTypeIsFnShapeAndFnShapeCarrier(t *testing.T) {
 	// A carrier typed by a fn shape is a maybe-callable carrier — its
 	// runtime inhabitant is a function (the NUR095 compiled half).
 	shapeCarrier := NewCarrier(TFnUndef)
-	if !IsFnTypedCarrier(shapeCarrier) {
+	if !IsFnTypedCarrier(&shapeCarrier) {
 		t.Error("a fn-shape-typed carrier must read as an fn-typed carrier")
 	}
 	fnCarrier := NewCarrier(TFunction)
-	if !IsFnTypedCarrier(fnCarrier) {
+	if !IsFnTypedCarrier(&fnCarrier) {
 		t.Error("a Function-typed carrier still reads as an fn-typed carrier")
 	}
-	if IsFnTypedCarrier(NewCarrier(TInteger)) {
+	if IsFnTypedCarrier(addrOf(NewCarrier(TInteger))) {
 		t.Error("an Integer carrier is not fn-typed")
 	}
-	if IsFnTypedCarrier(NewTypeLiteral(TFnUndef)) {
+	if IsFnTypedCarrier(addrOf(NewTypeLiteral(TFnUndef))) {
 		t.Error("a CONCRETE fnsig type literal is not a carrier")
 	}
 }
@@ -359,12 +359,12 @@ func TestIsSteplessValue(t *testing.T) {
 		t.Error("a bare type node carries no payload — IsSteplessValue must not admit it")
 	}
 	evalList := NewList([]Value{NewInteger(1)})
-	evalList.Eval = true
+	SetEval(&evalList, true)
 	if IsSteplessValue(evalList) {
 		t.Error("a list is not a scalar leaf — IsSteplessValue must not admit it")
 	}
 	evalInt := NewInteger(1)
-	evalInt.Eval = true
+	SetEval(&evalInt, true)
 	if IsSteplessValue(evalInt) {
 		t.Error("Eval marks a value the loop EVALUATES — an admitted payload with it set is still active")
 	}
@@ -379,7 +379,7 @@ func TestIsSteplessValue(t *testing.T) {
 		t.Error("a scalar carrier carries no payload — IsSteplessValue must not admit it")
 	}
 	payloadCarrier := NewInteger(1)
-	payloadCarrier.Carrier = true
+	payloadCarrier.SetCarrier(true)
 	if IsSteplessValue(payloadCarrier) {
 		t.Error("a carrier over an admitted payload is still a carrier — IsConcrete is what declines it")
 	}

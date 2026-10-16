@@ -635,7 +635,7 @@ func TestExportWithListValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(native.TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(native.TList) {
 		t.Errorf("expected list, got %v", result)
 	}
 }
@@ -779,7 +779,7 @@ func TestModuleValueType(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 	v := result[0]
-	if !v.Parent.Equal(native.TModuleInst) {
+	if !v.Parent().Equal(native.TModuleInst) {
 		t.Fatal("expected module type")
 	}
 	desc, _ := native.AsModuleDesc(v)
@@ -943,7 +943,7 @@ func TestExportListDefResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(native.TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(native.TList) {
 		t.Errorf("expected list, got %v", result)
 	}
 }

@@ -93,7 +93,7 @@ func stacksEqual(a, b []core.Value) bool {
 }
 
 func isFn(v core.Value) bool {
-	return v.Parent != nil && v.Parent.Equal(core.TFunction)
+	return v.Parent() != nil && v.Parent().Equal(core.TFunction)
 }
 
 // fnValuesEqual compares two Function values for round-trip purposes.
@@ -119,13 +119,13 @@ func isFn(v core.Value) bool {
 // so a same-text fn from each is two modules to deq and one function to this
 // round trip. Stripping the home leaves everything the round trip is about.
 func fnValuesEqual(a, b core.Value) bool {
-	return a.Quoted == b.Quoted && core.DeepEqual(stripFnHome(a), stripFnHome(b))
+	return core.IsQuoted(&a) == core.IsQuoted(&b) && core.DeepEqual(stripFnHome(a), stripFnHome(b))
 }
 
 func stripFnHome(v core.Value) core.Value {
-	if fd, ok := v.Data.(core.FnDefInfo); ok {
+	if fd, ok := core.FnDefCopy(v.Data()); ok {
 		fd.Registry = nil
-		v.Data = fd
+		v.SetData(&fd)
 	}
 	return v
 }

@@ -256,8 +256,9 @@ machinery for now.
   flex nodes).
 - No map-key deletion word yet (none exists for any container in core).
 - Flex nodes are runtime-only values: the parser never produces them,
-  `Eval` is never set on them, and `resolveAtomReferents` (program
-  tapes) deliberately ignores `FlexListData`.
+  `Eval` is never set on them, and `stampAtomReferents` (program
+  tapes; `resolveAtomReferents` until 2026-10-13) deliberately ignores
+  `FlexListData`.
 
 ## Verification
 

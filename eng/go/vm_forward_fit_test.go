@@ -53,7 +53,7 @@ func TestDeoptIfFnFitsAndSeat(t *testing.T) {
 		{Held: 2, Seat: []compiler.RestartSrc{}},
 		{Held: 1, Seat: []compiler.RestartSrc{{Kind: compiler.RestartLocal, Idx: 4}}},
 		{Held: 1, Seat: []compiler.RestartSrc{{Kind: compiler.RestartStack, Idx: 1}}},
-		{Held: 1, Seat: []compiler.RestartSrc{{Kind: compiler.RestartType, Val: core.Value{ID: "no-such-type"}}}},
+		{Held: 1, Seat: []compiler.RestartSrc{{Kind: compiler.RestartType, Val: withID(core.Value{}, "no-such-type")}}},
 		{Held: 1, Seat: []compiler.RestartSrc{{Kind: compiler.RestartGuard}}},
 	} {
 		bad.Name, bad.Slot, bad.Depth, bad.RetPC, bad.Fits = "y", 0, -1, 9, fits

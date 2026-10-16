@@ -40,7 +40,7 @@ func TestNarrowingPushPoppedAtPassEnd(t *testing.T) {
 		t.Fatalf("the narrowing must be popped at pass end: depth = %d, want 1", r.Defs.Depth("npq"))
 	}
 	got, _ := r.Defs.Top("npq")
-	if got.Parent != nil && got.Parent.Equal(core.TList) {
+	if got.Parent() != nil && got.Parent().Equal(core.TList) {
 		t.Error("pass end must restore the ORIGINAL binding, not keep the narrowed one")
 	}
 }
@@ -125,7 +125,7 @@ func TestAnalyseLoopBodySkipsNarrowingOnlyAdds(t *testing.T) {
 	// the narrowing's own trigger conditions (which live in their own
 	// tests above).
 	refined := core.NewDynamicCarrierValue(core.NewCarrier(core.TMap))
-	refined.ID = pre.ID
+	core.SetID(&refined, core.IDOf(&pre))
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "refq",
 		Signatures: []core.Signature{{

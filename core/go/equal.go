@@ -55,8 +55,8 @@ func nodeFamily(t *Type) *Type {
 // keeps the exact nodeFamily: a refinement may carry its own Comparer
 // (`behave`), which the LCA walk must reach before any fold.
 func containerFamily(t *Type) *Type {
-	for t != nil && t.Origin == OriginUserDef && t.Parent != nil {
-		t = t.Parent
+	for t != nil && t.Origin() == OriginUserDef && t.Parent() != nil {
+		t = t.Parent()
 	}
 	return nodeFamily(t)
 }
@@ -74,10 +74,10 @@ func ValuesEqual(a, b Value) bool {
 	// non-default Behavior, delegate. Type literals (Data==nil) are
 	// excluded — bare type equality is a lattice-identity check, not
 	// a per-type semantic compare.
-	if a.Data != nil && b.Data != nil &&
-		a.Parent != nil && a.Parent == b.Parent &&
-		a.Parent.Behavior() != nil && a.Parent.Behavior() != DefaultBehavior {
-		return a.Parent.Behavior().Equal(a, b)
+	if a.Data() != nil && b.Data() != nil &&
+		a.Parent() != nil && a.Parent() == b.Parent() &&
+		a.Parent().Behavior() != nil && a.Parent().Behavior() != DefaultBehavior {
+		return a.Parent().Behavior().Equal(a, b)
 	}
 	return valuesEqualDefault(a, b)
 }
@@ -91,14 +91,14 @@ func valuesEqualDefault(a, b Value) bool {
 	// Two Data==nil values: carriers are abstract (conservatively
 	// equal); two type literals are equal iff they are the same
 	// lattice identity.
-	if a.Data == nil && b.Data == nil {
-		if a.Carrier || b.Carrier {
+	if a.Data() == nil && b.Data() == nil {
+		if a.Carrier() || b.Carrier() {
 			return true
 		}
 		return a.Equal(&b)
 	}
 	// One is a type literal and the other is a concrete value — not equal.
-	if a.Data == nil || b.Data == nil {
+	if a.Data() == nil || b.Data() == nil {
 		return false
 	}
 	// Bounded Type (`Type of [B]` / `B/t`): equal iff the bounds are
@@ -136,59 +136,58 @@ func valuesEqualDefault(a, b Value) bool {
 	// carries a wrapper Behavior that delegates Equal here. Without
 	// these branches the default %v-format arm would compare the
 	// OrderedMap POINTER, making equal-content Microns unequal.
-	if am, aok := a.Data.(MicronPayload); aok {
-		bm, bok := b.Data.(MicronPayload)
+	if am, aok := a.Data().(MicronPayload); aok {
+		bm, bok := b.Data().(MicronPayload)
 		return bok && mapsEqual(am.Fields, bm.Fields)
 	}
-	if _, bok := b.Data.(MicronPayload); bok {
+	if _, bok := b.Data().(MicronPayload); bok {
 		return false
 	}
-	if ap, aok := a.Data.(PathonPayload); aok {
-		bp, bok := b.Data.(PathonPayload)
+	if ap, aok := a.Data().(PathonPayload); aok {
+		bp, bok := b.Data().(PathonPayload)
 		return bok && PathonContentEqual(ap.Info, bp.Info)
 	}
-	if _, bok := b.Data.(PathonPayload); bok {
+	if _, bok := b.Data().(PathonPayload); bok {
 		return false
 	}
 	switch {
-	case a.Parent.ConformsTo(TString):
+	case a.Parent().ConformsTo(TString):
 		as, _ := AsString(a)
 		bs, _ := AsString(b)
 		return as == bs
-	case a.Parent.ConformsTo(TInteger):
+	case a.Parent().ConformsTo(TInteger):
 		ai, _ := AsInteger(a)
 		bi, _ := AsInteger(b)
 		return ai == bi
-	case a.Parent.ConformsTo(TBoolean):
+	case a.Parent().ConformsTo(TBoolean):
 		ab, _ := AsBoolean(a)
 		bb, _ := AsBoolean(b)
 		return ab == bb
-	case a.Parent.ConformsTo(TAtom):
-		// Atom identity is by name only — the AtomPayload.Referent snapshot
-		// is metadata and must not affect equality (otherwise the default
-		// %v-format branch below would compare the referent pointer too).
+	case a.Parent().ConformsTo(TAtom):
+		// Atom identity is by name only — a holder's captured referent is
+		// occurrence state (AtomReferent) and never reaches the comparison.
 		an, _ := AsAtom(a)
 		bn, _ := AsAtom(b)
 		return an == bn
-	case nodeFamily(a.Parent).Equal(TList):
-		aTT, aTbl := a.Data.(TableTypeInfo)
-		bTT, bTbl := b.Data.(TableTypeInfo)
+	case nodeFamily(a.Parent()).Equal(TList):
+		aTT, aTbl := a.Data().(TableTypeInfo)
+		bTT, bTbl := b.Data().(TableTypeInfo)
 		if aTbl && bTbl {
 			return mapsEqual(aTT.Record.Fields, bTT.Record.Fields)
 		}
 		if aTbl != bTbl {
 			return false
 		}
-		aCT, aOk := a.Data.(ChildTypeInfo)
-		bCT, bOk := b.Data.(ChildTypeInfo)
+		aCT, aOk := a.Data().(ChildTypeInfo)
+		bCT, bOk := b.Data().(ChildTypeInfo)
 		if aOk && bOk {
-			return aCT.Child.Parent.Equal(bCT.Child.Parent) && ValuesEqual(aCT.Child, bCT.Child)
+			return aCT.Child.Parent().Equal(bCT.Child.Parent()) && ValuesEqual(aCT.Child, bCT.Child)
 		}
 		if aOk != bOk {
 			return false
 		}
-		aLSS, aLShaped := a.Data.(*StoreShapeInfo)
-		bLSS, bLShaped := b.Data.(*StoreShapeInfo)
+		aLSS, aLShaped := a.Data().(*StoreShapeInfo)
+		bLSS, bLShaped := b.Data().(*StoreShapeInfo)
 		if aLShaped || bLShaped {
 			// Same aliasing model as the map branch below: one minted
 			// shape per container, pointer identity is value identity.
@@ -199,36 +198,36 @@ func valuesEqualDefault(a, b Value) bool {
 		if aLstErr != nil || bLstErr != nil {
 			// Not list-readable (abstract or foreign payload on a
 			// list-family value): rendering compare, never a nil walk.
-			return fmt.Sprintf("%v", a.Data) == fmt.Sprintf("%v", b.Data)
+			return fmt.Sprintf("%v", a.Data()) == fmt.Sprintf("%v", b.Data())
 		}
-		return listsEqual(aLst.Slice(), bLst.Slice())
-	case nodeFamily(a.Parent).Equal(TMap):
-		aRT, aRec := a.Data.(RecordTypeInfo)
-		bRT, bRec := b.Data.(RecordTypeInfo)
+		return listsEqual(aLst.Elems(), bLst.Elems())
+	case nodeFamily(a.Parent()).Equal(TMap):
+		aRT, aRec := a.Data().(RecordTypeInfo)
+		bRT, bRec := b.Data().(RecordTypeInfo)
 		if aRec && bRec {
 			return mapsEqual(aRT.Fields, bRT.Fields)
 		}
 		if aRec != bRec {
 			return false
 		}
-		aOT, aOpt := a.Data.(OptionsTypeInfo)
-		bOT, bOpt := b.Data.(OptionsTypeInfo)
+		aOT, aOpt := a.Data().(OptionsTypeInfo)
+		bOT, bOpt := b.Data().(OptionsTypeInfo)
 		if aOpt && bOpt {
 			return mapsEqual(aOT.Fields, bOT.Fields)
 		}
 		if aOpt != bOpt {
 			return false
 		}
-		aCT, aOk := a.Data.(ChildTypeInfo)
-		bCT, bOk := b.Data.(ChildTypeInfo)
+		aCT, aOk := a.Data().(ChildTypeInfo)
+		bCT, bOk := b.Data().(ChildTypeInfo)
 		if aOk && bOk {
-			return aCT.Child.Parent.Equal(bCT.Child.Parent) && ValuesEqual(aCT.Child, bCT.Child)
+			return aCT.Child.Parent().Equal(bCT.Child.Parent()) && ValuesEqual(aCT.Child, bCT.Child)
 		}
 		if aOk != bOk {
 			return false
 		}
-		aSS, aShaped := a.Data.(*StoreShapeInfo)
-		bSS, bShaped := b.Data.(*StoreShapeInfo)
+		aSS, aShaped := a.Data().(*StoreShapeInfo)
+		bSS, bShaped := b.Data().(*StoreShapeInfo)
 		if aShaped || bShaped {
 			// Check-mode store-shaped carriers: ONE shape is minted per
 			// container and every carrier copy aliases it (store_shape.go),
@@ -241,11 +240,11 @@ func valuesEqualDefault(a, b Value) bool {
 			// A map-family value whose payload is not map-readable (an
 			// abstract check-mode payload, a foreign marker): fall through
 			// to the rendering compare rather than walking a nil ReadMap.
-			return fmt.Sprintf("%v", a.Data) == fmt.Sprintf("%v", b.Data)
+			return fmt.Sprintf("%v", a.Data()) == fmt.Sprintf("%v", b.Data())
 		}
 		return mapsEqual(aMap, bMap)
 	default:
-		return fmt.Sprintf("%v", a.Data) == fmt.Sprintf("%v", b.Data)
+		return fmt.Sprintf("%v", a.Data()) == fmt.Sprintf("%v", b.Data())
 	}
 }
 
@@ -255,7 +254,7 @@ func listsEqual(a, b []Value) bool {
 		return false
 	}
 	for i := range a {
-		if !nodeFamily(a[i].Parent).Equal(nodeFamily(b[i].Parent)) || !ValuesEqual(a[i], b[i]) {
+		if !nodeFamily(a[i].Parent()).Equal(nodeFamily(b[i].Parent())) || !ValuesEqual(a[i], b[i]) {
 			return false
 		}
 	}
@@ -273,7 +272,7 @@ func mapsEqual(a, b ReadMap) bool {
 		if !ok {
 			return false
 		}
-		if !nodeFamily(aVal.Parent).Equal(nodeFamily(bVal.Parent)) || !ValuesEqual(aVal, bVal) {
+		if !nodeFamily(aVal.Parent()).Equal(nodeFamily(bVal.Parent())) || !ValuesEqual(aVal, bVal) {
 			return false
 		}
 	}

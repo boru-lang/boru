@@ -20,13 +20,13 @@ func TestPlacedApplyNeverRestarts(t *testing.T) {
 	r := seam7Reg(t)
 	vc := &vmContext{p: &compiler.Program{}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	seven := core.NewInteger(7)
-	seven.ID = "seven"
+	core.SetID(&seven, "seven")
 	var lead core.Value
 	placing := func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		return []core.Value{lead, args[0]}, nil
 	}
 	lead = scFn("placer", 1, placing)
-	lead.ID = "lead"
+	core.SetID(&lead, "lead")
 	stack := []core.Value{seven, lead}
 	island := []core.Value{core.NewInteger(9)}
 	spec := func() *compiler.DynMethodSpec {
@@ -47,7 +47,7 @@ func TestPlacedApplyNeverRestarts(t *testing.T) {
 	lead = scFn("placer", 1, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return []core.Value{lead, eight}, nil
 	})
-	lead.ID = "lead"
+	core.SetID(&lead, "lead")
 	if _, _, err := vc.callDynMethod(r, spec(), 0, []core.Value{seven, lead}, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "host-registered shape claim") {
 		t.Errorf("an apply that ran and missed the count is the violation, island or none: %v", err)
 	}

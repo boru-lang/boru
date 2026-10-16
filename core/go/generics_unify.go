@@ -28,17 +28,17 @@ func ResolveSigChildParam(r *Registry, v Value) Value {
 		return v
 	}
 	var child Value
-	if IsTypedList(ci.Child) || IsTypedMap(ci.Child) {
+	if IsTypedList(&ci.Child) || IsTypedMap(&ci.Child) {
 		// A nested container child (`m:{:{:Integer}}`) resolves its
 		// own child recursively.
 		child = ResolveSigChildParam(r, ci.Child)
 		if ExactEqual(child, ci.Child) {
 			return v
 		}
-	} else if w, werr := AsWord(ci.Child); werr == nil {
+	} else if w, werr := AsWord(&ci.Child); werr == nil {
 		if def := r.LookupTypeName(w.Name); def != nil && IsTypeParamNode(def) {
 			child = NewTypeLiteral(def)
-		} else if tv, ok := r.TopTypeBody(w.Name); ok && IsTypeBody(tv) {
+		} else if tv, ok := r.TopTypeBody(w.Name); ok && IsTypeBody(&tv) {
 			// A user-type child (`xs:[:Foo]`) resolves at sig install,
 			// exactly when the named param types resolve (ResolveSigType).
 			child = tv
@@ -52,7 +52,7 @@ func ResolveSigChildParam(r *Registry, v Value) Value {
 	} else {
 		return v
 	}
-	if IsTypedMap(v) {
+	if IsTypedMap(&v) {
 		if len(ci.Entries) > 0 {
 			return NewTypedMapWithEntries(child, ci.Entries)
 		}
@@ -101,7 +101,7 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 	if r == nil {
 		return v
 	}
-	mp, ok := v.Data.(MapPayload)
+	mp, ok := v.Data().(MapPayload)
 	if !ok || mp.M == nil {
 		return v
 	}
@@ -130,7 +130,7 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 		out.Set(k, resolved[i])
 	}
 	res := NewMap(out)
-	res.pos = v.pos
+	setPosRef(&res, posOf(&v))
 	return res
 }
 
@@ -140,13 +140,13 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 // recurses. Anything else — a literal value pattern, a typed container, a
 // word naming no type — is returned unchanged.
 func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
-	w, werr := AsWord(fv)
+	w, werr := AsWord(&fv)
 	if werr != nil {
-		if _, isMap := fv.Data.(MapPayload); isMap {
+		if _, isMap := fv.Data().(MapPayload); isMap {
 			nested := ResolveSigRecordFields(r, fv)
 			return nested, !ExactEqual(nested, fv)
 		}
-		if IsParenExpr(fv) {
+		if IsParenExpr(&fv) {
 			return resolveSigFieldExpr(r, fv)
 		}
 		return fv, false
@@ -154,7 +154,7 @@ func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
 	if def := r.LookupTypeName(w.Name); def != nil && IsTypeParamNode(def) {
 		return NewTypeLiteral(def), true
 	}
-	if tv, ok := r.TopTypeBody(w.Name); ok && IsTypeBody(tv) {
+	if tv, ok := r.TopTypeBody(w.Name); ok && IsTypeBody(&tv) {
 		return tv, true
 	}
 	if t, ok := ResolveBuiltinTypeName(w.Name); ok {
@@ -178,7 +178,7 @@ func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
 // already gave it). ResolveChildTypeExpr, the typed-container twin, reports
 // its error because its caller is positioned to attach it to the param.
 func resolveSigFieldExpr(r *Registry, fv Value) (Value, bool) {
-	toks, terr := AsParenExpr(fv)
+	toks, terr := AsParenExpr(&fv)
 	if terr != nil { //covergate:allow IsParenExpr at the sole call site requires the ParenExpr payload, so AsParenExpr cannot fail here
 		return fv, false
 	}
@@ -188,7 +188,7 @@ func resolveSigFieldExpr(r *Registry, fv Value) (Value, bool) {
 	input = append(input, toks...)
 	input = append(input, NewCloseParen())
 	out, rerr := sub.Run(input)
-	if rerr != nil || len(out) != 1 || !IsTypeBody(out[0]) {
+	if rerr != nil || len(out) != 1 || !IsTypeBody(&out[0]) {
 		return fv, false
 	}
 	return out[0], true
@@ -201,7 +201,7 @@ func resolveSigFieldExpr(r *Registry, fv Value) (Value, bool) {
 // rebuilt typed list/map (or v unchanged when the child is not a
 // ParenExpr). The expression must produce exactly one type value.
 func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
-	if r == nil || (!IsTypedList(v) && !IsTypedMap(v)) {
+	if r == nil || (!IsTypedList(&v) && !IsTypedMap(&v)) {
 		return v, nil
 	}
 	ci, err := AsChildType(v)
@@ -217,10 +217,10 @@ func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
 			childExpr = exp[0]
 		}
 	}
-	if !IsParenExpr(childExpr) {
+	if !IsParenExpr(&childExpr) {
 		return v, nil
 	}
-	toks, terr := AsParenExpr(childExpr)
+	toks, terr := AsParenExpr(&childExpr)
 	if terr != nil {
 		return v, nil
 	}
@@ -243,7 +243,7 @@ func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
 		// would replay it — the building word declines (NUR325, NUR327).
 		r.analysisRecorder().NoteRuntimeDependent()
 	}
-	if IsTypedMap(v) {
+	if IsTypedMap(&v) {
 		if len(ci.Entries) > 0 {
 			return NewTypedMapWithEntries(child, ci.Entries), nil
 		}
@@ -255,12 +255,17 @@ func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
 	return NewTypedList(child), nil
 }
 
+// isTypeParamLit reports whether v is a bare placeholder literal: the test
+// typeParamLitNode makes, without handing out a pointer, so v stays where it
+// lives (the unify rule table asks it of every ruling value).
+func isTypeParamLit(v *Value) bool { return IsBareTypeNode(v) && IsTypeParamNode(v) }
+
 // typeParamLitNode returns the placeholder node when v is a bare type
 // literal of a minted gen-param node, nil otherwise. The Behavior
-// pointer survives the literal's by-value copy, so detection works on
-// the copy without a registry lookup.
+// pointer survives the literal's copy, so detection works on the copy
+// without a registry lookup.
 func typeParamLitNode(v Value) *Type {
-	if !IsBareTypeNode(v) {
+	if !IsBareTypeNode(&v) {
 		return nil
 	}
 	if IsTypeParamNode(&v) {
@@ -280,7 +285,7 @@ func typeParamLitNode(v Value) *Type {
 // into the bound walk (isR).
 func unifyTypeParam(lit Value, node *Type, other Value, r *Registry) (Value, *UnifyError) {
 	// The same placeholder on both sides (memo keys, `[T] vs [T]`).
-	if IsBareTypeNode(other) && other.ID == node.ID {
+	if IsBareTypeNode(&other) && IDOf(&other) == IDOf(node) {
 		return lit, nil
 	}
 	if isR(other, node, r) {
@@ -329,8 +334,8 @@ func paramNameOf(v Value) string {
 	if name := TypeParamName(&v); name != "" {
 		return name
 	}
-	if IsWord(v) {
-		if w, err := AsWord(v); err == nil {
+	if IsWord(&v) {
+		if w, err := AsWord(&v); err == nil {
 			return w.Name
 		}
 	}
@@ -351,14 +356,14 @@ func InferGenBindings(spec *GenSpecInfo, params []FnParam, args []Value) map[str
 		arg := args[i]
 		// Placeholder param slot: T binds the arg's own type.
 		if name := TypeParamName(p.Type); name != "" {
-			if arg.Parent != nil {
-				b.merge(name, NewTypeLiteral(arg.Parent))
+			if arg.Parent() != nil {
+				b.merge(name, NewTypeLiteral(arg.Parent()))
 			}
 			continue
 		}
 		// Typed-list/map pattern over a placeholder (`xs:[:T]`,
 		// `m:{:T}`): T binds the union of the element types.
-		if p.Pattern != nil && (IsTypedList(*p.Pattern) || IsTypedMap(*p.Pattern)) {
+		if p.Pattern != nil && (IsTypedList(p.Pattern) || IsTypedMap(p.Pattern)) {
 			inferFromChildPattern(b, *p.Pattern, arg)
 		}
 	}
@@ -383,29 +388,29 @@ func inferFromChildPattern(b *genBinder, pattern, arg Value) {
 		return
 	}
 	switch {
-	case IsTypedList(arg) || IsTypedMap(arg):
+	case IsTypedList(&arg) || IsTypedMap(&arg):
 		if aci, aerr := AsChildType(arg); aerr == nil {
 			switch {
-			case IsBareTypeNode(aci.Child):
+			case IsBareTypeNode(&aci.Child):
 				b.merge(name, aci.Child)
-			case aci.Child.Parent != nil:
-				b.merge(name, NewTypeLiteral(aci.Child.Parent))
+			case aci.Child.Parent() != nil:
+				b.merge(name, NewTypeLiteral(aci.Child.Parent()))
 			}
 		}
-	case arg.Parent != nil && arg.Parent.Equal(TList) && IsConcrete(arg):
+	case arg.Parent() != nil && arg.Parent().Equal(TList) && IsConcrete(&arg):
 		if lst, lerr := AsList(arg); lerr == nil {
 			for j := 0; j < lst.Len(); j++ {
 				el := lst.Get(j)
-				if el.Parent != nil {
-					b.merge(name, NewTypeLiteral(el.Parent))
+				if el.Parent() != nil {
+					b.merge(name, NewTypeLiteral(el.Parent()))
 				}
 			}
 		}
-	case arg.Parent != nil && arg.Parent.Equal(TMap) && IsConcrete(arg):
+	case arg.Parent() != nil && arg.Parent().Equal(TMap) && IsConcrete(&arg):
 		if m, merr := AsMap(arg); merr == nil && m != nil {
 			for _, k := range m.Keys() {
-				if v, ok := m.Get(k); ok && v.Parent != nil {
-					b.merge(name, NewTypeLiteral(v.Parent))
+				if v, ok := m.Get(k); ok && v.Parent() != nil {
+					b.merge(name, NewTypeLiteral(v.Parent()))
 				}
 			}
 		}
@@ -424,7 +429,7 @@ func InferSchemaBindings(info *TypeSchemaInfo, body Value) map[string]Value {
 	}
 	b := newGenBinder(info.Params)
 	fields := schemaFields(info)
-	if fields == nil || body.Parent == nil || !body.Parent.Equal(TMap) || !IsConcrete(body) {
+	if fields == nil || body.Parent() == nil || !body.Parent().Equal(TMap) || !IsConcrete(&body) {
 		return b.bindings
 	}
 	bm, err := AsMap(body)
@@ -441,12 +446,12 @@ func InferSchemaBindings(info *TypeSchemaInfo, body Value) map[string]Value {
 		// construction as the placeholder literal (fields resolve while
 		// the gen bindings are live) or, defensively, a raw Word.
 		if pname := paramNameOf(c); pname != "" && b.isParam[pname] {
-			if v.Parent != nil {
-				b.merge(pname, NewTypeLiteral(v.Parent))
+			if v.Parent() != nil {
+				b.merge(pname, NewTypeLiteral(v.Parent()))
 			}
 			continue
 		}
-		if IsTypedList(c) || IsTypedMap(c) {
+		if IsTypedList(&c) || IsTypedMap(&c) {
 			inferFromChildPattern(b, c, v)
 		}
 	}
@@ -514,15 +519,15 @@ func InferAndInstantiateSchema(r *Registry, schema Value, body Value) (Value, er
 // to its Parent.
 func GenBindingCarrier(r *Registry, b Value) Value {
 	if node := typeArgNode(b); node != nil {
-		return NewCarrier(CanonicalType(r, node))
+		return NewCarrier(NodeOf(node))
 	}
-	if IsDisjunct(b) {
+	if IsDisjunct(&b) {
 		c := b
-		c.Carrier = true
+		c.SetCarrier(true)
 		return c
 	}
-	if b.Parent != nil {
-		return NewCarrier(b.Parent)
+	if b.Parent() != nil {
+		return NewCarrier(b.Parent())
 	}
 	return NewCarrier(TAny)
 }
@@ -551,9 +556,9 @@ func InstallGenBindingMap(r *Registry, spec *GenSpecInfo, bindings map[string]Va
 		}
 		node := typeArgNode(b)
 		if node == nil {
-			node = b.Parent
+			node = b.Parent()
 		}
-		r.Defs.PushType(p.Name, CanonicalType(r, node), b)
+		r.Defs.PushType(p.Name, NodeOf(node), b)
 		installed = append(installed, p.Name)
 	}
 	return installed

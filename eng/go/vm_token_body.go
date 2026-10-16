@@ -109,11 +109,10 @@ func tokenBodyKey(body core.Value, tokens, inputs []core.Value) (string, bool) {
 // the seam keeps its interpreter path.
 func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
 	lst, err := core.AsList(body)
-	if err != nil || lst.IsNil() || len(lst.Slice()) == 0 {
+	if err != nil || lst.IsNil() || lst.Len() == 0 {
 		return nil, nil, false
 	}
-	tokens := lst.Slice()
-	key, named := tokenBodyKey(body, tokens, inputs)
+	key, named := tokenBodyKey(body, lst.Elems(), inputs)
 	if !named {
 		return nil, nil, false
 	}
@@ -129,7 +128,14 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 		for i, in := range inputs {
 			types[i] = core.TokenBodyInputType(in)
 		}
-		r, ok := compiler.StampTokenBody(reg, tokens, types, body.Pos())
+		// The stamped unit keeps its body: the list's own array, which a
+		// plain list never writes — a flex list's view is live, so it keeps
+		// a snapshot.
+		toks := lst.Elems()
+		if _, flex := body.Data().(*core.FlexListData); flex {
+			toks = lst.Slice()
+		}
+		r, ok := compiler.StampTokenBody(reg, toks, types, body.Pos())
 		if !ok {
 			reg.SetTokenBodyStamp(key, tokenBodyDeclined{})
 			return nil, nil, false

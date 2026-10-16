@@ -25,18 +25,18 @@ func TestGuardRestart(t *testing.T) {
 		t.Error("an empty path is the tokens themselves")
 	}
 	got, ok := substToken(toks, []int{1}, 1, v)
-	if !ok || got[1].String() != "7" || !core.IsParenExpr(toks[1]) {
+	if !ok || got[1].String() != "7" || !core.IsParenExpr(&toks[1]) {
 		t.Errorf("a top-level paren replaced in a copy: %v %v", got, ok)
 	}
 	got, ok = substToken(toks, []int{2, 1}, 1, v)
 	l, _ := core.AsList(got[2])
 	orig, _ := core.AsList(toks[2])
-	if !ok || !got[2].Eval || l.Get(1).String() != "7" || !core.IsParenExpr(orig.Get(1)) {
+	if !ok || !core.IsEval(&got[2]) || l.Get(1).String() != "7" || !core.IsParenExpr(addrOf(orig.Get(1))) {
 		t.Errorf("a paren inside a list literal, the literal copied with its flags: %v %v", got, ok)
 	}
 	nested := []core.Value{core.NewParenExpr([]core.Value{core.NewInteger(1), core.NewParenExpr(nil)})}
 	got, ok = substToken(nested, []int{0, 1}, 1, v)
-	inner, _ := core.AsParenExpr(got[0])
+	inner, _ := core.AsParenExpr(&got[0])
 	if !ok || len(inner) != 2 || inner[1].String() != "7" {
 		t.Errorf("a paren inside a paren: %v %v", got, ok)
 	}
@@ -95,7 +95,7 @@ func TestSubstIsland(t *testing.T) {
 		return compiler.RestartSubst{Path: []int{i}, Span: 1, Src: compiler.RestartSrc{Kind: kind, Idx: idx}}
 	}
 	got, err := vc.substIsland(island, []compiler.RestartSubst{sub(0, compiler.RestartGuard, 0), sub(1, compiler.RestartLocal, 0), sub(2, compiler.RestartStack, 0)}, []core.Value{g}, 1, stack, seam7Dbg, 0)
-	if err != nil || got[0].String() != "1" || got[1].String() != "2" || got[2].String() != "3" || !core.IsParenExpr(island[0]) {
+	if err != nil || got[0].String() != "1" || got[1].String() != "2" || got[2].String() != "3" || !core.IsParenExpr(&island[0]) {
 		t.Fatalf("each value from its source, the program's tokens untouched: %v %v", got, err)
 	}
 	// A def-bound scalar's folded read is written as the constant the
@@ -316,7 +316,7 @@ func TestParksResult(t *testing.T) {
 		v    core.Value
 		want bool
 	}{
-		{"a compiled closure", core.Value{Data: core.ClosurePayload{}}, true},
+		{"a compiled closure", core.ValueOf(&core.Datum{Data: &core.ClosurePayload{}}), true},
 		{"a boru fn", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, boru}}), true},
 		{"a native", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{native}}), false},
 		{"a fn of both", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, native}}), false},

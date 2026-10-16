@@ -153,10 +153,10 @@ func TestW8NewParseLangFnValidation(t *testing.T) {
 		Returns: []*native.Type{native.TAny, native.TAny}}); err == nil {
 		t.Error("NewParseLangFn: a multi-return spec should error (a parser yields one result)")
 	}
-	if v, err := NewFormatParserFn("w8fmt", w8Fmt{}); err != nil || !native.IsConcrete(v) {
+	if v, err := NewFormatParserFn("w8fmt", w8Fmt{}); err != nil || !native.IsConcrete(&v) {
 		t.Errorf("NewFormatParserFn should build a concrete fn value, got %v (err %v)", v, err)
 	}
-	if v, err := NewParseLangFn(ParseLangSpec{Name: "purew8", Handler: w9NopParser, Pure: true}); err != nil || !native.IsConcrete(v) {
+	if v, err := NewParseLangFn(ParseLangSpec{Name: "purew8", Handler: w9NopParser, Pure: true}); err != nil || !native.IsConcrete(&v) {
 		t.Errorf("NewParseLangFn Pure should build a concrete fn value, got %v (err %v)", v, err)
 	}
 }

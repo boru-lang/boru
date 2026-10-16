@@ -31,7 +31,7 @@ func TestPolySplitRaiseIsTheInterpretersPlan(t *testing.T) {
 	}
 	fn := r.Lookup("zzfold")
 	body := core.NewList([]core.Value{core.NewWord("add")})
-	body.Quoted = true
+	core.SetQuoted(&body, true)
 	s, zero := core.NewString("s"), core.NewInteger(0)
 	pr := &compiler.PolyRef{Word: "zzfold", Arity: 3, NOut: 1, Split: &compiler.PolySplit{NFwd: 2}}
 	err := polySplitRaise(r, pr, fn, []core.Value{body, s, zero}, nil, nil, nil, 0)

@@ -73,7 +73,7 @@ func miniRedisSession(t *testing.T, armed bool, cmds []string) ([]string, *nativ
 	if !ok {
 		t.Fatal("wrapper not bound")
 	}
-	fd, isFn := w.Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(w.Data())
 	if !isFn || fd.Registry == nil {
 		t.Fatal("MiniRedis.cmd is not a module fn wrapper")
 	}
@@ -86,7 +86,7 @@ func moduleFnRef(t *testing.T, modReg *native.Registry, name string) *compiler.C
 	if !ok {
 		t.Fatalf("module fn %q not bound", name)
 	}
-	fd, isFn := v.Data.(core.FnDefInfo)
+	fd, isFn := core.FnDefOf(v.Data())
 	if !isFn {
 		t.Fatalf("module binding %q is not a fn", name)
 	}

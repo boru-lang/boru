@@ -35,7 +35,6 @@ var (
 	installMicronIdeals          = basic.InstallMicronIdeals
 	basicCheckMicronConstruction = basic.CheckMicronConstruction
 	basicMicronProperty          = basic.MicronProperty
-	basicMicronSchemaFor         = basic.MicronSchemaFor
 	genUnsupported               = basic.GenUnsupported
 	recordTypeInitErr            = basic.RecordTypeInitError
 )
@@ -180,3 +179,9 @@ var (
 	AsClockDuration         = basic.AsClockDuration
 	AsTimezone              = basic.AsTimezone
 )
+
+// Re-exports of functions that read a Value through a pointer. They are
+// wrapper functions rather than variables, so a call is direct: it can
+// inline, and escape analysis sees that the pointer does not escape (a
+// call through a function variable would move every &v to the heap).
+func basicMicronSchemaFor(t *basic.Type) (*basic.OrderedMap, bool) { return basic.MicronSchemaFor(t) }

@@ -514,3 +514,184 @@ semantics (fork, sandbox, capture, args list, `recoveryRaw`, `MarkInfo.Body`,
 `spentFrameMarker`) relying on copy independence → immutable shared objects or explicit
 copy-on-write at the mutation site. Construction-from-parts already covers the evaluated-
 container family and the frame/forward markers.
+
+---
+
+## Phase 3 dispositions (families 2 and 3)
+
+This section gives each family-2 and family-3 row of this inventory a phase-3
+disposition: 102 rows. Family 2 is fact (A) above, occurrence state copied, modified
+and written back; family 3 is fact (B), a token run copied onto a tape. The rows
+include the fresh-value twins of the family-2 writes and the rewrites of a spliced
+cell. A first pass against `53c65d9ef` ("No-copy phase 3 (12/n)") left 20 rows OPEN
+and two on D2, and noted five adjacent findings, A1–A5. Commits 13/n to 16/n
+(`8151f6903`, `1e3660d2f`, `1d787b4a9`, `8daf96009`) resolved them. Every row was
+checked against `8daf96009`, and no row is open.
+
+Class ids are those of [VALUE-NO-COPY-EXCEPTIONS.0.md](../../../VALUE-NO-COPY-EXCEPTIONS.0.md).
+A disposition says what became of the copy:
+
+- **gone (in place)**: the write is made in the cell or slot that holds the value;
+  nothing is copied.
+- **gone (holder)**: the copy is a new holder's own header (D10), and a write reaches
+  only that holder.
+- **gone (removed)**: the copy no longer exists.
+- **construction**: a value built from parts, under B1, B4 or B6, or under rule R4 for
+  a value minted at the site ("R4 fresh mint").
+- **C1**: the tape's own copy of a run, made once.
+
+### Counts
+
+| disposition | family 2 | family 3 | total | at `53c65d9ef` |
+|---|---:|---:|---:|---:|
+| gone (in place) | 16 | 1 | 17 | 13 |
+| gone (holder) | 30 | 1 | 31 | 28 |
+| gone (removed) | 1 | 3 | 4 | 3 |
+| construction (B1) | 3 | 6 | 9 | 7 |
+| construction (B4) | 1 | 0 | 1 | 1 |
+| construction (B6) | 8 | 6 | 14 | 13 |
+| construction (R4 fresh mint) | 8 | 1 | 9 | 9 |
+| C1 | 0 | 17 | 17 | 6 |
+| D2 | 0 | 0 | 0 | 2 |
+| OPEN | 0 | 0 | 0 | 20 |
+| **total** | **67** | **35** | **102** | **102** |
+
+Four rows carry two dispositions and are counted under the first. #3 is gone (holder),
+and a nested list whose atoms take referents is a B1 construction. #6 and #39 are a B1
+construction of the get-chain, whose splice is C1. #96 is gone (removed) for a run-time
+frame with no unnamed-arg cell, and a construction otherwise. Fresh-value twins,
+"2 (fresh)", count in family 2. #34, "3/2", counts in family 3: it is the inventory's
+(B), fixed as a family-2 copy-modify-writeback.
+
+### Rows
+
+The `inventory row` column cites this document's lines (from `6780a6030`); bare numbers
+are engine.go's. The site lines are those of `8daf96009`. A row whose disposition changed
+after `53c65d9ef` says what it was and which commit changed it.
+
+| # | inventory row | fam | site at 8daf96009 | disposition | how |
+|---|---|---|---|---|---|
+| 1 | 1375-1399 + 4103 `stampResultPos`/`stampHandlerResults` | 2 | engine.go:1361-1380; calls 4197, 4202 | gone (holder); was D2 (16/n) | `stampResultCells` stamps the results in their tape cells after the splice (`spliceMatchResults` returns where they landed); a handler's slice is never written |
+| 2 | 1441 + 10316 `stripTapeAscriptions` | 2 | engine.go:1425-1430; call 10423 | gone (in place) | `ClearAscribed(e.Tape.Ref(j))` |
+| 3 | 1731-1733 `Run` program copy + `resolveAtomReferents` | 3 | engine.go:1599-1661, 1806-1808; occurrence.go:62-68 | gone (holder) + construction (B1); was OPEN (13/n) | the referent is occurrence state, stamped in the loaded tape's cells (`stampAtomReferents`); a list whose nested atoms take one is rebuilt sharing its other elements (`atomReferentsIn`); the private copy is gone |
+| 4 | 1744-1748 `Run` → `Reload`/`NewTapeWith` | 3 | engine.go:1790-1796 | C1 | the prefix and the program load straight onto the tape (`ReloadRuns`/`NewTapeWithRuns`), top-level runs included; an analysis pass joins the parts for its carrier strip, which builds a new run anyway |
+| 5 | 1990, 4803 paren-expr expansion | 3 | engine.go:2047, 4875, 5752-5758; collect_kernel.go:434 | C1; was OPEN (15/n) | `SpliceGroupSpan` splices open marker, items and close marker as runs (`Tape.SpliceRuns`); `peScratch` is gone, and the CollectHost seam's `ScratchParenSpan` became `SpliceGroup` |
+| 6 | 2008, 4811 reach expansion | 3 | engine.go:2065, 4883, 5766-5768; collect_kernel.go:455 | construction (B1) + C1; was OPEN (15/n) | `lowerReach` builds the get-chain, and `SpliceGroupSpan` copies it onto the tape once |
+| 7 | 2633, 2643 pos on evaluated InterpString/Xml | 2 (fresh) | engine.go:2696, 2706 | construction (R4 fresh mint) | `setPosRef(&result, posOf(&v))` on the fresh result |
+| 8 | 2699-2702 `GuardFactInfo` wrap | 2 | engine.go:2760-2765 | gone (in place) | `res := e.Tape.Ref(scanIdx); res.Data = GuardFactInfo{…, Prev: res.Data}` |
+| 9 | 2771-2822 `stepWordUsurp` | 2 | engine.go:2831-2883 | construction (B6) | `ResolveUsurp` mints a fresh reversed wrapper, positioned with `setPosRef` |
+| 10 | 2776-2779, 2808-2811, 2911-2914, 3401-3403 Undefined placeholders | 2 (fresh) | engine.go:2836-2839, 2868-2871, 2971-2974, 3439-3442 | construction (R4 fresh mint) | `NewAtom` + `setPosRef` + `SetUndefined` on the new atom |
+| 11 | 2862 `ResolveRef` binding read | 2 | engine.go:2923; `deliverValRead` 3041 | gone (holder) | a pointer read (`TopValue`) into stepWordVal's local, which is delivered into the cell |
+| 12 | 2907 `WithPos(cv, val)` | 2 | engine.go:2968 | gone (holder) | `cv` is a side-table copy; the position goes on it, and it goes to the cell |
+| 13 | 2952-2954 `tagged := v; NoteValReadLive(&tagged)` | 2 | engine.go:3014-3017 | gone (holder) | `v` is already the read's copy; the recorder repoints only the local's record (check mode) |
+| 14 | 2957 `v.pos = val.pos` | 2 | engine.go:3019 | gone (holder) | `setPosRef(&v, posOf(&val))` on the local, then the cell |
+| 15 | 3158-3160 type-binding read | 2 | engine.go:3228-3231 | gone (holder) | a `NewTypeLiteral` header copy (D10) given its own position, then `SetFrom`; the node is never written |
+| 16 | 3170 `Defs.Top` value read | 2 | engine.go:3189, 3242, 3290 | gone (holder) | `TopRef` + `top := &entry.Body`; `e.Tape.SetFrom(e.Pointer, top)` is the one copy |
+| 17 | 3196-3199 data-splice word → `(w)` | 3 | engine.go:3270 | construction (B6) | `NewParenExpr([]Value{*val})` replaces the cell; the word token is not written |
+| 18 | 3224 `top.Quoted = false` | 2 | engine.go:3282, 3607-3620 | gone (holder) | `stepDefReadAnalysis` takes `*top` by value and clears the bit on that copy |
+| 19 | 3247-3250 `TagCheckModeDefRead(&tagged)` | 2 | engine.go:3630 | gone (holder) | `&top` is stepDefReadAnalysis's own copy; `SetDynFrom` repoints its record |
+| 20 | 3252 `e.Tape.Set(e.Pointer, top)` | 2 | engine.go:3632 | gone (holder) | `e.Tape.SetFrom(e.Pointer, &top)` |
+| 21 | 3319-3320 builtin type literal + pos | 2 | engine.go:3357-3359 | gone (holder) | `lit := NewTypeLiteral(t); setPosRef(&lit, vpos)`, then `Set`; the node is untouched |
+| 22 | 3396 `cv = WithPos(cv, val)` | 2 | engine.go:3434-3435 | gone (holder) | a side-table copy; `setPosRef(&cv, vpos)`, then `Set` |
+| 23 | 3550-3553, 6605-6611, 6643-6647, 7021-7033 handler args from cells | 2 | engine.go:3589-3591, 6717-6719, 6728, 6753-6755, 7135-7140 | gone (holder) | a fresh `[]Value` per match; later writes reach only the arg slots |
+| 24 | 3636 `ForwardOperandValue` | 2 | engine.go:3696-3715 | gone (holder) | `top = *p`, returned under `WithPos` to a read-only consumer; the binding is untouched |
+| 25 | 3761 `StripAscribed(match.Args[i])` | 2 | engine.go:3840 | gone (in place) | `ClearAscribed(&match.Args[i])` |
+| 26 | 3820-3824 auto-eval of a pending arg | 3 | engine.go:3855-3859, 3891-3895 | construction (B1) | `match.Args[i] = evaluated`, a fresh container; the body's token stays pending |
+| 27 | 3826 `match.Args[i].Eval = false` | 2 | engine.go:3905 | gone (in place) | `SetEval(&match.Args[i], false)`, a bit of the arg slot |
+| 28 | 3840 Undefined → dynamic carrier | 2 (fresh) | engine.go:3914-3919 | construction (R4 fresh mint) | `WithPos(NewDynamicCarrier(TAny), …)` |
+| 29 | 4600-4604 `forceStackWord` (+ 8508-8609) | 3 | engine.go:4673-4677 | construction (B6) | `NewWordModified` replaces the cell and shares the cell's position (`setPosRef`, A5); the token is untouched |
+| 30 | 4729-4730 `SpliceExpand` double copy | 3 | engine.go:4800-4803 | gone (removed) | returns `elems.Elems()`, a view |
+| 31 | 4872-4879 splice payload onto the tape | 3 | engine.go:4956 | C1 | `Splice(valIdx, 1, expanded...)` from the view |
+| 32 | 4896-4898 `prev.Quoted = true` | 2 | engine.go:4972-4974 | gone (in place) | `prev := e.Tape.Ref(valIdx - 1); SetQuoted(prev, true)` |
+| 33 | 5007-5026 collected `ReachGroup = false` + move | 2 | engine.go:5079-5102 | gone (holder) | the value moves cell to cell (`Remove`, `Insert`); the bit is cleared on the moving header |
+| 34 | 5154-5158 `resolveInertTypeShape` | 3/2 | engine.go:5222-5250; callers 5214, 5266, 5301, 5418 | gone (in place); was OPEN (14/n) | `resolveInertTypeShapeIn(slot)` replaces the slot's payload; `autoEvalStack` replaces a cell only with a pending literal's evaluation |
+| 35 | 5287-5294 stepless list literal | 3 | engine.go:5390-5398 | construction (B1) | `out := elems.Slice()`, `ClearAscribed(&out[i])`, `NewList(out)` |
+| 36 | 5298-5301 elements to region / sub-engine | 3 | engine.go:5402 → sealed.go:89-95, 123-134 | C1; was OPEN (15/n) | the view `elems.elems` is spliced once by `spliceSealedRegion`, or loaded once by a sub-engine |
+| 37 | 5317-5322 residual strip | 2 | engine.go:5416-5419 | gone (in place) | `ClearAscribed` and `resolveInertTypeShapeIn` on the region's caller-owned residual, then `NewList` |
+| 38 | 5633-5657 `expandParenExpr`/`Scratch` | 3 | engine.go:5752-5758, 5911, 5922; sealed.go:123-129 | C1; was OPEN (15/n) | as #5; a map member's ParenExpr runs as a sealed region with `group=true`, its items wrapped in markers on the tape; with no tape, or under an analysis pass, `expandParenExpr` still wraps them once before a sub-engine's load (sealed.go:92, engine.go:5369) |
+| 39 | 5661 `lowerReach` Receiver | 3 | engine.go:5766-5778, 5850; reach_unit.go:72 | construction (B1) + C1; was OPEN (15/n) | as #6; `ApplyReach` and the lens unit build the wrapped chain once (`lowerReachGroup`) |
+| 40 | 5713 ReachGroup on a fresh marker | 2 (fresh) | engine.go:5755 | construction (R4 fresh mint) | `SetReachGroup(&open[0], true)` on the fresh open marker |
+| 41 | 5848 `folded.ID = result[0].ID` | 2 | engine.go:5949-5954 | gone (holder) | `ShareIdentity(&folded, &result[0])` on the by-value parameter, which becomes the member |
+| 42 | 6025-6030 map-member strip | 2 | engine.go:6133-6137 | construction (B1) | strips into this evaluation's fresh `out` map |
+| 43 | 6231-6233 `takeAppliedMark` | 2 | engine.go:6336-6341 | gone (in place) | `SetApplied(e.Tape.Ref(valIdx), false)`, a header bit |
+| 44 | 6245-6252 execFnDefLiteral ReachGroup | 2 | engine.go:6354-6360 | gone (in place) | `SetReachGroup(e.Tape.Ref(valIdx), false)` |
+| 45 | 6256 / 7295-7305 `fnDefAtPointer` bridge | 2 | engine.go:7418-7424 | construction (B4) | the bridged FnDef value is fresh (`WithPos(bridged, val)`); the tape keeps the closure |
+| 46 | 6346-6356 `compiledFnDefFor` → `compileFnDef` | 2 | engine.go:6447, 6461, 7458; fn_value_compile_cache.go:46-64 | construction (B6) | a derived `*FnDefInfo`, built once per identity, registry and name and stored atomically on the shared identity; the payload is read by pointer |
+| 47 | 6458-6460 `rfn := *fn` | 2 | engine.go:6569-6572 | gone (removed) | `home` is passed beside `fn` to `CheckModeAssumeSig` |
+| 48 | 7092-7095 `FailedDispatch` | 2 | engine.go:7203-7204 | gone (in place) | `SetFailedDispatch(e.Tape.Ref(valIdx), true)` |
+| 49 | 7211-7217, 9505-9869 recorder carriers | 2 (fresh) | engine.go:7324-7325, 9641-9642, 9755-9756, 9865-9866, 9915-9930 | construction (R4 fresh mint) | `NewCarrier`, then `setPosRef`/`SetDynamic` on it |
+| 50 | 7424 `StripAscribed(args[i])` | 2 | engine.go:7543 | gone (in place) | `ClearAscribed(&args[i])` on the call's fresh args |
+| 51 | 7433-7448 auto-eval args | 3 | engine.go:7559, 7574 | construction (B1) | `args[i] = evaluated` |
+| 52 | 7459-7460 `Eval`/`Undefined = false` | 2 | engine.go:7578-7579 | gone (in place) | `SetEval`/`SetUndefined(&args[i], false)` |
+| 53 | 7498 / 7577-7580 `RetagTypedContainerArgs` (retag half) | 2 | engine.go:7696 → core_helpers.go:730-745 | construction (B6) | a copy-on-write clone of args with per-arg `Unify`/`MintElemTyped`; the caller's value is untouched (`argsCopy` is C6) |
+| 54 | 7597, 7608 `InstallFrameBinding` captures/params | 2 | engine.go:7716, 7727 | gone (holder) | the DefEntry is the new holder |
+| 55 | 7611, 7637 frame tokens (args + `sig.Body()`) | 3 | engine.go:7752-7813 | C1; was OPEN (15/n) | `SpliceRuns` in three parts: the open marker with the unnamed args, `sig.Body()`, the tail |
+| 56 | 7831-7838 `tagReachCollapsedFn` | 2 | engine.go:7949-7956 | gone (in place) | `v := e.Tape.Ref(idx); SetReachGroup(v, true)` |
+| 57 | 8415-8423 `MarkApplied` | 2 | engine.go:8532-8538 | gone (holder) | `SetApplied(&v, true)` on the by-value parameter returned as `apply`'s result |
+| 58 | 8880-8911 stepDefCleanup residual eval | 2 (fresh) | engine.go:9026-9027 | construction (B1) | `SetEval(&ev, false)` on the fresh evaluation, then `Set` |
+| 59 | 9027-9029 `stepMove` | 3 | engine.go:9144 | C1 | `Splice(…, markInfo.Body...)` straight from the mark's payload |
+| 60 | 9083-9088 `stepMoveCont` | 3 | engine.go:9204 | C1; was OPEN (15/n) | `SpliceRuns(…, mark, cont.Body, move)` |
+| 61 | 9220-9224 `spliceWhileRegion` | 3 | engine.go:9326-9340 | C1; was OPEN (15/n) | `SpliceRuns(…, mark, region, move)` |
+| 62 | 9274 `stepMoveIf` | 3 | engine.go:9378 | C1 | `Splice(…, branch...)` straight from `IfCont.Then`/`Else` |
+| 63 | 9452-9461 `stepOpenParen` | 2 (fresh) | engine.go:9556-9565 | construction (R4 fresh mint) | a fresh `NewOpenParen` takes the old cell's bit, then `Set` |
+| 64 | 9918-9924 `evalTrailingContainer` | 2 | engine.go:9971-10016 (10008) | gone (in place); was OPEN (14/n) | the raw-slot arm clears `Eval` in the tape cell (`evalTrailingWindowContainers`) |
+| 65 | 9942-9943, 10977-10978 fresh evaluations | 2 (fresh) | engine.go:10049-10050, 11084-11085 | construction (B1) | `SetEval(&ev, false); setPosRef(&ev, …)` on the fresh value |
+| 66 | 10958-10980 `evalPatternOperand` | 3 | engine.go:11065-11088 | construction (B1) | a fresh evaluation replaces the cell; the token is untouched |
+| 67 | 1091 `attemptedWindowSplit` | 2 (fresh) | engine.go:1074-1075 | construction (R4 fresh mint) | a diagnostic atom given the next cell's position |
+| 68 | sealed.go 117-121, 158-159 sealed region | 3 | sealed.go:123-134, 171 | C1; was OPEN (15/n) | `spliceSealedRegion` splices the Loop's markers around the elements (`SpliceRuns`); `loopTokens` is gone |
+| 69 | loop.go 270-280, 443, 457-458 `loopRegionTokens` | 3 | loop.go:278-294, 473; first region 85, 194 | C1; was OPEN (15/n) | the next iteration is `spliceLoopRegion`; the first region (`StartLoop`, `CallRegion`) is a handler's result, built once from parts and copied by the tape, as C1 names it |
+| 70 | tape.go 164-165 `NewTapeWith` | 3 | tape.go:163-206 | C1 | the primitive's own copy (`NewTapeWithRuns`, `fillRuns`) |
+| 71 | tape.go 208 `Reload` | 3 | tape.go:224-251 | C1 | the primitive's own copy (`ReloadRuns`) |
+| 72 | registry.go 1134-1138 `upsertFnDef` | 2 | registry.go:1125-1159 (1144) | construction (B6); was OPEN (13/n) | the merged signature set is a new array: `append(prev.Signatures[:n:n], sigs...)` |
+| 73 | registry.go 1427-1448 InitRootContext `NewTypeLiteral(TNone)` | 2 | registry.go:1460 | gone (holder) | the store entry holds a header copy (D10); the node is never written |
+| 74 | registry.go 1850-1856 retag (A half) | 2 | registry.go:1868 | construction (B6) | as #53 |
+| 75 | registry.go 1862 captures installed | 2 | registry.go:1881 | gone (holder) | `InstallFrameBinding(r, cb.Name, cb.Value)`: the entry's own header |
+| 76 | registry.go 1880-1884 list param `Quoted` | 2 | registry.go:1898-1902 | gone (holder) | `arg := args[i]; SetQuoted(&arg, true)`, then installed |
+| 77 | registry.go 1887, 1896 CallBoru token run | 3 | registry.go:1906, 1945-1950 | C1; was OPEN (13/n, 15/n) | the unnamed args and `sig.Body()` load as two parts (`RunParts`); no concatenation, no private copy |
+| 78 | registry.go 2053 frame results strip | 2 | registry.go:2070-2072 | gone (in place) | `ClearAscribed(&result[i])` on the call's copy |
+| 79 | engine_pool.go 49-51 `RunResolved` | 3 | engine_pool.go:46-52, 58-62 | C1; was OPEN (15/n) | the inputs and the tokens load as two parts (`RunParts`) |
+| 80 | invoke.go 81-86 `InvokeCallbackBody` RetTrim | 2 | invoke.go:81-91 | construction (B6) | `Value{Parent, Data}` plus three header bits; the payload is shared |
+| 81 | invoke.go 99-106 `ClosureSigMatched` | 2 | invoke.go:101-106 | gone (holder) | `SetSigMatched(&v, true)` on the by-value parameter returned |
+| 82 | invoke.go 420-425 `BodyTokens` | 3 | invoke.go:449-454 | gone (removed) | returns `lst.Elems()`, a view |
+| 83 | deftable.go 10-14 `DefEntry{Body Value}` | 2 | deftable.go:11-15 | gone (holder) | the entry is the binding's holder (D10); hot reads go through `TopRef`/`TopValue` |
+| 84 | deftable.go 85-96 `Top` | 2 | deftable.go:84-97; `TopRef` 104, `TopValue` 120 | gone (holder) | `Top` copies only into a caller's new holder; the hot readers read by pointer |
+| 85 | deftable.go 100-109 `TopEntry` | 2 | deftable.go:146-155 | gone (holder) | an entry copy for the caller |
+| 86 | deftable.go 113-141 `Push`/`PushType`/`PushTypeAdopted` | 2 | deftable.go:158-190 | gone (holder) | each push is a new holder |
+| 87 | dispatch_slots.go 77, 172 `TagCheckModeDefRead` | 2 | dispatch_slots.go:77, 172; engine.go:3630 | gone (holder) | the pointer is to stepDefReadAnalysis's own copy |
+| 88 | resolve.go 42-56 `resolveWordValue` | 2 | resolve.go:33-52 | gone (holder) | `NewTypeLiteral(t)` and `TopTypeBody` copies go to the caller's holder |
+| 89 | resolve.go 78-87 `resolveWordsDeep` list | 3 | resolve.go:79-87 | construction (B6) | a new list over the `lst.Elems()` view (the rebuild is E6's language behaviour) |
+| 90 | resolve.go 95-113 disjunct rebuild | 3 | resolve.go:96-111 | construction (B6) | `MintPayload(&v, nd)` (14/n); the source is never written |
+| 91 | collect_kernel.go 341-356 group arm | 2 | collect_kernel.go:356-366 | gone (in place); was OPEN (14/n) | the flags are written through `win.Ref(scanIdx)`; the scan's own `res` copy is marked alongside |
+| 92 | collect_kernel.go 383, 402 fresh evaluations | 2 (fresh) | collect_kernel.go:393-394, 412-413 | construction (R4 fresh mint) | `setPosRef(&result, posOf(&tok))`, then `win.Set` |
+| 93 | collect_kernel.go 469-474 splice-bound word → `(w)` | 3 | collect_kernel.go:481-483 | construction (B6) | `NewParenExpr([]Value{tok})` replaces the cell |
+| 94 | collect_kernel.go 896-900 `/q` Word → Atom | 3 | collect_kernel.go:907-909 | construction (B6) | `NewAtom` + `setPosRef(&atom, posOf(val))` replaces the cell; the word token is not written |
+| 95 | collect_kernel.go 926-953 transient flags (`arrivalReachGroup`) | 2 | collect_kernel.go:975-979 | gone (in place); was OPEN (14/n) | the flags are cleared through `win.Ref(valIdx)`; the by-value `val` is the decision's scratch |
+| 96 | core_helpers.go 395-437, 465-476, 484-508 leaf skeleton | 3 | core_helpers.go:395-437, 487-500 | gone (removed) / construction; was D2 (16/n) | at run time a frame with no unnamed-arg cell is the shared skeleton, capped; one with them is a copy patched with the args; under an analysis pass every frame is a copy, as the recorder stamps keys on results |
+| 97 | core_helpers.go 496-500, 561, 574 list-param `Quoted` | 2 | core_helpers.go:511-517, 566-573 | gone (holder) | a local `arg` + `SetQuoted(&arg, true)`, then installed |
+| 98 | core_helpers.go 536-540, 567, 595 non-leaf frame | 3 | core_helpers.go:522-622 (605) → engine.go:4202 | C1; was OPEN (15/n) | the handler's result run is built once from parts and copied once by `spliceMatchResults`, C1's handler-built run |
+| 99 | core_helpers.go 624-735 `RetagTypedContainer*` | 2 | core_helpers.go:634-745 | construction (B6) (+B7) | `MintElemTyped`, `Unify` + `SetQuoted(&unified, …)`, copy-on-write args; `retagFlexChildrenInPlace` (694-709) writes the shared flex store by design (R5/B7) |
+| 100 | value.go 2761-2771 `SetAtomReferent` | 2 | value.go:2806-2821 | gone (holder); was OPEN (13/n) | writes the holder's occurrence record (`occurrence.referent`); the bound value's snapshot is a capture (C5) |
+| 101 | fn_value_compile_cache.go 32-37, 46-62 `sameList` cache | 2 | fn_value_compile_cache.go:30-64 | construction (B6) | the cache on the shared identity is built once (atomic `Store`) and never written through a copy |
+| 102 | fn_frame.go 212-233 frame tail | 3 | fn_frame.go:212-232 | construction (R4 fresh mint) | fresh `DefCleanup`/`ReturnCheck` per non-leaf call; a zero-Pos ReturnCheck is re-minted in its tape cell (`stampResultCells`) |
+
+### Adjacent findings
+
+These are not inventory rows.
+
+- **A1. `fnDefAtPointer` copied the payload to carry the holder's name.** Gone (removed),
+  16/n. Every fn-value dispatch made a 232-byte copy for this. The payload is now read by
+  pointer, and a view is made only when a binding gave the holder another name
+  (engine.go:7411-7415). `compiledFnDefFor` and `FnValueOnlyZeroArgSigs` take the
+  pointer. `compileFnDef` (on a cache miss, #46) and `installFnDef` still take the
+  payload by value.
+- **A2. `Loop.at` is rewritten after values refer to it.** Documented, 16/n:
+  occurrence.go:35-40 names it as the one record written after values refer to it. The
+  record is loop.go:300, re-aimed when a pooled Loop is reused at another call site. Only
+  the loop's own synthetic tokens refer to it, and nothing threads their position onto a
+  value.
+- **A3. `retagFlexChildrenInPlace` writes the caller's flex children.** Unchanged, by
+  design (R5/B7). It is at core_helpers.go:694-709.
+- **A4. D2 could be retired.** Done, 16/n: its two rows are #1 (gone (holder)) and #96
+  (gone (removed) / construction).
+- **A5. `forceStackWord` minted a position record per rewrite.** Done, 14/n: it shares
+  the cell's position, `setPosRef(&nw, posOf(e.Tape.Ref(idx)))` (engine.go:4675).

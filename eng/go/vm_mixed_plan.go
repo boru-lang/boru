@@ -56,16 +56,16 @@ func (vc *vmContext) mixedPlanApply(reg *core.Registry, window []core.Value) ([]
 		return nil, nil, false
 	}
 	fnVal := window[p]
-	fd, ok := fnVal.Data.(core.FnDefInfo)
-	if !ok || !fnValueParkable(reg, fnVal, fd) {
+	fd, ok := fnVal.Data().(*core.FnDefInfo)
+	if !ok || !fnValueParkable(reg, fnVal, *fd) {
 		return nil, nil, false
 	}
 	own := fd.OwnSigs()
 	if len(own) != 1 || !boruSig(&own[0]) || core.FnValueOnlyZeroArgSigs(fd) || !allParamsNamed(own[0].Params) {
 		return nil, nil, false
 	}
-	nStk, nFwd, args, ok := mixedPlanArgs(reg, fd, window, p)
-	if !ok || (!fd.Anonymous && !legacyReMatchAgrees(fd, window[:p-nStk], args)) {
+	nStk, nFwd, args, ok := mixedPlanArgs(reg, *fd, window, p)
+	if !ok || (!fd.Anonymous && !legacyReMatchAgrees(*fd, window[:p-nStk], args)) {
 		return nil, nil, false
 	}
 	res, err, ran := vc.runFnValueSig(reg, fnVal, fd, &own[0], args)
@@ -94,9 +94,9 @@ func legacyReMatchAgrees(fd core.FnDefInfo, below, args []core.Value) bool {
 // the value, and the args in signature order — ok=false for no pick, a
 // Fallback pick, or positions that are not the window's contiguous halves.
 func mixedPlanArgs(reg *core.Registry, fd core.FnDefInfo, window []core.Value, p int) (nStk, nFwd int, args []core.Value, ok bool) {
-	view := fnDispatchView(fd)
+	view := fnDispatchView(&fd)
 	h := newRegionHostOver(reg, window)
-	w := core.WordInfo{Name: fd.Name, ArgCount: -1}
+	w := core.WordInfo{Name: core.FnNameOf(&window[p]), ArgCount: -1}
 	resolved := window[:p]
 	sig, positions, _ := core.PlanMatch(h, h.win, reg, &view, w, resolved, p, false, false, false)
 	if (sig == nil || sig.Fallback) && view.HasForwardSigs() {

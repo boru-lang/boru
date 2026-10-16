@@ -40,7 +40,7 @@ func TestGetResourceReturnsDeclineArms(t *testing.T) {
 	r := seam5Reg(t)
 	// Miss: Integer names no resource schema.
 	out := getResourceReturns([]Value{NewString("kind"), NewInteger(1)}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("non-resource instance must stay dynamic, got %v", out)
 	}
 	// Function-typed schema field declines.
@@ -51,12 +51,12 @@ func TestGetResourceReturnsDeclineArms(t *testing.T) {
 		NewResourceType(ft, ResourceTypeInfo{Fields: fields, Name: "FakeRes"}))
 	inst := core.NewValueRaw(ft, core.IntPayload{N: 1})
 	out = getResourceReturns([]Value{NewString("run"), inst}, r)
-	if len(out) != 1 || !out[0].Dynamic {
+	if len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("a Function-typed field must decline to dynamic, got %v", out)
 	}
 	// Absent field: reads as None (the schema is closed).
 	out = getResourceReturns([]Value{NewString("nope"), inst}, r)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Carrier() || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("an absent field must read as a None carrier, got %v", out)
 	}
 }

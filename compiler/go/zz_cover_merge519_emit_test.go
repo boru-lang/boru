@@ -79,7 +79,7 @@ func TestRecordGuardedTrapDeclines(t *testing.T) {
 // carrier of its Parent: the Integer node's Parent is Number.
 func TestBindCarrierTypeValue(t *testing.T) {
 	c := bindCarrier(core.NewTypeLiteral(core.TInteger))
-	if !c.Carrier || c.Parent != core.TType {
-		t.Errorf("a type value's carrier is a Type carrier, got %v (parent %v)", c, c.Parent)
+	if !c.Carrier() || c.Parent() != core.TType {
+		t.Errorf("a type value's carrier is a Type carrier, got %v (parent %v)", c, c.Parent())
 	}
 }

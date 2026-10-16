@@ -30,7 +30,7 @@ func x5PredFn() Value {
 		Returns: []*Type{TBoolean},
 		Impl:    Boru([]Value{NewBoolean(true)}),
 	}
-	return MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{sig}}))
+	return MarkPredicateFn(NewValueRaw(TFunction, &FnDefInfo{Signatures: []Signature{sig}}))
 }
 
 // x5PredType installs the predicate fn as type name and returns the
@@ -165,7 +165,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("map vs Node literal must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TMap) {
+	if got.Parent() == nil || !got.Parent().Equal(TMap) {
 		t.Fatalf("expected a Map result, got %v", got)
 	}
 
@@ -175,7 +175,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("Node literal vs list must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TList) {
+	if got.Parent() == nil || !got.Parent().Equal(TList) {
 		t.Fatalf("expected a List result, got %v", got)
 	}
 
@@ -200,13 +200,13 @@ func TestX5DegenRootConcreteWins(t *testing.T) {
 	if !ok {
 		t.Fatal("None literal vs none must unify")
 	}
-	if !IsNone(got) {
+	if !IsNone(&got) {
 		t.Fatalf("expected the concrete none value, got %v", got)
 	}
 }
 
 func TestX5UnifyObjectTypeInstance(t *testing.T) {
-	node := &Type{tmeta: &typeMeta{Name: "X5Cls"}, ID: "X5Cls", Parent: TClass}
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5Cls"}, Parent: TClass}}, "X5Cls"))
 	// NewClassType stamps info.Type with its first argument, so mint the
 	// class-type value with the instance node itself as the minted node.
 	ot := NewClassType(node, ClassTypeInfo{ID: "X5Cls", Name: "Class/X5Cls", Fields: NewOrderedMap()})
@@ -215,7 +215,7 @@ func TestX5UnifyObjectTypeInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instance vs its object type: %v", err)
 	}
-	if !got.Parent.Equal(node) {
+	if !got.Parent().Equal(node) {
 		t.Fatalf("expected the instance back, got %v", got)
 	}
 }
@@ -275,7 +275,7 @@ func TestX5PredicateUnifierUnifyDirect(t *testing.T) {
 
 func TestX5InstallPredicateUnifierDirect(t *testing.T) {
 	r := x5reg(t)
-	node := &Type{tmeta: &typeMeta{Name: "X5IP"}, ID: "X5IP", Parent: TInteger}
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5IP"}, Parent: TInteger}}, "X5IP"))
 	installPredicateUnifier(node, x5PredFn(), r, "X5IP")
 	if _, ok := node.Behavior().(*PredicateUnifier); !ok {
 		t.Fatalf("expected a PredicateUnifier, got %T", node.Behavior())
@@ -501,21 +501,14 @@ func TestX5ReparentSwappedElem(t *testing.T) {
 	src := NewInteger(5)
 	lit := NewTypeLiteral(TInteger)
 
-	// No registry on the chain: reparent to the literal's type directly.
-	got := reparentSwappedElem(src, lit, nil)
-	if n, _ := AsInteger(got); n != 5 {
-		t.Fatalf("expected the source payload back, got %v", got)
-	}
-
-	// An armed chain routes the type through CanonicalType.
-	r := x5reg(t)
-	got = reparentSwappedElem(src, lit, r)
-	if n, _ := AsInteger(got); n != 5 {
-		t.Fatalf("expected the source payload back, got %v", got)
+	// A swap reparents the source to the literal's node itself.
+	got := reparentSwappedElem(src, lit)
+	if n, _ := AsInteger(got); n != 5 || got.Parent() != TInteger {
+		t.Fatalf("expected the source payload under the node, got %v", got)
 	}
 
 	// Non-swap results pass through untouched.
-	same := reparentSwappedElem(src, NewInteger(7), nil)
+	same := reparentSwappedElem(src, NewInteger(7))
 	if n, _ := AsInteger(same); n != 7 {
 		t.Fatalf("non-swap must pass through, got %v", same)
 	}
@@ -539,7 +532,7 @@ func TestX5ResolveSigChildParamNested(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolved inner is a typed list: %v", err)
 	}
-	if !IsBareTypeNode(ici.Child) {
+	if !IsBareTypeNode(&ici.Child) {
 		t.Fatalf("inner child should resolve to the Integer literal, got %v", ici.Child)
 	}
 
@@ -562,7 +555,7 @@ func TestX5ResolveSigChildParamUserType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolved value is a typed list: %v", err)
 	}
-	if !IsBareTypeNode(ci.Child) {
+	if !IsBareTypeNode(&ci.Child) {
 		t.Fatalf("user-type child should resolve to its body, got %v", ci.Child)
 	}
 }
@@ -600,7 +593,7 @@ func TestX5SchemaFieldsClassArm(t *testing.T) {
 
 func TestX5InferAndInstantiateSchemaDefaultBreak(t *testing.T) {
 	r := x5reg(t)
-	node := &Type{tmeta: &typeMeta{Name: "X5Box"}, ID: "X5Box", Parent: TMap}
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5Box"}, Parent: TMap}}, "X5Box"))
 	info := &TypeSchemaInfo{
 		Name: "X5Box",
 		Params: []GenParam{

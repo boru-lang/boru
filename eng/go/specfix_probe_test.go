@@ -277,4 +277,17 @@ func TestSpecfixNilArgsStack(t *testing.T) {
 			}
 		})
 	}
+	// Positive pair: on a registry's own args stack `__pa` pops quietly —
+	// an empty stack included (Pop's best-effort contract) — and leaves no
+	// residual. No fn frame emits it since the frame's cleanup marker took
+	// the pop over (2026-10-08), so only a program that names it reaches
+	// this arm.
+	values, err := parser.Parse("__pa")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out, runErr := core.NewTop(specfixProbeRegistry(t)).Run(values)
+	if runErr != nil || len(out) != 0 {
+		t.Errorf("__pa on a live args stack = %v / %v, want no residual and no error", out, runErr)
+	}
 }

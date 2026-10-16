@@ -65,7 +65,8 @@ func NewStreamKind() *Type {
 // atom-aware path (rendering, comparison, `quote`) treats it as the
 // symbol it is.
 func newStreamAtom(name string, streamKind *Type) Value {
-	return core.ReparentValue(core.NewAtom(name), streamKind)
+	atom := core.NewAtom(name)
+	return core.MintRetagged(&atom, streamKind)
 }
 
 // streamSentinel maps a stream-handle value to its internal routing

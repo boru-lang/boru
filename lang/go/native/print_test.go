@@ -138,10 +138,10 @@ func TestPrintTable(t *testing.T) {
 	row2.Set("x", NewInteger(2))
 	row2.Set("y", NewString("b"))
 
-	table := Value{Parent: TList, Data: TableData{
+	table := ValueOf(&Datum{Parent: TList, Data: TableData{
 		Record: recType,
 		Rows:   []Value{NewMap(row1), NewMap(row2)},
-	}}
+	}})
 
 	runBoru(t, r, []Value{NewWord("print"), table})
 
@@ -196,10 +196,10 @@ func TestPrintEmptyTable(t *testing.T) {
 
 	fields := NewOrderedMap()
 	recType := RecordTypeInfo{Fields: fields}
-	table := Value{Parent: TList, Data: TableData{
+	table := ValueOf(&Datum{Parent: TList, Data: TableData{
 		Record: recType,
 		Rows:   nil,
-	}}
+	}})
 
 	runBoru(t, r, []Value{NewWord("print"), table})
 
@@ -285,7 +285,7 @@ func TestFormatValueJSON(t *testing.T) {
 		{"integer", NewInteger(7), "7"},
 		{"bool_true", NewBoolean(true), "true"},
 		{"bool_false", NewBoolean(false), "false"},
-		{"none", Value{Parent: TNone}, "null"},
+		{"none", ValueOf(&Datum{Parent: TNone}), "null"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

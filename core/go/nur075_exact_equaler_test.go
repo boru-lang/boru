@@ -63,12 +63,14 @@ func TestExactEqualCapabilityDeclineAndFailure(t *testing.T) {
 func TestExactEqualCapabilityIsAdditive(t *testing.T) {
 	lying := capType(t, "LyingEqInteger", TInteger, capEqBehavior{equal: true})
 	a, b := NewInteger(1), NewInteger(2)
-	a.Parent, b.Parent = lying, lying
+	a.SetParent(lying)
+	b.SetParent(lying)
 	if ExactEqual(a, b) {
 		t.Error("the capability must not reach past the scalar arm — 1 eq 2 is false")
 	}
 	c, d := NewInteger(3), NewInteger(3)
-	c.Parent, d.Parent = lying, lying
+	c.SetParent(lying)
+	d.SetParent(lying)
 	if !ExactEqual(c, d) {
 		t.Error("3 eq 3 must stay true")
 	}

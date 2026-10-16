@@ -93,7 +93,7 @@ func TestW8CallPolyGetMethodValueStaysData(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("method-value get residual = %v, want the member value", out)
 	}
-	fd, ok := out[0].Data.(core.FnDefInfo)
+	fd, ok := core.FnDefOf(out[0].Data())
 	if !ok || fd.Name != "w8zero" {
 		t.Errorf("get result = %v, want the w8zero delegation method value (unapplied)", out[0])
 	}
@@ -166,7 +166,7 @@ func TestW8CallDynMethodDelegationResultScreened(t *testing.T) {
 	deleg := w8Deleg1(t, r, "w8mleak", func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		return []core.Value{core.NewWord("leak")}, nil
 	})
-	if !core.IsDelegationFnDef(deleg.Data.(core.FnDefInfo)) {
+	if !core.IsDelegationFnDef(*deleg.Data().(*core.FnDefInfo)) {
 		t.Fatal("w8mleak wrapper is not a delegation fn")
 	}
 	vc := seam7VC(r)
@@ -188,7 +188,7 @@ func TestW8CallDynMethodIslandSuccess(t *testing.T) {
 			Impl: core.Boru([]core.Value{core.NewWord("n")}),
 		}},
 	})
-	if core.IsDelegationFnDef(fn.Data.(core.FnDefInfo)) {
+	if core.IsDelegationFnDef(*fn.Data().(*core.FnDefInfo)) {
 		t.Fatal("named-param fn should NOT be a delegation")
 	}
 	vc := seam7VC(r)

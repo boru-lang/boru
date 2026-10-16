@@ -51,10 +51,12 @@ type Payload interface {
 	// values answer from value state — MapPayload from its OrderedMap's
 	// Implicit flag (a record shape vs a concrete map), ExtensionPayload
 	// from its nested hostTypeBody marker (a host type body vs a host
-	// instance) — and the two function payloads from the owner's
-	// dispatch identity (owner carries the Value whose Data this is;
-	// implementations that don't need it ignore it).
-	IsTypeContent(owner *Value) bool
+	// instance) — and the guarded kinds from the owning value's
+	// dispatch identity: parent is the Parent of the Value whose Data
+	// this is (nil when there is none), and implementations that don't
+	// need it ignore it. The seam takes the parent rather than the owner
+	// so the call never makes the owning Value escape to the heap.
+	IsTypeContent(parent *Type) bool
 }
 
 // =================================================================
@@ -92,17 +94,13 @@ type BoolPayload struct{ B bool }
 // AtomPayload carries the unquoted-name payload for a Scalar/Atom value.
 // Constructed by NewAtom.
 //
-// Referent, when non-nil, is a snapshot of the value the atom's name was
-// bound to at the moment it was quoted (by the `quote` word) or when the
-// program was loaded (the run-start resolution pass) — it records what a
-// quoted name referred to. It is nil when the name was unbound at capture
-// time. Referent is METADATA ONLY: atom identity — equality, ordering,
-// canonical form — is by Name alone and must ignore Referent (see
-// valuesEqualDefault's TAtom case and CanonValue), so two atoms with the
-// same name stay equal regardless of what each referred to.
+// An atom is its name: what a quoted name referred to when it was quoted or
+// its program loaded (`referent`) is occurrence state of the holder that
+// captured it (AtomReferent, SetAtomReferent), never part of the payload, so
+// atom identity — equality, ordering, canonical form — is by Name alone and
+// two atoms with the same name stay equal whatever each referred to.
 type AtomPayload struct {
-	Name     string
-	Referent *Value
+	Name string
 }
 
 // PathonPayload wraps a PathonInfo for a Scalar/Micron/Pathon value.
@@ -296,9 +294,8 @@ type ExtensionPayload struct{ Body any }
 // through ExtensionPayload rather than dedicated kernel variants.
 func NewExtension(t *Type, body any) Value {
 	return Value{
-		ID:     GenerateID(IDPrefixForType(t)),
-		Parent: t,
-		Data:   ExtensionPayload{Body: body},
+		d:   &Datum{Parent: t, Data: ExtensionPayload{Body: body}},
+		occ: idOcc(GenerateID(IDPrefixForType(t))),
 	}
 }
 
@@ -372,10 +369,13 @@ func (NonePayload) payloadMarker()         {}
 func (ExtensionPayload) payloadMarker()    {}
 
 // Direct eng-defined struct markers.
-func (WordInfo) payloadMarker()             {}
-func (ForwardInfo) payloadMarker()          {}
-func (MarkInfo) payloadMarker()             {}
-func (MoveInfo) payloadMarker()             {}
+func (WordInfo) payloadMarker() {}
+
+// The engine markers below are held by pointer, allocated with their datum
+// (newCoDatum): a by-value one is not a Payload, so it cannot be boxed.
+func (*ForwardInfo) payloadMarker()         {}
+func (*MarkInfo) payloadMarker()            {}
+func (*MoveInfo) payloadMarker()            {}
 func (SpliceInfo) payloadMarker()           {}
 func (SugarInfo) payloadMarker()            {}
 func (ReturnCheckInfo) payloadMarker()      {}
@@ -383,7 +383,7 @@ func (DefCleanupInfo) payloadMarker()       {}
 func (FrameOpenInfo) payloadMarker()        {}
 func (LoopOpenInfo) payloadMarker()         {}
 func (ModuleDesc) payloadMarker()           {}
-func (FnDefInfo) payloadMarker()            {}
+func (*FnDefInfo) payloadMarker()           {} // held by pointer (design/VALUE-NO-COPY.0.md D9)
 func (FnUndefInfo) payloadMarker()          {}
 func (DisjunctInfo) payloadMarker()         {}
 func (NegationInfo) payloadMarker()         {}
@@ -488,7 +488,8 @@ type StoreShapeInfo struct {
 	DeclaredVal *Type
 }
 
-// ClosurePayload is a runtime fn VALUE backed by a compiled body unit:
+// ClosurePayload is a runtime fn VALUE backed by a compiled body unit (held
+// by pointer, allocated with its datum: NewClosureValue):
 // OpPushClosure pushes one, and a higher-order word's native handler invokes
 // it through the VM's re-entrant runner (via the InvokeBody seam) — never the
 // interpreter (plan P2). Unit indexes Program.Fns; Captures are the
@@ -497,7 +498,6 @@ type StoreShapeInfo struct {
 // unit's input convention (copied from CompiledFn at OpPushClosure) so the
 // driving handler shapes each input correctly.
 type ClosurePayload struct {
-	PayloadBase
 	// Prog is the PROGRAM Unit indexes, held opaquely: core sits below
 	// compiler, so it boxes a *compiler.Program the same way BoruImpl.Compiled
 	// boxes a *CompiledFnRef. It is load-bearing rather than bookkeeping — a
@@ -561,33 +561,9 @@ type ClosurePayload struct {
 	// pushes as a slot. The VM hands that invocation to the interpreter's
 	// own step of Source (NUR268). Nil for every other closure.
 	Source *Value
-	// RetTrim marks a closure handed through the fn-VALUE seam
-	// (InvokeCallbackBody): the handler would hand a FnDefInfo to
-	// InvokeCallbackFn, whose CallBoru path checks the declared TYPES over
-	// the aligned residual and never raises on the COUNT
-	// (enforceCallBoruReturns) — walk's hooks, the map-iteration each/fold,
-	// filter's Function form. Off, the closure came through the TOKEN seam
-	// (InvokeBody: each over a list, apply, a paren call), where the fn
-	// value is stepped and __RC enforces the count. Set on the VALUE at the
-	// seam, never on the stored closure: the same closure can cross both.
-	RetTrim bool
-	// SigMatched marks a closure whose OWN signature the handing seam has
-	// already matched, with the args in signature order: the closure bridge
-	// (a bridged FnDefInfo's handler — closureAsWord, ClosureAsFnDef — runs
-	// after the interpreter's dispatch matched), and a native seam that
-	// matched the value's contract over the lambda-shaped args it hands (the
-	// map arm's KeyVal, filter's entry, walk's payload). Off, the closure
-	// reached the TOKEN seam (InvokeBody: each over a list, a paren call)
-	// with its inputs in STACK order, and a fn-VALUE closure — one minted
-	// from a `fn` / `=>` literal, a factory's capturing result — is matched
-	// there the way the interpreter matches a stepped value, top down,
-	// before its unit runs, and declines to the stepping path when nothing
-	// matches (S1b-2; eng/go/vm_fnvalue_seam.go). Set on the VALUE at the
-	// seam, never on the stored closure.
-	SigMatched bool
 	// RetPos is where the callback REFERENCE was written (`cbad/v`), which is
 	// the position the interpreter anchors a return-contract error on: its
-	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultPos
+	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultCells
 	// as the reference produces it. A compiled unit's RET has no call site to
 	// read, so the closure path carries it here — without it the compiled
 	// diagnostic agrees in value and taxonomy but loses the position, which
@@ -601,13 +577,20 @@ type ClosurePayload struct {
 	Named bool
 }
 
+// A closure payload is held by pointer, allocated with its datum
+// (NewClosureValue): a by-value one is not a Payload.
+func (*ClosurePayload) payloadMarker() {}
+
+// IsTypeContent: a closure is never type content.
+func (*ClosurePayload) IsTypeContent(*Type) bool { return false }
+
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a
 // carrier of t (TStore, TFlexMap, …) whose Data is a FRESH
 // *StoreShapeInfo. One mint per creation site / live layer — sharing
 // the returned Value shares the shape (that is the aliasing model).
 func NewStoreShapeCarrier(t *Type, scope int) Value {
 	v := NewCarrier(t)
-	v.Data = &StoreShapeInfo{Scope: scope}
+	v.SetData(&StoreShapeInfo{Scope: scope})
 	return v
 }
 

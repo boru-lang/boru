@@ -31,7 +31,7 @@ func TestW9StoreShapeRecordAndLookupKey(t *testing.T) {
 	}
 	s.RecordKey("a", core.NewCarrier(core.TString))
 	joined, ok := s.LookupKey("a")
-	if !ok || !joined.Carrier {
+	if !ok || !joined.Carrier() {
 		t.Errorf("rewrite should join into a carrier, got %v", joined)
 	}
 }
@@ -67,7 +67,7 @@ func TestW9StoreShapeRecordVal(t *testing.T) {
 	}
 	s3.RecordVal(core.NewCarrier(core.TInteger))
 	got, ok := s3.LookupVals()
-	if !ok || got.Parent == nil {
+	if !ok || got.Parent() == nil {
 		t.Errorf("first unkeyed write should set Vals, got %v (%v)", got, ok)
 	}
 	s3.RecordVal(core.NewCarrier(core.TString))
@@ -85,11 +85,11 @@ func TestW9StoreShapeCloneNil(t *testing.T) {
 
 func TestW9ContextShapeNilGuards(t *testing.T) {
 	var nilCheck *core.CheckState
-	if v := nilCheck.ContextShape(nil, 0); !v.Carrier {
+	if v := nilCheck.ContextShape(nil, 0); !v.Carrier() {
 		t.Error("nil check should return a bare store carrier")
 	}
 	c := &core.CheckState{}
-	if v := c.ContextShape(nil, 0); !v.Carrier {
+	if v := c.ContextShape(nil, 0); !v.Carrier() {
 		t.Error("nil store should return a bare store carrier")
 	}
 }
@@ -97,7 +97,7 @@ func TestW9ContextShapeNilGuards(t *testing.T) {
 func TestW9AdoptShapeValueXml(t *testing.T) {
 	// A concrete Xml value adopts as a bare FlexXml carrier.
 	got := check.AdoptShapeValue(core.NewXmlElement("a", nil, nil), 0)
-	if !got.Carrier || !got.Parent.ConformsTo(core.TFlexXml) {
+	if !got.Carrier() || !got.Parent().ConformsTo(core.TFlexXml) {
 		t.Errorf("an Xml field should adopt as a FlexXml carrier, got %v", got)
 	}
 }
@@ -105,17 +105,17 @@ func TestW9AdoptShapeValueXml(t *testing.T) {
 func TestW9ShapeFieldRead(t *testing.T) {
 	// A disjunct read keeps its payload as a dynamic carrier value.
 	dj := check.ShapeFieldRead(core.NewDisjunct([]core.Value{core.NewString("x")}))
-	if !dj.Dynamic {
+	if !core.IsDynamic(&dj) {
 		t.Error("a disjunct read should be dynamic")
 	}
 	// A function-typed field keeps the dynamic(Any) hatch.
 	fn := check.ShapeFieldRead(core.NewFunction(core.FnDefInfo{}))
-	if !fn.Dynamic {
+	if !core.IsDynamic(&fn) {
 		t.Error("a function field should read dynamic(Any)")
 	}
 	// A nil-Parent value (no ValueType) also keeps dynamic(Any).
 	none := check.ShapeFieldRead(core.Value{})
-	if !none.Dynamic {
+	if !core.IsDynamic(&none) {
 		t.Error("a typeless value should read dynamic(Any)")
 	}
 }

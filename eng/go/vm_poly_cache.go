@@ -57,7 +57,7 @@ func (e *polyCacheEntry) hit(fn *core.FnDefInfo, window []core.Value) *core.Sign
 		return nil
 	}
 	for i := range window {
-		if window[i].Parent != e.tags[i] || !core.TagKeyable(window[i]) {
+		if window[i].Parent() != e.tags[i] || !core.TagKeyable(window[i]) {
 			return nil
 		}
 	}
@@ -84,7 +84,7 @@ func (e *polyCacheEntry) fill(fn *core.FnDefInfo, sigs []core.Signature, window 
 	}
 	e.tags = e.tags[:len(window)]
 	for i := range window {
-		e.tags[i] = window[i].Parent
+		e.tags[i] = window[i].Parent()
 	}
 	e.sig = sig
 }

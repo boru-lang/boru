@@ -23,7 +23,7 @@ func TestW9CheckStateGuards(t *testing.T) {
 func TestW9CollectBodyLocalDefs(t *testing.T) {
 	locals := map[string]bool{}
 	quoted := NewInteger(1)
-	quoted.Quoted = true
+	SetQuoted(&quoted, true)
 	// Body: a quoted token (skipped) and a nested fn value (skipped).
 	CollectBodyLocalDefs([]Value{quoted, NewFunction(FnDefInfo{})}, locals)
 	if len(locals) != 0 {
