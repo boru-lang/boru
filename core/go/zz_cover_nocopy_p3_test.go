@@ -66,7 +66,7 @@ func TestP3OccurrenceIdentity(t *testing.T) {
 // a holder no binding named answers the payload's name — a definition's, a
 // compiled closure's — and a value that is no fn answers none.
 func TestP3FnNames(t *testing.T) {
-	raw := Value{Parent: TFunction, Data: &FnDefInfo{Name: "f"}}
+	raw := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "f"}}}
 	if HolderFnName(&raw) != "" || FnNameOf(&raw) != "f" || !NamedFnValue(&raw) {
 		t.Errorf("an unnamed holder: holder %q, name %q, named %v", HolderFnName(&raw), FnNameOf(&raw), NamedFnValue(&raw))
 	}
@@ -76,14 +76,14 @@ func TestP3FnNames(t *testing.T) {
 	if FnNameOf(&held) != "g" || HolderFnName(&held) != "g" || !NamedFnValue(&held) {
 		t.Errorf("a named holder: %q / %q", FnNameOf(&held), HolderFnName(&held))
 	}
-	if FnNameOf(&raw) != "f" || held.Data.(*FnDefInfo).Name != "f" {
+	if FnNameOf(&raw) != "f" || held.Data().(*FnDefInfo).Name != "f" {
 		t.Error("naming one holder reached the other holder or the payload")
 	}
-	anon := Value{Parent: TFunction, Data: &FnDefInfo{Anonymous: true}}
+	anon := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Anonymous: true}}}
 	if NamedFnValue(&anon) {
 		t.Error("an anonymous fn under no binding's name is not a named definition")
 	}
-	cl := Value{Parent: TFunction, Data: ClosurePayload{RetName: "c"}}
+	cl := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{RetName: "c"}}}
 	if FnNameOf(&cl) != "c" {
 		t.Errorf("a compiled closure answers its unit's name: %q", FnNameOf(&cl))
 	}
@@ -103,7 +103,7 @@ func TestP3FnDefAtPointerView(t *testing.T) {
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	fd := &FnDefInfo{Name: "f"}
-	plain := Value{Parent: TFunction, Data: fd}
+	plain := Value{d: &Datum{Parent: TFunction, Data: fd}}
 	if _, got, ok := e.fnDefAtPointer(plain); !ok || got != fd {
 		t.Errorf("an unrenamed holder reads the payload itself: %v %v", got, ok)
 	}
@@ -128,13 +128,13 @@ func (p3Render) ClosureRender(_ *ClosurePayload, name string) (string, bool) {
 // declines, its own rendering stands, and a closure with none renders by
 // its parts.
 func TestP3ClosureRender(t *testing.T) {
-	cl := Value{Parent: TFunction, Data: ClosurePayload{Render: "<src>"}}
+	cl := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Render: "<src>"}}}
 	SetFnName(&cl, "h")
 	prev := InstallCompiledRuntime(p3Render{})
 	got := cl.String()
 	InstallCompiledRuntime(noCompiledRuntime{})
 	declined := cl.String()
-	bare := Value{Parent: TFunction, Data: ClosurePayload{}}
+	bare := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	parts := bare.String()
 	InstallCompiledRuntime(prev)
 	if got != "rendered h" {

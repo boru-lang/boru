@@ -175,7 +175,7 @@ func TestWindowScalar(t *testing.T) {
 		}
 	}
 	untyped := core.NewInteger(1)
-	untyped.Parent = nil
+	untyped.SetParent(nil)
 	if windowScalar(untyped) {
 		t.Error("a value with no type is no scalar")
 	}
@@ -250,7 +250,7 @@ func TestNamedFnValueSpec(t *testing.T) {
 func TestClosureCallsAtLanding(t *testing.T) {
 	p := &Program{Fns: []CompiledFn{{Lambda: true}, {Lambda: true, NArgs: 1}}}
 	mk := func(unit int, named bool, prog any) core.Value {
-		return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Named: named}}
+		return core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{Prog: prog, Unit: unit, Named: named}})
 	}
 	for name, c := range map[string]struct {
 		v    core.Value
@@ -267,7 +267,7 @@ func TestClosureCallsAtLanding(t *testing.T) {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
 	}
-	if !ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{}) || ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{Named: true}) || ClosureIsAnonymous(nil, core.ClosurePayload{}) {
+	if !ClosureIsAnonymous(&p.Fns[0], &core.ClosurePayload{}) || ClosureIsAnonymous(&p.Fns[0], &core.ClosurePayload{Named: true}) || ClosureIsAnonymous(nil, &core.ClosurePayload{}) {
 		t.Error("anonymous: a lambda unit's closure without a name")
 	}
 }

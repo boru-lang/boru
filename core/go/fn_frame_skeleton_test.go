@@ -19,7 +19,7 @@ func skelHandler(t *testing.T, r *Registry, name string) Handler {
 	if !ok {
 		t.Fatalf("%s not installed", name)
 	}
-	fd, ok := FnDefOf(top.Data)
+	fd, ok := FnDefOf(top.Data())
 	if !ok {
 		t.Fatalf("%s is not an FnDef", name)
 	}

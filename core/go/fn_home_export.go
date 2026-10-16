@@ -18,7 +18,7 @@ package core
 // through to its name / type resolution. resolveModuleExport and the Test
 // module's twin both call this; the rule lives here once.
 func HomeExportedFn(v Value, modReg *Registry) (Value, bool) {
-	fd, ok := FnDefOf(v.Data)
+	fd, ok := FnDefOf(v.Data())
 	if !ok {
 		return v, false
 	}

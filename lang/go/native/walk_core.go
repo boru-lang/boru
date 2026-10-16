@@ -144,10 +144,10 @@ func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 		}
 		return h, nil
 	}
-	if body.Parent.ConformsTo(TFunction) {
+	if body.Parent().ConformsTo(TFunction) {
 		h.lambda = true
 		h.fn = body
-		h.fnDef, _ = body.Data.(*FnDefInfo) // read, never written: the payload itself
+		h.fnDef, _ = body.Data().(*FnDefInfo) // read, never written: the payload itself
 		return h, nil
 	}
 	if !IsConcrete(&body) {
@@ -180,7 +180,7 @@ func callWalkHook(r *Registry, h walkHook, arg Value) error {
 		return err
 	}
 	if h.closure {
-		if h.sigFn.Data != nil && MatchFnSig(h.sigFn, []Value{arg}) == nil {
+		if h.sigFn.Data() != nil && MatchFnSig(h.sigFn, []Value{arg}) == nil {
 			return r.BoruError("walk_error", "walk: no matching hook signature", "walk")
 		}
 		// The fn-VALUE seam: the lambda branch above is InvokeCallbackFn's.
@@ -324,10 +324,10 @@ func childrenOf(v Value) ([]walkEntry, bool) {
 	if !IsConcrete(&v) {
 		return nil, false
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		return listChildren(v)
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		// Record/Options/ChildType carriers share Parent=TMap but AsMap
 		// returns nil for them — those are leaves.
 		return mapChildren(v)
@@ -343,7 +343,7 @@ func childrenOf(v Value) ([]walkEntry, bool) {
 		}
 		return out, true
 	}
-	if v.Parent.ConformsTo(TIdeal) {
+	if v.Parent().ConformsTo(TIdeal) {
 		return idealChildren(v)
 	}
 	return nil, false
@@ -353,7 +353,7 @@ func childrenOf(v Value) ([]walkEntry, bool) {
 // projection: tables project to a List (integer-index keys, so paths
 // read list-style); every other Ideal projects to a Map (named keys).
 func idealChildren(v Value) ([]walkEntry, bool) {
-	if v.Parent.ConformsTo(TTable) {
+	if v.Parent().ConformsTo(TTable) {
 		lv, err := ConvertIdealToList(v)
 		if err != nil { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 			return nil, false

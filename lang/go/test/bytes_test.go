@@ -100,8 +100,8 @@ func TestBytesGoBridge(t *testing.T) {
 
 	raw := []byte{0x68, 0x69} // "hi"
 	v := core.FromNative(raw)
-	if v.Parent == nil || !v.Parent.ConformsTo(native.TBytes) {
-		t.Fatalf("FromNative([]byte) returned %v, want a Bytes value", v.Parent)
+	if v.Parent() == nil || !v.Parent().ConformsTo(native.TBytes) {
+		t.Fatalf("FromNative([]byte) returned %v, want a Bytes value", v.Parent())
 	}
 
 	// copy-on-ingest: mutating the source slice must not affect the value.

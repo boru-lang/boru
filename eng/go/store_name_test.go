@@ -48,12 +48,12 @@ func TestNameStoredClosure(t *testing.T) {
 	// renames whatever it binds (the thirty-first increment); one already
 	// so named is untouched. The name is the slot's (closureView) and the
 	// render follows it; the payload is shared, never renamed.
-	named := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, RetName: "g", Render: "fn g(Integer)"})
+	named := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, RetName: "g", Render: "fn g(Integer)"})
 	renamed := vc.nameStoredClosure(named, "h")
 	if view, _ := closureView(&renamed); view.RetName != "h" || !strings.Contains(renamed.String(), "fn h(") {
 		t.Errorf("a binding renames a named closure: RetName=%q Render=%q", view.RetName, renamed.String())
 	}
-	if own := renamed.Data.(core.ClosurePayload); own.RetName != "g" || own.Render != "fn g(Integer)" {
+	if own := renamed.Data().(*core.ClosurePayload); own.RetName != "g" || own.Render != "fn g(Integer)" {
 		t.Errorf("the payload is not renamed: %+v", own)
 	}
 	if v := vc.nameStoredClosure(named, "g"); core.HolderFnName(&v) != "" || v.String() != "fn g(Integer)" {
@@ -61,14 +61,14 @@ func TestNameStoredClosure(t *testing.T) {
 	}
 	// A closure over a known unit takes the name in its slot and renders
 	// under it.
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Render: "fn (Integer)"})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, Render: "fn (Integer)"})
 	got := vc.nameStoredClosure(cl, "h")
 	if view, _ := closureView(&got); view.RetName != "h" || !strings.Contains(got.String(), "fn h(") {
 		t.Errorf("renamed: RetName=%q Render=%q", view.RetName, got.String())
 	}
 	// A closure whose payload names no unit (beyond the program) takes the
 	// name and keeps its render.
-	lost := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 5, Render: "fn (Integer)"})
+	lost := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 5, Render: "fn (Integer)"})
 	got = vc.nameStoredClosure(lost, "h")
 	if view, _ := closureView(&got); view.RetName != "h" || got.String() != "fn (Integer)" {
 		t.Errorf("no unit: RetName=%q Render=%q", view.RetName, got.String())
@@ -76,7 +76,7 @@ func TestNameStoredClosure(t *testing.T) {
 	// A unit whose params the bridge cannot describe keeps its render too.
 	p2 := &compiler.Program{Fns: []compiler.CompiledFn{{NParams: 2, NArgs: 2, Params: []*core.Type{core.TInteger}, Render: "fn (Integer, Integer)"}}}
 	vc2 := &vmContext{p: p2, r: r}
-	odd := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p2, Unit: 0, Render: "fn (Integer, Integer)"})
+	odd := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p2, Unit: 0, Render: "fn (Integer, Integer)"})
 	got = vc2.nameStoredClosure(odd, "h")
 	if view, _ := closureView(&got); view.RetName != "h" || got.String() != "fn (Integer, Integer)" {
 		t.Errorf("undescribable unit: RetName=%q Render=%q", view.RetName, got.String())

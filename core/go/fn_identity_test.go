@@ -11,10 +11,10 @@ import "testing"
 // identity handed to NewFunctionIdentified mints afresh, as NewFunction does.
 func TestClosureIdentity(t *testing.T) {
 	id := NewFnIdentity()
-	c1 := Value{Parent: TFunction, Data: ClosurePayload{Ident: id}}
+	c1 := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Ident: id}}}
 	c2 := c1
-	other := Value{Parent: TFunction, Data: ClosurePayload{Ident: NewFnIdentity()}}
-	bare := Value{Parent: TFunction, Data: ClosurePayload{}}
+	other := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Ident: NewFnIdentity()}}}
+	bare := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
 	if !ExactEqual(c1, c2) {
 		t.Error("two copies of one closure are one function")
 	}
@@ -34,7 +34,7 @@ func TestClosureIdentity(t *testing.T) {
 		t.Error("another function, or data, is not the closure")
 	}
 	minted := NewFunctionIdentified(FnDefInfo{}, FnIdentity{})
-	if md := minted.Data.(*FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
+	if md := minted.Data().(*FnDefInfo); md.ident == nil || ExactEqual(minted, plain) || !ExactEqual(minted, minted) {
 		t.Error("a zero identity mints afresh")
 	}
 	// Two plain fns still compare by their own tokens (the closure arm is
@@ -91,7 +91,7 @@ func TestParenTrailingFnApply(t *testing.T) {
 	if marked := MarkApplied(fn); IsApplied(&marked) {
 		t.Error("a fn with no 0-arg signature is untouched")
 	}
-	if MarkApplied(NewInteger(1)).Data.(IntPayload).N != 1 {
+	if MarkApplied(NewInteger(1)).Data().(IntPayload).N != 1 {
 		t.Error("data is untouched")
 	}
 }

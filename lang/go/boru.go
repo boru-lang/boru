@@ -362,9 +362,9 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 		if core.IsDynamic(&v) {
 			// Surface the gradual modality in the residual stack so a
 			// dynamic carrier is distinguishable from a strict one.
-			stack[i] = "dynamic(" + v.Parent.Leaf() + ")"
+			stack[i] = "dynamic(" + v.Parent().Leaf() + ")"
 		} else {
-			stack[i] = v.Parent.Leaf()
+			stack[i] = v.Parent().Leaf()
 		}
 	}
 
@@ -1002,10 +1002,10 @@ func convertResults(result []core.Value) []any {
 			// rather than trying to extract an Integer/String payload
 			// that isn't there.
 			out[i] = v.String()
-		case v.Parent.ConformsTo(native.TInteger):
+		case v.Parent().ConformsTo(native.TInteger):
 			n, _ := native.AsInteger(v)
 			out[i] = n
-		case v.Parent.ConformsTo(native.TString):
+		case v.Parent().ConformsTo(native.TString):
 			s, _ := native.AsString(v)
 			out[i] = s
 		default:

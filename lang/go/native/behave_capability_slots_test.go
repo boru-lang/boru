@@ -368,7 +368,7 @@ behave size/q (fn [[Bag] [Integer] [99]])`); err != nil {
 		t.Fatal("Bag was not installed")
 	}
 	bag := w9List(NewInteger(1), NewInteger(2), NewInteger(3))
-	bag.Parent = ty
+	bag.SetParent(ty)
 
 	out := sizeReturns([]Value{bag}, r)
 	if len(out) != 1 {
@@ -392,7 +392,7 @@ behave size/q (fn [[Bag] [Integer] [99]])`); err != nil {
 		t.Fatalf("Sack: %v", err)
 	}
 	sack := w9List(NewInteger(1), NewInteger(2))
-	sack.Parent = r.LookupTypeName("Sack")
+	sack.SetParent(r.LookupTypeName("Sack"))
 	out = sizeReturns([]Value{sack}, r)
 	if n, err := core.AsInteger(out[0]); err != nil || n != 2 {
 		t.Errorf("a body-less refinement must keep the fold: %v (%v)", out[0].String(), err)

@@ -25,7 +25,7 @@ func TestNoteValReadLiveSeatsALeakedName(t *testing.T) {
 	core.SetID(&v, "nur334-t")
 	at := core.SrcPos{Row: 1, Col: 43}
 	es.NoteValReadLive(&v, "t", at)
-	if core.IDOf(&v) == "nur334-t" || !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) {
+	if core.IDOf(&v) == "nur334-t" || !v.Carrier() || !core.IsDynamic(&v) || !v.Parent().Equal(core.TInteger) {
 		t.Fatalf("the read is seated live as a dynamic(Integer) carrier with its own identity — the computed body may have bound any type — got %+v", v)
 	}
 	if es.armReadCompileFailure != "" || es.pendingKeptRead != "" {
@@ -109,7 +109,7 @@ func TestNoteValReadLiveNoOps(t *testing.T) {
 	noID := core.NewInteger(4)
 	es.NoteValReadLive(&noID, "t", core.SrcPos{})
 	es.NoteValReadLive(&v, "t", core.SrcPos{})
-	if core.IDOf(&v) != "nur334-plain" || v.Carrier || es.armReadCompileFailure != "" || len(es.liveReadNames) != 0 {
+	if core.IDOf(&v) != "nur334-plain" || v.Carrier() || es.armReadCompileFailure != "" || len(es.liveReadNames) != 0 {
 		t.Errorf("an unlatched, unleaked read is untouched: %+v poison=%q", v, es.armReadCompileFailure)
 	}
 	es.latchKeptDefs("do")
@@ -131,7 +131,7 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	v := core.NewCarrier(core.TInteger)
 	core.SetID(&v, "nur334-x")
 	es.NoteValReadLive(&v, "x", core.SrcPos{Row: 1, Col: 1})
-	if core.IDOf(&v) == "nur334-x" || !v.Carrier || core.IsDynamic(&v) || !es.liveReadNames["x"] {
+	if core.IDOf(&v) == "nur334-x" || !v.Carrier() || core.IsDynamic(&v) || !es.liveReadNames["x"] {
 		t.Fatalf("a literal leak's /v read is seated live, static: %+v", v)
 	}
 	// A computed-body leak of a concrete value the latch did not settle
@@ -142,7 +142,7 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	w := core.NewInteger(4)
 	core.SetID(&w, "nur334-y")
 	es.NoteValReadLive(&w, "y", core.SrcPos{Row: 1, Col: 1})
-	if w.Carrier || core.IsDynamic(&w) || !es.liveReadNames["y"] {
+	if w.Carrier() || core.IsDynamic(&w) || !es.liveReadNames["y"] {
 		t.Fatalf("an unlatched concrete read is seated as it stands: %+v", w)
 	}
 }
@@ -160,7 +160,7 @@ func TestBareLiveReadAfterComputedBodyIsGradualData(t *testing.T) {
 	core.SetID(&v, "gd-t")
 	es.noteKeptDefsRead(core.IDOf(&v), "t")
 	es.NoteLiveRead(&v, "t", core.SrcPos{Row: 1, Col: 2})
-	if !v.Carrier || !core.IsDynamic(&v) || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[core.IDOf(&v)] {
+	if !v.Carrier() || !core.IsDynamic(&v) || !v.Parent().Equal(core.TInteger) || !es.liveDataIDs[core.IDOf(&v)] {
 		t.Fatalf("a bare live read after a computed body is gradual data: %+v data=%v", v, es.liveDataIDs[core.IDOf(&v)])
 	}
 	w := core.NewInteger(0)

@@ -53,7 +53,7 @@ func TestTruthinessCapabilityOwnsItsAnswer(t *testing.T) {
 	// number cascade would read the magnitude and call 7 truthy.
 	falsy := capType(t, "Falsy", TInteger, capTruthyBehavior{truthy: false})
 	v := NewInteger(7)
-	v.Parent = falsy
+	v.SetParent(falsy)
 	if CoerceBoolean(v) {
 		t.Error("a Truther returning false must win over the number cascade")
 	}
@@ -61,7 +61,7 @@ func TestTruthinessCapabilityOwnsItsAnswer(t *testing.T) {
 	// …and the other direction: 0 is falsy by magnitude, truthy by body.
 	truthy := capType(t, "Truthy", TInteger, capTruthyBehavior{truthy: true})
 	z := NewInteger(0)
-	z.Parent = truthy
+	z.SetParent(truthy)
 	if !CoerceBoolean(z) {
 		t.Error("a Truther returning true must win over the zero-is-falsy rule")
 	}
@@ -77,12 +77,12 @@ func TestTruthinessCapabilityDeclineAndFailure(t *testing.T) {
 	// ErrNoTruther means "not mine" — the cascade answers instead.
 	decl := capType(t, "Declines", TInteger, capTruthyBehavior{decline: true})
 	v := NewInteger(0)
-	v.Parent = decl
+	v.SetParent(decl)
 	if CoerceBoolean(v) {
 		t.Error("a declining Truther must fall through to the zero-is-falsy rule")
 	}
 	v = NewInteger(7)
-	v.Parent = decl
+	v.SetParent(decl)
 	if !CoerceBoolean(v) {
 		t.Error("a declining Truther must fall through to the magnitude rule")
 	}
@@ -92,7 +92,7 @@ func TestTruthinessCapabilityDeclineAndFailure(t *testing.T) {
 	// reading is the safer of the two available answers.
 	bad := capType(t, "Fails", TInteger, capTruthyBehavior{fail: true, truthy: true})
 	z := NewInteger(0)
-	z.Parent = bad
+	z.SetParent(bad)
 	if CoerceBoolean(z) {
 		t.Error("an erroring Truther must fall through, not impose its would-be answer")
 	}
@@ -109,7 +109,7 @@ func TestTruthinessCapabilityInheritedByDescendants(t *testing.T) {
 	}
 	sub := r.Types.MintType("Sub", base)
 	v := NewInteger(7)
-	v.Parent = sub
+	v.SetParent(sub)
 	if CoerceBoolean(v) {
 		t.Error("a descendant must inherit its branch's Truther")
 	}
@@ -225,13 +225,15 @@ func TestDeepEqualCapabilityIsAdditive(t *testing.T) {
 	// override the scalar arm: the pair is resolved long before the walk.
 	lying := capType(t, "LyingInteger", TInteger, capDeqBehavior{equal: true})
 	a, b := NewInteger(1), NewInteger(2)
-	a.Parent, b.Parent = lying, lying
+	a.SetParent(lying)
+	b.SetParent(lying)
 	if DeepEqual(a, b) {
 		t.Error("the capability must not reach past the scalar arm — 1 deq 2 is false")
 	}
 	// …and the same values that were equal stay equal.
 	c, d := NewInteger(3), NewInteger(3)
-	c.Parent, d.Parent = lying, lying
+	c.SetParent(lying)
+	d.SetParent(lying)
 	if !DeepEqual(c, d) {
 		t.Error("3 deq 3 must stay true")
 	}
@@ -367,7 +369,7 @@ func TestSizeOwnerAndAbove(t *testing.T) {
 	// Number magnitude rule — the arm userBehavior.Size leans on.
 	ref := capType(t, "SizeRef", TInteger, nil)
 	seven := NewInteger(7)
-	seven.Parent = ref
+	seven.SetParent(ref)
 	if got := SizeOfAbove(ref, seven); got != 7 {
 		t.Errorf("SizeOfAbove(refine Integer, 7) = %d, want the magnitude 7", got)
 	}

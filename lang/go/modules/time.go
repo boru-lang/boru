@@ -164,7 +164,7 @@ func BuildTimeModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 // extractTime returns the time.Time from a Date, DateTime, or Instant value.
 func extractTime(v native.Value) time.Time {
-	if tp, ok := v.Data.(native.TimePayload); ok {
+	if tp, ok := v.Data().(native.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t
 		}

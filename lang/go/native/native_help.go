@@ -180,7 +180,7 @@ func BuildQualifiedFuncInfo(r *Registry, name string) *help.FuncInfo {
 	if !ok {
 		return nil
 	}
-	fnDef, ok := exp.Data.(*FnDefInfo)
+	fnDef, ok := exp.Data().(*FnDefInfo)
 	if !ok {
 		return nil
 	}
@@ -191,7 +191,7 @@ func BuildQualifiedFuncInfo(r *Registry, name string) *help.FuncInfo {
 // module export's wrapper), for callers outside the engine package that hold
 // the Value but not the payload. ok=false when v is not an FnDef.
 func FnDefFromValue(v Value) (*FnDefInfo, bool) {
-	src, ok := FnDefOf(v.Data)
+	src, ok := FnDefOf(v.Data())
 	if !ok {
 		return nil, false
 	}
@@ -218,7 +218,7 @@ func sigKeywordSlots(sig Signature) map[int]string {
 		// IsConcrete filters bare atom nodes / type literals, so the
 		// AsAtom below always yields the name (err path is a plain skip,
 		// no separate branch).
-		if !sig.QuoteArgs[i] || !IsConcrete(&pat) || !pat.Parent.ConformsTo(TAtom) {
+		if !sig.QuoteArgs[i] || !IsConcrete(&pat) || !pat.Parent().ConformsTo(TAtom) {
 			continue
 		}
 		if name, err := AsAtom(pat); err == nil {

@@ -22,10 +22,10 @@ func makeTable(columns []string, rows [][]Value) Value {
 		rowValues = append(rowValues, NewMap(m))
 	}
 
-	return Value{Parent: TList, Data: TableData{
+	return ValueOf(&Datum{Parent: TList, Data: TableData{
 		Record: rec,
 		Rows:   rowValues,
-	}}
+	}})
 }
 
 func TestListAllHandler(t *testing.T) {

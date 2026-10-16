@@ -42,7 +42,7 @@ func TestW9MacroHandlerBareValueBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("macro bare body: %v", err)
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if len(out) != 1 || !out[0].Parent().Equal(TFunction) {
 		t.Fatalf("macro should yield a Function, got %v", Canon(out))
 	}
 }

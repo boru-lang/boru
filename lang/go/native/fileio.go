@@ -155,7 +155,7 @@ func parseFileOpts(opts Value) (enc, format, mode, nl string, fmtExplicit bool, 
 	mode = "write"
 	nl = "lf"
 
-	if !opts.Parent.Equal(TMap) || !IsConcrete(&opts) {
+	if !opts.Parent().Equal(TMap) || !IsConcrete(&opts) {
 		return
 	}
 	m, _ := AsMap(opts)
@@ -337,7 +337,7 @@ func doRead(r *Registry, path, enc, format, nl string, opts map[string]any, pos 
 
 	// Store table data in SQLite for formats that produce tables.
 	if HostSQLite(r) != nil && len(result) == 1 {
-		if td, ok := result[0].Data.(TableData); ok {
+		if td, ok := result[0].Data().(TableData); ok {
 			// Derive table name from file path (basename without extension).
 			baseName := path
 			if idx := strings.LastIndex(baseName, "/"); idx >= 0 {

@@ -69,7 +69,7 @@ func moduleNSFields(v Value) *OrderedMap {
 	if core.ModuleNSOf(v) == nil || !IsConcrete(&v) {
 		return nil
 	}
-	if mp, ok := v.Data.(core.MapPayload); ok {
+	if mp, ok := v.Data().(core.MapPayload); ok {
 		return mp.M
 	}
 	return nil

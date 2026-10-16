@@ -85,7 +85,7 @@ func TestLoneTokenArity(t *testing.T) {
 	if n, ok := vc.loneTokenArity(cl); !ok || n != 2 {
 		t.Errorf("a closure's unit params: (%d, %v)", n, ok)
 	}
-	lost := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: twoParamClosureProg(), Unit: 9})
+	lost := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: twoParamClosureProg(), Unit: 9})
 	if _, ok := vc.loneTokenArity(lost); ok {
 		t.Error("a closure of an unknown unit declines")
 	}

@@ -39,7 +39,7 @@ func stampHarness(t *testing.T, src, name string, armed bool) (*Boru, Value) {
 // the codec / service words do: MatchFnSig then InvokeCallback.
 func invokeFnValue(t *testing.T, a *Boru, fn Value, args ...Value) []Value {
 	t.Helper()
-	fd, ok := core.FnDefOf(fn.Data)
+	fd, ok := core.FnDefOf(fn.Data())
 	if !ok {
 		t.Fatalf("not a fn value: %v", fn)
 	}
@@ -71,7 +71,7 @@ func TestStampFnValueRealBodyVMMatchesInterpreter(t *testing.T) {
 	if !ok {
 		t.Fatalf("armed registry must stamp the compilable body")
 	}
-	fd := stamped.Data.(*core.FnDefInfo)
+	fd := stamped.Data().(*core.FnDefInfo)
 	ref := compiler.CompiledRef(&fd.Signatures[0])
 	if ref == nil || ref.Prog == nil {
 		t.Fatalf("stamped value must carry a finalized CompiledFnRef")
@@ -88,7 +88,7 @@ func TestStampFnValueRealBodyVMMatchesInterpreter(t *testing.T) {
 	}
 
 	// The ORIGINAL value is untouched by the clone-and-stamp.
-	origFd := v2.Data.(*core.FnDefInfo)
+	origFd := v2.Data().(*core.FnDefInfo)
 	if compiler.CompiledRef(&origFd.Signatures[0]) != nil {
 		t.Fatalf("StampFnValue must not mutate the input value's shared impl")
 	}
@@ -131,7 +131,7 @@ func TestStampFnValueComputedMapBodyVMMatchesInterpreter(t *testing.T) {
 	if !ok {
 		t.Fatalf("armed registry must stamp the computed-map callback body")
 	}
-	ref := compiler.CompiledRef(&stamped.Data.(*core.FnDefInfo).Signatures[0])
+	ref := compiler.CompiledRef(&stamped.Data().(*core.FnDefInfo).Signatures[0])
 	if ref == nil || ref.Prog == nil {
 		t.Fatalf("stamped value must carry a finalized CompiledFnRef")
 	}
@@ -415,7 +415,7 @@ func TestModuleRegistryInheritsRuntimeStamping(t *testing.T) {
 	if !ok {
 		t.Fatalf("hh not bound after armed import")
 	}
-	fd, isFn := core.FnDefOf(helper.Data)
+	fd, isFn := core.FnDefOf(helper.Data())
 	if !isFn || fd.Registry == nil {
 		t.Fatalf("M.helper is not a module fn with a sub-registry")
 	}
@@ -431,7 +431,7 @@ func TestModuleRegistryInheritsRuntimeStamping(t *testing.T) {
 	if !ok {
 		t.Fatalf("hh not bound after unarmed import")
 	}
-	fd2, isFn2 := core.FnDefOf(h2.Data)
+	fd2, isFn2 := core.FnDefOf(h2.Data())
 	if !isFn2 {
 		t.Fatalf("M.helper (unarmed) is not a fn value")
 	}
@@ -500,7 +500,7 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 		return v
 	}
 	refOf := func(v Value) *compiler.CompiledFnRef {
-		fd, isFn := core.FnDefOf(v.Data)
+		fd, isFn := core.FnDefOf(v.Data())
 		if !isFn {
 			t.Fatalf("not a fn value")
 		}
@@ -518,7 +518,7 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 	inner := func(a *Boru, name string) Value {
 		t.Helper()
 		w := fetch(a, name)
-		fd, isFn := core.FnDefOf(w.Data)
+		fd, isFn := core.FnDefOf(w.Data())
 		if !isFn || fd.Registry == nil {
 			t.Fatalf("%s: export is not a module fn wrapper", name)
 		}

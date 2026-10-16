@@ -123,7 +123,7 @@ func TestUnmatchedNamedBodyAnchorsAtTheValue(t *testing.T) {
 		{"no reference position: the value's own", core.SrcPos{}, at},
 	} {
 		cl := core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, RetName: "h", RetPos: c.retPos, Ident: core.NewFnIdentity()}
-		body := core.WithPosAt(core.NewValueRaw(core.TFunction, cl), at)
+		body := core.WithPosAt(core.NewValueRaw(core.TFunction, &cl), at)
 		res, err, ran := vc.unmatchedLambdaBody(r, &body, cl, []core.Value{core.NewString("s")})
 		var be *core.BoruError
 		if !ran || !errors.As(err, &be) || be.Code != "uncalled_function" || be.Detail != "call to 'h' matched no signature" {
@@ -316,11 +316,11 @@ func TestPolyNoMatchRaiseAnchorsAtAWrittenValue(t *testing.T) {
 // raises the interpreter's own evaluation_limit at the landing instead of
 // landing anything.
 func TestReStepLandingIslandHonoursTheStepBudget(t *testing.T) {
-	fnTagged := core.Value{Parent: core.TFunction}
+	fnTagged := core.ValueOf(&core.Datum{Parent: core.TFunction})
 
 	r := seam7Reg(t)
 	got, ent, err := seam7VC(r).reStepLanding(r, 0, 0, []core.Value{fnTagged}, seam7Dbg, 0, compiler.LandingWord{})
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent().Equal(core.TFunction) {
 		t.Fatalf("the island pushes the value: got %v %+v %v", got, ent, err)
 	}
 
@@ -365,7 +365,7 @@ func TestTrailTopValueNoMatch(t *testing.T) {
 			t.Errorf("%+v: a named value: got %v %+v %v, want uncalled_function", head, got, ent, err)
 		}
 		got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), lam}, seam7Dbg, 0, head)
-		if err != nil || ent != nil || len(got) != 2 || !got[1].Parent.Equal(core.TFunction) {
+		if err != nil || ent != nil || len(got) != 2 || !got[1].Parent().Equal(core.TFunction) {
 			t.Errorf("%+v: an anonymous value parks: got %v %+v %v", head, got, ent, err)
 		}
 	}

@@ -21,9 +21,9 @@ package core
 // NewCarrierTypedList / NewCarrierTypedListValue.
 func NewCarrier(t *Type) Value {
 	v := NewValueRaw(t, nil)
-	v.Carrier = true
+	v.SetCarrier(true)
 	if t.Equal(TList) || t.Equal(TMap) {
-		v.Data = ChildTypeInfo{Child: Value{Parent: TAny, Carrier: true}}
+		v.SetData(ChildTypeInfo{Child: Value{d: &Datum{Parent: TAny, Carrier: true}}})
 	}
 	return v
 }
@@ -34,7 +34,7 @@ func NewCarrier(t *Type) Value {
 // per carrier because the bytecode compiler keys a frame local and a
 // recorded result by it. Built in one literal, the dynamic mark included.
 func NewDynamicRecordCarrier(fields *OrderedMap) Value {
-	return Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields},
+	return Value{d: &Datum{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}},
 		occ: idOcc(GenerateID(IDPrefixForType(TMap))), flags: occDynamic}
 }
 
@@ -78,7 +78,7 @@ func ValueCarrier(v Value) Value {
 	case IsBareTypeNode(&v):
 		return NewCarrier(TNone)
 	}
-	c := NewCarrier(v.Parent)
+	c := NewCarrier(v.Parent())
 	SetDynamic(&c, IsDynamic(&v))
 	return c
 }
@@ -87,7 +87,7 @@ func ValueCarrier(v Value) Value {
 // disjunct carrier for dynamic(A tor B), or a narrowed bound) to the
 // dynamic modality, preserving its Parent/Data bound.
 func NewDynamicCarrierValue(bound Value) Value {
-	v := MintCarrierKeeping(&bound, bound.Data)
+	v := MintCarrierKeeping(&bound, bound.Data())
 	SetDynamic(&v, true)
 	return v
 }
@@ -100,7 +100,7 @@ func NewDynamicCarrierValue(bound Value) Value {
 // element carrier via dataListElemType.
 func NewCarrierTypedList(elem *Type) Value {
 	v := NewTypedList(NewCarrier(elem))
-	v.Carrier = true
+	v.SetCarrier(true)
 	return v
 }
 
@@ -110,7 +110,7 @@ func NewCarrierTypedList(elem *Type) Value {
 // needs more structure than a bare Parent.
 func NewCarrierTypedListValue(child Value) Value {
 	v := NewTypedList(child)
-	v.Carrier = true
+	v.SetCarrier(true)
 	return v
 }
 
@@ -131,11 +131,11 @@ func CarrierTypedListOf(v Value) Value {
 		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
 	}
 	if IsDynamic(&v) {
-		c := NewCarrier(v.Parent)
+		c := NewCarrier(v.Parent())
 		SetDynamic(&c, true)
 		return NewCarrierTypedListValue(c)
 	}
-	return NewCarrierTypedList(v.Parent)
+	return NewCarrierTypedList(v.Parent())
 }
 
 // UnionCarrierForType returns the DISTRIBUTING carrier for a user-defined
@@ -155,7 +155,7 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 		return Value{}, false
 	}
 	dv := NewDisjunct(SimplifyDisjunctAlts(du.Alternatives))
-	dv.Carrier = true
+	dv.SetCarrier(true)
 	return dv, true
 }
 

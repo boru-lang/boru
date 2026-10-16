@@ -413,21 +413,21 @@ func (env *bodyRunEnv) exit(r *core.Registry, prev *core.DefTable) {
 // its container shape (the ChildTypeInfo a concrete-container slot needs);
 // a nil-Parent root literal is the gradual Any.
 func bindCarrier(v core.Value) core.Value {
-	if v.Carrier {
+	if v.Carrier() {
 		return v
 	}
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return core.NewDynamicCarrier(core.TAny)
 	}
 	switch {
 	case core.IsTypeLiteral(&v):
 		return core.ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
-	case v.Parent.ConformsTo(core.TList):
+	case v.Parent().ConformsTo(core.TList):
 		return core.NewCarrier(core.TList)
-	case v.Parent.ConformsTo(core.TMap):
+	case v.Parent().ConformsTo(core.TMap):
 		return core.NewCarrier(core.TMap)
 	}
-	return core.NewCarrier(v.Parent)
+	return core.NewCarrier(v.Parent())
 }
 
 // --- the residual-order hazard ----------------------------------------------
@@ -570,7 +570,7 @@ func firstHazard(v core.Value, hazards []func(core.Value) string) string {
 // (Integer)]`), and a dynamic residual keeps its compile (the common `for
 // 3 [(f i)]` family) as the record asks.
 func loopNamedFnHazard(v core.Value) string {
-	if fd, isFn := v.Data.(*core.FnDefInfo); isFn && !core.IsQuoted(&v) && !v.Carrier && fd.NamedDef() {
+	if fd, isFn := v.Data().(*core.FnDefInfo); isFn && !core.IsQuoted(&v) && !v.Carrier() && fd.NamedDef() {
 		return "is a named fn value the interpreter re-steps per iteration (NUR129)"
 	}
 	return ""

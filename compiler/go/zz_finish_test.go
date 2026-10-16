@@ -99,7 +99,7 @@ func TestS6aAnalyseFnBodyInflightBailArmedRecorder(t *testing.T) {
 	key := check.FnAnalysisKey(r.AnalysisScopeID(), "s6arec", nil, nil, body)
 	r.Check.FnInflight = map[string]bool{key: true}
 	out := check.AnalyseFnBody(r, "s6arec", nil, body, nil, nil, nil, false)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(core.TAny) || core.IsDynamic(&out[0]) {
+	if len(out) != 1 || !out[0].Carrier() || !out[0].Parent().Equal(core.TAny) || core.IsDynamic(&out[0]) {
 		t.Errorf("armed in-flight bail must be a strict Any carrier, got %+v", out)
 	}
 }

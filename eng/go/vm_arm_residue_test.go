@@ -283,7 +283,7 @@ func TestReStepLandingIslandRaises(t *testing.T) {
 	r := seam7Reg(t)
 	r.StepLimit = 1
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	_, _, err := vc.reStepLanding(r, 0, 0, []core.Value{{Parent: core.TFunction}}, []core.SrcPos{{Row: 4, Col: 2}}, 0, compiler.LandingWord{})
+	_, _, err := vc.reStepLanding(r, 0, 0, []core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction})}, []core.SrcPos{{Row: 4, Col: 2}}, 0, compiler.LandingWord{})
 	wantErr(t, err, "evaluation_limit")
 	if ae, ok := err.(*core.BoruError); !ok || ae.Row != 4 {
 		t.Errorf("the island's raise must be stamped at the landing, got %v", err)

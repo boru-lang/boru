@@ -177,11 +177,11 @@ func TestGateStandaloneRefinementUndecided(t *testing.T) {
 // argument as it is.
 func TestGateStandaloneNarrowImpreciseCarrier(t *testing.T) {
 	nc, ok := narrowToDeclaredParam(core.TList, core.NewCarrier(core.TMap), false)
-	if !ok || !nc.Carrier || core.IsDynamic(&nc) || !nc.Parent.Equal(core.TList) {
+	if !ok || !nc.Carrier() || core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
 		t.Fatalf("an imprecise Map carrier at a List param = (%#v, %v), want a strict List carrier", nc, ok)
 	}
 	nc, ok = narrowToDeclaredParam(core.TList, core.NewDynamicCarrier(core.TMap), false)
-	if !ok || !core.IsDynamic(&nc) || !nc.Parent.Equal(core.TList) {
+	if !ok || !core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
 		t.Errorf("a gradual imprecise carrier narrows and stays gradual, got (%#v, %v)", nc, ok)
 	}
 

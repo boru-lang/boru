@@ -220,7 +220,7 @@ func TestSweepMakeNodeHandlerRegisteredKindPrecedence(t *testing.T) {
 		Name:    "SweepKind",
 		Enabled: true,
 		Accepts: func(base Value) bool {
-			return base.Data == nil && !base.Carrier && IDOf(&base) == IDOf(TFlexMap)
+			return base.Data() == nil && !base.Carrier() && IDOf(&base) == IDOf(TFlexMap)
 		},
 		Instantiate: func(typ, data Value, _ *Registry) ([]Value, error) {
 			return []Value{NewString("sweep-made")}, nil
@@ -286,7 +286,7 @@ func TestSweepForceForwardFunction(t *testing.T) {
 	if !ok {
 		t.Fatal("ForceForwardFunction declined a function value")
 	}
-	wf, wok := FnDefOf(wrapped.Data)
+	wf, wok := FnDefOf(wrapped.Data())
 	if !wok || len(wf.Signatures) != 1 {
 		t.Fatalf("wrapper shape wrong: %v", wrapped)
 	}
@@ -454,8 +454,8 @@ func TestSweepSuggestNamesDistanceOrder(t *testing.T) {
 
 func TestSweepNewKeyVal(t *testing.T) {
 	kv := NewKeyVal("name", NewInteger(7), 1, 3)
-	if !kv.Parent.Equal(TKeyVal) {
-		t.Fatalf("KeyVal parent = %v", kv.Parent)
+	if !kv.Parent().Equal(TKeyVal) {
+		t.Fatalf("KeyVal parent = %v", kv.Parent())
 	}
 	m, err := AsMap(kv)
 	if err != nil {
@@ -546,7 +546,7 @@ func TestSweepNodifyValue(t *testing.T) {
 	// A registered Nodifier terminates the walk with its projection.
 	r := newTestRegistry(t)
 	nt := r.Types.MintTypeWithBehavior("SweepNodify", TIdeal, sweepNodifier{})
-	out, err = NodifyValue(Value{Parent: nt})
+	out, err = NodifyValue(Value{d: &Datum{Parent: nt}})
 	if err != nil {
 		t.Fatalf("NodifyValue custom: %v", err)
 	}

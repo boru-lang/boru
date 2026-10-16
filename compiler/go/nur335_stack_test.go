@@ -63,7 +63,7 @@ func TestSeatStack(t *testing.T) {
 		t.Errorf("each value where the root keeps it: %+v held=%d slots=%v ok=%v", srcs, held, slots, ok)
 	}
 	carrier := n335Val("c", 1, 1)
-	carrier.Carrier = true
+	carrier.SetCarrier(true)
 	if _, _, _, ok := es.seatStack(lw, []core.Value{carrier}); ok {
 		t.Error("a carrier has no value to seat")
 	}

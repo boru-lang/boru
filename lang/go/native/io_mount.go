@@ -72,7 +72,7 @@ func (a *boruFileOps) call(op string, args []Value) (Value, error) {
 	// InvokeCallbackFn, not a.r.CallBoru: a mounted handler runs on the registry
 	// that DEFINED it, so its module-private helpers resolve
 	// (design/FUNCTION-VALUE-SCOPE.0.md), and a stamped handler runs on the VM.
-	fnDef, _ := fnVal.Data.(*FnDefInfo) // read, never written: the payload itself
+	fnDef, _ := fnVal.Data().(*FnDefInfo) // read, never written: the payload itself
 	res, err := InvokeCallbackFn(a.r, fnDef, sig, args)
 	if err != nil {
 		return Value{}, err
@@ -110,7 +110,7 @@ func (a *boruFileOps) ReadFile(path string) ([]byte, error) {
 	s, err := res.AsConcreteString()
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: path,
-			Err: fmt.Errorf("mounted read handler returned %s (want String, Bytes, or none)", res.Parent)}
+			Err: fmt.Errorf("mounted read handler returned %s (want String, Bytes, or none)", res.Parent())}
 	}
 	return []byte(s), nil
 }
@@ -195,7 +195,7 @@ func (a *boruFileOps) Stat(path string, _ bool) (capabilities.FileInfo, error) {
 	m, merr := RequireConcreteMap(res, "stat")
 	if merr != nil {
 		return capabilities.FileInfo{}, &os.PathError{Op: "stat", Path: path,
-			Err: fmt.Errorf("mounted stat handler returned %s (want a map or none)", res.Parent)}
+			Err: fmt.Errorf("mounted stat handler returned %s (want a map or none)", res.Parent())}
 	}
 	return statFromMap(path, m), nil
 }
@@ -208,7 +208,7 @@ func (a *boruFileOps) ReadDir(path string) ([]capabilities.FileInfo, error) {
 	lst, lerr := RequireConcreteList(res, "list")
 	if lerr != nil {
 		return nil, &os.PathError{Op: "readdir", Path: path,
-			Err: fmt.Errorf("mounted list handler returned %s (want a list)", res.Parent)}
+			Err: fmt.Errorf("mounted list handler returned %s (want a list)", res.Parent())}
 	}
 	out := make([]capabilities.FileInfo, 0, lst.Len())
 	for i := 0; i < lst.Len(); i++ {
@@ -222,7 +222,7 @@ func (a *boruFileOps) ReadDir(path string) ([]capabilities.FileInfo, error) {
 			continue
 		}
 		return nil, &os.PathError{Op: "readdir", Path: path,
-			Err: fmt.Errorf("mounted list entry %d is %s (want a name String or a stat map)", i, entry.Parent)}
+			Err: fmt.Errorf("mounted list entry %d is %s (want a name String or a stat map)", i, entry.Parent())}
 	}
 	return out, nil
 }
@@ -288,7 +288,7 @@ func (a *boruFileOps) XattrGet(path, name string) ([]byte, error) {
 	s, serr := res.AsConcreteString()
 	if serr != nil {
 		return nil, &os.PathError{Op: "xattr-get", Path: path,
-			Err: fmt.Errorf("mounted xattr-get handler returned %s (want String, Bytes, or none)", res.Parent)}
+			Err: fmt.Errorf("mounted xattr-get handler returned %s (want String, Bytes, or none)", res.Parent())}
 	}
 	return []byte(s), nil
 }
@@ -317,7 +317,7 @@ func (a *boruFileOps) XattrList(path string) ([]string, error) {
 	lst, lerr := RequireConcreteList(res, "xattr-list")
 	if lerr != nil {
 		return nil, &os.PathError{Op: "xattr-list", Path: path,
-			Err: fmt.Errorf("mounted xattr-list handler returned %s (want a list of names)", res.Parent)}
+			Err: fmt.Errorf("mounted xattr-list handler returned %s (want a list of names)", res.Parent())}
 	}
 	names := make([]string, 0, lst.Len())
 	for i := 0; i < lst.Len(); i++ {
@@ -400,7 +400,7 @@ func (a *boruFileOps) Statfs(path string) (capabilities.FsInfo, error) {
 	m, merr := RequireConcreteMap(res, "statfs")
 	if merr != nil {
 		return capabilities.FsInfo{}, &os.PathError{Op: "statfs", Path: path,
-			Err: fmt.Errorf("mounted statfs handler returned %s (want a map or none)", res.Parent)}
+			Err: fmt.Errorf("mounted statfs handler returned %s (want a map or none)", res.Parent())}
 	}
 	fs := capabilities.FsInfo{Type: "mount"}
 	if n, ok := MapFieldInteger(m, "total"); ok {
@@ -494,9 +494,9 @@ func doMountWord(args []Value, r *Registry) ([]Value, error) {
 	handlers := NewOrderedMap()
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
-		if _, isFn := v.Data.(*FnDefInfo); !isFn {
+		if _, isFn := v.Data().(*FnDefInfo); !isFn {
 			return nil, r.BoruError("mount_error",
-				fmt.Sprintf("mount: handler %q is %s — every handler must be a Function", key, v.Parent), "mount")
+				fmt.Sprintf("mount: handler %q is %s — every handler must be a Function", key, v.Parent()), "mount")
 		}
 		handlers.Set(key, v)
 	}

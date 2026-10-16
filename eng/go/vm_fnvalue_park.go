@@ -84,7 +84,7 @@ func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forwa
 // sweeps (NUR344): the interpreter's step meets the values beneath as the
 // compiled stack holds them, a pending literal included.
 func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) fnValueNoMatch {
-	fd, ok := core.FnDefOf(fnVal.Data)
+	fd, ok := core.FnDefOf(fnVal.Data())
 	if !ok || !fnValueParkable(reg, fnVal, *fd) {
 		return noMatchUnproven
 	}

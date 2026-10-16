@@ -58,8 +58,8 @@ func (f *FnUndefUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	// it when it could still be a function, so the checker does not
 	// reject a program the runtime accepts — the sound over-approximation
 	// the negation unifier makes for the same reason.
-	if v.Carrier {
-		return v.Parent.ConformsTo(TFunction) || v.Parent.Equal(TAny)
+	if v.Carrier() {
+		return v.Parent().ConformsTo(TFunction) || v.Parent().Equal(TAny)
 	}
 	return fnSpecsAdmitR(f.sigs, v, r)
 }
@@ -89,10 +89,10 @@ func (f *FnUndefUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	if aSelf {
 		candidate = b
 	}
-	if candidate.Carrier || !IsConcrete(&candidate) {
+	if candidate.Carrier() || !IsConcrete(&candidate) {
 		// Sound over-approximation, mirroring Match's carrier arm.
-		if candidate.Parent != nil && (candidate.Parent.ConformsTo(TFunction) ||
-			candidate.Parent.Equal(TAny) || candidate.Parent.Equal(TFnUndef)) {
+		if candidate.Parent() != nil && (candidate.Parent().ConformsTo(TFunction) ||
+			candidate.Parent().Equal(TAny) || candidate.Parent().Equal(TFnUndef)) {
 			return candidate, nil
 		}
 		return Value{}, unifyFail("value is not a "+f.typeName+" function", a, b)

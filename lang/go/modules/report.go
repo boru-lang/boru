@@ -123,7 +123,7 @@ func formatTableValue(v native.Value) string {
 	if native.IsTableType(v) {
 		return native.FormatForPrint(v)
 	}
-	if !v.Parent.Equal(native.TList) {
+	if !v.Parent().Equal(native.TList) {
 		return native.FormatForPrint(v)
 	}
 	rows, err := native.AsList(v)
@@ -136,7 +136,7 @@ func formatTableValue(v native.Value) string {
 	cols := []string{}
 	seen := map[string]bool{}
 	for _, row := range rows.Elems() {
-		if !row.Parent.Equal(native.TMap) || !native.IsConcrete(&row) {
+		if !row.Parent().Equal(native.TMap) || !native.IsConcrete(&row) {
 			return native.FormatForPrint(v)
 		}
 		rm, _ := native.AsMap(row)
@@ -206,7 +206,7 @@ func formatListValue(v native.Value) string {
 	if !native.IsConcrete(&v) {
 		return native.FormatForPrint(v)
 	}
-	if !v.Parent.Equal(native.TList) {
+	if !v.Parent().Equal(native.TList) {
 		return native.FormatForPrint(v)
 	}
 	rows, err := native.AsList(v)

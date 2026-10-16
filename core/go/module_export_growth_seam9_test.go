@@ -54,8 +54,8 @@ func TestW9ModuleExportAbsenceStableDeclines(t *testing.T) {
 
 	// A Module DESCRIPTOR (not a namespace) → decline: only a namespace
 	// map's fields are ledger-modelled.
-	mt := &Type{tmeta: &typeMeta{Name: "Ideal/Module"}}
-	opaque := Value{Parent: mt, Data: ExtensionPayload{Body: 42}}
+	mt := &Type{d: &Datum{tmeta: &typeMeta{Name: "Ideal/Module"}}}
+	opaque := Value{d: &Datum{Parent: mt, Data: ExtensionPayload{Body: 42}}}
 	if ModuleExportAbsenceStable(r, []Value{opaque, NewAtom("k")}) {
 		t.Error("an opaque module descriptor must decline")
 	}

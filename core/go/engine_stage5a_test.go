@@ -700,8 +700,8 @@ func TestS5AEvalParenGroupGuardFacts(t *testing.T) {
 		t.Fatalf("evalParenGroupAt: %v", err)
 	}
 	res := e.Tape.At(0)
-	if _, ok := res.Data.(GuardFactInfo); !ok {
-		t.Errorf("guard fact not attached: %T", res.Data)
+	if _, ok := res.Data().(GuardFactInfo); !ok {
+		t.Errorf("guard fact not attached: %T", res.Data())
 	}
 }
 
@@ -831,7 +831,7 @@ func TestS5AValDynamicCarrierCheckMode(t *testing.T) {
 		t.Fatalf("stepWord: %v", err)
 	}
 	got := e.Tape.At(0)
-	if !got.Carrier || !got.Parent.Equal(TAny) {
+	if !got.Carrier() || !got.Parent().Equal(TAny) {
 		t.Errorf("/v did not surface the binding's own carrier: %v", got)
 	}
 }
@@ -1563,7 +1563,7 @@ func TestS5AInterpStringMultiValueHole(t *testing.T) {
 func TestS5AInterpStringDynamicHole(t *testing.T) {
 	r := covRegistry(t, nil)
 	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier }
+	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
 	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
 	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
 	saved := r.Check.Emit
@@ -1576,7 +1576,7 @@ func TestS5AInterpStringDynamicHole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evalInterpString: %v", err)
 	}
-	if !got.Carrier || !got.Parent.Equal(TString) {
+	if !got.Carrier() || !got.Parent().Equal(TString) {
 		t.Errorf("dynamic interp = %v, want String carrier", got)
 	}
 }
@@ -1584,7 +1584,7 @@ func TestS5AInterpStringDynamicHole(t *testing.T) {
 func TestS5AXmlInterpDynamic(t *testing.T) {
 	r := covRegistry(t, nil)
 	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier }
+	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
 	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
 	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
 	saved := r.Check.Emit
@@ -1607,7 +1607,7 @@ func TestS5AXmlInterpDynamic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvalXmlInterp: %v", err)
 	}
-	if !got.Carrier || !got.Parent.Equal(TXml) {
+	if !got.Carrier() || !got.Parent().Equal(TXml) {
 		t.Errorf("dynamic xml interp = %v, want Xml carrier", got)
 	}
 }
@@ -1634,7 +1634,7 @@ func TestS5AAutoEvalMapVarietyOfValues(t *testing.T) {
 	if tv, ok := gm.Get("t"); !ok || IsWord(addrOf(func() Value { ci, _ := AsChildType(tv); return ci.Child }())) {
 		t.Errorf("typed-list value not resolved: %v", tv)
 	}
-	if sv, ok := gm.Get("s"); !ok || !sv.Parent.Equal(TList) {
+	if sv, ok := gm.Get("s"); !ok || !sv.Parent().Equal(TList) {
 		t.Errorf("multi-result value not wrapped in a list: %v", sv)
 	}
 	if av, ok := gm.Get("a"); !ok || av.AscribedType() != nil {

@@ -165,7 +165,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("map vs Node literal must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TMap) {
+	if got.Parent() == nil || !got.Parent().Equal(TMap) {
 		t.Fatalf("expected a Map result, got %v", got)
 	}
 
@@ -175,7 +175,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("Node literal vs list must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TList) {
+	if got.Parent() == nil || !got.Parent().Equal(TList) {
 		t.Fatalf("expected a List result, got %v", got)
 	}
 
@@ -206,7 +206,7 @@ func TestX5DegenRootConcreteWins(t *testing.T) {
 }
 
 func TestX5UnifyObjectTypeInstance(t *testing.T) {
-	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5Cls"}, Parent: TClass}, "X5Cls"))
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5Cls"}, Parent: TClass}}, "X5Cls"))
 	// NewClassType stamps info.Type with its first argument, so mint the
 	// class-type value with the instance node itself as the minted node.
 	ot := NewClassType(node, ClassTypeInfo{ID: "X5Cls", Name: "Class/X5Cls", Fields: NewOrderedMap()})
@@ -215,7 +215,7 @@ func TestX5UnifyObjectTypeInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instance vs its object type: %v", err)
 	}
-	if !got.Parent.Equal(node) {
+	if !got.Parent().Equal(node) {
 		t.Fatalf("expected the instance back, got %v", got)
 	}
 }
@@ -275,7 +275,7 @@ func TestX5PredicateUnifierUnifyDirect(t *testing.T) {
 
 func TestX5InstallPredicateUnifierDirect(t *testing.T) {
 	r := x5reg(t)
-	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5IP"}, Parent: TInteger}, "X5IP"))
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5IP"}, Parent: TInteger}}, "X5IP"))
 	installPredicateUnifier(node, x5PredFn(), r, "X5IP")
 	if _, ok := node.Behavior().(*PredicateUnifier); !ok {
 		t.Fatalf("expected a PredicateUnifier, got %T", node.Behavior())
@@ -503,7 +503,7 @@ func TestX5ReparentSwappedElem(t *testing.T) {
 
 	// A swap reparents the source to the literal's node itself.
 	got := reparentSwappedElem(src, lit)
-	if n, _ := AsInteger(got); n != 5 || got.Parent != TInteger {
+	if n, _ := AsInteger(got); n != 5 || got.Parent() != TInteger {
 		t.Fatalf("expected the source payload under the node, got %v", got)
 	}
 
@@ -593,7 +593,7 @@ func TestX5SchemaFieldsClassArm(t *testing.T) {
 
 func TestX5InferAndInstantiateSchemaDefaultBreak(t *testing.T) {
 	r := x5reg(t)
-	node := addrOf(withID(Type{tmeta: &typeMeta{Name: "X5Box"}, Parent: TMap}, "X5Box"))
+	node := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "X5Box"}, Parent: TMap}}, "X5Box"))
 	info := &TypeSchemaInfo{
 		Name: "X5Box",
 		Params: []GenParam{

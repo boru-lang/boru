@@ -196,10 +196,10 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 // windowScalar reports whether v is a definite scalar or atom — a value the
 // pass knows is the run's, which the window may carry as itself.
 func windowScalar(v core.Value) bool {
-	if v.Carrier || core.IsDynamic(&v) || !core.IsConcrete(&v) || v.Parent == nil {
+	if v.Carrier() || core.IsDynamic(&v) || !core.IsConcrete(&v) || v.Parent() == nil {
 		return false
 	}
-	return v.Parent.ConformsTo(core.TScalar) || core.IsAtom(v)
+	return v.Parent().ConformsTo(core.TScalar) || core.IsAtom(v)
 }
 
 // unexpandedToken reports whether v is a reach or template token a failed
@@ -208,5 +208,5 @@ func windowScalar(v core.Value) bool {
 // report names the token itself (`m.b (a Reach)`), which is the run's own
 // source, so a window or a rematch carries it as itself (NUR329).
 func unexpandedToken(v core.Value) bool {
-	return (core.IsReach(&v) || core.IsInterpString(&v)) && !v.Carrier && !core.IsDynamic(&v)
+	return (core.IsReach(&v) || core.IsInterpString(&v)) && !v.Carrier() && !core.IsDynamic(&v)
 }

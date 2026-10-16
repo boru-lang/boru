@@ -87,7 +87,7 @@ func TestMirrorReturnsDiagnostics(t *testing.T) {
 			return &core.BoruError{Code: "net_error", Detail: "listen: options need tcp: (or unix:)"}
 		}, base)
 	out := coded(args, r)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TString) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TString) {
 		t.Fatalf("residual = %v, want the base model's String", out)
 	}
 	if len(r.Check.Diagnostics) != 1 {

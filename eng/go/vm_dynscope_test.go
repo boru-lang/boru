@@ -68,7 +68,7 @@ func TestBindDynScopeClosureValue(t *testing.T) {
 	body := compiler.CompiledFn{Name: "dscl$body", Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: make([]core.SrcPos, 1)}
 	p := dsProgram([]compiler.CompiledFn{fn, body},
 		[]compiler.Instr{{Op: compiler.OpCallUser, Arg: 0}})
-	closure := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 1, Render: "fn ()"})
+	closure := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 1, Render: "fn ()"})
 	p.Consts = []core.Value{closure, core.NewString("dsc")}
 	out, err := RunProgram(p, r)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestBindDynScopeClosureValue(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("residual %v, want the looked-up closure", out)
 	}
-	if cl, ok := out[0].Data.(core.ClosurePayload); !ok || cl.Unit != 1 {
+	if cl, ok := out[0].Data().(*core.ClosurePayload); !ok || cl.Unit != 1 {
 		t.Errorf("the lookup must read the bound closure back, got %v", out[0])
 	}
 	if _, ok := r.Defs.Top("dsc"); ok {
@@ -167,7 +167,7 @@ func TestLookupDynScopeDataArms(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("residual %v, want the pushed fn value", out)
 	}
-	if _, isFn := out[0].Data.(*core.FnDefInfo); !isFn {
+	if _, isFn := out[0].Data().(*core.FnDefInfo); !isFn {
 		t.Errorf("pushed %v, want the FnDefInfo parser value as data", out[0])
 	}
 

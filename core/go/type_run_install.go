@@ -37,7 +37,7 @@ func hasUnknownRefinement(v Value, depth int) bool {
 		}
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case DepScalarInfo:
 		return !depBoundConst(d.Lo) || !depBoundConst(d.Hi)
 	case DisjunctInfo:
@@ -103,10 +103,10 @@ func forwardType(node, target *Type) {
 // installed (RunTypeInstall), or returns t unchanged.
 func ForwardedType(t *Type) *Type {
 	for i := 0; t != nil && i < 8; i++ {
-		if t.tmeta == nil || t.tmeta.RunForward == nil {
+		if t.body().tmeta == nil || t.body().tmeta.RunForward == nil {
 			return t
 		}
-		t = t.tmeta.RunForward
+		t = t.body().tmeta.RunForward
 	}
 	return t
 }
@@ -157,15 +157,15 @@ func mintRunType(r *Registry, body Value) *Type {
 		return NodeOf(&body)
 	case body.IsDepScalar():
 		di, _ := body.AsDepScalar() // IsDepScalar: the payload is a DepScalarInfo
-		t = r.Types.MintType(name, body.Parent)
-		installDepScalarUnifier(t, body.Parent, di, name)
+		t = r.Types.MintType(name, body.Parent())
+		installDepScalarUnifier(t, body.Parent(), di, name)
 	case IsDisjunct(&body):
 		di, _ := AsDisjunct(body) // IsDisjunct: the payload is a DisjunctInfo
-		t = r.Types.MintType(name, body.Parent)
+		t = r.Types.MintType(name, body.Parent())
 		installDisjunctUnifier(t, di.Alternatives, name)
 	case IsNegation(body):
 		ni, _ := AsNegation(body) // IsNegation: the payload is a NegationInfo
-		t = r.Types.MintType(name, body.Parent)
+		t = r.Types.MintType(name, body.Parent())
 		installNegationUnifier(t, ni.Inner, name)
 	default:
 		return nil
@@ -189,7 +189,7 @@ func runSigPattern(r *Registry, v Value) (Value, bool) {
 	// and then the interpreter's slot is Never itself — a slot TYPE, where
 	// this slot is the base with a pattern, and no forward turns one into
 	// the other. The word building the signature declines instead.
-	if di, ok := v.Data.(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
+	if di, ok := v.Data().(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
 		r.analysisRecorder().NoteRuntimeDependent()
 		return Value{}, false
 	}

@@ -110,7 +110,7 @@ func TestDefTableEntries(t *testing.T) {
 		t.Fatalf("entries = %+v, want a value entry under a minted type entry", es)
 	}
 	es[0].Body = NewInteger(99)
-	if fresh := dt.Entries("x"); fresh[0].Body.Data != (IntPayload{N: 1}) {
+	if fresh := dt.Entries("x"); fresh[0].Body.Data() != (IntPayload{N: 1}) {
 		t.Fatalf("the returned slice must be a copy; table saw %v", fresh[0].Body)
 	}
 }

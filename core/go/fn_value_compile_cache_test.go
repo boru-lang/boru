@@ -21,7 +21,7 @@ func cacheFnValue(t *testing.T, name string, captured ...CapturedBinding) FnDefI
 			Impl:       Boru([]Value{NewWord("x")}),
 		}},
 	})
-	fd, ok := FnDefOf(v.Data)
+	fd, ok := FnDefOf(v.Data())
 	if !ok || fd.ident == nil {
 		t.Fatal("NewFunction must mint an identity token")
 	}

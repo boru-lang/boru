@@ -156,7 +156,7 @@ func registerModelWord(tModel *native.Type, subReg *native.Registry, exports *na
 
 // asModelHandle unwraps a Model value's *modelHandle.
 func asModelHandle(v native.Value) (*modelHandle, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -327,7 +327,7 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 // compiled and interpreted paths alike. A decline (captures, ineligible
 // shape, stamping off) returns the named holder otherwise unchanged.
 func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
-	if _, ok := native.FnDefOf(fnVal.Data); ok && core.FnNameOf(&fnVal) == "" {
+	if _, ok := native.FnDefOf(fnVal.Data()); ok && core.FnNameOf(&fnVal) == "" {
 		core.SetFnName(&fnVal, name)
 	}
 	stamped, _ := compiler.StampFnValue(r, fnVal)
@@ -338,7 +338,7 @@ func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.V
 // An entry is either a Function directly (step defaults to post) or a Map
 // {run:Function, step:'pre'|'post'|'all'}.
 func actionFnAndStep(name string, entry native.Value, r *native.Registry) (native.Value, model.Step, error) {
-	if _, ok := entry.Data.(*native.FnDefInfo); ok {
+	if _, ok := entry.Data().(*native.FnDefInfo); ok {
 		return entry, model.StepPost, nil
 	}
 	if native.IsConcrete(&entry) {
@@ -349,7 +349,7 @@ func actionFnAndStep(name string, entry native.Value, r *native.Registry) (nativ
 					fmt.Sprintf("new: action %q map needs a 'run' Function", name), "new",
 					"e.g. actions:{gen:{run:([m:Any] => [...]), step:'post'}}")
 			}
-			if _, ok := run.Data.(*native.FnDefInfo); !ok {
+			if _, ok := run.Data().(*native.FnDefInfo); !ok {
 				return native.Value{}, "", r.BoruError("model_bad_action",
 					fmt.Sprintf("new: action %q 'run' must be a Function", name), "new")
 			}
@@ -390,7 +390,7 @@ func makeAction(h *modelHandle, fnVal native.Value, step model.Step) model.Actio
 	// The fn's own definition is hoisted out of the type-assert so the action
 	// closure can hand it to InvokeCallbackFn: a model action written in another
 	// module must resolve its free words there (design/FUNCTION-VALUE-SCOPE.0.md).
-	fnInfo, _ := fnVal.Data.(*native.FnDefInfo) // read, never written: the payload itself
+	fnInfo, _ := fnVal.Data().(*native.FnDefInfo) // read, never written: the payload itself
 	return model.ActionDef{
 		Step: step,
 		Run: func(mdl map[string]any, _ *model.Build, _ *model.BuildContext) model.ActionResult {

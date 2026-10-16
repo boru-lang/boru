@@ -200,7 +200,7 @@ func TestW3IfCheckMode(t *testing.T) {
 	r := w3TypeReg()
 	r.Check.Mode = true
 	out := ifListReturnsFn([]Value{NewCarrier(TList)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !out[0].Parent().Equal(TAny) {
 		t.Errorf("ifListReturnsFn carrier = %v, want Any carrier", out)
 	}
 }
@@ -257,7 +257,7 @@ func TestW3DoCheckMode(t *testing.T) {
 	}
 	// A raising body models the residual as an Error carrier.
 	out, _ = w3MiscCheck(t, `do [raise bad_x 'y']`)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TError) {
+	if len(out) != 1 || !out[0].Parent().ConformsTo(TError) {
 		t.Errorf("check do [raise]: residual %v, want Error carrier", out)
 	}
 }
@@ -345,7 +345,7 @@ func TestW3GetrCheckMode(t *testing.T) {
 		t.Errorf("in-range getr should not diagnose: %+v", r.Check.Diagnostics)
 	}
 	out := returnsGetrIndexChecked(nil, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !out[0].Parent().Equal(TAny) {
 		t.Errorf("returnsGetrIndexChecked() = %v, want Any carrier", out)
 	}
 }
@@ -370,7 +370,7 @@ func TestW3RefApply(t *testing.T) {
 	// A Function-typed value whose payload is not an FnDefInfo (the
 	// sealed-payload rule forbids arbitrary Data, so rewrap an integer).
 	bogus := NewInteger(5)
-	bogus.Parent = TFunction
+	bogus.SetParent(TFunction)
 	if _, err := applyHandler([]Value{bogus}, nil, nil, nil); err == nil ||
 		!strings.Contains(err.Error(), "no FnDefInfo") {
 		t.Errorf("apply bogus payload: got %v", err)

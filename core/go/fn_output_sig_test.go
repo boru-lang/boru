@@ -50,7 +50,7 @@ func TestUnwrapNamedReturnLeavesEverythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("explicit map: %v", err)
 	}
-	if !got.Parent.Equal(TMap) {
+	if !got.Parent().Equal(TMap) {
 		t.Errorf("an explicit map must pass through, got %v", got)
 	}
 	// A Map-typed value with no payload takes the same early return.

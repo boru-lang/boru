@@ -332,7 +332,7 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 		}
 		switch wantKind {
 		case "list":
-			if core.IsTypedList(&cur) || cur.Parent == nil || !cur.Parent.Equal(core.TList) {
+			if core.IsTypedList(&cur) || cur.Parent() == nil || !cur.Parent().Equal(core.TList) {
 				t.Fatalf("%s depth %d: level %d is not an untyped List", kind, depth, level+1)
 			}
 			items, err := core.AsList(cur)
@@ -341,7 +341,7 @@ func assertNestingSpine(t *testing.T, values []core.Value, kind string, depth in
 			}
 			cur = items.Get(0)
 		case "map":
-			if core.IsTypedMap(&cur) || cur.Parent == nil || !cur.Parent.Equal(core.TMap) {
+			if core.IsTypedMap(&cur) || cur.Parent() == nil || !cur.Parent().Equal(core.TMap) {
 				t.Fatalf("%s depth %d: level %d is not an untyped Map", kind, depth, level+1)
 			}
 			entries, err := core.AsMap(cur)
@@ -474,7 +474,7 @@ func renderShapeChildEntries(entries []core.ChildEntry) string {
 }
 
 func renderShapeOptionalValue(v core.Value) string {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return "none"
 	}
 	return renderShapeValue(v)

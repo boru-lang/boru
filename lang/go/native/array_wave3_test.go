@@ -401,12 +401,12 @@ func mapOf(t *testing.T, pairs ...any) Value {
 
 func TestW3CheckIotaLen(t *testing.T) {
 	out, _ := w3ArrayCheck(t, `iota 3`)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+	if len(out) != 1 || !out[0].Parent().ConformsTo(TList) {
 		t.Fatalf("check iota 3: got %v", out)
 	}
 	// A statically-unknown count falls back to the unrefined carrier.
 	out, _ = w3ArrayCheck(t, `iota (1 add 2)`)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+	if len(out) != 1 || !out[0].Parent().ConformsTo(TList) {
 		t.Fatalf("check iota (1 add 2): got %v", out)
 	}
 }

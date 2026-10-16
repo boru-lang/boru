@@ -22,7 +22,7 @@ func TestMacroFnDispatchUnbridgedClosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
 	data := native.NewMap(native.NewOrderedMap())
 	if _, err := emitFnDispatchHandler([]native.Value{cl, data}, nil, nil, r); err == nil || !strings.Contains(err.Error(), "not a usable function value") {
 		t.Errorf("emit over an unbridged closure: %v", err)
@@ -54,7 +54,7 @@ func TestMiniFnDispatchOptionsAndFilter(t *testing.T) {
 		t.Errorf("the written options reach the transducer: %v / %v", res, err)
 	}
 	res, err = miniFnDispatchHandler([]native.Value{mk(src, opts, native.FnParam{Name: "x", Type: native.TAny}), native.NewString("ab")}, nil, nil, r)
-	if err != nil || len(res) != 1 || !res[0].Parent.ConformsTo(native.TFunction) {
+	if err != nil || len(res) != 1 || !res[0].Parent().ConformsTo(native.TFunction) {
 		t.Errorf("a filter-shaped fn yields its partial: %v / %v", res, err)
 	}
 }
@@ -73,9 +73,9 @@ func TestClosureFnViewDefaultsTheReturn(t *testing.T) {
 	p := &compiler.Program{Fns: []compiler.CompiledFn{{Name: "p$body", NParams: 2, NArgs: 2, NLocals: 2,
 		Params: []*core.Type{core.TString, core.TMap}, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}}}}
 	for _, want := range [][]*core.Type{nil, {core.TAny}} {
-		cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity(), RetTypes: want})
+		cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity(), RetTypes: want})
 		bv, ok := closureFnView(r, cl)
-		fd, isFn := native.FnDefOf(bv.Data)
+		fd, isFn := native.FnDefOf(bv.Data())
 		if !ok || !isFn || len(fd.Signatures) == 0 {
 			t.Fatalf("the closure bridges: %v %v", bv, ok)
 		}

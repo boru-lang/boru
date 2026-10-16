@@ -101,7 +101,7 @@ func (f *TextFormat) Decode(content string) ([]Value, error) {
 }
 
 func (f *TextFormat) Encode(v Value) (string, error) {
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as0, _ := AsString(v)
 		return _as0, nil
 	}
@@ -220,11 +220,11 @@ func (f *LinesFormat) Decode(content string) ([]Value, error) {
 }
 
 func (f *LinesFormat) Encode(v Value) (string, error) {
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if elems, err := AsMutableList(v); err == nil {
 			parts := make([]string, len(elems))
 			for i, e := range elems {
-				if e.Parent.ConformsTo(TString) {
+				if e.Parent().ConformsTo(TString) {
 					_as1, _ := AsString(e)
 					parts[i] = _as1
 				} else {

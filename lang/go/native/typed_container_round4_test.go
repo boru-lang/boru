@@ -105,7 +105,7 @@ func TestSetResidualTypedCarrier(t *testing.T) {
 	lout := setListIndexReturns([]Value{NewInteger(0), NewInteger(9), xs}, r)
 	// P2: the child narrows to the element type (read narrowing) ...
 	if c := childType(lout[0]); !c.Equal(TInteger) {
-		t.Errorf("typed-list set residual child = %v, want Integer", c.Parent)
+		t.Errorf("typed-list set residual child = %v, want Integer", c.Parent())
 	}
 	// ... AND the elem pointer survives (chained-write enforcement, round-3 #3).
 	if e, ok := lout[0].ElemConstraint(); !ok || !e.Equal(TInteger) {
@@ -115,7 +115,7 @@ func TestSetResidualTypedCarrier(t *testing.T) {
 	m, _ := tcValue(t, `def m:{:Integer} {a:1} m`)
 	mout := setMapTypedReturns([]Value{NewString("b"), NewInteger(2), m}, r)
 	if c := childType(mout[0]); !c.Equal(TInteger) {
-		t.Errorf("typed-map set residual child = %v, want Integer", c.Parent)
+		t.Errorf("typed-map set residual child = %v, want Integer", c.Parent())
 	}
 	if e, ok := mout[0].ElemConstraint(); !ok || !e.Equal(TInteger) {
 		t.Errorf("typed-map set residual lost its elem pointer")
@@ -124,8 +124,8 @@ func TestSetResidualTypedCarrier(t *testing.T) {
 	// The negative: an untyped receiver keeps a bare Any-child carrier.
 	u, _ := tcValue(t, `def u [1 2 3] u`)
 	uout := setListIndexReturns([]Value{NewInteger(0), NewInteger(9), u}, r)
-	if c := childType(uout[0]); !c.Parent.Equal(TAny) {
-		t.Errorf("untyped-list set residual child = %v, want Any", c.Parent)
+	if c := childType(uout[0]); !c.Parent().Equal(TAny) {
+		t.Errorf("untyped-list set residual child = %v, want Any", c.Parent())
 	}
 	if _, ok := uout[0].ElemConstraint(); ok {
 		t.Errorf("untyped-list set residual should carry no elem tag")

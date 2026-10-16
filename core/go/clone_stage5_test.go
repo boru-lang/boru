@@ -146,8 +146,8 @@ func TestStage5CloneStoreGraph(t *testing.T) {
 	}
 	v1, _ := cm.Get("s1")
 	v2, _ := cm.Get("s2")
-	c1, ok1 := v1.Data.(*StoreInstanceInfo)
-	c2, ok2 := v2.Data.(*StoreInstanceInfo)
+	c1, ok1 := v1.Data().(*StoreInstanceInfo)
+	c2, ok2 := v2.Data().(*StoreInstanceInfo)
 	if !ok1 || !ok2 {
 		t.Fatal("clone lost the store payloads")
 	}
@@ -174,7 +174,7 @@ func TestStage5CloneStoreGraph(t *testing.T) {
 		t.Error("clone tombstone map must be independent")
 	}
 	// The nested store's COW back-link is re-established onto the CLONE.
-	cc, ok := c1.Data["child"].Data.(*StoreInstanceInfo)
+	cc, ok := c1.Data["child"].Data().(*StoreInstanceInfo)
 	if !ok {
 		t.Fatal("nested store lost in the clone")
 	}
@@ -201,9 +201,9 @@ func TestStage5CloneClassInstance(t *testing.T) {
 	iv := NewClassInstance(TClass, ClassInstanceInfo{TypeRef: ct, Fields: fields})
 
 	cl := CloneValue(iv)
-	ci, ok := cl.Data.(ClassInstanceInfo)
+	ci, ok := cl.Data().(ClassInstanceInfo)
 	if !ok {
-		t.Fatalf("clone payload = %T, want ClassInstanceInfo", cl.Data)
+		t.Fatalf("clone payload = %T, want ClassInstanceInfo", cl.Data())
 	}
 	if ci.TypeRef != ct {
 		t.Error("TypeRef is a shared immutable descriptor")
@@ -225,9 +225,9 @@ func TestStage5CloneTable(t *testing.T) {
 		TableName: "stage5t",
 	})
 	cl := CloneValue(tv)
-	td, ok := cl.Data.(TableData)
+	td, ok := cl.Data().(TableData)
 	if !ok {
-		t.Fatalf("clone payload = %T, want TableData", cl.Data)
+		t.Fatalf("clone payload = %T, want TableData", cl.Data())
 	}
 	if td.TableName != "stage5t" {
 		t.Errorf("TableName = %q", td.TableName)
@@ -289,9 +289,9 @@ func TestStage5CloneExtensionPayload(t *testing.T) {
 	body := &stage5CloneBody{N: 7}
 	v := NewValueRaw(TAny, ExtensionPayload{Body: body})
 	cl := CloneValue(v)
-	ep, ok := cl.Data.(ExtensionPayload)
+	ep, ok := cl.Data().(ExtensionPayload)
 	if !ok {
-		t.Fatalf("clone payload = %T, want ExtensionPayload", cl.Data)
+		t.Fatalf("clone payload = %T, want ExtensionPayload", cl.Data())
 	}
 	nb, ok := ep.Body.(*stage5CloneBody)
 	if !ok {

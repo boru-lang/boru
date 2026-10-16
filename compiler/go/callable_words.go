@@ -158,14 +158,14 @@ func mutableInstanceRef(v core.Value) bool {
 	if core.IsFlexNode(v) || core.IsClassInstance(v) {
 		return true
 	}
-	p := v.Parent
+	p := v.Parent()
 	if p == nil {
 		return false
 	}
 	if p.ConformsTo(core.TFlexMap) || p.ConformsTo(core.TFlexList) || p.ConformsTo(core.TFlexXml) {
 		return true
 	}
-	return v.Carrier && p.ConformsTo(core.TClass)
+	return v.Carrier() && p.ConformsTo(core.TClass)
 }
 
 // moduleScopeMutableCaptures extends a closure body's lexical captures with
@@ -236,7 +236,7 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 // ambiguity gate, so admitting the capture never introduces an unsound dispatch
 // — it just resolves the operand.
 func moduleScopeInstanceCarrier(v core.Value) bool {
-	return !core.IsBareTypeNode(&v) && !core.IsConcrete(&v) && v.Carrier
+	return !core.IsBareTypeNode(&v) && !core.IsConcrete(&v) && v.Carrier()
 }
 
 // tryRecordClosure attempts to compile a code-body higher-order word's body to
@@ -307,7 +307,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// Routing such words to the dyn-body seat instead was measured and
 	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
 	// rows importing a module whose fn defs a computed value declined with it.
-	_, bodyIsLambda := body.Data.(*core.FnDefInfo)
+	_, bodyIsLambda := body.Data().(*core.FnDefInfo)
 	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(&body) && !bodyIsLambda
 	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
 		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
@@ -327,7 +327,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// the lambda body against that representative shape so `p.value`/`kv.v`
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
-	if fd, isFn := body.Data.(*core.FnDefInfo); isFn {
+	if fd, isFn := body.Data().(*core.FnDefInfo); isFn {
 		return tryRecordLambdaClosure(r, word, spec, sig, args, body, fd, extraLamSlots, outs, pos)
 	}
 
@@ -682,7 +682,7 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		if lam.QuoteArgs[i] || pt.ConformsTo(core.TAtom) {
 			return nil, false
 		}
-		if shape == ClosureInKeyVal && inputs[i].Parent.ConformsTo(core.TMap) {
+		if shape == ClosureInKeyVal && inputs[i].Parent().ConformsTo(core.TMap) {
 			if !pt.ConformsTo(core.TMap) && !core.TMap.ConformsTo(pt) {
 				return nil, false
 			}
@@ -715,7 +715,7 @@ func narrowLambdaInputs(inputs []core.Value, lam *core.Signature) []core.Value {
 			break
 		}
 		pt, in := lam.Params[i].Type, inputs[i]
-		if pt == nil || pt.Equal(core.TAny) || !core.IsDynamic(&in) || !in.Parent.Equal(core.TAny) {
+		if pt == nil || pt.Equal(core.TAny) || !core.IsDynamic(&in) || !in.Parent().Equal(core.TAny) {
 			continue
 		}
 		if &out[0] == &inputs[0] {
@@ -819,7 +819,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	}
 	extras := make([]extraHook, 0, len(extraLamSlots))
 	for _, slot := range extraLamSlots {
-		fd, isFn := args[slot].Data.(*core.FnDefInfo)
+		fd, isFn := args[slot].Data().(*core.FnDefInfo)
 		if !isFn { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
@@ -1237,14 +1237,14 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// collection's family is unknown, so the InShape (pair vs KeyVal),
 		// and with it the runtime callback convention, is ambiguous. Bare
 		// type literals and non-container carriers decline as before.
-		if core.IsDynamic(&data) || !data.Carrier || data.Parent == nil ||
-			!(data.Parent.ConformsTo(core.TList) || data.Parent.ConformsTo(core.TMap)) {
+		if core.IsDynamic(&data) || !data.Carrier() || data.Parent() == nil ||
+			!(data.Parent().ConformsTo(core.TList) || data.Parent().ConformsTo(core.TMap)) {
 			return nil, ClosureInValue, false
 		}
 	}
 	elem := check.DataListElemTypeFromValue(data)
-	isMap := data.Parent.ConformsTo(core.TMap)
-	isList := data.Parent.ConformsTo(core.TList)
+	isMap := data.Parent().ConformsTo(core.TMap)
+	isList := data.Parent().ConformsTo(core.TList)
 	switch word {
 	case "filter":
 		switch {
@@ -1287,7 +1287,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// the accumulator carries the seed's type, the entry rides as a KeyVal.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
-			accC := core.NewCarrier(acc.Parent)
+			accC := core.NewCarrier(acc.Parent())
 			if core.IsTypeLiteral(&acc) {
 				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
 			}
@@ -1305,7 +1305,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			// as the map branch above, same answer shape.
 			accT := elem
 			if len(args) > spec.BodyPos+2 {
-				accT = args[spec.BodyPos+2].Parent
+				accT = args[spec.BodyPos+2].Parent()
 			}
 			return []core.Value{check.ElementCarrierOf(data), core.NewCarrier(accT)}, ClosureInStackPair, true
 		}
@@ -1443,7 +1443,7 @@ func (es *EmitState) extraNoEvalHookSlots(sig *core.Signature, spec core.Callabl
 		if es.emptyFlexHookOperand(args[i]) {
 			continue
 		}
-		if _, isFn := args[i].Data.(*core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
+		if _, isFn := args[i].Data().(*core.FnDefInfo); isFn && spec.LambdaSharesTokenShape {
 			lamSlots = append(lamSlots, i)
 			continue
 		}
@@ -1479,7 +1479,7 @@ func (es *EmitState) emptyFlexHookOperand(v core.Value) bool {
 	if len(es.units) != 1 || len(es.frames) != 1 {
 		return false
 	}
-	p := v.Parent
+	p := v.Parent()
 	if p == nil || (!p.ConformsTo(core.TFlexList) && !p.ConformsTo(core.TFlexMap)) {
 		return false
 	}

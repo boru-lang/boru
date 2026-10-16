@@ -62,7 +62,7 @@ func TestCallbackSourceSpec(t *testing.T) {
 	if bare.Source == nil || bare.Name != "" || len(bare.Types) != 0 {
 		t.Errorf("no contract means none added: %+v", bare)
 	}
-	if fd, ok := bare.Source.Data.(*core.FnDefInfo); !ok || fd.Name != "g" {
+	if fd, ok := bare.Source.Data().(*core.FnDefInfo); !ok || fd.Name != "g" {
 		t.Errorf("the source must be the value handed in: %v", bare.Source)
 	}
 }

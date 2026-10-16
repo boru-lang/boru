@@ -447,7 +447,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 	// "a function is bound here", so record the carrier in the per-pass
 	// fn-carrier side table they consult.
 	if checking && !IsConcrete(&value) &&
-		value.Parent.ConformsTo(TFunction) {
+		value.Parent().ConformsTo(TFunction) {
 		// SHADOWING a live binding. The computed fn is not installed in
 		// Defs (the arm below), so the name now denotes different things
 		// in the two stores: the carrier here, and whatever `def` bound
@@ -577,9 +577,9 @@ func DefFormVia(base *Signature, offset int, genChain bool) func([]Value, map[st
 				}
 				var err error
 				switch {
-				case v.Parent.Equal(TMap) && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v):
+				case v.Parent().Equal(TMap) && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v):
 					ctorArgs[i], err = core.AutoEvalConsumedMap(r, v, false)
-				case v.Parent.Equal(TList):
+				case v.Parent().Equal(TList):
 					ctorArgs[i], err = core.AutoEvalConsumedList(r, v)
 				}
 				if err != nil {
@@ -876,7 +876,7 @@ func DefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 // keeps the reserved_word compile failure. Sealed words (`def`, `make`,
 // `word`) decline inside InstallWordExtension.
 func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, error) {
-	if !body.Parent.Equal(TFunction) {
+	if !body.Parent().Equal(TFunction) {
 		return false, nil
 	}
 	// A FailedDispatch fn value is here because a CALL matched no signature —
@@ -893,7 +893,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	if IsFailedDispatch(&body) {
 		return false, nil
 	}
-	fnDef, ok := body.Data.(*FnDefInfo)
+	fnDef, ok := body.Data().(*FnDefInfo)
 	if !ok {
 		return false, nil
 	}
@@ -1020,7 +1020,7 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	// InstallType decision so the two paths stay aligned.
 	var reparentTo *Type
 	if typeName != "" && core.PredicateInputType(constraint) != nil {
-		if def := r.LookupTypeName(typeName); def != nil && def.Origin != core.OriginBuiltin {
+		if def := r.LookupTypeName(typeName); def != nil && def.Origin() != core.OriginBuiltin {
 			out = MintRetagged(&out, def)
 			reparentTo = def
 		}
@@ -1353,10 +1353,10 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		}
 		constraint = inst
 	}
-	if constraint.Parent.Equal(TFnUndef) && IsAtom(body) {
+	if constraint.Parent().Equal(TFnUndef) && IsAtom(body) {
 		atomName, _ := AsAtom(body)
 		if top, ok := r.Defs.Top(atomName); ok {
-			if top.Parent.Equal(TFunction) {
+			if top.Parent().Equal(TFunction) {
 				body = top
 			}
 		}
@@ -1368,12 +1368,12 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2); defFnPredicateBind keeps
 	// its historical run-then-reparent semantics (typeof x → Pos for an
 	// input-typed predicate) in both spellings.
-	if constraint.Parent.Equal(TFunction) || core.IsPredicateTypeNode(constraint) {
+	if constraint.Parent().Equal(TFunction) || core.IsPredicateTypeNode(constraint) {
 		pred := constraint
 		if pb, ok := core.TypeContentOf(constraint); ok {
 			pred = pb
 		}
-		if pred.Data != nil {
+		if pred.Data() != nil {
 			return defFnPredicateBind(r, name, typeName, pred, body, describeType, defPos)
 		}
 	}
@@ -1393,7 +1393,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// through to Unify and either succeed or surface a type error.
 	if IsClassType(&constraint) {
 		info, _ := AsClassType(constraint)
-		if body.Parent.Equal(TMap) {
+		if body.Parent().Equal(TMap) {
 			// `def b:Type {map}` is `def b (make Type map)`. In emit mode record
 			// the make event the direct MakeObject call would skip, so the bound
 			// instance has the same provenance an explicit make gives it (a
@@ -1427,7 +1427,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// type literals in data context, so ResolveResourceTypeInfo also
 	// looks the schema up by name when the constraint carries no body.
 	if resInfo, isRes := ResolveResourceTypeInfo(r, constraint); isRes {
-		if body.Parent.Equal(TMap) {
+		if body.Parent().Equal(TMap) {
 			if carrier, ok := core.RecordTypedDefMake(r, name, constraint, body, defPos); ok {
 				return InstallAndRecordDef(r, name, carrier, defPos)
 			}
@@ -1453,7 +1453,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		return InstallAndRecordDef(r, name, bound, defPos)
 	}
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(&body) {
-		if body.Parent.ConformsTo(depScalarCons.Parent) {
+		if body.Parent().ConformsTo(depScalarCons.Parent()) {
 			// An ABSTRACT (carrier) body admits on base conformance only —
 			// the predicate is value-level and the value is unknown here, so
 			// validation stays at RUNTIME via v.Is. A compiled `def
@@ -1495,8 +1495,8 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// when one side is bare and subtype-ordered) instead of the
 	// body's payload — `def x:Foo 1` would silently bind x to the
 	// Foo-tagged type literal, not the integer 1.
-	if IsBareTypeNode(&constraint) && constraint.Origin == core.OriginUserDef &&
-		typeName != "" && constraint.Parent != nil {
+	if IsBareTypeNode(&constraint) && constraint.Origin() == core.OriginUserDef &&
+		typeName != "" && constraint.Parent() != nil {
 		// Behavior-keyed guard: a bare user node whose kind enforces
 		// membership through a kernel constraint Unifier (dependent
 		// scalar, predicate, binding-body — core.HasConstraintUnify)
@@ -1509,7 +1509,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		// `behave unify/q` wrapper on a nominal refine is NOT a
 		// constraint (Unifier but not ContentMembership), so newtypes
 		// keep this arm.
-		if def := r.LookupTypeName(typeName); def != nil && def.Origin == core.OriginUserDef &&
+		if def := r.LookupTypeName(typeName); def != nil && def.Origin() == core.OriginUserDef &&
 			!core.HasConstraintUnify(def) {
 			// Walk up the lattice past any intervening user refines
 			// (e.g. `Foo refine Item refine String`) to the nearest
@@ -1518,9 +1518,9 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			// Foo whose parent Item branches off String) wouldn't
 			// match the immediate parent literal but does match the
 			// shared kernel base.
-			root := def.Parent
-			for root != nil && root.Origin == core.OriginUserDef {
-				root = root.Parent
+			root := def.Parent()
+			for root != nil && root.Origin() == core.OriginUserDef {
+				root = root.Parent()
 			}
 			if root == nil { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 				return nil, fmt.Errorf("def %s: refine subtype %s has no builtin ancestor",
@@ -1571,7 +1571,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			typedDefUnifyMirror(r, name,
 				fmt.Sprintf("def %s: value %s does not unify with declared type %s",
 					name, body.String(), describeType()), body, defPos)
-			return InstallAndRecordDef(r, name, NewCarrier(constraint.Parent), defPos)
+			return InstallAndRecordDef(r, name, NewCarrier(constraint.Parent()), defPos)
 		}
 		return nil, r.BoruError("type_error",
 			fmt.Sprintf("def %s: value %s does not unify with declared type %s",
@@ -1605,10 +1605,10 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 // accessors keep working, just the dispatch identity flips. nil: no
 // reparent (any other constraint, an inline FnUndef, a builtin node).
 func fnUndefReparentTarget(r *Registry, constraint Value, typeName string) *Type {
-	if !constraint.Parent.Equal(TFnUndef) || typeName == "" {
+	if !constraint.Parent().Equal(TFnUndef) || typeName == "" {
 		return nil
 	}
-	if def := r.LookupTypeName(typeName); def != nil && def.Origin != core.OriginBuiltin {
+	if def := r.LookupTypeName(typeName); def != nil && def.Origin() != core.OriginBuiltin {
 		return def
 	}
 	return nil
@@ -1639,7 +1639,7 @@ func fnUndefReparentTarget(r *Registry, constraint Value, typeName string) *Type
 // word it is (NoteRuntimeDependent — no decline site of its own). ok=false:
 // a concrete body, a proven member, or a typed container (declined above).
 func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Value, describe string, reparent *Type, pos SrcPos) (Value, bool) {
-	if !r.Check.IsActive() || !body.Carrier || IsTypedMap(&constraint) || IsTypedList(&constraint) {
+	if !r.Check.IsActive() || !body.Carrier() || IsTypedMap(&constraint) || IsTypedList(&constraint) {
 		return Value{}, false
 	}
 	if IsBareTypeNode(&constraint) && constraint.Equal(TAny) {
@@ -1649,9 +1649,9 @@ func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Val
 		return Value{}, false
 	}
 	bound := body
-	if unified.Carrier {
+	if unified.Carrier() {
 		bound = unified
-	} else if IsBareTypeNode(&unified) && unified.Origin == core.OriginBuiltin {
+	} else if IsBareTypeNode(&unified) && unified.Origin() == core.OriginBuiltin {
 		bound = NewCarrier(NodeOf(&unified))
 	}
 	if reparent != nil {
@@ -1677,18 +1677,18 @@ func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Val
 // alone (no constraint Unifier — a union, a record shape, a refinement
 // decides by content).
 func carrierMembershipProven(r *Registry, body, constraint Value) bool {
-	if IsDynamic(&body) || body.Parent == nil || !IsBareTypeNode(&constraint) {
+	if IsDynamic(&body) || body.Parent() == nil || !IsBareTypeNode(&constraint) {
 		return false
 	}
 	node := NodeOf(&constraint)
-	return !core.HasConstraintUnify(node) && body.Parent.ConformsTo(node)
+	return !core.HasConstraintUnify(node) && body.Parent().ConformsTo(node)
 }
 
 // carrierMayHoldFn reports whether a carrier may stand for a fn value at
 // run time: its type is a fn's own or a fn shape's, or one a fn inhabits
 // (Any, Type).
 func carrierMayHoldFn(v Value) bool {
-	p := v.Parent
+	p := v.Parent()
 	return p != nil && (TFunction.ConformsTo(p) || p.ConformsTo(TFunction) || p.ConformsTo(TFnUndef))
 }
 
@@ -1787,7 +1787,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 func UndefFnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	name := DefName(args[0])
-	undefInfo, ok := args[1].Data.(FnUndefInfo)
+	undefInfo, ok := args[1].Data().(FnUndefInfo)
 	if !ok {
 		return nil, fmt.Errorf("undef: expected fn undef spec, got %s", args[1].String())
 	}
@@ -1799,7 +1799,7 @@ func UndefFnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 
 func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	list := args[0]
-	if !list.Parent.Equal(TList) {
+	if !list.Parent().Equal(TList) {
 		return nil, r.BoruError("var_error", "var: argument must be a list", "var")
 	}
 	if !IsConcrete(&list) {
@@ -1811,7 +1811,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	}
 
 	declVal := elems.Get(0)
-	if !declVal.Parent.Equal(TList) || !IsConcrete(&declVal) {
+	if !declVal.Parent().Equal(TList) || !IsConcrete(&declVal) {
 		return nil, r.BoruError("var_error", "var: first element must be a list of variable declarations", "var")
 	}
 	decls, _ := AsList(declVal)
@@ -1836,7 +1836,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			varSites = append(varSites, decl)
 			result = append(result, WithPos(NewWord("def"), decl), WithPos(NewWord(name), decl), NewEnd())
 
-		case decl.Parent.Equal(TList) && decl.Data != nil:
+		case decl.Parent().Equal(TList) && decl.Data() != nil:
 			declElems, _ := AsList(decl)
 			if declElems.Len() < 2 {
 				return nil, r.BoruError("var_error", "var: declaration list must have name and value", "var")
@@ -1845,7 +1845,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			if IsWord(declElems.Ref(0)) {
 				_as1, _ := AsWord(declElems.Ref(0))
 				name = _as1.Name
-			} else if declElems.Get(0).Parent.ConformsTo(TString) {
+			} else if declElems.Get(0).Parent().ConformsTo(TString) {
 				name, _ = AsString(declElems.Get(0))
 			} else {
 				return nil, r.BoruError("var_error", "var: declaration name must be a word or string", "var")
@@ -1856,7 +1856,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			result = append(result, declElems.Elems()[1:]...)
 			result = append(result, NewEnd())
 
-		case decl.Parent.ConformsTo(TString):
+		case decl.Parent().ConformsTo(TString):
 			name, _ := AsString(decl)
 			varNames = append(varNames, name)
 			varSites = append(varSites, decl)
@@ -1897,7 +1897,7 @@ func FnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// the inferred body-scoped type bindings.
 	genSpec := r.TakePendingGen()
 	list := args[0]
-	if !list.Parent.Equal(TList) {
+	if !list.Parent().Equal(TList) {
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: argument must be a list", "fn"))
 	}
 	if !IsConcrete(&list) {
@@ -1940,7 +1940,7 @@ func FnTripleHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// Defensive twin of the sig's `tnot List` Pattern: dispatch never
 	// routes a list input here, but check-mode fallbacks and direct
 	// handler calls can. A list input means the spec-list form.
-	if args[0].Parent.Equal(TList) {
+	if args[0].Parent().Equal(TList) {
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: the 3-arg triple form takes a non-list input; wrap the whole triple as a list instead: fn [[input] [output] [body]]", "fn"))
 	}
 	// Unlike the spec-list form — whose operands are always literals
@@ -1953,7 +1953,7 @@ func FnTripleHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// which re-constructs with the live value. Analysis proceeds with the
 	// carrier; the program itself is interpreter-only.
 	for i := range args[:3] {
-		if args[i].Carrier {
+		if args[i].Carrier() {
 			if es := r.Check.Recorder(); es.Active() {
 				es.MarkUncompilable("fn: triple-form construction over a computed (carrier) operand is interpreter-only — the compiled unit would bake the check-time placeholder")
 			}
@@ -2141,7 +2141,7 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	// interpreter-only, or the compiled unit would intern the check-time
 	// Function with the carrier baked in where the live value belongs.
 	for i := range args[:2] {
-		if args[i].Carrier {
+		if args[i].Carrier() {
 			if es := r.Check.Recorder(); es.Active() {
 				es.MarkUncompilable("afn: construction over a computed (carrier) operand is interpreter-only — the compiled unit would bake the check-time placeholder")
 			}
@@ -2149,7 +2149,7 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		}
 	}
 
-	if !inputSig.Parent.Equal(TList) {
+	if !inputSig.Parent().Equal(TList) {
 		inputSig = NewList([]Value{inputSig})
 	}
 
@@ -2159,7 +2159,7 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	}
 
 	var bodyElems []Value
-	if body.Parent.Equal(TList) && body.Data != nil {
+	if body.Parent().Equal(TList) && body.Data() != nil {
 		lst, _ := AsList(body)
 		bodyElems = lst.Slice()
 	} else {

@@ -80,7 +80,7 @@ func newSocketValue(conn net.Conn) native.Value {
 }
 
 func asSocket(v native.Value) (*socketConn, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -121,7 +121,7 @@ func newListenerValueOn(ln, deadlineOn net.Listener) native.Value {
 }
 
 func asListener(v native.Value) (*netListener, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -396,7 +396,7 @@ func listenTLSErr(r *native.Registry, err error) error {
 func acceptHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	nl, ok := asListener(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "accept: expected a Listener, got "+args[0].Parent.String(), "accept")
+		return nil, r.BoruError("net_error", "accept: expected a Listener, got "+args[0].Parent().String(), "accept")
 	}
 	within, has, dErr := recvDeadline(args, 1)
 	if dErr != nil {
@@ -630,7 +630,7 @@ func serveRawHandler(args []native.Value, _ map[string]native.Value, _ []native.
 func recvHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "recv: expected a Socket, got "+args[0].Parent.String(), "recv")
+		return nil, r.BoruError("net_error", "recv: expected a Socket, got "+args[0].Parent().String(), "recv")
 	}
 	n, nErr := args[1].AsConcreteInteger()
 	if nErr != nil || n < 0 {
@@ -663,7 +663,7 @@ func recvHandler(args []native.Value, _ map[string]native.Value, _ []native.Valu
 func recvBytesHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "recv-bytes: expected a Socket, got "+args[0].Parent.String(), "recv-bytes")
+		return nil, r.BoruError("net_error", "recv-bytes: expected a Socket, got "+args[0].Parent().String(), "recv-bytes")
 	}
 	n, nErr := args[1].AsConcreteInteger()
 	if nErr != nil || n < 0 {
@@ -691,7 +691,7 @@ func recvBytesHandler(args []native.Value, _ map[string]native.Value, _ []native
 func recvUntilHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "recv-until: expected a Socket, got "+args[0].Parent.String(), "recv-until")
+		return nil, r.BoruError("net_error", "recv-until: expected a Socket, got "+args[0].Parent().String(), "recv-until")
 	}
 	delim, ok := native.AsBytesValue(args[1])
 	if !ok || len(delim) == 0 {
@@ -735,11 +735,11 @@ func setReadDeadline(sc *socketConn, within time.Duration, has bool) error {
 func sendBytesHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	data, ok := native.AsBytesValue(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "send-bytes: expected Bytes, got "+args[0].Parent.String(), "send-bytes")
+		return nil, r.BoruError("net_error", "send-bytes: expected Bytes, got "+args[0].Parent().String(), "send-bytes")
 	}
 	sc, ok := asSocket(args[1])
 	if !ok {
-		return nil, r.BoruError("net_error", "send-bytes: expected a Socket, got "+args[1].Parent.String(), "send-bytes")
+		return nil, r.BoruError("net_error", "send-bytes: expected a Socket, got "+args[1].Parent().String(), "send-bytes")
 	}
 	sc.wmu.Lock()
 	defer sc.wmu.Unlock()
@@ -752,7 +752,7 @@ func sendBytesHandler(args []native.Value, _ map[string]native.Value, _ []native
 func shutdownHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "shutdown: expected a Socket, got "+args[0].Parent.String(), "shutdown")
+		return nil, r.BoruError("net_error", "shutdown: expected a Socket, got "+args[0].Parent().String(), "shutdown")
 	}
 	half := native.ValToString(args[1])
 	tcp, isTCP := sc.conn.(*net.TCPConn)
@@ -778,17 +778,17 @@ func shutdownHandler(args []native.Value, _ map[string]native.Value, _ []native.
 
 func closeHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	switch {
-	case args[0].Parent.ConformsTo(TSocket):
+	case args[0].Parent().ConformsTo(TSocket):
 		if sc, ok := asSocket(args[0]); ok {
 			_ = sc.close()
 			return nil, nil
 		}
-	case args[0].Parent.ConformsTo(TListener):
+	case args[0].Parent().ConformsTo(TListener):
 		if nl, ok := asListener(args[0]); ok {
 			_ = nl.close()
 			return nil, nil
 		}
-	case args[0].Parent.ConformsTo(native.TService):
+	case args[0].Parent().ConformsTo(native.TService):
 		if closer := native.ServiceCloser(args[0]); closer != nil {
 			_ = closer()
 			return nil, nil
@@ -801,7 +801,7 @@ func closeHandler(args []native.Value, _ map[string]native.Value, _ []native.Val
 func addrHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	nl, ok := asListener(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "addr: expected a Listener, got "+args[0].Parent.String(), "addr")
+		return nil, r.BoruError("net_error", "addr: expected a Listener, got "+args[0].Parent().String(), "addr")
 	}
 	m := native.NewOrderedMap()
 	host, portStr, err := net.SplitHostPort(nl.ln.Addr().String())
@@ -819,7 +819,7 @@ func addrHandler(args []native.Value, _ map[string]native.Value, _ []native.Valu
 func peerHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "peer: expected a Socket, got "+args[0].Parent.String(), "peer")
+		return nil, r.BoruError("net_error", "peer: expected a Socket, got "+args[0].Parent().String(), "peer")
 	}
 	m := native.NewOrderedMap()
 	addr := sc.conn.RemoteAddr()
@@ -852,7 +852,7 @@ func peerHandler(args []native.Value, _ map[string]native.Value, _ []native.Valu
 func peerCertHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	sc, ok := asSocket(args[0])
 	if !ok {
-		return nil, r.BoruError("net_error", "peer-cert: expected a Socket, got "+args[0].Parent.String(), "peer-cert")
+		return nil, r.BoruError("net_error", "peer-cert: expected a Socket, got "+args[0].Parent().String(), "peer-cert")
 	}
 	tconn, isTLS := sc.conn.(*tls.Conn)
 	if !isTLS {

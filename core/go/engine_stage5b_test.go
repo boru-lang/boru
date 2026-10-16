@@ -713,7 +713,7 @@ func TestS5BCloseParenTrailingApplyRecorded(t *testing.T) {
 	if es.dynApplies != 1 {
 		t.Errorf("RecordDynApply calls = %d", es.dynApplies)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() {
 		t.Errorf("window must collapse to the out carrier, tape len %d", e.Tape.Len())
 	}
 }
@@ -805,7 +805,7 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if es.dynApplies != 1 || !IsDynamic(&es.lastOut) || !es.lastOut.Carrier {
+	if es.dynApplies != 1 || !IsDynamic(&es.lastOut) || !es.lastOut.Carrier() {
 		t.Errorf("the pending gradual lead records a trailing apply with a gradual out: calls=%d out=%+v", es.dynApplies, es.lastOut)
 	}
 	if e.Tape.Len() != 1 {
@@ -1642,14 +1642,14 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	if es.dynApplies != 1 || len(es.uncompilable) != 0 {
 		t.Fatalf("the produced lead records one apply: applies=%d uncompilable=%v", es.dynApplies, es.uncompilable)
 	}
-	if len(es.producedArgs) != 1 || !es.producedArgs[0].Parent.Equal(TInteger) {
+	if len(es.producedArgs) != 1 || !es.producedArgs[0].Parent().Equal(TInteger) {
 		t.Errorf("the recorder is asked over the window's arguments, got %v", es.producedArgs)
 	}
 	if e.Tape.Len() != 1 {
 		t.Fatalf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
 	}
 	out := e.Tape.At(0)
-	if !out.Carrier || IsDynamic(&out) || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(&out) {
+	if !out.Carrier() || IsDynamic(&out) || !out.Parent().Equal(TInteger) || IsFnTypedCarrier(&out) {
 		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, IsDynamic(&out))
 	}
 	if IDOf(&es.lastOut) != IDOf(&out) || IDOf(&out) == "" {
@@ -1675,7 +1675,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(TAny) {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent().Equal(TAny) {
 		t.Errorf("a nil result type is Any: %v", e.Tape.At(0))
 	}
 }
@@ -1842,7 +1842,7 @@ func TestS5BCloseParenTrailingApplyConcreteReturn(t *testing.T) {
 	if es.dynApplies != 1 || e.Tape.Len() != 1 {
 		t.Fatalf("the concrete lead records one apply and collapses: applies=%d len=%d", es.dynApplies, e.Tape.Len())
 	}
-	if out := es.lastOut; !out.Carrier || IsDynamic(&out) || !out.Parent.Equal(TInteger) {
+	if out := es.lastOut; !out.Carrier() || IsDynamic(&out) || !out.Parent().Equal(TInteger) {
 		t.Errorf("the out carries the lead's declared return (a strict Integer), got %v dyn=%v", out, IsDynamic(&out))
 	}
 }

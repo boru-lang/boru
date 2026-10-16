@@ -137,7 +137,7 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 // chain's registry threaded through to the Pattern-compatibility unify
 // (see fnSigSatisfiesSpecR).
 func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
-	uInfo, ok := undef.Data.(FnUndefInfo)
+	uInfo, ok := undef.Data().(FnUndefInfo)
 	if !ok {
 		return false
 	}
@@ -149,7 +149,7 @@ func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 // unifier holds its specs and asks this directly, without minting an
 // FnUndef value per test.
 func fnSpecsAdmitR(specs []FnSigSpec, fnVal Value, r *Registry) bool {
-	fnDef, ok := fnVal.Data.(*FnDefInfo)
+	fnDef, ok := fnVal.Data().(*FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -206,7 +206,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 		return false
 	}
 	for i, p := range sig.Params {
-		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(&sigArgs[i]) {
+		if p.Pattern != nil && !p.Pattern.Carrier() && !IsConcrete(&sigArgs[i]) {
 			return false
 		}
 	}
@@ -228,7 +228,7 @@ func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
 // own signatures to consult and answers nil, so a caller must treat nil as "no
 // opinion" unless it has already established that the value carries sigs.
 func MatchFnSig(fn Value, args []Value) *FnSig {
-	fnDef, ok := fn.Data.(*FnDefInfo)
+	fnDef, ok := fn.Data().(*FnDefInfo)
 	if !ok {
 		return nil
 	}
@@ -249,10 +249,10 @@ func MatchFnSig(fn Value, args []Value) *FnSig {
 				match = false
 				break
 			}
-			if p.Pattern != nil && !p.Pattern.Carrier {
+			if p.Pattern != nil && !p.Pattern.Carrier() {
 				pat := *p.Pattern
-				if pat.Parent.Equal(TMap) && args[j].Parent.Equal(TMap) &&
-					pat.Data != nil && args[j].Data != nil {
+				if pat.Parent().Equal(TMap) && args[j].Parent().Equal(TMap) &&
+					pat.Data() != nil && args[j].Data() != nil {
 					if !OpenUnifyMap(pat, args[j]) {
 						match = false
 						break

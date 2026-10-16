@@ -218,13 +218,13 @@ func TestMaterialiseRebuild(t *testing.T) {
 	if !ok {
 		t.Fatal("list with a recoverable member should materialise")
 	}
-	lp, isList := got.Data.(core.ListPayload)
-	if !isList || len(lp.Elems) != 1 || lp.Elems[0].Carrier {
+	lp, isList := got.Data().(core.ListPayload)
+	if !isList || len(lp.Elems) != 1 || lp.Elems[0].Carrier() {
 		t.Fatalf("rebuilt list member not recovered: %v", got)
 	}
 
 	// Map with nil backing → not materialisable.
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if _, ok := es.Materialise(nilMap); ok {
 		t.Fatal("nil-map should not materialise")
 	}
@@ -239,11 +239,11 @@ func TestMaterialiseRebuild(t *testing.T) {
 	if !ok2 {
 		t.Fatal("map with a recoverable member should materialise")
 	}
-	mpOut, isMap := got2.Data.(core.MapPayload)
+	mpOut, isMap := got2.Data().(core.MapPayload)
 	if !isMap || mpOut.M == nil {
 		t.Fatalf("rebuilt map missing backing: %v", got2)
 	}
-	if rv, _ := mpOut.M.Get("k"); rv.Carrier {
+	if rv, _ := mpOut.M.Get("k"); rv.Carrier() {
 		t.Fatal("rebuilt map member not recovered")
 	}
 }

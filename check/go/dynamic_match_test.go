@@ -93,8 +93,8 @@ func TestDynamicResultContagion(t *testing.T) {
 	if len(cont) != 1 || core.IsDynamic(&cont[0]) {
 		t.Fatalf("a concrete container return stays strict over a dynamic input, got Dynamic=%v", core.IsDynamic(&cont[0]))
 	}
-	if !cont[0].Parent.Equal(core.TList) {
-		t.Errorf("result bound = %s, want the declared return List", cont[0].Parent)
+	if !cont[0].Parent().Equal(core.TList) {
+		t.Errorf("result bound = %s, want the declared return List", cont[0].Parent())
 	}
 
 	// A dynamic input + a concrete SCALAR return stays dynamic (contagion is
@@ -180,11 +180,11 @@ func TestDynamicCarrierString(t *testing.T) {
 // toCarrier never strips a dynamic carrier (which would null its bound).
 func TestDynamicCarrierConstructors(t *testing.T) {
 	d := core.NewDynamicCarrier(core.TInteger)
-	if !core.IsDynamic(&d) || !d.Carrier {
-		t.Fatalf("NewDynamicCarrier: Dynamic=%v Carrier=%v, want both true", core.IsDynamic(&d), d.Carrier)
+	if !core.IsDynamic(&d) || !d.Carrier() {
+		t.Fatalf("NewDynamicCarrier: Dynamic=%v Carrier=%v, want both true", core.IsDynamic(&d), d.Carrier())
 	}
-	if !d.Parent.Equal(core.TInteger) {
-		t.Errorf("NewDynamicCarrier bound = %s, want Integer", d.Parent)
+	if !d.Parent().Equal(core.TInteger) {
+		t.Errorf("NewDynamicCarrier bound = %s, want Integer", d.Parent())
 	}
 
 	// A disjunct promoted to dynamic keeps its alternatives.
@@ -198,7 +198,7 @@ func TestDynamicCarrierConstructors(t *testing.T) {
 	// toCarrier must return a dynamic carrier unchanged — same bound,
 	// flag intact.
 	got := toCarrier(d)
-	if !core.IsDynamic(&got) || !got.Parent.Equal(core.TInteger) {
-		t.Errorf("toCarrier(dynamic) = Dynamic %v / %s, want dynamic Integer", core.IsDynamic(&got), got.Parent)
+	if !core.IsDynamic(&got) || !got.Parent().Equal(core.TInteger) {
+		t.Errorf("toCarrier(dynamic) = Dynamic %v / %s, want dynamic Integer", core.IsDynamic(&got), got.Parent())
 	}
 }

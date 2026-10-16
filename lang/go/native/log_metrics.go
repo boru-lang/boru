@@ -52,7 +52,7 @@ func (lsr *LogSinkRegistry) Measurements() []Measurement {
 
 // attrsOrEmpty returns v if it is a concrete Map, else a fresh empty Map.
 func attrsOrEmpty(v Value) Value {
-	if IsConcrete(&v) && v.Parent != nil && v.Parent.Equal(TMap) {
+	if IsConcrete(&v) && v.Parent() != nil && v.Parent().Equal(TMap) {
 		return v
 	}
 	return NewMap(NewOrderedMap())

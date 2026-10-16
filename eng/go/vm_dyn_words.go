@@ -90,7 +90,7 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // dispatched by what the payload rename would change, so their home keeps
 // them as the program's later uses need them (NUR285).
 func renamesAsData(v core.Value) bool {
-	if fd, ok := v.Data.(*core.FnDefInfo); ok {
+	if fd, ok := v.Data().(*core.FnDefInfo); ok {
 		if !fd.HasHome() {
 			return false
 		}
@@ -101,14 +101,14 @@ func renamesAsData(v core.Value) bool {
 		}
 		return true
 	}
-	_, closure := v.Data.(core.ClosurePayload)
+	_, closure := v.Data().(*core.ClosurePayload)
 	return closure
 }
 
 // dropFnPos is v without a position when v is a fn value that carries one:
 // what a binding holds, whose reads are the name's (nameClosureValue).
 func dropFnPos(v core.Value) core.Value {
-	if v.Pos().Row != 0 && v.Parent.Equal(core.TFunction) {
+	if v.Pos().Row != 0 && v.Parent().Equal(core.TFunction) {
 		v.SetPos(core.SrcPos{})
 	}
 	return v
@@ -122,8 +122,8 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// word's result stamp (stampFnResultPos) survived the def and anchored
 	// `(h 5)` over `def h (FnUtil.compose …)` at the compose (NUR347).
 	v = dropFnPos(v)
-	switch v.Data.(type) {
-	case *core.FnDefInfo, core.ClosurePayload:
+	switch v.Data().(type) {
+	case *core.FnDefInfo, *core.ClosurePayload:
 	default:
 		return v
 	}
@@ -154,10 +154,12 @@ func nameClosureValue(v core.Value, name string) core.Value {
 // contract, no-match and frame name report against. ok is false for a value
 // that is no closure.
 func closureView(v *core.Value) (core.ClosurePayload, bool) {
-	cl, ok := v.Data.(core.ClosurePayload)
+	clp, ok := v.Data().(*core.ClosurePayload)
 	if !ok {
-		return cl, false
+		return core.ClosurePayload{}, false
 	}
+	// A view: the payload is the value's, shared by every holder.
+	cl := *clp
 	if name := core.HolderFnName(v); name != "" {
 		cl.RetName, cl.RetPos = name, core.SrcPos{}
 	}
@@ -247,7 +249,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		// (NotifyNameRebound) is what guarantees the binding still holds
 		// the value the unit captured.
 		if top, bound := reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(*core.FnDefInfo); isFn {
+			if _, isFn := top.Data().(*core.FnDefInfo); isFn {
 				if i == 0 {
 					lead = top
 				}
@@ -352,7 +354,7 @@ func replayRegionLive(region []core.Value, words []compiler.DynFrameWord) bool {
 // closure's own return contract applies there). Declines a closure whose
 // unit this context cannot resolve.
 func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value, bool) {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok {
 		return v, true
 	}
@@ -414,7 +416,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 	}
 	sig := core.Signature{Params: params, BarrierPos: len(params)}
 	core.NormalizeSig(&sig)
-	probe := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{sig}}}
+	probe := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{sig}}})
 	return core.MatchFnSig(probe, args) != nil
 }
 
@@ -429,7 +431,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // is what parks a 0-arg lambda VALUE nothing calls at the pointer (ADR-016's
 // gate), so the value-path bridge parks in the same places the
 // interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+func closureFnDef(fn *compiler.CompiledFn, cl *core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
 	fd, ok := closureSigView(fn, cl)
 	if !ok {
 		return core.Value{}, false
@@ -453,7 +455,7 @@ func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(a
 // it, so it needs no invoker (the placeholder one it used to build was a
 // function no path could call). ok=false for a unit that recorded no
 // contract.
-func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDefInfo, bool) {
+func closureSigView(fn *compiler.CompiledFn, cl *core.ClosurePayload) (core.FnDefInfo, bool) {
 	params, ok := closureSigParams(fn)
 	if !ok {
 		return core.FnDefInfo{}, false
@@ -543,7 +545,7 @@ func callWindowValue(o compiler.CallWindowOperand, args, stack, locals []core.Va
 // unit): the interpreter's re-step could apply it over values beneath it
 // (LandingBeneathGuard, NUR286).
 func landedFnTakesArgs(v core.Value) bool {
-	fnDef, ok := v.Data.(*core.FnDefInfo)
+	fnDef, ok := v.Data().(*core.FnDefInfo)
 	if !ok {
 		return compiler.ClosureTakesArgs(v)
 	}

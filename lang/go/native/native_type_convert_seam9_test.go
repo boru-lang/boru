@@ -80,8 +80,8 @@ func TestW9ConvertToBooleanDefaultArm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convert Atom to Boolean: %v", err)
 	}
-	if !out.Parent.Equal(TBoolean) {
-		t.Fatalf("want Boolean, got %s", out.Parent)
+	if !out.Parent().Equal(TBoolean) {
+		t.Fatalf("want Boolean, got %s", out.Parent())
 	}
 }
 
@@ -132,8 +132,8 @@ func TestW9ConvertToBigDecimalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convertToBigDecimal identity: %v", err)
 	}
-	if !out.Parent.ConformsTo(TBigDecimal) {
-		t.Fatalf("want BigDecimal, got %s", out.Parent)
+	if !out.Parent().ConformsTo(TBigDecimal) {
+		t.Fatalf("want BigDecimal, got %s", out.Parent())
 	}
 }
 

@@ -48,13 +48,13 @@ import core "github.com/boru-lang/boru/core/go"
 // narrowArgsToParams (result/summary) and the armed-compile genArgs — so the
 // schema survives into the closure CAPTURE that the armed compile records.
 func recordSchemaCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
-	if p.Pattern == nil || a.Parent == nil {
+	if p.Pattern == nil || a.Parent() == nil {
 		return core.Value{}, false
 	}
-	if !(a.Parent.ConformsTo(core.TMap) || a.Parent.Equal(core.TAny)) {
+	if !(a.Parent().ConformsTo(core.TMap) || a.Parent().Equal(core.TAny)) {
 		return core.Value{}, false
 	}
-	if pm, ok := p.Pattern.Data.(core.MapPayload); ok && pm.M != nil {
+	if pm, ok := p.Pattern.Data().(core.MapPayload); ok && pm.M != nil {
 		// A fresh, distinct ID per carrier: the bytecode compiler keys a
 		// param's frame-local slot by Value.ID (StartFnCompile →
 		// RegisterLocal). A struct-literal carrier left with the zero ID would
@@ -89,7 +89,7 @@ func recordReturnCarrier(t *core.Type, pat *core.Value) (core.Value, bool) {
 	if t == nil || pat == nil || !t.Equal(core.TMap) {
 		return core.Value{}, false
 	}
-	if pm, ok := pat.Data.(core.MapPayload); ok && pm.M != nil {
+	if pm, ok := pat.Data().(core.MapPayload); ok && pm.M != nil {
 		return core.NewDynamicRecordCarrier(pm.M), true
 	}
 	return core.Value{}, false
@@ -136,9 +136,9 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 	}
 	if !r.Check.Compiling && t.Equal(core.TMap) &&
 		returnPatternAt(pats, i) == nil && len(stk) >= declared {
-		if bv := stk[len(stk)-declared+i]; bv.Carrier &&
-			bv.Parent != nil && bv.Parent.ConformsTo(core.TMap) {
-			if _, isRec := bv.Data.(core.RecordTypeInfo); isRec {
+		if bv := stk[len(stk)-declared+i]; bv.Carrier() &&
+			bv.Parent() != nil && bv.Parent().ConformsTo(core.TMap) {
+			if _, isRec := bv.Data().(core.RecordTypeInfo); isRec {
 				sv := bv
 				core.SetID(&sv, core.GenerateID(core.IDPrefixForType(core.TMap)))
 				return sv, true
@@ -161,22 +161,22 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 // stays a plain (non-dynamic) typed carrier — the accessor makes the READ dynamic
 // (Part B), keeping the container's own dispatch (`m size`) unchanged.
 func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
-	if p.Pattern == nil || a.Parent == nil {
+	if p.Pattern == nil || a.Parent() == nil {
 		return core.Value{}, false
 	}
 	pat := *p.Pattern
 	ci, err := core.AsChildType(pat)
-	if err != nil || ci.Child.Parent == nil || ci.Child.Parent.Equal(core.TAny) {
+	if err != nil || ci.Child.Parent() == nil || ci.Child.Parent().Equal(core.TAny) {
 		return core.Value{}, false
 	}
-	if core.IsTypedMap(&pat) && (a.Parent.ConformsTo(core.TMap) || a.Parent.Equal(core.TAny)) {
+	if core.IsTypedMap(&pat) && (a.Parent().ConformsTo(core.TMap) || a.Parent().Equal(core.TAny)) {
 		v := core.NewTypedMap(ci.Child)
 		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TMap)))
-		v.Carrier = true
+		v.SetCarrier(true)
 		core.SetDynamic(&v, true) // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
 		return v, true
 	}
-	if core.IsTypedList(&pat) && (a.Parent.ConformsTo(core.TList) || a.Parent.Equal(core.TAny)) {
+	if core.IsTypedList(&pat) && (a.Parent().ConformsTo(core.TList) || a.Parent().Equal(core.TAny)) {
 		v := core.NewCarrierTypedListValue(ci.Child)
 		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TList)))
 		core.SetDynamic(&v, true)
@@ -195,11 +195,11 @@ func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 func ParamBodyCarrier(p core.FnParam) core.Value {
 	if p.Pattern != nil {
 		pat := *p.Pattern
-		if ci, err := core.AsChildType(pat); err == nil && ci.Child.Parent != nil && !ci.Child.Parent.Equal(core.TAny) {
+		if ci, err := core.AsChildType(pat); err == nil && ci.Child.Parent() != nil && !ci.Child.Parent().Equal(core.TAny) {
 			if core.IsTypedMap(&pat) {
 				v := core.NewTypedMap(ci.Child)
 				core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TMap)))
-				v.Carrier = true
+				v.SetCarrier(true)
 				core.SetDynamic(&v, true)
 				return v
 			}
@@ -227,10 +227,10 @@ func ParamBodyCarrier(p core.FnParam) core.Value {
 		if core.IsDisjunct(&pat) && (p.Type == nil || p.Type.Equal(core.TAny)) {
 			if di, err := core.AsDisjunct(pat); err == nil && len(di.Alternatives) > 0 {
 				dv := core.NewDisjunct(core.SimplifyDisjunctAlts(di.Alternatives))
-				dv.Carrier = true
-				if ndi, ok := dv.Data.(core.DisjunctInfo); ok {
+				dv.SetCarrier(true)
+				if ndi, ok := dv.Data().(core.DisjunctInfo); ok {
 					ndi.Declared = true
-					dv.Data = ndi
+					dv.SetData(ndi)
 				}
 				return dv
 			}
@@ -255,8 +255,8 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 			continue
 		}
 		switch {
-		case core.IsDynamic(&a) && pt != nil && !pt.Equal(core.TAny) && a.Parent != nil &&
-			!a.Parent.ConformsTo(pt):
+		case core.IsDynamic(&a) && pt != nil && !pt.Equal(core.TAny) && a.Parent() != nil &&
+			!a.Parent().ConformsTo(pt):
 			// A gradual arg whose bound is NOT already within the declared
 			// (concrete) param type: re-bind the body's view of the param to a
 			// dynamic carrier of the DECLARED type. The annotation is the
@@ -275,7 +275,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 			nc := core.NewCarrier(pt)
 			core.SetDynamic(&nc, true)
 			out[i] = nc
-		case !core.IsDynamic(&a) && a.Carrier && core.IsDisjunct(&a) && pt != nil && !pt.Equal(core.TAny):
+		case !core.IsDynamic(&a) && a.Carrier() && core.IsDisjunct(&a) && pt != nil && !pt.Equal(core.TAny):
 			// A strict DISJUNCT carrier — the checker's ∀-abstraction of an
 			// unresolved overload's returns — narrows to the declared param
 			// type by the same contract as the armed-compile genArgs twin:
@@ -288,7 +288,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 				out = append([]core.Value(nil), args...)
 			}
 			out[i] = core.NewCarrier(pt)
-		case !core.IsDynamic(&a) && pt != nil && pt.Equal(core.TAny) && a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(&a):
+		case !core.IsDynamic(&a) && pt != nil && pt.Equal(core.TAny) && a.Parent() != nil && a.Parent().Equal(core.TAny) && !core.IsBareTypeNode(&a):
 			// A STRICT Any arg bound to a declared-`Any` param. The param is
 			// gradual by declaration (ParamInputCarrier gives dynamic Any), so a
 			// body word over it must match optimistically — a strict Any conforms
@@ -316,7 +316,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 // the interpreter applies at runtime; see emit.go's cluster-E compile failure).
 func stackHasFnValue(stk []core.Value) bool {
 	for _, v := range stk {
-		if v.Parent != nil && v.Parent.ConformsTo(core.TFunction) {
+		if v.Parent() != nil && v.Parent().ConformsTo(core.TFunction) {
 			return true
 		}
 	}
@@ -346,7 +346,7 @@ func stackHasDynamic(stk []core.Value) bool {
 // stackHasDynamic), so only the approximation phantom lands here.
 func stackHasApproxAny(stk []core.Value) bool {
 	for _, v := range stk {
-		if v.Carrier && !core.IsDynamic(&v) && v.Parent != nil && v.Parent.Equal(core.TAny) {
+		if v.Carrier() && !core.IsDynamic(&v) && v.Parent() != nil && v.Parent().Equal(core.TAny) {
 			return true
 		}
 	}
@@ -564,7 +564,7 @@ func residualProvablyDisjoint(got core.Value, exp *core.Type) bool {
 		}
 		return true
 	}
-	p := got.Parent
+	p := got.Parent()
 	if p == nil || p.ConformsTo(exp) || exp.ConformsTo(p) {
 		return false
 	}
@@ -628,7 +628,7 @@ func membershipBeyondNominal(t *core.Type) bool {
 func quoteParamCarrierBind(sigParams []core.FnParam, args []core.Value) bool {
 	for i, p := range sigParams {
 		if (p.Quote || (p.Type != nil && p.Type.ConformsTo(core.TAtom))) &&
-			i < len(args) && args[i].Carrier {
+			i < len(args) && args[i].Carrier() {
 			return true
 		}
 	}

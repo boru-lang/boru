@@ -37,7 +37,7 @@ func fixSpliceArg(v core.Value) []core.Value {
 }
 
 func fixIsCodeBody(v core.Value) bool {
-	return v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(&v) && !core.IsTableType(v)
+	return v.Parent().Equal(core.TList) && v.Data() != nil && !core.IsTypedList(&v) && !core.IsTableType(v)
 }
 
 // fixIfMarkMoveTokens builds the lazy-condition token stream: mark +
@@ -77,7 +77,7 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 // KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
 func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
 	es, _ := r.Check.Recorder().(*compiler.EmitState)
-	if !es.Armed() || !core.IsConcrete(&cond) || !cond.Parent.ConformsTo(core.TList) {
+	if !es.Armed() || !core.IsConcrete(&cond) || !cond.Parent().ConformsTo(core.TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
@@ -143,7 +143,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			restore()
 			return frag, stk, defs, nil
 		}
-		if es.Recorder().Active() && !core.IsConcrete(&v) && v.Parent != nil && v.Parent.ConformsTo(core.TList) {
+		if es.Recorder().Active() && !core.IsConcrete(&v) && v.Parent() != nil && v.Parent().ConformsTo(core.TList) {
 			// A COMPUTED list arm is the interpreter's spliced code body;
 			// the fixture does not model it — decline the compile.
 			es.Recorder().MarkUncompilable("fixture if: computed list arm")
@@ -232,7 +232,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 
 	cv := args[0]
 	staticCount := int64(-1)
-	if core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TInteger) {
+	if core.IsConcrete(&cv) && cv.Parent().ConformsTo(core.TInteger) {
 		if n, err := core.AsInteger(cv); err == nil {
 			staticCount = n
 			if n <= 0 {
@@ -242,7 +242,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	}
 
 	startV, endV, stepV := core.NewInteger(0), cv, core.NewInteger(1)
-	lowerable := cv.Parent.ConformsTo(core.TInteger)
+	lowerable := cv.Parent().ConformsTo(core.TInteger)
 	if lowerable {
 		es.ArmLoopCapture()
 	}
@@ -254,7 +254,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		if core.IsDisjunct(&top) {
 			out = core.NewCarrierTypedListValue(top)
 		} else {
-			out = core.NewCarrierTypedList(top.Parent)
+			out = core.NewCarrierTypedList(top.Parent())
 		}
 	}
 	if lowerable {
@@ -334,7 +334,7 @@ func fixDoHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r 
 // the fixture's model — battery rows keep bodies infallible.
 func fixDoReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	body := args[0]
-	if !(core.IsConcrete(&body) && body.Parent.ConformsTo(core.TList)) {
+	if !(core.IsConcrete(&body) && body.Parent().ConformsTo(core.TList)) {
 		return []core.Value{core.NewDynamicCarrier(core.TAny)}
 	}
 	r.Check.CaughtBodyDepth++
@@ -473,7 +473,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	var startV, endV, stepV core.Value
 	lowerable, staticBounds := false, false
 	staticCount := int64(-1)
-	if cv := args[0]; core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TList) {
+	if cv := args[0]; core.IsConcrete(&cv) && cv.Parent().ConformsTo(core.TList) {
 		if lst, err := core.AsList(cv); err == nil && !lst.IsNil() {
 			elems := lst.Elems()
 			if st, en, sp, perr := fixParseRange(elems); perr == nil {
@@ -509,7 +509,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		if core.IsDisjunct(&top) {
 			out = core.NewCarrierTypedListValue(top)
 		} else {
-			out = core.NewCarrierTypedList(top.Parent)
+			out = core.NewCarrierTypedList(top.Parent())
 		}
 	}
 	if lowerable {
@@ -537,7 +537,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 // fixBakeFnHandler applies its fn argument to 7 — the runtime side of
 // the battery's stored-fn word.
 func fixBakeFnHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
-	info, ok := args[0].Data.(*core.FnDefInfo)
+	info, ok := args[0].Data().(*core.FnDefInfo)
 	if !ok || len(info.Signatures) == 0 {
 		return nil, &core.BoruError{Code: "type_error", Detail: "bakefnq: argument must be a fn"}
 	}
@@ -601,7 +601,7 @@ func fixEachHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, 
 func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	defer r.Check.Recorder().Suspend()()
 	body := args[0]
-	if !(core.IsConcrete(&body) && body.Parent.ConformsTo(core.TList)) {
+	if !(core.IsConcrete(&body) && body.Parent().ConformsTo(core.TList)) {
 		return []core.Value{core.NewCarrier(core.TList)}
 	}
 	bl, err := core.AsList(body)
@@ -613,7 +613,7 @@ func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	if len(stk) == 0 {
 		return []core.Value{core.NewCarrier(core.TList)}
 	}
-	return []core.Value{core.NewCarrierTypedList(stk[len(stk)-1].Parent)}
+	return []core.Value{core.NewCarrierTypedList(stk[len(stk)-1].Parent())}
 }
 
 // registerEngSpecHigherOrder installs eachq — the battery's

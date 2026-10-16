@@ -76,7 +76,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 	if IsWord(&v) {
 		return resolveWordValue(v, r)
 	}
-	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
+	if v.Parent().Equal(TList) && v.Data() != nil && !IsTypedList(&v) && !IsTableType(v) {
 		lst, _ := AsList(v)
 		elems := lst.Elems()
 		resolved := make([]Value, len(elems))
@@ -93,7 +93,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 	// the pinned `{a?:T}` ≡ `{a:(T tor None tor Absent)}` equality.
 	// The Data replacement keeps the Parent (Enum subtypes) and every
 	// other field intact.
-	if d, ok := v.Data.(DisjunctInfo); ok && v.Parent.ConformsTo(TDisjunct) {
+	if d, ok := v.Data().(DisjunctInfo); ok && v.Parent().ConformsTo(TDisjunct) {
 		changed := false
 		alts := make([]Value, len(d.Alternatives))
 		for i, a := range d.Alternatives {
@@ -140,7 +140,7 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 		}
 		return NewTypedMapWithEntries(child, entries)
 	}
-	if v.Parent.Equal(TMap) && v.Data != nil && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v) {
+	if v.Parent().Equal(TMap) && v.Data() != nil && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v) {
 		m, _ := AsMap(v)
 		result := NewOrderedMap()
 		for _, key := range m.Keys() {

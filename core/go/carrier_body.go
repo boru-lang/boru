@@ -102,7 +102,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 // runCarrierBody is the one body runner; residue is the ArmBody run's
 // Engine.armResidue (none for a kept or condition run).
 func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, adds map[string]Value, residue PendingResidue) {
-	if body.Data == nil {
+	if body.Data() == nil {
 		return nil, nil, residue
 	}
 	elems, err := AsList(body)

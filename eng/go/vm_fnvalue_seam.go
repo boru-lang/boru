@@ -54,7 +54,7 @@ import (
 //     that had printed did not print twice; nothing re-runs now, so the bail
 //     is the compiler defect it is and it surfaces either way.
 func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
-	fd, ok := body.Data.(*core.FnDefInfo)
+	fd, ok := body.Data().(*core.FnDefInfo)
 	if !ok || core.IsQuoted(&body) {
 		return nil, nil, false
 	}
@@ -141,7 +141,7 @@ func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body *core.Value, 
 		return nil, nil, false
 	}
 	p := vc.p
-	if fp, foreign := vc.closureProgram(cl); foreign {
+	if fp, foreign := vc.closureProgram(&cl); foreign {
 		p = fp
 	}
 	args := make([]core.Value, len(inputs))
@@ -182,7 +182,7 @@ func deliverArgs(args []core.Value) []core.Value {
 	out := make([]core.Value, len(args))
 	for i, a := range args {
 		core.ClearAscribed(&a)
-		if a.Parent.Equal(core.TList) && !core.IsQuoted(&a) {
+		if a.Parent().Equal(core.TList) && !core.IsQuoted(&a) {
 			core.SetQuoted(&a, true)
 		}
 		out[i] = a

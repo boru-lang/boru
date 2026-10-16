@@ -16,9 +16,9 @@ func TestS8CloneObject(t *testing.T) {
 	inst := core.NewClassInstance(core.TClass, core.ClassInstanceInfo{TypeRef: tref, Fields: fields})
 
 	cl := core.CloneValue(inst)
-	ci, ok := cl.Data.(core.ClassInstanceInfo)
+	ci, ok := cl.Data().(core.ClassInstanceInfo)
 	if !ok {
-		t.Fatalf("clone Data = %T, want ClassInstanceInfo", cl.Data)
+		t.Fatalf("clone Data = %T, want ClassInstanceInfo", cl.Data())
 	}
 	if ci.TypeRef != tref {
 		t.Error("cloneObject should share the immutable TypeRef descriptor")
@@ -34,7 +34,7 @@ func TestS8CloneObject(t *testing.T) {
 
 	// nil-Fields arm: cloneObject leaves Fields nil rather than allocating.
 	empty := core.CloneValue(core.NewClassInstance(core.TClass, core.ClassInstanceInfo{TypeRef: tref}))
-	if ec, _ := empty.Data.(core.ClassInstanceInfo); ec.Fields != nil {
+	if ec, _ := empty.Data().(core.ClassInstanceInfo); ec.Fields != nil {
 		t.Error("cloneObject with nil Fields should keep Fields nil")
 	}
 }

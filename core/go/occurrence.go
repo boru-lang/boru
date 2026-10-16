@@ -364,8 +364,8 @@ func IDOf(v *Value) string {
 		}
 		return v.occ.id
 	}
-	if v.tmeta != nil {
-		return v.tmeta.id
+	if v.body().tmeta != nil {
+		return v.body().tmeta.id
 	}
 	return ""
 }
@@ -380,8 +380,8 @@ func SetID(v *Value, id string) {
 		return
 	}
 	own := ""
-	if v.tmeta != nil {
-		own = v.tmeta.id
+	if v.body().tmeta != nil {
+		own = v.body().tmeta.id
 	}
 	rec := occOf(v)
 	switch {
@@ -435,10 +435,10 @@ func FnNameOf(v *Value) string {
 	if v.occ != nil && v.occ.name != "" {
 		return v.occ.name
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case *FnDefInfo:
 		return d.Name
-	case ClosurePayload:
+	case *ClosurePayload:
 		return d.RetName
 	}
 	return ""

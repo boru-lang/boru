@@ -454,8 +454,8 @@ func TestSlicePreservesElementTypes(t *testing.T) {
 		t.Fatalf("expected 2 elements, got %d", len(got))
 	}
 	for i, elem := range got {
-		if !elem.Parent.ConformsTo(TInteger) {
-			t.Errorf("element %d: expected Integer, got %s (%q)", i, elem.Parent.String(), elem.String())
+		if !elem.Parent().ConformsTo(TInteger) {
+			t.Errorf("element %d: expected Integer, got %s (%q)", i, elem.Parent().String(), elem.String())
 		}
 	}
 	// Mixed scalar types round-trip unchanged.
@@ -466,8 +466,8 @@ func TestSlicePreservesElementTypes(t *testing.T) {
 	}
 	_ml, _ := AsList(mres[0])
 	ml := _ml.Slice()
-	if len(ml) != 3 || !ml[0].Parent.ConformsTo(TBoolean) ||
-		!ml[1].Parent.ConformsTo(TString) || !ml[2].Parent.ConformsTo(TFloat) {
+	if len(ml) != 3 || !ml[0].Parent().ConformsTo(TBoolean) ||
+		!ml[1].Parent().ConformsTo(TString) || !ml[2].Parent().ConformsTo(TFloat) {
 		t.Errorf("mixed slice did not preserve types: %v", ml)
 	}
 	// Negative/contrast: a string slice still yields a string (not a list).
@@ -475,8 +475,8 @@ func TestSlicePreservesElementTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sres[0].Parent.ConformsTo(TString) {
-		t.Errorf("string slice should stay a string, got %s", sres[0].Parent.String())
+	if !sres[0].Parent().ConformsTo(TString) {
+		t.Errorf("string slice should stay a string, got %s", sres[0].Parent().String())
 	}
 }
 
@@ -705,7 +705,7 @@ func TestFilterHandler(t *testing.T) {
 	}
 	// All items should pass the filter (fn always returns true).
 	// voxgigstruct.Filter on a map may return a map or list; just check non-nil.
-	if result[0].Parent.Equal(TList) {
+	if result[0].Parent().Equal(TList) {
 		_lst, _ := AsList(result[0])
 		list := _lst.Slice()
 		if len(list) != 2 {

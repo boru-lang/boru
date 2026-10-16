@@ -294,9 +294,8 @@ type ExtensionPayload struct{ Body any }
 // through ExtensionPayload rather than dedicated kernel variants.
 func NewExtension(t *Type, body any) Value {
 	return Value{
-		Parent: t,
-		Data:   ExtensionPayload{Body: body},
-		occ:    idOcc(GenerateID(IDPrefixForType(t))),
+		d:   &Datum{Parent: t, Data: ExtensionPayload{Body: body}},
+		occ: idOcc(GenerateID(IDPrefixForType(t))),
 	}
 }
 
@@ -370,10 +369,13 @@ func (NonePayload) payloadMarker()         {}
 func (ExtensionPayload) payloadMarker()    {}
 
 // Direct eng-defined struct markers.
-func (WordInfo) payloadMarker()             {}
-func (ForwardInfo) payloadMarker()          {}
-func (MarkInfo) payloadMarker()             {}
-func (MoveInfo) payloadMarker()             {}
+func (WordInfo) payloadMarker() {}
+
+// The engine markers below are held by pointer, allocated with their datum
+// (newCoDatum): a by-value one is not a Payload, so it cannot be boxed.
+func (*ForwardInfo) payloadMarker()         {}
+func (*MarkInfo) payloadMarker()            {}
+func (*MoveInfo) payloadMarker()            {}
 func (SpliceInfo) payloadMarker()           {}
 func (SugarInfo) payloadMarker()            {}
 func (ReturnCheckInfo) payloadMarker()      {}
@@ -486,7 +488,8 @@ type StoreShapeInfo struct {
 	DeclaredVal *Type
 }
 
-// ClosurePayload is a runtime fn VALUE backed by a compiled body unit:
+// ClosurePayload is a runtime fn VALUE backed by a compiled body unit (held
+// by pointer, allocated with its datum: NewClosureValue):
 // OpPushClosure pushes one, and a higher-order word's native handler invokes
 // it through the VM's re-entrant runner (via the InvokeBody seam) — never the
 // interpreter (plan P2). Unit indexes Program.Fns; Captures are the
@@ -495,7 +498,6 @@ type StoreShapeInfo struct {
 // unit's input convention (copied from CompiledFn at OpPushClosure) so the
 // driving handler shapes each input correctly.
 type ClosurePayload struct {
-	PayloadBase
 	// Prog is the PROGRAM Unit indexes, held opaquely: core sits below
 	// compiler, so it boxes a *compiler.Program the same way BoruImpl.Compiled
 	// boxes a *CompiledFnRef. It is load-bearing rather than bookkeeping — a
@@ -575,13 +577,20 @@ type ClosurePayload struct {
 	Named bool
 }
 
+// A closure payload is held by pointer, allocated with its datum
+// (NewClosureValue): a by-value one is not a Payload.
+func (*ClosurePayload) payloadMarker() {}
+
+// IsTypeContent: a closure is never type content.
+func (*ClosurePayload) IsTypeContent(*Type) bool { return false }
+
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a
 // carrier of t (TStore, TFlexMap, …) whose Data is a FRESH
 // *StoreShapeInfo. One mint per creation site / live layer — sharing
 // the returned Value shares the shape (that is the aliasing model).
 func NewStoreShapeCarrier(t *Type, scope int) Value {
 	v := NewCarrier(t)
-	v.Data = &StoreShapeInfo{Scope: scope}
+	v.SetData(&StoreShapeInfo{Scope: scope})
 	return v
 }
 

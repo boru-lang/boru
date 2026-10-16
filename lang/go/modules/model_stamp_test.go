@@ -66,7 +66,7 @@ func TestModelActionStampsAtBuild(t *testing.T) {
 	}
 	for _, key := range []string{"gen", "named"} {
 		fnV, _ := am.Get(key)
-		fd, isFn := native.FnDefOf(fnV.Data)
+		fd, isFn := native.FnDefOf(fnV.Data())
 		if !isFn {
 			t.Fatalf("spec action %q is not a fn value: %v", key, fnV)
 		}

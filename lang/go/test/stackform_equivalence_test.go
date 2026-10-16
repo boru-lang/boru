@@ -93,7 +93,7 @@ func stacksEqual(a, b []core.Value) bool {
 }
 
 func isFn(v core.Value) bool {
-	return v.Parent != nil && v.Parent.Equal(core.TFunction)
+	return v.Parent() != nil && v.Parent().Equal(core.TFunction)
 }
 
 // fnValuesEqual compares two Function values for round-trip purposes.
@@ -123,9 +123,9 @@ func fnValuesEqual(a, b core.Value) bool {
 }
 
 func stripFnHome(v core.Value) core.Value {
-	if fd, ok := core.FnDefCopy(v.Data); ok {
+	if fd, ok := core.FnDefCopy(v.Data()); ok {
 		fd.Registry = nil
-		v.Data = &fd
+		v.SetData(&fd)
 	}
 	return v
 }

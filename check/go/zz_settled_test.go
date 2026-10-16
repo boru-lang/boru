@@ -14,14 +14,14 @@ import (
 // instead yield a valid, non-nil-Parent carrier.
 func TestS6aJoinCarriersNoneArm(t *testing.T) {
 	none := core.NewTypeLiteral(core.TNone)
-	if none.Parent != nil {
-		t.Fatalf("precondition: None literal has a nil Parent, got %v", none.Parent)
+	if none.Parent() != nil {
+		t.Fatalf("precondition: None literal has a nil Parent, got %v", none.Parent())
 	}
 
 	// value-vs-None: Integer|None union, a valid disjunct carrier (never a
 	// Parent-less carrier).
 	got := core.JoinCarriersInner(core.NewInteger(99), none)
-	if got.Parent == nil {
+	if got.Parent() == nil {
 		t.Fatalf("value-vs-None join must not produce a nil-Parent carrier: %+v", got)
 	}
 	if !core.IsDisjunct(&got) {
@@ -29,13 +29,13 @@ func TestS6aJoinCarriersNoneArm(t *testing.T) {
 	}
 
 	// None-vs-value is symmetric.
-	if g2 := core.JoinCarriersInner(none, core.NewInteger(99)); g2.Parent == nil {
+	if g2 := core.JoinCarriersInner(none, core.NewInteger(99)); g2.Parent() == nil {
 		t.Fatalf("None-vs-value join must not produce a nil-Parent carrier: %+v", g2)
 	}
 
 	// both-None collapses to a proper (non-nil-Parent) None carrier.
 	both := core.JoinCarriersInner(none, core.NewTypeLiteral(core.TNone))
-	if both.Parent == nil || !both.Parent.Equal(core.TNone) || !both.Carrier {
+	if both.Parent() == nil || !both.Parent().Equal(core.TNone) || !both.Carrier() {
 		t.Errorf("None joined with None should be a None carrier, got %+v", both)
 	}
 }

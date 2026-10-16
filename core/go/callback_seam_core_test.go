@@ -19,17 +19,17 @@ func TestInvokeCallbackBodyStampsRetTrim(t *testing.T) {
 		seen = append(seen, body)
 		return nil, nil
 	}
-	stored := Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}}
+	stored := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Unit: 3}}}
 	if _, err := InvokeCallbackBody(r, stored, nil); err != nil {
 		t.Fatalf("invoke: %v", err)
 	}
-	if cl, ok := seen[0].Data.(ClosurePayload); !ok || !IsRetTrim(&seen[0]) || cl.Unit != 3 {
+	if cl, ok := seen[0].Data().(*ClosurePayload); !ok || !IsRetTrim(&seen[0]) || cl.Unit != 3 {
 		t.Errorf("the seam stamps RetTrim on the value it hands over: %+v", seen[0])
 	}
 	if IsRetTrim(&stored) {
 		t.Error("the stored closure is never stamped")
 	}
-	trimmed := Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}}
+	trimmed := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Unit: 3}}}
 	SetRetTrim(&trimmed, true)
 	list := NewList([]Value{NewWord("dup")})
 	for _, body := range []Value{trimmed, list} {
@@ -37,12 +37,12 @@ func TestInvokeCallbackBodyStampsRetTrim(t *testing.T) {
 			t.Fatalf("invoke: %v", err)
 		}
 	}
-	if cl := seen[1].Data.(ClosurePayload); !IsRetTrim(&seen[1]) || cl.Unit != 3 || IDOf(&seen[2]) != IDOf(&list) {
+	if cl := seen[1].Data().(*ClosurePayload); !IsRetTrim(&seen[1]) || cl.Unit != 3 || IDOf(&seen[2]) != IDOf(&list) {
 		t.Error("an already-trimmed closure and a token body pass through unchanged")
 	}
 	// A closure whose signature the handing seam matched keeps that mark
 	// across the fn-VALUE seam (a map arm's KeyVal over a capturing lambda).
-	matched := ClosureSigMatched(Value{Parent: TFunction, Data: ClosurePayload{Unit: 4}})
+	matched := ClosureSigMatched(Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Unit: 4}}})
 	if _, err := InvokeCallbackBody(r, matched, nil); err != nil {
 		t.Fatalf("invoke: %v", err)
 	}

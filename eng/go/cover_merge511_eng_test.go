@@ -19,7 +19,7 @@ func TestBindRootReadArms(t *testing.T) {
 	r := seam7Reg(t)
 	p := &compiler.Program{}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	bad := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 3, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
+	bad := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 3, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
 	undo := vc.bindRootRead(r, true, "zzj", bad)
 	if r.Defs.Has("zzj") {
 		t.Fatal("a closure naming no unit installs nothing")
@@ -32,7 +32,7 @@ func TestBindRootReadArms(t *testing.T) {
 	}
 	r.Defs.Push("zzj", core.NewInteger(7)) // the island's own `def zzj 7`
 	undo()
-	if top, ok := r.Defs.Top("zzj"); !ok || !top.Parent.ConformsTo(core.TInteger) {
+	if top, ok := r.Defs.Top("zzj"); !ok || !top.Parent().ConformsTo(core.TInteger) {
 		t.Errorf("the island's own binding must survive the undo, got %v", top)
 	}
 }
@@ -62,7 +62,7 @@ func TestCallDynMethodWrapperOverRaisingClosure(t *testing.T) {
 			Code: []compiler.Instr{{Op: compiler.OpTrap, Arg: 0}}, Debug: []core.SrcPos{{}}}},
 	}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
 	wrapper := core.NewFunction(core.FnDefInfo{Name: "w", Wraps: &cl, Signatures: []core.Signature{{
 		Params: []core.FnParam{{Name: "x", Type: core.TInteger}}, Args: []*core.Type{core.TInteger}, BarrierPos: 1,
 		Impl: core.Boru([]core.Value{core.NewWord("x")}),

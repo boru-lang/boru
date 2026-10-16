@@ -1,11 +1,12 @@
 // vetcopies: the vet tool behind the no-copy ratchet (design/VALUE-NO-COPY.0.md,
 // phase 0). It runs two analyzers under `go vet -vettool`:
 //
-//   - copylocks, go vet's own: core.Value carries a zero-size noCopy marker
-//     with Lock and Unlock methods, so the analyzer reports every by-value
-//     copy of a single Value — each argument, parameter, receiver,
-//     assignment, return, range variable and composite literal.
-//   - bulkcopy (bulkcopy.go): the element copies of a []core.Value that
+//   - copylocks, go vet's own: core.Datum — what a core.Value handle refers
+//     to — carries a zero-size noCopy marker with Lock and Unlock methods,
+//     so the analyzer reports every by-value copy of a single Datum — each
+//     argument, parameter, receiver, assignment, return, range variable and
+//     composite literal.
+//   - bulkcopy (bulkcopy.go): the element copies of a []core.Datum that
 //     copylocks cannot see, through the built-in copy and an append whose
 //     source is spread with "...".
 //   - fnvaralias (fnvaralias.go): a function variable aliasing a function

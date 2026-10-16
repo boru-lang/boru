@@ -1035,14 +1035,14 @@ const (
 // it reads as whichever program is running, which is only ever right for a
 // value that is inspected rather than invoked.
 func NewClosure(prog *Program, unit int, captures []core.Value) core.Value {
-	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()}}
+	return core.NewClosureValue(core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()})
 }
 
 // ClosureWantsKeyVal reports whether v is a compiled closure whose body expects
 // a map entry presented as a KeyVal (the map-iteration lambda convention), so a
 // map-iteration handler wraps the entry rather than passing the bare value.
 func ClosureWantsKeyVal(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	return ok && cl.InShape == ClosureInKeyVal
 }
 
@@ -1060,7 +1060,7 @@ func UnitIsFnValue(fn *CompiledFn) bool {
 // ANONYMOUS fn value (`afn` / `=>`): the interpreter parks such a value,
 // unapplied, where nothing supplies an argument (ADR-016's gate); a named
 // one — a `fn` literal, cl.Named — calls (NUR321).
-func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
+func ClosureIsAnonymous(fn *CompiledFn, cl *core.ClosurePayload) bool {
 	return fn != nil && fn.Lambda && !cl.Named
 }
 
@@ -1069,7 +1069,7 @@ func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
 // takes no argument — its only call form is nullary, and a name always
 // calls (NUR321). An anonymous value, or one that needs arguments, parks.
 func ClosureCallsAtLanding(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok || !cl.Named {
 		return false
 	}
@@ -1084,7 +1084,7 @@ func ClosureCallsAtLanding(v core.Value) bool {
 // whose unit takes an argument: a landing over values beneath it is where
 // the interpreter's re-step could apply it over them (LandingBeneathGuard).
 func ClosureTakesArgs(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok || !ClosureIsFnValue(&v) {
 		return false
 	}
@@ -1101,7 +1101,7 @@ func ClosureTakesArgs(v core.Value) bool {
 // like a callback body unit (S1b-2). A closure minted by a program the
 // running one cannot name reads as data here, as it does to the bridge.
 func ClosureIsFnValue(v *core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
+	cl, ok := v.Data().(*core.ClosurePayload)
 	if !ok || cl.InShape != ClosureInValue {
 		return false
 	}
@@ -1118,7 +1118,7 @@ func ClosureIsFnValue(v *core.Value) bool {
 // differently from a plain code body (e.g. map iteration hands a lambda a
 // KeyVal but a body the value) must discriminate on this.
 func IsCompiledClosure(v core.Value) bool {
-	_, ok := v.Data.(core.ClosurePayload)
+	_, ok := v.Data().(*core.ClosurePayload)
 	return ok
 }
 
@@ -2611,7 +2611,7 @@ func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
 	if !bound {
 		return true
 	}
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case *core.FnDefInfo, *core.ClassTypeInfo:
 		if !d.Ref {
 			return true
@@ -2705,7 +2705,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		switch in.Op {
 		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope, OpForPublish:
 			c := p.Consts[in.Arg]
-			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
+			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent().Leaf())
 		case OpCallNative:
 			s := p.Sigs[in.Arg]
 			if s.Sig == nil {

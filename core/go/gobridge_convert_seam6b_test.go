@@ -21,13 +21,13 @@ func TestS6b5ToNativeEdges(t *testing.T) {
 	}
 
 	// Map-typed value with an unreadable payload: textual fallback.
-	badMap := Value{Parent: TMap, Data: ListPayload{}}
+	badMap := Value{d: &Datum{Parent: TMap, Data: ListPayload{}}}
 	if got := ToNative(badMap); got != "{}" {
 		t.Errorf("ToNative(bad map payload) = %v, want {}", got)
 	}
 
 	// List-typed value with an unreadable payload: textual fallback.
-	badList := Value{Parent: TList, Data: MapPayload{M: NewOrderedMap()}}
+	badList := Value{d: &Datum{Parent: TList, Data: MapPayload{M: NewOrderedMap()}}}
 	if got, ok := ToNative(badList).(string); !ok {
 		t.Errorf("ToNative(bad list payload) = %v, want a string fallback", got)
 	}
@@ -81,8 +81,8 @@ func TestS6b5FromNativeEdges(t *testing.T) {
 
 func TestS6b5FloatToValueNonFinite(t *testing.T) {
 	got := floatToValue(math.NaN())
-	if got.Parent == nil || !got.Parent.Equal(TFloat) {
-		t.Errorf("floatToValue(NaN) parent = %v, want Float", got.Parent)
+	if got.Parent() == nil || !got.Parent().Equal(TFloat) {
+		t.Errorf("floatToValue(NaN) parent = %v, want Float", got.Parent())
 	}
 	f, err := AsFloat(got)
 	if err != nil || !math.IsNaN(f) {
@@ -104,7 +104,7 @@ func (s6b5DeclineConverter) ToMap(Value) (Value, error)  { return Value{}, ErrNo
 func (s6b5DeclineConverter) ToList(Value) (Value, error) { return Value{}, ErrNoConverter }
 
 func TestS6b5ConvertIdealDecliningBehaviorWalks(t *testing.T) {
-	child := &Type{tmeta: &typeMeta{Name: "S6b5Declineon", Behavior: s6b5DeclineConverter{}}, Parent: TIdeal}
+	child := &Type{d: &Datum{tmeta: &typeMeta{Name: "S6b5Declineon", Behavior: s6b5DeclineConverter{}}, Parent: TIdeal}}
 	v := NewValueRaw(child, IntPayload{N: 1})
 
 	m, err := ConvertIdealToMap(v)
@@ -206,13 +206,13 @@ func (s6b5DeclineNodifier) Nodify(Value) (Value, error) { return Value{}, ErrNoN
 func TestS6b5NodifyValueEdges(t *testing.T) {
 	// nil Parent: identity.
 	out, err := NodifyValue(Value{})
-	if err != nil || out.Parent != nil {
+	if err != nil || out.Parent() != nil {
 		t.Errorf("NodifyValue(zero) = %v (%v), want identity", out, err)
 	}
 
 	// A declining Nodifier on the chain: the walk continues and, with no
 	// other Nodifier registered, returns the value unchanged.
-	typ := &Type{tmeta: &typeMeta{Name: "S6b5Nodon", Behavior: s6b5DeclineNodifier{}}}
+	typ := &Type{d: &Datum{tmeta: &typeMeta{Name: "S6b5Nodon", Behavior: s6b5DeclineNodifier{}}}}
 	v := NewValueRaw(typ, IntPayload{N: 4})
 	out, err = NodifyValue(v)
 	if err != nil {

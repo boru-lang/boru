@@ -22,7 +22,7 @@ func TestFreshResidual(t *testing.T) {
 			t.Errorf("value %d must carry a fresh, non-empty ID (memo %q, got %q)", i, core.IDOf(&memo[i]), core.IDOf(&got[i]))
 		}
 	}
-	if !got[0].Carrier || !core.IsDynamic(&got[0]) || !got[0].Parent.Equal(core.TInteger) {
+	if !got[0].Carrier() || !core.IsDynamic(&got[0]) || !got[0].Parent().Equal(core.TInteger) {
 		t.Errorf("a carrier keeps its type and flags, got %#v", got[0])
 	}
 	if n, err := core.AsInteger(got[1]); err != nil || n != 7 {

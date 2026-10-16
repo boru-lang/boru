@@ -60,7 +60,7 @@ func s6b5MustEmailon(t *testing.T, s string) Value {
 func TestS6b5MakeEmailonUrlonIponBadMapPayload(t *testing.T) {
 	// Parent says Map and the value is "concrete", but the payload is not
 	// readable as a map: RequireConcreteMap's error must surface.
-	bad := Value{Parent: TMap, Data: ListPayload{}}
+	bad := ValueOf(&Datum{Parent: TMap, Data: ListPayload{}})
 	if _, err := makeEmailon(bad); err == nil {
 		t.Error("makeEmailon must fail on an unreadable map payload")
 	}
@@ -90,7 +90,7 @@ func TestS6b5MakeMicronUserEdges(t *testing.T) {
 	}
 
 	// Unreadable map payload: RequireConcreteMap's arm.
-	bad := Value{Parent: TMap, Data: ListPayload{}}
+	bad := ValueOf(&Datum{Parent: TMap, Data: ListPayload{}})
 	if _, err := makeMicronUser(MicronTypeInfo{Name: "S6b5on", Fields: NewOrderedMap()}, bad, r); err == nil {
 		t.Error("makeMicronUser must fail on an unreadable map payload")
 	}
@@ -100,7 +100,7 @@ func TestS6b5MakeMicronUserEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("makeMicronUser(empty schema): %v", err)
 	}
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(TMicron) {
+	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().Equal(TMicron) {
 		t.Errorf("nil info.Type must parent at TMicron, got %v", out)
 	}
 }
@@ -111,7 +111,7 @@ func TestS6b5CheckMicronConstructionUnreadableMap(t *testing.T) {
 	defer done()
 	// A map-typed source whose payload cannot be read as a map is
 	// value-dependent: the check-mode mirror must stay silent.
-	src := Value{Parent: TMap, Data: ListPayload{}}
+	src := ValueOf(&Datum{Parent: TMap, Data: ListPayload{}})
 	CheckMicronConstruction(r, NewTypeLiteral(TEmailon), src, SrcPos{})
 	if n := len(r.Check.Diagnostics); n != 0 {
 		t.Errorf("expected no diagnostics for an unreadable map source, got %d", n)
@@ -139,8 +139,8 @@ func TestS6b5MicronInstantiateNewtypeOfBuiltinLeaves(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("newtype-of-Pathon make: %v %v", out, err)
 	}
-	if out[0].Parent == nil || !out[0].Parent.Equal(pn) {
-		t.Errorf("newtype-of-Pathon result parent = %v, want the newtype", out[0].Parent)
+	if out[0].Parent() == nil || !out[0].Parent().Equal(pn) {
+		t.Errorf("newtype-of-Pathon result parent = %v, want the newtype", out[0].Parent())
 	}
 
 	// Newtype of Urlon.
@@ -149,8 +149,8 @@ func TestS6b5MicronInstantiateNewtypeOfBuiltinLeaves(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("newtype-of-Urlon make: %v %v", out, err)
 	}
-	if out[0].Parent == nil || !out[0].Parent.Equal(un) {
-		t.Errorf("newtype-of-Urlon result parent = %v, want the newtype", out[0].Parent)
+	if out[0].Parent() == nil || !out[0].Parent().Equal(un) {
+		t.Errorf("newtype-of-Urlon result parent = %v, want the newtype", out[0].Parent())
 	}
 }
 
@@ -173,8 +173,8 @@ func TestS6b5MicronInstantiateNewtypeOfUserKind(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("newtype-of-user-kind make: %v %v", out, err)
 	}
-	if out[0].Parent == nil || !out[0].Parent.Equal(newt) {
-		t.Errorf("newtype-of-user-kind result parent = %v, want the newtype", out[0].Parent)
+	if out[0].Parent() == nil || !out[0].Parent().Equal(newt) {
+		t.Errorf("newtype-of-user-kind result parent = %v, want the newtype", out[0].Parent())
 	}
 }
 
@@ -187,8 +187,8 @@ func TestS6b5MicronGrammarConstructorCompileFailureFallsToPathon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MicronFromString(a..b@x.com): %v", err)
 	}
-	if !v.Parent.ConformsTo(TPathon) {
-		t.Errorf("declined email literal should fall back to Pathon, got %s", v.Parent.String())
+	if !v.Parent().ConformsTo(TPathon) {
+		t.Errorf("declined email literal should fall back to Pathon, got %s", v.Parent().String())
 	}
 
 	// The Urlon gate matches but url.Parse declines (unclosed bracket).
@@ -196,8 +196,8 @@ func TestS6b5MicronGrammarConstructorCompileFailureFallsToPathon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MicronFromString(http://[::1): %v", err)
 	}
-	if !v.Parent.ConformsTo(TPathon) {
-		t.Errorf("declined url literal should fall back to Pathon, got %s", v.Parent.String())
+	if !v.Parent().ConformsTo(TPathon) {
+		t.Errorf("declined url literal should fall back to Pathon, got %s", v.Parent().String())
 	}
 }
 

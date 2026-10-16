@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // strictForwardBarrier is the forward-collection rule and the language
@@ -553,7 +554,7 @@ func (e *Engine) reorderHint(name string, fn *FnDefInfo) string {
 // pop-args, the return check) — which never stand for an argument a user
 // wrote. Shared by the two failing-tuple walks.
 func isEngineMarker(v Value) bool {
-	return v.Parent != nil && (v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) || v.Parent.ConformsTo(TInternal))
+	return v.Parent() != nil && (v.Parent().ConformsTo(TMark) || v.Parent().ConformsTo(TMove) || v.Parent().ConformsTo(TInternal))
 }
 
 // rematchWritten is the CHECK-TIME twin of sigError's written-tuple
@@ -578,7 +579,7 @@ func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
 		if IsWord(&v) || IsParenExpr(&v) || IsForward(&v) || IsOpenParen(&v) || IsEnd(&v) || isEngineMarker(v) {
 			break
 		}
-		if !IsConcrete(&v) && !v.Carrier {
+		if !IsConcrete(&v) && !v.Carrier() {
 			break
 		}
 		written = append(written, v)
@@ -694,7 +695,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 				return 0, false
 			}
 			if top, ok := e.Registry.Defs.Top(wi.Name); ok {
-				if _, isFn := top.Data.(*FnDefInfo); isFn {
+				if _, isFn := top.Data().(*FnDefInfo); isFn {
 					if wi.ForceVal {
 						// `/v`: the word denotes its REFERENCE value —
 						// one claimable datum, not a call (NUR050/G12).
@@ -730,7 +731,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 		if IsReachGroup(&v) && !IsQuoted(&v) && isFnDefValue(v) && e.ReachFnWouldClaim(v, i+1) {
 			break // a reach-collapsed named fn with a claim is the next CALL — a barrier (NUR038)
 		}
-		if IsConcrete(&v) || v.Carrier {
+		if IsConcrete(&v) || v.Carrier() {
 			n++
 			continue
 		}
@@ -742,7 +743,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 		if IsOpenParen(&v) || IsEnd(&v) {
 			break // dispatch never collects across a paren/statement boundary
 		}
-		if polyReachUnboundable(v) || IsWord(&v) || !(IsConcrete(&v) || v.Carrier) {
+		if polyReachUnboundable(v) || IsWord(&v) || !(IsConcrete(&v) || v.Carrier()) {
 			return 0, false // word/marker in the prefix: unboundable
 		}
 		n++
@@ -758,7 +759,7 @@ func (e *Engine) polyReachBound() (int, bool) {
 // them — screen them first (the reorderCandidates stop-set lesson).
 func polyReachUnboundable(v Value) bool {
 	return IsForward(&v) || IsReach(&v) || IsParenExpr(&v) || IsInterpString(&v) || IsSplice(&v) || IsSugar(&v) ||
-		v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) || v.Parent.ConformsTo(TInternal)
+		v.Parent().ConformsTo(TMark) || v.Parent().ConformsTo(TMove) || v.Parent().ConformsTo(TInternal)
 }
 
 // spec resolves the probe into a PolyNoMatchSpec against the recorded operand
@@ -996,7 +997,7 @@ func fnCourtesyDispatches(r *Registry, name string, fn *FnDefInfo) bool {
 	if !ok {
 		return false
 	}
-	if _, isFnDef := top.Data.(*FnDefInfo); !isFnDef {
+	if _, isFnDef := top.Data().(*FnDefInfo); !isFnDef {
 		return false
 	}
 	for i := range fn.Signatures {
@@ -1222,7 +1223,7 @@ func (e *Engine) IsFnShapeTypedBindingContext() bool {
 				constraint = tv
 			}
 		}
-		return constraint.Parent.Equal(TFnUndef)
+		return constraint.Parent().Equal(TFnUndef)
 	}
 	return false
 }
@@ -1373,7 +1374,7 @@ func (e *Engine) stampResultCells(start, n int, pos *position) {
 				rc.Pos = pos.SrcPos
 				e.Tape.Set(i, NewReturnCheck(rc))
 			}
-		case c.Parent.Equal(TFunction):
+		case c.Parent().Equal(TFunction):
 			setPosRef(c, pos)
 		}
 	}
@@ -1599,7 +1600,7 @@ func traceSigStr(name string, sig *Signature) string {
 func stampAtomReferents(r *Registry, t *Tape, from int) {
 	for i, n := 0, t.Len(); i < n; i++ {
 		c := t.Ref(i)
-		switch data := c.Data.(type) {
+		switch data := c.Data().(type) {
 		case AtomPayload:
 			if hasAtomReferent(c) {
 				continue
@@ -1614,7 +1615,7 @@ func stampAtomReferents(r *Registry, t *Tape, from int) {
 			// The cell's own payload is replaced; the array it held is the
 			// program's and stays as it was.
 			if elems := atomReferentsIn(r, data.Elems); elems != nil {
-				c.Data = ListPayload{Elems: elems}
+				c.SetData(ListPayload{Elems: elems})
 			}
 		}
 	}
@@ -1631,7 +1632,7 @@ func atomReferentsIn(r *Registry, elems []Value) []Value {
 	for i := range elems {
 		var bound *Value
 		var nested []Value
-		switch data := elems[i].Data.(type) {
+		switch data := elems[i].Data().(type) {
 		case AtomPayload:
 			if hasAtomReferent(&elems[i]) {
 				continue
@@ -1654,7 +1655,7 @@ func atomReferentsIn(r *Registry, elems []Value) []Value {
 		if bound != nil {
 			SetAtomReferent(&out[i], bound)
 		} else {
-			out[i].Data = ListPayload{Elems: nested}
+			out[i].SetData(ListPayload{Elems: nested})
 		}
 	}
 	return out
@@ -2104,7 +2105,7 @@ func (e *Engine) stepToken(val *Value) error {
 		e.Pointer++
 
 	default:
-		if val.Parent == nil && val.Behavior() == nil {
+		if val.Parent() == nil && val.Behavior() == nil {
 			return e.runtimeError("halt", fmt.Sprintf("undefined stack entry at position %d", e.Pointer), "", "")
 		}
 		return e.stepLiteral()
@@ -2759,8 +2760,8 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 	if groupSpan > 0 && len(guardToks) >= 2 {
 		nResults := e.Tape.Len() - lenBefore + groupSpan
 		if nResults == 1 && scanIdx < e.Tape.Len() {
-			if res := e.Tape.Ref(scanIdx); res.Carrier && res.Parent.ConformsTo(TBoolean) {
-				res.Data = GuardFactInfo{Toks: guardToks, Prev: res.Data}
+			if res := e.Tape.Ref(scanIdx); res.Carrier() && res.Parent().ConformsTo(TBoolean) {
+				res.SetData(GuardFactInfo{Toks: guardToks, Prev: res.Data()})
 			}
 		}
 	}
@@ -2845,7 +2846,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 	// signature to reverse. ResolveUsurp returns the raw binding in
 	// that case so the IsFunctionRef check below raises illegal_ref.
 	if !IsFunctionRef(v) {
-		detail := "/u requires a function word: " + w.Name + " is bound to " + v.Parent.String()
+		detail := "/u requires a function word: " + w.Name + " is bound to " + v.Parent().String()
 		if e.Registry != nil && e.Registry.analysisActive() {
 			e.Registry.noteAnalysisDiagnostic(CheckDiagnostic{
 				Code:   "illegal_ref",
@@ -3671,17 +3672,17 @@ func MixedFormStackSlotAny(e *Engine, sig *Signature, positions []int) bool {
 func ForwardLiteralOperand(t Value) bool {
 	if IsOpenParen(&t) || IsCloseParen(&t) || IsForward(&t) || IsEnd(&t) ||
 		IsDefCleanup(&t) || IsParenExpr(&t) ||
-		t.Parent.ConformsTo(TMark) || t.Parent.ConformsTo(TMove) ||
-		t.Parent.ConformsTo(TInternal) || t.Parent.ConformsTo(TReturnCheck) {
+		t.Parent().ConformsTo(TMark) || t.Parent().ConformsTo(TMove) ||
+		t.Parent().ConformsTo(TInternal) || t.Parent().ConformsTo(TReturnCheck) {
 		return false
 	}
 	if IsBareTypeNode(&t) {
 		return true
 	}
-	if !IsConcrete(&t) || t.Parent == nil {
+	if !IsConcrete(&t) || t.Parent() == nil {
 		return false
 	}
-	return t.Parent.ConformsTo(TScalar) || t.Parent.ConformsTo(TAtom)
+	return t.Parent().ConformsTo(TScalar) || t.Parent().ConformsTo(TAtom)
 }
 
 // ForwardOperandValue is the one value a forward-collecting word takes for
@@ -3839,8 +3840,8 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// OPEN-WORDS.1.md §9's match-time-only rule).
 		ClearAscribed(&match.Args[i])
 		if IsEval(&match.Args[i]) && !IsQuoted(&match.Args[i]) {
-			if match.Args[i].Parent.Equal(TMap) &&
-				match.Args[i].Data != nil && !IsTypedMap(&match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
+			if match.Args[i].Parent().Equal(TMap) &&
+				match.Args[i].Data() != nil && !IsTypedMap(&match.Args[i]) && !IsRecordType(match.Args[i]) && !IsOptionsType(match.Args[i]) {
 				// NoEvalMapArgs (separate from the list-only
 				// NoEvalArgs) suppresses map auto-evaluation at this
 				// slot. Used by def's typed-name sig so a Word at the
@@ -3858,8 +3859,8 @@ func (e *Engine) execMatch(match *MatchResult) error {
 					}
 					match.Args[i] = evaluated
 				}
-			} else if match.Args[i].Parent.Equal(TList) &&
-				match.Args[i].Data != nil && !IsTypedList(&match.Args[i]) && !IsTableType(match.Args[i]) {
+			} else if match.Args[i].Parent().Equal(TList) &&
+				match.Args[i].Data() != nil && !IsTypedList(&match.Args[i]) && !IsTableType(match.Args[i]) {
 				// NoEvalArgs suppresses list auto-evaluation for code-body
 				// positions (def body, if branches, for body, etc.).
 				noEval := match.Sig.NoEvalArgs != nil && match.Sig.NoEvalArgs[i]
@@ -4391,7 +4392,7 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 			// value (NUR276: `do (mk) end s size`).
 			continue
 		}
-		if fwdOnly && !v.Carrier && !IsDynamic(&v) {
+		if fwdOnly && !v.Carrier() && !IsDynamic(&v) {
 			continue
 		}
 		if IsFnValueResidual(v) || IsFnTypedCarrier(&v) || (IsDynamic(&v) && SigTypeMatches(&v, TFunction)) {
@@ -4511,7 +4512,7 @@ func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
 // re-ID replaces the value before it reaches the tape.
 func stampCallResultPositions(results []Value, pos SrcPos) {
 	for i := range results {
-		if p := results[i].Parent; p != nil &&
+		if p := results[i].Parent(); p != nil &&
 			(p.Equal(TFunction) || (IsDynamic(&results[i]) && p.Equal(TAny))) {
 			results[i] = WithPosAt(results[i], pos)
 		}
@@ -4671,9 +4672,32 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 // forward-collection completion points where the word must re-dispatch
 // against the stack; callers set e.pointer themselves as needed.
 func (e *Engine) forceStackWord(idx int, w WordInfo) {
-	nw := NewWordModified(w.Name, w.ArgCount, true, false)
+	nw := sharedValue(forcedStackWordDatum(w.Name, w.ArgCount))
 	setPosRef(&nw, posOf(e.Tape.Ref(idx))) // the rewritten word keeps the cell's position
 	e.Tape.Set(idx, nw)
+}
+
+// forcedStackWords holds the datum of each forced-stack word forceStackWord
+// has written (forcedWordKey → *Datum): the rewrite every forward dispatch
+// makes of its word, the same word for every call of one name and arity, so
+// one datum serves them all (a datum is never written once shared).
+var forcedStackWords sync.Map
+
+type forcedWordKey struct {
+	name     string
+	argCount int
+}
+
+// forcedStackWordDatum is the shared datum of name forced to the stack with
+// argCount args, minted the first time it is asked for.
+func forcedStackWordDatum(name string, argCount int) *Datum {
+	k := forcedWordKey{name, argCount}
+	if d, ok := forcedStackWords.Load(k); ok {
+		return d.(*Datum)
+	}
+	nw := NewWordModified(name, argCount, true, false)
+	d, _ := forcedStackWords.LoadOrStore(k, nw.d)
+	return d.(*Datum)
 }
 
 func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackArgs, specAt int) error {
@@ -4798,7 +4822,7 @@ func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 // (ReadList.Elems): every caller reads them or copies them onto a tape or a
 // stack, never writes into them.
 func SpliceExpand(data Value) []Value {
-	if data.Parent.Equal(TList) && data.Data != nil && !IsTypedList(&data) && !IsTableType(data) {
+	if data.Parent().Equal(TList) && data.Data() != nil && !IsTypedList(&data) && !IsTableType(data) {
 		elems, _ := AsList(data)
 		return elems.Elems()
 	}
@@ -4922,8 +4946,8 @@ func (e *Engine) stepLiteral() error {
 			// poisoned.
 			if rec := e.Registry.analysisRecorder(); rec.Active() &&
 				!IsConcrete(&info.Data) && !IsBareTypeNode(&info.Data) &&
-				(IsDynamic(&info.Data) || info.Data.Parent == nil ||
-					TList.ConformsTo(info.Data.Parent) || info.Data.Parent.ConformsTo(TList)) {
+				(IsDynamic(&info.Data) || info.Data.Parent() == nil ||
+					TList.ConformsTo(info.Data.Parent()) || info.Data.Parent().ConformsTo(TList)) {
 				// COMPILE FAILURE-CLOSURE §9.2b: record the spread as an OpSpliceDyn
 				// event over the payload operand — the VM spreads a DATA
 				// payload exactly as the marker re-step (spliceExpand) and
@@ -4970,7 +4994,7 @@ func (e *Engine) stepLiteral() error {
 			// and the residual layout applies it (resolveDynamicApply):
 			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR277).
 			if valIdx > 0 {
-				if prev := e.Tape.Ref(valIdx - 1); !IsQuoted(prev) && (IsDynamic(prev) || prev.Carrier) {
+				if prev := e.Tape.Ref(valIdx - 1); !IsQuoted(prev) && (IsDynamic(prev) || prev.Carrier()) {
 					SetQuoted(prev, true)
 					// And note the delivery as the peek notes the concrete
 					// value's (NUR280): a code body whose top is this read
@@ -5025,16 +5049,16 @@ func (e *Engine) stepLiteral() error {
 		// If the value is a Function, execute it. Quoted function
 		// values are treated as data (not executed).
 		val := e.Tape.At(valIdx)
-		if val.Parent.Equal(TFunction) &&
-			val.Data != nil && !IsQuoted(&val) {
-			if _, ok := val.Data.(*FnDefInfo); ok {
+		if val.Parent().Equal(TFunction) &&
+			val.Data() != nil && !IsQuoted(&val) {
+			if _, ok := val.Data().(*FnDefInfo); ok {
 				return e.execFnDefLiteral(valIdx)
 			}
 			// A compiled closure VALUE (an island's sub-engine re-stepping
 			// a shuffled `each` element, NUR124's payload axis) is the fn
 			// the interpreter would have minted here: execFnDefLiteral
 			// bridges it to a dispatchable FnDefInfo, or leaves it data.
-			if _, ok := val.Data.(ClosurePayload); ok {
+			if _, ok := val.Data().(*ClosurePayload); ok {
 				return e.execFnDefLiteral(valIdx)
 			}
 		}
@@ -5178,7 +5202,7 @@ func (e *Engine) stepLiteral() error {
 	} else {
 		// The marker's own cell takes the advanced payload: no new Value
 		// per arrival (nothing reads a forward marker's identity).
-		e.Tape.Ref(fwdIdx).Data = fwd
+		setCoPayload(e.Tape.Ref(fwdIdx), fwd)
 		e.Pointer = fwdIdx + 1
 	}
 
@@ -5222,7 +5246,7 @@ func (e *Engine) resolveConsumedInertTypeShape(match *MatchResult, i int) {
 func (e *Engine) resolveInertTypeShapeIn(slot *Value) bool {
 	switch {
 	case IsTypedList(slot) || IsTypedMap(slot):
-		ci := slot.Data.(ChildTypeInfo) // IsTypedList/IsTypedMap require it
+		ci := slot.Data().(ChildTypeInfo) // IsTypedList/IsTypedMap require it
 		rc := ResolveWordsDeepR(ci.Child, e.Registry)
 		if ExactEqual(rc, ci.Child) {
 			return false
@@ -5230,7 +5254,7 @@ func (e *Engine) resolveInertTypeShapeIn(slot *Value) bool {
 		// Elements/Entries and every other field survive — only the
 		// child constraint resolves.
 		ci.Child = rc
-		slot.Data = ci
+		slot.SetData(ci)
 		return true
 	case IsDisjunct(slot):
 		rv := ResolveWordsDeepR(*slot, e.Registry)
@@ -5239,7 +5263,7 @@ func (e *Engine) resolveInertTypeShapeIn(slot *Value) bool {
 		}
 		// The resolver rebuilds a disjunct's payload alone (its
 		// alternatives), keeping the header: the payload is all that moves.
-		slot.Data = rv.Data
+		slot.SetData(rv.Data())
 		return true
 	}
 	return false
@@ -5638,7 +5662,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 			return
 		}
 		if n := len(cren); n > 0 {
-			if sp, ok := cren[n-1].Data.(StrPayload); ok {
+			if sp, ok := cren[n-1].Data().(StrPayload); ok {
 				cren[n-1] = NewString(sp.S + s)
 				return
 			}
@@ -5666,7 +5690,7 @@ func (e *Engine) BuildXmlFromTmpl(t XmlTmpl) (Value, bool, []Value, bool, error)
 	// nested list element is kept as a single value, not flattened, the
 	// same as `append [..]` on a FlexXml); any other value is one child.
 	addChild := func(r Value) {
-		if IsConcrete(&r) && r.Parent.ConformsTo(TList) {
+		if IsConcrete(&r) && r.Parent().ConformsTo(TList) {
 			if rl, err := AsList(r); err == nil {
 				for i := 0; i < rl.Len(); i++ {
 					addOne(rl.Get(i))
@@ -5796,9 +5820,9 @@ func appendLoweredReach(out []Value, info ReachInfo) []Value {
 			segAnchor = seg.KeyLit
 		}
 		if seg.Getr {
-			out = append(out, WithPos(NewWord("dotr"), segAnchor))
+			out = append(out, WithPos(sharedValue(&dotrWordDatum), segAnchor))
 		} else {
-			out = append(out, WithPos(NewWord("dot"), segAnchor))
+			out = append(out, WithPos(sharedValue(&dotWordDatum), segAnchor))
 		}
 		if seg.Computed {
 			out = append(out, NewParenExpr(seg.KeyExpr))
@@ -5986,7 +6010,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 				return Value{}, fmt.Errorf("computed key [%s]: %w", key, err)
 			}
 			if len(keyResult) == 1 {
-				if keyResult[0].Parent.ConformsTo(TString) {
+				if keyResult[0].Parent().ConformsTo(TString) {
 					resolvedKey, _ = AsString(keyResult[0])
 				} else if IsAtom(keyResult[0]) {
 					resolvedKey, _ = AsAtom(keyResult[0])
@@ -6114,8 +6138,8 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// unresolvable / stateful / type-pattern element, so the map then falls back.
 		if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() && !e.containerEscaped() {
 			if es := e.Registry.analysisRecorder(); es.Armed() {
-				if lv, _ := out.Get(resolvedKey); lv.Parent.Equal(TList) && !IsInertConst(&lv) {
-					if lp, isList := lv.Data.(ListPayload); isList && es.RecordMakeListInner(e.Registry, lp.Elems, &lv, lv.Pos()) {
+				if lv, _ := out.Get(resolvedKey); lv.Parent().Equal(TList) && !IsInertConst(&lv) {
+					if lp, isList := lv.Data().(ListPayload); isList && es.RecordMakeListInner(e.Registry, lp.Elems, &lv, lv.Pos()) {
 						// The member is the assembly's result: the map under
 						// construction holds the holder the record stamped.
 						out.Set(resolvedKey, lv)
@@ -6283,7 +6307,7 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 // end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
 // containsCapturingFn does.
 func noteFoldedFnBodies(r *Registry, v Value) {
-	if fd, ok := v.Data.(*FnDefInfo); ok {
+	if fd, ok := v.Data().(*FnDefInfo); ok {
 		// In the registry it was WRITTEN in (FnHome), as the module-export
 		// queue does (NoteFnBodyPendingIn): a folded value can carry a fn
 		// another module minted — a seeded generator's method, whose delegate
@@ -6296,7 +6320,7 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 	if !IsConcrete(&v) {
 		return
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				val, _ := m.Get(k)
@@ -6305,7 +6329,7 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 		}
 		return
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			for i := 0; i < lst.Len(); i++ {
 				noteFoldedFnBodies(r, lst.Get(i))
@@ -6334,7 +6358,7 @@ func noteFoldedFnBodies(r *Registry, v Value) {
 // it must never ride into a binding or a container. Same one-shot
 // discipline as ReachGroup and the sealFnValue seal.
 func (e *Engine) takeAppliedMark(valIdx int, val Value) (Value, bool) {
-	if _, isFn := val.Data.(*FnDefInfo); !isFn || !IsApplied(&val) {
+	if _, isFn := val.Data().(*FnDefInfo); !isFn || !IsApplied(&val) {
 		return val, false
 	}
 	SetApplied(&val, false)
@@ -6788,14 +6812,14 @@ func sigParamsCorrespond(a, b []FnParam) bool {
 // are NOT user-visible literals — they're scaffolding around the
 // real data, and a stack-form recording wants only the data.
 func IsRecordableLiteral(v Value) bool {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return false
 	}
 	switch {
 	case IsForward(&v), IsOpenParen(&v), IsCloseParen(&v), IsEnd(&v):
 		return false
-	case v.Parent.ConformsTo(TMark), v.Parent.ConformsTo(TMove),
-		v.Parent.ConformsTo(TReturnCheck), v.Parent.ConformsTo(TInternal):
+	case v.Parent().ConformsTo(TMark), v.Parent().ConformsTo(TMove),
+		v.Parent().ConformsTo(TReturnCheck), v.Parent().ConformsTo(TInternal):
 		return false
 	}
 	return true
@@ -6957,8 +6981,8 @@ func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef, fn *FnDefInfo) bool {
 				}
 			}
 		}
-		if v.Carrier && v.Parent != nil && !IsBareTypeNode(&v) &&
-			(IsDynamic(&v) || v.Parent.Equal(TAny) || v.Parent.ConformsTo(TDisjunct)) {
+		if v.Carrier() && v.Parent() != nil && !IsBareTypeNode(&v) &&
+			(IsDynamic(&v) || v.Parent().Equal(TAny) || v.Parent().ConformsTo(TDisjunct)) {
 			return true
 		}
 	}
@@ -7068,8 +7092,8 @@ func stackParamMatches(sig *Signature, j int, v Value, p FnParam) bool {
 		return true
 	}
 	pat := *p.Pattern
-	if pat.Parent.Equal(TMap) && v.Parent.Equal(TMap) &&
-		pat.Data != nil && v.Data != nil &&
+	if pat.Parent().Equal(TMap) && v.Parent().Equal(TMap) &&
+		pat.Data() != nil && v.Data() != nil &&
 		!IsOptionsType(pat) {
 		return OpenUnifyMap(pat, v)
 	}
@@ -7207,7 +7231,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef *FnDefInfo, resolved [
 				// region: the enclosing `do` body models it (NUR134), and below
 				// the uncaught top level the compiled body unit raises it in
 				// place (a unit-scoped trap) instead of lowering the wreckage.
-				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !IsDynamic(fv)
+				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier() && !IsDynamic(fv)
 				if definite {
 					e.Registry.Check.NoteDefiniteRaise(e.Registry.Defs.Snapshot)
 				}
@@ -7402,7 +7426,7 @@ func uncalledDispatchDefinite(candidates []Value) bool {
 // keep applying through a finished run's invoker). Outside a VM run, or for
 // a unit the bridge cannot describe, the closure stays data (ok=false).
 func (e *Engine) fnDefAtPointer(val Value) (Value, *FnDefInfo, bool) {
-	if fnDef, ok := val.Data.(*FnDefInfo); ok {
+	if fnDef, ok := val.Data().(*FnDefInfo); ok {
 		// The definition as this holder presents it: the payload itself,
 		// read where it lives and never written — or, when a binding gave
 		// the holder another name (FnNameOf — a compiled frame's param, a
@@ -7420,7 +7444,7 @@ func (e *Engine) fnDefAtPointer(val Value) (Value, *FnDefInfo, bool) {
 		return val, nil, false
 	}
 	val = WithPos(bridged, val)
-	fnDef, ok := FnDefOf(val.Data)
+	fnDef, ok := FnDefOf(val.Data())
 	return val, fnDef, ok
 }
 
@@ -7542,8 +7566,8 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		// strips it — the fn body binds the REAL value.
 		ClearAscribed(&args[i])
 		if IsEval(&args[i]) && !IsQuoted(&args[i]) {
-			if args[i].Parent.Equal(TMap) &&
-				args[i].Data != nil && !IsTypedMap(&args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {
+			if args[i].Parent().Equal(TMap) &&
+				args[i].Data() != nil && !IsTypedMap(&args[i]) && !IsRecordType(args[i]) && !IsOptionsType(args[i]) {
 				noEval := sig.NoEvalMapArgs != nil && sig.NoEvalMapArgs[i]
 				if !noEval {
 					// This FnDef/module-wrapper path never dispatches the core `make`
@@ -7558,8 +7582,8 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 					}
 					args[i] = evaluated
 				}
-			} else if args[i].Parent.Equal(TList) &&
-				args[i].Data != nil && !IsTypedList(&args[i]) && !IsTableType(args[i]) {
+			} else if args[i].Parent().Equal(TList) &&
+				args[i].Data() != nil && !IsTypedList(&args[i]) && !IsTableType(args[i]) {
 				noEval := sig.NoEvalArgs != nil && sig.NoEvalArgs[i]
 				if !noEval {
 					// Bare words never degrade to data — propagate the
@@ -7597,7 +7621,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		var captures []CapturedBinding
 		var fnLabel string
 		if valIdx < e.Tape.Len() {
-			if fd, ok := e.Tape.Ref(valIdx).Data.(*FnDefInfo); ok {
+			if fd, ok := e.Tape.Ref(valIdx).Data().(*FnDefInfo); ok {
 				captures = fd.Captured
 				fnLabel = fd.Name
 			}
@@ -7707,7 +7731,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	// params shadow same-named captures (innermost wins).
 	var captures []CapturedBinding
 	if valIdx < e.Tape.Len() {
-		if fd, ok := e.Tape.Ref(valIdx).Data.(*FnDefInfo); ok {
+		if fd, ok := e.Tape.Ref(valIdx).Data().(*FnDefInfo); ok {
 			captures = fd.Captured
 		}
 	}
@@ -7839,7 +7863,7 @@ func (e *Engine) ReachFnWouldClaim(fnVal Value, idx int) bool {
 // call-vs-data decision, and a VM adapter that answered it differently would
 // diverge from the interpreter on exactly the shapes the census still holds.
 func ReachFnWouldClaimOn(win CollectWindow, reg *Registry, fnVal Value, idx int) bool {
-	fd, isFn := fnVal.Data.(*FnDefInfo)
+	fd, isFn := fnVal.Data().(*FnDefInfo)
 	if !isFn || !fnHasForwardSigPast(*fd, 0) {
 		return false
 	}
@@ -7872,7 +7896,7 @@ func ReachFnWouldClaimOn(win CollectWindow, reg *Registry, fnVal Value, idx int)
 // next token is tested against EVERY forward-eligible slot of each wider
 // sig, not just position `completed`.
 func (e *Engine) fnValueWouldWiden(fnVal Value, completed, idx int) bool {
-	fd, isFn := fnVal.Data.(*FnDefInfo)
+	fd, isFn := fnVal.Data().(*FnDefInfo)
 	if !isFn || !fnHasForwardSigPast(*fd, completed) {
 		// No overload is wider than the completed collection — nothing
 		// can widen, whatever the next token is. Checked BEFORE the
@@ -7951,7 +7975,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 		return
 	}
 	v := e.Tape.Ref(idx)
-	if fd, isFn := v.Data.(*FnDefInfo); isFn && fd.NamedDef() && !IsQuoted(v) {
+	if fd, isFn := v.Data().(*FnDefInfo); isFn && fd.NamedDef() && !IsQuoted(v) {
 		SetReachGroup(v, true)
 	}
 	// Under the check pass the survivor may be a CARRIER — fn-typed, the
@@ -8131,7 +8155,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 // skip leaves an unspendable credit that silently swallows the NEXT real
 // literal — design/FN-VALUE-OPEN-WORK.0.md §5.2.
 func fnValueDispatchesAtPointer(v Value) bool {
-	return v.Parent.Equal(TFunction) && isFnDefValue(v) && !IsQuoted(&v)
+	return v.Parent().Equal(TFunction) && isFnDefValue(v) && !IsQuoted(&v)
 }
 
 // FnValueDispatchesAtPointer is the main loop's own dispatch predicate, for
@@ -8143,8 +8167,8 @@ func FnValueDispatchesAtPointer(v Value) bool {
 	if fnValueDispatchesAtPointer(v) {
 		return true
 	}
-	_, closure := v.Data.(ClosurePayload)
-	return closure && v.Parent.Equal(TFunction) && !IsQuoted(&v)
+	_, closure := v.Data().(*ClosurePayload)
+	return closure && v.Parent().Equal(TFunction) && !IsQuoted(&v)
 }
 
 // noteFnResultReSteps is the check pass's RE-STEP note (NUR124). A native
@@ -8200,7 +8224,7 @@ func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Valu
 // than a structural marker, a dispatch modifier, or a value the pass has
 // already placed there (a carrier, or anything without a source position).
 func plainReStepToken(t Value) bool {
-	if t.Pos().Row == 0 || t.Carrier || IsDynamic(&t) {
+	if t.Pos().Row == 0 || t.Carrier() || IsDynamic(&t) {
 		return false
 	}
 	if _, mod := AsDispatchMod(t); mod {
@@ -8332,8 +8356,8 @@ func effectiveForwardLimit(sig *Signature, w WordInfo) int {
 func EffectiveForwardLimit(sig *Signature, w WordInfo) int { return effectiveForwardLimit(sig, w) }
 
 func scanBoundaryToken(tok *Value) bool {
-	if IsForward(tok) || tok.Parent.ConformsTo(TMark) || tok.Parent.ConformsTo(TMove) ||
-		tok.Parent.ConformsTo(TInternal) || tok.Parent.ConformsTo(TReturnCheck) {
+	if IsForward(tok) || tok.Parent().ConformsTo(TMark) || tok.Parent().ConformsTo(TMove) ||
+		tok.Parent().ConformsTo(TInternal) || tok.Parent().ConformsTo(TReturnCheck) {
 		return true
 	}
 	return IsEnd(tok) || IsCloseParen(tok)
@@ -8472,12 +8496,12 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		}
 		if wi.ForceVal {
 			// `/v`: one Function reference datum
-			return Value{Parent: TFunction, Data: &FnDefInfo{}}, probeValue
+			return Value{d: &fnRefProbeDatum}, probeValue
 		}
 		top, bound := reg.Defs.Top(wi.Name)
 		switch {
 		case bound:
-			if _, topFn := top.Data.(*FnDefInfo); topFn {
+			if _, topFn := top.Data().(*FnDefInfo); topFn {
 				return Value{}, probeNone // an fn word is a barrier
 			}
 			return top, probeValue // a plain value binding steps to this value
@@ -8498,7 +8522,7 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 // (it dispatches consuming nothing, so it can never swallow a following
 // statement). Part of the NUR038 arrival gate's call-vs-data decision.
 func fnValueHasZeroArgSig(v Value) bool {
-	fd, ok := v.Data.(*FnDefInfo)
+	fd, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -8530,7 +8554,7 @@ func fnValueHasZeroArgSig(v Value) bool {
 // for why the gate needs telling, and execFnDefLiteral for where the mark
 // is consumed and cleared.
 func MarkApplied(v Value) Value {
-	fd, ok := FnDefOf(v.Data)
+	fd, ok := FnDefOf(v.Data())
 	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
 		return v
 	}
@@ -8938,14 +8962,14 @@ func (e *Engine) noteParenStack(idx int) {
 // the TCO gate and the marker can never disagree about what the
 // eager teardown would evaluate.
 func isPendingResidualContainer(v *Value) bool {
-	if !IsEval(v) || IsQuoted(v) || v.Parent == nil {
+	if !IsEval(v) || IsQuoted(v) || v.Parent() == nil {
 		return false
 	}
-	if v.Parent.Equal(TMap) {
-		return v.Data != nil && !IsTypedMap(v) && !IsRecordType(*v) && !IsOptionsType(*v)
+	if v.Parent().Equal(TMap) {
+		return v.Data() != nil && !IsTypedMap(v) && !IsRecordType(*v) && !IsOptionsType(*v)
 	}
-	if v.Parent.Equal(TList) {
-		return v.Data != nil && !IsTypedList(v) && !IsTableType(*v)
+	if v.Parent().Equal(TList) {
+		return v.Data() != nil && !IsTypedList(v) && !IsTableType(*v)
 	}
 	return false
 }
@@ -8999,7 +9023,7 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 			}
 			var ev Value
 			var err error
-			if v.Parent.Equal(TMap) {
+			if v.Parent().Equal(TMap) {
 				ev, err = e.AutoEvalMap(v, false, true)
 			} else {
 				ev, err = e.autoEvalList(v, true)
@@ -9289,7 +9313,7 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	for j := markIdx + 1; j < moveIdx; j++ {
 		condResult = e.Tape.At(j)
 	}
-	if condResult.Parent == nil {
+	if condResult.Parent() == nil {
 		delete(e.marks, info.To)
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
@@ -9357,7 +9381,7 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	// Check if condition produced a value. The error is the `if`'s, at the
 	// position its move carries — read before the splice removes it, which
 	// otherwise left whatever token followed the if (or none) at the pointer.
-	if condResult.Parent == nil {
+	if condResult.Parent() == nil {
 		movePos := e.Tape.Ref(moveIdx).Pos()
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
@@ -9735,10 +9759,10 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 // type that neither is nor contains Function — an `e:Integer` param, not
 // `x:Any`, not `Function`, not an alternative set.
 func parenLeadArgTypedNonFn(v Value) bool {
-	if v.Parent == nil || IsDisjunct(&v) || v.Parent.Equal(TAny) {
+	if v.Parent() == nil || IsDisjunct(&v) || v.Parent().Equal(TAny) {
 		return false
 	}
-	return !v.Parent.ConformsTo(TFunction) && !TFunction.ConformsTo(v.Parent)
+	return !v.Parent().ConformsTo(TFunction) && !TFunction.ConformsTo(v.Parent())
 }
 
 // recordParenLeadFnApply records the classified [lead, arg] window
@@ -9969,7 +9993,7 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 // operand (recordDynApply's container arm): it stays on the tape for the
 // residual's own sweep, or the program declines.
 func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, lastIdx int) {
-	fd, ok := last.Data.(*FnDefInfo)
+	fd, ok := last.Data().(*FnDefInfo)
 	if !ok {
 		return
 	}
@@ -10000,7 +10024,7 @@ func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, las
 			continue
 		}
 		idx := idxs[n-1-p]
-		if isMap := v.Parent.Equal(TMap); (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
+		if isMap := v.Parent().Equal(TMap); (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
 			// A slot that takes the raw body: the container stays as
 			// written, its auto-evaluation cleared in its cell where the
 			// window applies.
@@ -10027,7 +10051,7 @@ func trailingWindowFits(last Value, sigArgs []Value) bool {
 // whether the returned value replaces it (the value is meaningless when it
 // does not).
 func (e *Engine) evalTrailingContainer(v Value, fits bool) (Value, bool) {
-	isMap := v.Parent.Equal(TMap)
+	isMap := v.Parent().Equal(TMap)
 	var ev Value
 	var err error
 	switch {
@@ -10114,7 +10138,7 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 	if _, mod := AsDispatchMod(tok); mod {
 		return false
 	}
-	fd, ok := last.Data.(*FnDefInfo)
+	fd, ok := last.Data().(*FnDefInfo)
 	if !ok {
 		return true // a carrier: the runtime value's parameters are unknown
 	}
@@ -10142,7 +10166,7 @@ func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 // value (whose declared return the seams enforce as a count only), an
 // undeclared or multi-valued return, or overloads that disagree.
 func concreteFnSingleReturn(v Value) *Type {
-	fd, ok := v.Data.(*FnDefInfo)
+	fd, ok := v.Data().(*FnDefInfo)
 	if !ok || fd.Anonymous {
 		return nil // an anonymous fn value's declared return is a COUNT contract
 	}
@@ -10333,7 +10357,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	// body's tokens with no `(` of its own meets the seal instead, and is
 	// the unmatched close the body's own run reported (the parser writes no
 	// such body or literal; a Go-built one can).
-	if _, isLoop := e.Tape.Ref(openIdx).Data.(LoopOpenInfo); isLoop {
+	if _, isLoop := e.Tape.Ref(openIdx).Data().(LoopOpenInfo); isLoop {
 		if closeIdx+1 >= e.Tape.Len() || !IsMove(e.Tape.Ref(closeIdx+1)) {
 			return makeBoruErrorAt("syntax_error", "unmatched closing parenthesis", ")", e.effectiveSource(), "", e.Tape.Ref(closeIdx).Pos())
 		}
@@ -11069,7 +11093,7 @@ func (d patternDispatch) evalPatternOperand(i int, v Value) (Value, bool) {
 	}
 	var ev Value
 	var err error
-	if v.Parent.Equal(TMap) {
+	if v.Parent().Equal(TMap) {
 		ev, err = e.AutoEvalMap(v, e.patternEvalMake, true)
 	} else {
 		ev, err = e.autoEvalList(v, true)
@@ -11220,7 +11244,7 @@ func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
 	if !ok {
 		return false
 	}
-	if _, isFn := top.Data.(*FnDefInfo); isFn || IsFnTypedCarrier(&top) {
+	if _, isFn := top.Data().(*FnDefInfo); isFn || IsFnTypedCarrier(&top) {
 		return true
 	}
 	et := SigArgType(sig, idx)
@@ -11243,7 +11267,7 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 	}
 	for i := 0; i < n; i++ {
 		v := window[i]
-		if v.Carrier && v.Parent != nil && v.Parent.Equal(TAny) {
+		if v.Carrier() && v.Parent() != nil && v.Parent().Equal(TAny) {
 			continue // the deferrable unknown operand
 		}
 		if !SigArgMatches(sig, i, &v) {
@@ -11340,7 +11364,7 @@ func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 	_, nFwd := e.rematchWrittenSplit(fn)
 	gradual := false
 	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
-		if v := e.Tape.At(i); v.Carrier || IsDynamic(&v) {
+		if v := e.Tape.At(i); v.Carrier() || IsDynamic(&v) {
 			gradual = true
 		}
 	}
@@ -11378,7 +11402,7 @@ func (e *Engine) withRenderedPrefix(window []int, fn *FnDefInfo) []int {
 	}
 	inexact := false
 	for _, v := range written[len(window):] {
-		if v.Carrier || IsDynamic(&v) {
+		if v.Carrier() || IsDynamic(&v) {
 			inexact = true
 		}
 	}
@@ -11555,7 +11579,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// before its match (NUR235: `[("a" add "b")]` is the list of the
 		// add's carrier) — is the same case: the report renders the
 		// elements' run-time values.
-		if v.Carrier || IsDynamic(&v) || e.Registry.analysisValueCarriesCarrier(v) {
+		if v.Carrier() || IsDynamic(&v) || e.Registry.analysisValueCarriesCarrier(v) {
 			needsRematch = true
 		}
 	}
@@ -11724,12 +11748,12 @@ func ArgTypeSummary(args []Value) string {
 	parts := make([]string, len(args))
 	for i, a := range args {
 		switch {
-		case a.Parent == nil:
+		case a.Parent() == nil:
 			parts[i] = "?"
 		case IsDynamic(&a):
-			parts[i] = "dynamic(" + a.Parent.Leaf() + ")"
+			parts[i] = "dynamic(" + a.Parent().Leaf() + ")"
 		default:
-			parts[i] = a.Parent.Leaf()
+			parts[i] = a.Parent().Leaf()
 		}
 	}
 	return strings.Join(parts, ", ")

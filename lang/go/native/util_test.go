@@ -600,7 +600,7 @@ func TestRunPredicate_BadPayload(t *testing.T) {
 	// closest we can express to "not a FnDefInfo" — the value
 	// satisfies Payload but is the wrong variant. RunPredicate must
 	// detect the mismatch at runtime.
-	v := Value{Parent: TFunction, Data: StrPayload{S: "not a FnDefInfo"}}
+	v := ValueOf(&Datum{Parent: TFunction, Data: StrPayload{S: "not a FnDefInfo"}})
 	_, _, err := r.RunPredicate(v, NewInteger(42))
 	if err == nil {
 		t.Fatalf("expected error for invalid FnDef payload")
@@ -612,7 +612,7 @@ func TestRunPredicate_BadPayload(t *testing.T) {
 // raises (NUR100).
 func TestRunPredicate_ZeroArgPredicate(t *testing.T) {
 	r, _ := NewRegistry()
-	v := Value{Parent: TFunction, Data: &FnDefInfo{}}
+	v := ValueOf(&Datum{Parent: TFunction, Data: &FnDefInfo{}})
 	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
 		t.Fatalf("a sig-less predicate admits nothing: %v %v", matched, err)
 	}
@@ -620,9 +620,9 @@ func TestRunPredicate_ZeroArgPredicate(t *testing.T) {
 
 func TestRunPredicate_MultiArgPredicate(t *testing.T) {
 	r, _ := NewRegistry()
-	v := Value{Parent: TFunction, Data: &FnDefInfo{
+	v := ValueOf(&Datum{Parent: TFunction, Data: &FnDefInfo{
 		Signatures: []FnSig{{Params: []FnParam{{Type: TAny}, {Type: TAny}}, BarrierPos: -1}},
-	}}
+	}})
 	if _, matched, err := r.RunPredicate(v, NewInteger(42)); err != nil || matched {
 		t.Fatalf("a two-param predicate admits nothing: %v %v", matched, err)
 	}
@@ -681,7 +681,7 @@ func TestFlattenDisjunctAlts_DisjunctWithBadPayload(t *testing.T) {
 	// payload that AsDisjunct can't unwrap. The helper should
 	// fall back gracefully to a single-element slice rather than
 	// returning nil or panicking.
-	v := Value{Parent: TDisjunct, Data: StrPayload{S: "not a DisjunctInfo"}}
+	v := ValueOf(&Datum{Parent: TDisjunct, Data: StrPayload{S: "not a DisjunctInfo"}})
 	alts := FlattenDisjunctAlts(v)
 	if len(alts) != 1 {
 		t.Fatalf("got %d alts, want 1 (graceful fallback)", len(alts))

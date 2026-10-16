@@ -47,7 +47,7 @@ var ErrNoMaker = errors.New("no maker")
 // silently produce a value the type's own constructor refused. Only
 // ErrNoMaker, the explicit decline, continues the walk.
 func makerCapability(target *Type, src Value) (Value, bool, error) {
-	for t := target; t != nil; t = t.Parent {
+	for t := target; t != nil; t = t.Parent() {
 		mk, is := t.Behavior().(Maker)
 		if !is {
 			continue
@@ -103,7 +103,7 @@ func conformMakerResult(target *Type, out Value) (Value, error) {
 			return out, nil
 		}
 		if base := builtinBaseOf(target); base != nil &&
-			out.Parent.Origin == OriginBuiltin && out.Parent.ConformsTo(base) {
+			out.Parent().Origin() == OriginBuiltin && out.Parent().ConformsTo(base) {
 			return MintRetagged(&out, target), nil
 		}
 	}
@@ -121,12 +121,12 @@ func conformMakerResult(target *Type, out Value) (Value, error) {
 // refusing those, and it must not panic while saying so.
 func makerResultDesc(out Value) string {
 	switch {
-	case out.Parent == nil:
+	case out.Parent() == nil:
 		return "no value"
 	case IsBareTypeNode(&out):
-		return "the type " + out.Parent.String() + " rather than a value of it"
+		return "the type " + out.Parent().String() + " rather than a value of it"
 	default:
-		return out.Parent.String()
+		return out.Parent().String()
 	}
 }
 
@@ -189,7 +189,7 @@ func makeTargetType(reg *Registry, targetVal Value) *Type {
 // construction AFTER the call skips the validation exactly as a Go-side
 // Maker's does, and one before it validates, as the run's order has it.
 func HasMaker(reg *Registry, targetVal Value) bool {
-	for t := makeTargetType(reg, targetVal); t != nil; t = t.Parent {
+	for t := makeTargetType(reg, targetVal); t != nil; t = t.Parent() {
 		if _, ok := t.Behavior().(Maker); ok {
 			return true
 		}

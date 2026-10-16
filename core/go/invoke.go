@@ -79,12 +79,12 @@ func BodyEscaped(r *Registry) bool {
 // (NUR120). Without the VM (no Invoker) a closure never reaches a handler,
 // so the fallback is InvokeBody's own.
 func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
-	if _, ok := body.Data.(ClosurePayload); ok && !IsRetTrim(&body) {
+	if _, ok := body.Data().(*ClosurePayload); ok && !IsRetTrim(&body) {
 		// The value handed on keeps its quote and its seam marks (they rode
 		// in the payload until no-copy phase 3) and nothing else of the
 		// holder's, as it always has.
 		quoted, matched := IsQuoted(&body), IsSigMatched(&body)
-		body = Value{Parent: body.Parent, Data: body.Data}
+		body = Value{d: &Datum{Parent: body.Parent(), Data: body.Data()}}
 		SetQuoted(&body, quoted)
 		SetSigMatched(&body, matched)
 		SetRetTrim(&body, true)
@@ -99,7 +99,7 @@ func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error
 // unchanged. The mark is the holder's flag: the value keeps its id, position
 // and every flag a later seam reads, and the payload is not copied.
 func ClosureSigMatched(v Value) Value {
-	if _, ok := v.Data.(ClosurePayload); ok {
+	if _, ok := v.Data().(*ClosurePayload); ok {
 		SetSigMatched(&v, true)
 	}
 	return v
@@ -309,7 +309,7 @@ func (fd *FnDefInfo) ShapeModelHomed() bool {
 func MarkShapeModel(inst *OrderedMap) {
 	for _, k := range inst.Keys() {
 		mv, _ := inst.Get(k)
-		if fd, ok := mv.Data.(*FnDefInfo); ok && fd.HasHome() {
+		if fd, ok := mv.Data().(*FnDefInfo); ok && fd.HasHome() {
 			fd.Registry.ShapeModel = true
 		}
 	}
@@ -356,7 +356,7 @@ func (fd *FnDefInfo) nameOrEmpty() string {
 // NamedFnValue is NamedDef for the fn value v as its holder presents it:
 // under the name a binding gave the holder (FnNameOf), else its own.
 func NamedFnValue(v *Value) bool {
-	fd, ok := FnDefOf(v.Data)
+	fd, ok := FnDefOf(v.Data())
 	return ok && fd.namedAs(FnNameOf(v))
 }
 

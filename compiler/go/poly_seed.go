@@ -49,15 +49,15 @@ func polySeedFor(sigs []core.Signature, sig *core.Signature, args []core.Value) 
 	}
 	tags := make([]*core.Type, n)
 	for i, a := range args {
-		if a.Parent == nil || core.IsDynamic(&a) || core.IsBareTypeNode(&a) || a.AscribedType() != nil {
+		if a.Parent() == nil || core.IsDynamic(&a) || core.IsBareTypeNode(&a) || a.AscribedType() != nil {
 			return nil
 		}
 		// A quoted slot matches a strict carrier and a concrete value alike
 		// only for a Word (read as an Atom on both) or an Atom-family tag.
-		if sig.QuoteArgs != nil && sig.QuoteArgs[i] && !a.Parent.Equal(core.TWord) && !a.Parent.ConformsTo(core.TAtom) {
+		if sig.QuoteArgs != nil && sig.QuoteArgs[i] && !a.Parent().Equal(core.TWord) && !a.Parent().ConformsTo(core.TAtom) {
 			return nil
 		}
-		tags[i] = a.Parent
+		tags[i] = a.Parent()
 	}
 	return &polySeed{sig: sig, tags: tags}
 }

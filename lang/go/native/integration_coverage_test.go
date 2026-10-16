@@ -268,8 +268,8 @@ func TestIntegFnUndefSpecPairs(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("fnsig should return 1 value, got %d", len(result))
 	}
-	if !result[0].Parent.Equal(TFnUndef) {
-		t.Errorf("expected TFnUndef, got %s", result[0].Parent)
+	if !result[0].Parent().Equal(TFnUndef) {
+		t.Errorf("expected TFnUndef, got %s", result[0].Parent())
 	}
 }
 
@@ -338,8 +338,8 @@ func TestIntegModuleWithExport(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("module should return 1 value, got %d", len(result))
 	}
-	if !result[0].Parent.Equal(TModuleInst) {
-		t.Fatalf("expected a Module, got %s", result[0].Parent)
+	if !result[0].Parent().Equal(TModuleInst) {
+		t.Fatalf("expected a Module, got %s", result[0].Parent())
 	}
 
 	desc, _ := asModuleDesc(result[0])
@@ -858,7 +858,7 @@ func TestIntegDoMap(t *testing.T) {
 	m := NewOrderedMap()
 	m.Set("x", innerList)
 	result := runBoru(t, r, []Value{NewWord("do"), NewMap(m)})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("do map should return a map, got %v", result)
 	}
 	rm, _ := AsMap(result[0])
@@ -979,7 +979,7 @@ func TestIntegFileIOWriteJSON(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("data.json"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("read data.json should return map, got %v", result)
 	}
 	rm, _ := AsMap(result[0])
@@ -1040,7 +1040,7 @@ func TestIntegFileIOReadWithFmtOption(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("data.txt"), NewMap(opts),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("read data.txt with fmt:json should return map, got %v", result)
 	}
 }
@@ -1055,7 +1055,7 @@ func TestIntegFileIOReadJsonExtension(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("data.json"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("read data.json should auto-detect json, got %v", result)
 	}
 }
@@ -1097,8 +1097,8 @@ func TestIntegCSVReadWrite(t *testing.T) {
 		t.Fatalf("read csv should return 1 value, got %d", len(result))
 	}
 	// Should be a list (table data)
-	if !result[0].Parent.Equal(TList) {
-		t.Fatalf("csv result should be TList, got %s", result[0].Parent)
+	if !result[0].Parent().Equal(TList) {
+		t.Fatalf("csv result should be TList, got %s", result[0].Parent())
 	}
 }
 
@@ -1133,7 +1133,7 @@ func TestIntegCSVReadWithFmtOption(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("data.txt"), NewMap(opts),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(TList) {
 		t.Fatalf("read with csv fmt should return table, got %v", result)
 	}
 }
@@ -1324,7 +1324,7 @@ func TestIntegTandMergeMaps(t *testing.T) {
 	if !okY {
 		t.Fatalf("missing key y")
 	}
-	if !(&y).Equal(TInteger) || y.Data != nil {
+	if !(&y).Equal(TInteger) || y.Data() != nil {
 		t.Errorf("y = %v, want Integer type literal", y)
 	}
 }
@@ -1474,7 +1474,7 @@ func TestIntegFileIOReadLines(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("lines.txt"), NewMap(opts),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(TList) {
 		t.Fatalf("read lines should return list, got %v", result)
 	}
 	_lst, _ := AsList(result[0])
@@ -1492,7 +1492,7 @@ func TestIntegDoMapWithNonListValues(t *testing.T) {
 	m.Set("x", NewInteger(42))
 	m.Set("y", NewString("hello"))
 	result := runBoru(t, r, []Value{NewWord("do"), NewMap(m)})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("do map should return map, got %v", result)
 	}
 	rm, _ := AsMap(result[0])
@@ -1531,7 +1531,7 @@ func TestIntegFileIOReadJsonicFormat(t *testing.T) {
 	result := runBoru(t, r, []Value{
 		NewWord("read"), pathV("data.jsonic"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(TMap) {
 		t.Fatalf("read jsonic should return map, got %v", result)
 	}
 }

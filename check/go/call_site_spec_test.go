@@ -27,7 +27,7 @@ func TestSpecialisableFnArg(t *testing.T) {
 		return core.NewFunction(fd)
 	}
 	carrier := specFn("inc")
-	carrier.Carrier = true
+	carrier.SetCarrier(true)
 	for name, c := range map[string]struct {
 		p core.FnParam
 		a core.Value
@@ -38,7 +38,7 @@ func TestSpecialisableFnArg(t *testing.T) {
 		"patterned param":  {core.FnParam{Name: "g", Type: core.TFunction, Pattern: &pattern}, specFn("inc")},
 		"carrier arg":      {gParam, carrier},
 		"data arg":         {gParam, core.NewInteger(1)},
-		"no identity":      {gParam, core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "x"}}},
+		"no identity":      {gParam, core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "x"}})},
 		"capturing fn":     {gParam, withFn(func(fd *core.FnDefInfo) { fd.Captured = []core.CapturedBinding{{Name: "c"}} })},
 		"generic fn":       {gParam, withFn(func(fd *core.FnDefInfo) { fd.Gen = &core.GenSpecInfo{} })},
 		"macro fn":         {gParam, withFn(func(fd *core.FnDefInfo) { fd.Macro = true })},
@@ -196,18 +196,22 @@ func TestSpecialisableShapeArg(t *testing.T) {
 	}
 	recFields := core.NewOrderedMap()
 	recFields.Set("a", core.NewTypeLiteral(core.TInteger))
-	recType := &core.Type{Parent: core.TMap}
+	recType := new(core.Type)
+	recType.SetParent(core.TMap)
 	recType.SetTypeBody(core.NewMap(recFields))
 	if _, _, ok := specialisableShapeArg(core.FnParam{Name: "m", Type: recType}, arg); !ok {
 		t.Error("a record-typed param specialises on the arg's shape")
 	}
-	schemaType := &core.Type{Parent: core.TMap}
+	schemaType := new(core.Type)
+	schemaType.SetParent(core.TMap)
 	schemaType.SetTypeBody(core.NewRecordType(recFields))
 	if !isRecordType(schemaType) {
 		t.Error("a node whose body is a record schema is a record type")
 	}
-	bodyless := &core.Type{Parent: core.TMap}
-	scalarBody := &core.Type{Parent: core.TMap}
+	bodyless := new(core.Type)
+	bodyless.SetParent(core.TMap)
+	scalarBody := new(core.Type)
+	scalarBody.SetParent(core.TMap)
 	scalarBody.SetTypeBody(core.NewInteger(1))
 	for name, rt := range map[string]*core.Type{"no parent": {}, "not under Map": core.TInteger, "no body": bodyless, "scalar body": scalarBody} {
 		if isRecordType(rt) {
@@ -237,7 +241,7 @@ func TestProvenNarrowerReturn(t *testing.T) {
 	if _, ok := provenNarrowerReturn(core.TAny, []core.FnParam{{Name: "x", Type: core.TAny}}, []core.Value{ints}, 1, 0); ok {
 		t.Error("an Any-param fn's result stays gradual")
 	}
-	if c, ok := provenNarrowerReturn(core.TAny, typed, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || core.IsDynamic(&c) {
+	if c, ok := provenNarrowerReturn(core.TAny, typed, []core.Value{ints}, 1, 0); !ok || !c.Parent().Equal(core.TInteger) || core.IsDynamic(&c) {
 		t.Errorf("an Integer carrier under [Any] narrows, got %v %v", c, ok)
 	}
 	for name, c := range map[string]struct {
@@ -250,7 +254,7 @@ func TestProvenNarrowerReturn(t *testing.T) {
 		"dynamic":     {core.TAny, []core.Value{core.NewDynamicCarrier(core.TInteger)}},
 		"upper bound": {core.TAny, []core.Value{core.NewCarrier(core.TNode)}},
 		"String":      {core.TAny, []core.Value{core.NewCarrier(core.TString)}},
-		"no parent":   {core.TAny, []core.Value{{Carrier: true}}},
+		"no parent":   {core.TAny, []core.Value{core.ValueOf(&core.Datum{Carrier: true})}},
 		"nil decl":    {nil, []core.Value{ints}},
 	} {
 		if _, ok := provenNarrowerReturn(c.t, typed, c.stk, 1, 0); ok {

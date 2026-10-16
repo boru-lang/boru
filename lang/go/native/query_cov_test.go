@@ -160,11 +160,11 @@ func TestWrapUnwrapAndToQueryBuilder(t *testing.T) {
 	}
 
 	// A Materializer that is not a QueryBuilder is declined.
-	if _, ok := unwrapQB(Value{Parent: TList, Data: MaterializerPayload{M: covFakeMat{}}}); ok {
+	if _, ok := unwrapQB(ValueOf(&Datum{Parent: TList, Data: MaterializerPayload{M: covFakeMat{}}})); ok {
 		t.Error("unwrapQB accepted a non-QueryBuilder materializer")
 	}
 	// The legacy ExtensionPayload wrapping still unwraps.
-	if _, ok := unwrapQB(Value{Parent: TList, Data: ExtensionPayload{Body: qb}}); !ok {
+	if _, ok := unwrapQB(ValueOf(&Datum{Parent: TList, Data: ExtensionPayload{Body: qb}})); !ok {
 		t.Error("unwrapQB declined the legacy ExtensionPayload form")
 	}
 
@@ -172,7 +172,7 @@ func TestWrapUnwrapAndToQueryBuilder(t *testing.T) {
 	if got, err := toQueryBuilder(nil, wrapped); err != nil || !got.HasSource {
 		t.Errorf("toQueryBuilder(wrapped) = (%+v,%v)", got, err)
 	}
-	if got, err := toQueryBuilder(nil, Value{Parent: TList, Data: tbl.td}); err != nil || !got.HasSource {
+	if got, err := toQueryBuilder(nil, ValueOf(&Datum{Parent: TList, Data: tbl.td})); err != nil || !got.HasSource {
 		t.Errorf("toQueryBuilder(table) = (%+v,%v)", got, err)
 	}
 	if _, err := toQueryBuilder(nil, NewInteger(42)); err == nil {
@@ -328,7 +328,7 @@ func TestQueryJoinsEndToEnd(t *testing.T) {
 	if err := store.StoreTable("cov_pets", pets); err != nil {
 		t.Fatal(err)
 	}
-	r.ContextSet("cov_pets", Value{Parent: TList, Data: pets})
+	r.ContextSet("cov_pets", ValueOf(&Datum{Parent: TList, Data: pets}))
 
 	src := people
 	src.SQLite = true
@@ -359,8 +359,8 @@ func TestQueryJoinsEndToEnd(t *testing.T) {
 	sqliteBacked := pets
 	sqliteBacked.SQLite = true
 	sqliteBacked.TableName = "cov_pets"
-	r.ContextSet("cov_alias", Value{Parent: TList, Data: sqliteBacked})
-	r.ContextSet("cov_mem", Value{Parent: TList, Data: covPetsTable()})
+	r.ContextSet("cov_alias", ValueOf(&Datum{Parent: TList, Data: sqliteBacked}))
+	r.ContextSet("cov_mem", ValueOf(&Datum{Parent: TList, Data: covPetsTable()}))
 
 	qb2 := NewQueryBuilder(r, src)
 	qb2.Joins = []JoinClause{
@@ -528,7 +528,7 @@ func TestParseColumnSpecMoreForms(t *testing.T) {
 	}
 
 	// Scalar subquery [<table> alias] becomes a raw SQL cell.
-	oneRow := Value{Parent: TList, Data: covOneRowTable(NewInteger(42))}
+	oneRow := ValueOf(&Datum{Parent: TList, Data: covOneRowTable(NewInteger(42))})
 	specs, err = parseColumnSpec(NewList([]Value{
 		NewList([]Value{oneRow, NewAtom("answer")}),
 	}))
@@ -570,7 +570,7 @@ func TestParseColumnSpecRejections(t *testing.T) {
 		{"cast too long", NewList([]Value{NewList([]Value{NewAtom("cast"), NewAtom("age"), NewAtom("text"), NewAtom("a"), NewAtom("b")})})},
 		{"cast bad column", NewList([]Value{NewList([]Value{NewAtom("cast"), NewInteger(5), NewAtom("text")})})},
 		{"multi-row scalar subquery", NewList([]Value{NewList([]Value{
-			{Parent: TList, Data: twoRow}, NewAtom("a"),
+			ValueOf(&Datum{Parent: TList, Data: twoRow}), NewAtom("a"),
 		})})},
 	}
 	for _, c := range cases {
@@ -583,7 +583,7 @@ func TestParseColumnSpecRejections(t *testing.T) {
 // ---- buildWhereClause ----
 
 func TestBuildWhereClauseForms(t *testing.T) {
-	oneRow := Value{Parent: TList, Data: covOneRowTable(NewInteger(25))}
+	oneRow := ValueOf(&Datum{Parent: TList, Data: covOneRowTable(NewInteger(25))})
 	cases := []struct {
 		name string
 		cond Value
@@ -638,10 +638,10 @@ func TestBuildWhereClauseForms(t *testing.T) {
 }
 
 func TestBuildWhereClauseRejections(t *testing.T) {
-	twoRow := Value{Parent: TList, Data: TableData{
+	twoRow := ValueOf(&Datum{Parent: TList, Data: TableData{
 		Record: covOneRowTable(NewInteger(1)).Record,
 		Rows:   []Value{covEmitMap("x", NewInteger(1)), covEmitMap("x", NewInteger(2))},
-	}}
+	}})
 	cases := []struct {
 		name string
 		cond Value
@@ -872,7 +872,7 @@ func TestQueryClosedStoreErrors(t *testing.T) {
 	src := people
 	src.SQLite = true
 	src.TableName = "cov_closed"
-	r.ContextSet("cov_closed_mem", Value{Parent: TList, Data: covPetsTable()})
+	r.ContextSet("cov_closed_mem", ValueOf(&Datum{Parent: TList, Data: covPetsTable()}))
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -946,7 +946,7 @@ func TestMaterializeWithColumnsRawAndTemps(t *testing.T) {
 	}
 
 	// Joins and set-ops load temp tables through the column path too.
-	r.ContextSet("cov_mem2", Value{Parent: TList, Data: covOneRowStrTable("z")})
+	r.ContextSet("cov_mem2", ValueOf(&Datum{Parent: TList, Data: covOneRowStrTable("z")}))
 	qb2 := NewQueryBuilder(r, people)
 	qb2.Cols = []columnSpec{{Name: "name"}}
 	qb2.Joins = []JoinClause{{Type: "CROSS JOIN", Table: "cov_mem2"}}
@@ -997,7 +997,7 @@ func TestResolveParenSubExprsEdges(t *testing.T) {
 	}
 
 	// A list-typed value with no readable elements passes through.
-	odd := Value{Parent: TList, Data: StrPayload{S: "x"}}
+	odd := ValueOf(&Datum{Parent: TList, Data: StrPayload{S: "x"}})
 	if _, err := resolveParenSubExprs(r, odd); err != nil {
 		t.Errorf("odd list payload: unexpected error %v", err)
 	}
@@ -1092,7 +1092,7 @@ func TestQueryScalarAndOrderResiduals(t *testing.T) {
 
 	// A subquery column with a cell valueToSQL rejects is declined.
 	if _, err := parseColumnSpec(NewList([]Value{NewList([]Value{
-		{Parent: TList, Data: covOneRowTable(NewFloat(1.5))}, NewAtom("a"),
+		ValueOf(&Datum{Parent: TList, Data: covOneRowTable(NewFloat(1.5))}), NewAtom("a"),
 	})})); err == nil {
 		t.Error("float subquery cell: expected error, got nil")
 	}

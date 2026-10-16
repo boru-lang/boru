@@ -59,7 +59,7 @@ func TestTapeRefOutOfRangeIsAZeroCell(t *testing.T) {
 	tp := NewTape([]Value{NewInteger(1)}, 0)
 	for _, i := range []int{-1, 1, 5} {
 		r := tp.Ref(i)
-		if r == nil || r.Parent != nil || r.Data != nil {
+		if r == nil || r.Parent() != nil || r.Data() != nil {
 			t.Fatalf("Ref(%d) = %v, want the zero cell", i, r)
 		}
 		SetQuoted(r, true) // a reader that wrote through it…
@@ -142,7 +142,7 @@ func TestReadListRefIsTheElement(t *testing.T) {
 func TestFnDispatchSigsCachedOnIdentity(t *testing.T) {
 	one := Signature{Params: []FnParam{{Type: TInteger}}, BarrierPos: BarrierAllForward}
 	fv := NewFunction(FnDefInfo{Signatures: []Signature{one}})
-	fd := fv.Data.(*FnDefInfo)
+	fd := fv.Data().(*FnDefInfo)
 	first := FnDispatchSigs(fd)
 	if len(first) != 1 || first[0].BarrierPos != 1 {
 		t.Fatalf("the all-forward barrier must resolve to the arg count: %+v", first)
@@ -170,11 +170,11 @@ func TestNewDynamicRecordCarrier(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("n", NewTypeLiteral(TInteger))
 	a, b := NewDynamicRecordCarrier(fields), NewDynamicRecordCarrier(fields)
-	if !IsDynamic(&a) || !a.Carrier || !a.Parent.Equal(TMap) {
+	if !IsDynamic(&a) || !a.Carrier() || !a.Parent().Equal(TMap) {
 		t.Fatalf("want a dynamic Map carrier, got %v", a)
 	}
-	if ri, ok := a.Data.(RecordTypeInfo); !ok || ri.Fields != fields {
-		t.Fatalf("the carrier must hold the schema, got %T", a.Data)
+	if ri, ok := a.Data().(RecordTypeInfo); !ok || ri.Fields != fields {
+		t.Fatalf("the carrier must hold the schema, got %T", a.Data())
 	}
 	if IDOf(&a) == "" || IDOf(&a) == IDOf(&b) {
 		t.Fatalf("each carrier needs its own ID: %q %q", IDOf(&a), IDOf(&b))
@@ -198,7 +198,7 @@ func TestOccurrenceRecordIsTheHolders(t *testing.T) {
 	if v.occ != nil {
 		t.Fatal("an empty record must not stay allocated")
 	}
-	if key := IdentityOnly("k"); IDOf(&key) != "k" || key.Parent != nil || key.Data != nil {
+	if key := IdentityOnly("k"); IDOf(&key) != "k" || key.Parent() != nil || key.Data() != nil {
 		t.Fatalf("IdentityOnly carries the identity and nothing else: %v", key)
 	}
 	if empty := IdentityOnly(""); !empty.IsUnboundSlot() {
@@ -206,13 +206,19 @@ func TestOccurrenceRecordIsTheHolders(t *testing.T) {
 	}
 }
 
-// The header only shrinks (design/VALUE-NO-COPY.0.md §6 phase 3): every
-// byte of it rides on each by-value copy the ratchet still allows, so a new
-// field belongs in the occurrence record, the type-node metadata or a
-// payload, not here.
+// The handle only shrinks (design/VALUE-NO-COPY.0.md §6 phases 3 and 4):
+// every byte of it rides on each copy of a holder — a tape cell, a stack
+// cell, an argument — so per-occurrence state belongs in the occurrence
+// record or the flags, and what a value IS belongs in its Datum, which is
+// shared and never copied.
 func TestValueHeaderSize(t *testing.T) {
-	if got := unsafe.Sizeof(Value{}); got > 64 {
-		t.Fatalf("Value header is %d bytes, want at most 64", got)
+	if got := unsafe.Sizeof(Value{}); got > 24 {
+		t.Fatalf("Value handle is %d bytes, want at most 24", got)
+	}
+	// 64 is the allocation size class a Datum lands in: a byte more and
+	// every value minted costs the next class up.
+	if got := unsafe.Sizeof(Datum{}); got > 64 {
+		t.Fatalf("Datum is %d bytes, want at most 64", got)
 	}
 }
 
@@ -229,8 +235,8 @@ func TestNodeOfNamesTheNodeFromAnyCopy(t *testing.T) {
 	if NodeOf(minted) != minted || NodeOf(&lit) != minted || NodeOf(addrOf(NewTypeLiteral(TInteger))) != TInteger {
 		t.Fatal("a node and every copy of it name the node")
 	}
-	bare := &Type{Parent: TInteger}
-	adhoc := addrOf(withID(Type{tmeta: &typeMeta{Name: "P3AdHoc"}, Parent: TInteger}, "P3AdHoc"))
+	bare := &Type{d: &Datum{Parent: TInteger}}
+	adhoc := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "P3AdHoc"}, Parent: TInteger}}, "P3AdHoc"))
 	if NodeOf(bare) != bare || NodeOf(adhoc) != adhoc {
 		t.Fatal("an ad-hoc *Type no table registered stands for itself")
 	}
@@ -254,13 +260,13 @@ func TestLiteralTypeHelpersReturnTheNode(t *testing.T) {
 	if ValueType(lit) != TInteger || TypeNodeOf(lit) != TInteger || denotedType(lit) != TInteger {
 		t.Fatal("a registered literal's type is its node")
 	}
-	if c := CarrierOfLiteral(lit); c.Parent != TInteger || !c.Carrier {
+	if c := CarrierOfLiteral(lit); c.Parent() != TInteger || !c.Carrier() {
 		t.Fatalf("CarrierOfLiteral = %v, want a carrier of the node", c)
 	}
-	adhoc := withID(Type{tmeta: &typeMeta{Name: "P3Lit"}, Parent: TInteger}, "P3Lit")
+	adhoc := withID(Type{d: &Datum{tmeta: &typeMeta{Name: "P3Lit"}, Parent: TInteger}}, "P3Lit")
 	for name, got := range map[string]*Type{
 		"ValueType": ValueType(adhoc), "TypeNodeOf": TypeNodeOf(adhoc),
-		"denotedType": denotedType(adhoc), "CarrierOfLiteral": CarrierOfLiteral(adhoc).Parent,
+		"denotedType": denotedType(adhoc), "CarrierOfLiteral": CarrierOfLiteral(adhoc).Parent(),
 	} {
 		if got == nil || got.Name() != "P3Lit" || IDOf(got) != "P3Lit" {
 			t.Errorf("%s of an ad-hoc literal = %v, want a copy of it", name, got)

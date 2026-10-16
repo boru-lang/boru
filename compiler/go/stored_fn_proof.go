@@ -104,7 +104,7 @@ func (es *EmitState) constFnDef(idx int) (core.FnDefInfo, bool) {
 	if idx < 0 || idx >= len(es.consts) {
 		return core.FnDefInfo{}, false
 	}
-	fd, isFn := core.FnDefOf(es.consts[idx].Data)
+	fd, isFn := core.FnDefOf(es.consts[idx].Data())
 	return *fd, isFn
 }
 
@@ -148,7 +148,7 @@ func (es *EmitState) constMemberFn(c *emitCall) (core.FnDefInfo, bool) {
 	if !ok || !core.IsConcrete(&member) {
 		return core.FnDefInfo{}, false
 	}
-	fd, isFn := core.FnDefOf(member.Data)
+	fd, isFn := core.FnDefOf(member.Data())
 	return *fd, isFn
 }
 

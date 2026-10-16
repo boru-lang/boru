@@ -12,7 +12,7 @@ func TestUnionMayBeFn(t *testing.T) {
 			vs = append(vs, NewTypeLiteral(a))
 		}
 		u := NewDisjunct(vs)
-		u.Carrier = carrier
+		u.SetCarrier(carrier)
 		return u
 	}
 	for _, c := range []struct {

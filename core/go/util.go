@@ -24,7 +24,7 @@ import "fmt"
 // IsTypeLiteral(NewTypeLiteral(TNone)) returns false so the type-
 // vs-value dispatch treats it as a value.
 func IsTypeLiteral(v *Value) bool {
-	if v.Data != nil || v.Carrier {
+	if v.Data() != nil || v.Carrier() {
 		return false
 	}
 	return !IsNoneShape(*v)
@@ -41,7 +41,7 @@ func IsTypeLiteral(v *Value) bool {
 // intent is "I need a real value to read"; use IsBareTypeNode when
 // the intent is "v is its own lattice node".
 func IsConcrete(v *Value) bool {
-	return v.Data != nil && !v.Carrier
+	return v.Data() != nil && !v.Carrier()
 }
 
 // DeepConcrete reports whether v is concrete ALL THE WAY DOWN: concrete
@@ -78,7 +78,7 @@ func deepConcrete(v Value, depth int) bool {
 	if depth > deepConcreteMaxDepth || !IsConcrete(&v) {
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ListPayload:
 		for _, e := range d.Elems {
 			if !deepConcrete(e, depth+1) {
@@ -124,7 +124,7 @@ func deepKnown(v Value, depth int) bool {
 		// The one payload-less operand whose value is nonetheless known.
 		return IsBareTypeNode(&v)
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ListPayload:
 		for _, e := range d.Elems {
 			if !deepKnown(e, depth+1) {
@@ -160,7 +160,7 @@ func deepKnown(v Value, depth int) bool {
 // handlers return NewTypeLiteral(TNone) for "no value found"), use
 // IsTypeLiteral.
 func IsBareTypeNode(v *Value) bool {
-	return v.Data == nil && !v.Carrier
+	return v.Data() == nil && !v.Carrier()
 }
 
 // RequireConcreteList unwraps a list-typed Value into its ReadList,
@@ -173,15 +173,15 @@ func IsBareTypeNode(v *Value) bool {
 // The op string is included in the error so callers can identify
 // their site without wrapping again.
 func RequireConcreteList(v Value, op string) (ReadList, error) {
-	if v.Data == nil {
-		return ReadList{}, fmt.Errorf("%s: expected a concrete list, got type literal %s", op, v.Parent.String())
+	if v.Data() == nil {
+		return ReadList{}, fmt.Errorf("%s: expected a concrete list, got type literal %s", op, v.Parent().String())
 	}
-	if v.Carrier {
-		return ReadList{}, fmt.Errorf("%s: expected a concrete list, got carrier %s", op, v.Parent.String())
+	if v.Carrier() {
+		return ReadList{}, fmt.Errorf("%s: expected a concrete list, got carrier %s", op, v.Parent().String())
 	}
 	list, err := AsList(v)
 	if err != nil || list.IsNil() {
-		return ReadList{}, fmt.Errorf("%s: value is not a list (got %s)", op, v.Parent.String())
+		return ReadList{}, fmt.Errorf("%s: value is not a list (got %s)", op, v.Parent().String())
 	}
 	return list, nil
 }
@@ -191,15 +191,15 @@ func RequireConcreteList(v Value, op string) (ReadList, error) {
 // (RecordTypeInfo, OptionsTypeInfo, ChildTypeInfo) that lack a
 // concrete OrderedMap payload return an error.
 func RequireConcreteMap(v Value, op string) (ReadMap, error) {
-	if v.Data == nil {
-		return nil, fmt.Errorf("%s: expected a concrete map, got type literal %s", op, v.Parent.String())
+	if v.Data() == nil {
+		return nil, fmt.Errorf("%s: expected a concrete map, got type literal %s", op, v.Parent().String())
 	}
-	if v.Carrier {
-		return nil, fmt.Errorf("%s: expected a concrete map, got carrier %s", op, v.Parent.String())
+	if v.Carrier() {
+		return nil, fmt.Errorf("%s: expected a concrete map, got carrier %s", op, v.Parent().String())
 	}
 	m, err := AsMap(v)
 	if err != nil || m == nil {
-		return nil, fmt.Errorf("%s: value is not a concrete map (got %s)", op, v.Parent.String())
+		return nil, fmt.Errorf("%s: value is not a concrete map (got %s)", op, v.Parent().String())
 	}
 	return m, nil
 }
@@ -208,30 +208,30 @@ func RequireConcreteMap(v Value, op string) (ReadMap, error) {
 // Node/Map/FlexMap value with a real MapPayload (type literals and
 // carriers are excluded).
 func IsFlexMap(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFlexMap) || !IsConcrete(&v) {
+	if v.Parent() == nil || !v.Parent().Equal(TFlexMap) || !IsConcrete(&v) {
 		return false
 	}
-	_, ok := v.Data.(MapPayload)
+	_, ok := v.Data().(MapPayload)
 	return ok
 }
 
 // IsFlexList reports whether v is a concrete FlexList — a mutable
 // Node/List/FlexList value with a pointer-backed FlexListData store.
 func IsFlexList(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFlexList) || !IsConcrete(&v) {
+	if v.Parent() == nil || !v.Parent().Equal(TFlexList) || !IsConcrete(&v) {
 		return false
 	}
-	_, ok := v.Data.(*FlexListData)
+	_, ok := v.Data().(*FlexListData)
 	return ok
 }
 
 // IsFlexXml reports whether v is a concrete FlexXml — a mutable
 // Node/Xml/FlexXml value with a pointer-backed FlexXmlData store.
 func IsFlexXml(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFlexXml) || !IsConcrete(&v) {
+	if v.Parent() == nil || !v.Parent().Equal(TFlexXml) || !IsConcrete(&v) {
 		return false
 	}
-	_, ok := v.Data.(*FlexXmlData)
+	_, ok := v.Data().(*FlexXmlData)
 	return ok
 }
 
@@ -253,7 +253,7 @@ func MapFieldString(m ReadMap, key string) (string, bool) {
 		return "", false
 	}
 	v, ok := m.Get(key)
-	if !ok || !v.Parent.ConformsTo(TString) {
+	if !ok || !v.Parent().ConformsTo(TString) {
 		return "", false
 	}
 	s, err := AsString(v)
@@ -270,7 +270,7 @@ func MapFieldInteger(m ReadMap, key string) (int64, bool) {
 		return 0, false
 	}
 	v, ok := m.Get(key)
-	if !ok || !v.Parent.ConformsTo(TInteger) || v.IsDepScalar() {
+	if !ok || !v.Parent().ConformsTo(TInteger) || v.IsDepScalar() {
 		return 0, false
 	}
 	n, err := AsInteger(v)
@@ -286,7 +286,7 @@ func MapFieldBoolean(m ReadMap, key string) (bool, bool) {
 		return false, false
 	}
 	v, ok := m.Get(key)
-	if !ok || !v.Parent.ConformsTo(TBoolean) {
+	if !ok || !v.Parent().ConformsTo(TBoolean) {
 		return false, false
 	}
 	b, err := AsBoolean(v)
@@ -302,7 +302,7 @@ func MapFieldFloat(m ReadMap, key string) (float64, bool) {
 		return 0, false
 	}
 	v, ok := m.Get(key)
-	if !ok || !v.Parent.ConformsTo(TFloat) || v.IsDepScalar() {
+	if !ok || !v.Parent().ConformsTo(TFloat) || v.IsDepScalar() {
 		return 0, false
 	}
 	f, err := AsFloat(v)
@@ -388,7 +388,7 @@ func restorePredicateState(r *Registry, s predicateSandbox) {
 // indexing, …); the error is loud and discoverable.
 func (v *Value) AsConcreteString() (string, error) {
 	if v.IsDepScalar() {
-		return "", fmt.Errorf("AsConcreteString: value is a dependent-type constraint (%s), not a concrete String", v.Parent.String())
+		return "", fmt.Errorf("AsConcreteString: value is a dependent-type constraint (%s), not a concrete String", v.Parent().String())
 	}
 	// Handlers with dual [TString]+[TAtom] signatures (trim, upper,
 	// lower, concat, …) call into AsConcreteString from either path;
@@ -405,7 +405,7 @@ func (v *Value) AsConcreteString() (string, error) {
 // AsConcreteInteger — DepScalar-rejecting accessor. See AsConcreteString.
 func (v *Value) AsConcreteInteger() (int64, error) {
 	if v.IsDepScalar() {
-		return 0, fmt.Errorf("AsConcreteInteger: value is a dependent-type constraint (%s), not a concrete Integer", v.Parent.String())
+		return 0, fmt.Errorf("AsConcreteInteger: value is a dependent-type constraint (%s), not a concrete Integer", v.Parent().String())
 	}
 	return AsInteger(*v)
 }
@@ -413,7 +413,7 @@ func (v *Value) AsConcreteInteger() (int64, error) {
 // AsConcreteFloat — DepScalar-rejecting accessor. See AsConcreteString.
 func (v *Value) AsConcreteFloat() (float64, error) {
 	if v.IsDepScalar() {
-		return 0, fmt.Errorf("AsConcreteFloat: value is a dependent-type constraint (%s), not a concrete Float", v.Parent.String())
+		return 0, fmt.Errorf("AsConcreteFloat: value is a dependent-type constraint (%s), not a concrete Float", v.Parent().String())
 	}
 	return AsFloat(*v)
 }
@@ -421,7 +421,7 @@ func (v *Value) AsConcreteFloat() (float64, error) {
 // AsConcreteBoolean — DepScalar-rejecting accessor. See AsConcreteString.
 func (v *Value) AsConcreteBoolean() (bool, error) {
 	if v.IsDepScalar() {
-		return false, fmt.Errorf("AsConcreteBoolean: value is a dependent-type constraint (%s), not a concrete Boolean", v.Parent.String())
+		return false, fmt.Errorf("AsConcreteBoolean: value is a dependent-type constraint (%s), not a concrete Boolean", v.Parent().String())
 	}
 	return AsBoolean(*v)
 }
@@ -429,7 +429,7 @@ func (v *Value) AsConcreteBoolean() (bool, error) {
 // AsConcreteAtom — DepScalar-rejecting accessor. See AsConcreteString.
 func (v *Value) AsConcreteAtom() (string, error) {
 	if v.IsDepScalar() {
-		return "", fmt.Errorf("AsConcreteAtom: value is a dependent-type constraint (%s), not a concrete Atom", v.Parent.String())
+		return "", fmt.Errorf("AsConcreteAtom: value is a dependent-type constraint (%s), not a concrete Atom", v.Parent().String())
 	}
 	return AsAtom(*v)
 }
@@ -447,7 +447,7 @@ func (v *Value) AsConcreteAtom() (string, error) {
 // as Type/Disjunct/Enum) but whose payload isn't a real DisjunctInfo
 // fall back to the single-element slice.
 func FlattenDisjunctAlts(v Value) []Value {
-	if d, ok := v.Data.(DisjunctInfo); ok && v.Parent.ConformsTo(TDisjunct) {
+	if d, ok := v.Data().(DisjunctInfo); ok && v.Parent().ConformsTo(TDisjunct) {
 		return d.Alternatives
 	}
 	return []Value{v}

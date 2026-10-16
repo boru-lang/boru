@@ -391,7 +391,7 @@ func TestMiscCovImportCheckMode(t *testing.T) {
 
 	// A stripped (empty) path yields a Module carrier.
 	out, err := importFileHandler([]Value{NewString("")}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TModuleInst) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("check import of stripped path = %v, %v; want one Module carrier", out, err)
 	}
 	if _, err := importFileRenameHandler([]Value{NewList(nil), NewString("")}, nil, nil, r); err != nil {
@@ -414,20 +414,20 @@ func TestMiscCovImportCheckMode(t *testing.T) {
 
 	// A missing file degrades to a carrier rather than erroring.
 	out, err = importFileHandler([]Value{NewString("./no-such.boru")}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TModuleInst) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("check import of missing file = %v, %v; want carrier", out, err)
 	}
 
 	// So does an unresolvable bare module.
 	out, err = importFileHandler([]Value{NewString("zz-no-such-module-zz")}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TModuleInst) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("check import of missing bare module = %v, %v; want carrier", out, err)
 	}
 
 	// A native module reference with no resolver installed (the bare native
 	// package has none — lang wires it) degrades to a carrier too.
 	out, err = importFileHandler([]Value{NewString("boru:math-util")}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TModuleInst) {
+	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("check import of native module = %v, %v; want carrier", out, err)
 	}
 }

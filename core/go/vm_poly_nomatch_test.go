@@ -159,7 +159,7 @@ func TestPolyNoMatchProbeSnapshotsTuples(t *testing.T) {
 func TestPolyReachBound(t *testing.T) {
 	r := covRegistry(t, nil)
 	r.Defs.Push("pnmval", NewInteger(7))
-	r.Defs.Push("pnmfn", Value{Parent: TFunction, Data: &FnDefInfo{Name: "pnmfn"}})
+	r.Defs.Push("pnmfn", Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "pnmfn"}}})
 	r.RegisterNativeFunc(NativeFunc{Name: "pnmnat", Signatures: []Signature{pnmSig(-1, TInteger)}})
 	if err := r.Err(); err != nil {
 		t.Fatalf("register: %v", err)

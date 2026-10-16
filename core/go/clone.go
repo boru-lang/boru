@@ -73,7 +73,7 @@ func (c *cloner) withPayload(v Value, data Payload) Value {
 }
 
 func (c *cloner) clone(v Value) Value {
-	switch p := v.Data.(type) {
+	switch p := v.Data().(type) {
 	case nil:
 		// Type literal / bare lattice node — no payload to copy.
 		return v
@@ -210,7 +210,7 @@ func (c *cloner) cloneStore(s *StoreInstanceInfo) *StoreInstanceInfo {
 			out.Data[k] = cv
 			// Re-establish the COW back-link for nested stores so the
 			// clone's own propagation stays internally consistent.
-			if child, ok := cv.Data.(*StoreInstanceInfo); ok {
+			if child, ok := cv.Data().(*StoreInstanceInfo); ok {
 				child.Parent = out
 				child.ParentKey = k
 			}

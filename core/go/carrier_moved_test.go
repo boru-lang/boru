@@ -80,7 +80,7 @@ func TestApplyComplementNarrowingConjunctionUntouched(t *testing.T) {
 		NewWord("y"), NewWord("is"), NewTypeLiteral(TString),
 	}
 	cond := NewCarrier(TBoolean)
-	cond.Data = GuardFactInfo{Toks: toks}
+	cond.SetData(GuardFactInfo{Toks: toks})
 	if n := len(extractGuardClauses(r, cond)); n != 2 {
 		t.Fatalf("synthetic conjunction should yield 2 clauses, got %d", n)
 	}
@@ -89,7 +89,7 @@ func TestApplyComplementNarrowingConjunctionUntouched(t *testing.T) {
 	if r.Check.SuppressBodyErrors != before {
 		t.Error("a conjunction's else was marked dead from one exhaustive clause")
 	}
-	if xNow, _ := r.Defs.Top("x"); !xNow.Parent.Equal(TInteger) {
+	if xNow, _ := r.Defs.Top("x"); !xNow.Parent().Equal(TInteger) {
 		t.Error("x's else binding should be untouched for a conjunction")
 	}
 	restore()
@@ -100,7 +100,7 @@ func TestApplyComplementNarrowingConjunctionUntouched(t *testing.T) {
 	// SINGLE-clause control: a pure `x is Integer` guard DOES mark the else dead
 	// (the else is genuinely unreachable), proving the gate is single-guard only.
 	single := NewCarrier(TBoolean)
-	single.Data = GuardFactInfo{Toks: []Value{NewWord("x"), NewWord("is"), NewTypeLiteral(TInteger)}}
+	single.SetData(GuardFactInfo{Toks: []Value{NewWord("x"), NewWord("is"), NewTypeLiteral(TInteger)}})
 	restore2 := ApplyComplementNarrowing(r, single)
 	if r.Check.SuppressBodyErrors != before+1 {
 		t.Error("a single exhaustive guard should mark the else dead")

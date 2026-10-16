@@ -64,7 +64,7 @@ func TestAnalysisFunctionResultTakesCallPosition(t *testing.T) {
 	found := false
 	for i := 0; i < e.Tape.Len(); i++ {
 		v := e.Tape.At(i)
-		if v.Parent != nil && v.Parent.Equal(TFunction) {
+		if v.Parent() != nil && v.Parent().Equal(TFunction) {
 			found = true
 			if v.Pos() != at {
 				t.Errorf("the Function result carries the call's position: got %v, want %v", v.Pos(), at)

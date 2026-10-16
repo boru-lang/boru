@@ -182,7 +182,7 @@ func (w *bodyMapWalk) walk(v core.Value) {
 		w.facts.opaque = true
 		return
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.WordInfo:
 		w.facts.names[d.Name] = true
 		w.callee(d.Name)

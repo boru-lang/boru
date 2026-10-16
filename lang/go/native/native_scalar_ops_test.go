@@ -108,8 +108,8 @@ func TestSeqOpAtomWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !v.Parent.ConformsTo(TAtom) {
-		t.Fatalf("atom seqOp result parent = %s, want Atom", v.Parent.Leaf())
+	if !v.Parent().ConformsTo(TAtom) {
+		t.Fatalf("atom seqOp result parent = %s, want Atom", v.Parent().Leaf())
 	}
 	name, _ := AsAtom(v)
 	if name != "foobar" {
@@ -571,7 +571,7 @@ func TestSeqReturnsAndMicronReturns(t *testing.T) {
 	rf := seqOpReturns("div", TString, h)
 	done := r.Check.Begin()
 	out := rf([]Value{NewString(""), NewString("abc")}, r) // "abc" div "" — guaranteed error
-	if len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+	if len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 		t.Errorf("seqOpReturns residual = %v", out)
 	}
 	if len(r.Check.Diagnostics) == 0 {
@@ -589,7 +589,7 @@ func TestSeqReturnsAndMicronReturns(t *testing.T) {
 	e := evalOneVal(t, r, `make Emailon "a@b.io"`)
 	mrf := micronOpReturns("add")
 	c := mrf([]Value{e, e}, r)
-	if len(c) != 1 || !c[0].Parent.Equal(TEmailon) {
+	if len(c) != 1 || !c[0].Parent().Equal(TEmailon) {
 		t.Errorf("micronOpReturns same-kind = %v", c)
 	}
 	// different kinds -> family root; CARRIER operands are NOT mirrored
@@ -599,7 +599,7 @@ func TestSeqReturnsAndMicronReturns(t *testing.T) {
 	done = r.Check.Begin()
 	nBefore = len(r.Check.Diagnostics)
 	c = mrf([]Value{NewCarrier(TEmailon), NewCarrier(TUrlon)}, r)
-	if len(c) != 1 || !c[0].Parent.Equal(TMicron) {
+	if len(c) != 1 || !c[0].Parent().Equal(TMicron) {
 		t.Errorf("micronOpReturns cross-kind = %v", c)
 	}
 	if len(r.Check.Diagnostics) != nBefore {
@@ -616,7 +616,7 @@ func TestSeqReturnsAndMicronReturns(t *testing.T) {
 	done()
 	// wrong arity -> family root, no mirror.
 	c = mrf([]Value{e}, r)
-	if len(c) != 1 || !c[0].Parent.Equal(TMicron) {
+	if len(c) != 1 || !c[0].Parent().Equal(TMicron) {
 		t.Errorf("micronOpReturns arity = %v", c)
 	}
 }

@@ -45,24 +45,24 @@ func boundedBoundNode(child Value) *Type {
 	if n := DenotedTypeNode(child); n != nil {
 		return n
 	}
-	return child.Parent
+	return child.Parent()
 }
 
 // IsBoundedType reports whether v is a `Type of [B]` body.
 func IsBoundedType(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TType) {
+	if v.Parent() == nil || !v.Parent().Equal(TType) {
 		return false
 	}
-	_, ok := v.Data.(ChildTypeInfo)
+	_, ok := v.Data().(ChildTypeInfo)
 	return ok
 }
 
 // AsBoundedType returns the bound B of a `Type of [B]` body as a
 // lattice node.
 func AsBoundedType(v Value) (*Type, error) {
-	info, ok := v.Data.(ChildTypeInfo)
-	if !ok || v.Parent == nil || !v.Parent.Equal(TType) {
-		return nil, fmt.Errorf("AsBoundedType: not a bounded Type (got %T)", v.Data)
+	info, ok := v.Data().(ChildTypeInfo)
+	if !ok || v.Parent() == nil || !v.Parent().Equal(TType) {
+		return nil, fmt.Errorf("AsBoundedType: not a bounded Type (got %T)", v.Data())
 	}
 	node := boundedBoundNode(info.Child)
 	if node == nil {
@@ -85,11 +85,11 @@ func AsBoundedType(v Value) (*Type, error) {
 // (NUR328). A widened `none` value shares the None carrier and is no type;
 // the pass takes the literal, the common case.
 func TypeMembership(v Value) bool {
-	if v.Carrier {
-		return !IsDynamic(&v) && v.Parent != nil && (v.Parent.Equal(TType) || v.Parent.Equal(TNone))
+	if v.Carrier() {
+		return !IsDynamic(&v) && v.Parent() != nil && (v.Parent().Equal(TType) || v.Parent().Equal(TNone))
 	}
 	return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) ||
-		(v.Parent != nil && v.Parent.ConformsTo(TType))
+		(v.Parent() != nil && v.Parent().ConformsTo(TType))
 }
 
 // DenotedTypeNode returns the single lattice node a type VALUE
@@ -171,7 +171,7 @@ func boundedChild(v Value) (Value, bool) {
 	if !IsBoundedType(v) {
 		return Value{}, false
 	}
-	info, ok := v.Data.(ChildTypeInfo)
+	info, ok := v.Data().(ChildTypeInfo)
 	if !ok { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 		return Value{}, false
 	}

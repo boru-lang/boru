@@ -281,7 +281,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// The branch below is defensive only — a stack Atom matches
 			// an [Atom/q, ...] sig via the regular sigTypeMatches path
 			// just below, no /q involvement required.
-			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Parent.Equal(TWord) {
+			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Parent().Equal(TWord) {
 				if !TAtom.ConformsTo(SigArgType(sig, sigIdx)) {
 					allMatch = false
 					break
@@ -294,7 +294,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// Any-conforms-to-everything rule — it belongs to a value overload.
 			// Mirrors the forward-scan and positionalMatch /q guards. Inert at
 			// runtime (operands are concrete there).
-			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier && !IsConcrete(stackVal) && !stackVal.Parent.ConformsTo(TAtom) {
+			if sig.QuoteArgs != nil && sig.QuoteArgs[sigIdx] && stackVal.Carrier() && !IsConcrete(stackVal) && !stackVal.Parent().ConformsTo(TAtom) {
 				allMatch = false
 				break
 			}
@@ -384,7 +384,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 // carrier whose static type does not conform to the slot, so the runtime
 // value may miss it (NUR305).
 func unprovenStackOperand(v *Value, slot *Type) bool {
-	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
+	return !IsConcrete(v) && !v.Parent().ConformsTo(slot)
 }
 
 // gradualWindowAmbiguous reports a compile-pass window that took fwd forward

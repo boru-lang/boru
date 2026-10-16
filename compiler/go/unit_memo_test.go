@@ -250,10 +250,10 @@ func TestBodyRunEnvMulti(t *testing.T) {
 		t.Fatal("a value rebind joins rather than declines")
 	}
 	k, _ := r.Defs.Top("k")
-	if core.IsConcrete(&k) || !k.Carrier {
+	if core.IsConcrete(&k) || !k.Carrier() {
 		t.Errorf("a rebound name reads as a carrier inside the environment, got %v", k)
 	}
-	if s, _ := r.Defs.Top("same"); s.String() != "1" || s.Carrier {
+	if s, _ := r.Defs.Top("same"); s.String() != "1" || s.Carrier() {
 		t.Errorf("an unchanged name keeps its start binding: %v", s)
 	}
 	if e, _ := r.Defs.TopEntry("T"); e.TypeDef != core.TInteger {
@@ -306,19 +306,19 @@ func TestBodyRunEnvCarriesInstalledTypes(t *testing.T) {
 // container's shape, and reads a root literal as the gradual Any.
 func TestBindCarrier(t *testing.T) {
 	c := core.NewCarrier(core.TString)
-	if got := bindCarrier(c); !got.Carrier || got.Parent != c.Parent {
+	if got := bindCarrier(c); !got.Carrier() || got.Parent() != c.Parent() {
 		t.Error("a carrier is itself")
 	}
-	if got := bindCarrier(core.NewInteger(5)); !got.Carrier || core.IsConcrete(&got) || !got.Parent.Equal(core.TInteger) {
+	if got := bindCarrier(core.NewInteger(5)); !got.Carrier() || core.IsConcrete(&got) || !got.Parent().Equal(core.TInteger) {
 		t.Errorf("a scalar widens to its type carrier: %v", got)
 	}
-	if got := bindCarrier(core.NewList(nil)); !got.Parent.Equal(core.TList) || got.Data == nil {
+	if got := bindCarrier(core.NewList(nil)); !got.Parent().Equal(core.TList) || got.Data() == nil {
 		t.Errorf("a list keeps its container shape: %v", got)
 	}
-	if got := bindCarrier(core.NewMap(nil)); !got.Parent.Equal(core.TMap) || got.Data == nil {
+	if got := bindCarrier(core.NewMap(nil)); !got.Parent().Equal(core.TMap) || got.Data() == nil {
 		t.Errorf("a map keeps its container shape: %v", got)
 	}
-	if got := bindCarrier(core.Value{}); !core.IsDynamic(&got) || !got.Carrier {
+	if got := bindCarrier(core.Value{}); !core.IsDynamic(&got) || !got.Carrier() {
 		t.Errorf("a root literal is the gradual Any: %v", got)
 	}
 }

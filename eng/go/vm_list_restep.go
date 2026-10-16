@@ -106,12 +106,12 @@ func anyQuotesFirstSlot(fnDef core.FnDefInfo) bool {
 // than its value.
 func fnValueQuotes(v core.Value) bool {
 	var params []core.FnParam
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case *core.FnDefInfo:
 		for i := range d.Signatures {
 			params = append(params, d.Signatures[i].Params...)
 		}
-	case core.ClosurePayload:
+	case *core.ClosurePayload:
 		if prog, ok := d.Prog.(*compiler.Program); ok {
 			params, _ = closureSigParams(&prog.Fns[d.Unit])
 		}

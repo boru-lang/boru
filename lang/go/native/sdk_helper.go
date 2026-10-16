@@ -122,7 +122,7 @@ func convertResultItem(item any, opName string) (Value, error) {
 
 // extractQuery extracts an optional query map from the API options map.
 func extractQuery(apiMap ReadMap) map[string]any {
-	if queryVal, ok := apiMap.Get("query"); ok && queryVal.Parent.ConformsTo(TMap) {
+	if queryVal, ok := apiMap.Get("query"); ok && queryVal.Parent().ConformsTo(TMap) {
 		return valueToMap(queryVal)
 	}
 	return nil
@@ -130,7 +130,7 @@ func extractQuery(apiMap ReadMap) map[string]any {
 
 // extractData extracts an optional data map from the API options map.
 func extractData(apiMap ReadMap) map[string]any {
-	if dataVal, ok := apiMap.Get("data"); ok && dataVal.Parent.ConformsTo(TMap) {
+	if dataVal, ok := apiMap.Get("data"); ok && dataVal.Parent().ConformsTo(TMap) {
 		return valueToMap(dataVal)
 	}
 	return nil
@@ -149,7 +149,7 @@ func mergeAPIOptions(base ReadMap, opts ReadMap, field string) *OrderedMap {
 
 	// Get existing field map or create a new one.
 	existing := NewOrderedMap()
-	if v, ok := merged.Get(field); ok && v.Parent.ConformsTo(TMap) {
+	if v, ok := merged.Get(field); ok && v.Parent().ConformsTo(TMap) {
 		if src, _ := AsMap(v); src != nil {
 			for _, k := range src.Keys() {
 				val, _ := src.Get(k)

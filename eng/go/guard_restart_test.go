@@ -316,7 +316,7 @@ func TestParksResult(t *testing.T) {
 		v    core.Value
 		want bool
 	}{
-		{"a compiled closure", core.Value{Data: core.ClosurePayload{}}, true},
+		{"a compiled closure", core.ValueOf(&core.Datum{Data: &core.ClosurePayload{}}), true},
 		{"a boru fn", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, boru}}), true},
 		{"a native", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{native}}), false},
 		{"a fn of both", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, native}}), false},

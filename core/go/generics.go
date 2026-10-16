@@ -88,15 +88,15 @@ func NewGenSpec(info *GenSpecInfo) Value {
 
 // IsGenSpec reports whether v carries a generic-parameter spec.
 func IsGenSpec(v Value) bool {
-	_, ok := v.Data.(*GenSpecInfo)
+	_, ok := v.Data().(*GenSpecInfo)
 	return ok
 }
 
 // AsGenSpec returns the shared spec payload.
 func AsGenSpec(v Value) (*GenSpecInfo, error) {
-	info, ok := v.Data.(*GenSpecInfo)
+	info, ok := v.Data().(*GenSpecInfo)
 	if !ok {
-		return nil, fmt.Errorf("AsGenSpec: not a gen spec value (got %T)", v.Data)
+		return nil, fmt.Errorf("AsGenSpec: not a gen spec value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -109,15 +109,15 @@ func NewGenParamValue(p GenParam) Value {
 
 // IsGenParamValue reports whether v carries a single parameter spec.
 func IsGenParamValue(v Value) bool {
-	_, ok := v.Data.(GenParam)
+	_, ok := v.Data().(GenParam)
 	return ok
 }
 
 // AsGenParamValue returns the parameter spec.
 func AsGenParamValue(v Value) (GenParam, error) {
-	p, ok := v.Data.(GenParam)
+	p, ok := v.Data().(GenParam)
 	if !ok {
-		return GenParam{}, fmt.Errorf("AsGenParamValue: not a gen param value (got %T)", v.Data)
+		return GenParam{}, fmt.Errorf("AsGenParamValue: not a gen param value (got %T)", v.Data())
 	}
 	return p, nil
 }
@@ -131,15 +131,15 @@ func NewTypeSchema(t *Type, info *TypeSchemaInfo) Value {
 
 // IsTypeSchema reports whether v carries a generic schema payload.
 func IsTypeSchema(v Value) bool {
-	_, ok := v.Data.(*TypeSchemaInfo)
+	_, ok := v.Data().(*TypeSchemaInfo)
 	return ok
 }
 
 // AsTypeSchema returns the shared schema payload pointer.
 func AsTypeSchema(v Value) (*TypeSchemaInfo, error) {
-	info, ok := v.Data.(*TypeSchemaInfo)
+	info, ok := v.Data().(*TypeSchemaInfo)
 	if !ok {
-		return nil, fmt.Errorf("AsTypeSchema: not a type schema value (got %T)", v.Data)
+		return nil, fmt.Errorf("AsTypeSchema: not a type schema value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -153,15 +153,15 @@ func NewGenInstRef(ref GenInstRef) Value {
 
 // IsGenInstRef reports whether v is a deferred instantiation.
 func IsGenInstRef(v Value) bool {
-	_, ok := v.Data.(GenInstRef)
+	_, ok := v.Data().(GenInstRef)
 	return ok
 }
 
 // AsGenInstRef returns the deferred instantiation payload.
 func AsGenInstRef(v Value) (GenInstRef, error) {
-	ref, ok := v.Data.(GenInstRef)
+	ref, ok := v.Data().(GenInstRef)
 	if !ok {
-		return GenInstRef{}, fmt.Errorf("AsGenInstRef: not a gen instantiation ref (got %T)", v.Data)
+		return GenInstRef{}, fmt.Errorf("AsGenInstRef: not a gen instantiation ref (got %T)", v.Data())
 	}
 	return ref, nil
 }
@@ -245,7 +245,7 @@ func (g *genParamUnifier) Match(v Value, t *Type) bool {
 // armed unify (`xs:[:T]` element by element) keeps the chain armed for
 // a compound bound's own walk.
 func (g *genParamUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if v.Parent != nil && v.Parent.ConformsTo(t) {
+	if v.Parent() != nil && v.Parent().ConformsTo(t) {
 		return true
 	}
 	if !g.param.HasBound {
@@ -314,7 +314,7 @@ func AttachGenBound(r *Registry, node *Type, p GenParam) {
 	}
 	if p.HasBound {
 		if bn := boundNode(p.Bound); bn != nil {
-			node.Parent = NodeOf(bn)
+			node.SetParent(NodeOf(bn))
 		}
 	}
 }

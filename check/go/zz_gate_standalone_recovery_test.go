@@ -25,7 +25,7 @@ import (
 // gsWithID stamps a fresh value identity on v (a recorded operand needs
 // one).
 func gsWithID(v core.Value) core.Value {
-	core.SetID(&v, core.GenerateID(core.IDPrefixForType(v.Parent)))
+	core.SetID(&v, core.GenerateID(core.IDPrefixForType(v.Parent())))
 	return v
 }
 
@@ -287,7 +287,7 @@ func TestGateStandaloneDynBodyRecovery(t *testing.T) {
 	if len(es.uncomp) != 0 {
 		t.Errorf("a taken dyn-body record declines nothing, marks = %v", es.uncomp)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier || core.IDOf(e.Tape.Ref(0)) != core.IDOf(&offers[0].outs[0]) {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier() || core.IDOf(e.Tape.Ref(0)) != core.IDOf(&offers[0].outs[0]) {
 		t.Errorf("the recorded results must be spliced in the window's place, tape len %d", e.Tape.Len())
 	}
 
@@ -348,7 +348,7 @@ func TestGateStandaloneImpreciseCarrierNominalUserFn(t *testing.T) {
 	if len(es.uncomp) != 0 {
 		t.Errorf("the nominal recovery must not decline, marks = %v", es.uncomp)
 	}
-	if out := e.Tape.At(0); e.Tape.Len() != 1 || !out.Carrier || !out.Parent.Equal(core.TInteger) {
+	if out := e.Tape.At(0); e.Tape.Len() != 1 || !out.Carrier() || !out.Parent().Equal(core.TInteger) {
 		t.Errorf("the sole sig's results must be spliced, tape len %d", e.Tape.Len())
 	}
 	if zzHasDiag(r, "no_signature") {
@@ -455,7 +455,7 @@ func TestGateStandaloneRecoverUserFnBarrier(t *testing.T) {
 	if r.Check.CurCallWord != "zgsbaruser" || r.Check.CurCallPos != pos {
 		t.Errorf("the recovered call publishes its word cursor, got %q at %+v", r.Check.CurCallWord, r.Check.CurCallPos)
 	}
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(core.TInteger) {
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent().Equal(core.TInteger) {
 		t.Errorf("the recovered call's results replace the window, tape len %d", e.Tape.Len())
 	}
 }

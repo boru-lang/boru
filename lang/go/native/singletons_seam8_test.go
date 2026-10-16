@@ -34,7 +34,7 @@ func TestW8SetpathPathNotConcreteString(t *testing.T) {
 	dm.Set("a", NewInteger(1))
 	// A value that conforms to TString (so it is selected as the path arg)
 	// but has nil Data, so AsString fails.
-	pathArg := Value{Parent: TString}
+	pathArg := ValueOf(&Datum{Parent: TString})
 	if _, err := setpathHandler([]Value{NewMap(dm), pathArg, NewInteger(9)}, nil, nil, r); err == nil {
 		t.Fatal("setpath with a non-concrete String path must error")
 	}
@@ -90,7 +90,7 @@ func TestW8SetpathReachBadData(t *testing.T) {
 	// IsReach gates on Parent==TReach; AsReach gates on the ReachInfo
 	// payload. A TReach-typed value with no ReachInfo passes the first and
 	// fails the second.
-	badReach := Value{Parent: TReach}
+	badReach := ValueOf(&Datum{Parent: TReach})
 	if _, err := setpathHandler([]Value{NewMap(dm), badReach, NewInteger(9)}, nil, nil, r); err == nil {
 		t.Fatal("setpath with a malformed reach path must error")
 	}

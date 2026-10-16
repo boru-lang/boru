@@ -73,7 +73,7 @@ func TestEncodeDelimitedEmptyColumns(t *testing.T) {
 		Record: RecordTypeInfo{Fields: NewOrderedMap()},
 		Rows:   []Value{},
 	}
-	out, err := encodeDelimited(Value{Parent: TList, Data: td}, ",")
+	out, err := encodeDelimited(ValueOf(&Datum{Parent: TList, Data: td}), ",")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,7 +715,7 @@ func TestMakeTable(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("name", NewTypeLiteral(TString))
 	fields.Set("age", NewTypeLiteral(TInteger))
-	tableType := Value{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: fields}}}
+	tableType := ValueOf(&Datum{Parent: TList, Data: TableTypeInfo{Record: RecordTypeInfo{Fields: fields}}})
 
 	// make table from positional rows
 	rowData := NewList([]Value{
@@ -747,7 +747,7 @@ func TestMakeRecordWithBase(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("name", NewTypeLiteral(TString))
 	fields.Set("age", NewTypeLiteral(TInteger))
-	recType := Value{Parent: TMap, Data: RecordTypeInfo{Fields: fields}}
+	recType := ValueOf(&Datum{Parent: TMap, Data: RecordTypeInfo{Fields: fields}})
 
 	// make record with only name, using base:true to fill age with default
 	opts := NewOrderedMap()
@@ -776,7 +776,7 @@ func TestMakeRecordWithNamedList(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("x", NewTypeLiteral(TInteger))
 	fields.Set("y", NewTypeLiteral(TString))
-	recType := Value{Parent: TMap, Data: RecordTypeInfo{Fields: fields}}
+	recType := ValueOf(&Datum{Parent: TMap, Data: RecordTypeInfo{Fields: fields}})
 
 	// Named list form: [{x: 1} {y: "hello"}]
 	xm := NewOrderedMap()

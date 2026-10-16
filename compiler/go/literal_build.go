@@ -49,7 +49,7 @@ const (
 // planLiteralBuild is the construction of the fresh literal v whose
 // embedded enclosing-binding containers (by ID) are keep.
 func planLiteralBuild(v *core.Value, keep map[string]bool) LiteralBuild {
-	if _, ok := core.FnDefOf(v.Data); ok {
+	if _, ok := core.FnDefOf(v.Data()); ok {
 		return LiteralBuild{Kind: BuildFn, Val: v}
 	}
 	return planLiteralPart(v, keep)
@@ -59,7 +59,7 @@ func planLiteralPart(v *core.Value, keep map[string]bool) LiteralBuild {
 	if id := core.IDOf(v); id != "" && keep[id] {
 		return LiteralBuild{Kind: BuildShared, Val: v}
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.ListPayload:
 		parts := make([]LiteralBuild, len(d.Elems))
 		for i := range d.Elems {
@@ -79,7 +79,7 @@ func planLiteralPart(v *core.Value, keep map[string]bool) LiteralBuild {
 		}
 		return b
 	}
-	if core.IsMutablePayload(v.Data) {
+	if core.IsMutablePayload(v.Data()) {
 		return LiteralBuild{Kind: BuildCopy, Val: v}
 	}
 	return LiteralBuild{Kind: BuildShared, Val: v}

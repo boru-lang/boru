@@ -12,7 +12,7 @@ func TestDeepConcreteScalars(t *testing.T) {
 		NewInteger(1), NewString("s"), NewBoolean(true), NewAtom("a"), NewNone(),
 	} {
 		if !DeepConcrete(v) {
-			t.Errorf("%s is concrete and has no interior — it must be deep-concrete", v.Parent)
+			t.Errorf("%s is concrete and has no interior — it must be deep-concrete", v.Parent())
 		}
 	}
 	// A carrier is not concrete at any depth.

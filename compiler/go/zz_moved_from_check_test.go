@@ -23,8 +23,8 @@ func TestS5bEReturnsFnArmedRootCarrierArg(t *testing.T) {
 	// A root-node arg (nil Parent): the armed generalisation must keep it
 	// as a carrier rather than calling NewCarrier(nil).
 	anyLit := core.NewTypeLiteral(core.TAny)
-	if anyLit.Parent != nil {
-		t.Fatalf("test premise: the Any literal is its own root (nil Parent), got %v", anyLit.Parent)
+	if anyLit.Parent() != nil {
+		t.Fatalf("test premise: the Any literal is its own root (nil Parent), got %v", anyLit.Parent())
 	}
 	out := rf([]core.Value{anyLit}, r)
 	if out == nil {

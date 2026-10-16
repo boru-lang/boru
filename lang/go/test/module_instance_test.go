@@ -25,13 +25,13 @@ func TestModuleInstanceFileModule(t *testing.T) {
 		return res[len(res)-1]
 	}
 
-	if ns := run(`Lib`); core.ModuleNSOf(ns) == nil || !ns.Parent.Equal(native.TMap) {
-		t.Errorf("Lib = %s (type %s), want a facet-carrying namespace Map", ns.String(), ns.Parent)
+	if ns := run(`Lib`); core.ModuleNSOf(ns) == nil || !ns.Parent().Equal(native.TMap) {
+		t.Errorf("Lib = %s (type %s), want a facet-carrying namespace Map", ns.String(), ns.Parent())
 	}
 	if v := run(`Lib.answer`); func() bool { n, _ := native.AsInteger(v); return n != 42 }() {
 		t.Errorf("Lib.answer = %s, want 42", v.String())
 	}
-	if v := run(`Lib.$module`).Parent; !v.Equal(native.TModuleInst) {
+	if v := run(`Lib.$module`).Parent(); !v.Equal(native.TModuleInst) {
 		t.Errorf("typeof Lib.$module = %s, want Module", v)
 	}
 	if s, _ := native.AsString(run(`Lib.$module.kind`)); s != "file" {

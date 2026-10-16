@@ -133,7 +133,7 @@ func TestMintFlexShapeCarrierNestsAndCaps(t *testing.T) {
 func TestAdoptShapeValue(t *testing.T) {
 	// An already-shaped carrier shares its pointer.
 	shaped := core.NewStoreShapeCarrier(core.TFlexMap, 0)
-	if got := AdoptShapeValue(shaped, 0); got.Data != shaped.Data {
+	if got := AdoptShapeValue(shaped, 0); got.Data() != shaped.Data() {
 		t.Error("a shaped carrier must share, not re-mint")
 	}
 	// A concrete plain map mints a nested shape.
@@ -143,12 +143,12 @@ func TestAdoptShapeValue(t *testing.T) {
 	// A concrete list becomes a bare FlexList carrier.
 	lst := core.NewList([]core.Value{core.NewInteger(1)})
 	got := AdoptShapeValue(lst, 0)
-	if !got.Carrier || !got.Parent.ConformsTo(core.TFlexList) {
-		t.Errorf("a concrete list must adopt to a FlexList carrier, got %s", got.Parent.Leaf())
+	if !got.Carrier() || !got.Parent().ConformsTo(core.TFlexList) {
+		t.Errorf("a concrete list must adopt to a FlexList carrier, got %s", got.Parent().Leaf())
 	}
 	// A scalar records as-is.
 	n := core.NewInteger(9)
-	if got := AdoptShapeValue(n, 0); !got.Parent.Equal(core.TInteger) || got.Carrier {
+	if got := AdoptShapeValue(n, 0); !got.Parent().Equal(core.TInteger) || got.Carrier() {
 		t.Error("a scalar must record as-is")
 	}
 }
@@ -172,13 +172,13 @@ func TestShapeFieldRead(t *testing.T) {
 		Impl:    core.Boru([]core.Value{core.NewInteger(1)}),
 	}}}
 	got = ShapeFieldRead(core.NewFunction(fnDef))
-	if !core.IsDynamic(&got) || !got.Parent.Equal(core.TAny) {
-		t.Errorf("a dispatch-bearing field must read dynamic(Any), got %s", got.Parent.Leaf())
+	if !core.IsDynamic(&got) || !got.Parent().Equal(core.TAny) {
+		t.Errorf("a dispatch-bearing field must read dynamic(Any), got %s", got.Parent().Leaf())
 	}
 	// An ordinary value reads back as a dynamic carrier of its type — a
 	// bound a guard discharges, never a strict commitment.
 	got = ShapeFieldRead(core.NewInteger(5))
-	if !core.IsDynamic(&got) || !got.Parent.ConformsTo(core.TInteger) {
-		t.Errorf("an integer field must read dynamic(Integer), got %s", got.Parent.Leaf())
+	if !core.IsDynamic(&got) || !got.Parent().ConformsTo(core.TInteger) {
+		t.Errorf("an integer field must read dynamic(Integer), got %s", got.Parent().Leaf())
 	}
 }

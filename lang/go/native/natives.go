@@ -617,11 +617,11 @@ func folderOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	optsVal := args[0]
 	pathVal := args[1]
 	if !IsPathon(pathVal) {
-		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent.String())
+		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent().String())
 	}
 	parents := true
 	if optsMap, _ := AsMap(optsVal); optsMap != nil {
-		if v, ok := optsMap.Get("parents"); ok && v.Parent.ConformsTo(TBoolean) {
+		if v, ok := optsMap.Get("parents"); ok && v.Parent().ConformsTo(TBoolean) {
 			parents, _ = AsBoolean(v)
 		}
 	}
@@ -633,7 +633,7 @@ func folderOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 func folderHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	pathVal := args[0]
 	if !IsPathon(pathVal) {
-		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent.String())
+		return nil, fmt.Errorf("folder: expected Path, got %s", pathVal.Parent().String())
 	}
 	_as1, _ := AsPathon(pathVal)
 	return doFolder(_as1, true, reg)
@@ -685,9 +685,9 @@ func stackCollectHandler(args []Value, _ map[string]Value, stack []Value, _ *Reg
 func stackCollectCheckFullStackFn(_ []Value, stack []Value, _ *Registry) []Value {
 	elem := TAny
 	if len(stack) > 0 {
-		elem = stack[0].Parent
+		elem = stack[0].Parent()
 		for i := 1; i < len(stack); i++ {
-			elem = CommonAncestorType(elem, stack[i].Parent)
+			elem = CommonAncestorType(elem, stack[i].Parent())
 		}
 	}
 	return append(append([]Value(nil), stack...), NewCarrierTypedList(elem))
@@ -762,9 +762,9 @@ func startInterval(tt TemporalModuleTypes, args []Value, r *Registry, isList boo
 
 // cancelTimeoutHandler stops a pending Timeout timer.
 func cancelTimeoutHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	ti, ok := args[0].Data.(*TimeoutInfo)
+	ti, ok := args[0].Data().(*TimeoutInfo)
 	if !ok {
-		return nil, r.BoruError("cancel-timeout_error", fmt.Sprintf("cancel-timeout: not a Timeout value (got %s)", args[0].Parent), "cancel-timeout")
+		return nil, r.BoruError("cancel-timeout_error", fmt.Sprintf("cancel-timeout: not a Timeout value (got %s)", args[0].Parent()), "cancel-timeout")
 	}
 	if ti.Timer != nil {
 		ti.Timer.Stop()
@@ -776,9 +776,9 @@ func cancelTimeoutHandler(args []Value, _ map[string]Value, _ []Value, r *Regist
 // cancelIntervalofHandler stops a running Interval ticker and signals its
 // goroutine to exit.
 func cancelIntervalofHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	ii, ok := args[0].Data.(*IntervalInfo)
+	ii, ok := args[0].Data().(*IntervalInfo)
 	if !ok {
-		return nil, r.BoruError("cancel-interval_error", fmt.Sprintf("cancel-interval: not an Interval value (got %s)", args[0].Parent), "cancel-interval")
+		return nil, r.BoruError("cancel-interval_error", fmt.Sprintf("cancel-interval: not an Interval value (got %s)", args[0].Parent()), "cancel-interval")
 	}
 	if ii.Ticker != nil {
 		ii.Ticker.Stop()

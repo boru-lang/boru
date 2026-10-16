@@ -131,10 +131,10 @@ func isR(v Value, t *Type, r *Registry) bool {
 // predicate-type branch (NUR099: the parameter-count route it replaced
 // was ADR-016's arity-keyed exception, and is gone).
 func IsDeclaredPredicateFn(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFunction) {
+	if v.Parent() == nil || !v.Parent().Equal(TFunction) {
 		return false
 	}
-	info, ok := v.Data.(*FnDefInfo)
+	info, ok := v.Data().(*FnDefInfo)
 	return ok && info.Predicate
 }
 
@@ -142,13 +142,13 @@ func IsDeclaredPredicateFn(v Value) bool {
 // — `fnpred`'s half of the pair above. Total: a value carrying no FnDefInfo
 // comes back unchanged, so a caller never has to guard the payload shape.
 func MarkPredicateFn(v Value) Value {
-	fd, ok := FnDefOf(v.Data)
+	fd, ok := FnDefOf(v.Data())
 	if !ok {
 		return v
 	}
 	info := *fd
 	info.Predicate = true
-	return NewValueRaw(v.Parent, &info)
+	return NewValueRaw(v.Parent(), &info)
 }
 
 // resolvePredicateRef returns the predicate type's lattice NODE when v
@@ -178,7 +178,7 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 	case IsWord(&v):
 		w, _ := AsWord(&v)
 		name = w.Name
-	case v.Parent != nil && v.Parent.ConformsTo(TAtom) && v.Data != nil:
+	case v.Parent() != nil && v.Parent().ConformsTo(TAtom) && v.Data() != nil:
 		w, _ := AsAtom(v)
 		name = w
 	case IsBareTypeNode(&v) && IDOf(&v) != "" && v.Name() != "":
@@ -187,7 +187,7 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 		// Direct FnDef body — try the FnDef's Name field. Predicate
 		// types installed via `def Pos fnpred […]` carry Name="Pos" on
 		// their FnDef payload after InstallType wires the binding.
-		if info, ok := v.Data.(*FnDefInfo); ok {
+		if info, ok := v.Data().(*FnDefInfo); ok {
 			name = info.Name
 		}
 		if name == "" {
@@ -231,8 +231,8 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 // Value-ID equality is kept as a secondary probe for pass-minted values
 // whose payloads were rebuilt (aggregate clones re-slice Signatures).
 func sameFnConstruction(a, b Value) bool {
-	ai, aok := a.Data.(*FnDefInfo)
-	bi, bok := FnDefOf(b.Data)
+	ai, aok := a.Data().(*FnDefInfo)
+	bi, bok := FnDefOf(b.Data())
 	if !aok || !bok {
 		return false
 	}
@@ -271,7 +271,7 @@ func unifyResolvedPredicate(def *Type, candidate Value, r *Registry) (Value, *Un
 // alternative via unifyInner with r so predicate-fn alternatives are
 // evaluated correctly.
 func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(&val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (val.Parent().Equal(TAny) || (&val).Equal(TAny)) {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 	for _, alt := range disj.Alternatives {
@@ -311,10 +311,10 @@ func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 				return a, nil
 			}
 		}
-		if def, ok := resolvePredicateRef(a, r); ok && b.Data != nil {
+		if def, ok := resolvePredicateRef(a, r); ok && b.Data() != nil {
 			return unifyResolvedPredicate(def, b, r)
 		}
-		if def, ok := resolvePredicateRef(b, r); ok && a.Data != nil {
+		if def, ok := resolvePredicateRef(b, r); ok && a.Data() != nil {
 			return unifyResolvedPredicate(def, a, r)
 		}
 		if IsDisjunct(&a) {
@@ -489,7 +489,7 @@ func init() {
 			return other, nil
 		}},
 		{func(v Value, _ ValueShape) bool { return IsClassType(&v) }, unifyObjectType},
-		{func(v Value, _ ValueShape) bool { return typeParamLitNode(v) != nil }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
+		{func(v Value, _ ValueShape) bool { return isTypeParamLit(&v) }, func(ruling, other Value, r *Registry) (Value, *UnifyError) {
 			return unifyTypeParam(ruling, typeParamLitNode(ruling), other, r)
 		}},
 	}
@@ -587,10 +587,10 @@ func unifySameOrSubtype(a, b Value) (Value, *UnifyError) {
 	bType := denotedType(b)
 
 	// Type literal unifies with any concrete whose type matches.
-	if IsBareTypeNode(&a) && b.Data != nil && bType.ConformsTo(aType) {
+	if IsBareTypeNode(&a) && b.Data() != nil && bType.ConformsTo(aType) {
 		return b, nil
 	}
-	if IsBareTypeNode(&b) && a.Data != nil && aType.ConformsTo(bType) {
+	if IsBareTypeNode(&b) && a.Data() != nil && aType.ConformsTo(bType) {
 		return a, nil
 	}
 
@@ -623,5 +623,5 @@ func denotedType(v Value) *Type {
 	if IsBareTypeNode(&v) && IDOf(&v) != "" {
 		return literalNode(&v)
 	}
-	return v.Parent
+	return v.Parent()
 }

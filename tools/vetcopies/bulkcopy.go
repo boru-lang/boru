@@ -9,16 +9,19 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// corePath is the import path of the package that declares Value.
+// corePath is the import path of the package that declares Value and Datum.
 const corePath = "github.com/boru-lang/boru/core/go"
 
-// BulkCopy reports the bulk copies of Values that copylocks does not see:
-// the built-in copy into a []core.Value, and an append onto one whose source
-// is spread with "...". Each copies every element's header, which is what
-// the policy's bulk-copy count measures (scripts/vet-copies.sh).
+// BulkCopy reports the bulk copies of Datums that copylocks does not see:
+// the built-in copy into a []core.Datum, and an append onto one whose source
+// is spread with "...". Each copies every element's datum, which is what
+// the policy's bulk-copy count measures (scripts/vet-copies.sh). A
+// []core.Value is an array of handles — references and their holders'
+// occurrence state — so copying one copies no datum (the exceptions list's
+// C1 and R4) and is not reported.
 var BulkCopy = &analysis.Analyzer{
 	Name:     "bulkcopy",
-	Doc:      "report copy() and variadic append() over []core.Value",
+	Doc:      "report copy() and variadic append() over []core.Datum",
 	Requires: []*analysis.Analyzer{inspect.Analyzer},
 	Run:      runBulkCopy,
 }
@@ -38,22 +41,21 @@ func runBulkCopy(pass *analysis.Pass) (any, error) {
 		// A type-checked copy or append always has its destination.
 		switch b.Name() {
 		case "copy":
-			if isValueSlice(pass.TypesInfo.TypeOf(call.Args[0])) {
-				pass.Reportf(call.Pos(), "bulk copy of []core.Value: copy")
+			if isDatumSlice(pass.TypesInfo.TypeOf(call.Args[0])) {
+				pass.Reportf(call.Pos(), "bulk copy of []core.Datum: copy")
 			}
 		case "append":
-			if call.Ellipsis.IsValid() && isValueSlice(pass.TypesInfo.TypeOf(call.Args[0])) {
-				pass.Reportf(call.Pos(), "bulk copy of []core.Value: variadic append")
+			if call.Ellipsis.IsValid() && isDatumSlice(pass.TypesInfo.TypeOf(call.Args[0])) {
+				pass.Reportf(call.Pos(), "bulk copy of []core.Datum: variadic append")
 			}
 		}
 	})
 	return nil, nil
 }
 
-// isValueSlice reports whether t is a slice of core.Value. Type is an alias
-// of Value, so a []Type counts too, and so does a named slice type whose
-// underlying type is []Value.
-func isValueSlice(t types.Type) bool {
+// isDatumSlice reports whether t is a slice of core.Datum, or a named slice
+// type whose underlying type is []Datum.
+func isDatumSlice(t types.Type) bool {
 	if t == nil {
 		return false
 	}
@@ -61,7 +63,17 @@ func isValueSlice(t types.Type) bool {
 	if !ok {
 		return false
 	}
-	return isValue(s.Elem())
+	return isDatum(s.Elem())
+}
+
+// isDatum reports whether t is core.Datum.
+func isDatum(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj.Name() == "Datum" && obj.Pkg() != nil && obj.Pkg().Path() == corePath
 }
 
 // isValue reports whether t is core.Value (Type is an alias of it).

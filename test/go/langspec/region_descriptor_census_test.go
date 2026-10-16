@@ -73,7 +73,7 @@ func nestedBodies(vals []core.Value, depth int) [][]core.Value {
 	}
 	var out [][]core.Value
 	for _, v := range vals {
-		if !core.IsConcrete(&v) || !v.Parent.Equal(core.TList) {
+		if !core.IsConcrete(&v) || !v.Parent().Equal(core.TList) {
 			continue
 		}
 		lst, err := core.AsList(v)
@@ -405,10 +405,10 @@ func slotKind(v core.Value) string {
 	case core.IsConcrete(&v):
 		return "const"
 	}
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return "OTHER:<no parent>"
 	}
-	return "OTHER:" + core.CanonValue(*v.Parent)
+	return "OTHER:" + core.CanonValue(*v.Parent())
 }
 
 // TestRegionSlotTokenKinds censuses what region slots ARE, and it is here to

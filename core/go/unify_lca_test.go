@@ -50,9 +50,9 @@ func TestDispatchUnifier_SameTypeBothSides(t *testing.T) {
 	item.ensureTMeta().Behavior = &itemUnifier{prev: item.Behavior(), fixed: want}
 
 	x := NewInteger(3)
-	x.Parent = item
+	x.SetParent(item)
 	y := NewInteger(4)
-	y.Parent = item
+	y.SetParent(item)
 
 	v, err := UnifyExplain(x, y)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestDispatchUnifier_MoreSpecificStarts(t *testing.T) {
 	item.ensureTMeta().Behavior = &itemUnifier{prev: item.Behavior(), fixed: want}
 
 	x := NewInteger(3)
-	x.Parent = item // Item-typed
+	x.SetParent(item) // Item-typed
 	y := NewInteger(5)
 	// y stays Integer-typed (no reparent)
 
@@ -101,9 +101,9 @@ func TestDispatchUnifier_FailurePropagates(t *testing.T) {
 	item.ensureTMeta().Behavior = &itemUnifier{prev: item.Behavior(), failOn: true}
 
 	x := NewInteger(3)
-	x.Parent = item
+	x.SetParent(item)
 	y := NewInteger(4)
-	y.Parent = item
+	y.SetParent(item)
 
 	_, err := UnifyExplain(x, y)
 	if err == nil {
@@ -127,9 +127,9 @@ func TestDispatchUnifier_OptOutContinuesWalk(t *testing.T) {
 	item.ensureTMeta().Behavior = &optOutUnifier{prev: item.Behavior()}
 
 	x := NewInteger(3)
-	x.Parent = item
+	x.SetParent(item)
 	y := NewInteger(4)
-	y.Parent = item
+	y.SetParent(item)
 
 	// Should fall through to the kernel's structural rule, which
 	// rejects 3 vs 4 as "same type, different literal".

@@ -950,7 +950,7 @@ func resolvedData(stack []native.Value, pointer int) []native.Value {
 		if native.IsOpenParen(&v) {
 			// A loop region's sealing paren bounds the view, as the live
 			// CurrentStack bounds it: the body sees nothing beneath it.
-			if _, sealed := v.Data.(native.LoopOpenInfo); sealed {
+			if _, sealed := v.Data().(native.LoopOpenInfo); sealed {
 				vals = vals[:0]
 			}
 			continue

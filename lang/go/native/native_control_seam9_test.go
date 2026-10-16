@@ -94,7 +94,7 @@ func TestW9ErrorReturnsFnNonListPayload(t *testing.T) {
 	r.Check.Compiling = true
 	bad := NewValueRaw(TList, core.IntPayload{N: 1})
 	out := errorReturnsFn([]Value{bad, NewInteger(7)}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
 		t.Fatalf("non-list payload must stay dynamic(Any), got %v", out)
 	}
 }

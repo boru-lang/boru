@@ -51,7 +51,7 @@ func TestCallResultPlacedArms(t *testing.T) {
 		t.Error("a def-read lead dispatches (a bare name always calls)")
 	}
 	delete(es.defReads, "v-res")
-	es.NoteMemberFnRead("v-res", core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "f"}})
+	es.NoteMemberFnRead("v-res", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "f"}}))
 	if es.callResultPlaced(v) {
 		t.Error("a member-read lead is the arrival model's")
 	}
@@ -85,8 +85,8 @@ func TestCallResultPlacedArms(t *testing.T) {
 	// The arrival apply of a USER member parks; a dyn-method over a word
 	// that is not a user fn (a Go-impl member, the paren-apply pseudo-word)
 	// keeps its arm, as does a multi-output one.
-	r.Defs.Push("mkr", core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "mkr",
-		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}})
+	r.Defs.Push("mkr", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "mkr",
+		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}}))
 	es.frames[0][0] = EmitEvent{seq: 41, kind: evCall, call: emitCall{word: "mkr", nout: 1,
 		dynMethod: &DynMethodSpec{Word: "mkr", NArgs: 1, NOut: 1}}}
 	if !es.callResultPlaced(v) {
@@ -129,13 +129,13 @@ func TestUserMemberFn(t *testing.T) {
 	if es.userMemberFn("n") {
 		t.Error("a scalar binding is not a user fn")
 	}
-	r.Defs.Push("g", core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g",
-		Signatures: []core.Signature{{}}}})
+	r.Defs.Push("g", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g",
+		Signatures: []core.Signature{{}}}}))
 	if es.userMemberFn("g") {
 		t.Error("a fn with no boru body (a Go-impl fn) is not a user fn")
 	}
-	r.Defs.Push("u", core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "u",
-		Signatures: []core.Signature{{}, {Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}})
+	r.Defs.Push("u", core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "u",
+		Signatures: []core.Signature{{}, {Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}}}}}))
 	if !es.userMemberFn("u") {
 		t.Error("a boru body on any overload makes a user fn")
 	}
@@ -200,7 +200,7 @@ func TestCallResultRenderKnown(t *testing.T) {
 	if es.callResultRenderKnown(v) {
 		t.Error("a non-fn const is not a rendered closure")
 	}
-	es.consts = []core.Value{{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}}}
+	es.consts = []core.Value{core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}})}
 	if !es.callResultRenderKnown(v) {
 		t.Error("a const fn value renders as the interpreter formats it")
 	}

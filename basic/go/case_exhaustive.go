@@ -58,7 +58,7 @@ const caseAltExpandDepth = 8
 // Dynamic scrutinees never reach here: checkCaseExhaustiveness handles
 // them first (they REQUIRE a default or an Any clause).
 func caseAlternatives(r *Registry, v Value) ([]Value, bool) {
-	if v.Carrier {
+	if v.Carrier() {
 		var out []Value
 		if !expandCaseAlt(r, v, caseAltExpandDepth, &out) { //covergate:allow expansion fails only on the provably-unreachable alternative shapes guarded inside expandCaseAlt (dynamic/depth/unrecognized)
 			return nil, false
@@ -98,13 +98,13 @@ func expandCaseAlt(r *Registry, a Value, depth int, out *[]Value) bool {
 		}
 		return true
 	}
-	if a.Carrier {
+	if a.Carrier() {
 		// A non-disjunct carrier (an if/else join arm, a typed-list carrier)
 		// contributes its Parent type as the alternative.
-		if a.Parent == nil { //covergate:allow every kernel carrier constructor (NewCarrier and friends) mints from a non-nil *Type
+		if a.Parent() == nil { //covergate:allow every kernel carrier constructor (NewCarrier and friends) mints from a non-nil *Type
 			return false
 		}
-		return expandCaseAlt(r, NewTypeLiteral(a.Parent), depth, out)
+		return expandCaseAlt(r, NewTypeLiteral(a.Parent()), depth, out)
 	}
 	if IsBareTypeNode(&a) {
 		t := NodeOf(&a)
@@ -363,13 +363,13 @@ func CaseNumericValue(v Value) (isInt bool, i int64, f float64, ok bool) {
 	if !IsConcrete(&v) {
 		return false, 0, 0, false
 	}
-	if v.Parent.ConformsTo(TInteger) {
+	if v.Parent().ConformsTo(TInteger) {
 		if n, err := AsInteger(v); err == nil {
 			return true, n, float64(n), true
 		}
 		return false, 0, 0, false //covergate:allow a concrete Integer always reads as an int64
 	}
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		if fv, err := AsFloat(v); err == nil {
 			return false, 0, fv, true
 		}
@@ -395,14 +395,14 @@ func caseBoundLiteral(v Value) (caseIvalBound, bool) {
 // (Big admits no Float at runtime). ok=false when a bound is not a
 // plain numeric literal or the base family is not numeric.
 func depScalarIval(v Value) (caseIval, bool) {
-	if !v.Parent.ConformsTo(TNumber) {
+	if !v.Parent().ConformsTo(TNumber) {
 		return caseIval{}, false
 	}
 	info, err := v.AsDepScalar()
 	if err != nil { //covergate:allow IsDepScalar already proved the DepScalarInfo payload
 		return caseIval{}, false
 	}
-	iv := caseIval{base: v.Parent}
+	iv := caseIval{base: v.Parent()}
 	if info.Lo != nil {
 		b, ok := caseBoundLiteral(info.Lo.Value)
 		if !ok { //covergate:allow a numeric DepScalar bound is always a plain finite Integer/Float literal — an arbitrary-precision literal cannot be written (integer_overflow at parse)
@@ -440,7 +440,7 @@ func caseTypeCovers(at, t *Type) bool {
 	if at.Equal(t) {
 		return true
 	}
-	if at.Origin == core.OriginUserDef && t.Origin != core.OriginUserDef {
+	if at.Origin() == core.OriginUserDef && t.Origin() != core.OriginUserDef {
 		return false
 	}
 	return true
@@ -714,7 +714,7 @@ func checkCaseExhaustiveness(r *Registry, v Value, clauses Value, elems []Value)
 	// type domains (carriers) are checked everywhere — under-coverage is
 	// caught by the construction-time generalized analysis, and a
 	// narrowed call-shape domain can only shrink the uncovered set.
-	if !v.Carrier && r.Check.FnBodyDepth > 0 {
+	if !v.Carrier() && r.Check.FnBodyDepth > 0 {
 		return
 	}
 	hasDefault := len(elems)%2 == 1
@@ -951,7 +951,7 @@ func caseFindingPos(pos SrcPos, clauses Value) SrcPos {
 // union domain — a check-mode disjunct carrier minted from a named-union
 // fn-param annotation (ParamInputCarrier sets DisjunctInfo.Declared).
 func caseDeclaredDomain(v Value) bool {
-	if !v.Carrier || !IsDisjunct(&v) {
+	if !v.Carrier() || !IsDisjunct(&v) {
 		return false
 	}
 	info, err := AsDisjunct(v)

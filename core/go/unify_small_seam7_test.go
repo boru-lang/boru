@@ -62,9 +62,9 @@ func TestS7DispatchUnifierNilDenoted(t *testing.T) {
 func TestS7DispatchUnifierNilBehaviorInChain(t *testing.T) {
 	// Both operands denote an ad-hoc type whose Behavior is nil: the walk
 	// skips the nil-Behavior node and, finding no Unifier, declines.
-	adhoc := addrOf(withID(Type{tmeta: &typeMeta{Name: "S7Adhoc"}}, "S7Adhoc"))
-	a := Value{Parent: adhoc, Data: IntPayload{N: 1}}
-	b := Value{Parent: adhoc, Data: IntPayload{N: 2}}
+	adhoc := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "S7Adhoc"}}}, "S7Adhoc"))
+	a := Value{d: &Datum{Parent: adhoc, Data: IntPayload{N: 1}}}
+	b := Value{d: &Datum{Parent: adhoc, Data: IntPayload{N: 2}}}
 	if _, _, ok := dispatchUnifier(a, b, nil); ok {
 		t.Error("a nil-Behavior chain has no Unifier; dispatch must decline")
 	}
@@ -101,7 +101,7 @@ func TestS7BaseCompareDelegatesToComparerPrev(t *testing.T) {
 func TestS7MatchMembershipCarrierClosurePayload(t *testing.T) {
 	// A non-concrete carrier whose payload is an FnDefInfo is payload-
 	// decidable: the predicate is consulted directly.
-	v := Value{Parent: TFunction, Carrier: true, Data: &FnDefInfo{}}
+	v := Value{d: &Datum{Parent: TFunction, Carrier: true, Data: &FnDefInfo{}}}
 	if IsConcrete(&v) {
 		t.Fatal("test premise: carrier is not concrete")
 	}
@@ -193,7 +193,7 @@ func TestS7NegationUnifierMatchBareLiteral(t *testing.T) {
 }
 
 func TestS7BareRefineUnifierMatchBareLiteral(t *testing.T) {
-	adhoc := addrOf(withID(Type{tmeta: &typeMeta{Name: "S7Pos"}, Parent: TInteger}, "S7Pos"))
+	adhoc := addrOf(withID(Type{d: &Datum{tmeta: &typeMeta{Name: "S7Pos"}, Parent: TInteger}}, "S7Pos"))
 	b := &bareRefineUnifier{
 		behaviorWrapper: behaviorWrapper{prev: DefaultBehavior},
 		typeName:        "S7Pos",
@@ -225,8 +225,8 @@ func TestS7PredicateUnifierNilRegistry(t *testing.T) {
 func TestS7UnifyDepScalarPayloadErrors(t *testing.T) {
 	// Both DepScalar shape, same denoted base, but the left payload is not
 	// a DepScalarInfo -> "could not read ... on left".
-	badLeft := Value{Parent: TInteger}
-	badRight := Value{Parent: TInteger}
+	badLeft := Value{d: &Datum{Parent: TInteger}}
+	badRight := Value{d: &Datum{Parent: TInteger}}
 	if _, uerr := unifyDepScalar(badLeft, ShapeDepScalar, badRight, ShapeDepScalar); uerr == nil {
 		t.Error("unreadable left DepScalar payload must fail")
 	}
@@ -234,14 +234,14 @@ func TestS7UnifyDepScalarPayloadErrors(t *testing.T) {
 	// Left is a real DepScalar, right is same base but unreadable payload
 	// -> "could not read ... on right".
 	realDep := NewDepScalar(DepGT, NewInteger(10))
-	rightBad := Value{Parent: denotedType(realDep)}
+	rightBad := Value{d: &Datum{Parent: denotedType(realDep)}}
 	if _, uerr := unifyDepScalar(realDep, ShapeDepScalar, rightBad, ShapeDepScalar); uerr == nil {
 		t.Error("unreadable right DepScalar payload must fail")
 	}
 
 	// DepScalar vs concrete scalar, base conforms, but the dep payload is
 	// unreadable -> "could not read DepScalar payload".
-	depBad := Value{Parent: TInteger}
+	depBad := Value{d: &Datum{Parent: TInteger}}
 	conc := NewInteger(5)
 	if _, uerr := unifyDepScalar(depBad, ShapeDepScalar, conc, ShapeScalar); uerr == nil {
 		t.Error("unreadable dep payload in the concrete branch must fail")

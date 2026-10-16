@@ -3217,7 +3217,7 @@ func TestDoMap(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("do map: got %d results, want 1: %v", len(result), result)
 	}
-	t.Logf("do map result: %s (type=%v)", result[0].String(), result[0].Parent)
+	t.Logf("do map result: %s (type=%v)", result[0].String(), result[0].Parent())
 	if result[0].String() != "{x:7}" {
 		t.Errorf("do map: got %s, want {x:7}", result[0].String())
 	}
@@ -3241,8 +3241,8 @@ func TestModuleBasic(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("module: got %d results, want 1", len(result))
 	}
-	if !result[0].Parent.Equal(TModuleInst) {
-		t.Fatalf("module: result is not a module, got %s", result[0].Parent)
+	if !result[0].Parent().Equal(TModuleInst) {
+		t.Fatalf("module: result is not a module, got %s", result[0].Parent())
 	}
 	desc, _ := asModuleDesc(result[0])
 	fooExport, ok := desc.Exports["Foo"]
@@ -3257,8 +3257,8 @@ func TestModuleBasic(t *testing.T) {
 		t.Fatal("module: export Foo.inc not found")
 	}
 	// The exported "inc" should be the list [add 1]
-	if !val.Parent.Equal(TList) {
-		t.Errorf("module: export inc type = %s, want list", val.Parent)
+	if !val.Parent().Equal(TList) {
+		t.Errorf("module: export inc type = %s, want list", val.Parent())
 	}
 }
 
@@ -3290,7 +3290,7 @@ func TestModuleImportBasic(t *testing.T) {
 		t.Fatalf("Foo: got %d results, want 1", len(result2))
 	}
 	if ModuleNSOf(result2[0]) == nil {
-		t.Errorf("Foo: type = %s, want a module namespace", result2[0].Parent)
+		t.Errorf("Foo: type = %s, want a module namespace", result2[0].Parent())
 	}
 }
 
@@ -3319,8 +3319,8 @@ func TestModuleImportDotAccess(t *testing.T) {
 		t.Fatalf("Foo.inc: got %d results, want 1: %v", len(result), result)
 	}
 	// Should be the list [add 1]
-	if !result[0].Parent.Equal(TList) {
-		t.Errorf("Foo.inc: type = %s, want list", result[0].Parent)
+	if !result[0].Parent().Equal(TList) {
+		t.Errorf("Foo.inc: type = %s, want list", result[0].Parent())
 	}
 }
 
@@ -3360,7 +3360,7 @@ func TestModuleDefSubject(t *testing.T) {
 
 	// my-mod should resolve to a module descriptor.
 	result := runBoru(t, r, []Value{NewWord("my-mod")})
-	if len(result) != 1 || !result[0].Parent.Equal(TModuleInst) {
+	if len(result) != 1 || !result[0].Parent().Equal(TModuleInst) {
 		t.Fatalf("def my-mod: expected module descriptor, got %v", result)
 	}
 
@@ -3384,7 +3384,7 @@ func TestModuleImportRename(t *testing.T) {
 		NewWord("export"), NewAtom("Foo"), makeMap("x", NewInteger(1)),
 	})
 	modResult := runBoru(t, r, []Value{NewWord("module"), body})
-	if len(modResult) != 1 || !modResult[0].Parent.Equal(TModuleInst) {
+	if len(modResult) != 1 || !modResult[0].Parent().Equal(TModuleInst) {
 		t.Fatal("expected module descriptor")
 	}
 
@@ -3440,7 +3440,7 @@ func TestModuleFreshRegistry(t *testing.T) {
 		NewWord("export"), NewAtom("M"), makeMap("val", NewWord("foo")),
 	})
 	result := runBoru(t, r, []Value{NewWord("module"), body})
-	if len(result) != 1 || !result[0].Parent.Equal(TModuleInst) {
+	if len(result) != 1 || !result[0].Parent().Equal(TModuleInst) {
 		t.Fatal("expected module")
 	}
 	desc, _ := asModuleDesc(result[0])
@@ -3450,7 +3450,7 @@ func TestModuleFreshRegistry(t *testing.T) {
 	}
 	val, _ := mExport.Get("val")
 	// "foo" inside module should be an atom (not resolved), not 99.
-	if val.Parent.ConformsTo(TInteger) {
+	if val.Parent().ConformsTo(TInteger) {
 		t.Error("module: parent def 'foo' leaked into module")
 	}
 }

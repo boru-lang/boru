@@ -736,7 +736,7 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 	out := make([]Value, 0, end)
 	for _, v := range snap[:end] {
 		if IsOpenParen(&v) {
-			if _, sealed := v.Data.(LoopOpenInfo); sealed {
+			if _, sealed := v.Data().(LoopOpenInfo); sealed {
 				out = out[:0]
 			}
 			continue
@@ -1138,7 +1138,7 @@ func (r *Registry) upsertFnDef(name string, sigs ...Signature) {
 	// Lookup, an `f/v` value, a table clone, a fork — and appending into its
 	// spare capacity, then sorting, would rewrite what they dispatch on.
 	if top, ok := r.Defs.TopValue(name); ok {
-		if prev, ok := FnDefOf(top.Data); ok {
+		if prev, ok := FnDefOf(top.Data()); ok {
 			fnDef := *prev
 			n := len(prev.Signatures)
 			fnDef.Signatures = append(prev.Signatures[:n:n], sigs...)
@@ -1251,7 +1251,7 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
-		if _, isClosure := stack[i].Data.(ClosurePayload); isClosure {
+		if _, isClosure := stack[i].Data().(*ClosurePayload); isClosure {
 			closureBound = true
 			// Only under a run's invoker (dispatchesAsWord's own gate, kept
 			// here too rather than trusting the hook to ask): outside a run
@@ -1260,13 +1260,13 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 				continue
 			}
 			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
-				if view, ok := FnDefOf(bv.Data); ok {
+				if view, ok := FnDefOf(bv.Data()); ok {
 					entries = append(entries, closureDispatchEntry(view, name))
 				}
 			}
 			continue
 		}
-		if fnDef, ok := stack[i].Data.(*FnDefInfo); ok {
+		if fnDef, ok := stack[i].Data().(*FnDefInfo); ok {
 			entries = append(entries, *fnDef)
 			if fnDef.Extends != "" {
 				break
@@ -1295,10 +1295,10 @@ func closureDispatchEntry(view *FnDefInfo, name string) FnDefInfo {
 // substitute: a fn definition, a class, or a compiled closure a run's
 // invoker can bridge (lookupUncachedBridged).
 func dispatchesAsWord(v *Value, r *Registry) bool {
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case *FnDefInfo, *ClassTypeInfo:
 		return true
-	case ClosurePayload:
+	case *ClosurePayload:
 		return r != nil && r.Invoker != nil
 	}
 	return false
@@ -1411,7 +1411,7 @@ func (r *Registry) fnFallbackSig(name string) Signature {
 			// dispatched (the fnCourtesyDispatches guard in engine.go), so
 			// the only shape reaching the Impl without a 0-arg handler
 			// falls straight through to the shared no-match error.
-			if _, ok := top.Data.(*FnDefInfo); ok {
+			if _, ok := top.Data().(*FnDefInfo); ok {
 				if fn := r.Lookup(name); fn != nil {
 					for i := range fn.Signatures {
 						sig := &fn.Signatures[i]
@@ -1558,19 +1558,19 @@ func ValToString(v Value) string {
 		// so without this case AsString would crash on the wrong
 		// payload type.
 		return renderDepScalar(v)
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		_as8, _ := AsString(v)
 		return _as8
 	case IsAtom(v):
 		_as9, _ := AsAtom(v)
 		return _as9
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		_as10, _ := AsFloat(v)
 		return formatFloat(_as10)
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		_as11, _ := AsInteger(v)
 		return strconv.FormatInt(_as11, 10)
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as12, _ := AsBoolean(v)
 		if _as12 {
 			return "true"
@@ -1687,7 +1687,7 @@ func (r *Registry) ForgetTypePartsSince(snap map[string]bool) int {
 // fallback is retained only for value-side ObjectType installations
 // from outside the type word (e.g. legacy RegisterResource paths).
 func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
-	if v.Data != nil || reg == nil || v.Carrier {
+	if v.Data() != nil || reg == nil || v.Carrier() {
 		return v
 	}
 	// The node records its declared content (Value.TypeBody —
@@ -1731,13 +1731,13 @@ func ResourceDefKey(name string) string { return "__resource:" + name }
 // StoreKey converts a Value to a string key for the store.
 func StoreKey(v Value) string {
 	if !IsConcrete(&v) {
-		return v.Parent.String()
+		return v.Parent().String()
 	}
 	if IsWord(&v) {
 		_as15, _ := AsWord(&v)
 		return _as15.Name
 	}
-	if v.Parent.ConformsTo(TString) {
+	if v.Parent().ConformsTo(TString) {
 		_as16, _ := AsString(v)
 		return _as16
 	}
@@ -1745,22 +1745,22 @@ func StoreKey(v Value) string {
 		_as17, _ := AsAtom(v)
 		return _as17
 	}
-	if v.Parent.ConformsTo(TInteger) {
+	if v.Parent().ConformsTo(TInteger) {
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10)
 	}
-	if v.Parent.ConformsTo(TFloat) {
+	if v.Parent().ConformsTo(TFloat) {
 		f, _ := AsFloat(v)
 		return FormatFloat(f)
 	}
-	if v.Parent.ConformsTo(TBoolean) {
+	if v.Parent().ConformsTo(TBoolean) {
 		b, _ := AsBoolean(v)
 		if b {
 			return "true"
 		}
 		return "false"
 	}
-	return fmt.Sprintf("%v", v.Data)
+	return fmt.Sprintf("%v", v.Data())
 }
 
 // RegisterNativeFunc installs a NativeFunc into the registry, converts
@@ -1897,7 +1897,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	for i, p := range sig.Params {
 		if p.Name != "" {
 			arg := args[i]
-			if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+			if arg.Parent().Equal(TList) && !IsQuoted(&arg) {
 				SetQuoted(&arg, true)
 			}
 			InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
@@ -2245,7 +2245,7 @@ func predMemoKey(constraint, candidate Value) string {
 	}
 	// The interpreter's predicate fn carries no value ID (the check pass
 	// mints those): its first signature's boru body is the identity.
-	fd, ok := constraint.Data.(*FnDefInfo)
+	fd, ok := constraint.Data().(*FnDefInfo)
 	if !ok {
 		return ""
 	}
@@ -2303,12 +2303,12 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 			}
 		}()
 	}
-	if !constraint.Parent.Equal(TFunction) {
-		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent.String())
+	if !constraint.Parent().Equal(TFunction) {
+		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent().String())
 	}
-	fnDef, ok := constraint.Data.(*FnDefInfo)
+	fnDef, ok := constraint.Data().(*FnDefInfo)
 	if !ok {
-		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data)
+		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data())
 	}
 	// CheckMode: a CARRIER candidate is accepted without running the body —
 	// the analyser's proper optimism, so it keeps flowing past the typed
@@ -2402,7 +2402,7 @@ func userDefined(r *Registry, name string) bool {
 	if !ok {
 		return false
 	}
-	fd, isFn := v.Data.(*FnDefInfo)
+	fd, isFn := v.Data().(*FnDefInfo)
 	if !isFn {
 		return true
 	}
@@ -2475,8 +2475,8 @@ func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate V
 	}
 	inputT := predSig.Params[0].Type
 	booleanIsValue := inputT != nil && TBoolean.ConformsTo(inputT)
-	if !booleanIsValue && out.Parent != nil && out.Parent.Equal(TBoolean) && out.Data != nil {
-		if b, ok := out.Data.(BoolPayload); ok {
+	if !booleanIsValue && out.Parent() != nil && out.Parent().Equal(TBoolean) && out.Data() != nil {
+		if b, ok := out.Data().(BoolPayload); ok {
 			if !b.B {
 				return out, false, nil
 			}

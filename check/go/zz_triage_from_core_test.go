@@ -53,37 +53,37 @@ func TestReturnsFuncBuilders(t *testing.T) {
 	}
 	// Out-of-range mapping degrades to Any.
 	out = core.ReturnsIdentity(3)([]core.Value{in}, nil)
-	if !out[0].Parent.Equal(core.TAny) {
+	if !out[0].Parent().Equal(core.TAny) {
 		t.Errorf("out-of-range identity = %v", out)
 	}
 
 	// ReturnsStatic.
 	out = ReturnsStatic(core.TInteger, core.TString)(nil, nil)
-	if len(out) != 2 || !out[0].Parent.Equal(core.TInteger) || !out[1].Parent.Equal(core.TString) {
+	if len(out) != 2 || !out[0].Parent().Equal(core.TInteger) || !out[1].Parent().Equal(core.TString) {
 		t.Errorf("ReturnsStatic = %v", out)
 	}
 
 	// ReturnsNumericBinary follows the arithmetic tower.
 	nb := ReturnsNumericBinary()
-	if out := nb([]core.Value{core.NewCarrier(core.TInteger), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent.Equal(core.TInteger) {
+	if out := nb([]core.Value{core.NewCarrier(core.TInteger), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent().Equal(core.TInteger) {
 		t.Errorf("int⊕int = %v", out)
 	}
-	if out := nb([]core.Value{core.NewCarrier(core.TFloat), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent.Equal(core.TFloat) {
+	if out := nb([]core.Value{core.NewCarrier(core.TFloat), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent().Equal(core.TFloat) {
 		t.Errorf("float⊕int = %v", out)
 	}
-	if out := nb([]core.Value{core.NewCarrier(core.TBigInteger), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent.Equal(core.TBigInteger) {
+	if out := nb([]core.Value{core.NewCarrier(core.TBigInteger), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent().Equal(core.TBigInteger) {
 		t.Errorf("big⊕int = %v", out)
 	}
-	if out := nb([]core.Value{core.NewCarrier(core.TBigDecimal), core.NewCarrier(core.TFloat)}, nil); !out[0].Parent.Equal(core.TBigDecimal) {
+	if out := nb([]core.Value{core.NewCarrier(core.TBigDecimal), core.NewCarrier(core.TFloat)}, nil); !out[0].Parent().Equal(core.TBigDecimal) {
 		t.Errorf("dec⊕float = %v", out)
 	}
-	if out := nb([]core.Value{core.NewCarrier(core.TInteger)}, nil); !out[0].Parent.Equal(core.TFloat) {
+	if out := nb([]core.Value{core.NewCarrier(core.TInteger)}, nil); !out[0].Parent().Equal(core.TFloat) {
 		t.Errorf("degenerate arity = %v", out)
 	}
 
 	// ReturnsAddConcat: provable String → String; otherwise gradual Scalar.
 	ac := ReturnsAddConcat()
-	if out := ac([]core.Value{core.NewString("a"), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent.Equal(core.TString) {
+	if out := ac([]core.Value{core.NewString("a"), core.NewCarrier(core.TInteger)}, nil); !out[0].Parent().Equal(core.TString) {
 		t.Errorf("string concat = %v", out)
 	}
 	dynamic := core.NewDynamicCarrier(core.TAny)
@@ -95,7 +95,7 @@ func TestReturnsFuncBuilders(t *testing.T) {
 	// value carrier of that type, not the literal.
 	fi := ReturnsFreshInstance(0)
 	out = fi([]core.Value{core.NewTypeLiteral(core.TPathon), mapOf()}, nil)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(core.TPathon) {
+	if len(out) != 1 || !out[0].Carrier() || !out[0].Parent().Equal(core.TPathon) {
 		t.Errorf("fresh instance = %v", out)
 	}
 	a := fi([]core.Value{core.NewTypeLiteral(core.TPathon), mapOf()}, nil)[0]
@@ -109,7 +109,7 @@ func TestReturnsFuncBuilders(t *testing.T) {
 		t.Errorf("carrier target = %v", out)
 	}
 	out = ReturnsFreshInstance(4)([]core.Value{core.NewTypeLiteral(core.TPathon)}, nil)
-	if !out[0].Parent.Equal(core.TAny) {
+	if !out[0].Parent().Equal(core.TAny) {
 		t.Errorf("out-of-range fresh = %v", out)
 	}
 }
@@ -127,19 +127,19 @@ func TestParamBodyCarrier(t *testing.T) {
 	// mutation in the body must runtime-rematch rather than preselect the
 	// immutable handler (the compile-vs-interpret divergence fix).
 	if v := ParamBodyCarrier(core.FnParam{Pattern: &mapPat, Type: core.TMap}); !core.IsTypedMap(&v) || !core.IsDynamic(&v) {
-		t.Errorf("{:Integer} param → %s (dynamic=%v), want a dynamic typed-map carrier", v.Parent.String(), core.IsDynamic(&v))
+		t.Errorf("{:Integer} param → %s (dynamic=%v), want a dynamic typed-map carrier", v.Parent().String(), core.IsDynamic(&v))
 	}
 	listPat := core.NewCarrierTypedListValue(core.NewTypeLiteral(core.TInteger))
 	if v := ParamBodyCarrier(core.FnParam{Pattern: &listPat, Type: core.TList}); !core.IsTypedList(&v) || !core.IsDynamic(&v) {
-		t.Errorf("[:Integer] param → %s (dynamic=%v), want a dynamic typed-list carrier", v.Parent.String(), core.IsDynamic(&v))
+		t.Errorf("[:Integer] param → %s (dynamic=%v), want a dynamic typed-list carrier", v.Parent().String(), core.IsDynamic(&v))
 	}
 	// A non-typed-container param falls back to ParamInputCarrier (no pattern).
-	if v := ParamBodyCarrier(core.FnParam{Type: core.TInteger}); v.Parent == nil || !v.Parent.ConformsTo(core.TInteger) {
-		t.Errorf("scalar param → %s, want an Integer carrier", v.Parent.String())
+	if v := ParamBodyCarrier(core.FnParam{Type: core.TInteger}); v.Parent() == nil || !v.Parent().ConformsTo(core.TInteger) {
+		t.Errorf("scalar param → %s, want an Integer carrier", v.Parent().String())
 	}
 	// A {:Any} pattern (child Any) falls through to ParamInputCarrier(TMap).
 	anyPat := core.NewTypedMap(core.NewTypeLiteral(core.TAny))
-	if v := ParamBodyCarrier(core.FnParam{Pattern: &anyPat, Type: core.TMap}); v.Parent == nil || !v.Parent.ConformsTo(core.TMap) {
-		t.Errorf("{:Any} param → %s, want a Map carrier", v.Parent.String())
+	if v := ParamBodyCarrier(core.FnParam{Pattern: &anyPat, Type: core.TMap}); v.Parent() == nil || !v.Parent().ConformsTo(core.TMap) {
+		t.Errorf("{:Any} param → %s, want a Map carrier", v.Parent().String())
 	}
 }

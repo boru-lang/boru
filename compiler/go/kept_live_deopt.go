@@ -54,8 +54,8 @@ func (es *EmitState) noteKeptLiveRead(seq int, v core.Value, name string, pos co
 		es.keptLiveReads = map[int]keptLiveRead{}
 	}
 	var model *core.Type
-	if v.Parent != nil && !v.Parent.ConformsTo(core.TType) {
-		model = v.Parent
+	if v.Parent() != nil && !v.Parent().ConformsTo(core.TType) {
+		model = v.Parent()
 	}
 	es.keptLiveReads[seq] = keptLiveRead{id: core.IDOf(&v), name: name, pos: pos, ref: ref, model: model}
 }
@@ -433,7 +433,7 @@ func (es *EmitState) trapBeforeStaleRead(pos core.SrcPos) bool {
 			continue
 		}
 		if top, bound := es.reg.Defs.Top(w.Name); bound {
-			if _, isFn := top.Data.(*core.FnDefInfo); !isFn {
+			if _, isFn := top.Data().(*core.FnDefInfo); !isFn {
 				return true
 			}
 			continue

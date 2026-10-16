@@ -22,10 +22,10 @@ func TestReachConstructAndAccess(t *testing.T) {
 	v := core.NewReach(info)
 
 	if !core.IsReach(&v) {
-		t.Fatalf("IsReach = false for a Reach value (parent %s)", v.Parent)
+		t.Fatalf("IsReach = false for a Reach value (parent %s)", v.Parent())
 	}
-	if !v.Parent.Equal(core.TReach) {
-		t.Fatalf("parent = %s, want Ideal/Reach", v.Parent)
+	if !v.Parent().Equal(core.TReach) {
+		t.Fatalf("parent = %s, want Ideal/Reach", v.Parent())
 	}
 
 	got, err := core.AsReach(&v)

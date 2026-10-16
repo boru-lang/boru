@@ -17,19 +17,19 @@ import (
 
 // isPendingList is a residual list the sweep evaluates as a sub-program.
 func isPendingList(v Value) bool {
-	return IsEval(&v) && !IsQuoted(&v) && v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v)
+	return IsEval(&v) && !IsQuoted(&v) && v.Parent().Equal(TList) && v.Data() != nil && !IsTypedList(&v) && !IsTableType(v)
 }
 
 // isPendingMap is a residual map the sweep evaluates value by value.
 func isPendingMap(v Value) bool {
-	return IsEval(&v) && !IsQuoted(&v) && v.Parent.Equal(TMap) && v.Data != nil && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v)
+	return IsEval(&v) && !IsQuoted(&v) && v.Parent().Equal(TMap) && v.Data() != nil && !IsTypedMap(&v) && !IsRecordType(v) && !IsOptionsType(v)
 }
 
 // IsPendingLiteral reports whether v is a pending list or map literal as
 // the parser wrote it: a failed dispatch's window holds it unevaluated, and
 // the interpreter's no-match report renders it as written (NUR356).
 func IsPendingLiteral(v Value) bool {
-	return !v.Carrier && !IsDynamic(&v) && (isPendingList(v) || isPendingMap(v))
+	return !v.Carrier() && !IsDynamic(&v) && (isPendingList(v) || isPendingMap(v))
 }
 
 // PendingResidue describes the observable pending literals a spliced arm's
@@ -200,10 +200,10 @@ func readsData(r *Registry, name string) bool {
 	if IsAppliableFn(v) || IsFnTypedCarrier(&v) || UnionMayBeFn(v) {
 		return false
 	}
-	if v.Carrier {
-		return v.Parent != nil && !v.Parent.Equal(TAny)
+	if v.Carrier() {
+		return v.Parent() != nil && !v.Parent().Equal(TAny)
 	}
-	switch v.Data.(type) {
+	switch v.Data().(type) {
 	case ListPayload, MapPayload:
 		return IsConcrete(&v)
 	}

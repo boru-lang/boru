@@ -41,7 +41,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 	// §6); the declared body is the node's CONTENT (`TypeContentOf`), not
 	// the binding's value.
 	r.noteAnalysisUse(name)
-	if _, ok := top.Data.(*FnDefInfo); ok {
+	if _, ok := top.Data().(*FnDefInfo); ok {
 		// Wrap the aggregate dispatch view so the reference carries every
 		// overload of the name, not just the topmost entry's own sigs.
 		if fnDef := r.Lookup(name); fnDef != nil {
@@ -61,7 +61,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 // predicate is a single Parent check; plain values and type bodies come
 // back with their own Parent and are illegal ref targets.
 func IsFunctionRef(v Value) bool {
-	return v.Parent.Equal(TFunction)
+	return v.Parent().Equal(TFunction)
 }
 
 // UsurpFunction wraps a function value so its signature argument order is
@@ -79,10 +79,10 @@ func IsFunctionRef(v Value) bool {
 // return checks, closures, module scope) is preserved; usurp only reverses
 // which caller argument lands in which original slot.
 func UsurpFunction(v Value) (Value, bool) {
-	if !v.Parent.Equal(TFunction) {
+	if !v.Parent().Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(*FnDefInfo)
+	fnDef, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
@@ -102,14 +102,14 @@ func UsurpFunction(v Value) (Value, bool) {
 // for a closure the bridge cannot describe: the word then raises exactly as
 // it does for any non-function operand (NUR158).
 func closureShape(r *Registry, v Value) (FnDefInfo, bool) {
-	if _, isCl := v.Data.(ClosurePayload); !isCl || IsQuoted(&v) {
+	if _, isCl := v.Data().(*ClosurePayload); !isCl || IsQuoted(&v) {
 		return FnDefInfo{}, false
 	}
 	bridged, ok := compiledRuntime.ClosureAsFnDef(r, v)
 	if !ok {
 		return FnDefInfo{}, false
 	}
-	fd, ok := FnDefOf(bridged.Data)
+	fd, ok := FnDefOf(bridged.Data())
 	return *fd, ok
 }
 
@@ -221,10 +221,10 @@ func ForceStackFunction(v Value) (Value, bool)   { return rebarrierFunction(v, t
 func ForceForwardFunction(v Value) (Value, bool) { return rebarrierFunction(v, false) }
 
 func rebarrierFunction(v Value, stack bool) (Value, bool) {
-	if !v.Parent.Equal(TFunction) {
+	if !v.Parent().Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(*FnDefInfo)
+	fnDef, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
@@ -295,10 +295,10 @@ func rebarrierOver(orig Value, fnDef FnDefInfo, stack bool) Value {
 // selecting the original's 2-arg overload. Returns false when v is not a
 // function value or n < 0.
 func ForceArityFunction(v Value, n int) (Value, bool) {
-	if n < 0 || !v.Parent.Equal(TFunction) {
+	if n < 0 || !v.Parent().Equal(TFunction) {
 		return Value{}, false
 	}
-	fnDef, ok := v.Data.(*FnDefInfo)
+	fnDef, ok := v.Data().(*FnDefInfo)
 	if !ok {
 		return Value{}, false
 	}
@@ -344,7 +344,7 @@ func forceArityOver(orig Value, fnDef FnDefInfo, n int) Value {
 // funcSigBarrier returns the resolved BarrierPos of orig's n-arg signature
 // (all-forward when there is none) — used to lay out a re-dispatch.
 func funcSigBarrier(orig Value, n int) int {
-	fnDef, ok := orig.Data.(*FnDefInfo)
+	fnDef, ok := orig.Data().(*FnDefInfo)
 	if !ok {
 		return n
 	}

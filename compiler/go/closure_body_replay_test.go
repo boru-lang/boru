@@ -80,7 +80,7 @@ func TestNoteClosureBodyReplayArms(t *testing.T) {
 		"tagged data": func(es *EmitState) []core.Value {
 			v := memberRead(es, inc)
 			core.SetDynamic(&v, false)
-			v.Parent = core.TInteger
+			v.SetParent(core.TInteger)
 			return []core.Value{v}
 		},
 		"zero-arg member": func(es *EmitState) []core.Value {

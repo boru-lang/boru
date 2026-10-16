@@ -77,7 +77,7 @@ func TestTorReturnsFn(t *testing.T) {
 	}
 	// Wrong arity degrades to an Any carrier.
 	out = TorReturnsFn([]Value{NewTypeLiteral(TString)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TorReturnsFn bad arity = %v, want Any carrier", out[0])
 	}
 	// The De Morgan fold applies in carrier mode too.
@@ -176,11 +176,11 @@ func TestTandReturnsFn(t *testing.T) {
 	}
 	// A non-type operand degrades to the declared Any.
 	out = TandReturnsFn([]Value{NewInteger(1), NewTypeLiteral(TInteger)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TandReturnsFn concrete operand = %v, want Any carrier", out[0])
 	}
 	out = TandReturnsFn([]Value{NewTypeLiteral(TInteger)}, nil)
-	if !out[0].Carrier || !out[0].Parent.Equal(TAny) {
+	if !out[0].Carrier() || !out[0].Parent().Equal(TAny) {
 		t.Errorf("TandReturnsFn bad arity = %v, want Any carrier", out[0])
 	}
 }
@@ -241,11 +241,11 @@ func TestTnotHandlerAndReturnsFn(t *testing.T) {
 		t.Errorf("TnotHandler = %v, want a negation", out[0])
 	}
 	cout := TnotReturnsFn([]Value{NewTypeLiteral(TString)}, nil)
-	if !IsNegation(cout[0]) || !cout[0].Carrier {
+	if !IsNegation(cout[0]) || !cout[0].Carrier() {
 		t.Errorf("TnotReturnsFn = %v, want a negation carrier", cout[0])
 	}
 	cout = TnotReturnsFn(nil, nil)
-	if !cout[0].Carrier || !cout[0].Parent.Equal(TAny) {
+	if !cout[0].Carrier() || !cout[0].Parent().Equal(TAny) {
 		t.Errorf("TnotReturnsFn bad arity = %v, want Any carrier", cout[0])
 	}
 }
@@ -309,17 +309,17 @@ func TestBoundToKind(t *testing.T) {
 func TestNewDepScalarValidation(t *testing.T) {
 	// Unsupported base → None-parented zero value.
 	v := NewDepScalar(DepGT, NewList(nil))
-	if !v.Parent.Equal(TNone) {
-		t.Errorf("list-bound DepScalar parent = %v, want None", v.Parent)
+	if !v.Parent().Equal(TNone) {
+		t.Errorf("list-bound DepScalar parent = %v, want None", v.Parent())
 	}
 	// Multi-bit kind does not decompose.
 	v = NewDepScalar(DepGT|DepLT, NewInteger(1))
-	if !v.Parent.Equal(TNone) {
-		t.Errorf("multi-bit DepScalar parent = %v, want None", v.Parent)
+	if !v.Parent().Equal(TNone) {
+		t.Errorf("multi-bit DepScalar parent = %v, want None", v.Parent())
 	}
 	// String base works.
 	sv := NewDepScalar(DepLT, NewString("m"))
-	if !sv.Parent.Equal(TString) || !sv.IsDepScalar() {
+	if !sv.Parent().Equal(TString) || !sv.IsDepScalar() {
 		t.Errorf("string DepScalar = %v", sv)
 	}
 	// AsDepScalar on a non-DepScalar errors.
@@ -466,7 +466,7 @@ func TestMakeDepScalarSig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gte handler: %v", err)
 	}
-	if !out[0].IsDepScalar() || !out[0].Parent.Equal(TInteger) {
+	if !out[0].IsDepScalar() || !out[0].Parent().Equal(TInteger) {
 		t.Errorf("gte result = %v", out[0])
 	}
 	// Concrete arg where the type literal belongs.

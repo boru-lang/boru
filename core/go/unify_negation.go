@@ -23,7 +23,7 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 	// Any narrows to the negation constraint itself: Any tand (tnot T)
 	// = tnot T (the top intersected with the complement is the
 	// complement).
-	if !IsConcrete(&val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (val.Parent().Equal(TAny) || (&val).Equal(TAny)) {
 		return NewNegation(neg.Inner), nil
 	}
 

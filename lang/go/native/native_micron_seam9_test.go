@@ -61,7 +61,7 @@ func TestW9GetMicronReturnsConcreteReceiver(t *testing.T) {
 
 	// Absent property → NewCarrier(TNone) (126.3,126.36).
 	out = getMicronReturns([]Value{NewString("nope"), email}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("getMicronReturns absent: expected None carrier, got %v", out)
 	}
 }
@@ -71,36 +71,36 @@ func TestW9GetMicronReturnsCarrierDefaults(t *testing.T) {
 
 	// Pathon carrier, key that is neither "parts" nor "abs" → None (137.3,137.36).
 	out := getMicronReturns([]Value{NewString("zzz"), NewCarrier(TPathon)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("pathon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Urlon carrier, unknown key → None (152.3,152.36).
 	out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TUrlon)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("urlon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Ipon carrier: typed fields narrow, unknown key → None (160.3,160.36).
-	if out = getMicronReturns([]Value{NewString("addr"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TString) {
+	if out = getMicronReturns([]Value{NewString("addr"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TString) {
 		t.Fatalf("ipon addr: expected String carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("version"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+	if out = getMicronReturns([]Value{NewString("version"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 		t.Fatalf("ipon version: expected Integer carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(TIpon)}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("ipon carrier default: expected None carrier, got %v", out)
 	}
 
 	// Hoston carrier: host/authority narrow to String, port stays dynamic,
 	// unknown key → None (168.3,168.36).
-	if out = getMicronReturns([]Value{NewString("authority"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TString) {
+	if out = getMicronReturns([]Value{NewString("authority"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent().Equal(TString) {
 		t.Fatalf("hoston authority: expected String carrier, got %v", out)
 	}
 	if out = getMicronReturns([]Value{NewString("port"), NewCarrier(THoston)}, r); len(out) != 1 || !IsDynamic(&out[0]) {
 		t.Fatalf("hoston port: expected dynamic carrier, got %v", out)
 	}
-	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out = getMicronReturns([]Value{NewString("zzz"), NewCarrier(THoston)}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("hoston carrier default: expected None carrier, got %v", out)
 	}
 }
@@ -112,22 +112,22 @@ func TestW9GetMicronReturnsSemveronCarrier(t *testing.T) {
 	intKeys := []string{"major", "minor", "patch"}
 	for _, k := range intKeys {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TInteger) {
+		if len(out) != 1 || !out[0].Parent().Equal(TInteger) {
 			t.Fatalf("semveron carrier %q: expected Integer carrier, got %v", k, out)
 		}
 	}
 	for _, k := range []string{"release", "version"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TString) {
+		if len(out) != 1 || !out[0].Parent().Equal(TString) {
 			t.Fatalf("semveron carrier %q: expected String carrier, got %v", k, out)
 		}
 	}
-	if out := getMicronReturns([]Value{NewString("stable"), sv}, r); len(out) != 1 || !out[0].Parent.Equal(TBoolean) {
+	if out := getMicronReturns([]Value{NewString("stable"), sv}, r); len(out) != 1 || !out[0].Parent().Equal(TBoolean) {
 		t.Fatalf("semveron carrier stable: expected Boolean carrier, got %v", out)
 	}
 	for _, k := range []string{"prereleaseParts", "buildParts"} {
 		out := getMicronReturns([]Value{NewString(k), sv}, r)
-		if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+		if len(out) != 1 || !out[0].Parent().ConformsTo(TList) {
 			t.Fatalf("semveron carrier %q: expected List carrier, got %v", k, out)
 		}
 	}
@@ -139,7 +139,7 @@ func TestW9GetMicronReturnsSemveronCarrier(t *testing.T) {
 		}
 	}
 	// Unknown key → None.
-	if out := getMicronReturns([]Value{NewString("zzz"), sv}, r); len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if out := getMicronReturns([]Value{NewString("zzz"), sv}, r); len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("semveron carrier default: expected None carrier, got %v", out)
 	}
 }
@@ -150,7 +150,7 @@ func TestW9GetMicronReturnsNewLeafCarriers(t *testing.T) {
 	// unknown key to None (covers the per-leaf carrier switch arms).
 	check := func(kind *Value, key string, want *Value) {
 		out := getMicronReturns([]Value{NewString(key), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(want) {
+		if len(out) != 1 || !out[0].Parent().Equal(want) {
 			t.Fatalf("%s.%s: expected %s carrier, got %v", kind.Name(), key, want.Name(), out)
 		}
 	}
@@ -162,7 +162,7 @@ func TestW9GetMicronReturnsNewLeafCarriers(t *testing.T) {
 	}
 	checkNone := func(kind *Value) {
 		out := getMicronReturns([]Value{NewString("zzz"), NewCarrier(kind)}, r)
-		if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+		if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 			t.Fatalf("%s default: expected None carrier, got %v", kind.Name(), out)
 		}
 	}
@@ -215,7 +215,7 @@ Baron`)
 
 	// Key not in the schema → None (162.3,162.36).
 	out := getMicronReturns([]Value{NewString("missing"), baronCarrier}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !out[0].Parent().Equal(TNone) {
 		t.Fatalf("user schema key-miss: expected None carrier, got %v", out)
 	}
 

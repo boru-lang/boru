@@ -71,7 +71,7 @@ func TestCloneResidualTyped(t *testing.T) {
 		}
 	}
 	// zero-arg clone stays a dynamic Any carrier.
-	if z := cloneReturnsFn(nil, nil); !z[0].Parent.ConformsTo(TAny) {
+	if z := cloneReturnsFn(nil, nil); !z[0].Parent().ConformsTo(TAny) {
 		t.Errorf("zero-arg cloneReturnsFn should be dynamic(Any)")
 	}
 }

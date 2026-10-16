@@ -49,10 +49,10 @@ func isTypeBodyLegacy(v Value) bool {
 	if v.IsDepScalar() {
 		return true
 	}
-	if v.Parent.Equal(TFnUndef) {
+	if v.Parent().Equal(TFnUndef) {
 		return true
 	}
-	if v.Parent.Equal(TFunction) {
+	if v.Parent().Equal(TFunction) {
 		return true
 	}
 	if IsMicronType(v) {
@@ -81,7 +81,7 @@ func TestIsTypeContentMirrorsLegacy(t *testing.T) {
 
 	disjunct := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewNone()})
 	misparentedDisjunct := disjunct
-	misparentedDisjunct.Parent = TList // shared variant at the wrong identity
+	misparentedDisjunct.SetParent(TList) // shared variant at the wrong identity
 
 	typedList := NewValueRaw(TList, ChildTypeInfo{Child: NewTypeLiteral(TInteger)})
 	typedMap := NewValueRaw(TMap, ChildTypeInfo{Child: NewTypeLiteral(TInteger)})
@@ -133,8 +133,8 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 		DecimalPayload{}, StrPayload{}, BoolPayload{}, AtomPayload{},
 		PathonPayload{}, MicronPayload{}, ListPayload{}, ParenExprPayload{},
 		InterpStringPayload{}, TimePayload{}, DurationPayload{},
-		TimezonePayload{}, NonePayload{}, WordInfo{}, ForwardInfo{},
-		MarkInfo{}, MoveInfo{}, SpliceInfo{}, SugarInfo{},
+		TimezonePayload{}, NonePayload{}, WordInfo{}, &ForwardInfo{},
+		&MarkInfo{}, &MoveInfo{}, SpliceInfo{}, SugarInfo{},
 		ReturnCheckInfo{}, DefCleanupInfo{}, FrameOpenInfo{},
 		ModuleDesc{}, ClassInstanceInfo{}, DispatchModInfo{},
 		ErrorInfo{}, GenInstRef{}, GenParam{}, PathonInfo{},
@@ -147,7 +147,7 @@ func TestIsTypeContentOrdinaryPayloads(t *testing.T) {
 	}
 	owner := NewInteger(1)
 	for i, p := range ordinary {
-		if p.IsTypeContent(owner.Parent) {
+		if p.IsTypeContent(owner.Parent()) {
 			t.Errorf("ordinary payload %d (%T) must not be type content off its identity", i, p)
 		}
 	}

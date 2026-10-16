@@ -207,8 +207,8 @@ func TestS7B_RandWithSeedReturnsFallback(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("randWithSeedReturns fallback: got %d values, want 1", len(out))
 	}
-	if !out[0].Parent.Equal(native.TMap) {
-		t.Errorf("fallback carrier parent = %s, want Map", out[0].Parent.String())
+	if !out[0].Parent().Equal(native.TMap) {
+		t.Errorf("fallback carrier parent = %s, want Map", out[0].Parent().String())
 	}
 }
 

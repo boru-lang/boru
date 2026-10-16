@@ -17,7 +17,7 @@ func TestP3VMNativeApplicableNeedsAFnDefinition(t *testing.T) {
 	if vmNativeApplicable(r, &n) {
 		t.Error("a scalar applied natively")
 	}
-	cl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{}}
+	cl := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{}})
 	if vmNativeApplicable(r, &cl) {
 		t.Error("a compiled closure applied natively")
 	}

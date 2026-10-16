@@ -54,7 +54,7 @@ func TestArgsStackPushPopTop(t *testing.T) {
 	as := NewArgsStack()
 
 	// Empty state.
-	if v, ok, err := as.Top(); err != nil || ok || v.Data != nil {
+	if v, ok, err := as.Top(); err != nil || ok || v.Data() != nil {
 		t.Errorf("empty Top = (%v, %v, %v), want (zero, false, nil)", v, ok, err)
 	}
 	if popped, err := as.Pop(); err != nil || popped {
@@ -109,7 +109,7 @@ func TestArgsStackNilReceiver(t *testing.T) {
 		t.Errorf("nil Pop err = %v, want errArgsStackNil", err)
 	}
 	v, ok, err := as.Top()
-	if ok || v.Data != nil {
+	if ok || v.Data() != nil {
 		t.Errorf("nil Top = (%v, %v, ...), want (zero, false, ...)", v, ok)
 	}
 	if !errors.Is(err, errArgsStackNil) {

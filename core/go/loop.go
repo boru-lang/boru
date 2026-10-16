@@ -298,7 +298,7 @@ func spliceLoopRegion(t *Tape, i, count int, lp *Loop, inputs []Value, body Valu
 // span differs from the one it was minted for.
 func (lp *Loop) mint(argSpan int) {
 	lp.at.SrcPos, lp.at.only.pos = lp.Pos, &lp.at
-	if lp.mark.Parent == nil {
+	if lp.mark.Parent() == nil {
 		id := NextMarkID()
 		lp.mark = NewLoopMark(id, lp)
 		lp.close = NewCloseParen()
@@ -320,7 +320,7 @@ func (lp *Loop) mint(argSpan int) {
 			}
 		}
 	}
-	if lp.open.Parent == nil || lp.openSpan != argSpan {
+	if lp.open.Parent() == nil || lp.openSpan != argSpan {
 		lp.open, lp.openSpan = NewLoopOpen(lp, argSpan), argSpan
 	}
 }
@@ -376,7 +376,7 @@ func (lp *Loop) Describe() string {
 // resolved unnamed arguments (FrameOpenInfo) or a driven loop region's
 // inputs (LoopOpenInfo); 0 for a plain paren.
 func openArgSpan(v Value) int {
-	switch info := v.Data.(type) {
+	switch info := v.Data().(type) {
 	case FrameOpenInfo:
 		return info.ArgSpan
 	case LoopOpenInfo:

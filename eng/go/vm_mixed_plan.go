@@ -56,7 +56,7 @@ func (vc *vmContext) mixedPlanApply(reg *core.Registry, window []core.Value) ([]
 		return nil, nil, false
 	}
 	fnVal := window[p]
-	fd, ok := fnVal.Data.(*core.FnDefInfo)
+	fd, ok := fnVal.Data().(*core.FnDefInfo)
 	if !ok || !fnValueParkable(reg, fnVal, *fd) {
 		return nil, nil, false
 	}

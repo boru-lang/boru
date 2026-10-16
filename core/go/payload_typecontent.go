@@ -117,9 +117,9 @@ func (DurationPayload) IsTypeContent(*Type) bool      { return false }
 func (TimezonePayload) IsTypeContent(*Type) bool      { return false }
 func (NonePayload) IsTypeContent(*Type) bool          { return false }
 func (WordInfo) IsTypeContent(*Type) bool             { return false }
-func (ForwardInfo) IsTypeContent(*Type) bool          { return false }
-func (MarkInfo) IsTypeContent(*Type) bool             { return false }
-func (MoveInfo) IsTypeContent(*Type) bool             { return false }
+func (*ForwardInfo) IsTypeContent(*Type) bool         { return false }
+func (*MarkInfo) IsTypeContent(*Type) bool            { return false }
+func (*MoveInfo) IsTypeContent(*Type) bool            { return false }
 func (SpliceInfo) IsTypeContent(*Type) bool           { return false }
 func (SugarInfo) IsTypeContent(*Type) bool            { return false }
 func (ReturnCheckInfo) IsTypeContent(*Type) bool      { return false }

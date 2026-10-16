@@ -230,8 +230,8 @@ func TestTimeWave4InstantConversions(t *testing.T) {
 	}
 
 	result = runBoru(t, r, callTimeDot("to-time-of-day", ins))
-	if !result[0].Parent.ConformsTo(tt.TimeOfDay) {
-		t.Errorf("to-time-of-day(Instant) type = %s, want TimeOfDay", result[0].Parent)
+	if !result[0].Parent().ConformsTo(tt.TimeOfDay) {
+		t.Errorf("to-time-of-day(Instant) type = %s, want TimeOfDay", result[0].Parent())
 	}
 }
 

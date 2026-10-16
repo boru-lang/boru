@@ -60,7 +60,7 @@ func cforReturns(args []core.Value, r *core.Registry) []core.Value {
 	body := args[len(args)-1]
 	iter := core.NewCarrier(core.TInteger)
 	cv := args[0]
-	lowerable := core.IsConcrete(&cv) && cv.Parent.ConformsTo(core.TInteger)
+	lowerable := core.IsConcrete(&cv) && cv.Parent().ConformsTo(core.TInteger)
 	var startV, endV, stepV core.Value
 	if lowerable {
 		startV, endV, stepV = core.NewInteger(0), cv, core.NewInteger(1)
@@ -73,7 +73,7 @@ func cforReturns(args []core.Value, r *core.Registry) []core.Value {
 		if core.IsDisjunct(&top) {
 			out = core.NewCarrierTypedListValue(top)
 		} else {
-			out = core.NewCarrierTypedList(top.Parent)
+			out = core.NewCarrierTypedList(top.Parent())
 		}
 	}
 	if lowerable {

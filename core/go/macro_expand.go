@@ -108,8 +108,8 @@ func (e *Engine) scanMacroOperands(fnDef *FnDefInfo, arity, valIdx int) ([]Value
 			continue
 		}
 		if IsEnd(&t) || IsCloseParen(&t) || IsForward(&t) ||
-			t.Parent.ConformsTo(TMark) || t.Parent.ConformsTo(TMove) ||
-			t.Parent.ConformsTo(TInternal) || t.Parent.ConformsTo(TReturnCheck) {
+			t.Parent().ConformsTo(TMark) || t.Parent().ConformsTo(TMove) ||
+			t.Parent().ConformsTo(TInternal) || t.Parent().ConformsTo(TReturnCheck) {
 			break
 		}
 		operands = append(operands, t)
@@ -190,7 +190,7 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 	}
 	template := res[len(res)-1]
 	var tmpl []Value
-	if template.Parent.Equal(TList) && IsConcrete(&template) {
+	if template.Parent().Equal(TList) && IsConcrete(&template) {
 		l, _ := AsList(template)
 		tmpl = l.Elems()
 	} else {
@@ -243,13 +243,13 @@ func collectTemplateBinders(toks []Value, set map[string]bool) {
 // collectBindersNested recurses collectTemplateBinders into a container value.
 func collectBindersNested(t Value, set map[string]bool) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(&t):
+	case t.Parent().Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		collectTemplateBinders(l.Elems(), set)
 	case IsParenExpr(&t):
 		pt, _ := AsParenExpr(&t)
 		collectTemplateBinders(pt, set)
-	case t.Parent.Equal(TMap) && IsConcrete(&t):
+	case t.Parent().Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return
@@ -283,7 +283,7 @@ func expandTemplate(r *Registry, toks []Value, bindings map[string]Value, rename
 				}
 				i++ // consume the escape's operand
 				if w.Name == "splice" {
-					if !val.Parent.Equal(TList) || !IsConcrete(&val) {
+					if !val.Parent().Equal(TList) || !IsConcrete(&val) {
 						return nil, &BoruError{Code: "macro_error",
 							Detail: "splice: operand did not evaluate to a list"}
 					}
@@ -356,7 +356,7 @@ func asTemplateNode(v Value) Value {
 // embed unquote/splice inside a list, a paren, or a map value — §3.1).
 func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[string]string) (Value, error) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(&t):
+	case t.Parent().Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		inner, err := expandTemplate(r, l.Elems(), bindings, renames)
 		if err != nil {
@@ -372,7 +372,7 @@ func expandNested(r *Registry, t Value, bindings map[string]Value, renames map[s
 			return Value{}, err
 		}
 		return NewParenExpr(inner), nil
-	case t.Parent.Equal(TMap) && IsConcrete(&t):
+	case t.Parent().Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return t, nil
@@ -400,7 +400,7 @@ func ExpandMacroForm(r *Registry, form Value) ([]Value, error) {
 	switch {
 	case IsParenExpr(&form):
 		toks, _ = AsParenExpr(&form)
-	case form.Parent.Equal(TList) && IsConcrete(&form):
+	case form.Parent().Equal(TList) && IsConcrete(&form):
 		l, _ := AsList(form)
 		toks = l.Slice()
 	default:
@@ -417,7 +417,7 @@ func ExpandMacroForm(r *Registry, form Value) ([]Value, error) {
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: undefined macro " + name.Name}
 	}
-	fnDef, ok := bound.Data.(*FnDefInfo)
+	fnDef, ok := bound.Data().(*FnDefInfo)
 	if !ok || !fnDef.Macro {
 		return nil, &BoruError{Code: "macroexpand_error",
 			Detail: "macroexpand: " + name.Name + " is not a macro"}
@@ -442,7 +442,7 @@ func macroByName(r *Registry, name string) (FnDefInfo, bool) {
 	if !ok {
 		return FnDefInfo{}, false
 	}
-	fd, ok := bound.Data.(*FnDefInfo)
+	fd, ok := bound.Data().(*FnDefInfo)
 	if !ok || !fd.Macro {
 		return FnDefInfo{}, false
 	}
@@ -495,7 +495,7 @@ func expandAllMacros(r *Registry, toks []Value, depth int) ([]Value, error) {
 // expandAllNested recurses expandAllMacros into a container value.
 func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 	switch {
-	case t.Parent.Equal(TList) && IsConcrete(&t):
+	case t.Parent().Equal(TList) && IsConcrete(&t):
 		l, _ := AsList(t)
 		inner, err := expandAllMacros(r, l.Elems(), depth+1)
 		if err != nil {
@@ -511,7 +511,7 @@ func expandAllNested(r *Registry, t Value, depth int) (Value, error) {
 			return Value{}, err
 		}
 		return NewParenExpr(inner), nil
-	case t.Parent.Equal(TMap) && IsConcrete(&t):
+	case t.Parent().Equal(TMap) && IsConcrete(&t):
 		m, _ := AsMap(t)
 		if m == nil {
 			return t, nil

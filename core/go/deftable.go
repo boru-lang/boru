@@ -137,7 +137,7 @@ func (dt *DefTable) SetTopData(name string, data Payload) bool {
 		return false
 	}
 	dt.touch(name)
-	e.Body.Data = data
+	e.Body.SetData(data)
 	return true
 }
 
@@ -440,7 +440,7 @@ func sameDefEntry(a, b DefEntry) bool {
 		return false
 	}
 	x, y := a.Body, b.Body
-	if IDOf(&x) != IDOf(&y) || x.Parent != y.Parent || posOf(&x) != posOf(&y) {
+	if IDOf(&x) != IDOf(&y) || x.Parent() != y.Parent() || posOf(&x) != posOf(&y) {
 		return false
 	}
 	if HasContainerIdentity(x) || HasContainerIdentity(y) {

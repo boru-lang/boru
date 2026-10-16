@@ -92,14 +92,14 @@ func (sc *keptDefsScan) value(v core.Value) bool {
 	if core.IsReach(&v) || core.IsSplice(&v) {
 		return false
 	}
-	if v.Carrier {
+	if v.Carrier() {
 		// A computed binding: its run-time value is unknown, and one that
 		// may hold code (a list, a map, a fn, or anything) may be run.
-		t := v.Parent
+		t := v.Parent()
 		return !(core.IsDynamic(&v) || t == nil || t.ConformsTo(core.TList) || t.ConformsTo(core.TMap) ||
 			t.ConformsTo(core.TFunction) || core.TList.ConformsTo(t))
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.ListPayload:
 		return sc.all(d.Elems)
 	case core.ParenExprPayload:
@@ -116,7 +116,7 @@ func (sc *keptDefsScan) value(v core.Value) bool {
 		}
 	case *core.FnDefInfo:
 		return sc.fnBodies(d.Signatures)
-	case core.ClosurePayload, core.InterpStringPayload, core.XmlInterpPayload:
+	case *core.ClosurePayload, core.InterpStringPayload, core.XmlInterpPayload:
 		return false
 	}
 	return true
@@ -138,7 +138,7 @@ func (sc *keptDefsScan) word(name string) bool {
 		return false
 	}
 	if bound, ok := sc.r.Defs.Top(name); ok {
-		if _, isFn := bound.Data.(*core.FnDefInfo); !isFn {
+		if _, isFn := bound.Data().(*core.FnDefInfo); !isFn {
 			return sc.value(bound)
 		}
 	}

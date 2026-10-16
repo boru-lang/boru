@@ -59,9 +59,9 @@ func (p *PredicateUnifier) Match(v Value, t *Type) bool {
 	// NUR102's family). Admitted, the arm stays reachable and the call
 	// goes poly: the runtime re-match asks the predicate, once (NUR102).
 	// A concrete candidate keeps the real run below (NUR141).
-	if v.Carrier && !IsConcrete(&v) && p.registry != nil && p.registry.analysisActive() {
-		if inputT := PredicateInputType(p.constraint); inputT != nil && v.Parent != nil &&
-			(v.Parent.ConformsTo(inputT) || inputT.ConformsTo(v.Parent)) {
+	if v.Carrier() && !IsConcrete(&v) && p.registry != nil && p.registry.analysisActive() {
+		if inputT := PredicateInputType(p.constraint); inputT != nil && v.Parent() != nil &&
+			(v.Parent().ConformsTo(inputT) || inputT.ConformsTo(v.Parent())) {
 			return true
 		}
 	}
@@ -74,7 +74,7 @@ func (p *PredicateUnifier) Match(v Value, t *Type) bool {
 		// Gate 1: input-type compatibility (`"hello".Is(Pos)` rejects —
 		// String is not Integer).
 		if inputT := PredicateInputType(p.constraint); inputT != nil {
-			if !v.Parent.ConformsTo(inputT) {
+			if !v.Parent().ConformsTo(inputT) {
 				return false
 			}
 		}

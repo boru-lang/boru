@@ -92,8 +92,8 @@ func TestFetchStringHandler(t *testing.T) {
 	}
 
 	resp := result[0]
-	if resp.Parent.Name() != "Response" {
-		t.Errorf("expected a Fetch Response, got %s", resp.Parent)
+	if resp.Parent().Name() != "Response" {
+		t.Errorf("expected a Fetch Response, got %s", resp.Parent())
 	}
 
 	m, _ := AsMap(resp)
@@ -414,11 +414,11 @@ func TestFetchResponseType(t *testing.T) {
 
 	resp := result[0]
 	// Ideal/Fetch/Response is an Ideal-family kind.
-	if !resp.Parent.ConformsTo(TIdeal) {
-		t.Errorf("expected response to match Ideal, got %s", resp.Parent)
+	if !resp.Parent().ConformsTo(TIdeal) {
+		t.Errorf("expected response to match Ideal, got %s", resp.Parent())
 	}
-	if resp.Parent.Name() != "Response" {
-		t.Errorf("expected Ideal/Fetch/Response, got %s", resp.Parent)
+	if resp.Parent().Name() != "Response" {
+		t.Errorf("expected Ideal/Fetch/Response, got %s", resp.Parent())
 	}
 }
 

@@ -294,7 +294,7 @@ func TestObjectTypeVTypeMatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	barType := result[0].Parent
+	barType := result[0].Parent()
 	// Bar (Class/Foo/Bar) roots under Class.
 	tCls, _ := native.NewType("Class")
 	if !barType.ConformsTo(tCls) {
@@ -958,8 +958,8 @@ func TestMakeObjectInstanceTypeMatchesObjectType(t *testing.T) {
 		t.Fatal(err)
 	}
 	inst := result[0]
-	if !inst.Parent.ConformsTo(native.TClass) {
-		t.Errorf("expected instance type to match TClass, got %s", inst.Parent)
+	if !inst.Parent().ConformsTo(native.TClass) {
+		t.Errorf("expected instance type to match TClass, got %s", inst.Parent())
 	}
 	oi, _ := native.AsClassInstance(inst)
 	if oi.TypeRef.Name != "Class/Foo" {
@@ -1261,7 +1261,7 @@ func TestMakeObjectDeep7LevelsAllDefaults(t *testing.T) {
 			}
 		case bool:
 			if vb, _ := native.AsBoolean(v); vb != exp {
-				t.Errorf("field %s: expected %v, got %v", k, exp, v.Data)
+				t.Errorf("field %s: expected %v, got %v", k, exp, v.Data())
 			}
 		}
 	}

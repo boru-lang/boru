@@ -46,7 +46,7 @@ func TestNoneLiteralIsAUnionMember(t *testing.T) {
 // alternative; a carrier holding its type (tnot's negation) is the type.
 func TestAnnotationRunDependent(t *testing.T) {
 	neg := NegateType(NewTypeLiteral(TInteger))
-	neg.Carrier = true
+	neg.SetCarrier(true)
 	for _, c := range []struct {
 		name string
 		v    Value
@@ -78,11 +78,11 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 	// The pass's values for `(1 add 2)` and `(tnot Integer)`, bound as the
 	// annotation's word reads them (core runs no word's analysis half).
 	neg := NegateType(NewTypeLiteral(TInteger))
-	neg.Carrier = true
+	neg.SetCarrier(true)
 	r.Defs.Push("zzsum", NewCarrier(TInteger))
 	r.Defs.Push("zzneg", neg)
 	got, err := EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzsum")}), "x")
-	if err != nil || !got.Carrier || rec.dependents != 1 {
+	if err != nil || !got.Carrier() || rec.dependents != 1 {
 		t.Fatalf("a carrier annotation notes the word run-dependent: %v %v %d", got, err, rec.dependents)
 	}
 	// A typed container whose paren child the pass evaluates to a carrier
@@ -91,7 +91,7 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 		t.Fatalf("a run-dependent child notes the word: %v %d", err, rec.dependents)
 	}
 	got, err = EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzneg")}), "x")
-	if err != nil || got.Carrier || !IsNegation(got) || rec.dependents != 2 {
+	if err != nil || got.Carrier() || !IsNegation(got) || rec.dependents != 2 {
 		t.Fatalf("tnot's negation is the type itself and notes nothing: %v %v %d", got, err, rec.dependents)
 	}
 	kind, pat, err := ResolveSigType(r, got)

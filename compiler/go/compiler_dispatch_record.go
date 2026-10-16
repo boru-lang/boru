@@ -250,8 +250,8 @@ func tryFoldReStepWord(r *core.Registry, word string, args, outs []core.Value) b
 		return false
 	}
 	key, recv := args[0], args[1]
-	return core.IsConcrete(&recv) && recv.Parent.ConformsTo(core.TList) &&
-		core.IsConcrete(&key) && key.Parent.ConformsTo(core.TInteger)
+	return core.IsConcrete(&recv) && recv.Parent().ConformsTo(core.TList) &&
+		core.IsConcrete(&key) && key.Parent().ConformsTo(core.TInteger)
 }
 
 // tryFoldReStepCase folds a `case` whose check-mode result is a LIVE WORD
@@ -288,8 +288,8 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 		return false
 	}
 	key, recv := args[0], args[1]
-	if !recv.Parent.ConformsTo(core.TList) || !core.IsConcrete(&recv) ||
-		!key.Parent.ConformsTo(core.TInteger) || !core.IsConcrete(&key) {
+	if !recv.Parent().ConformsTo(core.TList) || !core.IsConcrete(&recv) ||
+		!key.Parent().ConformsTo(core.TInteger) || !core.IsConcrete(&key) {
 		return false
 	}
 	n, err := core.AsInteger(key)
@@ -353,7 +353,7 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 	// (core.IsInertConst's FnDefInfo arm), so its consumer interns it. The
 	// folded value takes its own identity, so the escape fence
 	// (foldedEscape) can follow it.
-	core.SetID(&member, core.GenerateID(core.IDPrefixForType(member.Parent)))
+	core.SetID(&member, core.GenerateID(core.IDPrefixForType(member.Parent())))
 	es.noteFolded(member)
 	outs[0] = member
 	return true
@@ -365,8 +365,8 @@ func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Valu
 // anonymous park (execFnDefLiteral), read through the one predicate that
 // states it (core.FnValueOnlyZeroArgSigs).
 func parkedMemberFn(v core.Value) bool {
-	fd, ok := core.FnDefOf(v.Data)
-	if !ok || core.IsQuoted(&v) || v.Carrier || !fd.Anonymous || core.IsApplied(&v) || fd.Macro || len(fd.Captured) != 0 ||
+	fd, ok := core.FnDefOf(v.Data())
+	if !ok || core.IsQuoted(&v) || v.Carrier() || !fd.Anonymous || core.IsApplied(&v) || fd.Macro || len(fd.Captured) != 0 ||
 		!core.FnValueOnlyZeroArgSigs(fd) {
 		return false
 	}
@@ -548,7 +548,7 @@ func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, ou
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(*core.FnDefInfo); ok {
+		if _, ok := a.Data().(*core.FnDefInfo); ok {
 			return false
 		}
 	}
@@ -642,7 +642,7 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 		if !sig.QuoteArgs[i] {
 			continue
 		}
-		if _, ok := args[i].Data.(core.AtomPayload); !ok || !core.IsInertConst(&args[i]) {
+		if _, ok := args[i].Data().(core.AtomPayload); !ok || !core.IsInertConst(&args[i]) {
 			return false
 		}
 	}
@@ -667,7 +667,7 @@ func isModuleInnerSig(r *core.Registry, word string, sig *core.Signature) bool {
 			}
 			for _, k := range em.Keys() {
 				v, _ := em.Get(k)
-				fd, ok := v.Data.(*core.FnDefInfo)
+				fd, ok := v.Data().(*core.FnDefInfo)
 				if !ok || fd.Name != word {
 					continue
 				}
@@ -839,7 +839,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 		}
 	}
 	for _, a := range args {
-		if _, ok := a.Data.(*core.FnDefInfo); ok {
+		if _, ok := a.Data().(*core.FnDefInfo); ok {
 			return false
 		}
 	}
@@ -1509,7 +1509,7 @@ func operandsReach(s *core.Signature, args []core.Value) bool {
 			break
 		}
 		v := args[j]
-		if v.Carrier && v.Parent != nil && v.Parent.Equal(core.TAny) {
+		if v.Carrier() && v.Parent() != nil && v.Parent().Equal(core.TAny) {
 			continue
 		}
 		if !core.SigTypeMatches(&v, t) {
@@ -1559,9 +1559,9 @@ func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
 		// event (an identity-less holder is never stamped). NARROW to ExtensionPayload instances — scalar outs elided
 		// by the mode-gated ID discipline must STAY elided (a blanket mint
 		// miscompiled the each-body value-def promotion).
-		_, isExt := outs[i].Data.(core.ExtensionPayload)
+		_, isExt := outs[i].Data().(core.ExtensionPayload)
 		if (core.IDOf(&outs[i]) == "" && isExt) || ((prior || seen[core.IDOf(&outs[i])]) && !argIDs[core.IDOf(&outs[i])]) {
-			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent)))
+			core.SetID(&outs[i], core.GenerateID(core.IDPrefixForType(outs[i].Parent())))
 		}
 		seen[core.IDOf(&outs[i])] = true
 		es.setProducedAt(&outs[i], seq, i)

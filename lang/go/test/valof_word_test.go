@@ -34,7 +34,7 @@ func TestRefBuildsDispatchTable(t *testing.T) {
 	}
 	m, _ := native.AsMap(result[0])
 	if m == nil {
-		t.Fatalf("expected map, got %s", result[0].Parent.String())
+		t.Fatalf("expected map, got %s", result[0].Parent().String())
 	}
 
 	for _, key := range []string{"plus", "times"} {
@@ -42,15 +42,15 @@ func TestRefBuildsDispatchTable(t *testing.T) {
 		if !ok {
 			t.Fatalf("ops[%q] missing", key)
 		}
-		if !v.Parent.Equal(core.TFunction) {
-			t.Errorf("ops[%q].Parent = %s, want Function", key, v.Parent.String())
+		if !v.Parent().Equal(core.TFunction) {
+			t.Errorf("ops[%q].Parent = %s, want Function", key, v.Parent().String())
 		}
 		if core.IsQuoted(&v) {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", key)
 		}
-		fnDef, ok := core.FnDefOf(v.Data)
+		fnDef, ok := core.FnDefOf(v.Data())
 		if !ok {
-			t.Fatalf("ops[%q] payload type = %T, want FnDefInfo", key, v.Data)
+			t.Fatalf("ops[%q] payload type = %T, want FnDefInfo", key, v.Data())
 		}
 		wantName := map[string]string{"plus": "myadd", "times": "mymul"}[key]
 		if fnDef.Name != wantName {
@@ -103,10 +103,10 @@ func TestRefMapRetrievalAsData(t *testing.T) {
 		t.Fatalf("got %d results, want 1", len(result))
 	}
 	v := result[0]
-	if !v.Parent.Equal(core.TFunction) {
-		t.Fatalf("ops.plus type = %s, want Function", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Fatalf("ops.plus type = %s, want Function", v.Parent().String())
 	}
-	fnDef, _ := core.FnDefOf(v.Data)
+	fnDef, _ := core.FnDefOf(v.Data())
 	if fnDef.Name != "myadd" {
 		t.Errorf("ops.plus fnDef.Name = %q, want %q", fnDef.Name, "myadd")
 	}
@@ -214,8 +214,8 @@ func TestRefSuffixHoldsArgsUndispatched(t *testing.T) {
 	if len(result) != 3 {
 		t.Fatalf("got %d results, want 3 [Function 2 3]: %v", len(result), result)
 	}
-	if !result[0].Parent.Equal(core.TFunction) {
-		t.Errorf("result[0].Parent=%s, want Function (held, not dispatched)", result[0].Parent.String())
+	if !result[0].Parent().Equal(core.TFunction) {
+		t.Errorf("result[0].Parent=%s, want Function (held, not dispatched)", result[0].Parent().String())
 	}
 	if a, _ := core.AsInteger(result[1]); a != 2 {
 		t.Errorf("result[1]=%v, want 2 (arg not consumed)", result[1])
@@ -315,8 +315,8 @@ func TestValMatchesSlashV(t *testing.T) {
 		if len(refRes) != 1 || len(rRes) != 1 {
 			t.Fatalf("%s: ref=%v /v=%v, want 1 value each", c.name, refRes, rRes)
 		}
-		refIsFn := refRes[0].Parent.Equal(core.TFunction)
-		rIsFn := rRes[0].Parent.Equal(core.TFunction)
+		refIsFn := refRes[0].Parent().Equal(core.TFunction)
+		rIsFn := rRes[0].Parent().Equal(core.TFunction)
 		if refIsFn != rIsFn {
 			t.Errorf("%s: ref-is-fn=%v but /v-is-fn=%v — ref and /v must match", c.name, refIsFn, rIsFn)
 		}
@@ -362,7 +362,7 @@ func TestRefInListHoldsFunctionAnyArity(t *testing.T) {
 			t.Fatalf("%s [f/v]: %v", c.name, err)
 		}
 		l, _ := core.AsList(res[0])
-		if l.Len() != 1 || !l.Get(0).Parent.Equal(core.TFunction) {
+		if l.Len() != 1 || !l.Get(0).Parent().Equal(core.TFunction) {
 			t.Errorf("%s [f/v] = %v, want [Function] (held, not dispatched)", c.name, res[0])
 		}
 	}

@@ -35,15 +35,15 @@ func sizeReturns(args []Value, _ *Registry) []Value {
 	// `behave size` installed) answers with its own body, so folding
 	// the container length would make the checker model a size the
 	// runtime never reports (and prune loops that actually run).
-	if owner := core.SizeOwner(v.Parent); owner != nil && owner.Origin != core.OriginBuiltin {
+	if owner := core.SizeOwner(v.Parent()); owner != nil && owner.Origin() != core.OriginBuiltin {
 		return carrier
 	}
 	switch {
-	case v.Parent.ConformsTo(TList):
+	case v.Parent().ConformsTo(TList):
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			return []Value{NewInteger(int64(lst.Len()))}
 		}
-	case v.Parent.ConformsTo(TMap):
+	case v.Parent().ConformsTo(TMap):
 		if m, err := AsMap(v); err == nil && m != nil {
 			return []Value{NewInteger(int64(m.Len()))}
 		}

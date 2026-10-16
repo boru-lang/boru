@@ -64,10 +64,10 @@ func TestGaterecovery368ComputedKeyExprFindsCarrier(t *testing.T) {
 	// value is at check time.
 	r.Defs.Push("k", core.NewCarrier(core.TString))
 
-	if bound, ok := r.Defs.Top("m"); !ok || bound.Carrier {
+	if bound, ok := r.Defs.Top("m"); !ok || bound.Carrier() {
 		t.Fatalf("precondition: receiver binding must exist and be carrier-free, got %#v ok=%v", bound, ok)
 	}
-	if bound, ok := r.Defs.Top("k"); !ok || !bound.Carrier {
+	if bound, ok := r.Defs.Top("k"); !ok || !bound.Carrier() {
 		t.Fatalf("precondition: key binding must be a carrier, got %#v ok=%v", bound, ok)
 	}
 

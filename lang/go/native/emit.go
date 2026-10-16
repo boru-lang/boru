@@ -47,16 +47,16 @@ func classifyNode(v Value) (emitNodeKind, []walkEntry) {
 	// List-like: a concrete List, or an Ideal Table (which childrenOf
 	// projects to a List).
 	if IsConcrete(&v) {
-		if v.Parent.ConformsTo(TList) {
+		if v.Parent().ConformsTo(TList) {
 			return emitList, entries
 		}
-		if v.Parent.ConformsTo(TTable) {
+		if v.Parent().ConformsTo(TTable) {
 			return emitList, entries
 		}
-		if v.Parent.ConformsTo(TMap) {
+		if v.Parent().ConformsTo(TMap) {
 			return emitMap, entries
 		}
-		if v.Parent.ConformsTo(TIdeal) {
+		if v.Parent().ConformsTo(TIdeal) {
 			// Object / Store / Error / Module / … project to a Map.
 			return emitMap, entries
 		}
@@ -65,10 +65,10 @@ func classifyNode(v Value) (emitNodeKind, []walkEntry) {
 	// A non-concrete map/list CARRIER (a typed-map ChildTypeInfo, a list
 	// carrier) has no readable children but is structurally a container — it
 	// emits as the empty form `{}` / `[]`, matching the legacy valueToJsonic.
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		return emitList, nil
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		return emitMap, nil
 	}
 
@@ -179,33 +179,33 @@ func NaturalEmitKind(v Value) (string, bool) {
 		// is TableData (its Parent does NOT conform to TTable), so detect the
 		// payload directly — otherwise the TList branch below would pick json and
 		// `read "x.csv" emit` would emit JSON instead of the natural CSV.
-		if _, ok := v.Data.(TableData); ok {
+		if _, ok := v.Data().(TableData); ok {
 			return "csv", true
 		}
-		if v.Parent.ConformsTo(TTable) {
+		if v.Parent().ConformsTo(TTable) {
 			return "csv", true
 		}
-		if v.Parent.ConformsTo(TList) {
+		if v.Parent().ConformsTo(TList) {
 			return "json", true
 		}
-		if v.Parent.ConformsTo(TMap) {
+		if v.Parent().ConformsTo(TMap) {
 			return "json", true // includes Record/Options leaves — json renders them
 		}
-		if v.Parent.ConformsTo(TIdeal) {
+		if v.Parent().ConformsTo(TIdeal) {
 			return "json", true // Object / Store / Error / …
 		}
 	}
 	// Scalars (String / Number / Boolean / Atom / None) and Error → json.
 	switch {
-	case v.Parent.ConformsTo(TScalar),
-		v.Parent.ConformsTo(TString),
-		v.Parent.ConformsTo(TNumber),
-		v.Parent.ConformsTo(TInteger),
-		v.Parent.ConformsTo(TFloat),
-		v.Parent.ConformsTo(TBoolean),
-		v.Parent.ConformsTo(TAtom),
+	case v.Parent().ConformsTo(TScalar),
+		v.Parent().ConformsTo(TString),
+		v.Parent().ConformsTo(TNumber),
+		v.Parent().ConformsTo(TInteger),
+		v.Parent().ConformsTo(TFloat),
+		v.Parent().ConformsTo(TBoolean),
+		v.Parent().ConformsTo(TAtom),
 		IsNoneShape(v),
-		v.Parent.ConformsTo(TError):
+		v.Parent().ConformsTo(TError):
 		return "json", true
 	}
 	return "", false
@@ -221,22 +221,22 @@ func NaturalEmitKind(v Value) (string, bool) {
 // each caller's None arm cannot change which arm a value hits.)
 func scalarLeaf(v Value, quote func(string) string) (string, bool) {
 	switch {
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		s, _ := AsString(v)
 		return quote(s), true
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		f, _ := AsFloat(v)
 		return strconv.FormatFloat(f, 'f', -1, 64), true
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		i, _ := AsInteger(v)
 		return fmt.Sprintf("%d", i), true
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		b, _ := AsBoolean(v)
 		if b {
 			return "true", true
 		}
 		return "false", true
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		a, _ := AsAtom(v)
 		return quote(a), true
 	}
@@ -597,7 +597,7 @@ func encodeTabular(v Value, sep, name string) (string, error) {
 	var columns []string
 	tabular := false // a Table / Materializer carries an explicit schema
 
-	switch data := v.Data.(type) {
+	switch data := v.Data().(type) {
 	case TableData:
 		columns = data.Record.Fields.Keys()
 		rows = data.Rows
@@ -699,7 +699,7 @@ func joinFields(fields []string, sep string) string {
 // with internal quotes doubled). Non-string cells render via String().
 func csvCell(v Value, sep string) string {
 	var s string
-	if v.Parent.ConformsTo(TString) && IsConcrete(&v) {
+	if v.Parent().ConformsTo(TString) && IsConcrete(&v) {
 		s, _ = AsString(v)
 	} else {
 		s = v.String()

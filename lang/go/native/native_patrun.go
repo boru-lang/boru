@@ -65,7 +65,7 @@ func NewPatrun(valType *core.Type) Value {
 }
 
 func asPatrun(v Value) (*patrunMatcher, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := v.Data().(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -187,7 +187,7 @@ func patrunAddReturns(args []Value, r *Registry) []Value {
 			// !Compiling gate above), so the stamp is classification, not a
 			// compile-behavior change.
 			core.CheckAddUniqueDiagnostic(r, "patrun_error",
-				fmt.Sprintf("add: value must be a %s, got %s", ss.DeclaredVal.Leaf(), args[1].Parent.String()),
+				fmt.Sprintf("add: value must be a %s, got %s", ss.DeclaredVal.Leaf(), args[1].Parent().String()),
 				"add", args[1].Pos())
 		}
 	}
@@ -210,11 +210,11 @@ func patrunFindReturns(args []Value, r *Registry) []Value {
 func patrunAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	m, ok := asPatrun(args[2])
 	if !ok {
-		return nil, r.BoruError("patrun_error", "add: expected a Patrun, got "+args[2].Parent.String(), "add")
+		return nil, r.BoruError("patrun_error", "add: expected a Patrun, got "+args[2].Parent().String(), "add")
 	}
 	if m.valType != nil && !m.valType.Equal(TAny) && !args[1].Is(m.valType) {
 		return nil, r.BoruErrorHint("patrun_error",
-			fmt.Sprintf("add: value must be a %s, got %s", m.valType.Leaf(), args[1].Parent.String()),
+			fmt.Sprintf("add: value must be a %s, got %s", m.valType.Leaf(), args[1].Parent().String()),
 			"add", "this Patrun was declared `patrun "+m.valType.Leaf()+"` — its stored values must be that type")
 	}
 	pat, keys, sig, err := coercePattern(args[0], "add", r)
@@ -233,7 +233,7 @@ func patrunAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 func patrunFindHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	m, ok := asPatrun(args[1])
 	if !ok {
-		return nil, r.BoruError("patrun_error", "find: expected a Patrun, got "+args[1].Parent.String(), "find")
+		return nil, r.BoruError("patrun_error", "find: expected a Patrun, got "+args[1].Parent().String(), "find")
 	}
 	exact := false
 	if len(args) == 3 {
@@ -267,7 +267,7 @@ func patrunFindHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 func patrunRemoveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	m, ok := asPatrun(args[1])
 	if !ok {
-		return nil, r.BoruError("patrun_error", "remove: expected a Patrun, got "+args[1].Parent.String(), "remove")
+		return nil, r.BoruError("patrun_error", "remove: expected a Patrun, got "+args[1].Parent().String(), "remove")
 	}
 	pat, _, sig, err := coercePattern(args[0], "remove", r)
 	if err != nil {
@@ -289,7 +289,7 @@ func patrunRemoveHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 func patrunPatternsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	m, ok := asPatrun(args[0])
 	if !ok {
-		return nil, r.BoruError("patrun_error", "patterns: expected a Patrun, got "+args[0].Parent.String(), "patterns")
+		return nil, r.BoruError("patrun_error", "patterns: expected a Patrun, got "+args[0].Parent().String(), "patterns")
 	}
 	out := make([]Value, 0, len(m.order))
 	for _, sig := range m.order {
@@ -317,9 +317,9 @@ func coercePattern(pv Value, op string, r *Registry) (map[string]string, []strin
 	pat := make(map[string]string, len(mkeys))
 	for _, k := range mkeys {
 		val, _ := mp.Get(k)
-		if !IsConcrete(&val) || !val.Parent.ConformsTo(TScalar) {
+		if !IsConcrete(&val) || !val.Parent().ConformsTo(TScalar) {
 			return nil, nil, "", r.BoruErrorHint("patrun_error",
-				fmt.Sprintf("%s: pattern value for %q must be a Scalar, got %s", op, k, val.Parent.String()),
+				fmt.Sprintf("%s: pattern value for %q must be a Scalar, got %s", op, k, val.Parent().String()),
 				op, "patterns match on scalar values (Integer/Float/String/Boolean/Atom)")
 		}
 		pat[k] = ValToString(val)
@@ -340,7 +340,7 @@ func coerceSubject(sv Value, op string) (map[string]string, error) {
 	subj := make(map[string]string, len(mp.Keys()))
 	for _, k := range mp.Keys() {
 		val, _ := mp.Get(k)
-		if IsConcrete(&val) && val.Parent.ConformsTo(TScalar) {
+		if IsConcrete(&val) && val.Parent().ConformsTo(TScalar) {
 			subj[k] = ValToString(val)
 		}
 	}

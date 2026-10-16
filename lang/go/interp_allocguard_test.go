@@ -33,21 +33,26 @@ func TestInterpAllocCeilings(t *testing.T) {
 		ceiling     int64
 		byteCeiling int64
 	}{
-		{"arith_chain64", "", arithChain(64), 950, 600_000},
+		{"arith_chain64", "", arithChain(64), 886, 600_000},
+		// Every ceiling but string_join's LOWERED 2026-10-15 by its measured
+		// drop from no-copy phase 3 (phase 4, design/VALUE-NO-COPY.0.md §9):
+		// a value's datum is shared, scalars and markers mint none, and the
+		// engine's per-step markers allocate their payload with their datum.
+		//
 		// compare_loop / if_scalar / for_tight / map_get / string_join LOWERED
 		// 2026-10-12 by their measured drop (no-copy phase 2,
 		// design/VALUE-NO-COPY.0.md §9): a loop's continuation mark no longer
 		// copies the body it never replays, one allocation per iteration.
-		{"compare_loop", "", `for 200 [gt i 100]`, 4570, 1_850_000},
-		{"if_scalar", "", `for 200 [if (gt i 100) [1] [0]]`, 7940, 3_700_000},
-		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 7540, 2_950_000},
+		{"compare_loop", "", `for 200 [gt i 100]`, 4368, 1_850_000},
+		{"if_scalar", "", `for 200 [if (gt i 100) [1] [0]]`, 7539, 3_700_000},
+		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 6908, 2_950_000},
 		// each / fold LOWERED 2026-10-08 (1950 -> 1400, 1360 -> 870): the loop
 		// runs on the tape (core loop.go) — one sealed region per element,
 		// the loop's tokens minted once — instead of a pooled sub-engine run
 		// per element, whose entry, inputs and result copy allocated.
-		{"each_list", `def xs100 ` + intList(100), `each [mul 2] xs100`, 1400, 400_000},
-		{"fold_int", `def xs100b ` + intList(100), `fold [add] xs100b 0`, 870, 300_000},
-		{"map_get", `def mg {a: {b: {c: {d: 1}}}}`, `for 100 [mg.a.b.c.d]`, 6690, 3_300_000},
+		{"each_list", `def xs100 ` + intList(100), `each [mul 2] xs100`, 1301, 400_000},
+		{"fold_int", `def xs100b ` + intList(100), `fold [add] xs100b 0`, 811, 300_000},
+		{"map_get", `def mg {a: {b: {c: {d: 1}}}}`, `for 100 [mg.a.b.c.d]`, 6288, 3_300_000},
 		{"string_join", `def ws ['alpha' 'beta' 'gamma' 'delta']`, `for 50 [join '-' ws]`, 18290, 2_050_000},
 	}
 	for _, g := range guards {

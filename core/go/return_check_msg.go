@@ -17,7 +17,7 @@ import "fmt"
 // funcName's index-th (1-based) return value was expected to be `expected` but
 // the body produced `got`.
 func ReturnTypeErrorText(funcName string, index int, expected *Type, got Value) (detail, hint string) {
-	gotType := got.Parent
+	gotType := got.Parent()
 	if gotType == nil {
 		// A lattice root has no Parent: the None literal a missing member
 		// reads as named itself `<nil>` here (NUR324).

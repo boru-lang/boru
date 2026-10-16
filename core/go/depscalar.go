@@ -132,13 +132,13 @@ func BoundToKind(b *DepBound, lower bool) DepKind {
 // supported scalar base or the kind doesn't decompose into a single
 // bound — callers are expected to validate types before constructing.
 func NewDepScalar(kind DepKind, bound Value) Value {
-	base := canonicalBaseType(bound.Parent)
+	base := canonicalBaseType(bound.Parent())
 	if base == nil {
-		return Value{Parent: TNone}
+		return Value{d: &Datum{Parent: TNone}}
 	}
 	db, lower, ok := kindToBound(kind, bound)
 	if !ok {
-		return Value{Parent: TNone}
+		return Value{d: &Datum{Parent: TNone}}
 	}
 	info := DepScalarInfo{}
 	if lower {
@@ -156,9 +156,9 @@ func NewDepScalar(kind DepKind, bound Value) Value {
 // strip down to their last declaring ancestor. Returns nil for types not
 // rooted at a declared base.
 func canonicalBaseType(t *Type) *Type {
-	for d := t; d != nil; d = d.Parent {
-		if d.tmeta != nil && d.tmeta.RefinementBase != nil {
-			return d.tmeta.RefinementBase
+	for d := t; d != nil; d = d.Parent() {
+		if d.body().tmeta != nil && d.body().tmeta.RefinementBase != nil {
+			return d.body().tmeta.RefinementBase
 		}
 	}
 	return nil
@@ -188,16 +188,16 @@ func init() {
 // just the base scalar (TInteger, TString, …), indistinguishable
 // from an ordinary scalar at the lattice level.
 func (v *Value) IsDepScalar() bool {
-	_, ok := v.Data.(DepScalarInfo)
+	_, ok := v.Data().(DepScalarInfo)
 	return ok
 }
 
 // AsDepScalar extracts the DepScalarInfo payload.
 func (v *Value) AsDepScalar() (DepScalarInfo, error) {
-	if di, ok := v.Data.(DepScalarInfo); ok {
+	if di, ok := v.Data().(DepScalarInfo); ok {
 		return di, nil
 	}
-	return DepScalarInfo{}, fmt.Errorf("AsDepScalar: not a DepScalar value (got %T)", v.Data)
+	return DepScalarInfo{}, fmt.Errorf("AsDepScalar: not a DepScalar value (got %T)", v.Data())
 }
 
 // depScalarCheck returns true if `value` satisfies every populated
@@ -262,7 +262,7 @@ func boundsEqual(a, b *DepBound) bool {
 	if a.Inclusive != b.Inclusive {
 		return false
 	}
-	if !a.Value.Parent.Equal(b.Value.Parent) {
+	if !a.Value.Parent().Equal(b.Value.Parent()) {
 		return false
 	}
 	return ValuesEqual(a.Value, b.Value)
@@ -315,7 +315,7 @@ func renderDepScalar(v Value) string {
 	if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 		return ""
 	}
-	return formatDepScalar(v.Parent.Name(), info)
+	return formatDepScalar(v.Parent().Name(), info)
 }
 
 // tightenSameSide combines two same-side bounds (both lower, or both
@@ -477,7 +477,7 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 			// to a supported DepScalar base.
 			if IsConcrete(&args[1]) {
 				return nil, fmt.Errorf("%s: dependent constructor needs a scalar type literal, got concrete %s",
-					opName, args[1].Parent.String())
+					opName, args[1].Parent().String())
 			}
 			base := canonicalBaseType(ValueType(args[1]))
 			if base == nil {
@@ -485,9 +485,9 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 					opName, ValueType(args[1]).String())
 			}
 			// Bound must be the same scalar base as the type literal.
-			if !args[0].Parent.ConformsTo(base) {
+			if !args[0].Parent().ConformsTo(base) {
 				return nil, fmt.Errorf("%s: bound %s does not match dependent base %s",
-					opName, args[0].Parent.String(), base.String())
+					opName, args[0].Parent().String(), base.String())
 			}
 			dep := NewDepScalar(kind, args[0])
 			// Check-mode bytecode recording: remember the concrete predicate
@@ -535,7 +535,7 @@ func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
 func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	if IsConcrete(&args[2]) {
 		return nil, fmt.Errorf("between: type arg must be a scalar type literal, got concrete %s",
-			args[2].Parent.String())
+			args[2].Parent().String())
 	}
 	// args[2] is a type literal; its denoted lattice node is the value
 	// itself (a by-value copy), not args[2].Parent (which is the
@@ -545,13 +545,13 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 		return nil, fmt.Errorf("between: unsupported base type %s",
 			ValueType(args[2]).String())
 	}
-	if !args[0].Parent.ConformsTo(base) {
+	if !args[0].Parent().ConformsTo(base) {
 		return nil, fmt.Errorf("between: low bound %s does not match base %s",
-			args[0].Parent.String(), base.String())
+			args[0].Parent().String(), base.String())
 	}
-	if !args[1].Parent.ConformsTo(base) {
+	if !args[1].Parent().ConformsTo(base) {
 		return nil, fmt.Errorf("between: high bound %s does not match base %s",
-			args[1].Parent.String(), base.String())
+			args[1].Parent().String(), base.String())
 	}
 	info := DepScalarInfo{
 		Lo: &DepBound{Inclusive: true, Value: args[0]},

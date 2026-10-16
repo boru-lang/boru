@@ -133,8 +133,8 @@ func TestGateStandaloneLoopBindNameDefNotJoined(t *testing.T) {
 	if !es.carried["zgsaccq"] {
 		t.Error("the rebind of a non-bind pre-loop name is loop-carried")
 	}
-	if acc, _ := r.Defs.Top("zgsaccq"); !acc.Parent.Equal(core.TDisjunct) {
-		t.Errorf("the non-bind rebind joins with its pre-loop binding, got %v", acc.Parent)
+	if acc, _ := r.Defs.Top("zgsaccq"); !acc.Parent().Equal(core.TDisjunct) {
+		t.Errorf("the non-bind rebind joins with its pre-loop binding, got %v", acc.Parent())
 	}
 }
 

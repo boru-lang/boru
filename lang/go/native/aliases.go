@@ -121,7 +121,13 @@ type (
 	Type                 = core.Type
 	Value                = core.Value
 	WordInfo             = core.WordInfo
+	// Datum is what a Value handle refers to (design/VALUE-NO-COPY.0.md
+	// phase 4): construct one in a literal handed to ValueOf.
+	Datum = core.Datum
 )
+
+// ValueOf is a handle on a datum the caller has just constructed (core.ValueOf).
+func ValueOf(d *Datum) Value { return core.ValueOf(d) }
 
 // Well-known *Type values — re-exported for convenience.
 var (

@@ -16,7 +16,7 @@ func TestKeyValIsMapSubtype(t *testing.T) {
 	if !e.Is(TMap) {
 		t.Errorf("KeyVal is not a Map (it must be a Map subtype)")
 	}
-	if got := e.Parent.Leaf(); got != "KeyVal" {
+	if got := e.Parent().Leaf(); got != "KeyVal" {
 		t.Errorf("type leaf = %q, want KeyVal", got)
 	}
 }

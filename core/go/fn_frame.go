@@ -123,15 +123,15 @@ func IsFrameOpen(v *Value) bool {
 	if !IsOpenParen(v) {
 		return false
 	}
-	_, ok := v.Data.(FrameOpenInfo)
+	_, ok := v.Data().(FrameOpenInfo)
 	return ok
 }
 
 // AsFrameOpen returns the FrameOpenInfo carried by a frame-open paren.
 func AsFrameOpen(v *Value) (FrameOpenInfo, error) {
-	info, ok := v.Data.(FrameOpenInfo)
+	info, ok := v.Data().(FrameOpenInfo)
 	if !ok {
-		return FrameOpenInfo{}, fmt.Errorf("AsFrameOpen: not a frame-open paren (got %T)", v.Data)
+		return FrameOpenInfo{}, fmt.Errorf("AsFrameOpen: not a frame-open paren (got %T)", v.Data())
 	}
 	return info, nil
 }

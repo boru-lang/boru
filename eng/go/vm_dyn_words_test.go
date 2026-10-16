@@ -171,7 +171,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 	if v, ok := vc.closureAsWord(r, fn); !ok || core.IDOf(&v) != core.IDOf(&fn) {
 		t.Error("a FnDefInfo is already dispatchable by name")
 	}
-	cl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Unit: 0}}
+	cl := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{Unit: 0}})
 	if _, ok := vc.closureAsWord(r, cl); ok {
 		t.Error("a closure with no unit in this program declines")
 	}
@@ -192,12 +192,12 @@ func TestClosureAsWordDeclines(t *testing.T) {
 	// value rejects a String for the Integer param and admits an Integer.
 	pat := core.NewInteger(7)
 	foreign := &compiler.Program{Fns: []compiler.CompiledFn{{NArgs: 2, Params: []*core.Type{core.TInteger, nil}, ParamPatterns: []*core.Value{nil, &pat}}}}
-	fcl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: foreign, Unit: 0}}
+	fcl := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.ClosurePayload{Prog: foreign, Unit: 0}})
 	v, ok := vc.closureAsWord(r, fcl)
 	if !ok {
 		t.Fatal("a foreign program's closure resolves through that program")
 	}
-	fd, isFn := core.FnDefOf(v.Data)
+	fd, isFn := core.FnDefOf(v.Data())
 	if !isFn || len(fd.Signatures) != 1 || len(fd.Signatures[0].Args) != 2 ||
 		!fd.Signatures[0].Args[0].Equal(core.TInteger) || !fd.Signatures[0].Args[1].Equal(core.TAny) ||
 		fd.Signatures[0].Params[1].Pattern == nil {
@@ -217,7 +217,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 // argument-taking signature is a fallback, could not.
 func TestLandedFnTakesArgs(t *testing.T) {
 	fn := func(sigs ...core.Signature) core.Value {
-		return core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}}
+		return core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: sigs}})
 	}
 	unary := core.Signature{Args: []*core.Type{core.TInteger}}
 	fallback := unary

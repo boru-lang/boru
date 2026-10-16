@@ -45,13 +45,13 @@ func TestS7BigFormattersEdges(t *testing.T) {
 // --- constructor nil-arg defaults & atom referent -------------------------
 
 func TestS7ConstructorNilDefaults(t *testing.T) {
-	if got := NewTypeLiteral(nil); got.Parent != nil || got.Data != nil {
+	if got := NewTypeLiteral(nil); got.Parent() != nil || got.Data() != nil {
 		t.Errorf("NewTypeLiteral(nil) = %+v, want zero", got)
 	}
-	if s := NewStore(nil); s.Parent == nil {
+	if s := NewStore(nil); s.Parent() == nil {
 		t.Error("NewStore(nil) must default its type")
 	}
-	if s := NewStoreWithPrototype(nil, nil); s.Parent == nil {
+	if s := NewStoreWithPrototype(nil, nil); s.Parent() == nil {
 		t.Error("NewStoreWithPrototype(nil,...) must default its type")
 	}
 	// SetAtomReferent on a non-atom leaves it as it was.
@@ -97,10 +97,10 @@ func TestS7AccessorErrorArms(t *testing.T) {
 }
 
 func TestS7AsFloatApproxBadPayloads(t *testing.T) {
-	if _, err := AsFloatApprox(Value{Parent: TBigInteger, Data: StrPayload{S: "x"}}); err == nil {
+	if _, err := AsFloatApprox(Value{d: &Datum{Parent: TBigInteger, Data: StrPayload{S: "x"}}}); err == nil {
 		t.Error("AsFloatApprox on an unreadable BigInteger must error")
 	}
-	if _, err := AsFloatApprox(Value{Parent: TBigDecimal, Data: StrPayload{S: "x"}}); err == nil {
+	if _, err := AsFloatApprox(Value{d: &Datum{Parent: TBigDecimal, Data: StrPayload{S: "x"}}}); err == nil {
 		t.Error("AsFloatApprox on an unreadable BigDecimal must error")
 	}
 }
@@ -132,7 +132,7 @@ var errS7MzBoom = &s7Err{}
 
 func TestS7KernelFormatDefaultArms(t *testing.T) {
 	// Bounded Type with an unreadable bound -> "Type".
-	badBound := NewValueRaw(TType, ChildTypeInfo{Child: Value{Data: IntPayload{N: 1}}})
+	badBound := NewValueRaw(TType, ChildTypeInfo{Child: Value{d: &Datum{Data: IntPayload{N: 1}}}})
 	if got := kernelFormatDefault(badBound); got != "Type" {
 		t.Errorf("kernelFormatDefault(bad bound) = %q, want Type", got)
 	}
@@ -147,7 +147,7 @@ func TestS7KernelFormatDefaultArms(t *testing.T) {
 		t.Errorf("defcleanup render = %q, want __dc", got)
 	}
 	// Micron value backstop.
-	micron := Value{Parent: TMicron, Data: MicronPayload{Fields: NewOrderedMap()}}
+	micron := Value{d: &Datum{Parent: TMicron, Data: MicronPayload{Fields: NewOrderedMap()}}}
 	if got := kernelFormatDefault(micron); got == "" {
 		t.Error("micron render should not be empty")
 	}
@@ -168,7 +168,7 @@ func TestS7KernelFormatDefaultInstances(t *testing.T) {
 		t.Error("class instance without TypeRef should render via the parent leaf")
 	}
 	// Class instance: no TypeRef, no Parent -> "Class".
-	bare := Value{Data: ClassInstanceInfo{Fields: NewOrderedMap()}}
+	bare := Value{d: &Datum{Data: ClassInstanceInfo{Fields: NewOrderedMap()}}}
 	if got := kernelFormatDefault(bare); got == "" {
 		t.Error("bare class instance should render as Class")
 	}

@@ -46,11 +46,11 @@ func TraceColorize(v Value) string {
 		return cMagenta + fmt.Sprintf("→%s(%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs) + cReset
 	case IsOpenParen(&v):
 		return cDim + "(" + cReset
-	case v.Data == nil:
+	case v.Data() == nil:
 		// Type literal — render the value's OWN type name (it IS its
 		// lattice node), not its parent (which is the supertype).
 		return cCyan + TypeNodeOf(v).String() + cReset
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		// Unwrap via the accessor: v.Data is the sealed StrPayload
 		// struct, and %q on the struct renders `{"x"}` not `"x"`.
 		s, err := AsString(v)
@@ -58,25 +58,25 @@ func TraceColorize(v Value) string {
 			return cGreen + v.String() + cReset
 		}
 		return cGreen + fmt.Sprintf("%q", s) + cReset
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		n, err := AsInteger(v)
 		if err != nil {
 			return cBlue + v.String() + cReset
 		}
 		return cBlue + fmt.Sprintf("%d", n) + cReset
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		_as0, _ := AsBoolean(v)
 		if _as0 {
 			return cCyan + "true" + cReset
 		}
 		return cCyan + "false" + cReset
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		s, err := AsAtom(v)
 		if err != nil {
-			return cRed + fmt.Sprintf("%v", v.Data) + cReset
+			return cRed + fmt.Sprintf("%v", v.Data()) + cReset
 		}
 		return cRed + s + cReset
-	case v.Parent.ConformsTo(TList):
+	case v.Parent().ConformsTo(TList):
 		_lst, _ := AsList(v)
 		elems := _lst.Elems()
 		parts := make([]string, len(elems))
@@ -84,7 +84,7 @@ func TraceColorize(v Value) string {
 			parts[i] = TraceColorize(e)
 		}
 		return cDim + "[" + cReset + strings.Join(parts, " ") + cDim + "]" + cReset
-	case v.Parent.ConformsTo(TMap):
+	case v.Parent().ConformsTo(TMap):
 		m, _ := AsMap(v)
 		if m == nil {
 			return cWhite + v.String() + cReset

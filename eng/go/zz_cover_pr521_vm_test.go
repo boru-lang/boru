@@ -142,6 +142,6 @@ func TestPR521MixedTrailingNativeError(t *testing.T) {
 
 // pr521WordName reports v's word name, if v is a word.
 func pr521WordName(v core.Value) (string, bool) {
-	wi, ok := v.Data.(core.WordInfo)
+	wi, ok := v.Data().(core.WordInfo)
 	return wi.Name, ok && core.IsWord(&v)
 }

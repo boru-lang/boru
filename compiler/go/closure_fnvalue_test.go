@@ -39,9 +39,9 @@ func TestClosureIsFnValue(t *testing.T) {
 		t.Error("a callback body unit's closure is no fn value")
 	}
 	shaped := NewClosure(prog, 0, nil)
-	cl := shaped.Data.(core.ClosurePayload)
+	cl := shaped.Data().(*core.ClosurePayload)
 	cl.InShape = ClosureInKeyVal
-	shaped.Data = cl
+	shaped.SetData(cl)
 	if ClosureIsFnValue(&shaped) {
 		t.Error("a closure in a word's callback shape is that word's body, not a fn value")
 	}

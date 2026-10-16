@@ -213,9 +213,9 @@ func d2DynamicTypedResidual(data Value) Value {
 	// elem is set only on a Map/List container, and dynamicContainerKind reflects
 	// that kind, so base is Map or List here — not-Map is List (no unreachable arm).
 	var typed Value
-	if base.Parent.ConformsTo(TMap) {
+	if base.Parent().ConformsTo(TMap) {
 		typed = core.NewTypedMap(elem)
-		typed.Carrier = true
+		typed.SetCarrier(true)
 	} else {
 		typed = core.NewCarrierTypedListValue(elem)
 	}
@@ -274,7 +274,7 @@ func setpathReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
 	pathIdx := -1
 	for i := range args {
-		if args[i].Parent.ConformsTo(TString) || IsReach(&args[i]) {
+		if args[i].Parent().ConformsTo(TString) || IsReach(&args[i]) {
 			pathIdx = i
 			break
 		}
@@ -290,8 +290,8 @@ func setpathReturns(args []Value, r *Registry) []Value {
 	}
 	a, b := args[others[0]], args[others[1]]
 	data, newVal := a, b
-	if !(a.Parent.ConformsTo(TMap) || a.Parent.ConformsTo(TList)) &&
-		(b.Parent.ConformsTo(TMap) || b.Parent.ConformsTo(TList)) {
+	if !(a.Parent().ConformsTo(TMap) || a.Parent().ConformsTo(TList)) &&
+		(b.Parent().ConformsTo(TMap) || b.Parent().ConformsTo(TList)) {
 		data, newVal = b, a
 	}
 	// R3: a SHALLOW (single-segment) write into a top-level typed container
@@ -314,7 +314,7 @@ func reifyReturns(args []Value, r *Registry) []Value {
 		return dyn
 	}
 	target := args[0]
-	if target.Carrier || IsDynamic(&target) {
+	if target.Carrier() || IsDynamic(&target) {
 		return dyn // computed target — the class is unknown statically
 	}
 	// Dry pass (top-level, statically-known target + CONCRETE source):
@@ -358,7 +358,7 @@ func reifyReturns(args []Value, r *Registry) []Value {
 // carrier this sig produced before.
 func parseTextReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 1 || !IsConcrete(&args[0]) || !args[0].Parent.ConformsTo(TString) {
+	if len(args) != 1 || !IsConcrete(&args[0]) || !args[0].Parent().ConformsTo(TString) {
 		return dyn
 	}
 	out, err := parseTextHandler(args, nil, nil, r)

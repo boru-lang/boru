@@ -24,7 +24,7 @@ func TestBodyEndSpansNestedTokens(t *testing.T) {
 		NewList([]Value{at(NewWord("x"), 2, 1)}),
 		NewParenExpr([]Value{at(NewWord("y"), 3, 7)}),
 		NewMap(om),
-		{Parent: TMap, Data: MapPayload{}},
+		{d: &Datum{Parent: TMap, Data: MapPayload{}}},
 		NewWord("synthetic"),
 	}
 	if end := bodyEnd(body); end.Row != 4 || end.Col != 2 {
@@ -102,7 +102,7 @@ func TestBehaveReaders(t *testing.T) {
 		t.Fatalf("an anonymous body and a named fn, got %+v", c.BehaveReaders)
 	}
 	v := NewInteger(5)
-	v.Parent = temp
+	v.SetParent(temp)
 	c.NoteBehaveDispatch([]Value{v})
 	if len(c.FnCallGraph) != 0 {
 		t.Error("a dispatch outside every named fn records no edge")
@@ -151,7 +151,7 @@ func TestFnMemberReads(t *testing.T) {
 		{"a map's data member", "dot", []Value{NewAtom("n"), mp}, false},
 		{"a carrier key", "dot", []Value{NewCarrier(TAtom), mp}, false},
 		{"a carrier container", "dot", []Value{NewAtom("c"), NewCarrier(TMap)}, false},
-		{"a nil map", "dot", []Value{NewAtom("c"), {Parent: TMap, Data: MapPayload{}}}, false},
+		{"a nil map", "dot", []Value{NewAtom("c"), {d: &Datum{Parent: TMap, Data: MapPayload{}}}}, false},
 		{"an Integer key into a map", "dot", []Value{NewInteger(1), mp}, false},
 		{"another word", "first", []Value{NewAtom("c"), mp}, false},
 	} {
@@ -163,7 +163,7 @@ func TestFnMemberReads(t *testing.T) {
 		}
 	}
 	c.NoteFnMemberRead("dot", []Value{NewAtom("c"), mp}, nil)
-	c.NoteFnMemberRead("dot", []Value{NewAtom("c"), mp}, []Value{{Parent: TAny, Carrier: true}})
+	c.NoteFnMemberRead("dot", []Value{NewAtom("c"), mp}, []Value{{d: &Datum{Parent: TAny, Carrier: true}}})
 	if len(c.FnMemberReads) != 0 {
 		t.Error("no result, or a result with no identity, is not tagged")
 	}

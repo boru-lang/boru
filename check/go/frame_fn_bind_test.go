@@ -42,7 +42,7 @@ func TestRunFnBodyOnceCallsFnValueParam(t *testing.T) {
 	if ffbNoSignature(r) {
 		t.Fatalf("the lambda bound to a param must be callable, got %v", r.Check.Diagnostics)
 	}
-	if len(out) != 1 || out[0].Parent == nil || !core.SigTypeMatches(&out[0], core.TInteger) {
+	if len(out) != 1 || out[0].Parent() == nil || !core.SigTypeMatches(&out[0], core.TInteger) {
 		t.Errorf("the call leaves the lambda's result, got %v", out)
 	}
 	if r.Defs.Has("g") {

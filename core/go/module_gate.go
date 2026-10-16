@@ -56,7 +56,7 @@ func StampModuleCallGates(exports map[string]*OrderedMap, moduleRef string) {
 		}
 		for _, key := range om.Keys() {
 			v, _ := om.Get(key)
-			fd, ok := v.Data.(*FnDefInfo)
+			fd, ok := v.Data().(*FnDefInfo)
 			if !ok {
 				continue // type literals / constants: data reads, not calls
 			}
@@ -113,7 +113,7 @@ func stampSigsModuleCall(sigs []Signature, id *ModuleCallID) {
 // importer's registry and are never touched.
 func stampStoredModuleCall(r *Registry, name string, id *ModuleCallID) {
 	for _, entry := range r.Defs.Stack(name) {
-		if fd, ok := entry.Data.(*FnDefInfo); ok {
+		if fd, ok := entry.Data().(*FnDefInfo); ok {
 			stampSigsModuleCall(fd.Signatures, id)
 		}
 	}
@@ -130,7 +130,7 @@ func StampedModuleCall(r *Registry, name string) *ModuleCallID {
 		return nil
 	}
 	for _, entry := range r.Defs.Stack(name) {
-		fd, ok := entry.Data.(*FnDefInfo)
+		fd, ok := entry.Data().(*FnDefInfo)
 		if !ok {
 			continue
 		}

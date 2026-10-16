@@ -16,7 +16,7 @@ func TestW8UnifyFnUndefShapeLeftUndef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty FnUndef must unify with a function: %v", err)
 	}
-	if _, ok := got.Data.(*FnDefInfo); !ok {
+	if _, ok := got.Data().(*FnDefInfo); !ok {
 		t.Fatalf("result should be the function value, got %v", got)
 	}
 }

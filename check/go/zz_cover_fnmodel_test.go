@@ -100,12 +100,12 @@ func TestZzFmRecordSchemaCarrier(t *testing.T) {
 	if !ok {
 		t.Fatal("record-shape pattern + Map carrier arg must produce a schema carrier")
 	}
-	if !rc.Carrier || !core.IsDynamic(&rc) || !rc.Parent.Equal(core.TMap) {
+	if !rc.Carrier() || !core.IsDynamic(&rc) || !rc.Parent().Equal(core.TMap) {
 		t.Errorf("schema carrier shape = %+v, want a dynamic Map carrier", rc)
 	}
-	ri, isRec := rc.Data.(core.RecordTypeInfo)
+	ri, isRec := rc.Data().(core.RecordTypeInfo)
 	if !isRec || ri.Fields == nil {
-		t.Fatalf("carrier Data = %T, want RecordTypeInfo carrying the pattern schema", rc.Data)
+		t.Fatalf("carrier Data = %T, want RecordTypeInfo carrying the pattern schema", rc.Data())
 	}
 	if _, has := ri.Fields.Get("f"); !has {
 		t.Error("schema carrier lost the pattern's field")
@@ -131,7 +131,7 @@ func TestZzFmParamBodyCarrierInlineUnion(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString),
 	})
 	v := ParamBodyCarrier(core.FnParam{Name: "x", Pattern: &pat})
-	if !core.IsDisjunct(&v) || !v.Carrier {
+	if !core.IsDisjunct(&v) || !v.Carrier() {
 		t.Fatalf("inline-union param carrier = %+v, want a strict disjunct carrier", v)
 	}
 	di, err := core.AsDisjunct(v)
@@ -153,7 +153,7 @@ func TestZzFmNarrowArgsRecordSchema(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("narrowed args = %v", out)
 	}
-	if _, isRec := out[0].Data.(core.RecordTypeInfo); !isRec {
+	if _, isRec := out[0].Data().(core.RecordTypeInfo); !isRec {
 		t.Errorf("a record-shape param arg must narrow to the schema carrier, got %+v", out[0])
 	}
 }
@@ -162,10 +162,10 @@ func TestZzFmNarrowArgsStrictDisjunct(t *testing.T) {
 	dj := core.NewDisjunct([]core.Value{
 		core.NewTypeLiteral(core.TBoolean), core.NewTypeLiteral(core.TString),
 	})
-	dj.Carrier = true
+	dj.SetCarrier(true)
 	params := []core.FnParam{{Name: "b", Type: core.TString}}
 	out := narrowArgsToParams([]core.Value{dj}, params)
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TString) {
+	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().Equal(core.TString) {
 		t.Fatalf("a strict disjunct carrier must narrow to the declared type, got %v", out)
 	}
 	if core.IsDynamic(&out[0]) {
@@ -176,7 +176,7 @@ func TestZzFmNarrowArgsStrictDisjunct(t *testing.T) {
 func TestZzFmNarrowArgsStrictAnyToAnyParam(t *testing.T) {
 	params := []core.FnParam{{Name: "nd", Type: core.TAny}}
 	out := narrowArgsToParams([]core.Value{core.NewCarrier(core.TAny)}, params)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || out[0].Parent == nil || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || out[0].Parent() == nil || !out[0].Parent().Equal(core.TAny) {
 		t.Fatalf("a strict Any arg on a declared-Any param must lift to dynamic(Any), got %v", out)
 	}
 }
@@ -414,7 +414,7 @@ func TestZzFmReturnsFnAnonymousDropsDeclared(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmanon", sig, core.FnDefInfo{Anonymous: true})
 	out := rf(nil, r)
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.ConformsTo(core.TInteger) {
+	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().ConformsTo(core.TInteger) {
 		t.Fatalf("anonymous fn result = %v, want the inferred Integer residual", out)
 	}
 }
@@ -434,7 +434,7 @@ func TestZzFmReturnsFnDeferredListAnonymous(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmdefer", sig, core.FnDefInfo{Anonymous: true})
 	out := rf([]core.Value{core.NewInteger(3)}, r)
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TList) {
+	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().Equal(core.TList) {
 		t.Fatalf("deferred-list residual = %v, want the raw list", out)
 	}
 }
@@ -457,12 +457,12 @@ func TestZzFmReturnsFnRecordSchemaCarrier(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmrec", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Carrier || !core.IsDynamic(&out[0]) {
+	if len(out) != 1 || !out[0].Carrier() || !core.IsDynamic(&out[0]) {
 		t.Fatalf("record-return result = %#v, want one dynamic schema carrier", out)
 	}
-	rt, ok := out[0].Data.(core.RecordTypeInfo)
+	rt, ok := out[0].Data().(core.RecordTypeInfo)
 	if !ok || rt.Fields == nil {
-		t.Fatalf("record-return Data = %#v, want the RecordTypeInfo schema", out[0].Data)
+		t.Fatalf("record-return Data = %#v, want the RecordTypeInfo schema", out[0].Data())
 	}
 }
 
@@ -484,12 +484,12 @@ func TestZzFmReturnsFnBareMapSurfacesRecordResidual(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmsurf", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Carrier {
+	if len(out) != 1 || !out[0].Carrier() {
 		t.Fatalf("surfaced result = %#v, want one carrier", out)
 	}
-	rt, ok := out[0].Data.(core.RecordTypeInfo)
+	rt, ok := out[0].Data().(core.RecordTypeInfo)
 	if !ok || rt.Fields == nil {
-		t.Fatalf("surfaced Data = %#v, want the residual's RecordTypeInfo", out[0].Data)
+		t.Fatalf("surfaced Data = %#v, want the residual's RecordTypeInfo", out[0].Data())
 	}
 	if core.IDOf(&out[0]) == "" || core.IDOf(&out[0]) == core.IDOf(&res) {
 		t.Error("surfaced residual must carry a freshly minted identity")
@@ -503,7 +503,7 @@ func TestZzFmReturnsFnBareMapSurfacesRecordResidual(t *testing.T) {
 	if len(out2) != 1 {
 		t.Fatalf("compile-pass result = %#v, want one carrier", out2)
 	}
-	if _, isRec := out2[0].Data.(core.RecordTypeInfo); isRec {
+	if _, isRec := out2[0].Data().(core.RecordTypeInfo); isRec {
 		t.Error("the compile pass must keep the shapeless declared Map carrier")
 	}
 }
@@ -525,7 +525,7 @@ func TestZzFmReturnsFnGenBindingInferred(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmid", sig, core.FnDefInfo{Gen: spec})
 	out := rf([]core.Value{core.NewInteger(4)}, r)
-	if len(out) != 1 || out[0].Parent == nil || !out[0].Parent.Equal(core.TInteger) {
+	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().Equal(core.TInteger) {
 		t.Fatalf("inferred-binding return = %v, want an Integer carrier", out)
 	}
 	for _, d := range r.Check.Diagnostics {
@@ -561,11 +561,11 @@ func TestZzFmReturnsFnConcreteClosureSurfaces(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("out = %v", out)
 	}
-	fd, isFn := core.FnDefOf(out[0].Data)
+	fd, isFn := core.FnDefOf(out[0].Data())
 	if !isFn || fd.Name != "zzfminner" {
 		t.Fatalf("out[0] = %+v, want the concrete closure value surfaced", out[0])
 	}
-	if !core.IsConcrete(&out[0]) || !out[0].Parent.ConformsTo(core.TFunction) {
+	if !core.IsConcrete(&out[0]) || !out[0].Parent().ConformsTo(core.TFunction) {
 		t.Errorf("surfaced closure = %+v, want a concrete Function value", out[0])
 	}
 }
@@ -594,7 +594,7 @@ func TestZzFmReturnsFnUnionReturnDistributes(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmuni", sig, core.FnDefInfo{})
 	out := rf([]core.Value{core.NewInteger(1)}, r)
-	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Carrier {
+	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !out[0].Carrier() {
 		t.Fatalf("union return = %+v, want a strict disjunct carrier", out)
 	}
 }
@@ -612,7 +612,7 @@ func TestZzFmReturnsFnDeclaredAnyIsDynamic(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmanyret", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent().Equal(core.TAny) {
 		t.Fatalf("declared-Any return = %+v, want dynamic(Any)", out)
 	}
 }
@@ -627,7 +627,7 @@ func TestZzFmReturnsFnZeroNetLeavesStrictAny(t *testing.T) {
 	sig := core.FnSig{Impl: core.Boru(nil)} // empty body, no declared returns
 	rf := BuildFnBodyReturnsFn(r, "zzfmzero", sig, core.FnDefInfo{})
 	out := rf(nil, r)
-	if len(out) != 1 || !out[0].Carrier || core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !out[0].Carrier() || core.IsDynamic(&out[0]) || !out[0].Parent().Equal(core.TAny) {
 		t.Fatalf("zero-net residual = %+v, want one STRICT Any carrier", out)
 	}
 }
@@ -690,7 +690,7 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	dj := core.NewDisjunct([]core.Value{
 		core.NewTypeLiteral(core.TBoolean), core.NewTypeLiteral(core.TString),
 	})
-	dj.Carrier = true
+	dj.SetCarrier(true)
 	core.SetDynamic(&dj, true)
 	args := []core.Value{
 		s5beAt(core.NewCarrier(core.TMap), 7, 1),
@@ -707,29 +707,29 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	if len(rec.startArgs) != 7 {
 		t.Fatalf("StartFnCompile saw %d genArgs, want 7", len(rec.startArgs))
 	}
-	if _, isRec := rec.startArgs[0].Data.(core.RecordTypeInfo); !isRec {
+	if _, isRec := rec.startArgs[0].Data().(core.RecordTypeInfo); !isRec {
 		t.Errorf("genArgs[0] = %+v, want the record schema carrier", rec.startArgs[0])
 	}
 	if !core.IsTypedMap(&rec.startArgs[1]) || !core.IsDynamic(&rec.startArgs[1]) {
 		t.Errorf("genArgs[1] = %+v, want a dynamic typed-map carrier", rec.startArgs[1])
 	}
-	if !rec.startArgs[2].Parent.Equal(core.TInteger) {
+	if !rec.startArgs[2].Parent().Equal(core.TInteger) {
 		t.Errorf("genArgs[2] = %+v, want the declared Integer carrier (recovered call)", rec.startArgs[2])
 	}
-	if !rec.startArgs[3].Parent.Equal(core.TString) || !core.IsDynamic(&rec.startArgs[3]) {
+	if !rec.startArgs[3].Parent().Equal(core.TString) || !core.IsDynamic(&rec.startArgs[3]) {
 		t.Errorf("genArgs[3] = %+v, want dynamic String (disjunct narrowed, dynamic preserved)", rec.startArgs[3])
 	}
-	if !rec.startArgs[4].Parent.Equal(core.TAny) || !core.IsDynamic(&rec.startArgs[4]) {
+	if !rec.startArgs[4].Parent().Equal(core.TAny) || !core.IsDynamic(&rec.startArgs[4]) {
 		t.Errorf("genArgs[4] = %+v, want gradual Any (stored-gradual generalisation)", rec.startArgs[4])
 	}
 	// A root node (Any here) is a type VALUE: it generalises through
 	// core.ValueCarrier to the carrier of its type, as every type literal
 	// does (NUR323/NUR324) — no longer kept as a type-less carrier.
-	if want := core.ValueCarrier(core.NewTypeLiteral(core.TAny)); rec.startArgs[5].Parent == nil ||
-		!rec.startArgs[5].Parent.Equal(want.Parent) || !rec.startArgs[5].Carrier {
+	if want := core.ValueCarrier(core.NewTypeLiteral(core.TAny)); rec.startArgs[5].Parent() == nil ||
+		!rec.startArgs[5].Parent().Equal(want.Parent()) || !rec.startArgs[5].Carrier() {
 		t.Errorf("genArgs[5] = %+v, want the root node's type carrier %+v", rec.startArgs[5], want)
 	}
-	if !rec.startArgs[6].Parent.Equal(core.TInteger) || !rec.startArgs[6].Carrier {
+	if !rec.startArgs[6].Parent().Equal(core.TInteger) || !rec.startArgs[6].Carrier() {
 		t.Errorf("genArgs[6] = %+v, want a plain Integer carrier", rec.startArgs[6])
 	}
 
@@ -745,13 +745,13 @@ func TestZzFmReturnsFnArmedCompile(t *testing.T) {
 	if len(rec.userUnits) != 1 || rec.userUnits[0] != 3 {
 		t.Fatalf("RecordUserCall units = %v, want [3]", rec.userUnits)
 	}
-	if len(rec.userOuts[0]) != 1 || !rec.userOuts[0][0].Parent.Equal(core.TInteger) {
+	if len(rec.userOuts[0]) != 1 || !rec.userOuts[0][0].Parent().Equal(core.TInteger) {
 		t.Errorf("recorded outs = %v, want the declared Integer carrier", rec.userOuts[0])
 	}
 	if rec.userPos[0].Row != 7 || rec.userPos[0].Col != 1 {
 		t.Errorf("recorded pos = %+v, want the first arg's position 7:1", rec.userPos[0])
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(core.TInteger) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TInteger) {
 		t.Errorf("out = %v, want the declared Integer carrier", out)
 	}
 }
@@ -773,7 +773,7 @@ func TestZzFmReturnsFnArmedCompileDeclined(t *testing.T) {
 	}
 	rf := BuildFnBodyReturnsFn(r, "zzfmdecl", sig, core.FnDefInfo{})
 	out := rf([]core.Value{core.NewInteger(2)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TInteger) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TInteger) {
 		t.Fatalf("out = %v", out)
 	}
 	if len(rec.userUnits) != 0 || rec.declSet || len(rec.finished) != 0 {
@@ -863,7 +863,7 @@ func TestZzFmReturnsFnPolyPlanDeclared(t *testing.T) {
 	if !plan.subbed {
 		t.Fatal("the plan's return-join substitution must run")
 	}
-	if len(out) != 1 || !out[0].Parent.Equal(core.TString) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TString) {
 		t.Errorf("out = %v, want the plan's joined String carrier", out)
 	}
 	if len(rec.polyWords) != 1 || rec.polyWords[0] != "zzfmpoly" {

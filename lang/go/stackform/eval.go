@@ -75,7 +75,7 @@ func flattenStamped(form *StackForm) ([]core.Value, map[string]bool) {
 			// recorded one was live. Eval undoes it — that is what the
 			// returned set is for.
 			v := o.V
-			if v.Parent != nil && v.Parent.Equal(core.TFunction) && !core.IsQuoted(&v) {
+			if v.Parent() != nil && v.Parent().Equal(core.TFunction) && !core.IsQuoted(&v) {
 				core.SetQuoted(&v, true)
 				stamped[core.Canon([]core.Value{o.V})] = true
 			}
@@ -223,10 +223,10 @@ func plainLiterals(form *StackForm) ([]core.Value, bool) {
 // steps (a paren group, a splice, sugar, a reach). A Function is not plain —
 // unquoted it dispatches.
 func plainLiteral(v core.Value) bool {
-	if v.Parent == nil || core.IsParenExpr(&v) || core.IsSplice(&v) || core.IsSugar(&v) || core.IsReach(&v) {
+	if v.Parent() == nil || core.IsParenExpr(&v) || core.IsSplice(&v) || core.IsSugar(&v) || core.IsReach(&v) {
 		return false
 	}
-	return v.Parent.ConformsTo(core.TScalar) || v.Parent.ConformsTo(core.TList) || v.Parent.ConformsTo(core.TMap)
+	return v.Parent().ConformsTo(core.TScalar) || v.Parent().ConformsTo(core.TList) || v.Parent().ConformsTo(core.TMap)
 }
 
 // unstamp restores the recorded state of every Function that flattenStamped
@@ -245,7 +245,7 @@ func unstamp(vals []core.Value, stamped map[string]bool) []core.Value {
 		return vals
 	}
 	for i, v := range vals {
-		if core.IsQuoted(&v) && v.Parent != nil && v.Parent.Equal(core.TFunction) &&
+		if core.IsQuoted(&v) && v.Parent() != nil && v.Parent().Equal(core.TFunction) &&
 			stamped[core.Canon([]core.Value{unquotedCopy(v)})] {
 			vals[i] = unquotedCopy(v)
 		}

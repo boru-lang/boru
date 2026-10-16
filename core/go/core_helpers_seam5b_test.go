@@ -83,7 +83,7 @@ func TestS5bEInstallDefFnUndefBadPayload(t *testing.T) {
 	r := newTestRegistry(t)
 	// Parent says FnUndef but the payload is not FnUndefInfo: InstallDef
 	// must return without binding anything.
-	bad := Value{Parent: TFnUndef, Data: ListPayload{}}
+	bad := Value{d: &Datum{Parent: TFnUndef, Data: ListPayload{}}}
 	InstallDef(r, "s5beundef", bad)
 	if _, ok := r.Defs.Top("s5beundef"); ok {
 		t.Error("bad FnUndef payload must not install a binding")
@@ -123,8 +123,8 @@ func TestS5bEInstallDefClassTypeNaming(t *testing.T) {
 	if info.Name != "Ideal/S5beR" {
 		t.Errorf("root class name = %q, want Ideal/S5beR", info.Name)
 	}
-	if got.Parent == nil || !got.Parent.Equal(TClass) {
-		t.Errorf("root class def parent = %v, want TClass", got.Parent)
+	if got.Parent() == nil || !got.Parent().Equal(TClass) {
+		t.Errorf("root class def parent = %v, want TClass", got.Parent())
 	}
 }
 
@@ -515,7 +515,7 @@ func TestS5bEUnifySurfaceClassTypeOperand(t *testing.T) {
 	}
 	surf := NewValueRaw(TSurface, info)
 	other := NewClassType(TClass, ClassTypeInfo{Name: "Ideal/S5beK", Fields: NewOrderedMap()})
-	other.Carrier = true // abstract: routes to the type-containment switch
+	other.SetCarrier(true) // abstract: routes to the type-containment switch
 	got, err := unifySurface(surf, other)
 	if err != nil {
 		t.Fatalf("class type conforming via Conform set should unify: %v", err)
@@ -541,10 +541,10 @@ func TestS5bESurfaceUnifierFallbacks(t *testing.T) {
 
 func TestS5bEMapFieldPayloadMismatch(t *testing.T) {
 	m := NewOrderedMap()
-	m.Set("s", Value{Parent: TString, Data: IntPayload{N: 1}})
-	m.Set("i", Value{Parent: TInteger, Data: StrPayload{S: "x"}})
-	m.Set("b", Value{Parent: TBoolean, Data: StrPayload{S: "x"}})
-	m.Set("f", Value{Parent: TFloat, Data: StrPayload{S: "x"}})
+	m.Set("s", Value{d: &Datum{Parent: TString, Data: IntPayload{N: 1}}})
+	m.Set("i", Value{d: &Datum{Parent: TInteger, Data: StrPayload{S: "x"}}})
+	m.Set("b", Value{d: &Datum{Parent: TBoolean, Data: StrPayload{S: "x"}}})
+	m.Set("f", Value{d: &Datum{Parent: TFloat, Data: StrPayload{S: "x"}}})
 
 	if _, ok := MapFieldString(m, "s"); ok {
 		t.Error("MapFieldString must fail on a non-string payload")

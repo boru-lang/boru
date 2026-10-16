@@ -93,7 +93,7 @@ func ParseRange(elems []Value) (start, end, step int64, err error) {
 	intAt := func(v Value) (int64, error) {
 		n, e := v.AsConcreteInteger()
 		if e != nil {
-			return 0, fmt.Errorf("range: expected a concrete integer, got %s", v.Parent)
+			return 0, fmt.Errorf("range: expected a concrete integer, got %s", v.Parent())
 		}
 		return n, nil
 	}

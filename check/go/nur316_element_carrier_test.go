@@ -12,14 +12,14 @@ import (
 func TestElementCarrierOf(t *testing.T) {
 	dyn := core.NewCarrier(core.TInteger)
 	core.SetDynamic(&dyn, true)
-	if c := ElementCarrierOf(core.CarrierTypedListOf(dyn)); !c.Parent.Equal(core.TInteger) || !core.IsDynamic(&c) {
-		t.Errorf("a gradual element stays gradual: %v dynamic=%v", c.Parent, core.IsDynamic(&c))
+	if c := ElementCarrierOf(core.CarrierTypedListOf(dyn)); !c.Parent().Equal(core.TInteger) || !core.IsDynamic(&c) {
+		t.Errorf("a gradual element stays gradual: %v dynamic=%v", c.Parent(), core.IsDynamic(&c))
 	}
-	if c := ElementCarrierOf(core.NewCarrierTypedList(core.TInteger)); !c.Parent.Equal(core.TInteger) || core.IsDynamic(&c) {
-		t.Errorf("a strict element stays strict: %v dynamic=%v", c.Parent, core.IsDynamic(&c))
+	if c := ElementCarrierOf(core.NewCarrierTypedList(core.TInteger)); !c.Parent().Equal(core.TInteger) || core.IsDynamic(&c) {
+		t.Errorf("a strict element stays strict: %v dynamic=%v", c.Parent(), core.IsDynamic(&c))
 	}
 	if c := ElementCarrierOf(core.NewCarrier(core.TList)); !core.IsDynamic(&c) {
-		t.Errorf("an untyped list's element is dynamic Any: %v dynamic=%v", c.Parent, core.IsDynamic(&c))
+		t.Errorf("an untyped list's element is dynamic Any: %v dynamic=%v", c.Parent(), core.IsDynamic(&c))
 	}
 	if c := ElementCarrierFromValue(core.CarrierTypedListOf(dyn)); !core.IsDynamic(&c) {
 		t.Errorf("ElementCarrierFromValue keeps the gradual element: dynamic=%v", core.IsDynamic(&c))

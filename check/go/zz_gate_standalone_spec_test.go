@@ -50,7 +50,7 @@ func TestGateStandaloneSpecParamCallMayRefuse(t *testing.T) {
 		"no params":                     {nil, []core.Value{core.NewString("s")}, false},
 		"gradual Any bound":             {[]core.FnParam{intP}, []core.Value{core.NewDynamicCarrier(core.TAny)}, true},
 		"strict value outside the type": {[]core.FnParam{intP}, []core.Value{core.NewCarrier(core.TString)}, true},
-		"argument with no type":         {[]core.FnParam{intP}, []core.Value{{Carrier: true}}, true},
+		"argument with no type":         {[]core.FnParam{intP}, []core.Value{core.ValueOf(&core.Datum{Carrier: true})}, true},
 		"patterned param":               {[]core.FnParam{{Name: "n", Type: core.TInteger, Pattern: &pat}}, []core.Value{core.NewInteger(1)}, true},
 		"second argument refuses":       {[]core.FnParam{intP, intP}, []core.Value{core.NewInteger(1), core.NewCarrier(core.TString)}, true},
 	} {
@@ -72,7 +72,7 @@ func TestGateStandaloneSpecParamCallLatchesDecline(t *testing.T) {
 	done := r.Check.Begin()
 	defer done()
 
-	fd, _ := gsIncFn().Data.(*core.FnDefInfo)
+	fd, _ := gsIncFn().Data().(*core.FnDefInfo)
 	rf := BuildFnBodyReturnsFn(r, "zgsinc", fd.Signatures[0], *fd)
 	r.Check.SpecParamNames = map[string]bool{"g": true}
 
@@ -158,7 +158,7 @@ func TestGateStandaloneSpecAnalysisPublishesConstantFnParams(t *testing.T) {
 				probes++
 				seen = maps.Clone(reg.Check.SpecParamNames)
 				top, ok := reg.Defs.Top("g")
-				_, isFn := top.Data.(*core.FnDefInfo)
+				_, isFn := top.Data().(*core.FnDefInfo)
 				gBound = ok && isFn
 				return nil, nil
 			}, core.RunInCheck()),
@@ -215,11 +215,11 @@ func TestGateStandaloneCompileFnSigUnitCompiles(t *testing.T) {
 	rec.startUnit = 9
 	r.Check.Emit = rec
 
-	fd, _ := gsIncFn().Data.(*core.FnDefInfo)
+	fd, _ := gsIncFn().Data().(*core.FnDefInfo)
 	if u := CompileFnSigUnit(r, *fd, 0); u != 9 {
 		t.Fatalf("CompileFnSigUnit = %d, want the recorder's unit 9", u)
 	}
-	if len(rec.startArgs) != 1 || !rec.startArgs[0].Carrier || !rec.startArgs[0].Parent.Equal(core.TInteger) {
+	if len(rec.startArgs) != 1 || !rec.startArgs[0].Carrier() || !rec.startArgs[0].Parent().Equal(core.TInteger) {
 		t.Errorf("the unit's inputs are the params' own carriers, got %v", rec.startArgs)
 	}
 	if len(rec.pts) != 1 || !rec.pts[0].Equal(core.TInteger) {
@@ -228,7 +228,7 @@ func TestGateStandaloneCompileFnSigUnitCompiles(t *testing.T) {
 	if !rec.retPats || !rec.declSet {
 		t.Error("the unit carries the return patterns and the declaration site")
 	}
-	if len(rec.finished) != 1 || len(rec.finished[0]) != 1 || !rec.finished[0][0].Parent.Equal(core.TInteger) {
+	if len(rec.finished) != 1 || len(rec.finished[0]) != 1 || !rec.finished[0][0].Parent().Equal(core.TInteger) {
 		t.Errorf("the body's analysed residual finishes the unit, got %v", rec.finished)
 	}
 

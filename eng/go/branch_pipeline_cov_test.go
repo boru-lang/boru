@@ -15,7 +15,7 @@ import (
 // pipeline exercises its branch/join paths.
 
 func cifSplice(v core.Value) []core.Value {
-	if v.Parent.Equal(core.TList) && v.Data != nil && !core.IsTypedList(&v) && !core.IsTableType(v) {
+	if v.Parent().Equal(core.TList) && v.Data() != nil && !core.IsTypedList(&v) && !core.IsTableType(v) {
 		elems, _ := core.AsList(v)
 		out := make([]core.Value, 0, elems.Len()+2)
 		out = append(out, core.NewOpenParen())
@@ -60,7 +60,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	}
 
 	armOf := func(arg core.Value, then bool) (core.EmitFragmentRef, []core.Value, map[string]core.Value, *core.Value) {
-		if core.IsConcrete(&arg) && arg.Parent.ConformsTo(core.TList) {
+		if core.IsConcrete(&arg) && arg.Parent().ConformsTo(core.TList) {
 			var restore func()
 			if then {
 				restore = core.ApplyGuardNarrowing(r, args[0])

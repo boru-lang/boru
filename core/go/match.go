@@ -40,7 +40,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// gradual, like every other unknowable check-mode operand. At
 		// runtime patterns are always concrete (the construction ran
 		// with live values), so this branch is check-mode-only.
-		if pattern.Carrier {
+		if pattern.Carrier() {
 			continue
 		}
 		if idx >= len(positions) {
@@ -85,8 +85,8 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 				}
 			}
 		}
-		if pattern.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
-			pattern.Data != nil && val.Data != nil &&
+		if pattern.Parent().Equal(TMap) && val.Parent().Equal(TMap) &&
+			pattern.Data() != nil && val.Data() != nil &&
 			!IsOptionsType(pattern) &&
 			!IsRecordType(val) && !IsTypedMap(&val) && !IsOptionsType(val) {
 			if isForward {
@@ -153,8 +153,8 @@ type patternOperandHost interface {
 // container operand's CONTENTS — a map shape, a typed map or list — so a
 // pending literal must be evaluated before it is judged (NUR235).
 func patternReadsContents(pattern Value) bool {
-	return pattern.Data != nil && pattern.Parent != nil &&
-		(pattern.Parent.Equal(TMap) || pattern.Parent.Equal(TList))
+	return pattern.Data() != nil && pattern.Parent() != nil &&
+		(pattern.Parent().Equal(TMap) || pattern.Parent().Equal(TList))
 }
 
 // patternOperand is the operand a pattern at sig position idx judges: a
@@ -165,7 +165,7 @@ func patternOperand(pe patternOperandHost, sig *Signature, idx, at int, val Valu
 	if pe == nil || !IsPendingActiveContainer(val) {
 		return val, true
 	}
-	if val.Parent.Equal(TMap) {
+	if val.Parent().Equal(TMap) {
 		if sig.NoEvalMapArgs[idx] {
 			return val, true
 		}
@@ -195,8 +195,8 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 	if !ok {
 		return false
 	}
-	if pattern.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
-		pattern.Data != nil && val.Data != nil &&
+	if pattern.Parent().Equal(TMap) && val.Parent().Equal(TMap) &&
+		pattern.Data() != nil && val.Data() != nil &&
 		!IsOptionsType(pattern) &&
 		!IsRecordType(val) && !IsTypedMap(&val) && !IsOptionsType(val) {
 		return false // structural map pattern: stack-only enforcement

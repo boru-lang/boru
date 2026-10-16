@@ -35,7 +35,7 @@ func TestArmTailApplyArms(t *testing.T) {
 	seedProduced(es, &stk[1], 1) // the stack's holder is the one the arm reads
 	before := len(es.frames[0])
 	got := es.ArmTailApply(stk)
-	if len(got) != 1 || !core.IsDynamic(&got[0]) || got[0].Parent != core.TAny || !got[0].Carrier {
+	if len(got) != 1 || !core.IsDynamic(&got[0]) || got[0].Parent() != core.TAny || !got[0].Carrier() {
 		t.Fatalf("a pending fn over the arm's window nets one gradual value: %v", got)
 	}
 	if len(u.pendingApply) != 0 || len(es.frames[0]) != before+1 {

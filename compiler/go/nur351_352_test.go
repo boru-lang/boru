@@ -32,7 +32,7 @@ func TestCollectorTokenArms(t *testing.T) {
 	w, _ := core.AsWord(&ref)
 	w.ForceVal = true
 	refTok := core.NewWord("k")
-	refTok.Data = w
+	refTok.SetData(w)
 	refTok.SetPos(deoptAt(3))
 	reach := deoptLit(core.NewList([]core.Value{deoptTok("x", 12)}), 11)
 	body := []core.Value{deoptTok("k", 1), deoptTok("x", 3), deoptTok("u", 5), deoptTok("s", 7), deoptTok("x", 9), reach, deoptLit(core.NewInteger(1), 13)}

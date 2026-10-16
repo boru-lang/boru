@@ -370,7 +370,7 @@ func TestS5bEConvertFloat64(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convert float64: %v", err)
 	}
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		t.Fatal("expected a numeric value")
 	}
 }

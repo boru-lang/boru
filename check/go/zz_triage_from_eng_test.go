@@ -249,7 +249,7 @@ func TestW9MintFlexShapeCarrierDeclines(t *testing.T) {
 	}
 	// A TMap-tagged value whose payload is NOT a map payload passes the
 	// concrete/conforms guards but declines at AsMap (err arm).
-	badMap := core.Value{Parent: core.TMap, Data: core.ListPayload{}}
+	badMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.ListPayload{}})
 	if _, ok := MintFlexShapeCarrier(badMap, 0); ok {
 		t.Error("a non-map payload must decline at AsMap")
 	}

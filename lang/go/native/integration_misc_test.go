@@ -46,7 +46,7 @@ func TestEngineReadCSVByExtension(t *testing.T) {
 	}
 	v := result[0]
 	if !IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", v.Parent())
 	}
 	_lst, _ := AsList(v)
 	rows := _lst.Slice()
@@ -81,7 +81,7 @@ func TestEngineReadTSVByExtension(t *testing.T) {
 	}
 	v := result[0]
 	if !IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", v.Parent())
 	}
 	_lst, _ := AsList(v)
 	rows := _lst.Slice()
@@ -108,7 +108,7 @@ func TestEngineReadCSVExplicitFormat(t *testing.T) {
 	}
 	v := result[0]
 	if !IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", v.Parent())
 	}
 }
 
@@ -153,8 +153,8 @@ func TestEngineReadJSONByExtension(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(result))
 	}
-	if !result[0].Parent.Equal(TMap) {
-		t.Errorf("expected map type, got %s", result[0].Parent)
+	if !result[0].Parent().Equal(TMap) {
+		t.Errorf("expected map type, got %s", result[0].Parent())
 	}
 }
 
@@ -172,8 +172,8 @@ func TestEngineInspectBuiltin(t *testing.T) {
 		t.Fatalf("expected 1 value, got %d", len(result))
 	}
 	v := result[0]
-	if !v.Parent.Equal(TInspect) {
-		t.Fatalf("expected type %s, got %s", TInspect, v.Parent)
+	if !v.Parent().Equal(TInspect) {
+		t.Fatalf("expected type %s, got %s", TInspect, v.Parent())
 	}
 	m, _ := AsMap(v)
 
@@ -305,8 +305,8 @@ func TestEngineInspectTypeLiteral(t *testing.T) {
 		t.Fatalf("expected 1 value, got %d", len(result))
 	}
 	v := result[0]
-	if !v.Parent.Equal(TInspect) {
-		t.Fatalf("expected type %s, got %s", TInspect, v.Parent)
+	if !v.Parent().Equal(TInspect) {
+		t.Fatalf("expected type %s, got %s", TInspect, v.Parent())
 	}
 	m, _ := AsMap(v)
 

@@ -279,7 +279,7 @@ export "Fns" {inc:inc}`,
 		t.Fatal(err)
 	}
 	// The exported value should be the list [1 add].
-	if len(result) != 1 || !result[0].Parent.Equal(native.TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(native.TList) {
 		t.Errorf("expected list, got %v", result)
 	}
 }
@@ -374,7 +374,7 @@ func TestImportJSONFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(native.TMap) {
+	if len(result) != 1 || !result[0].Parent().Equal(native.TMap) {
 		t.Fatalf("expected map on stack, got %v", result)
 	}
 	// Source key order (name before diameter) is preserved now, not sorted.
@@ -406,7 +406,7 @@ func TestImportJSONFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(native.TList) {
+	if len(result) != 1 || !result[0].Parent().Equal(native.TList) {
 		t.Fatalf("expected list on stack, got %v", result)
 	}
 	assertResult(t, result, "[1 2 3]")

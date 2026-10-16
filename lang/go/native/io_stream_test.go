@@ -33,7 +33,7 @@ func TestStreamHandlesAreStreamKindAtoms(t *testing.T) {
 		}
 		got := result[0]
 		if !IsAtom(got) {
-			t.Errorf("%s: result is not an Atom (parent=%s)", name, got.Parent)
+			t.Errorf("%s: result is not an Atom (parent=%s)", name, got.Parent())
 		}
 		if n, _ := AsAtom(got); n != name {
 			t.Errorf("%s: atom name = %q, want %q", name, n, name)
@@ -41,8 +41,8 @@ func TestStreamHandlesAreStreamKindAtoms(t *testing.T) {
 		if !got.Is(sk) {
 			t.Errorf("%s: handle does not inhabit StreamKind", name)
 		}
-		if !got.Parent.Equal(sk) {
-			t.Errorf("%s: typeof handle = %s, want StreamKind", name, got.Parent)
+		if !got.Parent().Equal(sk) {
+			t.Errorf("%s: typeof handle = %s, want StreamKind", name, got.Parent())
 		}
 	}
 }

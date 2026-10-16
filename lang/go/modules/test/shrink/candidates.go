@@ -80,19 +80,19 @@ func literalShrinkCandidates(form *stackform.StackForm) []*stackform.StackForm {
 //   - Boolean: true → false.
 //   - List   : → [] (if non-empty); → first half; → first element.
 func shrinkLiteral(v core.Value) []core.Value {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return nil
 	}
 	switch {
-	case v.Parent.ConformsTo(core.TInteger):
+	case v.Parent().ConformsTo(core.TInteger):
 		return shrinkInteger(v)
-	case v.Parent.ConformsTo(core.TFloat):
+	case v.Parent().ConformsTo(core.TFloat):
 		return shrinkFloat(v)
-	case v.Parent.ConformsTo(core.TString):
+	case v.Parent().ConformsTo(core.TString):
 		return shrinkString(v)
-	case v.Parent.ConformsTo(core.TBoolean):
+	case v.Parent().ConformsTo(core.TBoolean):
 		return shrinkBoolean(v)
-	case v.Parent.ConformsTo(core.TList):
+	case v.Parent().ConformsTo(core.TList):
 		return shrinkList(v)
 	}
 	return nil

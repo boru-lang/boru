@@ -21,7 +21,7 @@ func buildWidget(kind string, fields []string, values []native.Value, opts nativ
 	for i, f := range fields {
 		m.Set(f, values[i])
 	}
-	if opts.Data != nil {
+	if opts.Data() != nil {
 		om, err := native.RequireConcreteMap(opts, word)
 		if err != nil {
 			return nil, r.BoruError("tui_error", word+": options must be a Map", word)

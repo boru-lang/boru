@@ -106,15 +106,15 @@ func TestRefSuffixReturnsFunctionValue(t *testing.T) {
 		t.Fatalf("got %d values, want 1", len(out))
 	}
 	v := out[0]
-	if !v.Parent.Equal(core.TFunction) {
-		t.Errorf("top.Parent=%s, want Function", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Errorf("top.Parent=%s, want Function", v.Parent().String())
 	}
 	if core.IsQuoted(&v) {
 		t.Errorf("function value is Quoted — /v should produce unquoted in the new dispatch model")
 	}
-	fnDef, ok := core.FnDefOf(v.Data)
+	fnDef, ok := core.FnDefOf(v.Data())
 	if !ok {
-		t.Fatalf("payload=%T, want FnDefInfo", v.Data)
+		t.Fatalf("payload=%T, want FnDefInfo", v.Data())
 	}
 	if fnDef.Name != "add" {
 		t.Errorf("fnDef.Name=%q, want %q", fnDef.Name, "add")
@@ -132,8 +132,8 @@ func TestRefSuffixHoldsForwardArgsUndispatched(t *testing.T) {
 	if len(out) != 3 {
 		t.Fatalf("got %d values, want 3 [Function 2 3]: %v", len(out), out)
 	}
-	if !out[0].Parent.Equal(core.TFunction) {
-		t.Errorf("out[0].Parent=%s, want Function (held, not dispatched)", out[0].Parent.String())
+	if !out[0].Parent().Equal(core.TFunction) {
+		t.Errorf("out[0].Parent=%s, want Function (held, not dispatched)", out[0].Parent().String())
 	}
 	if a, _ := core.AsInteger(out[1]); a != 2 {
 		t.Errorf("out[1]=%v, want 2 (arg not consumed)", out[1])
@@ -163,8 +163,8 @@ func TestRefSuffixHoldsStackArgsUndispatched(t *testing.T) {
 	if b, _ := core.AsInteger(out[1]); b != 3 {
 		t.Errorf("out[1]=%v, want 3", out[1])
 	}
-	if !out[2].Parent.Equal(core.TFunction) {
-		t.Errorf("out[2].Parent=%s, want Function (held, not dispatched)", out[2].Parent.String())
+	if !out[2].Parent().Equal(core.TFunction) {
+		t.Errorf("out[2].Parent=%s, want Function (held, not dispatched)", out[2].Parent().String())
 	}
 }
 
@@ -219,15 +219,15 @@ func TestRefStableInMap(t *testing.T) {
 		if !ok {
 			t.Fatalf("ops[%q] missing", name)
 		}
-		if !v.Parent.Equal(core.TFunction) {
-			t.Errorf("ops[%q].Parent=%s, want Function", name, v.Parent.String())
+		if !v.Parent().Equal(core.TFunction) {
+			t.Errorf("ops[%q].Parent=%s, want Function", name, v.Parent().String())
 		}
 		if core.IsQuoted(&v) {
 			t.Errorf("ops[%q] is Quoted — captured Function should be unquoted (live call-site)", name)
 		}
-		fnDef, ok := core.FnDefOf(v.Data)
+		fnDef, ok := core.FnDefOf(v.Data())
 		if !ok {
-			t.Fatalf("ops[%q] payload=%T, want FnDefInfo", name, v.Data)
+			t.Fatalf("ops[%q] payload=%T, want FnDefInfo", name, v.Data())
 		}
 		if fnDef.Name != name {
 			t.Errorf("ops[%q] fnDef.Name=%q", name, fnDef.Name)
@@ -240,10 +240,10 @@ func TestRefStableInMap(t *testing.T) {
 	// not names that get re-resolved.
 	r.Defs.Push("add", core.NewString("shadowed"))
 	v, _ := ops.Get("add")
-	if !v.Parent.Equal(core.TFunction) {
-		t.Fatalf("after shadow, ops[add].Parent=%s, want Function still", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Fatalf("after shadow, ops[add].Parent=%s, want Function still", v.Parent().String())
 	}
-	fnDef, _ := core.FnDefOf(v.Data)
+	fnDef, _ := core.FnDefOf(v.Data())
 	if fnDef.Name != "add" {
 		t.Errorf("after shadow, captured fnDef.Name=%q, want %q", fnDef.Name, "add")
 	}
@@ -264,7 +264,7 @@ func TestRefStableInMap(t *testing.T) {
 		t.Fatal("expected add binding to be gone after double-pop")
 	}
 	stillThere, _ := ops.Get("add")
-	stillFn, _ := core.FnDefOf(stillThere.Data)
+	stillFn, _ := core.FnDefOf(stillThere.Data())
 	if stillFn.Name != "add" || len(stillFn.Signatures) == 0 {
 		t.Errorf("post-undef captured fn lost shape: name=%q sigs=%d", stillFn.Name, len(stillFn.Signatures))
 	}
@@ -292,13 +292,13 @@ func TestResolveRefDirect(t *testing.T) {
 	if !ok {
 		t.Fatal("ResolveRef(mul): not bound")
 	}
-	if !v.Parent.Equal(core.TFunction) {
-		t.Errorf("Parent=%s, want Function", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Errorf("Parent=%s, want Function", v.Parent().String())
 	}
 	if core.IsQuoted(&v) {
 		t.Error("returned function is Quoted — should be unquoted")
 	}
-	fnDef, _ := core.FnDefOf(v.Data)
+	fnDef, _ := core.FnDefOf(v.Data())
 	if fnDef.Name != "mul" {
 		t.Errorf("fnDef.Name=%q, want %q", fnDef.Name, "mul")
 	}

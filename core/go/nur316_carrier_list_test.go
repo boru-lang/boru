@@ -17,8 +17,8 @@ func TestCarrierTypedListOf(t *testing.T) {
 		{"a gradual element", dyn, true},
 	} {
 		ci, err := AsChildType(CarrierTypedListOf(c.v))
-		if err != nil || !ci.Child.Parent.Equal(TInteger) || IsDynamic(&ci.Child) != c.dynamic {
-			t.Errorf("%s: child %v dynamic=%v (err %v), want Integer dynamic=%v", c.why, ci.Child.Parent, IsDynamic(&ci.Child), err, c.dynamic)
+		if err != nil || !ci.Child.Parent().Equal(TInteger) || IsDynamic(&ci.Child) != c.dynamic {
+			t.Errorf("%s: child %v dynamic=%v (err %v), want Integer dynamic=%v", c.why, ci.Child.Parent(), IsDynamic(&ci.Child), err, c.dynamic)
 		}
 	}
 	d := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})

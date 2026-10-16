@@ -67,7 +67,7 @@ func predicateBodyImpliedType(r *Registry, param string, body []Value) (*Type, b
 	// (unexpanded) ParenExpr token — normalise it to the 6-token marker form
 	// `[if param is T [then] [else]]`.
 	if len(toks) == 4 && isWordNamed(toks[0], "if") {
-		if pe, ok := toks[1].Data.(ParenExprPayload); ok {
+		if pe, ok := toks[1].Data().(ParenExprPayload); ok {
 			inner := stripGuardMarkers(pe.Toks)
 			if len(inner) == 3 {
 				toks = []Value{toks[0], inner[0], inner[1], inner[2], toks[2], toks[3]}
@@ -81,7 +81,7 @@ func predicateBodyImpliedType(r *Registry, param string, body []Value) (*Type, b
 		}
 		// Both arms are single-token bodies; the ELSE arm must be `false` — the
 		// structure that makes `pred x` true imply `x is T`.
-		if !toks[4].Parent.Equal(TList) || !toks[5].Parent.Equal(TList) {
+		if !toks[4].Parent().Equal(TList) || !toks[5].Parent().Equal(TList) {
 			return nil, false
 		}
 		elseArm, err := AsList(toks[5])
@@ -89,7 +89,7 @@ func predicateBodyImpliedType(r *Registry, param string, body []Value) (*Type, b
 			return nil, false
 		}
 		ev := elseArm.Get(0)
-		if IsConcrete(&ev) && ev.Parent.ConformsTo(TBoolean) {
+		if IsConcrete(&ev) && ev.Parent().ConformsTo(TBoolean) {
 			if b, berr := AsBoolean(ev); berr == nil && !b {
 				return t, true
 			}
@@ -143,7 +143,7 @@ func defsHasType(r *Registry, name string) bool {
 // concreteness probe uses IsConcrete rather than a raw `Data == nil` (the
 // data_nil_gate discipline) — a Word carrier is not a literal word token.
 func isWordNamed(v Value, name string) bool {
-	if !v.Parent.Equal(TWord) || !IsConcrete(&v) {
+	if !v.Parent().Equal(TWord) || !IsConcrete(&v) {
 		return false
 	}
 	w, err := AsWord(&v)

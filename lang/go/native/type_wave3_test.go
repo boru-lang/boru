@@ -130,7 +130,7 @@ func TestW3Enum(t *testing.T) {
 		t.Errorf("enumReturns concrete = %v, want an enum value", out)
 	}
 	out = enumReturns([]Value{NewCarrier(TList)}, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(TEnum) {
+	if len(out) != 1 || !out[0].Parent().Equal(TEnum) {
 		t.Errorf("enumReturns carrier = %v, want TEnum carrier", out)
 	}
 }
@@ -149,7 +149,7 @@ func TestW3TypeofReturns(t *testing.T) {
 	}
 	// Direct: a carrier arg keeps the bare Type carrier.
 	out := typeofReturns([]Value{NewCarrier(TInteger)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TType) {
+	if len(out) != 1 || !out[0].Parent().Equal(TType) {
 		t.Errorf("typeofReturns carrier = %v, want Type carrier", out)
 	}
 }
@@ -190,7 +190,7 @@ func TestW3Guard(t *testing.T) {
 		t.Fatalf("guardReturns = %v", out)
 	}
 	out = guardReturns(nil, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !out[0].Parent().Equal(TAny) {
 		t.Errorf("guardReturns() = %v, want Any carrier", out)
 	}
 }

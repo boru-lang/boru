@@ -61,14 +61,14 @@ func TestModuleGateStage5StampModuleCallGates(t *testing.T) {
 
 	// An empty moduleRef (inline `module […]`) stamps nothing.
 	StampModuleCallGates(exports, "")
-	if v, _ := om.Get("wrapped"); v.Data.(*FnDefInfo).Signatures[0].ModuleCall != nil {
+	if v, _ := om.Get("wrapped"); v.Data().(*FnDefInfo).Signatures[0].ModuleCall != nil {
 		t.Fatal("an empty moduleRef must stamp nothing")
 	}
 
 	StampModuleCallGates(exports, "boru:zz-mod")
 
 	v, _ := om.Get("wrapped")
-	fd := v.Data.(*FnDefInfo)
+	fd := v.Data().(*FnDefInfo)
 	id := fd.Signatures[0].ModuleCall
 	if id == nil || id.Module != "boru:zz-mod" || id.Export != "wrapped" {
 		t.Fatalf("wrapper sig0 stamp = %+v", id)
@@ -90,7 +90,7 @@ func TestModuleGateStage5StampModuleCallGates(t *testing.T) {
 	for _, name := range []string{"zz-inner", "zz-target"} {
 		stamped := false
 		for _, entry := range sub.Defs.Stack(name) {
-			if sfd, ok := entry.Data.(*FnDefInfo); ok {
+			if sfd, ok := entry.Data().(*FnDefInfo); ok {
 				for i := range sfd.Signatures {
 					if sid := sfd.Signatures[i].ModuleCall; sid != nil &&
 						sid.Module == "boru:zz-mod" && sid.Export == "wrapped" {
@@ -105,17 +105,17 @@ func TestModuleGateStage5StampModuleCallGates(t *testing.T) {
 	}
 
 	// Data and word-extension exports stay untouched.
-	if ev, _ := om.Get("ext"); ev.Data.(*FnDefInfo).Signatures[0].ModuleCall != nil {
+	if ev, _ := om.Get("ext"); ev.Data().(*FnDefInfo).Signatures[0].ModuleCall != nil {
 		t.Error("a word-extension clone must not be stamped")
 	}
-	if nv, _ := om.Get("noreg"); nv.Data.(*FnDefInfo).Signatures[0].ModuleCall == nil {
+	if nv, _ := om.Get("noreg"); nv.Data().(*FnDefInfo).Signatures[0].ModuleCall == nil {
 		t.Error("a registry-less fn export must still stamp its own sigs")
 	}
 
 	// Idempotence: a re-stamp under a different ref keeps the first id.
 	StampModuleCallGates(exports, "boru:zz-other")
 	v, _ = om.Get("wrapped")
-	if got := v.Data.(*FnDefInfo).Signatures[0].ModuleCall; got != id {
+	if got := v.Data().(*FnDefInfo).Signatures[0].ModuleCall; got != id {
 		t.Errorf("re-stamp must keep the first identity, got %+v", got)
 	}
 	if sub.ModuleRef != "boru:zz-mod" {

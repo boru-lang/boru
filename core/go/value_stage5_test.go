@@ -232,13 +232,13 @@ func TestS5VFormatBigNonNil(t *testing.T) {
 
 func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 	l := NewEvalList([]Value{NewInteger(1)})
-	if !IsEval(&l) || !l.Parent.Equal(TList) {
+	if !IsEval(&l) || !l.Parent().Equal(TList) {
 		t.Error("NewEvalList must mark Eval on a TList value")
 	}
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
 	m := NewEvalMap(om)
-	if !IsEval(&m) || !m.Parent.Equal(TMap) {
+	if !IsEval(&m) || !m.Parent().Equal(TMap) {
 		t.Error("NewEvalMap must mark Eval on a TMap value")
 	}
 	im := NewImplicitMap(om)
@@ -246,7 +246,7 @@ func TestS5VEvalAndImplicitConstructors(t *testing.T) {
 		t.Error("NewImplicitMap must produce an implicit map")
 	}
 	e := NewEnum([]Value{NewAtom("a"), NewAtom("b")})
-	if !e.Parent.Equal(TEnum) || !IsDisjunct(&e) {
+	if !e.Parent().Equal(TEnum) || !IsDisjunct(&e) {
 		t.Error("NewEnum must build a TEnum-tagged disjunct")
 	}
 }
@@ -298,7 +298,7 @@ func TestS5VIsNilBehaviorFallback(t *testing.T) {
 }
 
 func TestS5VIsNoneShapeCarrierForm(t *testing.T) {
-	if !IsNoneShape(Value{Parent: TNone}) {
+	if !IsNoneShape(Value{d: &Datum{Parent: TNone}}) {
 		t.Error("hand-built Value{Parent: TNone} is a None shape")
 	}
 }
@@ -581,7 +581,7 @@ func TestS5VKernelFormatInstanceAndTypeArms(t *testing.T) {
 		t.Errorf("negation compound = %q", got)
 	}
 	// A compiled closure carrying its source rendering.
-	cl := NewValueRaw(TFunction, ClosurePayload{Render: "fn zed"})
+	cl := NewValueRaw(TFunction, &ClosurePayload{Render: "fn zed"})
 	if got := kernelFormatDefault(cl); got != "fn zed" {
 		t.Errorf("closure render = %q", got)
 	}
@@ -646,8 +646,8 @@ func TestS5VIsUnboundSlot(t *testing.T) {
 		"a type node":    NewTypeLiteral(TInteger),
 		"an identity":    withID(Value{}, "slot-1"),
 		"a dynamic bit":  func() Value { var v Value; SetDynamic(&v, true); return v }(),
-		"a carrier bit":  {Carrier: true},
-		"a bare payload": {Data: IntPayload{N: 1}},
+		"a carrier bit":  {d: &Datum{Carrier: true}},
+		"a bare payload": {d: &Datum{Data: IntPayload{N: 1}}},
 	} {
 		if v.IsUnboundSlot() {
 			t.Errorf("%s is not the unbound slot", name)

@@ -432,7 +432,7 @@ func argsMatchDeclared(args []native.Value, declared []*native.Type) bool {
 		return false
 	}
 	for i, a := range args {
-		if a.Parent == nil || !a.Parent.ConformsTo(declared[i]) {
+		if a.Parent() == nil || !a.Parent().ConformsTo(declared[i]) {
 			return false
 		}
 	}

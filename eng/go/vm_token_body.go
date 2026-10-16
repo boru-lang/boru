@@ -132,7 +132,7 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 		// plain list never writes — a flex list's view is live, so it keeps
 		// a snapshot.
 		toks := lst.Elems()
-		if _, flex := body.Data.(*core.FlexListData); flex {
+		if _, flex := body.Data().(*core.FlexListData); flex {
 			toks = lst.Slice()
 		}
 		r, ok := compiler.StampTokenBody(reg, toks, types, body.Pos())

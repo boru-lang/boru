@@ -67,20 +67,20 @@ type parallelResult struct {
 // TestAwaitOpaqueRefIsNotRefusedWithoutAMutable holding the other side so
 // the fallback cannot grow into declining map keys and branch-locals.
 func sharedMutableKind(v Value) string {
-	if v.Parent == nil {
+	if v.Parent() == nil {
 		return ""
 	}
 	switch {
-	case v.Parent.ConformsTo(TFlexMap), v.Parent.ConformsTo(TWeakFlexMap):
+	case v.Parent().ConformsTo(TFlexMap), v.Parent().ConformsTo(TWeakFlexMap):
 		return "FlexMap"
-	case v.Parent.ConformsTo(TFlexList), v.Parent.ConformsTo(TWeakFlexList):
+	case v.Parent().ConformsTo(TFlexList), v.Parent().ConformsTo(TWeakFlexList):
 		return "FlexList"
-	case v.Parent.ConformsTo(TStore):
+	case v.Parent().ConformsTo(TStore):
 		return "Store"
-	case v.Parent.ConformsTo(TTable):
+	case v.Parent().ConformsTo(TTable):
 		return "Table"
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case ClassInstanceInfo:
 		return "Object"
 	case ListPayload:
@@ -106,7 +106,7 @@ func sharedMutableKind(v Value) string {
 // the raw token list (interpreted) or the BoruImpl body carried by a
 // compiled fn-value (the shape runParallelBranch unwraps via RunUnit).
 func branchTokens(elem Value) []Value {
-	if fd, ok := elem.Data.(*core.FnDefInfo); ok {
+	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			if a, isBoru := fd.Signatures[i].Impl.(*core.BoruImpl); isBoru {
 				return a.Body
@@ -229,7 +229,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 			if inspect(w.Name, bound) {
 				return
 			}
-			if fd, isFn := bound.Data.(*FnDefInfo); isFn {
+			if fd, isFn := bound.Data().(*FnDefInfo); isFn {
 				for _, c := range fd.Captured {
 					if inspect(c.Name, c.Value) {
 						return
@@ -321,7 +321,7 @@ func makeBranchForks(r *Registry, elems []Value) ([]*Registry, error) {
 // pattern) and runs via RunUnit on the fork; a raw list runs as an
 // interpreter sub-program; anything else is returned as a single value.
 func runParallelBranch(reg *Registry, elem Value) parallelResult {
-	if fd, ok := elem.Data.(*core.FnDefInfo); ok {
+	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {
 			ref := compiler.CompiledRef(&fd.Signatures[i])
 			if ref == nil || ref.Prog == nil {
@@ -335,7 +335,7 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 			return branchOutcome(result, runErr)
 		}
 	}
-	if elem.Parent.ConformsTo(TList) && elem.Data != nil && !IsTypedList(&elem) && !IsTableType(elem) {
+	if elem.Parent().ConformsTo(TList) && elem.Data() != nil && !IsTypedList(&elem) && !IsTableType(elem) {
 		_lst, _ := AsList(elem)
 		return interpretBranchBody(reg, _lst.Elems())
 	}

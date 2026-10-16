@@ -84,7 +84,7 @@ func TestSetpathResidualRetainsTag(t *testing.T) {
 			t.Errorf("[%s] setpath residual should stay dynamic", src)
 		}
 		if ci, cerr := AsChildType(res); cerr != nil || !ci.Child.Equal(TInteger) {
-			t.Errorf("[%s] setpath residual child = %v (err %v), want Integer", src, res.Parent, cerr)
+			t.Errorf("[%s] setpath residual child = %v (err %v), want Integer", src, res.Parent(), cerr)
 		}
 		if e, ok := res.ElemConstraint(); !ok || !e.Equal(TInteger) {
 			t.Errorf("[%s] setpath residual lost its elem pointer", src)

@@ -183,11 +183,11 @@ func TestNoteMethodShapeArms(t *testing.T) {
 // degrade to a plain Store carrier; a live layer mints once and re-uses
 // the same shape pointee with a fresh ID per call.
 func TestContextShape(t *testing.T) {
-	if v := (*CheckState)(nil).ContextShape(&StoreInstanceInfo{}, 0); !v.Carrier || !v.Parent.Equal(TStore) {
+	if v := (*CheckState)(nil).ContextShape(&StoreInstanceInfo{}, 0); !v.Carrier() || !v.Parent().Equal(TStore) {
 		t.Fatal("nil receiver must return a plain Store carrier")
 	}
 	c := NewCheckState()
-	if v := c.ContextShape(nil, 0); !v.Carrier || !v.Parent.Equal(TStore) {
+	if v := c.ContextShape(nil, 0); !v.Carrier() || !v.Parent().Equal(TStore) {
 		t.Fatal("nil store must return a plain Store carrier")
 	}
 	store := &StoreInstanceInfo{TypeName: "Ideal/Store", Data: map[string]Value{}}
@@ -196,8 +196,8 @@ func TestContextShape(t *testing.T) {
 	if IDOf(&v1) == "" || IDOf(&v2) == "" || IDOf(&v1) == IDOf(&v2) {
 		t.Fatalf("each call must mint a fresh ID, got %q / %q", IDOf(&v1), IDOf(&v2))
 	}
-	s1, ok1 := v1.Data.(*StoreShapeInfo)
-	s2, ok2 := v2.Data.(*StoreShapeInfo)
+	s1, ok1 := v1.Data().(*StoreShapeInfo)
+	s2, ok2 := v2.Data().(*StoreShapeInfo)
 	if !ok1 || !ok2 || s1 != s2 {
 		t.Fatal("one live layer must share one shape pointee")
 	}

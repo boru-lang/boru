@@ -64,10 +64,10 @@ import core "github.com/boru-lang/boru/core/go"
 // fn values, computed map keys, carriers, or undefined placeholders —
 // so the baked const IS the value the interpreter's handler receives.
 func evalFixedWindowToken(v core.Value) bool {
-	if v.Carrier || core.IsDynamic(&v) || core.IsUndefined(&v) {
+	if v.Carrier() || core.IsDynamic(&v) || core.IsUndefined(&v) {
 		return false
 	}
-	switch d := v.Data.(type) {
+	switch d := v.Data().(type) {
 	case core.IntPayload, core.StrPayload, core.BoolPayload, core.FloatPayload, core.AtomPayload,
 		core.BigIntPayload, core.DecimalPayload:
 		return true
@@ -176,7 +176,7 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 		}
 		return false
 	}
-	fnDef, _ := core.FnDefOf(member.Data) // validated by shapedMethodApplyWindow
+	fnDef, _ := core.FnDefOf(member.Data()) // validated by shapedMethodApplyWindow
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		args[i] = e.Tape.At(p)
@@ -208,7 +208,7 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 // compile-pass model (which runs the real dispatch) and the plain-check
 // collapse (which folds the apply to dynamic(Any)).
 func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*core.Signature, []int, bool) {
-	fnDef, ok := member.Data.(*core.FnDefInfo)
+	fnDef, ok := member.Data().(*core.FnDefInfo)
 	if !ok {
 		return nil, nil, false
 	}
@@ -334,7 +334,7 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 
 // fnDefName names a function value for a compile failure message.
 func fnDefName(v core.Value) string {
-	if fd, ok := v.Data.(*core.FnDefInfo); ok && fd.Name != "" {
+	if fd, ok := v.Data().(*core.FnDefInfo); ok && fd.Name != "" {
 		return fd.Name
 	}
 	return "fn value"
@@ -364,7 +364,7 @@ func shapedMethodReturnArity(e *core.Engine, sig *core.Signature, args []core.Va
 // dynamic(String|None) etc. must strand its trailing values as data (the
 // runtime never calls them), keeping the residual stack depth honest.
 func dynamicBoundConformsToFunction(v core.Value) bool {
-	if v.Parent.ConformsTo(core.TFunction) {
+	if v.Parent().ConformsTo(core.TFunction) {
 		return true
 	}
 	if disj, err := core.AsDisjunct(v); err == nil {
@@ -504,7 +504,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return false
 	}
 	decline := func() bool { return declineMemberFnArrival(es, member) }
-	fnDef, _ := core.FnDefOf(member.Data) // validated by memberFnReadValue
+	fnDef, _ := core.FnDefOf(member.Data()) // validated by memberFnReadValue
 	if !fnDef.NamedDef() || fnDef.Macro || len(fnDef.Captured) != 0 {
 		return decline()
 	}
@@ -625,7 +625,7 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	r := e.Registry
 	v := e.Tape.At(valIdx)
 	gradual := !core.IsFnTypedCarrier(&v)
-	if core.IsQuoted(&v) || core.IDOf(&v) == "" || (gradual && !(v.Carrier && core.SigTypeMatches(&v, core.TFunction))) {
+	if core.IsQuoted(&v) || core.IDOf(&v) == "" || (gradual && !(v.Carrier() && core.SigTypeMatches(&v, core.TFunction))) {
 		return false
 	}
 	name, read := es.DefReadName(core.IDOf(&v))
@@ -790,7 +790,7 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 // the types alone do not decide, a window the claim cannot fill.
 func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
 	v := e.Tape.At(valIdx)
-	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+	if core.IsQuoted(&v) || core.IsDynamic(&v) || core.IDOf(&v) == "" || !v.Carrier() || !core.TypeIsFnShape(v.Parent()) {
 		return false
 	}
 	shape, ok := fnShapeTypedClaim(e.Registry, v)
@@ -822,11 +822,11 @@ func fnShapeTypedClaim(r *core.Registry, v core.Value) (core.FnShape, bool) {
 	if s, ok := r.Check.FnShapeOf(core.IDOf(&v)); ok {
 		return s, s.ReturnsKnown
 	}
-	content, ok := core.TypeContentOf(*v.Parent)
+	content, ok := core.TypeContentOf(*v.Parent())
 	if !ok {
 		return core.FnShape{}, false
 	}
-	info, ok := content.Data.(core.FnUndefInfo)
+	info, ok := content.Data().(core.FnUndefInfo)
 	if !ok {
 		return core.FnShape{}, false
 	}
@@ -1061,7 +1061,7 @@ func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 		return core.LandingNextValue
 	}
 	if top, ok := e.DefTop(ww.Name); ok {
-		if _, isFn := top.Data.(*core.FnDefInfo); !isFn {
+		if _, isFn := top.Data().(*core.FnDefInfo); !isFn {
 			return core.LandingNextValue
 		}
 		return core.LandingNextWord

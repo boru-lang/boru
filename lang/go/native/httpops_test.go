@@ -179,7 +179,7 @@ func TestFetchAccessorHandlers(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("status", NewInteger(200))
 	resp := NewMap(om)
-	resp.Parent = ft.Response
+	resp.SetParent(ft.Response)
 
 	// getr succeeds on a present field (the miss half is pinned by the
 	// spec rows; this is the half they cannot reach through `do/error`).

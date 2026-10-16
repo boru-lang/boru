@@ -33,7 +33,7 @@ func RebuildXmlFromTmpl(t XmlTmpl, holes []Value) (Value, int) {
 			return
 		}
 		if n := len(cren); n > 0 {
-			if sp, ok := cren[n-1].Data.(StrPayload); ok {
+			if sp, ok := cren[n-1].Data().(StrPayload); ok {
 				cren[n-1] = NewString(sp.S + s)
 				return
 			}
@@ -48,7 +48,7 @@ func RebuildXmlFromTmpl(t XmlTmpl, holes []Value) (Value, int) {
 		addText(ValToString(r))
 	}
 	addChild := func(r Value) {
-		if IsConcrete(&r) && r.Parent.ConformsTo(TList) {
+		if IsConcrete(&r) && r.Parent().ConformsTo(TList) {
 			if rl, err := AsList(r); err == nil {
 				for i := 0; i < rl.Len(); i++ {
 					addOne(rl.Get(i))

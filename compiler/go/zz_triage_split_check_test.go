@@ -468,9 +468,9 @@ func TestConstLambdaArity(t *testing.T) {
 	boru := func() core.SigImpl { return &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}} }
 	lam := func(name, module string, sigs ...core.Signature) core.Value {
 		v := fnVal(sigs...)
-		fd := *v.Data.(*core.FnDefInfo)
+		fd := *v.Data().(*core.FnDefInfo)
 		fd.Name, fd.Module = name, module
-		v.Data = &fd
+		v.SetData(&fd)
 		return v
 	}
 	twoParam := core.Signature{Params: []core.FnParam{{Name: "a"}, {Name: "z"}}, Impl: boru()}
@@ -581,9 +581,9 @@ func TestRecordCallOperandsInertFnBakeCaptured(t *testing.T) {
 	// The program then falls back faithfully. (Anonymous capturing lambdas whose
 	// body compiles DO resolve to an opClosure — see
 	// lang/go's TestPatrunFnValueStoreCompiles / TestReturnedCapturingClosureApply.)
-	fn := withID(core.Value{Parent: core.TFunction,
+	fn := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
 		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+			Captured: []core.CapturedBinding{{Name: "c", Value: core.NewInteger(1)}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if ok {
 		t.Fatalf("captured non-anonymous fn must NOT resolve as a const bake: ops=%+v", ops)
@@ -707,18 +707,18 @@ func TestTryReturnedClosureCompileFailures(t *testing.T) {
 	// Anonymous lambda with an unresolvable capture → declines.
 	es := NewEmitState()
 	es.reg = r
-	withCap := withID(core.Value{Parent: core.TFunction,
+	withCap := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
 		Data: &core.FnDefInfo{Anonymous: true,
 			Captured:   []core.CapturedBinding{{Name: "c", Value: core.NewCarrier(core.TInteger)}},
-			Signatures: []core.Signature{{}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+			Signatures: []core.Signature{{}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(withCap, core.SrcPos{}); ok {
 		t.Fatal("unresolvable capture should decline")
 	}
 	// Anonymous lambda with more than one own signature → declines.
 	es = NewEmitState()
 	es.reg = r
-	multiSig := withID(core.Value{Parent: core.TFunction,
-		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+	multiSig := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}, {}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(multiSig, core.SrcPos{}); ok {
 		t.Fatal("multi-sig lambda should decline")
 	}
@@ -736,8 +736,8 @@ func TestTryReturnedClosureProbeFails(t *testing.T) {
 		Returns:    []*core.Type{core.TInteger},
 		BarrierPos: -1,
 	}
-	v := withID(core.Value{Parent: core.TFunction,
-		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+	v := withID(core.ValueOf(&core.Datum{Parent: core.TFunction,
+		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{lam}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if _, ok := es.tryReturnedClosure(v, core.SrcPos{}); ok {
 		t.Fatal("an uncompilable lambda body should decline")
 	}
@@ -884,7 +884,7 @@ func TestComputedArmCondOKDirect(t *testing.T) {
 
 func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
 	// MapPayload with nil backing map → no keep (the nil-map guard).
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if keep := embeddedEnclosingIDs(nilMap, map[string]bool{}); keep != nil {
 		t.Fatalf("nil-map should embed nothing: %v", keep)
 	}
@@ -924,7 +924,7 @@ func TestReadsFnMember(t *testing.T) {
 		t.Fatal("list loop fn should be reported")
 	}
 	// nil-backed map → skipped.
-	if readsFnMember([]core.Value{{Parent: core.TMap, Data: core.MapPayload{M: nil}}}) {
+	if readsFnMember([]core.Value{core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})}) {
 		t.Fatal("nil map should be skipped")
 	}
 	// map, no key → loop finds the fn.
@@ -961,7 +961,7 @@ func TestContainerFnAutoDispatchRisk(t *testing.T) {
 	if !containerFnAutoDispatchRisk([]core.Value{core.NewList([]core.Value{fn})}) {
 		t.Fatal("list loop 0-arg fn should be risky")
 	}
-	if containerFnAutoDispatchRisk([]core.Value{{Parent: core.TMap, Data: core.MapPayload{M: nil}}}) {
+	if containerFnAutoDispatchRisk([]core.Value{core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})}) {
 		t.Fatal("nil map should be skipped")
 	}
 	if !containerFnAutoDispatchRisk([]core.Value{s7MapOf("f", fn)}) {
@@ -981,7 +981,7 @@ func TestInterpMemberInert(t *testing.T) {
 		t.Fatal("carrier list member should not be inert")
 	}
 	// nil-backed map → false.
-	if InterpMemberInert(core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}) {
+	if InterpMemberInert(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})) {
 		t.Fatal("nil map should not be inert")
 	}
 	// map of inert members → true.
@@ -997,7 +997,7 @@ func TestInterpMemberInert(t *testing.T) {
 func TestInterpMemberInertBadInterp(t *testing.T) {
 	// A value whose Parent is TInterpString but whose payload is not an
 	// InterpStringPayload → AsInterpString errors → not inert.
-	bad := core.Value{Parent: core.TInterpString, Data: core.IntPayload{N: 1}}
+	bad := core.ValueOf(&core.Datum{Parent: core.TInterpString, Data: core.IntPayload{N: 1}})
 	if InterpMemberInert(bad) {
 		t.Fatal("a malformed interp-string should not be inert")
 	}
@@ -1005,7 +1005,7 @@ func TestInterpMemberInertBadInterp(t *testing.T) {
 
 func TestValueRefsNameMap(t *testing.T) {
 	// nil-backed map → false.
-	if valueRefsName(core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}) {
+	if valueRefsName(core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})) {
 		t.Fatal("nil map references no name")
 	}
 	// map whose member is a Word → true.
@@ -1015,7 +1015,7 @@ func TestValueRefsNameMap(t *testing.T) {
 }
 
 func TestIsTypeBodyPayload(t *testing.T) {
-	if !isTypeBodyPayload(core.Value{Data: core.ChildTypeInfo{}}) {
+	if !isTypeBodyPayload(core.ValueOf(&core.Datum{Data: core.ChildTypeInfo{}})) {
 		t.Fatal("ChildTypeInfo is a type-body payload")
 	}
 	if isTypeBodyPayload(core.NewInteger(1)) {
@@ -1042,7 +1042,7 @@ func TestResolveOperandIdentitylessCompoundRescued(t *testing.T) {
 	// One extra unit puts resolution inside a compiled fn frame.
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}})
 
-	blank := core.Value{Parent: core.TList, Data: core.ListPayload{Elems: []core.Value{core.NewInteger(1)}}} // no ID
+	blank := core.ValueOf(&core.Datum{Parent: core.TList, Data: core.ListPayload{Elems: []core.Value{core.NewInteger(1)}}}) // no ID
 	if _, ok := es.resolveOperand(blank); ok {
 		t.Error("identity-less compound inside a fn unit must be rescued, not placed")
 	}
@@ -1308,11 +1308,11 @@ func TestFnValueInputsPatternParamDefaultsAny(t *testing.T) {
 	if len(inputs) != 2 || len(names) != 2 || names[0] != "p" || names[1] != "q" {
 		t.Fatalf("inputs/names = %v %v", inputs, names)
 	}
-	if inputs[0].Parent == nil || !inputs[0].Parent.Equal(core.TAny) {
-		t.Errorf("a pattern-only param must bind an Any carrier, got %v", inputs[0].Parent)
+	if inputs[0].Parent() == nil || !inputs[0].Parent().Equal(core.TAny) {
+		t.Errorf("a pattern-only param must bind an Any carrier, got %v", inputs[0].Parent())
 	}
-	if !inputs[1].Parent.Equal(core.TInteger) {
-		t.Errorf("a typed param must keep its type, got %v", inputs[1].Parent)
+	if !inputs[1].Parent().Equal(core.TInteger) {
+		t.Errorf("a typed param must keep its type, got %v", inputs[1].Parent())
 	}
 }
 
@@ -1364,7 +1364,7 @@ func TestEmitEmptyIDGuards(t *testing.T) {
 // skipped, a non-fn member misses, and a bool-only tag (zero member) reports
 // no pinpointed value.
 func TestReadFnMemberValueArms(t *testing.T) {
-	fn := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}}
+	fn := core.ValueOf(&core.Datum{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "d", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}}})
 	om := core.NewOrderedMap()
 	om.Set("f", fn)
 	fnMap := core.NewMap(om)
@@ -1379,7 +1379,7 @@ func TestReadFnMemberValueArms(t *testing.T) {
 		t.Errorf("a leading carrier arg must be skipped, not decline the walk")
 	}
 	// A nil-backed map payload is skipped.
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.ValueOf(&core.Datum{Parent: core.TMap, Data: core.MapPayload{M: nil}})
 	if _, ok := readFnMemberValue([]core.Value{nilMap, key}); ok {
 		t.Errorf("a nil-backed map cannot pinpoint a member")
 	}

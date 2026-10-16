@@ -40,26 +40,26 @@ import "fmt"
 // header comment for the mapping.
 func ToNative(v Value) any {
 	switch {
-	case v.Parent == nil:
+	case v.Parent() == nil:
 		return nil
-	case v.Parent.ConformsTo(TNone):
+	case v.Parent().ConformsTo(TNone):
 		return nil
-	case v.Parent.ConformsTo(TString):
+	case v.Parent().ConformsTo(TString):
 		s, _ := AsString(v)
 		return s
-	case v.Parent.ConformsTo(TInteger):
+	case v.Parent().ConformsTo(TInteger):
 		n, _ := AsInteger(v)
 		return n
-	case v.Parent.ConformsTo(TFloat):
+	case v.Parent().ConformsTo(TFloat):
 		f, _ := AsFloat(v)
 		return f
-	case v.Parent.ConformsTo(TBoolean):
+	case v.Parent().ConformsTo(TBoolean):
 		b, _ := AsBoolean(v)
 		return b
-	case v.Parent.ConformsTo(TAtom):
+	case v.Parent().ConformsTo(TAtom):
 		a, _ := AsAtom(v)
 		return a
-	case v.Parent.ConformsTo(TMap):
+	case v.Parent().ConformsTo(TMap):
 		rm, err := AsMap(v)
 		if err != nil {
 			return v.String()
@@ -70,7 +70,7 @@ func ToNative(v Value) any {
 			out[k] = ToNative(vv)
 		}
 		return out
-	case v.Parent.ConformsTo(TList):
+	case v.Parent().ConformsTo(TList):
 		rl, err := AsList(v)
 		if err != nil {
 			return v.String()

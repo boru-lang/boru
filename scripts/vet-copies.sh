@@ -3,13 +3,15 @@
 # design/VALUE-NO-COPY.0.md, phase 0).
 #
 # Builds tools/vetcopies and runs it as go vet's -vettool in every module
-# go.work lists, counting the copies of a core.Value in NON-TEST code:
+# go.work lists, counting the copies of a core.Datum — what a Value handle
+# refers to (design/VALUE-NO-COPY.0.md phase 4) — in NON-TEST code:
 #
 #   value   copylocks findings through the zero-size noCopy marker in
-#           core.Value: every by-value copy of a single Value, or of a
+#           core.Datum: every by-value copy of a single Datum, or of a
 #           struct that holds one by value
 #   bulk    bulkcopy findings: copy() and variadic append() over a
-#           []core.Value, the element copies copylocks cannot see
+#           []core.Datum, the element copies copylocks cannot see (a
+#           []core.Value holds handles, so its copies copy no datum)
 #
 # A module fails when either count rises above its ceiling in
 # tools/vetcopies/ceilings.tsv, or when copylocks reports a copy of any
@@ -105,10 +107,10 @@ for m in $modules; do
   diags=$(grep -E '^[^ #][^ ]*\.go:[0-9]+:[0-9]+: ' "$out" | sort -u || true)
   nontest=$(echo "$diags" | grep -v '_test\.go:' | grep . || true)
   value=$(echo "$nontest" | grep -c 'core/go\.noCopy' || true)
-  bulk=$(echo "$nontest" | grep -c 'bulk copy of \[\]core\.Value' || true)
+  bulk=$(echo "$nontest" | grep -c 'bulk copy of \[\]core\.Datum' || true)
   locks=$(echo "$diags" | grep -v 'core/go\.noCopy\|function variable aliases' | grep 'lock' || true)
   aliases=$(echo "$nontest" | grep 'function variable aliases' || true)
-  other=$(echo "$diags" | grep -v 'core/go\.noCopy\|bulk copy of \[\]core\.Value\|lock\|function variable aliases' || true)
+  other=$(echo "$diags" | grep -v 'core/go\.noCopy\|bulk copy of \[\]core\.Datum\|lock\|function variable aliases' || true)
   stray=$(grep -vE '^[^ #][^ ]*\.go:[0-9]+:[0-9]+: |^#|^$' "$out" || true)
   vc=$(ceiling "$m" 2); bc=$(ceiling "$m" 3)
   verdict=""
@@ -133,7 +135,7 @@ for m in $modules; do
   fi
   if [ -n "$locks" ]; then
     failed=1
-    echo "  FAILED: copylocks reports a copy of a lock other than core.Value's marker:"
+    echo "  FAILED: copylocks reports a copy of a lock other than core.Datum's marker:"
     echo "$locks" | sed 's/^/    /'
   fi
   if [ -n "$aliases" ]; then
@@ -156,8 +158,8 @@ if [ "${UPDATE:-}" = "1" ]; then
   if [ "$failed" = "1" ]; then echo "vet-copies: not updating the ceilings while a module fails" >&2; exit 1; fi
   {
     echo "# The no-copy ratchet's ceilings (scripts/vet-copies.sh): per go.work module,"
-    echo "# the NON-TEST copies of a core.Value that copylocks reports (value) and the"
-    echo "# copy() and variadic append() calls over a []core.Value (bulk). They only go"
+    echo "# the NON-TEST copies of a core.Datum that copylocks reports (value) and the"
+    echo "# copy() and variadic append() calls over a []core.Datum (bulk). They only go"
     echo "# down: UPDATE=1 lowers them to the counts; a sanctioned new copy raises one"
     echo "# by hand, naming its row in design/VALUE-NO-COPY-EXCEPTIONS.0.md."
     printf 'module\tvalue\tbulk\n'

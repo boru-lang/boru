@@ -71,7 +71,7 @@ func TestReStepLandingClosureArm(t *testing.T) {
 		Debug: []core.SrcPos{{}, {}},
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
 	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0, compiler.LandingWord{})
 	if err != nil || ent != nil {
 		t.Fatalf("closure landing: %v %v", ent, err)
@@ -133,7 +133,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	if err != nil || ent != nil {
 		t.Fatalf("anonymous landing: %v %v", ent, err)
 	}
-	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if len(got) != 1 || !got[0].Parent().Equal(core.TFunction) {
 		t.Errorf("anonymous landing = %v, want the value parked as data", got)
 	}
 
@@ -147,7 +147,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 		Debug: []core.SrcPos{{}, {}},
 	}}
 	vcl := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{
 		Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
 	if !compiler.ClosureIsFnValue(&cl) {
 		t.Fatal("fixture is not a fn-VALUE closure — the lambda rung would not consult it")
@@ -156,7 +156,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	if errc != nil || entc != nil {
 		t.Fatalf("lambda landing: %v %v", entc, errc)
 	}
-	if len(gotc) != 1 || !gotc[0].Parent.Equal(core.TFunction) {
+	if len(gotc) != 1 || !gotc[0].Parent().Equal(core.TFunction) {
 		t.Errorf("lambda landing = %v, want the closure parked as data", gotc)
 	}
 }
@@ -194,7 +194,7 @@ func TestReStepLandingNonFnValueClosureInvokes(t *testing.T) {
 		Debug: []core.SrcPos{{}, {}},
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
 	if compiler.ClosureIsFnValue(&cl) {
 		t.Fatal("fixture reads as a fn-VALUE closure — it would park, not invoke")
 	}
@@ -243,7 +243,7 @@ func TestReStepLandingStaysData(t *testing.T) {
 			if err != nil || ent != nil {
 				t.Fatalf("%s must not apply: %v %v — %s", tc.name, ent, err, tc.why)
 			}
-			if len(got) != 2 || !got[1].Parent.Equal(tc.v.Parent) {
+			if len(got) != 2 || !got[1].Parent().Equal(tc.v.Parent()) {
 				t.Errorf("%s: stack = %v, want it untouched — %s", tc.name, got, tc.why)
 			}
 		})
@@ -262,18 +262,18 @@ func TestReStepLandingStaysData(t *testing.T) {
 func TestReStepLandingIslandArm(t *testing.T) {
 	r := seam7Reg(t)
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	lit := core.Value{Parent: core.TFunction}
+	lit := core.ValueOf(&core.Datum{Parent: core.TFunction})
 	if !core.IsAppliableFn(lit) {
 		t.Fatal("fixture is not appliable — the landing would leave it as data before the island")
 	}
-	if _, isFn := lit.Data.(*core.FnDefInfo); isFn {
+	if _, isFn := lit.Data().(*core.FnDefInfo); isFn {
 		t.Fatal("fixture carries an FnDefInfo — it would take an earlier rung")
 	}
 	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{lit}, seam7Dbg, 0, compiler.LandingWord{})
 	if err != nil || ent != nil {
 		t.Fatalf("island landing: %v %v", ent, err)
 	}
-	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if len(got) != 1 || !got[0].Parent().Equal(core.TFunction) {
 		t.Errorf("island landing = %v, want the value the interpreter pushes", got)
 	}
 }
@@ -308,7 +308,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 		Debug: []core.SrcPos{{}},
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
+	cl := core.NewValueRaw(core.TFunction, &core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
 	if _, _, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0, compiler.LandingWord{}); err == nil {
 		t.Error("a raising closure member must surface its error, not a stack")
 	}

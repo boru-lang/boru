@@ -34,7 +34,7 @@ func NewSurfaceType(t *Type, info *SurfaceInfo) Value {
 
 // IsSurfaceType reports whether v carries a surface payload.
 func IsSurfaceType(v Value) bool {
-	_, ok := v.Data.(*SurfaceInfo)
+	_, ok := v.Data().(*SurfaceInfo)
 	return ok
 }
 
@@ -42,9 +42,9 @@ func IsSurfaceType(v Value) bool {
 // shared across every copy of the surface's type literal — mutating
 // Conform through it is how `exposes` registers conformance.
 func AsSurfaceType(v Value) (*SurfaceInfo, error) {
-	info, ok := v.Data.(*SurfaceInfo)
+	info, ok := v.Data().(*SurfaceInfo)
 	if !ok {
-		return nil, fmt.Errorf("AsSurfaceType: not a surface type value (got %T)", v.Data)
+		return nil, fmt.Errorf("AsSurfaceType: not a surface type value (got %T)", v.Data())
 	}
 	return info, nil
 }
@@ -110,13 +110,13 @@ func unifySurface(a, b Value) (Value, *UnifyError) {
 		node = oi.Type
 	case IsBareTypeNode(&other):
 		node = &other
-	case other.Carrier:
+	case other.Carrier():
 		// A check-mode carrier denotes its Parent type — so
 		// `def x:Shape (make Circle {…})` unifies statically when
 		// Circle exposes Shape.
-		node = other.Parent
+		node = other.Parent()
 	}
-	for p := node; p != nil; p = p.Parent {
+	for p := node; p != nil; p = p.Parent() {
 		if info.Conform[IDOf(p)] {
 			return other, nil
 		}
@@ -158,7 +158,7 @@ func (s *surfaceUnifier) Match(v Value, t *Type) bool {
 	if IsBareTypeNode(&v) {
 		return baseBehavior(s.prev).Match(v, t)
 	}
-	for p := v.Parent; p != nil; p = p.Parent {
+	for p := v.Parent(); p != nil; p = p.Parent() {
 		if s.info.Conform[IDOf(p)] {
 			return true
 		}
@@ -197,7 +197,7 @@ func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 		// must be in the conformance set — the literal-vs-literal walk
 		// unifySurface runs for the body.
 		cn := &candidate
-		for p := cn; p != nil; p = p.Parent {
+		for p := cn; p != nil; p = p.Parent() {
 			if s.info.Conform[IDOf(p)] {
 				return candidate, nil
 			}
@@ -225,7 +225,7 @@ func (s *surfaceUnifier) Format(v Value) string {
 // the check-mode dispatch path (S2) to type a required operation on a
 // surface-typed carrier via the contract's shape.
 func SurfaceInfoOf(t *Type) (*SurfaceInfo, bool) {
-	for p := t; p != nil; p = p.Parent {
+	for p := t; p != nil; p = p.Parent() {
 		if su, ok := p.Behavior().(*surfaceUnifier); ok {
 			return su.info, true
 		}

@@ -237,9 +237,9 @@ func TestDoReadSQLiteArms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	td, ok := out[0].Data.(TableData)
+	td, ok := out[0].Data().(TableData)
 	if !ok || td.TableName != "planets" {
-		t.Fatalf("expected sqlite-backed table 'planets', got %#v", out[0].Data)
+		t.Fatalf("expected sqlite-backed table 'planets', got %#v", out[0].Data())
 	}
 
 	// StoreTable failure: a closed store must surface the error.

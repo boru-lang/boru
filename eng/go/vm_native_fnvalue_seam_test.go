@@ -50,7 +50,7 @@ func TestApplyNativeFnValueTopDown(t *testing.T) {
 		return out
 	}
 	one := goValueWith(1)
-	fd, _ := core.FnDefOf(one.Data)
+	fd, _ := core.FnDefOf(one.Data())
 	if !vmNativeApplicable(r, &one) {
 		t.Fatal("a self-contained Go fn value applies natively")
 	}
@@ -59,7 +59,7 @@ func TestApplyNativeFnValueTopDown(t *testing.T) {
 		t.Errorf("a one-param value takes the top input and leaves the rest: %v %v %v", out, done, err)
 	}
 	both := goValueWith(1, 2)
-	fd2, _ := core.FnDefOf(both.Data)
+	fd2, _ := core.FnDefOf(both.Data())
 	out, done, err = vc.applyNativeFnValueTopDown(both, *fd2, ints(7, 3))
 	if !done || err != nil || renderInts(out) != "[-4]" {
 		t.Errorf("the widest fitting arity binds top-down (the top 3 is the first param): %v %v %v", out, done, err)

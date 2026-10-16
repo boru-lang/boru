@@ -272,7 +272,7 @@ func TestParseWave3BigNumEdges(t *testing.T) {
 	}
 	for src, want := range cases {
 		vals := mustParseWave3(t, src)
-		if len(vals) != 1 || !vals[0].Parent.ConformsTo(core.TBigDecimal) {
+		if len(vals) != 1 || !vals[0].Parent().ConformsTo(core.TBigDecimal) {
 			t.Fatalf("%q: expected one BigDecimal, got %v", src, vals)
 		}
 		if got := vals[0].String(); got != want {
@@ -282,7 +282,7 @@ func TestParseWave3BigNumEdges(t *testing.T) {
 	// `+0d5`: a digit after `+` is not a minilang name start, so the
 	// big-number matcher claims the signed literal.
 	vals := mustParseWave3(t, "+0d5")
-	if len(vals) != 1 || !vals[0].Parent.ConformsTo(core.TBigInteger) {
+	if len(vals) != 1 || !vals[0].Parent().ConformsTo(core.TBigInteger) {
 		t.Fatalf("+0d5: expected one BigInteger, got %v", vals)
 	}
 	n, _ := core.AsBigInteger(vals[0])
@@ -352,7 +352,7 @@ func TestParseWave3TopLevelImplicitMapAutoEval(t *testing.T) {
 	if len(vals) != 1 {
 		t.Fatalf("a:1: got %d values, want 1", len(vals))
 	}
-	if !vals[0].Parent.ConformsTo(core.TMap) {
+	if !vals[0].Parent().ConformsTo(core.TMap) {
 		t.Fatalf("a:1: expected a Map, got %s", vals[0].String())
 	}
 	if !core.IsEval(&vals[0]) {

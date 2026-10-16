@@ -73,7 +73,7 @@ func TestRecordFnValueApplyFallbackArms(t *testing.T) {
 	if !ok {
 		t.Fatal("the qualifying shape must record")
 	}
-	if !fresh.Carrier || core.IDOf(&fresh) == core.IDOf(&carrierOut[0]) {
+	if !fresh.Carrier() || core.IDOf(&fresh) == core.IDOf(&carrierOut[0]) {
 		t.Errorf("the out must be a FRESH carrier (one identity per call site): %v", fresh)
 	}
 	// The recorder declining leaves the caller on the unit-call path.

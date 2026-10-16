@@ -141,7 +141,7 @@ func TypeNameTable() map[string]*Type {
 // Returns the empty string if no entry exists or the type is internal.
 func TypeNameByID(id string) string {
 	def := Builtin.LookupByID(id)
-	if def == nil || def.IsInternal {
+	if def == nil || def.IsInternal() {
 		return ""
 	}
 	// Only return a name for types that participate in user-facing
@@ -275,7 +275,7 @@ func (t *Type) PathSubtype(pattern *Type) bool {
 // an ancestor) so the score for Any-only signatures is unchanged.
 func (t *Type) Specificity() int {
 	n := 0
-	for d := t; d != nil; d = d.Parent {
+	for d := t; d != nil; d = d.Parent() {
 		if d.FixedID() == anyFixedID && n > 0 {
 			break
 		}
@@ -326,26 +326,25 @@ func (t *Type) Equal(other *Type) bool {
 	if t == nil || other == nil {
 		return false
 	}
-	if tm, om := t.tmeta, other.tmeta; tm != nil && om != nil {
-		if tm == om {
-			return true
-		}
-		// Interval-label fast path. In (the DFS pre-order number stamped by
-		// labelIntervals) is assigned once, on the package-level Builtin
-		// table, as a single `counter++` per node — so among labelled nodes
-		// it is a unique per-node identity and In-equality is exactly
-		// node-equality. Minted / refined / external / ad-hoc nodes (and a
-		// node rebuilt around an existing ID) are never labelled and carry
-		// In == 0, so they fall through to the ID compare below with
-		// behaviour unchanged. Reaching here therefore means: whenever both
-		// nodes are labelled, an int compare settles identity without the
-		// 14-char ID string compare — the hot path for the per-token marker
-		// predicates (IsWord / IsOpenParen / IsForward / …), which test a
-		// token's builtin Parent against a builtin marker on every step and
-		// almost always mismatch.
-		if tm.In > 0 && om.In > 0 {
-			return tm.In == om.In
-		}
+	// Interval-label fast path. in (the DFS pre-order number stamped by
+	// labelIntervals) is assigned once, on the package-level Builtin table,
+	// as a single `counter++` per node — so among labelled nodes it is a
+	// unique per-node identity and in-equality is exactly node-equality.
+	// Minted / refined / external / ad-hoc nodes (and a node rebuilt around
+	// an existing ID) are never labelled and carry in == 0, so they fall
+	// through to the metadata and ID compares below with behaviour
+	// unchanged. Reaching here therefore means: whenever both nodes are
+	// labelled, an int compare settles identity without the 14-char ID
+	// string compare — the hot path for the per-token marker predicates
+	// (IsWord / IsOpenParen / IsForward / …), which test a token's builtin
+	// Parent against a builtin marker on every step and almost always
+	// mismatch. The labels live in the datum, one pointer from the node.
+	td, od := t.body(), other.body()
+	if td.in > 0 && od.in > 0 {
+		return td.in == od.in
+	}
+	if tm, om := td.tmeta, od.tmeta; tm != nil && tm == om {
+		return true
 	}
 	return IDOf(t) != "" && IDOf(t) == IDOf(other)
 }

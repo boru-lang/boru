@@ -76,8 +76,8 @@ func runChainStart(events []EmitEvent, at int) (int, bool) {
 // the island pushes at its mark: a scalar constant, which re-steps as itself.
 // Anything else (an event result, a container, a fn value) declines.
 func (es *EmitState) islandPrefixOperand(v core.Value) (EmitOperand, bool) {
-	if _, produced := es.producerOf(&v); produced || !core.IsConcrete(&v) || v.Parent == nil ||
-		!v.Parent.ConformsTo(core.TScalar) || es.fnLikeResidual(v) {
+	if _, produced := es.producerOf(&v); produced || !core.IsConcrete(&v) || v.Parent() == nil ||
+		!v.Parent().ConformsTo(core.TScalar) || es.fnLikeResidual(v) {
 		return EmitOperand{}, false
 	}
 	op, ok := es.resolveOperand(v)
@@ -142,7 +142,7 @@ func (es *EmitState) inertConst(idx int) bool {
 		return false
 	}
 	c := es.consts[idx]
-	return core.IsConcrete(&c) && c.Parent != nil && c.Parent.ConformsTo(core.TScalar)
+	return core.IsConcrete(&c) && c.Parent() != nil && c.Parent().ConformsTo(core.TScalar)
 }
 
 // excuseIslandRegion drops the run the residual island will re-step from the

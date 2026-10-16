@@ -24,10 +24,10 @@ import (
 // exactly — a subtype could pick a more specific overload than the one the
 // specialised body committed.
 func ShapeOf(v Value, maxFields int) (Value, bool) {
-	if v.Parent != TMap || IsDynamic(&v) || v.AscribedType() != nil {
+	if v.Parent() != TMap || IsDynamic(&v) || v.AscribedType() != nil {
 		return Value{}, false
 	}
-	mp, ok := v.Data.(MapPayload)
+	mp, ok := v.Data().(MapPayload)
 	if !ok || mp.M == nil || mp.M.Len() == 0 || mp.M.Len() > maxFields {
 		return Value{}, false
 	}
@@ -37,33 +37,33 @@ func ShapeOf(v Value, maxFields int) (Value, bool) {
 		if !shapeData(fv) {
 			return Value{}, false
 		}
-		fields.Set(k, NewCarrier(fv.Parent))
+		fields.Set(k, NewCarrier(fv.Parent()))
 	}
-	return Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}, occ: idOcc(GenerateID(IDPrefixForType(TMap)))}, true
+	return Value{d: &Datum{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields}}, occ: idOcc(GenerateID(IDPrefixForType(TMap)))}, true
 }
 
 // IsShapeCarrier reports whether v is a shape carrier: a STRICT record
 // carrier (every other record carrier is gradual).
 func IsShapeCarrier(v Value) bool {
-	rt, ok := v.Data.(RecordTypeInfo)
-	return ok && rt.Fields != nil && v.Carrier && !IsDynamic(&v) && v.Parent == TMap
+	rt, ok := v.Data().(RecordTypeInfo)
+	return ok && rt.Fields != nil && v.Carrier() && !IsDynamic(&v) && v.Parent() == TMap
 }
 
 // ShapeHolds reports whether the runtime value v has shape's exact key set,
 // each value tag-keyable and carrying the recorded tag.
 func ShapeHolds(shape, v Value) bool {
-	rt, ok := shape.Data.(RecordTypeInfo)
-	if !ok || rt.Fields == nil || v.Parent != TMap || v.Carrier {
+	rt, ok := shape.Data().(RecordTypeInfo)
+	if !ok || rt.Fields == nil || v.Parent() != TMap || v.Carrier() {
 		return false
 	}
-	mp, ok := v.Data.(MapPayload)
+	mp, ok := v.Data().(MapPayload)
 	if !ok || mp.M == nil || mp.M.Len() != rt.Fields.Len() {
 		return false
 	}
 	for _, k := range rt.Fields.Keys() {
 		want, _ := rt.Fields.Get(k)
 		got, ok := mp.M.Get(k)
-		if !ok || !TagKeyable(got) || got.Parent != want.Parent {
+		if !ok || !TagKeyable(got) || got.Parent() != want.Parent() {
 			return false
 		}
 	}
@@ -76,7 +76,7 @@ func ShapeHolds(shape, v Value) bool {
 // and each tag by its node's identity, not its display name (two scopes can
 // mint distinct types of one name).
 func ShapeKey(shape Value) string {
-	rt, ok := shape.Data.(RecordTypeInfo)
+	rt, ok := shape.Data().(RecordTypeInfo)
 	if !ok || rt.Fields == nil {
 		return ""
 	}
@@ -84,7 +84,7 @@ func ShapeKey(shape Value) string {
 	b.WriteString("{")
 	for _, k := range rt.Fields.Keys() {
 		fv, _ := rt.Fields.Get(k)
-		fmt.Fprintf(&b, "%s:%p ", strconv.Quote(k), fv.Parent)
+		fmt.Fprintf(&b, "%s:%p ", strconv.Quote(k), fv.Parent())
 	}
 	b.WriteString("}")
 	return b.String()
@@ -97,10 +97,10 @@ func ShapeKey(shape Value) string {
 // precisely (`xs get 0` is the element's carrier, `size xs` its length).
 // A List is copy-on-write too, so the shape holds for the frame.
 func ListShapeOf(v Value, maxElems int) (Value, bool) {
-	if v.Parent != TList || IsDynamic(&v) || v.Carrier || IsQuoted(&v) || v.AscribedType() != nil {
+	if v.Parent() != TList || IsDynamic(&v) || v.Carrier() || IsQuoted(&v) || v.AscribedType() != nil {
 		return Value{}, false
 	}
-	lp, ok := v.Data.(ListPayload)
+	lp, ok := v.Data().(ListPayload)
 	if !ok || len(lp.Elems) == 0 || len(lp.Elems) > maxElems {
 		return Value{}, false
 	}
@@ -109,7 +109,7 @@ func ListShapeOf(v Value, maxElems int) (Value, bool) {
 		if !shapeData(e) {
 			return Value{}, false
 		}
-		elems[i] = NewCarrier(e.Parent)
+		elems[i] = NewCarrier(e.Parent())
 	}
 	return NewList(elems), true
 }
@@ -118,12 +118,12 @@ func ListShapeOf(v Value, maxElems int) (Value, bool) {
 // non-carrier List whose every element is a strict carrier — a value no
 // runtime computation produces (runtime lists hold concrete values).
 func IsListShapeGuard(v Value) bool {
-	lp, ok := v.Data.(ListPayload)
-	if !ok || v.Parent != TList || v.Carrier || len(lp.Elems) == 0 {
+	lp, ok := v.Data().(ListPayload)
+	if !ok || v.Parent() != TList || v.Carrier() || len(lp.Elems) == 0 {
 		return false
 	}
 	for _, e := range lp.Elems {
-		if !e.Carrier || IsDynamic(&e) {
+		if !e.Carrier() || IsDynamic(&e) {
 			return false
 		}
 	}
@@ -133,16 +133,16 @@ func IsListShapeGuard(v Value) bool {
 // ListShapeHolds reports whether the runtime value v is a plain List of the
 // shape's exact length whose elements carry the shape's tags.
 func ListShapeHolds(shape, v Value) bool {
-	sp, ok := shape.Data.(ListPayload)
-	if !ok || v.Parent != TList || v.Carrier {
+	sp, ok := shape.Data().(ListPayload)
+	if !ok || v.Parent() != TList || v.Carrier() {
 		return false
 	}
-	lp, ok := v.Data.(ListPayload)
+	lp, ok := v.Data().(ListPayload)
 	if !ok || len(lp.Elems) != len(sp.Elems) {
 		return false
 	}
 	for i, e := range lp.Elems {
-		if !TagKeyable(e) || e.Parent != sp.Elems[i].Parent {
+		if !TagKeyable(e) || e.Parent() != sp.Elems[i].Parent() {
 			return false
 		}
 	}
@@ -152,11 +152,11 @@ func ListShapeHolds(shape, v Value) bool {
 // ListShapeKey renders a list shape for a specialisation key, each element
 // tag by its node's identity (ShapeKey's rule).
 func ListShapeKey(shape Value) string {
-	sp, _ := shape.Data.(ListPayload)
+	sp, _ := shape.Data().(ListPayload)
 	var b strings.Builder
 	b.WriteString("[")
 	for _, e := range sp.Elems {
-		fmt.Fprintf(&b, "%p ", e.Parent)
+		fmt.Fprintf(&b, "%p ", e.Parent())
 	}
 	b.WriteString("]")
 	return b.String()
@@ -171,5 +171,5 @@ func shapeData(v Value) bool {
 	if !TagKeyable(v) {
 		return false
 	}
-	return v.Parent.ConformsTo(TScalar) || v.Parent == TList || v.Parent == TMap || v.Parent == TNone
+	return v.Parent().ConformsTo(TScalar) || v.Parent() == TList || v.Parent() == TMap || v.Parent() == TNone
 }

@@ -4,21 +4,25 @@ import core "github.com/boru-lang/boru/core/go"
 
 type other struct{ n int }
 
-func reported(dst, src []core.Value, ts []core.Type, tape core.Tape) {
-	copy(dst, src)                          // want "bulk copy of \\[\\]core.Value: copy"
-	_ = append(dst, src...)                 // want "bulk copy of \\[\\]core.Value: variadic append"
-	_ = append(ts, ts...)                   // want "bulk copy of \\[\\]core.Value: variadic append"
-	copy(tape, src)                         // want "bulk copy of \\[\\]core.Value: copy"
-	_ = append(([]core.Value)(nil), dst...) // want "bulk copy of \\[\\]core.Value: variadic append"
+func reported(dst, src []core.Datum, run core.Run) {
+	copy(dst, src)                          // want "bulk copy of \\[\\]core.Datum: copy"
+	_ = append(dst, src...)                 // want "bulk copy of \\[\\]core.Datum: variadic append"
+	copy(run, src)                          // want "bulk copy of \\[\\]core.Datum: copy"
+	_ = append(([]core.Datum)(nil), dst...) // want "bulk copy of \\[\\]core.Datum: variadic append"
 }
 
-func notReported(dst []core.Value, v core.Value, os []other, bs []byte, s string) {
-	_ = append(dst, v, v)
+// A []core.Value is an array of handles: copying one copies no datum.
+func notReported(dst []core.Datum, vs []core.Value, ts []core.Type, tape core.Tape, os []other, bs []byte, s string) {
+	_ = append(dst, core.Datum{}, core.Datum{})
+	copy(vs, vs)
+	_ = append(vs, vs...)
+	_ = append(ts, ts...)
+	copy(tape, vs)
 	copy(os, os)
 	_ = append(os, os...)
 	copy(bs, s)
 	_ = append(bs, s...)
 	_ = len(dst)
-	f := func(xs ...core.Value) int { return len(xs) }
+	f := func(xs ...core.Datum) int { return len(xs) }
 	_ = f(dst...)
 }

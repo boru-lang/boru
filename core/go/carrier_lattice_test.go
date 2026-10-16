@@ -21,7 +21,7 @@ func TestCarrierConstructors(t *testing.T) {
 	// Parent/Data bound rather than replacing it with a bare carrier.
 	bound := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
 	dyn := NewDynamicCarrierValue(bound)
-	if !dyn.Carrier || !IsDynamic(&dyn) {
+	if !dyn.Carrier() || !IsDynamic(&dyn) {
 		t.Error("NewDynamicCarrierValue must set both Carrier and Dynamic")
 	}
 	if !IsDisjunct(&dyn) {
@@ -30,23 +30,23 @@ func TestCarrierConstructors(t *testing.T) {
 
 	// NewCarrierTypedList: element type known, container still abstract.
 	tl := NewCarrierTypedList(TInteger)
-	if !tl.Carrier || !tl.Parent.Equal(TList) {
+	if !tl.Carrier() || !tl.Parent().Equal(TList) {
 		t.Errorf("NewCarrierTypedList = %v, want an abstract List", tl)
 	}
-	ct, ok := tl.Data.(ChildTypeInfo)
-	if !ok || !ct.Child.Parent.Equal(TInteger) {
-		t.Errorf("element carrier = %+v, want Integer", tl.Data)
+	ct, ok := tl.Data().(ChildTypeInfo)
+	if !ok || !ct.Child.Parent().Equal(TInteger) {
+		t.Errorf("element carrier = %+v, want Integer", tl.Data())
 	}
 
 	// NewCarrierTypedListValue takes an arbitrary child — here a nested
 	// typed list, the shape a bare Parent cannot express.
 	nested := NewCarrierTypedListValue(NewCarrierTypedList(TString))
-	if !nested.Carrier || !nested.Parent.Equal(TList) {
+	if !nested.Carrier() || !nested.Parent().Equal(TList) {
 		t.Errorf("NewCarrierTypedListValue = %v, want an abstract List", nested)
 	}
-	inner, ok := nested.Data.(ChildTypeInfo)
-	if !ok || !inner.Child.Parent.Equal(TList) {
-		t.Errorf("nested element = %+v, want a List carrier", nested.Data)
+	inner, ok := nested.Data().(ChildTypeInfo)
+	if !ok || !inner.Child.Parent().Equal(TList) {
+		t.Errorf("nested element = %+v, want a List carrier", nested.Data())
 	}
 }
 
@@ -68,7 +68,7 @@ func TestUnionCarrierForType(t *testing.T) {
 	if !ok {
 		t.Fatal("a union type must yield its distributing carrier")
 	}
-	if !dv.Carrier || !IsDisjunct(&dv) {
+	if !dv.Carrier() || !IsDisjunct(&dv) {
 		t.Fatalf("union carrier = %v, want a strict disjunct carrier", dv)
 	}
 	di, err := AsDisjunct(dv)
@@ -121,7 +121,7 @@ func TestReturnsIdentity(t *testing.T) {
 		t.Fatalf("oob arity = %d, want 2", len(out))
 	}
 	for i, v := range out {
-		if !v.Carrier || !v.Parent.Equal(TAny) {
+		if !v.Carrier() || !v.Parent().Equal(TAny) {
 			t.Errorf("out-of-range slot %d = %v, want an Any carrier", i, v)
 		}
 	}
@@ -132,7 +132,7 @@ func TestReturnsIdentity(t *testing.T) {
 func TestVariadicSpreadCarrier(t *testing.T) {
 	elem := NewTypeLiteral(TInteger)
 	sp := NewVariadicCarrier(elem)
-	if !sp.Carrier || !IsDynamic(&sp) || !sp.Parent.Equal(TAny) {
+	if !sp.Carrier() || !IsDynamic(&sp) || !sp.Parent().Equal(TAny) {
 		t.Errorf("variadic carrier = %v, want a dynamic Any carrier", sp)
 	}
 	got, ok := IsVariadicSpread(sp)
@@ -202,8 +202,8 @@ func TestCommonAncestorType(t *testing.T) {
 		t.Errorf("nil right = %v, want Any", got)
 	}
 	// Two value-tagged Integer literals share Integer.
-	a := NewInteger(42).Parent
-	b := NewInteger(99).Parent
+	a := NewInteger(42).Parent()
+	b := NewInteger(99).Parent()
 	if got := CommonAncestorType(a, b); !got.Equal(TInteger) {
 		t.Errorf("Integer/42 vs Integer/99 = %v, want Integer", got)
 	}
@@ -245,7 +245,7 @@ func TestJoinCarriersDynamicContagion(t *testing.T) {
 	// EITHER arm dynamic makes the merge dynamic — the gradual contagion
 	// rule (looser, never tighter).
 	left := JoinCarriers(NewDynamicCarrier(TInteger), NewCarrier(TString))
-	if !IsDynamic(&left) || !left.Carrier {
+	if !IsDynamic(&left) || !left.Carrier() {
 		t.Error("a dynamic left arm must make the merge dynamic")
 	}
 	right := JoinCarriers(NewCarrier(TString), NewDynamicCarrier(TInteger))
@@ -259,7 +259,7 @@ func TestJoinCarriersInner(t *testing.T) {
 
 	// Two None arms join to a None carrier — the parent-math shortcuts are
 	// unsafe against None's nil Parent, so this arm is explicit.
-	if got := JoinCarriersInner(none, none); !got.Carrier || !got.Parent.Equal(TNone) {
+	if got := JoinCarriersInner(none, none); !got.Carrier() || !got.Parent().Equal(TNone) {
 		t.Errorf("None+None = %v, want a None carrier", got)
 	}
 
@@ -268,7 +268,7 @@ func TestJoinCarriersInner(t *testing.T) {
 	a := NewCarrier(TInteger)
 	b := NewCarrier(TInteger)
 	got := JoinCarriersInner(a, b)
-	if !got.Parent.Equal(TInteger) || got.Data != nil {
+	if !got.Parent().Equal(TInteger) || got.Data() != nil {
 		t.Errorf("Integer+Integer = %v, want a bare Integer carrier", got)
 	}
 	if IDOf(&got) == IDOf(&a) || IDOf(&got) == IDOf(&b) {
@@ -276,15 +276,15 @@ func TestJoinCarriersInner(t *testing.T) {
 	}
 
 	// Subtype on either side widens to the supertype.
-	if got := JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TNumber)); !got.Parent.Equal(TNumber) {
+	if got := JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TNumber)); !got.Parent().Equal(TNumber) {
 		t.Errorf("Integer+Number = %v, want Number", got)
 	}
-	if got := JoinCarriersInner(NewCarrier(TNumber), NewCarrier(TInteger)); !got.Parent.Equal(TNumber) {
+	if got := JoinCarriersInner(NewCarrier(TNumber), NewCarrier(TInteger)); !got.Parent().Equal(TNumber) {
 		t.Errorf("Number+Integer = %v, want Number", got)
 	}
 
 	// DIRECT siblings collapse to their shared parent.
-	if got := JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TFloat)); !got.Parent.Equal(TNumber) {
+	if got := JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TFloat)); !got.Parent().Equal(TNumber) {
 		t.Errorf("Integer+Float = %v, want Number", got)
 	}
 
@@ -292,7 +292,7 @@ func TestJoinCarriersInner(t *testing.T) {
 	// first-match dispatch, so they stay a disjunct with the real
 	// alternatives.
 	got = JoinCarriersInner(NewCarrier(TInteger), NewCarrier(TString))
-	if !IsDisjunct(&got) || !got.Carrier {
+	if !IsDisjunct(&got) || !got.Carrier() {
 		t.Errorf("Integer+String = %v, want a disjunct carrier", got)
 	}
 
@@ -320,8 +320,8 @@ func TestJoinCarriersInner(t *testing.T) {
 	if IsDisjunct(&got) {
 		t.Errorf("over-cap union = %v, want the widened ancestor", got)
 	}
-	if !got.Parent.ConformsTo(TInteger) {
-		t.Errorf("widened ancestor = %v, want Integer or above", got.Parent)
+	if !got.Parent().ConformsTo(TInteger) {
+		t.Errorf("widened ancestor = %v, want Integer or above", got.Parent())
 	}
 }
 
@@ -349,7 +349,7 @@ func TestJoinCarrierStacks(t *testing.T) {
 	if len(joined) != 2 {
 		t.Fatalf("joined depth = %d, want 2", len(joined))
 	}
-	if !joined[0].Parent.Equal(TInteger) || !joined[1].Parent.Equal(TNumber) {
+	if !joined[0].Parent().Equal(TInteger) || !joined[1].Parent().Equal(TNumber) {
 		t.Errorf("joined = %v, want [Integer Number]", joined)
 	}
 
@@ -412,13 +412,13 @@ func TestJoinBranchDefAndInstallJoinedDefs(t *testing.T) {
 	InstallJoinedDefs(r,
 		map[string]Value{"both": NewCarrier(TInteger)},
 		map[string]Value{"both": NewCarrier(TFloat)})
-	if v, ok := r.Defs.Top("both"); !ok || !v.Parent.Equal(TNumber) {
+	if v, ok := r.Defs.Top("both"); !ok || !v.Parent().Equal(TNumber) {
 		t.Errorf("both-branch join = %v/%v, want a Number carrier", v, ok)
 	}
 
 	// then-only with NO pre-branch binding: the def is pushed as-is.
 	InstallJoinedDefs(r, map[string]Value{"thenFresh": NewCarrier(TString)}, nil)
-	if v, ok := r.Defs.Top("thenFresh"); !ok || !v.Parent.Equal(TString) {
+	if v, ok := r.Defs.Top("thenFresh"); !ok || !v.Parent().Equal(TString) {
 		t.Errorf("then-only fresh = %v/%v, want a String carrier", v, ok)
 	}
 
@@ -426,18 +426,18 @@ func TestJoinBranchDefAndInstallJoinedDefs(t *testing.T) {
 	// else path kept the original.
 	r.Defs.Push("thenPre", NewCarrier(TFloat))
 	InstallJoinedDefs(r, map[string]Value{"thenPre": NewCarrier(TInteger)}, nil)
-	if v, ok := r.Defs.Top("thenPre"); !ok || !v.Parent.Equal(TNumber) {
+	if v, ok := r.Defs.Top("thenPre"); !ok || !v.Parent().Equal(TNumber) {
 		t.Errorf("then-only over pre = %v/%v, want a Number carrier", v, ok)
 	}
 
 	// else-only, both with and without a pre-branch binding.
 	InstallJoinedDefs(r, nil, map[string]Value{"elseFresh": NewCarrier(TString)})
-	if v, ok := r.Defs.Top("elseFresh"); !ok || !v.Parent.Equal(TString) {
+	if v, ok := r.Defs.Top("elseFresh"); !ok || !v.Parent().Equal(TString) {
 		t.Errorf("else-only fresh = %v/%v, want a String carrier", v, ok)
 	}
 	r.Defs.Push("elsePre", NewCarrier(TFloat))
 	InstallJoinedDefs(r, nil, map[string]Value{"elsePre": NewCarrier(TInteger)})
-	if v, ok := r.Defs.Top("elsePre"); !ok || !v.Parent.Equal(TNumber) {
+	if v, ok := r.Defs.Top("elsePre"); !ok || !v.Parent().Equal(TNumber) {
 		t.Errorf("else-only over pre = %v/%v, want a Number carrier", v, ok)
 	}
 
@@ -615,7 +615,7 @@ func TestJoinCarriersInnerOverCap(t *testing.T) {
 	if IsDisjunct(&got) {
 		t.Fatalf("over-cap union = %v, want the widened ancestor", got)
 	}
-	if !got.Carrier {
+	if !got.Carrier() {
 		t.Errorf("widened result = %v, want a carrier", got)
 	}
 }
@@ -706,7 +706,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 	then := NewInteger(5)
 	InstallJoinedDefs(r, map[string]Value{"cbx": then}, nil)
 	got, ok := r.Defs.Top("cbx")
-	if !ok || IsConcrete(&got) || !got.Carrier || !got.Parent.Equal(TInteger) {
+	if !ok || IsConcrete(&got) || !got.Carrier() || !got.Parent().Equal(TInteger) {
 		t.Fatalf("a then-only fresh binding under an armed recorder is a payload-less Integer carrier: %v/%v", got, ok)
 	}
 	if IDOf(&got) == IDOf(&then) {
@@ -715,7 +715,7 @@ func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
 
 	els := NewString("s")
 	InstallJoinedDefs(r, nil, map[string]Value{"cby": els})
-	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(&got) || !got.Parent.ConformsTo(TString) || IDOf(&got) == IDOf(&els) {
+	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(&got) || !got.Parent().ConformsTo(TString) || IDOf(&got) == IDOf(&els) {
 		t.Errorf("an else-only fresh binding takes the same carrier: %v/%v", got, ok)
 	}
 

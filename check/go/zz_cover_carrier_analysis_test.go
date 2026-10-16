@@ -150,7 +150,7 @@ func TestZcaCarrierTypeNameRootNode(t *testing.T) {
 	// lattice node — so the name must come from the value itself, not a
 	// Parent deref.
 	lit := core.NewTypeLiteral(core.TNone)
-	if lit.Parent != nil {
+	if lit.Parent() != nil {
 		t.Fatal("fixture: the None literal must have a nil Parent")
 	}
 	if got := carrierTypeName(lit); got != "None" {
@@ -175,20 +175,20 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	}}})
 	if got := toCarrier(fnv); !core.IsConcrete(&got) {
 		t.Error("a Function value must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(*core.FnDefInfo); !ok {
-		t.Errorf("Function payload = %T after strip, want core.FnDefInfo", got.Data)
+	} else if _, ok := got.Data().(*core.FnDefInfo); !ok {
+		t.Errorf("Function payload = %T after strip, want core.FnDefInfo", got.Data())
 	}
 
 	// DepScalar constraints stay concrete: the DepScalarInfo bounds ARE
 	// the type definition.
 	dep := core.NewDepScalar(core.DepGT, core.NewInteger(10))
-	if _, ok := dep.Data.(core.DepScalarInfo); !ok {
-		t.Fatalf("fixture: NewDepScalar payload = %T", dep.Data)
+	if _, ok := dep.Data().(core.DepScalarInfo); !ok {
+		t.Fatalf("fixture: NewDepScalar payload = %T", dep.Data())
 	}
 	if got := toCarrier(dep); !core.IsConcrete(&got) {
 		t.Error("a DepScalar constraint must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(core.DepScalarInfo); !ok {
-		t.Errorf("DepScalar payload = %T after strip, want core.DepScalarInfo", got.Data)
+	} else if _, ok := got.Data().(core.DepScalarInfo); !ok {
+		t.Errorf("DepScalar payload = %T after strip, want core.DepScalarInfo", got.Data())
 	}
 
 	// Generic SCHEMA values stay concrete: the *TypeSchemaInfo IS the
@@ -202,8 +202,8 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	})
 	if got := toCarrier(schema); !core.IsConcrete(&got) {
 		t.Error("a schema value must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(*core.TypeSchemaInfo); !ok {
-		t.Errorf("schema payload = %T after strip, want *core.TypeSchemaInfo", got.Data)
+	} else if _, ok := got.Data().(*core.TypeSchemaInfo); !ok {
+		t.Errorf("schema payload = %T after strip, want *core.TypeSchemaInfo", got.Data())
 	}
 
 	// Micron values stay concrete: immutable structured scalars whose
@@ -214,19 +214,19 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	micron := core.NewValueRaw(core.TEmailon, core.MicronPayload{Fields: mfields})
 	if got := toCarrier(micron); !core.IsConcrete(&got) {
 		t.Error("a Micron value must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(core.MicronPayload); !ok {
-		t.Errorf("Micron payload = %T after strip, want core.MicronPayload", got.Data)
+	} else if _, ok := got.Data().(core.MicronPayload); !ok {
+		t.Errorf("Micron payload = %T after strip, want core.MicronPayload", got.Data())
 	}
 	pathon := core.NewValueRaw(core.TPathon, core.PathonPayload{Info: core.PathonInfo{Parts: []string{"a"}}})
 	if got := toCarrier(pathon); !core.IsConcrete(&got) {
 		t.Error("a Pathon value must survive carrier-stripping concrete")
-	} else if _, ok := got.Data.(core.PathonPayload); !ok {
-		t.Errorf("Pathon payload = %T after strip, want core.PathonPayload", got.Data)
+	} else if _, ok := got.Data().(core.PathonPayload); !ok {
+		t.Errorf("Pathon payload = %T after strip, want core.PathonPayload", got.Data())
 	}
 	// The negative pair: a micron-typed CARRIER (no payload) is already
 	// in carrier form and passes through unchanged — preservation is
 	// payload-gated, not type-gated.
-	if got := toCarrier(core.NewCarrier(core.TEmailon)); core.IsConcrete(&got) || !got.Carrier {
+	if got := toCarrier(core.NewCarrier(core.TEmailon)); core.IsConcrete(&got) || !got.Carrier() {
 		t.Error("a micron-typed carrier must stay a carrier")
 	}
 
@@ -253,9 +253,9 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	// A concrete-PAYLOAD carrier (Carrier=true, Data set — the check-mode
 	// literal shape) is already a carrier and returns unchanged.
 	lit := core.NewInteger(5)
-	lit.Carrier = true
+	lit.SetCarrier(true)
 	got := toCarrier(lit)
-	if !got.Carrier || got.Data == nil {
+	if !got.Carrier() || got.Data() == nil {
 		t.Error("a concrete-payload carrier must return unchanged")
 	}
 	if n, err := core.AsInteger(got); err != nil || n != 5 {
@@ -266,11 +266,11 @@ func TestZcaToCarrierPreservations(t *testing.T) {
 	// concrete value whose payload is not preserved by any guard.
 	none := core.NewNone()
 	stripped := toCarrier(none)
-	if !stripped.Carrier || stripped.Data != nil {
+	if !stripped.Carrier() || stripped.Data() != nil {
 		t.Errorf("toCarrier(none) = Carrier=%v Data=%T, want a payload-less carrier",
-			stripped.Carrier, stripped.Data)
+			stripped.Carrier(), stripped.Data())
 	}
-	if !stripped.Parent.Equal(core.TNone) {
+	if !stripped.Parent().Equal(core.TNone) {
 		t.Error("the stripped carrier must keep its None type")
 	}
 }
@@ -281,13 +281,13 @@ func TestZcaParamInputCarrierShapes(t *testing.T) {
 	// Untyped / explicitly-Any: a DYNAMIC carrier (gradual dispatch).
 	for _, tt := range []*core.Type{nil, core.TAny} {
 		c := ParamInputCarrier(tt)
-		if !core.IsDynamic(&c) || !c.Carrier {
+		if !core.IsDynamic(&c) || !c.Carrier() {
 			t.Errorf("ParamInputCarrier(%v) must be a dynamic carrier", tt)
 		}
 	}
 	// A concrete declared type stays a strict carrier.
 	c := ParamInputCarrier(core.TInteger)
-	if core.IsDynamic(&c) || !c.Carrier || !c.Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&c) || !c.Carrier() || !c.Parent().Equal(core.TInteger) {
 		t.Error("a concrete declared type must bind a strict typed carrier")
 	}
 	// A NAMED-UNION param binds the DISTRIBUTING disjunct carrier with
@@ -306,9 +306,9 @@ func TestZcaParamInputCarrierShapes(t *testing.T) {
 		t.Fatal("LookupTypeName(ZcaUq) = nil after install")
 	}
 	dv := ParamInputCarrier(def)
-	di, ok := dv.Data.(core.DisjunctInfo)
+	di, ok := dv.Data().(core.DisjunctInfo)
 	if !ok {
-		t.Fatalf("named-union param carrier Data = %T, want core.DisjunctInfo", dv.Data)
+		t.Fatalf("named-union param carrier Data = %T, want core.DisjunctInfo", dv.Data())
 	}
 	if !di.Declared {
 		t.Error("the union param carrier must be marked Declared")
@@ -383,12 +383,12 @@ func TestZcaReturnsPreserveListAtElemConstraint(t *testing.T) {
 	if !ok {
 		t.Fatal("the residual must carry the source's element constraint")
 	}
-	if !ec.Parent.Equal(core.TInteger) {
-		t.Errorf("element constraint = %v, want Integer", ec.Parent)
+	if !ec.Parent().Equal(core.TInteger) {
+		t.Errorf("element constraint = %v, want Integer", ec.Parent())
 	}
 	// Index out of range: a plain List carrier.
 	fallback := ReturnsPreserveListAt(3)([]core.Value{src}, nil)
-	if len(fallback) != 1 || !fallback[0].Parent.Equal(core.TList) {
+	if len(fallback) != 1 || !fallback[0].Parent().Equal(core.TList) {
 		t.Error("an out-of-range index must produce a bare List carrier")
 	}
 }
@@ -453,7 +453,7 @@ func TestZcaResolveTypeNameArgs(t *testing.T) {
 		t.Errorf("Integer word resolved to %v, want the Integer literal", out[0])
 	}
 	// Everything else passes through untouched.
-	if !core.IsWord(&out[1]) || out[1].Data != nil {
+	if !core.IsWord(&out[1]) || out[1].Data() != nil {
 		t.Error("a payload-less Word-typed carrier must pass through")
 	}
 	if w, err := core.AsWord(&out[2]); err != nil || w.Name != "zca-not-a-type-q" {
@@ -464,7 +464,7 @@ func TestZcaResolveTypeNameArgs(t *testing.T) {
 	}
 	// The copy is lazy AND non-destructive: the caller's slice keeps the
 	// raw word.
-	if !core.IsWord(&args[0]) || args[0].Data == nil {
+	if !core.IsWord(&args[0]) || args[0].Data() == nil {
 		t.Error("resolveTypeNameArgs must not mutate the caller's slice")
 	}
 	// The all-resolved common case allocates nothing: same values back.
@@ -572,8 +572,8 @@ func TestZcaNarrowDynamicUsesTightens(t *testing.T) {
 	if !core.IsDynamic(&got) {
 		t.Error("the narrowed binding stays a dynamic carrier")
 	}
-	if got.Parent == nil || !got.Parent.Equal(core.TList) {
-		t.Errorf("bound after use = %v, want dynamic(Any ∩ List) = List", got.Parent)
+	if got.Parent() == nil || !got.Parent().Equal(core.TList) {
+		t.Errorf("bound after use = %v, want dynamic(Any ∩ List) = List", got.Parent())
 	}
 	// Identity-preserving rebind: the narrowing refines the SAME runtime
 	// value, so the producing event's ID is kept.
@@ -612,7 +612,7 @@ func TestZcaNarrowDynamicUsesNoOps(t *testing.T) {
 	if r.Defs.Depth("zcarootq") != depth {
 		t.Error("a root-collapsed narrowing must leave the binding untouched")
 	}
-	if got, _ := r.Defs.Top("zcarootq"); !got.Parent.Equal(core.TDisjunct) {
+	if got, _ := r.Defs.Top("zcarootq"); !got.Parent().Equal(core.TDisjunct) {
 		t.Error("the binding must keep its prior, broader dynamic bound")
 	}
 
@@ -654,7 +654,7 @@ func TestZcaNarrowDynamicUsesPolymorphicSlot(t *testing.T) {
 	if r.Defs.Depth("zcapolyq") != depth {
 		t.Error("a polymorphic slot must not narrow the binding")
 	}
-	if got, _ := r.Defs.Top("zcapolyq"); !got.Parent.Equal(core.TAny) {
+	if got, _ := r.Defs.Top("zcapolyq"); !got.Parent().Equal(core.TAny) {
 		t.Error("the binding must keep its dynamic Any bound at a polymorphic slot")
 	}
 }
@@ -686,14 +686,14 @@ func TestZcaReturnsFreshInstanceSchemaConcrete(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("fresh-instance returns %d values, want 1", len(out))
 	}
-	if !out[0].Carrier || !core.IsDynamic(&out[0]) {
+	if !out[0].Carrier() || !core.IsDynamic(&out[0]) {
 		t.Error("a validated schema construction must be a dynamic instance carrier")
 	}
-	if rt, ok := out[0].Data.(core.RecordTypeInfo); !ok || rt.Fields == nil {
-		t.Errorf("instance carrier Data = %T, want the instantiated RecordTypeInfo", out[0].Data)
+	if rt, ok := out[0].Data().(core.RecordTypeInfo); !ok || rt.Fields == nil {
+		t.Errorf("instance carrier Data = %T, want the instantiated RecordTypeInfo", out[0].Data())
 	}
-	if !out[0].Parent.ConformsTo(core.TMap) {
-		t.Errorf("instance carrier type = %v, want the runtime Map tag", out[0].Parent)
+	if !out[0].Parent().ConformsTo(core.TMap) {
+		t.Errorf("instance carrier type = %v, want the runtime Map tag", out[0].Parent())
 	}
 
 	// CONCRETE data the runtime constructor REJECTS (unknown field): the
@@ -708,8 +708,8 @@ func TestZcaReturnsFreshInstanceSchemaConcrete(t *testing.T) {
 	if core.IsDynamic(&out[0]) {
 		t.Error("a failing construction must NOT ride the optimistic dynamic carrier")
 	}
-	if !out[0].Parent.Equal(core.ValueType(schema)) {
-		t.Errorf("failing construction carrier = %v, want the schema node", out[0].Parent)
+	if !out[0].Parent().Equal(core.ValueType(schema)) {
+		t.Errorf("failing construction carrier = %v, want the schema node", out[0].Parent())
 	}
 }
 
@@ -725,16 +725,16 @@ func TestZcaReturnsFreshInstanceRecordBodyAndMisc(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("record-body target returns %d values, want 1", len(out))
 	}
-	if !out[0].Carrier || !core.IsDynamic(&out[0]) {
+	if !out[0].Carrier() || !core.IsDynamic(&out[0]) {
 		t.Error("a record-body construction must be a dynamic instance carrier")
 	}
-	if rt, ok := out[0].Data.(core.RecordTypeInfo); !ok || rt.Fields == nil {
-		t.Errorf("record-body carrier Data = %T, want the RecordTypeInfo", out[0].Data)
+	if rt, ok := out[0].Data().(core.RecordTypeInfo); !ok || rt.Fields == nil {
+		t.Errorf("record-body carrier Data = %T, want the RecordTypeInfo", out[0].Data())
 	}
 
 	// Out-of-range mapping: Any carrier. Dynamic target: identity.
 	out = ReturnsFreshInstance(5)([]core.Value{recBody}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !out[0].Parent().Equal(core.TAny) {
 		t.Error("an out-of-range mapping must produce an Any carrier")
 	}
 	dyn := core.NewDynamicCarrier(core.TType)
@@ -776,8 +776,8 @@ func TestZcaAnalyseLoopBodyJoinAndCapture(t *testing.T) {
 	if !ok {
 		t.Fatal("the joined post-loop binding must be installed")
 	}
-	if !acc.Parent.Equal(core.TDisjunct) {
-		t.Errorf("post-loop bound = %v, want the String|Integer join", acc.Parent)
+	if !acc.Parent().Equal(core.TDisjunct) {
+		t.Errorf("post-loop bound = %v, want the String|Integer join", acc.Parent())
 	}
 	// A body-only binding leaks post-loop as itself (no pre to join).
 	if fresh, ok := r.Defs.Top("zcafreshq"); !ok {
@@ -854,8 +854,8 @@ func TestZcaAnalyseLoopBodyKleeneRounds(t *testing.T) {
 	if !ok {
 		t.Fatal("the joined post-loop binding must be installed")
 	}
-	if !acc.Parent.Equal(core.TDisjunct) {
-		t.Fatalf("post-loop bound = %v, want a widened union", acc.Parent)
+	if !acc.Parent().Equal(core.TDisjunct) {
+		t.Fatalf("post-loop bound = %v, want a widened union", acc.Parent())
 	}
 	// Round 1 alone would leave a two-alternative join; the re-analysis
 	// under the joined binding must have widened it further.
@@ -919,7 +919,7 @@ func TestZcaRunFnBodyOnceDefsUnwind(t *testing.T) {
 	body := []core.Value{core.NewWord("nq")}
 	caps := []core.CapturedBinding{{Name: "zcacapq", Value: core.NewCarrier(core.TString)}}
 	result := RunFnBodyOnce(r, "zcafnq", []string{"nq"}, body, []core.Value{core.NewCarrier(core.TInteger)}, caps, false)
-	if len(result) != 1 || !result[0].Parent.Equal(core.TInteger) {
+	if len(result) != 1 || !result[0].Parent().Equal(core.TInteger) {
 		t.Errorf("body residual = %v, want the param's Integer carrier", result)
 	}
 	if _, ok := r.Defs.Top("nq"); ok {
@@ -1007,7 +1007,7 @@ func TestZcaAnalyseFnBodyInflightBails(t *testing.T) {
 	if _, ok := core.IsVariadicSpread(out[0]); ok {
 		t.Error("the armed bail must NOT be a variadic spread")
 	}
-	if !out[0].Parent.Equal(core.TAny) || core.IsDynamic(&out[0]) {
+	if !out[0].Parent().Equal(core.TAny) || core.IsDynamic(&out[0]) {
 		t.Errorf("armed bail = %v, want a strict Any carrier", out[0])
 	}
 }
@@ -1079,7 +1079,7 @@ func TestZcaAnalyseFnBodyRecursionRefines(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("refined summary = %d values, want 1", len(out))
 	}
-	if out[0].Parent == nil || !out[0].Parent.ConformsTo(core.TInteger) {
+	if out[0].Parent() == nil || !out[0].Parent().ConformsTo(core.TInteger) {
 		t.Errorf("refined summary = %v, want the Integer residual", out[0])
 	}
 	key := FnAnalysisKey(r.AnalysisScopeID(), "zcarecq",

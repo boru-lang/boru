@@ -143,7 +143,7 @@ func TestW8OptionsBaseType(t *testing.T) {
 	// Default arm: an Atom is not one of the well-known bases, so its
 	// own Parent is returned unchanged.
 	atom := NewAtom("a")
-	if got := optionsBaseType(atom); !got.Equal(atom.Parent) {
+	if got := optionsBaseType(atom); !got.Equal(atom.Parent()) {
 		t.Fatalf("default arm should return the value's Parent, got %v", got)
 	}
 }
@@ -263,13 +263,13 @@ func TestW8FillDefaultsPreservesFlexMap(t *testing.T) {
 
 	// Plain-Map input → plain Map result.
 	plain := FillConcreteOptionDefaults(schema, NewMap(NewOrderedMap()))
-	if plain.Parent.ConformsTo(TFlexMap) {
+	if plain.Parent().ConformsTo(TFlexMap) {
 		t.Error("plain Map input must not become a FlexMap")
 	}
 	// FlexMap input → FlexMap result (flavor preserved through the fill).
 	flexOut := FillConcreteOptionDefaults(schema, NewFlexMap(NewOrderedMap()))
-	if !flexOut.Parent.ConformsTo(TFlexMap) {
-		t.Errorf("FlexMap input lost its flavor: parent=%s", flexOut.Parent)
+	if !flexOut.Parent().ConformsTo(TFlexMap) {
+		t.Errorf("FlexMap input lost its flavor: parent=%s", flexOut.Parent())
 	}
 	// The default was still materialized.
 	if m, _ := AsMap(flexOut); m == nil {

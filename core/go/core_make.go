@@ -102,7 +102,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 		return nil
 	}
 
-	if srcVal.Parent.ConformsTo(TMap) {
+	if srcVal.Parent().ConformsTo(TMap) {
 		provided, err := AsMutableMap(srcVal)
 		if err != nil {
 			return nil, fmt.Errorf("make: expected concrete map, got %s", srcVal.String())
@@ -113,7 +113,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 		return []Value{NewMap(result)}, nil
 	}
 
-	if !srcVal.Parent.ConformsTo(TList) {
+	if !srcVal.Parent().ConformsTo(TList) {
 		return nil, fmt.Errorf("make: record values must be a list or map, got %s", srcVal.String())
 	}
 	if !IsConcrete(&srcVal) {
@@ -121,7 +121,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 	}
 	elems, _ := AsList(srcVal)
 
-	isNamed := elems.Len() > 0 && elems.Get(0).Parent.ConformsTo(TMap)
+	isNamed := elems.Len() > 0 && elems.Get(0).Parent().ConformsTo(TMap)
 	if isNamed {
 		if _, err := AsMutableMap(elems.Get(0)); err != nil {
 			isNamed = false
@@ -131,7 +131,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 	if isNamed {
 		provided := NewOrderedMap()
 		for _, elem := range elems.Elems() {
-			if !elem.Parent.ConformsTo(TMap) {
+			if !elem.Parent().ConformsTo(TMap) {
 				return nil, fmt.Errorf("make: mixed named and positional fields")
 			}
 			m, err := AsMutableMap(elem)
@@ -166,7 +166,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 
 // parseMakeOptions extracts make options from an options map.
 func parseMakeOptions(opts Value) (useBase bool, err error) {
-	if !opts.Parent.ConformsTo(TMap) {
+	if !opts.Parent().ConformsTo(TMap) {
 		return false, fmt.Errorf("make: options must be a map, got %s", opts.String())
 	}
 	m, err := AsMutableMap(opts)
@@ -191,7 +191,7 @@ func MakeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, erro
 }
 
 func makeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
-	if !srcVal.Parent.ConformsTo(TMap) {
+	if !srcVal.Parent().ConformsTo(TMap) {
 		return nil, fmt.Errorf("make: object values must be a map, got %s", srcVal.String())
 	}
 	provided, err := AsMutableMap(srcVal)
@@ -232,7 +232,7 @@ func makeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 		val, hasVal := provided.Get(key)
 
 		if !hasVal {
-			if constraint.Data != nil {
+			if constraint.Data() != nil {
 				// A concrete default fills the omitted field — as a
 				// FRESH copy when it is (or contains) shared-mutable
 				// state, so every instance gets its own FlexList /
@@ -292,7 +292,7 @@ func makeResource(resType ResourceTypeInfo, provided *OrderedMap, r *Registry) (
 		constraint, _ := allFields.Get(key)
 		val, hasVal := provided.Get(key)
 		if !hasVal {
-			if constraint.Data != nil {
+			if constraint.Data() != nil {
 				result.Set(key, FreshenDefault(constraint))
 				continue
 			}
@@ -334,13 +334,13 @@ func MakeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 // containsCapturingFn reports whether v is, or holds at any depth, a fn
 // value WITH captures — a closure, whose captured state no const can carry.
 func containsCapturingFn(v Value) bool {
-	if fd, ok := v.Data.(*FnDefInfo); ok {
+	if fd, ok := v.Data().(*FnDefInfo); ok {
 		return len(fd.Captured) > 0
 	}
 	if !IsConcrete(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				val, _ := m.Get(k)
@@ -351,7 +351,7 @@ func containsCapturingFn(v Value) bool {
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			for i := 0; i < lst.Len(); i++ {
 				if containsCapturingFn(lst.Get(i)) {
@@ -375,7 +375,7 @@ func containsFlexOrStore(v Value) bool {
 	if !IsConcrete(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				val, _ := m.Get(k)
@@ -386,7 +386,7 @@ func containsFlexOrStore(v Value) bool {
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			for i := 0; i < lst.Len(); i++ {
 				if containsFlexOrStore(lst.Get(i)) {
@@ -405,7 +405,7 @@ func containsSharedMutable(v Value) bool {
 	if !IsConcrete(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if v.Parent().ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				val, _ := m.Get(k)
@@ -416,7 +416,7 @@ func containsSharedMutable(v Value) bool {
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TList) {
+	if v.Parent().ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			for i := 0; i < lst.Len(); i++ {
 				if containsSharedMutable(lst.Get(i)) {
@@ -450,14 +450,14 @@ func FreshenDefault(v Value) Value {
 	// The freshened value is CONSTRUCTED around its new payload
 	// (MintPayload): the same type, facets and occurrence as v, the
 	// mutable contents its own.
-	data := v.Data
+	data := v.Data()
 	switch {
 	case IsWeakFlexNode(v):
 		// Freshen re-establishes the weak representation: strong slots
 		// freshen recursively; weak slots carry over as-is — the
 		// referent is a handle the caller shares, and a freshened
 		// referent nobody holds would be dead on arrival.
-		switch wd := v.Data.(type) {
+		switch wd := v.Data().(type) {
 		case *WeakFlexMapData:
 			data = CloneWeakFlexMapData(wd, FreshenDefault)
 		case *WeakFlexListData:
@@ -489,7 +489,7 @@ func FreshenDefault(v Value) Value {
 			nsi.Data[k] = FreshenDefault(val)
 		}
 		data = &nsi
-	case v.Parent.ConformsTo(TMap):
+	case v.Parent().ConformsTo(TMap):
 		// Plain Map and FlexMap share the MapPayload shape; the Parent
 		// tag (kept by the construction) preserves the flavor.
 		m, err := AsMap(v)
@@ -502,7 +502,7 @@ func FreshenDefault(v Value) Value {
 			om.Set(k, FreshenDefault(val))
 		}
 		data = MapPayload{M: om}
-	case v.Parent.ConformsTo(TList):
+	case v.Parent().ConformsTo(TList):
 		lst, err := AsList(v)
 		if err != nil || lst.IsNil() {
 			return v
@@ -565,23 +565,23 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 	// rule — so the type's Behavior decides: DefaultBehavior is plain
 	// lattice conformance, bareRefineUnifier stays nominal, and a
 	// const singleton's Behavior matches by value equality.
-	if constraint.Data != nil && !IsTypeBody(&constraint) {
-		if val.Is(constraint.Parent) {
+	if constraint.Data() != nil && !IsTypeBody(&constraint) {
+		if val.Is(constraint.Parent()) {
 			return val, nil
 		}
 		return Value{}, fmt.Errorf("expected %s (the default's type), got %s (%s)",
-			constraint.Parent.Name(), val.Parent.Name(), val.String())
+			constraint.Parent().Name(), val.Parent().Name(), val.String())
 	}
 
 	// Class-typed field ({i:Inner}) — nominal check: the value must be
 	// an instance of that class (or a subclass, via the lattice).
 	if IsClassType(&constraint) {
 		info, _ := AsClassType(constraint)
-		if IsClassInstance(val) && info.Type != nil && val.Parent.ConformsTo(info.Type) {
+		if IsClassInstance(val) && info.Type != nil && val.Parent().ConformsTo(info.Type) {
 			return val, nil
 		}
 		return Value{}, fmt.Errorf("expected a %s instance, got %s (%s)",
-			info.Name, val.Parent.Name(), val.String())
+			info.Name, val.Parent().Name(), val.String())
 	}
 
 	// Type constraint — bare node, predicate type, disjunction.
@@ -589,7 +589,7 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 	unified, uerr := UnifyExplainR(constraint, val, r)
 	if uerr != nil {
 		return Value{}, fmt.Errorf("expected %s, got %s (%s): %s",
-			constraint.String(), val.Parent.Name(), val.String(), uerr.Error())
+			constraint.String(), val.Parent().Name(), val.String(), uerr.Error())
 	}
 	return unified, nil
 }
@@ -603,7 +603,7 @@ func MakeClassFieldValue(val Value, constraint Value, r *Registry) (Value, error
 // (from a `{ abs:… }` option map) forces it absolute regardless.
 func MakePathon(srcVal Value, abs bool) ([]Value, error) {
 	switch {
-	case srcVal.Parent.ConformsTo(TString) && srcVal.Data != nil:
+	case srcVal.Parent().ConformsTo(TString) && srcVal.Data() != nil:
 		// The string form recognises a Windows drive ("C:\..." / "C:/...")
 		// in addition to POSIX; a driveless path parses POSIX-style.
 		s, _ := AsString(srcVal)
@@ -612,7 +612,7 @@ func MakePathon(srcVal Value, abs bool) ([]Value, error) {
 			info.Abs = true
 		}
 		return []Value{NewValueRaw(TPathon, PathonPayload{Info: info})}, nil
-	case srcVal.Parent.ConformsTo(TList) && srcVal.Data != nil:
+	case srcVal.Parent().ConformsTo(TList) && srcVal.Data() != nil:
 		// The list form is explicit driveless (POSIX) segments; each element
 		// is split on "/", and a leading "/" on the first marks it absolute.
 		elems, _ := AsList(srcVal)
@@ -730,7 +730,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// Ideal's Instantiate, dispatched above, owns the whole family.)
 
 	if targetVal.Equal(TOptions) && IsBareTypeNode(&targetVal) {
-		if !srcVal.Parent.Equal(TMap) || !IsConcrete(&srcVal) {
+		if !srcVal.Parent().Equal(TMap) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: Options requires a concrete map")
 		}
 		src, err := AsMutableMap(srcVal)
@@ -748,12 +748,12 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		return []Value{NewOptionsType(resolved)}, nil
 	}
 
-	if targetVal.Data != nil {
+	if targetVal.Data() != nil {
 		return nil, fmt.Errorf("make: first argument must be a type literal or record type, got %s", targetVal.String())
 	}
 
 	targetType := literalNode(&targetVal)
-	if srcVal.Parent.ConformsTo(targetType) {
+	if srcVal.Parent().ConformsTo(targetType) {
 		return []Value{srcVal}, nil
 	}
 
@@ -765,12 +765,12 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// (design/legacy/CLASS-OBJECT.10.ignore §3c typed-defaults gap 1), so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed.
-	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
+	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin() == OriginUserDef {
 		targetType = canon
 		base := builtinBaseOf(targetType)
 		if base != nil && base.ConformsTo(TScalar) {
 			conv := srcVal
-			if !srcVal.Parent.ConformsTo(base) {
+			if !srcVal.Parent().ConformsTo(base) {
 				c, cerr := MakeConvert(srcVal, base)
 				if cerr != nil {
 					return nil, cerr
@@ -791,8 +791,8 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 // builtinBaseOf walks a user-minted type's parent chain to the first
 // builtin ancestor — the conversion base for `make <Refinement> v`.
 func builtinBaseOf(t *Type) *Type {
-	for p := t.Parent; p != nil; p = p.Parent {
-		if p.Origin == OriginBuiltin {
+	for p := t.Parent(); p != nil; p = p.Parent() {
+		if p.Origin() == OriginBuiltin {
 			return p
 		}
 	}
@@ -810,7 +810,7 @@ func MakeTable(tt TableTypeInfo, srcVal Value) ([]Value, error) {
 // field constraints in table rows. See MakeFieldValueR.
 func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 	recType := tt.Record
-	if !srcVal.Parent.ConformsTo(TList) {
+	if !srcVal.Parent().ConformsTo(TList) {
 		return nil, fmt.Errorf("make: table values must be a list of row lists, got %s", srcVal.String())
 	}
 	if !IsConcrete(&srcVal) {
@@ -821,7 +821,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 	resultRows := make([]Value, 0, rows.Len())
 
 	for rowIdx, rowVal := range rows.Slice() {
-		if !rowVal.Parent.ConformsTo(TList) {
+		if !rowVal.Parent().ConformsTo(TList) {
 			return nil, fmt.Errorf("make: table row %d must be a list, got %s", rowIdx, rowVal.String())
 		}
 		if !IsConcrete(&rowVal) {
@@ -829,7 +829,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 		}
 		rowElems, _ := AsList(rowVal)
 
-		isNamed := rowElems.Len() > 0 && rowElems.Get(0).Parent.ConformsTo(TMap)
+		isNamed := rowElems.Len() > 0 && rowElems.Get(0).Parent().ConformsTo(TMap)
 		if isNamed {
 			if _, err := AsMutableMap(rowElems.Get(0)); err != nil {
 				isNamed = false
@@ -840,7 +840,7 @@ func MakeTableR(tt TableTypeInfo, srcVal Value, r *Registry) ([]Value, error) {
 		if isNamed {
 			provided := NewOrderedMap()
 			for _, elem := range rowElems.Elems() {
-				if !elem.Parent.ConformsTo(TMap) {
+				if !elem.Parent().ConformsTo(TMap) {
 					return nil, fmt.Errorf("make: table row %d: mixed named and positional fields", rowIdx)
 				}
 				m, err := AsMutableMap(elem)
@@ -926,7 +926,7 @@ func registerKernelIdeals(r *Registry) {
 			if err != nil {
 				return nil, fmt.Errorf("make: expected a Resource/Entity type, got %s", typ.String())
 			}
-			if !data.Parent.ConformsTo(TMap) {
+			if !data.Parent().ConformsTo(TMap) {
 				return nil, fmt.Errorf("make: resource values must be a map, got %s", data.String())
 			}
 			provided, err := AsMutableMap(data)
@@ -977,17 +977,17 @@ func MakeWithOpts(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	for _, a := range args {
 		resolved := ResolveTypeLiteralDef(a, reg)
 		switch {
-		case isTypeLike(resolved) && targetVal.Parent.Equal(nil):
+		case isTypeLike(resolved) && targetVal.Parent().Equal(nil):
 			targetVal = resolved
 		default:
-			if srcVal.Parent.Equal(nil) {
+			if srcVal.Parent().Equal(nil) {
 				srcVal = a
 			} else {
 				optsVal = a
 			}
 		}
 	}
-	if optsVal.Parent.ConformsTo(TList) && srcVal.Parent.ConformsTo(TMap) && srcVal.Data != nil {
+	if optsVal.Parent().ConformsTo(TList) && srcVal.Parent().ConformsTo(TMap) && srcVal.Data() != nil {
 		srcVal, optsVal = optsVal, srcVal
 	}
 
@@ -1024,7 +1024,7 @@ func MakeWithOpts(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	if IsBareTypeNode(&targetVal) && targetVal.Equal(TPathon) {
 		abs := false
 		if optsMap, _ := AsMap(optsVal); optsMap != nil {
-			if v, ok := optsMap.Get("abs"); ok && v.Parent.ConformsTo(TBoolean) {
+			if v, ok := optsMap.Get("abs"); ok && v.Parent().ConformsTo(TBoolean) {
 				abs, _ = AsBoolean(v)
 			}
 		}
@@ -1063,11 +1063,11 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 			return id.Instantiate(targetVal, srcVal, reg)
 		}
 	}
-	if targetVal.Data != nil {
+	if targetVal.Data() != nil {
 		return nil, fmt.Errorf("make: expected a type literal, got %s", targetVal.String())
 	}
 	targetType := literalNode(&targetVal)
-	if srcVal.Parent.ConformsTo(targetType) {
+	if srcVal.Parent().ConformsTo(targetType) {
 		return []Value{srcVal}, nil
 	}
 	// A user-minted scalar refinement (def Foo refine Integer) is a
@@ -1077,10 +1077,10 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	// Without this, make silently returned a base-tagged value, so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed (design/legacy/CLASS-OBJECT.10.ignore §3c gap 1).
-	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
+	if canon := NodeOf(targetType); reg != nil && canon != nil && canon.Origin() == OriginUserDef {
 		if base := builtinBaseOf(canon); base != nil && base.ConformsTo(TScalar) {
 			conv := srcVal
-			if !srcVal.Parent.ConformsTo(base) {
+			if !srcVal.Parent().ConformsTo(base) {
 				c, cerr := MakeConvert(srcVal, base)
 				if cerr != nil {
 					return nil, cerr
@@ -1133,7 +1133,7 @@ func MakeScalarOptsHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 	if IsBareTypeNode(&targetVal) && targetVal.Equal(TPathon) {
 		abs := false
 		if optsMap, _ := AsMap(optsVal); optsMap != nil {
-			if v, ok := optsMap.Get("abs"); ok && v.Parent.ConformsTo(TBoolean) {
+			if v, ok := optsMap.Get("abs"); ok && v.Parent().ConformsTo(TBoolean) {
 				abs, _ = AsBoolean(v)
 			}
 		}
@@ -1237,7 +1237,7 @@ func MakeFieldValueR(val Value, constraint Value, r *Registry) (Value, error) {
 			}
 			return out, nil
 		}
-		if val.Parent.ConformsTo(constraintType) {
+		if val.Parent().ConformsTo(constraintType) {
 			return val, nil
 		}
 		// A numeric field must not launder a non-numeric source into a
@@ -1248,7 +1248,7 @@ func MakeFieldValueR(val Value, constraint Value, r *Registry) (Value, error) {
 		// source — Integer↔Float widening still coerces via MakeConvert, but
 		// a String/Boolean/Atom is rejected. (Explicit scalar `make Number
 		// "99"` is a different, deliberately lenient path and is unaffected.)
-		if constraintType.ConformsTo(TNumber) && !val.Parent.ConformsTo(TNumber) {
+		if constraintType.ConformsTo(TNumber) && !val.Parent().ConformsTo(TNumber) {
 			return Value{}, fmt.Errorf(
 				"field expects %s but %s is not a number",
 				constraintType.Leaf(), val.String())
@@ -1277,7 +1277,7 @@ func MakeFieldValueR(val Value, constraint Value, r *Registry) (Value, error) {
 //     expressions like [string or none] produce a disjunction.
 //  3. Everything else passes through unchanged.
 func ResolveFieldType(r *Registry, v Value) Value {
-	if v.Data != nil && (v.Parent.ConformsTo(TString) || v.Parent.ConformsTo(TAtom) || IsWord(&v)) {
+	if v.Data() != nil && (v.Parent().ConformsTo(TString) || v.Parent().ConformsTo(TAtom) || IsWord(&v)) {
 		var name string
 		if IsWord(&v) {
 			_as2, _ := AsWord(&v)
@@ -1326,11 +1326,11 @@ func ResolveFieldType(r *Registry, v Value) Value {
 		return ResolveWordsDeepR(v, r)
 	}
 
-	if v.Parent.Equal(TList) && !IsTypedList(&v) && !IsTableType(v) {
+	if v.Parent().Equal(TList) && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		input := make([]Value, elems.Len())
 		for i, e := range elems.Elems() {
-			if (e.Parent.ConformsTo(TString) || e.Parent.ConformsTo(TAtom)) && e.Data != nil {
+			if (e.Parent().ConformsTo(TString) || e.Parent().ConformsTo(TAtom)) && e.Data() != nil {
 				name, _ := AsString(e)
 				if r.Lookup(name) != nil {
 					input[i] = NewWord(name)

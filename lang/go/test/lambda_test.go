@@ -47,8 +47,8 @@ func TestArrowTokenAliasesAfn(t *testing.T) {
 			}
 			continue
 		}
-		if a[i].Parent != b[i].Parent {
-			t.Errorf("token[%d] parent differs: => %s, afn %s", i, a[i].Parent.String(), b[i].Parent.String())
+		if a[i].Parent() != b[i].Parent() {
+			t.Errorf("token[%d] parent differs: => %s, afn %s", i, a[i].Parent().String(), b[i].Parent().String())
 		}
 		if a[i].String() != b[i].String() {
 			t.Errorf("token[%d] string differs: => %q, afn %q", i, a[i].String(), b[i].String())
@@ -170,12 +170,12 @@ func TestLambdaProducesAnonymousFunction(t *testing.T) {
 		t.Fatalf("got %d results, want 1", len(result))
 	}
 	v := result[0]
-	if !v.Parent.Equal(core.TFunction) {
-		t.Fatalf("Parent = %s, want Function", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Fatalf("Parent = %s, want Function", v.Parent().String())
 	}
-	fnDef, ok := core.FnDefOf(v.Data)
+	fnDef, ok := core.FnDefOf(v.Data())
 	if !ok {
-		t.Fatalf("payload type = %T, want FnDefInfo", v.Data)
+		t.Fatalf("payload type = %T, want FnDefInfo", v.Data())
 	}
 	if !fnDef.Anonymous {
 		t.Errorf("FnDefInfo.Anonymous = false, want true (afn must mark its output)")
@@ -199,9 +199,9 @@ func TestFnNamedIsNotAnonymous(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	v := result[0]
-	fnDef, ok := core.FnDefOf(v.Data)
+	fnDef, ok := core.FnDefOf(v.Data())
 	if !ok {
-		t.Fatalf("payload type = %T, want FnDefInfo", v.Data)
+		t.Fatalf("payload type = %T, want FnDefInfo", v.Data())
 	}
 	if fnDef.Anonymous {
 		t.Errorf("fn-produced FnDefInfo.Anonymous = true, want false")
@@ -245,11 +245,11 @@ func TestLambdaCheckModeInfersInteger(t *testing.T) {
 		t.Fatalf("got %d results, want 1: %v", len(out), out)
 	}
 	v := out[0]
-	if !v.Carrier {
+	if !v.Carrier() {
 		t.Errorf("expected carrier in check mode, got %v", v)
 	}
-	if !v.Parent.Equal(core.TInteger) {
-		t.Errorf("carrier Parent = %s, want Integer", v.Parent.String())
+	if !v.Parent().Equal(core.TInteger) {
+		t.Errorf("carrier Parent = %s, want Integer", v.Parent().String())
 	}
 }
 
@@ -260,11 +260,11 @@ double 5`)
 		t.Fatalf("got %d results, want 1: %v", len(out), out)
 	}
 	v := out[0]
-	if !v.Carrier {
+	if !v.Carrier() {
 		t.Errorf("expected carrier in check mode, got %v", v)
 	}
-	if !v.Parent.Equal(core.TInteger) {
-		t.Errorf("carrier Parent = %s, want Integer", v.Parent.String())
+	if !v.Parent().Equal(core.TInteger) {
+		t.Errorf("carrier Parent = %s, want Integer", v.Parent().String())
 	}
 }
 
@@ -283,7 +283,7 @@ func TestLambdaCheckModeStaticAnyIsIgnored(t *testing.T) {
 	// concrete value; the inspect-static Returns=[Any] doesn't matter
 	// here because we haven't called the lambda yet — this just
 	// confirms it constructs without error.
-	if !v.Parent.Equal(core.TFunction) {
-		t.Errorf("constructed lambda Parent = %s, want Function", v.Parent.String())
+	if !v.Parent().Equal(core.TFunction) {
+		t.Errorf("constructed lambda Parent = %s, want Function", v.Parent().String())
 	}
 }

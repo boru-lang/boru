@@ -88,7 +88,7 @@ func wantErrContaining(t *testing.T, err error, sub string) {
 // directly with args — the runtime dispatch path minus the engine.
 func applyWrapper(t *testing.T, r *native.Registry, w native.Value, args ...native.Value) ([]native.Value, error) {
 	t.Helper()
-	fd, ok := native.FnDefOf(w.Data)
+	fd, ok := native.FnDefOf(w.Data())
 	if !ok {
 		t.Fatalf("wrapper is not a Function: %v", w)
 	}
@@ -136,8 +136,8 @@ func TestFnUtilShapeGuards(t *testing.T) {
 	// memoize over a multi-overload fn declines (the frontier rows pin
 	// curry's twin in-language).
 	two := native.FnDefInfo{Name: "two", Signatures: []core.Signature{
-		fnAdd1().Data.(*native.FnDefInfo).Signatures[0],
-		fnTwoOut().Data.(*native.FnDefInfo).Signatures[0],
+		fnAdd1().Data().(*native.FnDefInfo).Signatures[0],
+		fnTwoOut().Data().(*native.FnDefInfo).Signatures[0],
 	}}
 	_, err = fnUtilHandler(t, "memoize")([]native.Value{native.NewFunction(two)}, nil, nil, r)
 	wantErrContaining(t, err, "exactly one signature")
@@ -324,7 +324,7 @@ func TestFnUtilConstIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := out[0].Data.(*native.FnDefInfo); !ok {
+	if _, ok := out[0].Data().(*native.FnDefInfo); !ok {
 		t.Fatalf("identity invoked its Function argument: %v", out[0])
 	}
 	out, err = fnUtilHandler(t, "_f_const")([]native.Value{native.NewString("k")}, nil, nil, r)

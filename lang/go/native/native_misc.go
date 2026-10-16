@@ -568,7 +568,7 @@ func formatTypeSchema(name string, v Value) string {
 			inherited = "  (inherited)"
 		}
 		if IsConcrete(&c) {
-			fmt.Fprintf(&b, "  %-*s : %s = %s  (default)%s\n", w, k, c.Parent.Name(), c.String(), inherited)
+			fmt.Fprintf(&b, "  %-*s : %s = %s  (default)%s\n", w, k, c.Parent().Name(), c.String(), inherited)
 		} else {
 			fmt.Fprintf(&b, "  %-*s : %s  (required)%s\n", w, k, c.String(), inherited)
 		}
@@ -599,7 +599,7 @@ func formatSurfaceSchema(name string, v Value) string {
 	for _, k := range info.Required.Keys() {
 		shape, _ := info.Required.Get(k)
 		shapeStr := shape.String()
-		if undef, ok := shape.Data.(FnUndefInfo); ok {
+		if undef, ok := shape.Data().(FnUndefInfo); ok {
 			var parts []string
 			for _, spec := range undef.Sigs {
 				parts = append(parts, renderSpec(spec))
@@ -657,7 +657,7 @@ func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	}
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
-		if fnDef, ok := v.Data.(*FnDefInfo); ok && fnDef.Name != "" {
+		if fnDef, ok := v.Data().(*FnDefInfo); ok && fnDef.Name != "" {
 			r.Check.RecordUse(fnDef.Name)
 			continue
 		}
@@ -668,7 +668,7 @@ func exportNoopHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		case IsAtom(v):
 			a, _ := AsAtom(v)
 			r.Check.RecordUse(a)
-		case v.Parent.ConformsTo(TString):
+		case v.Parent().ConformsTo(TString):
 			// A bare name in an export map can survive as a String after
 			// auto-eval; treat its text as the referenced name.
 			if s, sok := AsString(v); sok == nil {

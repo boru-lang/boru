@@ -232,7 +232,7 @@ func TestValueToSQLBool(t *testing.T) {
 }
 
 func TestValueToSQLNone(t *testing.T) {
-	got, err := valueToSQL(Value{Parent: TNone})
+	got, err := valueToSQL(ValueOf(&Datum{Parent: TNone}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestBuildInListFromTableInWhere(t *testing.T) {
 	row := NewOrderedMap()
 	row.Set("id", NewInteger(5))
 	td := TableData{Record: rec, Rows: []Value{NewMap(row)}}
-	tdVal := Value{Parent: TList, Data: td}
+	tdVal := ValueOf(&Datum{Parent: TList, Data: td})
 
 	got, err := buildInList(tdVal)
 	if err != nil {
@@ -356,7 +356,7 @@ func TestBuildInListFromTableInWhere(t *testing.T) {
 
 func TestIsTableOrQueryTableData(t *testing.T) {
 	td := TableData{}
-	v := Value{Parent: TList, Data: td}
+	v := ValueOf(&Datum{Parent: TList, Data: td})
 	if !isTableOrQuery(v) {
 		t.Error("expected true for TableData")
 	}
@@ -364,7 +364,7 @@ func TestIsTableOrQueryTableData(t *testing.T) {
 
 func TestIsTableOrQueryQueryBuilder(t *testing.T) {
 	qb := QueryBuilder{}
-	v := Value{Parent: TList, Data: ExtensionPayload{Body: qb}}
+	v := ValueOf(&Datum{Parent: TList, Data: ExtensionPayload{Body: qb}})
 	if !isTableOrQuery(v) {
 		t.Error("expected true for QueryBuilder")
 	}
@@ -395,7 +395,7 @@ func TestScalarFromTableOneRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	_as51, _ := AsInteger(val)
-	if !val.Parent.ConformsTo(TInteger) || _as51 != 42 {
+	if !val.Parent().ConformsTo(TInteger) || _as51 != 42 {
 		t.Errorf("expected 42, got %v", val)
 	}
 }
@@ -411,7 +411,7 @@ func TestScalarFromTableNoRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !IsNoneShape(val) {
-		t.Errorf("expected None, got %v", val.Parent)
+		t.Errorf("expected None, got %v", val.Parent())
 	}
 }
 
@@ -457,7 +457,7 @@ func TestResolveScalarValueTableData(t *testing.T) {
 	row.Set("x", NewInteger(99))
 	td := TableData{Record: rec, Rows: []Value{NewMap(row)}}
 
-	v := Value{Parent: TList, Data: td}
+	v := ValueOf(&Datum{Parent: TList, Data: td})
 	got, err := resolveScalarValue(v)
 	if err != nil {
 		t.Fatal(err)
@@ -572,7 +572,7 @@ func TestSQLiteQueryWithNullValues(t *testing.T) {
 	row1.Set("score", NewInteger(100))
 	row2 := NewOrderedMap()
 	row2.Set("name", NewString("bob"))
-	row2.Set("score", Value{Parent: TNone})
+	row2.Set("score", ValueOf(&Datum{Parent: TNone}))
 
 	td := TableData{Record: rec, Rows: []Value{NewMap(row1), NewMap(row2)}}
 
@@ -879,7 +879,7 @@ func TestResolveFieldTypeString(t *testing.T) {
 	// ResolveFieldType should resolve "MyNum" string to the type value
 	result := ResolveFieldType(r, NewString("MyNum"))
 	if !IsTypeBody(&result) {
-		t.Errorf("expected type value, got %s (data=%v)", result.Parent, result.Data)
+		t.Errorf("expected type value, got %s (data=%v)", result.Parent(), result.Data())
 	}
 }
 
@@ -911,7 +911,7 @@ func TestResolveFieldTypeList(t *testing.T) {
 		NewWord("String"), NewWord("tor"), NewWord("None"),
 	}))
 	// Should be a disjunct type, not a raw list
-	if result.Parent.ConformsTo(TList) && !IsTypedList(&result) {
+	if result.Parent().ConformsTo(TList) && !IsTypedList(&result) {
 		t.Error("expected resolved type, not raw list")
 	}
 }
@@ -926,7 +926,7 @@ func TestResolveFieldTypePassthrough(t *testing.T) {
 	// A type literal should pass through unchanged
 	v := NewTypeLiteral(TNumber)
 	result := ResolveFieldType(r, v)
-	if !result.Parent.Equal(v.Parent) {
+	if !result.Parent().Equal(v.Parent()) {
 		t.Errorf("expected pass-through, got %v", result)
 	}
 }
@@ -981,8 +981,8 @@ func TestResolveSigTypeList(t *testing.T) {
 	if pattern == nil {
 		t.Fatal("expected non-nil pattern for list")
 	}
-	if !pattern.Parent.Equal(TList) {
-		t.Errorf("expected pattern to be a list, got %s", pattern.Parent)
+	if !pattern.Parent().Equal(TList) {
+		t.Errorf("expected pattern to be a list, got %s", pattern.Parent())
 	}
 }
 

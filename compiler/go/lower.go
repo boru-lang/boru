@@ -305,7 +305,7 @@ func rootBindWritesBack(d *emitDynBind) bool {
 	if d.srcSeq < 0 {
 		return !core.IsConcrete(&d.val)
 	}
-	switch d.val.Data.(type) {
+	switch d.val.Data().(type) {
 	case core.IntPayload, core.FloatPayload, core.StrPayload, core.BoolPayload, core.AtomPayload,
 		core.PathonPayload, core.NonePayload, core.BigIntPayload, core.DecimalPayload,
 		core.TimePayload, core.DurationPayload, core.TimezonePayload:

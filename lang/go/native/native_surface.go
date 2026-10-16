@@ -39,7 +39,7 @@ func surfaceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	for _, key := range m.Keys() {
 		v, _ := m.Get(key)
 		v = ResolveWordValue(v)
-		if !v.Parent.Equal(TFnUndef) {
+		if !v.Parent().Equal(TFnUndef) {
 			return nil, r.BoruError("surface_error",
 				fmt.Sprintf("surface: operation %q must be an fnsig shape (e.g. {%s: fnsig [[Self] [Float]]}), got %s",
 					key, key, v.String()), "surface")
@@ -82,7 +82,7 @@ func exposesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	var gaps []string
 	for _, op := range sinfo.Required.Keys() {
 		shapeVal, _ := sinfo.Required.Get(op)
-		undef, ok := shapeVal.Data.(FnUndefInfo)
+		undef, ok := shapeVal.Data().(FnUndefInfo)
 		if !ok {
 			gaps = append(gaps, fmt.Sprintf("%s: required shape is not statically known (declare it with fnsig)", op))
 			continue
