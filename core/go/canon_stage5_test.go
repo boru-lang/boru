@@ -28,7 +28,7 @@ type x5DelegatingBehavior struct{ x5StubBehavior }
 func (x5DelegatingBehavior) FormatDelegate() {}
 
 func x5UserType(name string, parent *Type, b TypeBehavior) *Type {
-	t := addrOf(withID(Type{tmeta: &typeMeta{Name: name, Behavior: b}, Parent: parent}, name))
+	t := addrOf(withID(Type{c: &content{tmeta: &typeMeta{Name: name, Behavior: b}, parent: parent}}, name))
 	SetOrigin(t, OriginUserDef)
 	return t
 }

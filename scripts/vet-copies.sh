@@ -5,11 +5,13 @@
 # Builds tools/vetcopies and runs it as go vet's -vettool in every module
 # go.work lists, counting the copies of a core.Value in NON-TEST code:
 #
-#   value   copylocks findings through the zero-size noCopy marker in
-#           core.Value: every by-value copy of a single Value, or of a
-#           struct that holds one by value
+#   value   copylocks findings through the zero-size noCopy marker in a
+#           value's content (core's unexported content struct; no-copy
+#           phase 4): every by-value copy of content, or of a struct that
+#           holds it by value. A core.Value is a holder handle over the
+#           content, and copying it copies a cell record, not content
 #   bulk    bulkcopy findings: copy() and variadic append() over a
-#           []core.Value, the element copies copylocks cannot see
+#           []core.Value, the runs of holders copylocks cannot see
 #
 # A module fails when either count rises above its ceiling in
 # tools/vetcopies/ceilings.tsv, or when copylocks reports a copy of any

@@ -23,6 +23,11 @@ import (
 //	IsTypeLiteral(v)   — IsBareTypeNode minus the None literal
 //	RequireConcreteList/Map(v, op) — accessor guards
 //
+// Since no-copy phase 4 the payload is read through core.DataOf (the
+// field is the content's, unexported), so the probe is spelled
+// `DataOf(&v) == nil` as well as the historical `v.Data == nil`; the gate
+// matches both.
+//
 // A small allowlist of files legitimately tests payload presence at the
 // lowest level (the value/predicate/classifier home, the rendering and
 // comparison primitives, and carrier construction). Everywhere else the
@@ -44,7 +49,7 @@ func TestNoRawDataNilProbes(t *testing.T) {
 		"data_nil_gate_test.go":       true, // this gate (mentions the pattern in prose)
 	}
 
-	probe := regexp.MustCompile(`\.Data\s*==\s*nil`)
+	probe := regexp.MustCompile(`(?:\.Data|DataOf\((?:[^()]|\([^()]*\))*\))\s*==\s*nil`)
 	var offenders []string
 
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
@@ -79,7 +84,7 @@ func TestNoRawDataNilProbes(t *testing.T) {
 		t.Fatalf("walk: %v", err)
 	}
 	if len(offenders) > 0 {
-		t.Errorf("raw `.Data == nil` probe(s) found outside the allowlist — "+
+		t.Errorf("raw `DataOf(&v) == nil` / `.Data == nil` probe(s) found outside the allowlist — "+
 			"use IsBareTypeNode / IsConcrete / IsTypeLiteral instead:\n  %s",
 			strings.Join(offenders, "\n  "))
 	}

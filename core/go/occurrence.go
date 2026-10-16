@@ -364,8 +364,8 @@ func IDOf(v *Value) string {
 		}
 		return v.occ.id
 	}
-	if v.tmeta != nil {
-		return v.tmeta.id
+	if tmetaOf(v) != nil {
+		return tmetaOf(v).id
 	}
 	return ""
 }
@@ -380,8 +380,8 @@ func SetID(v *Value, id string) {
 		return
 	}
 	own := ""
-	if v.tmeta != nil {
-		own = v.tmeta.id
+	if tmetaOf(v) != nil {
+		own = tmetaOf(v).id
 	}
 	rec := occOf(v)
 	switch {

@@ -4671,8 +4671,9 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 // forward-collection completion points where the word must re-dispatch
 // against the stack; callers set e.pointer themselves as needed.
 func (e *Engine) forceStackWord(idx int, w WordInfo) {
-	nw := NewWordModified(w.Name, w.ArgCount, true, false)
-	setPosRef(&nw, posOf(e.Tape.Ref(idx))) // the rewritten word keeps the cell's position
+	cell := e.Tape.Ref(idx)
+	nw := holderOf(TWord, forceStackContent(cell, w))
+	setPosRef(&nw, posOf(cell)) // the rewritten word keeps the cell's position
 	e.Tape.Set(idx, nw)
 }
 
@@ -5178,7 +5179,7 @@ func (e *Engine) stepLiteral() error {
 	} else {
 		// The marker's own cell takes the advanced payload: no new Value
 		// per arrival (nothing reads a forward marker's identity).
-		SetData(e.Tape.Ref(fwdIdx), fwd)
+		advanceForward(e.Tape.Ref(fwdIdx), fwd)
 		e.Pointer = fwdIdx + 1
 	}
 
@@ -5796,9 +5797,9 @@ func appendLoweredReach(out []Value, info ReachInfo) []Value {
 			segAnchor = seg.KeyLit
 		}
 		if seg.Getr {
-			out = append(out, WithPos(NewWord("dotr"), segAnchor))
+			out = append(out, WithPos(holderOf(TWord, internedDotrWord), segAnchor))
 		} else {
-			out = append(out, WithPos(NewWord("dot"), segAnchor))
+			out = append(out, WithPos(holderOf(TWord, internedDotWord), segAnchor))
 		}
 		if seg.Computed {
 			out = append(out, NewParenExpr(seg.KeyExpr))

@@ -34,8 +34,7 @@ type SpreadPayload struct {
 // oracle intercepts it via IsVariadicSpread BEFORE any Dynamic check, so the
 // dynamic flag never weakens the element-type coverage.
 func NewVariadicCarrier(elem Value) Value {
-	v := NewValueRaw(TAny, SpreadPayload{Elem: elem})
-	SetCarrier(&v, true)
+	v := holderOf(TAny, &content{parent: TAny, data: SpreadPayload{Elem: elem}, carrier: true})
 	SetDynamic(&v, true)
 	return v
 }

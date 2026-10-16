@@ -104,7 +104,7 @@ func (s6b5DeclineConverter) ToMap(Value) (Value, error)  { return Value{}, ErrNo
 func (s6b5DeclineConverter) ToList(Value) (Value, error) { return Value{}, ErrNoConverter }
 
 func TestS6b5ConvertIdealDecliningBehaviorWalks(t *testing.T) {
-	child := &Type{tmeta: &typeMeta{Name: "S6b5Declineon", Behavior: s6b5DeclineConverter{}}, Parent: TIdeal}
+	child := &Type{c: &content{tmeta: &typeMeta{Name: "S6b5Declineon", Behavior: s6b5DeclineConverter{}}, parent: TIdeal}}
 	v := NewValueRaw(child, IntPayload{N: 1})
 
 	m, err := ConvertIdealToMap(v)
@@ -212,7 +212,7 @@ func TestS6b5NodifyValueEdges(t *testing.T) {
 
 	// A declining Nodifier on the chain: the walk continues and, with no
 	// other Nodifier registered, returns the value unchanged.
-	typ := &Type{tmeta: &typeMeta{Name: "S6b5Nodon", Behavior: s6b5DeclineNodifier{}}}
+	typ := &Type{c: &content{tmeta: &typeMeta{Name: "S6b5Nodon", Behavior: s6b5DeclineNodifier{}}}}
 	v := NewValueRaw(typ, IntPayload{N: 4})
 	out, err = NodifyValue(v)
 	if err != nil {

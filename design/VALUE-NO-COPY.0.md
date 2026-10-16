@@ -463,7 +463,14 @@ part gets a type of its own.
 - Allocation: a mint allocates its content unless it is interned. Small
   integers, the two booleans, none, the empty string and every type
   literal (which shares its node's content) cost nothing; the rest is
-  heap-allocated and measured, with a per-run slab in reserve.
+  heap-allocated and measured, with a per-run slab in reserve. As built
+  (§9), the interned set also takes the payload-less structural markers
+  and the reach lowering's dot words; the engine's per-step control
+  markers (forward, mark, move) hold content and payload in one cell;
+  a word's force-stack form and its `/q` atom are built once per word
+  content; and a labelled builtin node's interval labels are mirrored
+  into its content, so `Type.Equal` and `IsAncestor` do not pay the
+  extra pointer hop. The slab was not needed.
 - Enforcement: the `noCopy` marker moves to the content, so `make
   vet-copies` counts copies of content (only core's constructors could
   make one), and a copy of a run of holders is the exceptions list's
@@ -483,10 +490,10 @@ changes. The alternative it rejected, in-place mutation like flex
 containers, was 1–2 weeks of spec work touching every row that relies on
 the receiver staying put. Value semantics without copying a `Value`
 needs the elements to be references, which is phase 4, or a persistent
-container representation that shares structure between versions. While
-the header stays a by-value struct, building the new container copies
-each unchanged element's header, a bulk copy the exceptions list
-sanctions until then. `StructUtil.clone`, `send`, `memoize` and the
+container representation that shares structure between versions. Since
+phase 4 the elements are holders over shared content, so building the
+new container copies each unchanged element's holder, a cell record, and
+no content. `StructUtil.clone`, `send`, `memoize` and the
 debugger ring are explicit constructions of equal values either way.
 
 Order and dependencies: 0 → 1 → 2 can land in any interleaving; 3
@@ -858,3 +865,89 @@ overlapping) is most of the rest. What the pointer switch would retire
 is D10 alone — every other transitional allowance is gone — so it would
 buy consistency rather than speed, the case §6 anticipated; the next
 speed is in `Type.Equal` and the matcher.
+
+**Phase 4 — 2026-10-16.** The value leaves its holder: a `Value` is a
+24-byte handle and its content is shared and immutable (§6, "Phase 4 as
+built"). It landed in three steps.
+
+- **Accessors first, on the old layout** (1/n–2/n). `DataOf`,
+  `ParentOf`, `IsCarrier`, `OriginOf`, `IsInternal`, their setters and
+  `MakeValue`/`MakeCarrierValue` went in over the phase-3 header, and a
+  type-checked rewrite moved every module onto them — about 4,800 reads,
+  160 writes and 411 keyed literals across 708 files — with no change in
+  behaviour, so the switch itself touched core alone.
+- **The switch** (3/n; `core/go/value.go`, `value_fields.go`,
+  `content_facets.go`). `Value` is `{c *content; occ *occurrence; flags}`
+  (`TestValueHeaderSize` pins three words). The content — payload,
+  parent, type metadata, element constraint, namespace facet, kind flags
+  — is unexported, 64 bytes, and never written once a holder refers to
+  it: a setter gives its holder content of its own (`ownContent`), which
+  keeps phase 3's per-holder semantics exactly — a write reaches the
+  holder it is made through, as a write to a by-value field did. The zero
+  `Value` has no content, and every accessor answers the zero value for
+  it. A scan of every module found two `==` between Values, both tests
+  against the zero Value, which the handle answers the same.
+- **What a mint costs** (3/n; `value_intern.go`, `marker_cell.go`,
+  `content_derived.go`). The raw switch made every mint two allocations
+  where a struct payload is boxed (the content, the payload), which put
+  the interpreter's per-step markers on the profile. Interned content
+  covers the small integers (−128..1023), the booleans, none, the empty
+  string, the structural markers and the reach lowering's dot words; the
+  forward, mark and move markers hold content and payload in one cell (an
+  arrival advances a forward by a new cell, never in place); a word's
+  force-stack form and its `/q` atom are built once per word content and
+  kept with it (an atomic memo, since engines share program tokens); and
+  the scan's literal stand-ins (`&Value{…}` per call, which now escaped)
+  are shared probes. The extra pointer hop showed in `Type.Equal`
+  (`tmetaOf` alone 8% flat on `for_tight`), so a labelled builtin node's
+  interval labels are mirrored into its content's padding, where `Equal`
+  and `IsAncestor` read them. The per-run slab §6 held in reserve was not
+  needed.
+- **Enforcement.** The `noCopy` marker is in the content, which only
+  core's constructors build, field by field (`copyFacets`), so the vet
+  ratchet's value counts are zero in every module; the bulk counts are
+  runs of holders, cell records (class C). D10 is retired (E17), and
+  class D of the exceptions list is empty. The eng gate against raw
+  payload probes had gone blind with the 2/n rewrite — it searched for
+  `.Data == nil`, which no longer compiles — and now matches the
+  accessor form too. (It walks eng/go alone; the probes in core, check
+  and compiler have been outside it since the module cut, unchanged
+  here.)
+
+The runtime numbers are the tuned head against the phase-3 head with the
+2/n accessors (`428f833df`), each benchmark run alternately on the two
+binaries, four ABBA rounds, the minimum of each (the medians agree to
+0.003). Whole-suite rounds drifted 10–25% between runs on this machine,
+too much for a phase-sized difference; measured that way, the raw switch
+before tuning came out at 1.025 overall, 1.130 on the interpreter lane
+and 0.915 on the compiled lane.
+
+| | phase 3 | phase 4 |
+|---|---:|---:|
+| Value holder (bytes) | 64 | 24 (content 64, shared) |
+| non-test copies (vet): content / bulk runs of holders | 12,799 / 291 (header copies) | 0 / 291 |
+| anchors, geomean time vs phase 3 (55 benchmarks, alternated) | 1.000 | 0.903 |
+| interpreter lane / compiled lane / word benchmarks vs phase 3 | 1.000 / 1.000 / 1.000 | 0.972 / 0.816 / 0.968 |
+| anchors vs phase 0 (chained through phase 3's 0.615) | 0.615 | 0.555 |
+| interpreter / compiled lane vs phase 0 (chained) | 0.598 / 0.602 | 0.581 / 0.491 |
+| bytes/op, anchors geomean vs phase 3 | 1.000 | 0.659 |
+| allocs/op, anchors geomean vs phase 3 | 1.000 | 0.911 |
+| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,265 / 3,833 / 5,433 | 5,633 / 3,631 / 4,232 |
+| check / compile benchmarks: time; allocs vs phase 3 | 1.000 / 1.000 | 0.897 / 0.882; +1.0% / +0.8% |
+
+The allocation ceilings move by what was measured: the interpreter's
+`arith_chain64`, `compare_loop`, `if_scalar`, `for_tight`, `each_list`
+and `map_get` and the compiled `for_tight` are lowered by their drop;
+the compiled `do_body` is raised by its rise (312 to 412, ceiling 400 to
+500), one allocation per iteration — the body's closure is a fresh
+value, and its content is an allocation of its own beside the boxed
+payload. The compiled recursion rows rise within their ceilings for the
+same reason (an integer result above the interned range is a content and
+a box): `recursion_nontail` 995 to 1,129, `recursion_tail` 5,753 to
+6,007.
+
+So the switch bought both things §8 weighed: the representation the
+policy asks for — no value is copied, a holder copy is a cell record and
+the content cannot be written once shared — and, after tuning, speed:
+holders a third the size make every tape, stack and list cheaper to move
+and to scan, which outweighs the content hop on both lanes.

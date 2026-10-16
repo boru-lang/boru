@@ -103,10 +103,10 @@ func forwardType(node, target *Type) {
 // installed (RunTypeInstall), or returns t unchanged.
 func ForwardedType(t *Type) *Type {
 	for i := 0; t != nil && i < 8; i++ {
-		if t.tmeta == nil || t.tmeta.RunForward == nil {
+		if tmetaOf(t) == nil || tmetaOf(t).RunForward == nil {
 			return t
 		}
-		t = t.tmeta.RunForward
+		t = tmetaOf(t).RunForward
 	}
 	return t
 }

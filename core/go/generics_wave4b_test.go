@@ -494,7 +494,7 @@ func TestSchemaShortNameAndCanonArg(t *testing.T) {
 	if schemaShortName(&TypeSchemaInfo{Name: "Plain"}) != "Plain" {
 		t.Error("plain short name broken")
 	}
-	if schemaShortName(&TypeSchemaInfo{Type: &Type{tmeta: &typeMeta{Name: "NodeName"}}}) != "NodeName" {
+	if schemaShortName(&TypeSchemaInfo{Type: &Type{c: &content{tmeta: &typeMeta{Name: "NodeName"}}}}) != "NodeName" {
 		t.Error("node-name fallback broken")
 	}
 	if schemaShortName(&TypeSchemaInfo{}) != "<schema>" {

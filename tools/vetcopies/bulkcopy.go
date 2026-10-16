@@ -14,8 +14,9 @@ const corePath = "github.com/boru-lang/boru/core/go"
 
 // BulkCopy reports the bulk copies of Values that copylocks does not see:
 // the built-in copy into a []core.Value, and an append onto one whose source
-// is spread with "...". Each copies every element's header, which is what
-// the policy's bulk-copy count measures (scripts/vet-copies.sh).
+// is spread with "...". Each copies every element's holder — a cell record
+// since no-copy phase 4 — which is what the policy's bulk-copy count
+// measures (scripts/vet-copies.sh).
 var BulkCopy = &analysis.Analyzer{
 	Name:     "bulkcopy",
 	Doc:      "report copy() and variadic append() over []core.Value",

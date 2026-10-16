@@ -63,7 +63,9 @@ func TestCompiledAllocCeilings(t *testing.T) {
 		{"compare_loop", "", `for 200 [gt i 100]`, 1150},
 		{"if_scalar", "", `for 200 [if (gt i 100) [1] [0]]`, 1150},
 		{"if_listcond", "", `for 200 [if [i gt 100] [1] [0]]`, 1150},
-		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 1950},
+		// LOWERED 2026-10-16 by its measured drop from phase 3 (no-copy phase 4,
+		// design/VALUE-NO-COPY.0.md §9): its intermediate integers are interned.
+		{"for_tight", "", `for 200 [add (mul i 3) 7]`, 1719},
 		{"recursion_nontail", `def s fn [[n:Integer] [Integer] [if (n lte 0) [0] [n add (s (n sub 1))]]] end`, `s 200`, 2450},
 		{"recursion_tail", `def s2 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [s2 (n sub 1) (acc add n)]]] end`, `s2 1000 0`, 13000},
 		// Island reuse keeps a hot island in a loop at interpreter-level
@@ -78,7 +80,12 @@ func TestCompiledAllocCeilings(t *testing.T) {
 		// design/verse-report-defects-investigation.0.md §B blocker 3 raised
 		// against an earlier attempt. A tighter ceiling is what makes the next
 		// increment visible.
-		{"do_body", `def body [add 1 2]`, `for 100 [do body]`, 400},
+		// RAISED 400 -> 500 on 2026-10-16 by its measured rise (312 -> 412,
+		// no-copy phase 4, design/VALUE-NO-COPY.0.md §9): a value's content is
+		// its own allocation beside its payload, and the body's closure is a
+		// fresh value per iteration — one allocation per invocation, the same
+		// increment the frame above was, with the same headroom left.
+		{"do_body", `def body [add 1 2]`, `for 100 [do body]`, 500},
 		// The three rows blocker 3 asked for by name: "the guard table has NO
 		// each/fold/filter row, so the largest regression class is uncovered."
 		// These are the words whose bodies run ONCE PER ELEMENT, so a

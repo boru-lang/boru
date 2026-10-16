@@ -5050,12 +5050,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// pc: the unit is shared across fn values with identical bodies and
 			// inputs, so the contract belongs to the value (see
 			// core.ClosurePayload.RetTypes).
-			v := core.MakeValue(core.TFunction, cl)
-			if spec, has := closureRetAt(p, curUnit, pc); has {
+			spec, has := closureRetAt(p, curUnit, pc)
+			if has {
 				cl.RetTypes, cl.RetPatterns = spec.Types, spec.Patterns
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
 				cl.Source, cl.Named = spec.Source, spec.Named
-				core.SetData(&v, cl)
+			}
+			v := core.MakeValue(core.TFunction, cl)
+			if has {
 				if spec.Pos.Row != 0 {
 					// The value carries its construction token as the
 					// interpreter's does (the `fn` word's result stamp), so

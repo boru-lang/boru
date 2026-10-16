@@ -92,8 +92,8 @@ func (s *SQLiteStore) StoreTable(name string, td TableData) error {
 	colTypes := make([]*Type, len(columns))
 	for i, col := range columns {
 		fieldVal, _ := td.Record.Fields.Get(col)
-		colTypes[i] = fieldVal.Parent
-		colDefs[i] = quoteIdent(col) + " " + boruTypeToSQLType(fieldVal.Parent)
+		colTypes[i] = ParentOf(&fieldVal)
+		colDefs[i] = quoteIdent(col) + " " + boruTypeToSQLType(ParentOf(&fieldVal))
 	}
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", quoteIdent(name), strings.Join(colDefs, ", "))
 	s.db.Call("run", createSQL)
@@ -170,7 +170,7 @@ func (s *SQLiteStore) Query(querySQL string, schema *RecordTypeInfo) (TableData,
 		colTypes[i] = TString // default
 		if schema != nil {
 			if fieldVal, ok := schema.Fields.Get(cols[i]); ok {
-				colTypes[i] = fieldVal.Parent
+				colTypes[i] = ParentOf(&fieldVal)
 			}
 		}
 	}
@@ -216,22 +216,22 @@ func (s *SQLiteStore) DropTable(name string) {
 
 // boruValueToJSParam converts a boru Value to a JS value for sql.js binding.
 func boruValueToJSParam(v Value, colType *Type) any {
-	if v.Parent.Equal(TNone) {
+	if ParentOf(&v).Equal(TNone) {
 		return js.Null()
 	}
 	switch {
 	case colType.ConformsTo(TInteger):
-		if v.Parent.ConformsTo(TInteger) {
+		if ParentOf(&v).ConformsTo(TInteger) {
 			_as0, _ := AsInteger(v)
 			return _as0
 		}
-		if v.Parent.ConformsTo(TString) {
+		if ParentOf(&v).ConformsTo(TString) {
 			_as1, _ := AsString(v)
 			if n, err := strconv.ParseInt(_as1, 10, 64); err == nil {
 				return n
 			}
 		}
-		if v.Parent.ConformsTo(TBoolean) {
+		if ParentOf(&v).ConformsTo(TBoolean) {
 			_as2, _ := AsBoolean(v)
 			if _as2 {
 				return 1
@@ -240,15 +240,15 @@ func boruValueToJSParam(v Value, colType *Type) any {
 		}
 		return ValToString(v)
 	case colType.ConformsTo(TNumber):
-		if v.Parent.ConformsTo(TFloat) {
+		if ParentOf(&v).ConformsTo(TFloat) {
 			_as3, _ := AsFloat(v)
 			return _as3
 		}
-		if v.Parent.ConformsTo(TInteger) {
+		if ParentOf(&v).ConformsTo(TInteger) {
 			_as4, _ := AsInteger(v)
 			return float64(_as4)
 		}
-		if v.Parent.ConformsTo(TString) {
+		if ParentOf(&v).ConformsTo(TString) {
 			_as5, _ := AsString(v)
 			if f, err := strconv.ParseFloat(_as5, 64); err == nil {
 				return f
@@ -256,14 +256,14 @@ func boruValueToJSParam(v Value, colType *Type) any {
 		}
 		return ValToString(v)
 	case colType.ConformsTo(TBoolean):
-		if v.Parent.ConformsTo(TBoolean) {
+		if ParentOf(&v).ConformsTo(TBoolean) {
 			_as6, _ := AsBoolean(v)
 			if _as6 {
 				return 1
 			}
 			return 0
 		}
-		if v.Parent.ConformsTo(TString) {
+		if ParentOf(&v).ConformsTo(TString) {
 			_as7, _ := AsString(v)
 			if _as7 == "true" {
 				return 1
@@ -272,7 +272,7 @@ func boruValueToJSParam(v Value, colType *Type) any {
 		}
 		return ValToString(v)
 	default:
-		if v.Parent.ConformsTo(TString) {
+		if ParentOf(&v).ConformsTo(TString) {
 			_as8, _ := AsString(v)
 			return _as8
 		}

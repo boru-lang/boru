@@ -686,6 +686,7 @@ func SetInternal(v *core.Value, b bool)                        { core.SetInterna
 func MakeValue(t *core.Type, d core.Payload) core.Value        { return core.MakeValue(t, d) }
 func MakeCarrierValue(t *core.Type, d core.Payload) core.Value { return core.MakeCarrierValue(t, d) }
 func NewCarrier(t *core.Type) core.Value                       { return core.NewCarrier(t) }
+func NewCarrierOf(t *core.Type, d core.Payload) core.Value     { return core.NewCarrierOf(t, d) }
 func NewElementCarrier(t *core.Type) core.Value                { return check.NewElementCarrier(t) }
 func NewCarrierTypedList(elem *core.Type) core.Value           { return core.NewCarrierTypedList(elem) }
 func NewDynamicCarrier(t *core.Type) core.Value                { return core.NewDynamicCarrier(t) }

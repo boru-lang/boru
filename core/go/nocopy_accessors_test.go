@@ -206,13 +206,13 @@ func TestOccurrenceRecordIsTheHolders(t *testing.T) {
 	}
 }
 
-// The header only shrinks (design/VALUE-NO-COPY.0.md §6 phase 3): every
-// byte of it rides on each by-value copy the ratchet still allows, so a new
-// field belongs in the occurrence record, the type-node metadata or a
-// payload, not here.
+// The holder is a handle (design/VALUE-NO-COPY.0.md §6 phase 4): the
+// content pointer, the occurrence pointer and the holder flags, 24 bytes on
+// a 64-bit target. A new field belongs in the content, the occurrence
+// record, the type-node metadata or a payload, never here.
 func TestValueHeaderSize(t *testing.T) {
-	if got := unsafe.Sizeof(Value{}); got > 64 {
-		t.Fatalf("Value header is %d bytes, want at most 64", got)
+	if got, want := unsafe.Sizeof(Value{}), 3*unsafe.Sizeof(uintptr(0)); got > want {
+		t.Fatalf("Value holder is %d bytes, want at most %d", got, want)
 	}
 }
 
@@ -230,7 +230,7 @@ func TestNodeOfNamesTheNodeFromAnyCopy(t *testing.T) {
 		t.Fatal("a node and every copy of it name the node")
 	}
 	bare := addrOf(MakeValue(TInteger, nil))
-	adhoc := addrOf(withID(Type{tmeta: &typeMeta{Name: "P3AdHoc"}, Parent: TInteger}, "P3AdHoc"))
+	adhoc := addrOf(withID(Type{c: &content{tmeta: &typeMeta{Name: "P3AdHoc"}, parent: TInteger}}, "P3AdHoc"))
 	if NodeOf(bare) != bare || NodeOf(adhoc) != adhoc {
 		t.Fatal("an ad-hoc *Type no table registered stands for itself")
 	}
@@ -257,7 +257,7 @@ func TestLiteralTypeHelpersReturnTheNode(t *testing.T) {
 	if c := CarrierOfLiteral(lit); ParentOf(&c) != TInteger || !IsCarrier(&c) {
 		t.Fatalf("CarrierOfLiteral = %v, want a carrier of the node", c)
 	}
-	adhoc := withID(Type{tmeta: &typeMeta{Name: "P3Lit"}, Parent: TInteger}, "P3Lit")
+	adhoc := withID(Type{c: &content{tmeta: &typeMeta{Name: "P3Lit"}, parent: TInteger}}, "P3Lit")
 	for name, got := range map[string]*Type{
 		"ValueType": ValueType(adhoc), "TypeNodeOf": TypeNodeOf(adhoc),
 		"denotedType": denotedType(adhoc), "CarrierOfLiteral": ParentOf(addrOf(CarrierOfLiteral(adhoc))),

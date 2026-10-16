@@ -15,17 +15,20 @@ package core
 // recorder key) and the occurrence flags are src's: the new value is the
 // same occurrence under the new parts unless the constructor says otherwise.
 func mintFrom(src *Value, parent *Type, data Payload) Value {
+	s := cont(src)
 	return Value{
-		Data:       data,
-		Parent:     parent,
-		tmeta:      src.tmeta,
-		occ:        src.occ,
-		elem:       src.elem,
-		modns:      src.modns,
-		IsInternal: src.IsInternal,
-		Origin:     src.Origin,
-		Carrier:    src.Carrier,
-		flags:      src.flags,
+		c: &content{
+			data:       data,
+			parent:     parent,
+			tmeta:      s.tmeta,
+			elem:       s.elem,
+			modns:      s.modns,
+			isInternal: s.isInternal,
+			origin:     s.origin,
+			carrier:    s.carrier,
+		},
+		occ:   src.occ,
+		flags: src.flags,
 	}
 }
 
@@ -74,7 +77,7 @@ func MintPayload(src *Value, data Payload) Value {
 // of two arms is a new value (an `if` result), never arm src.
 func MintCarrierFrom(src *Value) Value {
 	v := mintFrom(src, ParentOf(src), nil)
-	SetCarrier(&v, true)
+	v.c.carrier = true // v's content is its own: mintFrom built it
 	SetID(&v, GenerateID(IDPrefixForType(ParentOf(&v))))
 	return v
 }
@@ -87,7 +90,7 @@ func MintCarrierFrom(src *Value) Value {
 // new value (a join, a derivation) is MintCarrierFrom's.
 func MintCarrierKeeping(src *Value, data Payload) Value {
 	v := mintFrom(src, ParentOf(src), data)
-	SetCarrier(&v, true)
+	v.c.carrier = true // v's content is its own: mintFrom built it
 	return v
 }
 
@@ -98,9 +101,9 @@ func MintCarrierKeeping(src *Value, data Payload) Value {
 // Any constraint is none.
 func MintElemTyped(src *Value, elem *Value) Value {
 	v := mintFrom(src, ParentOf(src), DataOf(src))
-	v.elem = nil
+	v.c.elem = nil // v's content is its own: mintFrom built it
 	if ParentOf(elem) != nil && !ParentOf(elem).Equal(TAny) {
-		v.elem = elem
+		v.c.elem = elem
 	}
 	return v
 }

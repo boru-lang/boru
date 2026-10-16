@@ -1,13 +1,18 @@
 // vetcopies: the vet tool behind the no-copy ratchet (design/VALUE-NO-COPY.0.md,
 // phase 0). It runs two analyzers under `go vet -vettool`:
 //
-//   - copylocks, go vet's own: core.Value carries a zero-size noCopy marker
-//     with Lock and Unlock methods, so the analyzer reports every by-value
-//     copy of a single Value — each argument, parameter, receiver,
-//     assignment, return, range variable and composite literal.
-//   - bulkcopy (bulkcopy.go): the element copies of a []core.Value that
-//     copylocks cannot see, through the built-in copy and an append whose
-//     source is spread with "...".
+//   - copylocks, go vet's own: a value's content (core's unexported
+//     content struct) carries a zero-size noCopy marker with Lock and
+//     Unlock methods, so the analyzer reports every by-value copy of
+//     content — each argument, parameter, receiver, assignment, return,
+//     range variable and composite literal. Since no-copy phase 4 a
+//     core.Value is a holder handle over that content (a pointer to it,
+//     the occurrence record pointer, the flags), and copying a holder is
+//     copying a cell record, which the marker does not see.
+//   - bulkcopy (bulkcopy.go): the copies of runs of holders, through the
+//     built-in copy into a []core.Value and an append whose source is
+//     spread with "..." — cell records (the exceptions list's class C),
+//     counted so that a new one is a decision.
 //   - fnvaralias (fnvaralias.go): a function variable aliasing a function
 //     that takes a *core.Value. Calls through it are indirect, so every
 //     &v handed to them escapes to the heap; the ratchet allows none.

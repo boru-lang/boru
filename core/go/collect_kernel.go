@@ -542,6 +542,15 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 	return nil
 }
 
+// The stand-ins CollectCandidateScan matches a word's slot against when the
+// word will arrive as a literal: a payload-less Boolean (`true`, `false`)
+// and a payload-less Atom (an undefined word). Shared and never written —
+// the matcher only reads them — so a scan allocates nothing for them.
+var (
+	scanProbeBoolean = Value{c: &content{parent: TBoolean}}
+	scanProbeAtom    = Value{c: &content{parent: TAtom}}
+)
+
 // CollectCandidateScan is the PER-CANDIDATE scan, seated on the seam: once
 // per candidate signature, over THAT signature's own forward limit, it
 // CLASSIFIES the tokens a match would claim and records where each one
@@ -723,7 +732,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 
 			// Known literals: true/false → Boolean, type names → type literal.
 			if ww.Name == "true" || ww.Name == "false" {
-				if SigArgMatches(sig, fwd, &Value{Parent: TBoolean}) || expectedType.Equal(TAny) {
+				if SigArgMatches(sig, fwd, &scanProbeBoolean) || expectedType.Equal(TAny) {
 					positions[fwd] = scanIdx
 					fwd++
 					scanIdx++
@@ -751,7 +760,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			}
 
 			// Undefined word: always resolves to Atom.
-			if SigArgMatches(sig, fwd, &Value{Parent: TAtom}) || expectedType.Equal(TAny) {
+			if SigArgMatches(sig, fwd, &scanProbeAtom) || expectedType.Equal(TAny) {
 				positions[fwd] = scanIdx
 				fwd++
 				scanIdx++
@@ -904,7 +913,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	if !matches && fwd.Sig.QuoteArgs != nil && fwd.Sig.QuoteArgs[nextIdx] &&
 		ParentOf(val).Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
 		w, _ := AsWord(val)
-		atom := NewAtom(w.Name)
+		atom := holderOf(TAtom, atomContent(val, w))
 		setPosRef(&atom, posOf(val)) // preserve source position across /q Word→Atom conversion
 		win.Set(valIdx, atom)
 		val = win.Ref(valIdx)

@@ -294,9 +294,8 @@ type ExtensionPayload struct{ Body any }
 // through ExtensionPayload rather than dedicated kernel variants.
 func NewExtension(t *Type, body any) Value {
 	return Value{
-		Parent: t,
-		Data:   ExtensionPayload{Body: body},
-		occ:    idOcc(GenerateID(IDPrefixForType(t))),
+		c:   &content{parent: t, data: ExtensionPayload{Body: body}},
+		occ: idOcc(GenerateID(IDPrefixForType(t))),
 	}
 }
 
@@ -580,9 +579,7 @@ type ClosurePayload struct {
 // *StoreShapeInfo. One mint per creation site / live layer — sharing
 // the returned Value shares the shape (that is the aliasing model).
 func NewStoreShapeCarrier(t *Type, scope int) Value {
-	v := NewCarrier(t)
-	SetData(&v, &StoreShapeInfo{Scope: scope})
-	return v
+	return NewCarrierOf(t, &StoreShapeInfo{Scope: scope})
 }
 
 // ClosureInShape tags HOW a higher-order word must present each per-invocation

@@ -20,12 +20,18 @@ package core
 // TMap). Typed-list carriers (element type known) are produced via
 // NewCarrierTypedList / NewCarrierTypedListValue.
 func NewCarrier(t *Type) Value {
-	v := NewValueRaw(t, nil)
-	SetCarrier(&v, true)
+	c := &content{parent: t, carrier: true}
 	if t.Equal(TList) || t.Equal(TMap) {
-		SetData(&v, ChildTypeInfo{Child: MakeCarrierValue(TAny, nil)})
+		c.data = ChildTypeInfo{Child: MakeCarrierValue(TAny, nil)}
 	}
-	return v
+	return Value{c: c, occ: idOcc(GenerateID(IDPrefixForType(t)))}
+}
+
+// NewCarrierOf constructs a carrier of t whose payload is data — what the
+// check pass knows about the values it stands for (a code effect, a store
+// shape) — with an identity of its own, as NewCarrier's.
+func NewCarrierOf(t *Type, data Payload) Value {
+	return Value{c: &content{parent: t, carrier: true, data: data}, occ: idOcc(GenerateID(IDPrefixForType(t)))}
 }
 
 // NewDynamicRecordCarrier is dynamic(Map) carrying the record schema
@@ -34,7 +40,7 @@ func NewCarrier(t *Type) Value {
 // per carrier because the bytecode compiler keys a frame local and a
 // recorded result by it. Built in one literal, the dynamic mark included.
 func NewDynamicRecordCarrier(fields *OrderedMap) Value {
-	return Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{Fields: fields},
+	return Value{c: &content{parent: TMap, carrier: true, data: RecordTypeInfo{Fields: fields}},
 		occ: idOcc(GenerateID(IDPrefixForType(TMap))), flags: occDynamic}
 }
 

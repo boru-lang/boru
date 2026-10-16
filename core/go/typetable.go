@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -127,6 +128,9 @@ func (t *Type) IsAncestor(ancestor *Type) bool {
 	// exactly the builtins labelled at table construction, whose ancestry
 	// is fixed. Minted / external / ad-hoc types (In == 0) fall through to
 	// the structural walk, which stays the single source of truth.
+	if tc, ac := t.c, ancestor.c; tc != nil && ac != nil && tc.in > 0 && ac.in > 0 {
+		return ac.in <= tc.in && tc.in <= ac.out
+	}
 	if t.In() > 0 && ancestor.In() > 0 {
 		return ancestor.In() <= t.In() && t.In() <= ancestor.Out()
 	}
@@ -183,10 +187,26 @@ func (tt *TypeTable) labelIntervals() {
 			visit(c)
 		}
 		t.ensureTMeta().Out = counter
+		mirrorLabels(t)
 	}
 	for _, r := range roots {
 		visit(r)
 	}
+}
+
+// mirrorLabels copies t's interval labels into its content (content.in and
+// .out), where Type.Equal and IsAncestor read them. It writes the node's
+// content in place: labelling runs once, at package initialisation, as the
+// node's metadata is written, and every holder of the node shares both.
+// The labels number the builtin table's nodes, a static list far below the
+// field's range; a label beyond it is left unmirrored, and the tests read
+// the metadata instead.
+func mirrorLabels(t *Type) {
+	tm := tmetaOf(t)
+	if tm.Out > math.MaxUint16 { //covergate:allow labels number the static builtinDecls list (about 100 nodes, pinned by TestP4MirroredLabels), so no label reaches 65,535
+		return
+	}
+	t.c.in, t.c.out = uint16(tm.In), uint16(tm.Out)
 }
 
 // TypeTable is the canonical catalogue of types. Builtin is the
@@ -341,8 +361,8 @@ func (tt *TypeTable) Adopt(t *Type) {
 	if tt == nil || t == nil || IDOf(t) == "" {
 		return
 	}
-	if t.tmeta != nil && t.tmeta.node == nil {
-		t.tmeta.node = t
+	if tmetaOf(t) != nil && tmetaOf(t).node == nil {
+		tmetaOf(t).node = t
 	}
 	if _, exists := tt.byID[IDOf(t)]; !exists {
 		tt.byID[IDOf(t)] = t
@@ -375,12 +395,12 @@ func (tt *TypeTable) AdoptSeqFrom(src *TypeTable) {
 // dispatch construct the *Type via this path then set def.Behavior
 // before exposing it, or use MintTypeWithBehavior.
 func (tt *TypeTable) MintType(name string, parent *Type) *Type {
-	def := &Type{
-		Parent: parent,
+	def := &Type{c: &content{
+		parent: parent,
 		tmeta:  &typeMeta{Name: name, Depth: depthOf(parent), Behavior: DefaultBehavior, Owner: tt.MintOwner},
-		Origin: OriginUserDef,
-	}
-	def.tmeta.node = def
+		origin: OriginUserDef,
+	}}
+	tmetaOf(def).node = def
 	// User and external types share a single Rank band per kernel
 	// branch — they sit one band above the kernel positional ranks
 	// so they sort AFTER every kernel builtin in the same branch
@@ -391,8 +411,8 @@ func (tt *TypeTable) MintType(name string, parent *Type) *Type {
 	if parent != nil {
 		def.ensureTMeta().Rank = externalBandFor(parent)
 	}
-	def.tmeta.id = tt.mintID(parent)
-	tt.byID[def.tmeta.id] = def
+	tmetaOf(def).id = tt.mintID(parent)
+	tt.byID[tmetaOf(def).id] = def
 	return def
 }
 
@@ -535,12 +555,12 @@ func (tt *TypeTable) RegisterType(path string, fixedID int, owner string, behavi
 		tt.leafIndex = make(map[string]string)
 	}
 
-	def := &Type{
-		Parent: parent,
+	def := &Type{c: &content{
+		parent: parent,
 		tmeta:  &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: fixedID, Behavior: behavior, Owner: owner, id: id},
-		Origin: OriginBuiltin,
-	}
-	def.tmeta.node = def
+		origin: OriginBuiltin,
+	}}
+	tmetaOf(def).node = def
 	// External builtins share the user-/external-type band for
 	// their branch (one increment above the kernel positional band)
 	// so they sort after every kernel builtin in the same branch
@@ -977,13 +997,13 @@ func (tt *TypeTable) registerBuiltin(d builtinDecl) {
 		recordBuiltinInitErr(fmt.Errorf("typetable: duplicate FixedID %d for %q (already used by %q)", d.FixedID, d.Path, existing.Path()))
 		return
 	}
-	def := &Type{
-		Parent:     parent,
+	def := &Type{c: &content{
+		parent:     parent,
 		tmeta:      &typeMeta{Name: parts[len(parts)-1], Depth: depthOf(parent), FixedID: d.FixedID, Rank: d.Rank, Behavior: DefaultBehavior, Owner: OwnerKernel, id: id},
-		IsInternal: d.IsInternal,
-		Origin:     OriginBuiltin,
-	}
-	def.tmeta.node = def
+		isInternal: d.IsInternal,
+		origin:     OriginBuiltin,
+	}}
+	tmetaOf(def).node = def
 	tt.byID[id] = def
 	tt.bypath[d.Path] = def
 	if parent == nil {
@@ -1102,12 +1122,12 @@ func MintTestType(path string) *Type {
 			}
 		}
 	}
-	def := &Type{
+	def := &Type{c: &content{
 		tmeta:  &typeMeta{Name: parts[len(parts)-1], Behavior: DefaultBehavior, Owner: OwnerProgram, id: fmt.Sprintf("%st%011x", prefix, testTypeSeq)},
-		Parent: parent,
-		Origin: OriginUserDef,
-	}
-	def.tmeta.node = def
+		parent: parent,
+		origin: OriginUserDef,
+	}}
+	tmetaOf(def).node = def
 	if parent != nil {
 		def.ensureTMeta().Rank = externalBandFor(parent)
 	}
@@ -1139,7 +1159,7 @@ func mustBuiltinType(path string) *Type {
 		// The recorded error is surfaced at NewRegistry, which returns it
 		// before the registry is ever used, so the placeholder is never
 		// actually dispatched against.
-		return &Type{tmeta: &typeMeta{Name: path, Owner: OwnerKernel}, Origin: OriginBuiltin}
+		return &Type{c: &content{tmeta: &typeMeta{Name: path, Owner: OwnerKernel}, origin: OriginBuiltin}}
 	}
 	return def
 }

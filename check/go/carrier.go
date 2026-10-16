@@ -1016,7 +1016,6 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 			if vrets := dynamicReachableValueReturns(r, word, args); len(vrets) > 0 {
 				if len(vrets) == 1 {
 					c := core.NewCarrier(vrets[0])
-					core.SetCarrier(&c, true)
 					core.SetDynamic(&c, true)
 					out = []core.Value{c}
 				} else {

@@ -157,8 +157,8 @@ func NewDepScalar(kind DepKind, bound Value) Value {
 // rooted at a declared base.
 func canonicalBaseType(t *Type) *Type {
 	for d := t; d != nil; d = ParentOf(d) {
-		if d.tmeta != nil && d.tmeta.RefinementBase != nil {
-			return d.tmeta.RefinementBase
+		if tmetaOf(d) != nil && tmetaOf(d).RefinementBase != nil {
+			return tmetaOf(d).RefinementBase
 		}
 	}
 	return nil

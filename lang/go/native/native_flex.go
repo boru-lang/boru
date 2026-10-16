@@ -153,9 +153,7 @@ func flexReturns(args []Value, r *Registry) []Value {
 	case p.ConformsTo(TMap):
 		if shapes {
 			if ss, ok := check.StoreShapeOf(args[0]); ok {
-				v := NewCarrier(TFlexMap)
-				SetData(&v, ss.CloneShape())
-				return []Value{d2RetainElem(v, args[0])}
+				return []Value{d2RetainElem(NewCarrierOf(TFlexMap, ss.CloneShape()), args[0])}
 			}
 			if v, ok := check.MintFlexShapeCarrier(args[0], 0); ok {
 				return []Value{d2RetainElem(v, args[0])}

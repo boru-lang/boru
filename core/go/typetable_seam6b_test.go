@@ -50,7 +50,7 @@ func TestS6b1TypeTableNilReceivers(t *testing.T) {
 func TestS6b1DepthOfAdHocParent(t *testing.T) {
 	// A parent with an unset Depth (ad-hoc *Type) takes the typeDepth
 	// walk: chain length 1, so a child of it sits at depth 2.
-	adhoc := &Type{tmeta: &typeMeta{Name: "S6b1AdHoc"}}
+	adhoc := &Type{c: &content{tmeta: &typeMeta{Name: "S6b1AdHoc"}}}
 	if got := depthOf(adhoc); got != 2 {
 		t.Errorf("depthOf(ad-hoc parent) = %d, want 2", got)
 	}
@@ -74,18 +74,18 @@ func TestS6b1MintIDNilSeqAndPrefixes(t *testing.T) {
 	// ad-hoc chains whose TOP node carries the branch name — build
 	// those directly.
 	dt := NewDynamicTypeTable()
-	s := dt.MintType("s6b1s", &Type{tmeta: &typeMeta{Name: "Scalar"}})
+	s := dt.MintType("s6b1s", &Type{c: &content{tmeta: &typeMeta{Name: "Scalar"}}})
 	if !strings.HasPrefix(IDOf(s), "S_") {
 		t.Errorf("Scalar-rooted mint ID = %q, want S_ prefix", IDOf(s))
 	}
 	if s.Rank() != 21_000_000_000 {
 		t.Errorf("Scalar-rooted mint Rank = %d, want 21e9", s.Rank())
 	}
-	n := dt.MintType("s6b1n", &Type{tmeta: &typeMeta{Name: "Node"}})
+	n := dt.MintType("s6b1n", &Type{c: &content{tmeta: &typeMeta{Name: "Node"}}})
 	if !strings.HasPrefix(IDOf(n), "N_") {
 		t.Errorf("Node-rooted mint ID = %q, want N_ prefix", IDOf(n))
 	}
-	w := dt.MintType("s6b1w", &Type{tmeta: &typeMeta{Name: "Word"}})
+	w := dt.MintType("s6b1w", &Type{c: &content{tmeta: &typeMeta{Name: "Word"}}})
 	if !strings.HasPrefix(IDOf(w), "W_") {
 		t.Errorf("Word-rooted mint ID = %q, want W_ prefix", IDOf(w))
 	}
@@ -283,7 +283,7 @@ func TestS6b1MintTestTypePrefixes(t *testing.T) {
 		"S6b1PoolWd": "Word",
 	}
 	for k, name := range seed {
-		testTypePool[k] = &Type{tmeta: &typeMeta{Name: name}}
+		testTypePool[k] = &Type{c: &content{tmeta: &typeMeta{Name: name}}}
 	}
 	t.Cleanup(func() {
 		for k := range seed {
@@ -341,7 +341,7 @@ func TestS6b1BuildTypeNamesSkipsNilEntry(t *testing.T) {
 }
 
 func TestS6b1TypeNameByIDNotUserFacing(t *testing.T) {
-	fake := addrOf(withID(Type{tmeta: &typeMeta{Name: "S6b1NotInByName"}}, "S6b1FakeByID"))
+	fake := addrOf(withID(Type{c: &content{tmeta: &typeMeta{Name: "S6b1NotInByName"}}}, "S6b1FakeByID"))
 	Builtin.byID["S6b1FakeByID"] = fake
 	t.Cleanup(func() { delete(Builtin.byID, "S6b1FakeByID") })
 	if got := TypeNameByID("S6b1FakeByID"); got != "" {
@@ -352,7 +352,7 @@ func TestS6b1TypeNameByIDNotUserFacing(t *testing.T) {
 func TestS6b1ResolveTypePathNonCanonicalEntry(t *testing.T) {
 	// A bypath entry whose *Type resolves Path() to a DIFFERENT key is
 	// not canonical — ResolveTypePath must reject it (the final guard).
-	decoy := &Type{tmeta: &typeMeta{Name: "S6b1Decoy"}}
+	decoy := &Type{c: &content{tmeta: &typeMeta{Name: "S6b1Decoy"}}}
 	Builtin.bypath["S6b1Rtp/S6b1Sub"] = decoy
 	t.Cleanup(func() { delete(Builtin.bypath, "S6b1Rtp/S6b1Sub") })
 	if got, ok := ResolveTypePath("S6b1Rtp/S6b1Sub"); ok || got != nil {
@@ -442,7 +442,7 @@ func TestEqualIntervalLabelInvariant(t *testing.T) {
 		if a == b {
 			return true
 		}
-		if a.tmeta != nil && a.tmeta == b.tmeta {
+		if tmetaOf(a) != nil && tmetaOf(a) == tmetaOf(b) {
 			return true
 		}
 		return IDOf(a) != "" && IDOf(a) == IDOf(b)

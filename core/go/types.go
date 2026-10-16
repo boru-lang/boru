@@ -326,7 +326,12 @@ func (t *Type) Equal(other *Type) bool {
 	if t == nil || other == nil {
 		return false
 	}
-	if tm, om := t.tmeta, other.tmeta; tm != nil && om != nil {
+	// The labels mirrored into labelled builtin nodes' content settle
+	// identity without the metadata hop (mirrorLabels).
+	if tc, oc := t.c, other.c; tc != nil && oc != nil && tc.in > 0 && oc.in > 0 {
+		return tc.in == oc.in
+	}
+	if tm, om := tmetaOf(t), tmetaOf(other); tm != nil && om != nil {
 		if tm == om {
 			return true
 		}

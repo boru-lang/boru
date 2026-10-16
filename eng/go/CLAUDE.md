@@ -378,13 +378,14 @@ that substituted on the zero value.
 
 ## Payload-presence vs value-mode (CRITICAL)
 
-Do NOT write `v.Data == nil` in consumer code. The raw probe is an
+Do NOT write `DataOf(&v) == nil` (before no-copy phase 4, `v.Data ==
+nil`) in consumer code. The raw probe is an
 overloaded smell: across the kernel it has meant three different
 things — "v is a bare type literal", "v is not a concrete value", and
 "there is no payload to read" — and those intents genuinely **diverge**:
 
 - A list/map **carrier** (`NewCarrier(TList/TMap)`) carries a
-  `ChildTypeInfo` payload, so `v.Data != nil`, yet it is NOT concrete.
+  `ChildTypeInfo` payload, so `DataOf(&v) != nil`, yet it is NOT concrete.
   That non-nil payload is load-bearing: it's how a carrier satisfies
   `positionalMatch`'s concrete-list/map rule (`signature.go`).
 - The `None` **type literal** has `Data == nil` like every other
@@ -412,7 +413,8 @@ negation, FnUndef, binding-body) must be routed by
 gate is the model).
 
 The regression gate `data_nil_gate_test.go::TestNoRawDataNilProbes`
-forbids `.Data == nil` outside a small allowlist of files that
+forbids the raw probe (`DataOf(&v) == nil`, and the historical
+`.Data == nil`) outside a small allowlist of files that
 legitimately test payload presence at the lowest level (the
 value/predicate/classifier home, the rendering and comparison
 primitives, and carrier construction). Add a predicate, not an
@@ -421,16 +423,16 @@ every value mode.
 
 ## Sealed Payload (CRITICAL)
 
-`Value.Data` is a sealed interface: `eng.Payload`. Only types
-with the unexported `payloadMarker()` method satisfy it, and the
-method is only definable in this package. The interface also
+A value's payload (`DataOf(&v)`) is a sealed interface: `core.Payload`.
+Only types with the unexported `payloadMarker()` method satisfy it, and
+the method is only definable in core. The interface also
 requires `IsTypeContent(parent *Type) bool` — the ONE
 type-recognition seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4):
 `IsTypeBody` asks the payload instead of enumerating shapes. The seal closes the
-historical `Data interface{}` hole — `Value{Parent: TInteger,
-Data: "hello"}` is a **compile error**.
+historical `Data interface{}` hole — `MakeValue(TInteger, "hello")` is
+a **compile error**.
 
-Payload variants live in `eng/go/payload.go`. Two flavours:
+Payload variants live in `core/go/payload.go`. Two flavours:
 
 1. **Wrapper variants** — for Go built-in types we can't add
    methods to: `IntPayload{N: int64}`, `StrPayload{S: string}`,
@@ -493,7 +495,7 @@ type TypeBehavior interface {
 ```
 
 `DefaultBehavior` is the kernel's no-op: `Match` delegates to
-`v.Parent.ConformsTo(t)`, `Format` delegates to `v.String()` (with
+`ParentOf(&v).ConformsTo(t)`, `Format` delegates to `v.String()` (with
 the dispatch carefully avoiding re-entry), `Equal` delegates to
 `valuesEqualDefault`. Every type registered through the kernel
 paths gets `DefaultBehavior` if the caller doesn't supply one.
@@ -776,19 +778,53 @@ is measured against its rules:
   a retag built from a payload) is construction, not a copy.
 - A copy that is not covered by an exceptions row is a defect.
 
-**Enforcement: `make vet-copies`.** `core.Value` carries a zero-size
-`noCopy` marker, so go vet's copylocks analyzer reports every by-value
-copy of a Value. `scripts/vet-copies.sh` runs it, with the bulk-copy
-analyzer of `tools/vetcopies` (the built-in `copy` and a variadic
-`append` over a `[]core.Value`, which copylocks cannot see), in every
-`go.work` module and holds each module's NON-TEST counts to
-`tools/vetcopies/ceilings.tsv`; it also fails on a copy of any other
-lock. The ordinary vet lanes run `-copylocks=false` (and `.golangci.yml`
-turns govet's copylocks off), so this is the one lane that sees either.
-The commit gate runs it on the touched modules and CI's `vet-copies`
-job on all of them. The ceilings only go down: a change that removes
-copies lowers them in the same commit (`UPDATE=1 make vet-copies`), and
-a failing run lists the findings on the lines the change touched.
+**A Value is a holder; its content is shared and immutable** (phase 4,
+2026-10-16; `core/go/value.go`, `value_fields.go`). `Value` is a
+24-byte handle — a pointer to the value's content, the holder's
+occurrence record pointer and its occurrence flags — and every slot
+(tape and stack cells, args, list elements, map entries, bindings,
+captures) holds one by value: copying it copies a cell record, not the
+value (exceptions R4). The content — payload, parent, type metadata,
+element constraint, namespace facet, kind flags — is unexported and
+never written once a holder refers to it:
+
+- Read it through `DataOf`, `ParentOf`, `IsCarrier`, `OriginOf`,
+  `IsInternal` (nil-safe: the zero `Value` has no content).
+- Change a holder's content with `SetData`, `SetParent`, `SetCarrier`,
+  `SetOrigin`, `SetInternal`: each builds content of the holder's own
+  (copy-on-write), so the write reaches that holder alone — one
+  allocation per call. Construct a new value in one step
+  (`MakeValue`, `MakeCarrierValue`, the `New*` constructors, the mint
+  family) rather than minting and then setting.
+- Never compare Values with `==`: it compares handles (content and
+  record pointers), not values. Use `ExactEqual` and its siblings.
+- Interned content costs nothing to mint: the small integers
+  (−128..1023), the booleans, none, the empty string, the structural
+  markers and the reach lowering's dot words (`value_intern.go`). The
+  engine's forward, mark and move markers hold content and payload in
+  one cell (`marker_cell.go`), and a word's force-stack form and its
+  `/q` atom are built once per word content (`content_derived.go`). A
+  hot path that mints per step wants one of these, not a setter.
+- A temporary probe (a value built only to be matched) escapes once
+  its content is behind a pointer: share a package-level probe
+  (`scanProbeAtom`) instead of `&Value{…}` per call.
+
+**Enforcement: `make vet-copies`.** The content carries the zero-size
+`noCopy` marker, so go vet's copylocks analyzer reports a copy of a
+value's content — there is none: only core's constructors build
+content, field by field (`copyFacets`). The bulk-copy analyzer of
+`tools/vetcopies` counts the built-in `copy` and a variadic `append`
+over a `[]core.Value`: copies of runs of holders, cell records (class
+C), held to a ceiling so a new one is a decision. `scripts/vet-copies.sh`
+runs both in every `go.work` module and holds each module's NON-TEST
+counts to `tools/vetcopies/ceilings.tsv`; it also fails on a copy of
+any other lock. The ordinary vet lanes run `-copylocks=false` (and
+`.golangci.yml` turns govet's copylocks off), so this is the one lane
+that sees either. The commit gate runs it on the touched modules and
+CI's `vet-copies` job on all of them. The ceilings only go down: a
+change that removes copies lowers them in the same commit (`UPDATE=1
+make vet-copies`), and a failing run lists the findings on the lines
+the change touched.
 
 **Reading a Value without copying it** (phase 1, 2026-10-12):
 
@@ -828,7 +864,7 @@ gave a fn value, the recorder key and a quoted atom's referent live in an
 immutable record behind one pointer (`occ`, nil for most values), and the
 occurrence flags — quoted, eval, undefined, failed dispatch, reach group,
 dynamic, applied, return-trimmed, signature-matched — are bits of the
-header. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
+holder. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
 `WithPos`/`ThreadPos` to share another value's position record, which
 allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
 `FnNameOf`/`SetFnName`, `RecKeyOf`/`SetRecKey`,
@@ -836,9 +872,9 @@ allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
 siblings. A setter repoints or rewrites only the holder it is called on —
 the tape cell, the stack cell, the binding — never a record another copy
 shares, so it is a write to that slot, exactly as a by-value field was.
-Do not add a field to the header (`TestValueHeaderSize` pins it at 64
-bytes): per-occurrence state belongs in the record or the flags,
-per-type state in `tmeta`.
+Do not add a field to the holder (`TestValueHeaderSize` pins it at
+three words, 24 bytes): per-occurrence state belongs in the record or
+the flags, per-value state in the content, per-type state in `tmeta`.
 
 Three consequences to keep:
 
@@ -949,7 +985,9 @@ builds the other values that differ from an existing one in a single
 part: `MintPayload` (a new payload, e.g. a freshened class default or
 a stamped fn), `MintFresh`/`MintLike` (an identity of its own),
 `MintCarrierFrom` (a carrier join's result), `MintElemTyped` (a flex
-retag). Never write `x := v; x.Parent = t`.
+retag). Never copy and modify (`x := v; SetParent(&x, t)`; before
+phase 4, `x.Parent = t`): construct, and let the constructor say what
+the new value shares.
 
 Current reparent callsites:
 
@@ -998,13 +1036,13 @@ predicate — `v.Is(t)` (routed through the type's Behavior) — applied
 (`signature.go::sigTypeMatches`), the `is` word, and the fn **return**
 check (`engine.go`, which uses `v.Is(exp)` for exactly this reason).
 Never reintroduce a boundary that asks a different question (e.g. a raw
-`v.Parent.ConformsTo(exp)` on returns) — that is the param/return
+`ParentOf(&v).ConformsTo(exp)` on returns) — that is the param/return
 asymmetry that `design/REFINE-NEWTYPE-VS-SUBSET.10.md` removed.
 
 - **Bare refine** (`def Pos (refine Integer)` — no payload,
   `IsBareTypeNode(body)`): a **nominal newtype**.
   `bareRefineUnifier.Match` is nominal — a value is a `Pos` only if its
-  tag is `Pos` or a subtype (`v.Parent.ConformsTo(t)`, NOT the base type).
+  tag is `Pos` or a subtype (`ParentOf(&v).ConformsTo(t)`, NOT the base type).
   A plain `Integer` is not a `Pos`; construct one with `def x:Pos 42`
   (Unify/reparent — a separate path from Match). Symmetric-strict, like
   Haskell/Rust/Go newtypes.
@@ -1020,7 +1058,7 @@ asymmetry that `design/REFINE-NEWTYPE-VS-SUBSET.10.md` removed.
   refinement types.
 
 Builtins and classes keep `DefaultBehavior` / nominal matching, where
-`v.Is(t)` coincides with `v.Parent.ConformsTo(t)` on concrete values
+`v.Is(t)` coincides with `ParentOf(&v).ConformsTo(t)` on concrete values
 — so routing returns through `v.Is` left them unchanged. The
 catch-all structural/singleton kinds (record shapes, `def One 1`,
 typed-container literals) carry `BindingBodyUnifier` since the Stage 0

@@ -112,7 +112,5 @@ func AnalyseCodeEffectCarrier(r *core.Registry, body core.Value) (core.Value, bo
 		}
 		out[i] = core.ParentOf(&v)
 	}
-	c := core.NewCarrier(core.TList)
-	core.SetData(&c, core.CodeEffectInfo{Out: out, Analysed: true})
-	return c, true
+	return core.NewCarrierOf(core.TList, core.CodeEffectInfo{Out: out, Analysed: true}), true
 }

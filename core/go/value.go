@@ -1911,10 +1911,25 @@ type ForwardInfo struct {
 // are the same kind of thing, differing only in which fields carry
 // data.
 //
-// The lattice is encoded by Parent: a leaf's Parent is its type, a
-// type node's Parent is its supertype.
+// The lattice is encoded by the parent: a leaf's parent is its type, a
+// type node's parent is its supertype.
 //
-// Every value carries a unique ID with a prefix indicating its
+// A Value is a HOLDER (no-copy phase 4, design/VALUE-NO-COPY.0.md §6
+// "Phase 4 as built"): a pointer to the value's content — the payload,
+// the parent, the type metadata, the element constraint, the
+// module-namespace facet and the kind flags — which is immutable once
+// published and shared by every holder, and the holder's own occurrence
+// state (occurrence.go). Every slot — a tape or stack cell, an argument,
+// a list element, a map entry, a binding, a capture, a pool entry —
+// holds one by value, and copying it is copying a cell record: the copy
+// is a new holder of the same content. The content is read through
+// DataOf, ParentOf, IsCarrier, OriginOf and IsInternal (value_fields.go);
+// a holder that needs other content gets new content (SetData and its
+// siblings, the Mint constructors), and nothing writes content another
+// holder can see. The zero Value has no content: every accessor answers
+// the zero field for it.
+//
+// Every value may carry an identity token with a prefix indicating its
 // category:
 //   - "S_" for scalar values (String, Number, Boolean)
 //   - "N_" for node values (List, Map, Table, Record)
@@ -1922,86 +1937,106 @@ type ForwardInfo struct {
 //   - "T_" for type/object values (Object/*, type literals, Any, None)
 //
 // Each ID is the prefix followed by 12 lowercase hex characters.
-//
-// Field order is chosen to eliminate alignment padding: the three
-// 16-byte fields (ID, DynFrom, Data) and the three pointers come first,
-// then every one-byte field is clustered at the tail so the seven bools
-// plus Origin pack into a single 8-byte-aligned run with no gaps. This is
-// a pure layout choice — fields are still accessed by name — and it took
-// the struct from 96 to 80 bytes on its own (design/
-// INTERPRETER-SPEED-PLAN.10.md #1A, bool-packing follow-up).
 type Value struct {
-	// noCopy makes go vet's copylocks analyzer report every by-value copy of
-	// a Value (zero size, placed first so it adds no padding).
-	noCopy noCopy
-	// Data is the kernel-known data payload; see payload.go for variants.
-	Data Payload
-
-	// Parent is the node directly above this one in the unified
-	// lattice: for an ordinary value it is the value's type, for a
-	// type node it is the supertype. nil only for lattice roots.
-	Parent *Type
-	// tmeta holds type-node metadata — the leaf Name, the five integer
-	// lattice fields (FixedID, Rank, Depth, In, Out), and the Behavior —
-	// behind ONE pointer instead of ~72 inline bytes on every Value. The
-	// struct is copied by value on every stack push, arg, and tape cell,
-	// so shrinking it cuts the interpreter's ~15% duffcopy cost (design/
-	// INTERPRETER-SPEED-PLAN.10.md #1A). These fields are set once at type
-	// registration, so a Value copy shares the SAME *typeMeta (an orphan
-	// `&v`-derived *Type reads the identical metadata as its canonical
-	// node — the property the old inline fields gave for free). Nil on
-	// ordinary runtime values; the Name/FixedID/Rank/Depth/In/Out/Behavior
-	// accessors return the zero value for nil. Writers go through
-	// ensureTMeta so a mint site that forgets to allocate one cannot
-	// nil-panic.
-	tmeta *typeMeta
+	// c is the value's content, shared by every holder and never written
+	// once published; nil for the zero Value.
+	c *content
 	// occ is this occurrence's state — the source position, the identity
-	// token, the dispatch ascription and a gradual read's source binding —
-	// behind one pointer to an immutable record (occurrence.go). nil for
-	// the overwhelming majority of values; a setter repoints this one
-	// header, never writes the record, so every other copy keeps what it
-	// had. Read and write through Pos/SetPos/WithPos, IDOf/SetID,
-	// AscribedType/SetAscribed and DynFrom/SetDynFrom. A position is minted
-	// once (at parse) with the record that carries it alone, and threading
-	// it onto a value with no other occurrence state shares that record:
-	// no allocation on the hot path, and synthesized values carry none.
+	// token, the dispatch ascription, a gradual read's source binding, the
+	// name a binding gave a fn value, the recorder key and a quoted atom's
+	// referent — behind one pointer to an immutable record (occurrence.go).
+	// nil for the overwhelming majority of values; a setter repoints this
+	// one holder, never writes the record, so every other holder keeps
+	// what it had.
 	occ *occurrence
-	// elem is the retained ELEMENT constraint of a concrete typed container
-	// ({:T} map / [:T] list), behind a pointer so its Value doesn't ride on
-	// every runtime copy (nil for the overwhelming majority — everything that
-	// is not a concrete typed container). Construction (unifyTyped*WithConcrete)
-	// is the sole origin; it lets a concrete {:T} value stay CONCRETE (Data is
-	// still the MapPayload/ListPayload, AsMap/AsList/IsConcrete unchanged) while
-	// carrying the element type that write-enforcement (set/setpath/merge) and
-	// strict reads consult. The constraint is the child Value verbatim — a bare
-	// type literal, a disjunct ({:(A tor B)}), or a nested typed-container
-	// literal ({:[:Integer]}). Read via ElemConstraint() (nil-safe), set via
-	// SetElemConstraint. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
-	elem *Value
-	// modns marks a MAP value as a module NAMESPACE — the value `import`
-	// binds for each `export "Name" {…}`. Behind a nil-by-default pointer
-	// so the overwhelming majority of values carry no inline bytes for it
-	// (the pos/dynFrom/elem/asc discipline). The map's own payload IS the
-	// export set; the facet carries only the PROVENANCE the retired
-	// Ideal/ModuleExport wrapper used to encode — the export name
-	// (`$name`) and the owning Module descriptor (`$module`) — so an
-	// exported fn stays a Function, an exported constant stays that
-	// constant, and an exported type stays a plain type (NUR038:
-	// provenance is a facet on a plain value, never a wrapper
-	// type that masks the value). Read via ModuleNSOf (nil-safe free
-	// function); set via WithModuleNS. The Sealed-Payload rule is
-	// untouched: the facet holds a Value the kernel treats opaquely.
-	modns *ModuleNSInfo
+	// flags are the holder's occurrence flags (quoted, eval, undefined,
+	// failed dispatch, reach group, dynamic, applied, return-trimmed,
+	// signature matched — occurrence.go), read and written through
+	// IsQuoted/SetQuoted and their siblings.
+	flags occFlags
+}
 
-	// One-byte fields, clustered so they pack without padding: the kind
-	// flags, and the occurrence flags (quoted, eval, undefined, failed
-	// dispatch, reach group, dynamic, applied, return-trimmed, signature
-	// matched — occurrence.go), read and written through IsQuoted/SetQuoted
-	// and their siblings.
-	IsInternal bool       // Word/__XX runtime markers — not user-facing
-	Origin     OriginKind // builtin / userdef
-	Carrier    bool       // static-typecheck carrier (type-only, Data stripped of concrete payload)
-	flags      occFlags
+// content is a value's shared part: everything a holder does not own.
+// It is immutable once a holder publishes it; a constructor fills a fresh
+// one, and a holder that needs other content takes a new one (ownContent).
+// The noCopy marker makes go vet's copylocks analyzer report a copy of it:
+// a content is reached by pointer, never copied.
+type content struct {
+	noCopy noCopy
+	// data is the kernel-known data payload; see payload.go for variants.
+	data Payload
+	// parent is the node directly above this one in the unified lattice:
+	// for an ordinary value it is the value's type, for a type node it is
+	// the supertype. nil only for lattice roots.
+	parent *Type
+	// tmeta holds type-node metadata — the leaf name, the integer lattice
+	// fields (FixedID, Rank, Depth, In, Out) and the Behavior — behind one
+	// pointer. Every holder of a type node shares it, and the metadata is
+	// written in place (a `behave` rewrite reaches every copy); nil on
+	// ordinary runtime values, for which the accessors answer the zero
+	// value.
+	tmeta *typeMeta
+	// elem is the retained element constraint of a concrete typed
+	// container ({:T} map / [:T] list), nil for everything else. It lets a
+	// concrete {:T} value stay concrete while carrying the element type
+	// that write-enforcement (set/setpath/merge) and strict reads consult.
+	// Read via ElemConstraint (nil-safe), set via SetElemConstraint. See
+	// design/TYPED-CONTAINER-TAG-RETENTION.0.md.
+	elem *Value
+	// modns marks a map value as a module namespace — the value `import`
+	// binds for each `export "Name" {…}` — carrying the export name
+	// (`$name`) and the owning Module descriptor (`$module`). Read via
+	// ModuleNSOf (nil-safe); set via WithModuleNS.
+	modns *ModuleNSInfo
+	// isInternal marks Word/__XX runtime markers — not user-facing.
+	isInternal bool
+	// origin is builtin / userdef.
+	origin OriginKind
+	// carrier marks a static-typecheck carrier (type-only, the concrete
+	// payload stripped).
+	carrier bool
+	// in and out mirror a labelled builtin node's interval labels
+	// (typeMeta.In/Out), so the hot identity and ancestry tests
+	// (Type.Equal, IsAncestor) read them beside the parent instead of
+	// through the metadata pointer; 0 on every other content, where those
+	// tests take the metadata path. Written once, by labelIntervals at
+	// package initialisation, with the labels themselves.
+	in, out uint16
+	// derived memoizes contents built from this one (content_derived.go):
+	// filled once, atomically, and no part of what the content means.
+	derived atomic.Pointer[derivedContents]
+}
+
+// zeroContent stands for the zero Value's absent content in reads; it is
+// never written.
+var zeroContent content
+
+// cont is v's content for reading: the zero content for the zero Value.
+func cont(v *Value) *content {
+	if v.c == nil {
+		return &zeroContent
+	}
+	return v.c
+}
+
+// ownContent gives the holder v content of its own, a fresh copy of what
+// it had, and returns it for the caller to fill: the copy-on-write every
+// content setter goes through, so a write reaches this holder alone.
+func ownContent(v *Value) *content {
+	n := &content{}
+	if c := v.c; c != nil {
+		copyFacets(n, c)
+	}
+	v.c = n
+	return n
+}
+
+// copyFacets fills the new content n with c's facets: the one place the
+// content's fields are listed for a copy.
+func copyFacets(n, c *content) {
+	n.data, n.parent, n.tmeta, n.elem, n.modns = c.data, c.parent, c.tmeta, c.elem, c.modns
+	n.isInternal, n.origin, n.carrier = c.isInternal, c.origin, c.carrier
+	n.in, n.out = c.in, c.out
 }
 
 // typeMeta carries the integer lattice fields of a type node, held behind
@@ -2094,10 +2129,10 @@ type typeMeta struct {
 // stored, compared by pointer, or written through: `behave` and every
 // LCA walk must reach the node every registry shares, not a copy of it.
 func NodeOf(t *Type) *Type {
-	if t == nil || t.tmeta == nil || t.tmeta.node == nil {
+	if t == nil || tmetaOf(t) == nil || tmetaOf(t).node == nil {
 		return t
 	}
-	return t.tmeta.node
+	return tmetaOf(t).node
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of
@@ -2105,10 +2140,10 @@ func NodeOf(t *Type) *Type {
 // pre-allocate a typeMeta cannot nil-panic. v must be addressable (a
 // *Type or an addressable Value).
 func (v *Value) ensureTMeta() *typeMeta {
-	if v.tmeta == nil {
-		v.tmeta = &typeMeta{}
+	if tmetaOf(v) == nil {
+		setTMeta(v, &typeMeta{})
 	}
-	return v.tmeta
+	return tmetaOf(v)
 }
 
 // SetName sets the type-node leaf name, allocating the typeMeta if
@@ -2123,10 +2158,10 @@ func (v *Value) SetName(name string) {
 // nil for an ordinary value (no tmeta). A non-nil result is the marker of
 // a type node, exactly as the inline field was.
 func (v *Value) Behavior() TypeBehavior {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return nil
 	}
-	return v.tmeta.Behavior
+	return tmetaOf(v).Behavior
 }
 
 // TypeBody returns the structural content the type node was declared
@@ -2136,10 +2171,10 @@ func (v *Value) Behavior() TypeBehavior {
 // ordinary value both answer false. The returned Value is a copy; the
 // stored content is written once at install and never mutated.
 func (v *Value) TypeBody() (Value, bool) {
-	if v.tmeta == nil || v.tmeta.Body == nil {
+	if tmetaOf(v) == nil || tmetaOf(v).Body == nil {
 		return Value{}, false
 	}
-	return *v.tmeta.Body, true
+	return *tmetaOf(v).Body, true
 }
 
 // SetTypeBody records the node's declared structural content. Called
@@ -2229,10 +2264,10 @@ func (v *Value) SetDynFrom(name string) {
 // false when v carries no tag (the common case). Nil-safe read of the
 // pointer. See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 func (v *Value) ElemConstraint() (Value, bool) {
-	if v.elem == nil {
+	if elemOf(v) == nil {
 		return Value{}, false
 	}
-	return *v.elem, true
+	return *elemOf(v), true
 }
 
 // SetElemConstraint attaches (c present) or clears (c a zero/bare-Any
@@ -2241,10 +2276,10 @@ func (v *Value) ElemConstraint() (Value, bool) {
 // clears the tag (an untyped container is not element-constrained).
 func (v *Value) SetElemConstraint(c Value) {
 	if ParentOf(&c) == nil || ParentOf(&c).Equal(TAny) {
-		v.elem = nil
+		setElemField(v, nil)
 		return
 	}
-	v.elem = &c
+	setElemField(v, &c)
 }
 
 // ModuleNSInfo is the module-namespace facet a bound export map carries
@@ -2266,7 +2301,7 @@ type ModuleNSInfo struct {
 // the overwhelming majority of values that are not bound module
 // namespaces. Nil-safe.
 func ModuleNSOf(v Value) *ModuleNSInfo {
-	return v.modns
+	return modnsOf(&v)
 }
 
 // WithModuleNS returns v (a plain export Map) carrying the module-
@@ -2275,7 +2310,7 @@ func ModuleNSOf(v Value) *ModuleNSInfo {
 // namespace wherever it flows (re-export, def-binding, container
 // storage) without the value ever ceasing to be a plain Map.
 func WithModuleNS(v Value, name string, module Value) Value {
-	v.modns = &ModuleNSInfo{Name: name, Module: module}
+	setModNSField(&v, &ModuleNSInfo{Name: name, Module: module})
 	return v
 }
 
@@ -2323,20 +2358,20 @@ func StripAscribed(v Value) Value {
 // Name is the nil-safe read of the type-node leaf name — "" for an
 // ordinary value (no tmeta), matching the old empty inline field.
 func (v *Value) Name() string {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return ""
 	}
-	return v.tmeta.Name
+	return tmetaOf(v).Name
 }
 
 // OwnerID is the nil-safe read of the type node's registration/mint
 // provenance (design/OPEN-WORDS.1.md §4) — "" for an ordinary value or
 // an unowned ad-hoc type. See typeMeta.Owner for the sentinel table.
 func (v *Value) OwnerID() string {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return ""
 	}
-	return v.tmeta.Owner
+	return tmetaOf(v).Owner
 }
 
 // SetOwner stamps the type node's provenance. Registration/mint paths
@@ -2350,38 +2385,38 @@ func (v *Value) SetOwner(owner string) {
 // integer fields — 0 when tmeta is absent (every ordinary runtime value,
 // where these were always zero when they were inline fields).
 func (v *Value) FixedID() int {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return 0
 	}
-	return v.tmeta.FixedID
+	return tmetaOf(v).FixedID
 }
 
 func (v *Value) Rank() int {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return 0
 	}
-	return v.tmeta.Rank
+	return tmetaOf(v).Rank
 }
 
 func (v *Value) Depth() int {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return 0
 	}
-	return v.tmeta.Depth
+	return tmetaOf(v).Depth
 }
 
 func (v *Value) In() int {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return 0
 	}
-	return v.tmeta.In
+	return tmetaOf(v).In
 }
 
 func (v *Value) Out() int {
-	if v.tmeta == nil {
+	if tmetaOf(v) == nil {
 		return 0
 	}
-	return v.tmeta.Out
+	return tmetaOf(v).Out
 }
 
 // idState is the package-level ID source: a monotone atomic counter
@@ -2540,7 +2575,7 @@ func NewValueRaw(t *Type, data Payload) Value {
 // emptiness without resorting to a length comparison.
 func NewString(s string) Value {
 	if s == "" {
-		return NewValueRaw(TStringEmpty, StrPayload{S: s})
+		return holderOf(TStringEmpty, internedEmptyString)
 	}
 	return NewValueRaw(TStringProper, StrPayload{S: s})
 }
@@ -2550,6 +2585,9 @@ func NewString(s string) Value {
 // Signature.Patterns, not through a per-value type-path leaf. See
 // the NewString comment for the rationale.
 func NewInteger(n int64) Value {
+	if n >= internIntMin && n <= internIntMax {
+		return holderOf(TInteger, &internedInts[n-internIntMin])
+	}
 	return NewValueRaw(TInteger, IntPayload{N: n})
 }
 
@@ -2641,7 +2679,10 @@ func FormatBigDecimal(d *apd.Decimal) string {
 // NewBoolean creates a boolean value. The boolean payload (true/false) is the
 // value; there are no Boolean/True or Boolean/False sub-types.
 func NewBoolean(b bool) Value {
-	return NewValueRaw(TBoolean, BoolPayload{B: b})
+	if b {
+		return holderOf(TBoolean, internedTrue)
+	}
+	return holderOf(TBoolean, internedFalse)
 }
 
 // NewList creates a list value from a slice of Values.
@@ -2845,7 +2886,7 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // runtime value carries a Parent, a type node carries its metadata, and a
 // carrier is flagged — so the test is exact, not a heuristic.
 func (v *Value) IsUnboundSlot() bool {
-	return IDOf(v) == "" && DataOf(v) == nil && ParentOf(v) == nil && v.tmeta == nil && !IsCarrier(v) && !IsDynamic(v)
+	return IDOf(v) == "" && DataOf(v) == nil && ParentOf(v) == nil && tmetaOf(v) == nil && !IsCarrier(v) && !IsDynamic(v)
 }
 
 func NewTypeLiteral(t *Type) Value {
@@ -2872,8 +2913,8 @@ func TypeNodeOf(v Value) *Type {
 // v's address does not escape and a literal that names its node allocates
 // nothing; the copy is made in orphanType, on the ad-hoc path alone.
 func literalNode(v *Value) *Type {
-	if v.tmeta != nil && v.tmeta.node != nil {
-		return v.tmeta.node
+	if tmetaOf(v) != nil && tmetaOf(v).node != nil {
+		return tmetaOf(v).node
 	}
 	return orphanType(*v)
 }
@@ -2919,7 +2960,7 @@ type noneSentinel struct{}
 // NewNone creates the value `none` — the unique inhabitant of the
 // None type. Distinct from NewTypeLiteral(TNone) (the type itself).
 func NewNone() Value {
-	return NewValueRaw(TNone, NonePayload{})
+	return holderOf(TNone, internedNone)
 }
 
 // Is reports whether v satisfies type t, routed through t.Behavior.
@@ -3036,7 +3077,7 @@ func NewWordUsurp(name string, forceVal bool) Value {
 
 // NewForward creates a forward primitive value for forward argument tracking.
 func NewForward(info ForwardInfo) Value {
-	return NewValueRaw(TForward, info)
+	return newForwardValue(info)
 }
 
 // newMarkerValue mints a payload-less STRUCTURAL marker (paren / end).
@@ -3048,31 +3089,30 @@ func NewForward(info ForwardInfo) Value {
 // so eager marker IDs were a per-op allocation for nothing; during a
 // parse or check/compile pass (checkPassDepth > 0) markers mint exactly
 // as before.
-func newMarkerValue(t *Type) Value {
-	v := MakeValue(t, nil)
-	if checkPassDepth.Load() > 0 {
-		SetID(&v, GenerateID(IDPrefixForType(t)))
-	}
-	return v
+//
+// A marker's content is its Parent alone, so each kind's is interned
+// (value_intern.go): minting one allocates nothing outside a pass.
+func newMarkerValue(t *Type, c *content) Value {
+	return holderOf(t, c)
 }
 
 // NewOpenParen creates an open-paren marker value for sub-expression scoping.
 func NewOpenParen() Value {
-	return newMarkerValue(TOpenParen)
+	return newMarkerValue(TOpenParen, internedOpenParen)
 }
 
 // NewCloseParen creates a close-paren marker value. Emitted by the
 // parser for `)` so the engine can recognise it by Parent identity
 // instead of by string compare.
 func NewCloseParen() Value {
-	return newMarkerValue(TCloseParen)
+	return newMarkerValue(TCloseParen, internedCloseParen)
 }
 
 // NewEnd creates an end-marker value (the `end` / `;` keyword).
 // Emitted by the parser so the engine can recognise it by Parent
 // identity instead of by string compare.
 func NewEnd() Value {
-	return newMarkerValue(TEnd)
+	return newMarkerValue(TEnd, internedEnd)
 }
 
 // NewParenExpr creates a paren expression value containing items to evaluate.
@@ -3222,20 +3262,20 @@ func NewInterpString(parts []InterpPart) Value {
 func NewMark(id string, body ...Value) Value {
 	b := make([]Value, len(body))
 	copy(b, body)
-	return NewValueRaw(TMark, MarkInfo{ID: id, Body: b})
+	return newMarkValue(MarkInfo{ID: id, Body: b})
 }
 
 // NewMove creates a move value targeting the mark with the given ID.
 // The reason string describes why this move exists (used in error messages).
 func NewMove(to string, reason string) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason})
+	return newMoveValue(MoveInfo{To: to, Reason: reason})
 }
 
 // NewLoopMark creates the mark that opens an iteration of a DRIVEN loop:
 // stepping it begins the iteration (loop.go). The mark stores no body — the
 // driver replays the body each iteration.
 func NewLoopMark(id string, lp *Loop) Value {
-	return NewValueRaw(TMark, MarkInfo{ID: id, Loop: lp})
+	return newMarkValue(MarkInfo{ID: id, Loop: lp})
 }
 
 // NewLoopOpen creates the open paren that seals a driven loop's iteration
@@ -3246,12 +3286,12 @@ func NewLoopOpen(lp *Loop, argSpan int) Value {
 
 // NewMoveCont creates a move value with loop continuation state.
 func NewMoveCont(to, reason string, cont *Loop) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason, Cont: cont})
+	return newMoveValue(MoveInfo{To: to, Reason: reason, Cont: cont})
 }
 
 // NewMoveIf creates a move value with if-statement continuation state.
 func NewMoveIf(to, reason string, ifCont *IfCont) Value {
-	return NewValueRaw(TMove, MoveInfo{To: to, Reason: reason, IfCont: ifCont})
+	return newMoveValue(MoveInfo{To: to, Reason: reason, IfCont: ifCont})
 }
 
 // NewFunction creates a function reference value. The underlying data is a
@@ -3642,11 +3682,11 @@ func IsMark(v *Value) bool {
 
 // AsMark returns the MarkInfo, panics if not a mark.
 func AsMark(v *Value) (MarkInfo, error) {
-	info, ok := DataOf(v).(MarkInfo)
+	info, ok := DataOf(v).(*MarkInfo)
 	if !ok {
 		return MarkInfo{}, fmt.Errorf("AsMark: not a mark value (got %T)", DataOf(v))
 	}
-	return info, nil
+	return *info, nil
 }
 
 // IsMove reports whether this value is a move.
@@ -3704,11 +3744,11 @@ func AsDispatchMod(v Value) (DispatchModInfo, bool) {
 
 // AsMove returns the MoveInfo, panics if not a move.
 func AsMove(v *Value) (MoveInfo, error) {
-	info, ok := DataOf(v).(MoveInfo)
+	info, ok := DataOf(v).(*MoveInfo)
 	if !ok {
 		return MoveInfo{}, fmt.Errorf("AsMove: not a move value (got %T)", DataOf(v))
 	}
-	return info, nil
+	return *info, nil
 }
 
 // IsReturnCheck reports whether this value is a return-check marker.
@@ -4055,11 +4095,11 @@ func AsWord(v *Value) (WordInfo, error) {
 
 // AsForward returns the ForwardInfo, panics if not a forward.
 func AsForward(v *Value) (ForwardInfo, error) {
-	info, ok := DataOf(v).(ForwardInfo)
+	info, ok := DataOf(v).(*ForwardInfo)
 	if !ok {
 		return ForwardInfo{}, fmt.Errorf("AsForward: not a forward value (got %T)", DataOf(v))
 	}
-	return info, nil
+	return *info, nil
 }
 
 // AsString returns the string payload. Returns "" if Data is nil (type literal).

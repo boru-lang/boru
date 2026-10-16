@@ -178,7 +178,7 @@ func TestS7DeepEqualTypedListFallback(t *testing.T) {
 }
 
 func TestS7DeepEqualFlatInstanceArms(t *testing.T) {
-	cls := addrOf(withID(Type{tmeta: &typeMeta{Name: "S7Cls"}}, "S7Cls"))
+	cls := addrOf(withID(Type{c: &content{tmeta: &typeMeta{Name: "S7Cls"}}}, "S7Cls"))
 	// One instance with a nil Fields map -> false via the nil-guard.
 	nilFields := NewClassInstance(cls, ClassInstanceInfo{})
 	if DeepEqual(nilFields, nilFields) {
