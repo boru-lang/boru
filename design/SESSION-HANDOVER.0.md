@@ -89,9 +89,14 @@ Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2
 > [WORLD-AGE.0.md](WORLD-AGE.0.md): it recommends importing Julia's
 > invalidation mechanics, not its semantics, and records two
 > interpreter/compiled divergences present on main (D1, D2), not fixed
-> here. At 3/n's head `make cover-gate-core` is 100% (19,011 statements)
-> and every `make ci-local` step passed except `vuln` (no `govulncheck`
-> in this container; advisory).
+> here. At 6/n's head the merged ADR-008 gate is 100% (90,173 statements,
+> 331 allowlisted; 2,245s) and `make cover-gate-core` and
+> `make cover-gate-check` are 100%; every `make ci-local` step passed at
+> 4/n except `vuln` (no `govulncheck` in this container; advisory). The
+> gate's langspec stage had run past its 45-minute test timeout at 4/n:
+> coverage instrumentation writes counters on every accessor call, which
+> phase 3's field reads never paid, so core's hottest paths read the
+> content directly since 5/n (§9 says how much).
 
 > ## Where things stand on 2026-10-05 — the baseline
 >
