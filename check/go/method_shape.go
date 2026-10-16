@@ -287,14 +287,6 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 	return core.FnValueOnlyZeroArgSigs(fn)
 }
 
-// fnDefName names a function value for a compile failure message.
-func fnDefName(v core.Value) string {
-	if fd, ok := v.Data().(*core.FnDefInfo); ok && fd.Name != "" {
-		return fd.Name
-	}
-	return "fn value"
-}
-
 // shapedMethodReturnArity is the runtime result count of a shaped-method apply,
 // resolved exactly as declaredReturnCarriers does — a ReturnsFn's produced arity,
 // else the declared Returns length (nil → 0) — but WITHOUT the missing-returns

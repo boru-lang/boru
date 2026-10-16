@@ -47,3 +47,8 @@ func TestIsVMDefer(t *testing.T) {
 		t.Error("a non-BoruError and nil are not defers")
 	}
 }
+
+// isInternalErr classifies exactly the internal_error BoruError (and nothing
+// else): a foreign error and a genuine boru runtime error both report false, so
+// InvokeCallback returns them straight through rather than masking with a
+// fallback.

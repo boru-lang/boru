@@ -31,44 +31,6 @@ import (
 
 // Test blocks re-homed by compiler-driven triage at the carve.
 
-func TestDisjunctCombosTakeSig(t *testing.T) {
-	r := covRegistry(t, nil)
-	implAny := &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}}
-	implInt := &core.BoruImpl{Body: []core.Value{core.NewInteger(2)}}
-	implStr := &core.BoruImpl{Body: []core.Value{core.NewInteger(3)}}
-	r.RegisterNativeFunc(core.NativeFunc{Name: "ljone", Signatures: []core.Signature{ljImplSig(implAny, core.TAny)}})
-	r.RegisterNativeFunc(core.NativeFunc{Name: "ljtwo", Signatures: []core.Signature{
-		ljImplSig(implInt, core.TInteger), ljImplSig(implStr, core.TString),
-	}})
-	if err := r.Err(); err != nil {
-		t.Fatalf("register: %v", err)
-	}
-	d := strictDisjunct(core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString))
-	anySig := &core.Signature{Args: []*core.Type{core.TAny}, BarrierPos: -1, Impl: implAny}
-
-	if disjunctCombosTakeSig(r, "lj-no-such-word", []core.Value{d}, anySig) {
-		t.Error("an unresolvable word must decline")
-	}
-	// 5 two-alternative disjunct args = 32 combos > the partition cap.
-	wide := make([]core.Value, 5)
-	for i := range wide {
-		wide[i] = strictDisjunct(core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TString))
-	}
-	if disjunctCombosTakeSig(r, "ljone", wide, anySig) {
-		t.Error("a combo enumeration over the cap must decline")
-	}
-	// The String alternative first-matches the SIBLING String arm, not the
-	// committed Integer one — one baked CALL_USER would miscompile it.
-	intSig := &core.Signature{Args: []*core.Type{core.TInteger}, BarrierPos: -1, Impl: implInt}
-	if disjunctCombosTakeSig(r, "ljtwo", []core.Value{d}, intSig) {
-		t.Error("a combo taking a sibling overload must decline")
-	}
-	// Every combo lands on the sole Any arm — one recorded call is faithful.
-	if !disjunctCombosTakeSig(r, "ljone", []core.Value{d}, anySig) {
-		t.Error("uniform combos over the committed sig must pass")
-	}
-}
-
 // Per-fn analysis quota (design/legacy/checker-accuracy-review.10.ignore A9):
 // past FnAnalysisQuota distinct call shapes the analyser answers
 // without body re-analysis and emits exactly one analysis_truncated
@@ -213,32 +175,6 @@ func TestValueCarriesCarrierMapArm(t *testing.T) {
 	concrete.Set("a", core.NewInteger(1))
 	if valueCarriesCarrier(core.NewValueRaw(core.TMap, core.MapPayload{M: concrete})) {
 		t.Error("map of concrete entries must report false")
-	}
-}
-
-func TestQuoteParamCarrierBind(t *testing.T) {
-	atomCarrier := core.NewCarrier(core.TAtom)
-	concreteAtom := core.NewAtom("meta")
-
-	// A carrier bound to an Atom-typed param: the diverging shape.
-	if !quoteParamCarrierBind([]core.FnParam{{Name: "k", Type: core.TAtom}}, []core.Value{atomCarrier}) {
-		t.Error("a carrier at an Atom-typed param must report the bind")
-	}
-	// The explicit Quote flag reports too.
-	if !quoteParamCarrierBind([]core.FnParam{{Name: "k", Type: core.TInteger, Quote: true}}, []core.Value{core.NewCarrier(core.TInteger)}) {
-		t.Error("a carrier at a /q param must report the bind")
-	}
-	// A CONCRETE atom (a bare-word collection's legitimate arrival) does not.
-	if quoteParamCarrierBind([]core.FnParam{{Name: "k", Type: core.TAtom}}, []core.Value{concreteAtom}) {
-		t.Error("a concrete atom arrival is the legitimate /q bind — no report")
-	}
-	// A value-typed param never reports.
-	if quoteParamCarrierBind([]core.FnParam{{Name: "n", Type: core.TInteger}}, []core.Value{core.NewCarrier(core.TInteger)}) {
-		t.Error("a value-typed param must not report")
-	}
-	// Fewer args than params: the missing slot is not a bind.
-	if quoteParamCarrierBind([]core.FnParam{{Name: "k", Type: core.TAtom}}, nil) {
-		t.Error("an absent arg is not a bind")
 	}
 }
 

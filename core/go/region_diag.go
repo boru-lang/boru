@@ -58,29 +58,6 @@ func ReorderForwardCandidates(tape *Tape, pointer int) []Value {
 	return written
 }
 
-// NoMatchOverWindow is sigError's derivation over a window: the attempted
-// window in assignment order (attemptedWindowOver — the unclaimed forward
-// tokens after the word, filled from the stack prefix to the smallest
-// overload's arity, else the stack prefix top-first) and the reorder probe
-// over both views, then the shared no-match builder. Everything sigError
-// adds beyond this is a tape-only layer (see the file doc). It used to
-// render the forward tokens alone, so a window that also read the stack
-// (`b.data 0 fold [add]` — one written operand, fold's smallest arity two)
-// named one argument where the interpreter names two (NUR242).
-func NoMatchOverWindow(src string, win *Tape, pointer int, name string, fn *FnDefInfo, pos SrcPos) *BoruError {
-	written := attemptedWindowOver(win, pointer, fn, ReorderForwardCandidates(win, pointer), ReorderCandidates(win.Prefix(pointer)))
-	reorder := ReorderHintFor(name, fn, written)
-	if reorder == "" {
-		reorder = ReorderHintFor(name, fn, ReorderCandidates(win.Prefix(pointer)))
-	}
-	return NoMatchDiag(src, name, fn, written, pos, reorder)
-}
-
-// StrandedForwardDiag is the strict-barrier signature_error: funcName is
-// still waiting for `missing` argument(s) when `boundary` begins its own
-// dispatch (design/STRICT-FORWARD-BARRIER.0.md). barrierReceiver adds the
-// sequential-spelling note for a boundary word that reads a slot from the
-// enclosing stack, which a paren group would seal off (NUR049).
 func StrandedForwardDiag(src, funcName string, missing int, boundary string, barrierReceiver bool, pos SrcPos) *BoruError {
 	detail := fmt.Sprintf(
 		"%s is still waiting for %d argument(s) when `%s` begins its own dispatch — "+

@@ -20,11 +20,11 @@ import "fmt"
 // escape and the run resolved the signal); an error raised in the body
 // unwinds the loop and carries the driver's attribution (WrapError).
 //
-// Under the bytecode VM a handler is reached with the registry's Invoker set
-// and the body already lowered to a closure: there StartLoop drives the SAME
-// driver from Go (DriveLoop), invoking the body through the seam the handler
-// used before — one definition of each construct's iteration order, result
-// assembly and error texts for both lanes.
+// StartLoop can also drive the SAME driver from Go (DriveLoop), invoking the
+// body through InvokeBody — the lane the bytecode VM used before the compiler
+// lane was removed (design/COMPILER-LANE-REMOVAL.0.md); it stays one
+// definition of each construct's iteration order, result assembly and error
+// texts wherever a body is driven from Go.
 type LoopDriver interface {
 	// Next prepares iteration it (0-based): the INERT inputs the region
 	// opens with — resolved values the body sees as its stack, bottom
@@ -125,10 +125,7 @@ func (d *callDriver) WrapError(_ int, err error) error { return err }
 // residual replaces the region as the handler's results would, re-stepped.
 // The region's close paren carries the word's position, so a signal the
 // body lets out with no loop to take it reports at the construct. kind
-// names the region for the trace and the debugger. Under the VM (the
-// registry's Invoker set) the body runs from Go through InvokeBody, as the
-// handler ran it before; a handler that ran it another way there
-// (RunResolved) keeps that lane itself.
+// names the region for the trace and the debugger.
 //
 // A one-shot region cannot amortise its tokens over iterations as a loop
 // does, so its Loop — the driver, the four minted tokens, the mark id — is

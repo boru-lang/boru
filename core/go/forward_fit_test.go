@@ -45,3 +45,9 @@ func TestForwardValueFits(t *testing.T) {
 		t.Error("every fit must hold: none, both, one missed")
 	}
 }
+
+// TestForwardFitsListsTheViableCandidates pins the fits a dispatch
+// publishes for a gradual operand it collected forward (NUR357): the
+// candidates whose collection, stopped at the operand, could match over the
+// stack beneath — a stack-only overload never reaches the operand, and one
+// needing more values than the stack holds fails whatever the run holds.

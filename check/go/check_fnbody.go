@@ -684,58 +684,6 @@ func refinementUndecided(pattern, got core.Value) bool {
 	return false
 }
 
-// narrowToDeclaredParam is the RECOVERED call's generalisation of one arg: a
-// carrier that could not statically commit to the CONCRETELY-typed param pt
-// (matchSignature failed, dispatch recovered — tryRecordRecoveredUserFn)
-// compiles the body against the DECLARED param type, not its own tag. Sound
-// by the param contract: SetUnitParamTypes installs a CALL_USER guard that
-// raises == the interpreter when a runtime arg misses the declared type, so
-// assuming it here can only narrow, never admit a value the interpreter
-// would reject. Three arms, one rule:
-//
-//   - a strict-Any carrier (an Options `get`'s result into an Integer param;
-//     the body's `convert Float` then dispatches against the real type
-//     instead of declining "unmatched dispatch" on strict-Any);
-//   - a DISJUNCT carrier — the checker's abstraction of an unresolved
-//     overload's returns (a recovered `slice` over a dynamic input yields
-//     Bytes|List|String) — instead of a payload-stripped Disjunct no sig
-//     accepts (mini-s3: s3-handle-get's `part` into s3-send-resp's
-//     `body:Bytes`, whose chunk loop then declined "for: body nets multiple
-//     values"); the dynamic flag is preserved, a gradual disjunct keeps
-//     matching optimistically;
-//   - an IMPRECISE carrier — a scalar or container tag a poly re-match's
-//     join or a multi-branch narrowing settled on (`ds (each [nd]
-//     gradual)`: the each result's tag is not the List it is at run time)
-//     — whose static tag does NOT conform to a NOMINAL param. Left as its
-//     own tag the body bound `sort xs` to the Map overload and raised
-//     `sort: AsMap: not a map payload` over the List the interpreter sorted
-//     (measured 2026-09-26, the nominal single-overload recovery's first
-//     shape). A CONSTRAINED param (a predicate / refinement) keeps the
-//     carrier: the nominal guard could not enforce it.
-//
-// generic is the fn's genericity: the imprecise arm is skipped for a
-// GENERIC fn, whose param type is a type variable the generic lane binds per
-// call — narrowing to it compiled generics-fn.tsv L54's `unbox` body and ran
-// the call on the interpreter's generic host (an interp-entry census row).
-func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Value, bool) {
-	if pt == nil || pt.Equal(core.TAny) || core.IsBareTypeNode(&a) {
-		return core.Value{}, false
-	}
-	switch {
-	case a.Parent() != nil && a.Parent().Equal(core.TAny):
-		return core.NewCarrier(pt), true
-	case a.Carrier() && core.IsDisjunct(&a):
-		nc := core.NewCarrier(pt)
-		core.SetDynamic(&nc, core.IsDynamic(&a))
-		return nc, true
-	case !generic && a.Carrier() && a.Parent() != nil && !core.HasConstraintUnify(pt) && !a.Parent().ConformsTo(pt):
-		nc := core.NewCarrier(pt)
-		core.SetDynamic(&nc, core.IsDynamic(&a))
-		return nc, true
-	}
-	return core.Value{}, false
-}
-
 // provenNarrowerReturn is the carrier for return slot i of a fn declaring n
 // returns of which slot i is `Any` and whose params are all typed
 // (allParamsTyped), when the analysed body residual stk

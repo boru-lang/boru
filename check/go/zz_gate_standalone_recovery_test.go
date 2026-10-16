@@ -73,65 +73,7 @@ func TestGateStandaloneShareCheckStateFromExport(t *testing.T) {
 	}
 }
 
-// gsUserFnReg is zzAssumeReg plus two single-overload boru user fns with a
-// ReturnsFn (the guarded-CALL_USER recoverable class): `zgsuserint` over a
-// NOMINAL Integer param and `zgsuserpred` over a predicate-typed one.
-func gsUserFnReg(t *testing.T) *core.Registry {
-	t.Helper()
-	r := zzAssumeReg(t)
-	pred := covPredicateType(t, r, "ZgsUserPred")
-	for name, pt := range map[string]*core.Type{"zgsuserint": core.TInteger, "zgsuserpred": pred} {
-		r.RegisterNativeFunc(core.NativeFunc{Name: name, Signatures: []core.Signature{{
-			Params:     []core.FnParam{{Name: "x", Type: pt}},
-			Returns:    []*core.Type{core.TInteger},
-			ReturnsFn:  zzIntCarrierFn,
-			Impl:       core.Boru(parenBody(core.NewWord("cadd"), core.NewWord("x"), core.NewWord("x"))),
-			BarrierPos: -1,
-		}}})
-	}
-	if err := r.Err(); err != nil {
-		t.Fatalf("register: %v", err)
-	}
-	return r
-}
-
 func gsPickReturnsFn(s *core.Signature) bool { return s.ReturnsFn != nil && !s.Fallback }
-
-// soleSigParamsNominal: only a single-overload user fn whose every param
-// type is nominal qualifies. A multi-overload fn, a generic fn (its param
-// is a type variable the generic lane binds) and a constrained param do
-// not.
-func TestGateStandaloneSoleSigParamsNominal(t *testing.T) {
-	r := gsUserFnReg(t)
-	pick := func(word string) (*core.Signature, *core.FnDefInfo) {
-		fn := r.Lookup(word)
-		for i := range fn.Signatures {
-			if gsPickReturnsFn(&fn.Signatures[i]) {
-				return &fn.Signatures[i], fn
-			}
-		}
-		t.Fatalf("%s: no ReturnsFn signature", word)
-		return nil, nil
-	}
-
-	sig, fn := pick("zgsuserint")
-	if !soleSigParamsNominal(sig, fn) {
-		t.Error("a nominal single-overload user fn qualifies")
-	}
-	generic := *fn
-	generic.Gen = &core.GenSpecInfo{}
-	if soleSigParamsNominal(sig, &generic) {
-		t.Error("a generic fn has no nominal param to guard")
-	}
-	multi := *fn
-	multi.Signatures = append(append([]core.Signature(nil), fn.Signatures...), *sig)
-	if soleSigParamsNominal(sig, &multi) {
-		t.Error("a multi-overload fn is not single-overload recoverable")
-	}
-	if sig, fn := pick("zgsuserpred"); soleSigParamsNominal(sig, fn) {
-		t.Error("a constrained param is not nominal")
-	}
-}
 
 // recoverUserFn refuses a window whose written operands reach past the
 // signature's barrier (NUR362: `g (h) 7` over `g [a:Integer | b:Integer]`

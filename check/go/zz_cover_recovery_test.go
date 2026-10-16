@@ -743,31 +743,3 @@ func TestZZCoverFallbackPositionsForwardCrossesGroupsAndMarkers(t *testing.T) {
 		t.Errorf("shortfall after a partial run: positions = %v nStack = %d, want [1 2] 0", pos, nStack)
 	}
 }
-
-// TestZZCoverWidestSatisfiableOverloadSkipsFallback: the dyn-body recovery's
-// window is the widest REAL overload whose operands exist at the site. The
-// aggregate's synthetic 0-arg catch-all (a boru-bodied overload beside the
-// natives brings one) must never be that window: its empty window is always
-// "satisfiable", so without the skip a site with no operands would recover
-// over the fallback instead of declining, and a site with some would still
-// land on a real overload only by width.
-func TestZZCoverWidestSatisfiableOverloadSkipsFallback(t *testing.T) {
-	fn := &core.FnDefInfo{Name: "zzw", Signatures: []core.Signature{
-		{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward},
-		{Args: []*core.Type{core.TNumber}, BarrierPos: core.BarrierAllForward},
-		{Fallback: true, BarrierPos: 0},
-	}}
-	w := core.WordInfo{Name: "zzw"}
-	// One written operand: the 2-arg window does not exist, the 1-arg one does.
-	e := engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewInteger(7)}, 0)
-	sig, pos, nStack := widestSatisfiableOverload(e, fn, w)
-	if sig != &fn.Signatures[1] || len(pos) != 1 || pos[0] != 1 || nStack != 0 {
-		t.Errorf("one operand: got sig %p pos %v nStack %d, want the 1-arg overload over [1]", sig, pos, nStack)
-	}
-	// No operand at all: no real overload is satisfiable, and the fallback is
-	// not a candidate — nothing is chosen.
-	e = engWithTape(t, []core.Value{core.NewWord("zzw")}, 0)
-	if sig, pos, _ := widestSatisfiableOverload(e, fn, w); sig != nil || pos != nil {
-		t.Errorf("no operands: got sig %p pos %v, want none (the 0-arg fallback is never the window)", sig, pos)
-	}
-}

@@ -50,44 +50,6 @@ func s5aCheckOn(t *testing.T, r *Registry) {
 
 // --- rematchWritten / polyReachBound --------------------------------------
 
-func TestS5ARematchWrittenForwardStops(t *testing.T) {
-	// A Word right after the pointer stops the forward walk; the stack
-	// prefix (empty) yields nothing.
-	e := engWithTape(t, []Value{NewWord("w"), NewWord("x")}, 0)
-	if got := e.rematchWritten(nil); len(got) != 0 {
-		t.Errorf("rematchWritten = %v, want empty", got)
-	}
-	// A non-concrete, non-carrier token (zero Value) stops the walk too.
-	e2 := engWithTape(t, []Value{NewWord("w"), {}}, 0)
-	if got := e2.rematchWritten(nil); len(got) != 0 {
-		t.Errorf("rematchWritten(zero token) = %v, want empty", got)
-	}
-}
-
-func TestS5ARematchWrittenStackFallback(t *testing.T) {
-	// Nothing after the pointer: the stack prefix is collected top-first.
-	e := engWithTape(t, []Value{NewInteger(1), NewInteger(2), NewWord("w")}, 2)
-	got := e.rematchWritten(nil)
-	if renderAll(got) != "2 | 1" {
-		t.Errorf("rematchWritten = %s, want 2 | 1", renderAll(got))
-	}
-	// The stack walk stops at an OpenParen boundary.
-	e2 := engWithTape(t, []Value{NewOpenParen(), NewInteger(3), NewWord("w")}, 2)
-	got2 := e2.rematchWritten(nil)
-	if renderAll(got2) != "3" {
-		t.Errorf("rematchWritten = %s, want 3", renderAll(got2))
-	}
-}
-
-func TestS5APolyReachBoundUnboundableToken(t *testing.T) {
-	// A zero Value in the forward window is neither a boundary, a marker,
-	// a word, nor a concrete/carrier value: the bound is untrustworthy.
-	e := engWithTape(t, []Value{NewWord("w"), {}}, 0)
-	if n, ok := e.polyReachBound(); ok || n != 0 {
-		t.Errorf("polyReachBound = (%d,%v), want (0,false)", n, ok)
-	}
-}
-
 // --- ReorderHintFor structured-sig skip -----------------------------------
 
 func TestS5AReorderHintSkipsPatternSig(t *testing.T) {

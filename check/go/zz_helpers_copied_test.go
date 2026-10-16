@@ -156,10 +156,6 @@ func covWords(r *core.Registry) {
 	})
 }
 
-func ljImplSig(impl core.SigImpl, args ...*core.Type) core.Signature {
-	return core.Signature{Args: args, BarrierPos: -1, Impl: impl}
-}
-
 func seam7Reg(t *testing.T) *core.Registry {
 	t.Helper()
 	r, err := core.NewRegistry()

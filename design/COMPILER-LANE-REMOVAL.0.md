@@ -102,8 +102,8 @@ switching the lane off.
 What remains of the recording pass in core, each a candidate for deletion
 in its own change:
 
-- `EmitRecorder` and the inactive recorder `CheckState` still carries;
-  `BeginCompilePass`; `Registry.Effects` / `NoteEffect` / `EffectLedger`.
+- `BeginCompilePass` and the compile-pass fields `CheckState` still
+  carries; `Registry.Effects` / `NoteEffect` / `EffectLedger`.
 - The `CompileEffect` flags on signatures (~100 registrations); the check
   pass still reads `CompileScalarFold`, `CompileDynBody` and
   `CompileFallbackBody`, so these go when check stops reading them.
@@ -116,6 +116,24 @@ in its own change:
   langspec false-positive gate read the first, and the second has coverage.
 - `lang/go/native/aliases.go` still re-exports a few names only the lane
   needed; the `unused` lint is the guide.
+
+The first sweep with that guide (`golangci-lint run --tests=false`, which
+reports a helper only tests still reach) ran in the removal's own PR,
+once the standalone gates were back at 100%: it deleted the thirteen core
+helpers the lane's callers had orphaned — the written-window rematch
+(`rematchWritten`, `rematchWrittenSplit`, `withGradualWrittenOperands`,
+`forwardReach`), the poly reach bound (`polyReachBound`,
+`polyReachUnboundable`, `mapTupleToWindow`), the paren-trailing-fn
+probes (`parenFeedsPendingForward`, `trailingFnCollectsPastClose`),
+`undecidedPatternWindow`, `plainReStepToken`, `concreteFnSingleReturn`
+and `containsFlexOrStore` — and nine in check, all callers of which sat
+inside the armed-recorder branches: `narrowToDeclaredParam`,
+`typedContainerCarrier`, `quoteParamCarrierBind`, `disjunctCombosTakeSig`,
+`anyDisjunctCarrier`, `anyImpreciseCarrier`, `widestSatisfiableOverload`,
+`soleSigParamsNominal` and `fnDefName`, with the tests that drove them.
+The two core helpers main already carried dead (`boruErrSite`,
+`returnTypeError`) and the `basic_shim.go` aliases, which exist for the
+word files and the suites above, were left alone.
 
 Beyond core: the TypeScript twin `eng/ts` still carries its own compiled
 lane (`compile.ts`, `emit.ts`, `lower.ts`, `bytecode.ts`, `vm.ts`) over the

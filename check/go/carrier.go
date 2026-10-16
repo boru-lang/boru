@@ -1304,36 +1304,6 @@ func disjunctPartitionReturns(r *core.Registry, word string, args []core.Value, 
 	return joinReturnRows(rows)
 }
 
-// disjunctCombosTakeSig reports whether EVERY per-alternative combination of
-// the disjunct args first-matches exactly the caller's committed sig — the
-// condition under which ONE recorded CALL_USER of that sig's unit is faithful
-// for every runtime alternative (CarrierResults' partitioned user-fn arm). A
-// combo that would first-match a SIBLING overload (a narrow arm ahead of the
-// committed wide one) makes the single baked call a miscompile — the
-// interpreter dispatches the sibling for that alternative — so the caller
-// keeps the compile failure. Combo enumeration failure (over the cap) declines.
-func disjunctCombosTakeSig(r *core.Registry, word string, args []core.Value, sig *core.Signature) bool {
-	fn := r.Lookup(word)
-	if fn == nil {
-		return false
-	}
-	combos, ok := disjunctCombos(args, disjunctPartitionCap)
-	if !ok {
-		return false
-	}
-	for _, combo := range combos {
-		cs := firstMatchingSig(fn, combo)
-		// Lookup mints a FRESH aggregate per call in check mode (the
-		// pointer-identity contract), so compare by the stable
-		// run-implementation identity — Signature.Impl, the same primitive
-		// the user-poly drift guard keys on.
-		if cs == nil || cs.Impl != sig.Impl {
-			return false
-		}
-	}
-	return true
-}
-
 // alternativeCarriers expands a strict disjunct carrier into one carrier
 // per flattened alternative; any other value yields itself. It is the
 // per-argument expansion the disjunct cross product enumerates.
@@ -1902,49 +1872,6 @@ func AnyAnyCarrier(vs []core.Value) bool {
 // the runtime value may match a more-specific sibling overload.
 func isAnyCarrier(v core.Value) bool {
 	return v.Carrier() && v.Parent() != nil && v.Parent().Equal(core.TAny)
-}
-
-// anyDisjunctCarrier reports whether any value is a UNION (Disjunct) carrier — a
-// receiver whose static type is a union of alternatives (`Map | Any` from an
-// if-branch join, the trie/tst node-vs-none shape). Like an Any carrier it
-// conforms to no single concrete overload, so matchSignature cannot commit and
-// the dispatch reaches the no-signature recovery — but at run time it holds ONE
-// concrete alternative, and the SAME first-match the interpreter takes
-// dispatches it. So a poly-safe word (get/getr) over a union receiver records a
-// runtime-re-matching OpCallNativePoly instead of declining; a runtime member
-// that matches no overload routes to the sound OpFallback island. (A bare
-// disjunct carrier carries no DisjunctInfo payload, so IsDisjunct is false here —
-// the carrier's Parent IS the union type, which is what we test.)
-func anyDisjunctCarrier(vs []core.Value) bool {
-	for _, v := range vs {
-		if v.Carrier() && v.Parent() != nil && v.Parent().ConformsTo(core.TDisjunct) {
-			return true
-		}
-	}
-	return false
-}
-
-// anyImpreciseCarrier reports whether any value is a CARRIER of a concrete-but-
-// imprecise type — a checker stand-in whose static type is a definite tag
-// (Integer, String, List, …) that a multi-branch narrowing / carrier-join
-// settled on, but which at run time may hold a value of a DIFFERENT type the
-// static analysis could not pin (the deep guard-complement chain in the
-// mini-redis codec's `join " " reply` — reply lands as a scalar carrier where
-// `join`'s List slot cannot commit). Like an Any / Disjunct carrier it is NOT a
-// concrete value (Carrier=true), so per the no-signature-recovery contract
-// ("Concrete operands are a genuine type error and decline; carriers recover")
-// it is eligible for the runtime-re-matching OpCallNativePoly: tryRecordPoly's
-// own poly-safety gates decide whether recovery is faithful, and a runtime
-// value that matches no overload routes to the sound OpFallback island / raises
-// the interpreter's byte-identical error. Bare type nodes (a type-literal
-// operand of is/typeof) are excluded — they are not runtime values to re-match.
-func anyImpreciseCarrier(vs []core.Value) bool {
-	for _, v := range vs {
-		if v.Carrier() && v.Parent() != nil && !core.IsBareTypeNode(&v) {
-			return true
-		}
-	}
-	return false
 }
 
 // valueTreeHasCarriers reports whether v or any nested map value / list

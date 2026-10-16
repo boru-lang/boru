@@ -126,38 +126,3 @@ func TestGateStandaloneRefinementUndecided(t *testing.T) {
 		t.Error("a plain type pattern decides")
 	}
 }
-
-// narrowToDeclaredParam's IMPRECISE arm: a recovered call's carrier whose
-// static tag does not conform to a NOMINAL param (a join settled on Map
-// where the run holds a List) compiles the body against the declared type,
-// keeping the carrier's modality. A GENERIC fn's param (a type variable the
-// generic lane binds), a CONSTRAINED param (a predicate the nominal guard
-// cannot enforce), a conforming carrier and a concrete value all keep the
-// argument as it is.
-func TestGateStandaloneNarrowImpreciseCarrier(t *testing.T) {
-	nc, ok := narrowToDeclaredParam(core.TList, core.NewCarrier(core.TMap), false)
-	if !ok || !nc.Carrier() || core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
-		t.Fatalf("an imprecise Map carrier at a List param = (%#v, %v), want a strict List carrier", nc, ok)
-	}
-	nc, ok = narrowToDeclaredParam(core.TList, core.NewDynamicCarrier(core.TMap), false)
-	if !ok || !core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
-		t.Errorf("a gradual imprecise carrier narrows and stays gradual, got (%#v, %v)", nc, ok)
-	}
-
-	r := newTestRegistry(t)
-	pred := covPredicateType(t, r, "ZgsNarrowPred")
-	for name, c := range map[string]struct {
-		pt      *core.Type
-		a       core.Value
-		generic bool
-	}{
-		"generic fn":         {core.TList, core.NewCarrier(core.TMap), true},
-		"constrained param":  {pred, core.NewCarrier(core.TString), false},
-		"conforming carrier": {core.TList, core.NewCarrier(core.TList), false},
-		"concrete value":     {core.TList, core.NewInteger(1), false},
-	} {
-		if _, ok := narrowToDeclaredParam(c.pt, c.a, c.generic); ok {
-			t.Errorf("%s: the argument must be kept as it is", name)
-		}
-	}
-}

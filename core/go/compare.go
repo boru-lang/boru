@@ -310,29 +310,6 @@ func ExactEqual(a, b Value) bool {
 		}
 		return a.Parent().Equal(b.Parent()) && ValuesEqual(a, b)
 	}
-
-	// Function values (NUR031). eq is REFERENCE identity, per NUR011's rule
-	// for every Ideal — and the reference is the payload's identity token
-	// (FnDefInfo.ident), minted once per authored function and copied by
-	// every derivation that leaves it the same function. Two bindings of one
-	// function share it; two independently-written functions never do.
-	//
-	// This is the record's "box FnDefInfo", narrowed to the one field that
-	// needed boxing: a full box would change the representation every kernel
-	// arm keying on `FnDefInfo` reads, for an identity a single unexported
-	// pointer supplies. Before this, eq fell to the type-body arm below,
-	// which compares the payload STRUCT — including Name — so `def a (f/v)`
-	// and `def b (f/v)` were not eq though they name one function.
-	// A compiled closure (NUR124's payload axis) is a function too: it
-	// carries the identity token its push minted (ClosurePayload.Ident), and
-	// the FnDefInfo the VM bridges it to for the interpreter's dispatch
-	// carries the same one — so two copies of one closure, bridged or not,
-	// are one function, as the source lambda's copies are on the
-	// interpreter. A payload with no token (a hand-built value) has no
-	// identity and is eq to nothing.
-	if eq, handled := closureIdentityEqual(a, b); handled {
-		return eq
-	}
 	if af, aok := a.Data().(*FnDefInfo); aok {
 		if bf, bok := b.Data().(*FnDefInfo); bok {
 			return sameFnIdentity(*af, *bf)
@@ -1132,53 +1109,6 @@ func DeqHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 	return []Value{NewBoolean(DeepEqual(args[0], args[1]))}, nil
 }
 
-// sameFnIdentity reports whether two fn payloads are the SAME function —
-// reference identity, keyed on the identity token NewFunction mints and
-// every same-function derivation copies (NUR031).
-//
-// The token exists because the payload offers no other stable reference.
-// The Signatures backing array is the obvious candidate and is wrong: for a
-// boru-bodied word aggregateDispatch rebuilds that slice per NAME, so two
-// bindings of one function (`def a (f/v)` / `def b (f/v)`) land on two
-// arrays and read as two functions — the record's complaint exactly.
-//
-// A payload with no token — a FnDefInfo literal built outside NewFunction,
-// i.e. a compile-time carrier or a probe with no fn value behind it — has
-// no identity, and answering true would make every one of them eq to every
-// other.
-// closureIdentityEqual is ExactEqual's arm for a pair with a compiled closure
-// on at least one side: handled reports that; eq is the identity comparison —
-// the closure's token against the other side's, which is another closure's
-// token or a bridged FnDefInfo's ident. A side that is neither (data, a type)
-// or a token-less closure never matches.
-func closureIdentityEqual(a, b Value) (eq, handled bool) {
-	as, aIs := closureIdentSeqOf(a)
-	bs, bIs := closureIdentSeqOf(b)
-	if !aIs && !bIs {
-		return false, false
-	}
-	return as != 0 && as == bs, true
-}
-
-// closureIdentSeqOf reads the closure identity sequence a value carries — a
-// closure's own, or the one a bridged FnDefInfo's token stands in for — and
-// whether v IS a closure. Zero: no closure identity.
-func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
-	switch d := v.Data().(type) {
-	case *FnDefInfo:
-		if d.ident != nil {
-			return d.ident.closure, false
-		}
-	}
-	return 0, false
-}
-
-// FnIdentityKey renders the identity token ExactEqual compares for a fn
-// value as a string — for a memo key that must separate two functions of one
-// type (a call-site specialised fn unit, keyed on the constant fn it was
-// compiled for). Two values with one key are one function by ExactEqual. ok
-// is false for anything that is not an identified FnDefInfo — data, a
-// carrier, a hand-built payload with no token — which has no identity to key.
 func FnIdentityKey(v Value) (string, bool) {
 	fd, isFn := v.Data().(*FnDefInfo)
 	if !isFn || fd.ident == nil {

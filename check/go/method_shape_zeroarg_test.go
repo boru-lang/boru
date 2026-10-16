@@ -51,20 +51,6 @@ func TestAllZeroArgSigsTable(t *testing.T) {
 	}
 }
 
-func TestFnDefNameFallbacks(t *testing.T) {
-	r := seam7Reg(t)
-	named := z9Member("z9named", r, core.Signature{Returns: []*core.Type{core.TAny}, BarrierPos: -1})
-	if got := fnDefName(named); got != "z9named" {
-		t.Errorf("fnDefName(named) = %q, want z9named", got)
-	}
-	if got := fnDefName(core.NewInteger(3)); got != "fn value" {
-		t.Errorf("fnDefName(non-fn) = %q, want the generic label", got)
-	}
-	if got := fnDefName(core.NewFunction(core.FnDefInfo{})); got != "fn value" {
-		t.Errorf("fnDefName(anonymous) = %q, want the generic label", got)
-	}
-}
-
 // The 0-arg window path: a bare landed member (no forward window) models only
 // a GENUINE 0-arg overload whose inner signature is a plain Go handler; a
 // gate-failing 0-arg sig, an inner without any 0-arg sig, and a non-0-arg

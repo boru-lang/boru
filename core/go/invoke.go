@@ -7,13 +7,12 @@ import "errors"
 // handlers did when they spun up `New(r).Run([inputs… bodyTokens…])`.
 //
 // This is the seam through which a code-body word (do/case/where/group/
-// having/order/select, and the collection words under the VM) runs its
-// body. It exists so the bytecode VM can drive body execution WITHOUT
-// re-entering the interpreter: when r.Invoker is set (the VM is running),
-// the body is a compiled closure and execution re-enters the VM; when it is
-// nil (a plain interpreter run) a fresh sub-engine runs the reconstructed
-// token stream, so behaviour is byte-identical to the pre-seam handlers
-// (design plan P1).
+// having/order/select) runs its body from Go: a pooled sub-engine runs the
+// reconstructed token stream, so behaviour is byte-identical to the
+// pre-seam handlers (design plan P1). It was also the bytecode VM's way of
+// driving a body without re-entering the interpreter; the compiler lane is
+// gone (design/COMPILER-LANE-REMOVAL.0.md) and the seam stays as the
+// Go-side body run.
 //
 // The ITERATING words — each, for-each, fold, scan, outer, inner, eachrank,
 // foldaxis, filter's quotation form and the map forms over a quotation —
@@ -228,20 +227,6 @@ func (fd *FnDefInfo) nameOrEmpty() string {
 	return fd.Name
 }
 
-// NamedFnValue is NamedDef for the fn value v as its holder presents it:
-// under the name a binding gave the holder (FnNameOf), else its own.
-func NamedFnValue(v *Value) bool {
-	fd, ok := FnDefOf(v.Data())
-	return ok && fd.namedAs(FnNameOf(v))
-}
-
-// FnHomeLookup resolves the fn value's NAME in its home registry — the
-// definition a module wrapper delegates to, or a module-preamble fn's own
-// stored binding — and is nil for a value with no home, no name, or a home
-// that does not bind the name. It is the one way to reach a value's inner
-// definition: the dispatch seams that used to spell it as
-// `fd.Registry == nil || fd.Name == ""` followed by `fd.Registry.Lookup` all
-// ask this instead, so the nil home is read in exactly one place.
 func FnHomeLookup(fd *FnDefInfo) *FnDefInfo {
 	if !fd.HasHome() || fd.Name == "" {
 		return nil

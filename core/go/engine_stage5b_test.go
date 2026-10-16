@@ -859,30 +859,5 @@ func TestS5BArgTypeSummaryPlainValue(t *testing.T) {
 	}
 }
 
-// TestConcreteFnSingleReturn pins the trailing arm's result typing: one
-// declared return every own signature agrees on, for a NAMED concrete fn.
-func TestConcreteFnSingleReturn(t *testing.T) {
-	sig := func(ret ...*Type) Signature { return Signature{Params: []FnParam{{Type: TInteger}}, Returns: ret} }
-	named := func(sigs ...Signature) Value {
-		return NewValueRaw(TFunction, &FnDefInfo{Name: "f", Signatures: sigs})
-	}
-	if got := concreteFnSingleReturn(named(sig(TInteger))); got == nil || !got.Equal(TInteger) {
-		t.Errorf("one declared return: got %v", got)
-	}
-	if got := concreteFnSingleReturn(named(sig(TInteger), sig(TInteger))); got == nil || !got.Equal(TInteger) {
-		t.Errorf("overloads that agree: got %v", got)
-	}
-	for name, v := range map[string]Value{
-		"a carrier":         NewCarrier(TFunction),
-		"anonymous":         NewValueRaw(TFunction, &FnDefInfo{Anonymous: true, Signatures: []Signature{sig(TInteger)}}),
-		"no signatures":     named(),
-		"undeclared return": named(sig()),
-		"two returns":       named(sig(TInteger, TInteger)),
-		"overloads differ":  named(sig(TInteger), sig(TString)),
-		"nil return":        named(sig(nil)),
-	} {
-		if got := concreteFnSingleReturn(v); got != nil {
-			t.Errorf("%s: got %v, want nil", name, got)
-		}
-	}
-}
+// trapEngine prepares a compile-armed registry+engine with the given
+// tape, pointer, and fallback window.

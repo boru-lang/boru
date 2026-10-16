@@ -921,7 +921,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// SOUND and narrower than the rejected bestMatch>=0 gate: it fires only on an
 	// unknown-TYPE carrier (never a concrete/type-literal operand) AND a one-
 	// overload user fn, so it cannot drop the concrete-mismatch error rows.
-	// anyAnyCarrier ONLY, NOT anyDisjunctCarrier: a DISJUNCT's members are
+	// An Any carrier ONLY, never a DISJUNCT one: a disjunct's members are
 	// statically known, so a disjunct that misses the param in EVERY member
 	// (Integer|String -> Map, String|List -> Integer) is a GENUINE error the
 	// interpreter always raises on and must stay flagged (TestJoinCarriersDynamicArm
@@ -1180,57 +1180,6 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 		args[i] = av
 	}
 	return args
-}
-
-// widestSatisfiableOverload picks, among a word's non-fallback overloads,
-// the one of GREATEST arity whose full operand window exists at this call
-// site (checkModeFallbackPositionsFor supplies every position), first in
-// match order among equals; nil when none is satisfiable. The dyn-body
-// recovery re-matches the live values over this window at run time, and
-// the interpreter's first match consumes the widest window it can — so a
-// narrower window would leave an operand behind.
-func widestSatisfiableOverload(e *core.Engine, fn *core.FnDefInfo, w core.WordInfo) (*core.Signature, []int, int) {
-	var best *core.Signature
-	var bestPos []int
-	bestN := 0
-	for i := range fn.Signatures {
-		s := &fn.Signatures[i]
-		if s.Fallback {
-			continue
-		}
-		n := s.TotalArgs()
-		sp, nStack := checkModeFallbackPositionsFor(e, s, w)
-		if len(sp) != n {
-			continue
-		}
-		if best == nil || n > best.TotalArgs() {
-			best, bestPos, bestN = s, sp, nStack
-		}
-	}
-	return best, bestPos, bestN
-}
-
-// soleSigParamsNominal reports whether fn is a single-overload user fn
-// (core.SingleOverloadRecoverable) whose sole signature's param types are all
-// NOMINAL — no type carrying a value-sensitive constraint the guarded
-// CALL_USER's nominal entry check could not enforce.
-func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
-	if !core.SingleOverloadRecoverable(sig, fn) || fn.Gen != nil {
-		// A GENERIC fn (`def unbox gen [T] fn [[b:T] …]`) has no nominal
-		// param to guard — T is bound per call by the generic lane, whose
-		// evaluating host is not built (generics-fn.tsv L54 compiled through
-		// this recovery and ran the call on the interpreter, an interp-entry
-		// census row); it keeps the decline.
-		return false
-	}
-	// HasConstraintUnify is nil-safe (an absent type carries no constraint),
-	// so every position is asked directly.
-	for _, t := range sig.ArgTypes() {
-		if core.HasConstraintUnify(t) {
-			return false
-		}
-	}
-	return true
 }
 
 // recoverUserFn is the single-overload user-fn recovery

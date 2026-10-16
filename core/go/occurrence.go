@@ -56,9 +56,6 @@ type occurrence struct {
 	asc     *Type
 	dynFrom *string
 	pos     *position
-	// rec is the recorder key a recording pass stamped on this holder: the
-	// event that produced its value and the result index (RecKey).
-	rec RecKey
 	// referent is what this holder's atom named when it was quoted or its
 	// program loaded (SetAtomReferent): a reference to the value bound then,
 	// which a later rebind does not reach (a capture, the exceptions list's
@@ -66,23 +63,6 @@ type occurrence struct {
 	// alone, so atoms with one name stay one atom to equality and canonical
 	// form whatever each holder captured.
 	referent *Value
-}
-
-// RecKey is a recorded value's recorder key (design/VALUE-NO-COPY.0.md §5:
-// recorder identity is keyed by (event, result index)): the event of a
-// recording pass that produced this holder's value and the value's index
-// among that event's results. The recorder stamps it on the holder an
-// event's results flow on (SetRecKey) and reads it back from whichever copy
-// of that holder reaches a later event (RecKeyOf) — provenance carried with
-// the occurrence, as a position is, never looked up through the value's
-// identity token. Pass and Gen are the recorder's own bookkeeping: which
-// recording pass stamped the key, and which issuance of Seq (a rolled-back
-// round reissues its event numbers). The zero key is "no producer".
-type RecKey struct {
-	Pass uint32
-	Gen  uint32
-	Seq  int32
-	Idx  int32
 }
 
 // position is a source position and the occurrence record that carries it
@@ -122,7 +102,7 @@ const idCleared = "\x00"
 
 // posOnly reports whether rec carries a position and nothing else.
 func posOnly(rec *occurrence) bool {
-	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil && rec.rec == RecKey{} && rec.referent == nil
+	return rec.id == "" && rec.name == "" && rec.asc == nil && rec.dynFrom == nil && rec.referent == nil
 }
 
 // occFlags are the per-occurrence flags, one bit each.
@@ -136,8 +116,6 @@ const (
 	occReachGroup
 	occDynamic
 	occApplied
-	occRetTrim
-	occSigMatched
 )
 
 // occOf is the occurrence state of v by value (the zero record when none).
@@ -319,44 +297,6 @@ func IsApplied(v *Value) bool { return occFlag(v, occApplied) }
 // SetApplied marks or clears v's application signal, for this holder only.
 func SetApplied(v *Value, on bool) { setOccFlag(v, occApplied, on) }
 
-// IsRetTrim reports that a compiled closure VALUE was handed through the
-// fn-VALUE seam (InvokeCallbackBody): the handler would hand a FnDefInfo to
-// InvokeCallbackFn, whose CallBoru path checks the declared TYPES over the
-// aligned residual and never raises on the COUNT (enforceCallBoruReturns) —
-// walk's hooks, the map-iteration each/fold, filter's Function form. Off,
-// the closure came through the TOKEN seam (InvokeBody: each over a list,
-// apply, a paren call), where the fn value is stepped and __RC enforces the
-// count. Set on the holder at the seam, never on the stored closure: the
-// same closure can cross both.
-func IsRetTrim(v *Value) bool { return occFlag(v, occRetTrim) }
-
-// SetRetTrim marks or clears v's fn-VALUE seam crossing, for this holder
-// only.
-func SetRetTrim(v *Value, on bool) { setOccFlag(v, occRetTrim, on) }
-
-// IsSigMatched reports that the seam handing a compiled closure VALUE its
-// args has already matched the closure's OWN signature, with the args in
-// signature order: the closure bridge (a bridged FnDefInfo's handler —
-// closureAsWord, ClosureAsFnDef — runs after the interpreter's dispatch
-// matched), and a native seam that matched the value's contract over the
-// lambda-shaped args it hands (the map arm's KeyVal, filter's entry, walk's
-// payload). Off, the closure reached the TOKEN seam (InvokeBody: each over
-// a list, a paren call) with its inputs in STACK order, and a fn-VALUE
-// closure is matched there the way the interpreter matches a stepped value,
-// top down, before its unit runs, and declines to the stepping path when
-// nothing matches (S1b-2; eng/go/vm_fnvalue_seam.go). Set on the holder at
-// the seam, never on the stored closure.
-func IsSigMatched(v *Value) bool { return occFlag(v, occSigMatched) }
-
-// SetSigMatched marks or clears v's matched-signature seam mark, for this
-// holder only.
-func SetSigMatched(v *Value, on bool) { setOccFlag(v, occSigMatched, on) }
-
-// IDOf is v's identity token: the canonical ID a type node (and every
-// literal copy of it) is known by — the node's own, in its tmeta — the
-// provenance key a check pass mints for a value it tracks, a parsed token's
-// identity, or "" for the overwhelming majority of runtime values, which
-// have none.
 func IDOf(v *Value) string {
 	if v.occ != nil && v.occ.id != "" {
 		if v.occ.id == idCleared {
@@ -392,45 +332,17 @@ func SetID(v *Value, id string) {
 	default:
 		rec.id = id
 	}
-	rec.rec = RecKey{}
 	setOcc(v, rec)
 }
 
-// ShareIdentity gives this holder of dst src's identity and recorder key:
+// ShareIdentity gives this holder of dst src's identity:
 // dst is the same value as src to a recording pass (a narrowed binding, a
 // fold keeping its result's identity, a join of two arms that only
 // narrowed one binding).
 func ShareIdentity(dst, src *Value) {
 	SetID(dst, IDOf(src))
-	SetRecKey(dst, RecKeyOf(src))
 }
 
-// RecKeyOf is the recorder key a recording pass stamped on this holder of v
-// (SetRecKey), the zero key when none did.
-func RecKeyOf(v *Value) RecKey {
-	if v.occ == nil {
-		return RecKey{}
-	}
-	return v.occ.rec
-}
-
-// SetRecKey stamps this holder of v with the recorder key k (the zero key
-// clears it); every other copy keeps the key it had, so a stamp reaches the
-// results an event hands on and the copies made of them after, never a
-// binding or an argument the event read.
-func SetRecKey(v *Value, k RecKey) {
-	if RecKeyOf(v) == k {
-		return
-	}
-	rec := occOf(v)
-	rec.rec = k
-	setOcc(v, rec)
-}
-
-// FnNameOf is the name a fn value answers to through this holder: the name
-// a binding gave the holder (SetFnName), else the name its payload was
-// constructed under — a fn definition's Name, a compiled closure's RetName
-// — and "" for an anonymous value or a value that is no fn.
 func FnNameOf(v *Value) string {
 	if v.occ != nil && v.occ.name != "" {
 		return v.occ.name

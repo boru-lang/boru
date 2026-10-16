@@ -102,18 +102,6 @@ type Engine struct {
 	// engine-owned buffer is race- and aliasing-safe. Retained across
 	// pooled sub-engine reuse (harmless: reset to [:0] on entry).
 	rrValues []Value
-	// fwdSplitAt / fwdSplitPos / fwdSplitN record the last completed
-	// rearrangeForForward: the pointer of the word it laid out, that word's
-	// source position, and how many of its operands were written after it —
-	// the leading signature positions. Once the word is re-stepped every
-	// operand sits beneath it, so the tape no longer shows the split;
-	// optimisticOuter reads it here to list the window as the runtime
-	// rematch does (NUR264). Consulted only when the pointer and the word's
-	// position both agree, so a stale record reads as no split — which is
-	// also what a dispatch that collected nothing forward has.
-	fwdSplitAt  int
-	fwdSplitPos SrcPos
-	fwdSplitN   int
 	// sealed holds the sealed-region Loops (sealed.go), one per nesting
 	// depth of literal evaluation; sealDepth is the depth live now. A
 	// region at a depth is minted once and reused by every later literal
@@ -531,44 +519,6 @@ func isEngineMarker(v Value) bool {
 	return v.Parent() != nil && (v.Parent().ConformsTo(TMark) || v.Parent().ConformsTo(TMove) || v.Parent().ConformsTo(TInternal))
 }
 
-// rematchWritten is the CHECK-TIME twin of sigError's written-tuple
-// derivation (unclaimed concrete forward tokens in source order, else the
-// stack prefix top-first), widened to admit CARRIERS where the runtime
-// tape holds the concrete value — the check pass mirrors the interpreter
-// step-for-step, so position-for-position the runtime derivation walks
-// the same shape and yields the concrete twins of these values. Used by
-// the runtime-rematch record to prove its operand window IS the tuple the
-// interpreter's error renders.
-func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
-	win, _ := e.rematchWrittenSplit(fn)
-	return win
-}
-
-// rematchWrittenSplit is rematchWritten with the count of its leading
-// entries written after the word (attemptedWindowSplit).
-func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
-	var written []Value
-	for i := e.Pointer + 1; i < e.Tape.Len() && len(written) < 4; i++ {
-		v := e.Tape.At(i)
-		if IsWord(&v) || IsParenExpr(&v) || IsForward(&v) || IsOpenParen(&v) || IsEnd(&v) || isEngineMarker(v) {
-			break
-		}
-		if !IsConcrete(&v) && !v.Carrier() {
-			break
-		}
-		written = append(written, v)
-	}
-	// The rest is the runtime report's own derivation (attemptedWindow) over
-	// the carrier-aware forward tuple: a bare word a `/q` slot would capture,
-	// then the stack prefix beneath up to the smallest overload's arity —
-	// the tuple sigError renders, so the spec's rebuild re-renders it
-	// (NUR172; `(x add 1)` over a gradual x reports both operands on both
-	// lanes). The Atom the bare-word rule mints carries no value ID, so a
-	// tuple that needs it declines the spec (mapTupleToWindow) and the
-	// runtime keeps its best-effort report.
-	return attemptedWindowSplit(e.Tape, e.Pointer, fn, written, e.runPrefix())
-}
-
 // runPrefix is the stack prefix beneath the pointer a no-match report
 // renders (ReorderCandidates), as the RUN holds it: a compiling pass's tape
 // also holds each 0-output statement guard's phantom None (the result a
@@ -579,125 +529,6 @@ func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
 // recorder marks nothing and the prefix is the tape's.
 func (e *Engine) runPrefix() []Value {
 	return ReorderCandidates(e.Tape.Prefix(e.Pointer))
-}
-
-// polyReachBound over-estimates the operands a dispatch at the current
-// pointer could collect: claimable forward tokens (concrete values, carriers,
-// def-bound plain values, the reserved literals) until a structural stop (a
-// function word, a paren boundary, a statement end), plus the stack-prefix
-// values down to the nearest boundary. Tokens whose runtime contribution is
-// unboundable — an unbound word, a splice, a marker inside the prefix — make
-// the bound untrustworthy (reachOK=false), which declines every wider-arity
-// exclusion that would rely on it. Over-estimating is sound (declines more);
-// under-estimating is not.
-func (e *Engine) polyReachBound() (int, bool) {
-	n := 0
-	for i := e.Pointer + 1; i < e.Tape.Len(); i++ {
-		v := e.Tape.At(i)
-		if IsOpenParen(&v) || IsCloseParen(&v) || IsEnd(&v) {
-			break // structural collection boundary
-		}
-		if polyReachUnboundable(v) {
-			return 0, false
-		}
-		if IsWord(&v) {
-			wi, werr := AsWord(&v)
-			if werr != nil { //covergate:allow AsWord cannot fail after an IsWord guard — the payload IS a WordInfo (§engine)
-				return 0, false
-			}
-			if top, ok := e.Registry.Defs.Top(wi.Name); ok {
-				if _, isFn := top.Data().(*FnDefInfo); isFn {
-					if wi.ForceVal {
-						// `/v`: the word denotes its REFERENCE value —
-						// one claimable datum, not a call (NUR050/G12).
-						n++
-						continue
-					}
-					break // a function word stops forward collection
-				}
-				n++ // a plain value binding: the word steps to exactly one value
-				continue
-			}
-			switch wi.Name {
-			case "true", "false", "none":
-				n++ // reserved literals resolve to one value
-				continue
-			}
-			if _, ok := ResolveBuiltinTypeName(wi.Name); ok {
-				// A builtin type name steps to exactly one value, its type
-				// literal — stepWord's own ResolveBuiltinTypeName arm, the
-				// one it takes for an unbound name before undefined_word.
-				// Reading it as unbound made `convert Integer none` and
-				// `convert Integer (make Foo {})` unboundable, so their
-				// recorded poly carried no faithful-raise plan and the
-				// runtime no-match bailed (vm:poly-no-match, 2026-09-26).
-				n++
-				continue
-			}
-			// Unbound word: undefined_word preempts the dispatch. (A
-			// REGISTERED word never reaches here — registration pushes its
-			// FnDefInfo binding, so Defs.Top caught it above.)
-			return 0, false
-		}
-		if IsReachGroup(&v) && !IsQuoted(&v) && isFnDefValue(v) && e.ReachFnWouldClaim(v, i+1) {
-			break // a reach-collapsed named fn with a claim is the next CALL — a barrier (NUR038)
-		}
-		if IsConcrete(&v) || v.Carrier() {
-			n++
-			continue
-		}
-		return 0, false // anything else: unboundable
-	}
-	stack := e.Tape.Prefix(e.Pointer)
-	for i := len(stack) - 1; i >= 0; i-- {
-		v := stack[i]
-		if IsOpenParen(&v) || IsEnd(&v) {
-			break // dispatch never collects across a paren/statement boundary
-		}
-		if polyReachUnboundable(v) || IsWord(&v) || !(IsConcrete(&v) || v.Carrier()) {
-			return 0, false // word/marker in the prefix: unboundable
-		}
-		n++
-	}
-	return n, true
-}
-
-// polyReachUnboundable — tokens whose runtime contribution to a collection
-// window has no static bound: an in-flight collection marker, a deferred
-// expression that expands at step time (a reach, an unexpanded paren, a
-// template string, a splice), or an engine marker. NOTE the IsConcrete trap:
-// every one of these carries a payload, so the bare concrete probe counts
-// them — screen them first (the reorderCandidates stop-set lesson).
-func polyReachUnboundable(v Value) bool {
-	return IsForward(&v) || IsReach(&v) || IsParenExpr(&v) || IsInterpString(&v) || IsSplice(&v) || IsSugar(&v) ||
-		v.Parent().ConformsTo(TMark) || v.Parent().ConformsTo(TMove) || v.Parent().ConformsTo(TInternal)
-}
-
-// mapTupleToWindow resolves each tape-tuple value to a distinct operand-window
-// index by Value.ID (the RecordDispatchRematchValues identity gate). An empty
-// ID or an unlocatable value declines — the runtime rebuild could not prove it
-// re-renders the interpreter's tuple.
-func mapTupleToWindow(tuple, window []Value) ([]int, bool) {
-	idx := make([]int, len(tuple))
-	used := make([]bool, len(window))
-	for i, v := range tuple {
-		if IDOf(&v) == "" {
-			return nil, false
-		}
-		found := -1
-		for j := range window {
-			if !used[j] && IDOf(&window[j]) == IDOf(&v) {
-				found = j
-				break
-			}
-		}
-		if found < 0 {
-			return nil, false
-		}
-		used[found] = true
-		idx[i] = found
-	}
-	return idx, true
 }
 
 // reorderHintFor is the shared probe behind the signature errors.
@@ -850,10 +681,9 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // over the 5 with `name` written after it — reported "the argument was 5 …
 // takes 2 arguments, but 1 was supplied" where the compiled lane's poly
 // window reported the two values the source wrote and the type failure on
-// the second: NUR172. The same window, both lanes. written is the forward
-// tuple already collected — the runtime's concrete candidates, or the check
-// pass's carrier-aware ones (rematchWritten), so the two derive one window —
-// and prefix the stack prefix beneath as the run holds it (runPrefix).
+// the second: NUR172. written is the forward tuple already collected — the
+// run's concrete candidates — and prefix the stack prefix beneath as the
+// run holds it (runPrefix).
 func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) []Value {
 	win, _ := attemptedWindowSplit(tape, pointer, fn, written, prefix)
 	return win
@@ -3934,10 +3764,6 @@ func (e *Engine) rearrangeForForward(stackArgs, forwardArgs int) {
 	for i := 0; i < forwardArgs; i++ {
 		*e.Tape.Ref(indices[stackArgs+i]) = values[forwardArgs-1-i]
 	}
-	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, forwardArgs, SrcPos{}
-	if e.Pointer < e.Tape.Len() {
-		e.fwdSplitPos = e.Tape.Ref(e.Pointer).Pos()
-	}
 }
 
 // resolvedIndicesBefore returns the indices of the last n resolved values
@@ -6187,50 +6013,6 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef *FnDefInfo, resolved [
 	return nil
 }
 
-// undecidedPatternWindow is the arity of the first own signature whose
-// refusal of the stack's top values is UNDECIDED (NUR254): every slot admits
-// its value by type, every pattern over a concrete value admits it, and some
-// pattern holds a non-concrete value — a carrier the run may bind to the
-// pattern's literal (`(n ([0] => [1]))` over an Integer param). The window is
-// read as ExecFnDefSigStackMatch reads it: top-first for named params, in
-// stack order for unnamed ones. 0 when every refusal is definite.
-func undecidedPatternWindow(ownSigs []Signature, resolved []Value) int {
-	for i := range ownSigs {
-		sig := &ownSigs[i]
-		n := len(sig.Params)
-		if n == 0 || len(resolved) < n {
-			continue
-		}
-		named := false
-		for _, p := range sig.Params {
-			named = named || p.Name != ""
-		}
-		undecided, ok := false, true
-		for j, p := range sig.Params {
-			v := resolved[len(resolved)-n+j]
-			if named {
-				v = resolved[len(resolved)-1-j]
-			}
-			switch {
-			case !stackSlotAdmits(sig, j, v):
-				ok = false
-			case p.Pattern == nil:
-			case !IsConcrete(&v):
-				undecided = true
-			default:
-				_, ok = Unify(v, *p.Pattern)
-			}
-			if !ok {
-				break
-			}
-		}
-		if ok && undecided {
-			return n
-		}
-	}
-	return 0
-}
-
 // UncalledRaisePos is where a named fn value's no-match raises
 // uncalled_function: the value's own position, or — when the FnDef value
 // carries none — the nearest argument's, so the report points somewhere
@@ -6968,24 +6750,6 @@ func FnValueDispatchesAtPointer(v Value) bool {
 	return fnValueDispatchesAtPointer(v)
 }
 
-// plainReStepToken reports whether t is an ordinary, not-yet-stepped body
-// token the interpreter steps after a call's results — a word, a paren
-// group, a reach, a sugar marker, or a literal the source wrote — rather
-// than a structural marker, a dispatch modifier, or a value the pass has
-// already placed there (a carrier, or anything without a source position).
-func plainReStepToken(t Value) bool {
-	if t.Pos().Row == 0 || t.Carrier() || IsDynamic(&t) {
-		return false
-	}
-	if _, mod := AsDispatchMod(t); mod {
-		return false
-	}
-	if IsWord(&t) || IsParenExpr(&t) || isEvalReach(&t) || IsSugar(&t) {
-		return true
-	}
-	return IsRecordableLiteral(t)
-}
-
 // creditParenSurvivorSkips tells an installed RecorderSkipper how many of the
 // just-collapsed paren's survivors it should ignore when the rewind makes the
 // main loop re-encounter them: they were already emitted to the recorder
@@ -7258,7 +7022,7 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		case wi.Name == "true" || wi.Name == "false":
 			return NewBoolean(wi.Name == "true"), probeValue
 		case wi.Name == "none":
-			return NewNone(), probeValue // reserved literal, like true/false (polyReachBound parity)
+			return NewNone(), probeValue // reserved literal, like true/false
 		default:
 			return Value{}, probeNone // unbound / type-name words: not a proven claim
 		}
@@ -7738,15 +7502,6 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 	return nil
 }
 
-// TruncateFrameDefs pops every def binding installed in reg since the
-// snapshot (Defs.Snapshot) — the DefCleanup marker's truncation duty, for a
-// caller that ran a body region outside a frame (the VM's deopt island).
-func TruncateFrameDefs(reg *Registry, snapshot map[string]int) {
-	truncateFrameDefs(DefCleanupInfo{Snapshot: snapshot, Registry: reg})
-}
-
-// truncateFrameDefs pops every def binding installed since the frame's
-// entry snapshot — the DefCleanup marker's truncation duty.
 func truncateFrameDefs(info DefCleanupInfo) {
 	reg := info.Registry
 	for _, name := range reg.Defs.Names() {
@@ -8280,119 +8035,6 @@ func (e *Engine) consumeStartAt() int {
 func (e *Engine) stepPastOpenParen(val Value) {
 	e.Pointer++
 	e.Pointer += openArgSpan(val)
-}
-
-// parenFeedsPendingForward reports whether the paren opening at openIdx is
-// collapsing directly under a PARKED Forward still collecting its arguments
-// (the arrival path — the eager evaluator's twin is stepCloseParen's
-// feedsForward): the group is that word's forward argument, and its
-// survivors arrive as the collection's candidates in written order rather
-// than as the main loop's re-steps — `10 mul (2 (mk 1))` is 21 because mul
-// takes the 2 and the closure re-steps later over the 20 (NUR184). A paren
-// nested inside another paren is the enclosing group's (its survivors are
-// re-stepped by the group's own evaluation loop), so the scan stops at an
-// open paren.
-func (e *Engine) parenFeedsPendingForward(openIdx int) bool {
-	if !e.Tape.hasForward() {
-		return false
-	}
-	for i := openIdx - 1; i >= 0; i-- {
-		v := e.Tape.At(i)
-		if IsOpenParen(&v) {
-			return false
-		}
-		if IsForward(&v) {
-			fwd, _ := AsForward(&v)
-			return fwd.CollectedArgs < fwd.Sig.TotalArgs()
-		}
-	}
-	return false
-}
-
-// trailingFnCollectsPastClose reports whether the fn value that survives
-// LAST inside a collapsing paren would forward-collect the token after the
-// close paren once the rewind re-steps it — the interpreter's own rule
-// (execFnDefLiteral at the pointer: forward tokens first, the stack after),
-// which the trailing-apply record must not model as an apply over the
-// values inside the paren (NUR184). Nothing after the close, a function
-// word (the strict forward barrier), a close paren, an `end`, a marker or a
-// `/v` modifier is not collectable (the value falls to the stack: `(2 (mk
-// 1)) mul 10` is 30). A literal is collectable when the value is a
-// fn-typed CARRIER (its runtime parameters are unknown) or a concrete fn one
-// of whose own signatures takes it at a forward-eligible first position. A
-// token whose value exists only once it runs — a group (an open paren, a
-// paren expression, a dot reach, an interpolated string: the forward walk's
-// FwdGroup, evaluated in place for the slot) or a non-function word (a value
-// binding or a splice, whose value ARRIVES at the value's pending forward) —
-// is collectable: the re-step decides with the value in hand, as the
-// interpreter's does (`("s" lam/v) (2 add 3)` is `[s 105]`, NUR344). A
-// concrete fn none of whose signatures takes the literal falls to the stack
-// (`(2 (mk 1)) "s"` is `[3 s]`).
-func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
-	if closeIdx+1 >= e.Tape.Len() {
-		return false
-	}
-	tok := e.Tape.At(closeIdx + 1)
-	if IsOpenParen(&tok) || IsParenExpr(&tok) || IsReach(&tok) || IsInterpString(&tok) {
-		return true
-	}
-	if IsWord(&tok) {
-		return !e.fnWordBarrierAt(tok)
-	}
-	if IsCloseParen(&tok) || IsEnd(&tok) || IsForward(&tok) || IsMark(&tok) || IsMove(&tok) || !IsRecordableLiteral(tok) {
-		return false
-	}
-	if _, mod := AsDispatchMod(tok); mod {
-		return false
-	}
-	fd, ok := last.Data().(*FnDefInfo)
-	if !ok {
-		return true // a carrier: the runtime value's parameters are unknown
-	}
-	sigs := fd.OwnSigs()
-	if len(sigs) == 0 {
-		return true
-	}
-	for i := range sigs {
-		sig := &sigs[i]
-		if sig.TotalArgs() == 0 {
-			continue
-		}
-		limit := effectiveForwardLimit(sig, WordInfo{Name: fd.Name, ArgCount: -1})
-		if limit == BarrierAllForward || limit > 0 {
-			if SigArgMatches(sig, 0, &tok) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// concreteFnSingleReturn is the one declared return type a CONCRETE NAMED
-// fn value's own signatures agree on — nil for a carrier, an anonymous fn
-// value (whose declared return the seams enforce as a count only), an
-// undeclared or multi-valued return, or overloads that disagree.
-func concreteFnSingleReturn(v Value) *Type {
-	fd, ok := v.Data().(*FnDefInfo)
-	if !ok || fd.Anonymous {
-		return nil // an anonymous fn value's declared return is a COUNT contract
-	}
-	sigs := fd.OwnSigs()
-	if len(sigs) == 0 {
-		return nil
-	}
-	var t *Type
-	for i := range sigs {
-		if len(sigs[i].Returns) != 1 || sigs[i].Returns[0] == nil {
-			return nil
-		}
-		if t == nil {
-			t = sigs[i].Returns[0]
-		} else if !t.Equal(sigs[i].Returns[0]) {
-			return nil
-		}
-	}
-	return t
 }
 
 // reStepped tells stepCloseParen whether the MAIN loop will re-encounter the
@@ -9294,127 +8936,6 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 		}
 	}
 	return true
-}
-
-// tryRecordUnmatchedDispatchTrap compiles a STATICALLY-DEFINITE unmatched
-// dispatch to a terminal OpTrap raising the interpreter's byte-identical
-// error, so a spec ERROR row still yields a Program instead of falling back.
-// Reached from checkModeAssumeSig's no-carrier fall-through, i.e. after
-// matchSignature failed every candidate AND the disjunct-partition / Any-
-// carrier poly recoveries declined.
-//
-// Definiteness is the soundness condition: the run-time dispatch must fail at
-// this same point with the same error on EVERY run. That holds exactly when
-// every value any candidate signature could examine is identical at run time —
-// a concrete const, a bare type literal, or a raw word token (matchSignature
-// is deterministic over identical inputs, and the check pass mirrors the
-// interpreter's tape step-for-step over concrete values). It does NOT hold
-// for:
-//   - a CARRIER operand — UNLESS the carrier-disjointness extension proves
-//     the failure anyway (Phase 6 M4, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore
-//     §6 Stage M4). The base hazard: a carrier's static tag is a declared
-//     type, but the runtime value may carry a refined subtype tag (a fn
-//     declared [Integer] can return a Pos-reparented value) or satisfy a
-//     value-sensitive predicate param — the runtime match can succeed where
-//     the static one failed. The extension re-admits exactly the shapes where
-//     that cannot happen: for EVERY non-fallback overload, every carrier in
-//     the overload's own candidate window is provably disjoint from EVERY
-//     slot type of that overload (sigDefinitelyUnmatched) — the runtime
-//     value's tag conforms to the carrier's static tag, so a Never meet with
-//     no value-level membership admits no runtime refinement either (the
-//     same proof checkBodyReturnConformance rides, residualProvablyDisjoint).
-//     An overload whose window holds no carrier saw only runtime-identical
-//     values, so its static failure replays verbatim; one whose window
-//     cannot even fill (arity shortfall over the same tape) fails
-//     deterministically too;
-//   - a DYNAMIC operand (no static type at all) — routed to the runtime
-//     rematch alongside carriers (COMPILE FAILURE-CLOSURE.0 §2): the rematch reads
-//     only the operand's live runtime value, never the static tag;
-//   - an UNDEFINED-word placeholder (the interpreter raises undefined_word,
-//     a different taxonomy — and the pass already carries an error diagnostic
-//     that declines the program before Finalize);
-//   - a 0-arg real (non-fallback) signature on the word: matchSignature's
-//     fallback scan and the synthetic-fallback courtesy dispatch can run it
-//     at run time instead of raising.
-//
-// The trap error mirrors the interpreter's raise at this point exactly: the
-// void-argument-group override (def_error / no_value_error — voidArgErrorFor,
-// whose void-group records the check pass populates identically) when a paren
-// arg produced no value, else the plain "no matching signature" signature
-// mismatch. Hints ride along verbatim where the interpreter's are static;
-// sigError's stack-snapshot hint is advisory DX text, not part of the error
-// taxonomy (code + detail + position) the differential gates.
-//
-// RecordTrap's own guard keeps the terminal trap top-level-only (frames and
-// units both at depth 1). Below it the trap is recorded only inside a SEALED
-// branch arm — an `if` word's literal arm, which the interpreter runs over
-// its own tokens alone, so the no-match is the run's whenever the arm runs
-// (RecordArmTrapErr, NUR332); anywhere else it is conditional on context the
-// pass does not see and stays a compile failure. Returns true when a trap
-// now owns the program's tail or the arm's; false leaves the caller's
-// MarkUncompilable compile failure to stand.
-// withGradualWrittenOperands widens a failed dispatch's examined window by
-// the operands WRITTEN after the word (rematchWrittenSplit's forward run)
-// when one of them is a carrier or a dynamic — a value the pass holds only
-// as its type, whose run-time value the interpreter's match examines FIRST
-// and whose report names it: `7 f m.a` over `x:Type` evaluates the reach,
-// fails it and reports "the argument was 1". The stack-first gatherer took
-// the 7 alone, so the static trap rendered "the argument was 7" (NUR329).
-// With the written run in the window the failure is no longer static — the
-// carrier sends it to the runtime rematch, which plans the match as the
-// interpreter does over the run's values and renders the interpreter's
-// tuple. A written run of concrete values leaves the window as it was: the
-// trap's report is built over those same values.
-//
-// A reach or template the run has not expanded rides in the run as its own
-// token (`7 f m.a m.b`: the interpreter's forward phase evaluates `m.a`
-// alone and its report names `1 and m.b (a Reach)`), which the rematch
-// carries as a constant and renders as the interpreter does (NUR329); it
-// used to keep the stack-only window, whose static trap named the 7.
-func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
-	// Only a window the STACK filled alone: one that already reaches past
-	// the word took the written run in its own order, and its rendering is
-	// the gatherer's to own.
-	for _, p := range window {
-		if p > e.Pointer {
-			return window
-		}
-	}
-	_, nFwd := e.rematchWrittenSplit(fn)
-	gradual := false
-	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
-		if v := e.Tape.At(i); v.Carrier() || IsDynamic(&v) {
-			gradual = true
-		}
-	}
-	if !gradual {
-		return window
-	}
-	out := append([]int(nil), window...)
-	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
-		out = append(out, i)
-	}
-	return out
-}
-
-// forwardReach is how many operands written after word w a forward phase of
-// fn's may take: the widest leading run of forward-eligible positions over
-// its real signatures (its barrier; every position under `/f` or an
-// unresolved all-forward barrier), none under `/s`.
-func forwardReach(fn *FnDefInfo, w WordInfo) int {
-	n := 0
-	for i := range fn.Signatures {
-		s := &fn.Signatures[i]
-		if s.Fallback || w.ForceStack {
-			continue
-		}
-		b := s.BarrierPos
-		if b < 0 || b > s.TotalArgs() || w.ForceForward {
-			b = s.TotalArgs()
-		}
-		n = max(n, b)
-	}
-	return n
 }
 
 // NoteRecoveryRaw records the pending literal raw a check-mode no-match

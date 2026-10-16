@@ -45,10 +45,11 @@ see `lang/go/CLAUDE.md`.
   core-resident there was nothing left to indirect. Prefer deleting a
   slot that way over keeping it for symmetry.
 - **What the compiler lane left behind is a follow-up, not a seam.**
-  `EmitRecorder` and the inactive recorder `CheckState` still carries,
-  `RunTypedBind`, `PendingResidue` / `ArmBody`, `IsVMDefer`, the
-  `CompileEffect` flags on signatures and `BeginCompilePass` are what
-  remains of the recording pass. Every reach into them constant-folds to
+  `BeginCompilePass` and the compile-pass fields `CheckState` still
+  carries, `Registry.Effects` (the `EffectLedger`), `RunTypedBind`,
+  `PendingResidue` / `ArmBody`, `IsVMDefer`, the `CompileEffect` flags on
+  signatures and the Go-side loop drive (`Invoker`, `StartLoop`,
+  `InvokeBody`) are what remains of the recording pass. Every reach into them constant-folds to
   the plain pass's value; design/COMPILER-LANE-REMOVAL.0.md §4 lists them
   for pruning. Do not build on them, and do not add to them.
 
@@ -470,8 +471,8 @@ Payload variants live in `core/go/payload.go`. Two flavours:
 
 2. **Direct variants** — core-defined struct/pointer types with
    `payloadMarker()` added in payload.go: `WordInfo`,
-   `*ForwardInfo`, `*MarkInfo`, `*MoveInfo`, `*ClosurePayload` (the four
-   allocated with their datum since no-copy phase 4), `ReturnCheckInfo`,
+   `*ForwardInfo`, `*MarkInfo`, `*MoveInfo` (the three allocated with
+   their datum since no-copy phase 4), `ReturnCheckInfo`,
    `DefCleanupInfo`, `FrameOpenInfo`, `ModuleDesc`, `FnDefInfo`, `FnUndefInfo`,
    `DisjunctInfo`, `ChildTypeInfo`, `CodeEffectInfo`, `RecordTypeInfo`,
    `OptionsTypeInfo`, `TableTypeInfo`, `TableData`,
@@ -839,15 +840,13 @@ a cell record, the exceptions list's C1 and R4 — never the value.
   the collection kernel's probes, and each forced-stack word
   (`forceStackWord`). A shared probe is copied into a local handle before
   it is handed out.
-- The engine's per-step markers and closures hold their payload
-  by pointer, allocated with the datum in one object (`newCoDatum`,
-  `setCoPayload`; `NewClosureValue`/`NewClosureValueUnder` outside core):
-  `ForwardInfo`, `MarkInfo`, `MoveInfo` and `ClosurePayload` are Payloads
-  only as pointers, so a by-value one cannot be boxed. A marker that takes
-  a new state takes a new co-allocated datum: a holder that kept the old
-  one keeps the old state. Read them through `AsForward`/`AsMark`/
-  `AsMove` (a copy) or a `*ClosurePayload` assertion, and never write a
-  field through the pointer: copy it (`c := *cl`) and construct.
+- The engine's per-step markers hold their payload by pointer, allocated
+  with the datum in one object (`newCoDatum`, `setCoPayload`):
+  `ForwardInfo`, `MarkInfo` and `MoveInfo` are Payloads only as pointers,
+  so a by-value one cannot be boxed. A marker that takes a new state takes
+  a new co-allocated datum: a holder that kept the old one keeps the old
+  state. Read them through `AsForward`/`AsMark`/`AsMove` (a copy), and
+  never write a field through the pointer: copy it and construct.
 
 **Enforcement: `make vet-copies`.** `core.Datum` carries a zero-size
 `noCopy` marker, so go vet's copylocks analyzer reports every by-value
@@ -898,14 +897,14 @@ failing run lists the findings on the lines the change touched.
 `core/go/occurrence.go`; in the handle since phase 4). A Value has no ID, position, ascription,
 source-binding, name or flag fields: the identity, the source position,
 the `as` ascription, a gradual read's source binding, the name a binding
-gave a fn value, the recorder key and a quoted atom's referent live in an
+gave a fn value and a quoted atom's referent live in an
 immutable record behind one pointer (`occ`, nil for most values), and the
 occurrence flags — quoted, eval, undefined, failed dispatch, reach group,
 dynamic, applied, return-trimmed, signature-matched — are bits of the
 handle. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
 `WithPos`/`ThreadPos` to share another value's position record, which
 allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
-`FnNameOf`/`SetFnName`, `RecKeyOf`/`SetRecKey`,
+`FnNameOf`/`SetFnName`,
 `AtomReferent`/`SetAtomReferent` and `IsQuoted`/`SetQuoted` and their
 siblings. A setter repoints or rewrites only the holder it is called on —
 the tape cell, the stack cell, the binding — never a record another copy
