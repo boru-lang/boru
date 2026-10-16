@@ -202,6 +202,16 @@
       metadata: { repository: "boru-lang/boru" }
     }
     {
+      id: "src:world-age"
+      kind: "text"
+      locator: "design/WORLD-AGE.0.md"
+      title: "Julia's world age, and what it means for boru's compiled-code validity"
+      retrieved_at: null
+      content_hash: "world-age-2026-10-16"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:reload-invalidation"
       kind: "text"
       locator: "design/RELOAD-INVALIDATION.0.md"
@@ -662,6 +672,8 @@
       attributes: { role: "the open-work inventory for the function-value line after PRs #366/#375/#378: four remaining items, all unblocked since the 2026-08-17 maintainer rulings (§1.1) — clause 3 (parens do not re-step) ruled BROAD, clause 2 (passing a function requires /r) enabled by the ADR-011 amendment with all four engine sites retiring together (re-opening the NUR038 call-head question, registered as NUR078), break 2 (the compiler refuses a 0-arg fn read from a plain container \u2014 an open defect, not a sanctioned outcome), and the StackForm apply — ruled a new dedicated Apply Op — every figure re-measured against 8732662, correcting three that the earlier notes carry: the clause-3 row count is 30 not 31, the clause-2 bare-name count is 3 not 9, and narrow-vs-broad ARE separable, by FnDefInfo.Name rather than by a rejected value-borne marker; plus the finding that break 2 is an arity-0 extension of tryMemberFnArrivalDispatch rather than Phase 3 work, that its refusal masks a confirmed miscompile and is untracked by any frontier row, and that the apply Op's sketched target has two holes — a 0-arg anonymous fn is silently not applied, and `apply` itself double-records so a replay applies twice" } }
     { key: "content-addressing", type: "Document", label: "design/CONTENT-ADDRESSING.0.md"
       attributes: { role: "the design note for deriving a definition's identity from its content rather than its name: the three costs that share that root cause (the per-invoke DepsFresh walk, the AOT codec's symbolic-reference refusals, the pre-1.0 rename tax), the split between an ARTIFACT digest over file bytes — unblocked, already specified by boru-vendor §5 — and a DEFINITION digest over meaning, which needs canonicity, alpha normalisation, macro expansion, referent substitution and cycle components; three options for referent substitution under call-time binding, recommending a (text digest, world digest) compound key; a five-phase sequence; and the rejections — codebase-as-database, hash-based type identity, immutable definitions as a language rule. Measured by design/legacy/unison-hash-identity-probe.0.ignore and scripts/hash-identity-probe.sh" } }
+    { key: "world-age", type: "Document", label: "design/WORLD-AGE.0.md"
+      attributes: { role: "the discovery note on Julia's world age (the global world counter, code keyed to world ranges, backedges and push invalidation, the world advancing only at top level) read against boru's compiled-code validity: boru's whole-program compiler already has Julia's no-per-call-guard property by simulating the sequence of worlds at compile time, while run-time-stamped refs pull-check every dependency per invoke and fall back to the interpreter past a re-stamp budget; it recommends against importing world-age semantics (def is also assignment, module names are dynamically scoped) and for importing the implementation (push invalidation, process-unique version stamps, versioned bindings for the check pass, widening to live reads), treats world pinning as a language decision for reload, and records two pre-existing lane divergences (D1, D2). The thread itself was unreachable from the session; the mechanism comes from Julia's own documentation and sources" } }
     { key: "reload-invalidation", type: "Document", label: "design/RELOAD-INVALIDATION.0.md"
       attributes: { role: "how hot reload and transparent compilation coexist without slowing compiled code: per-ref valid flags flipped push-style through a reverse dependency index (the HotSpot/Truffle/Julia equilibrium), ref unification at Finalize, world-pinned whole-program units, per-world restamp budgets — plus the confirmed F1 pass-hoisting divergence and its interim whole-program-refusal fix" } }
     { key: "org", type: "Organization", label: "boru-lang" }
@@ -1173,6 +1185,16 @@
       evidence: [{ source: "src:function-value-scope", locator: "1. Summary",
         quote: "The mechanism for the correct behaviour already exists and is already" }]
       confidence: 0.95 }
+    { subject: "world-age", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:world-age", locator: "title",
+        quote: "Julia's world age, and what it means for boru's compiled-code validity" }]
+      confidence: 0.95 }
+    { subject: "world-age", predicate: "supports"
+      object: { kind: "entity", entity: "compiler-go" }
+      evidence: [{ source: "src:world-age", locator: "6. Recommendation",
+        quote: "Do not import Julia's world-age semantics." }]
+      confidence: 0.9 }
     { subject: "reload-invalidation", predicate: "part_of"
       object: { kind: "entity", entity: "design-notes" }
       evidence: [{ source: "src:reload-invalidation", locator: "title",

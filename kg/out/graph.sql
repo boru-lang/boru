@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '705325356885303561');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '1778961358270791218');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6843024056992995220', 15419);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -57,6 +57,7 @@ INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '98810986469223
 INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '3676224972589115072', 53814);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
 INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
+INSERT INTO input_files VALUES ('../design/WORLD-AGE.0.md', '4743609587560852746', 22833);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
 INSERT INTO input_files VALUES ('../design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', '5471579664599608073', 28469);
 INSERT INTO input_files VALUES ('../design/legacy/CORE-TS-COVERAGE.0.ignore', '5035147551064830801', 10419);
@@ -82,7 +83,7 @@ INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '456672581382015716
 INSERT INTO input_files VALUES ('../tools/vetcopies/go.mod', '6319204921462677590', 498);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '3995991076067646553', 646);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '2680823283954252547', 102941);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '7568545512125186299', 104882);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -302,6 +303,9 @@ INSERT INTO sources VALUES ('src:voxgig-boru-handover', 'text', 'design/VOXGIG-B
 INSERT INTO sources VALUES ('src:wire-identity', 'text', 'design/WIRE-IDENTITY.0.md', 'Wire identity across product renames', NULL, 'wire-identity-2026-09-14', 'primary', '{
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:world-age', 'text', 'design/WORLD-AGE.0.md', 'Julia''s world age, and what it means for boru''s compiled-code validity', NULL, 'world-age-2026-10-16', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO entities VALUES ('ent:Concept:2039420555596601682', 'Concept', 'secrets vault', 'secrets vault', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Concept:2039420555596601682', 'role', 'encrypted API-key / token store, driven by the boru vault subcommand');
 INSERT INTO entities VALUES ('ent:Concept:3854395902791518463', 'Concept', 'boru language', 'boru language', 'accepted');
@@ -379,6 +383,8 @@ INSERT INTO entities VALUES ('ent:Document:5774741150031044365', 'Document', 'de
 INSERT INTO entity_attributes VALUES ('ent:Document:5774741150031044365', 'role', 'the 2026-08 checker/compiler completeness review and its §9 implementation record — the living index of the HOF-compilation graduations and the remaining frontier work');
 INSERT INTO entities VALUES ('ent:Document:5807284485979550128', 'Document', 'design/ADR-004-REFINEMENT.0.md', 'design/adr-004-refinement.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:5807284485979550128', 'role', 'ADR-004''s reasoning note, PROMOTED 2026-08-15 into the record''s four-categories amendment (NUR023, retired): the four argument-handling categories (forward-eligible, mixed-barrier, stack-only, quoting slots), BarrierPos semantics and its five resolution sites, the stack-only closed list with a two-criterion admission test that admits both apply and __casematch, and the composition rationale — measured at 97 intermediate-barrier signatures of 493, distinguished from the 20-word mixed-overload count');
+INSERT INTO entities VALUES ('ent:Document:5826904494194638258', 'Document', 'design/WORLD-AGE.0.md', 'design/world-age.0.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:5826904494194638258', 'role', 'the discovery note on Julia''s world age (the global world counter, code keyed to world ranges, backedges and push invalidation, the world advancing only at top level) read against boru''s compiled-code validity: boru''s whole-program compiler already has Julia''s no-per-call-guard property by simulating the sequence of worlds at compile time, while run-time-stamped refs pull-check every dependency per invoke and fall back to the interpreter past a re-stamp budget; it recommends against importing world-age semantics (def is also assignment, module names are dynamically scoped) and for importing the implementation (push invalidation, process-unique version stamps, versioned bindings for the check pass, widening to live reads), treats world pinning as a language decision for reload, and records two pre-existing lane divergences (D1, D2). The thread itself was unreachable from the session; the mechanism comes from Julia''s own documentation and sources');
 INSERT INTO entities VALUES ('ent:Document:6176355086953937469', 'Document', 'TUTORIAL.md', 'tutorial.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:6186742803977787158', 'Document', 'design/BORU-SCRY.0.md', 'design/boru-scry.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:6186742803977787158', 'role', 'the boru:scry proposal: the mechanism whereby a boru system gains knowledge of itself as plain data — census, per-word, graph, schema and trace words curated over existing engine seams, and the plan for resolving the overlap with boru:debug');
@@ -741,6 +747,8 @@ INSERT INTO assertions VALUES ('ast:2885829807177355299', 'ent:Document:18507142
 INSERT INTO assertion_evidence VALUES ('ast:2885829807177355299', 'src:higher-order-functions', '3. The one rule that explains most of the surprises', 'That rule is coherent, and it is the source of every', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:2891527885725975632', 'ent:Document:4099203920617049978', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:2891527885725975632', 'src:interpreter-perf-handover', 'title', 'Handover: interpreter performance and the Value no-copy policy', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:2912001280392505316', 'ent:Document:5826904494194638258', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:2912001280392505316', 'src:world-age', 'title', 'Julia''s world age, and what it means for boru''s compiled-code validity', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:2979279625592738698', 'ent:SoftwareModule:1529704399546216258', 'part_of', 'entity', 'ent:SoftwareModule:4192460694199531608', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:2979279625592738698', 'src:go-tree', 'wpg/serve', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:3002920817860690706', 'ent:SoftwareModule:8275629451197117420', 'depends_on', 'entity', 'ent:SoftwareModule:4559967244660037230', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -779,6 +787,8 @@ INSERT INTO assertions VALUES ('ast:3427363101233560350', 'ent:Document:87510217
 INSERT INTO assertion_evidence VALUES ('ast:3427363101233560350', 'src:canon-roundtrip', 'title', 'CANON-ROUNDTRIP — canon always round-trips', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:3438862149494160814', 'ent:SoftwareModule:4589894982256403754', 'part_of', 'entity', 'ent:SoftwareModule:4361728672720029650', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:3438862149494160814', 'src:go-tree', 'cmd/go/genhelp', NULL, 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:3499734353292618158', 'ent:Document:5826904494194638258', 'supports', 'entity', 'ent:SoftwareModule:6880687338933514154', NULL, NULL, NULL, NULL, 0.9, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:3499734353292618158', 'src:world-age', '6. Recommendation', 'Do not import Julia''s world-age semantics.', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:351832070028345115', 'ent:SoftwareModule:4125120573695539350', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:351832070028345115', 'src:go-tree', 'test/go/langspec', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:3612971925750437545', 'ent:SoftwareModule:8582068475984941492', 'part_of', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
