@@ -27,6 +27,8 @@
 #   gate-table F…        render the gate table from the rows the shards
 #                        appended (BORU_GATE_SUMMARY files)
 #   parser-parity | cover-gate-core | race-gates | wasm
+#   borudebug-gates      RETIRED with the compiler lane: a no-op kept only
+#                        until .github/workflows/ci.yml drops its job
 #   vuln                 govulncheck (advisory: never fails the run)
 #   direction-gates      the direction lane as a job of its own — the
 #                        local form; CI renders the same table from the
@@ -88,6 +90,12 @@ case "$step" in
     # stack (the test walks' parallel rows found it).
     ( cd core/go && run go test . -run 'TestUnifyRegistryArmedConcurrentNoRace' -race ) ;;
   wasm)             run make -C wpg wasm ;;
+  borudebug-gates)
+    # The borudebug build tag left with the compiler lane
+    # (design/COMPILER-LANE-REMOVAL.0.md). ci.yml still has the job, and a
+    # workflow file needs a credential with the workflow scope to change,
+    # so the step stays a no-op until the job is deleted there.
+    echo "==> [ci] borudebug-gates: retired with the compiler lane; nothing to run" ;;
   vuln)             run make vuln || echo "==> [ci] vuln is advisory (see STATIC_ANALYSIS_REPORT.md); continuing" ;;
   direction-gates)  run make test-direction || echo "==> [ci] the direction lane is red by design until the debt is paid; its table is the output" ;;
   all)

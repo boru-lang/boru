@@ -62,8 +62,11 @@ design/PERF-BASELINE.10.md.
   `-compile-out` / `-mismatch-out` / `-vary*`); `make verify-bytecode`,
   `fuzz-bytecode`, `status`, `sweep-status`, `handler-worklist`,
   `cover-gate-eng`, `cover-gate-compiler`, `publish-eng`; the `borudebug`
-  build tag and its CI job; the compiled rows of the race gate. The
-  direction lane now holds one gate, `TestCheckTypeSoundness`.
+  build tag (its CI job in `.github/workflows/ci.yml` runs a no-op step
+  until the workflow file is edited by a credential with the workflow
+  scope — the removal PR could not push one); the compiled rows of the
+  race gate. The direction lane now holds one gate,
+  `TestCheckTypeSoundness`.
 - **Documents**: the full-compilation programme's pages and the handovers
   written for it were moved to `design/legacy/` as `.ignore` files
   (FULL-COMPILATION*, COMPILABLE-SUBSET, DO-STRUCTURE-COMPILATION,
