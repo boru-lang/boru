@@ -1,0 +1,386 @@
+// valuesplit rewrites the boru workspace for the phase-4 split of core.Value
+// into a handle over a shared *Datum (design/VALUE-NO-COPY.0.md §6 phase 4).
+//
+// Every edit is an insertion or a small replacement, decided from type
+// information, so nested selectors compose:
+//
+//   - a read of an exported body field X.F becomes X.F()
+//   - a write X.F = e of an exported body field becomes X.SetF(e)
+//   - a read of an unexported body field X.f (core only) becomes X.body().f
+//   - a write X.f = e of an unexported body field becomes X.cow().f = e
+//   - a keyed literal Value{F: …} with only body keys becomes
+//     Value{d: &Datum{F: …}} inside core and q.ValueOf(&q.Datum{F: …})
+//     outside it
+//
+// Anything else that touches a body field (multi-assignment, &X.F, op-assign,
+// mixed or positional literals) is reported for a hand edit.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"go/ast"
+	"go/token"
+	"go/types"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
+)
+
+const corePath = "github.com/boru-lang/boru/core/go"
+
+var bodyFields = map[string]bool{
+	"Data": true, "Parent": true, "IsInternal": true, "Origin": true, "Carrier": true,
+	"tmeta": true, "elem": true, "modns": true,
+}
+
+type edit struct {
+	off, end int
+	text     string
+	prio     int
+}
+
+type fileEdits struct {
+	edits []edit
+	seen  map[string]bool
+}
+
+var (
+	all      = map[string]*fileEdits{}
+	manual   = map[string]bool{}
+	nReads   int
+	nWrites  int
+	nLits    int
+	dryRun   = flag.Bool("n", false, "report only")
+	repoRoot = flag.String("root", "", "repo root")
+)
+
+func addEdit(fset *token.FileSet, pos, end token.Pos, text string, prio int) bool {
+	p := fset.Position(pos)
+	e := fset.Position(end)
+	fe := all[p.Filename]
+	if fe == nil {
+		fe = &fileEdits{seen: map[string]bool{}}
+		all[p.Filename] = fe
+	}
+	key := fmt.Sprintf("%d:%d:%s:%d", p.Offset, e.Offset, text, prio)
+	if fe.seen[key] {
+		return false
+	}
+	fe.seen[key] = true
+	fe.edits = append(fe.edits, edit{p.Offset, e.Offset, text, prio})
+	return true
+}
+
+func report(fset *token.FileSet, pos token.Pos, why string) {
+	manual[fmt.Sprintf("%s: %s", fset.Position(pos), why)] = true
+}
+
+func isCoreValue(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	t = types.Unalias(t)
+	n, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+	o := n.Obj()
+	return o.Pkg() != nil && o.Pkg().Path() == corePath && o.Name() == "Value"
+}
+
+func isBodyField(obj types.Object) bool {
+	v, ok := obj.(*types.Var)
+	if !ok || !v.IsField() || v.Pkg() == nil || v.Pkg().Path() != corePath || !bodyFields[v.Name()] {
+		return false
+	}
+	vt := v.Pkg().Scope().Lookup("Value")
+	if vt == nil {
+		return false
+	}
+	st, ok := vt.Type().Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for i := 0; i < st.NumFields(); i++ {
+		if st.Field(i) == v {
+			return true
+		}
+	}
+	return false
+}
+
+func exported(name string) bool { return name[0] >= 'A' && name[0] <= 'Z' }
+
+func coreQualifier(f *ast.File) string {
+	for _, imp := range f.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		if p == corePath {
+			if imp.Name != nil {
+				return imp.Name.Name
+			}
+			return "core"
+		}
+	}
+	return ""
+}
+
+func aliasesValue(pkg *types.Package) bool {
+	if pkg == nil {
+		return false
+	}
+	tn, ok := pkg.Scope().Lookup("Value").(*types.TypeName)
+	return ok && tn.IsAlias() && isCoreValue(tn.Type())
+}
+
+func processFile(fset *token.FileSet, info *types.Info, pkg *types.Package, pkgPath string, f *ast.File) {
+	inCore := strings.TrimSuffix(pkgPath, "_test") == corePath
+	handled := map[*ast.SelectorExpr]bool{}
+	parents := map[ast.Node]ast.Node{}
+	var stack []ast.Node
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		if len(stack) > 0 {
+			parents[n] = stack[len(stack)-1]
+		}
+		stack = append(stack, n)
+		return true
+	})
+	bodySel := func(e ast.Expr) (*ast.SelectorExpr, bool) {
+		se, ok := ast.Unparen(e).(*ast.SelectorExpr)
+		if !ok {
+			return nil, false
+		}
+		sel := info.Selections[se]
+		if sel == nil || sel.Kind() != types.FieldVal || !isBodyField(sel.Obj()) {
+			return nil, false
+		}
+		return se, true
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			for i, lhs := range x.Lhs {
+				se, ok := bodySel(lhs)
+				if !ok {
+					continue
+				}
+				handled[se] = true
+				if x.Tok != token.ASSIGN || len(x.Lhs) != 1 || len(x.Rhs) != 1 {
+					report(fset, se.Pos(), fmt.Sprintf("body field %s written in a %s assignment (lhs %d of %d)", se.Sel.Name, x.Tok, i+1, len(x.Lhs)))
+					continue
+				}
+				name := se.Sel.Name
+				rhs := x.Rhs[0]
+				if exported(name) {
+					if addEdit(fset, se.Sel.Pos(), rhs.Pos(), "Set"+name+"(", 0) {
+						nWrites++
+					}
+					addEdit(fset, rhs.End(), rhs.End(), ")", 10)
+				} else if addEdit(fset, se.Sel.Pos(), se.Sel.Pos(), "cow().", 0) {
+					nWrites++
+				}
+			}
+		case *ast.IncDecStmt:
+			if se, ok := bodySel(x.X); ok {
+				handled[se] = true
+				report(fset, se.Pos(), "body field inc/dec")
+			}
+		case *ast.UnaryExpr:
+			if x.Op == token.AND {
+				if se, ok := bodySel(x.X); ok {
+					handled[se] = true
+					report(fset, se.Pos(), "address of body field "+se.Sel.Name)
+				}
+			}
+		case *ast.CompositeLit:
+			if !isCoreValue(info.TypeOf(x)) || len(x.Elts) == 0 {
+				return true
+			}
+			var body, other int
+			for _, el := range x.Elts {
+				kv, ok := el.(*ast.KeyValueExpr)
+				if !ok {
+					report(fset, x.Pos(), "positional Value literal")
+					return true
+				}
+				id, ok := kv.Key.(*ast.Ident)
+				if !ok {
+					report(fset, x.Pos(), "odd Value literal key")
+					return true
+				}
+				if bodyFields[id.Name] {
+					body++
+				} else {
+					other++
+				}
+			}
+			if body == 0 {
+				return true
+			}
+			if other > 0 {
+				report(fset, x.Pos(), "Value literal mixing body and handle keys")
+				return true
+			}
+			if inCore {
+				if addEdit(fset, x.Lbrace+1, x.Lbrace+1, "d: &Datum{", 0) {
+					nLits++
+				}
+				addEdit(fset, x.Rbrace, x.Rbrace, "}", 0)
+				return true
+			}
+			if p, ok := parents[x].(*ast.UnaryExpr); ok && p.Op == token.AND {
+				report(fset, x.Pos(), "&core.Value{…} literal outside core")
+				return true
+			}
+			q := coreQualifier(f)
+			open := ""
+			switch {
+			case q != "":
+				open = q + ".ValueOf(&" + q + ".Datum"
+			case aliasesValue(pkg):
+				open = "ValueOf(&Datum"
+			default:
+				report(fset, x.Pos(), "Value literal in a file that does not import core")
+				return true
+			}
+			if x.Type != nil {
+				addEdit(fset, x.Type.Pos(), x.Lbrace, open, 0)
+			} else {
+				addEdit(fset, x.Lbrace, x.Lbrace, open, 5)
+			}
+			if addEdit(fset, x.Rbrace+1, x.Rbrace+1, ")", 10) {
+				nLits++
+			}
+		}
+		return true
+	})
+	ast.Inspect(f, func(n ast.Node) bool {
+		se, ok := n.(*ast.SelectorExpr)
+		if !ok || handled[se] {
+			return true
+		}
+		if _, ok := bodySel(se); !ok {
+			return true
+		}
+		var added bool
+		if exported(se.Sel.Name) {
+			added = addEdit(fset, se.End(), se.End(), "()", 0)
+		} else {
+			added = addEdit(fset, se.Sel.Pos(), se.Sel.Pos(), "body().", 0)
+		}
+		if added {
+			nReads++
+		}
+		return true
+	})
+}
+
+type config struct {
+	env   []string
+	flags []string
+}
+
+func main() {
+	flag.Parse()
+	mods := flag.Args()
+	configs := []config{
+		{nil, []string{"-tags=borudebug specgen"}},
+		{nil, nil},
+		{[]string{"GOOS=windows"}, nil},
+		{[]string{"GOOS=darwin"}, nil},
+		{[]string{"GOOS=js", "GOARCH=wasm"}, nil},
+	}
+	for _, c := range configs {
+		for _, m := range mods {
+			dir := filepath.Join(*repoRoot, m)
+			cfg := &packages.Config{
+				Mode:       packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+				Dir:        dir,
+				Tests:      true,
+				Env:        append(os.Environ(), c.env...),
+				BuildFlags: c.flags,
+			}
+			pkgs, err := packages.Load(cfg, "./...")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "load %s %v: %v\n", m, c.env, err)
+				continue
+			}
+			errs := 0
+			for _, p := range pkgs {
+				// Only the module's own packages; deps are other modules.
+				if !strings.HasPrefix(filepath.Dir(firstFile(p)), dir) {
+					continue
+				}
+				for _, e := range p.Errors {
+					if errs < 5 {
+						fmt.Fprintf(os.Stderr, "  %s %v: %v\n", m, c.env, e)
+					}
+					errs++
+				}
+				for _, f := range p.Syntax {
+					processFile(p.Fset, p.TypesInfo, p.Types, p.PkgPath, f)
+				}
+			}
+			fmt.Fprintf(os.Stderr, "%s %v %v: %d packages, %d errors\n", m, c.env, c.flags, len(pkgs), errs)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "reads %d writes %d literals %d files %d manual %d\n", nReads, nWrites, nLits, len(all), len(manual))
+	var ms []string
+	for k := range manual {
+		ms = append(ms, k)
+	}
+	sort.Strings(ms)
+	for _, k := range ms {
+		fmt.Println("MANUAL", k)
+	}
+	if *dryRun {
+		return
+	}
+	for fn, fe := range all {
+		src, err := os.ReadFile(fn)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			continue
+		}
+		es := fe.edits
+		sort.SliceStable(es, func(i, j int) bool {
+			if es[i].off != es[j].off {
+				return es[i].off > es[j].off
+			}
+			// Same offset, applied back to front: the edit that should end
+			// up LAST in the text is applied first.
+			return es[i].prio > es[j].prio
+		})
+		out := src
+		limit := len(src)
+		for _, e := range es {
+			if e.end > limit {
+				fmt.Fprintf(os.Stderr, "overlap in %s at %d\n", fn, e.off)
+				continue
+			}
+			out = append(out[:e.off:e.off], append([]byte(e.text), out[e.end:]...)...)
+			limit = e.off
+		}
+		if err := os.WriteFile(fn, out, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}
+}
+
+func firstFile(p *packages.Package) string {
+	if len(p.GoFiles) > 0 {
+		return p.GoFiles[0]
+	}
+	if len(p.CompiledGoFiles) > 0 {
+		return p.CompiledGoFiles[0]
+	}
+	return ""
+}

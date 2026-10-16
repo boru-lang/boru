@@ -64,8 +64,9 @@ make commit-gate
 
 It runs gofmt, vet and golangci-lint on the touched modules (in parallel),
 the no-copy ratchet on them (`make vet-copies`: every module's copies of a
-`core.Value` against `tools/vetcopies/ceilings.tsv`, which only go down;
-see `eng/go/CLAUDE.md` "Values are not copied"), the touched modules' unit
+`core.Datum` — what a `core.Value` handle refers to — against
+`tools/vetcopies/ceilings.tsv`, zero everywhere and only going down; see
+`eng/go/CLAUDE.md` "Values are not copied"), the touched modules' unit
 tests (the changed packages of `lang/go` and `cmd/go`), the langspec gates
 over a smoke corpus plus every spec file the change touched, and the
 knowledge graph when docs or tooling changed (`scripts/commit-gate.sh` is

@@ -27,17 +27,19 @@ hold the full tables.
 - **R3. Occurrence state lives in the slot.** Position, quoted, eval,
   ascription, check-mode tags, binding names and dispatch flags belong to
   the tape cell, stack cell, arg slot, binding entry or pool entry that
-  holds the value, never to the value. While the header is passed by
-  value (D10) a slot's header is the slot's own, so since phase 3 the
-  occurrence state is the holder's: the flags in the header; identity,
-  position, ascription, source binding, a binding's name for a fn value,
-  the recorder key and a quoted atom's referent in the immutable record
-  behind its one pointer (`core/go/occurrence.go`). A write reaches only
-  the holder it is made through.
-- **R4. What "copy" means.** Duplicating a Value struct, or the payload
-  graph under it, is a copy. Minting a new Value from parts is
-  construction. Copying an array of references or of cell records is
-  neither.
+  holds the value, never to the value. Since phase 4 the slot record is
+  the `Value` handle itself — `{d *Datum; occ; flags}`, 24 bytes — and the
+  value is the `Datum` it points at: the occurrence flags are bits of the
+  handle; identity, position, ascription, source binding, a binding's name
+  for a fn value, the recorder key and a quoted atom's referent are the
+  immutable record behind its one pointer (`core/go/occurrence.go`). A
+  write reaches only the holder it is made through. (Phase 3 held the same
+  state in the 64-byte by-value header, under D10.)
+- **R4. What "copy" means.** Duplicating a value structure — since phase
+  4 a `Datum` — or the payload graph under it, is a copy. Minting a new
+  value from parts is construction. Copying an array of references or of
+  cell records is neither; a `Value` handle is a cell record, so copying
+  one, or a `[]Value`, copies no value.
 - **R5. Mutable-by-design payloads are shared, not copied.** FlexList,
   FlexMap, class instances, Store layers, Table rows and an Error's data
   map mutate in place; that is their semantics. `StructUtil.clone` and `send` are the
@@ -58,7 +60,7 @@ hold the full tables.
 | id | site | why | invariant | status |
 |---|---|---|---|---|
 | B1 | one instance per evaluation of a literal: pending list and map literals (`core/go/engine.go:5287-5294, 5322, 6030, 5154-5158`), fn-body literals (`(mk) eq (mk)` is false, `TestFnBodyContainerLiteralIdentity`), the scalar-literal fast path, the VM's fresh-push family (`eng/go/vm.go:2300, 4634, 4769` with `Program.ConstKeep`) | the spine of a literal is a new container each time it is evaluated; a binding's container embedded in it stays the binding's instance | elements are shared by reference; only the spine is new; the deep clone that implements this today (`CloneValueKeeping` + `WithFreshFnIdentity`) is the transitional means, construction code (`OpMakeList`/`OpMakeMap` over shared consts) the end state | permanent as a rule; the clone implementation is gone in phase 3 (E15): the VM builds the spine from the constant's shared parts |
-| B2 | the value-semantics column: `set`, `push`, `pop`, `shift`, `unshift`, `merge`, `setpath`, `sort`, `reverse`, `take`, `unique`, `create`, `listAll` and kin (`native_storage.go:2078-2116`, `listops.go:49-122`, `merge.go:42-97`, `setpath.go:240-302`, `native_sort.go:48-63`, `native_array.go:946-1078`, `list.go:65`, `create.go:92`) | a word returns a new container and leaves the receiver untouched | the receiver is never written. With reference elements (phase 4) or a persistent container representation, the new container's elements are the old ones and no `Value` is copied. While the header is a by-value struct, building the new element array copies each unchanged element's header: a bulk copy sanctioned until one of those lands | permanent (decision 2 keeps value semantics) |
+| B2 | the value-semantics column: `set`, `push`, `pop`, `shift`, `unshift`, `merge`, `setpath`, `sort`, `reverse`, `take`, `unique`, `create`, `listAll` and kin (`native_storage.go:2078-2116`, `listops.go:49-122`, `merge.go:42-97`, `setpath.go:240-302`, `native_sort.go:48-63`, `native_array.go:946-1078`, `list.go:65`, `create.go:92`) | a word returns a new container and leaves the receiver untouched | the receiver is never written. With reference elements (phase 4) or a persistent container representation, the new container's elements are the old ones and no `Value` is copied. While the header is a by-value struct, building the new element array copies each unchanged element's header: a bulk copy sanctioned until one of those lands | permanent (decision 2 keeps value semantics); since phase 4 the elements are handles on shared Datums, so the new array copies references, not values — the transitional bulk copy is gone (phase 5) |
 | B3 | self-append over one flex list, `append f f` (`native_flex.go:318-323`) | the read set must be fixed before the receiver grows | a length-bounded read of the elements, which needs no copy at all; the current `Slice()` snapshot is the transitional form | permanent as a read; the snapshot expires at phase 2 |
 | B4 | a function value per construction: `WithFreshFnIdentity` on each evaluation of a fn literal (NUR288), a closure source re-created with this closure's captures (`vm.go:893-903`) | identity is per construction, the body is shared | mint a new Function value sharing `FnDefInfo`'s body with its own identity and captures | permanent |
 | B5 | Store layers: `CowSet` (`native_storage.go:1879-1887` → `core/go/core_helpers.go:1004`), tombstones travelling with a layer | `set` on a store creates a new layer with a prototype link | a layer holds references; the prototype chain is shared; no Value is duplicated | permanent (the design is copy-on-write of the layer structure) |
@@ -69,7 +71,7 @@ hold the full tables.
 
 | id | site | what is copied | invariant | status |
 |---|---|---|---|---|
-| C1 | tape cells: program load and reload, `Splice`/`Insert`/`MoveGap`/`grow`, body re-splice per call and per iteration, paren and reach groups, sealed regions. Since phase 3 a run given as parts — a resolved prefix and a body, a frame's head, body and tail, a region's markers around its elements — is copied once, straight onto the tape (`Tape.SpliceRuns`/`ReloadRuns`/`NewTapeWithRuns`, `Engine.RunParts`); a run a handler builds from parts (a frame skeleton patched with the call's args, a driven loop's first region) or the VM assembles for an island is built once and copied by the tape | cell records `{V *Value; occurrence}` | a cell's value is never written through; evaluation replaces the pointer; a body's tokens come back intact after every run | permanent |
+| C1 | tape cells (since phase 4 the record is the `Value` handle, `{d *Datum; occ; flags}`): program load and reload, `Splice`/`Insert`/`MoveGap`/`grow`, body re-splice per call and per iteration, paren and reach groups, sealed regions. Since phase 3 a run given as parts — a resolved prefix and a body, a frame's head, body and tail, a region's markers around its elements — is copied once, straight onto the tape (`Tape.SpliceRuns`/`ReloadRuns`/`NewTapeWithRuns`, `Engine.RunParts`); a run a handler builds from parts (a frame skeleton patched with the call's args, a driven loop's first region) or the VM assembles for an island is built once and copied by the tape | cell records `{V *Value; occurrence}` | a cell's value is never written through; evaluation replaces the pointer; a body's tokens come back intact after every run | permanent |
 | C2 | pool buffers: results copied out of pooled tapes, engines and loops because the next reload overwrites them (`engine_pool.go:60-62`; `invoke.go:396-412`; `registry.go:1930-1942`; `sealed.go:57-61`; `loop.go` `takeCallLoop`/`putCallLoop`; `Tape.TakeAll` `tape.go:496-499`) | arrays of references | a released buffer is cleared so it pins nothing (`PutSubEngine` clears every per-run scratch buffer since phase 2: `rrValues`, `resolvedScratch`, `excludeScratch`; phase 3 retired the `loopTokens` and `peScratch` staging buffers with the copies they staged) | permanent |
 | C3 | table snapshots: `DefTable.Clone`/`SnapshotEntries`/`RestoreEntriesSnapshot` (`deftable.go:318-544`), `ForkConcurrent` (`fork.go:39-40`), `CompileSandbox` (`compile_sandbox.go:54-57, 95-112`), the predicate sandbox's TypeTable maps (`util.go:391-409`), `withRecoveryRaw` (`engine.go:11565-11584`), fn baselines (`registry.go:1839-1847`) | binding entries and table maps (references plus slot attributes) | a check pass or a sandbox never writes through a shared value (R2), so rollback is restoring the table | permanent |
 | C4 | observation snapshots: trace fires (`engine.go:474, 1818`; `sealed.go:178, 225`), the debugger ring of 64 (`cmd/go/internal/debugger/debugger.go:66, 160, 440`), `RunningEngineStates` and `CurrentStack` (`registry.go:598-612, 706-750`), the REPL's `lastStack`, the debugger's `resolvedData` | arrays of cell records | "the live tape is never exposed or mutated" (`registry.go:706`) stays the contract; a past snapshot shows past cells with present values, which is exact for immutable values and shows present contents for flex containers and stores, as the registry is not rewound either (`debugger.go:654`) | permanent, with that limit written into the debugger's help |
@@ -85,7 +87,7 @@ shared pointer instead.
 
 | id | site | what it protects today | retired by |
 |---|---|---|---|
-| D10 | the Value header itself passed by value (64 bytes after phase 3: `Data`, `Parent`, `tmeta`, the occurrence pointer `occ`, `elem`, `modns`, the kind and occurrence flags; it was 104). A copy of the header is a new holder's construction: what the copy carries of the occurrence is the record it points at, never written | the representation until the pointer switch | phase 4; becomes permanent if decision 3 declines phase 4 |
+| — | none since phase 4 (2026-10-15): D10 is E17 | | |
 
 ## Class E. Not sanctioned (listed so they are not mistaken for exceptions)
 
@@ -107,6 +109,19 @@ shared pointer instead.
 | E14 (was D6) | the copy-returning retag helpers: `ReparentValue`, `FreshenDefault`, `JoinCarriersInner`'s `out := a`, `ReturnsIdentity`, `RetagFlexElem`, `cloner.withPayload`, `const`'s interned re-mint | **Gone in phase 3:** the B6 constructor family (`core/go/mint.go`: `MintRetagged`, `MintLike`, `MintFresh`, `MintPayload`, `MintCarrierFrom`, `MintCarrierKeeping`, `MintElemTyped`) builds each from parts; the exemplar the user holds keeps its type |
 | E15 (was D7) | the VM's deep clones per evaluation (`CloneValueKeeping` + `WithFreshFnIdentity`) and `seatConstLocal`'s one-per-call clone | **Gone in phase 3:** a literal's per-evaluation instance is construction code over the pooled constant's shared parts (`buildLiteral`, `MintLike`), one new spine per evaluation as B1 asks |
 | E16 (was D8) | fn payload copies for names and homes: `installDef`/`installFnDef` renames, `nameFrameFns`/`nameClosureValue`, `rfn := *fn` for the registry rebind, `InstallTypeBody`'s name writes | **Gone in phase 3:** a binding names its holder (`SetFnName`/`FnNameOf`, the occurrence record); the payload keeps the name it was constructed under, so `def a (f/v)` copies no payload. A fn value's dispatch reads the payload by pointer and builds a view only for a holder another binding named; a type declaration installed under a name is constructed from its parts (`namedClassInfo`, `namedSchemaInfo`, `namedSurfaceInfo`) |
+
+## Class E, phase 4
+
+| id | site | why it goes |
+|---|---|---|
+| E17 (was D10) | the Value header passed by value (64 bytes after phase 3: `Data`, `Parent`, `tmeta`, the occurrence pointer `occ`, `elem`, `modns`, the kind and occurrence flags) | **Gone in phase 4:** the value structure is a `Datum`, shared by every holder and never copied (`make vet-copies` holds every module at zero); the holder keeps a 24-byte handle, the cell record of C1. A body write through a handle builds that holder a datum of its own (copy-on-write: construction from parts, B6's rule); values with nothing per instance share one datum built at init (B8); the engine's markers and compiled closures allocate their payload with their datum (B9) |
+
+## Class B, phase 4
+
+| id | site | why | invariant | status |
+|---|---|---|---|---|
+| B8 | shared datums (`core/go/datum_shared.go`): booleans, none, the empty string, integers in [-1024, 4095], the paren and end markers, a reach's `dot`/`dotr` words, each forced-stack word, the collection kernel's probes | a value whose datum carries nothing per instance needs none of its own | a shared datum is never written: every body write is copy-on-write, and a probe is copied into a local handle before it is handed out | permanent |
+| B9 | co-allocated payloads (`newCoDatum`, `setCoPayload`, `NewClosureValue`): `*ForwardInfo`, `*MarkInfo`, `*MoveInfo`, `*ClosurePayload` | the payload is held by pointer and allocated with its datum, one object | the payload is never written through the pointer: a new state is a new co-allocated datum, so a holder that kept the old one keeps the old state | permanent |
 
 ## How to use this list
 

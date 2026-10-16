@@ -378,7 +378,8 @@ that substituted on the zero value.
 
 ## Payload-presence vs value-mode (CRITICAL)
 
-Do NOT write `v.Data == nil` in consumer code. The raw probe is an
+Do NOT write `v.Data() == nil` (the field spelling `v.Data == nil` before
+no-copy phase 4) in consumer code. The raw probe is an
 overloaded smell: across the kernel it has meant three different
 things — "v is a bare type literal", "v is not a concrete value", and
 "there is no payload to read" — and those intents genuinely **diverge**:
@@ -412,7 +413,7 @@ negation, FnUndef, binding-body) must be routed by
 gate is the model).
 
 The regression gate `data_nil_gate_test.go::TestNoRawDataNilProbes`
-forbids `.Data == nil` outside a small allowlist of files that
+forbids `.Data() == nil` (and the field spelling) outside a small allowlist of files that
 legitimately test payload presence at the lowest level (the
 value/predicate/classifier home, the rendering and comparison
 primitives, and carrier construction). Add a predicate, not an
@@ -446,7 +447,8 @@ Payload variants live in `eng/go/payload.go`. Two flavours:
 
 2. **Direct variants** — eng-defined struct/pointer types with
    `payloadMarker()` added in payload.go: `WordInfo`,
-   `ForwardInfo`, `MarkInfo`, `MoveInfo`, `ReturnCheckInfo`,
+   `*ForwardInfo`, `*MarkInfo`, `*MoveInfo`, `*ClosurePayload` (the four
+   allocated with their datum since no-copy phase 4), `ReturnCheckInfo`,
    `DefCleanupInfo`, `FrameOpenInfo`, `ModuleDesc`, `FnDefInfo`, `FnUndefInfo`,
    `DisjunctInfo`, `ChildTypeInfo`, `CodeEffectInfo`, `RecordTypeInfo`,
    `OptionsTypeInfo`, `TableTypeInfo`, `TableData`,
@@ -737,7 +739,9 @@ magnitude (`1 cmp 1.0 → 0`). Full design at
 ## Value's Method Surface Is Deliberately Tiny
 
 `Value` exposes these methods (plus the `AsConcreteX` handler
-accessors):
+accessors, and since no-copy phase 4 the body accessors that stand where
+its fields did — `Data`, `Parent`, `IsInternal`, `Origin`, `Carrier` and
+their copy-on-write setters; see "Values are not copied"):
 
 - `Is(t *Type) bool` — canonical dispatch. Routes through
   `t.Behavior.Match(v, t)`.
@@ -776,19 +780,60 @@ is measured against its rules:
   a retag built from a payload) is construction, not a copy.
 - A copy that is not covered by an exceptions row is a defect.
 
-**Enforcement: `make vet-copies`.** `core.Value` carries a zero-size
+**A Value is a handle on a shared Datum** (phase 4, 2026-10-15;
+`core/go/value.go`, `core/go/datum_shared.go`). What a value IS — its
+payload, its Parent, its type-node metadata (`tmeta`), its element
+constraint, its module-namespace facet, the kind flags and a builtin
+node's interval labels — is a `Datum`, shared by every holder of the
+value and never copied. A `Value` is one holder's 24-byte handle: a
+pointer to the Datum plus that holder's occurrence state (the record and
+the flags below). Copying a Value copies a reference and an occurrence —
+a cell record, the exceptions list's C1 and R4 — never the value.
+
+- Read the body through the accessors: `v.Data()`, `v.Parent()`,
+  `v.IsInternal()`, `v.Origin()`, `v.Carrier()` (value receivers, so a
+  map element or a call's result reads directly), and in core
+  `v.body()`. The zero Value has no Datum and reads as the zero datum.
+- A body write through a handle — `SetData`, `SetParent`, `SetCarrier`,
+  `SetOrigin`, and core's `cow()` — gives THAT holder a
+  Datum of its own built from the old one's parts (copy-on-write), so it
+  reaches exactly the holder it is made through, as a write to a by-value
+  field did. Prefer constructing a value whole (`NewValueRaw`, `ValueOf(&
+  Datum{…})`, the mint family) to minting then setting: each set is an
+  allocation.
+- Never write a Datum in place once a handle on it has been copied. The
+  one exception is construction-time setup of the builtin lattice
+  (`labelIntervals` stamps each builtin node's labels on its own datum).
+- Values whose datum carries nothing per instance share one built at init
+  (`datum_shared.go`): booleans, none, the empty string, integers in
+  [-1024, 4095], the paren and end markers, a reach's `dot`/`dotr` words,
+  the collection kernel's probes, and each forced-stack word
+  (`forceStackWord`). A shared probe is copied into a local handle before
+  it is handed out.
+- The engine's per-step markers and compiled closures hold their payload
+  by pointer, allocated with the datum in one object (`newCoDatum`,
+  `setCoPayload`; `NewClosureValue`/`NewClosureValueUnder` outside core):
+  `ForwardInfo`, `MarkInfo`, `MoveInfo` and `ClosurePayload` are Payloads
+  only as pointers, so a by-value one cannot be boxed. A marker that takes
+  a new state takes a new co-allocated datum: a holder that kept the old
+  one keeps the old state. Read them through `AsForward`/`AsMark`/
+  `AsMove` (a copy) or a `*ClosurePayload` assertion, and never write a
+  field through the pointer: copy it (`c := *cl`) and construct.
+
+**Enforcement: `make vet-copies`.** `core.Datum` carries a zero-size
 `noCopy` marker, so go vet's copylocks analyzer reports every by-value
-copy of a Value. `scripts/vet-copies.sh` runs it, with the bulk-copy
-analyzer of `tools/vetcopies` (the built-in `copy` and a variadic
-`append` over a `[]core.Value`, which copylocks cannot see), in every
-`go.work` module and holds each module's NON-TEST counts to
-`tools/vetcopies/ceilings.tsv`; it also fails on a copy of any other
-lock. The ordinary vet lanes run `-copylocks=false` (and `.golangci.yml`
-turns govet's copylocks off), so this is the one lane that sees either.
-The commit gate runs it on the touched modules and CI's `vet-copies`
-job on all of them. The ceilings only go down: a change that removes
-copies lowers them in the same commit (`UPDATE=1 make vet-copies`), and
-a failing run lists the findings on the lines the change touched.
+copy of a Datum (and of a struct holding one by value).
+`scripts/vet-copies.sh` runs it, with the bulk-copy analyzer of
+`tools/vetcopies` (the built-in `copy` and a variadic `append` over a
+`[]core.Datum`, which copylocks cannot see), in every `go.work` module
+and holds each module's NON-TEST counts to `tools/vetcopies/ceilings.tsv`
+— zero everywhere since phase 4; it also fails on a copy of any other
+lock. A `[]core.Value` is an array of handles, so its copies are not
+counted. The ordinary vet lanes run `-copylocks=false` (and
+`.golangci.yml` turns govet's copylocks off), so this is the one lane
+that sees either. The commit gate runs it on the touched modules and
+CI's `vet-copies` job on all of them. The ceilings only go down, and a
+failing run lists the findings on the lines the change touched.
 
 **Reading a Value without copying it** (phase 1, 2026-10-12):
 
@@ -821,14 +866,14 @@ a failing run lists the findings on the lines the change touched.
   caller owns; `StripAscribed` stays for the copying form.
 
 **Occurrence state is the holder's** (phase 3, 2026-10-13;
-`core/go/occurrence.go`). A Value has no ID, position, ascription,
+`core/go/occurrence.go`; in the handle since phase 4). A Value has no ID, position, ascription,
 source-binding, name or flag fields: the identity, the source position,
 the `as` ascription, a gradual read's source binding, the name a binding
 gave a fn value, the recorder key and a quoted atom's referent live in an
 immutable record behind one pointer (`occ`, nil for most values), and the
 occurrence flags — quoted, eval, undefined, failed dispatch, reach group,
 dynamic, applied, return-trimmed, signature-matched — are bits of the
-header. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
+handle. Read and write them through `IDOf`/`SetID`, `Pos`/`SetPos` (and
 `WithPos`/`ThreadPos` to share another value's position record, which
 allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
 `FnNameOf`/`SetFnName`, `RecKeyOf`/`SetRecKey`,
@@ -836,9 +881,10 @@ allocates nothing), `AscribedType`/`SetAscribed`, `DynFrom`/`SetDynFrom`,
 siblings. A setter repoints or rewrites only the holder it is called on —
 the tape cell, the stack cell, the binding — never a record another copy
 shares, so it is a write to that slot, exactly as a by-value field was.
-Do not add a field to the header (`TestValueHeaderSize` pins it at 64
-bytes): per-occurrence state belongs in the record or the flags,
-per-type state in `tmeta`.
+Do not add a field to the handle or the Datum (`TestValueHeaderSize`
+pins them at 24 and 64 bytes — 64 is the Datum's allocation size class):
+per-occurrence state belongs in the record or the flags, per-type state
+in `tmeta`.
 
 Three consequences to keep:
 
@@ -890,8 +936,9 @@ it up.
 ## Canonical `*Type` Pointers (CRITICAL)
 
 Because `type Type = Value` a "type literal" is dual: a `Value`
-with `Data == nil` that is a COPY of its lattice node — the `*Type`
-a type table minted or registered (`TypeTable.byID`). Code that
+with `Data() == nil` that is a COPY of its lattice node's handle — sharing
+the node's Datum — of the `*Type` a type table minted or registered
+(`TypeTable.byID`). Code that
 takes `&v` of a type-literal Value (or of `NewTypeLiteral(t)`'s
 by-value return) holds a pointer to the copy, not the node. Every
 copy shares the node's metadata (`tmeta`), so a `behave` rewrite

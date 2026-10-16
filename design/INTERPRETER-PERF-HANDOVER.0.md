@@ -143,6 +143,13 @@ is independent of the policy and still open.
 > recorder keyed on the holder, a token run copied once; anchors 0.809 of
 > phase 2, 0.615 of phase 0). Decision 3 — phase 4 — now has its numbers
 > in §9.
+>
+> **2026-10-15:** decision 3 is made (go) and phase 4 has landed: a
+> `Value` is a 24-byte handle over a shared, never-copied `Datum`, zero
+> copies in every module; anchors 0.946–0.964 of phase 3 (interpreter
+> 1.024–1.039, compiled 0.855–0.885). §9 of
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md) has the detail and what is
+> left. Decisions 6 and 7 are still open.
 
 From the no-copy review (its §7 has the detail and a recommendation for
 each):

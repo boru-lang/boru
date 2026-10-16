@@ -4,8 +4,9 @@ Policy under review: *"Value structures should never need to be copied.
 They can be modified in situ as needed by any stage, but copying is
 forbidden."*
 
-**Status: accepted, in progress** (§9 records each phase as it
-lands). Review of main at `6780a6030`
+**Status: accepted; phases 0 to 5 landed** (§9 records each phase as it
+lands; phase 4, the representation, on 2026-10-15 after the maintainer's
+go on decision 3, and phase 5 holding by construction with it). Review of main at `6780a6030`
 (2026-10-09); no code was changed. The maintainer made the five decisions
 in §7 on 2026-10-12: the plan's assumptions stand, lists and maps keep
 value semantics, phase 4 is decided on phase 3's numbers, the sanctioned
@@ -410,7 +411,9 @@ empty; vet counts for `engine.go`, `vm.go`, `carrier.go`, `emit.go`,
 mechanical kind only. This phase is where the `-race` suite and the
 debugger ring need the sanctioned-copy list from §5.
 
-**Phase 4 — the representation (4–8 weeks, decide after phase 3).** Turn
+**Phase 4 — the representation (4–8 weeks, decide after phase 3; landed
+2026-10-15, as §9 describes — a handle over a shared `Datum` rather than
+`[]*Value`, because phase 3 left the occurrence state in the header).** Turn
 the remaining by-value flows into `*Value`: tape and stack cells, `args
 []*Value` (870 handler signatures, mechanical), list elements
 `[]*Value`, `map[string]*Value` (640), struct fields (~88), `Value{}`
@@ -471,6 +474,9 @@ The review left five decisions to the maintainer. All five were made on
    3 with benchstat in hand. **Decided: as recommended.** Phase 4 is a
    go/no-go on phase 3's benchstat, and until then the header passed by
    value stays a transitional allowance (D10 in the exceptions list).
+   **2026-10-15: go.** With phase 3's numbers on the table (§9: copying
+   about 4% of CPU, the pointer switch buying consistency rather than
+   speed), the maintainer chose phase 4. It landed the same day (§9).
 4. **Sanctioned copies.** The full list, with sites, invariants and
    expiry phases, is [VALUE-NO-COPY-EXCEPTIONS.0.md](VALUE-NO-COPY-EXCEPTIONS.0.md): two
    language-level copies (`StructUtil.clone`, `send`), seven named constructions,
@@ -811,3 +817,147 @@ overlapping) is most of the rest. What the pointer switch would retire
 is D10 alone — every other transitional allowance is gone — so it would
 buy consistency rather than speed, the case §6 anticipated; the next
 speed is in `Type.Equal` and the matcher.
+
+**Phase 4 — 2026-10-15.** The value structure leaves the holder: a `Value`
+is now a 24-byte HANDLE — a pointer to the value's `Datum` and the
+holder's occurrence state — and the `Datum` is what the value IS, shared
+by every holder and never copied (`core/go/value.go`,
+`core/go/datum_shared.go`).
+
+The representation §6 sketched (`args []*Value`, list elements
+`[]*Value`, `map[string]*Value`, `Value{}` sentinels to `nil`) assumed the
+occurrence state had left the Value for a slot record beside each pointer.
+Phase 3 instead kept it in the header — the record behind `occ` and the
+flag bits — on the rule that a by-value header IS its holder's slot. Under
+that representation a `[]*Value` cell would have shared one holder's
+position, quoted mark, ascription and identity with every other, which is
+the H1–H4 class §6 warned phase 4 would reproduce. So the split runs the
+other way, at the same seam: what a value IS moves behind a pointer into a
+`Datum` — `Data`, `Parent`, `tmeta`, `elem`, `modns`, the kind flags —
+and what stays in the 24-byte handle (`d`, `occ`, the occurrence flags)
+is exactly the cell record C1 describes, `{V *Value; occurrence}`, with
+the handle keeping the name `Value` and the value taking the name `Datum`.
+Copying a handle copies a reference and an occurrence, never the value
+(R4); the slot record exists everywhere a holder does, with no second
+cell type; and every API that took or returned a `Value` still does.
+
+- **The split was a type-checked rewrite**, behaviour-preserving by
+  construction: 4,877 reads of a body field became accessor calls
+  (`v.Data()`, `v.Parent()`, `v.IsInternal()`, `v.Origin()`,
+  `v.Carrier()`; `v.body()` in core), 161 writes became copy-on-write
+  setters (`SetData`, `SetParent`, …, `cow()`), and 439 keyed literals
+  became `Value{d: &Datum{…}}` in core and `ValueOf(&Datum{…})` outside
+  it, over every module and five build configurations (the default,
+  `borudebug specgen`, windows, darwin, js/wasm): 709 files. A
+  copy-on-write setter gives the holder it is called on a datum of its own
+  built from the old one's parts, so a write reaches exactly that holder,
+  as a write to a by-value field did; nothing that held a value can see
+  another holder's write. Every module's tests and the langspec corpus
+  passed on the rewrite before any optimisation.
+- **The ratchet moved with the value.** The `noCopy` marker is on
+  `Datum`, the bulk-copy analyzer counts `copy`/`append` over a
+  `[]core.Datum`, and `tools/vetcopies/ceilings.tsv` is ZERO in every
+  module, value and bulk: no Datum is copied anywhere in the tree. A
+  `[]core.Value` is an array of handles, which R4 says is neither a copy
+  nor a construction.
+- **Values with nothing per instance share a datum** built at init:
+  booleans, none, the empty string, integers in [-1024, 4095], the paren
+  and end markers, a reach's `dot`/`dotr` words, each forced-stack word
+  (cached per name and arity), and the collection kernel's probes (copied
+  into a local handle before they are handed out). Minting one allocates
+  nothing; its handle takes its identity in a check pass as `NewValueRaw`
+  gave it one.
+- **The engine's per-step markers and compiled closures allocate their
+  payload with their datum.** `ForwardInfo`, `MarkInfo`, `MoveInfo` and
+  `ClosurePayload` are Payloads only as pointers, co-allocated with the
+  datum in one object (`newCoDatum`, `setCoPayload`; `NewClosureValue`), so a forward marker costs one allocation per state
+  as the by-value payload did, and the VM's closure push one. A marker that
+  takes a new state takes a new datum, so a snapshot that kept the old one
+  keeps the old state.
+- **Type identity is read one pointer from the node.** A builtin node's
+  interval labels (`in`/`out`) and every node's depth live in its datum,
+  in the room the 64-byte size class leaves, so `Type.Equal`'s label fast
+  path, `IsAncestor` and the LCA walk read the datum, not the datum and
+  then `tmeta`. Moving the labels took five of the interpreter's loop
+  anchors from +11–24% of phase 3 to −1–+15%.
+- **Two escapes found on the way.** The matcher's word probes
+  (`&Value{Parent: TAtom}`) had been stack temporaries; written as
+  `Value{d: &Datum{…}}` they allocated per scan step (a third of
+  `map_get`'s allocations) until they became shared probe datums. And the
+  unify rule table's type-parameter predicate handed out `&v` of its
+  by-value argument (`typeParamLitNode`), allocating per unification; it
+  asks a non-escaping predicate now (`isTypeParamLit`). The "moved to
+  heap" lists of core, eng, compiler, check and basic are at or below
+  phase 3's, with one new entry on weak-flex revival's cold path.
+- **A source gate followed the spelling.** `TestNoRawDataNilProbes`
+  matched `.Data == nil`, which the accessor no longer spells; it matches
+  `.Data() == nil` too, so it still bites.
+
+| | phase 3 | phase 4 |
+|---|---:|---:|
+| Value (bytes) | 64 header | 24 handle + a shared 64-byte Datum |
+| non-test copies of the value structure (vet) / bulk | 12,799 / 291 | 0 / 0 |
+| anchors, geomean time vs phase 3 (55 benchmarks, two runs of five interleaved rounds) | 1.000 | 0.946–0.964 |
+| interpreter / compiled lane vs phase 3 | 1.000 / 1.000 | 1.024–1.039 / 0.855–0.885 |
+| anchors vs phase 0 (chained through phase 3's 0.615) | 0.615 | 0.582–0.593 |
+| allocs/op, bytes/op, anchors geomean vs phase 3 | 1.000 / 1.000 | 0.903 / 0.659 |
+| interpreter allocs/op: `for_tight` / `compare_loop` / `map_get` | 6,265 / 3,833 / 5,433 | 5,633 / 3,631 / 5,031 |
+| compiled allocs/op: `for_tight` / `do_body` / `recursion_tail` | 644 / 312 / 5,753 | 413 / 312 / 6,001 |
+| check / compile benchmarks: time; allocs vs phase 3 | 1.000 / 1.000 | 0.903 / 0.907; +0.7% |
+| tape benchmarks (`BenchmarkTape*`), geomean vs phase 3 | 1.000 | ≈0.45 |
+| kernel micro-benchmarks (`BenchmarkKernel*` but the map) vs phase 3 | 1.000 | 1.09–1.24 |
+| parse benchmarks vs phase 3 | 1.000 | 1.02 |
+
+Every interpreter allocation guard is below its phase-3 count, so each
+ceiling is lowered by its drop (`interp_allocguard_test.go`), and the
+compiled `for_tight` ceiling with it.
+
+What it costs, and where the rest is. A value whose datum is not shared
+costs one allocation more than the by-value header did: every mint of a
+word, an atom, a string, a list, a map or an integer outside the shared
+range, which is why parsing is 2% slower, compiled `recursion_tail` (an
+accumulator past 4,095) allocates 4% more, and the check and compile
+passes allocate 0.7% more while moving 24% fewer bytes. A read of a body
+field follows one pointer more: the kernel micro-benchmarks, which do
+nothing but compare, unify and canonicalise a handful of values, run
+9–24% slower, and the interpreter lane is 2–4% behind phase 3 on the
+anchors while the compiled lane, whose stacks and locals copy 24 bytes
+where they copied 64, is 11–15% ahead. Copying is gone; what remains of
+the interpreter's time is where §9's phase-3 profile put it — `Type.Equal`,
+the matcher and type-metadata reads (`Behavior`, `Name`, `Rank` are a
+datum and a `tmeta` away from a node).
+
+Not done, with the reason:
+
+- **The naming.** The plan's prose calls the immutable part `*Value` and
+  the holder a cell; the code calls them `Datum` and `Value`, so that the
+  870 handler signatures, the 5,000-odd `[]Value` and every test read as
+  they did. A rename (`Value` → `Cell`, `Datum` → `Value`) is mechanical
+  and is the maintainer's call.
+- **`WordInfo` and the other value payloads are still boxed beside the
+  datum**, two allocations per mint where a pointer payload co-allocated
+  with its datum is one; the marker payloads and closures show the
+  pattern, at the cost of a pointer assertion at each read site (39 for
+  `WordInfo`).
+- **Type metadata stays one pointer further from a node.** `tmeta` is
+  shared mutable metadata (`behave` rewrites a node's Behavior through
+  it), so it cannot be copied into the datum the way the immutable labels
+  and depth were.
+- **E5's audit is moot but not recorded as done.** Handler results are
+  handles; a consumer writing one writes its own handle or builds a new
+  datum, never the handler's datum — but the memoised-result copies E5
+  lists still copy handles, now 24 bytes each, and were left as they are.
+
+**Phase 5 — 2026-10-15: holds by construction.** Decision 2 keeps list
+and map value semantics, built as a new container whose elements are the
+receiver's own, and phase 4 is what makes "the receiver's own" literal: a
+container's element array is an array of handles, so `set`, `push`,
+`merge`, `sort` and the rest of the value-semantics column build a new
+spine of references to the same Datums and copy no value (B2's
+transitional caveat — "building the new element array copies each
+unchanged element's header" — is resolved, and its status says so). No
+spec row changed, none needed to, and the langspec corpus passes on the
+phase-4 tree. A persistent container representation, which would share
+structure between versions instead of copying the reference array, is
+not needed for the policy and was not built.
+

@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2026-10-12's; the pointer to the interpreter-performance handover is 2026-10-09's, the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-15** (no-copy phase 4 below; phase 3 is 2026-10-13's, the no-copy decisions are 2026-10-12's; the pointer to the interpreter-performance handover is 2026-10-09's, the baseline block is 2026-10-05's, and the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -71,6 +71,26 @@ Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2
 > and `make cover-gate-core` are 100%; every `make ci-local` step passed
 > on the branch (the race, borudebug and wasm steps at 21/n), except
 > `vuln`, which this container cannot run (no `govulncheck`; advisory).
+
+> **2026-10-15:** phases 0 to 3 are PR #535 (`claude/tender-darwin-xns5f8`,
+> the commits of `claude/eager-bardeen-w1jnxr`), and the maintainer's go on
+> decision 3 brought phase 4 onto the same branch (§9 of
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md)). A `Value` is a 24-byte
+> handle — a pointer to the value's `Datum` and the holder's occurrence
+> state — and the `Datum` (64 bytes, its allocation size class) is shared
+> and never copied: `make vet-copies` is at zero copies in every module.
+> Values with nothing per instance share an init-time datum (booleans,
+> none, "", integers in [-1024, 4095], markers, probes); the engine's
+> markers and compiled closures allocate their payload with their datum.
+> On the 55 anchors phase 4 runs at 0.946–0.964 of phase 3 (interpreter
+> 1.024–1.039, compiled 0.855–0.885), 0.58–0.59 of phase 0; check and
+> compile 0.90; every interpreter allocation guard is below phase 3 and
+> its ceiling is lowered. Phase 5 (value semantics by construction) holds
+> with it: a container's elements are handles. Open: the naming (`Datum`/`Value` against the
+> plan's `*Value`/cell — a mechanical rename, the maintainer's call), the
+> interpreter's remaining 2–4% (type-metadata reads, the matcher), and
+> `WordInfo`'s separate payload box. Every module's suite and the
+> langspec corpus pass; see the PR for the gates.
 
 > ## Where things stand on 2026-10-05 — the baseline
 >

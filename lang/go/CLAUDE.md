@@ -649,9 +649,11 @@ Concretely:
 
 ### Capture semantics: shallow snapshot
 
-The captured `Value` is a struct copy. Pointer-backed payloads (`Map`,
-`Store`, `Array`, `Timer`, `Interval`) **share the underlying state**
-with the outer binding, so mutations cross the capture boundary:
+The capture holds a reference to the value bound at capture time: a
+`Value` handle on the binding's shared `Datum`, never a copy of the value
+(design/VALUE-NO-COPY-EXCEPTIONS.0.md C5). Pointer-backed payloads
+(`Map`, `Store`, `Array`, `Timer`, `Interval`) **share the underlying
+state** with the outer binding, so mutations cross the capture boundary:
 
 ```
 def pair (fn [[] [List] [
@@ -1012,7 +1014,7 @@ eng/go/CLAUDE.md "Values are not copied".
   type-algebra words) so a name and an inline body are one case.
 - `IsConcrete(v)` — true if `Data != nil` and not a carrier. NOT the
   negation of `Data == nil`: a list/map carrier has `Data != nil` yet
-  is not concrete. Never write the raw `v.Data == nil` probe in
+  is not concrete. Never write the raw `v.Data() == nil` probe in
   consumer code — see eng/go/CLAUDE.md "Payload-presence vs value-mode".
 - `RequireConcreteList(v, op) (ReadList, error)` — unwraps a list-typed
   Value or returns an error when the value is a type literal/carrier.
@@ -1242,11 +1244,11 @@ Key patterns to follow:
 - **Guard conversion functions.** `valueToAny()` and `valueToMap()` in
   `native/transform.go` have nil-Data guards. If you add new
   conversion helpers, include the same guard.
-- **Engine builtin handlers.** Check `args[N].Data == nil` before calling
+- **Engine builtin handlers.** Check `args[N].Data() == nil` before calling
   `AsMap(args[N])`/`AsList(args[N])` on arguments matched via
   `TMap`/`TList`/`TAny` signatures. See `native_accessor_dotr.go`
   for the canonical pattern.
-- **Prefer `val, ok := v.Data.(Type)` over `v.Data.(Type)`.** The
+- **Prefer `val, ok := v.Data().(Type)` over `v.Data().(Type)`.** The
   two-value form never panics; the single-value form panics on mismatch.
 - **Write tests that use `recover()`.** For any new word or native
   function, add a test case in `TestTypeLiteralNoPanic` or
