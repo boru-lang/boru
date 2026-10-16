@@ -677,12 +677,8 @@ func DataOf(v *core.Value) core.Payload                        { return core.Dat
 func ParentOf(v *core.Value) *core.Type                        { return core.ParentOf(v) }
 func IsCarrier(v *core.Value) bool                             { return core.IsCarrier(v) }
 func OriginOf(v *core.Value) core.OriginKind                   { return core.OriginOf(v) }
-func IsInternal(v *core.Value) bool                            { return core.IsInternal(v) }
-func SetData(v *core.Value, d core.Payload)                    { core.SetData(v, d) }
 func SetParent(v *core.Value, t *core.Type)                    { core.SetParent(v, t) }
 func SetCarrier(v *core.Value, b bool)                         { core.SetCarrier(v, b) }
-func SetOrigin(v *core.Value, o core.OriginKind)               { core.SetOrigin(v, o) }
-func SetInternal(v *core.Value, b bool)                        { core.SetInternal(v, b) }
 func MakeValue(t *core.Type, d core.Payload) core.Value        { return core.MakeValue(t, d) }
 func MakeCarrierValue(t *core.Type, d core.Payload) core.Value { return core.MakeCarrierValue(t, d) }
 func NewCarrier(t *core.Type) core.Value                       { return core.NewCarrier(t) }

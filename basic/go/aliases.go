@@ -646,30 +646,25 @@ func NewTypeSchema(t *core.Type, info *core.TypeSchemaInfo) core.Value {
 func AttachGenBound(r *core.Registry, node *core.Type, p core.GenParam) {
 	core.AttachGenBound(r, node, p)
 }
-func TypeParamName(t *core.Type) string                        { return core.TypeParamName(t) }
-func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool)   { return core.SchemaInfoOf(t) }
-func NodeOf(t *core.Type) *core.Type                           { return core.NodeOf(t) }
-func MintRetagged(v *core.Value, def *core.Type) core.Value    { return core.MintRetagged(v, def) }
-func ThreadPos(dst, src *core.Value)                           { core.ThreadPos(dst, src) }
-func IsBareTypeNode(v *core.Value) bool                        { return core.IsBareTypeNode(v) }
-func IsConcrete(v *core.Value) bool                            { return core.IsConcrete(v) }
-func IsTypeBody(v *core.Value) bool                            { return core.IsTypeBody(v) }
-func IsTypeLiteral(v *core.Value) bool                         { return core.IsTypeLiteral(v) }
-func NewValueRaw(t *core.Type, data core.Payload) core.Value   { return core.NewValueRaw(t, data) }
-func DataOf(v *core.Value) core.Payload                        { return core.DataOf(v) }
-func ParentOf(v *core.Value) *core.Type                        { return core.ParentOf(v) }
-func IsCarrier(v *core.Value) bool                             { return core.IsCarrier(v) }
-func OriginOf(v *core.Value) core.OriginKind                   { return core.OriginOf(v) }
-func IsInternal(v *core.Value) bool                            { return core.IsInternal(v) }
-func SetData(v *core.Value, d core.Payload)                    { core.SetData(v, d) }
-func SetParent(v *core.Value, t *core.Type)                    { core.SetParent(v, t) }
-func SetCarrier(v *core.Value, b bool)                         { core.SetCarrier(v, b) }
-func SetOrigin(v *core.Value, o core.OriginKind)               { core.SetOrigin(v, o) }
-func SetInternal(v *core.Value, b bool)                        { core.SetInternal(v, b) }
-func MakeValue(t *core.Type, d core.Payload) core.Value        { return core.MakeValue(t, d) }
-func MakeCarrierValue(t *core.Type, d core.Payload) core.Value { return core.MakeCarrierValue(t, d) }
-func NewCarrier(t *core.Type) core.Value                       { return core.NewCarrier(t) }
-func NewDynamicCarrier(t *core.Type) core.Value                { return core.NewDynamicCarrier(t) }
+func TypeParamName(t *core.Type) string                      { return core.TypeParamName(t) }
+func SchemaInfoOf(t *core.Type) (*core.TypeSchemaInfo, bool) { return core.SchemaInfoOf(t) }
+func NodeOf(t *core.Type) *core.Type                         { return core.NodeOf(t) }
+func MintRetagged(v *core.Value, def *core.Type) core.Value  { return core.MintRetagged(v, def) }
+func ThreadPos(dst, src *core.Value)                         { core.ThreadPos(dst, src) }
+func IsBareTypeNode(v *core.Value) bool                      { return core.IsBareTypeNode(v) }
+func IsConcrete(v *core.Value) bool                          { return core.IsConcrete(v) }
+func IsTypeBody(v *core.Value) bool                          { return core.IsTypeBody(v) }
+func IsTypeLiteral(v *core.Value) bool                       { return core.IsTypeLiteral(v) }
+func NewValueRaw(t *core.Type, data core.Payload) core.Value { return core.NewValueRaw(t, data) }
+func DataOf(v *core.Value) core.Payload                      { return core.DataOf(v) }
+func ParentOf(v *core.Value) *core.Type                      { return core.ParentOf(v) }
+func IsCarrier(v *core.Value) bool                           { return core.IsCarrier(v) }
+func OriginOf(v *core.Value) core.OriginKind                 { return core.OriginOf(v) }
+func SetParent(v *core.Value, t *core.Type)                  { core.SetParent(v, t) }
+func SetCarrier(v *core.Value, b bool)                       { core.SetCarrier(v, b) }
+func MakeValue(t *core.Type, d core.Payload) core.Value      { return core.MakeValue(t, d) }
+func NewCarrier(t *core.Type) core.Value                     { return core.NewCarrier(t) }
+func NewDynamicCarrier(t *core.Type) core.Value              { return core.NewDynamicCarrier(t) }
 func NewResourceType(t *core.Type, info core.ResourceTypeInfo) core.Value {
 	return core.NewResourceType(t, info)
 }
