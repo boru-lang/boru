@@ -59,7 +59,7 @@ func TestSplitArmMayBeFn(t *testing.T) {
 		t.Error("an event's value may be a fn")
 	}
 	es.frames[0][0].br = &emitBranch{thenIsVal: true, hasThenOut: true, els: body, hasElsOut: true,
-		elsOut: ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}))}
+		elsOut: ConstOperand(es.intern(core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})))}
 	if !es.splitArmMayBeFn(7) {
 		t.Error("a fn const in the placed else arm is a fn")
 	}
@@ -77,7 +77,7 @@ func TestSplitArmMayBeFn(t *testing.T) {
 // branch whose every arm places (placed data, not an apply) does not.
 func TestBranchLeadDecline(t *testing.T) {
 	es := NewEmitState()
-	lead := withID(core.Value{Parent: core.TAny}, "lead")
+	lead := withID(core.MakeValue(core.TAny, nil), "lead")
 	if why := es.branchLeadDecline(lead); why != "" {
 		t.Errorf("no producer: %q", why)
 	}
@@ -114,7 +114,7 @@ func TestNUR317PlacementUndone(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	u.Carrier = true
+	core.SetCarrier(&u, true)
 	core.SetID(&u, "u")
 	if !es.branchPlacedHere(u, 7) || es.unionLeadReStepped(u, 7) {
 		t.Error("no re-step: the branch places its join")
@@ -203,7 +203,7 @@ func TestNUR319UnionReadReStepped(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	u.Carrier = true
+	core.SetCarrier(&u, true)
 	core.SetID(&u, "u")
 	es.stampProduced(&u, 7, 0)
 	if es.unionLeadReStepped(u, 7) || es.mayBeFnUnsettled(u) {

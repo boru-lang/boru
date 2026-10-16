@@ -164,8 +164,8 @@ func TestRetiredTypeNodeReplaysForTheRun(t *testing.T) {
 	if err != nil || len(valsI) != 1 {
 		t.Fatalf("interpreted: %v %v", valsI, err)
 	}
-	liveC := ac.NativeRegistry().Types.LookupByID(core.IDOf(vals[0].Parent)) != nil
-	liveI := ai.NativeRegistry().Types.LookupByID(core.IDOf(valsI[0].Parent)) != nil
+	liveC := ac.NativeRegistry().Types.LookupByID(core.IDOf(core.ParentOf(&vals[0]))) != nil
+	liveI := ai.NativeRegistry().Types.LookupByID(core.IDOf(core.ParentOf(&valsI[0]))) != nil
 	if liveC || liveI {
 		t.Errorf("Point still resolves by ID after its undef: compiled=%v interpreted=%v, want false on both", liveC, liveI)
 	}

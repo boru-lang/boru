@@ -30,7 +30,7 @@ func TestControlReturnsFnsGuardShortWindow(t *testing.T) {
 					}
 				}()
 				out := fn(args, r)
-				if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+				if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TAny) {
 					t.Errorf("%s over %d operand(s) = %#v, want one dynamic Any", name, len(args), out)
 				}
 			}()

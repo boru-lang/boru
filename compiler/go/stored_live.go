@@ -218,7 +218,7 @@ func (es *EmitState) noteLiveNameTransition(name string) {
 // dispatchingBinding reports whether a binding is one the lookup op cannot
 // push — the arms OpLookupDynScope defers on.
 func dispatchingBinding(v core.Value) bool {
-	switch v.Data.(type) {
+	switch core.DataOf(&v).(type) {
 	case *core.FnDefInfo, *core.ClassTypeInfo:
 		return true
 	}
@@ -235,7 +235,7 @@ func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 		es.declineUndef(name, liveLeadUndeclared)
 		return
 	}
-	fd := v.Data.(*core.FnDefInfo)
+	fd := core.DataOf(&v).(*core.FnDefInfo)
 	for i := range fd.Signatures {
 		check.CompileFnSigUnit(es.reg, *fd, i)
 	}

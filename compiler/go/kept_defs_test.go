@@ -158,7 +158,7 @@ func TestKeptDefsInvoker(t *testing.T) {
 		t.Errorf("with no kept-defs unit an island invokes nothing: %q", w)
 	}
 	es.keptDefsUnitWord = "do"
-	es.consts = []core.Value{core.NewInteger(1), {Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}}
+	es.consts = []core.Value{core.NewInteger(1), core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})}
 	for name, ev := range map[string]EmitEvent{
 		"an island":                      {kind: evFallback},
 		"a fn-value apply":               {kind: evCall, call: emitCall{dynApply: 1}},
@@ -261,7 +261,7 @@ func TestKeepsComputedDefs(t *testing.T) {
 		"a Function callback":                {multi, core.NewCarrier(core.TFunction), false},
 		"a concrete body":                    {once, core.NewList(words("add")), false},
 		"a word that keeps no defs":          {&core.CallableSpec{}, core.NewCarrier(core.TList), false},
-		"a typeless carrier may be anything": {once, core.Value{Carrier: true}, true},
+		"a typeless carrier may be anything": {once, core.MakeCarrierValue(nil, nil), true},
 	} {
 		if got := keepsComputedDefs(c.spec, c.body); got != c.want {
 			t.Errorf("%s: keepsComputedDefs=%v, want %v", name, got, c.want)
@@ -315,7 +315,7 @@ func TestKeptDefsScan(t *testing.T) {
 		"a recursive fn is visited once":      {words("rec"), true},
 		"a paren group":                       {[]core.Value{core.NewParenExpr(words("add"))}, true},
 		"a Integer carrier":                   {[]core.Value{core.NewCarrier(core.TInteger)}, true},
-		"a fn value":                          {[]core.Value{{Parent: core.TFunction, Data: &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}}}}, true},
+		"a fn value":                          {[]core.Value{core.MakeValue(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Boru(words("add"))}}})}, true},
 		"a def at the body's top level":       {words("def"), false},
 		"an undef":                            {words("undef"), false},
 		"an unresolved name":                  {words("zz"), false},
@@ -327,7 +327,7 @@ func TestKeptDefsScan(t *testing.T) {
 		"a splice":                            {[]core.Value{core.NewSplice(core.NewInteger(1))}, false},
 		"a List carrier":                      {[]core.Value{core.NewCarrier(core.TList)}, false},
 		"an interpolation":                    {[]core.Value{core.NewInterpString([]core.InterpPart{{Lit: "a"}})}, false},
-		"a closure":                           {[]core.Value{{Parent: core.TFunction, Data: core.ClosurePayload{}}}, false},
+		"a closure":                           {[]core.Value{core.MakeValue(core.TFunction, core.ClosurePayload{})}, false},
 		"a body nested past the walk's bound": {[]core.Value{nested}, false},
 	} {
 		if got := scan(c.toks...); got != c.want {
@@ -335,7 +335,7 @@ func TestKeptDefsScan(t *testing.T) {
 		}
 	}
 	// A nil-map payload walks as empty.
-	if !scan(core.Value{Parent: core.TMap, Data: core.MapPayload{}}) {
+	if !scan(core.MakeValue(core.TMap, core.MapPayload{})) {
 		t.Error("an empty map payload binds nothing")
 	}
 }
@@ -416,7 +416,7 @@ func TestProvenBodyTokens(t *testing.T) {
 
 func TestBodyProvenFn(t *testing.T) {
 	es := NewEmitState()
-	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	fnVal := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	if !es.bodyProvenFn(fnVal) {
 		t.Error("a const fn value is a proven callback")
 	}

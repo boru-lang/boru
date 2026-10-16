@@ -13,7 +13,7 @@ import "testing"
 // fail, and it drives every "compare errored" guard in depscalar.go.
 func w8NilTypeVal() Value {
 	v := NewInteger(5)
-	v.Parent = nil
+	SetParent(&v, nil)
 	return v
 }
 

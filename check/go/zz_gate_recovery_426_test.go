@@ -78,11 +78,11 @@ func wantSingleAnyCarrier(t *testing.T, tape []core.Value) {
 		t.Fatalf("residual: got %d values %v, want exactly 1", len(tape), tape)
 	}
 	got := tape[0]
-	if !got.Carrier {
+	if !core.IsCarrier(&got) {
 		t.Errorf("residual must be a carrier, got %#v", got)
 	}
-	if !got.Parent.Equal(core.TAny) {
-		t.Errorf("residual carrier type: got %v, want Any", got.Parent)
+	if !core.ParentOf(&got).Equal(core.TAny) {
+		t.Errorf("residual carrier type: got %v, want Any", core.ParentOf(&got))
 	}
 	if core.IsDynamic(&got) {
 		t.Error("the arm builds core.NewCarrier(core.TAny), which is not dynamic")
@@ -137,7 +137,7 @@ func TestGaterecovery426ProductiveBodySkipsTheFallback(t *testing.T) {
 	if len(tape) != 1 {
 		t.Fatalf("residual: got %d values %v, want exactly 1", len(tape), tape)
 	}
-	if tape[0].Carrier && tape[0].Parent.Equal(core.TAny) {
+	if core.IsCarrier(&tape[0]) && core.ParentOf(&tape[0]).Equal(core.TAny) {
 		t.Error("a productive body must not be replaced by the arm's Any fallback")
 	}
 }

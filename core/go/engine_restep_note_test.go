@@ -140,7 +140,7 @@ func TestFnValueDispatchesAtPointerExport(t *testing.T) {
 	fn := NewFunction(FnDefInfo{Name: "g"})
 	quoted := fn
 	SetQuoted(&quoted, true)
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	closure := MakeValue(TFunction, ClosurePayload{})
 	quotedClosure := closure
 	SetQuoted(&quotedClosure, true)
 	for _, c := range []struct {
@@ -150,7 +150,7 @@ func TestFnValueDispatchesAtPointerExport(t *testing.T) {
 		if got := FnValueDispatchesAtPointer(c.v); got != c.want {
 			t.Errorf("%v: %v", c.v, got)
 		}
-		if _, cl := c.v.Data.(ClosurePayload); !cl && FnValueDispatchesAtPointer(c.v) != fnValueDispatchesAtPointer(c.v) {
+		if _, cl := DataOf(&c.v).(ClosurePayload); !cl && FnValueDispatchesAtPointer(c.v) != fnValueDispatchesAtPointer(c.v) {
 			t.Errorf("%v: the exported predicate must agree with the main loop's", c.v)
 		}
 	}

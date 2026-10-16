@@ -89,7 +89,7 @@ func fvrModule(t *testing.T) *Registry {
 
 // fvrFnValue is the module native read as a fn value (`Mod.fvr-send`).
 func fvrFnValue(mod *Registry, name string) Value {
-	return Value{Parent: TFunction, Data: &FnDefInfo{Name: name, Registry: mod}}
+	return MakeValue(TFunction, &FnDefInfo{Name: name, Registry: mod})
 }
 
 // fvrCompiling arms a compile pass on r and pins the fallback window.

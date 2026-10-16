@@ -140,8 +140,8 @@ func containsTypeParam(v Value) bool {
 	case IsNegation(v):
 		ni, _ := AsNegation(v)
 		return containsTypeParam(ni.Inner)
-	case v.Parent != nil && v.Parent.Equal(TFnUndef):
-		if fi, ok := v.Data.(FnUndefInfo); ok {
+	case ParentOf(&v) != nil && ParentOf(&v).Equal(TFnUndef):
+		if fi, ok := DataOf(&v).(FnUndefInfo); ok {
 			for _, sig := range fi.Sigs {
 				for _, p := range sig.Params {
 					if p.Type != nil && (IsTypeParamNode(p.Type) || IDOf(p.Type) == IDOf(TSelf)) {
@@ -229,7 +229,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 			if hn != nil && selfNode != nil && IDOf(hn) == IDOf(selfNode) {
 				// Self resolved to the in-flight node and the schema
 				// payload is reachable through its parent (the schema).
-				if sinfo, ok := SchemaInfoOf(hn.Parent); ok {
+				if sinfo, ok := SchemaInfoOf(ParentOf(hn)); ok {
 					return InstantiateSchema(r, sinfo, args)
 				}
 				return NewTypeLiteral(selfNode), nil
@@ -268,7 +268,7 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		}
 		out := oi
 		out.Fields = fields
-		return NewValueRaw(v.Parent, out), nil
+		return NewValueRaw(ParentOf(&v), out), nil
 
 	case IsTypedList(&v):
 		ci, _ := AsChildType(v)
@@ -306,8 +306,8 @@ func SubstituteTypeParams(r *Registry, v Value, bindings map[string]Value, selfN
 		}
 		return NewNegation(inner), nil
 
-	case v.Parent != nil && v.Parent.Equal(TFnUndef):
-		fi, ok := v.Data.(FnUndefInfo)
+	case ParentOf(&v) != nil && ParentOf(&v).Equal(TFnUndef):
+		fi, ok := DataOf(&v).(FnUndefInfo)
 		if !ok {
 			return v, nil
 		}

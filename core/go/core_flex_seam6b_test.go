@@ -57,7 +57,7 @@ func TestS6b0FlexDeepCopyNestedTypeBodyErrors(t *testing.T) {
 
 func TestS6b0FlexDeepCopyXmlArms(t *testing.T) {
 	// A concrete Xml-family value without element parts.
-	bad := Value{Parent: TXml, Data: StrPayload{S: "x"}}
+	bad := MakeValue(TXml, StrPayload{S: "x"})
 	if _, err := FlexDeepCopy(bad); err == nil ||
 		!strings.Contains(err.Error(), "flex: cannot make a flex copy") {
 		t.Errorf("non-element xml payload: %v", err)
@@ -135,7 +135,7 @@ func TestS6b0AdoptIntoFlexUnreadableListPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdoptIntoFlex: %v", err)
 	}
-	if out.Data != tt.Data {
+	if DataOf(&out) != DataOf(&tt) {
 		t.Error("a list-family type body must pass through unchanged")
 	}
 }

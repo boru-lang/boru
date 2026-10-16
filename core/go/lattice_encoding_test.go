@@ -6,7 +6,7 @@ import "testing"
 // walk, independent of the In/Out interval fast path. The optimisation is
 // sound iff it agrees with this for every pair.
 func walkAncestor(t, ancestor *Type) bool {
-	for x := t; x != nil; x = x.Parent {
+	for x := t; x != nil; x = ParentOf(x) {
 		if x.Equal(ancestor) {
 			return true
 		}
@@ -18,10 +18,10 @@ func walkAncestor(t, ancestor *Type) bool {
 // lowestCommonAncestor replaced.
 func walkLCA(a, b *Type) *Type {
 	var ac []*Type
-	for t := a; t != nil; t = t.Parent {
+	for t := a; t != nil; t = ParentOf(t) {
 		ac = append(ac, t)
 	}
-	for t := b; t != nil; t = t.Parent {
+	for t := b; t != nil; t = ParentOf(t) {
 		for _, at := range ac {
 			if at.Equal(t) {
 				return t
@@ -75,7 +75,7 @@ func TestIntervalAncestryMatchesWalk(t *testing.T) {
 func TestDepthMatchesChainLength(t *testing.T) {
 	for _, ty := range []*Type{TAny, TScalar, TNumber, TInteger, TString} {
 		want := 0
-		for x := ty; x != nil; x = x.Parent {
+		for x := ty; x != nil; x = ParentOf(x) {
 			want++
 		}
 		if ty.Depth() != want {

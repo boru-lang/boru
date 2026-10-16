@@ -103,7 +103,7 @@ func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
 		{"a void group", []Value{fold, body}, 0, []Value{body}, []int{1}, func(e *Engine) { e.voidGroups = []string{"fold"} }},
 		{"a gap", []Value{fold, zero, body}, 0, []Value{body}, []int{2}, nil},
 		{"not the tape's value", []Value{fold, body}, 0, []Value{withFreshID(NewList([]Value{NewInteger(3)}))}, []int{1}, nil},
-		{"an operand with no identity", []Value{fold, body}, 0, []Value{{Parent: TList}}, []int{1}, nil},
+		{"an operand with no identity", []Value{fold, body}, 0, []Value{MakeValue(TList, nil)}, []int{1}, nil},
 		{"a carrier beneath", []Value{withFreshID(NewDynamicCarrier(TAny)), zero, fold, body}, 2, []Value{body, zero}, []int{3, 1}, nil},
 		{"a list after", []Value{zero, fold, body, withFreshID(NewList([]Value{NewInteger(5)}))}, 1, []Value{body, zero}, []int{2, 0}, nil},
 		{"a word bound to no function after", []Value{zero, fold, body, NewWord("nope")}, 1, []Value{body, zero}, []int{2, 0}, nil},

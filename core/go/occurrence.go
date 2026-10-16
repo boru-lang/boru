@@ -435,7 +435,7 @@ func FnNameOf(v *Value) string {
 	if v.occ != nil && v.occ.name != "" {
 		return v.occ.name
 	}
-	switch d := v.Data.(type) {
+	switch d := DataOf(v).(type) {
 	case *FnDefInfo:
 		return d.Name
 	case ClosurePayload:

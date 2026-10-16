@@ -12,7 +12,7 @@ import (
 // nothing, and a binding drops what the stamp gave (dropFnPos).
 func TestNUR347FnPosStamps(t *testing.T) {
 	debug := []core.SrcPos{{Row: 1, Col: 7, Src: "m"}, {}}
-	fn := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{}}
+	fn := core.MakeValue(core.TFunction, core.ClosurePayload{})
 	if got := addrOf(stampFnPos(fn, debug, 0)).Pos(); got.Row != 1 || got.Col != 7 {
 		t.Fatalf("positionless fn: got %v, want 1:7", got)
 	}
@@ -53,13 +53,13 @@ func TestNUR347FnPosStamps(t *testing.T) {
 	}
 	// A binding's rename drops it too, the closure's construction anchor
 	// with it.
-	cl := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{RetPos: core.SrcPos{Row: 1, Col: 36}}}
+	cl := core.MakeValue(core.TFunction, core.ClosurePayload{RetPos: core.SrcPos{Row: 1, Col: 36}})
 	cl.SetPos(core.SrcPos{Row: 1, Col: 37})
 	named := nameClosureValue(cl, "h")
 	if view, _ := closureView(&named); named.Pos().Row != 0 || view.RetPos.Row != 0 || view.RetName != "h" {
 		t.Fatalf("nameClosureValue: %v %+v", named.Pos(), view)
 	}
-	if own := named.Data.(core.ClosurePayload); own.RetPos.Col != 36 || own.RetName != "" {
+	if own := core.DataOf(&named).(core.ClosurePayload); own.RetPos.Col != 36 || own.RetName != "" {
 		t.Fatalf("the payload keeps its own anchor and name: %+v", own)
 	}
 }
@@ -68,9 +68,9 @@ func TestNUR347FnPosStamps(t *testing.T) {
 // binding's name, `<fn>` for a nameless verbose value (a returned closure's
 // Named push, or a callback's verbose Source), and nothing for a lambda.
 func TestNUR347ClosureFrameName(t *testing.T) {
-	verbose := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{}}
-	lambda := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}}
-	named := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	verbose := core.MakeValue(core.TFunction, &core.FnDefInfo{})
+	lambda := core.MakeValue(core.TFunction, &core.FnDefInfo{Anonymous: true})
+	named := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	notFn := core.NewInteger(1)
 	for _, c := range []struct {
 		cl   core.ClosurePayload
@@ -130,7 +130,7 @@ func TestNUR347AnchorFinal(t *testing.T) {
 // zero entry, and an entry past the args.
 func TestNUR347FnArgPosStamps(t *testing.T) {
 	at := core.SrcPos{Row: 1, Col: 101, Src: "h/v"}
-	fnv := func(d core.Payload) core.Value { return core.Value{Parent: core.TFunction, Data: d} }
+	fnv := func(d core.Payload) core.Value { return core.MakeValue(core.TFunction, d) }
 	positioned := fnv(core.ClosurePayload{RetName: "h"})
 	positioned.SetPos(core.SrcPos{Row: 2, Col: 1})
 	for _, c := range []struct {
@@ -148,7 +148,7 @@ func TestNUR347FnArgPosStamps(t *testing.T) {
 		args := []core.Value{c.v}
 		stampFnArgPos(args, []core.SrcPos{at, at})
 		if got := args[0].Pos().Row; got != c.want {
-			t.Errorf("%+v: row %d, want %d", c.v.Data, got, c.want)
+			t.Errorf("%+v: row %d, want %d", core.DataOf(&c.v), got, c.want)
 		}
 	}
 	args := []core.Value{fnv(core.ClosurePayload{RetName: "h"})}

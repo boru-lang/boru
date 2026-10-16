@@ -321,7 +321,7 @@ func TestRecordTypedDefMake(t *testing.T) {
 	if !ok {
 		t.Fatal("an active recorder with a make overload must record")
 	}
-	if !carrier.Carrier || !carrier.Parent.Equal(probe) {
+	if !IsCarrier(&carrier) || !ParentOf(&carrier).Equal(probe) {
 		t.Errorf("recorded carrier = %v, want an abstract %v", carrier, probe)
 	}
 	if len(pe.words) != 1 || pe.words[0] != "make" {

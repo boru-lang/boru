@@ -51,7 +51,7 @@ func TestNUR078ReachMarkerIsNoArgument(t *testing.T) {
 	if renderAll(out) != "5" {
 		t.Errorf("cref2 over the marked group: %s, want 5", renderAll(out))
 	}
-	if fd, ok := FnDefOf(got.Data); !ok || fd.Name != "nm" || IsQuoted(&got) || IsReachGroup(&got) {
+	if fd, ok := FnDefOf(DataOf(&got)); !ok || fd.Name != "nm" || IsQuoted(&got) || IsReachGroup(&got) {
 		t.Errorf("the reference must arrive unquoted and untagged: %v (quoted=%v tagged=%v)", got, IsQuoted(&got), IsReachGroup(&got))
 	}
 

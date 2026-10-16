@@ -148,7 +148,7 @@ func applyRetContract(unit *compiler.CompiledFn, name string, sig *core.Signatur
 // The name is the holder's (core.FnNameOf — a binding names the holder, never
 // a copy of its definition), so the value is passed, not a renamed view.
 func applyFrameName(v *core.Value) string {
-	if fd, ok := core.FnDefOf(v.Data); ok && !fd.Anonymous && !core.NamedFnValue(v) {
+	if fd, ok := core.FnDefOf(core.DataOf(v)); ok && !fd.Anonymous && !core.NamedFnValue(v) {
 		return core.FnValueFrameName
 	}
 	return core.FnNameOf(v)
@@ -167,7 +167,7 @@ func applyFrameName(v *core.Value) string {
 // against p.Fns — and hosting it nested would reintroduce the body bracket this
 // file exists to avoid. Those keep the island.
 func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnter {
-	if _, isFn := fnVal.Data.(*core.FnDefInfo); !isFn {
+	if _, isFn := core.DataOf(&fnVal).(*core.FnDefInfo); !isFn {
 		return nil
 	}
 	// A QUOTED fn is DATA, not a callee. The island got this for free — the
@@ -221,7 +221,7 @@ func (vc *vmContext) dynApplyEnterSig(fnVal *core.Value, sig *core.Signature, ar
 	// rule (core_helpers.go).
 	for i := 0; i < fn.NParams && i < len(locals); i++ {
 		core.ClearAscribed(&locals[i])
-		if locals[i].Parent.Equal(core.TList) && !core.IsQuoted(&locals[i]) {
+		if core.ParentOf(&locals[i]).Equal(core.TList) && !core.IsQuoted(&locals[i]) {
 			core.SetQuoted(&locals[i], true)
 		}
 	}
@@ -254,7 +254,7 @@ func (vc *vmContext) dynApplyEnterSig(fnVal *core.Value, sig *core.Signature, ar
 // frame push: a hosted unit has run, effects and all, before its results
 // can be counted.
 func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
-	fd, isFn := fnVal.Data.(*core.FnDefInfo)
+	fd, isFn := core.DataOf(&fnVal).(*core.FnDefInfo)
 	if !isFn || core.IsQuoted(&fnVal) {
 		return nil, false, nil
 	}

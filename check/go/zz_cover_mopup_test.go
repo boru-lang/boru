@@ -228,8 +228,8 @@ func TestTagCheckModeDefReadFlexArm(t *testing.T) {
 func TestAdoptShapeValueXml(t *testing.T) {
 	x := core.NewXmlElement("div", core.NewOrderedMap(), nil)
 	got := AdoptShapeValue(x, 0)
-	if !got.Carrier || !got.Parent.ConformsTo(core.TFlexXml) {
-		t.Errorf("a concrete xml adopts to a FlexXml carrier, got %s", got.Parent.Leaf())
+	if !core.IsCarrier(&got) || !core.ParentOf(&got).ConformsTo(core.TFlexXml) {
+		t.Errorf("a concrete xml adopts to a FlexXml carrier, got %s", core.ParentOf(&got).Leaf())
 	}
 }
 
@@ -269,7 +269,7 @@ func TestReturnsDynUnion(t *testing.T) {
 		t.Error("a declared union result must stay DYNAMIC — a strict union declines gradual call sites")
 	}
 	if !core.IsDisjunct(&v) {
-		t.Errorf("the bound must be the alternative set, got %s", v.Parent.Leaf())
+		t.Errorf("the bound must be the alternative set, got %s", core.ParentOf(&v).Leaf())
 	}
 	// Each invocation mints a FRESH identity. A shared bound identity
 	// aliases every call site's modelled result — the def binder then

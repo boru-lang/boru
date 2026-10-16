@@ -55,7 +55,7 @@ func TestNUR056MakerBuildsItsOwnValues(t *testing.T) {
 		t.Fatalf("MakeValue: %v", err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("result must be a %s, got %s", ty, out.Parent)
+		t.Fatalf("result must be a %s, got %s", ty, ParentOf(&out))
 	}
 }
 
@@ -88,7 +88,7 @@ func TestNUR056MakerIsInheritedDownTheChain(t *testing.T) {
 	// …and the target handed to the body is the type being CONSTRUCTED,
 	// not the one that supplied the body.
 	if !out.Is(sub) {
-		t.Fatalf("result must be a %s, got %s", sub, out.Parent)
+		t.Fatalf("result must be a %s, got %s", sub, ParentOf(&out))
 	}
 }
 
@@ -143,7 +143,7 @@ func TestNUR056BaseTypedResultIsReparented(t *testing.T) {
 		t.Fatalf("a base-typed result must be accepted: ok=%v err=%v", ok, err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("…and reparented to the target, got %s", out.Parent)
+		t.Fatalf("…and reparented to the target, got %s", ParentOf(&out))
 	}
 }
 
@@ -188,7 +188,7 @@ func TestNUR056MakeConvertConsultsTheMaker(t *testing.T) {
 		t.Fatalf("MakeConvert: %v", err)
 	}
 	if !out.Is(ty) {
-		t.Fatalf("MakeConvert must use the target's constructor, got %s", out.Parent)
+		t.Fatalf("MakeConvert must use the target's constructor, got %s", ParentOf(&out))
 	}
 	// The unclaimed path is untouched.
 	if _, err := MakeConvert(NewString("2.5"), TFloat); err != nil {

@@ -71,7 +71,7 @@ func TestGaterecovery477InterleavedMarkerIsCompacted(t *testing.T) {
 	if !core.IsMark(e.Tape.Ref(0)) {
 		t.Errorf("tape[0] = %#v, want the interleaved Mark compacted to firstArgIdx", e.Tape.At(0))
 	}
-	if !e.Tape.At(1).Carrier {
+	if !core.IsCarrier(addrOf(e.Tape.At(1))) {
 		t.Errorf("tape[1] = %#v, want the spliced residual carrier", e.Tape.At(1))
 	}
 }
@@ -102,7 +102,7 @@ func TestGaterecovery477ContiguousArgsSkipEveryIndex(t *testing.T) {
 	if got := e.Tape.Len(); got != 1 {
 		t.Fatalf("tape len = %d, want 1 (nothing survives compaction)", got)
 	}
-	if !e.Tape.At(0).Carrier {
+	if !core.IsCarrier(addrOf(e.Tape.At(0))) {
 		t.Errorf("tape[0] = %#v, want the residual carrier alone", e.Tape.At(0))
 	}
 }

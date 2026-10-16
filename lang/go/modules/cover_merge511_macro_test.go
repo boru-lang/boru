@@ -54,7 +54,7 @@ func TestMiniFnDispatchOptionsAndFilter(t *testing.T) {
 		t.Errorf("the written options reach the transducer: %v / %v", res, err)
 	}
 	res, err = miniFnDispatchHandler([]native.Value{mk(src, opts, native.FnParam{Name: "x", Type: native.TAny}), native.NewString("ab")}, nil, nil, r)
-	if err != nil || len(res) != 1 || !res[0].Parent.ConformsTo(native.TFunction) {
+	if err != nil || len(res) != 1 || !core.ParentOf(&res[0]).ConformsTo(native.TFunction) {
 		t.Errorf("a filter-shaped fn yields its partial: %v / %v", res, err)
 	}
 }
@@ -75,7 +75,7 @@ func TestClosureFnViewDefaultsTheReturn(t *testing.T) {
 	for _, want := range [][]*core.Type{nil, {core.TAny}} {
 		cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity(), RetTypes: want})
 		bv, ok := closureFnView(r, cl)
-		fd, isFn := native.FnDefOf(bv.Data)
+		fd, isFn := native.FnDefOf(core.DataOf(&bv))
 		if !ok || !isFn || len(fd.Signatures) == 0 {
 			t.Fatalf("the closure bridges: %v %v", bv, ok)
 		}

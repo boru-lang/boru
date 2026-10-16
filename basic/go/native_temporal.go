@@ -133,7 +133,7 @@ func (tt TemporalModuleTypes) NewTimezone(loc *time.Location) Value {
 
 // AsDate extracts the time.Time from a Date value.
 func AsDate(v Value) time.Time {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t
 		}
@@ -143,7 +143,7 @@ func AsDate(v Value) time.Time {
 
 // AsDateTime extracts the time.Time from a DateTime value.
 func AsDateTime(v Value) time.Time {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t
 		}
@@ -153,7 +153,7 @@ func AsDateTime(v Value) time.Time {
 
 // AsInstant extracts the time.Time from an Instant value.
 func AsInstant(v Value) time.Time {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t
 		}
@@ -163,7 +163,7 @@ func AsInstant(v Value) time.Time {
 
 // AsTimeOfDay extracts the time.Duration offset for a TimeOfDay value.
 func AsTimeOfDay(v Value) time.Duration {
-	if dp, ok := v.Data.(core.DurationPayload); ok {
+	if dp, ok := DataOf(&v).(core.DurationPayload); ok {
 		if d, ok := dp.D.(time.Duration); ok {
 			return d
 		}
@@ -173,7 +173,7 @@ func AsTimeOfDay(v Value) time.Duration {
 
 // AsCalendarDuration extracts the CalDurationData payload.
 func AsCalendarDuration(v Value) (core.CalDurationData, bool) {
-	if d, ok := v.Data.(core.CalDurationData); ok {
+	if d, ok := DataOf(&v).(core.CalDurationData); ok {
 		return d, true
 	}
 	return core.CalDurationData{}, false
@@ -181,7 +181,7 @@ func AsCalendarDuration(v Value) (core.CalDurationData, bool) {
 
 // AsClockDuration extracts the time.Duration payload for a ClockDuration value.
 func AsClockDuration(v Value) (time.Duration, bool) {
-	if dp, ok := v.Data.(core.DurationPayload); ok {
+	if dp, ok := DataOf(&v).(core.DurationPayload); ok {
 		if d, ok := dp.D.(time.Duration); ok {
 			return d, true
 		}
@@ -191,7 +191,7 @@ func AsClockDuration(v Value) (time.Duration, bool) {
 
 // AsTimezone extracts the *time.Location for a Timezone value.
 func AsTimezone(v Value) *time.Location {
-	if tp, ok := v.Data.(core.TimezonePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimezonePayload); ok {
 		if loc, ok := tp.Loc.(*time.Location); ok {
 			return loc
 		}
@@ -207,7 +207,7 @@ type DateFormatBehavior struct{}
 func (DateFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (DateFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (DateFormatBehavior) Format(v Value) string {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t.Format("2006-01-02")
 		}
@@ -227,7 +227,7 @@ type DateTimeFormatBehavior struct{}
 func (DateTimeFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (DateTimeFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (DateTimeFormatBehavior) Format(v Value) string {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t.Format("2006-01-02T15:04:05.999999999")
 		}
@@ -244,7 +244,7 @@ type InstantFormatBehavior struct{}
 func (InstantFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (InstantFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (InstantFormatBehavior) Format(v Value) string {
-	if tp, ok := v.Data.(core.TimePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimePayload); ok {
 		if t, ok := tp.T.(time.Time); ok {
 			return t.Format(time.RFC3339Nano)
 		}
@@ -261,7 +261,7 @@ type TimeOfDayFormatBehavior struct{}
 func (TimeOfDayFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (TimeOfDayFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (TimeOfDayFormatBehavior) Format(v Value) string {
-	dp, ok := v.Data.(core.DurationPayload)
+	dp, ok := DataOf(&v).(core.DurationPayload)
 	if !ok {
 		return "TimeOfDay(nil)"
 	}
@@ -346,7 +346,7 @@ func (TimeCompareBehavior) Compare(a, b Value) (int, error) {
 }
 
 func timeFromValue(v Value) (time.Time, bool) {
-	tp, ok := v.Data.(core.TimePayload)
+	tp, ok := DataOf(&v).(core.TimePayload)
 	if !ok {
 		return time.Time{}, false
 	}
@@ -355,7 +355,7 @@ func timeFromValue(v Value) (time.Time, bool) {
 }
 
 func DurationFromValue(v Value) time.Duration {
-	dp, ok := v.Data.(core.DurationPayload)
+	dp, ok := DataOf(&v).(core.DurationPayload)
 	if !ok {
 		return 0
 	}
@@ -373,7 +373,7 @@ func (CalDurationFormatBehavior) Match(v Value, t *Type) bool {
 }
 func (CalDurationFormatBehavior) Equal(a, b Value) bool { return core.DefaultBehavior.Equal(a, b) }
 func (CalDurationFormatBehavior) Format(v Value) string {
-	if cd, ok := v.Data.(core.CalDurationData); ok {
+	if cd, ok := DataOf(&v).(core.CalDurationData); ok {
 		return fmt.Sprintf("P%dY%dM%dD", cd.Years, cd.Months, cd.Days)
 	}
 	return "CalendarDuration(nil)"
@@ -386,7 +386,7 @@ func (ClkDurationFormatBehavior) Match(v Value, t *Type) bool {
 }
 func (ClkDurationFormatBehavior) Equal(a, b Value) bool { return core.DefaultBehavior.Equal(a, b) }
 func (ClkDurationFormatBehavior) Format(v Value) string {
-	if dp, ok := v.Data.(core.DurationPayload); ok {
+	if dp, ok := DataOf(&v).(core.DurationPayload); ok {
 		if d, ok := dp.D.(time.Duration); ok {
 			return d.String()
 		}
@@ -403,7 +403,7 @@ type TimezoneFormatBehavior struct{}
 func (TimezoneFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (TimezoneFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (TimezoneFormatBehavior) Format(v Value) string {
-	if tp, ok := v.Data.(core.TimezonePayload); ok {
+	if tp, ok := DataOf(&v).(core.TimezonePayload); ok {
 		if loc, ok := tp.Loc.(*time.Location); ok {
 			return loc.String()
 		}

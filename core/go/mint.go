@@ -36,8 +36,8 @@ func mintFrom(src *Value, parent *Type, data Payload) Value {
 // per-evaluation spine, the cloner's containers): its contents are new,
 // and it is a different value from proto.
 func MintLike(proto *Value, data Payload) Value {
-	v := mintFrom(proto, proto.Parent, data)
-	SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
+	v := mintFrom(proto, ParentOf(proto), data)
+	SetID(&v, GenerateID(IDPrefixForType(ParentOf(&v))))
 	return v
 }
 
@@ -46,7 +46,7 @@ func MintLike(proto *Value, data Payload) Value {
 // a stack word's duplicated output, a residual handed out once per call, a
 // member read at a second site — where a copy would carry src's identity.
 func MintFresh(src *Value) Value {
-	return MintLike(src, src.Data)
+	return MintLike(src, DataOf(src))
 }
 
 // MintRetagged constructs src under the type parent: the same payload,
@@ -58,7 +58,7 @@ func MintFresh(src *Value) Value {
 // an identity of its own where it records the retag as an event
 // (RecordTypedBind), as any event's result.
 func MintRetagged(src *Value, parent *Type) Value {
-	return mintFrom(src, parent, src.Data)
+	return mintFrom(src, parent, DataOf(src))
 }
 
 // MintPayload constructs src holding data: the same type, facets and
@@ -66,16 +66,16 @@ func MintRetagged(src *Value, parent *Type) Value {
 // rebuilt (a freshened default's new flex node, a stamped fn's signatures)
 // and that is otherwise the one the caller holds.
 func MintPayload(src *Value, data Payload) Value {
-	return mintFrom(src, src.Parent, data)
+	return mintFrom(src, ParentOf(src), data)
 }
 
 // MintCarrierFrom constructs the check-mode carrier of src's type: no
 // payload, src's facets and position, and an identity of its own — a join
 // of two arms is a new value (an `if` result), never arm src.
 func MintCarrierFrom(src *Value) Value {
-	v := mintFrom(src, src.Parent, nil)
-	v.Carrier = true
-	SetID(&v, GenerateID(IDPrefixForType(v.Parent)))
+	v := mintFrom(src, ParentOf(src), nil)
+	SetCarrier(&v, true)
+	SetID(&v, GenerateID(IDPrefixForType(ParentOf(&v))))
 	return v
 }
 
@@ -86,8 +86,8 @@ func MintCarrierFrom(src *Value) Value {
 // (a disjunct's alternatives, a narrowed refinement). A carrier that is a
 // new value (a join, a derivation) is MintCarrierFrom's.
 func MintCarrierKeeping(src *Value, data Payload) Value {
-	v := mintFrom(src, src.Parent, data)
-	v.Carrier = true
+	v := mintFrom(src, ParentOf(src), data)
+	SetCarrier(&v, true)
 	return v
 }
 
@@ -97,9 +97,9 @@ func MintCarrierKeeping(src *Value, data Payload) Value {
 // elem's. The facet refers to *elem, which is never written after (R2); an
 // Any constraint is none.
 func MintElemTyped(src *Value, elem *Value) Value {
-	v := mintFrom(src, src.Parent, src.Data)
+	v := mintFrom(src, ParentOf(src), DataOf(src))
 	v.elem = nil
-	if elem.Parent != nil && !elem.Parent.Equal(TAny) {
+	if ParentOf(elem) != nil && !ParentOf(elem).Equal(TAny) {
 		v.elem = elem
 	}
 	return v

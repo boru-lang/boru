@@ -53,7 +53,7 @@ func TestUnmatchedLambdaBody(t *testing.T) {
 	if !ran || err != nil {
 		t.Fatalf("no-match: ran=%v err=%v", ran, err)
 	}
-	if len(res) != 2 || !res[0].Parent.ConformsTo(core.TString) || res[1].String() != "fn (Integer)" {
+	if len(res) != 2 || !core.ParentOf(&res[0]).ConformsTo(core.TString) || res[1].String() != "fn (Integer)" {
 		t.Errorf("no-match = %v, want ['s' fn (Integer)]", res)
 	}
 	// The stack-pair shape matches over the REVERSED pair, as the bind seats

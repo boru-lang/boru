@@ -22,7 +22,7 @@ func doCloseWord(args []Value, r *Registry) ([]Value, error) {
 		return closeResult(r, mi.Close())
 	}
 	return nil, r.BoruError("close_error",
-		fmt.Sprintf("close: not a closable handle (got %s)", args[0].Parent), "close")
+		fmt.Sprintf("close: not a closable handle (got %s)", ParentOf(&args[0])), "close")
 }
 
 // closeResult maps a resource's close error onto the close word's result.

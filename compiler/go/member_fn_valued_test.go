@@ -10,7 +10,7 @@ import (
 // fn value, or a fn-typed carrier (a produced closure a map literal stored —
 // the container-member calls, 2026-09-22); anything else is data.
 func TestMemberIsFnValued(t *testing.T) {
-	if !memberIsFnValued(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "inc"}}) {
+	if !memberIsFnValued(core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "inc"})) {
 		t.Error("a concrete fn value is fn-valued")
 	}
 	if !memberIsFnValued(core.NewCarrier(core.TFunction)) {

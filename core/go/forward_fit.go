@@ -122,7 +122,7 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 	var out map[int][]ForwardFit
 	for k := 0; k < nFwd; k++ {
 		a := match.Args[k]
-		if (!a.Carrier && !IsDynamic(&a)) || fitProven(match.Sig, k, a) {
+		if (!IsCarrier(&a) && !IsDynamic(&a)) || fitProven(match.Sig, k, a) {
 			continue
 		}
 		fits := []ForwardFit{}
@@ -210,7 +210,7 @@ func fitProven(sig *Signature, k int, a Value) bool {
 	if expected.Equal(TAny) {
 		return true
 	}
-	return !IsDynamic(&a) && a.Parent != nil && !a.Parent.Equal(TAny) && a.Parent.ConformsTo(expected)
+	return !IsDynamic(&a) && ParentOf(&a) != nil && !ParentOf(&a).Equal(TAny) && ParentOf(&a).ConformsTo(expected)
 }
 
 // publishForwardFits publishes forwardFits for the dispatch's record and

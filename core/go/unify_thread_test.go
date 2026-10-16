@@ -152,7 +152,7 @@ func TestUnifyThreadedFnShapePatternKeepsRegistry(t *testing.T) {
 			t.Fatalf("%s: Match (unarmed) and matchR (armed) must both %v", c.name, verdict(c.admit))
 		}
 		// The exported entries stay unarmed — and agree.
-		if FnUndefMatchesFnDef(undef, fn) != c.admit || FnDefHasSig(*fn.Data.(*FnDefInfo), spec) != c.admit {
+		if FnUndefMatchesFnDef(undef, fn) != c.admit || FnDefHasSig(*DataOf(&fn).(*FnDefInfo), spec) != c.admit {
 			t.Fatalf("%s: the exported fn-shape checks run unarmed and must %v", c.name, verdict(c.admit))
 		}
 	}

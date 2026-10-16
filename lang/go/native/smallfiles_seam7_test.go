@@ -46,7 +46,7 @@ func TestGetpathHandlerAccessorError(t *testing.T) {
 func TestGetpathReachLensError(t *testing.T) {
 	r := b2Reg(t)
 	reach, rerr := b2Run(r, "$.a.b")
-	if rerr != nil || len(reach) != 1 || !reach[0].Parent.ConformsTo(TReach) {
+	if rerr != nil || len(reach) != 1 || !ParentOf(&reach[0]).ConformsTo(TReach) {
 		t.Fatalf("could not build a Reach value: %v / %v", reach, rerr)
 	}
 	// Applying `$.a.b` to a scalar receiver dots into a non-map → ApplyReach

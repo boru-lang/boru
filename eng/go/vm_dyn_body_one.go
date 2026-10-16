@@ -71,7 +71,7 @@ func dynBodyValueReSteps(v core.Value) bool {
 	if core.IsAppliableFn(v) || core.IsReach(&v) {
 		return true
 	}
-	if _, isClass := v.Data.(*core.ClassTypeInfo); isClass {
+	if _, isClass := core.DataOf(&v).(*core.ClassTypeInfo); isClass {
 		return true
 	}
 	_, mod := core.AsDispatchMod(v)
@@ -99,7 +99,7 @@ func frameRunReSteps(results []core.Value) bool {
 // splicePayload is what a splice marker's payload contributes to the tape:
 // a list's elements, or any other value itself.
 func splicePayload(p core.Value) []core.Value {
-	if p.Parent.Equal(core.TList) {
+	if core.ParentOf(&p).Equal(core.TList) {
 		if l, err := core.AsList(p); err == nil {
 			return l.Slice()
 		}

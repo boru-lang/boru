@@ -28,7 +28,7 @@ func modelPathon(t *testing.T, r *Registry, path string) Value {
 // carrier of typ.
 func wantOneCarrier(t *testing.T, out []Value, typ *Type, label string) {
 	t.Helper()
-	if len(out) != 1 || IsDynamic(&out[0]) || !out[0].Parent.Equal(typ) {
+	if len(out) != 1 || IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(typ) {
 		t.Fatalf("%s residual = %v, want one %s carrier", label, out, typ.Leaf())
 	}
 }
@@ -36,7 +36,7 @@ func wantOneCarrier(t *testing.T, out []Value, typ *Type, label string) {
 // wantDynAny asserts the model declined to the declared dynamic Any.
 func wantDynAny(t *testing.T, out []Value, label string) {
 	t.Helper()
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("%s residual = %v, want one dynamic Any carrier", label, out)
 	}
 }
@@ -135,9 +135,9 @@ func TestStatSpaceShapeReturns(t *testing.T) {
 	if err != nil || len(di.Alternatives) != 2 {
 		t.Fatalf("stat bound = (%v, %v), want a two-alternative disjunct", di, err)
 	}
-	rt, ok := di.Alternatives[0].Data.(core.RecordTypeInfo)
+	rt, ok := DataOf(&di.Alternatives[0]).(core.RecordTypeInfo)
 	if !ok {
-		t.Fatalf("stat map alternative = %T, want a record schema", di.Alternatives[0].Data)
+		t.Fatalf("stat map alternative = %T, want a record schema", DataOf(&di.Alternatives[0]))
 	}
 	for _, field := range []string{"name", "path", "type", "size", "mode", "mtime", "owner", "group", "target", "xattr"} {
 		if _, ok := rt.Fields.Get(field); !ok {
@@ -161,9 +161,9 @@ func TestStatSpaceShapeReturns(t *testing.T) {
 	if len(sout) != 1 || !IsDynamic(&sout[0]) {
 		t.Fatalf("space shape = %v, want one dynamic carrier", sout)
 	}
-	srt, ok := sout[0].Data.(core.RecordTypeInfo)
+	srt, ok := DataOf(&sout[0]).(core.RecordTypeInfo)
 	if !ok {
-		t.Fatalf("space bound = %T, want a record schema", sout[0].Data)
+		t.Fatalf("space bound = %T, want a record schema", DataOf(&sout[0]))
 	}
 	for _, field := range []string{"total", "free", "available", "bsize", "type"} {
 		if _, ok := srt.Fields.Get(field); !ok {
@@ -178,13 +178,13 @@ func TestGetNodeReturnsDynamicDisjunctSchema(t *testing.T) {
 	// A dynamic Record∪None receiver resolves a schema field GRADUALLY.
 	recv := statShapeReturns(TAtom)(nil, r)[0]
 	out := getNodeReturns([]Value{NewString("size"), recv}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TInteger) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TInteger) {
 		t.Fatalf("schema field through the union = %v, want dynamic Integer", out)
 	}
 	// A field outside the schema keeps dynamic Any (an open map at run
 	// time may carry it).
 	out = getNodeReturns([]Value{NewString("bogus"), recv}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("unknown field through the union = %v, want dynamic Any", out)
 	}
 	// A dynamic union with NO record alternative (env's String∪None)
@@ -193,13 +193,13 @@ func TestGetNodeReturnsDynamicDisjunctSchema(t *testing.T) {
 		NewTypeLiteral(TString), NewTypeLiteral(TNone),
 	}))
 	out = getNodeReturns([]Value{NewString("size"), strUnion}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("recordless union = %v, want dynamic Any", out)
 	}
 	// A dynamic NON-disjunct receiver (plain dynamic Any) declines the
 	// probe and keeps the fallback.
 	out = getNodeReturns([]Value{NewString("size"), NewDynamicCarrier(TAny)}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !IsDynamic(&out[0]) || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("plain dynamic receiver = %v, want dynamic Any", out)
 	}
 }

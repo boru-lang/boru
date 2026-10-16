@@ -118,7 +118,7 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 		// MintTypeWithBehavior workaround is gone.
 		t := subReg.Types.MintMemberType(name, native.TFunction,
 			func(v native.Value) bool {
-				info, ok := v.Data.(*native.FnDefInfo)
+				info, ok := core.DataOf(&v).(*native.FnDefInfo)
 				return ok && info.MiniKind == kind
 			})
 		exports.Set(name, native.NewTypeLiteral(t))
@@ -807,7 +807,7 @@ func reMatchResult(re *regexp.Regexp, subject string, limit int64) native.Value 
 // The compiled consumer for `re`: the pattern was compiled at the call site by
 // miniReCompile, so this just matches.
 func miniRunReHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-	ep, ok := args[0].Data.(core.ExtensionPayload)
+	ep, ok := core.DataOf(&args[0]).(core.ExtensionPayload)
 	if !ok {
 		return nil, r.BoruError("mini_error", "run-re: not a compiled pattern", "run-re")
 	}

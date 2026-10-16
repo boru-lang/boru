@@ -51,19 +51,19 @@ func TestBuildLiteralConstructsFromParts(t *testing.T) {
 	if v, ok := gm.Get("k"); !ok || core.Canon([]core.Value{v}) != "3" {
 		t.Errorf("the map must carry its entry: %v", got)
 	}
-	if om := got.Data.(core.MapPayload).M; !om.Implicit || om.Meta["tag"] != 1 || om == m {
+	if om := core.DataOf(&got).(core.MapPayload).M; !om.Implicit || om.Meta["tag"] != 1 || om == m {
 		t.Errorf("the map must be a new OrderedMap carrying the marks: %+v", om)
 	}
 	f1, f2 := e1.Get(3), e2.Get(3)
-	d1, _ := core.FnDefOf(f1.Data)
-	d2, _ := core.FnDefOf(f2.Data)
+	d1, _ := core.FnDefOf(core.DataOf(&f1))
+	d2, _ := core.FnDefOf(core.DataOf(&f2))
 	if d1 == d2 {
 		t.Errorf("a fn literal must be a new function per evaluation")
 	}
-	if c := e1.Get(4); c.Data.(*core.FlexListData) == flex.Data.(*core.FlexListData) {
+	if c := e1.Get(4); core.DataOf(&c).(*core.FlexListData) == core.DataOf(&flex).(*core.FlexListData) {
 		t.Errorf("a baked flex list must be an independent copy")
 	}
-	if em := e1.Get(5); em.Data.(core.MapPayload).M != nil {
+	if em := e1.Get(5); core.DataOf(&em).(core.MapPayload).M != nil {
 		t.Errorf("a map with no entries stays empty")
 	}
 	if s := buildLiteral(&compiler.LiteralBuild{Kind: compiler.BuildShared, Val: &member}); core.IDOf(&s) != "bind-c" {

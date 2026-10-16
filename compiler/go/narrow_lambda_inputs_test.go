@@ -19,19 +19,19 @@ func TestNarrowLambdaInputs(t *testing.T) {
 	if &out[0] == &inputs[0] {
 		t.Fatal("a narrowed slice must be a copy, not the caller's")
 	}
-	if core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TInteger) {
 		t.Errorf("a gradual Any input under a declared Integer param must narrow to a strict Integer carrier, got %#v", out[0])
 	}
-	if !core.IsDynamic(&out[1]) || !out[1].Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out[1]) || !core.ParentOf(&out[1]).Equal(core.TAny) {
 		t.Errorf("an undeclared param keeps the gradual input, got %#v", out[1])
 	}
-	if !core.IsDynamic(&out[2]) || !out[2].Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&out[2]) || !core.ParentOf(&out[2]).Equal(core.TAny) {
 		t.Errorf("a param declared Any keeps the gradual input, got %#v", out[2])
 	}
-	if core.IsDynamic(&out[3]) || !out[3].Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&out[3]) || !core.ParentOf(&out[3]).Equal(core.TInteger) {
 		t.Errorf("a typed (strict) input is left alone whatever the param declares, got %#v", out[3])
 	}
-	if !core.IsDynamic(&inputs[0]) || !inputs[0].Parent.Equal(core.TAny) {
+	if !core.IsDynamic(&inputs[0]) || !core.ParentOf(&inputs[0]).Equal(core.TAny) {
 		t.Error("the caller's inputs must not be mutated")
 	}
 	// Nothing to narrow: the caller's slice comes back as it is.
@@ -41,7 +41,7 @@ func TestNarrowLambdaInputs(t *testing.T) {
 	}
 	// More params than inputs: the walk stops at the inputs' end.
 	short := []core.Value{gradual()}
-	if got := narrowLambdaInputs(short, lam); len(got) != 1 || core.IsDynamic(&got[0]) || !got[0].Parent.Equal(core.TInteger) {
+	if got := narrowLambdaInputs(short, lam); len(got) != 1 || core.IsDynamic(&got[0]) || !core.ParentOf(&got[0]).Equal(core.TInteger) {
 		t.Errorf("a longer param list narrows only the inputs present, got %#v", got)
 	}
 }

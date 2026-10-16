@@ -59,11 +59,11 @@ func unifyFoldable(v Value) bool {
 	if IsBareTypeNode(&v) {
 		return true
 	}
-	if v.Carrier || IsDynamic(&v) || IsUndefined(&v) || !IsConcrete(&v) {
+	if IsCarrier(&v) || IsDynamic(&v) || IsUndefined(&v) || !IsConcrete(&v) {
 		return false
 	}
 	switch {
-	case v.Parent.ConformsTo(TList):
+	case ParentOf(&v).ConformsTo(TList):
 		l, err := AsList(v)
 		if err != nil || l.IsNil() {
 			return false
@@ -74,7 +74,7 @@ func unifyFoldable(v Value) bool {
 			}
 		}
 		return true
-	case v.Parent.ConformsTo(TMap):
+	case ParentOf(&v).ConformsTo(TMap):
 		m, err := AsMap(v)
 		if err != nil || m == nil {
 			return false
@@ -87,7 +87,7 @@ func unifyFoldable(v Value) bool {
 		}
 		return true
 	default:
-		return v.Parent.ConformsTo(TScalar) || v.Parent.Equal(TNone)
+		return ParentOf(&v).ConformsTo(TScalar) || ParentOf(&v).Equal(TNone)
 	}
 }
 

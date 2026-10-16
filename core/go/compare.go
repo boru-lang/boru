@@ -73,7 +73,7 @@ func compareValuesClassified(a, b Value) (n int, viaFamily bool, err error) {
 		bType = nodeFamily(bType)
 	}
 	sameType := aType.Equal(bType)
-	for t := lowestCommonAncestor(aType, bType); t != nil; t = t.Parent {
+	for t := lowestCommonAncestor(aType, bType); t != nil; t = ParentOf(t) {
 		cmp, ok := t.Behavior().(Comparer)
 		if !ok {
 			continue
@@ -151,19 +151,19 @@ func lowestCommonAncestor(a, b *Type) *Type {
 	}
 	da, db := typeDepth(a), typeDepth(b)
 	for da > db {
-		a = a.Parent
+		a = ParentOf(a)
 		da--
 	}
 	for db > da {
-		b = b.Parent
+		b = ParentOf(b)
 		db--
 	}
 	for a != nil && b != nil {
 		if a.Equal(b) {
 			return a
 		}
-		a = a.Parent
-		b = b.Parent
+		a = ParentOf(a)
+		b = ParentOf(b)
 	}
 	return nil
 }
@@ -217,7 +217,7 @@ func lowestCommonAncestor(a, b *Type) *Type {
 // distinct large Integers (> 2^53) compared deq-equal through the float64
 // projection until the copies were unified.
 func scalarFamilyEqual(a, b Value) (equal, handled bool) {
-	if a.Parent.ConformsTo(TNumber) && b.Parent.ConformsTo(TNumber) {
+	if ParentOf(&a).ConformsTo(TNumber) && ParentOf(&b).ConformsTo(TNumber) {
 		// NUR032: a bare numeric type literal (`Integer`, `Float`) is not
 		// the value 0. It reaches this branch only because the numeric
 		// lattice has an extra level — `Integer`'s parent is `Number`,
@@ -244,7 +244,7 @@ func scalarFamilyEqual(a, b Value) (equal, handled bool) {
 		// projection below rounds magnitudes above 2^53 and would report
 		// distinct large integers as equal. A Float on either side keeps
 		// the float comparison (cross-leaf magnitude: 1 == 1.0).
-		if a.Parent.ConformsTo(TInteger) && b.Parent.ConformsTo(TInteger) {
+		if ParentOf(&a).ConformsTo(TInteger) && ParentOf(&b).ConformsTo(TInteger) {
 			ai, _ := AsInteger(a)
 			bi, _ := AsInteger(b)
 			return ai == bi, true
@@ -253,17 +253,17 @@ func scalarFamilyEqual(a, b Value) (equal, handled bool) {
 		bf, _ := AsNumber(b)
 		return af == bf, true
 	}
-	if a.Parent.ConformsTo(TString) && b.Parent.ConformsTo(TString) {
+	if ParentOf(&a).ConformsTo(TString) && ParentOf(&b).ConformsTo(TString) {
 		as, _ := AsString(a)
 		bs, _ := AsString(b)
 		return as == bs, true
 	}
-	if a.Parent.ConformsTo(TBoolean) && b.Parent.ConformsTo(TBoolean) {
+	if ParentOf(&a).ConformsTo(TBoolean) && ParentOf(&b).ConformsTo(TBoolean) {
 		ab, _ := AsBoolean(a)
 		bb, _ := AsBoolean(b)
 		return ab == bb, true
 	}
-	if a.Parent.ConformsTo(TAtom) && b.Parent.ConformsTo(TAtom) {
+	if ParentOf(&a).ConformsTo(TAtom) && ParentOf(&b).ConformsTo(TAtom) {
 		aa, _ := AsAtom(a)
 		ba, _ := AsAtom(b)
 		return aa == ba, true
@@ -275,14 +275,14 @@ func scalarFamilyEqual(a, b Value) (equal, handled bool) {
 // (Number/String/Boolean/Atom) and DepScalar payloads before calling,
 // so those never reach here.
 func scalarSemanticEqual(a, b Value) (equal, handled bool) {
-	if a.Parent == b.Parent && a.Parent != nil && a.Parent.ConformsTo(TScalar) &&
-		a.Parent.Behavior() != nil && a.Parent.Behavior() != DefaultBehavior {
-		return a.Parent.Behavior().Equal(a, b), true
+	if ParentOf(&a) == ParentOf(&b) && ParentOf(&a) != nil && ParentOf(&a).ConformsTo(TScalar) &&
+		ParentOf(&a).Behavior() != nil && ParentOf(&a).Behavior() != DefaultBehavior {
+		return ParentOf(&a).Behavior().Equal(a, b), true
 	}
-	if a.Parent != b.Parent {
-		if lca := lowestCommonAncestor(a.Parent, b.Parent); lca != nil &&
+	if ParentOf(&a) != ParentOf(&b) {
+		if lca := lowestCommonAncestor(ParentOf(&a), ParentOf(&b)); lca != nil &&
 			!lca.Equal(TScalar) && lca.ConformsTo(TScalar) &&
-			(lca.Equal(a.Parent) || lca.Equal(b.Parent)) {
+			(lca.Equal(ParentOf(&a)) || lca.Equal(ParentOf(&b))) {
 			if cmp, ok := lca.Behavior().(Comparer); ok {
 				if res, e := cmp.Compare(a, b); e == nil {
 					return res == 0, true
@@ -308,7 +308,7 @@ func ExactEqual(a, b Value) bool {
 		if !a.IsDepScalar() || !b.IsDepScalar() {
 			return false
 		}
-		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
+		return ParentOf(&a).Equal(ParentOf(&b)) && ValuesEqual(a, b)
 	}
 
 	// Function values (NUR031). eq is REFERENCE identity, per NUR011's rule
@@ -333,8 +333,8 @@ func ExactEqual(a, b Value) bool {
 	if eq, handled := closureIdentityEqual(a, b); handled {
 		return eq
 	}
-	if af, aok := a.Data.(*FnDefInfo); aok {
-		if bf, bok := b.Data.(*FnDefInfo); bok {
+	if af, aok := DataOf(&a).(*FnDefInfo); aok {
+		if bf, bok := DataOf(&b).(*FnDefInfo); bok {
 			return sameFnIdentity(*af, *bf)
 		}
 		return false
@@ -342,7 +342,7 @@ func ExactEqual(a, b Value) bool {
 
 	// Types: structural comparison.
 	if IsTypeBody(&a) && IsTypeBody(&b) {
-		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
+		return ParentOf(&a).Equal(ParentOf(&b)) && ValuesEqual(a, b)
 	}
 
 	// Scalars: compare by value — one shared implementation with
@@ -357,17 +357,17 @@ func ExactEqual(a, b Value) bool {
 	// nodeFamily-normalised comparison would still fail on container
 	// identity (a flex copy is a fresh container), but normalising the
 	// family keeps the dispatch uniform for flex-vs-flex pairs.
-	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
-		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
+	if containerFamily(ParentOf(&a)).Equal(TList) && containerFamily(ParentOf(&b)).Equal(TList) {
+		return ParentOf(&a).Equal(ParentOf(&b)) && sameContainer(DataOf(&a), DataOf(&b))
 	}
-	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
-		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
+	if containerFamily(ParentOf(&a)).Equal(TMap) && containerFamily(ParentOf(&b)).Equal(TMap) {
+		return ParentOf(&a).Equal(ParentOf(&b)) && sameContainer(DataOf(&a), DataOf(&b))
 	}
 	// XML elements: identity like Map/List — `eq` is container identity
 	// (a flex copy / a fresh literal is not eq to its source), while `deq`
 	// (DeepEqual) is structural. See design/XML-LITERAL.0.md §5.
 	if IsXmlValue(a) && IsXmlValue(b) {
-		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
+		return ParentOf(&a).Equal(ParentOf(&b)) && sameContainer(DataOf(&a), DataOf(&b))
 	}
 	// Flat instances (class + Resource/Entity) identify by their
 	// underlying field map — the same aliasing rule as Map: two bindings
@@ -419,10 +419,10 @@ func SameContainer(a, b Value) bool {
 	if !HasContainerIdentity(a) || !HasContainerIdentity(b) {
 		return false
 	}
-	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) {
+	if ParentOf(&a) == nil || ParentOf(&b) == nil || !ParentOf(&a).Equal(ParentOf(&b)) {
 		return false
 	}
-	return sameContainer(a.Data, b.Data)
+	return sameContainer(DataOf(&a), DataOf(&b))
 }
 
 // sameContainer reports whether two non-scalar payloads refer to the
@@ -451,7 +451,7 @@ func SameContainer(a, b Value) bool {
 // pruned a live branch into a false-positive diagnostic. See
 // check/go/carrier.go ScalarFoldOperand.
 func HasContainerIdentity(v Value) bool {
-	switch v.Data.(type) {
+	switch DataOf(&v).(type) {
 	case MapPayload, ListPayload, XmlElementPayload,
 		*FlexListData, *FlexXmlData,
 		*WeakFlexMapData, *WeakFlexListData, *WeakFlexXmlData:
@@ -522,13 +522,13 @@ func sameContainer(a, b Payload) bool {
 // elements, not a carrier) is the empty list, so it is deq-equal to
 // `[]`, consistent with `(flex []) deq []`. NUR033.
 func deqListElems(v Value) ([]Value, bool) {
-	if v.Carrier {
+	if IsCarrier(&v) {
 		return nil, false
 	}
 	if rl, err := AsList(v); err == nil {
 		return rl.elems, true
 	}
-	if _, ok := v.Data.(ChildTypeInfo); ok {
+	if _, ok := DataOf(&v).(ChildTypeInfo); ok {
 		return []Value{}, true
 	}
 	return nil, false
@@ -539,13 +539,13 @@ func deqListElems(v Value) ([]Value, bool) {
 // empty map, and a type-level operand (map carrier, Record/Options type
 // constructor) returns false to fall to the render comparison. NUR033.
 func deqMapEntries(v Value) (ReadMap, bool) {
-	if v.Carrier {
+	if IsCarrier(&v) {
 		return nil, false
 	}
 	if rm, err := AsMap(v); err == nil {
 		return rm, true
 	}
-	if _, ok := v.Data.(ChildTypeInfo); ok {
+	if _, ok := DataOf(&v).(ChildTypeInfo); ok {
 		return NewOrderedMap(), true
 	}
 	return nil, false
@@ -566,7 +566,7 @@ func DeepEqual(a, b Value) bool {
 		if !a.IsDepScalar() || !b.IsDepScalar() {
 			return false
 		}
-		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
+		return ParentOf(&a).Equal(ParentOf(&b)) && ValuesEqual(a, b)
 	}
 
 	// Type literals (NUR034): two bare type nodes are deq iff they are
@@ -600,7 +600,7 @@ func DeepEqual(a, b Value) bool {
 	// with cross-leaf pairs (`[1.0] deq [1 :Integer]`). The render-string
 	// fallback survives only for genuine type-level operands (a list
 	// carrier), which carry no value content.
-	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
+	if containerFamily(ParentOf(&a)).Equal(TList) && containerFamily(ParentOf(&b)).Equal(TList) {
 		aElems, aOk := deqListElems(a)
 		bElems, bOk := deqListElems(b)
 		if !aOk || !bOk {
@@ -622,7 +622,7 @@ func DeepEqual(a, b Value) bool {
 	// lists. The render-string fallback survives only for type-level
 	// operands with no entries to read (a map carrier, a Record/Options
 	// type constructor).
-	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
+	if containerFamily(ParentOf(&a)).Equal(TMap) && containerFamily(ParentOf(&b)).Equal(TMap) {
 		aMap, aOk := deqMapEntries(a)
 		bMap, bOk := deqMapEntries(b)
 		if !aOk || !bOk {
@@ -660,7 +660,7 @@ func DeepEqual(a, b Value) bool {
 	// fields; both instance kinds store a flat Fields map, so a lookup
 	// is a plain map hit. See design/legacy/CLASS-OBJECT.10.ignore.
 	if IsFlatInstance(a) && IsFlatInstance(b) {
-		if !a.Parent.Equal(b.Parent) {
+		if !ParentOf(&a).Equal(ParentOf(&b)) {
 			return false
 		}
 		aFields, aSchema, aok := FlatInstanceParts(a)
@@ -715,8 +715,8 @@ func DeepEqual(a, b Value) bool {
 	// reached through, not part of the function: including it is exactly
 	// what made `a/v deq b/v` false for two bindings of one function, and
 	// what kept `f/v deq f/v` false at all.
-	if af, aok := a.Data.(*FnDefInfo); aok {
-		if bf, bok := b.Data.(*FnDefInfo); bok {
+	if af, aok := DataOf(&a).(*FnDefInfo); aok {
+		if bf, bok := DataOf(&b).(*FnDefInfo); bok {
 			return fnStructurallyEqual(*af, *bf)
 		}
 		return false
@@ -753,7 +753,7 @@ func DeepEqual(a, b Value) bool {
 	// IS the fn's canon — so the VM's closure and the interpreter's fn value
 	// answer deq the same way, by content.
 	if IsTypeBody(&a) && IsTypeBody(&b) {
-		return a.Parent.Equal(b.Parent) && ValuesEqual(a, b)
+		return ParentOf(&a).Equal(ParentOf(&b)) && ValuesEqual(a, b)
 	}
 
 	// A SEALED HOST payload (NUR031): box identity, the same answer eq
@@ -761,7 +761,7 @@ func DeepEqual(a, b Value) bool {
 	// that installed a DeepEqualer has a real value equality to offer, and
 	// this fallback must not pre-empt it. On the eq side there is no such
 	// walk, so that arm lives up in opaqueIdealExactEqual instead.
-	if ap, ok := a.Data.(ExtensionPayload); ok {
+	if ap, ok := DataOf(&a).(ExtensionPayload); ok {
 		if eq, handled := hostPayloadIdentity(ap, b); handled {
 			return eq
 		}
@@ -778,31 +778,31 @@ func DeepEqual(a, b Value) bool {
 // Timeout, Interval, the boxed Module descriptor) is eq iff it is the
 // SAME pointer; Error (a value struct) is eq by fields.
 func opaqueIdealExactEqual(a, b Value) (bool, bool) {
-	switch av := a.Data.(type) {
+	switch av := DataOf(&a).(type) {
 	case *StoreInstanceInfo:
-		bv, ok := b.Data.(*StoreInstanceInfo)
+		bv, ok := DataOf(&b).(*StoreInstanceInfo)
 		return ok && av == bv, true
 	case *TimeoutInfo:
-		bv, ok := b.Data.(*TimeoutInfo)
+		bv, ok := DataOf(&b).(*TimeoutInfo)
 		return ok && av == bv, true
 	case *IntervalInfo:
-		bv, ok := b.Data.(*IntervalInfo)
+		bv, ok := DataOf(&b).(*IntervalInfo)
 		return ok && av == bv, true
 	case ErrorInfo:
-		bv, ok := b.Data.(ErrorInfo)
+		bv, ok := DataOf(&b).(ErrorInfo)
 		// Error is value-like: eq ≡ deq, so it requires the same exact
 		// type as well as equal fields (a `refine Error` subtype is not
 		// eq to a plain Error).
-		return ok && a.Parent.Equal(b.Parent) && errorInfoEqual(av, bv), true
+		return ok && ParentOf(&a).Equal(ParentOf(&b)) && errorInfoEqual(av, bv), true
 	case WordInfo:
-		bv, ok := b.Data.(WordInfo)
+		bv, ok := DataOf(&b).(WordInfo)
 		// A word is the other value-like code value (NUR031): an
 		// immutable name-plus-modifiers with no reference behind it, so
 		// eq ≡ deq and both compare the whole struct — the modifiers
 		// included, since `f/v` and `f/s` are different words. It is
 		// comparable by construction (only string/int/bool fields), the
 		// same property that lets Error compare by fields.
-		return ok && a.Parent.Equal(b.Parent) && av == bv, true
+		return ok && ParentOf(&a).Equal(ParentOf(&b)) && av == bv, true
 	case ExtensionPayload:
 		if eq, handled := moduleDescIdentity(av, b); handled {
 			return eq, handled
@@ -827,7 +827,7 @@ func moduleDescIdentity(av ExtensionPayload, b Value) (bool, bool) {
 	if !ok {
 		return false, false
 	}
-	bp, ok := b.Data.(ExtensionPayload)
+	bp, ok := DataOf(&b).(ExtensionPayload)
 	if !ok {
 		return false, true
 	}
@@ -863,7 +863,7 @@ func hostPayloadIdentity(a ExtensionPayload, b Value) (bool, bool) {
 	if !isPointerBody(a.Body) {
 		return false, false
 	}
-	bp, ok := b.Data.(ExtensionPayload)
+	bp, ok := DataOf(&b).(ExtensionPayload)
 	if !ok {
 		return false, true
 	}
@@ -896,22 +896,22 @@ func isPointerBody(body any) bool {
 // equate must share a type (else the collection words would miss the
 // pair — the store-subtype bug the NUR031 review caught).
 func opaqueIdealDeepEqual(a, b Value) (bool, bool) {
-	switch av := a.Data.(type) {
+	switch av := DataOf(&a).(type) {
 	case *StoreInstanceInfo:
-		bv, ok := b.Data.(*StoreInstanceInfo)
-		return ok && a.Parent.Equal(b.Parent) && storeDeepEqual(av, bv), true
+		bv, ok := DataOf(&b).(*StoreInstanceInfo)
+		return ok && ParentOf(&a).Equal(ParentOf(&b)) && storeDeepEqual(av, bv), true
 	case *TimeoutInfo:
-		bv, ok := b.Data.(*TimeoutInfo)
+		bv, ok := DataOf(&b).(*TimeoutInfo)
 		return ok && av == bv, true
 	case *IntervalInfo:
-		bv, ok := b.Data.(*IntervalInfo)
+		bv, ok := DataOf(&b).(*IntervalInfo)
 		return ok && av == bv, true
 	case ErrorInfo:
-		bv, ok := b.Data.(ErrorInfo)
-		return ok && a.Parent.Equal(b.Parent) && errorInfoEqual(av, bv), true
+		bv, ok := DataOf(&b).(ErrorInfo)
+		return ok && ParentOf(&a).Equal(ParentOf(&b)) && errorInfoEqual(av, bv), true
 	case WordInfo:
-		bv, ok := b.Data.(WordInfo)
-		return ok && a.Parent.Equal(b.Parent) && av == bv, true
+		bv, ok := DataOf(&b).(WordInfo)
+		return ok && ParentOf(&a).Equal(ParentOf(&b)) && av == bv, true
 	case ExtensionPayload:
 		// The Module descriptor: deq is its reference identity, matching
 		// eq (see moduleDescIdentity — an opaque handle with no deeper
@@ -1164,7 +1164,7 @@ func closureIdentityEqual(a, b Value) (eq, handled bool) {
 // closure's own, or the one a bridged FnDefInfo's token stands in for — and
 // whether v IS a closure. Zero: no closure identity.
 func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
-	switch d := v.Data.(type) {
+	switch d := DataOf(&v).(type) {
 	case ClosurePayload:
 		return d.Ident.seq, true
 	case *FnDefInfo:
@@ -1182,7 +1182,7 @@ func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 // is false for anything that is not an identified FnDefInfo — data, a
 // carrier, a hand-built payload with no token — which has no identity to key.
 func FnIdentityKey(v Value) (string, bool) {
-	fd, isFn := v.Data.(*FnDefInfo)
+	fd, isFn := DataOf(&v).(*FnDefInfo)
 	if !isFn || fd.ident == nil {
 		return "", false
 	}

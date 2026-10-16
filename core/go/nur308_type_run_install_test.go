@@ -331,7 +331,7 @@ func TestAnonymousRunTypeInstall(t *testing.T) {
 		if err := RunTypeInstall(r, &TypeRunInstallSpec{Node: pass}, tc.body); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
-		if tc.admit.Parent != nil && !tc.admit.Is(pass) {
+		if ParentOf(&tc.admit) != nil && !tc.admit.Is(pass) {
 			t.Errorf("%s: the forwarded node admits %v", tc.name, tc.admit)
 		}
 		if tc.refuse.Is(pass) {

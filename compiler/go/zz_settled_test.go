@@ -52,7 +52,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 		t.Fatal("inactive RecordSpliceDyn should decline")
 	}
 	e.NoteShapedRead("id")
-	if v, ok := e.MemberFnReadValue("id"); ok || v.Data != nil {
+	if v, ok := e.MemberFnReadValue("id"); ok || core.DataOf(&v) != nil {
 		t.Fatal("inactive memberFnReadValue should miss")
 	}
 
@@ -193,11 +193,11 @@ func TestMaterialiseMapPrefixCopy(t *testing.T) {
 	if !ok {
 		t.Fatal("map with a recoverable member should materialise")
 	}
-	mp := got.Data.(core.MapPayload)
-	if bv, _ := mp.M.Get("b"); bv.Carrier {
+	mp := core.DataOf(&got).(core.MapPayload)
+	if bv, _ := mp.M.Get("b"); core.IsCarrier(&bv) {
 		t.Fatal("changed member not recovered")
 	}
-	if av, _ := mp.M.Get("a"); av.Carrier {
+	if av, _ := mp.M.Get("a"); core.IsCarrier(&av) {
 		t.Fatal("unchanged prefix member should survive")
 	}
 }
@@ -271,7 +271,7 @@ func TestPayloadMarkersInvoke(t *testing.T) {
 		core.DepScalarInfo{},
 		core.ClosurePayload{},
 		core.PathonInfo{},
-		core.NewNone().Data,
+		core.DataOf(addrOf(core.NewNone())),
 	}
 	for _, p := range payloads {
 		_ = p // the list itself is the pin: every entry satisfies Payload
@@ -292,7 +292,7 @@ func TestS7EvalXmlInterpCheckModeDynamicFailsToCompile(t *testing.T) {
 		t.Fatalf("EvalXmlInterp: %v", err)
 	}
 	// A dynamic interpolation under an active recorder yields an Xml carrier.
-	if !out.Carrier || !strings.Contains(out.Parent.Leaf(), "Xml") {
+	if !core.IsCarrier(&out) || !strings.Contains(core.ParentOf(&out).Leaf(), "Xml") {
 		t.Errorf("expected an Xml carrier, got %v", out)
 	}
 }
@@ -331,7 +331,7 @@ func cifReturns(args []core.Value, r *core.Registry) []core.Value {
 	}
 
 	armOf := func(arg core.Value, then bool) (*EmitFragment, []core.Value, map[string]core.Value, *core.Value) {
-		if core.IsConcrete(&arg) && arg.Parent.ConformsTo(core.TList) {
+		if core.IsConcrete(&arg) && core.ParentOf(&arg).ConformsTo(core.TList) {
 			var restore func()
 			if then {
 				restore = core.ApplyGuardNarrowing(r, args[0])
@@ -509,7 +509,7 @@ func TestInterpBodyInertBoundary(t *testing.T) {
 	// NEGATIVE: a carrier/dynamic InterpString (render only known at run time)
 	// must NOT bake — a stale check-mode render would diverge.
 	cInterp := interp
-	cInterp.Carrier = true
+	core.SetCarrier(&cInterp, true)
 	if InterpMemberInert(cInterp) {
 		t.Error("InterpMemberInert(carrier `v${k}`) = true; a carrier InterpString must not bake")
 	}
@@ -553,9 +553,8 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 	// isInertConst declines reaches here. A capture-free MACRO module fn (Registry
 	// set, Macro true) is exactly that case — resolveOperand declines it, so the
 	// `IsConcrete && no-captures` arm is what places the const operand.
-	fn := withID(core.Value{Parent: core.TFunction,
-		Data: &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
-			Registry: r, Macro: true}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+	fn := withID(core.MakeValue(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}},
+		Registry: r, Macro: true}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if !ok {
 		t.Fatalf("a capture-free fn that resolveOperand declines must bake as a const here")

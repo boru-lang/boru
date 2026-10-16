@@ -295,7 +295,7 @@ func TestUnaryStringNativeHandler(t *testing.T) {
 
 func TestConcatOptsHandler(t *testing.T) {
 	list := NewList([]Value{
-		NewString("a"), {Parent: TNone}, NewString(""), NewString("b"),
+		NewString("a"), MakeValue(TNone, nil), NewString(""), NewString("b"),
 	})
 	out, err := concatOptsHandler([]Value{covOpts(map[string]Value{
 		"sep":         NewString(","),

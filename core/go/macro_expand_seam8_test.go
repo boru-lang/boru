@@ -19,7 +19,7 @@ import (
 // (the "not a map payload" error path), tripping every `if m == nil` guard.
 // A MapPayload{M:nil} would instead wrap a typed-nil *OrderedMap in a
 // non-nil interface and panic on Keys(), so it can't reach the guard.
-func w8nilMap() Value { return Value{Parent: TMap, Data: IntPayload{N: 1}} }
+func w8nilMap() Value { return MakeValue(TMap, IntPayload{N: 1}) }
 
 // w8macroReg builds a covRegistry plus a `w8void` native that returns no
 // value (for the escape-produced-no-value arm) and a set of macros.
@@ -112,7 +112,7 @@ func TestW8ExpandNestedNilMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expandNested(nil map): %v", err)
 	}
-	if !got.Parent.Equal(TMap) {
+	if !ParentOf(&got).Equal(TMap) {
 		t.Fatalf("nil map should pass through unchanged, got %v", got)
 	}
 }
@@ -203,7 +203,7 @@ func TestW8ExpandAllNestedMapArms(t *testing.T) {
 	r := w8macroReg(t)
 	// nil-backed map passes through (expandAllNested:469).
 	got, err := expandAllNested(r, w8nilMap(), 0)
-	if err != nil || !got.Parent.Equal(TMap) {
+	if err != nil || !ParentOf(&got).Equal(TMap) {
 		t.Fatalf("expandAllNested(nil map) = %v, %v", got, err)
 	}
 	// A map whose value is a list calling merr surfaces the inner error

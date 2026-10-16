@@ -14,7 +14,7 @@ import (
 // integer data, so FlexDeepCopy's xmlParts extraction fails.
 func seam7BrokenXml() Value {
 	v := NewInteger(5)
-	v.Parent = TXml
+	SetParent(&v, TXml)
 	return v
 }
 
@@ -39,26 +39,26 @@ func seam7FlexXml(t *testing.T, r *Registry) Value {
 func TestSeam7FlexNodeReturnsGuards(t *testing.T) {
 	r := seam5Reg(t)
 	// The arity/nil-parent guard falls back to a dynamic Node carrier.
-	if got := flexReturns(nil, r); len(got) != 1 || !got[0].Parent.ConformsTo(TNode) {
+	if got := flexReturns(nil, r); len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TNode) {
 		t.Fatalf("flexReturns guard: %v", got)
 	}
-	if got := nodeReturns(nil, r); len(got) != 1 || !got[0].Parent.ConformsTo(TNode) {
+	if got := nodeReturns(nil, r); len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TNode) {
 		t.Fatalf("nodeReturns guard: %v", got)
 	}
 	// Positive family projections.
 	om := NewOrderedMap()
-	if got := flexReturns([]Value{NewMap(om)}, r); !got[0].Parent.ConformsTo(TFlexMap) {
-		t.Fatalf("flexReturns map: %v", got[0].Parent)
+	if got := flexReturns([]Value{NewMap(om)}, r); !ParentOf(&got[0]).ConformsTo(TFlexMap) {
+		t.Fatalf("flexReturns map: %v", ParentOf(&got[0]))
 	}
-	if got := nodeReturns([]Value{NewMap(om)}, r); !got[0].Parent.ConformsTo(TMap) {
-		t.Fatalf("nodeReturns map: %v", got[0].Parent)
+	if got := nodeReturns([]Value{NewMap(om)}, r); !ParentOf(&got[0]).ConformsTo(TMap) {
+		t.Fatalf("nodeReturns map: %v", ParentOf(&got[0]))
 	}
 	// Unknown shape → dynamic Node.
-	if got := flexReturns([]Value{NewInteger(1)}, r); !got[0].Parent.ConformsTo(TNode) {
-		t.Fatalf("flexReturns default: %v", got[0].Parent)
+	if got := flexReturns([]Value{NewInteger(1)}, r); !ParentOf(&got[0]).ConformsTo(TNode) {
+		t.Fatalf("flexReturns default: %v", ParentOf(&got[0]))
 	}
-	if got := nodeReturns([]Value{NewInteger(1)}, r); !got[0].Parent.ConformsTo(TNode) {
-		t.Fatalf("nodeReturns default: %v", got[0].Parent)
+	if got := nodeReturns([]Value{NewInteger(1)}, r); !ParentOf(&got[0]).ConformsTo(TNode) {
+		t.Fatalf("nodeReturns default: %v", ParentOf(&got[0]))
 	}
 }
 

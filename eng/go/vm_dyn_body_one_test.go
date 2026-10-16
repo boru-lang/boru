@@ -20,12 +20,12 @@ func TestCheckDynBodyOne(t *testing.T) {
 	if err := checkDynBodyOne(r, "do", []core.Value{core.NewInteger(5)}, nil, 0); err != nil {
 		t.Fatalf("one plain value seats: %v", err)
 	}
-	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	fnVal := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	for name, results := range map[string][]core.Value{
 		"no value":       nil,
 		"two values":     {core.NewInteger(5), core.NewInteger(6)},
 		"a fn value":     {fnVal},
-		"a class":        {{Data: &core.ClassTypeInfo{}}},
+		"a class":        {core.MakeValue(nil, &core.ClassTypeInfo{})},
 		"a reach":        {core.NewReachFromKeys(core.NewInteger(1), nil)},
 		"a dispatch mod": {core.NewDispatchMod(core.DispatchModInfo{})},
 	} {
@@ -56,11 +56,11 @@ func TestCheckDynBodyPlain(t *testing.T) {
 			t.Errorf("%s: a plain run seats, got %v", name, err)
 		}
 	}
-	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	fnVal := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	for name, results := range map[string][]core.Value{
 		"a fn value last":  {core.NewInteger(5), fnVal},
 		"a fn value first": {fnVal, core.NewInteger(5)},
-		"a class":          {{Data: &core.ClassTypeInfo{}}},
+		"a class":          {core.MakeValue(nil, &core.ClassTypeInfo{})},
 		"a reach":          {core.NewReachFromKeys(core.NewInteger(1), nil)},
 	} {
 		err := checkDynBodyPlain(r, "do", results, nil, 0)

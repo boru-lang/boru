@@ -29,8 +29,8 @@ func TestMicronNewtypeLeaves(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s newtype make: %v", c.base.Name(), err)
 		}
-		if !out[0].Parent.Equal(newt) {
-			t.Errorf("%s newtype parent = %v, want %s", c.base.Name(), out[0].Parent, newt.Name())
+		if !ParentOf(&out[0]).Equal(newt) {
+			t.Errorf("%s newtype parent = %v, want %s", c.base.Name(), ParentOf(&out[0]), newt.Name())
 		}
 	}
 }
@@ -43,8 +43,8 @@ func mkLeaf(t *testing.T, kind *Type, make func(Value) ([]Value, error), s strin
 	if err != nil {
 		t.Fatalf("make %s %q: %v", kind.Name(), s, err)
 	}
-	if !out[0].Parent.Equal(kind) {
-		t.Fatalf("make %s %q: parent = %v", kind.Name(), s, out[0].Parent)
+	if !ParentOf(&out[0]).Equal(kind) {
+		t.Fatalf("make %s %q: parent = %v", kind.Name(), s, ParentOf(&out[0]))
 	}
 	return out[0]
 }
@@ -53,7 +53,7 @@ func prop(t *testing.T, v Value, key string) Value {
 	t.Helper()
 	p, ok := MicronProperty(v, key)
 	if !ok {
-		t.Fatalf("%s: no property %q", v.Parent.Name(), key)
+		t.Fatalf("%s: no property %q", ParentOf(&v).Name(), key)
 	}
 	return p
 }
@@ -92,8 +92,8 @@ func TestMakeCidron(t *testing.T) {
 		t.Errorf("v6 version = %d", n)
 	}
 	// count for a v6 block overflows int64 → BigInteger.
-	if bc := prop(t, mkLeaf(t, TCidron, makeCidron, "2001:db8::/0"), "count"); !bc.Parent.Equal(TBigInteger) {
-		t.Errorf("v6 /0 count type = %v", bc.Parent)
+	if bc := prop(t, mkLeaf(t, TCidron, makeCidron, "2001:db8::/0"), "count"); !ParentOf(&bc).Equal(TBigInteger) {
+		t.Errorf("v6 /0 count type = %v", ParentOf(&bc))
 	}
 	if _, ok := MicronProperty(v, "nope"); ok {
 		t.Error("unknown cidron prop returned ok")
@@ -113,7 +113,7 @@ func TestMakeCidron(t *testing.T) {
 		mapOf("addr", NewInteger(1), "prefix", NewInteger(8)),
 		mapOf("addr", NewString("10.0.0.0"), "prefix", NewString("8")),
 		mapOf("addr", NewString("10.0.0.0"), "prefix", NewInteger(8), "version", NewString("4")),
-		{Parent: TMap, Data: ListPayload{}},
+		MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makeCidron(bad); err == nil {
 			t.Errorf("bad cidron %v accepted", bad)
@@ -182,7 +182,7 @@ func TestMakeMacon(t *testing.T) {
 		NewString("00gg2b3c4d5e"), // 12 chars, non-hex → not normalized, ParseMAC rejects
 		NewString("00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01"), // 20-octet InfiniBand
 		NewInteger(42), mapOf("x", NewString("y")), mapOf("addr", NewInteger(1)),
-		mapOf(), {Parent: TMap, Data: ListPayload{}},
+		mapOf(), MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makeMacon(bad); err == nil {
 			t.Errorf("bad macon %v accepted", bad)
@@ -255,7 +255,7 @@ func TestMakeColoron(t *testing.T) {
 		mapOf("r", NewInteger(0), "g", NewInteger(0), "b", NewInteger(0), "x", NewInteger(1)),
 		mapOf("r", NewInteger(300), "g", NewInteger(0), "b", NewInteger(0)),
 		mapOf("r", NewString("x"), "g", NewInteger(0), "b", NewInteger(0)),
-		{Parent: TMap, Data: ListPayload{}},
+		MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makeColoron(bad); err == nil {
 			t.Errorf("bad coloron %v accepted", bad)
@@ -353,7 +353,7 @@ func TestMakeMimon(t *testing.T) {
 		mapOf("type", NewString("text"), "subtype", NewString("html"), "params", mapOf("k", NewInteger(1))),
 		mapOf("type", NewString("*"), "subtype", NewString("*")),
 		mapOf("type", NewString("a/b"), "subtype", NewString("c")), // FormatMediaType rejects a slashed type
-		{Parent: TMap, Data: ListPayload{}},
+		MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makeMimon(bad); err == nil {
 			t.Errorf("bad mimon %v accepted", bad)
@@ -431,8 +431,8 @@ func TestMakeQion(t *testing.T) {
 		mapOf("code", NewString("USD")),
 		mapOf("code", NewInteger(1), "amount", NewString("1")),
 		mapOf("code", NewString("USD"), "amount", NewBoolean(true)),
-		mapOf("code", NewString("USD"), "amount", Value{Parent: TBigDecimal, Data: ListPayload{}}),
-		{Parent: TMap, Data: ListPayload{}},
+		mapOf("code", NewString("USD"), "amount", MakeValue(TBigDecimal, ListPayload{})),
+		MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makeQion(bad); err == nil {
 			t.Errorf("bad qion %v accepted", bad)
@@ -502,7 +502,7 @@ func TestMakePhonon(t *testing.T) {
 		mapOf("cc", NewString("1"), "subscriber", NewString("4155552671"), "extra", NewString("x")),
 		mapOf("cc", NewInteger(1), "subscriber", NewString("x")),
 		mapOf("cc", NewString("1"), "subscriber", NewInteger(1)),
-		{Parent: TMap, Data: ListPayload{}},
+		MakeValue(TMap, ListPayload{}),
 	} {
 		if _, err := makePhonon(bad); err == nil {
 			t.Errorf("bad phonon %v accepted", bad)

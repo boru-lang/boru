@@ -146,8 +146,8 @@ func returnsIntFaultOn(base ReturnsFunc, op string, faultFn func(a, b int64) err
 		checkBigFloatMix(r, args)
 		if atUncaughtTopLevel(r) && len(args) == 2 &&
 			IsConcrete(&args[0]) && IsConcrete(&args[1]) &&
-			args[0].Parent.ConformsTo(TInteger) && args[1].Parent.ConformsTo(TInteger) &&
-			!args[0].Parent.ConformsTo(TBigInteger) && !args[1].Parent.ConformsTo(TBigInteger) {
+			ParentOf(&args[0]).ConformsTo(TInteger) && ParentOf(&args[1]).ConformsTo(TInteger) &&
+			!ParentOf(&args[0]).ConformsTo(TBigInteger) && !ParentOf(&args[1]).ConformsTo(TBigInteger) {
 			a, aerr := args[0].AsConcreteInteger()
 			b, berr := args[1].AsConcreteInteger()
 			if aerr == nil && berr == nil {
@@ -450,7 +450,7 @@ func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 	// when the bytecode VM drives this dispatch (the body operand lowered to
 	// OpPushClosure). Both run within the scoped context below.
 	closure := IsCompiledClosure(body)
-	if !closure && (!IsConcrete(&body) || !body.Parent.ConformsTo(TList)) {
+	if !closure && (!IsConcrete(&body) || !ParentOf(&body).ConformsTo(TList)) {
 		return nil, r.BoruError("type_error", "with-decimal: body must be a concrete list", "with-decimal")
 	}
 

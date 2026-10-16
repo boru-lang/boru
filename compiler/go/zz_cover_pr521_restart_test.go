@@ -78,7 +78,7 @@ func TestPlanLandingRestartsUnseatableStack(t *testing.T) {
 	es.rootBody = []core.Value{restartTok(1, 1), end, restartTok(1, 5), restartTok(1, 7)}
 	es.frames[0] = []EmitEvent{pr521Shaped(2, core.SrcPos{Row: 1, Col: 7})}
 	carrier := n335Val("c", 1, 1)
-	carrier.Carrier = true
+	core.SetCarrier(&carrier, true)
 	es.rootStmtStacks = map[core.SrcPos][]core.Value{end.Pos(): {carrier}}
 	if pr521Plan(es, 2) {
 		t.Error("a told stack holding a carrier seats no island")

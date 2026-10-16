@@ -20,7 +20,7 @@ func b3FailSubReg(t *testing.T) {
 func TestB3AttrsOrEmptyNonMap(t *testing.T) {
 	// Non-map attributes -> fresh empty map.
 	got := attrsOrEmpty(NewInteger(1))
-	if !got.Parent.ConformsTo(TMap) {
+	if !ParentOf(&got).ConformsTo(TMap) {
 		t.Fatalf("attrsOrEmpty(non-map) must be a Map, got %v", got)
 	}
 	if m, _ := AsMap(got); m == nil || m.Len() != 0 {
@@ -49,7 +49,7 @@ func TestB3InstrumentCtorSubRegError(t *testing.T) {
 	// Check-mode return shape falls back to a Map carrier on init error.
 	shape := n.Signatures[0].ReturnsFn
 	got := shape([]Value{NewString("x")}, r)
-	if len(got) != 1 || !got[0].Parent.ConformsTo(TMap) {
+	if len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TMap) {
 		t.Fatalf("instrument shape on init error must be a Map carrier, got %v", got)
 	}
 	// Impl surfaces the init error as a boru error.

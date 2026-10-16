@@ -46,7 +46,7 @@ func TestIslandPrefixIsAScalarConstant(t *testing.T) {
 	es := NewEmitState()
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{nout: 1}})
 	produced := core.NewInteger(3)
-	core.SetID(&produced, core.GenerateID(core.IDPrefixForType(produced.Parent)))
+	core.SetID(&produced, core.GenerateID(core.IDPrefixForType(core.ParentOf(&produced))))
 	es.setProducedAt(&produced, seq, 0)
 	for _, v := range []core.Value{produced, core.NewCarrier(core.TInteger), core.NewList([]core.Value{core.NewInteger(1)})} {
 		if _, ok := es.islandPrefixOperand(v); ok {

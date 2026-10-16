@@ -264,8 +264,8 @@ func runCheckEntry(src string) string {
 	for i, v := range out {
 		// In check mode the stack holds carriers; render the lattice
 		// type path (the inferred type), which is the invariant we pin.
-		if v.Parent != nil {
-			parts[i] = v.Parent.Path()
+		if ParentOf(&v) != nil {
+			parts[i] = ParentOf(&v).Path()
 		} else {
 			parts[i] = "<nil>"
 		}

@@ -97,7 +97,7 @@ func TestW8SpliceFnCheckTailCompaction(t *testing.T) {
 	if !core.IsForward(e.Tape.Ref(0)) {
 		t.Errorf("tape[0] = %+v, want the Forward marker compacted down", e.Tape.At(0))
 	}
-	if got := e.Tape.At(1); !got.Carrier || !got.Parent.Equal(core.TAny) {
+	if got := e.Tape.At(1); !core.IsCarrier(&got) || !core.ParentOf(&got).Equal(core.TAny) {
 		t.Errorf("tape[1] = %+v, want the spliced Any carrier", got)
 	}
 }
@@ -185,7 +185,7 @@ func TestOrderingReturnsFn(t *testing.T) {
 	// Cross-family determinate operands: diagnostic recorded.
 	before := len(r.Check.Diagnostics)
 	out := fn([]core.Value{core.NewString("a"), core.NewInteger(1)}, r)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(core.TBoolean) {
+	if len(out) != 1 || !core.IsCarrier(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TBoolean) {
 		t.Fatalf("OrderingReturnsFn result = %v, want Boolean carrier", out)
 	}
 	if len(r.Check.Diagnostics) != before+1 {
@@ -225,7 +225,7 @@ func TestRunCarrierBodyAndStacksEqual(t *testing.T) {
 	stk := core.RunCarrierBody(r, core.NewList([]core.Value{
 		core.NewWord("cadd"), core.NewInteger(1), core.NewInteger(2),
 	}))
-	if len(stk) != 1 || !stk[0].Parent.ConformsTo(core.TInteger) {
+	if len(stk) != 1 || !core.ParentOf(&stk[0]).ConformsTo(core.TInteger) {
 		t.Errorf("core.RunCarrierBody residual = %v", stk)
 	}
 	// A non-concrete body yields nil.

@@ -27,7 +27,7 @@ func w9Top(t *testing.T, src string) Value {
 // (xmlParts can't read an IntPayload) — exercising the adopt error arm.
 func w9XmlTaggedInt() Value {
 	v := NewInteger(7)
-	v.Parent = TXml
+	SetParent(&v, TXml)
 	return v
 }
 

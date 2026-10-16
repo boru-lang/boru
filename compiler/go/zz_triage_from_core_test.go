@@ -163,7 +163,7 @@ func TestFnCompileDoesNotLowerIdentitylessCapture(t *testing.T) {
 	if !ok {
 		t.Fatal("BeginCompilePass did not install an EmitState")
 	}
-	blankCap := core.Value{Parent: core.TInteger, Data: core.IntPayload{N: 5}} // hand-built: no ID
+	blankCap := core.MakeValue(core.TInteger, core.IntPayload{N: 5}) // hand-built: no ID
 	_, fin, started := es.StartFnCompile("k", "f", nil, nil, nil, nil,
 		[]core.CapturedBinding{{Name: "x", Value: blankCap}}, false, core.SrcPos{})
 	if started && fin != nil {

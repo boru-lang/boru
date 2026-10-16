@@ -19,7 +19,7 @@ type bridgeRuntime struct {
 }
 
 func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
-	if _, ok := v.Data.(ClosurePayload); !ok || !b.bridge {
+	if _, ok := DataOf(&v).(ClosurePayload); !ok || !b.bridge {
 		return v, false
 	}
 	params := make([]FnParam, b.params)
@@ -35,7 +35,7 @@ func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 		return []Value{NewInteger(n * 3)}, nil
 	})}
 	NormalizeSig(&sig)
-	cl, _ := v.Data.(ClosurePayload)
+	cl, _ := DataOf(&v).(ClosurePayload)
 	return NewFunctionIdentified(FnDefInfo{Signatures: []Signature{sig}, Anonymous: true}, cl.Ident), true
 }
 
@@ -46,7 +46,7 @@ func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 // boru bodies) — while a declined bridge, a quoted closure and a parked
 // 0-arg anonymous one stay data.
 func TestClosureValueBridge(t *testing.T) {
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	closure := MakeValue(TFunction, ClosurePayload{})
 	run := func(rt *bridgeRuntime, tokens ...Value) []Value {
 		t.Helper()
 		prev := InstallCompiledRuntime(rt)
@@ -132,7 +132,7 @@ func TestClosureValueBridge(t *testing.T) {
 // IsCompiledClosureValue reports a ClosurePayload payload (the test-side
 // twin of compiler.IsCompiledClosure, which core cannot import).
 func IsCompiledClosureValue(v Value) bool {
-	_, ok := v.Data.(ClosurePayload)
+	_, ok := DataOf(&v).(ClosurePayload)
 	return ok
 }
 
@@ -150,7 +150,7 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 	prev := InstallCompiledRuntime(rt)
 	defer InstallCompiledRuntime(prev)
 	r := covRegistry(t, nil)
-	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	closure := MakeValue(TFunction, ClosurePayload{})
 	r.Defs.Push("a5", closure)
 
 	if dispatchesAsWord(&closure, r) || r.Lookup("a5") != nil {
@@ -199,7 +199,7 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 // a QUOTED closure, a negative arity, or no bridge at all (outside a run).
 func TestModifierClosureShapes(t *testing.T) {
 	r := covRegistry(t, nil)
-	cl := Value{Parent: TFunction, Data: ClosurePayload{}}
+	cl := MakeValue(TFunction, ClosurePayload{})
 	quoted := cl
 	SetQuoted(&quoted, true)
 
@@ -221,7 +221,7 @@ func TestModifierClosureShapes(t *testing.T) {
 		"force-arity":   func(v Value) (Value, bool) { return ForceArityClosure(r, v, 1) },
 	} {
 		w, ok := wrap(cl)
-		if !ok || !w.Parent.Equal(TFunction) {
+		if !ok || !ParentOf(&w).Equal(TFunction) {
 			t.Errorf("%s over a bridged closure must wrap it: ok=%v %v", name, ok, w)
 		}
 		if _, ok := wrap(NewInteger(1)); ok {

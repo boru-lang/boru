@@ -367,7 +367,7 @@ func TestRunPredicateArms(t *testing.T) {
 		t.Fatal("non-fn constraint must error")
 	}
 	// TFunction-shaped but no FnDefInfo payload.
-	if _, _, err := r.RunPredicate(Value{Parent: TFunction}, NewInteger(2)); err == nil {
+	if _, _, err := r.RunPredicate(MakeValue(TFunction, nil), NewInteger(2)); err == nil {
 		t.Fatal("payload-less constraint must error")
 	}
 	// No signature takes ONE value: the candidate is not a member — the

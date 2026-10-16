@@ -20,7 +20,7 @@ import "fmt"
 
 func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	list := args[0]
-	if !list.Parent.Equal(TList) {
+	if !ParentOf(&list).Equal(TList) {
 		return nil, r.BoruError("record_error", "record: argument must be a list", "record")
 	}
 	if !IsConcrete(&list) {
@@ -32,7 +32,7 @@ func recordHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	}
 	fields := NewOrderedMap()
 	for _, elem := range elems.Elems() {
-		if !elem.Parent.Equal(TMap) {
+		if !ParentOf(&elem).Equal(TMap) {
 			return nil, fmt.Errorf("record: each element must be a pair (map), got %s", elem.String())
 		}
 		m, err := AsMutableMap(elem)
@@ -70,7 +70,7 @@ func parseObjectFields(fieldsMap *OrderedMap, r *Registry) *OrderedMap {
 // through objectWithParentHandler and propagates the Class flag.
 func classHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fieldsVal := args[0]
-	if !fieldsVal.Parent.Equal(TMap) {
+	if !ParentOf(&fieldsVal).Equal(TMap) {
 		if spec := r.TakePendingGen(); spec != nil {
 			PopGenBindings(r, spec)
 		}
@@ -113,7 +113,7 @@ func objectWithParentHandler(args []Value, _ map[string]Value, _ []Value, r *Reg
 	fieldsVal := args[0]
 	parentVal := args[1]
 
-	if !fieldsVal.Parent.Equal(TMap) {
+	if !ParentOf(&fieldsVal).Equal(TMap) {
 		return nil, fmt.Errorf("object: first argument must be a map of field definitions, got %s", fieldsVal.String())
 	}
 	m, err := AsMutableMap(fieldsVal)

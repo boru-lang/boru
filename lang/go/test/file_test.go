@@ -41,7 +41,7 @@ func TestFileReadCSV(t *testing.T) {
 
 	v := result[0]
 	if !native.IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", native.ParentOf(&v))
 	}
 
 	_lst, _ := native.AsList(v)
@@ -125,8 +125,8 @@ func TestFileReadEmptyCSV(t *testing.T) {
 	v := result[0]
 	if !native.IsTableType(v) {
 		// Empty CSV with only headers may return empty list
-		if !v.Parent.Equal(native.TList) {
-			t.Fatalf("expected list/table type, got %s", v.Parent)
+		if !native.ParentOf(&v).Equal(native.TList) {
+			t.Fatalf("expected list/table type, got %s", native.ParentOf(&v))
 		}
 	}
 	_lst, _ := native.AsList(v)
@@ -149,7 +149,7 @@ func TestFileReadTSV(t *testing.T) {
 
 	v := result[0]
 	if !native.IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", native.ParentOf(&v))
 	}
 
 	_lst, _ := native.AsList(v)
@@ -216,7 +216,7 @@ func TestFileReadCSVExplicitFmt(t *testing.T) {
 
 	v := result[0]
 	if !native.IsTableType(v) {
-		t.Fatalf("expected table type, got %s", v.Parent)
+		t.Fatalf("expected table type, got %s", native.ParentOf(&v))
 	}
 	_lst, _ := native.AsList(v)
 	rows := _lst.Slice()

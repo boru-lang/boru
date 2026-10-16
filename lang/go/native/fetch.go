@@ -224,7 +224,7 @@ func (ft FetchModuleTypes) doFetch(reqOM ReadMap, r *Registry) ([]Value, error) 
 	}
 
 	// Set headers.
-	if hv, ok := reqOM.Get("headers"); ok && hv.Parent.ConformsTo(TMap) {
+	if hv, ok := reqOM.Get("headers"); ok && ParentOf(&hv).ConformsTo(TMap) {
 		hm, _ := AsMap(hv)
 		for _, key := range hm.Keys() {
 			val, _ := hm.Get(key)
@@ -319,7 +319,7 @@ func (ft FetchModuleTypes) doFetch(reqOM ReadMap, r *Registry) ([]Value, error) 
 	respOM.Set("body", NewString(string(bodyBytes)))
 	respOM.Set("url", NewString(resp.Request.URL.String()))
 
-	return []Value{{Parent: ft.Response, Data: MapPayload{M: respOM}}}, nil
+	return []Value{MakeValue(ft.Response, MapPayload{M: respOM})}, nil
 }
 
 // fetchConvertBehavior projects a Fetch Request/Response (map-backed

@@ -88,7 +88,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 
 	// DepScalar — equal only to a DepScalar of the identical Parent.
 	if v.IsDepScalar() {
-		return "D:" + IDOf(v.Parent), DeqKeyed
+		return "D:" + IDOf(ParentOf(&v)), DeqKeyed
 	}
 
 	// Numbers — scalarFamilyEqual compares int64-exact (int/int),
@@ -101,7 +101,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// disambiguated pairwise. The error-ignoring AsNumber mirrors
 	// scalarFamilyEqual's own accessor use, so whatever projection the
 	// equality sees, the key sees too.
-	if v.Parent.ConformsTo(TNumber) {
+	if ParentOf(&v).ConformsTo(TNumber) {
 		var f float64
 		if numIsBig(v) {
 			var err error
@@ -122,15 +122,15 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 
 	// The by-value scalar families — same error-ignoring accessors as
 	// scalarFamilyEqual.
-	if v.Parent.ConformsTo(TString) {
+	if ParentOf(&v).ConformsTo(TString) {
 		s, _ := AsString(v)
 		return "s:" + s, DeqKeyed
 	}
-	if v.Parent.ConformsTo(TBoolean) {
+	if ParentOf(&v).ConformsTo(TBoolean) {
 		b, _ := AsBoolean(v)
 		return "b:" + strconv.FormatBool(b), DeqKeyed
 	}
-	if v.Parent.ConformsTo(TAtom) {
+	if ParentOf(&v).ConformsTo(TAtom) {
 		a, _ := AsAtom(v)
 		return "a:" + a, DeqKeyed
 	}
@@ -140,15 +140,15 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// any equal pair shares its topmost family node under Scalar. One
 	// bucket per family (Time, Micron, …) is sound; members are
 	// disambiguated pairwise.
-	if v.Parent.ConformsTo(TScalar) {
-		return "c:" + IDOf(scalarFamilyRoot(v.Parent)), DeqKeyed
+	if ParentOf(&v).ConformsTo(TScalar) {
+		return "c:" + IDOf(scalarFamilyRoot(ParentOf(&v))), DeqKeyed
 	}
 
 	// Lists — structural recursion over element VALUES (populated typed
 	// lists included, via deqListElems; NUR033). DeqUnkeyed remains only
 	// for a list carrier — a type-level operand DeepEqual still compares
 	// by render, so it must be scanned pairwise within its family.
-	if containerFamily(v.Parent).Equal(TList) {
+	if containerFamily(ParentOf(&v)).Equal(TList) {
 		elems, ok := deqListElems(v)
 		if !ok {
 			return "", DeqUnkeyed
@@ -176,7 +176,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// VALUES (populated typed maps included, via deqMapEntries; NUR033).
 	// DeqUnkeyed remains only for a map carrier or a Record/Options type
 	// constructor, which DeepEqual still compares by render.
-	if containerFamily(v.Parent).Equal(TMap) {
+	if containerFamily(ParentOf(&v)).Equal(TMap) {
 		m, ok := deqMapEntries(v)
 		if !ok {
 			return "", DeqUnkeyed
@@ -220,7 +220,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 		sort.Strings(keys)
 		var b strings.Builder
 		b.WriteString("i:")
-		b.WriteString(IDOf(v.Parent))
+		b.WriteString(IDOf(ParentOf(&v)))
 		b.WriteByte('{')
 		for i, k := range keys {
 			fv, _ := fields.Get(k)
@@ -267,7 +267,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// twin branch is; restricted to pointer bodies for the same reason
 	// hostPayloadIdentity is, so a contents-only payload stays never-equal
 	// rather than being scanned for a match it can never have.
-	if p, ok := v.Data.(ExtensionPayload); ok && isPointerBody(p.Body) {
+	if p, ok := DataOf(&v).(ExtensionPayload); ok && isPointerBody(p.Body) {
 		return "", DeqUnkeyed
 	}
 
@@ -283,7 +283,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// stale, and the divergence is silent: Add files the value nowhere
 	// and FirstMatch answers -1, so `unique` keeps two functions `deq`
 	// calls duplicates.
-	if fd, ok := v.Data.(*FnDefInfo); ok {
+	if fd, ok := DataOf(&v).(*FnDefInfo); ok {
 		return "f:" + canonFnDef(*fd), DeqKeyed
 	}
 
@@ -291,8 +291,8 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// whole WordInfo — and canon renders every field of it, name and
 	// modifiers alike, so canon is an exact key here rather than merely a
 	// sound one.
-	if _, ok := v.Data.(WordInfo); ok && v.Parent != nil {
-		return "w:" + IDOf(v.Parent) + ":" + CanonValue(v), DeqKeyed
+	if _, ok := DataOf(&v).(WordInfo); ok && ParentOf(&v) != nil {
+		return "w:" + IDOf(ParentOf(&v)) + ":" + CanonValue(v), DeqKeyed
 	}
 
 	// Declared type VALUES (NUR031): deq shares eq's type-body arm, which
@@ -307,8 +307,8 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// there is nothing for a family to keep reachable — while an
 	// inaccurate one could hide a render-matched type-level operand from
 	// the scan.
-	if IsTypeBody(&v) && v.Parent != nil {
-		return "t:" + IDOf(v.Parent), DeqKeyed
+	if IsTypeBody(&v) && ParentOf(&v) != nil {
+		return "t:" + IDOf(ParentOf(&v)), DeqKeyed
 	}
 
 	// DeepEqual's unsupported fall-through. NUR031 emptied this class of
@@ -322,8 +322,8 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 // scalarFamilyRoot walks up to the child-of-Scalar ancestor — the node
 // scalarSemanticEqual's Parent/LCA rules guarantee equal values share.
 func scalarFamilyRoot(t *Type) *Type {
-	for t.Parent != nil && !t.Parent.Equal(TScalar) && !t.Equal(TScalar) {
-		t = t.Parent
+	for ParentOf(t) != nil && !ParentOf(t).Equal(TScalar) && !t.Equal(TScalar) {
+		t = ParentOf(t)
 	}
 	return t
 }
@@ -333,14 +333,14 @@ func scalarFamilyRoot(t *Type) *Type {
 // and instance equality only fires within one exact class. Values in
 // families that can never contain an unkeyed member return "".
 func deqFam(v Value) string {
-	if nodeFamily(v.Parent).Equal(TList) {
+	if nodeFamily(ParentOf(&v)).Equal(TList) {
 		return "L"
 	}
-	if nodeFamily(v.Parent).Equal(TMap) {
+	if nodeFamily(ParentOf(&v)).Equal(TMap) {
 		return "M"
 	}
 	if _, _, ok := FlatInstanceParts(v); ok {
-		return "I:" + IDOf(v.Parent)
+		return "I:" + IDOf(ParentOf(&v))
 	}
 	// NUR031 handles scan within one family per PAYLOAD KIND, NOT per
 	// type ID: a timer's deq is pointer identity, which ignores Parent,
@@ -357,7 +357,7 @@ func deqFam(v Value) string {
 	// another fn, so its own family keeps the scan tight and stops the
 	// depth-capped unkeyed values (the only other residents of the
 	// empty family) from being rescanned on every fn lookup.
-	if _, ok := v.Data.(*FnDefInfo); ok {
+	if _, ok := DataOf(&v).(*FnDefInfo); ok {
 		return "F"
 	}
 	// Capability-carrying values scan within the family of the OWNING
@@ -375,7 +375,7 @@ func deqFam(v Value) string {
 	// one of them scans in one family. BELOW the capability arm on
 	// purpose — a host type that installed a DeepEqualer keeps its own,
 	// tighter family, and only the payloads with no capability land here.
-	if p, ok := v.Data.(ExtensionPayload); ok && isPointerBody(p.Body) {
+	if p, ok := DataOf(&v).(ExtensionPayload); ok && isPointerBody(p.Body) {
 		return "H:Host"
 	}
 	return ""
@@ -385,7 +385,7 @@ func deqFam(v Value) string {
 // handle (Store, Error, Timeout, Interval, the Module descriptor), or
 // "" for anything else. Parent-independent by design — see deqFam.
 func handleKind(v Value) string {
-	switch d := v.Data.(type) {
+	switch d := DataOf(&v).(type) {
 	case *StoreInstanceInfo:
 		return "Store"
 	case ErrorInfo:

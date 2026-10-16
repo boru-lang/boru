@@ -28,7 +28,7 @@ func TestShortWindowNeverReachesReturnsFn(t *testing.T) {
 	if called != 0 {
 		t.Fatalf("a short window reached the ReturnsFn (%d calls)", called)
 	}
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TAny) {
 		t.Errorf("short window, no Returns = %#v, want one dynamic Any", out)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -38,7 +38,7 @@ func TestShortWindowNeverReachesReturnsFn(t *testing.T) {
 	// Declared Returns: one carrier per type, a declared Any riding dynamic.
 	decl := &core.Signature{Args: two, Impl: covCDImpl(), ReturnsFn: rf, Returns: []*core.Type{core.TAny, core.TInteger}}
 	out = declaredReturnCarriers(r, "w", decl, nil, pos)
-	if called != 0 || len(out) != 2 || !core.IsDynamic(&out[0]) || core.IsDynamic(&out[1]) || !out[1].Parent.Equal(core.TInteger) {
+	if called != 0 || len(out) != 2 || !core.IsDynamic(&out[0]) || core.IsDynamic(&out[1]) || !core.ParentOf(&out[1]).Equal(core.TInteger) {
 		t.Errorf("short window, declared [Any Integer] = %#v (calls %d)", out, called)
 	}
 

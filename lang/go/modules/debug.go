@@ -138,8 +138,8 @@ func debugNatives() []native.NativeFunc {
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					v := args[0]
 					typeName := "Any"
-					if v.Parent != nil {
-						typeName = v.Parent.String()
+					if native.ParentOf(&v) != nil {
+						typeName = native.ParentOf(&v).String()
 					}
 					fmt.Fprintf(r.Output, "%s = %s\n", typeName, native.FormatForPrint(v))
 					return []native.Value{v}, nil
@@ -536,7 +536,7 @@ func bodyAnalysisReturns(fixed *native.Type) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		if len(args) > 0 {
 			body := args[0]
-			if native.IsConcrete(&body) && body.Parent != nil && body.Parent.ConformsTo(native.TList) {
+			if native.IsConcrete(&body) && native.ParentOf(&body) != nil && native.ParentOf(&body).ConformsTo(native.TList) {
 				native.RunCarrierBody(r, body)
 			}
 		}

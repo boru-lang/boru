@@ -31,10 +31,10 @@ var ErrNoNodifier = errors.New("eng: no nodifier in this Behavior")
 // produces. Bodies that need to project nested Object fields call
 // `nodify` again inside themselves.
 func NodifyValue(v Value) (Value, error) {
-	if v.Parent == nil {
+	if ParentOf(&v) == nil {
 		return v, nil
 	}
-	for t := v.Parent; t != nil; t = t.Parent {
+	for t := ParentOf(&v); t != nil; t = ParentOf(t) {
 		n, ok := t.Behavior().(Nodifier)
 		if !ok {
 			continue

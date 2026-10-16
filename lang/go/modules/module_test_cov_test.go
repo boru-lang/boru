@@ -281,21 +281,21 @@ func TestTestCovResolveTestExportDirect(t *testing.T) {
 	// A Function value without a registry gains one.
 	fn := native.NewFunction(native.FnDefInfo{Name: "f"})
 	got := resolveTestExport(r, fn)
-	if info, ok := got.Data.(*native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := native.DataOf(&got).(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("Function without registry should be stamped with modReg")
 	}
 
 	// An FnDef-parented value keeps its parent.
 	fd := native.NewFunction(native.FnDefInfo{Name: "g"})
 	got2 := resolveTestExport(r, fd)
-	if !got2.Parent.Equal(native.TFunction) {
-		t.Errorf("FnDef parent should be preserved, got %s", got2.Parent.String())
+	if !native.ParentOf(&got2).Equal(native.TFunction) {
+		t.Errorf("FnDef parent should be preserved, got %s", native.ParentOf(&got2).String())
 	}
 
 	// A Function that already carries a registry is returned as-is.
 	fn3 := native.NewFunction(native.FnDefInfo{Name: "h", Registry: r})
 	got3 := resolveTestExport(r, fn3)
-	if info, ok := got3.Data.(*native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := native.DataOf(&got3).(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("already-stamped Function should keep its registry")
 	}
 
@@ -309,7 +309,7 @@ func TestTestCovResolveTestExportDirect(t *testing.T) {
 	// A bound def holding a registry-less Function gets stamped too.
 	r.Defs.Push("bound-fn", native.NewFunction(native.FnDefInfo{Name: "bf"}))
 	res2 := resolveTestExport(r, native.NewWord("bound-fn"))
-	if info, ok := res2.Data.(*native.FnDefInfo); !ok || info.Registry != r {
+	if info, ok := native.DataOf(&res2).(*native.FnDefInfo); !ok || info.Registry != r {
 		t.Errorf("bound Function should be stamped with modReg")
 	}
 

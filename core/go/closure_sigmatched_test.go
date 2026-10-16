@@ -10,10 +10,10 @@ func TestClosureSigMatched(t *testing.T) {
 	if got := ClosureSigMatched(plain); !ExactEqual(got, plain) {
 		t.Errorf("a non-closure value must pass through: %v", got)
 	}
-	cl := Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}}
+	cl := MakeValue(TFunction, ClosurePayload{Unit: 3})
 	SetQuoted(&cl, true)
 	marked := ClosureSigMatched(cl)
-	mcl, ok := marked.Data.(ClosurePayload)
+	mcl, ok := DataOf(&marked).(ClosurePayload)
 	if !ok || !IsSigMatched(&marked) || mcl.Unit != 3 || !IsQuoted(&marked) {
 		t.Errorf("the mark must set SigMatched on a copy keeping the payload and the quote: %v", marked)
 	}
@@ -29,9 +29,9 @@ func TestClosureSigMatched(t *testing.T) {
 // the interpreter-only runtime: it declines, leaving the value as data.
 func TestClosureAsFnDefInactiveRuntime(t *testing.T) {
 	r := covRegistry(t, nil)
-	cl := Value{Parent: TFunction, Data: ClosurePayload{Unit: 4}}
+	cl := MakeValue(TFunction, ClosurePayload{Unit: 4})
 	got, ok := ClosureAsFnDef(r, cl)
-	if gcl, isCl := got.Data.(ClosurePayload); ok || !isCl || gcl.Unit != 4 {
+	if gcl, isCl := DataOf(&got).(ClosurePayload); ok || !isCl || gcl.Unit != 4 {
 		t.Errorf("the inactive runtime must decline the bridge and hand the value back: %v %v", got, ok)
 	}
 }

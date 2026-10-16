@@ -175,7 +175,7 @@ func TestWindowScalar(t *testing.T) {
 		}
 	}
 	untyped := core.NewInteger(1)
-	untyped.Parent = nil
+	core.SetParent(&untyped, nil)
 	if windowScalar(untyped) {
 		t.Error("a value with no type is no scalar")
 	}
@@ -250,7 +250,7 @@ func TestNamedFnValueSpec(t *testing.T) {
 func TestClosureCallsAtLanding(t *testing.T) {
 	p := &Program{Fns: []CompiledFn{{Lambda: true}, {Lambda: true, NArgs: 1}}}
 	mk := func(unit int, named bool, prog any) core.Value {
-		return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Named: named}}
+		return core.MakeValue(core.TFunction, core.ClosurePayload{Prog: prog, Unit: unit, Named: named})
 	}
 	for name, c := range map[string]struct {
 		v    core.Value

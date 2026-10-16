@@ -39,7 +39,7 @@ var ErrNoDeepEqualer = errors.New("no deep equaler")
 // disagree about the same pair (the capability's answer would be
 // unreachable through the index).
 func DeepEqualerOwner(t *Type) *Type {
-	for ; t != nil; t = t.Parent {
+	for ; t != nil; t = ParentOf(t) {
 		if _, ok := t.Behavior().(DeepEqualer); ok {
 			return t
 		}
@@ -57,7 +57,7 @@ func DeepEqualerOwner(t *Type) *Type {
 // equal" because a body failed would be a wrong answer rather than a
 // missing one.
 func deepEqualCapability(a, b Value) (result bool, ok bool) {
-	for t := lowestCommonAncestor(ValueType(a), ValueType(b)); t != nil; t = t.Parent {
+	for t := lowestCommonAncestor(ValueType(a), ValueType(b)); t != nil; t = ParentOf(t) {
 		de, is := t.Behavior().(DeepEqualer)
 		if !is {
 			continue

@@ -219,9 +219,9 @@ func TestCompareValuesSameBranchBySize(t *testing.T) {
 // Record < Table), then depth (a type before its subtype),
 // then name (siblings Foo and Bar).
 func TestCompareTypes(t *testing.T) {
-	foo := &Type{Parent: TList}
+	foo := addrOf(MakeValue(TList, nil))
 	foo.SetName("Foo")
-	bar := &Type{Parent: TList}
+	bar := addrOf(MakeValue(TList, nil))
 	bar.SetName("Bar")
 	tests := []struct {
 		name string
@@ -251,9 +251,9 @@ func TestCompareTypes(t *testing.T) {
 	// Value level: a Foo value and a Bar value of equal size resolve
 	// by the type order — Bar before Foo, by name.
 	fooVal := NewList([]Value{NewInteger(1)})
-	fooVal.Parent = foo
+	SetParent(&fooVal, foo)
 	barVal := NewList([]Value{NewInteger(1)})
-	barVal.Parent = bar
+	SetParent(&barVal, bar)
 	if got, err := CompareValues(barVal, fooVal); err != nil || got != -1 {
 		t.Errorf("Bar-value vs Foo-value = %d, %v; want -1, nil", got, err)
 	}
@@ -442,8 +442,8 @@ func (revPathBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equ
 
 func (revPathBehavior) Compare(a, b Value) (int, error) {
 	pa, pb := a, b
-	pa.Parent = TPathon
-	pb.Parent = TPathon
+	SetParent(&pa, TPathon)
+	SetParent(&pb, TPathon)
 	n, err := CompareValues(pa, pb)
 	return -n, err
 }
@@ -455,12 +455,12 @@ func (revPathBehavior) Compare(a, b Value) (int, error) {
 // proving a subtype can override an inherited capability and that
 // CompareValues' lattice walk picks the most-specific Comparer.
 func TestRevPathComparator(t *testing.T) {
-	revPath := &Type{Parent: TPathon}
+	revPath := addrOf(MakeValue(TPathon, nil))
 	revPath.SetName("RevPath")
 	revPath.SetBehavior(revPathBehavior{})
 	rev := func(parts ...string) Value {
 		p := NewPathon(parts, false)
-		p.Parent = revPath
+		SetParent(&p, revPath)
 		return p
 	}
 

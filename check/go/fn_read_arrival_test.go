@@ -53,7 +53,7 @@ func TestShapedFnReadArrivalSuccess(t *testing.T) {
 	if e.Tape.Len() != 3 {
 		t.Fatalf("the splice claims the ARITY window only, tape len = %d", e.Tape.Len())
 	}
-	if out := e.Tape.At(0); !out.Carrier || !core.IsDynamic(&out) {
+	if out := e.Tape.At(0); !core.IsCarrier(&out) || !core.IsDynamic(&out) {
 		t.Errorf("the modelled result is one dynamic value, got %v", out)
 	}
 	if n, _ := addrOf(e.Tape.At(1)).AsConcreteInteger(); n != 2 {
@@ -170,7 +170,7 @@ func TestShapedFnReadWindowPlainCheck(t *testing.T) {
 	if e.Tape.Len() != 3 {
 		t.Fatalf("the arity window collapses to one value, tape len = %d", e.Tape.Len())
 	}
-	if out := e.Tape.At(0); !out.Carrier || !core.IsDynamic(&out) {
+	if out := e.Tape.At(0); !core.IsCarrier(&out) || !core.IsDynamic(&out) {
 		t.Errorf("the dispatch's one result is dynamic, got %v", out)
 	}
 	if n, _ := addrOf(e.Tape.At(1)).AsConcreteInteger(); n != 9 {

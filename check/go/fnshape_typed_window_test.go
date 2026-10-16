@@ -46,7 +46,7 @@ func TestFnShapeTypedWindowNamedShape(t *testing.T) {
 		t.Fatalf("the window becomes the shape's two returns, tape len = %d", e.Tape.Len())
 	}
 	for i, want := range []*core.Type{core.TInteger, core.TString} {
-		if out := e.Tape.At(i); !out.Carrier || core.IsDynamic(&out) || !out.Parent.Equal(want) {
+		if out := e.Tape.At(i); !core.IsCarrier(&out) || core.IsDynamic(&out) || !core.ParentOf(&out).Equal(want) {
 			t.Errorf("return %d = %v, want a %s carrier", i, out, want.Name())
 		}
 	}
@@ -73,7 +73,7 @@ func TestFnShapeTypedWindowNotedClaim(t *testing.T) {
 	if !tryDynamicFnValueDispatch(e, 0) {
 		t.Fatal("the noted claim is applied")
 	}
-	if out := e.Tape.At(0); !out.Carrier || !core.IsDynamic(&out) {
+	if out := e.Tape.At(0); !core.IsCarrier(&out) || !core.IsDynamic(&out) {
 		t.Errorf("an Any return is a dynamic value, got %v", out)
 	}
 	void, _ := FnShapeOfSpec(ftwShape())

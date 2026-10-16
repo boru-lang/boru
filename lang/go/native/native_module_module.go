@@ -317,7 +317,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			// the module registry it was written in (NUR128: a module
 			// body's own check is inactive, so a dead branch in an exported
 			// fn was reported only when someone called it).
-			if fd, isFn := ev.Data.(*FnDefInfo); isFn {
+			if fd, isFn := DataOf(&ev).(*FnDefInfo); isFn {
 				NoteFnBodyPendingIn(parent, modReg, *fd)
 			}
 		}
@@ -823,7 +823,7 @@ func installRenamedExports(r *Registry, desc ModuleDesc, renameList []Value) err
 	linkModuleDebugParent(r, desc)
 	mod := NewModuleInstance(desc)
 
-	if renameList[0].Parent.Equal(TList) {
+	if ParentOf(&renameList[0]).Equal(TList) {
 		// Multiple rename pairs: [[from1 to1] [from2 to2] ...]
 		for _, pair := range renameList {
 			pairElems, _ := AsList(pair)
@@ -882,7 +882,7 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// map, which auto-evaluates to the bound fn as data — must carry the
 	// module registry so it executes in module scope (resolving module-
 	// private words) when called after import.
-	if fnDef, ok := v.Data.(*FnDefInfo); ok {
+	if fnDef, ok := DataOf(&v).(*FnDefInfo); ok {
 		// An exported word (the public API) IS used — record it so check mode
 		// does not falsely flag every exported impl as unused_def. The `name/v`
 		// reference form auto-evaluates to the bound fn HERE (as data), so the
@@ -901,7 +901,7 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	if IsWord(&v) {
 		_as3, _ := AsWord(&v)
 		name = _as3.Name
-	} else if v.Parent.ConformsTo(TString) {
+	} else if ParentOf(&v).ConformsTo(TString) {
 		name, _ = AsString(v)
 	} else if IsAtom(v) {
 		name, _ = AsAtom(v)
@@ -1050,7 +1050,7 @@ func valToAtomOrString(v Value) string {
 		_as5, _ := AsAtom(v)
 		return _as5
 	}
-	if v.Parent.ConformsTo(TString) {
+	if ParentOf(&v).ConformsTo(TString) {
 		_as6, _ := AsString(v)
 		return _as6
 	}

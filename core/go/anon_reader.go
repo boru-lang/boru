@@ -59,7 +59,7 @@ func bodyEnd(toks []Value) SrcPos {
 // innerTokens are the tokens a body token holds: a list's elements, a
 // group's tokens, a map's values.
 func innerTokens(t Value) []Value {
-	switch d := t.Data.(type) {
+	switch d := DataOf(&t).(type) {
 	case ListPayload:
 		return d.Elems
 	case ParenExprPayload:
@@ -138,7 +138,7 @@ func (c *CheckState) NoteBehaveDispatch(args []Value) {
 	for i := range args {
 		a := &args[i]
 		for _, br := range c.BehaveReaders {
-			if (a.Parent != nil && a.Parent.ConformsTo(br.Target)) || (IsBareTypeNode(a) && a.ConformsTo(br.Target)) {
+			if (ParentOf(a) != nil && ParentOf(a).ConformsTo(br.Target)) || (IsBareTypeNode(a) && a.ConformsTo(br.Target)) {
 				c.RecordCallEdge(fn, br.Reader)
 			}
 		}
@@ -203,15 +203,15 @@ func (c *CheckState) FnMemberRead(id string) (Value, bool) {
 // concrete key.
 func fnMemberAt(args []Value) (Value, bool) {
 	for _, a := range args {
-		if a.Carrier {
+		if IsCarrier(&a) {
 			continue
 		}
 		var member Value
 		found := false
-		switch d := a.Data.(type) {
+		switch d := DataOf(&a).(type) {
 		case ListPayload:
 			for _, k := range args {
-				if n, ok := k.Data.(IntPayload); ok && !k.Carrier && n.N >= 0 && n.N < int64(len(d.Elems)) {
+				if n, ok := DataOf(&k).(IntPayload); ok && !IsCarrier(&k) && n.N >= 0 && n.N < int64(len(d.Elems)) {
 					member, found = d.Elems[n.N], true
 				}
 			}
@@ -222,7 +222,7 @@ func fnMemberAt(args []Value) (Value, bool) {
 				}
 			}
 		}
-		if _, isFn := member.Data.(*FnDefInfo); found && isFn {
+		if _, isFn := DataOf(&member).(*FnDefInfo); found && isFn {
 			return member, true
 		}
 	}
@@ -231,10 +231,10 @@ func fnMemberAt(args []Value) (Value, bool) {
 
 // memberKey is a concrete read key's text: an Atom or a String.
 func memberKey(k Value) (string, bool) {
-	if k.Carrier {
+	if IsCarrier(&k) {
 		return "", false
 	}
-	switch d := k.Data.(type) {
+	switch d := DataOf(&k).(type) {
 	case AtomPayload:
 		return d.Name, true
 	case StrPayload:

@@ -31,8 +31,8 @@ func TestW8TabnasXmlValueOtherChild(t *testing.T) {
 	v := tabnasXmlToValue(m)
 	// A well-formed element value is produced without panicking; the
 	// numeric child was stringified.
-	if !v.Parent.ConformsTo(TXml) {
-		t.Errorf("expected an Xml element value, got %s", v.Parent)
+	if !ParentOf(&v).ConformsTo(TXml) {
+		t.Errorf("expected an Xml element value, got %s", ParentOf(&v))
 	}
 }
 

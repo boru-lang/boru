@@ -42,13 +42,13 @@ func init() {
 // interning, resolution elision, ConstBakeable compile failure, ID minting) — so
 // the payload must stay an ExtensionPayload, never a bare *ModuleDesc.
 func NewModuleInstance(desc ModuleDesc) Value {
-	return Value{Parent: TModule, Data: ExtensionPayload{Body: &desc}}
+	return MakeValue(TModule, ExtensionPayload{Body: &desc})
 }
 
 // asModuleDesc unwraps the ExtensionPayload behind an Ideal/Module value
 // (a boxed *ModuleDesc — see NewModuleInstance).
 func asModuleDesc(v Value) (ModuleDesc, bool) {
-	if ep, ok := v.Data.(ExtensionPayload); ok {
+	if ep, ok := DataOf(&v).(ExtensionPayload); ok {
 		if d, ok := ep.Body.(*ModuleDesc); ok && d != nil {
 			return *d, true
 		}

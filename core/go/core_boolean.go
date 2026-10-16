@@ -196,7 +196,7 @@ func TandValues(a, b Value) Value {
 // (Parent=TNever) or the bare type literal (NewTypeLiteral(TNever),
 // Data=nil, lattice node == TNever).
 func IsNeverShape(v Value) bool {
-	if v.Parent.Equal(TNever) {
+	if ParentOf(&v).Equal(TNever) {
 		return true
 	}
 	return IsBareTypeNode(&v) && (&v).Equal(TNever)
@@ -205,7 +205,7 @@ func IsNeverShape(v Value) bool {
 // isAnyShape reports whether v is any form of Any: the carrier/sentinel
 // (Parent=TAny) or the bare type literal (NewTypeLiteral(TAny)).
 func isAnyShape(v Value) bool {
-	if v.Parent.Equal(TAny) {
+	if ParentOf(&v).Equal(TAny) {
 		return true
 	}
 	return IsBareTypeNode(&v) && (&v).Equal(TAny)
@@ -256,7 +256,7 @@ func negateTypeResolved(inner Value) Value {
 			// interval), so `Integer tand (tnot (Integer gt 0))` reduces
 			// to `Integer lte 0` through the disjunct distribution in
 			// TandValues.
-			base := inner.Parent
+			base := ParentOf(&inner)
 			return UnionType(complementWithinBase(base, di), NewNegation(NewTypeLiteral(base)))
 		}
 	}
@@ -279,14 +279,14 @@ func TnotReturnsFn(args []Value, _ *Registry) []Value {
 		return []Value{NewCarrier(TAny)}
 	}
 	out := NegateType(args[0])
-	out.Carrier = true
+	SetCarrier(&out, true)
 	return []Value{out}
 }
 
 // isPlainConcreteMap reports whether v is a non-typed, non-record,
 // non-options concrete map (Data is *OrderedMap).
 func isPlainConcreteMap(v Value) bool {
-	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+	if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 		return false
 	}
 	if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(&v) {
@@ -310,7 +310,7 @@ func mergeMaps(a, b ReadMap) (*OrderedMap, bool) {
 			// Combined is Never — check both forms: sentinel (Parent=
 			// TNever) and bare type literal (NewTypeLiteral(TNever),
 			// Parent=nil after the degenerate-root setup).
-			if combined.Parent.Equal(TNever) || (IsBareTypeNode(&combined) && (&combined).Equal(TNever)) {
+			if ParentOf(&combined).Equal(TNever) || (IsBareTypeNode(&combined) && (&combined).Equal(TNever)) {
 				return nil, false
 			}
 			result.Set(key, combined)

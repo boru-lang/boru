@@ -23,7 +23,7 @@ func TestStampModuleCallGatesIDLessModuleStampsNothing(t *testing.T) {
 	core.StampModuleCallGates(map[string]*core.OrderedMap{"M": om}, "")
 
 	got, _ := om.Get("w")
-	if sigs := got.Data.(*core.FnDefInfo).Signatures; sigs[0].ModuleCall != nil {
+	if sigs := core.DataOf(&got).(*core.FnDefInfo).Signatures; sigs[0].ModuleCall != nil {
 		t.Errorf("an empty moduleRef must stamp nothing, got %+v", sigs[0].ModuleCall)
 	}
 }
@@ -38,7 +38,7 @@ func TestStampModuleCallGatesSkipsNilNamespace(t *testing.T) {
 	core.StampModuleCallGates(map[string]*core.OrderedMap{"Nil": nil, "M": live}, "boru:x")
 
 	got, _ := live.Get("w")
-	id := got.Data.(*core.FnDefInfo).Signatures[0].ModuleCall
+	id := core.DataOf(&got).(*core.FnDefInfo).Signatures[0].ModuleCall
 	if id == nil || id.Module != "boru:x" || id.Export != "w" {
 		t.Errorf("live namespace should be stamped boru:x/w, got %+v", id)
 	}
@@ -54,7 +54,7 @@ func TestStampModuleCallGatesWrapperWithoutSubRegistry(t *testing.T) {
 	core.StampModuleCallGates(map[string]*core.OrderedMap{"M": om}, "boru:y")
 
 	got, _ := om.Get("w")
-	id := got.Data.(*core.FnDefInfo).Signatures[0].ModuleCall
+	id := core.DataOf(&got).(*core.FnDefInfo).Signatures[0].ModuleCall
 	if id == nil || id.Module != "boru:y" {
 		t.Fatalf("own signatures must still be stamped, got %+v", id)
 	}

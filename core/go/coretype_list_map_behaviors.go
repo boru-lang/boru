@@ -13,31 +13,31 @@ func (listFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.
 func (listFormatBehavior) matchesAsDefault()           {}
 func (listFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (listFormatBehavior) Format(v Value) string {
-	if tt, ok := v.Data.(TableTypeInfo); ok {
+	if tt, ok := DataOf(&v).(TableTypeInfo); ok {
 		return formatFieldBag("table", tt.Record.Fields)
 	}
-	if td, ok := v.Data.(TableData); ok {
+	if td, ok := DataOf(&v).(TableData); ok {
 		rowParts := make([]string, len(td.Rows))
 		for i, row := range td.Rows {
 			rowParts[i] = row.String()
 		}
 		return formatFieldBag("table", td.Record.Fields) + "[" + strings.Join(rowParts, " ") + "]"
 	}
-	if mp, ok := v.Data.(MaterializerPayload); ok {
+	if mp, ok := DataOf(&v).(MaterializerPayload); ok {
 		td, err := mp.M.Materialize()
 		if err != nil {
 			return "query(error:" + err.Error() + ")"
 		}
 		return formatTableDataAsList(td)
 	}
-	if mz, ok := v.Data.(Materializer); ok {
+	if mz, ok := DataOf(&v).(Materializer); ok {
 		td, err := mz.Materialize()
 		if err != nil {
 			return "query(error:" + err.Error() + ")"
 		}
 		return formatTableDataAsList(td)
 	}
-	if ct, ok := v.Data.(ChildTypeInfo); ok {
+	if ct, ok := DataOf(&v).(ChildTypeInfo); ok {
 		// Include any inline elements (`[:Integer 1 2 3]`) — dropping
 		// them made String lossy where canon keeps them (found by the
 		// TS parser stream-parity diff).
@@ -145,7 +145,7 @@ func (mapFormatBehavior) Match(v Value, t *Type) bool { return DefaultBehavior.M
 func (mapFormatBehavior) matchesAsDefault()           {}
 func (mapFormatBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (mapFormatBehavior) Format(v Value) string {
-	if ct, ok := v.Data.(ChildTypeInfo); ok {
+	if ct, ok := DataOf(&v).(ChildTypeInfo); ok {
 		// Include any inline entries (`{:Integer a:1}`) — the map twin
 		// of the typed-list element render above.
 		parts := make([]string, 0, len(ct.Entries)+1)
@@ -155,10 +155,10 @@ func (mapFormatBehavior) Format(v Value) string {
 		}
 		return "{" + strings.Join(parts, " ") + "}"
 	}
-	if rt, ok := v.Data.(RecordTypeInfo); ok {
+	if rt, ok := DataOf(&v).(RecordTypeInfo); ok {
 		return formatFieldBag("record", rt.Fields)
 	}
-	if ot, ok := v.Data.(OptionsTypeInfo); ok {
+	if ot, ok := DataOf(&v).(OptionsTypeInfo); ok {
 		return formatFieldBag("options", ot.Fields)
 	}
 	m, _ := AsMap(v)

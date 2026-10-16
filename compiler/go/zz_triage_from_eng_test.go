@@ -739,7 +739,7 @@ func TestQuoteOperandInertOKFlag(t *testing.T) {
 		return nil
 	}
 
-	inertAtom := core.Value{Parent: core.TAtom, Data: core.AtomPayload{Name: "k"}}
+	inertAtom := core.MakeValue(core.TAtom, core.AtomPayload{Name: "k"})
 	carrierArg := core.NewCarrier(core.TAtom) // not inert — no concrete payload to bake
 
 	// Flagged + inert operand → bypass the quoted-operand compile failure (bakeable).

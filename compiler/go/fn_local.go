@@ -31,7 +31,7 @@ func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 	if es == nil || !es.Active() || name == "" || len(es.openUnitRecs) == 0 {
 		return false
 	}
-	if fd, ok := v.Data.(*core.FnDefInfo); !ok || len(fd.Captured) > 0 {
+	if fd, ok := core.DataOf(&v).(*core.FnDefInfo); !ok || len(fd.Captured) > 0 {
 		return false
 	}
 	if es.placeFnParam(name, v) {
@@ -70,8 +70,8 @@ func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 // declaring source and file, unique per signature; empty for a lambda or
 // a Go-registered fn, which never matches).
 func sameFnDecls(a, b core.Value) bool {
-	fa, oka := a.Data.(*core.FnDefInfo)
-	fb, okb := core.FnDefOf(b.Data)
+	fa, oka := core.DataOf(&a).(*core.FnDefInfo)
+	fb, okb := core.FnDefOf(core.DataOf(&b))
 	if !oka || !okb || len(fa.Signatures) != len(fb.Signatures) {
 		return false
 	}

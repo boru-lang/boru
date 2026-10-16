@@ -133,7 +133,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	if err != nil || ent != nil {
 		t.Fatalf("anonymous landing: %v %v", ent, err)
 	}
-	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if len(got) != 1 || !core.ParentOf(&got[0]).Equal(core.TFunction) {
 		t.Errorf("anonymous landing = %v, want the value parked as data", got)
 	}
 
@@ -156,7 +156,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	if errc != nil || entc != nil {
 		t.Fatalf("lambda landing: %v %v", entc, errc)
 	}
-	if len(gotc) != 1 || !gotc[0].Parent.Equal(core.TFunction) {
+	if len(gotc) != 1 || !core.ParentOf(&gotc[0]).Equal(core.TFunction) {
 		t.Errorf("lambda landing = %v, want the closure parked as data", gotc)
 	}
 }
@@ -243,7 +243,7 @@ func TestReStepLandingStaysData(t *testing.T) {
 			if err != nil || ent != nil {
 				t.Fatalf("%s must not apply: %v %v — %s", tc.name, ent, err, tc.why)
 			}
-			if len(got) != 2 || !got[1].Parent.Equal(tc.v.Parent) {
+			if len(got) != 2 || !core.ParentOf(&got[1]).Equal(core.ParentOf(&tc.v)) {
 				t.Errorf("%s: stack = %v, want it untouched — %s", tc.name, got, tc.why)
 			}
 		})
@@ -262,18 +262,18 @@ func TestReStepLandingStaysData(t *testing.T) {
 func TestReStepLandingIslandArm(t *testing.T) {
 	r := seam7Reg(t)
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	lit := core.Value{Parent: core.TFunction}
+	lit := core.MakeValue(core.TFunction, nil)
 	if !core.IsAppliableFn(lit) {
 		t.Fatal("fixture is not appliable — the landing would leave it as data before the island")
 	}
-	if _, isFn := lit.Data.(*core.FnDefInfo); isFn {
+	if _, isFn := core.DataOf(&lit).(*core.FnDefInfo); isFn {
 		t.Fatal("fixture carries an FnDefInfo — it would take an earlier rung")
 	}
 	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{lit}, seam7Dbg, 0, compiler.LandingWord{})
 	if err != nil || ent != nil {
 		t.Fatalf("island landing: %v %v", ent, err)
 	}
-	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if len(got) != 1 || !core.ParentOf(&got[0]).Equal(core.TFunction) {
 		t.Errorf("island landing = %v, want the value the interpreter pushes", got)
 	}
 }

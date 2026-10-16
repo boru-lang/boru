@@ -27,7 +27,7 @@ func RegisterQFixtures(r *core.Registry) {
 }
 
 func toFloat(v core.Value) float64 {
-	if v.Parent.ConformsTo(core.TInteger) {
+	if core.ParentOf(&v).ConformsTo(core.TInteger) {
 		n, _ := core.AsInteger(v)
 		return float64(n)
 	}
@@ -37,7 +37,7 @@ func toFloat(v core.Value) float64 {
 
 func numericBinary(intOp func(a, b int64) int64, floatOp func(a, b float64) float64) core.Handler {
 	return func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-		if args[0].Parent.ConformsTo(core.TInteger) && args[1].Parent.ConformsTo(core.TInteger) {
+		if core.ParentOf(&args[0]).ConformsTo(core.TInteger) && core.ParentOf(&args[1]).ConformsTo(core.TInteger) {
 			a, _ := core.AsInteger(args[0])
 			b, _ := core.AsInteger(args[1])
 			return []core.Value{core.NewInteger(intOp(a, b))}, nil
@@ -77,7 +77,7 @@ func registerArith(r *core.Registry) {
 		Signatures: []core.Signature{{
 			Args: []*core.Type{core.TNumber}, BarrierPos: 1,
 			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-				if args[0].Parent.ConformsTo(core.TInteger) {
+				if core.ParentOf(&args[0]).ConformsTo(core.TInteger) {
 					n, _ := core.AsInteger(args[0])
 					return []core.Value{core.NewInteger(-n)}, nil
 				}

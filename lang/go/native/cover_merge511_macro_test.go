@@ -32,7 +32,7 @@ func TestRecordMacroFnDispatchArms(t *testing.T) {
 	}
 	r.Check.CurWordPos = core.SrcPos{}
 	opts := core.WithPosAt(NewMap(NewOrderedMap()), core.SrcPos{Row: 3, Col: 9})
-	if out, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch", []Value{lead, src, opts}); !ok || !out.Parent.ConformsTo(TAny) {
+	if out, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch", []Value{lead, src, opts}); !ok || !ParentOf(&out).ConformsTo(TAny) {
 		t.Fatalf("the native's own arity records, anchored at the last operand: %v %v", out, ok)
 	}
 }
@@ -56,7 +56,7 @@ func TestMacroDispatchInstallGuardsAndPartial(t *testing.T) {
 		Impl:   core.Boru([]Value{NewWord("x")}),
 	}}}
 	p := MiniPartialFromFn(fd, []Value{NewString("ab"), NewMap(NewOrderedMap()), NewEnd()})
-	if !p.Parent.ConformsTo(TFunction) {
+	if !ParentOf(&p).ConformsTo(TFunction) {
 		t.Errorf("the filter partial is a fn value, got %v", p)
 	}
 }

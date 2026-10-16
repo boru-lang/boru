@@ -657,7 +657,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 					}
 				}
 				gradualAny := checkActive && !compiling &&
-					top.Parent != nil && top.Parent.Equal(TAny)
+					ParentOf(top) != nil && ParentOf(top).Equal(TAny)
 				// A BARE name bound to a function CALLS (NUR078, ADR-011
 				// as amended): it never arrives as its own value, so its
 				// binding claims a slot BY VALUE only when the name is
@@ -673,7 +673,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// Function-typed slot only by holding a function, i.e. only
 				// when it dispatches. Both are the fn binding here, or the
 				// compiled lane collects by value what the interpreter calls.
-				_, isFnPayload := top.Data.(*FnDefInfo)
+				_, isFnPayload := DataOf(top).(*FnDefInfo)
 				isFnBinding := isFnPayload || IsFnTypedCarrier(top) ||
 					(IsDynamic(top) && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
 				byValue := SigArgMatches(sig, fwd, top) && (!isFnBinding || ww.ForceVal)
@@ -695,7 +695,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 					scanIdx++
 					continue
 				}
-				if _, ok := top.Data.(*FnDefInfo); !ok {
+				if _, ok := DataOf(top).(*FnDefInfo); !ok {
 					break // simple def, type mismatch
 				}
 			}
@@ -790,7 +790,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// matches. Inert at runtime (operands are concrete there). Mirrors
 		// the stack-phase and positionalMatch /q guards. See
 		// design/legacy/module-fn-checkstate-ownership.2.ignore.
-		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(tok) && !tok.Parent.ConformsTo(TAtom) {
+		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && IsCarrier(tok) && !IsConcrete(tok) && !ParentOf(tok).ConformsTo(TAtom) {
 			break
 		}
 
@@ -902,7 +902,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// eventual handler sees a uniform Atom rather than having to extract a
 	// name from either shape.
 	if !matches && fwd.Sig.QuoteArgs != nil && fwd.Sig.QuoteArgs[nextIdx] &&
-		val.Parent.Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
+		ParentOf(val).Equal(TWord) && TAtom.ConformsTo(SigArgType(fwd.Sig, nextIdx)) {
 		w, _ := AsWord(val)
 		atom := NewAtom(w.Name)
 		setPosRef(&atom, posOf(val)) // preserve source position across /q Word→Atom conversion
@@ -972,7 +972,7 @@ func arrivalReachGroup(h CollectHost, val Value, valIdx int) ArrivalVerdict {
 	// lane applies it — `[1 2 3] each M.inc/v` was `[fn fn fn]` against
 	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
 	// (NUR078's `/v` spelling).
-	if IsQuoted(&val) && (isFnDefValue(val) || val.Carrier) {
+	if IsQuoted(&val) && (isFnDefValue(val) || IsCarrier(&val)) {
 		c := win.Ref(valIdx)
 		SetQuoted(c, false)
 		SetReachGroup(c, false)

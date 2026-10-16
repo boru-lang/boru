@@ -38,7 +38,7 @@ func TestLookupDynScopeRefArms(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("a fn binding's /v read pushes it: %v %v", out, err)
 	}
-	if fd, isFn := core.FnDefOf(out[0].Data); !isFn || fd.Name != "drf" || !out[0].Parent.Equal(core.TFunction) {
+	if fd, isFn := core.FnDefOf(core.DataOf(&out[0])); !isFn || fd.Name != "drf" || !core.ParentOf(&out[0]).Equal(core.TFunction) {
 		t.Errorf("pushed %v, want the Function value of drf", out[0])
 	}
 
@@ -49,7 +49,7 @@ func TestLookupDynScopeRefArms(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("a class binding's /v read pushes it: %v %v", out, err)
 	}
-	if _, isClass := out[0].Data.(*core.ClassTypeInfo); !isClass {
+	if _, isClass := core.DataOf(&out[0]).(*core.ClassTypeInfo); !isClass {
 		t.Errorf("pushed %v, want the class", out[0])
 	}
 

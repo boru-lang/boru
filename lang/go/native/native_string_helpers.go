@@ -124,7 +124,7 @@ func keySet(names ...string) map[string]bool {
 // (the no-options call); an unknown WORD is a programming error in the
 // caller, not user input, so it is reported as such.
 func validateStrOpts(r *Registry, v Value, word string) error {
-	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+	if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 		return nil
 	}
 	allowed, ok := strOptKeys[word]
@@ -147,7 +147,7 @@ func validateStrOpts(r *Registry, v Value, word string) error {
 		// `norm` doubles as a BOOLEAN switch — `norm:true` means NFC — so a
 		// boolean here is the other spelling of the option, not a member of
 		// the string domain. It is legal and there is nothing to check.
-		if k == "norm" && val.Parent.ConformsTo(TBoolean) {
+		if k == "norm" && ParentOf(&val).ConformsTo(TBoolean) {
 			continue
 		}
 		got := ValToString(val)
@@ -196,18 +196,18 @@ func parseStrOpts(v Value) strOpts {
 	o.form = "NFC"
 	o.quote = "none"
 
-	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+	if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 		return o
 	}
 	m, _ := AsMap(v)
 
 	if val, ok := m.Get("norm"); ok {
-		if val.Parent.ConformsTo(TBoolean) {
+		if ParentOf(&val).ConformsTo(TBoolean) {
 			_as1, _ := AsBoolean(val)
 			if _as1 {
 				o.normForm = "NFC"
 			}
-		} else if val.Parent.ConformsTo(TString) || IsAtom(val) {
+		} else if ParentOf(&val).ConformsTo(TString) || IsAtom(val) {
 			o.normForm = strings.ToUpper(ValToString(val))
 		}
 	}
@@ -272,7 +272,7 @@ func parseStrOpts(v Value) strOpts {
 		o.wholeWord = b
 	}
 	if val, ok := m.Get("anchored"); ok {
-		if val.Parent.ConformsTo(TBoolean) {
+		if ParentOf(&val).ConformsTo(TBoolean) {
 			_as10, _ := AsBoolean(val)
 			if _as10 {
 				o.anchored = "both"

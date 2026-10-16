@@ -56,7 +56,7 @@ func TestElideTailFrameRunsTeardownAndKeepsShell(t *testing.T) {
 	}
 
 	// Tape: marker gone, shell intact — (ₘ 1 f __RC )
-	isInt := func(v *Value) bool { return v.Parent.Equal(TInteger) && IsConcrete(v) }
+	isInt := func(v *Value) bool { return ParentOf(v).Equal(TInteger) && IsConcrete(v) }
 	want := []func(*Value) bool{IsFrameOpen, isInt, IsWord, IsReturnCheck, IsCloseParen}
 	if e.Tape.Len() != len(want) {
 		t.Fatalf("tape has %d tokens after elision, want %d", e.Tape.Len(), len(want))

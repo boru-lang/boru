@@ -27,12 +27,12 @@ func TestRandWithSeedShapeIsAModel(t *testing.T) {
 	}
 	for _, name := range []string{"int", "bool", "float", "string", "one-of", "list-of", "map-from"} {
 		m, _ := shape.Get(name)
-		fd, ok := native.FnDefOf(m.Data)
+		fd, ok := native.FnDefOf(core.DataOf(&m))
 		if !ok || !fd.ShapeModelHomed() || core.IsInertConst(&m) {
 			t.Errorf("%s: the model's method must be ShapeModelHomed and no constant", name)
 		}
 		rv, _ := inst.Get(name)
-		rfd, ok := native.FnDefOf(rv.Data)
+		rfd, ok := native.FnDefOf(core.DataOf(&rv))
 		if !ok || rfd.ShapeModelHomed() || !core.IsInertConst(&rv) {
 			t.Errorf("%s: a real instance's method is unmarked and bakes as data", name)
 		}

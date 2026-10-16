@@ -59,7 +59,7 @@ func TestCaseReturnsFnNilBackedClauses(t *testing.T) {
 	// backing slice — caseReturnsFn must return the dynamic-Any carrier
 	// instead of walking elements.
 	out := caseReturnsFn([]Value{NewInteger(5), NewList(nil)}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("nil-backed clauses should yield a dynamic Any carrier, got %v", out)
 	}
 }
@@ -70,12 +70,12 @@ func TestCaseBranchJoinNoClauses(t *testing.T) {
 	// With no clause elements there is nothing to join: the helper's
 	// contract is a dynamic-Any fallback.
 	out := caseBranchJoin(r, NewInteger(1), nil)
-	if len(out) != 1 || !out[0].Parent.Equal(TAny) {
+	if len(out) != 1 || !ParentOf(&out[0]).Equal(TAny) {
 		t.Fatalf("empty clause join should yield dynamic Any, got %v", out)
 	}
 	// Positive pair: a single clause pair joins to the block's type.
 	out = caseBranchJoin(r, NewInteger(1), []Value{NewInteger(1), NewString("x")})
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TString) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TString) {
 		t.Fatalf("single-clause join should carry String, got %v", out)
 	}
 }

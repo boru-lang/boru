@@ -80,10 +80,10 @@ func AsBytesValue(v Value) ([]byte, bool) { return AsBytes(v) }
 
 // AsBytes extracts the backing slice of a Bytes value.
 func AsBytes(v Value) ([]byte, bool) {
-	if v.Parent == nil || !v.Parent.ConformsTo(TBytes) {
+	if ParentOf(&v) == nil || !ParentOf(&v).ConformsTo(TBytes) {
 		return nil, false
 	}
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}

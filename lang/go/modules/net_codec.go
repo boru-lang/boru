@@ -206,7 +206,7 @@ func readDecodeStep(res native.Value) decodeStep {
 
 func listenSvcHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 	svc := args[1]
-	if !svc.Parent.ConformsTo(native.TService) {
+	if !core.ParentOf(&svc).ConformsTo(native.TService) {
 		return nil, r.BoruError("net_error", "listen: second argument must be a Service", "listen")
 	}
 	optsMap, err := native.RequireConcreteMap(args[0], "listen")

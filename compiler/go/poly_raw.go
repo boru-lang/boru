@@ -51,7 +51,7 @@ func (lw *lowerer) scopeEvent(seq int) *EmitEvent {
 // any depth of the body's parens and list literals — or false when none is.
 func pendingListAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 	t, ok := literalTokenAt(body, p)
-	return t, ok && t.Parent.Equal(core.TList)
+	return t, ok && core.ParentOf(&t).Equal(core.TList)
 }
 
 // literalTokenAt is the pending list or map literal token of body written
@@ -65,7 +65,7 @@ func literalTokenAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 	for k, at := range path {
 		t := toks[at]
 		if k == len(path)-1 {
-			return t, t.Pos() == p && core.IsEval(&t) && !core.IsQuoted(&t) && (t.Parent.Equal(core.TList) || t.Parent.Equal(core.TMap))
+			return t, t.Pos() == p && core.IsEval(&t) && !core.IsQuoted(&t) && (core.ParentOf(&t).Equal(core.TList) || core.ParentOf(&t).Equal(core.TMap))
 		}
 		toks, _ = nestedToks(t)
 	}

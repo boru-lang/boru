@@ -127,8 +127,8 @@ func TestUsurpReffedIsInertData(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("inc/uv left %d values, want 1 (the wrapper)", len(res))
 	}
-	if !res[0].Parent.Equal(core.TFunction) {
-		t.Errorf("inc/uv top is %s, want Function", res[0].Parent.String())
+	if !core.ParentOf(&res[0]).Equal(core.TFunction) {
+		t.Errorf("inc/uv top is %s, want Function", core.ParentOf(&res[0]).String())
 	}
 }
 
@@ -148,8 +148,8 @@ func TestUsurpReffedStaysInertWithTrailingArgs(t *testing.T) {
 	if len(res) != 3 {
 		t.Fatalf("sub2/uv 10 3 left %d values, want 3 (wrapper + 2 literals)", len(res))
 	}
-	if !res[0].Parent.Equal(core.TFunction) {
-		t.Errorf("bottom value is %s, want the inert Function wrapper", res[0].Parent.String())
+	if !core.ParentOf(&res[0]).Equal(core.TFunction) {
+		t.Errorf("bottom value is %s, want the inert Function wrapper", core.ParentOf(&res[0]).String())
 	}
 }
 
@@ -183,8 +183,8 @@ func TestUsurpQuotedIsInertData(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("quoted usurp left %d values, want 1", len(res))
 	}
-	if !res[0].Parent.Equal(core.TFunction) {
-		t.Errorf("quoted usurp top is %s, want Function", res[0].Parent.String())
+	if !core.ParentOf(&res[0]).Equal(core.TFunction) {
+		t.Errorf("quoted usurp top is %s, want Function", core.ParentOf(&res[0]).String())
 	}
 }
 
@@ -357,7 +357,7 @@ func TestUsurpByNameHeldWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(res) != 1 || !res[len(res)-1].Parent.Equal(core.TFunction) {
+	if len(res) != 1 || !core.ParentOf(&res[len(res)-1]).Equal(core.TFunction) {
 		t.Errorf("usurp sub2 = %v, want a single held Function value", res)
 	}
 }

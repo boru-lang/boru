@@ -581,7 +581,7 @@ type ClosurePayload struct {
 // the returned Value shares the shape (that is the aliasing model).
 func NewStoreShapeCarrier(t *Type, scope int) Value {
 	v := NewCarrier(t)
-	v.Data = &StoreShapeInfo{Scope: scope}
+	SetData(&v, &StoreShapeInfo{Scope: scope})
 	return v
 }
 

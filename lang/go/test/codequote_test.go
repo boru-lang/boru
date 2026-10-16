@@ -21,7 +21,7 @@ func TestCodequoteCapturesParenAsCode(t *testing.T) {
 		t.Fatalf("codequote left %d values, want 1", len(res))
 	}
 	if !core.IsParenExpr(&res[0]) {
-		t.Errorf("codequote (1 add 2) top is %s, want ParenExpr (raw code)", res[0].Parent.String())
+		t.Errorf("codequote (1 add 2) top is %s, want ParenExpr (raw code)", core.ParentOf(&res[0]).String())
 	}
 }
 
@@ -43,14 +43,14 @@ func TestCodequoteWordAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(res) != 1 || !res[0].Parent.Equal(core.TAtom) {
+	if len(res) != 1 || !core.ParentOf(&res[0]).Equal(core.TAtom) {
 		t.Fatalf("codequote foo top is %v, want Atom", res)
 	}
 	res2, err := runNativeSteps(t, nil, []string{`codequote [1 add 2]`})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(res2) != 1 || !res2[0].Parent.Equal(core.TList) {
+	if len(res2) != 1 || !core.ParentOf(&res2[0]).Equal(core.TList) {
 		t.Fatalf("codequote [1 add 2] top is %v, want raw List", res2)
 	}
 }

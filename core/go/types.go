@@ -141,7 +141,7 @@ func TypeNameTable() map[string]*Type {
 // Returns the empty string if no entry exists or the type is internal.
 func TypeNameByID(id string) string {
 	def := Builtin.LookupByID(id)
-	if def == nil || def.IsInternal {
+	if def == nil || IsInternal(def) {
 		return ""
 	}
 	// Only return a name for types that participate in user-facing
@@ -275,7 +275,7 @@ func (t *Type) PathSubtype(pattern *Type) bool {
 // an ancestor) so the score for Any-only signatures is unchanged.
 func (t *Type) Specificity() int {
 	n := 0
-	for d := t; d != nil; d = d.Parent {
+	for d := t; d != nil; d = ParentOf(d) {
 		if d.FixedID() == anyFixedID && n > 0 {
 			break
 		}

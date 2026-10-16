@@ -141,7 +141,7 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, name string, sigIdx i
 			cloned := append([]core.CapturedBinding(nil), fd.Captured...)
 			for j := range cloned {
 				if core.IDOf(&cloned[j].Value) == "" {
-					core.SetID(&cloned[j].Value, core.GenerateID(core.IDPrefixForType(cloned[j].Value.Parent)))
+					core.SetID(&cloned[j].Value, core.GenerateID(core.IDPrefixForType(core.ParentOf(&cloned[j].Value))))
 				}
 			}
 			fd.Captured = cloned
@@ -272,7 +272,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 // returns the input unchanged with ok=false, so callers may use the returned
 // value unconditionally.
 func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
-	fd, ok := core.FnDefOf(v.Data)
+	fd, ok := core.FnDefOf(core.DataOf(&v))
 	if !ok {
 		return v, false
 	}
@@ -348,7 +348,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 // see the stamp, and nothing outside the loading goroutine holds the value
 // yet. Returns false on any decline, leaving the value untouched.
 func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
-	fd, ok := v.Data.(*core.FnDefInfo)
+	fd, ok := core.DataOf(&v).(*core.FnDefInfo)
 	if !ok {
 		return false
 	}
@@ -494,7 +494,7 @@ func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Ty
 // 99. Such a body stays the interpreter's, as every declined body does.
 func bodyUndefs(tokens []core.Value) bool {
 	for _, tok := range tokens {
-		switch d := tok.Data.(type) {
+		switch d := core.DataOf(&tok).(type) {
 		case core.WordInfo:
 			if d.Name == "undef" {
 				return true
@@ -524,12 +524,12 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 		case core.IsWord(&decl):
 			w, _ := core.AsWord(&decl)
 			names[w.Name] = true
-		case decl.Parent.Equal(core.TList) && core.IsConcrete(&decl):
+		case core.ParentOf(&decl).Equal(core.TList) && core.IsConcrete(&decl):
 			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Ref(0)) {
 				w, _ := core.AsWord(dl.Ref(0))
 				names[w.Name] = true
 			}
-		case decl.Parent.ConformsTo(core.TString):
+		case core.ParentOf(&decl).ConformsTo(core.TString):
 			s, _ := core.AsString(decl)
 			names[s] = true
 		}
@@ -545,8 +545,8 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 						names[nw.Name] = true
 					}
 				case "var":
-					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(&toks[i+1]) {
-						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Ref(0)) {
+					if i+1 < len(toks) && core.ParentOf(&toks[i+1]).Equal(core.TList) && core.IsConcrete(&toks[i+1]) {
+						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && core.ParentOf(vl.Ref(0)).Equal(core.TList) && core.IsConcrete(vl.Ref(0)) {
 							if decls, err := core.AsList(vl.Get(0)); err == nil {
 								for _, d := range decls.Elems() {
 									addDecl(d)
@@ -557,7 +557,7 @@ func bodyDefNames(tokens []core.Value) map[string]bool {
 				}
 				continue
 			}
-			if tok.Parent.Equal(core.TList) && core.IsConcrete(&tok) {
+			if core.ParentOf(&tok).Equal(core.TList) && core.IsConcrete(&tok) {
 				if l, err := core.AsList(tok); err == nil {
 					walk(l.Elems())
 				}

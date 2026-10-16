@@ -56,7 +56,7 @@ func NewLockType() *Type {
 
 // asLockInfo unwraps a Lock handle's payload.
 func asLockInfo(v Value) (*LockInfo, bool) {
-	ext, ok := v.Data.(ExtensionPayload)
+	ext, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -91,7 +91,7 @@ func doLockWord(args []Value, r *Registry, lockType *Type) ([]Value, error) {
 func doUnlockWord(args []Value, r *Registry) ([]Value, error) {
 	li, ok := asLockInfo(args[0])
 	if !ok {
-		return nil, r.BoruError("unlock_error", fmt.Sprintf("unlock: not a Lock handle (got %s)", args[0].Parent), "unlock")
+		return nil, r.BoruError("unlock_error", fmt.Sprintf("unlock: not a Lock handle (got %s)", ParentOf(&args[0])), "unlock")
 	}
 	if err := li.Release(); err != nil {
 		return nil, r.BoruError("unlock_error", fmt.Sprintf("unlock: %v", err), "unlock")

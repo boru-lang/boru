@@ -70,7 +70,7 @@ func newTerminalValue(b tuikit.Backend, info tuikit.Info) native.Value {
 }
 
 func asTerminal(v native.Value) (*termState, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := core.DataOf(&v).(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -239,7 +239,7 @@ func mapTuiErr(r *native.Registry, word string, err error) error {
 func tuiTerm(args []native.Value, word string, r *native.Registry) (*termState, error) {
 	ts, ok := asTerminal(args[0])
 	if !ok {
-		return nil, r.BoruError("tui_error", word+": expected a Terminal, got "+args[0].Parent.String(), word)
+		return nil, r.BoruError("tui_error", word+": expected a Terminal, got "+core.ParentOf(&args[0]).String(), word)
 	}
 	return ts, nil
 }
@@ -447,7 +447,7 @@ func tuiDeliverEventsHandler(args []native.Value, _ map[string]native.Value, _ [
 	}
 	proc, ok := native.PidProcess(args[1])
 	if !ok {
-		return nil, r.BoruError("tui_error", "deliver-events: expected a Pid target, got "+args[1].Parent.String(), "deliver-events")
+		return nil, r.BoruError("tui_error", "deliver-events: expected a Pid target, got "+core.ParentOf(&args[1]).String(), "deliver-events")
 	}
 	if !ts.delivering.CompareAndSwap(false, true) {
 		return nil, r.BoruError("tui_error", "deliver-events: events are already being delivered", "deliver-events")

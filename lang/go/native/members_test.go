@@ -27,13 +27,13 @@ func TestMicronLeafTableSync(t *testing.T) {
 			}
 			// A real property narrows to a typed OR dynamic carrier; only an
 			// unknown key returns a None carrier.
-			if out[0].Parent != nil && out[0].Parent.Equal(TNone) {
+			if ParentOf(&out[0]) != nil && ParentOf(&out[0]).Equal(TNone) {
 				t.Errorf("%s.%s is in the table but getMicronReturns reports it unknown (None)", leaf, m.Name)
 			}
 		}
 		// An invented member must miss (→ None), proving the leaf case exists.
 		out := getMicronReturns([]Value{NewString("zzNotAProp"), carrier}, r)
-		if !(out[0].Parent != nil && out[0].Parent.Equal(TNone)) {
+		if !(ParentOf(&out[0]) != nil && ParentOf(&out[0]).Equal(TNone)) {
 			t.Errorf("%s: unknown key did not return a None carrier (got %v)", leaf, out[0])
 		}
 	}

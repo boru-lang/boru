@@ -30,10 +30,10 @@ func TestRegisterExternalBuiltin_PluginColor(t *testing.T) {
 	}
 
 	matchFn := func(v Value, target *Type) bool {
-		if v.Parent != target {
+		if ParentOf(&v) != target {
 			return false
 		}
-		ep, ok := v.Data.(ExtensionPayload)
+		ep, ok := DataOf(&v).(ExtensionPayload)
 		if !ok {
 			return false
 		}
@@ -41,13 +41,13 @@ func TestRegisterExternalBuiltin_PluginColor(t *testing.T) {
 		return ok
 	}
 	formatFn := func(v Value) string {
-		ep, _ := v.Data.(ExtensionPayload)
+		ep, _ := DataOf(&v).(ExtensionPayload)
 		rgb, _ := ep.Body.(rgbPayload)
 		return fmt.Sprintf("#%02x%02x%02x", rgb.R, rgb.G, rgb.B)
 	}
 	equalFn := func(a, b Value) bool {
-		ea, _ := a.Data.(ExtensionPayload)
-		eb, _ := b.Data.(ExtensionPayload)
+		ea, _ := DataOf(&a).(ExtensionPayload)
+		eb, _ := DataOf(&b).(ExtensionPayload)
 		ra, _ := ea.Body.(rgbPayload)
 		rb, _ := eb.Body.(rgbPayload)
 		return ra == rb
@@ -77,14 +77,14 @@ func TestRegisterExternalBuiltin_PluginColor(t *testing.T) {
 	if tColor.Behavior() != cb {
 		t.Errorf("Behavior = %T, want funcBehavior", tColor.Behavior)
 	}
-	if tColor.Origin != OriginBuiltin {
-		t.Errorf("Origin = %v, want OriginBuiltin", tColor.Origin)
+	if OriginOf(tColor) != OriginBuiltin {
+		t.Errorf("Origin = %v, want OriginBuiltin", OriginOf(tColor))
 	}
 
 	// Construct a value of the new type and verify dispatch goes
 	// through the Behavior.
 	red := makeColor(255, 0, 0)
-	red.Parent = tColor
+	SetParent(&red, tColor)
 
 	got := tColor.Behavior().Format(red)
 	if got != "#ff0000" {
@@ -96,13 +96,13 @@ func TestRegisterExternalBuiltin_PluginColor(t *testing.T) {
 	}
 
 	red2 := makeColor(255, 0, 0)
-	red2.Parent = tColor
+	SetParent(&red2, tColor)
 	if !tColor.Behavior().Equal(red, red2) {
 		t.Error("Behavior.Equal of two identical colors returned false")
 	}
 
 	blue := makeColor(0, 0, 255)
-	blue.Parent = tColor
+	SetParent(&blue, tColor)
 	if tColor.Behavior().Equal(red, blue) {
 		t.Error("Behavior.Equal of red and blue returned true")
 	}

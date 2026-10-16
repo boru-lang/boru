@@ -39,8 +39,8 @@ func TestMerge519KeptReadSeatedLiveFnValueObserves(t *testing.T) {
 	fnCarrier := core.NewCarrier(core.TFunction)
 	for label, v := range map[string]core.Value{"fn value": fnv, "Any literal": anyLit, "Function carrier": fnCarrier} {
 		core.SetID(&v, "m519-"+strings.ReplaceAll(label, " ", "-"))
-		if label == "Any literal" && v.Parent != nil {
-			t.Fatalf("the Any type literal must have no Parent for this row, got %v", v.Parent)
+		if label == "Any literal" && core.ParentOf(&v) != nil {
+			t.Fatalf("the Any type literal must have no Parent for this row, got %v", core.ParentOf(&v))
 		}
 		es := m519PendingRead(t, v, "t")
 		before := v
@@ -51,7 +51,7 @@ func TestMerge519KeptReadSeatedLiveFnValueObserves(t *testing.T) {
 		if !strings.Contains(es.armReadCompileFailure, "the read of `t`") || !strings.Contains(es.armReadCompileFailure, "(NUR210)") {
 			t.Errorf("%s: a fn-valued live read is an observer and poisons the latch, got %q", label, es.armReadCompileFailure)
 		}
-		if v.Carrier != before.Carrier || v.Parent != before.Parent || core.IDOf(&v) != core.IDOf(&before) {
+		if core.IsCarrier(&v) != core.IsCarrier(&before) || core.ParentOf(&v) != core.ParentOf(&before) || core.IDOf(&v) != core.IDOf(&before) {
 			t.Errorf("%s: the observer arm leaves the value alone, got %+v", label, v)
 		}
 	}
@@ -69,8 +69,8 @@ func TestMerge519KeptReadSeatedLiveTypeValue(t *testing.T) {
 	if es.armReadCompileFailure != "" {
 		t.Fatalf("a type value seated live observes nothing stale, got %q", es.armReadCompileFailure)
 	}
-	if !v.Carrier || v.Parent == nil || !v.Parent.Equal(core.TType) {
-		t.Errorf("the type value becomes a Type carrier, got carrier=%v parent=%v", v.Carrier, v.Parent)
+	if !core.IsCarrier(&v) || core.ParentOf(&v) == nil || !core.ParentOf(&v).Equal(core.TType) {
+		t.Errorf("the type value becomes a Type carrier, got carrier=%v parent=%v", core.IsCarrier(&v), core.ParentOf(&v))
 	}
 	if p := v.Pos(); p.Row != 3 || p.Col != 7 {
 		t.Errorf("the read keeps its position, got %v", p)
@@ -83,15 +83,15 @@ func TestMerge519KeptReadSeatedLiveTypeValue(t *testing.T) {
 	core.SetID(&w, "m519-int")
 	es = m519PendingRead(t, w, "t")
 	es.keptReadSeatedLive(&w)
-	if es.armReadCompileFailure != "" || !w.Carrier || !w.Parent.Equal(core.TInteger) {
-		t.Errorf("a plain value becomes a carrier of its type: carrier=%v parent=%v poison=%q", w.Carrier, w.Parent, es.armReadCompileFailure)
+	if es.armReadCompileFailure != "" || !core.IsCarrier(&w) || !core.ParentOf(&w).Equal(core.TInteger) {
+		t.Errorf("a plain value becomes a carrier of its type: carrier=%v parent=%v poison=%q", core.IsCarrier(&w), core.ParentOf(&w), es.armReadCompileFailure)
 	}
 	// A value that is not the pending read is untouched.
 	x := core.NewInteger(6)
 	core.SetID(&x, "m519-other")
 	es = m519PendingRead(t, w, "t")
 	es.keptReadSeatedLive(&x)
-	if x.Carrier || es.pendingKeptRead != core.IDOf(&w) {
+	if core.IsCarrier(&x) || es.pendingKeptRead != core.IDOf(&w) {
 		t.Error("another value's seat settles nothing")
 	}
 }

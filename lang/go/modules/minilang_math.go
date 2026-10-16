@@ -233,13 +233,13 @@ func boruToMval(v native.Value) (mval, bool) {
 		return mval{}, false
 	}
 	switch {
-	case v.Parent.ConformsTo(native.TInteger):
+	case native.ParentOf(&v).ConformsTo(native.TInteger):
 		n, err := native.AsInteger(v)
 		if err != nil {
 			return mval{}, false
 		}
 		return mval{i: n, isInt: true}, true
-	case v.Parent.ConformsTo(native.TFloat):
+	case native.ParentOf(&v).ConformsTo(native.TFloat):
 		f, err := native.AsFloat(v)
 		if err != nil {
 			return mval{}, false

@@ -143,10 +143,10 @@ func TestSpecFamilyBothArmsJoin(t *testing.T) {
 		{"a legacy parameter type", fn(FnSig{Args: []*Type{TInteger}, Returns: []*Type{TAny}, BarrierPos: 1}),
 			fn(FnSig{Args: []*Type{TString}, Returns: []*Type{TAny}, BarrierPos: 1}), CommonAncestorType(TInteger, TString), TAny},
 	} {
-		declared := withDecl(*c.then.Data.(*FnDefInfo))
-		c.then.Data = &declared
+		declared := withDecl(*DataOf(&c.then).(*FnDefInfo))
+		SetData(&c.then, &declared)
 		top, noted := join(c.then, c.els, "")
-		fd, ok := FnDefOf(top.Data)
+		fd, ok := FnDefOf(DataOf(&top))
 		if !ok || noted || IDOf(&top) != IDOf(&c.then) {
 			t.Fatalf("%s: the widened then arm's fn, no transition — got %v noted=%v", c.name, top, noted)
 		}
@@ -154,16 +154,16 @@ func TestSpecFamilyBothArmsJoin(t *testing.T) {
 		if !SigArgType(&s, 0).Equal(c.arg) || !s.Returns[0].Equal(c.ret) || s.Decl != (DeclSite{}) {
 			t.Errorf("%s: want arg %v ret %v and no site, got %v %v %v", c.name, c.arg, c.ret, SigArgType(&s, 0), s.Returns[0], s.Decl)
 		}
-		if c.then.Data.(*FnDefInfo).Signatures[0].Decl == (DeclSite{}) {
+		if DataOf(&c.then).(*FnDefInfo).Signatures[0].Decl == (DeclSite{}) {
 			t.Errorf("%s: the arm's own fn keeps its site", c.name)
 		}
 	}
 	// A fallback signature rides along unwidened.
 	fb := fn(sig(TInteger, TAny, nil))
-	fbd := *fb.Data.(*FnDefInfo)
+	fbd := *DataOf(&fb).(*FnDefInfo)
 	fbd.Signatures = append(fbd.Signatures, Signature{Fallback: true})
-	fb.Data = &fbd
-	if top, _ := join(fb, s8, ""); len(top.Data.(*FnDefInfo).Signatures) != 2 || !top.Data.(*FnDefInfo).Signatures[1].Fallback {
+	SetData(&fb, &fbd)
+	if top, _ := join(fb, s8, ""); len(DataOf(&top).(*FnDefInfo).Signatures) != 2 || !DataOf(&top).(*FnDefInfo).Signatures[1].Fallback {
 		t.Errorf("the fallback rides along: got %v", top)
 	}
 	for _, c := range []struct {
@@ -200,6 +200,6 @@ func withDecl(fd FnDefInfo) FnDefInfo {
 }
 
 func isFnModel(v Value) bool {
-	_, ok := v.Data.(*FnDefInfo)
+	_, ok := DataOf(&v).(*FnDefInfo)
 	return ok
 }

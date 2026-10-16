@@ -235,7 +235,7 @@ func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 	case native.IsWord(&v):
 		w, _ := native.AsWord(&v)
 		name = w.Name
-	case v.Parent.ConformsTo(native.TString):
+	case core.ParentOf(&v).ConformsTo(native.TString):
 		name, _ = native.AsString(v)
 	case native.IsAtom(v):
 		name, _ = native.AsAtom(v)
@@ -815,7 +815,7 @@ func runSkipProp(parent *native.Registry, args []native.Value) ([]native.Value, 
 // fallback. A raw list (interpreter mode, or a body the compile declined)
 // yields tokens only, and the caller builds today's throwaway CallBoru sig.
 func storedBodyArg(arg native.Value, what string) (*native.FnSig, []native.Value, error) {
-	if fd, ok := arg.Data.(*native.FnDefInfo); ok && len(fd.Signatures) == 1 {
+	if fd, ok := core.DataOf(&arg).(*native.FnDefInfo); ok && len(fd.Signatures) == 1 {
 		if impl, isBoru := fd.Signatures[0].Impl.(*core.BoruImpl); isBoru && compiler.CompiledRef(&fd.Signatures[0]) != nil {
 			return &fd.Signatures[0], impl.Body, nil
 		}
@@ -1000,7 +1000,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 			failingIter = i
 			failingInput = input
 			failingError = native.NewError(parent.BoruError("check_prop_error",
-				fmt.Sprintf("property returned non-Boolean (%s)", propTop.Parent.String()),
+				fmt.Sprintf("property returned non-Boolean (%s)", core.ParentOf(&propTop).String()),
 				"Test.check-prop"))
 			break
 		}
@@ -1518,7 +1518,7 @@ func isTruthy(v native.Value) bool {
 	if native.IsNone(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(native.TBoolean) {
+	if core.ParentOf(&v).ConformsTo(native.TBoolean) {
 		b, _ := native.AsBoolean(v)
 		return b
 	}

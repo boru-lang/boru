@@ -68,12 +68,12 @@ func TestW4FilterReturnsFn(t *testing.T) {
 		t.Fatalf("short args = %v", out)
 	}
 	out := filterReturnsFn([]Value{fn, NewList([]Value{NewInteger(1)})}, r)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TList) {
 		t.Errorf("list input should narrow to List, got %v", out)
 	}
 	m := NewOrderedMap()
 	out = filterReturnsFn([]Value{fn, NewMap(m)}, r)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TMap) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TMap) {
 		t.Errorf("map input should narrow to Map, got %v", out)
 	}
 	out = filterReturnsFn([]Value{fn, NewInteger(5)}, r)
@@ -136,7 +136,7 @@ func TestW4ErrorFieldReturns(t *testing.T) {
 		t.Errorf("code key = %v", out)
 	}
 	if out := errorFieldReturns([]Value{NewString("message")}, r); len(out) != 1 ||
-		!out[0].Parent.ConformsTo(TString) {
+		!ParentOf(&out[0]).ConformsTo(TString) {
 		t.Errorf("message key should narrow to String, got %v", out)
 	}
 	if out := errorFieldReturns([]Value{NewAtom("payload")}, r); len(out) != 1 {
@@ -181,10 +181,10 @@ func TestW4StructReturnsFns(t *testing.T) {
 	listV := NewList([]Value{NewInteger(1)})
 
 	// mergeReturns
-	if out := mergeReturns([]Value{mapV, mapV}, r); !out[0].Parent.ConformsTo(TMap) {
+	if out := mergeReturns([]Value{mapV, mapV}, r); !ParentOf(&out[0]).ConformsTo(TMap) {
 		t.Errorf("merge map/map = %v", out)
 	}
-	if out := mergeReturns([]Value{listV, listV}, r); !out[0].Parent.ConformsTo(TList) {
+	if out := mergeReturns([]Value{listV, listV}, r); !ParentOf(&out[0]).ConformsTo(TList) {
 		t.Errorf("merge list/list = %v", out)
 	}
 	if out := mergeReturns([]Value{mapV, listV}, r); len(out) != 1 {
@@ -195,10 +195,10 @@ func TestW4StructReturnsFns(t *testing.T) {
 	}
 
 	// structDataShapeReturns
-	if out := structDataShapeReturns(0)([]Value{mapV}, r); !out[0].Parent.ConformsTo(TMap) {
+	if out := structDataShapeReturns(0)([]Value{mapV}, r); !ParentOf(&out[0]).ConformsTo(TMap) {
 		t.Errorf("shape map = %v", out)
 	}
-	if out := structDataShapeReturns(0)([]Value{listV}, r); !out[0].Parent.ConformsTo(TList) {
+	if out := structDataShapeReturns(0)([]Value{listV}, r); !ParentOf(&out[0]).ConformsTo(TList) {
 		t.Errorf("shape list = %v", out)
 	}
 	if out := structDataShapeReturns(0)([]Value{NewInteger(1)}, r); len(out) != 1 {
@@ -209,10 +209,10 @@ func TestW4StructReturnsFns(t *testing.T) {
 	}
 
 	// setpathReturns
-	if out := setpathReturns([]Value{NewString("a"), mapV, NewInteger(1)}, r); !out[0].Parent.ConformsTo(TMap) {
+	if out := setpathReturns([]Value{NewString("a"), mapV, NewInteger(1)}, r); !ParentOf(&out[0]).ConformsTo(TMap) {
 		t.Errorf("setpath path-first = %v", out)
 	}
-	if out := setpathReturns([]Value{NewInteger(9), NewString("a"), mapV}, r); !out[0].Parent.ConformsTo(TMap) {
+	if out := setpathReturns([]Value{NewInteger(9), NewString("a"), mapV}, r); !ParentOf(&out[0]).ConformsTo(TMap) {
 		t.Errorf("setpath data-last = %v", out)
 	}
 	if out := setpathReturns([]Value{NewInteger(1), NewInteger(2), NewInteger(3)}, r); len(out) != 1 {
@@ -224,7 +224,7 @@ func TestW4StructReturnsFns(t *testing.T) {
 
 	// reifyReturns
 	if out := reifyReturns([]Value{NewTypeLiteral(TInteger), mapV}, r); len(out) != 1 ||
-		!out[0].Parent.ConformsTo(TInteger) {
+		!ParentOf(&out[0]).ConformsTo(TInteger) {
 		t.Errorf("reify bare type = %v", out)
 	}
 	if out := reifyReturns([]Value{NewCarrier(TAny), mapV}, r); len(out) != 1 {
@@ -285,7 +285,7 @@ func TestW4ParseTextWord(t *testing.T) {
 	}
 	// parseTextReturns folds a concrete parse and falls back otherwise.
 	if out := parseTextReturns([]Value{NewString(`[1 2]`)}, r); len(out) != 1 ||
-		!out[0].Parent.ConformsTo(TList) {
+		!ParentOf(&out[0]).ConformsTo(TList) {
 		t.Errorf("parseTextReturns concrete = %v", out)
 	}
 	if out := parseTextReturns([]Value{NewString(`{{{`)}, r); len(out) != 1 {
@@ -374,7 +374,7 @@ func TestW4SizeAndCloneReturns(t *testing.T) {
 		t.Errorf("cloneReturnsFn argc = %v", out)
 	}
 	if out := cloneReturnsFn([]Value{NewInteger(1)}, r); len(out) != 1 ||
-		!out[0].Parent.ConformsTo(TInteger) {
+		!ParentOf(&out[0]).ConformsTo(TInteger) {
 		t.Errorf("cloneReturnsFn should preserve the input type: %v", out)
 	}
 }

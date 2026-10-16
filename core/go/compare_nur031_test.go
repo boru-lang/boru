@@ -359,10 +359,10 @@ func TestNUR031DeqKeyClassification(t *testing.T) {
 		moduleDescVal(&ModuleDesc{ID: "m"}),
 	} {
 		if _, c := DeqKey(v); c != DeqUnkeyed {
-			t.Errorf("handle %T must be DeqUnkeyed, got class %d", v.Data, c)
+			t.Errorf("handle %T must be DeqUnkeyed, got class %d", DataOf(&v), c)
 		}
 		if deqFam(v) == "" {
-			t.Errorf("handle %T must have a deq family", v.Data)
+			t.Errorf("handle %T must have a deq family", DataOf(&v))
 		}
 	}
 	// The word arm answers on BOTH sides of the family, and the arms

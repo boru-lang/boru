@@ -54,8 +54,8 @@ func (wordCompareBehavior) formatDelegate()    {}
 // then picks the appropriate branch (litVsLitOrder for both-
 // literal, the family's value compare for both-concrete).
 func litVsConcreteOrder(a, b Value) (int, bool) {
-	aLit := a.Data == nil && !a.Carrier
-	bLit := b.Data == nil && !b.Carrier
+	aLit := DataOf(&a) == nil && !IsCarrier(&a)
+	bLit := DataOf(&b) == nil && !IsCarrier(&b)
 	if aLit && !bLit {
 		return -1, true
 	}
@@ -102,7 +102,7 @@ func scalarCmpPrologue(a, b Value) (result int, done bool, err error) {
 	if c, ok := litVsConcreteOrder(a, b); ok {
 		return c, true, nil
 	}
-	if a.Data == nil && b.Data == nil {
+	if DataOf(&a) == nil && DataOf(&b) == nil {
 		return litVsLitOrder(a, b), true, nil
 	}
 	return 0, false, nil
@@ -145,7 +145,7 @@ func (numberCompareBehavior) Compare(a, b Value) (int, error) {
 	// and breaks the sort order. Only the Integer/Integer case is exact in
 	// int64; a Float on either side keeps the float projection, where the
 	// float is already the honest representation of that operand.
-	if a.Parent.ConformsTo(TInteger) && b.Parent.ConformsTo(TInteger) {
+	if ParentOf(&a).ConformsTo(TInteger) && ParentOf(&b).ConformsTo(TInteger) {
 		ai, _ := AsInteger(a)
 		bi, _ := AsInteger(b)
 		switch {
@@ -220,7 +220,7 @@ func signedZeroOrder(a, b Value) int {
 // Big zeros (0n0, 0d0 — including a BigDecimal negative-zero spelling)
 // are not Floats and slot as +0.
 func isNegZeroFloat(v *Value) bool {
-	if !v.Parent.ConformsTo(TFloat) {
+	if !ParentOf(v).ConformsTo(TFloat) {
 		return false
 	}
 	f, err := AsFloat(*v)
@@ -229,7 +229,7 @@ func isNegZeroFloat(v *Value) bool {
 
 // numIsBig reports whether v is an arbitrary-precision numeric leaf.
 func numIsBig(v Value) bool {
-	return v.Parent.ConformsTo(TBigInteger) || v.Parent.ConformsTo(TBigDecimal)
+	return ParentOf(&v).ConformsTo(TBigInteger) || ParentOf(&v).ConformsTo(TBigDecimal)
 }
 
 // toRatExact projects a finite numeric value to an exact *big.Rat:
@@ -242,7 +242,7 @@ func numIsBig(v Value) bool {
 // or a non-number.
 func toRatExact(v Value) (*big.Rat, bool) {
 	switch {
-	case v.Parent.ConformsTo(TBigDecimal):
+	case ParentOf(&v).ConformsTo(TBigDecimal):
 		d, err := AsBigDecimal(v)
 		if err != nil {
 			return nil, false
@@ -251,19 +251,19 @@ func toRatExact(v Value) (*big.Rat, bool) {
 		// non-finite BigDecimal correctly returns ok=false here.
 		r, ok := new(big.Rat).SetString(d.Text('f'))
 		return r, ok
-	case v.Parent.ConformsTo(TBigInteger):
+	case ParentOf(&v).ConformsTo(TBigInteger):
 		n, err := AsBigInteger(v)
 		if err != nil {
 			return nil, false
 		}
 		return new(big.Rat).SetInt(n), true
-	case v.Parent.ConformsTo(TFloat):
+	case ParentOf(&v).ConformsTo(TFloat):
 		f, err := AsFloat(v)
 		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 			return nil, false
 		}
 		return new(big.Rat).SetFloat64(f), true
-	case v.Parent.ConformsTo(TInteger):
+	case ParentOf(&v).ConformsTo(TInteger):
 		n, err := AsInteger(v)
 		if err != nil {
 			return nil, false
@@ -291,7 +291,7 @@ func compareNonFiniteFloat(a, b Value) (int, bool) {
 // nonFiniteRank returns +1 for NaN/+Inf, -1 for -Inf, and ok=false when v
 // is not a non-finite Float.
 func nonFiniteRank(v Value) (int, bool) {
-	if !v.Parent.ConformsTo(TFloat) {
+	if !ParentOf(&v).ConformsTo(TFloat) {
 		return 0, false
 	}
 	f, err := AsFloat(v)
@@ -431,7 +431,7 @@ func comparePathons(a, b Value) int {
 		// Two type literals (both Data==nil) or two non-Pathon
 		// concretes — fall back to lattice identity then to
 		// rendered form.
-		if a.Data == nil && b.Data == nil {
+		if DataOf(&a) == nil && DataOf(&b) == nil {
 			return litVsLitOrder(a, b)
 		}
 		return strings.Compare(a.String(), b.String())

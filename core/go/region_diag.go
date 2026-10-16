@@ -26,8 +26,8 @@ func ReorderCandidates(stack []Value) []Value {
 	for i := len(stack) - 1; i >= 0 && len(vals) < 4; i-- {
 		v := stack[i]
 		if IsOpenParen(&v) || IsForward(&v) || IsWord(&v) || IsEnd(&v) ||
-			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
-			v.Parent.ConformsTo(TInternal) {
+			ParentOf(&v).ConformsTo(TMark) || ParentOf(&v).ConformsTo(TMove) ||
+			ParentOf(&v).ConformsTo(TInternal) {
 			break
 		}
 		vals = append(vals, v)

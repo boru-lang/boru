@@ -29,7 +29,7 @@ type IdealConverter interface {
 // Parent chain for the nearest IdealConverter. Falls back to an empty Map
 // when nothing in the chain converts (the Ideal root always does).
 func ConvertIdealToMap(v Value) (Value, error) {
-	for t := ValueType(v); t != nil; t = t.Parent {
+	for t := ValueType(v); t != nil; t = ParentOf(t) {
 		c, ok := t.Behavior().(IdealConverter)
 		if !ok {
 			continue
@@ -45,7 +45,7 @@ func ConvertIdealToMap(v Value) (Value, error) {
 
 // ConvertIdealToList converts an Ideal value to a List by the same walk.
 func ConvertIdealToList(v Value) (Value, error) {
-	for t := ValueType(v); t != nil; t = t.Parent {
+	for t := ValueType(v); t != nil; t = ParentOf(t) {
 		c, ok := t.Behavior().(IdealConverter)
 		if !ok {
 			continue
@@ -290,7 +290,7 @@ func (tableConvertBehavior) matchesAsDefault()           {}
 func (tableConvertBehavior) Equal(a, b Value) bool       { return DefaultBehavior.Equal(a, b) }
 func (tableConvertBehavior) Format(v Value) string       { return kernelFormatDefault(v) }
 func (tableConvertBehavior) ToList(v Value) (Value, error) {
-	td, ok := v.Data.(TableData)
+	td, ok := DataOf(&v).(TableData)
 	if !ok {
 		return NewList(nil), nil
 	}
@@ -298,7 +298,7 @@ func (tableConvertBehavior) ToList(v Value) (Value, error) {
 }
 func (tableConvertBehavior) ToMap(v Value) (Value, error) {
 	out := NewOrderedMap()
-	td, ok := v.Data.(TableData)
+	td, ok := DataOf(&v).(TableData)
 	if !ok || td.Record.Fields == nil {
 		return NewMap(out), nil
 	}

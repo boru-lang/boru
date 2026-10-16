@@ -82,7 +82,7 @@ func TestNUR254RecordUndecidedApply(t *testing.T) {
 		return e, rec, err
 	}
 	e, rec, err := run(true)
-	if err != nil || rec.calls != 1 || e.Tape.Len() != 2 || e.Pointer != 2 || !e.Tape.At(1).Carrier || !ExactEqual(e.Tape.At(0), NewInteger(9)) {
+	if err != nil || rec.calls != 1 || e.Tape.Len() != 2 || e.Pointer != 2 || !IsCarrier(addrOf(e.Tape.At(1))) || !ExactEqual(e.Tape.At(0), NewInteger(9)) {
 		t.Fatalf("recorded: want [9 result] with the pointer past it, got %v pointer=%d calls=%d err=%v", renderAll(e.Tape.Snapshot()), e.Pointer, rec.calls, err)
 	}
 	if e.Registry.Check.AmbiguousGradualSplit {

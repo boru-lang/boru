@@ -156,7 +156,7 @@ func TestDrivenLoopRunsOnTheTape(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("inert input: %s / %v", renderAll(out), err)
 	}
-	if lst, _ := AsList(out[0]); lst.Len() != 1 || !lst.Get(0).Parent.Equal(TFunction) {
+	if lst, _ := AsList(out[0]); lst.Len() != 1 || !ParentOf(addrOf(lst.Get(0))).Equal(TFunction) {
 		t.Fatalf("inert input: the element was not kept as the fn value: %s", renderAll(out))
 	}
 }
@@ -526,7 +526,7 @@ func TestCallRegion(t *testing.T) {
 	// A Function-valued input is inert: the body sees the value, unapplied.
 	fnv := NewFunction(FnDefInfo{Name: "fv"})
 	out, err = NewTop(r).Run(tlCall("tcall", NewList([]Value{}), fnv))
-	if err != nil || len(out) != 1 || !out[0].Parent.Equal(TFunction) {
+	if err != nil || len(out) != 1 || !ParentOf(&out[0]).Equal(TFunction) {
 		t.Fatalf("inert input: %s / %v", renderAll(out), err)
 	}
 	// A break inside the body is the enclosing loop's.

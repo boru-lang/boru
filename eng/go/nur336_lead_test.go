@@ -62,9 +62,9 @@ func TestPlacesAlone(t *testing.T) {
 	seven := core.NewInteger(7)
 	two := []core.Value{seven, seven}
 	twoSigs := n336Fn("f", core.TAny)
-	fd := *twoSigs.Data.(*core.FnDefInfo)
+	fd := *core.DataOf(&twoSigs).(*core.FnDefInfo)
 	fd.Signatures = append(fd.Signatures, fd.Signatures[0])
-	twoSigs.Data = &fd
+	core.SetData(&twoSigs, &fd)
 	for _, c := range []struct {
 		name  string
 		v     core.Value
@@ -139,11 +139,11 @@ func TestNamedLeadPlaces(t *testing.T) {
 		t.Errorf("the name's call, then its values: %v %v", res, err)
 	}
 	raising := n336Fn("g")
-	fd := raising.Data.(*core.FnDefInfo)
+	fd := core.DataOf(&raising).(*core.FnDefInfo)
 	fd.Signatures[0].Impl = core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 		return nil, fmt.Errorf("boom")
 	})
-	raising.Data = fd
+	core.SetData(&raising, fd)
 	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(7), raising}, seam7Dbg, 0); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("the name's call raising: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestSubstIslandLeadArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	toks, _ = core.AsParenExpr(&got[0])
-	if _, ok := toks[0].Data.(*core.FnDefInfo); !ok || !core.IsApplied(&toks[0]) {
+	if _, ok := core.DataOf(&toks[0]).(*core.FnDefInfo); !ok || !core.IsApplied(&toks[0]) {
 		t.Errorf("the name's call of a fn of none: %v", toks)
 	}
 	if _, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0, 0}, Span: 1, Src: guard, Placed: true, Named: true}}, []core.Value{lead}, 0, nil, seam7Dbg, 0); err == nil {

@@ -42,7 +42,7 @@ var ErrNoTruther = errors.New("no truther")
 // report one — so the choice is between a wrong answer and the built-in
 // reading, and the built-in reading is the safer of the two.
 func truthinessOf(v Value) (result bool, ok bool) {
-	for t := ValueType(v); t != nil; t = t.Parent {
+	for t := ValueType(v); t != nil; t = ParentOf(t) {
 		tr, is := t.Behavior().(Truther)
 		if !is {
 			continue

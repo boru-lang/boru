@@ -34,9 +34,9 @@ func sameRegistryAnonFnValue(t *testing.T, r *Registry, name string, fnBody Valu
 	if !ok {
 		t.Fatalf("%s not defined", name)
 	}
-	fd, ok := FnDefCopy(fnVal.Data)
+	fd, ok := FnDefCopy(DataOf(&fnVal))
 	if !ok {
-		t.Fatalf("%s is not a FnDefInfo (got %T)", name, fnVal.Data)
+		t.Fatalf("%s is not a FnDefInfo (got %T)", name, DataOf(&fnVal))
 	}
 	fd.Name = ""
 	fd.Anonymous = true
@@ -191,7 +191,7 @@ func TestFnValueCrossRegistrySpliceArms(t *testing.T) {
 		zero := sameRegistryAnonFnValue(t, other, "xr0", NewList([]Value{
 			NewList(nil), NewList([]Value{NewWord("Integer")}), NewList([]Value{NewInteger(30)}),
 		}))
-		fd := *zero.Data.(*FnDefInfo)
+		fd := *DataOf(&zero).(*FnDefInfo)
 		fd.Name = "xr0named" // 0-arg dispatch requires a NAMED value (anonymous stays data)
 		fd.Anonymous = false
 		res := runBoru(t, r, []Value{NewFunction(fd), NewEnd()})

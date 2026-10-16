@@ -16,7 +16,7 @@ import (
 
 func TestS6aJoinedElementCarrierNilMapPayload(t *testing.T) {
 	m := core.NewMap(core.NewOrderedMap())
-	m.Data = core.MapPayload{M: nil}
+	core.SetData(&m, core.MapPayload{M: nil})
 	if _, ok := joinedElementCarrier(m); ok {
 		t.Error("nil-backed MapPayload must decline")
 	}
@@ -93,7 +93,7 @@ func TestS6aScalarFoldOperandDeclinesContainers(t *testing.T) {
 		core.NewInteger(0), core.NewString("s"), core.NewBoolean(false), core.NewAtom("a"),
 	} {
 		if !ScalarFoldOperand(v) {
-			t.Errorf("%s must remain a scalar fold operand", v.Parent)
+			t.Errorf("%s must remain a scalar fold operand", core.ParentOf(&v))
 		}
 	}
 }
@@ -176,7 +176,7 @@ func TestS6aBodyFreeForFallbackLiteralAndTypeWords(t *testing.T) {
 
 func strictDisjunct(alts ...core.Value) core.Value {
 	d := core.NewDisjunct(alts)
-	d.Carrier = true
+	core.SetCarrier(&d, true)
 	return d
 }
 
@@ -313,11 +313,11 @@ func TestS6aReturnsFreshInstanceParameterlessSchemaNonConcreteData(t *testing.T)
 	if len(out) != 1 {
 		t.Fatalf("out len = %d, want 1", len(out))
 	}
-	if !out[0].Parent.Equal(core.TMap) || !core.IsDynamic(&out[0]) {
+	if !core.ParentOf(&out[0]).Equal(core.TMap) || !core.IsDynamic(&out[0]) {
 		t.Errorf("want a dynamic Map carrier riding the field schema, got %+v", out[0])
 	}
-	if _, ok := out[0].Data.(core.RecordTypeInfo); !ok {
-		t.Errorf("want RecordTypeInfo payload, got %T", out[0].Data)
+	if _, ok := core.DataOf(&out[0]).(core.RecordTypeInfo); !ok {
+		t.Errorf("want RecordTypeInfo payload, got %T", core.DataOf(&out[0]))
 	}
 }
 
@@ -344,7 +344,7 @@ func TestS6aJoinCarriersWidthCapCollapses(t *testing.T) {
 	a := mk(1, 5)
 	b := mk(6, 10)
 	got := core.JoinCarriersInner(a, b)
-	if !got.Carrier || !got.Parent.Equal(core.TInteger) || core.IsDisjunct(&got) {
+	if !core.IsCarrier(&got) || !core.ParentOf(&got).Equal(core.TInteger) || core.IsDisjunct(&got) {
 		t.Errorf("10 alternatives must collapse to a plain Integer carrier, got %+v", got)
 	}
 }
@@ -446,7 +446,7 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 		t.Fatalf("summary len = %d, want 1", len(got))
 	}
 	// The refined hypothesis must cover BOTH rounds' types.
-	if got[0].Parent.Equal(core.TInteger) && !core.IsDisjunct(&got[0]) {
+	if core.ParentOf(&got[0]).Equal(core.TInteger) && !core.IsDisjunct(&got[0]) {
 		t.Errorf("summary did not widen past round 1: %+v", got[0])
 	}
 }

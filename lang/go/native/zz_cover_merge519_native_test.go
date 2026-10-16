@@ -14,15 +14,15 @@ import (
 // negative twin is a plain value, whose residual is a carrier of its own type.
 func TestMerge519CloneReturnsTypeLiteral(t *testing.T) {
 	out := cloneReturnsFn([]Value{NewTypeLiteral(TInteger)}, nil)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(TType) {
+	if len(out) != 1 || !IsCarrier(&out[0]) || !ParentOf(&out[0]).Equal(TType) {
 		t.Fatalf("clone of a type literal must type as a Type carrier, got %v", out)
 	}
-	if out[0].Parent.Equal(TInteger.Parent) {
-		t.Errorf("clone of Integer must not type as its Parent %v", TInteger.Parent)
+	if ParentOf(&out[0]).Equal(ParentOf(TInteger)) {
+		t.Errorf("clone of Integer must not type as its Parent %v", ParentOf(TInteger))
 	}
 
 	out = cloneReturnsFn([]Value{NewInteger(5)}, nil)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(TInteger) {
+	if len(out) != 1 || !IsCarrier(&out[0]) || !ParentOf(&out[0]).Equal(TInteger) {
 		t.Errorf("clone of 5 must type as an Integer carrier, got %v", out)
 	}
 }
@@ -49,7 +49,7 @@ func TestMerge519BehaveReturnsSeesOnlyConcreteCheckCalls(t *testing.T) {
 		t.Fatalf("run %q: %v", src, err)
 	}
 	fnVal, ok := r.Defs.Top("mk")
-	if !ok || !fnVal.Parent.Equal(TFunction) {
+	if !ok || !ParentOf(&fnVal).Equal(TFunction) {
 		t.Fatalf("mk must bind a fn value, got %v (ok=%v)", fnVal, ok)
 	}
 	pType := r.LookupTypeName("P")

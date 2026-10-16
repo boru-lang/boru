@@ -43,7 +43,7 @@ func TestSameContainerIsIdentityWithTag(t *testing.T) {
 	if SameContainer(NewInteger(1), NewInteger(1)) {
 		t.Error("a scalar has no container identity")
 	}
-	nilParent := Value{Data: MapPayload{M: NewOrderedMap()}}
+	nilParent := MakeValue(nil, MapPayload{M: NewOrderedMap()})
 	if SameContainer(nilParent, nilParent) {
 		t.Error("a value with no tag has no container identity to compare")
 	}

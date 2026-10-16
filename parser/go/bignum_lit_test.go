@@ -24,7 +24,7 @@ func TestParseBigIntegerLiteral(t *testing.T) {
 			t.Errorf("Parse(%q) error: %v", src, err)
 			continue
 		}
-		if len(got) != 1 || !got[0].Parent.ConformsTo(core.TBigInteger) {
+		if len(got) != 1 || !core.ParentOf(&got[0]).ConformsTo(core.TBigInteger) {
 			t.Errorf("Parse(%q): expected one BigInteger, got %v", src, got)
 			continue
 		}
@@ -46,7 +46,7 @@ func TestParseBigDecimalLiteralDotSplit(t *testing.T) {
 			t.Errorf("Parse(%q) error: %v", src, err)
 			continue
 		}
-		if len(got) != 1 || !got[0].Parent.ConformsTo(core.TBigDecimal) {
+		if len(got) != 1 || !core.ParentOf(&got[0]).ConformsTo(core.TBigDecimal) {
 			t.Errorf("Parse(%q): expected one BigDecimal, got %v", src, got)
 		}
 	}
@@ -58,7 +58,7 @@ func TestParseBigDecimalLiteralDotSplit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse(0d5.foo) error: %v", err)
 	}
-	if len(got) != 1 || got[0].Parent.ConformsTo(core.TNumber) {
+	if len(got) != 1 || core.ParentOf(&got[0]).ConformsTo(core.TNumber) {
 		t.Errorf("0d5.foo: expected one non-number (reach) value, got %v", got)
 	}
 	if got[0].String() != "0d5.foo" {

@@ -54,7 +54,7 @@ func pretty(sb *strings.Builder, form *StackForm, depth int) {
 
 func writeLiteral(sb *strings.Builder, v core.Value) {
 	// Strings need quoting; everything else relies on Value.String().
-	if v.Parent != nil && v.Parent.ConformsTo(core.TString) {
+	if core.ParentOf(&v) != nil && core.ParentOf(&v).ConformsTo(core.TString) {
 		s, err := core.AsString(v)
 		if err == nil {
 			fmt.Fprintf(sb, "%q", s)

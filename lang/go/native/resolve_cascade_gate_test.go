@@ -56,7 +56,7 @@ func TestGetResourceReturnsDeclineArms(t *testing.T) {
 	}
 	// Absent field: reads as None (the schema is closed).
 	out = getResourceReturns([]Value{NewString("nope"), inst}, r)
-	if len(out) != 1 || !out[0].Carrier || !out[0].Parent.Equal(TNone) {
+	if len(out) != 1 || !IsCarrier(&out[0]) || !ParentOf(&out[0]).Equal(TNone) {
 		t.Fatalf("an absent field must read as a None carrier, got %v", out)
 	}
 }

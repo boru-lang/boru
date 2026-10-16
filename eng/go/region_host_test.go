@@ -168,7 +168,7 @@ func TestRegionHostResolvesFnCarrierUnderAnalysis(t *testing.T) {
 	}
 	end := reg.Check.Begin()
 	defer end()
-	if v, ok := h.DefTop("f"); !ok || !v.Carrier || !v.Parent.ConformsTo(core.TFunction) {
+	if v, ok := h.DefTop("f"); !ok || !core.IsCarrier(v) || !core.ParentOf(v).ConformsTo(core.TFunction) {
 		t.Errorf("under analysis the table-bound carrier resolves: %v/%v", v, ok)
 	}
 	if _, ok := h.DefTop("zz"); ok {
@@ -234,7 +234,7 @@ func TestRegionHostClassificationsFollowTheRegistry(t *testing.T) {
 	vTok := core.NewWord("f")
 	if wi, err := core.AsWord(&vTok); err == nil {
 		wi.ForceVal = true
-		vTok.Data = wi
+		core.SetData(&vTok, wi)
 	}
 	if h.IsFnWordBarrier(vTok) {
 		t.Error("`f/v` parks the fn as data and must NOT be a barrier")

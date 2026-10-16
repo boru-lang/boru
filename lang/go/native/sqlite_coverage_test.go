@@ -178,7 +178,7 @@ func TestBoruValueToSQLParam(t *testing.T) {
 	}
 
 	// None type
-	got = boruValueToSQLParam(Value{Parent: TNone}, TString)
+	got = boruValueToSQLParam(MakeValue(TNone, nil), TString)
 	if got != nil {
 		t.Errorf("expected nil for None, got %v", got)
 	}
@@ -285,8 +285,8 @@ func TestSQLiteCloseNilDB(t *testing.T) {
 func TestSqlResultToBoruValue(t *testing.T) {
 	// nil
 	v := sqlResultToBoruValue(nil, TString)
-	if !v.Parent.Equal(TNone) {
-		t.Errorf("expected none, got %s", v.Parent)
+	if !ParentOf(&v).Equal(TNone) {
+		t.Errorf("expected none, got %s", ParentOf(&v))
 	}
 
 	// Integer

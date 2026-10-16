@@ -41,7 +41,7 @@ func TestProvenWindowMatch(t *testing.T) {
 	shape := NewOrderedMap()
 	shape.Set("a", NewCarrier(TInteger))
 	mapCarrier := NewMap(shape)
-	mapCarrier.Carrier = true
+	SetCarrier(&mapCarrier, true)
 	mapSig := FnSig{Params: []FnParam{{Name: "m", Type: TMap, Pattern: &mapPat}}, Returns: []*Type{TAny}}
 	if MatchFnSig(fnOf(mapSig), []Value{mapCarrier}) == nil {
 		t.Fatal("the map pattern must admit the shaped carrier by open unification")

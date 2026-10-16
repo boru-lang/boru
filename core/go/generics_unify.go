@@ -101,7 +101,7 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 	if r == nil {
 		return v
 	}
-	mp, ok := v.Data.(MapPayload)
+	mp, ok := DataOf(&v).(MapPayload)
 	if !ok || mp.M == nil {
 		return v
 	}
@@ -142,7 +142,7 @@ func ResolveSigRecordFields(r *Registry, v Value) Value {
 func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
 	w, werr := AsWord(&fv)
 	if werr != nil {
-		if _, isMap := fv.Data.(MapPayload); isMap {
+		if _, isMap := DataOf(&fv).(MapPayload); isMap {
 			nested := ResolveSigRecordFields(r, fv)
 			return nested, !ExactEqual(nested, fv)
 		}
@@ -351,8 +351,8 @@ func InferGenBindings(spec *GenSpecInfo, params []FnParam, args []Value) map[str
 		arg := args[i]
 		// Placeholder param slot: T binds the arg's own type.
 		if name := TypeParamName(p.Type); name != "" {
-			if arg.Parent != nil {
-				b.merge(name, NewTypeLiteral(arg.Parent))
+			if ParentOf(&arg) != nil {
+				b.merge(name, NewTypeLiteral(ParentOf(&arg)))
 			}
 			continue
 		}
@@ -388,24 +388,24 @@ func inferFromChildPattern(b *genBinder, pattern, arg Value) {
 			switch {
 			case IsBareTypeNode(&aci.Child):
 				b.merge(name, aci.Child)
-			case aci.Child.Parent != nil:
-				b.merge(name, NewTypeLiteral(aci.Child.Parent))
+			case ParentOf(&aci.Child) != nil:
+				b.merge(name, NewTypeLiteral(ParentOf(&aci.Child)))
 			}
 		}
-	case arg.Parent != nil && arg.Parent.Equal(TList) && IsConcrete(&arg):
+	case ParentOf(&arg) != nil && ParentOf(&arg).Equal(TList) && IsConcrete(&arg):
 		if lst, lerr := AsList(arg); lerr == nil {
 			for j := 0; j < lst.Len(); j++ {
 				el := lst.Get(j)
-				if el.Parent != nil {
-					b.merge(name, NewTypeLiteral(el.Parent))
+				if ParentOf(&el) != nil {
+					b.merge(name, NewTypeLiteral(ParentOf(&el)))
 				}
 			}
 		}
-	case arg.Parent != nil && arg.Parent.Equal(TMap) && IsConcrete(&arg):
+	case ParentOf(&arg) != nil && ParentOf(&arg).Equal(TMap) && IsConcrete(&arg):
 		if m, merr := AsMap(arg); merr == nil && m != nil {
 			for _, k := range m.Keys() {
-				if v, ok := m.Get(k); ok && v.Parent != nil {
-					b.merge(name, NewTypeLiteral(v.Parent))
+				if v, ok := m.Get(k); ok && ParentOf(&v) != nil {
+					b.merge(name, NewTypeLiteral(ParentOf(&v)))
 				}
 			}
 		}
@@ -424,7 +424,7 @@ func InferSchemaBindings(info *TypeSchemaInfo, body Value) map[string]Value {
 	}
 	b := newGenBinder(info.Params)
 	fields := schemaFields(info)
-	if fields == nil || body.Parent == nil || !body.Parent.Equal(TMap) || !IsConcrete(&body) {
+	if fields == nil || ParentOf(&body) == nil || !ParentOf(&body).Equal(TMap) || !IsConcrete(&body) {
 		return b.bindings
 	}
 	bm, err := AsMap(body)
@@ -441,8 +441,8 @@ func InferSchemaBindings(info *TypeSchemaInfo, body Value) map[string]Value {
 		// construction as the placeholder literal (fields resolve while
 		// the gen bindings are live) or, defensively, a raw Word.
 		if pname := paramNameOf(c); pname != "" && b.isParam[pname] {
-			if v.Parent != nil {
-				b.merge(pname, NewTypeLiteral(v.Parent))
+			if ParentOf(&v) != nil {
+				b.merge(pname, NewTypeLiteral(ParentOf(&v)))
 			}
 			continue
 		}
@@ -518,11 +518,11 @@ func GenBindingCarrier(r *Registry, b Value) Value {
 	}
 	if IsDisjunct(&b) {
 		c := b
-		c.Carrier = true
+		SetCarrier(&c, true)
 		return c
 	}
-	if b.Parent != nil {
-		return NewCarrier(b.Parent)
+	if ParentOf(&b) != nil {
+		return NewCarrier(ParentOf(&b))
 	}
 	return NewCarrier(TAny)
 }
@@ -551,7 +551,7 @@ func InstallGenBindingMap(r *Registry, spec *GenSpecInfo, bindings map[string]Va
 		}
 		node := typeArgNode(b)
 		if node == nil {
-			node = b.Parent
+			node = ParentOf(&b)
 		}
 		r.Defs.PushType(p.Name, NodeOf(node), b)
 		installed = append(installed, p.Name)

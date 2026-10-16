@@ -165,7 +165,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("map vs Node literal must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TMap) {
+	if ParentOf(&got) == nil || !ParentOf(&got).Equal(TMap) {
 		t.Fatalf("expected a Map result, got %v", got)
 	}
 
@@ -175,7 +175,7 @@ func TestX5UnifyNodeLiteralFamilies(t *testing.T) {
 	if !ok {
 		t.Fatal("Node literal vs list must unify")
 	}
-	if got.Parent == nil || !got.Parent.Equal(TList) {
+	if ParentOf(&got) == nil || !ParentOf(&got).Equal(TList) {
 		t.Fatalf("expected a List result, got %v", got)
 	}
 
@@ -215,7 +215,7 @@ func TestX5UnifyObjectTypeInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instance vs its object type: %v", err)
 	}
-	if !got.Parent.Equal(node) {
+	if !ParentOf(&got).Equal(node) {
 		t.Fatalf("expected the instance back, got %v", got)
 	}
 }
@@ -503,7 +503,7 @@ func TestX5ReparentSwappedElem(t *testing.T) {
 
 	// A swap reparents the source to the literal's node itself.
 	got := reparentSwappedElem(src, lit)
-	if n, _ := AsInteger(got); n != 5 || got.Parent != TInteger {
+	if n, _ := AsInteger(got); n != 5 || ParentOf(&got) != TInteger {
 		t.Fatalf("expected the source payload under the node, got %v", got)
 	}
 

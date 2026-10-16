@@ -285,7 +285,7 @@ func TestUninstallFnSigs(t *testing.T) {
 	if len(stack) != 1 {
 		t.Fatalf("after undef: stack depth = %d", len(stack))
 	}
-	fd, _ := FnDefOf(stack[0].Data)
+	fd, _ := FnDefOf(DataOf(&stack[0]))
 	if len(fd.OwnSigs()) != 1 || !fd.OwnSigs()[0].Params[0].Type.Equal(TInteger) {
 		t.Errorf("wrong entry removed: %+v", *fd)
 	}
@@ -324,13 +324,13 @@ func TestCowSetPropagatesThroughStores(t *testing.T) {
 	child := &StoreInstanceInfo{TypeName: root.TypeName, Data: map[string]Value{}}
 	CowSet(r.Contexts.Top(), "child", NewStoreValue(nil, child), r)
 	liveChild, _ := r.Contexts.Top().Get("child")
-	cs, ok := liveChild.Data.(*StoreInstanceInfo)
+	cs, ok := DataOf(&liveChild).(*StoreInstanceInfo)
 	if !ok {
 		t.Fatalf("child not a store: %v", liveChild)
 	}
 	CowSet(cs, "inner", NewInteger(42), r)
 	reread, _ := r.Contexts.Top().Get("child")
-	rs, _ := reread.Data.(*StoreInstanceInfo)
+	rs, _ := DataOf(&reread).(*StoreInstanceInfo)
 	if rs == nil {
 		t.Fatal("child store lost after nested COW")
 	}

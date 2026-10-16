@@ -144,7 +144,7 @@ func ModuleExportAbsenceStable(r *Registry, args []Value) bool {
 	for _, a := range args {
 		if IsModuleFamilyValue(a) {
 			if ModuleNSOf(a) != nil && fields == nil {
-				if mp, ok := a.Data.(MapPayload); ok && mp.M != nil {
+				if mp, ok := DataOf(&a).(MapPayload); ok && mp.M != nil {
 					fields = mp.M
 					continue
 				}

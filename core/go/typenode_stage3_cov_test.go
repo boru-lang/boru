@@ -152,7 +152,7 @@ func TestS3FnUndefUnifierNodeArms(t *testing.T) {
 	}
 	// Carrier over-approximation: a Function carrier is admissible, a
 	// String carrier provably is not.
-	if out, err := u.Unify(node, NewCarrier(TFunction), nil); err != nil || !out.Carrier {
+	if out, err := u.Unify(node, NewCarrier(TFunction), nil); err != nil || !IsCarrier(&out) {
 		t.Errorf("a Function carrier is admissible against the shape node: %v", err)
 	}
 	if _, err := u.Unify(NewCarrier(TString), node, nil); err == nil {
@@ -284,7 +284,7 @@ func TestS3AnyInputPredicateMintsUnderFunction(t *testing.T) {
 		t.Fatalf("install any-input predicate: %v", err)
 	}
 	e, _ := r.Defs.TopEntry("S3Gate")
-	if e.TypeDef == nil || !e.TypeDef.Parent.Equal(TFunction) {
+	if e.TypeDef == nil || !ParentOf(e.TypeDef).Equal(TFunction) {
 		t.Fatalf("an Any-input predicate mints under Function, got %v", e.TypeDef)
 	}
 }

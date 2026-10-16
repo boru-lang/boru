@@ -457,7 +457,7 @@ func TestEngineFnCatterPrefixOnly(t *testing.T) {
 		NewWord("def"), NewWord("catter"), NewWord("fn"), fnBody, NewEnd(),
 		NewString("a"), NewInteger(1), NewWord("catter"),
 	})
-	if len(result) != 1 || !result[0].Parent.ConformsTo(TString) {
+	if len(result) != 1 || !ParentOf(&result[0]).ConformsTo(TString) {
 		t.Errorf("1 'a' catter = %v, want string result", result)
 	}
 }
@@ -479,7 +479,7 @@ func TestEngineFnCatterPartialForward(t *testing.T) {
 		NewWord("def"), NewWord("catter"), NewWord("fn"), fnBody, NewEnd(),
 		NewWord("catter"), NewInteger(2), NewString("b"),
 	})
-	if len(result) != 1 || !result[0].Parent.ConformsTo(TString) {
+	if len(result) != 1 || !ParentOf(&result[0]).ConformsTo(TString) {
 		t.Errorf("2 catter 'b' = %v, want string result", result)
 	}
 }
@@ -501,7 +501,7 @@ func TestEngineFnCatterFullForward(t *testing.T) {
 		NewWord("def"), NewWord("catter"), NewWord("fn"), fnBody, NewEnd(),
 		NewWord("catter"), NewInteger(3), NewString("c"),
 	})
-	if len(result) != 1 || !result[0].Parent.ConformsTo(TString) {
+	if len(result) != 1 || !ParentOf(&result[0]).ConformsTo(TString) {
 		t.Errorf("catter 'c' 3 = %v, want string result", result)
 	}
 }
@@ -1029,21 +1029,21 @@ func TestIntegerLiteralType(t *testing.T) {
 	// type path. All integers share Parent=Integer;
 	// specific-value dispatch goes through Signature.Patterns.
 	v := NewInteger(5)
-	if !v.Parent.Equal(TInteger) {
-		t.Errorf("NewInteger(5).Parent = %s, want Integer", v.Parent)
+	if !ParentOf(&v).Equal(TInteger) {
+		t.Errorf("NewInteger(5).Parent = %s, want Integer", ParentOf(&v))
 	}
-	if !v.Parent.ConformsTo(TNumber) {
-		t.Errorf("NewInteger(5).Parent = %s, want matches number", v.Parent)
+	if !ParentOf(&v).ConformsTo(TNumber) {
+		t.Errorf("NewInteger(5).Parent = %s, want matches number", ParentOf(&v))
 	}
 	// Two different integers now share the same Parent — pattern
 	// dispatch uses Signature.Patterns instead of type-path leaves.
 	v0 := NewInteger(0)
 	v1 := NewInteger(1)
-	if !v0.Parent.Equal(v1.Parent) {
-		t.Errorf("NewInteger(0) and NewInteger(1) should share Parent=Integer; got %s vs %s", v0.Parent, v1.Parent)
+	if !ParentOf(&v0).Equal(ParentOf(&v1)) {
+		t.Errorf("NewInteger(0) and NewInteger(1) should share Parent=Integer; got %s vs %s", ParentOf(&v0), ParentOf(&v1))
 	}
 	// And both still match Integer / Number / Scalar.
-	if !v0.Parent.ConformsTo(TInteger) || !v1.Parent.ConformsTo(TInteger) {
+	if !ParentOf(&v0).ConformsTo(TInteger) || !ParentOf(&v1).ConformsTo(TInteger) {
 		t.Error("both should match Integer")
 	}
 }
@@ -1494,7 +1494,7 @@ func TestEngineMakeRecord(t *testing.T) {
 		NewWord("def"), NewWord("P"), NewWord("refine"), NewWord("Record"), fields, NewEnd(),
 		NewWord("make"), NewWord("P"), vals,
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TMap) {
 		t.Errorf("expected map, got %v", result)
 	}
 	m, _ := AsMap(result[0])

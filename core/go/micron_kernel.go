@@ -33,33 +33,33 @@ type MicronPayload struct{ Fields *OrderedMap }
 // IsMicronType reports whether v is a Micron type body (the
 // `refine Micron {fields}` construction result).
 func IsMicronType(v Value) bool {
-	_, ok := v.Data.(MicronTypeInfo)
+	_, ok := DataOf(&v).(MicronTypeInfo)
 	return ok
 }
 
 // AsMicronType returns the MicronTypeInfo payload.
 func AsMicronType(v Value) (MicronTypeInfo, error) {
-	if info, ok := v.Data.(MicronTypeInfo); ok {
+	if info, ok := DataOf(&v).(MicronTypeInfo); ok {
 		return info, nil
 	}
-	return MicronTypeInfo{}, fmt.Errorf("AsMicronType: not a Micron type body (got %T)", v.Data)
+	return MicronTypeInfo{}, fmt.Errorf("AsMicronType: not a Micron type body (got %T)", DataOf(&v))
 }
 
 // IsMicronValue reports whether v carries a MicronPayload (an Emailon /
 // Urlon / user-Micron instance). Pathon values carry PathonPayload —
 // probe with IsPathon.
 func IsMicronValue(v Value) bool {
-	_, ok := v.Data.(MicronPayload)
+	_, ok := DataOf(&v).(MicronPayload)
 	return ok
 }
 
 // AsMicronFields returns the primary-field map of a MicronPayload
 // instance.
 func AsMicronFields(v Value) (*OrderedMap, error) {
-	if p, ok := v.Data.(MicronPayload); ok {
+	if p, ok := DataOf(&v).(MicronPayload); ok {
 		return p.Fields, nil
 	}
-	return nil, fmt.Errorf("AsMicronFields: not a Micron instance (got %T)", v.Data)
+	return nil, fmt.Errorf("AsMicronFields: not a Micron instance (got %T)", DataOf(&v))
 }
 
 // PathonContentEqual is Pathon's content equality: same segments, same
@@ -91,7 +91,7 @@ type SubtypeNamer interface {
 // Behavior implementing SubtypeNamer and applies its rule to name. No
 // namer anywhere on the chain means no rule — the nil error.
 func validateSubtypeNameFor(parent *Type, name string) error {
-	for t := parent; t != nil; t = t.Parent {
+	for t := parent; t != nil; t = ParentOf(t) {
 		if sn, ok := t.Behavior().(SubtypeNamer); ok {
 			return sn.ValidateSubtypeName(name)
 		}

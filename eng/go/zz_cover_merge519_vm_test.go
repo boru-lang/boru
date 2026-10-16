@@ -26,7 +26,7 @@ func TestMerge519PolyDynBodyPlain(t *testing.T) {
 		Debug:    make([]core.SrcPos, 2),
 		PolyRefs: []compiler.PolyRef{{Word: "zz-plain-poly", Arity: 1, NOut: 1, DynBodyPlain: true}},
 	}
-	fnVal := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	fnVal := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	reg := func(out core.Value) *core.Registry {
 		r := seam7Reg(t)
 		r.Register("zz-plain-poly", core.Signature{
@@ -111,7 +111,7 @@ func TestMerge519DynTrailZeroArgLeadRaises(t *testing.T) {
 			Impl: core.Boru([]core.Value{core.NewWord("cfail"), core.NewInteger(1)}),
 		}},
 	})
-	if !core.FnValueOnlyZeroArgSigs(lead.Data.(*core.FnDefInfo)) {
+	if !core.FnValueOnlyZeroArgSigs(core.DataOf(&lead).(*core.FnDefInfo)) {
 		t.Fatal("the lead must take no argument")
 	}
 	vc := seam7VC(r)
@@ -133,7 +133,7 @@ func TestMerge519DynTrailZeroArgLeadRaises(t *testing.T) {
 func TestMerge519MixedPlacedFnRefuses(t *testing.T) {
 	r := seam7Reg(t)
 	vc := seam7VC(r)
-	g := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	g := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	list := core.NewList([]core.Value{core.NewInteger(1)})
 	window := []core.Value{list, core.NewOpenParen(), g, core.NewCloseParen(), core.NewWord("add"), core.NewInteger(3)}
 	got, err := vc.callDynamicMixed(r, len(window), window, seam7Dbg, 0)
@@ -189,7 +189,7 @@ func TestMerge519MakeListReStepArms(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].String() != "[7]" {
 		t.Fatalf("the noted word takes the literal's place: %v / %v", got, err)
 	}
-	if n, ok := win[1].Data.(core.IntPayload); !ok || n.N != 5 {
+	if n, ok := core.DataOf(&win[1]).(core.IntPayload); !ok || n.N != 5 {
 		t.Errorf("the window was written: %v", win[1])
 	}
 }
@@ -203,7 +203,7 @@ func TestMerge519FnValueQuotesClosure(t *testing.T) {
 		t.Error("a compiled closure's params do not quote")
 	}
 	// A closure payload with no program behind it reads no params.
-	if fnValueQuotes(core.Value{Parent: core.TFunction, Data: core.ClosurePayload{}}) {
+	if fnValueQuotes(core.MakeValue(core.TFunction, core.ClosurePayload{})) {
 		t.Error("a closure with no program does not quote")
 	}
 }
@@ -258,7 +258,7 @@ func TestMerge519FallbackCountIslandRaises(t *testing.T) {
 func TestMerge519FlowBreakLoopResultDefers(t *testing.T) {
 	r := seam7Reg(t)
 	vc := &vmContext{p: &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpRet}}}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	g := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "g"}}
+	g := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "g"})
 	stack := []core.Value{core.NewInteger(1), g}
 	loops := []vmLoop{{unit: -1, iterBase: 2, base: 1, frameBase: 0, exitPC: 0}}
 	_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, nil, loops, nil, stack, 0, -1, seam7Dbg, flowOrigin{})

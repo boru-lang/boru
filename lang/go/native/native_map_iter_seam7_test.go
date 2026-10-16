@@ -18,7 +18,7 @@ import (
 func b2Lambda(t *testing.T, r *Registry, src string) Value {
 	t.Helper()
 	out, err := b2Run(r, src)
-	if err != nil || len(out) != 1 || !out[0].Parent.ConformsTo(TFunction) {
+	if err != nil || len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TFunction) {
 		t.Fatalf("expected a lambda from %q, got %v / %v", src, out, err)
 	}
 	return out[0]

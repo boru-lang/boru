@@ -61,7 +61,7 @@ func stampNetReg(t *testing.T, armed bool, steps []string) *native.Registry {
 
 func codecRef(t *testing.T, v native.Value) *compiler.CompiledFnRef {
 	t.Helper()
-	fd, ok := core.FnDefOf(v.Data)
+	fd, ok := core.FnDefOf(core.DataOf(&v))
 	if !ok {
 		t.Fatalf("codec slot is not a fn value: %v", v)
 	}

@@ -23,9 +23,9 @@ func TestW9CloneTableData(t *testing.T) {
 		TableName: "t",
 	})
 	cl := core.CloneValue(tv)
-	td, ok := cl.Data.(core.TableData)
+	td, ok := core.DataOf(&cl).(core.TableData)
 	if !ok {
-		t.Fatalf("clone Data = %T, want TableData", cl.Data)
+		t.Fatalf("clone Data = %T, want TableData", core.DataOf(&cl))
 	}
 	if td.TableName != "t" {
 		t.Errorf("clone lost TableName: %q", td.TableName)
@@ -46,9 +46,9 @@ func TestW9CloneErrorWithData(t *testing.T) {
 	ae := &core.BoruError{Code: "user_error", Detail: "boom", Data: data}
 	ev := core.NewError(ae)
 	cl := core.CloneValue(ev)
-	ci, ok := cl.Data.(core.ErrorInfo)
+	ci, ok := core.DataOf(&cl).(core.ErrorInfo)
 	if !ok {
-		t.Fatalf("clone Data = %T, want ErrorInfo", cl.Data)
+		t.Fatalf("clone Data = %T, want ErrorInfo", core.DataOf(&cl))
 	}
 	if ci.Code != "user_error" || ci.Message != "boom" {
 		t.Errorf("clone lost immutable fields: %+v", ci)
@@ -67,9 +67,9 @@ func TestW9CloneErrorNilData(t *testing.T) {
 	// A plain Go error has nil Data: the clone keeps Data nil.
 	ev := core.NewError(errTestW9)
 	cl := core.CloneValue(ev)
-	ci, ok := cl.Data.(core.ErrorInfo)
+	ci, ok := core.DataOf(&cl).(core.ErrorInfo)
 	if !ok {
-		t.Fatalf("clone Data = %T, want ErrorInfo", cl.Data)
+		t.Fatalf("clone Data = %T, want ErrorInfo", core.DataOf(&cl))
 	}
 	if ci.Data != nil {
 		t.Error("cloneError with nil Data should keep Data nil")
@@ -83,9 +83,9 @@ func TestW9CloneExtensionNoDeepCloner(t *testing.T) {
 	body := &extNoCloneW9{n: 5}
 	ev := core.NewExtension(core.TAny, body)
 	cl := core.CloneValue(ev)
-	ep, ok := cl.Data.(core.ExtensionPayload)
+	ep, ok := core.DataOf(&cl).(core.ExtensionPayload)
 	if !ok {
-		t.Fatalf("clone Data = %T, want ExtensionPayload", cl.Data)
+		t.Fatalf("clone Data = %T, want ExtensionPayload", core.DataOf(&cl))
 	}
 	if ep.Body != any(body) {
 		t.Error("an ExtensionPayload with no DeepCloner must be shared, not copied")
@@ -96,9 +96,9 @@ func TestW9CloneNilSliceAndMap(t *testing.T) {
 	// ListPayload with a nil slice: cloneSlice(nil) returns nil.
 	lv := core.NewList(nil)
 	cl := core.CloneValue(lv)
-	lp, ok := cl.Data.(core.ListPayload)
+	lp, ok := core.DataOf(&cl).(core.ListPayload)
 	if !ok {
-		t.Fatalf("clone Data = %T, want ListPayload", cl.Data)
+		t.Fatalf("clone Data = %T, want ListPayload", core.DataOf(&cl))
 	}
 	if lp.Elems != nil {
 		t.Error("cloneSlice(nil) should stay nil")
@@ -106,9 +106,9 @@ func TestW9CloneNilSliceAndMap(t *testing.T) {
 	// MapPayload with a nil map: cloneOrderedMap(nil) returns nil.
 	mv := core.NewMap(nil)
 	clm := core.CloneValue(mv)
-	mp, ok := clm.Data.(core.MapPayload)
+	mp, ok := core.DataOf(&clm).(core.MapPayload)
 	if !ok {
-		t.Fatalf("clone Data = %T, want MapPayload", clm.Data)
+		t.Fatalf("clone Data = %T, want MapPayload", core.DataOf(&clm))
 	}
 	if mp.M != nil {
 		t.Error("cloneOrderedMap(nil) should stay nil")
@@ -125,9 +125,9 @@ func TestW9CloneSharedMapDedup(t *testing.T) {
 	m2 := core.NewMap(shared)
 	lv := core.NewList([]core.Value{m1, m2})
 	cl := core.CloneValue(lv)
-	lp := cl.Data.(core.ListPayload)
-	c1 := lp.Elems[0].Data.(core.MapPayload).M
-	c2 := lp.Elems[1].Data.(core.MapPayload).M
+	lp := core.DataOf(&cl).(core.ListPayload)
+	c1 := core.DataOf(&lp.Elems[0]).(core.MapPayload).M
+	c2 := core.DataOf(&lp.Elems[1]).(core.MapPayload).M
 	if c1 != c2 {
 		t.Error("shared map should clone once and stay shared in the clone")
 	}
@@ -141,7 +141,7 @@ func TestW9CloneMapMeta(t *testing.T) {
 	m.Set("x", core.NewInteger(1))
 	m.Meta = map[string]any{"src": "test"}
 	cl := core.CloneValue(core.NewMap(m))
-	cm := cl.Data.(core.MapPayload).M
+	cm := core.DataOf(&cl).(core.MapPayload).M
 	if cm.Meta == nil || cm.Meta["src"] != "test" {
 		t.Errorf("clone lost Meta: %+v", cm.Meta)
 	}

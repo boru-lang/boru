@@ -78,7 +78,7 @@ func TestValueStringTableDataCov(t *testing.T) {
 		Record: RecordTypeInfo{Fields: fields},
 		Rows:   []Value{NewMap(row)},
 	}
-	v := Value{Parent: TList, Data: td}
+	v := MakeValue(TList, td)
 	s := v.String()
 	if !strings.HasPrefix(s, "table{") {
 		t.Errorf("expected table{...}, got %s", s)
@@ -104,7 +104,7 @@ func TestValueAsTableTypeCov(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("x", NewTypeLiteral(TInteger))
 	tti := TableTypeInfo{Record: RecordTypeInfo{Fields: fields}}
-	v := Value{Parent: TList, Data: tti}
+	v := MakeValue(TList, tti)
 	tt, _ := AsTableType(v)
 	if tt.Record.Fields.Len() != 1 {
 		t.Errorf("expected 1 field, got %d", tt.Record.Fields.Len())
@@ -127,7 +127,7 @@ func TestValueAsListCov(t *testing.T) {
 		Record: RecordTypeInfo{Fields: fields},
 		Rows:   []Value{NewMap(row)},
 	}
-	v = Value{Parent: TList, Data: td}
+	v = MakeValue(TList, td)
 	_lst2, _ := AsList(v)
 	list = _lst2.Slice()
 	if len(list) != 1 {

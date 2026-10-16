@@ -29,7 +29,7 @@ func (x5DelegatingBehavior) FormatDelegate() {}
 
 func x5UserType(name string, parent *Type, b TypeBehavior) *Type {
 	t := addrOf(withID(Type{tmeta: &typeMeta{Name: name, Behavior: b}, Parent: parent}, name))
-	t.Origin = OriginUserDef
+	SetOrigin(t, OriginUserDef)
 	return t
 }
 
@@ -204,7 +204,7 @@ func TestX5UnifySurfaceAbstractArms(t *testing.T) {
 	if uerr != nil {
 		t.Fatalf("conforming carrier: %v", uerr)
 	}
-	if !got.Carrier {
+	if !IsCarrier(&got) {
 		t.Fatalf("expected the carrier back, got %v", got)
 	}
 	// Non-conforming bare node walks off the chain and rejects.

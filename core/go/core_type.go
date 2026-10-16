@@ -55,12 +55,12 @@ func PathOf(t Value) Value {
 	// Walk the ancestry root-first. A bare type literal IS its leaf
 	// node, so start from t itself; any other value (a Function /
 	// Disjunct / Enum value) contributes the ancestry of its type.
-	start := t.Parent
+	start := ParentOf(&t)
 	if IsBareTypeNode(&t) {
 		start = &t
 	}
 	var chain []*Type
-	for d := start; d != nil; d = d.Parent {
+	for d := start; d != nil; d = ParentOf(d) {
 		// Any is the universal lattice top; skip it as an ANCESTOR
 		// so paths stay [Scalar Number Integer], not [Any Scalar
 		// Number Integer]. When `pathof Any` is called directly the
@@ -92,10 +92,10 @@ func PathOf(t Value) Value {
 //	typeof None     → None       (None is a degenerate root — saturates)
 //	typeof Never    → Never      (Never is a degenerate root — saturates)
 func TypeOf(v Value) Value {
-	if v.Parent == nil {
+	if ParentOf(&v) == nil {
 		return v
 	}
-	return NewTypeLiteral(v.Parent)
+	return NewTypeLiteral(ParentOf(&v))
 }
 
 // IsRecordShape reports whether v is a non-empty map all of whose
@@ -112,7 +112,7 @@ func TypeOf(v Value) Value {
 // returns Map). Singleton-typed shapes still go via `is`'s structural
 // unification path.
 func IsRecordShape(v Value) bool {
-	if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+	if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 		return false
 	}
 	m, _ := AsMap(v)
@@ -189,7 +189,7 @@ func IsValueOfType(v, t Value) bool {
 		}
 	}
 	if IsTypedList(&t) {
-		if !v.Parent.Equal(TList) || !IsConcrete(&v) {
+		if !ParentOf(&v).Equal(TList) || !IsConcrete(&v) {
 			return false
 		}
 		ci, _ := AsChildType(t)
@@ -205,7 +205,7 @@ func IsValueOfType(v, t Value) bool {
 		return true
 	}
 	if IsTypedMap(&t) {
-		if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+		if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 			return false
 		}
 		ci, _ := AsChildType(t)
@@ -227,8 +227,8 @@ func IsValueOfType(v, t Value) bool {
 	// fields via the Unify fallback when t's field is a literal.
 	// Subtypes like RecordTypeInfo / OptionsTypeInfo (whose AsMap
 	// returns nil) fall through to Unify below.
-	if _tMap, _tErr := AsMap(t); t.Parent.Equal(TMap) && t.Data != nil && _tErr == nil && _tMap != nil {
-		if !v.Parent.Equal(TMap) || !IsConcrete(&v) {
+	if _tMap, _tErr := AsMap(t); ParentOf(&t).Equal(TMap) && DataOf(&t) != nil && _tErr == nil && _tMap != nil {
+		if !ParentOf(&v).Equal(TMap) || !IsConcrete(&v) {
 			return false
 		}
 		vMap, _ := AsMap(v)
@@ -268,10 +268,10 @@ func IsValueOfType(v, t Value) bool {
 		// `ObjectType` metatypes) keep the plain subtype check below, so
 		// `fn […] is Function` / `enum […] is Disjunct` still hold.
 		if t.Equal(TType) {
-			if v.Carrier {
+			if IsCarrier(&v) {
 				return false
 			}
-			return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) || v.Parent.ConformsTo(TType)
+			return IsBareTypeNode(&v) || IsTypeBody(&v) || IsRecordShape(v) || ParentOf(&v).ConformsTo(TType)
 		}
 		// Canonical dispatch site: route through Behavior so custom
 		// type semantics (predicate types, dependent scalars, future
@@ -356,10 +356,10 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 // under Function (a module's exported member type, `MiniLang.Re`), which
 // binds as an alias.
 func isFnBodiedValue(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TFunction) {
+	if ParentOf(&v) == nil || !ParentOf(&v).Equal(TFunction) {
 		return false
 	}
-	switch v.Data.(type) {
+	switch DataOf(&v).(type) {
 	case *FnDefInfo, ClosurePayload:
 		return true
 	}
@@ -413,15 +413,15 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// layer (basic/go/micron.go) supplies both; without it the
 		// mint keeps DefaultBehavior.
 		decl, _ := AsMicronType(body)
-		if err := validateSubtypeNameFor(body.Parent, name); err != nil {
+		if err := validateSubtypeNameFor(ParentOf(&body), name); err != nil {
 			return err
 		}
-		def := r.Types.MintType(name, body.Parent)
+		def := r.Types.MintType(name, ParentOf(&body))
 		// The named kind is CONSTRUCTED from the declaration's parts; the
 		// anonymous declaration the family Ideal produced stays unnamed.
 		info := MicronTypeInfo{Name: name, Type: def, Fields: decl.Fields}
 		bhv := DefaultBehavior
-		if m, ok := body.Parent.Behavior().(MicronSubtypeMinter); ok {
+		if m, ok := ParentOf(&body).Behavior().(MicronSubtypeMinter); ok {
 			bhv = m.MintSubtypeBehavior(def, &info)
 		}
 		def.ensureTMeta().Behavior = bhv
@@ -543,7 +543,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// only the REF is stamped, never the payload Name (the canon-
 		// ordering note above stands).
 		if r.RuntimeStampingEnabled() {
-			if fd, isFn := body.Data.(*FnDefInfo); isFn {
+			if fd, isFn := DataOf(&body).(*FnDefInfo); isFn {
 				// The stamp EVENT carries the type name — passed beside the
 				// definition — so -compile-report (and the stamp-report
 				// gates) attribute the unit; the binding's payload Name
@@ -571,7 +571,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// (`def Workon refine Emailon` — the Micron -on rule, a
 		// SubtypeNamer capability on the family Behaviors) is a
 		// newtype: the rule applies.
-		if err := validateSubtypeNameFor(def.Parent, name); err != nil {
+		if err := validateSubtypeNameFor(ParentOf(def), name); err != nil {
 			return err
 		}
 		def.ensureTMeta().Name = name
@@ -593,7 +593,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		//     → strict identity; admits only narrowed/tagged values.
 		// See lang/go/test/typed_def_test.go::TestRefineBareDistinctFromAlias
 		// for the asymmetry assertion.
-		if def.Parent != nil {
+		if ParentOf(def) != nil {
 			installBareRefineUnifier(def, name)
 		}
 		installTypeBinding(r, name, def, body)
@@ -606,10 +606,10 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// the Maybe node. Same dispatch-vs-`is` asymmetry as bare
 		// refine: install on `def`, not on `body`.
 		di, _ := AsDisjunct(body)
-		def := r.Types.MintType(name, body.Parent)
+		def := r.Types.MintType(name, ParentOf(&body))
 		installDisjunctUnifier(def, di.Alternatives, name)
 		installTypeBinding(r, name, def, body)
-	} else if fu, isFnUndef := body.Data.(FnUndefInfo); isFnUndef {
+	} else if fu, isFnUndef := DataOf(&body).(FnUndefInfo); isFnUndef {
 		// `def IntToStr fnsig Integer String` route: mint a lattice node
 		// parented at the body's lattice (TFnUndef) and attach a
 		// fnUndefUnifier so `f/v is IntToStr` AND sig dispatch on a
@@ -619,7 +619,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// the same dispatch-vs-`is` asymmetry as the disjunct, negation
 		// and DepScalar branches, and for the same reason. Install on
 		// `def`, not on `body`.
-		def := r.Types.MintType(name, body.Parent)
+		def := r.Types.MintType(name, ParentOf(&body))
 		installFnUndefUnifier(def, fu.Sigs, name)
 		installTypeBinding(r, name, def, body)
 	} else if IsNegation(body) {
@@ -630,7 +630,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// vs-`is` asymmetry as the disjunct branch: install on `def`,
 		// not on `body`.
 		ni, _ := AsNegation(body)
-		def := r.Types.MintType(name, body.Parent)
+		def := r.Types.MintType(name, ParentOf(&body))
 		installNegationUnifier(def, ni.Inner, name)
 		installTypeBinding(r, name, def, body)
 	} else if body.IsDepScalar() {
@@ -651,11 +651,11 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// Defensive: a dependent scalar over a base with a subtype
 		// naming rule (a Micron kind) still mints under the family,
 		// so the rule applies.
-		if err := validateSubtypeNameFor(body.Parent, name); err != nil {
+		if err := validateSubtypeNameFor(ParentOf(&body), name); err != nil {
 			return err
 		}
-		def := r.Types.MintType(name, body.Parent)
-		installDepScalarUnifier(def, body.Parent, di, name)
+		def := r.Types.MintType(name, ParentOf(&body))
+		installDepScalarUnifier(def, ParentOf(&body), di, name)
 		installTypeBinding(r, name, def, body)
 	} else if IsBareTypeNode(&body) {
 		// ALIAS: `def Foo Integer`. The name ADOPTS the canonical
@@ -685,7 +685,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// consult one structural rule — the DisjunctUnifier /
 		// FnUndefUnifier discipline extended to the catch-all kinds
 		// (NUR090's record-shape row, NUR093's singleton row).
-		parent := body.Parent
+		parent := ParentOf(&body)
 		if err := validateSubtypeNameFor(parent, name); err != nil {
 			return err
 		}

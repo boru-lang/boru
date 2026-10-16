@@ -77,7 +77,7 @@ func TestBindDynScopeClosureValue(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("residual %v, want the looked-up closure", out)
 	}
-	if cl, ok := out[0].Data.(core.ClosurePayload); !ok || cl.Unit != 1 {
+	if cl, ok := core.DataOf(&out[0]).(core.ClosurePayload); !ok || cl.Unit != 1 {
 		t.Errorf("the lookup must read the bound closure back, got %v", out[0])
 	}
 	if _, ok := r.Defs.Top("dsc"); ok {
@@ -167,7 +167,7 @@ func TestLookupDynScopeDataArms(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("residual %v, want the pushed fn value", out)
 	}
-	if _, isFn := out[0].Data.(*core.FnDefInfo); !isFn {
+	if _, isFn := core.DataOf(&out[0]).(*core.FnDefInfo); !isFn {
 		t.Errorf("pushed %v, want the FnDefInfo parser value as data", out[0])
 	}
 

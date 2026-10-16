@@ -38,7 +38,7 @@ func reifyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	input := args[1]
 
 	// JSON-text form: decode to a generic tree first.
-	if input.Parent.ConformsTo(TString) && IsConcrete(&input) {
+	if ParentOf(&input).ConformsTo(TString) && IsConcrete(&input) {
 		text, _ := AsString(input)
 		var raw any
 		if err := json.Unmarshal([]byte(text), &raw); err != nil {
@@ -89,7 +89,7 @@ func reifyFromAnyMapOrdered(target Value, m map[string]any, keys []string, r *Re
 		case k == "$class":
 			if s, ok := v.(string); ok {
 				className = s
-			} else if val, isVal := v.(Value); isVal && val.Parent.ConformsTo(TString) {
+			} else if val, isVal := v.(Value); isVal && ParentOf(&val).ConformsTo(TString) {
 				className, _ = AsString(val)
 			} else {
 				return nil, r.BoruError("reify_error", "reify: $class must be a string", "reify")
@@ -156,7 +156,7 @@ func resolveReifyTarget(target Value, className string, r *Registry) (*core.Clas
 		}
 		return &info, nil
 	}
-	if di, ok := target.Data.(DisjunctInfo); ok {
+	if di, ok := DataOf(&target).(DisjunctInfo); ok {
 		if className == "" {
 			return nil, r.BoruError("reify_error",
 				"reify: a union target needs a $class key to select the member", "reify")
@@ -270,13 +270,13 @@ func targetTypeOf(constraint Value) *core.Type {
 	// the make path after conversion, so a JSON integer 5 can become
 	// the Float 5.0 the predicate wants without loosening the bound.
 	if constraint.IsDepScalar() {
-		return constraint.Parent
+		return ParentOf(&constraint)
 	}
 	if pt := core.PredicateInputType(constraint); pt != nil {
 		return pt
 	}
 	if IsConcrete(&constraint) && !core.IsTypeBody(&constraint) {
-		return constraint.Parent
+		return ParentOf(&constraint)
 	}
 	return nil
 }

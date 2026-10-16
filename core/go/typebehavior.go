@@ -243,7 +243,7 @@ func defaultMatch(v *Value, t *Type) bool {
 	if IsBareTypeNode(v) {
 		return v.ConformsTo(t)
 	}
-	return v.Parent.ConformsTo(t)
+	return ParentOf(v).ConformsTo(t)
 }
 
 // defaultMatcher marks a Behavior whose Match IS the default one (the

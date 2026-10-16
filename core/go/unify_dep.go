@@ -40,10 +40,10 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 	// would conservatively (and wrongly) reject it. `def mk fn [[] [Big] [50]]
 	// use (mk)` failed exactly here. A CONCRETE value (Data present) still runs
 	// the predicate check, so a plain `5` is correctly declined for `Big`.
-	if v.Carrier && !IsConcrete(&v) && v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
+	if IsCarrier(&v) && !IsConcrete(&v) && ParentOf(&v) != nil && t != nil && ParentOf(&v).ConformsTo(t) {
 		return true
 	}
-	if !v.Parent.ConformsTo(d.baseType) {
+	if !ParentOf(&v).ConformsTo(d.baseType) {
 		return false
 	}
 	return depScalarCheck(d.depInfo, v)
@@ -73,7 +73,7 @@ func (d *DepScalarUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 		}
 	}
 	out, uerr := unifyMembership(a, b, d.typeName, func(v Value) (Value, bool, error) {
-		if !v.Parent.ConformsTo(d.baseType) {
+		if !ParentOf(&v).ConformsTo(d.baseType) {
 			return Value{}, false, nil
 		}
 		return v, depScalarCheck(d.depInfo, v), nil

@@ -12,7 +12,7 @@ import "testing"
 func tapeStaleCells(tp *Tape, from int) []int {
 	var stale []int
 	for i := from; i < len(tp.buf); i++ {
-		if tp.buf[i].Parent != nil { // a zero Value has no Parent; every live one has
+		if ParentOf(&tp.buf[i]) != nil { // a zero Value has no Parent; every live one has
 			stale = append(stale, i)
 		}
 	}

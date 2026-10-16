@@ -161,7 +161,7 @@ func TestW8SubstituteFnUndefArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("non-FnUndefInfo TFnUndef value must pass through: %v", err)
 	}
-	if _, ok := got.Data.(IntPayload); !ok {
+	if _, ok := DataOf(&got).(IntPayload); !ok {
 		t.Fatal("value should be returned unchanged")
 	}
 

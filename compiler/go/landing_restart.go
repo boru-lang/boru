@@ -332,7 +332,7 @@ func quietBranchAt(tree map[int]treeEvent, body []core.Value, tok int) int {
 // armLeavesNothing reports whether a branch arm is the body list tok and its
 // recorded fragment leaves no value.
 func armLeavesNothing(frag *EmitFragment, tok core.Value) bool {
-	return frag != nil && frag.residualN == 0 && tok.Parent.Equal(core.TList) && core.IsEval(&tok) && !core.IsQuoted(&tok)
+	return frag != nil && frag.residualN == 0 && core.ParentOf(&tok).Equal(core.TList) && core.IsEval(&tok) && !core.IsQuoted(&tok)
 }
 
 // unmodifiedWordInfo reports whether w carries no modifier the source wrote.
@@ -906,7 +906,7 @@ func (es *EmitState) doBefore(tree map[int]treeEvent, op EmitOperand, toks []cor
 // literalListTok reports whether v is a list literal as written: evaluated
 // and unquoted.
 func literalListTok(v core.Value) bool {
-	return core.IsEval(&v) && !core.IsQuoted(&v) && v.Parent.Equal(core.TList)
+	return core.IsEval(&v) && !core.IsQuoted(&v) && core.ParentOf(&v).Equal(core.TList)
 }
 
 // inSpan reports whether position p stands inside the span tokens at path's
@@ -1196,7 +1196,7 @@ func writtenParen(t core.Value, path []int, written []substPlan) bool {
 // elements do (`[(l.0 true)] print "z"`). A paren's value may be a fn that
 // dispatches at the pointer, and a word may be one.
 func barrierFree(t core.Value) bool {
-	return core.IsSteplessValue(t) || (!core.IsParenExpr(&t) && t.Parent != nil && t.Parent.Equal(core.TList))
+	return core.IsSteplessValue(t) || (!core.IsParenExpr(&t) && core.ParentOf(&t) != nil && core.ParentOf(&t).Equal(core.TList))
 }
 
 // writtenOver reports whether one of the runs an island writes covers the
@@ -1315,7 +1315,7 @@ func nestedToks(v core.Value) ([]core.Value, bool) {
 		toks, _ := core.AsParenExpr(&v)
 		return toks, true
 	}
-	if v.Parent.Equal(core.TList) && core.IsEval(&v) && !core.IsQuoted(&v) {
+	if core.ParentOf(&v).Equal(core.TList) && core.IsEval(&v) && !core.IsQuoted(&v) {
 		l, err := core.AsList(v)
 		return l.Elems(), err == nil
 	}
@@ -1419,7 +1419,7 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 			}
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			held++
-		case !core.IsConcrete(&rv) || rv.Carrier || core.IsDynamic(&rv):
+		case !core.IsConcrete(&rv) || core.IsCarrier(&rv) || core.IsDynamic(&rv):
 			return nil, 0, nil, false
 		default:
 			srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: rv})
@@ -1478,7 +1478,7 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 			srcs = append(srcs, RestartSrc{Kind: RestartType, Val: v})
 			continue
 		}
-		if v.Carrier || core.IsDynamic(&v) || !core.DeepConcrete(v) {
+		if core.IsCarrier(&v) || core.IsDynamic(&v) || !core.DeepConcrete(v) {
 			return nil, 0, nil, false
 		}
 		srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: v})
@@ -2264,7 +2264,7 @@ func (es *EmitState) firstIterGuard(loops []*emitLoop) ([]RestartFirst, bool) {
 		if lp.cond != nil || lp.start.kind != opConst || lp.start.idx < 0 || lp.start.idx >= len(es.consts) {
 			return nil, false
 		}
-		n, ok := es.consts[lp.start.idx].Data.(core.IntPayload)
+		n, ok := core.DataOf(&es.consts[lp.start.idx]).(core.IntPayload)
 		if !ok {
 			return nil, false
 		}

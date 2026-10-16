@@ -72,7 +72,7 @@ func quoteOfToken(v core.Value) SlotQuote {
 		// /v and /q are distinct facts on ONE marker type and mean different
 		// things downstream: /v disables the call, /q treats the RESULT as
 		// data. Collapsing them loses the distinction the payload carries.
-		if info, ok := v.Data.(core.DispatchModInfo); ok && info.Quote {
+		if info, ok := core.DataOf(&v).(core.DispatchModInfo); ok && info.Quote {
 			return QuoteData
 		}
 		return QuoteValue

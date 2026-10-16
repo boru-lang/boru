@@ -23,8 +23,8 @@ func TestCompareSignaturesUserComparerOnPatterns(t *testing.T) {
 	tt := NewDynamicTypeTable()
 	inverted := tt.MintTypeWithBehavior("Inverted", TInteger, invertedNumberBehavior{})
 
-	p5 := Value{Parent: inverted, Data: IntPayload{N: 5}}
-	p10 := Value{Parent: inverted, Data: IntPayload{N: 10}}
+	p5 := MakeValue(inverted, IntPayload{N: 5})
+	p10 := MakeValue(inverted, IntPayload{N: 10})
 
 	sigs := []Signature{
 		{Params: []FnParam{{Type: inverted, Pattern: &p10}}, BarrierPos: -1},

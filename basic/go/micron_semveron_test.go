@@ -19,8 +19,8 @@ func TestMakeSemveron(t *testing.T) {
 		"1.10.0", "1.2.3-alpha.beta", "1.2.3-alpha-1.a-b", "10.20.30-rc.1",
 	} {
 		v := mk(s)
-		if !v.Parent.Equal(TSemveron) {
-			t.Fatalf("semveron parent = %v", v.Parent)
+		if !ParentOf(&v).Equal(TSemveron) {
+			t.Fatalf("semveron parent = %v", ParentOf(&v))
 		}
 		if got := v.String(); got != s {
 			t.Errorf("render(%q) = %q", s, got)
@@ -143,10 +143,10 @@ func TestMakeSemveron(t *testing.T) {
 		t.Error("boolean source accepted")
 	}
 	// Unreadable map / list payloads exercise the RequireConcrete* error paths.
-	if _, err := makeSemveron(Value{Parent: TMap, Data: ListPayload{}}); err == nil {
+	if _, err := makeSemveron(MakeValue(TMap, ListPayload{})); err == nil {
 		t.Error("unreadable map payload accepted")
 	}
-	if _, err := semveronIdentField(Value{Parent: TList, Data: MapPayload{M: NewOrderedMap()}}, "prerelease"); err == nil {
+	if _, err := semveronIdentField(MakeValue(TList, MapPayload{M: NewOrderedMap()}), "prerelease"); err == nil {
 		t.Error("unreadable list payload accepted")
 	}
 }

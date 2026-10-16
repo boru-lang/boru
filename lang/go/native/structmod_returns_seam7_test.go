@@ -9,30 +9,30 @@ import (
 
 func TestB3DynamicContainerKind(t *testing.T) {
 	// Dynamic Any carrier -> dynamic(Any) (the t==nil || Dynamic&&Any arm).
-	if got := dynamicContainerKind(NewDynamicCarrier(TAny)); !got.Parent.ConformsTo(TAny) {
+	if got := dynamicContainerKind(NewDynamicCarrier(TAny)); !ParentOf(&got).ConformsTo(TAny) {
 		t.Fatalf("dynamic Any -> Any, got %v", got)
 	}
 	// Positive pairs: Map -> Map, List -> List, scalar -> Any.
-	if got := dynamicContainerKind(NewMap(NewOrderedMap())); !got.Parent.ConformsTo(TMap) {
+	if got := dynamicContainerKind(NewMap(NewOrderedMap())); !ParentOf(&got).ConformsTo(TMap) {
 		t.Fatalf("map -> Map, got %v", got)
 	}
-	if got := dynamicContainerKind(NewList(nil)); !got.Parent.ConformsTo(TList) {
+	if got := dynamicContainerKind(NewList(nil)); !ParentOf(&got).ConformsTo(TList) {
 		t.Fatalf("list -> List, got %v", got)
 	}
-	if got := dynamicContainerKind(NewInteger(1)); !got.Parent.ConformsTo(TAny) {
+	if got := dynamicContainerKind(NewInteger(1)); !ParentOf(&got).ConformsTo(TAny) {
 		t.Fatalf("scalar -> Any, got %v", got)
 	}
 }
 
 func TestB3MergeReturnsNilType(t *testing.T) {
 	// A carrier with no Parent has a nil ValueType -> dyn(Any) fallback.
-	got := mergeReturns([]Value{{Carrier: true}, NewMap(NewOrderedMap())}, nil)
-	if len(got) != 1 || !got[0].Parent.ConformsTo(TAny) {
+	got := mergeReturns([]Value{MakeCarrierValue(nil, nil), NewMap(NewOrderedMap())}, nil)
+	if len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TAny) {
 		t.Fatalf("mergeReturns(nil-type) must be Any, got %v", got)
 	}
 	// Positive pair: two maps -> dynamic(Map).
 	got2 := mergeReturns([]Value{NewMap(NewOrderedMap()), NewMap(NewOrderedMap())}, nil)
-	if len(got2) != 1 || !got2[0].Parent.ConformsTo(TMap) {
+	if len(got2) != 1 || !ParentOf(&got2[0]).ConformsTo(TMap) {
 		t.Fatalf("mergeReturns(map,map) must be Map, got %v", got2)
 	}
 }
@@ -40,7 +40,7 @@ func TestB3MergeReturnsNilType(t *testing.T) {
 func TestB3ReifyReturnsAnyTarget(t *testing.T) {
 	// A bare Any target resolves to type Any -> dyn(Any).
 	got := reifyReturns([]Value{NewTypeLiteral(TAny), NewMap(NewOrderedMap())}, nil)
-	if len(got) != 1 || !got[0].Parent.ConformsTo(TAny) {
+	if len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TAny) {
 		t.Fatalf("reifyReturns(Any) must be Any, got %v", got)
 	}
 	// Positive pair: wrong arity -> Any.

@@ -45,8 +45,8 @@ const (
 func Shape(v Value) ValueShape {
 	// Special root types first — they're identified by lattice node,
 	// not by payload shape.
-	t := v.Parent
-	if v.Data == nil && !v.Carrier && IDOf(&v) != "" {
+	t := ParentOf(&v)
+	if DataOf(&v) == nil && !IsCarrier(&v) && IDOf(&v) != "" {
 		t = &v
 	}
 	if t.Equal(TNever) {
@@ -74,16 +74,16 @@ func Shape(v Value) ValueShape {
 	if v.IsDepScalar() {
 		return ShapeDepScalar
 	}
-	if _, ok := v.Data.(FnUndefInfo); ok {
+	if _, ok := DataOf(&v).(FnUndefInfo); ok {
 		return ShapeFnUndef
 	}
-	if _, ok := v.Data.(*FnDefInfo); ok {
+	if _, ok := DataOf(&v).(*FnDefInfo); ok {
 		return ShapeFunction
 	}
-	if _, ok := v.Data.(ClassInstanceInfo); ok {
+	if _, ok := DataOf(&v).(ClassInstanceInfo); ok {
 		return ShapeObjectInstance
 	}
-	if _, ok := v.Data.(ClassTypeInfo); ok {
+	if _, ok := DataOf(&v).(ClassTypeInfo); ok {
 		return ShapeObjectType
 	}
 
@@ -93,8 +93,8 @@ func Shape(v Value) ValueShape {
 	// a concrete FlexMap carries a MapPayload and lands on ShapeMap.
 	if t.Equal(TMap) || t.Equal(TFlexMap) || t.Equal(TWeakFlexMap) {
 		switch {
-		case v.Data == nil:
-			if v.Carrier {
+		case DataOf(&v) == nil:
+			if IsCarrier(&v) {
 				return ShapeCarrier
 			}
 			return ShapeTypeLiteral
@@ -113,8 +113,8 @@ func Shape(v Value) ValueShape {
 	// FlexList carries *FlexListData and lands on ShapeList.
 	if t.Equal(TList) || t.Equal(TFlexList) || t.Equal(TWeakFlexList) {
 		switch {
-		case v.Data == nil:
-			if v.Carrier {
+		case DataOf(&v) == nil:
+			if IsCarrier(&v) {
 				return ShapeCarrier
 			}
 			return ShapeTypeLiteral
@@ -128,8 +128,8 @@ func Shape(v Value) ValueShape {
 	}
 
 	// Bare type literal vs carrier vs concrete scalar.
-	if v.Data == nil {
-		if v.Carrier {
+	if DataOf(&v) == nil {
+		if IsCarrier(&v) {
 			return ShapeCarrier
 		}
 		return ShapeTypeLiteral

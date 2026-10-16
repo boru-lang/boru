@@ -61,11 +61,11 @@ func TestRunParallelBranchError(t *testing.T) {
 	// A plain fn VALUE element carrying no compiled ref (an fn stored in a
 	// def'd parallels list) is not a compiled-branch carrier: it passes
 	// through as-is, exactly like any other non-list element.
-	fnVal := Value{Parent: TFunction, Data: &FnDefInfo{
+	fnVal := MakeValue(TFunction, &FnDefInfo{
 		Signatures: []Signature{{Impl: &BoruImpl{Body: []Value{NewInteger(1)}}}},
-	}}
+	})
 	pr = runParallelBranch(r, fnVal)
-	if pr.err || len(pr.values) != 1 || !pr.values[0].Parent.Equal(TFunction) {
+	if pr.err || len(pr.values) != 1 || !ParentOf(&pr.values[0]).Equal(TFunction) {
 		t.Fatalf("runParallelBranch(plain fn) = %+v, want the fn value passed through", pr)
 	}
 }

@@ -17,7 +17,7 @@ func dynApplyFn(params []core.FnParam, prog *compiler.Program, unit int) core.Va
 		Params: params, Returns: []*core.Type{core.TAny}, BarrierPos: core.BarrierAllForward,
 		Impl: impl,
 	}}}
-	return core.Value{Parent: core.TFunction, Data: &fd}
+	return core.MakeValue(core.TFunction, &fd)
 }
 
 // The declines: dynApplyEnter answers nil for anything it cannot enter as a
@@ -189,7 +189,7 @@ func TestDynApplyTopIslandStillRuns(t *testing.T) {
 		}),
 	}
 	fd := core.FnDefInfo{Name: "zztriple", Signatures: []core.Signature{sig}}
-	fnVal := core.Value{Parent: core.TFunction, Data: &fd}
+	fnVal := core.MakeValue(core.TFunction, &fd)
 	if core.IsDelegationFnDef(fd) {
 		t.Fatal("fixture reads as a delegation — it would take tryNativeFnApply, not the island")
 	}

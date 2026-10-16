@@ -90,11 +90,11 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	// The def word's handler records the carrier in the check-scoped
 	// fn-carrier side table instead (native installAndRecordDef), which the
 	// parse/mini/emit value-form macros consult for name resolution.
-	if body.Parent.Equal(TFunction) {
+	if ParentOf(&body).Equal(TFunction) {
 		// The bound fn is read where it lives; the binding's dispatch form
 		// is constructed under the binding's name below (installFnDef), so
 		// the payload is never copied to carry the name.
-		fnDef, ok := FnDefOf(body.Data)
+		fnDef, ok := FnDefOf(DataOf(&body))
 		if !ok {
 			return
 		}
@@ -152,7 +152,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			filtered := stack[:0:0]
 			changed := false
 			for _, entry := range stack {
-				oldFn, ok := entry.Data.(*FnDefInfo)
+				oldFn, ok := DataOf(&entry).(*FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, *fnDef) {
 					changed = true
 					dropped = entry
@@ -261,8 +261,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	}
 
 	// FnUndefInfo body (from fn word in pair mode): remove targeted signatures.
-	if body.Parent.Equal(TFnUndef) {
-		undefInfo, ok := body.Data.(FnUndefInfo)
+	if ParentOf(&body).Equal(TFnUndef) {
+		undefInfo, ok := DataOf(&body).(FnUndefInfo)
 		if !ok {
 			return
 		}
@@ -287,7 +287,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// (Resource, Entity) the caller passes the canonical builtin
 		// *Type; for user-defined object types installed as defs the
 		// caller is responsible for minting first.
-		def := body.Parent
+		def := ParentOf(&body)
 		if def == nil {
 			def = TClass
 		}
@@ -511,7 +511,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					arg := args[i]
 					// Quote list params so they're treated as data values
 					// when referenced in the body, not expanded as code bodies.
-					if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+					if ParentOf(&arg).Equal(TList) && !IsQuoted(&arg) {
 						SetQuoted(&arg, true)
 					}
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
@@ -567,7 +567,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 				arg := args[i]
 				// Quote list params so they're treated as data values
 				// when referenced in the body, not expanded as code bodies.
-				if arg.Parent.Equal(TList) && !IsQuoted(&arg) {
+				if ParentOf(&arg).Equal(TList) && !IsQuoted(&arg) {
 					SetQuoted(&arg, true)
 				}
 				InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
@@ -909,7 +909,7 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 	// from depth 2 to 1 while recording delta 0.)
 	for _, spec := range specs.Sigs {
 		for j := len(stack) - 1; j >= 0; j-- {
-			fnDef, ok := stack[j].Data.(*FnDefInfo)
+			fnDef, ok := DataOf(&stack[j]).(*FnDefInfo)
 			if !ok {
 				continue
 			}
@@ -1032,7 +1032,7 @@ func CowSet(store *StoreInstanceInfo, key string, val Value, r *Registry) {
 	}
 
 	// Track parent for nested Store values.
-	if childStore, ok := val.Data.(*StoreInstanceInfo); ok {
+	if childStore, ok := DataOf(&val).(*StoreInstanceInfo); ok {
 		childStore.Parent = newStore
 		childStore.ParentKey = key
 	}
@@ -1123,7 +1123,7 @@ func CowDel(store *StoreInstanceInfo, key string, r *Registry) {
 // concrete shape (the payload Body being opaque). See
 // design/IDEAL.10.md §6.
 func IsHostTypeBody(v Value) bool {
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return false
 	}
@@ -1157,10 +1157,10 @@ func IsTypeBody(v *Value) bool {
 	// identity is a type body (a fn shape / predicate candidate),
 	// Data-bearing or check-mode carrier alike — exactly the legacy
 	// enumeration's parent-keyed arms.
-	if v.Parent != nil && (v.Parent.Equal(TFnUndef) || v.Parent.Equal(TFunction)) {
+	if ParentOf(v) != nil && (ParentOf(v).Equal(TFnUndef) || ParentOf(v).Equal(TFunction)) {
 		return true
 	}
-	return v.Data != nil && v.Data.IsTypeContent(v.Parent)
+	return DataOf(v) != nil && DataOf(v).IsTypeContent(ParentOf(v))
 }
 
 // PredicateInputType returns the concrete input type of a declared
@@ -1181,13 +1181,13 @@ func IsTypeBody(v *Value) bool {
 // Positive] …])` would have no dispatch surface — no value's Parent
 // is ever Positive.
 func PredicateInputType(v Value) *Type {
-	if v.Parent == nil {
+	if ParentOf(&v) == nil {
 		return nil
 	}
-	if !v.Parent.Equal(TFunction) {
+	if !ParentOf(&v).Equal(TFunction) {
 		return nil
 	}
-	info, ok := v.Data.(*FnDefInfo)
+	info, ok := DataOf(&v).(*FnDefInfo)
 	if !ok {
 		return nil
 	}
@@ -1223,19 +1223,19 @@ func IsLiteralTypeBody(v Value) bool {
 		return true
 	}
 	switch {
-	case v.Parent.ConformsTo(TInteger),
-		v.Parent.ConformsTo(TFloat),
-		v.Parent.ConformsTo(TNumber),
-		v.Parent.ConformsTo(TString),
-		v.Parent.ConformsTo(TBoolean),
-		v.Parent.ConformsTo(TAtom),
-		v.Parent.ConformsTo(TMicron):
-		return v.Data != nil
+	case ParentOf(&v).ConformsTo(TInteger),
+		ParentOf(&v).ConformsTo(TFloat),
+		ParentOf(&v).ConformsTo(TNumber),
+		ParentOf(&v).ConformsTo(TString),
+		ParentOf(&v).ConformsTo(TBoolean),
+		ParentOf(&v).ConformsTo(TAtom),
+		ParentOf(&v).ConformsTo(TMicron):
+		return DataOf(&v) != nil
 	}
-	if v.Parent.Equal(TList) && v.Data != nil {
+	if ParentOf(&v).Equal(TList) && DataOf(&v) != nil {
 		return true
 	}
-	if v.Parent.Equal(TMap) && v.Data != nil {
+	if ParentOf(&v).Equal(TMap) && DataOf(&v) != nil {
 		return true
 	}
 	return false
@@ -1536,7 +1536,7 @@ func ExpandOptionalSigs(name string, sigs []FnSig) []FnSig {
 // so it stays truthy — the same direction the non-Big arm takes for an
 // unreadable payload.
 func bigNumIsZero(v Value) bool {
-	if v.Parent.ConformsTo(TBigInteger) {
+	if ParentOf(&v).ConformsTo(TBigInteger) {
 		bi, err := AsBigInteger(v)
 		return err == nil && bi != nil && bi.Sign() == 0
 	}

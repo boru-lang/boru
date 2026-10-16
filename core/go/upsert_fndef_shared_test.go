@@ -17,7 +17,7 @@ func TestUpsertFnDefLeavesEarlierHolders(t *testing.T) {
 	for _, ty := range []*Type{TAny, TString, TBoolean, TList, TMap, TAtom, TFloat, TPathon} {
 		r.upsertFnDef("w", Signature{Args: []*Type{ty}, Impl: echo})
 		held, _ := r.Defs.Top("w")
-		if fn, _ := FnDefOf(held.Data); cap(fn.Signatures) > len(fn.Signatures) {
+		if fn, _ := FnDefOf(DataOf(&held)); cap(fn.Signatures) > len(fn.Signatures) {
 			heldFn = fn
 			break
 		}
@@ -37,7 +37,7 @@ func TestUpsertFnDefLeavesEarlierHolders(t *testing.T) {
 		}
 	}
 	top, _ := r.Defs.Top("w")
-	if topFn, _ := FnDefOf(top.Data); len(topFn.Signatures) != len(want)+1 {
+	if topFn, _ := FnDefOf(DataOf(&top)); len(topFn.Signatures) != len(want)+1 {
 		t.Errorf("the binding has %d signatures, want %d", len(topFn.Signatures), len(want)+1)
 	}
 }

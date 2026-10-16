@@ -4,7 +4,7 @@ package basic
 // its elements are returned wrapped in parens so the main engine evaluates
 // them as a sub-expression. Scalars are returned as-is.
 func spliceArg(v Value) []Value {
-	if v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v) {
+	if ParentOf(&v).Equal(TList) && DataOf(&v) != nil && !IsTypedList(&v) && !IsTableType(v) {
 		elems, _ := AsList(v)
 		// Append element-wise: Slice() would copy the backing once into a
 		// throwaway slice and append would copy it AGAIN into result —
@@ -25,7 +25,7 @@ func spliceArg(v Value) []Value {
 // list — i.e. something to be evaluated as a code body rather than used
 // as a literal value.
 func isCodeBody(v Value) bool {
-	return v.Parent.Equal(TList) && v.Data != nil && !IsTypedList(&v) && !IsTableType(v)
+	return ParentOf(&v).Equal(TList) && DataOf(&v) != nil && !IsTypedList(&v) && !IsTableType(v)
 }
 
 // ifClause turns the element slice of a clause-list `[c1 b1 c2 b2 … else]`
@@ -89,7 +89,7 @@ func IsCaseOpenCallHead(r *Registry, m Value) bool {
 	if !ok {
 		return false
 	}
-	return bound.Parent.Equal(TFunction)
+	return ParentOf(&bound).Equal(TFunction)
 }
 
 // caseDefaultStart returns the index where the clause list's trailing
@@ -313,7 +313,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// (a NoEvalArgs body that is not inert data), so the program falls
 		// back and answers as the interpreter does. A KNOWN non-list — a
 		// scalar, a bare type node (`case 1 Integer`) — is the trap.
-		if !IsDynamic(&clauses) && !clauses.Carrier {
+		if !IsDynamic(&clauses) && !IsCarrier(&clauses) {
 			r.Check.Recorder().RecordTrap("case_error",
 				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
 				"case", "", casePos)
@@ -447,7 +447,7 @@ func caseStaticBlock(r *Registry, v Value, elems []Value) (block Value, taken, d
 // caseScalarPayload reports whether v's payload is a plain scalar's — the
 // value itself, immutable, with no registry behind it.
 func caseScalarPayload(v Value) bool {
-	switch v.Data.(type) {
+	switch DataOf(&v).(type) {
 	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload, BigIntPayload, DecimalPayload:
 		return true
 	}
@@ -465,7 +465,7 @@ func caseKnownScalar(v Value) bool {
 // caseScalarConst reports whether a clause token is a scalar literal: a
 // concrete scalar payload, as the source wrote it.
 func caseScalarConst(v Value) bool {
-	return !v.Carrier && !IsDynamic(&v) && caseScalarPayload(v)
+	return !IsCarrier(&v) && !IsDynamic(&v) && caseScalarPayload(v)
 }
 
 // caseStaticGuard decides one clause guard over the known scalar v, as
@@ -477,7 +477,7 @@ func caseScalarConst(v Value) bool {
 // predicate may have an effect the run observes at the case, which running
 // it here would perform at check time instead.
 func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
-	v.Carrier = false // a known scalar's payload IS its value
+	SetCarrier(&v, false) // a known scalar's payload IS its value
 	if !isCodeBody(m) {
 		if !caseScalarConst(m) {
 			return false, false
@@ -528,7 +528,7 @@ func caseFoldablePredicate(r *Registry, toks []Value) bool {
 			if caseScalarConst(top) {
 				continue // a name bound to a known scalar steps to it
 			}
-			if _, isFn := top.Data.(*FnDefInfo); !isFn {
+			if _, isFn := DataOf(&top).(*FnDefInfo); !isFn {
 				return false
 			}
 		}
@@ -604,13 +604,13 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 		return false
 	}
 	if top, ok := r.Defs.Top(w.Name); ok {
-		if fd, isFn := top.Data.(*FnDefInfo); isFn {
+		if fd, isFn := DataOf(&top).(*FnDefInfo); isFn {
 			return callReachesContext(fd)
 		}
 		// A splice marker (`def g word [add]`) spills its tokens where the
 		// block is re-stepped, and those tokens reach the values around the
 		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
-		return top.Carrier || IsDynamic(&top) || IsSplice(&top)
+		return IsCarrier(&top) || IsDynamic(&top) || IsSplice(&top)
 	}
 	fn := r.Lookup(w.Name)
 	return fn != nil && callReachesContext(fn)
@@ -667,10 +667,10 @@ func dropSynthesizedDeadArmWarnings(r *Registry, mark int) {
 // splices a list arm (NUR292), where a compiled chain or branch over the
 // value would hold the list itself.
 func mayRunAsCode(v Value) bool {
-	if !v.Carrier && !IsDynamic(&v) {
+	if !IsCarrier(&v) && !IsDynamic(&v) {
 		return false
 	}
-	p := v.Parent
+	p := ParentOf(&v)
 	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
 }
 
@@ -690,7 +690,7 @@ func codeGuards(r *Registry, cond Value, thenValue, elseValue *Value) (condGuard
 		return false, false, false
 	}
 	armGuard := func(v *Value) bool {
-		return v != nil && mayRunAsCode(*v) && !v.Parent.ConformsTo(TList)
+		return v != nil && mayRunAsCode(*v) && !ParentOf(v).ConformsTo(TList)
 	}
 	return mayRunAsCode(cond), armGuard(thenValue), armGuard(elseValue)
 }

@@ -158,7 +158,7 @@ func TestRootPreStartReads(t *testing.T) {
 		t.Error("a folded compound spelled nowhere cannot be placed")
 	}
 	carrier := n335Val("c", 1, 1)
-	carrier.Carrier = true
+	core.SetCarrier(&carrier, true)
 	if _, _, _, ok := es.rootPreStart(lw, nil, []core.Value{carrier}, -1, start, 8); ok {
 		t.Error("a carrier beneath the statement has no value to seat")
 	}

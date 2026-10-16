@@ -356,7 +356,7 @@ func TestVariadicCarrierHelpers(t *testing.T) {
 
 func TestTypedListCarrierHelpers(t *testing.T) {
 	tl := core.NewCarrierTypedListValue(core.NewCarrier(core.TString))
-	if !tl.Carrier || !core.IsTypedList(&tl) {
+	if !core.IsCarrier(&tl) || !core.IsTypedList(&tl) {
 		t.Errorf("typed-list carrier shape: %v", tl)
 	}
 	if elem := DataListElemTypeFromValue(tl); !elem.Equal(core.TString) {
@@ -381,17 +381,17 @@ func TestTypedListCarrierHelpers(t *testing.T) {
 	}
 	// Out-of-range index degrades to a plain List carrier.
 	out = ReturnsPreserveListAt(3)([]core.Value{core.NewCarrier(core.TList)}, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TList) {
+	if len(out) != 1 || !core.ParentOf(&out[0]).Equal(core.TList) {
 		t.Errorf("out-of-range preserve = %v", out)
 	}
 
 	elemFn := ReturnsListElemAt(0)
 	out = elemFn([]core.Value{core.NewCarrierTypedList(core.TString)}, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TString) {
+	if len(out) != 1 || !core.ParentOf(&out[0]).Equal(core.TString) {
 		t.Errorf("ReturnsListElemAt = %v", out)
 	}
 	out = ReturnsListElemAt(-1)(nil, nil)
-	if len(out) != 1 || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.ParentOf(&out[0]).Equal(core.TAny) {
 		t.Errorf("out-of-range elem = %v", out)
 	}
 }
@@ -408,17 +408,17 @@ func TestElementAndParamCarriers(t *testing.T) {
 
 	// Mixed concrete list joins element types.
 	mixed := ElementCarrierFromValue(core.NewList([]core.Value{core.NewInteger(1), core.NewString("s")}))
-	if !mixed.Carrier {
+	if !core.IsCarrier(&mixed) {
 		t.Errorf("mixed element carrier: %v", mixed)
 	}
 	// Single-typed list keeps the plain path.
 	single := ElementCarrierFromValue(core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)}))
-	if !single.Parent.Equal(core.TInteger) {
+	if !core.ParentOf(&single).Equal(core.TInteger) {
 		t.Errorf("single-typed element = %v", single)
 	}
 	// A map's values join too.
 	mv := ElementCarrierFromValue(mapOf("a", core.NewInteger(1), "b", core.NewString("s")))
-	if !mv.Carrier {
+	if !core.IsCarrier(&mv) {
 		t.Errorf("map value carrier: %v", mv)
 	}
 
@@ -430,7 +430,7 @@ func TestElementAndParamCarriers(t *testing.T) {
 		t.Error("nil param carrier not dynamic")
 	}
 	pc := ParamInputCarrier(core.TInteger)
-	if core.IsDynamic(&pc) || !pc.Parent.Equal(core.TInteger) {
+	if core.IsDynamic(&pc) || !core.ParentOf(&pc).Equal(core.TInteger) {
 		t.Errorf("Integer param carrier = %v", pc)
 	}
 }
@@ -526,7 +526,7 @@ func TestW9ScalarFoldOperand(t *testing.T) {
 	}
 	// A carrier whose payload is a value-scalar reaches the carrier-tolerant
 	// switch arm (not inert-const, not dynamic, scalar payload).
-	scalarCarrier := core.Value{Parent: core.TInteger, Data: core.IntPayload{N: 1}, Carrier: true}
+	scalarCarrier := core.MakeCarrierValue(core.TInteger, core.IntPayload{N: 1})
 	if !ScalarFoldOperand(scalarCarrier) {
 		t.Error("a scalar-payload carrier is a fold operand")
 	}
@@ -548,7 +548,7 @@ func TestW9JoinCarriersInnerOverCap(t *testing.T) {
 		core.NewTypeLiteral(core.TError), core.NewTypeLiteral(core.TType),
 	}
 	out := core.JoinCarriersInner(core.NewDisjunct(first), core.NewDisjunct(second))
-	if !out.Carrier {
+	if !core.IsCarrier(&out) {
 		t.Errorf("an over-cap join should collapse to a carrier, got %v", out)
 	}
 	if core.IsDisjunct(&out) {
@@ -574,7 +574,7 @@ func TestS7MinMaxIndexErrorArms(t *testing.T) {
 		t.Error("string-bounded upper DepScalar has no integer maximum")
 	}
 	// Concrete Integer-tagged value with a non-int payload -> no min/max.
-	badInt := core.Value{Parent: core.TInteger, Data: core.StrPayload{S: "x"}}
+	badInt := core.MakeValue(core.TInteger, core.StrPayload{S: "x"})
 	if _, ok := minIndex(badInt); ok {
 		t.Error("unreadable integer index has no minimum")
 	}
@@ -612,11 +612,11 @@ func TestTypedContainerCarrier(t *testing.T) {
 
 	// Typed-map pattern + a conforming Map arg → a typed carrier.
 	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &mapPat}, core.NewCarrier(core.TMap)); !ok || !core.IsTypedMap(&v) {
-		t.Errorf("map pattern + Map arg: got (%v, %v), want a typed-map carrier", v.Parent, ok)
+		t.Errorf("map pattern + Map arg: got (%v, %v), want a typed-map carrier", core.ParentOf(&v), ok)
 	}
 	// Typed-list pattern + a conforming List arg → a typed carrier.
 	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &listPat}, core.NewCarrier(core.TList)); !ok || !core.IsTypedList(&v) {
-		t.Errorf("list pattern + List arg: got (%v, %v), want a typed-list carrier", v.Parent, ok)
+		t.Errorf("list pattern + List arg: got (%v, %v), want a typed-list carrier", core.ParentOf(&v), ok)
 	}
 	// Nil pattern → no carrier.
 	if _, ok := typedContainerCarrier(core.FnParam{}, core.NewCarrier(core.TMap)); ok {

@@ -34,7 +34,7 @@ func TestWhileMoveCondTruthySplicesBody(t *testing.T) {
 	// on the tape where the condition region was.
 	found := false
 	for i := 0; i < e.Tape.Len(); i++ {
-		if v := e.Tape.At(i); v.Parent != nil && v.Parent.Equal(TInteger) {
+		if v := e.Tape.At(i); ParentOf(&v) != nil && ParentOf(&v).Equal(TInteger) {
 			found = true
 		}
 	}

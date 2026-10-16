@@ -128,7 +128,7 @@ func errHeadline(err error) string {
 // the bridge hosts a closure's apply under a VM run's invoker, and a
 // registry outside any run has none.
 func strayClosure() native.Value {
-	return native.Value{Parent: native.TFunction, Data: core.ClosurePayload{Unit: 0}}
+	return core.MakeValue(native.TFunction, core.ClosurePayload{Unit: 0})
 }
 
 // TestClosureFnViewOutsideARun: a closure the bridge cannot describe stays the
@@ -140,7 +140,7 @@ func TestClosureFnViewOutsideARun(t *testing.T) {
 	if bridged {
 		t.Fatal("a closure met outside a VM run must not bridge")
 	}
-	if _, still := got.Data.(core.ClosurePayload); !still {
+	if _, still := core.DataOf(&got).(core.ClosurePayload); !still {
 		t.Errorf("the closure must come back as the data it was, got %v", got)
 	}
 }
@@ -158,8 +158,8 @@ func TestClosureFnViewOutsideARun(t *testing.T) {
 func TestMacroFnValueIsTheFnValueForm(t *testing.T) {
 	r := mcovReg(t)
 	re := mcovRun(t, r, `import "boru:minilang" end MiniLang.Re`)[0]
-	if !re.Parent.ConformsTo(native.TFunction) {
-		t.Fatalf("MiniLang.Re must be a Function-family value, got parent %v", re.Parent)
+	if !core.ParentOf(&re).ConformsTo(native.TFunction) {
+		t.Fatalf("MiniLang.Re must be a Function-family value, got parent %v", core.ParentOf(&re))
 	}
 	fn := fdFn(t, r, `fn [[src:String opts:Map] [Any] [src]]`)
 	for _, tc := range []struct {

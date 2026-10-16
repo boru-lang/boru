@@ -26,7 +26,7 @@ func TestCallWindowAt(t *testing.T) {
 	}
 	args, locals, stack := []core.Value{one}, []core.Value{two, three}, []core.Value{two, one}
 	win, ok := callWindowAt(nil, "", p, -1, 3, args, stack, locals)
-	if !ok || len(win) != 4 || win[0].Data != one.Data || win[1].Data != four.Data || win[2].Data != three.Data || win[3].Data != one.Data {
+	if !ok || len(win) != 4 || core.DataOf(&win[0]) != core.DataOf(&one) || core.DataOf(&win[1]) != core.DataOf(&four) || core.DataOf(&win[2]) != core.DataOf(&three) || core.DataOf(&win[3]) != core.DataOf(&one) {
 		t.Fatalf("main-code window: %v %v", win, ok)
 	}
 	if win, ok := callWindowAt(nil, "", p, 0, 5, nil, nil, nil); !ok || len(win) != 0 {

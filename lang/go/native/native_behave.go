@@ -265,7 +265,7 @@ func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.T
 	if target == nil {
 		return be, nil, sig, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
 	}
-	if target.Origin == core.OriginBuiltin {
+	if OriginOf(target) == core.OriginBuiltin {
 		return be, nil, sig, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
 	}
 	return be, target, sig, nil
@@ -317,7 +317,7 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	// Every slot's fn runs where a value of the target is handled, so a
 	// frame that handles one reaches it: the dynamic-scope rescue asks the
 	// call graph about it (NUR257).
-	if fd, isFn := fnVal.Data.(*core.FnDefInfo); isFn {
+	if fd, isFn := DataOf(&fnVal).(*core.FnDefInfo); isFn {
 		r.Check.NoteBehaveReader(target, *fd)
 	}
 	if name == "make" && IsConcrete(&args[1]) {
@@ -329,15 +329,15 @@ func behaveReturns(args []Value, r *Registry) []Value {
 // extractFnDefInfo unwraps a TFunction value into its
 // FnDefInfo payload. Returns an error for anything else.
 func extractFnDefInfo(v Value) (core.FnDefInfo, error) {
-	if v.Parent == nil {
+	if ParentOf(&v) == nil {
 		return core.FnDefInfo{}, errors.New("fn arg is nil")
 	}
-	if !v.Parent.Equal(core.TFunction) {
-		return core.FnDefInfo{}, fmt.Errorf("fn arg must be a Function (got %s)", v.Parent.String())
+	if !ParentOf(&v).Equal(core.TFunction) {
+		return core.FnDefInfo{}, fmt.Errorf("fn arg must be a Function (got %s)", ParentOf(&v).String())
 	}
-	info, ok := v.Data.(*core.FnDefInfo)
+	info, ok := DataOf(&v).(*core.FnDefInfo)
 	if !ok {
-		return core.FnDefInfo{}, fmt.Errorf("fn arg has invalid payload (%T)", v.Data)
+		return core.FnDefInfo{}, fmt.Errorf("fn arg has invalid payload (%T)", DataOf(&v))
 	}
 	return *info, nil
 }
@@ -654,8 +654,8 @@ func (u *userBehavior) runCompareBody(a, b Value) (int, error) {
 		return 0, fmt.Errorf("behave compare %s: body produced no result", u.typeName)
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TInteger) {
-		return 0, fmt.Errorf("behave compare %s: body must return Integer, got %s", u.typeName, top.Parent.String())
+	if !ParentOf(&top).ConformsTo(core.TInteger) {
+		return 0, fmt.Errorf("behave compare %s: body must return Integer, got %s", u.typeName, ParentOf(&top).String())
 	}
 	n, err := core.AsInteger(top)
 	if err != nil {
@@ -771,7 +771,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 	// an Item-refine), which is a supertype of the target; reparent
 	// to the target so the user sees an Item-typed value back.
 	if u.unifyTarget != nil {
-		tp := top.Parent
+		tp := ParentOf(&top)
 		matches := tp.Equal(u.unifyTarget) ||
 			tp.IsAncestor(u.unifyTarget) ||
 			u.unifyTarget.IsAncestor(tp)
@@ -837,9 +837,9 @@ func (u *userBehavior) runTruthyBody(v Value) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !top.Parent.ConformsTo(core.TBoolean) {
+	if !ParentOf(&top).ConformsTo(core.TBoolean) {
 		return false, fmt.Errorf("behave truthy %s: body must return Boolean, got %s",
-			u.typeName, top.Parent.String())
+			u.typeName, ParentOf(&top).String())
 	}
 	return core.AsBoolean(top)
 }
@@ -900,9 +900,9 @@ func (u *userBehavior) runEqualityBody(body []Value, slot string, a, b Value) (b
 		return false, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TBoolean) {
+	if !ParentOf(&top).ConformsTo(core.TBoolean) {
 		return false, fmt.Errorf("behave %s %s: body must return Boolean, got %s",
-			slot, u.typeName, top.Parent.String())
+			slot, u.typeName, ParentOf(&top).String())
 	}
 	return core.AsBoolean(top)
 }
@@ -930,7 +930,7 @@ func (u *userBehavior) Size(v Value) int {
 	u.inSize = true
 	defer func() { u.inSize = false }()
 	top, err := u.runUnaryBody(u.sizeBody, v, "size")
-	if err != nil || !top.Parent.ConformsTo(core.TInteger) {
+	if err != nil || !ParentOf(&top).ConformsTo(core.TInteger) {
 		return sizeAbove()
 	}
 	n, err := core.AsInteger(top)
@@ -1025,7 +1025,7 @@ func behaviorBodyStepless(r *Registry, body []Value) bool {
 		return false
 	}
 	for _, v := range body {
-		if _, isAtom := v.Data.(core.AtomPayload); isAtom {
+		if _, isAtom := DataOf(&v).(core.AtomPayload); isAtom {
 			return false
 		}
 	}
@@ -1048,8 +1048,8 @@ func (u *userBehavior) runCanonBody(v Value) (string, error) {
 		return "", fmt.Errorf("body produced no result")
 	}
 	top := result[len(result)-1]
-	if !top.Parent.ConformsTo(core.TString) {
-		return "", fmt.Errorf("body must return String, got %s", top.Parent.String())
+	if !ParentOf(&top).ConformsTo(core.TString) {
+		return "", fmt.Errorf("body must return String, got %s", ParentOf(&top).String())
 	}
 	s, err := core.AsString(top)
 	if err != nil {

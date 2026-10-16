@@ -93,7 +93,7 @@ func miniSpHandler(args []native.Value, _ map[string]native.Value, _ []native.Va
 	_, listErr := native.AsList(doc)
 	if mapErr != nil && listErr != nil {
 		return nil, r.BoruErrorHint("mini_error",
-			"sp: expected a Map or List, got "+doc.Parent.String(), "lang_sp",
+			"sp: expected a Map or List, got "+native.ParentOf(&doc).String(), "lang_sp",
 			"the sp document is a boru structure — a Map or a List")
 	}
 	expr, perr := miniCompiledXPath(src)

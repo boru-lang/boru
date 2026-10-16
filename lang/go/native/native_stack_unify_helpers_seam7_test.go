@@ -16,18 +16,18 @@ func TestSeam7StackCheckNarrowers(t *testing.T) {
 	r := seam5Reg(t)
 
 	// pickCheckFullStack: empty stack → Any element.
-	if got := pickCheckFullStack(nil, nil, r); len(got) != 1 || !got[0].Parent.ConformsTo(TAny) {
+	if got := pickCheckFullStack(nil, nil, r); len(got) != 1 || !ParentOf(&got[0]).ConformsTo(TAny) {
 		t.Fatalf("pickCheckFullStack empty: %v", got)
 	}
 	// Homogeneous stack keeps the common type.
 	hom := []Value{NewInteger(1), NewInteger(2)}
-	if got := pickCheckFullStack(nil, hom, r); !got[len(got)-1].Parent.ConformsTo(TInteger) {
-		t.Fatalf("pickCheckFullStack homogeneous: %v", got[len(got)-1].Parent)
+	if got := pickCheckFullStack(nil, hom, r); !ParentOf(&got[len(got)-1]).ConformsTo(TInteger) {
+		t.Fatalf("pickCheckFullStack homogeneous: %v", ParentOf(&got[len(got)-1]))
 	}
 	// A stack whose common ancestor widens to Any breaks the loop early.
 	mixed := []Value{NewInteger(1), NewMap(NewOrderedMap()), NewList(nil)}
-	if got := pickCheckFullStack(nil, mixed, r); !got[len(got)-1].Parent.ConformsTo(TAny) {
-		t.Fatalf("pickCheckFullStack mixed: %v", got[len(got)-1].Parent)
+	if got := pickCheckFullStack(nil, mixed, r); !ParentOf(&got[len(got)-1]).ConformsTo(TAny) {
+		t.Fatalf("pickCheckFullStack mixed: %v", ParentOf(&got[len(got)-1]))
 	}
 
 	// rollCheckFullStack: empty → nil.
@@ -45,35 +45,35 @@ func TestSeam7ListEdgeElemReturns(t *testing.T) {
 	shiftNarrow := listEdgeElemReturns(false)
 
 	// Wrong arity → fallback.
-	if got := popNarrow(nil, r); len(got) != 2 || !got[1].Parent.ConformsTo(TAny) {
+	if got := popNarrow(nil, r); len(got) != 2 || !ParentOf(&got[1]).ConformsTo(TAny) {
 		t.Fatalf("pop narrow arity fallback: %v", got)
 	}
 	// Non-concrete arg → fallback.
-	if got := popNarrow([]Value{NewTypeLiteral(TList)}, r); !got[1].Parent.ConformsTo(TAny) {
+	if got := popNarrow([]Value{NewTypeLiteral(TList)}, r); !ParentOf(&got[1]).ConformsTo(TAny) {
 		t.Fatalf("pop narrow non-concrete fallback: %v", got)
 	}
 	// Empty list → fallback.
-	if got := popNarrow([]Value{NewList(nil)}, r); !got[1].Parent.ConformsTo(TAny) {
+	if got := popNarrow([]Value{NewList(nil)}, r); !ParentOf(&got[1]).ConformsTo(TAny) {
 		t.Fatalf("pop narrow empty fallback: %v", got)
 	}
 	// Undefined edge element → fallback.
 	u := NewInteger(1)
 	SetUndefined(&u, true)
-	if got := popNarrow([]Value{NewList([]Value{u})}, r); !got[1].Parent.ConformsTo(TAny) {
+	if got := popNarrow([]Value{NewList([]Value{u})}, r); !ParentOf(&got[1]).ConformsTo(TAny) {
 		t.Fatalf("pop narrow undefined fallback: %v", got)
 	}
 	// Any-typed edge element → fallback.
-	if got := shiftNarrow([]Value{NewList([]Value{NewDynamicCarrier(TAny)})}, r); !got[1].Parent.ConformsTo(TAny) {
+	if got := shiftNarrow([]Value{NewList([]Value{NewDynamicCarrier(TAny)})}, r); !ParentOf(&got[1]).ConformsTo(TAny) {
 		t.Fatalf("shift narrow Any fallback: %v", got)
 	}
 	// Dynamic (but typed) edge element propagates its gradual claim.
 	got := popNarrow([]Value{NewList([]Value{NewDynamicCarrier(TInteger)})}, r)
-	if !got[1].Parent.ConformsTo(TInteger) || !IsDynamic(&got[1]) {
-		t.Fatalf("pop narrow dynamic element: %v dyn=%v", got[1].Parent, IsDynamic(&got[1]))
+	if !ParentOf(&got[1]).ConformsTo(TInteger) || !IsDynamic(&got[1]) {
+		t.Fatalf("pop narrow dynamic element: %v dyn=%v", ParentOf(&got[1]), IsDynamic(&got[1]))
 	}
 	// Concrete edge element narrows to its type.
-	if got := popNarrow([]Value{NewList([]Value{NewInteger(9)})}, r); !got[1].Parent.ConformsTo(TInteger) {
-		t.Fatalf("pop narrow concrete element: %v", got[1].Parent)
+	if got := popNarrow([]Value{NewList([]Value{NewInteger(9)})}, r); !ParentOf(&got[1]).ConformsTo(TInteger) {
+		t.Fatalf("pop narrow concrete element: %v", ParentOf(&got[1]))
 	}
 }
 
@@ -99,7 +99,7 @@ func TestSeam7UnifyFoldable(t *testing.T) {
 	}
 	// A broken list (Parent=List but non-list payload) does not fold.
 	badList := NewInteger(1)
-	badList.Parent = TList
+	SetParent(&badList, TList)
 	if unifyFoldable(badList) {
 		t.Fatal("broken list must not fold")
 	}
@@ -116,7 +116,7 @@ func TestSeam7UnifyFoldable(t *testing.T) {
 	}
 	// A broken map does not fold.
 	badMap := NewInteger(1)
-	badMap.Parent = TMap
+	SetParent(&badMap, TMap)
 	if unifyFoldable(badMap) {
 		t.Fatal("broken map must not fold")
 	}
@@ -127,7 +127,7 @@ func TestSeam7UnifyFoldReturns(t *testing.T) {
 
 	// Non-foldable operand → fallback.
 	fb := unifyFoldReturns([]Value{NewCarrier(TInteger), NewInteger(1)}, r)
-	if len(fb) != 2 || !fb[1].Parent.ConformsTo(TBoolean) {
+	if len(fb) != 2 || !ParentOf(&fb[1]).ConformsTo(TBoolean) {
 		t.Fatalf("unifyFoldReturns fallback: %v", fb)
 	}
 
@@ -152,7 +152,7 @@ func TestSeam7UnifyFoldReturns(t *testing.T) {
 	}
 	// The folded result is a dynamic carrier (type-as-value ridden dynamic).
 	if !IsDynamic(&dout[0]) {
-		t.Fatalf("expected disjunct result ridden dynamic, got %v dyn=%v", dout[0].Parent, IsDynamic(&dout[0]))
+		t.Fatalf("expected disjunct result ridden dynamic, got %v dyn=%v", ParentOf(&dout[0]), IsDynamic(&dout[0]))
 	}
 }
 
@@ -175,7 +175,7 @@ func TestSeam7IsStaticZeroIntDivisor(t *testing.T) {
 	// A broken BigInteger (Parent claims BigInteger, integer payload) hits
 	// the AsBigInteger-failure return.
 	badBig := NewInteger(1)
-	badBig.Parent = TBigInteger
+	SetParent(&badBig, TBigInteger)
 	if isStaticZeroIntDivisor(badBig) {
 		t.Fatal("broken bigint must fall through to false")
 	}

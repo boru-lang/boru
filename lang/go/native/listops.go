@@ -129,7 +129,7 @@ func shiftHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry
 func pushFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[1])
 	if err != nil {
-		return nil, r.BoruError("push_error", "push: expected a FlexList, got "+args[1].Parent.String(), "push")
+		return nil, r.BoruError("push_error", "push: expected a FlexList, got "+ParentOf(&args[1]).String(), "push")
 	}
 	// A typed flex list ([:T]) enforces + recursively re-tags on a grow.
 	tagged, werr := d2AdoptTyped(r, args[1], args[0], "push")
@@ -149,7 +149,7 @@ func pushFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 func popFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[0])
 	if err != nil {
-		return nil, r.BoruError("pop_error", "pop: expected a FlexList, got "+args[0].Parent.String(), "pop")
+		return nil, r.BoruError("pop_error", "pop: expected a FlexList, got "+ParentOf(&args[0]).String(), "pop")
 	}
 	if len(fd.Elems) == 0 {
 		return nil, r.BoruError("pop_error", "pop: cannot pop from empty list", "pop")
@@ -162,7 +162,7 @@ func popFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 func unshiftFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[1])
 	if err != nil {
-		return nil, r.BoruError("unshift_error", "unshift: expected a FlexList, got "+args[1].Parent.String(), "unshift")
+		return nil, r.BoruError("unshift_error", "unshift: expected a FlexList, got "+ParentOf(&args[1]).String(), "unshift")
 	}
 	// A typed flex list ([:T]) enforces + recursively re-tags on a grow.
 	tagged, werr := d2AdoptTyped(r, args[1], args[0], "unshift")
@@ -181,7 +181,7 @@ func unshiftFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 func shiftFlexHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[0])
 	if err != nil {
-		return nil, r.BoruError("shift_error", "shift: expected a FlexList, got "+args[0].Parent.String(), "shift")
+		return nil, r.BoruError("shift_error", "shift: expected a FlexList, got "+ParentOf(&args[0]).String(), "shift")
 	}
 	if len(fd.Elems) == 0 {
 		return nil, r.BoruError("shift_error", "shift: cannot shift from empty list", "shift")

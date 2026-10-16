@@ -43,8 +43,8 @@ func numHandler(op func(a, b float64) (float64, error), preferInt bool) core.Han
 			return nil, err
 		}
 		if preferInt &&
-			args[0].Parent.ConformsTo(core.TInteger) &&
-			args[1].Parent.ConformsTo(core.TInteger) &&
+			core.ParentOf(&args[0]).ConformsTo(core.TInteger) &&
+			core.ParentOf(&args[1]).ConformsTo(core.TInteger) &&
 			res == math.Trunc(res) &&
 			!math.IsInf(res, 0) &&
 			!math.IsNaN(res) {
@@ -100,7 +100,7 @@ func registerUnary(r *core.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			if preferInt && args[0].Parent.ConformsTo(core.TInteger) && res == math.Trunc(res) {
+			if preferInt && core.ParentOf(&args[0]).ConformsTo(core.TInteger) && res == math.Trunc(res) {
 				return []core.Value{core.NewInteger(int64(res))}, nil
 			}
 			return []core.Value{core.NewFloat(res)}, nil

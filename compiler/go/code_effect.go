@@ -65,10 +65,10 @@ func AnalyseCodeEffectCarrier(r *core.Registry, body core.Value) (core.Value, bo
 	if r == nil || !r.Check.IsActive() || r.Check.Compiling || r.Check.CodeEffectDepth > 0 {
 		return core.Value{}, false
 	}
-	if !core.IsConcrete(&body) || !body.Parent.ConformsTo(core.TList) {
+	if !core.IsConcrete(&body) || !core.ParentOf(&body).ConformsTo(core.TList) {
 		return core.Value{}, false
 	}
-	lp, ok := body.Data.(core.ListPayload)
+	lp, ok := core.DataOf(&body).(core.ListPayload)
 	if !ok || len(lp.Elems) == 0 {
 		return core.Value{}, false
 	}
@@ -107,12 +107,12 @@ func AnalyseCodeEffectCarrier(r *core.Registry, body core.Value) (core.Value, bo
 	}
 	out := make([]*core.Type, len(stk))
 	for i, v := range stk {
-		if v.Parent == nil || core.IsBareTypeNode(&v) || core.IsDisjunct(&v) {
+		if core.ParentOf(&v) == nil || core.IsBareTypeNode(&v) || core.IsDisjunct(&v) {
 			return core.Value{}, false
 		}
-		out[i] = v.Parent
+		out[i] = core.ParentOf(&v)
 	}
 	c := core.NewCarrier(core.TList)
-	c.Data = core.CodeEffectInfo{Out: out, Analysed: true}
+	core.SetData(&c, core.CodeEffectInfo{Out: out, Analysed: true})
 	return c, true
 }

@@ -33,7 +33,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 		if reverse {
 			t.Error("a plain fn value permutes nothing")
 		}
-		if _, isFn := got.Data.(*FnDefInfo); !isFn {
+		if _, isFn := DataOf(&got).(*FnDefInfo); !isFn {
 			t.Error("the value must come back unchanged")
 		}
 	})
@@ -53,7 +53,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 		if !wrapped || !reverse {
 			t.Fatalf("usurp must unwrap and reverse, got wrapped=%v reverse=%v", wrapped, reverse)
 		}
-		if fd, isFn := got.Data.(*FnDefInfo); !isFn || fd.Name != "sub" {
+		if fd, isFn := DataOf(&got).(*FnDefInfo); !isFn || fd.Name != "sub" {
 			t.Errorf("must unwrap to sub, got %v", got)
 		}
 	})
@@ -78,7 +78,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 			if reverse {
 				t.Errorf("%s re-bases the barrier only — it must not reverse", c.name)
 			}
-			if fd, isFn := got.Data.(*FnDefInfo); !isFn || fd.Name != "sub" {
+			if fd, isFn := DataOf(&got).(*FnDefInfo); !isFn || fd.Name != "sub" {
 				t.Errorf("%s must unwrap to sub, got %v", c.name, got)
 			}
 		}
@@ -95,7 +95,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 		if !ok {
 			t.Fatal("usurp of a usurp declined")
 		}
-		if fd, _ := FnDefOf(u2.Data); !fd.ArgsReversed {
+		if fd, _ := FnDefOf(DataOf(&u2)); !fd.ArgsReversed {
 			t.Fatal("precondition: the mark is expected to still read reversed")
 		}
 		got, reverse, wrapped := UnwrapModifierChain(u2)
@@ -106,7 +106,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 			t.Error("two reversals compose to the identity — the walk must say so " +
 				"even though ArgsReversed still reads true")
 		}
-		if fd, isFn := got.Data.(*FnDefInfo); !isFn || fd.Name != "sub" {
+		if fd, isFn := DataOf(&got).(*FnDefInfo); !isFn || fd.Name != "sub" {
 			t.Errorf("must unwrap all the way to sub, got %v", got)
 		}
 	})
@@ -135,7 +135,7 @@ func TestUnwrapModifierChain(t *testing.T) {
 		if ok || reverse {
 			t.Error("a chain past the bound must decline, not report a result")
 		}
-		if fd, isFn := got.Data.(*FnDefInfo); !isFn || fd.Name != "loop" {
+		if fd, isFn := DataOf(&got).(*FnDefInfo); !isFn || fd.Name != "loop" {
 			t.Error("a declined walk returns the value it was given")
 		}
 	})

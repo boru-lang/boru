@@ -120,7 +120,7 @@ func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErro
 	// two value shapes: the bare type literal NewTypeLiteral(TAny)
 	// (Data=nil; the value IS the TAny lattice node) and the Any-
 	// typed carrier (Data=nil, Carrier=true, Parent=TAny).
-	if !IsConcrete(&val) && (val.Parent.Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && (ParentOf(&val).Equal(TAny) || (&val).Equal(TAny)) {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 
@@ -128,11 +128,11 @@ func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErro
 		// Concrete map alternative against a concrete map value uses
 		// open (subset) matching — the disjunct alternative acts as a
 		// pattern, not a full schema.
-		if alt.Parent.Equal(TMap) && val.Parent.Equal(TMap) &&
+		if ParentOf(&alt).Equal(TMap) && ParentOf(&val).Equal(TMap) &&
 			!IsRecordType(alt) && !IsRecordType(val) &&
 			!IsTypedMap(&alt) && !IsTypedMap(&val) &&
 			!IsOptionsType(alt) && !IsOptionsType(val) {
-			if alt.Data != nil && val.Data != nil {
+			if DataOf(&alt) != nil && DataOf(&val) != nil {
 				if openUnifyMap(alt, val, r) {
 					return val, nil
 				}

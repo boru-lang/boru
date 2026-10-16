@@ -45,20 +45,20 @@ func spliceOutsSeat(want, got []core.Value) ([]core.Value, bool) {
 // map, a fn value, a Float, is never the same here: the run defers
 // (review of #522).
 func sameSpliceToken(a, b core.Value) bool {
-	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) || core.IsQuoted(&a) != core.IsQuoted(&b) || core.IsEval(&a) != core.IsEval(&b) ||
-		a.Carrier || b.Carrier || core.IsDynamic(&a) || core.IsDynamic(&b) {
+	if core.ParentOf(&a) == nil || core.ParentOf(&b) == nil || !core.ParentOf(&a).Equal(core.ParentOf(&b)) || core.IsQuoted(&a) != core.IsQuoted(&b) || core.IsEval(&a) != core.IsEval(&b) ||
+		core.IsCarrier(&a) || core.IsCarrier(&b) || core.IsDynamic(&a) || core.IsDynamic(&b) {
 		return false
 	}
 	if ai, err := core.AsSplice(&a); err == nil {
 		bi, err := core.AsSplice(&b)
 		return err == nil && sameSpliceToken(ai.Data, bi.Data)
 	}
-	if aw, ok := a.Data.(core.WordInfo); ok {
-		bw, ok := b.Data.(core.WordInfo)
+	if aw, ok := core.DataOf(&a).(core.WordInfo); ok {
+		bw, ok := core.DataOf(&b).(core.WordInfo)
 		return ok && aw == bw
 	}
-	if al, ok := a.Data.(core.ListPayload); ok {
-		bl, ok := b.Data.(core.ListPayload)
+	if al, ok := core.DataOf(&a).(core.ListPayload); ok {
+		bl, ok := core.DataOf(&b).(core.ListPayload)
 		if !ok || len(al.Elems) != len(bl.Elems) {
 			return false
 		}
@@ -69,7 +69,7 @@ func sameSpliceToken(a, b core.Value) bool {
 		}
 		return true
 	}
-	return core.IsConcrete(&a) && core.IsConcrete(&b) && renderIsValue(a.Parent) && core.CanonValue(a) == core.CanonValue(b)
+	return core.IsConcrete(&a) && core.IsConcrete(&b) && renderIsValue(core.ParentOf(&a)) && core.CanonValue(a) == core.CanonValue(b)
 }
 
 // renderIsValue reports whether a value of type t renders injectively —

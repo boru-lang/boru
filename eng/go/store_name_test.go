@@ -53,7 +53,7 @@ func TestNameStoredClosure(t *testing.T) {
 	if view, _ := closureView(&renamed); view.RetName != "h" || !strings.Contains(renamed.String(), "fn h(") {
 		t.Errorf("a binding renames a named closure: RetName=%q Render=%q", view.RetName, renamed.String())
 	}
-	if own := renamed.Data.(core.ClosurePayload); own.RetName != "g" || own.Render != "fn g(Integer)" {
+	if own := core.DataOf(&renamed).(core.ClosurePayload); own.RetName != "g" || own.Render != "fn g(Integer)" {
 		t.Errorf("the payload is not renamed: %+v", own)
 	}
 	if v := vc.nameStoredClosure(named, "g"); core.HolderFnName(&v) != "" || v.String() != "fn g(Integer)" {

@@ -42,13 +42,13 @@ func (s *StoreShapeInfo) RecordVal(v Value) {
 	if s == nil || s.ValsPoisoned {
 		return
 	}
-	if v.Parent == nil || v.Parent.ConformsTo(TFunction) ||
+	if ParentOf(&v) == nil || ParentOf(&v).ConformsTo(TFunction) ||
 		IsReach(&v) || IsSplice(&v) {
 		s.ValsPoisoned = true
 		s.Vals = Value{}
 		return
 	}
-	if s.Vals.Parent == nil {
+	if ParentOf(&s.Vals) == nil {
 		s.Vals = v
 		return
 	}
@@ -73,7 +73,7 @@ func (s *StoreShapeInfo) Poison() {
 // LookupVals returns the unkeyed value join, or ok=false when nothing
 // was recorded or the join is poisoned.
 func (s *StoreShapeInfo) LookupVals() (Value, bool) {
-	if s == nil || s.ValsPoisoned || s.Vals.Parent == nil {
+	if s == nil || s.ValsPoisoned || ParentOf(&s.Vals) == nil {
 		return Value{}, false
 	}
 	return s.Vals, true

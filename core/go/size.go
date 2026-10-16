@@ -18,7 +18,7 @@ import (
 // length. A type with no Sizer in its lattice — None, a Date, a
 // bare scalar — sizes 0.
 func SizeOf(v Value) int {
-	return sizeOfFrom(v.Parent, v)
+	return sizeOfFrom(ParentOf(&v), v)
 }
 
 // sizeOfFrom is SizeOf's walk starting at an arbitrary chain position.
@@ -27,7 +27,7 @@ func SizeOf(v Value) int {
 // node — Sizer has no decline channel (it is total, unlike Comparer),
 // so "keep walking" must be expressed by re-entering the walk here.
 func sizeOfFrom(t *Type, v Value) int {
-	for ; t != nil; t = t.Parent {
+	for ; t != nil; t = ParentOf(t) {
 		if sz, ok := t.Behavior().(Sizer); ok {
 			return sz.Size(v)
 		}
@@ -42,7 +42,7 @@ func SizeOfAbove(t *Type, v Value) int {
 	if t == nil {
 		return 0
 	}
-	return sizeOfFrom(t.Parent, v)
+	return sizeOfFrom(ParentOf(t), v)
 }
 
 // SizeOwner returns the type node whose Sizer answers SizeOf for a
@@ -53,7 +53,7 @@ func SizeOfAbove(t *Type, v Value) int {
 // kernel node itself, not a user type that may have installed its own
 // size rule.
 func SizeOwner(t *Type) *Type {
-	for ; t != nil; t = t.Parent {
+	for ; t != nil; t = ParentOf(t) {
 		if _, ok := t.Behavior().(Sizer); ok {
 			return t
 		}
@@ -139,7 +139,7 @@ func (mapFormatBehavior) Size(v Value) int {
 // Table's rows. Record instances are field-maps and size via the Map
 // Sizer instead.
 func (idealRootBehavior) Size(v Value) int {
-	switch d := v.Data.(type) {
+	switch d := DataOf(&v).(type) {
 	case ClassInstanceInfo:
 		if d.Fields != nil {
 			return d.Fields.Len()

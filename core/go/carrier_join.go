@@ -30,10 +30,10 @@ func CommonAncestorType(a, b *Type) *Type {
 		return TAny
 	}
 	seen := make(map[*Type]bool)
-	for d := a; d != nil; d = d.Parent {
+	for d := a; d != nil; d = ParentOf(d) {
 		seen[d] = true
 	}
-	for d := b; d != nil; d = d.Parent {
+	for d := b; d != nil; d = ParentOf(d) {
 		if seen[d] {
 			return d
 		}
@@ -66,7 +66,7 @@ func FlattenAlternatives(v Value) []Value {
 	if IsBareTypeNode(&v) {
 		return []Value{v}
 	}
-	return []Value{NewTypeLiteral(v.Parent)}
+	return []Value{NewTypeLiteral(ParentOf(&v))}
 }
 
 // JoinCarriers folds two carriers into a single carrier that
@@ -108,7 +108,7 @@ func JoinCarriers(a, b Value) Value {
 	}
 	out := JoinCarriersInner(a, b)
 	if IsDynamic(&a) || IsDynamic(&b) {
-		out.Carrier = true
+		SetCarrier(&out, true)
 		SetDynamic(&out, true)
 	}
 	return out
@@ -117,8 +117,8 @@ func JoinCarriers(a, b Value) Value {
 // isNoneArm reports whether a branch carrier is the None sentinel — the bare
 // None type node, a `none` value, or a carrier bound to None.
 func isNoneArm(v Value) bool {
-	if v.Parent != nil {
-		return v.Parent.Equal(TNone)
+	if ParentOf(&v) != nil {
+		return ParentOf(&v).Equal(TNone)
 	}
 	return IsNoneShape(v)
 }
@@ -135,13 +135,13 @@ func JoinCarriersInner(a, b Value) Value {
 	// tested general join — JoinCarrierStacks then flips that result gradual
 	// (the optional / sentinel merge). Only the parent-math shortcuts are
 	// bypassed; the union below already treats None as a first-class alternative.
-	aNone := a.Parent == nil
-	bNone := b.Parent == nil
+	aNone := ParentOf(&a) == nil
+	bNone := ParentOf(&b) == nil
 	if aNone && bNone {
 		return NewCarrier(TNone)
 	}
 	collapse := !aNone && !bNone
-	if collapse && a.Parent.Equal(b.Parent) && !IsDisjunct(&a) && !IsDisjunct(&b) {
+	if collapse && ParentOf(&a).Equal(ParentOf(&b)) && !IsDisjunct(&a) && !IsDisjunct(&b) {
 		// The merged carrier is a NEW value (an `if`/loop result), not arm `a`:
 		// constructed from a's facets under an identity of its own
 		// (MintCarrierFrom). Keeping a's identity let the result COLLIDE with
@@ -152,12 +152,12 @@ func JoinCarriersInner(a, b Value) Value {
 		return MintCarrierFrom(&a)
 	}
 	if collapse && !IsDisjunct(&a) && !IsDisjunct(&b) {
-		if a.Parent.ConformsTo(b.Parent) {
+		if ParentOf(&a).ConformsTo(ParentOf(&b)) {
 			// a is subtype of b → widen to b
-			return NewCarrier(b.Parent)
+			return NewCarrier(ParentOf(&b))
 		}
-		if b.Parent.ConformsTo(a.Parent) {
-			return NewCarrier(a.Parent)
+		if ParentOf(&b).ConformsTo(ParentOf(&a)) {
+			return NewCarrier(ParentOf(&a))
 		}
 		// Collapse DIRECT siblings to their shared parent — the case
 		// this was built for is value-tagged literals (Number/Integer/42
@@ -170,10 +170,10 @@ func JoinCarriersInner(a, b Value) Value {
 		// Integer path takes [Number Number]) — keep them as a
 		// disjunct so per-alternative dispatch
 		// (disjunctPartitionReturns) sees the real alternatives.
-		anc := CommonAncestorType(a.Parent, b.Parent)
+		anc := CommonAncestorType(ParentOf(&a), ParentOf(&b))
 		if anc != nil && !anc.Equal(TAny) &&
-			a.Parent.Parent != nil && anc.Equal(a.Parent.Parent) &&
-			b.Parent.Parent != nil && anc.Equal(b.Parent.Parent) {
+			ParentOf(ParentOf(&a)) != nil && anc.Equal(ParentOf(ParentOf(&a))) &&
+			ParentOf(ParentOf(&b)) != nil && anc.Equal(ParentOf(ParentOf(&b))) {
 			return NewCarrier(anc)
 		}
 	}
@@ -195,7 +195,7 @@ func JoinCarriersInner(a, b Value) Value {
 		return NewCarrier(t)
 	}
 	v := NewDisjunct(alts)
-	v.Carrier = true
+	SetCarrier(&v, true)
 	return v
 }
 
@@ -398,7 +398,7 @@ func condBoundCarrier(r *Registry, name string, v Value, taken bool) Value {
 		return v
 	}
 	if IsCapitalisedName(name) || IsFnValueResidual(v) || IsBareTypeNode(&v) || IsModuleFamilyValue(v) ||
-		(v.Parent != nil && v.Parent.ConformsTo(TFunction)) {
+		(ParentOf(&v) != nil && ParentOf(&v).ConformsTo(TFunction)) {
 		return v
 	}
 	return JoinCarriers(v, v)
@@ -443,7 +443,7 @@ func JoinCarrierStacks(a, b []Value) []Value {
 		// precise strict shape; only a genuine value-vs-none branch widens.
 		// Looser, never tighter; a guard discharges the modality back to strict.
 		if aReal && bReal && (isNoneArm(ai) != isNoneArm(bi)) {
-			joined.Carrier = true
+			SetCarrier(&joined, true)
 			SetDynamic(&joined, true)
 		}
 		out[i] = joined

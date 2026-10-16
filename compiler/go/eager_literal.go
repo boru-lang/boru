@@ -392,7 +392,7 @@ func contractMayMiss(rec *fnUnitRec, args []core.Value) bool {
 		if i >= len(rec.paramTypes) || rec.paramTypes[i] == nil || rec.paramTypes[i].Equal(core.TAny) {
 			continue
 		}
-		if core.IsDynamic(&a) || a.Parent == nil || !a.Parent.ConformsTo(rec.paramTypes[i]) {
+		if core.IsDynamic(&a) || core.ParentOf(&a) == nil || !core.ParentOf(&a).ConformsTo(rec.paramTypes[i]) {
 			return true
 		}
 	}

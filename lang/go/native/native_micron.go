@@ -43,7 +43,7 @@ func getrMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		return []Value{val}, nil
 	}
 	return nil, r.BoruError("not_found",
-		fmt.Sprintf("getr: %s has no property %q", recv.Parent.Name(), k), "getr")
+		fmt.Sprintf("getr: %s has no property %q", ParentOf(&recv).Name(), k), "getr")
 }
 
 func hasMicronHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
@@ -64,8 +64,8 @@ func setMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 
 func setMicronDetail(args []Value) string {
 	kind := "Micron"
-	if len(args) == 3 && args[2].Parent != nil {
-		kind = args[2].Parent.Leaf()
+	if len(args) == 3 && ParentOf(&args[2]) != nil {
+		kind = ParentOf(&args[2]).Leaf()
 	}
 	return fmt.Sprintf("set: %s values are immutable — construct a new one with make", kind)
 }
@@ -91,8 +91,8 @@ func delMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 
 func delMicronDetail(args []Value) string {
 	kind := "Micron"
-	if len(args) == 2 && args[1].Parent != nil {
-		kind = args[1].Parent.Leaf()
+	if len(args) == 2 && ParentOf(&args[1]) != nil {
+		kind = ParentOf(&args[1]).Leaf()
 	}
 	return fmt.Sprintf("del: %s values are immutable — construct a new one with make", kind)
 }
@@ -115,10 +115,10 @@ func delMicronReturns(args []Value, r *Registry) []Value {
 func getrMicronReturns(args []Value, r *Registry) []Value {
 	out := getMicronReturns(args, r)
 	if r != nil && r.Check.IsActive() && len(args) == 2 && IsConcrete(&args[0]) &&
-		len(out) == 1 && out[0].Carrier && !IsDynamic(&out[0]) && out[0].Parent != nil && out[0].Parent.Equal(TNone) {
+		len(out) == 1 && IsCarrier(&out[0]) && !IsDynamic(&out[0]) && ParentOf(&out[0]) != nil && ParentOf(&out[0]).Equal(TNone) {
 		kind := "Micron"
-		if args[1].Parent != nil {
-			kind = args[1].Parent.Leaf()
+		if ParentOf(&args[1]) != nil {
+			kind = ParentOf(&args[1]).Leaf()
 		}
 		core.CheckAddUniqueDiagnostic(r, "not_found",
 			fmt.Sprintf("getr: %s has no property %q", kind, getKey(args[0])), "getr", args[0].Pos())
@@ -135,7 +135,7 @@ func getrMicronReturns(args []Value, r *Registry) []Value {
 // dynamic.
 func getMicronReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent == nil {
+	if len(args) != 2 || !IsConcrete(&args[0]) || ParentOf(&args[1]) == nil {
 		return dyn
 	}
 	recv := args[1]
@@ -149,7 +149,7 @@ func getMicronReturns(args []Value, r *Registry) []Value {
 		}
 		return []Value{NewCarrier(TNone)}
 	}
-	t := recv.Parent
+	t := ParentOf(&recv)
 	switch {
 	case t.ConformsTo(TPathon):
 		switch key {

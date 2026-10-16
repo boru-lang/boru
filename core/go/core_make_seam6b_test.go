@@ -138,9 +138,9 @@ func TestS6b0ContainsSharedMutableCarrier(t *testing.T) {
 func TestS6b0FreshenDefaultNilStorePayload(t *testing.T) {
 	// A typed-nil *StoreInstanceInfo payload: IsStore matches, AsStore
 	// yields a nil pointer — FreshenDefault must return v unchanged.
-	v := Value{Parent: TStore, Data: (*StoreInstanceInfo)(nil)}
+	v := MakeValue(TStore, (*StoreInstanceInfo)(nil))
 	out := FreshenDefault(v)
-	if out.Data != v.Data {
+	if DataOf(&out) != DataOf(&v) {
 		t.Error("nil store payload must pass through unchanged")
 	}
 }
@@ -150,7 +150,7 @@ func TestS6b0FreshenDefaultNilBackedFlexList(t *testing.T) {
 	// guard returns the value unchanged.
 	v := NewFlexList(nil)
 	out := FreshenDefault(v)
-	if out.Data != v.Data {
+	if DataOf(&out) != DataOf(&v) {
 		t.Error("nil-backed flex list must pass through unchanged")
 	}
 }
@@ -160,7 +160,7 @@ func TestS6b0FreshenDefaultFlexMapCopies(t *testing.T) {
 	m.Set("k", NewInteger(3))
 	v := NewFlexMap(m)
 	out := FreshenDefault(v)
-	if out.Data == v.Data {
+	if DataOf(&out) == DataOf(&v) {
 		t.Fatal("flex map default must be freshened to a new payload")
 	}
 	om, err := AsMutableMap(out)

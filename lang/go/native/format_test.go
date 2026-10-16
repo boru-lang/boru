@@ -50,8 +50,8 @@ func TestJSONFormatDecode(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 value, got %d", len(result))
 	}
-	if !result[0].Parent.Equal(TMap) {
-		t.Errorf("expected map, got %s", result[0].Parent)
+	if !ParentOf(&result[0]).Equal(TMap) {
+		t.Errorf("expected map, got %s", ParentOf(&result[0]))
 	}
 }
 
@@ -80,7 +80,7 @@ func TestJsonicFormatDecode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TMap) {
 		t.Errorf("expected map, got %v", result)
 	}
 }
@@ -307,10 +307,10 @@ func TestCSVFormatEncode(t *testing.T) {
 	r1.Set("age", NewString("25"))
 	r1.Set("name", NewString("Bob"))
 
-	table := Value{Parent: TList, Data: TableData{
+	table := MakeValue(TList, TableData{
 		Record: rec,
 		Rows:   []Value{NewMap(r0), NewMap(r1)},
-	}}
+	})
 
 	s, err := f.Encode(table)
 	if err != nil {
@@ -332,10 +332,10 @@ func TestCSVFormatEncodeQuoted(t *testing.T) {
 
 	r0 := NewOrderedMap()
 	r0.Set("a", NewString("hello, world"))
-	table := Value{Parent: TList, Data: TableData{
+	table := MakeValue(TList, TableData{
 		Record: rec,
 		Rows:   []Value{NewMap(r0)},
-	}}
+	})
 	s, err := f.Encode(table)
 	if err != nil {
 		t.Fatal(err)
@@ -387,10 +387,10 @@ func TestTSVFormatEncode(t *testing.T) {
 	r0 := NewOrderedMap()
 	r0.Set("a", NewString("x"))
 	r0.Set("b", NewString("y"))
-	table := Value{Parent: TList, Data: TableData{
+	table := MakeValue(TList, TableData{
 		Record: rec,
 		Rows:   []Value{NewMap(r0)},
-	}}
+	})
 	s, err := f.Encode(table)
 	if err != nil {
 		t.Fatal(err)
@@ -493,7 +493,7 @@ func TestJsonicFormatWithoutResolverNoMultisource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result) != 1 || !result[0].Parent.Equal(TMap) {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TMap) {
 		t.Errorf("expected map, got %v", result)
 	}
 }

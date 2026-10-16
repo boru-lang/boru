@@ -73,7 +73,7 @@ func TestTabnasFormatReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if len(vals) != 1 || !vals[0].Parent.Equal(TMap) {
+	if len(vals) != 1 || !ParentOf(&vals[0]).Equal(TMap) {
 		t.Fatalf("Decode = %v, want one Map", vals)
 	}
 	_, err = ini.Encode(NewString("x"))
@@ -99,7 +99,7 @@ func TestTabnasFormatDecodeOpts(t *testing.T) {
 		t.Fatalf("DecodeOpts: %v", err)
 	}
 	// csv → a List of rows; with ';' separation, row 0 has two fields.
-	if len(vals) != 1 || !vals[0].Parent.ConformsTo(TList) {
+	if len(vals) != 1 || !ParentOf(&vals[0]).ConformsTo(TList) {
 		t.Fatalf("DecodeOpts csv = %v, want a List", vals)
 	}
 	rows, err := AsMutableList(vals[0])
@@ -130,7 +130,7 @@ func readMem(t *testing.T, path string, content string, opts ...Value) []Value {
 
 func TestEngineReadINIByExtension(t *testing.T) {
 	res := readMem(t, "conf.ini", "a = 1\n[sec]\nx = true")
-	if len(res) != 1 || !res[0].Parent.Equal(TMap) {
+	if len(res) != 1 || !ParentOf(&res[0]).Equal(TMap) {
 		t.Fatalf("read .ini = %v, want a Map", res)
 	}
 	m, _ := AsMap(res[0])
@@ -143,7 +143,7 @@ func TestEngineReadINIByExtension(t *testing.T) {
 	if !ok {
 		t.Fatal("missing sec.x")
 	}
-	if b, _ := AsBoolean(xv); !xv.Parent.ConformsTo(TBoolean) || !b {
+	if b, _ := AsBoolean(xv); !ParentOf(&xv).ConformsTo(TBoolean) || !b {
 		t.Errorf("sec.x = %v, want Boolean true", xv)
 	}
 }
@@ -155,7 +155,7 @@ func TestEngineReadYAMLAndTOML(t *testing.T) {
 		{"e.toml", `b = "hi"`},
 	} {
 		res := readMem(t, tc.path, tc.content)
-		if len(res) != 1 || !res[0].Parent.Equal(TMap) {
+		if len(res) != 1 || !ParentOf(&res[0]).Equal(TMap) {
 			t.Fatalf("read %s = %v, want a Map", tc.path, res)
 		}
 		m, _ := AsMap(res[0])

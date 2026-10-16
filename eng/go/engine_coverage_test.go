@@ -86,8 +86,8 @@ func TestValueConstructors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if !c.value.Parent.ConformsTo(c.want) {
-				t.Errorf("Parent = %v does not match expected %v", c.value.Parent, c.want)
+			if !core.ParentOf(&c.value).ConformsTo(c.want) {
+				t.Errorf("Parent = %v does not match expected %v", core.ParentOf(&c.value), c.want)
 			}
 			if !core.IsConcrete(&c.value) {
 				t.Error("Data should not be nil for a concrete value")

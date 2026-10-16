@@ -78,7 +78,7 @@ func NewWatcherType() *Type {
 
 // asWatcherInfo unwraps a Watcher handle's payload.
 func asWatcherInfo(v Value) (*WatcherInfo, bool) {
-	ext, ok := v.Data.(ExtensionPayload)
+	ext, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -163,7 +163,7 @@ const watchOverflowOp = "overflow"
 func doUnwatchWord(args []Value, r *Registry) ([]Value, error) {
 	wi, ok := asWatcherInfo(args[0])
 	if !ok {
-		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: not a Watcher handle (got %s)", args[0].Parent), "unwatch")
+		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: not a Watcher handle (got %s)", ParentOf(&args[0])), "unwatch")
 	}
 	if err := wi.Stop(); err != nil {
 		return nil, r.BoruError("unwatch_error", fmt.Sprintf("unwatch: %v", err), "unwatch")

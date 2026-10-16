@@ -86,7 +86,7 @@ func (tt *TypeTable) MintMemberType(name string, parent *Type, member func(v Val
 	gated := member
 	if parent != nil {
 		gated = func(v Value) bool {
-			return v.Parent != nil && v.Parent.ConformsTo(parent) && member(v)
+			return ParentOf(&v) != nil && ParentOf(&v).ConformsTo(parent) && member(v)
 		}
 	}
 	return tt.MintTypeWithBehavior(name, parent, MemberBehavior(gated))

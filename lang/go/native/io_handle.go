@@ -110,7 +110,7 @@ func NewFileHandleType() *Type {
 // asFileHandle unwraps a File handle's payload (two-value assertion, so a
 // bare File type literal or a non-File value yields (nil, false)).
 func asFileHandle(v Value) (*FileHandleInfo, bool) {
-	ext, ok := v.Data.(ExtensionPayload)
+	ext, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -180,7 +180,7 @@ func doOpenWord(args []Value, r *Registry, fileType *Type) ([]Value, error) {
 func doSeekWord(args []Value, r *Registry) ([]Value, error) {
 	fh, ok := asFileHandle(args[0])
 	if !ok {
-		return nil, r.BoruError("seek_error", fmt.Sprintf("seek: not a File handle (got %s)", args[0].Parent), "seek")
+		return nil, r.BoruError("seek_error", fmt.Sprintf("seek: not a File handle (got %s)", ParentOf(&args[0])), "seek")
 	}
 	n, err := args[1].AsConcreteInteger()
 	if err != nil {
@@ -229,7 +229,7 @@ func doFlushWord(args []Value, r *Registry) ([]Value, error) {
 		}
 		return []Value{args[0]}, nil
 	}
-	return nil, r.BoruError("flush_error", fmt.Sprintf("flush: not a File or Mmap handle (got %s)", args[0].Parent), "flush")
+	return nil, r.BoruError("flush_error", fmt.Sprintf("flush: not a File or Mmap handle (got %s)", ParentOf(&args[0])), "flush")
 }
 
 // readHandleWord reads from a File handle: {offset} positions the read
@@ -238,7 +238,7 @@ func doFlushWord(args []Value, r *Registry) ([]Value, error) {
 func readHandleWord(args []Value, r *Registry) ([]Value, error) {
 	fh, ok := asFileHandle(args[0])
 	if !ok {
-		return nil, r.BoruError("read_error", fmt.Sprintf("read: not a File handle (got %s)", args[0].Parent), "read")
+		return nil, r.BoruError("read_error", fmt.Sprintf("read: not a File handle (got %s)", ParentOf(&args[0])), "read")
 	}
 	enc := "utf8"
 	offset, length := int64(-1), int64(-1)
@@ -273,7 +273,7 @@ func readHandleWord(args []Value, r *Registry) ([]Value, error) {
 func writeHandleWord(args []Value, r *Registry) ([]Value, error) {
 	fh, ok := asFileHandle(args[0])
 	if !ok {
-		return nil, r.BoruError("write_error", fmt.Sprintf("write: not a File handle (got %s)", args[0].Parent), "write")
+		return nil, r.BoruError("write_error", fmt.Sprintf("write: not a File handle (got %s)", ParentOf(&args[0])), "write")
 	}
 	data, err := handleWriteBytes(args[1])
 	if err != nil {
@@ -305,7 +305,7 @@ func handleWriteBytes(v Value) ([]byte, error) {
 	}
 	s, err := v.AsConcreteString()
 	if err != nil {
-		return nil, fmt.Errorf("a File write needs a String or Bytes payload (got %s)", v.Parent)
+		return nil, fmt.Errorf("a File write needs a String or Bytes payload (got %s)", ParentOf(&v))
 	}
 	return []byte(s), nil
 }

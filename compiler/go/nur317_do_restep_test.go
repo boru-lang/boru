@@ -40,7 +40,7 @@ func TestNoteClosureReStep(t *testing.T) {
 	}
 	// A modelled union is only a candidate: a residual's apply may take it.
 	union := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	union.Carrier = true
+	core.SetCarrier(&union, true)
 	es.noteClosureReStep(resid, 0, []core.Value{union, core.NewInteger(5)}, 20)
 	if f := es.eventInfo[20]; !f.unionReStep || f.reStepResults {
 		t.Errorf("a union output is a candidate, got %+v", f)
@@ -57,7 +57,7 @@ func TestValueMayBeFn(t *testing.T) {
 	dyn := core.NewCarrier(core.TAny)
 	core.SetDynamic(&dyn, true)
 	union := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
-	union.Carrier = true
+	core.SetCarrier(&union, true)
 	for _, c := range []struct {
 		why  string
 		v    core.Value

@@ -35,7 +35,7 @@ func optimisticEngine(t *testing.T) (*Engine, *MatchResult, []int) {
 // position; a dispatch that collected nothing forward has no split.
 func TestRearrangeForForwardRecordsTheSplit(t *testing.T) {
 	e, _, _ := optimisticEngine(t)
-	if got := e.Tape.At(2); !got.Parent.Equal(TList) {
+	if got := e.Tape.At(2); !ParentOf(&got).Equal(TList) {
 		t.Fatalf("the first-collected operand sits on top, got %v", got)
 	}
 	if e.forwardSplit() != 2 {

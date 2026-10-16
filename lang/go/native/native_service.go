@@ -129,7 +129,7 @@ func ServiceStateOf(v Value) (Value, bool) {
 }
 
 func asService(v Value) (*serviceState, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := DataOf(&v).(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -233,7 +233,7 @@ func serviceNewHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 func requireHandlerFn(r *Registry, v Value, word string) error {
 	if _, ok := FnDefFromValue(v); !ok {
 		return r.BoruErrorHint(word+"_error",
-			word+": handler must be a function, got "+v.Parent.String(),
+			word+": handler must be a function, got "+ParentOf(&v).String(),
 			word, "write `[ [req state] => [ … ] ]` (or `[req state prior]` for a layering handler)")
 	}
 	return nil
@@ -242,7 +242,7 @@ func requireHandlerFn(r *Registry, v Value, word string) error {
 func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	s, ok := asService(args[2])
 	if !ok {
-		return nil, r.BoruError("service_error", "add: expected a Service, got "+args[2].Parent.String(), "add")
+		return nil, r.BoruError("service_error", "add: expected a Service, got "+ParentOf(&args[2]).String(), "add")
 	}
 	if err := requireHandlerFn(r, args[1], "add"); err != nil {
 		return nil, err
@@ -318,7 +318,7 @@ func serviceAddCheck(args []Value, r *Registry) []Value {
 func serviceWrapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	s, ok := asService(args[1])
 	if !ok {
-		return nil, r.BoruError("service_error", "wrap: expected a Service, got "+args[1].Parent.String(), "wrap")
+		return nil, r.BoruError("service_error", "wrap: expected a Service, got "+ParentOf(&args[1]).String(), "wrap")
 	}
 	if err := requireHandlerFn(r, args[0], "wrap"); err != nil {
 		return nil, err
@@ -334,7 +334,7 @@ func serviceWrapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 func serviceStateHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	s, ok := asService(args[0])
 	if !ok {
-		return nil, r.BoruError("service_error", "state-of: expected a Service, got "+args[0].Parent.String(), "state-of")
+		return nil, r.BoruError("service_error", "state-of: expected a Service, got "+ParentOf(&args[0]).String(), "state-of")
 	}
 	return []Value{s.state}, nil
 }
@@ -342,7 +342,7 @@ func serviceStateHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 func serviceCallHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	s, ok := asService(args[1])
 	if !ok {
-		return nil, r.BoruError("service_error", "call: expected a Service, got "+args[1].Parent.String(), "call")
+		return nil, r.BoruError("service_error", "call: expected a Service, got "+ParentOf(&args[1]).String(), "call")
 	}
 	var opts Value
 	if len(args) >= 3 {
@@ -361,7 +361,7 @@ func serviceCallHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 func serviceSendHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	s, ok := asService(args[1])
 	if !ok {
-		return nil, r.BoruError("service_error", "send: expected a Service, got "+args[1].Parent.String(), "send")
+		return nil, r.BoruError("service_error", "send: expected a Service, got "+ParentOf(&args[1]).String(), "send")
 	}
 	if s.remote != nil {
 		_, err := s.remote(r, args[0], Value{})

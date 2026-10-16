@@ -31,10 +31,10 @@ func filterReturnsFn(args []Value, _ *Registry) []Value {
 	}
 	data := args[1]
 	switch {
-	case data.Parent.ConformsTo(TList):
+	case ParentOf(&data).ConformsTo(TList):
 		return []Value{NewCarrierTypedList(DataListElemTypeFromValue(data))}
-	case data.Parent.ConformsTo(TMap):
-		return []Value{NewCarrier(data.Parent)}
+	case ParentOf(&data).ConformsTo(TMap):
+		return []Value{NewCarrier(ParentOf(&data))}
 	default:
 		return []Value{NewDynamicCarrier(TAny)}
 	}
@@ -46,7 +46,7 @@ func filterHandler(args []Value, ctx map[string]Value, stack []Value, r *Registr
 	// Map input: hand the callback a KeyVal {k v i n} and keep the map shape,
 	// consistent with filter's quotation and lens forms. (List input keeps the
 	// legacy {key, value} pair with an index key, below.)
-	if args[1].Parent.ConformsTo(TMap) && IsConcrete(&args[1]) {
+	if ParentOf(&args[1]).ConformsTo(TMap) && IsConcrete(&args[1]) {
 		return filterMapFunction(cb, args[1], r)
 	}
 
@@ -78,7 +78,7 @@ func filterHandler(args []Value, ctx map[string]Value, stack []Value, r *Registr
 			callErr = err
 			return false
 		}
-		if len(cbResult) > 0 && cbResult[0].Parent.ConformsTo(TBoolean) {
+		if len(cbResult) > 0 && ParentOf(&cbResult[0]).ConformsTo(TBoolean) {
 			b, _ := AsBoolean(cbResult[0])
 			return b
 		}
@@ -119,8 +119,8 @@ func filterMapFunction(cb filterCallback, mapVal Value, r *Registry) ([]Value, e
 			return nil, r.BoruError("filter_error", fmt.Sprintf("filter: key %q: predicate produced no result", k), "filter")
 		}
 		top := res[len(res)-1]
-		if !top.Parent.ConformsTo(TBoolean) || !IsConcrete(&top) {
-			return nil, r.BoruError("filter_error", fmt.Sprintf("filter: key %q: predicate must produce a Boolean, got %s", k, top.Parent.Name()), "filter")
+		if !ParentOf(&top).ConformsTo(TBoolean) || !IsConcrete(&top) {
+			return nil, r.BoruError("filter_error", fmt.Sprintf("filter: key %q: predicate must produce a Boolean, got %s", k, ParentOf(&top).Name()), "filter")
 		}
 		if b, _ := AsBoolean(top); b {
 			out.Set(k, v)
@@ -173,7 +173,7 @@ func newFilterCallback(r *Registry, cb Value) filterCallback {
 func runFilterCallback(r *Registry, fc filterCallback, cbArgs []Value) ([]Value, error) {
 	cb := fc.val
 	if IsCompiledClosure(cb) {
-		if fc.sigFn.Data != nil && MatchFnSig(fc.sigFn, cbArgs) == nil {
+		if DataOf(&fc.sigFn) != nil && MatchFnSig(fc.sigFn, cbArgs) == nil {
 			return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 		}
 		// The fn-VALUE seam: the FnDefInfo branch below is InvokeCallbackFn's.
@@ -185,7 +185,7 @@ func runFilterCallback(r *Registry, fc filterCallback, cbArgs []Value) ([]Value,
 		// the VM reads as an internal bail and re-runs the interpreter.
 		return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 	}
-	fnDef, _ := cb.Data.(*FnDefInfo) // read, never written: the payload itself
+	fnDef, _ := DataOf(&cb).(*FnDefInfo) // read, never written: the payload itself
 	return InvokeCallbackFn(r, fnDef, sig, cbArgs)
 }
 
@@ -207,10 +207,10 @@ func filterBodyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	// top deciding each (filterDriver, core loop.go); under the VM the
 	// driver runs from Go over the compiled closure.
 	switch {
-	case args[1].Parent.ConformsTo(TList) && IsConcrete(&args[1]):
+	case ParentOf(&args[1]).ConformsTo(TList) && IsConcrete(&args[1]):
 		data, _ := AsList(args[1])
 		return StartLoop(r, "filter", &filterDriver{reg: r, body: args[0], src: args[1], list: data, out: make([]Value, 0, data.Len())}, nil)
-	case args[1].Parent.ConformsTo(TMap) && IsConcrete(&args[1]):
+	case ParentOf(&args[1]).ConformsTo(TMap) && IsConcrete(&args[1]):
 		data, _ := AsMap(args[1])
 		return StartLoop(r, "filter", &filterDriver{reg: r, body: args[0], src: args[1], data: data, keys: data.Keys(), outMap: NewOrderedMap()}, nil)
 	default:
@@ -232,7 +232,7 @@ func filterReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 		if err != nil {
 			return false, err
 		}
-		if res.Parent.ConformsTo(TBoolean) {
+		if ParentOf(&res).ConformsTo(TBoolean) {
 			b, _ := AsBoolean(res)
 			return b, nil
 		}
@@ -240,7 +240,7 @@ func filterReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 	}
 
 	switch {
-	case args[1].Parent.ConformsTo(TList) && IsConcrete(&args[1]):
+	case ParentOf(&args[1]).ConformsTo(TList) && IsConcrete(&args[1]):
 		data, _ := AsList(args[1])
 		out := make([]Value, 0, data.Len())
 		for i := 0; i < data.Len(); i++ {
@@ -255,7 +255,7 @@ func filterReachHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 		}
 		// #4 (round 3): filter (lens list form) — retain the source [:T] tag.
 		return []Value{d2RetainElem(NewList(out), args[1])}, nil
-	case args[1].Parent.ConformsTo(TMap) && IsConcrete(&args[1]):
+	case ParentOf(&args[1]).ConformsTo(TMap) && IsConcrete(&args[1]):
 		data, _ := AsMap(args[1])
 		out := NewOrderedMap()
 		for _, k := range data.Keys() {

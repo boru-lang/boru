@@ -212,8 +212,8 @@ func TestStoredBodyTokens(t *testing.T) {
 	if len(got) != 2 || &got[0] == &fl.Elems()[0] {
 		t.Fatalf("a flex body's tokens are its live view, not a snapshot: %v", got)
 	}
-	flex.Data.(*core.FlexListData).Elems[1] = core.NewInteger(10)
-	if n, ok := got[1].Data.(core.IntPayload); !ok || n.N != 1 {
+	core.DataOf(&flex).(*core.FlexListData).Elems[1] = core.NewInteger(10)
+	if n, ok := core.DataOf(&got[1]).(core.IntPayload); !ok || n.N != 1 {
 		t.Errorf("an edit to the flex reached the kept tokens: %v", got)
 	}
 }
@@ -223,8 +223,7 @@ func TestStoredBodyTokens(t *testing.T) {
 // paren's tail is data on the interpreter).
 func TestRecordDynApplyNameNeedsAnArgument(t *testing.T) {
 	es := NewEmitState()
-	fn := withID(core.Value{Parent: core.TFunction,
-		Data: &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}}, core.GenerateID(core.IDPrefixForType(core.TFunction)))
+	fn := withID(core.MakeValue(core.TFunction, &core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Returns: []*core.Type{core.TInteger}}}}), core.GenerateID(core.IDPrefixForType(core.TFunction)))
 	if es.RecordDynApplyName("h", nil, fn, addrOf(core.NewCarrier(core.TInteger)), core.SrcPos{}) {
 		t.Fatal("an apply over no argument records nothing")
 	}
@@ -280,7 +279,7 @@ func TestSeatDeoptPointUnpromotedGuard(t *testing.T) {
 // kept-member walk: a nested map member with no entries table embeds
 // nothing, and an enclosing binding's container beside it is kept whole.
 func TestEmbeddedEnclosingIDsSkipsAnEmptyMapMember(t *testing.T) {
-	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	nilMap := core.MakeValue(core.TMap, core.MapPayload{M: nil})
 	member := core.NewList([]core.Value{core.NewInteger(9)})
 	core.SetID(&member, "enc")
 	lit := core.NewList([]core.Value{nilMap, core.NewList([]core.Value{nilMap, member})})

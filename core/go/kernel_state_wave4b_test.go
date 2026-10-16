@@ -245,19 +245,19 @@ func TestContextTypeTracking(t *testing.T) {
 	defer done()
 	r.Check.RecordContextSet("k", NewCarrier(TInteger))
 	v, ok := r.Check.LookupContextType("k")
-	if !ok || !v.Parent.Equal(TInteger) {
+	if !ok || !ParentOf(&v).Equal(TInteger) {
 		t.Errorf("recorded carrier = %v, %v", v, ok)
 	}
 	// A second write joins the carriers.
 	r.Check.RecordContextSet("k", NewCarrier(TString))
 	v, _ = r.Check.LookupContextType("k")
-	if v.Parent.Equal(TInteger) {
+	if ParentOf(&v).Equal(TInteger) {
 		t.Errorf("joined carrier still plain Integer: %v", v)
 	}
 	// Empty keys are ignored; misses degrade to Any.
 	r.Check.RecordContextSet("", NewCarrier(TInteger))
 	v, ok = r.Check.LookupContextType("absent")
-	if ok || !v.Parent.Equal(TAny) {
+	if ok || !ParentOf(&v).Equal(TAny) {
 		t.Errorf("miss = %v, %v", v, ok)
 	}
 	var nilC *CheckState

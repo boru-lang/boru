@@ -36,7 +36,7 @@ func TestMakeEmailon(t *testing.T) {
 		t.Fatalf("makeEmailon: %v", err)
 	}
 	v := out[0]
-	if !IsMicronValue(v) || !v.Parent.Equal(TEmailon) {
+	if !IsMicronValue(v) || !ParentOf(&v).Equal(TEmailon) {
 		t.Fatalf("emailon = %v", v)
 	}
 	if got := v.String(); got != "alice@example.com" {
@@ -86,7 +86,7 @@ func TestMakeUrlon(t *testing.T) {
 		t.Fatalf("makeUrlon: %v", err)
 	}
 	v := out[0]
-	if !v.Parent.Equal(TUrlon) {
+	if !ParentOf(&v).Equal(TUrlon) {
 		t.Fatalf("urlon = %v", v)
 	}
 	if got := v.String(); got != "https://example.com:8080/p?q=1#frag" {
@@ -139,7 +139,7 @@ func TestMakeIpon(t *testing.T) {
 		t.Fatalf("makeIpon: %v", err)
 	}
 	v := out[0]
-	if !v.Parent.Equal(TIpon) {
+	if !ParentOf(&v).Equal(TIpon) {
 		t.Fatalf("ipon = %v", v)
 	}
 	if got := v.String(); got != "203.0.113.7" {
@@ -300,7 +300,7 @@ func TestMakeHoston(t *testing.T) {
 	if _, err := makeHoston(NewInteger(42)); err == nil {
 		t.Error("integer source accepted")
 	}
-	if _, err := makeHoston(Value{Parent: TMap, Data: ListPayload{}}); err == nil {
+	if _, err := makeHoston(MakeValue(TMap, ListPayload{})); err == nil {
 		t.Error("unreadable map payload accepted")
 	}
 }
@@ -386,8 +386,8 @@ func TestInstallMicronTypeAndMake(t *testing.T) {
 		t.Fatalf("micronInstantiate: %v", err)
 	}
 	inst := out[0]
-	if !inst.Parent.Equal(node) {
-		t.Errorf("instance parent = %v", inst.Parent)
+	if !ParentOf(&inst).Equal(node) {
+		t.Errorf("instance parent = %v", ParentOf(&inst))
 	}
 	// Defaults fill omitted fields.
 	out, err = micronInstantiate(tb, mapOf("tag", NewString("y")), r)
@@ -431,11 +431,11 @@ func TestMicronInstantiateKinds(t *testing.T) {
 	}
 	// Builtin leaves construct.
 	out, err := micronInstantiate(NewTypeLiteral(TEmailon), NewString("a@b.io"), r)
-	if err != nil || !out[0].Parent.Equal(TEmailon) {
+	if err != nil || !ParentOf(&out[0]).Equal(TEmailon) {
 		t.Errorf("Emailon make = %v (%v)", out, err)
 	}
 	out, err = micronInstantiate(NewTypeLiteral(TUrlon), NewString("https://a.io"), r)
-	if err != nil || !out[0].Parent.Equal(TUrlon) {
+	if err != nil || !ParentOf(&out[0]).Equal(TUrlon) {
 		t.Errorf("Urlon make = %v (%v)", out, err)
 	}
 	out, err = micronInstantiate(NewTypeLiteral(TPathon), NewString("a/b"), r)
@@ -443,11 +443,11 @@ func TestMicronInstantiateKinds(t *testing.T) {
 		t.Errorf("Pathon make = %v (%v)", out, err)
 	}
 	out, err = micronInstantiate(NewTypeLiteral(TIpon), NewString("203.0.113.7"), r)
-	if err != nil || !out[0].Parent.Equal(TIpon) {
+	if err != nil || !ParentOf(&out[0]).Equal(TIpon) {
 		t.Errorf("Ipon make = %v (%v)", out, err)
 	}
 	out, err = micronInstantiate(NewTypeLiteral(THoston), NewString("example.com:8080"), r)
-	if err != nil || !out[0].Parent.Equal(THoston) {
+	if err != nil || !ParentOf(&out[0]).Equal(THoston) {
 		t.Errorf("Hoston make = %v (%v)", out, err)
 	}
 	// A newtype of a builtin leaf constructs the base then retags.
@@ -456,8 +456,8 @@ func TestMicronInstantiateKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newtype make: %v", err)
 	}
-	if !out[0].Parent.Equal(newt) {
-		t.Errorf("newtype instance parent = %v, want W4bMailon", out[0].Parent)
+	if !ParentOf(&out[0]).Equal(newt) {
+		t.Errorf("newtype instance parent = %v, want W4bMailon", ParentOf(&out[0]))
 	}
 	// A newtype of Ipon likewise constructs the base then retags.
 	newIp := r.Types.MintType("W4bIpon", TIpon)
@@ -465,8 +465,8 @@ func TestMicronInstantiateKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ipon newtype make: %v", err)
 	}
-	if !out[0].Parent.Equal(newIp) {
-		t.Errorf("ipon newtype instance parent = %v, want W4bIpon", out[0].Parent)
+	if !ParentOf(&out[0]).Equal(newIp) {
+		t.Errorf("ipon newtype instance parent = %v, want W4bIpon", ParentOf(&out[0]))
 	}
 	// A newtype of Hoston likewise constructs the base then retags.
 	newH := r.Types.MintType("W4bHoston", THoston)
@@ -474,8 +474,8 @@ func TestMicronInstantiateKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hoston newtype make: %v", err)
 	}
-	if !out[0].Parent.Equal(newH) {
-		t.Errorf("hoston newtype instance parent = %v, want W4bHoston", out[0].Parent)
+	if !ParentOf(&out[0]).Equal(newH) {
+		t.Errorf("hoston newtype instance parent = %v, want W4bHoston", ParentOf(&out[0]))
 	}
 	// A kind with no schema anywhere on its chain errors.
 	bare := r.Types.MintType("W4bBareon", TMicron)

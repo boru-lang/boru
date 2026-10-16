@@ -142,7 +142,7 @@ func TestTypeParamNodesAndBounds(t *testing.T) {
 	if addrOf(NewString("s")).Is(bounded) {
 		t.Error("String admitted by extends Number")
 	}
-	if bounded.Parent == nil || !bounded.Parent.Equal(TNumber) {
+	if ParentOf(bounded) == nil || !ParentOf(bounded).Equal(TNumber) {
 		t.Error("bounded placeholder not reparented at its bound")
 	}
 	// A compound bound (disjunct) routes through Unify.
@@ -161,7 +161,7 @@ func TestTypeParamNodesAndBounds(t *testing.T) {
 	if IsUnconstrainedTypeParam(late) {
 		t.Error("AttachGenBound did not land the bound")
 	}
-	if late.Parent == nil || !late.Parent.Equal(TString) {
+	if ParentOf(late) == nil || !ParentOf(late).Equal(TString) {
 		t.Error("AttachGenBound did not reparent")
 	}
 	if !addrOf(NewString("s")).Is(late) || addrOf(NewInteger(1)).Is(late) {
@@ -383,7 +383,7 @@ func TestSubstituteTypeParamsShapes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fn shape: %v", err)
 	}
-	fi, ok := got.Data.(FnUndefInfo)
+	fi, ok := DataOf(&got).(FnUndefInfo)
 	if !ok {
 		t.Fatalf("fn shape result = %v", got)
 	}
@@ -482,7 +482,7 @@ func TestInstantiateSchemaSelfRecursion(t *testing.T) {
 		t.Fatal("next field lost")
 	}
 	// The knot ties back to the in-flight instantiation node.
-	if !IsBareTypeNode(&next) || next.Parent == nil || !next.Parent.Equal(info.Type) {
+	if !IsBareTypeNode(&next) || ParentOf(&next) == nil || !ParentOf(&next).Equal(info.Type) {
 		t.Errorf("next = %v, want the instantiation node literal", next)
 	}
 }
@@ -676,10 +676,10 @@ func TestResolveSigRecordFields(t *testing.T) {
 	if v := ResolveSigRecordFields(r, NewInteger(1)); !IsConcrete(&v) {
 		t.Error("integer rewritten")
 	}
-	if v := ResolveSigRecordFields(r, NewMap(nil)); v.Data == nil {
+	if v := ResolveSigRecordFields(r, NewMap(nil)); DataOf(&v) == nil {
 		t.Error("nil-backed map rewritten")
 	}
-	if v := ResolveSigRecordFields(nil, NewMap(fields)); !v.Parent.Equal(TMap) {
+	if v := ResolveSigRecordFields(nil, NewMap(fields)); !ParentOf(&v).Equal(TMap) {
 		t.Error("nil registry rewrote the value")
 	}
 }
@@ -867,22 +867,22 @@ func TestGenBindingCarrierAndInstall(t *testing.T) {
 	r := newTestRegistry(t)
 	// A node binding becomes a carrier of that node.
 	c := GenBindingCarrier(r, NewTypeLiteral(TInteger))
-	if !c.Carrier || !c.Parent.Equal(TInteger) {
+	if !IsCarrier(&c) || !ParentOf(&c).Equal(TInteger) {
 		t.Errorf("node carrier = %v", c)
 	}
 	// A tor-merged disjunct stays a disjunct carrier.
 	c = GenBindingCarrier(r, NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)}))
-	if !c.Carrier || !IsDisjunct(&c) {
+	if !IsCarrier(&c) || !IsDisjunct(&c) {
 		t.Errorf("disjunct carrier = %v", c)
 	}
 	// A concrete value falls back to its Parent.
 	c = GenBindingCarrier(r, NewInteger(5))
-	if !c.Carrier || !c.Parent.Equal(TInteger) {
+	if !IsCarrier(&c) || !ParentOf(&c).Equal(TInteger) {
 		t.Errorf("value carrier = %v", c)
 	}
 	// A payload-bearing value with no Parent degrades to Any.
-	c = GenBindingCarrier(r, Value{Data: IntPayload{N: 1}})
-	if !c.Carrier || !c.Parent.Equal(TAny) {
+	c = GenBindingCarrier(r, MakeValue(nil, IntPayload{N: 1}))
+	if !IsCarrier(&c) || !ParentOf(&c).Equal(TAny) {
 		t.Errorf("parentless carrier = %v", c)
 	}
 

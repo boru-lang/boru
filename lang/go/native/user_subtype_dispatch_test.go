@@ -79,8 +79,8 @@ func TestUserTypeBindingShape_ObjectRefinement(t *testing.T) {
 	if !IsConcrete(&body) {
 		t.Error("ObjectType body should have Data != nil")
 	}
-	if body.Parent == nil || body.Parent.Leaf() != "Foo" {
-		t.Errorf("body.Parent should be Foo lattice node, got %v", body.Parent)
+	if ParentOf(&body) == nil || ParentOf(&body).Leaf() != "Foo" {
+		t.Errorf("body.Parent should be Foo lattice node, got %v", ParentOf(&body))
 	}
 
 	// 3. ResolveSigType (the dispatcher's entry point) consults the
@@ -189,7 +189,7 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 		t.Fatal("Pos not installed")
 	}
 	if !IsBareTypeNode(&body) {
-		t.Errorf("bare-refine body should be a bare type node, got Data=%T", body.Data)
+		t.Errorf("bare-refine body should be a bare type node, got Data=%T", DataOf(&body))
 	}
 	def := r.LookupTypeName("Pos")
 	if def == nil {
@@ -236,13 +236,13 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	if def == nil {
 		t.Fatal("LookupTypeName(Foo) = nil")
 	}
-	if IDOf(inst.Parent) != IDOf(def) {
-		t.Errorf("instance tag %q is not the minted lattice node %q", IDOf(inst.Parent), IDOf(def))
+	if IDOf(ParentOf(&inst)) != IDOf(def) {
+		t.Errorf("instance tag %q is not the minted lattice node %q", IDOf(ParentOf(&inst)), IDOf(def))
 	}
 	if !inst.Is(def) {
 		t.Error("instance.Is(Foo lattice node) = false — class membership broken")
 	}
-	if !inst.Parent.ConformsTo(def) {
+	if !ParentOf(&inst).ConformsTo(def) {
 		t.Error("instance.Parent.ConformsTo(Foo lattice node) = false")
 	}
 
@@ -250,7 +250,7 @@ func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	// its own ID — a non-canonical stand-in that membership checks must
 	// not be routed through.
 	body, _ := r.TopTypeBody("Foo")
-	if IDOf(inst.Parent) == IDOf(&body) {
+	if IDOf(ParentOf(&inst)) == IDOf(&body) {
 		t.Errorf("def-table body unexpectedly IS the lattice node (%q) — canonical-pointer docs need updating", IDOf(&body))
 	}
 }

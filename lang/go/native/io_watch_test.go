@@ -69,8 +69,8 @@ func TestWatchWordDeliversEvents(t *testing.T) {
 	if !ok {
 		t.Fatalf("watch returned %v, want a Watcher handle", res[0])
 	}
-	if res[0].Parent.Name() != "Watcher" {
-		t.Errorf("watcher type = %s", res[0].Parent)
+	if ParentOf(&res[0]).Name() != "Watcher" {
+		t.Errorf("watcher type = %s", ParentOf(&res[0]))
 	}
 	if !strings.Contains(res[0].String(), "Watcher(") {
 		t.Errorf("watcher renders as %s", res[0])

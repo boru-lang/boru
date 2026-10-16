@@ -46,8 +46,8 @@ func matchMembership(v Value, t *Type, prev TypeBehavior, member func(Value) boo
 		// proves membership. Other carrier payloads (ChildTypeInfo on
 		// list/map carriers, …) stay on the abstract path: they
 		// describe a SHAPE, not the value itself.
-		if v.Carrier {
-			if _, ok := v.Data.(*FnDefInfo); ok {
+		if IsCarrier(&v) {
+			if _, ok := DataOf(&v).(*FnDefInfo); ok {
 				return member(v)
 			}
 		}

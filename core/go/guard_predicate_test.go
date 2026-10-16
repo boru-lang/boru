@@ -203,7 +203,7 @@ func TestGuardTripleType(t *testing.T) {
 	}
 	// tv a malformed Word (Parent=TWord, no WordInfo payload): IsWord passes,
 	// AsWord fails → the defensive decline.
-	if _, ok := guardTripleType(r, "x", w("x"), w("is"), Value{Parent: TWord}); ok {
+	if _, ok := guardTripleType(r, "x", w("x"), w("is"), MakeValue(TWord, nil)); ok {
 		t.Error("malformed-word tv must decline")
 	}
 }
@@ -214,7 +214,7 @@ func TestGuardPredicateHelpers(t *testing.T) {
 	if isWordNamed(NewInteger(5), "x") {
 		t.Error("a non-Word is not word-named")
 	}
-	if isWordNamed(Value{Parent: TWord}, "x") {
+	if isWordNamed(MakeValue(TWord, nil), "x") {
 		t.Error("a non-concrete Word is not word-named")
 	}
 	if isWordNamed(NewWord("foo"), "bar") {

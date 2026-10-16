@@ -36,7 +36,7 @@ func TestNameFrameFns(t *testing.T) {
 	home := core.NewFunction(core.FnDefInfo{Name: "inc", Registry: r})
 	locals := []core.Value{lam, lam, named, foreign, home, closure}
 	nameFrameFns(r, fn, locals)
-	if fd := locals[0].Data.(*core.FnDefInfo); core.FnNameOf(&locals[0]) != "g" || !fd.Anonymous || fd != lam.Data.(*core.FnDefInfo) || fd.Name != "" {
+	if fd := core.DataOf(&locals[0]).(*core.FnDefInfo); core.FnNameOf(&locals[0]) != "g" || !fd.Anonymous || fd != core.DataOf(&lam).(*core.FnDefInfo) || fd.Name != "" {
 		t.Errorf("a lambda bound for param g is named g in its slot, its payload shared and unrenamed: %q %+v", core.FnNameOf(&locals[0]), *fd)
 	}
 	if core.FnNameOf(&locals[1]) != "" {
@@ -48,7 +48,7 @@ func TestNameFrameFns(t *testing.T) {
 	if core.FnNameOf(&locals[3]) != "sqrt" {
 		t.Errorf("a module wrapper keeps its name (installDef's rebinding path is not mirrored): %q", core.FnNameOf(&locals[3]))
 	}
-	if fd := locals[4].Data.(*core.FnDefInfo); core.FnNameOf(&locals[4]) != "k" || fd.Registry != r || fd.Name != "inc" {
+	if fd := core.DataOf(&locals[4]).(*core.FnDefInfo); core.FnNameOf(&locals[4]) != "k" || fd.Registry != r || fd.Name != "inc" {
 		t.Errorf("a fn at home in r is named for its param, its home and payload kept: %q %+v", core.FnNameOf(&locals[4]), *fd)
 	}
 	if cl, ok := closureView(&locals[5]); !ok || cl.RetName != "" {
@@ -62,7 +62,7 @@ func TestNameFrameFns(t *testing.T) {
 	if cl, ok := closureView(&named2[0]); !ok || cl.RetName != "g" || cl.Render != "" {
 		t.Errorf("a compiled closure bound for param g is named g: %v", named2[0])
 	}
-	if cl := named2[0].Data.(core.ClosurePayload); cl.RetName != "" {
+	if cl := core.DataOf(&named2[0]).(core.ClosurePayload); cl.RetName != "" {
 		t.Errorf("the closure's payload is not renamed: %q", cl.RetName)
 	}
 	// A closure ALREADY named — a def-bound closure handed to a Function
@@ -75,7 +75,7 @@ func TestNameFrameFns(t *testing.T) {
 	}
 	same := []core.Value{core.NewValueRaw(core.TFunction, core.ClosurePayload{RetName: "g", Render: "kept"})}
 	nameFrameFns(r, fn, same)
-	if cl := same[0].Data.(core.ClosurePayload); cl.Render != "kept" || core.HolderFnName(&same[0]) != "" {
+	if cl := core.DataOf(&same[0]).(core.ClosurePayload); cl.Render != "kept" || core.HolderFnName(&same[0]) != "" {
 		t.Errorf("a closure already so named is untouched: %v", same[0])
 	}
 	// A slot past the frame, a data value: nothing to do, nothing to panic on.

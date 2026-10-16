@@ -21,9 +21,9 @@ func TestSysStoreStructure(t *testing.T) {
 	if !ok {
 		t.Fatal("__sys not found in root context")
 	}
-	sysStore, ok := sysVal.Data.(*StoreInstanceInfo)
+	sysStore, ok := DataOf(&sysVal).(*StoreInstanceInfo)
 	if !ok {
-		t.Fatalf("__sys is %T, want *StoreInstanceInfo", sysVal.Data)
+		t.Fatalf("__sys is %T, want *StoreInstanceInfo", DataOf(&sysVal))
 	}
 
 	// __sys.fs exists and is a Store
@@ -31,9 +31,9 @@ func TestSysStoreStructure(t *testing.T) {
 	if !ok {
 		t.Fatal("__sys.fs not found")
 	}
-	fsStore, ok := fsVal.Data.(*StoreInstanceInfo)
+	fsStore, ok := DataOf(&fsVal).(*StoreInstanceInfo)
 	if !ok {
-		t.Fatalf("__sys.fs is %T, want *StoreInstanceInfo", fsVal.Data)
+		t.Fatalf("__sys.fs is %T, want *StoreInstanceInfo", DataOf(&fsVal))
 	}
 
 	// __sys.fs.mem = false
@@ -61,8 +61,8 @@ func TestSysStoreStructure(t *testing.T) {
 	if !ok {
 		t.Fatal("__sys.__val not found")
 	}
-	if _, ok := valVal.Data.(*StoreInstanceInfo); !ok {
-		t.Fatalf("__sys.__val is %T, want *StoreInstanceInfo", valVal.Data)
+	if _, ok := DataOf(&valVal).(*StoreInstanceInfo); !ok {
+		t.Fatalf("__sys.__val is %T, want *StoreInstanceInfo", DataOf(&valVal))
 	}
 }
 

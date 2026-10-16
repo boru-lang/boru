@@ -275,7 +275,7 @@ func findOwningFnDef(r *core.Registry, word string, impl core.SigImpl) (core.FnD
 	}
 	stack := r.Defs.Stack(word)
 	for i := len(stack) - 1; i >= 0; i-- {
-		fnDef, ok := stack[i].Data.(*core.FnDefInfo)
+		fnDef, ok := core.DataOf(&stack[i]).(*core.FnDefInfo)
 		if !ok {
 			continue
 		}

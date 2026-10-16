@@ -59,7 +59,7 @@ func (vaultIdentityBehavior) Equal(a, b native.Value) bool {
 func (vaultIdentityBehavior) Format(native.Value) string { return "<vault identity>" }
 
 func asVaultIdentity(v native.Value) (*vaultIdentityRef, bool) {
-	ep, ok := v.Data.(core.ExtensionPayload)
+	ep, ok := core.DataOf(&v).(core.ExtensionPayload)
 	if !ok {
 		return nil, false
 	}

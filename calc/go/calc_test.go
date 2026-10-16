@@ -106,8 +106,8 @@ func TestArithFloats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !stk[0].Parent.ConformsTo(core.TFloat) {
-		t.Errorf("1 div 2: want Float result, got %s", stk[0].Parent.String())
+	if !core.ParentOf(&stk[0]).ConformsTo(core.TFloat) {
+		t.Errorf("1 div 2: want Float result, got %s", core.ParentOf(&stk[0]).String())
 	}
 	if got := asDec(t, stk, "1 div 2"); got != 0.5 {
 		t.Errorf("1 div 2 = %v, want 0.5", got)

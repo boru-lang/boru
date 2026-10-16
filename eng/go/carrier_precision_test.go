@@ -14,7 +14,7 @@ import (
 func TestLiteralCondValueGuardFactPrev(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		elem := core.NewCarrier(core.TBoolean)
-		elem.Data = core.GuardFactInfo{Prev: core.BoolPayload{B: want}}
+		core.SetData(&elem, core.GuardFactInfo{Prev: core.BoolPayload{B: want}})
 		got, ok := core.LiteralCondValue(core.NewList([]core.Value{elem}))
 		if !ok || got != want {
 			t.Errorf("LiteralCondValue(Prev=%v) = %v/%v, want %v/true", want, got, ok, want)
@@ -23,7 +23,7 @@ func TestLiteralCondValueGuardFactPrev(t *testing.T) {
 	// NEGATIVE: a GuardFactInfo whose Prev is NOT a BoolPayload does not decide
 	// the cond (falls through the wrapper read).
 	elem := core.NewCarrier(core.TBoolean)
-	elem.Data = core.GuardFactInfo{Prev: core.IntPayload{N: 1}}
+	core.SetData(&elem, core.GuardFactInfo{Prev: core.IntPayload{N: 1}})
 	if _, ok := core.LiteralCondValue(core.NewList([]core.Value{elem})); ok {
 		t.Error("a non-Boolean Prev must not decide the cond")
 	}

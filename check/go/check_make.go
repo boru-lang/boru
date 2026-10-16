@@ -26,7 +26,7 @@ func CheckMakeConstruction(r *core.Registry, target, src core.Value, pos core.Sr
 		return
 	}
 	target = core.ResolveTypeLiteralDef(target, r)
-	if !core.IsConcrete(&src) || src.Parent == nil || !src.Parent.ConformsTo(core.TMap) {
+	if !core.IsConcrete(&src) || core.ParentOf(&src) == nil || !core.ParentOf(&src).ConformsTo(core.TMap) {
 		return
 	}
 	provided, _ := core.AsMap(src)
@@ -76,7 +76,7 @@ func CheckMakeConstruction(r *core.Registry, target, src core.Value, pos core.Sr
 		if !hasVal {
 			// Same has-default probe the runtime constructors use: a
 			// schema slot with a payload is a concrete default.
-			if constraint.Data != nil {
+			if core.DataOf(&constraint) != nil {
 				continue
 			}
 			diag(fmt.Sprintf("make: missing field %q for %s", key, label))

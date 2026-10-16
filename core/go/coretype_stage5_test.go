@@ -141,7 +141,7 @@ func TestWt5InstallTypeMicronBranch(t *testing.T) {
 		t.Fatal("Micron subtype must be bound as a type")
 	}
 	def := r.LookupTypeName("Wt5Mic")
-	if def == nil || !def.Parent.Equal(fam) {
+	if def == nil || !ParentOf(def).Equal(fam) {
 		t.Fatalf("Micron subtype must mint under the family root, got %v", def)
 	}
 
@@ -172,7 +172,7 @@ func TestWt5InstallTypeClassWithParent(t *testing.T) {
 		t.Fatalf("class name = %q (%v), want parent-prefixed", info.Name, err)
 	}
 	def := r.LookupTypeName("Wt5KidCls")
-	if def == nil || !def.Parent.Equal(parentType) {
+	if def == nil || !ParentOf(def).Equal(parentType) {
 		t.Fatalf("class subtype must mint under the parent class node, got %v", def)
 	}
 }
@@ -190,7 +190,7 @@ func TestWt5InstallTypeSchemaKinds(t *testing.T) {
 		t.Fatalf("InstallType class schema: %v", err)
 	}
 	def := r.LookupTypeName("Wt5SchC")
-	if def == nil || !def.Parent.Equal(TClass) {
+	if def == nil || !ParentOf(def).Equal(TClass) {
 		t.Fatalf("class schema must mint under Class, got %v", def)
 	}
 	// The installed schema is constructed from the declaration, which is
@@ -211,7 +211,7 @@ func TestWt5InstallTypeSchemaKinds(t *testing.T) {
 	if err := InstallType(r, "Wt5SchF", NewTypeSchema(TType, fnInfo)); err != nil {
 		t.Fatalf("InstallType fn schema: %v", err)
 	}
-	if def := r.LookupTypeName("Wt5SchF"); def == nil || !def.Parent.Equal(TFnUndef) {
+	if def := r.LookupTypeName("Wt5SchF"); def == nil || !ParentOf(def).Equal(TFnUndef) {
 		t.Fatalf("fn schema must mint under FunctionSignature, got %v", def)
 	}
 }
@@ -228,7 +228,7 @@ func TestWt5InstallTypeSurface(t *testing.T) {
 		t.Fatalf("installed surface = %+v", installed)
 	}
 	def := r.LookupTypeName("Wt5Surf")
-	if def == nil || !def.Parent.Equal(TSurface) {
+	if def == nil || !ParentOf(def).Equal(TSurface) {
 		t.Fatalf("surface must mint under Ideal/Surface, got %v", def)
 	}
 	if installed.Type != def {
@@ -261,7 +261,7 @@ func TestWt5InstallTypePredicateStamping(t *testing.T) {
 		t.Fatalf("InstallType predicate body: %v", err)
 	}
 	def := r.LookupTypeName("Wt5PredT")
-	if def == nil || !def.Parent.Equal(TInteger) {
+	if def == nil || !ParentOf(def).Equal(TInteger) {
 		t.Fatalf("predicate type must mint at its declared input type, got %v", def)
 	}
 	// The attached unifier runs the predicate at Unify call sites.
@@ -288,7 +288,7 @@ func TestWt5InstallTypeSubtypeNamerRejections(t *testing.T) {
 
 	// DepScalar under a named family: the mint consults the namer.
 	ds := NewDepScalar(DepGT, NewInteger(10))
-	ds.Parent = rejBase
+	SetParent(&ds, rejBase)
 	if err := InstallType(r, "Wt5DepBad", ds); err == nil ||
 		!strings.Contains(err.Error(), "wt5 subtype declined") {
 		t.Fatalf("DepScalar mint must consult the namer, got %v", err)

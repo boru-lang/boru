@@ -127,7 +127,7 @@ func windowComparable(v core.Value, depth int) bool {
 	if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
 		return false
 	}
-	if v.Parent != nil && v.Parent.Equal(core.TList) {
+	if core.ParentOf(&v) != nil && core.ParentOf(&v).Equal(core.TList) {
 		if rl, err := core.AsList(v); err == nil {
 			for i := 0; i < rl.Len(); i++ {
 				if ev, ok := rl.GetOk(i); ok && !windowComparable(ev, depth+1) {
@@ -136,7 +136,7 @@ func windowComparable(v core.Value, depth int) bool {
 			}
 		}
 	}
-	if v.Parent != nil && v.Parent.Equal(core.TMap) {
+	if core.ParentOf(&v) != nil && core.ParentOf(&v).Equal(core.TMap) {
 		if rm, err := core.AsMap(v); err == nil && rm != nil {
 			for _, k := range rm.Keys() {
 				if mv, ok := rm.Get(k); ok && !windowComparable(mv, depth+1) {

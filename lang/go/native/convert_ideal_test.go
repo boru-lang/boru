@@ -57,7 +57,7 @@ func runConvert(t *testing.T, val Value, src string) string {
 // TestConvertIdealNativeFallback: a native Ideal with no IdealConverter
 // converts to the base {} / [].
 func TestConvertIdealNativeFallback(t *testing.T) {
-	v := Value{Parent: tConvNoOverride, Data: ExtensionPayload{Body: "payload"}}
+	v := MakeValue(tConvNoOverride, ExtensionPayload{Body: "payload"})
 	if got := runConvert(t, v, "convert Map thing"); got != "{}" {
 		t.Errorf("convert Map (native Ideal, no override) = %s, want {}", got)
 	}
@@ -65,15 +65,15 @@ func TestConvertIdealNativeFallback(t *testing.T) {
 		t.Errorf("convert List (native Ideal, no override) = %s, want []", got)
 	}
 	// And it really is an Ideal that resolves the fallback, not a Map.
-	if !v.Parent.ConformsTo(TIdeal) {
-		t.Errorf("%s is not under Ideal", v.Parent)
+	if !ParentOf(&v).ConformsTo(TIdeal) {
+		t.Errorf("%s is not under Ideal", ParentOf(&v))
 	}
 }
 
 // TestConvertIdealNativeOverride: a native Ideal whose Behavior implements
 // IdealConverter uses the override.
 func TestConvertIdealNativeOverride(t *testing.T) {
-	v := Value{Parent: tConvOverride, Data: ExtensionPayload{Body: "payload"}}
+	v := MakeValue(tConvOverride, ExtensionPayload{Body: "payload"})
 	if got := runConvert(t, v, "convert Map thing"); got != "{greeting:'hi'}" {
 		t.Errorf("convert Map (native Ideal, override) = %s, want {greeting:'hi'}", got)
 	}
@@ -137,7 +137,7 @@ func TestConvertIdealMoreBuiltins(t *testing.T) {
 		t.Fatal(err)
 	}
 	tmt := MintTemporalModuleTypes(treg)
-	to := Value{Parent: tmt.Timeout, Data: &TimeoutInfo{ID: "t1", Ms: 500}}
+	to := MakeValue(tmt.Timeout, &TimeoutInfo{ID: "t1", Ms: 500})
 	if got := runConvert(t, to, "convert Map thing"); got != "{id:'t1' ms:500}" {
 		t.Errorf("Timeout→Map = %s", got)
 	}
@@ -148,7 +148,7 @@ func TestConvertIdealMoreBuiltins(t *testing.T) {
 	// Fetch Response (map-backed) → its map.
 	resp := NewOrderedMap()
 	resp.Set("status", NewInteger(200))
-	fr := Value{Parent: MintFetchTypes(treg).Response, Data: MapPayload{M: resp}}
+	fr := MakeValue(MintFetchTypes(treg).Response, MapPayload{M: resp})
 	if got := runConvert(t, fr, "convert Map thing"); got != "{status:200}" {
 		t.Errorf("Fetch→Map = %s", got)
 	}

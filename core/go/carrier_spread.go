@@ -35,7 +35,7 @@ type SpreadPayload struct {
 // dynamic flag never weakens the element-type coverage.
 func NewVariadicCarrier(elem Value) Value {
 	v := NewValueRaw(TAny, SpreadPayload{Elem: elem})
-	v.Carrier = true
+	SetCarrier(&v, true)
 	SetDynamic(&v, true)
 	return v
 }
@@ -43,7 +43,7 @@ func NewVariadicCarrier(elem Value) Value {
 // IsVariadicSpread reports whether v is a NewVariadicCarrier, returning its
 // element value.
 func IsVariadicSpread(v Value) (Value, bool) {
-	if sp, ok := v.Data.(SpreadPayload); ok {
+	if sp, ok := DataOf(&v).(SpreadPayload); ok {
 		return sp.Elem, true
 	}
 	return Value{}, false
@@ -64,15 +64,15 @@ func FoldVariadicArms(then, els []Value) (Value, bool) {
 		for _, v := range stk {
 			if e, ok := IsVariadicSpread(v); ok {
 				hasVar = true
-				if e.Parent != nil && !ValueType(e).Equal(TNever) {
+				if ParentOf(&e) != nil && !ValueType(e).Equal(TNever) {
 					elems = append(elems, e)
 				}
 				continue
 			}
-			if v.Parent == nil || v.Parent.Equal(TNone) {
+			if ParentOf(&v) == nil || ParentOf(&v).Equal(TNone) {
 				continue // None padding / base-case emptiness
 			}
-			elems = append(elems, NewTypeLiteral(v.Parent))
+			elems = append(elems, NewTypeLiteral(ParentOf(&v)))
 		}
 	}
 	if !hasVar {

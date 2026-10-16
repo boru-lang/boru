@@ -68,7 +68,7 @@ type PatrunBehavior struct{}
 func (PatrunBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (PatrunBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (PatrunBehavior) Format(v Value) string {
-	if ep, ok := v.Data.(ExtensionPayload); ok {
+	if ep, ok := DataOf(&v).(ExtensionPayload); ok {
 		if f, ok := ep.Body.(PatrunFormatter); ok {
 			return f.FormatPatrun()
 		}
@@ -90,7 +90,7 @@ func PidProcess(v Value) (*core.Process, bool) {
 
 // AsPid unwraps the process handle behind a Pid value.
 func AsPid(v Value) (*core.Process, bool) {
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -138,7 +138,7 @@ func (ServiceBehavior) Format(v Value) string {
 }
 
 func serviceHandle(v Value) (ServiceFormatter, bool) {
-	ep, ok := v.Data.(ExtensionPayload)
+	ep, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}

@@ -93,7 +93,7 @@ func TestS6b5ResugarDotChainShapes(t *testing.T) {
 func TestS6b5MapFormatNonMapPayload(t *testing.T) {
 	// Parent says Map but the payload is not readable as one: the
 	// Behavior renders the empty-map form instead of panicking.
-	bad := Value{Parent: TMap, Data: ListPayload{}}
+	bad := MakeValue(TMap, ListPayload{})
 	if got := (mapFormatBehavior{}).Format(bad); got != "{}" {
 		t.Errorf("Format(non-map payload) = %q, want {}", got)
 	}

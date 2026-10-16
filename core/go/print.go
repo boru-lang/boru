@@ -33,23 +33,23 @@ func FormatForPrint(v Value) string {
 	// Type literals (Data==nil) — print as the leaf of the type path
 	// (e.g. Integer → "Integer", List → "List"). Type names are
 	// globally unique. The None type literal prints as "None".
-	if v.Data == nil {
+	if DataOf(&v) == nil {
 		return TypeNodeOf(v).Leaf()
 	}
 
 	// Table: formatted with headers and aligned columns.
 	if IsTableType(v) {
-		if td, ok := v.Data.(TableData); ok {
+		if td, ok := DataOf(&v).(TableData); ok {
 			return formatTable(td)
 		}
-		if mp, ok := v.Data.(MaterializerPayload); ok {
+		if mp, ok := DataOf(&v).(MaterializerPayload); ok {
 			td, err := mp.M.Materialize()
 			if err != nil {
 				return "query(error:" + err.Error() + ")"
 			}
 			return formatTable(td)
 		}
-		if mz, ok := v.Data.(Materializer); ok {
+		if mz, ok := DataOf(&v).(Materializer); ok {
 			td, err := mz.Materialize()
 			if err != nil {
 				return "query(error:" + err.Error() + ")"
@@ -72,7 +72,7 @@ func FormatForPrint(v Value) string {
 	}
 
 	// String: printed as-is (no quotes).
-	if v.Parent.ConformsTo(TString) {
+	if ParentOf(&v).ConformsTo(TString) {
 		_as0, _ := AsString(v)
 		return _as0
 	}
@@ -83,12 +83,12 @@ func FormatForPrint(v Value) string {
 	}
 
 	// Map: JSON-like output.
-	if v.Parent.Equal(TMap) {
+	if ParentOf(&v).Equal(TMap) {
 		return formatMapJSON(v)
 	}
 
 	// List: JSON-like output.
-	if v.Parent.Equal(TList) && v.Data != nil {
+	if ParentOf(&v).Equal(TList) && DataOf(&v) != nil {
 		return formatListJSON(v)
 	}
 
@@ -127,7 +127,7 @@ func FormatValueJSON(v Value) string {
 	if IsNoneShape(v) {
 		return "null"
 	}
-	if v.Data == nil {
+	if DataOf(&v) == nil {
 		// Type literal — render the leaf, quoted as a JSON string.
 		return fmt.Sprintf("%q", TypeNodeOf(v).Leaf())
 	}
@@ -139,23 +139,23 @@ func FormatValueJSON(v Value) string {
 		return fmt.Sprintf("%q", s)
 	}
 	switch {
-	case v.Parent.ConformsTo(TString):
+	case ParentOf(&v).ConformsTo(TString):
 		_as1, _ := AsString(v)
 		return fmt.Sprintf("%q", _as1)
-	case v.Parent.ConformsTo(TInteger):
+	case ParentOf(&v).ConformsTo(TInteger):
 		_as2, _ := AsInteger(v)
 		return fmt.Sprintf("%d", _as2)
-	case v.Parent.ConformsTo(TBoolean):
+	case ParentOf(&v).ConformsTo(TBoolean):
 		_as3, _ := AsBoolean(v)
 		if _as3 {
 			return "true"
 		}
 		return "false"
-	case v.Parent.Equal(TNone):
+	case ParentOf(&v).Equal(TNone):
 		return "null"
-	case v.Parent.Equal(TMap):
+	case ParentOf(&v).Equal(TMap):
 		return formatMapJSON(v)
-	case v.Parent.Equal(TList):
+	case ParentOf(&v).Equal(TList):
 		return formatListJSON(v)
 	default:
 		return v.String()

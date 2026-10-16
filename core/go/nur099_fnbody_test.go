@@ -27,7 +27,7 @@ func TestNUR099CapitalisedFnBodyRefused(t *testing.T) {
 	}{
 		{"Nur099One", NewFunction(one)},
 		{"Nur099Two", NewFunction(two)},
-		{"Nur099Closure", Value{Parent: TFunction, Data: ClosurePayload{Unit: 3}}},
+		{"Nur099Closure", MakeValue(TFunction, ClosurePayload{Unit: 3})},
 	} {
 		err := InstallType(r, c.name, c.body)
 		var be *BoruError
@@ -42,7 +42,7 @@ func TestNUR099CapitalisedFnBodyRefused(t *testing.T) {
 	if err := InstallType(r, "Nur099Pred", MarkPredicateFn(NewFunction(one))); err != nil {
 		t.Fatalf("a declared predicate must install: %v", err)
 	}
-	if def := r.LookupTypeName("Nur099Pred"); def == nil || !def.Parent.Equal(TInteger) {
+	if def := r.LookupTypeName("Nur099Pred"); def == nil || !ParentOf(def).Equal(TInteger) {
 		t.Fatalf("the declared predicate mints at its input type, got %v", def)
 	}
 }
@@ -58,9 +58,9 @@ func TestNUR099IsFnBodiedValueArms(t *testing.T) {
 		want bool
 	}{
 		{"fn definition", NewFunction(FnDefInfo{}), true},
-		{"compiled closure", Value{Parent: TFunction, Data: ClosurePayload{Unit: 1}}, true},
+		{"compiled closure", MakeValue(TFunction, ClosurePayload{Unit: 1}), true},
 		{"Function type literal", NewTypeLiteral(TFunction), false},
-		{"other payload under Function", Value{Parent: TFunction, Data: ListPayload{}}, false},
+		{"other payload under Function", MakeValue(TFunction, ListPayload{}), false},
 		{"non-Function value", NewInteger(3), false},
 		{"nil parent", Value{}, false},
 	} {

@@ -148,12 +148,12 @@ func TestMerge519FnUndefReparentTarget(t *testing.T) {
 		t.Fatalf("def M fnsig: %v", err)
 	}
 	shape, ok := r.TopTypeBody("M")
-	if !ok || !shape.Parent.Equal(TFnUndef) {
+	if !ok || !ParentOf(&shape).Equal(TFnUndef) {
 		t.Fatalf("M must bind an FnUndef type body, got %v (ok=%v)", shape, ok)
 	}
 
 	want := r.LookupTypeName("M")
-	if want == nil || want.Origin == core.OriginBuiltin {
+	if want == nil || OriginOf(want) == core.OriginBuiltin {
 		t.Fatalf("M must be a user type, got %v", want)
 	}
 	if got := fnUndefReparentTarget(r, shape, "M"); got != want {

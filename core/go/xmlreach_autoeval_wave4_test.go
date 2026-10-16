@@ -22,7 +22,7 @@ func registerDotWords(r *Registry) {
 			switch {
 			case IsAtom(args[0]):
 				key, _ = AsAtom(args[0])
-			case args[0].Parent.ConformsTo(TString):
+			case ParentOf(&args[0]).ConformsTo(TString):
 				key, _ = AsString(args[0])
 			default:
 				key = ValToString(args[0])
@@ -346,7 +346,7 @@ func TestAutoEvalMapValueArms(t *testing.T) {
 	check("s", "keep")
 	check("x", "z")
 	check("r", "7")
-	if v, _ := m.Get("multi"); !v.Parent.Equal(TList) {
+	if v, _ := m.Get("multi"); !ParentOf(&v).Equal(TList) {
 		t.Errorf("multi-result paren did not become a list: %v", v)
 	}
 }

@@ -260,8 +260,8 @@ func TestMergeTypedEnforcement(t *testing.T) {
 	// d2ReTagContainer's default arm: a typed operand but a non-container
 	// result is returned unchanged (defensive — a merge never yields a scalar).
 	tm, tr := tcValue(t, `def m:{:Integer} {a:1} m`)
-	if out, err := d2ReTagContainer(tr, tm, NewInteger(5), "merge"); err != nil || !out.Parent.Equal(TInteger) {
-		t.Errorf("d2ReTagContainer over a scalar result = (%v, %v), want the value unchanged", out.Parent, err)
+	if out, err := d2ReTagContainer(tr, tm, NewInteger(5), "merge"); err != nil || !ParentOf(&out).Equal(TInteger) {
+		t.Errorf("d2ReTagContainer over a scalar result = (%v, %v), want the value unchanged", ParentOf(&out), err)
 	}
 }
 

@@ -226,15 +226,15 @@ func TestContextDifferentValueTypes(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(result))
 	}
 	_as8, _ := AsString(result[0])
-	if !result[0].Parent.ConformsTo(TString) || _as8 != "hello" {
+	if !ParentOf(&result[0]).ConformsTo(TString) || _as8 != "hello" {
 		t.Errorf("string value = %v, want hello", result[0])
 	}
 	_as9, _ := AsInteger(result[1])
-	if !result[1].Parent.ConformsTo(TInteger) || _as9 != 42 {
+	if !ParentOf(&result[1]).ConformsTo(TInteger) || _as9 != 42 {
 		t.Errorf("integer value = %v, want 42", result[1])
 	}
 	_as10, _ := AsBoolean(result[2])
-	if !result[2].Parent.ConformsTo(TBoolean) || _as10 != true {
+	if !ParentOf(&result[2]).ConformsTo(TBoolean) || _as10 != true {
 		t.Errorf("boolean value = %v, want true", result[2])
 	}
 }

@@ -6,7 +6,7 @@
 module	value	bulk
 basic/go	1159	25
 calc/go	11	9
-check/go	519	15
+check/go	518	15
 cmd/go	23	0
 compiler/go	1335	23
 core/go	4385	61

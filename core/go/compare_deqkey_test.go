@@ -277,7 +277,7 @@ func TestDeqKeyBranches(t *testing.T) {
 		NewMove("x", "y"),
 	} {
 		if class(v) != DeqNeverEqual {
-			t.Fatalf("an internal marker (%T) must reach the terminal arm", v.Data)
+			t.Fatalf("an internal marker (%T) must reach the terminal arm", DataOf(&v))
 		}
 	}
 	// An instance whose field is a (now deq-comparable) store is

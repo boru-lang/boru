@@ -31,7 +31,7 @@ func TestCallDynApplyClosureArity(t *testing.T) {
 	if err != nil || ent != nil || len(got) != 2 {
 		t.Fatalf("a closure of another arity takes the re-step and parks: %v %v %v", got, ent, err)
 	}
-	if n, _ := core.AsInteger(got[0]); n != 4 || !got[1].Parent.Equal(core.TFunction) {
+	if n, _ := core.AsInteger(got[0]); n != 4 || !core.ParentOf(&got[1]).Equal(core.TFunction) {
 		t.Errorf("the value stays beneath the parked closure: %v", got)
 	}
 	// The event form commits exactly one result: the parked pair defers.

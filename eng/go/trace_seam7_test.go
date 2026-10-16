@@ -34,9 +34,9 @@ func TestS7TraceColorizeSpeculativeForward(t *testing.T) {
 func TestS7TraceColorizePayloadMismatches(t *testing.T) {
 	// Each scalar arm's accessor-error fallback renders via String() and
 	// must not leak the sealed payload struct form.
-	strBad := core.Value{Parent: core.TString, Data: core.IntPayload{N: 1}}
-	intBad := core.Value{Parent: core.TInteger, Data: core.StrPayload{S: "x"}}
-	atomBad := core.Value{Parent: core.TAtom, Data: core.IntPayload{N: 1}}
+	strBad := core.MakeValue(core.TString, core.IntPayload{N: 1})
+	intBad := core.MakeValue(core.TInteger, core.StrPayload{S: "x"})
+	atomBad := core.MakeValue(core.TAtom, core.IntPayload{N: 1})
 	for _, v := range []core.Value{strBad, intBad, atomBad} {
 		got := core.TraceColorize(v)
 		if strings.Contains(got, "Payload{") {
@@ -45,7 +45,7 @@ func TestS7TraceColorizePayloadMismatches(t *testing.T) {
 	}
 	// A TMap-conforming value whose payload is not a map -> AsMap yields a
 	// nil map -> the nil-map String() fallback.
-	mapBad := core.Value{Parent: core.TMap, Data: core.IntPayload{N: 1}}
+	mapBad := core.MakeValue(core.TMap, core.IntPayload{N: 1})
 	if got := core.TraceColorize(mapBad); got == "" {
 		t.Error("map-nil fallback produced empty output")
 	}

@@ -17,7 +17,7 @@ func TestS6b0InstallTypeDepScalarOverMicronNeedsOnName(t *testing.T) {
 	if !dep.IsDepScalar() {
 		t.Fatal("premise: NewDepScalar builds a DepScalar")
 	}
-	dep.Parent = TPathon // a dependent scalar over a Micron base
+	SetParent(&dep, TPathon) // a dependent scalar over a Micron base
 	err := InstallType(r, "S6b0Bad", dep)
 	if err == nil || !strings.Contains(err.Error(), "must end in the suffix 'on'") {
 		t.Fatalf("expected the Micron naming error, got %v", err)

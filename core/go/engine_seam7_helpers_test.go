@@ -27,7 +27,7 @@ func TestS7StampAtomReferentsSkipsResolved(t *testing.T) {
 	if ref, _ := AtomReferent(*tape.Ref(0)); ref.String() != "5" {
 		t.Errorf("a captured referent was replaced: %v", ref)
 	}
-	if got := tape.Ref(1).Data.(ListPayload).Elems; &got[0] != &inner[0] {
+	if got := DataOf(tape.Ref(1)).(ListPayload).Elems; &got[0] != &inner[0] {
 		t.Error("a list of captured atoms was rebuilt")
 	}
 }

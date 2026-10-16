@@ -100,7 +100,7 @@ func TestStepWordCompileCarrierSubstitute(t *testing.T) {
 		t.Fatalf("substituting stepWord errored: %v", err)
 	}
 	got := e.Tape.At(0)
-	if !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+	if !IsCarrier(&got) || ParentOf(&got) == nil || !ParentOf(&got).ConformsTo(TFunction) {
 		t.Errorf("stepWord did not substitute the carrier: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -129,7 +129,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 		t.Fatalf("/v step errored: %v", err)
 	}
 	got := e.Tape.At(0)
-	if IsUndefined(&got) || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+	if IsUndefined(&got) || !IsCarrier(&got) || ParentOf(&got) == nil || !ParentOf(&got).ConformsTo(TFunction) {
 		t.Errorf("a /v read of a carrier-bound name must substitute the carrier: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 0 {
@@ -164,7 +164,7 @@ func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
 	NoteCheckFnCarrierBind(r, "f", NewCarrier(TFunction))
 	r.Defs.Push("d", NewInteger(7))
 	e := NewTop(r)
-	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
+	if got, ok := e.DefTop("f"); !ok || !IsCarrier(got) || !ParentOf(got).ConformsTo(TFunction) {
 		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
 	}
 	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
@@ -285,7 +285,7 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	if len(r.Check.Diagnostics) != 0 {
 		t.Errorf("a word carrier raised diagnostics: %v", r.Check.Diagnostics)
 	}
-	if got := e.Tape.At(0); IsUndefined(&got) || !got.Carrier || !got.Parent.Equal(TWord) {
+	if got := e.Tape.At(0); IsUndefined(&got) || !IsCarrier(&got) || !ParentOf(&got).Equal(TWord) {
 		t.Errorf("word carrier not collected as data: %v", got)
 	}
 }

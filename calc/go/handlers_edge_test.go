@@ -33,16 +33,16 @@ func TestNumHandlerNonFiniteStaysFloat(t *testing.T) {
 	if err != nil || len(out) != 1 {
 		t.Fatalf("inf handler: %v %v", out, err)
 	}
-	if !out[0].Parent.ConformsTo(core.TFloat) {
-		t.Errorf("Inf result type = %s, want Float", out[0].Parent)
+	if !core.ParentOf(&out[0]).ConformsTo(core.TFloat) {
+		t.Errorf("Inf result type = %s, want Float", core.ParentOf(&out[0]))
 	}
 	nan := numHandler(func(a, b float64) (float64, error) { return math.NaN(), nil }, true)
 	out, err = nan([]core.Value{core.NewInteger(1), core.NewInteger(2)}, nil, nil, nil)
 	if err != nil || len(out) != 1 {
 		t.Fatalf("nan handler: %v %v", out, err)
 	}
-	if !out[0].Parent.ConformsTo(core.TFloat) {
-		t.Errorf("NaN result type = %s, want Float", out[0].Parent)
+	if !core.ParentOf(&out[0]).ConformsTo(core.TFloat) {
+		t.Errorf("NaN result type = %s, want Float", core.ParentOf(&out[0]))
 	}
 }
 

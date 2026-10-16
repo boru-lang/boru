@@ -29,7 +29,7 @@ import "fmt"
 // toggles mutability, it never drops the element-type contract — so a typed
 // flex node enforces writes just like its immutable form.
 func FlexDeepCopy(v Value) (Value, error) {
-	if v.Parent.ConformsTo(TMap) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TMap) && IsConcrete(&v) {
 		m, err := AsMap(v)
 		if err != nil || m == nil {
 			return Value{}, fmt.Errorf("flex: cannot make a flex copy of %s", v.String())
@@ -49,7 +49,7 @@ func FlexDeepCopy(v Value) (Value, error) {
 		}
 		return out, nil
 	}
-	if v.Parent.ConformsTo(TList) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TList) && IsConcrete(&v) {
 		lst, err := AsList(v)
 		if err != nil || lst.IsNil() {
 			return Value{}, fmt.Errorf("flex: cannot make a flex copy of %s", v.String())
@@ -68,7 +68,7 @@ func FlexDeepCopy(v Value) (Value, error) {
 		}
 		return out, nil
 	}
-	if v.Parent.ConformsTo(TXml) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TXml) && IsConcrete(&v) {
 		tag, attr, cren, ok := xmlParts(v)
 		if !ok {
 			return Value{}, fmt.Errorf("flex: cannot make a flex copy of %s", v.String())
@@ -120,7 +120,7 @@ func NodeDeepCopy(v Value) (Value, error) {
 	if !containsFlex(v) {
 		return v, nil
 	}
-	if v.Parent.ConformsTo(TMap) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TMap) && IsConcrete(&v) {
 		m, err := AsMap(v)
 		if err != nil || m == nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return Value{}, fmt.Errorf("node: cannot convert %s to an immutable node", v.String())
@@ -140,7 +140,7 @@ func NodeDeepCopy(v Value) (Value, error) {
 		}
 		return out, nil
 	}
-	if v.Parent.ConformsTo(TList) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TList) && IsConcrete(&v) {
 		lst, err := AsList(v)
 		if err != nil || lst.IsNil() {
 			return Value{}, fmt.Errorf("node: cannot convert %s to an immutable node", v.String())
@@ -159,7 +159,7 @@ func NodeDeepCopy(v Value) (Value, error) {
 		}
 		return out, nil
 	}
-	if v.Parent.ConformsTo(TXml) && IsConcrete(&v) {
+	if ParentOf(&v).ConformsTo(TXml) && IsConcrete(&v) {
 		tag, attr, cren, ok := xmlParts(v)
 		if !ok { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return Value{}, fmt.Errorf("node: cannot convert %s to an immutable node", v.String())
@@ -197,7 +197,7 @@ func containsFlex(v Value) bool {
 	if !IsConcrete(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if ParentOf(&v).ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			for _, k := range m.Keys() {
 				val, _ := m.Get(k)
@@ -208,7 +208,7 @@ func containsFlex(v Value) bool {
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TList) {
+	if ParentOf(&v).ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			for i := 0; i < lst.Len(); i++ {
 				if containsFlex(lst.Get(i)) {
@@ -218,7 +218,7 @@ func containsFlex(v Value) bool {
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TXml) {
+	if ParentOf(&v).ConformsTo(TXml) {
 		if _, attr, cren, ok := xmlParts(v); ok {
 			if attr != nil {
 				for _, k := range attr.Keys() {
@@ -268,19 +268,19 @@ func AdoptIntoFlex(v Value) (Value, error) {
 	if !IsConcrete(&v) {
 		return v, nil
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if ParentOf(&v).ConformsTo(TMap) {
 		if m, err := AsMap(v); err == nil && m != nil {
 			return FlexDeepCopy(v)
 		}
 		return v, nil
 	}
-	if v.Parent.ConformsTo(TList) {
+	if ParentOf(&v).ConformsTo(TList) {
 		if lst, err := AsList(v); err == nil && !lst.IsNil() {
 			return FlexDeepCopy(v)
 		}
 		return v, nil
 	}
-	if v.Parent.ConformsTo(TXml) {
+	if ParentOf(&v).ConformsTo(TXml) {
 		return FlexDeepCopy(v)
 	}
 	return v, nil
@@ -333,7 +333,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	target := &targetVal
 	switch {
 	case target.Equal(TFlexMap):
-		if !srcVal.Parent.ConformsTo(TMap) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TMap) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: FlexMap source must be a concrete map, got %s", srcVal.String())
 		}
 		out, err := FlexDeepCopy(srcVal)
@@ -342,7 +342,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TFlexList):
-		if !srcVal.Parent.ConformsTo(TList) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TList) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: FlexList source must be a concrete list, got %s", srcVal.String())
 		}
 		out, err := FlexDeepCopy(srcVal)
@@ -351,7 +351,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TMap):
-		if !srcVal.Parent.ConformsTo(TMap) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TMap) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: Map source must be a concrete map, got %s", srcVal.String())
 		}
 		out, err := NodeDeepCopy(srcVal)
@@ -360,7 +360,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TList):
-		if !srcVal.Parent.ConformsTo(TList) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TList) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: List source must be a concrete list, got %s", srcVal.String())
 		}
 		out, err := NodeDeepCopy(srcVal)
@@ -369,7 +369,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TFlexXml):
-		if !srcVal.Parent.ConformsTo(TXml) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TXml) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: FlexXml source must be a concrete Xml element, got %s", srcVal.String())
 		}
 		out, err := FlexDeepCopy(srcVal)
@@ -378,7 +378,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TXml):
-		if !srcVal.Parent.ConformsTo(TXml) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TXml) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: Xml source must be a concrete Xml element, got %s", srcVal.String())
 		}
 		out, err := NodeDeepCopy(srcVal)
@@ -387,7 +387,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TWeakFlexMap):
-		if !srcVal.Parent.ConformsTo(TMap) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TMap) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: WeakFlexMap source must be a concrete map, got %s", srcVal.String())
 		}
 		m, merr := AsMap(srcVal)
@@ -409,7 +409,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TWeakFlexList):
-		if !srcVal.Parent.ConformsTo(TList) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TList) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: WeakFlexList source must be a concrete list, got %s", srcVal.String())
 		}
 		lst, lerr := AsList(srcVal)
@@ -429,7 +429,7 @@ func MakeNodeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 		}
 		return []Value{out}, nil
 	case target.Equal(TWeakFlexXml):
-		if !srcVal.Parent.ConformsTo(TXml) || !IsConcrete(&srcVal) {
+		if !ParentOf(&srcVal).ConformsTo(TXml) || !IsConcrete(&srcVal) {
 			return nil, fmt.Errorf("make: WeakFlexXml source must be a concrete Xml element, got %s", srcVal.String())
 		}
 		tag, attr, cren, ok := xmlParts(srcVal)

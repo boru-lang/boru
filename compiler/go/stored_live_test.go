@@ -101,7 +101,7 @@ func TestStoredLiveSeats(t *testing.T) {
 	if es.storedDepRead("helper", fnv) || es.storedDepRead("k", core.NewWord("k")) {
 		t.Fatal("a dispatching binding and an active token do not seat")
 	}
-	cls := core.Value{Parent: core.TAny, Data: &core.ClassTypeInfo{}}
+	cls := core.MakeValue(core.TAny, &core.ClassTypeInfo{})
 	if es.storedDepRead("k", cls) {
 		t.Fatal("a class binding does not seat")
 	}

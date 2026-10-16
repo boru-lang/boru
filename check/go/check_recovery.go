@@ -163,8 +163,8 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 	for i := minStack - 1; i >= 0; i-- {
 		v := e.Tape.At(i)
 		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsDefCleanup(&v) ||
-			v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
-			v.Parent.ConformsTo(core.TInternal) || v.Parent.ConformsTo(core.TReturnCheck) {
+			core.ParentOf(&v).ConformsTo(core.TMark) || core.ParentOf(&v).ConformsTo(core.TMove) ||
+			core.ParentOf(&v).ConformsTo(core.TInternal) || core.ParentOf(&v).ConformsTo(core.TReturnCheck) {
 			return // scope boundary: nothing stranded in this scope
 		}
 		if !core.IsConcrete(&v) && !core.IsBareTypeNode(&v) {
@@ -303,8 +303,8 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 		if core.IsOpenParen(&v) || core.IsCloseParen(&v) || core.IsForward(&v) || core.IsEnd(&v) || core.IsDefCleanup(&v) {
 			return // scope / statement boundary
 		}
-		if v.Parent.ConformsTo(core.TMark) || v.Parent.ConformsTo(core.TMove) ||
-			v.Parent.ConformsTo(core.TInternal) || v.Parent.ConformsTo(core.TReturnCheck) {
+		if core.ParentOf(&v).ConformsTo(core.TMark) || core.ParentOf(&v).ConformsTo(core.TMove) ||
+			core.ParentOf(&v).ConformsTo(core.TInternal) || core.ParentOf(&v).ConformsTo(core.TReturnCheck) {
 			continue // pure structural marker between the operand and its neighbour
 		}
 		// First data value directly below the operand. Only a CONTAINER MEMBER
@@ -327,10 +327,10 @@ func declineStrandedMemberFn(e *core.Engine, positions []int) {
 // interpolation bake probe above; at run time there are no carriers, so
 // the walk is check-mode-only work.
 func valueCarriesCarrier(v core.Value) bool {
-	if v.Carrier {
+	if core.IsCarrier(&v) {
 		return true
 	}
-	switch d := v.Data.(type) {
+	switch d := core.DataOf(&v).(type) {
 	case core.ListPayload:
 		for _, e := range d.Elems {
 			if valueCarriesCarrier(e) {
@@ -378,7 +378,7 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			}
 			if core.IsWord(&v) {
 				if w, err := core.AsWord(&v); err == nil {
-					if bound, ok := r.Defs.Top(w.Name); ok && (bound.Carrier || bindingProduced(r, bound)) {
+					if bound, ok := r.Defs.Top(w.Name); ok && (core.IsCarrier(&bound) || bindingProduced(r, bound)) {
 						found = true
 						return
 					}
@@ -868,7 +868,7 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 // an Any carrier (the scoring's wildcard), a raw word the dispatch has not
 // yet resolved.
 func fallbackTokenCompatible(s *core.Signature, idx int, v core.Value) bool {
-	if core.IsWord(&v) || v.Parent == nil || v.Parent.Equal(core.TAny) {
+	if core.IsWord(&v) || core.ParentOf(&v) == nil || core.ParentOf(&v).Equal(core.TAny) {
 		return true
 	}
 	return core.SigArgMatches(s, idx, &v)
@@ -916,10 +916,10 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 				}
 			}
 		}
-		if v.Parent == nil {
+		if core.ParentOf(&v) == nil {
 			continue
 		}
-		info, ok := core.SurfaceInfoOf(v.Parent)
+		info, ok := core.SurfaceInfoOf(core.ParentOf(&v))
 		if !ok {
 			continue
 		}
@@ -933,7 +933,7 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 	if sinfo == nil {
 		return false, nil
 	}
-	undef, ok := shape.Data.(core.FnUndefInfo)
+	undef, ok := core.DataOf(&shape).(core.FnUndefInfo)
 	if !ok || len(undef.Sigs) == 0 {
 		return false, nil
 	}
@@ -1048,7 +1048,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, hom
 		compatible := true
 		for j, p := range pos {
 			av := e.Tape.At(p)
-			if av.Parent.Equal(core.TAny) {
+			if core.ParentOf(&av).Equal(core.TAny) {
 				continue
 			}
 			if core.SigArgMatches(s, j, &av) {
@@ -1749,7 +1749,7 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 				}
 			}
 		}
-		if core.IsConcrete(&av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
+		if core.IsConcrete(&av) && core.ParentOf(&av) != nil && core.ParentOf(&av).ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
 			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
 				// The interpreter's failed match never evaluates the
 				// literal: its report renders it as written, so a trap built

@@ -54,11 +54,11 @@ func TestValueModePredicates(t *testing.T) {
 			if got := core.IsTypeLiteral(&c.v); got != c.typeLit {
 				t.Errorf("IsTypeLiteral = %v, want %v", got, c.typeLit)
 			}
-			if got := (c.v.Data == nil); got != c.dataIsNil {
+			if got := (core.DataOf(&c.v) == nil); got != c.dataIsNil {
 				t.Errorf("Data == nil = %v, want %v", got, c.dataIsNil)
 			}
 			// IsBareTypeNode is exactly `Data == nil && !Carrier`.
-			if want := c.v.Data == nil && !c.v.Carrier; core.IsBareTypeNode(&c.v) != want {
+			if want := core.DataOf(&c.v) == nil && !core.IsCarrier(&c.v); core.IsBareTypeNode(&c.v) != want {
 				t.Errorf("IsBareTypeNode must equal (Data==nil && !Carrier): got %v want %v",
 					core.IsBareTypeNode(&c.v), want)
 			}

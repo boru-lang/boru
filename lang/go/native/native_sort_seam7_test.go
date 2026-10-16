@@ -58,9 +58,9 @@ func TestCompareForSortStringFallback(t *testing.T) {
 	// Values with a nil Parent make CompareValues error ("nil type"), so
 	// compareForSort takes its lexical String()-form fallback.
 	a := NewString("aaa")
-	a.Parent = nil
+	SetParent(&a, nil)
 	b := NewString("bbb")
-	b.Parent = nil
+	SetParent(&b, nil)
 	if got := compareForSort(a, b); got != -1 {
 		t.Fatalf("compareForSort(a,b) = %d, want -1 (as<bs)", got)
 	}

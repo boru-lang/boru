@@ -194,8 +194,8 @@ func TestWt5RunTypedBindPredicateArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("true verdict must admit: %v", err)
 	}
-	if !out.Parent.Equal(def) {
-		t.Fatalf("predicate bind must reparent to the named type, got %v", out.Parent)
+	if !ParentOf(&out).Equal(def) {
+		t.Fatalf("predicate bind must reparent to the named type, got %v", ParentOf(&out))
 	}
 	if n, _ := AsInteger(out); n != 3 {
 		t.Fatalf("payload must survive the reparent, got %v", out)
@@ -217,8 +217,8 @@ func TestWt5RunTypedBindRefineArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conforming value must bind: %v", err)
 	}
-	if !out.Parent.Equal(def) {
-		t.Fatalf("refine bind must reparent, got %v", out.Parent)
+	if !ParentOf(&out).Equal(def) {
+		t.Fatalf("refine bind must reparent, got %v", ParentOf(&out))
 	}
 }
 
@@ -237,8 +237,8 @@ func TestWt5RunTypedBindDepScalarArms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("in-range value must bind: %v", err)
 	}
-	if !out.Parent.Equal(TInteger) {
-		t.Fatalf("DepScalar bind must keep the base tag, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TInteger) {
+		t.Fatalf("DepScalar bind must keep the base tag, got %v", ParentOf(&out))
 	}
 }
 
@@ -279,7 +279,7 @@ func TestWt5MintTestTypeExpansion(t *testing.T) {
 	}
 	// A non-builtin leaf under a builtin parent attaches there.
 	got := MintTestType("Number/Wt5MintCustom")
-	if got == nil || got.Parent != TNumber {
+	if got == nil || ParentOf(got) != TNumber {
 		t.Fatalf("MintTestType(Number/Wt5MintCustom).Parent = %v, want Number", got)
 	}
 }

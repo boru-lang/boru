@@ -48,29 +48,29 @@ func TestFormArgsRawCapture(t *testing.T) {
 
 	// 0: a bare word stays a Word (not dispatched, not an Atom).
 	if !IsWord(&captured[0]) {
-		t.Errorf("operand 0: want a raw Word, got %s (%v)", captured[0].Parent, captured[0])
+		t.Errorf("operand 0: want a raw Word, got %s (%v)", ParentOf(&captured[0]), captured[0])
 	} else if w, _ := AsWord(&captured[0]); w.Name != "foo" {
 		t.Errorf("operand 0: want Word(foo), got Word(%s)", w.Name)
 	}
 	// 1: a paren stays an un-evaluated ParenExpr (not 5).
 	if !IsParenExpr(&captured[1]) {
-		t.Errorf("operand 1: want a raw ParenExpr, got %s (%v)", captured[1].Parent, captured[1])
+		t.Errorf("operand 1: want a raw ParenExpr, got %s (%v)", ParentOf(&captured[1]), captured[1])
 	}
 	// 2: a list stays an un-evaluated List with raw word elements.
-	if !captured[2].Parent.Equal(TList) || !IsConcrete(&captured[2]) {
-		t.Fatalf("operand 2: want a concrete List, got %s (%v)", captured[2].Parent, captured[2])
+	if !ParentOf(&captured[2]).Equal(TList) || !IsConcrete(&captured[2]) {
+		t.Fatalf("operand 2: want a concrete List, got %s (%v)", ParentOf(&captured[2]), captured[2])
 	}
 	l, _ := AsList(captured[2])
 	if l.Len() != 2 || !IsWord(addrOf(l.Get(0))) {
 		t.Errorf("operand 2: want [Word(x) Word(y)] un-evaluated, got %v", captured[2])
 	}
 	// 3: a map keeps its value un-evaluated (a ParenExpr, not 7).
-	if !captured[3].Parent.Equal(TMap) || !IsConcrete(&captured[3]) {
-		t.Fatalf("operand 3: want a concrete Map, got %s (%v)", captured[3].Parent, captured[3])
+	if !ParentOf(&captured[3]).Equal(TMap) || !IsConcrete(&captured[3]) {
+		t.Fatalf("operand 3: want a concrete Map, got %s (%v)", ParentOf(&captured[3]), captured[3])
 	}
 	m, _ := AsMap(captured[3])
 	kv, _ := m.Get("k")
 	if !IsParenExpr(&kv) {
-		t.Errorf("operand 3: map value k should be a raw ParenExpr, got %s (%v)", kv.Parent, kv)
+		t.Errorf("operand 3: map value k should be a raw ParenExpr, got %s (%v)", ParentOf(&kv), kv)
 	}
 }

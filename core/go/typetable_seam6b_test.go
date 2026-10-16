@@ -315,7 +315,7 @@ func TestS6b1MustBuiltinTypeMissing(t *testing.T) {
 	if def == nil {
 		t.Fatal("mustBuiltinType must return a placeholder, not nil")
 	}
-	if def.Name() != "S6b1/NoSuchBuiltin" || def.Origin != OriginBuiltin {
+	if def.Name() != "S6b1/NoSuchBuiltin" || OriginOf(def) != OriginBuiltin {
 		t.Errorf("placeholder = %+v, want Name=path Origin=builtin", def)
 	}
 	if len(builtinInitErrs) != base+1 {

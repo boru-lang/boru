@@ -29,17 +29,17 @@ func ovImpl() *core.GoImpl {
 
 func TestNewCarrierTypedListLenRefinement(t *testing.T) {
 	v := NewCarrierTypedListLen(core.TInteger, 3)
-	if !v.Carrier {
+	if !core.IsCarrier(&v) {
 		t.Fatal("result must be a carrier")
 	}
-	if !v.Parent.ConformsTo(core.TList) {
-		t.Fatalf("result parent = %s, want a List", v.Parent.Leaf())
+	if !core.ParentOf(&v).ConformsTo(core.TList) {
+		t.Fatalf("result parent = %s, want a List", core.ParentOf(&v).Leaf())
 	}
-	ct, ok := v.Data.(core.ChildTypeInfo)
+	ct, ok := core.DataOf(&v).(core.ChildTypeInfo)
 	if !ok {
-		t.Fatalf("Data = %T, want core.ChildTypeInfo", v.Data)
+		t.Fatalf("Data = %T, want core.ChildTypeInfo", core.DataOf(&v))
 	}
-	if ct.Child.Parent == nil || !ct.Child.Parent.Equal(core.TInteger) {
+	if core.ParentOf(&ct.Child) == nil || !core.ParentOf(&ct.Child).Equal(core.TInteger) {
 		t.Error("element carrier must carry the given element type (Integer)")
 	}
 	if ct.Len == nil || *ct.Len != 3 {
@@ -222,7 +222,7 @@ func TestAnyDisjunctCarrierShapes(t *testing.T) {
 		core.NewTypeLiteral(core.TAny),
 	})
 	unionCarrier := union
-	unionCarrier.Carrier = true
+	core.SetCarrier(&unionCarrier, true)
 
 	if !anyDisjunctCarrier([]core.Value{core.NewInteger(1), unionCarrier}) {
 		t.Error("a union carrier among the operands must be detected")
@@ -387,7 +387,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger),
 		core.NewTypeLiteral(core.TString),
 	})
-	mixed.Carrier = true
+	core.SetCarrier(&mixed, true)
 
 	// Integer|String vs Integer: one alternative conforms, one rejects —
 	// the forward/stack split is ambiguous.
@@ -400,7 +400,7 @@ func TestCarrierMixedConformSplit(t *testing.T) {
 		core.NewTypeLiteral(core.TInteger),
 		core.NewTypeLiteral(core.TFloat),
 	})
-	pure.Carrier = true
+	core.SetCarrier(&pure, true)
 	if carrierMixedConform(pure, core.TNumber) {
 		t.Error("all-conforming alternatives are pure, not mixed")
 	}

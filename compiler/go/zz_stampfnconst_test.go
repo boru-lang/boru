@@ -15,14 +15,14 @@ func TestStampFnConstWalksNilMapPayload(t *testing.T) {
 	es := NewEmitState()
 	// No registry bound: the walk must not reach a stamp at all here, which is
 	// the point — it returns at the nil map.
-	es.stampFnConstAt(core.Value{Parent: core.TMap, Data: core.MapPayload{}}, 0)
+	es.stampFnConstAt(core.MakeValue(core.TMap, core.MapPayload{}), 0)
 
 	// The list twin, for symmetry: an empty element slice walks to completion.
-	es.stampFnConstAt(core.Value{Parent: core.TList, Data: core.ListPayload{}}, 0)
+	es.stampFnConstAt(core.MakeValue(core.TList, core.ListPayload{}), 0)
 
 	// And the depth bound holds: a walk that started past it stops immediately
 	// rather than recursing on whatever it was handed.
-	es.stampFnConstAt(core.Value{Parent: core.TList, Data: core.ListPayload{
+	es.stampFnConstAt(core.MakeValue(core.TList, core.ListPayload{
 		Elems: []core.Value{core.NewInteger(1)},
-	}}, stampFnConstDepth+1)
+	}), stampFnConstDepth+1)
 }

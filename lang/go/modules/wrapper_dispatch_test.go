@@ -58,7 +58,7 @@ func TestModuleWrapperInnerSigBarrierPos(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
-			invoked := len(result) == 1 && result[0].Parent.Equal(native.TInteger)
+			invoked := len(result) == 1 && native.ParentOf(&result[0]).Equal(native.TInteger)
 			if !invoked {
 				t.Errorf("with inner BarrierPos=%d, want invoked, got result=%v", c.innerBP, result)
 			}

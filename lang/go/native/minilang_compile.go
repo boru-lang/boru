@@ -34,14 +34,14 @@ import (
 // reference).
 func miniHookToksMaterialisable(toks []Value) bool {
 	for _, v := range toks {
-		if v.Carrier || IsDynamic(&v) {
+		if IsCarrier(&v) || IsDynamic(&v) {
 			return false
 		}
 		// An Extension payload (re's precompiled *regexp behind a mini
 		// carrier type) is CONCRETE by the payload predicate yet has no
 		// const-pool materialisation — the exact shape this screen exists
 		// to divert onto the standard call.
-		if _, ext := v.Data.(core.ExtensionPayload); ext {
+		if _, ext := DataOf(&v).(core.ExtensionPayload); ext {
 			return false
 		}
 		// Everything else is either concrete data, a bare type node, or a

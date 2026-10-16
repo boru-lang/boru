@@ -56,11 +56,11 @@ func NewSugar(info SugarInfo) Value {
 }
 
 // IsSugar reports whether v is a Word/__SG sugar marker.
-func IsSugar(v *Value) bool { return v.Parent.Equal(TSugar) }
+func IsSugar(v *Value) bool { return ParentOf(v).Equal(TSugar) }
 
 // AsSugar returns the SugarInfo if v is a Word/__SG marker.
 func AsSugar(v Value) (SugarInfo, bool) {
-	info, ok := v.Data.(SugarInfo)
+	info, ok := DataOf(&v).(SugarInfo)
 	return info, ok
 }
 

@@ -37,7 +37,7 @@ func TestExtraStringTableType(t *testing.T) {
 	fields.Set("name", NewTypeLiteral(TString))
 	fields.Set("age", NewTypeLiteral(TInteger))
 	tt := TableTypeInfo{Record: RecordTypeInfo{Fields: fields}}
-	v := Value{Parent: TList, Data: tt}
+	v := MakeValue(TList, tt)
 	s := v.String()
 	if !strings.HasPrefix(s, "table{") {
 		t.Errorf("table refine String() = %q, want 'table{...'", s)
@@ -54,7 +54,7 @@ func TestExtraStringTableData(t *testing.T) {
 	row := NewOrderedMap()
 	row.Set("x", NewString("hello"))
 	td := TableData{Record: rec, Rows: []Value{NewMap(row)}}
-	v := Value{Parent: TList, Data: td}
+	v := MakeValue(TList, td)
 	s := v.String()
 	if !strings.Contains(s, "table{") || !strings.Contains(s, "[") {
 		t.Errorf("table data String() = %q, expected table{...}[...]", s)
@@ -191,7 +191,7 @@ func TestExtraAsListTableData(t *testing.T) {
 	row := NewOrderedMap()
 	row.Set("col", NewString("val"))
 	td := TableData{Record: rec, Rows: []Value{NewMap(row)}}
-	v := Value{Parent: TList, Data: td}
+	v := MakeValue(TList, td)
 	_lst, _ := AsList(v)
 	list := _lst.Slice()
 	if len(list) != 1 {
@@ -206,7 +206,7 @@ func TestExtraAsTableTypeTableData(t *testing.T) {
 	fields.Set("col", NewTypeLiteral(TString))
 	rec := RecordTypeInfo{Fields: fields}
 	td := TableData{Record: rec, Rows: []Value{}}
-	v := Value{Parent: TList, Data: td}
+	v := MakeValue(TList, td)
 	tt, _ := AsTableType(v)
 	if tt.Record.Fields.Len() != 1 {
 		t.Errorf("AsTableType() on TableData: got %d fields, want 1", tt.Record.Fields.Len())
@@ -217,7 +217,7 @@ func TestExtraAsTableTypeTableTypeInfo(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("a", NewTypeLiteral(TString))
 	tti := TableTypeInfo{Record: RecordTypeInfo{Fields: fields}}
-	v := Value{Parent: TList, Data: tti}
+	v := MakeValue(TList, tti)
 	tt, _ := AsTableType(v)
 	if tt.Record.Fields.Len() != 1 {
 		t.Errorf("AsTableType() on TableTypeInfo: got %d fields, want 1", tt.Record.Fields.Len())

@@ -72,7 +72,7 @@ func TestStage5BytesBridgeHooks(t *testing.T) {
 }
 
 func TestStage5FromNativeScalars(t *testing.T) {
-	if v := FromNative(nil); v.Parent == nil || !v.Parent.ConformsTo(TNone) {
+	if v := FromNative(nil); ParentOf(&v) == nil || !ParentOf(&v).ConformsTo(TNone) {
 		t.Errorf("FromNative(nil) = %v, want None", v)
 	}
 	if s, err := AsString(FromNative("hi")); err != nil || s != "hi" {
@@ -93,8 +93,8 @@ func TestStage5FromNativeScalars(t *testing.T) {
 		t.Errorf("FromNative(6.0) = %v (%v), want integer 6", n, err)
 	}
 	frac := FromNative(2.5)
-	if frac.Parent == nil || !frac.Parent.ConformsTo(TFloat) {
-		t.Fatalf("FromNative(2.5) parent = %v, want Float", frac.Parent)
+	if ParentOf(&frac) == nil || !ParentOf(&frac).ConformsTo(TFloat) {
+		t.Fatalf("FromNative(2.5) parent = %v, want Float", ParentOf(&frac))
 	}
 	if f, err := AsFloat(frac); err != nil || f != 2.5 {
 		t.Errorf("FromNative(2.5) = %v (%v), want 2.5", f, err)

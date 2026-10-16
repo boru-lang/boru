@@ -167,9 +167,9 @@ func hasNodeHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 	if !IsConcrete(&container) {
 		return []Value{NewBoolean(false)}, nil
 	}
-	if key.Parent.ConformsTo(TInteger) {
+	if ParentOf(&key).ConformsTo(TInteger) {
 		idx, _ := AsInteger(key)
-		if list, _ := AsList(container); !list.IsNil() && container.Parent.ConformsTo(TList) {
+		if list, _ := AsList(container); !list.IsNil() && ParentOf(&container).ConformsTo(TList) {
 			i := int(idx)
 			return []Value{NewBoolean(i >= 0 && i < list.Len())}, nil
 		}
@@ -324,12 +324,12 @@ func getrNodeReturns(args []Value, r *Registry) []Value {
 		return out
 	}
 	key, container := args[0], args[1]
-	if container.Parent.ConformsTo(TList) && !key.Parent.ConformsTo(TInteger) {
+	if ParentOf(&container).ConformsTo(TList) && !ParentOf(&key).ConformsTo(TInteger) {
 		core.CheckAddUniqueDiagnostic(r, "getr_error",
-			fmt.Sprintf("getr: expected a map, got %s", container.Parent.String()), "getr", key.Pos())
+			fmt.Sprintf("getr: expected a map, got %s", ParentOf(&container).String()), "getr", key.Pos())
 		return out
 	}
-	if m, err := AsMap(container); err == nil && m != nil && container.Parent.ConformsTo(TMap) {
+	if m, err := AsMap(container); err == nil && m != nil && ParentOf(&container).ConformsTo(TMap) {
 		if _, ok := m.Get(getKey(key)); !ok {
 			core.CheckAddUniqueDiagnostic(r, "not_found",
 				fmt.Sprintf("getr: key %q not found in map", getKey(key)), "getr", key.Pos())
@@ -348,10 +348,10 @@ func getrNodeReturns(args []Value, r *Registry) []Value {
 func getrObjectReturns(args []Value, r *Registry) []Value {
 	out := getObjectReturns(args, r)
 	if r == nil || !r.Check.IsActive() || len(args) != 2 ||
-		!IsConcrete(&args[0]) || args[1].Parent == nil {
+		!IsConcrete(&args[0]) || ParentOf(&args[1]) == nil {
 		return out
 	}
-	body, ok := r.TopTypeBody(args[1].Parent.Leaf())
+	body, ok := r.TopTypeBody(ParentOf(&args[1]).Leaf())
 	if !ok {
 		return out
 	}
@@ -417,8 +417,8 @@ func getrMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 		return nil, r.BoruError("getr_error", "getr: cannot access property on type literal", "getr")
 	}
 	// Integer key on list.
-	if key.Parent.ConformsTo(TInteger) {
-		if list, _ := AsList(container); !list.IsNil() && container.Parent.ConformsTo(TList) {
+	if ParentOf(&key).ConformsTo(TInteger) {
+		if list, _ := AsList(container); !list.IsNil() && ParentOf(&container).ConformsTo(TList) {
 			_as3, _ := AsInteger(key)
 			idx := int(_as3)
 			// index_out_of_range is the code this very condition's
@@ -446,7 +446,7 @@ func getrMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 		// forty lines up (getrNodeReturns) — which was already coded while
 		// the runtime path was not.
 		return nil, r.BoruError("getr_error",
-			fmt.Sprintf("getr: expected a map, got %s", container.Parent.String()), "getr")
+			fmt.Sprintf("getr: expected a map, got %s", ParentOf(&container).String()), "getr")
 	}
 	val, ok := m.Get(k)
 	if !ok {

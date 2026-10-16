@@ -33,7 +33,7 @@ type TimeoutFormatBehavior struct{}
 func (TimeoutFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (TimeoutFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (TimeoutFormatBehavior) Format(v Value) string {
-	if ti, ok := v.Data.(*TimeoutInfo); ok {
+	if ti, ok := DataOf(&v).(*TimeoutInfo); ok {
 		return fmt.Sprintf("Timeout(%s,%dms)", ti.ID, ti.Ms)
 	}
 	return "Timeout(nil)"
@@ -45,7 +45,7 @@ type IntervalFormatBehavior struct{}
 func (IntervalFormatBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.Match(v, t) }
 func (IntervalFormatBehavior) Equal(a, b Value) bool       { return core.DefaultBehavior.Equal(a, b) }
 func (IntervalFormatBehavior) Format(v Value) string {
-	if ii, ok := v.Data.(*IntervalInfo); ok {
+	if ii, ok := DataOf(&v).(*IntervalInfo); ok {
 		return fmt.Sprintf("Interval(%s,%dms)", ii.ID, ii.Ms)
 	}
 	return "Interval(nil)"
@@ -55,28 +55,28 @@ func (IntervalFormatBehavior) Format(v Value) string {
 // {id:… ms:…} and [id ms].
 func (TimeoutFormatBehavior) ToMap(v Value) (Value, error) {
 	m := NewOrderedMap()
-	if ti, ok := v.Data.(*TimeoutInfo); ok {
+	if ti, ok := DataOf(&v).(*TimeoutInfo); ok {
 		m.Set("id", NewString(ti.ID))
 		m.Set("ms", NewInteger(ti.Ms))
 	}
 	return NewMap(m), nil
 }
 func (TimeoutFormatBehavior) ToList(v Value) (Value, error) {
-	if ti, ok := v.Data.(*TimeoutInfo); ok {
+	if ti, ok := DataOf(&v).(*TimeoutInfo); ok {
 		return NewList([]Value{NewString(ti.ID), NewInteger(ti.Ms)}), nil
 	}
 	return NewList(nil), nil
 }
 func (IntervalFormatBehavior) ToMap(v Value) (Value, error) {
 	m := NewOrderedMap()
-	if ii, ok := v.Data.(*IntervalInfo); ok {
+	if ii, ok := DataOf(&v).(*IntervalInfo); ok {
 		m.Set("id", NewString(ii.ID))
 		m.Set("ms", NewInteger(ii.Ms))
 	}
 	return NewMap(m), nil
 }
 func (IntervalFormatBehavior) ToList(v Value) (Value, error) {
-	if ii, ok := v.Data.(*IntervalInfo); ok {
+	if ii, ok := DataOf(&v).(*IntervalInfo); ok {
 		return NewList([]Value{NewString(ii.ID), NewInteger(ii.Ms)}), nil
 	}
 	return NewList(nil), nil

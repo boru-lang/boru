@@ -22,14 +22,14 @@ func TestStampAtomReferentsLeavesProgramArrays(t *testing.T) {
 		if len(out) != 3 {
 			t.Fatalf("run %s: out = %v", want, out)
 		}
-		nested := out[1].Data.(ListPayload).Elems
+		nested := DataOf(&out[1]).(ListPayload).Elems
 		for i, a := range []Value{out[0], nested[0]} {
 			if ref, ok := AtomReferent(a); !ok || ref.String() != want {
 				t.Errorf("run %s: atom %d referent = %v (%v), want %s", want, i, ref, ok, want)
 			}
 		}
 		// A list none of whose atoms took a referent keeps its own array.
-		if got := out[2].Data.(ListPayload).Elems; &got[0] != &plain[0] {
+		if got := DataOf(&out[2]).(ListPayload).Elems; &got[0] != &plain[0] {
 			t.Errorf("run %s: an unstamped list was rebuilt", want)
 		}
 	}
@@ -55,7 +55,7 @@ func TestStampAtomReferentsSkipsResolvedPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out[0].Data.(ListPayload).Elems; &got[0] != &arg[0] {
+	if got := DataOf(&out[0]).(ListPayload).Elems; &got[0] != &arg[0] {
 		t.Error("a list in the resolved prefix was rebuilt")
 	}
 	if _, has := AtomReferent(out[1]); !has {

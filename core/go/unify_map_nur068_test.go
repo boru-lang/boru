@@ -42,7 +42,7 @@ func TestNur068RecordCarrierUnifiesWithFieldBag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record carrier vs field bag: %v", err)
 	}
-	if !got.Carrier || !IsRecordType(got) {
+	if !IsCarrier(&got) || !IsRecordType(got) {
 		t.Fatalf("expected the record carrier back, got %v", got)
 	}
 	// Carrier on the right (the swapped orientation other unify callers use).
@@ -50,7 +50,7 @@ func TestNur068RecordCarrierUnifiesWithFieldBag(t *testing.T) {
 	if err2 != nil {
 		t.Fatalf("field bag vs record carrier: %v", err2)
 	}
-	if !got2.Carrier || !IsRecordType(got2) {
+	if !IsCarrier(&got2) || !IsRecordType(got2) {
 		t.Fatalf("expected the record carrier back (swapped), got %v", got2)
 	}
 }
@@ -100,7 +100,7 @@ func TestNur068RecordCarrierVsTypedMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("homogeneous schema vs {:Integer}: %v", err)
 	}
-	if !got.Carrier || !IsRecordType(got) {
+	if !IsCarrier(&got) || !IsRecordType(got) {
 		t.Fatalf("expected the record carrier back, got %v", got)
 	}
 	if _, err := unifyMapFamily(tm, Shape(tm), rec, Shape(rec), nil); err != nil {
@@ -128,7 +128,7 @@ func TestNur068NonCarrierRecordKeepsNominalCompileFailure(t *testing.T) {
 func TestNur068EmptySchemaCarrierFallsThrough(t *testing.T) {
 	// A record carrier with no readable schema (nil Fields) declines the
 	// admission and falls to the nominal compile failure.
-	rec := Value{Parent: TMap, Carrier: true, Data: RecordTypeInfo{}}
+	rec := MakeCarrierValue(TMap, RecordTypeInfo{})
 	SetDynamic(&rec, true)
 	pat := nur068Pattern()
 	if _, err := unifyMapFamily(rec, Shape(rec), pat, Shape(pat), nil); err == nil {
@@ -144,11 +144,11 @@ func TestNur068UnreadableMapSideFallsThrough(t *testing.T) {
 	// MapPayload{M: nil} (AsMap boxes the nil *OrderedMap in a non-nil
 	// ReadMap, so only the payload probe catches it — the no-panics rule).
 	rec := recSchemaCarrier(nur068Schema())
-	ext := Value{Parent: TMap, Data: ExtensionPayload{Body: 42}}
+	ext := MakeValue(TMap, ExtensionPayload{Body: 42})
 	if _, err := unifyMapFamily(rec, Shape(rec), ext, Shape(ext), nil); err == nil {
 		t.Fatal("an extension-payload map must fall through to the compile failure")
 	}
-	nilMap := Value{Parent: TMap, Data: MapPayload{}}
+	nilMap := MakeValue(TMap, MapPayload{})
 	if _, err := unifyMapFamily(rec, Shape(rec), nilMap, Shape(nilMap), nil); err == nil {
 		t.Fatal("a nil-OrderedMap MapPayload must fall through to the compile failure")
 	}
@@ -165,7 +165,7 @@ func TestNur068RecordCarrierVsMapLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Map literal vs record carrier: %v", err)
 	}
-	if !got.Carrier || !IsRecordType(got) {
+	if !IsCarrier(&got) || !IsRecordType(got) {
 		t.Fatalf("expected the record carrier back, got %v", got)
 	}
 	// Literal on the right.
@@ -173,7 +173,7 @@ func TestNur068RecordCarrierVsMapLiteral(t *testing.T) {
 	if err2 != nil {
 		t.Fatalf("record carrier vs Map literal: %v", err2)
 	}
-	if !got2.Carrier || !IsRecordType(got2) {
+	if !IsCarrier(&got2) || !IsRecordType(got2) {
 		t.Fatalf("expected the record carrier back (swapped), got %v", got2)
 	}
 	// A non-carrier record BODY still declines against the bare literal.

@@ -71,7 +71,7 @@ func registerMacroFnDispatch(subReg, parent *native.Registry, name string, h nat
 // the word raises, for `emit` (whose handler does run: emit_error) as for
 // `mini`.
 func macroFnValue(r *native.Registry, v native.Value) (native.Value, native.FnDefInfo, bool) {
-	if !v.Parent.ConformsTo(native.TFunction) {
+	if !native.ParentOf(&v).ConformsTo(native.TFunction) {
 		return v, native.FnDefInfo{}, false
 	}
 	if native.IsCompiledClosure(v) {
@@ -79,7 +79,7 @@ func macroFnValue(r *native.Registry, v native.Value) (native.Value, native.FnDe
 			v = bv
 		}
 	}
-	fd, ok := native.FnDefOf(v.Data)
+	fd, ok := native.FnDefOf(native.DataOf(&v))
 	return v, *fd, ok
 }
 

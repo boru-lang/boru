@@ -118,7 +118,7 @@ func NewMmapType() *Type {
 
 // asMmapInfo unwraps a Mmap handle's payload.
 func asMmapInfo(v Value) (*MmapInfo, bool) {
-	ext, ok := v.Data.(ExtensionPayload)
+	ext, ok := DataOf(&v).(ExtensionPayload)
 	if !ok {
 		return nil, false
 	}
@@ -158,7 +158,7 @@ func doMmapWord(args []Value, r *Registry, mmapType *Type) ([]Value, error) {
 func readMmapWord(args []Value, r *Registry) ([]Value, error) {
 	mi, ok := asMmapInfo(args[0])
 	if !ok {
-		return nil, r.BoruError("read_error", fmt.Sprintf("read: not a Mmap region (got %s)", args[0].Parent), "read")
+		return nil, r.BoruError("read_error", fmt.Sprintf("read: not a Mmap region (got %s)", ParentOf(&args[0])), "read")
 	}
 	enc := "utf8"
 	offset, length := 0, -1
@@ -193,7 +193,7 @@ func readMmapWord(args []Value, r *Registry) ([]Value, error) {
 func writeMmapWord(args []Value, r *Registry) ([]Value, error) {
 	mi, ok := asMmapInfo(args[0])
 	if !ok {
-		return nil, r.BoruError("write_error", fmt.Sprintf("write: not a Mmap region (got %s)", args[0].Parent), "write")
+		return nil, r.BoruError("write_error", fmt.Sprintf("write: not a Mmap region (got %s)", ParentOf(&args[0])), "write")
 	}
 	if !mi.Writable {
 		return nil, r.BoruError("write_error", "write: this Mmap region is read-only", "write")

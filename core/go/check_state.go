@@ -1990,7 +1990,7 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 	if !c.IsActive() || IDOf(&out) == "" {
 		return
 	}
-	fd, ok := FnDefOf(member.Data)
+	fd, ok := FnDefOf(DataOf(&member))
 	if !ok || !fd.HasHome() || fd.Name == "" || fd.Macro {
 		return
 	}

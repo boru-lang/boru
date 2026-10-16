@@ -34,7 +34,7 @@ func fnValueClosureProg() *compiler.Program {
 func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	fnv := compiler.NewClosure(fnValueClosureProg(), 0, nil)
-	cl := fnv.Data.(core.ClosurePayload)
+	cl := core.DataOf(&fnv).(core.ClosurePayload)
 
 	res, err, ran := vc.invokeFnValueClosure(r, &fnv, cl, []core.Value{core.NewInteger(5)})
 	if !ran || err != nil || len(res) != 1 {
@@ -58,7 +58,7 @@ func TestFnValueClosureSeamMatchesTopDown(t *testing.T) {
 		t.Error("a quoted closure is data, not a callee")
 	}
 	body := compiler.NewClosure(fnValueClosureProg(), 1, nil)
-	if _, _, ran := vc.invokeFnValueClosure(r, &body, body.Data.(core.ClosurePayload), nil); ran {
+	if _, _, ran := vc.invokeFnValueClosure(r, &body, core.DataOf(&body).(core.ClosurePayload), nil); ran {
 		t.Error("a callback body unit's closure is not the arm's")
 	}
 

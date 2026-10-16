@@ -300,7 +300,7 @@ func TestNurRunExecMatchParksForeignFnReturn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(out) != 2 || out[0].String() != "3" || !out[1].Parent.Equal(TFunction) {
+	if len(out) != 2 || out[0].String() != "3" || !ParentOf(&out[1]).Equal(TFunction) {
 		t.Fatalf("the returned fn must be parked beside the 3, got %s", renderAll(out))
 	}
 
@@ -339,7 +339,7 @@ func TestNurRunExecFnDefSigParksForeignFnReturn(t *testing.T) {
 	}
 
 	e := run(NewWord("nrcmk"))
-	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(TFunction) || e.Pointer != 1 {
+	if e.Tape.Len() != 1 || !ParentOf(addrOf(e.Tape.At(0))).Equal(TFunction) || e.Pointer != 1 {
 		t.Fatalf("a returned fn must be parked: tape %s, pointer %d", renderAll(e.Tape.Snapshot()), e.Pointer)
 	}
 	e = run(NewInteger(42))

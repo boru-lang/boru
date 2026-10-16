@@ -35,8 +35,8 @@ func TestMicronMergedGrammarDispatch(t *testing.T) {
 			t.Errorf("MicronFromString(%q): unexpected error: %v", c.src, err)
 			continue
 		}
-		if !v.Parent.Equal(c.kind) {
-			t.Errorf("MicronFromString(%q) = %s, want %s", c.src, v.Parent.Name(), c.kind.Name())
+		if !ParentOf(&v).Equal(c.kind) {
+			t.Errorf("MicronFromString(%q) = %s, want %s", c.src, ParentOf(&v).Name(), c.kind.Name())
 		}
 	}
 }
@@ -127,7 +127,7 @@ func TestMicronMergeCommutative(t *testing.T) {
 				continue
 			}
 			v, ok := node.(Value)
-			if !ok || !v.Parent.Equal(kind) {
+			if !ok || !ParentOf(&v).Equal(kind) {
 				t.Errorf("merged parse %q → %v, want %s", src, node, kind.Name())
 			}
 		}
@@ -158,7 +158,7 @@ func TestMicronBuildMergedGrammar(t *testing.T) {
 			continue
 		}
 		v, ok := node.(Value)
-		if !ok || !v.Parent.Equal(kind) {
+		if !ok || !ParentOf(&v).Equal(kind) {
 			t.Errorf("parse %q → %v, want %s", src, node, kind.Name())
 		}
 	}

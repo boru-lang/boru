@@ -92,17 +92,17 @@ func runQuerySrc(t *testing.T, r *native.Registry, src string) ([]native.Value, 
 // concrete TableData is returned directly.
 func materialize(t *testing.T, v native.Value) native.TableData {
 	t.Helper()
-	if mp, ok := v.Data.(native.MaterializerPayload); ok {
+	if mp, ok := native.DataOf(&v).(native.MaterializerPayload); ok {
 		td, err := mp.M.Materialize()
 		if err != nil {
 			t.Fatalf("materialize: %v", err)
 		}
 		return td
 	}
-	if td, ok := v.Data.(native.TableData); ok {
+	if td, ok := native.DataOf(&v).(native.TableData); ok {
 		return td
 	}
-	t.Fatalf("expected a lazy query or TableData, got %T", v.Data)
+	t.Fatalf("expected a lazy query or TableData, got %T", native.DataOf(&v))
 	return native.TableData{}
 }
 
@@ -286,8 +286,8 @@ func TestQueryLazyPrintsAsTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := result[0].Data.(native.MaterializerPayload); !ok {
-		t.Fatalf("expected a lazy MaterializerPayload, got %T", result[0].Data)
+	if _, ok := native.DataOf(&result[0]).(native.MaterializerPayload); !ok {
+		t.Fatalf("expected a lazy MaterializerPayload, got %T", native.DataOf(&result[0]))
 	}
 	rendered := result[0].String()
 	if !strings.Contains(rendered, "Carol") {
@@ -303,9 +303,9 @@ func TestQueryNoFromErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seeding select should not error eagerly: %v", err)
 	}
-	mp, ok := result[0].Data.(native.MaterializerPayload)
+	mp, ok := native.DataOf(&result[0]).(native.MaterializerPayload)
 	if !ok {
-		t.Fatalf("expected a lazy query, got %T", result[0].Data)
+		t.Fatalf("expected a lazy query, got %T", native.DataOf(&result[0]))
 	}
 	if _, mErr := mp.M.Materialize(); mErr == nil {
 		t.Fatal("expected a 'no FROM' error when materializing a sourceless select")
@@ -403,9 +403,9 @@ func TestQueryWhereUnknownColumn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("building the query should not error eagerly: %v", err)
 	}
-	mp, ok := result[0].Data.(native.MaterializerPayload)
+	mp, ok := native.DataOf(&result[0]).(native.MaterializerPayload)
 	if !ok {
-		t.Fatalf("expected a lazy query, got %T", result[0].Data)
+		t.Fatalf("expected a lazy query, got %T", native.DataOf(&result[0]))
 	}
 	if _, mErr := mp.M.Materialize(); mErr == nil {
 		t.Fatal("expected an error materializing a filter on an unknown column")

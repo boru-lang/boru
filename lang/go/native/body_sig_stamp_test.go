@@ -22,7 +22,7 @@ func bodySigOver(params []FnParam, body []Value) *FnSig {
 func TestStampBodySigHostsAndRemembers(t *testing.T) {
 	r := stampSvcReg(t, true)
 	body := NewList([]Value{NewString("c"), NewString("d")})
-	sig := bodySigOver([]FnParam{{Type: TAny}}, body.Data.(core.ListPayload).Elems)
+	sig := bodySigOver([]FnParam{{Type: TAny}}, DataOf(&body).(core.ListPayload).Elems)
 	in := []Value{NewString("x")}
 	stamped := StampBodySig(r, sig, body, in)
 	if stamped == sig || compiler.CompiledRef(stamped) == nil {
@@ -49,7 +49,7 @@ func TestStampBodySigHostsAndRemembers(t *testing.T) {
 	}
 	// The declined body: `args` is context-dependent inside a stored unit.
 	declined := NewList([]Value{NewWord("args"), NewWord("dot"), NewInteger(0)})
-	dsig := bodySigOver([]FnParam{{Type: TAny}}, declined.Data.(core.ListPayload).Elems)
+	dsig := bodySigOver([]FnParam{{Type: TAny}}, DataOf(&declined).(core.ListPayload).Elems)
 	before := len(r.StampEvents())
 	if got := StampBodySig(r, dsig, declined, in); got != dsig {
 		t.Fatal("a declined body keeps the throwaway signature")
@@ -69,7 +69,7 @@ func TestStampBodySigHostsAndRemembers(t *testing.T) {
 // that does not conform to the declared param.
 func TestStampBodySigKeepsTheFrame(t *testing.T) {
 	body := NewList([]Value{NewInteger(1)})
-	toks := body.Data.(core.ListPayload).Elems
+	toks := DataOf(&body).(core.ListPayload).Elems
 	in := []Value{NewInteger(5)}
 	sig := bodySigOver([]FnParam{{Type: TAny}}, toks)
 	if StampBodySig(stampSvcReg(t, false), sig, body, in) != sig {
@@ -94,7 +94,7 @@ func TestStampBodySigKeepsTheFrame(t *testing.T) {
 	om.Set("a", NewInteger(1))
 	unnamed := NewList([]Value{NewMap(om), NewWord("size")})
 	SetID(&unnamed, "")
-	usig := bodySigOver([]FnParam{{Type: TAny}}, unnamed.Data.(core.ListPayload).Elems)
+	usig := bodySigOver([]FnParam{{Type: TAny}}, DataOf(&unnamed).(core.ListPayload).Elems)
 	if StampBodySig(r, usig, unnamed, in) != usig {
 		t.Fatal("a body with no name stands aside")
 	}

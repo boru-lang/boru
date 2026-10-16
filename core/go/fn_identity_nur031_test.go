@@ -39,7 +39,7 @@ func TestNUR031FnDeqIgnoresTheBindingName(t *testing.T) {
 	body := []Value{NewInteger(1)}
 	f := nur031Fn(t, r, "f", body)
 	a := nur031Fn(t, r, "a", body)
-	if sameFnIdentity(*f.Data.(*FnDefInfo), *a.Data.(*FnDefInfo)) {
+	if sameFnIdentity(*DataOf(&f).(*FnDefInfo), *DataOf(&a).(*FnDefInfo)) {
 		t.Fatal("two constructions are two identities — the canon path must answer")
 	}
 	if !DeepEqual(f, a) {
@@ -123,7 +123,7 @@ func TestNUR031IdentitySurvivesRebinding(t *testing.T) {
 	}
 	// The aggregate really was rebuilt per name — otherwise this test would
 	// pass on the old Signatures-array key and prove nothing.
-	if &ar.Data.(*FnDefInfo).Signatures[0] == &br.Data.(*FnDefInfo).Signatures[0] {
+	if &DataOf(&ar).(*FnDefInfo).Signatures[0] == &DataOf(&br).(*FnDefInfo).Signatures[0] {
 		t.Fatal("expected per-name aggregates with distinct Signatures arrays")
 	}
 }
@@ -136,7 +136,7 @@ func TestNUR031UntokenedPayloadsAreNotReferenceEqual(t *testing.T) {
 	if sameFnIdentity(a, a) {
 		t.Fatal("a payload with no identity token is not reference-equal")
 	}
-	if tokened, ok := NewFunction(a).Data.(*FnDefInfo); !ok || !sameFnIdentity(*tokened, *tokened) {
+	if tokened, ok := DataOf(addrOf(NewFunction(a))).(*FnDefInfo); !ok || !sameFnIdentity(*tokened, *tokened) {
 		t.Fatal("…but NewFunction mints one, and a fn is eq to itself")
 	}
 }
@@ -260,7 +260,7 @@ func TestNUR031ClosureCapturesAreContent(t *testing.T) {
 	r, _ := NewRegistry()
 	body := []Value{NewInteger(1)}
 	mk := func(captured Value) FnDefInfo {
-		fd, _ := FnDefCopy(nur031Fn(t, r, "adder", body).Data)
+		fd, _ := FnDefCopy(DataOf(addrOf(nur031Fn(t, r, "adder", body))))
 		fd.ident = nil // two separate constructions, so canon must answer
 		fd.Captured = []CapturedBinding{{Name: "x", Value: captured}}
 		return fd
@@ -294,7 +294,7 @@ func TestNUR031ClosureCapturesAreContent(t *testing.T) {
 func TestNUR031NilAndModuleScopesAreDifferentContent(t *testing.T) {
 	r, _ := NewRegistry()
 	body := []Value{NewInteger(1)}
-	owned, _ := FnDefCopy(nur031Fn(t, r, "f", body).Data)
+	owned, _ := FnDefCopy(DataOf(addrOf(nur031Fn(t, r, "f", body))))
 	local := owned
 	local.ident = nil
 	local.Registry = nil

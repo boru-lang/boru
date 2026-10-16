@@ -37,7 +37,7 @@ func TestRecordGradualWrapRecordsEveryGradualCarrier(t *testing.T) {
 // is proved end to end in lang/go (sweep_cells_s2b_test.go).
 func TestWrapCompiledClosureDeclinesOffTheCompiledLane(t *testing.T) {
 	r := seam5Reg(t)
-	cl := Value{Parent: TFunction, Data: core.ClosurePayload{Unit: 0}}
+	cl := MakeValue(TFunction, core.ClosurePayload{Unit: 0})
 	if _, ok := wrapCompiledClosure(nil, "usurp", cl, 0); ok {
 		t.Error("nil registry must decline")
 	}

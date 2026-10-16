@@ -92,8 +92,8 @@ func TestWt5FreshenDefaultFlexList(t *testing.T) {
 	if !IsFlexList(fresh) {
 		t.Fatalf("freshened flex list must stay flex, got %v", fresh)
 	}
-	od, _ := orig.Data.(*FlexListData)
-	fd, _ := fresh.Data.(*FlexListData)
+	od, _ := DataOf(&orig).(*FlexListData)
+	fd, _ := DataOf(&fresh).(*FlexListData)
 	if od == nil || fd == nil || od == fd {
 		t.Fatal("freshening must produce a new FlexListData identity")
 	}
@@ -119,7 +119,7 @@ func TestWt5MakeClassFieldValueArms(t *testing.T) {
 	cinfo := ClassTypeInfo{Name: "Class/Wt5Inner", Type: ct, Fields: NewOrderedMap()}
 	constraint := NewClassType(ct, cinfo)
 	inst := NewClassInstance(ct, ClassInstanceInfo{TypeRef: &cinfo, Fields: NewOrderedMap()})
-	if got, err := MakeClassFieldValue(inst, constraint, r); err != nil || !got.Parent.Equal(ct) {
+	if got, err := MakeClassFieldValue(inst, constraint, r); err != nil || !ParentOf(&got).Equal(ct) {
 		t.Fatalf("class instance vs its class constraint = %v %v", got, err)
 	}
 }
@@ -128,9 +128,9 @@ func TestWt5MakeClassFieldValueArms(t *testing.T) {
 
 func TestWt5NewPathonFromString(t *testing.T) {
 	v := NewPathonFromString("/a/b")
-	p, ok := v.Data.(PathonPayload)
+	p, ok := DataOf(&v).(PathonPayload)
 	if !ok || !p.Info.Abs || len(p.Info.Parts) != 2 || p.Info.Parts[0] != "a" {
-		t.Fatalf("NewPathonFromString = %+v", v.Data)
+		t.Fatalf("NewPathonFromString = %+v", DataOf(&v))
 	}
 }
 

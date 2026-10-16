@@ -67,14 +67,14 @@ func TestValueNamesKnownShapes(t *testing.T) {
 	r := newTestRegistry(t)
 	es.reg = r
 	r.Defs.Push("zzkn", core.NewInteger(1))
-	if es.valueNamesKnown(core.Value{Parent: core.TMap, Data: core.MapPayload{}}) {
+	if es.valueNamesKnown(core.MakeValue(core.TMap, core.MapPayload{})) {
 		t.Error("a map with no payload names nothing")
 	}
-	paren := core.Value{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2), core.NewWord("zzkn")}}}
+	paren := core.MakeValue(nil, core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2), core.NewWord("zzkn")}})
 	if !es.valueNamesKnown(paren) {
 		t.Error("a paren token naming a bound name is known")
 	}
-	quiet := core.Value{Data: core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2)}}}
+	quiet := core.MakeValue(nil, core.ParenExprPayload{Toks: []core.Value{core.NewInteger(2)}})
 	if es.valueNamesKnown(quiet) {
 		t.Error("a paren of data names nothing")
 	}

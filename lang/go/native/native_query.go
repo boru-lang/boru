@@ -181,7 +181,7 @@ func fromNameHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	if !ok {
 		return nil, fmt.Errorf("from: unknown table %q", name)
 	}
-	td, ok := val.Data.(TableData)
+	td, ok := DataOf(&val).(TableData)
 	if !ok {
 		return nil, fmt.Errorf("from: %q is not a table", name)
 	}
@@ -398,7 +398,7 @@ func queryUsingHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	for _, e := range elems {
 		colName := valueToColName(e)
 		if colName == "" {
-			return nil, fmt.Errorf("using: expected column name, got %s", e.Parent)
+			return nil, fmt.Errorf("using: expected column name, got %s", ParentOf(&e))
 		}
 		cols = append(cols, quoteIdent(colName))
 	}

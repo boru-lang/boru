@@ -121,7 +121,7 @@ func slotAdmits(sig *Signature, i int, v Value) bool {
 // position, minus the tape/forward machinery (the probe holds resolved
 // values, so the forward-leniency skips do not apply).
 func patternRejects(pattern Value, v Value) bool {
-	if pattern.Carrier {
+	if IsCarrier(&pattern) {
 		// A check-mode placeholder for a COMPUTED pattern — the real
 		// value is unknown, so the probe cannot judge it.
 		return false
@@ -132,8 +132,8 @@ func patternRejects(pattern Value, v Value) bool {
 		// cannot blame the slot.
 		return false
 	}
-	if pattern.Parent.Equal(TMap) && v.Parent.Equal(TMap) &&
-		pattern.Data != nil && v.Data != nil &&
+	if ParentOf(&pattern).Equal(TMap) && ParentOf(&v).Equal(TMap) &&
+		DataOf(&pattern) != nil && DataOf(&v) != nil &&
 		!IsOptionsType(pattern) &&
 		!IsRecordType(v) && !IsTypedMap(&v) && !IsOptionsType(v) {
 		return !OpenUnifyMap(pattern, v)

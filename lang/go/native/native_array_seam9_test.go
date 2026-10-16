@@ -58,7 +58,7 @@ func TestW9ShapeHelpers(t *testing.T) {
 	if v := buildNested([]Value{NewInteger(5)}, nil); !v.Is(TInteger) {
 		t.Fatalf("buildNested single = %v, want Integer", v)
 	}
-	if v := buildNested([]Value{NewInteger(1), NewInteger(2)}, nil); !v.Parent.ConformsTo(TList) {
+	if v := buildNested([]Value{NewInteger(1), NewInteger(2)}, nil); !ParentOf(&v).ConformsTo(TList) {
 		t.Fatalf("buildNested many = %v, want List", v)
 	}
 
@@ -110,9 +110,9 @@ func TestW9ArrCompareValuesFallback(t *testing.T) {
 	// Values with a nil Parent make CompareValues error, forcing the
 	// string-comparison fallback with distinguishable string forms.
 	a := NewString("aaa")
-	a.Parent = nil
+	SetParent(&a, nil)
 	b := NewString("bbb")
-	b.Parent = nil
+	SetParent(&b, nil)
 	if got := arrCompareValues(a, b); got != -1 {
 		t.Fatalf("arrCompareValues(a,b) = %d, want -1", got)
 	}
@@ -264,7 +264,7 @@ func TestW9BodyAnalysisFailures(t *testing.T) {
 	}
 	// foldaxis's analysing ReturnsFn (NUR115) shares the fixed point and the
 	// fallback: an unanalysable lane body answers the bare List carrier.
-	if out := foldaxisReturnsFn([]Value{NewInteger(1), w9ErrBody(), w9List(w9List(NewInteger(1)))}, r); len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+	if out := foldaxisReturnsFn([]Value{NewInteger(1), w9ErrBody(), w9List(w9List(NewInteger(1)))}, r); len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TList) {
 		t.Fatalf("foldaxisReturnsFn fallback: %v", out)
 	}
 }

@@ -140,8 +140,8 @@ func TestTimeNowLocal(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	if !result[0].Parent.ConformsTo(native.TDateTime) {
-		t.Errorf("expected DateTime type, got %s", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TDateTime) {
+		t.Errorf("expected DateTime type, got %s", native.ParentOf(&result[0]))
 	}
 }
 
@@ -449,8 +449,8 @@ func TestNowStandardWord(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	if !result[0].Parent.ConformsTo(native.TInstant) {
-		t.Errorf("now should return Instant, got %s", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TInstant) {
+		t.Errorf("now should return Instant, got %s", native.ParentOf(&result[0]))
 	}
 }
 
@@ -740,8 +740,8 @@ func TestTimeToDatetime(t *testing.T) {
 	r := timeRegistry(t)
 	d := native.NewDate(time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC))
 	result := runBoru(t, r, callTimeDot("to-datetime", d))
-	if !result[0].Parent.ConformsTo(native.TDateTime) {
-		t.Errorf("to-datetime type = %s, want DateTime", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TDateTime) {
+		t.Errorf("to-datetime type = %s, want DateTime", native.ParentOf(&result[0]))
 	}
 }
 
@@ -750,8 +750,8 @@ func TestTimeToInstant(t *testing.T) {
 	dt := native.NewDateTime(time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC))
 	tz := timeTT(t, r).NewTimezone(time.UTC)
 	result := runBoru(t, r, callTimeDot("to-instant", dt, tz))
-	if !result[0].Parent.ConformsTo(native.TInstant) {
-		t.Errorf("to-instant type = %s, want Instant", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TInstant) {
+		t.Errorf("to-instant type = %s, want Instant", native.ParentOf(&result[0]))
 	}
 }
 
@@ -760,8 +760,8 @@ func TestTimeToLocal(t *testing.T) {
 	ins := native.NewInstant(time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC))
 	tz := timeTT(t, r).NewTimezone(time.UTC)
 	result := runBoru(t, r, callTimeDot("to-local", ins, tz))
-	if !result[0].Parent.ConformsTo(native.TDateTime) {
-		t.Errorf("to-local type = %s, want DateTime", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TDateTime) {
+		t.Errorf("to-local type = %s, want DateTime", native.ParentOf(&result[0]))
 	}
 }
 
@@ -769,8 +769,8 @@ func TestTimeToUtc(t *testing.T) {
 	r := timeRegistry(t)
 	ins := native.NewInstant(time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC))
 	result := runBoru(t, r, callTimeDot("to-utc", ins))
-	if !result[0].Parent.ConformsTo(native.TDateTime) {
-		t.Errorf("to-utc type = %s, want DateTime", result[0].Parent)
+	if !native.ParentOf(&result[0]).ConformsTo(native.TDateTime) {
+		t.Errorf("to-utc type = %s, want DateTime", native.ParentOf(&result[0]))
 	}
 }
 

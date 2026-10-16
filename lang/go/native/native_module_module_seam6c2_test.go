@@ -253,10 +253,10 @@ func TestSeam6C2ResolveNativeModInstallError(t *testing.T) {
 func TestSeam6C2ResolveModuleExportFnDefValue(t *testing.T) {
 	r := seam5Reg(t)
 	out := resolveModuleExport(r, NewFunction(FnDefInfo{Name: "f0"}))
-	if !out.Parent.Equal(TFunction) {
-		t.Fatalf("expected FnDef result, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TFunction) {
+		t.Fatalf("expected FnDef result, got %v", ParentOf(&out))
 	}
-	info, ok := FnDefOf(out.Data)
+	info, ok := FnDefOf(DataOf(&out))
 	if !ok || info.Registry != r {
 		t.Fatal("expected module registry to be attached to the FnDef")
 	}
@@ -277,18 +277,18 @@ func TestSeam6C2ResolveModuleExportTypeBodyArms(t *testing.T) {
 	// Type binding whose body is an FnDef with no registry: rebound as FnDef.
 	r.Defs.PushType("T1", TInteger, NewFunction(FnDefInfo{Name: "T1"}))
 	out := resolveModuleExport(r, NewString("T1"))
-	if !out.Parent.Equal(TFunction) {
-		t.Fatalf("expected FnDef from type body, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TFunction) {
+		t.Fatalf("expected FnDef from type body, got %v", ParentOf(&out))
 	}
-	if info, ok := out.Data.(*FnDefInfo); !ok || info.Registry != r {
+	if info, ok := DataOf(&out).(*FnDefInfo); !ok || info.Registry != r {
 		t.Fatal("expected registry attached to type-body FnDef")
 	}
 
 	// Same, but a Function-typed body: rebound as Function.
 	r.Defs.PushType("T2", TInteger, NewFunction(FnDefInfo{Name: "T2"}))
 	out = resolveModuleExport(r, NewString("T2"))
-	if !out.Parent.Equal(TFunction) {
-		t.Fatalf("expected Function from type body, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TFunction) {
+		t.Fatalf("expected Function from type body, got %v", ParentOf(&out))
 	}
 
 	// A non-fn type body is returned as-is.
@@ -304,16 +304,16 @@ func TestSeam6C2ResolveModuleExportDefArms(t *testing.T) {
 
 	r.Defs.Push("g1", NewFunction(FnDefInfo{Name: "g1"}))
 	out := resolveModuleExport(r, NewString("g1"))
-	if !out.Parent.Equal(TFunction) {
-		t.Fatalf("expected FnDef from def stack, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TFunction) {
+		t.Fatalf("expected FnDef from def stack, got %v", ParentOf(&out))
 	}
-	if info, ok := out.Data.(*FnDefInfo); !ok || info.Registry != r {
+	if info, ok := DataOf(&out).(*FnDefInfo); !ok || info.Registry != r {
 		t.Fatal("expected registry attached to def-stack FnDef")
 	}
 
 	r.Defs.Push("g2", NewFunction(FnDefInfo{Name: "g2"}))
 	out = resolveModuleExport(r, NewString("g2"))
-	if !out.Parent.Equal(TFunction) {
-		t.Fatalf("expected Function from def stack, got %v", out.Parent)
+	if !ParentOf(&out).Equal(TFunction) {
+		t.Fatalf("expected Function from def stack, got %v", ParentOf(&out))
 	}
 }

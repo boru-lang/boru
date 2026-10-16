@@ -32,8 +32,8 @@ func TestGatecarrier2584PayloadlessBodyFailedToCompile(t *testing.T) {
 		"zero value":            {},
 	}
 	for name, body := range bodies {
-		if body.Data != nil {
-			t.Fatalf("%s: precondition failed, body must be payload-less, got %#v", name, body.Data)
+		if DataOf(&body) != nil {
+			t.Fatalf("%s: precondition failed, body must be payload-less, got %#v", name, DataOf(&body))
 		}
 		t.Run(name, func(t *testing.T) {
 			r := w8reg(t)
@@ -79,7 +79,7 @@ func TestGatecarrier2584PayloadlessBodyFailedToCompile(t *testing.T) {
 // one guard later by AsList. Without this the two arms are easy to conflate.
 func TestGatecarrier2584ListCarrierTakesTheAsListArm(t *testing.T) {
 	body := NewCarrier(TList)
-	if body.Data == nil {
+	if DataOf(&body) == nil {
 		t.Fatalf("a List carrier is expected to carry a ChildTypeInfo payload")
 	}
 	r := w8reg(t)

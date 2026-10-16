@@ -45,7 +45,7 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry)
 	bLit := sb == ShapeTypeLiteral && denotedType(b).Equal(TMap)
 	if aLit {
 		if sb == ShapeRecord {
-			if b.Carrier {
+			if IsCarrier(&b) {
 				return b, nil
 			}
 			return Value{}, unifyFail("Map type literal does not unify with Record", a, b)
@@ -61,7 +61,7 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry)
 	}
 	if bLit {
 		if sa == ShapeRecord {
-			if a.Carrier {
+			if IsCarrier(&a) {
 				return a, nil
 			}
 			return Value{}, unifyFail("Map type literal does not unify with Record", a, b)
@@ -289,9 +289,9 @@ func unifyRecordTypes(a, b RecordTypeInfo, r *Registry) (Value, *UnifyError) {
 func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, bool, *UnifyError) {
 	var rec, m Value
 	switch {
-	case sa == ShapeRecord && a.Carrier && (sb == ShapeMap || sb == ShapeTypedMap):
+	case sa == ShapeRecord && IsCarrier(&a) && (sb == ShapeMap || sb == ShapeTypedMap):
 		rec, m = a, b
-	case sb == ShapeRecord && b.Carrier && (sa == ShapeMap || sa == ShapeTypedMap):
+	case sb == ShapeRecord && IsCarrier(&b) && (sa == ShapeMap || sa == ShapeTypedMap):
 		rec, m = b, a
 	default:
 		return Value{}, false, nil
@@ -320,7 +320,7 @@ func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShap
 	// under a TMap parent, a Go-API-built MapPayload{M: nil} — AsMap boxes
 	// that nil *OrderedMap in a non-nil ReadMap, so an interface-nil guard
 	// misses it) declines to the nominal compile failure instead of dereferencing.
-	pm, pok := m.Data.(MapPayload)
+	pm, pok := DataOf(&m).(MapPayload)
 	if !pok || pm.M == nil {
 		return Value{}, false, nil
 	}

@@ -438,10 +438,10 @@ func TestStrictNativeFnResultProven(t *testing.T) {
 // PR #511): a `${expr}` hole resolves names at run time, so an interpolated
 // string or XML template counts as naming.
 func TestValueRefsNameInterpolation(t *testing.T) {
-	if !valueRefsName(core.Value{Data: core.InterpStringPayload{}}) {
+	if !valueRefsName(core.MakeValue(nil, core.InterpStringPayload{})) {
 		t.Error("an interpolated string counts as naming")
 	}
-	if !valueRefsName(core.Value{Data: core.XmlInterpPayload{}}) {
+	if !valueRefsName(core.MakeValue(nil, core.XmlInterpPayload{})) {
 		t.Error("an XML template counts as naming")
 	}
 	if valueRefsName(core.NewString("plain")) {

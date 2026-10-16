@@ -206,8 +206,8 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 		// caller's `def` clause then rebinds; the VALUE is what the clause
 		// wants, so read it back off the def stack.
 		InstallFnDef(r, coreSpecFnScratch, FnDefInfo{Signatures: []Signature{{
-			Params:     []FnParam{{Name: pname, Type: ptype.Parent}},
-			Returns:    []*Type{rtype.Parent},
+			Params:     []FnParam{{Name: pname, Type: ParentOf(&ptype)}},
+			Returns:    []*Type{ParentOf(&rtype)},
 			Impl:       Boru(bl.Slice()),
 			BarrierPos: 1,
 		}}})

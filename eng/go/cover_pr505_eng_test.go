@@ -316,11 +316,11 @@ func TestPolyNoMatchRaiseAnchorsAtAWrittenValue(t *testing.T) {
 // raises the interpreter's own evaluation_limit at the landing instead of
 // landing anything.
 func TestReStepLandingIslandHonoursTheStepBudget(t *testing.T) {
-	fnTagged := core.Value{Parent: core.TFunction}
+	fnTagged := core.MakeValue(core.TFunction, nil)
 
 	r := seam7Reg(t)
 	got, ent, err := seam7VC(r).reStepLanding(r, 0, 0, []core.Value{fnTagged}, seam7Dbg, 0, compiler.LandingWord{})
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(got) != 1 || !core.ParentOf(&got[0]).Equal(core.TFunction) {
 		t.Fatalf("the island pushes the value: got %v %+v %v", got, ent, err)
 	}
 
@@ -365,7 +365,7 @@ func TestTrailTopValueNoMatch(t *testing.T) {
 			t.Errorf("%+v: a named value: got %v %+v %v, want uncalled_function", head, got, ent, err)
 		}
 		got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), lam}, seam7Dbg, 0, head)
-		if err != nil || ent != nil || len(got) != 2 || !got[1].Parent.Equal(core.TFunction) {
+		if err != nil || ent != nil || len(got) != 2 || !core.ParentOf(&got[1]).Equal(core.TFunction) {
 			t.Errorf("%+v: an anonymous value parks: got %v %+v %v", head, got, ent, err)
 		}
 	}

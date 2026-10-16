@@ -245,7 +245,7 @@ func TestPlanRematchRestartDeclines(t *testing.T) {
 	}
 	es.frames[0] = []EmitEvent{trap(2, core.SrcPos{Row: 1, Col: 7})}
 	carrier := n335Val("c", 1, 1)
-	carrier.Carrier = true
+	core.SetCarrier(&carrier, true)
 	es.rootStmtStacks[end.Pos()] = []core.Value{carrier}
 	if plan(es) {
 		t.Error("a told stack holding a carrier cannot be seated")

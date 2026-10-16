@@ -331,7 +331,7 @@ func TestBranchResultRenderKnownArms(t *testing.T) {
 	if es.branchResultRenderKnown(core.Value{}) {
 		t.Error("an identity-less value must decline")
 	}
-	lam := es.internUnpooled(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Anonymous: true}})
+	lam := es.internUnpooled(core.MakeValue(core.TFunction, &core.FnDefInfo{Anonymous: true}))
 	es.fnRecs = []*fnUnitRec{{render: "fn (Integer)"}, {}}
 	rendered := EmitOperand{kind: opClosure, closureUnit: 0}
 	unrendered := EmitOperand{kind: opClosure, closureUnit: 1}

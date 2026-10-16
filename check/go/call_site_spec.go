@@ -172,10 +172,10 @@ func specialisableShapeArg(p core.FnParam, a core.Value) (core.Value, string, bo
 // tokens), and a home in the registry the specialised body runs in, r — a
 // module export is re-minted per import instance.
 func specialisableFnArg(r *core.Registry, p core.FnParam, a core.Value) (string, bool) {
-	if p.Name == "" || p.Type == nil || !p.Type.Equal(core.TFunction) || p.Pattern != nil || a.Carrier {
+	if p.Name == "" || p.Type == nil || !p.Type.Equal(core.TFunction) || p.Pattern != nil || core.IsCarrier(&a) {
 		return "", false
 	}
-	fd, isFn := core.FnDefOf(a.Data)
+	fd, isFn := core.FnDefOf(core.DataOf(&a))
 	if !isFn || len(fd.Captured) > 0 || fd.Gen != nil || fd.Macro || fd.Wrap != core.WrapNone || core.FnHomeForeign(r, fd) {
 		return "", false
 	}
@@ -215,7 +215,7 @@ func specResidualMeetsReturns(residual []core.Value, returns []*core.Type) bool 
 	}
 	for i, v := range residual {
 		t := returns[i]
-		if core.IsDynamic(&v) || v.Parent == nil || t == nil || v.Parent.ConformsTo(t) {
+		if core.IsDynamic(&v) || core.ParentOf(&v) == nil || t == nil || core.ParentOf(&v).ConformsTo(t) {
 			continue
 		}
 		return false
@@ -237,7 +237,7 @@ func specResidualMeetsReturns(residual []core.Value, returns []*core.Type) bool 
 func specParamCallMayRefuse(params []core.FnParam, args []core.Value) bool {
 	for i := range min(len(params), len(args)) {
 		a, p := args[i], params[i]
-		if p.Pattern != nil || a.Parent == nil || (p.Type != nil && !a.Parent.ConformsTo(p.Type)) {
+		if p.Pattern != nil || core.ParentOf(&a) == nil || (p.Type != nil && !core.ParentOf(&a).ConformsTo(p.Type)) {
 			return true
 		}
 	}
@@ -248,14 +248,14 @@ func specParamCallMayRefuse(params []core.FnParam, args []core.Value) bool {
 // minted node under Map whose declared body is the field map (or a
 // RecordTypeInfo schema).
 func isRecordType(t *core.Type) bool {
-	if t.Parent == nil || !t.Parent.Equal(core.TMap) {
+	if core.ParentOf(t) == nil || !core.ParentOf(t).Equal(core.TMap) {
 		return false
 	}
 	body, ok := t.TypeBody()
 	if !ok {
 		return false
 	}
-	switch b := body.Data.(type) {
+	switch b := core.DataOf(&body).(type) {
 	case core.MapPayload:
 		return b.M != nil
 	case core.RecordTypeInfo:

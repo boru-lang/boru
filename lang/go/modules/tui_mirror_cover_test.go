@@ -31,7 +31,7 @@ func TestTuiOpenMirrorArms(t *testing.T) {
 	// code — `unsupported` is deliberately NOT tui_error.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{tuiMirrorMap("alt-screen", native.NewInteger(5))}, r)
-	if len(out) != 1 || !out[0].Parent.Equal(TTerminal) {
+	if len(out) != 1 || !core.ParentOf(&out[0]).Equal(TTerminal) {
 		t.Fatalf("open residual = %v, want one Terminal carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "tui_error" {
@@ -73,7 +73,7 @@ func TestTuiOpenMirrorArms(t *testing.T) {
 	// the structural subtypes share Parent=TMap and satisfy the signature,
 	// so the run reaches the handler and raises this exact error.
 	r7 := vaultMirrorRegistry(t)
-	rf([]native.Value{{Parent: native.TMap, Data: native.RecordTypeInfo{}}}, r7)
+	rf([]native.Value{core.MakeValue(native.TMap, native.RecordTypeInfo{})}, r7)
 	if len(r7.Check.Diagnostics) != 1 || r7.Check.Diagnostics[0].Detail != "open: options must be a Map" {
 		t.Fatalf("an unreadable map-shaped operand must flag, got %+v", r7.Check.Diagnostics)
 	}
@@ -99,7 +99,7 @@ func TestTuiRunMirrorArms(t *testing.T) {
 	// The flagged shape: an app config with no update and no service.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{native.NewMap(native.NewOrderedMap())}, r)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(native.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(native.TAny) {
 		t.Fatalf("run residual = %v, want one dynamic Any carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "tui_error" {
@@ -136,7 +136,7 @@ func TestTuiServeMirrorArms(t *testing.T) {
 	// port-less serve never reaches the app config.
 	r := vaultMirrorRegistry(t)
 	out := rf([]native.Value{native.NewMap(native.NewOrderedMap()), emptyApp}, r)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(native.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(native.TAny) {
 		t.Fatalf("serve residual = %v, want one dynamic Any carrier", out)
 	}
 	if len(r.Check.Diagnostics) != 1 || r.Check.Diagnostics[0].Code != "tui_error" {

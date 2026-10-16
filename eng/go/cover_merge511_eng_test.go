@@ -32,7 +32,7 @@ func TestBindRootReadArms(t *testing.T) {
 	}
 	r.Defs.Push("zzj", core.NewInteger(7)) // the island's own `def zzj 7`
 	undo()
-	if top, ok := r.Defs.Top("zzj"); !ok || !top.Parent.ConformsTo(core.TInteger) {
+	if top, ok := r.Defs.Top("zzj"); !ok || !core.ParentOf(&top).ConformsTo(core.TInteger) {
 		t.Errorf("the island's own binding must survive the undo, got %v", top)
 	}
 }

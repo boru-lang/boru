@@ -51,7 +51,7 @@ func MembersOfType(typeName string, r *Registry) []Member {
 // kinds; dynamic-key kinds (Store, Resource, Options) carry no static member
 // list and fall to the caller's map-key recovery instead.
 func membersOfTypeBody(body Value) []Member {
-	switch d := body.Data.(type) {
+	switch d := DataOf(&body).(type) {
 	case core.ClassTypeInfo:
 		return fieldsToMembers(d.AllFields(), "field")
 	case core.RecordTypeInfo:

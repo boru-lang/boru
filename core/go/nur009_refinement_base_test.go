@@ -64,7 +64,7 @@ func TestRefinementBaseIsDeclared(t *testing.T) {
 		}
 	}
 	// A subtype refines as its declaring ancestor: 'abc' is a ProperString.
-	if got := canonicalBaseType(NewString("abc").Parent); got != TString {
+	if got := canonicalBaseType(ParentOf(addrOf(NewString("abc")))); got != TString {
 		t.Errorf("a String subtype's base = %v, want String", got)
 	}
 	r, err := NewRegistry()
@@ -81,7 +81,7 @@ func TestRefinementBaseIsDeclared(t *testing.T) {
 	if canonicalBaseType(zz) != zz || canonicalBaseType(child) != zz {
 		t.Fatalf("a declared type is its own base and its subtypes': %v %v", canonicalBaseType(zz), canonicalBaseType(child))
 	}
-	if dep := NewDepScalar(DepGT, NewValueRaw(child, IntPayload{N: 1})); !dep.IsDepScalar() || dep.Parent != zz {
+	if dep := NewDepScalar(DepGT, NewValueRaw(child, IntPayload{N: 1})); !dep.IsDepScalar() || ParentOf(&dep) != zz {
 		t.Fatalf("a bound under a declared base builds a refinement over it: %v", dep)
 	}
 }

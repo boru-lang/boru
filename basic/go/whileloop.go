@@ -190,7 +190,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// soundness oracle reads this stack directly — and a List where the
 	// runtime leaves N scalars is a false claim (measured: 5 violations
 	// the moment the while rows entered the main corpus, control.tsv §7).
-	elem := NewTypeLiteral(top.Parent)
+	elem := NewTypeLiteral(ParentOf(&top))
 	if IsDisjunct(&top) {
 		elem = top
 	}
@@ -207,7 +207,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// one the fifty-first increment graduated, whose last value is a
 	// concrete Integer over a body that also leaves the flex container.
 	for _, v := range stk {
-		if v.Parent != top.Parent {
+		if ParentOf(&v) != ParentOf(&top) {
 			elem = NewTypeLiteral(TAny)
 			break
 		}

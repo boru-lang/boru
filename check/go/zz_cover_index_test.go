@@ -28,7 +28,7 @@ func TestStaticListLen(t *testing.T) {
 	// A typed-list carrier with a Len refinement reports it.
 	ln := 3
 	refined := core.NewCarrier(core.TList)
-	refined.Data = core.ChildTypeInfo{Len: &ln}
+	core.SetData(&refined, core.ChildTypeInfo{Len: &ln})
 	if n, ok := StaticListLen(refined); !ok || n != 3 {
 		t.Errorf("refined carrier = (%d,%v), want (3,true)", n, ok)
 	}

@@ -80,7 +80,7 @@ func TestDoReStep(t *testing.T) {
 // which takes none.
 func TestTakesArgsAtPointer(t *testing.T) {
 	g, l, _ := nur317Fns()
-	closure := core.Value{Parent: core.TFunction, Data: core.ClosurePayload{}}
+	closure := core.MakeValue(core.TFunction, core.ClosurePayload{})
 	for _, c := range []struct {
 		why  string
 		v    core.Value

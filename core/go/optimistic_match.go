@@ -36,7 +36,7 @@ func gradualMatch(match *MatchResult) bool {
 // dynamic) whose type does not conform to its slot's.
 func optimisticMatch(match *MatchResult) bool {
 	for i, a := range match.Args {
-		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || IsDynamic(&a)) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
+		if slot := SigArgType(match.Sig, i); slot != nil && (IsCarrier(&a) || IsDynamic(&a)) && ParentOf(&a) != nil && !ParentOf(&a).ConformsTo(slot) {
 			return true
 		}
 	}

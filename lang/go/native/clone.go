@@ -37,16 +37,16 @@ func cloneReturnsFn(args []Value, _ *Registry) []Value {
 	src := args[0]
 	if _, ok := src.ElemConstraint(); ok {
 		switch {
-		case src.Parent.Equal(TList):
+		case ParentOf(&src).Equal(TList):
 			return []Value{d2TypedListResidual(src)}
-		case src.Parent.Equal(TMap):
+		case ParentOf(&src).Equal(TMap):
 			return []Value{d2TypedMapResidual(src)}
 		default:
-			return []Value{d2RetainElem(NewCarrier(src.Parent), src)}
+			return []Value{d2RetainElem(NewCarrier(ParentOf(&src)), src)}
 		}
 	}
 	if IsTypeLiteral(&src) {
 		return []Value{ValueCarrier(src)} // a type VALUE (NUR323)
 	}
-	return []Value{NewCarrier(src.Parent)}
+	return []Value{NewCarrier(ParentOf(&src))}
 }

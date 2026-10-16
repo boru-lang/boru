@@ -301,7 +301,7 @@ func unboundNameError(reg *Registry, detail, name string) error {
 func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	name, err := AsAtom(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("force-arity: expected an atom name, got %s", args[1].Parent.String())
+		return nil, fmt.Errorf("force-arity: expected an atom name, got %s", ParentOf(&args[1]).String())
 	}
 	v, ok := core.ResolveRef(reg, name)
 	if !ok {
@@ -314,7 +314,7 @@ func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 		// reg is provably non-nil here: ResolveRef only returns ok for a
 		// non-nil registry, so a resolved-but-non-fn binding cannot occur
 		// with reg == nil (design/TEST-SEAMS.10.md dead-guard removal).
-		detail := "force-arity requires a function word: " + name + " is bound to " + v.Parent.String()
+		detail := "force-arity requires a function word: " + name + " is bound to " + ParentOf(&v).String()
 		return nil, reg.BoruError("illegal_ref", detail, name)
 	}
 	return forceArityHandler([]Value{args[0], v}, nil, nil, reg)
@@ -334,7 +334,7 @@ func rebarrierResult(wrap func(Value) (Value, bool), v Value, word string, reg *
 			recordGradualWrap(reg, word, []Value{v}, out)
 			return out, nil
 		}
-		detail := word + " requires a function value, got " + v.Parent.String()
+		detail := word + " requires a function value, got " + ParentOf(&v).String()
 		if reg != nil {
 			return nil, reg.BoruError("illegal_ref", detail, word)
 		}
@@ -349,7 +349,7 @@ func rebarrierAtom(wrap func(Value) (Value, bool), args []Value, word string, re
 	}
 	name, err := AsAtom(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("%s: expected an atom name, got %s", word, args[0].Parent.String())
+		return nil, fmt.Errorf("%s: expected an atom name, got %s", word, ParentOf(&args[0]).String())
 	}
 	v, ok := core.ResolveRef(reg, name)
 	if !ok {
@@ -361,7 +361,7 @@ func rebarrierAtom(wrap func(Value) (Value, bool), args []Value, word string, re
 	if !core.IsFunctionRef(v) {
 		// reg is provably non-nil here (ResolveRef only returns ok for a
 		// non-nil registry); the former reg==nil arm was dead.
-		detail := word + " requires a function word: " + name + " is bound to " + v.Parent.String()
+		detail := word + " requires a function word: " + name + " is bound to " + ParentOf(&v).String()
 		return nil, reg.BoruError("illegal_ref", detail, name)
 	}
 	return rebarrierResult(wrap, v, word, reg)
@@ -380,7 +380,7 @@ func usurpAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry
 	}
 	name, err := AsAtom(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("usurp: expected an atom name, got %s", args[0].Parent.String())
+		return nil, fmt.Errorf("usurp: expected an atom name, got %s", ParentOf(&args[0]).String())
 	}
 	v, ok := core.ResolveRef(reg, name)
 	if !ok {
@@ -392,7 +392,7 @@ func usurpAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry
 	if !core.IsFunctionRef(v) {
 		// reg is provably non-nil here (ResolveRef only returns ok for a
 		// non-nil registry); the former reg==nil arm was dead.
-		detail := "usurp requires a function word: " + name + " is bound to " + v.Parent.String()
+		detail := "usurp requires a function word: " + name + " is bound to " + ParentOf(&v).String()
 		return nil, reg.BoruError("illegal_ref", detail, name)
 	}
 	return usurpHandler([]Value{v}, nil, nil, reg)
@@ -408,7 +408,7 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	}
 	name, err := AsAtom(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("valof: expected an atom name, got %s", args[0].Parent.String())
+		return nil, fmt.Errorf("valof: expected an atom name, got %s", ParentOf(&args[0]).String())
 	}
 	v, ok := core.ResolveRef(reg, name)
 	if !ok {
@@ -490,11 +490,11 @@ func markApplied(v Value) Value { return core.MarkApplied(v) }
 
 func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	v := args[0]
-	if !v.Parent.Equal(TFunction) {
-		return nil, fmt.Errorf("apply: expected Function, got %s", v.Parent.String())
+	if !ParentOf(&v).Equal(TFunction) {
+		return nil, fmt.Errorf("apply: expected Function, got %s", ParentOf(&v).String())
 	}
-	if _, ok := v.Data.(*FnDefInfo); !ok {
-		return nil, fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", v.Data)
+	if _, ok := DataOf(&v).(*FnDefInfo); !ok {
+		return nil, fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", DataOf(&v))
 	}
 	SetQuoted(&v, false)
 	// ADR-016 (NUR077 §5 Hole 1): a fn whose ONLY signatures are 0-arg
@@ -575,7 +575,7 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			recordGradualWrap(reg, "usurp", args, out)
 			return out, nil
 		}
-		detail := "usurp requires a function value, got " + args[0].Parent.String()
+		detail := "usurp requires a function value, got " + ParentOf(&args[0]).String()
 		if reg != nil {
 			return nil, reg.BoruError("illegal_ref", detail, "usurp")
 		}
@@ -660,7 +660,7 @@ func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 // downstream arg dispatch types optimistically. Only fires for a carrier the
 // real wrapper already declined (a concrete Function still wraps normally).
 func checkModeGradualFn(reg *Registry, v Value) ([]Value, bool) {
-	if reg == nil || !reg.Check.IsActive() || IsConcrete(&v) || v.Parent == nil {
+	if reg == nil || !reg.Check.IsActive() || IsConcrete(&v) || ParentOf(&v) == nil {
 		return nil, false
 	}
 	// Only a STATICALLY-UNKNOWN carrier (a dynamic Any from a dispatch-bearing
@@ -669,7 +669,7 @@ func checkModeGradualFn(reg *Registry, v Value) ([]Value, bool) {
 	// binding, e.g. `def x 5 x/u`) is provably NOT a function — let the strict
 	// handler flag it (a real illegal_ref), so the fallback never masks a
 	// genuine non-fn modifier error.
-	if (IsDynamic(&v) && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TFunction) {
+	if (IsDynamic(&v) && ParentOf(&v).Equal(TAny)) || ParentOf(&v).ConformsTo(TFunction) {
 		return []Value{NewDynamicCarrier(TFunction)}, true
 	}
 	return nil, false

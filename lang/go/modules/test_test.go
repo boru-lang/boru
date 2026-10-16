@@ -160,9 +160,9 @@ func TestImperativeDescribeNesting(t *testing.T) {
 		]
 	`)
 	result := runTestBoru(t, r, `Test.results`)
-	td, ok := result[0].Data.(native.TableData)
+	td, ok := native.DataOf(&result[0]).(native.TableData)
 	if !ok {
-		t.Fatalf("results not a TableData: %T", result[0].Data)
+		t.Fatalf("results not a TableData: %T", native.DataOf(&result[0]))
 	}
 	if len(td.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(td.Rows))

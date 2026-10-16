@@ -79,7 +79,7 @@ func removeHandler(args []Value, ctx map[string]Value, stack []Value, r *Registr
 	found := false
 	var result []Value
 	for _, row := range rows {
-		if !row.Parent.ConformsTo(TMap) {
+		if !ParentOf(&row).ConformsTo(TMap) {
 			result = append(result, row)
 			continue
 		}

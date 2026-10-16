@@ -59,30 +59,30 @@ func ShrinkCost(form *stackform.StackForm, policy *Policy) int {
 //   - List: element count + recursive complexity of each element.
 //   - Other (atom, map, paths, …): 1 placeholder.
 func literalComplexity(v core.Value) int {
-	if v.Parent == nil {
+	if core.ParentOf(&v) == nil {
 		return 0
 	}
 	switch {
-	case v.Parent.ConformsTo(core.TInteger):
+	case core.ParentOf(&v).ConformsTo(core.TInteger):
 		if n, err := core.AsInteger(v); err == nil {
 			return intMagnitude(n)
 		}
-	case v.Parent.ConformsTo(core.TFloat):
+	case core.ParentOf(&v).ConformsTo(core.TFloat):
 		if f, err := core.AsFloat(v); err == nil {
 			return intMagnitude(int64(f))
 		}
-	case v.Parent.ConformsTo(core.TString):
+	case core.ParentOf(&v).ConformsTo(core.TString):
 		if s, err := core.AsString(v); err == nil {
 			return len(s)
 		}
-	case v.Parent.ConformsTo(core.TBoolean):
+	case core.ParentOf(&v).ConformsTo(core.TBoolean):
 		if b, err := core.AsBoolean(v); err == nil {
 			if b {
 				return 1
 			}
 		}
 		return 0
-	case v.Parent.ConformsTo(core.TList):
+	case core.ParentOf(&v).ConformsTo(core.TList):
 		if lst, err := core.RequireConcreteList(v, "literalComplexity"); err == nil {
 			c := lst.Len()
 			for i := 0; i < lst.Len(); i++ {

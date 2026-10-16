@@ -96,7 +96,7 @@ func TestW8CurryOrStackCurryList(t *testing.T) {
 	// A curry list should now sit where cadd+7 were.
 	found := false
 	for i := 0; i < e.Tape.Len(); i++ {
-		if e.Tape.At(i).Parent.Equal(TList) {
+		if ParentOf(addrOf(e.Tape.At(i))).Equal(TList) {
 			found = true
 		}
 	}

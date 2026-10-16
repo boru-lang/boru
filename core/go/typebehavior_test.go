@@ -93,7 +93,7 @@ func TestValueIsRoutesThroughBehavior(t *testing.T) {
 
 	// Construct an Integer value whose Parent is the custom type so
 	// the lattice walk WOULD say yes; verify Behavior overrides.
-	v := Value{Parent: custom, Data: IntPayload{N: 5}}
+	v := MakeValue(custom, IntPayload{N: 5})
 	if v.Is(custom) {
 		t.Error("v.Is(custom) returned true; custom Behavior should reject")
 	}
@@ -128,8 +128,8 @@ func TestValuesEqualRoutesThroughBehavior(t *testing.T) {
 	tt := NewDynamicTypeTable()
 	custom := tt.MintTypeWithBehavior("AlwaysEqual", TInteger, alwaysEqualBehavior{})
 
-	a := Value{Parent: custom, Data: IntPayload{N: 1}}
-	b := Value{Parent: custom, Data: IntPayload{N: 99}}
+	a := MakeValue(custom, IntPayload{N: 1})
+	b := MakeValue(custom, IntPayload{N: 99})
 
 	if !ValuesEqual(a, b) {
 		t.Error("ValuesEqual returned false; custom Behavior should report equal")
@@ -143,7 +143,7 @@ func TestValuesEqualSkipsBehaviorOnDifferentVTypes(t *testing.T) {
 	tt := NewDynamicTypeTable()
 	custom := tt.MintTypeWithBehavior("AlwaysEqual", TInteger, alwaysEqualBehavior{})
 
-	a := Value{Parent: custom, Data: IntPayload{N: 1}}
+	a := MakeValue(custom, IntPayload{N: 1})
 	b := NewInteger(2)
 
 	// Different VTypes (custom vs TInteger): falls into the default

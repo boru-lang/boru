@@ -105,15 +105,15 @@ func TestReStepLandingWalk(t *testing.T) {
 	// An anonymous fn parks — inert, so the residual apply leaves it as data.
 	lam := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{oneInt}})
 	got, ent, err := vc.reStepLanding(r, 3, 0, []core.Value{lam}, seam7Dbg, 0, z)
-	if err != nil || ent != nil || len(got) != 1 || !core.IsQuoted(&got[0]) || !got[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(got) != 1 || !core.IsQuoted(&got[0]) || !core.ParentOf(&got[0]).Equal(core.TFunction) {
 		t.Errorf("an anonymous fn parks inert: got %v %v %v", got, ent, err)
 	}
 	after, ent, err := vc.callDynamic(r, 1, false, []core.Value{got[0], core.NewInteger(0)}, seam7Dbg, 0)
-	if err != nil || ent != nil || len(after) != 2 || !after[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(after) != 2 || !core.ParentOf(&after[0]).Equal(core.TFunction) {
 		t.Errorf("the residual apply leaves the parked value as data: %v %v %v", after, ent, err)
 	}
 	rot, ent, err := vc.callDynamic(r, 1, true, []core.Value{got[0], core.NewInteger(0)}, seam7Dbg, 0)
-	if err != nil || ent != nil || len(rot) != 2 || !rot[1].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(rot) != 2 || !core.ParentOf(&rot[1]).Equal(core.TFunction) {
 		t.Errorf("the trailing apply rotates the parked value back on top: %v %v %v", rot, ent, err)
 	}
 
@@ -121,7 +121,7 @@ func TestReStepLandingWalk(t *testing.T) {
 	// zero-argument fallback where the wordless landing stood aside.
 	rn, fire := landingNativeReg(t, "zz-walk-fire", func() ([]core.Value, error) { return []core.Value{core.NewInteger(42)}, nil })
 	rn.Defs.Push("z", core.NewFunction(core.FnDefInfo{Name: "z", Signatures: []core.Signature{{BarrierPos: -1, Returns: []*core.Type{core.TInteger}, Impl: core.Boru([]core.Value{core.NewInteger(0)})}}}))
-	fd, _ := core.FnDefCopy(fire.Data)
+	fd, _ := core.FnDefCopy(core.DataOf(&fire))
 	fd.Signatures = append(append([]core.Signature(nil), fd.Signatures...), oneInt)
 	mixed := core.NewFunction(fd)
 	vcn := &vmContext{p: landingProg(), r: rn, ceiling: 1 << 20, stepLimit: 1 << 20}
@@ -133,7 +133,7 @@ func TestReStepLandingWalk(t *testing.T) {
 		t.Errorf("the fallback's 42, got %v", got[0])
 	}
 	got, ent, err = vcn.reStepLanding(rn, 1, 0, []core.Value{mixed}, seam7Dbg, 0, compiler.LandingWord{})
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+	if err != nil || ent != nil || len(got) != 1 || !core.ParentOf(&got[0]).Equal(core.TFunction) {
 		t.Errorf("no word beside the op: the wordless landing stands aside for a mixed overload, got %v %v %v", got, ent, err)
 	}
 	// An ANONYMOUS value whose plan is the zero-argument fallback parks
@@ -142,7 +142,7 @@ func TestReStepLandingWalk(t *testing.T) {
 	fd.Anonymous, fd.Name = true, ""
 	anon0 := core.NewFunction(fd)
 	got, ent, err = vcn.reStepLanding(rn, 3, 0, []core.Value{anon0}, seam7Dbg, 0, z)
-	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) || core.IsQuoted(&got[0]) {
+	if err != nil || ent != nil || len(got) != 1 || !core.ParentOf(&got[0]).Equal(core.TFunction) || core.IsQuoted(&got[0]) {
 		t.Errorf("an anonymous 0-arg value parks under a word: got %v %v %v", got, ent, err)
 	}
 

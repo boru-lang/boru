@@ -719,7 +719,7 @@ func typeCovered(checked, actual core.Value) bool {
 	// runtime enum value, which is nonsensical (corpus-core.tsv:61 — the two
 	// enum mints share members and differ only by ID).
 	if actualIsTypeValue(actual) {
-		cnode := checked.Parent
+		cnode := core.ParentOf(&checked)
 		if core.IsBareTypeNode(&checked) {
 			cnode = core.ValueType(checked)
 		}
@@ -742,7 +742,7 @@ func typeCovered(checked, actual core.Value) bool {
 		}
 		return false
 	}
-	node := checked.Parent
+	node := core.ParentOf(&checked)
 	if core.IsBareTypeNode(&checked) {
 		node = core.ValueType(checked)
 	}
@@ -761,7 +761,7 @@ func typeCovered(checked, actual core.Value) bool {
 	// subtype of ProperString) are covered via Value.Is, which runs the real
 	// predicate / equality on the concrete value — still rejecting a genuine
 	// non-member (user-types.tsv:124, class.tsv:85).
-	return actual.Parent.ConformsTo(node) || actual.Is(node)
+	return core.ParentOf(&actual).ConformsTo(node) || actual.Is(node)
 }
 
 // actualIsTypeValue mirrors the runtime `is Type` membership rule
@@ -772,13 +772,13 @@ func typeCovered(checked, actual core.Value) bool {
 // type-membership, not by its denoted type's lattice parent.
 func actualIsTypeValue(v core.Value) bool {
 	return core.IsBareTypeNode(&v) || core.IsTypeBody(&v) ||
-		core.IsRecordShape(v) || v.Parent.ConformsTo(core.TType)
+		core.IsRecordShape(v) || core.ParentOf(&v).ConformsTo(core.TType)
 }
 
 func stackTypes(vs []core.Value) string {
 	parts := make([]string, len(vs))
 	for i, v := range vs {
-		parts[i] = v.Parent.Leaf()
+		parts[i] = core.ParentOf(&v).Leaf()
 		if core.IsDynamic(&v) {
 			parts[i] = "dynamic(" + parts[i] + ")"
 		}
@@ -876,7 +876,7 @@ func TestCheckAnyFrontier(t *testing.T) {
 // Any" shape the frontier metric counts.
 func residualHasAnyFrontier(stk []core.Value) bool {
 	for _, v := range stk {
-		if v.Parent != nil && v.Parent.Equal(core.TAny) {
+		if core.ParentOf(&v) != nil && core.ParentOf(&v).Equal(core.TAny) {
 			return true
 		}
 	}

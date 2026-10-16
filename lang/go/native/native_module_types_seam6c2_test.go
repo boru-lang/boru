@@ -77,8 +77,8 @@ func TestSeam6C2NewModuleNamespaceNilFields(t *testing.T) {
 	if fields := moduleNSFields(v); fields == nil || len(fields.Keys()) != 0 {
 		t.Fatal("nil fields must be defaulted to an empty map")
 	}
-	if !v.Parent.Equal(TMap) {
-		t.Fatalf("namespace must be a plain Map, got %v", v.Parent)
+	if !ParentOf(&v).Equal(TMap) {
+		t.Fatalf("namespace must be a plain Map, got %v", ParentOf(&v))
 	}
 }
 
@@ -102,14 +102,14 @@ func TestSeam6C2AsModuleDescNonModule(t *testing.T) {
 	}
 	// An ExtensionPayload whose Body is not a boxed *ModuleDesc (a host
 	// payload, or a legacy by-value ModuleDesc) must not unwrap either.
-	if _, ok := AsModuleDesc(Value{Parent: TModuleInst, Data: ExtensionPayload{Body: 42}}); ok {
+	if _, ok := AsModuleDesc(MakeValue(TModuleInst, ExtensionPayload{Body: 42})); ok {
 		t.Fatal("non-descriptor ExtensionPayload must not unwrap")
 	}
-	if _, ok := AsModuleDesc(Value{Parent: TModuleInst, Data: ExtensionPayload{Body: ModuleDesc{ID: "m"}}}); ok {
+	if _, ok := AsModuleDesc(MakeValue(TModuleInst, ExtensionPayload{Body: ModuleDesc{ID: "m"}})); ok {
 		t.Fatal("a by-value ModuleDesc body must not unwrap — the payload boxes a pointer")
 	}
 	// A nil boxed pointer is defensively declined, never dereferenced.
-	if _, ok := AsModuleDesc(Value{Parent: TModuleInst, Data: ExtensionPayload{Body: (*ModuleDesc)(nil)}}); ok {
+	if _, ok := AsModuleDesc(MakeValue(TModuleInst, ExtensionPayload{Body: (*ModuleDesc)(nil)})); ok {
 		t.Fatal("a nil *ModuleDesc body must not unwrap")
 	}
 	// Positive pair.
@@ -149,7 +149,7 @@ func TestSeam6C2ModuleExportGetArms(t *testing.T) {
 	fields := NewOrderedMap()
 	fields.Set("a", NewInteger(1))
 	ns := NewModuleNamespace("E", fields, mod)
-	if got, ok := moduleExportGet(ns, "$module"); !ok || !got.Parent.Equal(TModuleInst) {
+	if got, ok := moduleExportGet(ns, "$module"); !ok || !ParentOf(&got).Equal(TModuleInst) {
 		t.Fatalf("$module must resolve to the Module descriptor, got %v", got)
 	}
 	if got, ok := moduleExportGet(ns, "a"); !ok {
@@ -219,22 +219,22 @@ func TestSeam6C2ModuleGetArms(t *testing.T) {
 func TestSeam6C2ModuleInstGetReturnsArms(t *testing.T) {
 	// Wrong arity: dynamic Any.
 	out := moduleInstGetReturns([]Value{NewString("kind")}, nil)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TAny) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TAny) {
 		t.Fatalf("expected dynamic Any for wrong arity, got %v", out)
 	}
 	// Unknown key on a concrete pair: dynamic Any.
 	inst := NewModuleInstance(ModuleDesc{Kind: "file"})
 	out = moduleInstGetReturns([]Value{NewString("nope"), inst}, nil)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TAny) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TAny) {
 		t.Fatalf("expected dynamic Any for unknown key, got %v", out)
 	}
 	// Positive pairs: closed fields keep their types.
 	out = moduleInstGetReturns([]Value{NewString("kind"), inst}, nil)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TString) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TString) {
 		t.Fatalf("expected String carrier for kind, got %v", out)
 	}
 	out = moduleInstGetReturns([]Value{NewString("exports"), inst}, nil)
-	if len(out) != 1 || !out[0].Parent.ConformsTo(TList) {
+	if len(out) != 1 || !ParentOf(&out[0]).ConformsTo(TList) {
 		t.Fatalf("expected List carrier for exports, got %v", out)
 	}
 }

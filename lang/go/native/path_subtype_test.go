@@ -59,10 +59,10 @@ func TestPathSubtype_AnyIsLatticeRoot(t *testing.T) {
 // via v.IsDepScalar() at unify time.
 func TestPathSubtype_DepScalarParentIsBase(t *testing.T) {
 	dep := NewDepScalar(DepGT, NewInteger(10))
-	if !dep.Parent.Equal(TInteger) {
-		t.Errorf("DepScalar(Integer).Parent = %s, want Integer", dep.Parent.String())
+	if !ParentOf(&dep).Equal(TInteger) {
+		t.Errorf("DepScalar(Integer).Parent = %s, want Integer", ParentOf(&dep).String())
 	}
-	if !dep.Parent.ConformsTo(TInteger) {
+	if !ParentOf(&dep).ConformsTo(TInteger) {
 		t.Errorf("DepScalar(Integer).ConformsTo(Integer) = false")
 	}
 	if !dep.IsDepScalar() {

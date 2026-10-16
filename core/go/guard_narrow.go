@@ -43,14 +43,14 @@ type GuardClause struct {
 // bare type literal or an ObjectType. Accepts type-word references
 // by looking them up on DefStacks.
 func extractGuardClauses(r *Registry, condList Value) []GuardClause {
-	if r == nil || condList.Data == nil {
+	if r == nil || DataOf(&condList) == nil {
 		return nil
 	}
 	// A pre-evaluated paren condition arrives as a Boolean carrier
 	// whose GuardFactInfo payload preserves the group's original
 	// tokens (A3) — extract from those exactly as from a list body.
 	var elems []Value
-	if gf, ok := condList.Data.(GuardFactInfo); ok {
+	if gf, ok := DataOf(&condList).(GuardFactInfo); ok {
 		elems = gf.Toks
 	} else {
 		list, err := AsList(condList)
@@ -67,7 +67,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 	// could be the true one, and a negation inverts the arm each fact holds in.
 	// Bail entirely — no component clause is sound — rather than narrow one.
 	for _, e := range elems {
-		if e.Parent.Equal(TWord) {
+		if ParentOf(&e).Equal(TWord) {
 			if w, werr := AsWord(&e); werr == nil {
 				switch w.Name {
 				case "or", "nor", "xor", "xnor", "not":
@@ -78,7 +78,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 	}
 	var out []GuardClause
 	for i := 0; i+2 < len(elems); i++ {
-		if !elems[i].Parent.Equal(TWord) || !elems[i+1].Parent.Equal(TWord) {
+		if !ParentOf(&elems[i]).Equal(TWord) || !ParentOf(&elems[i+1]).Equal(TWord) {
 			continue
 		}
 		wx, err := AsWord(&elems[i])
@@ -91,7 +91,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 		}
 		tv := elems[i+2]
 		var minted *Type
-		if tv.Data != nil && tv.Parent.Equal(TWord) {
+		if DataOf(&tv) != nil && ParentOf(&tv).Equal(TWord) {
 			inner, _ := AsWord(&tv)
 			if e, ok := r.Defs.TopEntry(inner.Name); ok {
 				tv = e.Body
@@ -102,7 +102,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 				tv = NewTypeLiteral(t)
 			}
 		}
-		if tv.Data != nil && !IsClassType(&tv) && !(tv.IsDepScalar() && minted != nil) {
+		if DataOf(&tv) != nil && !IsClassType(&tv) && !(tv.IsDepScalar() && minted != nil) {
 			continue
 		}
 		// A bare type-literal clause IS its type; an ObjectType keeps
@@ -117,11 +117,11 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 		// x:Integer), previously a gating no_signature false positive
 		// while the program ran correctly — the named blocker for
 		// check-by-default (completion plan 2.2).
-		guardType := tv.Parent
+		guardType := ParentOf(&tv)
 		switch {
 		case tv.IsDepScalar() && minted != nil:
 			guardType = NodeOf(minted)
-		case tv.Data == nil:
+		case DataOf(&tv) == nil:
 			guardType = literalNode(&tv)
 		}
 		out = append(out, GuardClause{Name: wx.Name, Type: guardType})
@@ -132,7 +132,7 @@ func extractGuardClauses(r *Registry, condList Value) []GuardClause {
 	// return says nothing about which non-T shape x has. The variable must be a
 	// live binding; the predicate must reduce to a single `param is T` fact.
 	if len(out) == 0 && len(elems) == 2 &&
-		elems[0].Parent.Equal(TWord) && elems[1].Parent.Equal(TWord) {
+		ParentOf(&elems[0]).Equal(TWord) && ParentOf(&elems[1]).Equal(TWord) {
 		wp, perr := AsWord(&elems[0])
 		wx, xerr := AsWord(&elems[1])
 		if perr == nil && xerr == nil {
@@ -161,7 +161,7 @@ func BoolWord(b bool) string {
 // false) otherwise. Used by `if` analysis to warn about
 // unreachable branches.
 func LiteralCondValue(condList Value) (bool, bool) {
-	if condList.Data == nil {
+	if DataOf(&condList) == nil {
 		return false, false
 	}
 	list, err := AsList(condList)
@@ -173,7 +173,7 @@ func LiteralCondValue(condList Value) (bool, bool) {
 	// (the A3 guard-fact attach); its Prev payload holds the value the group
 	// actually reduced to. Read a decided Boolean straight through the wrapper
 	// so the unreachable-branch analysis still fires.
-	if gf, gok := only.Data.(GuardFactInfo); gok {
+	if gf, gok := DataOf(&only).(GuardFactInfo); gok {
 		if bp, bok := gf.Prev.(BoolPayload); bok {
 			return bp.B, true
 		}
@@ -181,7 +181,7 @@ func LiteralCondValue(condList Value) (bool, bool) {
 	// Bare true/false word (parser emits these as Word values that
 	// resolve to booleans in engine.stepWord; in check mode the
 	// words stay as Words until the branch runs).
-	if only.Parent.Equal(TWord) {
+	if ParentOf(&only).Equal(TWord) {
 		w, err := AsWord(&only)
 		if err == nil {
 			if w.Name == "true" {
@@ -193,7 +193,7 @@ func LiteralCondValue(condList Value) (bool, bool) {
 		}
 	}
 	// Concrete Boolean value with Data set (post-runtime path).
-	if only.Parent.ConformsTo(TBoolean) && only.Data != nil {
+	if ParentOf(&only).ConformsTo(TBoolean) && DataOf(&only) != nil {
 		b, err := AsBoolean(only)
 		if err == nil {
 			return b, true
@@ -236,7 +236,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 			// it keeps the plain NewCarrier form. A dynamic binding stays dynamic
 			// through the meet so the narrowed value still discharges downstream
 			// modality checks.
-			if cur.Carrier && !IsConcrete(&cur) && c.Type != nil {
+			if IsCarrier(&cur) && !IsConcrete(&cur) && c.Type != nil {
 				meet := TandValues(cur, NewTypeLiteral(c.Type))
 				if IsNeverShape(meet) {
 					deadArm = true
@@ -244,7 +244,7 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 					narrowed = NewCarrier(ValueType(meet))
 					ShareIdentity(&narrowed, &cur)
 				} else {
-					narrowed = MintCarrierKeeping(&meet, meet.Data)
+					narrowed = MintCarrierKeeping(&meet, DataOf(&meet))
 					ShareIdentity(&narrowed, &cur)
 				}
 				if IsDynamic(&cur) && !deadArm {
@@ -265,9 +265,9 @@ func ApplyGuardNarrowing(r *Registry, condList Value) func() {
 			// work). A non-concrete strict carrier IS the declared-type
 			// record, so tag conformance is shape-independent. Dedup: fn
 			// bodies re-analyse per shape and fixpoint round.
-			if cur.Carrier && !IsConcrete(&cur) && !IsDynamic(&cur) &&
-				cur.Parent != nil && c.Type != nil &&
-				cur.Parent.ConformsTo(c.Type) {
+			if IsCarrier(&cur) && !IsConcrete(&cur) && !IsDynamic(&cur) &&
+				ParentOf(&cur) != nil && c.Type != nil &&
+				ParentOf(&cur).ConformsTo(c.Type) {
 				detail := "guard is always true: " + c.Name + " is already " +
 					c.Type.String() + " — drop the check or make it an assertion"
 				dup := false
@@ -383,7 +383,7 @@ func ApplyComplementNarrowing(r *Registry, condList Value) func() {
 		if IsBareTypeNode(&narrowed) {
 			narrowed = NewCarrier(ValueType(narrowed))
 		} else {
-			narrowed = MintCarrierKeeping(&narrowed, narrowed.Data)
+			narrowed = MintCarrierKeeping(&narrowed, DataOf(&narrowed))
 		}
 		if ValuesEqual(narrowed, cur) {
 			// Complement did not refine cur (T disjoint from cur, or boru

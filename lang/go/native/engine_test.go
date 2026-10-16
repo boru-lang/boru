@@ -40,10 +40,10 @@ func TestNewString(t *testing.T) {
 	// true; specific-value dispatch still routes through
 	// Signature.Patterns where finer granularity is needed.
 	v := NewString("hello")
-	if !v.Parent.Equal(TStringProper) {
-		t.Errorf("type = %s, want ProperString", v.Parent)
+	if !ParentOf(&v).Equal(TStringProper) {
+		t.Errorf("type = %s, want ProperString", ParentOf(&v))
 	}
-	if !v.Parent.ConformsTo(TString) {
+	if !ParentOf(&v).ConformsTo(TString) {
 		t.Errorf("ProperString should match TString")
 	}
 	_as0, _ := AsString(v)
@@ -52,18 +52,18 @@ func TestNewString(t *testing.T) {
 	}
 
 	empty := NewString("")
-	if !empty.Parent.Equal(TStringEmpty) {
-		t.Errorf("empty type = %s, want EmptyString", empty.Parent)
+	if !ParentOf(&empty).Equal(TStringEmpty) {
+		t.Errorf("empty type = %s, want EmptyString", ParentOf(&empty))
 	}
-	if !empty.Parent.ConformsTo(TString) {
+	if !ParentOf(&empty).ConformsTo(TString) {
 		t.Errorf("EmptyString should match TString")
 	}
 }
 
 func TestNewInteger(t *testing.T) {
 	v := NewInteger(42)
-	if !v.Parent.ConformsTo(TInteger) {
-		t.Errorf("type = %s, want matches number/integer", v.Parent)
+	if !ParentOf(&v).ConformsTo(TInteger) {
+		t.Errorf("type = %s, want matches number/integer", ParentOf(&v))
 	}
 	_as2, _ := AsInteger(v)
 	if _as2 != 42 {

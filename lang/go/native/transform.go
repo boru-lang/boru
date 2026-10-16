@@ -45,10 +45,10 @@ func valueToAny(v Value) any {
 		return nil
 	}
 	switch {
-	case v.Parent.ConformsTo(TInteger):
+	case ParentOf(&v).ConformsTo(TInteger):
 		i, _ := AsInteger(v)
 		return float64(i)
-	case v.Parent.ConformsTo(TFloat):
+	case ParentOf(&v).ConformsTo(TFloat):
 		// A Float is a JSON number, not a string (a missing case here
 		// made jsonify emit "x": "1.5"). DepScalar payloads decline the
 		// concrete accessor and keep the rendering fallback.
@@ -56,18 +56,18 @@ func valueToAny(v Value) any {
 			return f
 		}
 		return v.String()
-	case v.Parent.ConformsTo(TString):
+	case ParentOf(&v).ConformsTo(TString):
 		s, _ := AsString(v)
 		return s
-	case v.Parent.ConformsTo(TBoolean):
+	case ParentOf(&v).ConformsTo(TBoolean):
 		b, _ := AsBoolean(v)
 		return b
-	case v.Parent.Equal(TAtom):
+	case ParentOf(&v).Equal(TAtom):
 		a, _ := AsAtom(v)
 		return a
-	case v.Parent.Equal(TNone):
+	case ParentOf(&v).Equal(TNone):
 		return nil
-	case v.Parent.ConformsTo(TMap):
+	case ParentOf(&v).ConformsTo(TMap):
 		m, _ := AsMap(v)
 		if m == nil {
 			// A TMap-conforming value whose payload is not a concrete
@@ -82,7 +82,7 @@ func valueToAny(v Value) any {
 			out[key] = valueToAny(val)
 		}
 		return out
-	case v.Parent.ConformsTo(TList):
+	case ParentOf(&v).ConformsTo(TList):
 		_lst, _ := AsList(v)
 		elems := _lst.Elems()
 		out := make([]any, len(elems))

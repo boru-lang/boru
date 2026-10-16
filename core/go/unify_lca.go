@@ -76,7 +76,7 @@ func dispatchUnifier(a, b Value, r *Registry) (Value, *UnifyError, bool) {
 	}
 
 	for _, start := range starts {
-		for t := start; t != nil; t = t.Parent {
+		for t := start; t != nil; t = ParentOf(t) {
 			u, ok := unifierOf(t.Behavior())
 			if !ok {
 				continue

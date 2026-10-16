@@ -132,7 +132,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// would drop the only contract there is. `Type` aliases `Value`, so
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
-			!core.IsDynamic(&got) && got.Parent != nil && !core.IsBareTypeNode(&got) && !got.Parent.Equal(core.TNone) {
+			!core.IsDynamic(&got) && core.ParentOf(&got) != nil && !core.IsBareTypeNode(&got) && !core.ParentOf(&got).Equal(core.TNone) {
 			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
@@ -151,7 +151,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		if exp == nil || exp.Equal(core.TAny) {
 			continue
 		}
-		if core.IsDynamic(&got) || got.Parent == nil || core.IsBareTypeNode(&got) || got.Parent.Equal(core.TNone) {
+		if core.IsDynamic(&got) || core.ParentOf(&got) == nil || core.IsBareTypeNode(&got) || core.ParentOf(&got).Equal(core.TNone) {
 			continue
 		}
 		if !residualProvablyDisjoint(got, exp) {
@@ -240,7 +240,7 @@ func checkRecordShapeArgs(r *core.Registry, name string, paramPatterns []*core.V
 			continue
 		}
 		val := args[i]
-		if !pat.Parent.Equal(core.TMap) || !val.Parent.Equal(core.TMap) ||
+		if !core.ParentOf(pat).Equal(core.TMap) || !core.ParentOf(&val).Equal(core.TMap) ||
 			!core.IsConcrete(pat) || !core.IsConcrete(&val) {
 			continue
 		}
@@ -269,10 +269,10 @@ func checkRecordShapeArgs(r *core.Registry, name string, paramPatterns []*core.V
 				})
 				continue
 			}
-			if core.IsBareTypeNode(&pv) && !av.Parent.ConformsTo(pv.Parent) && !av.Parent.Equal(core.TAny) {
+			if core.IsBareTypeNode(&pv) && !core.ParentOf(&av).ConformsTo(core.ParentOf(&pv)) && !core.ParentOf(&av).Equal(core.TAny) {
 				r.Check.AddDiagnostic(core.CheckDiagnostic{
 					Code:   "record_shape_mismatch",
-					Detail: "argument to " + name + ": field " + key + " expected " + pv.Parent.String() + ", got " + av.Parent.String(),
+					Detail: "argument to " + name + ": field " + key + " expected " + core.ParentOf(&pv).String() + ", got " + core.ParentOf(&av).String(),
 					Word:   name,
 				})
 			}
@@ -511,12 +511,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// parents keep the precise strict generalisation below.
 					if pt := sigParams[i].Type; es.StoredGradualActive() &&
 						(pt == nil || pt.Equal(core.TAny)) &&
-						a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(&a) {
+						core.ParentOf(&a) != nil && core.ParentOf(&a).Equal(core.TAny) && !core.IsBareTypeNode(&a) {
 						genArgs[i] = ParamInputCarrier(core.TAny)
 						continue
 					}
 				}
-				if a.Parent == nil || core.IsTypeLiteral(&a) {
+				if core.ParentOf(&a) == nil || core.IsTypeLiteral(&a) {
 					// A type literal's Parent is its supertype, not its type
 					// (NUR323), and a root node's (None / Any / Never) is nil:
 					// core.ValueCarrier widens a type to a Type carrier and the
@@ -527,7 +527,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					genArgs[i] = core.ValueCarrier(a)
 					continue
 				}
-				genArgs[i] = core.NewCarrier(a.Parent)
+				genArgs[i] = core.NewCarrier(core.ParentOf(&a))
 			}
 			// Key the compiled unit on the GENERALISED args, matching the body
 			// analysis (AnalyseFnBody runs on genArgs) and the FnSummaries memo. A
@@ -647,7 +647,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				if !r.Check.Compiling &&
 					t.ConformsTo(core.TFunction) && len(stk) >= len(declaredReturns) {
 					if bv := stk[len(stk)-len(declaredReturns)+i]; core.IsConcrete(&bv) &&
-						bv.Parent.ConformsTo(core.TFunction) {
+						core.ParentOf(&bv).ConformsTo(core.TFunction) {
 						out[i] = bv
 						continue
 					}
@@ -1069,14 +1069,14 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 		return core.Value{}, false
 	}
 	var fresh core.Value
-	if _, isFn := outs[0].Data.(*core.FnDefInfo); isFn {
+	if _, isFn := core.DataOf(&outs[0]).(*core.FnDefInfo); isFn {
 		// A fn VALUE result (the next closure of a staged combinator) keeps
 		// its analysed payload under a fresh identity: a later `apply` over
 		// it re-steps the value and records through this same arm, resolving
 		// the fn to THIS apply's event.
 		fresh = core.MintFresh(&outs[0])
 	} else {
-		parent := outs[0].Parent
+		parent := core.ParentOf(&outs[0])
 		if parent == nil {
 			parent = core.TAny
 		}
@@ -1130,7 +1130,7 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	// [17 17]).
 	// Freshen a CARRIER out per call site — the caller substitutes it —
 	// and decline a concrete out (freshening would erase its value).
-	if !outs[0].Carrier || outs[0].Parent == nil {
+	if !core.IsCarrier(&outs[0]) || core.ParentOf(&outs[0]) == nil {
 		return core.Value{}, false
 	}
 	nonConcrete := false
@@ -1147,14 +1147,14 @@ func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name str
 	if !ok {
 		return core.Value{}, false
 	}
-	fd, isFn := core.FnDefOf(top.Data)
+	fd, isFn := core.FnDefOf(core.DataOf(&top))
 	if !isFn || !fd.Anonymous || core.IsQuoted(&top) {
 		return core.Value{}, false
 	}
 	if own := fd.OwnSigs(); len(own) != 1 {
 		return core.Value{}, false
 	}
-	fresh := core.NewCarrier(outs[0].Parent)
+	fresh := core.NewCarrier(core.ParentOf(&outs[0]))
 	core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
 	if !es.RecordDynApplyName(name, args, top, &fresh, pos) {
 		return core.Value{}, false
@@ -1280,7 +1280,7 @@ func refinementUndecided(pattern, got core.Value) bool {
 		return false
 	}
 	if pattern.IsDepScalar() {
-		return !residualProvablyDisjoint(got, pattern.Parent)
+		return !residualProvablyDisjoint(got, core.ParentOf(&pattern))
 	}
 	if core.IsDisjunct(&pattern) {
 		di, _ := core.AsDisjunct(pattern) // IsDisjunct: the payload is a DisjunctInfo
@@ -1331,13 +1331,13 @@ func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Valu
 		return core.Value{}, false
 	}
 	switch {
-	case a.Parent != nil && a.Parent.Equal(core.TAny):
+	case core.ParentOf(&a) != nil && core.ParentOf(&a).Equal(core.TAny):
 		return core.NewCarrier(pt), true
-	case a.Carrier && core.IsDisjunct(&a):
+	case core.IsCarrier(&a) && core.IsDisjunct(&a):
 		nc := core.NewCarrier(pt)
 		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
-	case !generic && a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
+	case !generic && core.IsCarrier(&a) && core.ParentOf(&a) != nil && !core.HasConstraintUnify(pt) && !core.ParentOf(&a).ConformsTo(pt):
 		nc := core.NewCarrier(pt)
 		core.SetDynamic(&nc, core.IsDynamic(&a))
 		return nc, true
@@ -1359,13 +1359,13 @@ func provenNarrowerReturn(t *core.Type, params []core.FnParam, stk []core.Value,
 		return core.Value{}, false
 	}
 	bv := stk[i]
-	if !bv.Carrier || core.IsDynamic(&bv) || bv.Parent == nil || core.IsDisjunct(&bv) || bv.AscribedType() != nil {
+	if !core.IsCarrier(&bv) || core.IsDynamic(&bv) || core.ParentOf(&bv) == nil || core.IsDisjunct(&bv) || bv.AscribedType() != nil {
 		return core.Value{}, false
 	}
-	if !bv.Parent.Equal(core.TInteger) && !bv.Parent.Equal(core.TFloat) && !bv.Parent.Equal(core.TBoolean) {
+	if !core.ParentOf(&bv).Equal(core.TInteger) && !core.ParentOf(&bv).Equal(core.TFloat) && !core.ParentOf(&bv).Equal(core.TBoolean) {
 		return core.Value{}, false
 	}
-	return core.NewCarrier(bv.Parent), true
+	return core.NewCarrier(core.ParentOf(&bv)), true
 }
 
 // allParamsTyped reports whether every param declares a type other than

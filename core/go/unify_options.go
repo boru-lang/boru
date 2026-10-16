@@ -94,7 +94,7 @@ func optionsDefault(v Value) (Value, bool) {
 			}
 		}
 		for _, alt := range alts {
-			if alt.Data != nil && !IsDisjunct(&alt) {
+			if DataOf(&alt) != nil && !IsDisjunct(&alt) {
 				return alt, true
 			}
 		}
@@ -103,7 +103,7 @@ func optionsDefault(v Value) (Value, bool) {
 	if IsNoneShape(v) {
 		return v, true
 	}
-	if v.Data != nil {
+	if DataOf(&v) != nil {
 		return v, true
 	}
 	return Value{}, false
@@ -168,7 +168,7 @@ func FillConcreteOptionDefaults(pattern, m Value) Value {
 	// slot; rebuilding it as a plain Map would silently drop mutability, so
 	// downstream `set` would copy instead of mutating in place. Plain Map
 	// and FlexMap share the MapPayload shape — only the Parent tag differs.
-	if m.Parent.ConformsTo(TFlexMap) {
+	if ParentOf(&m).ConformsTo(TFlexMap) {
 		return NewFlexMap(filled)
 	}
 	return NewMap(filled)
@@ -191,9 +191,9 @@ func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
 		}
 		return Value{}, unifyFail("no disjunct alternative matched", optVal, cVal)
 	}
-	if optVal.Data != nil {
+	if DataOf(&optVal) != nil {
 		baseType := optionsBaseType(optVal)
-		if cVal.Parent.ConformsTo(baseType) {
+		if ParentOf(&cVal).ConformsTo(baseType) {
 			return cVal, nil
 		}
 		return Value{}, unifyFail("value does not match field's base type", optVal, cVal)
@@ -206,21 +206,21 @@ func unifyOptionsField(optVal, cVal Value, r *Registry) (Value, *UnifyError) {
 // TInteger.
 func optionsBaseType(v Value) *Type {
 	switch {
-	case v.Parent.ConformsTo(TInteger):
+	case ParentOf(&v).ConformsTo(TInteger):
 		return TInteger
-	case v.Parent.ConformsTo(TFloat):
+	case ParentOf(&v).ConformsTo(TFloat):
 		return TFloat
-	case v.Parent.ConformsTo(TString):
+	case ParentOf(&v).ConformsTo(TString):
 		return TString
-	case v.Parent.ConformsTo(TBoolean):
+	case ParentOf(&v).ConformsTo(TBoolean):
 		return TBoolean
-	case v.Parent.Equal(TMap):
+	case ParentOf(&v).Equal(TMap):
 		return TMap
-	case v.Parent.Equal(TList):
+	case ParentOf(&v).Equal(TList):
 		return TList
-	case v.Parent.Equal(TNone):
+	case ParentOf(&v).Equal(TNone):
 		return TNone
 	default:
-		return v.Parent
+		return ParentOf(&v)
 	}
 }

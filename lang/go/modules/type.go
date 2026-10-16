@@ -109,7 +109,7 @@ func altSubtypes(alt, target native.Value) bool {
 	if native.IsBareTypeNode(&alt) && native.IsBareTypeNode(&target) {
 		aNode := &alt
 		tNode := &target
-		for d := aNode; d != nil; d = d.Parent {
+		for d := aNode; d != nil; d = core.ParentOf(d) {
 			if core.IDOf(d) != "" && core.IDOf(tNode) != "" && core.IDOf(d) == core.IDOf(tNode) {
 				return true
 			}
@@ -176,7 +176,7 @@ func latticeNode(v native.Value) *native.Type {
 	if native.IsBareTypeNode(&v) {
 		return native.NodeOf(&v)
 	}
-	return v.Parent
+	return core.ParentOf(&v)
 }
 
 // fnSigs returns the signature list for a Function / FnDef / FnUndef value.
@@ -204,10 +204,10 @@ func returnsofResult(fn native.Value, r *native.Registry) (native.Value, error) 
 }
 
 func fnSigs(v native.Value, opName string, r *native.Registry) ([]native.FnSig, error) {
-	if fn, ok := v.Data.(*native.FnDefInfo); ok {
+	if fn, ok := core.DataOf(&v).(*native.FnDefInfo); ok {
 		return fn.OwnSigs(), nil
 	}
-	if fnu, ok := v.Data.(native.FnUndefInfo); ok {
+	if fnu, ok := core.DataOf(&v).(native.FnUndefInfo); ok {
 		out := make([]native.FnSig, len(fnu.Sigs))
 		for i, s := range fnu.Sigs {
 			out[i] = native.FnSig{Params: s.Params, Returns: s.Returns}
@@ -232,7 +232,7 @@ func fieldNames(list native.Value, opName string, r *native.Registry) ([]string,
 		case native.IsAtom(e):
 			a, _ := native.AsAtom(e)
 			out = append(out, a)
-		case e.Parent != nil && e.Parent.Equal(native.TString):
+		case core.ParentOf(&e) != nil && core.ParentOf(&e).Equal(native.TString):
 			s, _ := native.AsString(e)
 			out = append(out, s)
 		default:
@@ -577,10 +577,10 @@ var typeModuleNatives = []native.NativeFunc{
 					return nil, err
 				}
 				node := latticeNode(t)
-				if node == nil || node.Parent == nil {
+				if node == nil || core.ParentOf(node) == nil {
 					return []native.Value{native.NewTypeLiteral(native.TAny)}, nil
 				}
-				return []native.Value{native.NewTypeLiteral(node.Parent)}, nil
+				return []native.Value{native.NewTypeLiteral(core.ParentOf(node))}, nil
 			}),
 			Returns: []*native.Type{native.TType}, BarrierPos: -1,
 		}},
@@ -601,8 +601,8 @@ var typeModuleNatives = []native.NativeFunc{
 				if node == nil { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
 					return []native.Value{native.NewTypeLiteral(native.TAny)}, nil
 				}
-				for node.Parent != nil && !node.Parent.Equal(native.TAny) {
-					node = node.Parent
+				for core.ParentOf(node) != nil && !core.ParentOf(node).Equal(native.TAny) {
+					node = core.ParentOf(node)
 				}
 				return []native.Value{native.NewTypeLiteral(node)}, nil
 			}),
@@ -632,12 +632,12 @@ var typeModuleNatives = []native.NativeFunc{
 				aNode := latticeNode(a)
 				bNode := latticeNode(b)
 				seen := map[string]*native.Type{}
-				for d := aNode; d != nil; d = d.Parent {
+				for d := aNode; d != nil; d = core.ParentOf(d) {
 					if core.IDOf(d) != "" {
 						seen[core.IDOf(d)] = d
 					}
 				}
-				for d := bNode; d != nil; d = d.Parent {
+				for d := bNode; d != nil; d = core.ParentOf(d) {
 					if core.IDOf(d) != "" {
 						if hit, ok := seen[core.IDOf(d)]; ok {
 							return []native.Value{native.NewTypeLiteral(hit)}, nil

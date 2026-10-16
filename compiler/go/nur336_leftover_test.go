@@ -135,7 +135,7 @@ func TestNUR336ToldAt(t *testing.T) {
 
 func TestNUR347NoteFnArgPos(t *testing.T) {
 	es := NewEmitState()
-	fn := withID(core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "h"}}, "fnid")
+	fn := withID(core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "h"}), "fnid")
 	fn.SetPos(core.SrcPos{Row: 1, Col: 101})
 	unread := fn
 	core.SetID(&unread, "other")
@@ -167,7 +167,7 @@ func TestNUR347NoteFnArgPos(t *testing.T) {
 func TestNUR329UnexpandedToken(t *testing.T) {
 	reach := core.NewReachFromKeys(core.NewWord("m"), []core.Value{core.NewAtom("b")})
 	carrier := reach
-	carrier.Carrier = true
+	core.SetCarrier(&carrier, true)
 	dyn := reach
 	core.SetDynamic(&dyn, true)
 	interp := core.NewInterpString([]core.InterpPart{{Lit: "s"}})

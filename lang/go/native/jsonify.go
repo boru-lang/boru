@@ -72,7 +72,7 @@ func valueToAnySer(v Value) any {
 		}
 		return out
 	}
-	if v.Parent.ConformsTo(TMap) {
+	if ParentOf(&v).ConformsTo(TMap) {
 		if m, _ := AsMap(v); m != nil {
 			out := make(map[string]any, m.Len())
 			for _, key := range m.Keys() {
@@ -82,7 +82,7 @@ func valueToAnySer(v Value) any {
 			return out
 		}
 	}
-	if v.Parent.ConformsTo(TList) {
+	if ParentOf(&v).ConformsTo(TList) {
 		if _lst, _ := AsList(v); !_lst.IsNil() {
 			elems := _lst.Elems()
 			out := make([]any, len(elems))

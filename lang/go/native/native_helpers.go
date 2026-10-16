@@ -26,11 +26,11 @@ const (
 // conforms to TInteger/TFloat.
 func numLeaf(v *Value) int {
 	switch {
-	case v.Parent.ConformsTo(TBigDecimal):
+	case ParentOf(v).ConformsTo(TBigDecimal):
 		return leafBigDecimal
-	case v.Parent.ConformsTo(TBigInteger):
+	case ParentOf(v).ConformsTo(TBigInteger):
 		return leafBigInteger
-	case v.Parent.ConformsTo(TFloat):
+	case ParentOf(v).ConformsTo(TFloat):
 		return leafFloat
 	default:
 		return leafInteger
@@ -100,7 +100,7 @@ func decimalContext(r *Registry) *apd.Context {
 // *big.Int. Only called when the widest leaf is BigInteger, so the value
 // is one of those two.
 func asBigOperand(v *Value) *big.Int {
-	if v.Parent.ConformsTo(TBigInteger) {
+	if ParentOf(v).ConformsTo(TBigInteger) {
 		n, _ := AsBigInteger(*v)
 		return n
 	}
@@ -113,10 +113,10 @@ func asBigOperand(v *Value) *big.Int {
 // BigDecimal.
 func asApdOperand(v *Value) *apd.Decimal {
 	switch {
-	case v.Parent.ConformsTo(TBigDecimal):
+	case ParentOf(v).ConformsTo(TBigDecimal):
 		d, _ := AsBigDecimal(*v)
 		return d
-	case v.Parent.ConformsTo(TBigInteger):
+	case ParentOf(v).ConformsTo(TBigInteger):
 		n, _ := AsBigInteger(*v)
 		d, _, _ := apd.NewFromString(n.String())
 		return d
@@ -206,7 +206,7 @@ func returnsDivMod(detail string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
 		checkBigFloatMix(r, args)
 		if len(args) == 2 && isStaticZeroIntDivisor(args[0]) &&
-			!args[0].Parent.ConformsTo(TFloat) && !args[1].Parent.ConformsTo(TFloat) {
+			!ParentOf(&args[0]).ConformsTo(TFloat) && !ParentOf(&args[1]).ConformsTo(TFloat) {
 			if atUncaughtTopLevel(r) {
 				core.CheckAddUniqueDiagnostic(r, "arith_error", detail, "", args[0].Pos())
 			}
@@ -229,7 +229,7 @@ func returnsDivMod(detail string) ReturnsFunc {
 func checkBigFloatMix(r *Registry, args []Value) {
 	if !atUncaughtTopLevel(r) || len(args) != 2 ||
 		IsDynamic(&args[0]) || IsDynamic(&args[1]) ||
-		args[0].Parent == nil || args[1].Parent == nil ||
+		ParentOf(&args[0]) == nil || ParentOf(&args[1]) == nil ||
 		IsBareTypeNode(&args[0]) || IsBareTypeNode(&args[1]) {
 		return
 	}
@@ -257,19 +257,19 @@ func isStaticZeroIntDivisor(v Value) bool {
 	if !IsConcrete(&v) {
 		return false
 	}
-	if v.Parent.ConformsTo(TBigInteger) {
+	if ParentOf(&v).ConformsTo(TBigInteger) {
 		if b, err := AsBigInteger(v); err == nil && b != nil {
 			return b.Sign() == 0
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TBigDecimal) {
+	if ParentOf(&v).ConformsTo(TBigDecimal) {
 		if d, err := AsBigDecimal(v); err == nil && d != nil {
 			return d.Sign() == 0
 		}
 		return false
 	}
-	if v.Parent.ConformsTo(TInteger) {
+	if ParentOf(&v).ConformsTo(TInteger) {
 		if n, err := v.AsConcreteInteger(); err == nil {
 			return n == 0
 		}
@@ -296,7 +296,7 @@ func apdBin(fn func(d, x, y *apd.Decimal) (apd.Condition, error), x, y *apd.Deci
 // lost. The user must convert one operand explicitly.
 func bigFloatMixError(r *Registry, a, b Value) error {
 	return r.BoruError("type_error",
-		"cannot mix "+a.Parent.Leaf()+" and "+b.Parent.Leaf()+
+		"cannot mix "+ParentOf(&a).Leaf()+" and "+ParentOf(&b).Leaf()+
 			" in arithmetic — convert one explicitly (a Big type never silently becomes a binary Float)",
 		"")
 }

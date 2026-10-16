@@ -92,12 +92,12 @@ func TestWt5SigTypeMatchesDynamicDisjoint(t *testing.T) {
 func TestWt5SigTypeMatchesDisjunctCarrier(t *testing.T) {
 	// A strict disjunct carrier matches iff EVERY alternative matches.
 	all := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TFloat)})
-	all.Carrier = true
+	SetCarrier(&all, true)
 	if !SigTypeMatches(&all, TNumber) {
 		t.Fatal("all-alternatives-match disjunct carrier must match")
 	}
 	mixed := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	mixed.Carrier = true
+	SetCarrier(&mixed, true)
 	if SigTypeMatches(&mixed, TInteger) {
 		t.Fatal("a failing alternative must fail the whole carrier")
 	}

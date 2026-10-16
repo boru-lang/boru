@@ -114,7 +114,7 @@ func (es *EmitState) keptReadSeatedLive(v *core.Value) {
 		*v = core.WithPos(core.ValueCarrier(*v), *v) // a type VALUE (NUR323)
 		return
 	}
-	*v = core.WithPos(core.NewCarrier(v.Parent), *v)
+	*v = core.WithPos(core.NewCarrier(core.ParentOf(v)), *v)
 }
 
 // flushKeptRead makes a pending read an observer: nothing seated it live
@@ -207,8 +207,8 @@ func (es *EmitState) operandMayInvoke(op EmitOperand) bool {
 			return false
 		}
 		v := es.consts[op.idx]
-		_, isFn := v.Data.(*core.FnDefInfo)
-		return isFn || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
+		_, isFn := core.DataOf(&v).(*core.FnDefInfo)
+		return isFn || (core.ParentOf(&v) != nil && core.ParentOf(&v).ConformsTo(core.TFunction))
 	}
 	return true
 }
@@ -323,7 +323,7 @@ func keepsComputedDefs(spec *core.CallableSpec, body core.Value) bool {
 	if !(spec.BodyOnceKeepsDefs || spec.BodyMultiRunKeepsDefs) || core.IsConcrete(&body) {
 		return false
 	}
-	return core.IsDynamic(&body) || body.Parent == nil || body.Parent.ConformsTo(core.TList) || core.TList.ConformsTo(body.Parent)
+	return core.IsDynamic(&body) || core.ParentOf(&body) == nil || core.ParentOf(&body).ConformsTo(core.TList) || core.TList.ConformsTo(core.ParentOf(&body))
 }
 
 // bodyProvenFn reports whether a computed body operand provably arrives as an
@@ -388,7 +388,7 @@ func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos
 // literal body's leak keeps its exact type (the pass ran its tokens), and a
 // value that may be a fn stays as keptReadSeatedLive left it.
 func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bool) {
-	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier || keptReadMayBeFn(*v) {
+	if !(rootLive || es.dynLeakNames[name]) || !core.IsCarrier(v) || keptReadMayBeFn(*v) {
 		return
 	}
 	core.SetDynamic(v, true)
@@ -400,5 +400,5 @@ func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bo
 // as a const the carrier would not stop, and an untyped value has no type
 // to carry.
 func keptReadMayBeFn(v core.Value) bool {
-	return core.IsAppliableFn(v) || v.Parent == nil || v.Parent.ConformsTo(core.TFunction)
+	return core.IsAppliableFn(v) || core.ParentOf(&v) == nil || core.ParentOf(&v).ConformsTo(core.TFunction)
 }

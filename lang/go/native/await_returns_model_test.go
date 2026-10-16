@@ -19,8 +19,8 @@ func wantResidual(t *testing.T, label string, got []Value, want *Type) {
 	if len(got) != 1 {
 		t.Fatalf("%s: got %d residual values, want 1", label, len(got))
 	}
-	if got[0].Parent != want {
-		t.Errorf("%s: residual %v, want %v", label, got[0].Parent, want)
+	if ParentOf(&got[0]) != want {
+		t.Errorf("%s: residual %v, want %v", label, ParentOf(&got[0]), want)
 	}
 }
 
@@ -99,9 +99,9 @@ func TestAwaitResidualKnownModes(t *testing.T) {
 	// full has no error escape: always a List, and a list of MAPS.
 	full := awaitResidual(nil, "full", nonEmpty)
 	wantResidual(t, "full", full, TList)
-	ci, ok := full[0].Data.(ChildTypeInfo)
-	if !ok || ci.Child.Parent != TMap {
-		t.Errorf("full: element carrier %+v (typed=%v), want a Map", full[0].Data, ok)
+	ci, ok := DataOf(&full[0]).(ChildTypeInfo)
+	if !ok || ParentOf(&ci.Child) != TMap {
+		t.Errorf("full: element carrier %+v (typed=%v), want a Map", DataOf(&full[0]), ok)
 	}
 
 	// all is List-or-Error, named as a dynamic union so the claim does not

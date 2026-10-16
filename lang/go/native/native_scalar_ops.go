@@ -62,7 +62,7 @@ func applyScalarBinaryOp(r *Registry, op string, left, right Value) (Value, erro
 	if !IsConcrete(&left) || !IsConcrete(&right) {
 		return Value{}, opCrossTypeError(r, op, left, right)
 	}
-	lp, rp := left.Parent, right.Parent
+	lp, rp := ParentOf(&left), ParentOf(&right)
 	switch {
 	case lp.ConformsTo(TNumber) && rp.ConformsTo(TNumber):
 		ops, _ := towerOpsFor(op)
@@ -108,10 +108,10 @@ func opCrossTypeError(r *Registry, op string, left, right Value) error {
 }
 
 func typeLeaf(v Value) string {
-	if v.Parent == nil {
+	if ParentOf(&v) == nil {
 		return "?"
 	}
-	return v.Parent.Leaf()
+	return ParentOf(&v).Leaf()
 }
 
 // ---- String / Atom occurrence package ----
@@ -291,7 +291,7 @@ func booleanArithReturns(op string) ReturnsFunc {
 // same kind (core operations apply within a kind, not across); Qion and
 // Pathon are hand-written, every other kind uses the field-wise default.
 func micronBinaryOp(r *Registry, op string, left, right Value) (Value, error) {
-	lk, rk := left.Parent, right.Parent
+	lk, rk := ParentOf(&left), ParentOf(&right)
 	if lk == nil || rk == nil || !lk.Equal(rk) {
 		return Value{}, r.BoruError("type_error",
 			fmt.Sprintf("%s: %s and %s are different Micron kinds — core operations apply within a kind, not across",
@@ -321,7 +321,7 @@ func micronFieldwiseOp(r *Registry, op string, left, right Value) (Value, error)
 		if rv, ok := rf.Get(k); ok {
 			ov, oerr := applyScalarBinaryOp(r, op, lv, rv)
 			if oerr != nil {
-				return Value{}, micronFieldError(r, op, left.Parent, k, oerr)
+				return Value{}, micronFieldError(r, op, ParentOf(&left), k, oerr)
 			}
 			result.Set(k, ov)
 		} else {
@@ -334,7 +334,7 @@ func micronFieldwiseOp(r *Registry, op string, left, right Value) (Value, error)
 			result.Set(k, rv)
 		}
 	}
-	return remakeMicron(r, left.Parent, result)
+	return remakeMicron(r, ParentOf(&left), result)
 }
 
 // remakeMicron reconstructs a Micron of the given kind from a primary
@@ -392,7 +392,7 @@ func qionOp(r *Registry, op string, left, right Value) (Value, error) {
 		m := NewOrderedMap()
 		m.Set("code", lc)
 		m.Set("amount", sum)
-		return remakeMicron(r, left.Parent, m)
+		return remakeMicron(r, ParentOf(&left), m)
 	default:
 		return Value{}, r.BoruErrorHint("type_error",
 			op+": is not defined between two Qion values — only add and sub (same currency) are", op,
@@ -620,7 +620,7 @@ func seqOpReturns(op string, elem *Type, h Handler) ReturnsFunc {
 // right-hand path) stay with the runtime handler either way.
 func micronOpReturns(op string) ReturnsFunc {
 	return func(args []Value, r *Registry) []Value {
-		if len(args) != 2 || args[0].Parent == nil || args[1].Parent == nil {
+		if len(args) != 2 || ParentOf(&args[0]) == nil || ParentOf(&args[1]) == nil {
 			return []Value{NewCarrier(TMicron)}
 		}
 		if atUncaughtTopLevel(r) && IsConcrete(&args[0]) && IsConcrete(&args[1]) {
@@ -628,8 +628,8 @@ func micronOpReturns(op string) ReturnsFunc {
 				mirrorOpError(r, op, err, args[0].Pos())
 			}
 		}
-		if args[0].Parent.Equal(args[1].Parent) {
-			return []Value{NewCarrier(args[0].Parent)}
+		if ParentOf(&args[0]).Equal(ParentOf(&args[1])) {
+			return []Value{NewCarrier(ParentOf(&args[0]))}
 		}
 		return []Value{NewCarrier(TMicron)}
 	}

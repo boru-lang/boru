@@ -131,9 +131,9 @@ func renderCheck(stack []core.Value, diags []core.CheckDiagnostic) string {
 	parts := make([]string, len(stack))
 	for i, v := range stack {
 		if core.IsDynamic(&v) {
-			parts[i] = "dynamic(" + v.Parent.Leaf() + ")"
+			parts[i] = "dynamic(" + core.ParentOf(&v).Leaf() + ")"
 		} else {
-			parts[i] = v.Parent.Leaf()
+			parts[i] = core.ParentOf(&v).Leaf()
 		}
 	}
 	s := strings.Join(parts, " ")

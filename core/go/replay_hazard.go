@@ -12,7 +12,7 @@ package core
 // fallback. Recurses into nested lists and parens.
 func BodyHasReplayHazard(v Value) bool {
 	var toks []Value
-	switch d := v.Data.(type) {
+	switch d := DataOf(&v).(type) {
 	case ListPayload:
 		toks = d.Elems
 	case ParenExprPayload:
@@ -21,7 +21,7 @@ func BodyHasReplayHazard(v Value) bool {
 		return false
 	}
 	for i, t := range toks {
-		if w, ok := t.Data.(WordInfo); ok {
+		if w, ok := DataOf(&t).(WordInfo); ok {
 			switch w.Name {
 			case "import":
 				return true
@@ -42,7 +42,7 @@ func BodyHasReplayHazard(v Value) bool {
 // operand token is a bare word or a quoted atom; "" otherwise (a computed
 // name, which no static screen can read).
 func BindNameToken(v Value) string {
-	switch d := v.Data.(type) {
+	switch d := DataOf(&v).(type) {
 	case WordInfo:
 		return d.Name
 	case AtomPayload:

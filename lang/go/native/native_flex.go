@@ -141,7 +141,7 @@ var flexNatives = []NativeFunc{
 // commits the right result arity (see getNodeReturns' flex-shape rule);
 // the dispatches stay runtime-re-matched polys with an enforced NOut claim.
 func flexReturns(args []Value, r *Registry) []Value {
-	if len(args) != 1 || args[0].Parent == nil {
+	if len(args) != 1 || ParentOf(&args[0]) == nil {
 		return []Value{NewDynamicCarrier(TNode)}
 	}
 	shapes := r != nil && r.Check.IsActive()
@@ -149,12 +149,12 @@ func flexReturns(args []Value, r *Registry) []Value {
 	// element tag onto the residual (FlexDeepCopy preserves it at runtime). The
 	// tag drives the check-mode write mirror (d2CheckWrite reads ElemConstraint),
 	// so `append "bad" (flex xs)` for xs:[:Integer] is diagnosed (#6, Codex round 6).
-	switch p := args[0].Parent; {
+	switch p := ParentOf(&args[0]); {
 	case p.ConformsTo(TMap):
 		if shapes {
 			if ss, ok := check.StoreShapeOf(args[0]); ok {
 				v := NewCarrier(TFlexMap)
-				v.Data = ss.CloneShape()
+				SetData(&v, ss.CloneShape())
 				return []Value{d2RetainElem(v, args[0])}
 			}
 			if v, ok := check.MintFlexShapeCarrier(args[0], 0); ok {
@@ -182,12 +182,12 @@ func flexReturns(args []Value, r *Registry) []Value {
 // Node, so the result's family is the input's (FlexMap→Map, FlexList→List,
 // FlexXml→Xml). Same dynamic-Node fallback for an unknown shape.
 func nodeReturns(args []Value, _ *Registry) []Value {
-	if len(args) != 1 || args[0].Parent == nil {
+	if len(args) != 1 || ParentOf(&args[0]) == nil {
 		return []Value{NewDynamicCarrier(TNode)}
 	}
 	// node just toggles mutability back — a {:T}/[:T] flex stays typed as a plain
 	// container, so retain the element tag (NodeDeepCopy preserves it at runtime).
-	switch p := args[0].Parent; {
+	switch p := ParentOf(&args[0]); {
 	case p.ConformsTo(TMap):
 		return []Value{d2RetainElem(NewCarrier(TMap), args[0])}
 	case p.ConformsTo(TList):
@@ -223,7 +223,7 @@ func nodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 func appendElemHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a FlexList, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a FlexList, got "+ParentOf(&args[1]).String(), "append")
 	}
 	// A typed flex list ([:T]) enforces + recursively re-tags on a grow.
 	tagged, werr := d2AdoptTyped(r, args[1], args[0], "append")
@@ -245,7 +245,7 @@ func appendElemHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 func appendWeakElemHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	wd, err := AsWeakFlexList(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a WeakFlexList, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a WeakFlexList, got "+ParentOf(&args[1]).String(), "append")
 	}
 	// Typed weak list ([:T]) enforcement on grow, mirroring the flex
 	// column — weakness never drops the element contract.
@@ -264,7 +264,7 @@ func appendWeakElemHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 func appendWeakXmlChildHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	wd, err := AsWeakFlexXml(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a WeakFlexXml, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a WeakFlexXml, got "+ParentOf(&args[1]).String(), "append")
 	}
 	if refusal := wd.AppendChild(args[0]); refusal != nil {
 		return nil, WeakRefusalError(r, "append", "WeakFlexXml", refusal)
@@ -275,7 +275,7 @@ func appendWeakXmlChildHandler(args []Value, _ map[string]Value, _ []Value, r *R
 func appendXmlChildHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexXml(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a FlexXml, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a FlexXml, got "+ParentOf(&args[1]).String(), "append")
 	}
 	// A flex tree stays entirely mutable: a plain Node/Xml child is
 	// deep-flexed on the way in; flex handles share.
@@ -290,7 +290,7 @@ func appendXmlChildHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 func appendXmlListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexXml(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a FlexXml, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a FlexXml, got "+ParentOf(&args[1]).String(), "append")
 	}
 	src, err := RequireConcreteList(args[0], "append")
 	if err != nil {
@@ -310,7 +310,7 @@ func appendXmlListHandler(args []Value, _ map[string]Value, _ []Value, r *Regist
 func appendListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	fd, err := AsFlexList(args[1])
 	if err != nil {
-		return nil, r.BoruError("append_error", "append: expected a FlexList, got "+args[1].Parent.String(), "append")
+		return nil, r.BoruError("append_error", "append: expected a FlexList, got "+ParentOf(&args[1]).String(), "append")
 	}
 	src, err := RequireConcreteList(args[0], "append")
 	if err != nil {

@@ -25,7 +25,7 @@ func TestS6aGradualContagionZeroOutSingleValueSibling(t *testing.T) {
 	defer done()
 	out := applyGradualContagion(r, "s6aset1",
 		[]core.Value{core.NewDynamicCarrier(core.TAny)}, nil, core.SrcPos{}, false)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TInteger) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TInteger) {
 		t.Errorf("0-out mutator over dynamic receiver should model one dynamic Integer: %+v", out)
 	}
 }

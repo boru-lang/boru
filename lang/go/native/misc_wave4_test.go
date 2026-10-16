@@ -41,9 +41,9 @@ func w4QueryReg(t *testing.T) *Registry {
 // w4Materialize forces a lazy query Value into concrete TableData.
 func w4Materialize(t *testing.T, v Value) TableData {
 	t.Helper()
-	mp, ok := v.Data.(MaterializerPayload)
+	mp, ok := DataOf(&v).(MaterializerPayload)
 	if !ok {
-		t.Fatalf("expected a lazy query, got %T", v.Data)
+		t.Fatalf("expected a lazy query, got %T", DataOf(&v))
 	}
 	td, err := mp.M.Materialize()
 	if err != nil {

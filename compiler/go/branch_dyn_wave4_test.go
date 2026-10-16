@@ -162,7 +162,7 @@ func TestFnConcreteSingleValuedOrCarrier(t *testing.T) {
 
 func TestCarrierOfLiteralHelper(t *testing.T) {
 	c := core.CarrierOfLiteral(core.NewInteger(42))
-	if !c.Carrier {
+	if !core.IsCarrier(&c) {
 		t.Error("carrierOfLiteral not a carrier")
 	}
 }

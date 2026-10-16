@@ -31,7 +31,7 @@ func docToAny(v native.Value) any {
 		return nil
 	}
 	switch {
-	case v.Parent.ConformsTo(native.TMap):
+	case core.ParentOf(&v).ConformsTo(native.TMap):
 		m, err := native.AsMap(v)
 		if err != nil || m == nil { //covergate:allow module provably-invariant / grammar-defensive guard (§modules)
 			return native.ValueToAny(v)
@@ -42,7 +42,7 @@ func docToAny(v native.Value) any {
 			out[k] = docToAny(vv)
 		}
 		return out
-	case v.Parent.ConformsTo(native.TList):
+	case core.ParentOf(&v).ConformsTo(native.TList):
 		// Plain List, or a Table (a TList value carrying TableData that AsList
 		// can't read — project its rows via the Ideal converter).
 		if lst, err := native.AsList(v); err == nil {

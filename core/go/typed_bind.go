@@ -54,9 +54,9 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 		if def == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no refine target", spec.Name)
 		}
-		root := def.Parent
-		for root != nil && root.Origin == OriginUserDef {
-			root = root.Parent
+		root := ParentOf(def)
+		for root != nil && OriginOf(root) == OriginUserDef {
+			root = ParentOf(root)
 		}
 		if root == nil {
 			return Value{}, fmt.Errorf("def %s: refine subtype %s has no builtin ancestor",

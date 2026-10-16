@@ -407,8 +407,8 @@ func TestEnumAndFnUndef(t *testing.T) {
 	}
 
 	fu := core.NewFnUndef(core.FnUndefInfo{Sigs: []core.FnSigSpec{{}}})
-	if !fu.Parent.Equal(core.TFnUndef) {
-		t.Errorf("NewFnUndef parent = %v", fu.Parent)
+	if !core.ParentOf(&fu).Equal(core.TFnUndef) {
+		t.Errorf("NewFnUndef parent = %v", core.ParentOf(&fu))
 	}
 }
 

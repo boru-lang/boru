@@ -199,7 +199,7 @@ func TestDelCheckModeMirrors(t *testing.T) {
 	// The WeakFlexMap twin returns a fresh carrier on a short list and the
 	// receiver otherwise (the in-place contract).
 	short := delWeakFlexMapReturns(nil, r)
-	if len(short) != 1 || !short[0].Carrier {
+	if len(short) != 1 || !IsCarrier(&short[0]) {
 		t.Errorf("delWeakFlexMapReturns(nil) = %v, want one carrier", short)
 	}
 	wm := w9Top(t, "make WeakFlexMap {a:1}")
@@ -217,7 +217,7 @@ func TestDelCheckModeMirrors(t *testing.T) {
 	if got := delStoreReturnsFn([]Value{NewString("k"), sv}, r); got != nil {
 		t.Errorf("delStoreReturnsFn returns no stack value, got %v", got)
 	}
-	if rec, ok := r.Check.LookupContextType("k"); ok && !rec.Parent.Equal(TAny) {
-		t.Errorf("after del, key k narrows to %s; it must widen to Any", rec.Parent)
+	if rec, ok := r.Check.LookupContextType("k"); ok && !ParentOf(&rec).Equal(TAny) {
+		t.Errorf("after del, key k narrows to %s; it must widen to Any", ParentOf(&rec))
 	}
 }

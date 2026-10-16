@@ -140,7 +140,7 @@ func oracleStopPresentable(tok core.Value) bool {
 	if _, kind := core.StaticForwardTypeOf(&tok); kind != core.FwdValue {
 		return false
 	}
-	return !tok.Parent.ConformsTo(core.TList) && !tok.Parent.ConformsTo(core.TMap)
+	return !core.ParentOf(&tok).ConformsTo(core.TList) && !core.ParentOf(&tok).ConformsTo(core.TMap)
 }
 
 // oracleSameValue is the agreement test for a live word slot: is the value

@@ -61,9 +61,9 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 		}
 		return mb, nil
 	}
-	if body.Parent.ConformsTo(TFunction) {
+	if ParentOf(&body).ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
-		if fd, ok := body.Data.(*FnDefInfo); ok {
+		if fd, ok := DataOf(&body).(*FnDefInfo); ok {
 			mb.fnDef = fd // read, never written: the payload itself
 		}
 		return mb, nil
@@ -101,7 +101,7 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 	if mb.closure {
 		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
 		// against the value's own signature (sigFn) before the unit runs.
-		if mb.sigFn.Data != nil {
+		if DataOf(&mb.sigFn) != nil {
 			args := []Value{NewKeyVal(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
@@ -139,7 +139,7 @@ func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) 
 	}
 	if mb.closure {
 		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
-		if mb.sigFn.Data != nil {
+		if DataOf(&mb.sigFn) != nil {
 			args := []Value{acc, NewKeyVal(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
@@ -226,10 +226,10 @@ func runQuotationBody(reg *Registry, tokens []Value, pushed []Value) (Value, boo
 // divergence). A NON-concrete value (a Map type literal, a carrier) keeps
 // the word's own error: the interpreter reaches that branch as well.
 func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
-	if IsConcrete(&v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
+	if IsConcrete(&v) && !ParentOf(&v).ConformsTo(TMap) && !ParentOf(&v).ConformsTo(TList) {
 		return nil, reg.BoruError("signature_error", core.NoMatchDetail(word), word)
 	}
-	if !IsConcrete(&v) || !v.Parent.ConformsTo(TMap) {
+	if !IsConcrete(&v) || !ParentOf(&v).ConformsTo(TMap) {
 		return nil, reg.BoruError(word+"_error", word+": expected a concrete map", word)
 	}
 	m, _ := AsMap(v)

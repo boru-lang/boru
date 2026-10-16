@@ -266,7 +266,7 @@ func (e *Engine) forwardReachMax() (int, bool) {
 // never a word, a marker, or a value with no ID.
 func liveBeneath(v Value) bool {
 	return IDOf(&v) != "" && !IsWord(&v) && !isEngineMarker(v) && !IsForward(&v) && !IsParenExpr(&v) &&
-		(v.Carrier || IsDynamic(&v) || IsConcrete(&v))
+		(IsCarrier(&v) || IsDynamic(&v) || IsConcrete(&v))
 }
 
 // unmodifiedWord reports whether w carries no modifier the source wrote —
@@ -280,10 +280,10 @@ func unmodifiedWord(w WordInfo) bool {
 // boolean, an atom — or, beneath the operands (where values are already
 // resolved), a concrete list.
 func layoutConstant(v Value, lists bool) bool {
-	if !IsConcrete(&v) || v.Carrier || IsDynamic(&v) || IsQuoted(&v) || v.Parent == nil {
+	if !IsConcrete(&v) || IsCarrier(&v) || IsDynamic(&v) || IsQuoted(&v) || ParentOf(&v) == nil {
 		return false
 	}
-	p := v.Parent
+	p := ParentOf(&v)
 	return p.ConformsTo(TNumber) || p.ConformsTo(TString) || p.ConformsTo(TBoolean) || p.ConformsTo(TAtom) ||
 		(lists && p.ConformsTo(TList))
 }

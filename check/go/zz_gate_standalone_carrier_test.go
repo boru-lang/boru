@@ -108,7 +108,7 @@ func TestGateStandaloneContagionWidensUnknownSibling(t *testing.T) {
 	committed := core.NewCarrier(core.TList)
 	out := applyGradualContagion(r, "zgswidenq",
 		[]core.Value{core.NewDynamicCarrier(core.TAny), core.NewInteger(1)}, []core.Value{committed}, pos, false)
-	if len(out) != 1 || !core.IsDynamic(&out[0]) || !out[0].Carrier || !out[0].Parent.Equal(core.TAny) {
+	if len(out) != 1 || !core.IsDynamic(&out[0]) || !core.IsCarrier(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TAny) {
 		t.Fatalf("widened result = %#v, want one dynamic(Any) carrier", out)
 	}
 	if core.IDOf(&out[0]) == core.IDOf(&committed) {
@@ -118,7 +118,7 @@ func TestGateStandaloneContagionWidensUnknownSibling(t *testing.T) {
 	single := core.NewCarrier(core.TList)
 	out = applyGradualContagion(r, "zgswidenq",
 		[]core.Value{core.NewDynamicCarrier(core.TAny), core.NewString("s")}, []core.Value{single}, pos, false)
-	if len(out) != 1 || core.IsDynamic(&out[0]) || !out[0].Parent.Equal(core.TList) {
+	if len(out) != 1 || core.IsDynamic(&out[0]) || !core.ParentOf(&out[0]).Equal(core.TList) {
 		t.Errorf("one reachable overload keeps the concrete List strict, got %#v", out)
 	}
 }
@@ -210,12 +210,12 @@ func TestGateStandaloneFreshInstanceNamedTarget(t *testing.T) {
 	named.SetTypeBody(core.NewRecordType(fields))
 
 	out := ReturnsFreshInstance(0)([]core.Value{core.NewTypeLiteral(named), core.NewMap(core.NewOrderedMap())}, r)
-	if len(out) != 1 || !out[0].Carrier || !core.IsDynamic(&out[0]) {
+	if len(out) != 1 || !core.IsCarrier(&out[0]) || !core.IsDynamic(&out[0]) {
 		t.Fatalf("named record target = %#v, want one dynamic instance carrier", out)
 	}
-	rt, ok := out[0].Data.(core.RecordTypeInfo)
+	rt, ok := core.DataOf(&out[0]).(core.RecordTypeInfo)
 	if !ok || rt.Fields == nil {
-		t.Fatalf("instance carrier Data = %T, want the node's declared RecordTypeInfo", out[0].Data)
+		t.Fatalf("instance carrier Data = %T, want the node's declared RecordTypeInfo", core.DataOf(&out[0]))
 	}
 	if _, has := rt.Fields.Get("bits"); !has {
 		t.Error("the declared field schema must ride the instance carrier")
@@ -223,7 +223,7 @@ func TestGateStandaloneFreshInstanceNamedTarget(t *testing.T) {
 
 	bare := r.Types.MintType("ZgsBare", core.TMap)
 	out = ReturnsFreshInstance(0)([]core.Value{core.NewTypeLiteral(bare)}, r)
-	if len(out) != 1 || core.IsDynamic(&out[0]) || out[0].Data != nil || !out[0].Parent.Equal(bare) {
+	if len(out) != 1 || core.IsDynamic(&out[0]) || core.DataOf(&out[0]) != nil || !core.ParentOf(&out[0]).Equal(bare) {
 		t.Errorf("a declaration-less node is made as itself, got %#v", out)
 	}
 }

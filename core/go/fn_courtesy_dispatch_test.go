@@ -37,7 +37,7 @@ func TestFnCourtesyDispatches(t *testing.T) {
 
 	// Bound to an FnDefInfo but the aggregate declares no 0-arg handler sig
 	// (only a forward-arg sig) → false.
-	r.Defs.Push("fwd", Value{Parent: TFunction, Data: &FnDefInfo{Name: "fwd"}})
+	r.Defs.Push("fwd", MakeValue(TFunction, &FnDefInfo{Name: "fwd"}))
 	fwdOnly := &FnDefInfo{Name: "fwd", Signatures: []Signature{{
 		Args: []*Type{TInteger},
 		Impl: Go(func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
@@ -51,7 +51,7 @@ func TestFnCourtesyDispatches(t *testing.T) {
 
 	// Bound to an FnDefInfo that declares a 0-arg non-fallback handler sig
 	// → true (the courtesy-dispatch verdict).
-	r.Defs.Push("z", Value{Parent: TFunction, Data: &FnDefInfo{Name: "z"}})
+	r.Defs.Push("z", MakeValue(TFunction, &FnDefInfo{Name: "z"}))
 	zeroArg := &FnDefInfo{Name: "z", Signatures: []Signature{{
 		Impl: Go(func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
 			return nil, nil

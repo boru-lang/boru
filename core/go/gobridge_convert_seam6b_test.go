@@ -21,13 +21,13 @@ func TestS6b5ToNativeEdges(t *testing.T) {
 	}
 
 	// Map-typed value with an unreadable payload: textual fallback.
-	badMap := Value{Parent: TMap, Data: ListPayload{}}
+	badMap := MakeValue(TMap, ListPayload{})
 	if got := ToNative(badMap); got != "{}" {
 		t.Errorf("ToNative(bad map payload) = %v, want {}", got)
 	}
 
 	// List-typed value with an unreadable payload: textual fallback.
-	badList := Value{Parent: TList, Data: MapPayload{M: NewOrderedMap()}}
+	badList := MakeValue(TList, MapPayload{M: NewOrderedMap()})
 	if got, ok := ToNative(badList).(string); !ok {
 		t.Errorf("ToNative(bad list payload) = %v, want a string fallback", got)
 	}
@@ -81,8 +81,8 @@ func TestS6b5FromNativeEdges(t *testing.T) {
 
 func TestS6b5FloatToValueNonFinite(t *testing.T) {
 	got := floatToValue(math.NaN())
-	if got.Parent == nil || !got.Parent.Equal(TFloat) {
-		t.Errorf("floatToValue(NaN) parent = %v, want Float", got.Parent)
+	if ParentOf(&got) == nil || !ParentOf(&got).Equal(TFloat) {
+		t.Errorf("floatToValue(NaN) parent = %v, want Float", ParentOf(&got))
 	}
 	f, err := AsFloat(got)
 	if err != nil || !math.IsNaN(f) {
@@ -206,7 +206,7 @@ func (s6b5DeclineNodifier) Nodify(Value) (Value, error) { return Value{}, ErrNoN
 func TestS6b5NodifyValueEdges(t *testing.T) {
 	// nil Parent: identity.
 	out, err := NodifyValue(Value{})
-	if err != nil || out.Parent != nil {
+	if err != nil || ParentOf(&out) != nil {
 		t.Errorf("NodifyValue(zero) = %v (%v), want identity", out, err)
 	}
 

@@ -95,28 +95,28 @@ func (w weakRefOf[T]) revive() (Value, bool) {
 
 // IsWeakFlexMap reports whether v is a concrete WeakFlexMap value.
 func IsWeakFlexMap(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TWeakFlexMap) {
+	if ParentOf(&v) == nil || !ParentOf(&v).Equal(TWeakFlexMap) {
 		return false
 	}
-	_, ok := v.Data.(*WeakFlexMapData)
+	_, ok := DataOf(&v).(*WeakFlexMapData)
 	return ok
 }
 
 // IsWeakFlexList reports whether v is a concrete WeakFlexList value.
 func IsWeakFlexList(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TWeakFlexList) {
+	if ParentOf(&v) == nil || !ParentOf(&v).Equal(TWeakFlexList) {
 		return false
 	}
-	_, ok := v.Data.(*WeakFlexListData)
+	_, ok := DataOf(&v).(*WeakFlexListData)
 	return ok
 }
 
 // IsWeakFlexXml reports whether v is a concrete WeakFlexXml value.
 func IsWeakFlexXml(v Value) bool {
-	if v.Parent == nil || !v.Parent.Equal(TWeakFlexXml) {
+	if ParentOf(&v) == nil || !ParentOf(&v).Equal(TWeakFlexXml) {
 		return false
 	}
-	_, ok := v.Data.(*WeakFlexXmlData)
+	_, ok := DataOf(&v).(*WeakFlexXmlData)
 	return ok
 }
 
@@ -144,26 +144,26 @@ func NewWeakFlexXml(tag string) Value {
 
 // AsWeakFlexMap unwraps the weak-map payload; mutators write through it.
 func AsWeakFlexMap(v Value) (*WeakFlexMapData, error) {
-	if wd, ok := v.Data.(*WeakFlexMapData); ok {
+	if wd, ok := DataOf(&v).(*WeakFlexMapData); ok {
 		return wd, nil
 	}
-	return nil, fmt.Errorf("AsWeakFlexMap: not a weak flex map payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsWeakFlexMap: not a weak flex map payload (got %T)", DataOf(&v))
 }
 
 // AsWeakFlexList unwraps the weak-list payload.
 func AsWeakFlexList(v Value) (*WeakFlexListData, error) {
-	if wd, ok := v.Data.(*WeakFlexListData); ok {
+	if wd, ok := DataOf(&v).(*WeakFlexListData); ok {
 		return wd, nil
 	}
-	return nil, fmt.Errorf("AsWeakFlexList: not a weak flex list payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsWeakFlexList: not a weak flex list payload (got %T)", DataOf(&v))
 }
 
 // AsWeakFlexXml unwraps the weak-xml payload.
 func AsWeakFlexXml(v Value) (*WeakFlexXmlData, error) {
-	if wd, ok := v.Data.(*WeakFlexXmlData); ok {
+	if wd, ok := DataOf(&v).(*WeakFlexXmlData); ok {
 		return wd, nil
 	}
-	return nil, fmt.Errorf("AsWeakFlexXml: not a weak flex xml payload (got %T)", v.Data)
+	return nil, fmt.Errorf("AsWeakFlexXml: not a weak flex xml payload (got %T)", DataOf(&v))
 }
 
 // ── classification ───────────────────────────────────────────────────
@@ -192,7 +192,7 @@ func classifyWeak(v Value) (weakSlot, *WeakRefusal) {
 			Help: "omit the key instead of storing none",
 		}
 	}
-	if v.Parent != nil && v.Parent.ConformsTo(TScalar) && IsConcrete(&v) {
+	if ParentOf(&v) != nil && ParentOf(&v).ConformsTo(TScalar) && IsConcrete(&v) {
 		return weakSlot{strong: v}, nil
 	}
 	if ref, ok := weakRefFor(v); ok {
@@ -205,77 +205,77 @@ func classifyWeak(v Value) (weakSlot, *WeakRefusal) {
 // reports false for values outside the weak domain.
 func weakRefFor(v Value) (weakRevive, bool) {
 	tmpl := v
-	tmpl.Data = nil
+	SetData(&tmpl, nil)
 	switch {
 	case IsFlexMap(v):
-		mp := v.Data.(MapPayload)
+		mp := DataOf(&v).(MapPayload)
 		return weakRefOf[OrderedMap]{ptr: weak.Make(mp.M), wrap: func(p *OrderedMap) Value {
 			out := tmpl
-			out.Data = MapPayload{M: p}
+			SetData(&out, MapPayload{M: p})
 			return out
 		}}, true
 	case IsFlexList(v):
-		fd := v.Data.(*FlexListData)
+		fd := DataOf(&v).(*FlexListData)
 		return weakRefOf[FlexListData]{ptr: weak.Make(fd), wrap: func(p *FlexListData) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	case IsFlexXml(v):
-		fd := v.Data.(*FlexXmlData)
+		fd := DataOf(&v).(*FlexXmlData)
 		return weakRefOf[FlexXmlData]{ptr: weak.Make(fd), wrap: func(p *FlexXmlData) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	case IsWeakFlexMap(v):
-		wd := v.Data.(*WeakFlexMapData)
+		wd := DataOf(&v).(*WeakFlexMapData)
 		return weakRefOf[WeakFlexMapData]{ptr: weak.Make(wd), wrap: func(p *WeakFlexMapData) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	case IsWeakFlexList(v):
-		wd := v.Data.(*WeakFlexListData)
+		wd := DataOf(&v).(*WeakFlexListData)
 		return weakRefOf[WeakFlexListData]{ptr: weak.Make(wd), wrap: func(p *WeakFlexListData) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	case IsWeakFlexXml(v):
-		wd := v.Data.(*WeakFlexXmlData)
+		wd := DataOf(&v).(*WeakFlexXmlData)
 		return weakRefOf[WeakFlexXmlData]{ptr: weak.Make(wd), wrap: func(p *WeakFlexXmlData) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	case IsStore(v):
-		si := v.Data.(*StoreInstanceInfo)
+		si := DataOf(&v).(*StoreInstanceInfo)
 		return weakRefOf[StoreInstanceInfo]{ptr: weak.Make(si), wrap: func(p *StoreInstanceInfo) Value {
 			out := tmpl
-			out.Data = p
+			SetData(&out, p)
 			return out
 		}}, true
 	}
-	if oi, ok := v.Data.(ClassInstanceInfo); ok && oi.Fields != nil {
+	if oi, ok := DataOf(&v).(ClassInstanceInfo); ok && oi.Fields != nil {
 		info := oi
 		info.Fields = nil
 		return weakRefOf[OrderedMap]{ptr: weak.Make(oi.Fields), wrap: func(p *OrderedMap) Value {
 			out := tmpl
 			revived := info
 			revived.Fields = p
-			out.Data = revived
+			SetData(&out, revived)
 			return out
 		}}, true
 	}
-	if ri, ok := v.Data.(ResourceInstanceInfo); ok && ri.Fields != nil {
+	if ri, ok := DataOf(&v).(ResourceInstanceInfo); ok && ri.Fields != nil {
 		info := ri
 		info.Fields = nil
 		return weakRefOf[OrderedMap]{ptr: weak.Make(ri.Fields), wrap: func(p *OrderedMap) Value {
 			out := tmpl
 			revived := info
 			revived.Fields = p
-			out.Data = revived
+			SetData(&out, revived)
 			return out
 		}}, true
 	}
@@ -291,7 +291,7 @@ func refuseWeak(v Value) *WeakRefusal {
 	case IsBareTypeNode(&v):
 		return &WeakRefusal{Kind: "a type literal", Note: weakDomainNote,
 			Help: "type literals are values — " + flexHelp}
-	case v.Parent != nil && v.Parent.ConformsTo(TMap) && IsConcrete(&v):
+	case ParentOf(&v) != nil && ParentOf(&v).ConformsTo(TMap) && IsConcrete(&v):
 		if IsRecordType(v) || IsOptionsType(v) || IsTypedMap(&v) {
 			return &WeakRefusal{Kind: "a structural type body", Note: weakDomainNote,
 				Help: flexHelp}
@@ -304,30 +304,30 @@ func refuseWeak(v Value) *WeakRefusal {
 			Help: "store a mutable handle: flex the map first (set k/q (flex {…}) w), " +
 				"or keep it in an ordinary FlexMap if it should live until removed",
 		}
-	case v.Parent != nil && v.Parent.ConformsTo(TList) && IsConcrete(&v):
+	case ParentOf(&v) != nil && ParentOf(&v).ConformsTo(TList) && IsConcrete(&v):
 		return &WeakRefusal{
 			Kind: "an immutable List",
 			Note: "an immutable List is a value — it has no independent identity " +
 				"the collector could track",
 			Help: "store a mutable handle: flex the list first (append (flex […]) w)",
 		}
-	case v.Parent != nil && v.Parent.ConformsTo(TXml) && IsConcrete(&v):
+	case ParentOf(&v) != nil && ParentOf(&v).ConformsTo(TXml) && IsConcrete(&v):
 		return &WeakRefusal{
 			Kind: "an immutable Xml element",
 			Note: "an immutable Xml element is a value — it has no independent " +
 				"identity the collector could track",
 			Help: "store a mutable handle: flex the element first",
 		}
-	case func() bool { _, ok := v.Data.(*FnDefInfo); return ok }():
+	case func() bool { _, ok := DataOf(&v).(*FnDefInfo); return ok }():
 		return &WeakRefusal{Kind: "a fn value", Note: weakDomainNote,
 			Help: "wrap the fn in a flex container to cache it: (flex [f/v])"}
-	case func() bool { _, ok := v.Data.(ErrorInfo); return ok }():
+	case func() bool { _, ok := DataOf(&v).(ErrorInfo); return ok }():
 		return &WeakRefusal{Kind: "an Error value", Note: weakDomainNote,
 			Help: flexHelp}
 	}
 	leaf := "value"
-	if v.Parent != nil {
-		leaf = v.Parent.Leaf() + " value"
+	if ParentOf(&v) != nil {
+		leaf = ParentOf(&v).Leaf() + " value"
 	}
 	return &WeakRefusal{Kind: "a " + leaf, Note: weakDomainNote, Help: flexHelp}
 }
@@ -529,7 +529,7 @@ func (d *WeakFlexXmlData) AppendChild(v Value) *WeakRefusal {
 // classifying every entry. Used by `make WeakFlexMap m`.
 func PopulateWeakFlexMap(src ReadMap) (Value, *WeakRefusal) {
 	out := NewWeakFlexMap()
-	wd := out.Data.(*WeakFlexMapData)
+	wd := DataOf(&out).(*WeakFlexMapData)
 	for _, k := range src.Keys() {
 		v, _ := src.Get(k)
 		if refusal := wd.SetValue(k, v); refusal != nil {
@@ -543,7 +543,7 @@ func PopulateWeakFlexMap(src ReadMap) (Value, *WeakRefusal) {
 // Used by `make WeakFlexList l`.
 func PopulateWeakFlexList(src ReadList) (Value, *WeakRefusal) {
 	out := NewWeakFlexList()
-	wd := out.Data.(*WeakFlexListData)
+	wd := DataOf(&out).(*WeakFlexListData)
 	for i := 0; i < src.Len(); i++ {
 		if refusal := wd.Append(src.Get(i)); refusal != nil {
 			return Value{}, refusal
@@ -557,7 +557,7 @@ func PopulateWeakFlexList(src ReadList) (Value, *WeakRefusal) {
 // `make WeakFlexXml x`.
 func PopulateWeakFlexXml(tag string, attr *OrderedMap, cren []Value) (Value, *WeakRefusal) {
 	out := NewWeakFlexXml(tag)
-	wd := out.Data.(*WeakFlexXmlData)
+	wd := DataOf(&out).(*WeakFlexXmlData)
 	if attr != nil {
 		for _, k := range attr.Keys() {
 			av, _ := attr.Get(k)

@@ -92,7 +92,7 @@ func TestS6b0InstallTypeForeignRefinePrefab(t *testing.T) {
 func TestS6b0AsBoundedTypeUndenotingChild(t *testing.T) {
 	// A child that neither is a bare literal nor carries a Parent:
 	// the bound denotes no lattice node.
-	v := NewValueRaw(TType, ChildTypeInfo{Child: Value{Parent: nil, Data: IntPayload{N: 1}}})
+	v := NewValueRaw(TType, ChildTypeInfo{Child: MakeValue(nil, IntPayload{N: 1})})
 	if _, err := AsBoundedType(v); err == nil ||
 		!strings.Contains(err.Error(), "does not denote a lattice node") {
 		t.Fatalf("expected no-node error, got %v", err)
@@ -149,7 +149,7 @@ func TestS6b0UnionTypeEmptyIsNever(t *testing.T) {
 }
 
 func TestS6b0IsNeverShapeSentinel(t *testing.T) {
-	sentinel := Value{Parent: TNever, Data: NonePayload{}}
+	sentinel := MakeValue(TNever, NonePayload{})
 	if !IsNeverShape(sentinel) {
 		t.Error("a Parent=Never sentinel is a Never shape")
 	}

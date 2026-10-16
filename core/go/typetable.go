@@ -59,7 +59,7 @@ type Type = Value
 // types installed via the `type` word and for transient pool entries
 // minted by NewType for unknown paths. Safe to call on a nil receiver.
 func (t *Type) IsNative() bool {
-	return t != nil && t.Origin == OriginBuiltin
+	return t != nil && OriginOf(t) == OriginBuiltin
 }
 
 // Owner sentinels for typeMeta.Owner (design/OPEN-WORDS.1.md §4).
@@ -100,10 +100,10 @@ func (t *Type) Path() string {
 	if t == nil {
 		return ""
 	}
-	if t.Parent == nil || t.Parent.FixedID() == anyFixedID {
+	if ParentOf(t) == nil || ParentOf(t).FixedID() == anyFixedID {
 		return t.Name()
 	}
-	return t.Parent.Path() + "/" + t.Name()
+	return ParentOf(t).Path() + "/" + t.Name()
 }
 
 // Root returns the top of the ancestry chain.
@@ -111,8 +111,8 @@ func (t *Type) Root() *Type {
 	if t == nil {
 		return nil
 	}
-	for t.Parent != nil {
-		t = t.Parent
+	for ParentOf(t) != nil {
+		t = ParentOf(t)
 	}
 	return t
 }
@@ -130,7 +130,7 @@ func (t *Type) IsAncestor(ancestor *Type) bool {
 	if t.In() > 0 && ancestor.In() > 0 {
 		return ancestor.In() <= t.In() && t.In() <= ancestor.Out()
 	}
-	for x := t; x != nil; x = x.Parent {
+	for x := t; x != nil; x = ParentOf(x) {
 		if x.Equal(ancestor) {
 			return true
 		}
@@ -164,11 +164,11 @@ func (tt *TypeTable) labelIntervals() {
 	children := make(map[string][]*Type, len(tt.byID))
 	var roots []*Type
 	for _, t := range tt.byID {
-		if t.Parent == nil {
+		if ParentOf(t) == nil {
 			roots = append(roots, t)
 			continue
 		}
-		children[IDOf(t.Parent)] = append(children[IDOf(t.Parent)], t)
+		children[IDOf(ParentOf(t))] = append(children[IDOf(ParentOf(t))], t)
 	}
 	sort.Slice(roots, func(i, j int) bool { return IDOf(roots[i]) < IDOf(roots[j]) })
 
@@ -413,7 +413,7 @@ func (tt *TypeTable) MintRefinePrefab(parent *Type) *Type {
 // lattice node is user-minted with no Name — the unique shape
 // `MintRefinePrefab` produces.
 func IsRefinePrefab(v Value) bool {
-	return IsBareTypeNode(&v) && v.Origin == OriginUserDef && v.Name() == ""
+	return IsBareTypeNode(&v) && OriginOf(&v) == OriginUserDef && v.Name() == ""
 }
 
 // externalBandFor returns the Rank band for user/external types
@@ -431,8 +431,8 @@ func externalBandFor(parent *Type) int {
 	// degenerate root). Any itself has FixedID=anyFixedID; stop one
 	// step below.
 	branch := parent
-	for branch.Parent != nil && branch.Parent.FixedID() != anyFixedID {
-		branch = branch.Parent
+	for ParentOf(branch) != nil && ParentOf(branch).FixedID() != anyFixedID {
+		branch = ParentOf(branch)
 	}
 	switch branch.Name() {
 	case "Scalar":

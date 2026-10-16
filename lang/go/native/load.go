@@ -68,7 +68,7 @@ func loadHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry)
 	rows := _lst.Elems()
 
 	for _, row := range rows {
-		if !row.Parent.ConformsTo(TMap) {
+		if !ParentOf(&row).ConformsTo(TMap) {
 			continue
 		}
 		rec, _ := AsMap(row)

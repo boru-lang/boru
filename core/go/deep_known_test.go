@@ -64,7 +64,7 @@ func TestDeepKnownDoesNotLowerUnknownOperands(t *testing.T) {
 	}
 
 	// A nil-backed map payload has no interior to walk.
-	if DeepKnown(Value{Parent: TMap, Data: MapPayload{}}) {
+	if DeepKnown(MakeValue(TMap, MapPayload{})) {
 		t.Fatal("a nil-backed map payload must not be DeepKnown")
 	}
 }

@@ -266,7 +266,7 @@ func TestMatchSignatureParentDoesNotMatchChild(t *testing.T) {
 	}
 
 	v := NewInteger(42)
-	v.Parent = TNumber // override to plain number
+	SetParent(&v, TNumber) // override to plain number
 	stack := []Value{v}
 	m := MatchSignature(sigs, stack, WordInfo{ArgCount: -1})
 	if m != nil {

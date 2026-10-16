@@ -17,8 +17,8 @@ import (
 
 func TestNewDepScalarFloat(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewFloat(1.5))
-	if !d.Parent.Equal(TFloat) {
-		t.Errorf("Parent = %s, want Float", d.Parent.String())
+	if !ParentOf(&d).Equal(TFloat) {
+		t.Errorf("Parent = %s, want Float", ParentOf(&d).String())
 	}
 	if !d.IsDepScalar() {
 		t.Errorf("IsDepScalar = false, want true (DepScalarInfo payload missing)")
@@ -41,8 +41,8 @@ func TestNewDepScalarFloat(t *testing.T) {
 
 func TestNewDepScalarString(t *testing.T) {
 	d := NewDepScalar(DepLT, NewString("z"))
-	if !d.Parent.Equal(TString) {
-		t.Errorf("Parent = %s, want String", d.Parent.String())
+	if !ParentOf(&d).Equal(TString) {
+		t.Errorf("Parent = %s, want String", ParentOf(&d).String())
 	}
 	if !d.IsDepScalar() {
 		t.Errorf("IsDepScalar = false, want true")
@@ -62,8 +62,8 @@ func TestNewDepScalarString(t *testing.T) {
 
 func TestNewDepScalarBoolean(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewBoolean(true))
-	if !d.Parent.Equal(TBoolean) {
-		t.Errorf("Parent = %s, want Boolean", d.Parent.String())
+	if !ParentOf(&d).Equal(TBoolean) {
+		t.Errorf("Parent = %s, want Boolean", ParentOf(&d).String())
 	}
 	if !d.IsDepScalar() {
 		t.Errorf("IsDepScalar = false, want true")
@@ -72,8 +72,8 @@ func TestNewDepScalarBoolean(t *testing.T) {
 
 func TestNewDepScalarAtom(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewAtom("hello"))
-	if !d.Parent.Equal(TAtom) {
-		t.Errorf("Parent = %s, want Atom", d.Parent.String())
+	if !ParentOf(&d).Equal(TAtom) {
+		t.Errorf("Parent = %s, want Atom", ParentOf(&d).String())
 	}
 	if !d.IsDepScalar() {
 		t.Errorf("IsDepScalar = false, want true")
@@ -85,7 +85,7 @@ func TestNewDepScalarAtom(t *testing.T) {
 func TestDepFloatMatchesFloatAncestors(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewFloat(0.0))
 	for _, anc := range []*Type{TFloat, TNumber, TScalar, TAny} {
-		if !d.Parent.ConformsTo(anc) {
+		if !ParentOf(&d).ConformsTo(anc) {
 			t.Errorf("DepFloat does not match ancestor %s", anc)
 		}
 	}
@@ -94,13 +94,13 @@ func TestDepFloatMatchesFloatAncestors(t *testing.T) {
 func TestDepStringMatchesStringAncestors(t *testing.T) {
 	d := NewDepScalar(DepLT, NewString("m"))
 	for _, anc := range []*Type{TString, TScalar, TAny} {
-		if !d.Parent.ConformsTo(anc) {
+		if !ParentOf(&d).ConformsTo(anc) {
 			t.Errorf("DepString does not match ancestor %s", anc)
 		}
 	}
 	// DepString must NOT match Number or Boolean.
 	for _, foreign := range []*Type{TNumber, TInteger, TBoolean} {
-		if d.Parent.ConformsTo(foreign) {
+		if ParentOf(&d).ConformsTo(foreign) {
 			t.Errorf("DepString unexpectedly matches %s", foreign)
 		}
 	}
@@ -108,10 +108,10 @@ func TestDepStringMatchesStringAncestors(t *testing.T) {
 
 func TestDepAtomMatchesAtom(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewAtom("foo"))
-	if !d.Parent.ConformsTo(TAtom) {
+	if !ParentOf(&d).ConformsTo(TAtom) {
 		t.Errorf("DepAtom does not match TAtom")
 	}
-	if !d.Parent.ConformsTo(TScalar) {
+	if !ParentOf(&d).ConformsTo(TScalar) {
 		t.Errorf("DepAtom does not match TScalar")
 	}
 }
@@ -120,7 +120,7 @@ func TestDepAtomMatchesAtom(t *testing.T) {
 func TestDepIntegerStillMatchesInteger(t *testing.T) {
 	d := NewDepScalar(DepGTE, NewInteger(10))
 	for _, anc := range []*Type{TInteger, TNumber, TScalar, TAny} {
-		if !d.Parent.ConformsTo(anc) {
+		if !ParentOf(&d).ConformsTo(anc) {
 			t.Errorf("DepInteger no longer matches ancestor %s", anc)
 		}
 	}
@@ -218,7 +218,7 @@ func TestRunFloatGTEReturnsDepFloat(t *testing.T) {
 		NewWord("gte"),
 		NewFloat(1.5),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TFloat) || !result[0].IsDepScalar() {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TFloat) || !result[0].IsDepScalar() {
 		t.Fatalf("Float gte 1.5: got %v, want DepScalar with Parent=Float", result)
 	}
 }
@@ -234,7 +234,7 @@ func TestRunStringLTReturnsDepString(t *testing.T) {
 		NewWord("lt"),
 		NewString("z"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TString) || !result[0].IsDepScalar() {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TString) || !result[0].IsDepScalar() {
 		t.Fatalf("String lt \"z\": got %v, want DepScalar with Parent=String", result)
 	}
 }
@@ -252,7 +252,7 @@ func TestRunAtomGTEReturnsDepAtom(t *testing.T) {
 		NewWord("gte"),
 		NewAtom("m"),
 	})
-	if len(result) != 1 || !result[0].Parent.Equal(TAtom) || !result[0].IsDepScalar() {
+	if len(result) != 1 || !ParentOf(&result[0]).Equal(TAtom) || !result[0].IsDepScalar() {
 		t.Fatalf("Atom gte 'm': got %v, want DepScalar with Parent=Atom", result)
 	}
 }

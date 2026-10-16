@@ -85,9 +85,9 @@ func CanonValue(v Value) string {
 	// bare atoms) which doesn't match Canon's source-shape conventions
 	// (e.g. `name/q` atoms, quoted strings). CanonValue's own switch
 	// below preserves those.
-	if v.Data != nil && v.Parent != nil {
-		for t := v.Parent; t != nil; t = t.Parent {
-			if t.Origin == OriginBuiltin {
+	if DataOf(&v) != nil && ParentOf(&v) != nil {
+		for t := ParentOf(&v); t != nil; t = ParentOf(t) {
+			if OriginOf(t) == OriginBuiltin {
 				continue
 			}
 			if t.Behavior() == nil || t.Behavior() == DefaultBehavior {
@@ -133,7 +133,7 @@ func CanonValue(v Value) string {
 		// `1`, silently dropping the collection barrier. Value.String has
 		// always rendered it `end` (value.go); only canon disagreed.
 		return "end"
-	case v.Data == nil:
+	case DataOf(&v) == nil:
 		if t := TypeNodeOf(v); t != nil {
 			if name := TypeNameByID(IDOf(t)); name != "" {
 				return name
@@ -143,28 +143,28 @@ func CanonValue(v Value) string {
 		return "none"
 	case v.IsDepScalar():
 		return v.String()
-	case v.Parent.ConformsTo(TBigInteger):
+	case ParentOf(&v).ConformsTo(TBigInteger):
 		n, _ := AsBigInteger(v)
 		return FormatBigInteger(n)
-	case v.Parent.ConformsTo(TBigDecimal):
+	case ParentOf(&v).ConformsTo(TBigDecimal):
 		d, _ := AsBigDecimal(v)
 		return FormatBigDecimal(d)
-	case v.Parent.ConformsTo(TInteger):
+	case ParentOf(&v).ConformsTo(TInteger):
 		n, _ := AsInteger(v)
 		return strconv.FormatInt(n, 10)
-	case v.Parent.ConformsTo(TFloat):
+	case ParentOf(&v).ConformsTo(TFloat):
 		f, _ := AsFloat(v)
 		return FormatFloat(f)
-	case v.Parent.ConformsTo(TString):
+	case ParentOf(&v).ConformsTo(TString):
 		s, _ := AsString(v)
 		return canonString(s)
-	case v.Parent.ConformsTo(TBoolean):
+	case ParentOf(&v).ConformsTo(TBoolean):
 		b, _ := AsBoolean(v)
 		if b {
 			return "true"
 		}
 		return "false"
-	case v.Parent.ConformsTo(TAtom):
+	case ParentOf(&v).ConformsTo(TAtom):
 		s, _ := AsAtom(v)
 		return s + "/q"
 	case IsBoundedType(v):
@@ -208,7 +208,7 @@ func CanonValue(v Value) string {
 			return v.String()
 		}
 		return "(flex {" + joinCanonEntries(m, canonChild) + "})"
-	case v.Parent.ConformsTo(TList) && v.Data != nil:
+	case ParentOf(&v).ConformsTo(TList) && DataOf(&v) != nil:
 		lst, _ := AsList(v)
 		parts := make([]string, 0, lst.Len()+1)
 		// A TYPED list keeps its element-type tag: `[:Integer 1 2]` is the
@@ -217,7 +217,7 @@ func CanonValue(v Value) string {
 		// it is there. AsList returns the ELEMENTS alone, so canon used to
 		// render `[1 2]` and `[:Integer]` collapsed to `[]`: a canonical
 		// render that does not parse back as the same value.
-		if ct, ok := v.Data.(ChildTypeInfo); ok {
+		if ct, ok := DataOf(&v).(ChildTypeInfo); ok {
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 		}
 		parts = append(parts, canonSeqParts(lst.Elems(), canonChild)...)
@@ -226,14 +226,14 @@ func CanonValue(v Value) string {
 			return "(quote " + body + ")"
 		}
 		return body
-	case v.Parent.Equal(TMap) && v.Data != nil:
+	case ParentOf(&v).Equal(TMap) && DataOf(&v) != nil:
 		// A typed MAP keeps its value-type tag, for the same reason a typed
 		// list keeps its element tag. Canon was inconsistent in both
 		// directions here: a bare `{:String}` fell past the AsMap guard to
 		// Value.String and leaked the debug spelling `{:word(String)}`,
 		// while `{:Integer a:1}` reached joinEntries and lost the tag
 		// entirely as `{a:1}`.
-		if ct, ok := v.Data.(ChildTypeInfo); ok {
+		if ct, ok := DataOf(&v).(ChildTypeInfo); ok {
 			parts := make([]string, 0, len(ct.Entries)+1)
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 			for _, e := range ct.Entries {
@@ -295,9 +295,9 @@ func CanonValue(v Value) string {
 		parts := make([]string, len(di.Alternatives))
 		for i, alt := range di.Alternatives {
 			switch {
-			case alt.Parent != nil && alt.Parent.Equal(TAtom) && alt.Data != nil:
+			case ParentOf(&alt) != nil && ParentOf(&alt).Equal(TAtom) && DataOf(&alt) != nil:
 				parts[i], _ = AsAtom(alt)
-			case alt.Data == nil:
+			case DataOf(&alt) == nil:
 				parts[i] = TypeNodeOf(alt).Leaf()
 			default:
 				parts[i] = CanonValue(alt)
@@ -319,7 +319,7 @@ func CanonValue(v Value) string {
 		// closure environment is not part of its identity for ordering,
 		// and dumping it would spill the module exports map (the leak
 		// formatFnDef fixed for String()). See canonFnDef.
-		fd, _ := FnDefOf(v.Data)
+		fd, _ := FnDefOf(DataOf(&v))
 		return canonFnDef(*fd)
 	default:
 		return v.String()

@@ -53,7 +53,7 @@ func TestShapeOfAndHolds(t *testing.T) {
 		"too wide":       shapeTestMap("a", NewInteger(1), "b", NewInteger(2), "c", NewInteger(3)),
 		"fn field":       shapeTestMap("a", fn),
 		"carrier field":  shapeTestMap("a", NewCarrier(TInteger)),
-		"ideal field":    shapeTestMap("a", Value{Parent: TReach, Data: NewInteger(1).Data}),
+		"ideal field":    shapeTestMap("a", MakeValue(TReach, DataOf(addrOf(NewInteger(1))))),
 		"dynamic field":  shapeTestMap("a", NewDynamicCarrier(TInteger)),
 		"bare field":     shapeTestMap("a", NewTypeLiteral(TInteger)),
 		"ascribed field": shapeTestMap("a", ascField),

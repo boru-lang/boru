@@ -12,14 +12,14 @@ import (
 // compiled unit — the shape a value has after a compile-time bake, a
 // module-load stamp, or the lazy stamp — with the given params and returns.
 func fnValueWithRef(ref *compiler.CompiledFnRef, params []core.FnParam, returns []*core.Type) core.Value {
-	return core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
+	return core.MakeValue(core.TFunction, &core.FnDefInfo{
 		Name: "fv",
 		Signatures: []core.Signature{{
 			Params:  params,
 			Returns: returns,
 			Impl:    core.NewBoruImplCompiled([]core.Value{core.NewInteger(7)}, ref),
 		}},
-	}}
+	})
 }
 
 // The seam declines — hands the value to the stepping path — for a body that
@@ -29,7 +29,7 @@ func fnValueWithRef(ref *compiler.CompiledFnRef, params []core.FnParam, returns 
 func TestFnValueSeamDeclinesNonCalleeShapes(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	ref := &compiler.CompiledFnRef{Prog: oneConstProg(42), Unit: 0}
-	tokens := core.Value{Parent: core.TList, Data: core.NewList([]core.Value{core.NewInteger(1)}).Data}
+	tokens := core.MakeValue(core.TList, core.DataOf(addrOf(core.NewList([]core.Value{core.NewInteger(1)}))))
 	if _, _, ran := vc.invokeFnValue(r, tokens, nil); ran {
 		t.Error("a token-list body is not the seam's")
 	}
@@ -99,7 +99,7 @@ func TestFnValueSeamDeclinesUnenterableRefs(t *testing.T) {
 // is not armed on the registry (the lazy stamp's first gate).
 func TestFnValueSeamDeclinesUnstampedWhenStampingDisarmed(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
-	plain := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{Name: "plain", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(7)})}}}}
+	plain := core.MakeValue(core.TFunction, &core.FnDefInfo{Name: "plain", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(7)})}}})
 	if _, _, ran := vc.invokeFnValue(r, plain, nil); ran {
 		t.Error("an unstamped value with stamping disarmed declines")
 	}
@@ -112,11 +112,11 @@ func TestFnValueSeamForeignHomeTakesInvokeCallback(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	home := stampReg(t)
 	ref := &compiler.CompiledFnRef{Prog: oneConstProg(42), Unit: 0}
-	fv := core.Value{Parent: core.TFunction, Data: &core.FnDefInfo{
+	fv := core.MakeValue(core.TFunction, &core.FnDefInfo{
 		Name:       "abroad",
 		Registry:   home,
 		Signatures: []core.Signature{{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(7)}, ref)}},
-	}}
+	})
 	res, err, ran := vc.invokeFnValue(r, fv, nil)
 	if !ran || err != nil || len(res) != 1 {
 		t.Fatalf("foreign arm: ran=%v err=%v res=%v", ran, err, res)
