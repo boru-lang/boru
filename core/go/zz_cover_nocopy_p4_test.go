@@ -20,6 +20,10 @@ func TestP4ZeroHolderHasNoContent(t *testing.T) {
 	if tmetaOf(&v) != nil || elemOf(&v) != nil || modnsOf(&v) != nil {
 		t.Fatal("the zero holder has no type metadata, element constraint or namespace facet")
 	}
+	// A mint from the zero holder has the parts it is given and no others.
+	if m := MintRetagged(&v, TInteger); ParentOf(&m) != TInteger || DataOf(&m) != nil || IsCarrier(&m) || tmetaOf(&m) != nil {
+		t.Fatalf("a mint from the zero holder: %v", m)
+	}
 }
 
 // TestP4SettersWriteOnlyTheirHolder: a copy of a holder shares its content;

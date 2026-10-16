@@ -72,6 +72,27 @@ Last updated: **2026-10-13** (no-copy phase 3 below; the no-copy decisions are 2
 > on the branch (the race, borudebug and wasm steps at 21/n), except
 > `vuln`, which this container cannot run (no `govulncheck`; advisory).
 
+> **2026-10-16:** phase 4 has landed on the same branch, on the
+> maintainer's go (§6 "Phase 4 as built" and §9 of
+> [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md)). A `Value` is a 24-byte holder
+> — a pointer to the value's shared, immutable content, the occurrence
+> record pointer and the flags — and every module reads the content
+> through accessors (`DataOf`, `ParentOf`, `IsCarrier`, `OriginOf`,
+> `IsInternal`); a setter gives its holder content of its own. D10 is
+> retired (E17), class D of the exceptions list is empty, and
+> `make vet-copies` counts zero value copies in every module. With
+> interned scalars and markers, one-cell control markers, a per-word memo
+> and the builtin interval labels mirrored into the content, the anchors
+> run at 0.903 of phase 3's time (interpreter 0.972, compiled 0.816; 0.555
+> of phase 0's, chained) and bytes/op at 0.659. A side investigation,
+> Julia's world age read against boru's compiled-code validity, is
+> [WORLD-AGE.0.md](WORLD-AGE.0.md): it recommends importing Julia's
+> invalidation mechanics, not its semantics, and records two
+> interpreter/compiled divergences present on main (D1, D2), not fixed
+> here. At 3/n's head `make cover-gate-core` is 100% (19,011 statements)
+> and every `make ci-local` step passed except `vuln` (no `govulncheck`
+> in this container; advisory).
+
 > ## Where things stand on 2026-10-05 — the baseline
 >
 > Read this block first. Everything after the two pointers above is the

@@ -143,6 +143,14 @@ is independent of the policy and still open.
 > recorder keyed on the holder, a token run copied once; anchors 0.809 of
 > phase 2, 0.615 of phase 0). Decision 3 — phase 4 — now has its numbers
 > in §9.
+>
+> **2026-10-16:** decision 3 is answered — the maintainer chose phase 4 —
+> and it has landed: a `Value` is a 24-byte holder over shared, immutable
+> content (§6 "Phase 4 as built", §9). With interning, one-cell markers, a
+> per-word memo and the builtin interval labels mirrored into the content,
+> the anchors run at 0.903 of phase 3's time (interpreter 0.972, compiled
+> 0.816; 0.555 of phase 0's, chained) and bytes/op at 0.659. Question 3
+> below is settled: the pointer representation is the end state.
 
 From the no-copy review (its §7 has the detail and a recommendation for
 each):
