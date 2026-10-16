@@ -1,22 +1,13 @@
-// Package test implements `boru test` — discover *_test.boru suites, compile
-// and run each one, print boru:test's per-case report, and exit non-zero if
-// any case failed, any file errored, or any file did not compile. A suite
-// that does not compile is an error like any other: there is no second engine
-// to run it on.
+// Package test implements `boru test` — discover *_test.boru suites, check
+// and run each one on the interpreter, print boru:test's per-case report,
+// and exit non-zero if any case failed or any file errored. A suite that
+// does not parse is an error like any other.
 //
 // With --coverage the runner arms the engine's line-coverage hook BEFORE each
 // file runs, so a `*_test.boru` that imports a user module (`import "./mod.boru"`)
 // records that module's executed source rows (feature C tags the module because
 // the hook is armed at import time). After the run it reports each imported
 // module's line coverage.
-//
-// Coverage is measured on the compiled run, because that is the only run.
-// The bytecode VM folds some source positions (e.g. a trailing bare-word
-// return), so a folded row reads as uncovered where the interpreter would
-// have recorded it — the report UNDERSTATES coverage rather than overstating
-// it, which is the safe direction for a number you gate on. Each folded
-// position is a position the VM should be carrying, and closing them is
-// compiler work, not a reason to measure somewhere else.
 package test
 
 import (
@@ -53,7 +44,7 @@ type cmd struct{}
 func New() command.Command { return &cmd{} }
 
 func (*cmd) Name() string     { return "test" }
-func (*cmd) Synopsis() string { return "discover and run *_test.boru suites (compiled by default)" }
+func (*cmd) Synopsis() string { return "discover and run *_test.boru suites" }
 
 func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -234,11 +225,9 @@ func runFile(stdout, stderr io.Writer, path string, o lang.Options, accum *covAc
 	return passed, failed, false
 }
 
-// runSource executes src on the instance. There is one engine: the suite
-// compiles and its bytecode runs, or it does not compile and that is an
-// error. A recorded test FAILURE does not error the run (the framework
-// records it and continues); only a genuine runtime, parse or compile error
-// does.
+// runSource executes src on the instance — the interpreter, the one engine.
+// A recorded test FAILURE does not error the run (the framework records it
+// and continues); only a genuine runtime or parse error does.
 func runSource(a *lang.Boru, src string) error {
 	_, err := a.Run(src)
 	return err

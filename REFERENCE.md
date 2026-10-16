@@ -3112,7 +3112,7 @@ One-shot commands (run and exit):
 |------------|---------|-----------|
 | `run` / `boru [script]` | Execute a script, `-e` expression, or (no args) the REPL | `-e`, `-check`, `-options`, `--perms`, `--allow`/`--deny` |
 | `do <words…>` | Evaluate the arguments as one boru expression and print the result | `--perms`, `--allow`/`--deny` |
-| `check [script]` | Static type-check; print diagnostics | `--json`, `--soft`, `--emit`, `-e` |
+| `check [script]` | Static type-check; print diagnostics | `--json`, `--soft`, `-e` |
 | `fmt [file…]` | Format `.boru` files in place (whole tree if no args) | — |
 | `describe [name]` | Document a word, category, or module (the *language*) | — |
 | `help [subcommand]` | CLI usage, or one subcommand's summary | — |

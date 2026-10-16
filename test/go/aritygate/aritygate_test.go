@@ -123,15 +123,29 @@ var pinnedAritySites = map[string]int{
 	// signature's barrier to its argument count (`b > s.TotalArgs()`) —
 	// the forward/stack split the argument rule makes, read to know how
 	// many written operands a forward phase may take.
-	"core/go/engine.go":      26,
+	// 26 -> 23 (2026-10-16, the compiler lane's removal,
+	// design/COMPILER-LANE-REMOVAL.0.md): the three reads whose only
+	// callers the lane took with it — trailingFnCollectsPastClose's
+	// 0-position skip and parenFeedsPendingForward's still-collecting test
+	// (the NUR184 pair) and forwardReach's barrier clamp (the NUR329
+	// site) — are deleted with their functions. No site changed meaning;
+	// the ratchet tightens.
+	"core/go/engine.go":      23,
 	"core/go/region_diag.go": 1,
 	// NUR357's forward fits (2026-09-29), matching the argument rule: a
 	// matched signature's collected args (len(match.Args)) are laid over the
 	// resolved stack beneath the word, and a candidate stopped at slot k
 	// draws its remaining TotalArgs()-k args from that stack — the same
 	// forward-then-stack binding every call makes, not a decision by arity.
-	"core/go/forward_fit.go":  2,
-	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR305): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
+	"core/go/forward_fit.go": 2,
+	// 5 -> 8 (NUR305): laterCandidateCollectsPast compared FORWARD-WINDOW
+	// counts (a later candidate's limit and scan against the selected fill)
+	// — the argument rule over two candidates, not behaviour by arity.
+	// 8 -> 5 (2026-10-16, the compiler lane's removal): that comparison
+	// served the recording pass's gradual-stack poly plan and is deleted
+	// with it; the five that remain are PlanMatch's own per-candidate
+	// reads.
+	"core/go/collect_plan.go": 5,
 	// 12 -> 13 on 2026-09-27 (the poly inline cache): TagDeterminedSigs
 	// considers only the n-argument overloads (`s.TotalArgs() != n`) — the
 	// ones MatchSignature's own ArgCount filter considers for an n-operand
@@ -205,7 +219,10 @@ var pinnedAritySites = map[string]int{
 	// about what a function of a given arity may do; the run-time poly
 	// re-match over that window then matches by type exactly as
 	// CALL_NATIVE_POLY does.
-	"check/go/check_recovery.go": 2,
+	// 2 -> 1 (2026-10-16, the compiler lane's removal):
+	// widestSatisfiableOverload was reached only from the armed-recorder
+	// branch of that recovery and is deleted with it.
+	"check/go/check_recovery.go": 1,
 
 	// ── NUR100 §1, CLOSED 2026-09-26. 3 -> 2: RunPredicate no longer decides
 	//    whether a function may act as a predicate by counting its

@@ -58,7 +58,7 @@ capture() {
 }
 
 capture check   lang/go   'BenchmarkPerfCheck'
-capture exec    lang/go   'BenchmarkInterpBaseline'
+capture interp  lang/go   'BenchmarkInterpBaseline'
 capture interp  core/go   'BenchmarkKernel|BenchmarkTape|BenchmarkFlatProgramRecording'
 capture parse   parser/go 'BenchmarkParse'
 

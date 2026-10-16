@@ -1,63 +1,43 @@
-# `ci/` — staged CI workflow update
+# `ci/` — staged workflow update
 
-This folder holds a CI workflow change that must be applied by hand.
-
-## Why it lives here instead of in `.github/workflows/`
-
-The change was authored by an integration whose GitHub OAuth token lacks
-the `workflow` scope, so a push touching `.github/workflows/*` is rejected
-by GitHub. Rather than drop the change, it is staged here for a maintainer
-(whose credentials carry the `workflow` scope) to move into place.
+This folder holds a change to `.github/workflows/` that must be applied by
+hand. It was authored by an integration whose GitHub credentials lack the
+`workflow` scope, so a push touching `.github/workflows/*` is rejected by
+GitHub. Rather than drop the change, it is staged here for a maintainer
+whose credentials carry the scope.
 
 ## What the change is
 
-[`ci/ci.yml`](./ci.yml) is the **full** intended contents of
-`.github/workflows/ci.yml`. The differences from the version currently
-on `main` are two new steps, added immediately after **Test (all
-modules)**:
+The compiler lane's removal (design/COMPILER-LANE-REMOVAL.0.md) deleted
+the `borudebug` build tag and the differential gates the `borudebug` CI job
+ran. The job still exists in `.github/workflows/ci.yml` and passes only
+because `scripts/ci-steps.sh borudebug-gates` is kept as a retired no-op.
 
-```yaml
-      - name: Cover gate (ADR-008)
-        run: make cover-gate
+- [`ci/ci.yml`](./ci.yml) is the **full** intended contents of
+  `.github/workflows/ci.yml`: the `borudebug` job is gone, and the header's
+  description of the lanes names the direction lane's one remaining end
+  state and the race gate's one package. Every other job is unchanged.
+- [`ci/cover-gate.yml`](./cover-gate.yml) is the **full** intended contents
+  of `.github/workflows/cover-gate.yml`: the merged gate's comment counts
+  "every module" rather than the thirteen the lane's modules made.
 
-      - name: Knowledge graph (check, test, freshness)
-        run: |
-          make -C kg check
-          make -C kg test
-          make -C kg graph
-          git diff --exit-code kg/out
-```
-
-The second step keeps the committed project knowledge graph
-([`kg/out/graph.json`](../kg/out/graph.json)) honest: it type-checks the
-boru pipeline, runs its test suite, rebuilds the bundle, and fails the
-build if the committed bundle drifts from the deterministic rebuild —
-mechanically enforcing the "update the graph with each PR" rule in
-[kg/README.md](../kg/README.md).
-
-This enforces ADR-008 (100% coverage across the merged cross-suite profile,
-minus the guards marked `//covergate:allow <reason>`) in CI. Those pragmas
-live on the guard's own line, so they no longer drift as refactors shift
-line numbers — the class of failure that went unnoticed across the #236–#248
-merge batch, when the exclusions were a separate line-keyed file and nothing
-ran `make cover-gate` on a PR.
+The folder's previous content — a single-job workflow adding a per-PR
+`make cover-gate` step — predated the parallel-job layout now on `main`,
+which runs core's standalone gate on every PR and the merged ADR-008 gate
+nightly in `cover-gate.yml`. It was superseded by that layout and is
+replaced here; its manifest also still ran the `cover-gate-compiler` and
+`cover-gate-eng` targets the removal deleted.
 
 ## How to apply
 
 ```bash
 cp ci/ci.yml .github/workflows/ci.yml
+cp ci/cover-gate.yml .github/workflows/cover-gate.yml
 git rm -r ci
-git add .github/workflows/ci.yml
-git commit -m "ci: enforce make cover-gate (ADR-008)"
+git add .github/workflows
+git commit -m "ci: drop the borudebug job (the compiler lane is gone)"
 git push
 ```
 
-(Or just copy the single `Cover gate (ADR-008)` step into the existing file
-if it has diverged in the meantime, and delete this folder.)
-
-## Recommended follow-up
-
-Make the `build-and-test` job a **required status check** on `main` (branch
-protection). Right now these PRs have no required checks, so a red CI does
-not block a merge — which is how the cover-gate and langspec-ratchet
-failures reached `main` in the first place.
+Then delete the `borudebug-gates` case in `scripts/ci-steps.sh` — its
+comment names this step — in the same change or the next.

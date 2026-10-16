@@ -64,8 +64,9 @@ design/PERF-BASELINE.10.md.
   `cover-gate-eng`, `cover-gate-compiler`, `publish-eng`; the `borudebug`
   build tag (its CI job in `.github/workflows/ci.yml` runs a no-op step
   until the workflow file is edited by a credential with the workflow
-  scope — the removal PR could not push one); the compiled rows of the
-  race gate. The direction lane now holds one gate,
+  scope — the removal PR could not push one; the intended workflow files
+  are staged in `ci/`, whose README says how to apply them); the compiled
+  rows of the race gate. The direction lane now holds one gate,
   `TestCheckTypeSoundness`.
 - **Documents**: the full-compilation programme's pages and the handovers
   written for it were moved to `design/legacy/` as `.ignore` files

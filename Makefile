@@ -617,7 +617,7 @@ COVER_DIR := coverage
 #
 # After a change confined to one module's tests, `make cover-profile
 # m=<module> cover-check` re-verifies in that module's time instead of the
-# whole loop. CAVEAT: cover-check merges whatever profiles are on disk, so
+# whole loop. CAVEAT: cover-check merges the current modules' profiles on disk, so
 # mixing vintages is only sound while the measured files' line numbers are
 # unchanged since the older profiles were written (coverage blocks are
 # keyed by position); after edits to covered source, re-profile every
@@ -637,6 +637,9 @@ COVER_MODS = $(if $(m),$(m),$(MODULES))
 # above it, which is inherent.
 cover-profile:
 	@mkdir -p $(COVER_DIR)
+	@for f in $(COVER_DIR)/*.xout; do [ -e "$$f" ] || continue; \
+	  case " $(foreach m,$(MODULES),$(subst /,_,$(m)).xout) " in *" $$(basename $$f) "*) ;; \
+	  *) echo "==> cover-profile: dropping $$f — its module is no longer in MODULES"; rm -f "$$f" "$$f.key" "$$f.log";; esac; done
 	@t0=$$(date +%s); n=0; total=$$(echo "$(COVER_MODS)" | wc -w); failed=""; \
 	for m in $(COVER_MODS); do \
 	  n=$$((n + 1)); tm=$$(date +%s); \
@@ -658,9 +661,17 @@ cover-profile:
 	done; \
 	if [ -n "$$failed" ]; then echo "==> cover-profile: FAILED modules:$$failed (every module was profiled; their .xout files are the failed runs')"; exit 1; fi
 
+# The profiles the merged check reads: one per CURRENT module, those that
+# exist. A profile a retired module left behind (compiler_go.xout and
+# eng_go.xout after the compiled lane's removal) names sources the tree no
+# longer has and would abort covergate, so it is neither read here nor
+# kept by cover-profile.
+COVER_XOUTS = $(wildcard $(foreach m,$(MODULES),$(COVER_DIR)/$(subst /,_,$(m)).xout))
+
 cover-check:
-	@echo "==> [cover-check] START — analysing $(abspath $(COVER_DIR))/*.xout against floor $(GATE_FLOOR)%"
-	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/*.xout \
+	@echo "==> [cover-check] START — analysing the current modules' profiles in $(abspath $(COVER_DIR)) against floor $(GATE_FLOOR)%"
+	@[ -n "$(COVER_XOUTS)" ] || { echo "==> [cover-check] no profile for any current module in $(COVER_DIR) — run make cover-profile first"; exit 1; }
+	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_XOUTS)) \
 	  || { echo "==> [cover-check] FAILED — below the $(GATE_FLOOR)% floor (see the uncovered count above)"; exit 1; }
 	@echo "==> [cover-check] PASS"
 
@@ -688,7 +699,7 @@ cover-gate:
 # Stage 5): core/go profiled by ITS OWN suite alone. The floor is a
 # RATCHET towards 100%: raise it as core-standalone coverage grows;
 # never lower it. The profile uses the .engout extension so the merged
-# gate's cover-check (which globs $(COVER_DIR)/*.xout) never merges a
+# gate's cover-check (which reads the current modules' .xout profiles) never merges a
 # stale standalone profile — the two gates run on different schedules,
 # and a stale profile carrying old line addresses would poison the merged
 # view with phantom uncovered blocks after any source edit.
