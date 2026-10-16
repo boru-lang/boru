@@ -1041,8 +1041,8 @@ All stack words are stack-only (modifier `/s`).
 | `depth` | `→ n` | Current stack size |
 | `stack` | `→ [...]` | Entire stack as a list |
 
-Two non-shuffle words are also stack-only, by semantic necessity
-rather than Forth tradition, and are pinned here per ADR-004 (a
+One non-shuffle word is also stack-only, by semantic necessity
+rather than Forth tradition, and is pinned here per ADR-004 (a
 stack-only registration outside this list needs the same
 justification weight as a new init-time panic — NUR023):
 
@@ -1055,31 +1055,6 @@ justification weight as a new init-time panic — NUR023):
   the lens on top. (`apply f/v 5` and `xs apply $.1` therefore raise —
   spell them `5 f/v apply` and `xs $.1 apply`;
   `lang/spec/apply.tsv` §5 pins both directions.)
-- `__casematch` — the `case` desugar's internal match probe (each
-  clause lowers to `if (v match __casematch) …`), always fed by the
-  synthesized chain's stack discipline. The `__` prefix marks it
-  internal; it is describable but not meant for direct calls.
-- `__casesubject` and `__casestack` — the same desugar's scrutinee
-  step, recorded ahead of the chain when the compile pass holds the
-  scrutinee abstractly and it may be a list at run time (NUR291):
-  `__casesubject` applies `case`'s own rule (a list runs as a code
-  body and its last result is the scrutinee), and `__casestack`, for
-  the stack form, passes a value that is not a list and defers on one.
-  Each takes the value the chain already holds, so they are stack-only
-  for the reason `__casematch` is; internal in the same way.
-- `__arm` — the compiled `if`'s reading of a computed List arm
-  (NUR293): the arm's splice, which runs a code body and propagates its
-  error where `do` would trap it, and passes a typed list or a table as
-  the arm's one value. Internal as above.
-- `__codeguard` and `__condguard` — the compiled `if`'s guards over an
-  arm and a condition the compile pass holds abstractly that may be a
-  list at run time (NUR292). Each passes any other value. The
-  interpreter runs such a list as code there: `__condguard` answers a
-  list of plain values (numbers, strings, booleans, atoms, lists) with
-  its last one, as the condition's inline run does, and raises the
-  interpreter's "no value" on an empty one; `__codeguard` answers a
-  one-value plain list with that value, as the arm's paren splice
-  places it. Any other list defers. Stack-only and internal as above.
 
 ### Arithmetic
 
@@ -1683,20 +1658,15 @@ The comparison words refine every ordered scalar base — `Integer`,
 declares itself one) — and `between lo hi Base` builds the closed
 interval. A bound may be computed: `(Integer gt (size s))`, `(Bytes gte
 (convert Bytes "m"))`. As a VALUE (`x is (Integer gt (size s))`) such a
-refinement is built when the program runs, on both lanes. As a NAMED
-type (`def Pos (Integer gt (size s))`) it is installed when the program
-runs too — the compiled program installs it at the `def` from the bound
-the run computed — and a typed `def`, a parameter or return typed by that
-name, a class field and an overload set over it all check against the
-run's bound. An empty interval the run computes is `Never`. A typed `def`
-over an inline refinement (`def x:(Integer gt (size s)) 5`) checks
-against the run's bound as well, and so does a parameter or return type
-spelt inline (`[n:(Integer gt (size s))]`). An inline INTERVAL over a
-computed bound (`[n:(between 1 (size s) Integer)]`) does not compile yet,
-because the run may find it empty: `boru run` stops with a
-`compile_failed` ("compile-time word def"). Name the type to compile it.
-`convert Bytes` over a string literal is known at compile time, so
-`def Hi (Bytes gte (convert Bytes "m"))` needs none of this.
+refinement is built when the program runs. As a NAMED type
+(`def Pos (Integer gt (size s))`) it is installed when the `def` runs,
+from the bound the run computed — and a typed `def`, a parameter or
+return typed by that name, a class field and an overload set over it all
+check against the run's bound. An empty interval the run computes is
+`Never`. A typed `def` over an inline refinement
+(`def x:(Integer gt (size s)) 5`) checks against the run's bound as
+well, and so does a parameter or return type spelt inline
+(`[n:(Integer gt (size s))]`, `[n:(between 1 (size s) Integer)]`).
 
 The newtype-vs-subset distinction and its cross-language rationale are
 explained in **[Explanation: Function signatures](EXPLANATION.md#function-signatures-and-refinement-types)**
@@ -1901,9 +1871,9 @@ is reached (using one earlier raises `undefined_word`). A macro referenced
 inside a `fn` body expands when the body *runs*, so it need only be defined
 before the call.
 
-> **Deferred.** A `` `[ … ] `` quasiquote sugar (Phase 3) and compiled-mode
-> expansion / `eval-when` staging (Phase 5, awaiting the IR backend) are
-> designed but not yet shipped. See `design/MACROS.8.md`.
+> **Deferred.** A `` `[ … ] `` quasiquote sugar (Phase 3) and `eval-when`
+> staging (Phase 5) are designed but not yet shipped. See
+> `design/MACROS.8.md`.
 
 ### Control flow
 
@@ -2274,10 +2244,6 @@ first-class `Function` values: storable, passable, applied like any fn.
 
 `curry`, `partial`, `flip` and `memoize` require a fn with exactly ONE
 signature (reshaping a multi-overload fn would silently pick one).
-Programs that `def`-bind a FnUtil result currently run on the
-interpreter — the strict compile lane's def-bound-computed-fn model is
-an open item, pinned with the rows in
-`lang/spec/frontier/frontier-fn-util.tsv`.
 
 ### Higher-order array words
 
@@ -3229,10 +3195,8 @@ and the REPL). A *policy* is a set of allow/deny rules over
 
 Environment fallbacks: `BORU_POLICY`, `BORU_POLICY_FILE`.
 
-Bytecode compilation has no flags and no environment variables. Every
-program is compiled and run; one that does not compile is an error naming
-the construct, and there is no interpreter to select instead (see
-[CLI.md](CLI.md#bytecode-compilation)).
+Every program runs on the interpreter: there is no compile step, and no
+flag or environment variable selects one.
 
 ### Exit codes
 

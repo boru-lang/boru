@@ -37,7 +37,7 @@
 ## 1. Why a type (not List[Integer] or String)
 
 boru has no binary representation today: file reads degrade to `String`
-(UTF-8), and `eng.FromNative`/`ToNative` (`eng/go/gobridge.go`) have **no
+(UTF-8), and `core.FromNative`/`ToNative` (`core/go/gobridge.go`) have **no
 `[]byte` case** — a Go byte slice falls through to a best-effort
 `fmt.Sprintf` string. Every binary operation (hashing, base64/hex, HMAC, CRC,
 UUID bytes, secure random) is defined over `[]byte`, and — newly — **network
@@ -70,12 +70,12 @@ pattern used for `Time`, the fetch result, `Timeout`, and `Interval`
 (`RegisterExternalBuiltin` with a stable `FixedID`):
 
 - **FixedID** — allocate the next free value in the `lang/go/native` scalar
-  band **1000–1999** (`eng/go/CLAUDE.md` "FixedID Allocation"; document the
+  band **1000–1999** (`core/go/CLAUDE.md` "FixedID Allocation"; document the
   exact number chosen) and pin it in `lang/go/test/fixedid_stability_test.go`.
   (Not the 10000+ host range — this is a language builtin, not a host plugin
   type.)
 - **No-panic init** — registration records any error via the `TypeInitError`
-  path checked at `DefaultRegistryWithPolicy`, per ADR-005 (`eng/go/CLAUDE.md`
+  path checked at `DefaultRegistryWithPolicy`, per ADR-005 (`core/go/CLAUDE.md`
   "Panic Prevention" — no init-time panic).
 - Path/name: `Scalar/Bytes` — a concrete **Scalar** data leaf (sibling of
   `String` and the `Scalar/Time` family, so `x is Scalar` holds, and the
@@ -85,7 +85,7 @@ pattern used for `Time`, the fetch result, `Timeout`, and `Interval`
 ## 3. Payload & behavior
 
 - **Payload** — `ExtensionPayload{Body: bytesBody{data []byte}}` via
-  `eng.NewExtension` (`eng/go/payload.go`), so **no kernel struct change** is
+  `core.NewExtension` (`core/go/payload.go`), so **no kernel struct change** is
   required; the slice is the whole state.
 - **`TypeBehavior`** (the seam external types implement):
   - `Format` → hex, length-capped, e.g. `Bytes<68 65 6c 6c 6f>` (short) and
@@ -94,11 +94,11 @@ pattern used for `Time`, the fetch result, `Timeout`, and `Interval`
   - `Comparer` → byte-lexicographic (`bytes.Compare`), opening with the
     `litVsConcreteOrder` rule so the bare `Bytes` literal sorts below every
     concrete value (`design/TYPE-ORDERING.10.md`,
-    `eng/go/compare_scalar_behaviors.go`).
+    `core/go/compare_scalar_behaviors.go`).
   - `Equal` → bytewise (`bytes.Equal`). (HMAC verification uses a separate
     *constant-time* compare — see BIN-UTIL.10.md — not this `Equal`.)
   - `Sizer` → byte count, so the generic `length` / `size` word works on
-    `Bytes` with no dedicated word (`eng/go/typebehavior.go` optional
+    `Bytes` with no dedicated word (`core/go/typebehavior.go` optional
     capabilities).
   - **No `DeepCloner`.** `Bytes` is immutable; clone shares the slice — see §4.
 
@@ -114,7 +114,7 @@ a `Bytes` in place** — every operation (`slice`, `add`, `convert Bytes <inst>`
 fresh value. Because the storage is therefore never written after construction,
 a `Bytes` is **shared by reference on clone** and pays nothing:
 
-- `CloneValue` (`eng/go/clone.go`) shares an `ExtensionPayload` whose `Body`
+- `CloneValue` (`core/go/clone.go`) shares an `ExtensionPayload` whose `Body`
   does **not** implement `DeepCloner`. `bytesBody` deliberately omits it, so a
   cloned `Bytes` shares the original's slice header and backing array — exactly
   how `StrPayload` (an immutable Go `string`) is shared.
@@ -136,7 +136,7 @@ a `Bytes` is **shared by reference on clone** and pays nothing:
 The one place a defensive copy is mandatory is where a `[]byte` enters boru from
 code that may still mutate it:
 
-- **`eng.FromNative([]byte)`** copies the incoming slice before wrapping it. A
+- **`core.FromNative([]byte)`** copies the incoming slice before wrapping it. A
   Go caller (or a reused buffer) must not be able to mutate a live `Bytes`.
 - **Socket `recv`** (`NETWORK-SERVERS.0.md` §4) reads into a reusable buffer and
   hands the handler a `Bytes` over a **copy** of just the bytes read — the read
@@ -252,7 +252,7 @@ import "boru:minilang"
   `boru:minilang` for its other DSLs; folding them into the existing
   `+name/src/` lexer sugar avoids a new core token and the `0x`-prefix
   disambiguation it would require (`0xff` stays the `Integer` 255 —
-  `isBasePrefixedInteger`, `eng/go/parser/parse.go` — untouched). There is **no**
+  `isBasePrefixedInteger`, `parser/go/parse.go` — untouched). There is **no**
   `b"…"` ASCII literal either — use `convert Bytes "GET "` for text-as-bytes,
   which keeps the encoding explicit.
 - **The `+hb/…/` result feeds the words directly**, but note the auto-`end` the
@@ -482,7 +482,7 @@ convert String (+hb/ff/)                      # ERROR:bad-encoding (0xff is not 
 | `type_error` | `convert Bytes`/`unpack`/`unpack-prefix` is given a target that is not a binary frame (e.g. an ordinary class instance, with no layout). |
 
 Guard with `RequireConcreteList` / a `Bytes` unwrap helper and range-check
-before converting; never panic (`eng/go/CLAUDE.md`). `slice` clamps an
+before converting; never panic (`core/go/CLAUDE.md`). `slice` clamps an
 out-of-range window rather than erroring. A short buffer during streaming is
 **not** an error — it is `unpack-prefix`'s `{need: n}` result.
 
@@ -545,14 +545,14 @@ Aligned with `NETWORK-SERVERS.0.md` §11 Phase A (the binary prerequisite):
 
 ## 14. Implementation sketch
 
-- **`eng/go/gobridge.go`** — add the `[]byte` ↔ `Bytes` cases, with the
+- **`core/go/gobridge.go`** — add the `[]byte` ↔ `Bytes` cases, with the
   copy-on-ingest copy in `FromNative` (§4.2).
-- **`eng/go/gobridge.go`** — add the `[]byte` ↔ `Bytes` cases (via the
+- **`core/go/gobridge.go`** — add the `[]byte` ↔ `Bytes` cases (via the
   `RegisterBytesBridge` hook), with the copy-on-ingest copy in `FromNative`
   (§4.2). (No kernel type-kind for frames — they reuse the existing
   `ObjectTypeInfo`/`ObjectInstanceInfo` machinery, per the kernel/domain
-  boundary in `eng/go/CLAUDE.md`.)
-- **`eng/go/value.go`** — `ObjectTypeInfo` gains a `BinaryLayout Value` field:
+  boundary in `core/go/CLAUDE.md`.)
+- **`core/go/value.go`** — `ObjectTypeInfo` gains a `BinaryLayout Value` field:
   the raw layout `List<Map>` a binary-frame class carries (zero Value on an
   ordinary class). This is the single hook that turns the class machinery into a
   frame carrier.
@@ -570,7 +570,7 @@ Aligned with `NETWORK-SERVERS.0.md` §11 Phase A (the binary prerequisite):
   a handler guard that declines non-frame classes. `readBitSegments`/`readOneSeg`
   **read** (never parse) the `List<Map>` layout — `name`/`value`, `type`,
   `endian`, `signed`, `size` keys (ADR-007); an MSB-first bit writer/reader;
-  `frameInstance` builds the instance via `eng.MakeObject`. No `make` overload —
+  `frameInstance` builds the instance via `core.MakeObject`. No `make` overload —
   `make Header {fields}` reuses the object/class instance path unchanged.
 - **`lang/go/native/native_type.go` (`installIdeals`)** — `Binary` and
   `BinarySpec` installed as **membership types** (`DefineMemberType` over
@@ -584,7 +584,7 @@ Aligned with `NETWORK-SERVERS.0.md` §11 Phase A (the binary prerequisite):
   they are per-registry.)**
 - **`lang/go/modules/minilang.go`** — the `hb`/`bb` generator kinds
   (`[src:String opts:Map] → [Bytes]`) + handlers, building `Bytes` via
-  `eng.FromNative`; `docs_minilang.go` — the `lang_hb`/`lang_bb` doc entries.
+  `core.FromNative`; `docs_minilang.go` — the `lang_hb`/`lang_bb` doc entries.
 - **`lang/go/native/help/`** — `help_bytes.go` describes `unpack-prefix`;
   `help_control.go`'s `unpack` entry notes the `unpack <BinarySpec> b` form;
   there is no `bytes` word. (`make`/`unpack` keep their existing entries.)

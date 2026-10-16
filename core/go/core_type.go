@@ -348,7 +348,6 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 		def.SetTypeBody(pushed)
 	}
 	r.Defs.PushType(name, def, pushed)
-	r.NoteTypeInstall(name, pushed.Pos())
 }
 
 // isFnBodiedValue reports whether v is a function VALUE — a fn definition
@@ -360,7 +359,7 @@ func isFnBodiedValue(v Value) bool {
 		return false
 	}
 	switch v.Data().(type) {
-	case *FnDefInfo, *ClosurePayload:
+	case *FnDefInfo:
 		return true
 	}
 	return false
@@ -399,10 +398,6 @@ func InstallType(r *Registry, name string, body Value) error {
 //
 // Every other caller wants the checks: go through InstallType.
 func InstallTypeBody(r *Registry, name string, body Value) error {
-	// Seated with the operation, not with `def`'s capitalised arm, which
-	// returned this call's result directly and so reached no notification at
-	// all until 2026-09-04 (core/go/rebind_notify.go).
-	noteRebind(r, name)
 	if IsMicronType(body) {
 		// `def Baron refine Micron {foo:String}` route: the family
 		// Ideal's Construct produced a MicronTypeInfo body; mint the
@@ -534,23 +529,6 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// `make` constraints, the `unify` word). Without this, Unify
 		// would take the lattice subtype path and admit any
 		// base-compatible value without checking the predicate.
-		// Phase 6 (predicate stamps): compile the predicate body to a
-		// detached unit at CONSTRUCTION, so RunPredicate's InvokeCallback
-		// runs it on the VM instead of the CallBoru interpreter fallback —
-		// the same pre-publication in-place stamp module load applies to
-		// its exports (the binding has not escaped this goroutine).
-		// Declines (captures, compile failures) keep the interpreter path;
-		// only the REF is stamped, never the payload Name (the canon-
-		// ordering note above stands).
-		if r.RuntimeStampingEnabled() {
-			if fd, isFn := body.Data().(*FnDefInfo); isFn {
-				// The stamp EVENT carries the type name — passed beside the
-				// definition — so -compile-report (and the stamp-report
-				// gates) attribute the unit; the binding's payload Name
-				// stays empty (the canon note above).
-				compiledRuntime.StampDetached(r, fd, name, body.Pos())
-			}
-		}
 		installPredicateUnifier(def, body, r, name)
 		installTypeBinding(r, name, def, body)
 	} else if IsRefinePrefab(body) {
@@ -675,7 +653,6 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 			return err
 		}
 		r.Defs.PushTypeAdopted(name, canon, body)
-		r.NoteTypeInstall(name, body.Pos())
 	} else {
 		// Structural / singleton bodies (record shape, `def One 1`,
 		// typed-container literals, refine Record/Options/Table bodies,
@@ -696,21 +673,5 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 	for _, p := range strings.Split(name, "/") {
 		r.RegisterPart(p)
 	}
-	noteRuntimeTypeInstall(r, name, body)
 	return nil
-}
-
-// noteRuntimeTypeInstall tells the analysis pass that the type it just
-// installed holds a refinement over a bound it does not know — a computed
-// one, `def T (Integer gte (size s))`, whose bound is the pass's carrier
-// (NUR308): replaying this install would bind the placeholder, so the run
-// installs the type itself from the body it computes (OpBindTypeRun), and
-// the node minted here forwards to the run's. A no-op outside a pass.
-func noteRuntimeTypeInstall(r *Registry, name string, body Value) {
-	if !r.analysisActive() || !HasUnknownRefinement(body) {
-		return
-	}
-	if e, ok := r.Defs.TopEntry(name); ok && e.TypeDef != nil {
-		r.analysisRecorder().NoteRuntimeTypeInstall(name, e.TypeDef, body)
-	}
 }

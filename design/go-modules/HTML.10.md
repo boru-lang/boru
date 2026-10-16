@@ -60,7 +60,7 @@ Notes:
 
 Scalars only — String. No opaque handle type, no
 `RegisterExternalBuiltin` / FixedID is needed. Convert at the boundary
-with `eng.FromNative` / `eng.ToNative` (`eng/go/gobridge.go`); guard
+with `core.FromNative` / `core.ToNative` (`core/go/gobridge.go`); guard
 the arg with `AsConcreteString`.
 
 ## 6. Errors

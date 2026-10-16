@@ -273,16 +273,3 @@ func TestW9GetObjectResourceReturnsArms(t *testing.T) {
 		t.Fatalf("resource absent field: %v", out)
 	}
 }
-
-func TestW9IsClosureBearingWrapper(t *testing.T) {
-	r := w9Reg(t)
-	// FnDefInfo whose registry does not know the name → not closure-bearing.
-	fd := FnDefInfo{Registry: r, Name: "no_such_native_xyz"}
-	if isClosureBearingWrapper(NewValueRaw(TFunction, &fd)) {
-		t.Fatalf("expected false for an unresolvable wrapper")
-	}
-	// Non-FnDef value → false.
-	if isClosureBearingWrapper(NewInteger(1)) {
-		t.Fatalf("expected false for a non-FnDef value")
-	}
-}

@@ -65,14 +65,6 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		}
 		r.Check.NoteRootDefSite(name, pos)
 	}
-	// The rebind notification, seated with the operation rather than with the
-	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every
-	// twin note below makes: a SHADOWING install is InstallFrameBinding's —
-	// a param or a capture, scoped to one call — not a rebind of the
-	// module-scope name a unit could have baked.
-	if !shadow {
-		noteRebind(r, name)
-	}
 	isStackOnly := len(stackOnly) > 0 && stackOnly[0]
 
 	// Attribute a body-local def to its enclosing fn for the dynamic-scope
@@ -115,9 +107,6 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// new name so bare-word dispatch behaves exactly like pkg.word.
 		if rebound, ok := WrapperUnderName(r, name, *fnDef); ok {
 			r.Defs.Push(name, rebound)
-			if !shadow {
-				r.NoteBindTransition(BindDef, name, body.Pos())
-			}
 			if !shadow && r.ready && r.OnRegisterHook != nil {
 				r.OnRegisterHook(name)
 			}
@@ -142,12 +131,6 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// path (BuildWordExtension) intercepts fn defs over locked-bearing
 		// words before InstallDef, so this guard is defence in depth for
 		// direct InstallDef callers.
-		// A FRESH def (no standing entry) inside a rolled-back conditional
-		// body is speculative exactly as an overlapping redefinition is
-		// (below): bound at run time only if the arm runs.
-		fresh := !shadow && len(r.Defs.Stack(name)) == 0
-		replaced := false
-		var dropped Value
 		if stack := r.Defs.Stack(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
@@ -155,81 +138,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				oldFn, ok := entry.Data().(*FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(*oldFn, *fnDef) {
 					changed = true
-					dropped = entry
 					continue
 				}
 				filtered = append(filtered, entry)
 			}
 			if changed {
-				// A fn REDEFINITION whose overlap-removal drops an existing
-				// overload inside a CONDITIONALLY-reached body (an if/case arm
-				// or a loop body — CondBodyDepth) clobbers the enclosing
-				// binding in-place: the drop-then-push leaves the def depth
-				// UNCHANGED, so the branch/loop def rollback (which restores by
-				// depth growth) cannot revert it, and compiled resolution bakes
-				// the conditional shadow. The interpreter keeps the outer fn
-				// when the branch is not taken (or the loop runs zero times), so
-				// the two diverge. Decline — MarkUncompilable is a no-op off the
-				// compile pass, so plain check and the interpreter are unaffected
-				// and the program runs correctly — silently, which is why this
-				// failure has to stay on the books as a defect. An UNCONDITIONAL
-				// redefinition (top level or inside `do`) has no such divergence
-				// and keeps compiling: CondBodyDepth is 0 there.
-				//
-				// A redefinition inside a FN BODY by a CAPTURING fn value — a
-				// factory's returned closure (`def p (kk 9)` over an outer
-				// `def p (kk 7)`) — is the same divergence on the interpreter's
-				// own frame teardown: the drop-then-push leaves the frame's def
-				// depth unchanged, so DefCleanup pops nothing and the replacement
-				// OUTLIVES the call, where the analysis restores its snapshot and
-				// the compiled program keeps the outer closure's bake (`g (p 3)`
-				// answered 10 for the interpreter's 12 — the thirty-first
-				// increment). A capture-free literal takes the compiled twin and
-				// agrees; the closure's payload has no twin, so it declines.
-				failure := ""
-				if r.analysisInSpecArm() && len(fnDef.Captured) == 0 && NoteSpecFnDef(r, name, dropped, body, body.Pos()) {
-					// The seventieth increment: a CAPTURE-FREE replace inside
-					// a branch arm the model cannot decide is SPECULATIVE —
-					// placed at its site, the family's dispatches routed with
-					// a live lead (NoteSpecFnDef). The recorder declines what
-					// it cannot place (a loop or each body around the arm, a
-					// fn body, a signature with no declaration site), and a
-					// capturing closure's value is not a const the placement
-					// can bake: those keep the failure below.
-				} else if r.analysisInCondBody() {
-					failure = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
-				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
-					failure = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
-				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) == 0 && specFnJoin(r, name) && specFamilyAtFnBaseline(r, name) {
-					// NUR149: a CAPTURE-FREE redefinition inside a fn body of a
-					// SPECULATIVE-FAMILY name (a fn defined in a branch arm the
-					// model could not decide — SpecFnNames, the seventieth
-					// increment) whose standing binding existed at the enclosing
-					// fn's BASELINE — i.e., a MODULE-scope family. A capture-free
-					// replace normally takes the compiled BindDefReplace twin and
-					// agrees, so it is not declined above; but the family's
-					// dispatches ROUTE with a live lead (the routed op resolves
-					// the word in the running registry), and this in-place
-					// replace of a MODULE family is the family-L leak — the
-					// drop-then-push leaves the frame's def depth unchanged, so
-					// the interpreter keeps the shadow past the call (the module
-					// binding never restored) while the compiled def lowered to
-					// nothing. The live lead then resolves the arm's binding
-					// (whose unit no call site compiled) or an unbound name,
-					// diverging from the interpreter. No compiled twin reproduces
-					// a shadow the interpreter does not tear down, so decline. That
-					// keeps a wrong answer out and leaves the shape uncompiled —
-					// an open defect, owed the model that reproduces the shadow.
-					// An IN-FUNCTION family (created inside this fn, above the
-					// baseline) is popped by RET and has no such divergence, so it
-					// is NOT declined (the baseline gate; Codex P2 on #469).
-					failure = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
-				}
-				if failure != "" {
-					r.analysisRecorder().MarkUncompilable(failure)
-				}
 				r.Defs.Set(name, filtered)
-				replaced = true
 			}
 		}
 
@@ -237,26 +151,6 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, *fnDef, !shadow, isStackOnly)
-		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
-			// A FRESH capture-free def inside a branch arm the model cannot
-			// decide is speculative too (bound at run time only if the arm
-			// runs); declined, it keeps the join's model — the recorder
-			// declines where that model is known wrong.
-			NoteSpecFnDef(r, name, Value{}, body, body.Pos())
-		}
-		if !shadow {
-			// A REDEFINITION whose overlap filter dropped the colliding entry
-			// is a drop-then-push: the net depth is unchanged, so a twin that
-			// replays it as a plain push lands one level too deep and a later
-			// `undef` exposes the wrong binding — the hazard §6.5 names and the
-			// one family L's failure exists for. Recorded as its own kind so
-			// the twin can reproduce the replace rather than infer it.
-			kind := BindDef
-			if replaced {
-				kind = BindDefReplace
-			}
-			r.NoteBindTransition(kind, name, body.Pos())
-		}
 		return
 	}
 
@@ -293,16 +187,10 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		}
 		body = NewClassType(def, info)
 		r.Defs.Push(name, body)
-		if !shadow {
-			r.NoteTypeInstall(name, body.Pos())
-		}
 		return
 	}
 
 	r.Defs.Push(name, body)
-	if !shadow {
-		r.NoteBindTransition(BindDef, name, body.Pos())
-	}
 }
 
 // UninstallDef removes the most recent def for a word, exposing whatever
@@ -311,11 +199,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 // entries by Registry.Lookup → aggregateDispatch, so no explicit re-register
 // is needed.
 func UninstallDef(r *Registry, name string) {
-	noteRebind(r, name)
 	r.Defs.Pop(name)
-	// Recorded AFTER the pop so Depth is the post-transition depth, which is
-	// what a twin has to reproduce (§6.5).
-	r.NoteBindTransition(BindUndef, name, SrcPos{})
 }
 
 // WrapperUnderName is the module-wrapper rebinding (installDef's own case)
@@ -885,10 +769,6 @@ func compileFnSigs(r *Registry, name string, fnDef FnDefInfo, isStackOnly bool) 
 // the entry is sufficient — the dispatch table is rebuilt on demand by
 // Registry.Lookup → aggregateDispatch from whatever entries remain.
 func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
-	// Unconditional, and deliberately WIDER than the twin notes below: those
-	// fire only when a removal COMMITS, so a sig-undef whose every match is
-	// locked would notify nothing while still being a rebind the user wrote.
-	noteRebind(r, name)
 	stack := r.Defs.Stack(name)
 	if len(stack) == 0 {
 		return
@@ -928,11 +808,8 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 				}
 			}
 			if matched {
-				rm := stack[j]
 				stack = append(stack[:j], stack[j+1:]...)
 				r.Defs.Set(name, stack)
-				r.NoteBindTransitionEntry(BindSigUndef, name, SrcPos{},
-					DefEntry{Body: rm})
 				break
 			}
 		}

@@ -32,33 +32,6 @@ import (
 // arm they cover.
 const bareErrorProgram = `"x" convert Integer`
 
-// TestW4ClassifyFrontierBareErrorDetail pins the classifyFrontier arm
-// for a runtime error whose message has no [boru/<code>] prefix: the
-// program checks clean and compiles, yet fails at run — errorClass
-// yields the generic "ERROR:", and the classifier substitutes the
-// "error" detail.
-func TestW4ClassifyFrontierBareErrorDetail(t *testing.T) {
-	a, err := lang.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.SetClock(specClock)
-
-	cl, detail, compiled := classifyFrontier(a, bareErrorProgram)
-	if cl != classRuntime {
-		t.Fatalf("class = %d, want classRuntime — %s no longer fails at RUN; "+
-			"pick a new code-less specimen", cl, bareErrorProgram)
-	}
-	if detail != "error" {
-		t.Errorf("detail = %q, want the generic \"error\" — %s now carries a "+
-			"code, so it can no longer stand in for an UNCODED failure; pick a "+
-			"new specimen (see bareErrorProgram)", detail, bareErrorProgram)
-	}
-	if !compiled {
-		t.Errorf("expected %s to compile", bareErrorProgram)
-	}
-}
-
 // TestW4ErrorClassBareMessage pins errorClass on an engine error with
 // no bracketed code at all.
 func TestW4ErrorClassBareMessage(t *testing.T) {

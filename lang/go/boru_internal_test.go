@@ -21,32 +21,6 @@ func TestRegisterFormat(t *testing.T) {
 	}
 }
 
-// TestNewFormatParserFnLangSurface drives the lang-level NewFormatParserFn
-// wrapper: the built value binds with DefineValue and parses import-free.
-func TestNewFormatParserFnLangSurface(t *testing.T) {
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := NewFormatParserFn("bracket", &bracketFormat{})
-	if err != nil {
-		t.Fatalf("NewFormatParserFn: %v", err)
-	}
-	if err := a.DefineValue("bracket", v); err != nil {
-		t.Fatalf("DefineValue: %v", err)
-	}
-	const parseSrc = "parse bracket 'hi'"
-	gotC, cErr := a.Run(parseSrc)
-	noteCompileDefect(t, parseSrc, gotC, cErr)
-	got, err := a.RunInterp(parseSrc)
-	if err != nil {
-		t.Fatalf("parse bracket: %v", err)
-	}
-	if len(got) != 1 || got[0] != "hi" {
-		t.Fatalf("parse bracket = %v, want [hi]", got)
-	}
-}
-
 // TestNewEmitLangFnLangSurface drives the lang-level NewEmitLangFn wrapper:
 // the built value binds with DefineValue and emits import-free.
 func TestNewEmitLangFnLangSurface(t *testing.T) {

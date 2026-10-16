@@ -123,34 +123,6 @@ func TestGateStandaloneContagionWidensUnknownSibling(t *testing.T) {
 	}
 }
 
-// BodyRefsFnLocalFns reports a fn-local fn named in a code body, and whether
-// any reference is a VALUE read (`f/v`, `f/u`): such a read resolves to the
-// fn value the closure would return as data where the interpreter
-// dispatches it, so the caller keeps the compile failure. A plain
-// dispatching reference names the fn without a value read.
-func TestGateStandaloneBodyRefsFnLocalValueRead(t *testing.T) {
-	r := bsRegistry(t)
-	r.PushFnBaseline(r.Defs.Snapshot()) // zgsstep unbound: baseline depth 0
-	defer r.PopFnBaseline()
-	r.Defs.Push("zgsstep", bsFn(core.NewInteger(1)))
-	defer r.Defs.Pop("zgsstep")
-	sig := bsBodySig(core.CompileFallbackBody, nil)
-
-	names, valueRead := BodyRefsFnLocalFns(r, sig, []core.Value{core.NewList([]core.Value{core.NewWord("zgsstep")})})
-	if len(names) != 1 || names[0] != "zgsstep" || valueRead {
-		t.Errorf("a dispatching reference: names %v, valueRead %v — want [zgsstep], false", names, valueRead)
-	}
-	for name, ref := range map[string]core.Value{
-		"/v": core.NewWordRef("zgsstep"),
-		"/u": core.NewWordUsurp("zgsstep", false),
-	} {
-		names, valueRead = BodyRefsFnLocalFns(r, sig, []core.Value{core.NewList([]core.Value{ref})})
-		if len(names) != 1 || names[0] != "zgsstep" || !valueRead {
-			t.Errorf("a %s reference: names %v, valueRead %v — want [zgsstep], true", name, names, valueRead)
-		}
-	}
-}
-
 // FnPredicateOverloadHazard over a refinement whose bound only the run
 // knows (`def T (Integer gt (size s))`, NUR308): its check-mode match
 // admits every value, the same leniency as a predicate type, so with two

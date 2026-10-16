@@ -23,35 +23,6 @@ func TestSweepCapNilCapabilityRegistry(t *testing.T) {
 
 // --- compile_sandbox.go ----------------------------------------------------
 
-func TestSweepCompileSandboxSnapshotsBuiltinsAndCaps(t *testing.T) {
-	r := covRegistry(t, nil) // native registrations populate builtinWords
-	if err := r.Capabilities.Set("sweep.cap", 41); err != nil {
-		t.Fatal(err)
-	}
-	s := r.SnapshotForCompile()
-	if len(s.builtins) == 0 {
-		t.Fatal("snapshot captured no builtin words")
-	}
-	if _, ok := s.caps["sweep.cap"]; !ok {
-		t.Fatal("snapshot missed the capability slot")
-	}
-	// Mutate, then roll back: the snapshot's copies reinstall.
-	r.builtinWords["sweep_added"] = true
-	if err := r.Capabilities.Set("sweep.added", 1); err != nil {
-		t.Fatal(err)
-	}
-	r.RestoreForCompile(s)
-	if r.builtinWords["sweep_added"] {
-		t.Error("restore kept a post-snapshot builtin word")
-	}
-	if _, ok, _ := Cap[int](r, "sweep.added"); ok {
-		t.Error("restore kept a post-snapshot capability")
-	}
-	if v, ok, _ := Cap[int](r, "sweep.cap"); !ok || v != 41 {
-		t.Errorf("restore lost the pre-snapshot capability: %v %v", v, ok)
-	}
-}
-
 // --- coverage.go -----------------------------------------------------------
 
 func TestSweepCoverageArmedAndVMEmit(t *testing.T) {
@@ -201,87 +172,7 @@ func TestSweepInstantiateClassSchema(t *testing.T) {
 
 // --- interp_entry.go -------------------------------------------------------
 
-func TestSweepRuntimeBailHookAndAttribution(t *testing.T) {
-	r := newTestRegistry(t)
-	// Unarmed: the emit drops silently.
-	r.NoteBail("vm:sweep", "unarmed")
-	var got []BailEvent
-	disarm := r.ArmRuntimeBailHook(func(ev BailEvent) { got = append(got, ev) })
-	r.NoteBail("vm:sweep", "armed")
-	disarm()
-	r.NoteBail("vm:sweep", "after-disarm")
-	if len(got) != 1 || got[0].Site != "vm:sweep" || got[0].Reason != "armed" {
-		t.Errorf("bail events = %+v", got)
-	}
-
-	restore := r.SetInterpAttribution("sweep:fallback")
-	if r.interpAttribution != "sweep:fallback" {
-		t.Error("attribution tag not installed")
-	}
-	restore()
-	if r.interpAttribution != "" {
-		t.Error("attribution tag not restored")
-	}
-}
-
 // --- invoke.go -------------------------------------------------------------
-
-type sweepCompiledRuntime struct{}
-
-func (sweepCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value, error, bool) {
-	return []Value{NewInteger(99)}, nil, true
-}
-
-func (sweepCompiledRuntime) InvokeCompiledStrict(*Registry, *Signature, []Value) ([]Value, error, bool) {
-	return []Value{NewInteger(99)}, nil, true
-}
-func (sweepCompiledRuntime) StampDetached(*Registry, *FnDefInfo, string, SrcPos)  {}
-func (sweepCompiledRuntime) ClosureRender(*ClosurePayload, string) (string, bool) { return "", false }
-
-func (sweepCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
-	return v, false
-}
-
-func (sweepCompiledRuntime) LazyStamp(*Registry, *FnDefInfo, string, *Signature, SrcPos) bool {
-	return false
-}
-
-func TestSweepInvokeBodyRouting(t *testing.T) {
-	// Invoker installed: the VM seam owns body execution.
-	r := newTestRegistry(t)
-	r.Invoker = func(_ *Registry, _ Value, _ []Value) ([]Value, error) {
-		return []Value{NewInteger(7)}, nil
-	}
-	out, err := InvokeBody(r, NewList(nil), nil)
-	if err != nil || len(out) != 1 {
-		t.Fatalf("invoker path = %v, %v", out, err)
-	}
-	if got, _ := AsInteger(out[0]); got != 7 {
-		t.Errorf("invoker result = %v", out)
-	}
-	// No Invoker: the pooled interpreter path runs the tokens.
-	r2 := newTestRegistry(t)
-	out, err = InvokeBody(r2, NewList([]Value{NewInteger(3)}), nil)
-	if err != nil || len(out) != 1 {
-		t.Fatalf("interpreter path = %v, %v", out, err)
-	}
-	if got, _ := AsInteger(out[0]); got != 3 {
-		t.Errorf("interpreter result = %v", out)
-	}
-}
-
-func TestSweepInvokeCallbackCompiledFastPath(t *testing.T) {
-	prev := InstallCompiledRuntime(sweepCompiledRuntime{})
-	defer InstallCompiledRuntime(prev)
-	r := newTestRegistry(t)
-	out, err := InvokeCallback(r, &Signature{}, nil, nil)
-	if err != nil {
-		t.Fatalf("compiled callback path: %v", err)
-	}
-	if got, _ := AsInteger(out[0]); got != 99 {
-		t.Errorf("compiled callback result = %v", out)
-	}
-}
 
 func TestSweepIsInternalError(t *testing.T) {
 	if IsInternalError(errors.New("plain")) {

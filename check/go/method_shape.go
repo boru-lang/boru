@@ -115,9 +115,14 @@ func modifiedAsData(e *core.Engine, valIdx int) bool {
 
 // TryShapedMethodDispatch models the interpreter's auto-dispatch of an
 // annotated dynamic method-read carrier sitting at the pointer (see the
-// file comment). Returns true when it consumed the dispatch (tape spliced,
-// event recorded or the program marked uncompilable); false leaves the
-// carrier to today's paths (residual windows, compile failures) untouched.
+// file comment): a shaped dynamic method apply — a delegation-wrapper
+// method value followed by its contiguous inert forward-arg window —
+// collapses to gradual carriers, consuming the window, so the residual
+// covers any runtime result. Without this the args strand on the check
+// stack and the checker mis-models the arity (module-rand.tsv:37:
+// `r.string "abc" 5` left `[dynamic(Any) ProperString Integer]` vs runtime
+// `[ProperString]`). Returns true when it consumed the dispatch (tape
+// spliced); false leaves the carrier to today's paths untouched.
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
@@ -128,76 +133,28 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	if !ok {
 		return false
 	}
-	if !r.Check.Recorder().Active() {
-		// Plain-check surface (not compiling): a shaped dynamic method apply —
-		// a delegation-wrapper method value followed by its contiguous inert
-		// forward-arg window — collapses to a single dynamic(Any), consuming
-		// the window, so the residual covers any runtime result. Without this
-		// the args strand on the check stack and the checker mis-models the
-		// arity (module-rand.tsv:37: `r.string "abc" 5` left
-		// `[dynamic(Any) ProperString Integer]` vs runtime `[ProperString]`).
-		// Gated to the non-compiling ratchet surface: the compile pass below
-		// keeps the [dynamic, args] residual intact so resolveDynamicApply →
-		// OpCallDynMethod still fires, and a suspended pass stays byte-identical.
-		if !r.Check.Compiling {
-			if sig, positions, wok := shapedMethodApplyWindow(e, valIdx, member); wok {
-				// Collapse to the matched signature's ARITY, not always one value.
-				// Side-effect-only shaped methods (logger info, metric add/record)
-				// declare zero returns; splicing a lone dynamic(Any) would fabricate
-				// a value the runtime never produces, so `(l.info "msg") add 1` would
-				// wrongly check clean. Resolve the arity exactly as a real dispatch
-				// would (ReturnsFn / declared Returns), then splice that many gradual
-				// carriers — 0 for a side-effect method, 1 for a value method.
-				args := make([]core.Value, len(positions))
-				for i, p := range positions {
-					args[i] = e.Tape.At(p)
-					core.SetEval(&args[i], false)
-					core.SetUndefined(&args[i], false)
-				}
-				reps := make([]core.Value, shapedMethodReturnArity(e, sig, args, v.Pos()))
-				for i := range reps {
-					reps[i] = core.NewDynamicCarrier(core.TAny)
-				}
-				e.Tape.Splice(valIdx, 1+len(positions), reps...)
-				return true
-			}
-		}
+	sig, positions, wok := shapedMethodApplyWindow(e, valIdx, member)
+	if !wok {
 		return false
 	}
-	sig, positions, ok := shapedMethodApplyWindow(e, valIdx, member)
-	if !ok {
-		// Guard-owned decline: the get-family read guard was SKIPPED for this
-		// annotated read (NoteShapedRead), so a genuine-0-arg member whose
-		// landing the model cannot claim must decline HERE — the auto-dispatch
-		// guard is re-homed onto the landing, never weakened.
-		if core.FnValueZeroArg(member) {
-			r.Check.Recorder().MarkUncompilable(
-				"shaped 0-arg method landing not modelable at " + fnDefName(member))
-		}
-		return false
-	}
-	fnDef, _ := core.FnDefOf(member.Data()) // validated by shapedMethodApplyWindow
+	// Collapse to the matched signature's ARITY, not always one value.
+	// Side-effect-only shaped methods (logger info, metric add/record)
+	// declare zero returns; splicing a lone dynamic(Any) would fabricate
+	// a value the runtime never produces, so `(l.info "msg") add 1` would
+	// wrongly check clean. Resolve the arity exactly as a real dispatch
+	// would (ReturnsFn / declared Returns), then splice that many gradual
+	// carriers — 0 for a side-effect method, 1 for a value method.
 	args := make([]core.Value, len(positions))
 	for i, p := range positions {
 		args[i] = e.Tape.At(p)
 		core.SetEval(&args[i], false)
 		core.SetUndefined(&args[i], false)
 	}
-	// Model the dispatch through the shared check-mode machinery (declared
-	// returns, folds, contagion — identical to a real dispatch of the inner
-	// native) with the outcome seam routed to RecordDynMethod.
-	r.Check.PendingMethodApply = &core.PendingMethodApply{Origin: v, Word: fnDef.Name}
-	outs := CarrierResults(r, fnDef.Name, sig, args, v.Pos(), nil, false)
-	if r.Check.PendingMethodApply != nil {
-		// Not consumed — an unexpected short-circuit upstream of the outcome
-		// seam. Decline wholesale; the carrier keeps today's paths.
-		r.Check.PendingMethodApply = nil
-		return false
+	reps := make([]core.Value, shapedMethodReturnArity(e, sig, args, v.Pos()))
+	for i := range reps {
+		reps[i] = core.NewDynamicCarrier(core.TAny)
 	}
-	// Consume the carrier + the matched window, splice in the modelled
-	// results; the pointer re-steps them (spliceMatchResults' convention).
-	k := len(positions)
-	e.Tape.Splice(valIdx, 1+k, outs...)
+	e.Tape.Splice(valIdx, 1+len(positions), reps...)
 	return true
 }
 
@@ -249,8 +206,7 @@ func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*co
 				continue
 			}
 			if sg.DispatchHandler() == nil || sg.FnFrame() != nil || sg.FullStack() ||
-				sg.RunInCheckMode() || sg.Callable != nil || len(sg.NoEvalArgs) > 0 ||
-				sg.ParkResult() {
+				sg.RunInCheckMode() || len(sg.NoEvalArgs) > 0 || sg.ParkResult() {
 				return nil, nil, false // not a plain Go-handler apply
 			}
 			return sg, nil, true
@@ -282,8 +238,7 @@ func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*co
 	// beyond atom capture, no check-mode side effects, no user-fn frames —
 	// the shaped-method class is exactly the delegation-wrapper methods.
 	if sig.DispatchHandler() == nil || sig.FnFrame() != nil || sig.FullStack() ||
-		sig.RunInCheckMode() || sig.Callable != nil || len(sig.NoEvalArgs) > 0 ||
-		sig.ParkResult() {
+		sig.RunInCheckMode() || len(sig.NoEvalArgs) > 0 || sig.ParkResult() {
 		return nil, nil, false
 	}
 	return sig, positions, true
@@ -392,17 +347,10 @@ func dynamicBoundConformsToFunction(v core.Value) bool {
 // This clears the arg-stranding that leaves `h {x:3 y:4}` as
 // `[dynamic(Function|None) Map]` (vs runtime `[Integer]`) — patrun.tsv:40.
 //
-// PLAIN-CHECK ONLY (not compiling, no live recorder). The compile pass keeps
-// the [dynamic, args] residual so resolveDynamicApply / OpCallDynamicTrailing
-// still lowers the call, and a suspended pass stays byte-identical
-// (TestSpecCompiledDifferential). Optimism is sound for every clean corpus row
-// — a clean miss-then-call (a None reader immediately applied) does not occur;
-// it is the same gradual gap dynamic modality accepts elsewhere.
+// Optimism is sound for every clean corpus row — a clean miss-then-call (a
+// None reader immediately applied) does not occur; it is the same gradual gap
+// dynamic modality accepts elsewhere.
 func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
-	r := e.Registry
-	if r.Check.Compiling || r.Check.Recorder().Active() {
-		return false
-	}
 	if tryFnShapeTypedWindow(e, valIdx) || tryShapedFnReadWindow(e, valIdx) {
 		return true
 	}
@@ -421,280 +369,6 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 	}
 	e.Tape.Splice(valIdx, 1+(winEnd-valIdx), core.NewDynamicCarrier(core.TAny))
 	return true
-}
-
-// tryRecordMethodApply is the FIRST specialist in recordDispatchOutcome's
-// chain: it consumes a pending shaped-method model (set by
-// TryShapedMethodDispatch around its CarrierResults call) and records the
-// guarded OpCallDynMethod event. It must run before every other recorder —
-// falling through would record the member's inner native as a check-time
-// CALL_NATIVE against the shape instance's sub-registry, baking shape
-// state (the freeze-gate violation this model exists to avoid).
-func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value, pos core.SrcPos) bool {
-	pm := r.Check.PendingMethodApply
-	if pm == nil {
-		return false
-	}
-	if pm.Word != word {
-		return false // an interleaved dispatch — leave the pending for its owner
-	}
-	r.Check.PendingMethodApply = nil
-	es := r.Check.Recorder()
-	if !es.RecordDynMethod(pm.Origin, args, out, word, pos) {
-		es.MarkUncompilable("shaped method apply: operand of unknown provenance at " + word)
-	}
-	return true
-}
-
-// tryMemberFnArrivalDispatch models the interpreter's ARRIVAL-APPLY of a
-// container-member fn read mid-expression (COMPILE FAILURE-CLOSURE.0 §3): the
-// interpreter applies a surfaced member fn (`m.double`) the moment its
-// argument window fills — `m.double 21 eq 42` runs `(m.double 21)` BEFORE
-// `eq` — while the recorder previously only saw word dispatches, so the
-// downstream word stole the operand and declineStrandedMemberFn declined the
-// program. This hook fires where the check pass steps the member-read
-// carrier: when the read pinpointed the member (memberFnReadValue — a
-// concrete container + key) and the member's SINGLE plain signature's whole
-// arity of inert tokens sits immediately after the carrier, it models the
-// dispatch through the shared PendingMethodApply → RecordDynMethod seam
-// (the M2c machinery: a guarded mid-stream OpCallDynMethod whose runtime
-// value — the real map read's product — drives the apply, byte-identical to
-// the interpreter's forward auto-dispatch of the same window).
-//
-// The window claim is the ARITY, not the statement: the interpreter's parked
-// fn fires the moment its single signature's args arrive, so the token after
-// the window (a word, `eq`) never enters the collection. Everything this
-// hook declines keeps today's paths — the statement-tail Finalize apply for
-// shapes it never sees, declineStrandedMemberFn's compile failure for the rest:
-//   - COMPILE pass only (live recording; plain checks and suspended passes
-//     stay byte-identical);
-//   - a uniquely-resolved, NAMED, non-anonymous, non-macro, capture-free
-//     member with exactly ONE non-fallback signature of plain params (the
-//     model's CarrierResults and the arity claim assume plain value args —
-//     multi-sig first-match and captures are follow-on scope);
-//   - the full arity of evaluation-fixed tokens inside the statement.
-//     Arity 0 is claimed too (the break-2 closure, FN-VALUE-OPEN-WORK §4):
-//     the interpreter's courtesy dispatch fires the moment the member
-//     lands, so the model is an empty-window arity-0 OpCallDynMethod —
-//     the VM islands [fn] and the interpreter's own courtesy dispatch
-//     runs inside the island, byte-identical.
-//
-// Because the get-family read guard SKIPS its auto-dispatch compile failure for a
-// pinpointed genuine-0-arg member (zeroArgMemberFnLandingOut), a 0-arg
-// landing this model cannot claim must decline HERE — the guard is
-// re-homed onto the landing, never weakened (TryShapedMethodDispatch's
-// guard-owned-decline precedent). Every decline below routes through
-// declineMemberFnArrival for exactly that reason; for an arity >= 1
-// member (no genuine 0-arg overload) it stays a plain decline.
-func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
-	r := e.Registry
-	es := r.Check.Recorder()
-	if !es.Active() || es.SuspendedNow() {
-		return false
-	}
-	if tryShapedFnReadArrival(e, valIdx, es) {
-		return true
-	}
-	v := e.Tape.At(valIdx)
-	if !core.IsDynamic(&v) || core.IsQuoted(&v) || core.IDOf(&v) == "" || modifiedAsData(e, valIdx) {
-		return false
-	}
-	member, ok := es.MemberFnReadValue(core.IDOf(&v))
-	if !ok {
-		return false
-	}
-	decline := func() bool { return declineMemberFnArrival(es, member) }
-	fnDef, _ := core.FnDefOf(member.Data()) // validated by memberFnReadValue
-	if !fnDef.NamedDef() || fnDef.Macro || len(fnDef.Captured) != 0 {
-		return decline()
-	}
-	var sig *core.Signature
-	for i := range fnDef.Signatures {
-		s := &fnDef.Signatures[i]
-		if s.Fallback {
-			continue
-		}
-		if sig != nil {
-			return decline() // multi-overload: runtime first-match not modelled here
-		}
-		sig = s
-	}
-	// A boru body and plain value params only (the model and the arity
-	// claim assume them). FnParam.Quote needs no separate probe: the body
-	// gate proves a boru impl, whose normalizeSig derives QuoteArgs FROM
-	// the params.
-	if sig == nil || len(sig.Body()) == 0 ||
-		len(sig.QuoteArgs) != 0 || len(sig.TypeArgs) != 0 ||
-		len(sig.NoEvalArgs) != 0 || len(sig.NoEvalMapArgs) != 0 ||
-		len(sig.RawParens) != 0 || len(sig.FormArgs) != 0 {
-		return decline()
-	}
-	if len(sig.Returns) != 1 {
-		return decline() // the arity/result claim assumes one downstream value
-	}
-	n := sig.TotalArgs()
-	if valIdx+n >= e.Tape.Len() {
-		return false // arity >= 1 only: a 0-arg member needs no window
-	}
-	args := make([]core.Value, n)
-	for i := 1; i <= n; i++ {
-		tv := e.Tape.At(valIdx + i)
-		if statementWindowBoundary(tv) || !evalFixedWindowToken(tv) {
-			return false
-		}
-		args[i-1] = tv
-		core.SetEval(&args[i-1], false)
-		core.SetUndefined(&args[i-1], false)
-	}
-	// Model the dispatch SUSPENDED (a plain user fn's ReturnsFn records its
-	// own CALL_USER through core_helpers, not the outcome seam — a live probe
-	// would leak a phantom event the lowering cannot seat), then record the
-	// guarded dyn-method event directly. No body unit is needed: the VM's
-	// callDynMethod applies the RUNTIME member value — a plain user fn takes
-	// the island path, byte-identical to the interpreter's auto-dispatch —
-	// and the member's declared return contract is engine-enforced at run
-	// time, so the modelled out carrier is sound.
-	resume := es.Suspend()
-	outs := CarrierResults(r, fnDef.Name, sig, args, v.Pos(), nil, false)
-	resume()
-	if len(outs) != 1 {
-		return decline()
-	}
-	if !es.RecordDynMethod(v, args, outs, fnDef.Name, v.Pos()) {
-		return decline()
-	}
-	e.Tape.Splice(valIdx, 1+n, outs...)
-	return true
-}
-
-// declineMemberFnArrival is tryMemberFnArrivalDispatch's guard-owned
-// decline: the get-family read guard skipped its auto-dispatch compile failure for
-// a pinpointed GENUINE-0-arg member on the promise that the arrival model
-// owns the landing, so a 0-arg landing the model cannot claim declines here
-// with the guard's own reason — re-homed, never weakened. A member without
-// a genuine 0-arg overload was never exempted at the read, so its decline
-// stays silent and the carrier keeps today's paths.
-func declineMemberFnArrival(es core.EmitRecorder, member core.Value) bool {
-	if core.FnValueZeroArg(member) {
-		return declineArrival(es,
-			"fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at "+fnDefName(member))
-	}
-	return false
-}
-
-// declineArrival is the arrival models' shared guard-owned decline: the
-// landing declines with the reason its model owns, and the model reports
-// "not consumed" so the engine steps on to the compile failure's fallback.
-func declineArrival(es core.EmitRecorder, reason string) bool {
-	es.MarkUncompilable(reason)
-	return false
-}
-
-// tryShapedFnReadArrival models the WORD DISPATCH of a def-bound computed fn
-// whose shape the producing word claimed (CheckState.FnShapes — the fn-util
-// wrappers: `def k (FnUtil.const 7)  (k 99)`, `def bigger (FnUtil.on gt2/v
-// sq/v)  (bigger 3 5)`). The check pass substitutes the bound CARRIER for
-// the read (stepWord's fn-carrier side table), and a carrier at the pointer
-// is data the pass steps past; the interpreter's `k` is a WORD whose bound
-// fn value collects its forward args the moment it is read — inside the
-// statement, up to its all-forward barrier (the wrapper's arity) — and
-// dispatches. The residual classifier used to lower the flattened
-// [carrier, args…] as a leading apply, and flattening loses the statement:
-// `bigger 3 ; 5` lowered as `bigger 3 5` (compiled false where the
-// interpreter raises "cannot call `bigger`"), and `(bigger 3 ; 5)` the same
-// inside a paren — the word dispatched at the `;`, before the collapse.
-//
-// So the model fires WHERE the interpreter dispatches — at the read — over
-// the same window the member-fn arrival model claims: the wrapper's whole
-// arity of evaluation-fixed tokens inside the statement, consumed into one
-// guarded OpCallDynMethod (RecordDynMethod: the runtime read supplies the
-// value, the VM applies a self-contained Go-impl wrapper natively on its
-// own signatures, and the result-count claim of one defers any wrapper
-// whose applied fn returns another count). The extra tokens of a longer
-// window stay on the tape, exactly as the interpreter leaves them
-// (`(k 1 2)` is `7 2`).
-//
-// Everything else DECLINES rather than declines: a window short of the
-// arity (the interpreter fills the rest from the stack, or raises), a
-// non-fixed token inside it (a word, a paren, a carrier — the interpreter
-// evaluates it under the pending collection), a read the recorder cannot
-// seat. A silent decline would hand the carrier back to the residual
-// classifier, and the classifier's flattened window is the miscompile
-// above; a claimed def-read lead is this model's alone.
-func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bool {
-	r := e.Registry
-	v := e.Tape.At(valIdx)
-	gradual := !core.IsFnTypedCarrier(&v)
-	if core.IsQuoted(&v) || core.IDOf(&v) == "" || (gradual && !(v.Carrier() && core.SigTypeMatches(&v, core.TFunction))) {
-		return false
-	}
-	name, read := es.DefReadName(core.IDOf(&v))
-	if !read {
-		return false
-	}
-	shape, claimed := r.Check.FnShapeOf(core.IDOf(&v))
-	if !claimed {
-		return false
-	}
-	n := shape.Arity
-	decline := func(what string) bool {
-		return declineArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
-	}
-	args, why := shapedFnReadWindow(e, valIdx, shape)
-	if why != "" {
-		// The window is short but the FRAME holds exactly the operands — the
-		// element under a closure body's `[a5]` (`def a5 (mk 5)  each [a5] xs`)
-		// — and the interpreter's stack phase takes them top-down, which is
-		// the body-tail trailing apply the unit's residual lowers
-		// (compiler defReadFnTailArity, OpCallDynTrailTop): stand aside with
-		// the carrier on the stack, no decline (2026-09-24). Exactly, not at
-		// least: the apply is the WHOLE residual, and a deeper frame declines
-		// here as before (`0 fold [s] xs` over a one-argument `s`).
-		if why == shortReadWindow && es.InClosureUnit() && len(e.EffectiveResolved()) == n {
-			return false
-		}
-		// A GRADUAL claim (NUR207: an `Any`-typed factory result, a
-		// pinpointed member read) declines only what the program-level
-		// paths before it got wrong: the bare read with nothing beneath it
-		// in the frame (pushed as data where the interpreter dispatches or
-		// raises), a written token the parameter does not take (parked
-		// where the interpreter raises) and a function word the forward
-		// phase stops at. A frame holding values beneath, any other
-		// computed token and any read inside a fn, closure or nested body
-		// keep the paths they had: the trailing and mixed window islands
-		// and the unit's word replay (NUR123) re-step those as the
-		// interpreter does.
-		if gradual && (r.Check.FnBodyDepth > 0 || r.Check.NestedBodyDepth > 0 || es.InClosureUnit() || len(e.EffectiveResolved()) > 0 ||
-			(why == unfixedWindowToken && !functionWordInWindow(e, valIdx, n))) {
-			return false
-		}
-		return decline(why)
-	}
-	outs := []core.Value{shapedReadOut(r, core.IDOf(&v))}
-	if !es.RecordDynMethod(v, args, outs, name, v.Pos()) {
-		if gradual {
-			return false
-		}
-		return decline("an operand has no compiled home")
-	}
-	e.Tape.Splice(valIdx, 1+n, outs[0])
-	return true
-}
-
-// functionWordInWindow reports whether a FUNCTION word — a barrier the
-// interpreter's forward phase stops at (landingNextForWord) — stands among
-// the n tokens after valIdx, before any other token the window cannot fix:
-// with nothing beneath the read in its frame, the dispatch then matches
-// nothing and raises (`def j m.f end j add 1` over a one-parameter member).
-func functionWordInWindow(e *core.Engine, valIdx, n int) bool {
-	for i := 1; i <= n && valIdx+i < e.Tape.Len(); i++ {
-		tv := e.Tape.At(valIdx + i)
-		if evalFixedWindowToken(tv) {
-			continue
-		}
-		return core.IsWord(&tv) && !core.IsDispatchMod(&tv) && landingNextForWord(e, tv) == core.LandingNextWord
-	}
-	return false
 }
 
 // shortReadWindow is shapedFnReadWindow's verdict when the statement ends
@@ -865,243 +539,4 @@ func shapedReadOut(r *core.Registry, id string) core.Value {
 		return out
 	}
 	return core.NewDynamicCarrier(core.TAny)
-}
-
-// noteReStepLanding records the GUARDED LANDING of a callable value the
-// interpreter's step loop is about to re-step (NUR173; seated by NUR174). It
-// is the LAST model
-// in stepLiteral's chain on purpose: TryShapedMethodDispatch,
-// tryMemberFnArrivalDispatch and TryDynamicFnValueDispatch each resolve the
-// member and can claim an arity, and every claim is worth more than this. What
-// reaches here is the shape none of them can see — a read off a container the
-// pass knows only as a carrier, so the member is not resolvable at all:
-//
-//	def h fn [[] [Integer] [42]] end
-//	def mk fn [[] [Map] [{f: h/v}]] end
-//	def m (mk) end
-//	m.f        -> 42 interpreted, `fn h` compiled, silently
-//	m get 'f'  -> the same read as a word call, and the same silence
-//
-// The interpreter's step below DISPATCHES a callable value at this exact
-// point — an unmarked dot-read of a function is a CALL (NUR038), and a `get`
-// call's result is re-stepped where the word stood. The pass cannot tell whether the runtime value is one, and no
-// static answer is available, so the decision is deferred to the VALUE:
-// OpReStepLanding islands a callable value through the interpreter's own
-// one-token re-step and leaves anything else untouched.
-//
-// It NOTES and nothing else — no splice, no consume, no decline — and that is
-// the whole of why it is safe to put last. The pass keeps stepping the same
-// value, so every model keyed on its id (the fn-value lowerings, the read
-// accounting, the paren placement facts) sees exactly what it saw before; only
-// the recorder learns that an op belongs after the read. Two earlier drafts
-// recorded the landing as an EVENT over the survivor, and both moved something
-// the lowerings were relying on: splicing a fresh carrier for the out cost
-// them the operand they had resolved (a lambda member bound and then called
-// declined, and so did a `fold` over one), and re-pointing the survivor's own
-// provenance cost a binding read inside a later `if` arm its value outright
-// (`boru:cli` handed `set` an empty Value). A model that only needs to be SEEN
-// must not also move what it sees.
-func noteReStepLanding(e *core.Engine, valIdx int) {
-	r := e.Registry
-	es := r.Check.Recorder()
-	if !es.Active() || es.SuspendedNow() {
-		return
-	}
-	v := e.Tape.At(valIdx)
-	if core.IsQuoted(&v) || core.IDOf(&v) == "" || core.IsConcrete(&v) {
-		return
-	}
-	es.NoteDelivery(v)
-	// CALLABLE-OR-NOTHING. The pass is standing exactly where the interpreter
-	// stands: noteReStepLanding is called FROM stepLiteral, in the branch whose
-	// very next act is execFnDefLiteral on a Function value. A value the loop
-	// PARKED never reaches here — parking moves the pointer past it — so this
-	// is an observation, not a guess about who put the value there.
-	//
-	// It deliberately does NOT ask which producer left it here. NUR173 recorded
-	// the fact at the reach-group collapse and NUR174's `m get 'f'` proved that
-	// whitelist incomplete: a dispatch result splices at the pointer and is
-	// re-stepped with no collapse to see it. A producer list can only ever be
-	// as complete as the shapes measured so far; the step itself cannot.
-	//
-	// A BRANCH result one of whose arms is a fn VALUE is callable on that arm
-	// (the recorder's MayBeFn): the merge widened the fn arm's type to Word,
-	// so neither static test above sees it, and the interpreter re-steps
-	// whatever `if` returned — `if true one/v [2]` fires the named 0-arg fn
-	// and answers 1 (NUR159).
-	//
-	// A UNION carrier one of whose alternatives is a fn is callable on that
-	// alternative too: a word that hands a branch's join back to the loop
-	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
-	// the branch's own MayBeFn, which only a value arm sets, does not say so
-	// (NUR317).
-	if !core.IsFnTypedCarrier(&v) && !(core.IsDynamic(&v) && core.SigTypeMatches(&v, core.TFunction)) && !es.MayBeFn(core.RecKeyOf(&v)) && !core.UnionMayBeFn(v) {
-		return
-	}
-	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
-	// execFnDefLiteral defers (NUR035: a group's job is to produce the value;
-	// the call belongs to whatever encloses it). The close paren reads as a
-	// boundary to nothingToCollectAfter, so without this rung `m.f/v` landed a
-	// call one token before the `/v` that says DATA, and answered 42 where the
-	// interpreter answers `fn h`. Declining costs nothing: the collapse never
-	// parks a reach group, so the survivor is re-stepped at the enclosing
-	// position and judged there with the modifier — and the tokens that follow
-	// it — actually in view.
-	if aloneInLiveReachGroup(e, valIdx) {
-		return
-	}
-	// NOTHING THE RE-STEP COULD COLLECT may follow. The landing islands the one
-	// value ALONE, and the interpreter's own re-step does not: execFnDefLiteral
-	// matches over the live tape, so a fn with parameters collects the tokens
-	// written after it. `Cli.parse {name:"x" flags:{}} ["x"]` is that shape —
-	// the island ran the export's body with its parameters unbound. A FUNCTION
-	// WORD is not collectable (MatchSignature's forward phase stops at one), and
-	// a boundary or the end of the tape leaves nothing at all, so those are the
-	// shapes the alone-island models faithfully; an inert VALUE after it is not,
-	// and the landing stands aside (never declines — see emitLandingAfter).
-	if !nothingToCollectAfter(e, valIdx) {
-		// Inside a `def`'s operand group the re-step's collection is
-		// noted all the same, as a COLLECTING landing (NUR298): the def
-		// takes the group's first value, so the fn the re-step applies to
-		// the literal after it reaches the residual arms only after the
-		// def — `def j (5 do [(mk)] 7) end 1 j` is `[8 1 5]`, and the arms
-		// saw `fn 7 1 5`. A dispatch modifier is data intent, no collection.
-		if core.IsDispatchMod(e.Tape.Ref(valIdx + 1)) {
-			return
-		}
-		if inDefGroup(e, valIdx) {
-			es.NoteReStepLanding(v, v.Pos())
-			es.NoteLandingNext(v, core.LandingNextCollect, len(e.EffectiveResolved()) > 0, core.Value{})
-			return
-		}
-		// Elsewhere the residual arms model the collection (`1 m.f 7`), and
-		// a later dispatch that takes the value beside the one after it
-		// notes the landing then (NUR349).
-		noteStoodAside(r.Check, core.IDOf(&v))
-		return
-	}
-	es.NoteReStepLanding(v, v.Pos())
-	// What the re-step finds after the value decides a NAMED fn's no-match:
-	// a function word is a candidate argument the interpreter counts (it
-	// raises), a word bound to a value is collected (landingNextForWord), a
-	// boundary is not a candidate (the value stays data), and the end of the
-	// tape is the unit's to read — the frame's tail markers follow a fn
-	// body's last token (NUR186).
-	// With values BENEATH the value in its frame (the interpreter's own
-	// resolved stack, EffectiveResolved — an unnamed param, an earlier
-	// result) the re-step matches over them first, and the residual arms
-	// model that apply (NUR175's rule: the landing never consumes a stack
-	// operand); the note carries the fact beside what follows.
-	// The word itself rides with the note either way: a function word is
-	// the walk's candidate, and a collected one is what a `/q` slot captures
-	// in place of the value the pass folds it to (NUR219).
-	next, word := core.LandingNextEnd, core.Value{}
-	if valIdx+1 < e.Tape.Len() {
-		next = core.LandingNextBoundary
-		if tv := e.Tape.At(valIdx + 1); core.IsWord(&tv) {
-			next, word = landingNextForWord(e, tv), tv
-		}
-	}
-	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0, word)
-}
-
-// noteStoodAside records id as a value the step loop re-stepped with a
-// collectable value after it and no landing noted
-// (CheckState.StoodAsideLandingIDs, NUR349).
-func noteStoodAside(c *core.CheckState, id string) {
-	if c.StoodAsideLandingIDs == nil {
-		c.StoodAsideLandingIDs = map[string]bool{}
-	}
-	c.StoodAsideLandingIDs[id] = true
-}
-
-// inDefGroup reports whether valIdx sits directly in the paren group written
-// as a `def`'s operand: the group runs before the def dispatches, so its
-// open paren follows the def word and the binding's name.
-func inDefGroup(e *core.Engine, valIdx int) bool {
-	depth := 0
-	for i := valIdx - 1; i >= 0; i-- {
-		t := e.Tape.At(i)
-		switch {
-		case core.IsCloseParen(&t):
-			depth++
-		case core.IsOpenParen(&t) && depth > 0:
-			depth--
-		case core.IsOpenParen(&t):
-			if i < 2 || !core.IsWord(e.Tape.Ref(i-1)) {
-				return false
-			}
-			w, _ := core.AsWord(e.Tape.Ref(i - 2))
-			return w.Name == "def"
-		}
-	}
-	return false
-}
-
-// landingNextForWord classifies the word after a landed value the way the
-// re-step's forward phase reads it (CollectCandidateScan's word arm): a word
-// bound to a VALUE is collected — `m.f k` with `def k 2` is g over 2, and
-// `7 m.f k` is `[7 6]` — so the landing stands aside and the residual arms
-// model the collection; a FUNCTION word — a registered word, a binding that
-// dispatches — stops the phase and is a candidate the interpreter counts,
-// so a named fn matching nothing raises there. A name the phase resolves to
-// a literal (`true`, a type name, an undefined name's atom) is collected too.
-//
-// A registered word needs no arm of its own: the def table is the single
-// binding store, so a native is an FnDefInfo binding DefTop already finds,
-// and a name DefTop misses has no stack for Lookup to aggregate either.
-func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
-	ww, _ := core.AsWord(&tv)
-	// A `/v` word denotes its binding's VALUE — a fn binding's reference —
-	// and the forward phase collects it like any value-bound word (NUR078:
-	// the modifier, never the slot type, makes a fn name a reference): `m.g
-	// z/v` is g over z's reference, 7 interpreted. Read as a function word,
-	// the landing walked a BARE `z` and raised `uncalled_function`.
-	if ww.ForceVal {
-		return core.LandingNextValue
-	}
-	if top, ok := e.DefTop(ww.Name); ok {
-		if _, isFn := top.Data().(*core.FnDefInfo); !isFn {
-			return core.LandingNextValue
-		}
-		return core.LandingNextWord
-	}
-	return core.LandingNextValue
-}
-
-// aloneInLiveReachGroup reports whether valIdx holds the only token of a
-// REACH-lowered group whose markers are still on the tape — the O(1) test
-// execFnDefLiteral makes at the same index, read the same way (the marker
-// itself says who wrote it, so no lookahead is needed).
-func aloneInLiveReachGroup(e *core.Engine, valIdx int) bool {
-	if valIdx == 0 || valIdx+1 >= e.Tape.Len() {
-		return false
-	}
-	open := e.Tape.At(valIdx - 1)
-	return core.IsReachGroup(&open) && core.IsOpenParen(&open) && core.IsCloseParen(e.Tape.Ref(valIdx+1))
-}
-
-// nothingToCollectAfter reports whether the re-step of the value at valIdx has
-// no forward argument available: the next token is a statement boundary or a
-// WORD — MatchSignature's forward phase stops at a function word — or the tape
-// ends there. See noteReStepLanding for why the landing needs it.
-func nothingToCollectAfter(e *core.Engine, valIdx int) bool {
-	if valIdx+1 >= e.Tape.Len() {
-		return true
-	}
-	tv := e.Tape.At(valIdx + 1)
-	// A DISPATCH MODIFIER states DATA intent, and execFnDefLiteral honours it
-	// by consuming the marker and QUOTING the value rather than calling it
-	// (`m.f/v`, `m.f/q`). It is a Word by kind, so the clause below would read
-	// it as "nothing to collect" and land a call on the one read written
-	// specifically not to be one: `m.f/v` answers `fn h` interpreted and
-	// answered 42 compiled while this rung was missing.
-	if core.IsDispatchMod(&tv) {
-		return false
-	}
-	// A boundary ends the statement and a WORD stops the forward phase, so in
-	// both cases the re-step has nothing written after it to take. Anything
-	// else is a token the collection could reach, and the alone-island would
-	// not.
-	return statementWindowBoundary(tv) || core.IsWord(&tv)
 }

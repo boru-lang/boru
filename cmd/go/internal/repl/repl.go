@@ -104,13 +104,7 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 	registry.Output = out
 
 	// One *Boru per session over the persistent registry: each line runs
-	// COMPILED-BY-DEFAULT (RunAutoValues — the same CompileTry semantics as
-	// `boru run`), and a declined line re-runs on the interpreter —
-	// containment for a compile failure, never a fallback the design
-	// leans on. Check-pass def/import effects persist across lines on the
-	// compiled path by SnapshotForCompile's keep-on-compile contract;
-	// fallback lines interpret against the same registry, so state
-	// persistence is unchanged either way (plan Phase 2).
+	// against the same registry, so def/import effects persist across lines.
 	boruInst, boruErr := langNewFromRegistry(registry)
 	if boruErr != nil {
 		fmt.Fprintf(out, "init error: %s\n", boruErr)
@@ -164,21 +158,14 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 		}
 
 		// The parse probe keeps the historical "parse error:" prefix for
-		// malformed lines (RunAutoValues would fold a parse failure into the
-		// generic error arm); a well-formed line then runs compiled-by-default.
+		// malformed lines (a run would fold a parse failure into the generic
+		// error arm); a well-formed line then runs.
 		if _, perr := parser.Parse(line); perr != nil {
 			fmt.Fprintf(out, "  parse error: %s\n", renderErr(perr))
 			continue
 		}
 
-		// One outcome, the same as every other surface: the line compiles
-		// and runs, or it does not compile and the REPL prints the failure.
-		// This used to re-run the line on the interpreter, silently — the
-		// argument being that an interactive line's performance debt was not
-		// worth a per-line warning. It was never about performance: the line
-		// had hit a compiler defect and nothing said so, and a REPL is where
-		// a user is most likely to be the one who can report it.
-		result, _, _, err := boruInst.RunAutoValues(line)
+		result, err := boruInst.RunInterpValues(line)
 		if err != nil {
 			// `IO.exit N` from a REPL line ENDS THE SESSION, the same way
 			// the bare `exit` word does — the interactive analogue of a

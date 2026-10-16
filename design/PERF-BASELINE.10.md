@@ -25,22 +25,20 @@ benchstat before.txt after.txt
 
 | Suite | Where | Pins |
 |---|---|---|
-| `BenchmarkKernel*` | `eng/go/perf_baseline_bench_test.go` | kernel primitives: CompareValues (scalar/list/map), Unify, CanonValue, OrderedMap |
-| `BenchmarkTape*` | `eng/go/tape_test.go` | gap-buffer tape vs slice splicing on deep recursion |
-| `BenchmarkParse` | `eng/go/parser/perf_baseline_bench_test.go` | parse cost per source shape (scalars, lists, maps, fns, parens, dotchains, interp strings, lambdas) |
-| `BenchmarkBytecodeBaseline` | `lang/go/bytecode_baseline_bench_test.go` | end-to-end Run per dispatch shape (the Stage-0 corpus) |
-| `BenchmarkStage6` | `lang/go/bytecode_stage6_bench_test.go` | interpreter vs compiled execution, parse/compile amortised out |
+| `BenchmarkKernel*` | `core/go/kernel_bench_test.go` | kernel primitives: CompareValues (scalar/list/map), Unify, CanonValue, OrderedMap |
+| `BenchmarkTape*` | `core/go/tape_bench_test.go` | gap-buffer tape vs slice splicing on deep recursion |
+| `BenchmarkFlatProgramRecording` | `core/go/recorder_frame_test.go` | the StackForm recorder's cost over a flat program |
+| `BenchmarkParse` | `parser/go/perf_baseline_bench_test.go` | parse cost per source shape (scalars, lists, maps, fns, parens, dotchains, interp strings, lambdas) |
+| `BenchmarkInterpBaseline` | `lang/go/interp_baseline_bench_test.go` | end-to-end Run per dispatch shape (the Stage-0 corpus) |
 | `BenchmarkParens` | `lang/go/paren_bench_test.go` | per-paren representation cost |
 | `BenchmarkPerfWords` | `lang/go/perf_baseline_bench_test.go` | collection words (sort/filter/each/fold over 500 elems), map build/get, string words |
-| `BenchmarkPerfCheck` / `BenchmarkPerfCompile` | same file | static-check cost and emit cost per dispatch shape |
+| `BenchmarkPerfCheck` | same file | static-check cost per dispatch shape |
 
 ## The gates (run in `make test`, no benchmarks needed)
 
 Execution time is GC-noisy; allocations per op are deterministic, so
 the hard regression signals are allocation ceilings:
 
-- `TestCompiledAllocCeilings` (`lang/go/bytecode_allocguard_test.go`) —
-  compiled-mode allocs/op per shape.
 - `TestInterpAllocCeilings` (`lang/go/interp_allocguard_test.go`) —
   interpreter-mode allocs/op AND **bytes/op** per shape. The byte
   ceiling catches the class alloc counts miss: ONE big allocation per
@@ -64,7 +62,10 @@ Kernel primitives:
 | KernelUnifyScalarType | 632 | 0 | 0 |
 | KernelCanonNested | 5,870 | 1,632 | 29 |
 
-Interpreter vs compiled (Stage6, execution only):
+Interpreter vs compiled (Stage6, execution only) — HISTORICAL: measured
+before the compiler lane was removed on 2026-10-16
+(COMPILER-LANE-REMOVAL.0.md); the compiled column no longer exists, and the
+interpreter column is the baseline the interpreter line moves:
 
 | Shape | interp ns/op | compiled ns/op | speedup |
 |---|---|---|---|

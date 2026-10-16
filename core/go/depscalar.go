@@ -494,7 +494,6 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 			// against its ID so a downstream operand — toCarrier strips the
 			// DepScalarInfo to a bare base carrier, preserving the ID — can
 			// recover the bound via origByID and bake it as a const.
-			noteRefinementConstruct(r, dep, args[0])
 			return []Value{dep}, nil
 		}, RunInCheck()),
 		Returns: []*Type{TScalar},
@@ -506,30 +505,6 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 		// exported algorithm primitive.
 		-1,
 	}
-}
-
-// noteRefinementConstruct tells the compile pass how a refinement it just
-// built reaches the run: over KNOWN bounds it is a const (RememberOriginal,
-// so a stripped operand recovers it); over a bound the pass does not know —
-// a computed one, `Integer gt (size s)`, whose bound is the pass's carrier —
-// the constructor call is recorded as the call it is, so the run builds the
-// refinement over the real bound (NUR308).
-func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
-	if r == nil {
-		return
-	}
-	for _, b := range bounds {
-		if !IsConcrete(&b) {
-			// Only the analysis pass itself latches: a concrete sub-run (a
-			// const-fold probe) records nothing, and a latch it left would be
-			// consumed by the pass's next compile-time word.
-			if r.analysisActive() {
-				r.analysisRecorder().NoteRuntimeConstruct()
-			}
-			return
-		}
-	}
-	r.analysisRecorder().RememberOriginal(dep)
 }
 
 func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -571,6 +546,5 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 			return []Value{NewTypeLiteral(TNever)}, nil
 		}
 	}
-	noteRefinementConstruct(r, dep, args[0], args[1])
 	return []Value{dep}, nil
 }

@@ -146,12 +146,9 @@ func runStepped(parent *native.Registry, tokens []native.Value) ([]native.Value,
 		}
 	})
 
-	// C4 attribution: a single-stepping debugger observes the interpreter by
-	// definition — the trace hook above is what pauses at each step and each
-	// breakpoint. There is no compiled equivalent to step through.
-	restoreAtt := parent.SetInterpAttribution("debug-observe")
+	// A single-stepping debugger observes the interpreter by definition —
+	// the trace hook above is what pauses at each step and each breakpoint.
 	res, err := sub.Run(tokens)
-	restoreAtt()
 	if err != nil {
 		return nil, err
 	}

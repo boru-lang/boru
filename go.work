@@ -10,13 +10,10 @@ use (
 	./calc/go
 	./check/go
 	./cmd/go
-	./compiler/go
 	./core/go
-	./eng/go
 	./lang/go
 	./parser/go
 	./test/go
-	./tools/piecetool
 	./tools/vetcopies
 	./test/solardemo
 	./test/specfix

@@ -280,29 +280,6 @@ func checkRecordShapeArgs(r *core.Registry, name string, paramPatterns []*core.V
 	}
 }
 
-// LambdaCountContract is the run-time RETURN contract of an ANONYMOUS fn
-// (`=>` / `afn`). Its `Returns=[Any]` is a placeholder the analyser infers
-// past — BuildFnBodyReturnsFn nils it for AnalyseFnBody so the residual
-// carries the body's real type — but the interpreter enforces the
-// placeholder's COUNT at every dispatch boundary: the named call (`def f
-// (x:Integer => [x 1])  f 5`), the paren apply, the `apply` word and the
-// callback seam (`each (x:Integer => [x 1]) [1 2]`) all raise `expected 1
-// return value(s), got 2`, exactly as the verbose `fn [[x][Any][x 1]]` twin
-// does. A compiled unit therefore keeps a COUNT-ONLY contract — n `Any`
-// slots, which checkReturnContract enforces by count and never by type.
-// Measured 2026-09-05 (NUR120): with the placeholder dropped outright the
-// default lane answered `5 1` and `[1 1]` where the interpreter raises.
-func LambdaCountContract(n int) []*core.Type {
-	if n <= 0 {
-		return nil
-	}
-	out := make([]*core.Type, n)
-	for i := range out {
-		out[i] = core.TAny
-	}
-	return out
-}
-
 // BuildFnBodyReturnsFn is the analysis half of a fn sig's dispatch — the
 // sig's handler.
 func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef core.FnDefInfo) core.ReturnsFunc {
@@ -315,26 +292,20 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	declaredReturns := append([]*core.Type(nil), s.Returns...)
 	declaredReturnPatterns := append([]*core.Value(nil), s.ReturnPatterns...)
 	bodyTraps := bodyTrapsErrors(s.Body())
-	// The compiled unit's RET contract: a named fn's declaration as written;
-	// an anonymous lambda's placeholder count (LambdaCountContract), which
-	// stands at run time even though the ANALYSER below infers past it.
-	compileReturns := declaredReturns
+	// An anonymous lambda's `Returns=[Any]` is a placeholder the analyser
+	// infers past (nil'd for AnalyseFnBody so the residual carries the body's
+	// real type); the interpreter enforces the placeholder's COUNT at every
+	// dispatch boundary, and trimUnnamedArgs below keeps that count.
 	lambdaReturns := len(s.Returns)
 	if fnDef.Anonymous {
-		compileReturns = LambdaCountContract(lambdaReturns)
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
-	declSite := s.Decl
 	// The sig's own body: a fn body's array is never written, and every
 	// analysis and run copies what it steps. Clamped, so an append
 	// reallocates.
 	sigBody := s.Body()
 	bodyToks := sigBody[:len(sigBody):len(sigBody)]
-	// The sig's own body slice, uncopied: its backing array identifies THIS
-	// construction of the lambda to the recorder's pending-apply lookup
-	// (PendingClosureApply) — the applied value's sig holds the same array.
-	bodyRef := s.Body()
 	nameCopy := name
 	capturesCopy := fnDef.Captured
 	genSpec := fnDef.Gen
@@ -345,32 +316,20 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// defined `add` merged into the importer's dispatch table) dispatches as a
 		// BARE word on the importer's engine, so no execFnDefLiteral wrapper
 		// shares the check state with this closure's captured registry r. Without
-		// sharing, `es` below read the module's own INACTIVE CheckState:
-		// StartFnCompile declined, RecordUserCall never ran, every merged dispatch
-		// declined "user fn call … (Stage 3)", and the body was ANALYSED
-		// CONCRETELY with its diagnostics stranded on the invisible module Check.
-		// Sharing caller → r at the ReturnsFn boundary itself converts the WHOLE
-		// user-fn seam (every dispatch path that reaches a foreign-registry fn
-		// body records identically — the §2.2 one-recording-path rule): body
-		// diagnostics, the FnSummaries/FnInflight memos (scopeID-disjoint keys)
-		// and the compiled unit all land on the dispatching pass, while name
+		// sharing, the analysis read the module's own INACTIVE CheckState and
+		// the body was ANALYSED CONCRETELY with its diagnostics stranded on the
+		// invisible module Check. Sharing caller → r at the ReturnsFn boundary
+		// itself converts the WHOLE user-fn seam (every dispatch path that
+		// reaches a foreign-registry fn body analyses identically — the §2.2
+		// one-path rule): body diagnostics and the FnSummaries/FnInflight memos
+		// (scopeID-disjoint keys) land on the dispatching pass, while name
 		// resolution stays in the module's own Defs/Types. No-op when caller == r
 		// (ordinary same-registry fns), when an enclosing execFnDefLiteral /
 		// execFnDefSig dispatch already shared (pointer-equal swap), and outside
 		// check mode — interpretation is untouched.
 		restoreCheck := shareCheckStateFrom(r, caller)
 		defer restoreCheck()
-		// The dispatching WORD token, as the check pass published it for this
-		// ReturnsFn (declaredReturnCarriers), read at ENTRY: the body analysis
-		// below dispatches inside the callee and overwrites both cursors. It
-		// is the (word, position) the region capture was offered under
-		// (compiler/go/region_record.go) — the word's own position, which is
-		// not args[0]'s, the blame position the call event carries.
-		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos, anonymous: fnDef.Anonymous}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
-		if r.Check.SpecParamNames[call.word] && specParamCallMayRefuse(sigParams, args) {
-			r.Check.SpecDeclined = true
-		}
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
 		// analysis, so body-internal `of [T]` / `make (Box of [T])`
@@ -390,21 +349,17 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// references a parameter, but a returned list NEVER closes over the param
 		// (only a `=>` lambda captures); the interpreter returns it RAW and
 		// auto-evaluates it later, in MODULE scope, against the live binding
-		// (`mk 9` → `[1]`, the module `c1`, not the arg `9`). Compiling it as a
-		// fn UNIT cannot model this: a unit's result is fixed at CALL time and
-		// cannot defer to a later module rebind. So make the fn TRANSPARENT —
-		// hand the raw deferred list back as the call's residual (no unit) and let
+		// (`mk 9` → `[1]`, the module `c1`, not the arg `9`). So make the fn
+		// TRANSPARENT — hand the raw deferred list back as the call's residual and let
 		// the check pass fold it in module scope EXACTLY as a top-level
 		// `def c1 1 [[c1]]` already does: at end-of-run, at a `def`-bind, or at a
 		// downstream consumer (each resolves `c1` against the binding live at that
-		// point). The folded const is what the program bakes; no VM change. Still
-		// analyse the body first so its diagnostics propagate.
+		// point). Still analyse the body first so its diagnostics propagate.
 		// Only an ANONYMOUS fn (afn / =>) keeps this no-closures transparency.
 		// A NAMED fn always creates a function context — its params are in scope
 		// for the whole body, including a returned bare list — so it falls
-		// through to the normal analysis + unit compile, where the list is
-		// assembled in-frame against the param (fixed at call time, which the
-		// unit models exactly).
+		// through to the normal analysis, where the list is assembled in-frame
+		// against the param (fixed at call time).
 		if raw, ok := DeferredParamListResidual(bodyToks, paramNames); ok && fnDef.Anonymous {
 			// An afn is never generic (afnHandler declares no type params, so
 			// fnDef.Gen is nil whenever fnDef.Anonymous), hence genNames is empty
@@ -421,145 +376,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// the analyser's residual stack — the analyser is run purely
 		// for its side-effecting diagnostic collection. Memoisation
 		// inside AnalyseFnBody keeps recursive / repeated calls cheap.
-		// Bytecode (Stage 3): compile this overload's body as its own
-		// code unit (params as frame locals) and record the call site.
-		// The memo key mirrors AnalyseFnBody's so the unit is compiled
-		// exactly when the body is analysed.
-		es := r.Check.Recorder()
 		// A shaped flex container passed to a user fn may be written through
 		// the parameter's alias, which the body analysis (over a plain
 		// carrier) does not see: its claims are stale from here (NUR315).
 		for _, a := range args {
 			PoisonFlexShapes(a)
 		}
-		// Take this call's Phase-A offer out of the pool NOW, before the body
-		// analysis below can re-offer under the same (word, row, col) from
-		// another source and consume it (compiler/go/region_record.go,
-		// heldRegion). The record at the end of this closure completes the
-		// held offer; the release runs on every exit.
-		releaseRegion := es.HoldRegion(call.word, call.pos)
-		defer releaseRegion()
-		fnUnit := -1
-		polyPlan, polyBarred := dispatchPlanUserPoly(r, es, nameCopy, args, declaredReturns)
-		// A /q (quote-capture) param binds only a bare Word collected forward
-		// at the runtime pointer — a plain stack value never matches it
-		// (`def f fn [[k:Atom] [Atom] [k]] f 'meta'` raises no_signature on
-		// every engine). Check-mode matching is looser: a STRICT Atom-typed
-		// carrier (a lambda callback's element input) satisfies the slot, so
-		// a closure-body probe records an application the runtime rejects —
-		// compiled `each [[k:Atom] => […]] (keys m)` APPLIED the lambda where
-		// the interpreter leaves it data (checker-compiler-completeness-review
-		// §2.2). Latch the probe uncompilable: the closure admission declines,
-		// the word's Stage-2 compile failure stands, and the interpreter's own rule
-		// owns the program. Outside closure units every probed /q arrival
-		// already models faithfully (top-level no-match parity, the dynamic-
-		// carrier recovery compile failure), so the guard stays scoped.
-		if es.InClosureUnit() && quoteParamCarrierBind(sigParams, args) {
-			es.MarkUncompilable("fn " + nameCopy + ": Atom-typed param bound to a computed value in a closure body (quote capture is forward-only)")
-		}
-		// A FOREIGN-registry fn whose body constructs a fn value USED to
-		// decline wholesale (the compiled unit executed against the
-		// dispatching registry, losing module scope for the constructed
-		// lambda). Units now carry their owning registry (CompiledFn.Reg):
-		// the VM dispatches the unit's natives against it — exactly the
-		// registry the interpreter's foreign-wrapper CallBoru runs the body
-		// in — so a constructed lambda's downstream capability state (a
-		// listener's per-connection registries) forks module scope on both
-		// engines, and the compile failure is retired (boru:repl rows 12/16/18
-		// compile; the remaining statement-position recovery strand declines
-		// through the ordinary provenance paths).
-		if es.Armed() && !polyBarred {
-			// The body unit must be compiled against GENERALISED args
-			// — pure carriers of the call's arg types. The call's
-			// kept-concrete values would constant-fold inside the body
-			// (`n sub 1` with n=10 folds to 9), baking one call's
-			// constants into the shared unit. Same Parents → same memo
-			// key, so the generalised analysis is the one that caches.
-			genArgs := make([]core.Value, len(args))
-			for i, a := range args {
-				if i < len(sigParams) {
-					if rc, ok := recordSchemaCarrier(sigParams[i], a); ok {
-						genArgs[i] = rc // preserve record schema into the armed compile + closure capture
-						continue
-					}
-					if tc, ok := typedContainerCarrier(sigParams[i], a); ok {
-						genArgs[i] = tc // D2 Part A: preserve {:T} element type into the body carrier
-						continue
-					}
-					// A RECOVERED call's arg narrows to the DECLARED param type
-					// (narrowToDeclaredParam: the Any, Disjunct and imprecise-tag
-					// arms, one entry-guard contract).
-					if nc, ok := narrowToDeclaredParam(sigParams[i].Type, a, genSpec != nil); ok {
-						genArgs[i] = nc
-						continue
-					}
-					// The complementary case, INSIDE a stored-handler / spawn-
-					// body unit compile only (es.storedGradualDepth): an Any arg
-					// flowing into an Any (or untyped) param generalises GRADUAL
-					// (ParamInputCarrier), not strict — the callee body's
-					// dispatch over the param keeps poly-matching optimistically,
-					// exactly as the unit's own params do via fnValueInputs; a
-					// strict Any declines "unmatched dispatch recovered" on the
-					// first field access (a stored service handler calling an
-					// `st:Any` helper that reads `st.kv`). Sound by the same
-					// contract as the narrowing above: the VM's per-word poly
-					// re-match raises exactly where the interpreter does. Scoped
-					// to the stored context because there the probe-then-real
-					// discipline makes a gradual-caused compile failure per-body (one
-					// unstamped handler); applied globally it flipped whole-
-					// program main-pass rows (module-repl). Args with CONCRETE
-					// parents keep the precise strict generalisation below.
-					if pt := sigParams[i].Type; es.StoredGradualActive() &&
-						(pt == nil || pt.Equal(core.TAny)) &&
-						a.Parent() != nil && a.Parent().Equal(core.TAny) && !core.IsBareTypeNode(&a) {
-						genArgs[i] = ParamInputCarrier(core.TAny)
-						continue
-					}
-				}
-				if a.Parent() == nil || core.IsTypeLiteral(&a) {
-					// A type literal's Parent is its supertype, not its type
-					// (NUR323), and a root node's (None / Any / Never) is nil:
-					// core.ValueCarrier widens a type to a Type carrier and the
-					// None literal to the None carrier. The root node itself,
-					// flagged a carrier, carried no type at all, and a union
-					// naming None refused it where the run's None literal binds
-					// (NUR324: `k None` over `[[y:Any]…[f y]]`, `x:Maybe`).
-					genArgs[i] = core.ValueCarrier(a)
-					continue
-				}
-				genArgs[i] = core.NewCarrier(a.Parent())
-			}
-			// Key the compiled unit on the GENERALISED args, matching the body
-			// analysis (AnalyseFnBody runs on genArgs) and the FnSummaries memo. A
-			// RECURSIVE call reaches this fn with DIFFERENT concrete args (a sub-spec
-			// vs the top spec) but the SAME generalisation, so an args-keyed unit
-			// missed the in-flight unit and allocated a SECOND unit that the
-			// in-flight bail left EMPTY (the recursive `subspec run-spec` called an
-			// empty RET → sub-specs silently skipped). Keying on genArgs makes the
-			// recursive call REUSE the in-flight unit (the generalised body that
-			// handles any arg shape at run time).
-			paramNames := make([]string, len(sigParams))
-			for i, p := range sigParams {
-				paramNames[i] = p.Name
-			}
-			// The body's first-token position locates the compiled unit for
-			// a return-type error stamped at the VM's RET. It cannot equal
-			// the interpreter's call-site column (one unit serves every call
-			// site), but it keeps the compiled error from reporting an
-			// unknown position. Empty body falls back to a zero pos.
-			var fnPos core.SrcPos
-			if len(bodyToks) > 0 {
-				fnPos = bodyToks[0].Pos()
-			}
-			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyToks, captures: capturesCopy, params: sigParams, paramNames: paramNames,
-				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
-				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
-			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyToks, sigParams, args, genArgs); fnUnit < 0 {
-				fnUnit = uc.compile(genArgs, "")
-			}
-		}
 		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyToks, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
-		stk = collapseTailApply(es, fnUnit, stk)
 		stk = collapseElidedTailApply(bodyToks, stk, fnDef.Anonymous || len(declaredReturns) == 1)
 		for i := len(genNames) - 1; i >= 0; i-- {
 			r.Defs.Pop(genNames[i])
@@ -633,19 +456,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// once made bought no fresh ID. Only for a concrete fn residual
 				// aligned to this return slot; anything else keeps the carrier
 				// below.
-				//
-				// PLAIN-CHECK ONLY (!Compiling): during a REAL compile pass the
-				// emitter models a returned closure through its own PUSH_CLOSURE
-				// machinery, and surfacing the concrete FnDefInfo here instead
-				// reorders the recorded call residual and detaches the capture
-				// from its construction site — the factory-apply / returned-
-				// capturing-closure units then decline ("capture … unreachable",
-				// "call results reordered"). The checker's precision win (a
-				// bindable, dispatchable closure) is only needed on the plain
-				// check pass; the compile pass keeps the carrier and compiles the
-				// closure as before.
-				if !r.Check.Compiling &&
-					t.ConformsTo(core.TFunction) && len(stk) >= len(declaredReturns) {
+				if t.ConformsTo(core.TFunction) && len(stk) >= len(declaredReturns) {
 					if bv := stk[len(stk)-len(declaredReturns)+i]; core.IsConcrete(&bv) &&
 						bv.Parent().ConformsTo(core.TFunction) {
 						out[i] = bv
@@ -691,63 +502,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				}
 				out[i] = c
 			}
-			if fnUnit >= 0 {
-				out = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, out)
-			} else if polyPlan != nil {
-				// Ambiguous multi-overload dispatch with every arm baked: record
-				// the runtime-re-matched poly call (OpCallUserPoly). Positions
-				// where the arms' declared returns AGREE keep the committed
-				// sig's carriers; positions where they DIFFER take the plan's
-				// return-join carrier (§8.2(3) — the runtime value is whichever
-				// arm the VM selects, a branch join), so downstream typing never
-				// rides one arm's unproven commitment.
-				polyPlan.SubstituteJoinedOuts(out)
-				pos := core.SrcPos{}
-				if len(args) > 0 {
-					pos = args[0].Pos()
-				}
-				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, out, pos, call.word, call.pos)
-			}
 			return out
 		}
 		if len(stk) == 0 {
 			// No declared returns and an empty body residual: the fn produces
 			// ZERO values at run time (`def v fn [[x:Integer] [] []]  v 1 99`
-			// → [99]; `def r (f 1)` → def_error: nothing to bind). When the body
-			// unit compiled, record a 0-output CALL_USER so the residual matches
-			// runtime exactly (the call runs for its effects; the next token is
-			// the residual) and return zero values. When the unit did NOT compile
-			// (fnUnit < 0, plain check mode), keep the lenient Any approximation
-			// so downstream provenance declines and the program falls back.
-			if fnUnit >= 0 {
-				pos := core.SrcPos{}
-				if len(args) > 0 {
-					pos = args[0].Pos()
-				}
-				// nameCopy, not name, for the same reason every sibling in this
-				// closure uses it: the snapshot at the top of
-				// BuildFnBodyReturnsFn is what the closure is entitled to read.
-				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call, pos), call.pos)
-				return nil
-			}
-			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
-			// same-arity arm compiled and nets zero (tryCompileUserPolyArms'
-			// unitNetsZero gate), so record the runtime-re-matched 0-output
-			// poly call — the residual matches runtime exactly whichever arm
-			// the VM's MatchSignature selects, and there is no downstream
-			// value to type.
-			if polyPlan != nil {
-				pos := core.SrcPos{}
-				if len(args) > 0 {
-					pos = args[0].Pos()
-				}
-				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, nil, pos, call.word, call.pos)
-				return nil
-			}
-			// The 0-net / undeclared call whose body unit declined leaves a
-			// lenient STRICT Any approximation so a downstream consumer that reads
-			// the value declines on unknown provenance and the program falls back.
+			// → [99]; `def r (f 1)` → def_error: nothing to bind). The 0-net /
+			// undeclared call leaves a lenient STRICT Any approximation.
 			// It is kept strict (not dynamic): a dynamic Any would match a
 			// concrete consumer's slot optimistically and hide a real error —
 			// `3 add (f 1)` where f returns nothing must still flag. But it is a
@@ -760,146 +521,14 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			return []core.Value{core.NewCarrier(core.TAny)}
 		}
 		// Undeclared fn (anonymous lambda, 0-return fn) with a non-empty body
-		// residual: the body's residual IS the result. Record the call with
-		// those N carriers so downstream resolves them to this dispatch — or,
-		// for a construction-scope-capture unit, the fn-VALUE apply fallback
-		// (the anonymous-lambda factory result is exactly this arm's shape).
-		// An anonymous lambda's frame keeps its placeholder count off the top
-		// and drops the unnamed args pushed beneath the body, as its unit's
-		// RET does (trimUnnamedArgs, NUR255).
+		// residual: the body's residual IS the result. An anonymous lambda's
+		// frame keeps its placeholder count off the top and drops the unnamed
+		// args pushed beneath the body (trimUnnamedArgs, NUR255).
 		if fnDef.Anonymous {
 			stk = trimUnnamedArgs(stk, lambdaReturns, unnamedParamCount(sigParams))
 		}
-		if fnUnit >= 0 {
-			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, freshResidual(stk))
-		}
 		return stk
 	}
-}
-
-// fnUnitCompile is BuildFnBodyReturnsFn's unit compile for one call: what the
-// generic unit and a call-site specialised one share — the fn's name, body,
-// captures, params and contracts, and the call's registry and recorder.
-type fnUnitCompile struct {
-	r              *core.Registry
-	es             core.EmitRecorder
-	name           string
-	body           []core.Value
-	captures       []core.CapturedBinding
-	params         []core.FnParam
-	paramNames     []string
-	compileReturns []*core.Type
-	returns        []*core.Type
-	returnPatterns []*core.Value
-	decl           core.DeclSite
-	generic        bool
-	anonymous      bool
-	pos            core.SrcPos
-}
-
-// compile compiles — or, on a memo hit, reuses — the unit for one arg vector
-// and returns its index (-1 when the recorder declines). keySuffix separates
-// a call-site specialisation's unit key and body summary from the generic
-// unit's (SpecKeySuffix).
-func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
-	r, es := c.r, c.es
-	key := FnAnalysisKey(r.AnalysisScopeID(), c.name, unitArgs, c.captures, c.body) + keySuffix
-	unit, finish, ok := es.StartFnCompile(key, c.name, r, unitArgs, c.compileReturns, c.paramNames, c.captures, c.generic, c.pos)
-	if !ok {
-		return -1
-	}
-	// Record the declared PARAM types so the VM enforces them at
-	// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
-	// return-check). A gradual (Dynamic) arg optimistically matched a
-	// concrete param at check time; the compiled call must re-check the
-	// runtime value, or a laundered mismatch silently runs the body.
-	pts := make([]*core.Type, len(c.params))
-	pats := make([]*core.Value, len(c.params))
-	for i := range c.params {
-		pts[i] = c.params[i].Type
-		pats[i] = c.params[i].Pattern
-	}
-	es.SetUnitParamTypes(unit, pts, pats)
-	// The body tokens: what a per-read deopt hands to the
-	// interpreter (compiler planDeopts, NUR123).
-	es.SetUnitBody(unit, c.body)
-	// The RET-side twin: a declared union return degrades its
-	// *Type to Any, so without the pattern the compiled path —
-	// the DEFAULT path — enforces nothing while the interpreter
-	// and the check pass both reject.
-	es.SetUnitReturnPatterns(unit, c.returnPatterns)
-	// The return-contract declaration site, so a compiled RET
-	// return error labels the declaration exactly as the
-	// interpreter's ReturnCheck does.
-	es.SetUnitDecl(unit, c.decl)
-	if finish != nil {
-		// A fresh compilation must RECORD the body into THIS unit — drop any
-		// summary cached by a prior analysis (the install-time synthetic
-		// example eval, or a DISCARDED closure PROBE compile that shares
-		// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
-		// body's events instead of returning the cached residual with an
-		// empty fragment. The cache (and the AnalyseFnBody call below) is
-		// keyed on the unit's args, NOT the call's — deleting the args key
-		// left the genArgs-keyed probe summary live, so a fn dispatched under
-		// a recursive closure probe (boru:test run-case) compiled to an EMPTY
-		// stub unit in the real pass (silent 0-cases miscompile).
-		delete(r.Check.FnSummaries, key)
-		r.Check.SpecKeySuffix = keySuffix
-		stkGen := AnalyseFnBody(r, c.name, c.paramNames, c.body, unitArgs, c.captures, c.returns, c.anonymous)
-		if keySuffix != "" && !specResidualMeetsReturns(stkGen, c.compileReturns) {
-			r.Check.SpecDeclined = true
-		}
-		finish(stkGen)
-	}
-	return unit
-}
-
-// freshResidual re-mints every value of an analysed body residual under its
-// own ID, for the record of ONE call. AnalyseFnBody memoises a body's
-// residual per (fn, arg-shape) key and hands the SAME values to every call of
-// that shape, and the recorder keys a value's producer by its ID: two calls of
-// an undeclared (lambda-bodied) fn in one program seated one producer for
-// both results and the residual pushed that local twice — `def w n:Integer
-// => [(g n)] end (w 5) (w 0)` answered [3 3] for the interpreter's [8 3], and
-// `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` [0 0] for
-// [8 0] (measured 2026-09-22, NUR177). The declared-return path above mints
-// its carriers per call already; this is the undeclared path's equivalent,
-// and each result is constructed from the residual's parts (MintFresh) — a
-// payload is the same value on every call, only the identity is the call's
-// own.
-func freshResidual(stk []core.Value) []core.Value {
-	out := make([]core.Value, len(stk))
-	for i := range stk {
-		out[i] = core.MintFresh(&stk[i])
-	}
-	return out
-}
-
-// collapseTailApply mirrors, on the call site's analysed residual, the
-// fn-value apply a compiled unit's finish lowered at its body tail
-// (EmitRecorder.UnitTailApply): the check engine elides the apply word over
-// a fn-typed carrier and the identity result flows to the residual, so the
-// call site sees [args…, fn] where the unit nets ONE value. The WHOLE
-// residual must be the window — the finish lowers the apply word's form
-// only over the entire residual, and a lambda leaving a value beneath the
-// applied result (`[7 x f/v apply]`) is the interpreter's count error at
-// the RET, which a collapsed two-value residual would hide (measured: the
-// compiled unit answered [7 8] for the interpreter's "expected 1 return
-// value(s), got 2"). The window collapses to one GRADUAL result — the
-// apply's own type is unknown. Declines when the residual is not the
-// window (another shape, or a memoised residual of one).
-func collapseTailApply(es core.EmitRecorder, fnUnit int, stk []core.Value) []core.Value {
-	n, ok := es.UnitTailApply(fnUnit)
-	if !ok || len(stk) != n+1 {
-		return stk
-	}
-	top := stk[len(stk)-1]
-	if !core.IsFnTypedCarrier(&top) && !core.IsFnValueResidual(top) {
-		return stk
-	}
-	out := core.NewCarrier(core.TAny)
-	core.SetDynamic(&out, true)
-	return []core.Value{out}
 }
 
 // collapseElidedTailApply is collapseTailApply's twin for the PLAIN check
@@ -935,233 +564,10 @@ func collapseElidedTailApply(body, stk []core.Value, oneValued bool) []core.Valu
 // checkFnBodyAtConstruction runs a static body pass for each boru-bodied overload
 // of a freshly-installed fn, against generalised (carrier) args, so an UNCALLED
 // fn's body is still checked (a called fn is additionally checked per call site
-// via BuildFnBodyReturnsFn). Check-mode only; bytecode recording suspended; the
-// fn name must already be bound (recursion). Generic and Body-less (native /
+// via BuildFnBodyReturnsFn). Check-mode only; the fn name must already be
+// bound (recursion). Generic and Body-less (native /
 // handler) overloads are skipped — a generic body needs per-call type bindings,
 // and a native handler has no boru body to analyse.
-// noteBakedCallTarget records that a compiled unit is about to bake a CALL
-// TARGET for module-scope binding `name`. `RecordUserCall(fnUnit, …)` names a
-// SPECIFIC compiled unit and the lowering emits CALL_USER / TAIL_CALL_USER to
-// it, so a later module-scope rebind of the name leaves the caller invoking
-// the old body while the interpreter dispatches the new one. Measured before
-// this note existed, on the default lane with no flags:
-//
-//	def helper fn [[x:Integer] [Integer] [x add 1]]
-//	def use fn [[x:Integer] [Integer] [helper x]]
-//	use 1  def helper fn [[x:Integer] [Integer] [x add 100]]  use 1
-//	  interpreted -> 2 101      compiled -> 2 2
-//
-// It is a FUNCTION, and every RecordUserCall site calls it, because the bug
-// this closes was caused by exactly the opposite arrangement one layer down:
-// `NotifyNameRebound` used to be invoked from individual def/undef HANDLERS,
-// so each binder that returned early skipped it silently. (Both halves are
-// funnelled now — core/go/rebind_notify.go, gated by
-// `TestBindingOpsNotifyRebind`.) The first cut of this note repeated that
-// mistake before the funnels existed: it sat inline at recordUserCallOrApply
-// and missed the ZERO-OUTPUT site below, which kept
-// `def g fn [[] [] [print 1]]  def f fn [[] [] [g]]  f
-// def g fn [[] [] [print 99]]  f` printing `1 1` against the interpreter's
-// `1 99`. If a third RecordUserCall site appears, it calls this.
-//
-// The registry is the DISPATCH's own (r), never the recorder's es.reg: es.reg
-// is the last registry BindRegistry saw, which after a call into a
-// boru-implemented module is that module's sub-registry, whose baselines are
-// not this call's (region_record.go carries a dispatch registry for the same
-// reason). NoteFrozenRead self-guards on an open unit, so a TOP-LEVEL call
-// records nothing — there analysis order is program order and the interpreter
-// makes the same dispatch.
-func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
-	if r == nil || name == "" {
-		return
-	}
-	if core.ModuleScopeBinding(r, name) {
-		es.NoteFrozenRead(name, core.FrozenBakeCall, r.Defs.Gen(name))
-	}
-}
-
-// recordUserCallOrApply records a compiled-unit dispatch at a ReturnsFunc
-// callAnchor is the source position a recorded user call carries into the
-// CALL_USER instruction's debug entry: the call WORD's, where the
-// interpreter's ReturnCheck marker anchors a return-contract error (`h` in
-// `def h fn [[][Integer][1 2]] end h`, 1:33) — the first argument's only
-// for a call whose word carries none. Before this the entry was the first
-// argument's position, so a 0-argument call's contract error rendered
-// "source position unknown" and a 1-argument call's anchored at the
-// argument (NUR118).
-//
-// An ANONYMOUS lambda's call takes no argument fallback: the interpreter
-// anchors its return check at the fn value's own position, and a lambda
-// built in place has none, so both lanes report no position. The argument's
-// anchor made `[(0 ([0] => [1 2])) 7]` report 1:3 compiled beside the
-// interpreter's unknown position (NUR259).
-func callAnchor(call callSite, arg core.SrcPos) core.SrcPos {
-	if call.pos.Row > 0 || call.anonymous {
-		return call.pos
-	}
-	return arg
-}
-
-// record site: the §4.3 fn-value apply fallback where the call qualifies
-// (the outs slice is then COPIED with the freshened carrier in slot 0),
-// else the ordinary RecordUserCall. Returns the outs to hand downstream.
-func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, body []core.Value, fnUnit int, call callSite, args, outs []core.Value) []core.Value {
-	pos := core.SrcPos{}
-	if len(args) > 0 {
-		pos = args[0].Pos()
-	}
-	// The pending closure apply first: a `/v` read of a def-bound produced
-	// closure (`3 p/v apply`, the thirty-first increment) is both a pending
-	// entry (its read resolves to the closure's producer) and a name the
-	// fallback could re-dispatch by; the pending route runs the closure
-	// VM-native where the fallback's name lookup islands.
-	if fresh, ok := recordPendingClosureApply(es, body, args, outs, pos); ok {
-		outs = append([]core.Value(nil), outs...)
-		outs[0] = fresh
-		return outs
-	}
-	if fresh, ok := recordFnValueApplyFallback(es, r, name, captures, args, outs, pos); ok {
-		outs = append([]core.Value(nil), outs...)
-		outs[0] = fresh
-		return outs
-	}
-	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call, pos), call.pos)
-	return outs
-}
-
-// callSite is the dispatching word token of one user-fn call — its name as
-// dispatched and its own position — captured at the ReturnsFn's entry and
-// carried to the record, where it keys the region claim.
-type callSite struct {
-	word string
-	pos  core.SrcPos
-	// anonymous marks a literal lambda's call: the interpreter anchors its
-	// return check at the fn VALUE's own position (execFnDefSig's callPos),
-	// which a lambda built in place does not carry (callAnchor, NUR259).
-	anonymous bool
-}
-
-// recordPendingClosureApply routes the re-step dispatch of a closure this
-// pass PRODUCED, handed back by the `apply` word (`99 (kk 7) apply` — the
-// twenty-eighth increment), through the fn-VALUE apply: the recorder holds
-// the applied value under a PENDING entry registered at apply's own
-// dispatch (PendingClosureApply, matched by the sig body's backing array —
-// the value's own sig, not a copy: a body whose only token is a `=>` group
-// carries no position to match by), and RecordDynApply
-// over that value resolves the fn to the closure's producer operand — the
-// runtime payload with the captures it carries — where RecordUserCall could
-// only decline the construction-scope captures unreachable at this call
-// site. Single out, freshened as the §4.3 fallback freshens (the memoised
-// residual is shared across calls of one shape); a concrete out takes a
-// carrier of its type — the runtime value is the apply's, sound at the cost
-// of a fold — except a fn VALUE, which keeps its payload under a fresh id
-// (see below). The args arrive in signature order (sig[0] the stack top);
-// RecordDynApply takes the window deepest-first with sig[0] on top, so they
-// are reversed. A 0-arg closure declines (nothing beneath to lay out — the
-// entry stays for the finish to decline), as does whatever RecordDynApply's
-// own guards decline.
-func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
-	if len(outs) != 1 || len(args) == 0 {
-		return core.Value{}, false
-	}
-	fn, ok := es.PendingClosureApply(body)
-	if !ok {
-		return core.Value{}, false
-	}
-	var fresh core.Value
-	if _, isFn := outs[0].Data().(*core.FnDefInfo); isFn {
-		// A fn VALUE result (the next closure of a staged combinator) keeps
-		// its analysed payload under a fresh identity: a later `apply` over
-		// it re-steps the value and records through this same arm, resolving
-		// the fn to THIS apply's event.
-		fresh = core.MintFresh(&outs[0])
-	} else {
-		parent := outs[0].Parent()
-		if parent == nil {
-			parent = core.TAny
-		}
-		fresh = core.NewCarrier(parent)
-		core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
-	}
-	window := make([]core.Value, len(args))
-	for i, a := range args {
-		window[len(args)-1-i] = a
-	}
-	if _, ok := es.RecordDynApply(window, fn, &fresh, pos); !ok {
-		return core.Value{}, false
-	}
-	return fresh, true
-}
-
-// recordFnValueApplyFallback routes a call whose compiled unit carries
-// CONSTRUCTION-SCOPE (non-concrete) captures through the fn-VALUE apply
-// (RecordDynApply) instead of the unit call. Such a unit's captures are
-// analysis carriers resolvable only in the factory body's own scope, so
-// RecordUserCall declines "capture X unreachable at a call site" at every
-// OUTER call site (the audit's §4.3 capture family) — while the STORED
-// runtime value carries its own concrete captures, which the dynamic
-// apply's interpreter-dispatch island installs faithfully (CallBoru's
-// Captured install). Deliberately narrow, each guard load-bearing:
-//
-//   - single arg, single out — RecordDynApply's op nets exactly one
-//     value, and a 1-arg window cannot be reordered by the op's
-//     trailing/forward normalisation;
-//   - the binding's value is an ANONYMOUS, single-own-sig, unquoted fn —
-//     the island's execFnDefLiteral provably APPLIES that class (a named
-//     or quoted value can stay data there where the word dispatch
-//     applies — ADR-016's divergence);
-//   - at least one capture non-concrete — a fully-concrete-capture unit
-//     keeps the established unit call.
-//
-// RecordDynApply's own guards (operand provenance, the event-lead
-// quote-state compile failure, fnConcreteSingleValuedOrCarrier) still apply; a
-// decline or compile failure there leaves the program silently interpreted — the
-// answer is right, the compile failed, and nothing in the run says so.
-// Pinned end-to-end by frontier-hof-audit.tsv §9's mkap row.
-func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
-	if len(args) != 1 || len(outs) != 1 {
-		return core.Value{}, false
-	}
-	// The memoised body analysis returns the SAME residual value (same ID)
-	// for every call of one shape, so recording each apply against the
-	// shared out would give every call site's result one identity (while
-	// the recorder resolved producers through the identity, every residual
-	// slot resolved to the LAST apply — probe: `(h 5) (h 10)` compiled
-	// [17 17]).
-	// Freshen a CARRIER out per call site — the caller substitutes it —
-	// and decline a concrete out (freshening would erase its value).
-	if !outs[0].Carrier() || outs[0].Parent() == nil {
-		return core.Value{}, false
-	}
-	nonConcrete := false
-	for _, cb := range captures {
-		if !core.IsConcrete(&cb.Value) {
-			nonConcrete = true
-			break
-		}
-	}
-	if !nonConcrete {
-		return core.Value{}, false
-	}
-	top, ok := r.Defs.Top(name)
-	if !ok {
-		return core.Value{}, false
-	}
-	fd, isFn := core.FnDefOf(top.Data())
-	if !isFn || !fd.Anonymous || core.IsQuoted(&top) {
-		return core.Value{}, false
-	}
-	if own := fd.OwnSigs(); len(own) != 1 {
-		return core.Value{}, false
-	}
-	fresh := core.NewCarrier(outs[0].Parent())
-	core.SetDynamic(&fresh, core.IsDynamic(&outs[0]))
-	if !es.RecordDynApplyName(name, args, top, &fresh, pos) {
-		return core.Value{}, false
-	}
-	return fresh, true
-}
-
 func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefInfo) {
 	if r == nil || !r.Check.IsActive() || fnDef.Gen != nil {
 		return
@@ -1198,22 +604,8 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 		if !fnDef.Anonymous {
 			declared = append([]*core.Type(nil), s.Returns...)
 		}
-		// ISOLATE the analysis in a throwaway EmitState (not just Suspend): the
-		// body is analysed against the DECLARED param types, which for an abstract
-		// param (a surface like `s:Shape`) takes the surface-shape dispatch path
-		// and calls MarkUncompilable. Suspend stops recording but does NOT prevent
-		// MarkUncompilable from latching the program's EmitState.Compilable — so a
-		// construction-time check of a fn with a surface param would wrongly mark
-		// the WHOLE program uncompilable (surface.tsv:32 declined for exactly this).
-		// IsolateEmit swaps a fresh EmitState for the analysis (discarded on
-		// restore), so MarkUncompilable / recording land on the throwaway; the
-		// emitted DIAGNOSTICS (undefined_word for an uncalled body typo, the strand
-		// advisory) live on r.Check.Diagnostics and are unaffected — exactly the
-		// diagnostics-only contract this pass needs.
-		restore := r.Check.IsolateEmit()
 		before := len(r.Check.Diagnostics)
 		stk := AnalyseFnBody(r, name, paramNames, s.Body(), genArgs, fnDef.Captured, declared, fnDef.Anonymous)
-		restore()
 		// NUR111: hold the analysed body to its OWN declaration. The dispatch
 		// path runs this same mirror when it analyses a CALL, so a fn that is
 		// called is covered; a fn VALUE handed to a higher-order word
@@ -1251,8 +643,7 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 		// code. For a NAMED fn it stays: defining a fn is asking for its
 		// body to be analysed, and the existing surface is pinned. For a
 		// body the checker volunteered to look at, the honest output of a
-		// failed look is silence — the compile path still declines these
-		// programs, and loudly.
+		// failed look is silence.
 		if name == "" {
 			kept := r.Check.Diagnostics[:before]
 			for _, d := range r.Check.Diagnostics[before:] {

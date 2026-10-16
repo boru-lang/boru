@@ -497,17 +497,6 @@ func TestW9ShapedMethodApplyWindowRejects(t *testing.T) {
 	}
 }
 
-func TestW9TryRecordMethodApplyWordMismatch(t *testing.T) {
-	r := newTestRegistry(t)
-	r.Check.PendingMethodApply = &core.PendingMethodApply{Origin: core.NewCarrier(core.TAny), Word: "owner"}
-	if TryRecordMethodApply(r, "other", nil, nil, core.SrcPos{}) {
-		t.Error("a word mismatch must leave the pending for its owner")
-	}
-	if r.Check.PendingMethodApply == nil {
-		t.Error("the pending must survive a word mismatch")
-	}
-}
-
 func TestW9TryDynamicFnValueDispatchNonInertWindow(t *testing.T) {
 	r := newTestRegistry(t)
 	e := &core.Engine{Registry: r}

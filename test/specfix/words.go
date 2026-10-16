@@ -663,10 +663,6 @@ func registerEngSpecDefinition(r *core.Registry) {
 					if entry.TypeDef != nil {
 						reg.Types.Retire(entry.TypeDef)
 					}
-					// Ledgered after the pop, as basic's undef and
-					// core.UninstallDef record it (the twin reproduces the
-					// post-transition depth).
-					reg.NoteBindTransition(core.BindUndef, name, core.SrcPos{})
 					return nil, nil
 				}
 				core.UninstallDef(reg, name)

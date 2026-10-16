@@ -13,7 +13,7 @@ The boru repository contains three Go modules that matter for
 this story:
 
 ```
-eng/go/     algorithms — registry, dispatch, parser, type lattice
+core/go/    algorithms — registry, dispatch, parser, type lattice
 lang/       words — every word boru programs use lives here
 cmd/go/     the boru CLI and friends, built on lang
 ```
@@ -41,7 +41,7 @@ fail at runtime because lang's words would have intruded into
 
 Two practical consequences for any host you write:
 
-- **`go.mod` is small.** Calc depends on `github.com/boru-lang/boru/eng/go`
+- **`go.mod` is small.** Calc depends on `github.com/boru-lang/boru/core/go`
   and transitively on the tabnas parser family (`tabnas/jsonic`,
   `tabnas/parser`). That's it. No sqlite, no csv, no struct
   manipulation toolkit.
@@ -262,7 +262,7 @@ factually intact — not just designed-to-be intact.
 
 - The kernel's design choices around payload sealing, type
   lattice management, FixedID allocation, and registration
-  policy are documented in [`eng/go/CLAUDE.md`](../../eng/go/CLAUDE.md).
+  policy are documented in [`core/go/CLAUDE.md`](../../core/go/CLAUDE.md).
 - The production word set's design — `def` / `fn` / typed
   parameter binding, quotation, the `args` frame, check-mode
   carriers — is in [`lang/CLAUDE.md`](../../lang/CLAUDE.md).

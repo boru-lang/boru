@@ -286,27 +286,6 @@ func TestX5IdealRegistry(t *testing.T) {
 
 // --- analysis_hooks.go ----------------------------------------------------
 
-func TestX5AnalysisAccessors(t *testing.T) {
-	r := x5reg(t)
-	if r.analysisCompiling() {
-		t.Fatal("a fresh registry is not compiling")
-	}
-	r.noteAnalysisDiagnostic(CheckDiagnostic{Code: "x5", Detail: "d"})
-	r.noteSuppressedRuntimeError()
-	r.noteAmbiguousGradualSplit()
-	if !r.Check.SuppressedRuntimeError || !r.Check.AmbiguousGradualSplit {
-		t.Fatal("latches must set their flags")
-	}
-	// The inactive AnalysisImpl defaults answer conservatively.
-	if r.analysisMixedConform(NewInteger(1), TInteger) {
-		t.Fatal("inactive MixedConform is false")
-	}
-	if r.analysisAtUncaughtTopLevel() {
-		t.Fatal("inactive AtUncaughtTopLevel is false")
-	}
-	r.noteAnalysisUniqueDiagnostic(CheckDiagnostic{Code: "x5u", Detail: "d"})
-}
-
 func TestX5AnalysisStepMeterBudget(t *testing.T) {
 	r := x5reg(t)
 	end := r.Check.Begin()

@@ -58,7 +58,7 @@ possible (the `boru:debug` design principle, `DEBUG-MODULE.0.md` §2.4).
 | Word docs / categories / module catalog | `lang/go/native/help` (categories table, `moduleCatalog`, `FuncInfo`) | **text-only** — the taxonomy is not exposed as data to boru at all |
 | Execution steps | the cross-registry hook `Registry.SetDebugTraceFrom` + `RunningEngineChain` (`core/go/debug_trace_hook_test.go`); `Debug.trace`/`IO.trace` **print** | no data-returning trace |
 | Value structure census | `Debug.shape`, `StructUtil.walk` | — (adopted) |
-| Static diagnostics / compilability | `Vm.check`, `Vm.compile` (already data) | none — stays in `boru:vm` (§3) |
+| Static diagnostics | `Vm.check` (already data) | none — stays in `boru:vm` (§3) |
 | Repo-level structure graph | kg bundle + `KgQuery.*` | none — offline/repo scope, deliberately separate (§3) |
 
 The gaps in column three are the module's actual work: **a whole-system
@@ -79,7 +79,7 @@ re-packaging.
   thumb: type-util answers "what is this type?", scry answers "what
   types are there and how do they relate?".
 - **vs `boru:vm`** — vm analyses *other* source under an explicit
-  policy (`Vm.check`, `Vm.compile`, sub-engine runs). Scry reads *this
+  policy (`Vm.check`, sub-engine runs). Scry reads *this
   live registry*. Self-analysis of source stays vm's job; scry does
   not grow a checker surface.
 - **vs the kg pipeline** — kg is the *repository's* evidence-backed

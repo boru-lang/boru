@@ -72,7 +72,7 @@ by the cited file):
   tail-recursive receive loop cannot blow the stack.
 - **Timer machinery at the host layer**: `receive … after <ms>`, plus
   `boru:time-util`'s clock-capability-gated words.
-- **Immutability-first values** (`eng/go/clone.go`) and immutable-only
+- **Immutability-first values** (`core/go/clone.go`) and immutable-only
   messages (`PROCESSES.0.md` §6) — snapshots and events are plain immutable
   maps, so they are always legal messages and always race-free. One
   cost-model correction against that RFC's zero-copy stance: the shipped

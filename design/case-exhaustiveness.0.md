@@ -102,7 +102,7 @@ a default the runtime might never need), but the checker never wrongly
   (generalized) finding is authoritative.
 - The pass runs in `caseReturnsFn` BEFORE the plain-check /
   compile-desugar paths diverge, so both passes report identical
-  findings (the same-diagnostics contract, eng/go/CLAUDE.md).
+  findings (the same-diagnostics contract, core/go/CLAUDE.md).
 
 ## The advisory duals (info, non-gating)
 
@@ -125,7 +125,7 @@ The same coverage computation yields two advisories, per the
 - `lang/go/native/conditional.go` — the `caseReturnsFn` hook (and a
   stale header fix: the compile desugar never required a trailing
   default; only the code-body-scrutinee sub-path does).
-- `eng/go/registry.go` — severity classifications.
+- `core/go/registry.go` — severity classifications.
 - `lang/spec/case.tsv` — the no-match/no-default row was replaced by a
   dynamic-scrutinee-with-default row (no check-clean spelling of the
   produce-nothing shape exists any more); §6 pins the check-clean

@@ -19,12 +19,9 @@
 #   an engine module,   the langspec gates over the SMOKE corpus: a fixed
 #   test/go/langspec,   sample of spec files spanning the families, plus
 #   test/specfix or a   every spec file the change touched, under
-#   spec file touched   BORU_SPEC_FILES — every per-row verdict (a
-#                       divergence, an island, an interpreter entry, a
-#                       compile failure) asserts, and so does the per-file
-#                       compile-failure ledger for every file in the run
-#                       (test/go/langspec/compile_failures.tsv); the
-#                       corpus-wide counts report
+#   spec file touched   BORU_SPEC_FILES — every per-row verdict (a wrong
+#                       answer, a check false positive, a type-soundness
+#                       violation) asserts; the corpus-wide counts report
 #   docs, Makefile,     the knowledge graph against the tree
 #   scripts, kg, CI     (make -C kg verify, which needs the CLI built)
 #   touched
@@ -41,7 +38,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 ceiling=${COMMIT_GATE_CEILING:-180}
-engine_modules="core/go check/go compiler/go parser/go eng/go basic/go lang/go"
+engine_modules="core/go check/go parser/go basic/go lang/go"
 # The smoke corpus: about a tenth of the rows, one file per family that
 # has bitten — callbacks and fn values, code bodies, each/fold, modules,
 # user types, dispatch, generics, control, and the core corpus.
@@ -49,7 +46,7 @@ smoke_files="callbacks.tsv,code-bodies.tsv,each-variants.tsv,module-composition.
 # Corpus tests that do not walk the spec files (they generate, fuzz or
 # transform their own programs, or read real programs) and are slow: the
 # smoke skips them, the shards run them.
-smoke_skip='TestPropertyDifferential|TestVariationDifferential|TestRealProgramsCompile|TestCheckRunFalsePositive'
+smoke_skip='TestPropertyRobustness|TestRealProgramsRun|TestCheckRunFalsePositive'
 
 modules=$(sed -n 's/^MODULES := //p' Makefile)
 t0=$(date +%s)

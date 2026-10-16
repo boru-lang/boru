@@ -66,24 +66,3 @@ func TestNUR329ForwardReach(t *testing.T) {
 		}
 	}
 }
-
-// TestNUR336StatementStackPos pins the key a statement-stack note takes: the
-// token's own position, or — for a paren the engine expanded to its markers
-// before stepping it (`def k (3 dup) (m.f 7)`) — its first inner token's;
-// an open paren with nothing after it keeps its own.
-func TestNUR336StatementStackPos(t *testing.T) {
-	inner := NewWord("m")
-	inner.SetPos(SrcPos{Row: 1, Col: 65})
-	own := NewWord("k")
-	own.SetPos(SrcPos{Row: 1, Col: 3})
-	e := engWithTape(t, []Value{own, NewOpenParen(), inner, NewCloseParen(), NewOpenParen()}, 0)
-	if got := e.statementStackPos(0); got.Col != 3 {
-		t.Errorf("a token's own position: %v", got)
-	}
-	if got := e.statementStackPos(1); got.Col != 65 {
-		t.Errorf("an expanded paren's first inner token: %v", got)
-	}
-	if got := e.statementStackPos(4); got.Row != 0 {
-		t.Errorf("an open paren with nothing after it: %v", got)
-	}
-}

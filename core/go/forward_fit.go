@@ -61,169 +61,20 @@ func ForwardFitsAll(fits []ForwardFit, v Value) bool {
 	return true
 }
 
-// forwardFitsPub is CheckState.CurFits: the published fits of one
-// dispatch's operands, answered only for its own operand slice.
-type forwardFitsPub struct {
-	args []Value
-	fits map[int][]ForwardFit
-}
-
-// FitsFor returns the published forward fits when they describe args — the
-// very slice the dispatch published them for — keyed by signature position;
-// nil for any other record.
-func (c *CheckState) FitsFor(args []Value) map[int][]ForwardFit {
-	p := c.CurFits
-	if p == nil || len(args) == 0 || len(p.args) != len(args) || &p.args[0] != &args[0] {
-		return nil
-	}
-	return p.fits
-}
-
-// forwardFits is the forward fits of the dispatch match at the pointer, by
-// signature position, for each operand written after the word
-// (forwardSplit) that is a carrier or a dynamic whose own type does not
-// prove it fits its slot in the matched signature (fitProven): the slots,
-// over fn's candidates, where the run's value may make the interpreter's
-// plan differ from the pass's. A candidate's collection that stops at the
-// operand takes the rest of its slots from the stack beneath the word, so
-// a slot counts only where that collection could match (altViable): the
-// pass's scan admitted the carrier there without proof, and the stack
-// holds enough values none of which is proven to miss its slot — `z add y`
-// over add's Bytes overload and one value beneath fails whatever y holds.
-// An operand with no such slot is still listed, with none: its poly's
-// island serves its no-match (PolyRef.Fit), whose report names the stack
-// the interpreter's collection read. Nil when there is no such operand, or
-// the dispatch is no word's the registry names.
-func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
-	nFwd := e.forwardSplit()
-	if nFwd == 0 || match.Sig == nil || nFwd > len(match.Args) {
-		return nil
-	}
-	w, err := AsWord(e.Tape.Ref(e.Pointer))
-	if err != nil {
-		return nil
-	}
-	// The word re-steps as a forced stack read once its forward collection
-	// laid the operands out (optimisticLayout's rule): the forward phase
-	// the plan ran was the unmodified word's.
-	w.ForceStack = false
-	fn := match.DispatchRegistry(e.Registry).Lookup(match.Name)
-	if fn == nil {
-		return nil
-	}
-	stack, unbounded := e.stackBeneath(match, nFwd)
-	// The matched signature, where the dispatch matched one of fn's own; a
-	// copy (a user fn's frame sig) names none, and every candidate may be
-	// the one the pass took.
-	matched := false
-	for i := range fn.Signatures {
-		matched = matched || &fn.Signatures[i] == match.Sig
-	}
-	var out map[int][]ForwardFit
-	for k := 0; k < nFwd; k++ {
-		a := match.Args[k]
-		if (!a.Carrier() && !IsDynamic(&a)) || fitProven(match.Sig, k, a) {
-			continue
-		}
-		fits := []ForwardFit{}
-		for i := range fn.Signatures {
-			s := &fn.Signatures[i]
-			if s.Fallback || k >= s.TotalArgs() || !forwardReaches(s, w, k) || !SigArgMatches(s, k, &a) || fitProven(s, k, a) ||
-				!altViable(s, k, stack, unbounded) {
-				continue
-			}
-			fits = append(fits, ForwardFit{Sig: s, Idx: k, Chosen: s == match.Sig || !matched})
-		}
-		if out == nil {
-			out = map[int][]ForwardFit{}
-		}
-		out[k] = fits
-	}
-	return out
-}
-
-// stackBeneath is the interpreter's stack at the dispatch at the pointer,
-// top first: the operands the pass took from it (match.Args[nFwd:]), then
-// the resolved values beneath them up to the group's open paren. Every
-// operand now sits beneath the word, the nFwd written ones laid out on top
-// by the forward collection (rearrangeForForward). unbounded marks a stack
-// whose count is no proof — a runtime-counted region's modelled seat
-// (EmitRecorder.RegionResult) may hold any count — or whose operands are
-// not where the layout puts them.
-func (e *Engine) stackBeneath(match *MatchResult, nFwd int) (stack []Value, unbounded bool) {
-	rec := e.Registry.analysisRecorder()
-	below := e.ResolvedIndicesBefore(e.Pointer + 1)
-	n := len(match.Args)
-	if len(below) < n {
-		return nil, true
-	}
-	for i := 0; i < n; i++ {
-		if below[len(below)-1-i] != e.Pointer-1-i {
-			return nil, true
+// BarrierBars reports whether an overload among sigs stops its forward
+// collection short of nFwd written operands and then reads the stack: its
+// barrier (the unmodified word's forward limit) is below nFwd and below its
+// own arity. The interpreter's plan for such an overload takes the leading
+// operands up to its barrier and the rest off the stack beneath the word —
+// never the window a dispatch whose leading nFwd operands were written
+// after the word holds — so a flat match of that window against it is not
+// the interpreter's match (NUR362: `get (h) {k:1}`, every get overload's
+// barrier 1, raises signature_error however (h) comes out).
+func BarrierBars(sigs []Signature, nFwd int) bool {
+	for i := range sigs {
+		if s := &sigs[i]; !s.Fallback && s.BarrierPos >= 0 && s.BarrierPos < nFwd && s.BarrierPos < s.TotalArgs() {
+			return true
 		}
 	}
-	stack = append(stack, match.Args[nFwd:]...)
-	for i := len(below) - n - 1; i >= 0; i-- {
-		v := e.Tape.At(below[i])
-		if IDOf(&v) != "" && rec.RegionResult(RecKeyOf(&v)) {
-			return nil, true
-		}
-		stack = append(stack, v)
-	}
-	return stack, false
-}
-
-// altViable reports whether sig's collection, stopped at position k, may
-// match over the stack beneath the word (top first): its slots k on come
-// from there, so the stack must hold that many values — unbounded, any
-// count — none of which the pass proves misses its slot (a gradual value
-// is admitted, as the pass admitted the operand itself).
-func altViable(sig *Signature, k int, stack []Value, unbounded bool) bool {
-	need := sig.TotalArgs() - k
-	if !unbounded && len(stack) < need {
-		return false
-	}
-	for j := 0; j < need && j < len(stack); j++ {
-		if !SigArgMatches(sig, k+j, &stack[j]) {
-			return false
-		}
-	}
-	return true
-}
-
-// forwardReaches reports whether sig's forward phase at word w may reach
-// its position k (effectiveForwardLimit; an all-forward barrier reaches
-// every position).
-func forwardReaches(sig *Signature, w WordInfo, k int) bool {
-	limit := effectiveForwardLimit(sig, w)
-	return limit < 0 || k < limit
-}
-
-// fitProven reports whether operand a's own type proves the forward scan
-// takes its run value at sig's position k: a slot that captures any token,
-// an Any slot, or a strict carrier whose type conforms to the slot's.
-func fitProven(sig *Signature, k int, a Value) bool {
-	if (sig.FormArgs != nil && sig.FormArgs[k]) || (sig.QuoteArgs != nil && sig.QuoteArgs[k]) {
-		return true
-	}
-	expected := SigArgType(sig, k)
-	if expected.Equal(TAny) {
-		return true
-	}
-	return !IsDynamic(&a) && a.Parent() != nil && !a.Parent().Equal(TAny) && a.Parent().ConformsTo(expected)
-}
-
-// publishForwardFits publishes forwardFits for the dispatch's record and
-// returns the restore the caller runs once it is recorded.
-func (e *Engine) publishForwardFits(match *MatchResult) func() {
-	if !e.Registry.analysisRecorder().Active() {
-		return func() {}
-	}
-	fits := e.forwardFits(match)
-	if fits == nil {
-		return func() {}
-	}
-	prev := e.Registry.Check.CurFits
-	e.Registry.Check.CurFits = &forwardFitsPub{args: match.Args, fits: fits}
-	return func() { e.Registry.Check.CurFits = prev }
+	return false
 }

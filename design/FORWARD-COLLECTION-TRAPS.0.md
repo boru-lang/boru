@@ -43,7 +43,7 @@ where `def noop fn [[] [] []]`.
 ### Root cause
 
 Forward collection counts **values arriving at the pointer**, not tokens. In
-`stepLiteral`'s collection block (`eng/go/engine.go:2006-2049`) each value that
+`stepLiteral`'s collection block (`core/go/engine.go:2006-2049`) each value that
 reaches the pointer while a `Forward` marker is pending is collected and
 `CollectedArgs++` (`:2049`); the word fires when `CollectedArgs >=
 ExpectedArgs`.
@@ -128,7 +128,7 @@ xs get 1        # => 20        literal index
 The `[Atom …]` signatures exist on purpose: they make `m get key` (and the
 desugaring of `m.key`) work, where `key` is meant as a **literal name**, not a
 variable. So during forward collection a following **bare word** is captured as
-an `Atom` (the Word→Atom path in the collector, `eng/go/engine.go:2010-2017`)
+an `Atom` (the Word→Atom path in the collector, `core/go/engine.go:2010-2017`)
 and matched against `[Atom Node]` — *before* the def stack is ever consulted.
 Consequences, all confirmed:
 

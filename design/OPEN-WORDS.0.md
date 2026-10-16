@@ -400,7 +400,7 @@ binding store (`Registry.Defs`), and `Registry.Lookup` already unions
 signatures across a name's def stack (`aggregateDispatch`). So a "word
 clone" is an ordinary def-stack entry:
 
-- **`Signature.Locked`** (`eng/go/value.go`) — stamped on every sig in
+- **`Signature.Locked`** (`core/go/value.go`) — stamped on every sig in
   `Registry.Register` (the native/host path; user `def`s never reach
   it). `CompareSignatures` sorts locked strictly first — the §3.3
   theorem holds by ordering alone, across arity too (a longer unlocked
@@ -413,7 +413,7 @@ clone" is an ordinary def-stack entry:
   makes unlocked-tuple replacement effective and `undef` restore the
   exact previous state. `aggregateDispatch` propagates the marker so a
   `name/r` reference stays recognisable at export.
-- **`eng/go/word_extend.go`** — sealed set + `InstallWordExtension`
+- **`core/go/word_extend.go`** — sealed set + `InstallWordExtension`
   (the def-merge; compiles added sigs through the same
   `compileFnSigs` pipeline `InstallFnDef` uses) +
   `TransplantExtension` (the import-side merge; `Signature.Origin`

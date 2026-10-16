@@ -599,7 +599,7 @@ defaults follow.
 `stepWord` consults the policy for engine kernel words:
 
 ```go
-// eng/go/engine.go (sketch)
+// core/go/engine.go (sketch)
 func (e *Engine) stepWord(name string) error {
     if pol := HostPolicy(e.r); pol != nil {
         if err := pol.Check("engine", name, nil); err != nil {
@@ -971,7 +971,7 @@ assume module code is gated when it is not.
 
 Every policy check reads `HostPolicy(r)` off the registry the **live
 dispatching engine** is bound to — `stepWord` reads `HostPolicy(e.r)`, and
-a capability handler is invoked with `e.registry` (`eng/go/engine.go`
+a capability handler is invoked with `e.registry` (`core/go/engine.go`
 `execMatch`), *not* the sub-registry a module's exports were registered in.
 At the top level that registry carries the policy, so a top-level
 `Vault.reveal` or `IO.write` is gated exactly as designed.

@@ -44,64 +44,6 @@ func TestMapTupleToWindow(t *testing.T) {
 	}
 }
 
-func TestPolyNoMatchSpecGates(t *testing.T) {
-	fnOne := &FnDefInfo{Signatures: []Signature{pnmSig(-1, TInteger, TString)}}
-	w0 := pnmVal("ida", NewInteger(1))
-	w1 := pnmVal("idb", NewString("s"))
-	window := []Value{w0, w1}
-	good := polyNoMatchProbe{ok: true, written: []Value{w0, w1}, stackVals: []Value{w0, w1}, reachOK: true, reach: 2, pos: SrcPos{Row: 2, Col: 4}}
-
-	if s := (polyNoMatchProbe{}).Spec(fnOne, window); s != nil {
-		t.Error("a probe whose tape-only gates failed must decline")
-	}
-	if s := good.Spec(nil, window); s != nil {
-		t.Error("a nil fn must decline")
-	}
-	if s := good.Spec(fnOne, nil); s != nil {
-		t.Error("an empty window must decline")
-	}
-	if s := good.Spec(fnOne, window); s == nil || s.NSigs != 1 || s.Pos.Row != 2 ||
-		len(s.Written) != 2 || s.Written[0] != 0 || s.Written[1] != 1 {
-		t.Errorf("the clean probe must produce the spec, got %+v", s)
-	}
-	// A NARROWER-arity overload declines outright.
-	fnNarrow := &FnDefInfo{Signatures: []Signature{pnmSig(-1, TInteger, TString), pnmSig(-1, TInteger)}}
-	if s := good.Spec(fnNarrow, window); s != nil {
-		t.Error("a narrower-arity overload must decline")
-	}
-	// A WIDER-arity overload needs the trustworthy reach bound below it.
-	fnWide := &FnDefInfo{Signatures: []Signature{pnmSig(-1, TInteger, TString), pnmSig(-1, TInteger, TString, TBoolean)}}
-	if s := good.Spec(fnWide, window); s == nil {
-		t.Error("a structurally-excluded wider overload must not decline (reach 2 < 3)")
-	}
-	unbounded := good
-	unbounded.reachOK = false
-	if s := unbounded.Spec(fnWide, window); s != nil {
-		t.Error("an untrustworthy reach bound must decline the wider-arity exclusion")
-	}
-	reachable := good
-	reachable.reach = 3
-	if s := reachable.Spec(fnWide, window); s != nil {
-		t.Error("a runtime-reachable wider overload must decline")
-	}
-	// A FALLBACK sig is exempt from the arity screen.
-	fnFb := &FnDefInfo{Signatures: []Signature{pnmSig(-1, TInteger, TString), {Fallback: true}}}
-	if s := good.Spec(fnFb, window); s == nil {
-		t.Error("a fallback sig must not trip the arity screen")
-	}
-	// Tuple-mapping declines: written first, then the stack tuple.
-	badWritten := good
-	badWritten.written = []Value{pnmVal("idz", NewInteger(9))}
-	if s := badWritten.Spec(fnOne, window); s != nil {
-		t.Error("an unmappable written tuple must decline")
-	}
-	badStack := good
-	badStack.stackVals = []Value{pnmVal("idz", NewInteger(9))}
-	if s := badStack.Spec(fnOne, window); s != nil {
-		t.Error("an unmappable stack tuple must decline")
-	}
-}
-
 // --- the tape probe + reach bound ------------------------------------------
 
 // pnmEngine builds a top engine over a hand tape with the pointer at the
@@ -112,48 +54,6 @@ func pnmEngine(t *testing.T, r *Registry, tape []Value, pointer int) *Engine {
 	e.Tape = NewTape(tape, StackHeadroom)
 	e.Pointer = pointer
 	return e
-}
-
-func TestPolyNoMatchProbeFnShapeDeclines(t *testing.T) {
-	r := covRegistry(t, nil)
-	r.Defs.Push("MyShape", NewCarrier(TFnUndef))
-	sig := &Signature{Params: []FnParam{{Type: TMap}, {Type: TAny}}, BarrierPos: -1}
-	m := NewOrderedMap()
-	m.Set("f", NewWord("MyShape"))
-	e := pnmEngine(t, r, []Value{
-		NewForward(ForwardInfo{FuncName: "def", Sig: sig, CollectedArgs: 1, FuncIndex: 5}),
-		NewWord("pnmfs"),
-		NewCarrier(TInteger),
-		NewWord("zz-stop"),
-		NewMap(m),
-	}, 1)
-	if p := e.PolyNoMatchProbe("pnmfs", SrcPos{}); p.ok {
-		t.Error("the fn-shape typed-binding context must decline the probe")
-	}
-}
-
-func TestPolyNoMatchProbeSnapshotsTuples(t *testing.T) {
-	r := covRegistry(t, nil)
-	e := pnmEngine(t, r, []Value{
-		NewInteger(9),
-		NewWord("pnmp"),
-		NewInteger(1),
-	}, 1)
-	p := e.PolyNoMatchProbe("pnmp", SrcPos{Row: 5, Col: 2})
-	if !p.ok || p.pos.Row != 5 {
-		t.Fatalf("the clean state must probe ok at the given pos, got %+v", p)
-	}
-	// written: the forward branch (the concrete token after the word);
-	// stackVals: the prefix value.
-	if w0, _ := AsInteger(p.written[0]); len(p.written) != 1 || w0 != 1 {
-		t.Errorf("written = %v, want the forward token 1", p.written)
-	}
-	if s0, _ := AsInteger(p.stackVals[0]); len(p.stackVals) != 1 || s0 != 9 {
-		t.Errorf("stackVals = %v, want the prefix value 9", p.stackVals)
-	}
-	if !p.reachOK || p.reach != 2 {
-		t.Errorf("reach = %d/%v, want 2/true", p.reach, p.reachOK)
-	}
 }
 
 func TestPolyReachBound(t *testing.T) {

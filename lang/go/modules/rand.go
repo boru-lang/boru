@@ -393,21 +393,6 @@ func randNativesForState(state *randState) []native.NativeFunc {
 			// (NoEvalArgs[0]=true) — typically uses `r` or rand.*
 			// to produce a single value per iteration.
 			Name: "rand-list-of",
-			// A 0-input generator body run n times — the same closure shape as
-			// `do`, so the recorder compiles `[body]` to a closure unit and the
-			// handler runs it via the VM seam instead of a sub-engine (the body's
-			// RNG draws advance the same module generator either way).
-			//
-			// BodyMultiRunKeepsDefs: the handler runs the body n times on the
-			// shared registry with no def cleanup (InvokeBody compiled,
-			// RunPooled interpreted) — each's leak — so a body `def` rebinds
-			// the name for the next run and for the rest of the program
-			// (NUR330: `def k 5 Rand.list-of [def k 1 k] 1 k` is [[1] 1]).
-			// The ReturnsFn runs the body in the pass's model the way each's
-			// does, so the pass sees the leak too.
-			Callable: &native.CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(_ []native.Value) []native.Value {
-				return []native.Value{}
-			}},
 			Signatures: []native.Signature{{
 				Args:       []*native.Type{native.TList, native.TInteger},
 				Returns:    []*native.Type{native.TList},
@@ -424,23 +409,7 @@ func randNativesForState(state *randState) []native.NativeFunc {
 							fmt.Sprintf("Rand.list-of: length (%d) < 0", n), "Rand.list-of")
 					}
 					out := make([]native.Value, 0, n)
-					// Compiled path: the body arrived as a compiled CLOSURE; run it
-					// n times through the VM's re-entrant runner (InvokeBody).
-					if native.IsCompiledClosure(args[0]) {
-						for i := int64(0); i < n; i++ {
-							res, err := native.InvokeBody(r, args[0], nil)
-							if err != nil {
-								return nil, fmt.Errorf("evaluating Rand.list-of[%d]: %w", i, err)
-							}
-							if len(res) == 0 {
-								return nil, r.BoruError("rand_error",
-									fmt.Sprintf("Rand.list-of[%d]: body produced no value", i), "Rand.list-of")
-							}
-							out = append(out, res[len(res)-1])
-						}
-						return []native.Value{native.NewList(out)}, nil
-					}
-					// Interpreter path: run the quoted token body in a sub-engine.
+					// Run the quoted token body in a sub-engine.
 					body, err := native.RequireConcreteList(args[0], "Rand.list-of body")
 					if err != nil {
 						return nil, err

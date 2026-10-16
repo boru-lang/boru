@@ -112,25 +112,6 @@ func TestFoldaxisEmptyBodyResult(t *testing.T) {
 	}
 }
 
-// An empty quotation over a map is the identity on each value: its body
-// is the EMPTY list (quotationBody), not a nil-backed one, and the Go
-// lane's invocation hands the inputs straight back (quotationInvoke).
-func TestEmptyMapQuotationIsIdentity(t *testing.T) {
-	if got, _, err := traceLoop(t, `each [] {a:1 b:2}`); err != nil || got != `{a:1 b:2}` {
-		t.Errorf("each [] over a map = %s / %v", got, err)
-	}
-	r := b2Reg(t)
-	in := []Value{NewInteger(7)}
-	out, err := quotationInvoke(r, nil)(Value{}, in)
-	if err != nil || len(out) != 1 || Canon(out) != `7` {
-		t.Errorf("quotationInvoke(empty) = %v / %v, want the input", out, err)
-	}
-	out, err = quotationInvoke(r, []Value{NewWord("dup"), NewWord("add")})(Value{}, in)
-	if err != nil || Canon(out) != `14` {
-		t.Errorf("quotationInvoke([dup add]) = %v / %v, want 14", out, err)
-	}
-}
-
 // mapBody.fold's token arm threads (accumulator, value) through the
 // quotation as list fold does — value on top.
 func TestMapBodyFoldQuotation(t *testing.T) {

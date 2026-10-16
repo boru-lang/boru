@@ -54,7 +54,7 @@ output is `dynamic(Any)`, which BLOCKS `add`'s `[Number Number]` forward
 overload, so check-mode matchSignature falls to the `[Scalar Scalar]`
 catch-all in ALL-STACK form — reaching PAST the dynamic top-of-stack to
 the deeper leading residual (`5`) and stranding the forward token that
-the interpreter (concrete operand) would collect. `eng/go/engine.go`
+the interpreter (concrete operand) would collect. `core/go/engine.go`
 `declineForwardStackDrift` refuses, in compile mode only, a
 forward-eligible dispatch that matched all-stack with a DYNAMIC
 top-of-stack operand, a NON-dynamic deeper operand, and an atomic-literal
@@ -88,7 +88,7 @@ residual tail to the wrong value. Because the read's static type is
 `dynamic(Any)`, the fn-ness is invisible downstream, so a get-family read
 of a fn-valued container member is TAGGED at record time
 (`eng/go/emit.go` `readsFnMember` / `noteMemberFnRead`) and
-`eng/go/engine.go` `declineStrandedMemberFn` refuses (compile mode only) a
+`core/go/engine.go` `declineStrandedMemberFn` refuses (compile mode only) a
 dispatch whose deepest stack operand sits directly above such a tagged
 value. The bare statement-tail apply `m.double 21` never reaches the
 guard (nothing dispatches above the fn) and keeps lowering to the
@@ -199,6 +199,6 @@ folds soundly to `PUSH_LOCAL N` when every param is NAMED
 (`recursion.tsv:35,36`, still compiling), but an unnamed param flows
 through the body STACK, so folding `args.N` over the projection strands
 that live input (a divergent value/count). `runFnBodyOnce`
-(`eng/go/carrier.go`) records `CheckState.ArgsFrameUnnamed` for the frame
+(`check/go/carrier.go`) records `CheckState.ArgsFrameUnnamed` for the frame
 under analysis, and the `args` projection in `specialWordResults` refuses
 (compile mode only) when it is set. Named-only frames keep compiling.

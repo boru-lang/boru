@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	lang "github.com/boru-lang/boru/lang/go"
-	"github.com/boru-lang/boru/lang/go/modules"
 	"github.com/boru-lang/boru/lang/go/policy"
 )
 
@@ -232,46 +231,6 @@ func TestVMCheckSyntaxErrorIsDataNotRaised(t *testing.T) {
 
 // ---- Vm.compile -------------------------------------------------------
 
-func TestVMCompileCompilable(t *testing.T) {
-	a := newBoru(t, nil)
-	mustScalar(t, a, `(import "boru:vm") (Vm.compile "1 add 2").ok`, "true")
-	mustScalar(t, a, `(import "boru:vm") (Vm.compile "1 add 2").reason`, "")
-	// The dispatch-site census is reported for a compiled program.
-	mustScalar(t, a, `(import "boru:vm") ((Vm.compile "1 add 2").sites).mono`, int64(1))
-}
-
-// Negative contract: an UNCOMPILABLE program is compile failure-as-data — ok:false
-// with the first offender named, and no Go error raised.
-func TestVMCompileDoesNotLowerAsData(t *testing.T) {
-	a := newBoru(t, nil)
-	out, err := a.Run(`(import "boru:vm") Vm.compile "(size (for 5 [i]))"`)
-	if err != nil {
-		t.Fatalf("Vm.compile must not raise on an uncompilable program, got: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("expected a result map")
-	}
-	mustScalar(t, a, `(import "boru:vm") (Vm.compile "(size (for 5 [i]))").ok`, "false")
-	// reason is non-empty: it names why the program could not be lowered.
-	reasonLen := runScalar(t, a, `(import "boru:vm") size (Vm.compile "(size (for 5 [i]))").reason`)
-	if n, _ := reasonLen.(int64); n == 0 {
-		t.Error("expected a non-empty compile failure reason")
-	}
-}
-
-func TestVMCompileSyntaxErrorIsDataNotRaised(t *testing.T) {
-	a := newBoru(t, nil)
-	out, err := a.Run(`(import "boru:vm") Vm.compile "1 add ((("`)
-	if err != nil {
-		t.Fatalf("Vm.compile must not raise on malformed source, got: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("expected a result map")
-	}
-	mustScalar(t, a, `(import "boru:vm") (Vm.compile "1 add (((").ok`, "false")
-	mustScalar(t, a, `(import "boru:vm") (Vm.compile "1 add (((").reason`, "parse error")
-}
-
 // ---- helpers ----------------------------------------------------------
 
 func runScalar(t *testing.T, a *lang.Boru, src string) any {
@@ -290,23 +249,5 @@ func mustScalar(t *testing.T, a *lang.Boru, src string, want any) {
 	t.Helper()
 	if got := runScalar(t, a, src); got != want {
 		t.Errorf("run %q: got %v (%T), want %v (%T)", src, got, got, want, want)
-	}
-}
-
-// The nil-CompiledSubRun arm: a host embedding modules WITHOUT the lang
-// package (whose init installs the seam) keeps the tree-walker — the
-// sub-engine result is identical.
-func TestVMRunWithoutCompiledSeamKeepsTreeWalker(t *testing.T) {
-	saved := modules.CompiledSubRun
-	modules.CompiledSubRun = nil
-	defer func() { modules.CompiledSubRun = saved }()
-
-	a := newBoru(t, nil)
-	out, err := a.Run(`(import "boru:vm") "1 add 2" Vm.run`)
-	if err != nil {
-		t.Fatalf("Vm.run without the seam: %s", err)
-	}
-	if len(out) == 0 || out[len(out)-1] != int64(3) {
-		t.Errorf("tree-walker sub-run = %v, want 3", out)
 	}
 }

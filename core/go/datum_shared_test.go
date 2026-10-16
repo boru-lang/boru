@@ -2,30 +2,6 @@ package core
 
 import "testing"
 
-// A compiled closure is a pointer payload allocated with its datum: the
-// value reads back the payload it was built from, under Function or the
-// parent it was given, and is never type content.
-func TestNewClosureValueCoAllocates(t *testing.T) {
-	cl := ClosurePayload{Unit: 3, Render: "fn (Integer)"}
-	v := NewClosureValue(cl)
-	got, ok := v.Data().(*ClosurePayload)
-	if !ok || got.Unit != 3 || got.Render != "fn (Integer)" || v.Parent() != TFunction {
-		t.Fatalf("NewClosureValue: %#v under %v", v.Data(), v.Parent())
-	}
-	if got.IsTypeContent(v.Parent()) {
-		t.Fatal("a closure is never type content")
-	}
-	under := NewClosureValueUnder(TAny, cl)
-	if under.Parent() != TAny {
-		t.Fatalf("NewClosureValueUnder: parent %v, want Any", under.Parent())
-	}
-	// Building from one payload twice gives each value its own: neither
-	// sees the other's payload.
-	if p, _ := under.Data().(*ClosurePayload); p == got {
-		t.Fatal("two closure values share one payload")
-	}
-}
-
 // ValueOf is a handle on the datum it is handed; the zero Value reads as
 // the zero datum through every accessor.
 func TestValueOfAndTheZeroDatum(t *testing.T) {

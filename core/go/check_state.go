@@ -26,15 +26,6 @@ import (
 //     check-mode footprint at a glance instead of scanning ten
 //     adjacent declarations.
 type CheckState struct {
-	// OptimisticOuter is the OUTERMOST dispatch the pass matched
-	// OPTIMISTICALLY — a carrier operand whose type is wider than its slot's
-	// (`each (mk) [dup]` over a declared-Any result) — while execMatch
-	// auto-evaluates its arguments and models its handler (NUR264). The run
-	// evaluates those arguments only after the dispatch MATCHES, so a
-	// top-level trap recorded under it is conditional: the compiled lane
-	// re-matches the word over its live window first, raising its no-match,
-	// and raises the trap only on a match. Nil outside such a dispatch.
-	OptimisticOuter *OuterMatch
 	// CurCallPos is a TRANSIENT scratch: carrierResults writes the current
 	// call's source position here immediately before invoking a sig's
 	// ReturnsFn, so a ReturnsFn that needs the call site (e.g. `make Array`
@@ -80,20 +71,6 @@ type CheckState struct {
 	// it reads 1:10 (`add`) where the def is at 1:18. Using it rendered a
 	// confidently wrong caret, which is worse than none.
 	CurWordPos SrcPos
-	// CurLayout is the exact operand layout of the native dispatch whose
-	// results a compiling pass is modelling (DispatchLayout, NUR242), set
-	// around the modelling and restored after it, so a nested dispatch's
-	// layout never outlives it. A record reads it through LayoutFor, which
-	// answers only for the dispatch's own operand slice.
-	CurLayout *DispatchLayout
-	// CurFits is the unproven forward fits of the native dispatch whose
-	// results a compiling pass is modelling (forward_fit.go, NUR357), set
-	// around the modelling like CurLayout and read through FitsFor.
-	CurFits *forwardFitsPub
-	// CurWritten is how many leading operands of the dispatch whose results
-	// a compiling pass is modelling were written after its word (NUR362),
-	// set around the modelling like CurLayout and read through WrittenFor.
-	CurWritten *writtenPub
 	// Mode toggles static type-checking execution. When true, the
 	// engine runs the same dispatch/matching machinery but carries
 	// type-only Carrier values instead of concrete payloads, and
@@ -162,43 +139,6 @@ type CheckState struct {
 	// currently running so that recursive calls can bail out with
 	// a placeholder instead of looping.
 	FnInflight map[string]bool
-
-	// SpecKeySuffix is the one-shot memo-key suffix a CALL-SITE SPECIALISED
-	// fn-unit compile hands its own body analysis (check's
-	// BuildFnBodyReturnsFn): the specialised args carry a constant Function
-	// where the generic unit's carry a Function carrier, and the two render
-	// the same arg-type key, so without the suffix the specialised analysis
-	// would hit — or overwrite — the generic unit's summary. AnalyseFnBody
-	// takes it at entry and clears it, so no nested analysis inherits it.
-	SpecKeySuffix string
-
-	// FnSpecCounts counts the call-site specialisations compiled per fn
-	// DEFINITION SITE (the fnQuotaKey of FnAnalysisCounts), so a recursion
-	// that passes a freshly constructed fn at every level cannot mint
-	// specialised units without end. Reset by Begin.
-	FnSpecCounts map[string]int
-
-	// SpecOff disables call-site specialisation for this pass, and SpecTried
-	// records that the pass compiled one. A specialisation is only ever a
-	// faster path beside its generic unit, so a compile pass that TRIED one
-	// and failed is re-run once with SpecOff set (lang's CompileCheck): a
-	// program that compiles without specialisation never loses compilation
-	// to it. Both reset by Begin; a driver sets SpecOff after it.
-	SpecOff   bool
-	SpecTried bool
-	// SpecDeclined records that the pass's specialised analysis found a
-	// shape a specialisation must not compile (a residual missing the
-	// declared returns, a call through the param its contract may refuse, a
-	// fn value capturing the param). It is not a compile failure of the
-	// program: CompileCheck discards the pass and re-runs it with SpecOff.
-	SpecDeclined bool
-
-	// SpecParamNames are the constant-fn params a call-site specialised
-	// body analysis has bound (check's runFnBodyOnce), live for that
-	// analysis only: a dispatch THROUGH one of them over an argument its
-	// contract may refuse at run time declines the specialisation (check's
-	// specParamCallMayRefuse).
-	SpecParamNames map[string]bool
 
 	// FnBodyChecked records which fn BODIES the construction-time check has
 	// already analysed in this pass, keyed by the body's first token's
@@ -355,14 +295,6 @@ type CheckState struct {
 	SpecUndefCarriers map[string]string
 	SpecUndefGen      int
 
-	// SpecFnNames is every fn family a branch arm the model cannot decide
-	// (SpecArmDepth) defined fresh or redefined in place (an overlapping
-	// overload — family L): the model keeps the fn for typing, but the
-	// binding is SPECULATIVE — bound or unbound, outer or shadow, by the
-	// arm's own run — so its dispatches route with a live lead and the
-	// join notes no root twin for the arm's install, which is placed at its
-	// site (spec_fn.go, carrier_join.go).
-	SpecFnNames map[string]bool
 	// SpecArmDepth, when > 0, marks analysis running inside a branch arm
 	// whose CONDITION the model cannot decide (the `if` native's dynamic
 	// path; a literal or folded condition takes the static path, whose
@@ -417,31 +349,6 @@ type CheckState struct {
 	// a defect owed a fix, not a resting place.
 	CondBodyDepth int
 
-	// RolledBackBodyDepth, when > 0, marks analysis running inside a body
-	// whose def growth is TRUNCATED on the way out — every `keep=false` run
-	// of runCarrierBodyDefsAdds, which is the branch arms and loop bodies
-	// CondBodyDepth covers PLUS the rolled-back scrutinee run it exempts
-	// (RunCarrierCondBody — a `case` scrutinee's count run). A KEPT `if`
-	// condition (RunCarrierCondBodyKeepDefs, NUR212) is not truncated, so
-	// it does not raise this and its installs ledger like any straight-line
-	// one. The bind ledger consults it, and needs the wider set: what makes
-	// an install unrecordable is the truncation, not the conditionality.
-	//
-	// An install inside such a body is SPECULATIVE. Either the construct
-	// re-installs it afterwards through InstallJoinedDefs — in which case
-	// that call records the binding the pass actually leaves — or nothing
-	// does, and the pass leaves no binding at all. Recording the install
-	// itself is wrong both ways: measured on `def c false  if c [def op 1]
-	// [0] end 1`, the ledger held TWO `op` entries at depth 1, so a twin
-	// replaying it would push the binding twice.
-	//
-	// The corpus could not catch this. lang/spec has exactly three
-	// branch-arm defs and all three are inside fn bodies, so FnBodyDepth
-	// suppresses them and TestBindLedgerDepthsCompose saw a clean 0 over
-	// 7644 rows while the shape the census exists to size — NUR110's —
-	// was double-recorded. Its synthetic sources cover it now.
-	RolledBackBodyDepth int
-
 	// InflightBails counts Any-placeholder bail-outs taken by
 	// recursive calls of UNCHECKED fns (declared returns use the
 	// declaration instead and don't count). AnalyseFnBody compares
@@ -450,51 +357,12 @@ type CheckState struct {
 	// before being cached (design/legacy/checker-accuracy-review.10.ignore A2).
 	InflightBails int
 
-	// Emit is the bytecode recorder seam (EmitRecorder). A real
-	// *EmitState — installed by the compile entry points after Begin —
-	// turns the check pass into the bytecode recording pass (Stage 1 of
-	// design/legacy/boru-bytecode-plan.0.ignore): every dispatch through
-	// carrierResults records a classified call event and Finalize
-	// linearises the trace into a Program. A plain check runs against
-	// the inactive no-op recorder (Begin installs it). READ through
-	// CheckState.Recorder(), which substitutes the no-op for a nil
-	// field; write only from the pass entry points / probe forks.
-	Emit EmitRecorder
-
 	// Strict enables the STRICT-MODE advisory surface (`boru check
 	// --strict`): every committed dispatch over a dynamic operand emits a
 	// non-gating dynamic_dispatch info, making the gradual frontier loud
 	// (checker-accuracy-review.10.md "--strict mode"). Persistent config —
 	// set by the caller BEFORE Begin (which must not reset it).
 	Strict bool
-
-	// Compiling marks a REAL compile pass (CompileCheck / RunCompiled),
-	// whose recorded events become an executed Program. A plain `boru check`
-	// leaves it false even though fn-body analysis arms transient Emit
-	// states. Some check-only precision relaxations (modelling a runtime-
-	// arity-variable result as a consumable value) are sound for diagnostics
-	// but would feed the recorder an arity the VM cannot honour, so they are
-	// gated to !Compiling. Set by the compile entry points after Begin.
-	Compiling bool
-
-	// ProgramEmit is the recorder BeginCompilePass installed: the one whose
-	// recording becomes the executed Program. Every other recorder a compile
-	// pass swaps into Emit is a throwaway — IsolateEmit's, or a probe a
-	// compile path arms to try a body and discard it (compileStoredFnUnit,
-	// tryReturnedClosure) — and nothing it records or declines decides
-	// anything for the program. Nil outside a compile pass.
-	ProgramEmit EmitRecorder
-
-	// FnCarrierReadSubstituted marks that this compile pass resolved at
-	// least one read of a name def-bound to a computed fn through the
-	// fn-carrier side table (stepWord's Stage 1 consult). Before Stage 1
-	// such a read raised a false undefined_word, so every program in this
-	// class declined with the SILENT check-diagnostics sentinel; when the
-	// pass ends in a compile failure anyway, the compile entry points consult this
-	// flag to keep that silent interpreter re-run — a working program
-	// must not trade its quiet slow path for a loud compile_failed just
-	// because the diagnostic became honest. Reset by Begin.
-	FnCarrierReadSubstituted bool
 
 	// ParenPlacedFnIDs records the analysis-pass carriers a USER paren
 	// PLACED rather than applied (NUR073's BROAD park). Only the collapse
@@ -550,54 +418,6 @@ type CheckState struct {
 	// the applied one) — it did the first until 2026-08-27 and the second
 	// briefly after, and neither is right. Reset by Begin.
 	ParenReSteppedFnIDs map[string]bool
-
-	// WordReadFnIDs records the carriers a BARE WORD READ of a fn-typed
-	// binding pushed (Engine.noteWordRead's own gate: a `comp:Function`
-	// param read as `comp`). The interpreter never substitutes a binding
-	// holding a fn — the read IS a dispatch, at the word — so a paren such
-	// a read ends (`(5 3 comp)`) is a call over the values inside it
-	// whatever follows the close, where a fn VALUE ending a paren (a
-	// parked call result, a `/v` read, a lambda literal) is re-stepped at
-	// the collapse and forward-collects past the close first (NUR184).
-	// Only the collapse asks, and by then both are one fn-typed carrier on
-	// the tape. Keyed by value ID like the two sets above, so a binding
-	// read both bare and by `/v` in one pass reads as the word (the
-	// recorder's NoteValRead has the same limit). Reset by Begin.
-	WordReadFnIDs map[string]bool
-
-	// ForwardLeftoverFnIDs records the fn-valued survivors a paren under a
-	// pending forward LEFT to that collection (stepCloseParen's trailing
-	// arm, NUR184): the group's survivors are the collecting word's
-	// candidates in written order, and a fn value the word does not take
-	// re-steps right after the word fires — over the word's result and the
-	// values beneath (`10 mul (2 (mk 1))` is 21), with the tokens after the
-	// group as its forward candidates — never over a LATER statement's
-	// values. Such a value is marked re-stepped too (ParenReSteppedFnIDs:
-	// the trailing lowering applies it over what lies beneath), and this
-	// set is what stops the residual's LEAD arm applying it over the values
-	// above it, which came later: `def r (2 (mk 1)) end r` compiled 3 for
-	// the interpreter's `[fn 2]` (def takes the 2, the closure re-steps
-	// over nothing and parks). Reset by Begin.
-	ForwardLeftoverFnIDs map[string]bool
-
-	// TrailingDeferredFnIDs records the fn values a paren's collapse left
-	// to the rewind's re-step because the token after the close is one the
-	// re-stepped value would forward-collect (stepCloseParen's
-	// trailingFnCollectsPastClose arm): a group or a value word, whose value
-	// exists only once it runs (NUR344). Such a value that then matches
-	// nothing parks where it lands — data, as a paren-placed value is — and
-	// the park records it in ParenPlacedFnIDs for the residual lowering
-	// (`("s" lam/v) ("x")` is `[s fn x]`). Reset by Begin.
-	TrailingDeferredFnIDs map[string]bool
-	// StoodAsideLandingIDs records the values the step loop re-stepped
-	// where they landed with a value after them its forward phase may
-	// collect, where no landing was noted (check's noteReStepLanding: the
-	// residual arms model `1 m.f 7`). A later dispatch that takes such a
-	// value off the stack beside a value written after it ran over the fn
-	// the interpreter re-stepped first — `1 m.f 7 add` is 9 — so the
-	// dispatch notes the value's landing then (Engine.noteCollectedLandings,
-	// NUR349). Keyed by value ID. Reset by Begin.
-	StoodAsideLandingIDs map[string]bool
 
 	// FnAnalysisCounts tracks distinct body analyses (memo misses)
 	// per fn DEFINITION SITE (fnQuotaKey: scope + name + body position,
@@ -667,19 +487,6 @@ type CheckState struct {
 	// simple-value substitution in check mode. Used to filter out
 	// defs that were referenced at least once.
 	DefsUsed map[string]bool
-
-	// BindLedger records the RUNTIME-VISIBLE binding transitions the check
-	// pass performs, in source order — the population the bind twins
-	// (design/FULL-COMPILATION.0.md §6.5) have to replay.
-	//
-	// INERT. Nothing reads it to decide anything; it exists so the twin work
-	// can be measured before it is built, the way Stage 1's censuses preceded
-	// every seam this project has since closed. §6.5's enumeration says which
-	// transitions belong here and, just as importantly, which do not: a
-	// behaviour body's `Push("a", …)` + `defer Pop("a")`, guard narrowing's
-	// restore-func pairs, and generic instantiation's balanced Push/Pop are all
-	// self-restoring or compile-time products and are NOT recorded.
-	BindLedger []BindTransition
 
 	// PassEndCleanups are closures the Begin closer runs (LIFO, exactly once)
 	// when the pass ends — the seam for analysis-only registry state that must
@@ -763,15 +570,6 @@ type CheckState struct {
 	// (producerReturnedClosureArity). Per-pass state — reset by Begin,
 	// header-cloned by Clone.
 	FnShapes map[string]FnShape
-
-	// PendingMethodApply threads ONE modelled shaped-method dispatch from
-	// tryShapedMethodDispatch into recordDispatchOutcome (set immediately
-	// before the model's carrierResults call, consumed by
-	// tryRecordMethodApply — the first specialist in the outcome chain — so
-	// the member's native never records as a check-time CALL_NATIVE, which
-	// would bake the shape instance's state: the freeze-gate). Transient
-	// within a single dispatch; reset by Begin.
-	PendingMethodApply *PendingMethodApply
 
 	// CodeEffectDepth counts nested code-effect body analyses
 	// (AnalyseCodeEffectCarrier — the typed-code-value producer). A
@@ -1143,17 +941,7 @@ type CheckDiagnostic struct {
 // the emit surface (design/legacy/CHECKER-COMPLETION.0.ignore). Registry
 // construction calls this so the check piece owns its own zero state.
 func NewCheckState() *CheckState {
-	return &CheckState{StepBudget: -1, Emit: TheInactiveEmit}
-}
-
-// PendingMethodApply threads ONE modelled shaped-method dispatch from
-// tryShapedMethodDispatch into recordDispatchOutcome. Set immediately
-// before the model's carrierResults call and consumed by
-// tryRecordMethodApply; the model declines (no tape splice) if the
-// pending was not consumed (an unexpected special-word short-circuit).
-type PendingMethodApply struct {
-	Origin Value  // the dynamic method-read carrier; its producing event supplies the runtime fn
-	Word   string // the member word name (defensive re-key at the outcome seam)
+	return &CheckState{StepBudget: -1}
 }
 
 // PendingFnBody is one queued construction-time body check: the fn value and
@@ -1180,9 +968,6 @@ func (c *CheckState) Clone() *CheckState {
 	if c.Diagnostics != nil {
 		cp.Diagnostics = append([]CheckDiagnostic(nil), c.Diagnostics...)
 	}
-	// Branchless deep copy: append to a nil slice with no elements yields
-	// nil, so a nil ledger clones as nil without a guard to keep covered.
-	cp.BindLedger = append([]BindTransition(nil), c.BindLedger...)
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
 	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
@@ -1201,10 +986,6 @@ func (c *CheckState) Clone() *CheckState {
 	}
 	cp.FnReads = cloneNestedSet(c.FnReads)
 	cp.ParenReSteppedFnIDs = cloneMap(c.ParenReSteppedFnIDs)
-	cp.WordReadFnIDs = cloneMap(c.WordReadFnIDs)
-	cp.ForwardLeftoverFnIDs = cloneMap(c.ForwardLeftoverFnIDs)
-	cp.TrailingDeferredFnIDs = cloneMap(c.TrailingDeferredFnIDs)
-	cp.StoodAsideLandingIDs = cloneMap(c.StoodAsideLandingIDs)
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
@@ -1218,8 +999,6 @@ func (c *CheckState) Clone() *CheckState {
 	}
 	cp.FnNameInflight = cloneMap(c.FnNameInflight)
 	cp.FnAnalysisCounts = cloneMap(c.FnAnalysisCounts)
-	cp.FnSpecCounts = cloneMap(c.FnSpecCounts)
-	cp.SpecParamNames = cloneMap(c.SpecParamNames)
 	cp.DefsInstalled = cloneMap(c.DefsInstalled)
 	cp.DefsUsed = cloneMap(c.DefsUsed)
 	cp.ContextTypes = cloneMap(c.ContextTypes)
@@ -1229,7 +1008,6 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
 	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
-	cp.SpecFnNames = cloneMap(c.SpecFnNames)
 	cp.SpecArmDepth = c.SpecArmDepth
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
@@ -1289,7 +1067,6 @@ func (c *CheckState) Begin() func() {
 	c.AmbiguousGradualSplit = false
 	c.DefsInstalled = nil
 	c.DefsDone = 0
-	c.BindLedger = nil
 	c.PassEndCleanups = nil
 	c.PendingBindPos = SrcPos{}
 	c.DefsUsed = nil
@@ -1300,17 +1077,10 @@ func (c *CheckState) Begin() func() {
 	c.CtxShapes = nil
 	c.MethodShapes = nil
 	c.FnShapes = nil
-	c.PendingMethodApply = nil
 	c.InflightBails = 0
 	c.FnNameInflight = nil
 	c.SuppressBodyErrors = 0
 	c.FnAnalysisCounts = nil
-	c.FnSpecCounts = nil
-	c.SpecKeySuffix = ""
-	c.SpecOff = false
-	c.SpecTried = false
-	c.SpecDeclined = false
-	c.SpecParamNames = nil
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
 	c.BehaveMakers = nil
@@ -1318,8 +1088,6 @@ func (c *CheckState) Begin() func() {
 	c.BehaveReaders = nil
 	c.FnMemberReads = nil
 	c.SlotBoundReads = nil
-	c.Emit = TheInactiveEmit
-	c.ProgramEmit = nil
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
 	c.CallShapeDepth = 0
@@ -1328,32 +1096,20 @@ func (c *CheckState) Begin() func() {
 	c.ValuelessDoBodies = 0
 	c.NestedBodyDepth = 0
 	c.CondBodyDepth = 0
-	c.RolledBackBodyDepth = 0
 	c.LoopBodyDepth = 0
 	c.SpecBaselines = nil
 	c.SpecUndefCarriers = nil
 	c.SpecUndefGen = 0
-	c.SpecFnNames = nil
 	c.SpecArmDepth = 0
 	c.UnsealedArmDepth = 0
 	c.ArmResidualSweep = 0
 	c.ArgsFrameUnnamed = false
-	// Compiling marks a REAL compile pass; the compile entry points set it
-	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is
-	// a proper per-pass flag — a later plain check on a reused registry
-	// must not inherit a prior compile's true.
-	c.Compiling = false
-	c.FnCarrierReadSubstituted = false
 	c.ParenPlacedFnIDs = nil
 	c.ReachSurvivorFnIDs = nil
 	c.ForceFnReanalysis = false
 	c.RootDefSites = nil
 	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
-	c.WordReadFnIDs = nil
-	c.ForwardLeftoverFnIDs = nil
-	c.TrailingDeferredFnIDs = nil
-	c.StoodAsideLandingIDs = nil
 	// Arm process-wide ID minting for the pass's lifetime: the emit
 	// recorder keys provenance on Value.IDs minted at creation, so every
 	// value created while ANY pass is live must carry one (see
@@ -1423,24 +1179,6 @@ func (c *CheckState) NoteSlotBoundRead(name string, pos SrcPos) {
 		c.SlotBoundReads = map[SlotRead]bool{}
 	}
 	c.SlotBoundReads[SlotRead{Name: name, Row: pos.Row, Col: pos.Col}] = true
-}
-
-// SuppressBindLedger marks a snapshot/restore-truncated evaluation region:
-// every def-stack change inside it is undone by the region's own restore, so
-// the bind ledger must not record its installs (NoteBindTransition's
-// RolledBackBodyDepth arm — what makes an install unrecordable is the
-// truncation). The two clients outside the branch/loop body runner are the
-// macro template run (expandMacroWith snapshots, runs the template with its
-// body-locals live, then restores — the gensym-temp class the live-depth
-// oracle caught) and the dynamic-help example eval (makeDynamicEval, which
-// fires mid-pass from the fn-registration hook and restores its defs).
-// Returns the balancing decrement, for `defer c.SuppressBindLedger()()`.
-func (c *CheckState) SuppressBindLedger() func() {
-	if c == nil {
-		return func() {}
-	}
-	c.RolledBackBodyDepth++
-	return func() { c.RolledBackBodyDepth-- }
 }
 
 // AddDiagnostic appends a diagnostic to the active check run. Safe to
@@ -1611,18 +1349,6 @@ func (c *CheckState) IsolateFnAnalysis() func() {
 		c.FnSummaries = savedSummaries
 		c.FnAnalysisCounts = savedCounts
 	}
-}
-
-// RecordDef remembers a name the user bound during a check run so
-// end-of-run analysis can flag defs that were never referenced. Names
-// starting with "_" (engine internals) are ignored.
-// defsDone is the completed-def count of an active check run (DefsDone), 0
-// on any other.
-func (c *CheckState) defsDone() int {
-	if !c.IsActive() {
-		return 0
-	}
-	return c.DefsDone
 }
 
 func (c *CheckState) RecordDef(name string, pos SrcPos) {
@@ -2001,10 +1727,6 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 		c.MethodShapes = map[string]Value{}
 	}
 	c.MethodShapes[IDOf(&out)] = member
-	// Mirror the annotation into the recorder so the get-family read
-	// guards (recordCallCompileFailure / RecordPolyCall) can skip their
-	// auto-dispatch compile failure for a read the landing model owns.
-	c.Emit.NoteShapedRead(IDOf(&out))
 }
 
 // methodShapeMember returns the annotated member for a carrier ID.
@@ -2094,46 +1816,6 @@ func (c *CheckState) ContextShape(store *StoreInstanceInfo, scope int) Value {
 		c.CtxShapes[store] = v
 	}
 	return MintFresh(&v)
-}
-
-// BeginCompilePass is Begin() plus the compile-pass arming ritual shared
-// by every bytecode-recording entry point (lang's CompileCheck, boru:vm's
-// Vm.compile): install a fresh EmitState, mark the pass as Compiling, and
-// drop the fn-body memos so bodies re-analyse — and re-record — under
-// THIS pass (a summary cached by an earlier plain check would leave its
-// compiled unit empty). One shared helper is what keeps the ritual's
-// pieces from going missing in a hand-rolled copy: Vm.compile shipped
-// without the Compiling flag for exactly that reason.
-func (c *CheckState) BeginCompilePass() func() {
-	done := c.Begin()
-	if c == nil {
-		return done
-	}
-	c.Emit = NewEmitStateHook()
-	c.ProgramEmit = c.Emit
-	c.Compiling = true
-	c.FnSummaries = nil
-	c.FnInflight = nil
-	return done
-}
-
-// IsolateEmit swaps in a FRESH EmitState (sharing the registry) for the
-// duration of a throwaway evaluation, returning a restore func. It is the
-// hermetic complement to Suspend: Suspend keeps the SAME EmitState (only
-// stopping recording), so a nested eval's interned consts and RememberOriginal
-// entries still pollute the live EmitState's pool. The dynamic-help example
-// eval fires from OnRegisterHook on EVERY fn registration — including the
-// program's own `def f fn […]` DURING compilation — so without a swap its
-// example run leaks compile-time state (e.g. a generated `['a' 'b']` sample
-// list) into the program's own EmitState, corrupting a later operand's compile.
-// Swapping to a throwaway pool, discarded on restore, contains it fully.
-func (c *CheckState) IsolateEmit() func() {
-	if c == nil {
-		return func() {}
-	}
-	saved := c.Emit
-	c.Emit = NewIsolatedEmitHook(c.Recorder())
-	return func() { c.Emit = saved }
 }
 
 // SpecUndefBlocked reports whether an `undef` of name inside the CURRENT
@@ -2358,225 +2040,4 @@ func CheckAddUnique(r *Registry, d CheckDiagnostic) {
 		}
 	}
 	r.Check.AddDiagnostic(d)
-}
-
-// BindKind names a runtime-visible binding transition. §6.5's reading-based
-// enumeration proposed four kinds; the census measured THREE, and the one it
-// removed is worth keeping as a note: a module export install is not its own
-// transition. The real import path is installExports -> InstallDef, so a module
-// namespace binding IS a def and needs no separate twin. (The `Install*Exports`
-// functions in lang/go/modules are test-setup convenience helpers — their own
-// comments say "equivalent to what happens when boru code runs import" — and
-// instrumenting them measured ZERO, which is how the mistake surfaced.)
-//
-// The branch-arm push is likewise a BindDef variant rather than a kind of its
-// own: it IS a def, only its reachability differs.
-type BindKind uint8
-
-const (
-	// BindDef is a `def` install: installDef's push, including the branch-arm
-	// push InstallJoinedDefs performs when one arm binds a name fresh.
-	BindDef BindKind = iota
-	// BindUndef is an `undef`: UninstallDef's pop.
-	BindUndef
-	// BindDefReplace is a fn REDEFINITION whose overlap filter dropped the
-	// colliding entry first: a drop-then-push whose NET depth change is zero.
-	// A twin must replace, not push — see installDef's note at the site.
-	BindDefReplace
-	// BindTypeInstall is a type binding push (PushType / PushTypeAdopted). Its
-	// retirement counterpart is not a ledger entry: BindingSandbox already
-	// partitions the TypeTable so retirements roll back and mints stay baked.
-	BindTypeInstall
-	// BindSigUndef is a SIGNATURE-specific undef's removal of one matching
-	// DefStack entry (UninstallFnSigs) — possibly MID-stack, so it is neither
-	// an undef (a top pop) nor a def-replace (net-zero drop-then-push): its
-	// depth delta is -1 per removed entry, and the note's captured entry is
-	// the REMOVED one, so a twin can remove that identical entry rather than
-	// guess by position. One note per removal; a sig-undef whose every match
-	// is locked removes nothing and notes NOTHING — a no-op is not a
-	// transition. This kind was split out of BindDefReplace after a probe
-	// showed the conflation live: a plain two-overload fn's sig-undef took a
-	// name from depth 2 to 1 while recording delta 0, and the corpus never
-	// contained the shape, so the composition gate could not see it — the
-	// synthetic rows now supply it.
-	BindSigUndef
-)
-
-// String names the kind for census output and the disassembler's BIND_TWIN
-// argument rendering.
-func (k BindKind) String() string {
-	switch k {
-	case BindDef:
-		return "def"
-	case BindUndef:
-		return "undef"
-	case BindDefReplace:
-		return "def-replace"
-	case BindTypeInstall:
-		return "type-install"
-	case BindSigUndef:
-		return "sig-undef"
-	}
-	return "bind-kind(" + strconv.Itoa(int(k)) + ")"
-}
-
-// BindTransition is one entry of CheckState.BindLedger.
-//
-// Depth is the def-stack depth AFTER the transition, which is what makes a
-// replay checkable: a twin that re-installs at its source position must leave
-// the same depth the check pass did, or shadowing and a later `undef` expose a
-// different binding (§6.5's "replay, never re-execution").
-type BindTransition struct {
-	Kind  BindKind
-	Name  string
-	Pos   SrcPos
-	Depth int
-	// WrittenBack marks a push-kind twin whose def ALSO emitted an
-	// OpBindGlobal (the compiler's lowerDynBind pairs the two): the
-	// write-back installs the RUNTIME value where the interpreter's `def`
-	// would, so the twin's replay must not push the check pass's capture
-	// beside it (ApplyBindTwin). Set by the lowering, never by the ledger —
-	// the ledger records what the check pass did, the flag what the
-	// program will do about it. A type-install twin is written back by the
-	// run's own install of a type over a bound only the run knows
-	// (OpBindTypeRun, NUR308).
-	WrittenBack bool
-}
-
-// NoteBindTransition appends to the ledger.
-//
-// A no-op outside a check pass, on the empty name (a synthetic install with no
-// name has nothing for a twin to address), and — the condition that matters —
-// INSIDE A FN BODY.
-//
-// FnBodyDepth > 0 is code that runs at CALL time, not at the point of analysis,
-// so a `def` there is a FRAME-LOCAL: pushed per call and popped by the frame
-// teardown, which does not go through UninstallDef. The twins do not replay
-// those; the compiled lane gives them slots, not registry bindings. Recording
-// them anyway was measured and it is not a small effect — adding this arm took
-// the ledger from 69254 entries to 6110, and TestBindLedgerDepthsCompose had
-// reported 49382 of those 69254 as depths that do not compose
-// (`def f fn [[a:Integer] [Map] [def m {…} m]]` records `m` at depth 1 on every
-// call, because the teardown pop is invisible here).
-//
-// RolledBackBodyDepth > 0 is the second: an install inside a body whose def
-// growth is truncated on the way out is SPECULATIVE. The binding the pass
-// leaves behind is whatever InstallJoinedDefs puts back afterwards, or nothing
-// at all; recording the speculative install as well double-counts it. Measured
-// on `def c false  if c [def op 1] [0] end 1`: two `op` entries, both at depth
-// 1, so a twin replaying the ledger would push the binding twice.
-//
-// NestedBodyDepth is deliberately NOT the field used for that. It counts EVERY
-// nested body including `do` (keep=true), whose defs leak by design and must be
-// recorded — the runtime leaves them, so a twin has to.
-//
-// The other exclusion lives at the call site rather than here, because the
-// signal does: installDef notes only when !shadow. A SHADOWING install is a
-// frame binding — InstallFrameBinding's own contract is that it "shadows —
-// never removes — an outer same-named binding, so the caller's binding is
-// restored intact when the frame's teardown pops this entry" — which is a macro
-// or fn parameter, not a transition that outlives the pass. Measured: with
-// FnBodyDepth alone the ledger still carried 274 incoherent entries, nearly all
-// of them macro parameters (`macro [[e] [quote […]]]` pushing `e` per
-// expansion).
-func (r *Registry) NoteBindTransition(kind BindKind, name string, pos SrcPos) {
-	// A PUSH kind (def / def-replace / type-install) captures the entry it
-	// just installed — TopEntry here, at the note, is the only moment the
-	// IDENTICAL binding object is knowably on top; the twin replays that
-	// object, never a reconstruction (§6.5). An undef captures nothing: its
-	// twin pops whatever is live at its own position. (A sig-undef's caller
-	// supplies the REMOVED entry via NoteBindTransitionEntry — the removal
-	// can be mid-stack, where TopEntry is the wrong object.)
-	var entry DefEntry
-	if r != nil && kind != BindUndef {
-		entry, _ = r.Defs.TopEntry(name)
-	}
-	r.NoteBindTransitionEntry(kind, name, pos, entry)
-}
-
-// NoteBindTransitionEntry is NoteBindTransition with the transition's OWN
-// entry supplied by the caller — the entry the transition installed (a push
-// kind) or removed (a sig-undef, whose mid-stack removal makes the top the
-// wrong capture). Every suppression and the position rule are identical.
-func (r *Registry) NoteBindTransitionEntry(kind BindKind, name string, pos SrcPos, entry DefEntry) {
-	if r == nil || r.Check == nil {
-		return
-	}
-	if !r.Check.Mode || name == "" || r.Check.FnBodyDepth > 0 ||
-		r.Check.RolledBackBodyDepth > 0 {
-		return
-	}
-	tr := BindTransition{Kind: kind, Name: name, Pos: bindSitePos(r, pos), Depth: r.Defs.Depth(name)}
-	r.Check.BindLedger = append(r.Check.BindLedger, tr)
-	// Mirror the entry into the compile pass's twin table THROUGH the same
-	// funnel, after the same suppressions — the one-source-of-truth property
-	// the emission gate (TestBindTwinsEqualLedger) then verifies end to end:
-	// a divergence means a recorder-lifecycle hole (an isolated or swapped
-	// recorder ate a twin), not a second filter to keep in sync.
-	r.Check.Recorder().RecordBindTwin(tr, entry)
-}
-
-// bindSitePos resolves a bind transition's SITE position.
-//
-// The value's own Pos is the right answer when it has one, but it
-// frequently does not: a fn or type BODY commonly carries 0:0, an `undef`
-// supplies nothing to take a position from, and a word-extension install
-// has no value position at all. Falling back to CurWordPos — the position
-// of the word currently dispatching, published for NUR108 and correct for
-// exactly this kind of question — gives every entry a real site.
-//
-// What each case then yields, stated rather than assumed: a `def` lands on
-// the `def` token, an `undef` on the `undef` token, and a JOINED branch
-// binding on the `if` — the join runs after that dispatch, so the arm's own
-// def token is already gone. The last is the one to revisit when the twin
-// op needs a finer position than the construct that produced the binding.
-//
-// It is a FUNCTION rather than two inline lines because the arm-resident
-// type-install event (NoteTypeInstall) has to land on the very position its
-// twin carries, and the two are computed in different passes: a drift here
-// would make the bridge's position cross-check fail on programs it models
-// exactly right.
-func bindSitePos(r *Registry, pos SrcPos) SrcPos {
-	if r == nil || r.Check == nil {
-		return pos
-	}
-	if pending := r.Check.PendingBindPos; pending.Row != 0 {
-		return pending
-	}
-	if pos.Row == 0 {
-		return r.Check.CurWordPos
-	}
-	return pos
-}
-
-// NoteTypeInstall notes a TYPE binding push — the ledger transition plus,
-// inside a multi-run body's compiled unit, the def-site EVENT the
-// arm-residency bridge pairs the twin against (Recorder.RecordTypeInstall).
-// Every BindTypeInstall note goes through here so the two can never fall
-// out of step: a twin with no event, or an event with no twin, makes the
-// bridge's total pairing decline and the program decline.
-func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
-	r.NoteBindTransition(BindTypeInstall, name, pos)
-	if r == nil {
-		return
-	}
-	// Recorder() is nil-receiver safe, so a registry with no CheckState
-	// reaches the inactive no-op rather than a guard of its own. The entry
-	// just pushed rides along: a FN unit's per-call type bind re-installs
-	// it (OpBindFnType), where the root's twin replays it from the ledger.
-	entry, _ := r.Defs.TopEntry(name)
-	r.Check.Recorder().RecordTypeInstall(name, entry, bindSitePos(r, pos))
-}
-
-// OuterMatch is CheckState.OptimisticOuter: the optimistically matched
-// word, its window's values as the runtime rematch reads them (the stack run
-// beneath the word top down, then the operands written after it in written
-// order), how many were written after it, the render tuple (the window
-// indices in written order) and the dispatch's position.
-type OuterMatch struct {
-	Word    string
-	Vals    []Value
-	NFwd    int
-	Written []int
-	Pos     SrcPos
 }

@@ -121,7 +121,6 @@ func covWords(r *core.Registry) {
 		} else {
 			name, _ = core.AsString(args[0])
 		}
-		r.Check.Recorder().DeclineCarriedUndef(name)
 		core.UninstallDef(r, name)
 		return nil, nil
 	}, core.RunInCheck())

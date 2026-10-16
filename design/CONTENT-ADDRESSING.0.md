@@ -23,7 +23,7 @@ name.**
 | Cost | Where |
 |---|---|
 | Every invoke of a runtime-stamped callback pays a pull-based `DepsFresh` walk — ~2–10 Go map lookups before the VM executes one opcode. "Compiled code gets no slower" is violated *before reload exists*. | `RELOAD-INVALIDATION.0.md` §1, §2.2 |
-| The AOT codec must invent "a stable symbolic identity a fresh process re-resolves" for every pointer in a `*Program`, and its table is mostly **refusals** — user-poly calls, interpreter islands, exotic const payloads. | `AOT-COMPILE.0.md` §3.2 |
+| The AOT codec must invent "a stable symbolic identity a fresh process re-resolves" for every pointer in a `*Program`, and its table is mostly **refusals** — user-poly calls, interpreter islands, exotic const payloads. | `legacy/AOT-COMPILE.0.ignore` §3.2 |
 | The pre-1.0 rename tax: `test.test` → `Test.test`, every utility module gaining `-util`, word families relocated between modules — each breaking every downstream program for **zero** semantic change. | `README.md` §Upgrade notes |
 
 Each is being solved separately: generation counters and poisoning for the
@@ -215,7 +215,7 @@ claims here were too strong:
   either way; the rebind-event cost is the same work §5.2 already
   describes.
 - **It does not by itself retire the user-poly refusal.**
-  `AOT-COMPILE.0.md` §3.2 refuses `UserPolyRef` for **two independent**
+  `legacy/AOT-COMPILE.0.ignore` §3.2 refuses `UserPolyRef` for **two independent**
   reasons: live `Impls` pointer identities, *and* stored-mode `Sigs` — a
   body-local overload table "a live name `Lookup` could never resolve"
   and which cannot be re-derived in a fresh process. A digest over the
@@ -334,7 +334,7 @@ programme and should not be entered by accident.
   the runnable probe.
 - `RELOAD-INVALIDATION.0.md` §1, §2.2, §3 (F1), §4, §5 — the hot-path
   cost, the divergence, the prior-art survey.
-- `AOT-COMPILE.0.md` §3.1–3.3 — the symbolic-reference problem and the
+- `legacy/AOT-COMPILE.0.ignore` §3.1–3.3 — the symbolic-reference problem and the
   refusal whitelist.
 - `CANON-ROUNDTRIP.0.md` + ADR-015 — the rendering contract and what it
   deliberately does not say.

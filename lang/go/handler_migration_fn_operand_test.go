@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -57,43 +56,4 @@ func TestModifierValueFormsDeclareStoreFnStrict(t *testing.T) {
 			t.Errorf("%s: %d value-form sigs, want 1", word, valueForms)
 		}
 	}
-}
-
-// TestModifierOverReturnedClosureCompilesWithParity pins the miscompile the
-// pilot found for the TYPED Function carrier — a capturing closure returned
-// by a user fn, wrapped by a modifier word: the gradual poly record lowered
-// the wrap to OpCallNativePoly and the VM handed the native a ClosurePayload
-// its FnDefInfo validation rejected (compiled `illegal_ref` against the
-// interpreter's value). The pilot closed it by DECLINING the strict slot;
-// since 2026-09-26 (NUR158 FIXED) the natives wrap a compiled closure over
-// its bridged shape and the VM applies the closure the wrapper stores, so
-// the same programs COMPILE and agree with the interpreter.
-func TestModifierOverReturnedClosureCompilesWithParity(t *testing.T) {
-	const mk = `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  `
-	for _, c := range []struct{ name, src, want string }{
-		{"usurp over a returned closure, def-bound", mk + `def r (usurp (mk 100))  r 10 3`, "[93]"},
-		{"usurp over a returned closure, inline", mk + `usurp (mk 100) 10 3`, "[93]"},
-		{"stack-args over a returned closure, inline", mk + `10 3 stack-args (mk 100)`, "[93]"},
-		{"forward-args over a returned closure", mk + `def r (forward-args (mk 100))  r 10 3`, "[107]"},
-		{"force-arity over a returned closure", mk + `def r (force-arity 2 (mk 100))  r 10 3`, "[107]"},
-	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		requireParity(t, c.src, gotC, errC, gotI, errI)
-		if got := fmt.Sprint(gotI); got != c.want {
-			t.Errorf("%s: interpreter %s, want %s", c.name, got, c.want)
-		}
-		if !compiled {
-			t.Errorf("%s: did not run compiled; the closure wrap is the runtime's now", c.name)
-		}
-	}
-	// A DEF-BOUND stack-args wrapper read by name still declines: an
-	// all-stack wrapper makes no shape claim (modifierWrappedFnShape), so the
-	// read has no window model and the carrier stands unconsumed.
-	fnValueM2CompileFailure(t, "stack-args over a returned closure, def-bound",
-		mk+`def r (stack-args (mk 100))  10 3 r`, "closure render")
-	// The decline is narrow: the DYNAMIC Function carrier a sibling
-	// modifier's gradual wrap produced (a composed chain over a map-read
-	// native) keeps its poly record and compiles natively, as before.
-	fnValueM2Native(t, "path-modifier.tsv:52 — usurp over a gradual forward-args wrapper",
-		`def m {s:sub/v} end usurp (forward-args (m.s)) 10 3`, "[7]")
 }

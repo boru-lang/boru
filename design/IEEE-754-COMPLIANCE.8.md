@@ -117,7 +117,7 @@ predicates unordered.
 
 *(Special values now render as the parseable `inf`/`-inf`/`nan` literals (Tier 0), and extreme magnitudes use scientific notation (`|x| >= 1e21` or `< 1e-10`) while the everyday range stays plain. All forms re-parse to the same Float.)*
 
-`FormatFloat` (`eng/go/value.go:903`) uses `strconv.FormatFloat(f,'f',-1,64)`
+`FormatFloat` (`core/go/value.go:903`) uses `strconv.FormatFloat(f,'f',-1,64)`
 — shortest mantissa, but **never exponential** — then appends `.0`:
 
 ```
@@ -226,16 +226,16 @@ adding one, and it leaves Integer's fail-loud behaviour intact.
 **Tier 0 — fix the bug (do regardless of any IEEE goal).** ✅ **Done.**
 The NaN comparison incoherence (§Deviation 2): `lt`/`lte`/`gt`/`gte` now
 honour the unordered rule (false for NaN) via `numericUnordered`
-(`eng/go/compare.go`), and `cmp`/`tcmp`/`sort` use a total order where
+(`core/go/compare.go`), and `cmp`/`tcmp`/`sort` use a total order where
 NaN sorts greatest (`numberCompareBehavior.Compare`,
-`eng/go/compare_scalar_behaviors.go`), so a list with a NaN sorts
+`core/go/compare_scalar_behaviors.go`), so a list with a NaN sorts
 deterministically instead of being left unsorted. `eq`/`neq` were already
 correct. As part of the same change the `inf`/`-inf`/`nan` reserved
 literals were added (parser, mirroring `true`/`false`/`none`) and
 `FormatFloat` now renders specials as those parseable tokens (was the
 unparseable `+Inf.0`/`NaN.0`), so print∘parse is identity. Verified by
-`lang/spec/float-special.tsv`, `eng/go/compare_nan_test.go`, and
-`eng/go/parser/parse_test.go::TestParseSpecialFloatLiterals`.
+`lang/spec/float-special.tsv`, `core/go/compare_nan_test.go`, and
+`parser/go/parse_test.go::TestParseSpecialFloatLiterals`.
 
 > **`min`/`max` with NaN — resolved (Tier 1).** `MathUtil.min`/`max` now
 > ignore NaN (IEEE-2008 `minNum`/`maxNum`): a NaN operand is dropped, so
@@ -259,14 +259,14 @@ unparseable `+Inf.0`/`NaN.0`), so print∘parse is identity. Verified by
 > acceptance — boru has one `nan` literal and rendering collapses the
 > sign (`nan -1.0 mul → nan`), so the divergence is unobservable. The
 > relational words are carved out (`signedZeroPair` beside
-> `numericUnordered` in `eng/go/compare.go`): `lt`/`lte`/`gt`/`gte`
+> `numericUnordered` in `core/go/compare.go`): `lt`/`lte`/`gt`/`gte`
 > treat every ±0 pair as equal per §5.11 (`-0.0 lt 0.0 → false`,
 > `-0.0 lte 0.0 → true`), and `eq`/`deq` stay true (Go float `==`) —
 > so the total order now distinguishes a pair `eq` equates, the exact
 > inverse of the NaN asymmetry (`nan cmp nan → 0`, `nan eq nan →
 > false`). Both asymmetries are the same recorded two-regime split.
 > Verified by `lang/spec/float-special.tsv` (signed-zero section),
-> `lang/spec/edge-scalars-2.tsv` §1, and `eng/go/compare_zero_test.go`.
+> `lang/spec/edge-scalars-2.tsv` §1, and `core/go/compare_zero_test.go`.
 
 **Tier 1 — IEEE arithmetic *semantics* (the realistic compliance target).**
 - ✅ Decision (1) above: `Float` div/mod by zero → `±∞`/NaN, not error;

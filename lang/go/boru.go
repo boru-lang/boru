@@ -5,11 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
-	eng "github.com/boru-lang/boru/eng/go"
 	parser "github.com/boru-lang/boru/parser/go"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -173,18 +170,6 @@ type Boru struct {
 	registry *native.Registry
 	options  Options
 	manager  *udk.UniversalManager
-	// noCallSiteSpec turns call-site specialisation off for this instance
-	// (SetCallSiteSpecialisation).
-	noCallSiteSpec bool
-}
-
-// SetCallSiteSpecialisation turns call-site specialisation on (the default)
-// or off for this instance's compiles. Off, a call passing a constant fn to
-// a Function param records the generic unit, exactly as a call passing any
-// other value does — the switch a host uses to compare the two, and the one
-// the tests pinning the generic compile path use.
-func (a *Boru) SetCallSiteSpecialisation(on bool) {
-	a.noCallSiteSpec = !on
 }
 
 // New creates a new boru instance with built-in functions.
@@ -233,47 +218,11 @@ func New(opts ...Options) (*Boru, error) {
 	return &Boru{registry: reg, options: o, manager: um}, nil
 }
 
-func init() {
-	// Vm.run's sub-engine runner (modules/vm.go CompiledSubRun): the module
-	// package cannot import lang, so the entry point is injected here.
-	//
-	// This one keeps its interpreter arm, and the distinction is the whole
-	// point of the removal rather than an exception to it. Everywhere else,
-	// re-running on the interpreter HID a compile failure: the program had a
-	// static form the compiler was supposed to lower and did not, and the
-	// answer came back with nothing saying so. `Vm.run` executes source
-	// CONSTRUCTED AT RUNTIME, so there is no ahead-of-time program to
-	// compile — "compiling" it is parse+compile+run at run time, which is
-	// the interpreter. That is tier 1 of the three-tier partition
-	// (test/go/langspec/compiled_metafallback_test.go), the one category the
-	// project has reasoned is genuinely irreducible, and the sub-engine is
-	// its documented permanent home.
-	//
-	// So the compile is an OPPORTUNITY, not an obligation, and taking the
-	// interpreter when it does not compile is a sanctioned outcome rather
-	// than a hidden defect. It is attributed and counted like every other
-	// interpreter entry (the interp-entry census), which is what keeps it
-	// honest: a silence nobody measures is the thing being removed, and this
-	// one is measured.
-	modules.CompiledSubRun = func(reg *native.Registry, src string) ([]native.Value, error) {
-		a := &Boru{registry: reg}
-		vals, _, _, err := a.RunAutoValues(src)
-		var failed *BoruError
-		if errors.As(err, &failed) && failed.Code == "compile_failed" {
-			disarm := a.ArmRuntimeStamping()
-			vals, err = a.RunInterpValues(src)
-			disarm()
-		}
-		return vals, err
-	}
-}
-
 // NewFromRegistry wraps an ALREADY-WIRED registry in a *Boru instance so a
 // host with a long-lived registry of its own — the REPL, a service — can use
-// the compiled-by-default entry points (RunAutoValues / RunCompiledReason)
-// over it. The caller owns the wiring (parse func, module resolver, Manager,
-// Output, policy): nothing is installed or re-installed here, and the zero
-// Options apply. Plan Phase 2 prerequisite (entry-point routing).
+// the Run / Check entry points over it. The caller owns the wiring (parse
+// func, module resolver, Manager, Output, policy): nothing is installed or
+// re-installed here, and the zero Options apply.
 func NewFromRegistry(reg *native.Registry) (*Boru, error) {
 	if reg == nil {
 		return nil, fmt.Errorf("NewFromRegistry: nil registry")
@@ -386,226 +335,6 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 		}
 	}
 	return CheckResult{Stack: stack, Diagnostics: diags, Summary: summary}, nil
-}
-
-// Program is the bytecode unit the compile pass produces — re-exported
-// from the engine kernel for host callers (Stage 1 of
-// design/legacy/boru-bytecode-plan.0.ignore).
-type Program = compiler.Program
-
-// StampEvent is one detached-stamp attempt (re-exported for hosts and the
-// CLI's -compile-report surface).
-type StampEvent = core.StampEvent
-
-// StampReport returns the detached-stamp attribution recorded on this
-// instance's registry (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5): one event per
-// stamp ATTEMPT — runtime-constructed codec fns, service handlers, and
-// module fns — with the compile failure reason when the compile declined. Nil when
-// runtime stamping was never armed (a plain Run / -no-compile execution).
-func (a *Boru) StampReport() []core.StampEvent {
-	return a.registry.StampEvents()
-}
-
-// InterpEntry / BailEvent are the observability-seam event types (eng
-// interp_entry.go), re-exported for the frontier test suite.
-type InterpEntry = core.InterpEntry
-
-// BailEvent is one designed VM defer-to-interpreter (see InterpEntry).
-type BailEvent = core.BailEvent
-
-// ArmInterpEntryHook forwards to the registry's interpreter-entry
-// observability seam (eng interp_entry.go — a TEST seam, not API): fn fires
-// on every entry into tree-walking machinery until the returned disarm func
-// runs.
-func (a *Boru) ArmInterpEntryHook(fn func(InterpEntry)) func() {
-	return a.registry.ArmInterpEntryHook(fn)
-}
-
-// ArmRuntimeBailHook forwards to the registry's runtime-bail observability
-// seam (eng interp_entry.go — a TEST seam, not API): fn fires on every
-// designed VM defer-to-interpreter until the returned disarm func runs.
-func (a *Boru) ArmRuntimeBailHook(fn func(BailEvent)) func() {
-	return a.registry.ArmRuntimeBailHook(fn)
-}
-
-// RegionOracleEvent is one execution of the compiled lane's COLLECT oracle
-// (core.RegionOracleEvent), re-exported for the corpus lane.
-type RegionOracleEvent = core.RegionOracleEvent
-
-// ArmRegionOracleHook forwards to the registry's region-oracle observability
-// seam (a TEST seam, not API): fn fires on every OpCollect a program
-// compiled under compiler.RegionOracle executes, until the returned disarm
-// func runs.
-func (a *Boru) ArmRegionOracleHook(fn func(RegionOracleEvent)) func() {
-	return a.registry.ArmRegionOracleHook(fn)
-}
-
-// ArmRuntimeStamping arms detached fn-unit stamping (compiler.StampDetachedFn) on
-// this instance and returns the restoring disarm func. RunCompiled /
-// RunAutoValues arm it themselves for the duration of the call; this is the
-// caller-side half of the Stage-J explicit-fallback contract: a host or CLI
-// surface that receives compile_failed and chooses to run RunInterp itself
-// keeps the compiled mode's callback contract — runtime-constructed callbacks
-// (service handlers, codec fns) still compile to VM units at their store
-// sites — by arming around the fallback run. The returned func restores the
-// prior state (a no-op when the registry was already armed), so nesting is
-// safe. A policy-gated registry stays sound under arming: StampDetachedFn
-// itself declines when a word policy is installed, exactly like CompileCheck.
-func (a *Boru) ArmRuntimeStamping() func() {
-	if a.registry.RuntimeStampingEnabled() {
-		return func() {}
-	}
-	a.registry.EnableRuntimeStamping()
-	return func() { a.registry.DisableRuntimeStamping() }
-}
-
-// CompileCheck runs the source through the checker with the bytecode
-// recording pass enabled (Stage 1: straight-line, monomorphic native
-// calls only) and linearises the trace into a Program. When the
-// source contains a construct Stage 1 cannot lower — control flow,
-// user fns, polymorphic or dynamic dispatch, compile-time words —
-// the Program is nil and reason names the first offender; the
-// CheckResult is valid either way.
-func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
-	// Policy-gated registries COMPILE (the 2026-07-15 lift, user-authorized):
-	// every named VM dispatch consults the SAME WordChecker the
-	// interpreter's policyGateWord runs (vmContext.gateWord — CALL_NATIVE,
-	// CALL_USER/TAIL_CALL_USER, both poly re-matchers, CALL_DYN_METHOD),
-	// raising the identical permission error, so the 2026-07-13 bypass (a
-	// "deny add" policy interpreted `1 add 2` to permission-denied but ran
-	// it compiled to 3) is closed at the dispatch layer instead of by
-	// declining compilation. The check pass stays ungated, mirroring
-	// policyGateWord's check-mode skip. Pinned by
-	// policy_compiled_gate_test.go's compiled-vs-interpreted parity sweep.
-	values, err := parser.Parse(src)
-	if err != nil {
-		return nil, "parse error", CheckResult{}, err
-	}
-	// A call-site specialisation (check's specialiseCallSite) is only ever a
-	// faster path. A pass that tried one and did not produce a program — or
-	// whose specialised analysis declined one (CheckState.SpecDeclined) — is
-	// re-run once without them, from the registry as it was before the
-	// first pass (the check pass leaves real side effects — defs, minted
-	// types, loaded modules — that the program's replay base would
-	// otherwise inherit), so specialisation never costs a program the
-	// compilation it has without it: the retry records exactly what a pass
-	// with none records. Specialisation acts on a TYPED param (a Function,
-	// Map, List or record param — each written `name:Type`), and a source
-	// with no `:` declares none: it compiles in one pass with specialisation
-	// off and pays for no snapshot.
-	//
-	// The first pass's effects are the program's (a module body imported,
-	// a RunInCheckMode word run), so a retry must not repeat them: its
-	// output is held until the pass is kept or discarded, and a pass that
-	// did what cannot be held — a file write, a network send, a stdin read —
-	// is not retried (checkPassHold). Where it needed the retry, the program
-	// does not compile: a program the first pass declined is owed the
-	// retry's recording, which only a repeat of the effect can make.
-	if a.noCallSiteSpec || !strings.Contains(src, ":") {
-		return a.compilePass(src, values, true)
-	}
-	snap := a.registry.SnapshotForCompile()
-	hold := holdCheckPass(a.registry)
-	prog, reason, res, err := a.compilePass(src, values, false)
-	if !a.registry.Check.SpecTried || (prog != nil && !a.registry.Check.SpecDeclined) {
-		hold.release(true)
-		return prog, reason, res, err
-	}
-	if hold.unrepeatable() {
-		hold.release(true)
-		return nil, "call-site specialisation declined after an unrepeatable check-pass effect (uncompilable)", res, nil
-	}
-	hold.release(false)
-	a.registry.RestoreForCompile(snap)
-	return a.compilePass(src, values, true)
-}
-
-// compilePass is one CompileCheck recording pass over parsed values;
-// specOff disables call-site specialisation for it.
-func (a *Boru) compilePass(src string, values []Value, specOff bool) (*Program, string, CheckResult, error) {
-	a.registry.Source = src
-	// BeginCompilePass arms the shared compile-pass ritual (fresh
-	// EmitState, Compiling flag, fn-memo drop) in one place.
-	defer a.registry.Check.BeginCompilePass()()
-	a.registry.Check.SpecOff = specOff
-	native.ResetModuleExportGrowth(a.registry)
-	native.ResetCheckFnCarrierBinds(a.registry)
-
-	// The program's own tokens ride on the recording: a top-level
-	// landing's `/q` claim resumes the interpreter in them (NUR190).
-	if es, ok := a.registry.Check.Recorder().(*compiler.EmitState); ok {
-		es.SetRootBody(values)
-	}
-	engine := native.NewTop(a.registry)
-	engine.SetSource(src)
-	residual, runErr := engine.Run(values)
-	native.RunPendingFnBodyChecks(a.registry)
-	a.registry.RescueForwardRefDiagnostics()
-	a.registry.Check.EmitUnusedDefDiagnostics()
-	a.registry.Check.EmitLateBindingHints()
-
-	res := CheckResult{
-		Diagnostics:              a.registry.Check.Diagnostics,
-		FnCarrierReadSubstituted: a.registry.Check.FnCarrierReadSubstituted,
-		BindLedger:               a.registry.Check.BindLedger,
-	}
-	if sites := a.registry.Check.Recorder().Sites(); len(sites) > 0 {
-		res.SiteCounts = make(map[string]int, len(sites))
-		for k, v := range sites {
-			res.SiteCounts[k] = v
-		}
-	}
-	if runErr != nil {
-		return nil, "check error", res, runErr
-	}
-	for _, d := range res.Diagnostics {
-		// Decline only on MODEL-UNDERMINING findings (undefined_word,
-		// no_signature, … — dispatch did not resolve, so the recording is
-		// a guess). A RuntimeMirror error is a validation finding whose
-		// model is exact — the program compiles and raises the identical
-		// error at runtime (trap / VM RET / the same handler) — so it
-		// must not cost compile coverage. A CAUGHT model-undermining
-		// finding still undermines the model: the `do` body's contents
-		// were recorded from the same guess (the runtime catches the
-		// error, but the compiled region computes a different value), so
-		// the caught downgrade must not slip it past this gate.
-		if !d.RuntimeMirror && (d.Severity == SeverityError || d.CaughtAtRuntime) {
-			return nil, "check diagnostics", res, nil
-		}
-	}
-	// Some words are deliberately lenient in check mode but raise a
-	// strict error at runtime (an orphan `gen [...]`, an `unpack` of a
-	// missing key). The compiled stream IS the check pass, so it would
-	// silently succeed where the interpreter errors. Such a word flags
-	// the suppression; fail to compile and let the interpreter raise
-	// the real error on the fallback path.
-	if a.registry.Check.SuppressedRuntimeError {
-		return nil, "check-mode suppressed a runtime error (uncompilable)", res, nil
-	}
-	// A dispatch whose forward/stack split depended on a genuinely mixed
-	// gradual carrier (e.g. `and 0 false not 0`, where `and`'s
-	// Disjunct(Integer,Boolean) result makes `not` forward-collect in
-	// check mode but stack-grab the concrete Boolean at runtime) cannot be
-	// faithfully compiled — the static split diverges from the runtime
-	// one, so the program does not compile.
-	if a.registry.Check.AmbiguousGradualSplit {
-		return nil, "forward/stack split depends on a gradual operand (uncompilable)", res, nil
-	}
-	// Finalizing the recorded stream needs the CONCRETE EmitState: only it
-	// holds the emitted program. compiler/go's init unconditionally installs
-	// NewEmitStateHook to mint one, and lang links compiler transitively
-	// through eng, so a non-EmitState recorder here means a host reassigned
-	// the exported core hook. Decline to compile rather than assert — a
-	// failed assertion would panic, which ADR-005 forbids.
-	es, isReal := a.registry.Check.Recorder().(*compiler.EmitState)
-	if !isReal { //covergate:allow compiler's init always installs the *EmitState hook that eng links in, so only a host-swapped core.NewEmitStateHook reaches this belt (§compiler)
-		return nil, "no bytecode recorder installed (uncompilable)", res, nil
-	}
-	prog, reason, ok := es.Finalize(residual)
-	if !ok {
-		return nil, reason, res, nil
-	}
-	return prog, "", res, nil
 }
 
 // SetFileOps replaces the file operations implementation used by read/write.
@@ -931,26 +660,8 @@ func (a *Boru) SetSDK(spec string, sdk any) {
 //
 // State from set/get persists across multiple Run calls on the same instance.
 //
-// Run executes src. There is one engine and one outcome: the program is
-// compiled and the bytecode runs, or it does not compile and that is an
-// error. Nothing degrades to the interpreter — a program that fails to
-// compile has hit a compiler defect (design/COMPILABLE-SUBSET.md §1), and a
-// defect is reported.
-//
-// Callers that need the interpreter SPECIFICALLY — parity oracles,
-// canonical-error rendering, the differential gates — call RunInterp, which
-// is the explicitly-named tree-walker entry point and is not a fallback.
+// Run executes src on the tree-walking interpreter — the one engine.
 func (a *Boru) Run(src string) ([]any, error) {
-	out, _, _, err := a.RunCompiledReason(src)
-	return out, err
-}
-
-// RunInterp parses and executes src on the TREE-WALKING INTERPRETER,
-// unconditionally — never the bytecode VM. It is the differential oracle
-// the compiled path is measured against (byte-identical values, errors,
-// and output), and it survives Stage J's Run flip as the explicitly-named
-// interpreter entry point.
-func (a *Boru) RunInterp(src string) ([]any, error) {
 	result, err := a.runValues(src)
 	if err != nil {
 		return nil, err
@@ -958,19 +669,25 @@ func (a *Boru) RunInterp(src string) ([]any, error) {
 	return convertResults(result), nil
 }
 
-// RunInterpValues is RunInterp without the host-value projection — the raw
-// engine Values, for callers whose renderer needs the engine's own
-// Value.String() (the REPL's per-line echo and its compile_failed
-// fallback). Same contract as RunInterp: unconditionally the tree-walking
-// interpreter, never the VM.
+// RunInterp is Run under its explicit name. It dates from the bytecode lane
+// (design/legacy), when it named the interpreter as the differential oracle
+// the compiled path was measured against; the lane is gone and the
+// interpreter is the only engine, so the two are one call. Kept for the
+// callers that spell the engine out (the gates, the REPL).
+func (a *Boru) RunInterp(src string) ([]any, error) {
+	return a.Run(src)
+}
+
+// RunInterpValues is Run without the host-value projection — the raw engine
+// Values, for callers whose renderer needs the engine's own Value.String()
+// (the REPL's per-line echo).
 func (a *Boru) RunInterpValues(src string) ([]native.Value, error) {
 	return a.runValues(src)
 }
 
-// runValues is Run without the host-value projection: the raw engine stack.
-// The Value-returning entry points (RunAutoValues' fallback arms) need the
-// unprojected Values so a host renderer (the REPL's v.String()) stays
-// byte-identical with what the engine produced.
+// runValues is Run without the host-value projection: the raw engine stack,
+// so a host renderer (the REPL's v.String()) stays byte-identical with what
+// the engine produced.
 func (a *Boru) runValues(src string) ([]native.Value, error) {
 	values, err := parser.Parse(src)
 	if err != nil {
@@ -1015,343 +732,6 @@ func convertResults(result []core.Value) []any {
 	return out
 }
 
-// RunCompiled executes src in compiled (bytecode) mode. It is Run with the
-// ran-compiled flag exposed for tooling; the flag is now always true on a
-// successful run, because a program that does not compile returns
-// compile_failed instead of quietly running somewhere else. Never branch
-// program logic on it.
-//
-// LIMITATION — the step budget is the one place compiled execution is not
-// byte-for-byte what the interpreter would do. The interpreter meters its
-// DefaultStepLimit per tape token stepped; the VM meters the SAME cap per
-// bytecode instruction. The compiled stream is leaner than the expanded token
-// walk, so for any given program the VM reaches at least as far as the
-// interpreter before the cap — the divergence is one-directional: a
-// long-but-terminating computation that the interpreter would abort with
-// evaluation_limit may COMPLETE under compilation; the reverse never happens
-// (the VM does not spuriously raise evaluation_limit on a program the
-// interpreter finishes). A genuine runaway trips evaluation_limit fast in
-// both. So at the ceiling, RunInterp and RunCompiled are observably different
-// programs; everywhere below it they agree. TestStepBudgetNoSpuriousLimit
-// pins the agreement on a long terminating loop; TestPropertyDifferential
-// keeps the generated corpus well under the cap so the divergence never makes
-// it flaky.
-//
-// An internal error raised INSIDE the compiled runtime — a VM/lowering
-// soundness assertion, a recovered handler panic, a designed defer, a foreign
-// Go error — is surfaced as a compiler defect (compiledRunError). It used to
-// be resolved by rolling back and re-running the whole source on the
-// interpreter, so a latent compiler bug degraded to the correct result; it
-// degraded silently, which is why that is gone.
-func (a *Boru) RunCompiled(src string) ([]any, bool, error) {
-	out, ran, _, err := a.RunCompiledReason(src)
-	return out, ran, err
-}
-
-// RunCompiledReason is RunCompiled with the compile-failure reason surfaced
-// as a third return, for tooling that needs to name the construct the
-// compiler could not lower. It runs identically to RunCompiled — same
-// results, same flag, same error — and additionally reports:
-//
-//   - "" when the program ran, and when it is MALFORMED — a parse or check
-//     error, which fails the same way whatever runs it and is the program's
-//     own failure, not the compiler's.
-//   - the first construct the emitter could not lower otherwise, or the
-//     "check diagnostics" sentinel when the check pass stopped it. Either
-//     way that is a compiler DEFECT (design/COMPILABLE-SUBSET.md §1), and
-//     the reason is what names it — in the compile_failed error, and in
-//     whatever the caller shows a user.
-func (a *Boru) RunCompiledReason(src string) ([]any, bool, string, error) {
-	vals, ran, reason, err := a.RunAutoValues(src)
-	if err != nil {
-		return nil, ran, reason, err
-	}
-	return convertResults(vals), ran, reason, nil
-}
-
-// RunAutoValues is the compiled-by-default entry point returning the RAW
-// engine Values — RunCompiledReason without the host-value projection
-// (convertResults collapses Integer→int64/String→string, which cannot back
-// a renderer that needs the engine's own Value.String() — the REPL's
-// per-line echo and /stack). Identical semantics: same compiled/fallback
-// arms, same fence, same reason contract (plan Phase 2's prerequisite for
-// entry-point routing).
-func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
-	// CompileCheck executes the program in check mode, so its
-	// RunInCheckMode words (def/import/type/macro, the Test harness)
-	// leave real side effects on the registry. The COMPILED path needs
-	// those to persist (OpPushType resolves minted IDs). A program that
-	// does not compile is an error, so nothing re-runs the source and the
-	// snapshot exists only to leave the registry as it was found on the
-	// error paths.
-	snap := a.registry.SnapshotForCompile()
-	// §6.5 rollback-and-replay needs no snapshot here: the compiled program
-	// carries its own rollback base (Program.ReplayBase — captured by the
-	// recorder at its first bind, before the check pass performs a
-	// transition), and RunProgram restores it before executing, so the
-	// pass's runtime-visible installs are rolled back at the one safe
-	// between-phases point and re-installed by the run's placed twins.
-	//
-	// The C1 effect fence is gone with the arms it protected. It counted
-	// observable output escaping the check pass so a silent whole-source
-	// re-run could be blocked before it duplicated it; with no re-run on
-	// any arm there is nothing left to fence.
-	// Compiled execution is the only execution: arm detached fn-unit
-	// stamping so runtime-constructed callbacks (service handlers, custom
-	// codec fns) compile to units at their store sites
-	// (compiler.StampDetachedFn). It is RESTORED to its prior state on
-	// return (defer) so this call never leaks the armed flag into a later
-	// one on a reused instance; disarming is safe because a callback
-	// already stamped keeps its VM path regardless of the flag
-	// (InvokeCallback gates on the stored ref). Only this call's own
-	// arming is undone: a caller that armed the registry itself keeps it
-	// armed.
-	wasArmed := a.registry.RuntimeStampingEnabled()
-	a.registry.EnableRuntimeStamping()
-	if !wasArmed {
-		defer a.registry.DisableRuntimeStamping()
-	}
-	prog, reason, res, err := a.CompileCheck(src)
-	if err != nil || prog == nil {
-		a.registry.RestoreForCompile(snap)
-		// The check pass's in-place module-load stamps were rolled back with
-		// the scopes; drop them so -compile-report shows only authoritative
-		// stamps, not each rolled-back stamp twice.
-		a.registry.ResetStampLog()
-		// There is ONE outcome here and it is an error
-		// (design/COMPILABLE-SUBSET.md §1). A program that does not compile
-		// has hit a compiler defect, and a defect is reported, not worked
-		// around: nothing below re-runs the source on the interpreter, so
-		// there is no arm for the effect fence to protect and no hatch to
-		// restore one.
-		//
-		// A PARSE error is the one failure that is not the compiler's: the
-		// source is malformed, it fails identically whatever reads it, and
-		// the error is its own.
-		if err != nil && reason == "parse error" {
-			return nil, false, "", err
-		}
-		// A CHECK error is the check PASS failing on this program, and the
-		// checker may never be the reason a program does not compile
-		// (design/SESSION-HANDOVER.0.md). It is not the program's verdict:
-		// `each [if [gt 1] ['big'] ['small']] [1 2 3]` crashes the pass with
-		// an index-out-of-range and runs clean interpreted, and
-		// `def One (typeof (const 1)) end 1 is One` raises a type_error in
-		// check mode that the interpreter never reaches. Whether such a
-		// program is ALSO invalid is a question a failed pass cannot answer,
-		// so the honest report is the compile failure, carrying the pass's
-		// own message and position so nothing is lost.
-		if err != nil {
-			return nil, false, reason, checkErrorAsCompileFailure(a.registry, err)
-		}
-		// Everything else is a compile failure, and it is reported as one
-		// even when the check pass has a blocking diagnostic to show for it.
-		// The diagnostic is NOT surfaced as the program's verdict: the
-		// checker flags code the program never reaches — `def g fn [[]
-		// [Integer] [if (1 lte 0) [nosucharm] [2]]] g` raises undefined_word
-		// on an arm that never runs, and the program answers [2] — so
-		// claiming that finding as the program's error invents a failure
-		// where there is none. That is the worse defect, and the one this
-		// whole change exists to stop. The finding still travels, as the
-		// reason the compile failed, with its position and hints intact.
-		//
-		// A CaughtAtRuntime diagnostic is the same: downgraded because a
-		// surrounding `do [...]` catches the failure, so the program is
-		// VALID and must run. It bought a quiet interpreter run; it reports
-		// the bug it is now.
-		return nil, false, reason, compileFailedError(a.registry, reason, res)
-	}
-	// RunProgram rolls the check pass's runtime-visible installs back to the
-	// base the Program carries (ReplayBase) at the one safe between-phases
-	// point, and lets the run's placed twins (OpBindTwin → core.ApplyBindTwin)
-	// re-install each transition at its source position, with OpBindGlobal
-	// pushing the runtime values. The module ledger stays pass-final —
-	// imports ran once on the pass and must not run again
-	// (RestoreBindingsForReplay's contract). On a VM error below, the partial
-	// replay is rolled back with everything else by the runtime-bail arm's
-	// RestoreForCompile.
-	result, err := eng.RunProgram(prog, a.registry)
-	if err != nil {
-		// The program compiled and then failed. There is no second engine to
-		// ask. A genuine boru runtime error (type_error, div-by-zero, the
-		// resource ceilings evaluation_limit / tape_exhausted) IS the
-		// program's result and is returned as-is. An internal_error — a
-		// VM/lowering soundness assertion, a recovered handler panic, a
-		// designed defer — is a compiler DEFECT, and compiledRunError says so
-		// rather than re-running the source to hide it.
-		//
-		// A DEFECT rolls the registry back to where the run found it. The
-		// old runtime-bail arm did this before re-running, and it is the
-		// run's own obligation rather than the fallback's: the program did
-		// not run, so it must not leave a half-installed binding behind for
-		// whatever the caller does next (a second run on the same instance
-		// meeting its own `def` as a name clash).
-		//
-		// The program's OWN error does not roll back. A raise part-way
-		// through a suite leaves the cases that already ran, exactly as the
-		// interpreter leaves them, and the runner reads that tally
-		// afterwards. Discarding it would lose work the program really did.
-		//
-		// The decision is compiledRunError's FINAL disposition, not the raw
-		// error's class: a designed defer carrying a prepared alt surfaces
-		// as the program's own error, so it IS one, and rolling that back
-		// would discard the program's work over an error the user is meant
-		// to see.
-		out, defect := compiledRunError(a.registry, err)
-		if defect {
-			a.registry.RestoreForCompile(snap)
-			a.registry.ResetStampLog()
-		}
-		return nil, true, "", out
-	}
-	return result, true, "", nil
-}
-
-// RunCompiledStrict was RunCompiled in FORCE mode, back when RunCompiled had
-// a silent fallback to require the absence of. RunCompiled requires the
-// bytecode path now, so this is the same call, kept as the spelling that says
-// so at the call sites that verify the compilable subset or benchmark the VM
-// in isolation.
-func (a *Boru) RunCompiledStrict(src string) ([]any, error) {
-	out, _, err := a.RunCompiled(src)
-	return out, err
-}
-
-// checkErrorAsCompileFailure renders a failed check pass as the compile
-// failure it is, keeping the pass's message, position and hints: a user still
-// sees exactly what stopped it, and the code says who it belongs to.
-func checkErrorAsCompileFailure(r *native.Registry, err error) error {
-	src := ""
-	if r != nil {
-		src = r.Source
-	}
-	const tail = " — this is a compiler defect, not a policy: valid code must compile."
-	var ae *core.BoruError
-	if !errors.As(err, &ae) {
-		return core.MakeBoruError("compile_failed",
-			"bytecode compilation FAILED: the check pass errored: "+err.Error()+tail, "", src, "")
-	}
-	// COPY the original and replace only the code and the detail. Rebuilding
-	// it field by field dropped File, Spans and FullSource — and an error
-	// raised while checking an IMPORTED file carries that module's BaseFile
-	// and source (stampErrPos), so a rebuild rendered the module-relative
-	// row against the top-level registry's text and lost the declaration
-	// spans with it.
-	cp := *ae
-	cp.Code = "compile_failed"
-	cp.Detail = "bytecode compilation FAILED: the check pass errored: [" + ae.Code + "] " + ae.Detail + tail
-	cp.Notes = append([]string(nil), ae.Notes...)
-	cp.Suggestions = append([]core.DiagSuggestion(nil), ae.Suggestions...)
-	return &cp
-}
-
-// compileFailedError builds the one error a program that does not compile
-// returns. When the compiler stopped on a blocking check diagnostic, that
-// finding is what names the failure, and its whole payload travels —
-// position, source fragment, notes and suggestions — so the user sees exactly
-// what the checker saw. What it does not do is claim the finding as the
-// program's own verdict: see the note at the call site.
-func compileFailedError(r *native.Registry, reason string, res CheckResult) error {
-	src := ""
-	if r != nil {
-		src = r.Source
-	}
-	const tail = " — this is a compiler defect, not a policy: valid code must compile."
-	for _, d := range res.Diagnostics {
-		// The SAME predicate CompileCheck declined on. A CaughtAtRuntime
-		// finding is downgraded to SeverityInfo by AddDiagnostic (a
-		// surrounding `do [...]` traps it), and the compile gate still stops
-		// on it — so selecting on severity alone left exactly that class
-		// with the bare "check diagnostics" sentinel and no position, where
-		// checkDiagnosticsDetail used to name it.
-		if d.RuntimeMirror || (d.Severity != SeverityError && !d.CaughtAtRuntime) {
-			continue
-		}
-		ae := core.MakeBoruErrorAt("compile_failed",
-			"bytecode compilation FAILED: the check pass stopped at ["+d.Code+"] "+d.Detail+tail,
-			d.Word, src, "", core.SrcPos{Row: d.Row, Col: d.Col, Src: d.Src})
-		ae.Notes = append(ae.Notes, d.Notes...)
-		ae.Suggestions = append(ae.Suggestions, d.Suggestions...)
-		return ae
-	}
-	return core.MakeBoruError("compile_failed",
-		"bytecode compilation FAILED: "+compileFailureReason(reason)+tail, "", src, "")
-}
-
-// compileFailureReason renders the emitter's reason for a compile_failed
-// error, defaulting the (defensive, never observed through CompileCheck's
-// current return paths) empty reason to a generic message rather than
-// emitting a bare "bytecode compilation FAILED: ".
-func compileFailureReason(reason string) string {
-	if reason == "" {
-		return "program is not compilable"
-	}
-	return reason
-}
-
-// compiledRunError renders an error raised BY a compiled run. A genuine boru
-// runtime error is the program's own result and passes through untouched. A
-// VM/lowering soundness assertion, a designed defer or a recovered panic is a
-// compiler DEFECT: there is no interpreter re-run to resolve it any more, so
-// the error carries a note saying what it is and asking for it to be
-// reported. A plain (non-Boru) Go error is NOT that class: it is what a
-// handler returned, and the interpreter returns the same one (see the arm).
-//
-// The VM's own errors are identified by BoruError.VMDefer (core.IsVMDefer),
-// the marker vmErrAt and both VM panic guards set. The CODE alone will not
-// do: a native handler may raise internal_error for a failure that is
-// entirely the program's — `convert: cannot convert Float to BigInteger` —
-// and so may user
-// code, with a plain `raise internal_error "boom"`. The interpreter raises
-// the identical error in every one of those cases. Marking them as compiler
-// defects would book the compiler for a handler's choice of error code and
-// put fifty-odd corpus rows in a ledger meant to name VM bails.
-//
-// The second return is the DISPOSITION: true only when this call annotated a
-// defect. A defer that surfaced its prepared alt did not — the alt is the
-// program's own error — and the caller's rollback reads this rather than the
-// raw error's class.
-//
-// One case is not a defect report: a designed defer that PREPARED the
-// interpreter's own error for this exact moment (a no-match whose site proved
-// the dispatch fails either way) carries that raise in DeferAlt. Surfacing it
-// is raising the program's real failure at the point it happens — one of the
-// three legal dispositions for a defer site — not re-running to find one.
-func compiledRunError(r *native.Registry, err error) (error, bool) {
-	const note = "this is a compiler defect: the program compiled and then failed inside the compiled runtime; please report it"
-	var pd core.PolicyDenied
-	if errors.As(err, &pd) {
-		// A word-policy denial from the VM dispatch gate IS the program's
-		// verdict — the checker raises the same error — not a defect.
-		return err, false
-	}
-	var ae *core.BoruError
-	if !errors.As(err, &ae) {
-		// A plain Go error (a handler's `fmt.Errorf`, a kernel helper's
-		// `errors.New`) is the PROGRAM's own result, exactly as the
-		// interpreter surfaces it: its dispatch returns a handler's error
-		// untouched (Engine.stampErrPos leaves a non-BoruError alone), so
-		// `convert BigInteger 3.14`, `def q:Even 5`, a make over a refined
-		// Record's bad field, Fmt.format-with's rule errors raise the same
-		// plain error on both lanes. Wrapping it as a defect booked the
-		// compiler for forty-odd corpus rows whose only fault was the
-		// handler's choice of error type (2026-09-26). The VM never reports
-		// its OWN failures this way: every vmErrAt / vmInternalError /
-		// entry-guard error is a BoruError carrying VMDefer, which is the
-		// marker the arm below reads.
-		return err, false
-	}
-	if !core.IsVMDefer(err) {
-		return err, false
-	}
-	if ae.DeferAlt != nil {
-		return ae.DeferAlt, false
-	}
-	cp := *ae
-	cp.Notes = append(append([]string(nil), ae.Notes...), note)
-	return &cp, true
-}
-
 // CheckResult is the outcome of a static type-check run.
 //
 // Stack holds the carrier values left on the stack after symbolic
@@ -1364,28 +744,6 @@ type CheckResult struct {
 	Stack       []string          `json:"stack"`
 	Diagnostics []CheckDiagnostic `json:"diagnostics"`
 	Summary     CheckSummary      `json:"summary"`
-	// SiteCounts tallies dispatch sites by compilation class during the
-	// bytecode recording pass — "mono" (a single resolved signature,
-	// compiles to CALL_NATIVE), "poly" (polymorphic, not lowered),
-	// "dynamic" (a dynamic carrier / interpreter-island site), and
-	// "meta" (compile-time / fn-invoking / higher-order words). Populated
-	// only by CompileCheck (the recording pass); nil for a plain Check.
-	// It answers "why didn't my hot loop compile to a single path?".
-	SiteCounts map[string]int `json:"site_counts,omitempty"`
-	// FnCarrierReadSubstituted marks a compile pass that resolved a read
-	// of a name def-bound to a computed fn through the fn-carrier side
-	// table (Stage 1). A COMPILE FAILURE from such a pass is the transitional
-	// class that declined behind the silent check-diagnostics sentinel
-	// before Stage 1 — RunCompiled keeps that silent interpreter re-run
-	// for it, and the census suites classify it with the sentinel rather
-	// than as a hard compile failure. Populated only by CompileCheck.
-	FnCarrierReadSubstituted bool `json:"fn_carrier_read_substituted,omitempty"`
-	// BindLedger is the RUNTIME-VISIBLE binding transitions the check pass
-	// performed, in source order — the population the bind twins
-	// (design/FULL-COMPILATION.0.md §6.5) have to replay. Populated only by
-	// CompileCheck, and INERT: nothing consumes it to decide anything, it
-	// exists so the twin work can be sized before it is built.
-	BindLedger []core.BindTransition `json:"-"`
 }
 
 // CheckSummary reports the per-severity count of diagnostics from

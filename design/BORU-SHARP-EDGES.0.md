@@ -97,7 +97,7 @@ app state, because the default arm captured the event instead of dispatching.
 > longer recommend only the dead spelling — `strandedForwardError`
 > offers the sequential form for barrier-receiver boundary words and
 > `forwardParensSuggestion` carries the sealed-stack caveat
-> (`eng/go/barrier_receiver_hint_test.go`). Both shipped examples are
+> (`core/go/barrier_receiver_hint_test.go`). Both shipped examples are
 > repaired: `todo-tui-client.boru`'s four arms use
 > `dot message def why end …`, and `todo/audit.boru` binds the code
 > sequentially and re-raises via `convert Map raise` (its `record` sink
@@ -265,7 +265,7 @@ The evidence:
   no body is compiled at import (identical to `sift.boru`, `repl.boru`).
 - **`Tui.run` dispatches every `update`/`view` callback through the
   interpreter.** `lang/go/modules/tui_run.go:371,414` call
-  `eng.InvokeCallback`, which (`eng/go/invoke.go:66,106`) runs the VM only if
+  `eng.InvokeCallback`, which (`core/go/invoke.go:66,106`) runs the VM only if
   the callback has a stamped `CompiledRef`; with none, it falls to `CallBoru` —
   the interpreter — on every keystroke and every frame.
 

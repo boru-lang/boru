@@ -24,21 +24,6 @@ func s5aEng(t *testing.T, r *Registry, vals []Value, pointer int) *Engine {
 	return e
 }
 
-// s5aEmit is an EmitRecorder stub: TheInactiveEmit with a few overrides.
-type s5aEmit struct {
-	EmitRecorder
-	active bool
-	armed  bool
-	fold   []Value
-	foldOK bool
-}
-
-func (s *s5aEmit) Active() bool { return s.active }
-func (s *s5aEmit) Armed() bool  { return s.armed }
-func (s *s5aEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) {
-	return s.fold, s.foldOK
-}
-
 // s5aPolicy is a hand-rolled WordChecker + ModuleCallChecker.
 type s5aPolicy struct{ denyWord, denyModule string }
 
@@ -1034,19 +1019,6 @@ func TestS5ARecorderOnDispatch(t *testing.T) {
 	}
 }
 
-func TestS5ADriftWindowRecorderHook(t *testing.T) {
-	saved := DriftWindowRecorder
-	DriftWindowRecorder = func(*Engine, WordInfo, *Signature, []int) bool { return true }
-	defer func() { DriftWindowRecorder = saved }()
-	r := covRegistry(t, nil)
-	e := s5aEng(t, r, []Value{
-		NewInteger(1), NewInteger(2), NewWordModified("cadd", -1, true, false),
-	}, 2)
-	if err := e.stepWord(e.Tape.Ref(2)); err != nil {
-		t.Fatalf("stepWord: %v", err)
-	}
-}
-
 // --- dynShuffleConsumerAt -------------------------------------------------
 
 func TestS5ADynShuffleUnknownWord(t *testing.T) {
@@ -1172,38 +1144,6 @@ func TestS5AExecMatchPatternFillDefaults(t *testing.T) {
 
 // --- FullStack: check-mode fold + runtime error ---------------------------
 
-func TestS5AFullStackCheckFold(t *testing.T) {
-	r := covRegistry(t, func(r *Registry) {
-		h := func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
-			return nil, nil
-		}
-		cfn := func(args []Value, stack []Value, reg *Registry) []Value {
-			return []Value{NewCarrier(TInteger)}
-		}
-		r.RegisterNativeFunc(NativeFunc{Name: "s5afs", Signatures: []Signature{{
-			Args: []*Type{}, Impl: Go(h, FullStack(), CheckFullStack(cfn)),
-			Returns: []*Type{TAny}, BarrierPos: 0,
-		}}})
-	})
-	s5aCheckOn(t, r)
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true,
-		fold: []Value{NewInteger(9)}, foldOK: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	e := s5aEng(t, r, []Value{NewInteger(1), NewWord("s5afs")}, 1)
-	if err := e.stepWord(e.Tape.Ref(1)); err != nil {
-		t.Fatalf("stepWord: %v", err)
-	}
-	if e.Tape.Len() != 1 {
-		t.Fatalf("tape = %d tokens, want the folded value only", e.Tape.Len())
-	}
-	if n, err := AsInteger(e.Tape.At(0)); err != nil || n != 9 {
-		t.Errorf("folded value = %v, want 9", e.Tape.At(0))
-	}
-}
-
 func TestS5AFullStackRuntimeError(t *testing.T) {
 	r := covRegistry(t, func(r *Registry) {
 		h := func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
@@ -1323,52 +1263,7 @@ func TestS5AStepLiteralExpandsParenExpr(t *testing.T) {
 	}
 }
 
-func TestS5AStepLiteralSpliceDynRecording(t *testing.T) {
-	r := covRegistry(t, nil)
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-	sp := NewSplice(NewDynamicCarrier(TAny))
-	e := s5aEng(t, r, []Value{sp}, 0)
-	if err := e.stepLiteral(); err != nil {
-		t.Fatalf("stepLiteral: %v", err)
-	}
-	if IsSplice(e.Tape.Ref(0)) {
-		t.Error("splice marker not expanded")
-	}
-}
-
 // --- stepLiteral: check-mode dispatch hooks -------------------------------
-
-func TestS5AStepLiteralCheckHooks(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-
-	savedShaped := CheckBraid.TryShapedMethodDispatch
-	CheckBraid.TryShapedMethodDispatch = func(*Engine, int) bool { return true }
-	e := s5aEng(t, r, []Value{NewInteger(1)}, 0)
-	if err := e.stepLiteral(); err != nil {
-		t.Fatalf("stepLiteral (shaped): %v", err)
-	}
-	CheckBraid.TryShapedMethodDispatch = savedShaped
-
-	savedMember := CheckBraid.TryMemberFnArrivalDispatch
-	CheckBraid.TryMemberFnArrivalDispatch = func(*Engine, int) bool { return true }
-	e2 := s5aEng(t, r, []Value{NewInteger(1)}, 0)
-	if err := e2.stepLiteral(); err != nil {
-		t.Fatalf("stepLiteral (member): %v", err)
-	}
-	CheckBraid.TryMemberFnArrivalDispatch = savedMember
-
-	savedDyn := CheckBraid.TryDynamicFnValueDispatch
-	CheckBraid.TryDynamicFnValueDispatch = func(*Engine, int) bool { return true }
-	e3 := s5aEng(t, r, []Value{NewInteger(1)}, 0)
-	if err := e3.stepLiteral(); err != nil {
-		t.Fatalf("stepLiteral (dyn): %v", err)
-	}
-	CheckBraid.TryDynamicFnValueDispatch = savedDyn
-}
 
 // --- stepLiteral: reach-collapsed fn arrival gate -------------------------
 
@@ -1522,26 +1417,6 @@ func TestS5AAutoEvalListQuotedInertElem(t *testing.T) {
 	}
 }
 
-func TestS5AAutoEvalListRecording(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	// Top-level: RecordMakeList.
-	eTop := NewTop(r)
-	if _, err := eTop.autoEvalList(NewEvalList([]Value{NewDynamicCarrier(TAny)}), false); err != nil {
-		t.Fatalf("autoEvalList top: %v", err)
-	}
-	// Consumed inner: RecordMakeListInner.
-	eSub := New(r)
-	if _, err := eSub.autoEvalList(NewEvalList([]Value{NewDynamicCarrier(TAny)}), true); err != nil {
-		t.Fatalf("autoEvalList inner: %v", err)
-	}
-}
-
 // --- interp string / xml interp dynamic arms ------------------------------
 
 func TestS5AInterpStringMultiValueHole(t *testing.T) {
@@ -1557,58 +1432,6 @@ func TestS5AInterpStringMultiValueHole(t *testing.T) {
 	}
 	if s, serr := AsString(got); serr != nil || s != "x12" {
 		t.Errorf("result = %v, want 'x12'", got)
-	}
-}
-
-func TestS5AInterpStringDynamicHole(t *testing.T) {
-	r := covRegistry(t, nil)
-	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
-	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	e := s5aEng(t, r, nil, 0)
-	is := NewInterpString([]InterpPart{{Expr: []Value{NewCarrier(TInteger)}}})
-	got, err := e.evalInterpString(is)
-	if err != nil {
-		t.Fatalf("evalInterpString: %v", err)
-	}
-	if !got.Carrier() || !got.Parent().Equal(TString) {
-		t.Errorf("dynamic interp = %v, want String carrier", got)
-	}
-}
-
-func TestS5AXmlInterpDynamic(t *testing.T) {
-	r := covRegistry(t, nil)
-	savedVCC := AnalysisImpl.ValueCarriesCarrier
-	AnalysisImpl.ValueCarriesCarrier = func(v Value) bool { return v.Carrier() }
-	defer func() { AnalysisImpl.ValueCarriesCarrier = savedVCC }()
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	child := XmlTmpl{Tag: "q", Cren: []XmlCren{
-		{Kind: XmlCrenExpr, Expr: []Value{NewCarrier(TInteger)}},
-		{Kind: XmlCrenExpr, Expr: []Value{NewInteger(1), NewInteger(2)}},
-	}}
-	tmpl := XmlTmpl{
-		Tag: "p",
-		Attr: []XmlAttrTmpl{{
-			Name: "a", Parts: []InterpPart{{Expr: []Value{NewCarrier(TInteger)}}},
-		}},
-		Cren: []XmlCren{{Kind: XmlCrenChild, Child: &child}},
-	}
-	e := s5aEng(t, r, nil, 0)
-	got, err := e.EvalXmlInterp(NewXmlInterp(tmpl))
-	if err != nil {
-		t.Fatalf("EvalXmlInterp: %v", err)
-	}
-	if !got.Carrier() || !got.Parent().Equal(TXml) {
-		t.Errorf("dynamic xml interp = %v, want Xml carrier", got)
 	}
 }
 
@@ -1668,23 +1491,6 @@ func TestS5AAutoEvalMapConstFold(t *testing.T) {
 	bv, _ := gm.Get("b")
 	if n, nerr := AsInteger(bv); nerr != nil || n != 7 {
 		t.Errorf("bare value not folded: %v", bv)
-	}
-}
-
-func TestS5AAutoEvalMapConsumedRecording(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	om := NewOrderedMap()
-	om.Set("l", NewEvalList([]Value{NewDynamicCarrier(TAny)}))
-	mv := NewMap(om)
-	e := s5aEng(t, r, nil, 0)
-	if _, err := e.AutoEvalMap(mv, false, true); err != nil {
-		t.Fatalf("AutoEvalMap: %v", err)
 	}
 }
 
@@ -1764,63 +1570,3 @@ func TestS5AEffectiveForwardLimit(t *testing.T) {
 }
 
 // --- foldedReferenceIdentity -------------------------------------------------
-
-// TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity pins the flex-member
-// map literal (foldedReferenceIdentity): a member whose const-fold holds a
-// FLEX is kept as the fold — the check pass needs the concrete value — but
-// under an ARMED recorder it takes the identity of the recorded run's
-// result, so RecordMakeMap resolves the member to an event and the map
-// assembles at run time from the reference the run mints then (`{a:(flex
-// [1])}` failed to compile where `[(flex [1])]` compiled). Both member
-// forms: the paren group (the inline context region) and the bare value
-// (the pooled sub-run). An unarmed recorder keeps the fold's own identity.
-// The fold seam stands in for the checker's concrete evaluation (core's
-// suite has no `flex` word), so the member expression is a literal whose
-// recorded run nets one value with a minted identity.
-func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-	fold := NewFlexList([]Value{NewInteger(1)})
-	SetID(&fold, "flex-fold")
-	savedCE := CheckBraid.ConcreteEvalOnce
-	CheckBraid.ConcreteEvalOnce = func(*Engine, []Value) (Value, bool) { return fold, true }
-	defer func() { CheckBraid.ConcreteEvalOnce = savedCE }()
-	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-
-	eval := func() map[string]Value {
-		t.Helper()
-		om := NewOrderedMap()
-		om.Set("p", NewParenExpr([]Value{NewInteger(1)}))
-		om.Set("b", NewInteger(1))
-		e := s5aEng(t, r, nil, 0)
-		got, err := e.AutoEvalMap(NewMap(om), false, true)
-		if err != nil {
-			t.Fatalf("AutoEvalMap: %v", err)
-		}
-		gm, _ := AsMap(got)
-		out := map[string]Value{}
-		for _, k := range []string{"p", "b"} {
-			v, ok := gm.Get(k)
-			if !ok || !IsFlexList(v) {
-				t.Fatalf("member %s is the folded flex list, got %v/%v", k, v, ok)
-			}
-			out[k] = v
-		}
-		return out
-	}
-
-	for k, v := range eval() {
-		if IDOf(&v) == "" || IDOf(&v) == IDOf(&fold) {
-			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, IDOf(&v))
-		}
-	}
-	stub.armed = false
-	for k, v := range eval() {
-		if IDOf(&v) != IDOf(&fold) {
-			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, IDOf(&v))
-		}
-	}
-}

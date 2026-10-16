@@ -1165,8 +1165,6 @@ func closureIdentityEqual(a, b Value) (eq, handled bool) {
 // whether v IS a closure. Zero: no closure identity.
 func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 	switch d := v.Data().(type) {
-	case *ClosurePayload:
-		return d.Ident.seq, true
 	case *FnDefInfo:
 		if d.ident != nil {
 			return d.ident.closure, false

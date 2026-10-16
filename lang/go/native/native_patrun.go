@@ -157,11 +157,10 @@ func patrunValType(args []Value) *core.Type {
 // dispatch-bearing stored value (the lambda-router pattern, whose
 // reader re-dispatches the found fn) POISONS the join and find keeps
 // today's dynamic(Any) — the pinned patrun.tsv:40 residual is
-// deliberately unchanged. Compile passes keep the legacy carriers
-// (patrun rows compile natively today; byte-identical lowering).
+// deliberately unchanged.
 
 func patrunNewReturns(args []Value, r *Registry) []Value {
-	if r == nil || r.Check.Compiling {
+	if r == nil {
 		return []Value{NewCarrier(TPatrun)}
 	}
 	c := core.NewStoreShapeCarrier(TPatrun, 0)
@@ -177,15 +176,13 @@ func patrunAddReturns(args []Value, r *Registry) []Value {
 	// type is a static error (the mirror of patrunAddHandler's runtime guard),
 	// so the checker flags `add {a:1} 5 (patrun String)` rather than deferring
 	// the whole class to runtime. Abstract / carrier values can't be proven and
-	// stay a runtime check. Plain-check only — the diagnostic never bakes.
-	if r != nil && !r.Check.Compiling && len(args) >= 3 {
+	// stay a runtime check.
+	if r != nil && len(args) >= 3 {
 		if ss, ok := check.StoreShapeOf(args[2]); ok && ss.DeclaredVal != nil &&
 			!ss.DeclaredVal.Equal(TAny) && IsConcrete(&args[1]) && !args[1].Is(ss.DeclaredVal) {
 			// A proven-concrete wrong-typed value is a GUARANTEED runtime
 			// error mirror of patrunAddHandler's guard — stamped and deduped
-			// through the helper (NUR058). Plain-check-only today (the
-			// !Compiling gate above), so the stamp is classification, not a
-			// compile-behavior change.
+			// through the helper (NUR058).
 			core.CheckAddUniqueDiagnostic(r, "patrun_error",
 				fmt.Sprintf("add: value must be a %s, got %s", ss.DeclaredVal.Leaf(), args[1].Parent().String()),
 				"add", args[1].Pos())
@@ -195,7 +192,7 @@ func patrunAddReturns(args []Value, r *Registry) []Value {
 }
 
 func patrunFindReturns(args []Value, r *Registry) []Value {
-	if r != nil && !r.Check.Compiling && len(args) >= 2 {
+	if r != nil && len(args) >= 2 {
 		if ss, ok := check.StoreShapeOf(args[1]); ok && ss.DeclaredVal != nil {
 			// A typed table: surface the DECLARED element type ∪ None (an
 			// unmatched subject reads None, patrunFindHandler's miss path). No

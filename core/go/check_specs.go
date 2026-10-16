@@ -6,61 +6,6 @@ package core
 // them check-side lets both neighbours import them legally at the
 // package cut.
 
-// PolyNoMatchSpec carries the tape-derived pieces of the interpreter's
-// unmatched-dispatch diagnostic (sigError) that the VM cannot see at run
-// time, resolved at record time into operand-window indices. sigError reads
-// the tape twice — the WRITTEN tuple its notes render (unclaimed concrete
-// forward tokens in source order, else the stack prefix top-first) and the
-// SECONDARY reorder-probe tuple (always the stack prefix) — and both were
-// proven at record time to be exactly window values, position for position
-// (Value.ID equality, the RecordDispatchRematchValues gate). Everything else
-// in the diagnostic (the candidate verdicts, the value-based reorder probe,
-// the suggestions) is a pure function of the word, its live signature table,
-// and these tuples (noMatchDiag / reorderHintFor).
-type PolyNoMatchSpec struct {
-	// Written / StackTuple index the runtime operand window (window[i] = sig
-	// position i, the callPoly layout) to rebuild the two tape tuples.
-	Written    []int
-	StackTuple []int
-	// NFwd counts Written's leading entries the report took from the
-	// operands written after the word; the rest came from the stack
-	// beneath. The interpreter's walk over the written ones stops at a value
-	// that is not concrete, so where one is a type literal or None at run
-	// time its report renders fewer, and the VM keeps its defer (NUR311).
-	// Zero: no written entries to check.
-	NFwd int
-	// NSigs pins the record-time signature-table length: a table that grew or
-	// shrank between the record and the run invalidates the record-time arity
-	// screen (an other-arity overload could now match where this raise claims
-	// nothing can), so the VM falls back to the defer.
-	NSigs int
-	// Pos is the word's source position — the interpreter's raise anchor.
-	Pos SrcPos
-	// Uncalled marks the dispatch as a named fn VALUE's (execFnDefLiteral's
-	// no-signature recovery for a module native, Engine.fnValueRecovery):
-	// the interpreter's no-match there raises uncalled_function ("call to
-	// 'w' matched no signature") at Pos, not sigError's signature_error, so
-	// the VM raises that instead. Written / StackTuple are unused for it.
-	Uncalled bool
-}
-
-// FallbackSpan is one interpreter island: a recorded token sequence
-// the VM re-runs through a sub-engine for a construct the compiler
-// could not lower (Stage 5 FALLBACK_INTERP). NIn operand-stack values
-// are popped and pre-loaded onto the island (deepest first), the
-// island runs Tokens, and its residual is pushed back. Desc is a
-// human label for the disassembler.
-type FallbackSpan struct {
-	Tokens []Value
-	NIn    int
-	Desc   string
-	// CheckOne marks a strip word's island (`error` over a literal handler)
-	// whose run a single-value seat consumes (compiler dyn_body_one.go): the
-	// VM seats it only when it left exactly one value the interpreter would
-	// not re-step, and defers loudly otherwise (vm:dyn-body-one).
-	CheckOne bool
-}
-
 // TypedBindKind selects which of defTypedHandler's refinement branches one
 // OpBindTyped mirrors at run time. Explicit non-zero values (iota+1) so the
 // struct zero value is an invalid kind that RunTypedBind rejects loudly, never

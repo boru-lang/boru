@@ -74,24 +74,6 @@ def go fn [[] [Map] [ none 1 step ]] end`
 	}
 }
 
-// A 1-arm `if` (`if cond [v]`) models a VARIADIC 0-or-1 result by merging the
-// then-value with a SYNTHETIC None pad. That pad must NOT trigger the
-// None-vs-value gradual widening (only a genuine value-vs-none branch does), or
-// the chained-variadic-if compile path breaks. Guards the gate that the
-// builder-merge widening is scoped to both-arms-real positions.
-func TestVariadicIfStaysPrecise(t *testing.T) {
-	// Two chained 1-arm ifs (both conditions false) then add — compiles & runs.
-	src := `def n 5 if (n eq 0) [98] if (n eq 0) [99] add 1 2`
-	a, _ := lang.New()
-	prog, reason, _, cerr := a.CompileCheck(src)
-	if cerr != nil {
-		t.Fatalf("check error: %v", cerr)
-	}
-	if prog == nil {
-		t.Fatalf("expected native compile, declined: %s", reason)
-	}
-}
-
 // A `none` value threaded as a dynamic carrier into a fn body must not crash the
 // fn-body memo keying: a None root node has a nil Parent (it IS its own lattice
 // node), and FnAnalysisKey / the generalised-args build dereferenced it. tst's

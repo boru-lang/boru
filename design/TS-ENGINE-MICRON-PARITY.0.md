@@ -42,7 +42,7 @@ drive path is not understood by the TS engine.
 ## To close the gap
 
 1. Add `Ipon` and `Hoston` to `eng/ts/src/type.ts` (type table + FixedIDs
-   114/115, matching `eng/go/typetable.go`).
+   114/115, matching `core/go/typetable.go`).
 2. Port the constructors/renderers/properties to the TS micron implementation,
    matching Go byte-for-byte:
    - `Ipon`: `net.ParseIP`-equivalent validation + canonical form; `addr`,

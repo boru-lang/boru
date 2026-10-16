@@ -1,14 +1,14 @@
 package lang
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/native"
 	parser "github.com/boru-lang/boru/parser/go"
 )
 
-// Interpreter-mode allocation guard — the interpreter twin of
-// TestCompiledAllocCeilings. Allocations per interpreted execution of a
+// Interpreter-mode allocation guard. Allocations per interpreted execution of a
 // pre-parsed value stream are deterministic, so they are a hard
 // regression signal for the dispatch machinery (matchSignature, forward
 // collection, per-call stacks) that stays on the interpreted path.
@@ -83,4 +83,21 @@ func TestInterpAllocCeilings(t *testing.T) {
 			t.Logf("%s: %d allocs/op (ceiling %d), %d bytes/op (ceiling %d)", g.name, got, g.ceiling, gotBytes, g.byteCeiling)
 		}
 	}
+}
+
+// allocStatsPerOp is allocsPerOp with the allocated BYTES per call too.
+// Byte counts catch the regression class alloc counts miss: one big
+// allocation per op (e.g. a fresh ~1024-entry tape per body invocation)
+// moves the needle by a single alloc but hundreds of KB.
+func allocStatsPerOp(fn func()) (allocs, bytes int64) {
+	const iters = 64
+	fn() // warm up (lazy one-time allocations)
+	runtime.GC()
+	var m0, m1 runtime.MemStats
+	runtime.ReadMemStats(&m0)
+	for i := 0; i < iters; i++ {
+		fn()
+	}
+	runtime.ReadMemStats(&m1)
+	return int64(m1.Mallocs-m0.Mallocs) / iters, int64(m1.TotalAlloc-m0.TotalAlloc) / iters
 }

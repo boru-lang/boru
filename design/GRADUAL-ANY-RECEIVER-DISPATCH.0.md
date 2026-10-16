@@ -38,7 +38,7 @@ libraries fully compile. This document addresses the *remaining* general case: a
 ordinary user fn with an `Any`-typed param used as a dispatch receiver.
 
 **Why the obvious fix is rejected.** Ungating the general `genArgs`
-(`eng/go/core_helpers.go` ~1147‑1225) so ALL `Any`-into-`Any` params become gradual
+(`core/go/core_helpers.go` ~1147‑1225) so ALL `Any`-into-`Any` params become gradual
 **breaks the langspec census** (`test/go/langspec/compiled_coverage_test.go`
 `TestCompiledCoverage`, a strict zero-divergence differential) with real
 `Assert.equal: expected 1, got 2` miscompiles across many spec files. The comment at
@@ -52,7 +52,7 @@ and reverted.
   `NewCarrier(TAny)` lands on the stack.
 - `Sort.quick`'s dispatch runs `matchSignature`. The forward scan collects
   `Sort.by-number` into the `comp:Function` slot; the **stack scan** tests
-  `lst:List` against `xs` via `sigTypeMatches` (`eng/go/signature.go:269`).
+  `lst:List` against `xs` via `sigTypeMatches` (`core/go/signature.go:269`).
 - `sigTypeMatches` routes a **non-dynamic** carrier to strict `v.Is(t)` (line 299);
   `Any` does not conform to `List` → the stack slot rejects → `quick` matches **no**
   signature (`sig == nil`).
@@ -247,14 +247,14 @@ closed by it. **Do not** build a generalized non-terminal re-dispatch.
 
 ## Critical files (for the implementation that follows this design)
 
-- `eng/go/signature.go` — new `sigTypeMatchesSplit` beside `sigTypeMatches` (269).
-- `eng/go/engine.go` — split-scan call sites ~7770 / ~7533; `resolveForwardArgs`
+- `core/go/signature.go` — new `sigTypeMatchesSplit` beside `sigTypeMatches` (269).
+- `core/go/engine.go` — split-scan call sites ~7770 / ~7533; `resolveForwardArgs`
   prune ~1850; Phase-0 refusal guard at the `sig == nil` branch ~2828 (new fn near
   ~3069).
 - `eng/go/vm.go` — `checkParamContract` (~2047): no change; it is the reused guard.
 - `eng/go/user_poly.go` — Phase-2 routing via `tryCompileUserPolyArms`.
 - `eng/go/carrier.go` — reuse `dynamicReachableOverloadCount` (~2436).
-- **DO NOT touch** `eng/go/core_helpers.go` `genArgs` (~1147‑1225) — the
+- **DO NOT touch** `core/go/core_helpers.go` `genArgs` (~1147‑1225) — the
   census-breaking site; interior body carriers stay strict.
 
 ## Verification (end-to-end, for the eventual implementation)

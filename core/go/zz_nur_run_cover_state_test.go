@@ -7,7 +7,6 @@ package core
 // which drive the seam directly with positive and negative cases paired.
 
 import (
-	"errors"
 	"strings"
 	"testing"
 )
@@ -274,65 +273,6 @@ func TestNurRunBodyHasReplayHazard(t *testing.T) {
 }
 
 // --- bind_twin_apply.go: the type-name re-check ---------------------------------
-
-// Pins TypeNameFree: a name whose part the run already reserved conflicts
-// (type_error, the front door's detail), a live same-named type binding is a
-// redefinition and passes, and a fresh name passes.
-func TestNurRunTypeNameFree(t *testing.T) {
-	r := newTestRegistry(t)
-	if err := TypeNameFree(r, "NrcFreshName"); err != nil {
-		t.Fatalf("a fresh name must be free: %v", err)
-	}
-	r.RegisterPart("NrcClash")
-	err := TypeNameFree(r, "NrcClash")
-	var ae *BoruError
-	if !errors.As(err, &ae) || ae.Code != "type_error" || !strings.Contains(ae.Detail, "conflicts with an existing type name") {
-		t.Fatalf("a reserved part must conflict, got %v", err)
-	}
-	// Positive: the same reserved part under a LIVE type binding of that
-	// name is a redefinition, which the front door lets through.
-	r.Defs.PushType("NrcClash", r.Types.MintType("NrcClash", TInteger), NewTypeLiteral(TInteger))
-	if err := TypeNameFree(r, "NrcClash"); err != nil {
-		t.Fatalf("a live same-named type binding must pass: %v", err)
-	}
-}
-
-// Pins that a type twin (minted or adopted) whose name a run-time mint
-// already holds raises instead of pushing, and that a free name still
-// replays and reserves its part.
-func TestNurRunApplyBindTwinTypeNameConflict(t *testing.T) {
-	r := newTestRegistry(t)
-	minted := r.Types.MintType("NrcTwinTaken", TInteger)
-
-	r.RegisterPart("NrcTwinTaken")
-	err := ApplyBindTwin(r, BindTransition{Kind: BindTypeInstall, Name: "NrcTwinTaken"},
-		DefEntry{Body: NewTypeLiteral(TInteger), TypeDef: minted, Minted: true})
-	if err == nil || !strings.Contains(err.Error(), "NrcTwinTaken") {
-		t.Fatalf("minted twin over a held part must raise, got %v", err)
-	}
-	if r.Defs.IsType("NrcTwinTaken") {
-		t.Fatal("a refused minted twin must not push")
-	}
-
-	r.RegisterPart("NrcTwinAliasTaken")
-	err = ApplyBindTwin(r, BindTransition{Kind: BindTypeInstall, Name: "NrcTwinAliasTaken"},
-		DefEntry{Body: NewTypeLiteral(TInteger), TypeDef: TInteger})
-	if err == nil {
-		t.Fatal("adopted twin over a held part must raise")
-	}
-	if r.Defs.IsType("NrcTwinAliasTaken") {
-		t.Fatal("a refused adopted twin must not push")
-	}
-
-	// Positive: a free name replays and reserves the part.
-	if err := ApplyBindTwin(r, BindTransition{Kind: BindTypeInstall, Name: "NrcTwinFree"},
-		DefEntry{Body: NewTypeLiteral(TInteger), TypeDef: TInteger}); err != nil {
-		t.Fatalf("a free name must replay: %v", err)
-	}
-	if !r.Defs.IsType("NrcTwinFree") || !r.IsKnownPart("NrcTwinFree") {
-		t.Fatal("a replayed type twin must bind and reserve its name")
-	}
-}
 
 // --- analysis_hooks.go: the foreign-registry drain arm (NUR128) ----------------
 

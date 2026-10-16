@@ -61,37 +61,3 @@ func TestGenerateCreateFailureExits(t *testing.T) {
 		t.Errorf("generate with bad -out exited %d, want 1", got)
 	}
 }
-
-func TestModeIOFailureExits(t *testing.T) {
-	dir := t.TempDir()
-	missing := filepath.Join(dir, "absent.tsv")
-	badOut := filepath.Join(dir, "no-such-dir", "out.tsv")
-
-	// A tiny but valid passing file for the write-side failures.
-	passing := filepath.Join(dir, "passing.tsv")
-	if err := os.WriteFile(passing, []byte("#kept: 1 of 1 scanned (max-len 1)\n1\t1\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cases := []struct {
-		name string
-		fn   func()
-		want int
-	}{
-		{"extractPassing missing -in", func() { extractPassing(missing, badOut, 4) }, 1},
-		{"extractPassing bad -out", func() { extractPassing(passing, badOut, 4) }, 1},
-		{"extractFrontier missing -passing", func() { extractFrontier(missing, badOut, badOut, badOut, 4) }, 1},
-		{"extractFrontier bad outputs", func() { extractFrontier(passing, badOut, badOut, badOut, 4) }, 1},
-		{"extendFive missing -passing", func() { extendFive(missing, missing, badOut, badOut, badOut, badOut, "") }, 1},
-		{"extendFive missing -len123", func() { extendFive(passing, missing, badOut, badOut, badOut, badOut, "") }, 1},
-		{"extendFive bad outputs", func() { extendFive(passing, passing, badOut, badOut, badOut, badOut, "") }, 1},
-		{"writeFrontierFile bad path", func() { writeFrontierFile(badOut, "check", "t", nil, nil, nil, classCheck, 4) }, 1},
-		{"writeLen5Pass bad path", func() { writeLen5Pass(badOut, nil, nil, nil) }, 1},
-		{"writeLen5Fail bad path", func() { writeLen5Fail(badOut, "check", nil, nil, nil, fiveCheck) }, 1},
-	}
-	for _, c := range cases {
-		if got := exitCode(t, c.fn); got != c.want {
-			t.Errorf("%s: exited %d, want %d", c.name, got, c.want)
-		}
-	}
-}

@@ -43,7 +43,7 @@ func main() {
 		evalMu.Lock()
 		defer evalMu.Unlock()
 		outBuf.Reset()
-		result, err := instance.RunInterp(code) // recorded Stage-J opt-out (plan Phase 2): the playground stays on the tree-walker
+		result, err := instance.Run(code)
 		printed := outBuf.String()
 		if err != nil {
 			return map[string]any{"error": err.Error(), "output": printed}

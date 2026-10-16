@@ -154,33 +154,6 @@ func TestRunCLIParseErrorFails(t *testing.T) {
 
 // --- RunCLI --emit ---
 
-func TestRunCLIEmitCompilable(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if code := RunCLI([]string{"--emit", "-e", "1 add 2"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr.String())
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "CALL_NATIVE") {
-		t.Errorf("stdout = %q, want disassembly", out)
-	}
-	if !strings.Contains(out, "; sites: mono=1") {
-		t.Errorf("stdout = %q, want site report", out)
-	}
-}
-
-func TestRunCLIEmitUncompilableDiagnostics(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if code := RunCLI([]string{"-emit", "-e", "nonexistent"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "uncompilable: check diagnostics") {
-		t.Errorf("stdout = %q, want uncompilable reason", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "undefined_word") {
-		t.Errorf("stderr = %q, want diagnostic echo", stderr.String())
-	}
-}
-
 func TestRunCLIEmitParseErrorFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := RunCLI([]string{"--emit", "-e", `"unterminated`}, &stdout, &stderr); code != 1 {
@@ -192,77 +165,6 @@ func TestRunCLIEmitParseErrorFails(t *testing.T) {
 }
 
 // --- Emit direct ---
-
-func TestEmitIslandReport(t *testing.T) {
-	// A two-body `inner` islands (interpreter fallback span), so the compiled
-	// program carries a fallback and Emit prints the island list.
-	//
-	// The fixture used to be a literal-list `each` with a lambda body — a
-	// check-clean program, chosen over the `[dup mul]` spelling that does not
-	// type-check (a failed dispatch inside it declines the compile outright,
-	// design/legacy/FN-VALUE-DISPATCH.0.ignore, a different report than the
-	// islanding this test is about). Since S1a of
-	// design/FULL-COMPILATION-REPLAN.0.md (2026-09-19) that each compiles
-	// natively — the corpus's island ceiling is 0 — and `inner`, whose two
-	// code bodies the recorder does not yet lower, is the honest fixture for
-	// "the compiler islanded and Emit said so" (the generated sweep's
-	// `inner × literal` cell, test/go/langspec/SWEEP_STATUS.md).
-	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "inner [add] [mul] [1 2] [3 4]"); err != nil {
-		t.Fatalf("Emit: %v", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "fallbacks=1") {
-		t.Errorf("stdout = %q, want a fallback", out)
-	}
-	if !strings.Contains(out, "; islands: inner") {
-		t.Errorf("stdout = %q, want island report", out)
-	}
-}
-
-func TestEmitUncompilableWithSiteCounts(t *testing.T) {
-	// A `for` over a COMPUTED body above a value beneath it fails to compile
-	// (the hosted splice is admitted only over an empty stack — the island's
-	// splice and the interpreter's inline one could seat the 9 differently)
-	// but still tallies dispatch sites. The fixture used to be `for 3 (mk)`
-	// alone, code-bodies.tsv L141, which compiles as that hosted splice since
-	// 2026-09-26; before that, a computed-START range, which compiles
-	// natively since the same day (the planner promotes the start's producer
-	// to a frame local and FOR_SETUP re-pushes it).
-	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "def mk fn [[][List][quote [i]]] end 9 for 3 (mk)"); err != nil {
-		t.Fatalf("Emit: %v", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "uncompilable:") {
-		t.Errorf("stdout = %q, want uncompilable reason", out)
-	}
-	if !strings.Contains(out, "; sites:") {
-		t.Errorf("stdout = %q, want site report", out)
-	}
-}
-
-func TestEmitEmptyProgramNoSiteReport(t *testing.T) {
-	// `def x 1` compiles to an empty program with no dispatch sites and a
-	// warning diagnostic (covers the diagnostics echo loop).
-	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "def x 1"); err != nil {
-		t.Fatalf("Emit: %v", err)
-	}
-	if strings.Contains(stdout.String(), "; sites:") {
-		t.Errorf("stdout = %q, want no site report for empty program", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "unused_def") {
-		t.Errorf("stderr = %q, want unused_def warning", stderr.String())
-	}
-}
-
-func TestEmitRunError(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "gen [1]"); err == nil {
-		t.Fatal("expected an error for a check-time failure")
-	}
-}
 
 // --- Run direct ---
 
@@ -359,24 +261,6 @@ func TestAtPos(t *testing.T) {
 	}
 	if got := atPos(3, 7); got != "3:7" {
 		t.Errorf("atPos(3,7) = %q, want 3:7", got)
-	}
-}
-
-func TestWriteSiteReport(t *testing.T) {
-	var buf bytes.Buffer
-	writeSiteReport(&buf, map[string]int{"mono": 2, "poly": 1, "dynamic": 0, "meta": 3}, []string{"each", "fold"})
-	out := buf.String()
-	if !strings.Contains(out, "; sites: mono=2 poly=1 dynamic=0 meta=3") {
-		t.Errorf("output = %q, want sites line", out)
-	}
-	if !strings.Contains(out, "; islands: each, fold") {
-		t.Errorf("output = %q, want islands line", out)
-	}
-
-	buf.Reset()
-	writeSiteReport(&buf, nil, nil)
-	if buf.Len() != 0 {
-		t.Errorf("output = %q, want empty for no counts/islands", buf.String())
 	}
 }
 

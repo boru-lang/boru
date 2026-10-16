@@ -227,50 +227,6 @@ func TestNUR358CoreFnValueOperandEscape(t *testing.T) {
 	}
 }
 
-// TestNUR235CoreRecoveryRawTrap: a literal a check-mode recovery evaluated
-// in place renders as written in the definite trap's report (the tape is
-// restored after), and a rematch over such a window declines.
-func TestNUR235CoreRecoveryRawTrap(t *testing.T) {
-	raw := evalMap(NewString("f"), group(NewInteger(2)))
-	folded := NewOrderedMap()
-	folded.Set("f", NewInteger(2))
-	e, es := trapEngine(t, []Value{NewWord("hd"), NewMap(folded), NewInteger(5)}, 0, []int{1, 2})
-	e.NoteRecoveryRaw(1, raw)
-	fn := &FnDefInfo{Name: "trapw", Signatures: []Signature{{Fallback: true}, {Args: []*Type{TString, TInteger}, BarrierPos: 2}}}
-	if !e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, fn, SrcPos{Row: 1}) {
-		t.Fatal("the definite failure must record the trap")
-	}
-	if len(es.trapErrs) != 1 || !strings.Contains(es.trapErrs[0].Error(), "{f:(2)}") {
-		t.Errorf("trap = %v, want the literal as written", es.trapErrs)
-	}
-	if got := e.Tape.At(1); IsPendingActiveContainer(got) {
-		t.Error("the evaluated map must be restored after the report")
-	}
-	e.ClearRecoveryRaw()
-	if e.recoveryRaw != nil {
-		t.Error("ClearRecoveryRaw must forget the literals")
-	}
-	// A carrier in the window routes to the rematch, which declines over
-	// a recovered literal.
-	e2, es2 := trapEngine(t, []Value{NewWord("hd"), NewMap(folded), NewCarrier(TInteger)}, 0, []int{1, 2})
-	e2.NoteRecoveryRaw(1, raw)
-	if e2.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, fn, SrcPos{Row: 1}) || es2.rematches != 0 {
-		t.Errorf("a rematch over a recovered literal must decline (rematches %d)", es2.rematches)
-	}
-}
-
-// TestNUR336CoreNoteParenStack: the paren-stack note is taken over a tape
-// of values alone and skipped over an open paren beneath the group.
-func TestNUR336CoreNoteParenStack(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-	e := NewTop(r)
-	e.Tape = NewTape([]Value{NewInteger(1), NewInteger(2), NewOpenParen()}, StackHeadroom)
-	e.noteParenStack(2)
-	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(2), NewOpenParen()}, StackHeadroom)
-	e.noteParenStack(2)
-}
-
 // TestNUR365CoreParenOperandEscape: a break escaping a paren a word
 // collects forward abandons the word — at the top the run raises where the
 // group's run stood, in a loop the loop breaks — and a frame the group

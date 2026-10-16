@@ -14,12 +14,12 @@ want is to dispatch one word; finish step 7 to get a full REPL.
 ## Prerequisites
 
 A clone of the [boru repo](https://github.com/boru-lang/boru).
-`go 1.24+`. No network access during the build — `eng/go/` is a
+`go 1.24+`. No network access during the build — `core/go/` is a
 local module imported via a replace directive.
 
 ```
 cd boru
-ls eng/go        # parser, types, registry, dispatch live here
+ls core/go       # types, registry, dispatch live here (the parser is parser/go)
 ```
 
 ## Step 1 — A new module that depends only on eng
@@ -38,17 +38,17 @@ module example.com/mycalc
 
 go 1.24
 
-require github.com/boru-lang/boru/eng/go v0.0.0
+require github.com/boru-lang/boru/core/go v0.0.0
 
 require (
 	github.com/tabnas/jsonic/go v0.6.0 // indirect
 	github.com/tabnas/parser/go v0.8.0 // indirect
 )
 
-replace github.com/boru-lang/boru/eng/go => ../eng/go
+replace github.com/boru-lang/boru/core/go => ../core/go
 ```
 
-The `replace` line points at the local copy of `eng/go`. In a
+The `replace` line points at the local copy of `core/go`. In a
 production setup you would depend on a published version of eng;
 inside this repo every module uses a replace directive so changes
 propagate without a release.
@@ -64,7 +64,7 @@ no lang, no native_*, no transitive sqlite or csv. Read this as
 ```go
 package mycalc
 
-import "github.com/boru-lang/boru/eng/go"
+import "github.com/boru-lang/boru/core/go"
 
 func New() (*eng.Engine, error) {
     r, err := eng.NewRegistry()
@@ -168,10 +168,10 @@ native word. Calc adds a parser, more words, a stack, and a REPL.
 ## Step 4 — Take source instead of token slices
 
 Hand-constructing token slices gets old. The parser lives next to
-the kernel at `github.com/boru-lang/boru/eng/go/parser`:
+the kernel at `github.com/boru-lang/boru/parser/go`:
 
 ```go
-import "github.com/boru-lang/boru/eng/go/parser"
+import "github.com/boru-lang/boru/parser/go"
 
 values, err := parser.Parse("add 2 3")     // returns []eng.Value
 e, _ := New()

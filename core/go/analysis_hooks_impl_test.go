@@ -15,9 +15,6 @@ func TestInactiveAnalysisImpl(t *testing.T) {
 	if got := inactiveStripToCarriers(in); len(got) != 1 || !ValuesEqual(got[0], in[0]) {
 		t.Fatal("inactive stripToCarriers must pass through")
 	}
-	if got := inactiveZeroOutResiduals(nil, in); len(got) != 1 {
-		t.Fatal("inactive zeroOutResiduals must pass through")
-	}
 	if inactiveCarrierResults(nil, "", nil, nil, SrcPos{}, nil, false) != nil {
 		t.Fatal("inactive carrierResults must be nil")
 	}

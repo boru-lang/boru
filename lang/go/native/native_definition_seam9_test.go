@@ -4,17 +4,6 @@ import (
 	"testing"
 )
 
-// w9CompileMode puts r into the bytecode-emission recorder mode
-// (mirroring lang.(*Boru).CompileCheck) and returns the check-state
-// cleanup, so recorder-decline arms can be driven by direct handler calls.
-func w9CompileMode(t *testing.T, r *Registry) func() {
-	t.Helper()
-	cleanup := r.Check.Begin()
-	r.Check.Emit = NewEmitState()
-	r.Check.Compiling = true
-	return cleanup
-}
-
 // W9_nativeB — coverage for native_definition.go def / undef / var / fn /
 // typed-def arms. Direct handler calls drive the pure arg guards; crafted
 // boru programs (run + check) drive the paths that need real dispatch.
@@ -153,50 +142,6 @@ func TestW9DefTypedResourceNonMutableMapBody(t *testing.T) {
 }
 
 // --- compile-recorder decline arms: dynamic refine / DepScalar typed-defs ---
-
-func TestW9DefTypedRefineDynamicUncompilable(t *testing.T) {
-	r := seam5Reg(t)
-	if _, err := seam5Run(r, `def Pos refine Integer`); err != nil {
-		t.Fatalf("def Pos: %v", err)
-	}
-	cleanup := w9CompileMode(t, r)
-	defer cleanup()
-	if !r.Check.Emit.Active() {
-		t.Fatal("recorder should start active")
-	}
-	// A DYNAMIC (carrier) body with no resolvable provenance: RecordTypedBind
-	// declines, so the refine-bare branch marks the program uncompilable.
-	om := NewOrderedMap()
-	om.Set("x", NewWord("Pos"))
-	if _, err := defTypedHandler([]Value{NewMap(om), NewCarrier(TInteger)}, nil, nil, r); err != nil {
-		t.Fatalf("def x:Pos <carrier>: %v", err)
-	}
-	if r.Check.Emit.Active() {
-		t.Fatal("a dynamic refine typed-def with no provenance must mark uncompilable")
-	}
-}
-
-func TestW9DefTypedDepScalarDynamicUncompilable(t *testing.T) {
-	r := seam5Reg(t)
-	if _, err := seam5Run(r, `def Big (Integer gt 10)`); err != nil {
-		t.Fatalf("def Big: %v", err)
-	}
-	cleanup := w9CompileMode(t, r)
-	defer cleanup()
-	if !r.Check.Emit.Active() {
-		t.Fatal("recorder should start active")
-	}
-	// A DepScalar constraint over an abstract (carrier) body conforming to the
-	// base: RecordTypedBind declines, so the DepScalar branch marks uncompilable.
-	om := NewOrderedMap()
-	om.Set("x", NewWord("Big"))
-	if _, err := defTypedHandler([]Value{NewMap(om), NewCarrier(TInteger)}, nil, nil, r); err != nil {
-		t.Fatalf("def x:Big <carrier>: %v", err)
-	}
-	if r.Check.Emit.Active() {
-		t.Fatal("a dynamic DepScalar typed-def with no provenance must mark uncompilable")
-	}
-}
 
 // --- undefFnHandler / varHandler / fnHandler direct guards ---
 

@@ -394,52 +394,6 @@ func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, po
 	return fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
 }
 
-// allStackWindowAmbiguous is NUR305's split at an all-stack window (fwd 0):
-// the match hangs on an unproven TOP operand while a LATER candidate
-// forward-collects past the word. `(mk) do [5]` over an Any result fills
-// do's Map overload from the stack, while at run time a List value misses it
-// and the List overload takes the `[5]` written after the word (NUR299). A
-// concrete top is what a later candidate's stack slot meets too, so the
-// all-stack match is the interpreter's (the check side's drift rule):
-// `Log.dump 0 get "trace-id" get` over dump's Any result.
-func allStackWindowAmbiguous(e *Engine, fn *FnDefInfo, w WordInfo, sig *Signature, positions []int) bool {
-	top, at := -1, -1
-	for i, p := range positions {
-		if p > top {
-			top, at = p, i
-		}
-	}
-	if at < 0 || !unprovenStackOperand(e.Tape.Ref(top), SigArgType(sig, at)) {
-		return false
-	}
-	si := len(fn.Signatures)
-	for k := range fn.Signatures {
-		if &fn.Signatures[k] == sig {
-			si = k
-		}
-	}
-	return laterCandidateCollectsPast(e, fn, si, w, e.Pointer, 0, true, true)
-}
-
-// declineForwardStackDrift is the forward-drift guard of a compile pass's
-// all-stack dispatch the drift window did not take (NUR287): the check
-// side's decline of a match that reached past a dynamic top
-// (CheckBraid.DeclineForwardStackDrift), and otherwise the latch of a window
-// no runtime model answers (allStackWindowAmbiguous, NUR299). A dispatch the
-// recorder does not record — a suspended region runs its body as an island,
-// the interpreter's own dispatch — asks nothing (`do [mk mk add 1]`).
-func (e *Engine) declineForwardStackDrift(fn *FnDefInfo, w WordInfo, sig *Signature, positions []int) {
-	if CheckBraid.DeclineForwardStackDrift(e, sig, positions) || !e.Registry.analysisCompiling() {
-		return
-	}
-	if es := e.Registry.analysisRecorder(); !es.Active() || es.SuspendedNow() {
-		return
-	}
-	if allStackWindowAmbiguous(e, fn, w, sig, positions) {
-		e.Registry.noteAmbiguousGradualSplit()
-	}
-}
-
 func laterCandidateCollectsPast(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, checkActive, compiling bool) bool {
 	for k := si + 1; k < len(fn.Signatures); k++ {
 		alt := &fn.Signatures[k]

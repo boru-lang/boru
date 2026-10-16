@@ -77,7 +77,7 @@ func loopReg(t *testing.T) *Registry {
 				if tweak != nil {
 					tweak(d)
 				}
-				return StartLoop(reg, "tl", d, nil)
+				return StartLoop(reg, "tl", d)
 			}),
 			Returns: []*Type{TList}, BarrierPos: -1,
 		}}})
@@ -321,60 +321,6 @@ func TestDrivenLoopIsTransparentToBreakAndContinue(t *testing.T) {
 	}
 }
 
-func TestDriveLoopFromGo(t *testing.T) {
-	r := loopReg(t)
-	mk := func() *tlDriver {
-		return &tlDriver{reg: r, body: words("cdub"), elems: []Value{NewInteger(1), NewInteger(2)}, nextErrAt: -1, collectErrAt: -1}
-	}
-	out, err := DriveLoop(r, mk(), nil)
-	if err != nil || renderAll(out) != "[2 4]" {
-		t.Fatalf("DriveLoop = %s / %v", renderAll(out), err)
-	}
-	// An explicit invoke.
-	calls := 0
-	out, err = DriveLoop(r, mk(), func(body Value, inputs []Value) ([]Value, error) {
-		calls++
-		return RunResolved(r, inputs, BodyTokens(body))
-	})
-	if err != nil || renderAll(out) != "[2 4]" || calls != 2 {
-		t.Fatalf("DriveLoop invoke = %s / %v (%d calls)", renderAll(out), err, calls)
-	}
-	// The driver's errors.
-	d := mk()
-	d.nextErrAt = 1
-	if _, err := DriveLoop(r, d, nil); err == nil || !strings.Contains(err.Error(), "next failed") {
-		t.Fatalf("next error: %v", err)
-	}
-	d = mk()
-	d.collectErrAt = 0
-	if _, err := DriveLoop(r, d, nil); err == nil || !strings.Contains(err.Error(), "collect failed") {
-		t.Fatalf("collect error: %v", err)
-	}
-	// A body error is attributed.
-	d = mk()
-	d.body = words("nosuch_word")
-	if _, err := DriveLoop(r, d, nil); err == nil || !strings.HasPrefix(err.Error(), "tl: element 0: ") {
-		t.Fatalf("body error: %v", err)
-	}
-	// An escaping signal ends the loop with no result.
-	d = mk()
-	d.body = words("nbrk")
-	out, err = DriveLoop(r, d, nil)
-	if err != nil || out != nil || r.FlowCtrl != FlowBreak {
-		t.Fatalf("escape: %s / %v / %v", renderAll(out), err, r.FlowCtrl)
-	}
-	r.TakeFlow()
-	// StartLoop under an Invoker (the VM lane) drives from Go.
-	r.Invoker = func(reg *Registry, body Value, inputs []Value) ([]Value, error) {
-		return RunResolved(reg, inputs, BodyTokens(body))
-	}
-	out, err = StartLoop(r, "tl", mk(), nil)
-	r.Invoker = nil
-	if err != nil || renderAll(out) != "[2 4]" {
-		t.Fatalf("StartLoop under Invoker = %s / %v", renderAll(out), err)
-	}
-}
-
 func TestLoopAnnotations(t *testing.T) {
 	var nilLoop *Loop
 	if nilLoop.Describe() != "" {
@@ -485,80 +431,6 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 	_, err = e3.Run(append(append(tlCall("tl", body, ints(1)), NewInteger(1)), tail...))
 	if err == nil || !strings.Contains(err.Error(), "evaluation_limit") || strings.Contains(err.Error(), "tl: element") {
 		t.Fatalf("runaway tail: %v", err)
-	}
-}
-
-// TestCallRegion: a native's tail invocation of a body returned as a region
-// of the tape (CallRegion) — the inputs sealed and inert, the body stepped
-// where the word stands under its own context layer, the residual the
-// handler's result; a break passes through to the enclosing loop and an
-// escape with no loop reports at the word; a fault keeps its own
-// attribution; under an Invoker the body runs from Go.
-func TestCallRegion(t *testing.T) {
-	r := loopReg(t)
-	r.RegisterNativeFunc(NativeFunc{Name: "tcall", Signatures: []Signature{{
-		Args: []*Type{TList, TAny}, NoEvalArgs: map[int]bool{0: true},
-		Impl: Go(func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-			return CallRegion(reg, "tcall", "tcall body", []Value{args[1]}, args[0])
-		}),
-		Returns: []*Type{TAny}, BarrierPos: -1,
-	}}})
-	if err := r.Err(); err != nil {
-		t.Fatal(err)
-	}
-	e := NewTop(r)
-	var notes []string
-	e.SetTrace(func(_, _ int, _ []Value, note string) {
-		if note != "" {
-			notes = append(notes, note)
-		}
-	})
-	depth := r.Contexts.Depth()
-	// The body runs over its sealed input; a pending literal it leaves is
-	// evaluated at the region's end and the residual is re-stepped in place.
-	out, err := e.Run(append(tlCall("tcall", words("cdub"), NewInteger(5)), tlCall("tcall", NewList([]Value{NewEvalList([]Value{NewInteger(1), NewWord("cadd"), NewInteger(2)})}), NewInteger(0))...))
-	if err != nil || renderAll(out) != "10 | 0 | [3]" || r.Contexts.Depth() != depth {
-		t.Fatalf("Run = %s / %v (context depth %d, want %d)", renderAll(out), err, r.Contexts.Depth(), depth)
-	}
-	if joined := strings.Join(notes, "\n"); !strings.Contains(joined, "loop tcall body") || !strings.Contains(joined, "loop done tcall") {
-		t.Errorf("trace notes lack the region:\n%s", joined)
-	}
-	// A Function-valued input is inert: the body sees the value, unapplied.
-	fnv := NewFunction(FnDefInfo{Name: "fv"})
-	out, err = NewTop(r).Run(tlCall("tcall", NewList([]Value{}), fnv))
-	if err != nil || len(out) != 1 || !out[0].Parent().Equal(TFunction) {
-		t.Fatalf("inert input: %s / %v", renderAll(out), err)
-	}
-	// A break inside the body is the enclosing loop's.
-	cont := &Loop{Registry: r, IterName: "tci", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
-	InstallDef(r, "tci", NewInteger(0))
-	prog := []Value{NewMark("tcL")}
-	prog = append(prog, tlCall("tcall", words("nbrk"), NewInteger(1))...)
-	prog = append(prog, NewMoveCont("tcL", "for loop", cont))
-	out, err = NewTop(r).Run(prog)
-	if err != nil || renderAll(out) != "42" || r.FlowCtrl != FlowNone {
-		t.Fatalf("break through the region = %s / %v (flow %v), want 42", renderAll(out), err, r.FlowCtrl)
-	}
-	// With no loop to take it, the escape reports at the word (row 4).
-	_, err = NewTop(r).Run(tlCall("tcall", words("nbrk"), NewInteger(1)))
-	if be, ok := err.(*BoruError); !ok || be.Code != "flow_error" || be.Row != 4 || be.Col != 2 {
-		t.Fatalf("escape = %v, want break outside loop at 4:2", err)
-	}
-	// A fault keeps the body's own report, unattributed.
-	_, err = NewTop(r).Run(tlCall("tcall", words("nosuch"), NewInteger(1)))
-	if err == nil || !strings.Contains(err.Error(), "undefined word: nosuch") || strings.Contains(err.Error(), "tcall:") {
-		t.Fatalf("fault = %v, want the body's own undefined word", err)
-	}
-	// Under an Invoker (the VM lane) the body runs from Go through
-	// InvokeBody, with no Loop taken from the pool.
-	pooled := len(r.callLoops)
-	r.Invoker = func(reg *Registry, body Value, inputs []Value) ([]Value, error) {
-		return RunResolved(reg, inputs, BodyTokens(body))
-	}
-	out, err = CallRegion(r, "tcall", "tcall body", []Value{NewInteger(5)}, words("cdub"))
-	r.Invoker = nil
-	if err != nil || renderAll(out) != "10" || len(r.callLoops) != pooled {
-		t.Fatalf("CallRegion under Invoker = %s / %v (pool %d, want %d)", renderAll(out), err, len(r.callLoops), pooled)
 	}
 }
 

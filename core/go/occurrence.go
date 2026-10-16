@@ -438,8 +438,6 @@ func FnNameOf(v *Value) string {
 	switch d := v.Data().(type) {
 	case *FnDefInfo:
 		return d.Name
-	case *ClosurePayload:
-		return d.RetName
 	}
 	return ""
 }

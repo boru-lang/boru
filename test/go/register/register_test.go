@@ -1,4 +1,4 @@
-// Integrity gates for the performance register (design/FULL-COMPILATION.0.md
+// Integrity gates for the performance register (design/legacy/FULL-COMPILATION.0.ignore
 // section 14).
 //
 // The register is a permanent, append-only record: rows are never edited

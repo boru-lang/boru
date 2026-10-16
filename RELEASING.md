@@ -8,17 +8,19 @@ go install github.com/boru-lang/boru/cmd/go/boru@latest
 
 ## How the modules fit together
 
-This repo is a **multi-module** monorepo. Four modules are published:
+This repo is a **multi-module** monorepo. Six modules are published:
 
 | Module | Path | Depends on |
 |---|---|---|
-| kernel | `github.com/boru-lang/boru/eng/go` | — |
+| kernel | `github.com/boru-lang/boru/core/go` | — |
+| parser | `github.com/boru-lang/boru/parser/go` | core/go |
+| check pass | `github.com/boru-lang/boru/check/go` | core/go |
 | base layer | `github.com/boru-lang/boru/basic/go` | core/go, parser/go |
-| language | `github.com/boru-lang/boru/lang/go` | eng/go, basic/go |
-| CLI | `github.com/boru-lang/boru/cmd/go` | eng/go, lang/go |
+| language | `github.com/boru-lang/boru/lang/go` | core/go, check/go, parser/go, basic/go |
+| CLI | `github.com/boru-lang/boru/cmd/go` | lang/go (and the pieces below it) |
 
-`calc/go`, `wpg`, `test/go`, and `test/solardemo` are development-only and are
-not published.
+`calc/go`, `wpg`, `test/go`, `test/specfix`, `test/solardemo` and
+`tools/vetcopies` are development-only and are not published.
 
 ### Local development uses `go.work`
 
@@ -59,7 +61,7 @@ DRY_RUN=1 make release   # preview: prints every action, tags/pushes nothing
    host-backend/clipboard vault tests only pass on a configured host.)
 2. **Auto-bumps the patch** of each module from its latest `<module>/vX.Y.Z`
    tag (or `v0.0.1` for a module's first release).
-3. For `eng/go` → `basic/go` → `lang/go` → `cmd/go`, in dependency order: strips the local
+3. For `core/go` → `parser/go` → `check/go` → `basic/go` → `lang/go` → `cmd/go`, in dependency order: strips the local
    `replace` directives, pins the sibling `require`s to the versions being
    released, `go mod tidy`, commits, tags `<module>/vX.Y.Z`, and pushes.
 

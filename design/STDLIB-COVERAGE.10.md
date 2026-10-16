@@ -122,7 +122,7 @@ The map's families predate these; nothing points at them.
 | `cmp` | 1.21 | Go's `Ordered`/`Compare` helpers. boru has its own `cmp` word and type ordering ([TYPE-ORDERING](TYPE-ORDERING.10.md)). | B |
 | `iter` | 1.23 | Range-over-func iterators — a Go *language* mechanism; boru iterates with `each`/`fold` and [STREAM-WORDS](STREAM-WORDS.0.md). | B |
 | `unique` | 1.23 | Value interning. Runtime mechanic, no guest surface (already used internally by `lang/go/modules/docs.go`). | B |
-| `weak` | 1.24 | Weak pointers. Runtime mechanic (already used internally by `eng/go/weak_flex.go`). | B |
+| `weak` | 1.24 | Weak pointers. Runtime mechanic (already used internally by `core/go/weak_flex.go`). | B |
 | `structs` | 1.24 | `HostLayout` marker — pure Go memory layout. | B |
 | `hash/maphash` | 1.19 | Fast non-cryptographic hashing of strings/bytes; the `hash/{fnv,crc32,crc64}` row stops short of it. | C — `boru:bin-util` |
 | `math/rand/v2` | 1.22 | The modern PRNG. `boru:rand` wraps v1; only [BATTERIES-INCLUDED](legacy/BATTERIES-INCLUDED-REPORT.5.ignore) (historical) names v2. | C — `boru:rand` |

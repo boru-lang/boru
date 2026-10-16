@@ -458,23 +458,6 @@ func TestRunColorKeepsCwdAnchor(t *testing.T) {
 
 // --- --emit over several targets -------------------------------------------
 
-func TestRunCLIEmitMultipleFiles(t *testing.T) {
-	dir := t.TempDir()
-	a := write(t, dir, "a.boru", "1 add 2")
-	b := write(t, dir, "b.boru", "3 add 4")
-	var stdout, stderr bytes.Buffer
-	if code := RunCLI([]string{"--emit", a, b}, &stdout, &stderr); code != 0 {
-		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr.String())
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "; file: "+a) || !strings.Contains(out, "; file: "+b) {
-		t.Errorf("stdout = %q, want a file banner per disassembly", out)
-	}
-	if strings.Count(out, "CALL_NATIVE") < 2 {
-		t.Errorf("stdout = %q, want both programs disassembled", out)
-	}
-}
-
 // Negative: --emit stops at the first file it cannot record.
 func TestRunCLIEmitStopsOnError(t *testing.T) {
 	dir := t.TempDir()
@@ -486,19 +469,6 @@ func TestRunCLIEmitStopsOnError(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "; file: "+b) {
 		t.Errorf("stdout = %q, want the run stopped before the second file", stdout.String())
-	}
-}
-
-// EmitAt anchors relative imports like PreflightColorAt does.
-func TestEmitAtAnchorsImports(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, "lib.boru", `export "Lib" {x: 1}`+"\n")
-	var stdout, stderr bytes.Buffer
-	if err := EmitAt(&stdout, &stderr, "import \"./lib.boru\"\nLib.x\n", "", 0, dir); err != nil {
-		t.Fatalf("EmitAt: %v; stderr: %s", err, stderr.String())
-	}
-	if strings.Contains(stderr.String(), "undefined_word") {
-		t.Errorf("stderr = %q, want the anchored import to resolve", stderr.String())
 	}
 }
 

@@ -213,4 +213,4 @@ each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in 
 #      which a differential run must flag. Recorded deliberately.
 #
 # compiled answer diverges from the interpreter
-each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]]]	an Integer-typed lambda over a HETEROGENEOUS list: the interpreter leaves the unmatched callback as data per element [COMPILED ANSWER DIVERGES: compiled answer '[Integer ProperString List Map Boolean None]' != interpreter '[Integer fn (Integer) fn (Integer) fn (Integer) fn (Integer) fn (Integer)]']
+each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]]]	an Integer-typed lambda over a HETEROGENEOUS list: the interpreter leaves the unmatched callback as data per element

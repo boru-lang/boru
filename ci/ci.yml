@@ -65,7 +65,7 @@ jobs:
       # parser starts AT 100 rather than on a ratchet because it is a leaf
       # over core — nothing else's suite could have been covering it, so
       # there was no incidental coverage to unwind. See design/legacy/ENG-FOUR-PIECE.0.ignore and
-      # design/ENG-COVERAGE-PARITY.0.md.
+      # design/legacy/ENG-COVERAGE-PARITY.0.ignore.
       - name: Cover gate — core standalone (100%)
         run: make cover-gate-core
 
@@ -131,28 +131,12 @@ jobs:
           make -C kg graph
           git diff --exit-code kg/out
 
-      # The bytecode compiler's correctness gates (differential,
-      # whole-corpus parity, combination matrix, alloc ceilings) run as
-      # part of `make test`. The race-detector gates do not, so run them
-      # explicitly: a shared immutable Program driven across forks, the
-      # island sub-engine reuse, and the concurrent spec rows in compiled
-      # mode must be data-race-free.
-      - name: Bytecode race gates
+      # The race-detector gate does not run as part of `make test`, so run
+      # it explicitly: two registries unifying on two goroutines must be
+      # data-race-free.
+      - name: Race gate
         run: |
-          ( cd lang/go && go test . -run 'TestCompiledConcurrencyRaceFree|TestCompiledIslandReuseNoStateLeak' -race )
-          ( cd test/go && go test ./langspec/ -run 'TestSpecCompiledConcurrentRowsRaceFree' -race )
-
-      # The VM's hot path reuses one args buffer per run (eng/go/vm.go),
-      # sound only while no compiled-reachable native retains its args slice.
-      # -tags borudebug flips that buffer to a fresh allocation per call
-      # (eng/go/vm_args_debug.go), so a retaining handler that would silently
-      # corrupt a later dispatch in the release build instead diverges cleanly
-      # here. Run the differential + combination + whole-corpus parity gates
-      # under the tag so the invariant is guarded as compiled coverage grows.
-      - name: Bytecode args-aliasing gate (borudebug)
-        run: |
-          ( cd lang/go && go test -tags borudebug . -run 'Bytecode|Compiled|Emit' )
-          ( cd test/go && go test -tags borudebug ./langspec/ -run 'TestSpecCompiledDifferential|TestSpecCompiledOrFallback|TestCompiledCombinationParity' )
+          ( cd core/go && go test . -run 'TestUnifyRegistryArmedConcurrentNoRace' -race )
 
       - name: Build WASM
         run: make -C wpg wasm

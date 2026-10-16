@@ -134,7 +134,7 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 	if rc, ok := recordReturnCarrier(t, returnPatternAt(pats, i)); ok {
 		return rc, true
 	}
-	if !r.Check.Compiling && t.Equal(core.TMap) &&
+	if t.Equal(core.TMap) &&
 		returnPatternAt(pats, i) == nil && len(stk) >= declared {
 		if bv := stk[len(stk)-declared+i]; bv.Carrier() &&
 			bv.Parent() != nil && bv.Parent().ConformsTo(core.TMap) {

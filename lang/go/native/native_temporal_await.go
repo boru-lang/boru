@@ -5,9 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
-	eng "github.com/boru-lang/boru/eng/go"
 )
 
 // The "await" word lives in miscNatives (native_misc.go). Below
@@ -316,25 +314,9 @@ func makeBranchForks(r *Registry, elems []Value) ([]*Registry, error) {
 }
 
 // runParallelBranch executes one element with do semantics on its own
-// isolated registry fork. A COMPILED branch body arrives as a synthetic
-// fn-value carrier with a CompiledFnRef (CompileStoresBodyList — the spawn
-// pattern) and runs via RunUnit on the fork; a raw list runs as an
-// interpreter sub-program; anything else is returned as a single value.
+// isolated registry fork: a raw list runs as an interpreter sub-program;
+// anything else is returned as a single value.
 func runParallelBranch(reg *Registry, elem Value) parallelResult {
-	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
-		for i := range fd.Signatures {
-			ref := compiler.CompiledRef(&fd.Signatures[i])
-			if ref == nil || ref.Prog == nil {
-				continue
-			}
-			// A VM soundness bail used to re-run the branch's raw tokens on
-			// the interpreter, guarded by the effect fence so a branch that
-			// had already printed did not print twice. Nothing re-runs now:
-			// the bail is a compiler defect and the branch reports it.
-			result, runErr := eng.RunUnit(ref, reg, nil)
-			return branchOutcome(result, runErr)
-		}
-	}
 	if elem.Parent().ConformsTo(TList) && elem.Data() != nil && !IsTypedList(&elem) && !IsTableType(elem) {
 		_lst, _ := AsList(elem)
 		return interpretBranchBody(reg, _lst.Elems())

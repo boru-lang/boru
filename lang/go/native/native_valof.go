@@ -266,11 +266,7 @@ func forceArityHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	n, _ := args[0].AsConcreteInteger()
 	wrapped, ok := core.ForceArityFunction(args[1], int(n))
 	if !ok {
-		wrapped, ok = wrapCompiledClosure(reg, "force-arity", args[1], int(n))
-	}
-	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[1]); gradual {
-			recordGradualWrap(reg, "force-arity", args, out)
 			return out, nil
 		}
 		detail := "force-arity requires a non-negative arity and a function value"
@@ -323,15 +319,7 @@ func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 func rebarrierResult(wrap func(Value) (Value, bool), v Value, word string, reg *Registry) ([]Value, error) {
 	wrapped, ok := wrap(v)
 	if !ok {
-		wrapped, ok = wrapCompiledClosure(reg, word, v, 0)
-	}
-	if !ok {
 		if out, gradual := checkModeGradualFn(reg, v); gradual {
-			// Sound from the by-name (rebarrierAtom) entry too: the recorded
-			// operand is the RESOLVED value v (a local / event / const), never
-			// the atom, so the compiled program re-supplies the same value the
-			// interpreter wrapped — no runtime name resolution is implied.
-			recordGradualWrap(reg, word, []Value{v}, out)
 			return out, nil
 		}
 		detail := word + " requires a function value, got " + v.Parent().String()
@@ -422,17 +410,6 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	// fn binding that suppresses the call; for any other binding it is
 	// the identity. No kind gate — that is what makes one spelling able
 	// to read a slot whose kind is not known statically (NUR085).
-	//
-	// Under the check pass the read is a def read like the bare word's
-	// (tagCheckModeDefRead's NoteLiveRead): a mutable reference the pass
-	// holds as a homeless carrier — a module-scope flex a multi-run body
-	// mutated, `for-each [… acc …] xs  join ',' (valof acc)` — seats live
-	// on the registry's cell instead of leaving `join` an operand of
-	// unknown provenance (module-composition.tsv L93, 2026-09-25); every
-	// other read is untouched by the note.
-	if reg != nil && reg.Check.IsActive() {
-		reg.Check.Recorder().NoteLiveRead(&v, name, args[0].Pos())
-	}
 	return []Value{v}, nil
 }
 
@@ -568,11 +545,7 @@ func rebindHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	wrapped, ok := core.UsurpFunction(args[0])
 	if !ok {
-		wrapped, ok = wrapCompiledClosure(reg, "usurp", args[0], 0)
-	}
-	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[0]); gradual {
-			recordGradualWrap(reg, "usurp", args, out)
 			return out, nil
 		}
 		detail := "usurp requires a function value, got " + args[0].Parent().String()
@@ -582,72 +555,6 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		return nil, fmt.Errorf("%s", detail)
 	}
 	return []Value{wrapped}, nil
-}
-
-// wrapCompiledClosure wraps a COMPILED CLOSURE operand of a dispatch-modifier
-// word (the compiled lane's value for a capturing `fn` / `=>` literal minted at
-// run time — a factory's returned closure): the interpreter wraps the same
-// source fn, so the compiled lane wraps the closure over its bridged shape and
-// stores the closure itself (core's closureShape). Before this the value was a
-// ClosurePayload the FnDefInfo assertion refused with illegal_ref where the
-// interpreter answered (NUR158), which is why recordGradualWrap used to
-// decline every typed Function carrier at these slots. n is force-arity's
-// arity and unread by the others.
-func wrapCompiledClosure(reg *Registry, word string, v Value, n int) (Value, bool) {
-	if reg == nil || !IsCompiledClosure(v) {
-		return Value{}, false
-	}
-	switch word {
-	case "usurp":
-		return core.UsurpClosure(reg, v)
-	case "stack-args":
-		return core.ForceStackClosure(reg, v)
-	case "forward-args":
-		return core.ForceForwardClosure(reg, v)
-	default: // force-arity, the one caller left
-		return core.ForceArityClosure(reg, v, n)
-	}
-}
-
-// recordGradualWrap records a dispatch-modifier word's GRADUAL dispatch (a
-// dynamic fn operand the check-mode handler could not wrap — checkModeGradualFn)
-// as an OpCallNativePoly event, so the wrapper is constructed at RUN time by the
-// real handler over the real fn value (`m.a/u 1 2` lowers get → poly usurp →
-// OpCallDynamic; Stage M2b, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The VM's
-// callPoly re-matches the word's own signatures with the kernel's own
-// MatchSignature — the exact dispatch the interpreter takes — so a runtime
-// non-fn value raises the identical illegal_ref. Only the VALUE-form
-// ([Function]-sig) sites record: the by-name Atom forms resolve a registry
-// binding the compiled program does not maintain, so they stay unrecorded
-// (downstream provenance declines and the program falls back, the status quo).
-// RecordPolyCall declining (an unresolvable operand, inactive recorder) leaves
-// the recorder untouched — the residual then declines, never miscompiles.
-//
-// The poly record is the ONE seat of these words the recorder's declaration
-// check (RecordCallOperands' CompileFnHandlerStrict arm) never sees — the
-// value-form sigs run in check mode, so RecordCall declines them before the
-// operand walk. Until 2026-09-26 the declaration was honoured HERE: a TYPED
-// Function carrier (a user fn's declared Function result — a factory's
-// returned closure) declined the poly record, because the VM delivered a
-// capturing closure to the poly'd native as a ClosurePayload and the native's
-// FnDefInfo validation raised illegal_ref where the interpreter wrapped it
-// (`def r (usurp (mk 100))  r 10 3`: illegal_ref against 93, NUR158). The
-// natives wrap a compiled closure now (wrapCompiledClosure: the wrapper reads
-// the closure's bridged shape and stores the closure itself, which the VM's
-// dynamic apply runs natively), so every gradual Function carrier records —
-// the typed factory result, a sibling modifier's dynamic wrapper, and the
-// dynamic-Any `m.a` read alike — and the sweep's `force-arity` /
-// `forward-args` / `stack-args` / `usurp` × factory cells compile.
-func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
-	if reg == nil {
-		return
-	}
-	pos := core.SrcPos{}
-	if len(args) > 0 {
-		fnArg := args[len(args)-1]
-		pos = fnArg.Pos()
-	}
-	reg.Check.Recorder().RecordPolyCall(word, args, outs, pos, nil, nil)
 }
 
 // checkModeGradualFn handles a dispatch-modifier word (usurp / stack-args /

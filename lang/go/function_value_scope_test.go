@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,55 +130,6 @@ func fnScopeCases() []fnScopeCase {
 	}
 }
 
-func TestFunctionValueResolvesDefiningModule(t *testing.T) {
-	for _, tc := range fnScopeCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			mod := filepath.Join(dir, "mod.aql")
-			if err := os.WriteFile(mod, []byte(tc.mod), 0o600); err != nil {
-				t.Fatalf("write module: %v", err)
-			}
-			src := fmt.Sprintf(tc.caller, mod)
-
-			// The interpreter and the compiler must BOTH land on the defining
-			// module's answer. A compiler COMPILE FAILURE is an acceptable third
-			// outcome — the default driver falls through to the interpreter,
-			// so the user still gets the right answer — and the subtest skips
-			// on it. What is NOT allowed is compiling to a DIFFERENT answer:
-			// that trades a wrong value for a silent mode-dependent one.
-			engines := []struct {
-				name string
-				run  func(*Boru) ([]any, error)
-			}{
-				{"interp", func(a *Boru) ([]any, error) { return a.RunInterp(src) }},
-				{"compiled", func(a *Boru) ([]any, error) {
-					got, _, err := a.RunCompiled(src)
-					return got, err
-				}},
-			}
-			for _, eng := range engines {
-				t.Run(eng.name, func(t *testing.T) {
-					a, err := New()
-					if err != nil {
-						t.Fatalf("New: %v", err)
-					}
-					got, err := eng.run(a)
-					if isCompileFailure(err) {
-						t.Skipf("%s: compilation declined (%v)", tc.word, err)
-					}
-					if err != nil {
-						t.Fatalf("%s: %v", tc.word, err)
-					}
-					if s := fmt.Sprint(got); s != tc.want {
-						t.Errorf("%s ran the callback in the CALLING module: got %s, want %s (pre-fix: %s)",
-							tc.word, s, tc.want, tc.wrong)
-					}
-				})
-			}
-		})
-	}
-}
-
 // A cross-module callback must not be REPORTED as a problem either: the
 // defect was invisible to `boru check`, and the fix must not make it visible
 // as a false positive. Every fixture above checks clean.
@@ -207,14 +157,4 @@ func TestFunctionValueScopeChecksClean(t *testing.T) {
 			}
 		})
 	}
-}
-
-// isCompileFailure reports whether err is the compiler DECLINING a program
-// rather than a program failing. RunCompiled is the strict entry point and
-// surfaces a compile failure as an error; the default driver treats the same compile failure as
-// a fall-through to the interpreter. A compile failure therefore means "this seam has
-// no compiled path to compare", not "the answer is wrong".
-func isCompileFailure(err error) bool {
-	var be *BoruError
-	return errors.As(err, &be) && be.Code == "compile_failed"
 }

@@ -42,7 +42,7 @@ implementation problem is handed to us by the surface syntax.
 
 ## 1. Background facts this plan leans on
 
-All established in `eng/go/CLAUDE.md`, `lang/go/CLAUDE.md`, and verified
+All established in `core/go/CLAUDE.md`, `lang/go/CLAUDE.md`, and verified
 empirically on this branch:
 
 1. **One mutable tape.** The engine steps a single `e.stack` with
@@ -294,13 +294,13 @@ needs unevaluated operands **out of Go and into boru**, the single biggest
 
 ## 7. Touchpoints
 
-- **`eng/go/value.go` / `FnDefInfo`** — add `Macro bool`; `Signature` gains
+- **`core/go/value.go` / `FnDefInfo`** — add `Macro bool`; `Signature` gains
   `FormArgs map[int]bool`.
-- **`eng/go/engine.go::stepWord`** — macro branch: raw-capture args, run
+- **`core/go/engine.go::stepWord`** — macro branch: raw-capture args, run
   template, splice result; expansion cache keyed on `Pos`.
 - **forward collection / `matchSignature`** — honor `FormArgs`: capture a
   balanced form, suppress `preEvalParens` for that position.
-- **expander (new, e.g. `eng/go/macro_expand.go`)** — walk a template
+- **expander (new, e.g. `core/go/macro_expand.go`)** — walk a template
   resolving `unquote`/`splice`; later, hygiene rename + capture-pin. Reuse
   `WalkBodyWords` span logic for the marker tape.
 - **`__SP` / `NewSplice`** — output path (unchanged; `splice` aliases it).

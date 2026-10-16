@@ -539,54 +539,6 @@ func TestS5VKernelFormatMicronBridge(t *testing.T) {
 	}
 }
 
-func TestS5VKernelFormatInstanceAndTypeArms(t *testing.T) {
-	// Class instance whose TypeRef has no Name: renders under the ID.
-	ci := NewClassInstance(TClass, ClassInstanceInfo{
-		TypeRef: &ClassTypeInfo{ID: "T_s5cid", Fields: NewOrderedMap()},
-		Fields:  NewOrderedMap(),
-	})
-	if got := kernelFormatDefault(ci); !strings.HasPrefix(got, "Ideal/Class/T_s5cid{") {
-		t.Errorf("class instance = %q", got)
-	}
-	// Class instance with a NAMED TypeRef: renders under the type name.
-	named := NewClassInstance(TClass, ClassInstanceInfo{
-		TypeRef: &ClassTypeInfo{Name: "Ideal/Class/S5N", ID: "T_s5n", Fields: NewOrderedMap()},
-		Fields:  NewOrderedMap(),
-	})
-	if got := kernelFormatDefault(named); !strings.HasPrefix(got, "Ideal/Class/S5N{") {
-		t.Errorf("named class instance = %q", got)
-	}
-	// Resource instance with a named TypeRef.
-	ri := NewResourceInstance(TResourceEntity, ResourceInstanceInfo{
-		TypeRef: &ResourceTypeInfo{Name: "Ideal/Resource/Entity/S5R", Fields: NewOrderedMap()},
-		Fields:  NewOrderedMap(),
-	})
-	if got := kernelFormatDefault(ri); !strings.HasPrefix(got, "Ideal/Resource/Entity/S5R{") {
-		t.Errorf("resource instance = %q", got)
-	}
-	// Anonymous class TYPE body: renders under object<Ideal/Class/ID>.
-	ct := NewClassType(TClass, ClassTypeInfo{ID: "T_s5ct", Fields: NewOrderedMap()})
-	if got := kernelFormatDefault(ct); !strings.HasPrefix(got, "object<Ideal/Class/T_s5ct>") {
-		t.Errorf("class type = %q", got)
-	}
-	// Disjunct and negation arms.
-	dis := NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)})
-	if got := kernelFormatDefault(dis); got != "Integer tor String" {
-		t.Errorf("disjunct = %q", got)
-	}
-	if got := kernelFormatDefault(NewNegation(NewTypeLiteral(TInteger))); got != "tnot Integer" {
-		t.Errorf("negation simple = %q", got)
-	}
-	if got := kernelFormatDefault(NewNegation(dis)); got != "tnot (Integer tor String)" {
-		t.Errorf("negation compound = %q", got)
-	}
-	// A compiled closure carrying its source rendering.
-	cl := NewValueRaw(TFunction, &ClosurePayload{Render: "fn zed"})
-	if got := kernelFormatDefault(cl); got != "fn zed" {
-		t.Errorf("closure render = %q", got)
-	}
-}
-
 // --- FormatFnDef ----------------------------------------------------------
 
 func TestS5VFormatFnDefArms(t *testing.T) {

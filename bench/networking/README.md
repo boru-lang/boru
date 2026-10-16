@@ -209,7 +209,7 @@ Findings, each isolated:
    matches the interpreter figure, not the compiled one — a ~19× per-word
    penalty paid on every request.
 
-The mechanism is in `eng/go/registry.go`: `Registry.CallBoru` evaluates every
+The mechanism is in `core/go/registry.go`: `Registry.CallBoru` evaluates every
 function body via `sub := NewTop(r); sub.Run(tokens)` — the interpreter. The
 bytecode compiler applies to the top-level program only, so any boru function
 body (and therefore every per-connection `serve-raw` handler) is interpreted.

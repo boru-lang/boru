@@ -8,28 +8,6 @@ import "testing"
 // consequence; these pin the seam's own contract, which cover-gate-core
 // requires this module's suite to reach on its own.
 
-// SuppressBindLedger brackets a snapshot/restore-truncated region: notes
-// inside it are dropped (the macro-template / help-eval class), and the
-// returned func restores recording exactly.
-func TestSuppressBindLedgerBracket(t *testing.T) {
-	r := newTestRegistry(t)
-	r.Check.Mode = true
-
-	restore := r.Check.SuppressBindLedger()
-	r.NoteBindTransition(BindDef, "tmp", SrcPos{Row: 1, Col: 3})
-	if len(r.Check.BindLedger) != 0 {
-		t.Fatal("a note inside a suppressed region must not reach the ledger")
-	}
-	restore()
-	r.NoteBindTransition(BindDef, "kept", SrcPos{Row: 1, Col: 9})
-	if len(r.Check.BindLedger) != 1 || r.Check.BindLedger[0].Name != "kept" {
-		t.Fatalf("after restore the ledger must record again; got %v", r.Check.BindLedger)
-	}
-
-	var nilState *CheckState
-	nilState.SuppressBindLedger()() // must not panic outside a pass
-}
-
 // Pass-end cleanups run LIFO — chained analysis pushes on one name tear down
 // top-first — and exactly once, however many times the closer is invoked
 // (closers ride defer AND t.Cleanup in places).
@@ -94,21 +72,5 @@ func TestCloneCopiesPassEndCleanups(t *testing.T) {
 	done()
 	if ran != 11 {
 		t.Fatalf("the original's closer runs both cleanups exactly once, got %d", ran)
-	}
-}
-
-// BindKind.String names every kind (census output, the disassembler's
-// BIND_TWIN rendering); an out-of-range kind still renders identifiably.
-func TestBindKindString(t *testing.T) {
-	cases := map[BindKind]string{
-		BindDef: "def", BindUndef: "undef",
-		BindDefReplace: "def-replace", BindTypeInstall: "type-install",
-		BindSigUndef: "sig-undef",
-		BindKind(99): "bind-kind(99)",
-	}
-	for k, want := range cases {
-		if got := k.String(); got != want {
-			t.Errorf("BindKind(%d).String() = %q, want %q", uint8(k), got, want)
-		}
 	}
 }

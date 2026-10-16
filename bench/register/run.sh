@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The performance register harness (design/FULL-COMPILATION.0.md section 14).
+# The performance register harness (bench/register/README.md).
 #
 # Runs the benchmark suites, derives the host id, and APPENDS rows to
 # bench/register/measurements.jsonl (and a hosts.jsonl row the first time
@@ -12,7 +12,7 @@
 # ledger uses, so the series stays readable years later.
 #
 # Absolute values compare only WITHIN one host id. Across hosts only
-# ratios travel (compiled/interpreted, check-cost/exec-cost), which is
+# ratios travel (check-cost/exec-cost, before/after a change), which is
 # why rows carry absolutes and reports derive ratios.
 #
 # Usage: BORU=cmd/go/bin/boru bench/register/run.sh [benchtime]
@@ -58,9 +58,8 @@ capture() {
 }
 
 capture check   lang/go   'BenchmarkPerfCheck'
-capture compile lang/go   'BenchmarkPerfCompile'
-capture exec    lang/go   'BenchmarkStage6|BenchmarkBytecodeBaseline'
-capture interp  eng/go    'BenchmarkKernel|BenchmarkTape'
+capture exec    lang/go   'BenchmarkInterpBaseline'
+capture interp  core/go   'BenchmarkKernel|BenchmarkTape|BenchmarkFlatProgramRecording'
 capture parse   parser/go 'BenchmarkParse'
 
 echo "register: appended to $meas (host $host, commit $commit)"

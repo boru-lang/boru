@@ -43,7 +43,7 @@
 > FlexMap, `clone`=weak) are as designed; spec rows live in
 > `lang/spec/weak-flex.tsv` (live-binding discipline, zero vanish
 > rows), collection is covered by GC unit tests in
-> `eng/go/weak_flex_test.go`. The 2026-07-23 review round added:
+> `core/go/weak_flex_test.go`. The 2026-07-23 review round added:
 > `cmp` sees the swept CONTENT view (mode-blind ordering, not the
 > `(make WeakFlex…)` canon), the check-time mirrors are live
 > (`weak_value_error` via `weakValueMirror`; typed writes via
@@ -76,14 +76,14 @@ explicit maintainer instruction). No code changes accompany this note.
 Grounding — verified against the live tree and a fresh binary
 (2026-07-21/22, HEAD c2b4c9f):
 
-- `eng/go/parser/parse.go:159,862-876,1106`, jsonic v0.2.0
+- `parser/go/parse.go:159,862-876,1106`, jsonic v0.2.0
   `grammar.go:15-42,273-292` (the literal sort and the ListPair channel)
-- `eng/go/equal.go:15-32,163,191-192`, `eng/go/util.go:106-140`,
-  `eng/go/shape.go:94-114`, `eng/go/canon.go:145-191` (the exact-match
+- `core/go/equal.go:15-32,163,191-192`, `core/go/util.go:106-140`,
+  `core/go/shape.go:94-114`, `core/go/canon.go:145-191` (the exact-match
   flex predicates)
-- `eng/go/signature.go:553-592`, `eng/go/word_extend.go:36-40,125,299`
+- `core/go/signature.go:553-592`, `core/go/word_extend.go:36-40,125,299`
   (locked-first dispatch, module word extension)
-- `eng/go/typetable.go:642-796`, `lang/go/test/fixedid_stability_test.go`
+- `core/go/typetable.go:642-796`, `lang/go/test/fixedid_stability_test.go`
   (FixedID space), `lang/go/native/native_keyval.go` (KeyVal — the
   tree's one existing nominal Map child, used below as a live probe)
 - `design/FLEX-NODES.10.md`, `design/legacy/FLEX-ATTRS.0.ignore` (prior designs)
@@ -313,7 +313,7 @@ plus the fixedid_stability snapshot line. `RegisterExternalBuiltin` is
 mechanically possible (KeyVal precedent) but wrong here: D3's
 semantics require kernel branches (nodeFamily, Shape, canon, clone,
 MakeNodeHandler, adoption) that cannot name a lang-registered type —
-the eng/go/CLAUDE.md kernel-residency rule applies exactly. KeyVal
+the core/go/CLAUDE.md kernel-residency rule applies exactly. KeyVal
 survives as an external Map child only because nothing in eng
 discriminates it.
 
@@ -419,7 +419,7 @@ proper positive+negative TSV pairs at the domain boundary.
 **The refusal error is fully customisable** — the diagnostic
 machinery is multi-channel (`BoruError.Notes` → `= note:` lines,
 `Suggestions` → `= help:` fixes, primary caret + secondary labeled
-spans; `eng/go/boru_error.go:18-53`, `diag_render.go`), with live
+spans; `core/go/boru_error.go:18-53`, `diag_render.go`), with live
 precedents of the teachable-refusal pattern at the FlexList bounds
 error ("use append to grow a FlexList; sparse FlexLists are an
 error", `native_storage.go:608-612`, via `r.BoruErrorHint`) and the
@@ -646,7 +646,7 @@ and it claims no invariant. Note the earlier "deterministic → module,
 GC → kernel" framing is falsified by maintained-SortedFlexMap (fully
 deterministic, still needs the kernel); the rule above is the right
 one. Recommend adding it, plus the family-vs-representation predicate
-discipline (§4.2), to eng/go/CLAUDE.md when implementation starts.
+discipline (§4.2), to core/go/CLAUDE.md when implementation starts.
 
 
 ## 7. Phasing (leaning)
@@ -755,4 +755,4 @@ Cross-cutting:
 
 15. **The minting-layer rule** (§6) — adopt normatively (with the
     family-vs-representation predicate discipline) into
-    eng/go/CLAUDE.md when implementation starts?
+    core/go/CLAUDE.md when implementation starts?

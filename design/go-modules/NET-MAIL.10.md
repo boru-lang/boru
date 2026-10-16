@@ -109,6 +109,6 @@ Wiring checklist (no code), mirroring `math.go` (pure module):
 - `lang/spec/module-mail.tsv` — rows leading with `import "boru:mail"`;
   every positive row paired with an `ERROR:<substring>` negative sibling
   (a malformed address → `ERROR:parse-address`).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`
+- Boundary conversion via `core.FromNative` / `core.ToNative`
   (String↔`string`, Map↔`map[string]any`, List↔slice).
 - No FixedID / external-type entry.

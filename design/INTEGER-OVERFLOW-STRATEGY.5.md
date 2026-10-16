@@ -54,7 +54,7 @@ the individual wrong answers are symptoms.
 The audit frames the lexer issue as "large literals fall back to
 `Decimal`/`Float`". The real mechanism is more corrosive. boru has no
 integer lexer: jsonic parses every numeric token to `float64`, and
-`numberValToValue` (`eng/go/parser/parse.go:1215`) decides Integer vs
+`numberValToValue` (`parser/go/parse.go:1215`) decides Integer vs
 Float *after the fact* from that float:
 
 ```go
@@ -257,7 +257,7 @@ is parsed with `strconv.ParseInt(src, 10, 64)`:
 
 This kills §1.2 entirely — both the silent value corruption above 2⁵³
 *and* the Float fallback near maxint. It lands at
-`eng/go/parser/parse.go` (`numberValToValue` / the `numberVal` sub), and
+`parser/go/parse.go` (`numberValToValue` / the `numberVal` sub), and
 needs jsonic to hand over the source digits (already captured in
 `numberVal.Src`).
 
@@ -278,9 +278,9 @@ correctness floor under either Phase-1 outcome.
 
 **Done.** As implemented:
 
-- **0a (lexer).** `setupNumberSub` (`eng/go/parser/grammar.go`) now
+- **0a (lexer).** `setupNumberSub` (`parser/go/grammar.go`) now
   carries the source digits for *every* number token, and
-  `numberValToValue` (`eng/go/parser/parse.go`) parses a *plain decimal
+  `numberValToValue` (`parser/go/parse.go`) parses a *plain decimal
   integer* (optional sign `-`/`+`, digits, `_` separators) from its exact
   text with `strconv.ParseInt`. `9007199254740993` is now its true value
   (was silently `…992`); `9223372036854775807` is finally a usable
@@ -303,7 +303,7 @@ correctness floor under either Phase-1 outcome.
   row/col (captured into `numberVal` in `setupNumberSub` and threaded
   into the parse error).
 - **Tests.** Parser exactness/overflow/position + non-decimal
-  preservation (`eng/go/parser/parse_test.go`), checked-helper boundary
+  preservation (`parser/go/parse_test.go`), checked-helper boundary
   tests (`lang/go/native/checked_arith_test.go`), end-to-end error
   position (`lang/go/test/overflow_position_test.go`), and spec rows
   (`lang/spec/arithmetic.tsv` §6, positive + negative).
@@ -348,9 +348,9 @@ strings (Phase 0a is the down-payment), both extend the same
 
 ### Implementation sketch (Phase 1)
 
-Grounded in the kernel conventions (`eng/go/CLAUDE.md`):
+Grounded in the kernel conventions (`core/go/CLAUDE.md`):
 
-- **Payload** (`eng/go/payload.go`): add a `BigIntPayload{N *big.Int}`
+- **Payload** (`core/go/payload.go`): add a `BigIntPayload{N *big.Int}`
   wrapper variant; keep `IntPayload{N int64}` as the fast path.
   `NewInteger` stays `int64`; add `NewBigInteger(*big.Int)` that
   normalises down to `IntPayload` when the value fits.
@@ -362,7 +362,7 @@ Grounded in the kernel conventions (`eng/go/CLAUDE.md`):
   compare a `big.Int`-backed Integer against `int64`, `Float`, and
   (future) `Decimal` without re-introducing precision loss — compare via
   `big.Int`/`big.Rat`, not by projecting to `float64`.
-- **Lexer** (`eng/go/parser`): Phase 0a, extended so an out-of-`int64`
+- **Lexer** (`parser/go`): Phase 0a, extended so an out-of-`int64`
   literal builds a `big.Int` rather than erroring.
 - **Rendering**: `big.Int.String()` — already exact.
 

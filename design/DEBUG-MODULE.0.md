@@ -97,7 +97,7 @@ granted nothing.
    *effectful* surfaces (writing output, reading the clock, sampling Go
    memstats, blocking for interactive input) require the `debug` scope.
 3. **Forward-form canonical.** Every example is written `Debug.word a b`
-   (see `eng/go/CLAUDE.md` "Surface form recommendation"). Inner natives
+   (see `core/go/CLAUDE.md` "Surface form recommendation"). Inner natives
    registered into the sub-registry use `BarrierPos: -1` so the dotted
    infix form dispatches too (the module-wrapper rule in
    `lang/go/CLAUDE.md`).
@@ -325,7 +325,7 @@ the per-step `TraceCallback` the engine already fires** — no new engine
 code. The Run loop, today, runs:
 
 ```go
-// eng/go/engine.go (Run loop, per step)
+// core/go/engine.go (Run loop, per step)
 if e.trace != nil {
     snapshot := e.tape.Snapshot()          // the WHOLE stack: resolved + pending
     note := e.traceNote
@@ -475,7 +475,7 @@ Only the *global* externally-registered types need FixedIDs. The
 FixedID — like `IO.StreamKind`), so no FixedID allocation is required and
 the `fixedid_stability_test.go` snapshot is untouched. Should any debug
 type ever need to be wire-stable, draw from the reserved
-`5000-9999` band per `eng/go/CLAUDE.md`.
+`5000-9999` band per `core/go/CLAUDE.md`.
 
 
 ## 7. Live dashboard, remote attach & the serverless debug channel

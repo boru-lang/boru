@@ -68,7 +68,7 @@ reach for it only when the reuse actually matters.
 
 ### `data` as a Map
 
-The template's data context is modeled as a boru **Map**: `eng.FromNative`
+The template's data context is modeled as a boru **Map**: `core.FromNative`
 turns it into a `map[string]any`, which `text/template` addresses with
 `{{.key}}`. Nested Maps and Lists work through the same bridge
 (`{{range .items}}`, `{{.user.name}}`). A non-Map data value (e.g. a bare
@@ -90,7 +90,7 @@ per import and exports it as a type literal via `NewTypeLiteral`, so
 
 - Register the type with **`RegisterExternalBuiltin`** using a **`FixedID`
   from the documented `10000+` host/third-party range**
-  (`eng/go/CLAUDE.md` "FixedID Allocation"). Unlike `StreamKind` (minted
+  (`core/go/CLAUDE.md` "FixedID Allocation"). Unlike `StreamKind` (minted
   fresh per import), a parsed-template handle is a concrete payload type
   whose identity must be **stable** so equality / `is` checks and the
   `fixedid_stability_test.go` guard hold across imports — hence a fixed,
@@ -109,7 +109,7 @@ in/out, `data`) is plain String / Map and needs no external type.
 
 ## 6. Errors
 
-No panics (`eng/go/CLAUDE.md` "Panic Prevention"; guard with
+No panics (`core/go/CLAUDE.md` "Panic Prevention"; guard with
 `AsConcreteString` / `RequireConcreteMap` before use). Go `error` returns
 unwrap to a `BoruError` via `r.BoruError(code, detail, word)` with
 kebab-case codes:
@@ -220,7 +220,7 @@ words.
 - Register `"template": BuildTemplateModule` in the `modules` map in
   `lang/go/modules/modules.go`.
 - **FixedID stability:** add the allocated `10000+` ID to
-  `lang/go/test/fixedid_stability_test.go` (`eng/go/CLAUDE.md` "FixedID
+  `lang/go/test/fixedid_stability_test.go` (`core/go/CLAUDE.md` "FixedID
   Allocation").
 - `lang/go/modules/docs_template.go` — `registerDocs("boru:template",
   map[string]string{…})` with a one-liner per export (else
@@ -230,5 +230,5 @@ words.
   cases, `compile`+`exec`, and pair every positive row with an
   `ERROR:<substring>` sibling (`parse` and `exec` both) per Test
   discipline (`lang/go/CLAUDE.md`).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`
+- Boundary conversion via `core.FromNative` / `core.ToNative`
   (String↔`string`, Map↔`map[string]any`, List↔slice).

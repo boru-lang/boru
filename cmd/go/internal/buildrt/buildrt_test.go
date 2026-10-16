@@ -41,16 +41,6 @@ func TestEvalErrorOnUndefinedWord(t *testing.T) {
 	}
 }
 
-func TestEvalSurfacesCompileFailure(t *testing.T) {
-	// A program the bytecode emitter cannot lower errors. There is no
-	// second engine to try.
-	var out bytes.Buffer
-	err := Eval(&out, "(size (for 5 [i]))", langOpts())
-	if err == nil {
-		t.Fatal("expected an error for a program that does not compile")
-	}
-}
-
 // --- Main: exit codes, stdout/stderr split, bundled files ---
 
 func TestMainSuccess(t *testing.T) {
@@ -315,30 +305,5 @@ func TestMainExitSuppressesResidualAndRejectsRange(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "0..125") {
 		t.Errorf("stderr does not explain the range: %q", stderr.String())
-	}
-}
-
-// A built binary whose program does not compile FAILS, loudly, with the
-// compiler defect named — it used to run the program on the interpreter and
-// say nothing, deliberately, because a shipped tool warning about its own
-// engine on every invocation is noise in someone else's pipeline. The noise
-// argument only held while the run still produced an answer. It does not: the
-// binary cannot run the program at all, so the only honest thing it can do is
-// say why. `boru build` declines to ship such a binary in the first place
-// (TestBuildFailsOnUncompilableProgram); this is the backstop for a payload
-// built before that gate, or one whose program stopped compiling under a
-// newer runtime.
-func TestMainFailsLoudlyWhenTheProgramDoesNotCompile(t *testing.T) {
-	const doesNotCompile = `def m {n: 3} def xs (for (m get "n") [1]) xs`
-	var stdout, stderr bytes.Buffer
-	code := Main(Config{Source: doesNotCompile}, nil, nil, &stdout, &stderr)
-	if code == 0 {
-		t.Fatalf("exit=0, want a failure (stdout=%q stderr=%q)", stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "bytecode compilation FAILED") {
-		t.Errorf("stderr=%q, want the compile failure named", stderr.String())
-	}
-	if got := strings.TrimSpace(stdout.String()); got != "" {
-		t.Errorf("stdout=%q, want nothing — the program never ran", got)
 	}
 }

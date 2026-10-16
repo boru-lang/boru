@@ -134,7 +134,7 @@ paragraph in B and "Blocker 2 is worse than the table says".
 
 ### Root cause
 
-`ForkConcurrent` (`eng/go/fork.go:38`) isolates **execution scopes** and
+`ForkConcurrent` (`core/go/fork.go:38`) isolates **execution scopes** and
 nothing else. It clones `Defs`, `Types`, `builtinWords`, `Contexts` (with
 a private child layer over the parent's top store) and `Args`. Its header
 states the guarantee precisely and correctly:
@@ -164,18 +164,18 @@ earlier branch's write. An immutable `Map` behaves correctly by contrast
 (copy-returning `set`, parent unchanged) — so the hazard is exactly the
 mutable containers the docs name as safe.
 
-`OrderedMap.Set` (`eng/go/value.go:85-91`) is an unsynchronised map assign
+`OrderedMap.Set` (`core/go/value.go:85-91`) is an unsynchronised map assign
 plus a slice append, so this is undefined behaviour rather than merely
 surprising. `go build -race`:
 
 ```
 WARNING: DATA RACE
 Read at 0x… by goroutine 17:
-  eng/go.(*OrderedMap).Set()      eng/go/value.go:87
+  eng/go.(*OrderedMap).Set()      core/go/value.go:87
   native.setFlexMapHandler()      lang/go/native/native_storage.go:749
   native.awaitAll.func1()         lang/go/native/native_temporal_await.go:104
 Previous write at 0x… by goroutine 16:
-  eng/go.(*OrderedMap).Set()      eng/go/value.go:90
+  eng/go.(*OrderedMap).Set()      core/go/value.go:90
 ```
 
 ### Wrong claims
@@ -517,7 +517,7 @@ type literal is evidently viable enough for forward collection to commit
 to it and then hard-fail the real match.
 
 That puts the defect in `resolveForwardArgs` / `matchSignature` — the two
-coordinated collection phases `eng/go/CLAUDE.md` explicitly says to read
+coordinated collection phases `core/go/CLAUDE.md` explicitly says to read
 `design/FORWARD-COLLECTION-PHASES.10.md` before touching, because their
 stop conditions drift apart. Not attempted here for that reason: it is a
 one-line-looking change in the least forgiving code in the kernel, and it
@@ -559,19 +559,19 @@ catches it.
 The context write boundary is implemented **only in the interpreter**, as
 a property of `Engine.Run`: every sub-engine run pushes a fresh child
 `StoreInstanceInfo` over the parent and pops it on exit
-(`eng/go/engine.go:1172-1175`, `defer`-balanced).
+(`core/go/engine.go:1172-1175`, `defer`-balanced).
 
 The bytecode VM has no equivalent. `eng/go/vm.go` never calls
 `Contexts.Push`/`Pop` — its only three `Contexts` references are read-only
 `TopData()` handler arguments (vm.go:518, :1127, :1627) — and there is no
 context-frame opcode anywhere in the VM or emitter. So when `InvokeBody`
-(`eng/go/invoke.go:21`) routes a body through `r.Invoker`, the compiled
+(`core/go/invoke.go:21`) routes a body through `r.Invoker`, the compiled
 body runs at `eng/go/vm.go:410` (`return vc.run(cl.Unit, locals, nil)`;
 `invokeClosureOn` spans :389-411) inside the **caller's** context layer.
 `context set` then COWs and replaces that layer through
 `ContextStack.UpdateChain`
-(`eng/go/core_helpers.go:1999`, implemented at
-`eng/go/contextstack.go:88-105`, which scans from the top and *replaces*
+(`core/go/core_helpers.go:1999`, implemented at
+`core/go/contextstack.go:88-105`, which scans from the top and *replaces*
 the matching entry). With no child entry to replace, it replaces the
 parent's — so the write survives.
 
@@ -728,7 +728,7 @@ Go runtime fatal that the engine's `recover()` cannot catch and that no
 interpreter fallback can rescue — **on the default path**, from a
 documented idiom (the in-memory-FS toggle).
 
-`ContextStack.UpdateChain` (`eng/go/contextstack.go:87-105`) relinks
+`ContextStack.UpdateChain` (`core/go/contextstack.go:87-105`) relinks
 `p.Prototype` *while walking* the chain. With two stack entries that both
 reach `origRoot` only through their prototypes, the second walk re-finds
 the already-relinked `newRoot` and sets `newRoot.Prototype = newRoot` — a
@@ -1455,7 +1455,7 @@ recording in `design/COVERAGE-ALLOWLIST.10.md` when (1) lands.
 **1. `import` runs during check.** All eight `import` signatures are
 registered `Go(handler, RunInCheck())`
 (`lang/go/native/native_misc.go:131-175`). `RunInCheck()`
-(`eng/go/sigimpl.go:86`) sets `GoImpl.RunInCheckMode`, consulted at
+(`core/go/sigimpl.go:86`) sets `GoImpl.RunInCheckMode`, consulted at
 `sigimpl.go:214`, telling the check pass to run the real handler instead
 of modelling its result. `import` needs this: the checker cannot type
 `Mod.v` without the module's actual exports.
@@ -1510,7 +1510,7 @@ mode does:
   this is what breaks module bodies, since export names and map keys must
   stay concrete;
 - **handler substitution** — running a signature's `ReturnsFn` instead of
-  its handler; gated independently at `eng/go/sigimpl.go:214`.
+  its handler; gated independently at `core/go/sigimpl.go:214`.
 
 Only the first breaks module bodies. So the real repair is a third mode —
 *substitute effectful handlers, keep values concrete* — expressible with
@@ -1659,7 +1659,7 @@ fail when the `!Compiling` gate is removed.
   it as EOF would make a body that reads input at load report a *check
   error* for a program that runs fine — trading a silent effect for a
   false verdict.
-- **The effect ledger** (`eng/go/effects.go`) still counts modelled
+- **The effect ledger** (`core/go/effects.go`) still counts modelled
   writes. Deliberate and conservative: over-counting only forgoes the
   silent interpreter re-run — scaffolding over a refusal, not a facility
   worth protecting — while under-counting a real network send would
@@ -1721,7 +1721,7 @@ actually attaches.
 | `type_mismatch` | phantom — a real mismatch raises `signature_error` |
 | `out_of_range` | phantom — the name is `index_out_of_range`; and the runtime raised it **code-lessly** (below) |
 | `unify_fail` | phantom, and wrong in kind: a failed `unify` does not raise at all, it returns the value `~unify-fail false` |
-| `extend_user_type` | phantom — the gate exists and raises `extend_owner` (`eng/go/word_extend.go:250`) |
+| `extend_user_type` | phantom — the gate exists and raises `extend_owner` (`core/go/word_extend.go:250`) |
 | `io_error` | phantom — I/O failures were code-less; the word's own codes are `read_error` / `write_error` |
 | `cap_denied` | phantom — policy refusals are code-less too (below) |
 | `cancelled` | phantom — nothing in the temporal module mints it; found by this pass, not by the report |
@@ -1926,7 +1926,7 @@ The original plan was to generate the table FROM a registry-side
 enumeration of codes — the doctrine that makes `boru describe` unable to
 drift, and the data source `boru explain <code>` would need (R4 in
 `legacy/rust-zig-roc-faber-in-boru-report.0.ignore`). It exists now:
-`eng/go/errorcodes.go` owns the mechanism and the kernel's 45 codes;
+`core/go/errorcodes.go` owns the mechanism and the kernel's 45 codes;
 `lang/go/native/errorcodes.go` registers the language layer's 188.
 `eng.ErrorCodes()` / `eng.LookupErrorCode(code)` are the accessors.
 
@@ -2002,7 +2002,7 @@ behaviour.
 
 `NoEvalArgs` does not gate *map* auto-evaluation — only `NoEvalMapArgs`
 does. The engine says so itself, at the exact site
-(`eng/go/engine.go:3380-3386`):
+(`core/go/engine.go:3380-3386`):
 
 > `NoEvalMapArgs` (separate from the list-only `NoEvalArgs`) suppresses
 > map auto-evaluation at this slot. Used by `def`'s typed-name sig so a
@@ -2024,17 +2024,17 @@ either way — so the divergence is entirely post-parse:
 - **Bracket form.** Slot 0 is a *List*, which `NoEvalArgs{0}` does
   suppress, so the nested map is never visited. `IS` reaches
   `ResolveSigType` as a raw **Word** and takes the authoritative name path
-  (`eng/go/fn_params.go:487-495`, `r.LookupTypeName("IS")`), yielding the
+  (`core/go/fn_params.go:487-495`, `r.LookupTypeName("IS")`), yielding the
   minted lattice node with its `*disjunctUnifier` behaviour.
 - **Shorthand form.** Slot 0 *is* the map, so `autoEvalMap` dispatches the
   word `IS`, pushing the type's **body** — a `Disjunct` *value* carrying
   `DisjunctInfo`, not a lattice node. `ResolveSigType` has no branch that
   mints a `*Type` from a Disjunct value, so it falls to the inline-disjunct
-  branch (`eng/go/fn_params.go:536-542`) and returns `(TAny, &pattern,
+  branch (`core/go/fn_params.go:536-542`) and returns `(TAny, &pattern,
   nil)`.
 
 The declared type is gone before any analysis runs. Downstream,
-`paramBodyCarrier` (`eng/go/core_helpers.go:701-720`) reads only `p.Type`
+`paramBodyCarrier` (`core/go/core_helpers.go:701-720`) reads only `p.Type`
 and calls `ParamInputCarrier(TAny)` → `NewDynamicCarrier(TAny)`
 (`carrier.go:307-310`), instead of the distributing declared-union carrier
 `UnionCarrierForType` builds (`carrier.go:316-323`).
@@ -2112,7 +2112,7 @@ currently tells the user something false.
    `def … fn …` forms via `shiftPosFlags` (`:517`). Fixes the union, enum,
    `=>`/afn, arity and lost-advisory rows at once.
 2. **(verified)** Add `|| IsDisjunct(v)` to `IsSigTypeValue`
-   (`eng/go/fn_def.go:185-187`) so a Disjunct in the output slot is not
+   (`core/go/fn_def.go:185-187`) so a Disjunct in the output slot is not
    read as a concrete return-by-value. Still needed after (1), because
    `NoEvalMapArgs` does not gate a bare Word in the output slot.
 3. **(DONE — took the local option)** The inline union
@@ -2194,7 +2194,7 @@ Fix (2) is still doing its job here: it stopped the Disjunct being read as
 a return-BY-VALUE, which is what produced the bogus `expected 1 return
 value(s), got 2`. It cannot supply enforcement, because there is nowhere
 on `FnSig` to put a return pattern — `Returns` is `[]*Type`
-(`eng/go/value.go:249`).
+(`core/go/value.go:249`).
 
 **`QuoteArgs: {1: true}` is not the fix — measured, not assumed.** It is
 the obvious move (quote the output Word so the NAME survives, exactly as
@@ -2406,7 +2406,7 @@ argument positions are decided.
 
 **Two are "the guarantee is real but narrower than the prose"** (A, and
 B's doc half). Both times the Go-level comment is accurate and the
-user-facing doc generalises it. `eng/go/fork.go`'s header says "execution
+user-facing doc generalises it. `core/go/fork.go`'s header says "execution
 scope"; EXPLANATION.md says "side effects".
 
 **Three would have been caught by tests that already exist** — B's

@@ -278,38 +278,25 @@ func narrowedSameBinding(r *Registry, k string, v Value) bool {
 // The returned joins describe every name pushed here, for the recorder
 // (core.BranchRecord.Joins); nil when nothing was pushed.
 func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
-	return installJoinedDefs(r, then, else_, false, armsUndecided)
+	return installJoinedDefs(r, then, else_, false)
 }
 
 // InstallTakenArmDefs is InstallJoinedDefs for a CONSTANT-condition branch:
 // the one analysed arm (handed as then or else_) always runs, so the
 // binding it leaves is unconditionally the post-branch one.
 func InstallTakenArmDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
-	return installJoinedDefs(r, then, else_, true, armsUndecided)
+	return installJoinedDefs(r, then, else_, true)
 }
 
 // InstallDecidedJoinedDefs is InstallJoinedDefs for a branch whose condition
 // the model decides but whose arms were both analysed (the skipped one
 // speculatively): elseRuns names the running arm, whose fn a speculative
 // family both arms define takes as its model (specFamilyJoinModel, NUR245).
-func InstallDecidedJoinedDefs(r *Registry, then, else_ map[string]Value, elseRuns bool) []BranchJoin {
-	runs := thenArmRuns
-	if elseRuns {
-		runs = elseArmRuns
-	}
-	return installJoinedDefs(r, then, else_, false, runs)
+func InstallDecidedJoinedDefs(r *Registry, then, else_ map[string]Value, _ bool) []BranchJoin {
+	return installJoinedDefs(r, then, else_, false)
 }
 
-// armRuns names the arm of a branch that runs, when the model decides it.
-type armRuns uint8
-
-const (
-	armsUndecided armRuns = iota
-	thenArmRuns
-	elseArmRuns
-)
-
-func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, runs armRuns) []BranchJoin {
+func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool) []BranchJoin {
 	var joins []BranchJoin
 	seen := make(map[string]bool)
 	for k, tv := range then {
@@ -318,29 +305,10 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			if narrowedSameBinding(r, k, tv) && narrowedSameBinding(r, k, ev) {
 				continue
 			}
-			// A speculative family both arms define routes live: the model
-			// is pushed (NUR245). Undecided, both arms' installs are placed
-			// at their own sites, and — as for a one-arm family — no join is
-			// noted. Decided, the running arm's def is an ordinary install:
-			// its transition is noted as a taken arm's is, so the registry
-			// the routed op reads holds it.
-			if model, ok := specFamilyJoinModel(tv, ev, runs); ok && specFnJoin(r, k) {
-				r.Defs.Push(k, model)
-				if runs != armsUndecided {
-					r.NoteBindTransition(BindDef, k, model.Pos())
-				}
-				continue
-			}
 			j := BranchJoin{Name: k, Joined: joinBranchDef(tv, ev), ThenBinds: true, ElseBinds: true, Taken: taken}
 			j.Pre, j.HasPre = r.Defs.Top(k)
 			r.Defs.Push(k, j.Joined)
 			joins = append(joins, j)
-			// The both-arms join is a transition exactly like the one-arm
-			// joins below — this note was MISSING (the doc above claimed
-			// every push noted; a both-arms `def op` left a live binding
-			// with no ledger entry, which the ledgered-names-only oracle
-			// could not see).
-			r.NoteBindTransition(BindDef, k, tv.Pos())
 			continue
 		}
 		// then-only: join with the pre-branch top-of-stack if any.
@@ -353,14 +321,10 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			j.Joined = joinBranchDef(tv, pre)
 			r.Defs.Push(k, j.Joined)
 		} else {
-			j.Joined = condBoundCarrier(r, k, tv, taken)
+			j.Joined = tv
 			r.Defs.Push(k, j.Joined)
-			if specFnJoin(r, k) {
-				continue
-			}
 		}
 		joins = append(joins, j)
-		r.NoteBindTransition(BindDef, k, tv.Pos())
 	}
 	for k, ev := range else_ {
 		if seen[k] {
@@ -376,32 +340,12 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			j.Joined = joinBranchDef(ev, pre)
 			r.Defs.Push(k, j.Joined)
 		} else {
-			j.Joined = condBoundCarrier(r, k, ev, taken)
+			j.Joined = ev
 			r.Defs.Push(k, j.Joined)
-			if specFnJoin(r, k) {
-				continue
-			}
 		}
 		joins = append(joins, j)
-		r.NoteBindTransition(BindDef, k, ev.Pos())
 	}
 	return joins
-}
-
-// condBoundCarrier is the binding InstallJoinedDefs pushes for a name bound
-// in ONE arm of an undecided branch with no pre-branch binding (see there):
-// under a compile pass, a payload-less carrier of the arm's value with a
-// fresh identity; otherwise, and for a taken arm, a fn value, a type node
-// or a module value, the arm's own value exactly as before.
-func condBoundCarrier(r *Registry, name string, v Value, taken bool) Value {
-	if taken || r == nil || r.Check == nil || !r.Check.Recorder().Armed() {
-		return v
-	}
-	if IsCapitalisedName(name) || IsFnValueResidual(v) || IsBareTypeNode(&v) || IsModuleFamilyValue(v) ||
-		(v.Parent() != nil && v.Parent().ConformsTo(TFunction)) {
-		return v
-	}
-	return JoinCarriers(v, v)
 }
 
 // JoinCarrierStacks folds two carrier result stacks (e.g. produced by
@@ -449,4 +393,21 @@ func JoinCarrierStacks(a, b []Value) []Value {
 		out[i] = joined
 	}
 	return out
+}
+
+// BranchJoin is one name an `if` left bound past its merge, as
+// InstallJoinedDefs pushed it. Joined is the binding a read after the merge
+// resolves. Pre is the binding that stood before the branch (HasPre false:
+// none — the name is bound only if an arm ran). ThenBinds and ElseBinds say
+// which arms rebound the name; on a constant-condition branch only the taken
+// arm was analysed, and Taken says so — that arm always runs, so the joined
+// binding is unconditionally its own.
+type BranchJoin struct {
+	Name      string
+	Joined    Value
+	Pre       Value
+	HasPre    bool
+	ThenBinds bool
+	ElseBinds bool
+	Taken     bool
 }

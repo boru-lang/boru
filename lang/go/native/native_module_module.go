@@ -75,7 +75,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2), so a nested body's
 	// entry would be recorded where nothing reads it. The nested body IS
 	// modelled — only its report is missing.
-	inPureCheck := parent != nil && parent.Check.IsActive() && !parent.Check.Compiling
+	inPureCheck := parent != nil && parent.Check.IsActive()
 	if inPureCheck {
 		ref := coverID
 		if ref == "" {
@@ -112,11 +112,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	// The effect ledger rides with the writers: a module body's non-writer
-	// effects (file writes, net sends) must count against the SAME fence
-	// the parent's compiled request armed (eng effects.go, C1). The
-	// observability hooks ride along too — a module body's interpreter
-	// entries and runtime bails report to the request's observers.
+	// The effect ledger rides with the writers (core effects.go), and so
+	// does the coverage hook: a module body's rows report to the parent's
+	// coverage run.
 	modReg.Effects = parent.Effects
 	modReg.InheritObserveHooks(parent)
 	// Coverage (coverage.go): tag the module sub-registry BEFORE its body runs,
@@ -127,11 +125,6 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		modReg.SetCoverID(coverID)
 		parent.RegisterCoverSource(coverID, coverSrc)
 	}
-	// A compiled execution arms runtime stamping on the top registry; module
-	// bodies (and the store words their fns execute later — service `add`,
-	// codec resolution) run on THIS sub-registry, so the policy must ride
-	// along or module-constructed callbacks would never stamp.
-	modReg.InheritRuntimeStamping(parent)
 	// Inherit host-installed capabilities so the module body can read
 	// files, encode/decode formats, and query the SQLite store using
 	// the same backends as the parent registry.
@@ -265,22 +258,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// the write classes pass and this one does not. Both residuals are
 	// recorded in design/verse-report-defects-investigation.0.md §D.
 	//
-	// !Compiling IS THE WHOLE CORRECTNESS ARGUMENT, and it is not obvious:
-	// on the compiled path a module body runs ONLY in the compile pass. The
-	// compile pass runs `import` for real (RunInCheck) and bakes the
-	// exports, and the VM program does not re-import — so that single
-	// execution is the RUN's, not a preview of it. Gating on IsActive alone
-	// therefore does not merely suppress a duplicate: it deletes a module
-	// body's load-time print/write from a default run entirely (measured —
-	// `import module [ print 'loading' … ]` went from one line to none).
-	//
-	// Compiling splits the two passes exactly. A pure check pass
-	// (Check.Begin — the `check` subcommand, the CLI's quiet pre-flight,
-	// lang.Boru.Check) is nobody's execution and is modelled; a compile pass
-	// (Check.BeginCompilePass — RunCompiled/CompileCheck) is the execution
-	// and stays real. Under the CLI's default `check-then-run` that turns
-	// the §D doubling into exactly ONE real execution per importer, which is
-	// what a run should have had all along.
+	// A pure check pass (Check.Begin — the `check` subcommand, the CLI's
+	// quiet pre-flight, lang.Boru.Check) is nobody's execution and is
+	// modelled; a run is the execution and stays real.
 	if inPureCheck || parent.Check.ModelsEffects() {
 		modReg.Check.ModelEffects = true
 		modReg.Output, modReg.ErrOutput = io.Discard, io.Discard
@@ -378,31 +358,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	modID := parent.Modules.NextID()
 	modReg.Types.MintOwner = "module#" + modID
 	sub := New(modReg)
-	// C4 attribution (plan Phase 10): the body run IS the module load — a
-	// sanctioned interpreter entry reported under its named seam.
-	restoreAtt := modReg.SetInterpAttribution("module-load")
 	_, err = sub.Run(elems)
-	restoreAtt()
 	if err != nil {
 		return ModuleDesc{}, err
-	}
-
-	// Detached-stamp the module's fn bindings (design/legacy/RUNTIME-STAMPING.0.ignore
-	// Phase 4a): every module-scope def holding an eligible capture-free fn
-	// compiles to its own unit here, at load — the ONE pre-publication moment
-	// where the def binding and the export map still share each fn's impl
-	// pointer, so the in-place stamp reaches both. The module-export apply
-	// seam (execFnDefSig) then runs a stamped fn on the VM from any caller.
-	// StampFnValueInPlace declines silently per fn (policy off, capturing,
-	// declining body), leaving that fn interpreting exactly as before. The
-	// stamps happen after the whole body ran so cross-fn deps resolve, and
-	// their dep snapshots freeze against the completed module scope.
-	if modReg.RuntimeStampingEnabled() {
-		for _, name := range modReg.Defs.Names() {
-			if v, ok := modReg.Defs.Top(name); ok {
-				StampFnValueInPlace(modReg, v)
-			}
-		}
 	}
 
 	desc := ModuleDesc{

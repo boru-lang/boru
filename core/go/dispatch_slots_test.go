@@ -9,7 +9,7 @@ import "testing"
 // the post-cut core-only configuration.
 func TestInactiveCheckBraid(t *testing.T) {
 	inactiveCheckMixedFormAdvisories(nil, WordInfo{}, nil, nil, SrcPos{}, 0, 0)
-	if err := inactiveCheckModeAssumeSig(nil, WordInfo{}, nil, nil, nil, SrcPos{}); err != nil {
+	if err := inactiveCheckModeAssumeSig(nil, WordInfo{}, nil, nil, SrcPos{}); err != nil {
 		t.Fatal("inactive assumeSig must be nil error")
 	}
 	if got := inactiveCheckModeFallbackPositions(nil, 3); got != nil {
@@ -30,10 +30,6 @@ func TestInactiveCheckBraid(t *testing.T) {
 		t.Fatal("inactive exprRefsCarrier must be false")
 	}
 	inactiveNoteSpeculativeBarrierCommit(nil, ForwardInfo{})
-	if inactiveDeclineForwardStackDrift(nil, nil, nil) {
-		t.Fatal("inactive declineForwardStackDrift declines nothing")
-	}
-	inactiveDeclineStrandedMemberFn(nil, nil)
 	inactiveShareCheckState(nil, nil)() // the restore closure is a no-op
 	if err := inactiveSpliceAnonCheckResult(nil, 0, 0, nil, nil, nil); err != nil {
 		t.Fatal("inactive spliceAnon must be nil error")
@@ -46,49 +42,10 @@ func TestInactiveCheckBraid(t *testing.T) {
 	if inactiveTryDynamicFnValueDispatch(nil, 0) {
 		t.Fatal("inactive dynamicFnValue must decline")
 	}
-	if inactiveTryMemberFnArrivalDispatch(nil, 0) {
-		t.Fatal("inactive memberFnArrival must decline")
-	}
-	inactiveNoteReStepLanding(nil, 0)
-	if inactiveParenPlacedFnCarrier(nil, 0) {
-		t.Fatal("inactive parenPlacedFnCarrier must decline")
-	}
 	if inactiveTryShapedMethodDispatch(nil, 0) {
 		t.Fatal("inactive shapedMethod must decline")
 	}
 	if d := inactiveUndefinedWordCheckDiag(nil, "w", SrcPos{}); d.Code != "" {
 		t.Fatal("inactive undefinedWordDiag must be zero")
-	}
-}
-
-// TestInactiveDriftWindowRecorder pins the compiler-less default behind
-// the drift-island hook: with no compiler linked there is nothing to
-// record, so the offer declines and the caller keeps its compile failure.
-func TestInactiveDriftWindowRecorder(t *testing.T) {
-	if inactiveDriftWindowRecorder(nil, WordInfo{}, nil, nil) {
-		t.Fatal("inactive drift-window recorder must decline")
-	}
-}
-
-// TestInactiveRegionRecorder pins the compiler-less default behind the
-// region-descriptor hook. Unlike the drift recorder there is no verdict to
-// check — the slot returns nothing — so what this proves is that the default
-// is REACHABLE and inert: it must not panic on the arguments a real dispatch
-// hands it, including the degenerate ones a compiler-less build never
-// filters (a nil window, a nil registry, an index past the end).
-//
-// The named default exists for exactly this. An anonymous func(...){} assigned
-// at init would be unreachable in core's own profile and fail the merged
-// ADR-008 gate, which is the rule every seam slot here follows.
-func TestInactiveRegionRecorder(t *testing.T) {
-	inactiveRegionRecorder(nil, nil, WordInfo{}, 0)
-	inactiveRegionRecorder(NewTape(nil, 0), nil, WordInfo{Name: "add"}, -1)
-
-	// And the live slot defaults to it, so a build with no compiler linked
-	// collects exactly as it did before the seam existed.
-	tape := NewTape([]Value{NewWord("add"), NewInteger(1)}, 0)
-	RegionRecorder(tape, nil, WordInfo{Name: "add", ArgCount: -1}, 0)
-	if tape.Len() != 2 {
-		t.Fatalf("the inactive recorder must not touch the window: len = %d, want 2", tape.Len())
 	}
 }

@@ -8,7 +8,6 @@ func init() {
 		"run-with":    "Run code under an explicit policy supplied as a data map.",
 		"parse":       "Parse boru source to a quoted token list without running it (loud parse_error on malformed source).",
 		"check":       "Static type-check source without running it, returning a { ok errors warnings diagnostics } report.",
-		"compile":     "Compile source to bytecode without running it, returning a { ok reason sites } report.",
 	})
 
 	// The four run variants differ only in the POLICY they run under,
@@ -28,7 +27,6 @@ func init() {
 			`((Vm.check "totally-undefined-word").diagnostics.0).code    ;# 'undefined_word'`,
 			`(Vm.check "1 add 2  def unused 99").warnings     ;# 1 — warnings are counted separately`,
 		},
-		"compile": {`(Vm.compile "1 add 2").ok                       ;# true — to bytecode, without running it`},
 		"parse": {
 			`size (Vm.parse "1 add 2")                        ;# 3 — the token list, unevaluated`,
 		},

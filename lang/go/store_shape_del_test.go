@@ -10,7 +10,6 @@ package lang
 // survives, so the widening is attributable to del alone.
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -51,48 +50,6 @@ func TestStoreShapeDelWidensKey(t *testing.T) {
 		}
 		if got := strings.Join(stack, " "); got != c.want {
 			t.Errorf("%q (%s): residual %q, want %q", c.src, c.why, got, c.want)
-		}
-	}
-}
-
-// TestStoreShapeDelCompileDiscipline — every shape path is gated to
-// plain (non-Compiling) passes: del programs still compile natively and
-// the compiled/interpreted results agree (the compiler exemption added
-// alongside the shape twins — del is set's inverse in the quoted-
-// operand family). This is the positive direction of the exemption;
-// the negative (other quoted-operand words must not poly/compile) stays
-// pinned by eng's carrier_seam6a/emit_seam7 tests.
-func TestStoreShapeDelCompileDiscipline(t *testing.T) {
-	compiles := []struct {
-		src string
-	}{
-		{`def f (flex {a:1 b:2}) del a f end f.b`},
-		{`{a:1 b:2} del a`},
-		{`def m ({a:1 b:2} del 'a') m`},
-	}
-	for _, c := range compiles {
-		a, err := New()
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil || prog == nil {
-			t.Errorf("%q: expected native compile; reason=%q err=%v", c.src, reason, cerr)
-			continue
-		}
-		if strings.Contains(prog.Disassemble(), "FALLBACK") {
-			t.Errorf("%q: compiled with a FALLBACK island; del must compile natively", c.src)
-		}
-		b, _ := New()
-		gotC, compiled, errC := b.RunCompiled(c.src)
-		if noteCompileDefect(t, c.src, gotC, errC) {
-			continue
-		}
-		d, _ := New()
-		gotI, errI := d.RunInterp(c.src)
-		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-			t.Errorf("%q: compiled/interpreted parity broke: compiled=%v gotC=%v errC=%v gotI=%v errI=%v",
-				c.src, compiled, gotC, errC, gotI, errI)
 		}
 	}
 }

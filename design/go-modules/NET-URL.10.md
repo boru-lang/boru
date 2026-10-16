@@ -159,6 +159,6 @@ Wiring checklist (no code), mirroring `math.go` (pure module):
 - `lang/spec/module-url.tsv` — `input⇥expected⇥description` rows leading
   with `import "boru:url"`; every positive row paired with an
   `ERROR:<substring>` negative sibling (Test discipline).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`
+- Boundary conversion via `core.FromNative` / `core.ToNative`
   (String↔`string`, Map↔`map[string]any`, List↔slice).
 - No FixedID / external-type entry (no opaque handle).

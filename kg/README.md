@@ -21,12 +21,13 @@ facts**:
 Prose is a poor source for structure, in two specific ways this design
 answers. It is **undirected** — the README's "core/go … eng builds on
 it" became a `related_to` edge, which cannot distinguish "eng depends on
-core" from the reverse, so a plain question like "what does `eng/go`
+core" from the reverse, so a plain question like "what does `lang/go`
 build on?" had to be answered by reading `go.mod` anyway. And it
 **states intent as fact** — a design note reading "the parser re-points
 to core" looks exactly like a note saying it already has, and ingesting
 the first as the second asserts something the code contradicts
-(`eng/go/parser` still imports `eng`). `go.mod` has neither problem.
+(the parser, then a package inside the engine module, still imported
+it). `go.mod` has neither problem.
 
 **Keep it fresh.** The code half refreshes itself on every `make graph`.
 When a PR changes the *documentation* set, update
@@ -302,7 +303,7 @@ The parser tests deliberately use inline fixture text rather than the
 repository's own `go.mod` files, so a legitimate dependency change
 cannot turn a *parser* test red; the end-to-end assertions check only
 invariants that hold whatever the workspace contains (core depends on no
-sibling; `eng/go/parser` is a package and not a module).
+sibling; the compiler lane's modules are no longer members).
 
 ## SQLite
 
@@ -381,7 +382,7 @@ bundles subject to the full evidence checks.
   (extraction happens outside boru — by an agent, a rule, or a model);
   boru validates evidence and quotes but does not itself do NLP.
 - Package discovery is **one level deep** by design — it names the units
-  people ask about (`eng/go/parser`, `lang/go/native`), not the whole
+  people ask about (`lang/go/native`, `cmd/go/internal`), not the whole
   tree. A nested package is not in the graph.
 - Only `go.work` members are discovered automatically. A real module
   outside the workspace must be listed in `main.boru`'s `extra-modules`

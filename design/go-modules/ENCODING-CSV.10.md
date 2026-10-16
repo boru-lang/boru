@@ -77,8 +77,8 @@ Scalars, List, Map only — String fields, `List[List[String]]` tables,
 `List[Map]` records, an options Map. The Go `*csv.Reader` / `*csv.Writer`
 are constructed, used, and discarded inside each word, so **no opaque
 handle type** is surfaced — no `RegisterExternalBuiltin` / FixedID is
-needed. Convert at the boundary with `eng.FromNative` / `eng.ToNative`
-(`eng/go/gobridge.go`); guard the list/map args with
+needed. Convert at the boundary with `core.FromNative` / `core.ToNative`
+(`core/go/gobridge.go`); guard the list/map args with
 `RequireConcreteList` / `RequireConcreteMap`.
 
 ## 6. Errors
@@ -94,7 +94,7 @@ detail, word)` with a kebab-case code:
 A bad option (e.g. a multi-rune `delimiter`) errors under the calling
 word's code with a clear detail. Guard args with `AsConcreteString` /
 `RequireConcreteList` / `RequireConcreteMap` before use; never panic
-(`eng/go/CLAUDE.md` "Panic Prevention").
+(`core/go/CLAUDE.md` "Panic Prevention").
 
 ## 7. Policy / capabilities
 

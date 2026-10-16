@@ -10,8 +10,6 @@ require (
 
 require (
 	github.com/boru-lang/boru/check/go v0.0.0 // indirect
-	github.com/boru-lang/boru/compiler/go v0.0.0 // indirect
-	github.com/boru-lang/boru/eng/go v0.0.0 // indirect
 	github.com/tabnas/bnf/go v0.1.2 // indirect
 )
 
@@ -62,8 +60,6 @@ require (
 	modernc.org/sqlite v1.46.1 // indirect
 )
 
-replace github.com/boru-lang/boru/eng/go => ../../eng/go
-
 replace github.com/boru-lang/boru/basic/go => ../../basic/go
 
 replace github.com/boru-lang/boru/lang/go => ../../lang/go
@@ -75,5 +71,3 @@ replace github.com/boru-lang/boru/test/specfix => ../specfix
 replace github.com/boru-lang/boru/core/go => ../../core/go
 
 replace github.com/boru-lang/boru/check/go => ../../check/go
-
-replace github.com/boru-lang/boru/compiler/go => ../../compiler/go

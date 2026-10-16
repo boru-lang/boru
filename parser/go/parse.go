@@ -58,7 +58,7 @@ type iexprGroup []any
 // Pos here is a pure diagnostic: an unknown (zero) SrcPos renders as
 // "source position unknown" at error time rather than a guessed location,
 // so the 0=unknown convention is deliberate and is NOT a "No Zero-Value
-// Overload" violation (see eng/go/CLAUDE.md) — no decision reads a zero Pos.
+// Overload" violation (see core/go/CLAUDE.md) — no decision reads a zero Pos.
 type sited struct {
 	Node any
 	Pos  core.SrcPos
@@ -1646,7 +1646,7 @@ func parseWord(text string) (core.Value, error) {
 
 	// Type names are NOT resolved here — the parser is type-name-opaque
 	// (ADR-012 rule 4): a capitalised name is an ordinary Word in every
-	// context, and the engine's canonical cascade (eng/go/resolve.go)
+	// context, and the engine's canonical cascade (core/go/resolve.go)
 	// resolves it at consumption, exactly as user-defined type names
 	// have always resolved. Quotation meaning is consumption-time.
 

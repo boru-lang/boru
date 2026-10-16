@@ -15,16 +15,9 @@ import "fmt"
 // the hot-loop probe (Registry.Lookup, the step loop, dispatch).
 func (r *Registry) analysisActive() bool { return r.Check.IsActive() }
 
-// analysisRecorder is the emit-recorder reach; never nil (the inactive
-// no-op recorder backs a plain pass).
-func (r *Registry) analysisRecorder() EmitRecorder { return r.Check.Recorder() }
-
 // analysisMode reports the plain-check flag (Check.Mode) — the
 // carrier-modeling probes distinct from full activity.
 func (r *Registry) analysisMode() bool { return r.Check.Mode }
-
-// analysisCompiling reports a compile (recording) pass.
-func (r *Registry) analysisCompiling() bool { return r.Check.Compiling }
 
 // noteAnalysisDiagnostic forwards a diagnostic to the checker.
 func (r *Registry) noteAnalysisDiagnostic(d CheckDiagnostic) { r.Check.AddDiagnostic(d) }
@@ -36,16 +29,6 @@ func (r *Registry) noteAnalysisUse(name string) { r.Check.recordUse(name) }
 // for the dynamic-scope undefined-word rescue (check mode only; no-op
 // at the top level or outside check).
 func (r *Registry) noteAnalysisFnBinder(name string) { r.Check.RecordFnBinder(name) }
-
-// analysisInCondBody reports whether the analysed position sits inside
-// a conditional body (branch/loop) — the compile-soundness probe for
-// overload redefinition.
-func (r *Registry) analysisInCondBody() bool { return r.Check.CondBodyDepth > 0 }
-
-// analysisInSpecArm reports analysis inside a branch arm whose condition
-// the model cannot decide (CheckState.SpecArmDepth): the arms a fn def is
-// speculative in (the seventieth increment).
-func (r *Registry) analysisInSpecArm() bool { return r.Check.SpecArmDepth > 0 }
 
 // EnterSpecArm brackets the analysis of a branch arm; the returned func
 // leaves it. known is whether the model decides the condition (a literal
@@ -128,12 +111,6 @@ func (r *Registry) analysisStripToCarriers(in []Value) []Value {
 	return AnalysisImpl.StripToCarriers(in)
 }
 
-// analysisZeroOutResiduals drops phantom 0-output statement residues
-// from the top-level residual (recording passes).
-func (r *Registry) analysisZeroOutResiduals(stk []Value) []Value {
-	return AnalysisImpl.ZeroOutResiduals(r, stk)
-}
-
 // analysisCarrierResults models a matched dispatch's results under
 // analysis — the carrier-propagation seam of execMatch.
 func (r *Registry) analysisCarrierResults(word string, sig *Signature, args []Value, pos SrcPos, ownerReg *Registry, tailConsumed bool) []Value {
@@ -174,7 +151,6 @@ var AnalysisImpl = struct {
 	FnConstructionPass  func(r *Registry, name string, fnDef FnDefInfo)
 	ReturnsFn           func(r *Registry, name string, s FnSig, fnDef FnDefInfo) ReturnsFunc
 	StripToCarriers     func(in []Value) []Value
-	ZeroOutResiduals    func(r *Registry, stk []Value) []Value
 	CarrierResults      func(r *Registry, word string, sig *Signature, args []Value, pos SrcPos, ownerReg *Registry, tailConsumed bool) []Value
 	MixedConform        func(v Value, t *Type) bool
 	ValueCarriesCarrier func(v Value) bool
@@ -185,7 +161,6 @@ var AnalysisImpl = struct {
 	FnConstructionPass:  inactiveFnConstructionPass,
 	ReturnsFn:           inactiveReturnsFn,
 	StripToCarriers:     inactiveStripToCarriers,
-	ZeroOutResiduals:    inactiveZeroOutResiduals,
 	CarrierResults:      inactiveCarrierResults,
 	MixedConform:        inactiveMixedConform,
 	ValueCarriesCarrier: inactiveValueCarriesCarrier,
@@ -200,7 +175,6 @@ var AnalysisImpl = struct {
 func inactiveFnConstructionPass(*Registry, string, FnDefInfo)           {}
 func inactiveReturnsFn(*Registry, string, FnSig, FnDefInfo) ReturnsFunc { return nil }
 func inactiveStripToCarriers(in []Value) []Value                        { return in }
-func inactiveZeroOutResiduals(_ *Registry, stk []Value) []Value         { return stk }
 func inactiveCarrierResults(*Registry, string, *Signature, []Value, SrcPos, *Registry, bool) []Value {
 	return nil
 }

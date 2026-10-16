@@ -33,57 +33,6 @@ func zcaRegistry(t *testing.T) *core.Registry {
 	return r
 }
 
-// zcaEmit is an EmitRecorder stub over the inactive recorder: an
-// activity switch plus probes for the loop-capture protocol
-// (AnalyseLoopBody), the zero-out residual filter, and the
-// uncompilable compile failure RunFnBodyOnce issues on a body error.
-type zcaEmit struct {
-	core.EmitRecorder
-	active      bool
-	loopArm     bool
-	locals      []string
-	beginLC     int
-	endLC       int
-	carried     map[string]bool
-	checkpoints int
-	rollbacks   int
-	branchArms  int
-	zeroOut     map[core.RecKey]bool
-	uncomp      []string
-}
-
-func zcaNewEmit() *zcaEmit {
-	return &zcaEmit{
-		EmitRecorder: core.TheInactiveEmit,
-		carried:      map[string]bool{},
-		zeroOut:      map[core.RecKey]bool{},
-	}
-}
-
-func (s *zcaEmit) Active() bool { return s.active }
-func (s *zcaEmit) ConsumeLoopArm() bool {
-	armed := s.loopArm
-	s.loopArm = false
-	return armed
-}
-func (s *zcaEmit) RegisterLocal(id string) int {
-	s.locals = append(s.locals, id)
-	return len(s.locals) - 1
-}
-func (s *zcaEmit) BeginLoopCarried() { s.beginLC++ }
-func (s *zcaEmit) EndLoopCarried()   { s.endLC++ }
-func (s *zcaEmit) NoteLoopCarried(name string, _, _ core.Value) {
-	s.carried[name] = true
-}
-func (s *zcaEmit) Checkpoint() core.EmitCheckpoint {
-	s.checkpoints++
-	return nil
-}
-func (s *zcaEmit) Rollback(core.EmitCheckpoint)       { s.rollbacks++ }
-func (s *zcaEmit) ArmBranchCapture()                  { s.branchArms++ }
-func (s *zcaEmit) ZeroOutProduced(k core.RecKey) bool { return s.zeroOut[k] }
-func (s *zcaEmit) MarkUncompilable(reason string)     { s.uncomp = append(s.uncomp, reason) }
-
 // zcaGoImpl adapts a plain function to the native-func impl shape.
 func zcaGoImpl(f func(args []core.Value) []core.Value) *core.GoImpl {
 	return core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
@@ -477,43 +426,6 @@ func TestZcaResolveTypeNameArgs(t *testing.T) {
 
 // --- stripZeroOutResiduals ---------------------------------------------------
 
-func TestZcaStripZeroOutResiduals(t *testing.T) {
-	r := zcaRegistry(t)
-	done := r.Check.Begin()
-	defer done()
-
-	// Each value carries the recorder key its producing event stamped.
-	phantom := core.NewCarrier(core.TNone)
-	core.SetRecKey(&phantom, core.RecKey{Pass: 1, Seq: 1})
-	real := core.NewCarrier(core.TInteger)
-	core.SetRecKey(&real, core.RecKey{Pass: 1, Seq: 2})
-
-	// Recording inactive: the stack passes through untouched (the
-	// zeroOut flag is only set during the compile pass).
-	got := stripZeroOutResiduals(r, []core.Value{phantom, real})
-	if len(got) != 2 {
-		t.Fatalf("inactive recorder: %d residuals, want 2 (untouched)", len(got))
-	}
-
-	// Recording active: the 0-output statement-guard phantom is dropped,
-	// the real residual kept.
-	es := zcaNewEmit()
-	es.active = true
-	es.zeroOut[core.RecKeyOf(&phantom)] = true
-	r.Check.Emit = es
-	got = stripZeroOutResiduals(r, []core.Value{phantom, real})
-	if len(got) != 1 {
-		t.Fatalf("active recorder: %d residuals, want 1", len(got))
-	}
-	if core.IDOf(&got[0]) != core.IDOf(&real) {
-		t.Error("the surviving residual must be the non-phantom value")
-	}
-	// An empty stack short-circuits.
-	if out := stripZeroOutResiduals(r, nil); len(out) != 0 {
-		t.Error("an empty residual stack must stay empty")
-	}
-}
-
 // --- DeferredParamListResidual -----------------------------------------------
 
 func TestZcaDeferredParamListResidual(t *testing.T) {
@@ -746,73 +658,6 @@ func TestZcaReturnsFreshInstanceRecordBodyAndMisc(t *testing.T) {
 
 // --- AnalyseLoopBody ---------------------------------------------------------
 
-func TestZcaAnalyseLoopBodyJoinAndCapture(t *testing.T) {
-	r := zcaRegistry(t)
-	zcaRegisterPushq(r)
-	done := r.Check.Begin()
-	defer done()
-
-	es := zcaNewEmit()
-	es.loopArm = true // the `for` lowering armed loop capture
-	r.Check.Emit = es
-
-	// Pre-loop binding the body REBINDS (loop-carried), plus a fresh
-	// body-local binding.
-	r.Defs.Push("zcaaccq", core.NewCarrier(core.TInteger))
-
-	body := core.NewList([]core.Value{
-		core.NewWord("pushq"), core.NewWord("zcaaccq"), core.NewString("s"),
-		core.NewWord("pushq"), core.NewWord("zcafreshq"), core.NewInteger(7),
-	})
-	iter := core.NewCarrier(core.TInteger)
-	stk := AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{iter}, true)
-
-	if len(stk) != 0 {
-		t.Errorf("the body consumes every value: residual = %d values, want 0", len(stk))
-	}
-	// "The loop may run zero times": the post-loop binding is the JOIN of
-	// the body's rebind with the pre-loop binding (String | Integer).
-	acc, ok := r.Defs.Top("zcaaccq")
-	if !ok {
-		t.Fatal("the joined post-loop binding must be installed")
-	}
-	if !acc.Parent().Equal(core.TDisjunct) {
-		t.Errorf("post-loop bound = %v, want the String|Integer join", acc.Parent())
-	}
-	// A body-only binding leaks post-loop as itself (no pre to join).
-	if fresh, ok := r.Defs.Top("zcafreshq"); !ok {
-		t.Error("a fresh body binding must be installed post-loop")
-	} else if n, err := core.AsInteger(fresh); err != nil || n != 7 {
-		t.Errorf("fresh binding = %v, want 7", fresh)
-	}
-	// The loop-local binds are popped.
-	if _, ok := r.Defs.Top("iq"); ok {
-		t.Error("the loop-local iterator bind must be popped")
-	}
-
-	// The armed capture protocol: locals registered for the loop binds,
-	// the loop-carried bracket opened and closed, the rebind noted, one
-	// checkpoint per round, and the non-final round rolled back.
-	if len(es.locals) != 1 || es.locals[0] != core.IDOf(&iter) {
-		t.Errorf("RegisterLocal calls = %v, want the iterator's ID", es.locals)
-	}
-	if es.beginLC != 1 || es.endLC != 1 {
-		t.Errorf("loop-carried bracket = begin %d / end %d, want 1/1", es.beginLC, es.endLC)
-	}
-	if !es.carried["zcaaccq"] {
-		t.Error("the pre-existing rebind must be noted loop-carried")
-	}
-	if es.carried["zcafreshq"] {
-		t.Error("a fresh body-local binding is not loop-carried")
-	}
-	if es.checkpoints != 2 || es.branchArms != 2 {
-		t.Errorf("rounds ran %d checkpoints / %d arms, want 2/2 (round 2 stabilises)", es.checkpoints, es.branchArms)
-	}
-	if es.rollbacks != 1 {
-		t.Errorf("non-final rounds rolled back %d times, want 1", es.rollbacks)
-	}
-}
-
 func TestZcaAnalyseLoopBodyKleeneRounds(t *testing.T) {
 	// The doc's `def acc (acc add 0.5)` shape: a rebinding whose join
 	// keeps WIDENING needs the later rounds — round 2 compares a joined
@@ -884,30 +729,6 @@ func TestZcaAnalyseLoopBodySentinelUnproven(t *testing.T) {
 
 // --- RunFnBodyOnce -----------------------------------------------------------
 
-func TestZcaRunFnBodyOnceBodyError(t *testing.T) {
-	r := zcaRegistry(t)
-	zcaRegisterBoomq(r)
-	done := r.Check.Begin()
-	defer done()
-
-	es := zcaNewEmit()
-	es.active = true // an ARMED recording (open fn unit)
-	r.Check.Emit = es
-
-	result := RunFnBodyOnce(r, "zcaboomq", nil, []core.Value{core.NewWord("boomq")}, nil, nil, false)
-	if result != nil {
-		t.Errorf("an erroring body must yield a nil result, got %v", result)
-	}
-	if !zcaHasDiag(r, "fn_body_error") {
-		t.Error("the body error must surface as a fn_body_error diagnostic")
-	}
-	// Under an armed recording the unit would close EMPTY and silently
-	// diverge — the program is declined instead.
-	if len(es.uncomp) == 0 {
-		t.Fatal("an armed erroring body must mark the program uncompilable")
-	}
-}
-
 func TestZcaRunFnBodyOnceDefsUnwind(t *testing.T) {
 	r := zcaRegistry(t)
 	zcaRegisterPushq(r)
@@ -961,54 +782,6 @@ func TestZcaAnalyseFnBodyUndefinedArgGradualized(t *testing.T) {
 		[]core.Value{core.NewDynamicCarrier(core.TAny)}, nil, body)
 	if _, ok := r.Check.FnSummaries[key]; !ok {
 		t.Error("the summary must be memoised under the gradualized arg shape")
-	}
-}
-
-func TestZcaAnalyseFnBodyInflightBails(t *testing.T) {
-	// PLAIN check, no declared returns: the in-flight self-call bails
-	// with a variadic spread (element Never) — the 0-or-more residual
-	// that covers the runtime's depth-many values.
-	r := zcaRegistry(t)
-	done := r.Check.Begin()
-	defer done()
-	body := []core.Value{core.NewInteger(1)}
-	key := FnAnalysisKey(r.AnalysisScopeID(), "zcainfq", nil, nil, body)
-	r.Check.FnInflight = map[string]bool{key: true}
-
-	out := AnalyseFnBody(r, "zcainfq", nil, body, nil, nil, nil, false)
-	if len(out) != 1 {
-		t.Fatalf("in-flight bail returned %d values, want 1", len(out))
-	}
-	elem, ok := core.IsVariadicSpread(out[0])
-	if !ok {
-		t.Fatal("the plain-check bail must be a variadic spread carrier")
-	}
-	if !core.IsNeverShape(elem) {
-		t.Errorf("spread element = %v, want Never", elem)
-	}
-	if r.Check.InflightBails != 1 {
-		t.Errorf("InflightBails = %d, want 1", r.Check.InflightBails)
-	}
-
-	// ARMED (compiled) path: the Stage A model — a plain Any carrier.
-	r2 := zcaRegistry(t)
-	done2 := r2.Check.Begin()
-	defer done2()
-	es := zcaNewEmit()
-	es.active = true
-	r2.Check.Emit = es
-	key2 := FnAnalysisKey(r2.AnalysisScopeID(), "zcainfq", nil, nil, body)
-	r2.Check.FnInflight = map[string]bool{key2: true}
-
-	out = AnalyseFnBody(r2, "zcainfq", nil, body, nil, nil, nil, false)
-	if len(out) != 1 {
-		t.Fatalf("armed in-flight bail returned %d values, want 1", len(out))
-	}
-	if _, ok := core.IsVariadicSpread(out[0]); ok {
-		t.Error("the armed bail must NOT be a variadic spread")
-	}
-	if !out[0].Parent().Equal(core.TAny) || core.IsDynamic(&out[0]) {
-		t.Errorf("armed bail = %v, want a strict Any carrier", out[0])
 	}
 }
 

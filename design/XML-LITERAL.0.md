@@ -16,48 +16,48 @@ CSS-selector surface (§4) remains a follow-up — it rides the
 
 Implementation landed in Increment 1:
 - type `Node/Xml` (FixedID 108) + `XmlElementPayload{Tag,Attr,Cren}` +
-  `xmlBehavior` (Format → XML, structural Equal): `eng/go/core_xml.go`,
-  `eng/go/payload.go`, `eng/go/value.go` (`NewXmlElement`/`AsXmlElement`),
-  `eng/go/typetable.go`, `eng/go/types.go`.
+  `xmlBehavior` (Format → XML, structural Equal): `core/go/core_xml.go`,
+  `core/go/payload.go`, `core/go/value.go` (`NewXmlElement`/`AsXmlElement`),
+  `core/go/typetable.go`, `core/go/types.go`.
 - grammar: a `val.Open` `<` alternate pushes an `xml` rule that arms the
   `xml_literal` lex matcher; the matcher scans the whole balanced element
-  and builds the value directly: `eng/go/parser/xml_literal.go`,
-  `eng/go/parser/grammar.go`, `eng/go/parser/parse.go`.
+  and builds the value directly: `parser/go/xml_literal.go`,
+  `parser/go/grammar.go`, `parser/go/parse.go`.
 - batteries: `eng/spec/xml-literal.tsv`,
-  `eng/go/parser/xml_literal_test.go`, `lang/go/test/xml_literal_test.go`.
+  `parser/go/xml_literal_test.go`, `lang/go/test/xml_literal_test.go`.
 
 Implementation landed in Increment 2 (interpolation):
 - a literal embedding any `${expr}` builds a deferred skeleton instead of
   a constant — type `Word/__XI` (FixedID 109) + `XmlInterpPayload`/`XmlTmpl`
-  (`eng/go/payload.go`, `eng/go/types.go`, `eng/go/typetable.go`,
-  `eng/go/value.go` `NewXmlInterp`/`AsXmlInterp`/`IsXmlInterp`/`IsXmlElement`).
+  (`core/go/payload.go`, `core/go/types.go`, `core/go/typetable.go`,
+  `core/go/value.go` `NewXmlInterp`/`AsXmlInterp`/`IsXmlInterp`/`IsXmlElement`).
 - the lex matcher builds an `XmlTmpl` and *freezes* it to a constant
   `Node/Xml` when no hole is present, else emits the skeleton; `${…}` is
   extracted by brace-depth scan (quote-aware) and parsed via `Parse`
-  (`eng/go/parser/xml_literal.go`).
+  (`parser/go/xml_literal.go`).
 - the engine evaluates the skeleton in place to a `Node/Xml` —
   `evalXmlInterp`/`buildXmlFromTmpl`, mirroring `evalInterpString` and
   dispatched at the same four sites (main loop, forward-collection,
   paren-eval, map-value). The child splice rule: a List contributes each
   element, a `Node/Xml` is one child, any other value becomes a text node;
-  adjacent text merges (`eng/go/engine.go`).
+  adjacent text merges (`core/go/engine.go`).
 - batteries: interpolation rows in `eng/spec/xml-literal.tsv`,
   `TestXmlLiteralFreezeVsInterp`/`TestXmlLiteralInterpErrors`
-  (`eng/go/parser/xml_literal_test.go`), `TestXmlLiteralInterpolation`
+  (`parser/go/xml_literal_test.go`), `TestXmlLiteralInterpolation`
   (`lang/go/test/xml_literal_test.go`).
 
 Implementation landed in Increment 3 (mutable FlexXml):
 - type `Node/Xml/FlexXml` (FixedID 110, child of Node/Xml so it inherits
   the Xml Behavior) + pointer-backed `*FlexXmlData` payload
-  (`eng/go/types.go`, `eng/go/typetable.go`, `eng/go/payload.go`,
-  `eng/go/value.go` `NewFlexXml`/`AsFlexXml`, `eng/go/util.go` `IsFlexXml`).
+  (`core/go/types.go`, `core/go/typetable.go`, `core/go/payload.go`,
+  `core/go/value.go` `NewFlexXml`/`AsFlexXml`, `core/go/util.go` `IsFlexXml`).
 - `xmlBehavior` now reads either payload through a shared `xmlParts`
   accessor, so Format/Equal treat immutable and flex elements uniformly
-  (`eng/go/core_xml.go`).
+  (`core/go/core_xml.go`).
 - the kernel flex primitives gained an Xml branch: `FlexDeepCopy`,
   `NodeDeepCopy`, `containsFlex`, `AdoptIntoFlex`, and `MakeNodeHandler`
   (`make FlexXml`/`make Xml`) — a flex copy is deep and never aliases the
-  immutable source (`eng/go/core_flex.go`).
+  immutable source (`core/go/core_flex.go`).
 - words: `flex`/`node` round-trip XML unchanged; `append <child> f` (and a
   List splice) grow children in place; `set <name> <val> f` sets an
   attribute (DOM setAttribute) (`lang/go/native/native_flex.go`,
@@ -74,7 +74,7 @@ Implementation landed in Increment 4 (`parse xml` alignment):
   (`lang/go/modules/parselang.go`; `Returns` is now `TXml`; doc updated in
   `docs_parselang.go`). `NewXmlElement` re-exported in `native/aliases.go`.
 - `DeepEqual` gained an XML branch routing to `xmlElementsEqual`
-  (`eng/go/compare.go`), so `deq` is true for a parsed element and the
+  (`core/go/compare.go`), so `deq` is true for a parsed element and the
   equivalent literal (and for a flex copy and its source); attribute
   order is not significant.
 - batteries: `TestXmlParseAlignment` (`lang/go/test/xml_literal_test.go`),
@@ -90,7 +90,7 @@ Implementation landed in Increment 5 (accessor / query words):
 - computed words in `lang/go/native/native_xml.go` (`xmlNatives`, wired in
   `register.go`): `xml-elem` (element children only), `xml-text` (subtree
   text), `xml-attr <name> <xml>` (attribute value or None). `eng.XmlParts`
-  is the exported (tag, attr, cren) view they share (`eng/go/core_xml.go`,
+  is the exported (tag, attr, cren) view they share (`core/go/core_xml.go`,
   aliased in `native/aliases.go`).
 - batteries: `TestXmlAccessors` (`lang/go/test/xml_literal_test.go`); the
   fnmodel equivalence golden regenerated (3 new words + 2 get sigs).
@@ -120,7 +120,7 @@ boru has **no** `json "…"` literal form. Its relaxed-JSON jsonic
 literals — `{a:1, b:[2 3]}`, `[x y z]` — *are* the embedded
 structured-data mechanism: you write the data tree directly in source
 and the parser turns it into `Node/Map` / `Node/List` values
-(`eng/go/parser/parse.go::convertMapData` / `convertDataList`). There
+(`parser/go/parse.go::convertMapData` / `convertDataList`). There
 is no separate "parse a JSON string at runtime" step for source-level
 data; runtime parsing exists (`parse json '…'`,
 `StructUtil.parse`) but it is for *external* text, not for literals a
@@ -187,7 +187,7 @@ It does not — and the reason is structural, not a heuristic.
 ### 3.1 How angle brackets work today
 
 `<` (`#LA`) and `>` (`#RA`) are registered as standalone fixed jsonic
-tokens in `eng/go/parser/grammar.go::setupBaseTokens`, independent of
+tokens in `parser/go/grammar.go::setupBaseTokens`, independent of
 generics. Decision D14 made this explicit so that *future features can
 register additional grammar consumers without re-lexing* — XML
 embedding is named there as the motivating example.
@@ -366,9 +366,9 @@ Two types, mirroring the immutable-Node / mutable-Flex relationship of
 
 Both are **dedicated** kernel-external types (not `Node/Map` subtypes —
 see §6 for the trade-off), inhabiting the `Node/` branch and registered
-through `RegisterExternalBuiltin` (`eng/go/CLAUDE.md` "Where a Type
+through `RegisterExternalBuiltin` (`core/go/CLAUDE.md` "Where a Type
 Lives"). They take FixedIDs from a **new reserved language band** — the
-current map (eng/go/CLAUDE.md "FixedID Allocation") runs through 4999
+current map (core/go/CLAUDE.md "FixedID Allocation") runs through 4999
 for natives and 5000-9999 is the catch-all already partly used by module
 types (Module 5000, ModuleExport 5001, MiniLangCompiled 5003). Proposal:
 carve a documented **XML sub-band 5100-5199**, with `Node/Xml = 5100`
@@ -378,7 +378,7 @@ snapshot when implemented.
 ### 5.2 The payload
 
 ```go
-// eng/go/payload.go (direct variant: add payloadMarker())
+// core/go/payload.go (direct variant: add payloadMarker())
 type XmlElementPayload struct {
     Tag  string        // element name, e.g. "div"
     Attr *OrderedMap   // attribute name → String value, insertion-ordered
@@ -423,7 +423,7 @@ with `elem`; it is the maintainer's chosen name.)
 
 ### 5.4 Custom Behavior
 
-`Node/Xml` supplies a `TypeBehavior` (`eng/go/CLAUDE.md` "Type
+`Node/Xml` supplies a `TypeBehavior` (`core/go/CLAUDE.md` "Type
 Behavior"):
 
 - **`Format`** serialises back to well-formed XML text (round-trip

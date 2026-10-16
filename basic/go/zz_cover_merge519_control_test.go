@@ -1,7 +1,6 @@
 package basic
 
 import (
-	"fmt"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -104,37 +103,6 @@ func TestMerge519ShuffleOnlyBodyNeedsTheRegisteredAllAnyNative(t *testing.T) {
 	plain.Register("drop", anySig)
 	if !shuffleOnlyBody(body, plain) {
 		t.Error("a lone all-Any native drop must be shuffle-only")
-	}
-}
-
-// TestMerge519ArmSpliceHandlerValueArms pins __arm's value half: a typed
-// list reaching the List slot is the arm's one value, returned
-// as is — the interpreter's spliceArg reads it as data — while a plain
-// concrete list is a code body and runs.
-func TestMerge519ArmSpliceHandlerValueArms(t *testing.T) {
-	r := merge519Registry(t)
-
-	typed := merge519Parse(t, "[:Integer 1 2]")
-	if len(typed) != 1 || !IsTypedList(&typed[0]) {
-		t.Fatalf("want one typed list, got %v", typed)
-	}
-	out, err := ArmSpliceHandler(typed, nil, nil, r)
-	if err != nil {
-		t.Fatalf("typed-list arm: %v", err)
-	}
-	if len(out) != 1 || !IsTypedList(&out[0]) || fmt.Sprint(out[0]) != fmt.Sprint(typed[0]) {
-		t.Errorf("a typed-list arm is its own value: got %v", out)
-	}
-
-	// Negative twin: a plain list is a code body — its values land.
-	plain := merge519Parse(t, "[1 2]")
-	out, err = ArmSpliceHandler(plain, nil, nil, r)
-	out, err = armRun(r, out, err)
-	if err != nil {
-		t.Fatalf("code-body arm: %v", err)
-	}
-	if fmt.Sprint(out) != "[1 2]" {
-		t.Errorf("a code-body arm runs: got %v, want [1 2]", out)
 	}
 }
 

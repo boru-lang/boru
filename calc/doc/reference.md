@@ -1,7 +1,7 @@
 # Reference — the eng API that calc consumes
 
 This is an exhaustive list of every symbol calc imports from
-`github.com/boru-lang/boru/eng/go` and `github.com/boru-lang/boru/eng/go/parser`,
+`github.com/boru-lang/boru/core/go` and `github.com/boru-lang/boru/parser/go`,
 with a one-line definition each. It exists to be looked up, not
 read in order.
 
@@ -9,7 +9,7 @@ The grouping mirrors how the symbols are used in calc's source.
 Where two symbols only differ in detail (e.g. `eng.New` vs
 `eng.NewTop`), they are listed together.
 
-## Module: `github.com/boru-lang/boru/eng/go`
+## Module: `github.com/boru-lang/boru/core/go`
 
 ### Registry construction
 
@@ -85,7 +85,7 @@ vocabulary doesn't need them.
 | `eng.Engine` | The interpreter loop. Methods used: `Run`. |
 | `r.Defs.Names() []string` | All currently-defined word names. The REPL's `:words` meta-command calls this. |
 
-## Module: `github.com/boru-lang/boru/eng/go/parser`
+## Module: `github.com/boru-lang/boru/parser/go`
 
 | Symbol | What it does |
 | --- | --- |

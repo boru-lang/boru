@@ -47,7 +47,6 @@ var citedDocs = []string{
 	"AGENTS.md",
 	"CLAUDE.md",
 	"HOWTO.md",
-	"eng/go/CLAUDE.md",
 	"lang/go/CLAUDE.md",
 }
 
@@ -56,7 +55,7 @@ var citedDocs = []string{
 // the matcher off `NUR.md:26-30`-style self-references (matched, and
 // resolvable) while ignoring `§5.10`, `ADR-004`, ratios and version
 // strings. The path may be bare (`compare.go:359`) or rooted
-// (`eng/go/compare.go:359`).
+// (`core/go/compare.go:359`).
 var citationRe = regexp.MustCompile(
 	`([A-Za-z0-9_./-]+\.(?:go|boru|tsv|md|jsonic|json))` + // path
 		`:(\d+)(?:-(\d+))?`) // :N or :N-M

@@ -35,7 +35,7 @@ Discrimination:
 | `"hi" 2 add 3` | add: fwd `3` + stack `2`, `"hi"` (String ≠ Number) below | no |
 | `(1 2 add) 3 mul` | grouped | no |
 
-Implementation: `eng/go/engine.go::checkForwardStrandsOperand`, called from
+Implementation: `core/go/engine.go::checkForwardStrandsOperand`, called from
 `stepWord` after the forward/stack counts are known. Gated on
 `Check.IsActive()`; zero cost in normal runs. Emits code
 `forward_strands_operand` (defaults to **info** severity → advisory, never

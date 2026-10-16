@@ -96,9 +96,7 @@ func BuildVaultTuiModule(parent *native.Registry) (native.ModuleDesc, error) {
 	})
 
 	sub := native.New(modReg)
-	restoreAtt := modReg.SetInterpAttribution("module-load")
 	_, runErr := sub.Run(vaultTuiParsed)
-	restoreAtt()
 	if runErr != nil {
 		return native.ModuleDesc{}, fmt.Errorf("vault-tui: run preamble: %w", runErr)
 	}

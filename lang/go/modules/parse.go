@@ -931,12 +931,8 @@ func (g *parseGrammar) wrapMatcher(fn native.Value) tabnas.LexMatcher {
 }
 
 // callParseFn invokes a boru function value (a matcher or action callback)
-// against args, handling both the compiled-closure and interpreter-FnDef
-// shapes — the same seam filter's callback uses (native/filter.go).
+// against args — the same seam filter's callback uses (native/filter.go).
 func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]native.Value, error) {
-	if native.IsCompiledClosure(fn) {
-		return native.InvokeBody(r, fn, args)
-	}
 	sig := native.MatchFnSig(fn, args)
 	if sig == nil {
 		return nil, fmt.Errorf("no matching callback signature")
@@ -944,8 +940,7 @@ func callParseFn(r *native.Registry, fn native.Value, args []native.Value) ([]na
 	fnDef, _ := fn.Data().(*native.FnDefInfo) // read, never written: the payload itself
 	// InvokeCallbackFn, not r.CallBoru: a matcher/action written in the grammar's
 	// own module resolves its free words there
-	// (design/FUNCTION-VALUE-SCOPE.0.md), and the body is offered to the VM before
-	// the compile failure.
+	// (design/FUNCTION-VALUE-SCOPE.0.md).
 	return core.InvokeCallbackFn(r, fnDef, sig, args)
 }
 

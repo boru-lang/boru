@@ -299,13 +299,13 @@ shapes, the types stay separate.
 
 ## 8. Touchpoints
 
-- `eng/go/types.go` + `typetable.go` — declare `Ideal/Reach`, FixedID.
-- `eng/go/payload.go` — `ReachInfo` + `ReachSeg` markers.
-- `eng/go/value.go` — `NewReach`, `AsReach`, `IsReach`; behavior.
-- `eng/go/parser/parse.go` — `convertTopLevelItems` dot-chain → `Reach`.
-- `eng/go/engine.go` — main-loop / forward / `stepLiteral` evaluate an `Eval`
+- `core/go/types.go` + `typetable.go` — declare `Ideal/Reach`, FixedID.
+- `core/go/payload.go` — `ReachInfo` + `ReachSeg` markers.
+- `core/go/value.go` — `NewReach`, `AsReach`, `IsReach`; behavior.
+- `parser/go/parse.go` — `convertTopLevelItems` dot-chain → `Reach`.
+- `core/go/engine.go` — main-loop / forward / `stepLiteral` evaluate an `Eval`
   `Reach` (Stage 1 lowering; Stage 2 direct walk); honor `Quoted`/`Eval`.
-- `eng/go/canon.go` — round-trip rendering.
+- `core/go/canon.go` — round-trip rendering.
 - `lang/go/native/` — `reach` constructor word; `apply`-on-reach; teach
   `getpath`/`setpath`/`inject` to accept a `Reach`.
 - `lang/go/native/help/` + `describe` — document `reach` and the node.

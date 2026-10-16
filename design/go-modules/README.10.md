@@ -28,7 +28,7 @@ the **complementary** path:
 The two can coexist: the bridge is the escape hatch; a curated module is
 the promotion of a package that has earned a polished surface. Both reuse
 the same module machinery ([`../NATIVE-MODULES.10.md`](../NATIVE-MODULES.10.md)),
-the same `eng.FromNative`/`eng.ToNative` bridge, and the same opaque-handle
+the same `core.FromNative`/`core.ToNative` bridge, and the same opaque-handle
 mechanism (below).
 
 ## Scope of this family — *new packages only*
@@ -173,15 +173,15 @@ references. Register the builder in the `modules` map in
 
 ### Type mapping & the value bridge
 
-- Convert at the boundary with `eng.FromNative` / `eng.ToNative`
-  (`eng/go/gobridge.go`): String↔`string`, Integer↔int kinds,
+- Convert at the boundary with `core.FromNative` / `core.ToNative`
+  (`core/go/gobridge.go`): String↔`string`, Integer↔int kinds,
   Float↔float kinds, Boolean↔`bool`, List↔slice, Map↔`map[string]any`,
   None↔`nil`.
 - A Go value with no boru counterpart (`*url.URL`, a parsed
   `*template.Template`, a `*csv.Reader`) is held in an
   `ExtensionPayload` and surfaced as a **registered external type**
   via `RegisterExternalBuiltin` with a `FixedID` from the documented
-  `10000+` host/third-party range (`eng/go/CLAUDE.md` "FixedID
+  `10000+` host/third-party range (`core/go/CLAUDE.md` "FixedID
   Allocation"; add it to `lang/go/test/fixedid_stability_test.go`). The
   module-owned `IO.StreamKind` (minted per import, `io.go`) is the
   in-tree reference for an opaque, module-scoped handle type. A note
@@ -190,7 +190,7 @@ references. Register the builder in the `modules` map in
 
 ### Errors (no panics)
 
-- Never panic (`eng/go/CLAUDE.md` "Panic Prevention"). Guard args with
+- Never panic (`core/go/CLAUDE.md` "Panic Prevention"). Guard args with
   `AsConcreteString`/`RequireConcreteList`/etc. before use.
 - Signal failure with `r.BoruError(code, detail, word)` using a
   kebab-case `code`. A Go `error` return is unwrapped to a `BoruError`;

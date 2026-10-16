@@ -31,27 +31,3 @@ func TestS6aGradualContagionZeroOutSingleValueSibling(t *testing.T) {
 }
 
 // --- tryFoldModuleConst -------------------------------------------------------
-
-// TestInactiveDispatchBraid pins the compiler-less defaults behind the
-// S3 slot table: each is the exact decline an unarmed recording pass
-// produces. The live table is compiler-installed at init
-// (installDispatchBraid); these bodies are the post-cut check-only
-// configuration.
-func TestInactiveDispatchBraid(t *testing.T) {
-	inactiveDispatchRecordOutcome(nil, "", nil, nil, nil, core.SrcPos{}, nil)
-	if v, ok := inactiveDispatchTryFoldScalarConst(nil, nil, nil); ok || core.IsConcrete(&v) {
-		t.Fatal("inactive scalar fold must decline")
-	}
-	if inactiveDispatchTryRecordPoly(nil, "", nil, nil, nil, core.SrcPos{}, false, nil, false, nil) {
-		t.Fatal("inactive poly record must decline")
-	}
-	if inactiveDispatchTryRecordDynBody(nil, "", nil, nil, nil, core.SrcPos{}) {
-		t.Fatal("inactive dyn-body record must decline")
-	}
-	if inactiveDispatchCompileUserPolyArms(nil, core.TheInactiveEmit, "", nil, nil) != nil {
-		t.Fatal("inactive poly-arm compile must decline")
-	}
-	if p, barred := inactiveDispatchPlanUserPoly(nil, core.TheInactiveEmit, "", nil, nil); p != nil || barred {
-		t.Fatal("inactive poly plan must decline")
-	}
-}

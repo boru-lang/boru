@@ -11,7 +11,6 @@ supports.
 * [Quick start](#quick-start)
 * [General usage](#general-usage)
   * [`--options`](#--options--engine-options-as-jsonic)
-  * [Bytecode compilation](#bytecode-compilation)
 * [Language execution](#language-execution)
   * [`boru` / `boru run`](#boru--boru-run)
   * [`boru do`](#boru-do)
@@ -128,41 +127,6 @@ space. Raise `tape:initial` (or `tape:grows`) for a legitimately large
 program (deep recursion, huge generated programs); lower it to trip a
 runaway sooner. See `design/legacy/TAPE-DATA-STRUCTURE.10.ignore`.
 
-
-### Bytecode compilation
-
-> boru compiles a program to a compact instruction stream and runs it on a
-> small VM. There is **one** execution path and **one** outcome: the program
-> compiles and its bytecode runs, or it does not compile and that is an
-> **error**. A program the emitter cannot lower has hit a compiler
-> **defect** owed a fix — see [design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §1.
-
-There are no compile modes and no flags to select between them. Until
-2026-09-19 there were three, because a program that did not compile was
-**silently** re-run on the interpreter: the answer came back and nothing in
-the run said the compile had failed, which is what made the silence bad
-rather than harmless. `--force-compile` existed to make such a failure
-visible and `--no-compile` to pin the interpreter. With the fallback gone
-there is nothing for either to select, and `--compile`, `--force-compile`,
-`--no-compile`, `BORU_COMPILE`, `BORU_FORCE_COMPILE` and `BORU_NO_COMPILE`
-are all retired.
-
-A compile failure names the construct the emitter could not lower — which is
-to say it names the defect:
-
-```
-$ boru -e '(size (for 5 [i]))'
-error: bytecode compilation FAILED: consumes loop results (Stage 2 loops only feed the program residual) — this is a compiler defect, not a policy: valid code must compile.
-```
-
-Report it. It is a bug in boru, not a limit you are expected to work around.
-
-Genuine runtime errors (division by zero, a type error) surface as they always
-have; they are the program's own result, not the compiler's.
-
-`boru build` will not ship a binary whose program does not compile, and a
-built binary that meets one fails with the same message rather than running it
-somewhere else.
 
 ## Language execution
 
@@ -316,8 +280,7 @@ expression with `--`:
 boru do -- '-7 0 add'           # leading negative literal needs --   (prints -7)
 ```
 
-`boru do` compiles and runs its expression, exactly as `boru run` does (see
-[Bytecode compilation](#bytecode-compilation)).
+`boru do` runs its expression exactly as `boru run` does.
 
 ### `boru check`
 
@@ -381,8 +344,8 @@ Each execution is reported as an info diagnostic
 File modules are not cached, so the body runs once per importer per pass.
 A plain `boru script.boru` pre-flight checks and then runs, so an imported
 body executes twice — but only the second execution's effects are real,
-because the compile pass is the one the program's own module load happens
-in. Use `--no-check` to skip the pre-flight pass entirely.
+because the run is where the program's own module load happens. Use
+`--no-check` to skip the pre-flight pass entirely.
 
 ```bash
 boru check script.boru
@@ -517,10 +480,7 @@ boru test src/ lib/                  # walk several directories
 boru test --coverage sift_test.boru   # add coverage + an HTML report
 ```
 
-Each suite is compiled and run. A suite that does not compile is an **error**
-that fails the run, naming the construct: it used to be silently re-run on
-the interpreter, so the suite reported green while the compile had failed.
-Discovery: no
+Each suite is checked and run. Discovery: no
 arguments walks the current directory recursively for `*_test.boru`; a
 directory argument is walked the same way; an explicit file argument is run
 verbatim (even without the `_test.boru` suffix).
@@ -534,11 +494,7 @@ Flags:
   `uncovered:` list names the exact source lines that never ran — and
   writes a browsable **HTML report** to a `coverage/` folder: an
   `index.html` summary plus one page per module with each source line
-  coloured covered (green) or uncovered (red). Because the bytecode VM
-  folds some source positions, a folded line reads as falsely uncovered:
-  the report **understates** coverage rather than overstating it, which is
-  the safe direction for a number you gate on. Each folded position is one
-  the VM should be carrying, and closing them is compiler work.
+  coloured covered (green) or uncovered (red).
 * `--coverage-dir PATH` — where the HTML report is written (default
   `coverage`). Ignored without `--coverage`.
 * `--coverage-min PCT` — fail the run (exit 1) when **aggregate** line
@@ -546,8 +502,7 @@ Flags:
   imported module — is below `PCT`, even if every test passed. Implies
   coverage measurement, so `boru test --coverage-min 80` gates without
   needing `--coverage` (add `--coverage` too if you also want the HTML
-  report). Folded compiled positions can drag the number below the real
-  figure — see `--coverage` above.
+  report).
 * `-r PATH` — registry path, same as `boru run`. The permission flags
   (`--perms`, `--allow`, `--deny`, …) are accepted too.
 
@@ -720,8 +675,8 @@ boru debug --post-mortem prog.boru        # on an uncaught error, inspect the fa
 boru debug --no-check prog.boru args...   # skip the pre-flight; args reach IO.args
 ```
 
-The program runs on the interpreter (the per-step trace does not fire
-on the compiled VM path) and pauses **between source lines** — one stop
+The program runs under the per-step trace and pauses **between source
+lines** — one stop
 per line, however many engine steps the line expands to. At the
 `(adbg)` prompt:
 

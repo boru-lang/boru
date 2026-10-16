@@ -152,16 +152,7 @@ func RunTrace(r *Registry, tokens []Value, w io.Writer) ([]Value, error) {
 		steps = append(steps, traceStep{step, pointer, stack, note})
 	}
 
-	// C4 attribution (interp_entry.go): a TRACE run is interpretation the end
-	// state must PERMIT, not debt. The word exists to print what the engine did
-	// step by step, so compiling the body would not speed it up — it would leave
-	// nothing to print. That is the same judgement boru:debug's step counter and
-	// profiler get, and the opposite of the one `Log.with-span` and
-	// `Assert.throws` get, whose answers do not depend on which engine ran the
-	// body (test/go/langspec/interp_entry_census_test.go, columns (h)-(j)).
-	restoreAtt := r.SetInterpAttribution("debug-observe")
 	result, err := sub.Run(tokens)
-	restoreAtt()
 
 	// Print header.
 	fmt.Fprintf(w, "\n%s%s─── trace ──────────────────────────────────────────────────%s\n", cBold, cCyan, cReset)

@@ -24,20 +24,6 @@ func b2Lambda(t *testing.T, r *Registry, src string) Value {
 	return out[0]
 }
 
-func TestNewMapBodyRejectsNonBody(t *testing.T) {
-	r := b2Reg(t)
-	// A bare List type literal is neither closure, lambda, nor concrete list.
-	if _, err := newMapBody(r, NewTypeLiteral(TList), "each"); err == nil ||
-		!strings.Contains(err.Error(), "quotation list or a lambda") {
-		t.Fatalf("newMapBody(type literal): expected reject, got %v", err)
-	}
-	// Positive pair: a concrete quotation list classifies as tokens.
-	mb, err := newMapBody(r, NewList([]Value{NewWord("dup")}), "each")
-	if err != nil || mb.lambda || mb.closure || len(mb.tokens) != 1 {
-		t.Fatalf("newMapBody(list) = %+v / %v", mb, err)
-	}
-}
-
 func TestRequireConcreteMapArms(t *testing.T) {
 	r := b2Reg(t)
 	// !IsConcrete arm: a bare Map type literal.

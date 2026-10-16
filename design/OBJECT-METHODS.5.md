@@ -54,7 +54,7 @@ def b (make Box {use-outer:([n:Integer] => [n some-outer add])})
 ## Architectural reason
 
 `refine Object {…}` produces a typed-record with prototype-based
-**field inheritance** (`ObjectInstanceInfo` in `eng/go/value.go:373`
+**field inheritance** (`ObjectInstanceInfo` in `core/go/value.go:373`
 holds `Fields *OrderedMap` and `Prototype *ObjectInstanceInfo`). The
 prototype chain is consulted by `GetField` (line 381) for field
 *lookup* only; it is not a method-dispatch table.
@@ -67,7 +67,7 @@ parses as `b get method`:
    captured at `make`-time.
 3. If sufficient arguments are staged (forward or stack), it
    auto-dispatches through `execFnDefLiteral`
-   (`eng/go/engine.go:1506`) via the normal sig-matching path.
+   (`core/go/engine.go:1506`) via the normal sig-matching path.
 
 There is no separate "method call" pathway in the engine. There is no
 "set receiver" step. `b` was consumed by `get` to extract the field;
@@ -285,7 +285,7 @@ the three because:
 
 Avoid Option A — overloading the dot operator with method-dispatch
 semantics breaks the "dot is just get" mental model that the parser
-codifies (`eng/go/parser/parse.go:173`).
+codifies (`parser/go/parse.go:173`).
 
 ## Open questions
 
@@ -304,10 +304,10 @@ actually picked up.
 
 ## References
 
-- `eng/go/value.go:373` — `ObjectInstanceInfo`.
-- `eng/go/value.go:381` — `GetField` (prototype-chain lookup).
-- `eng/go/core_make.go:213` — `MakeObject`.
-- `eng/go/engine.go:1506` — `execFnDefLiteral` (Function-on-stack
+- `core/go/value.go:373` — `ObjectInstanceInfo`.
+- `core/go/value.go:381` — `GetField` (prototype-chain lookup).
+- `core/go/core_make.go:213` — `MakeObject`.
+- `core/go/engine.go:1506` — `execFnDefLiteral` (Function-on-stack
   dispatch).
 - `lang/go/CLAUDE.md` "Closures and Capture" — existing lexical
   capture semantics.

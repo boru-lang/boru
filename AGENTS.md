@@ -18,7 +18,7 @@ linked source — it is authoritative, this page is just the index.
 > the rest comes from quoted passages in the docs.
 >
 > **To orient, read [`kg/out/graph.md`](kg/out/graph.md)** — a few
-> hundred lines, module dependency view first ("what does `eng/go`
+> hundred lines, module dependency view first ("what does `lang/go`
 > depend on, and what depends on it?"). The full bundle is
 > [`kg/out/graph.json`](kg/out/graph.json): the machine contract, ~115 KB,
 > not something to read whole. Query either with `kg/queries.boru`
@@ -33,12 +33,11 @@ linked source — it is authoritative, this page is just the index.
 > rebuilding, and names the files that moved: the `generated_at` stamp
 > is pinned and is NOT a freshness signal, the input digest is.
 >
-> **The kg gate is active again (2026-09-28).** From 2026-09-20 `make -C kg
-> graph` died compiled (`DISPATCH_GENERIC at ev`) and the `kg-verify` CI
-> step and commit-gate lane were off; the failure and the two behind it are
-> fixed, the compiled pipeline's output is byte-identical to the
-> interpreter's, and both lanes run again — a change to a digested input
-> needs the rebuilt graph committed.
+> **The kg gate is active.** The `kg-verify` CI step and the commit-gate
+> lane both run it — a change to a digested input needs the rebuilt graph
+> committed. (Both were off from 2026-09-20 to 2026-09-28 while the
+> then-compiled pipeline failed; the compiler lane has since been removed
+> and the pipeline runs on the interpreter.)
 
 
 ## First: let the tool document itself (`boru describe` / `boru help`)
@@ -160,12 +159,11 @@ steps as parallel jobs, each under the same three-minute ceiling, and
 renders the gate table into every run's summary from the langspec shards.
 Two switches make iteration fast:
 `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv` restricts every corpus walk in
-`test/go/langspec` to the named spec files (the ten gates over one family
-run in seconds; the per-file compile-failure ledger
-`test/go/langspec/compile_failures.tsv` still asserts on every selected
-file, so a compile regression in that family fails the filtered run), and
+`test/go/langspec` to the named spec files (the gates over one family
+run in seconds; every per-row verdict still asserts, so a regression in
+that family fails the filtered run), and
 `BORU_DIRECTION_GATES=1` arms the direction lane — the gates against their
-END STATE, red by design until full compilation is done (`make
+END STATE, red by design until the design's end state is reached (`make
 test-direction`; the default lane asserts only the regression ceilings and
 is what blocks). `make gate-status` prints every gate's live value against
 both numbers.
@@ -211,7 +209,9 @@ Read the relevant one before changing that module:
 
 | Area | Guide |
 |------|-------|
-| Engine kernel — types, values, signatures, matching, the step loop, the parser bridge | [eng/go/CLAUDE.md](eng/go/CLAUDE.md) |
+| Engine kernel — types, values, signatures, matching, the step loop | [core/go/CLAUDE.md](core/go/CLAUDE.md) |
+| Type checker — the analysis pass, carriers, check-mode diagnostics | [check/go/CLAUDE.md](check/go/CLAUDE.md) |
+| Base language layer — fundamental words, predefined content types | [basic/go/CLAUDE.md](basic/go/CLAUDE.md) |
 | The parser — source text to kernel values, and the never-invent-names rule | [parser/go/CLAUDE.md](parser/go/CLAUDE.md) |
 | Language layer — native words, modules, registry, help/describe, capabilities | [lang/go/CLAUDE.md](lang/go/CLAUDE.md) |
 
@@ -259,14 +259,12 @@ A few rules from those guides that bite hardest when missed:
 |------|------------|
 | `cmd/go/` | The `boru` CLI / REPL (and the `help`/`describe` plumbing). |
 | `lang/go/` | The language layer: public `lang` API + the `native` word library + loadable `modules`. |
-| `basic/go/` | The base language layer: fundamental words (stack, definition, control, type-generics) + predefined content types. Depends on core+parser only — not check, not compiler, both of which it reaches through core-owned seams (ADR-013). |
-| `eng/go/` | The VM and run/fork entry points over core+check+compiler, plus the kernel spec runner. The parser moved out to `parser/go`; `basic`, `calc` and `cmd` no longer depend on eng at all. |
-| `compiler/go/` | The compiler module: the emit recorder, lowering, and the bytecode emitter. Builds on check and core; eng runs its bytecode. |
+| `basic/go/` | The base language layer: fundamental words (stack, definition, control, type-generics) + predefined content types. Depends on core+parser only — not check, which it reaches through core-owned seams (ADR-013). |
 | `check/go/` | The type-checker module: the analysis pass, carriers, and check-mode diagnostics. Builds on core alone. |
-| `core/go/` | The interpreter core module: values, types, matching, the step loop. Standalone (apd only); eng builds on it. |
+| `core/go/` | The interpreter kernel: values, types, matching, the step loop — the one execution path. Standalone (apd only); every other module builds on it. |
 | `parser/go/` | The parser module: boru source text → `[]core.Value` (tabnas/jsonic lexer + the embedded declarative grammar). Depends on core alone. |
 | `lang/spec/` | The executable language spec (TSV files). |
-| `calc/go/` | A small calculator built on `eng` (learning example). |
+| `calc/go/` | A small calculator built on `core` + `parser` (learning example). |
 | `wpg/` | The wasm web playground. |
 | `test/` | Shared TSV spec-runner scaffolding and HTTP fixtures. |
 | `kg/` | The project knowledge graph: an evidence-backed boru pipeline and its generated bundle. |

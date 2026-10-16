@@ -174,44 +174,6 @@ func TestMiniLangRegisterCheck(t *testing.T) {
 	}
 }
 
-// A name def-bound to a COMPUTED fn value has no Defs binding under
-// analysis — it resolves through the per-pass fn-carrier side table. The
-// mini and emit bound-name paths must consult it like parse does, so a
-// valid computed-value program checks clean (degrading to a dynamic
-// carrier) instead of flagging <surface>_unknown_lang, and still runs.
-func TestMiniEmitComputedBindingCheck(t *testing.T) {
-	// NB the binding must not collide with a built-in kind name (a name
-	// like `m` is the micron short form, and a registered kind wins).
-	miniSrc := `import "boru:minilang"  def mk fn [[] [Function] [fn [[src:String opts:Map] [Any] [src add src]]]]  def myml (mk)  mini myml 'x'`
-	if n := checkErrs(t, miniSrc); n != 0 {
-		t.Errorf("computed mini binding: expected 0 check errors, got %d", n)
-	}
-	emitSrc := `import "boru:emitlang"  def mke fn [[] [Function] [fn [[value:Any opts:Map] [String] ['E']]]]  def mye (mke)  emit mye {a:1}`
-	if n := checkErrs(t, emitSrc); n != 0 {
-		t.Errorf("computed emit binding: expected 0 check errors, got %d", n)
-	}
-	// The interpreter runs both for real — the doubled source proves the
-	// BOUND fn ran (a fallthrough parse of 'x' could echo it unchanged).
-	// This is what the program MEANS; it is asserted on the reference
-	// engine because neither shape compiles yet, and each compile failure
-	// is booked as the defect it is.
-	a, _ := lang.New()
-	if got, err := a.RunInterp(miniSrc); err != nil || len(got) != 1 || got[0] != "xx" {
-		t.Errorf("computed mini binding run = %v (err %v), want [xx]", got, err)
-	}
-	b, _ := lang.New()
-	if got, err := b.RunInterp(emitSrc); err != nil || len(got) != 1 || got[0] != "E" {
-		t.Errorf("computed emit binding run = %v (err %v), want [E]", got, err)
-	}
-	for _, src := range []string{miniSrc, emitSrc} {
-		c, _ := lang.New()
-		gotC, cErr := c.Run(src)
-		if !lang.NoteCompileDefect(t, src, gotC, cErr) && cErr != nil {
-			t.Errorf("compiled: %v", cErr)
-		}
-	}
-}
-
 // A fn whose analysed body residual is PROVABLY DISJOINT from its declared
 // return type is flagged at check time with the byte-identical runtime
 // type_error (checkBodyReturnConformance, eng/go/core_helpers.go) — the

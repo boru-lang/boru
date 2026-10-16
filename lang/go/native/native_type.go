@@ -663,14 +663,9 @@ func enumHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Va
 // matter, and gating to concrete keeps the blast radius off every runtime
 // `typeof`.
 func typeofReturns(args []Value, r *Registry) []Value {
-	// PURE-CHECK ONLY (diagnostics, not a real compile). Under a REAL compile
-	// (CompileCheck), folding `typeof <concrete>` to its precise type literal
-	// changes lowering — it makes an interpolation hole `${42 typeof}`
-	// const-foldable (it must stay an INTERP op) and can register a type-named
-	// literal that collides at a later `def` — so the compile path keeps the
-	// bare Type carrier. In pure check the refinement is what lets
+	// Folding `typeof <concrete>` to its precise type literal is what lets
 	// `def One (typeof (const 1))` get a valid singleton type body.
-	if r != nil && !r.Check.Compiling && len(args) == 1 && IsConcrete(&args[0]) {
+	if r != nil && len(args) == 1 && IsConcrete(&args[0]) {
 		return []Value{TypeOf(args[0])}
 	}
 	return []Value{NewCarrier(TType)}

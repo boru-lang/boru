@@ -173,27 +173,3 @@ func mintRunType(r *Registry, body Value) *Type {
 	t.SetTypeBody(body)
 	return t
 }
-
-// runSigPattern is an inline signature type's pattern when it holds a
-// refinement over a bound the analysis pass does not know (`n:(Integer gt
-// (size s))`, NUR308): an anonymous node minted over the pass's placeholder,
-// which the compiled unit and the replayed signature both carry, and which
-// the run forwards to the node it mints from the refinement it computed
-// (RunTypeInstall over an unnamed spec, noted here for the word building
-// the signature). ok=false outside a compile pass or over known bounds.
-func runSigPattern(r *Registry, v Value) (Value, bool) {
-	if r == nil || !r.analysisCompiling() || !HasUnknownRefinement(v) {
-		return Value{}, false
-	}
-	// An interval with a bound only the run knows may be EMPTY at run time,
-	// and then the interpreter's slot is Never itself — a slot TYPE, where
-	// this slot is the base with a pattern, and no forward turns one into
-	// the other. The word building the signature declines instead.
-	if di, ok := v.Data().(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
-		r.analysisRecorder().NoteRuntimeDependent()
-		return Value{}, false
-	}
-	node := mintRunType(r, v)
-	r.analysisRecorder().NoteRuntimeSigForward(node, v)
-	return NewTypeLiteral(node), true
-}

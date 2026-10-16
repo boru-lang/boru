@@ -64,7 +64,7 @@ var pinnedKindRoutingSites = map[string]int{
 	// replaced". RETIRED 2026-08-28: a predicate node is not a fn value in
 	// disguise, it is a bare type literal riding as data whose body runs
 	// through the callback seam, so the recorder had no kind to route on once
-	// that seam stopped interpreting. design/FULL-COMPILATION.0.md §6.3. This
+	// that seam stopped interpreting. design/legacy/FULL-COMPILATION.0.ignore §6.3. This
 	// is the ratchet doing its job: the pin's own failure message asked for
 	// the table to be tightened.)
 	// The typed-def gate splits a Function-parented constraint from a

@@ -93,16 +93,3 @@ func setCoPayload[P any, PP interface {
 	x.d.Data = PP(&x.p)
 	v.d = &x.d
 }
-
-// NewClosureValue is a Function value over the compiled closure cl, its
-// payload allocated with its datum.
-func NewClosureValue(cl ClosurePayload) Value {
-	return NewClosureValueUnder(TFunction, cl)
-}
-
-// NewClosureValueUnder is NewClosureValue under the parent t (a closure that
-// stands in for a fn value typed more narrowly than Function). Like the
-// literal it replaces, it mints no identity: a closure's is its Ident.
-func NewClosureValueUnder(t *Type, cl ClosurePayload) Value {
-	return Value{d: newCoDatum(t, cl)}
-}

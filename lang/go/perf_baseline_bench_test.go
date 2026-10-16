@@ -7,14 +7,13 @@ import (
 )
 
 // Language-level performance baseline (perf-baseline suite). Complements
-// BenchmarkBytecodeBaseline (dispatch shapes) and BenchmarkStage6
-// (interpreter vs compiled execution) with the remaining pipeline stages
-// and word families: static check, compilation, collection words,
-// string words, and sorting. Run with:
+// BenchmarkInterpBaseline (dispatch shapes) with the remaining pipeline
+// stages and word families: static check, collection words, string words,
+// and sorting. Run with:
 //
 //	go test -bench 'BenchmarkPerf' -benchmem -run '^$' .
 //
-// or `make bench` from the repo root. Together the three suites are the
+// or `make bench` from the repo root. Together the suites are the
 // performance baseline: run them before and after an engine change and
 // compare with benchstat.
 
@@ -78,39 +77,6 @@ func BenchmarkPerfCheck(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if _, err := a.Check(bb.src); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
-// BenchmarkPerfCompile pins the compile (emit) cost on the baseline
-// dispatch shapes; shapes that do not compile are skipped.
-func BenchmarkPerfCompile(b *testing.B) {
-	for _, bb := range baselineBenches {
-		bb := bb
-		b.Run(bb.name, func(b *testing.B) {
-			a, err := New()
-			if err != nil {
-				b.Fatal(err)
-			}
-			if bb.setup != "" {
-				if _, err := a.RunInterp(bb.setup); err != nil {
-					b.Fatal(err)
-				}
-			}
-			prog, reason, _, err := a.CompileCheck(bb.src)
-			if err != nil {
-				b.Fatalf("compile error: %v", err)
-			}
-			if prog == nil {
-				b.Skipf("not compiled: %s", reason)
-			}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if _, _, _, err := a.CompileCheck(bb.src); err != nil {
 					b.Fatal(err)
 				}
 			}

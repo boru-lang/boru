@@ -297,19 +297,6 @@ var allArrayNatives = []NativeFunc{
 	{
 		Name:          "each",
 		CompileEffect: CompileFallbackBody | CompileDynBody,
-		// each [body] data — the body sees one element and returns the mapped value.
-		// A 0-net body is each's own each_error ("body produced no result"), raised
-		// faithfully from InvokeBody, so EmptyBodyErrors compiles it natively rather
-		// than islanding.
-		// BodyMultiRunKeepsDefs: eachHandler's loop runs the body once per
-		// element on the shared registry with no def cleanup — on the tape
-		// interpreted (core loop.go), through InvokeBody under the VM — so a
-		// body def leaks one install per element with the per-element
-		// runtime value (the parity oracle's measured population) — the
-		// twin regime's arm-residency license; see the field's doc in core.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{ElementCarrierOf(a[1])}
-		}},
 
 		Signatures: []Signature{
 			{
@@ -350,28 +337,6 @@ var allArrayNatives = []NativeFunc{
 		// result" rule. See §7.4 in the DX report.
 		Name:          "for-each",
 		CompileEffect: CompileFallbackBody | CompileDynBody,
-		// The body compiles to a per-element closure exactly as each's does
-		// (the forty-fourth increment). Three of each's flags are NOT set
-		// here, and the differences are the word's own:
-		//   - BodyOut 0, not 1: forEachHandler discards every invocation's
-		//     result, so the unit declares no returns and RETs whatever the
-		//     body nets — which is also why EmptyBodyErrors is absent (a
-		//     0-net body is not an error here, it is the ordinary case).
-		//   - BodyResultTop: the handler reads NOTHING of the residual, so
-		//     a fortiori never below its top; unconsumed values (the element
-		//     a body that ignores it leaves) may be dropped at the RET.
-		//   - CrossCollectionTokenShape is NOT set: it licenses committing
-		//     to the List overload for a statically-ambiguous collection
-		//     because each's handler cross-delegates to the Map one at run
-		//     time. forEachHandler does not — it reads args[1] as a list —
-		//     so a gradual collection must keep the ambiguous-overload
-		//     compile failure rather than commit to a handler that would raise.
-		//   - BodyMultiRunKeepsDefs: verified at the handler, which drives
-		//     InvokeBody once per element on the shared registry with no def
-		//     cleanup — the same seam and the same leak eachHandler has.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 0, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{ElementCarrierOf(a[1])}
-		}},
 
 		Signatures: []Signature{
 			{
@@ -397,22 +362,6 @@ var allArrayNatives = []NativeFunc{
 	{
 		Name:          "fold",
 		CompileEffect: CompileFallbackBody | CompileDynBody,
-		// fold [body] data init — the body sees (accumulator, element). InvokeBody
-		// supplies [acc, elem]; acc generalises to the init's type, or (no-init
-		// 2-arg form) to the element type, since the accumulator starts as the
-		// first element. A 0-net body is fold's own fold_error, raised faithfully,
-		// so EmptyBodyErrors keeps it native rather than islanding.
-		// BodyMultiRunKeepsDefs: doFold drives InvokeBody once per element on
-		// the shared registry with no def cleanup — the same seam and the same
-		// leak eachHandler has (verified at the handler, not inferred from the
-		// word's family), so a body def installs once per element with that
-		// element's runtime value. Arm-residency's license; see core's field doc.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			if len(a) >= 3 {
-				return []Value{foldAccCarrier(a[2]), ElementCarrierOf(a[1])}
-			}
-			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
-		}},
 
 		Signatures: []Signature{
 			{
@@ -457,16 +406,6 @@ var allArrayNatives = []NativeFunc{
 	{
 		Name:          "scan",
 		CompileEffect: CompileFallbackBody | CompileDynBody,
-		// scan [body] data — the body sees (accumulator, element); the accumulator
-		// starts as the first element, so both inputs carry the element type. A
-		// 0-net body is scan's own scan_error, raised faithfully, so EmptyBodyErrors
-		// keeps it native rather than islanding.
-		// BodyMultiRunKeepsDefs: scanHandler's own per-element loop calls
-		// InvokeBody on the shared registry with no cleanup (handler-verified,
-		// like each's) — one leaked install per element, per-element value.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
-		}},
 
 		Signatures: []Signature{
 			{
@@ -494,18 +433,6 @@ var allArrayNatives = []NativeFunc{
 	{
 		Name:          "outer",
 		CompileEffect: CompileFallbackBody,
-		// outer [body] left right — the body sees (left[i], right[j]) for every
-		// pair, producing a 2D list. The body compiles to a closure unit that
-		// outerHandler drives per pair via InvokeBody; CompileFallbackBody is
-		// the fallback when the body cannot compile.
-		// BodyMultiRunKeepsDefs: that per-PAIR InvokeBody loop runs on the
-		// shared registry with no cleanup (handler-verified), so a body def
-		// leaks one install per pair — the multi-run population is the pair
-		// grid rather than a flat element list, which changes the COUNT the
-		// oracle measures but not the mechanism.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[2])}
-		}},
 
 		Signatures: []Signature{{
 			Args:       []*Type{TList, TList, TList},
@@ -541,27 +468,6 @@ var allArrayNatives = []NativeFunc{
 		// it lives in the boru:array module. The quoted body is captured
 		// via NoEvalArgs.
 		Name: "eachrank",
-		// One input per cell, and the cell's type is RANK-dependent: `eachrank 0`
-		// sees each scalar leaf, `eachrank 1` each innermost list. Deriving it
-		// would mean walking the data's spine by (depth - rank), and nothing
-		// measured needs that precision — the gradual carrier is the honest
-		// answer for a shape the call's own arguments decide.
-		// No BodyMultiRunKeepsDefs, deliberately: eachrankHandler does drive
-		// InvokeBody per cell with the same leak its siblings have, but the
-		// word declines EARLIER as a Stage-2 code-body word, so the flag would
-		// never fire and nothing could measure it. Flag it when eachrank
-		// itself graduates — an unmeasurable graduation is not one.
-		// eachrank alone still carries the structural ReturnsPreserveListAt,
-		// which never analyses its body — the hazard NUR115 named and foldaxis
-		// discharged (foldaxisReturnsFn): a body the check pass never runs
-		// records no bind twins, so the twin regime cannot see its defs. Safe
-		// here ONLY because the early compile failure sends the whole program to the
-		// interpreter, the sound direction; the day eachrank graduates, an
-		// analysing ReturnsFn comes first (with its parity-oracle rows), the
-		// flag second.
-		Callable: &CallableSpec{BodyPos: 1, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, Inputs: func(_ []Value) []Value {
-			return []Value{NewElementCarrier(TAny)}
-		}},
 
 		Signatures: []Signature{{
 			Args:       []*Type{TInteger, TList, TList},
@@ -575,34 +481,6 @@ var allArrayNatives = []NativeFunc{
 		// lives in the boru:array module. The quoted body is captured via
 		// NoEvalArgs.
 		Name: "foldaxis",
-		// The body is `fold`'s body one rank down: foldaxisHandler reduces each
-		// LANE (a row, or a transposed column) through the same doFold, so each
-		// step sees (accumulator, element) where both are elements of an INNER
-		// list. Same spec as fold's therefore, with the inputs taken a level
-		// deeper — and no handler change at all, because doFold already drives
-		// the body through InvokeBody.
-		// BodyMultiRunKeepsDefs: the same doFold `fold` carries the flag for —
-		// InvokeBody once per lane element past the seed, on the shared
-		// registry, no def cleanup — verified at the handler (foldaxisHandler
-		// reduces every lane through doFold) and MEASURED by the parity
-		// oracle's foldaxis rows: both axes, the elem-valued install order, the
-		// one-element lanes that run the body ZERO times, the empty rank-2
-		// list, and the read-after / nested-multi-run compile failures.
-		//
-		// The flag alone was NOT enough, and that is the lesson NUR115 recorded
-		// (resolved 2026-09-02): a body the check pass never RUNS records no
-		// bind twins, and the twin regime's placement gate can only check twins
-		// that exist. The structural ReturnsPreserveListAt this word used to
-		// carry never called analyseHigherOrderBodyVals, so a def in a foldaxis
-		// body installed twice on the interpreter and NOT AT ALL compiled —
-		// silently, because nothing declined. foldaxisReturnsFn analyses the
-		// body (fold's accumulator fixed point one rank down), which is what
-		// makes the twins visible — and is the test for any new body word: if
-		// its ReturnsFn does not analyse the body, the twin machinery cannot
-		// see it, and no gate will say so.
-		Callable: &CallableSpec{BodyPos: 1, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{rank2ElemCarrier(a[2]), rank2ElemCarrier(a[2])}
-		}},
 
 		Signatures: []Signature{{
 			Args:       []*Type{TInteger, TList, TList},
@@ -1569,7 +1447,7 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// passing through to the enclosing loop, a body error attributed
 	// `each: element N:`. Under the VM the same driver runs from Go
 	// through InvokeBody, the body a compiled closure, as before.
-	return StartLoop(reg, "each", newEachListDriver(reg, "each", args[0], dataList, true), nil)
+	return StartLoop(reg, "each", newEachListDriver(reg, "each", args[0], dataList, true))
 }
 
 // eachReachHandler is the lens form of each: it applies a receiverless Reach
@@ -1639,7 +1517,7 @@ func forEachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 		return nil, err
 	}
 	dataList, _ := AsList(args[1])
-	return StartLoop(reg, "for-each", newEachListDriver(reg, "for-each", args[0], dataList, false), nil)
+	return StartLoop(reg, "for-each", newEachListDriver(reg, "for-each", args[0], dataList, false))
 }
 
 // forEachReturnsFn runs the body once in check mode (for its diagnostics)
@@ -1708,17 +1586,6 @@ func AnalyseMultiRunBody(r *Registry, body Value, inputs ...Value) []Value {
 // accumulator fixed point, whose accumulator may widen to a disjunct
 // between rounds.
 func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value {
-	// Higher-order bodies run nested sub-engines — pause bytecode
-	// recording for their duration (they are not part of the enclosing
-	// straight line). Through the MULTI-RUN GUARD, which delegates to the
-	// analysis guard — inside a keep-defs bracket (a `do` body run) the
-	// sub-run's bind twins still taint, so the twin regime's do-body
-	// adoption never places a single replay for a transition a multi-run
-	// body performs per element at runtime (`do [[1 2] each [def x 5]]` —
-	// Codex P1 on #421) — and additionally latches this run's twin-table
-	// range keyed by the body's identity, the seat the arm-residency
-	// bridge pairs against the compiled per-invocation unit's def sites.
-	defer r.Check.Recorder().MultiRunBodyGuard(r, IDOf(&body))()
 	if !IsConcrete(&body) {
 		return nil
 	}
@@ -2033,7 +1900,7 @@ func staticEmptyLaneDetail(args []Value) string {
 // doFold is the shared fold implementation used by both fold signatures:
 // the accumulator threads through a tape loop (foldDriver, core loop.go).
 func doFold(reg *Registry, acc Value, body Value, data ReadList) ([]Value, error) {
-	return StartLoop(reg, "fold", &foldDriver{reg: reg, body: body, data: data, acc: acc}, nil)
+	return StartLoop(reg, "fold", &foldDriver{reg: reg, body: body, data: data, acc: acc})
 }
 
 // ---- scan ----
@@ -2053,7 +1920,7 @@ func scanHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	results := make([]Value, dataList.Len())
 	acc := dataList.Get(0)
 	results[0] = acc
-	return StartLoop(reg, "scan", &scanDriver{reg: reg, body: args[0], data: dataList, acc: acc, results: results}, nil)
+	return StartLoop(reg, "scan", &scanDriver{reg: reg, body: args[0], data: dataList, acc: acc, results: results})
 }
 
 // scan returns the list of accumulator states, so its element type
@@ -2088,7 +1955,7 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	// pair, row-major (outerDriver, core loop.go); under the VM the driver
 	// runs from Go over the compiled closure, so a compiled `outer` is
 	// byte-identical to the interpreter.
-	return StartLoop(reg, "outer", newOuterDriver(reg, args[0], left, right), nil)
+	return StartLoop(reg, "outer", newOuterDriver(reg, args[0], left, right))
 }
 
 func outerReturnsFn(args []Value, r *Registry) []Value {
@@ -2126,13 +1993,13 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		// Pair-op over each pair, then the agg-op fold over the pairs —
 		// one tape loop in two phases (innerDriver, core loop.go); under
 		// the VM the driver runs from Go over the compiled closures.
-		return StartLoop(reg, "inner", newInnerDriver1D(reg, args[0], args[1], left, right), nil)
+		return StartLoop(reg, "inner", newInnerDriver1D(reg, args[0], args[1], left, right))
 	}
 
 	// 2D case: matrix inner product — left is a list of rows, right a list
 	// of rows transposed to columns; each cell pairs then folds, through
 	// the same driver, checking its dimensions as it is reached.
-	return StartLoop(reg, "inner", newInnerDriver2D(reg, args[0], args[1], left, right), nil)
+	return StartLoop(reg, "inner", newInnerDriver2D(reg, args[0], args[1], left, right))
 }
 
 func innerReturnsFn(args []Value, r *Registry) []Value {
@@ -2208,7 +2075,7 @@ func eachrankHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	// The walk runs as one tape loop over the cells at that depth, in
 	// depth-first order, rebuilding the nesting around the bodies' tops
 	// (eachrankDriver, core loop.go).
-	return StartLoop(reg, "eachrank", &eachrankDriver{reg: reg, body: args[1], root: args[2], depth: descend}, nil)
+	return StartLoop(reg, "eachrank", &eachrankDriver{reg: reg, body: args[1], root: args[2], depth: descend})
 }
 
 // listDepth reports the nesting depth of v along its first-element
@@ -2278,7 +2145,7 @@ func foldaxisHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 	// reached. `[[]]` reduced along axis 1 is the shape: one row, zero
 	// columns, one empty lane. Indexing lane[0] here panicked before
 	// (2026-09-02; panics are forbidden).
-	return StartLoop(reg, "foldaxis", &foldaxisDriver{reg: reg, body: args[1], lanes: lanes, result: make([]Value, len(lanes))}, nil)
+	return StartLoop(reg, "foldaxis", &foldaxisDriver{reg: reg, body: args[1], lanes: lanes, result: make([]Value, len(lanes))})
 }
 
 // transposeListOfLists transposes a list-of-lists, returning columns as [][]Value.

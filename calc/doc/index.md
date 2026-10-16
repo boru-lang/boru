@@ -1,7 +1,7 @@
 # calc as a learning example for `eng`
 
 Calc is a 350-line Go module that hosts the boru engine kernel
-(`github.com/boru-lang/boru/eng/go`) and defines its own word vocabulary —
+(`github.com/boru-lang/boru/core/go`) and defines its own word vocabulary —
 no dependency on `lang/`. It exists so the eng↔lang boundary is
 demonstrably an architectural fact: if calc compiles, runs, and
 its tests pass, the kernel is a usable algorithm library.

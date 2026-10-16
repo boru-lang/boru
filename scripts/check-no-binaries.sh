@@ -20,12 +20,11 @@ MAX_BYTES=${MAX_BYTES:-1048576}   # 1MB
 # Paths permitted to exceed MAX_BYTES. Keep this list short and justified.
 ALLOW=(
   # Generated syntax-combination spec: the frozen contract syntax_matrix_test.go
-  # checks the interpreter, compiler and checker against (see `make spec-gen`).
+  # checks the interpreter and checker against (see `make spec-gen`).
   "test/go/specgen/syntax-matrix.tsv"
   "test/go/specgen/syntax-matrix-passing.tsv"
   "test/go/specgen/syntax-matrix-len5-passing.tsv"
   "test/go/specgen/syntax-matrix-len5-fail-check.tsv"
-  "test/go/specgen/syntax-matrix-len5-fail-compile.tsv"
 )
 
 allowed() {

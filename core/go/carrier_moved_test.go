@@ -9,29 +9,6 @@ package core
 
 import "testing"
 
-func TestS6aObjectMakeSigNoMatchingOverload(t *testing.T) {
-	r := w8reg(t)
-	if objectMakeSig(r) != nil {
-		t.Error("no make word registered: want nil")
-	}
-	r.RegisterNativeFunc(NativeFunc{
-		Name: "make",
-		Signatures: []Signature{{
-			Args: []*Type{TInteger},
-			Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-				return nil, nil
-			}),
-			Returns: []*Type{}, BarrierPos: -1,
-		}},
-	})
-	if err := r.Err(); err != nil {
-		t.Fatalf("registration: %v", err)
-	}
-	if objectMakeSig(r) != nil {
-		t.Error("make without an [Ideal Map] overload: want nil")
-	}
-}
-
 func TestS6aIsNoneArmZeroValue(t *testing.T) {
 	if isNoneArm(Value{}) {
 		t.Error("the zero Value is not a None arm")

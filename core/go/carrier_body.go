@@ -110,42 +110,10 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 		return nil, nil, residue
 	}
 
-	// Nested body analysis is not part of the enclosing straight
-	// line: pause bytecode recording — unless a branch-lowering hook
-	// armed fragment capture (the `if` ReturnsFn), in which case the
-	// body's events record into a fragment for structured lowering.
-	// Peek the arm BEFORE the guard consumes it: when recording into a
-	// fragment, mark the body sub-engine element-eval-recordable so a
-	// residual computed container it returns (`{a: x}` / `[x y]`, an if
-	// arm's map/list value) records its OpMakeMap / OpMakeList assembly
-	// instead of leaving an unresolvable residual. The branch/loop body
-	// runs in the LIVE frame (its def-locals are present), so the
-	// re-assembled-per-run operand semantics are sound — the same
-	// property that already makes CONSUMED-arg container recording safe
-	// in a fn body.
-	recordable := r.Check.Recorder().PeekCaptureArm()
-	// A KEEP-DEFS run (`do`'s scoping) takes the keep-aware guard so the
-	// recorder can bracket the run's bind twins for do-body adoption; every
-	// other body (branch / loop / quotation — conditional or multi-run)
-	// takes the plain guard, which inside a keep run marks its twins as a
-	// tainted sub-range no adoption may place. A kept CONDITION run (condFrag
-	// — RunCarrierCondBodyKeepDefs) records into the branch's condition
-	// fragment instead: its guard consumes the capture arm and marks that
-	// fragment unconditional.
-	switch {
-	case keep && condFrag:
-		defer r.Check.Recorder().CondBodyGuard()()
-	case keep:
-		defer r.Check.Recorder().KeepDefsBodyGuard(r, IDOf(&body))()
-	default:
-		defer r.Check.Recorder().BodyAnalysisGuard()()
-	}
-
 	// Snapshot def-stack depths (all known names).
 	snapshot := r.Defs.Snapshot()
 
 	sub := New(r)
-	sub.ElemEvalRecordable = recordable
 	sub.ArmBody = !keep && !condFrag
 	// Every body through here is a NESTED region (branch / loop /
 	// quotation) — reached-conditionally by construction. Mark the depth
@@ -159,17 +127,6 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// run unconditionally exactly once before the branch decision, so a
 	// redefinition there is not path-dependent.
 	r.Check.NestedBodyDepth++
-	// A keep=false body's def growth is TRUNCATED below, so every install
-	// inside it is SPECULATIVE and the bind ledger must not record it — the
-	// binding the pass actually leaves is whatever InstallJoinedDefs puts
-	// back, or nothing. Wider than raiseCond on purpose: a rolled-back
-	// scrutinee run (RunCarrierCondBody) is truncated too, even though it is
-	// not conditional. A KEPT condition (RunCarrierCondBodyKeepDefs) is not
-	// truncated, so its installs are real and ledgered.
-	if !keep {
-		r.Check.RolledBackBodyDepth++
-		defer func() { r.Check.RolledBackBodyDepth-- }()
-	}
 	raiseCond := !keep && !condFrag
 	if raiseCond {
 		r.Check.CondBodyDepth++

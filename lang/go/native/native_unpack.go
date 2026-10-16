@@ -277,30 +277,13 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 					"unpack: key "+srcKey+" not found in source", "unpack", pos)
 			}
 			// Lenient binding either way, but the interpreter errors at
-			// runtime — ONLY against a PROVEN source. Record a TERMINAL trap
-			// so a bytecode compile raises the byte-identical unpack_error
-			// here (the same detail as the non-check branch below) instead
-			// of declining; if the trap can't be recorded (a nested unpack),
-			// keep the blanket-compile failure flag so the program falls
-			// back. An UNPROVEN source (a carrier Map — a param, a fn's
-			// result) misses through the stub getter whatever it holds, and
-			// the run-time unpack over the real value succeeds or raises on
-			// its own: a trap here compiled `unpack [a b] (f)` over a
-			// computed `{a:1 b:2}` to an unpack_error the interpreter never
-			// raised (a live miscompile until 2026-09-25), and the latch
-			// declined the same shape inside a fn. Neither is recorded for
-			// an unproven source; the dispatch lowers as the plain
-			// CALL_NATIVE it is, binding the names at run time.
-			// The trap raises where the interpreter's error lands: the
-			// handler's unpositioned error is stamped at the DISPATCHING
-			// word (stampErrPos — `unpack`, not the name token the
-			// diagnostic above points at: NUR338), which CurWordPos holds.
-			if proven && !r.Check.Recorder().RecordTrap("unpack_error",
-				"unpack: key "+srcKey+" not found in source", "unpack", "", r.Check.CurWordPos) {
+			// runtime — ONLY against a PROVEN source, so the pass latches the
+			// suppressed-runtime-error flag for one. An UNPROVEN source (a
+			// carrier Map — a param, a fn's result) misses through the stub
+			// getter whatever it holds, and the run-time unpack over the real
+			// value succeeds or raises on its own.
+			if proven {
 				r.Check.SuppressedRuntimeError = true
-			}
-			if !proven {
-				r.Check.Recorder().NoteRuntimeBind(localName)
 			}
 		} else {
 			return r.BoruError("unpack_error", "unpack: key "+srcKey+" not found in source", "unpack")

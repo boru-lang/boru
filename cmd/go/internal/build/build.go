@@ -143,36 +143,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	// `build` names it and stops. There is no opt-out any more, because there
 	// is no interpreter binary to opt into: the fallback that made one
 	// possible is gone.
-	{
-
-		reason, cerr := compilePreflight(cfg.Source, preflightOpts, cfg.EntryDir)
-		// -no-check / BORU_NO_CHECK opts out of being gated on the CHECKER, and
-		// "check diagnostics" is the checker's verdict reaching the emitter as a
-		// sentinel rather than a named construct. Declining on it here would make
-		// the compile gate a second check gate and defeat the opt-out, which
-		// `build` documents as "must still produce the artefact". A genuine
-		// construct compile failure still stops the build either way.
-		//
-		// In the DEFAULT flow this carve-out is not a loophole: a program whose
-		// checker findings are errors never reaches here, because the gate above
-		// already returned 1. What reaches here with the sentinel has non-error
-		// findings and still does not compile — a real defect, and the single
-		// largest blocker for real programs (TestRealProgramsCompile).
-		if checkSkipped && reason == "check diagnostics" {
-			reason = ""
-		}
-		if cerr != nil {
-			fmt.Fprintf(stderr, "error: %s\n", cerr)
-			return 1
-		} else if reason != "" {
-			fmt.Fprintf(stderr, "error: bytecode compilation FAILED: %s\n", reason)
-			fmt.Fprintf(stderr, "  A program that does not compile is an ERROR in need of fixing, not a\n")
-			fmt.Fprintf(stderr, "  slower run: there is no interpreter for the binary to fall back to.\n")
-			fmt.Fprintf(stderr, "  Fix the construct, or report it as the compiler defect it is.\n")
-			return 1
-		}
-	}
-
 	outPath := *out
 	if outPath == "" {
 		outPath = defaultOutput(srcPath)
@@ -193,39 +163,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "wrote %s\n", outPath)
 	return 0
-}
-
-// compilePreflight reports the emitter's compile failure reason for src, or "" when the
-// whole program compiles. It COMPILES ONLY — CompileCheck runs the checker with
-// the recording pass and linearises the trace; it never executes the program, so
-// a build cannot trigger the program's side effects. A non-nil error is an
-// init/parse failure, which is distinct from a compile failure: the first means we could
-// not answer the question, the second is the answer.
-func compilePreflight(source string, o lang.Options, baseDir string) (string, error) {
-	a, err := lang.New(o)
-	if err != nil { //covergate:allow lang.New returns a non-nil error only for an unreadable engine image, not for a bad -r path: a nonexistent or non-registry Registry resolves lazily and New succeeds (verified against /nonexistent and /etc/passwd), so no build invocation can reach this arm; kept because New's signature returns an error and swallowing it would hide a future failure (§misc)
-		return "", fmt.Errorf("init error: %s", err)
-	}
-	if baseDir != "" {
-		a.NativeRegistry().BaseDir = baseDir
-	}
-	prog, reason, _, cerr := a.CompileCheck(source)
-	if cerr != nil {
-		// CompileCheck reserves this for a source it could not PARSE, so we
-		// could not answer the compile question at all. Report it rather than
-		// swallow it: returning "no compile failure" here would let an unparseable
-		// program through the gate under -no-check and ship a binary that
-		// cannot run. In the default flow the check pre-flight has already
-		// returned 1 on such a source, so this arm is the -no-check path.
-		return "", cerr
-	}
-	if prog != nil {
-		return "", nil
-	}
-	if reason == "" { //covergate:allow unreachable trio: CompileCheck returns (nil program, non-empty reason) on every compile failure and (nil, "parse error", err) on a parse failure, which the cerr arm above already took, so a nil program with an empty reason and no error cannot occur; kept as a belt so a future emitter path that forgets to set reason reports something actionable instead of an empty compile failure (§misc)
-		reason = "no program produced (reason not reported)"
-	}
-	return reason, nil
 }
 
 // defaultOutput is the source basename without its extension, in the cwd:

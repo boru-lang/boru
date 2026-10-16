@@ -69,13 +69,13 @@ error.
 
 | Concern | Location |
 |---|---|
-| Lattice leaves (FixedID 100/101, ranks above Float) | `eng/go/typetable.go`, `eng/go/types.go` |
-| Payloads (`BigIntPayload`, `DecimalPayload`) | `eng/go/payload.go` |
-| Constructors / accessors / rendering / `AsFloatApprox` | `eng/go/value.go` |
-| Canonical `0d…` round-trip | `eng/go/canon.go` |
-| Lexer matcher (claims the whole `0d…` run incl. the `.`) | `eng/go/parser/grammar.go` |
-| Literal → value conversion | `eng/go/parser/parse.go` |
-| Exact cross-leaf compare / equality (`big.Rat`) | `eng/go/compare_scalar_behaviors.go`, `eng/go/compare.go` |
+| Lattice leaves (FixedID 100/101, ranks above Float) | `core/go/typetable.go`, `core/go/types.go` |
+| Payloads (`BigIntPayload`, `DecimalPayload`) | `core/go/payload.go` |
+| Constructors / accessors / rendering / `AsFloatApprox` | `core/go/value.go` |
+| Canonical `0d…` round-trip | `core/go/canon.go` |
+| Lexer matcher (claims the whole `0d…` run incl. the `.`) | `parser/go/grammar.go` |
+| Literal → value conversion | `parser/go/parse.go` |
+| Exact cross-leaf compare / equality (`big.Rat`) | `core/go/compare_scalar_behaviors.go`, `core/go/compare.go` |
 | Widest-leaf return inference | `eng/go/carrier.go` |
 | Arithmetic tower dispatch (`towerOps`, Big⊕Float error) | `lang/go/native/native_helpers.go`, `native_math.go` |
 | `convert` to/from the Big leaves | `lang/go/native/native_type.go` |
@@ -105,7 +105,7 @@ unwinds at end of block, and nests. Rounding names: `half-even`
   promotion, comparison/sort, transcendentals, `with-decimal`, `convert`,
   and negative rows (Big⊕Float `type_error`, `0.1 eq 0d0.1 → false`,
   malformed `0d`, divide-by-zero, Float→Big convert refusal).
-- `eng/go/parser/bignum_lit_test.go` — the `.`-split regression and
+- `parser/go/bignum_lit_test.go` — the `.`-split regression and
   malformed-literal syntax errors.
 - `lang/go/test/paren_native_type_literal_test.go` — no-panic coverage
   for the Big words and `with-decimal` with bare type-literal args.

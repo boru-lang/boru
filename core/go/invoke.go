@@ -26,9 +26,6 @@ import "errors"
 // `input[0..k-1]=inputs; input[k..]=bodyTokens` layout, so the body sees its
 // per-call values exactly where the original code placed them.
 func InvokeBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
-	if r.Invoker != nil {
-		return r.Invoker(r, body, inputs)
-	}
 	// Pooled + resolved: the engine and its tape are reused across
 	// invocations (runPooledSub / the registry sub-engine pool), and the
 	// inputs enter as RESOLVED stack data rather than being re-stepped —
@@ -65,96 +62,23 @@ func BodyEscaped(r *Registry) bool {
 	return r.FlowCtrl != FlowNone
 }
 
-// InvokeCallbackBody is the compiled-closure twin of InvokeCallbackFn — the
-// fn-VALUE seam. A handler that hands a FnDefInfo to InvokeCallbackFn (the
-// CallBoru discipline: the declared TYPES are checked over the aligned
-// residual, the COUNT is trimmed, never raised — enforceCallBoruReturns)
-// hands a compiled closure here, so the VM applies that same discipline
-// (IsRetTrim → checkClosureReturn). InvokeBody is the TOKEN
-// seam — each over a list, apply, a paren call — where the fn value is
-// stepped and __RC enforces the count; a closure must cross the seam its
-// handler's FnDefInfo path uses, or the lanes disagree: `walk … (m:Any =>
-// [m.path print])` runs clean interpreted and raised `expected 1 return
-// value(s), got 0` compiled once the lambda's count contract landed
-// (NUR120). Without the VM (no Invoker) a closure never reaches a handler,
-// so the fallback is InvokeBody's own.
-func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
-	if _, ok := body.Data().(*ClosurePayload); ok && !IsRetTrim(&body) {
-		// The value handed on keeps its quote and its seam marks (they rode
-		// in the payload until no-copy phase 3) and nothing else of the
-		// holder's, as it always has.
-		quoted, matched := IsQuoted(&body), IsSigMatched(&body)
-		body = Value{d: &Datum{Parent: body.Parent(), Data: body.Data()}}
-		SetQuoted(&body, quoted)
-		SetSigMatched(&body, matched)
-		SetRetTrim(&body, true)
-	}
-	return InvokeBody(r, body, inputs)
-}
-
-// ClosureSigMatched is the SigMatched mark on a closure VALUE (see
-// IsSigMatched): the seam that hands the args has matched the closure's own
-// signature, so the VM's invoker applies the unit positionally instead of
-// matching again in the token seam's order. A non-closure value is returned
-// unchanged. The mark is the holder's flag: the value keeps its id, position
-// and every flag a later seam reads, and the payload is not copied.
-func ClosureSigMatched(v Value) Value {
-	if _, ok := v.Data().(*ClosurePayload); ok {
-		SetSigMatched(&v, true)
-	}
-	return v
-}
-
-// ClosureAsFnDef is the compiled runtime's closure bridge, reached from a
-// native seam (CompiledRuntime.ClosureAsFnDef): the FnDefInfo-shaped value a
-// compiled closure stands in for on the interpreter — one signature over the
-// unit's declared param contract — which is what a callback seam matches
-// the closure's args against (MatchFnSig) before it runs the unit. ok=false
-// outside a VM run, or for a unit with no contract of its own.
-func ClosureAsFnDef(r *Registry, v Value) (Value, bool) {
-	return compiledRuntime.ClosureAsFnDef(r, v)
-}
-
 // InvokeCallback runs a runtime fn VALUE (given its matched signature and the
-// per-call args) against the VM when the sig carries a compiled unit whose
-// program is stamped AND r can host a fresh run, else falling back to CallBoru —
-// the tree-walking interpreter — with the fn's captures. It is the single seam
-// every native callback word (serve-raw, spawn, service/codec endpoints)
-// dispatches through, so retiring the interpreter for reducible callback bodies
-// is one routing decision rather than an edit per word.
+// per-call args) on the interpreter — CallBoru with the fn's captures. It is
+// the single seam every native callback word (serve-raw, spawn, service/codec
+// endpoints) dispatches through, so a change to how a callback body runs is
+// one routing decision rather than an edit per word.
 //
-// Correctness is fail-safe: a nil CompiledRef, or an un-stamped ref (a body the
-// compiler declined, or a run that never reached Finalize), falls to CallBoru,
-// whose values and error taxonomy are unchanged. When the VM path IS taken it
-// executes the exact unit the differential gates prove equivalent to the
-// interpreter.
-//
-// A BUSY registry used to fall to CallBoru as well, and that was the seam's
-// quiet hole rather than a safety property: a runtime-stamped body reached from
-// inside a live compiled run — every predicate type in the corpus — recorded
-// Stamped:true in the stamp ledger and then interpreted, because the nested
-// runner declined any ref whose program was not the running one, which a
-// detached ref never is. It now hosts the foreign unit instead
-// (eng/go/vm_foreign_unit.go).
-//
-// A callback fires AFTER the enclosing RunProgram returned (serve-raw handling a
-// connection, a spawned process), so — unlike an in-program island — there is no
-// outer RunCompiled to catch a VM bailout and re-run on the interpreter. This seam
-// therefore applies RunCompiled's own discipline itself: if the compiled unit
-// raises an internal_error (a VM/lowering soundness assertion or a recovered
-// handler panic, the class RunCompiled resolves by falling back), retry on
-// CallBoru so the peer sees the interpreter's canonical result/error instead of a
-// raw internal_error leaking to the network. Genuine boru runtime errors
-// (signature_error, type_error, …) are the interpreter's answer too and are
-// returned as-is.
+// A callback fires AFTER the enclosing RunProgram returned (serve-raw handling
+// a connection, a spawned process), so what the peer sees is CallBoru's own
+// result and error taxonomy: genuine boru runtime errors (signature_error,
+// type_error, …) are returned as-is.
 func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []CapturedBinding) ([]Value, error) {
 	return invokeCallback(r, sig, args, captures, false, "", SrcPos{})
 }
 
 // InvokeCallbackStrict is InvokeCallback for a NAMED fn call — the module-fn
-// dispatch at run time: a stamped unit runs on the VM as before (its RET
-// enforces the frame's contract), and the interpreter fallback is
-// CallBoruStrict, which enforces the frame's return count (NUR191).
+// dispatch at run time: CallBoruStrict, which enforces the frame's return
+// count (NUR191).
 func InvokeCallbackStrict(r *Registry, sig *Signature, args []Value, captures []CapturedBinding, label string, pos SrcPos) ([]Value, error) {
 	return invokeCallback(r, sig, args, captures, true, label, pos)
 }
@@ -162,39 +86,6 @@ func InvokeCallbackStrict(r *Registry, sig *Signature, args []Value, captures []
 func invokeCallback(r *Registry, sig *Signature, args []Value, captures []CapturedBinding, strict bool, label string, pos SrcPos) ([]Value, error) {
 	// sig is the matched signature (callers dispatch it via MatchFnSig and check
 	// it non-nil first — serve-raw's handler dispatch is the canonical caller).
-	// depsFresh guards RUNTIME-stamped refs (StampDetachedFn): a module dep
-	// rebound or shadowed since the stamp means the frozen unit would diverge
-	// from live resolution. A stale DETACHED ref first tries the JIT re-stamp
-	// (COMPILE FAILURE-CLOSURE.0 §7c) — recompile against the live bindings, bounded
-	// by the ref's try budget — and only a declined re-stamp takes the
-	// interpreter, where the seam previously degraded permanently.
-	// The compiled fast path lives behind the CompiledRuntime seam
-	// (compiled_runtime.go, Stage 1 of the four-piece split): the VM
-	// piece owns ref freshness and the JIT re-stamp. A unit that RAN
-	// returns what it produced, a bail included — the bail used to ride
-	// back with ran=false so the body was retried here, guarded by the
-	// effect fence, and that retry is gone: it is a compiler defect and
-	// it surfaces.
-	var res []Value
-	var err error
-	var ran bool
-	if strict {
-		res, err, ran = compiledRuntime.InvokeCompiledStrict(r, sig, args)
-	} else {
-		res, err, ran = compiledRuntime.InvokeCompiled(r, sig, args)
-	}
-	if ran {
-		return res, err
-	}
-	// ran=false means there was no compiled unit to run at all — a ref that
-	// was never stamped, or a stale one whose re-stamp declined. That is an
-	// interpreter ISLAND, not a fallback from a failure, and it stays
-	// visible as one.
-	defer bailReplayAttribution(r, err)()
-	// Observability seam (interp_entry.go): the callback seam's interpreter
-	// fallback — its own name so the C4 decline tag can attach later without
-	// conflating it with a direct CallBoru.
-	r.noteInterp("InvokeCallback:callboru")
 	if strict {
 		return r.CallBoruStrict(sig, args, captures, label, pos)
 	}
@@ -217,11 +108,6 @@ func invokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 // foreign-registry branch (execFnDefSig) has always routed the value path this
 // way; this makes the native seam agree with it.
 //
-// Routing through the defining registry also re-anchors the compiled path's
-// dep-freshness test: InvokeCompiled evaluates CompiledFnRef.depsFresh against
-// whichever registry it is handed, so handing it the caller's registry made the
-// check answer a question nobody asked.
-//
 // FnHome picks the registry and the captures; see its comment for the two nil
 // cases.
 func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Value) ([]Value, error) {
@@ -233,30 +119,19 @@ func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Valu
 // definition — attributes the first-application stamp.
 func InvokeCallbackFnAs(r *Registry, fnDef *FnDefInfo, name string, sig *Signature, args []Value) ([]Value, error) {
 	target, caps := FnHome(r, fnDef)
-	// The detached stamp at first application (S1b): a value with no unit for
-	// this sig obtains one now, at its home, memoised on the value — so the
-	// seam below takes the VM instead of CallBoru. Declined stamps are
-	// remembered on the value; the interpreter path stays byte-identical. A
-	// nil fnDef is a synthesized carrier sig with no fn value behind it (see
-	// FnHome): nothing to stamp.
-	if fnDef != nil {
-		compiledRuntime.LazyStamp(target, fnDef, name, sig, SrcPos{})
-	}
 	return InvokeCallback(target, sig, args, caps)
 }
 
-// (CallBoruFn stood here — InvokeCallbackFn's interpreter-only sibling, same
-// defining-registry routing but never offering the body to the VM. It existed
-// for one reason, stated in its own comment: "fixing WHERE free words resolve
-// must not also change WHICH engine resolves them", the right scope fence for
-// design/FUNCTION-VALUE-SCOPE.0.md's change. Full compilation reverses that
-// fence — the seven words it served (`filter`'s Function form, the map-lambda
-// each/fold bodies, core walk / StructUtil.walk, IO.mount's fileops handlers,
-// boru:parse's matcher and action callbacks, and the fn-util words) now call
-// InvokeCallbackFn, so the body is offered to the VM with the CallBoru
-// fallback intact. A SECOND dispatch path is a source of divergence in its own
-// right — design/FN-VALUE-OPEN-WORK.0.md §Origin records two it caused — so
-// with its last caller gone it is deleted rather than left as a hatch.)
+// (CallBoruFn stood here — InvokeCallbackFn's sibling with the same
+// defining-registry routing, kept apart while the compiled lane existed so
+// that fixing WHERE free words resolve did not also change WHICH engine
+// resolved them. The seven words it served (`filter`'s Function form, the
+// map-lambda each/fold bodies, core walk / StructUtil.walk, IO.mount's
+// fileops handlers, boru:parse's matcher and action callbacks, and the
+// fn-util words) call InvokeCallbackFn. A SECOND dispatch path is a source of
+// divergence in its own right — design/FN-VALUE-OPEN-WORK.0.md §Origin
+// records two it caused — so with its last caller gone it was deleted rather
+// than left as a hatch.)
 
 // FnHome answers the two questions every native callback seam has to ask about
 // a fn VALUE before running it: which registry resolves its free words, and
@@ -426,8 +301,6 @@ func RunContainerSub(r *Registry, input []Value, elemEvalRecordable bool) ([]Val
 }
 
 func runPooledSub(r *Registry, input []Value, elemEvalRecordable, container bool) ([]Value, error) {
-	// Observability seam (interp_entry.go): the per-element sub-evaluation path.
-	r.noteInterp("runPooledSub")
 	sub := r.TakeSubEngine()
 	sub.ElemEvalRecordable = elemEvalRecordable
 	sub.ContainerRun = container

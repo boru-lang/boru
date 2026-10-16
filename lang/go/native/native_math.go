@@ -421,13 +421,6 @@ var mathNatives = []NativeFunc{
 	},
 	{
 		Name: "with-decimal",
-		// with-decimal {opts} [body] — runs a 0-input body inside a scoped
-		// BigDecimal rounding context (opts at sig 0, body at sig 1). Like `do`,
-		// the body nets its single residual; the handler pushes the context around
-		// InvokeBody so the VM-run body's BigDecimal ops read the override.
-		Callable: &CallableSpec{BodyPos: 1, BodyOut: 1, Inputs: func(_ []Value) []Value {
-			return []Value{}
-		}},
 		Signatures: []Signature{{
 			Args:       []*Type{TMap, TList},
 			Impl:       Go(withDecimalHandler),
@@ -446,11 +439,7 @@ var mathNatives = []NativeFunc{
 func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	opts := args[0]
 	body := args[1]
-	// The body is a quotation list under the interpreter, or a compiled CLOSURE
-	// when the bytecode VM drives this dispatch (the body operand lowered to
-	// OpPushClosure). Both run within the scoped context below.
-	closure := IsCompiledClosure(body)
-	if !closure && (!IsConcrete(&body) || !body.Parent().ConformsTo(TList)) {
+	if !IsConcrete(&body) || !body.Parent().ConformsTo(TList) {
 		return nil, r.BoruError("type_error", "with-decimal: body must be a concrete list", "with-decimal")
 	}
 
@@ -468,12 +457,6 @@ func withDecimalHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 		}
 	}
 
-	if closure {
-		// Drive the closure through the InvokeBody seam (the VM re-entrant
-		// runner) WITHIN the pushed context, so every BigDecimal op inside reads
-		// the override exactly as the interpreter's doEvalList does.
-		return InvokeBody(r, body, nil)
-	}
 	lst, _ := AsList(body)
 	return doEvalList(r, lst.Elems())
 }

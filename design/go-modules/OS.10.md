@@ -105,8 +105,8 @@ forward `Os.getenv "K"`-style dispatch resolve.
 ## 5. Types
 
 Scalars (`String`, `Integer`, `None`), `List[String]` (`args`), and
-`Map` (`environ`) only — all map through `eng.FromNative` /
-`eng.ToNative` (`eng/go/gobridge.go`). **No opaque external handle** is
+`Map` (`environ`) only — all map through `core.FromNative` /
+`core.ToNative` (`core/go/gobridge.go`). **No opaque external handle** is
 introduced: `boru:os` exposes no `*os.File`, `*os.Process`, or `os.FileInfo`
 (those would belong to `boru:io`). No `FixedID` from the `10000+`
 host/third-party range is needed, and no entry in
@@ -126,7 +126,7 @@ return is unwrapped into the `BoruError`. Codes:
 | `os-not-installed` | any gated word | the env/process capability scope is `install:false` — the seam stub returns a `capability_not_installed`-style error, never a nil deref. |
 
 Bad-type args are guarded with `AsConcreteString` / `AsConcreteInteger`
-**before** any host call (no panics — `eng/go/CLAUDE.md` "Panic
+**before** any host call (no panics — `core/go/CLAUDE.md` "Panic
 Prevention"). Every positive `.tsv` row pairs with an `ERROR:<substring>`
 sibling (`lang/go/CLAUDE.md` "Test discipline").
 

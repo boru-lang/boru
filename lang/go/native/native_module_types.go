@@ -246,24 +246,11 @@ func moduleNSGetrReturns(args []Value, r *Registry) ([]Value, bool) {
 		}
 		// A module's export map is sealed at import (boru-level; runtime
 		// growers are ledger-modelled), so a concrete-key miss is ALSO a
-		// check diagnostic (the strict-read contract, same text). A
-		// RuntimeMirror: the compile failure loop skips it, so the trap below
-		// keeps compiling (TestModuleExportGetrNotFoundTrapCompiles pins
-		// it).
+		// check diagnostic (the strict-read contract, same text).
 		if r.Check.IsActive() {
 			core.CheckAddUniqueDiagnostic(r, "not_found",
 				fmt.Sprintf("getr: export %q not found in module", k), "getr", args[0].Pos())
 		}
-		// Record the SAME rich error the runtime path raises (with the
-		// did-you-mean suggestion over the export keys) so the compiled trap
-		// is byte-identical to the interpreter's miss.
-		var keys []string
-		if fields := moduleNSFields(args[1]); fields != nil {
-			keys = fields.Keys()
-		}
-		ferr := buildNotFoundKeyError(r,
-			fmt.Sprintf("getr: export %q not found in module", k), k, args[0].Pos(), keys)
-		r.Check.Recorder().RecordTrapErr(ferr, args[0].Pos())
 	}
 	return []Value{NewCarrier(TAny)}, true
 }

@@ -79,36 +79,3 @@ func TestEvalLiteralsOnlyMatchesTheEngine(t *testing.T) {
 		}
 	}
 }
-
-// TestCompileAttributesRecorderRun: the recorder's run reports its interpreter
-// entries attributed "stackform-record" — an observation of the engine, not
-// a program handed back to it — and the attribution ends with the call.
-func TestCompileAttributesRecorderRun(t *testing.T) {
-	reg, err := core.NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var seen []string
-	disarm := reg.ArmInterpEntryHook(func(ev core.InterpEntry) {
-		seen = append(seen, ev.Seam+":"+ev.Attribution)
-	})
-	defer disarm()
-	if _, form, err := Compile(reg, []core.Value{core.NewInteger(7)}); err != nil || form.Len() != 1 {
-		t.Fatalf("compile: %v %v", form, err)
-	}
-	if len(seen) == 0 {
-		t.Fatal("the recorder's run made no interpreter entry")
-	}
-	for _, s := range seen {
-		if s != "Engine.Run:stackform-record" {
-			t.Errorf("entry %q: the recorder's run is attributed stackform-record", s)
-		}
-	}
-	seen = seen[:0]
-	if _, err := core.NewTop(reg).Run([]core.Value{core.NewInteger(7)}); err != nil {
-		t.Fatal(err)
-	}
-	if len(seen) != 1 || seen[0] != "Engine.Run:" {
-		t.Errorf("after the call a plain run reports bare: %v", seen)
-	}
-}

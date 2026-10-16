@@ -74,16 +74,6 @@ type Registry struct {
 	// Shared by pointer into forks (ForkConcurrent's shallow copy) and
 	// module sub-registries (RunModuleBody threads it with Output).
 	Effects *EffectLedger
-	// interpHook / bailHook are the arm-able observability seams for the
-	// frontier suite (interp_entry.go): interpreter-machinery entries and
-	// designed VM defer-to-interpreter bails. Pointer-shared into forks by
-	// the shallow copy; module sub-registries inherit via
-	// InheritObserveHooks. Inert (one atomic load) unless a test arms them.
-	interpHook *interpEntryHook
-	bailHook   *bailHook
-	// regionOracleHook is the arm-able region-oracle seam (interp_entry.go),
-	// the compiled lane's COLLECT check reporting to a lane that counts it.
-	regionOracleHook *regionOracleHook
 	// coverHook is the arm-able boru-source line-coverage seam (coverage.go),
 	// powering boru:test's coverage feature. Pointer-shared into forks and
 	// inherited by module sub-registries via InheritObserveHooks; inert (one
@@ -93,14 +83,6 @@ type Registry struct {
 	coverHook    *coverHook
 	coverID      string
 	coverSources *coverSources
-	// interpAttribution is the C4 attribution context: a SANCTIONED
-	// interpreter re-run (the compiled-mode fallback arms) stamps its tag
-	// here for the duration, so every interpreter entry the re-run produces
-	// reports as attributed instead of unattributed (plan Phase 10; the
-	// end-state invariant permits interpreter execution only under a named
-	// seam). Set/restored by the entry points around the re-run; forks copy
-	// the value at fork time (ForkConcurrent's shallow copy).
-	interpAttribution string
 	// TapeConfig bounds the execution tape's growth (initial size, max
 	// grows, growth factor). The zero value uses the defaults; hosts set
 	// it via lang.Options. See eng/go/tape.go.
@@ -259,85 +241,6 @@ type Registry struct {
 	// macroCache memoizes macro expansions keyed on (macro name + operand
 	// canon). See macroCacheGet / MacroCacheClear. Nil until first use.
 	macroCache map[string][]Value
-
-	// Invoker, when non-nil, executes a code BODY through the bytecode VM
-	// instead of a fresh interpreter sub-engine. The body-running native
-	// handlers (each/fold/scan/do/filter/… — every word that today spins up
-	// `New(r).Run([inputs… body…])`) call InvokeBody, which routes here when
-	// the VM is driving so the body runs as a compiled closure WITHOUT
-	// re-entering the interpreter. Nil on a plain interpreter run, where
-	// InvokeBody falls back to a sub-engine and behaviour is unchanged. The
-	// VM installs and restores this around its run. See invoke.go.
-	//
-	// Because this is mutated (install/restore) on the shared registry for
-	// the duration of a RunProgram, a single registry cannot drive two
-	// compiled runs concurrently — see RunProgram's concurrency note. Each
-	// concurrent run needs its own *Registry (ForkConcurrent / per-instance).
-	// The seam passes the CALLING registry (the handler's own dispatch
-	// registry — a per-connection fork, a module sub-registry) so a raw
-	// token body's sub-engine fallback resolves names in the caller's
-	// scope; forks inherit the field and pass THEMSELVES.
-	Invoker func(reg *Registry, body Value, inputs []Value) ([]Value, error)
-
-	// nestedRunner runs a compiled fn UNIT nested within the currently-active
-	// VM run on this registry — the live-run twin of RunUnit (which starts a
-	// FRESH run and so cannot be used mid-run, where vmRunning is already 1). It
-	// is installed alongside Invoker for the duration of a RunProgram and lets a
-	// stamped callback invoked synchronously during the run (a service handler)
-	// execute on the VM instead of falling to CallBoru. Returns handled=false when
-	// the ref belongs to a different program than the running one (a defensive,
-	// normally-unreachable case), so InvokeCallback falls back to the interpreter.
-	// Nil outside a run; a fork inherits it but never reaches it (a fresh fork is
-	// idle, so InvokeCallback takes the RunUnit path there, not this one).
-	// ref is an opaque *CompiledFnRef (S4 opaque handle) — the VM asserts.
-	NestedRunner func(ref any, args []Value) (result []Value, handled bool, err error)
-
-	// tokenBodyStamps is S3's unit cache for TOKEN bodies applied through
-	// the InvokeBody seam at run time — a quoted list read from a flex, a
-	// fn's result, a List param — which the compiled program could not
-	// lower because the body did not exist until it ran. Keyed by the body
-	// list's value ID and the seam's input count (one body may be applied
-	// under `each` with one input and under `fold` with two), the value a
-	// compiled ref or the VM's declined marker; the VM reads and writes it
-	// (TokenBodyStamp / SetTokenBodyStamp), core only carries it. Per
-	// registry, never shared with a fork (ForkConcurrent resets it): a
-	// stamp is compiled against THIS registry's bindings, and its freshness
-	// (DepSnap) is read against them too.
-	tokenBodyStamps map[string]any
-
-	// vmRunning latches non-zero (via sync/atomic) for the duration of a
-	// RunProgram on this registry. Because RunProgram installs/restores the
-	// shared Invoker (and the run mutates other shared scopes — Contexts, Defs,
-	// the island sub-engine), two overlapping runs on ONE registry would race.
-	// The guard converts that misuse from a silent data race into a clear
-	// error; concurrent runs must each use their own registry (ForkConcurrent,
-	// which resets this). It does NOT gate nested SEQUENTIAL reuse (one run
-	// fully finishes, resetting the flag, before the next begins) — the normal
-	// RunCompiled path. It is a plain int32 (not atomic.Bool) so the Registry
-	// stays copyable for ForkConcurrent's shallow clone.
-	VmRunning int32
-
-	// runtimeStamping arms detached fn-unit compilation (StampDetachedFn):
-	// see EnableRuntimeStamping. Set only by the compiled execution entry
-	// points; default false keeps plain interpreter runs stamp-free.
-	runtimeStamping bool
-	// stampLog collects stamp attempts for the -compile-report surface
-	// (stamp_report.go). Created at arming; SHARED (pointer) with forks and
-	// module sub-registries so one report covers the whole execution.
-	stampLog *stampLog
-
-	// interpRunDepth counts live interpreter Engine.Run activations on this
-	// registry — the top-level run AND every re-entrant sub-engine run (module
-	// loads, islands, higher-order bodies). It exists so a compiled RunProgram
-	// can detect at its ENTRY that an interpreter run is already in flight — the
-	// one cross-engine race the vmRunning CAS structurally cannot see, since that
-	// flag only guards compiled-vs-compiled. The reverse direction
-	// (interpreter-starts-while-compiled-active) stays caller-responsibility:
-	// the VM's own islands re-enter Engine.Run on this same registry, so a
-	// registry-level flag cannot distinguish a legitimate island from a foreign
-	// concurrent run without goroutine identity. Atomic so a foreign goroutine's
-	// run is visible to the entry check.
-	interpRunDepth int32
 
 	// debugEngines is the stack of live Engines running on this registry,
 	// innermost last. Pushed/popped (defer-balanced) at each Engine.Run
@@ -673,22 +576,6 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	r.enginePool = append(r.enginePool, e)
 }
 
-// EnterInterpRun / ExitInterpRun bracket one interpreter Engine.Run activation
-// on this registry (top-level and every re-entrant sub-engine run). Pair them
-// with defer at the Run boundary so the count is balanced across normal returns,
-// error returns, and panic unwinds.
-func (r *Registry) EnterInterpRun() {
-	if r != nil {
-		atomic.AddInt32(&r.interpRunDepth, 1)
-	}
-}
-
-func (r *Registry) ExitInterpRun() {
-	if r != nil {
-		atomic.AddInt32(&r.interpRunDepth, -1)
-	}
-}
-
 // pushEngine / popEngine bracket one Engine.Run on this registry, tracking the
 // current engine for on-demand stack introspection (Debug.stack). Pair with
 // defer at the Run boundary so the stack stays balanced across every exit path.
@@ -748,71 +635,6 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 		out = append(out, v)
 	}
 	return out, true
-}
-
-// interpRunActive reports whether an interpreter Engine.Run is currently in
-// flight on this registry. Read by RunProgram at its entry (before it spawns any
-// island sub-engine), so a true result there means a DISTINCT interpreter run —
-// a concurrent misuse — not the compiled run's own islands.
-func (r *Registry) InterpRunActive() bool {
-	return r != nil && atomic.LoadInt32(&r.interpRunDepth) > 0
-}
-
-// canHostVM reports whether r can start a FRESH compiled run right now: no
-// compiled run and no interpreter run is already in flight on it. A per-
-// connection / per-process fork (ForkConcurrent) is idle, so a callback fires a
-// VM run cleanly; the main registry mid-run is busy, so InvokeCallback routes
-// the callback to the interpreter (CallBoru) instead — never racing the shared
-// invoker/scopes a live run owns.
-func (r *Registry) CanHostVM() bool {
-	return r != nil && atomic.LoadInt32(&r.VmRunning) == 0 && !r.InterpRunActive()
-}
-
-// EnableRuntimeStamping arms detached fn-unit compilation (StampDetachedFn /
-// StampFnValue): store words and codec resolution may then compile a
-// runtime-constructed, capture-free fn body to a standalone unit so
-// InvokeCallback runs it on the VM. Armed only by the COMPILED execution
-// entry points (RunCompiled / RunCompiledStrict and the CLI's default mode)
-// and inherited by module sub-registries — a plain interpreter run
-// (`-no-compile`, `Run`) never stamps, keeping the mode contract exact.
-// ForkConcurrent's shallow copy carries the flag to per-connection forks.
-func (r *Registry) EnableRuntimeStamping() {
-	if r != nil {
-		r.runtimeStamping = true
-		if r.stampLog == nil {
-			r.stampLog = &stampLog{}
-		}
-	}
-}
-
-// InheritRuntimeStamping arms r exactly like parent — including SHARING the
-// parent's stamp-attribution log, so a module sub-registry's stamps land in
-// the one report. A no-op when the parent is unarmed.
-func (r *Registry) InheritRuntimeStamping(parent *Registry) {
-	if r == nil || parent == nil || !parent.runtimeStamping {
-		return
-	}
-	r.runtimeStamping = true
-	r.stampLog = parent.stampLog
-}
-
-// RuntimeStampingEnabled reports whether detached fn-unit compilation is
-// armed on this registry (see EnableRuntimeStamping).
-func (r *Registry) RuntimeStampingEnabled() bool {
-	return r != nil && r.runtimeStamping
-}
-
-// DisableRuntimeStamping disarms detached fn-unit compilation — the inverse of
-// EnableRuntimeStamping. It stops only NEW stamps: a callback already stamped
-// keeps its VM path (InvokeCallback gates on the stored CompiledRef, not this
-// flag), and the stamp-attribution log is left intact so StampReport still
-// reads after the run. RunCompiled / RunCompiledStrict use it to restore the
-// prior interpreter contract on return, so a compiled-mode request never leaks
-// the armed flag into a later plain Run (`-no-compile`) on a reused instance.
-func (r *Registry) DisableRuntimeStamping() {
-	if r != nil {
-		r.runtimeStamping = false
-	}
 }
 
 // NextGensym mints the next fresh gensym name (`tmp$g<n>`, n starting at 1).
@@ -876,23 +698,20 @@ func NewRegistry() (*Registry, error) {
 		return nil, err
 	}
 	r := &Registry{
-		Defs:             NewDefTable(),
-		Contexts:         NewContextStack(),
-		Args:             NewArgsStack(),
-		Types:            NewDynamicTypeTable(),
-		Capabilities:     NewCapabilityRegistry(),
-		Ideals:           NewIdealRegistry(),
-		Modules:          NewModuleRegistry(),
-		Output:           os.Stdout,
-		ErrOutput:        os.Stderr,
-		Input:            os.Stdin,
-		Effects:          &EffectLedger{},
-		interpHook:       &interpEntryHook{},
-		bailHook:         &bailHook{},
-		regionOracleHook: &regionOracleHook{},
-		coverHook:        &coverHook{},
-		coverSources:     &coverSources{},
-		SDKCache:         make(map[string]any),
+		Defs:         NewDefTable(),
+		Contexts:     NewContextStack(),
+		Args:         NewArgsStack(),
+		Types:        NewDynamicTypeTable(),
+		Capabilities: NewCapabilityRegistry(),
+		Ideals:       NewIdealRegistry(),
+		Modules:      NewModuleRegistry(),
+		Output:       os.Stdout,
+		ErrOutput:    os.Stderr,
+		Input:        os.Stdin,
+		Effects:      &EffectLedger{},
+		coverHook:    &coverHook{},
+		coverSources: &coverSources{},
+		SDKCache:     make(map[string]any),
 		// StepBudget uses -1 as the "unset, use the project default"
 		// sentinel. The Go zero (0) is honored as "abort on the first
 		// step" so callers who want that have an unambiguous way to
@@ -1202,15 +1021,8 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	if fn, ok := r.dispatchCache.get(name, gen); ok {
 		return fn
 	}
-	fn, closureBound := r.lookupUncachedBridged(name)
-	// A name bound to a compiled closure is never cached: a bridged
-	// aggregate captures the RUN's invoker (ClosureAsFnDef's one-dispatch
-	// contract), and a nil computed between runs — no invoker, so no
-	// bridge — would outlive the run that next sets one, at the same
-	// binding generation.
-	if !closureBound {
-		r.dispatchCache.put(name, gen, fn)
-	}
+	fn := r.lookupUncached(name)
+	r.dispatchCache.put(name, gen, fn)
 	return fn
 }
 
@@ -1219,25 +1031,7 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 // dispatchCache; call this directly only when a fresh (uncached) aggregate
 // is required.
 func (r *Registry) lookupUncached(name string) *FnDefInfo {
-	fn, _ := r.lookupUncachedBridged(name)
-	return fn
-}
-
-// lookupUncachedBridged is lookupUncached, saying whether the name's def
-// stack holds a compiled CLOSURE (bridged into the aggregate under a run's
-// invoker, or skipped as data outside one — either way uncacheable). A closure
-// value a compiled program binds by `def` (bindGlobal, bindDynScope) is the
-// interpreter's NAMED fn definition — its word dispatches, its no-match
-// raises `cannot call` — but the def stack holds the payload, which the
-// simple-value substitution used to push as data and the literal chain
-// re-stepped as an anonymous value (parking over an empty frame where the
-// interpreter raises: `7 do [a5]` compiled 12 for the caught `cannot call`,
-// NUR193). Bridged through the compiled runtime's hook (the same view the
-// re-step uses), under the binding's name, whenever a run's invoker can
-// host the dispatch; outside a run the payload stays the data it was.
-func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	stack := r.Defs.Stack(name)
-	closureBound := false
 	// Collect every FnDefInfo binding for the name, newest-first. Each
 	// entry holds only its OWN overloads; the dispatch table is the union
 	// across the stack (overloading across stacked defs of one name).
@@ -1251,21 +1045,6 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
-		if _, isClosure := stack[i].Data().(*ClosurePayload); isClosure {
-			closureBound = true
-			// Only under a run's invoker (dispatchesAsWord's own gate, kept
-			// here too rather than trusting the hook to ask): outside a run
-			// the payload is data and the name has no dispatch.
-			if r.Invoker == nil {
-				continue
-			}
-			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
-				if view, ok := FnDefOf(bv.Data()); ok {
-					entries = append(entries, closureDispatchEntry(view, name))
-				}
-			}
-			continue
-		}
 		if fnDef, ok := stack[i].Data().(*FnDefInfo); ok {
 			entries = append(entries, *fnDef)
 			if fnDef.Extends != "" {
@@ -1274,32 +1053,18 @@ func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 		}
 	}
 	if len(entries) == 0 {
-		return nil, closureBound
+		return nil
 	}
-	return r.aggregateDispatch(name, entries), closureBound
-}
-
-// closureDispatchEntry constructs the entry a def-bound compiled closure
-// contributes to name's dispatch: the bridged view (ClosureAsFnDef's, fresh
-// per lookup) as the NAMED definition the interpreter's def made of it — a
-// new definition from the view's parts under the binding's name, never a
-// write into a payload a holder carries.
-func closureDispatchEntry(view *FnDefInfo, name string) FnDefInfo {
-	out := *view
-	out.Name, out.Anonymous = name, false
-	return out
+	return r.aggregateDispatch(name, entries)
 }
 
 // dispatchesAsWord reports whether a def-bound value is a DISPATCHING
 // definition the word step must route through Lookup rather than
-// substitute: a fn definition, a class, or a compiled closure a run's
-// invoker can bridge (lookupUncachedBridged).
-func dispatchesAsWord(v *Value, r *Registry) bool {
+// substitute: a fn definition or a class.
+func dispatchesAsWord(v *Value) bool {
 	switch v.Data().(type) {
 	case *FnDefInfo, *ClassTypeInfo:
 		return true
-	case *ClosurePayload:
-		return r != nil && r.Invoker != nil
 	}
 	return false
 }
@@ -1779,18 +1544,12 @@ func (r *Registry) RegisterNativeFunc(fn NativeFunc) {
 	for _, sig := range fn.Signatures {
 		// The native author fills a plain Signature (positional Args + a Go
 		// Handler); Register → upsertFnDef → normalizeSig synthesizes the
-		// authoritative Params from Args+Patterns. Only the WORD-level fields
-		// (CompileEffect, Callable) fold onto each sig here. `BarrierAllForward`
+		// authoritative Params from Args+Patterns. Only the WORD-level field
+		// (CompileEffect) folds onto each sig here. `BarrierAllForward`
 		// (-1) is the "default all-forward" sentinel; `0` is explicit all-stack —
 		// upsertFnDef resolves it once.
 		s := sig
 		s.CompileEffect |= fn.CompileEffect
-		if s.Callable == nil {
-			s.Callable = fn.Callable
-		}
-		if s.StoredBodies == nil {
-			s.StoredBodies = fn.StoredBodies
-		}
 		r.Register(fn.Name, s)
 	}
 }
@@ -1837,8 +1596,6 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	if err := policyGateModuleCallReg(r, sig.ModuleCall); err != nil {
 		return nil, err
 	}
-	// Observability seam (interp_entry.go): the interpreter fn-call path.
-	r.noteInterp("CallBoru")
 	// The unnamed arguments, the run's resolved prefix (in the InstallFnDef
 	// handler's frame order).
 	var unnamed []Value
@@ -2350,9 +2107,7 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 		prevMode := r.Check.Mode
 		r.Check.Mode = false
 		defs := r.Defs.Snapshot()
-		restoreAtt := r.SetInterpAttribution("check:predicate")
 		out, matched, err = r.runPredicateBody(*fnDef, predSig, candidate)
-		restoreAtt()
 		r.Defs.Restore(defs)
 		r.Check.Mode = prevMode
 		if err != nil {
@@ -2560,21 +2315,4 @@ func (r *Registry) NamedFnReturnCount(sig *FnSig, name, source string, result []
 		return nil
 	}
 	return BuildReturnCountError(source, name, len(sig.Returns), len(result), result, pos, sig.Decl)
-}
-
-// TokenBodyStamp reads the run-time stamp cached for a token body under key
-// (the body's value ID and input count, as the VM keys it); ok=false when the
-// body has not been seen. See tokenBodyStamps.
-func (r *Registry) TokenBodyStamp(key string) (any, bool) {
-	v, ok := r.tokenBodyStamps[key]
-	return v, ok
-}
-
-// SetTokenBodyStamp records a token body's run-time stamp — a compiled ref,
-// or the VM's declined marker so a body that cannot compile pays once.
-func (r *Registry) SetTokenBodyStamp(key string, v any) {
-	if r.tokenBodyStamps == nil {
-		r.tokenBodyStamps = map[string]any{}
-	}
-	r.tokenBodyStamps[key] = v
 }

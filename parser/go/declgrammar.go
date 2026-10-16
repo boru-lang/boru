@@ -12,7 +12,7 @@ package parser
 // Migration is rule-by-rule: edits move from the setup* functions in
 // grammar.go into grammar.json batch by batch, with the full parser
 // suites (streamdump, corpora, the cross-engine differential) green
-// after every batch. See design/ENG-COVERAGE-PARITY.0.md.
+// after every batch. See design/legacy/ENG-COVERAGE-PARITY.0.ignore.
 
 import (
 	_ "embed"

@@ -284,7 +284,7 @@ g .nodes                               ; access — the dotted accessor
 We accept this because:
 
 - **One grammar.** boru has exactly one parser — a single jsonic
-  grammar (`eng/go/parser`). Per-plugin grammar extension means
+  grammar (`parser/go`). Per-plugin grammar extension means
   runtime grammar mutation: a large complexity, ambiguity, and
   audit-safety cost for a small ergonomic gain.
 - **The uniform surface is sufficient.** `refine Name arg` + `make` +
@@ -424,7 +424,7 @@ academic HKT.
 **Honest scope — what Ideals do *not* provide.** Signature-level
 ("static") HKT would still need: kind variables in `Signature`
 (a slot that says "any `F[Integer]` where `F` is a `Collection`
-Ideal"); kind-aware matching in `eng/go/match.go`; and a surface
+Ideal"); kind-aware matching in `core/go/match.go`; and a surface
 syntax to *write* a kind-abstracted word. Ideals are
 necessary-not-sufficient for that. The correct claim is precise:
 **Ideals keep the HKT door open and lay its foundation; they are the

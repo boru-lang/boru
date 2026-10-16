@@ -43,21 +43,15 @@ type walkFrame struct {
 	exit      bool
 }
 
-// walkHook is a classified, ready-to-run hook: a lambda Function, a compiled
-// closure, or a quotation token list. `present` is false for an absent
-// (optional) ascend hook.
+// walkHook is a classified, ready-to-run hook: a lambda Function or a
+// quotation token list. `present` is false for an absent (optional) ascend
+// hook.
 type walkHook struct {
 	present bool
 	lambda  bool
-	closure bool
 	fn      Value      // when lambda: the Function value
-	body    Value      // when closure: run via InvokeBody
 	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
 	tokens  []Value    // when quotation: the body tokens
-	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
-	// FnDefInfo its declared signature is matched under before the hook runs
-	// (S1b-2); body then carries the SigMatched mark.
-	sigFn Value
 }
 
 // walkEntry is one child of a node: its key (map key, or stringified index for
@@ -125,25 +119,11 @@ func walkModeValue(v Value) (string, bool) {
 }
 
 // walkClassifyHook classifies a hook arg once, before the traversal loop —
-// mirroring newMapBody (native_map_iter.go): a compiled closure runs via
-// InvokeBody, a lambda Function is called via CallBoru, and anything else must
-// be a concrete quotation list run as a sub-program.
+// mirroring newMapBody (native_map_iter.go): a lambda Function is called via
+// CallBoru, and anything else must be a concrete quotation list run as a
+// sub-program.
 func walkClassifyHook(r *Registry, body Value) (walkHook, error) {
 	h := walkHook{present: true}
-	if IsCompiledClosure(body) {
-		h.closure = true
-		h.body = body
-		// A fn-VALUE closure (a capturing `fn` / `=>` literal minted at run
-		// time) is matched against its own signature before it runs, as
-		// the lambda branch matches a lambda (S1b-2).
-		if ClosureIsFnValue(&body) {
-			if fnv, ok := ClosureAsFnDef(r, body); ok {
-				h.sigFn = fnv
-				h.body = ClosureSigMatched(body)
-			}
-		}
-		return h, nil
-	}
 	if body.Parent().ConformsTo(TFunction) {
 		h.lambda = true
 		h.fn = body
@@ -174,38 +154,12 @@ func callWalkHook(r *Registry, h walkHook, arg Value) error {
 			return r.BoruError("walk_error", "walk: no matching hook signature", "walk")
 		}
 		// InvokeCallbackFn, not r.CallBoru: a hook lambda written in another module
-		// resolves its free words THERE (design/FUNCTION-VALUE-SCOPE.0.md), and a
-		// stamped body runs on the VM rather than the interpreter.
+		// resolves its free words THERE (design/FUNCTION-VALUE-SCOPE.0.md).
 		_, err := InvokeCallbackFn(r, h.fnDef, sig, []Value{arg})
-		return err
-	}
-	if h.closure {
-		if h.sigFn.Data() != nil && MatchFnSig(h.sigFn, []Value{arg}) == nil {
-			return r.BoruError("walk_error", "walk: no matching hook signature", "walk")
-		}
-		// The fn-VALUE seam: the lambda branch above is InvokeCallbackFn's.
-		_, err := InvokeCallbackBody(r, h.body, []Value{arg})
 		return err
 	}
 	_, _, err := runQuotationBody(r, h.tokens, []Value{arg})
 	return err
-}
-
-// walkHookArgCarrier builds the GENERALISED `{key value path parent depth}`
-// payload carrier a compiled hook body is analysed against — the closure-unit
-// input mirroring walkBuildHookArg's runtime map (the CallableSpec.Inputs for
-// both the quotation and, via LambdaSharesTokenShape, the lambda form). Field
-// carriers are types, not one call's values: path/depth are always
-// String/Integer; key/value/parent are Any (key and parent are None at the
-// root; value is whatever node is visited).
-func walkHookArgCarrier() Value {
-	om := NewOrderedMap()
-	om.Set("key", NewCarrier(TAny))
-	om.Set("value", NewCarrier(TAny))
-	om.Set("path", NewCarrier(TString))
-	om.Set("parent", NewCarrier(TAny))
-	om.Set("depth", NewCarrier(TInteger))
-	return NewValueRaw(TMap, MapPayload{M: om})
 }
 
 // walkBuildHookArg builds the `{key value path parent depth}` payload map for a

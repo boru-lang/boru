@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -154,32 +153,6 @@ func TestS2AWordsStillMatchTheCensusRelevance(t *testing.T) {
 			if !quoted && !fnSlot && sig.CompileEffect.Has(core.CompileResteps) {
 				t.Errorf("%s %s: CompileResteps on a sig that is neither quoted nor fn-operand", word, s2aShape(sig))
 			}
-		}
-	}
-}
-
-// TestS2ADeclarationsThatLowerDoSoWithParity: the two S2a declarers that do
-// NOT run in check mode reach the recorder's quoted-operand gates, so their
-// declaration is a lowering, not just a census answer — `describe foo`
-// bakes a CALL_NATIVE over the inert atom (CompileQuoteInert) and
-// `xml-attr x <…/>` rides the key admission (CompileQuoteKey). Both must
-// compile AND agree with the interpreter.
-func TestS2ADeclarationsThatLowerDoSoWithParity(t *testing.T) {
-	for _, c := range []struct{ name, src, want string }{
-		{"xml-attr quoted key, present", `xml-attr x <a x="1" y="2"/>`, "[1]"},
-		{"xml-attr quoted key, missing", `xml-attr z <a x="1"/>`, "[None]"},
-		{"describe quoted word", `describe add`, "[]"},
-	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if errC != nil || errI != nil {
-			t.Errorf("%s: errors compiled=%v interp=%v", c.name, errC, errI)
-			continue
-		}
-		if !compiled {
-			t.Errorf("%s: did not compile — the declaration is meant to lower this shape", c.name)
-		}
-		if got := fmt.Sprint(gotC); got != c.want || got != fmt.Sprint(gotI) {
-			t.Errorf("%s: compiled %v, interp %v, want %s", c.name, gotC, gotI, c.want)
 		}
 	}
 }

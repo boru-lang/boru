@@ -89,66 +89,6 @@ func UsurpFunction(v Value) (Value, bool) {
 	return usurpOver(NewFunction(*fnDef), *fnDef), true
 }
 
-// closureShape is the compiled lane's view of a COMPILED CLOSURE at a
-// dispatch-modifier word (usurp / stack-args / forward-args / force-arity):
-// the FnDefInfo the interpreter would have minted for the same source, read
-// through the compiled runtime's bridge for its SHAPE alone. The wrapper the
-// word builds copies the shape's signatures and replaces every Impl with its
-// own re-dispatch, so nothing of the bridge's run-bound invoker survives into
-// it; what the wrapper stores and re-dispatches (Wraps, the re-dispatch
-// token) is the closure VALUE itself, which the VM applies natively and an
-// island's interpreter bridges at the dispatch it meets it in — the same
-// one-dispatch contract every other closure keeps. ok=false outside a run or
-// for a closure the bridge cannot describe: the word then raises exactly as
-// it does for any non-function operand (NUR158).
-func closureShape(r *Registry, v Value) (FnDefInfo, bool) {
-	if _, isCl := v.Data().(*ClosurePayload); !isCl || IsQuoted(&v) {
-		return FnDefInfo{}, false
-	}
-	bridged, ok := compiledRuntime.ClosureAsFnDef(r, v)
-	if !ok {
-		return FnDefInfo{}, false
-	}
-	fd, ok := FnDefOf(bridged.Data())
-	return *fd, ok
-}
-
-// UsurpClosure is UsurpFunction over a compiled closure value (closureShape).
-func UsurpClosure(r *Registry, v Value) (Value, bool) {
-	fd, ok := closureShape(r, v)
-	if !ok {
-		return Value{}, false
-	}
-	return usurpOver(v, fd), true
-}
-
-// ForceStackClosure / ForceForwardClosure / ForceArityClosure are the
-// rebarrier and arity wrappers over a compiled closure value (closureShape).
-func ForceStackClosure(r *Registry, v Value) (Value, bool) {
-	fd, ok := closureShape(r, v)
-	if !ok {
-		return Value{}, false
-	}
-	return rebarrierOver(v, fd, true), true
-}
-func ForceForwardClosure(r *Registry, v Value) (Value, bool) {
-	fd, ok := closureShape(r, v)
-	if !ok {
-		return Value{}, false
-	}
-	return rebarrierOver(v, fd, false), true
-}
-func ForceArityClosure(r *Registry, v Value, n int) (Value, bool) {
-	if n < 0 {
-		return Value{}, false
-	}
-	fd, ok := closureShape(r, v)
-	if !ok {
-		return Value{}, false
-	}
-	return forceArityOver(v, fd, n), true
-}
-
 // usurpOver builds the usurp wrapper: orig is the value the wrapper stores
 // and re-dispatches, fnDef the signatures it reads.
 func usurpOver(orig Value, fnDef FnDefInfo) Value {

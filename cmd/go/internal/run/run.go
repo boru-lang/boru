@@ -117,7 +117,6 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	noCheck := fs.Bool("no-check", false, "skip the static pre-flight check before execution (also enabled by BORU_NO_CHECK)")
 	optionsStr := fs.String("options", "", "engine options as jsonic (e.g. tape:initial:65536,tape:grows:9)")
 	colorMode := fs.String("color", "auto", "diagnostic color: auto (terminal-only, honors NO_COLOR), always, never")
-	compileReport := fs.Bool("compile-report", false, "after the run, print each runtime-constructed callback's stamp outcome (compiled to the VM, or the reason its body did not compile) to stderr")
 	var pf permsflags.Flags
 	permsflags.Register(fs, &pf)
 
@@ -222,11 +221,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				return 1
 			}
 		}
-		var report io.Writer
-		if *compileReport {
-			report = stderr
-		}
-		if err := buildrt.EvalReport(stdout, report, stderr, source, o, color); err != nil {
+		if err := buildrt.EvalColor(stdout, source, o, color); err != nil {
 			// `IO.exit N` is a request, not a failure: exit with the code
 			// the program asked for and print nothing, including for a
 			// non-zero code (design/CLI-PROGRAMS.0.md §4).

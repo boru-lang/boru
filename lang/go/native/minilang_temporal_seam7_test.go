@@ -8,44 +8,6 @@ import (
 // miniCompileStateFor / miniGoHook) and native_temporal_await.go (the
 // branch-error and multi-value awaitFull arms) — design/TEST-SEAMS.10.md.
 
-func TestMiniCompileNoStateArms(t *testing.T) {
-	r := b2Reg(t)
-	// No state installed and create=false → miniCompileStateFor returns nil.
-	if s := miniCompileStateFor(r, false); s != nil {
-		t.Fatal("miniCompileStateFor(create=false) with no state should be nil")
-	}
-	// miniGoHook with no state → (nil, false).
-	if h, ok := miniGoHook(r, "re"); ok || h != nil {
-		t.Fatalf("miniGoHook with no state = %v/%v, want nil/false", h, ok)
-	}
-	// miniHookFaithful with no state → false (the s == nil arm).
-	if miniHookFaithful(r, "re") {
-		t.Fatal("miniHookFaithful with no state should be false")
-	}
-	// Positive pair: after registering, the hook is discoverable and state
-	// is created.
-	called := false
-	RegisterMiniCompileGoHook(r, "re", func(string, Value, *Registry) ([]Value, error) {
-		called = true
-		return nil, nil
-	})
-	h, ok := miniGoHook(r, "re")
-	if !ok || h == nil {
-		t.Fatal("registered hook should be discoverable")
-	}
-	if _, err := h("x", NewTypeLiteral(TNone), r); err != nil || !called {
-		t.Fatalf("hook call = %v, called=%v", err, called)
-	}
-	// With state now created, a hook is faithful only after it is marked.
-	if miniHookFaithful(r, "re") {
-		t.Fatal("hook should not be faithful until marked")
-	}
-	MarkMiniCompileHookFaithful(r, "re")
-	if !miniHookFaithful(r, "re") {
-		t.Fatal("a marked hook should be faithful")
-	}
-}
-
 func TestRunParallelBranchError(t *testing.T) {
 	r := b2Reg(t)
 	// A list branch whose body raises produces an error result.

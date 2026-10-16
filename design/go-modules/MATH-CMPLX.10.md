@@ -19,8 +19,8 @@ proposal; no Go code exists yet, and shipping is genuinely in question
 ## 2. Why curated
 
 There is no "raw bridge vs curated" framing here, because **boru has no
-complex type at all** — `complex128` has no `eng.FromNative` /
-`eng.ToNative` mapping, so a mechanical `go:math/cmplx` bridge could not
+complex type at all** — `complex128` has no `core.FromNative` /
+`core.ToNative` mapping, so a mechanical `go:math/cmplx` bridge could not
 even pass an argument. Any boru surface must *invent* a representation. The
 curated choice is to model a complex number as a **`Map {re, im}`** of two
 Floats, so every word reads and writes ordinary inspectable data and the
@@ -73,13 +73,13 @@ Scalars / Map only. **No opaque external handle** — the whole modeling
 choice is to represent a complex number as a plain inspectable Map of
 Floats rather than introduce a `complex128` payload type, so there is no
 `RegisterExternalBuiltin` / FixedID allocation. Convert at the boundary
-with `eng.FromNative` / `eng.ToNative` (`eng/go/gobridge.go`):
+with `core.FromNative` / `core.ToNative` (`core/go/gobridge.go`):
 Float↔float kinds, Map↔`map[string]any`. (This is exactly the friction
 §10 weighs: a native Complex type, if it existed, would replace the Map.)
 
 ## 6. Errors
 
-No panics (`eng/go/CLAUDE.md` "Panic Prevention"; guard with
+No panics (`core/go/CLAUDE.md` "Panic Prevention"; guard with
 `RequireConcreteMap` and `AsConcreteFloat` before use). Failure is
 signalled via `r.BoruError(code, detail, word)`:
 
@@ -176,6 +176,6 @@ Wiring checklist — no Go code here. Reference: `lang/go/modules/math.go`
   `polar` → `from-polar`) and pair every positive row with an
   `ERROR:<substring>` sibling (a non-Map / missing-key `bad-arg`) per Test
   discipline (`lang/go/CLAUDE.md`).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`
+- Boundary conversion via `core.FromNative` / `core.ToNative`
   (Float↔float kinds, Map↔`map[string]any`). No FixedID entry (no
   external type — the Map *is* the representation), no policy wiring.

@@ -214,13 +214,14 @@ end
 "core/go depends on no sibling — the chain's base" Test.test end
 [(deps-of "check-go") ["core-go"] Assert.equal]
 "check/go depends on core/go" Test.test end
-[(deps-of "compiler-go") ["check-go" "core-go"] Assert.equal]
-"compiler/go depends on check and core" Test.test end
-[(deps-of "eng-go")
-      ["check-go" "compiler-go" "core-go" "parser-go" "test-specfix"]
-      Assert.equal
-  ]
-"eng/go depends on the five modules below it" Test.test end
+[(deps-of "lang-go") ["basic-go" "check-go" "core-go" "parser-go"] Assert.equal]
+"lang/go depends on the four modules below it" Test.test end
+[((by-key "compiler-go") is None) true Assert.equal]
+"compiler/go is no longer a workspace member — the compiler lane was removed"
+Test.test end
+[((by-key "eng-go") is None) true Assert.equal]
+"eng/go is no longer a workspace member — its kernel lives in core/go"
+Test.test end
 [(deps-of "parser-go") ["core-go"] Assert.equal]
 "parser/go depends on core alone — it is a leaf over the kernel"
 Test.test end

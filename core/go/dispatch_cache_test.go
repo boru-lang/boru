@@ -174,29 +174,6 @@ func TestDispatchCacheConcurrentSharedRegistry(t *testing.T) {
 	}
 }
 
-// TestDispatchCacheStateNilReceiver pins the DefTable-style nil-receiver
-// safety of the holder's methods: a registry constructed without
-// NewRegistry (zero value) runs uncached rather than crashing — get
-// misses, put and reset no-op.
-func TestDispatchCacheStateNilReceiver(t *testing.T) {
-	var c *dispatchCacheState
-	if fn, ok := c.get("x", 0); fn != nil || ok {
-		t.Fatalf("nil get = (%v, %v), want (nil, false)", fn, ok)
-	}
-	c.put("x", 0, nil) // must not panic
-	c.reset()          // must not panic
-
-	// A zero-value Registry (no NewRegistry) therefore Lookups uncached:
-	// nil result for an unbound name, no panic, nothing cached.
-	zero := &Registry{Check: &CheckState{StepBudget: -1, Emit: TheInactiveEmit}}
-	if zero.Lookup("anything") != nil {
-		t.Fatal("zero-registry Lookup = non-nil")
-	}
-	if zero.dispatchCache != nil {
-		t.Fatal("zero-registry Lookup lazily allocated a cache; it must stay uncached")
-	}
-}
-
 // TestDispatchCacheCheckModeBypass pins that check mode never serves the
 // cache: it always returns a fresh (uncached) aggregate, so the
 // pointer-identity contracts of the compile failure/emit passes hold.

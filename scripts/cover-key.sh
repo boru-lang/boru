@@ -21,9 +21,9 @@ closure() {
     [ -f "$m/go.mod" ] || continue
     # Both forms of the directive: `replace X => ../y` on one line, and
     # the block `replace (` … `)` with one `X => ../y` per line. (The
-    # block form was missed at first, so compiler/go's key ignored core/go
-    # and check/go and a stale profile poisoned the merged view with
-    # phantom uncovered blocks after the unify threading.)
+    # block form was missed at first, so a module's key ignored the
+    # siblings it replaced that way, and a stale profile poisoned the merged
+    # view with phantom uncovered blocks after the unify threading.)
     while read -r dep; do
       dep=$(cd "$m" && cd "$dep" 2>/dev/null && pwd -P) || continue
       dep=${dep#"$PWD"/}

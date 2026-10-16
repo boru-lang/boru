@@ -90,7 +90,7 @@ is that a 0.2-point move under a 2-point spread is not a move.
 Two things to know before trusting a number out of it:
 
 - It profiles the **dispatch-dense** interpreter benchmarks
-  (`BenchmarkParens`, `BenchmarkBytecodeBaseline`), not the
+  (`BenchmarkParens`, `BenchmarkInterpBaseline`), not the
   collection-*word* suite. In `BenchmarkPerfWords` the 500-element inner
   work swamps dispatch and the same loops sit near 3–5% of samples, where
   a real regression hides inside the spread. Override with

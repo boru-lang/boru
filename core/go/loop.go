@@ -54,22 +54,11 @@ type LoopDriver interface {
 	WrapError(it int, err error) error
 }
 
-// LoopInvoke runs one iteration's body against its inputs when the loop is
-// driven from Go (DriveLoop): the seam the handler invoked bodies through
-// before the loop moved to the tape. Nil means InvokeBody on the registry.
-type LoopInvoke func(body Value, inputs []Value) ([]Value, error)
-
 // StartLoop is a looping native's handler exit: it returns the handler's
 // RESULT — either the loop's first region (mark, sealed inputs+body, move)
 // for the engine to step, or, with no iteration at all, the driver's
-// finished results. Under the VM (the registry's Invoker set, the body a
-// compiled closure) it drives the loop from Go instead and returns the
-// loop's results outright: a VM dispatch pushes a handler's results and
-// never steps them.
-func StartLoop(r *Registry, word string, drv LoopDriver, invoke LoopInvoke) ([]Value, error) {
-	if r.Invoker != nil {
-		return DriveLoop(r, drv, invoke)
-	}
+// finished results.
+func StartLoop(r *Registry, word string, drv LoopDriver) ([]Value, error) {
 	lp := &Loop{Registry: r, Word: word, Count: -1, Driver: drv}
 	if r.Check != nil {
 		lp.Pos = r.Check.CurWordPos
@@ -83,41 +72,6 @@ func StartLoop(r *Registry, word string, drv LoopDriver, invoke LoopInvoke) ([]V
 	}
 	lp.Iter = 1
 	return loopRegionTokens(nil, lp, inputs, body), nil
-}
-
-// DriveLoop runs a driven loop from Go: each iteration's body through
-// invoke (InvokeBody when nil), the residual to the driver, a body error
-// wrapped by the driver, an escaping break/continue ending the loop with no
-// result (BodyEscaped). This is the handler's historical loop, kept for the
-// VM lane and for any caller that cannot step tokens.
-func DriveLoop(r *Registry, drv LoopDriver, invoke LoopInvoke) ([]Value, error) {
-	for it := 0; ; it++ {
-		inputs, body, ok, err := drv.Next(it)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return drv.Finish()
-		}
-		// The driver may reuse its inputs buffer across iterations; the
-		// seam below keeps the slice it is handed, so give it its own.
-		in := append([]Value(nil), inputs...)
-		var res []Value
-		if invoke != nil {
-			res, err = invoke(body, in)
-		} else {
-			res, err = InvokeBody(r, body, in)
-		}
-		if err != nil {
-			return nil, drv.WrapError(it, err)
-		}
-		if BodyEscaped(r) {
-			return nil, nil
-		}
-		if err := drv.Collect(it, res); err != nil {
-			return nil, err
-		}
-	}
 }
 
 // callDriver is the driver of a CALL region (CallRegion): a native's tail
@@ -187,9 +141,6 @@ func (d *callDriver) WrapError(_ int, err error) error { return err }
 // runs it as it did: the region's residual is the engine's, not the
 // handler's.
 func CallRegion(r *Registry, word, kind string, inputs []Value, body Value) ([]Value, error) {
-	if r.Invoker != nil {
-		return DriveLoop(r, &callDriver{inputs: inputs, body: body, kind: kind}, nil)
-	}
 	lp := r.takeCallLoop(word, kind, inputs, body)
 	lp.toks = loopRegionTokens(lp.toks, lp, inputs, body)
 	return lp.toks, nil
