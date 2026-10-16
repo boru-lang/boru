@@ -54,8 +54,9 @@ func (wordCompareBehavior) formatDelegate()    {}
 // then picks the appropriate branch (litVsLitOrder for both-
 // literal, the family's value compare for both-concrete).
 func litVsConcreteOrder(a, b Value) (int, bool) {
-	aLit := DataOf(&a) == nil && !IsCarrier(&a)
-	bLit := DataOf(&b) == nil && !IsCarrier(&b)
+	ac, bc := a.c, b.c
+	aLit := ac == nil || ac.data == nil && !ac.carrier
+	bLit := bc == nil || bc.data == nil && !bc.carrier
 	if aLit && !bLit {
 		return -1, true
 	}
@@ -102,7 +103,7 @@ func scalarCmpPrologue(a, b Value) (result int, done bool, err error) {
 	if c, ok := litVsConcreteOrder(a, b); ok {
 		return c, true, nil
 	}
-	if DataOf(&a) == nil && DataOf(&b) == nil {
+	if (a.c == nil || a.c.data == nil) && (b.c == nil || b.c.data == nil) {
 		return litVsLitOrder(a, b), true, nil
 	}
 	return 0, false, nil

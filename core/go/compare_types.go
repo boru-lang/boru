@@ -42,8 +42,8 @@ func compareTypes(a, b *Type) int {
 // *Type assembled without one (chiefly in tests).
 func rankOf(t *Type) int {
 	for ; t != nil; t = ParentOf(t) {
-		if t.Rank() != 0 {
-			return t.Rank()
+		if r := t.Rank(); r != 0 {
+			return r
 		}
 	}
 	return 0
@@ -55,8 +55,10 @@ func rankOf(t *Type) int {
 // RegisterType), so this is an O(1) field read; the walk is a
 // fallback for an ad-hoc *Type assembled without a Depth (chiefly tests).
 func typeDepth(t *Type) int {
-	if t != nil && t.Depth() > 0 {
-		return t.Depth()
+	if t != nil {
+		if d := t.Depth(); d > 0 {
+			return d
+		}
 	}
 	d := 0
 	for ; t != nil; t = ParentOf(t) {

@@ -188,7 +188,11 @@ func init() {
 // just the base scalar (TInteger, TString, …), indistinguishable
 // from an ordinary scalar at the lattice level.
 func (v *Value) IsDepScalar() bool {
-	_, ok := DataOf(v).(DepScalarInfo)
+	var d Payload
+	if c := v.c; c != nil {
+		d = c.data
+	}
+	_, ok := d.(DepScalarInfo)
 	return ok
 }
 

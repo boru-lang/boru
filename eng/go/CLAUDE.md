@@ -808,6 +808,13 @@ never written once a holder refers to it:
 - A temporary probe (a value built only to be matched) escapes once
   its content is behind a pointer: share a package-level probe
   (`scanProbeAtom`) instead of `&Value{…}` per call.
+- Inside core, a hot path reads the content directly (`c := v.c`, nil
+  check folded into the condition) rather than calling the accessors.
+  The normal build inlines either to the same load, but coverage
+  instrumentation writes a function's counters on every call, from every
+  test goroutine, and the merged ADR-008 gate's langspec stage has a
+  45-minute timeout: the metadata readers, the payload predicates,
+  `Type.Equal` and the marker predicates are written this way for it.
 
 **Enforcement: `make vet-copies`.** The content carries the zero-size
 `noCopy` marker, so go vet's copylocks analyzer reports a copy of a

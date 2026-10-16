@@ -326,30 +326,33 @@ func (t *Type) Equal(other *Type) bool {
 	if t == nil || other == nil {
 		return false
 	}
-	// The labels mirrored into labelled builtin nodes' content settle
-	// identity without the metadata hop (mirrorLabels).
-	if tc, oc := t.c, other.c; tc != nil && oc != nil && tc.in > 0 && oc.in > 0 {
-		return tc.in == oc.in
-	}
-	if tm, om := tmetaOf(t), tmetaOf(other); tm != nil && om != nil {
-		if tm == om {
-			return true
+	if tc, oc := t.c, other.c; tc != nil && oc != nil {
+		// The labels mirrored into labelled builtin nodes' content settle
+		// identity without the metadata hop (mirrorLabels).
+		if tc.in > 0 && oc.in > 0 {
+			return tc.in == oc.in
 		}
-		// Interval-label fast path. In (the DFS pre-order number stamped by
-		// labelIntervals) is assigned once, on the package-level Builtin
-		// table, as a single `counter++` per node — so among labelled nodes
-		// it is a unique per-node identity and In-equality is exactly
-		// node-equality. Minted / refined / external / ad-hoc nodes (and a
-		// node rebuilt around an existing ID) are never labelled and carry
-		// In == 0, so they fall through to the ID compare below with
-		// behaviour unchanged. Reaching here therefore means: whenever both
-		// nodes are labelled, an int compare settles identity without the
-		// 14-char ID string compare — the hot path for the per-token marker
-		// predicates (IsWord / IsOpenParen / IsForward / …), which test a
-		// token's builtin Parent against a builtin marker on every step and
-		// almost always mismatch.
-		if tm.In > 0 && om.In > 0 {
-			return tm.In == om.In
+		if tm, om := tc.tmeta, oc.tmeta; tm != nil && om != nil {
+			if tm == om {
+				return true
+			}
+			// Interval-label fast path. In (the DFS pre-order number stamped
+			// by labelIntervals) is assigned once, on the package-level
+			// Builtin table, as a single `counter++` per node — so among
+			// labelled nodes it is a unique per-node identity and
+			// In-equality is exactly node-equality. Minted / refined /
+			// external / ad-hoc nodes (and a node rebuilt around an
+			// existing ID) are never labelled and carry In == 0, so they
+			// fall through to the ID compare below with behaviour
+			// unchanged. Reaching here therefore means: whenever both nodes
+			// are labelled, an int compare settles identity without the
+			// 14-char ID string compare — the hot path for the per-token
+			// marker predicates (IsWord / IsOpenParen / IsForward / …),
+			// which test a token's builtin Parent against a builtin marker
+			// on every step and almost always mismatch.
+			if tm.In > 0 && om.In > 0 {
+				return tm.In == om.In
+			}
 		}
 	}
 	return IDOf(t) != "" && IDOf(t) == IDOf(other)

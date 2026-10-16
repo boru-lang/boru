@@ -364,8 +364,8 @@ func IDOf(v *Value) string {
 		}
 		return v.occ.id
 	}
-	if tmetaOf(v) != nil {
-		return tmetaOf(v).id
+	if c := v.c; c != nil && c.tmeta != nil {
+		return c.tmeta.id
 	}
 	return ""
 }

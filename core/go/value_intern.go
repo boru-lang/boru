@@ -3,10 +3,11 @@ package core
 // Interned content (design/VALUE-NO-COPY.0.md §6 phase 4). The contents the
 // constructors mint most — the small integers, the two booleans, none, the
 // empty string, the payload-less structural markers (open and close paren,
-// end) and the reach lowering's dot words — are built once and shared by every holder of them, so
-// minting one allocates nothing. Sharing is safe because content
-// is immutable once published: a holder that needs different content gets
-// content of its own (ownContent), and nothing writes these.
+// end) and the reach lowering's dot words — are built once and shared by
+// every holder of them, so minting one allocates nothing. Sharing is safe
+// because content is immutable once published: a holder that needs
+// different content gets content of its own (ownContent), and nothing
+// writes these.
 
 const (
 	internIntMin = -128

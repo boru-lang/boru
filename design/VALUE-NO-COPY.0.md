@@ -946,6 +946,21 @@ same reason (an integer result above the interned range is a content and
 a box): `recursion_nontail` 995 to 1,129, `recursion_tail` 5,753 to
 6,007.
 
+One cost showed only under coverage. Go's instrumentation writes a
+function's counters on every call — a three-word registration hook and a
+word per block — and every test goroutine writes the same counters, so a
+call that inlines to a field read in the normal build is several
+contended stores in the instrumented one. Phase 3's field reads cost
+none; the accessors made the merged gate's langspec stage run past its
+45-minute test timeout (the uninstrumented shards were as fast as phase
+3's). The hottest core paths — the type-node metadata readers (`Depth`,
+`Rank`, `Behavior`, `Name`, `In`, `Out`, `IDOf`, `literalNode`), the
+payload-presence predicates, the scalar-compare prologue, `Type.Equal`
+and the marker predicates — now read the content directly instead of
+calling the accessors, which brought an instrumented langspec run back
+to phase 3's time (420s against 428s over the smoke corpus) and left the
+normal build as it was or slightly faster.
+
 So the switch bought both things §8 weighed: the representation the
 policy asks for — no value is copied, a holder copy is a cell record and
 the content cannot be written once shared — and, after tuning, speed:

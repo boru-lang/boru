@@ -41,7 +41,8 @@ func IsTypeLiteral(v *Value) bool {
 // intent is "I need a real value to read"; use IsBareTypeNode when
 // the intent is "v is its own lattice node".
 func IsConcrete(v *Value) bool {
-	return DataOf(v) != nil && !IsCarrier(v)
+	c := v.c
+	return c != nil && c.data != nil && !c.carrier
 }
 
 // DeepConcrete reports whether v is concrete ALL THE WAY DOWN: concrete
@@ -160,7 +161,8 @@ func deepKnown(v Value, depth int) bool {
 // handlers return NewTypeLiteral(TNone) for "no value found"), use
 // IsTypeLiteral.
 func IsBareTypeNode(v *Value) bool {
-	return DataOf(v) == nil && !IsCarrier(v)
+	c := v.c
+	return c == nil || c.data == nil && !c.carrier
 }
 
 // RequireConcreteList unwraps a list-typed Value into its ReadList,
