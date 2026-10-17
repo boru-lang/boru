@@ -59,7 +59,8 @@ type declHooks struct {
 	Conds   map[string]func(*jsonic.Rule, *jsonic.Context) bool
 }
 
-// loadDeclGrammar decodes the embedded artifact once per parse setup.
+// loadDeclGrammar decodes the embedded artifact once per parser build
+// (newBoruParser).
 func loadDeclGrammar() declGrammar {
 	var g declGrammar
 	if err := json.Unmarshal(declGrammarJSON, &g); err != nil { //covergate:allow the embedded artifact is compile-time-constant JSON that TestDeclGrammarLoads proves valid

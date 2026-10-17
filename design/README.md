@@ -83,9 +83,11 @@ pass and carry no implied status either way.
 - `COMPILER-LANE-REMOVAL.0.md` — the 2026-10-16 removal of the compiler
   lane: what went, why behaviour did not change, the residue to prune, the
   `compiler-legacy` branch.
-- `INTERPRETER-TIERED-EXECUTION.0.md` — the interpreter-optimisation design.
 - `INTERPRETER-PERF-HANDOVER.0.md` — the interpreter-performance sessions'
-  handover (#532, #533) and the no-copy review's open threads.
+  handover (#532, #533, the 2026-10-17 dispatch-cost work), the plan the
+  interpreter line follows, and the no-copy review's open threads. The
+  earlier tiered-execution design, which promoted hot code to the removed
+  VM, is retired to `legacy/INTERPRETER-TIERED-EXECUTION.0.ignore`.
 - `VALUE-NO-COPY.0.md`, `VALUE-NO-COPY-EXCEPTIONS.0.md`,
   `VALUE-NO-COPY-MEASUREMENTS.0.md` — the no-copy policy, its allowed
   exceptions and its measurements.

@@ -650,8 +650,7 @@ func InstallFnDef(r *Registry, name string, fnDef FnDefInfo, stackOnly ...bool) 
 // census). A registration proper (`def`, a module export) keeps it.
 func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnly ...bool) {
 	isStackOnly := len(stackOnly) > 0 && stackOnly[0]
-	sigs := compileFnSigs(r, name, fnDef, isStackOnly)
-	SortSignatures(sigs)
+	sigs := installedFnSigsFor(r, name, &fnDef, isStackOnly)
 	entry := boundFnDef(&fnDef, name, sigs)
 	r.Defs.Push(name, NewFunction(entry))
 	// Construction-time body check (first-class, post-binding). Replaces the
@@ -685,6 +684,7 @@ func boundFnDef(fd *FnDefInfo, name string, sigs []Signature) FnDefInfo {
 	out.Name = name
 	out.Signatures = sigs
 	out.MaxForwardArgs = calcMaxForwardArgs(sigs)
+	out.plans = nil // an aggregate's plans are not the binding's
 	return out
 }
 

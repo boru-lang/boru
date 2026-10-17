@@ -335,7 +335,7 @@
       id: "src:interpreter-perf-handover"
       kind: "text"
       locator: "design/INTERPRETER-PERF-HANDOVER.0.md"
-      title: "handover of the interpreter-performance session (#532, #533) and the Value no-copy review: the state at stop, the open decisions, the follow-ups, the saved inventories, patches and probe corpora"
+      title: "handover of the interpreter-performance sessions (#532, #533, and the 2026-10-17 dispatch-cost work) and the Value no-copy review: the interpreter line's plan and the levers left, the state at stop, the open decisions, the follow-ups, the saved inventories, patches and probe corpora"
       retrieved_at: null
       content_hash: "interpreter-perf-handover-2026-10-09"
       authority: "primary"

@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -102,6 +103,18 @@ type Engine struct {
 	// engine-owned buffer is race- and aliasing-safe. Retained across
 	// pooled sub-engine reuse (harmless: reset to [:0] on entry).
 	rrValues []Value
+	// rrIndices is rearrangeForForward's scratch for the tape indices of
+	// the cells it permutes, under rrValues' argument: one call's, never
+	// retained past it.
+	rrIndices []int
+	// viableBufs is the phase-1 plan walk's viable-set scratch
+	// (CollectForward), one buffer per walk live on this engine: a group
+	// the walk evaluates dispatches again here, so walks nest, strictly
+	// LIFO. resolveForwardArgs takes the buffer at depth viableDepth, sized
+	// for every signature of the word, and hands it back when the walk
+	// returns; nothing outlives the walk that holds it.
+	viableBufs  [][]ViableSig
+	viableDepth int
 	// sealed holds the sealed-region Loops (sealed.go), one per nesting
 	// depth of literal evaluation; sealDepth is the depth live now. A
 	// region at a depth is minted once and reused by every later literal
@@ -1934,7 +1947,15 @@ func pruneKeywordViable(viable []ViableSig, pos int, tok Value) []ViableSig {
 // The walk itself lives in collect_kernel.go, where the three collection
 // loops meet one seam (design/FULL-COMPILATION.0.md §6.2).
 func (e *Engine) resolveForwardArgs(fn *FnDefInfo, w WordInfo) error {
-	return CollectForward(e, fn, w, e.Pointer+1)
+	d := e.viableDepth
+	if d == len(e.viableBufs) {
+		e.viableBufs = append(e.viableBufs, nil)
+	}
+	e.viableBufs[d] = slices.Grow(e.viableBufs[d][:0], len(fn.Signatures))
+	e.viableDepth = d + 1
+	err := CollectForward(e, fn, w, e.Pointer+1, e.viableBufs[d][:0])
+	e.viableDepth = d
+	return err
 }
 
 // --- the Engine's CollectHost seat ------------------------------------
@@ -3147,9 +3168,8 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 // sortedPositions returns a copy of a dispatch's tape positions in
 // ascending order — execMatch's splice order. An insertion sort: a
 // dispatch has few operands.
-func sortedPositions(indices []int) []int {
-	out := make([]int, len(indices))
-	copy(out, indices)
+func sortedPositions(dst, indices []int) []int {
+	out := append(dst, indices...)
 	for i := 1; i < len(out); i++ {
 		for j := i; j > 0 && out[j] < out[j-1]; j-- {
 			out[j], out[j-1] = out[j-1], out[j]
@@ -3179,8 +3199,12 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if len(indices) == 0 && n > 0 {
 		indices = e.ResolvedIndicesBefore(n)
 	}
-	// Sort indices ascending for splice operations.
-	sortedIndices := sortedPositions(indices)
+	// Sort indices ascending for splice operations, into a buffer in this
+	// call's own frame at the common arities: the handler may dispatch
+	// again on this engine before the indices are read back, so they are
+	// the call's, never an engine scratch's.
+	var sortBuf [8]int
+	sortedIndices := sortedPositions(sortBuf[:0], indices)
 
 	// Process consumed arguments:
 	// - Maps with Eval=true: auto-evaluate their values now, so word
@@ -3744,7 +3768,8 @@ func (e *Engine) rearrangeForForward(stackArgs, forwardArgs int) {
 		return
 	}
 
-	indices := e.ResolvedIndicesBefore(total)
+	indices := e.resolvedIndicesBeforeInto(e.rrIndices[:0], total)
+	e.rrIndices = indices // retain any grown capacity
 	if len(indices) < total {
 		return
 	}
@@ -6740,7 +6765,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 // skip leaves an unspendable credit that silently swallows the NEXT real
 // literal — design/FN-VALUE-OPEN-WORK.0.md §5.2.
 func fnValueDispatchesAtPointer(v Value) bool {
-	return v.Parent().Equal(TFunction) && isFnDefValue(v) && !IsQuoted(&v)
+	return parentIs(&v, TFunction) && isFnDefValue(v) && !IsQuoted(&v)
 }
 
 // FnValueDispatchesAtPointer is the main loop's own dispatch predicate: would
@@ -8736,6 +8761,11 @@ func (e *Engine) patternEvalAbandoned() bool {
 // raw token.
 func (e *Engine) matchSignatureDispatching(fn *FnDefInfo, w WordInfo, resolved []Value) (*Signature, []int, int) {
 	checkActive := e.Registry != nil && e.Registry.analysisActive()
+	if !checkActive {
+		// A run-time dispatch plans from the aggregate's memory when it can
+		// (dispatch_plan.go); an analysis pass always plans afresh.
+		return planDispatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward())
+	}
 	return PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, false)
 }
 

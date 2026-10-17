@@ -1,5 +1,12 @@
 # Tiered execution: Python-class performance for interpreter mode
 
+> **Retired 2026-10-17.** This plan promoted hot fn bodies to the bytecode
+> VM, and the VM was removed with the compiler lane on 2026-10-16
+> (design/COMPILER-LANE-REMOVAL.0.md). The interpreter line's plan is now
+> the one in design/INTERPRETER-PERF-HANDOVER.0.md ("The dispatch-cost
+> plan"), which makes the interpreter's own dispatch cheaper instead. Kept
+> for the measurements and the survey below.
+
 **Status:** Design / roadmap. The concrete architecture for closing the
 remaining interpreter↔Python gap, grounded in the machinery verified
 during the 2026-07 second-pass optimization series

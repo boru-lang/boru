@@ -951,6 +951,13 @@ type FnDefInfo struct {
 	// carries nil and has no identity, which is the honest answer for a
 	// synthesized payload with no fn behind it.
 	ident *fnIdent
+	// plans holds the dispatch plans of a registry's runtime dispatch
+	// aggregate (Registry.Lookup → aggregateDispatch), one holder per
+	// aggregate built: what PlanMatch answered for this word, by what each
+	// answer read (dispatch_plan.go). Nil on every other payload — an
+	// authored definition, a constructed fn value, an analysis pass's
+	// aggregate — which plans afresh; a copy of an aggregate shares it.
+	plans *planHolder
 }
 
 // fnIdent is a fn value's identity token — allocated for its ADDRESS,
@@ -976,6 +983,14 @@ type fnIdent struct {
 	// view caches the function's dispatch-ordered signature list
 	// (FnDispatchSigs), keyed by the authored list it was built from.
 	view atomic.Pointer[sigView]
+	// install caches the signatures binding the function under a name
+	// installs (installedFnSigsFor) — a Function parameter is bound again
+	// on every call.
+	install atomic.Pointer[installedFnSigs]
+	// aggregate caches the run-time dispatch aggregate of a binding of the
+	// function that is its name's only fn binding (singleAggregateFor) — the
+	// table Lookup rebuilds after every re-binding of a Function parameter.
+	aggregate atomic.Pointer[singleAggregate]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value
@@ -2651,7 +2666,7 @@ func NewXmlInterp(tmpl XmlTmpl) Value {
 
 // IsXmlInterp reports whether v is an interpolated XML literal skeleton.
 func IsXmlInterp(v *Value) bool {
-	return v.Parent().Equal(TXmlInterp)
+	return parentIs(v, TXmlInterp)
 }
 
 // AsXmlInterp returns the template backing an interpolated XML skeleton.
@@ -3061,7 +3076,7 @@ func NewReachFromKeys(receiver Value, keys []Value) Value {
 
 // IsReach reports whether v is an Ideal/Reach value.
 func IsReach(v *Value) bool {
-	return v.Parent().Equal(TReach)
+	return parentIs(v, TReach)
 }
 
 // AsReach returns the ReachInfo of a Reach value.
@@ -3496,7 +3511,7 @@ func NewError(err error) Value {
 
 // IsError reports whether this value is an error.
 func IsError(v Value) bool {
-	return v.Parent().Equal(TError)
+	return parentIs(&v, TError)
 }
 
 // AsError returns the ErrorInfo for an error value.
@@ -3532,14 +3547,46 @@ type IntervalInfo struct {
 
 // IsInterval and AsInterval moved to lang/go/engine/native_misc.go (Step 8).
 
+// parentIs reports whether v's Parent is the builtin node t — the token-kind
+// test (IsWord, IsForward, IsOpenParen, …) the step loop and the forward
+// scan run on nearly every token, almost always to a mismatch. It answers
+// what v.Parent().Equal(t) answers, without the call: the node itself, or a
+// handle on its datum (a type literal's copy shares it), is a pointer
+// compare; and every builtin node carries an interval label unique per node
+// (labelIntervals) that a copy-on-write copy of its datum keeps, so a
+// labelled Parent settles identity with one int compare. Equal's remaining
+// rules — shared type metadata, then the ID string — only ever match an
+// unlabelled datum built from t's own parts before the builtin lattice was
+// labelled, which no value made after init is. TestParentIsAgreesWithEqual
+// holds the two to the same answer over every builtin node. Small enough to
+// inline, so the hot predicates built on it make no call at all.
+func parentIs(v *Value, t *Type) bool {
+	d := v.d
+	if d == nil {
+		return false
+	}
+	p := d.Parent
+	if p == t {
+		return true
+	}
+	if p == nil {
+		return false
+	}
+	pd, td := p.d, t.d
+	if pd == td {
+		return pd != nil
+	}
+	return pd != nil && td != nil && pd.in != 0 && pd.in == td.in
+}
+
 // IsWord reports whether this value is a word (function reference).
 func IsWord(v *Value) bool {
-	return v.Parent().Equal(TWord)
+	return parentIs(v, TWord)
 }
 
 // IsForward reports whether this value is a forward primitive.
 func IsForward(v *Value) bool {
-	return v.Parent().Equal(TForward)
+	return parentIs(v, TForward)
 }
 
 // IsBoolean reports whether this value is a boolean type.
@@ -3549,22 +3596,22 @@ func IsBoolean(v *Value) bool {
 
 // IsOpenParen reports whether this value is an open-paren marker.
 func IsOpenParen(v *Value) bool {
-	return v.Parent().Equal(TOpenParen)
+	return parentIs(v, TOpenParen)
 }
 
 // IsCloseParen reports whether this value is a close-paren marker.
 func IsCloseParen(v *Value) bool {
-	return v.Parent().Equal(TCloseParen)
+	return parentIs(v, TCloseParen)
 }
 
 // IsEnd reports whether this value is an end-marker.
 func IsEnd(v *Value) bool {
-	return v.Parent().Equal(TEnd)
+	return parentIs(v, TEnd)
 }
 
 // IsParenExpr reports whether this value is a paren expression.
 func IsParenExpr(v *Value) bool {
-	return v.Parent().Equal(TParenExpr)
+	return parentIs(v, TParenExpr)
 }
 
 // AsParenExpr returns the items in a paren expression value.
@@ -3577,7 +3624,7 @@ func AsParenExpr(v *Value) ([]Value, error) {
 
 // IsInterpString reports whether this value is an interpolated string.
 func IsInterpString(v *Value) bool {
-	return v.Parent().Equal(TInterpString)
+	return parentIs(v, TInterpString)
 }
 
 // AsInterpString returns the parts of an interpolated string value.
@@ -3590,7 +3637,7 @@ func AsInterpString(v Value) ([]InterpPart, error) {
 
 // IsMark reports whether this value is a mark.
 func IsMark(v *Value) bool {
-	return v.Parent().Equal(TMark)
+	return parentIs(v, TMark)
 }
 
 // AsMark returns the MarkInfo, panics if not a mark.
@@ -3604,7 +3651,7 @@ func AsMark(v *Value) (MarkInfo, error) {
 
 // IsMove reports whether this value is a move.
 func IsMove(v *Value) bool {
-	return v.Parent().Equal(TMove)
+	return parentIs(v, TMove)
 }
 
 // NewSplice wraps a value in an __SP (splice) marker. When the marker reaches
@@ -3615,7 +3662,7 @@ func NewSplice(v Value) Value {
 
 // IsSplice reports whether this value is an __SP splice marker.
 func IsSplice(v *Value) bool {
-	return v.Parent().Equal(TSplice)
+	return parentIs(v, TSplice)
 }
 
 // AsSplice returns the SpliceInfo, erroring if not a splice value.
@@ -3647,7 +3694,7 @@ func NewDispatchMod(info DispatchModInfo) Value {
 }
 
 // IsDispatchMod reports whether v is a Word/__DM marker.
-func IsDispatchMod(v *Value) bool { return v.Parent().Equal(TDispatchMod) }
+func IsDispatchMod(v *Value) bool { return parentIs(v, TDispatchMod) }
 
 // AsDispatchMod returns the DispatchModInfo if v is a Word/__DM marker.
 func AsDispatchMod(v Value) (DispatchModInfo, bool) {
@@ -3666,7 +3713,7 @@ func AsMove(v *Value) (MoveInfo, error) {
 
 // IsReturnCheck reports whether this value is a return-check marker.
 func IsReturnCheck(v *Value) bool {
-	return v.Parent().Equal(TReturnCheck)
+	return parentIs(v, TReturnCheck)
 }
 
 // AsReturnCheck returns the ReturnCheckInfo, panics if not a return-check.
@@ -3680,7 +3727,7 @@ func AsReturnCheck(v *Value) (ReturnCheckInfo, error) {
 
 // IsDefCleanup reports whether this value is a def-cleanup marker.
 func IsDefCleanup(v *Value) bool {
-	return v.Parent().Equal(TDefCleanup)
+	return parentIs(v, TDefCleanup)
 }
 
 // AsDefCleanup returns the DefCleanupInfo, panics if not a def-cleanup.

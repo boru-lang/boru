@@ -25,10 +25,11 @@ caller's tape (#532), collection words as loops on the tape and container
 literals as sealed regions (#533), the Value no-copy policy through phase
 4 (#535) — and the compiled lane's debt (its refusals, its own
 miscompiles, a second implementation of every control word) was effort the
-interpreter line could not spend twice. The design the interpreter line
-follows is design/INTERPRETER-TIERED-EXECUTION.0.md; its handover page is
-design/INTERPRETER-PERF-HANDOVER.0.md; its baseline discipline is
-design/PERF-BASELINE.10.md.
+interpreter line could not spend twice. The interpreter line's plan and
+handover page is design/INTERPRETER-PERF-HANDOVER.0.md (the tiered-execution
+design it named here, which promoted hot code to the VM, was retired the
+next day to legacy/INTERPRETER-TIERED-EXECUTION.0.ignore); its baseline
+discipline is design/PERF-BASELINE.10.md.
 
 ## 2. What was removed
 

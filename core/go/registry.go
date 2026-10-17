@@ -316,9 +316,11 @@ type Registry struct {
 	// word dispatch even in a hot loop where the name's bindings never
 	// change (~14% of interpreter allocations — see
 	// design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #2). Each entry records the
-	// DefTable generation (Defs.Gen(name)) the aggregate was built at; the
-	// cache hits while that generation is unchanged and misses (rebuilds)
-	// the moment any binding for the name changes. Per-execution state,
+	// name's dispatch generation (Defs.DispatchGen(name)) the aggregate was
+	// built at; the cache hits while that generation is unchanged and misses
+	// (rebuilds) the moment a fn-definition binding for the name changes —
+	// a value binding pushed or popped leaves it, since the aggregate reads
+	// fn definitions alone. Per-execution state,
 	// like enginePool: ForkConcurrent gives each fork a fresh holder so a
 	// fork never serves the parent's aggregates against its own cloned
 	// DefTable. Allocated once in NewRegistry and never reassigned — see
@@ -573,6 +575,10 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	clear(e.resolvedScratch[:cap(e.resolvedScratch)])
 	e.resolvedScratch = e.resolvedScratch[:0]
 	clear(e.excludeScratch)
+	// The plan walk's viable-set buffers hold the last walks' signatures.
+	for i := range e.viableBufs {
+		clear(e.viableBufs[i][:cap(e.viableBufs[i])])
+	}
 	r.enginePool = append(r.enginePool, e)
 }
 
@@ -1017,7 +1023,7 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	if r.analysisActive() {
 		return r.lookupUncached(name)
 	}
-	gen := r.Defs.Gen(name)
+	gen := r.Defs.DispatchGen(name)
 	if fn, ok := r.dispatchCache.get(name, gen); ok {
 		return fn
 	}
@@ -1031,7 +1037,10 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 // dispatchCache; call this directly only when a fresh (uncached) aggregate
 // is required.
 func (r *Registry) lookupUncached(name string) *FnDefInfo {
-	stack := r.Defs.Stack(name)
+	// The stack is read where it lives: a name a loop redefines every
+	// iteration stacks a level per pass, and copying the stack per lookup
+	// made such a loop quadratic in its allocation.
+	stack := r.Defs.entriesRef(name)
 	// Collect every FnDefInfo binding for the name, newest-first. Each
 	// entry holds only its OWN overloads; the dispatch table is the union
 	// across the stack (overloading across stacked defs of one name).
@@ -1045,7 +1054,7 @@ func (r *Registry) lookupUncached(name string) *FnDefInfo {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
-		if fnDef, ok := stack[i].Data().(*FnDefInfo); ok {
+		if fnDef, ok := stack[i].Body.Data().(*FnDefInfo); ok {
 			entries = append(entries, *fnDef)
 			if fnDef.Extends != "" {
 				break
@@ -1093,7 +1102,16 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 			}
 		}
 		if !hasBody {
+			top.plans = r.aggregatePlans()
 			return &top
+		}
+		// A boru-bodied fn's aggregate is a function of its one binding and
+		// the name: a binding made again with the same signatures — a
+		// Function parameter, on every call of the fn that takes it —
+		// answers with the aggregate the last one built, and with it the
+		// plans its dispatches recorded.
+		if agg := r.singleAggregateFor(name, &top); agg != nil {
+			return agg
 		}
 	}
 
@@ -1111,10 +1129,19 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 		}
 	}
 	if hasBoru {
-		sigs = append(sigs, r.fnFallbackSig(name))
+		fallback := r.fnFallbackSig(name)
+		// An anonymous aggregate's fallback carries the anonymity NewFunction
+		// stamps on every signature of an anonymous fn, so a reference to the
+		// name (ResolveRef) wraps the cached aggregate's list as it stands
+		// instead of cloning it to stamp the one signature that lacked it —
+		// per reference. Every reference then shares one list, which is what
+		// lets binding the value under a parameter name reuse its install
+		// form (installedFnSigsFor).
+		fallback.Anonymous = top.Anonymous
+		sigs = append(sigs, fallback)
 	}
 	SortSignatures(sigs)
-	return &FnDefInfo{
+	agg := &FnDefInfo{
 		Name:           name,
 		Signatures:     sigs,
 		MaxForwardArgs: calcMaxForwardArgs(sigs),
@@ -1141,7 +1168,23 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 		// different code, so they get no identity instead — the same answer
 		// a payload with no token gets, and the pre-record behaviour.
 		ident: aggregateIdent(entries),
+		plans: r.aggregatePlans(),
 	}
+	if len(entries) == 1 {
+		r.rememberSingleAggregate(name, &top, agg)
+	}
+	return agg
+}
+
+// aggregatePlans is a new aggregate's plan store (dispatch_plan.go): one per
+// aggregate the run-time Lookup builds and caches. An analysis pass's
+// aggregate gets none — its Lookup builds one per call and its matcher never
+// plans from memory.
+func (r *Registry) aggregatePlans() *planHolder {
+	if r.analysisActive() {
+		return nil
+	}
+	return &planHolder{}
 }
 
 // aggregateIdent returns the identity token a dispatch aggregate may
