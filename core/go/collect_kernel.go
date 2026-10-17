@@ -156,17 +156,21 @@ var (
 // CollectForward is the PHASE-1 plan walk, seated on the seam: once per
 // dispatch, over the union of the viable signatures' barriers, evaluating
 // the groups a still-viable overload consumes and pruning the viable set on
-// what it finds. start is the first window index after the dispatching word.
+// what it finds. start is the first window index after the dispatching word;
+// viable is the walk's scratch for the viable set (an empty buffer with room
+// for every signature of fn — the host's, since walks nest through the
+// groups they evaluate).
 //
 // It is the first of the three loops to be re-seated; the per-candidate scan
 // and the arrival loop follow separately, because a differential failure has
 // to name one re-seat to be worth anything.
-func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
+func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int, viable []ViableSig) error {
 	win := h.Window()
 	// Forward-eligible signatures paired with their effective barrier
 	// (the /s and /f modifiers override the declared BarrierPos, mirroring
-	// matchSignature's forwardLimit computation).
-	viable := make([]ViableSig, 0, len(fn.Signatures))
+	// matchSignature's forwardLimit computation), in the caller's scratch:
+	// viable comes in empty with room for every signature of fn, and the
+	// prunes below only shrink it.
 	maxBarrier := 0
 	for si := range fn.Signatures {
 		sig := &fn.Signatures[si]

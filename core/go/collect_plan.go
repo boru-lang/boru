@@ -116,7 +116,8 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		positions []int
 		specAt    int
 	}
-	var bestDeferred *matchResult
+	var bestDeferred matchResult
+	haveDeferred := false
 
 	// ONE int buffer per matchSignature INVOCATION backs both the
 	// per-candidate positions (first maxSigArgs cells, re-sliced and
@@ -128,19 +129,30 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	// A success return hands the positions slice to the caller (ownership
 	// transfers; this call never touches the buffer again and the
 	// resolvedIdx region is dead after return); bestDeferred keeps its
-	// explicit copy since later candidates overwrite the buffer.
+	// positions in a region of their own (deferBuf, present when a /q sig
+	// is preferred), since later candidates overwrite the buffer.
 	maxSigArgs := 0
 	for si := range fn.Signatures {
 		if n := fn.Signatures[si].TotalArgs(); n > maxSigArgs {
 			maxSigArgs = n
 		}
 	}
-	intBuf := make([]int, maxSigArgs, maxSigArgs+len(resolved))
+	nDefer := 0
+	if preferWordSig {
+		nDefer = maxSigArgs
+	}
+	// A stack-matched arg is one of the top maxSigArgs resolved values, so
+	// only those are indexed: resolvedIdx is top-aligned with resolved, the
+	// j-th value down being resolved[len(resolved)-1-j] at tape index
+	// resolvedIdx[len(resolvedIdx)-1-j].
+	nStack := min(len(resolved), maxSigArgs)
+	intBuf := make([]int, maxSigArgs+nDefer, maxSigArgs+nDefer+nStack)
 	posBuf := intBuf[:maxSigArgs]
+	deferBuf := intBuf[maxSigArgs : maxSigArgs+nDefer]
 
 	// Absolute stack indices of the resolved values — the positions of
 	// stack-matched args. Filled into the tail region of intBuf.
-	resolvedIdx := resolvedIndicesBeforeInto(win, pointer, intBuf[maxSigArgs:maxSigArgs], len(resolved))
+	resolvedIdx := resolvedIndicesBeforeInto(win, pointer, intBuf[maxSigArgs+nDefer:maxSigArgs+nDefer], nStack)
 
 	// ── 0.1: one outer loop over sorted signatures ───────────────
 	for si := range fn.Signatures {
@@ -194,8 +206,8 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				continue
 			}
 			if preferWordSig && !isPreferred {
-				if bestDeferred == nil {
-					bestDeferred = &matchResult{sig, append([]int(nil), positions...), specAt}
+				if !haveDeferred {
+					bestDeferred, haveDeferred = matchResult{sig, append(deferBuf[:0], positions...), specAt}, true
 				}
 				continue
 			}
@@ -233,8 +245,8 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 						continue
 					}
 					if preferWordSig && !isPreferred {
-						if bestDeferred == nil {
-							bestDeferred = &matchResult{sig, append([]int(nil), positions...), specAt}
+						if !haveDeferred {
+							bestDeferred, haveDeferred = matchResult{sig, append(deferBuf[:0], positions...), specAt}, true
 						}
 						continue
 					}
@@ -267,7 +279,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		allMatch := true
 		for j := 0; j < remaining; j++ {
 			ri := len(resolvedIdx) - 1 - j
-			stackVal := &resolved[ri]
+			stackVal := &resolved[len(resolved)-1-j]
 			sigIdx := fwd + j
 
 			// /q is a forward-only rule (see Signature.QuoteArgs doc).
@@ -327,8 +339,8 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 
 		// Full match found.
 		if preferWordSig && !isPreferred {
-			if bestDeferred == nil {
-				bestDeferred = &matchResult{sig, append([]int(nil), positions...), specAt}
+			if !haveDeferred {
+				bestDeferred, haveDeferred = matchResult{sig, append(deferBuf[:0], positions...), specAt}, true
 			}
 			continue
 		}
@@ -336,7 +348,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	}
 
 	// Return deferred non-preferred match if one was found.
-	if bestDeferred != nil {
+	if haveDeferred {
 		return bestDeferred.sig, bestDeferred.positions, bestDeferred.specAt
 	}
 

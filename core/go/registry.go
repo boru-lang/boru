@@ -575,6 +575,10 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	clear(e.resolvedScratch[:cap(e.resolvedScratch)])
 	e.resolvedScratch = e.resolvedScratch[:0]
 	clear(e.excludeScratch)
+	// The plan walk's viable-set buffers hold the last walks' signatures.
+	for i := range e.viableBufs {
+		clear(e.viableBufs[i][:cap(e.viableBufs[i])])
+	}
 	r.enginePool = append(r.enginePool, e)
 }
 
