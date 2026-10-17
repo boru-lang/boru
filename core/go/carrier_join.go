@@ -288,14 +288,6 @@ func InstallTakenArmDefs(r *Registry, then, else_ map[string]Value) []BranchJoin
 	return installJoinedDefs(r, then, else_, true)
 }
 
-// InstallDecidedJoinedDefs is InstallJoinedDefs for a branch whose condition
-// the model decides but whose arms were both analysed (the skipped one
-// speculatively): elseRuns names the running arm, whose fn a speculative
-// family both arms define takes as its model (specFamilyJoinModel, NUR245).
-func InstallDecidedJoinedDefs(r *Registry, then, else_ map[string]Value, _ bool) []BranchJoin {
-	return installJoinedDefs(r, then, else_, false)
-}
-
 func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool) []BranchJoin {
 	var joins []BranchJoin
 	seen := make(map[string]bool)

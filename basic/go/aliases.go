@@ -440,7 +440,6 @@ var (
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs
-	InstallDecidedJoinedDefs = core.InstallDecidedJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop
@@ -626,11 +625,8 @@ const (
 func AsMove(v *core.Value) (core.MoveInfo, error)              { return core.AsMove(v) }
 func AsParenExpr(v *core.Value) ([]core.Value, error)          { return core.AsParenExpr(v) }
 func IsDisjunct(v *core.Value) bool                            { return core.IsDisjunct(v) }
-func IsSplice(v *core.Value) bool                              { return core.IsSplice(v) }
-func IsNone(v *core.Value) bool                                { return core.IsNone(v) }
 func IsClassType(v *core.Value) bool                           { return core.IsClassType(v) }
 func IsParenExpr(v *core.Value) bool                           { return core.IsParenExpr(v) }
-func IsReach(v *core.Value) bool                               { return core.IsReach(v) }
 func IsTypedList(v *core.Value) bool                           { return core.IsTypedList(v) }
 func IsTypedMap(v *core.Value) bool                            { return core.IsTypedMap(v) }
 func IsWord(v *core.Value) bool                                { return core.IsWord(v) }

@@ -696,7 +696,6 @@ func FnDefCopy(d any) (core.FnDefInfo, bool) { return core.FnDefCopy(d) }
 // The occurrence state (core/go/occurrence.go): the identity and the flags,
 // read and written through the holder, never as fields of the value.
 func IDOf(v *core.Value) string           { return core.IDOf(v) }
-func SetID(v *core.Value, id string)      { core.SetID(v, id) }
 func SetQuoted(v *core.Value, on bool)    { core.SetQuoted(v, on) }
 func SetAtomReferent(v, ref *core.Value)  { core.SetAtomReferent(v, ref) }
 func IsUndefined(v *core.Value) bool      { return core.IsUndefined(v) }

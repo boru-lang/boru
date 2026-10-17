@@ -107,7 +107,7 @@ func TestLaneRemovalJoinedDefsNarrowingAndTakenArms(t *testing.T) {
 		t.Fatalf("a narrowing-only add must not be re-pushed at the join: depth = %d, want 1", d)
 	}
 	// A genuine both-arms binding pushes.
-	InstallDecidedJoinedDefs(r, map[string]Value{"bjq": NewCarrier(TInteger)}, map[string]Value{"bjq": NewCarrier(TFloat)}, false)
+	InstallJoinedDefs(r, map[string]Value{"bjq": NewCarrier(TInteger)}, map[string]Value{"bjq": NewCarrier(TFloat)})
 	if d := r.Defs.Depth("bjq"); d != 1 {
 		t.Fatalf("a genuine both-arms join must push: depth = %d", d)
 	}

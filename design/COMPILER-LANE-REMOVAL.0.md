@@ -136,6 +136,29 @@ The two core helpers main already carried dead (`boruErrSite`,
 `returnTypeError`) and the `basic_shim.go` aliases, which exist for the
 word files and the suites above, were left alone.
 
+The second sweep followed the merged ADR-008 gate on main, which the
+removal left at 98.9%: 769 statements, every one reached before only
+through the lane or through the parity suites deleted with it. Most were
+reachable and are tested again on the interpreter alone — the specgen
+pipeline, the `test/specfix` fixtures (the engspec battery and standalone
+corpus, ported from `eng/go`) and the remaining basic, lang and cmd arms.
+What no program could reach any more was deleted:
+
+- `core/go/shape_spec.go` — `ShapeOf`, `ShapeHolds`, `ShapeKey` and the
+  list twins, the VM's call-site unit specialisation — with its one
+  remaining reader, the strict shape-carrier field read in
+  `getNodeReturns`. Nothing produces a shape carrier now.
+- basic's `installArmJoins`, the concrete-Boolean arm of
+  `armsKnownToRun`, and core's `InstallDecidedJoinedDefs`, which ignored
+  its flag and was `InstallJoinedDefs`. `ReduceStaticIf` takes a bare
+  concrete Boolean first; only an armed recorder used to skip it.
+- Alias wrappers that no caller named: basic's `IsSplice`, `IsNone` and
+  `IsReach`, and native's `SetID`.
+
+`TagDeterminedSigs` and `TagKeyable` in `signature.go` were the VM's
+inline-cache soundness predicate. Nothing in production calls them now.
+They stay as the predicate an interpreter dispatch cache would need.
+
 Beyond core: the TypeScript twin `eng/ts` still carries its own compiled
 lane (`compile.ts`, `emit.ts`, `lower.ts`, `bytecode.ts`, `vm.ts`) over the
 `eng/spec` corpus — `make test-ts` is unchanged and that removal is a
