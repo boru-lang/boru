@@ -715,7 +715,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	thenRuns, elseRuns := armsKnownToRun(args[0])
 	thenStk, thenDefs := ifArmResidual(r, args[0], args[1], thenRuns, ApplyGuardNarrowing)
 	elseStk, elseDefs := ifArmResidual(r, args[0], args[2], elseRuns, ApplyComplementNarrowing)
-	installArmJoins(r, args[0], thenDefs, elseDefs)
+	InstallJoinedDefs(r, thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
@@ -893,34 +893,20 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 }
 
 // armsKnownToRun reports which arm of a branch the model knows RUNS: the
-// taken arm of a DECIDED condition — a literal, or a def-bound or folded
-// concrete Boolean — whose defs are the post-branch bindings exactly. Every
-// other arm may not run, so a fn def in it is bound at run time only if it
-// does — speculative, as an undecided arm's is. The arm a decided condition
-// skips is the NEVER case of that (NUR244: left unbracketed, the join kept
-// its fn value and a read past the merge called it, `if false [def f fn
-// […]] [] end 3 f` answering the fn's result for undefined_word).
+// taken arm of a DECIDED condition — a literal `[true]` / `[false]` — whose
+// defs are the post-branch bindings exactly. Every other arm may not run, so
+// a fn def in it is bound at run time only if it does — speculative, as an
+// undecided arm's is. The arm a decided condition skips is the NEVER case of
+// that (NUR244: left unbracketed, the join kept its fn value and a read past
+// the merge called it, `if false [def f fn […]] [] end 3 f` answering the
+// fn's result for undefined_word). A bare concrete Boolean (a def-bound or
+// folded one) never reaches here: ReduceStaticIf takes it first, on both
+// `if` forms, and analyses the taken arm alone.
 func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
 	if lit, ok := LiteralCondValue(cond); ok {
 		return lit, !lit
 	}
-	if b, ok := cond.Data().(BoolPayload); ok && cond.Parent().Equal(TBoolean) {
-		return b.B, !b.B
-	}
 	return false, false
-}
-
-// installArmJoins is InstallJoinedDefs for an `if` whose arms were both
-// analysed: the arm a concrete Boolean condition takes is decided, every
-// other pair of arms joins.
-func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Value) {
-	if IsConcrete(&cond) && cond.Parent() != nil && cond.Parent().Equal(TBoolean) {
-		if b, err := AsBoolean(cond); err == nil {
-			InstallDecidedJoinedDefs(r, thenDefs, elseDefs, !b)
-			return
-		}
-	}
-	InstallJoinedDefs(r, thenDefs, elseDefs)
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {
@@ -949,7 +935,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
 	}()
 	restore()
-	installArmJoins(r, args[0], thenDefs, nil)
+	InstallJoinedDefs(r, thenDefs, nil)
 	// 2-arg if: a VARIADIC result (0 or 1 values at run time). An empty
 	// then-stack (a 0-value/diverging then) makes it a 0-value statement
 	// guard, which nets 0 like the runtime.

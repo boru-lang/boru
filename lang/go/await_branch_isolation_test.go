@@ -132,6 +132,47 @@ TimeUtil.await [[fact 5] [fact 6]] end`, "[[120 720]]"},
 	}
 }
 
+// TestAwaitFnLocalLambdaReachingAFlexMapRefuses pins the shapes that were
+// this check's worst hole. A lambda defined INSIDE a fn body (`def w ([] =>
+// …)`) reaches the fn-local `m` two ways the walk follows: as a capture
+// carried inside the Function value, and — once a reference goes opaque —
+// through the fallback that asks whether anything mutable is in scope at
+// all (branchRefIsOpaque / scopeSharedMutable). Under the compiled lane the
+// walk dead-ended at `w` (a VM frame slot), and two branches wrote the same
+// OrderedMap concurrently on the `[m set a 1]` shape: a real data race. All
+// four shapes refuse; if any row starts passing, the walk has regressed.
+func TestAwaitFnLocalLambdaReachingAFlexMapRefuses(t *testing.T) {
+	for _, body := range []string{"[m]", "[m get a]", "[m size]", "[m set a 1]"} {
+		t.Run(body, func(t *testing.T) {
+			src := awaitPrelude + `def outer fn [[] [Any] [
+  def m (make FlexMap {a:0})
+  def w ([] => ` + body + `)
+  TimeUtil.await [[w] [w]]
+]]
+outer`
+			a, _ := New()
+			_, err := a.Run(src)
+			if err == nil || !strings.Contains(fmt.Sprint(err), "not_sendable") {
+				t.Errorf("a fn-local lambda reaching a shared FlexMap must be "+
+					"refused not_sendable, got %v", err)
+			}
+		})
+	}
+	// An opaque reference with a mutable container in scope refuses through
+	// the fallback, naming the container; the same branches with nothing
+	// mutable in scope run (TestAwaitOpaqueRefIsNotRefusedWithoutAMutable).
+	a, _ := New()
+	_, err := a.Run(awaitPrelude + `def m (make FlexMap {a:0}) TimeUtil.await [[zz] [3]]`)
+	if err == nil || !strings.Contains(fmt.Sprint(err), "branch reaches `m`") {
+		t.Errorf("an opaque branch reference beside a FlexMap must be refused, got %v", err)
+	}
+	b, _ := New()
+	if got, err := b.Run(awaitPrelude + `TimeUtil.await [[zz] [3]]`); err != nil ||
+		!strings.Contains(fmt.Sprint(got), "undefined word: zz") {
+		t.Errorf("with nothing mutable in scope the branch runs (and raises in its slot), got %v / %v", got, err)
+	}
+}
+
 // TestAwaitOpaqueRefIsNotRefusedWithoutAMutable is the negative half of the
 // fix above, and it carries the weight: the fallback fires on an
 // UNRESOLVABLE reference, and unresolvable references are everywhere.

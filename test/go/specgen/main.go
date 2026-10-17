@@ -88,6 +88,10 @@ var (
 	// newNativeRegistry: the registry constructor cannot fail on a healthy
 	// build — the seam makes that arm drivable.
 	newNativeRegistry = native.DefaultRegistry
+	// checkSource is the frontier classifier's static check: every real
+	// error diagnostic carries a code, so the classifier's code-less
+	// fallback is drivable only through the seam.
+	checkSource = func(a *lang.Boru, src string) (lang.CheckResult, error) { return a.Check(src) }
 )
 
 // alphabet is the fixed, ordered set of syntax atoms the enumeration
@@ -592,7 +596,7 @@ const (
 // instance and returns the stage it fails at and a short detail (the check
 // error code, or the runtime error class).
 func classifyFrontier(a *lang.Boru, src string) (frontierClass, string) {
-	res, err := a.Check(src)
+	res, err := checkSource(a, src)
 	if err != nil {
 		detail := strings.TrimPrefix(errorClass(err), "ERROR:")
 		if detail == "" {
