@@ -146,6 +146,13 @@ var pinnedAritySites = map[string]int{
 	// with it; the five that remain are PlanMatch's own per-candidate
 	// reads.
 	"core/go/collect_plan.go": 5,
+	// The dispatch-plan cache (2026-10-17): tagDeterminedSig walks a
+	// signature's positions (`idx < s.TotalArgs()`) to ask whether each
+	// slot's match is decided by the operand's tag — TagDeterminedSigs'
+	// question, below, for one signature. It decides whether PlanMatch's
+	// answer may be remembered, never which overload is admitted: a word
+	// that cannot plan from memory takes the same full match.
+	"core/go/dispatch_plan.go": 1,
 	// 12 -> 13 on 2026-09-27 (the poly inline cache): TagDeterminedSigs
 	// considers only the n-argument overloads (`s.TotalArgs() != n`) — the
 	// ones MatchSignature's own ArgCount filter considers for an n-operand

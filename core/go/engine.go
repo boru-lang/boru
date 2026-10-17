@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -1950,9 +1951,7 @@ func (e *Engine) resolveForwardArgs(fn *FnDefInfo, w WordInfo) error {
 	if d == len(e.viableBufs) {
 		e.viableBufs = append(e.viableBufs, nil)
 	}
-	if cap(e.viableBufs[d]) < len(fn.Signatures) {
-		e.viableBufs[d] = make([]ViableSig, 0, len(fn.Signatures))
-	}
+	e.viableBufs[d] = slices.Grow(e.viableBufs[d][:0], len(fn.Signatures))
 	e.viableDepth = d + 1
 	err := CollectForward(e, fn, w, e.Pointer+1, e.viableBufs[d][:0])
 	e.viableDepth = d

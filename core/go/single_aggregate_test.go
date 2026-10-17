@@ -68,6 +68,14 @@ func TestSingleAggregateReusedAcrossRebindings(t *testing.T) {
 	if r.singleAggregateFor("sam", fd) != first {
 		t.Error("an analysis pass's aggregate replaced the run-time memo")
 	}
+	// A fn with a home (a module's export) is never kept: its aggregate's
+	// Registry is read through the home predicates, not compared.
+	homed := *fd
+	homed.Registry = r2
+	r.rememberSingleAggregate("sah", &homed, first)
+	if r.singleAggregateFor("sah", fd) != nil {
+		t.Error("a homed fn's aggregate was remembered")
+	}
 	bare := FnDefInfo{Signatures: fd.Signatures}
 	r.rememberSingleAggregate("sam", &bare, first)
 	if r.singleAggregateFor("sam", &bare) != nil {

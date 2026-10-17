@@ -65,13 +65,13 @@ func compiledFnDefFor(reg *Registry, fnDef *FnDefInfo) *FnDefInfo {
 
 // installedFnSigs is the install form of a function under one name in one
 // registry — compileFnSigs' signatures in dispatch order — with what it was
-// built from: the installing registry and the function's own home (the
-// body-runner closes over the one the fn lives in — FnHome), the name and
+// built from: the installing registry and the one the body runs in (FnHome:
+// the body-runner closes over the registry the fn lives in), the name and
 // barrier mode the signatures carry, and the authored signature and
 // capture lists by identity (sameList).
 type installedFnSigs struct {
 	reg       *Registry
-	home      *Registry
+	runsIn    *Registry
 	name      string
 	stackOnly bool
 	sigs      []Signature
@@ -99,7 +99,8 @@ func installedFnSigsFor(r *Registry, name string, fnDef *FnDefInfo, stackOnly bo
 	if id == nil || r.analysisActive() {
 		return compileSortedFnSigs(r, name, fnDef, stackOnly)
 	}
-	if c := id.install.Load(); c != nil && c.reg == r && c.home == fnDef.Registry &&
+	runsIn, _ := FnHome(r, fnDef)
+	if c := id.install.Load(); c != nil && c.reg == r && c.runsIn == runsIn &&
 		c.name == name && c.stackOnly == stackOnly &&
 		sameList(c.sigs, fnDef.Signatures) && sameList(c.caps, fnDef.Captured) {
 		return c.out
@@ -107,7 +108,7 @@ func installedFnSigsFor(r *Registry, name string, fnDef *FnDefInfo, stackOnly bo
 	out := compileSortedFnSigs(r, name, fnDef, stackOnly)
 	id.install.Store(&installedFnSigs{
 		reg:       r,
-		home:      fnDef.Registry,
+		runsIn:    runsIn,
 		name:      name,
 		stackOnly: stackOnly,
 		sigs:      fnDef.Signatures,
@@ -128,13 +129,14 @@ func compileSortedFnSigs(r *Registry, name string, fnDef *FnDefInfo, stackOnly b
 // only fn binding is the function, with what it was built from: the registry
 // (the synthetic fallback closes over it), the name, the binding's signature
 // and capture lists by identity, and the binding's other fields the
-// aggregate carries.
+// aggregate carries. Only a function with no home is kept — a fn defined in
+// the running scope, the Function parameter's common case — so the
+// aggregate's Registry is the binding's by construction.
 type singleAggregate struct {
 	reg      *Registry
 	name     string
 	sigs     []Signature
 	caps     []CapturedBinding
-	home     *Registry
 	anon     bool
 	macro    bool
 	miniKind string
@@ -147,7 +149,7 @@ type singleAggregate struct {
 // Lookup builds a fresh aggregate per call by contract (Registry.Lookup).
 func (r *Registry) singleAggregateFor(name string, top *FnDefInfo) *FnDefInfo {
 	id := top.ident
-	if id == nil || r.analysisActive() {
+	if id == nil || top.HasHome() || r.analysisActive() {
 		return nil
 	}
 	if c := id.aggregate.Load(); c != nil && c.matches(r, name, top) {
@@ -160,7 +162,7 @@ func (r *Registry) singleAggregateFor(name string, top *FnDefInfo) *FnDefInfo {
 // function's identity for singleAggregateFor.
 func (r *Registry) rememberSingleAggregate(name string, top *FnDefInfo, agg *FnDefInfo) {
 	id := top.ident
-	if id == nil || r.analysisActive() {
+	if id == nil || top.HasHome() || r.analysisActive() {
 		return
 	}
 	id.aggregate.Store(&singleAggregate{
@@ -168,7 +170,6 @@ func (r *Registry) rememberSingleAggregate(name string, top *FnDefInfo, agg *FnD
 		name:     name,
 		sigs:     top.Signatures,
 		caps:     top.Captured,
-		home:     top.Registry,
 		anon:     top.Anonymous,
 		macro:    top.Macro,
 		miniKind: top.MiniKind,
@@ -180,7 +181,7 @@ func (r *Registry) rememberSingleAggregate(name string, top *FnDefInfo, agg *FnD
 // matches reports whether c was built for a binding like top under name in r.
 func (c *singleAggregate) matches(r *Registry, name string, top *FnDefInfo) bool {
 	return c.reg == r && c.name == name && sameList(c.sigs, top.Signatures) &&
-		sameList(c.caps, top.Captured) && c.home == top.Registry && c.anon == top.Anonymous &&
+		sameList(c.caps, top.Captured) && c.anon == top.Anonymous &&
 		c.macro == top.Macro && c.miniKind == top.MiniKind && c.extends == top.Extends
 }
 
