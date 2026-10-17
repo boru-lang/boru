@@ -5,7 +5,7 @@ stands *right now*. It is deliberately short and CURRENT-STATE-ONLY: the
 per-increment narrative lives in the handover pages it points at. Update
 this file at the end of every increment.
 
-Last updated: **2026-10-16**.
+Last updated: **2026-10-17**.
 
 ## Direction
 
@@ -18,11 +18,15 @@ as it stood is on the `compiler-legacy` branch. The previous page, written
 for the full-compilation programme, is archived as
 [legacy/SESSION-HANDOVER-FULL-COMPILATION.0.ignore](legacy/SESSION-HANDOVER-FULL-COMPILATION.0.ignore).
 
-The interpreter line's design is
-[INTERPRETER-TIERED-EXECUTION.0.md](INTERPRETER-TIERED-EXECUTION.0.md); its
-handover page is
-[INTERPRETER-PERF-HANDOVER.0.md](INTERPRETER-PERF-HANDOVER.0.md) (main at
-6780a6030 after #452, #532, #533); the Value no-copy policy is
+The interpreter line's plan and handover page is
+[INTERPRETER-PERF-HANDOVER.0.md](INTERPRETER-PERF-HANDOVER.0.md): its
+2026-10-17 section records the dispatch-cost work (a pooled parser, a
+parse-free benchmark, call-free kind checks, `Lookup` across value
+redefinitions, a fn value's install form, the matcher's scratch, dispatch
+plans) and the levers left. The earlier tiered-execution design, which
+promoted hot code to the removed VM, is retired to
+[legacy/INTERPRETER-TIERED-EXECUTION.0.ignore](legacy/INTERPRETER-TIERED-EXECUTION.0.ignore).
+The Value no-copy policy is
 [VALUE-NO-COPY.0.md](VALUE-NO-COPY.0.md), its phases 1–4 landed through
 #535 (a `Value` is a 24-byte handle on a shared `Datum`; the no-copy ratchet
 `make vet-copies` is at zero in every module). Benchmarks and their
@@ -47,7 +51,9 @@ discipline: [PERF-BASELINE.10.md](PERF-BASELINE.10.md), `make bench`,
 
 1. Prune the compiler lane's residue in core
    (COMPILER-LANE-REMOVAL.0.md §4).
-2. The interpreter tiers of INTERPRETER-TIERED-EXECUTION.0.md, measured
-   against PERF-BASELINE.10.md before and after each step.
+2. The dispatch-cost plan's remaining levers (INTERPRETER-PERF-HANDOVER.0.md,
+   "The dispatch-cost plan: what is left"), each measured with
+   `BenchmarkInterpExec` before and after it lands (PERF-BASELINE.10.md's
+   discipline).
 3. The callback seam's contract (U16 in INTERPRETER-PERF-HANDOVER.0.md),
    still open.

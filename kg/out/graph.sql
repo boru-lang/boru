@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '3848428992157730358');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '7318678778740149990');
 INSERT INTO input_files VALUES ('../AGENTS.md', '3440023878427677283', 15164);
 INSERT INTO input_files VALUES ('../CLI.md', '6614511129872274083', 80941);
 INSERT INTO input_files VALUES ('../README.md', '8465218850351862288', 13070);
@@ -29,7 +29,7 @@ INSERT INTO input_files VALUES ('../design/BORU-INFOVIEW.0.md', '209086989370126
 INSERT INTO input_files VALUES ('../design/BORU-SCRY.0.md', '4612352570887578018', 17475);
 INSERT INTO input_files VALUES ('../design/BORU-VIZ.0.md', '1948552775752251328', 25772);
 INSERT INTO input_files VALUES ('../design/CANON-ROUNDTRIP.0.md', '1353161920241380593', 7262);
-INSERT INTO input_files VALUES ('../design/COMPILER-LANE-REMOVAL.0.md', '3337620228970295000', 10126);
+INSERT INTO input_files VALUES ('../design/COMPILER-LANE-REMOVAL.0.md', '7175568832993160815', 10222);
 INSERT INTO input_files VALUES ('../design/CONTENT-ADDRESSING.0.md', '2665783012493844259', 19058);
 INSERT INTO input_files VALUES ('../design/CORE-TS-DIVERGENCES.1.md', '6728885229572724599', 22881);
 INSERT INTO input_files VALUES ('../design/DECLARATIVE-GRAMMAR.0.md', '6197287043897595046', 3242);
@@ -38,12 +38,12 @@ INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '7137588848
 INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '5965631548714272956', 73926);
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
-INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '5167903671181214623', 18808);
+INSERT INTO input_files VALUES ('../design/INTERPRETER-PERF-HANDOVER.0.md', '7739881975824295208', 25919);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '5938844961613532961', 183904);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '6362463872929681453', 16140);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '7166314409603904128', 25023);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '6319746159185216141', 2570);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '4922853764501092747', 2981);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '6337319704888676490', 90477);
 INSERT INTO input_files VALUES ('../design/VALUE-NO-COPY.0.md', '4923243313778157816', 61324);
 INSERT INTO input_files VALUES ('../design/WIRE-IDENTITY.0.md', '3855025497964210495', 3585);
@@ -80,7 +80,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '2531219918271998981',
 INSERT INTO input_files VALUES ('../tools/vetcopies/go.mod', '6319204921462677590', 498);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '3058501471481697303', 2680);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '7647588430295938990', 544);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6071800378837106858', 101821);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6252678089417510241', 101910);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -234,7 +234,7 @@ INSERT INTO sources VALUES ('src:higher-order-functions', 'text', 'design/legacy
 INSERT INTO sources VALUES ('src:hot-code-loading', 'text', 'design/HOT-CODE-LOADING.0.md', 'hot code loading: the mechanism report and reload design', NULL, 'hot-code-loading-2026-08', 'primary', '{
   "repository": "boru-lang/boru"
 }');
-INSERT INTO sources VALUES ('src:interpreter-perf-handover', 'text', 'design/INTERPRETER-PERF-HANDOVER.0.md', 'handover of the interpreter-performance session (#532, #533) and the Value no-copy review: the state at stop, the open decisions, the follow-ups, the saved inventories, patches and probe corpora', NULL, 'interpreter-perf-handover-2026-10-09', 'primary', '{
+INSERT INTO sources VALUES ('src:interpreter-perf-handover', 'text', 'design/INTERPRETER-PERF-HANDOVER.0.md', 'handover of the interpreter-performance sessions (#532, #533, and the 2026-10-17 dispatch-cost work) and the Value no-copy review: the interpreter line''s plan and the levers left, the state at stop, the open decisions, the follow-ups, the saved inventories, patches and probe corpora', NULL, 'interpreter-perf-handover-2026-10-09', 'primary', '{
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:module-views', 'text', 'design/MODULE-VIEWS.0.md', 'module-provided views and widgets proposal', NULL, 'module-views-2026-08', 'primary', '{

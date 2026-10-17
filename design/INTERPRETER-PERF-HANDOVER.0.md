@@ -13,6 +13,111 @@ inventories, two experiment patches, nine probe corpora with their
 outputs on main, and the sources of every scratch benchmark and harness.
 Its README says how to use each.
 
+## 2026-10-17: the dispatch-cost session
+
+This section is the newest state of the performance work; the sections
+after it are the 2026-10-09 handover, still current where they are not
+marked done here.
+
+With the compiler lane gone (2026-10-16), the tiered-execution design,
+which promoted hot fn bodies to the bytecode VM, had nothing to promote
+to. It is retired to
+[legacy/INTERPRETER-TIERED-EXECUTION.0.ignore](legacy/INTERPRETER-TIERED-EXECUTION.0.ignore).
+The interpreter line's plan is now the one in this section: make the
+interpreter's own dispatch cheaper, measured at every step.
+
+### What landed
+
+One commit each, in order:
+
+| commit | change |
+|---|---|
+| Pool configured parsers; add a parse-free interpreter benchmark | `parser.Parse` built its whole grammar (≈ 86% of a parse) on every call; it now reuses configured parsers from a pool (a jsonic instance parses sequentially, never concurrently; nested parses take their own). `BenchmarkInterpExec` runs each program from tokens parsed once, and `bench/register` records it beside `BenchmarkInterpBaseline`. |
+| Make token-kind checks and builtin ConformsTo call-free | `IsWord`, `IsForward`, … are one pointer comparison plus the builtin node's interval label (`parentIs`); `ConformsTo` between two labelled builtin nodes is an interval test. |
+| Classify an Integer or Float operand by identity | `numLeaf` (#530's first item) checks the two canonical leaves by pointer before the conformance chain. The other #530 items were in the removed VM. |
+| Keep Lookup's answer across value redefinitions; reuse a fn value's install form | `Lookup`'s cache keyed on the name's generation, which every `def` moves, and its miss copied the name's whole stack, so a loop redefining a variable it passes to a fn was quadratic in the loop count. The cache now keys on a dispatch generation that only fn-binding changes move. Binding a fn value under a parameter name reuses the install form compiled for that function, name and registry (the handover's "re-installing a Function parameter" item); an anonymous aggregate stamps its own fallback so references share one signature list. |
+| Reuse the matcher's per-dispatch scratch | the plan walk's viable set (an engine buffer stack), the resolved-index map (only the top `maxSigArgs` values are indexed), the deferred candidate's positions, the forward rearrangement's indices and `execMatch`'s sorted positions no longer allocate. The alloc ceilings came down by the drop. |
+| Plan dispatches from memory; keep a re-bound fn's aggregate | `core/go/dispatch_plan.go`: for a word whose signatures all match by tag, `PlanMatch`'s answer is a pure function of what its scans read, and the run-time aggregate remembers it by that description. A re-bound fn's aggregate is kept on its identity, so a parameter's plans survive the call. |
+
+`BenchmarkInterpExec`, base (`4e6db387b` plus the `hof2k` row) against
+the last commit, interleaved runs on one quiet 4-core box (`n=6`):
+
+| benchmark | time | allocs/op |
+|---|---|---|
+| arith_chain64 | 339 → 222 µs (−34%) | 710 → 332 |
+| compare_loop | 1217 → 920 µs (−24%) | 3632 → 2232 |
+| if_scalar | 2.28 → 1.91 ms (−16%) | 6235 → 3839 |
+| if_listcond | 2.35 → 2.06 ms (−12%) | 6835 → 5037 |
+| for_tight | 2.70 → 1.80 ms (−33%) | 5633 → 3435 |
+| each_list | 443 → 365 µs (−18%) | 1037 → 638 |
+| fold_int | 299 → 210 µs (−30%) | 656 → 457 |
+| map_get | 4.28 → 1.75 ms (−59%) | 5032 → 3432 |
+| string_join | 2.36 → 2.17 ms (−8%) | 16190 → 15990 |
+| recursion_nontail | 4.55 → 3.46 ms (−24%) | 10474 → 6878 |
+| recursion_tail | 25.2 → 18.4 ms (−27%) | 59040 → 35040 |
+| do_body | 507 → 450 µs (−11%) | 1631 → 1131 |
+| fib20 | 427 → 340 ms (−20%) | 1018k → 624k |
+| loopsum20k | 522 → 386 ms (−26%) | 652k → 432k |
+| nestloop150 | 572 → 398 ms (−30%) | 602k → 422k |
+| hof2k | 349 → 72 ms (−79%) | 245k → 116k |
+| **geomean** | **−31.8%** | **−35.8%** (bytes −36.8%) |
+
+`hof2k`'s base figure is not one number: the base was quadratic in the
+accumulated stack depth, and the harness re-runs a program on one
+registry, so it grows with the run count. Run once from a fresh CLI
+(startup ≈ 22 ms included), the loop at 2000 iterations took 167 → 105 ms
+and at 10000 iterations 1.66 s → 0.45 s. The parse-inclusive
+`BenchmarkInterpBaseline` gained about 45% from the parser pool alone,
+before any of the rest.
+
+### How to measure and verify
+
+- Read a dispatch change against `BenchmarkInterpExec`, not
+  `BenchmarkInterpBaseline`. Interleave the two binaries' runs
+  (`-test.count 1` six times each); back-to-back runs on this box drift by
+  more than most of these effects.
+- **Never benchmark beside a test run.** One comparison taken while the
+  verification suites ran read +18% slower for a change that measured −14%
+  on an idle machine.
+- The plan cache's soundness check is an overlay, not code: a copy of
+  `dispatch_plan.go` whose hit branch also runs `PlanMatch` and panics on
+  any difference (`go test -overlay=…`). It ran over the full langspec
+  corpus and the lang, basic, cmd and check suites with no difference. Run
+  it again after any change to `CollectCandidateScan` or `PlanMatch`: a new
+  thing the scan reads must enter the key. Under the overlay
+  `TestInterpAllocCeilings` fails by design, since every hit plans twice.
+
+### The dispatch-cost plan: what is left
+
+Ranked by measured cost, from a CPU profile of the dispatch-heavy rows and
+an allocation profile of the whole corpus at the last commit:
+
+1. **Words that cannot plan from memory.** `def` has pattern and keyword
+   slots (45k unplanned dispatches in `nestloop150`, the bulk of the 13% of
+   CPU `PlanMatch` still takes). A keyword slot needs the token's NAME in
+   the key; a literal-value pattern (`def fact[0]`) needs the value.
+   A fn value dispatched through `execFnDefLiteral` has no plan store yet.
+2. **The phase-1 plan walk** (`CollectForward` without its group
+   evaluations, about 11% of CPU) reads the same window the plan key
+   describes. For a plannable word, one walk could serve both.
+3. **The Forward marker's arrival.** Every parked forward allocates its
+   marker, and every arrival a new one (`setCoPayload`), because a marker
+   that takes a new state takes a new datum: about 22% of the bytes
+   allocated. Advancing it in place needs a proof that the tape cell is the
+   marker's only holder, or the arrival count kept in the engine rather
+   than the payload.
+4. **Token-kind checks** are still 12% of CPU (`parentIs`), now spread over
+   backward walks: `EffectiveResolved` copies every resolved value in scope
+   on each dispatch, although the match reads only the top `maxSigArgs`;
+   `strandedForwardError`, `hasPendingForwardFormArg` and the tape's
+   forward count each walk too.
+5. **Smaller items:** `stepWord`'s per-dispatch `Args` slice (4.5% of
+   bytes; a scratch buffer needs an audit that no handler retains its
+   `args`), the per-run tape floor (1024 cells per `Run`, 13% of the corpus's
+   bytes, nearly all of it in the short programs), and `join`, which spends most of its time in
+   `voxgig/struct`'s `Join` compiling three regular expressions per element
+   per call — an upstream fix.
+
 ## State at stop
 
 - **Main is at `6780a6030`** (#533), and CI is green on it (run 2065).
@@ -187,16 +292,15 @@ Carried from the merged PRs:
 
 ## Follow-ups found and not done
 
-- **Issue #530's fixes**: a pointer-identity fast path in `numLeaf`, the
-  `screenResults` label built only on the error path, `stampFnResultPos`
-  skipped when the declared return cannot be a Function, a single-value
-  return for natives; and, longer term, intrinsic lowering of strict
+- **Issue #530's fixes**: a pointer-identity fast path in `numLeaf`
+  (*done 2026-10-17*), the `screenResults` label built only on the error
+  path, `stampFnResultPos` skipped when the declared return cannot be a
+  Function, a single-value return for natives (*the last three were the
+  VM's, removed with it*); and, longer term, intrinsic lowering of strict
   scalar `add`, `lt`, `eq` (about 7× on the add itself).
-- **Re-installing a `Function` parameter on every call.** Binding a fn
-  value under a parameter name goes through `installFnDef`, which
-  recompiles the callback's signatures each time; it was 13% of a
-  user-defined fold loop. Cacheable on the function's identity the way
-  `compiledFnDefFor` caches the dispatch form.
+- **Re-installing a `Function` parameter on every call.** *Done
+  2026-10-17*: the install form and the parameter's dispatch aggregate are
+  both kept on the function's identity (see the section above).
 - **User-defined higher-order words are ~5× slower than the natives**
   (`mysum inc/v xs 0 0`, 45–51 ms, against 6–9 ms for the native words
   over 500 elements). About half is forward paren-group evaluation and
