@@ -6740,7 +6740,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 // skip leaves an unspendable credit that silently swallows the NEXT real
 // literal — design/FN-VALUE-OPEN-WORK.0.md §5.2.
 func fnValueDispatchesAtPointer(v Value) bool {
-	return v.Parent().Equal(TFunction) && isFnDefValue(v) && !IsQuoted(&v)
+	return parentIs(&v, TFunction) && isFnDefValue(v) && !IsQuoted(&v)
 }
 
 // FnValueDispatchesAtPointer is the main loop's own dispatch predicate: would

@@ -245,6 +245,15 @@ func (t *Type) ConformsTo(pattern *Type) bool {
 	if pattern == nil {
 		return true
 	}
+	// Both nodes labelled builtins — the common dispatch question: the
+	// lattice intervals answer it from the two datums, Any admitting every
+	// type, which is what the Equal and IsAncestor calls below decide for
+	// a labelled pair (their own labelled fast paths), without making them.
+	if t != nil {
+		if td, pd := t.d, pattern.d; td != nil && pd != nil && td.in > 0 && pd.in > 0 {
+			return pd.in == TAny.d.in || (pd.in <= td.in && td.in <= pd.out)
+		}
+	}
 	if pattern.Equal(TAny) {
 		return true
 	}

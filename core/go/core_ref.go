@@ -61,7 +61,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 // predicate is a single Parent check; plain values and type bodies come
 // back with their own Parent and are illegal ref targets.
 func IsFunctionRef(v Value) bool {
-	return v.Parent().Equal(TFunction)
+	return parentIs(&v, TFunction)
 }
 
 // UsurpFunction wraps a function value so its signature argument order is
