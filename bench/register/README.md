@@ -39,7 +39,11 @@ removal, 2026-10-16, design/COMPILER-LANE-REMOVAL.0.md), **`parse`**, and
 + lower) and **`exec`** (compiled execution) are retired: their rows stay as
 the compiled lane's record, and nothing appends to them — an interpreter
 benchmark is never recorded under `exec`, whose series would read it as a
-compiled measurement. All the implementation surfaces are first-class, so a
+compiled measurement. `interp` carries two series: `BenchmarkInterpBaseline`
+runs `Run(src)` per iteration, so its numbers include the parse, and
+`BenchmarkInterpExec` parses once and times the step loop alone (the same
+corpus plus three heavier workloads). Read a dispatch change against the
+second. All the implementation surfaces are first-class, so a
 change that buys execution speed by spending check time is *visible*
 rather than invisible.
 

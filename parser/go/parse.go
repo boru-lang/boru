@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	core "github.com/boru-lang/boru/core/go"
 	"github.com/cockroachdb/apd/v3"
@@ -149,6 +150,37 @@ func Parse(src string) ([]core.Value, error) {
 	// value mints elide IDs (eng mode-gated elision); this scope re-arms
 	// minting for the parse.
 	defer core.BeginIDMintScope()()
+
+	// Stage 3: Parse and convert to engine values, on a configured parser
+	// this call has to itself (parserPool).
+	j, _ := parserPool.Get().(*jsonic.Jsonic)
+	if j == nil {
+		j = newBoruParser()
+	}
+	result, err := j.Parse(src)
+	parserPool.Put(j)
+	return convertParsed(result, err, src)
+}
+
+// parserPool holds configured boru parsers. Building one — the jsonic
+// instance, the token table, the custom matchers and the grammar edits
+// (stages 1 and 2 of newBoruParser) — was most of what a small program's
+// parse cost, and it was paid on every Parse. A built parser is reusable:
+// every parse gets a fresh lexer and context (tabnas startParse), and
+// nothing the boru grammar installs keeps state from one parse to the next.
+// An instance is NOT safe for concurrent Parse calls (tabnas.Make's
+// contract), so each Parse takes one from the pool for itself and gives it
+// back when the parse returns. A parse can nest — an XML literal's
+// interpolation is parsed from inside the outer parse's matcher
+// (scanInterp) — and the nested call simply takes a second instance.
+// The pool has no New func because building a parser reaches Parse
+// itself (that same matcher), which an initializer may not; an empty Get
+// builds one.
+var parserPool sync.Pool
+
+// newBoruParser builds a configured boru parser: the jsonic instance with
+// boru's options, then the lex and grammar setup.
+func newBoruParser() *jsonic.Jsonic {
 	j := SafeMake(jsonic.Options{
 		// tabnas groups the output-shaping flags under Info: Text wraps
 		// scalars in Text{Str,Quote} (quoted/unquoted distinction), List/Map
@@ -190,9 +222,12 @@ func Parse(src string) ([]core.Value, error) {
 	setupInterpGrammar(j, t)
 	setupXmlGrammar(j, t)
 	setupNumberSub(j)
+	return j
+}
 
-	// Stage 3: Parse and convert to engine values.
-	result, err := j.Parse(src)
+// convertParsed converts a jsonic parse result to engine values (or
+// translates its error).
+func convertParsed(result any, err error, src string) ([]core.Value, error) {
 	if err != nil {
 		return nil, translateParseError(err, src)
 	}
