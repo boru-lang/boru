@@ -25,6 +25,17 @@ const (
 // because BigInteger/BigDecimal both ConformsTo TNumber but neither
 // conforms to TInteger/TFloat.
 func numLeaf(v *Value) int {
+	// The canonical leaves by identity first — an Integer operand is the
+	// common case, and the four leaves are siblings under Number, so a
+	// value tagged exactly Integer or Float is that leaf. A refinement
+	// (`def Pos (refine Integer)`) or any other tag keeps its own Parent
+	// and takes the conformance chain below.
+	switch v.Parent() {
+	case TInteger:
+		return leafInteger
+	case TFloat:
+		return leafFloat
+	}
 	switch {
 	case v.Parent().ConformsTo(TBigDecimal):
 		return leafBigDecimal
