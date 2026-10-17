@@ -976,6 +976,10 @@ type fnIdent struct {
 	// view caches the function's dispatch-ordered signature list
 	// (FnDispatchSigs), keyed by the authored list it was built from.
 	view atomic.Pointer[sigView]
+	// install caches the signatures binding the function under a name
+	// installs (installedFnSigsFor) — a Function parameter is bound again
+	// on every call.
+	install atomic.Pointer[installedFnSigs]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value

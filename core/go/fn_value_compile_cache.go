@@ -63,6 +63,67 @@ func compiledFnDefFor(reg *Registry, fnDef *FnDefInfo) *FnDefInfo {
 	return fn
 }
 
+// installedFnSigs is the install form of a function under one name in one
+// registry — compileFnSigs' signatures in dispatch order — with what it was
+// built from: the installing registry and the function's own home (the
+// body-runner closes over the one the fn lives in — FnHome), the name and
+// barrier mode the signatures carry, and the authored signature and
+// capture lists by identity (sameList).
+type installedFnSigs struct {
+	reg       *Registry
+	home      *Registry
+	name      string
+	stackOnly bool
+	sigs      []Signature
+	caps      []CapturedBinding
+	out       []Signature
+}
+
+// installedFnSigsFor returns compileFnSigs(r, name, *fnDef, stackOnly) in
+// dispatch order, computed once per function identity, registry, name and
+// barrier mode. Binding a fn value under a name — a Function parameter, on
+// every call of the fn that takes it — compiled it afresh each time: a body
+// runner, its leaf-frame skeleton, the frame identity and a sorted
+// signature copy per call, which profiled at 13% of a user-defined fold. The
+// form is the same one the function's first install built, as a `def`'d fn
+// is compiled once at its definition and a fn value once per identity
+// (compiledFnDefFor) — the body's frame-state judgement included. The
+// signatures are shared by every binding made from them and never written.
+//
+// An analysis pass compiles every install afresh, as Lookup gives it a
+// fresh aggregate: its carrier joins tell two constructions apart by their
+// signature arrays (sameFnConstruction). A payload with no identity — a
+// synthesized FnDefInfo literal — compiles every time.
+func installedFnSigsFor(r *Registry, name string, fnDef *FnDefInfo, stackOnly bool) []Signature {
+	id := fnDef.ident
+	if id == nil || r.analysisActive() {
+		return compileSortedFnSigs(r, name, fnDef, stackOnly)
+	}
+	if c := id.install.Load(); c != nil && c.reg == r && c.home == fnDef.Registry &&
+		c.name == name && c.stackOnly == stackOnly &&
+		sameList(c.sigs, fnDef.Signatures) && sameList(c.caps, fnDef.Captured) {
+		return c.out
+	}
+	out := compileSortedFnSigs(r, name, fnDef, stackOnly)
+	id.install.Store(&installedFnSigs{
+		reg:       r,
+		home:      fnDef.Registry,
+		name:      name,
+		stackOnly: stackOnly,
+		sigs:      fnDef.Signatures,
+		caps:      fnDef.Captured,
+		out:       out,
+	})
+	return out
+}
+
+// compileSortedFnSigs is compileFnSigs in dispatch order.
+func compileSortedFnSigs(r *Registry, name string, fnDef *FnDefInfo, stackOnly bool) []Signature {
+	sigs := compileFnSigs(r, name, *fnDef, stackOnly)
+	SortSignatures(sigs)
+	return sigs
+}
+
 // sigView is a function's dispatch-ordered signature list (FnDispatchSigs)
 // with the authored list it was built from, by identity (sameList).
 type sigView struct {

@@ -14,7 +14,7 @@ import (
 // `a.Run(src)` per iteration and spends close to half its time in the parser
 // on these shapes (design/INTERPRETER-PERF-HANDOVER.0.md), which hides a
 // change to dispatch inside a parse cost it never touched. The corpus is the
-// baseline's plus the three bench/interp workloads, at sizes that run in
+// baseline's plus three bench/interp workloads and a higher-order one, at sizes that run in
 // well under a second.
 //
 // A run reads its program and never writes it (TestInterpExecRerunIsStable
@@ -25,6 +25,10 @@ var execExtraBenches = []baselineBench{
 	{"fib20", `def fib fn n:Integer Integer [if (n lte 1) [n] [(fib (n sub 1)) add (fib (n sub 2))]] end`, `fib 20`},
 	{"loopsum20k", ``, `def total 0  for 20000 [def total (total add i)]  total`},
 	{"nestloop150", ``, `def total 0  for 150 [for 150 [def total (total add 1)]]  total`},
+	// A user-defined higher-order word: every call binds its Function
+	// parameter as a frame binding and applies it twice.
+	{"hof2k", `def twice fn [[f:Function x:Integer] Integer [f (f x)]]  def inc ([n:Integer] => [n add 1])`,
+		`def total 0  for 2000 [def total (twice inc/v total)]  total`},
 }
 
 func execBenches() []baselineBench {

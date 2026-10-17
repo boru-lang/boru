@@ -47,11 +47,23 @@ type DefTable struct {
 	// push for `n` does not invalidate the cached dispatch table for
 	// `add` — the property that makes the cache pay off in hot loops.
 	gen map[string]int64
+	// dispatchGen is the per-name generation of what Registry.Lookup
+	// aggregates: bumped (touchDispatch) only by a mutation that adds,
+	// removes or rewrites a fn-definition binding, the one kind of entry
+	// Lookup reads. A value binding pushed over a name or popped off it
+	// moves gen but not this, so Lookup's cached answer — negative for a
+	// value-only name — survives a loop that redefines its accumulator
+	// every iteration, a stack that grows a level per `def`.
+	dispatchGen map[string]int64
 }
 
 // NewDefTable returns an empty def table ready for use.
 func NewDefTable() *DefTable {
-	return &DefTable{stacks: make(map[string][]DefEntry), gen: make(map[string]int64)}
+	return &DefTable{
+		stacks:      make(map[string][]DefEntry),
+		gen:         make(map[string]int64),
+		dispatchGen: make(map[string]int64),
+	}
 }
 
 // touch bumps name's generation counter. Called from every mutator that
@@ -59,6 +71,49 @@ func NewDefTable() *DefTable {
 // Registry.dispatchCache entry for name.
 func (dt *DefTable) touch(name string) {
 	dt.gen[name]++
+}
+
+// touchDispatch bumps name's dispatch generation: a mutator that changed
+// a fn-definition binding calls it beside touch.
+func (dt *DefTable) touchDispatch(name string) {
+	dt.dispatchGen[name]++
+}
+
+// dispatches reports whether a binding body is one Registry.Lookup reads:
+// a fn definition.
+func dispatches(v *Value) bool {
+	_, ok := v.Data().(*FnDefInfo)
+	return ok
+}
+
+// anyDispatches reports whether any of the entries is a fn definition.
+func anyDispatches(entries []DefEntry) bool {
+	for i := range entries {
+		if dispatches(&entries[i].Body) {
+			return true
+		}
+	}
+	return false
+}
+
+// DispatchGen returns name's dispatch generation (0 if no fn definition
+// was ever bound or unbound under it): Registry.Lookup's cache key, which
+// moves only when what Lookup reads for the name does.
+func (dt *DefTable) DispatchGen(name string) int64 {
+	if dt == nil {
+		return 0
+	}
+	return dt.dispatchGen[name]
+}
+
+// entriesRef is name's binding stack where it lives, oldest-first: Stack
+// read without the copy, for a reader that only walks it. Valid until
+// name's stack next changes, and never written through.
+func (dt *DefTable) entriesRef(name string) []DefEntry {
+	if dt == nil {
+		return nil
+	}
+	return dt.stacks[name]
 }
 
 // Gen returns name's current generation counter (0 if never mutated).
@@ -137,6 +192,9 @@ func (dt *DefTable) SetTopData(name string, data Payload) bool {
 		return false
 	}
 	dt.touch(name)
+	if _, fn := data.(*FnDefInfo); fn || dispatches(&e.Body) {
+		dt.touchDispatch(name)
+	}
 	e.Body.SetData(data)
 	return true
 }
@@ -161,6 +219,9 @@ func (dt *DefTable) Push(name string, v Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	if dispatches(&v) {
+		dt.touchDispatch(name)
+	}
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v})
 }
 
@@ -172,6 +233,9 @@ func (dt *DefTable) PushType(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	if dispatches(&body) {
+		dt.touchDispatch(name)
+	}
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Minted: true})
 }
 
@@ -186,6 +250,9 @@ func (dt *DefTable) PushTypeAdopted(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	if dispatches(&body) {
+		dt.touchDispatch(name)
+	}
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def})
 }
 
@@ -211,6 +278,9 @@ func (dt *DefTable) PopEntry(name string) (DefEntry, bool) {
 	dt.mutations++
 	dt.touch(name)
 	top := ds[len(ds)-1]
+	if dispatches(&top.Body) {
+		dt.touchDispatch(name)
+	}
 	if len(ds) == 1 {
 		delete(dt.stacks, name)
 	} else {
@@ -285,6 +355,9 @@ func (dt *DefTable) Replace(name string, v Value) bool {
 		return false
 	}
 	dt.touch(name)
+	if dispatches(&v) || dispatches(&ds[len(ds)-1].Body) {
+		dt.touchDispatch(name)
+	}
 	ds[len(ds)-1].Body = v
 	return true
 }
@@ -304,6 +377,9 @@ func (dt *DefTable) Truncate(name string, want int) {
 		return
 	}
 	dt.touch(name)
+	if anyDispatches(ds[want:]) {
+		dt.touchDispatch(name)
+	}
 	if want == 0 {
 		delete(dt.stacks, name)
 		return
@@ -316,8 +392,11 @@ func (dt *DefTable) Delete(name string) {
 	if dt == nil {
 		return
 	}
-	if len(dt.stacks[name]) > 0 {
+	if ds := dt.stacks[name]; len(ds) > 0 {
 		dt.touch(name)
+		if anyDispatches(ds) {
+			dt.touchDispatch(name)
+		}
 	}
 	delete(dt.stacks, name)
 }
@@ -333,6 +412,7 @@ func (dt *DefTable) Set(name string, bodies []Value) {
 		return
 	}
 	dt.touch(name)
+	dt.touchDispatch(name)
 	if len(bodies) == 0 {
 		delete(dt.stacks, name)
 		return
@@ -465,6 +545,7 @@ func (dt *DefTable) RestoreEntriesSnapshot(s EntriesSnapshot) {
 		if _, ok := s.stacks[name]; !ok {
 			dt.mutations++
 			dt.touch(name)
+			dt.touchDispatch(name)
 			delete(dt.stacks, name)
 		}
 	}
@@ -476,6 +557,7 @@ func (dt *DefTable) RestoreEntriesSnapshot(s EntriesSnapshot) {
 		copy(cp, want)
 		dt.mutations++
 		dt.touch(name)
+		dt.touchDispatch(name)
 		dt.stacks[name] = cp
 	}
 }
@@ -541,6 +623,7 @@ func (dt *DefTable) Restore(snap map[string]int) {
 		want, ok := snap[name]
 		if !ok {
 			dt.touch(name)
+			dt.touchDispatch(name)
 			delete(dt.stacks, name)
 			continue
 		}
@@ -587,7 +670,11 @@ func (dt *DefTable) Clone() *DefTable {
 	for name, g := range dt.gen {
 		gen[name] = g
 	}
-	return &DefTable{stacks: stacks, gen: gen}
+	dispatchGen := make(map[string]int64, len(dt.dispatchGen))
+	for name, g := range dt.dispatchGen {
+		dispatchGen[name] = g
+	}
+	return &DefTable{stacks: stacks, gen: gen, dispatchGen: dispatchGen}
 }
 
 // HoldsType reports whether any LIVE entry, under any name, binds def — the
