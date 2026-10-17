@@ -108,7 +108,7 @@ installs a `StepController`.
 
 ### 2.1 The per-step pause seam (the "debug event loop")
 
-`eng/go/engine.go`, the Run loop, fires once before each tape token is
+`core/go/engine.go`, the Run loop, fires once before each tape token is
 dispatched:
 
 ```go
@@ -189,7 +189,7 @@ tokens through this shape instead of a single quoted body.
 ### 2.4 Source positions, frames, attach
 
 - **Positions.** Every parsed `Value` carries `SrcPos{Row, Col, Src}`
-  (`eng/go/boru_error.go:127`; `Row`/`Col` 1-based, `0` = unknown).
+  (`core/go/boru_error.go:127`; `Row`/`Col` 1-based, `0` = unknown).
   `Value.Pos()` / `Engine.currentPos()` map the pointer to a position.
   **There is no file field and no byte offset** — the file is resolved
   per-registry from `Registry.BaseFile`. The compiled VM carries the

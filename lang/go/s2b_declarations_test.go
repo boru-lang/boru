@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -157,69 +156,6 @@ func TestS2BReceiveDeclaresRunsBodyOnRegistry(t *testing.T) {
 	}
 }
 
-// TestS2BReceiveBodyOnRegistryLowering: the declaration's behaviour on both
-// lanes. At the top-level statement position the dispatch bakes and answers
-// as the interpreter does (the module-scope rule). At a NESTED position — a
-// fn body, a loop body, a branch arm — it bakes only when the clause list
-// names nothing the program or the registry knows
-// (registryBodyNamesNothingKnown): the handler's own keyword `after` and
-// literals, as the sweep's seeds are. Every clause body that could read a
-// name the VM holds as a frame local — a fn param (bare, in a list, in a map
-// member), a loop iterator — or reach interpreter-maintained state (`args`),
-// or change a binding the program reads after it, DECLINES. The fn-param,
-// iterator and rebind shapes all miscompiled on main before the flag
-// (ae17688): `undefined word` for the first two, an internal RESTEP_LANDING
-// underflow for the third.
-func TestS2BReceiveBodyOnRegistryLowering(t *testing.T) {
-	for _, c := range []struct{ src, want string }{
-		{`receive [ {never: 1} [ "msg" ] after 5 [ "timed-out" ] ]`, "[timed-out]"},
-		{`def k 4 end receive [ {never: 1} [ 0 ] after 5 [ k add 1 ] ]`, "[5]"},
-		{`receive [ {never: 1} [ 0 ] after 5 [ (1 add 2) ] ]`, "[3]"},
-		// Nested positions whose clause list names nothing known.
-		{`def f fn [[n:Integer][Integer][receive [ {never: 1} [ 0 ] after 5 [ 9 ] ]]] end f 7`, "[9]"},
-		{`for 2 [receive [ {} [ 1 ] after 0 [ 7 ] ]]`, "[7 7]"},
-		{`if true [receive [ {never: 1} [ 0 ] after 5 [ 9 ] ]] [0]`, "[9]"},
-	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if errC != nil || errI != nil || !compiled {
-			t.Errorf("%q: want a compiled run on both lanes, compiled=%v errC=%v errI=%v", c.src, compiled, errC, errI)
-			continue
-		}
-		if fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
-			t.Errorf("%q: compiled %v, interp %v, want %s", c.src, gotC, gotI, c.want)
-		}
-	}
-	for _, c := range []struct{ src, want string }{
-		// A clause body reading a fn param inside the fn (the miscompile).
-		{`def f fn [[n:Integer][Integer][receive [ {never: 1} [ 0 ] after 5 [ n ] ]]] end f 7`, "[7]"},
-		// ... a top-level loop's iterator.
-		{`for 2 [receive [ {never: 1} [ 0 ] after 5 [ i ] ]]`, "[0 1]"},
-		// ... a body that rebinds a name the program reads after it.
-		{`def x 1 end receive [ {never: 1} [ 0 ] after 5 [ def x 2 ] ] x`, "[2]"},
-		// ... a fn param one level down, as a map member.
-		{`def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ {a: n} ] ]]] end f 7`, "[{a:7}]"},
-		// ... a registered word reading interpreter-maintained state.
-		{`def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ args ] ]]] end f 7`, "[[7]]"},
-	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if compiled {
-			t.Errorf("%q: must decline, compiled to %v/%v", c.src, gotC, errC)
-		}
-		if errI != nil || fmt.Sprint(gotI) != c.want {
-			t.Errorf("%q: interp %v/%v, want %s", c.src, gotI, errI, c.want)
-		}
-		// The decline is loud and counted, never a wrong compiled answer.
-		requireEngineParity(t, c.src, false)
-	}
-	// A name NEITHER lane knows is admitted at a nested position and raises
-	// the same undefined_word on both.
-	const unknown = `def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ zzq ] ]]] end f 7`
-	_, compiled, errC, _, errI := runBothEngines(t, unknown)
-	if !compiled || errC == nil || errI == nil || codeOf(errC) != "undefined_word" || codeOf(errI) != "undefined_word" {
-		t.Errorf("%q: want a compiled run raising undefined_word on both lanes, compiled=%v errC=%v errI=%v", unknown, compiled, errC, errI)
-	}
-}
-
 // TestS2BOwnLoweringShapes: CompileOwnLowering is a CODE-BODY fact of one of
 // two shapes — a check-mode handler, or a structured ReturnsFn — and never
 // sits beside CompileResteps (a word whose result the tape re-steps has no
@@ -256,34 +192,5 @@ func TestS2BOwnLoweringShapes(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no signature declares CompileOwnLowering")
-	}
-}
-
-// TestS2BDeclaredWordsKeepParity: programs over the declared words compile
-// and answer as the interpreter does — the declaration moved no lowering.
-func TestS2BDeclaredWordsKeepParity(t *testing.T) {
-	for _, src := range []string{
-		// CompileOwnLowering: the structured half.
-		`def c true end if c [1] [2]`,
-		`if false [1]`,
-		`for 3 [1]`,
-		`for [0 3] [i]`,
-		`def n 0 end while [n lt 2] [def n (n add 1)] end n`,
-		// CompileOwnLowering: the check-mode constructors and binders.
-		`def f fn [[x:Integer] [Integer] [x add 1]] end f 2`,
-		`2 (x:Integer => [x add 1]) apply`,
-		`def P fnpred n:Integer [n gt 0] end 5 is P`,
-		`def G gen [T] class {v: T} end G deq G`,
-		`def m (macro [[e] [ quote [ unquote e add 1 ] ]]) end m 5`,
-		`import module [export "M" {x: 1}] end M has x/q`,
-		// CompileResteps: the splices.
-		`var [[[a 1] [b 2]] a add b]`,
-		`def dbl word [dup add] end 5 dbl`,
-		// CompileQuoteKey / CompileQuoteInert over a NoEvalArgs list.
-		`unpack [a b] {a:1 b:2} a add b`,
-		`def f fn [[n:Integer][Any][reach n ['a']]] end f 7`,
-		`def Color enum [red green blue] end Color tcmp Color`,
-	} {
-		requireEngineParity(t, src, true)
 	}
 }

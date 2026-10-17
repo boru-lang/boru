@@ -79,7 +79,7 @@ import "go:strings"
 
 > **Note on argument form.** boru's general guidance is to prefer *forward*
 > form `f a b c` for words that are not read as operators (see
-> `eng/go/CLAUDE.md` "Signature Ordering"), and module words are no
+> `core/go/CLAUDE.md` "Signature Ordering"), and module words are no
 > exception: since the structure-first lazy forward-argument resolution
 > (`6687638`) they forward-collect like built-ins, so `Pkg.word a b`
 > dispatches alongside `a b Pkg.word` and `a Pkg.word b`. Pinned for
@@ -130,7 +130,7 @@ boundary — only registered symbols are reachable from boru.
 ## Type mapping
 
 Values cross the boundary through an extension of the existing
-`eng.FromNative` / `eng.ToNative` helpers (`eng/go/gobridge.go`), which
+`core.FromNative` / `core.ToNative` helpers (`core/go/gobridge.go`), which
 today cover only scalars, lists, and maps with a *fixed* mapping. The bridge
 needs **param-directed** conversion: the target Go type comes from the
 function's `reflect.Type`, so a boru Integer becomes whatever width the
@@ -155,17 +155,17 @@ output; reused unchanged.
 Go values that have no boru counterpart (structs the host doesn't want
 flattened, pointers, handles like `*os.File`, `*url.URL`) are wrapped in an
 `ExtensionPayload{Body: any}` — the kernel's explicit escape hatch
-(`eng/go/payload.go`, `eng.NewExtension`; see `eng/go/CLAUDE.md` "Sealed
+(`core/go/payload.go`, `core.NewExtension`; see `core/go/CLAUDE.md` "Sealed
 Payload"). They surface under a single registered external type, `Go/Object`,
 and **round-trip unchanged** back into later Go calls (so
 `url.Parse` → `*url.URL` → `(*url.URL).String` composes).
 
 `Go/Object` is registered once via `RegisterExternalBuiltin` with a
 `FixedID` from the documented `10000+` host/third-party range (see
-`eng/go/CLAUDE.md` "FixedID Allocation"). Its `TypeBehavior.Format`
+`core/go/CLAUDE.md` "FixedID Allocation"). Its `TypeBehavior.Format`
 delegates to `fmt.Sprint` on the body; `Match`/`Equal` compare identity.
 Bodies that want to participate in deep cloning implement the optional
-`DeepCloner` capability (`eng/go/clone.go`).
+`DeepCloner` capability (`core/go/clone.go`).
 
 ### Errors
 
@@ -187,7 +187,7 @@ branch.
 | Prefix test        | `isNativeModImport` (`native_module_module.go`)  | `isGoModImport`               |
 | Resolve            | `resolveNativeMod` → `r.Modules.Resolver`        | `resolveGoMod` → a Go-package resolver |
 | Builder            | `BuildXxxModule` (static `Natives` slice)        | reflection-generated exports  |
-| Descriptor         | `ModuleDesc` with `Exports` (`eng/go/value.go`)  | same `ModuleDesc` shape       |
+| Descriptor         | `ModuleDesc` with `Exports` (`core/go/value.go`)  | same `ModuleDesc` shape       |
 | Install            | `installExports` / `MarkLoaded`                  | identical                     |
 | Introspect-only    | `ResolveAnyModule` (for `describe`)              | extend with the `go:` branch  |
 
@@ -206,7 +206,7 @@ generated from `reflect.Type` instead of a hand-written `[]NativeFunc`.
 ### The reflection bridge core (the new piece)
 
 For each registered symbol that is a func, generate a kernel `Handler`
-(`func(args, ctx, stack, r) ([]Value, error)`, `eng/go/signature.go`) closed
+(`func(args, ctx, stack, r) ([]Value, error)`, `core/go/signature.go`) closed
 over the func's `reflect.Value`:
 
 1. Inspect `reflect.Type` `In`/`Out`, including `IsVariadic`.
@@ -290,7 +290,7 @@ registered; behaviour is deterministic across runs.
 
 ## Implementation checklist (for the later task)
 
-1. `eng/go/gobridge.go` — add param-directed conversion (target
+1. `core/go/gobridge.go` — add param-directed conversion (target
    `reflect.Type`), struct↔Map, and `Go/Object` wrapping/unwrapping.
 2. Register the `Go/Object` external type (`RegisterExternalBuiltin`,
    FixedID `10000+`) with a format/identity `TypeBehavior`; add it to the

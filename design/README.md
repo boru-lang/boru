@@ -39,7 +39,7 @@ specs not listed here (e.g. domain-word specs) were not re-audited in this
 pass and carry no implied status either way.
 
 > **Canonical source of truth for argument ordering / forward args** is the
-> code-adjacent guide `eng/go/CLAUDE.md` ("Signature Ordering") and
+> code-adjacent guide `core/go/CLAUDE.md` ("Signature Ordering") and
 > `lang/go/CLAUDE.md` ("Argument Ordering"), backed by the living references
 > below. The single rule: each signature's `BarrierPos` marks the `|`;
 > positions before it are forward-eligible (filled from forward tokens in
@@ -75,6 +75,22 @@ pass and carry no implied status either way.
   forward as fallback" framing; added the split-classes note).*
 - `LANGREF.10.md` — language reference. *Corrected in the latest audit
   (same forward-args phrasing; anchored `sub` to `args[1] - args[0]`).*
+
+## Living references — the interpreter line
+
+- `SESSION-HANDOVER.0.md` — the current-state page a fresh session reads
+  first.
+- `COMPILER-LANE-REMOVAL.0.md` — the 2026-10-16 removal of the compiler
+  lane: what went, why behaviour did not change, the residue to prune, the
+  `compiler-legacy` branch.
+- `INTERPRETER-TIERED-EXECUTION.0.md` — the interpreter-optimisation design.
+- `INTERPRETER-PERF-HANDOVER.0.md` — the interpreter-performance sessions'
+  handover (#532, #533) and the no-copy review's open threads.
+- `VALUE-NO-COPY.0.md`, `VALUE-NO-COPY-EXCEPTIONS.0.md`,
+  `VALUE-NO-COPY-MEASUREMENTS.0.md` — the no-copy policy, its allowed
+  exceptions and its measurements.
+- `PERF-BASELINE.10.md` — the benchmark suites and the before/after
+  discipline.
 
 ## Legacy / historical — argument ordering & dispatch
 
@@ -185,7 +201,7 @@ longer exists (the engine unified onto one `BarrierPos`-driven rule):
   strings. Answers "would an interpreter-identical signature-matching
   opcode remove the remaining refusals?" (no: that opcode exists, and none
   of the live refusals is a dispatch-resolution problem), and records
-  specimens that now compile though `COMPILABLE-SUBSET.md` §5 lists their
+  specimens that now compile though `legacy/COMPILABLE-SUBSET.ignore` §5 lists their
   class as refusing.
 
 - **`legacy/COMPILE-DECLARATION-MODEL.0.ignore`** — the follow-on question that survey
@@ -220,6 +236,21 @@ Point-in-time plan/status/deep-dive notes for the bytecode-compiler effort
   `legacy/boru-bytecode-stageA-branch-result-modeling.0.ignore`,
   `legacy/boru-bytecode-method-fnvalue-codebody.0.ignore`,
   `legacy/boru-bytecode-final-two-refusals.0.ignore`.
+- The full-compilation programme that followed (2026-08 → 2026-10),
+  archived when the compiler lane was removed (`COMPILER-LANE-REMOVAL.0.md`):
+  `legacy/FULL-COMPILATION.0.ignore` (the design),
+  `legacy/FULL-COMPILATION-HANDOFF.0.ignore` (its running log),
+  `legacy/FULL-COMPILATION-ASSESSMENT.0.ignore`,
+  `legacy/FULL-COMPILATION-REVIEW.0.ignore`,
+  `legacy/FULL-COMPILATION-REPLAN.0.ignore`,
+  `legacy/COMPILABLE-SUBSET.ignore` (the compiler's rules and its §5 ledger
+  of open refusals), `legacy/DO-STRUCTURE-COMPILATION.0.ignore`,
+  `legacy/HANDLER-MIGRATION-LINE.0.ignore`, `legacy/AOT-COMPILE.0.ignore`,
+  `legacy/ENG-COVERAGE-PARITY.0.ignore` (the eng/go standalone coverage
+  programme; core/go's gate is at 100), and the handovers written for the
+  programme — `legacy/SESSION-HANDOVER-FULL-COMPILATION.0.ignore`,
+  `legacy/NUR-RUN-HANDOFF.0.ignore`, `legacy/NUR-ROUND6-HANDOVER.0.ignore`,
+  `legacy/VOXGIG-BORU-HANDOVER.0.ignore`.
 
 ## Legacy / historical — superseded version series & handoff notes
 

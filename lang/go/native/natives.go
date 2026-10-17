@@ -260,10 +260,6 @@ var Natives = []NativeFunc{
 	{
 		Name:          "filter",
 		CompileEffect: CompileFallbackBody | CompileDynBody,
-		// filter [body] data — the body sees one element and returns a Boolean.
-		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, Inputs: func(a []Value) []Value {
-			return []Value{ElementCarrierOf(a[1])}
-		}},
 
 		Signatures: []Signature{
 			{Args: []*Type{TFunction, TAny}, Impl: Go(filterHandler), ReturnsFn: filterReturnsFn, BarrierPos: -1},
@@ -357,19 +353,6 @@ var Natives = []NativeFunc{
 		// handler classifying the runtime value exactly as the interpreter's
 		// dispatch does (the S1a rule each/fold/scan/filter follow).
 		CompileEffect: CompileDynBody,
-		// The DESCEND hook (sig position 2) compiles to a closure unit the
-		// handler drives through InvokeBody (walkClassifyHook already
-		// classifies a compiled closure). Visit-only: hook results are
-		// DISCARDED (callWalkHook ignores the residual), so BodyOut 0 keeps
-		// the closure count-agnostic. Quotation and lambda hooks both receive
-		// the ONE `{key value path parent depth}` payload
-		// (LambdaSharesTokenShape). The optional ASCEND slot (position 3) is
-		// guarded recorder-side (extraNoEvalHookSlotsOK): only a
-		// provably-empty flex reference rides as a value operand; every other
-		// ascend shape keeps today's compile failure/bake behaviour.
-		Callable: &CallableSpec{BodyPos: 2, BodyOut: 0, LambdaSharesTokenShape: true, Inputs: func(_ []Value) []Value {
-			return []Value{walkHookArgCarrier()}
-		}},
 
 		Signatures: []Signature{
 			{

@@ -65,9 +65,6 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.Contexts.Push(r.Contexts.Top())
 	fork.Args = NewArgsStack()
 	fork.FnBaselines = nil
-	// The token-body unit cache is per registry (registry.go's field): a
-	// fork stamps its own, against its own bindings.
-	fork.tokenBodyStamps = nil
 	// debugEngines is the live-engine stack for on-demand Debug.stack
 	// introspection (registry.go). It is mutable per-Run state, so the fork
 	// must start with an empty stack of its own. Without this reset the shallow
@@ -94,7 +91,6 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.macroCache = nil
 	fork.errs = nil
 	fork.SDKCache = make(map[string]any)
-	fork.VmRunning = 0 // the fork starts idle, independent of the parent's run
 	// Check is a POINTER the shallow copy would alias, and a fork is a
 	// RUNTIME instance — a timer or interval body, a connection handler, a
 	// model watcher's action, an await branch. It must neither count

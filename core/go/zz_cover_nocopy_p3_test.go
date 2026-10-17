@@ -1,7 +1,6 @@
 package core
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -62,40 +61,6 @@ func TestP3OccurrenceIdentity(t *testing.T) {
 	}
 }
 
-// TestP3FnNames: a binding names its holder (SetFnName), never the payload;
-// a holder no binding named answers the payload's name — a definition's, a
-// compiled closure's — and a value that is no fn answers none.
-func TestP3FnNames(t *testing.T) {
-	raw := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "f"}}}
-	if HolderFnName(&raw) != "" || FnNameOf(&raw) != "f" || !NamedFnValue(&raw) {
-		t.Errorf("an unnamed holder: holder %q, name %q, named %v", HolderFnName(&raw), FnNameOf(&raw), NamedFnValue(&raw))
-	}
-	held := raw
-	SetFnName(&held, "g")
-	SetFnName(&held, "g") // the same name again changes nothing
-	if FnNameOf(&held) != "g" || HolderFnName(&held) != "g" || !NamedFnValue(&held) {
-		t.Errorf("a named holder: %q / %q", FnNameOf(&held), HolderFnName(&held))
-	}
-	if FnNameOf(&raw) != "f" || held.Data().(*FnDefInfo).Name != "f" {
-		t.Error("naming one holder reached the other holder or the payload")
-	}
-	anon := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Anonymous: true}}}
-	if NamedFnValue(&anon) {
-		t.Error("an anonymous fn under no binding's name is not a named definition")
-	}
-	cl := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{RetName: "c"}}}
-	if FnNameOf(&cl) != "c" {
-		t.Errorf("a compiled closure answers its unit's name: %q", FnNameOf(&cl))
-	}
-	n := NewInteger(1)
-	if FnNameOf(&n) != "" || NamedFnValue(&n) {
-		t.Error("a value that is no fn has no name")
-	}
-	if _, ok := FnDefCopy(IntPayload{N: 1}); ok {
-		t.Error("FnDefCopy over a payload that is no fn definition")
-	}
-}
-
 // TestP3FnDefAtPointerView: a holder a binding named dispatches through a
 // view under that name; the payload keeps its own and is handed out as it
 // is to a holder no binding renamed.
@@ -112,39 +77,6 @@ func TestP3FnDefAtPointerView(t *testing.T) {
 	_, view, ok := e.fnDefAtPointer(held)
 	if !ok || view == fd || view.Name != "g" || fd.Name != "f" {
 		t.Errorf("a renamed holder's view: %+v (payload %q)", view, fd.Name)
-	}
-}
-
-// p3Render is a compiled runtime that renders a closure under a holder's
-// name.
-type p3Render struct{ noCompiledRuntime }
-
-func (p3Render) ClosureRender(_ *ClosurePayload, name string) (string, bool) {
-	return "rendered " + name, true
-}
-
-// TestP3ClosureRender: a closure a binding named renders through the
-// compiled runtime under that name; under the default runtime, which
-// declines, its own rendering stands, and a closure with none renders by
-// its parts.
-func TestP3ClosureRender(t *testing.T) {
-	cl := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{Render: "<src>"}}}
-	SetFnName(&cl, "h")
-	prev := InstallCompiledRuntime(p3Render{})
-	got := cl.String()
-	InstallCompiledRuntime(noCompiledRuntime{})
-	declined := cl.String()
-	bare := Value{d: &Datum{Parent: TFunction, Data: &ClosurePayload{}}}
-	parts := bare.String()
-	InstallCompiledRuntime(prev)
-	if got != "rendered h" {
-		t.Errorf("the runtime's rendering under the holder's name: %q", got)
-	}
-	if declined != "<src>" {
-		t.Errorf("the closure's own rendering when the runtime declines: %q", declined)
-	}
-	if parts == "" || parts == "<src>" {
-		t.Errorf("a closure with no rendering renders by its parts: %q", parts)
 	}
 }
 
@@ -252,46 +184,5 @@ func TestP3AutoEvalResidualKeeps(t *testing.T) {
 	n := NewInteger(3)
 	if err := e.autoEvalResidual(&n); err != nil || n.String() != "3" {
 		t.Errorf("a scalar passes through: %v %v", n, err)
-	}
-}
-
-// p3ListEmit is an armed recorder that records a list member's assembly
-// and stamps the holder it hands back.
-type p3ListEmit struct {
-	EmitRecorder
-	recorded int
-}
-
-func (s *p3ListEmit) Active() bool { return true }
-func (s *p3ListEmit) Armed() bool  { return true }
-func (s *p3ListEmit) RecordMakeListInner(_ *Registry, _ []Value, out *Value, _ SrcPos) bool {
-	s.recorded++
-	SetID(out, "L_p3member")
-	return true
-}
-
-// TestP3MapMemberListRecorded: a consumed map's list-valued member that a
-// recording pass assembles is stored as the holder the record stamped (the
-// member's own evaluation records its list too, so the stub counts both).
-func TestP3MapMemberListRecorded(t *testing.T) {
-	r := covRegistry(t, nil)
-	s5aCheckOn(t, r)
-	stub := &p3ListEmit{EmitRecorder: TheInactiveEmit}
-	saved := r.Check.Emit
-	r.Check.Emit = stub
-	defer func() { r.Check.Emit = saved }()
-	om := NewOrderedMap()
-	om.Set("n", NewEvalList([]Value{NewDynamicCarrier(TAny)}))
-	got, err := NewTop(r).AutoEvalMap(NewMap(om), false, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, merr := AsMap(got)
-	if merr != nil {
-		t.Fatalf("the evaluated map: %v", got)
-	}
-	member, _ := m.Get("n")
-	if stub.recorded == 0 || IDOf(&member) != "L_p3member" {
-		t.Errorf("the member is the record's holder: recorded %d, id %q (%s)", stub.recorded, IDOf(&member), strings.TrimSpace(member.String()))
 	}
 }

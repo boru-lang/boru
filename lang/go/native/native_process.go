@@ -6,9 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
-	eng "github.com/boru-lang/boru/eng/go"
 
 	"github.com/boru-lang/boru/lang/go/native/internal/patrun"
 	"github.com/boru-lang/boru/lang/go/policy"
@@ -182,27 +180,11 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if err := checkProcessPolicy(r); err != nil {
 		return nil, err
 	}
-	// A COMPILED spawn body arrives as a synthetic fn-value carrier with a
-	// CompiledFnRef (CompileStoresBody); an interpreted / declined body arrives as
-	// a raw code-list. Run the former via RunUnit on the fork, the latter via a
-	// fresh interpreter sub-engine.
-	var compiledRef *compiler.CompiledFnRef
-	if fd, ok := args[0].Data().(*core.FnDefInfo); ok {
-		for i := range fd.Signatures {
-			if ref := compiler.CompiledRef(&fd.Signatures[i]); ref != nil && ref.Prog != nil {
-				compiledRef = ref
-				break
-			}
-		}
+	bodyList, err := RequireConcreteList(args[0], "spawn")
+	if err != nil {
+		return nil, err
 	}
-	var tokens []Value
-	if compiledRef == nil {
-		bodyList, err := RequireConcreteList(args[0], "spawn")
-		if err != nil {
-			return nil, err
-		}
-		tokens = bodyList.Slice() // the spawned goroutine's own copy
-	}
+	tokens := bodyList.Slice() // the spawned goroutine's own copy
 	bound := core.DefaultMailboxBound
 	overflow := core.OverflowBlock
 	if len(args) >= 2 {
@@ -250,12 +232,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			rt.Remove(p)
 			p.Close()
 		}()
-		var runErr error
-		if compiledRef != nil {
-			_, runErr = eng.RunUnit(compiledRef, fork, nil)
-		} else {
-			_, runErr = New(fork).Run(tokens)
-		}
+		_, runErr := New(fork).Run(tokens)
 		if runErr != nil {
 			fmt.Fprintf(fork.ErrOutput, "[boru/process] %s exited with error: %v\n", p.ID, runErr)
 		}

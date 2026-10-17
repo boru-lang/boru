@@ -170,13 +170,6 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 		{{Type: tMini}, {Type: native.TMap}, {Type: native.TString}},
 	}, []*native.Type{native.TMap}, nil, subReg))
 	native.RegisterMiniCompileGoHook(parent, "re", miniReCompileFor(tMini))
-	// The `re` hook is transducer-faithful: whether the pattern compiles at
-	// build time (the hook) or dispatches the standard MiniLang.lang_re call
-	// (the transducer), both share miniCompiledPattern + reMatchResult — the
-	// same runtime. So a DYNAMIC-src `mini re (pat) {}` records the standard
-	// call instead of declining. (`bf` and other plan-baking kinds stay
-	// unmarked — their hook semantics can't be reproduced by the transducer.)
-	native.MarkMiniCompileHookFaithful(parent, "re")
 	mintMiniFnType("re")
 
 	// ---- kind: bf — brainfuck ------------------------------------------
@@ -476,12 +469,6 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 	})
 	exports.Set("register-compiled", wrapMiniFnDef("minilang-register-compiled", [][]native.FnParam{{}},
 		[]*native.Type{}, nil, subReg))
-
-	// ---- out-of-band: fn dispatch (compile-pass seam, NOT exported) ------
-	// The runtime twin of `mini <fn> <src> <opts?>` for a leading operand the
-	// compile pass could not see concretely (macro_fn_dispatch.go).
-	registerMacroFnDispatch(subReg, parent, "minilang-fn-dispatch", miniFnDispatchHandler,
-		native.InstallMiniLangFnDispatch, 2, 3)
 
 	return native.ModuleDesc{
 		Src:     subReg,

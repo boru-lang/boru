@@ -72,7 +72,6 @@ func TestS7A_VMHandlerBadArg(t *testing.T) {
 		{"vm-run-compute", []native.Value{badStr}},
 		{"vm-parse", []native.Value{badStr}},
 		{"vm-check", []native.Value{badStr}},
-		{"vm-compile", []native.Value{badStr}},
 		{"vm-run-with", []native.Value{badStr, emptyMap}},
 	}
 	for _, c := range cases {
@@ -128,9 +127,8 @@ func TestS7A_VMRunParseError(t *testing.T) {
 }
 
 // TestS7A_VMSubEngineInitError drives every sub-engine-construction error arm
-// (runInSubEngine / checkInSubEngine / compileInSubEngine, and the vm-check /
-// vm-compile handlers that propagate them) via the shared
-// newDefaultRegistryWithPolicy seam.
+// (runInSubEngine / checkInSubEngine, and the vm-check handler that
+// propagates it) via the shared newDefaultRegistryWithPolicy seam.
 func TestS7A_VMSubEngineInitError(t *testing.T) {
 	parent := s7aVMReg(t)
 	orig := newDefaultRegistryWithPolicy
@@ -139,7 +137,7 @@ func TestS7A_VMSubEngineInitError(t *testing.T) {
 	}
 	t.Cleanup(func() { newDefaultRegistryWithPolicy = orig })
 
-	for _, name := range []string{"vm-run", "vm-check", "vm-compile"} {
+	for _, name := range []string{"vm-run", "vm-check"} {
 		h := s7aVMHandler(t, parent, name)
 		if _, err := h([]native.Value{native.NewString("1")}, nil, nil, parent); err == nil ||
 			!strings.Contains(err.Error(), "s7a-boom-init") {
@@ -161,29 +159,6 @@ func TestS7A_VMCheckSynthDiag(t *testing.T) {
 	got := native.Canon([]native.Value{v})
 	if !strings.Contains(got, "check_error") || !strings.Contains(got, "ok:false") {
 		t.Errorf("expected a synthesized check_error diagnostic, got %s", got)
-	}
-}
-
-// TestS7A_VMCompileArms drives compileInSubEngine's three decline arms:
-// runErr (check error), a check diagnostic, and a check-mode-suppressed runtime
-// error — plus hasCheckError's iteration via the check-diagnostics case.
-func TestS7A_VMCompileArms(t *testing.T) {
-	parent := s7aVMReg(t)
-	cases := []struct{ name, src, wantReason string }{
-		{"runErr", "gen [x:Integer]", "check error"},
-		{"checkDiag", "totally-undefined-word", "check diagnostics"},
-		{"suppressed", `def f fn [[] [Any] [unpack [a] {b:1}]]  f`,
-			"check-mode suppressed a runtime error (uncompilable)"},
-	}
-	for _, c := range cases {
-		v, err := compileInSubEngine(parent, c.src)
-		if err != nil {
-			t.Fatalf("%s: compileInSubEngine must not raise: %v", c.name, err)
-		}
-		got := native.Canon([]native.Value{v})
-		if !strings.Contains(got, c.wantReason) {
-			t.Errorf("%s: reason %q not found in %s", c.name, c.wantReason, got)
-		}
 	}
 }
 

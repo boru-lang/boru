@@ -48,24 +48,3 @@ func seam5Check(r *Registry, src string) ([]Value, error) {
 	e.SetSource(src)
 	return e.Run(toks)
 }
-
-// seam5CompileCheck runs src with the bytecode emission recorder active,
-// mirroring lang.(*Boru).CompileCheck's setup, so recorder-only arms in
-// native handlers are drivable from this package.
-func seam5CompileCheck(r *Registry, src string) ([]Value, error) {
-	toks, err := parser.Parse(src)
-	if err != nil {
-		return nil, err
-	}
-	r.Source = src
-	defer r.Check.Begin()()
-	ResetModuleExportGrowth(r)
-	ResetCheckFnCarrierBinds(r)
-	r.Check.Emit = NewEmitState()
-	r.Check.Compiling = true
-	r.Check.FnSummaries = nil
-	r.Check.FnInflight = nil
-	e := NewTop(r)
-	e.SetSource(src)
-	return e.Run(toks)
-}

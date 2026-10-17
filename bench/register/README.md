@@ -32,10 +32,14 @@ Both are committed and **append-only**.
   because a host drifts under a stable id — toolchains and patch levels
   move while the hardware does not.
 
-`surface` is one of **`check`** (the static pass), **`compile`** (emit +
-lower), **`interp`** (interpreted execution), **`exec`** (compiled
-execution), **`parse`**, and **`e2e`** (the server workloads: req/s,
-µs/round-trip). All the implementation surfaces are first-class, so a
+`surface` is one of **`check`** (the static pass), **`interp`** (execution —
+the interpreter is the one execution surface since the compiled lane's
+removal, 2026-10-16, design/COMPILER-LANE-REMOVAL.0.md), **`parse`**, and
+**`e2e`** (the server workloads: req/s, µs/round-trip). **`compile`** (emit
++ lower) and **`exec`** (compiled execution) are retired: their rows stay as
+the compiled lane's record, and nothing appends to them — an interpreter
+benchmark is never recorded under `exec`, whose series would read it as a
+compiled measurement. All the implementation surfaces are first-class, so a
 change that buys execution speed by spending check time is *visible*
 rather than invisible.
 
@@ -90,7 +94,7 @@ is that a 0.2-point move under a 2-point spread is not a move.
 Two things to know before trusting a number out of it:
 
 - It profiles the **dispatch-dense** interpreter benchmarks
-  (`BenchmarkParens`, `BenchmarkBytecodeBaseline`), not the
+  (`BenchmarkParens`, `BenchmarkInterpBaseline`), not the
   collection-*word* suite. In `BenchmarkPerfWords` the 500-element inner
   work swamps dispatch and the same loops sit near 3–5% of samples, where
   a real regression hides inside the spread. Override with

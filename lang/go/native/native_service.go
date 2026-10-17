@@ -5,7 +5,6 @@ import (
 	"sort"
 	"sync"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 )
 
@@ -258,14 +257,7 @@ func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	}
 	sort.Strings(keys)
 	sig := patrunSig(keys, pat)
-	// Detached-stamp the handler at its store site so runHandlerChain's
-	// InvokeCallback runs it on the VM: a handler added from an interpreted
-	// context (a module fn's body — the real apps) is otherwise invisible to
-	// every compile pass. StampFnValue declines silently (policy off,
-	// already stamped, capturing, declining body) returning the input
-	// unchanged, so behaviour is byte-identical on every decline; the stamp
-	// runs BEFORE the lock (it forks the registry, no service state).
-	handler, _ := compiler.StampFnValue(r, args[1])
+	handler := args[1]
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.stacks[sig]; !exists {
@@ -323,8 +315,7 @@ func serviceWrapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry
 	if err := requireHandlerFn(r, args[0], "wrap"); err != nil {
 		return nil, err
 	}
-	// Same store-site stamping as `add` (see serviceAddHandler).
-	wrap, _ := compiler.StampFnValue(r, args[0])
+	wrap := args[0]
 	s.mu.Lock()
 	s.wraps = append(s.wraps, wrap)
 	s.mu.Unlock()

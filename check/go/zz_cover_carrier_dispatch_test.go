@@ -27,25 +27,6 @@ func covCDImpl() *core.GoImpl {
 	})
 }
 
-// covCDEmit is a minimal EmitRecorder test double: every method
-// delegates to the shared inactive no-op recorder, with the activity
-// probes overridable and RecordTrap captured — the two behaviours the
-// dispatch model consults (CarrierResults' armed-recording gate,
-// specialWordResults' closure-unit decline and macroexpand trap).
-type covCDEmit struct {
-	core.EmitRecorder
-	active    bool
-	inClosure bool
-	traps     []string
-}
-
-func (e *covCDEmit) Active() bool        { return e.active }
-func (e *covCDEmit) InClosureUnit() bool { return e.inClosure }
-func (e *covCDEmit) RecordTrap(code, _, word, _ string, _ core.SrcPos) bool {
-	e.traps = append(e.traps, code+"@"+word)
-	return true
-}
-
 // covCDDisjunct builds a STRICT disjunct carrier (Carrier=true,
 // Dynamic=false) over the given alternative types; declared marks it a
 // declared-union param binding (DisjunctInfo.Declared).
@@ -123,153 +104,7 @@ func TestCarrierResultsDisjunctStraddlePolyLowering(t *testing.T) {
 	}
 }
 
-func TestCarrierResultsPartitionedUserFnPrecision(t *testing.T) {
-	r := newTestRegistry(t)
-	// A USER FN (BoruImpl with a frame) whose every alternative
-	// first-matches a sig with the SAME run implementation: under an
-	// ARMED recording the dispatch falls through to the ordinary path
-	// (one recorded call) and the partition-joined carriers are re-IDed
-	// onto the recorded results at the tail.
-	shared := &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}, FnFrame: &core.FnFrameMeta{Name: "ucolq"}}
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "ucolq",
-		Signatures: []core.Signature{
-			{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: shared},
-			{Args: []*core.Type{core.TString}, Returns: []*core.Type{core.TString}, BarrierPos: 1, Impl: shared},
-		},
-	})
-	done := r.Check.Begin()
-	defer done()
-	r.Check.Emit = &covCDEmit{EmitRecorder: core.TheInactiveEmit, active: true}
-	fn := r.Lookup("ucolq")
-	sig := &fn.Signatures[0]
-	args := []core.Value{covCDDisjunct(false, core.TInteger, core.TString)}
-	out := CarrierResults(r, "ucolq", sig, args, core.SrcPos{Row: 3, Col: 1}, r, false)
-	// The committed sig declares a single scalar return; the partition
-	// join is the per-alternative Integer|String union. Getting the
-	// disjunct back proves the partition carriers (not the recorded
-	// declared return) were handed downstream.
-	if len(out) != 1 || !core.IsDisjunct(&out[0]) {
-		t.Fatalf("partitioned user-fn result = %#v, want the per-alternative disjunct", out)
-	}
-}
-
-func TestCarrierResultsPartitionedUserFnCountMismatch(t *testing.T) {
-	r := newTestRegistry(t)
-	shared := &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}, FnFrame: &core.FnFrameMeta{Name: "ucol2q"}}
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "ucol2q",
-		Signatures: []core.Signature{
-			{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: shared},
-			{Args: []*core.Type{core.TString}, Returns: []*core.Type{core.TString}, BarrierPos: 1, Impl: shared},
-		},
-	})
-	done := r.Check.Begin()
-	defer done()
-	r.Check.Emit = &covCDEmit{EmitRecorder: core.TheInactiveEmit, active: true}
-	// The committed sig declares TWO returns while the partition joins
-	// ONE per row: "a count mismatch keeps the recorded results verbatim
-	// — sound, just wider."
-	committed := &core.Signature{
-		Args:       []*core.Type{core.TScalar},
-		Returns:    []*core.Type{core.TInteger, core.TInteger},
-		BarrierPos: 1,
-		Impl:       shared,
-	}
-	args := []core.Value{covCDDisjunct(false, core.TInteger, core.TString)}
-	out := CarrierResults(r, "ucol2q", committed, args, core.SrcPos{Row: 4, Col: 1}, r, false)
-	if len(out) != 2 {
-		t.Fatalf("count mismatch must keep the recorded results: got %d, want 2", len(out))
-	}
-	for i, v := range out {
-		if core.IsDisjunct(&v) || v.Parent() == nil || !v.Parent().Equal(core.TInteger) {
-			t.Errorf("result %d = %#v, want the committed sig's declared Integer carrier", i, v)
-		}
-	}
-}
-
-func TestCarrierResultsScalarConstFold(t *testing.T) {
-	r := newTestRegistry(t)
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "feqq",
-		Signatures: []core.Signature{
-			{Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TBoolean}, BarrierPos: 2, Impl: covCDImpl()},
-		},
-	})
-	done := r.Check.Begin()
-	defer done()
-	// Arm the S3 fold slot the way the compiler piece does at init: the
-	// comparison "ran for real" over compile-time-known scalars, so the
-	// concrete result must replace the declared-type carrier.
-	orig := DispatchBraid.TryFoldScalarConst
-	DispatchBraid.TryFoldScalarConst = func(_ *core.Registry, _ *core.Signature, _ []core.Value) (core.Value, bool) {
-		return core.NewBoolean(false), true
-	}
-	t.Cleanup(func() { DispatchBraid.TryFoldScalarConst = orig })
-	fn := r.Lookup("feqq")
-	sig := &fn.Signatures[0]
-	out := CarrierResults(r, "feqq", sig,
-		[]core.Value{core.NewInteger(0), core.NewInteger(0)}, core.SrcPos{Row: 5, Col: 1}, r, false)
-	if len(out) != 1 || !core.IsConcrete(&out[0]) {
-		t.Fatalf("folded dispatch = %#v, want one CONCRETE result replacing the Boolean carrier", out)
-	}
-	if b, err := core.AsBoolean(out[0]); err != nil || b {
-		t.Errorf("folded value = (%v, %v), want the fold's concrete false", b, err)
-	}
-}
-
 // --- specialWordResults ----------------------------------------------------
-
-func TestSpecialWordResultsArgsFrameProjection(t *testing.T) {
-	r := newTestRegistry(t)
-	pos := core.SrcPos{Row: 1, Col: 1}
-
-	// Top level: the args stack is empty, so `args` falls through to the
-	// normal path (RecordCall's compile failure in a compile; nothing here).
-	if out, ok := specialWordResults(r, "args", nil, pos); ok || out != nil {
-		t.Fatalf("empty args stack must fall through, got (%v, %v)", out, ok)
-	}
-
-	// Inside a compiled fn body the frame's params project as a list
-	// value with no recorded event.
-	top := core.NewList([]core.Value{core.NewInteger(4)})
-	if err := r.Args.Push(top); err != nil {
-		t.Fatalf("Args.Push: %v", err)
-	}
-	out, ok := specialWordResults(r, "args", nil, pos)
-	if !ok || len(out) != 1 {
-		t.Fatalf("concrete frame top must project, got (%v, %v)", out, ok)
-	}
-	l, err := core.AsList(out[0])
-	if err != nil || len(l.Slice()) != 1 {
-		t.Fatalf("projection = %#v, want the pushed one-param list", out[0])
-	}
-	if n, err := core.AsInteger(l.Slice()[0]); err != nil || n != 4 {
-		t.Errorf("projected param = (%d, %v), want 4", n, err)
-	}
-
-	// An ARMED recording outside a closure unit keeps the projection.
-	r.Check.Emit = &covCDEmit{EmitRecorder: core.TheInactiveEmit, active: true}
-	if _, ok := specialWordResults(r, "args", nil, pos); !ok {
-		t.Error("armed non-closure recording must keep the args projection")
-	}
-	// Inside a CLOSURE body compile the projection must DECLINE: the
-	// analysis frame holds the CallableSpec inputs while the runtime
-	// reads the ENCLOSING fn's per-call list.
-	r.Check.Emit = &covCDEmit{EmitRecorder: core.TheInactiveEmit, active: true, inClosure: true}
-	if out, ok := specialWordResults(r, "args", nil, pos); ok || out != nil {
-		t.Fatalf("closure-unit compile must decline the projection, got (%v, %v)", out, ok)
-	}
-	r.Check.Emit = nil
-
-	// A non-concrete frame top (a carrier) has nothing to project.
-	if err := r.Args.Push(core.NewCarrier(core.TList)); err != nil {
-		t.Fatalf("Args.Push: %v", err)
-	}
-	if out, ok := specialWordResults(r, "args", nil, pos); ok || out != nil {
-		t.Fatalf("carrier frame top must fall through, got (%v, %v)", out, ok)
-	}
-}
 
 func TestSpecialWordResultsWordSpliceMarker(t *testing.T) {
 	r := newTestRegistry(t)
@@ -308,43 +143,6 @@ func TestSpecialWordResultsMacroexpandFold(t *testing.T) {
 	}
 	if n, err := core.AsInteger(l.Slice()[0]); err != nil || n != 7 {
 		t.Errorf("expanded token = (%d, %v), want 7", n, err)
-	}
-}
-
-func TestSpecialWordResultsMacroexpandRunawayTrap(t *testing.T) {
-	r := newTestRegistry(t)
-	// A macro that expands to (a call to) itself runs into the depth
-	// guard's macroexpand_error — the interpreter raises exactly this at
-	// run time, so the checker records the byte-identical terminal trap
-	// and still falls through to decline the dispatch.
-	covCDMacro(r, "rmacq", []core.Value{core.NewList([]core.Value{core.NewWord("rmacq")})})
-	em := &covCDEmit{EmitRecorder: core.TheInactiveEmit}
-	r.Check.Emit = em
-	form := core.NewList([]core.Value{core.NewWord("rmacq")})
-	out, ok := specialWordResults(r, "macroexpand", []core.Value{form}, core.SrcPos{Row: 1, Col: 1})
-	if ok || out != nil {
-		t.Fatalf("runaway macro must fall through to decline, got (%v, %v)", out, ok)
-	}
-	if len(em.traps) != 1 || em.traps[0] != "macroexpand_error@macroexpand" {
-		t.Errorf("recorded traps = %v, want the one macroexpand_error trap", em.traps)
-	}
-}
-
-func TestSpecialWordResultsMacroexpandOtherErrorFallsThrough(t *testing.T) {
-	r := newTestRegistry(t)
-	// A macro whose template produces no value fails with macro_error —
-	// NOT a runtime error to reproduce, so no trap is recorded and the
-	// dispatch falls through to decline.
-	covCDMacro(r, "emacq", nil)
-	em := &covCDEmit{EmitRecorder: core.TheInactiveEmit}
-	r.Check.Emit = em
-	form := core.NewList([]core.Value{core.NewWord("emacq")})
-	out, ok := specialWordResults(r, "macroexpand", []core.Value{form}, core.SrcPos{Row: 1, Col: 1})
-	if ok || out != nil {
-		t.Fatalf("failing expansion must fall through, got (%v, %v)", out, ok)
-	}
-	if len(em.traps) != 0 {
-		t.Errorf("recorded traps = %v, want none for a non-macroexpand_error failure", em.traps)
 	}
 }
 
@@ -504,58 +302,6 @@ func TestApplyGradualContagionStrictAdvisory(t *testing.T) {
 	if len(r.Check.Diagnostics) != 1 {
 		t.Errorf("re-analysis duplicated the advisory: %v", covCDDiagCodes(r))
 	}
-}
-
-func TestApplyGradualContagionMixedArityMutator(t *testing.T) {
-	r := newTestRegistry(t)
-	// `set`-shaped mixed arity: value-returning Map/List overloads next
-	// to a returns-nothing String sibling.
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "mutq",
-		Signatures: []core.Signature{
-			{Args: []*core.Type{core.TMap, core.TInteger}, Returns: []*core.Type{core.TMap}, BarrierPos: 2, Impl: covCDImpl()},
-			{Args: []*core.Type{core.TList, core.TInteger}, Returns: []*core.Type{core.TList}, BarrierPos: 2, Impl: covCDImpl()},
-			{Args: []*core.Type{core.TString, core.TInteger}, Returns: []*core.Type{}, BarrierPos: 2, Impl: covCDImpl()},
-		},
-	})
-	pos := core.SrcPos{Row: 8, Col: 1}
-	args := []core.Value{core.NewDynamicCarrier(core.TAny), core.NewCarrier(core.TInteger)}
-
-	// The matched overload returns NOTHING but a dynamic receiver also
-	// reaches the value-returning siblings: model ONE dynamic value — the
-	// union of the reachable value returns.
-	out := applyGradualContagion(r, "mutq", args, nil, pos, false)
-	if len(out) != 1 || !core.IsDisjunct(&out[0]) || !core.IsDynamic(&out[0]) {
-		t.Fatalf("mixed-arity model = %#v, want one dynamic Map|List disjunct", out)
-	}
-	if got := len(core.FlattenAlternatives(out[0])); got != 2 {
-		t.Errorf("modeled alternatives = %d, want 2 (Map and List)", got)
-	}
-
-	// A single reachable value return models that one type directly.
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "mut1q",
-		Signatures: []core.Signature{
-			{Args: []*core.Type{core.TMap, core.TInteger}, Returns: []*core.Type{core.TMap}, BarrierPos: 2, Impl: covCDImpl()},
-			{Args: []*core.Type{core.TString, core.TInteger}, Returns: []*core.Type{}, BarrierPos: 2, Impl: covCDImpl()},
-		},
-	})
-	out = applyGradualContagion(r, "mut1q", args, nil, pos, false)
-	if len(out) != 1 || out[0].Parent() == nil || !out[0].Parent().Equal(core.TMap) || !core.IsDynamic(&out[0]) {
-		t.Fatalf("single-sibling model = %#v, want one dynamic Map carrier", out)
-	}
-
-	// Under a REAL compile the optimistic model fires ONLY in paren-tail
-	// position: a free statement-position residual would be collected by
-	// the NEXT word and corrupt its arity.
-	r.Check.Compiling = true
-	if out := applyGradualContagion(r, "mutq", args, nil, pos, false); len(out) != 0 {
-		t.Errorf("statement-position compile must keep the true 0-arity, got %#v", out)
-	}
-	if out := applyGradualContagion(r, "mutq", args, nil, pos, true); len(out) != 1 {
-		t.Errorf("paren-tail compile must model the consumed value, got %#v", out)
-	}
-	r.Check.Compiling = false
 }
 
 // --- disjunctPartitionReturns ----------------------------------------------

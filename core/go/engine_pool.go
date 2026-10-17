@@ -44,8 +44,6 @@ func RunPooledTop(r *Registry, tokens []Value) ([]Value, error) {
 // fire on placement. This is the seam every callback-style body run
 // uses — only the body acts on its arguments.
 func RunResolved(r *Registry, inputs, tokens []Value) ([]Value, error) {
-	// Observability seam (interp_entry.go): the callback-style body path.
-	r.noteInterp("RunResolved")
 	// The inputs and the body load onto the tape as two parts, each copied
 	// once (Engine.RunParts).
 	return runPooledParts(r, inputs, tokens, len(inputs), false)

@@ -32,7 +32,7 @@ Its README says how to use each.
 | #532 | `571a8a77d` | Interpreter fn-call paths: `CallBoru` on a pooled sub-engine; the leaf fast path for fn values and module fns (bodies naming no binding word skip the def-table snapshots; the rule sees a binding word through an alias); a fn frame closes with its `DefCleanup` marker alone instead of a `__pa` word and an `undef` per param (NUR385 resolved); a pooled tape's reload clears only the previous program's cells and keeps the fresh-tape ceiling; a fn value's dispatch form compiles once per identity. Added `BenchmarkFnKinds`. Recorded NUR384 and U15 | twelve fn kinds −41% geomean, interpreter lane |
 | #533 | `6780a6030` | Loops, container literals and tail body runs on the tape: `ForCont` became `core.Loop` with debugging annotations; natives drive loops through a `LoopDriver` whose iterations are sealed regions of the caller's tape (`each`, `for-each`, `fold`, `scan`, `outer`, `inner`, `eachrank`, `foldaxis`, `filter`'s quotation form, the map forms); pending list and map literals, members, computed keys and interpolation holes run as one-iteration regions; `core.CallRegion` returns a native's last body run as a region (`case`, the compiled lane's `__arm`); pooled call loops; a literal of scalars is its own value. Also bumped CI's `lint-current` to golangci-lint v2.14.0 and answered six Codex findings (recorder, stack view, breakpoints, ascription, void groups, pool retention) | scalar literals 20–26% faster; `each` over 100 elements 1936 → 1242 allocs/op, `fold` 1415 → 721 |
 
-The design of the tape work is in the kernel guide, `eng/go/CLAUDE.md`,
+The design of the tape work is in the kernel guide, `core/go/CLAUDE.md`,
 sections "Loops on the tape (one protocol)" (drivers, call regions, the
 pool, what observers see) and "Container literals are sealed regions of
 the tape" (the hold rule for per-dispatch scratch state, the stepless
@@ -173,7 +173,7 @@ Carried from the merged PRs:
    `def h fn [[b:Function n:Integer][Integer][b y 2 n]]  h def/v 1  y`
    answers `[1 2]` interpreted, while the compiled lane's check pass
    refuses it with "undefined word: y". Recorded as U16 in
-   COMPILABLE-SUBSET.md §5, the ledger the register's scope ruling assigns
+   legacy/COMPILABLE-SUBSET.ignore §5, the ledger the register's scope ruling assigns
    a refusal to. Options: a run-time rule (a snapshot taken
    lazily at the first install inside a leaf frame, touching the fn
    baseline, the bind twin ledger and the eager tail-call teardown); accept

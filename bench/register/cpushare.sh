@@ -9,7 +9,7 @@
 # the share; like everything else in the register it never gates.
 #
 # It profiles the DISPATCH-DENSE interpreter benchmarks (BenchmarkParens and
-# BenchmarkBytecodeBaseline, both of which drive `RunInterp`), not the
+# BenchmarkInterpBaseline, both of which drive `RunInterp`), not the
 # collection-WORD suite: in BenchmarkPerfWords the 500-element inner work
 # swamps dispatch and the collection loops sit near 3-5% of samples, where a
 # regression would hide inside the run-to-run spread. In the dispatch-dense
@@ -40,7 +40,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 benchtime="${1:-3s}"
 repeats="${2:-3}"
-bench="${CPUSHARE_BENCH:-BenchmarkBytecodeBaseline|BenchmarkParens}"
+bench="${CPUSHARE_BENCH:-BenchmarkInterpBaseline|BenchmarkParens}"
 hosts="$here/hosts.jsonl"
 meas="$here/measurements.jsonl"
 work="$(mktemp -d)"

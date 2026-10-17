@@ -184,7 +184,7 @@ reliably for untrusted components." boru pays neither price. The "component
 boundary" is:
 
 - **for a kernel word:** `e.policyGateWord(name)` → `CheckWord(name)` — one
-  glob-matched map lookup at dispatch (`eng/go/engine.go`, `policy_hook.go`);
+  glob-matched map lookup at dispatch (`core/go/engine.go`, `policy_hook.go`);
 - **for an effect:** the permissioned wrapper method
   (`permissionedFileOps.WriteFile` → `policy.Check("fileops","write",{path,bytes})`
   → the inner op) — one policy evaluation per syscall-equivalent;
@@ -450,7 +450,7 @@ Design decisions:
 - **Granularity mirrors the policy scope shape** (`scope → op → where`), so a
   module can declare `fileops.read where path in ["./fixtures/**"]` and an
   importer's grant is a further `Compose` on top.
-- **Sentinel discipline** (per eng/go/CLAUDE.md "No Zero-Value Overload"):
+- **Sentinel discipline** (per core/go/CLAUDE.md "No Zero-Value Overload"):
   resolve "absent = deny" at the single manifest-load boundary so the Go zero
   never reaches a consumer, exactly as `NewRegistry` resolves `-1` sentinels.
 
@@ -690,7 +690,7 @@ small, named, and finite, and the analyzer substrate already exists:
   `analysis_truncated` diagnostic on blow-up), already walks literal quotation
   bodies (`RunCarrierBodyWithDefs`), and already carries an *effect facet* on
   signatures — `CompileEffect` with flags like `CompileIslandPure` and
-  `CompileFallbackBody` (`eng/go/value.go`, `carrier.go`) that classify a word's
+  `CompileFallbackBody` (`core/go/value.go`, `carrier.go`) that classify a word's
   purity for the compiler. A **capability-effect set** is a *new facet on the
   same struct plus a union pass up the same fixpoint*, not a new analyzer.
 
@@ -897,7 +897,7 @@ Precision by variant:
 | `Vm.run` / `-sandbox` / `-compute` | fixed built-in profile | **precise** — `Compose(grant, sandbox|compute)`, regardless of the string |
 | `Vm.run-with code {literal policy}` | literal map in source | **precise** — `Compose(grant, literal)`; the literal policy is an *inline capability manifest for the dynamic sub-program* |
 | `Vm.run-with code {computed policy}` | computed | over-approximate to `grant` (Compose caps at the parent regardless) — same worst case as `do`/`apply`, still ⊆ grant, never ⊤ |
-| `Vm.parse` / `Vm.check` / `Vm.compile` | — (analyse, don't run) | **`{}`** — check mode suppresses every side-effecting handler, so these are effect-free whatever the string |
+| `Vm.parse` / `Vm.check` | — (analyse, don't run) | **`{}`** — check mode suppresses every side-effecting handler, so these are effect-free whatever the string |
 
 Two further points close it:
 

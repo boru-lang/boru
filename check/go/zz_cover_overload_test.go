@@ -216,52 +216,7 @@ func TestAnyNonConcreteOperandShapes(t *testing.T) {
 
 // --- anyDisjunctCarrier ----------------------------------------------------
 
-func TestAnyDisjunctCarrierShapes(t *testing.T) {
-	union := core.NewDisjunct([]core.Value{
-		core.NewTypeLiteral(core.TMap),
-		core.NewTypeLiteral(core.TAny),
-	})
-	unionCarrier := union
-	unionCarrier.SetCarrier(true)
-
-	if !anyDisjunctCarrier([]core.Value{core.NewInteger(1), unionCarrier}) {
-		t.Error("a union carrier among the operands must be detected")
-	}
-	// The doc's bare-disjunct-carrier note: the Parent IS the union type,
-	// with no DisjunctInfo payload required.
-	if !anyDisjunctCarrier([]core.Value{core.NewCarrier(core.TDisjunct)}) {
-		t.Error("a bare Disjunct-typed carrier is a union carrier")
-	}
-	if anyDisjunctCarrier([]core.Value{core.NewCarrier(core.TInteger)}) {
-		t.Error("a single-type carrier is not a union carrier")
-	}
-	// A disjunct VALUE without the Carrier flag is not a carrier at all.
-	if anyDisjunctCarrier([]core.Value{union}) {
-		t.Error("a non-carrier disjunct value must not be detected")
-	}
-	if anyDisjunctCarrier(nil) {
-		t.Error("no operands: no union carrier")
-	}
-}
-
 // --- anyImpreciseCarrier ---------------------------------------------------
-
-func TestAnyImpreciseCarrierShapes(t *testing.T) {
-	if !anyImpreciseCarrier([]core.Value{core.NewCarrier(core.TInteger)}) {
-		t.Error("a concrete-but-imprecise typed carrier must be detected")
-	}
-	// Bare type nodes are excluded: a type-literal operand of is/typeof
-	// is not a runtime value to re-match.
-	if anyImpreciseCarrier([]core.Value{core.NewTypeLiteral(core.TInteger)}) {
-		t.Error("a bare type literal is not an imprecise carrier")
-	}
-	if anyImpreciseCarrier([]core.Value{core.NewInteger(5)}) {
-		t.Error("a concrete value is not an imprecise carrier")
-	}
-	if anyImpreciseCarrier(nil) {
-		t.Error("no operands: no imprecise carrier")
-	}
-}
 
 // --- slotIsPolymorphic -----------------------------------------------------
 

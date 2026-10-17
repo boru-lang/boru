@@ -1,5 +1,31 @@
 name: CI
 
+# The contract: every job under THREE MINUTES, so a push answers inside a
+# coffee's worth of waiting and `make commit-gate` (the same ceiling, on
+# what the change touched) is the developer's own copy of it. The layout
+# that pays for it (design/legacy/FULL-COMPILATION-REVIEW.0.ignore §9):
+#
+#   - every step is defined ONCE, in scripts/ci-steps.sh, which `make
+#     ci-local` runs in the same order — so running ci-local before a push
+#     IS running CI, and nothing here can exist that the checklist misses;
+#   - the jobs run in PARALLEL and each is small: the static checks, the
+#     module suites split three ways (lang/go's root package alone is as
+#     long as everything else), the langspec corpus in shards whose tests
+#     walk the corpus on every core (test/go/langspec/walk_test.go) and run
+#     in parallel with each other, the post-test gates split by what they
+#     need installed, the race gate alone;
+#   - the setup is per job: the composite action installs Node, the lint
+#     or vuln tool, or builds the CLI only for the job that asks;
+#   - the REGRESSION lane is what blocks: every gate in test/go/langspec
+#     asserts its regression ceiling (a value that rose) by default. The
+#     DIRECTION lane — the same gates against their END STATE
+#     (type-soundness violations 0, …) — is red by design until the design's
+#     end state is reached, so it is not a job: every shard
+#     appends its gates' rows (BORU_GATE_SUMMARY) and the gate-table job
+#     renders the one table into the run's summary, open rows and all.
+#     (test/go/langspec/lanes_test.go is the rule; `make test-direction`
+#     is the lane as a local run.)
+
 on:
   push:
     branches: [main]
@@ -7,160 +33,223 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  # Refuse newly-added compiled binaries and oversized blobs. Cheap and
+  # independent of the Go build, so it fails fast. Deleting a committed
+  # binary later does NOT reclaim it — the blob stays in history and every
+  # clone keeps paying — so the only real fix is never merging one.
+  no-binaries:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history for the merge-base diff
+      - name: No committed binaries or oversized files
+        run: scripts/check-no-binaries.sh "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}"
 
+  # The static checks: the committed knowledge graph matches the tree
+  # (needs the CLI), vet, the assertion lint, golangci-lint over every
+  # module in parallel with its cache warm from the last run.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          tools: lint
+          build-cli: 'true'
+      - run: scripts/ci-steps.sh kg-verify
+      - run: scripts/ci-steps.sh vet
+      - run: scripts/ci-steps.sh lint-assertions
+      - run: scripts/ci-steps.sh lint
+
+  # The no-copy ratchet (design/VALUE-NO-COPY.0.md, phase 0): every
+  # module's copies of a core.Value, single and bulk, held to the ceilings
+  # in tools/vetcopies/ceilings.tsv. The vet lanes above run without
+  # copylocks, so this job is also the one that sees a copied sync.Mutex.
+  vet-copies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh vet-copies
+
+  # The module suites, three ways: the small modules together; lang/go
+  # split into its root package and the rest; cmd/go with test/go's
+  # non-corpus packages.
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh test-modules-core
+
+  test-lang:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [root, rest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-name: test-lang-${{ matrix.part }}
+      - run: scripts/ci-steps.sh test-module lang/go ${{ matrix.part }}
+
+  test-cmd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh test-module cmd/go
+      - run: scripts/ci-steps.sh test-module test/go
+
+  # The langspec corpus, sharded by test name (test/go/langspec/shards.tsv;
+  # TestLangspecShardsPartition keeps the file complete and disjoint). Keep
+  # the matrix in step with `make langspec-shard-count`. Every shard
+  # appends its gates' rows to a file the gate-table job collects.
+  test-langspec:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    env:
+      BORU_GATE_SUMMARY: ${{ github.workspace }}/gate-status-${{ matrix.shard }}.md
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-name: test-langspec-${{ matrix.shard }}
+      - name: Shard count matches this matrix
+        run: |
+          n=$(make -s langspec-shard-count)
+          [ "$n" = "9" ] || { echo "shards.tsv defines $n shards; update the matrix in ci.yml"; exit 1; }
+      - run: scripts/ci-steps.sh test-langspec ${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate-status-${{ matrix.shard }}
+          path: gate-status-${{ matrix.shard }}.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The gate table: the direction lane's deliverable, rendered from the
+  # shards' rows into this run's summary. Never fails; an open row is the
+  # programme's debt, a REGRESSION row already failed its shard.
+  gate-table:
+    runs-on: ubuntu-latest
+    needs: test-langspec
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gate-status-*
+          merge-multiple: true
+          path: gate-status
+      - name: Gate table
+        run: scripts/ci-steps.sh gate-table gate-status/*.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The parser parity (the TypeScript parser against the Go one) is the
+  # one job that needs Node.
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          node: 'true'
+      - run: scripts/ci-steps.sh parser-parity
+
+  # The post-test gates that need nothing installed but Go, and vuln.
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          tools: vuln
+      # core/go profiled by ITS OWN suite alone, floor 100. The merged
+      # ADR-008 gate (make cover-gate) lives in cover-gate.yml (nightly and
+      # workflow_dispatch) because re-profiling 13 modules would dominate
+      # every PR.
+      - run: scripts/ci-steps.sh cover-gate-core
+      - run: scripts/ci-steps.sh wasm
+      # Advisory: govulncheck flags standard-library vulns fixed in newer
+      # 1.24.x patch releases — see STATIC_ANALYSIS_REPORT.md.
+      - run: scripts/ci-steps.sh vuln
+
+  # The race gate builds the kernel under -race — a second compile — so it
+  # is a job of its own rather than the gates job's long pole.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh race-gates
+
+  # A current compiler and linter beside the pinned pair in `checks`: a new
+  # Go release adds deprecation checks (reflect.Ptr for reflect.Pointer was
+  # one) that the module's minimum Go and the pinned golangci-lint cannot
+  # see, and the host-specific filesystem and terminal code is linted for
+  # darwin and windows, which no ubuntu job compiles otherwise. Cold, the
+  # lint runs long; the setup action's per-job cache brings it under the
+  # ceiling once warm.
+  lint-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          tools: lint
+          go-version: stable
+          # The release must decode the export data `stable` writes: Go
+          # 1.27 writes version 5, which x/tools reads from v0.50.0 — the
+          # release golangci-lint v2.14.0 vendors (v2.13.2's v0.49.0 stops
+          # at 4, and failed every module's typecheck once stable moved).
+          lint-version: v2.14.0
+      - run: scripts/ci-steps.sh lint
+      - name: Lint the darwin and windows filesystem and terminal code
+        working-directory: lang/go
+        run: |
+          for target_os in darwin windows; do
+            GOOS="$target_os" golangci-lint run ./capabilities ./native
+          done
+
+  # Native runs on each desktop OS, not cross-compiles: the filesystem
+  # portability tests, a real PTY or console for the terminal probes, the
+  # injected import-anchor failures, and the credential and clipboard
+  # failure arms without host tools, on the module's minimum Go and the
+  # current one. A missing terminal fixture fails the test instead of
+  # skipping it.
+  platform-regressions:
+    name: Platforms (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.24.7', stable]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: lang/go/go.mod
-
-      - name: Install golangci-lint
-        # Use `go install` (Go is already on PATH from setup-go) rather
-        # than the official action: `make lint` invokes the binary
-        # directly so we just need it on PATH. The action insists on
-        # running `golangci-lint run` itself, which we don't want here
-        # — we run it ourselves later, against every module.
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Build and start the CLI
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Build CLI
-        run: make -C cmd/go build
-
-      - name: Vet (all modules)
-        run: make vet
-
-      - name: Lint assertions
-        run: |
-          make -C basic/go lint-assertions
-          make -C lang/go lint-assertions
-
-      - name: Lint (golangci-lint, all modules)
-        run: make lint
-
-      - name: Test (all modules)
-        run: make test
-
-      # ADR-008: 100% unit-test coverage of every reachable Go statement
-      # across the merged cross-suite profile, the sole exclusion being the
-      # reviewed allowlist of provably-unreachable defensive guards
-      # (test/go/covergate/allowlist.tsv). Enforced here so the allowlist
-      # can't silently drift as line numbers shift — the exact failure mode
-      # that went unnoticed across the #236–#248 merge batch because no CI
-      # step ran the gate (design/COVERAGE-ALLOWLIST.10.md).
-      - name: Cover gate (ADR-008)
-        run: make cover-gate
-
-      # The STANDALONE gates: each piece covered by its OWN suite alone
-      # (no cross-suite merge). core and parser are at the 100% contract;
-      # check, compiler and eng carry ratchet floors that only ever rise.
-      # parser starts AT 100 rather than on a ratchet because it is a leaf
-      # over core — nothing else's suite could have been covering it, so
-      # there was no incidental coverage to unwind. See design/legacy/ENG-FOUR-PIECE.0.ignore and
-      # design/ENG-COVERAGE-PARITY.0.md.
-      - name: Cover gate — core standalone (100%)
-        run: make cover-gate-core
-
-      - name: Cover gate — parser standalone (100%)
-        run: make cover-gate-parser
-
-      - name: Cover gate — check standalone (ratchet)
-        run: make cover-gate-check
-
-      - name: Cover gate — compiler standalone (ratchet)
-        run: make cover-gate-compiler
-
-      - name: Cover gate — eng standalone (ratchet)
-        run: make cover-gate-eng
-
-      # The TS half of the standalone-parity pair: typecheck + the suites
-      # with their line-coverage ratchets (Go statements ≡ TS lines, both
-      # measured source-only). core/ts runs FIRST and on its own — it is the
-      # twin of `make cover-gate-core`, and running it before eng/ts is what
-      # proves the core package really does stand alone: it has no dependency
-      # on @boru-lang/eng, so a core file that reached upward would fail to
-      # resolve here, before the engine is ever installed. Node >= 24 per the
-      # packages' engines; npm ci restores the pinned toolchains.
-      - name: Test eng/ts (typecheck + coverage ratchet)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Run TS gates (bottom-up: core, parser, then the engine)
-        run: |
-          ( cd core/ts && npm ci )
-          make test-ts-core
-          ( cd parser/ts && npm ci )
-          make test-ts-parser
-          ( cd eng/ts && npm ci )
-          make test-ts
-
-      # The parser twins, diffed row-for-row over eng/spec. Both dumpers
-      # shipped with the TS port and nothing ever ran the comparison, which
-      # is how three render defects lived in the gap between them — the
-      # engine-level `crossdiff` cannot see a parser difference that still
-      # evaluates alike (design/legacy/TS-PARITY-AUDIT.0.ignore).
-      - name: Parser differential (parser/go vs parser/ts)
-        run: make parser-crossdiff
-
-      # The project knowledge graph (kg/) must stay in sync with the
-      # sources that generate it: type-check the boru pipeline, run its
-      # test suite, check the committed bundle's input digest against the
-      # tree, rebuild, and fail if anything under kg/out drifts from the
-      # rebuild — the "keep the graph updated with each PR" rule,
-      # enforced. The build is deterministic, so an in-sync graph diffs
-      # empty.
-      #
-      # `verify` is a strictly weaker check than the rebuild-and-diff
-      # that follows it, and is run anyway for two reasons: it names the
-      # input files that moved (a rebuild diff only shows the result),
-      # and it keeps the verifier itself exercised in CI rather than
-      # only on developer machines.
-      - name: Knowledge graph (check, test, freshness)
-        run: |
-          make -C kg check
-          make -C kg test
-          make -C kg verify
-          make -C kg graph
-          git diff --exit-code kg/out
-
-      # The bytecode compiler's correctness gates (differential,
-      # whole-corpus parity, combination matrix, alloc ceilings) run as
-      # part of `make test`. The race-detector gates do not, so run them
-      # explicitly: a shared immutable Program driven across forks, the
-      # island sub-engine reuse, and the concurrent spec rows in compiled
-      # mode must be data-race-free.
-      - name: Bytecode race gates
-        run: |
-          ( cd lang/go && go test . -run 'TestCompiledConcurrencyRaceFree|TestCompiledIslandReuseNoStateLeak' -race )
-          ( cd test/go && go test ./langspec/ -run 'TestSpecCompiledConcurrentRowsRaceFree' -race )
-
-      # The VM's hot path reuses one args buffer per run (eng/go/vm.go),
-      # sound only while no compiled-reachable native retains its args slice.
-      # -tags borudebug flips that buffer to a fresh allocation per call
-      # (eng/go/vm_args_debug.go), so a retaining handler that would silently
-      # corrupt a later dispatch in the release build instead diverges cleanly
-      # here. Run the differential + combination + whole-corpus parity gates
-      # under the tag so the invariant is guarded as compiled coverage grows.
-      - name: Bytecode args-aliasing gate (borudebug)
-        run: |
-          ( cd lang/go && go test -tags borudebug . -run 'Bytecode|Compiled|Emit' )
-          ( cd test/go && go test -tags borudebug ./langspec/ -run 'TestSpecCompiledDifferential|TestSpecCompiledOrFallback|TestCompiledCombinationParity' )
-
-      - name: Build WASM
-        run: make -C wpg wasm
-
-      # Advisory: govulncheck currently flags Go standard-library vulns
-      # that are fixed in newer 1.24.x patch releases — see
-      # STATIC_ANALYSIS_REPORT.md. Drop continue-on-error once the `go`
-      # directive is bumped (or CI installs the latest 1.24.x toolchain).
-      - name: Vulncheck (advisory, all modules)
-        run: make vuln
-        continue-on-error: true
+          go build -o "$RUNNER_TEMP/boru.exe" ./cmd/go/boru
+          "$RUNNER_TEMP/boru.exe" help
+      - name: Filesystem portability
+        run: go test ./lang/go/capabilities -count=1 -timeout=3m -v -run 'TestPortable|TestOSLock|TestOSMmap|TestMemLock|TestMemMmap|TestDifferentialLockMmap'
+      - name: Real terminal and colour detection
+        run: go test ./lang/go/native -count=1 -timeout=3m -v -run 'TestOSStreamProbeAgainstRealFiles|TestResolveColor|TestPortableXattrNamespaces'
+      - name: Import anchor resolution and failure
+        run: go test ./cmd/go/internal/check ./cmd/go/internal/build ./cmd/go/internal/buildrt ./cmd/go/internal/fmt -count=1 -timeout=3m -v -run 'TestAnchorOf|TestAbsDir|TestSeam5AbsDirError|TestBuildConfigAbsError|TestNativeAbsError|TestRunWalkError'
+      - name: Credential and clipboard failures without host tools
+        run: go test ./cmd/go/internal/vault -count=1 -timeout=3m -v -run 'TestSelectKeyringBackends|TestMacKeychainErrorPaths|TestSecretDetailScreenActions'

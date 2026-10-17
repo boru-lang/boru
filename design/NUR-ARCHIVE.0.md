@@ -407,7 +407,7 @@ runs its inputs as a STACK (`InvokeBody` → `RunResolved`, `MatchSignature`
 filling top-down) — a per-path convention, not an arity threshold. One
 per-word permutation at the closure bind (`ClosureInStackPair`) reconciles
 them, and the rows compile at both arities with no boundary anywhere. Five
-ledger rows graduated with it (design/FULL-COMPILATION.0.md §6.3).
+ledger rows graduated with it (design/legacy/FULL-COMPILATION.0.ignore §6.3).
 
 This site was found while fixing something else, not by looking for
 arity-keyed rules, which is the register's own weakness rather than an
@@ -705,7 +705,7 @@ not compile at all, and this diagnostic is the sole reason. A user cannot
 diagnose it either, because the tool they would reach for — `boru check`
 — reports the program clean.
 
-**Mechanism (not yet isolated).** `design/FULL-COMPILATION.0.md` §6.9(3)
+**Mechanism (not yet isolated).** `design/legacy/FULL-COMPILATION.0.ignore` §6.9(3)
 names the shape: numerous analysis models fork on `!Compiling` — static-if
 reduction, loop spread, closure surfacing, and the emission of
 `no_signature` itself. One of those forks is presumably reached here, and
@@ -968,7 +968,7 @@ about names. That is what an empty residual already means, and it is what
 the compiled lane will do — the trap raises and nothing after it executes.
 A checker reporting consequences the compiled program can never reach is
 describing a program that does not exist.
-`design/FULL-COMPILATION.0.md` §6.9(1) carries the rule and its two limits:
+`design/legacy/FULL-COMPILATION.0.ignore` §6.9(1) carries the rule and its two limits:
 it does not suppress the divergence itself, and it does not extend past the
 region.
 
@@ -1052,7 +1052,7 @@ gap covers the bare-statement position and the stored service handler.
 **Why it matters more than its NUR number suggests.** `each`, `filter`,
 `fold`, `map`, every `Net`/`service` handler, every sort comparator: the
 callback-as-argument shape is how boru does higher-order work, and it is
-the shape §12 and §13 of `design/FULL-COMPILATION.0.md` build the whole
+the shape §12 and §13 of `design/legacy/FULL-COMPILATION.0.ignore` build the whole
 server story on. A user writing a typo inside one gets no warning from the
 tool that exists to warn them. It also means the frontier measurements
 that read `boru check` diagnostics have been reading a pass that skipped
@@ -1433,7 +1433,7 @@ disagreeing with each other.
 §6.9's `OpDispatchGeneric` for the read half, plus a BINDER half that makes a
 conditionally-bound name registry-visible at VM time and a placement that puts
 the twin INSIDE the arm's region. That is the same re-filing the four
-payoff-list gates took on 2026-09-02 (design/FULL-COMPILATION-HANDOFF.0.md,
+payoff-list gates took on 2026-09-02 (design/legacy/FULL-COMPILATION-HANDOFF.0.ignore,
 "The payoff gates, measured"), and for the same reason: the twins fix where
 the registry is, not what is in the bytecode.
 
@@ -1582,7 +1582,7 @@ and the RET's count check reports the parked pair), and the paren
 window's `CALL_DYN_TRAIL_TOP` dispatches it under its own empty name at
 the unit's position. Every program in the family that does NOT error
 agrees on both lanes; the divergence is the error lane only. This is the
-error contract Stage 3's Apply kernel owes (design/FULL-COMPILATION.0.md
+error contract Stage 3's Apply kernel owes (design/legacy/FULL-COMPILATION.0.ignore
 §6.4) and NUR119's re-label is its value half: a compiled frame local
 read as a fn carries its binding name, and the apply of a NAMED value
 dispatches as the interpreter's word does.
@@ -2813,7 +2813,7 @@ factories, a branch) in fifty-odd reading contexts:
 ## NUR210 — a computed `do` body: a value beneath it re-seated, a rebinding it leaks unmodelled {#nur210}
 
 **Status:** FIXED 2026-09-26, composed at the merge of main's #514 (the
-entries of that date in design/NUR-RUN-HANDOFF.0.md). Main's close stands
+entries of that date in design/legacy/NUR-RUN-HANDOFF.0.ignore). Main's close stands
 whole — the region, the runtime-checked single value and the kept-defs
 latch (its fix and follow-up, below) — and the branch's prefix island
 still compiles what main declined or deferred: a run with inert values

@@ -163,20 +163,18 @@ func LookupErrorCode(code string) (ErrorCode, bool) {
 // enumerated. The forty-second increment's check mirror and terminal trap
 // attach it from matched sites, which is what surfaced the gap.
 //
-// MEASURED WHILE FIXING IT, and NOT fixed here: the same blind spot still
-// hides `halt`, the other code `runtimeError` mints that no matched site
-// attaches (`move_error`, `evaluation_limit` and `tape_exhausted` are
-// registered by other routes). Closing it properly means adding a
-// `runtimeError\(` pattern to codeMintPatterns and registering it — a change
-// to the code-stability contract that wants its own increment rather than a
-// ride on this one. `flow_error` ("break outside loop") left that blind spot
-// when the VM began raising it from a matched site (NUR355).
+// That blind spot is closed: codeMintPatterns matches `runtimeError(`
+// too, so every code the helper mints (`evaluation_limit`, `halt`,
+// `move_error`, `runtime_error`, `tape_exhausted`) is counted and must be
+// enumerated here. `halt` joined the list when the pattern did; before it,
+// `tape_exhausted` was registered only through a compiled-lane site that
+// left with the compiler.
 var kernelErrorCodes = []string{
-	"analysis_truncated", "arity_mismatch", "branch_error", "concurrency_error",
+	"analysis_truncated", "arity_mismatch", "branch_error",
 	"constraint_violation", "def_error", "dynamic_dispatch", "evaluation_limit",
 	"exit", "extend_conflict", "extend_owner", "float_overflow",
 	"flow_error", "fn_body_error",
-	"for_error", "forward_strands_operand", "gen_without_constructor", "illegal_key", "illegal_ref",
+	"for_error", "forward_strands_operand", "gen_without_constructor", "halt", "illegal_key", "illegal_ref",
 	"incomparable", "index_out_of_range", "integer_overflow", "internal_error",
 	"invalid_word_name", "late_binding", "locked_signature", "macro_error", "macroexpand_error",
 	"micron_name", "missing_returns", "mixed_form_call", "no_signature",

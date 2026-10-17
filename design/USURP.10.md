@@ -93,7 +93,7 @@ strictly smaller than the alternative considered (a `/u` suffix
 dispatch path).
 
 The wrapper **re-dispatches the original function value** through a
-small Go handler (`usurpDispatchHandler`, `eng/go/core_ref.go`)
+small Go handler (`usurpDispatchHandler`, `core/go/core_ref.go`)
 rather than delegating through a synthesized boru body. (The v0
 design used a boru body, `if p2 p1 p0`; the handler form replaced
 it when stack-only and mixed-barrier originals were brought into
@@ -114,7 +114,7 @@ applied by the original signature itself on re-dispatch.
 fallback filtered out.
 
 For each source signature (`N` params), `UsurpFunction`
-(`eng/go/core_ref.go`) builds one reversed `Signature`:
+(`core/go/core_ref.go`) builds one reversed `Signature`:
 
 | Source field | Wrapper field |
 | --- | --- |
@@ -160,7 +160,7 @@ this behaviour.
   faithfully. (Earlier this was a stated limitation: the handler used
   a fixed forward layout, so a stack-only original could not collect
   the args and the wrapper was left inert. See
-  `usurpDispatchHandler` in `eng/go/core_ref.go` and the barrier rows
+  `usurpDispatchHandler` in `core/go/core_ref.go` and the barrier rows
   in `lang/spec/usurp.tsv`.)
 - **Pattern / Optional params** reverse positionally with the param
   list; index-keyed metadata is remapped. Any shape that cannot be

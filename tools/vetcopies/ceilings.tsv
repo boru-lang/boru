@@ -8,13 +8,10 @@ basic/go	0	0
 calc/go	0	0
 check/go	0	0
 cmd/go	0	0
-compiler/go	0	0
 core/go	0	0
-eng/go	0	0
 lang/go	0	0
 parser/go	0	0
 test/go	0	0
-tools/piecetool	0	0
 tools/vetcopies	0	0
 test/solardemo	0	0
 test/specfix	0	0

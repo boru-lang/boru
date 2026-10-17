@@ -363,10 +363,6 @@ func InstallWordExtension(r *Registry, name string, ext FnDefInfo) error {
 	clone.MaxForwardArgs = calcMaxForwardArgs(clone.Signatures)
 	r.noteAnalysisFnBinder(name)
 	r.Defs.Push(name, NewFunction(clone))
-	// A word extension installs a dispatch binding without passing through
-	// installDef, so it needs its own ledger note (§6.5) — rollback-and-replay
-	// has to restore it like any other.
-	r.NoteBindTransition(BindDef, name, SrcPos{})
 	// Construction-time body check on the ADDED overloads only — the
 	// base's signatures were checked at their own construction, and
 	// re-analysing them here would duplicate their diagnostics. ext is this
@@ -469,10 +465,6 @@ func TransplantExtension(r *Registry, ext FnDefInfo, origin, owner string) error
 	SortSignatures(clone.Signatures)
 	clone.MaxForwardArgs = calcMaxForwardArgs(clone.Signatures)
 	r.Defs.Push(name, NewFunction(clone))
-	// A word extension installs a dispatch binding without passing through
-	// installDef, so it needs its own ledger note (§6.5) — rollback-and-replay
-	// has to restore it like any other.
-	r.NoteBindTransition(BindDef, name, SrcPos{})
 	if r.ready && r.OnRegisterHook != nil {
 		r.OnRegisterHook(name)
 	}

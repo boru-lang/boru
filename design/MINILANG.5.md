@@ -672,7 +672,7 @@ Empirical findings the design must respect:
 The terse literal form rev 1 wanted, recovered as **pure lexer sugar over
 `mini`** (the Phase-4 option) rather than rev 1's whitespace-terminated
 two-letter prefixes (Appendix A). A custom jsonic LexMatcher
-(`eng/go/parser/grammar.go::setupMiniLitMatcher`) recognises
+(`parser/go/grammar.go::setupMiniLitMatcher`) recognises
 
 ```
 +<name><delim><src><delim>

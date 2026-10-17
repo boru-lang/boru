@@ -756,15 +756,3 @@ func (d *mapQuotDriver) Describe() string {
 func (d *mapQuotDriver) WrapError(it int, err error) error {
 	return fmt.Errorf("%s: key %q: %w", d.word, d.keys[d.start+it], err)
 }
-
-// quotationInvoke is the Go-lane body invocation of a map quotation —
-// runQuotationBody's rule: an EMPTY quotation is the identity on its inputs
-// and runs nothing; otherwise the tokens run over the resolved inputs.
-func quotationInvoke(reg *Registry, tokens []Value) LoopInvoke {
-	return func(_ Value, inputs []Value) ([]Value, error) {
-		if len(tokens) == 0 {
-			return inputs, nil
-		}
-		return RunResolved(reg, inputs, tokens)
-	}
-}

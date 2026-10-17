@@ -25,42 +25,16 @@ import (
 // mapBody is a prepared iteration body — either a quotation (token list) or a
 // lambda (Function value) — ready to run once per map entry.
 type mapBody struct {
-	lambda  bool
-	closure bool       // when a compiled-closure body (VM-driven)
-	fn      Value      // when lambda: the Function value
-	body    Value      // when closure: the closure value (run via InvokeBody)
-	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
-	tokens  []Value    // when quotation: the body tokens
-	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
-	// FnDefInfo the closure's declared signature is matched under, so the
-	// arm hands it the KeyVal the lambda convention hands and raises the
-	// lambda no-match where the interpreter does (S1b-2). body then carries
-	// the SigMatched mark: the invoker applies the unit positionally.
-	sigFn Value
+	lambda bool
+	fn     Value      // when lambda: the Function value
+	fnDef  *FnDefInfo // when lambda: its definition (captures + defining registry)
+	tokens []Value    // when quotation: the body tokens
 }
 
-// newMapBody classifies the body arg: a compiled CLOSURE (the bytecode VM
-// driving each/fold over a map) runs per VALUE via the InvokeBody seam, like a
-// quotation — unless it is a fn VALUE (a capturing `fn` / `=>` literal minted
-// at run time: a factory's result, a def-bound one read back), which is a
-// LAMBDA to this arm exactly as it is to the interpreter: handed the KeyVal
-// and matched against its own signature first; a (lambda) Function is handed
-// a KeyVal; anything else must be a concrete quotation list (handed the
-// value). Measured before the fn-value arm (2026-09-19, the S1a head): a
-// factory's `[n:Integer]` closure over `{a:1 b:2}` answered `{a:2 b:3}` for
-// the interpreter's signature_error, and a `[kv:KeyVal]` one raised an
-// internal `dot` no-match over the bare value it was handed.
+// newMapBody classifies the body arg: a (lambda) Function is handed a
+// KeyVal; anything else must be a concrete quotation list (handed the
+// value).
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
-	if IsCompiledClosure(body) {
-		mb := mapBody{closure: true, body: body}
-		if ClosureIsFnValue(&body) {
-			if fnv, ok := ClosureAsFnDef(reg, body); ok {
-				mb.sigFn = fnv
-				mb.body = ClosureSigMatched(body)
-			}
-		}
-		return mb, nil
-	}
 	if body.Parent().ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
 		if fd, ok := body.Data().(*FnDefInfo); ok {
@@ -77,10 +51,10 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 
 // quotation reports a token body: the construct's loop then runs on the
 // tape (mapQuotDriver, core loop.go) with the entry's value as the
-// region's inert input. A lambda or a compiled closure keeps the Go loop
-// below, where the callback seam hands it the KeyVal and applies the fn
-// value's own return discipline.
-func (mb mapBody) quotation() bool { return !mb.lambda && !mb.closure }
+// region's inert input. A lambda keeps the Go loop below, where the
+// callback seam hands it the KeyVal and applies the fn value's own return
+// discipline.
+func (mb mapBody) quotation() bool { return !mb.lambda }
 
 // quotationBody is the quotation as the body value the loop region steps:
 // a list whose BodyTokens are exactly mb.tokens — an EMPTY quotation
@@ -98,32 +72,11 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 	if mb.lambda {
 		return mb.callLambda(reg, []Value{NewKeyVal(k, v, i, n)})
 	}
-	if mb.closure {
-		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
-		// against the value's own signature (sigFn) before the unit runs.
-		if mb.sigFn.Data() != nil {
-			args := []Value{NewKeyVal(k, v, i, n)}
-			if MatchFnSig(mb.sigFn, args) == nil {
-				return Value{}, false, noLambdaMatch(reg, args)
-			}
-			return invokeBodyTop(reg, mb.body, args)
-		}
-		// A closure compiled from a LAMBDA body expects a KeyVal (its named
-		// param destructures `kv.v`/`kv.i`); one compiled from a token body
-		// sees the bare value, like a quotation. The unit's recorded shape says
-		// which (ClosureWantsKeyVal).
-		if ClosureWantsKeyVal(mb.body) {
-			return invokeBodyTop(reg, mb.body, []Value{NewKeyVal(k, v, i, n)})
-		}
-		return invokeBodyTop(reg, mb.body, []Value{v})
-	}
 	return runQuotationBody(reg, mb.tokens, []Value{v})
 }
 
 // noLambdaMatch is the map arm's lambda no-match: a BoruError, not a bare
-// fmt.Errorf (NUR164), as the compiled-by-default lane reads every non-Boru
-// error off the VM as an internal bail and re-runs the whole program on the
-// interpreter.
+// fmt.Errorf (NUR164).
 func noLambdaMatch(reg *Registry, args []Value) error {
 	return reg.BoruError("signature_error",
 		fmt.Sprintf("no matching lambda signature for %d argument(s)", len(args)), "")
@@ -137,38 +90,7 @@ func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) 
 	if mb.lambda {
 		return mb.callLambda(reg, []Value{acc, NewKeyVal(k, v, i, n)})
 	}
-	if mb.closure {
-		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
-		if mb.sigFn.Data() != nil {
-			args := []Value{acc, NewKeyVal(k, v, i, n)}
-			if MatchFnSig(mb.sigFn, args) == nil {
-				return Value{}, false, noLambdaMatch(reg, args)
-			}
-			return invokeBodyTop(reg, mb.body, args)
-		}
-		// (accumulator, entry): a lambda-derived closure takes the entry as a
-		// KeyVal, a token-derived one as the bare value.
-		if ClosureWantsKeyVal(mb.body) {
-			return invokeBodyTop(reg, mb.body, []Value{acc, NewKeyVal(k, v, i, n)})
-		}
-		return invokeBodyTop(reg, mb.body, []Value{acc, v})
-	}
 	return runQuotationBody(reg, mb.tokens, []Value{acc, v})
-}
-
-// invokeBodyTop runs a (closure) body via the fn-VALUE seam
-// (InvokeCallbackBody — the closure twin of callLambda's InvokeCallbackFn, so
-// a compiled lambda's return contract is applied as CallBoru's would be) and
-// returns its residual top of stack — the closure mirror of runQuotationBody.
-func invokeBodyTop(reg *Registry, body Value, inputs []Value) (Value, bool, error) {
-	res, err := InvokeCallbackBody(reg, body, inputs)
-	if err != nil {
-		return Value{}, false, err
-	}
-	if len(res) == 0 {
-		return Value{}, false, nil
-	}
-	return res[len(res)-1], true, nil
 }
 
 func (mb mapBody) callLambda(reg *Registry, args []Value) (Value, bool, error) {
@@ -255,7 +177,7 @@ func eachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 	}
 	keys := data.Keys()
 	if mb.quotation() {
-		return StartLoop(reg, "each", &mapQuotDriver{reg: reg, kind: mapQuotEach, word: "each", body: mb.quotationBody(), data: data, keys: keys, out: NewOrderedMap()}, quotationInvoke(reg, mb.tokens))
+		return StartLoop(reg, "each", &mapQuotDriver{reg: reg, kind: mapQuotEach, word: "each", body: mb.quotationBody(), data: data, keys: keys, out: NewOrderedMap()})
 	}
 	n := int64(len(keys))
 	out := NewOrderedMap()
@@ -286,7 +208,7 @@ func forEachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	}
 	keys := data.Keys()
 	if mb.quotation() {
-		return StartLoop(reg, "for-each", &mapQuotDriver{reg: reg, kind: mapQuotForEach, word: "for-each", body: mb.quotationBody(), data: data, keys: keys}, quotationInvoke(reg, mb.tokens))
+		return StartLoop(reg, "for-each", &mapQuotDriver{reg: reg, kind: mapQuotForEach, word: "for-each", body: mb.quotationBody(), data: data, keys: keys})
 	}
 	n := int64(len(keys))
 	for idx, k := range keys {
@@ -338,7 +260,7 @@ func doFoldMap(reg *Registry, body, acc Value, data ReadMap, start int) ([]Value
 	}
 	keys := data.Keys()
 	if mb.quotation() {
-		return StartLoop(reg, "fold", &mapQuotDriver{reg: reg, kind: mapQuotFold, word: "fold", body: mb.quotationBody(), data: data, keys: keys, start: start, acc: acc}, quotationInvoke(reg, mb.tokens))
+		return StartLoop(reg, "fold", &mapQuotDriver{reg: reg, kind: mapQuotFold, word: "fold", body: mb.quotationBody(), data: data, keys: keys, start: start, acc: acc})
 	}
 	n := int64(len(keys))
 	for idx := start; idx < len(keys); idx++ {
@@ -381,7 +303,7 @@ func scanMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 	acc, _ := data.Get(keys[0])
 	out.Set(keys[0], acc) // first value seeds and is the first output
 	if mb.quotation() {
-		return StartLoop(reg, "scan", &mapQuotDriver{reg: reg, kind: mapQuotScan, word: "scan", body: mb.quotationBody(), data: data, keys: keys, start: 1, acc: acc, out: out}, quotationInvoke(reg, mb.tokens))
+		return StartLoop(reg, "scan", &mapQuotDriver{reg: reg, kind: mapQuotScan, word: "scan", body: mb.quotationBody(), data: data, keys: keys, start: 1, acc: acc, out: out})
 	}
 	for idx := 1; idx < len(keys); idx++ {
 		k := keys[idx]

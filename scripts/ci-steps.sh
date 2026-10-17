@@ -5,9 +5,9 @@
 # `make ci-local` runs the same steps in the same order on a developer's
 # machine, so the two cannot drift: a step that exists in CI exists here,
 # and running `make ci-local` before a push is running CI. (The pre-commit
-# checklist in CLAUDE.md used to miss six CI steps — kg verify,
-# lint-assertions, parser-parity, cover-gate-core, the race gates, the
-# borudebug gates — and two red builds in one batch came from that gap.)
+# checklist in CLAUDE.md used to miss CI steps — kg verify,
+# lint-assertions, parser-parity, cover-gate-core, the race gates — and
+# two red builds in one batch came from that gap.)
 #
 # Usage: scripts/ci-steps.sh <step> [arg…]
 #   build-cli            build cmd/go/bin/boru
@@ -26,7 +26,9 @@
 #                        test/go/langspec/GATE_STATUS.md
 #   gate-table F…        render the gate table from the rows the shards
 #                        appended (BORU_GATE_SUMMARY files)
-#   parser-parity | cover-gate-core | race-gates | borudebug-gates | wasm
+#   parser-parity | cover-gate-core | race-gates | wasm
+#   borudebug-gates      RETIRED with the compiler lane: a no-op kept only
+#                        until .github/workflows/ci.yml drops its job
 #   vuln                 govulncheck (advisory: never fails the run)
 #   direction-gates      the direction lane as a job of its own — the
 #                        local form; CI renders the same table from the
@@ -45,11 +47,8 @@ gate_status=test/go/langspec/GATE_STATUS.md
 
 case "$step" in
   build-cli)        run make -C cmd/go build ;;
-  # RE-ACTIVATED 2026-09-28. It was off from 2026-09-20 because `make -C kg
-  # graph` died compiled (DISPATCH_GENERIC at ev: a routed dispatch whose
-  # interpolation slot the VM host could not evaluate); that and the two
-  # failures behind it are fixed, and the compiled pipeline's output is
-  # byte-identical to the interpreter's.
+  # RE-ACTIVATED 2026-09-28 after the failures that had taken it off on
+  # 2026-09-20 were fixed; the pipeline runs on the interpreter.
   kg-verify)        run make -C kg verify ;;
   vet)              run make vet ;;
   lint-assertions)  run make -C lang/go lint-assertions ;;
@@ -57,7 +56,7 @@ case "$step" in
   vet-copies)       run make vet-copies ;;
   test-module)      run make test-module M="${1:?module dir}" ONLY="${2:-}" ;;
   test-modules-core)
-    for m in core/go check/go compiler/go parser/go eng/go basic/go calc/go wpg test/specfix test/solardemo; do
+    for m in core/go check/go parser/go basic/go calc/go wpg test/specfix test/solardemo; do
       run make test-module M="$m"
     done ;;
   test-modules)     run make test-modules ;;
@@ -74,9 +73,9 @@ case "$step" in
     # Sorted by gate name so the table (and the committed GATE_STATUS.md)
     # reads the same whichever shard, worker or test wrote a row first.
     rows=$(cat "$@" 2>/dev/null | sort -u || true)
-    echo "## Full-compilation gates"
+    echo "## Langspec gates"
     echo
-    echo "Every gate's live value against its END STATE (the design's number) and its REGRESSION ceiling (the last merged value, which the langspec shards assert). An **open** row is the programme's debt, not this change's regression; a **REGRESSION** row failed its shard. This is the direction lane's table, rendered from the regression shards themselves (\`make test-direction\` is the local form of the lane; see test/go/langspec/lanes_test.go)."
+    echo "Every gate's live value against its END STATE (the design's number) and its REGRESSION ceiling (the last merged value, which the langspec shards assert). An **open** row is debt the design still carries, not this change's regression; a **REGRESSION** row failed its shard. This is the direction lane's table, rendered from the regression shards themselves (\`make test-direction\` is the local form of the lane; see test/go/langspec/lanes_test.go)."
     echo
     echo "| gate | live | end state | regression ceiling | status | measures |"
     echo "|---|---:|---:|---:|---|---|"
@@ -86,26 +85,21 @@ case "$step" in
   parser-parity)    run make parser-parity ;;
   cover-gate-core)  run make cover-gate-core ;;
   race-gates)
-    # A shared immutable Program driven across forks, the island sub-engine
-    # reuse, and the concurrent spec rows in compiled mode must be
-    # data-race-free; `make test` does not run under -race.
-    # Two registries unifying on two goroutines: the registry-armed unify
-    # once kept a package-global stack (the test walks' parallel rows
-    # found it).
-    ( cd core/go && run go test . -run 'TestUnifyRegistryArmedConcurrentNoRace' -race )
-    ( cd lang/go && run go test . -run 'TestCompiledConcurrencyRaceFree|TestCompiledIslandReuseNoStateLeak' -race )
-    ( cd test/go && run go test ./langspec/ -run 'TestSpecCompiledConcurrentRowsRaceFree' -race ) ;;
-  borudebug-gates)
-    # -tags borudebug allocates the VM's args buffer per call so a native
-    # that retains its args slice diverges cleanly instead of corrupting a
-    # later dispatch.
-    ( cd lang/go && run go test -tags borudebug . -run 'Bytecode|Compiled|Emit' )
-    ( cd test/go && run go test -tags borudebug ./langspec/ -run 'TestSpecCompiledDifferential|TestSpecCompiledOrFallback|TestCompiledCombinationParity' ) ;;
+    # `make test` does not run under -race. Two registries unifying on two
+    # goroutines: the registry-armed unify once kept a package-global
+    # stack (the test walks' parallel rows found it).
+    ( cd core/go && run go test . -run 'TestUnifyRegistryArmedConcurrentNoRace' -race ) ;;
   wasm)             run make -C wpg wasm ;;
+  borudebug-gates)
+    # The borudebug build tag left with the compiler lane
+    # (design/COMPILER-LANE-REMOVAL.0.md). ci.yml still has the job, and a
+    # workflow file needs a credential with the workflow scope to change,
+    # so the step stays a no-op until the job is deleted there.
+    echo "==> [ci] borudebug-gates: retired with the compiler lane; nothing to run" ;;
   vuln)             run make vuln || echo "==> [ci] vuln is advisory (see STATIC_ANALYSIS_REPORT.md); continuing" ;;
   direction-gates)  run make test-direction || echo "==> [ci] the direction lane is red by design until the debt is paid; its table is the output" ;;
   all)
-    for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates borudebug-gates wasm vuln; do
+    for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates wasm vuln; do
       "$0" "$s"
     done
     echo "==> [ci] every CI step ran" ;;

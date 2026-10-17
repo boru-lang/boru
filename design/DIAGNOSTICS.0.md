@@ -13,7 +13,7 @@ did-you-mean suggestions, plain language, and actionable fixes.
 Builds on the loud-failures tradition (design/legacy/ERRORS.8.ignore, the DX
 field reports).
 
-## The model (eng/go/boru_error.go)
+## The model (core/go/boru_error.go)
 
 `BoruError` was EXTENDED in place (it is type-asserted everywhere —
 stampErrPos, traps, gates):
@@ -33,7 +33,7 @@ stampErrPos, traps, gates):
 `CheckDiagnostic` grew the same additive fields (`Src`, `Notes`,
 `Suggestions`, all omitempty — the JSON/LSP contract only grows).
 
-## Rendering (eng/go/diag_render.go)
+## Rendering (core/go/diag_render.go)
 
 ONE renderer: `(e *BoruError) Render(RenderOpts{Color}) string`.
 `Error()` IS `Render(RenderOpts{})` — the plain rendering, byte-
@@ -49,7 +49,7 @@ Check diagnostics
 render their rich block via `RenderCheckDiagnostic` UNDER the stable
 `check: r:c: [sev] code: detail` one-liner (a parsing contract).
 
-## Message builders — the one-text-source rule (eng/go/diag_msg.go)
+## Message builders — the one-text-source rule (core/go/diag_msg.go)
 
 Generalizes the return_check_msg.go precedent: every family's text is
 built in one place and shared by the interpreter, the VM's compiled
@@ -76,7 +76,7 @@ below; that is the phase-7 contract, enforced by the extended gate.
   ("stack: …") note — it was interpreter-tape-internal and had no
   compiled-mode equivalent (see Compiled-mode parity); the received-tuple
   note carries the same "what was here" information in plain language.
-- **Explain pass** (eng/go/dispatch_explain.go): failure-path-only
+- **Explain pass** (core/go/dispatch_explain.go): failure-path-only
   positional probe of every non-fallback overload against the failing
   tuple — arity / slot-type / pattern verdicts, Score-ranked
   nearest-first. NEVER runs in matchSignature's hot loop (a +16%
@@ -86,7 +86,7 @@ below; that is the phase-7 contract, enforced by the extended gate.
   never given a fabricated reason.
 - **Undefined words** (`undefined_word`): grep-friendly head kept
   (86 code-pinned rows); Elm voice in suggestions — SuggestNames
-  (eng/go/didyoumean.go, OSA Damerau-Levenshtein, banded, distance cap
+  (core/go/didyoumean.go, OSA Damerau-Levenshtein, banded, distance cap
   by length ≤4→1 ≤8→2 else 3, case-only first, ≤3 results) over
   Registry.SuggestionCandidates(); describe pointer when the nearest
   miss is a builtin. Same hook for strict-read key misses (candidates
@@ -98,7 +98,7 @@ below; that is the phase-7 contract, enforced by the extended gate.
   declaration (DeclSite; zero site attaches nothing — locations are
   never guessed).
 - **Parse** (`syntax_error`): tabnas/jsonic failures translated into
-  boru-voice BoruErrors (eng/go/parser/parse_error.go); the library's
+  boru-voice BoruErrors (parser/go/parse_error.go); the library's
   always-on ANSI palette, `--internal:` block, and docs link are
   disabled at the source.
 - **Arith** (`arith_error`): div/mod-by-zero and apd faults raise

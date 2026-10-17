@@ -1,21 +1,16 @@
 package specfix
 
 // Control-flow fixtures: a minimal `if` (3-arg) and `for` (count form)
-// that orchestrate the SAME eng mechanisms the production handlers in
+// that orchestrate the SAME core mechanisms the production handlers in
 // basic/go/native_control.go do — the mark/move continuation tokens at
-// run time, and the branch/loop capture + record protocol
-// (ArmBranchCapture / TakeFragment / RecordBranch, ArmLoopCapture /
-// AnalyseLoopBody / RecordLoop) under an active recorder — so the
-// standalone lanes drive the kernel's branch/loop analysis, lowering,
-// and VM jump/loop opcodes (design/ENG-COVERAGE-PARITY.0.md stage-4
-// plan, step 1). Deliberately narrower than basic's words: no static-if
-// reduction, no clause lists, no computed arms (those mark the program
-// uncompilable rather than model something the runtime would not do),
-// and only the integer-count `for`.
+// run time, and the branch/loop body analysis (guard narrowing, the
+// carrier join, AnalyseLoopBody) on the check pass — so the standalone
+// lanes drive the kernel's branch/loop machinery. Deliberately narrower
+// than basic's words: no static-if reduction, no clause lists, no
+// computed arms, and only the integer-count `for`.
 
 import (
 	check "github.com/boru-lang/boru/check/go"
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 )
 
@@ -72,25 +67,11 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 	return elseBranch, nil
 }
 
-// fixCondFragment captures the condition body as its own fragment when
-// emitting, so the lowering runs it inline before JMP_IF_FALSE. The run
-// KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
-func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
-	es, _ := r.Check.Recorder().(*compiler.EmitState)
-	if !es.Armed() || !core.IsConcrete(&cond) || !cond.Parent().ConformsTo(core.TList) {
-		return nil, nil
-	}
-	es.ArmBranchCapture()
-	stk := core.RunCarrierCondBodyKeepDefs(r, cond)
-	return es.TakeFragment(), stk
-}
-
-// fixIf3ReturnsFn is the check/emit model: the literal-condition
-// reduction, per-arm body capture under guard narrowing, the carrier
-// join, and the BranchRecord — the core of basic's if3ReturnsFn with
-// the plain-check-only optimisations left out.
+// fixIf3ReturnsFn is the check model: the literal-condition reduction,
+// per-arm body analysis under guard narrowing, and the carrier join — the
+// core of basic's if3ReturnsFn with the plain-check-only optimisations
+// left out.
 func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
-	es := r.Check
 	if lit, ok := core.LiteralCondValue(args[0]); ok {
 		branch := "else"
 		if !lit {
@@ -107,74 +88,39 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		var defs map[string]core.Value
 		if lit {
 			restore := core.ApplyGuardNarrowing(r, args[0])
-			es.Recorder().ArmBranchCapture()
 			stk, defs = core.RunCarrierBodyWithDefs(r, args[1])
 			restore()
 			core.InstallJoinedDefs(r, defs, nil)
 		} else {
 			restore := core.ApplyComplementNarrowing(r, args[0])
-			es.Recorder().ArmBranchCapture()
 			stk, defs = core.RunCarrierBodyWithDefs(r, args[2])
 			restore()
 			core.InstallJoinedDefs(r, nil, defs)
 		}
-		frag := recorderState(es).TakeFragment()
 		if len(stk) == 0 {
-			es.Recorder().MarkUncompilable("fixture if: constant-cond branch produces no value")
 			return nil
 		}
-		out := stk[len(stk)-1]
-		taken := lit
-		recorderState(es).RecordBranch(core.BranchRecord{
-			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: &out, Pos: args[0].Pos(),
-		})
-		return []core.Value{out}
+		return []core.Value{stk[len(stk)-1]}
 	}
 
-	condFrag, condStk := fixCondFragment(r, args[0])
-
-	arm := func(v core.Value, narrow func() func()) (frag core.EmitFragmentRef, stk []core.Value, defs map[string]core.Value, value *core.Value) {
+	arm := func(v core.Value, narrow func() func()) (stk []core.Value, defs map[string]core.Value) {
 		if fixIsCodeBody(v) {
 			restore := narrow()
-			es.Recorder().ArmBranchCapture()
 			stk, defs = core.RunCarrierBodyWithDefs(r, v)
-			frag = recorderState(es).TakeFragment()
 			restore()
-			return frag, stk, defs, nil
+			return stk, defs
 		}
-		if es.Recorder().Active() && !core.IsConcrete(&v) && v.Parent() != nil && v.Parent().ConformsTo(core.TList) {
-			// A COMPUTED list arm is the interpreter's spliced code body;
-			// the fixture does not model it — decline the compile.
-			es.Recorder().MarkUncompilable("fixture if: computed list arm")
-		}
-		vv := v
-		return nil, []core.Value{v}, nil, &vv
+		return []core.Value{v}, nil
 	}
-	thenFrag, thenStk, thenDefs, thenValue := arm(args[1], func() func() { return core.ApplyGuardNarrowing(r, args[0]) })
-	elseFrag, elseStk, elseDefs, elseValue := arm(args[2], func() func() { return core.ApplyComplementNarrowing(r, args[0]) })
+	thenStk, thenDefs := arm(args[1], func() func() { return core.ApplyGuardNarrowing(r, args[0]) })
+	elseStk, elseDefs := arm(args[2], func() func() { return core.ApplyComplementNarrowing(r, args[0]) })
 
 	core.InstallJoinedDefs(r, thenDefs, elseDefs)
 	joined := core.JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
-		out := core.NewCarrier(core.TNone)
-		recorderState(es).RecordBranch(core.BranchRecord{
-			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
-			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
-		})
-		if !es.Recorder().Active() {
-			return nil
-		}
-		return []core.Value{out}
+		return nil
 	}
-	out := joined[len(joined)-1]
-	recorderState(es).RecordBranch(core.BranchRecord{
-		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
-		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: &out, Pos: args[0].Pos(),
-	})
-	return []core.Value{out}
+	return []core.Value{joined[len(joined)-1]}
 }
 
 // fixRunForLoop mirrors basic's RunForLoop for the count form: install
@@ -223,12 +169,11 @@ func fixForCountHandler(args []core.Value, _ map[string]core.Value, _ []core.Val
 }
 
 // fixForReturnsFn is the count-form loop model: fixed-point body
-// analysis with the iterator as a typed carrier, the statically-zero
-// prune, and the RecordLoop event with its static region size.
+// analysis with the iterator as a typed carrier and the statically-zero
+// prune.
 func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	body := args[1]
 	iter := core.NewCarrier(core.TInteger)
-	es, _ := r.Check.Recorder().(*compiler.EmitState)
 
 	cv := args[0]
 	staticCount := int64(-1)
@@ -241,11 +186,6 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		}
 	}
 
-	startV, endV, stepV := core.NewInteger(0), cv, core.NewInteger(1)
-	lowerable := cv.Parent().ConformsTo(core.TInteger)
-	if lowerable {
-		es.ArmLoopCapture()
-	}
 	provenTrips := staticCount >= 1
 	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
 	out := core.NewCarrier(core.TList)
@@ -257,21 +197,13 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			out = core.NewCarrierTypedList(top.Parent())
 		}
 	}
-	if lowerable {
-		regionN := 0
-		if staticCount >= 1 && len(stk) > 0 {
-			regionN = int(staticCount) * len(stk)
-		}
-		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", &out, regionN, args[0].Pos())
-	}
-	if len(stk) == 0 && (!es.Active() || !lowerable) {
+	if len(stk) == 0 {
 		return []core.Value{}
 	}
-	// Plain check: a statically-counted loop leaves the SPREAD of its
-	// per-iteration residual, exactly like the runtime.
+	// A statically-counted loop leaves the SPREAD of its per-iteration
+	// residual, exactly like the runtime.
 	const spreadCap = 256
-	if !es.Active() && staticCount >= 0 && len(stk) > 0 && staticCount*int64(len(stk)) <= spreadCap {
+	if staticCount >= 0 && len(stk) > 0 && staticCount*int64(len(stk)) <= spreadCap {
 		spread := make([]core.Value, 0, int(staticCount)*len(stk))
 		for i := int64(0); i < staticCount; i++ {
 			spread = append(spread, stk...)
@@ -312,8 +244,8 @@ func registerEngSpecControl(r *core.Registry) {
 }
 
 // fixDoHandler mirrors basic's DoListHandler: run the body with no
-// inputs through the InvokeBody seam (so the VM can run it as a
-// compiled closure) and surface a body error as an Error VALUE.
+// inputs through the InvokeBody seam and surface a body error as an
+// Error VALUE.
 func fixDoHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 	if !core.IsConcrete(&args[0]) { //covergate:allow the body is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
 		return nil, &core.BoruError{Code: "do_error", Detail: "doq: argument must be a concrete list, got type literal"}
@@ -349,19 +281,13 @@ func fixDoReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	return stk
 }
 
-// registerEngSpecCallable installs `doq` — the battery's Callable
-// body-runner, carrying basic's do CallableSpec so the kernel's
-// closure dispatch/record/lower pipeline is driven standalone — and
-// `dofbq`, the fallback-only variant (CompileFallbackBody without
-// CompileDynBody, the each/fold shape): a body the closure path
-// declines lowers to an interpreter ISLAND instead of a DynEnv call,
-// driving the fallback-span record/lower/VM path.
+// registerEngSpecCallable installs `doq` — the battery's body-runner,
+// carrying basic's do effect flags — and `dofbq`, the fallback-body
+// variant (CompileFallbackBody without CompileDynBody, the each/fold
+// shape).
 func registerEngSpecCallable(r *core.Registry) {
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "dofbq",
-		Callable: &core.CallableSpec{BodyPos: 0, BodyOut: core.BodyOutResidual, Inputs: func(_ []core.Value) []core.Value {
-			return []core.Value{}
-		}},
 		Signatures: []core.Signature{{
 			Args:       []*core.Type{core.TList},
 			NoEvalArgs: map[int]bool{0: true},
@@ -372,9 +298,6 @@ func registerEngSpecCallable(r *core.Registry) {
 	})
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "doq",
-		Callable: &core.CallableSpec{BodyPos: 0, BodyOut: core.BodyOutResidual, Inputs: func(_ []core.Value) []core.Value {
-			return []core.Value{}
-		}},
 		Signatures: []core.Signature{{
 			Args:       []*core.Type{core.TList},
 			NoEvalArgs: map[int]bool{0: true},
@@ -462,44 +385,24 @@ func fixForRangeHandler(args []core.Value, _ map[string]core.Value, _ []core.Val
 }
 
 // fixForRangeReturnsFn is the range-form model: a fully-static range
-// decomposes for RecordLoop; a range whose bounds are computed keeps
-// const start/step and resolves the end operand (basic's
-// computedRangeBounds shape) so the lowering still emits FOR_SETUP.
+// gives the body analysis its proven trip count and the statically-zero
+// prune.
 func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	body := args[1]
 	iter := core.NewCarrier(core.TInteger)
-	es, _ := r.Check.Recorder().(*compiler.EmitState)
 
-	var startV, endV, stepV core.Value
-	lowerable, staticBounds := false, false
+	staticBounds := false
 	staticCount := int64(-1)
 	if cv := args[0]; core.IsConcrete(&cv) && cv.Parent().ConformsTo(core.TList) {
 		if lst, err := core.AsList(cv); err == nil && !lst.IsNil() {
-			elems := lst.Elems()
-			if st, en, sp, perr := fixParseRange(elems); perr == nil {
-				startV, endV, stepV = core.NewInteger(st), core.NewInteger(en), core.NewInteger(sp)
-				lowerable, staticBounds = true, true
+			if st, en, sp, perr := fixParseRange(lst.Elems()); perr == nil {
+				staticBounds = true
 				staticCount = fixLoopIterations(st, en, sp)
 				if staticCount == 0 {
 					return []core.Value{}
 				}
-			} else {
-				switch len(elems) {
-				case 1:
-					startV, endV, stepV = core.NewInteger(0), elems[0], core.NewInteger(1)
-					lowerable = true
-				case 2:
-					startV, endV, stepV = elems[0], elems[1], core.NewInteger(1)
-					lowerable = true
-				case 3:
-					startV, endV, stepV = elems[0], elems[1], elems[2]
-					lowerable = true
-				}
 			}
 		}
-	}
-	if lowerable {
-		es.ArmLoopCapture()
 	}
 	provenTrips := staticBounds && staticCount >= 1
 	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
@@ -512,19 +415,11 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			out = core.NewCarrierTypedList(top.Parent())
 		}
 	}
-	if lowerable {
-		regionN := 0
-		if staticBounds && staticCount >= 1 && len(stk) > 0 {
-			regionN = int(staticCount) * len(stk)
-		}
-		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, core.IDOf(&iter), "i", &out, regionN, args[0].Pos())
-	}
-	if len(stk) == 0 && (!es.Active() || !lowerable) {
+	if len(stk) == 0 {
 		return []core.Value{}
 	}
 	const spreadCap = 256
-	if !es.Active() && staticBounds && staticCount >= 0 && len(stk) > 0 && staticCount*int64(len(stk)) <= spreadCap {
+	if staticBounds && staticCount >= 0 && len(stk) > 0 && staticCount*int64(len(stk)) <= spreadCap {
 		spread := make([]core.Value, 0, int(staticCount)*len(stk))
 		for i := int64(0); i < staticCount; i++ {
 			spread = append(spread, stk...)
@@ -545,9 +440,8 @@ func fixBakeFnHandler(args []core.Value, _ map[string]core.Value, _ []core.Value
 }
 
 // registerEngSpecBaking installs `bakefnq` and `bakebodyq` — battery
-// fixtures declaring the stored-fn / stored-body compile capabilities
-// (the spawn / service / codec-handler shapes), so recordCallOperands'
-// baking arms and compileStoredBody run standalone.
+// fixtures declaring the stored-fn / stored-body effect flags (the spawn /
+// service / codec-handler shapes).
 func registerEngSpecBaking(r *core.Registry) {
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "bakefnq",
@@ -573,9 +467,7 @@ func registerEngSpecBaking(r *core.Registry) {
 
 // fixEachHandler is the battery's higher-order word: run the body (a
 // code list or a Function value) once per data element via the
-// InvokeBody seam — the minimal mirror of lang's each, registered so
-// the LAMBDA-HOOK compile machinery (tryRecordLambdaClosure,
-// lambdaHookCompatible, lambdaCallbackInputs) has a standalone driver.
+// InvokeBody seam — the minimal mirror of lang's each.
 func fixEachHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
 	lst, err := core.AsList(args[1])
 	if err != nil || lst.IsNil() { //covergate:allow the data arg is a dispatch-matched concrete List; AsList cannot fail and a parsed list is never nil-backed
@@ -597,9 +489,8 @@ func fixEachHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, 
 
 // fixEachReturnsFn models the residual: a typed list of the body's
 // modeled result over one element carrier (the fixture twin of lang's
-// eachReturnsFn — recorder suspended for the nested model).
+// eachReturnsFn).
 func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
-	defer r.Check.Recorder().Suspend()()
 	body := args[0]
 	if !(core.IsConcrete(&body) && body.Parent().ConformsTo(core.TList)) {
 		return []core.Value{core.NewCarrier(core.TList)}
@@ -616,15 +507,12 @@ func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 	return []core.Value{core.NewCarrierTypedList(stk[len(stk)-1].Parent())}
 }
 
-// registerEngSpecHigherOrder installs eachq — the battery's
-// lambda-hook Callable (quotation and Function forms).
+// registerEngSpecHigherOrder installs eachq — the battery's higher-order
+// word (quotation and Function forms).
 func registerEngSpecHigherOrder(r *core.Registry) {
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name:          "eachq",
 		CompileEffect: core.CompileFallbackBody,
-		Callable: &core.CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, Inputs: func(a []core.Value) []core.Value {
-			return []core.Value{check.NewElementCarrier(check.DataListElemTypeFromValue(a[1]))}
-		}},
 		Signatures: []core.Signature{
 			{
 				Args:       []*core.Type{core.TList, core.TList},
@@ -639,15 +527,4 @@ func registerEngSpecHigherOrder(r *core.Registry) {
 			},
 		},
 	})
-}
-
-// recorderState unwraps the concrete recording backend behind the check
-// state's recorder. A plain-check pass runs the inactive no-op recorder;
-// the nil *EmitState this returns then no-ops every method (the kernel's
-// nil-receiver guards), exactly as the interface no-ops did before the
-// S2 surface reduction removed the fragment/branch methods from the
-// check-facing interface.
-func recorderState(c *core.CheckState) *compiler.EmitState {
-	es, _ := c.Recorder().(*compiler.EmitState)
-	return es
 }

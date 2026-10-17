@@ -216,27 +216,3 @@ func TestSeam7ApplyRebindHandlers(t *testing.T) {
 		t.Fatal("expected rebind non-reach error")
 	}
 }
-
-func TestSeam7GradualWrapHelpers(t *testing.T) {
-	// recordGradualWrap tolerates a nil registry.
-	recordGradualWrap(nil, "usurp", nil, nil)
-
-	// checkModeGradualFn: inactive check mode → false.
-	r := seam5Reg(t)
-	if _, ok := checkModeGradualFn(r, NewCarrier(TInteger)); ok {
-		t.Fatal("inactive check mode must not gradual-wrap")
-	}
-
-	// Active check mode:
-	cleanup := r.Check.Begin()
-	defer cleanup()
-	// A concrete-typed carrier (Integer) is provably not a function → false.
-	if _, ok := checkModeGradualFn(r, NewCarrier(TInteger)); ok {
-		t.Fatal("Integer carrier must not gradual-wrap")
-	}
-	// A dynamic Any carrier gradual-wraps to a Function carrier.
-	if out, ok := checkModeGradualFn(r, NewDynamicCarrier(TAny)); !ok ||
-		len(out) != 1 || !out[0].Parent().ConformsTo(TFunction) {
-		t.Fatalf("dynamic Any carrier must gradual-wrap, got %v / %v", out, ok)
-	}
-}

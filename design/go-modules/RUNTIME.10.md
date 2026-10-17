@@ -79,8 +79,8 @@ default.
 ## 5. Types
 
 Scalars only — `String` (`goos`, `goarch`, `version`) and `Integer`
-(`num-cpu`, `num-goroutine`, `max-procs`) — bridged via `eng.ToNative`
-(`eng/go/gobridge.go`). **No opaque external handle**, so no `FixedID`
+(`num-cpu`, `num-goroutine`, `max-procs`) — bridged via `core.ToNative`
+(`core/go/gobridge.go`). **No opaque external handle**, so no `FixedID`
 from the `10000+` range and no entry in
 `lang/go/test/fixedid_stability_test.go`.
 
@@ -92,7 +92,7 @@ error codes** for the happy path. The only error surface is the policy
 gate (§7), which returns either the host policy's `*policy.Denied`
 verbatim or a `capability_not_installed`-style stub error when
 `system-info` is uninstalled; surface its `Code`. Handlers still take no
-unguarded action that could panic (`eng/go/CLAUDE.md` "Panic
+unguarded action that could panic (`core/go/CLAUDE.md` "Panic
 Prevention"). Every positive `.tsv` row still pairs with an
 `ERROR:<substring>` sibling — here the negatives are the
 **deny-policy** rows and the wrong-arity rows (a zero-arg word handed an

@@ -2,7 +2,6 @@ package modules
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/boru-lang/boru/lang/go/native"
 	"github.com/boru-lang/boru/lang/go/policy"
@@ -27,7 +26,6 @@ func init() {
 //	Vm.run-compute  code             # built-in 'compute' profile
 //	Vm.parse        code             # → quoted token list (no run)
 //	Vm.check        code             # → { ok errors warnings diagnostics }
-//	Vm.compile      code             # → { ok reason sites }
 //
 // Each handler:
 //
@@ -69,7 +67,6 @@ func BuildVMModule(parent *native.Registry) (native.ModuleDesc, error) {
 	exports.Set("run-compute", makeTypedFnDef("vm-run-compute", subReg, native.TAny, native.TString))
 	exports.Set("parse", makeTypedFnDef("vm-parse", subReg, native.TAny, native.TString))
 	exports.Set("check", makeTypedFnDef("vm-check", subReg, native.TAny, native.TString))
-	exports.Set("compile", makeTypedFnDef("vm-compile", subReg, native.TAny, native.TString))
 
 	return moduleDesc(parent, "Vm", subReg, exports), nil
 }
@@ -216,37 +213,11 @@ func vmNatives(parent *native.Registry) []native.NativeFunc {
 				BarrierPos: -1,
 			}},
 		},
-		{
-			// vm-compile — run the bytecode compile pass WITHOUT executing.
-			// Returns a result map { ok, reason, sites }: ok reports whether
-			// the source lowers to bytecode, reason names the first offender
-			// when it does not, and sites is the dispatch-site census (mono /
-			// poly / dynamic / meta). Like vm-check it never raises for
-			// uncompilable or malformed input — compile failure is data, not an error.
-			Name: "vm-compile",
-			Signatures: []native.Signature{{
-				Args: []*native.Type{native.TString},
-				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
-					code, err := args[0].AsConcreteString()
-					if err != nil {
-						return nil, err
-					}
-					res, err := compileInSubEngine(parent, code)
-					if err != nil {
-						return nil, err
-					}
-					return []native.Value{res}, nil
-				}),
-				Returns:    []*native.Type{native.TMap},
-				ReturnsFn:  vmCompileReportReturns,
-				BarrierPos: -1,
-			}},
-		},
-	}, "vm-parse", "vm-check", "vm-compile")
+	}, "vm-parse", "vm-check")
 }
 
-// vmCheckReportReturns / vmCompileReportReturns surface the FIXED report
-// shapes the two words always build (checkResultValue / compileResultValue)
+// vmCheckReportReturns surfaces the FIXED report shape the word always
+// builds (checkResultValue)
 // as record-schema carriers, so field reads (`(Vm.check src).ok`) narrow
 // instead of ending dynamic(Any). All claims are dynamic (gradual);
 // diagnostics stays a plain List and sites a plain Map — their interiors
@@ -259,21 +230,6 @@ func vmCheckReportReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	fields.Set("diagnostics", native.NewTypeLiteral(native.TList))
 	return []native.Value{native.NewDynamicCarrierValue(native.NewRecordType(fields))}
 }
-
-func vmCompileReportReturns(_ []native.Value, _ *native.Registry) []native.Value {
-	fields := native.NewOrderedMap()
-	fields.Set("ok", native.NewTypeLiteral(native.TBoolean))
-	fields.Set("reason", native.NewTypeLiteral(native.TString))
-	fields.Set("sites", native.NewTypeLiteral(native.TMap))
-	return []native.Value{native.NewDynamicCarrierValue(native.NewRecordType(fields))}
-}
-
-// CompiledSubRun is installed by the lang package (which owns the
-// compiled-by-default entry points; modules cannot import lang without a
-// cycle), so Vm.run executes its sub-engine source on the VM with lang's
-// explicit compile failure on compile_failed. Nil keeps the
-// tree-walker.
-var CompiledSubRun func(subReg *native.Registry, src string) ([]native.Value, error)
 
 // runInSubEngine builds a fresh registry under pol, parses src via
 // the parent's parse func, runs it, and returns the last residual
@@ -303,20 +259,11 @@ func runInSubEngine(parent *native.Registry, src string, pol policy.Policy) ([]n
 		return nil, fmt.Errorf("vm: parse: %w", err)
 	}
 	subReg.Source = src
-	// COMPILED-BY-DEFAULT (plan Phase 6.6, unblocked by the policy-gate
-	// lift): the lang package installs CompiledSubRun so the sub-engine
-	// source runs on the VM — the composed policy is enforced per dispatch
-	// by vmContext.gateWord exactly as the tree-walker's policyGateWord
-	// enforces it. Nil (a host embedding modules without lang) keeps the
-	// tree-walker.
-	var stack []native.Value
-	if CompiledSubRun != nil {
-		stack, err = CompiledSubRun(subReg, src)
-	} else {
-		eng := native.NewTop(subReg)
-		eng.SetSource(src)
-		stack, err = eng.Run(tokens)
-	}
+	// The composed policy is enforced per dispatch by the tree-walker's
+	// policyGateWord.
+	eng := native.NewTop(subReg)
+	eng.SetSource(src)
+	stack, err := eng.Run(tokens)
 	if err != nil {
 		// An `IO.exit` raised INSIDE the sub-engine must not escape as an
 		// exit request: the driver at the top would honour it and terminate
@@ -340,18 +287,15 @@ func runInSubEngine(parent *native.Registry, src string, pol policy.Policy) ([]n
 
 // newSubEngineRegistry constructs a fresh sub-engine registry under pol,
 // wired with the parent's parser, module resolver, and dynamic help, then
-// marked ready. Shared by run / check / compile so the three stay
-// configured identically — only what they DO with the registry differs.
+// marked ready. Shared by run / check so the two stay configured
+// identically — only what they DO with the registry differs.
 func newSubEngineRegistry(parent *native.Registry, pol policy.Policy) (*native.Registry, error) {
 	subReg, err := newDefaultRegistryWithPolicy(pol)
 	if err != nil {
 		return nil, fmt.Errorf("vm: init sub-engine: %w", err)
 	}
 	subReg.SetParseFunc(parent.ParseFunc)
-	// The sub-engine executes user source on the tree-walker, so the
-	// enclosing request's observability hooks must see its entries
-	// (eng interp_entry.go) — without this a Vm.run body is invisible to
-	// the no-interpreter-execution census.
+	// A coverage run armed on the parent records the sub-engine's rows too.
 	subReg.InheritObserveHooks(parent)
 	// Indirect through resolveFn (initialised in init()) so the
 	// package-level modules map can reference BuildVMModule without
@@ -414,78 +358,6 @@ func checkInSubEngine(parent *native.Registry, src string) (native.Value, error)
 	return checkResultValue(ok, diags), nil
 }
 
-// compileInSubEngine runs the bytecode compile pass over src in a fresh
-// sub-engine WITHOUT executing it, and returns a result map
-// { ok, reason, sites }. It mirrors lang.(*Boru).CompileCheck's compile failure
-// ladder but reports the outcome as data instead of a (Program, reason)
-// pair — compile failure is never an error here. Policy handling matches
-// checkInSubEngine.
-func compileInSubEngine(parent *native.Registry, src string) (native.Value, error) {
-	subReg, err := newSubEngineRegistry(parent, native.HostPolicy(parent))
-	if err != nil {
-		return native.Value{}, err
-	}
-	tokens, perr := parent.ParseFunc(src)
-	if perr != nil {
-		return compileResultValue(false, "parse error", nil), nil
-	}
-	subReg.Source = src
-	// The shared compile-pass ritual (fresh EmitState, Compiling flag,
-	// fn-memo drop) — see CheckState.BeginCompilePass.
-	defer subReg.Check.BeginCompilePass()()
-	// No call-site specialisation here: this pass has no retry to contain a
-	// specialisation that declines (CheckState.SpecOff).
-	subReg.Check.SpecOff = true
-
-	eng := native.NewTop(subReg)
-	eng.SetSource(src)
-	residual, runErr := eng.Run(tokens)
-	subReg.RescueForwardRefDiagnostics()
-	subReg.Check.EmitUnusedDefDiagnostics()
-
-	sites := map[string]int{}
-	for k, v := range subReg.Check.Recorder().Sites() {
-		sites[k] = v
-	}
-
-	switch {
-	case runErr != nil:
-		return compileResultValue(false, "check error", sites), nil
-	case hasCheckError(subReg.Check.Diagnostics):
-		return compileResultValue(false, "check diagnostics", sites), nil
-	case subReg.Check.SuppressedRuntimeError:
-		return compileResultValue(false,
-			"check-mode suppressed a runtime error (uncompilable)", sites), nil
-	}
-	// The concrete EmitState owns the recorded stream — see CompileCheck's
-	// twin of this belt. A non-EmitState recorder means a host reassigned
-	// the exported core hook; report an uncompilable result rather than
-	// assert, since a failed assertion would panic (ADR-005).
-	es, isReal := subReg.Check.Recorder().(*native.EmitState)
-	if !isReal { //covergate:allow compiler's init always installs the *EmitState hook that native links in, so only a host-swapped core.NewEmitStateHook reaches this belt (§modules)
-		return compileResultValue(false, "no bytecode recorder installed (uncompilable)", sites), nil
-	}
-	_, reason, ok := es.Finalize(residual)
-	if !ok {
-		return compileResultValue(false, reason, sites), nil
-	}
-	return compileResultValue(true, "", sites), nil
-}
-
-// hasCheckError reports whether any diagnostic is error-severity.
-func hasCheckError(diags []native.CheckDiagnostic) bool {
-	for _, d := range diags {
-		// Model-undermining findings only — a RuntimeMirror compiles the
-		// identical error path and must not decline, while a CAUGHT
-		// non-mirror finding still marks a guessed recording (see
-		// CompileCheck's compile failure loop).
-		if !d.RuntimeMirror && (d.Severity == native.SeverityError || d.CaughtAtRuntime) {
-			return true
-		}
-	}
-	return false
-}
-
 // checkResultValue builds the { ok, errors, warnings, diagnostics } map
 // Vm.check returns. Each diagnostic is a map
 // { code, detail, word, row, col, severity }.
@@ -513,25 +385,6 @@ func checkResultValue(ok bool, diags []native.CheckDiagnostic) native.Value {
 	m.Set("errors", native.NewInteger(int64(errors)))
 	m.Set("warnings", native.NewInteger(int64(warnings)))
 	m.Set("diagnostics", native.NewList(list))
-	return native.NewMap(m)
-}
-
-// compileResultValue builds the { ok, reason, sites } map Vm.compile
-// returns. sites is rendered with its keys sorted for deterministic output.
-func compileResultValue(ok bool, reason string, sites map[string]int) native.Value {
-	keys := make([]string, 0, len(sites))
-	for k := range sites {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	sm := native.NewOrderedMap()
-	for _, k := range keys {
-		sm.Set(k, native.NewInteger(int64(sites[k])))
-	}
-	m := native.NewOrderedMap()
-	m.Set("ok", native.NewBoolean(ok))
-	m.Set("reason", native.NewString(reason))
-	m.Set("sites", native.NewMap(sm))
 	return native.NewMap(m)
 }
 

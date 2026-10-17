@@ -136,6 +136,6 @@ Wiring checklist (no code), mirroring `math.go` (pure module):
   `import "boru:path-util"`; every positive row paired with an
   `ERROR:<substring>` negative sibling (notably `match` with a malformed
   pattern → `ERROR:bad-pattern`).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`
+- Boundary conversion via `core.FromNative` / `core.ToNative`
   (String↔`string`, List↔slice, Map↔`map[string]any`).
 - No FixedID / external-type entry.

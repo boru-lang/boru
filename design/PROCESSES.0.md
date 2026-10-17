@@ -21,7 +21,7 @@ concurrency (`await`, `timeout`, `interval` in
 mailbox, and no message passing. But it already owns the *hardest* piece of a
 BEAM-like runtime:
 
-- **`Registry.ForkConcurrent()`** (`eng/go/fork.go`) hands each goroutine an
+- **`Registry.ForkConcurrent()`** (`core/go/fork.go`) hands each goroutine an
   isolated copy of all mutable evaluation state — defs, contexts, args,
   flow-control — while sharing the read-only infrastructure (type lattice,
   ideals, capabilities, modules, native registrations, parser). This is the
@@ -29,7 +29,7 @@ BEAM-like runtime:
 - **patrun** (`lang/go/native/internal/patrun/`, wired up in
   `lang/go/native/native_patrun.go`) is a trie pattern matcher that is a natural
   engine for **pattern-matched message dispatch** (and, opt-in, selective receive).
-- boru values are **immutability-first** (`eng/go/clone.go`): scalars, plain
+- boru values are **immutability-first** (`core/go/clone.go`): scalars, plain
   `List`, plain `Map`, and type/function values are never mutated in place. Only
   `Object`, `Array`, and `Store` are mutable. Immutable values can therefore be
   shared between goroutines with no copy and no race — exactly the property a
@@ -175,7 +175,7 @@ One per top-level engine, shared by every fork. Owns:
   `Timeout`/`Interval`).
 
 It is stored as a **pointer field on `Registry`** (`Procs *ProcessRuntime`,
-`eng/go/registry.go`), lazily created on first `spawn` so programs that never use
+`core/go/registry.go`), lazily created on first `spawn` so programs that never use
 processes pay nothing and start no goroutines. Because `ForkConcurrent` shallow-
 copies, child forks share the same `*ProcessRuntime` with no change to
 `fork.go`'s clone logic.
@@ -390,7 +390,7 @@ machinery). Properties:
 
 `send` enforces the BEAM "no shared mutable state" guarantee by **value class**
 rather than by copying, leaning on boru's existing mutability taxonomy
-(`eng/go/clone.go`, `lang/go/native/mutability_test.go`):
+(`core/go/clone.go`, `lang/go/native/mutability_test.go`):
 
 - **Sendable (immutable):** all scalars (Integer, Float, BigInteger,
   BigDecimal, String, Boolean, Atom, Path, None), the Time family, plain `List`,

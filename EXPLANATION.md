@@ -813,20 +813,11 @@ for 1 [ context set y 5 ]
 context has y/q                   # true — the write escaped the body
 ```
 
-Two caveats. `set` on a context layer is copy-on-write, so "writes are
+One caveat. `set` on a context layer is copy-on-write, so "writes are
 local" means the write does not reach the parent LAYER — a nested body
-still sees, and can shadow, everything above it. And the bytecode compiler
-cannot yet bracket the boundaries it INLINES into the caller's code — a
-`case` clause body, an auto-evaluated list, an interp-string or xml hole —
-so a `context` reference inside one refuses compilation. That refusal is a
-DEFECT, not a design choice: all valid code is meant to compile, and this
-case is unimplemented and owed a fix. Today the runtime silently routes the
-whole program to the interpreter instead — scaffolding that contains the
-open defect and hides it, which makes the failure worse, not tolerable. The
-boundary above does hold on both engines, so the program's meaning is
-unchanged, but that does not make the refusal acceptable; it is tracked to
-closure. See NUR054 and
-`design/verse-report-defects-investigation.0.md` §B.
+still sees, and can shadow, everything above it. (See NUR054 and
+`design/verse-report-defects-investigation.0.md` §B for the history of
+this boundary.)
 
 
 ## Module system

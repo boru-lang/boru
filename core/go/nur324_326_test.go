@@ -68,44 +68,6 @@ func TestAnnotationRunDependent(t *testing.T) {
 	}
 }
 
-// TestEvalSigTypeExprAnalysedAnnotations pins NUR325 and NUR326 at the
-// annotation's evaluation under an analysis pass: a run-dependent value
-// notes the building word run-dependent (it declines), and tnot's exact
-// negation comes back as the type itself, not a carrier a match admits
-// anything at.
-func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
-	r, rec := analysingRegistry(t)
-	// The pass's values for `(1 add 2)` and `(tnot Integer)`, bound as the
-	// annotation's word reads them (core runs no word's analysis half).
-	neg := NegateType(NewTypeLiteral(TInteger))
-	neg.SetCarrier(true)
-	r.Defs.Push("zzsum", NewCarrier(TInteger))
-	r.Defs.Push("zzneg", neg)
-	got, err := EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzsum")}), "x")
-	if err != nil || !got.Carrier() || rec.dependents != 1 {
-		t.Fatalf("a carrier annotation notes the word run-dependent: %v %v %d", got, err, rec.dependents)
-	}
-	// A typed container whose paren child the pass evaluates to a carrier
-	// notes the building word run-dependent too (NUR327).
-	if _, err := ResolveChildTypeExpr(r, NewTypedList(NewParenExpr([]Value{NewWord("zzsum")}))); err != nil || rec.dependents != 2 {
-		t.Fatalf("a run-dependent child notes the word: %v %d", err, rec.dependents)
-	}
-	got, err = EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzneg")}), "x")
-	if err != nil || got.Carrier() || !IsNegation(got) || rec.dependents != 2 {
-		t.Fatalf("tnot's negation is the type itself and notes nothing: %v %v %d", got, err, rec.dependents)
-	}
-	kind, pat, err := ResolveSigType(r, got)
-	if err != nil || kind != TAny || pat == nil || !IsNegation(*pat) {
-		t.Fatalf("an inline negation constrains through its pattern: %v %v %v", kind, pat, err)
-	}
-	if _, ok := Unify(NewInteger(5), *pat); ok {
-		t.Error("the pattern refuses 5")
-	}
-	if _, ok := Unify(NewString("s"), *pat); !ok {
-		t.Error("the pattern admits 's'")
-	}
-}
-
 // TestInstallTypeResolvesAParenChild pins NUR327's kernel half: a typed
 // container body whose child is a paren expression evaluates it at the
 // install, as a fn parameter's annotation does; a child that cannot run is

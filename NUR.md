@@ -60,7 +60,7 @@ reference to a deleted `NURnnn` stays unambiguous forever.
 > compile is still a failure, and the refusal is still a defect owed a
 > fix. It is tracked where compile defects belong — the refusal gates, the
 > census, and the open-defect taxonomy in
-> [`design/COMPILABLE-SUBSET.md`](design/COMPILABLE-SUBSET.md) §5 — not
+> [`design/legacy/COMPILABLE-SUBSET.ignore`](design/legacy/COMPILABLE-SUBSET.ignore) §5 — not
 > here. Reading a Resolved record as still-open because its shape refuses
 > conflates the two ledgers and double-counts the same work.
 >
@@ -956,7 +956,7 @@ agrees.)
 **Proposed verdict:** resolve by fix — the replay raises the return
 contract's `type_error` with the interpreter's text. The stamp decline
 behind it is a refusal, tracked separately in
-[design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §5 ("open
+[design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore) §5 ("open
 refusals recorded 2026-10-02").
 
 ---
@@ -1046,7 +1046,7 @@ by more values), on `(41 out2) 7 add`, on `print (out)` over a returned
 0-arg fn, when the value is passed to a fn whose param is declared
 `g:Function`, and when the lead is statically a fn (`def out2 inc/v`). The other spellings of
 the same call decline to compile; they are listed in
-[design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §5 ("open
+[design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore) §5 ("open
 refusals recorded 2026-10-02"). The `print (41 out2)` read is a gradual
 read the root runs inline, the case [NUR361](#nur361)'s guard covers; it
 fires, but after `print` has consumed the paren's value.
@@ -1209,7 +1209,7 @@ print (p)
 ```
 
 `r.list-of` runs its element body (`[r.int 0 999]`) by itself (on a
-pooled interpreter, see [design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md)
+pooled interpreter, see [design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore)
 §5), and there the generator's random source `r` is not bound. The
 property reports a failure the interpreter does not. The same call in a
 named fn whose PARAM is `r` (`def ints fn [[n:Integer r:Map] [List] [
@@ -1282,7 +1282,7 @@ clean. voxgig-boru/stats met it three ways (`Stats.mode`, `Stats.ols`
 after `Stats.linreg`, `Stats.zscores` after `Stats.mode`), so one failing
 call broke later, unrelated ones; it now writes plain map literals
 (`{k: (expr)}`), which agree. A `do {…}` map also runs every value body
-on the interpreter at run time (design/COMPILABLE-SUBSET.md §5).
+on the interpreter at run time (design/legacy/COMPILABLE-SUBSET.ignore §5).
 
 **Proposed verdict:** resolve by fix.
 
@@ -1330,7 +1330,7 @@ parent's type-ID sequence like its siblings.
 
 ## NUR378 — an `each` callback applying its fn's `Function` param reuses the first call's fn compiled {#nur378}
 
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, [design/VOXGIG-BORU-HANDOVER.0.md](design/VOXGIG-BORU-HANDOVER.0.md) U1) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent**
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, [design/legacy/VOXGIG-BORU-HANDOVER.0.ignore](design/legacy/VOXGIG-BORU-HANDOVER.0.ignore) U1) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent**
 
 ```
 def f fn [[c:Function x:Integer] [List] [ [x] each [ var [[e] (e 3 c) ] ] ]]
@@ -1370,7 +1370,7 @@ BUILT-IN `sub` instead of the passed `add`. With `[[cmp:Function xs:List]
 gives `[2, -2]`. The likely mechanism, read from the VM and not proven:
 the frame renames a native word value to its param name and the native
 fast path looks the native up by that name — the same mechanism as the
-`cmp/v` island in design/COMPILABLE-SUBSET.md §5 ("recorded 2026-10-05",
+`cmp/v` island in design/legacy/COMPILABLE-SUBSET.ignore §5 ("recorded 2026-10-05",
 U11). The libraries' params are not built-in names.
 
 **Proposed verdict:** resolve by fix — the check pass and the compiled
@@ -1393,7 +1393,7 @@ the repro (`sd` / `first` / `second`): `print (cmp/v first)` then `print (3
 second)` prints `0` `4` interpreted and `0` `1` compiled; with `comp/v
 apply` both lanes print `0` `4`. In the suites, `Sort.heap` followed by
 `Sort.tim` returned its input unsorted. The forward spelling of the same
-recursive shape at the top level refuses instead (design/COMPILABLE-SUBSET.md
+recursive shape at the top level refuses instead (design/legacy/COMPILABLE-SUBSET.ignore
 §5, "recorded 2026-10-05", U8), so the library keeps `comp/v apply`.
 
 **Proposed verdict:** resolve by fix — find the read NUR123's guard does
@@ -1423,7 +1423,7 @@ Without the `if`, `boru check` refuses the program (`undefined word:
 acc`); with it, the check is clean, so the pass shares the interpreter's
 blind spot in one shape and not the other. Any path that runs such a fold
 on the interpreter at run time — a stale property stamp
-(design/COMPILABLE-SUBSET.md §5, U10) — turns this into a wrong value or a
+(design/legacy/COMPILABLE-SUBSET.ignore §5, U10) — turns this into a wrong value or a
 failure inside a program that compiled.
 
 **Proposed verdict:** resolve by fix on the interpreter and the check pass
@@ -1479,7 +1479,7 @@ print (Test.check-prop "p" [ 5 ] [ var [[x] ((M.use c/v x) eq 15) ] ] 2 1 0)
 same way (`undefined word: comp`). A 0-arg fn returning a MODULE member in
 place of the `/v` read agrees on both lanes, which is the libraries'
 workaround; a program-defined comparator still islands
-(design/COMPILABLE-SUBSET.md §5, U12).
+(design/legacy/COMPILABLE-SUBSET.ignore §5, U12).
 
 **Proposed verdict:** resolve by fix.
 

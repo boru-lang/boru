@@ -206,42 +206,6 @@ func TestContextShape(t *testing.T) {
 	}
 }
 
-// TestBeginCompilePassAndIsolateEmit pins the compile-pass arming ritual
-// and the hermetic emit swap against the core-only inactive hooks.
-func TestBeginCompilePassAndIsolateEmit(t *testing.T) {
-	// Nil receiver: Begin's no-op closure comes back.
-	(*CheckState)(nil).BeginCompilePass()()
-
-	c := NewCheckState()
-	c.FnSummaries = map[string][]Value{"stale": nil}
-	c.FnInflight = map[string]bool{"stale": true}
-	done := c.BeginCompilePass()
-	defer done()
-	if !c.Compiling {
-		t.Fatal("BeginCompilePass must mark the pass Compiling")
-	}
-	if c.FnSummaries != nil || c.FnInflight != nil {
-		t.Fatal("BeginCompilePass must drop the fn-body memos")
-	}
-	// The core-only build's constructor slot hands back the inactive
-	// recorder (the compiler piece installs the real one at init).
-	if c.Emit != TheInactiveEmit {
-		t.Fatalf("core-only BeginCompilePass recorder = %T, want the inactive no-op", c.Emit)
-	}
-
-	// IsolateEmit: nil receiver no-op; real receiver swaps and restores.
-	(*CheckState)(nil).IsolateEmit()()
-	saved := c.Emit
-	restore := c.IsolateEmit()
-	if c.Emit != TheInactiveEmit {
-		t.Fatalf("core-only IsolateEmit recorder = %T, want the inactive no-op", c.Emit)
-	}
-	restore()
-	if c.Emit != saved {
-		t.Fatal("IsolateEmit restore must reinstall the saved recorder")
-	}
-}
-
 // TestSpecUndefBlocked pins the speculative-region undef gate on a
 // registry: inactive outside check mode / without a region, blocking a
 // pre-region binding inside one, and letting an in-region push pop.

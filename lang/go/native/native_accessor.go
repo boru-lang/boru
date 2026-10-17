@@ -385,8 +385,7 @@ func getrNoneReturns(args []Value, r *Registry) []Value {
 // did-you-mean suggestion over the container's actual keys (the
 // diagnostics phase-4 hook: a typo'd key suggests its neighbours) and
 // the key's source position, so the report points at the offending
-// access. The compiled path records the SAME error (built by
-// buildNotFoundKeyError) via RecordTrapErr, so the two engines match.
+// access.
 func notFoundKeyError(r *Registry, detail, key string, keyPos core.SrcPos, keys []string) error {
 	return buildNotFoundKeyError(r, detail, key, keyPos, keys)
 }

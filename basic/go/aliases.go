@@ -23,13 +23,9 @@ import (
 
 // *Type aliases — every exported type from core is re-exported here.
 type (
-	BranchRecord       = core.BranchRecord
-	PendingResidue     = core.PendingResidue
 	BranchJoin         = core.BranchJoin
 	CodeEffectInfo     = core.CodeEffectInfo
-	EmitRecorder       = core.EmitRecorder
 	DeqIndex           = core.DeqIndex
-	EmitFragmentRef    = core.EmitFragmentRef
 	BoruError          = core.BoruError
 	RenderOpts         = core.RenderOpts
 	DiagSpan           = core.DiagSpan
@@ -96,8 +92,6 @@ type (
 	BoruImpl             = core.BoruImpl // boru body implementation (module ref / lambda / installed fn)
 	GoOpt                = core.GoOpt    // optional dispatch knob for Go(...)
 	CompileEffect        = core.CompileEffect
-	CallableSpec         = core.CallableSpec
-	StoredBodySpec       = core.StoredBodySpec
 	ClassInstanceInfo    = core.ClassInstanceInfo
 	ClassTypeInfo        = core.ClassTypeInfo
 	ResourceInstanceInfo = core.ResourceInstanceInfo
@@ -270,10 +264,6 @@ const (
 	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
 	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
 	CompileDynBody            = core.CompileDynBody
-
-	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
-	// the driving handler returns the body's entire residual (`do`).
-	BodyOutResidual = core.BodyOutResidual
 )
 
 // Flow-control signal values exposed by the engine. These travel

@@ -220,12 +220,12 @@ to **runtime**. A+B stay; R4 tightens B's reads once R2 makes them sound.
 
 ## Critical files
 
-- `eng/go/value.go` — the `Value` struct + `elem` field; `CloneValue`; the
+- `core/go/value.go` — the `Value` struct + `elem` field; `CloneValue`; the
   `AsMap`/`IsConcrete` invariants (must stay true for a tagged value).
-- `eng/go/unify_map.go` (`unifyTypedMapWithConcrete`:160) / `eng/go/unify_list.go`
-  (`unifyTypedListWithConcrete`:109) / `eng/go/unify_fold.go`
+- `core/go/unify_map.go` (`unifyTypedMapWithConcrete`:160) / `core/go/unify_list.go`
+  (`unifyTypedListWithConcrete`:109) / `core/go/unify_fold.go`
   (`unifyMapValues`:65) — the construction origins that must SET `elem`.
-- `eng/go/carrier.go`, `eng/go/core_boundedtype.go`, `typed_bind.go` — reparent /
+- `check/go/carrier.go`, `core/go/core_boundedtype.go`, `typed_bind.go` — reparent /
   typed-bind paths that must thread `elem`.
 - `lang/go/native/native_storage.go` — `setMapHandler`/`setListHandler` +
   `ReturnsFn`s (R2); `getNodeReturns`/`getIntKeyReturns` (R4).

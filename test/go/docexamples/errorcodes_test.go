@@ -20,7 +20,7 @@
 //     string literals at ~700 of them), which is what a program can actually
 //     observe.
 //   - REGISTERED — the engine-owned enumeration, core.ErrorCodes()
-//     (eng/go/errorcodes.go plus each layer's registration). This did not
+//     (core/go/errorcodes.go plus each layer's registration). This did not
 //     exist when the gate was first written, which is why the gate was
 //     one-directional then.
 //   - DOCUMENTED — REFERENCE.md's "Common codes" table.
@@ -72,7 +72,7 @@ import (
 // language's enumeration to keep the bidirectional check green. The one-way
 // gate tolerated them because extra entries only made it more permissive.
 // The blank import of lang/go/native is what registers the language layer's
-// codes — the enumeration is per-build by design (see eng/go/errorcodes.go),
+// codes — the enumeration is per-build by design (see core/go/errorcodes.go),
 // so the gate has to link the layers it means to check. `basic/go` carries
 // the fundamental words' minting sites (def / if / case / fn / var / gen …)
 // since the ADR-013 layering split; `core/go` carries the kernel sites that
@@ -84,7 +84,7 @@ import (
 // adding it here does not fail at the extraction — it fails later as
 // "registered but attached by no site", which is how the parser cut was
 // caught (float_overflow, minted in parse.go, fell out of every root).
-var codeSourceRoots = []string{"core/go", "check/go", "compiler/go", "parser/go", "eng/go", "basic/go", "lang/go"}
+var codeSourceRoots = []string{"core/go", "check/go", "parser/go", "basic/go", "lang/go"}
 
 // codeMintPatterns match every shape that ATTACHES an error code to an
 // error or a diagnostic. Capture group 1 is the code.
@@ -111,6 +111,9 @@ var codeMintPatterns = []*regexp.Regexp{
 	// be in the enumeration, which is precisely the drift the gate exists to
 	// catch. `exit_error` was the first such code.
 	regexp.MustCompile(`\.BoruError(?:Hint)?(?:At)?\(\s*"([a-z][a-z0-9_-]*)"`),
+	// The kernel's e.runtimeError("x", …) helper, the one route that minted
+	// a code (`halt`) no other pattern saw until it was matched.
+	regexp.MustCompile(`\.runtimeError\(\s*"([a-z][a-z0-9_-]*)"`),
 	// BoruError / Diagnostic struct literals: Code: "x".
 	regexp.MustCompile(`\bCode:\s*"(?:boru/)?([a-z][a-z0-9_-]*)"`),
 	// Check-mode diagnostics: CheckAddUniqueDiagnostic(r, "x", …).
@@ -133,12 +136,13 @@ var codeMintPatterns = []*regexp.Regexp{
 var codeLiteralPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\b(?:M|m)akeBoruError(?:At)?\(\s*"([^"]*)"`),
 	regexp.MustCompile(`\.BoruError(?:Hint)?(?:At)?\(\s*"([^"]*)"`),
+	regexp.MustCompile(`\.runtimeError\(\s*"([^"]*)"`),
 }
 
 // TestEveryAttachedCodeLiteralIsWellFormed is the blind-spot check: every
 // string literal handed to an error constructor as its CODE must satisfy the
 // naming rule the enumeration enforces at registration
-// (eng/go/errorcodes.go's errorCodeNamePattern). Without it the rule only
+// (core/go/errorcodes.go's errorCodeNamePattern). Without it the rule only
 // binds codes that already conform, which is the set that never needed it.
 func TestEveryAttachedCodeLiteralIsWellFormed(t *testing.T) {
 	// The rule is DISPATCHABILITY, not house style. A code has to be
@@ -159,7 +163,7 @@ func TestEveryAttachedCodeLiteralIsWellFormed(t *testing.T) {
 				strings.HasSuffix(path, "_test.go") {
 				return nil
 			}
-			// eng/go/specfix is TEST SCAFFOLDING that happens to live as a
+			// test/specfix is TEST SCAFFOLDING that happens to live as a
 			// real package (the standalone corpus lanes and the engspec
 			// harness share it): its fixture words mint harness-local codes
 			// (fn_invalid_spec — mirrored verbatim by the TS fixture,
@@ -221,7 +225,7 @@ func mintableCodes(t *testing.T) map[string]string {
 				strings.HasSuffix(path, "_test.go") {
 				return nil
 			}
-			// eng/go/specfix is TEST SCAFFOLDING that happens to live as a
+			// test/specfix is TEST SCAFFOLDING that happens to live as a
 			// real package (the standalone corpus lanes and the engspec
 			// harness share it): its fixture words mint harness-local codes
 			// (fn_invalid_spec — mirrored verbatim by the TS fixture,
@@ -366,7 +370,7 @@ func sortedKeys(m map[string]string) []string {
 // having: a code cannot reach users without a deliberate entry.
 //
 // That is the whole enforcement mechanism behind the naming rule and the
-// stability contract in eng/go/errorcodes.go. Neither can be enforced by
+// stability contract in core/go/errorcodes.go. Neither can be enforced by
 // inspection — 232 codes across ~700 sites is more than anyone re-reads — but
 // both are enforced by a failing build the first time a new literal appears.
 func TestEveryMintedCodeIsRegistered(t *testing.T) {
@@ -388,7 +392,7 @@ func TestEveryMintedCodeIsRegistered(t *testing.T) {
 	if len(unregistered) > 0 {
 		t.Errorf("%d code(s) are attached by a site but not registered in the "+
 			"enumeration:\n  %s\n\nAdd each to kernelErrorCodes "+
-			"(eng/go/errorcodes.go) or langErrorCodes "+
+			"(core/go/errorcodes.go) or langErrorCodes "+
 			"(lang/go/native/errorcodes.go), whichever layer owns it. A code is "+
 			"a dispatch contract — `do [...] error [dot code case [...]]` — so "+
 			"this is the moment to check the NAME reads like its neighbours, "+

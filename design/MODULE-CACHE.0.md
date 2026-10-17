@@ -22,7 +22,7 @@ There are two import dedup behaviours, and they diverge:
 - **Native modules** (`boru:math`, …) are loaded **at most once per
   registry**. `resolveNativeMod` (`lang/go/native/native_module_module.go`)
   checks `r.Modules.IsLoaded(name)` and short-circuits; the load set
-  lives on `ModuleRegistry.loaded` (`eng/go/modules.go`).
+  lives on `ModuleRegistry.loaded` (`core/go/modules.go`).
 - **File modules** (`./lib.boru`, bare names, …) are **never cached**.
   `loadFileModule` (`native_module_module.go:248`) re-reads, re-parses,
   and re-runs the file body on **every** `import`. Two imports of the
@@ -37,11 +37,11 @@ set (contrast Node, which returns the partially-populated `exports`).
 ## 2. Proposed design
 
 The cache fits in the channel built for the native-module resolver fix
-(see the `InheritConfig` work on `eng/go/modules.go`).
+(see the `InheritConfig` work on `core/go/modules.go`).
 
 ### 2.1 Storage
 
-Add a field to `ModuleRegistry` (`eng/go/modules.go`), next to the
+Add a field to `ModuleRegistry` (`core/go/modules.go`), next to the
 existing `loaded` set and `seq` counter:
 
 ```go

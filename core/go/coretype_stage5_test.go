@@ -242,34 +242,6 @@ func TestWt5InstallTypeSurface(t *testing.T) {
 	}
 }
 
-func TestWt5InstallTypePredicateStamping(t *testing.T) {
-	r := newTestRegistry(t)
-	// Arm detached-unit stamping so the predicate-install stamp arm runs
-	// (the default compiledRuntime seam is the no-op implementation).
-	r.EnableRuntimeStamping()
-	defer r.DisableRuntimeStamping()
-
-	body := MarkPredicateFn(NewFunction(FnDefInfo{
-		Registry: r,
-		Signatures: []Signature{{
-			Params:     []FnParam{{Name: "n", Type: TInteger}},
-			Impl:       Boru([]Value{NewBoolean(true)}),
-			BarrierPos: 0,
-		}},
-	}))
-	if err := InstallType(r, "Wt5PredT", body); err != nil {
-		t.Fatalf("InstallType predicate body: %v", err)
-	}
-	def := r.LookupTypeName("Wt5PredT")
-	if def == nil || !def.Parent().Equal(TInteger) {
-		t.Fatalf("predicate type must mint at its declared input type, got %v", def)
-	}
-	// The attached unifier runs the predicate at Unify call sites.
-	if !addrOf(NewInteger(5)).Is(def) {
-		t.Fatal("predicate type must admit a passing candidate")
-	}
-}
-
 func TestWt5InstallTypeSubtypeNamerRejections(t *testing.T) {
 	r := newTestRegistry(t)
 	rejBase := r.Types.MintTypeWithBehavior("Wt5RejBase", TInteger,

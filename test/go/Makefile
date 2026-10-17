@@ -1,7 +1,7 @@
 .PHONY: test vet fmt lint vuln clean
 
 # This module (github.com/boru-lang/boru/test/go) is the shared TSV
-# spec-runner scaffolding used by eng/go and lang's spec tests.
+# spec-runner scaffolding used by the kernel and lang's spec tests.
 
 test:
 	go test ./...

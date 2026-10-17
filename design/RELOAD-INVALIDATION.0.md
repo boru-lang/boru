@@ -137,7 +137,7 @@ all three surfaces.
 > ```
 >
 > Closed by the call-target arm of the freeze discipline
-> (`design/FULL-COMPILATION-HANDOFF.0.md`, Stage 4a-4), which also closed the
+> (`design/legacy/FULL-COMPILATION-HANDOFF.0.ignore`, Stage 4a-4), which also closed the
 > same hole for a baked TYPE identity, and — in the same stage's second half —
 > for a rebind written inside a `do` or multi-run body, where the recorder is
 > suspended and the latch was never consulted at all (the record that carried

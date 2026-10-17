@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -200,8 +199,8 @@ func modelNewHandlerFor(tModel *native.Type) native.Handler {
 		// The note captures the LEDGER POINTER at construction (the writer-
 		// fence discipline): a watch-goroutine rebuild then marks the ledger
 		// of the request that BUILT the model, never the live registry field
-		// — which a later request's per-request swap (RunAutoValues) mutates
-		// concurrently (the TestModelWatchForkNoRace data race).
+		// — which a later request's per-request swap mutates concurrently
+		// (the TestModelWatchForkNoRace data race).
 		led := r.Effects
 		fs := &fileOpsFS{ops: native.EffectiveFileOps(r), dry: ps.dryrun, mem: map[string][]byte{}, note: led.Note}
 
@@ -313,25 +312,20 @@ func buildActions(specMap native.ReadMap, h *modelHandle, r *native.Registry) (m
 		if err != nil {
 			return nil, err
 		}
-		out[name] = makeAction(h, stampActionFn(r, name, fnVal), step)
+		out[name] = makeAction(h, stampActionFn(name, fnVal), step)
 	}
 	return out, nil
 }
 
-// stampActionFn compiles an action body to a detached unit at model build so
-// makeAction's InvokeCallback runs it on the VM (the net-codec / service-
-// handler precedent). StampFnValue clones, so the user's spec value stays
-// plain; the model's own holder of the value takes the ACTION name
-// (core.SetFnName — the holder's, never written into the definition) — spec
-// lambdas are anonymous, and the name is what labels the stamp event, on the
-// compiled and interpreted paths alike. A decline (captures, ineligible
-// shape, stamping off) returns the named holder otherwise unchanged.
-func stampActionFn(r *native.Registry, name string, fnVal native.Value) native.Value {
+// stampActionFn names an action body for the model: the model's own holder
+// of the value takes the ACTION name (core.SetFnName — the holder's, never
+// written into the definition) — spec lambdas are anonymous, and the name is
+// what labels the action. The user's spec value stays plain.
+func stampActionFn(name string, fnVal native.Value) native.Value {
 	if _, ok := native.FnDefOf(fnVal.Data()); ok && core.FnNameOf(&fnVal) == "" {
 		core.SetFnName(&fnVal, name)
 	}
-	stamped, _ := compiler.StampFnValue(r, fnVal)
-	return stamped
+	return fnVal
 }
 
 // actionFnAndStep resolves one action entry to its Function value and step.

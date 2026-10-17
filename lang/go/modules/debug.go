@@ -381,13 +381,9 @@ func debugNatives() []native.NativeFunc {
 							counts[name]++
 						}
 					})
-					// C4 attribution: this run IS the profile. The word's answer
-					// is a tally of DISPATCHES observed by the trace hook above,
-					// so the interpreter is not a fallback here — it is the
-					// instrument. Compiling the body would empty the tally.
-					restoreAtt := r.SetInterpAttribution("debug-observe")
+					// This run IS the profile: the word's answer is a tally of
+					// DISPATCHES observed by the trace hook above.
 					_, rerr := sub.Run(body.Elems())
-					restoreAtt()
 					if rerr != nil {
 						return nil, rerr
 					}
@@ -555,13 +551,9 @@ func runCounted(parent *native.Registry, bodyVal native.Value, op string) ([]nat
 	steps := 0
 	sub := native.New(parent)
 	sub.SetTrace(func(_ int, _ int, _ []native.Value, _ string) { steps++ })
-	// C4 attribution: the RESULT of this word is the engine-step count, so the
-	// interpreter run is the measurement itself. A compiled body would step a
-	// different machine and answer a different number — this is interpretation
-	// the end state must PERMIT, not interpretation it forbids.
-	restoreAtt := parent.SetInterpAttribution("debug-observe")
+	// The RESULT of this word is the engine-step count, so the interpreter
+	// run is the measurement itself.
 	res, rerr := sub.Run(body.Elems())
-	restoreAtt()
 	if rerr != nil {
 		return nil, 0, rerr
 	}

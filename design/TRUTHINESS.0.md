@@ -12,7 +12,7 @@
 ## 1. The single truthiness model
 
 boru has exactly **one** truthiness rule, implemented in exactly one
-function — `CoerceBoolean` (`eng/go/core_helpers.go`) — and every
+function — `CoerceBoolean` (`core/go/core_helpers.go`) — and every
 construct that asks "is this value true?" routes through it. There is
 no per-construct variation: `if`, `case` predicate arms, the boolean
 word family, `convert Boolean`, `make Boolean`, and the mask/predicate
@@ -210,7 +210,7 @@ truthiness is used"). Every site routes through `CoerceBoolean`:
 
 | Construct | Site |
 |---|---|
-| `if` condition (both arities) | `lang/go/native/native_control.go` / `conditional.go`; interpreter fold `eng/go/engine.go`; VM branch `eng/go/vm.go` |
+| `if` condition (both arities) | `lang/go/native/native_control.go` / `conditional.go`; interpreter fold `core/go/engine.go`; VM branch `eng/go/vm.go` |
 | `case` predicate clauses | `conditional.go` (`caseClauses`) |
 | Loop continuation conditions | `native_control.go` |
 | `not` | `native_boolean.go` |
@@ -218,7 +218,7 @@ truthiness is used"). Every site routes through `CoerceBoolean`:
 | `any` / `all` (per element) | `native_boolean.go` |
 | `xor` and the `boru:logic-util` gates (`nand`/`nor`/`xnor`/`iff`/`implies`) | `boolBinaryNative`, `impliesHandler` |
 | `convert Boolean` (and the `{truthy: true}` fallback) | `native_type.go` |
-| `make Boolean` | `eng/go/core_make.go` |
+| `make Boolean` | `core/go/core_make.go` |
 | `ArrayUtil.where` (truthy elements → indices) | `native_array.go` |
 | Mask-consuming array words (`expand` and kin) | `native_array.go` |
 

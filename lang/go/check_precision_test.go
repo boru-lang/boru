@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -75,67 +74,6 @@ driver 3`
 bad 3`
 	if _, codes := checkDiags(t, typo); !strings.Contains(codes, "undefined_word") {
 		t.Errorf("typo not flagged undefined_word: %s", codes)
-	}
-}
-
-// A multi-result poly (flex `pop` → [remaining, popped]) over a DYNAMIC
-// receiver now compiles (it used to decline on the >1-output cap): the compiled
-// program matches the interpreter, and `pop` over a non-list errors on both.
-func TestDynamicPopPolyCompiles(t *testing.T) {
-	src := `def shrink fn [[xs:Any] [Any] [pop xs nip]]
-shrink (flex [1 2])`
-	gotC, ran, reason, errC := mustNew(t).RunCompiledReason(src)
-	if errC != nil {
-		t.Fatalf("compiled pop errored: %v", errC)
-	}
-	if !ran {
-		t.Fatalf("dynamic pop should compile, fell back: %s", reason)
-	}
-	gotI, errI := mustNew(t).RunInterp(src)
-	if errI != nil {
-		t.Fatalf("interp pop errored: %v", errI)
-	}
-	if fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-		t.Errorf("pop parity: compiled=%v interp=%v", gotC, gotI)
-	}
-	if fmt.Sprint(gotC) != "[2]" {
-		t.Errorf("pop result = %v, want [2]", gotC)
-	}
-	// NEGATIVE: pop over an Integer errors on both engines.
-	bad := `def shrink fn [[xs:Any] [Any] [pop xs nip]]
-shrink 5`
-	_, _, eC := mustNew(t).RunCompiled(bad)
-	_, eI := mustNew(t).RunInterp(bad)
-	if noteCompileDefect(t, bad, nil, eC) {
-		return
-	}
-	if eC == nil || eI == nil {
-		t.Errorf("pop over Integer should error both: compiled=%v interp=%v", eC, eI)
-	}
-}
-
-// A dynamic-src `mini re` compiles (the transducer-faithful hook records the
-// standard lang_re call instead of declining) and matches the interpreter.
-func TestMiniReDynamicSrcCompiles(t *testing.T) {
-	src := `import "boru:minilang" end
-def m fn [[pat:String subj:String] [Any] [
-  def r (subj mini re (pat) {})
-  r get "ok"
-]]
-m "[a-z]+" "AbcD"`
-	gotC, ran, reason, errC := mustNew(t).RunCompiledReason(src)
-	if errC != nil {
-		t.Fatalf("compiled mini re errored: %v", errC)
-	}
-	if !ran {
-		t.Fatalf("dynamic-src mini re should compile, fell back: %s", reason)
-	}
-	gotI, errI := mustNew(t).RunInterp(src)
-	if errI != nil {
-		t.Fatalf("interp mini re errored: %v", errI)
-	}
-	if fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-		t.Errorf("mini re parity: compiled=%v interp=%v", gotC, gotI)
 	}
 }
 

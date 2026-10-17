@@ -111,7 +111,6 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	soft := fs.Bool("soft", false, "report diagnostics but still exit 0")
 	strict := fs.Bool("strict", false, "additionally report every dispatch over a dynamic operand")
 	pedantic := fs.Bool("pedantic", false, "gate on the advisory tiers too, not only on errors (composes under --soft)")
-	emit := fs.Bool("emit", false, "print the bytecode disassembly instead of the check report")
 	colorMode := fs.String("color", "auto", "colorize diagnostics: auto|always|never")
 	base := fs.String("base", "", "resolve relative imports against this directory instead of the file's own")
 	registry := fs.String("r", "", "registry path")
@@ -183,9 +182,6 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %s\n", err)
 		return 1
-	}
-	if *emit {
-		return runEmit(stdout, stderr, work, *registry, seed, pol)
 	}
 	opts := Opts{
 		Registry: *registry,
@@ -283,23 +279,6 @@ func resolveTargets(args []string) ([]Target, error) {
 	return out, nil
 }
 
-// runEmit prints the bytecode disassembly for every target. With more
-// than one target each block is introduced by a `; file:` comment line,
-// which the disassembly's own comment syntax makes harmless to a reader
-// or a downstream tool.
-func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed int64, pol policy.Policy) int {
-	for _, t := range targets {
-		if len(targets) > 1 {
-			fmt.Fprintf(stdout, "; file: %s\n", t.Path)
-		}
-		if err := emitAtPolicy(stdout, stderr, t.Source, registry, seed, anchorOf(t.Path), pol); err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return 1
-		}
-	}
-	return 0
-}
-
 // anchorOf is the directory a target's relative file imports resolve
 // against: the file's own directory, or "" (the process cwd) for source
 // that did not come from a file.
@@ -355,7 +334,6 @@ Options:
   --strict       also report every dispatch over a dynamic operand (info)
   --pedantic     gate on the advisory tiers too, not only on errors;
                  composes under --soft, so --soft --pedantic exits 0
-  --emit         print the bytecode disassembly instead of checking
   --color MODE   auto (default), always, or never
   --base DIR     resolve relative imports against DIR, not the file's
                  own directory (check a file the way boru runs it)
@@ -369,69 +347,6 @@ Options:
                  runs during the check, under this profile.
   -h, --help     print this message
 `)
-}
-
-// Emit runs the bytecode recording pass over source and prints the
-// Program disassembly to stdout, or the precise compile failure reason when
-// the emitter cannot lower the program (debug/tooling surface —
-// design/legacy/boru-bytecode-plan.0.ignore, Stage 1 gate and the DX section).
-func Emit(stdout, stderr io.Writer, source string) error {
-	return EmitAt(stdout, stderr, source, "", 0, "")
-}
-
-// EmitAt is Emit with the registry, seed, and relative-import anchor
-// resolved by the caller — the same anchoring PreflightColorAt does, so
-// `boru check --emit src/prog.boru` records the program its own
-// directory describes. An empty baseDir keeps the process cwd.
-func EmitAt(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string) error {
-	return emitAtPolicy(stdout, stderr, source, registry, seed, baseDir, nil)
-}
-
-// emitAtPolicy is EmitAt under a permission profile (nil for none): the
-// recording pass executes an imported module's body exactly as the check
-// does, so `boru check --emit --perms …` governs it the same way (NUR079).
-func emitAtPolicy(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string, pol policy.Policy) error {
-	a, err := langNew(lang.Options{Registry: registry, Seed: seed, Policy: pol})
-	if err != nil {
-		return fmt.Errorf("init error: %s", err)
-	}
-	if baseDir != "" {
-		a.NativeRegistry().BaseDir = baseDir
-	}
-	prog, reason, res, err := a.CompileCheck(source)
-	for i := range res.Diagnostics {
-		d := &res.Diagnostics[i]
-		fmt.Fprintf(stderr, "check: %s [%s] %s: %s\n", atPos(d.Row, d.Col), d.Severity, d.Code, d.Detail)
-	}
-	if err != nil {
-		return fmt.Errorf("error: %s", err)
-	}
-	if prog == nil {
-		fmt.Fprintf(stdout, "uncompilable: %s\n", reason)
-		writeSiteReport(stdout, res.SiteCounts, nil)
-		return nil
-	}
-	fmt.Fprint(stdout, prog.Disassemble())
-	islands := make([]string, len(prog.Fallbacks))
-	for i, fb := range prog.Fallbacks {
-		islands[i] = fb.Desc
-	}
-	writeSiteReport(stdout, res.SiteCounts, islands)
-	return nil
-}
-
-// writeSiteReport prints the compile report (design/legacy/boru-bytecode-plan.0.ignore
-// DX section): the per-class dispatch-site tally that answers "why didn't
-// this compile to a single path?", plus the interpreter islands a
-// compiled program falls back into for each fallback span.
-func writeSiteReport(w io.Writer, counts map[string]int, islands []string) {
-	if len(counts) > 0 {
-		fmt.Fprintf(w, "; sites: mono=%d poly=%d dynamic=%d meta=%d\n",
-			counts["mono"], counts["poly"], counts["dynamic"], counts["meta"])
-	}
-	if len(islands) > 0 {
-		fmt.Fprintf(w, "; islands: %s\n", strings.Join(islands, ", "))
-	}
 }
 
 func atPos(row, col int) string {

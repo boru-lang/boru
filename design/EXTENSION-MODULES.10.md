@@ -277,7 +277,7 @@ fixed **leaf tower** — `towerOps{intFn, bigFn, decFn, fltFn}` keyed by
 `numLeaf(v)` over the four built-in leaves
 (`lang/go/native/native_helpers.go:8`,`125`; `native_math.go:101`). There
 is **no seam** for a new number type to enter `add`. Comparison, by
-contrast, *does* have a seam (the `Comparer` behavior, `eng/go/compare.go`)
+contrast, *does* have a seam (the `Comparer` behavior, `core/go/compare.go`)
 — numbers need the arithmetic equivalent.
 
 ### 6.2 The new seam: an `Arith` behavior + number-system registry
@@ -338,10 +338,10 @@ import "boru:math-util"
 | Quaternion | `Scalar/Number/Quaternion` | `[4]float64` | none (no `Comparer`) | `quaternion`, components, `conj`, `norm`; non-commutative `mul` |
 
 Each registers as an external builtin (`RegisterExternalBuiltin`,
-`eng/go/typetable.go`) with `Match`/`Format`/`Equal`, optional `Comparer`,
+`core/go/typetable.go`) with `Match`/`Format`/`Equal`, optional `Comparer`,
 and the new `Arith`. **FixedID:** allocate a new documented band
 **`Scalar/Number` extensions** (proposal: `6000–6099`) in
-`eng/go/CLAUDE.md` "FixedID Allocation", pinned in
+`core/go/CLAUDE.md` "FixedID Allocation", pinned in
 `lang/go/test/fixedid_stability_test.go`.
 
 ### 6.4 Naming, module, literals

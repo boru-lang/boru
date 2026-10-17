@@ -12,8 +12,8 @@ parser/go  ↗
 
 **The dependency rule is hard (ADR-013 as amended 2026-08-08): basic
 depends on the pieces it actually uses, and on nothing else.** Today
-that is `core` and `parser` (the latter test-only) — NOT `eng`, `check`
-or `compiler`. No other boru sibling, no host-capability dependency
+that is `core` and `parser` (the latter test-only) — NOT `check`, not
+`lang`. No other boru sibling, no host-capability dependency
 (sqlite, file ops, formats — those are lang's). The gate is
 `depsgate_test.go`; if a change here seems to need more, the design is
 wrong, not the go.mod.
@@ -25,17 +25,14 @@ special knowledge of the passes above the interpreter: core's own
 primitives are enough, and a word that seems to need more is a word
 whose analysis half is filed in the wrong module.
 
-- **compiler: removed (2026-08-07).** basic's `if` / `case` / `for`
-  handlers record branch and loop fragments for the bytecode emitter.
-  That already went through a core-owned seam, `core.EmitRecorder` —
-  except the interface was one method group short (branches and loops),
-  so `recorderState` had to downcast to `*compiler.EmitState` to reach
-  them. Widening the interface (`TakeFragment`, `RecordBranch`,
-  `RecordLoop`, with `core.BranchRecord` and the opaque
-  `core.EmitFragmentRef`) deleted the downcast, and the module
-  requirement went with it. The seam is honest because an INACTIVE
-  recorder is *correct* behaviour: with no compiler linked, nothing is
-  recorded and the program still runs, interpreted.
+- **compiler: removed (2026-08-07), and the lane itself on 2026-10-16.**
+  basic's `if` / `case` / `for` handlers once recorded branch and loop
+  fragments for the bytecode emitter through a core-owned seam
+  (`core.EmitRecorder`), widened on 2026-08-07 so no handler here named
+  `*compiler.EmitState`. The compiler lane has since been removed
+  outright (design/COMPILER-LANE-REMOVAL.0.md): the handlers run
+  interpreted only, and what is left of the recorder in core is a
+  removal follow-up, not something to build on.
 
 - **check: removed (2026-08-08), by moving code, not by forwarding it.**
   Full reasoning, the moved-symbol table and the gate arithmetic:

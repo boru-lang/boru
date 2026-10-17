@@ -19,15 +19,6 @@ func swapLangNewFail(t *testing.T) {
 	t.Cleanup(func() { langNew = orig })
 }
 
-func TestEmitInitError(t *testing.T) {
-	swapLangNewFail(t)
-	var stdout, stderr bytes.Buffer
-	err := Emit(&stdout, &stderr, "add 1 2")
-	if err == nil || !strings.Contains(err.Error(), "init error") {
-		t.Fatalf("err = %v, want init error", err)
-	}
-}
-
 func TestRunInitError(t *testing.T) {
 	swapLangNewFail(t)
 	var stdout, stderr bytes.Buffer

@@ -9,7 +9,7 @@ design as documented in `design/*.md` (notably
 `SIGNATURES.10.md`, and `TYPES.10.md`).
 
 All rows in every file pass under
-`go test ./eng/go/... -run TestSpec`. Where a row encodes
+`cd test/go && go test ./engspec/`. Where a row encodes
 behaviour that contradicts the docs, the deviation is called out
 both inline (in the row's `note` column) and below.
 
@@ -84,7 +84,7 @@ and L72–L74 (silent-zero arithmetic).
 it should show the type, not a default-zero scalar.
 
 **Observed**: The spec runner's `renderValue` (in
-`eng/go/spec_test.go::renderValue`) goes through the
+`test/go/engspec/engspec_test.go::renderValue`) goes through the
 `v.Parent.Matches(TInteger)` branch first. For a type literal
 (`Data == nil`), `AsInteger()` returns `0, false` — so the int
 branch happily formats "0":
@@ -359,7 +359,7 @@ re-investigating.
 
 - **No tests for the carrier / static-type-check mode**: the spec
   runner uses runtime mode only. CheckMode is exercised via Go-
-  level tests in `eng/go/carrier*.go` and `lang/go/test/`.
+  level tests in `core/go/carrier*.go` and `lang/go/test/`.
 
 - **No tests for module / import / export**: spec runner has no
   module subsystem.
@@ -384,7 +384,7 @@ deliberately focused on the dispatch / value / type-lattice core.
 | Added in this round | 14 | ~206 |
 | **Total** | **35** | **396** |
 
-All 396 rows pass under `go test ./eng/go/... -run TestSpec`.
+All 396 rows pass under `cd test/go && go test ./engspec/`.
 
 ---
 

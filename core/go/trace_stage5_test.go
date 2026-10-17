@@ -178,6 +178,10 @@ func TestTraceHandlerArms(t *testing.T) {
 // TestRunTraceShortSteps pins the narrow-layout arms: pointer at the
 // start (pending-only), pointer mid-stack (resolved │ pending), short
 // notes right-aligned on the same line, and the final result banner.
+
+// TestRunTraceShortSteps pins the narrow-layout arms: pointer at the
+// start (pending-only), pointer mid-stack (resolved │ pending), short
+// notes right-aligned on the same line, and the final result banner.
 func TestRunTraceShortSteps(t *testing.T) {
 	r := stage5Registry(t)
 	var buf bytes.Buffer
@@ -208,6 +212,9 @@ func TestRunTraceShortSteps(t *testing.T) {
 
 // TestRunTraceError pins the failing-run tail: the fault note reaches the
 // step list and the error banner is printed before the error surfaces.
+
+// TestRunTraceError pins the failing-run tail: the fault note reaches the
+// step list and the error banner is printed before the error surfaces.
 func TestRunTraceError(t *testing.T) {
 	r := stage5Registry(t)
 	var buf bytes.Buffer
@@ -230,6 +237,10 @@ func TestRunTraceError(t *testing.T) {
 // runTraceMarkMove drives one mark/move replay with the given id and
 // returns the rendered output. The id length steers the note and stack
 // widths through RunTrace's layout branches.
+
+// runTraceMarkMove drives one mark/move replay with the given id and
+// returns the rendered output. The id length steers the note and stack
+// widths through RunTrace's layout branches.
 func runTraceMarkMove(t *testing.T, r *Registry, id string) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -246,6 +257,16 @@ func runTraceMarkMove(t *testing.T, r *Registry, id string) string {
 	}
 	return buf.String()
 }
+
+// TestRunTraceLayoutBranches pins the width-sensitive layout arms with
+// three mark ids sized around the 120-column budget:
+//   - 60 chars:  after the replay the stack is tiny and the note fits
+//     inline (right-aligned on the stack's line);
+//   - 100 chars: the note misses the inline budget but fits the next
+//     line without clamping;
+//   - 130 chars: the pre-replay stack wraps across lines (with the
+//     separator and a clamped note gap), and the post-replay note is
+//     clamped to the minimum gap on its own line.
 
 // TestRunTraceLayoutBranches pins the width-sensitive layout arms with
 // three mark ids sized around the 120-column budget:

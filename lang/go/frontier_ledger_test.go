@@ -76,12 +76,6 @@ func runFrontier(t failer, cases []frontierCase, ledger map[string]frontierEntry
 	}
 }
 
-// TestFrontierLedger runs the package's frontier inventory (frontier_cases_test.go).
-func TestFrontierLedger(t *testing.T) {
-	runFrontier(t, frontierCases, frontierLedger)
-	t.Logf("frontier: %d cases, %d expected-red", len(frontierCases), len(frontierLedger))
-}
-
 // recordingFailer captures runner errors for the harness self-test.
 type recordingFailer struct{ errs []string }
 

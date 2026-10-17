@@ -778,7 +778,6 @@ func mirrorImportRefusal(r *Registry, err error, pos SrcPos) {
 	if !check.CheckAtUncaughtTopLevel(r) {
 		return
 	}
-	r.Check.Recorder().RecordTrapErr(be, pos)
 	core.CheckAddUniqueDiagnostic(r, be.Code, be.Detail, "import", pos)
 }
 

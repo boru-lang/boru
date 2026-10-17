@@ -211,12 +211,6 @@ type ReachInfo struct {
 	Receiver []Value
 	Segments []ReachSeg
 	Eval     bool // evaluate-by-default (like list Eval); quote/codequote suppress
-	// unit caches this lens's compiled one-param unit (reach_unit.go). A
-	// POINTER, so every copy of the Reach value shares one cache — the same
-	// trick *BoruImpl plays for a signature's compiled ref. Unexported and
-	// never rendered: canon builds a Reach's text from Segments alone, so this
-	// field takes no part in equality, canon, or serialisation.
-	unit *lensUnit
 }
 
 // ReachSeg is one step of a Reach: get (lenient) or getr (strict), with a
@@ -488,102 +482,6 @@ type StoreShapeInfo struct {
 	DeclaredVal *Type
 }
 
-// ClosurePayload is a runtime fn VALUE backed by a compiled body unit (held
-// by pointer, allocated with its datum: NewClosureValue):
-// OpPushClosure pushes one, and a higher-order word's native handler invokes
-// it through the VM's re-entrant runner (via the InvokeBody seam) — never the
-// interpreter (plan P2). Unit indexes Program.Fns; Captures are the
-// construction-time lexical captures bound into the body's trailing local
-// slots at invocation (empty for a capture-free body). InShape carries the
-// unit's input convention (copied from CompiledFn at OpPushClosure) so the
-// driving handler shapes each input correctly.
-type ClosurePayload struct {
-	// Prog is the PROGRAM Unit indexes, held opaquely: core sits below
-	// compiler, so it boxes a *compiler.Program the same way BoruImpl.Compiled
-	// boxes a *CompiledFnRef. It is load-bearing rather than bookkeeping — a
-	// closure value is only interpretable relative to the program that minted
-	// it, since Unit is an index into THAT program's Fns table and names a
-	// different body, or none, against any other. The VM compares it against
-	// the running program before indexing and hosts a mismatch in a nested
-	// context (eng/go/vm_foreign_unit.go).
-	//
-	// The comparison became reachable when detached units started running
-	// nested inside a live run: before that a closure could only be invoked
-	// under the one program that was executing when it was pushed, which is
-	// why the payload carried no identity for as long as it did. Nil means no
-	// identity was recorded — only hand-built values reach that, and they read
-	// as the running program, exactly as they did before this field.
-	Prog     any
-	Unit     int
-	Captures []Value
-	InShape  ClosureInShape
-	// Ident is the closure's identity, minted once at OpPushClosure (one per
-	// construction, as the interpreter mints one per `fn`; a sequence, not
-	// an allocation) and copied with the value: `eq` compares it, and the
-	// FnDefInfo the VM bridges the closure to for the interpreter's
-	// dispatch carries it (NewFunctionIdentified), so two copies of one
-	// closure — bridged or not — are one function. Zero for a hand-built
-	// value: no identity.
-	Ident FnIdentity
-	// Render is the interpreter's formatFnDef string for the source fn this
-	// closure compiled from (CompiledFn.Render, copied at OpPushClosure): a
-	// closure VALUE then renders byte-identically to the interpreter's fn
-	// value. Empty keeps the default rendering.
-	Render string
-	// RetTypes / RetPatterns / RetDecl / RetName / RetPos are the CALLBACK fn
-	// value's own declared return contract, carried on the VALUE rather than
-	// the unit.
-	//
-	// It has to be here, and the reason is measured. A named fn handed to a
-	// higher-order word (`[1 2] each cbad/v`) lowers its body to a shared
-	// closure unit, and that unit's RET knew nothing of the fn's declaration —
-	// so a body violating its own `[Boolean]` answered the violating value
-	// compiled where the interpreter raises type_error. Carrying the contract
-	// on the UNIT instead was built and reverted: it needs a per-fn memo key,
-	// and a distinct key alone (no contract at all) makes a SHARED closure unit
-	// recompile and decline on operand provenance, islanding conforming
-	// callbacks and tripping TestListFoldCallbackOrderPin. Two fns with
-	// identical bodies and inputs SHOULD share a unit; they differ only in what
-	// their results must satisfy, which is a property of the value.
-	//
-	// Empty RetTypes means no contract (a raw token body, or an anonymous
-	// lambda whose Returns=[Any] is a conservative placeholder rather than a
-	// declaration).
-	RetTypes    []*Type
-	RetPatterns []*Value
-	RetDecl     DeclSite
-	RetName     string
-	// Source is the callback fn VALUE a callback body unit was compiled from
-	// — the lambda or `g/v` a higher-order word was handed — carried on the
-	// value for the one invocation the unit cannot run: an input landing in
-	// a param slot the body reads bare (the unit's FnReadParams), which the
-	// interpreter dispatches as a word when it holds a fn and the unit
-	// pushes as a slot. The VM hands that invocation to the interpreter's
-	// own step of Source (NUR268). Nil for every other closure.
-	Source *Value
-	// RetPos is where the callback REFERENCE was written (`cbad/v`), which is
-	// the position the interpreter anchors a return-contract error on: its
-	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultCells
-	// as the reference produces it. A compiled unit's RET has no call site to
-	// read, so the closure path carries it here — without it the compiled
-	// diagnostic agrees in value and taxonomy but loses the position, which
-	// the full-corpus parity gate compares.
-	RetPos SrcPos
-	// Named marks a closure pushed from a NAMED fn value — a `fn` literal;
-	// only `afn` / `=>` make one anonymous. The unit is shared with
-	// anonymous values over the same body, so the push carries it
-	// (compiler ClosureRetSpec.Named): a name always calls, so a nullary
-	// named value fires where an anonymous one parks (NUR321).
-	Named bool
-}
-
-// A closure payload is held by pointer, allocated with its datum
-// (NewClosureValue): a by-value one is not a Payload.
-func (*ClosurePayload) payloadMarker() {}
-
-// IsTypeContent: a closure is never type content.
-func (*ClosurePayload) IsTypeContent(*Type) bool { return false }
-
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a
 // carrier of t (TStore, TFlexMap, …) whose Data is a FRESH
 // *StoreShapeInfo. One mint per creation site / live layer — sharing
@@ -593,13 +491,3 @@ func NewStoreShapeCarrier(t *Type, scope int) Value {
 	v.SetData(&StoreShapeInfo{Scope: scope})
 	return v
 }
-
-// ClosureInShape tags HOW a higher-order word must present each per-invocation
-// input to a compiled closure — the divergence the per-word callback
-// conventions create. A map-iteration handler (each/fold/scan over a map) runs
-// BOTH a token-quotation body (sees the bare value) and a lambda body (sees a
-// KeyVal {k v i n}); the closure value alone cannot say which, so the compile
-// records the shape on the unit and the handler reads it back here. The
-// unambiguous handlers (filter list/map) build their own fixed shape and ignore
-// it.
-type ClosureInShape uint8

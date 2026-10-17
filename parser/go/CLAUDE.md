@@ -12,8 +12,8 @@ values.
 
 ## The one rule
 
-**parser depends on `core` and NOTHING else in the repo.** Not eng, not
-check, not compiler. It uses 109 core symbols (`core.Value`, the `New*`
+**parser depends on `core` and NOTHING else in the repo.** Not check,
+not basic, not lang. It uses 109 core symbols (`core.Value`, the `New*`
 constructors, the `Is*`/`As*` predicates, `core.BoruError`, the `T*` type
 nodes) plus `tabnas/jsonic` and `apd`. Nothing in the repo depends on the
 parser except the layers above it, so it is a **leaf over core** — which is

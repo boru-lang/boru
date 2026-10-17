@@ -1,4 +1,4 @@
-// Package calc is a small CLI calculator built directly on the eng kernel.
+// Package calc is a small CLI calculator built directly on the core kernel.
 //
 // It serves two roles:
 //
@@ -7,9 +7,10 @@
 //     pi and e.
 //
 //   - A test case for the kernel boundary — calc imports only
-//     github.com/boru-lang/boru/eng/go (kernel + parser) and defines every
-//     word it needs (see words.go). If calc compiles, runs, and tests
-//     pass, the eng module is a self-sufficient algorithm library.
+//     github.com/boru-lang/boru/core/go and …/parser/go (kernel + parser)
+//     and defines every word it needs (see words.go). If calc compiles,
+//     runs, and tests pass, the core module is a self-sufficient algorithm
+//     library.
 //
 // The vocabulary is deliberately small (arithmetic, stack ops, two
 // constants, print/show) — enough to be useful in a REPL, narrow

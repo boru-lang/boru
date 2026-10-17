@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -472,8 +473,10 @@ func sortedCheckLogRows(rows []checkLogRow) []string {
 	return out
 }
 
-// itoaKV formats a "name=n" pair (itoa lives in compiled_fullcorpus_test.go).
+// itoaKV formats a "name=n" pair.
 func itoaKV(name string, n int) string { return name + "=" + itoa(n) }
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 // checkFlagsError runs one spec row in check mode against a fresh
 // production registry (the same setup as runSpecProd) and reports

@@ -125,50 +125,6 @@ func TestBehaveReaders(t *testing.T) {
 	c.NoteBehaveDispatch([]Value{v})
 }
 
-// TestFnMemberReads pins the member tag behave's check half sees through: a
-// get-family read's one result is tagged with the fn value a concrete list
-// index or map key resolves; any other read, operand or member tags nothing.
-func TestFnMemberReads(t *testing.T) {
-	r := newTestRegistry(t)
-	c := r.Check
-	fnv := NewFunction(anonFn(at(NewWord("k"), 1, 1)))
-	om := NewOrderedMap()
-	om.Set("c", fnv)
-	om.Set("n", NewInteger(1))
-	mp, lst := NewMap(om), NewList([]Value{NewInteger(0), fnv})
-	out := func() []Value { return []Value{withFreshID(NewCarrier(TAny))} }
-	for _, tc := range []struct {
-		name string
-		word string
-		args []Value
-		want bool
-	}{
-		{"a map's fn member by atom", "dot", []Value{NewAtom("c"), mp}, true},
-		{"a map's fn member by string", "getr", []Value{NewString("c"), mp}, true},
-		{"a list's fn element", "get", []Value{NewInteger(1), lst}, true},
-		{"a list index out of range", "get", []Value{NewInteger(5), lst}, false},
-		{"a list's data element", "get", []Value{NewInteger(0), lst}, false},
-		{"a map's data member", "dot", []Value{NewAtom("n"), mp}, false},
-		{"a carrier key", "dot", []Value{NewCarrier(TAtom), mp}, false},
-		{"a carrier container", "dot", []Value{NewAtom("c"), NewCarrier(TMap)}, false},
-		{"a nil map", "dot", []Value{NewAtom("c"), {d: &Datum{Parent: TMap, Data: MapPayload{}}}}, false},
-		{"an Integer key into a map", "dot", []Value{NewInteger(1), mp}, false},
-		{"another word", "first", []Value{NewAtom("c"), mp}, false},
-	} {
-		c.FnMemberReads = nil
-		res := out()
-		c.NoteFnMemberRead(tc.word, tc.args, res)
-		if _, ok := c.FnMemberRead(IDOf(&res[0])); ok != tc.want {
-			t.Errorf("%s: tagged=%v, want %v", tc.name, ok, tc.want)
-		}
-	}
-	c.NoteFnMemberRead("dot", []Value{NewAtom("c"), mp}, nil)
-	c.NoteFnMemberRead("dot", []Value{NewAtom("c"), mp}, []Value{{d: &Datum{Parent: TAny, Carrier: true}}})
-	if len(c.FnMemberReads) != 0 {
-		t.Error("no result, or a result with no identity, is not tagged")
-	}
-}
-
 // TestRescueAnonymousReader pins the forward-reference rescue's anonymous
 // arm: an undefined-word finding inside an anonymous value's body, with no
 // named reader, is rescued when a binder of the name reaches the value, and

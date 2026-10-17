@@ -8,7 +8,7 @@ negative result, determinism, and the type-lattice order — and
 cross-validates against the engine. The rest of `FORMAL-SPEC.md` §10–§11
 names a mechanized model only as an aspiration. This note turns that aspiration into a concrete, staged
 plan and — crucially — connects it to machinery the repo *already*
-ships: the carrier-based static checker (`eng/go/check.go`,
+ships: the carrier-based static checker (`check/go`,
 `CheckState`), property-based testing (`boru:rand`, `test.check-prop`,
 `shrink/`), and the `StackForm` IR with its proven
 `Eval(Compile(src)) ≡ Run(src)` equivalence. Written against

@@ -127,7 +127,7 @@ need for DSL keywords (`for x in xs […]`).
 
 Three kernel seams make keyword slots sound (all in this change):
 
-1. **`patternsOk` quote-slot fix** (eng/go/match.go): a /q position's
+1. **`patternsOk` quote-slot fix** (core/go/match.go): a /q position's
    Atom pattern matches the raw token name (Word or Atom). It must
    NOT resolve the binding first — `fn` is Defs-bound to an
    FnDefInfo, which would never unify with `Atom("fn")`; the

@@ -31,35 +31,6 @@ func TestGetIntKeyReturnsLiveWordReSteps(t *testing.T) {
 	}
 }
 
-func TestSetFlexMapReturnsRecordsOnTheCompilePass(t *testing.T) {
-	r := w9Reg(t)
-	r.Check.Mode = true
-	r.Check.Compiling = true
-	recv, ok := check.MintFlexShapeCarrier(NewMap(NewOrderedMap()), 0)
-	if !ok {
-		t.Fatal("mint")
-	}
-	inner := NewOrderedMap()
-	inner.Set("b", NewInteger(1))
-	out := setFlexMapReturns([]Value{NewAtom("a"), NewMap(inner), recv}, r)
-	if len(out) != 1 || out[0].Data() == recv.Data() {
-		t.Fatalf("the compile pass keeps the legacy fresh carrier: %v", out)
-	}
-	ss, _ := check.StoreShapeOf(recv)
-	v, hit := ss.LookupKey("a")
-	if !hit {
-		t.Fatal("the compile pass must record the write into the receiver's shape")
-	}
-	if _, ok := check.StoreShapeOf(v); !ok || !v.Parent().Equal(TFlexMap) {
-		t.Errorf("a written plain map adopts to a FlexMap shape: %v", v)
-	}
-	// The plain pass records AND hands the receiver on (unchanged).
-	r.Check.Compiling = false
-	if out := setFlexMapReturns([]Value{NewAtom("c"), NewInteger(1), recv}, r); out[0].Data() != recv.Data() {
-		t.Error("the plain pass returns the receiver itself")
-	}
-}
-
 // A shaped FlexList: `flex [...]` mints it; push / unshift / append / indexed
 // set join into its element bound; an index read surfaces the join gradual.
 func TestFlexListShapeWritersAndRead(t *testing.T) {

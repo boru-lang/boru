@@ -1,25 +1,22 @@
-// Package engine is a thin shim over the eng module: it re-exports
-// eng's types and functions so the surrounding lang codebase can import
-// "github.com/boru-lang/boru/lang/go/native" while the actual engine
-// machinery lives in the standalone eng module.
+// Package native is a thin shim over the core and check modules: it
+// re-exports their types and functions so the surrounding lang codebase can
+// import "github.com/boru-lang/boru/lang/go/native" while the actual
+// interpreter machinery lives in the standalone core module.
 //
 // Word-defining files (native_*.go, format.go, query.go, sqlite.go,
-// fileio.go, conditional.go, forloop.go) continue to live here. Anything
-// that's truly engine machinery (Registry, Value, *Type, signatures,
-// matching, unification, …) is now in eng.
+// fileio.go, …) continue to live here. Anything that's truly engine
+// machinery (Registry, Value, *Type, signatures, matching, unification, …)
+// is in core.
 package native
 
 import (
 	check "github.com/boru-lang/boru/check/go"
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 )
 
 // *Type aliases — every exported type from borueng is re-exported here.
 type (
-	BranchRecord       = core.BranchRecord
 	DeqIndex           = core.DeqIndex
-	EmitFragment       = core.EmitFragmentRef
 	BoruError          = core.BoruError
 	RenderOpts         = core.RenderOpts
 	DiagSpan           = core.DiagSpan
@@ -29,7 +26,6 @@ type (
 	CheckFullStackFunc = core.CheckFullStackFunc
 	CheckSeverity      = core.CheckSeverity
 	CheckState         = core.CheckState
-	EmitState          = compiler.EmitState
 	ChildTypeInfo      = core.ChildTypeInfo
 	CodeEffectInfo     = core.CodeEffectInfo
 	ReachInfo          = core.ReachInfo
@@ -68,7 +64,6 @@ type (
 	Loop                 = core.Loop
 	LoopDriver           = core.LoopDriver
 	LoopOpenInfo         = core.LoopOpenInfo
-	LoopInvoke           = core.LoopInvoke
 	ForwardInfo          = core.ForwardInfo
 	GuardClause          = core.GuardClause
 	Handler              = core.Handler
@@ -88,8 +83,6 @@ type (
 	BoruImpl             = core.BoruImpl // boru body implementation (module ref / lambda / installed fn)
 	GoOpt                = core.GoOpt    // optional dispatch knob for Go(...)
 	CompileEffect        = core.CompileEffect
-	CallableSpec         = core.CallableSpec
-	StoredBodySpec       = core.StoredBodySpec
 	ClassInstanceInfo    = core.ClassInstanceInfo
 	ClassTypeInfo        = core.ClassTypeInfo
 	ResourceInstanceInfo = core.ResourceInstanceInfo
@@ -268,10 +261,6 @@ const (
 	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
 	CompileDynBody            = core.CompileDynBody
 	CompileSideEffect         = core.CompileSideEffect
-
-	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
-	// the driving handler returns the body's entire residual (`do`).
-	BodyOutResidual = core.BodyOutResidual
 )
 
 // Flow-control signal values exposed by the engine. These travel
@@ -453,7 +442,6 @@ var (
 	RunResolved              = core.RunResolved
 	InvokeBody               = core.InvokeBody
 	BodyEscaped              = core.BodyEscaped
-	InvokeCallbackBody       = core.InvokeCallbackBody
 	InvokeCallbackFn         = core.InvokeCallbackFn
 	FnValueOnlyZeroArgSigs   = core.FnValueOnlyZeroArgSigs
 	FnHome                   = core.FnHome
@@ -461,10 +449,6 @@ var (
 	HomeExportedFn           = core.HomeExportedFn
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
-	IsCompiledClosure        = compiler.IsCompiledClosure
-	ClosureWantsKeyVal       = compiler.ClosureWantsKeyVal
-	ClosureAsFnDef           = core.ClosureAsFnDef
-	ClosureSigMatched        = core.ClosureSigMatched
 	CloneValue               = core.CloneValue
 	NewSyncWriter            = core.NewSyncWriter
 	NewReadList              = core.NewReadList
@@ -484,7 +468,6 @@ var (
 	AtomReferent             = core.AtomReferent
 	NewBoolean               = core.NewBoolean
 	// NewCalendarDuration moved to lang/go/engine/native_temporal.go (Step 8).
-	StampFnValueInPlace      = compiler.StampFnValueInPlace
 	StampModuleCallGates     = core.StampModuleCallGates
 	ElementCarrierFromValue  = check.ElementCarrierFromValue
 	ElementCarrierOf         = check.ElementCarrierOf
@@ -528,7 +511,6 @@ var (
 	NewMoveCont         = core.NewMoveCont
 	StartLoop           = core.StartLoop
 	IsLoopRegion        = core.IsLoopRegion
-	DriveLoop           = core.DriveLoop
 	NewMoveIf           = core.NewMoveIf
 	NewOpenParen        = core.NewOpenParen
 	NewCloseParen       = core.NewCloseParen
@@ -549,7 +531,6 @@ var (
 	// NewTimeout moved to lang/go/engine/native_misc.go (Step 8).
 	// NewTimezone moved to lang/go/engine/native_temporal.go (Step 8).
 	NewTop                 = core.NewTop
-	NewEmitState           = compiler.NewEmitState
 	NewType                = core.NewType
 	NewTypedList           = core.NewTypedList
 	NewTypedMap            = core.NewTypedMap
@@ -590,7 +571,7 @@ var (
 	CheckAtIndices         = check.CheckAtIndices
 	RunCarrierBody         = core.RunCarrierBody
 	RunCarrierBodyKeepDefs = core.RunCarrierBodyKeepDefs
-	AnalyseCodeEffect      = compiler.AnalyseCodeEffectCarrier
+	AnalyseCodeEffect      = check.AnalyseCodeEffectCarrier
 	SetIDSeed              = core.SetIDSeed
 	SeverityFor            = core.SeverityFor
 	CompareSignatures      = core.CompareSignatures
@@ -706,12 +687,6 @@ func NewCarrierTypedListLen(elem *core.Type, n int) core.Value {
 func makeConvert(src core.Value, targetType *core.Type) (core.Value, error) {
 	return core.MakeConvert(src, targetType)
 }
-
-// Re-exports of functions that read a Value through a pointer. They are
-// wrapper functions rather than variables, so a call is direct: it can
-// inline, and escape analysis sees that the pointer does not escape (a
-// call through a function variable would move every &v to the heap).
-func ClosureIsFnValue(v *core.Value) bool { return compiler.ClosureIsFnValue(v) }
 
 // The fn payload's readers (core.FnDefOf, core.FnDefCopy): a fn value holds
 // its FnDefInfo by pointer.

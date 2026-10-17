@@ -121,7 +121,6 @@ func covWords(r *core.Registry) {
 		} else {
 			name, _ = core.AsString(args[0])
 		}
-		r.Check.Recorder().DeclineCarriedUndef(name)
 		core.UninstallDef(r, name)
 		return nil, nil
 	}, core.RunInCheck())
@@ -155,10 +154,6 @@ func covWords(r *core.Registry) {
 			BarrierPos: core.BarrierAllForward,
 		}},
 	})
-}
-
-func ljImplSig(impl core.SigImpl, args ...*core.Type) core.Signature {
-	return core.Signature{Args: args, BarrierPos: -1, Impl: impl}
 }
 
 func seam7Reg(t *testing.T) *core.Registry {

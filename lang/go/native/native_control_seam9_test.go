@@ -3,8 +3,6 @@ package native
 import (
 	"strings"
 	"testing"
-
-	core "github.com/boru-lang/boru/core/go"
 )
 
 // Seam-9 coverage (W9_nativeC) for native_control.go: for/do/case/if
@@ -81,20 +79,5 @@ func TestW9CaseBranchBodyError(t *testing.T) {
 	clauses := NewList([]Value{NewInteger(1), NewString("x")})
 	if _, err := caseHandler([]Value{valBody, clauses}, nil, nil, r); err == nil {
 		t.Fatalf("caseHandler with an erroring value body must error")
-	}
-}
-
-// errorReturnsFn's payload-level defense: a sig-matched TList whose payload
-// is not a list (constructible only through the raw seam) declines to the
-// wide dynamic(Any) instead of panicking in AsList. The narrowing arms are
-// pinned end-to-end in lang/go/bytecode_edge_findings_test.go §1.
-func TestW9ErrorReturnsFnNonListPayload(t *testing.T) {
-	r := seam5Reg(t)
-	r.Check.Mode = true
-	r.Check.Compiling = true
-	bad := NewValueRaw(TList, core.IntPayload{N: 1})
-	out := errorReturnsFn([]Value{bad, NewInteger(7)}, r)
-	if len(out) != 1 || !IsDynamic(&out[0]) || !out[0].Parent().Equal(TAny) {
-		t.Fatalf("non-list payload must stay dynamic(Any), got %v", out)
 	}
 }

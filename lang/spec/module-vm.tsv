@@ -41,15 +41,3 @@ import "boru:vm" ((Vm.check "totally-undefined-word").diagnostics.0).severity	'e
 import "boru:vm" (Vm.check "1 add (((").ok	false	a syntax error is a check finding, not a raised error
 import "boru:vm" ((Vm.check "1 add (((").diagnostics.0).code	'parse_error'	…reported with the parse_error code
 import "boru:vm" (Vm.check "1 add 2  def unused 99").warnings	1	non-fatal findings count as warnings
-#
-# ─────────────────────────────────────────────────────────────────────
-# §6  compile — run the bytecode compile pass WITHOUT executing. Returns
-#     { ok reason sites }: ok = lowers to bytecode, reason = first offender
-#     when it does not, sites = the dispatch-site census. Refusal is data,
-#     not an error.
-import "boru:vm" (Vm.compile "1 add 2").ok	true	a straight-line program compiles
-import "boru:vm" (Vm.compile "1 add 2").reason	''	…with no compile failure reason
-import "boru:vm" ((Vm.compile "1 add 2").sites).mono	1	the dispatch-site census reports one mono call
-import "boru:vm" (Vm.compile "(size (for 5 [i]))").ok	false	a loop-result consumer declines
-import "boru:vm" (Vm.compile "1 add (((").ok	false	malformed source does not compile
-import "boru:vm" (Vm.compile "1 add (((").reason	'parse error'	…and says why

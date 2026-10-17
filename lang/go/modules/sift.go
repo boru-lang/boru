@@ -93,9 +93,7 @@ func BuildSiftModule(parent *native.Registry) (native.ModuleDesc, error) {
 	})
 
 	sub := native.New(modReg)
-	restoreAtt := modReg.SetInterpAttribution("module-load")
 	_, runErr := sub.Run(siftParsed)
-	restoreAtt()
 	if runErr != nil {
 		return native.ModuleDesc{}, fmt.Errorf("sift: run preamble: %w", runErr)
 	}

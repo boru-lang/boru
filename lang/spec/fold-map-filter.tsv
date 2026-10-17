@@ -186,10 +186,9 @@ def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty
 def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end filter ([p:Map] => [p.value.qty gt 3]) items	[{name:'b' qty:5}]	filter class instances on a field reached two levels down
 def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end sort (each ([i:Item] => [i.qty]) items)	[2 5]	project a field off class instances, then sort the projection
 # NOTE: composing those two stages — `each (…) (filter (…) items)` over class
-# instances — DIVERGES: the compiler answers 5 and the interpreter raises
-# `fold: step 0: signature_error: cannot call add` on the lambda it failed to
-# apply. No row can pin a value that the two engines disagree about, so it is
-# recorded here as prose instead of as a row.
+# instances — raises `fold: step 0: signature_error: cannot call add` on the
+# interpreter: the lambda is not applied to the filtered instances. Pinned
+# as an open defect rather than as a row with a wrong value.
 def m {a:1 b:2 c:3} end each [mul 2] (filter [gt 1] m)	{b:4 c:6}	filter then map over a MAP — the shape survives both stages
 def m {a:1 b:2 c:3} end sort (each [mul 2] m)	{a:2 b:4 c:6}	map a map, then sort it by key
 def xs (flex [3 1 2]) end 0 fold [add] xs	6	fold over a FLEX list

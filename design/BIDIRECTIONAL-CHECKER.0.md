@@ -12,7 +12,7 @@ together). No code has been written against this.
 
 Related prior art (read alongside): `legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore` (the
 carrier abstract-interpretation foundation), `legacy/checker-compiler-architecture-review.0.ignore`
-(the checker↔compiler coupling, largely landed), `COMPILABLE-SUBSET.md` (the
+(the checker↔compiler coupling, largely landed), `legacy/COMPILABLE-SUBSET.ignore` (the
 compiler's refusal contract), `legacy/checker-accuracy-review.10.ignore` (loop/guard/fn
 analysis), `REFINE-NEWTYPE-VS-SUBSET.10.md` (the one-predicate `v.Is(t)` boundary
 rule).
@@ -49,7 +49,7 @@ compile to `PUSH_CLOSURE` instead of `OpFallback` islands). But it carries one
 **return-type-directed overload resolution — bidirectional typing's signature
 capability — is forbidden.** Using it would split the checker from the runtime
 and therefore the compiler from the interpreter, breaking the soundness
-foundation (`COMPILABLE-SUBSET.md` §1). This is a deliberate, staged rewrite,
+foundation (`legacy/COMPILABLE-SUBSET.ignore` §1). This is a deliberate, staged rewrite,
 not a bolt-on.
 
 ---
@@ -141,7 +141,7 @@ This is non-negotiable because:
 
 1. A checker that resolved overloads by expected return type would resolve
    dispatches the **interpreter cannot reproduce**, breaking verbatim reuse.
-2. Since the compiler is the checker-with-recording (`COMPILABLE-SUBSET.md` §1),
+2. Since the compiler is the checker-with-recording (`legacy/COMPILABLE-SUBSET.ignore` §1),
    the **compiled program would then diverge from the interpreter** — a direct
    soundness break, the one thing the whole compile/refuse contract rests on.
 
@@ -307,6 +307,6 @@ If (2) cannot be met, the proposal is rejected regardless of the other metrics.
 - Pierce & Turner, *Local Type Inference*, 1998. The origin of the modern
   checking/synthesis split.
 - Internal: `legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`,
-  `legacy/checker-compiler-architecture-review.0.ignore`, `COMPILABLE-SUBSET.md`,
+  `legacy/checker-compiler-architecture-review.0.ignore`, `legacy/COMPILABLE-SUBSET.ignore`,
   `legacy/checker-accuracy-review.10.ignore`, `REFINE-NEWTYPE-VS-SUBSET.10.md`,
   `FORWARD-COLLECTION-PHASES.10.md`.

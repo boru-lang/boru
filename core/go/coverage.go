@@ -153,3 +153,11 @@ func (r *Registry) noteCoverage(pos SrcPos) {
 	}
 	(*fp)(r.coverID, pos.Row)
 }
+
+// InheritObserveHooks shares the parent's line-coverage hook and cover-source
+// table into r — a module sub-registry — so a coverage run armed on the
+// parent records the module's rows.
+func (r *Registry) InheritObserveHooks(parent *Registry) {
+	r.coverHook = parent.coverHook
+	r.coverSources = parent.coverSources
+}

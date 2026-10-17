@@ -125,8 +125,8 @@ Verified against the tree (file:line anchors current at `ab8f28e`):
 - `def Uniq (refine List)` mints a genuine List subtype: `refineBareHandler`
   (`lang/go/native/native_type.go:398-421`) has no scalar guard;
   `InstallType`'s prefab rename + `installBareRefineUnifier`
-  (`eng/go/core_type.go:400-436`); nominal `bareRefineUnifier.Match`
-  (`eng/go/unify_refine.go:29-36`) — a plain List is NOT a Uniq, only a
+  (`core/go/core_type.go:400-436`); nominal `bareRefineUnifier.Match`
+  (`core/go/unify_refine.go:29-36`) — a plain List is NOT a Uniq, only a
   Uniq-tagged value matches.
 - A subtype-tagged container **dispatches through every List/Map word**: all
   container probes use `ConformsTo` walks, none exact-Equal
@@ -144,7 +144,7 @@ Verified against the tree (file:line anchors current at `ab8f28e`):
 
 - `make Uniq [3 1 2]` **errors** ("make: unsupported target type Uniq"): the
   tag-on-construct branch in `MakeHandler` is gated
-  `base.ConformsTo(TScalar)` (`eng/go/core_make.go:576-590`, gate at :579), so
+  `base.ConformsTo(TScalar)` (`core/go/core_make.go:576-590`, gate at :579), so
   a node-family refine falls through `MakeNodeHandler`'s exact-`Equal` switch
   (`core_flex.go:295-372`) to `MakeConvert`'s default error
   (`core_make.go:957`).
@@ -192,7 +192,7 @@ The walk mirrors the `Comparer` LCA walk (`compare.go:74-91`) and `Sizer`
 (`size.go:17-24`):
 `for t := NodeOf(result.Parent); t != nil && t.Origin != OriginBuiltin; t = t.Parent`.
 `NodeOf` (which replaced `CanonicalType` in no-copy phase 3) is mandatory at
-every step — `behave` writes through the node (see eng/go/CLAUDE.md
+every step — `behave` writes through the node (see core/go/CLAUDE.md
 "Canonical `*Type` Pointers").
 `builtinBaseOf` already exists (`core_make.go:599-608`) and is package-private
 to eng, which is where these helpers live. The gate is **`Equal`**, not

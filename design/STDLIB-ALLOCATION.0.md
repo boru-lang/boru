@@ -183,7 +183,7 @@ documents) go elsewhere, to `boru:mail` and `boru:pki`.
 
 `mime.TypeByExtension` / `ExtensionsByType` → `IO.content-type`
 (`Pathon → Mimon`) and its inverse. P3 again: `Mimon` already exists and
-already parses media types via `mime.ParseMediaType` in `eng/go/micron.go`;
+already parses media types via `mime.ParseMediaType` in `basic/go/micron.go`;
 what is missing is the extension lookup, and the question "what type is
 this file" sits next to `stat`. This is a pure word in an otherwise
 effectful module — call that out in its doc rather than minting a

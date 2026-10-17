@@ -212,28 +212,6 @@ func TestNUR031TypeValueDeqKeyMatchesDeq(t *testing.T) {
 	}
 }
 
-// A compiled CLOSURE is the VM's spelling of a fn value, and it must
-// answer deq the way the interpreter's fn value does — by content. It
-// reaches the type-body arm rather than the fn arm (its payload is a
-// ClosurePayload, not a FnDefInfo), and the comparison lands on its
-// Render, which is the fn's canon: the same string fnStructurallyEqual
-// compares. Without this the two engines would disagree about `deq` on
-// the same function.
-func TestNUR031CompiledClosureDeqMatchesTheInterpreter(t *testing.T) {
-	a := NewValueRaw(TFunction, &ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
-	twin := NewValueRaw(TFunction, &ClosurePayload{Unit: 1, Render: "fn [[][Integer][1]]"})
-	other := NewValueRaw(TFunction, &ClosurePayload{Unit: 2, Render: "fn [[][Integer][2]]"})
-	if !DeepEqual(a, a) {
-		t.Fatal("a closure must be deq to itself")
-	}
-	if !DeepEqual(a, twin) {
-		t.Fatal("…and to a closure of the same function — content, like the interpreter")
-	}
-	if DeepEqual(a, other) {
-		t.Fatal("…but not to a closure of a different function")
-	}
-}
-
 // A function against a NON-function: the fn arms claim the pair as soon as
 // either side is one, so they must answer for the mixed case too rather
 // than falling through to an arm that reads a FnDefInfo as something else.

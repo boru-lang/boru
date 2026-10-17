@@ -497,17 +497,6 @@ func TestW9ShapedMethodApplyWindowRejects(t *testing.T) {
 	}
 }
 
-func TestW9TryRecordMethodApplyWordMismatch(t *testing.T) {
-	r := newTestRegistry(t)
-	r.Check.PendingMethodApply = &core.PendingMethodApply{Origin: core.NewCarrier(core.TAny), Word: "owner"}
-	if TryRecordMethodApply(r, "other", nil, nil, core.SrcPos{}) {
-		t.Error("a word mismatch must leave the pending for its owner")
-	}
-	if r.Check.PendingMethodApply == nil {
-		t.Error("the pending must survive a word mismatch")
-	}
-}
-
 func TestW9TryDynamicFnValueDispatchNonInertWindow(t *testing.T) {
 	r := newTestRegistry(t)
 	e := &core.Engine{Registry: r}
@@ -598,43 +587,6 @@ func TestToCarrierKeepsStepMarkers(t *testing.T) {
 		t.Errorf("sugar marker must survive the carrier strip, got %v", got)
 	} else if _, ok := core.AsSugar(got); !ok {
 		t.Errorf("sugar marker payload must survive the carrier strip")
-	}
-}
-
-// typedContainerCarrier (D2 Part A) threads a {:T} param's element type into
-// the body carrier. Its guard arms are exercised through the compile path by
-// the langspec census; the arms that ordinary dispatch cannot reach (a typed
-// pattern whose arg is not the matching container family — matchSignature
-// rejects that before genArgs) are pinned by direct call.
-func TestTypedContainerCarrier(t *testing.T) {
-	mapPat := core.NewTypedMap(core.NewTypeLiteral(core.TInteger))
-	listPat := core.NewCarrierTypedListValue(core.NewTypeLiteral(core.TInteger))
-
-	// Typed-map pattern + a conforming Map arg → a typed carrier.
-	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &mapPat}, core.NewCarrier(core.TMap)); !ok || !core.IsTypedMap(&v) {
-		t.Errorf("map pattern + Map arg: got (%v, %v), want a typed-map carrier", v.Parent(), ok)
-	}
-	// Typed-list pattern + a conforming List arg → a typed carrier.
-	if v, ok := typedContainerCarrier(core.FnParam{Pattern: &listPat}, core.NewCarrier(core.TList)); !ok || !core.IsTypedList(&v) {
-		t.Errorf("list pattern + List arg: got (%v, %v), want a typed-list carrier", v.Parent(), ok)
-	}
-	// Nil pattern → no carrier.
-	if _, ok := typedContainerCarrier(core.FnParam{}, core.NewCarrier(core.TMap)); ok {
-		t.Errorf("nil pattern should not produce a carrier")
-	}
-	// {:Any} pattern (child Any) → falls through, no tag.
-	anyPat := core.NewTypedMap(core.NewTypeLiteral(core.TAny))
-	if _, ok := typedContainerCarrier(core.FnParam{Pattern: &anyPat}, core.NewCarrier(core.TMap)); ok {
-		t.Errorf("{:Any} pattern should fall through")
-	}
-	// Typed-map pattern + a NON-container arg (Integer) → the final
-	// fallthrough: neither the map nor the list branch admits it.
-	if _, ok := typedContainerCarrier(core.FnParam{Pattern: &mapPat}, core.NewInteger(5)); ok {
-		t.Errorf("map pattern + Integer arg should fall through")
-	}
-	// Typed-list pattern + a Map arg (wrong family) → fallthrough too.
-	if _, ok := typedContainerCarrier(core.FnParam{Pattern: &listPat}, core.NewCarrier(core.TMap)); ok {
-		t.Errorf("list pattern + Map arg should fall through")
 	}
 }
 

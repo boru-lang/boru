@@ -24,57 +24,6 @@ func TestCurrentStackFiltersMarkers(t *testing.T) {
 	}
 }
 
-// TestRuntimeStampingLifecycle pins the detached-stamping arm/disarm
-// group plus CanHostVM and the nil-registry scope id.
-func TestRuntimeStampingLifecycle(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !r.CanHostVM() {
-		t.Fatal("an idle registry must host a fresh VM run")
-	}
-	if (*Registry)(nil).CanHostVM() {
-		t.Fatal("nil registry must not host a VM run")
-	}
-	if r.RuntimeStampingEnabled() {
-		t.Fatal("fresh registry must be unarmed")
-	}
-	// Inheriting from an unarmed parent is a no-op.
-	child, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	child.InheritRuntimeStamping(r)
-	if child.RuntimeStampingEnabled() {
-		t.Fatal("inheriting from an unarmed parent must stay unarmed")
-	}
-	(*Registry)(nil).EnableRuntimeStamping() // nil-receiver no-op
-	r.EnableRuntimeStamping()
-	if !r.RuntimeStampingEnabled() || r.stampLog == nil {
-		t.Fatal("EnableRuntimeStamping must arm and allocate the stamp log")
-	}
-	log := r.stampLog
-	r.EnableRuntimeStamping() // idempotent: keeps the existing log
-	if r.stampLog != log {
-		t.Fatal("re-arming must keep the existing stamp log")
-	}
-	child.InheritRuntimeStamping(r)
-	if !child.RuntimeStampingEnabled() || child.stampLog != log {
-		t.Fatal("inheriting must arm and SHARE the parent's stamp log")
-	}
-	r.DisableRuntimeStamping()
-	if r.RuntimeStampingEnabled() {
-		t.Fatal("DisableRuntimeStamping must disarm")
-	}
-	if r.stampLog != log {
-		t.Fatal("disarming must leave the stamp log intact")
-	}
-	if (*Registry)(nil).AnalysisScopeID() != 0 {
-		t.Fatal("nil registry scope id must be 0")
-	}
-}
-
 // TestRegisterErrorArms pins the registration error paths: a signature
 // over MaxArgs, a native with an invalid word name (both surfaced by
 // Err), the RegisterCoreDefault non-builtin guard, and the reserved-

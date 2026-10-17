@@ -46,11 +46,9 @@ graph against the tree with `make -C kg verify`.
 Module-specific deep guides — read the relevant one **before** changing
 that module:
 
-- Engine kernel (types, values, matching, parser): [eng/go/CLAUDE.md](eng/go/CLAUDE.md)
-- Interpreter core (the standalone module cut from eng; kernel conventions apply): [core/go/CLAUDE.md](core/go/CLAUDE.md)
+- Interpreter kernel (types, values, matching, the step loop; the kernel conventions): [core/go/CLAUDE.md](core/go/CLAUDE.md)
 - Parser (the standalone front end: source text → `[]core.Value`; a leaf over core, gated at 100%): [parser/go/CLAUDE.md](parser/go/CLAUDE.md)
 - Type checker (the check module: analysis pass, carriers, diagnostics; kernel conventions apply): [check/go/CLAUDE.md](check/go/CLAUDE.md)
-- Compiler (the compiler module: recorder, lowering, bytecode emitter; kernel conventions apply): [compiler/go/CLAUDE.md](compiler/go/CLAUDE.md)
 - Base language layer (fundamental words, predefined content types): [basic/go/CLAUDE.md](basic/go/CLAUDE.md)
 - Language layer (native words, modules, registry): [lang/go/CLAUDE.md](lang/go/CLAUDE.md)
 - Knowledge-graph pipeline (schema, ids, resolution, validation): [kg/README.md](kg/README.md)
@@ -66,7 +64,7 @@ It runs gofmt, vet and golangci-lint on the touched modules (in parallel),
 the no-copy ratchet on them (`make vet-copies`: every module's copies of a
 `core.Datum` — what a `core.Value` handle refers to — against
 `tools/vetcopies/ceilings.tsv`, zero everywhere and only going down; see
-`eng/go/CLAUDE.md` "Values are not copied"), the touched modules' unit
+`core/go/CLAUDE.md` "Values are not copied"), the touched modules' unit
 tests (the changed packages of `lang/go` and `cmd/go`), the langspec gates
 over a smoke corpus plus every spec file the change touched, and the
 knowledge graph when docs or tooling changed (`scripts/commit-gate.sh` is
@@ -75,11 +73,10 @@ runs (`scripts/ci-steps.sh` is the one definition both share); CI runs the
 same steps as parallel jobs, each under the same three-minute ceiling. Two
 switches make iteration fast: `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv`
 restricts every corpus walk in `test/go/langspec` to the named spec files
-(the ten gates over one family run in seconds; the per-file compile-failure
-ledger `test/go/langspec/compile_failures.tsv` still asserts on every
-selected file, so a compile regression in that family fails the filtered
-run), and `BORU_DIRECTION_GATES=1` arms the direction lane — the gates
-against their END STATE, red by design until full compilation is done
+(the gates over one family run in seconds; every per-row verdict still
+asserts, so a regression in that family fails the filtered run), and
+`BORU_DIRECTION_GATES=1` arms the direction lane — the gates against
+their END STATE, red by design until the design's end state is reached
 (`make test-direction`; the default lane asserts only the regression
 ceilings and is what blocks). `make gate-status` prints every gate's live
 value against both numbers; CI renders the same table into every run's
@@ -99,11 +96,9 @@ and rebuild the committed bundle with `make -C kg graph` (see
 [kg/README.md](kg/README.md)); `make -C kg check test` verifies the
 pipeline itself.
 
-> **The kg gate is ACTIVE again (2026-09-28).** It was off from
-> 2026-09-20 because `make -C kg graph` died compiled at `DISPATCH_GENERIC
-> at ev`. That failure and the two behind it (a tail-calling unit's spill
-> temps, a nested body's step budget) are fixed, and the compiled pipeline's
-> output is byte-identical to the interpreter's. A change to an input the
-> graph digests (go.work, a go.mod, the Go package list, the project file or
-> a document it cites) needs `make -C kg graph` and the rebuilt
-> `kg/out/graph.*` committed; `make -C kg verify` checks it.
+> **The kg gate is active.** A change to an input the graph digests
+> (go.work, a go.mod, the Go package list, the project file or a document
+> it cites) needs `make -C kg graph` and the rebuilt `kg/out/graph.*`
+> committed; `make -C kg verify` checks it. (It was off from 2026-09-20 to
+> 2026-09-28 while the then-compiled pipeline failed; the compiler lane has
+> since been removed and the pipeline runs on the interpreter.)

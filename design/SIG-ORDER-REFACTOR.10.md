@@ -72,9 +72,9 @@ for heterogeneous-type signatures:
 
 | Path | Source of truth | Convention |
 |------|-----------------|------------|
-| `matchSignature` (`eng/go/engine.go:2828`) | `Signature.Args` | **top-first**: sig[0] = stack top |
-| `execFnDefSigStackMatch` (`eng/go/engine.go:1676-1776`) | `FnSig.Params` | **bottom-first**: Params[0] = stack bottom |
-| `fnSigsToSignatures` (`eng/go/engine.go:1808-1836`) | bridge: FnSig → Signature | **copies verbatim** (no order flip) |
+| `matchSignature` (`core/go/engine.go:2828`) | `Signature.Args` | **top-first**: sig[0] = stack top |
+| `execFnDefSigStackMatch` (`core/go/engine.go:1676-1776`) | `FnSig.Params` | **bottom-first**: Params[0] = stack bottom |
+| `fnSigsToSignatures` (`core/go/engine.go:1808-1836`) | bridge: FnSig → Signature | **copies verbatim** (no order flip) |
 
 This was discovered while building `boru:rand`: the surface call
 `"abc" 10 rand.string` failed to dispatch unless the wrapper's
@@ -327,7 +327,7 @@ In `lang/go/CLAUDE.md`:
   stack.** Both convention sites are now identical post-refactor."
 - Remove any vestigial language suggesting wrappers use source order.
 
-In `eng/go/CLAUDE.md`:
+In `core/go/CLAUDE.md`:
 - Add a short "Signature ordering (CRITICAL)" section stating the
   one rule and pointing to `engine.go::matchSignature` as the
   single source of truth.

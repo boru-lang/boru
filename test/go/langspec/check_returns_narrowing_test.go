@@ -86,9 +86,8 @@ func TestReturnsAnnotationNarrowing(t *testing.T) {
 		{"test-prop-runs-narrows", `import "boru:test"  def p (Test.prop "nonneg" [r.int 0 100] [0 gte]) end p get "runs"`, false, false},
 		{"test-run-property-ok-narrows", `import "boru:test"  def p (Test.prop "nonneg" [r.int 0 100] [0 gte]) end (p Test.run-property) get "ok"`, false, false},
 
-		// ---- Vm.check / Vm.compile report shapes ----
+		// ---- Vm.check report shapes ----
 		{"vm-check-ok-narrows", `import "boru:vm" (Vm.check "1 add 2").ok`, false, false},
-		{"vm-compile-reason-narrows", `import "boru:vm" (Vm.compile "1 add (((").reason`, false, false},
 		{"vm-check-ok-into-add-flags", `import "boru:vm" (Vm.check "1 add 2").ok add 1`, true, false},
 
 		// ---- module descriptor reads ----

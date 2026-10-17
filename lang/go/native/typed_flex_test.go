@@ -381,37 +381,6 @@ func TestTypedFlexNodeRoundTrip(t *testing.T) {
 
 // --- Compile pass: a {:T} flex def declines (does not compile) ---
 
-func TestTypedFlexDefUncompilable(t *testing.T) {
-	// A {:T} constraint over a NON-concrete (flex) body validates + tags at
-	// runtime only → the compile pass marks the program uncompilable, so it
-	// does not compile (which enforces).
-	r, err := DefaultRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerIOWords(r)
-	if _, cerr := seam5CompileCheck(r, `def m:{:Integer} (flex {a:1}) m`); cerr != nil {
-		t.Fatalf("compile-check flex: %v", cerr)
-	}
-	if r.Check.Emit != nil && r.Check.Emit.Active() {
-		t.Errorf("a {:T} def over a flex body must mark the program uncompilable")
-	}
-
-	// A CONCRETE typed body is validated statically and stays compilable (the
-	// IsConcrete skip in markTypedContainerDefUncompilable).
-	r2, err := DefaultRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerIOWords(r2)
-	if _, cerr := seam5CompileCheck(r2, `def m:{:Integer} {a:1} m`); cerr != nil {
-		t.Fatalf("compile-check plain: %v", cerr)
-	}
-	if r2.Check.Emit == nil || !r2.Check.Emit.Active() {
-		t.Errorf("a plain concrete typed def should stay compilable")
-	}
-}
-
 // --- Check mode does not FALSE-REJECT a conforming typed flex (carrier path) ---
 
 func TestTypedFlexCheckGradual(t *testing.T) {

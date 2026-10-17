@@ -39,36 +39,6 @@ func TestEvalEngineError(t *testing.T) {
 	}
 }
 
-// CompileForce must run a compilable program through the VM and surface a
-// compile failure (not silently fall back) for one the emitter cannot lower.
-func TestEvalCompilesOrFails(t *testing.T) {
-	// A plain arithmetic program compiles and runs on the VM.
-	var buf bytes.Buffer
-	if err := EvalOptions(&buf, "1 add 2", OptionsFor("", 0, nil)); err != nil {
-		t.Fatalf("a compilable program: %v", err)
-	}
-	if !strings.Contains(buf.String(), "3") {
-		t.Errorf("expected '3', got %q", buf.String())
-	}
-
-	// One that does not compile (a loop result consumed by `size`) ABORTS,
-	// carrying the emitter's reason. There is no mode in which it does
-	// anything else.
-	buf.Reset()
-	err := EvalOptions(&buf, "(size (for 5 [i]))", OptionsFor("", 0, nil))
-	if err == nil {
-		t.Fatal("a program that does not compile: expected an error, got nil")
-	}
-	if !strings.Contains(err.Error(), "bytecode compilation FAILED") {
-		t.Errorf("expected the compile failure named, got %q", err.Error())
-	}
-
-	// Nothing is printed for a program that did not run.
-	if buf.Len() != 0 {
-		t.Errorf("a program that does not compile wrote %q", buf.String())
-	}
-}
-
 func TestCheckByDefault(t *testing.T) {
 	run := func(args ...string) (int, string, string) {
 		var out, errB bytes.Buffer

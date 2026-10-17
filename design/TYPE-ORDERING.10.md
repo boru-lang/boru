@@ -333,7 +333,7 @@ NaN a defined slot: it sorts **after every non-NaN value**
 
 This is deliberately **separate** from the relational words `lt` / `lte`
 / `gt` / `gte`, which keep the IEEE *unordered* semantics (false whenever
-a NaN is involved) via `numericUnordered` in `eng/go/compare.go` — they
+a NaN is involved) via `numericUnordered` in `core/go/compare.go` — they
 do **not** read the total-order slot. `eq` stays false for NaN (so `neq`
 is true). See `design/IEEE-754-COMPLIANCE.8.md` Tier 0.
 
@@ -359,7 +359,7 @@ big-rat path and the `0` / `0d0` / `-0.0` triangle stays transitive
 (`0 tcmp -0.0 → 1`, `0d0 tcmp -0.0 → 1`, `0 tcmp 0d0 → 0`).
 
 The relational words are carved out via `signedZeroPair` (beside
-`numericUnordered` in `eng/go/compare.go`): `lt` / `lte` / `gt` /
+`numericUnordered` in `core/go/compare.go`): `lt` / `lte` / `gt` /
 `gte` treat every ±0 pair as EQUAL per IEEE §5.11 (`-0.0 lt 0.0 →
 false`, `-0.0 lte 0.0 → true`), and `eq` / `deq` stay true (Go float
 `==`). So the total order distinguishes a pair `eq` equates — the
@@ -398,12 +398,12 @@ other value compare strictly by Rank, so a cross-type pair needs
 
 | Concern | File | Key symbol |
 |---|---|---|
-| Lattice declaration | `eng/go/typetable.go` | `builtinDecls`, `Rank` |
-| External/user Rank band | `eng/go/typetable.go` | `externalBandFor` |
-| Total-order tiebreak | `eng/go/compare_types.go` | `compareTypes`, `rankOf` |
-| LCA + Comparer walk | `eng/go/compare.go` | `CompareValues`, `lowestCommonAncestor` |
-| Per-family Comparers | `eng/go/compare_scalar_behaviors.go` | `numberCompareBehavior`, `stringCompareBehavior`, … |
-| Structural compare | `eng/go/compare_types.go` | `compareStructural`, `compareListElems`, `compareMapEntries` |
+| Lattice declaration | `core/go/typetable.go` | `builtinDecls`, `Rank` |
+| External/user Rank band | `core/go/typetable.go` | `externalBandFor` |
+| Total-order tiebreak | `core/go/compare_types.go` | `compareTypes`, `rankOf` |
+| LCA + Comparer walk | `core/go/compare.go` | `CompareValues`, `lowestCommonAncestor` |
+| Per-family Comparers | `core/go/compare_scalar_behaviors.go` | `numberCompareBehavior`, `stringCompareBehavior`, … |
+| Structural compare | `core/go/compare_types.go` | `compareStructural`, `compareListElems`, `compareMapEntries` |
 | Spec coverage | `lang/spec/compare.tsv` | tests for every cell above |
 
 ## Verification

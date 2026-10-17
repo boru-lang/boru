@@ -98,7 +98,7 @@ slice copy.
 
 The classification predicates are **total** (empty → false, any content
 classified rune-by-rune), so they raise no errors. `title` is total.
-Guard inputs with `AsConcreteString`; never panic (`eng/go/CLAUDE.md`
+Guard inputs with `AsConcreteString`; never panic (`core/go/CLAUDE.md`
 "Panic Prevention").
 
 ## 8. Overlap

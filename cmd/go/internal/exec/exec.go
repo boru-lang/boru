@@ -178,15 +178,10 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	var outBuf strings.Builder
 	a.SetOutput(&outBuf)
 
-	// One outcome: the posted expression compiles and runs, or the response
-	// carries the compile failure. This used to re-run a failed compile on
-	// the interpreter, and the argument for it — that a policy-gated
-	// registry always declined, so a policy-bound server needed the
-	// interpreter because that was where the word gate lived — stopped being
-	// true when policy-gated registries started compiling (2026-07-15: every
-	// named VM dispatch consults the same WordChecker the interpreter's
-	// policyGateWord runs).
-	stack, _, _, runErr := a.RunCompiledReason(req.Code)
+	// The posted expression runs on the policy-gated registry: every named
+	// dispatch consults the WordChecker the interpreter's policyGateWord
+	// runs, so the response carries the program's own result or error.
+	stack, runErr := a.Run(req.Code)
 	resp := execResponse{Output: outBuf.String()}
 	if runErr != nil {
 		// An `IO.exit` in a SERVED request is reported, never honoured:

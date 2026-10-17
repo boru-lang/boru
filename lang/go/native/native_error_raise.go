@@ -184,15 +184,10 @@ func raiseSpecHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 // well-known keys: `code`→Atom∪None (none when the error carries no stable
 // code) and `message`→String. A payload key (an arbitrary raise-spec entry)
 // or a computed/absent key stays dynamic(Any). Gradual (a caught Error may
-// lack the key), discharged by the runtime read; plain-check-gated so the
-// compile pass keeps the prior strict-Any return byte-identical.
+// lack the key), discharged by the runtime read.
 func errorFieldReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
-	if r == nil || r.Check.Compiling {
-		// Compile pass: reproduce the prior Returns:[TAny] EXACTLY — a declared
-		// Any return is a DYNAMIC Any carrier (declaredReturnCarriers marks it so),
-		// not a strict one; a strict Any would fail the downstream error dispatch
-		// and decline native compilation (compiled-coverage compile failure gate).
+	if r == nil {
 		return dyn
 	}
 	if len(args) < 1 || !IsConcrete(&args[0]) {

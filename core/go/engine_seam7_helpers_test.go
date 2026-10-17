@@ -255,10 +255,6 @@ func TestS7SingleOverloadRecoverableDispatchSemantics(t *testing.T) {
 	if SingleOverloadRecoverable(&noEval.Signatures[1], noEval) {
 		t.Error("a code-body param is not recoverable")
 	}
-	callable := mk(func(s *Signature) { s.Callable = &CallableSpec{BodyPos: 0} })
-	if SingleOverloadRecoverable(&callable.Signatures[1], callable) {
-		t.Error("a body-executing sig is not recoverable")
-	}
 }
 
 // TestS7TryRecordRecoveredUserFnUnderArity — an under-arity call (`al ds`

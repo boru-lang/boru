@@ -45,8 +45,7 @@ without a test failing: the six spellings each computing `42` are spec
 rows in [`lang/spec/fn-triple.tsv`](lang/spec/fn-triple.tsv) §2b, and
 the five `canon` equalities against the target form are
 `TestFnSignatureSpellingsAreOneValue` in
-`lang/go/test/fn_triple_compiled_test.go` (a `canon` of a function value
-does not compile, and the spec corpus admits no compile failures).
+`lang/go/test/fn_triple_compiled_test.go`.
 
 ### The one spelling that is not valid
 
@@ -356,7 +355,7 @@ literal name.
 ## S6 — Ending a statement: prefer `;` over `end`
 
 `;` and `end` are the same token — the parser aliases `;` to `end`
-(`eng/go/parser/grammar.go`'s `setupValRule`). Both spellings terminate a
+(`parser/go/grammar.go`'s `setupValRule`). Both spellings terminate a
 statement, and neither is deprecated. Prefer `;`:
 
 ```boru

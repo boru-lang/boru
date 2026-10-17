@@ -22,7 +22,7 @@ Two words, in a deliberate hierarchy:
 
 > **"Behaviour" is deliberately avoided.** In boru a `Behavior` is already a
 > core type-system concept — the per-type operation dispatch (Match/Format/
-> Equal/Compare) in `eng/go/compare_scalar_behaviors.go` and
+> Equal/Compare) in `core/go/compare_scalar_behaviors.go` and
 > `lang/spec/user-types.tsv`. Reusing the word for services would collide.
 
 ### Finding the middle ground (the naming journey)
@@ -496,7 +496,7 @@ the actor model**: it exists because each BEAM process has its **own heap and ow
 GC**, so a message must be copied to live in the receiver's heap (the same
 per-process-heap design that gives BEAM its low pause times). boru has no
 per-process heaps — services and processes are **goroutines on one Go heap with
-one GC** — and boru values are **immutability-first** (`eng/go/clone.go`: scalars,
+one GC** — and boru values are **immutability-first** (`core/go/clone.go`: scalars,
 plain `List`, plain `Map`, type/function values are never mutated in place).
 
 **So, inside a server, an immutable message is passed by reference — zero copy,

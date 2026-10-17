@@ -21,7 +21,7 @@ Go's `fmt.Sprintf(format string, a ...any) string` is variadic over the
 empty interface. The raw `go:` bridge would expose that as an
 `Any`-typed varargs blur. The curated surface fixes the shape: a format
 String plus a **List** of boru values, with values crossing the boundary
-via `eng.ToNative` so `%v`/`%d`/`%s`/… see real Go scalars. printf-style
+via `core.ToNative` so `%v`/`%d`/`%s`/… see real Go scalars. printf-style
 formatting is the power-user complement to boru's idiomatic template
 strings (see Overlap).
 
@@ -44,7 +44,7 @@ variadic `...any` becomes a single **List** argument.
 
 | Go symbol | boru word | signature (top-first) | one-line doc | boru-ish refinement |
 |---|---|---|---|---|
-| `Sprintf(format,a...) string` | `format` | `[List args, String format] -> String` | Format args against a printf format string. | Variadic `...any` → a `List`; each element bridged via `eng.ToNative`. format is the top arg so infix reads `format Fmt.format args`. |
+| `Sprintf(format,a...) string` | `format` | `[List args, String format] -> String` | Format args against a printf format string. | Variadic `...any` → a `List`; each element bridged via `core.ToNative`. format is the top arg so infix reads `format Fmt.format args`. |
 | `Sprint(a...) string` | `sprint` | `[List] -> String` | Concatenate args, spaces only between non-string operands. | Variadic → `List`; no format string. |
 | `Sprintln(a...) string` | `sprintln` | `[List] -> String` | Concatenate args with spaces, append a newline. | Variadic → `List`; always spaces between operands, trailing `\n`. |
 | `Errorf(format,a...) error` | (folded) | — | — | Not a separate word: an `error` value has no boru counterpart. Use `Fmt.format` to build the message, then raise it via the engine's normal error path (`r.BoruError`) at the call site. |
@@ -63,7 +63,7 @@ have a reference without leaving boru):
 | `%t` | boolean |
 | `%x` | hex (lowercase) |
 
-boru values map to their Go counterparts through `eng.ToNative` before
+boru values map to their Go counterparts through `core.ToNative` before
 formatting: String→`string`, Integer→`int64`, Float→`float64`,
 Boolean→`bool`, List→`[]any`, Map→`map[string]any`, None→`nil`. A Map
 formats under `%v`/`%+v` like a Go map.
@@ -72,7 +72,7 @@ formats under `%v`/`%+v` like a Go map.
 
 Scalars + List + Map only. No opaque handle type, no
 `RegisterExternalBuiltin` / FixedID. The whole boundary is
-`eng.FromNative` / `eng.ToNative` (`eng/go/gobridge.go`).
+`core.FromNative` / `core.ToNative` (`core/go/gobridge.go`).
 
 ## 6. Errors
 
@@ -85,7 +85,7 @@ failing. The module therefore:
 - guards its own argument types up front: a non-String format or a
   non-List args raises `format` (via `r.BoruError`). Guard with
   `AsConcreteString` and `RequireConcreteList` before use; never panic
-  (`eng/go/CLAUDE.md` "Panic Prevention").
+  (`core/go/CLAUDE.md` "Panic Prevention").
 
 | code | raised when |
 |---|---|

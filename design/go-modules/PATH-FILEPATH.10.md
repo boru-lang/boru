@@ -153,5 +153,5 @@ gated word) mirrors the capability-backed pattern in `io.go`:
   `ERROR:<substring>` negative sibling (`match` malformed →
   `ERROR:bad-pattern`, `rel` non-relative → `ERROR:rel`, plus a denied-
   policy row for `abs`).
-- Boundary conversion via `eng.FromNative` / `eng.ToNative`.
+- Boundary conversion via `core.FromNative` / `core.ToNative`.
 - No FixedID / external-type entry.

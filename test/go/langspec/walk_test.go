@@ -78,33 +78,6 @@ func specWalkFiles(t testing.TB, body func(t testing.TB, file string, rows []spe
 	})
 }
 
-// specWalkFilesErr is specWalkFiles for a walk that has no test to report
-// to — the compiled census, computed once under a sync.Once and handed to
-// four tests (compiled_census_test.go). It returns what that walk would
-// have failed a test with: the corpus read error, or the first panic in a
-// body, named by its file.
-func specWalkFilesErr(body func(file string, rows []specRow)) error {
-	files, err := readSpecCorpusErr()
-	if err != nil {
-		return err
-	}
-	var mu sync.Mutex
-	var first error
-	walkSpecFiles(files, func(f specFile) {
-		defer func() {
-			if r := recover(); r != nil {
-				mu.Lock()
-				if first == nil {
-					first = fmt.Errorf("%s: panic in the walk body: %v\n%s", f.name, r, debug.Stack())
-				}
-				mu.Unlock()
-			}
-		}()
-		body(f.name, f.rows)
-	})
-	return first
-}
-
 // walkSpecFiles is the scheduler under both file walks: one worker per CPU,
 // largest file first, or directory order under BORU_SPEC_WORKERS=1.
 func walkSpecFiles(files []specFile, run func(f specFile)) {

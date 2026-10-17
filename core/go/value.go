@@ -394,26 +394,6 @@ type FnSig struct {
 	// The zero value is CompileDefault (an ordinary word). Set on the Signature
 	// at registration; copied here by RegisterNativeFunc.
 	CompileEffect CompileEffect
-	// Callable, when non-nil, declares this word as a code-body higher-order
-	// word whose body compiles to a closure unit (each / fold / do / a test
-	// case body, …). The bytecode recorder reads the closure shape from here —
-	// the body operand's position, its per-invocation output count, and the
-	// input carriers it consumes — instead of a name-keyed eng table, so eng
-	// names no specific (often module) word. Copied from NativeFunc.Callable
-	// onto every signature at registration. nil = not closure-eligible.
-	Callable *CallableSpec
-	// StoredBodies declares the word's PARAM-CARRYING stored code-body
-	// positions (Test.check-prop's gen/property): NoEvalArgs lists the
-	// handler stores and later invokes per call with the declared params
-	// bound (its own CallBoru frames). The recorder compiles each declared
-	// position to a closure unit with those params and replaces the operand
-	// with a synthetic fn-value carrier whose single sig mirrors the
-	// handler's CallBoru sig — same Params, same raw Body — plus the
-	// CompiledFnRef, so the handler upgrades to InvokeCallback and the VM
-	// hosts the unit nested (same-program ref); every decline leaves the
-	// raw list and the handler's interpreter path unchanged. Copied from
-	// NativeFunc.StoredBodies onto every signature at registration.
-	StoredBodies []StoredBodySpec
 
 	// Locked marks a signature registered through the Go registration
 	// layer (Registry.Register — every native / kernel word plus host
@@ -571,8 +551,7 @@ const (
 	// even when the body is a DYNAMIC value (a map get, `p get "gen"`) whose tokens
 	// are not statically inert -- the VM evaluates the operand to the same List value
 	// and hands it to the same handler. The flag exempts ONLY the inert-scoped
-	// disjunct of the code-body compile failure; a word that declares a body-executing
-	// CallableSpec still declines.
+	// disjunct of the code-body compile failure.
 	CompileRunsBodyIsolated
 	// CompileRunsBodyOnRegistry marks a word whose NoEvalArgs body the handler
 	// TREE-WALKS in a sub-engine over the ENCLOSING registry (`native.New(r)
@@ -750,7 +729,7 @@ const (
 	// check's BodyRefsFnLocalFns, the RunInCheckMode screen) written down on
 	// the signature. It is NOT an admission: a word that re-runs its body at
 	// run time (receive's clause body on a sub-engine, `do`'s InvokeBody)
-	// owes CompileDynBody / CompileRunsBody* / a CallableSpec, never this,
+	// owes CompileDynBody / CompileRunsBody*, never this,
 	// and a word whose result the tape re-steps owes CompileResteps.
 	CompileOwnLowering
 	// CompileSideEffect marks a word whose handler has an effect the program
@@ -780,144 +759,6 @@ const CompileDefault CompileEffect = 0
 
 // Has reports whether the effect set includes flag f.
 func (e CompileEffect) Has(f CompileEffect) bool { return e&f != 0 }
-
-// CallableSpec declares a code-body higher-order word's closure-compilation
-// shape, so the bytecode recorder reads it from the resolved Signature
-// (sig.Callable) rather than a name-keyed eng table — decoupling eng from the
-// (often module) word names that own these words. A word declares one on its
-// NativeFunc; RegisterNativeFunc copies the pointer onto every signature. nil
-// on a Signature means the word is not closure-eligible.
-// BodyOutResidual is CallableSpec.BodyOut's whole-residual sentinel: the
-// driving handler returns the body's entire residual stack (do), so the
-// body nets an arbitrary, per-body-exact count rather than a declared 0/1.
-// Out-of-domain per the no-zero-value-overload rule — 0 remains the valid
-// explicit "side-effect body" count.
-const BodyOutResidual = -1
-
-// StoredBodySpec is one Signature.StoredBodies entry: the sig position of a
-// NoEvalArgs code-body list the word's handler stores and invokes per call,
-// and the params the handler's own CallBoru frame binds for it (a named param
-// binds the body's reads of that name; an unnamed param rides the stack).
-type StoredBodySpec struct {
-	Pos    int
-	Params []FnParam
-}
-
-type CallableSpec struct {
-	// BodyPos is the body operand's sig position (the code list / lambda).
-	BodyPos int
-	// BodyOut is how many values the body nets per invocation: 1 for a
-	// map/transform body (each / fold), 0 for a SIDE-EFFECT body (a test
-	// case whose assertions raise on failure and otherwise leave nothing). It
-	// sets the compiled unit's declared return count. BodyOutResidual (the
-	// out-of-domain sentinel; 0 stays the valid explicit side-effect count)
-	// marks a whole-residual word (`do`): the driving handler returns the
-	// body's ENTIRE residual, so the closure compiles count-AGNOSTIC and the
-	// dispatch seats however many results the check run reported — the VM's
-	// frameless RET already returns the full residual stack.
-	BodyOut int
-	// EmptyBodyErrors marks a word whose driving HANDLER itself raises a
-	// runtime error when an invocation's body nets 0 values — each / fold /
-	// scan raise `<word>_error "body produced no result"` from their InvokeBody
-	// loop (invokeBodyTop / the list eachHandler return the empty residual and
-	// the handler raises). For such a word a 0-net body is NOT a compile
-	// compile failure: the body compiles as a count-AGNOSTIC closure (declared nil
-	// returns, like a side-effect body) so the handler raises the byte-identical
-	// error at run time, instead of declining the closure and islanding to let
-	// the interpreter raise. The handler arbitrates the residual uniformly —
-	// it takes the LAST value and errors on none — so a 1- or N-value body is
-	// handled identically to before; only the unenforced count differs.
-	EmptyBodyErrors bool
-	// Inputs returns the per-invocation input carriers the body consumes, in the
-	// order the driving handler supplies them via InvokeBody. The carriers are
-	// GENERALISED types (not one call's concrete values) so the body compiles
-	// once for every invocation. args is the call's full operand list, so a word
-	// can derive the input type from its data operand (e.g. each's element type)
-	// or its seed (fold's accumulator). Returns an empty slice for a 0-input body
-	// (do / a test case). nil declines the compile (an unexpected operand shape).
-	Inputs func(args []Value) []Value
-	// BodyOnceKeepsDefs marks a word whose driving handler runs the body
-	// EXACTLY ONCE per dispatch and KEEPS the bindings that run installs —
-	// `do`, whose runtime defs leak to the enclosing scope and whose
-	// check-mode body run is RunCarrierBodyKeepDefs (the keep=true
-	// NestedBodyDepth class the bind ledger records). The twin regime's
-	// compiler reads it as a replay license (AdoptBodyTwins): a bind twin
-	// noted during this word's suspended body run may be placed as a twin
-	// op after the dispatch's call event, because the one check-time run
-	// IS the one runtime transition and the captured entry replays it
-	// verbatim. Never set it on a multi-run body word (each/fold/scan):
-	// the runtime re-runs such a body per element while the ledger noted
-	// ONE generalized transition with carrier-valued captures — a single
-	// replay would be wrong in count and in value, so their twins must
-	// stay unplaced (declining the regime program) until they are
-	// arm-resident. Verified against the handler: DoListHandler drives
-	// InvokeBody once and returns the whole residual.
-	BodyOnceKeepsDefs bool
-	// BodyMultiRunKeepsDefs marks a word whose driving handler runs the
-	// body ONCE PER ELEMENT and keeps each run's installs — `each`, whose
-	// runtime leaks one install per element per body def site, stacked in
-	// element order with the per-element runtime value (measured:
-	// `[10 20] each [var [[r] def x r x]]` leaves x = [20, 10] top-down;
-	// the parity oracle's declined rows pin the full population). The twin
-	// regime's compiler reads it as the ARM-RESIDENCY license: a bind
-	// twin noted during this word's suspended body analysis may be
-	// satisfied by a resident install op INSIDE the compiled
-	// per-invocation unit — executing per element with the runtime value,
-	// which the check pass's one generalized carrier-valued capture
-	// cannot replay. Mutually exclusive with BodyOnceKeepsDefs (a body
-	// runs once or per element, never both); never set it on a word
-	// whose handler tears its body installs down. Verified against the
-	// handler: eachHandler's loop runs the body per element on the shared
-	// registry with no def cleanup — on the tape (loop.go) interpreted, and
-	// through InvokeBody under the VM.
-	BodyMultiRunKeepsDefs bool
-	// BodyResultTop marks a driving handler that reads only the TOP of each
-	// invocation's body residual (`res[len(res)-1]`) — each / fold / scan / filter.
-	// The body may then leave UNCONSUMED values below that top (notably the
-	// per-invocation INPUT a body that ignores its element leaves on the stack,
-	// `each [add 1 0]` → `[input, 3]`), and the compiler may safely DROP them at
-	// the RET: the handler never reads below the top. A handler that reads the
-	// WHOLE residual (`do`, returning every value) leaves this false, so its
-	// closure keeps the strict in-order reconciliation. Verified against the
-	// handlers (native_array.go each/fold/scan, native/filter.go) — each takes
-	// res[len(res)-1].
-	BodyResultTop bool
-	// CrossCollectionTokenShape marks a word whose TOKEN-quotation body is
-	// SHAPE-GENERIC across the word's List-vs-Map overloads: both present the
-	// closure the bare element/value (ClosureInValue), never a KeyVal. So a
-	// gradual-Any (Dynamic) collection — statically ambiguous between the List and
-	// Map overload — can still compile: the recorder commits the first reachable
-	// (List) overload and lowers the token body to ONE closure, and the committed
-	// handler is RUNTIME-ROBUST (it delegates to the sibling collection's iteration
-	// when the value's concrete type is the other one), so the SAME closure drives
-	// either shape == the interpreter, which dispatches the overload by the runtime
-	// type. Without this flag a gradual collection declines (the ambiguous-overload
-	// MarkUncompilable below). Set ONLY on words whose every List/Map token overload
-	// is ClosureInValue AND whose handlers cross-delegate (each/fold/scan). A LAMBDA
-	// body never reaches this — it matches only the single TFunction overload, so
-	// the ≥2-reachable ambiguity gate never fires for it.
-	CrossCollectionTokenShape bool
-	// StripsUnconsumedInput marks a word whose driving handler STRIPS its
-	// pushed per-invocation input from the residual BOTTOM when the body
-	// leaves it unconsumed — `error [handler]`: the caught Error is pushed
-	// so the handler can bind it, and a handler that ignores it nets
-	// [error, result]; the handler's identity probe strips the bottom so
-	// the branch leaves exactly the result. The closure path then admits
-	// two body shapes (both netting ONE runtime value): a 1-value residual,
-	// and a 2-value residual whose bottom IS the input (param local 0).
-	// The closure compiles count-agnostic (declared nil) and
-	// stripResidualShapeOK screens everything else back to the compile failure.
-	StripsUnconsumedInput bool
-	// LambdaSharesTokenShape marks a word that presents a LAMBDA callback the
-	// SAME per-invocation inputs as a token-quotation body — Inputs(args) is the
-	// single callback convention (walk's `{key value path parent depth}` payload
-	// map, handed to a quotation on the stack and to a lambda as its one named
-	// param). The recorder then compiles a lambda body against Inputs(args)
-	// directly (ClosureInValue), instead of consulting the per-word
-	// lambdaCallbackInputs table whose shapes (pair maps, KeyVals) only fit the
-	// words that present DIFFERENT views to lambdas vs quotations.
-	LambdaSharesTokenShape bool
-}
 
 // FnDefInfo holds the function specification for a def-defined function.
 // Name is the function's registered name (set by InstallDef). Registry is the
@@ -1894,13 +1735,6 @@ type ForwardInfo struct {
 	// plan had no speculative word at all.
 	Speculative   bool
 	SpeculativeAt int
-	// WordLed records that the plan committed the DEFERRED word-led window
-	// (PlanMatch's bestDeferred): the first forward token was a Word and the
-	// chosen signature captures no name at its first slot. The interpreter's
-	// planner evaluates a paren in such a window before it commits and prunes
-	// to a narrower window when the value misses its slot, which the compile
-	// pass cannot see; its arrival asks (noteWordLedArrival, NUR241).
-	WordLed bool
 }
 
 // Value is the single node type of the boru kernel: it is at once a
@@ -3210,9 +3044,6 @@ func NewParenExpr(items []Value) Value {
 // receiverless reach); segments are the .key / !.key steps; eval marks it
 // evaluate-by-default. See design/REACH.10.md.
 func NewReach(info ReachInfo) Value {
-	if info.unit == nil {
-		info.unit = &lensUnit{} // one shared cache per constructed lens
-	}
 	return NewValueRaw(TReach, info)
 }
 
@@ -4691,22 +4522,6 @@ func kernelFormatDefault(v Value) string {
 	case isFnDefValue(v):
 		fd, _ := FnDefOf(v.Data())
 		return formatFnDefAs(fd, FnNameOf(&v))
-	case isClosureValue(v):
-		// A compiled closure renders as its source fn's interpreter
-		// rendering (CompiledFn.Render via OpPushClosure) — byte-identical
-		// to the interpreter's fn value in interpolation holes and print
-		// output — under the name a binding gave this holder, when one did
-		// (the compiled runtime describes the unit; CompiledRuntime).
-		cl, _ := v.Data().(*ClosurePayload)
-		if name := HolderFnName(&v); name != "" {
-			if r, ok := compiledRuntime.ClosureRender(cl, name); ok {
-				return r
-			}
-		}
-		if cl.Render != "" {
-			return cl.Render
-		}
-		return fmt.Sprintf("%v(%v)", v.Parent(), v.Data())
 	// TMap rendering moved to mapFormatBehavior in
 	// coretype_list_map_behaviors.go (Step 10). The top-of-function
 	// Behavior dispatch routes Map values (and TMap-rooted subtypes
@@ -4720,12 +4535,6 @@ func kernelFormatDefault(v Value) string {
 // lambda value, Parent TFunction).
 func isFnDefValue(v Value) bool {
 	_, ok := v.Data().(*FnDefInfo)
-	return ok
-}
-
-// isClosureValue reports whether v carries a compiled closure's payload.
-func isClosureValue(v Value) bool {
-	_, ok := v.Data().(*ClosurePayload)
 	return ok
 }
 

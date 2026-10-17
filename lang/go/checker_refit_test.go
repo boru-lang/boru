@@ -19,68 +19,6 @@ func findDiag(diags []CheckDiagnostic, code string) (CheckDiagnostic, bool) {
 	return CheckDiagnostic{}, false
 }
 
-func TestCompileCompileFailureSkipsRuntimeMirrors(t *testing.T) {
-	// A guaranteed-runtime-error MIRROR (exact model — the program
-	// compiles and raises identically) must not flip the row to a "check
-	// diagnostics" compile failure; a MODEL-UNDERMINING error (undefined word —
-	// dispatch didn't resolve) must.
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, reason, res, cerr := a.CompileCheck("20 div 0")
-	if cerr != nil {
-		t.Fatalf("CompileCheck(div 0): %v", cerr)
-	}
-	if reason == "check diagnostics" {
-		t.Fatalf("mirror diagnostic wrongly tripped the compile failure (reason %q)", reason)
-	}
-	d, ok := findDiag(res.Diagnostics, "arith_error")
-	if !ok || !d.RuntimeMirror || d.Severity != SeverityError {
-		t.Fatalf("compile pass must still SURFACE the mirror (error severity, RuntimeMirror): %+v", res.Diagnostics)
-	}
-
-	b, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, reason, _, cerr = b.CompileCheck("totally-undefined-zz")
-	if cerr != nil {
-		t.Fatalf("CompileCheck(undefined): %v", cerr)
-	}
-	if reason != "check diagnostics" {
-		t.Fatalf("model-undermining error must keep declining, got reason %q", reason)
-	}
-}
-
-func TestCompileAndCheckDiagnosticsAgree(t *testing.T) {
-	// The compile pass and the plain check pass must report the SAME
-	// mirror finding for the same source — the divergence the old
-	// !Compiling gating introduced is retired.
-	src := `{a:1} dotr missing`
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	plain, err := a.Check(src)
-	if err != nil {
-		t.Fatalf("Check: %v", err)
-	}
-	b, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, compiled, cerr := b.CompileCheck(src)
-	if cerr != nil {
-		t.Fatalf("CompileCheck: %v", cerr)
-	}
-	pd, pok := findDiag(plain.Diagnostics, "not_found")
-	cd, cok := findDiag(compiled.Diagnostics, "not_found")
-	if !pok || !cok || pd.Detail != cd.Detail {
-		t.Fatalf("check/compile mirror disagreement: plain=%+v compile=%+v", plain.Diagnostics, compiled.Diagnostics)
-	}
-}
-
 func TestCaughtRegionReattribution(t *testing.T) {
 	// Every would-be-error finding inside a `do [...]` body — where the
 	// runtime TRAPS the error — is downgraded to info with

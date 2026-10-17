@@ -4,22 +4,6 @@ import "testing"
 
 // --- inactiveEmit: the no-op recorder -----------------------------------
 
-// TestRecorderAccessorFallback covers CheckState.Recorder()'s inactive
-// fallback: a nil CheckState and a CheckState with no installed Emit both
-// return the shared no-op recorder.
-func TestRecorderAccessorFallback(t *testing.T) {
-	var c *CheckState
-	if c.Recorder() != TheInactiveEmit {
-		t.Fatal("nil CheckState should yield the inactive recorder")
-	}
-	c2 := &CheckState{}
-	if c2.Recorder() != TheInactiveEmit {
-		t.Fatal("empty CheckState should yield the inactive recorder")
-	}
-}
-
-// --- direct-call helpers -------------------------------------------------
-
 func fnVal(sigs ...Signature) Value {
 	return withID(Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Signatures: sigs}}}, GenerateID(IDPrefixForType(TFunction)))
 }
@@ -239,22 +223,6 @@ func TestTypeBodyConstOKElements(t *testing.T) {
 
 // --- Finalize residual arms ---------------------------------------------
 
-// TestInactiveConstructorSlots pins the compiler-less fallbacks behind
-// the pass-arming constructor slots: both hand out the inactive no-op
-// recorder. The live slots are compiler-installed at init; the fallback
-// bodies are the post-cut core-only configuration.
-func TestInactiveConstructorSlots(t *testing.T) {
-	if inactiveEmitStateHook() != TheInactiveEmit {
-		t.Fatal("inactiveEmitStateHook must hand out the inactive recorder")
-	}
-	if inactiveIsolatedEmitHook(TheInactiveEmit) != TheInactiveEmit {
-		t.Fatal("inactiveIsolatedEmitHook must hand out the inactive recorder")
-	}
-}
-
-// TestIsInertReachForeignPayload: a value typed Reach whose payload is not a
-// ReachInfo (AsReach errors) declines the standalone lens test exactly as
-// the member test does — the const table never pools a malformed reach.
 func TestIsInertReachForeignPayload(t *testing.T) {
 	if isInertReach(Value{d: &Datum{Parent: TReach, Data: IntPayload{N: 1}}}) {
 		t.Fatal("a non-reach payload should decline")

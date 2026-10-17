@@ -61,7 +61,6 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 	if id := r.Check.SpecUndefCarriers[name]; id != "" && IDOf(&v) == id {
 		return true
 	}
-	noteRebind(r, name)
 	c := NewCarrier(v.Parent())
 	if IsTypeLiteral(&v) {
 		c = ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)

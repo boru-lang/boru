@@ -23,7 +23,7 @@ override pair, and an orthogonal quoting axis. A rule that cannot
 express `apply` is a rule that will keep generating NUR records.
 
 The canonical, code-adjacent statements of the mechanism remain
-`eng/go/CLAUDE.md` §"Signature Ordering" and `lang/go/CLAUDE.md`
+`core/go/CLAUDE.md` §"Signature Ordering" and `lang/go/CLAUDE.md`
 §"Argument Ordering"; this note does not replace them. It supplies what
 an ADR needs and they do not: the **categories**, the **rationale**, and
 the **rule for choosing**.
@@ -50,7 +50,7 @@ position of the `|` marker in the signature. It defines a single split:
 **The sentinel is resolved at REGISTRATION, before any consumer reads
 it** — `-1` becomes `TotalArgs()`, so every downstream read of
 `BarrierPos` sees an explicit value. That is what keeps the "no
-zero-value overload" rule (`eng/go/CLAUDE.md`) intact: `0`
+zero-value overload" rule (`core/go/CLAUDE.md`) intact: `0`
 unambiguously means stack-only, because "unspecified" was spelled `-1`
 and is already gone by the time anything matches against it.
 
@@ -383,9 +383,9 @@ init-time-panic justification weight.
   it. Note that `core/go/match.go` does **not** hold the split rule
   despite its name: it holds the pattern checks (`patternsOk`,
   `forwardPatternRejects`, `OpenUnifyMap`). `lang/go/CLAUDE.md` still
-  cites the pre-four-piece-split location `eng/go/match.go`, which no
+  cites the pre-four-piece-split location `core/go/match.go`, which no
   longer exists; that citation wants the same correction.
-- `eng/go/CLAUDE.md` §"Signature Ordering" — the top-first convention,
+- `core/go/CLAUDE.md` §"Signature Ordering" — the top-first convention,
   stated normatively.
 - `lang/go/CLAUDE.md` §"Argument Ordering" — the call-form worked
   examples and the `/s` `/f` levers.

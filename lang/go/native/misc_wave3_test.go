@@ -98,19 +98,6 @@ func TestW3CaseCheckMode(t *testing.T) {
 	}
 }
 
-func TestW3CaseMatchHandlerDirect(t *testing.T) {
-	// __casematch is the compiled desugar's guard: UnifyR(match, value).
-	r := w3TypeReg()
-	out, err := caseMatchHandler([]Value{NewInteger(2), NewInteger(2)}, nil, nil, r)
-	if err != nil || Canon(out) != `true` {
-		t.Errorf("__casematch 2 2 = %v (%v), want true", Canon(out), err)
-	}
-	out, err = caseMatchHandler([]Value{NewInteger(3), NewInteger(2)}, nil, nil, r)
-	if err != nil || Canon(out) != `false` {
-		t.Errorf("__casematch 3 2 = %v (%v), want false", Canon(out), err)
-	}
-}
-
 // ---- for / forloop ----
 
 func TestW3ForLoop(t *testing.T) {

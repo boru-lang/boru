@@ -65,27 +65,3 @@ func TestWarnStaticIfDeadArmSilentInCallShape(t *testing.T) {
 		t.Fatalf("a call-shape specialisation must not warn, got %+v", got)
 	}
 }
-
-func TestDropSynthesizedDeadArmWarnings(t *testing.T) {
-	r := newTestRegistry(t)
-	before := CheckDiagnostic{Code: "unreachable_branch", Detail: "earlier, position-less", Word: "if"}
-	r.Check.Diagnostics = []CheckDiagnostic{before}
-	mark := len(r.Check.Diagnostics)
-	synth := CheckDiagnostic{Code: "unreachable_branch", Detail: "synthesized", Word: "if"}
-	user := CheckDiagnostic{Code: "unreachable_branch", Detail: "user if in a clause block", Word: "if", Row: 1, Col: 36}
-	userCol := CheckDiagnostic{Code: "unreachable_branch", Detail: "column only", Word: "if", Col: 3}
-	other := CheckDiagnostic{Code: "no_signature", Detail: "position-less, other code", Word: "keys"}
-	r.Check.Diagnostics = append(r.Check.Diagnostics, synth, user, synth, userCol, other)
-	dropSynthesizedDeadArmWarnings(r, mark)
-	got := r.Check.Diagnostics
-	if len(got) != 4 || got[0].Detail != before.Detail || got[1].Detail != user.Detail ||
-		got[2].Detail != userCol.Detail || got[3].Detail != other.Detail {
-		t.Fatalf("only the position-less dead-arm warnings added since the mark go; got %+v", got)
-	}
-	// A mark past the end (nothing was added, or the list was truncated
-	// under it) is a no-op, not a slice panic.
-	dropSynthesizedDeadArmWarnings(r, len(r.Check.Diagnostics)+3)
-	if len(r.Check.Diagnostics) != 4 {
-		t.Fatalf("an out-of-range mark must leave the list alone; got %+v", r.Check.Diagnostics)
-	}
-}

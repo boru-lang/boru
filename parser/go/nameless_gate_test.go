@@ -31,7 +31,7 @@ import (
 //     conversion lands on the kernel End marker (`core.NewEnd()`), not
 //     a name-dispatched word.
 //
-// If a new sugar needs a word, bind a sugar role (eng/go/sugar.go,
+// If a new sugar needs a word, bind a sugar role (core/go/sugar.go,
 // `BindSugarWord`) and emit a marker — do not extend the allowlist
 // with a word name.
 var namelessGateStructuralText = map[string]bool{

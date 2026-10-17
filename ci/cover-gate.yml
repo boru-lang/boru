@@ -1,0 +1,64 @@
+name: Merged coverage gate (ADR-008)
+
+# The repo-wide merged ADR-008 gate, on a schedule rather than per-PR.
+#
+# WHY THIS EXISTS. ci.yml runs `make cover-gate-core` — core/go by its own
+# suite — but NOT the merged `make cover-gate` across every module. Its
+# own comment says why that hurts: "a statement in compiler/go sat uncovered
+# on main until a hand-run of the checklist found it — a 100% floor nothing
+# checks is a 100% floor nobody keeps." That happened a second time on
+# 2026-08-25 (three statements from PR #401), again found only by a
+# hand-run.
+#
+# WHY NIGHTLY AND NOT PER-PR. The merged gate re-profiles every module
+# (~20 min) and would roughly double every PR's CI time. A schedule catches
+# drift within a day, which is the timescale that matters for a floor whose
+# only other enforcement is remembering to run it locally. The per-PR
+# question stays open — widening ci.yml is a CI-budget call, and this
+# workflow is the cheap half of it.
+#
+# workflow_dispatch is deliberate: after a change that moves coverage, run
+# it on the branch rather than waiting for the nightly.
+
+on:
+  schedule:
+    # 03:17 UTC — off the hour so it does not pile onto the top-of-hour
+    # runner contention every other scheduled job competes for.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  cover-gate:
+    runs-on: ubuntu-latest
+    # The 13-module re-profile dominates; give it room beyond the 20 min it
+    # takes locally so a slower runner reports a real failure, not a timeout.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lang/go/go.mod
+          # The action's own cache is OFF: see the cache step below.
+          cache: false
+
+      # Go module + build cache, keyed PER RUN, restored by prefix — the
+      # same design as ci.yml's composite setup action, whose comments say
+      # why setup-go's own cache is off (no root go.sum in this go.work
+      # workspace: it cached nothing) and why the run id tails the key
+      # (every run saves; setup-go would save once per go.sum and go
+      # stale). Its own prefix: this job's cache is not a CI job's.
+      - name: Go module and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-cover-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-cover-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-
+            go-cover-${{ runner.os }}-
+
+      - name: Merged coverage gate (ADR-008, floor 100)
+        run: make cover-gate

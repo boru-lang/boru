@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 
 	"github.com/boru-lang/boru/lang/go/native"
@@ -145,25 +144,14 @@ func resolveCodec(r *native.Registry, v native.Value, word string) (codecFuncs, 
 	get := func(key string) (native.Value, bool) { return mp.Get(key) }
 	dec, _ := get("decode")
 	enc, _ := get("encode")
-	// Detached-stamp each custom boru codec fn so the per-request invokeFn →
-	// InvokeCallback dispatch runs it on the VM instead of CallBoru. The codec
-	// fns live INSIDE this map, where the compile-time store-fn bake never
-	// reaches (recordCallOperands stamps only direct fn operands), so the
-	// resolve site is their stamping seam. StampFnValue declines silently —
-	// Go-backed built-ins, policy off (-no-compile), capturing or refusing
-	// bodies — returning the value unchanged, so behaviour is byte-identical
-	// on every decline. Stamp BEFORE the client-side defaulting below so a
-	// symmetric codec's aliases share one stamped clone (one compile, not two).
-	dec, _ = compiler.StampFnValue(r, dec)
-	enc, _ = compiler.StampFnValue(r, enc)
 	cf.decode, cf.encode = dec, enc
 	if v, ok := get("encode-req"); ok {
-		cf.encodeReq, _ = compiler.StampFnValue(r, v)
+		cf.encodeReq = v
 	} else {
 		cf.encodeReq = enc
 	}
 	if v, ok := get("decode-resp"); ok {
-		cf.decodeResp, _ = compiler.StampFnValue(r, v)
+		cf.decodeResp = v
 	} else {
 		cf.decodeResp = dec
 	}

@@ -6,9 +6,7 @@ require (
 	github.com/antchfx/xpath v1.3.6
 	github.com/boru-lang/boru/basic/go v0.0.0
 	github.com/boru-lang/boru/check/go v0.0.0
-	github.com/boru-lang/boru/compiler/go v0.0.0
 	github.com/boru-lang/boru/core/go v0.0.0
-	github.com/boru-lang/boru/eng/go v0.0.0
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.10.1
@@ -61,14 +59,10 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/boru-lang/boru/eng/go => ../../eng/go
-
 replace github.com/boru-lang/boru/basic/go => ../../basic/go
 
 replace github.com/boru-lang/boru/core/go => ../../core/go
 
 replace github.com/boru-lang/boru/check/go => ../../check/go
-
-replace github.com/boru-lang/boru/compiler/go => ../../compiler/go
 
 replace github.com/boru-lang/boru/parser/go => ../../parser/go

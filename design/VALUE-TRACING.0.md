@@ -89,7 +89,7 @@ model aliasing, escape analysis, or a heap.
 
 ### 2.1 `Value.ID` — a per-value identity that is switched off at runtime
 
-`eng/go/value.go:1211` — the `Value` struct opens with `ID string`. IDs are
+`core/go/value.go:1211` — the `Value` struct opens with `ID string`. IDs are
 minted by `GenerateID` (`value.go:1579`): a 2-character category prefix
 (`S_` Scalar, `N_` Node, `W_` Word, `T_` Type/Object) followed by 12 lowercase
 hex digits, drawn lock-free from an atomic monotone counter through a
@@ -116,7 +116,7 @@ allocations. The same comment records a full audit
 (`design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore` Phase B) finding **no run-mode reader
 of a concrete value's ID**.
 
-Confirmed independently for this note: `eng/go/equal.go` and `eng/go/compare.go`
+Confirmed independently for this note: `core/go/equal.go` and `core/go/compare.go`
 never read `.ID`; `canon.go` reads it only for type-name lookup
 (`TypeNameByID`); `inspect` never surfaces it; and outside type handling the
 only ID-as-map-key use is `emit.go:7107`.
@@ -126,7 +126,7 @@ already sitting on every `Value`, empty at runtime, waiting.
 
 ### 2.2 One dispatch choke point per engine
 
-**Interpreter.** `Engine.execMatch` (`eng/go/engine.go:3358`) is where every
+**Interpreter.** `Engine.execMatch` (`core/go/engine.go:3358`) is where every
 word consumes its arguments and produces its results:
 
 ```go
@@ -149,7 +149,7 @@ and `vm.go:1627` (`OpCallNative`). User-fn calls (`OpCallUser`,
 
 ### 2.3 The arm-able observability hook pattern
 
-`eng/go/coverage.go` is the template, and it should be copied in shape rather
+`core/go/coverage.go` is the template, and it should be copied in shape rather
 than re-invented:
 
 - a holder struct on `Registry` carrying `atomic.Pointer[func(...)]`, so arming
@@ -159,7 +159,7 @@ than re-invented:
   the VM's hot loop to one branch per instruction;
 - `ArmCoverageHook(fn) func()` (`coverage.go:90`) returns the disarm closure,
   paired with `defer` / `t.Cleanup`;
-- propagation into forks by `ForkConcurrent`'s shallow copy (`eng/go/fork.go:38`)
+- propagation into forks by `ForkConcurrent`'s shallow copy (`core/go/fork.go:38`)
   and into module sub-registries by `InheritObserveHooks`
   (`eng/go/interp_entry.go:102`).
 
@@ -186,7 +186,7 @@ _, e := native.New(r).Run(body.Slice())
 
 ### 2.5 What must NOT be reused
 
-`eng/go/trace.go` is taken — it holds `RunTrace` / `TraceColorize`, the
+`core/go/trace.go` is taken — it holds `RunTrace` / `TraceColorize`, the
 step-trace renderer behind `IO.trace` and `Debug.trace`. The kernel file for
 this work is **`eng/go/provenance.go`**. See §8.1 for the naming collision this
 implies at the language level too.
@@ -272,7 +272,7 @@ are golden-testable.
 ### 4.3 The collision argument, verified
 
 Every type-ID producer writes `_` at index 1 and nothing else:
-`formatFixedID` (`eng/go/typetable.go:964-979`) and `TypeTable.mintID`
+`formatFixedID` (`core/go/typetable.go:964-979`) and `TypeTable.mintID`
 (`:303-320`) both switch over `Scalar`/`Node`/`Word` and default to `T_`.
 `GenerateID` takes its prefix from `IDPrefixForType` (`value.go:1600`), which
 returns the same four constants. Therefore `v.ID[1] == '~'` is unambiguous.
@@ -291,7 +291,7 @@ explicitly rather than discovered later:
   the same value, so they share a node. It is only a problem if a consumer
   assumes node ↔ stack-slot is one-to-one.
 - **Type literals and carriers always mint.** Tracing must be restricted to
-  `IsConcrete(v)` (`eng/go/util.go`, re-exported via `native/aliases.go`), so
+  `IsConcrete(v)` (`core/go/util.go`, re-exported via `native/aliases.go`), so
   the mark can never land on a lattice node and perturb canon, unify or the
   type registry.
 - **Traced runs mint IDs that untraced runs do not.** This is an observable
@@ -406,7 +406,7 @@ value X was consumed by word W at file:line"*. That is what a user means by
 "where was this read?"
 
 A weaker second read event — a traced value fetched out of a binding — has
-exactly one clean hook: `DefTable.Top` (`eng/go/deftable.go:71`), the single
+exactly one clean hook: `DefTable.Top` (`core/go/deftable.go:71`), the single
 function that all ~12 `Defs.Top` call sites in `engine.go` funnel through. It
 is deliberately **not** Phase 1: name lookup is a much hotter path than
 dispatch, and the marginal information is small.
@@ -621,7 +621,7 @@ Two consequences worth stating plainly rather than leaving as loose ends:
   leftover naming.
 - **`Origin` already means something in Go.** `OriginKind` classifies where a
   `*Type` was registered, and is read as `Value.Origin` / `Signature.Origin`
-  (`eng/go/typetable.go:10`). There is no boru-level clash, and this work's
+  (`core/go/typetable.go:10`). There is no boru-level clash, and this work's
   kernel types are `Prov*` (`ProvStore`, `ProvNode`, `ProvEvent`, `ProvKind`),
   so nothing actually collides — but a reader of `eng/go` should not be
   surprised twice by the same word.
@@ -769,9 +769,9 @@ New: `eng/go/provenance.go` (the store, `IsTraced`, the traced mint,
 `lang/go/native/origin_module.go` (the natives), `lang/go/modules/origin.go`
 (`BuildOriginModule`), `lang/go/modules/docs_origin.go`,
 `lang/spec/module-origin.tsv`.
-Modified: `eng/go/engine.go` (one hook in `execMatch`), `eng/go/vm.go` (three
-hooks), `eng/go/registry.go` (the holder field), `eng/go/interp_entry.go`
-(`InheritObserveHooks`), `eng/go/fork.go` if the shallow copy needs help,
+Modified: `core/go/engine.go` (one hook in `execMatch`), `eng/go/vm.go` (three
+hooks), `core/go/registry.go` (the holder field), `eng/go/interp_entry.go`
+(`InheritObserveHooks`), `core/go/fork.go` if the shallow copy needs help,
 `lang/go/modules/modules.go` (the map entry),
 `lang/go/native/help/help_render.go` (the catalog row), `REFERENCE.md`.
 Words: `mark`, `marked?`, `id`, `region`, `why`, `root`, `uses`, `stats`,

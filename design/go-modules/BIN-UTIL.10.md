@@ -258,7 +258,7 @@ Reference builders: `lang/go/modules/binary.go` (`BuildBinaryModule`, the
 sub-registry + `makeBin*FnDef` wrappers) and `io.go` (capability-backed
 variant, for the `EntropySource` seam).
 
-- **`eng/go/gobridge.go`** — `[]byte` ↔ `Bytes` (see BYTES.10.md §4).
+- **`core/go/gobridge.go`** — `[]byte` ↔ `Bytes` (see BYTES.10.md §4).
 - **`lang/go/native/native_bytes.go`** — register the `Bytes` type
   (BYTES.10.md §11); **`lang/go/test/fixedid_stability_test.go`** — pin
   its FixedID.

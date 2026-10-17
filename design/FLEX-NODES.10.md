@@ -57,7 +57,7 @@ words need no manual ordering.
   `AsMutableMap` work untouched. (Plain Maps are "immutable" only
   because no word mutates them; the payload was always shareable.)
 - **FlexList gets a new pointer payload** `*FlexListData{Elems []Value}`
-  (`eng/go/payload.go`). `ListPayload` holds the slice by value, so
+  (`core/go/payload.go`). `ListPayload` holds the slice by value, so
   growth (append/push) could never be observed through other copies.
   `AsList`/`AsMutableList` read it; the mutating handlers go through
   `AsFlexList` to reassign `Elems` through the pointer.
@@ -66,7 +66,7 @@ words need no manual ordering.
 
 `flex <node>` (sugar) and `make FlexMap m` / `make FlexList l` produce a
 deep copy: fresh containers at every level, nested Nodes converted to
-flex recursively (`eng/go/core_flex.go::FlexDeepCopy`). Two reasons:
+flex recursively (`core/go/core_flex.go::FlexDeepCopy`). Two reasons:
 
 1. **No leaks.** Plain map literals share `*OrderedMap` pointers; a
    shallow flex over one would let `set` mutate "immutable" data that
@@ -86,7 +86,7 @@ for `node plainmap`.
 Conversion alone doesn't keep the invariant: every Node-column WRITE
 also normalises the value it stores (June 2026; the bloom-filter
 follow-up "flex and node must not be shallow"). Two adopters in
-`eng/go/core_flex.go`, applied in every Node-column write handler
+`core/go/core_flex.go`, applied in every Node-column write handler
 (`set` on FlexMap/FlexList/Map/List, `push`/`unshift` in both columns,
 `append` element and list-splat):
 

@@ -67,31 +67,6 @@ func TestStatementWindowBoundary(t *testing.T) {
 	}
 }
 
-func TestAllZeroArgSigsAndFnDefName(t *testing.T) {
-	zero := core.FnDefInfo{Name: "z", Signatures: []core.FnSig{{
-		Returns: []*core.Type{core.TInteger},
-		Impl:    core.Boru([]core.Value{core.NewInteger(1)}),
-	}}}
-	if !allZeroArgSigs(&zero) {
-		t.Error("a fn whose only sig takes no params is all-zero-arg")
-	}
-	one := core.FnDefInfo{Name: "o", Signatures: []core.FnSig{{
-		Params:  []core.FnParam{{Name: "n", Type: core.TInteger}},
-		Returns: []*core.Type{core.TInteger},
-		Impl:    core.Boru([]core.Value{core.NewInteger(1)}),
-	}}}
-	if allZeroArgSigs(&one) {
-		t.Error("a fn with a 1-arg sig is not all-zero-arg")
-	}
-
-	if got := fnDefName(core.NewFunction(one)); got != "o" {
-		t.Errorf("fnDefName = %q, want the fn's own name", got)
-	}
-	if got := fnDefName(core.NewInteger(3)); got != "fn value" {
-		t.Errorf("fnDefName on a non-fn = %q, want the fallback", got)
-	}
-}
-
 func TestDynamicBoundConformsToFunction(t *testing.T) {
 	fnDef := core.FnDefInfo{Signatures: []core.FnSig{{
 		Returns: []*core.Type{core.TInteger},

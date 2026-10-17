@@ -906,10 +906,8 @@ func delStoreReturnsFn(args []Value, r *Registry) []Value {
 	// marker here rather than de-stricting the store READER keeps every
 	// genuinely-recorded carrier strict, so ordinary set/get precision —
 	// and the refusals that depend on it — is untouched.
-	if !r.Check.Compiling {
-		if ss, ok := check.StoreShapeOf(args[1]); ok {
-			ss.RecordKey(key, NewDynamicCarrier(TAny))
-		}
+	if ss, ok := check.StoreShapeOf(args[1]); ok {
+		ss.RecordKey(key, NewDynamicCarrier(TAny))
 	}
 	r.Check.RecordContextSet(key, NewDynamicCarrier(TAny))
 	return nil
@@ -990,10 +988,10 @@ func delMapTypedReturns(args []Value, _ *Registry) []Value {
 // forgetting is expressed as widening the key's entry to dynamic Any.
 // The receiver carrier itself is returned, mirroring the in-place
 // runtime contract (`del … f` leaves f, so the shape flows on for
-// chaining). An unshaped receiver — and every COMPILE pass — keeps the
-// legacy fresh FlexMap carrier, exactly as set's twin does.
+// chaining). An unshaped receiver keeps the legacy fresh FlexMap carrier,
+// exactly as set's twin does.
 func delFlexMapReturns(args []Value, r *Registry) []Value {
-	if r != nil && !r.Check.Compiling && len(args) >= 2 {
+	if r != nil && len(args) >= 2 {
 		if ss, ok := check.StoreShapeOf(args[1]); ok {
 			ss.RecordKey(StoreKey(args[0]), NewCarrier(TAny))
 			return []Value{args[1]}
@@ -1350,31 +1348,6 @@ func getrXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	}
 }
 
-// isClosureBearingWrapper reports whether v is a module-method wrapper FnDef
-// whose inner native declares a CallableSpec (a code-body higher-order word
-// like Rand.list-of). Such a wrapper, surfaced concrete from a field read,
-// dispatches through execFnDefLiteral's trivial-delegation -> execMatch ->
-// carrierResults -> tryRecordClosure, lowering its NoEvalArgs body to a
-// closure unit. The shape is seed-agnostic (see getNodeReturns), so it is
-// sound to resolve from an abstract instance carrier. A plain RNG-bound
-// wrapper (rand-int) has no CallableSpec and stays dynamic.
-func isClosureBearingWrapper(v Value) bool {
-	fd, ok := FnDefOf(v.Data())
-	if !ok {
-		return false
-	}
-	inner := FnHomeLookup(fd)
-	if inner == nil {
-		return false
-	}
-	for i := range inner.Signatures {
-		if inner.Signatures[i].Callable != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // getNodeReturns narrows a field read over a CONCRETE map / record-shape
 // to the stored value's type when the key is statically known, instead of
 // the poison Any the [Key|Node] sigs otherwise declare — `{a:1 b:2}.a`
@@ -1565,33 +1538,10 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// tracking (`def a {b:5} [a.b]`). Deep nesting (`.a.b`) narrows the
 	// first hop to a Map carrier and the rest falls to dynamic(Any), which
 	// is still strictly better than the all-Any baseline.
-	// A closure-bearing module-method wrapper FnDef (`r.list-of`, where `r` is
-	// a `Rand.with-seed` instance) folds to the concrete wrapper so its dispatch
-	// records the SAME closure-word path the module-export form takes
-	// (`Rand.list-of [body] n` -> PUSH_CLOSURE). The wrapper delegates to an
-	// inner native carrying a CallableSpec; surfacing it lets execFnDefLiteral's
-	// trivial-delegation reach execMatch -> carrierResults -> tryRecordClosure, so
-	// the NoEvalArgs body lowers to a closure unit (re-run per iteration) rather
-	// than being auto-evaluated and frozen. The wrapper SHAPE (which methods
-	// exist, their sigs, NoEvalArgs, CallableSpec) is static for any instance --
-	// only the captured RNG state differs, and a closure-driver handler like
-	// rand-list-of does NOT itself draw from the RNG (the body does, against the
-	// module-export generator it names), so the resolved shape is seed-agnostic.
-	// The member is read as itself (it was "cloned for a fresh ID", but a
-	// clone shares a fn value whole, identity and all). A NON-closure
-	// wrapper (`r.int`, RNG-bound) stays dynamic so it does not bake a
-	// seed-specific handler -- it takes the runtime CALL_DYNAMIC path
-	// instead.
-	if val.Parent().ConformsTo(TFunction) &&
-		isClosureBearingWrapper(val) {
-		return []Value{val}
-	}
-	// On a PLAIN check (no compile pass recording) a stored fn value is read
-	// as itself, so the pass dispatches it over what follows exactly as the
-	// run does — `def m {a:size/v}  m.a [1 2 3]` leaves one Integer, not the
-	// member and its argument (NUR112). The compile pass keeps the dynamic
-	// carrier below: its arrival is claimed through the shaped method model.
-	if r != nil && !r.Check.Recorder().Armed() && val.Parent().ConformsTo(TFunction) {
+	// A stored fn value is read as itself, so the pass dispatches it over
+	// what follows exactly as the run does — `def m {a:size/v}  m.a [1 2 3]`
+	// leaves one Integer, not the member and its argument (NUR112).
+	if r != nil && val.Parent().ConformsTo(TFunction) {
 		if _, ok := val.Data().(*FnDefInfo); ok {
 			return []Value{val}
 		}
@@ -1719,8 +1669,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// (`… get 0 5 6` adds 5 and 6; a bare `… get 0` raises add's
 	// signature_error at the word's own position). The token is returned
 	// verbatim (toCarrier keeps a word as-is) so the check pass re-steps it
-	// the same way and models the call it makes; the compile pass emits
-	// nothing for the read (compiler.tryFoldReStepWord). A bare type node is
+	// the same way and models the call it makes. A bare type node is
 	// a type literal, data like any other, and keeps the carrier below.
 	if IsWord(&el) && !IsBareTypeNode(&el) {
 		return []Value{el}
@@ -1733,9 +1682,8 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// add 2] …] (ops get 0)`) carries its analysed stack effect on the
 	// carrier, so a downstream `do` types its result instead of the
 	// dynamic(Any) hatch (design/legacy/checker-precision-fronts.0.ignore §1 stage 1).
-	// The helper self-gates to plain (non-Compiling) check mode and
-	// declines anything it cannot analyse cleanly, so this only ever
-	// NARROWS the plain-carrier fallback below.
+	// The helper declines anything it cannot analyse cleanly, so this
+	// only ever NARROWS the plain-carrier fallback below.
 	if c, ok := AnalyseCodeEffect(r, el); ok {
 		return []Value{c}
 	}
@@ -1812,8 +1760,7 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 	// carrier by the bare FunctionSignature node, which has lost the shape:
 	// note the declared signature by the carrier's id, so the plain check's
 	// shape window models the member's apply as a named shape's is (NUR096).
-	// A plain check only — the compile pass keeps its own member models.
-	if info, ok := fv.Data().(FnUndefInfo); ok && !r.Check.Recorder().Armed() {
+	if info, ok := fv.Data().(FnUndefInfo); ok {
 		if s, claim := check.FnShapeOfSpec(info); claim {
 			r.Check.NoteFnShape(out, s)
 		}
@@ -1899,10 +1846,8 @@ func setStoreReturnsFn(args []Value, r *Registry) []Value {
 	// stage 1): a SHAPED store carrier records the write in ITS OWN
 	// KeyTypes, so two stores' same-named keys no longer join. The flat
 	// map is ALSO written — it remains the compatibility fallback for
-	// unshaped readers, so precision only increases. Plain check mode
-	// only: the compiled stream must stay byte-identical (store rows
-	// compile natively through the flat-map typing today).
-	if r != nil && !r.Check.Compiling && len(args) >= 3 {
+	// unshaped readers, so precision only increases.
+	if r != nil && len(args) >= 3 {
 		if ss, ok := check.StoreShapeOf(args[2]); ok {
 			ss.RecordKey(StoreKey(args[0]), args[1])
 		}
@@ -1957,11 +1902,11 @@ func getStoreReturnsFn(args []Value, r *Registry) []Value {
 	// written through ITSELF (no cross-store join). A key the shape
 	// missed falls back to the flat map — today's optimism, unchanged
 	// (the prototype chain / another scope's layer may have written
-	// it). Plain check mode only (compile parity).
+	// it).
 	if len(args) < 2 {
 		return []Value{NewDynamicCarrier(TAny)}
 	}
-	if r != nil && !r.Check.Compiling {
+	if r != nil {
 		if ss, ok := check.StoreShapeOf(args[1]); ok {
 			if v, hit := ss.LookupKey(StoreKey(args[0])); hit {
 				return []Value{v}
@@ -2004,11 +1949,9 @@ func contextHandler(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 // it deliberately; the check pass is observation-free), and per-call-
 // site minting would be wrong — every `context` call in one scope
 // returns the SAME runtime store, so they must share ONE shape or a
-// set-then-get across two `context` calls would miss. During a COMPILE
-// pass the legacy bare Store carrier stands (byte-identical lowering —
-// context/set/get rows compile natively through the flat map today).
+// set-then-get across two `context` calls would miss.
 func contextReturns(_ []Value, r *Registry) []Value {
-	if r == nil || r.Check.Compiling {
+	if r == nil {
 		return []Value{NewCarrier(TStore)}
 	}
 	top := r.Contexts.Top()
@@ -2023,13 +1966,7 @@ func contextReturns(_ []Value, r *Registry) []Value {
 // runtime AdoptIntoFlex would — a concrete map becomes a nested FlexMap
 // shape) and returns the RECEIVER carrier itself, mirroring the in-place
 // runtime contract (`set … f` leaves f, so the same shape flows on for
-// chaining). An unshaped receiver keeps the legacy fresh FlexMap carrier,
-// and so does every COMPILE pass — which still RECORDS the write (2026-09-26):
-// a later member read then carries the adopted bound, so `set b 9 f.a`
-// commits the FlexMap overload and its one result (flex.tsv L228/L236)
-// where the dynamic(Any) member committed the Class overload's none and the
-// VM deferred at vm:poly-nout-drift. The fresh result carrier keeps the
-// recording's operand identities where they were.
+// chaining). An unshaped receiver keeps the legacy fresh FlexMap carrier.
 func setFlexMapReturns(args []Value, r *Registry) []Value {
 	if len(args) == 3 {
 		d2CheckWrite(r, args[2], args[1], "set", args[0].Pos()) // flex {:T} write mirror
@@ -2039,9 +1976,7 @@ func setFlexMapReturns(args []Value, r *Registry) []Value {
 	if r != nil && len(args) >= 3 {
 		if ss, ok := check.StoreShapeOf(args[2]); ok {
 			ss.RecordKey(StoreKey(args[0]), check.AdoptShapeValue(args[1], 1))
-			if !r.Check.Compiling {
-				return []Value{args[2]}
-			}
+			return []Value{args[2]}
 		}
 	}
 	res := NewCarrier(TFlexMap)

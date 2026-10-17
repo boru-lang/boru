@@ -3620,7 +3620,7 @@ Concretely, given a sig with `Args: []*Type{TScalar}` and
   (`v.Carrier == true` is rejected up front).
 - `5` (concrete) — does NOT match a `TypeArgs` slot.
 
-The `sigTypeMatchesAsType` function in `eng/go/signature.go`
+The `sigTypeMatchesAsType` function in `core/go/signature.go`
 implements the rule. When adding a new sig that needs a type
 literal (rather than a concrete value), set `Sig.TypeArgs[i] = true`
 on the relevant position — that's the successor to the old

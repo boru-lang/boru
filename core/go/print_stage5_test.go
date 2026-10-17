@@ -11,29 +11,6 @@ import (
 	"testing"
 )
 
-// TestStage5PrintHandlers pins the two word handlers: print appends a
-// newline, printstr does not, and both render via FormatForPrint.
-func TestStage5PrintHandlers(t *testing.T) {
-	r := stage5Registry(t)
-	var buf bytes.Buffer
-	r.Output = &buf
-
-	if out, err := PrintHandler([]Value{NewInteger(42)}, nil, nil, r); err != nil || out != nil {
-		t.Fatalf("PrintHandler = (%v, %v), want (nil, nil)", out, err)
-	}
-	if got := buf.String(); got != "42\n" {
-		t.Errorf("print output = %q, want %q", got, "42\n")
-	}
-
-	buf.Reset()
-	if out, err := PrintstrHandler([]Value{NewString("hi")}, nil, nil, r); err != nil || out != nil {
-		t.Fatalf("PrintstrHandler = (%v, %v), want (nil, nil)", out, err)
-	}
-	if got := buf.String(); got != "hi" {
-		t.Errorf("printstr output = %q, want %q", got, "hi")
-	}
-}
-
 // TestStage5FormatForPrintArms pins the scalar and container arms of
 // FormatForPrint: none, type literals, errors, strings (no quotes),
 // JSON-ish maps and lists, and the ValToString fallback.
@@ -95,3 +72,30 @@ func TestStage5FormatValueJSONArms(t *testing.T) {
 		t.Errorf("nested list JSON = %q", got)
 	}
 }
+
+// TestStage5PrintHandlers pins the two word handlers: print appends a
+// newline, printstr does not, and both render via FormatForPrint.
+func TestStage5PrintHandlers(t *testing.T) {
+	r := stage5Registry(t)
+	var buf bytes.Buffer
+	r.Output = &buf
+
+	if out, err := PrintHandler([]Value{NewInteger(42)}, nil, nil, r); err != nil || out != nil {
+		t.Fatalf("PrintHandler = (%v, %v), want (nil, nil)", out, err)
+	}
+	if got := buf.String(); got != "42\n" {
+		t.Errorf("print output = %q, want %q", got, "42\n")
+	}
+
+	buf.Reset()
+	if out, err := PrintstrHandler([]Value{NewString("hi")}, nil, nil, r); err != nil || out != nil {
+		t.Fatalf("PrintstrHandler = (%v, %v), want (nil, nil)", out, err)
+	}
+	if got := buf.String(); got != "hi" {
+		t.Errorf("printstr output = %q, want %q", got, "hi")
+	}
+}
+
+// TestStage5FormatForPrintArms pins the scalar and container arms of
+// FormatForPrint: none, type literals, errors, strings (no quotes),
+// JSON-ish maps and lists, and the ValToString fallback.

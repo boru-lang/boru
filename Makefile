@@ -1,7 +1,7 @@
-.PHONY: all brand-audit build install test test-race test-module commit-gate sweep-status test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
-        spec-gen spec-test crossdiff parser-crossdiff parser-parity cover-gate-eng cover-gate-check cover-gate-compiler cover-gate-parser \
-        verify-bytecode fuzz-bytecode status \
-        publish publish-eng publish-basic publish-lang publish-cmd release tags \
+.PHONY: all brand-audit build install test test-race test-module commit-gate test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
+        spec-gen spec-test crossdiff parser-crossdiff parser-parity cover-gate-core cover-gate-check cover-gate-parser \
+        fuzz \
+        publish publish-basic publish-lang publish-cmd release tags \
         viz viz-tools viz-clean viz-index \
         viz-callvis viz-callgraph viz-goda viz-godepgraph \
         viz-gomod viz-golds viz-plantuml viz-list viz-modgraph
@@ -10,26 +10,27 @@
 #
 # The repo is a collection of Go modules:
 #
-#   core/go        — the pure-interpreter kernel (values, types, dispatch, step loop)
+#   core/go        — the interpreter kernel (values, types, dispatch, the step loop)
 #   parser/go      — boru source text -> []core.Value (jsonic grammar); depends
 #                    on core alone, and nothing depends on it but the layers above
-#   eng/go         — check + compiler + VM over core, plus the parser bridge
+#   check/go       — the static check pass over core (analysis, carriers, diagnostics)
 #   basic/go       — the base language layer (fundamental words +
-#                    predefined content types; depends on eng only)
-#   lang/go        — the language layer (native_* words, engine shim)
+#                    predefined content types; depends on core and parser only)
+#   lang/go        — the language layer (native_* words, modules, the Boru API)
 #   cmd/go         — the boru CLI command
-#   calc/go        — small calculator built directly on eng (learning example)
+#   calc/go        — small calculator built directly on core (learning example)
 #   wpg            — wasm playground (wasm build + serve)
-#   test/go        — shared TSV spec-runner scaffolding
+#   test/go        — shared TSV spec-runner scaffolding and the langspec gates
+#   test/specfix   — the spec fixture words the corpus runners share
 #   test/solardemo — standalone HTTP fixture used by API tests
 #
 # Each module has its own go.mod and a focused Makefile. The targets
 # here fan out across the set so the whole codebase can be built,
 # tested, visualised, and coverage-tracked from one place.
 
-# Order matters for `make test`: eng must build before basic, basic
+# Order matters for `make test`: core must build before basic, basic
 # before lang, etc.
-MODULES := core/go check/go compiler/go parser/go eng/go basic/go lang/go cmd/go calc/go wpg test/go test/specfix test/solardemo
+MODULES := core/go check/go parser/go basic/go lang/go cmd/go calc/go wpg test/go test/specfix test/solardemo
 
 all: test
 
@@ -55,12 +56,12 @@ install:
 #                                sequence up to length 4 over a fixed
 #                                alphabet, with the canonical interpreter
 #                                result (or stable error class) for each.
-#   syntax-matrix-passing.tsv  — the subset of those rows that pass all
-#                                three pipelines (interpret + check +
-#                                compile), derived from the full matrix.
+#   syntax-matrix-passing.tsv  — the subset of those rows that pass both
+#                                pipelines (interpret + check), derived
+#                                from the full matrix.
 #
 # They are the frozen contract their sibling syntax_matrix_test.go checks
-# the interpreter, compiler, and checker against; rerun this after any
+# the interpreter and the checker against; rerun this after any
 # deliberate change to the alphabet or to evaluation semantics, then
 # review the diff.
 
@@ -70,26 +71,22 @@ spec-gen:
 	cd test/go && go run ./specgen -frontier \
 	  -passing ./specgen/syntax-matrix-passing.tsv \
 	  -check-out ./specgen/syntax-matrix-fail-check.tsv \
-	  -compile-out ./specgen/syntax-matrix-fail-compile.tsv \
 	  -runtime-out ./specgen/syntax-matrix-fail-runtime.tsv
 	cd test/go && go run ./specgen -extract -max 3 -in ./specgen/syntax-matrix.tsv -out ./specgen/syntax-matrix-len123-passing.tsv
 	cd test/go && go run ./specgen -frontier -max 3 \
 	  -passing ./specgen/syntax-matrix-passing.tsv \
 	  -check-out ./specgen/syntax-matrix-len123-fail-check.tsv \
-	  -compile-out ./specgen/syntax-matrix-len123-fail-compile.tsv \
 	  -runtime-out ./specgen/syntax-matrix-len123-fail-runtime.tsv
 	cd test/go && go run ./specgen -extend5 \
 	  -passing ./specgen/syntax-matrix-passing.tsv \
 	  -len123 ./specgen/syntax-matrix-len123-passing.tsv \
 	  -pass-out ./specgen/syntax-matrix-len5-passing.tsv \
 	  -check-out ./specgen/syntax-matrix-len5-fail-check.tsv \
-	  -compile-out ./specgen/syntax-matrix-len5-fail-compile.tsv \
-	  -runtime-out ./specgen/syntax-matrix-len5-fail-runtime.tsv \
-	  -mismatch-out ./specgen/syntax-matrix-len5-compiler-mismatch.tsv
+	  -runtime-out ./specgen/syntax-matrix-len5-fail-runtime.tsv
 
 # spec-test runs the generated-matrix replay suite. It is gated behind the
 # `specgen` build tag so it is EXCLUDED from `make test` (the matrix-replay
-# tests re-execute the interpreter/checker/compiler over tens of thousands
+# tests re-execute the interpreter and checker over tens of thousands
 # of rows — ~7 min sampled — which is too slow for the normal unit run).
 # Set SPECGEN_FULL=1 to verify every row of every file exhaustively
 # (~24 min); the default samples the large length-5 buckets. A longer test
@@ -117,8 +114,8 @@ test:
 # test/go/langspec is 22 of a 30-minute `make test`, and its gates carry
 # two numbers each (test/go/langspec/lanes_test.go): a REGRESSION ceiling,
 # asserted by default and what blocks, and an END STATE the DIRECTION lane
-# asserts (BORU_DIRECTION_GATES=1) — red by design until the
-# full-compilation programme is done. So:
+# asserts (BORU_DIRECTION_GATES=1) — red by design until the design's
+# end state is reached. So:
 #
 #   make commit-gate             the pre-commit gate, three minutes or less
 #                                on what the change touched
@@ -130,18 +127,16 @@ test:
 #                                renders the table from the shards)
 #   make test-direction          the direction lane, writing GATE_STATUS.md
 #   make gate-status             refresh GATE_STATUS.md without asserting,
-#                                and print it with the instant censuses
+#                                and print it with the sentinel census
 #   make ci-local                exactly what CI runs (scripts/ci-steps.sh)
-#   make handler-worklist        the Stage-6 list: every undeclared handler
 #
 # Iterating on ONE family: BORU_SPEC_FILES=callbacks.tsv restricts every
 # corpus walk to the named spec files (comma-separated names or globs) —
-# the ten gates over one file run in seconds. The corpus-wide counts are
-# reported, not asserted, under the filter; the per-file compile-failure
-# ledger (test/go/langspec/compile_failures.tsv) asserts on every selected
-# file, so a compile regression in the family fails the filtered run.
+# the gates over one file run in seconds. The corpus-wide counts are
+# reported, not asserted, under the filter; every per-row verdict still
+# asserts, so a regression in the family fails the filtered run.
 LANGSPEC_DIR := test/go/langspec
-DIRECTION_TESTS := TestCompiledCoverage|TestCompileFailuresAreBugs|TestOnlyMetaFallsBack|TestSpecCompiledOrFallback|TestSpecCompiledDifferential|TestRegionCollectOracle|TestInterpEntryCensus|TestCheckTypeSoundness|TestDiagnosticParityAcrossPasses|TestDiagnosticSurfaceParity
+DIRECTION_TESTS := TestCheckTypeSoundness
 
 langspec-shard-count:
 	@awk -F'\t' '!/^#/ && NF==2 {if ($$1+0 > n) n = $$1+0} END {print n+0}' $(LANGSPEC_DIR)/shards.tsv
@@ -182,7 +177,7 @@ gate-status:
 	@$(MAKE) --no-print-directory status-static
 
 status-static:
-	@cd test/go && go test ./langspec/ ./sentinelgate/ -run 'TestRefusalSiteCensus$$|TestRefusalDispositionCensus$$|TestDeclarationCensus$$|TestSentinelGate$$' -v 2>&1 | grep -E "census:|sites|markers|declaration" | sed 's/^ *//' || true
+	@cd test/go && go test ./sentinelgate/ -run 'TestSentinelGate$$' -v 2>&1 | grep -E "sites|markers" | sed 's/^ *//' || true
 
 ci-local:
 	scripts/ci-steps.sh all
@@ -193,9 +188,6 @@ ci-local:
 commit-gate:
 	scripts/commit-gate.sh
 
-handler-worklist:
-	@cd test/go && BORU_LOG_UNDECLARED=1 go test ./langspec/ -run 'TestDeclarationCensus$$' -v 2>&1 | grep 'UNDECLARED' | cut -f2- | sort
-
 # test-race is the data-race gate (design/TEST-SEAMS.10.md). `make test` does
 # NOT run under -race — the detector inflates CPU/alloc ~5-10x, which breaks
 # the perf/alloc-ceiling tests and would make the whole suite too slow. So the
@@ -205,18 +197,15 @@ handler-worklist:
 #
 # RACE_MODULES run their WHOLE package tree under -race, so a NEW concurrency
 # test is covered automatically with no hand-maintained name list (the gap that
-# let the ForkConcurrent cf.Reg race reach CI). test/go/langspec is the one
-# exception: its 5941-row differential is single-threaded per row (race adds no
-# value) and times out under the detector, so only its concurrency rows run
-# here.
-RACE_MODULES := core/go check/go compiler/go parser/go eng/go basic/go lang/go
+# let the ForkConcurrent cf.Reg race reach CI). test/go/langspec is left out:
+# its corpus walks are single-threaded per row (race adds no value) and time
+# out under the detector.
+RACE_MODULES := core/go check/go parser/go basic/go lang/go
 test-race:
 	@set -e; for m in $(RACE_MODULES); do \
 	  echo "==> test-race $$m"; \
 	  ( cd $$m && go test -race -short -timeout 25m ./... ); \
 	done
-	@echo "==> test-race test/go/langspec (concurrency rows)"
-	cd test/go && go test -race -short -timeout 15m ./langspec/ -run 'Concurrent|RaceFree|Race'
 
 # vet and lint run in every module in parallel (scripts/each-module.sh;
 # JOBS=1 for the sequential form): golangci-lint over the thirteen modules
@@ -274,9 +263,9 @@ vuln:
 
 # ---- performance baseline ----------------------------------------------
 #
-# Run the performance-baseline benchmark suites: kernel primitives
-# (eng/go), parser shapes (eng/go/parser), dispatch shapes + interpreter
-# vs compiled + word families + check/compile cost (lang/go). Compare
+# Run the performance-baseline benchmark suites: kernel primitives, the
+# tape and flat-program recording (core/go), parser shapes (parser/go),
+# dispatch shapes + word families + check cost (lang/go). Compare
 # before/after an engine change with benchstat:
 #
 #   make bench > after.txt     # (and once on the base commit > before.txt)
@@ -284,11 +273,10 @@ vuln:
 #
 # BENCH_TIME tunes -benchtime (default 1s per benchmark). The
 # deterministic regression *gates* (allocation ceilings) run in the
-# normal `make test`: TestCompiledAllocCeilings and TestInterpAllocCeilings
-# in lang/go.
+# normal `make test`, in lang/go.
 BENCH_TIME ?= 1s
 
-# ---- performance register (design/FULL-COMPILATION.0.md section 14) ----
+# ---- performance register (bench/register/README.md) -------------------
 # Records, never gates: runs the suites, derives the host id, and APPENDS
 # to bench/register/{hosts,measurements}.jsonl. The rows are committed —
 # a stage's before/after pair is part of its deliverable.
@@ -297,12 +285,12 @@ bench-register:
 	@BORU=$(CURDIR)/cmd/go/bin/boru bench/register/run.sh $(BENCH_TIME)
 
 bench:
-	@echo "==> bench eng/go (kernel primitives)"
-	cd eng/go && go test -run '^$$' -bench 'BenchmarkKernel|BenchmarkTape' -benchmem -benchtime $(BENCH_TIME) .
+	@echo "==> bench core/go (kernel primitives, tape, flat-program recording)"
+	cd core/go && go test -run '^$$' -bench 'BenchmarkKernel|BenchmarkTape|BenchmarkFlatProgramRecording' -benchmem -benchtime $(BENCH_TIME) .
 	@echo "==> bench parser/go (parse shapes)"
 	cd parser/go && go test -run '^$$' -bench 'BenchmarkParse' -benchmem -benchtime $(BENCH_TIME) .
-	@echo "==> bench lang/go (dispatch, exec, words, check, compile)"
-	cd lang/go && go test -run '^$$' -bench 'BenchmarkBytecodeBaseline|BenchmarkStage6|BenchmarkParens|BenchmarkPerf' -benchmem -benchtime $(BENCH_TIME) .
+	@echo "==> bench lang/go (dispatch, exec, words, check)"
+	cd lang/go && go test -run '^$$' -bench 'BenchmarkInterpBaseline|BenchmarkParens|BenchmarkPerf' -benchmem -benchtime $(BENCH_TIME) .
 
 # ---- TypeScript engine port (eng/ts) -----------------------------------
 #
@@ -320,8 +308,8 @@ bench:
 # never counts _test.go statements — so the parity equivalence (Go statements
 # ≡ TS lines) only holds with the exclusion below.
 #
-# RE-BASED 97 -> 96 when the exclusion landed, for the same reason
-# ENG_GATE_FLOOR re-based at the four-piece cut: the measurement UNIVERSE
+# RE-BASED 97 -> 96 when the exclusion landed, for the same reason the
+# kernel's standalone floor re-based at the four-piece cut: the measurement UNIVERSE
 # changed, so the old number is not comparable. Measured both ways on the same
 # commit: 97.06% with test files counted (which is what let the 97 floor pass),
 # 96.80% source-only. The floor tracks the source-only figure from here and
@@ -332,8 +320,8 @@ bench:
 # node resolves through the symlink to the real path, so node:test was
 # instrumenting core/ts's and parser/ts's sources and folding them into eng's
 # figure. That is precisely the cross-suite coverage the standalone gates exist
-# to forbid — the TS analogue of measuring core/go's statements from eng/go's
-# suite. --test-coverage-include='src/**' scopes the gate to eng/ts's OWN
+# to forbid — the TS analogue of measuring core/go's statements from another
+# module's suite. --test-coverage-include='src/**' scopes the gate to eng/ts's OWN
 # source, the same universe `go test -coverpkg` gives the Go half.
 #
 # Measured both ways on the same commit: 90.00% with the symlinked deps folded
@@ -380,7 +368,7 @@ test-ts:
 # sugar, coretype, check-state — and those arrive largely uncovered, so the
 # honest figure over the FULL core surface is 62.06%.
 #
-# Same re-base as ENG_GATE_FLOOR at the four-piece cut and TS_GATE_LINES at
+# Same re-base as the kernel's standalone floor at the four-piece cut and TS_GATE_LINES at
 # the source-only correction: the measurement universe changed, so the old
 # number is not comparable to the new one. Nothing became less tested — the
 # denominator got honest. From here the ratchet only rises, and the corpus is
@@ -526,78 +514,21 @@ parser-parity:
 	$(MAKE) test-ts-parser-package
 	$(MAKE) parser-crossdiff
 
-# ---- compiled-coverage status surface ----------------------------------
+# ---- property fuzz -------------------------------------------------------
 #
-# Regenerate test/go/langspec/COMPILED_STATUS.md from the live spec corpus.
-# Run after any change that moves compiled coverage; TestCompiledStatus fails
-# if the committed surface is stale.
-status:
-	cd test/go && BORU_WRITE_STATUS=1 go test ./langspec/ -run TestCompiledStatus
-	@echo "==> wrote test/go/langspec/COMPILED_STATUS.md"
-
-# The generated sweep's matrix (test/go/sweep; design/FULL-COMPILATION-REPLAN.0.md
-# S0): every declaration-relevant word × operand kind, classified through
-# both engines and every call form. The counts are gated in
-# TestGeneratedSweep; this refreshes the committed list they summarise.
-sweep-status:
-	cd test/go && BORU_WRITE_SWEEP=1 go test ./langspec/ -run '^TestGeneratedSweep$$'
-	@echo "==> wrote test/go/langspec/SWEEP_STATUS.md"
-
-# ---- bytecode verification gate ----------------------------------------
-#
-# The strict, runnable regression gate for the bytecode compiler
-# (design/legacy/boru-bytecode-plan.0.ignore). It is the single command to validate a
-# change to the compiler/VM and catch regressions:
-#
-#   1. fmt / vet / lint across every module.
-#   2. The dual-mode differential gate (>= minCompiledRows compile) and
-#      the whole-corpus compile-or-fallback gate (0 divergences in values
-#      AND error taxonomy over the full spec corpus + the curated
-#      bytecode-combinations matrix).
-#   3. The Go-driven combination matrix (parity + compilation-path pins).
-#   4. The emitter goldens, return-check, isolation, and Tape.Reload pins.
-#   5. The deterministic compiled-mode allocation ceilings (catches a
-#      per-dispatch or island-reuse allocation regression).
-#   6. The -race concurrency gates (shared immutable Program across forks;
-#      island sub-engine reuse with no state leak; concurrent spec rows).
-#   7. The same parity gates under -tags borudebug (a fresh args slice per
-#      CALL_NATIVE), so a compiled-reachable native that retains its args
-#      slice — silently corrupting a later dispatch under the release build's
-#      buffer reuse — instead diverges cleanly here. Mirrors the CI lane.
-#
-# Any divergence, race, or allocation regression fails the gate.
-verify-bytecode: fmt vet lint
-	@echo "==> bytecode: differential + whole-corpus + combination matrix + property fuzz"
-	cd test/go && go test ./langspec/ -run 'TestSpecCompiledDifferential|TestSpecCompiledOrFallback|TestCompiledCombination|TestPropertyDifferential'
-	@echo "==> bytecode: emitter / return-check / step-budget / isolation / reuse / alloc pins"
-	cd lang/go && go test . -run 'TestEmit|TestRunCompiled|TestCompiled|TestStepBudget|TestTapeReload'
-	@echo "==> bytecode: const-bake mutation-safety + VM pins"
-	cd eng/go  && go test . -run 'TestTapeReload|TestVM|TestIsInertConst'
-	@echo "==> bytecode: -race concurrency gates"
-	cd lang/go && go test . -run 'TestCompiledConcurrencyRaceFree|TestCompiledIslandReuseNoStateLeak' -race
-	cd test/go && go test ./langspec/ -run 'TestSpecCompiledConcurrentRowsRaceFree' -race
-	@echo "==> bytecode: args-aliasing gate (-tags borudebug, fresh args slice per CALL_NATIVE)"
-	cd lang/go && go test -tags borudebug . -run 'TestEmit|TestRunCompiled|TestCompiled|TestStepBudget'
-	cd test/go && go test -tags borudebug ./langspec/ -run 'TestSpecCompiledDifferential|TestSpecCompiledOrFallback|TestCompiledCombinationParity|TestPropertyDifferential'
-	@echo "==> bytecode: VERIFY PASSED"
-
-# Nightly / on-demand DEEP property fuzz of the compilable subset. The standard
-# verify-bytecode runs the lean deterministic default; this cranks the seed and
-# iteration budget (override on the command line) and re-runs the generated
-# corpus under BOTH the release build and the -tags borudebug build (fresh args
-# slice per CALL_NATIVE), so a deep run also exercises the args-aliasing invariant.
-#   make fuzz-bytecode                       # the cranked default below
-#   make fuzz-bytecode FUZZ_SEEDS=40 FUZZ_ITERS=20000
+# TestPropertyRobustness generates random programs over the spec alphabet
+# and asserts the interpreter never fails internally on one (no panic, no
+# internal_error). Its default run is lean and deterministic; this cranks
+# the seed and iteration budget (override on the command line).
+#   make fuzz                            # the cranked default below
+#   make fuzz FUZZ_SEEDS=40 FUZZ_ITERS=20000
 FUZZ_SEEDS ?= 20
 FUZZ_ITERS ?= 5000
-fuzz-bytecode:
-	@echo "==> bytecode: property fuzz ($(FUZZ_SEEDS) seeds x $(FUZZ_ITERS) iters), release build"
+fuzz:
+	@echo "==> property fuzz ($(FUZZ_SEEDS) seeds x $(FUZZ_ITERS) iters)"
 	cd test/go && BORU_FUZZ_SEEDS=$(FUZZ_SEEDS) BORU_FUZZ_ITERS=$(FUZZ_ITERS) \
-	  go test ./langspec/ -run 'TestPropertyDifferential' -timeout 60m -v
-	@echo "==> bytecode: property fuzz, -tags borudebug (args-aliasing build)"
-	cd test/go && BORU_FUZZ_SEEDS=$(FUZZ_SEEDS) BORU_FUZZ_ITERS=$(FUZZ_ITERS) \
-	  go test -tags borudebug ./langspec/ -run 'TestPropertyDifferential' -timeout 60m
-	@echo "==> bytecode: FUZZ PASSED"
+	  go test ./langspec/ -run 'TestPropertyRobustness' -timeout 60m -v
+	@echo "==> property fuzz: PASSED"
 
 clean:
 	@set -e; for m in $(MODULES); do \
@@ -608,61 +539,45 @@ clean:
 
 # ---- publishing --------------------------------------------------------
 #
-# Each Go library/CLI module publishes via its own subdir Makefile (the
-# tag prefix has to match the repo subpath per Go's submodule rules).
-# Targets here orchestrate them in dependency order so a coordinated
-# release uses one matched version:
+# The coordinated release is `make release` (scripts/release.sh, RELEASING.md):
+# it runs the full test suite, auto-bumps the PATCH of core/go, parser/go,
+# check/go, basic/go, lang/go and cmd/go, strips the local sibling `replace`
+# directives, pins real versions, and tags/pushes each in dependency order
+# so `go install …@latest` works. `DRY_RUN=1 make release` previews it.
 #
-#   make publish V=0.2.0
-#     -> tags eng/go/v0.2.0, basic/go/v0.2.0, lang/go/v0.2.0, cmd/go/v0.2.0
-#     -> bumps basic/go's eng require, lang/go's eng+basic requires,
-#        cmd/go's eng+lang requires
-#
-# Per-module publish (independent versions):
-#   make publish-eng   V=0.2.0
-#   make publish-basic V=0.2.0 ENG=0.1.0
-#   make publish-lang  V=0.2.0 ENG=0.1.0 BASIC=0.2.0
-#   make publish-cmd   V=0.2.0 ENG=0.1.0 LANG=0.2.0
+# Per-module publish (independent versions, via each module's own
+# Makefile; the kernel pieces core/go, parser/go and check/go are tagged
+# by the release script and have no per-module form):
+#   make publish-basic V=0.2.0 CORE=0.1.0 PARSER=0.1.0
+#   make publish-lang  V=0.2.0 CORE=0.1.0 CHECK=0.1.0 PARSER=0.1.0 BASIC=0.2.0
+#   make publish-cmd   V=0.2.0 LANG=0.2.0 PARSER=0.1.0
 #
 # After publishing, consumers install with:
 #   go install github.com/boru-lang/boru/cmd/go/boru@v0.2.0   # boru CLI
 #   go get     github.com/boru-lang/boru/lang/go@v0.2.0  # lang library
 #   go get     github.com/boru-lang/boru/basic/go@v0.2.0 # basic layer
-#   go get     github.com/boru-lang/boru/eng/go@v0.2.0   # eng kernel
+#   go get     github.com/boru-lang/boru/core/go@v0.2.0  # interpreter kernel
 
 publish:
-	@test -n "$(V)" || (echo "Usage: make publish V=x.y.z" && exit 1)
-	$(MAKE) -C eng/go   publish V=$(V)
-	$(MAKE) -C basic/go publish V=$(V) ENG=$(V)
-	$(MAKE) -C lang/go  publish V=$(V) ENG=$(V) BASIC=$(V)
-	$(MAKE) -C cmd/go   publish V=$(V) ENG=$(V) LANG=$(V)
+	@echo "make publish: use 'make release' (scripts/release.sh) for a coordinated release, or publish-basic / publish-lang / publish-cmd for one module"; exit 2
 
-# release — the versioned release flow (see RELEASING.md and scripts/release.sh):
-# runs the full test suite, then auto-bumps the PATCH of eng/go, lang/go and
-# cmd/go, strips the local sibling `replace` directives, pins real versions,
-# and tags/pushes each in dependency order so `go install …@latest` works.
-# Use `DRY_RUN=1 make release` to preview without tagging or pushing.
 release:
 	@scripts/release.sh
 
-publish-eng:
-	$(MAKE) -C eng/go publish V=$(V)
-
 publish-basic:
-	$(MAKE) -C basic/go publish V=$(V) ENG=$(ENG)
+	$(MAKE) -C basic/go publish V=$(V) CORE=$(CORE) PARSER=$(PARSER)
 
 publish-lang:
-	$(MAKE) -C lang/go publish V=$(V) ENG=$(ENG) BASIC=$(BASIC)
+	$(MAKE) -C lang/go publish V=$(V) CORE=$(CORE) CHECK=$(CHECK) PARSER=$(PARSER) BASIC=$(BASIC)
 
 publish-cmd:
-	$(MAKE) -C cmd/go publish V=$(V) ENG=$(ENG) LANG=$(LANG)
+	$(MAKE) -C cmd/go publish V=$(V) LANG=$(LANG) PARSER=$(PARSER)
 
 # Show recent tags for every published module (newest first).
 tags:
-	@echo "==> eng/go";   git tag -l 'eng/go/v*'   --sort=-version:refname | head
-	@echo "==> basic/go"; git tag -l 'basic/go/v*' --sort=-version:refname | head
-	@echo "==> lang/go";  git tag -l 'lang/go/v*'  --sort=-version:refname | head
-	@echo "==> cmd/go";   git tag -l 'cmd/go/v*'   --sort=-version:refname | head
+	@for m in core/go parser/go check/go basic/go lang/go cmd/go; do \
+	  echo "==> $$m"; git tag -l "$$m/v*" --sort=-version:refname | head; \
+	done
 
 # ---- coverage ----------------------------------------------------------
 #
@@ -675,7 +590,7 @@ COVER_DIR := coverage
 # cover-gate enforces ADR-008: 100% Go unit coverage of all reachable
 # statements, at all times. Every module's tests run with -coverpkg
 # spanning the whole repo (so a statement counts as covered when ANY
-# suite reaches it — lang's tests legitimately cover eng, the spec corpus
+# suite reaches it — lang's tests legitimately cover core, the spec corpus
 # covers both), the per-module profiles are merged block-by-block by
 # test/go/covergate, and the gate fails below GATE_FLOOR. The sole
 # exclusions are provably-unreachable defensive guards, each marked with a
@@ -694,7 +609,7 @@ COVER_DIR := coverage
 # The gate runs in SMALLER STEPS, individually addressable for iteration:
 #
 #   make cover-profile             profile every module (the slow loop)
-#   make cover-profile m=eng/go    refresh ONE module's .xout profile
+#   make cover-profile m=core/go   refresh ONE module's .xout profile
 #   make cover-check               analysis only, over the .xout files
 #                                  already in $(COVER_DIR) (fast)
 #   make cover-gate                full re-profile + check — the
@@ -702,7 +617,7 @@ COVER_DIR := coverage
 #
 # After a change confined to one module's tests, `make cover-profile
 # m=<module> cover-check` re-verifies in that module's time instead of the
-# whole loop. CAVEAT: cover-check merges whatever profiles are on disk, so
+# whole loop. CAVEAT: cover-check merges the current modules' profiles on disk, so
 # mixing vintages is only sound while the measured files' line numbers are
 # unchanged since the older profiles were written (coverage blocks are
 # keyed by position); after edits to covered source, re-profile every
@@ -713,7 +628,7 @@ COVER_MODS = $(if $(m),$(m),$(MODULES))
 # cover-profile is TOLERANT and CACHED. Tolerant: a red module no longer
 # aborts the loop — every module is profiled, the failures are listed at
 # the end, and the exit is non-zero, so one red suite does not hide the
-# coverage verdict of the twelve others. Cached: a module whose sources
+# coverage verdict of the others. Cached: a module whose sources
 # and in-repo dependencies are unchanged since its last successful profile
 # (scripts/cover-key.sh, a digest over the dependency closure's tracked
 # blobs plus any working-tree edits) reuses its .xout; COVER_FRESH=1
@@ -722,6 +637,9 @@ COVER_MODS = $(if $(m),$(m),$(MODULES))
 # above it, which is inherent.
 cover-profile:
 	@mkdir -p $(COVER_DIR)
+	@for f in $(COVER_DIR)/*.xout; do [ -e "$$f" ] || continue; \
+	  case " $(foreach m,$(MODULES),$(subst /,_,$(m)).xout) " in *" $$(basename $$f) "*) ;; \
+	  *) echo "==> cover-profile: dropping $$f — its module is no longer in MODULES"; rm -f "$$f" "$$f.key" "$$f.log";; esac; done
 	@t0=$$(date +%s); n=0; total=$$(echo "$(COVER_MODS)" | wc -w); failed=""; \
 	for m in $(COVER_MODS); do \
 	  n=$$((n + 1)); tm=$$(date +%s); \
@@ -743,9 +661,17 @@ cover-profile:
 	done; \
 	if [ -n "$$failed" ]; then echo "==> cover-profile: FAILED modules:$$failed (every module was profiled; their .xout files are the failed runs')"; exit 1; fi
 
+# The profiles the merged check reads: one per CURRENT module, those that
+# exist. A profile a retired module left behind (compiler_go.xout and
+# eng_go.xout after the compiled lane's removal) names sources the tree no
+# longer has and would abort covergate, so it is neither read here nor
+# kept by cover-profile.
+COVER_XOUTS = $(wildcard $(foreach m,$(MODULES),$(COVER_DIR)/$(subst /,_,$(m)).xout))
+
 cover-check:
-	@echo "==> [cover-check] START — analysing $(abspath $(COVER_DIR))/*.xout against floor $(GATE_FLOOR)%"
-	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/*.xout \
+	@echo "==> [cover-check] START — analysing the current modules' profiles in $(abspath $(COVER_DIR)) against floor $(GATE_FLOOR)%"
+	@[ -n "$(COVER_XOUTS)" ] || { echo "==> [cover-check] no profile for any current module in $(COVER_DIR) — run make cover-profile first"; exit 1; }
+	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_XOUTS)) \
 	  || { echo "==> [cover-check] FAILED — below the $(GATE_FLOOR)% floor (see the uncovered count above)"; exit 1; }
 	@echo "==> [cover-check] PASS"
 
@@ -769,44 +695,14 @@ cover-gate:
 	  [ "$$red" = 0 ] || { echo "==> [cover-gate] FAILED: a module's suite was red (see stage 1/2)"; exit 1; }; \
 	  echo "==> [cover-gate] ALL STAGES PASSED in $$(($$(date +%s) - t0))s"
 
-# cover-gate-eng — the STANDALONE kernel gate (design/ENG-COVERAGE-
-# PARITY.0.md): eng/go profiled by ITS OWN suite only (the standalone
-# corpus lanes in eng/go/corpus_standalone_test.go plus the unit/seam
-# tests), no other module's tests contributing. The floor is a RATCHET
-# towards the 100% target: raise it as standalone coverage grows;
-# never lower it. The TS twin's ratchet lives in `make test-ts`
-# (node --test line-coverage threshold) — the two gates are the parity
-# pair (Go statements ≡ TS lines).
-#
-# RE-BASED at the four-piece Stage 4 cut (design/legacy/ENG-FOUR-PIECE.0.ignore):
-# the interpreter core's statements and ~120 kernel test files moved to
-# core/go, taking their incidental eng-side coverage with them. The
-# measurement universe changed — the pre-cut floor of 89 is not
-# comparable — so the floor restarts at the post-cut measured value
-# (84.6%) and the pair (cover-gate-eng, cover-gate-core) together
-# supersedes the old single gate. Both ratchet independently to 100.
-ENG_GATE_FLOOR ?= 84
-# The standalone profile deliberately uses the .engout extension so the
-# merged gate's cover-check (which globs $(COVER_DIR)/*.xout) NEVER
-# merges it: the two gates run on different schedules, and a stale
-# standalone profile carrying old line addresses poisons the merged
-# view with phantom uncovered blocks after any source edit.
-cover-gate-eng:
-	@mkdir -p $(COVER_DIR)
-	@rm -f $(COVER_DIR)/eng_standalone.xout
-	@echo "==> cover-gate-eng (standalone, floor $(ENG_GATE_FLOOR)%)"
-	@( cd eng/go && go test -timeout 25m \
-	  -coverpkg=github.com/boru-lang/boru/eng/go/... \
-	  -coverprofile=$(abspath $(COVER_DIR))/eng_standalone.engout ./... > $(abspath $(COVER_DIR))/eng_standalone.log 2>&1 ) \
-	  || { echo "==> cover-gate-eng test run FAILED:"; tail -30 $(abspath $(COVER_DIR))/eng_standalone.log; exit 1; }
-	@cd test/go && go run ./covergate -threshold $(ENG_GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/eng_standalone.engout
-
-
 # cover-gate-core — the CORE kernel's own gate (design/legacy/ENG-FOUR-PIECE.0.ignore
 # Stage 5): core/go profiled by ITS OWN suite alone. The floor is a
 # RATCHET towards 100%: raise it as core-standalone coverage grows;
-# never lower it. Same .engout-family isolation as the eng gate so the
-# merged cover-check never merges a stale standalone profile.
+# never lower it. The profile uses the .engout extension so the merged
+# gate's cover-check (which reads the current modules' .xout profiles) never merges a
+# stale standalone profile — the two gates run on different schedules,
+# and a stale profile carrying old line addresses would poison the merged
+# view with phantom uncovered blocks after any source edit.
 CORE_GATE_FLOOR ?= 100
 cover-gate-core:
 	@mkdir -p $(COVER_DIR)
@@ -822,17 +718,17 @@ cover-gate-core:
 	  || { echo "==> [cover-gate-core] FAILED at stage 2/2 — below the $(CORE_GATE_FLOOR)% floor"; exit 1; }
 	@echo "==> [cover-gate-core] ALL STAGES PASSED (floor $(CORE_GATE_FLOOR)%)"
 
-# cover-gate-check / cover-gate-compiler — the standalone gates for the
-# two middle pieces (design/legacy/ENG-FOUR-PIECE.0.ignore Stage 6), the twins of
-# cover-gate-core and cover-gate-eng: each module profiled by ITS OWN
-# suite alone. Both floors are RATCHETS toward 100 — raise them in the
-# same change that raises coverage, never lower them. The merged
-# repo-wide ADR-008 gate (make cover-gate) stays the 100% contract; these
-# measure how much each piece proves on its own.
+# cover-gate-check — the standalone gate for the check pass
+# (design/legacy/ENG-FOUR-PIECE.0.ignore Stage 6), the twin of
+# cover-gate-core: the module profiled by ITS OWN suite alone. The floor
+# is a RATCHET toward 100 — raise it in the same change that raises
+# coverage, never lower it. The merged repo-wide ADR-008 gate (make
+# cover-gate) stays the 100% contract; this measures how much the piece
+# proves on its own.
 #
 # CHECK_GATE_FLOOR was RE-BASED at the 2026-08-08 carrier-lattice move
-# (ADR-013's third amendment), on exactly the precedent ENG_GATE_FLOOR
-# set at the Stage 4 cut: the measurement universe changed, so the
+# (ADR-013's third amendment), on exactly the precedent the kernel's
+# standalone floor set at the Stage 4 cut: the measurement universe changed, so the
 # pre-move floor is not comparable to the post-move one.
 #
 # What happened is worth spelling out, because the number went DOWN and
@@ -854,7 +750,6 @@ cover-gate-core:
 # in the same change that raises coverage, and never lower it again
 # without a comparable structural reason recorded here.
 CHECK_GATE_FLOOR ?= 100
-COMPILER_GATE_FLOOR ?= 62
 
 # cover-gate-parser — the parser's own gate. The parser is a LEAF over core
 # (it uses 109 core symbols and nothing else from the repo), which is what
@@ -883,16 +778,6 @@ cover-gate-check:
 	  -coverprofile=$(abspath $(COVER_DIR))/check_standalone.engout ./... > $(abspath $(COVER_DIR))/check_standalone.log 2>&1 ) \
 	  || { echo "==> cover-gate-check test run FAILED:"; tail -30 $(abspath $(COVER_DIR))/check_standalone.log; exit 1; }
 	@cd test/go && go run ./covergate -threshold $(CHECK_GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/check_standalone.engout
-
-cover-gate-compiler:
-	@mkdir -p $(COVER_DIR)
-	@rm -f $(COVER_DIR)/compiler_standalone.engout
-	@echo "==> cover-gate-compiler (standalone, floor $(COMPILER_GATE_FLOOR)%)"
-	@( cd compiler/go && go test -timeout 25m \
-	  -coverpkg=github.com/boru-lang/boru/compiler/go/... \
-	  -coverprofile=$(abspath $(COVER_DIR))/compiler_standalone.engout ./... > $(abspath $(COVER_DIR))/compiler_standalone.log 2>&1 ) \
-	  || { echo "==> cover-gate-compiler test run FAILED:"; tail -30 $(abspath $(COVER_DIR))/compiler_standalone.log; exit 1; }
-	@cd test/go && go run ./covergate -threshold $(COMPILER_GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/compiler_standalone.engout
 
 cover:
 	@mkdir -p $(COVER_DIR)

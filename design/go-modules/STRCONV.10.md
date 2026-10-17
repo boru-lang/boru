@@ -69,7 +69,7 @@ Notes:
 
 Scalars only — String, Integer, Float, Boolean, Atom. No opaque handle
 type, no `RegisterExternalBuiltin` / FixedID is needed. Convert at the
-boundary with `eng.FromNative` / `eng.ToNative` (`eng/go/gobridge.go`).
+boundary with `core.FromNative` / `core.ToNative` (`core/go/gobridge.go`).
 
 ## 6. Errors
 
@@ -89,7 +89,7 @@ detail, word)` with a kebab-case code matching the word:
 
 Guard each arg with `AsConcreteString` / `AsConcreteInteger` /
 `AsConcreteFloat` / `AsConcreteBoolean` before use; never panic
-(`eng/go/CLAUDE.md` "Panic Prevention").
+(`core/go/CLAUDE.md` "Panic Prevention").
 
 ## 7. Policy / capabilities
 

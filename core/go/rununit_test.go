@@ -12,16 +12,6 @@ import (
 // tests drive it with hand-built units, mirroring the vm_steplimit / vm_seam
 // style, since eng has no def/fn words to compile a real body.
 
-func runUnitReg(t *testing.T) *Registry {
-	t.Helper()
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	r.InitRootContext()
-	return r
-}
-
 // isInternalErr classifies exactly the internal_error BoruError (and nothing
 // else): a foreign error and a genuine boru runtime error both report false, so
 // InvokeCallback returns them straight through rather than masking with a
@@ -57,3 +47,8 @@ func TestIsVMDefer(t *testing.T) {
 		t.Error("a non-BoruError and nil are not defers")
 	}
 }
+
+// isInternalErr classifies exactly the internal_error BoruError (and nothing
+// else): a foreign error and a genuine boru runtime error both report false, so
+// InvokeCallback returns them straight through rather than masking with a
+// fallback.

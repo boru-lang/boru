@@ -59,72 +59,18 @@ func Eval(w io.Writer, source string, o lang.Options) error {
 // a structured BoruError renders through the diagnostic renderer with
 // the ANSI palette; color=false keeps the byte-identical plain text.
 func EvalColor(w io.Writer, source string, o lang.Options, color bool) error {
-	return EvalReport(w, nil, nil, source, o, color)
-}
-
-// EvalReport is Eval plus the -compile-report surface and caller-resolved
-// color. When report is non-nil, the instance's detached-stamp attribution
-// (lang.Boru.StampReport — design/legacy/RUNTIME-STAMPING.0.ignore) is printed
-// to it after the run, one line per runtime-constructed callback with its
-// outcome or the reason its body did not compile. color renders a structured
-// BoruError through the ANSI diagnostic renderer; color=false keeps the
-// byte-identical plain text.
-//
-// warn is unused and kept for call-site compatibility: it carried the
-// warning that a program had not compiled and had been re-run on the
-// interpreter. There is no re-run to warn about — the run fails — so the
-// failure IS the report.
-func EvalReport(w, report, warn io.Writer, source string, o lang.Options, color bool) error {
 	a, err := langNew(o)
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}
 	registerTerminalBackend(a)
-	_ = warn
-	runErr := runAndPrint(w, a, source, color)
-	if report != nil {
-		PrintStampReport(report, a.StampReport())
-	}
-	return runErr
-}
-
-// PrintStampReport renders stamp attribution events one per line. An empty
-// report still prints a header line so `-compile-report` over a program with
-// no runtime-constructed callbacks tells the user why it is empty.
-func PrintStampReport(w io.Writer, events []lang.StampEvent) {
-	if len(events) == 0 {
-		fmt.Fprintln(w, "compile-report: no runtime-stamp attempts (no runtime-constructed callbacks)")
-		return
-	}
-	for _, ev := range events {
-		name := ev.Name
-		if name == "" {
-			name = "(anonymous fn)"
-		}
-		where := ""
-		if ev.Pos.Row > 0 {
-			where = fmt.Sprintf(" @ %d:%d", ev.Pos.Row, ev.Pos.Col)
-		}
-		if ev.Stamped {
-			fmt.Fprintf(w, "compile-report: stamped %s%s\n", name, where)
-		} else {
-			reason := ev.Reason
-			if reason == "" {
-				reason = "the body did not compile as a stored fn"
-			}
-			fmt.Fprintf(w, "compile-report: did not compile %s%s — %s\n", name, where, reason)
-		}
-	}
+	return runAndPrint(w, a, source, color)
 }
 
 // runAndPrint executes source on an already-constructed instance (so callers
 // that need to configure the instance first — e.g. seed an in-memory file
 // system for bundled imports — can do so before running) and prints the
 // residual stack exactly as the run subcommand does.
-//
-// There is one engine. The program compiles and its bytecode runs, or it does
-// not compile and that is an error — printed like any other. The three modes
-// this used to switch on are gone with the fallback they existed to select.
 func runAndPrint(w io.Writer, a *lang.Boru, source string, color bool) error {
 	result, err := a.Run(source)
 	if err != nil {

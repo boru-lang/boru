@@ -60,24 +60,18 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		// The synthetic example evaluation is DOCUMENTATION, not the user's
 		// program, and MUST be fully hermetic — it fires from OnRegisterHook on
 		// EVERY fn registration, INCLUDING the program's own `def f fn […]` DURING
-		// compilation, so any trace it leaves contaminates that very program's
-		// compile. Seven leak channels are closed:
-		//   1. EmitState (recording + interned consts + RememberOriginal) — swap in
-		//      a FRESH throwaway EmitState (IsolateEmit), not just Suspend: Suspend
-		//      keeps the SAME EmitState, so the example's consts (e.g. a generated
-		//      `['a' 'b']` sample list for a list-typed param) leaked into the
-		//      program's pool and a later operand compiled against the stale value
-		//      (a valid `def zs [1 2] end f2 zs` saw f2's arg as `['a' 'b']`).
-		//   2. Check diagnostics — snapshot + truncate (the decision.boru false
+		// the check pass, so any trace it leaves contaminates that very
+		// program's analysis. Six leak channels are closed:
+		//   1. Check diagnostics — snapshot + truncate (the decision.boru false
 		//      positives from synthetic stand-in args).
-		//   3. Def-stack bindings — snapshot + restore (an example that `def`s).
-		//   4. Check-mode step budget — snapshot + restore (IsolateBudget). The
+		//   2. Def-stack bindings — snapshot + restore (an example that `def`s).
+		//   3. Check-mode step budget — snapshot + restore (IsolateBudget). The
 		//      synthetic run shares the registry's StepCount; a doc example that
 		//      runs many steps — most acutely a RECURSIVE macro, which loops to
 		//      the step ceiling — would otherwise burn the real program's shared
 		//      budget and short-circuit its later statements (e.g. a subsequent
 		//      `macroexpand (recursive-macro …)` never gets reached).
-		//   5. Filesystem — swap the active FileOps for a FRESH seeded
+		//   4. Filesystem — swap the active FileOps for a FRESH seeded
 		//      in-memory implementation for this one evaluation (and restore
 		//      after). Without this, registering the io words (read/write/
 		//      folder — e.g. a test helper installing them bare, or a host
@@ -87,22 +81,21 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		//      also keeps results order-independent; the seed matches
 		//      genhelp and the help-example validation test, so dynamic and
 		//      precomputed results agree.
-		//   6. Input — an example of a reading word (stdin) must consume an
+		//   5. Input — an example of a reading word (stdin) must consume an
 		//      empty hermetic reader, never the process's stdin.
-		//   7. The fn-body ANALYSIS MEMO family (IsolateFnAnalysis) — the
+		//   6. The fn-body ANALYSIS MEMO family (IsolateFnAnalysis) — the
 		//      example's own AnalyseFnBody of the user's real body is
 		//      memoised under a key that renders arg TYPE NAMES only, so the
 		//      program's own call site took the memo HIT and was handed the
 		//      EXAMPLE's residual instead of analysing its concrete args. The
 		//      dispatch that should have failed was never attempted, and
-		//      channel 2 ate the evidence: `def app fn [[nd:Any m:Map] [Any]
+		//      channel 1 ate the evidence: `def app fn [[nd:Any m:Map] [Any]
 		//      [nd (m get "inc") apply]]  def rules {inc: 42}  app 5 rules`
 		//      reported NOTHING on the FIRST check in a process (the example
 		//      is evaluated once per process — help's own result memo is
 		//      package-level) and its two real errors on every later one.
 		// Real construction-time body checking is a first-class pass
 		// (checkFnBodyAtConstruction), so suppressing the eval's diagnostics is sound.
-		defer r.Check.IsolateEmit()()
 		defer r.Check.IsolateBudget()()
 		defer r.Check.IsolateFnAnalysis()()
 		diagBase := len(r.Check.Diagnostics)
@@ -117,12 +110,6 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		// mid-install.
 		defsSnap := r.Defs.SnapshotEntries()
 		defer r.Defs.RestoreEntriesSnapshot(defsSnap)
-		// The restore above tears down every def the example run installs, so
-		// the bind ledger must not record them (the hook fires mid-pass from
-		// the program's own fn registrations — an example that expands a macro
-		// installed the expansion's `def tmp$g…` as a phantom ledger entry,
-		// the live-depth oracle's gensym-temp class).
-		defer r.Check.SuppressBindLedger()()
 
 		prevOps, hadOps, _ := r.Capabilities.Get(CapFileOps)
 		prevMem, hadMem, _ := r.Capabilities.Get(CapMemFileOps)

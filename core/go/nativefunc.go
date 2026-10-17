@@ -31,17 +31,4 @@ type NativeFunc struct {
 	// recorder reads sig.CompileEffect instead of a name-keyed eng table. A
 	// single overload that needs an extra flag can still set Signature.CompileEffect.
 	CompileEffect CompileEffect
-
-	// Callable, when non-nil, declares this word as a code-body higher-order
-	// word whose body compiles to a closure unit (each / fold / do / a test
-	// case body, …). It is copied onto every one of this word's signatures at
-	// registration, so the bytecode recorder reads the closure shape from
-	// sig.Callable instead of a name-keyed eng table — eng then names no
-	// specific (often module) word. nil = not closure-eligible.
-	Callable *CallableSpec
-
-	// StoredBodies declares the word's param-carrying stored code-body
-	// positions (see Signature.StoredBodies). Copied onto every one of this
-	// word's signatures at registration, like Callable.
-	StoredBodies []StoredBodySpec
 }

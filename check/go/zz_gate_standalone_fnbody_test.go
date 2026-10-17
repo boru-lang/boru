@@ -12,47 +12,6 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// gsFrozenRec records NoteFrozenRead over the inactive recorder.
-type gsFrozenRec struct {
-	core.EmitRecorder
-	noted []string
-}
-
-func (f *gsFrozenRec) NoteFrozenRead(name string, bake core.FrozenBake, _ int64) {
-	if bake == core.FrozenBakeCall {
-		f.noted = append(f.noted, name)
-	}
-}
-
-// noteBakedCallTarget notes a MODULE-scope call target a compiled unit is
-// about to bake, so a later rebind of the name re-records the caller. A
-// fn-local binding is no module name (nothing to note), and the guard arm —
-// no dispatching registry, or no name — notes nothing at all.
-func TestGateStandaloneNoteBakedCallTarget(t *testing.T) {
-	r := newTestRegistry(t)
-	rec := &gsFrozenRec{EmitRecorder: core.TheInactiveEmit}
-
-	noteBakedCallTarget(rec, r, "zgsmodfn")
-	if len(rec.noted) != 1 || rec.noted[0] != "zgsmodfn" {
-		t.Fatalf("a module-scope target must be noted once, got %v", rec.noted)
-	}
-
-	r.PushFnBaseline(r.Defs.Snapshot())
-	r.Defs.Push("zgslocalfn", bsFn(core.NewInteger(1)))
-	noteBakedCallTarget(rec, r, "zgslocalfn")
-	r.Defs.Pop("zgslocalfn")
-	r.PopFnBaseline()
-	if len(rec.noted) != 1 {
-		t.Errorf("a fn-local target is no module name, got %v", rec.noted)
-	}
-
-	noteBakedCallTarget(rec, nil, "zgsmodfn")
-	noteBakedCallTarget(rec, r, "")
-	if len(rec.noted) != 1 {
-		t.Errorf("no registry or no name notes nothing, got %v", rec.noted)
-	}
-}
-
 // gsRegisterNoteBoom installs `zgsnoteboomq`, a RunInCheck fixture that
 // records an info diagnostic and then fails — a body analysis that reports
 // something and then cannot proceed.
@@ -165,40 +124,5 @@ func TestGateStandaloneRefinementUndecided(t *testing.T) {
 	}
 	if refinementUndecided(core.NewTypeLiteral(core.TInteger), abstractInt) {
 		t.Error("a plain type pattern decides")
-	}
-}
-
-// narrowToDeclaredParam's IMPRECISE arm: a recovered call's carrier whose
-// static tag does not conform to a NOMINAL param (a join settled on Map
-// where the run holds a List) compiles the body against the declared type,
-// keeping the carrier's modality. A GENERIC fn's param (a type variable the
-// generic lane binds), a CONSTRAINED param (a predicate the nominal guard
-// cannot enforce), a conforming carrier and a concrete value all keep the
-// argument as it is.
-func TestGateStandaloneNarrowImpreciseCarrier(t *testing.T) {
-	nc, ok := narrowToDeclaredParam(core.TList, core.NewCarrier(core.TMap), false)
-	if !ok || !nc.Carrier() || core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
-		t.Fatalf("an imprecise Map carrier at a List param = (%#v, %v), want a strict List carrier", nc, ok)
-	}
-	nc, ok = narrowToDeclaredParam(core.TList, core.NewDynamicCarrier(core.TMap), false)
-	if !ok || !core.IsDynamic(&nc) || !nc.Parent().Equal(core.TList) {
-		t.Errorf("a gradual imprecise carrier narrows and stays gradual, got (%#v, %v)", nc, ok)
-	}
-
-	r := newTestRegistry(t)
-	pred := covPredicateType(t, r, "ZgsNarrowPred")
-	for name, c := range map[string]struct {
-		pt      *core.Type
-		a       core.Value
-		generic bool
-	}{
-		"generic fn":         {core.TList, core.NewCarrier(core.TMap), true},
-		"constrained param":  {pred, core.NewCarrier(core.TString), false},
-		"conforming carrier": {core.TList, core.NewCarrier(core.TList), false},
-		"concrete value":     {core.TList, core.NewInteger(1), false},
-	} {
-		if _, ok := narrowToDeclaredParam(c.pt, c.a, c.generic); ok {
-			t.Errorf("%s: the argument must be kept as it is", name)
-		}
 	}
 }

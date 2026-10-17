@@ -6,38 +6,6 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// TestSoleSigParamsNominalSkipsAnUntypedParam pins soleSigParamsNominal's
-// untyped slot (main's #509): a sole signature's param with no declared type
-// constrains nothing, so it does not make the signature value-sensitive; a
-// refinement-typed param does.
-func TestSoleSigParamsNominalSkipsAnUntypedParam(t *testing.T) {
-	mk := func(pt *core.Type) (*core.Signature, *core.FnDefInfo) {
-		sole := core.Signature{
-			Params:     []core.FnParam{{Name: "x", Type: pt}},
-			Impl:       core.Boru([]core.Value{core.NewInteger(1)}),
-			ReturnsFn:  func(args []core.Value, r *core.Registry) []core.Value { return []core.Value{core.NewInteger(1)} },
-			BarrierPos: core.BarrierAllForward,
-		}
-		fn := &core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Fallback: true}, sole}}
-		return &fn.Signatures[1], fn
-	}
-	if sig, fn := mk(nil); !soleSigParamsNominal(sig, fn) {
-		t.Error("an untyped param is nominal")
-	}
-	if sig, fn := mk(core.TInteger); !soleSigParamsNominal(sig, fn) {
-		t.Error("an Integer param is nominal")
-	}
-	// A constraint the guarded entry check cannot enforce (a DepScalar
-	// bound, content + Unifier) makes the signature value-sensitive.
-	r := newTestRegistry(t)
-	if err := core.InstallType(r, "Zc509Big", core.NewDepScalar(core.DepGT, core.NewInteger(10))); err != nil {
-		t.Fatalf("depscalar install: %v", err)
-	}
-	if sig, fn := mk(r.LookupTypeName("Zc509Big")); soleSigParamsNominal(sig, fn) {
-		t.Error("a DepScalar-constrained param is not nominal")
-	}
-}
-
 // trimUnnamedArgs (NUR255): the frame keeps nret values off the top and
 // drops up to the unnamed count of extras from the bottom; a residual the
 // unnamed args cannot account for, and a 0-return frame, are left as they
@@ -71,22 +39,5 @@ func TestEmptyBodyResidual(t *testing.T) {
 	}
 	if got := emptyBodyResidual([]string{"x"}, []core.Value{a}); got != nil {
 		t.Errorf("every param named: nothing, got %v", got)
-	}
-}
-
-// callAnchor (NUR118, NUR259): a call word's own position; the first
-// argument's for a named call whose word carries none; and none at all for a
-// literal lambda's call, which the interpreter anchors at the fn value's own
-// (absent) position.
-func TestCallAnchorArms(t *testing.T) {
-	word, arg := core.SrcPos{Row: 1, Col: 30}, core.SrcPos{Row: 1, Col: 3}
-	if got := callAnchor(callSite{pos: word}, arg); got != word {
-		t.Errorf("a call word's own position: %v", got)
-	}
-	if got := callAnchor(callSite{}, arg); got != arg {
-		t.Errorf("a named call with no word position anchors at its argument: %v", got)
-	}
-	if got := callAnchor(callSite{anonymous: true}, arg); got != (core.SrcPos{}) {
-		t.Errorf("a literal lambda's call anchors nowhere, as the interpreter's: %v", got)
 	}
 }

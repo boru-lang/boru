@@ -215,29 +215,6 @@ func TestNur038SealClearedAtRunEntry(t *testing.T) {
 	}
 }
 
-func TestNur038PolyReachBoundStopsAtCallHead(t *testing.T) {
-	r := covRegistry(t, nil)
-	e := NewTop(r)
-	tagged := Value{d: &Datum{Parent: TFunction, Data: &FnDefInfo{Name: "p", Signatures: []Signature{
-		{Args: []*Type{TAny}, BarrierPos: -1},
-	}}}}
-	SetReachGroup(&tagged, true)
-
-	// A tagged fn with a claim is the NEXT call — the scan stops before
-	// it, exactly as a bare fn word would stop it.
-	e.Tape = NewTape([]Value{NewInteger(0), tagged, NewInteger(7)}, StackHeadroom)
-	e.Pointer = 0
-	if n, ok := e.polyReachBound(); !ok || n != 0 {
-		t.Errorf("bound = (%d,%v), want (0,true): the call head is a barrier", n, ok)
-	}
-
-	// The SAME value with nothing to claim is an operand and counts.
-	e.Tape = NewTape([]Value{NewInteger(0), tagged, NewEnd()}, StackHeadroom)
-	if n, ok := e.polyReachBound(); !ok || n != 1 {
-		t.Errorf("bound = (%d,%v), want (1,true): a claim-less fn is data", n, ok)
-	}
-}
-
 func TestNur038FnValueSigShapes(t *testing.T) {
 	zero := Signature{}
 	one := Signature{Args: []*Type{TAny}}
@@ -271,25 +248,5 @@ func TestNur038FnValueSigShapes(t *testing.T) {
 	}
 	if FnValueOnlyZeroArgSigs(&FnDefInfo{Name: "fo", Signatures: []Signature{fb}}) {
 		t.Error("a fallback-only value proves nothing")
-	}
-}
-
-// TestPolyReachBoundCountsBuiltinTypeName — an unbound word that names a
-// builtin type (`Integer`) steps to exactly one value, its type literal, so
-// the reach bound counts it rather than reading it as unboundable
-// (`convert Integer none` recorded no faithful-raise plan otherwise and the
-// runtime no-match bailed, vm:poly-no-match; 2026-09-26). A genuinely
-// unbound word still makes the bound untrustworthy.
-func TestPolyReachBoundCountsBuiltinTypeName(t *testing.T) {
-	r := covRegistry(t, nil)
-	e := NewTop(r)
-	e.Tape = NewTape([]Value{NewInteger(0), NewWord("Integer"), NewEnd()}, StackHeadroom)
-	e.Pointer = 0
-	if n, ok := e.polyReachBound(); !ok || n != 1 {
-		t.Errorf("bound = (%d,%v), want (1,true): a builtin type name is one type literal", n, ok)
-	}
-	e.Tape = NewTape([]Value{NewInteger(0), NewWord("zz-no-such-word"), NewEnd()}, StackHeadroom)
-	if _, ok := e.polyReachBound(); ok {
-		t.Error("an unbound non-type word keeps the bound untrustworthy")
 	}
 }

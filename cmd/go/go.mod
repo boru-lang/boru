@@ -3,6 +3,7 @@ module github.com/boru-lang/boru/cmd/go
 go 1.24.7
 
 require (
+	github.com/boru-lang/boru/core/go v0.0.0
 	github.com/boru-lang/boru/lang/go v0.0.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -20,9 +21,6 @@ require (
 require (
 	github.com/boru-lang/boru/basic/go v0.0.0 // indirect
 	github.com/boru-lang/boru/check/go v0.0.0 // indirect
-	github.com/boru-lang/boru/compiler/go v0.0.0 // indirect
-	github.com/boru-lang/boru/core/go v0.0.0 // indirect
-	github.com/boru-lang/boru/eng/go v0.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/tabnas/bnf/go v0.1.2 // indirect
 )
@@ -97,16 +95,4 @@ replace github.com/boru-lang/boru/core/go => ../../core/go
 
 replace github.com/boru-lang/boru/check/go => ../../check/go
 
-replace github.com/boru-lang/boru/compiler/go => ../../compiler/go
-
 replace github.com/boru-lang/boru/parser/go => ../../parser/go
-
-// eng/go is not imported by cmd/go directly — lang/go requires it. A replace
-// directive only applies from the MAIN module, so lang/go's own
-// `replace .../eng/go => ../../eng/go` is ignored when cmd/go is the main
-// module and this one has to repeat it. Inside the workspace go.work supplies
-// the resolution and its absence here is invisible; with GOWORK=off — which is
-// how every downstream library's CI builds the interpreter, and what
-// CLAUDE.md documents for a standalone clone — Go falls through to the network
-// and fails with `unknown revision eng/go/v0.0.0`.
-replace github.com/boru-lang/boru/eng/go => ../../eng/go

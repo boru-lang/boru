@@ -112,12 +112,3 @@ func TestW8DoListReturnsFnWordBody(t *testing.T) {
 }
 
 // --- native_map_iter.go: invokeBodyTop propagates a body error ---
-
-func TestW8InvokeBodyTopError(t *testing.T) {
-	r := w8Reg(t)
-	// The body references an undefined word, so InvokeBody returns an error.
-	body := NewList([]Value{NewWord("w8_undefined_word_xyz")})
-	if _, _, err := invokeBodyTop(r, body, []Value{NewInteger(1)}); err == nil {
-		t.Fatal("invokeBodyTop should propagate the body error")
-	}
-}

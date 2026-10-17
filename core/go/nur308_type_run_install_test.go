@@ -135,53 +135,6 @@ func TestForwardingBehaviorOperands(t *testing.T) {
 	}
 }
 
-// TestHasUnknownRefinementWalks pins the walk that decides whether a type is
-// the run's: a refinement over an unknown bound, through a union, a
-// negation, a typed container's child or a named node's recorded body; a
-// known bound, a plain type, a body-less node and a runaway nesting are not.
-func TestHasUnknownRefinementWalks(t *testing.T) {
-	unknown := NewDepScalar(DepGT, NewCarrier(TInteger))
-	known := NewDepScalar(DepGT, NewInteger(1))
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		name string
-		v    Value
-		want bool
-	}{
-		{"unknown", unknown, true},
-		{"known", known, false},
-		{"union", NewDisjunct([]Value{NewTypeLiteral(TString), unknown}), true},
-		{"known union", NewDisjunct([]Value{NewTypeLiteral(TString), known}), false},
-		{"negation", NewNegation(unknown), true},
-		{"typed list", NewValueRaw(TList, ChildTypeInfo{Child: unknown}), true},
-		{"named", NewTypeLiteral(passNode(r, "Hn")), true},
-		{"builtin", NewTypeLiteral(TInteger), false},
-		{"scalar", NewInteger(3), false},
-	} {
-		if got := HasUnknownRefinement(tc.v); got != tc.want {
-			t.Errorf("%s: HasUnknownRefinement = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-	deep := unknown
-	for i := 0; i < 40; i++ {
-		deep = NewNegation(deep)
-	}
-	if HasUnknownRefinement(deep) {
-		t.Error("a runaway nesting stops the walk")
-	}
-	// A typed container's child in a signature slot is the run's too.
-	ar, rec := analysingRegistry(t)
-	if _, _, err := ResolveSigType(ar, NewValueRaw(TList, ChildTypeInfo{Child: unknown})); err != nil || rec.dependents != 1 {
-		t.Errorf("a typed list over an unknown refinement is the run's to build: %v %d", err, rec.dependents)
-	}
-	if _, _, err := ResolveSigType(ar, NewValueRaw(TMap, ChildTypeInfo{Child: unknown})); err != nil || rec.dependents != 2 {
-		t.Errorf("a typed map over an unknown refinement is the run's to build: %v %d", err, rec.dependents)
-	}
-}
-
 // TestCombineOverUnknownBounds pins the intersection of refinements when a
 // bound is one the pass does not know: which side is tighter is the run's,
 // the unknown bound is kept (so the result stays a type the run installs),
@@ -282,24 +235,6 @@ func TestMakeFieldErrorIsStructured(t *testing.T) {
 	wrapped := makeFieldError("y", inner)
 	if !errors.As(wrapped, &ae) || ae != inner || !strings.Contains(wrapped.Error(), `make: field "y"`) {
 		t.Errorf("a structured refusal keeps its code: %v", wrapped)
-	}
-}
-
-// TestWrittenBackTypeTwinInstallsNothing pins the replay side of the run-time
-// install: the def's type twin is written back, so its replay pushes no
-// binding and reserves nothing — OpBindTypeRun is the one install.
-func TestWrittenBackTypeTwinInstallsNothing(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	node := passNode(r, "Wb")
-	tr := BindTransition{Kind: BindTypeInstall, Name: "Wb", WrittenBack: true}
-	if err := ApplyBindTwin(r, tr, DefEntry{TypeDef: node, Minted: true, Body: NewTypeLiteral(node)}); err != nil {
-		t.Fatal(err)
-	}
-	if r.Defs.Has("Wb") {
-		t.Error("a written-back type twin installs nothing")
 	}
 }
 

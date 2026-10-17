@@ -69,7 +69,7 @@ Each exclusion is a `//covergate:allow <reason>` comment; the reason names
 the category. The categories:
 
 - **§engine** — interpreter step/dispatch defensive index and error arms
-  in `eng/go/engine.go`. Tautological index comparisons (a backward scan
+  in `core/go/engine.go`. Tautological index comparisons (a backward scan
   makes `fwdIdx < endIdx` a theorem), `stepEnd` error arms (`stepEnd`
   only ever returns nil), and `TopTypeBody`/`Lookup` arms shadowed by a
   preceding `Defs.Top`. Reachable only through the lang layer or a

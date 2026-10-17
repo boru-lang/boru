@@ -4,44 +4,6 @@ import (
 	"testing"
 )
 
-// constructRecorder is the inactive recorder keeping what the refinement
-// constructors and install sites tell the compile pass (NUR308): the run-time
-// construct latch, the remembered consts, and the declines.
-type constructRecorder struct {
-	inactiveEmit
-	constructs  int
-	remembered  []Value
-	declined    []string
-	typeRuns    []string
-	typeNodes   []*Type
-	dependents  int
-	sigForwards []*Type
-}
-
-func (c *constructRecorder) NoteRuntimeConstruct()          { c.constructs++ }
-func (c *constructRecorder) RememberOriginal(v Value)       { c.remembered = append(c.remembered, v) }
-func (c *constructRecorder) MarkUncompilable(reason string) { c.declined = append(c.declined, reason) }
-func (c *constructRecorder) NoteRuntimeDependent()          { c.dependents++ }
-func (c *constructRecorder) NoteRuntimeSigForward(node *Type, _ Value) {
-	c.sigForwards = append(c.sigForwards, node)
-}
-func (c *constructRecorder) NoteRuntimeTypeInstall(name string, node *Type, _ Value) {
-	c.typeRuns = append(c.typeRuns, name)
-	c.typeNodes = append(c.typeNodes, node)
-}
-
-func analysingRegistry(t *testing.T) (*Registry, *constructRecorder) {
-	t.Helper()
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Check.Mode = true
-	rec := &constructRecorder{}
-	r.Check.Emit = rec
-	return r, rec
-}
-
 // zzFormatBehavior is a base whose Formatter reads a VALUE of the base, the
 // way Bytes' does — it has no refinement to read.
 type zzFormatBehavior struct{ defaultBehavior }
@@ -112,47 +74,6 @@ func TestRefinementRendersOverAFormatterBase(t *testing.T) {
 	}
 }
 
-// TestRefinementConstructorsNoteUnknownBounds pins NUR308 at the
-// constructors: over a KNOWN bound the refinement is a const (remembered for
-// the stripped-operand recovery); over a bound the pass does not know (a
-// carrier — a computed one) the constructor latches a run-time construct and
-// remembers nothing, and `between` decides no empty interval from it.
-func TestRefinementConstructorsNoteUnknownBounds(t *testing.T) {
-	r, rec := analysingRegistry(t)
-	gtSig := MakeDepScalarSig("gt", DepGT)
-	gt := gtSig.DispatchHandler()
-	intLit := NewTypeLiteral(TInteger)
-
-	if _, err := gt([]Value{NewInteger(3), intLit}, nil, nil, r); err != nil {
-		t.Fatal(err)
-	}
-	if rec.constructs != 0 || len(rec.remembered) != 1 {
-		t.Fatalf("a known bound is a const: constructs=%d remembered=%d", rec.constructs, len(rec.remembered))
-	}
-	out, err := gt([]Value{NewCarrier(TInteger), intLit}, nil, nil, r)
-	if err != nil || len(out) != 1 || !out[0].IsDepScalar() {
-		t.Fatalf("an unknown bound still builds the refinement the pass reads: %v %v", out, err)
-	}
-	if rec.constructs != 1 || len(rec.remembered) != 1 {
-		t.Fatalf("an unknown bound latches a run-time construct: constructs=%d remembered=%d", rec.constructs, len(rec.remembered))
-	}
-
-	// between: a known empty interval is Never; an unknown bound decides
-	// nothing and is constructed at run time.
-	out, err = BetweenHandler([]Value{NewInteger(5), NewInteger(1), intLit}, nil, nil, r)
-	if err != nil || !IsBareTypeNode(&out[0]) || !out[0].Is(TNever) {
-		t.Fatalf("between over known crossed bounds is Never: %v %v", out, err)
-	}
-	out, err = BetweenHandler([]Value{NewInteger(1), NewCarrier(TInteger), intLit}, nil, nil, r)
-	if err != nil || !out[0].IsDepScalar() || rec.constructs != 2 {
-		t.Fatalf("between over an unknown bound is a run-time refinement, not Never: %v %v constructs=%d", out, err, rec.constructs)
-	}
-	// Outside a registry (a bare handler call) nothing is noted.
-	if out, err = BetweenHandler([]Value{NewInteger(1), NewInteger(3), intLit}, nil, nil, nil); err != nil || !out[0].IsDepScalar() {
-		t.Fatalf("between without a registry: %v %v", out, err)
-	}
-}
-
 // TestUnknownBoundDecidesNothing pins the membership half of NUR308: a
 // carrier bound orders below every value, so a verdict over it was the
 // lattice's — `Integer lte (size s)` refused 3 at check time whatever s
@@ -196,89 +117,5 @@ func TestRefinementConstOnlyOverKnownBounds(t *testing.T) {
 	})
 	if IsInertConst(&half) {
 		t.Error("an interval with one unknown side is no const")
-	}
-}
-
-// TestUnknownRefinementIsTheRuns pins what the install sites tell the
-// compile pass about a refinement over a bound it does not know (NUR308's
-// type half): a type install notes the run-time install — the run installs
-// the type, and the node minted here forwards to the run's — and so does a
-// union, a negation or a typed container's child holding one; an inline
-// signature type notes the word building it as run-dependent. Over a known
-// bound neither is noted, and nothing is noted outside an analysis pass. The
-// inline signature type's slot is the refinement's own base — whichever type
-// declared itself one — not a hand-listed five (an inline Bytes refinement
-// was a wildcard, NUR009).
-func TestUnknownRefinementIsTheRuns(t *testing.T) {
-	unknown := NewDepScalar(DepGT, NewCarrier(TInteger))
-	plain, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := InstallType(plain, "Pl", unknown); err != nil { // not analysing: nothing to note
-		t.Fatal(err)
-	}
-
-	r, rec := analysingRegistry(t)
-	if err := InstallType(r, "Kn", NewDepScalar(DepGT, NewInteger(3))); err != nil {
-		t.Fatal(err)
-	}
-	if len(rec.typeRuns) != 0 || len(rec.declined) != 0 {
-		t.Fatalf("a type over a known bound is the pass's to install: %q %q", rec.typeRuns, rec.declined)
-	}
-	if err := InstallType(r, "Un", unknown); err != nil {
-		t.Fatal(err)
-	}
-	if len(rec.typeRuns) != 1 || rec.typeRuns[0] != "Un" || rec.typeNodes[0] != r.LookupTypeName("Un") {
-		t.Fatalf("a type over an unknown bound is the run's to install, over the pass's node: %q %v", rec.typeRuns, rec.typeNodes)
-	}
-	if err := InstallType(r, "Uu", NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil {
-		t.Fatal(err)
-	}
-	if err := InstallType(r, "Ng", NewNegation(unknown)); err != nil {
-		t.Fatal(err)
-	}
-	if len(rec.typeRuns) != 3 || rec.typeRuns[1] != "Uu" || rec.typeRuns[2] != "Ng" {
-		t.Fatalf("a union or a negation holding one is the run's too: %q", rec.typeRuns)
-	}
-	if len(rec.declined) != 0 {
-		t.Fatalf("nothing declines: %q", rec.declined)
-	}
-
-	kind, pat, err := ResolveSigType(r, NewDepScalar(DepLT, NewInteger(9)))
-	if err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() || rec.dependents != 0 {
-		t.Fatalf("an inline refinement's slot is its base, the refinement its pattern: %v %v %v %d", kind, pat, err, rec.dependents)
-	}
-	// A check-only pass keeps the placeholder pattern: nothing to compile.
-	if kind, pat, err = ResolveSigType(r, unknown); err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() ||
-		len(rec.sigForwards) != 0 || rec.dependents != 0 {
-		t.Fatalf("a check-only pass keeps the refinement as the pattern: %v %v %v %d", kind, pat, err, rec.dependents)
-	}
-	// A compile pass carries an anonymous node the run forwards.
-	r.Check.Compiling = true
-	kind, pat, err = ResolveSigType(r, unknown)
-	if err != nil || kind != TInteger || pat == nil || !IsBareTypeNode(pat) || len(rec.sigForwards) != 1 ||
-		!HasUnknownRefinement(*pat) {
-		t.Fatalf("a compile pass's inline refinement over an unknown bound is a forwarded node: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
-	}
-	if kind, pat, err = ResolveSigType(r, NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil || kind != TAny ||
-		pat == nil || !IsBareTypeNode(pat) || len(rec.sigForwards) != 2 {
-		t.Fatalf("an inline union holding one is too: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
-	}
-	// An interval may be empty at run time — the interpreter's slot is then
-	// Never itself — so the signature is the run's to build.
-	interval := NewValueRaw(TInteger, DepScalarInfo{Lo: &DepBound{Value: NewInteger(1)}, Hi: &DepBound{Value: NewCarrier(TInteger)}})
-	if _, _, err = ResolveSigType(r, interval); err != nil || rec.dependents != 1 || len(rec.sigForwards) != 2 {
-		t.Fatalf("an inline interval over an unknown bound declines: %v %d %d", err, rec.dependents, len(rec.sigForwards))
-	}
-	r.Check.Compiling = false
-	if _, _, err = ResolveSigType(plain, unknown); err != nil || rec.dependents != 1 {
-		t.Fatalf("an interpreter run notes nothing: %v %d", err, rec.dependents)
-	}
-	zz := r.Types.MintTypeWithBehavior("Zz", TScalar, zzFormatBehavior{})
-	DeclareRefinementBase(zz)
-	kind, pat, err = ResolveSigType(r, NewValueRaw(zz, DepScalarInfo{Lo: &DepBound{Value: NewInteger(1)}}))
-	if err != nil || kind != zz || pat == nil {
-		t.Fatalf("a declared base's inline refinement slots at that base, not TAny: %v %v %v", kind, pat, err)
 	}
 }

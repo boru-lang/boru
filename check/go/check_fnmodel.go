@@ -134,7 +134,7 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 	if rc, ok := recordReturnCarrier(t, returnPatternAt(pats, i)); ok {
 		return rc, true
 	}
-	if !r.Check.Compiling && t.Equal(core.TMap) &&
+	if t.Equal(core.TMap) &&
 		returnPatternAt(pats, i) == nil && len(stk) >= declared {
 		if bv := stk[len(stk)-declared+i]; bv.Carrier() &&
 			bv.Parent() != nil && bv.Parent().ConformsTo(core.TMap) {
@@ -148,50 +148,13 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 	return core.Value{}, false
 }
 
-// typedContainerCarrier generalises a TYPED-container param ({:T} map / [:T] list)
-// to a carrier that PRESERVES its declared ELEMENT type — the D2 read-precision
-// foundation (design/legacy/TYPED-CONTAINER-ELEMENT-PRECISION.0.ignore, Part A). The element
-// type rides on p.Pattern (a typed-map/list value carrying a ChildTypeInfo), NOT
-// p.Type (which generalises to bare Node), so mirror recordSchemaCarrier: read the
-// pattern and mint a FRESH ID so each typed-container param keys a DISTINCT
-// frame-local slot (StartFnCompile → RegisterLocal; a zero ID collapses two
-// params onto one slot). Without this, NewCarrier(a.Parent) collapses the child to
-// Any and the body reads the container back as dynamic(Any). {:Any} (child Any)
-// falls through so its reads stay dynamic(Any), unchanged. The CONTAINER carrier
-// stays a plain (non-dynamic) typed carrier — the accessor makes the READ dynamic
-// (Part B), keeping the container's own dispatch (`m size`) unchanged.
-func typedContainerCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
-	if p.Pattern == nil || a.Parent() == nil {
-		return core.Value{}, false
-	}
-	pat := *p.Pattern
-	ci, err := core.AsChildType(pat)
-	if err != nil || ci.Child.Parent() == nil || ci.Child.Parent().Equal(core.TAny) {
-		return core.Value{}, false
-	}
-	if core.IsTypedMap(&pat) && (a.Parent().ConformsTo(core.TMap) || a.Parent().Equal(core.TAny)) {
-		v := core.NewTypedMap(ci.Child)
-		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TMap)))
-		v.SetCarrier(true)
-		core.SetDynamic(&v, true) // a {:T} param admits a flex arg — in-place mutation must runtime-rematch, not preselect the immutable handler
-		return v, true
-	}
-	if core.IsTypedList(&pat) && (a.Parent().ConformsTo(core.TList) || a.Parent().Equal(core.TAny)) {
-		v := core.NewCarrierTypedListValue(ci.Child)
-		core.SetID(&v, core.GenerateID(core.IDPrefixForType(core.TList)))
-		core.SetDynamic(&v, true)
-		return v, true
-	}
-	return core.Value{}, false
-}
-
 // paramBodyCarrier builds a fn-body INPUT carrier for a param when no call-site
 // arg is available: a pattern-aware typed-container carrier for a {:T}/[:T]
 // param (so body reads narrow and disjoint uses are diagnosed), else the plain
-// ParamInputCarrier(p.Type). The main genArgs path uses typedContainerCarrier
-// with the actual arg; the poly-arm (user_poly.go) and construction-check
-// (BuildFnBodyReturnsFn) body builders have only the param, so they route
-// here — otherwise `m:{:Integer}`'s `p.Type` is bare Map and reads stay Any.
+// ParamInputCarrier(p.Type). The poly-arm (user_poly.go) and construction-
+// check (BuildFnBodyReturnsFn) body builders have only the param, so they
+// route here — otherwise `m:{:Integer}`'s `p.Type` is bare Map and reads
+// stay Any.
 func ParamBodyCarrier(p core.FnParam) core.Value {
 	if p.Pattern != nil {
 		pat := *p.Pattern
@@ -612,25 +575,6 @@ func membershipBeyondNominal(t *core.Type) bool {
 	switch t.Behavior().(type) {
 	case *core.DisjunctUnifier, *core.NegationUnifier, *core.PredicateUnifier, core.MemberUnifier, *core.DepScalarUnifier:
 		return true
-	}
-	return false
-}
-
-// quoteParamCarrierBind reports whether a matched user-fn signature binds a
-// COMPUTED (carrier) argument to an Atom-typed or /q param. Quote capture is
-// forward-only: at the runtime pointer such a slot binds only a bare Word
-// collected forward — a delivered stack value never matches (`def f fn
-// [[k:Atom] [Atom] [k]] f 'meta'` raises no_signature on every engine).
-// Check-mode matching is looser (a strict Atom carrier satisfies the slot),
-// so a closure-unit compile that admits the bind records an application the
-// runtime rejects. Consulted only inside closure-unit compilation — the one
-// scope where the mismatch produced a compile≠interpret divergence.
-func quoteParamCarrierBind(sigParams []core.FnParam, args []core.Value) bool {
-	for i, p := range sigParams {
-		if (p.Quote || (p.Type != nil && p.Type.ConformsTo(core.TAtom))) &&
-			i < len(args) && args[i].Carrier() {
-			return true
-		}
 	}
 	return false
 }

@@ -122,16 +122,16 @@ the `break`/`continue` escape path (which is *not* an error and so is invisible 
 
 Three existing facts make this a small, low-risk addition:
 
-- **`InvokeBody(r, body, inputs) ([]Value, error)`** (`eng/go/invoke.go`) is the
+- **`InvokeBody(r, body, inputs) ([]Value, error)`** (`core/go/invoke.go`) is the
   universal seam every body-running word uses (`do`, `error`, `each`, `fold`, …). It
   runs a quoted body either VM-native (`r.Invoker`) or on a fresh sub-engine sharing
   the registry, pushing `inputs` first. `ensure`/`bracket` route through it unchanged,
   so they inherit compiled-closure execution for free.
-- **boru failures are Go `error` values returned up the stack** (`eng/go/engine.go`
+- **boru failures are Go `error` values returned up the stack** (`core/go/engine.go`
   `Run` returns `(nil, err)` and short-circuits on the first failing step). Because
   the failure unwinds as an ordinary Go return, a Go **`defer` in the handler is a
   reliable cleanup hook** — it fires on the error return and on a recovered panic.
-- **`break`/`continue` are a separate signal** (`r.FlowCtrl`, `eng/go/flowctrl.go`),
+- **`break`/`continue` are a separate signal** (`r.FlowCtrl`, `core/go/flowctrl.go`),
   *not* an error: a sub-engine that hits `break` with no enclosing loop returns
   `(residual, nil)` and leaves `r.FlowCtrl` set for an outer frame to resolve. The
   finalizer must therefore run on the `err == nil && r.FlowCtrl != FlowNone` path too,
@@ -249,7 +249,7 @@ Two failures can coincide (body fails *and* cleanup fails). The rule, leaning on
 ## 6. Static analysis (check mode)
 
 In `boru check`, both bodies are walked so their defs and diagnostics propagate
-(`RunCarrierBody` / `RunCarrierBodyWithDefs`, `eng/go/carrier.go`):
+(`RunCarrierBody` / `RunCarrierBodyWithDefs`, `core/go/carrier_body.go`):
 
 - `ensure`'s static return carrier = the **body's** carrier result (cleanup's result
   is discarded at runtime, so it does not contribute to the type).

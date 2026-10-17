@@ -7,16 +7,23 @@ component sits under a top-level folder; the Go implementation of each
 lives in a `<component>/go/` subfolder so that future TS ports can sit
 alongside as `<component>/ts/`. The Go modules are:
 
-- `eng/go/` — the engine kernel + jsonic parser + kernel spec runner
-  (`github.com/boru-lang/boru/eng/go`).
+- `core/go/` — the interpreter kernel: values, types, signatures,
+  matching, the registry and the step loop
+  (`github.com/boru-lang/boru/core/go`). It is the one execution path:
+  the compiler lane was removed on 2026-10-16
+  (design/COMPILER-LANE-REMOVAL.0.md).
+- `parser/go/` — boru source text to `[]core.Value`
+  (`github.com/boru-lang/boru/parser/go`); a leaf over core.
+- `check/go/` — the static check pass over core
+  (`github.com/boru-lang/boru/check/go`).
 - `basic/go/` — the base language layer
   (`github.com/boru-lang/boru/basic/go`): the fundamental words
   (stack, definition, control-flow, type-generics) and the predefined
   global content types (the Scalar/Time family, Resource/Entity),
-  registered against eng. Depends on eng ONLY — the layering
-  `eng ← basic ← lang ← cmd` is a hard rule (ADR-013).
+  registered against core. Depends on core and parser ONLY — the layering
+  `core ← basic ← lang ← cmd` is a hard rule (ADR-013).
 - `lang/go/` — the language layer: `lang.New()` API and the consolidated
-  `native` package (the eng-shim + every built-in word) plus the
+  `native` package (the kernel shim + every built-in word) plus the
   production spec suite (this module,
   `github.com/boru-lang/boru/lang/go`). The pre-May-2026 split between
   `lang/go/engine/` (language-layer primitives + alias shim) and
@@ -29,7 +36,7 @@ alongside as `<component>/ts/`. The Go modules are:
   (overload appends are order-sensitive).
 - `cmd/go/` — the `boru` CLI / REPL
   (`github.com/boru-lang/boru/cmd/go`).
-- `calc/go/` — a small calculator built directly on `eng` (learning example,
+- `calc/go/` — a small calculator built directly on `core` + `parser` (learning example,
   `github.com/boru-lang/boru/calc/go`; not published).
 - `wpg/` — the wasm web playground: `wpg/wasm` (browser wasm build) and
   `wpg/serve` (standalone HTTP server with embedded HTML)
@@ -40,7 +47,8 @@ alongside as `<component>/ts/`. The Go modules are:
   (`github.com/boru-lang/boru/test/solardemo`).
 
 Language-agnostic content stays at the top of each component:
-`eng/spec/`, `lang/spec/`, `lang/doc/`, `calc/doc/`.
+`core/spec/`, `eng/spec/` (the kernel corpus the TS engine twin runs),
+`lang/spec/`, `lang/doc/`, `calc/doc/`.
 
 ## Package layout
 
@@ -51,9 +59,9 @@ Language-agnostic content stays at the top of each component:
   re-exports of `Type`/`Value`/`Signature` for handler authors).
 - `native/` — every built-in word and the kernel-shim aliases.
   Sub-files:
-  - `aliases.go` — re-exports the eng kernel's exported types/funcs
+  - `aliases.go` — re-exports the core kernel's exported types/funcs
     as `native.Foo` so the rest of the lang code can stay
-    eng-agnostic. A function that takes a `*Value` is re-exported as a
+    kernel-agnostic. A function that takes a `*Value` is re-exported as a
     WRAPPER func, never a function variable: a call through a
     variable is indirect, so it cannot inline and every `&v` handed
     to it escapes to the heap (`make vet-copies`' fnvaralias check
@@ -125,7 +133,7 @@ they sound. The same rule is stated in the `ADR.md` header.
 
 ## Known sharp edges (app-authoring)
 
-Language- and compiler-level sharp edges found by writing a large app
+Language-level sharp edges found by writing a large app
 entirely in boru are collected in **`design/BORU-SHARP-EDGES.0.md`** —
 minimal repros, root-cause hypotheses, workarounds, and a triage table.
 Re-verified 2026-07-30: G8 (recovered-`raise` binding teardown), G11
@@ -242,8 +250,8 @@ v0.1.6 — the tabnas family is an API-compatible superset port; the swap
 removed the jsonicjs dependency entirely.) Defects in it are fixed
 UPSTREAM, never behind a boru shim — **ADR-014**, with the case study in
 `design/TABNAS-UPSTREAM-FIRST.0.md`. There is exactly one parser — it
-lives in the standalone **eng** module at `eng/go/parser/parse.go`
-(`github.com/boru-lang/boru/eng/go/parser`); `lang.Parse` re-exports
+lives in the standalone **parser** module at `parser/go/parse.go`
+(`github.com/boru-lang/boru/parser/go`); `lang.Parse` re-exports
 it. (The old hand-rolled lexer / token / AST / tree-walking evaluator
 were removed — jsonic is the sole parsing path.) Key jsonic integration:
 
@@ -318,7 +326,7 @@ The parser converts jsonic output to engine values through two semantic contexts
   paren groups → `ParenExpr` (inline evaluation). Type names are NOT
   resolved in either context — the parser is type-name-opaque
   (ADR-012 rule 4): a capitalised name stays an ordinary Word and the
-  engine's canonical cascade (`eng/go/resolve.go` — def table → live
+  engine's canonical cascade (`core/go/resolve.go` — def table → live
   builtin table → type path) resolves it at consumption, exactly as
   user-defined type names have always resolved. Quotation meaning is
   consumption-time (`quote Integer` → `Integer/q`).
@@ -328,8 +336,8 @@ Key conversion functions in `parse.go`:
 - `convertDataValue()` / `convertMapData()` — data context (atoms, not strings)
 - `convertWordList()` / `convertDataList()` — lists (word context, Eval=true)
 - Dotted access — there is no parse-time "expansion" pass. `.` is lexed
-  as a separate token (`#DT` in `eng/go/parser/grammar.go`); the parser
-  builds a `Reach` value that `lowerReach` (`eng/go/engine.go`) lowers to a
+  as a separate token (`#DT` in `parser/go/grammar.go`); the parser
+  builds a `Reach` value that `lowerReach` (`core/go/engine.go`) lowers to a
   `dot` / `dotr` token chain (`!` before `.` selects `dotr`). Chained access
   `m.a.b` becomes the token sequence `m dot a dot b` and composes at runtime
   because each `dot` produces the receiver for the next.
@@ -343,10 +351,9 @@ Key conversion functions in `parse.go`:
     `undefined_word` error. Both pairs share one signature set
     (`accessorGetSignatures` / `accessorGetrSignatures` in
     `native_storage.go` / `native_accessor.go`); `get` / `getr` use the
-    `dropQuoteAtomSigs` subset. Every compiler/checker/VM fold site that
+    `dropQuoteAtomSigs` subset. Every checker fold site that
     special-cases the family routes through `isGetWord` / `isGetrWord`
-    (`eng/go/get_words.go`) so `dot` folds identically to `get` (no
-    compiled-coverage loss for dot-access).
+    (`core/go/get_words.go`) so `dot` folds identically to `get`.
 - A `/` modifier on a paren / dotted-path result applies to the WHOLE
   group, not the last key: `a.b/m` parses as `(a dot b)/m`.
   `convertTopLevelItems` strips the modifier off the final key (or a
@@ -356,7 +363,7 @@ Key conversion functions in `parse.go`:
   (each returns a NEW function, like `usurp`); they are emitted BEFORE
   the group so they forward-collect the result before it can
   auto-dispatch (critical for `/s`, whose args sit on the stack). `/v`
-  and `/q` emit an `eng.NewDispatchMod` marker (`Word/__DM`) AFTER the
+  and `/q` emit an `core.NewDispatchMod` marker (`Word/__DM`) AFTER the
   group; `execFnDefLiteral` peeks+consumes it to leave the function as
   inert data, and `stepLiteral` drops an unconsumed marker (a modifier
   on a non-function result is a no-op). See `lang/spec/path-modifier.tsv`.
@@ -366,7 +373,7 @@ Key conversion functions in `parse.go`:
   predicate) to its minted node rather than its body. It combines with
   no other modifier and is word-only (no group form; computed bounds
   spell `(Type of [expr])` directly). The bounded-Type body itself
-  lives in `eng/go/core_boundedtype.go`.
+  lives in `core/go/core_boundedtype.go`.
 
 ## Argument Ordering (CRITICAL)
 
@@ -555,7 +562,7 @@ stack.
 The handler:
 - auto-wraps a non-list input into `[input]` (same convention as
   `fn`);
-- parses params via the shared `eng.ParseFnParams` so every fn
+- parses params via the shared `core.ParseFnParams` so every fn
   abbreviation (`name:Type`, `{name:Type}`, bare type words, value
   patterns, `?`, `|`, `__SB`) works in afn;
 - auto-wraps a non-list body into `[body]`;
@@ -568,7 +575,8 @@ Anonymous lambdas have a deliberately conservative static
 `Returns=[Any]`; in check mode the dispatch path
 (`execFnDefSigStackMatch` for direct invocation,
 `InstallFnDef`'s ReturnsFn for `def name (lambda)` installations)
-runs `eng.AnalyseFnBody` against the bound carrier args and lets the
+runs the analysis pass (`check.AnalyseFnBody`, through core's
+`RunFnBodyAnalysis` slot) against the bound carrier args and lets the
 analyser's residual stack carry the inferred return type forward.
 Normal execution doesn't read the flag; the body runs the same way
 a named fn's body does.
@@ -680,7 +688,7 @@ lambdas. Don't expect to capture caller args; pass them explicitly.
   name for deterministic install order. Nil for top-level
   constructions and inner fns whose body references only params,
   module-globals, or forward refs.
-- Captures are computed in `eng.ComputeCaptures` (eng/go/fn_capture.go)
+- Captures are computed in `core.ComputeCaptures` (core/go/fn_capture.go)
   via the body walker `WalkBodyWords`, which skips quoted lists,
   `/q`-atoms, nested `FnDefInfo` payloads (those are inner closures
   with their own analysis), and engine markers.
@@ -721,9 +729,8 @@ lambdas. Don't expect to capture caller args; pass them explicitly.
 > path, and it diverged from the re-step three ways: a native 0-arg fn lost
 > its Go handler to an empty boru body, a body's `context` mutations landed
 > in a sub-engine instead of the caller's frame, and the check pass could
-> not see the call at all (so the shape had to be declared uncompilable).
-> Marking routes every arity down the one path and all three go away —
-> the shape now COMPILES. If a future change needs apply to do more, add
+> not see the call at all. Marking routes every arity down the one path
+> and all three go away. If a future change needs apply to do more, add
 > to the mark, not to a second path.
 >
 > **The gate itself stays, deliberately.** Removing it was measured and is
@@ -793,7 +800,7 @@ snapshots (inner def-words resolve at def time).
 
 The old implicit splice (`def double [dup add]` expanding its body at
 every reference, Forth-style) is now the explicit **`word`** form, which
-wraps a value in an `__SP` splice marker (`eng.NewSplice`, type
+wraps a value in an `__SP` splice marker (`core.NewSplice`, type
 `Word/__SP`). When the marker reaches the engine pointer
 (`stepLiteral`) it is replaced, unevaluated, by its payload — a plain
 list contributes its top-level elements, any other value contributes
@@ -830,7 +837,7 @@ See the template string interpolation rules for a complete example.
 
 `import` binds each `export "Name" {…}` to a **PLAIN Map** of the raw
 exports carrying the kernel's **module-namespace facet**
-(`eng.ModuleNSInfo`, a nil-by-default pointer on `Value` — NUR038
+(`core.ModuleNSInfo`, a nil-by-default pointer on `Value` — NUR038
 retired the former `Ideal/ModuleExport` wrapper type; FixedID 5001 is
 retired, never recycled). Exported values are exactly what the module
 exported — a fn stays a `Function`, a constant stays that constant, a
@@ -840,7 +847,7 @@ module's namespaces share one **`Ideal/Module`** descriptor
 (`native.TModuleInst`), reachable via the synthetic `$module`.
 
 - `NewModuleNamespace(name, fields, module)` —
-  `eng.WithModuleNS(NewMap(fields), name, module)`: `name` (→ `.$name`),
+  `core.WithModuleNS(NewMap(fields), name, module)`: `name` (→ `.$name`),
   the module's own export `*OrderedMap` (shared, not copied — runtime
   export growth and the kernel growth ledger key on the pointer), and
   the owning Module. The namespace dispatches the ORDINARY map
@@ -852,7 +859,7 @@ module's namespaces share one **`Ideal/Module`** descriptor
   check-mode raw-export resolution (a fn export keeps its `FnDefInfo`;
   a missing key stays strict Any because the keyspace can grow).
   A namespace renders compactly as `Module(Name){key key …}`
-  (`eng/go/coretype_list_map_behaviors.go`).
+  (`core/go/coretype_list_map_behaviors.go`).
 - `NewModuleInstance(desc)` — the descriptor (`ExtensionPayload`
   boxing a `*ModuleDesc` — the pointer is the descriptor's eq/deq
   IDENTITY, per-import-instance, NUR031); `name`/`kind`/`file`/
@@ -873,7 +880,7 @@ pattern: `BuildXxxModule` creates a fresh `subReg`, registers the
 inner natives there, and exports FnDef wrappers (carrying
 `Registry: subReg`) into the module's export map. When the
 wrapper is invoked via `pkg.word` dot-access, dispatch flows
-through `eng/go/engine.go::execFnDefLiteral`, which calls
+through `core/go/engine.go::execFnDefLiteral`, which calls
 `reg.Lookup(fnDef.Name)` and uses the **looked-up native's
 `Signatures`** for `matchSignature` — NOT the wrapper's own
 `Signatures`.
@@ -987,7 +994,7 @@ name pops a value binding.
 ## Helper API discipline
 
 The engine consolidates several distributed implicit contracts behind
-helper APIs in `eng/util.go` (re-exported through `native/aliases.go`).
+helper APIs in `core/go/util.go` (re-exported through `native/aliases.go`).
 Use the helpers rather than
 the underlying state. Adding direct field access regresses the
 consolidation and will be flagged in code review.
@@ -995,7 +1002,7 @@ consolidation and will be flagged in code review.
 **Concrete-value guards** (panic-prevention, type-literal vs concrete):
 These predicates read the value through a pointer (`IsBareTypeNode(&v)`,
 `IsConcrete(&args[i])`, `IsWord(e.Tape.Ref(i))`) — the no-copy rule of
-eng/go/CLAUDE.md "Values are not copied".
+core/go/CLAUDE.md "Values are not copied".
 
 - `IsBareTypeNode(v)` — true if `Data == nil` and not a carrier (v IS
   its own lattice node). INCLUDES None/Any/Never; use for naming,
@@ -1015,7 +1022,7 @@ eng/go/CLAUDE.md "Values are not copied".
 - `IsConcrete(v)` — true if `Data != nil` and not a carrier. NOT the
   negation of `Data == nil`: a list/map carrier has `Data != nil` yet
   is not concrete. Never write the raw `v.Data() == nil` probe in
-  consumer code — see eng/go/CLAUDE.md "Payload-presence vs value-mode".
+  consumer code — see core/go/CLAUDE.md "Payload-presence vs value-mode".
 - `RequireConcreteList(v, op) (ReadList, error)` — unwraps a list-typed
   Value or returns an error when the value is a type literal/carrier.
 - `RequireConcreteMap(v, op) (ReadMap, error)` — same for maps.
@@ -1023,7 +1030,7 @@ eng/go/CLAUDE.md "Values are not copied".
 Handlers that take `TList`/`TMap`/`TAny` args should guard with
 `!IsConcrete(&args[i])` (or use the `RequireConcreteX` helpers) before
 calling `AsList(v)`/`AsMap(v)` — otherwise carriers and type literals
-panic on `.Len()`. (`AsList` / `AsMap` are free functions in eng, not
+panic on `.Len()`. (`AsList` / `AsMap` are free functions in core, not
 methods on `Value`; the method surface is `Is`, `String`, the node-
 content pair `TypeBody`/`SetTypeBody`, and the `AsConcreteX` handler
 accessors below.)
@@ -1037,7 +1044,7 @@ accessors below.)
   sig-matched value (a `TString` slot can secretly hold a `DepString`
   constraint). These DepScalar-rejecting variants remain methods on
   `Value` since they're the canonical handler-side error path; the
-  low-level accessors were drained to free functions in `eng/` as part
+  low-level accessors were drained to free functions in `core/` as part
   of the type-decoupling work — see
   `design/legacy/TYPE-DECOUPLING.10.ignore`.
 
@@ -1077,7 +1084,7 @@ accessors below.)
   unchanged. Use whenever a `*Type` may have come from a literal —
   `behave` Behavior installs and LCA-walk identity must reach the
   node, not a copy. It replaced `CanonicalType(r, t)` (no-copy phase
-  3); see eng/go/CLAUDE.md "Canonical `*Type` Pointers".
+  3); see core/go/CLAUDE.md "Canonical `*Type` Pointers".
 
 **Typed-def reparent**:
 - `MintRetagged(&v, def) Value` — construct v's value under the type
@@ -1086,7 +1093,7 @@ accessors below.)
   (predicate / refine-bare / FnUndef branches), so Unify-swap results
   (which may return a type literal in the value position) can never be
   silently mutated and stored as the binding. It replaced
-  `ReparentValue` (no-copy phase 3); see eng/go/CLAUDE.md "Typed-Def
+  `ReparentValue` (no-copy phase 3); see core/go/CLAUDE.md "Typed-Def
   Reparent" for the rest of the constructor family.
 
 **Pos threading**:
@@ -1141,8 +1148,8 @@ identical to a native QuoteArgs slot.
 
 `cmp` / `lt` / `gt` / `lte` / `gte` / `sort` route through one total
 order — see `design/TYPE-ORDERING.10.md` for the canonical
-design. The kernel-side implementation lives in `eng/go/compare.go`
-and `eng/go/compare_scalar_behaviors.go`; this section captures
+design. The kernel-side implementation lives in `core/go/compare.go`
+and `core/go/compare_scalar_behaviors.go`; this section captures
 what handler authors and word implementers need to know.
 
 **The cascade** (per `CompareValues`):
@@ -1208,7 +1215,7 @@ The previous carve-out for init-time type registration is withdrawn.
 Those helpers now record their error and surface it at the first registry
 construction instead of panicking:
 
-- `eng`: `BuiltinInitError()` is checked by `NewRegistry()` (covers
+- `core`: `BuiltinInitError()` is checked by `NewRegistry()` (covers
   `mustType` / `builtinDecls`, now including `Ideal/Module` and
   `Node/Map/KeyVal`).
 - `basic`: `TypeInitError()` is checked by `DefaultRegistryWithPolicy`

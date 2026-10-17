@@ -132,66 +132,6 @@ TimeUtil.await [[fact 5] [fact 6]] end`, "[[120 720]]"},
 	}
 }
 
-// TestAwaitDoesNotLowerFnLocalLambdaInBothEngines closes what was this check's
-// worst hole, and the shape of the hole is why it is worth a long comment.
-//
-// The check resolves branch-body words through `r.Defs`. Compiled, a
-// lambda defined INSIDE a fn body (`def w ([] => …)`) is placed in a VM
-// frame slot instead, and a native handler has no path to frame locals —
-// so the walk dead-ended at `w` and never reached what `w` touches. It was
-// not a uniform miss, which is what made it dangerous:
-//
-//	lambda body     compiled (before)   interpreted
-//	[m]             refused             refused
-//	[m get a]       refused             refused
-//	[m size]        ALLOWED             refused
-//	[m set a 1]     ALLOWED             refused   <-- real DATA RACE
-//
-// The compiled path refused the harmless shapes and permitted the mutating
-// one — under `-race`, two branch goroutines in `OrderedMap.Set` at once,
-// on the path that ships by default.
-//
-// The fix does NOT resolve `w` (it cannot: `m` and `w` are runtime values
-// in a frame this layer cannot see). It observes instead that `m` was in
-// `r.Defs` the whole time, one step out of reach, and that an unresolvable
-// reference means the check can no longer BOUND what a branch touches. So
-// an opaque reference falls back to asking whether anything mutable is in
-// scope at all. See branchRefIsOpaque / scopeSharedMutable.
-//
-// All four shapes now refuse in both engines. If any row here starts
-// passing, the walk has regressed to the state that raced.
-func TestAwaitDoesNotLowerFnLocalLambdaInBothEngines(t *testing.T) {
-	for _, body := range []string{"[m]", "[m get a]", "[m size]", "[m set a 1]"} {
-		t.Run(body, func(t *testing.T) {
-			src := awaitPrelude + `def outer fn [[] [Any] [
-  def m (make FlexMap {a:0})
-  def w ([] => ` + body + `)
-  TimeUtil.await [[w] [w]]
-]]
-outer`
-			for _, mode := range []string{"compiled", "interpreted"} {
-				a, _ := New()
-				var err error
-				if mode == "compiled" {
-					_, err = a.Run(src)
-				} else {
-					_, err = a.RunInterp(src)
-				}
-				if err == nil {
-					t.Errorf("%s: a fn-local lambda reaching a shared FlexMap must "+
-						"be stopped; %s ALLOWED it, which is the data race this "+
-						"check exists to stop", mode, mode)
-				} else if mode == "compiled" && noteCompileDefect(t, src, nil, err) {
-					// The program does not compile, so the race check never
-					// runs on this lane. The interpreter arm still pins it.
-				} else if !strings.Contains(fmt.Sprint(err), "not_sendable") {
-					t.Errorf("%s: want not_sendable, got %v", mode, err)
-				}
-			}
-		})
-	}
-}
-
 // TestAwaitOpaqueRefIsNotRefusedWithoutAMutable is the negative half of the
 // fix above, and it carries the weight: the fallback fires on an
 // UNRESOLVABLE reference, and unresolvable references are everywhere.
