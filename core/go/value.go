@@ -951,6 +951,13 @@ type FnDefInfo struct {
 	// carries nil and has no identity, which is the honest answer for a
 	// synthesized payload with no fn behind it.
 	ident *fnIdent
+	// plans holds the dispatch plans of a registry's runtime dispatch
+	// aggregate (Registry.Lookup → aggregateDispatch), one holder per
+	// aggregate built: what PlanMatch answered for this word, by what each
+	// answer read (dispatch_plan.go). Nil on every other payload — an
+	// authored definition, a constructed fn value, an analysis pass's
+	// aggregate — which plans afresh; a copy of an aggregate shares it.
+	plans *planHolder
 }
 
 // fnIdent is a fn value's identity token — allocated for its ADDRESS,
@@ -980,6 +987,10 @@ type fnIdent struct {
 	// installs (installedFnSigsFor) — a Function parameter is bound again
 	// on every call.
 	install atomic.Pointer[installedFnSigs]
+	// aggregate caches the run-time dispatch aggregate of a binding of the
+	// function that is its name's only fn binding (singleAggregateFor) — the
+	// table Lookup rebuilds after every re-binding of a Function parameter.
+	aggregate atomic.Pointer[singleAggregate]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value

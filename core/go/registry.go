@@ -1102,7 +1102,16 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 			}
 		}
 		if !hasBody {
+			top.plans = r.aggregatePlans()
 			return &top
+		}
+		// A boru-bodied fn's aggregate is a function of its one binding and
+		// the name: a binding made again with the same signatures — a
+		// Function parameter, on every call of the fn that takes it —
+		// answers with the aggregate the last one built, and with it the
+		// plans its dispatches recorded.
+		if agg := r.singleAggregateFor(name, &top); agg != nil {
+			return agg
 		}
 	}
 
@@ -1132,7 +1141,7 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 		sigs = append(sigs, fallback)
 	}
 	SortSignatures(sigs)
-	return &FnDefInfo{
+	agg := &FnDefInfo{
 		Name:           name,
 		Signatures:     sigs,
 		MaxForwardArgs: calcMaxForwardArgs(sigs),
@@ -1159,7 +1168,23 @@ func (r *Registry) aggregateDispatch(name string, entries []FnDefInfo) *FnDefInf
 		// different code, so they get no identity instead — the same answer
 		// a payload with no token gets, and the pre-record behaviour.
 		ident: aggregateIdent(entries),
+		plans: r.aggregatePlans(),
 	}
+	if len(entries) == 1 {
+		r.rememberSingleAggregate(name, &top, agg)
+	}
+	return agg
+}
+
+// aggregatePlans is a new aggregate's plan store (dispatch_plan.go): one per
+// aggregate the run-time Lookup builds and caches. An analysis pass's
+// aggregate gets none — its Lookup builds one per call and its matcher never
+// plans from memory.
+func (r *Registry) aggregatePlans() *planHolder {
+	if r.analysisActive() {
+		return nil
+	}
+	return &planHolder{}
 }
 
 // aggregateIdent returns the identity token a dispatch aggregate may

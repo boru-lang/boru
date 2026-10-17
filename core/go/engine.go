@@ -8762,6 +8762,11 @@ func (e *Engine) patternEvalAbandoned() bool {
 // raw token.
 func (e *Engine) matchSignatureDispatching(fn *FnDefInfo, w WordInfo, resolved []Value) (*Signature, []int, int) {
 	checkActive := e.Registry != nil && e.Registry.analysisActive()
+	if !checkActive {
+		// A run-time dispatch plans from the aggregate's memory when it can
+		// (dispatch_plan.go); an analysis pass always plans afresh.
+		return planDispatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward())
+	}
 	return PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, false)
 }
 

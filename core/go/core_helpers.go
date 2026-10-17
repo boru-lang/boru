@@ -684,6 +684,7 @@ func boundFnDef(fd *FnDefInfo, name string, sigs []Signature) FnDefInfo {
 	out.Name = name
 	out.Signatures = sigs
 	out.MaxForwardArgs = calcMaxForwardArgs(sigs)
+	out.plans = nil // an aggregate's plans are not the binding's
 	return out
 }
 
