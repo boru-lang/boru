@@ -1,0 +1,71 @@
+name: Release
+
+# Cut a release of the published Go modules (core, parser, check, basic,
+# lang, cmd) and move the release branch to it. RELEASING.md is the guide.
+#
+#   gh workflow run release.yml                    # a dry run: the plan, nothing pushed
+#   gh workflow run release.yml -f dry-run=false   # the release
+#
+# The commit is the last one the daily build passed on main, unless the
+# commit input names another, and scripts/release-gate.sh refuses any that
+# CI or the daily build has not passed, or that does not contain the last
+# release. scripts/release.sh then pins each module's siblings, tags it in
+# dependency order, fast-forwards the release branch, and merges the
+# release back into main, so release stays a snapshot of main. A fix to a
+# release is a fix on main and another run of this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: the main commit to release (default the last one the daily build passed)
+        required: false
+        default: ''
+      dry-run:
+        description: print every action and push nothing
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # the pins, the tags, the release branch, the merge into main
+  actions: write    # read the CI and daily runs for the gate; start CI afterwards
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0   # every tag (the next versions) and the history the gate walks
+      - uses: ./.github/actions/setup
+      - name: Gate the commit
+        id: gate
+        run: scripts/release-gate.sh "$COMMIT"
+        env:
+          COMMIT: ${{ inputs.commit }}
+      - name: Release
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          scripts/release.sh
+        env:
+          RELEASE_COMMIT: ${{ steps.gate.outputs.commit }}
+          RELEASE_GATED: '1'
+          DRY_RUN: ${{ inputs.dry-run && '1' || '0' }}
+      - name: Install the released CLI from outside the repository
+        if: ${{ !inputs.dry-run }}
+        run: scripts/release-verify.sh
+      # This workflow's own pushes start no workflow (GitHub's rule for the
+      # GITHUB_TOKEN), so the merge into main would go untested until the
+      # next push.
+      - name: CI on main after the merge back
+        if: ${{ !inputs.dry-run }}
+        run: gh workflow run ci.yml --ref main

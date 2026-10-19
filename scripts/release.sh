@@ -14,15 +14,25 @@
 #   3. pins the sibling `require` lines to the versions just released;
 #   4. `go mod tidy` + commits the module's go.mod/go.sum (and cmd/go's
 #      main.go version stamp);
-#   5. tags `<module>/vX.Y.Z` and pushes main + the tag.
+#   5. tags `<module>/vX.Y.Z` and pushes the tag.
 #
-# The whole run is gated by a full `make test` up front — nothing is tagged
-# unless the entire suite passes. Local development keeps building via the
+# It cuts from RELEASE_COMMIT (default HEAD), which must be on main and must
+# contain the last release. The pins and tags are made on top of it; then
+# the `release` branch fast-forwards to the result, and the result is
+# merged back into main, so main always contains the release and the
+# release branch stays a snapshot of main plus its version pins. A fix to a
+# release is a fix on main and a new release (RELEASING.md).
+#
+# The run is gated by a full `make test` up front — nothing is tagged
+# unless the entire suite passes — except under RELEASE_GATED=1, which the
+# Release workflow sets once scripts/release-gate.sh has shown the commit
+# passed CI and the daily build. Local development keeps building via the
 # committed `go.work` (which supplies in-tree sibling source on top of the
 # now-replace-free, real-version go.mods).
 #
-# Usage:  make release        # or: scripts/release.sh
-#         DRY_RUN=1 make release   # print what would happen, tag/push nothing
+# Usage:  gh workflow run release.yml      # the Release workflow (RELEASING.md)
+#         make release                     # or: scripts/release.sh, locally
+#         DRY_RUN=1 make release           # print what would happen, tag/push nothing
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -49,10 +59,23 @@ edit_module() { # $1 = description, $2 = function name
 
 # ---- preflight ----
 [ -z "$(git status --porcelain)" ] || { echo "ERROR: working tree not clean"; exit 1; }
-[ "$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "ERROR: releases run from main"; exit 1; }
 # Fetch tags so next_patch sees releases cut on another machine / in CI —
 # otherwise a fresh or shallow checkout recomputes a stale (or duplicate) patch.
 git fetch --tags --quiet origin || true
+git fetch --quiet origin main
+git fetch --quiet origin release 2>/dev/null || true
+BASE=$(git rev-parse --verify "${RELEASE_COMMIT:-HEAD}^{commit}")
+git merge-base --is-ancestor "$BASE" origin/main || { echo "ERROR: ${BASE:0:9} is not on main"; exit 1; }
+if git rev-parse --quiet --verify origin/release > /dev/null; then
+  git merge-base --is-ancestor origin/release "$BASE" \
+    || { echo "ERROR: the last release (origin/release) is not merged into ${BASE:0:9}; merge release into main first"; exit 1; }
+fi
+# The pins and tags are made on a work branch at the commit being released;
+# main and the release branch are only ever pushed to at the end. A local
+# run returns to the branch it started on.
+ORIG=$(git rev-parse --abbrev-ref HEAD)
+run "git checkout --quiet -B release-work $BASE"
+echo "==> Releasing from ${BASE:0:9} ($(git log -1 --format=%s "$BASE"))"
 
 COREV=$(next_patch core/go); PARSERV=$(next_patch parser/go)
 CHECKV=$(next_patch check/go)
@@ -121,6 +144,8 @@ assert_publishable() {
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "==> [dry-run] skipping the full test gate"
+elif [ "${RELEASE_GATED:-0}" = 1 ]; then
+  echo "==> Full test gate already passed: CI and the daily build ran on ${BASE:0:9} (scripts/release-gate.sh)"
 else
   echo "==> Full test suite (release gate)"
   make test
@@ -154,7 +179,7 @@ edit_module "cd parser/go: drop core replace, pin core@v$COREV, go mod tidy" par
 run "git add parser/go/go.mod parser/go/go.sum"
 run "git commit -m 'parser/go: v$PARSERV (core/go v$COREV)'"
 run "git tag parser/go/v$PARSERV"
-run "git push origin main parser/go/v$PARSERV"
+run "git push origin parser/go/v$PARSERV"
 
 # ---- check/go (requires core/go) ----
 echo "==> check/go v$CHECKV"
@@ -163,7 +188,7 @@ edit_module "cd check/go: drop core replace, pin core@v$COREV, go mod tidy" chec
 run "git add check/go/go.mod check/go/go.sum"
 run "git commit -m 'check/go: v$CHECKV (core/go v$COREV)'"
 run "git tag check/go/v$CHECKV"
-run "git push origin main check/go/v$CHECKV"
+run "git push origin check/go/v$CHECKV"
 
 # ---- basic/go (requires core/go + parser/go; NOT check) ----
 echo "==> basic/go v$BASICV"
@@ -172,7 +197,7 @@ edit_module "cd basic/go: drop core+parser replaces, pin core@v$COREV parser@v$P
 run "git add basic/go/go.mod basic/go/go.sum"
 run "git commit -m 'basic/go: v$BASICV (core/go v$COREV, parser/go v$PARSERV)'"
 run "git tag basic/go/v$BASICV"
-run "git push origin main basic/go/v$BASICV"
+run "git push origin basic/go/v$BASICV"
 
 # ---- lang/go (requires basic/go + the kernel pieces) ----
 echo "==> lang/go v$LANGV"
@@ -181,7 +206,7 @@ edit_module "cd lang/go: drop sibling replaces, pin core/check/parser/basic, go 
 run "git add lang/go/go.mod lang/go/go.sum"
 run "git commit -m 'lang/go: v$LANGV (core/go v$COREV, check/go v$CHECKV, parser/go v$PARSERV, basic/go v$BASICV)'"
 run "git tag lang/go/v$LANGV"
-run "git push origin main lang/go/v$LANGV"
+run "git push origin lang/go/v$LANGV"
 
 # ---- cmd/go (requires lang/go + basic/go + the kernel pieces) ----
 echo "==> cmd/go v$CMDV"
@@ -190,7 +215,23 @@ edit_module "cd cmd/go: drop sibling replaces, pin versions, stamp Version=$CMDV
 run "git add cmd/go/go.mod cmd/go/go.sum cmd/go/main.go"
 run "git commit -m 'cmd/go: v$CMDV (lang/go v$LANGV)'"
 run "git tag cmd/go/v$CMDV"
-run "git push origin main cmd/go/v$CMDV"
+run "git push origin cmd/go/v$CMDV"
+
+# ---- the release branch, then main ----
+# release fast-forwards: it is an ancestor of BASE (checked above), and the
+# pins sit on top of BASE. The merge back into main is a merge commit, never
+# a squash, so the tagged commits stay ancestors of main and the next
+# release's ancestry check holds. If main moved on and the merge conflicts
+# (a go.mod edited on main since BASE), the release itself is already out —
+# the tags and the release branch are pushed — and only the merge is left
+# to finish by hand.
+if [ "$DRY_RUN" = 1 ]; then echo "==> release branch -> the pinned commits on ${BASE:0:9}"; else echo "==> release branch -> $(git rev-parse --short HEAD)"; fi
+run "git push origin HEAD:refs/heads/release"
+echo "==> merging the release back into main"
+run "git checkout --quiet -B release-merge origin/main"
+run "git merge --no-ff --no-edit -m 'Merge release cmd/go v$CMDV into main' release-work"
+run "git push origin release-merge:main"
+[ "$ORIG" = HEAD ] || run "git checkout --quiet $ORIG"
 
 echo "==> Done. Install with:"
 echo "    go install github.com/boru-lang/boru/cmd/go/boru@v$CMDV"
