@@ -92,12 +92,25 @@ jobs:
           cache-name: race-modules
       - run: scripts/ci-steps.sh race-modules
 
+  # Every row of every generated file (SPECGEN_FULL), in six parallel
+  # slices: one runner takes longer than a job may (the exhaustive run is
+  # 15 minutes on ten cores). Each slice verifies every sixth row, and the
+  # six together every row exactly once (SPECGEN_SHARD, syntax_matrix_test.go).
   syntax-matrix:
+    name: Syntax matrix (${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      SPECGEN_SHARD: ${{ matrix.shard }}/6
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        with:
+          cache-name: syntax-matrix
       - run: scripts/ci-steps.sh syntax-matrix
 
   typescript:
