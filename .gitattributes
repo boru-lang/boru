@@ -1,3 +1,11 @@
+# Every text file is LF in the repository and in every checkout, Windows
+# included. Git for Windows converts LF to CRLF on checkout by default
+# (core.autocrlf), and the spec corpus, the boru sources and the golden
+# outputs are compared byte for byte: a CRLF checkout fails spec rows on a
+# trailing carriage return (`want "Integer\r"`). Binary files are detected
+# and left alone.
+* text=auto eol=lf
+
 # Encrypted golden fixtures: the bytes are the contract (cmd/go/internal/wire).
 # Never let a checkout convert line endings or diff them as text.
 cmd/go/internal/wire/testdata/*.golden binary

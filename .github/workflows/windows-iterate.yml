@@ -1,0 +1,36 @@
+name: Windows iterate (temporary, branch-only)
+
+# Scaffolding for fix/windows-portability: the Windows full suite on every
+# push to that branch, so each fix is checked in one job rather than a whole
+# daily build. Deleted before the branch's pull request.
+
+on:
+  push:
+    branches: [fix/windows-portability]
+
+jobs:
+  full-suite:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lang/go/go.mod
+          cache: false
+      - name: Full suite
+        run: scripts/ci-steps.sh full-suite 2>&1 | tee full-suite.log; exit "${PIPESTATUS[0]}"
+      - name: Failing tests
+        if: always()
+        run: |
+          echo "failing top-level tests: $(grep -cE '^--- FAIL: Test' full-suite.log || true)"
+          grep -E '^(--- FAIL: Test|FAIL\s)' full-suite.log | sort | uniq | head -300 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-full-suite-log
+          path: full-suite.log
+          retention-days: 7
