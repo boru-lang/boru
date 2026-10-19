@@ -9,8 +9,10 @@ description: >
 inputs:
   cache-name:
     description: >
-      the build cache's name — the job's name unless a matrix job passes
-      its own, so every shard restores the cache IT last saved
+      the build cache's name — the job's name unless the job passes its
+      own: a matrix whose legs compile different packages names each leg
+      (test-lang's root and rest), and one whose legs compile the same
+      packages shares one name (the langspec shards)
     default: ''
   node:
     description: install Node and the TypeScript core/parser dependencies
@@ -58,8 +60,14 @@ runs:
         restore-keys: go-mod-${{ runner.os }}-
 
     # The build cache is per JOB and keyed per RUN: a job compiles its own
-    # packages, so it restores the entry it saved last (the first
-    # restore-key), or any job's on its first run; the run id tails the key
+    # packages, so it restores the entry it saved last (its one
+    # restore-key) — never another job's. A catch-all `go-build-<os>-` key
+    # used to follow it, and actions/cache tries EVERY key in the pull
+    # request's own scope before any in main's: on a PR's first run, a job
+    # starting after another had saved took that job's cache over main's
+    # matching one (the langspec shards got the race job's; `checks` got a
+    # shard's and linted cold, 72 s against 5 s). A new job now starts
+    # cold once instead. The run id tails the key
     # so the exact key never hits and every green job saves its fresh
     # state (actions/cache saves only on an exact-key miss, and only when
     # the job reaches its post step, so a red job seeds nothing). Measured
@@ -67,6 +75,10 @@ runs:
     # CLI build 38s -> 2s, vet 21s -> 6s. Test results are never reused
     # across runs (checkout rewrites every mtime). golangci-lint's own
     # cache rides along: a warm one turns a 127 s lint into seconds.
+    # Each save supersedes the entry the job restored, which nothing
+    # restores again; cache-cleanup.yml (scripts/prune-caches.sh) deletes
+    # those after every run, so the store stays one generation deep and
+    # well under the 10 GB at which GitHub starts evicting warm entries.
     - name: Go build cache (per job, keyed per run)
       uses: actions/cache@v4
       with:
@@ -74,9 +86,7 @@ runs:
           ~/.cache/go-build
           ~/.cache/golangci-lint
         key: go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-${{ github.run_id }}
-        restore-keys: |
-          go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-
-          go-build-${{ runner.os }}-
+        restore-keys: go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-
 
     - uses: actions/setup-node@v4
       if: inputs.node == 'true'

@@ -1,0 +1,111 @@
+name: Daily build
+
+# What runs once a day rather than on every push and pull request.
+#
+#   - The platform regressions on macOS and Windows (platforms.yml; ci.yml
+#     runs the same job on Linux). They are the slowest runners to start
+#     and to build on — a cold CLI build is a minute on Windows, and a
+#     macOS runner can take most of a minute to be assigned — so they left
+#     the PR path, which is held to three minutes a job.
+#   - The deep property fuzz (scripts/fuzz-daily.sh): both fuzzers at 20
+#     seeds × 5000 programs from a seed base that moves every day, so each
+#     day explores programs no earlier day generated. The report is in the
+#     run's summary and its artifact.
+#   - The report: every fuzz finding becomes a `fuzz` issue (one per
+#     distinct shrunk program, never closed by a green day), and the
+#     workflow keeps one `ci-health` issue, "Daily build is failing", open
+#     while any job fails and closed when they pass again
+#     (scripts/scheduled-issues.sh; AGENTS.md says how to act on them).
+#
+# The merged ADR-008 coverage gate is nightly too, in its own workflow
+# (cover-gate.yml), with the same health issue.
+#
+# A pull request no longer exercises macOS or Windows, so a change to
+# host-specific filesystem, terminal or credential code should run this on
+# its branch before it merges:
+#
+#   gh workflow run daily.yml --ref <branch>
+#
+# Run by hand, seed-base replays a day (the base its report names) and
+# selftest exercises the issue plumbing end to end, leaving nothing open.
+
+on:
+  schedule:
+    # 04:41 UTC: off the hour, and clear of cover-gate.yml's 03:17.
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+    inputs:
+      seed-base:
+        description: the fuzz seed base to replay (default today's, the UTC date × 100)
+        required: false
+        default: ''
+      selftest:
+        description: also run the issue plumbing's self-test
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  platform-regressions:
+    uses: ./.github/workflows/platforms.yml
+    with:
+      os: '["macos-latest", "windows-latest"]'
+
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # The fuzzers live in the langspec package, so the shards' build
+      # cache is this job's warm start.
+      - uses: ./.github/actions/setup
+        with:
+          cache-name: test-langspec
+      - name: Deep property fuzz from today's seeds
+        run: scripts/fuzz-daily.sh fuzz-out
+        env:
+          BORU_FUZZ_SEED_BASE: ${{ inputs.seed-base }}
+      - name: Report into the run summary
+        if: always()
+        run: cat fuzz-out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-report
+          path: fuzz-out
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # Issues speak for main only: a run on a branch (the dispatch above) is
+  # that branch's own business, and its report is in its summary.
+  report:
+    needs: [platform-regressions, fuzz]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      WORKFLOW: ${{ github.workflow }}
+    steps:
+      - uses: actions/checkout@v4
+      # The fuzz job may have died before it uploaded; the health issue
+      # below still reports it.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: fuzz-report
+          path: fuzz-out
+      - name: File the fuzz findings
+        run: scripts/scheduled-issues.sh findings fuzz-out/findings.jsonl
+      - name: Daily build health issue
+        run: scripts/scheduled-issues.sh health 'Daily build is failing' "$NEEDS"
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+      - name: Self-test the issue plumbing
+        if: inputs.selftest
+        run: scripts/scheduled-issues.sh selftest

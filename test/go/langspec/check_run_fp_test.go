@@ -66,9 +66,11 @@ const pinnedCheckRunDivergent = 161
 // TestCheckRunFalsePositive generates the property fuzzer's program corpus
 // and ratchets the count of check-rejected-but-running programs.
 // Deterministic default budget (the same seeds every run, so a failure
-// always reproduces); deepen with BORU_FUZZ_SEEDS / BORU_FUZZ_ITERS exactly
-// like TestPropertyDifferential (the pin applies only at the default
-// budget — a cranked run reports without gating).
+// always reproduces); deepen with BORU_FUZZ_SEEDS / BORU_FUZZ_ITERS and move
+// the seeds with BORU_FUZZ_SEED_BASE exactly like TestPropertyRobustness
+// (the pin applies only to the default corpus — a cranked or moved run
+// reports without gating, and records its counts and samples for the daily
+// build's report).
 func TestCheckRunFalsePositive(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
@@ -77,10 +79,17 @@ func TestCheckRunFalsePositive(t *testing.T) {
 	const depth = 4
 	iters := fuzzEnv("BORU_FUZZ_ITERS", 1500)
 	seeds := fuzzEnv("BORU_FUZZ_SEEDS", 2)
+	base := fuzzSeedBase()
 	var rejected, divergent int
 	var samples []string
-	for seed := 1; seed <= seeds; seed++ {
-		r := rand.New(rand.NewSource(int64(seed)))
+	defer func() {
+		recordFuzz(t, map[string]any{"kind": "summary", "test": t.Name(), "seedBase": base,
+			"seeds": seeds, "iters": iters, "programs": seeds * iters, "rejected": rejected,
+			"divergent": divergent, "pin": pinnedCheckRunDivergent, "samples": samples})
+	}()
+	for k := 1; k <= seeds; k++ {
+		seed := base + int64(k)
+		r := rand.New(rand.NewSource(seed))
 		for i := 0; i < iters; i++ {
 			root, scope := genProgram(r, depth)
 			src := render(root, scope)
@@ -100,11 +109,11 @@ func TestCheckRunFalsePositive(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("check-run fp fuzz: %d seeds x %d programs, %d check-rejected, %d run clean (pin %d)",
-		seeds, iters, rejected, divergent, pinnedCheckRunDivergent)
-	if iters != 1500 || seeds != 2 {
-		// A cranked exploratory run (BORU_FUZZ_*) reports without gating —
-		// the pin is calibrated to the deterministic default corpus.
+	t.Logf("check-run fp fuzz: seeds %d..%d x %d programs, %d check-rejected, %d run clean (pin %d)",
+		base+1, base+int64(seeds), iters, rejected, divergent, pinnedCheckRunDivergent)
+	if iters != 1500 || seeds != 2 || base != 0 {
+		// A cranked or moved exploratory run (BORU_FUZZ_*) reports without
+		// gating — the pin is calibrated to the deterministic default corpus.
 		for _, s := range samples {
 			t.Logf("  divergent sample: %s", s)
 		}

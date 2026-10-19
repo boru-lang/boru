@@ -210,6 +210,10 @@ test-race:
 # vet and lint run in every module in parallel (scripts/each-module.sh;
 # JOBS=1 for the sequential form): golangci-lint over the thirteen modules
 # took 127 s in sequence on CI, under 10 s four at a time with a warm cache.
+# golangci-lint takes a lock per user unless --allow-parallel-runners: a
+# second copy exits ("parallel golangci-lint is running"), so without the
+# flag every module but one failed the parallel pass and each-module.sh's
+# retry relinted them one at a time — the "parallel" lint was sequential.
 #
 # vet runs WITHOUT copylocks: core.Value carries a zero-size noCopy marker,
 # so copylocks reports every by-value copy of a Value. Those copies are the
@@ -246,7 +250,7 @@ fmt-docs:
 	@cd cmd/go && go run ./boru fmt $(addprefix ../../,$(DOC_FILES))
 
 lint:
-	@scripts/each-module.sh -j $(JOBS) golangci-lint run ./...
+	@scripts/each-module.sh -j $(JOBS) golangci-lint run --allow-parallel-runners ./...
 
 # brand-audit — inventory every place the product name is baked in, split
 # by what breaks if it changes underneath existing data (design/WIRE-IDENTITY.0.md).
@@ -529,6 +533,15 @@ fuzz:
 	cd test/go && BORU_FUZZ_SEEDS=$(FUZZ_SEEDS) BORU_FUZZ_ITERS=$(FUZZ_ITERS) \
 	  go test ./langspec/ -run 'TestPropertyRobustness' -timeout 60m -v
 	@echo "==> property fuzz: PASSED"
+
+# fuzz-daily — the daily build's fuzz run, locally: both property fuzzers at
+# 20 seeds x 5000 programs from today's seed base, the findings and the
+# report in fuzz-out/ (scripts/fuzz-daily.sh; AGENTS.md "Daily fuzz
+# findings" says how to act on one). BORU_FUZZ_SEED_BASE=<base> replays a
+# day, BORU_FUZZ_SEEDS / BORU_FUZZ_ITERS change the budget.
+.PHONY: fuzz-daily
+fuzz-daily:
+	@scripts/fuzz-daily.sh fuzz-out
 
 clean:
 	@set -e; for m in $(MODULES); do \

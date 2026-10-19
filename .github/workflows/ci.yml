@@ -3,7 +3,7 @@ name: CI
 # The contract: every job under THREE MINUTES, so a push answers inside a
 # coffee's worth of waiting and `make commit-gate` (the same ceiling, on
 # what the change touched) is the developer's own copy of it. The layout
-# that pays for it (design/FULL-COMPILATION-REVIEW.0.md §9):
+# that pays for it (design/legacy/FULL-COMPILATION-REVIEW.0.ignore §9):
 #
 #   - every step is defined ONCE, in scripts/ci-steps.sh, which `make
 #     ci-local` runs in the same order — so running ci-local before a push
@@ -13,14 +13,21 @@ name: CI
 #     long as everything else), the langspec corpus in shards whose tests
 #     walk the corpus on every core (test/go/langspec/walk_test.go) and run
 #     in parallel with each other, the post-test gates split by what they
-#     need installed, the race gates and the borudebug build alone;
+#     need installed, the race gate alone;
 #   - the setup is per job: the composite action installs Node, the lint
 #     or vuln tool, or builds the CLI only for the job that asks;
+#   - the build caches are one generation deep: every green job saves a
+#     fresh entry, and cache-cleanup.yml deletes the entries each run
+#     superseded, so the 10 GB store never evicts main's warm ones;
+#   - the platform regressions run natively on Linux here, and on macOS
+#     and Windows once a day (daily.yml; both call platforms.yml): those
+#     runners are the slowest to start and to build on — a cold CLI build
+#     is a minute on Windows — and nothing on the PR path waits for them;
 #   - the REGRESSION lane is what blocks: every gate in test/go/langspec
 #     asserts its regression ceiling (a value that rose) by default. The
-#     DIRECTION lane — the same gates against their END STATE (islands 0,
-#     refusals 0, interpreter entries 0, …) — is red by design until the
-#     full-compilation programme is done, so it is not a job: every shard
+#     DIRECTION lane — the same gates against their END STATE
+#     (type-soundness violations 0, …) — is red by design until the design's
+#     end state is reached, so it is not a job: every shard
 #     appends its gates' rows (BORU_GATE_SUMMARY) and the gate-table job
 #     renders the one table into the run's summary, open rows and all.
 #     (test/go/langspec/lanes_test.go is the rule; `make test-direction`
@@ -107,7 +114,10 @@ jobs:
   # The langspec corpus, sharded by test name (test/go/langspec/shards.tsv;
   # TestLangspecShardsPartition keeps the file complete and disjoint). Keep
   # the matrix in step with `make langspec-shard-count`. Every shard
-  # appends its gates' rows to a file the gate-table job collects.
+  # appends its gates' rows to a file the gate-table job collects. The
+  # shards compile the same test binary, so they share ONE build cache:
+  # the first to finish saves it, the rest find the key taken (nine
+  # per-shard copies of the same objects were a third of every run's save).
   test-langspec:
     runs-on: ubuntu-latest
     strategy:
@@ -120,7 +130,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
-          cache-name: test-langspec-${{ matrix.shard }}
+          cache-name: test-langspec
       - name: Shard count matches this matrix
         run: |
           n=$(make -s langspec-shard-count)
@@ -172,7 +182,7 @@ jobs:
           tools: vuln
       # core/go profiled by ITS OWN suite alone, floor 100. The merged
       # ADR-008 gate (make cover-gate) lives in cover-gate.yml (nightly and
-      # workflow_dispatch) because re-profiling 13 modules would dominate
+      # workflow_dispatch) because re-profiling every module would dominate
       # every PR.
       - run: scripts/ci-steps.sh cover-gate-core
       - run: scripts/ci-steps.sh wasm
@@ -180,24 +190,14 @@ jobs:
       # 1.24.x patch releases — see STATIC_ANALYSIS_REPORT.md.
       - run: scripts/ci-steps.sh vuln
 
-  # The race gates build three packages under -race — a second compile of
-  # the kernel, the language layer and the corpus package — so they are a
-  # job of their own rather than the gates job's long pole.
+  # The race gate builds the kernel under -race — a second compile — so it
+  # is a job of its own rather than the gates job's long pole.
   race:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: scripts/ci-steps.sh race-gates
-
-  # The borudebug build is a second compile of lang/go and the corpus
-  # differentials, so it is a job of its own.
-  borudebug:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-      - run: scripts/ci-steps.sh borudebug-gates
 
   # A current compiler and linter beside the pinned pair in `checks`: a new
   # Go release adds deprecation checks (reflect.Ptr for reflect.Pointer was
@@ -220,46 +220,29 @@ jobs:
           # at 4, and failed every module's typecheck once stable moved).
           lint-version: v2.14.0
       - run: scripts/ci-steps.sh lint
+      # The two targets lint side by side, as the module lint above does;
+      # each one's output prints once both are done.
       - name: Lint the darwin and windows filesystem and terminal code
         working-directory: lang/go
         run: |
+          pids=""
           for target_os in darwin windows; do
-            GOOS="$target_os" golangci-lint run ./capabilities ./native
+            GOOS="$target_os" golangci-lint run --allow-parallel-runners ./capabilities ./native \
+              > "$RUNNER_TEMP/lint-$target_os.log" 2>&1 &
+            pids="$pids $!"
           done
+          rc=0
+          for p in $pids; do wait "$p" || rc=1; done
+          for target_os in darwin windows; do
+            echo "==> GOOS=$target_os"; cat "$RUNNER_TEMP/lint-$target_os.log"
+          done
+          exit $rc
 
-  # Native runs on each desktop OS, not cross-compiles: the filesystem
-  # portability tests, a real PTY or console for the terminal probes, the
-  # injected import-anchor failures, and the credential and clipboard
-  # failure arms without host tools, on the module's minimum Go and the
-  # current one. A missing terminal fixture fails the test instead of
-  # skipping it.
+  # The native platform regressions (platforms.yml says what they are), on
+  # Linux only. macOS and Windows run the same job once a day in daily.yml;
+  # for a change to host-specific filesystem, terminal or credential code,
+  # run it on the branch: `gh workflow run daily.yml --ref <branch>`.
   platform-regressions:
-    name: Platforms (${{ matrix.os }}, Go ${{ matrix.go }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ['1.24.7', stable]
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go }}
-          cache: false
-      - name: Build and start the CLI
-        run: |
-          go build -o "$RUNNER_TEMP/boru.exe" ./cmd/go/boru
-          "$RUNNER_TEMP/boru.exe" help
-      - name: Filesystem portability
-        run: go test ./lang/go/capabilities -count=1 -timeout=3m -v -run 'TestPortable|TestOSLock|TestOSMmap|TestMemLock|TestMemMmap|TestDifferentialLockMmap'
-      - name: Real terminal and colour detection
-        run: go test ./lang/go/native -count=1 -timeout=3m -v -run 'TestOSStreamProbeAgainstRealFiles|TestResolveColor|TestPortableXattrNamespaces'
-      - name: Import anchor resolution and failure
-        run: go test ./cmd/go/internal/check ./cmd/go/internal/build ./cmd/go/internal/buildrt ./cmd/go/internal/fmt -count=1 -timeout=3m -v -run 'TestAnchorOf|TestAbsDir|TestSeam5AbsDirError|TestBuildConfigAbsError|TestNativeAbsError|TestRunWalkError'
-      - name: Credential and clipboard failures without host tools
-        run: go test ./cmd/go/internal/vault -count=1 -timeout=3m -v -run 'TestSelectKeyringBackends|TestMacKeychainErrorPaths|TestSecretDetailScreenActions'
+    uses: ./.github/workflows/platforms.yml
+    with:
+      os: '["ubuntu-latest"]'
