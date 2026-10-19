@@ -146,6 +146,9 @@ coverage/
 **/coverage.out
 **/coverage.html
 
+# The daily fuzz run's findings, log and report (`make fuzz-daily`)
+fuzz-out/
+
 # calc module build output
 calc/bin/
 

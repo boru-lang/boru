@@ -1,0 +1,62 @@
+name: Cache cleanup
+
+# Keeps the Actions cache one generation deep (scripts/prune-caches.sh says
+# why that matters and what a generation is). Two triggers:
+#
+#   - a CI, Pages, coverage or daily run finished: delete every entry that
+#     a newer one of its family superseded, on every ref;
+#   - a pull request closed, merged or not: delete every entry on its
+#     refs/pull/<n>/merge, which nothing restores from again.
+#
+# pull_request_target rather than pull_request, so a fork's closed pull
+# request is cleaned too. For this event the checkout is the BASE branch and
+# nothing from the pull request runs, so the write token never meets its
+# code. Run by hand it prunes, or, given a ref, deletes that ref's entries
+# (a pull request closed before this workflow existed).
+
+on:
+  workflow_run:
+    workflows: ['CI', 'Deploy playground to Pages', 'Merged coverage gate (ADR-008)', 'Daily build']
+    types: [completed]
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: delete every entry on this ref (e.g. refs/pull/537/merge); empty prunes
+        required: false
+        default: ''
+
+permissions:
+  actions: write
+  contents: read
+
+# Prunes share one group: a newer one supersedes a pending one, and the
+# newer covers everything the pending would have. Each closed pull request
+# has a group of its own, so no prune can cancel its clean-up.
+concurrency:
+  group: cache-cleanup-${{ github.event.pull_request.number || 'prune' }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete the closed pull request's caches
+        if: github.event_name == 'pull_request_target'
+        run: scripts/prune-caches.sh --ref "refs/pull/$PR/merge"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+      - name: Delete one ref's caches
+        if: github.event_name == 'workflow_dispatch' && inputs.ref != ''
+        run: scripts/prune-caches.sh --ref "$REF"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref }}
+      - name: Delete superseded caches
+        if: github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.ref == '')
+        run: scripts/prune-caches.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

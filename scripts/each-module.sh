@@ -62,6 +62,10 @@ printf '%s\n' $modules | xargs -P "$jobs" -I{} bash -c 'run_one "$@" || { echo "
 # source change has been seen to fail transiently for one module and
 # pass alone a moment later. A failure that repeats alone is the real
 # one and its output is above; a pass on the retry is reported as such.
+# (Most of those "transient" failures were golangci-lint's own lock —
+# "parallel golangci-lint is running" — which make lint and commit-gate
+# now lift with --allow-parallel-runners. A retry that passes every run
+# is a tool refusing to run in parallel, not flakiness.)
 rc=0
 for dir in $(sort -u "$tmp/failed"); do
   echo "==> retrying alone: $* ($dir)"

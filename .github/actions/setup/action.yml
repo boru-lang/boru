@@ -9,8 +9,10 @@ description: >
 inputs:
   cache-name:
     description: >
-      the build cache's name — the job's name unless a matrix job passes
-      its own, so every shard restores the cache IT last saved
+      the build cache's name — the job's name unless the job passes its
+      own: a matrix whose legs compile different packages names each leg
+      (test-lang's root and rest), and one whose legs compile the same
+      packages shares one name (the langspec shards)
     default: ''
   node:
     description: install Node and the TypeScript core/parser dependencies
@@ -67,6 +69,10 @@ runs:
     # CLI build 38s -> 2s, vet 21s -> 6s. Test results are never reused
     # across runs (checkout rewrites every mtime). golangci-lint's own
     # cache rides along: a warm one turns a 127 s lint into seconds.
+    # Each save supersedes the entry the job restored, which nothing
+    # restores again; cache-cleanup.yml (scripts/prune-caches.sh) deletes
+    # those after every run, so the store stays one generation deep and
+    # well under the 10 GB at which GitHub starts evicting warm entries.
     - name: Go build cache (per job, keyed per run)
       uses: actions/cache@v4
       with:

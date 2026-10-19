@@ -176,6 +176,39 @@ module and takes about half an hour cold, so it runs nightly
 (`cover-gate.yml`) and before a merge, not on every commit — skipping it
 before a merge is how a merged PR turns CI red.
 
+CI on a pull request runs on Linux only. The platform regressions on
+macOS and Windows run once a day in the daily build (`daily.yml`), so a
+change to host-specific filesystem, terminal or credential code should
+run it on its branch before merging: `gh workflow run daily.yml --ref
+<branch>`.
+
+### Daily fuzz findings
+
+The daily build runs the two property fuzzers in `test/go/langspec`
+(`TestPropertyRobustness`, `TestCheckRunFalsePositive`) at 20 seeds ×
+5000 programs each, from seeds that change every day
+(`BORU_FUZZ_SEED_BASE`, the UTC date × 100). `make fuzz-daily` is the
+same run locally. The report lists each finding with its shrunk program,
+the engine's message and the command that regenerates it. It is in the
+run's summary and its `fuzz-report` artifact. Every finding is also filed
+as a `fuzz` issue, one per distinct shrunk program; a later run that
+finds the same program adds a comment. To act on one:
+
+1. Reproduce it with the command in the issue. The same seed and
+   iteration regenerate the same program.
+2. Pin the shrunk program as a regression test that fails today, with its
+   negative pair: a `lang/spec/*.tsv` row in its family, or a Go test
+   beside the construct.
+3. Fix the engine. The PR that turns the pin green closes the issue
+   (`Fixes #n`).
+
+A green day never closes a fuzz issue: tomorrow's seeds generate
+different programs, so only the fix closes it. Separately, each scheduled
+workflow keeps one `ci-health` issue ("Daily build is failing", "Merged
+coverage gate is failing"). It opens while the workflow is red on `main`
+and closes itself when the workflow is green again. To check the issue
+plumbing end to end, run `gh workflow run daily.yml -f selftest=true`.
+
 Faster, scoped iteration:
 
 ```bash

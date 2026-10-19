@@ -11,6 +11,8 @@
 1	TestPropertyRobustness
 1	TestLangspecShardsPartition
 1	TestParseSpecRowsCountsEveryLine
+1	TestFuzzSeedBase
+1	TestRecordFuzz
 2	TestSpecProd
 2	TestSpecProdTCODisabled
 3	TestCheckTypeSoundness

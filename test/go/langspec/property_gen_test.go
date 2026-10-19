@@ -8,20 +8,22 @@
 package langspec
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// fuzzEnv reads a positive integer from an env var, else returns def. Lets CI /
-// a nightly job CRANK the fuzzer (`BORU_FUZZ_SEEDS=20 BORU_FUZZ_ITERS=5000`)
+// fuzzEnv reads a positive integer from an env var, else returns def. Lets
+// the daily build CRANK the fuzzer (`BORU_FUZZ_SEEDS=20 BORU_FUZZ_ITERS=5000`)
 // without touching the lean, deterministic default the standard suite runs.
 func fuzzEnv(name string, def int) int {
 	if v := os.Getenv(name); v != "" {
@@ -30,6 +32,53 @@ func fuzzEnv(name string, def int) int {
 		}
 	}
 	return def
+}
+
+// fuzzSeedBase reads BORU_FUZZ_SEED_BASE, the offset the fuzzers' seeds
+// start from: a run takes seeds base+1 … base+BORU_FUZZ_SEEDS. The default
+// 0 is the lean deterministic corpus the standard suite runs. The daily
+// build passes the UTC date × 100 (scripts/fuzz-daily.sh), so every day
+// explores programs no earlier day generated, and a finding's seed is
+// absolute: the same seed and iteration regenerate the same program.
+func fuzzSeedBase() int64 {
+	if v := os.Getenv("BORU_FUZZ_SEED_BASE"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+var fuzzFindingsMu sync.Mutex
+
+// recordFuzz appends one JSON line to BORU_FUZZ_FINDINGS, if set: a finding
+// (kind "internal_error") or a fuzzer's closing summary (kind "summary").
+// scripts/fuzz-daily.sh renders the file into the daily build's report and
+// files each finding as an issue, so a finding carries what acting on it
+// needs: its seed and iteration (the reproduction), the program, the shrunk
+// program and the engine's message. A write failure fails the test — a
+// finding that never reaches the report is a finding lost.
+func recordFuzz(t testing.TB, rec map[string]any) {
+	path := os.Getenv("BORU_FUZZ_FINDINGS")
+	if path == "" {
+		return
+	}
+	line, err := json.Marshal(rec)
+	if err != nil {
+		t.Errorf("BORU_FUZZ_FINDINGS: %v", err)
+		return
+	}
+	fuzzFindingsMu.Lock()
+	defer fuzzFindingsMu.Unlock()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Errorf("BORU_FUZZ_FINDINGS: %v", err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		t.Errorf("BORU_FUZZ_FINDINGS: %v", err)
+	}
 }
 
 // cat is a generated node's value category, so generation and shrinking stay
@@ -1145,34 +1194,47 @@ func TestPropertyRobustness(t *testing.T) {
 	// Lean DETERMINISTIC default (a regression guard, ~10s) — the same programs
 	// every run, so a failure always reproduces. Override the budget for a deep
 	// exploratory hunt: `BORU_FUZZ_SEEDS=20 BORU_FUZZ_ITERS=5000 go test -run
-	// TestPropertyRobustness`.
+	// TestPropertyRobustness`; the daily build does that from a seed base that
+	// moves every day (fuzzSeedBase, scripts/fuzz-daily.sh).
 	const depth = 4
 	iters := fuzzEnv("BORU_FUZZ_ITERS", 1500)
 	seeds := fuzzEnv("BORU_FUZZ_SEEDS", 2)
-	var failures int
-	for seed := 1; seed <= seeds; seed++ {
-		r := rand.New(rand.NewSource(int64(seed)))
+	base := fuzzSeedBase()
+	var failures, programs int
+	// The summary is recorded on every exit, the Fatalf below included, so
+	// the report can tell a finished run from one that never closed.
+	defer func() {
+		recordFuzz(t, map[string]any{"kind": "summary", "test": t.Name(), "seedBase": base,
+			"seeds": seeds, "iters": iters, "programs": programs, "failures": failures})
+	}()
+	for k := 1; k <= seeds; k++ {
+		seed := base + int64(k)
+		r := rand.New(rand.NewSource(seed))
 		for i := 0; i < iters; i++ {
 			root, scope := genProgram(r, depth)
 			src := render(root, scope)
+			programs++
 			if misbehaves(t, src) {
 				failures++
-				min := shrink(t, root, scope)
-				t.Errorf("INTERNAL ERROR (seed %d iter %d):\n  full : %s\n  min  : %s", seed, i, src, render(min, scope))
+				min := render(shrink(t, root, scope), scope)
+				t.Errorf("INTERNAL ERROR (seed %d iter %d):\n  full : %s\n  min  : %s", seed, i, src, min)
+				recordFuzz(t, map[string]any{"kind": "internal_error", "test": t.Name(), "seed": seed,
+					"iter": i, "program": src, "min": min, "error": internalErrorText(t, min)})
 				if failures >= 10 {
 					t.Fatalf("stopping after %d internal errors", failures)
 				}
 			}
 		}
 	}
-	t.Logf("property fuzz: %d seeds x %d programs, %d internal errors", seeds, iters, failures)
+	t.Logf("property fuzz: seeds %d..%d x %d programs, %d internal errors", base+1, base+int64(seeds), iters, failures)
 }
 
-// misbehaves runs the program on a fresh instance and reports an INTERNAL
-// error — the engine's own failure (a recovered panic, a kernel assertion),
-// never the program's: a generated program may legitimately raise a boru
-// error (a type_error over a generated operand), and that is not a finding.
-func misbehaves(t testing.TB, src string) bool {
+// internalError runs the program on a fresh instance and returns its
+// INTERNAL error — the engine's own failure (a recovered panic, a kernel
+// assertion) — or nil. Never the program's error: a generated program may
+// legitimately raise a boru error (a type_error over a generated operand),
+// and that is not a finding.
+func internalError(t testing.TB, src string) *core.BoruError {
 	a, err := lang.New()
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
@@ -1180,7 +1242,22 @@ func misbehaves(t testing.TB, src string) bool {
 	a.SetClock(specClock)
 	_, rerr := a.Run(src)
 	var be *core.BoruError
-	return errors.As(rerr, &be) && be.Code == "internal_error"
+	if errors.As(rerr, &be) && be.Code == "internal_error" {
+		return be
+	}
+	return nil
+}
+
+// misbehaves reports whether the program hits an internal error.
+func misbehaves(t testing.TB, src string) bool { return internalError(t, src) != nil }
+
+// internalErrorText is the engine's message for a program that hits an
+// internal error, for the finding's record; empty if it no longer does.
+func internalErrorText(t testing.TB, src string) string {
+	if be := internalError(t, src); be != nil {
+		return be.Error()
+	}
+	return ""
 }
 
 // shrink greedily replaces sub-nodes with the minimal node of their category

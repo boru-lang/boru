@@ -3,7 +3,7 @@ name: Merged coverage gate (ADR-008)
 # The repo-wide merged ADR-008 gate, on a schedule rather than per-PR.
 #
 # WHY THIS EXISTS. ci.yml runs `make cover-gate-core` — core/go by its own
-# suite — but NOT the merged `make cover-gate` across all 13 modules. Its
+# suite — but NOT the merged `make cover-gate` across every module. Its
 # own comment says why that hurts: "a statement in compiler/go sat uncovered
 # on main until a hand-run of the checklist found it — a 100% floor nothing
 # checks is a 100% floor nobody keeps." That happened a second time on
@@ -62,3 +62,24 @@ jobs:
 
       - name: Merged coverage gate (ADR-008, floor 100)
         run: make cover-gate
+
+  # A scheduled run fails where nobody is watching: keep the workflow's one
+  # ci-health issue, "Merged coverage gate is failing", open while the gate
+  # is red on main and close it when it is green again
+  # (scripts/scheduled-issues.sh). A run on a branch reports nothing.
+  report:
+    needs: cover-gate
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Coverage gate health issue
+        run: scripts/scheduled-issues.sh health 'Merged coverage gate is failing' "$NEEDS"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW: ${{ github.workflow }}
+          NEEDS: ${{ toJSON(needs) }}

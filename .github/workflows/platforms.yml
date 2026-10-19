@@ -1,0 +1,54 @@
+name: Platforms
+
+# Native runs on a desktop OS, not cross-compiles: the filesystem
+# portability tests, a real PTY or console for the terminal probes, the
+# injected import-anchor failures, and the credential and clipboard
+# failure arms without host tools, on the module's minimum Go and the
+# current one. A missing terminal fixture fails the test instead of
+# skipping it.
+#
+# A reusable workflow, so the job is written once for both of its
+# callers: ci.yml runs it on Linux for every push and pull request, and
+# daily.yml runs it on macOS and Windows once a day. Those two are the
+# slowest runners to start and to build on (a cold CLI build is a minute
+# on Windows), and the PR path is held to three minutes a job.
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: the runner images to run on, as a JSON array — '["macos-latest", "windows-latest"]'
+        required: true
+        type: string
+
+jobs:
+  regressions:
+    name: Platforms (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        go: ['1.24.7', stable]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Build and start the CLI
+        run: |
+          go build -o "$RUNNER_TEMP/boru.exe" ./cmd/go/boru
+          "$RUNNER_TEMP/boru.exe" help
+      - name: Filesystem portability
+        run: go test ./lang/go/capabilities -count=1 -timeout=3m -v -run 'TestPortable|TestOSLock|TestOSMmap|TestMemLock|TestMemMmap|TestDifferentialLockMmap'
+      - name: Real terminal and colour detection
+        run: go test ./lang/go/native -count=1 -timeout=3m -v -run 'TestOSStreamProbeAgainstRealFiles|TestResolveColor|TestPortableXattrNamespaces'
+      - name: Import anchor resolution and failure
+        run: go test ./cmd/go/internal/check ./cmd/go/internal/build ./cmd/go/internal/buildrt ./cmd/go/internal/fmt -count=1 -timeout=3m -v -run 'TestAnchorOf|TestAbsDir|TestSeam5AbsDirError|TestBuildConfigAbsError|TestNativeAbsError|TestRunWalkError'
+      - name: Credential and clipboard failures without host tools
+        run: go test ./cmd/go/internal/vault -count=1 -timeout=3m -v -run 'TestSelectKeyringBackends|TestMacKeychainErrorPaths|TestSecretDetailScreenActions'
