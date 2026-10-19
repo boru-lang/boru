@@ -39,6 +39,25 @@ run_link=${run_url:+" ([run]($run_url))"}
 dry() { [ "${DRY_RUN:-0}" = 1 ]; }
 sha16() { if command -v sha256sum > /dev/null; then sha256sum; else shasum -a 256; fi | cut -c1-16; }
 
+# Every call names the repository, resolved once (a checkout whose remote is
+# a renamed repository's old name still resolves to the new one here).
+GH_REPO=${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}
+export GH_REPO
+
+# open_with_label <label> — the open issues carrying it, as a JSON array of
+# {number, title, body}. Read from the REST listing, never `gh issue list
+# --label`, which goes through the search index: that lags a new issue by
+# seconds to minutes, and a lookup that misses an issue opens its duplicate.
+open_with_label() {
+  gh api --paginate "repos/$GH_REPO/issues?labels=$1&state=open&per_page=100" \
+    --jq '.[] | select(.pull_request == null) | {number, title, body}' | jq -s .
+}
+
+# The issue the last findings or health call acted on, and how — the
+# self-test reads them back.
+last_issue=""
+last_action=""
+
 # The command that regenerates a finding (the same as scripts/fuzz-daily.sh's).
 repro() { # repro <test> <seed> <iter>
   echo "cd test/go && BORU_FUZZ_SEED_BASE=$(($2 - 1)) BORU_FUZZ_SEEDS=1 BORU_FUZZ_ITERS=$(($3 + 1)) go test ./langspec/ -run '^$1\$' -v"
@@ -120,7 +139,7 @@ cmd_findings() { # cmd_findings <findings.jsonl>
   fi
   ensure_label "$label" d93f0b "An internal error the daily property fuzz found"
   local open
-  open=$(gh issue list --label "$label" --state open --limit 500 --json number,body)
+  open=$(open_with_label "$label")
   while IFS= read -r rec; do
     local t seed iter min key num body
     t=$(jq -r .test <<< "$rec"); seed=$(jq -r .seed <<< "$rec"); iter=$(jq -r .iter <<< "$rec")
@@ -134,6 +153,7 @@ cmd_findings() { # cmd_findings <findings.jsonl>
       comment "$num" "Found again on $today$run_link: seed $seed, iteration $iter. Reproduce: \`$(repro "$t" "$seed" "$iter")\`"
       echo "==> findings: $key found again, commented on #$num"
       again=$((again + 1))
+      last_action=commented
     else
       body=$(mktemp)
       finding_body "$rec" "$key" > "$body"
@@ -141,7 +161,9 @@ cmd_findings() { # cmd_findings <findings.jsonl>
       rm -f "$body"
       echo "==> findings: $key filed as #$num"
       filed=$((filed + 1))
+      last_action=opened
     fi
+    last_issue=$num
   done < <(jq -c 'select(.kind == "internal_error")' "$file")
   echo "==> findings: $filed filed, $again found again"
 }
@@ -151,12 +173,14 @@ cmd_health() { # cmd_health <title> <needs json>
   failed=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled")
     | "\(.key) (\(.value.result))"' <<< "$needs" | paste -sd ',' - | sed 's/,/, /g')
   ensure_label "$label" e11d21 "A scheduled workflow is failing; closes itself when it passes again"
-  num=$(gh issue list --label "$label" --state open --limit 200 --json number,title \
-    | jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
+  num=$(open_with_label "$label" | jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
+  last_issue=$num
+  last_action=none
   if [ -n "$failed" ]; then
     if [ -n "$num" ]; then
       comment "$num" "Failed again on $today$run_link: $failed."
       echo "==> health: still failing, commented on #$num"
+      last_action=commented
     else
       body=$(mktemp)
       cat > "$body" <<EOF
@@ -169,48 +193,72 @@ EOF
       num=$(create_issue "$label" "$title" "$body")
       rm -f "$body"
       echo "==> health: failing, opened #$num"
+      last_issue=$num
+      last_action=opened
     fi
   elif [ -n "$num" ]; then
     close_issue "$num" "Green again on $today$run_link. Closing."
     echo "==> health: green again, closed #$num"
+    last_action=closed
   else
     echo "==> health: green"
   fi
 }
 
-# selftest checks each step against the live repository. A check reads
-# the issue back rather than trusting the step's own output.
+# selftest runs each lifecycle against the live repository and reads every
+# outcome back from GitHub rather than trusting the step's own report. A
+# read can trail the write before it by a moment (the label listing most of
+# all), so each read-back retries for up to half a minute; in real use the
+# lookups that matter are a day apart.
 cmd_selftest() {
   if dry; then echo "selftest makes real issues; it does not run under DRY_RUN" >&2; exit 2; fi
-  local label=ci-selftest fail=0 tmp n
+  local label=ci-selftest fail=0 tmp finding health title="[self-test] Scheduled build is failing"
   tmp=$(mktemp -d)
   check() { # check <description> <want> <got>
     if [ "$2" = "$3" ]; then echo "    ok    $1"; else echo "    FAIL  $1: want $2, got $3"; fail=1; fi
   }
-  open_count() { gh issue list --label "$label" --state open --json number --jq length; }
+  eventually() { # eventually <description> <want> <command…>
+    local desc=$1 want=$2 got="" i
+    shift 2
+    for i in $(seq 1 15); do
+      got=$("$@" 2>/dev/null || true)
+      [ "$got" = "$want" ] && { echo "    ok    $desc"; return 0; }
+      sleep 2
+    done
+    echo "    FAIL  $desc: want $want, got $got"
+    fail=1
+  }
+  state() { gh api "repos/$GH_REPO/issues/$1" --jq .state; }
+  comments() { gh api "repos/$GH_REPO/issues/$1" --jq .comments; }
+  is_listed() { open_with_label "$label" | jq --argjson n "$1" 'any(.[]; .number == $n)'; }
   ensure_label "$label" c5def5 "Made and closed by scripts/scheduled-issues.sh selftest"
-  check "no self-test issue open at the start" 0 "$(open_count)"
+  check "no self-test issue open at the start" 0 "$(open_with_label "$label" | jq length)"
 
   printf '%s\n' '{"kind":"internal_error","test":"TestPropertyRobustness","seed":1,"iter":0,"program":"[self-test] 1 add 1","min":"[self-test] 1 add 1","error":"[self-test] not a real finding"}' > "$tmp/findings.jsonl"
   FUZZ_LABEL=$label cmd_findings "$tmp/findings.jsonl"
-  check "a finding opens one issue" 1 "$(open_count)"
+  finding=$last_issue
+  check "a finding opens an issue" opened "$last_action"
+  eventually "that issue is open and listed under its label" true is_listed "$finding"
   FUZZ_LABEL=$label cmd_findings "$tmp/findings.jsonl"
-  check "the same finding again opens nothing new" 1 "$(open_count)"
-  n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number')
-  check "the same finding again is a comment on its issue" 1 "$(gh issue view "$n" --json comments --jq '.comments | length')"
+  check "the same finding again comments on it, not a new issue" "commented $finding" "$last_action $last_issue"
+  eventually "the issue carries that comment" 1 comments "$finding"
 
-  local title="[self-test] Scheduled build is failing"
   HEALTH_LABEL=$label cmd_health "$title" '{"selftest":{"result":"failure"}}'
-  check "a failure opens the health issue" 2 "$(open_count)"
+  health=$last_issue
+  check "a failure opens the health issue" opened "$last_action"
+  eventually "the health issue is open and listed" true is_listed "$health"
   HEALTH_LABEL=$label cmd_health "$title" '{"selftest":{"result":"failure"}}'
-  check "a second failure opens nothing new" 2 "$(open_count)"
+  check "a second failure comments on it, not a new issue" "commented $health" "$last_action $last_issue"
+  eventually "the health issue carries that comment" 1 comments "$health"
   HEALTH_LABEL=$label cmd_health "$title" '{"selftest":{"result":"success"}}'
-  check "a green run closes the health issue" 1 "$(open_count)"
-  close_issue "$n" "Self-test complete. Closing."
-  check "no self-test issue left open" 0 "$(open_count)"
+  check "a green run closes it" "closed $health" "$last_action $last_issue"
+  eventually "the health issue is closed" closed state "$health"
+
+  close_issue "$finding" "Self-test complete. Closing."
+  eventually "the finding's issue is closed" closed state "$finding"
   rm -rf "$tmp"
-  [ "$fail" = 0 ] || { echo "==> selftest: FAILED"; exit 1; }
-  echo "==> selftest: every step behaved"
+  [ "$fail" = 0 ] || { echo "==> selftest: FAILED (#$finding, #$health)"; exit 1; }
+  echo "==> selftest: every step behaved (#$finding, #$health, both closed)"
 }
 
 case "${1:-}" in
