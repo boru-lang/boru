@@ -225,7 +225,7 @@ run "git push origin cmd/go/v$CMDV"
 # (a go.mod edited on main since BASE), the release itself is already out —
 # the tags and the release branch are pushed — and only the merge is left
 # to finish by hand.
-echo "==> release branch -> $(git rev-parse --short HEAD)"
+if [ "$DRY_RUN" = 1 ]; then echo "==> release branch -> the pinned commits on ${BASE:0:9}"; else echo "==> release branch -> $(git rev-parse --short HEAD)"; fi
 run "git push origin HEAD:refs/heads/release"
 echo "==> merging the release back into main"
 run "git checkout --quiet -B release-merge origin/main"
