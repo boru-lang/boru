@@ -27,6 +27,8 @@
 #   gate-table F…        render the gate table from the rows the shards
 #                        appended (BORU_GATE_SUMMARY files)
 #   parser-parity | cover-gate-core | race-gates | wasm
+#   cover-check-ci       the merged ADR-008 gate over the profiles the test
+#                        jobs wrote under COVER=1 (coverage/ci/*.xout)
 #   vuln                 govulncheck (advisory: never fails the run)
 #   direction-gates      the direction lane as a job of its own — the
 #                        local form; CI renders the same table from the
@@ -36,7 +38,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 step=${1:-}
-[ -n "$step" ] || { sed -n '2,34p' "$0"; exit 2; }
+[ -n "$step" ] || { sed -n '2,36p' "$0"; exit 2; }
 shift || true
 
 run() { echo "==> [ci] $*"; "$@"; }
@@ -82,6 +84,7 @@ case "$step" in
     echo "$(echo "$rows" | grep -c '| open' || true) open, $(echo "$rows" | grep -c '| at end state' || true) at end state, $(echo "$rows" | grep -c '| ratchet tightened' || true) tightened, $(echo "$rows" | grep -c '| REGRESSION' || true) regressions" ;;
   parser-parity)    run make parser-parity ;;
   cover-gate-core)  run make cover-gate-core ;;
+  cover-check-ci)   run make cover-check-ci ;;
   race-gates)
     # `make test` does not run under -race. Two registries unifying on two
     # goroutines: the registry-armed unify once kept a package-global

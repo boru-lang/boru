@@ -85,9 +85,11 @@ summary from the langspec shards.
 `make cover-gate` enforces **ADR-008**: 100% unit-test coverage of every
 reachable Go statement (the sole exclusions are provably-unreachable guards
 marked with a proof-carrying `//covergate:allow <reason>` comment on the
-guard's opening line — see `design/COVERAGE-ALLOWLIST.10.md`). It is
-cached per module and takes about half an hour cold, so it runs nightly
-(`cover-gate.yml`) and before a merge, not on every commit.
+guard's opening line — see `design/COVERAGE-ALLOWLIST.10.md`). CI checks it
+on every pull request: the test jobs write coverage profiles as they run,
+and the `coverage` job merges them against the floor. `cover-gate.yml`
+re-profiles every module nightly as the backstop; locally `make cover-gate`
+is the full form (cached per module, about half an hour cold).
 
 If your change touches the repository's structure, tooling, or
 documentation set, also keep the project knowledge graph current:

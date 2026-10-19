@@ -10,12 +10,13 @@ name: Merged coverage gate (ADR-008)
 # 2026-08-25 (three statements from PR #401), again found only by a
 # hand-run.
 #
-# WHY NIGHTLY AND NOT PER-PR. The merged gate re-profiles every module
-# (~20 min) and would roughly double every PR's CI time. A schedule catches
-# drift within a day, which is the timescale that matters for a floor whose
-# only other enforcement is remembering to run it locally. The per-PR
-# question stays open — widening ci.yml is a CI-budget call, and this
-# workflow is the cheap half of it.
+# PER-PR NOW, AND THIS AS THE BACKSTOP. Every pull request runs the merged
+# gate: ci.yml's test jobs write their coverage profiles as they run
+# (COVER=1) and its coverage job merges them (Makefile cover-check-ci),
+# which costs one short job rather than a second pass over the suites. This
+# workflow re-profiles every module from scratch once a night, so a profile
+# the per-PR merge missed, or a statement two PRs uncovered between them,
+# still surfaces within a day.
 #
 # workflow_dispatch is deliberate: after a change that moves coverage, run
 # it on the branch rather than waiting for the nightly.

@@ -171,10 +171,13 @@ both numbers.
 `make cover-gate` enforces **ADR-008**: 100% unit-test coverage of every
 reachable Go statement, the sole exclusions being provably-unreachable
 guards carrying a proof-carrying `//covergate:allow <reason>` comment on the
-guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). It is cached per
-module and takes about half an hour cold, so it runs nightly
-(`cover-gate.yml`) and before a merge, not on every commit — skipping it
-before a merge is how a merged PR turns CI red.
+guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). CI checks it on
+every pull request: the test jobs write coverage profiles as they run
+(`COVER=1`), and the `coverage` job merges them against the floor, so a
+statement a PR leaves uncovered fails that PR. `cover-gate.yml` re-profiles
+every module from scratch nightly as the backstop. Locally the full form is
+`make cover-gate` (cached per module, about half an hour cold);
+`make commit-gate` does not run it.
 
 CI on a pull request runs on Linux only. The platform regressions on
 macOS and Windows run once a day in the daily build (`daily.yml`), so a
