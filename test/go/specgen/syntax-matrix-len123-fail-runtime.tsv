@@ -18,10 +18,9 @@
 #
 # Scope: prefixes drawn from combinations of length 1..3.
 #
-# These prefixes PASS THE TYPE CHECKER and COMPILE to bytecode, yet they
-# ERROR AT RUN — a fault the static stages cannot predict (e.g. comparing
-# values of incomparable types). The note gives the runtime error class;
-# the interpreter and compiler agree on it (it is not a compiler bug).
+# These prefixes PASS THE TYPE CHECKER, yet they ERROR AT RUN — a fault
+# the static stage cannot predict (e.g. comparing values of incomparable
+# types). The note gives the runtime error class.
 #
 # 0 prefixes.
 #

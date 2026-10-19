@@ -87,9 +87,10 @@ spec-gen:
 # spec-test runs the generated-matrix replay suite. It is gated behind the
 # `specgen` build tag so it is EXCLUDED from `make test` (the matrix-replay
 # tests re-execute the interpreter and checker over tens of thousands
-# of rows — ~7 min sampled — which is too slow for the normal unit run).
-# Set SPECGEN_FULL=1 to verify every row of every file exhaustively
-# (~24 min); the default samples the large length-5 buckets. A longer test
+# of rows — ~2.5 min sampled on ten cores — which is too slow for the
+# normal unit run). Set SPECGEN_FULL=1 to verify every row of every file
+# exhaustively (~15 min on ten cores; the daily build runs it in six
+# SPECGEN_SHARD slices); the default samples the large length-5 buckets. A longer test
 # timeout is supplied because the exhaustive mode exceeds the 10-min default.
 spec-test:
 	cd test/go && go test -tags specgen -timeout 40m ./specgen/

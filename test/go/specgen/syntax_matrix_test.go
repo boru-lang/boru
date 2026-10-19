@@ -6,8 +6,9 @@ package main
 // tests are EXCLUDED from the normal unit-test run (`make test` /
 // `go test ./...`, which compile this package but find no test files).
 // They re-execute the interpreter and the checker over tens of
-// thousands of generated rows (~7 min sampled, ~24 min with
-// SPECGEN_FULL=1) — a regression corpus, not a fast unit test. Run them
+// thousands of generated rows (~2.5 min sampled, ~15 min with
+// SPECGEN_FULL=1, on ten cores; the daily build splits the full run six
+// ways with SPECGEN_SHARD) — a regression corpus, not a fast unit test. Run them
 // explicitly with `make spec-test` (or `go test -tags specgen
 // ./specgen/`). The generator (main.go) stays UNtagged so `make
 // spec-gen` and `go run ./specgen` keep working without the tag.
@@ -71,12 +72,22 @@ type frontierSet struct {
 var (
 	// fullSet — the length-1..4 separation. Floors pinned just below the
 	// measured counts as headroom.
+	//
+	// minPassing RE-BASED 29000 -> 28000 at the 2026-10-19 regeneration
+	// (measured 28032 / 11741 / 298). The matrix had gone stale against
+	// three documented language rules (REFERENCE.md): the argument-order
+	// rule's barrier — another function word stops forward filling, so
+	// `0 not dup` is now a signature_error, not `0 false` — Boolean
+	// arithmetic as a defined type_error, and the String occurrence
+	// package (`'x' 'x' sub` is now `''`). 8604 of the 137560 length-1..4
+	// programs changed result, ~6100 of them from a value to an error, so
+	// the passing subset shrank by design, not by an extractor regression.
 	fullSet = frontierSet{
 		label:       "full(len1-4)",
 		passing:     "syntax-matrix-passing.tsv",
 		failCheck:   "syntax-matrix-fail-check.tsv",
 		failRuntime: "syntax-matrix-fail-runtime.tsv",
-		minPassing:  29000, minCheck: 9800, minRuntime: 180,
+		minPassing:  28000, minCheck: 9800, minRuntime: 180,
 		sample: 0, // every row — the full set is small enough
 	}
 	// len123Set — the same separation over length-1..3 combinations only.
@@ -96,12 +107,15 @@ var (
 	// len5Set — the length-5 layer (length-4 passing rows × one atom).
 	// Floors pinned below the measured counts. Sampled by default (these
 	// files are large); SPECGEN_FULL=1 forces exhaustive verification.
+	// minPassing RE-BASED 374000 -> 355000 at the same regeneration as
+	// fullSet's (measured 355726 / 131859 / 6415): fewer length-4 programs
+	// pass, so fewer length-5 extensions exist to pass.
 	len5Set = frontierSet{
 		label:       "len5",
 		passing:     "syntax-matrix-len5-passing.tsv",
 		failCheck:   "syntax-matrix-len5-fail-check.tsv",
 		failRuntime: "syntax-matrix-len5-fail-runtime.tsv",
-		minPassing:  374000, minCheck: 104000, minRuntime: 5300,
+		minPassing:  355000, minCheck: 104000, minRuntime: 5300,
 		sample: 12000,
 	}
 	frontierSets = []frontierSet{fullSet, len123Set, len5Set}

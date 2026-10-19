@@ -18,14 +18,14 @@
 #
 # Scope: prefixes drawn from combinations of length 1..4.
 #
-# These prefixes PASS THE TYPE CHECKER and COMPILE to bytecode, yet they
-# ERROR AT RUN — a fault the static stages cannot predict (e.g. comparing
-# values of incomparable types). The note gives the runtime error class;
-# the interpreter and compiler agree on it (it is not a compiler bug).
+# These prefixes PASS THE TYPE CHECKER, yet they ERROR AT RUN — a fault
+# the static stage cannot predict (e.g. comparing values of incomparable
+# types). The note gives the runtime error class.
 #
-# 190 prefixes.
+# 298 prefixes.
 #
 # detail 0: incomparable
+# detail 1: type_error
 #
 0	0 true not lt	0
 2	false not lt	0
@@ -74,12 +74,30 @@
 9	true lt	0
 9	false lt	0
 9	none lt	0
-0	true not 0 lt	0
+0	true true not add	1
+14	sub	1
+14	mul	1
+5	false not add	1
+15	sub	1
+15	mul	1
+5	dup not add	1
+13	sub	1
+13	mul	1
+5	not 0 lt	0
 9	1 lt	0
 9	2.5 lt	0
 9	'x' lt	0
+9	true add	1
+14	sub	1
+14	mul	1
+9	false add	1
+15	sub	1
+15	mul	1
 9	none lt	0
 9	[1 2] lt	0
+9	dup add	1
+13	sub	1
+13	mul	1
 5	size 0 lt	0
 10	1 lt	0
 10	2.5 lt	0
@@ -87,12 +105,30 @@
 10	true lt	0
 10	false lt	0
 10	none lt	0
-0	false not 0 lt	0
+0	false true not add	1
+15	sub	1
+15	mul	1
+6	false not add	1
+16	sub	1
+16	mul	1
+6	dup not add	1
+14	sub	1
+14	mul	1
+6	not 0 lt	0
 10	1 lt	0
 10	2.5 lt	0
 10	'x' lt	0
+10	true add	1
+15	sub	1
+15	mul	1
+10	false add	1
+16	sub	1
+16	mul	1
 10	none lt	0
 10	[1 2] lt	0
+10	dup add	1
+14	sub	1
+14	mul	1
 6	size 0 lt	0
 11	1 lt	0
 11	2.5 lt	0
@@ -138,50 +174,122 @@
 6	1 lt	0
 6	2.5 lt	0
 6	'x' lt	0
+6	true add	1
+11	sub	1
+11	mul	1
+6	false add	1
+12	sub	1
+12	mul	1
 6	none lt	0
 6	[1 2] lt	0
+6	dup add	1
+10	sub	1
+10	mul	1
 4	1 0 lt	0
 6	1 lt	0
 6	2.5 lt	0
 6	'x' lt	0
+6	true add	1
+11	sub	1
+11	mul	1
+6	false add	1
+12	sub	1
+12	mul	1
 6	none lt	0
 6	[1 2] lt	0
+6	dup add	1
+10	sub	1
+10	mul	1
 4	2.5 0 lt	0
 8	1 lt	0
 8	2.5 lt	0
 8	'x' lt	0
+8	true add	1
+13	sub	1
+13	mul	1
+8	false add	1
+14	sub	1
+14	mul	1
 8	none lt	0
 8	[1 2] lt	0
+8	dup add	1
+12	sub	1
+12	mul	1
 4	'x' 0 lt	0
 8	1 lt	0
 8	2.5 lt	0
 8	'x' lt	0
+8	true add	1
+13	sub	1
+13	mul	1
+8	false add	1
+14	sub	1
+14	mul	1
 8	none lt	0
 8	[1 2] lt	0
+8	dup add	1
+12	sub	1
+12	mul	1
 4	true 0 lt	0
 9	1 lt	0
 9	2.5 lt	0
 9	'x' lt	0
+9	true add	1
+14	sub	1
+14	mul	1
+9	false add	1
+15	sub	1
+15	mul	1
 9	none lt	0
 9	[1 2] lt	0
+9	dup add	1
+13	sub	1
+13	mul	1
 4	false 0 lt	0
 10	1 lt	0
 10	2.5 lt	0
 10	'x' lt	0
+10	true add	1
+15	sub	1
+15	mul	1
+10	false add	1
+16	sub	1
+16	mul	1
 10	none lt	0
 10	[1 2] lt	0
+10	dup add	1
+14	sub	1
+14	mul	1
 4	none 0 lt	0
 9	1 lt	0
 9	2.5 lt	0
 9	'x' lt	0
+9	true add	1
+14	sub	1
+14	mul	1
+9	false add	1
+15	sub	1
+15	mul	1
 9	none lt	0
 9	[1 2] lt	0
+9	dup add	1
+13	sub	1
+13	mul	1
 4	[1 2] 0 lt	0
 10	1 lt	0
 10	2.5 lt	0
 10	'x' lt	0
+10	true add	1
+15	sub	1
+15	mul	1
+10	false add	1
+16	sub	1
+16	mul	1
 10	none lt	0
 10	[1 2] lt	0
+10	dup add	1
+14	sub	1
+14	mul	1
 0	size 0 'x' lt	0
 7	true lt	0
 7	false lt	0
