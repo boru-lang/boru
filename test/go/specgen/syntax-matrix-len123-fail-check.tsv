@@ -19,14 +19,14 @@
 # Scope: prefixes drawn from combinations of length 1..3.
 #
 # These prefixes FAIL THE TYPE CHECKER: `boru check` reports at least one
-# error-severity diagnostic. Because the compiler runs the checker first
-# (lang.(*Boru).CompileCheck), every prefix here is also refused by the
-# compiler — none is ever lowered to bytecode.
+# error-severity diagnostic.
 #
-# 595 prefixes.
+# 647 prefixes.
 #
 # detail 0: no_signature
 # detail 1: incomparable
+# detail 2: signature_error
+# detail 3: type_error
 #
 0	dup	0
 1	rop	0
@@ -125,20 +125,28 @@
 7	lt	0
 7	and	0
 7	swap	0
-2	not add	0
-6	sub	0
-6	mul	0
-6	eq	0
-6	lt	0
-6	and	0
-6	swap	0
-2	size add	0
-7	sub	0
-7	mul	0
-7	eq	0
-7	lt	0
-7	and	0
-7	swap	0
+2	not dup	2
+7	rop	2
+6	not	2
+6	size	2
+6	add	2
+6	sub	2
+6	mul	2
+6	eq	2
+6	lt	2
+6	and	2
+6	swap	2
+2	size dup	2
+8	rop	2
+7	not	2
+7	size	2
+7	add	2
+7	sub	2
+7	mul	2
+7	eq	2
+7	lt	2
+7	and	2
+7	swap	2
 0	1 'x' sub	0
 6	mul	0
 6	lt	1
@@ -169,20 +177,28 @@
 7	lt	0
 7	and	0
 7	swap	0
-2	not add	0
-6	sub	0
-6	mul	0
-6	eq	0
-6	lt	0
-6	and	0
-6	swap	0
-2	size add	0
-7	sub	0
-7	mul	0
-7	eq	0
-7	lt	0
-7	and	0
-7	swap	0
+2	not dup	2
+7	rop	2
+6	not	2
+6	size	2
+6	add	2
+6	sub	2
+6	mul	2
+6	eq	2
+6	lt	2
+6	and	2
+6	swap	2
+2	size dup	2
+8	rop	2
+7	not	2
+7	size	2
+7	add	2
+7	sub	2
+7	mul	2
+7	eq	2
+7	lt	2
+7	and	2
+7	swap	2
 0	2.5 'x' sub	0
 8	mul	0
 8	lt	1
@@ -213,20 +229,28 @@
 9	lt	0
 9	and	0
 9	swap	0
-4	not add	0
-8	sub	0
-8	mul	0
-8	eq	0
-8	lt	0
-8	and	0
-8	swap	0
-4	size add	0
-9	sub	0
-9	mul	0
-9	eq	0
-9	lt	0
-9	and	0
-9	swap	0
+4	not dup	2
+9	rop	2
+8	not	2
+8	size	2
+8	add	2
+8	sub	2
+8	mul	2
+8	eq	2
+8	lt	2
+8	and	2
+8	swap	2
+4	size dup	2
+10	rop	2
+9	not	2
+9	size	2
+9	add	2
+9	sub	2
+9	mul	2
+9	eq	2
+9	lt	2
+9	and	2
+9	swap	2
 0	'x' 0 sub	0
 6	mul	0
 6	lt	1
@@ -236,8 +260,6 @@
 4	2.5 sub	0
 8	mul	0
 8	lt	1
-4	'x' sub	0
-8	mul	0
 4	true sub	0
 9	mul	0
 9	lt	1
@@ -252,9 +274,7 @@
 10	sub	0
 10	mul	0
 10	lt	1
-4	dup sub	0
-8	mul	0
-5	rop dup	0
+4	drop dup	0
 10	rop	0
 9	not	0
 9	size	0
@@ -265,20 +285,28 @@
 9	lt	0
 9	and	0
 9	swap	0
-4	not add	0
-8	sub	0
-8	mul	0
-8	eq	0
-8	lt	0
-8	and	0
-8	swap	0
-4	size add	0
-9	sub	0
-9	mul	0
-9	eq	0
-9	lt	0
-9	and	0
-9	swap	0
+4	not dup	2
+9	rop	2
+8	not	2
+8	size	2
+8	add	2
+8	sub	2
+8	mul	2
+8	eq	2
+8	lt	2
+8	and	2
+8	swap	2
+4	size dup	2
+10	rop	2
+9	not	2
+9	size	2
+9	add	2
+9	sub	2
+9	mul	2
+9	eq	2
+9	lt	2
+9	and	2
+9	swap	2
 0	true 0 add	0
 7	sub	0
 7	mul	0
@@ -294,12 +322,12 @@
 5	'x' sub	0
 9	mul	0
 9	lt	1
-5	true add	0
-10	sub	0
-10	mul	0
-5	false add	0
-11	sub	0
-11	mul	0
+5	true add	3
+10	sub	3
+10	mul	3
+5	false add	3
+11	sub	3
+11	mul	3
 5	none add	0
 10	sub	0
 10	mul	0
@@ -308,9 +336,9 @@
 11	sub	0
 11	mul	0
 11	lt	1
-5	dup add	0
-9	sub	0
-9	mul	0
+5	dup add	3
+9	sub	3
+9	mul	3
 6	rop dup	0
 11	rop	0
 10	not	0
@@ -329,13 +357,17 @@
 9	lt	0
 9	and	0
 9	swap	0
-5	size add	0
-10	sub	0
-10	mul	0
-10	eq	0
-10	lt	0
-10	and	0
-10	swap	0
+5	size dup	2
+11	rop	2
+10	not	2
+10	size	2
+10	add	2
+10	sub	2
+10	mul	2
+10	eq	2
+10	lt	2
+10	and	2
+10	swap	2
 0	false 0 add	0
 8	sub	0
 8	mul	0
@@ -351,12 +383,12 @@
 6	'x' sub	0
 10	mul	0
 10	lt	1
-6	true add	0
-11	sub	0
-11	mul	0
-6	false add	0
-12	sub	0
-12	mul	0
+6	true add	3
+11	sub	3
+11	mul	3
+6	false add	3
+12	sub	3
+12	mul	3
 6	none add	0
 11	sub	0
 11	mul	0
@@ -365,9 +397,9 @@
 12	sub	0
 12	mul	0
 12	lt	1
-6	dup add	0
-10	sub	0
-10	mul	0
+6	dup add	3
+10	sub	3
+10	mul	3
 7	rop dup	0
 12	rop	0
 11	not	0
@@ -386,13 +418,17 @@
 10	lt	0
 10	and	0
 10	swap	0
-6	size add	0
-11	sub	0
-11	mul	0
-11	eq	0
-11	lt	0
-11	and	0
-11	swap	0
+6	size dup	2
+12	rop	2
+11	not	2
+11	size	2
+11	add	2
+11	sub	2
+11	mul	2
+11	eq	2
+11	lt	2
+11	and	2
+11	swap	2
 0	none 0 add	0
 7	sub	0
 7	mul	0
@@ -438,20 +474,28 @@
 10	lt	0
 10	and	0
 10	swap	0
-5	not add	0
-9	sub	0
-9	mul	0
-9	eq	0
-9	lt	0
-9	and	0
-9	swap	0
-5	size add	0
-10	sub	0
-10	mul	0
-10	eq	0
-10	lt	0
-10	and	0
-10	swap	0
+5	not dup	2
+10	rop	2
+9	not	2
+9	size	2
+9	add	2
+9	sub	2
+9	mul	2
+9	eq	2
+9	lt	2
+9	and	2
+9	swap	2
+5	size dup	2
+11	rop	2
+10	not	2
+10	size	2
+10	add	2
+10	sub	2
+10	mul	2
+10	eq	2
+10	lt	2
+10	and	2
+10	swap	2
 0	[1 2] 0 add	0
 8	sub	0
 8	mul	0
@@ -497,20 +541,28 @@
 11	lt	0
 11	and	0
 11	swap	0
-6	not add	0
-10	sub	0
-10	mul	0
-10	eq	0
-10	lt	0
-10	and	0
-10	swap	0
-6	size add	0
-11	sub	0
-11	mul	0
-11	eq	0
-11	lt	0
-11	and	0
-11	swap	0
+6	not dup	2
+11	rop	2
+10	not	2
+10	size	2
+10	add	2
+10	sub	2
+10	mul	2
+10	eq	2
+10	lt	2
+10	and	2
+10	swap	2
+6	size dup	2
+12	rop	2
+11	not	2
+11	size	2
+11	add	2
+11	sub	2
+11	mul	2
+11	eq	2
+11	lt	2
+11	and	2
+11	swap	2
 0	not 0 add	0
 6	sub	0
 6	mul	0

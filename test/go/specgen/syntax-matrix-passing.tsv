@@ -16,11 +16,11 @@
 #
 # Scope: combinations of length 1..4 only.
 #
-# `expected` is the canonical eng.Canon value carried over verbatim from
+# `expected` is the canonical core.Canon value carried over verbatim from
 # the full matrix. Every row here is a trusted, three-way-agreed program;
 # syntax_matrix_test.go re-verifies the invariant on each one.
 #
-# 29798 combinations pass (137560 in the length window).
+# 28032 combinations pass (137560 in the length window).
 #
 0	0	0
 0	1	1
@@ -818,6 +818,8 @@
 8	not	'x' false
 8	size	'x' 1
 8	add	'xx'
+8	sub	''
+8	mul	'xx'
 8	eq	true
 8	lt	false
 8	and	'x'
@@ -897,6 +899,8 @@
 8	not	'x' false
 8	size	'x' 1
 8	add	'xx'
+8	sub	''
+8	mul	'xx'
 8	eq	true
 8	lt	false
 8	and	'x'
@@ -931,6 +935,8 @@
 8	'x'	'xx'
 8	true	'xtrue'
 8	false	'xfalse'
+4	sub 'x'	''
+4	mul 'x'	'xx'
 4	eq 0	false
 7	1	false
 7	2.5	false
@@ -1772,22 +1778,6 @@
 11	rop	
 10	not	true
 10	size	0
-4	not 0	false
-8	1	true
-8	2.5	true
-8	'x'	true
-8	true	true
-8	false	false
-8	none	false
-8	[1 2]	true
-4	size 0	true
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	true
-9	none	true
-9	[1 2]	false
 0	size 0 0	0 0
 7	1	0 1
 7	2.5	0 2.5
@@ -1884,22 +1874,6 @@
 12	rop	
 11	not	false
 11	size	2
-5	not 0	1
-9	1	0
-9	2.5	0
-9	'x'	0
-9	true	0
-9	false	1
-9	none	1
-9	[1 2]	0
-5	size 0	0
-10	1	1
-10	2.5	2
-10	'x'	1
-10	true	1
-10	false	0
-10	none	0
-10	[1 2]	2
 0	add 0 0	0
 6	1	1
 6	2.5	2.5
@@ -1929,6 +1903,7 @@
 4	2.5 0	-2.5
 8	1	-1.5
 8	2.5	0.0
+4	'x' 'x'	''
 0	mul 0 0	0
 6	1	0
 6	2.5	0.0
@@ -1938,6 +1913,7 @@
 4	2.5 0	0.0
 8	1	2.5
 8	2.5	6.25
+4	'x' 'x'	'xx'
 0	eq 0 0	true
 5	1	false
 5	2.5	false
@@ -2901,6 +2877,8 @@
 10	not	0 'x' false
 10	size	0 'x' 1
 10	add	0 'xx'
+10	sub	0 ''
+10	mul	0 'xx'
 10	eq	0 true
 10	lt	0 false
 10	and	0 'x'
@@ -2980,6 +2958,8 @@
 10	not	0 'x' false
 10	size	0 'x' 1
 10	add	0 'xx'
+10	sub	0 ''
+10	mul	0 'xx'
 10	eq	0 true
 10	lt	0 false
 10	and	0 'x'
@@ -3024,6 +3004,8 @@
 11	rop	
 10	not	false
 10	size	2
+6	sub 'x'	0 ''
+6	mul 'x'	0 'xx'
 6	eq 0	0 false
 9	1	0 false
 9	2.5	0 false
@@ -4353,22 +4335,6 @@
 12	eq	false
 12	and	0
 12	swap	false 0
-6	not 0	0 false
-10	1	0 true
-10	2.5	0 true
-10	'x'	0 true
-10	true	0 true
-10	false	0 false
-10	none	0 false
-10	[1 2]	0 true
-6	size 0	0 true
-11	1	0 false
-11	2.5	0 false
-11	'x'	0 false
-11	true	0 false
-11	false	0 true
-11	none	0 true
-11	[1 2]	0 false
 2	size 0 0	0 0 0
 9	1	0 0 1
 9	2.5	0 0 2.5
@@ -4521,22 +4487,6 @@
 13	lt	true
 13	and	0
 13	swap	2 0
-7	not 0	0 1
-11	1	0 0
-11	2.5	0 0
-11	'x'	0 0
-11	true	0 0
-11	false	0 1
-11	none	0 1
-11	[1 2]	0 0
-7	size 0	0 0
-12	1	0 1
-12	2.5	0 2
-12	'x'	0 1
-12	true	0 1
-12	false	0 0
-12	none	0 0
-12	[1 2]	0 2
 2	add 0 0	0 0
 8	1	0 1
 8	2.5	0 2.5
@@ -4623,6 +4573,7 @@
 11	rop	
 10	not	false
 10	size	-3
+6	'x' 'x'	0 ''
 2	mul 0 0	0 0
 8	1	0 0
 8	2.5	0 0.0
@@ -4659,6 +4610,7 @@
 11	rop	
 10	not	true
 10	size	0
+6	'x' 'x'	0 'xx'
 2	eq 0 0	0 true
 7	1	0 false
 7	2.5	0 false
@@ -4723,22 +4675,6 @@
 11	false	0 false
 11	none	0 false
 11	[1 2]	0 false
-5	not 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	false
-9	none	false
-9	[1 2]	false
-5	size 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	true
-10	none	true
-10	[1 2]	false
 2	lt 0 0	0 false
 7	1	0 false
 7	2.5	0 false
@@ -4757,14 +4693,6 @@
 5	'x' 'x'	0 false
 5	none none	0 false
 5	[1 2] [1 2]	0 false
-5	size 0	false
-10	1	true
-10	2.5	true
-10	'x'	true
-10	true	true
-10	false	false
-10	none	false
-10	[1 2]	true
 2	and 0 0	0 0
 8	1	0 0
 8	2.5	0 0
@@ -4829,22 +4757,6 @@
 12	false	0 false
 12	none	0 none
 12	[1 2]	0 [1 2]
-6	not 0	0
-10	1	0
-10	2.5	0
-10	'x'	0
-10	true	0
-10	false	0
-10	none	0
-10	[1 2]	0
-6	size 0	0
-11	1	0
-11	2.5	0
-11	'x'	0
-11	true	0
-11	false	0
-11	none	0
-11	[1 2]	0
 0	1 0 0 0	1 0 0 0
 6	1	1 0 0 1
 6	2.5	1 0 0 2.5
@@ -5668,6 +5580,8 @@
 10	not	1 'x' false
 10	size	1 'x' 1
 10	add	1 'xx'
+10	sub	1 ''
+10	mul	1 'xx'
 10	eq	1 true
 10	lt	1 false
 10	and	1 'x'
@@ -5747,6 +5661,8 @@
 10	not	1 'x' false
 10	size	1 'x' 1
 10	add	1 'xx'
+10	sub	1 ''
+10	mul	1 'xx'
 10	eq	1 true
 10	lt	1 false
 10	and	1 'x'
@@ -5791,6 +5707,8 @@
 11	rop	
 10	not	false
 10	size	2
+6	sub 'x'	1 ''
+6	mul 'x'	1 'xx'
 6	eq 0	1 false
 9	1	1 false
 9	2.5	1 false
@@ -7120,22 +7038,6 @@
 12	eq	false
 12	and	false
 12	swap	false 1
-6	not 0	1 false
-10	1	1 true
-10	2.5	1 true
-10	'x'	1 true
-10	true	1 true
-10	false	1 false
-10	none	1 false
-10	[1 2]	1 true
-6	size 0	1 true
-11	1	1 false
-11	2.5	1 false
-11	'x'	1 false
-11	true	1 false
-11	false	1 true
-11	none	1 true
-11	[1 2]	1 false
 2	size 0 0	1 0 0
 9	1	1 0 1
 9	2.5	1 0 2.5
@@ -7288,22 +7190,6 @@
 13	lt	true
 13	and	2
 13	swap	2 1
-7	not 0	1 1
-11	1	1 0
-11	2.5	1 0
-11	'x'	1 0
-11	true	1 0
-11	false	1 1
-11	none	1 1
-11	[1 2]	1 0
-7	size 0	1 0
-12	1	1 1
-12	2.5	1 2
-12	'x'	1 1
-12	true	1 1
-12	false	1 0
-12	none	1 0
-12	[1 2]	1 2
 2	add 0 0	1 0
 8	1	1 1
 8	2.5	1 2.5
@@ -7390,6 +7276,7 @@
 11	rop	
 10	not	false
 10	size	-2
+6	'x' 'x'	1 ''
 2	mul 0 0	1 0
 8	1	1 0
 8	2.5	1 0.0
@@ -7426,6 +7313,7 @@
 11	rop	
 10	not	false
 10	size	2
+6	'x' 'x'	1 'xx'
 2	eq 0 0	1 true
 7	1	1 false
 7	2.5	1 false
@@ -7490,22 +7378,6 @@
 11	false	1 false
 11	none	1 false
 11	[1 2]	1 false
-5	not 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	false
-9	none	false
-9	[1 2]	false
-5	size 0	false
-10	1	true
-10	2.5	false
-10	'x'	true
-10	true	true
-10	false	false
-10	none	false
-10	[1 2]	false
 2	lt 0 0	1 false
 7	1	1 false
 7	2.5	1 false
@@ -7524,14 +7396,6 @@
 5	'x' 'x'	1 false
 5	none none	1 false
 5	[1 2] [1 2]	1 false
-5	size 0	false
-10	1	false
-10	2.5	true
-10	'x'	false
-10	true	false
-10	false	false
-10	none	false
-10	[1 2]	true
 2	and 0 0	1 0
 8	1	1 0
 8	2.5	1 0
@@ -7596,22 +7460,6 @@
 12	false	1 false
 12	none	1 none
 12	[1 2]	1 [1 2]
-6	not 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	true
-10	none	true
-10	[1 2]	false
-6	size 0	0
-11	1	1
-11	2.5	2
-11	'x'	1
-11	true	1
-11	false	0
-11	none	0
-11	[1 2]	2
 0	2.5 0 0 0	2.5 0 0 0
 8	1	2.5 0 0 1
 8	2.5	2.5 0 0 2.5
@@ -8435,6 +8283,8 @@
 12	not	2.5 'x' false
 12	size	2.5 'x' 1
 12	add	2.5 'xx'
+12	sub	2.5 ''
+12	mul	2.5 'xx'
 12	eq	2.5 true
 12	lt	2.5 false
 12	and	2.5 'x'
@@ -8514,6 +8364,8 @@
 12	not	2.5 'x' false
 12	size	2.5 'x' 1
 12	add	2.5 'xx'
+12	sub	2.5 ''
+12	mul	2.5 'xx'
 12	eq	2.5 true
 12	lt	2.5 false
 12	and	2.5 'x'
@@ -8558,6 +8410,8 @@
 13	rop	
 12	not	false
 12	size	4
+8	sub 'x'	2.5 ''
+8	mul 'x'	2.5 'xx'
 8	eq 0	2.5 false
 11	1	2.5 false
 11	2.5	2.5 false
@@ -9887,22 +9741,6 @@
 14	eq	false
 14	and	false
 14	swap	false 2.5
-8	not 0	2.5 false
-12	1	2.5 true
-12	2.5	2.5 true
-12	'x'	2.5 true
-12	true	2.5 true
-12	false	2.5 false
-12	none	2.5 false
-12	[1 2]	2.5 true
-8	size 0	2.5 true
-13	1	2.5 false
-13	2.5	2.5 false
-13	'x'	2.5 false
-13	true	2.5 false
-13	false	2.5 true
-13	none	2.5 true
-13	[1 2]	2.5 false
 4	size 0 0	2.5 0 0
 11	1	2.5 0 1
 11	2.5	2.5 0 2.5
@@ -10055,22 +9893,6 @@
 15	lt	false
 15	and	2
 15	swap	2 2.5
-9	not 0	2.5 1
-13	1	2.5 0
-13	2.5	2.5 0
-13	'x'	2.5 0
-13	true	2.5 0
-13	false	2.5 1
-13	none	2.5 1
-13	[1 2]	2.5 0
-9	size 0	2.5 0
-14	1	2.5 1
-14	2.5	2.5 2
-14	'x'	2.5 1
-14	true	2.5 1
-14	false	2.5 0
-14	none	2.5 0
-14	[1 2]	2.5 2
 4	add 0 0	2.5 0
 10	1	2.5 1
 10	2.5	2.5 2.5
@@ -10157,6 +9979,7 @@
 13	rop	
 12	not	true
 12	size	0
+8	'x' 'x'	2.5 ''
 4	mul 0 0	2.5 0
 10	1	2.5 0
 10	2.5	2.5 0.0
@@ -10193,6 +10016,7 @@
 13	rop	
 12	not	false
 12	size	6
+8	'x' 'x'	2.5 'xx'
 4	eq 0 0	2.5 true
 9	1	2.5 false
 9	2.5	2.5 false
@@ -10257,22 +10081,6 @@
 13	false	2.5 false
 13	none	2.5 false
 13	[1 2]	2.5 false
-7	not 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	false
-11	none	false
-11	[1 2]	false
-7	size 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
 4	lt 0 0	2.5 false
 9	1	2.5 false
 9	2.5	2.5 false
@@ -10291,14 +10099,6 @@
 7	'x' 'x'	2.5 false
 7	none none	2.5 false
 7	[1 2] [1 2]	2.5 false
-7	size 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
 4	and 0 0	2.5 0
 10	1	2.5 0
 10	2.5	2.5 0
@@ -10363,22 +10163,6 @@
 14	false	2.5 false
 14	none	2.5 none
 14	[1 2]	2.5 [1 2]
-8	not 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	size 0	0
-13	1	1
-13	2.5	2
-13	'x'	1
-13	true	1
-13	false	0
-13	none	0
-13	[1 2]	2
 0	'x' 0 0 0	'x' 0 0 0
 8	1	'x' 0 0 1
 8	2.5	'x' 0 0 2.5
@@ -11139,6 +10923,8 @@
 12	not	'x' 'x' false
 12	size	'x' 'x' 1
 12	add	'x' 'xx'
+12	sub	'x' ''
+12	mul	'x' 'xx'
 12	eq	'x' true
 12	lt	'x' false
 12	and	'x' 'x'
@@ -11218,6 +11004,8 @@
 12	not	'x' 'x' false
 12	size	'x' 'x' 1
 12	add	'x' 'xx'
+12	sub	'x' ''
+12	mul	'x' 'xx'
 12	eq	'x' true
 12	lt	'x' false
 12	and	'x' 'x'
@@ -11262,6 +11050,30 @@
 13	rop	
 12	not	false
 12	size	2
+8	sub 0	'' 0
+12	1	'' 1
+12	2.5	'' 2.5
+12	'x'	'x' ''
+12	true	'' true
+12	false	'' false
+12	none	'' none
+12	[1 2]	'' [1 2]
+12	dup	'' ''
+13	rop	
+12	not	true
+12	size	0
+8	mul 0	'xx' 0
+12	1	'xx' 1
+12	2.5	'xx' 2.5
+12	'x'	'x' 'xx'
+12	true	'xx' true
+12	false	'xx' false
+12	none	'xx' none
+12	[1 2]	'xx' [1 2]
+12	dup	'xx' 'xx'
+13	rop	
+12	not	false
+12	size	2
 8	eq 0	'x' false
 11	1	'x' false
 11	2.5	'x' false
@@ -11292,6 +11104,8 @@
 13	not	'x' false
 13	size	'x' 1
 13	add	'xx'
+13	sub	''
+13	mul	'xx'
 13	eq	true
 13	lt	false
 13	and	'x'
@@ -11475,8 +11289,6 @@
 13	1	'xtrue' 1
 13	2.5	'xtrue' 2.5
 13	'x'	'x' 'truex'
-13	true	'xtrue' true
-13	false	'xtrue' false
 13	none	'xtrue' none
 13	[1 2]	'xtrue' [1 2]
 13	dup	'xtrue' 'xtrue'
@@ -11696,8 +11508,6 @@
 14	1	'xfalse' 1
 14	2.5	'xfalse' 2.5
 14	'x'	'x' 'falsex'
-14	true	'xfalse' true
-14	false	'xfalse' false
 14	none	'xfalse' none
 14	[1 2]	'xfalse' [1 2]
 14	dup	'xfalse' 'xfalse'
@@ -12193,6 +12003,8 @@
 12	not	'x' 'x' false
 12	size	'x' 'x' 1
 12	add	'x' 'xx'
+12	sub	'x' ''
+12	mul	'x' 'xx'
 12	eq	'x' true
 12	lt	'x' false
 12	and	'x' 'x'
@@ -12272,6 +12084,8 @@
 12	not	'x' 'x' false
 12	size	'x' 'x' 1
 12	add	'x' 'xx'
+12	sub	'x' ''
+12	mul	'x' 'xx'
 12	eq	'x' true
 12	lt	'x' false
 12	and	'x' 'x'
@@ -12316,6 +12130,30 @@
 13	rop	
 12	not	false
 12	size	2
+8	sub 0	'' 0
+12	1	'' 1
+12	2.5	'' 2.5
+12	'x'	'x' ''
+12	true	'' true
+12	false	'' false
+12	none	'' none
+12	[1 2]	'' [1 2]
+12	dup	'' ''
+13	rop	
+12	not	true
+12	size	0
+8	mul 0	'xx' 0
+12	1	'xx' 1
+12	2.5	'xx' 2.5
+12	'x'	'x' 'xx'
+12	true	'xx' true
+12	false	'xx' false
+12	none	'xx' none
+12	[1 2]	'xx' [1 2]
+12	dup	'xx' 'xx'
+13	rop	
+12	not	false
+12	size	2
 8	eq 0	'x' false
 11	1	'x' false
 11	2.5	'x' false
@@ -12346,6 +12184,8 @@
 13	not	'x' false
 13	size	'x' 1
 13	add	'xx'
+13	sub	''
+13	mul	'xx'
 13	eq	true
 13	lt	false
 13	and	'x'
@@ -12590,22 +12430,6 @@
 14	eq	false
 14	and	false
 14	swap	false 'x'
-8	not 0	'x' false
-12	1	'x' true
-12	2.5	'x' true
-12	'x'	'x' true
-12	true	'x' true
-12	false	'x' false
-12	none	'x' false
-12	[1 2]	'x' true
-8	size 0	'x' true
-13	1	'x' false
-13	2.5	'x' false
-13	'x'	'x' false
-13	true	'x' false
-13	false	'x' true
-13	none	'x' true
-13	[1 2]	'x' false
 4	size 0 0	'x' 0 0
 11	1	'x' 0 1
 11	2.5	'x' 0 2.5
@@ -12734,22 +12558,6 @@
 15	eq	false
 15	and	2
 15	swap	2 'x'
-9	not 0	'x' 1
-13	1	'x' 0
-13	2.5	'x' 0
-13	'x'	'x' 0
-13	true	'x' 0
-13	false	'x' 1
-13	none	'x' 1
-13	[1 2]	'x' 0
-9	size 0	'x' 0
-14	1	'x' 1
-14	2.5	'x' 2
-14	'x'	'x' 1
-14	true	'x' 1
-14	false	'x' 0
-14	none	'x' 0
-14	[1 2]	'x' 2
 4	add 0 0	'x' 0
 10	1	'x' 1
 10	2.5	'x' 2.5
@@ -12831,6 +12639,18 @@
 8	2.5 0	'x' -2.5
 12	1	'x' -1.5
 12	2.5	'x' 0.0
+8	'x' 0	'' 0
+12	1	'' 1
+12	2.5	'' 2.5
+12	'x'	'x' ''
+12	true	'' true
+12	false	'' false
+12	none	'' none
+12	[1 2]	'' [1 2]
+12	dup	'' ''
+13	rop	
+12	not	true
+12	size	0
 4	mul 0 0	'x' 0
 10	1	'x' 0
 10	2.5	'x' 0.0
@@ -12840,6 +12660,18 @@
 8	2.5 0	'x' 0.0
 12	1	'x' 2.5
 12	2.5	'x' 6.25
+8	'x' 0	'xx' 0
+12	1	'xx' 1
+12	2.5	'xx' 2.5
+12	'x'	'x' 'xx'
+12	true	'xx' true
+12	false	'xx' false
+12	none	'xx' none
+12	[1 2]	'xx' [1 2]
+12	dup	'xx' 'xx'
+13	rop	
+12	not	false
+12	size	2
 4	eq 0 0	'x' true
 9	1	'x' false
 9	2.5	'x' false
@@ -12904,22 +12736,6 @@
 13	false	'x' false
 13	none	'x' false
 13	[1 2]	'x' false
-7	not 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	false
-11	none	false
-11	[1 2]	false
-7	size 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
 4	lt 0 0	'x' false
 9	1	'x' false
 9	2.5	'x' false
@@ -12998,22 +12814,6 @@
 14	false	'x' false
 14	none	'x' none
 14	[1 2]	'x' [1 2]
-8	not 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	size 0	0
-13	1	1
-13	2.5	2
-13	'x'	1
-13	true	1
-13	false	0
-13	none	0
-13	[1 2]	2
 0	true 0 0 0	true 0 0 0
 9	1	true 0 0 1
 9	2.5	true 0 0 2.5
@@ -13747,6 +13547,8 @@
 13	not	true 'x' false
 13	size	true 'x' 1
 13	add	true 'xx'
+13	sub	true ''
+13	mul	true 'xx'
 13	eq	true true
 13	lt	true false
 13	and	true 'x'
@@ -13826,6 +13628,8 @@
 13	not	true 'x' false
 13	size	true 'x' 1
 13	add	true 'xx'
+13	sub	true ''
+13	mul	true 'xx'
 13	eq	true true
 13	lt	true false
 13	and	true 'x'
@@ -13870,6 +13674,8 @@
 14	rop	
 13	not	false
 13	size	5
+9	sub 'x'	true ''
+9	mul 'x'	true 'xx'
 9	eq 0	true false
 12	1	true false
 12	2.5	true false
@@ -15357,16 +15163,6 @@
 16	eq	false
 16	and	2
 16	swap	2 true
-10	not true	true 0
-14	false	true 1
-10	size 0	true 0
-15	1	true 1
-15	2.5	true 2
-15	'x'	true 1
-15	true	true 1
-15	false	true 0
-15	none	true 0
-15	[1 2]	true 2
 5	add 0 0	true 0
 11	1	true 1
 11	2.5	true 2.5
@@ -15402,6 +15198,7 @@
 9	2.5 0	true -2.5
 13	1	true -1.5
 13	2.5	true 0.0
+9	'x' 'x'	true ''
 5	mul 0 0	true 0
 11	1	true 0
 11	2.5	true 0.0
@@ -15411,6 +15208,7 @@
 9	2.5 0	true 0.0
 13	1	true 2.5
 13	2.5	true 6.25
+9	'x' 'x'	true 'xx'
 5	eq 0 0	true true
 10	1	true false
 10	2.5	true false
@@ -15475,16 +15273,6 @@
 14	false	true false
 14	none	true false
 14	[1 2]	true false
-8	not true	false
-12	false	true
-8	size 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
 5	lt 0 0	true false
 10	1	true false
 10	2.5	true false
@@ -15501,8 +15289,6 @@
 14	false	false false
 8	none none	true false
 8	[1 2] [1 2]	true false
-8	not true	false
-12	false	false
 5	and 0 0	true 0
 11	1	true 0
 11	2.5	true 0
@@ -15575,16 +15361,6 @@
 15	false	true false
 15	none	true none
 15	[1 2]	true [1 2]
-9	not true	false
-13	false	true
-9	size 0	0
-14	1	1
-14	2.5	2
-14	'x'	1
-14	true	1
-14	false	0
-14	none	0
-14	[1 2]	2
 0	false 0 0 0	false 0 0 0
 10	1	false 0 0 1
 10	2.5	false 0 0 2.5
@@ -16318,6 +16094,8 @@
 14	not	false 'x' false
 14	size	false 'x' 1
 14	add	false 'xx'
+14	sub	false ''
+14	mul	false 'xx'
 14	eq	false true
 14	lt	false false
 14	and	false 'x'
@@ -16397,6 +16175,8 @@
 14	not	false 'x' false
 14	size	false 'x' 1
 14	add	false 'xx'
+14	sub	false ''
+14	mul	false 'xx'
 14	eq	false true
 14	lt	false false
 14	and	false 'x'
@@ -16441,6 +16221,8 @@
 15	rop	
 14	not	false
 14	size	6
+10	sub 'x'	false ''
+10	mul 'x'	false 'xx'
 10	eq 0	false false
 13	1	false false
 13	2.5	false false
@@ -17928,16 +17710,6 @@
 17	eq	false
 17	and	false
 17	swap	2 false
-11	not true	false 0
-15	false	false 1
-11	size 0	false 0
-16	1	false 1
-16	2.5	false 2
-16	'x'	false 1
-16	true	false 1
-16	false	false 0
-16	none	false 0
-16	[1 2]	false 2
 6	add 0 0	false 0
 12	1	false 1
 12	2.5	false 2.5
@@ -17973,6 +17745,7 @@
 10	2.5 0	false -2.5
 14	1	false -1.5
 14	2.5	false 0.0
+10	'x' 'x'	false ''
 6	mul 0 0	false 0
 12	1	false 0
 12	2.5	false 0.0
@@ -17982,6 +17755,7 @@
 10	2.5 0	false 0.0
 14	1	false 2.5
 14	2.5	false 6.25
+10	'x' 'x'	false 'xx'
 6	eq 0 0	false true
 11	1	false false
 11	2.5	false false
@@ -18046,16 +17820,6 @@
 15	false	false false
 15	none	false false
 15	[1 2]	false false
-9	not true	true
-13	false	false
-9	size 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
 6	lt 0 0	false false
 11	1	false false
 11	2.5	false false
@@ -18072,8 +17836,6 @@
 15	false	false false
 9	none none	false false
 9	[1 2] [1 2]	false false
-9	not true	false
-13	false	true
 6	and 0 0	false 0
 12	1	false 0
 12	2.5	false 0
@@ -18146,16 +17908,6 @@
 16	false	false false
 16	none	false none
 16	[1 2]	false [1 2]
-10	not true	false
-14	false	false
-10	size 0	false
-15	1	false
-15	2.5	false
-15	'x'	false
-15	true	false
-15	false	false
-15	none	false
-15	[1 2]	false
 0	none 0 0 0	none 0 0 0
 9	1	none 0 0 1
 9	2.5	none 0 0 2.5
@@ -18889,6 +18641,8 @@
 13	not	none 'x' false
 13	size	none 'x' 1
 13	add	none 'xx'
+13	sub	none ''
+13	mul	none 'xx'
 13	eq	none true
 13	lt	none false
 13	and	none 'x'
@@ -18968,6 +18722,8 @@
 13	not	none 'x' false
 13	size	none 'x' 1
 13	add	none 'xx'
+13	sub	none ''
+13	mul	none 'xx'
 13	eq	none true
 13	lt	none false
 13	and	none 'x'
@@ -19006,6 +18762,8 @@
 13	'x'	none 'xx'
 13	true	none 'xtrue'
 13	false	none 'xfalse'
+9	sub 'x'	none ''
+9	mul 'x'	none 'xx'
 9	eq 0	none false
 12	1	none false
 12	2.5	none false
@@ -20279,22 +20037,6 @@
 15	eq	false
 15	and	none
 15	swap	false none
-9	not 0	none false
-13	1	none true
-13	2.5	none true
-13	'x'	none true
-13	true	none true
-13	false	none false
-13	none	none false
-13	[1 2]	none true
-9	size 0	none true
-14	1	none false
-14	2.5	none false
-14	'x'	none false
-14	true	none false
-14	false	none true
-14	none	none true
-14	[1 2]	none false
 5	size 0 0	none 0 0
 12	1	none 0 1
 12	2.5	none 0 2.5
@@ -20415,22 +20157,6 @@
 16	eq	false
 16	and	none
 16	swap	2 none
-10	not 0	none 1
-14	1	none 0
-14	2.5	none 0
-14	'x'	none 0
-14	true	none 0
-14	false	none 1
-14	none	none 1
-14	[1 2]	none 0
-10	size 0	none 0
-15	1	none 1
-15	2.5	none 2
-15	'x'	none 1
-15	true	none 1
-15	false	none 0
-15	none	none 0
-15	[1 2]	none 2
 5	add 0 0	none 0
 11	1	none 1
 11	2.5	none 2.5
@@ -20460,6 +20186,7 @@
 9	2.5 0	none -2.5
 13	1	none -1.5
 13	2.5	none 0.0
+9	'x' 'x'	none ''
 5	mul 0 0	none 0
 11	1	none 0
 11	2.5	none 0.0
@@ -20469,6 +20196,7 @@
 9	2.5 0	none 0.0
 13	1	none 2.5
 13	2.5	none 6.25
+9	'x' 'x'	none 'xx'
 5	eq 0 0	none true
 10	1	none false
 10	2.5	none false
@@ -20533,22 +20261,6 @@
 14	false	none false
 14	none	none false
 14	[1 2]	none false
-8	not 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
-8	size 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
 5	lt 0 0	none false
 10	1	none false
 10	2.5	none false
@@ -20625,22 +20337,6 @@
 15	false	none false
 15	none	none none
 15	[1 2]	none [1 2]
-9	not 0	none
-13	1	none
-13	2.5	none
-13	'x'	none
-13	true	none
-13	false	none
-13	none	none
-13	[1 2]	none
-9	size 0	none
-14	1	none
-14	2.5	none
-14	'x'	none
-14	true	none
-14	false	none
-14	none	none
-14	[1 2]	none
 0	[1 2] 0 0 0	[1 2] 0 0 0
 10	1	[1 2] 0 0 1
 10	2.5	[1 2] 0 0 2.5
@@ -21374,6 +21070,8 @@
 14	not	[1 2] 'x' false
 14	size	[1 2] 'x' 1
 14	add	[1 2] 'xx'
+14	sub	[1 2] ''
+14	mul	[1 2] 'xx'
 14	eq	[1 2] true
 14	lt	[1 2] false
 14	and	[1 2] 'x'
@@ -21453,6 +21151,8 @@
 14	not	[1 2] 'x' false
 14	size	[1 2] 'x' 1
 14	add	[1 2] 'xx'
+14	sub	[1 2] ''
+14	mul	[1 2] 'xx'
 14	eq	[1 2] true
 14	lt	[1 2] false
 14	and	[1 2] 'x'
@@ -21491,6 +21191,8 @@
 14	'x'	[1 2] 'xx'
 14	true	[1 2] 'xtrue'
 14	false	[1 2] 'xfalse'
+10	sub 'x'	[1 2] ''
+10	mul 'x'	[1 2] 'xx'
 10	eq 0	[1 2] false
 13	1	[1 2] false
 13	2.5	[1 2] false
@@ -22764,22 +22466,6 @@
 16	eq	false
 16	and	false
 16	swap	false [1 2]
-10	not 0	[1 2] false
-14	1	[1 2] true
-14	2.5	[1 2] true
-14	'x'	[1 2] true
-14	true	[1 2] true
-14	false	[1 2] false
-14	none	[1 2] false
-14	[1 2]	[1 2] true
-10	size 0	[1 2] true
-15	1	[1 2] false
-15	2.5	[1 2] false
-15	'x'	[1 2] false
-15	true	[1 2] false
-15	false	[1 2] true
-15	none	[1 2] true
-15	[1 2]	[1 2] false
 6	size 0 0	[1 2] 0 0
 13	1	[1 2] 0 1
 13	2.5	[1 2] 0 2.5
@@ -22900,22 +22586,6 @@
 17	eq	false
 17	and	2
 17	swap	2 [1 2]
-11	not 0	[1 2] 1
-15	1	[1 2] 0
-15	2.5	[1 2] 0
-15	'x'	[1 2] 0
-15	true	[1 2] 0
-15	false	[1 2] 1
-15	none	[1 2] 1
-15	[1 2]	[1 2] 0
-11	size 0	[1 2] 0
-16	1	[1 2] 1
-16	2.5	[1 2] 2
-16	'x'	[1 2] 1
-16	true	[1 2] 1
-16	false	[1 2] 0
-16	none	[1 2] 0
-16	[1 2]	[1 2] 2
 6	add 0 0	[1 2] 0
 12	1	[1 2] 1
 12	2.5	[1 2] 2.5
@@ -22945,6 +22615,7 @@
 10	2.5 0	[1 2] -2.5
 14	1	[1 2] -1.5
 14	2.5	[1 2] 0.0
+10	'x' 'x'	[1 2] ''
 6	mul 0 0	[1 2] 0
 12	1	[1 2] 0
 12	2.5	[1 2] 0.0
@@ -22954,6 +22625,7 @@
 10	2.5 0	[1 2] 0.0
 14	1	[1 2] 2.5
 14	2.5	[1 2] 6.25
+10	'x' 'x'	[1 2] 'xx'
 6	eq 0 0	[1 2] true
 11	1	[1 2] false
 11	2.5	[1 2] false
@@ -23018,22 +22690,6 @@
 15	false	[1 2] false
 15	none	[1 2] false
 15	[1 2]	[1 2] false
-9	not 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
-9	size 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
 6	lt 0 0	[1 2] false
 11	1	[1 2] false
 11	2.5	[1 2] false
@@ -23110,22 +22766,6 @@
 16	false	[1 2] false
 16	none	[1 2] none
 16	[1 2]	[1 2] [1 2]
-10	not 0	true
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	true
-14	none	true
-14	[1 2]	false
-10	size 0	0
-15	1	1
-15	2.5	2
-15	'x'	1
-15	true	1
-15	false	0
-15	none	0
-15	[1 2]	2
 0	not 0 0 0	true 0 0
 8	1	true 0 1
 8	2.5	true 0 2.5
@@ -24613,420 +24253,6 @@
 14	true	false
 14	false	false
 14	none	false
-14	[1 2]	false
-4	not 0 0	false 0
-10	1	false 1
-10	2.5	false 2.5
-10	'x'	false 'x'
-10	true	false true
-10	false	false false
-10	none	false none
-10	[1 2]	false [1 2]
-10	dup	false false
-11	rop	
-10	not	true
-10	size	0
-8	1 0	true 0
-10	1	true 1
-10	2.5	true 2.5
-10	'x'	true 'x'
-10	true	true true
-10	false	true false
-10	none	true none
-10	[1 2]	true [1 2]
-10	dup	true true
-11	rop	
-10	not	false
-10	size	1
-8	2.5 0	true 0
-12	1	true 1
-12	2.5	true 2.5
-12	'x'	true 'x'
-12	true	true true
-12	false	true false
-12	none	true none
-12	[1 2]	true [1 2]
-12	dup	true true
-13	rop	
-12	not	false
-12	size	1
-8	'x' 0	true 0
-12	1	true 1
-12	2.5	true 2.5
-12	'x'	true 'x'
-12	true	true true
-12	false	true false
-12	none	true none
-12	[1 2]	true [1 2]
-12	dup	true true
-13	rop	
-12	not	false
-12	size	1
-8	true 0	true 0
-13	1	true 1
-13	2.5	true 2.5
-13	'x'	true 'x'
-13	true	true true
-13	false	true false
-13	none	true none
-13	[1 2]	true [1 2]
-13	dup	true true
-14	rop	
-13	not	false
-13	size	1
-8	false 0	false 0
-14	1	false 1
-14	2.5	false 2.5
-14	'x'	false 'x'
-14	true	false true
-14	false	false false
-14	none	false none
-14	[1 2]	false [1 2]
-14	dup	false false
-15	rop	
-14	not	true
-14	size	0
-8	none 0	false 0
-13	1	false 1
-13	2.5	false 2.5
-13	'x'	false 'x'
-13	true	false true
-13	false	false false
-13	none	false none
-13	[1 2]	false [1 2]
-13	dup	false false
-14	rop	
-13	not	true
-13	size	0
-8	[1 2] 0	true 0
-14	1	true 1
-14	2.5	true 2.5
-14	'x'	true 'x'
-14	true	true true
-14	false	true false
-14	none	true none
-14	[1 2]	true [1 2]
-14	dup	true true
-15	rop	
-14	not	false
-14	size	1
-8	not 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	size 0	false
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	false
-13	none	false
-13	[1 2]	true
-4	size 0 0	true 0
-11	1	true 1
-11	2.5	true 2.5
-11	'x'	true 'x'
-11	true	true true
-11	false	true false
-11	none	true none
-11	[1 2]	true [1 2]
-11	dup	true true
-12	rop	
-11	not	false
-11	size	1
-9	1 0	false 0
-11	1	false 1
-11	2.5	false 2.5
-11	'x'	false 'x'
-11	true	false true
-11	false	false false
-11	none	false none
-11	[1 2]	false [1 2]
-11	dup	false false
-12	rop	
-11	not	true
-11	size	0
-9	2.5 0	false 0
-13	1	false 1
-13	2.5	false 2.5
-13	'x'	false 'x'
-13	true	false true
-13	false	false false
-13	none	false none
-13	[1 2]	false [1 2]
-13	dup	false false
-14	rop	
-13	not	true
-13	size	0
-9	'x' 0	false 0
-13	1	false 1
-13	2.5	false 2.5
-13	'x'	false 'x'
-13	true	false true
-13	false	false false
-13	none	false none
-13	[1 2]	false [1 2]
-13	dup	false false
-14	rop	
-13	not	true
-13	size	0
-9	true 0	false 0
-14	1	false 1
-14	2.5	false 2.5
-14	'x'	false 'x'
-14	true	false true
-14	false	false false
-14	none	false none
-14	[1 2]	false [1 2]
-14	dup	false false
-15	rop	
-14	not	true
-14	size	0
-9	false 0	true 0
-15	1	true 1
-15	2.5	true 2.5
-15	'x'	true 'x'
-15	true	true true
-15	false	true false
-15	none	true none
-15	[1 2]	true [1 2]
-15	dup	true true
-16	rop	
-15	not	false
-15	size	1
-9	none 0	true 0
-14	1	true 1
-14	2.5	true 2.5
-14	'x'	true 'x'
-14	true	true true
-14	false	true false
-14	none	true none
-14	[1 2]	true [1 2]
-14	dup	true true
-15	rop	
-14	not	false
-14	size	1
-9	[1 2] 0	false 0
-15	1	false 1
-15	2.5	false 2.5
-15	'x'	false 'x'
-15	true	false true
-15	false	false false
-15	none	false none
-15	[1 2]	false [1 2]
-15	dup	false false
-16	rop	
-15	not	true
-15	size	0
-9	not 0	false
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	false
-13	none	false
-13	[1 2]	true
-9	size 0	true
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	true
-14	none	true
-14	[1 2]	false
-4	add 0 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-8	1 0	false
-10	1	false
-10	2.5	false
-10	'x'	false
-8	2.5 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-8	'x' 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-8	true 'x'	false
-8	false 'x'	false
-4	sub 0 0	true
-10	1	false
-10	2.5	false
-8	1 0	false
-10	1	true
-10	2.5	false
-8	2.5 0	false
-12	1	false
-12	2.5	true
-4	mul 0 0	true
-10	1	true
-10	2.5	true
-8	1 0	true
-10	1	false
-10	2.5	false
-8	2.5 0	true
-12	1	false
-12	2.5	false
-4	eq 0 0	false
-9	1	true
-9	2.5	true
-9	'x'	true
-9	true	true
-9	false	true
-9	none	true
-9	[1 2]	true
-7	1 0	true
-9	1	false
-9	2.5	true
-9	'x'	true
-9	true	true
-9	false	true
-9	none	true
-9	[1 2]	true
-7	2.5 0	true
-11	1	true
-11	2.5	false
-11	'x'	true
-11	true	true
-11	false	true
-11	none	true
-11	[1 2]	true
-7	'x' 0	true
-11	1	true
-11	2.5	true
-11	'x'	false
-11	true	true
-11	false	true
-11	none	true
-11	[1 2]	true
-7	true 0	true
-12	1	true
-12	2.5	true
-12	'x'	true
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	true
-7	false 0	true
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	false
-13	none	true
-13	[1 2]	true
-7	none 0	true
-12	1	true
-12	2.5	true
-12	'x'	true
-12	true	true
-12	false	true
-12	none	false
-12	[1 2]	true
-7	[1 2] 0	true
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	true
-13	none	true
-13	[1 2]	true
-4	lt 0 0	true
-9	1	true
-9	2.5	true
-9	true	false true
-9	false	false false
-7	1 0	false
-9	1	true
-9	2.5	true
-9	true	false true
-9	false	false false
-7	2.5 0	false
-11	1	false
-11	2.5	true
-11	true	false true
-11	false	false false
-7	'x' 'x'	true
-11	true	false true
-11	false	false false
-7	true true	false true
-12	false	false false
-7	false true	false true
-13	false	false false
-7	none none	true
-7	[1 2] [1 2]	true
-4	and 0 0	true
-10	1	true
-10	2.5	true
-10	'x'	true
-10	true	true
-10	false	true
-10	none	true
-10	[1 2]	true
-8	1 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	true
-10	none	true
-10	[1 2]	false
-8	2.5 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	'x' 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	true 0	true
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	true
-13	none	true
-13	[1 2]	false
-8	false 0	true
-14	1	true
-14	2.5	true
-14	'x'	true
-14	true	true
-14	false	true
-14	none	true
-14	[1 2]	true
-8	none 0	true
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	true
-13	none	true
-13	[1 2]	true
-8	[1 2] 0	true
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	true
-14	none	true
 14	[1 2]	false
 0	size 0 0 0	0 0 0
 9	1	0 0 1
@@ -26668,420 +25894,6 @@
 15	false	false
 15	none	none
 15	[1 2]	[1 2]
-5	not 0 0	1 0
-11	1	1 1
-11	2.5	1 2.5
-11	'x'	1 'x'
-11	true	1 true
-11	false	1 false
-11	none	1 none
-11	[1 2]	1 [1 2]
-11	dup	1 1
-12	rop	
-11	not	false
-11	size	1
-9	1 0	0 0
-11	1	0 1
-11	2.5	0 2.5
-11	'x'	0 'x'
-11	true	0 true
-11	false	0 false
-11	none	0 none
-11	[1 2]	0 [1 2]
-11	dup	0 0
-12	rop	
-11	not	true
-11	size	0
-9	2.5 0	0 0
-13	1	0 1
-13	2.5	0 2.5
-13	'x'	0 'x'
-13	true	0 true
-13	false	0 false
-13	none	0 none
-13	[1 2]	0 [1 2]
-13	dup	0 0
-14	rop	
-13	not	true
-13	size	0
-9	'x' 0	0 0
-13	1	0 1
-13	2.5	0 2.5
-13	'x'	0 'x'
-13	true	0 true
-13	false	0 false
-13	none	0 none
-13	[1 2]	0 [1 2]
-13	dup	0 0
-14	rop	
-13	not	true
-13	size	0
-9	true 0	0 0
-14	1	0 1
-14	2.5	0 2.5
-14	'x'	0 'x'
-14	true	0 true
-14	false	0 false
-14	none	0 none
-14	[1 2]	0 [1 2]
-14	dup	0 0
-15	rop	
-14	not	true
-14	size	0
-9	false 0	1 0
-15	1	1 1
-15	2.5	1 2.5
-15	'x'	1 'x'
-15	true	1 true
-15	false	1 false
-15	none	1 none
-15	[1 2]	1 [1 2]
-15	dup	1 1
-16	rop	
-15	not	false
-15	size	1
-9	none 0	1 0
-14	1	1 1
-14	2.5	1 2.5
-14	'x'	1 'x'
-14	true	1 true
-14	false	1 false
-14	none	1 none
-14	[1 2]	1 [1 2]
-14	dup	1 1
-15	rop	
-14	not	false
-14	size	1
-9	[1 2] 0	0 0
-15	1	0 1
-15	2.5	0 2.5
-15	'x'	0 'x'
-15	true	0 true
-15	false	0 false
-15	none	0 none
-15	[1 2]	0 [1 2]
-15	dup	0 0
-16	rop	
-15	not	true
-15	size	0
-9	not 0	0
-13	1	1
-13	2.5	1
-13	'x'	1
-13	true	1
-13	false	0
-13	none	0
-13	[1 2]	1
-9	size 0	1
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	1
-14	none	1
-14	[1 2]	0
-5	size 0 0	0 0
-12	1	0 1
-12	2.5	0 2.5
-12	'x'	0 'x'
-12	true	0 true
-12	false	0 false
-12	none	0 none
-12	[1 2]	0 [1 2]
-12	dup	0 0
-13	rop	
-12	not	true
-12	size	0
-10	1 0	1 0
-12	1	1 1
-12	2.5	1 2.5
-12	'x'	1 'x'
-12	true	1 true
-12	false	1 false
-12	none	1 none
-12	[1 2]	1 [1 2]
-12	dup	1 1
-13	rop	
-12	not	false
-12	size	1
-10	2.5 0	2 0
-14	1	2 1
-14	2.5	2 2.5
-14	'x'	2 'x'
-14	true	2 true
-14	false	2 false
-14	none	2 none
-14	[1 2]	2 [1 2]
-14	dup	2 2
-15	rop	
-14	not	false
-14	size	2
-10	'x' 0	1 0
-14	1	1 1
-14	2.5	1 2.5
-14	'x'	1 'x'
-14	true	1 true
-14	false	1 false
-14	none	1 none
-14	[1 2]	1 [1 2]
-14	dup	1 1
-15	rop	
-14	not	false
-14	size	1
-10	true 0	1 0
-15	1	1 1
-15	2.5	1 2.5
-15	'x'	1 'x'
-15	true	1 true
-15	false	1 false
-15	none	1 none
-15	[1 2]	1 [1 2]
-15	dup	1 1
-16	rop	
-15	not	false
-15	size	1
-10	false 0	0 0
-16	1	0 1
-16	2.5	0 2.5
-16	'x'	0 'x'
-16	true	0 true
-16	false	0 false
-16	none	0 none
-16	[1 2]	0 [1 2]
-16	dup	0 0
-17	rop	
-16	not	true
-16	size	0
-10	none 0	0 0
-15	1	0 1
-15	2.5	0 2.5
-15	'x'	0 'x'
-15	true	0 true
-15	false	0 false
-15	none	0 none
-15	[1 2]	0 [1 2]
-15	dup	0 0
-16	rop	
-15	not	true
-15	size	0
-10	[1 2] 0	2 0
-16	1	2 1
-16	2.5	2 2.5
-16	'x'	2 'x'
-16	true	2 true
-16	false	2 false
-16	none	2 none
-16	[1 2]	2 [1 2]
-16	dup	2 2
-17	rop	
-16	not	false
-16	size	2
-10	not 0	1
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	1
-14	none	1
-14	[1 2]	0
-10	size 0	0
-15	1	1
-15	2.5	2
-15	'x'	1
-15	true	1
-15	false	0
-15	none	0
-15	[1 2]	2
-5	add 0 0	0
-11	1	1
-11	2.5	2
-11	'x'	2
-9	1 0	1
-11	1	2
-11	2.5	3
-11	'x'	2
-9	2.5 0	2
-13	1	3
-13	2.5	5
-13	'x'	4
-9	'x' 0	2
-13	1	2
-13	2.5	4
-13	'x'	2
-13	true	5
-13	false	6
-9	true 'x'	5
-9	false 'x'	6
-5	sub 0 0	0
-11	1	1
-11	2.5	2
-9	1 0	-1
-11	1	0
-11	2.5	1
-9	2.5 0	-3
-13	1	-2
-13	2.5	0
-5	mul 0 0	0
-11	1	0
-11	2.5	0
-9	1 0	0
-11	1	1
-11	2.5	2
-9	2.5 0	0
-13	1	2
-13	2.5	6
-5	eq 0 0	1
-10	1	0
-10	2.5	0
-10	'x'	0
-10	true	0
-10	false	0
-10	none	0
-10	[1 2]	0
-8	1 0	0
-10	1	1
-10	2.5	0
-10	'x'	0
-10	true	0
-10	false	0
-10	none	0
-10	[1 2]	0
-8	2.5 0	0
-12	1	0
-12	2.5	1
-12	'x'	0
-12	true	0
-12	false	0
-12	none	0
-12	[1 2]	0
-8	'x' 0	0
-12	1	0
-12	2.5	0
-12	'x'	1
-12	true	0
-12	false	0
-12	none	0
-12	[1 2]	0
-8	true 0	0
-13	1	0
-13	2.5	0
-13	'x'	0
-13	true	1
-13	false	0
-13	none	0
-13	[1 2]	0
-8	false 0	0
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	1
-14	none	0
-14	[1 2]	0
-8	none 0	0
-13	1	0
-13	2.5	0
-13	'x'	0
-13	true	0
-13	false	0
-13	none	1
-13	[1 2]	0
-8	[1 2] 0	0
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	0
-14	none	0
-14	[1 2]	0
-5	lt 0 0	0
-10	1	0
-10	2.5	0
-10	true	2 true
-10	false	2 false
-8	1 0	1
-10	1	0
-10	2.5	0
-10	true	2 true
-10	false	2 false
-8	2.5 0	1
-12	1	1
-12	2.5	0
-12	true	2 true
-12	false	2 false
-8	'x' 'x'	0
-12	true	2 true
-12	false	2 false
-8	true true	2 true
-13	false	2 false
-8	false true	2 true
-14	false	2 false
-8	none none	0
-8	[1 2] [1 2]	0
-5	and 0 0	0
-11	1	0
-11	2.5	0
-11	'x'	0
-11	true	0
-11	false	0
-11	none	0
-11	[1 2]	0
-9	1 0	0
-11	1	1
-11	2.5	1
-11	'x'	1
-11	true	1
-11	false	0
-11	none	0
-11	[1 2]	1
-9	2.5 0	0
-13	1	2
-13	2.5	2
-13	'x'	2
-13	true	2
-13	false	0
-13	none	0
-13	[1 2]	2
-9	'x' 0	0
-13	1	1
-13	2.5	1
-13	'x'	1
-13	true	1
-13	false	0
-13	none	0
-13	[1 2]	1
-9	true 0	0
-14	1	1
-14	2.5	1
-14	'x'	1
-14	true	1
-14	false	0
-14	none	0
-14	[1 2]	1
-9	false 0	0
-15	1	0
-15	2.5	0
-15	'x'	0
-15	true	0
-15	false	0
-15	none	0
-15	[1 2]	0
-9	none 0	0
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	0
-14	none	0
-14	[1 2]	0
-9	[1 2] 0	0
-15	1	2
-15	2.5	2
-15	'x'	2
-15	true	2
-15	false	0
-15	none	0
-15	[1 2]	2
 0	add 0 0 0	0 0
 8	1	0 1
 8	2.5	0 2.5
@@ -27430,6 +26242,18 @@
 13	rop	
 12	not	true
 12	size	0
+4	'x' 'x' 0	'' 0
+12	1	'' 1
+12	2.5	'' 2.5
+12	'x'	'' 'x'
+12	true	'' true
+12	false	'' false
+12	none	'' none
+12	[1 2]	'' [1 2]
+12	dup	'' ''
+13	rop	
+12	not	true
+12	size	0
 0	mul 0 0 0	0 0
 8	1	0 1
 8	2.5	0 2.5
@@ -27538,6 +26362,18 @@
 13	rop	
 12	not	false
 12	size	6
+4	'x' 'x' 0	'xx' 0
+12	1	'xx' 1
+12	2.5	'xx' 2.5
+12	'x'	'xx' 'x'
+12	true	'xx' true
+12	false	'xx' false
+12	none	'xx' none
+12	[1 2]	'xx' [1 2]
+12	dup	'xx' 'xx'
+13	rop	
+12	not	false
+12	size	2
 0	eq 0 0 0	true 0
 7	1	true 1
 7	2.5	true 2.5
@@ -27634,22 +26470,6 @@
 12	rop	
 11	not	true
 11	size	0
-5	not 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	false
-9	none	false
-9	[1 2]	false
-5	size 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	true
-10	none	true
-10	[1 2]	false
 3	1 0 0	false 0
 7	1	false 1
 7	2.5	false 2.5
@@ -27746,22 +26566,6 @@
 12	rop	
 11	not	true
 11	size	0
-5	not 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	false
-9	none	false
-9	[1 2]	false
-5	size 0	false
-10	1	true
-10	2.5	false
-10	'x'	true
-10	true	true
-10	false	false
-10	none	false
-10	[1 2]	false
 3	2.5 0 0	false 0
 9	1	false 1
 9	2.5	false 2.5
@@ -27858,22 +26662,6 @@
 14	rop	
 13	not	true
 13	size	0
-7	not 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	false
-11	none	false
-11	[1 2]	false
-7	size 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
 3	'x' 0 0	false 0
 9	1	false 1
 9	2.5	false 2.5
@@ -27970,22 +26758,6 @@
 14	rop	
 13	not	true
 13	size	0
-7	not 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	false
-11	none	false
-11	[1 2]	false
-7	size 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
 3	true 0 0	false 0
 10	1	false 1
 10	2.5	false 2.5
@@ -28082,22 +26854,6 @@
 15	rop	
 14	not	true
 14	size	0
-8	not 0	true
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	true
-12	[1 2]	false
-8	size 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
 3	false 0 0	false 0
 11	1	false 1
 11	2.5	false 2.5
@@ -28194,22 +26950,6 @@
 16	rop	
 15	not	true
 15	size	0
-9	not 0	false
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	false
-13	none	false
-13	[1 2]	true
-9	size 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
 3	none 0 0	false 0
 10	1	false 1
 10	2.5	false 2.5
@@ -28306,22 +27046,6 @@
 15	rop	
 14	not	true
 14	size	0
-8	not 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
-8	size 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
 3	[1 2] 0 0	false 0
 11	1	false 1
 11	2.5	false 2.5
@@ -28418,162 +27142,6 @@
 16	rop	
 15	not	true
 15	size	0
-9	not 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
-9	size 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
-3	not 0 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	true
-9	false	false
-9	none	false
-9	[1 2]	false
-7	1 0	false
-9	1	false
-9	2.5	false
-9	'x'	false
-9	true	false
-9	false	true
-9	none	false
-9	[1 2]	false
-7	2.5 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	true
-11	none	false
-11	[1 2]	false
-7	'x' 0	false
-11	1	false
-11	2.5	false
-11	'x'	false
-11	true	false
-11	false	true
-11	none	false
-11	[1 2]	false
-7	true 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	true
-12	none	false
-12	[1 2]	false
-7	false 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	true
-13	false	false
-13	none	false
-13	[1 2]	false
-7	none 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	true
-12	false	false
-12	none	false
-12	[1 2]	false
-7	[1 2] 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	true
-13	none	false
-13	[1 2]	false
-3	size 0 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	false
-10	none	false
-10	[1 2]	false
-8	1 0	false
-10	1	true
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	false
-10	none	false
-10	[1 2]	false
-8	2.5 0	false
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
-8	'x' 0	false
-12	1	true
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	false
-12	[1 2]	false
-8	true 0	false
-13	1	true
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
-8	false 0	true
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
-8	none 0	true
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
-8	[1 2] 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
-3	lt 0 true	false
-8	false	false
-6	1 true	false
-8	false	false
-6	2.5 true	false
-10	false	false
-6	'x' true	false
-10	false	false
-6	true true	false
-11	false	false
-6	false true	false
-12	false	false
 0	lt 0 0 0	false 0
 7	1	false 1
 7	2.5	false 2.5
@@ -28610,14 +27178,6 @@
 10	rop	
 9	not	true
 9	size	0
-5	size 0	false
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	false
-10	none	false
-10	[1 2]	false
 3	1 0 0	true 0
 7	1	true 1
 7	2.5	true 2.5
@@ -28654,14 +27214,6 @@
 10	rop	
 9	not	true
 9	size	0
-5	size 0	true
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	true
-10	none	true
-10	[1 2]	false
 3	2.5 0 0	true 0
 9	1	true 1
 9	2.5	true 2.5
@@ -28698,14 +27250,6 @@
 12	rop	
 11	not	true
 11	size	0
-7	size 0	true
-12	1	true
-12	2.5	true
-12	'x'	true
-12	true	true
-12	false	true
-12	none	true
-12	[1 2]	true
 3	'x' 'x' 0	false 0
 11	1	false 1
 11	2.5	false 2.5
@@ -28718,22 +27262,6 @@
 12	rop	
 11	not	true
 11	size	0
-3	true not 0	false
-12	1	true
-12	2.5	true
-12	'x'	true
-12	true	true
-12	false	false
-12	none	false
-12	[1 2]	true
-3	false not 0	false
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	false
-13	[1 2]	false
 3	none none 0	false 0
 13	1	false 1
 13	2.5	false 2.5
@@ -28758,46 +27286,6 @@
 16	rop	
 15	not	true
 15	size	0
-3	not 0 true	false
-9	false	true
-7	1 true	false
-9	false	false
-7	2.5 true	false
-11	false	false
-7	'x' true	false
-11	false	false
-7	true true	false
-12	false	false
-7	false true	false
-13	false	true
-7	none true	false
-12	false	true
-7	[1 2] true	false
-13	false	false
-3	size 0 0	false
-10	1	false
-10	2.5	false
-8	1 0	true
-10	1	false
-10	2.5	false
-8	2.5 0	true
-12	1	true
-12	2.5	false
-8	'x' 0	true
-12	1	false
-12	2.5	false
-8	true 0	true
-13	1	false
-13	2.5	false
-8	false 0	false
-14	1	false
-14	2.5	false
-8	none 0	false
-13	1	false
-13	2.5	false
-8	[1 2] 0	true
-14	1	true
-14	2.5	false
 0	and 0 0 0	0 0
 8	1	0 1
 8	2.5	0 2.5
@@ -28878,7 +27366,8 @@
 11	false	none false
 11	none	none none
 11	[1 2]	none [1 2]
-11	drop	
+11	dup	none none
+12	rop	
 11	not	true
 11	size	0
 6	[1 2] 0	0 0
@@ -28893,22 +27382,6 @@
 13	rop	
 12	not	true
 12	size	0
-6	not 0	0
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	0
-10	none	0
-10	[1 2]	false
-6	size 0	0
-11	1	0
-11	2.5	0
-11	'x'	0
-11	true	0
-11	false	0
-11	none	0
-11	[1 2]	0
 4	1 0 0	0 0
 8	1	0 1
 8	2.5	0 2.5
@@ -28989,7 +27462,8 @@
 11	false	none false
 11	none	none none
 11	[1 2]	none [1 2]
-11	drop	
+11	dup	none none
+12	rop	
 11	not	true
 11	size	0
 6	[1 2] 0	1 0
@@ -29004,22 +27478,6 @@
 13	rop	
 12	not	false
 12	size	1
-6	not 0	1
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	1
-10	none	1
-10	[1 2]	false
-6	size 0	0
-11	1	1
-11	2.5	1
-11	'x'	1
-11	true	1
-11	false	0
-11	none	0
-11	[1 2]	1
 4	2.5 0 0	0 0
 10	1	0 1
 10	2.5	0 2.5
@@ -29100,7 +27558,8 @@
 13	false	none false
 13	none	none none
 13	[1 2]	none [1 2]
-13	drop	
+13	dup	none none
+14	rop	
 13	not	true
 13	size	0
 8	[1 2] 0	2.5 0
@@ -29115,22 +27574,6 @@
 15	rop	
 14	not	false
 14	size	2
-8	not 0	2.5
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	2.5
-12	none	2.5
-12	[1 2]	false
-8	size 0	0
-13	1	2.5
-13	2.5	2.5
-13	'x'	2.5
-13	true	2.5
-13	false	0
-13	none	0
-13	[1 2]	2.5
 4	'x' 0 0	0 0
 10	1	0 1
 10	2.5	0 2.5
@@ -29211,7 +27654,8 @@
 13	false	none false
 13	none	none none
 13	[1 2]	none [1 2]
-13	drop	
+13	dup	none none
+14	rop	
 13	not	true
 13	size	0
 8	[1 2] 0	'x' 0
@@ -29226,22 +27670,6 @@
 15	rop	
 14	not	false
 14	size	1
-8	not 0	'x'
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	'x'
-12	none	'x'
-12	[1 2]	false
-8	size 0	0
-13	1	'x'
-13	2.5	'x'
-13	'x'	'x'
-13	true	'x'
-13	false	0
-13	none	0
-13	[1 2]	'x'
 4	true 0 0	0 0
 11	1	0 1
 11	2.5	0 2.5
@@ -29322,7 +27750,8 @@
 14	false	none false
 14	none	none none
 14	[1 2]	none [1 2]
-14	drop	
+14	dup	none none
+15	rop	
 14	not	true
 14	size	0
 9	[1 2] 0	true 0
@@ -29337,22 +27766,6 @@
 16	rop	
 15	not	false
 15	size	1
-9	not 0	true
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	true
-13	none	true
-13	[1 2]	false
-9	size 0	0
-14	1	true
-14	2.5	true
-14	'x'	true
-14	true	true
-14	false	0
-14	none	0
-14	[1 2]	true
 4	false 0 0	0 0
 12	1	0 1
 12	2.5	0 2.5
@@ -29433,7 +27846,8 @@
 15	false	none false
 15	none	none none
 15	[1 2]	none [1 2]
-15	drop	
+15	dup	none none
+16	rop	
 15	not	true
 15	size	0
 10	[1 2] 0	false 0
@@ -29448,22 +27862,6 @@
 17	rop	
 16	not	true
 16	size	0
-10	not 0	false
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	false
-14	[1 2]	false
-10	size 0	0
-15	1	false
-15	2.5	false
-15	'x'	false
-15	true	false
-15	false	0
-15	none	0
-15	[1 2]	false
 4	none 0 0	0 0
 11	1	0 1
 11	2.5	0 2.5
@@ -29472,7 +27870,8 @@
 11	false	0 false
 11	none	0 none
 11	[1 2]	0 [1 2]
-11	drop	
+11	dup	0 0
+12	rop	
 11	not	true
 11	size	0
 9	1 0	none 0
@@ -29483,7 +27882,8 @@
 11	false	none false
 11	none	none none
 11	[1 2]	none [1 2]
-11	drop	
+11	dup	none none
+12	rop	
 11	not	true
 11	size	0
 9	2.5 0	none 0
@@ -29494,7 +27894,8 @@
 13	false	none false
 13	none	none none
 13	[1 2]	none [1 2]
-13	drop	
+13	dup	none none
+14	rop	
 13	not	true
 13	size	0
 9	'x' 0	none 0
@@ -29505,7 +27906,8 @@
 13	false	none false
 13	none	none none
 13	[1 2]	none [1 2]
-13	drop	
+13	dup	none none
+14	rop	
 13	not	true
 13	size	0
 9	true 0	none 0
@@ -29516,7 +27918,8 @@
 14	false	none false
 14	none	none none
 14	[1 2]	none [1 2]
-14	drop	
+14	dup	none none
+15	rop	
 14	not	true
 14	size	0
 9	false 0	false 0
@@ -29527,7 +27930,8 @@
 15	false	false false
 15	none	false none
 15	[1 2]	false [1 2]
-15	drop	
+15	dup	false false
+16	rop	
 15	not	true
 15	size	0
 9	none 0	none 0
@@ -29550,25 +27954,10 @@
 15	false	none false
 15	none	none none
 15	[1 2]	none [1 2]
-15	drop	
+15	dup	none none
+16	rop	
 15	not	true
 15	size	0
-9	not 0	none
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	none
-13	none	none
-13	[1 2]	false
-9	size 0	0
-14	1	none
-14	2.5	none
-14	'x'	none
-14	true	none
-14	false	0
-14	none	0
-14	[1 2]	none
 4	[1 2] 0 0	0 0
 12	1	0 1
 12	2.5	0 2.5
@@ -29649,7 +28038,8 @@
 15	false	none false
 15	none	none none
 15	[1 2]	none [1 2]
-15	drop	
+15	dup	none none
+16	rop	
 15	not	true
 15	size	0
 10	[1 2] 0	[1 2] 0
@@ -29664,159 +28054,3 @@
 17	rop	
 16	not	false
 16	size	2
-10	not 0	[1 2]
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	[1 2]
-14	none	[1 2]
-14	[1 2]	false
-10	size 0	0
-15	1	[1 2]
-15	2.5	[1 2]
-15	'x'	[1 2]
-15	true	[1 2]
-15	false	0
-15	none	0
-15	[1 2]	[1 2]
-4	not 0 0	0
-10	1	true
-10	2.5	true
-10	'x'	true
-10	true	true
-10	false	false
-10	none	none
-10	[1 2]	true
-8	1 0	0
-10	1	false
-10	2.5	false
-10	'x'	false
-10	true	false
-10	false	false
-10	none	none
-10	[1 2]	false
-8	2.5 0	0
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	none
-12	[1 2]	false
-8	'x' 0	0
-12	1	false
-12	2.5	false
-12	'x'	false
-12	true	false
-12	false	false
-12	none	none
-12	[1 2]	false
-8	true 0	0
-13	1	false
-13	2.5	false
-13	'x'	false
-13	true	false
-13	false	false
-13	none	none
-13	[1 2]	false
-8	false 0	0
-14	1	true
-14	2.5	true
-14	'x'	true
-14	true	true
-14	false	false
-14	none	none
-14	[1 2]	true
-8	none 0	0
-13	1	true
-13	2.5	true
-13	'x'	true
-13	true	true
-13	false	false
-13	none	none
-13	[1 2]	true
-8	[1 2] 0	0
-14	1	false
-14	2.5	false
-14	'x'	false
-14	true	false
-14	false	false
-14	none	none
-14	[1 2]	false
-4	size 0 0	0
-11	1	0
-11	2.5	0
-11	'x'	0
-11	true	0
-11	false	false
-11	none	none
-11	[1 2]	0
-9	1 0	0
-11	1	1
-11	2.5	1
-11	'x'	1
-11	true	1
-11	false	false
-11	none	none
-11	[1 2]	1
-9	2.5 0	0
-13	1	2
-13	2.5	2
-13	'x'	2
-13	true	2
-13	false	false
-13	none	none
-13	[1 2]	2
-9	'x' 0	0
-13	1	1
-13	2.5	1
-13	'x'	1
-13	true	1
-13	false	false
-13	none	none
-13	[1 2]	1
-9	true 0	0
-14	1	1
-14	2.5	1
-14	'x'	1
-14	true	1
-14	false	false
-14	none	none
-14	[1 2]	1
-9	false 0	0
-15	1	0
-15	2.5	0
-15	'x'	0
-15	true	0
-15	false	false
-15	none	none
-15	[1 2]	0
-9	none 0	0
-14	1	0
-14	2.5	0
-14	'x'	0
-14	true	0
-14	false	false
-14	none	none
-14	[1 2]	0
-9	[1 2] 0	0
-15	1	2
-15	2.5	2
-15	'x'	2
-15	true	2
-15	false	false
-15	none	none
-15	[1 2]	2
-4	lt 0 true	[word(lt) 0]
-9	false	false
-7	1 true	[word(lt) 1]
-9	false	false
-7	2.5 true	[word(lt) 2.5]
-11	false	false
-7	'x' true	[word(lt) 'x']
-11	false	false
-7	true true	[word(lt) true]
-12	false	false
-7	false true	[word(lt) false]
-13	false	false
