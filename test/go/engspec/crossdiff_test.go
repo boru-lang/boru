@@ -230,6 +230,13 @@ func knownGoAheadDivergence(mode, input string) bool {
 func TestCrossEngineDifferential(t *testing.T) {
 	ts, ok := tsResults(t)
 	if !ok {
+		// A skip is right where the TS engine was never installed (a plain
+		// `go test`), and a lie where it was meant to run: the daily build
+		// installs and builds eng/ts and sets BORU_CROSSDIFF_REQUIRED, so a
+		// dumper that cannot start there fails rather than passing silently.
+		if os.Getenv("BORU_CROSSDIFF_REQUIRED") != "" {
+			t.Fatal("BORU_CROSSDIFF_REQUIRED is set but the TS dumper (eng/ts/src/crossdump.ts) did not run — see its stderr above")
+		}
 		t.Skip("node/crossdump.ts unavailable — skipping cross-engine differential")
 	}
 

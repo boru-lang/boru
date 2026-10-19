@@ -125,12 +125,36 @@ var (
 // tests to verify every row rather than a sample.
 func fullMode() bool { return os.Getenv("SPECGEN_FULL") == "1" }
 
+// shardOf reads SPECGEN_SHARD=i/n (1 <= i <= n), which splits a full run
+// across n jobs: shard i verifies the rows whose index is i-1 modulo n, so
+// the n shards together verify every row exactly once. The daily build
+// runs the full matrix that way, in parallel, because one runner takes
+// longer than a job may. Unset or malformed is the whole set (1/1).
+func shardOf() (i, n int) {
+	if _, err := fmt.Sscanf(os.Getenv("SPECGEN_SHARD"), "%d/%d", &i, &n); err != nil || n < 1 || i < 1 || i > n {
+		return 1, 1
+	}
+	return i, n
+}
+
 // sampleRows returns a deterministic subset of rows of at most cap entries
 // (every k-th row), or all rows when cap<=0, the set already fits, or
-// fullMode is on. Sampling bounds the engine work for the huge len5 files
-// while still exercising a representative spread of each.
+// fullMode is on — this shard's rows of them, when SPECGEN_SHARD splits the
+// run. Sampling bounds the engine work for the huge len5 files while still
+// exercising a representative spread of each.
 func sampleRows(rows []matrixRow, cap int) []matrixRow {
-	if cap <= 0 || len(rows) <= cap || fullMode() {
+	if fullMode() {
+		i, n := shardOf()
+		if n == 1 {
+			return rows
+		}
+		out := make([]matrixRow, 0, len(rows)/n+1)
+		for k := i - 1; k < len(rows); k += n {
+			out = append(out, rows[k])
+		}
+		return out
+	}
+	if cap <= 0 || len(rows) <= cap {
 		return rows
 	}
 	stride := len(rows) / cap
@@ -613,5 +637,34 @@ func verifyPassing(t *testing.T, set frontierSet) {
 	if total < set.minPassing {
 		t.Errorf("%s passing has %d rows (floor %d) — the subset shrank or the extractor regressed",
 			set.label, total, set.minPassing)
+	}
+}
+
+// TestSpecgenShardsPartitionRows: in a full run split by SPECGEN_SHARD, the
+// shards together take every row exactly once; a malformed or out-of-range
+// value is the whole set, never a silently partial one.
+func TestSpecgenShardsPartitionRows(t *testing.T) {
+	t.Setenv("SPECGEN_FULL", "1")
+	rows := make([]matrixRow, 103)
+	for k := range rows {
+		rows[k].line = k
+	}
+	seen := make([]int, len(rows))
+	for i := 1; i <= 4; i++ {
+		t.Setenv("SPECGEN_SHARD", fmt.Sprintf("%d/4", i))
+		for _, r := range sampleRows(rows, 0) {
+			seen[r.line]++
+		}
+	}
+	for line, n := range seen {
+		if n != 1 {
+			t.Fatalf("row %d taken by %d shards, want exactly 1", line, n)
+		}
+	}
+	for _, bad := range []string{"", "0/4", "5/4", "2/0", "two/four", "1"} {
+		t.Setenv("SPECGEN_SHARD", bad)
+		if got := len(sampleRows(rows, 0)); got != len(rows) {
+			t.Errorf("SPECGEN_SHARD=%q took %d rows, want all %d", bad, got, len(rows))
+		}
 	}
 }

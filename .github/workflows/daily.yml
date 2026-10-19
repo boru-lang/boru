@@ -7,10 +7,18 @@ name: Daily build
 #     and to build on — a cold CLI build is a minute on Windows, and a
 #     macOS runner can take most of a minute to be assigned — so they left
 #     the PR path, which is held to three minutes a job.
+#   - The full test suite natively on macOS and Windows (every module,
+#     langspec included), where a PR runs only the platform regressions.
 #   - The deep property fuzz (scripts/fuzz-daily.sh): both fuzzers at 20
 #     seeds × 5000 programs from a seed base that moves every day, so each
 #     day explores programs no earlier day generated. The report is in the
 #     run's summary and its artifact.
+#   - The suites too long for a PR: every RACE_MODULES package under the
+#     race detector (a PR runs one race test), the generated syntax matrix
+#     row by row (SPECGEN_FULL), and the TypeScript twins no PR runs — core,
+#     basic, the engine port — with the cross-engine differential, which
+#     skips wherever eng/ts is not installed and so never ran in CI before.
+#     Each is a scripts/ci-steps.sh step, runnable locally.
 #   - The report: every fuzz finding becomes a `fuzz` issue (one per
 #     distinct shrunk program, never closed by a green day), and the
 #     workflow keeps one `ci-health` issue, "Daily build is failing", open
@@ -53,6 +61,68 @@ jobs:
     with:
       os: '["macos-latest", "windows-latest"]'
 
+  # No build cache: the setup action's cache paths are Linux's, and a cold
+  # build once a day costs minutes nobody waits for.
+  full-suite:
+    name: Full suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lang/go/go.mod
+          cache: false
+      - run: scripts/ci-steps.sh full-suite
+
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-name: race-modules
+      - run: scripts/ci-steps.sh race-modules
+
+  # Every row of every generated file (SPECGEN_FULL), in six parallel
+  # slices: one runner takes longer than a job may (the exhaustive run is
+  # 15 minutes on ten cores). Each slice verifies every sixth row, and the
+  # six together every row exactly once (SPECGEN_SHARD, syntax_matrix_test.go).
+  syntax-matrix:
+    name: Syntax matrix (${{ matrix.shard }}/6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      SPECGEN_SHARD: ${{ matrix.shard }}/6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-name: syntax-matrix
+      - run: scripts/ci-steps.sh syntax-matrix
+
+  typescript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          node: 'true'
+      - run: scripts/ci-steps.sh ts-suites
+
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -81,7 +151,7 @@ jobs:
   # Issues speak for main only: a run on a branch (the dispatch above) is
   # that branch's own business, and its report is in its summary.
   report:
-    needs: [platform-regressions, fuzz]
+    needs: [platform-regressions, full-suite, fuzz, race, syntax-matrix, typescript]
     if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
