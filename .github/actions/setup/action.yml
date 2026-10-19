@@ -60,8 +60,14 @@ runs:
         restore-keys: go-mod-${{ runner.os }}-
 
     # The build cache is per JOB and keyed per RUN: a job compiles its own
-    # packages, so it restores the entry it saved last (the first
-    # restore-key), or any job's on its first run; the run id tails the key
+    # packages, so it restores the entry it saved last (its one
+    # restore-key) — never another job's. A catch-all `go-build-<os>-` key
+    # used to follow it, and actions/cache tries EVERY key in the pull
+    # request's own scope before any in main's: on a PR's first run, a job
+    # starting after another had saved took that job's cache over main's
+    # matching one (the langspec shards got the race job's; `checks` got a
+    # shard's and linted cold, 72 s against 5 s). A new job now starts
+    # cold once instead. The run id tails the key
     # so the exact key never hits and every green job saves its fresh
     # state (actions/cache saves only on an exact-key miss, and only when
     # the job reaches its post step, so a red job seeds nothing). Measured
@@ -80,9 +86,7 @@ runs:
           ~/.cache/go-build
           ~/.cache/golangci-lint
         key: go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-${{ github.run_id }}
-        restore-keys: |
-          go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-
-          go-build-${{ runner.os }}-
+        restore-keys: go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-
 
     - uses: actions/setup-node@v4
       if: inputs.node == 'true'
