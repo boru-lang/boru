@@ -34,11 +34,20 @@
 #                        local form; CI renders the same table from the
 #                        shards (gate-table) and has no such job
 #   all                  the whole sequence, as `make ci-local`
+#
+# The daily build's steps (.github/workflows/daily.yml), too long for a PR:
+#   race-modules         make test-race: every RACE_MODULES package under -race
+#   syntax-matrix        make spec-test with SPECGEN_FULL=1: every row of
+#                        every generated syntax-matrix file
+#   ts-suites            the TypeScript twins no PR runs (core, basic, the
+#                        engine port) and the cross-engine differential
+#   full-suite           every module's tests on this host, langspec too —
+#                        plain go test, as the Windows runner has no make
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 step=${1:-}
-[ -n "$step" ] || { sed -n '2,36p' "$0"; exit 2; }
+[ -n "$step" ] || { sed -n '2,45p' "$0"; exit 2; }
 shift || true
 
 run() { echo "==> [ci] $*"; "$@"; }
@@ -93,6 +102,27 @@ case "$step" in
   wasm)             run make -C wpg wasm ;;
   vuln)            run make vuln || echo "==> [ci] vuln is advisory (see STATIC_ANALYSIS_REPORT.md); continuing" ;;
   direction-gates)  run make test-direction || echo "==> [ci] the direction lane is red by design until the debt is paid; its table is the output" ;;
+  race-modules)     run make test-race ;;
+  syntax-matrix)    SPECGEN_FULL=1 run make spec-test ;;
+  ts-suites)
+    # The packages link each other with file: dependencies that resolve
+    # through dist/, so install all four, then build parser/ts — its
+    # prebuild builds core/ts first. Every suite runs whatever an earlier
+    # one did; the step fails if any did. BORU_CROSSDIFF_REQUIRED turns the
+    # differential's skip (no TS engine) into a failure: here it must run.
+    for d in core/ts parser/ts basic/ts eng/ts; do run npm ci --prefix "$d" --no-audit --no-fund; done
+    ( cd parser/ts && run npm run build )
+    rc=0
+    for t in test-ts-core test-ts-basic test-ts; do run make "$t" || rc=1; done
+    BORU_CROSSDIFF_REQUIRED=1 run make crossdiff || rc=1
+    exit $rc ;;
+  full-suite)
+    rc=0
+    for m in $(sed -n 's/^MODULES := //p' Makefile); do
+      echo "==> [ci] go test $m"
+      ( cd "$m" && go test -timeout 40m ./... ) || rc=1
+    done
+    exit $rc ;;
   all)
     for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates wasm vuln; do
       "$0" "$s"
