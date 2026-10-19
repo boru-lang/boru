@@ -30,6 +30,8 @@ import {
   TAny,
   TAtom,
   TBoolean,
+  TFnUndef,
+  TFunction,
   TInteger,
   TNever,
   TNone,
@@ -1091,7 +1093,13 @@ function registerSpecWords(r: Registry): void {
           if (value.data instanceof ClassTypeInfo && value.data.name === '') {
             value.data.name = name
           }
-          registry.pushDef(name, value)
+          // A capitalised name DECLARES A TYPE (Go's InstallType; the Stage 2
+          // flip, design/legacy/TYPE-REPRESENTATION.1.ignore §6): a body that
+          // mints a node — a scalar singleton, a list, a record or map shape,
+          // a typed carrier, an enum or other disjunct — binds as a named
+          // type that renders by the name and `is Type`. mintsNamedType says
+          // which bodies adopt instead.
+          registry.pushDef(name, /^[A-Z]/.test(name) && mintsNamedType(value) ? value.named(name) : value)
           return []
         },
       },
@@ -1526,6 +1534,21 @@ function registerSpecWords(r: Registry): void {
   r.pushDef('pi', newInteger(3n))
   r.pushDef('tau', newInteger(6n))
   r.pushDef('greeting', newString('hello'))
+}
+
+// mintsNamedType reports whether binding v under a capitalised name MINTS a
+// named type rather than adopting one. An alias adopts the node it names and
+// keeps rendering as it: a bare type literal (`def Foo Integer`), or a value
+// already named (`def Hue Color`). A class type is stamped with the name by
+// its own arm, and a function is not a type here (Go refuses one unless it is
+// a declared predicate). Everything else a capitalised name binds — `def N 5`,
+// `def P [Integer Integer]`, `def R { x:Integer }`, `def Ints [:Integer]`,
+// `def Color (enum […])` — is a declared type in its own right.
+function mintsNamedType(v: Value): boolean {
+  if (v.typeName !== undefined || v.isTypeLiteral()) return false
+  if (v.data instanceof ClassTypeInfo || v.isFnDef()) return false
+  if (v.vType.matches(TFunction) || v.vType.matches(TFnUndef)) return false
+  return true
 }
 
 // ── Tokenizer ─────────────────────────────────────────────────────────────

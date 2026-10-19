@@ -206,6 +206,8 @@ export function canon(stack: Value[]): string {
 
 /** canonValue renders one value as canonical boru source. */
 export function canonValue(v: Value): string {
+  // A named type renders as its name (Value.typeName) — `canon M` is M.
+  if (v.typeName !== undefined) return v.typeName;
   // The `none` value renders lowercase; a bare type literal (including
   // the `None` type) renders as its user-facing leaf name.
   if (v.isNone()) return "none";
@@ -464,7 +466,8 @@ function endsWithCapitalisedToken(p: string): boolean {
 // ungrouped by canonValue — it re-parses as-is and is a comparison ordering
 // key. Mirrors eng/go/canon.go::canonChild.
 function canonChild(v: Value): string {
-  return v.isDisjunct() ? `(${canonValue(v)})` : canonValue(v);
+  // A named disjunct renders as its bare name, which needs no group.
+  return v.isDisjunct() && v.typeName === undefined ? `(${canonValue(v)})` : canonValue(v);
 }
 
 // canonTypeTag renders a container's element-type tag in SOURCE form. The

@@ -161,6 +161,18 @@ export class Value {
    * end of run. Mirrors Go Value.Undefined.
    */
   undefined: boolean;
+  /**
+   * The name a capitalised `def` bound this value under, when that binding
+   * declares a NAMED TYPE — an enum or other disjunct, a record shape, a
+   * singleton. It ports Go's Stage 2 flip (design/legacy/
+   * TYPE-REPRESENTATION.1.ignore §6): "the name denotes its minted node and
+   * renders as the name". The payload is untouched, so membership (`is`,
+   * dispatch) reads the same structure it always did; the render (toString,
+   * canon) and the value's standing as a TYPE (`N is Type`) follow the name.
+   * An alias (`def Foo Integer`) adopts the node it names and never carries
+   * one.
+   */
+  typeName?: string;
 
   constructor(
     vType: BoruType,
@@ -180,6 +192,24 @@ export class Value {
     this.dynamic = opts?.dynamic ?? false;
     this.undefined = false;
     this.pos = { row: 0, col: 0, src: "" };
+  }
+
+  /**
+   * A copy of this value declared as the named type `name` (see typeName).
+   * It never auto-evaluates: a named type is a finished TYPE value — Go
+   * pushes its minted node — so a parser-built map or list body must not be
+   * re-run (and rebuilt without its name) each time the name is pushed.
+   */
+  named(name: string): Value {
+    const v = new Value(this.vType, this.data, {
+      eval: false,
+      quoted: this.quoted,
+      carrier: this.carrier,
+      dynamic: this.dynamic,
+    });
+    v.pos = this.pos;
+    v.typeName = name;
+    return v;
   }
 
   /** True iff this Value is the unique `none` value (None's sole inhabitant). */
@@ -389,6 +419,8 @@ export class Value {
    * structural spelling, paren-exprs as paren([...]).
    */
   toString(): string {
+    // A named type renders as its name (typeName), never its body.
+    if (this.typeName !== undefined) return this.typeName;
     if (this.isNone()) return "none";
     if (this.data === null) {
       // A bare TYPE LITERAL renders by its LEAF name — `Integer`, not
