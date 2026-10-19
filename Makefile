@@ -151,10 +151,10 @@ test-modules:
 test-module:
 	@test -n "$(M)" || { echo "usage: make test-module M=<dir> [ONLY=root|rest]"; exit 2; }
 	@echo "==> test $(M) $(ONLY)"
-	@cd $(M) && case "$(ONLY)" in \
-	  root) go test -timeout 35m . ;; \
-	  rest) go test -timeout 35m $$(go list ./... | grep -v "^$$(go list .)$$") ;; \
-	  *) if [ "$(M)" = "test/go" ]; then go test -timeout 35m $$(go list ./... | grep -v '/langspec$$'); else go test -timeout 35m ./...; fi ;; \
+	@$(if $(COVER),mkdir -p $(COVER_CI_DIR) &&) cd $(M) && case "$(ONLY)" in \
+	  root) go test -timeout 35m $(call cover_ci_flags,$(subst /,_,$(M)).root) . ;; \
+	  rest) go test -timeout 35m $(call cover_ci_flags,$(subst /,_,$(M)).rest) $$(go list ./... | grep -v "^$$(go list .)$$") ;; \
+	  *) if [ "$(M)" = "test/go" ]; then go test -timeout 35m $(call cover_ci_flags,$(subst /,_,$(M))) $$(go list ./... | grep -v '/langspec$$'); else go test -timeout 35m $(call cover_ci_flags,$(subst /,_,$(M))) ./...; fi ;; \
 	esac
 
 test-langspec:
@@ -162,7 +162,7 @@ test-langspec:
 	@re="^($$(awk -F'\t' -v s='$(SHARD)' '!/^#/ && $$1==s {printf "%s%s", sep, $$2; sep="|"}' $(LANGSPEC_DIR)/shards.tsv))$$"; \
 	  [ "$$re" != '^()$$' ] || { echo "no tests in shard $(SHARD)"; exit 2; }; \
 	  echo "==> test-langspec shard $(SHARD): $$re"; \
-	  cd test/go && go test -timeout 35m ./langspec/ -run "$$re"
+	  $(if $(COVER),mkdir -p $(COVER_CI_DIR) &&) cd test/go && go test -timeout 35m $(call cover_ci_flags,test_go.langspec-$(SHARD)) ./langspec/ -run "$$re"
 
 test-direction:
 	@rm -f $(LANGSPEC_DIR)/GATE_STATUS.md
@@ -687,6 +687,24 @@ cover-check:
 	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_XOUTS)) \
 	  || { echo "==> [cover-check] FAILED — below the $(GATE_FLOOR)% floor (see the uncovered count above)"; exit 1; }
 	@echo "==> [cover-check] PASS"
+
+# COVER=1 makes CI's test jobs the merged gate's profile run: test-module and
+# test-langspec add cover-profile's flags and write one profile per call to
+# $(COVER_CI_DIR) — <module>[.root|.rest].xout, test_go.langspec-<n>.xout —
+# and cover-check-ci merges whatever profiles are there. Together the jobs
+# run every test cover-profile runs (the langspec shards partition the
+# corpus: TestLangspecShardsPartition), so the verdict is the merged gate's,
+# on every pull request. A profile that never arrives can only LOWER the
+# merged coverage, so a lost job fails the check; it cannot pass it.
+.PHONY: cover-check-ci
+COVER_CI_DIR = $(abspath $(COVER_DIR))/ci
+cover_ci_flags = $(if $(COVER),-coverpkg=$(GATE_PKGS) -coverprofile=$(COVER_CI_DIR)/$(1).xout)
+cover-check-ci:
+	@ls $(COVER_CI_DIR)/*.xout > /dev/null 2>&1 || { echo "==> [cover-check-ci] no profiles in $(COVER_CI_DIR)"; exit 1; }
+	@echo "==> [cover-check-ci] merging $$(ls $(COVER_CI_DIR)/*.xout | wc -l | tr -d ' ') profiles against floor $(GATE_FLOOR)%"
+	@cd test/go && go run ./covergate -threshold $(GATE_FLOOR) -root $(CURDIR) $(COVER_CI_DIR)/*.xout \
+	  || { echo "==> [cover-check-ci] FAILED — below the $(GATE_FLOOR)% floor (see the uncovered count above)"; exit 1; }
+	@echo "==> [cover-check-ci] PASS"
 
 # cover-gate announces each STAGE's start and finish on its own line, so a
 # CI log or a scrollback tells you which stage you are in — and, on a

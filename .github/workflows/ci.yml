@@ -16,6 +16,9 @@ name: CI
 #     need installed, the race gate alone;
 #   - the setup is per job: the composite action installs Node, the lint
 #     or vuln tool, or builds the CLI only for the job that asks;
+#   - the test jobs ARE the merged ADR-008 coverage run: under COVER=1
+#     each writes its profile, and the coverage job merges them against the
+#     100% floor, so a statement left uncovered fails the PR that left it;
 #   - the build caches are one generation deep: every green job saves a
 #     fresh entry, and cache-cleanup.yml deletes the entries each run
 #     superseded, so the 10 GB store never evicts main's warm ones;
@@ -88,10 +91,18 @@ jobs:
   # non-corpus packages.
   test-core:
     runs-on: ubuntu-latest
+    env:
+      COVER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: scripts/ci-steps.sh test-modules-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cover-test-core
+          path: coverage/ci/*.xout
+          if-no-files-found: error
+          retention-days: 3
 
   test-lang:
     runs-on: ubuntu-latest
@@ -99,20 +110,36 @@ jobs:
       fail-fast: false
       matrix:
         part: [root, rest]
+    env:
+      COVER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
           cache-name: test-lang-${{ matrix.part }}
       - run: scripts/ci-steps.sh test-module lang/go ${{ matrix.part }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cover-test-lang-${{ matrix.part }}
+          path: coverage/ci/*.xout
+          if-no-files-found: error
+          retention-days: 3
 
   test-cmd:
     runs-on: ubuntu-latest
+    env:
+      COVER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: scripts/ci-steps.sh test-module cmd/go
       - run: scripts/ci-steps.sh test-module test/go
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cover-test-cmd
+          path: coverage/ci/*.xout
+          if-no-files-found: error
+          retention-days: 3
 
   # The langspec corpus, sharded by test name (test/go/langspec/shards.tsv;
   # TestLangspecShardsPartition keeps the file complete and disjoint). Keep
@@ -129,6 +156,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     env:
       BORU_GATE_SUMMARY: ${{ github.workspace }}/gate-status-${{ matrix.shard }}.md
+      COVER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -146,6 +174,12 @@ jobs:
           path: gate-status-${{ matrix.shard }}.md
           if-no-files-found: ignore
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cover-test-langspec-${{ matrix.shard }}
+          path: coverage/ci/*.xout
+          if-no-files-found: error
+          retention-days: 3
 
   # The gate table: the direction lane's deliverable, rendered from the
   # shards' rows into this run's summary. Never fails; an open row is the
@@ -163,6 +197,25 @@ jobs:
           path: gate-status
       - name: Gate table
         run: scripts/ci-steps.sh gate-table gate-status/*.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The merged ADR-008 gate on every pull request: the test jobs above run
+  # under COVER=1 and upload their profiles, and this merges them against
+  # the 100% floor (Makefile cover-check-ci). Profiling rides on runs the
+  # PR makes anyway, so the gate costs this one short job rather than a
+  # second pass over the suites. cover-gate.yml re-profiles every module
+  # from scratch nightly, as the backstop.
+  coverage:
+    needs: [test-core, test-lang, test-cmd, test-langspec]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cover-*
+          merge-multiple: true
+          path: coverage/ci
+      - run: scripts/ci-steps.sh cover-check-ci
 
   # The parser parity (the TypeScript parser against the Go one) is the
   # one job that needs Node.
@@ -183,10 +236,9 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           tools: vuln
-      # core/go profiled by ITS OWN suite alone, floor 100. The merged
-      # ADR-008 gate (make cover-gate) lives in cover-gate.yml (nightly and
-      # workflow_dispatch) because re-profiling every module would dominate
-      # every PR.
+      # core/go profiled by ITS OWN suite alone, floor 100 — the standalone
+      # gate. The merged ADR-008 gate is the coverage job, from the test
+      # jobs' own profiles; cover-gate.yml re-profiles nightly as backstop.
       - run: scripts/ci-steps.sh cover-gate-core
       - run: scripts/ci-steps.sh wasm
       # Advisory: govulncheck flags standard-library vulns fixed in newer
