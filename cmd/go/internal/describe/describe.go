@@ -68,11 +68,10 @@ func Run(args []string, w io.Writer) int {
 	// A colon marks a module reference: "boru:type-util" or, with a word,
 	// "boru:type-util:foo" / "type-util:foo". No built-in word carries a colon,
 	// so this is unambiguous and takes precedence over every bare-name form.
-	// A Windows volume's colon is part of the path, not a marker: only a colon
-	// after it counts, so `C:\proj\lib.boru` loads a file like any other path
-	// while `C:\proj\lib.boru:twice` names a word in it (VolumeName is empty
-	// off Windows).
-	if vol := filepath.VolumeName(name); strings.Contains(name[len(vol):], ":") {
+	// An absolute Windows path's volume colon is part of the path, not a
+	// marker: only a colon after it counts, so `C:\proj\lib.boru` loads a file
+	// like any other path while `C:\proj\lib.boru:twice` names a word in it.
+	if strings.Contains(name[pathVolume(name):], ":") {
 		return describeModulePath(w, name)
 	}
 
@@ -180,9 +179,9 @@ func splitModulePath(name string) (modRef, word string) {
 	hadBoru := strings.HasPrefix(name, "boru:")
 	rest := strings.TrimPrefix(name, "boru:")
 	short := rest
-	// The word separator is the first colon after any Windows volume
+	// The word separator is the first colon after an absolute path's volume
 	// (`C:\proj\lib.boru:twice`); the volume's own colon is part of the path.
-	vol := len(filepath.VolumeName(rest))
+	vol := pathVolume(rest)
 	if i := strings.IndexByte(rest[vol:], ':'); i >= 0 {
 		short, word = rest[:vol+i], rest[vol+i+1:]
 	}
@@ -190,6 +189,19 @@ func splitModulePath(name string) (modRef, word string) {
 		return "boru:" + short, word
 	}
 	return short, word
+}
+
+// pathVolume is the length of name's volume when name is an absolute path —
+// on Windows `C:\proj\lib.boru`, whose colon belongs to the path rather than
+// marking a module reference — and 0 otherwise. Absolute, not merely
+// volume-prefixed: a one-letter module's reference `m:word` would otherwise
+// read as the drive-relative path `m:` + `word`. Off Windows a volume is
+// always empty.
+func pathVolume(name string) int {
+	if filepath.IsAbs(name) {
+		return len(filepath.VolumeName(name))
+	}
+	return 0
 }
 
 // resolveModule resolves a module reference to its descriptor, using the

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -344,6 +345,12 @@ func TestUtilsPrintenvSeesTheProcessEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	bin := buildUtil(t, dir, "printenv")
 	env := []string{"BORU_E2E_ONE=first", "BORU_E2E_TWO=second"}
+	if runtime.GOOS == "windows" {
+		// os/exec adds SYSTEMROOT to a Windows child's environment (much of
+		// Windows cannot start without it) unless the environment already
+		// carries it: pass it, so the listing is still exactly what we gave.
+		env = append(env, "SYSTEMROOT="+os.Getenv("SYSTEMROOT"))
+	}
 
 	t.Run("a named variable is printed", func(t *testing.T) {
 		got := runUtil(t, bin, "", env, "BORU_E2E_ONE")

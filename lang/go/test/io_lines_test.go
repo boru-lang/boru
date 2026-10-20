@@ -322,7 +322,8 @@ def f (IO.open (make Pathon "` + path + `"))
 def one (IO.read-line f)
 IO.seek f 0 drop
 def two (IO.read-line f)
-[one two]`)
+IO.close f
+[one two]`) // closed: Windows cannot remove the temp dir under an open file
 	if err != nil {
 		t.Fatal(err)
 	}
