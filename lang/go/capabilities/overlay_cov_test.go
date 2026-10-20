@@ -289,6 +289,7 @@ func TestOverlayChtimesCopyUpPreservesStamp(t *testing.T) {
 }
 
 func TestOverlayCopyUpTreeErrorArms(t *testing.T) {
+	skipWithoutUnixMetadata(t, "mode-enforced access")
 	// The tree-walk's per-child Stat failure propagates.
 	lower := &overlayFailOps{MemFileOps: NewMem(), failStatPath: "d/bad.txt"}
 	if err := lower.MemFileOps.WriteFile("d/bad.txt", []byte("x"), 0o644); err != nil {

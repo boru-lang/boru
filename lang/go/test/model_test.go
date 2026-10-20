@@ -72,7 +72,7 @@ func TestModelFilePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	file := filepath.Join(dir, "model.jsonic")
 	if werr := os.WriteFile(file, []byte("svc: name: 'orders'"), 0o600); werr != nil {
 		t.Fatalf("write model: %v", werr)
@@ -95,7 +95,7 @@ func TestModelMemFS(t *testing.T) {
 		t.Fatalf("lang.New: %v", err)
 	}
 	mem := capabilities.NewMem()
-	mem.Files["/proj/model.jsonic"] = []byte("svc: name: 'orders'\nsvc: port: 8080")
+	mem.Files[filepath.FromSlash("/proj/model.jsonic")] = []byte("svc: name: 'orders'\nsvc: port: 8080")
 	a.SetFileOps(mem)
 
 	prog := modelImp + `def m (Model.new {path:'/proj/model.jsonic', base:'/proj'}) (Model.run m) get 'ok'`
@@ -133,7 +133,7 @@ func TestModelWatchForkNoRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	src := filepath.Join(dir, "m.jsonic")
 	if err := os.WriteFile(src, []byte("n: 1"), 0o600); err != nil {
 		t.Fatalf("write src: %v", err)

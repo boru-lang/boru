@@ -150,7 +150,7 @@ func checkAndRun(t *testing.T, src string) (checkOut, runOut string) {
 // for real still writes, so the modelling is scoped to the check pass and not
 // a blanket disable.
 func TestCheckModelsModuleBodyFileWrites(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	target := filepath.Join(dir, "written.txt")
 	mod := writeModule(t, dir, "m.boru", `
 import "boru:io" end
@@ -192,7 +192,7 @@ M.v`
 // bodies that work at runtime. Nothing reaches the real filesystem either
 // way.
 func TestCheckModelledWriteIsReadableInSameBody(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	target := filepath.Join(dir, "roundtrip.txt")
 	mod := writeModule(t, dir, "m.boru", `
 import "boru:io" end
@@ -232,7 +232,7 @@ M.v`
 // mode that hid or denied reads would make check report an error for a program
 // that runs fine. Reads fall through to the real filesystem.
 func TestCheckModelledBodyStillReadsRealFiles(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	cfg := writeModule(t, dir, "cfg.txt", "real-config")
 	mod := writeModule(t, dir, "m.boru", `
 import "boru:io" end
@@ -283,7 +283,7 @@ M.v`)
 // it. Without the transitive half, one level of nesting would restore the
 // original defect — and nesting is the common shape (a facade module).
 func TestModelledEffectsPropagateThroughNestedImports(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	target := filepath.Join(dir, "nested.txt")
 	inner := writeModule(t, dir, "inner.boru", `
 import "boru:io" end
@@ -315,7 +315,7 @@ Outer.v`
 // effects because it once served a check pass would silently swallow a user's
 // output — so the flag must be per-sub-registry, not sticky.
 func TestModellingDoesNotLeakOutsideCheck(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	target := filepath.Join(dir, "toplevel.txt")
 	src := `import "boru:io" end
 IO.write (make Pathon '` + target + `') 'top level' drop`

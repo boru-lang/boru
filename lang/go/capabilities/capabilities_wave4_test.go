@@ -59,7 +59,7 @@ func TestWave4MemMkdirAll(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	for _, d := range []string{"/a/b/c", "/a/b", "/a"} {
-		if !m.Dirs[d] {
+		if !m.Dirs[filepath.FromSlash(d)] {
 			t.Errorf("dir %s not recorded: %v", d, m.Dirs)
 		}
 	}
@@ -68,7 +68,7 @@ func TestWave4MemMkdirAll(t *testing.T) {
 	}
 	// A relative path resolves against the simulated working directory.
 	m.Cwd = "/wd"
-	if err := m.MkdirAll("rel", 0o755); err != nil || !m.Dirs["/wd/rel"] {
+	if err := m.MkdirAll("rel", 0o755); err != nil || !m.Dirs[filepath.FromSlash("/wd/rel")] {
 		t.Errorf("relative MkdirAll = %v, dirs %v", err, m.Dirs)
 	}
 }

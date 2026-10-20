@@ -84,7 +84,7 @@ func (o *OverlayFileOps) deref(path string) (string, error) {
 			return path, nil // absent or concrete: the caller owns the outcome
 		}
 		t := fi.Target
-		if !filepath.IsAbs(t) {
+		if !isAbsPath(t) {
 			t = filepath.Join(filepath.Dir(path), t)
 		}
 		path = filepath.Clean(t)

@@ -308,7 +308,7 @@ IO.read-line (IO.stdin)`)
 // `IO.seek f 0` served the NEXT buffered line instead of re-reading from the
 // start — the handle's cursor and the buffer disagreed silently.
 func TestReadLineSeekDropsBuffer(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
 	path := filepath.Join(dir, "seek.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
 		t.Fatal(err)

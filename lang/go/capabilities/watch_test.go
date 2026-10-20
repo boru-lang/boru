@@ -61,13 +61,13 @@ func TestMemWatchEvents(t *testing.T) {
 	if err := m.WriteFile("d/f.txt", []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/f.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/f.txt") {
 		t.Errorf("create event = %+v", ev)
 	}
 	if err := m.WriteFile("d/f.txt", []byte("y"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "write" || ev.Path != "d/f.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "write" || ev.Path != filepath.FromSlash("d/f.txt") {
 		t.Errorf("write event = %+v", ev)
 	}
 	if err := m.Truncate("d/f.txt", 0); err != nil {
@@ -92,29 +92,29 @@ func TestMemWatchEvents(t *testing.T) {
 	if err := m.Rename("d/f.txt", "d/g.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "rename" || ev.Path != "d/f.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "rename" || ev.Path != filepath.FromSlash("d/f.txt") {
 		t.Errorf("rename event = %+v", ev)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/g.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/g.txt") {
 		t.Errorf("rename-create event = %+v", ev)
 	}
 	// Symlink and hard-link creations are events too.
 	if err := m.Symlink("g.txt", "d/sl"); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/sl" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/sl") {
 		t.Errorf("symlink event = %+v", ev)
 	}
 	if err := m.Link("d/g.txt", "d/hl"); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/hl" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/hl") {
 		t.Errorf("hard-link event = %+v", ev)
 	}
 	if err := m.Remove("d/g.txt", false); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "remove" || ev.Path != "d/g.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "remove" || ev.Path != filepath.FromSlash("d/g.txt") {
 		t.Errorf("remove event = %+v", ev)
 	}
 	// A mutation OUTSIDE the watched dir is not delivered (non-recursive).
@@ -124,7 +124,7 @@ func TestMemWatchEvents(t *testing.T) {
 	if err := m.MkdirAll("d/sub", 0o755); err != nil { // this one IS a child
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/sub" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/sub") {
 		t.Errorf("expected the child mkdir next (outside write skipped), got %+v", ev)
 	}
 	if err := m.WriteFile("d/sub/deep.txt", []byte("q"), 0o644); err != nil {
@@ -435,7 +435,7 @@ func TestMemWatchRecursive(t *testing.T) {
 	if err := m.WriteFile("d/sub/deep.txt", []byte("q"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/sub/deep.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/sub/deep.txt") {
 		t.Errorf("recursive grandchild = %+v", ev)
 	}
 	// A prefix-sharing sibling ("dd.txt" is not under "d/") is skipped, so
@@ -446,7 +446,7 @@ func TestMemWatchRecursive(t *testing.T) {
 	if err := m.WriteFile("d/top.txt", []byte("t"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != "d/top.txt" {
+	if ev := recvEvent(t, ch); ev.Op != "create" || ev.Path != filepath.FromSlash("d/top.txt") {
 		t.Errorf("expected d/top.txt (sibling dd.txt skipped), got %+v", ev)
 	}
 }

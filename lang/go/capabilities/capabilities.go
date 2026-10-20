@@ -304,7 +304,9 @@ func (o *OSFileOps) ResolvePath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, path), nil
+	// joinWorkingDir is Windows-aware: a drive-rooted path (`\tmp\x`) names
+	// the root of the working directory's drive, not a directory under it.
+	return joinWorkingDir(wd, path), nil
 }
 
 // osFileInfo projects an os.FileInfo onto the host-agnostic FileInfo.
@@ -737,7 +739,7 @@ func (m *MemFileOps) resolveSteps(resolved string, followTrailing bool, depth *i
 				return "", &os.PathError{Op: "open", Path: orig, Err: errMemTooManyLinks}
 			}
 			t := meta.Target
-			if !filepath.IsAbs(t) {
+			if !isAbsPath(t) {
 				t = filepath.Join(filepath.Dir(p), t)
 			}
 			rp, err := m.resolveSteps(filepath.Clean(t), true, depth, orig)
@@ -1572,7 +1574,9 @@ func (m *MemFileOps) Statfs(path string) (FsInfo, error) {
 }
 
 func (m *MemFileOps) ResolvePath(path string) (string, error) {
-	if filepath.IsAbs(path) {
+	// isAbsPath, not filepath.IsAbs: on Windows a rooted path (`/tmp/x`) is
+	// absolute in the model, which has no current drive to be relative to.
+	if isAbsPath(path) {
 		return filepath.Clean(path), nil
 	}
 	base := m.Cwd
