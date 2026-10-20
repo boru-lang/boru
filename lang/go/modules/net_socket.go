@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -803,17 +804,26 @@ func addrHandler(args []native.Value, _ map[string]native.Value, _ []native.Valu
 	if !ok {
 		return nil, r.BoruError("net_error", "addr: expected a Listener, got "+args[0].Parent().String(), "addr")
 	}
-	m := native.NewOrderedMap()
-	host, portStr, err := net.SplitHostPort(nl.ln.Addr().String())
-	if err != nil {
-		m.Set("host", native.NewString(nl.ln.Addr().String()))
-		m.Set("port", native.NewInteger(0))
-	} else {
-		port, _ := strconv.Atoi(portStr)
-		m.Set("host", native.NewString(host))
-		m.Set("port", native.NewInteger(int64(port)))
+	return []native.Value{addrMap(nl.ln.Addr())}, nil
+}
+
+// addrMap renders a listener's or a peer's address as {host port}. A
+// Unix-domain address is a PATH, never host:port: off Windows SplitHostPort
+// fails on it and the whole path became the host, but a Windows path holds a
+// drive colon (`C:\…\s.sock`), which it split into host "C". So a unix
+// network is never split, on any host.
+func addrMap(a net.Addr) native.Value {
+	host, port := a.String(), 0
+	if !strings.HasPrefix(a.Network(), "unix") {
+		if h, p, err := net.SplitHostPort(host); err == nil {
+			host = h
+			port, _ = strconv.Atoi(p)
+		}
 	}
-	return []native.Value{native.NewMap(m)}, nil
+	m := native.NewOrderedMap()
+	m.Set("host", native.NewString(host))
+	m.Set("port", native.NewInteger(int64(port)))
+	return native.NewMap(m)
 }
 
 func peerHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
@@ -821,18 +831,7 @@ func peerHandler(args []native.Value, _ map[string]native.Value, _ []native.Valu
 	if !ok {
 		return nil, r.BoruError("net_error", "peer: expected a Socket, got "+args[0].Parent().String(), "peer")
 	}
-	m := native.NewOrderedMap()
-	addr := sc.conn.RemoteAddr()
-	host, portStr, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		m.Set("host", native.NewString(addr.String()))
-		m.Set("port", native.NewInteger(0))
-	} else {
-		port, _ := strconv.Atoi(portStr)
-		m.Set("host", native.NewString(host))
-		m.Set("port", native.NewInteger(int64(port)))
-	}
-	return []native.Value{native.NewMap(m)}, nil
+	return []native.Value{addrMap(sc.conn.RemoteAddr())}, nil
 }
 
 // peerCertHandler — `peer-cert <Socket>`: the verified peer certificate

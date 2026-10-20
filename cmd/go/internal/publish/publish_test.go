@@ -99,7 +99,8 @@ func TestRunPublishFromVault(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("BORU_HOME", "") // force the vault to resolve home from HOME
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
+	t.Setenv("BORU_HOME", "")     // force the vault to resolve home from HOME
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")
 	t.Setenv("BORU_VAULT_PASSPHRASE", "vpw")

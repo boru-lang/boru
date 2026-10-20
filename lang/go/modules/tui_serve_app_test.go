@@ -3,6 +3,7 @@ package modules
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestTuiServeGraduatedTodoApp(t *testing.T) {
 		t.Fatalf("read the graduated app: %v", err)
 	}
 	mem := capabilities.NewMem()
-	mem.Files["/apps/todo-tui.boru"] = src
+	mem.Files[filepath.FromSlash("/apps/todo-tui.boru")] = src
 
 	oldBound := tuiServeBound
 	t.Cleanup(func() { tuiServeBound = oldBound })

@@ -755,7 +755,7 @@ func TestLaunchModuleFnDescent(t *testing.T) {
 	}
 	main := filepath.Join(dir, "main.boru")
 	if err := os.WriteFile(main,
-		[]byte("import \""+lib+"\"\nLib.twice 21\n"), 0o600); err != nil {
+		[]byte("import \""+filepath.ToSlash(lib)+"\"\nLib.twice 21\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	stdin := "break add\nc\nbt\nlist\np (Lib.twice 3)\nc\nc\nc\n"

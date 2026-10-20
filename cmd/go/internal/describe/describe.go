@@ -16,6 +16,7 @@ package describe
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -66,8 +67,10 @@ func Run(args []string, w io.Writer) int {
 
 	// A colon marks a module reference: "boru:type-util" or, with a word,
 	// "boru:type-util:foo" / "type-util:foo". No built-in word carries a colon,
-	// so this is unambiguous and takes precedence over every bare-name form.
-	if strings.Contains(name, ":") {
+	// so this is unambiguous and takes precedence over every bare-name form —
+	// except a Windows volume's colon (`C:\proj\lib.boru`), which names a file
+	// to load like any other path (VolumeName is empty off Windows).
+	if strings.Contains(name, ":") && filepath.VolumeName(name) == "" {
 		return describeModulePath(w, name)
 	}
 

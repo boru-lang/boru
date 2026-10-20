@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,6 +31,9 @@ func docRoot() string { return filepath.Join("..", "..", "..") }
 func buildBoru(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "boru")
+	if runtime.GOOS == "windows" {
+		bin += ".exe" // Windows runs a program only by its extension
+	}
 	cmd := exec.Command("go", "build", "-o", bin, "./boru")
 	cmd.Dir = filepath.Join(docRoot(), "cmd", "go")
 	if out, err := cmd.CombinedOutput(); err != nil {

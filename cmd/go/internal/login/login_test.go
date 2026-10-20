@@ -65,6 +65,7 @@ func TestRunLoginVault(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")

@@ -103,7 +103,7 @@ func TestModelMemFS(t *testing.T) {
 		t.Fatalf("mem-fs run ok: got %v, want true", got)
 	}
 	// The model writer wrote the unified model to /proj/model.json in the mem FS.
-	out, ok := mem.Files["/proj/model.json"]
+	out, ok := mem.Files[filepath.FromSlash("/proj/model.json")]
 	if !ok {
 		t.Fatalf("expected /proj/model.json written to the in-memory FS; files: %v", keysOf(mem.Files))
 	}

@@ -42,7 +42,8 @@ func TestFmtByExtension(t *testing.T) {
 // "~/x.boru" relative to the working directory.
 func TestFmtPositionalTildeExpanded(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home) // os.UserHomeDir honors $HOME on Unix.
+	t.Setenv("HOME", home)        // os.UserHomeDir honors $HOME on Unix.
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	src := filepath.Join(home, "x.boru")
 	if err := os.WriteFile(src, []byte("foo:1\n"), 0644); err != nil {
 		t.Fatal(err)

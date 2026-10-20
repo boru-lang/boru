@@ -59,6 +59,7 @@ func TestW4PublishBadFlag(t *testing.T) {
 
 func TestW4PublishHomeDirError(t *testing.T) {
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "") // os.UserHomeDir reads USERPROFILE on Windows
 	var out, errOut bytes.Buffer
 	if code := Run(nil, strings.NewReader(""), &out, &errOut); code != 1 {
 		t.Fatalf("Run = %d, want 1", code)
@@ -68,6 +69,7 @@ func TestW4PublishHomeDirError(t *testing.T) {
 func TestW4PublishEmptyToken(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: \nregistry: http://localhost:9\n")
 
 	var out, errOut bytes.Buffer
@@ -83,6 +85,7 @@ func TestW4PublishEmptyToken(t *testing.T) {
 func TestW4PublishVaultReadError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")
@@ -104,6 +107,7 @@ func TestW4PublishVaultAliasFlagOverrides(t *testing.T) {
 	// plain token; a missing vault makes it fail.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")
@@ -124,6 +128,7 @@ func TestW4PublishVaultFlagDefaultAlias(t *testing.T) {
 	// --vault with no stored alias falls back to the default alias.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")
@@ -143,6 +148,7 @@ func TestW4PublishVaultFlagDefaultAlias(t *testing.T) {
 func TestW4PublishPackFails(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: http://localhost:9\n")
 
 	empty := t.TempDir() // no boru.jsonic → pack fails
@@ -159,6 +165,7 @@ func TestW4PublishPackFails(t *testing.T) {
 func TestW4PublishBadRegistryURL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: \n")
 
 	dir := writePublishableModule(t)
@@ -174,6 +181,7 @@ func TestW4PublishConnectionError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	// No registry in user.jsonic and no -r flag → default localhost:8080
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	// fallback; then connection to a dead port fails.
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: \n")
 
@@ -190,6 +198,7 @@ func TestW4PublishDefaultRegistryFallback(t *testing.T) {
 	// (and fails to connect, which is fine — the arm is the point).
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\n")
 
 	dir := writePublishableModule(t)
@@ -208,6 +217,7 @@ func TestW4PublishServerRejects(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: "+srv.URL+"\n")
 
 	dir := writePublishableModule(t)
@@ -232,6 +242,7 @@ func TestW4PublishSuccessViaStoredRegistry(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: "+srv.URL+"\n")
 
 	dir := writePublishableModule(t)

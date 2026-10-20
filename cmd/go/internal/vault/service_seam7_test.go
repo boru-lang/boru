@@ -28,6 +28,7 @@ func TestS7_NewProxyServiceHomeDirError(t *testing.T) {
 	// No BORU_HOME and no HOME → homeDir() fails → NewProxyService wraps it.
 	t.Setenv(EnvHome, "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "") // os.UserHomeDir reads USERPROFILE on Windows
 	if _, err := NewProxyService("", "", ""); err == nil ||
 		!strings.Contains(err.Error(), "vault-proxy") {
 		t.Fatalf("NewProxyService home error = %v, want vault-proxy wrap", err)

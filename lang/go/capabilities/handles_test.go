@@ -332,8 +332,8 @@ func TestMemFileHandleNoMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = h.Close()
-	if string(m.Files["/bare"]) != "yy" {
-		t.Errorf("no-meta write = %q", m.Files["/bare"])
+	if got := m.Files[filepath.FromSlash("/bare")]; string(got) != "yy" {
+		t.Errorf("no-meta write = %q", got)
 	}
 }
 

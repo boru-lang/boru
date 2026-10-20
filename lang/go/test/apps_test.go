@@ -2,6 +2,7 @@ package test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func runAppSteps(t *testing.T, appFiles []string, steps []string) ([]native.Valu
 		if err != nil {
 			t.Fatalf("read app %s: %v", name, err)
 		}
-		mem.Files["/apps/"+name] = src
+		mem.Files[filepath.FromSlash("/apps/"+name)] = src // the model's OS-native key
 	}
 	reg, err := native.DefaultRegistry()
 	if err != nil {

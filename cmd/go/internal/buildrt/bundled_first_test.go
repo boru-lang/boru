@@ -75,12 +75,12 @@ func TestBundledFirstDoesNotReadAStrangerFromTheRunTimeCwd(t *testing.T) {
 	// Bundled under a build-machine path that does not exist here.
 	fs := bundledFirst{
 		FileOps: capabilities.NewDefault(),
-		mem: memWith(t, "/build/machine/proj", map[string]string{
-			"/build/machine/proj/lib.boru": "BUNDLED AT BUILD TIME",
+		mem: memWith(t, hostAbs("/build/machine/proj"), map[string]string{
+			hostAbs("/build/machine/proj/lib.boru"): "BUNDLED AT BUILD TIME",
 		}),
 	}
 	// A read of the BUNDLED key must find the bundle, not the host.
-	got, err := fs.ReadFile("/build/machine/proj/lib.boru")
+	got, err := fs.ReadFile(hostAbs("/build/machine/proj/lib.boru"))
 	if err != nil {
 		t.Fatalf("ReadFile(bundled key): %v", err)
 	}

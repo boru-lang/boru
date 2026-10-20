@@ -164,6 +164,8 @@ func (s *syncBuffer) String() string {
 // installed), send SIGINT, and expect a clean exit 0.
 func TestRunSignalShutdown(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // keep the api discovery file out of the shared tmp
+	t.Setenv("TMP", t.TempDir())    // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", t.TempDir())
 
 	var stdout, stderr syncBuffer
 	done := make(chan int, 1)

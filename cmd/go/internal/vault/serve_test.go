@@ -136,7 +136,9 @@ func TestServeListenErrorArms(t *testing.T) {
 		mustInit(t)
 		addr := serveBusyPort(t)
 		code, _, errOut := runVault(t, "", "serve", "--listen="+addr)
-		if code == 0 || !strings.Contains(errOut, "address already in use") {
+		// "bind:" is in both platforms' messages ("address already in use";
+		// Windows' "Only one usage of each socket address …").
+		if code == 0 || !strings.Contains(errOut, "bind:") {
 			t.Errorf("busy port = %d, %q", code, errOut)
 		}
 	})
@@ -146,7 +148,9 @@ func TestServeListenErrorArms(t *testing.T) {
 		setPass(t, "") // file backend without a passphrase cannot open a session
 		addr := serveBusyPort(t)
 		code, _, errOut := runVault(t, "", "serve", "--listen="+addr)
-		if code == 0 || !strings.Contains(errOut, "address already in use") {
+		// "bind:" is in both platforms' messages ("address already in use";
+		// Windows' "Only one usage of each socket address …").
+		if code == 0 || !strings.Contains(errOut, "bind:") {
 			t.Errorf("busy port without session = %d, %q", code, errOut)
 		}
 	})

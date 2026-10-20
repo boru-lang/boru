@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"os/user"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,9 @@ func TestC7RunAuditNamespaceFilterError(t *testing.T) {
 }
 
 func TestC7RunAuditOpenNonNotExistError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reports a file used as a directory as path-not-found (IsNotExist), so it cannot provoke this error")
+	}
 	testHome(t)
 	home := t.TempDir()
 	// .boru is a file, so auditPath = <file>/vault.audit.jsonl → ENOTDIR (not IsNotExist).
@@ -172,7 +176,11 @@ func TestC7ReadAuditArms(t *testing.T) {
 		t.Fatalf("ReadAudit absent = %v, %v", evs, err)
 	}
 
-	// Non-IsNotExist open error: .boru is a file → ENOTDIR.
+	// Non-IsNotExist open error: .boru is a file → ENOTDIR. Windows reports
+	// that as path-not-found (IsNotExist), so the arm is Unix-only.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	bad := t.TempDir()
 	if err := os.WriteFile(vaultFolder(bad), []byte("x"), 0600); err != nil {
 		t.Fatal(err)

@@ -20,6 +20,8 @@ func setDiscovery(t *testing.T, url, token string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	if url == "" {
 		return
 	}

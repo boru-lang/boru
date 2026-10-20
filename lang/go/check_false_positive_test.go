@@ -2,6 +2,7 @@ package lang
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -41,7 +42,7 @@ func loadApps(t *testing.T, names ...string) *Boru {
 		if err != nil {
 			t.Fatalf("read %s: %v", n, err)
 		}
-		mem.Files["/apps/"+n] = src
+		mem.Files[filepath.FromSlash("/apps/"+n)] = src
 	}
 	a, err := New()
 	if err != nil {
@@ -142,7 +143,7 @@ for 3 [ MiniRedis.cmd ep "SET k v" drop  no-such-word-xyz ep drop ]`
 func loadImportedLib(t *testing.T, lib string) *Boru {
 	t.Helper()
 	mem := capabilities.NewMem()
-	mem.Files["/lib.boru"] = []byte(lib)
+	mem.Files[filepath.FromSlash("/lib.boru")] = []byte(lib)
 	a, err := New()
 	if err != nil {
 		t.Fatal(err)

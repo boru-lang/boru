@@ -2,6 +2,7 @@ package native
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -309,7 +310,7 @@ func miscCovImportReg(t *testing.T) (*Registry, *capabilities.MemFileOps) {
 	mem := capabilities.NewMem()
 	mem.Files["mod.boru"] = []byte(`export "FM" {x: 7}`)
 	mem.Files["d.json"] = []byte(`{"a": 1}`)
-	mem.Files["/proj/.boru/barem/index.boru"] = []byte(`export "BM" {y: 2}`)
+	mem.Files[filepath.FromSlash("/proj/.boru/barem/index.boru")] = []byte(`export "BM" {y: 2}`)
 	SetHostFileOps(r, mem)
 	r.SetParseFunc(parser.Parse)
 	return r, mem

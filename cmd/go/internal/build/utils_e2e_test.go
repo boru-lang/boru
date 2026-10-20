@@ -83,7 +83,7 @@ func buildBoruBinary(t *testing.T) string {
 			return
 		}
 		boruDir = dir
-		out := filepath.Join(dir, "boru")
+		out := filepath.Join(dir, "boru"+exeSuffix) // runnable on Windows too
 		// The main package is ./boru inside the cmd/go module — building "."
 		// yields a library archive, which fails much later and much less
 		// legibly ("exec format error" from the produced util).
@@ -159,7 +159,7 @@ func buildUtil(t *testing.T, dir, name string, extra ...string) string {
 	t.Helper()
 	self := buildBoruBinary(t)
 	src := filepath.Join(utilsDir(t), name+".boru")
-	out := filepath.Join(dir, name)
+	out := filepath.Join(dir, name+exeSuffix)
 
 	// Point the self-embed path at the real boru, not at this test binary.
 	orig := osExecutable
@@ -569,7 +569,7 @@ func TestUtilsBuiltBinaryIgnoresSameNamedHostFiles(t *testing.T) {
 	src := write(proj, "main.boru", "import \"./lib.boru\"\nprint (Lib.who)\n")
 	write(elsewhere, "lib.boru", `export "Lib" { who: "STRANGER" }`+"\n")
 
-	out := filepath.Join(proj, "tool")
+	out := filepath.Join(proj, "tool"+exeSuffix)
 	orig := osExecutable
 	osExecutable = func() (string, error) { return self, nil }
 	t.Cleanup(func() { osExecutable = orig })

@@ -232,7 +232,7 @@ func TestControllerRestore(t *testing.T) {
 }
 
 func TestControllerCopyToClipboardWithoutTool(t *testing.T) {
-	for _, tool := range []string{"wl-copy", "xclip", "xsel", "pbcopy"} {
+	for _, tool := range []string{"wl-copy", "xclip", "xsel", "pbcopy", "pwsh", "powershell"} {
 		if _, err := exec.LookPath(tool); err == nil {
 			t.Skipf("clipboard tool %s present; not exercising the error path", tool)
 		}

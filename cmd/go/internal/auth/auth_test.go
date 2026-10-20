@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -253,7 +254,7 @@ func TestClientUserFilePermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	perm := info.Mode().Perm()
-	if perm != 0600 {
+	if runtime.GOOS != "windows" && perm != 0600 { // Windows has no permission bits
 		t.Errorf("file permissions = %o, want 0600", perm)
 	}
 }

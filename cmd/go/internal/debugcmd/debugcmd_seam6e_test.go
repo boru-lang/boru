@@ -33,6 +33,8 @@ func TestServeInitError(t *testing.T) {
 
 func TestServeListenError(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // keep the discovery file out of the real tmp
+	t.Setenv("TMP", t.TempDir())    // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	// A non-loopback bind without --allow-public is declined before listening.
 	code := runServe([]string{"--bind", "203.0.113.1:0"}, &stdout, &stderr)

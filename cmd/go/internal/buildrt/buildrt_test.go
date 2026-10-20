@@ -65,15 +65,22 @@ func TestMainErrorExitsNonZero(t *testing.T) {
 	}
 }
 
+// hostAbs makes a slash path absolute on THIS host — unchanged off Windows,
+// on the temp directory's drive there — as the build machine records every
+// bundled file: `/virtual/proj` is drive-relative on Windows, not absolute.
+func hostAbs(slashPath string) string {
+	return filepath.VolumeName(os.TempDir()) + filepath.FromSlash(slashPath)
+}
+
 func TestMainBundledFileImportResolvesInMemory(t *testing.T) {
 	// The entry imports a sibling file that exists only in the embedded
 	// Files map — never on disk — proving the in-memory FS is wired up.
-	entryDir := "/virtual/proj"
+	entryDir := hostAbs("/virtual/proj")
 	cfg := Config{
 		Source:   `import "./lib.boru"` + "\n" + `Lib.x`,
 		EntryDir: entryDir,
 		Files: map[string][]byte{
-			entryDir + "/lib.boru": []byte(`export "Lib" {x:7}`),
+			filepath.Join(entryDir, "lib.boru"): []byte(`export "Lib" {x:7}`),
 		},
 	}
 	var stdout, stderr bytes.Buffer
@@ -216,7 +223,7 @@ func TestMainBundledFilesDoNotHideTheHostFilesystem(t *testing.T) {
 
 	// A bundled file makes cfg.Files non-empty, taking the overlay branch.
 	cfg := Config{
-		Source:   "import \"boru:io\"\nIO.write (make Pathon \"" + target + "\") \"payload\"\n",
+		Source:   "import \"boru:io\"\nIO.write (make Pathon \"" + filepath.ToSlash(target) + "\") \"payload\"\n", // `\` escapes in boru
 		EntryDir: dir,
 		Files:    map[string][]byte{filepath.Join(dir, "bundled.boru"): []byte("export \"B\" {x:1}")},
 	}

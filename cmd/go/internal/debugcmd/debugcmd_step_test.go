@@ -203,6 +203,8 @@ func TestServeStepShutdownDrains(t *testing.T) {
 	// its side effects land before runServe returns 0.
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	prog := filepath.Join(dir, "p.boru")
 	if err := os.WriteFile(prog, []byte("print \"zz-serve-step\"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -243,6 +245,8 @@ func TestServeStepProgramErrorExitsOne(t *testing.T) {
 	// The drained program erroring is reported and turns the exit code.
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	prog := filepath.Join(dir, "p.boru")
 	if err := os.WriteFile(prog, []byte("1 div 0\n"), 0o600); err != nil {
 		t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,9 +17,17 @@ import (
 )
 
 // stubDir creates an executable shell-script stub named bin in a fresh
-// dir (shared per test via dir) so exec.LookPath resolves it first.
+// dir (shared per test via dir) so exec.LookPath resolves it first. A
+// `#!/bin/sh` stub cannot run on Windows (exec finds executables by
+// extension), so a test that stubs a tool skips there; the backends these
+// stub — keychain, secret-service, 1Password, the Credential Manager's
+// powershell bridge — are exercised against the real tools by their own
+// platform's runs.
 func stubBin(t *testing.T, dir, bin, script string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("tool stubs are /bin/sh scripts, which Windows cannot execute")
+	}
 	if err := os.WriteFile(filepath.Join(dir, bin), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
 		t.Fatal(err)
 	}

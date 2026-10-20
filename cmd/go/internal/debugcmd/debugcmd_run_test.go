@@ -73,6 +73,8 @@ func TestRunBarePositionalIsLaunch(t *testing.T) {
 func TestDiscoveryRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	dp := discoveryPath()
 	if dp != filepath.Join(dir, "boru-debug.json") {
 		t.Errorf("discoveryPath = %q", dp)
@@ -118,6 +120,8 @@ func TestRunAttachViaDiscoveryFile(t *testing.T) {
 	url := startAttachServer(t)
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	body, err := json.Marshal(map[string]any{"url": url, "token": "", "pid": os.Getpid()})
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +157,8 @@ func TestRunAttachNoVerb(t *testing.T) {
 
 func TestRunAttachNoDiscovery(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMP", t.TempDir()) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", t.TempDir())
 	code, _, errOut := runDebug(t, "attach", "words")
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)
@@ -239,6 +245,8 @@ func TestRunServeBadProgram(t *testing.T) {
 func TestServeShutdownOnSignal(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 
 	prog := filepath.Join(dir, "p.boru")
 	if err := os.WriteFile(prog, []byte("def served-marker 41"), 0o600); err != nil {

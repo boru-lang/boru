@@ -26,6 +26,7 @@ import (
 func TestS7n_VaultProxyFactorySucceeds(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv(vault.EnvHome, "")
 	t.Setenv(vault.EnvFolder, "")
 	t.Setenv(vault.EnvSuffix, "")
