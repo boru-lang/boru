@@ -776,7 +776,7 @@ func TestLaunchModuleFnDescent(t *testing.T) {
 	// `print` of a MODULE fn at a pause suppresses the hook through the
 	// chain — no nested pause, the eval completes.
 	requireOrder(t, out,
-		"at "+lib+":2 (in body)  x add x",
+		"at "+filepath.ToSlash(lib)+":2 (in body)  x add x", // the module file as main imported it
 		"#0  twice",
 		"->    2  x add x",
 		"6", "42\n(program exited)")

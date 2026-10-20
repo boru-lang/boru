@@ -7,6 +7,7 @@ package debugcmd
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,8 +130,17 @@ func TestDiscoveryPublishNeverTears(t *testing.T) {
 			if _, err := os.Stat(path); err != nil {
 				continue
 			}
+			_, _, err := readDiscovery(path)
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				// The file could not be opened or read, so no content was
+				// seen and nothing tore: Windows denies access to a file for
+				// the moment a rename is replacing it. (Off Windows the path
+				// only ever exists whole, so this never fires.)
+				continue
+			}
 			atomic.AddInt64(&reads, 1)
-			if _, _, err := readDiscovery(path); err != nil {
+			if err != nil { // the JSON did not parse: a prefix was read
 				atomic.AddInt64(&torn, 1)
 			}
 		}

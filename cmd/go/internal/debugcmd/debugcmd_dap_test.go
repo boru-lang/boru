@@ -1,6 +1,7 @@
 package debugcmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -25,7 +26,8 @@ func dapReq(seq int, command, args string) string {
 func TestDAPFullSession(t *testing.T) {
 	// def n 41 / n add 1 / add 1 / add 1 — breakpoints on lines 2 and 4.
 	path := writeProgram(t, "def n 41\nn add 1\nadd 1\nadd 1\n")
-	bps := `{"source":{"path":"` + path + `"},"breakpoints":[{"line":2},{"line":4}]}`
+	jpath, _ := json.Marshal(path) // a JSON string: a Windows path's `\` must be escaped
+	bps := `{"source":{"path":` + string(jpath) + `},"breakpoints":[{"line":2},{"line":4}]}`
 	stdin := strings.Join([]string{
 		dapReq(1, "initialize", ""),
 		dapReq(2, "launch", "{}"),
@@ -63,7 +65,7 @@ func TestDAPFullSession(t *testing.T) {
 		`"reason":"step"`, // the entry stop
 		`"description":"breakpoint: line 2"`, `"reason":"breakpoint"`,
 		`"threads":[{"id":1,"name":"main"}]`,
-		`"name":"main"`, `"path":"`+path+`"`, // stackTrace top frame
+		`"name":"main"`, `"path":`+string(jpath), // stackTrace top frame
 		`"name":"Defs"`, `"name":"Stack"`,
 		`"name":"n","value":"41"`,                                     // variables: the program's def
 		`"variables":[]`,                                              // the data stack is empty at the line-2 boundary
