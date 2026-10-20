@@ -33,7 +33,11 @@ function pack(relativeDir) {
     ['pack', '--silent', '--json', '--pack-destination', temp],
     cwd,
   )
-  const result = JSON.parse(output)[0]
+  // npm 11 and earlier print an array of manifests; npm 12 prints an object
+  // keyed by package name. One package is packed here, so take its only
+  // manifest either way.
+  const parsed = JSON.parse(output)
+  const result = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0]
   if (!result || typeof result.filename !== 'string' || !Array.isArray(result.files)) {
     throw new Error(`npm pack returned an invalid manifest for ${relativeDir}`)
   }
