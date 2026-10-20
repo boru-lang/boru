@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -163,6 +163,9 @@ func (s *syncBuffer) String() string {
 // wait for the startup line (printed after the signal handler is
 // installed), send SIGINT, and expect a clean exit 0.
 func TestRunSignalShutdown(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGINT delivery is not supported on windows")
+	}
 	t.Setenv("TMPDIR", t.TempDir()) // keep the api discovery file out of the shared tmp
 	t.Setenv("TMP", t.TempDir())    // os.TempDir reads TMP, then TEMP, on Windows
 	t.Setenv("TEMP", t.TempDir())
@@ -181,7 +184,8 @@ func TestRunSignalShutdown(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	select {

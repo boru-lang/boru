@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -151,7 +150,8 @@ func TestRunServesUntilInterrupt(t *testing.T) {
 		t.Fatalf("exec server never came up on %s (stderr: %s)", addr, stderr.String())
 	}
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatalf("kill: %s", err)
 	}
 

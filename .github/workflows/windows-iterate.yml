@@ -28,12 +28,17 @@ jobs:
             ( cd "$m" && go test -json -timeout 40m ./... ) >> full-suite.json 2>> full-suite.stderr || rc=1
           done
           exit $rc
-      - name: Failing tests
+      - name: Failing tests and packages
         if: always()
         run: |
           jq -r 'select(.Action=="fail" and .Test != null and (.Test|contains("/")|not)) | "\(.Package) \(.Test)"' full-suite.json | sed 's|github.com/boru-lang/boru/||' | sort | uniq > failing.txt || true
+          # A package can fail with no failing test — a test build that does
+          # not compile, a crash, a timeout — so list every failed package too.
+          jq -r 'select(.Action=="fail" and .Test == null) | .Package' full-suite.json | sed 's|github.com/boru-lang/boru/||' | sort -u > failing-packages.txt || true
           echo "failing top-level tests: $(wc -l < failing.txt)"
           cut -d' ' -f1 failing.txt | sort | uniq -c | sort -rn
+          echo "failed packages: $(wc -l < failing-packages.txt)"
+          cat failing-packages.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -42,4 +47,5 @@ jobs:
             full-suite.json
             full-suite.stderr
             failing.txt
+            failing-packages.txt
           retention-days: 7

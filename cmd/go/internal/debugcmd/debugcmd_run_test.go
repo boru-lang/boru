@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -243,6 +243,9 @@ func TestRunServeBadProgram(t *testing.T) {
 // installed), then interrupts the serve loop with SIGINT, which
 // signal.NotifyContext converts into a clean shutdown.
 func TestServeShutdownOnSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGINT delivery is not supported on windows")
+	}
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
@@ -286,7 +289,8 @@ func TestServeShutdownOnSignal(t *testing.T) {
 		t.Errorf("discovery pid = %d, want %d", d.PID, os.Getpid())
 	}
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	select {

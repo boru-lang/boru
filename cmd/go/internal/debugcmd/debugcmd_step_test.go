@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -198,6 +198,9 @@ func TestRenderStepStateArms(t *testing.T) {
 // --- serve --step wiring ---
 
 func TestServeStepShutdownDrains(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGINT delivery is not supported on windows")
+	}
 	// `serve --step` parks the program at its entry stop; SIGINT stops
 	// the server, and the shutdown path detaches + DRAINS the program —
 	// its side effects land before runServe returns 0.
@@ -225,7 +228,8 @@ func TestServeStepShutdownDrains(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -242,6 +246,9 @@ func TestServeStepShutdownDrains(t *testing.T) {
 }
 
 func TestServeStepProgramErrorExitsOne(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGINT delivery is not supported on windows")
+	}
 	// The drained program erroring is reported and turns the exit code.
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
@@ -267,7 +274,8 @@ func TestServeStepProgramErrorExitsOne(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	select {
