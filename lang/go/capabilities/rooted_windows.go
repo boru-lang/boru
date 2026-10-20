@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 )
 
-// isAbsPath reports whether path names a location without a working
+// IsAbsPath reports whether path names a location without a working
 // directory: filepath.IsAbs, or ROOTED with no volume — `\tmp\x`, `/tmp/x` —
 // which Windows reads as the root of the current drive (filepath.IsAbs is
 // false for it, so code that treated it as relative put it under the working
 // directory instead). The in-memory model has no current drive, so there a
 // rooted path is simply absolute.
-func isAbsPath(path string) bool {
+func IsAbsPath(path string) bool {
 	return filepath.IsAbs(path) || driveRooted(path)
 }
 

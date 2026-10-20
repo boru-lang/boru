@@ -171,7 +171,7 @@ func buildUtil(t *testing.T, dir, name string, extra ...string) string {
 	if rc := New().Run(args, nil, &stdout, &stderr); rc != 0 {
 		t.Fatalf("boru build %v: rc=%d\nstdout=%s\nstderr=%s", args, rc, stdout.String(), stderr.String())
 	}
-	if st, err := os.Stat(out); err != nil || st.Mode()&0o111 == 0 {
+	if st, err := os.Stat(out); err != nil || !runnable(st) {
 		t.Fatalf("produced file is not an executable (err=%v)", err)
 	}
 	return out

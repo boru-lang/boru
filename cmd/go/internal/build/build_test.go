@@ -173,7 +173,7 @@ func TestBuildSelfEmbedEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&0o111 == 0 {
+	if !runnable(info) {
 		t.Fatal("produced file is not executable")
 	}
 	if _, ok, err := buildrt.ReadEmbeddedPayload(out); err != nil || !ok {

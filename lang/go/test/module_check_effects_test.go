@@ -114,7 +114,7 @@ func writeModule(t *testing.T, dir, name, src string) string {
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
-	return path
+	return filepath.ToSlash(path) // spliced into boru source, where `\` escapes
 }
 
 // checkAndRun runs src through Check and then Run on two fresh engines,
@@ -151,7 +151,7 @@ func checkAndRun(t *testing.T, src string) (checkOut, runOut string) {
 // a blanket disable.
 func TestCheckModelsModuleBodyFileWrites(t *testing.T) {
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	target := filepath.Join(dir, "written.txt")
+	target := dir + "/written.txt"
 	mod := writeModule(t, dir, "m.boru", `
 import "boru:io" end
 IO.write (make Pathon '`+target+`') 'from the module body' drop
@@ -193,7 +193,7 @@ M.v`
 // way.
 func TestCheckModelledWriteIsReadableInSameBody(t *testing.T) {
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	target := filepath.Join(dir, "roundtrip.txt")
+	target := dir + "/roundtrip.txt"
 	mod := writeModule(t, dir, "m.boru", `
 import "boru:io" end
 IO.write (make Pathon '`+target+`') 'staged' drop
@@ -284,7 +284,7 @@ M.v`)
 // original defect — and nesting is the common shape (a facade module).
 func TestModelledEffectsPropagateThroughNestedImports(t *testing.T) {
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	target := filepath.Join(dir, "nested.txt")
+	target := dir + "/nested.txt"
 	inner := writeModule(t, dir, "inner.boru", `
 import "boru:io" end
 IO.write (make Pathon '`+target+`') 'inner wrote this' drop
@@ -316,7 +316,7 @@ Outer.v`
 // output — so the flag must be per-sub-registry, not sticky.
 func TestModellingDoesNotLeakOutsideCheck(t *testing.T) {
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	target := filepath.Join(dir, "toplevel.txt")
+	target := dir + "/toplevel.txt"
 	src := `import "boru:io" end
 IO.write (make Pathon '` + target + `') 'top level' drop`
 

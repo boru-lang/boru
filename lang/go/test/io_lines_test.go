@@ -309,7 +309,7 @@ IO.read-line (IO.stdin)`)
 // start — the handle's cursor and the buffer disagreed silently.
 func TestReadLineSeekDropsBuffer(t *testing.T) {
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	path := filepath.Join(dir, "seek.txt")
+	path := dir + "/seek.txt"
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

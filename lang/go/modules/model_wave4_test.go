@@ -413,7 +413,7 @@ func TestModelWave4FileOpsFSDelegate(t *testing.T) {
 	if err := f.MkdirAll("/d/sub", 0o755); err != nil || !mem.Dirs[filepath.FromSlash("/d/sub")] {
 		t.Errorf("MkdirAll should delegate (err %v, dirs %v)", err, mem.Dirs)
 	}
-	if k := f.key("/d/a.txt"); k != "/d/a.txt" {
+	if k := f.key("/d/a.txt"); k != filepath.FromSlash("/d/a.txt") {
 		t.Errorf("key resolved = %q", k)
 	}
 	// A FileOps whose ResolvePath fails: key falls back to the raw name.

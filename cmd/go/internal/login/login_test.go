@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -24,9 +23,8 @@ func TestRunLoginCLI(t *testing.T) {
 	resp.Body.Close()
 
 	homeDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir) // os.UserHomeDir reads USERPROFILE on Windows
 
 	stdin := strings.NewReader("cliuser\nclipass\n")
 	var stdout, stderr bytes.Buffer

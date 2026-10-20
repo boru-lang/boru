@@ -67,10 +67,12 @@ func Run(args []string, w io.Writer) int {
 
 	// A colon marks a module reference: "boru:type-util" or, with a word,
 	// "boru:type-util:foo" / "type-util:foo". No built-in word carries a colon,
-	// so this is unambiguous and takes precedence over every bare-name form —
-	// except a Windows volume's colon (`C:\proj\lib.boru`), which names a file
-	// to load like any other path (VolumeName is empty off Windows).
-	if strings.Contains(name, ":") && filepath.VolumeName(name) == "" {
+	// so this is unambiguous and takes precedence over every bare-name form.
+	// A Windows volume's colon is part of the path, not a marker: only a colon
+	// after it counts, so `C:\proj\lib.boru` loads a file like any other path
+	// while `C:\proj\lib.boru:twice` names a word in it (VolumeName is empty
+	// off Windows).
+	if vol := filepath.VolumeName(name); strings.Contains(name[len(vol):], ":") {
 		return describeModulePath(w, name)
 	}
 
@@ -178,8 +180,11 @@ func splitModulePath(name string) (modRef, word string) {
 	hadBoru := strings.HasPrefix(name, "boru:")
 	rest := strings.TrimPrefix(name, "boru:")
 	short := rest
-	if i := strings.IndexByte(rest, ':'); i >= 0 {
-		short, word = rest[:i], rest[i+1:]
+	// The word separator is the first colon after any Windows volume
+	// (`C:\proj\lib.boru:twice`); the volume's own colon is part of the path.
+	vol := len(filepath.VolumeName(rest))
+	if i := strings.IndexByte(rest[vol:], ':'); i >= 0 {
+		short, word = rest[:vol+i], rest[vol+i+1:]
 	}
 	if hadBoru {
 		return "boru:" + short, word

@@ -73,7 +73,7 @@ func TestModelFilePath(t *testing.T) {
 		t.Fatalf("lang.New: %v", err)
 	}
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	file := filepath.Join(dir, "model.jsonic")
+	file := dir + "/model.jsonic"
 	if werr := os.WriteFile(file, []byte("svc: name: 'orders'"), 0o600); werr != nil {
 		t.Fatalf("write model: %v", werr)
 	}
@@ -134,7 +134,7 @@ func TestModelWatchForkNoRace(t *testing.T) {
 		t.Fatalf("lang.New: %v", err)
 	}
 	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
-	src := filepath.Join(dir, "m.jsonic")
+	src := dir + "/m.jsonic"
 	if err := os.WriteFile(src, []byte("n: 1"), 0o600); err != nil {
 		t.Fatalf("write src: %v", err)
 	}
