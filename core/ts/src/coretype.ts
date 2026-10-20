@@ -223,6 +223,9 @@ function listElements(v: Value): Value[] | null {
 }
 
 export function isValueOfType(v: Value, t: Value): boolean {
+  // A named type IS a type (Value.typeName) whatever its body's kind:
+  // `def N 5  N is Type` holds — the singleton's members are still just 5.
+  if (v.typeName !== undefined && t.isTypeLiteral() && t.vType.equal(TType)) return true;
   // Typed list `[:T]`: v must be a CONCRETE list whose every element
   // satisfies T. A plain list (even empty) is concrete; a typed list is
   // concrete only when it carries retained elements — a bare typed-list

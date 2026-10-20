@@ -81,10 +81,10 @@ describe('fixture guard probes', () => {
     // valid suffixes strip to the base word, /q quotes, doubled or
     // unknown letters raise, /t builds the type-bound sugar, and the
     // float specials bind by value.
-    ['def x:f/r 1', { err: 'declared type word(f)' }],
+    ['def x:f/v 1', { err: 'declared type word(f)' }],
     ['def x:f/2 1', { err: 'declared type word(f)' }],
     ['def x:f/q 1', { err: 'declared type f' }],
-    ['def x:go/rq 1', { err: 'invalid word modifier /rq on "go"' }],
+    ['def x:go/vq 1', { err: 'invalid word modifier /vq on "go"' }],
     ['def x:a/3f 1', { err: 'declared type word(a)' }],
     ['def x:w/u 1', { err: 'declared type word(w)' }],
     ['def x:w/t 1', { err: 'declared type sugar(type-bound [[w]])' }],
