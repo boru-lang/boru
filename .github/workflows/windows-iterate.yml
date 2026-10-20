@@ -21,16 +21,25 @@ jobs:
         with:
           go-version-file: lang/go/go.mod
           cache: false
-      - name: Full suite
-        run: scripts/ci-steps.sh full-suite 2>&1 | tee full-suite.log; exit "${PIPESTATUS[0]}"
+      - name: Full suite (go test -json)
+        run: |
+          rc=0
+          for m in $(sed -n 's/^MODULES := //p' Makefile); do
+            ( cd "$m" && go test -json -timeout 40m ./... ) >> full-suite.json 2>> full-suite.stderr || rc=1
+          done
+          exit $rc
       - name: Failing tests
         if: always()
         run: |
-          echo "failing top-level tests: $(grep -cE '^--- FAIL: Test' full-suite.log || true)"
-          grep -E '^(--- FAIL: Test|FAIL\s)' full-suite.log | sort | uniq | head -300 || true
+          jq -r 'select(.Action=="fail" and .Test != null and (.Test|contains("/")|not)) | "\(.Package) \(.Test)"' full-suite.json | sed 's|github.com/boru-lang/boru/||' | sort | uniq > failing.txt || true
+          echo "failing top-level tests: $(wc -l < failing.txt)"
+          cut -d' ' -f1 failing.txt | sort | uniq -c | sort -rn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-full-suite-log
-          path: full-suite.log
+          name: windows-full-suite
+          path: |
+            full-suite.json
+            full-suite.stderr
+            failing.txt
           retention-days: 7
