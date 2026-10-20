@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -83,7 +84,7 @@ func buildBoruBinary(t *testing.T) string {
 			return
 		}
 		boruDir = dir
-		out := filepath.Join(dir, "boru")
+		out := filepath.Join(dir, "boru"+exeSuffix) // runnable on Windows too
 		// The main package is ./boru inside the cmd/go module — building "."
 		// yields a library archive, which fails much later and much less
 		// legibly ("exec format error" from the produced util).
@@ -159,7 +160,7 @@ func buildUtil(t *testing.T, dir, name string, extra ...string) string {
 	t.Helper()
 	self := buildBoruBinary(t)
 	src := filepath.Join(utilsDir(t), name+".boru")
-	out := filepath.Join(dir, name)
+	out := filepath.Join(dir, name+exeSuffix)
 
 	// Point the self-embed path at the real boru, not at this test binary.
 	orig := osExecutable
@@ -171,7 +172,7 @@ func buildUtil(t *testing.T, dir, name string, extra ...string) string {
 	if rc := New().Run(args, nil, &stdout, &stderr); rc != 0 {
 		t.Fatalf("boru build %v: rc=%d\nstdout=%s\nstderr=%s", args, rc, stdout.String(), stderr.String())
 	}
-	if st, err := os.Stat(out); err != nil || st.Mode()&0o111 == 0 {
+	if st, err := os.Stat(out); err != nil || !runnable(st) {
 		t.Fatalf("produced file is not an executable (err=%v)", err)
 	}
 	return out
@@ -344,6 +345,12 @@ func TestUtilsPrintenvSeesTheProcessEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	bin := buildUtil(t, dir, "printenv")
 	env := []string{"BORU_E2E_ONE=first", "BORU_E2E_TWO=second"}
+	if runtime.GOOS == "windows" {
+		// os/exec adds SYSTEMROOT to a Windows child's environment (much of
+		// Windows cannot start without it) unless the environment already
+		// carries it: pass it, so the listing is still exactly what we gave.
+		env = append(env, "SYSTEMROOT="+os.Getenv("SYSTEMROOT"))
+	}
 
 	t.Run("a named variable is printed", func(t *testing.T) {
 		got := runUtil(t, bin, "", env, "BORU_E2E_ONE")
@@ -569,7 +576,7 @@ func TestUtilsBuiltBinaryIgnoresSameNamedHostFiles(t *testing.T) {
 	src := write(proj, "main.boru", "import \"./lib.boru\"\nprint (Lib.who)\n")
 	write(elsewhere, "lib.boru", `export "Lib" { who: "STRANGER" }`+"\n")
 
-	out := filepath.Join(proj, "tool")
+	out := filepath.Join(proj, "tool"+exeSuffix)
 	orig := osExecutable
 	osExecutable = func() (string, error) { return self, nil }
 	t.Cleanup(func() { osExecutable = orig })

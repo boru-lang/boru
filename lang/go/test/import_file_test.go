@@ -1,6 +1,7 @@
 package test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ func runModuleSteps(t *testing.T, files map[string]string, steps []string) ([]na
 	t.Helper()
 	mem := capabilities.NewMem()
 	for path, content := range files {
-		mem.Files[path] = []byte(content)
+		mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content) // the model keys a file by its resolved, OS-native path
 	}
 
 	reg, err := native.DefaultRegistry()
@@ -592,7 +593,7 @@ func runModuleStepsWithCwd(t *testing.T, cwd string, files map[string]string, st
 	mem := capabilities.NewMem()
 	mem.Cwd = cwd
 	for path, content := range files {
-		mem.Files[path] = []byte(content)
+		mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content) // the model keys a file by its resolved, OS-native path
 	}
 
 	reg, err := native.DefaultRegistry()

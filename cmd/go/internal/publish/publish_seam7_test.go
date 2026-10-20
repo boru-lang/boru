@@ -24,6 +24,7 @@ func TestS7n_ReadZipFailureAfterSuccessfulPack(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	writeUserFile(t, home, "username: alice\nemail: a@b.c\ntoken: tok\nregistry: http://localhost:9\n")
 
 	var out, errOut bytes.Buffer

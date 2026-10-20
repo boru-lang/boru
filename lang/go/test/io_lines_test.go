@@ -308,8 +308,8 @@ IO.read-line (IO.stdin)`)
 // `IO.seek f 0` served the NEXT buffered line instead of re-reading from the
 // start — the handle's cursor and the buffer disagreed silently.
 func TestReadLineSeekDropsBuffer(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "seek.txt")
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
+	path := dir + "/seek.txt"
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,8 @@ def f (IO.open (make Pathon "` + path + `"))
 def one (IO.read-line f)
 IO.seek f 0 drop
 def two (IO.read-line f)
-[one two]`)
+IO.close f
+[one two]`) // closed: Windows cannot remove the temp dir under an open file
 	if err != nil {
 		t.Fatal(err)
 	}

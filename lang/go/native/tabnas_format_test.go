@@ -1,6 +1,7 @@
 package native
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -121,7 +122,7 @@ func readMem(t *testing.T, path string, content string, opts ...Value) []Value {
 	}
 	registerIOWords(r)
 	mem := capabilities.NewMem()
-	mem.Files[path] = []byte(content)
+	mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content)
 	SetHostFileOps(r, mem)
 	tokens := []Value{NewWord("read"), pathV(path)}
 	tokens = append(tokens, opts...)

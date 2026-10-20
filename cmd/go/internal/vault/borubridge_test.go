@@ -9,6 +9,7 @@ package vault
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -298,7 +299,7 @@ func TestBridgeMultiVaultOps(t *testing.T) {
 	if !foundActive {
 		t.Fatalf("no active vault in index = %#v", rows)
 	}
-	second := home + "/second"
+	second := filepath.Join(home, "second")
 	mustDo(t, b, "create", map[string]any{"folder": second, "backend": "file", "pass": "p2"})
 	if b.ctl.folder != second {
 		t.Fatalf("create did not switch: %q", b.ctl.folder)

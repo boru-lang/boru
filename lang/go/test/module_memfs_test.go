@@ -1,9 +1,11 @@
 package test
 
 import (
+	"path/filepath"
+	"testing"
+
 	"github.com/boru-lang/boru/lang/go/modules"
 	"github.com/boru-lang/boru/lang/go/native"
-	"testing"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
 	parser "github.com/boru-lang/boru/parser/go"
@@ -36,7 +38,8 @@ func runMemFSModuleSteps(t *testing.T, files map[string]string, steps []string) 
 	// Create an in-memory FS and pre-populate it with module files.
 	mem := capabilities.NewMem()
 	for path, content := range files {
-		mem.Files[path] = []byte(content)
+		// The model keys a file by its resolved, OS-native path.
+		mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content)
 	}
 	if err := reg.Capabilities.Set(native.CapMemFileOps, capabilities.FileOps(mem)); err != nil {
 		t.Fatalf("set capability: %v", err)

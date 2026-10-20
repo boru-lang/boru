@@ -207,7 +207,8 @@ func TestLoadAutoDetection(t *testing.T) {
 // argument, so the shell never expands it), and LoadAuto's file branch.
 func TestLoadFileTildeExpanded(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home) // os.UserHomeDir honors $HOME on Unix.
+	t.Setenv("HOME", home)        // os.UserHomeDir honors $HOME on Unix.
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	if err := os.WriteFile(filepath.Join(home, "p.jsonic"), []byte(`{ name: "x" }`), 0644); err != nil {
 		t.Fatal(err)
 	}

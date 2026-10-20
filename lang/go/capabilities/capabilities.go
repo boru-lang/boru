@@ -304,7 +304,9 @@ func (o *OSFileOps) ResolvePath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, path), nil
+	// joinWorkingDir is Windows-aware: a drive-rooted path (`\tmp\x`) names
+	// the root of the working directory's drive, not a directory under it.
+	return joinWorkingDir(wd, path), nil
 }
 
 // osFileInfo projects an os.FileInfo onto the host-agnostic FileInfo.
@@ -697,6 +699,21 @@ func mtimeOf(meta *memMeta) time.Time {
 // A root is a fixed point of Dir, including Windows drive and UNC roots.
 func isMemRoot(p string) bool { return p == "." || p == "/" || filepath.Dir(p) == p }
 
+// joinPath is filepath.Join, except where dir ends in ':' without being a
+// volume — `.\mem:`, the clean form of a Windows path whose first element is
+// `mem:`. Join reads ANY trailing ':' as a drive (`C:` + `f` = `C:f`, drive-
+// relative) and leaves the separator out, which moved a child out of its
+// directory: `mem://a.txt` was stored as the file `mem:a.txt` beside a `mem:`
+// directory the model never recorded, so a temp file in `mem:` (an atomic
+// write's staging) found no parent. Off Windows VolumeName is always "", and
+// this is exactly what Join returns.
+func joinPath(dir, rel string) string {
+	if strings.HasSuffix(dir, ":") && filepath.VolumeName(dir) != dir {
+		return filepath.Clean(dir + string(filepath.Separator) + rel)
+	}
+	return filepath.Join(dir, rel)
+}
+
 // resolve turns path into its final in-model location: lexical resolution
 // (ResolvePath), then a component walk that chases symlinks in every
 // intermediate component — and in the trailing component when
@@ -723,7 +740,7 @@ func (m *MemFileOps) resolveSteps(resolved string, followTrailing bool, depth *i
 	}
 	comps := strings.Split(rest, sep)
 	for i, comp := range comps {
-		p := filepath.Join(acc, comp)
+		p := joinPath(acc, comp)
 		last := i == len(comps)-1
 		// Chase symlinks at this component (skipping the trailing one
 		// when the op targets the link itself).
@@ -737,8 +754,8 @@ func (m *MemFileOps) resolveSteps(resolved string, followTrailing bool, depth *i
 				return "", &os.PathError{Op: "open", Path: orig, Err: errMemTooManyLinks}
 			}
 			t := meta.Target
-			if !filepath.IsAbs(t) {
-				t = filepath.Join(filepath.Dir(p), t)
+			if !IsAbsPath(t) {
+				t = joinPath(filepath.Dir(p), t)
 			}
 			rp, err := m.resolveSteps(filepath.Clean(t), true, depth, orig)
 			if err != nil {
@@ -1512,7 +1529,7 @@ func (m *MemFileOps) tempName(dir, pattern string) (string, error) {
 		if i := strings.LastIndexByte(pattern, '*'); i >= 0 {
 			name = pattern[:i] + token + pattern[i+1:]
 		}
-		candidate := filepath.Join(resolved, name)
+		candidate := joinPath(resolved, name)
 		if _, exists := m.infoFor(candidate); !exists {
 			return candidate, nil
 		}
@@ -1572,7 +1589,9 @@ func (m *MemFileOps) Statfs(path string) (FsInfo, error) {
 }
 
 func (m *MemFileOps) ResolvePath(path string) (string, error) {
-	if filepath.IsAbs(path) {
+	// IsAbsPath, not filepath.IsAbs: on Windows a rooted path (`/tmp/x`) is
+	// absolute in the model, which has no current drive to be relative to.
+	if IsAbsPath(path) {
 		return filepath.Clean(path), nil
 	}
 	base := m.Cwd

@@ -3,6 +3,7 @@ package native
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestTempWordForms(t *testing.T) {
 		om.Set("suffix", NewString(".txt"))
 	})})
 	p := extractPath(res[0])
-	if !strings.HasPrefix(p, "work/log-") || !strings.HasSuffix(p, ".txt") {
+	if !strings.HasPrefix(p, filepath.FromSlash("work/log-")) || !strings.HasSuffix(p, ".txt") {
 		t.Errorf("shaped temp = %q", p)
 	}
 
@@ -265,10 +266,10 @@ func TestMountTempStatfsBridge(t *testing.T) {
 	  write: ([p:Pathon d:Any] => [p])
 	  mkdir: (p:Pathon => [p])
 	}`))
-	if p, err := emu.TempFile("/z", "e-*"); err != nil || !strings.HasPrefix(p, "/z/e-") {
+	if p, err := emu.TempFile("/z", "e-*"); err != nil || !strings.HasPrefix(p, filepath.FromSlash("/z/e-")) {
 		t.Errorf("emulated temp = %q (%v)", p, err)
 	}
-	if p, err := emu.TempDir("/z", "ed-*"); err != nil || !strings.HasPrefix(p, "/z/ed-") {
+	if p, err := emu.TempDir("/z", "ed-*"); err != nil || !strings.HasPrefix(p, filepath.FromSlash("/z/ed-")) {
 		t.Errorf("emulated tempdir = %q (%v)", p, err)
 	}
 	bare := HostFileOps(mountFixture(t, `mount { read: (p:Pathon => [none]) }`))

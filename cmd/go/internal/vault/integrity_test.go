@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -46,7 +47,7 @@ func TestSidecarRoundTrip(t *testing.T) {
 		t.Error("sidecar HMAC mismatch")
 	}
 	info, _ := os.Stat(sidecarPath(dir))
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 { // Windows has no permission bits
 		t.Errorf("sidecar mode = %v, want 0600", info.Mode().Perm())
 	}
 }

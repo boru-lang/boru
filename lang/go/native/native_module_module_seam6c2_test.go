@@ -2,6 +2,7 @@ package native
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -129,13 +130,13 @@ func TestSeam6C2ExportTypeLiteralRejected(t *testing.T) {
 func TestSeam6C2ResolveModuleMainBadJSON(t *testing.T) {
 	r := seam5Reg(t)
 	mem := capabilities.NewMem()
-	mem.Files["mod/.boru/boru.json"] = []byte("{not json")
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte("{not json")
 	SetHostFileOps(r, mem)
 	if got := resolveModuleMain(r, "mod"); got != "index.boru" {
 		t.Fatalf("bad boru.json must fall back to index.boru, got %q", got)
 	}
 	// Positive pair: a valid main property is honoured.
-	mem.Files["mod/.boru/boru.json"] = []byte(`{"main":"start.boru"}`)
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte(`{"main":"start.boru"}`)
 	if got := resolveModuleMain(r, "mod"); got != "start.boru" {
 		t.Fatalf("expected start.boru, got %q", got)
 	}
@@ -165,7 +166,7 @@ func TestSeam6C2LoadModuleResourcesArms(t *testing.T) {
 	SetHostFileOps(r, mem)
 
 	// Malformed boru.json: silently no resources.
-	mem.Files["mod/.boru/boru.json"] = []byte("{broken")
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte("{broken")
 	desc := ModuleDesc{Exports: map[string]*OrderedMap{}}
 	if err := loadModuleResources(r, "mod", &desc); err != nil {
 		t.Fatalf("malformed boru.json must be ignored, got %v", err)
@@ -175,7 +176,7 @@ func TestSeam6C2LoadModuleResourcesArms(t *testing.T) {
 	}
 
 	// Unsupported resource file format.
-	mem.Files["mod/.boru/boru.json"] = []byte(`{"resource":{"k":"data.zzz"}}`)
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte(`{"resource":{"k":"data.zzz"}}`)
 	desc = ModuleDesc{Exports: map[string]*OrderedMap{}}
 	err := loadModuleResources(r, "mod", &desc)
 	if err == nil || !strings.Contains(err.Error(), "unsupported file format") {
@@ -183,7 +184,7 @@ func TestSeam6C2LoadModuleResourcesArms(t *testing.T) {
 	}
 
 	// Read failure for a well-formed resource entry.
-	mem.Files["mod/.boru/boru.json"] = []byte(`{"resource":{"k":"missing.json"}}`)
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte(`{"resource":{"k":"missing.json"}}`)
 	desc = ModuleDesc{Exports: map[string]*OrderedMap{}}
 	err = loadModuleResources(r, "mod", &desc)
 	if err == nil || !strings.Contains(err.Error(), `resource "k"`) {
@@ -191,8 +192,8 @@ func TestSeam6C2LoadModuleResourcesArms(t *testing.T) {
 	}
 
 	// Positive pair: a resolvable resource lands in the export map.
-	mem.Files["mod/.boru/boru.json"] = []byte(`{"resource":{"k":"ok.json"}}`)
-	mem.Files["mod/ok.json"] = []byte(`{"a": 1}`)
+	mem.Files[filepath.FromSlash("mod/.boru/boru.json")] = []byte(`{"resource":{"k":"ok.json"}}`)
+	mem.Files[filepath.FromSlash("mod/ok.json")] = []byte(`{"a": 1}`)
 	desc = ModuleDesc{Exports: map[string]*OrderedMap{}}
 	if err := loadModuleResources(r, "mod", &desc); err != nil {
 		t.Fatalf("resource load must succeed, got %v", err)

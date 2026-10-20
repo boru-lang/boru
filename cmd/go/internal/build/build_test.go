@@ -22,6 +22,7 @@ func TestDefaultOutput(t *testing.T) {
 		"noext":          "noext",
 	}
 	for in, want := range cases {
+		want += exeSuffix // a runnable name on this host
 		if got := defaultOutput(in); got != want {
 			t.Errorf("defaultOutput(%q)=%q, want %q", in, got, want)
 		}
@@ -159,7 +160,7 @@ func TestBuildSelfEmbedEndToEnd(t *testing.T) {
 	// path is exercised by the manual verification in the plan.
 	dir := t.TempDir()
 	src := write(t, dir, "p.boru", "add 1 2")
-	out := filepath.Join(dir, "p")
+	out := filepath.Join(dir, "p"+exeSuffix)
 
 	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {
@@ -172,7 +173,7 @@ func TestBuildSelfEmbedEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&0o111 == 0 {
+	if !runnable(info) {
 		t.Fatal("produced file is not executable")
 	}
 	if _, ok, err := buildrt.ReadEmbeddedPayload(out); err != nil || !ok {
@@ -197,7 +198,7 @@ func TestBuildNativeEndToEnd(t *testing.T) {
 
 	dir := t.TempDir()
 	src := write(t, dir, "p.boru", "add 1 2")
-	out := filepath.Join(dir, "p")
+	out := filepath.Join(dir, "p"+exeSuffix)
 
 	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {

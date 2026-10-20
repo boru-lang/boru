@@ -145,7 +145,7 @@ func TestFunctionValueScopeChecksClean(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
-			res, err := a.Check(fmt.Sprintf(tc.caller, mod))
+			res, err := a.Check(fmt.Sprintf(tc.caller, filepath.ToSlash(mod))) // a `\` in a boru string is an escape
 			if err != nil {
 				t.Fatalf("check: %v", err)
 			}

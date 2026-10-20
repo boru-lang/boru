@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"github.com/boru-lang/boru/lang/go/native"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func runWithFiles(t *testing.T, files map[string]string, expr string) (string, e
 	t.Helper()
 	mem := capabilities.NewMem()
 	for path, content := range files {
-		mem.Files[path] = []byte(content)
+		mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content) // the model keys a file by its resolved, OS-native path
 	}
 
 	reg, err := native.DefaultRegistry()
@@ -46,7 +47,7 @@ func runWithMem(t *testing.T, files map[string]string, expr string) (*capabiliti
 	t.Helper()
 	mem := capabilities.NewMem()
 	for path, content := range files {
-		mem.Files[path] = []byte(content)
+		mem.Files[filepath.Clean(filepath.FromSlash(path))] = []byte(content) // the model keys a file by its resolved, OS-native path
 	}
 
 	reg, err := native.DefaultRegistry()

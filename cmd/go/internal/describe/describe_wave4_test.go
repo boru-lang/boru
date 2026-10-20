@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -185,6 +186,15 @@ func TestW4SplitModulePath(t *testing.T) {
 		{"type-util:foo", "type-util", "foo"},
 		{"type-util", "type-util", ""},
 		{"boru:m:a:b", "boru:m", "a:b"},
+		// A one-letter module is a module, not a Windows drive.
+		{"m:a:b", "m", "a:b"},
+	}
+	if runtime.GOOS == "windows" {
+		// The volume's colon is part of the path; the word follows the next.
+		cases = append(cases, []struct{ in, mod, word string }{
+			{`C:\proj\lib.boru:twice`, `C:\proj\lib.boru`, "twice"},
+			{`C:\proj\lib.boru`, `C:\proj\lib.boru`, ""},
+		}...)
 	}
 	for _, c := range cases {
 		mod, word := splitModulePath(c.in)

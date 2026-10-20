@@ -88,12 +88,15 @@ func TestOSFileOpsWriteFileError(t *testing.T) {
 // TestOSFileOpsResolvePathAbsolute verifies absolute paths pass through unchanged.
 func TestOSFileOpsResolvePathAbsolute(t *testing.T) {
 	o := &OSFileOps{}
-	got, err := o.ResolvePath("/absolute/path.txt")
+	// t.TempDir is absolute on every host; `/absolute/…` is not on Windows,
+	// where a rooted path is relative to the current drive.
+	abs := filepath.Join(t.TempDir(), "path.txt")
+	got, err := o.ResolvePath(abs)
 	if err != nil {
 		t.Fatalf("ResolvePath error: %v", err)
 	}
-	if got != "/absolute/path.txt" {
-		t.Errorf("got %q, want %q", got, "/absolute/path.txt")
+	if got != abs {
+		t.Errorf("got %q, want %q", got, abs)
 	}
 }
 
@@ -104,8 +107,8 @@ func TestMemFileOpsResolvePathAbsolute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvePath error: %v", err)
 	}
-	if got != "/absolute/path.txt" {
-		t.Errorf("got %q, want %q", got, "/absolute/path.txt")
+	if want := filepath.FromSlash("/absolute/path.txt"); got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

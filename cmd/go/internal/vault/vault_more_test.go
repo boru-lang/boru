@@ -59,6 +59,7 @@ func TestRunWithoutHomeDir(t *testing.T) {
 	// No BORU_HOME and no HOME: commands fail...
 	t.Setenv(EnvHome, "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "") // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv(EnvFolder, "")
 	t.Setenv(EnvSuffix, "")
 	if code, _, errOut := runVault(t, "", "status"); code == 0 || errOut == "" {

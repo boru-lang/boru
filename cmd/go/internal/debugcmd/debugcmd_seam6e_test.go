@@ -7,6 +7,7 @@ package debugcmd
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,8 @@ func TestServeInitError(t *testing.T) {
 
 func TestServeListenError(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // keep the discovery file out of the real tmp
+	t.Setenv("TMP", t.TempDir())    // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	// A non-loopback bind without --allow-public is declined before listening.
 	code := runServe([]string{"--bind", "203.0.113.1:0"}, &stdout, &stderr)
@@ -127,8 +130,17 @@ func TestDiscoveryPublishNeverTears(t *testing.T) {
 			if _, err := os.Stat(path); err != nil {
 				continue
 			}
+			_, _, err := readDiscovery(path)
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				// The file could not be opened or read, so no content was
+				// seen and nothing tore: Windows denies access to a file for
+				// the moment a rename is replacing it. (Off Windows the path
+				// only ever exists whole, so this never fires.)
+				continue
+			}
 			atomic.AddInt64(&reads, 1)
-			if _, _, err := readDiscovery(path); err != nil {
+			if err != nil { // the JSON did not parse: a prefix was read
 				atomic.AddInt64(&torn, 1)
 			}
 		}

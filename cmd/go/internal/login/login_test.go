@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -24,9 +23,8 @@ func TestRunLoginCLI(t *testing.T) {
 	resp.Body.Close()
 
 	homeDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir) // os.UserHomeDir reads USERPROFILE on Windows
 
 	stdin := strings.NewReader("cliuser\nclipass\n")
 	var stdout, stderr bytes.Buffer
@@ -65,6 +63,7 @@ func TestRunLoginVault(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")

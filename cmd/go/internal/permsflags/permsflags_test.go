@@ -101,6 +101,7 @@ func TestResolvePermsFileTildeExpansion(t *testing.T) {
 	clearPolicyEnv(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	body := `{ version: 1, name: "tilded", scopes: { fileops: { words: { default: "allow" } } } }`
 	if err := os.WriteFile(filepath.Join(home, "p.jsonic"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)

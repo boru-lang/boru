@@ -126,7 +126,7 @@ func TestOverlayWhiteouts(t *testing.T) {
 	if err != nil || len(infos) != 1 || infos[0].Name != "b.txt" {
 		t.Errorf("whited-out listing = %+v (%v)", infos, err)
 	}
-	if got := o.Whiteouts(); len(got) != 1 || got[0] != "d/a.txt" {
+	if got := o.Whiteouts(); len(got) != 1 || got[0] != filepath.FromSlash("d/a.txt") {
 		t.Errorf("Whiteouts() = %v", got)
 	}
 	// Re-creating the path clears the whiteout.
@@ -447,7 +447,7 @@ func TestOverlayResolvePathDelegates(t *testing.T) {
 	upper.Cwd = "/work"
 	o := NewOverlay(upper, NewMem())
 	got, err := o.ResolvePath("rel.txt")
-	if err != nil || got != "/work/rel.txt" {
+	if err != nil || got != filepath.FromSlash("/work/rel.txt") {
 		t.Errorf("ResolvePath = %q (%v), want the upper's resolution", got, err)
 	}
 }

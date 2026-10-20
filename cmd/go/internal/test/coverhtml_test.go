@@ -127,7 +127,7 @@ func TestRunCoverageWriteWarning(t *testing.T) {
 	mod := write(t, filepath.Join(dir, "calc.boru"),
 		"def one fn [[] [Integer] [1]]\nexport \"Calc\" { one: one/v }\n")
 	f := write(t, filepath.Join(dir, "calc_test.boru"),
-		"import \"boru:test\"\nimport \""+mod+"\"\nTest.test \"one\" [(Calc.one) 1 Assert.equal]\n")
+		"import \"boru:test\"\nimport \""+filepath.ToSlash(mod)+"\"\nTest.test \"one\" [(Calc.one) 1 Assert.equal]\n")
 	code, _, stderr := runCmd("--coverage", "--coverage-dir", filepath.Join(dir, "cov"), f)
 	if code != 0 {
 		t.Errorf("code = %d, want 0 (a report-write failure must not fail the run)", code)

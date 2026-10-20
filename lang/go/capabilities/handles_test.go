@@ -323,7 +323,7 @@ func TestMemFileHandleNoMeta(t *testing.T) {
 	// A file poked straight into Files (no Meta) still stores through a
 	// handle write — the store's meta-absent arm.
 	m := NewMem()
-	m.Files["/bare"] = []byte("x")
+	m.Files[filepath.FromSlash("/bare")] = []byte("x")
 	h, err := m.Open("/bare", OpenOpts{Write: true})
 	if err != nil {
 		t.Fatal(err)
@@ -332,8 +332,8 @@ func TestMemFileHandleNoMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = h.Close()
-	if string(m.Files["/bare"]) != "yy" {
-		t.Errorf("no-meta write = %q", m.Files["/bare"])
+	if got := m.Files[filepath.FromSlash("/bare")]; string(got) != "yy" {
+		t.Errorf("no-meta write = %q", got)
 	}
 }
 

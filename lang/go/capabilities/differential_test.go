@@ -180,6 +180,7 @@ func compareTrees(t *testing.T, osOps FileOps, mem *MemFileOps, root string) {
 }
 
 func TestDifferentialWriteReadStat(t *testing.T) {
+	skipWithoutUnixMetadata(t, "file modes")
 	root, osOps, mem := diffPair(t)
 	p := filepath.Join(root, "d", "a.txt")
 
@@ -226,6 +227,7 @@ func TestDifferentialWriteReadStat(t *testing.T) {
 }
 
 func TestDifferentialMkdirReadDir(t *testing.T) {
+	skipWithoutUnixMetadata(t, "directory modes")
 	root, osOps, mem := diffPair(t)
 	sub := filepath.Join(root, "a", "b")
 	step(t, "mkdir", osOps.MkdirAll(sub, 0o755), mem.MkdirAll(sub, 0o755))
@@ -295,6 +297,7 @@ func TestDifferentialRemove(t *testing.T) {
 }
 
 func TestDifferentialRename(t *testing.T) {
+	skipWithoutUnixMetadata(t, "rename-over-directory errors")
 	root, osOps, mem := diffPair(t)
 	both := func(name string, f func(FileOps) error) {
 		step(t, name, f(osOps), f(mem))
@@ -338,6 +341,7 @@ func TestDifferentialRenameDirOverEmpty(t *testing.T) {
 }
 
 func TestDifferentialSymlink(t *testing.T) {
+	skipWithoutUnixMetadata(t, "symlink modes")
 	root, osOps, mem := diffPair(t)
 	both := func(name string, f func(FileOps) error) {
 		step(t, name, f(osOps), f(mem))
@@ -403,6 +407,7 @@ func TestDifferentialSymlink(t *testing.T) {
 }
 
 func TestDifferentialHardLink(t *testing.T) {
+	skipWithoutUnixMetadata(t, "shared permission bits")
 	root, osOps, mem := diffPair(t)
 	both := func(name string, f func(FileOps) error) {
 		step(t, name, f(osOps), f(mem))
@@ -455,6 +460,7 @@ func TestDifferentialHardLink(t *testing.T) {
 }
 
 func TestDifferentialChmodChtimesTruncate(t *testing.T) {
+	skipWithoutUnixMetadata(t, "permission bits")
 	root, osOps, mem := diffPair(t)
 	both := func(name string, f func(FileOps) error) {
 		step(t, name, f(osOps), f(mem))
@@ -497,6 +503,7 @@ func TestDifferentialChmodChtimesTruncate(t *testing.T) {
 // bypasses permission checks for root, and MemFileOps mirrors that via
 // euid — so the denial arm only runs where the kernel enforces it.
 func TestDifferentialPermissionDenied(t *testing.T) {
+	skipWithoutUnixMetadata(t, "mode-enforced access")
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: the kernel does not enforce permission bits (mem's non-root arm is covered by the euid-seam tests)")
 	}

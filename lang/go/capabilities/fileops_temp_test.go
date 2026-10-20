@@ -15,6 +15,7 @@ import (
 // pins prefix/suffix/containment/modes and error classes, never values).
 
 func TestDifferentialTempShape(t *testing.T) {
+	skipWithoutUnixMetadata(t, "temp-file modes")
 	root, osOps, mem := diffPair(t)
 	j := func(rel string) string { return filepath.Join(root, rel) }
 	step(t, "seed-dir", osOps.MkdirAll(j("d"), 0o755), mem.MkdirAll(j("d"), 0o755))
@@ -65,6 +66,7 @@ func TestDifferentialTempShape(t *testing.T) {
 }
 
 func TestDifferentialStatfsShape(t *testing.T) {
+	skipWithoutUnixMetadata(t, "statfs")
 	root, osOps, mem := diffPair(t)
 	step(t, "seed", osOps.WriteFile(filepath.Join(root, "f"), []byte("data"), 0o644),
 		mem.WriteFile(filepath.Join(root, "f"), []byte("data"), 0o644))
@@ -96,12 +98,12 @@ func TestMemTempModel(t *testing.T) {
 	m := NewMem()
 	// Default root is the implicit /tmp; tokens count deterministically.
 	p1, err := m.TempFile("", "a-*")
-	if err != nil || p1 != "/tmp/a-1" {
+	if err != nil || p1 != filepath.FromSlash("/tmp/a-1") {
 		t.Errorf("first temp = %q (%v), want /tmp/a-1", p1, err)
 	}
 	// A pattern without "*" appends the token.
 	p2, err := m.TempFile("", "plain")
-	if err != nil || p2 != "/tmp/plain2" {
+	if err != nil || p2 != filepath.FromSlash("/tmp/plain2") {
 		t.Errorf("no-star temp = %q (%v), want /tmp/plain2", p2, err)
 	}
 	// The uniqueness loop skips an occupied candidate.
@@ -109,7 +111,7 @@ func TestMemTempModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	p3, err := m.TempFile("", "a-*")
-	if err != nil || p3 != "/tmp/a-4" {
+	if err != nil || p3 != filepath.FromSlash("/tmp/a-4") {
 		t.Errorf("collision-skip temp = %q (%v), want /tmp/a-4", p3, err)
 	}
 	// TempDir creates a 0700 directory.

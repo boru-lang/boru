@@ -2,6 +2,7 @@ package native
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -88,7 +89,7 @@ func TestWatchWordDeliversEvents(t *testing.T) {
 		t.Errorf("event op = %v, want create atom", func() Value { v, _ := m.Get("op"); return v }())
 	}
 	p, _ := m.Get("path")
-	if !IsPathon(p) || p.String() != "d/a.txt" {
+	if !IsPathon(p) || p.String() != filepath.FromSlash("d/a.txt") {
 		t.Errorf("event path = %v, want the Pathon d/a.txt", p)
 	}
 
@@ -155,7 +156,7 @@ func TestWatchRel(t *testing.T) {
 		{"d", "/abs/x", "x"},  // Rel error (mixed abs/rel) → base name
 	}
 	for _, c := range cases {
-		if got := watchRel(c.root, c.ev); got != c.want {
+		if got := watchRel(c.root, c.ev); got != filepath.FromSlash(c.want) {
 			t.Errorf("watchRel(%q,%q) = %q, want %q", c.root, c.ev, got, c.want)
 		}
 	}

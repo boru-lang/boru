@@ -346,6 +346,8 @@ func writeDiscoveryFile(t *testing.T, url, token string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir) // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", dir)
 	body, err := json.Marshal(map[string]any{"url": url, "token": token, "pid": 1234})
 	if err != nil {
 		t.Fatal(err)
@@ -384,6 +386,8 @@ func TestDiscoveryFallbackKeepsExplicitToken(t *testing.T) {
 
 func TestDiscoveryFileMissing(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // empty: no discovery file
+	t.Setenv("TMP", t.TempDir())    // os.TempDir reads TMP, then TEMP, on Windows
+	t.Setenv("TEMP", t.TempDir())
 	code, _, errOut := runCtl(t, "status")
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)

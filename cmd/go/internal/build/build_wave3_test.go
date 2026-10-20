@@ -218,10 +218,10 @@ func TestRunSelfEmbedDefaultOutput(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr: %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "wrote prog") {
+	if !strings.Contains(stdout, "wrote prog"+exeSuffix) {
 		t.Errorf("stdout = %q, want default output name", stdout)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "prog")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "prog"+exeSuffix)); err != nil {
 		t.Errorf("expected default output file: %v", err)
 	}
 }

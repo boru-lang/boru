@@ -1,6 +1,7 @@
 package native
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -62,8 +63,8 @@ func TestWriteWithAbsPath(t *testing.T) {
 	if len(result) != 1 || !IsPathon(result[0]) {
 		t.Fatalf("expected Path result, got %v", result)
 	}
-	if string(mem.Files["/tmp/out.txt"]) != "abs content" {
-		t.Errorf("file content = %q, want %q", string(mem.Files["/tmp/out.txt"]), "abs content")
+	if string(mem.Files[filepath.FromSlash("/tmp/out.txt")]) != "abs content" {
+		t.Errorf("file content = %q, want %q", string(mem.Files[filepath.FromSlash("/tmp/out.txt")]), "abs content")
 	}
 }
 
@@ -89,7 +90,7 @@ func TestReadWithAbsPath(t *testing.T) {
 	r, _ := DefaultRegistry()
 	registerIOWords(r)
 	mem := setupMemFSForIO(t, r)
-	mem.Files["/etc/config"] = []byte("key=val")
+	mem.Files[filepath.FromSlash("/etc/config")] = []byte("key=val")
 
 	path := NewPathon([]string{"etc", "config"}, true)
 	result := runBoru(t, r, []Value{

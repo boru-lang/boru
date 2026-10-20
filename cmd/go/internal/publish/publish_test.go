@@ -23,9 +23,8 @@ import (
 
 func TestRunPublishNotLoggedIn(t *testing.T) {
 	homeDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir) // os.UserHomeDir reads USERPROFILE on Windows
 
 	var stdout, stderr bytes.Buffer
 	code := Run(nil, nil, &stdout, &stderr)
@@ -55,9 +54,8 @@ func TestRunPublishCLI(t *testing.T) {
 	resp.Body.Close()
 
 	homeDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir) // os.UserHomeDir reads USERPROFILE on Windows
 
 	auth.SaveClientUser(homeDir, &auth.ClientUser{
 		Username: "pubuser",
@@ -99,7 +97,8 @@ func TestRunPublishFromVault(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("BORU_HOME", "") // force the vault to resolve home from HOME
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
+	t.Setenv("BORU_HOME", "")     // force the vault to resolve home from HOME
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")
 	t.Setenv("BORU_VAULT_PASSPHRASE", "vpw")

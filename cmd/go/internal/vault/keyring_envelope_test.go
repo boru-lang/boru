@@ -3,6 +3,7 @@ package vault
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -101,7 +102,7 @@ func TestEnvelopeKeyringHeaderAndFormatDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 { // Windows has no permission bits
 		t.Errorf("keyring mode = %v, want 0600", info.Mode().Perm())
 	}
 }

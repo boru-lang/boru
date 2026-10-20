@@ -42,6 +42,7 @@ func xattrHostName(name string) string {
 }
 
 func TestDifferentialChownNoOpAndStatOwner(t *testing.T) {
+	skipWithoutUnixMetadata(t, "ownership")
 	root, osOps, mem := diffPair(t)
 	j := func(rel string) string { return filepath.Join(root, rel) }
 	step(t, "seed", osOps.WriteFile(j("f"), []byte("x"), 0o644), mem.WriteFile(j("f"), []byte("x"), 0o644))
@@ -64,6 +65,7 @@ func TestDifferentialChownNoOpAndStatOwner(t *testing.T) {
 }
 
 func TestDifferentialChownDenied(t *testing.T) {
+	skipWithoutUnixMetadata(t, "ownership")
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: the kernel permits any chown (mem's non-root arm is covered by TestMemChownRules)")
 	}
@@ -338,6 +340,7 @@ func TestMemOwnershipStamping(t *testing.T) {
 // TestOSChownXattrErrorPaths covers the OS wrappers' resolve-failure arms
 // and the non-unix-style refusals via an injected failing getwd.
 func TestOSChownXattrErrorPaths(t *testing.T) {
+	skipWithoutUnixMetadata(t, "ownership")
 	bad := &OSFileOps{getwd: func() (string, error) { return "", errors.New("no cwd") }}
 	if err := bad.Chown("rel", -1, -1, true); err == nil {
 		t.Error("Chown with failing getwd should error")

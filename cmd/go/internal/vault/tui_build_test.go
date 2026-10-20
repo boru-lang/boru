@@ -230,10 +230,11 @@ func TestVaultLocationFlags(t *testing.T) {
 	// A non-default vault contributes --folder/--suffix.
 	ctl.folder = filepath.Join(ctl.homeDir, ".vxgboru01")
 	ctl.suffix = "sdk01"
-	if got := m.vaultLocationFlags(); !strings.Contains(got, "--folder=~/.vxgboru01") || !strings.Contains(got, "--suffix=sdk01") {
+	folderFlag := "--folder=" + filepath.Join("~", ".vxgboru01") // native separator
+	if got := m.vaultLocationFlags(); !strings.Contains(got, folderFlag) || !strings.Contains(got, "--suffix=sdk01") {
 		t.Errorf("non-default flags = %q", got)
 	}
-	if got := m.withVaultLocation("boru vault list"); !strings.HasPrefix(got, "boru vault --folder=~/.vxgboru01 --suffix=sdk01 list") {
+	if got := m.withVaultLocation("boru vault list"); !strings.HasPrefix(got, "boru vault "+folderFlag+" --suffix=sdk01 list") {
 		t.Errorf("withVaultLocation = %q", got)
 	}
 }

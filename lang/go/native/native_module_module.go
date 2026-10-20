@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/boru-lang/boru/lang/go/capabilities"
 	"github.com/boru-lang/boru/lang/go/policy"
 )
 
@@ -377,11 +378,14 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 }
 
 // isFilePath returns true if the string looks like a file path
-// (starts with "/", "./", or "../").
+// (starts with "/", "./", or "../", or is absolute — on Windows that
+// includes a volume path, `C:/x` or `C:\x`, which would otherwise be
+// searched for as a bare module named after the whole path).
 func isFilePath(path string) bool {
 	return strings.HasPrefix(path, "/") ||
 		strings.HasPrefix(path, "./") ||
-		strings.HasPrefix(path, "../")
+		strings.HasPrefix(path, "../") ||
+		capabilities.IsAbsPath(path)
 }
 
 // isDataFile returns true if the path has a data file extension
@@ -419,7 +423,11 @@ func resolveModuleMain(r *Registry, dir string) string {
 // property, falling back to index.lang.
 func resolveImportPath(r *Registry, path string) string {
 	resolved := path
-	if r.BaseDir != "" && !filepath.IsAbs(path) {
+	// capabilities.IsAbsPath, not filepath.IsAbs: on Windows a rooted path
+	// (`\proj\.boru\m\index.boru`, what resolveBareModule builds from a
+	// rooted BaseDir) is not filepath.IsAbs, and joining it under BaseDir
+	// doubled the directory.
+	if r.BaseDir != "" && !capabilities.IsAbsPath(path) {
 		resolved = filepath.Join(r.BaseDir, path)
 	}
 	if filepath.Ext(resolved) == "" {

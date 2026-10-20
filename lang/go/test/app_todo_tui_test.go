@@ -2,6 +2,7 @@ package test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func runTuiAppSteps(t *testing.T, vb *tuikit.VirtualBackend, appFiles []string, 
 		if err != nil {
 			t.Fatalf("read app %s: %v", name, err)
 		}
-		mem.Files["/apps/"+name] = src
+		mem.Files[filepath.FromSlash("/apps/"+name)] = src // the model's OS-native key
 	}
 	reg, err := native.DefaultRegistry()
 	if err != nil {

@@ -84,8 +84,8 @@ func (o *OverlayFileOps) deref(path string) (string, error) {
 			return path, nil // absent or concrete: the caller owns the outcome
 		}
 		t := fi.Target
-		if !filepath.IsAbs(t) {
-			t = filepath.Join(filepath.Dir(path), t)
+		if !IsAbsPath(t) {
+			t = joinPath(filepath.Dir(path), t)
 		}
 		path = filepath.Clean(t)
 	}
@@ -236,7 +236,7 @@ func (o *OverlayFileOps) ReadDir(path string) ([]FileInfo, error) {
 	}
 	merged := map[string]FileInfo{}
 	for _, fi := range lowerInfos {
-		if !o.isWhiteout(filepath.Join(resolved, fi.Name)) {
+		if !o.isWhiteout(joinPath(resolved, fi.Name)) {
 			merged[fi.Name] = fi
 		}
 	}
@@ -349,10 +349,10 @@ func (o *OverlayFileOps) copyUpTree(path string) error {
 		return err
 	}
 	for _, child := range infos {
-		if o.isWhiteout(filepath.Join(o.resolve(path), child.Name)) {
+		if o.isWhiteout(joinPath(o.resolve(path), child.Name)) {
 			continue
 		}
-		if err := o.copyUpTree(filepath.Join(path, child.Name)); err != nil {
+		if err := o.copyUpTree(joinPath(path, child.Name)); err != nil {
 			return err
 		}
 	}

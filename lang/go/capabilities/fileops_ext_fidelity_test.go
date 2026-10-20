@@ -3,6 +3,7 @@ package capabilities
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -235,7 +236,7 @@ func TestMemRenameRemapsAliasTargets(t *testing.T) {
 	if err := m.Rename("d", "moved"); err != nil {
 		t.Fatal(err)
 	}
-	if m.Links["al"] != "moved/f.txt" {
+	if m.Links["al"] != filepath.FromSlash("moved/f.txt") {
 		t.Errorf("alias target after rename = %q", m.Links["al"])
 	}
 	if b, err := m.ReadFile("al"); err != nil || string(b) != "x" {

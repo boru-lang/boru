@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -33,7 +32,8 @@ func TestS7n_RunSIGINTCleanShutdown(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	self, _ := os.FindProcess(os.Getpid()) // not syscall.Kill: the file must build on Windows
+	if err := self.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 

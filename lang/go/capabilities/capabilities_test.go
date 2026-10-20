@@ -64,8 +64,9 @@ func TestMemFileOpsWriteCopiesData(t *testing.T) {
 func TestOSFileOpsResolvePath(t *testing.T) {
 	o := &OSFileOps{}
 
-	// Absolute path returns as-is
-	abs := "/tmp/test.txt"
+	// Absolute path returns as-is (t.TempDir is absolute on every host;
+	// `/tmp/…` is drive-relative on Windows).
+	abs := filepath.Join(t.TempDir(), "test.txt")
 	got, err := o.ResolvePath(abs)
 	if err != nil {
 		t.Fatalf("ResolvePath error: %v", err)

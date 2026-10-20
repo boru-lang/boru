@@ -187,6 +187,7 @@ func TestOSLink(t *testing.T) {
 }
 
 func TestOSChmod(t *testing.T) {
+	skipWithoutUnixMetadata(t, "permission bits")
 	dir := t.TempDir()
 	o := &OSFileOps{}
 	f := filepath.Join(dir, "f")

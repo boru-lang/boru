@@ -111,7 +111,8 @@ func TestW4LoginInvalidJSONResponse(t *testing.T) {
 
 func TestW4LoginHomeDirError(t *testing.T) {
 	srv := okLoginServer(t)
-	t.Setenv("HOME", "") // os.UserHomeDir fails with an empty $HOME
+	t.Setenv("HOME", "")        // os.UserHomeDir fails with an empty $HOME
+	t.Setenv("USERPROFILE", "") // os.UserHomeDir reads USERPROFILE on Windows
 
 	var out, errOut bytes.Buffer
 	code := Run([]string{"-r", srv.URL}, strings.NewReader("alice\npw\n"), &out, &errOut)
@@ -131,6 +132,7 @@ func TestW4LoginSaveError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 
 	var out, errOut bytes.Buffer
 	code := Run([]string{"-r", srv.URL}, strings.NewReader("alice\npw\n"), &out, &errOut)
@@ -146,6 +148,7 @@ func TestW4LoginSuccessPlaintext(t *testing.T) {
 	srv := okLoginServer(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 
 	var out, errOut bytes.Buffer
 	code := New().Run([]string{"-r", srv.URL}, strings.NewReader("alice\npw\n"), &out, &errOut)
@@ -173,6 +176,7 @@ func TestW4LoginVaultWriteError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads USERPROFILE on Windows
 	t.Setenv("BORU_HOME", "")
 	t.Setenv("BORU_VAULT_FOLDER", "")
 	t.Setenv("BORU_VAULT_SUFFIX", "")

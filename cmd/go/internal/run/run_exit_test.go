@@ -61,9 +61,9 @@ func TestExecuteExitUnwindsWithoutDiscarding(t *testing.T) {
 	after := filepath.Join(dir, "after.txt")
 	file := filepath.Join(dir, "exit.boru")
 	src := "import \"boru:io\"\n" +
-		"IO.write (make Pathon \"" + before + "\") \"1\" drop\n" +
+		"IO.write (make Pathon \"" + filepath.ToSlash(before) + "\") \"1\" drop\n" + // `\` escapes in boru
 		"IO.exit 2\n" +
-		"IO.write (make Pathon \"" + after + "\") \"1\" drop\n"
+		"IO.write (make Pathon \"" + filepath.ToSlash(after) + "\") \"1\" drop\n"
 	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

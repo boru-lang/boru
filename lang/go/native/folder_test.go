@@ -1,6 +1,7 @@
 package native
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -66,7 +67,7 @@ func TestFolderAbsolutePath(t *testing.T) {
 		_as3, _ := AsPathon(result[0])
 		t.Errorf("got %q, want %q", _as3.String(), "/tmp/data")
 	}
-	if !mem.Dirs["/tmp/data"] {
+	if !mem.Dirs[filepath.FromSlash("/tmp/data")] {
 		t.Errorf("absolute dir not created; dirs=%v", mem.Dirs)
 	}
 }

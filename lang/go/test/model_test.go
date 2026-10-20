@@ -72,8 +72,8 @@ func TestModelFilePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	dir := t.TempDir()
-	file := filepath.Join(dir, "model.jsonic")
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
+	file := dir + "/model.jsonic"
 	if werr := os.WriteFile(file, []byte("svc: name: 'orders'"), 0o600); werr != nil {
 		t.Fatalf("write model: %v", werr)
 	}
@@ -95,7 +95,7 @@ func TestModelMemFS(t *testing.T) {
 		t.Fatalf("lang.New: %v", err)
 	}
 	mem := capabilities.NewMem()
-	mem.Files["/proj/model.jsonic"] = []byte("svc: name: 'orders'\nsvc: port: 8080")
+	mem.Files[filepath.FromSlash("/proj/model.jsonic")] = []byte("svc: name: 'orders'\nsvc: port: 8080")
 	a.SetFileOps(mem)
 
 	prog := modelImp + `def m (Model.new {path:'/proj/model.jsonic', base:'/proj'}) (Model.run m) get 'ok'`
@@ -103,7 +103,7 @@ func TestModelMemFS(t *testing.T) {
 		t.Fatalf("mem-fs run ok: got %v, want true", got)
 	}
 	// The model writer wrote the unified model to /proj/model.json in the mem FS.
-	out, ok := mem.Files["/proj/model.json"]
+	out, ok := mem.Files[filepath.FromSlash("/proj/model.json")]
 	if !ok {
 		t.Fatalf("expected /proj/model.json written to the in-memory FS; files: %v", keysOf(mem.Files))
 	}
@@ -133,8 +133,8 @@ func TestModelWatchForkNoRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "m.jsonic")
+	dir := filepath.ToSlash(t.TempDir()) // spliced into boru source, where `\` escapes
+	src := dir + "/m.jsonic"
 	if err := os.WriteFile(src, []byte("n: 1"), 0o600); err != nil {
 		t.Fatalf("write src: %v", err)
 	}

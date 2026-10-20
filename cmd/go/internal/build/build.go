@@ -172,7 +172,7 @@ func defaultOutput(srcPath string) string {
 	if ext := filepath.Ext(name); ext != "" {
 		name = strings.TrimSuffix(name, ext)
 	}
-	return name
+	return name + exeSuffix // p.exe on Windows, where an extensionless file cannot run
 }
 
 // buildConfig reads the entry program, walks its file-import graph, and

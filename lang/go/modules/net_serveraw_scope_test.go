@@ -35,7 +35,7 @@ func TestServeRawHandlerResolvesDefiningModule(t *testing.T) {
 
 	out, err := runNetSteps(t, []string{
 		`import "boru:net"`,
-		`import "` + mod + `" end`,
+		`import "` + filepath.ToSlash(mod) + `" end`, // a `\` in a boru string is an escape
 		// The caller binds the SAME name to a different definition. Nothing
 		// type-checks the difference — both are [[Integer] [String]] — so a
 		// wrong answer here is silent.

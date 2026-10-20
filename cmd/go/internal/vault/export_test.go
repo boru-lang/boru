@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestExportImportRoundTripAcrossVaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bundle not written: %s", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 { // Windows has no permission bits
 		t.Errorf("bundle mode = %o, want 600", info.Mode().Perm())
 	}
 

@@ -192,7 +192,7 @@ func coverageFixture(t *testing.T, dir string) (mod, suite string) {
 			"def triple fn [[x:Integer] [Integer] [\n  x mul 3\n]]\n"+
 			"export \"Calc\" { add2: add2/v  triple: triple/v }\n")
 	suite = write(t, filepath.Join(dir, "calc_test.boru"),
-		"import \"boru:test\"\nimport \""+mod+"\"\nTest.test \"add2\" [(Calc.add2 3) 5 Assert.equal]\n")
+		"import \"boru:test\"\nimport \""+filepath.ToSlash(mod)+"\"\nTest.test \"add2\" [(Calc.add2 3) 5 Assert.equal]\n")
 	return mod, suite
 }
 
@@ -207,7 +207,10 @@ func TestRunCoverage(t *testing.T) {
 	if code != 0 {
 		t.Errorf("code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout, "cover "+mod) || !strings.Contains(stdout, "%") {
+	// A module is reported under its import string, which the fixture wrote
+	// slash-separated.
+	id := filepath.ToSlash(mod)
+	if !strings.Contains(stdout, "cover "+id) || !strings.Contains(stdout, "%") {
 		t.Errorf("stdout = %q, want a coverage line for the module", stdout)
 	}
 	if !strings.Contains(stdout, "uncovered: 5") {
@@ -222,7 +225,7 @@ func TestRunCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !strings.Contains(string(idxHTML), mod) || !strings.Contains(string(idxHTML), "mod0.html") {
+	if !strings.Contains(string(idxHTML), id) || !strings.Contains(string(idxHTML), "mod0.html") {
 		t.Errorf("index.html missing the module row:\n%s", idxHTML)
 	}
 	modHTML, err := os.ReadFile(filepath.Join(htmlDir, "mod0.html"))

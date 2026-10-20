@@ -113,7 +113,7 @@ func TestClearDefaultsKeepsSingleDefault(t *testing.T) {
 	for _, ref := range idx.Vaults {
 		if ref.Default {
 			defaults++
-			if ref.Folder != "/b" || ref.Suffix != "x" {
+			if ref.Folder != filepath.FromSlash("/b") || ref.Suffix != "x" {
 				t.Errorf("wrong default: %+v", ref)
 			}
 		}

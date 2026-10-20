@@ -3,6 +3,7 @@ package vault
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -19,7 +20,7 @@ func TestWriteFileAtomic(t *testing.T) {
 	if b, _ := os.ReadFile(path); string(b) != "hello" {
 		t.Errorf("content = %q, want hello", b)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0600 {
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0600 { // Windows has no permission bits
 		t.Errorf("perm = %o, want 600", info.Mode().Perm())
 	}
 

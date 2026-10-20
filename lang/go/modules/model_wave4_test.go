@@ -76,7 +76,7 @@ func TestModelWave4RunInlineMemFS(t *testing.T) {
 // base defaults to the source file's directory (and the model resolves).
 func TestModelWave4PathBaseDefault(t *testing.T) {
 	r, mem := mw4Reg(t)
-	mem.Files["/proj/m.jsonic"] = []byte("svc: name: 'orders'")
+	mem.Files[filepath.FromSlash("/proj/m.jsonic")] = []byte("svc: name: 'orders'")
 	out := mcovRun(t, r, mw4Imp+
 		`def m (Model.new {path:'/proj/m.jsonic'}) Model.run m drop ((Model.model m) get 'svc') get 'name'`)
 	if s, err := out[len(out)-1].AsConcreteString(); err != nil || s != "orders" {
@@ -89,13 +89,13 @@ func TestModelWave4PathBaseDefault(t *testing.T) {
 // model.json write in the overlay (no mem-FS write).
 func TestModelWave4SpecFields(t *testing.T) {
 	r, mem := mw4Reg(t)
-	mem.Files["/proj/m.jsonic"] = []byte("n: 1")
+	mem.Files[filepath.FromSlash("/proj/m.jsonic")] = []byte("n: 1")
 	ok := mw4OkFlag(t, r, mw4Imp+
 		`def m (Model.new {path:'/proj/m.jsonic', base:'/proj', dryrun:true, args:{k:'v'}, order:['gen'], watch:{mod:true add:false rem:true}, actions:{gen:([mod:Any] => [true])}}) (Model.run m) get 'ok'`)
 	if !ok {
 		t.Fatal("spec-fields run ok = false, want true")
 	}
-	if _, wrote := mem.Files["/proj/model.json"]; wrote {
+	if _, wrote := mem.Files[filepath.FromSlash("/proj/model.json")]; wrote {
 		t.Error("dryrun must keep the model.json write in the overlay, not the FileOps")
 	}
 }
@@ -228,7 +228,7 @@ func TestModelWave4ConflictErrs(t *testing.T) {
 // is a safe no-op.
 func TestModelWave4StartStop(t *testing.T) {
 	r, mem := mw4Reg(t)
-	mem.Files["/proj/m.jsonic"] = []byte("n: 1")
+	mem.Files[filepath.FromSlash("/proj/m.jsonic")] = []byte("n: 1")
 	ok := mw4OkFlag(t, r, mw4Imp+
 		`def m (Model.new {path:'/proj/m.jsonic', base:'/proj', actions:{tick:([mod:Any] => [true])}}) (Model.start m) get 'ok'`)
 	if !ok {
@@ -368,13 +368,13 @@ func TestModelWave4InlineIOFailures(t *testing.T) {
 // underlying FileOps; MkdirAll is a no-op.
 func TestModelWave4FileOpsFSDry(t *testing.T) {
 	mem := capabilities.NewMem()
-	mem.Files["/proj/under.txt"] = []byte("under")
+	mem.Files[filepath.FromSlash("/proj/under.txt")] = []byte("under")
 	f := &fileOpsFS{ops: mem, dry: true, mem: map[string][]byte{}}
 
 	if err := f.WriteFile("/proj/out.txt", []byte("over"), 0o600); err != nil {
 		t.Fatalf("dry write: %v", err)
 	}
-	if _, ok := mem.Files["/proj/out.txt"]; ok {
+	if _, ok := mem.Files[filepath.FromSlash("/proj/out.txt")]; ok {
 		t.Error("dry write must not reach the underlying FileOps")
 	}
 	got, err := f.ReadFile("/proj/out.txt")
@@ -410,10 +410,10 @@ func TestModelWave4FileOpsFSDelegate(t *testing.T) {
 	if got, err := f.ReadFile("/d/a.txt"); err != nil || string(got) != "x" {
 		t.Errorf("read = %q (%v), want x", got, err)
 	}
-	if err := f.MkdirAll("/d/sub", 0o755); err != nil || !mem.Dirs["/d/sub"] {
+	if err := f.MkdirAll("/d/sub", 0o755); err != nil || !mem.Dirs[filepath.FromSlash("/d/sub")] {
 		t.Errorf("MkdirAll should delegate (err %v, dirs %v)", err, mem.Dirs)
 	}
-	if k := f.key("/d/a.txt"); k != "/d/a.txt" {
+	if k := f.key("/d/a.txt"); k != filepath.FromSlash("/d/a.txt") {
 		t.Errorf("key resolved = %q", k)
 	}
 	// A FileOps whose ResolvePath fails: key falls back to the raw name.
@@ -469,7 +469,7 @@ func TestModelWave4Stat(t *testing.T) {
 	}
 
 	mem := capabilities.NewMem()
-	mem.Files["/m/x.txt"] = []byte("hello")
+	mem.Files[filepath.FromSlash("/m/x.txt")] = []byte("hello")
 	fMem := &fileOpsFS{ops: mem, mem: map[string][]byte{}}
 	fi, err = fMem.Stat("/m/x.txt")
 	if err != nil {
