@@ -64,6 +64,7 @@ import {
   newMark,
   newMove,
   newNone,
+  newSplice,
   newClassType,
   ClassTypeInfo,
   newString,
@@ -772,15 +773,20 @@ function registerSpecWords(r: Registry): void {
     ],
   })
 
-  // word VALUE — wraps an (unevaluated) value as a code body. In this
-  // TS subset an unquoted list bound via def already splices its
-  // elements at the use site (Engine.stepWord path 2), so `word` is the
-  // identity that defers evaluation of its argument. Mirrors the Go
-  // `word`/__SP splice fixture for forth.tsv.
+  // word VALUE — wraps the (unevaluated) value in an __SP splice marker,
+  // the kernel's splice mechanism: stepped where nothing is collecting
+  // it, the marker is replaced by what it holds — a list's elements, any
+  // other value itself — which then runs against the live stack. The
+  // twin of the Go engspec fixture's `word` (test/specfix/words.go).
+  //
+  // It used to be the identity, leaning on a core/ts reading core/go
+  // never had: an unquoted list bound to a name was spliced into the
+  // program at each reference. A binding holds a VALUE (a list bound to a
+  // name is that list); splicing is what the marker is for.
   reg({
     name: 'word',
     forwardPrecedence: true,
-    signatures: [{ args: [TAny], noEvalArgs: new Set([0]), handler: (args) => [args[0]!] }],
+    signatures: [{ args: [TAny], noEvalArgs: new Set([0]), handler: (args) => [newSplice(args[0]!)] }],
   })
 
   // def: spec-subset code-body binding. Captures `def NAME body`
@@ -795,9 +801,9 @@ function registerSpecWords(r: Registry): void {
       // `def name word BODY` — the Forth-style splice binder. `word` is
       // a KEYWORD SLOT (quoted, pattern-matched), so def captures it
       // structurally instead of stranding on it under the strict
-      // forward-barrier. Mirrors the Go engspec fixture's defWord; the
-      // TS def-substitution already splices an unquoted eval-list body
-      // at each reference, so binding the raw body IS the splice.
+      // forward-barrier. Mirrors the Go engspec fixture's defWord: the
+      // name is bound to an __SP splice marker over the raw body, so a
+      // reference splices the body where it stands.
       {
         args: [TAtom, TAtom, TAny],
         quoteArgs: new Set([0, 1]),
@@ -809,7 +815,7 @@ function registerSpecWords(r: Registry): void {
           if (/^-?\d/.test(name)) {
             throw new BoruError('syntax_error', `invalid numeric literal: ${name}`, name)
           }
-          registry.pushDef(name, args[2]!)
+          registry.pushDef(name, newSplice(args[2]!))
           return []
         },
       },

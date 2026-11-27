@@ -117,6 +117,7 @@ export {
   newClassType,
   newErrorValue,
   newNone,
+  newSplice,
   newOpenParen,
   newSugar,
   renderSugar,

@@ -25,186 +25,18 @@
 # The `go` column is the reference by CONVENTION, not by proof. Two of the
 # five original parser-side divergence classes turned out to have Go wrong.
 # Read design/CORE-TS-DIVERGENCES.1.md before assuming which side moves.
-
-
-# --- a type-mismatched paren operand: which error ---------------------------
-# Both refuse; they disagree about the code. Go reports signature_error (the
-# operand does not fit the slot); core/ts reports no_value_error (it treats
-# the group as having produced nothing usable). Same refusal, different
-# taxonomy, so a caller matching on the code behaves differently.
-
-run boomq end	ERROR:undefined_word	ERROR:signature_error	DATA: TS resolves the WORD `end` to the end marker; core/go has no such word and raises undefined_word.
-run 1 boomq end	ERROR:undefined_word	ERROR:fixture_boom	DATA: TS resolves the WORD `end` to the end marker; core/go has no such word and raises undefined_word.
-
-
-# --- canon of a bare paren marker: ADJUDICATED, and TS is right -------------
-# Go renders an OpenParen as the EMPTY string, so a list holding one renders
-# with a gap and the token vanishes; core/ts renders `(`.
 #
-# The `go` column is NOT the reference here, and Go's own source says so.
-# core/go/canon.go:104 fixed exactly this defect for the CLOSE paren — "Canon
-# had no arm, so the payload-less fallthrough rendered it as the empty string
-# and `1 )` canon'd to `1 `, dropping the token silently" — and the same
-# commit fixed it for the End marker. The OPEN paren was left because, as the
-# comment says, "an unmatched OPENING paren never reaches here, because that
-# is a parse error rather than a value". The corpus notation can construct one
-# where the parser cannot, and the fallthrough is still there.
-#
-# So these rows stay pinned with core/ts UNCHANGED. Making TS reproduce Go's
-# fallthrough would be applying a known defect to the port. The ledger header
-# warns that the go column is the reference "by convention, not by proof";
-# this is the third time on this programme that the warning has paid.
+# WHAT HAS CLOSED. The port's two halves landed on 2026-11-27 and their rows
+# moved to the spec files their rules are pinned in: the unifier, resolution
+# and rendering half to unify.tsv, data.tsv, canon.tsv and dispatch.tsv; the
+# engine half — the call frame and its return check, a function VALUE's
+# dispatch, `name/v`, `name/u`, the word `end`, a def-bound list, an
+# unmatched `(` — to dispatch.tsv, with function identity in unify.tsv.
+# What is left below is what core/ts does not have at all — closures and
+# driven loops — one recorded kernel defect (NUR392), pinned as the kernel
+# has it, and, last, what a differential search found once the engine half
+# had closed.
 
-run ( boomq	ERROR:signature_error	ERROR:syntax_error	CODE: an unmatched `(` at the TOP of the stream. preEvalParens already applies Go’s rule INSIDE a forward window; only the run loop’s arm differs. NOT changed because eng/ts pins the refusal in "a programmatic unmatched open paren refuses in the scanner" — which behaviour is right is a question for that test and its Go twin.
-
-
-# --- an unquoted EVAL-LIST def binding: data or code? --------------------
-# Go SUBSTITUTES the list as a value, which then auto-evaluates — `[3]`.
-# core/ts SPLICES it as a code body and runs it in place — `3`. The quoted
-# spelling agrees on both (`[q …]` is opaque data), so the disagreement is
-# exactly about what an UNQUOTED list binding means.
-#
-# Found the moment the corpus could install a def at all, which is the
-# point: this surface had no rows, so nothing had ever compared the two
-# engines on it. core/ts/src/engine.test.ts BASELINES the TS answer in
-# "splices an unquoted eval list as a code body" — the second time on this
-# branch that a per-engine unit test has pinned one engine's behaviour as
-# the contract.
-run def b [ addq 1 2 ] ; b	[3]	3	DATA: Go substitutes the list as a value; TS splices it as a code body.
-run def b [ 1 2 ] ; b	[1 2]	1 2	DATA: same rule with no words in the body — the residual is the list, not its elements.
-
-# --- the call frame, function VALUES, the /v modifier, a literal's `(` --------
-# The engine half of the port. (The unifier, resolution and rendering half —
-# 66 rows — closed on 2026-11-27 and moved to unify.tsv, data.tsv, canon.tsv
-# and dispatch.tsv.)
-run def inc fn( n Any Integer [ n ] ) ; inc 'x'	ERROR:type_error	'x'	DATA: core/ts does not run the call frame's return check, so a body that leaves a String under a declared Integer return is not refused.
-run fn( n Integer Integer [ addq n 1 ] ) 5	6	fn [[n:Integer][Integer][addq n 1]] 5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run 5 fn( n Integer Integer [ addq n 1 ] )	6	5 fn [[n:Integer][Integer][addq n 1]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run ( 2 fn( n Integer Any [ negq n ] ) )	-2	2 fn [[n:Integer][Any][negq n]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run fn( n Integer Integer [ n ] ) 'x'	ERROR:uncalled_function	fn [[n:Integer][Integer][n]] 'x'	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run 'x' fn( n Integer Integer [ n ] )	ERROR:uncalled_function	'x' fn [[n:Integer][Integer][n]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run 5 tyq fn( n Integer Any [ negq n ] )	-5	5 fn [[n:Integer][Any][negq n]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run dupq fn( n Integer Any [ n ] )	ERROR:uncalled_function	fn [[n:Integer][Any][n]] fn [[n:Integer][Any][n]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run fn( n Integer Integer [ addq n 1 ] ) fn( n Integer Integer [ addq n 1 ] ) 5	ERROR:uncalled_function	fn [[n:Integer][Integer][addq n 1]] fn [[n:Integer][Integer][addq n 1]] 5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run fn( n Integer Integer [ addq n 1 ] ) ( fn( n Integer Integer [ addq n 1 ] ) 5 )	7	fn [[n:Integer][Integer][addq n 1]] fn [[n:Integer][Integer][addq n 1]] 5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run [ fn( n Integer Integer [ addq n 1 ] ) 5 ]	[6]	[fn [[n:Integer][Integer][addq n 1]] 5]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run fn( n Integer Integer [ addq n 1 ] ) negq 5	ERROR:uncalled_function	fn [[n:Integer][Integer][addq n 1]] -5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
-run tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run tyq/v 'x'	fn [[t:Any][Any][]] 'x'	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run ( 'x' tyq/v )	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run bothq 7 tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run dupq tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run dupq negq/v	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run negq/v 5	fn [[a:Integer][Integer][]] 5	-5	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run 5 negq/v	5 fn [[a:Integer][Integer][]]	-5	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run [ negq/v 5 ]	[fn [[a:Integer][Integer][]] 5]	[-5]	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
-run ( tyq/v 'x' )	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value; refused at arrival, the value callee is sealed to the stack (NUR388's fix).
-run bothq 7 tyq/v 2	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value; refused at arrival, the value callee is sealed to the stack (NUR388's fix).
-run def x 5 ; ( tyq/v x )	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value; refused at arrival, the value callee is sealed to the stack (NUR388's fix).
-run ( 1 2 tyq/v ) true	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value. A group's trailing function value is called with what follows the group; its first forward argument (`true`, a word until it arrives) is refused at arrival, so the value callee is sealed to the stack — where nothing fits either (NUR388's fix).
-run ( 1 'a' negq/v ) true	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value. A group's trailing function value is called with what follows the group; its first forward argument (`true`, a word until it arrives) is refused at arrival, so the value callee is sealed to the stack — where nothing fits either (NUR388's fix).
-run [ [ boomq 1 ] ( ]	ERROR:fixture_boom	ERROR:syntax_error	CODE: core/ts evaluates a container's elements in a sub-run with no sealing paren and reports the unmatched `(` its own way; Go now treats it as a scan boundary inside a literal exactly as at the top level (NUR387's fix).
-
-# --- `/u`: the bound function with its argument order reversed ---------------
-# `f/u a b c` is `f c b a`. The word resolves to its function and is wrapped:
-# every signature's parameters reversed and all of them collectable forward,
-# whatever the original's barrier; the wrapper re-dispatches the original, in
-# a group of its own, with what it collected reversed. `bothq` answers its
-# SECOND argument, so `bothq 1 'a'` is 'a' and `bothq/u 1 'a'` is 1. The
-# wrapper is an ordinary all-forward function: its operands split by the one
-# rule like any other's. A parameter keeps its type, its pattern and its /q;
-# a type-arg slot is the original's to enforce, on the re-dispatch — which is
-# a function VALUE's dispatch, so a refusal there is uncalled_function.
-run negq/u 5	-5	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run 5 negq/u	-5	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u 1 'a'	1	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u 'a' 1	'a'	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run 1 bothq/u 'a'	'a'	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run 1 'a' bothq/u	'a'	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run sumq/u 1 2	3	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run pairq/u 1 2	1 1 2	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run ( bothq/u 1 'a' )	1	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run [ bothq/u 1 'a' ]	[1]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u ( 1 ) 'a'	1	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u [q a b ] 'x'	[a b]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def f fn( n Integer Integer [ addq n 1 ] ) ; f/u 5	6	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def f fn( n Integer Integer [ addq n 1 ] ) ; 5 f/u	6	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run patq/u 7	1	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run patq/u 2	ERROR:uncalled_function	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run qanyq/u [ addq 1 2 ]	[3]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run tyq/u Integer	Integer	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run tyq/u 5	ERROR:uncalled_function	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run boomq/u 1	ERROR:fixture_boom	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run depthq/u	0	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/u	fn [[b:Integer a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/u 1	ERROR:uncalled_function	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run 1 addq/u	ERROR:uncalled_function	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u 1 ; 2	ERROR:uncalled_function	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq/u ; 1 2	fn [[b:Any a:Any][Any][]] 1 2	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-
-# `/uv` is that wrapper as a VALUE: placed, not called. The arity and the
-# s/f modifiers written beside `u` or `v` are not read.
-run negq/uv	fn [[a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run negq/uv 5	fn [[a:Integer][Integer][]] 5	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/uv	fn [[b:Integer a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run sumq/uv	fn [[b:Integer a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def f fn( n Integer Integer [ addq n 1 ] ) ; f/uv	fn [[n:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run [ negq/uv ]	[fn [[a:Integer][Integer][]]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run ( negq/uv ) 5	fn [[a:Integer][Integer][]] 5	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/2u 1 2	3	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/su 1 2	3	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run 1 2 addq/fu	3	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run addq/suv	fn [[b:Integer a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run negq/sv 5	fn [[a:Integer][Integer][]] 5	ERROR:undefined_word	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run 5 negq/sv	5 fn [[a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run negq/2v 5	fn [[a:Integer][Integer][]] 5	ERROR:undefined_word	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-
-# Only a FUNCTION has an argument order to reverse: `/u` on a name bound to
-# anything else is illegal_ref — a root type included (`def x None ; x/u`
-# dereferenced nil building that error, and surfaced as internal_error).
-run def x 5 ; x/u	ERROR:illegal_ref	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def x 5 ; x/uv	ERROR:illegal_ref	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def x None ; x/u	ERROR:illegal_ref	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def x Any ; x/u	ERROR:illegal_ref	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run def x Integer ; x/u	ERROR:illegal_ref	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-
-# NUR390, pinned as the kernel has it: a `/v` value ARRIVES at a word that is
-# collecting, a `/uv` value does not — it is left behind the pointer, so the
-# collection is stranded, or (the last row) silently takes it from the stack
-# in the other slot.
-run bothq 1 negq/v	fn [[a:Integer][Integer][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run bothq 1 negq/uv	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run boomq negq/v	ERROR:fixture_boom	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run boomq negq/uv	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run bothq negq/v 1	1	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run bothq negq/uv 1	fn [[a:Integer][Integer][]]	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-
-# --- a function is a value with an IDENTITY ---------------------------------
-# Two functions are the same value exactly when they are the same function:
-# one binding read twice is one function; the same text written twice is two
-# (unify.tsv has the row both ports agree on). Identity survives being
-# passed and returned. A usurp wrapper is a new function every time one is
-# made.
-run unifyq negq/v negq/v	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq negq/v addq/v	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run def f fn( n Integer Integer [ n ] ) ; unifyq f/v f/v	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run def f fn( n Integer Integer [ n ] ) ; def g fn( n Integer Integer [ n ] ) ; unifyq f/v g/v	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run def f fn( n Integer Integer [ n ] ) ; unifyq f/v fn( n Integer Integer [ n ] )	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq [ negq/v ] [ negq/v ]	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq [ negq/v ] [ addq/v ]	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq [ negq/uv ] [ negq/uv ]	false	ERROR:undefined_word	DATA: core/ts does not read the /u modifier — `name/u` is an unknown word to it — where Go resolves it to the bound function with its argument order reversed.
-run unifyq ( bothq 1 negq/v ) negq/v	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq ( bothq 1 negq/v ) addq/v	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq negq/v Function	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq negq/v Type	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq negq/v Any	true	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run unifyq negq/v 5	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-
-# NUR391, pinned as the kernel has it: a name with TWO definitions has no
-# identity of its own — a reference to it is built from both, and is a new
-# function at every read, so it does not unify with itself.
-run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; unifyq f/v f/v	false	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
-run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v	fn [[n:String][String][n] [n:Integer][Integer][n]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value, and compares two functions by identity.
 
 # --- ANONYMOUS functions, built at run time -----------------------------------
 # `afn n [q body… ]` is the closure fixture: it builds a one-parameter
@@ -310,3 +142,55 @@ run eachq [q 1 2 ] [q ) ]	ERROR:syntax_error	ERROR:undefined_word	DATA: core/ts 
 run eachq [q 1 ] [q ( ]	[1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
 run eachq [q 1 ] [q negq ( ]	[-1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
 run def f fn( n Any Any [ ( ] ) ; f 1	ERROR:type_error	ERROR:syntax_error	CODE: NUR392 — Go leaves an unmatched `(` in a function's body for the frame's return check, which counts it as a value; core/ts refuses it there as both refuse it at the top level.
+
+# --- what a differential search found once the ENGINE half had closed --------
+# The six causes the engine half was given are closed. A Go-against-TS search
+# over the same fixture words then turned these up: each is a mechanism
+# core/go has and core/ts does not, and none is one of the six. They are
+# pinned so that the ledger says so. (The Lean model answers every one as Go
+# does.)
+#
+# The forward barrier's COMMIT half. core/ts strands a parked word at a
+# function word only when it has claimed NOTHING — engine.ts's
+# strandedForwardError says why the subset stops there. One that has claimed
+# part of its plan waits through, and is fed the boundary word's result.
+run bothq 1 negq 5	ERROR:signature_error	-5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+run 7 bothq 1 negq 5	ERROR:signature_error	7 -5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+run bothq 1 depthq	ERROR:signature_error	1	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+
+# A TYPE-ARG slot plans a WORD. Go's plan counts the word after `tyq` as its
+# forward argument — a name may be bound to a type — so an unbound name is
+# undefined_word and a function word strands the collection. core/ts plans
+# only what is a type already: `tyq` dispatches on what the stack holds, or
+# fails for want of it, and the word runs on its own.
+run tyq zzz	ERROR:undefined_word	ERROR:signature_error	CODE: a type-arg slot plans the word after it in Go, so the unbound name is stepped and is undefined; core/ts does not plan a word there and fails the dispatch for want of an argument.
+run tyq zzz/v	ERROR:undefined_word	ERROR:signature_error	CODE: a type-arg slot plans the word after it in Go, so the unbound reference is stepped and is undefined; core/ts does not plan a word there and fails the dispatch for want of an argument.
+run Integer tyq negq 5	ERROR:signature_error	Integer -5	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+run List tyq depthq	ERROR:signature_error	List 1	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+run Integer tyq bothq ( )	ERROR:signature_error	ERROR:no_value_error	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `bothq` runs on its own and blames its void group.
+run def inc fn( n Any Any [ n ] ) ; Integer tyq inc 5	ERROR:signature_error	Integer 5	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+
+# An ORPHANED collection is re-dispatched when the run ends, with what it
+# collected and the stack beneath it (core/go resolveOrphanedForwards).
+# core/ts refuses any collection the end of the run finds unfilled.
+run 1 bothq __pa true	1	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the 1 beneath it; core/ts refuses the unfilled collection.
+run [ boomq 1 ] bothq __pa true	ERROR:fixture_boom	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the pending list, whose evaluation faults; core/ts refuses the unfilled collection.
+run [ [ boomq 1 ] bothq __pa true ]	ERROR:fixture_boom	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the pending list, whose evaluation faults; core/ts refuses the unfilled collection.
+
+# A function VALUE parks its collection like a word in Go, so an
+# engine-internal `__` word after it is stepped and passed over; core/ts
+# matches a boru-bodied function where it stands, and counts the `__` word as
+# an argument it could not take.
+run fn( n Any Any [ negq n ] ) __pa	fn [[n:Any][Any][negq n]]	ERROR:uncalled_function	CODE: Go parks a function value's collection, steps the engine-internal word and, with nothing left, leaves the function as a value; core/ts matches it where it stands and counts the `__` word as a refused argument.
+run fn( n Any Any [ negq n ] ) __pa 5	-5	ERROR:uncalled_function	CODE: Go parks a function value's collection, steps the engine-internal word and collects the 5 after it; core/ts matches it where it stands and counts the `__` word as a refused argument.
+
+# A FRAME's results are stepped again where the call stood: core/go splices
+# the frame into the tape. core/ts's frame is a run of its own and its
+# residual is placed, so a raw WORD a body hands back is called in Go and
+# carried in core/ts.
+run def inc fn( n Any Any [ n ] ) ; def h negq ; inc h	ERROR:signature_error	negq	CODE: a frame's residual is re-stepped in Go, so the word `negq` the body hands back is called, with nothing; core/ts places a frame's residual and carries the word.
+
+# The `undef` FIXTURE reaches further in Go: a native word is a binding
+# there, and `undef` removes it. core/ts keeps natives apart from the def
+# stack, and its fixture pops only a def.
+run undef negq ; negq 2	ERROR:undefined_word	-2	DATA: a native word is a binding `undef` can remove in core/go; core/ts keeps natives apart from the def stack, so the word is still there.

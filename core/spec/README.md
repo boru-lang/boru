@@ -83,8 +83,8 @@ engine cannot answer pins a port gap as a language contract.)
 
 A function is equal only to ITSELF, so two `fn( … )` literals alike in
 text do not unify (`unify.tsv` pins it). A row that needs one function
-twice has to reach it through a reference — `name/v` — which is in
-`divergent.tsv` until `core/ts` reads that modifier.
+twice reaches it through a reference — `name/v` — and one binding read
+twice IS one function; `unify.tsv` pins that beside it.
 
 ### Structure tokens
 
@@ -142,18 +142,27 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **124 rows** — every one of them in the ENGINE: the call frame's
-return check, a function value standing in the program, the `/v` and `/u`
-modifiers and the function identity a reference carries, closures, the
-`end` word, an unquoted list binding, and an unmatched `(`. 135 were
-measured on 2026-08-08, none of them visible to the 1808-row engine
-crossdiff; the file grew again to 190 as the Lean model's differential
-search, the `d( )` / `[: ]` / `{: }` forms, the `/v` and `/u` modifiers and
-`afn` opened new surface, and 66 of those closed on 2026-11-27 when
-`core/ts` gained a real
-unifier (the meet, not a flat predicate), Go's canonical form for a
-resolved disjunct, the whole builtin type table, and leaf-name rendering
-of a function's types. Of the original 135, the last two went
+It holds **70 rows**. 53 are a mechanism `core/ts` does not have at all:
+closures (26 rows, the `afn` fixture) and driven loops (27 rows, the
+`eachq` fixture). One is a recorded kernel defect pinned as the kernel has
+it — NUR392, an unmatched `(` in a function's body — where `core/ts`
+refuses what Go lets through. The other 16 are what a Go-against-TS search
+of the fixture words found once the engine half had closed, each named in
+the file: the forward barrier's commit half, a type-arg slot that plans a
+word, the re-dispatch of a collection the run's end finds unfilled, a
+function value that parks, a frame's residual stepped again, and one
+asymmetry in the `undef` fixture. 135 were measured on 2026-08-08,
+none of them visible to the 1808-row engine crossdiff; the file grew to 219
+as the Lean model's differential search, the `d( )` / `[: ]` / `{: }`
+forms, the `/v` and `/u` modifiers, `afn` and `eachq` opened new surface,
+and both halves of the port closed on 2026-11-27. 66 rows went when
+`core/ts` gained a real unifier (the meet, not a flat predicate), Go's
+canonical form for a resolved disjunct, the whole builtin type table, and
+leaf-name rendering of a function's types. 99 went with the ENGINE: the
+call frame and its return check, a function value standing in the program,
+the `/v` and `/u` modifiers and the function identity a reference carries,
+the `end` word, an unquoted list binding, and an unmatched `(` at the top
+level and in a container. Of the original 135, the last two went
 together: both `boomq { a: ) }` rows were filed under the strict forward
 barrier and were really a different defect — core/ts resolved a map
 argument's values through `resolveWordsDeep` where Go runs each one as a

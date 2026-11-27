@@ -34,6 +34,9 @@ import type { FunctionEntry, Registry } from "./registry.ts";
 import type { Signature } from "./signature.ts";
 import { TAtom, TNode, TScalar, TType, TWord, typeNameTable } from "./type.ts";
 import {
+  isCloseParen,
+  isEnd,
+  isOpenParen,
   isSugar,
   newAtom,
   newBoolean,
@@ -186,6 +189,16 @@ function resolveForwardToken(
   registry: Registry | undefined,
 ): Value {
   if (!tok.isWord()) return tok;
+  // `name/u` is a CALL of the reversed function, and `name/uv` a wrapper
+  // that is placed without arriving anywhere (NUR390, as the kernel has
+  // it): neither is a value the scan can read in advance. The word stays
+  // a word and is stepped.
+  if (isUsurpWord(tok)) return tok;
+  // `name/v` is the bound VALUE, whatever the slot: the reference is read
+  // before any capture or cascade, as the word step reads it. An unbound
+  // name stays the word, so the dispatch defers and stepping it reports
+  // the name.
+  if (isRefWord(tok)) return registry?.resolveRef(tok.asWord().name) ?? tok;
   if (expected.equal(TWord)) return tok;
   const name = tok.asWord().name;
   if (registry) {
@@ -208,6 +221,16 @@ function resolveForwardToken(
   const t = typeNameTable().get(name);
   if (t !== undefined) return newTypeLiteral(t);
   return tok;
+}
+
+/** A word written `name/u` or `name/uv`: the bound function, reversed. */
+export function isUsurpWord(v: Value): boolean {
+  return v.isWord() && true === v.asWord().forceUsurp;
+}
+
+/** A word written `name/v`: a reference to the bound value, never a call. */
+export function isRefWord(v: Value): boolean {
+  return v.isWord() && true === v.asWord().forceVal;
 }
 
 function tryMatch(
@@ -251,7 +274,15 @@ function tryMatch(
     // signature_error. Coercing unconditionally — what this port did —
     // turned the `Any` case into an inert Atom and silently changed what
     // a /q handler receives.
-    if (sig.quoteArgs?.has(fwd) && rawTok.isWord()) {
+    //
+    // A `name/v` word is not a capture site at all: the reference is
+    // read first, so the slot is offered the bound value.
+    if (
+      sig.quoteArgs?.has(fwd) &&
+      rawTok.isWord() &&
+      !isRefWord(rawTok) &&
+      !isUsurpWord(rawTok)
+    ) {
       const expected = sig.args[fwd]!;
       if (!TAtom.matches(expected)) break;
       args[fwd] =
@@ -326,9 +357,15 @@ function isStructuralBoundary(v: Value): boolean {
   // at the pointer (stepSugar) and its expansion is what dispatch
   // sees; collecting the raw marker as data would skip the lowering.
   if (v.isForward() || v.isMark() || v.isMove() || isSugar(v)) return true;
-  if (!v.vType.matches(TWord)) return false;
-  const name = (v.data as { name?: string } | null)?.name;
-  return name === "(" || name === ")" || name === "end";
+  // The three tape markers, read as the step loop reads them. `end` is
+  // the END MARKER only: a WORD named `end` is an ordinary name — core
+  // defines no word by it — and the scan must take it for one, so that
+  // stepping it reports the name. This test used to match the word too,
+  // a leftover of the legacy fixture tokenizer that the step loop's own
+  // isEnd had already shed: `boomq end` stopped collecting at the word
+  // and failed for want of an argument, and `1 boomq end` fired boomq on
+  // the 1, where core/go reports `end` undefined in both.
+  return isOpenParen(v) || isCloseParen(v) || isEnd(v);
 }
 
 /**

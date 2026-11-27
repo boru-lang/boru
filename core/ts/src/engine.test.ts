@@ -234,7 +234,11 @@ describe("Engine.run — def substitution", () => {
     assert.equal(run([newWord("x")], r), "7");
   });
 
-  it("splices an unquoted eval list as a code body", () => {
+  it("substitutes an unquoted eval list as the LIST, not as a code body", () => {
+    // A binding holds a value. This asserted `3` — the list spliced into
+    // the program and run in place — which pinned core/ts's own reading as
+    // the contract; core/go substitutes the list, which then evaluates as
+    // any pending list literal does (core/spec/dispatch.tsv, def BINDINGS).
     const r = fixture();
     r.pushDef(
       "body",
@@ -242,7 +246,36 @@ describe("Engine.run — def substitution", () => {
         eval: true,
       }),
     );
-    assert.equal(run([newWord("body")], r), "3");
+    assert.equal(run([newWord("body")], r), "[3]");
+  });
+
+  it("substitutes a bound WORD as data, never calling it", () => {
+    const r = fixture();
+    r.pushDef("h", newWord("addq"));
+    assert.equal(run([newWord("h"), newInteger(1n), newInteger(2n)], r), "addq 1 2");
+  });
+
+  it("leaves a bound paren expression for the loop to run", () => {
+    const r = fixture();
+    r.pushDef(
+      "pe",
+      newParenExpr([newWord("addq"), newInteger(1n), newInteger(2n)]),
+    );
+    assert.equal(run([newWord("pe")], r), "3");
+  });
+
+  it("leaves a bound interpolation for the loop to evaluate", () => {
+    const r = fixture();
+    r.pushDef("s", newInterpString([{ lit: "a" }, { expr: [newInteger(1n)] }]));
+    assert.equal(run([newWord("s")], r), "'a1'");
+  });
+
+  it("leaves a bound sugar marker for the loop to lower", () => {
+    const r = fixture();
+    r.bindSugarWord("lambda", "idq");
+    r.pushDef("sg", newSugar({ kind: "lambda" }));
+    // The marker became `idq`, which then dispatched over the 7.
+    assert.equal(run([newWord("sg"), newInteger(7n)], r), "7");
   });
 
   it("treats a QUOTED list binding as data, not code", () => {
@@ -373,14 +406,37 @@ describe("Engine.run — the end marker", () => {
 });
 
 describe("Engine.run — self-referential def", () => {
-  it("settles rather than looping", () => {
-    // A def bound to a list containing its own name splices once and then
-    // leaves the word as a residual: the step loop terminates instead of
-    // re-resolving forever. Recorded because the obvious expectation — a
-    // step-budget refusal — is NOT what happens.
+  it("is refused under a coded error rather than looping or crashing", () => {
+    // A list bound to a name the list itself holds never settles: the
+    // name substitutes the list, evaluating the list reads the name, and
+    // so on down. core/go runs out of tape and says so. This port nests an
+    // engine per evaluation and runs out of host stack, which must surface
+    // under the SAME code, not as a host exception outside the taxonomy.
+    // (This used to assert the residual `loop`: the list was spliced as a
+    // code body, once, and the word left standing.)
     const r = fixture();
     r.pushDef("loop", newList([newWord("loop")], { eval: true }));
-    assert.equal(run([newWord("loop")], r), "loop");
+    assert.throws(
+      () => run([newWord("loop")], r),
+      (e: unknown) => e instanceof BoruError && "tape_exhausted" === e.code,
+    );
+  });
+
+  it("lets any other host error through unchanged", () => {
+    const r = fixture();
+    r.registerNativeFunc({
+      name: "hostq",
+      signatures: [
+        {
+          args: [],
+          barrierPos: 0,
+          handler: (): Value[] => {
+            throw new TypeError("a host bug");
+          },
+        },
+      ],
+    } as never);
+    assert.throws(() => run([newWord("hostq")], r), TypeError);
   });
 });
 

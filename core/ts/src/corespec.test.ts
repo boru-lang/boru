@@ -130,16 +130,18 @@ function token(tok: string): Value {
   // call-site modifiers, as the parser would hand it over. A slash whose
   // suffix is not a modifier (`Scalar/String`) leaves the token a plain
   // word. Written independently of the Go runner's copy.
-  // `name/v`: the bound VALUE, never a call.
-  if (tok.length > 2 && tok.endsWith("/v")) {
-    return new Value(TWord, { name: tok.slice(0, -2), forceVal: true } satisfies WordInfo);
-  }
-  const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
-  if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
+  // The modifiers come in ONE written order — a forced arity N, then at
+  // most one of `s` or `f`, then `u` (the bound function with its argument
+  // order reversed), then `v` (the bound VALUE, never a call) — each
+  // optional and at least one present.
+  const mod = /^(.+)\/(\d*)([sf]?)(u?)(v?)$/.exec(tok);
+  if (mod !== null && mod.slice(2).some((m) => m !== "")) {
     const info: WordInfo = { name: mod[1]! };
     if (mod[2] !== "") info.argCount = BigInt(mod[2]!);
     if (mod[3] === "s") info.forceStack = true;
     if (mod[3] === "f") info.forceForward = true;
+    if (mod[4] === "u") info.forceUsurp = true;
+    if (mod[5] === "v") info.forceVal = true;
     return new Value(TWord, info);
   }
   return newWord(tok);
@@ -192,15 +194,23 @@ function item(toks: string[], st: { i: number }): Value {
     st.i += 3;
     const body = item(toks, st);
     st.i++; // past the ')'
-    return newFnDef({
-      sigs: [
-        {
-          params: [{ name: pname, type: ptype }],
-          returns: [rtype],
-          body: body.asList(),
-        },
-      ],
-    });
+    // NAMED, because that is what the form builds in the Go runner: it
+    // installs the function under a scratch name and hands back the
+    // installed value. The name is what makes a failed call of the value
+    // an error (`uncalled_function`) rather than a function left as data,
+    // so a nameless one here would be a different value, not a twin.
+    return newFnDef(
+      {
+        sigs: [
+          {
+            params: [{ name: pname, type: ptype }],
+            returns: [rtype],
+            body: body.asList(),
+          },
+        ],
+      },
+      "__corespec_fn",
+    );
   }
   if ("d(" === tok) {
     // `d( … )` — a DISJUNCT of the listed items. The corpus could name
@@ -276,6 +286,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger, TInteger],
+        argNames: ["a", "b"],
         returns: [TInteger],
         barrierPos: 2,
         handler: (args: Value[]): Value[] => [
@@ -297,6 +308,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["a"],
         returns: [TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
@@ -310,6 +322,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["a"],
         returns: [TInteger, TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
@@ -324,6 +337,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger, TInteger],
+        argNames: ["a", "b"],
         returns: [TInteger],
         barrierPos: 0, // STACK form: both operands come off the stack
         handler: (args: Value[]): Value[] => [
@@ -337,6 +351,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["a"],
         returns: [TAny],
         barrierPos: 1,
         handler: (): Value[] => {
@@ -353,6 +368,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["n"],
         returns: [TInteger],
         patterns: new Map([[0, newInteger(7n)]]),
         barrierPos: 1,
@@ -370,6 +386,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["a"],
         returns: [TAny, TAny],
         returnsFn: returnsIdentity(0, 0),
         barrierPos: 1,
@@ -413,6 +430,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAtom],
+        argNames: ["n"],
         returns: [],
         quoteArgs: new Set([0]),
         barrierPos: 1,
@@ -439,6 +457,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["n"],
         returns: [TAny],
         quoteArgs: new Set([0]),
         barrierPos: 1,
@@ -455,6 +474,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny, TAny],
+        argNames: ["a", "b"],
         returns: [TAny],
         barrierPos: 2,
         handler: (a: Value[]): Value[] => [a[1]!],
@@ -470,6 +490,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["t"],
         returns: [TAny],
         typeArgs: new Set([0]),
         barrierPos: 1,
@@ -486,6 +507,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["v"],
         returns: [TInteger],
         patterns: new Map([[0, newTypeLiteral(TInteger)]]),
         barrierPos: 0,
@@ -507,6 +529,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny, TAny],
+        argNames: ["a", "b"],
         returns: [TBoolean],
         barrierPos: 2,
         handler: (
@@ -527,6 +550,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny, TAny],
+        argNames: ["a", "b"],
         returns: [TAny],
         barrierPos: 2,
         handler: (
