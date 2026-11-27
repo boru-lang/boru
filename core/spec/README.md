@@ -142,16 +142,18 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **70 rows**. 53 are a mechanism `core/ts` does not have at all:
+It holds **73 rows**. 53 are a mechanism `core/ts` does not have at all:
 closures (26 rows, the `afn` fixture) and driven loops (27 rows, the
 `eachq` fixture). One is a recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`
-refuses what Go lets through. The other 16 are what a Go-against-TS search
-of the fixture words found once the engine half had closed, each named in
-the file: the forward barrier's commit half, a type-arg slot that plans a
-word, the re-dispatch of a collection the run's end finds unfilled, a
-function value that parks, a frame's residual stepped again, and one
-asymmetry in the `undef` fixture. 135 were measured on 2026-08-08,
+refuses what Go lets through. The other 19 are what a Go-against-TS search
+of the fixture words, and the review of the port, found once the engine
+half had closed, each named in the file: the forward barrier's commit half
+(a `/u` word included), a type-arg slot that plans a word, the re-dispatch
+of a collection the run's end finds unfilled, a function value that parks,
+a frame's residual stepped again, a `/uv` word in a boru-bodied call's
+window (two rows, on NUR390's accident), and one asymmetry in the `undef`
+fixture. 135 were measured on 2026-08-08,
 none of them visible to the 1808-row engine crossdiff; the file grew to 219
 as the Lean model's differential search, the `d( )` / `[: ]` / `{: }`
 forms, the `/v` and `/u` modifiers, `afn` and `eachq` opened new surface,

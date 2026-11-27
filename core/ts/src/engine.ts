@@ -1448,7 +1448,11 @@ export class Engine {
       ...result.args.slice(result.forwardCount),
     ];
     if (claimed.length > 0) {
-      for (const fsig of info.sigs) {
+      // In the order every dispatch tries them — the more specific
+      // signature first — so meeting a statement boundary does not change
+      // which overload takes an argument: over `(Any)` and `(Integer)`, a
+      // claimed 1 is the Integer one's, whichever was written first.
+      for (const fsig of [...info.sigs].sort(moreSpecificFirst)) {
         const total = fsig.params.length;
         const required = reduce
           ? fsig.params.filter((p) => !p.optional).length

@@ -173,6 +173,37 @@ describe("a function value at the pointer — a word in its window", () => {
     );
   });
 
+  it("commits to the MORE SPECIFIC overload, whichever was written first", () => {
+    // `(Any)`, `(Integer)` and `(Any Any)`: the two-argument overload
+    // plans `1` and the word `idq`; when `idq` begins, the claimed 1 goes
+    // to the overload normal dispatch would give it — the Integer one —
+    // not to the first one written.
+    const anyOne: FnSig = {
+      params: [{ name: "a", type: TAny }],
+      returns: [],
+      body: [newInteger(10n)],
+    };
+    const intOne: FnSig = {
+      params: [{ name: "a", type: TInteger }],
+      returns: [],
+      body: [newInteger(20n)],
+    };
+    for (const sigs of [
+      [anyOne, intOne, two],
+      [intOne, anyOne, two],
+    ]) {
+      assert.equal(
+        run([literal(...sigs), newInteger(1n), newWord("idq"), newInteger(7n)]),
+        "20 7",
+      );
+      // a String is only the generic overload's
+      assert.equal(
+        run([literal(...sigs), newString("x"), newWord("idq"), newInteger(7n)]),
+        "10 7",
+      );
+    }
+  });
+
   it("is STRANDED when no overload takes what it has", () => {
     // With only the two-argument overload there is nothing to commit to.
     assert.equal(

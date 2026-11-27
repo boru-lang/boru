@@ -156,6 +156,7 @@ run def f fn( n Any Any [ ( ] ) ; f 1	ERROR:type_error	ERROR:syntax_error	CODE: 
 # part of its plan waits through, and is fed the boundary word's result.
 run bothq 1 negq 5	ERROR:signature_error	-5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
 run 7 bothq 1 negq 5	ERROR:signature_error	7 -5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+run bothq 0 negq/u 5	ERROR:signature_error	-5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result. A `/u` word is a function word like any other: the modifier does not make it an argument.
 run bothq 1 depthq	ERROR:signature_error	1	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
 
 # A TYPE-ARG slot plans a WORD. Go's plan counts the word after `tyq` as its
@@ -194,3 +195,11 @@ run def inc fn( n Any Any [ n ] ) ; def h negq ; inc h	ERROR:signature_error	neg
 # there, and `undef` removes it. core/ts keeps natives apart from the def
 # stack, and its fixture pops only a def.
 run undef negq ; negq 2	ERROR:undefined_word	-2	DATA: a native word is a binding `undef` can remove in core/go; core/ts keeps natives apart from the def stack, so the word is still there.
+
+# --- `/uv` in a boru-bodied call's forward window ------------------------------
+# The kernel places a `/uv` wrapper without delivering it (NUR390), and the
+# call that was waiting goes on to collect the NEXT value. core/ts treats
+# the `/uv` word as a function word that strands the waiting call. These rows
+# sit on NUR390's accident and will move when it is ruled on.
+run def f fn( n Any Any [ n ] ) ; f f/uv 5	5	ERROR:signature_error	CODE: core/ts strands a boru-bodied call that meets a `/uv` word in its forward window; Go places the wrapper and lets the call collect what follows (NUR390).
+run def f fn( n Any Any [ n ] ) ; f negq/uv 5	-5	ERROR:signature_error	CODE: core/ts strands a boru-bodied call that meets a `/uv` word in its forward window; Go places the wrapper and lets the call collect what follows (NUR390).
