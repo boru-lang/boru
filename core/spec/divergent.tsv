@@ -259,3 +259,49 @@ run d( fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] ) )	fn [[n:Inte
 # identity of its own — a reference to it is built from both, and is a new
 # function at every read, so it does not unify with itself.
 run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v	fn [[n:String][String][n] [n:Integer][Integer][n]]	fn [[n:Scalar/String][Scalar/String][n] [n:Scalar/Number/Integer][Scalar/Number/Integer][n]]	RENDER: core/ts answers as Go does but for the fn-type render — it writes a function's parameter and return types as full lattice paths where Go writes the leaf name. Closes with the RENDER rows above; the row then moves to the spec file its rule is pinned in.
+
+# --- ANONYMOUS functions, built at run time -----------------------------------
+# `afn n [q body… ]` is the closure fixture: it builds a one-parameter
+# function where it stands, as the language's own `afn` does (README). The
+# function a NATIVE returns is stepped like any result, so it is called with
+# what follows; with nothing it can take beside it, an anonymous function is
+# simply a value — never uncalled_function, which is a NAMED function's
+# error. A group that collapses to a function alone places it.
+run afn n [q addq n 1 ]	fn [[n:Any][Any][addq n 1]]	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q addq n 1 ] 5	6	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run 5 afn n [q addq n 1 ]	6	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run ( afn n [q addq n 1 ] ) 5	fn [[n:Any][Any][addq n 1]] 5	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q addq n 1 ] ; 5	fn [[n:Any][Any][addq n 1]] 5	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q n n ] 3	ERROR:type_error	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q ] 3	ERROR:type_error	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def n 50 ; afn n [q addq n 1 ] 5 ; n	6 50	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+
+# --- CLOSURES: a function keeps the frame it was built in ------------------
+# `outer x` builds `n ↦ n + x` in its own frame and returns it. A function a
+# FRAME returns is a value — it is not called with what follows — so the rows
+# hand it to `bothq`, which answers it, and THAT result is called. By then
+# `outer`'s frame is gone: the closure reads the `x` it captured, and reads
+# it in preference to a global `x` bound since. A parameter is the call's,
+# never a capture. A name bound at the top level is not captured either: it
+# is read when the body runs, and refused then if it is not bound.
+run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; bothq 1 ( outer 10 ) 5	15	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; def x 100 ; bothq 1 ( outer 10 ) 5	15	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; outer 10	fn [[n:Any][Any][addq n x]]	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; outer 10 5	fn [[n:Any][Any][addq n x]] 5	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q x ] ] ) ; bothq 1 ( outer 10 ) 5	10	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn x [q addq x 1 ] ] ) ; bothq 1 ( outer 10 ) 5	6	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def x 7 ; afn n [q addq n x ] 5	12	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q addq n x ] 5	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n y ] ] ) ; def y 3 ; bothq 1 ( outer 10 ) 5	8	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n y ] ] ) ; bothq 1 ( outer 10 ) 5	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n x ] 5 ] ) ; outer 10	15	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def ap fn( f Any Any [ f 5 ] ) ; def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; ap ( outer 10 )	15	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+
+# Capture NESTS: a function built in a closure's frame captures what that
+# frame bound — its parameter, and the captures it was entered with. And a
+# closure is a new function each time one is built.
+run def outer fn( x Integer Any [ afn n [q afn m [q addq m x ] ] ] ) ; bothq 1 ( bothq 1 ( outer 10 ) 1 ) 2	12	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q afn m [q addq n m ] ] ] ) ; bothq 1 ( bothq 1 ( outer 10 ) 1 ) 2	3	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q afn m [q addq n x ] ] ] ) ; bothq 1 ( bothq 1 ( outer 10 ) 1 ) 2	11	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run afn n [q afn m [q addq n m ] ] 1 2	fn [[m:Any][Any][addq n m]] 2	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; unifyq ( outer 10 ) ( outer 10 )	false	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.

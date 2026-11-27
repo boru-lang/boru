@@ -55,7 +55,11 @@ which build the modified word a parser would; a slash whose suffix is not
 a modifier (`Scalar/String`) is part of the name. The runners
 register one fixture word, `addq` (`Integer Integer -> Integer`), so the step
 loop, the registry, signature matching and dispatch are all exercised without
-pulling in a word library.
+pulling in a word library. (The fixture has since grown a word per mechanism
+— each is declared, with its reason, in the runners. One carries a shipped
+word's name on purpose: `afn n [q body… ]` builds an anonymous one-parameter
+function at run time, which is where closure capture happens, and the
+kernel's frame analysis recognises a function-building body by that name.)
 
 ### Structure tokens
 

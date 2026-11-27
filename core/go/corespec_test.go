@@ -499,6 +499,46 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 1,
 	})
+	// afn is the door onto CLOSURES: it builds an anonymous one-parameter
+	// function AT RUN TIME — `afn n [q body… ]` — so the kernel's capture
+	// analysis runs where a function is constructed (ComputeCaptures,
+	// against the enclosing frame's baseline), which the `fn(` notation
+	// cannot reach: it builds its function before the program starts. A
+	// FIXTURE over mechanisms core owns, like __pa and unifyq.
+	//
+	// It carries the basic word's NAME on purpose. The frame-state analysis
+	// keys on the words that can construct an inner function
+	// (frameStateWords, fn_capture.go): a body that names none of them is a
+	// leaf, enters with no baseline, and so captures nothing. A fixture
+	// under another name would construct closures the kernel had been told
+	// could not exist.
+	r.Register("afn", Signature{
+		Params:  []FnParam{{Name: "param", Type: TAtom, Quote: true}, {Name: "body", Type: TList}},
+		Returns: []*Type{TFunction},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			name, err := AsAtom(a[0])
+			if err != nil {
+				return nil, err
+			}
+			body, err := AsList(a[1])
+			if err != nil {
+				return nil, err
+			}
+			sig := Signature{
+				Params:     []FnParam{{Name: name, Type: TAny}},
+				Returns:    []*Type{TAny},
+				Impl:       Boru(body.Slice()),
+				BarrierPos: 1,
+			}
+			return []Value{NewFunction(FnDefInfo{
+				Signatures: []Signature{sig},
+				Anonymous:  true,
+				Captured:   ComputeCaptures(reg, &sig),
+				Registry:   reg,
+			})}, nil
+		}),
+		BarrierPos: 2,
+	})
 	// qanyq is the /q fixture whose name slot is ANY rather than Atom, and
 	// it RETURNS what it captured, so a row can read the capture back. The
 	// pair (undef's Atom slot, this Any one) is what pins /q's conditional
