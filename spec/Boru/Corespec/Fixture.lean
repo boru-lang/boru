@@ -53,6 +53,9 @@ def fixtureDefs : Defs :=
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
+    -- the DRIVEN-LOOP fixture: an iteration per element, the element the
+    -- region's one inert input, everything a region leaves collected
+    word "eachq" [p "xs" TList, p "body" TList] [TList] 2,
     -- the CLOSURE fixture: build an anonymous one-parameter function at
     -- run time, where the capture analysis runs
     word "afn" [p "param" TAtom (quote := true), p "body" TList] ["Type/Function"] 2,
@@ -63,6 +66,16 @@ def fixtureDefs : Defs :=
     (n, [match v with
          | .fn name sigs _ => .fn name sigs (i + 1)
          | v => v])
+
+/-- The elements a fixture reads from a List-typed argument: a plain
+    list's, or the ones a typed list retains. A typed list that retains
+    none is a type, not a sequence: it fills a List slot and has nothing
+    to read. -/
+private def elemsOf (word : String) (v : Value) : Except BoruError (List Value) :=
+  match v.unquote with
+  | .list xs _ => pure xs
+  | .typedList _ (x :: xs) => pure (x :: xs)
+  | _ => throw { code := "fixture_not_a_list", detail := word ++ ": no elements to read" }
 
 /-- The fixture handlers. -/
 def fixtureNatives : Natives :=
@@ -83,16 +96,28 @@ def fixtureNatives : Natives :=
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("unifyq", .plain fun a d => pure ([.bool (unifies (a.getD 0 .none) (a.getD 1 .none))], d)),
+    ("eachq", .driven {
+      next := fun a it => do
+        let xs ← elemsOf "eachq" (a.getD 0 .none)
+        -- a body with elements to read is its tokens; anything else is
+        -- the one token it is
+        let body := match elemsOf "eachq" (a.getD 1 .none) with
+          | .ok toks => toks
+          | .error _ => [a.getD 1 .none]
+        pure ((xs[it]?).map fun x => ([x], body))
+      collect := fun _ _ acc residual => pure (acc ++ residual)
+      finish := fun _ acc => pure [.list acc false] }),
     ("afn", .plain fun a d =>
-      match a.getD 0 .none, (a.getD 1 .none).unquote with
-      | .atom name, .list body _ =>
+      match a.getD 0 .none with
+      | .atom name => do
+        let body ← elemsOf "afn" (a.getD 1 .none)
         -- a new function each time one is built, capturing what the
         -- enclosing frame has bound
         let (ident, d) := d.freshIdent
         let sig := Sig.mk [.mk name TAny none false false] [TAny] 1
           (.boru body (computeCaptures d [name] body)) false
         pure ([.fn "" [sig] ident], d)
-      | _, _ => throw { code := "type_error", detail := "afn: a name and a body list" }),
+      | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))
   ]
 

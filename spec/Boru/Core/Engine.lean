@@ -33,12 +33,30 @@ structure BoruError where
   detail : String := ""
   deriving Repr, BEq
 
+/-- THE DRIVER OF A LOOP (core/go/loop.go `LoopDriver`): what a looping
+    word hands the engine instead of a result. The engine runs one sealed
+    region per iteration and gives each region's residual back; the driver
+    says what an iteration is and what the loop answers. Its state is the
+    values it has gathered so far. -/
+structure Driver where
+  /-- Iteration `it` (0-based) of a call with these arguments: the INERT
+      inputs its region opens with — the body's whole stack, never
+      stepped — and the body's tokens; or nothing, when no iteration is
+      left. -/
+  next : List Value → Nat → Except BoruError (Option (List Value × List Value))
+  /-- Take what iteration `it`'s region left, bottom to top. -/
+  collect : List Value → Nat → List Value → List Value → Except BoruError (List Value)
+  /-- The loop's results. -/
+  finish : List Value → List Value → Except BoruError (List Value)
+
 /-- A host handler. A plain handler receives its arguments in signature
     order and the binding store; a FULL-STACK handler also receives the
-    resolved stack of its paren scope and returns its replacement. -/
+    resolved stack of its paren scope and returns its replacement; a
+    DRIVEN one runs a loop. -/
 inductive Native where
   | plain (f : List Value → Defs → Except BoruError (List Value × Defs))
   | fullStack (f : List Value → List Value → Except BoruError (List Value))
+  | driven (d : Driver)
 
 abbrev Natives := List (String × Native)
 
@@ -920,6 +938,9 @@ def execMatch (nat : Natives) :
         | .native key =>
           match nat.lookup key with
           | some (.plain f) => f args e.defs
+          -- a looping word: its results are the driver's, once every
+          -- iteration has run
+          | some (.driven d) => driveLoop nat fuel e.defs d args 0 []
           | _ => Engine.err "internal_error" ("no handler for " ++ name)
         | .usurp orig b =>
           -- the original, re-dispatched in a group of its own with the
@@ -1021,6 +1042,42 @@ def runSealed (nat : Natives) : Nat → Defs → List Value → Except BoruError
     if unclosed || e.tape.any Value.isOpenParen then
       Engine.err "syntax_error" "unmatched opening parenthesis"
     else pure (e.tape, e.defs)
+
+/-- A DRIVEN LOOP (core/go/loop.go `StartLoop`, `stepMoveDriven`). Each
+    iteration is a sealed region of its own: the inputs the driver names,
+    inert, and then the body, stepped where the loop's word stands. The
+    region's residual — everything it left, an input the body did not
+    take included — goes to the driver and is never stepped again. When
+    the driver has no iteration left, what it finishes with stands in the
+    loop's place and is stepped as any handler's results are. -/
+def driveLoop (nat : Natives) :
+    Nat → Defs → Driver → List Value → Nat → List Value → Except BoruError (List Value × Defs)
+  | 0, _, _, _, _, _ => Engine.outOfFuel
+  | fuel + 1, defs, d, args, it, acc => do
+    match ← d.next args it with
+    | none =>
+      let results ← d.finish args acc
+      pure (results, defs)
+    | some (inputs, body) =>
+      let (residual, defs) ← runRegion nat fuel defs inputs body
+      let acc ← d.collect args it acc residual
+      driveLoop nat fuel defs d args (it + 1) acc
+
+/-- One iteration's region: the body sees its inputs and nothing beneath
+    them, and steps from AFTER them — an input is data, whatever it is. The
+    region's close resolves what is still parked in it, and its collection
+    evaluates a pending container left there. Unlike a container literal's
+    region, a loop's is not refused for an open paren left unmatched: the
+    marker is collected with everything else. -/
+def runRegion (nat : Natives) :
+    Nat → Defs → List Value → List Value → Except BoruError (List Value × Defs)
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, defs, inputs, body => do
+    let e ← steps nat fuel
+      { tape := .openParen :: inputs ++ body ++ [.closeParen], ptr := 1 + inputs.length,
+        defs := defs, sealed := true }
+    let e ← sweepRange nat fuel e 0 e.tape.length
+    pure (e.tape, e.defs)
 
 /-- Run a program to its residual: step to the end, resolve what is
     still parked, refuse an unmatched open paren, then evaluate the

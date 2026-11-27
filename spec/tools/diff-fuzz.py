@@ -22,7 +22,7 @@ SPEC = os.path.dirname(HERE)
 REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
-         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "depthq", "afn"]
+         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "depthq", "afn", "eachq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -61,6 +61,15 @@ def gen_item(rng, depth):
             # the top level only — a map member is ONE item)
             body = rng.choice(["addq n 1", "n", "addq n x", "x", "n n", "", "afn m [q addq n m ]", "negq n"])
             return ["afn", "n", "[q"] + body.split() + ["]"]
+        if w == "eachq" and depth == 2 and rng.random() < 0.85:
+            # a driven loop: elements, and a body stepped once per element
+            # with the element as its whole stack
+            elems = sum((gen_value(rng, 1) for _ in range(rng.randint(0, 3))), [])
+            body = rng.choice(["negq", "", "dupq", "addq 10", "depthq", "9", "boomq", "(", ")", ";",
+                               "addq 1 ;", "addq", "pairq", "[ negq 5 ]", "negq/v", "x", "addq x",
+                               "eachq [q 10 20 ] [q addq 1 ]", "afn n [q addq n 1 ]", "unifyq Integer",
+                               "bothq", "n", "inc", "undef x", "( negq )", "negq ("])
+            return ["eachq", "[q"] + elems + ["]", "[q"] + body.split() + ["]"]
         # call-site modifiers: /s stack only, /f forward only, /N arity,
         # /v the bound value, /u the function with its arguments reversed
         if rng.random() < 0.22:

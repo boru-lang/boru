@@ -164,6 +164,42 @@ func coreSpecModifiers(name, mods string) (WordInfo, bool) {
 	return w, rest == ""
 }
 
+// coreSpecNotAList is a fixture's refusal of a List-typed argument with no
+// elements to read: a TYPED list that retains none (`[: Integer ]`) is
+// list-shaped to dispatch — it fills a List slot — and is a type, not a
+// sequence, to the handler. A coded error, so the corpus can pin it: a raw
+// Go error would surface as no boru error at all.
+func coreSpecNotAList(word string, v Value) error {
+	return &BoruError{Code: "fixture_not_a_list", Detail: word + ": no elements to read in " + CanonValue(v)}
+}
+
+// coreSpecEach is eachq's driver: an iteration per element, the element as
+// the region's inert input, every residual value kept.
+type coreSpecEach struct {
+	elems []Value
+	body  Value
+	out   []Value
+}
+
+func (d *coreSpecEach) Next(it int) ([]Value, Value, bool, error) {
+	if it >= len(d.elems) {
+		return nil, Value{}, false, nil
+	}
+	return []Value{d.elems[it]}, d.body, true, nil
+}
+
+func (d *coreSpecEach) Collect(_ int, residual []Value) error {
+	// The residual is valid only for the call: keep copies.
+	d.out = append(d.out, residual...)
+	return nil
+}
+
+func (d *coreSpecEach) Finish() ([]Value, error) { return []Value{NewList(d.out)}, nil }
+func (d *coreSpecEach) Describe() string         { return "eachq" }
+
+// A body's error is reported as the body's: the corpus reads error CODES.
+func (d *coreSpecEach) WrapError(_ int, err error) error { return err }
+
 func coreSpecFields(s string) []string {
 	var out []string
 	for _, f := range strings.Split(s, " ") {
@@ -522,7 +558,7 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			}
 			body, err := AsList(a[1])
 			if err != nil {
-				return nil, err
+				return nil, coreSpecNotAList("afn", a[1])
 			}
 			sig := Signature{
 				Params:     []FnParam{{Name: name, Type: TAny}},
@@ -536,6 +572,29 @@ func coreSpecRegistry(t *testing.T) *Registry {
 				Captured:   ComputeCaptures(reg, &sig),
 				Registry:   reg,
 			})}, nil
+		}),
+		BarrierPos: 2,
+	})
+	// eachq is the door onto DRIVEN LOOPS: the protocol a looping native
+	// uses to run its iterations on the tape (LoopDriver, loop.go). Its
+	// handler hands StartLoop a driver; the engine splices one sealed
+	// region per element — `mark (ₗ element body… ) move` — steps the body
+	// where the word stands, and hands each region's residual back.
+	//
+	// The driver is the simplest that shows the protocol whole: one
+	// iteration per element, the element the region's one inert input, and
+	// EVERYTHING a region leaves collected, in order, into the one list
+	// the loop answers. So a row reads off what a body saw (its input, and
+	// nothing beneath it), what it left, and what was never re-stepped.
+	r.Register("eachq", Signature{
+		Params:  []FnParam{{Name: "xs", Type: TList}, {Name: "body", Type: TList}},
+		Returns: []*Type{TList},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			xs, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("eachq", a[0])
+			}
+			return StartLoop(reg, "eachq", &coreSpecEach{elems: xs.Slice(), body: a[1]})
 		}),
 		BarrierPos: 2,
 	})
