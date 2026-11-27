@@ -53,6 +53,8 @@ def fixtureDefs : Defs :=
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
+    -- unifyq's VALUE half: the meet itself, or `fixture_no_meet`
+    word "meetq" [p "a" TAny, p "b" TAny] [TAny] 2,
     -- the DRIVEN-LOOP fixture: an iteration per element, the element the
     -- region's one inert input, everything a region leaves collected
     word "eachq" [p "xs" TList, p "body" TList] [TList] 2,
@@ -96,6 +98,10 @@ def fixtureNatives : Natives :=
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("unifyq", .plain fun a d => pure ([.bool (unifies (a.getD 0 .none) (a.getD 1 .none))], d)),
+    ("meetq", .plain fun a d =>
+      match unify (a.getD 0 .none) (a.getD 1 .none) with
+      | some meet => pure ([meet], d)
+      | none => throw { code := "fixture_no_meet", detail := "the two values do not unify" }),
     ("eachq", .driven {
       next := fun a it => do
         let xs ← elemsOf "eachq" (a.getD 0 .none)

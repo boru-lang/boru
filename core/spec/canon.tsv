@@ -120,3 +120,15 @@ list ( ; )	[( end )]
 list [ ( ) ]	[[( )]]	
 list { a: ( }	[{a:(}]	
 typedlist ( 1	[:( 1]	
+
+# --- a function's parameter and return types render by leaf name --------------
+# `n:Integer`, not `n:Scalar/Number/Integer` — the name every type literal
+# renders as. core/ts wrote the full lattice path, which is not what any
+# other canon writes for a type; the six rows sat in divergent.tsv until its
+# renderer took the leaf.
+run fn( n Integer Integer [ n ] )	fn [[n:Integer][Integer][n]]
+run tyq fn( n Integer Any [ n ] )	fn [[n:Integer][Any][n]]	the same value handed back by a word
+run 2 ( fn( n Integer Any [ negq n ] ) )	2 fn [[n:Integer][Any][negq n]]
+run ( fn( n Integer Any [ negq n ] ) ) 2	fn [[n:Integer][Any][negq n]] 2
+run fn( n Integer Integer [ addq n 1 ] ) ; 5	fn [[n:Integer][Integer][addq n 1]] 5
+run { a: fn( n Integer Integer [ n ] ) }	{a:fn [[n:Integer][Integer][n]]}	and inside a container

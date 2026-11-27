@@ -38,6 +38,7 @@ import {
   newEnd,
   newErrorValue,
   newFloat,
+  newFnDef,
   newInspect,
   newInteger,
   newInterpString,
@@ -176,6 +177,25 @@ describe("Value.toString — the marker arms", () => {
     assert.equal(newWord("w").toString(), "word(w)");
   });
 
+  it("renders a function as a summary of its overloads' parameter types", () => {
+    // Go's FormatFnDef for a function with no name: the parameter types of
+    // each overload that takes anything, by leaf name — never the body or
+    // the returns. An overload taking nothing is noise beside one that
+    // does, and a function with no such overload is a bare `fn`.
+    const sig = (...types: Array<typeof TInteger>) => ({
+      params: types.map((type, i) => ({ name: `p${i}`, type })),
+      returns: [TString],
+      body: [newInteger(1n)],
+    });
+    assert.equal(newFnDef({ sigs: [sig(TInteger)] }).toString(), "fn (Integer)");
+    assert.equal(
+      newFnDef({ sigs: [sig(TInteger, TString), sig(), sig(TAny)] }).toString(),
+      "fn (Integer, String) or (Any)",
+    );
+    assert.equal(newFnDef({ sigs: [sig()] }).toString(), "fn");
+    assert.equal(newFnDef({ sigs: [] }).toString(), "fn");
+  });
+
   it("leaves no payload kind rendering as [object Object]", () => {
     // Both shipped families of missing arm looked exactly like this.
     const values = [
@@ -189,6 +209,7 @@ describe("Value.toString — the marker arms", () => {
       newXml({ tag: "t", attrs: [], children: [] }),
       newInterpString([{ lit: "a" }]),
       newSugar({ kind: "lambda" } as SugarInfo),
+      newFnDef({ sigs: [] }),
     ];
     for (const v of values) {
       assert.doesNotMatch(

@@ -276,9 +276,13 @@ export function canonValue(v: Value): string {
     // and canon rendered only the latter — so `{:Integer a:1}` came out
     // `{:Integer}` with the entries silently gone. Both are rendered here,
     // mirroring Value.toString and core/go/canon.go's ChildTypeInfo arm.
+    // The retained elements render as a plain list's do — a disjunct
+    // element GROUPED, so `[:Any (1 tor 2)]` reads back as one element
+    // where `[:Any 1 tor 2]` reads as three tokens. They went through
+    // canonValue, which leaves a top-level union bare.
     const parts = [
       `:${canonTypeTag(ct.child)}`,
-      ...ct.elements.map(canonValue),
+      ...canonSeqParts(ct.elements, canonChild),
       ...ct.entries.map((e) => `${canonKey(e.key)}:${canonChild(e.value)}`),
     ];
     return `${open}${joinCanonParts(parts)}${close}`;
@@ -494,10 +498,15 @@ function canonTypeTag(v: Value): string {
 function canonFnDef(fd: FnDefInfo): string {
   const sigs = fd.sigs
     .map((s) => {
+      // A parameter's and a return's type render by LEAF name — `Integer`,
+      // not `Scalar/Number/Integer` — as every type literal does and as
+      // Go's canonFnDef writes them (`p.Type.String()`). The full path is
+      // not source: a fn literal spelled with it re-parses, but no canon
+      // anywhere else writes a type that way.
       const params = s.params
-        .map((p) => `${p.name}:${p.type.toString()}`)
+        .map((p) => `${p.name}:${p.type.leaf()}`)
         .join(" ");
-      const returns = s.returns.map((r) => r.toString()).join(" ");
+      const returns = s.returns.map((r) => r.leaf()).join(" ");
       const body = canon(s.body);
       return `[${params}][${returns}][${body}]`;
     })

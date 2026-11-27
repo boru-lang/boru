@@ -14,10 +14,12 @@ import { strict as assert } from "node:assert";
 import { cap } from "./capability.ts";
 import { Registry } from "./registry.ts";
 import { resolveWordValue, resolveWordsDeep } from "./resolve.ts";
-import { TInteger, TString } from "./type.ts";
+import { TEnum, TInteger, TString } from "./type.ts";
 import {
   OrderedMap,
+  newAtom,
   newDisjunct,
+  newEnum,
   newInteger,
   newList,
   newMap,
@@ -33,10 +35,28 @@ describe("resolveWordValue", () => {
     assert.equal(resolveWordValue(v), v);
   });
 
-  it("resolves the three keywords", () => {
+  it("resolves the two keywords", () => {
     assert.equal(resolveWordValue(newWord("true")).asBoolean(), true);
     assert.equal(resolveWordValue(newWord("false")).asBoolean(), false);
-    assert.equal(resolveWordValue(newWord("none")).isNone(), true);
+  });
+
+  it("leaves `none` an Atom — the step loop and the parser own that keyword", () => {
+    // core/go's resolveWordValue has `true` and `false` and nothing else:
+    // the word `none` is the none VALUE only where it is STEPPED (stepWord)
+    // or parsed. Nested in data it is a name like any other, so
+    // `d( none foo )` is the two atoms in text order (`foo tor none`) and
+    // `[q None ]` does not unify with `[q none ]`. This port resolved it
+    // here too, and answered both differently.
+    assert.equal(resolveWordValue(newWord("none")).asAtom(), "none");
+  });
+
+  it("resolves a builtin type PATH as well as a leaf name", () => {
+    // One resolver for the builtin arm — the one stepWord consults.
+    assert.equal(
+      resolveWordValue(newWord("Scalar/String")).vType.toString(),
+      "Scalar/String",
+    );
+    assert.equal(resolveWordValue(newWord("Scalar/Nope")).asAtom(), "Scalar/Nope");
   });
 
   it("resolves a builtin type name to its type literal", () => {
@@ -96,17 +116,78 @@ describe("resolveWordsDeep", () => {
     assert.equal(resolveWordsDeep(e).eval, true);
   });
 
-  it("flattens a nested disjunct and drops duplicate alternatives", () => {
-    // The reason simplifyDisjunctAlts exists: an alternative that RESOLVED to
-    // a named union must contribute its members, not ride as one opaque value
-    // that membership then compares by equality.
+  it("keeps a nested disjunct as ONE alternative, canonical in itself", () => {
+    // Go does not flatten: `d( d( String Integer ) Integer )` is the two
+    // alternatives `Integer` and `Integer tor String`, in the total order.
+    // This port flattened, because its flat membership predicate compared
+    // an alternative by equality and a nested union rejected every member;
+    // the unifier walks a nested disjunct like any other alternative.
     const inner = newDisjunct([
-      newTypeLiteral(TInteger),
       newTypeLiteral(TString),
+      newTypeLiteral(TInteger),
     ]);
     const outer = newDisjunct([inner, newTypeLiteral(TInteger)]);
     const out = resolveWordsDeep(outer);
-    assert.equal(out.toString(), "Integer tor String");
+    assert.equal(out.asDisjunct().alternatives.length, 2);
+    assert.equal(out.toString(), "Integer tor Integer tor String");
+  });
+
+  it("reduces a plain disjunct to its canonical alternatives", () => {
+    // Repeats dropped, the rest in the total order — whether or not
+    // resolution rebuilt an alternative (NUR385).
+    const d = newDisjunct([
+      newInteger(5n),
+      newInteger(5n),
+      newTypeLiteral(TInteger),
+    ]);
+    assert.equal(resolveWordsDeep(d).toString(), "Integer tor 5");
+  });
+
+  it("hands back a disjunct that is already canonical, untouched", () => {
+    const d = newDisjunct([newTypeLiteral(TInteger), newInteger(5n)]);
+    assert.equal(resolveWordsDeep(d), d);
+  });
+
+  it("keeps an Enum's declared order unless an alternative changed", () => {
+    // An enum's member order is significant: resolution leaves it exactly
+    // as declared — out of order, repeats and all.
+    const declared = newEnum([newAtom("red"), newAtom("blue"), newAtom("red")]);
+    assert.equal(resolveWordsDeep(declared), declared);
+    // A word alternative RESOLVES (to an atom), which rebuilds the enum —
+    // and a rebuilt one is reduced like any disjunct. It stays an Enum.
+    const written = newEnum([newWord("red"), newAtom("blue")]);
+    const out = resolveWordsDeep(written);
+    assert.equal(out.vType.equal(TEnum), true);
+    assert.equal(out.toString(), "blue tor red");
+    // A list alternative counts as changed: resolution rebuilds a
+    // container, and a container is itself only by identity — a map too.
+    const withList = newEnum([newList([newInteger(2n)]), newInteger(1n)]);
+    assert.equal(resolveWordsDeep(withList).toString(), "1 tor [2]");
+    const withMap = newEnum([newMap(new OrderedMap()), newInteger(1n)]);
+    assert.equal(resolveWordsDeep(withMap).toString(), "1 tor {}");
+    // The EMPTY list is the exception: it has no store to be identical by,
+    // so every empty list is the one empty list, and nothing changed.
+    const withEmpty = newEnum([newList([]), newInteger(1n)]);
+    assert.equal(resolveWordsDeep(withEmpty), withEmpty);
+    // A typed-container alternative is rebuilt too, but to an EQUAL value:
+    // that is not a change, and the enum is left alone.
+    const withTyped = newEnum([
+      newTypedList(newTypeLiteral(TString)),
+      newInteger(1n),
+    ]);
+    assert.equal(resolveWordsDeep(withTyped), withTyped);
+  });
+
+  it("keeps the name and the position of a resolved named disjunct", () => {
+    const named = newDisjunct([newInteger(2n), newInteger(1n)]).named("Small");
+    named.pos = { row: 3, col: 4, src: "t" };
+    const out = resolveWordsDeep(named);
+    assert.equal(out.typeName, "Small");
+    assert.deepEqual(out.pos, { row: 3, col: 4, src: "t" });
+    assert.deepEqual(
+      out.asDisjunct().alternatives.map((a) => a.toString()),
+      ["1", "2"],
+    );
   });
 
   it("leaves an unresolvable value alone", () => {

@@ -3,8 +3,10 @@ package core
 import "testing"
 
 // The meet of a disjunct with a value is the disjunct of the meets of
-// its alternatives with that value (NUR386). The corpus fixture `unifyq`
-// exposes only the predicate; these tests hold the VALUE.
+// its alternatives with that value (NUR386). core/spec/unify.tsv pins the
+// same VALUES for all three runners through the fixture word `meetq`;
+// these tests hold them at the Go API, where a check-mode carrier — a
+// shape the corpus notation cannot write — is reachable too.
 
 func pairCanon(t *testing.T, a, b Value) (string, bool) {
 	t.Helper()

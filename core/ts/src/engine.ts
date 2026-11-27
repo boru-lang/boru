@@ -1981,6 +1981,12 @@ export class Engine {
         .map((e) => this.deepEvalData(e));
       return this.buildList(sub);
     }
+    // An INERT TYPE SHAPE left on the stack — a typed container's child
+    // constraint, a disjunct's alternatives — resolves in its cell, as Go's
+    // autoEvalStack resolves it (resolveInertTypeShapeIn): names become the
+    // types they spell and a plain disjunct takes its canonical form. A
+    // quoted value never auto-evaluates and stays as written.
+    if (!v.quoted) return this.resolveInertTypeShape(v) ?? v;
     return v;
   }
 
@@ -2103,7 +2109,9 @@ export class Engine {
     // and was stored as DATA, rendering `{a:end}`.
     else if (v.isWord() || isEnd(v) || isOpenParen(v) || isCloseParen(v))
       program = [v];
-    if (program === null) return v;
+    // Anything else is data — except an inert type shape (a disjunct, a
+    // typed container), which deepEvalData resolves in place.
+    if (program === null) return this.deepEvalData(v);
     const sub = new Engine(this.registry)
       .run([...program])
       .map((e) => this.deepEvalData(e));

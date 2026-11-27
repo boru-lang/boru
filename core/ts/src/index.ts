@@ -25,6 +25,8 @@ export * from "./type.ts";
 export * from "./decimal.ts";
 export * from "./value.ts";
 export * from "./canon.ts";
+export * from "./compare.ts";
+export * from "./unify.ts";
 export * from "./coretype.ts";
 export * from "./signature.ts";
 export * from "./match.ts";
