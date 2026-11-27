@@ -115,11 +115,12 @@ And a root type — `Any`, `None`, `Never` — standing as a loop's or an
 value for its lattice parent and a root has none (NUR399). In both the
 model stated the rule and the kernel was fixed to meet it.
 
-Three the model does NOT reproduce, because each is an accident of how
-`core/go` compares values rather than a rule to state: typed containers
-equal by their constraint alone (NUR393), a disjunct inside another value
-compared as it prints (NUR394), and an order that is not transitive
-between typed and plain lists (NUR395). There the specification states the
+Four the model does NOT reproduce, because each is an accident of how
+`core/go` holds or compares values rather than a rule to state: typed
+containers equal by their constraint alone (NUR393), a disjunct inside
+another value compared as it prints (NUR394), an order that is not
+transitive between typed and plain lists (NUR395), and an empty list built
+over a nil slice read as no list at all (NUR403). There the specification states the
 structural rule and disagrees with `core/go`; the differential search does
 not draw those shapes, and no corpus row sits on them.
 

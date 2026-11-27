@@ -71,6 +71,7 @@ the continuation and its stepping are core's:
 | word | the loop |
 |---|---|
 | `eachq xs [q body ]` | DRIVEN: a sealed region per element, the element its one inert input; everything a region leaves goes into the one list the loop answers |
+| `callq x [q body ]` | a CALL REGION: a driven loop of one round, `x` its one inert input, whose residual is the word's own results — stepped again where the word stood |
 | `forq n [q body ]` | COUNTED: the body for `i` = 0 … n-1, the index bound as `i` |
 | `rangeq start end step [q body ]` | COUNTED over any range: the bound is exclusive; a zero step is `ERROR:fixture_zero_step` |
 | `whileq [q cond ] [q body ]` | CONDITIONAL: a condition region and a body region in turn; the condition's last value decides |
@@ -175,11 +176,11 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **256 rows**. 233 are a mechanism `core/ts` does not have at
+It holds **282 rows**. 259 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
-inputs); counted and conditional loops (73 rows, the `forq`, `rangeq` and
+inputs); call regions (26 rows, the `callq` fixture); counted and conditional loops (73 rows, the `forq`, `rangeq` and
 `whileq` fixtures — six of them NUR400, a full-stack word ending a counted
 loop, and five the index at the edge of the Integer range, two of those
 NUR402, all pinned as the kernel has it); break and continue (48 rows, the

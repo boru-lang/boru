@@ -52,6 +52,9 @@ def fixtureDefs : Defs :=
     -- the DRIVEN-LOOP fixture: an iteration per element, the element the
     -- region's one inert input, everything a region leaves collected
     word "eachq" [p "xs" TList, p "body" TList] [TList] 2,
+    -- the CALL REGION fixture: a driven loop of one round whose residual
+    -- is the word's own results
+    word "callq" [p "x" TAny, p "body" TList] [] 2,
     -- the COUNTED and CONDITIONAL loop fixtures: a mark, a body, and a
     -- move that replays it — on the caller's own stack
     word "forq" [p "n" TInteger, p "body" TList] [] 2,
@@ -132,6 +135,16 @@ def fixtureNatives : Natives :=
         pure ((xs[it]?).map fun x => ([x], body))
       collect := fun _ _ acc residual => pure (acc ++ residual)
       finish := fun _ acc => pure [.list acc false] }),
+    ("callq", .driven {
+      next := fun a it =>
+        -- one round: the input, inert, and then the body
+        let body := match elemsOf "callq" (a.getD 1 .none) with
+          | .ok toks => toks
+          | .error _ => [a.getD 1 .none]
+        pure (if it == 0 then some ([a.getD 0 .none], body) else none)
+      -- what the round left IS what the word answers: stepped where it stood
+      collect := fun _ _ _ residual => pure residual
+      finish := fun _ acc => pure acc }),
     ("forq", .plain fun a d => do
       counted "forq" 0 (asInt (a.getD 0 .none)) 1 (a.getD 1 .none) d),
     ("rangeq", .plain fun a d => do
