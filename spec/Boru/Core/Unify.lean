@@ -31,15 +31,6 @@ def resolveWordValue : Value → Value
       | none => .atom w.name
   | v => v
 
-/-- Does resolution rebuild this alternative: a word resolves, and a
-    plain map or NON-EMPTY plain list is rebuilt element by element. A
-    scalar, a type literal, a typed container and the empty list come
-    back as they were (the kernel decides this by container identity). -/
-def disjunctAltRebuilt : Value → Bool
-  | .word _ | .map _ _ => true
-  | .list (_ :: _) _ => true
-  | _ => false
-
 mutual
 def resolveWordsDeep : Value → Value
   | .word w => resolveWordValue (.word w)
@@ -48,10 +39,10 @@ def resolveWordsDeep : Value → Value
   | .typedList child elems => .typedList (resolveWordsDeep child) (resolveWordsList elems)
   | .typedMap child entries => .typedMap (resolveWordsDeep child) (resolveWordsEntries entries)
   | .disjunct alts =>
-    -- a disjunct whose alternatives CHANGED under resolution is reduced
-    -- to its canonical alternatives; an untouched one is left as written
-    if alts.any disjunctAltRebuilt then .disjunct (simplifyDisjunctAlts (resolveWordsList alts))
-    else .disjunct (resolveWordsList alts)
+    -- a disjunct is a SET: resolved, it is reduced to its canonical
+    -- alternatives — repeats and absorbed alternatives dropped, the rest
+    -- in the total order
+    .disjunct (simplifyDisjunctAlts (resolveWordsList alts))
   | .quoted v => resolveWordsDeep v
   | v => v
 def resolveWordsList : List Value → List Value

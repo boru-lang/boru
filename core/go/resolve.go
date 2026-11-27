@@ -102,7 +102,15 @@ func resolveWordsDeep(v Value, r *Registry) Value {
 				changed = true
 			}
 		}
-		if !changed {
+		// A plain disjunct is a SET: it is reduced whenever it is not
+		// already in canonical form, not only when an alternative happened
+		// to be rebuilt above. "Changed" is decided by ExactEqual, which
+		// for a container is identity — so `d( 5 5 Integer )` was left as
+		// written while the same disjunct with a list alternative was
+		// deduplicated and ordered (NUR385). An Enum keeps the order it was
+		// declared in, so it is re-simplified only when an alternative
+		// changed, as before.
+		if !changed && (!v.Parent().Equal(TDisjunct) || disjunctAltsCanonical(d.Alternatives)) {
 			return v
 		}
 		nd := d

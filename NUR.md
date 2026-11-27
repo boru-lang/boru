@@ -117,7 +117,6 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
 | [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
 | [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
-| [NUR385](#nur385) | A disjunct is reduced to its canonical alternatives only when resolution rebuilt one of them: `d( 5 5 Integer )` stays as written, `d( [q 1 ] 5 5 Integer )` is deduplicated and ordered | the Lean core specification's differential search (2026-11-27) |
 | [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
@@ -1516,41 +1515,6 @@ the call.
 **Proposed verdict:** the pinned discipline is the whole unpack set binding
 past the call, so resolve by fix on the VM's side — or narrow the discipline
 on both lanes together.
-
----
-
-## NUR385 — a disjunct is canonicalised only when resolution rebuilt an alternative {#nur385}
-
-**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `scripts/core-probe.sh` (the core/spec notation) · silent
-
-**Rule:** a value's canonical form is a function of the value (ADR-015): two
-disjuncts with the same alternatives render the same.
-
-**Divergence:** `resolveWordsDeep` (core/go/resolve.go) re-simplifies a
-disjunct — duplicates dropped, an alternative absorbed by a wider bare type
-dropped, the rest put in the total order — only "when an alternative
-changed", and decides "changed" with `ExactEqual`, which for a container is
-IDENTITY (compare.go `sameContainer`). A scalar or a type literal comes back
-as itself, so the disjunct is left as written; a non-empty plain list or a
-plain map is rebuilt, so the same disjunct with one more alternative is
-reduced. Two empty lists count as identical, so an empty list does not
-trigger it either.
-
-```
-run d( 5 5 Integer )            5 tor 5 tor Integer        as written: duplicate kept, unordered
-run d( [q 1 ] 5 5 Integer )     Integer tor 5 tor [1]      reduced and ordered
-run d( [q ] [q ] 1 1 )          [] tor [] tor 1 tor 1      an EMPTY list does not trigger it
-run d( {q } {q } 1 1 )          1 tor {}                   an empty map does
-```
-
-The source-level constructor `tor` simplifies always, so the shape is
-reachable through the paths that build a disjunct raw (`NewDisjunct`: the
-`{a?:T}` desugar, a stored shape, a host). The Lean specification models
-the rule as the kernel has it (`spec/Boru/Core/Unify.lean`
-`disjunctAltRebuilt`).
-
-**Proposed verdict:** resolve by fix — simplify whenever a disjunct is
-resolved, so the canonical form does not depend on container identity.
 
 ---
 
