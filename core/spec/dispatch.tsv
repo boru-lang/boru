@@ -298,14 +298,14 @@ run boomq [ ( ]	ERROR:syntax_error	an argument's program is refused before the w
 run boomq [ [ boomq 1 ] ( ]	ERROR:fixture_boom	after its own pending literals
 run ( [ ( ] )	ERROR:syntax_error	inside a paren group
 
-# In a call FRAME's body the unmatched `(` takes the frame's own close for
-# its match. The return check then reads only what stands after the paren,
-# and the frame is refused as unmatched if the check passes.
+# A call FRAME's body is no different while it runs: the paren bounds the
+# tokens after it, and they run or fail on their own terms. (How a body
+# that ENDS with the paren unmatched is refused is NUR392: core/go hands
+# the paren to the return check, core/ts refuses it as the top level does.
+# The row where the two then differ is in divergent.tsv.)
 run def inc fn( n Integer Any [ ( boomq ] ) ; inc 1	ERROR:signature_error	a word after it fails on its own terms
 run def inc fn( n Integer Any [ ( boomq n ] ) ; inc 1	ERROR:fixture_boom	or runs
-run def inc fn( n Integer Any [ ( ] ) ; inc 1	ERROR:type_error	nothing after the paren under one declared return: the count fails
-run def inc fn( n Integer Any [ n ( ] ) ; inc 1	ERROR:type_error	what stands BEFORE the paren does not count
-run def inc fn( n Integer Any [ ( n ] ) ; inc 1	ERROR:syntax_error	with the count met, the unmatched paren is what is left to refuse
+run def inc fn( n Integer Any [ ( n ] ) ; inc 1	ERROR:syntax_error	and a body whose results are in order is refused for the paren
 
 # A paren GROUP only produces values: a pending container among them is
 # left pending, for the word that takes it or the run the group stands in.

@@ -169,10 +169,12 @@ function moreSpecificFirst(
  *   group    a paren group's contents. A group only produces values: the
  *            pending containers among them are left for whoever takes
  *            them, or for the run the group stands in.
- *   frame    a call frame's body. Its pending containers are evaluated
- *            while the parameters are still bound; an unmatched `(` is
- *            the caller's to settle against the declared returns
- *            (callFnSig).
+ *   frame    a call frame's body. It ends as a region does — its
+ *            pending containers are evaluated while the parameters are
+ *            still bound, and an unmatched `(` is then refused. (core/go
+ *            has no such check in a frame: the paren is handed to the
+ *            return check, which counts it as a value. NUR392 records
+ *            that as a defect of the kernel's, and it is not ported.)
  */
 type RunKind = "program" | "region" | "group" | "frame";
 
@@ -382,8 +384,6 @@ export class Engine {
       case "group":
         break;
       case "frame":
-        this.autoEvalStack();
-        break;
       case "region":
         this.autoEvalStack();
         this.refuseUnmatchedOpen();
@@ -1478,19 +1478,7 @@ export class Engine {
         this.registry.popDef(chosen.params[i]!.name);
       }
     }
-    // An unmatched `(` in the body takes the frame's own close for its
-    // match: on core/go's tape the group it opens then holds the frame's
-    // cleanup marker and return check, so the check reads only what
-    // stands AFTER that paren — and the frame's open, left without a
-    // close, is the syntax error. `[ n ( ]` under one declared return is
-    // a type_error (nothing after the paren); `[ ( n ]` passes the check
-    // and is refused as unmatched.
-    let open = -1;
-    for (let i = 0; i < bodyResult.length; i++) {
-      if (isOpenParen(bodyResult[i]!)) open = i;
-    }
-    this.checkFrameReturns(name, chosen, bodyResult.slice(open + 1));
-    if (open >= 0) throw new BoruError("syntax_error", `unmatched '('`, "(");
+    this.checkFrameReturns(name, chosen, bodyResult);
 
     // Splice the result over the consumed range (prefix + word +
     // forward args), exactly like a native handler.
