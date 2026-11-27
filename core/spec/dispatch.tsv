@@ -473,3 +473,11 @@ run ( Integer tyq/v 'x' )	Integer 'x'	and with a type beneath it, it takes that 
 # (What `/u` does to a function is in divergent.tsv until core/ts reads it.)
 run nosuch/u	ERROR:undefined_word
 run nosuch/uv	ERROR:undefined_word
+
+# --- a call leaves the outer bindings as it found them ----------------------
+# A parameter shadows a global of the same name for the length of the call,
+# and the frame's cleanup unbinds the PARAMETER — once: the global is there
+# again afterwards. (The Lean model ran the cleanup twice, at the marker and
+# again at the frame's close, and unbound the global with it.)
+run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f 5 ; n	6 50
+run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f n	51

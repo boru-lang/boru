@@ -138,8 +138,10 @@ inductive Param where
 inductive Impl where
   /-- A host handler, named in the registry's handler table. -/
   | native (key : String)
-  /-- A boru body: tokens spliced onto the tape in a call frame. -/
-  | boru (body : List Value)
+  /-- A boru body: tokens spliced onto the tape in a call frame. A
+      CLOSURE also carries the bindings it captured where it was built;
+      its frame installs them beneath its parameters. -/
+  | boru (body : List Value) (captured : List (String × Value))
   /-- A usurp wrapper (`/u`): re-dispatch `orig` — the function as it was
       bound — with the collected arguments in reverse; `barrier` is the
       barrier of the signature this one wraps. -/

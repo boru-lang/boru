@@ -28,6 +28,8 @@ theorem, or by the differential search.
 | The call-site modifiers `/s`, `/f`, `/N` | `collect_plan.go`, `engine.go` `effectiveForwardLimit` | `Match.lean` | `dispatch.tsv`; search |
 | The `/v` modifier: the bound value, placed or collected, never called | `engine.go` `stepWordVal`, `core_ref.go` `ResolveRef` | `Engine.lean` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The `/u` modifier: the bound function with its argument order reversed — the wrapper (parameters reversed, all forward, a handler that re-dispatches the original laid out for ITS barrier), `/uv` the wrapper as a value, `illegal_ref` on a name that is not a function | `engine.go` `stepWordUsurp`, `core_ref.go` `usurpOver`, `usurpDispatchHandler` | `Engine.lean` `usurpOver`, `stepWord` | `Theorems/ArgumentRule.lean` (`usurp_*`); `divergent.tsv` (Go column); search |
+| Closures: a function built at run time captures what the enclosing call frame bound — the frame baseline (none in a leaf frame), the capture rule (bound, deeper than the baseline, not a parameter or a body-local), captures installed beneath the parameters and removed with them, capture through nested closures | `fn_capture.go` `ComputeCaptures`, `bodyNeedsFrameState`, `registry.go` `PushFnBaseline`, `engine.go` `execFnDefSig` | `Engine.lean` `computeCaptures`, `bodyNeedsFrameState`, `execMatch`; `Match.lean` `Defs.pushBaseline` | `Theorems/Closure.lean`; `divergent.tsv` (Go column); search |
+| An ANONYMOUS function at the pointer: called when something it can take stands beside it, otherwise a value — never `uncalled_function` | `engine.go` `execFnDefLiteral` | `Engine.lean` `dispatchFnValue` | `divergent.tsv` (Go column); search |
 | Function identity: a function is equal only to itself — in unification and in a disjunct's reduction — a reference carries the identity of the one function bound to its name, and a wrapper is a new function | `compare.go` `sameFnIdentity`, `registry.go` `aggregateIdent`, `value.go` `NewFunction` | `Value.lean` (`fn … ident`), `Compare.lean` `sameValue`, `Match.lean` `Defs.refIdent` | `Theorems/UnifyOrder.lean` (`function_identity`); `unify.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
@@ -52,10 +54,10 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- anonymous functions and lambdas, an applied mark, closures and capture,
-  a function from another registry, arity widening of a value call,
-  unnamed parameters and the frame argument span, the args stack and
-  function baselines, tail-call frame elision, return patterns;
+- an applied mark, a function from another registry, arity widening of a
+  value call, unnamed parameters and the frame argument span, the args
+  stack, the truncation of a frame's body-local definitions, tail-call
+  frame elision, return patterns;
 - overload order by slot specificity (`CompareSignatures` beyond arity),
   and `Extends`;
 - loops on the tape (mark / move, the loop driver, `for`, `while`, the

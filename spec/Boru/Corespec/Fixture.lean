@@ -53,6 +53,9 @@ def fixtureDefs : Defs :=
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
+    -- the CLOSURE fixture: build an anonymous one-parameter function at
+    -- run time, where the capture analysis runs
+    word "afn" [p "param" TAtom (quote := true), p "body" TList] ["Type/Function"] 2,
     -- the FULL-STACK fixture
     word "depthq" [] [] 0 (fullStack := true)
   ].zipIdx.map fun ((n, v), i) =>
@@ -80,6 +83,16 @@ def fixtureNatives : Natives :=
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("unifyq", .plain fun a d => pure ([.bool (unifies (a.getD 0 .none) (a.getD 1 .none))], d)),
+    ("afn", .plain fun a d =>
+      match a.getD 0 .none, (a.getD 1 .none).unquote with
+      | .atom name, .list body _ =>
+        -- a new function each time one is built, capturing what the
+        -- enclosing frame has bound
+        let (ident, d) := d.freshIdent
+        let sig := Sig.mk [.mk name TAny none false false] [TAny] 1
+          (.boru body (computeCaptures d [name] body)) false
+        pure ([.fn "" [sig] ident], d)
+      | _, _ => throw { code := "type_error", detail := "afn: a name and a body list" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))
   ]
 
