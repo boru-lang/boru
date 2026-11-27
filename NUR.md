@@ -117,6 +117,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR393](#nur393) | Typed containers are `eq` by their child constraint alone: `[:Integer 1] eq [:Integer 2]` is `true` (`deq` is `false`), and `[:Integer 1] tor [:Integer 2]` keeps one of them | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR394](#nur394) | A disjunct held inside another value is compared as it prints: two alternatives that render alike are one, though they differ in structure or hold two different functions | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR395](#nur395) | The total order is not transitive between a typed list and plain lists of its size, so a disjunct's canonical form depends on the order its alternatives were written in | the core/ts unifier port, differential against core/go (2026-11-27) |
+| [NUR396](#nur396) | A function a function's body hands back as its only result is refused as an uncalled call: `def pk1 fn [[x:Map][Any][x.f]]` over `{f: add/v}` raises `uncalled_function` where `m.f` at the top level is the function | the core/ts engine port, checked against core/go and the Lean model (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1418,5 +1419,45 @@ generate the shape.
 compare by one rule that composes (member by member, the typed one's
 constraint as a tie-break), so the order is total and the canonical form
 unique.
+
+---
+
+## NUR396 — a function a body hands back alone is refused as an uncalled call {#nur396}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · loud
+
+**Rule:** a function value with nothing it can take beside it is a value; a
+NAMED one is refused (`uncalled_function`) only when something stood where
+its arguments would have (`execFnDefLiteral`: "a failed forward-form call …
+recognised as a call, not a bare value reference").
+
+**Divergence:** the candidates are gathered by `upcomingArgs`
+(core/go/engine.go), which walks the tape after the function up to the next
+`end`, close paren, mark or move — and counts everything before it. In a
+call frame the function body's last value is followed by the frame's own
+cleanup marker (and its return check), which are not values and are not
+boundaries, so they are counted: a named function that is the body's only
+result always has "a candidate argument", and is refused.
+
+```
+def m {f: add/v}
+m.f                                            fn add(…)                    the function, a value
+def pk1 fn [[x:Map][Any][x.f]]      pk1 m      [boru/uncalled_function]: call to 'add' matched no signature
+def pk1 fn [[x:Map][Any][x get "f"]] pk1 m     [boru/uncalled_function]: call to 'add' matched no signature
+def mk fn [[][Function][add/v]]     mk         fn add(…)                    a /v reference is delivered, not dispatched
+```
+
+In the core/spec notation: `run def mk fn( n Any Any [ fn( m Any Any [ m ] ) ] ) ; mk 5`
+is `uncalled_function`, where `run fn( m Any Any [ m ] )`, the same in a
+group, and `run bothq 1 fn( m Any Any [ m ] )` leave the function as a
+value (core/spec/dispatch.tsv). An anonymous function is never refused, so
+a closure handed back is unaffected.
+
+core/ts and the Lean specification reproduce the kernel
+(`spec/Boru/Core/Engine.lean` `dispatchFnValue`: the `upcoming` window).
+
+**Proposed verdict:** resolve by fix — a frame's cleanup marker and return
+check end the window, as a close paren does: a function a body hands back
+alone is the body's result.
 
 ---

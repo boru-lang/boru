@@ -962,3 +962,18 @@ run nosuch/uv	ERROR:undefined_word
 # again at the frame's close, and unbound the global with it.)
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f 5 ; n	6 50
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f n	51
+
+# --- a function a FRAME hands back alone (NUR396, pinned as the kernel has it) -
+# A named function standing with nothing it can take is a value: at the top
+# level, in a group, as a native's result. As a function BODY's only result it
+# is refused as an uncalled call — the frame's own cleanup marker, which
+# follows it on the tape, is counted as an argument it could have taken. A
+# `/v` reference in the same place is delivered, not dispatched, and is fine;
+# with a value beneath it the function is simply called on that value.
+run fn( m Any Any [ m ] )	fn [[m:Any][Any][m]]
+run ( fn( m Any Any [ m ] ) )	fn [[m:Any][Any][m]]
+run bothq 1 fn( m Any Any [ m ] )	fn [[m:Any][Any][m]]
+run def mk fn( n Any Any [ fn( m Any Any [ m ] ) ] ) ; mk 5	ERROR:uncalled_function
+run def mk fn( n Any Any [ fn( m Any Any [ m ] ) ] ) ; bothq 1 ( mk 5 )	ERROR:uncalled_function
+run def mk fn( n Any Any [ negq/v ] ) ; mk 5	fn [[a:Integer][Integer][]]
+run def mk fn( n Any Any [ 7 fn( m Any Any [ m ] ) ] ) ; mk 5	7
