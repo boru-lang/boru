@@ -169,3 +169,6 @@ run negq (	ERROR:signature_error
 run {q a: 1 a: 2 }	{a:2}
 run {q a: 1 b: 3 a: 2 }	{a:2 b:3}
 run { a: 1 a: 2 }	{a:2}
+
+# A quoted list holding paren markers is data, and renders them.
+run [q ( ) ]	[( )]

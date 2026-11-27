@@ -154,7 +154,7 @@ def main():
         return 2
     lean = r.stdout.split("\n")
 
-    diffs, unmodelled, known = [], 0, 0
+    diffs, unmodelled = [], 0
     for i, p in enumerate(progs):
         g = go[i] if i < len(go) else "<missing>"
         l = lean[i] if i < len(lean) else "<missing>"
@@ -162,16 +162,8 @@ def main():
             unmodelled += 1
             continue
         if g != l:
-            # The one ADJUDICATED kernel defect (core/spec/divergent.tsv):
-            # core/go renders an open-paren marker as nothing. The model
-            # renders the token, so a difference that is only that is known.
-            strip = lambda t: t.replace("(", "").replace(" ", "")
-            if strip(g) == strip(l) and "(" in l:
-                known += 1
-                continue
             diffs.append((p, g, l))
-    print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, "
-          f"{known} known (open-paren render), {unmodelled} outside the model")
+    print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, {unmodelled} outside the model")
     diffs.sort(key=lambda d: len(d[0]))
     for p, g, l in diffs[:args.show]:
         print(f"  {p}\n     go   {g}\n     lean {l}")
