@@ -2096,7 +2096,16 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 
 		if IsOpenParen(&v) {
 			depth++
-			e.Pointer++
+			// A call frame's or a driven region's open paren carries its
+			// inert inputs — a frame's unnamed arguments, a loop region's
+			// inputs — and they are skipped here exactly as the main loop
+			// skips them: resolved where the call was made, they enter as
+			// stack data and are never stepped. Stepping over the paren
+			// alone landed on the first of them, so a Function among them
+			// was CALLED on what the body wrote after it, and a `/v` word
+			// resolved — inside a group a waiting word evaluates, and
+			// nowhere else (NUR397).
+			e.stepPastOpenParen(v)
 			continue
 		}
 		// The cleanup marker of an ENCLOSING call frame: the body has ended
