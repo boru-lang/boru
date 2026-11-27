@@ -5,7 +5,7 @@ stands *right now*. It is deliberately short and CURRENT-STATE-ONLY: the
 per-increment narrative lives in the handover pages it points at. Update
 this file at the end of every increment.
 
-Last updated: **2026-10-17**.
+Last updated: **2026-11-27**.
 
 ## Direction
 
@@ -13,7 +13,8 @@ The interpreter is the one execution path. On 2026-10-16 the compiler lane
 was removed — `compiler/go`, `eng/go`, their gates, tooling and design
 pages — and the project's effort goes to optimising the interpreter.
 [COMPILER-LANE-REMOVAL.0.md](COMPILER-LANE-REMOVAL.0.md) records the removal,
-the behaviour-preservation argument and the residue left to prune; the code
+the behaviour-preservation argument and the residue, pruned on 2026-11-27
+(its §4); the code
 as it stood is on the `compiler-legacy` branch. The previous page, written
 for the full-compilation programme, is archived as
 [legacy/SESSION-HANDOVER-FULL-COMPILATION.0.ignore](legacy/SESSION-HANDOVER-FULL-COMPILATION.0.ignore).
@@ -49,8 +50,11 @@ discipline: [PERF-BASELINE.10.md](PERF-BASELINE.10.md), `make bench`,
 
 ## Next
 
-1. Prune the compiler lane's residue in core
-   (COMPILER-LANE-REMOVAL.0.md §4).
+1. The compiler lane's residue is pruned (COMPILER-LANE-REMOVAL.0.md §4,
+   the third sweep). It left two things: commentary in core, check and
+   lang that still tells its history in the lane's words, and the
+   TypeScript twin's own compiled lane (`eng/ts`), which is a separate
+   decision.
 2. The dispatch-cost plan's remaining levers (INTERPRETER-PERF-HANDOVER.0.md,
    "The dispatch-cost plan: what is left"), each measured with
    `BenchmarkInterpExec` before and after it lands (PERF-BASELINE.10.md's

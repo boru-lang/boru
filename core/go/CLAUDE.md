@@ -44,15 +44,15 @@ see `lang/go/CLAUDE.md`.
   (`JoinCarriersHook`, `AnalysisImpl.AddUnique`): with their subjects
   core-resident there was nothing left to indirect. Prefer deleting a
   slot that way over keeping it for symmetry.
-- **What the compiler lane left behind is a follow-up, not a seam.**
-  `BeginCompilePass` and the compile-pass fields `CheckState` still
-  carries, `Registry.Effects` (the `EffectLedger`), `RunTypedBind`,
-  `PendingResidue` / `ArmBody`, `IsVMDefer`, the `CompileEffect` flags on
-  signatures and the Go-side loop drive (`Invoker`, `StartLoop`,
-  `InvokeBody`) are what remains of the recording pass. Every reach into them constant-folds to
-  the plain pass's value; design/COMPILER-LANE-REMOVAL.0.md §4 lists them
-  for pruning. Do not build on them, and do not add to them.
-
+- **The compiler lane's residue is pruned; do not grow it back.** The
+  recording pass's surface in core — the compile-pass fields of
+  `CheckState`, the effect ledger, the typed-bind runners, `ArmBody`,
+  `IsVMDefer`, the `CompileEffect` flags on signatures — was deleted on
+  2026-11-27 (design/COMPILER-LANE-REMOVAL.0.md §4 lists what went and
+  what stayed). `StartLoop` and `InvokeBody` are the interpreter's own.
+  A capability a signature declares to the check pass is a plain field
+  (`Signature.ConstFold`), never a flag set. A field something writes and
+  nothing reads is residue: delete it.
 ## Single-Pass Parsing (CRITICAL)
 
 boru source is converted from jsonic items to engine values in
@@ -156,9 +156,9 @@ trace notes `loop <state>` / `loop next` / `loop done` (the debugger
 treats `loop next` as an iteration boundary, as it treats `for next`).
 
 Until 2026-10-08 the driven words looped in Go and ran their body on a
-pooled sub-engine per element; the Go-side drive (`StartLoop` through
-`InvokeBody`, under a registry `Invoker`) was the bytecode VM's and is a
-removal follow-up (design/COMPILER-LANE-REMOVAL.0.md §4). The
+pooled sub-engine per element; the registry `Invoker` that drive ran
+under was the bytecode VM's and is gone
+(design/COMPILER-LANE-REMOVAL.0.md §4). The
 lambda-callback forms — a `=>` value over a map,
 `filter`'s Function form — still apply their callback through the
 callback seam (`InvokeCallbackFn`, CallBoru's discipline: count trimmed,

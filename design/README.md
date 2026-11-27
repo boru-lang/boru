@@ -81,7 +81,8 @@ pass and carry no implied status either way.
 - `SESSION-HANDOVER.0.md` — the current-state page a fresh session reads
   first.
 - `COMPILER-LANE-REMOVAL.0.md` — the 2026-10-16 removal of the compiler
-  lane: what went, why behaviour did not change, the residue to prune, the
+  lane: what went, why behaviour did not change, the residue and the sweeps
+  that pruned it, the
   `compiler-legacy` branch.
 - `INTERPRETER-PERF-HANDOVER.0.md` — the interpreter-performance sessions'
   handover (#532, #533, the 2026-10-17 dispatch-cost work), the plan the
