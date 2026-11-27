@@ -38,9 +38,12 @@ def int? (s : String) : Option Int :=
     -- a signed 64-bit integer, or the token is a word
     if v < -(2 ^ 63 : Int) || v ≥ (2 ^ 63 : Int) then none else some v
 
-/-- `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf` and `name/v` — a
-    word with call-site modifiers. A slash whose suffix is not a modifier
-    (`Scalar/String`) leaves the token a plain word. -/
+/-- A word with call-site modifiers, in their one written order: `name/`
+    then an optional forced arity N, at most one of `s` (stack only) or
+    `f` (forward only), `u` (the bound function with its argument order
+    reversed) and `v` (the bound VALUE, never a call). A slash whose
+    suffix is not a modifier (`Scalar/String`) leaves the token a plain
+    word. -/
 def modifiedWord? (tok : String) : Option WordInfo :=
   let cs := tok.toList
   let suffix := (cs.reverse.takeWhile (· != '/')).reverse
@@ -52,12 +55,14 @@ def modifiedWord? (tok : String) : Option WordInfo :=
     let argCount : Option Nat :=
       if digits.isEmpty then none
       else some (digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0)
-    match rest with
-    | ['v'] => if digits.isEmpty then some { name := String.ofList name, forceVal := true } else none
-    | [] => some { name := String.ofList name, argCount }
-    | ['s'] => some { name := String.ofList name, argCount, forceStack := true }
-    | ['f'] => some { name := String.ofList name, argCount, forceForward := true }
-    | _ => none
+    let (forceStack, rest) := if rest.head? == some 's' then (true, rest.drop 1) else (false, rest)
+    let (forceForward, rest) :=
+      if !forceStack && rest.head? == some 'f' then (true, rest.drop 1) else (false, rest)
+    let (forceUsurp, rest) := if rest.head? == some 'u' then (true, rest.drop 1) else (false, rest)
+    let (forceVal, rest) := if rest.head? == some 'v' then (true, rest.drop 1) else (false, rest)
+    if rest.isEmpty then
+      some { name := String.ofList name, argCount, forceStack, forceForward, forceUsurp, forceVal }
+    else none
 
 /-- One plain token. -/
 def token (tok : String) : Value :=
@@ -122,7 +127,10 @@ partial def item : List String → Except String (Value × List String)
       let (body, rest) ← item rest
       match body, rest with
       | .list elems _, ")" :: rest =>
-        pure (.fn "__corespec_fn" [.mk [.mk pname pt none false false] [rt] 1 (.boru elems) false], rest)
+        -- a function written here is ONE function: its identity is the
+        -- place it was written
+        pure (.fn "__corespec_fn" [.mk [.mk pname pt none false false] [rt] 1 (.boru elems) false]
+                (1000 + rest.length), rest)
       | _, _ => throw "fn( body must be a list closed by )"
     | _, _ => throw "fn( types must be corpus-known type names"
   | tok :: rest => pure (token tok, rest)

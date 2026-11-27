@@ -111,6 +111,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR381](#nur381) | A container literal a `var` body or a `=>` body leaves as its value is evaluated after the body's names are unbound: a name read in it resolves to a same-named outer binding (silent) or raises `undefined_word`; a `fn` body keeps it in scope | downstream: voxgig-boru/trie (found 2026-10-02, recorded 2026-10-05); restated 2026-11-27 |
 | [NUR384](#nur384) | A name a fn-body `unpack` binds outlives the call when the body names no other binding word (a new name stays bound, an outer one stays rebound) and is call-local when it does; `boru check` reads it as call-local | the interpreter fn-kind inlining pass (2026-10-08); narrowed 2026-11-27 |
 | [NUR389](#nur389) | A source module's owner token is unique only among its importer's modules: a module body's `def` on a core word over a type of a module it imports is admitted — and replaces that module's own tuple — when the two hold the same import ordinal, and is `extend_owner` otherwise (always, for a program) | the `Registry.ModuleScope` removal: checking what enforces the rule the flag was for (2026-11-27) |
+| [NUR390](#nur390) | A `/uv` value is not collected by a waiting word, where a `/v` value is: `bothq 1 negq/uv` strands the collection, and `bothq negq/uv 1` silently binds the two the other way round | the Lean core specification, modelling `/u` (2026-11-27) |
+| [NUR391](#nur391) | A word with more than one definition is not `eq` to itself: every reference to it (`f/v`) is a new function, so `f/v eq f/v` is false once `f` has an overload | the Lean core specification, modelling function identity (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1190,5 +1192,79 @@ carveout admits a module-minted anchor (`sigHasModuleAnchor`). The second
 needs a check of its own for R2: today only R1 stands between a def and
 another module's transplanted tuple (`mergeExtensionSigs` lets a direct
 def replace any unlocked one).
+
+---
+
+## NUR390 — a `/uv` value is not collected by a waiting word, where a `/v` value is {#nur390}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation and through `boru do` · silent on one shape, loud on the other
+
+**Rule:** a reference denotes data, and data ARRIVES at a collection that is
+waiting for it (the `/v` rule, NUR050). `name/uv` is documented as `name/u`
+left as inert data — "mirrors /v" (`stepWordUsurp`, core/go/engine.go).
+
+**Divergence:** `/v` delivers its value through the literal step when a
+parked forward in the scope is still collecting (`deliverValRead`). `/uv`
+sets the cell and advances the pointer unconditionally, so the wrapper is
+left BEHIND the pointer, on the stack side, and never arrives:
+
+```
+run bothq 1 negq/v        fn [[a:Integer][Integer][]]     collected as bothq's second argument
+run bothq 1 negq/uv       ERROR:signature_error           the forward is stranded
+run boomq negq/v          ERROR:fixture_boom              collected
+run boomq negq/uv         ERROR:signature_error
+run bothq negq/v 1        1                               slot 0 the function, slot 1 `1`
+run bothq negq/uv 1       fn [[a:Integer][Integer][]]     SILENT: `1` fills slot 0, the wrapper is taken from the stack as slot 1
+```
+
+Through the CLI, with `def k fn [[a:Any b:Any][Any][b]]`: `k sub/v 1` is
+`1`, and `k sub/uv 1` binds the two the other way round. The comment at the
+`/v` site records this very defect as fixed there ("the former
+unconditional set+advance left the value BEHIND the pointer, so the forward
+stranded at end of run"); the `/uv` branch kept the old tail.
+
+The Lean specification models `/uv` as the kernel has it
+(`spec/Boru/Core/Engine.lean`, the `/u` arm of `stepWord`).
+
+**Proposed verdict:** resolve by fix — `/uv` takes `/v`'s delivery
+(`deliverValRead`), so the two references differ only in the value they
+denote.
+
+---
+
+## NUR391 — a word with more than one definition is not `eq` to itself {#nur391}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation and through `boru do` · silent
+
+**Rule:** a value is equal to itself; a function's identity is the function
+(`eq` compares functions by identity, `deq` by content — NUR031).
+
+**Divergence:** a reference to a function word (`f/v`, `ref`, an export
+map's value) is built from the name's dispatch aggregate, and the aggregate
+inherits an identity only when the name has ONE definition
+(`aggregateIdent`, core/go/registry.go: "the sole entry's, or none when the
+union spans several"). With two or more, every read mints a new identity
+(`NewFunction`), so two reads of the same name are two different functions:
+
+```
+def f fn [[n:Integer][Integer][n]]  (f/v eq f/v)                                         true
+def f fn [[n:Integer][Integer][n]]  def f fn [[s:String][String][s]]  (f/v eq f/v)      false
+…the same two defs…                                                 (f/v deq f/v)     true
+…the same two defs…                                                 (f/v unify f/v)   ~unify-fail
+…the same two defs…   def g f/v                                     (g/v eq g/v)      true
+```
+
+Adding an overload to a word changes whether the word is equal to itself;
+binding the reference once (`g`) restores it. The core/spec notation shows
+the same: `def f fn( … ) ; def f fn( … ) ; unifyq f/v f/v` is `false` where
+the one-definition row is `true`.
+
+The Lean specification models the rule as the kernel has it
+(`spec/Boru/Core/Match.lean` `Defs.soleIdent?` / `refIdent`).
+
+**Proposed verdict:** resolve by fix — a name's aggregate has an identity
+that is stable while its set of definitions is unchanged (cached with the
+aggregate, or derived from the entries' identities), so a reference read
+twice is one function.
 
 ---

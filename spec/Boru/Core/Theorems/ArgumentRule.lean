@@ -21,7 +21,7 @@ open Boru.Core
     `barrier`; it returns its argument vector as a list. -/
 def probe (name : String) (n barrier : Nat) : String × List Value :=
   (name, [.fn name [.mk ((List.range n).map fun i => .mk s!"a{i}" TAny none false false)
-    [TAny] barrier (.native "vec") false]])
+    [TAny] barrier (.native "vec") false] 0])
 
 def defs : Defs :=
   [probe "f1" 1 1, probe "f2" 2 2, probe "f3" 3 3, probe "f4" 4 4,
@@ -152,6 +152,59 @@ theorem function_word_is_a_barrier :
     (operands.all fun a => operands.all fun b =>
       out [w "f2", a, w "f1", b] == "ERROR:signature_error"
         && out [w "f2", a, .openParen, w "f1", b, .closeParen] == bound [a, .list [b] false]) = true := by
+  native_decide
+
+/-! ## `/u` — the same call, reversed
+
+`f/u` is the function `f` with its argument order reversed: a wrapper
+whose every parameter is collectable forward, which re-dispatches the
+original with what it collected, reversed. -/
+
+def wu (name : String) : Value := .word { name, forceUsurp := true }
+
+/-- USURP REVERSES THE BINDING, AT EVERY BARRIER. `f/u a b` hands the
+    original `b a` — its slot i takes the operand written (n−1−i)-th —
+    whether the original collects forward (`f2`) or from the stack (`s2`). -/
+theorem usurp_reverses :
+    (operands.all fun a => operands.all fun b =>
+      out [wu "f1", a] == bound [a]
+        && out [wu "f2", a, b] == bound [b, a]
+        && out [wu "s2", a, b] == bound [b, a]) = true := by
+  native_decide
+
+/-- At arity 3 the same, with the barrier at the end (`f3`) and in the
+    middle (`g3`). -/
+theorem usurp_reverses_arity3 :
+    (operands.all fun a => operands.all fun b => operands.all fun c =>
+      out [wu "f3", a, b, c] == bound [c, b, a]
+        && out [wu "g3", a, b, c] == bound [c, b, a]) = true := by
+  native_decide
+
+/-- THE WRAPPER IS AN ORDINARY FUNCTION, so the one rule splits ITS
+    operands too: `f3/u a b c`, `c f3/u a b`, `c b f3/u a` and
+    `c b a f3/u` are one call — and it is all-forward even over an
+    original that is not (`g3`). -/
+theorem usurp_splits :
+    (operands.all fun a => operands.all fun b => operands.all fun c =>
+      out [c, wu "f3", a, b] == bound [c, b, a]
+        && out [c, b, wu "f3", a] == bound [c, b, a]
+        && out [c, b, a, wu "f3"] == bound [c, b, a]
+        && out [c, b, wu "g3", a] == bound [c, b, a]) = true := by
+  native_decide
+
+/-- Only a FUNCTION has an argument order to reverse: `/u` on a name bound
+    to anything else is `illegal_ref`, and on a name bound to nothing
+    `undefined_word` — with or without `/v` beside it. -/
+theorem usurp_needs_a_function :
+    let code (ds : Defs) (tape : List Value) : String :=
+      match run natives ds tape with
+      | .error e => e.code
+      | .ok _ => "ok"
+    ((operands.all fun v =>
+        code (defs.push "x" v) [wu "x"] == "illegal_ref"
+          && code (defs.push "x" v) [.word { name := "x", forceUsurp := true, forceVal := true }]
+               == "illegal_ref")
+      && code defs [wu "nosuch"] == "undefined_word") = true := by
   native_decide
 
 end Boru.Core.ArgumentRule

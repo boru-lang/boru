@@ -35,7 +35,14 @@ def evalStr (expr : String) : String :=
   | .ok s => s
   | .error e => "NOTATION:" ++ e
 
-def specFiles : List String := ["canon.tsv", "data.tsv", "dispatch.tsv", "unify.tsv"]
+/-- Every corpus file in the directory but the parity debt, in name
+    order — read from the directory, as the Go and TypeScript runners read
+    it, so a file added to the corpus is run here without being listed. -/
+def specFiles (dir : System.FilePath) : IO (List String) := do
+  let entries ← dir.readDir
+  let names := entries.toList.map (·.fileName)
+    |>.filter fun n => n.endsWith ".tsv" && n != "divergent.tsv"
+  pure (names.mergeSort (· ≤ ·))
 
 def runProbe (path : String) : IO UInt32 := do
   let text ← IO.FS.readFile path
@@ -50,7 +57,11 @@ def main (args : List String) : IO UInt32 := do
   | [dir] =>
     let mut total := 0
     let mut failed := 0
-    for f in specFiles do
+    let files ← specFiles (System.FilePath.mk dir)
+    if files.isEmpty then
+      IO.println s!"core/spec: no corpus files in {dir}"
+      return 1
+    for f in files do
       let rows ← readRows (System.FilePath.mk dir / f)
       let mut bad := 0
       for r in rows do
