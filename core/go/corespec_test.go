@@ -16,6 +16,7 @@ package core
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -215,6 +216,31 @@ func (d *coreSpecEach) Describe() string         { return "eachq" }
 
 // A body's error is reported as the body's: the corpus reads error CODES.
 func (d *coreSpecEach) WrapError(_ int, err error) error { return err }
+
+// coreSpecFor builds a counted loop's first round — the index bound, then
+// `mark body… move` — as basic's RunForLoop does: an empty range runs
+// nothing, a zero step is refused, and the move's Loop counts from there.
+func coreSpecFor(r *Registry, word string, start, end, step int64, body Value) ([]Value, error) {
+	bl, err := AsList(body)
+	if err != nil {
+		return nil, coreSpecNotAList(word, body)
+	}
+	if step == 0 {
+		return nil, &BoruError{Code: "fixture_zero_step", Detail: word + ": the step cannot be zero"}
+	}
+	if (step > 0 && start >= end) || (step < 0 && start <= end) {
+		return nil, nil
+	}
+	InstallDef(r, "i", NewInteger(start))
+	lp := &Loop{
+		Registry: r, Word: word, Iter: 1, Count: -1,
+		IterName: "i", Current: start, End: end, Step: step,
+		Body: bl.Slice(), IterDepth: r.Defs.Depth("i"),
+	}
+	id := NextMarkID()
+	toks := append([]Value{NewMark(id)}, lp.Body...)
+	return append(toks, NewMoveCont(id, word+" loop", lp)), nil
+}
 
 func coreSpecFields(s string) []string {
 	var out []string
@@ -624,6 +650,56 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// forq, rangeq and whileq are the doors onto the COUNTED and the
+	// CONDITIONAL loop: a mark, a body, and a move whose continuation
+	// (core.Loop) replays the body — `mark body… move`, with NO sealing
+	// paren, so a body runs on the caller's own stack. The words that build
+	// those tokens are basic's (`for`, `while`); the continuation and its
+	// stepping are the kernel's.
+	//
+	// forq n [q body ] runs the body for i = 0 … n-1, the index bound as
+	// `i`; rangeq start end step [q body ] counts any range; whileq
+	// [q cond ] [q body ] alternates a condition region and a body region.
+	// Each leaves, where it stood, every value its completed rounds left.
+	r.Register("forq", Signature{
+		Params: []FnParam{{Name: "n", Type: TInteger}, {Name: "body", Type: TList}},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			n, _ := AsInteger(a[0])
+			return coreSpecFor(reg, "forq", 0, n, 1, a[1])
+		}),
+		BarrierPos: 2,
+	})
+	r.Register("rangeq", Signature{
+		Params: []FnParam{
+			{Name: "start", Type: TInteger}, {Name: "end", Type: TInteger},
+			{Name: "step", Type: TInteger}, {Name: "body", Type: TList},
+		},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			start, _ := AsInteger(a[0])
+			end, _ := AsInteger(a[1])
+			step, _ := AsInteger(a[2])
+			return coreSpecFor(reg, "rangeq", start, end, step, a[3])
+		}),
+		BarrierPos: 4,
+	})
+	r.Register("whileq", Signature{
+		Params: []FnParam{{Name: "cond", Type: TList}, {Name: "body", Type: TList}},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			cond, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("whileq", a[0])
+			}
+			body, err := AsList(a[1])
+			if err != nil {
+				return nil, coreSpecNotAList("whileq", a[1])
+			}
+			lp := &Loop{Registry: reg, Word: "whileq", Count: -1, Body: body.Slice(), WhileCond: cond.Slice()}
+			id := NextMarkID()
+			toks := append([]Value{NewMark(id)}, lp.WhileCond...)
+			return append(toks, NewMoveCont(id, "whileq loop", lp)), nil
+		}),
+		BarrierPos: 2,
+	})
 	// qanyq is the /q fixture whose name slot is ANY rather than Atom, and
 	// it RETURNS what it captured, so a row can read the capture back. The
 	// pair (undef's Atom slot, this Any one) is what pins /q's conditional
@@ -815,7 +891,19 @@ func evalCoreSpec(t *testing.T, r *Registry, expr string) string {
 			r.Defs.Push(toks[1], bound)
 			toks = toks[pos+1:]
 		}
-		out, err := NewTop(r).Run(coreSpecAssemble(t, r, toks))
+		eng := NewTop(r)
+		if os.Getenv("CORE_PROBE_TRACE") != "" {
+			// the probe's own view of a run: the tape and the pointer at
+			// every step, to stderr
+			eng.SetTrace(func(step, pointer int, tape []Value, note string) {
+				cells := make([]string, len(tape))
+				for i := range tape {
+					cells[i] = CanonValue(tape[i])
+				}
+				fmt.Fprintf(os.Stderr, "%4d @%d  %s   %s\n", step, pointer, strings.Join(cells, " · "), note)
+			})
+		}
+		out, err := eng.Run(coreSpecAssemble(t, r, toks))
 		if err != nil {
 			var be *BoruError
 			if errors.As(err, &be) {
@@ -892,7 +980,20 @@ func TestCoreProbe(t *testing.T) {
 		if line == "" {
 			continue
 		}
-		b.WriteString(evalCoreSpec(t, coreSpecRegistry(t), line))
+		// A line the notation cannot read fails ITS subtest and answers
+		// NOTATION, as the Lean probe answers it; the lines after it are
+		// still evaluated, and the file is still written.
+		got := "NOTATION"
+		t.Run("line", func(st *testing.T) {
+			// a truncated form can run the notation's reader off its tokens
+			defer func() {
+				if recover() != nil {
+					got = "NOTATION"
+				}
+			}()
+			got = evalCoreSpec(st, coreSpecRegistry(st), line)
+		})
+		b.WriteString(got)
 		b.WriteByte('\n')
 	}
 	if err := os.WriteFile(out, []byte(b.String()), 0o600); err != nil {
