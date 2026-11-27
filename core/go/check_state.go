@@ -290,24 +290,6 @@ type CheckState struct {
 	// set by the caller BEFORE Begin (which must not reset it).
 	Strict bool
 
-	// ParenPlacedFnIDs records the analysis-pass carriers a USER paren
-	// PLACED rather than applied (NUR073's BROAD park). Only the collapse
-	// knows the discriminator — a reach-lowered group still dispatches, a
-	// user paren does not — so the fact is recorded there and read by the
-	// compiler's residual lowering, which must not lower a placed lead as
-	// an apply (`(m dot f) 5` is two values; `m.f 5` still applies).
-	ParenPlacedFnIDs map[string]bool
-	// ReachSurvivorFnIDs records the analysis-pass fn-typed CARRIERS a
-	// REACH-lowered group's collapse left as its lone survivor (`M.ff` is
-	// `( M dot ff )`; the module fn's call inside it returned a Function
-	// carrier). A reach group never parks — its collapse re-steps the
-	// survivor over the values beneath, whatever produced it — so the
-	// compiler's residual lowering must not treat such a call result as
-	// PLACED data (callResultPlaced): `5 M.ff` over `def ff fn
-	// [[][Function][inc/v]]` is 6 on the interpreter and seated `[5 fn
-	// inc]` compiled (NUR260). Recorded at the collapse (tagReachCollapsedFn),
-	// keyed by value ID like ParenPlacedFnIDs.
-	ReachSurvivorFnIDs map[string]bool
 	// ForceFnReanalysis makes AnalyseFnBody run a body past a cached summary
 	// for its key: the end-of-pass drain's declaration-shaped run of an
 	// exported module fn (NUR128) comes AFTER the pass's call-shape runs of
@@ -326,24 +308,6 @@ type CheckState struct {
 	// other half (NUR097): a read of a name that RootDefSites shows rebound
 	// after the fn's own def.
 	FnReads map[string]map[string]bool
-
-	// ParenReSteppedFnIDs records the opposite fact, and the two together are
-	// the paren re-step rule (design/PAREN-RESTEP-RULE.0.md): the carriers an
-	// enclosing paren's rewind LANDED ON and will therefore re-step into a
-	// CALL — and, since 2026-09-23, the carriers a `word` splice's expansion
-	// re-steps against the live stack, the same fact by another route
-	// (Engine.markReStepped). A paren with more than one survivor declines the park, so the
-	// pointer comes back onto the leading value — `((mk 1) 2)` is 3 for
-	// exactly that reason, while its unwrapped twin `(mk 1) 2` is
-	// `fn (Integer) 2` because no rewind ever reaches it.
-	//
-	// Recorded at the collapse, for the same reason ParenPlacedFnIDs is: the
-	// residual lowering sees the identical `[carrier, 2]` for both spellings
-	// and cannot recover which one it has. Without this the compiler must
-	// either apply both (miscompiling the placed one) or decline both (losing
-	// the applied one) — it did the first until 2026-08-27 and the second
-	// briefly after, and neither is right. Reset by Begin.
-	ParenReSteppedFnIDs map[string]bool
 
 	// FnAnalysisCounts tracks distinct body analyses (memo misses)
 	// per fn DEFINITION SITE (fnQuotaKey: scope + name + body position,
@@ -867,8 +831,6 @@ func (c *CheckState) Clone() *CheckState {
 		cp.Diagnostics = append([]CheckDiagnostic(nil), c.Diagnostics...)
 	}
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
-	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
-	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
 	if c.RaiseWatches != nil {
 		cp.RaiseWatches = make([]RaiseWatch, len(c.RaiseWatches))
 		for i, w := range c.RaiseWatches {
@@ -883,7 +845,6 @@ func (c *CheckState) Clone() *CheckState {
 		}
 	}
 	cp.FnReads = cloneNestedSet(c.FnReads)
-	cp.ParenReSteppedFnIDs = cloneMap(c.ParenReSteppedFnIDs)
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
@@ -992,12 +953,9 @@ func (c *CheckState) Begin() func() {
 	c.SpecUndefCarriers = nil
 	c.SpecUndefGen = 0
 	c.ArgsFrameUnnamed = false
-	c.ParenPlacedFnIDs = nil
-	c.ReachSurvivorFnIDs = nil
 	c.ForceFnReanalysis = false
 	c.RootDefSites = nil
 	c.FnReads = nil
-	c.ParenReSteppedFnIDs = nil
 	// Arm process-wide ID minting for the pass's lifetime: the emit
 	// recorder keys provenance on Value.IDs minted at creation, so every
 	// value created while ANY pass is live must carry one (see

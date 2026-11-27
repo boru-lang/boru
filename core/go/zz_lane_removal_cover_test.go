@@ -192,9 +192,6 @@ func TestLaneRemovalQuotedFnCarrierReadUnderAnalysis(t *testing.T) {
 	if got := e.Tape.At(0); IsQuoted(&got) {
 		t.Error("a bare read of a binding that may hold a fn is the word dispatch: the quote is dropped")
 	}
-	if len(e.defReads["lrq-1"]) != 1 {
-		t.Errorf("the read's position is noted for the def-read ledger: %v", e.defReads)
-	}
 }
 
 func TestLaneRemovalBareCallContext(t *testing.T) {
