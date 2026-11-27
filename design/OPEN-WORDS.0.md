@@ -458,6 +458,15 @@ transplant as defence in depth. Top-level programs are unrestricted
 not apply to extending module-provided words (wrapper rebindings),
 which are versioned with the dependency that owns them.
 
+> **Superseded (2026-07-23), field removed (2026-11-27).** This rule is
+> rev 1's; [OPEN-WORDS.1.md](OPEN-WORDS.1.md) R1 replaced it with the
+> ownership-anchor rule, which holds at every scope, top level included
+> (`requireOwnedAnchor` in `core/go/word_extend.go`, keyed on each
+> type's owner stamp; the code is `[boru/extend_owner]`). The
+> `Registry.ModuleScope` flag lost its only reader in that change and
+> has been deleted; a module body is told apart by its registry's
+> `Types.MintOwner`, not by a flag.
+
 Consequence for the §6 migrations: a migration qualifies for the
 transplant path exactly when the module also takes ownership of the
 TYPES. Both are DONE this way:

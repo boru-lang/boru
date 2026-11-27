@@ -5,50 +5,12 @@ export { cap } from '@boru-lang/core'
 export {
   CheckState,
   carrierResults,
-  joinCarriers,
   severityFor,
   stripToCarriers,
   toCarrier,
 } from './check.ts'
 export { coerceBoolean } from '@boru-lang/core'
 export type { CheckDiagnostic, CheckSeverity } from './check.ts'
-export {
-  CodeBuilder,
-  OpCallNative,
-  OpCallNativePoly,
-  OpFallback,
-  OpForNext,
-  OpForSetup,
-  OpJmp,
-  OpJmpIfFalse,
-  OpMakeList,
-  OpMakeMap,
-  OpPushConst,
-  OpPushLocal,
-  OpStoreLocal,
-  OpTrap,
-  disassemble,
-} from './bytecode.ts'
-export type { FallbackSpan, Op, PolyRef, Program, SigRef, TrapSpec } from './bytecode.ts'
-export { EmitState } from './emit.ts'
-export type {
-  BranchEvent,
-  CallEvent,
-  Event,
-  FallbackEvent,
-  Fragment,
-  LoopEvent,
-  MakeListEvent,
-  MakeMapEvent,
-  Operand,
-  SiteCounts,
-  TrapEvent,
-} from './emit.ts'
-export { finalize } from './lower.ts'
-export type { FinalizeResult } from './lower.ts'
-export { runProgram } from './vm.ts'
-export { compile, compileCheck, runCompiled } from './compile.ts'
-export type { RunCompiledResult } from './compile.ts'
 export { Engine } from '@boru-lang/core'
 export type { FunctionEntry } from '@boru-lang/core'
 export { Registry } from '@boru-lang/core'

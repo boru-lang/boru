@@ -105,15 +105,6 @@ type Registry struct {
 	BaseDir  string         // base directory for resolving relative file paths (set by loadFileModule)
 	BaseFile string         // full path of the current source file ("" if none); surfaced by __file/__folder
 	Source   string         // most recent source text for error reporting
-	// ModuleScope marks a registry that runs a MODULE body (set by the
-	// module-body runner, e.g. RunModuleBody in lang). Read by
-	// InstallWordExtension: a module may extend a CORE word only with
-	// signatures carrying at least one user-defined (non-kernel)
-	// argument type — an all-kernel tuple (`add [Boolean Boolean]`)
-	// would surprise importers (`add 1 {}` suddenly working) and breaks
-	// forward compatibility the day core claims the tuple as a locked
-	// signature. See design/OPEN-WORDS.0.md "Implementation notes".
-	ModuleScope bool
 	// ShapeModel marks a registry minted by a check-mode MODEL of a module
 	// instance — the shape-only twin a ReturnsFn builds for Rand.with-seed /
 	// Log.with / Log.span so a dot read resolves its method wrappers

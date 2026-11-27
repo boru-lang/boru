@@ -1,7 +1,7 @@
 // Spec-driven interpreter tests, mirroring borueng/go/spec_test.go. Reads the
 // shared eng/spec/*.tsv corpus and runs each row through the TS interpreter.
 // Fixtures + tokenizer + corpus loader live in ./spec-fixture.ts (shared with
-// the compiled differential gate).
+// the cross-engine differential and the fixture probes).
 
 import { describe, it } from "node:test"
 import { strict as assert } from "node:assert"

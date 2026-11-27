@@ -4,7 +4,8 @@
 2026-10-16: *merge what you have; branch `compiler-legacy`; then remove the
 compiler lane — we will focus on optimising the interpreter.* This note
 records what was removed, what was kept and why, how the removal was shown
-to preserve behaviour, and what is left to prune.
+to preserve behaviour, and what is left to prune. The TypeScript twin's
+own compiled lane followed on 2026-11-27 (§4).
 
 ## 1. What the compiler lane was
 
@@ -77,7 +78,10 @@ discipline is design/PERF-BASELINE.10.md.
   SESSION-HANDOVER as SESSION-HANDOVER-FULL-COMPILATION). The old kernel
   guide, eng/go's CLAUDE.md, was folded into `core/go/CLAUDE.md` without
   its compiler passages. NUR.md's records that cite the compiled lane are
-  history and were not rewritten.
+  history and were not rewritten. (They were discharged on 2026-11-27:
+  the records whose divergence existed only against the lane were
+  deleted, and the rest were narrowed to what still reproduces on the
+  interpreter — see NUR.md's head note of that date.)
 
 ## 3. Why plain `boru run` and `boru check` did not change
 
@@ -214,16 +218,64 @@ What the third sweep left, and why:
 inline-cache soundness predicate. Nothing in production calls them now.
 They stay as the predicate an interpreter dispatch cache would need.
 
-Beyond core: the TypeScript twin `eng/ts` still carries its own compiled
-lane (`compile.ts`, `emit.ts`, `lower.ts`, `bytecode.ts`, `vm.ts`) over the
-`eng/spec` corpus — `make test-ts` is unchanged and that removal is a
-separate decision; `design/RELOAD-INVALIDATION.0.md` and
+Beyond core: `design/RELOAD-INVALIDATION.0.md` and
 `design/BIDIRECTIONAL-CHECKER.0.md` keep proposals whose compiled halves
 are now moot; `lang/spec/module-composition.tsv` §6 keeps the rows the
 compiled lane could not answer, as the interpreter's to keep answering.
+
+**The TypeScript twin (2026-11-27).** `eng/ts` carried a compiled lane of
+its own over the `eng/spec` corpus: a recorder fed by the check pass
+(`emit.ts`), a lowering to bytecode (`lower.ts`, `bytecode.ts`), a stack
+VM (`vm.ts`) and the compile-or-fall-back entry points (`compile.ts`).
+This section used to call its removal a separate decision. The maintainer
+made it, for the reason the Go lane went, and the TypeScript engine now
+has one execution path, the interpreter. The pass removed:
+
+- The five files, and their exports from the package index: `compile`,
+  `compileCheck`, `runCompiled`, `runProgram`, `finalize`, `EmitState`,
+  `CodeBuilder`, `disassemble`, the opcodes, and the program, event and
+  operand types.
+- `joinCarriers` in `check.ts`. Its only callers were the branch fixtures
+  of the lane's own test.
+- In `spec-fixture.ts`, everything only the recording pass reached. The
+  spec registry ran in check mode only under the recorder, because the
+  check corpus (`eng/spec/check`) has its own fixture set in
+  `check-fixture.ts`. So this was every recorder arm inside a handler
+  and every check-only declaration on a word: `recordsOwnEvent`,
+  `compileFallback`, `runInCheckMode`, `returns` and `returnsFn`. The
+  file is value-mode only and its header says so.
+- The lane's tests: the golden disassemblies, the VM guard probes and
+  the corpus differential (`corpus.test.ts`). `spec.test.ts` asserts the
+  same 1765 rows on the interpreter against the corpus's expected
+  column. The tests that ran a row on both paths, with the interpreter
+  as the reference, pin the interpreter's answer instead
+  (`control-fixtures.test.ts`, `fixture-probe.test.ts`).
+
+No `eng/spec` file existed for the lane and none changed. Every
+`eng/spec` row gives the same residual or the same error text before and
+after, the check corpus renders the same, and the cross-engine
+differential (`make crossdiff`) agrees with the Go kernel on all 1808
+rows. `make test-ts` keeps its floor of 97. The five files were 1322
+lines, almost all covered, so the deletion alone left the package at
+96.19%; one arm had lost its only test (the `returnsFn` contagion arm of
+`carrierResults`), and pinning it, with probes for the fixture arms the
+corpus never reaches, puts the package at 97.27%.
+
+What that pass left is in `core/ts`, which it did not touch: the
+recording seam the lane implemented. That is `emit-recorder.ts`
+(`EmitRecorder`, `RecorderOperand` and the inactive default),
+`CheckState.emit`, the engine's fourteen reads of it in `engine.ts`, the
+two `Signature` fields only a recorder reads (`recordsOwnEvent`,
+`compileFallback`), and `emit-seam.test.ts`, which drives the seam with a
+recorder of its own. Nothing outside core's own tests installs a recorder
+now. It is the TypeScript twin of the surface the three sweeps above
+pruned from `core/go`.
 
 ## 5. Getting the code back
 
 The last commit before the removal is on the `compiler-legacy` branch
 (`git checkout compiler-legacy`): the four removed modules, the lane's
 gates and the design pages as they stood. Nothing on `main` depends on it.
+
+The TypeScript lane outlived that branch by six weeks. Its last state is
+the tree at `d1db0f8` (#561), the commit its removal started from.

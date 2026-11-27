@@ -545,10 +545,11 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 // `remove somePath` deletes a filesystem path — polymorphism over the existing
 // verbs rather than a separate IO.list / IO.remove.
 //
-// These anchor on Pathon, a KERNEL builtin type. The module-scope safety rule
-// (requireUserTypedSigs) normally declines a core-word extension whose tuple has
-// no user-minted type; NewWordExtensionAnchored waives it because boru:io ships
-// and versions WITH the kernel (see core/go/word_extend.go). The core `list` /
+// These anchor on Pathon, a KERNEL-owned type. The ownership-anchor rule
+// (requireOwnedAnchor, core/go/word_extend.go) admits a core-word extension
+// only when each tuple carries a nominal type its author owns, and checks a
+// host-built clone against the owner it declares; boru:io ships and versions
+// WITH the kernel, so it declares core.OwnerKernel here. The core `list` /
 // `remove` sigs match only Map/ResourceEntity/List, disjoint from Pathon, so
 // dispatch is unambiguous. listHandler closes over fileType so a
 // `list p {detail:true}` record's `type` field is an IO.FileType atom.

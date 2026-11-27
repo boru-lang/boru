@@ -681,8 +681,8 @@ var scalarOpsNatives = func() []NativeFunc {
 // CoreDefault gives exactly that: unlocked overloads that still live on
 // the native definition (so `undef add` declines) and are skipped by the
 // export transplant (so they never ride a module's word extension into an
-// importer, where their builtin-only tuple would trip the module-scope
-// user-type rule).
+// importer, where their kernel-only tuple, anchored on nothing the module
+// owns, would fail the transplant's requireOwnedAnchor admission).
 func installScalarOpDefaults(r *Registry) {
 	for _, nf := range scalarOpsNatives {
 		r.RegisterCoreDefault(nf.Name, nf.Signatures...)
