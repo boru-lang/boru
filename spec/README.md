@@ -97,6 +97,14 @@ on: a `/uv` value is not collected by a waiting word as a `/v` value is
 literal but collected as a value in a loop's body (NUR392). Each is marked
 where it is modelled and where it is pinned.
 
+Three the model does NOT reproduce, because each is an accident of how
+`core/go` compares values rather than a rule to state: typed containers
+equal by their constraint alone (NUR393), a disjunct inside another value
+compared as it prints (NUR394), and an order that is not transitive
+between typed and plain lists (NUR395). There the specification states the
+structural rule and disagrees with `core/go`; the differential search does
+not draw those shapes, and no corpus row sits on them.
+
 ## Toolchain
 
 [`lean-toolchain`](lean-toolchain) pins `leanprover/lean4:v4.36.0`. No

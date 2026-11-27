@@ -114,6 +114,9 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR390](#nur390) | A `/uv` value is not collected by a waiting word, where a `/v` value is: `bothq 1 negq/uv` strands the collection, and `bothq negq/uv 1` silently binds the two the other way round | the Lean core specification, modelling `/u` (2026-11-27) |
 | [NUR391](#nur391) | A word with more than one definition is not `eq` to itself: every reference to it (`f/v`) is a new function, so `f/v eq f/v` is false once `f` has an overload | the Lean core specification, modelling function identity (2026-11-27) |
 | [NUR392](#nur392) | An unmatched `(` is refused at the top level and in a container literal, collected as a value in a driven loop's body, and handed to the return check in a function's body | the Lean core specification, modelling driven loops (2026-11-27) |
+| [NUR393](#nur393) | Typed containers are `eq` by their child constraint alone: `[:Integer 1] eq [:Integer 2]` is `true` (`deq` is `false`), and `[:Integer 1] tor [:Integer 2]` keeps one of them | the core/ts unifier port, differential against core/go (2026-11-27) |
+| [NUR394](#nur394) | A disjunct held inside another value is compared as it prints: two alternatives that render alike are one, though they differ in structure or hold two different functions | the core/ts unifier port, differential against core/go (2026-11-27) |
+| [NUR395](#nur395) | The total order is not transitive between a typed list and plain lists of its size, so a disjunct's canonical form depends on the order its alternatives were written in | the core/ts unifier port, differential against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1304,5 +1307,116 @@ The Lean specification models the rule as the kernel has it
 **Proposed verdict:** resolve by fix — a loop's region and a call frame
 refuse an open paren left unmatched in their body as the top level and a
 literal do.
+
+---
+
+## NUR393 — typed containers are `eq` by their child constraint alone {#nur393}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation and through `boru do` · silent
+
+**Rule:** `eq` compares values; two values that differ are not equal, and a
+disjunct keeps every alternative that is not equal to another (ADR-015).
+
+**Divergence:** `valuesEqualDefault` (core/go/equal.go) compares two typed
+lists, and two typed maps, by their CHILD CONSTRAINT only — the elements
+they retain are never read:
+
+```
+[:Integer 1] eq [:Integer 2]                     true
+[:Integer 1] deq [:Integer 2]                    false
+([:Integer 1] tor [:Integer 2])                  [:Integer 1]
+({:Integer a:1} tor {:Integer a:2})              {:Integer a:1}
+run d( [: Integer 1 ] [: Integer 2 ] )           [:Integer 1]          (core/spec notation)
+```
+
+A second effect in the same place: resolution asks that equality whether
+an alternative "changed", so a typed container's retained words are never
+resolved and a disjunct nested in it is never canonicalised:
+
+```
+run d( [: Any foo ] )                 [:Any foo]                  (a plain list's `foo` becomes `foo/q`)
+run d( [: 5 d( 0 bar 2 ) ] )          [:5 (0 tor bar tor 2)]      (unsorted)
+```
+
+Both readings are defensible and they disagree: as a TYPE, `[:Integer 1]`
+is `[:Integer]` and what it retains is not part of it (unification of the
+two answers `[:Integer]`); as a VALUE the two hold different elements, and
+`deq` says so. `eq` and `tor` take the first reading of a thing written as
+the second.
+
+core/ts follows core/go here since its unifier port. The Lean
+specification does NOT: it compares the retained elements
+(`spec/Boru/Core/Compare.lean` `valuesEqual`), and its differential search
+does not generate the shape.
+
+**Proposed verdict:** resolve by fix — a typed container that retains
+elements is equal to another only when the elements are; one that retains
+none is the type, and equal by its constraint.
+
+---
+
+## NUR394 — a disjunct inside another value is compared as it prints {#nur394}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation · silent
+
+**Rule:** equality is structural, and a function is equal only to itself
+(NUR031).
+
+**Divergence:** a disjunct reached as a member of another value — an
+alternative that is itself a disjunct — falls to `valuesEqualDefault`'s
+last arm, which compares the two payloads' `%v` rendering. Two members
+that print alike are therefore one alternative, whatever they hold:
+
+```
+run d( d( d( 1 ) ) d( 1 ) )           1          two different structures, one rendering
+run d( d( fn( n Integer Integer [ n ] ) ) d( fn( n Integer Integer [ n ] ) ) )
+                                      fn [[n:Integer][Integer][n]]      two functions, deduplicated
+run d( fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] ) )
+                                      fn [[n:Integer][Integer][n]] tor fn [[n:Integer][Integer][n]]
+```
+
+The last row is the rule: unwrapped, the same two functions are two
+alternatives.
+
+core/ts follows core/go here since its unifier port. The Lean
+specification does NOT (it compares structure), and its differential
+search does not generate the shape.
+
+**Proposed verdict:** resolve by fix — a disjunct is compared by its
+alternatives, as a list is by its elements.
+
+---
+
+## NUR395 — the total order is not transitive across typed and plain lists {#nur395}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation · silent
+
+**Rule:** `CompareValues` is a total order (design/TYPE-ORDERING.10.md), and
+a disjunct's canonical form is a function of its set of alternatives
+(ADR-015; NUR385).
+
+**Divergence:** two plain lists of one size compare member by member; a
+typed list against a plain list of that size falls to canonical TEXT. The
+three comparisons do not compose — `[foo/q]` < `[(1)]` < `[:Any 0]` <
+`[foo/q]` — so sorting a disjunct's alternatives has no one answer, and
+the insertion sort returns whichever the written order leads it to:
+
+```
+run d( [q d( 1 ) ] [q foo ] [: Any 0 ] )      [foo/q] tor [(1)] tor [:Any 0]
+run d( [: Any 0 ] [q d( 1 ) ] [q foo ] )      [(1)] tor [:Any 0] tor [foo/q]
+run d( [q foo ] [: Any 0 ] [q d( 1 ) ] )      [:Any 0] tor [foo/q] tor [(1)]
+```
+
+One set of alternatives, three canonical forms.
+
+core/ts runs the same sort and matches core/go. The Lean specification
+states the order it has (`spec/Boru/Core/Compare.lean` `compareValues`) and
+disagrees with core/go on these rows; its differential search does not
+generate the shape.
+
+**Proposed verdict:** resolve by fix — a typed list and a plain list
+compare by one rule that composes (member by member, the typed one's
+constraint as a tie-break), so the order is total and the canonical form
+unique.
 
 ---

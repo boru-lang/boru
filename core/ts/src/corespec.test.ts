@@ -28,6 +28,7 @@ import {
   newBoolean,
   newDisjunct,
   unifiesValue,
+  unify,
   newDispatchMod,
   newEnd,
   newFnDef,
@@ -497,10 +498,10 @@ function fixtureRegistry(): Registry {
   // typed defs, record shapes) are basic-layer words and a bare core
   // registry called it from nowhere.
   //
-  // The PREDICATE half only: did the two values unify. Go's UnifyR also
-  // returns the unified VALUE, and core/ts has no meet to return, so
-  // asking for it would pin a port gap as a language contract. Declared
-  // independently of the Go runner's copy, per the two-runner rule.
+  // The PREDICATE half: did the two values unify. `meetq` below is the
+  // VALUE half — the two were one word short while core/ts had a predicate
+  // and no meet. Declared independently of the Go runner's copy, per the
+  // two-runner rule.
   r.registerNativeFunc({
     name: "unifyq",
     signatures: [
@@ -508,9 +509,38 @@ function fixtureRegistry(): Registry {
         args: [TAny, TAny],
         returns: [TBoolean],
         barrierPos: 2,
-        handler: (a: Value[]): Value[] => [
-          newBoolean(unifiesValue(a[0]!, a[1]!)),
-        ],
+        handler: (
+          a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => [newBoolean(unifiesValue(a[0]!, a[1]!, reg))],
+      },
+    ],
+  });
+  // meetq is unifyq's VALUE half: the unified value itself — the meet of
+  // the two — or the fixture error `fixture_no_meet` when they have none.
+  // The predicate cannot tell `5 tor 6` from `5` as the answer to
+  // `d( 5 6 )` against `Integer`; this can.
+  r.registerNativeFunc({
+    name: "meetq",
+    signatures: [
+      {
+        args: [TAny, TAny],
+        returns: [TAny],
+        barrierPos: 2,
+        handler: (
+          a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => {
+          const meet = unify(a[0]!, a[1]!, reg);
+          if (meet === undefined) {
+            throw new BoruError("fixture_no_meet", "the two values do not unify");
+          }
+          return [meet];
+        },
       },
     ],
   });
